@@ -17,6 +17,7 @@ import { z } from 'zod'
 
 import { baseResponseSchema, dateOnlySchema } from './common.ts'
 import { NUTRIENT_FIELD_NAMES } from './nutrients.ts'
+import { ianaTimezoneSchema } from './timezone.ts'
 
 /**
  * Names of nutrients we accept on the recommendation API. Constraining via
@@ -31,10 +32,6 @@ const nutrientNameSchema = z.enum(NUTRIENT_FIELD_NAMES as unknown as readonly [s
 export type NutrientName = z.infer<typeof nutrientNameSchema>
 
 export { nutrientNameSchema }
-
-// ============================================================================
-// Effective recommendation (returned by GET)
-// ============================================================================
 
 export const nutrientRecommendationSourceSchema = z.enum(['central', 'user']).meta({
   description: 'Whether this recommendation came from the central default or a user override',
@@ -106,10 +103,6 @@ export const clearNutrientRecommendationResponseSchema = baseResponseSchema
 
 export type ClearNutrientRecommendationResponse = z.infer<typeof clearNutrientRecommendationResponseSchema>
 
-// ============================================================================
-// Upsert / clear user override
-// ============================================================================
-
 export const upsertNutrientRecommendationBodySchema = z
   .object({
     recommended_low: z
@@ -133,10 +126,6 @@ export const upsertNutrientRecommendationBodySchema = z
 
 export type UpsertNutrientRecommendationBody = z.infer<typeof upsertNutrientRecommendationBodySchema>
 
-// ============================================================================
-// Period summary (averaged daily nutrient intake)
-// ============================================================================
-
 /** Cap the period-summary window so a buggy or malicious caller can't request a multi-year scan. */
 export const NUTRIENT_PERIOD_SUMMARY_MAX_DAYS = 366
 
@@ -146,31 +135,11 @@ const dayCount = (start: string, end: string): number => {
   return Math.floor((b - a) / 86_400_000) + 1
 }
 
-/**
- * IANA tz validation. `Intl.supportedValuesOf('timeZone')` is available in
- * modern Node and browsers; if it isn't, fall back to a try/catch on
- * `DateTimeFormat` which is the actual consumer downstream.
- */
-const isValidTimezone = (tz: string): boolean => {
-  try {
-    const supported = Intl.supportedValuesOf?.('timeZone')
-    if (supported) return supported.includes(tz)
-  } catch {}
-  try {
-    new Intl.DateTimeFormat('en-US', { timeZone: tz })
-    return true
-  } catch {
-    return false
-  }
-}
-
 export const nutrientPeriodSummaryQuerySchema = z
   .object({
     start: dateOnlySchema.meta({ description: 'Inclusive start date (YYYY-MM-DD)' }),
     end: dateOnlySchema.meta({ description: 'Inclusive end date (YYYY-MM-DD)' }),
-    tz: z
-      .string()
-      .refine(isValidTimezone, { message: 'tz must be a valid IANA timezone' })
+    tz: ianaTimezoneSchema
       .optional()
       .meta({ description: 'IANA timezone (e.g. "Europe/Stockholm") for bucketing meals into local days' }),
     count_only_completed: z

@@ -4,9 +4,6 @@ import org.junit.Assert.*
 import org.junit.Test
 import java.time.Instant
 
-/**
- * Unit tests for HealthDataModels utilities
- */
 class HealthDataModelsTest {
   @Test
   fun `toIsoString formats instant correctly in UTC`() {
@@ -23,13 +20,11 @@ class HealthDataModelsTest {
   @Test
   fun `toIsoString handles milliseconds`() {
     val instant = Instant.parse("2024-06-20T14:25:30.123Z")
-    // The formatter should include milliseconds
     assertTrue(instant.toIsoString().startsWith("2024-06-20T14:25:30"))
   }
 
   @Test
   fun `appJson configuration is lenient`() {
-    // Test that the JSON configuration can parse with unknown keys
     val jsonString = """{"known": "value", "unknown": "ignored"}"""
 
     @kotlinx.serialization.Serializable
@@ -156,7 +151,6 @@ class HealthDataModelsTest {
 
   @Test
   fun `allRecordTypes contains expected record classes`() {
-    // Verify the list contains key health record types
     val typeNames = allRecordTypes.map { it.simpleName }
 
     assertTrue("Should contain HeartRateRecord", typeNames.contains("HeartRateRecord"))

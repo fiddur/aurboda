@@ -1,8 +1,7 @@
 /**
- * Shared nutrient field definitions.
- *
- * Used by food_items and meal_food_items tables, API schemas, and TypeScript types.
- * Units are fixed per column — no per-value unit storage needed.
+ * Used by the food_items and meal_food_items tables, API schemas, and
+ * TypeScript types. Units are fixed per column — no per-value unit storage
+ * needed.
  *
  * Sources: Cronometer export fields + Livsmedelsverket (Swedish Food Agency) API.
  */
@@ -10,29 +9,23 @@
 import { z } from 'zod'
 
 export interface NutrientFieldDef {
-  /** Column/field name (snake_case). */
   name: string
-  /** Display label. */
   label: string
-  /** Fixed unit for this nutrient. */
   unit: string
-  /** Category for grouping in UI. */
   category: 'macro' | 'extended_macro' | 'fat_breakdown' | 'vitamin' | 'mineral' | 'amino_acid' | 'other'
 }
 
 /**
- * All nutrient fields, in display order.
- * This is the single source of truth for nutrient columns across the system.
+ * In display order. The single source of truth for nutrient columns across the
+ * system.
  */
 export const NUTRIENT_FIELDS = [
-  // Macros (also on meals table directly)
   { category: 'macro', label: 'Calories', name: 'calories', unit: 'kcal' },
   { category: 'macro', label: 'Protein', name: 'protein', unit: 'g' },
   { category: 'macro', label: 'Carbs', name: 'carbs', unit: 'g' },
   { category: 'macro', label: 'Fat', name: 'fat', unit: 'g' },
   { category: 'macro', label: 'Fiber', name: 'fiber', unit: 'g' },
 
-  // Extended macros
   { category: 'extended_macro', label: 'Alcohol', name: 'alcohol', unit: 'g' },
   { category: 'extended_macro', label: 'Caffeine', name: 'caffeine', unit: 'mg' },
   { category: 'extended_macro', label: 'Water', name: 'water', unit: 'g' },
@@ -47,7 +40,6 @@ export const NUTRIENT_FIELDS = [
   { category: 'extended_macro', label: 'Whole Grain', name: 'whole_grain', unit: 'g' },
   { category: 'extended_macro', label: 'Cholesterol', name: 'cholesterol', unit: 'mg' },
 
-  // Fat breakdown
   { category: 'fat_breakdown', label: 'Saturated Fat', name: 'saturated_fat', unit: 'g' },
   { category: 'fat_breakdown', label: 'Monounsaturated Fat', name: 'monounsaturated_fat', unit: 'g' },
   { category: 'fat_breakdown', label: 'Polyunsaturated Fat', name: 'polyunsaturated_fat', unit: 'g' },
@@ -60,7 +52,6 @@ export const NUTRIENT_FIELDS = [
   { category: 'fat_breakdown', label: 'DPA', name: 'dpa', unit: 'g' },
   { category: 'fat_breakdown', label: 'AA', name: 'aa', unit: 'g' },
   { category: 'fat_breakdown', label: 'LA', name: 'la', unit: 'g' },
-  // Individual fatty acids (LSV)
   {
     category: 'fat_breakdown',
     label: 'Short-chain Fatty Acids (4-10:0)',
@@ -75,7 +66,6 @@ export const NUTRIENT_FIELDS = [
   { category: 'fat_breakdown', label: 'Oleic Acid (18:1)', name: 'oleic_acid', unit: 'g' },
   { category: 'fat_breakdown', label: 'Arachidic Acid (20:0)', name: 'arachidic_acid', unit: 'g' },
 
-  // Vitamins
   { category: 'vitamin', label: 'Vitamin A', name: 'vitamin_a', unit: 'µg' },
   { category: 'vitamin', label: 'Retinol', name: 'retinol', unit: 'µg' },
   { category: 'vitamin', label: 'Beta-Carotene', name: 'beta_carotene', unit: 'µg' },
@@ -93,7 +83,6 @@ export const NUTRIENT_FIELDS = [
   { category: 'vitamin', label: 'B12 (Cobalamin)', name: 'b12_cobalamin', unit: 'µg' },
   { category: 'vitamin', label: 'Folate', name: 'folate', unit: 'µg' },
 
-  // Minerals
   { category: 'mineral', label: 'Calcium', name: 'calcium', unit: 'mg' },
   { category: 'mineral', label: 'Chromium', name: 'chromium', unit: 'µg' },
   { category: 'mineral', label: 'Copper', name: 'copper', unit: 'mg' },
@@ -107,7 +96,6 @@ export const NUTRIENT_FIELDS = [
   { category: 'mineral', label: 'Zinc', name: 'zinc', unit: 'mg' },
   { category: 'mineral', label: 'Iodine', name: 'iodine', unit: 'µg' },
 
-  // Amino acids
   { category: 'amino_acid', label: 'Cystine', name: 'cystine', unit: 'g' },
   { category: 'amino_acid', label: 'Histidine', name: 'histidine', unit: 'g' },
   { category: 'amino_acid', label: 'Isoleucine', name: 'isoleucine', unit: 'g' },
@@ -120,17 +108,14 @@ export const NUTRIENT_FIELDS = [
   { category: 'amino_acid', label: 'Tyrosine', name: 'tyrosine', unit: 'g' },
   { category: 'amino_acid', label: 'Valine', name: 'valine', unit: 'g' },
 
-  // Other
   { category: 'other', label: 'Oxalate', name: 'oxalate', unit: 'mg' },
   { category: 'other', label: 'Phytate', name: 'phytate', unit: 'mg' },
   { category: 'other', label: 'Ash', name: 'ash', unit: 'g' },
   { category: 'other', label: 'Salt', name: 'salt', unit: 'g' },
 ] as const satisfies readonly NutrientFieldDef[]
 
-/** All nutrient field names. */
 export const NUTRIENT_FIELD_NAMES = NUTRIENT_FIELDS.map((f) => f.name)
 
-/** Macro field names ('calories' plus the four core macros). */
 export const MACRO_FIELD_NAMES = NUTRIENT_FIELDS.filter((f) => f.category === 'macro').map((f) => f.name)
 
 /** Macro field names excluding 'calories' — used to detect "more than just kcal". */
@@ -203,14 +188,10 @@ const buildFoodItemQualityTierSql = (): string => {
 
 export const FOOD_ITEM_QUALITY_TIER_SQL = buildFoodItemQualityTierSql()
 
-/** Generate SQL column definitions for all nutrient fields. */
 export const nutrientColumnsDDL = (): string =>
   NUTRIENT_FIELDS.map((f) => `      ${f.name.padEnd(24)} DOUBLE PRECISION`).join(',\n')
 
 /**
- * Zod schema with all nutrient fields as optional numbers.
- * Used for food item and meal_food_item validation.
- *
  * The type assertion ensures TypeScript infers individual named fields
  * (e.g. `{ calories?: number; protein?: number; ... }`) instead of a
  * `Record<string, number | undefined>` index signature. Without this,

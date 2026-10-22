@@ -1,10 +1,3 @@
-/**
- * Integration tests for the per-user nutrient recommendation override table.
- *
- * Verifies upsert / list / get / clear roundtrips and the explicit-NULL
- * suppression semantics that distinguish "user wants no range" from "no
- * override applied".
- */
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'

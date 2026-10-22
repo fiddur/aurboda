@@ -3,9 +3,10 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import * as dbIndex from '../db/index.ts'
 
 // Partial mock: keep the real exports (other sync integrations reference them
-// at module load) and override only getSyncState.
+// at module load) and override only what the providers read.
 vi.mock('../db/index.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof dbIndex>()),
+  getOAuthToken: vi.fn(),
   getSyncState: vi.fn(),
 }))
 
@@ -41,12 +42,22 @@ vi.mock('../integrations/rescuetime/sync.ts', () => ({
   syncRescueTimeData: vi.fn(),
 }))
 
+vi.mock('../integrations/gravl/sync.ts', () => ({
+  DEFAULT_SYNC_HISTORY_DAYS: 90,
+  isRateLimited: vi.fn().mockReturnValue(false),
+  syncGravlWorkouts: vi.fn(),
+}))
+
+import type { GravlClient } from '../integrations/gravl/client.ts'
+
 import { syncGarminDataType } from '../integrations/garmin/sync.ts'
+import { syncGravlWorkouts } from '../integrations/gravl/sync.ts'
 import { syncLastFmData } from '../integrations/lastfm/sync.ts'
 import { syncOuraDataType } from '../integrations/oura/sync.ts'
 import { syncRescueTimeData } from '../integrations/rescuetime/sync.ts'
+import { auditError, auditInfo } from './audit-log.ts'
 import { getSettings } from './settings.ts'
-import { createSyncProvider } from './sync-provider.ts'
+import { createSyncProvider, resolveSyncInterval } from './sync-provider.ts'
 
 describe('createSyncProvider › syncLastFmIfNeeded', () => {
   const lastSync = new Date('2026-06-01T00:00:00Z')
@@ -206,6 +217,18 @@ describe('createSyncProvider › syncOuraIfNeeded', () => {
     vi.clearAllMocks()
     vi.mocked(getSettings).mockResolvedValue({} as never)
     vi.mocked(dbIndex.getSyncState).mockResolvedValue({ last_sync_time: lastSync } as never)
+    vi.mocked(dbIndex.getOAuthToken).mockResolvedValue({ access_token: 'token', provider: 'oura' })
+  })
+
+  test('skips a user with no Oura grant without syncing or auditing', async () => {
+    vi.mocked(dbIndex.getOAuthToken).mockResolvedValue(null)
+    const provider = createSyncProvider({ oura })
+
+    await provider.syncOuraIfNeeded('alice', 'tags')
+
+    expect(syncOuraDataType).not.toHaveBeenCalled()
+    expect(auditError).not.toHaveBeenCalled()
+    expect(auditInfo).not.toHaveBeenCalled()
   })
 
   test('triggers deduction over the synced window after a successful sync with new records', async () => {
@@ -258,5 +281,155 @@ describe('createSyncProvider › syncRescueTimeIfNeeded', () => {
 
     expect(syncRescueTimeData).not.toHaveBeenCalled()
     expect(onActivitySynced).not.toHaveBeenCalled()
+  })
+})
+
+describe('resolveSyncInterval', () => {
+  test('prefers the provider entry, then default, then the server fallback', () => {
+    expect(resolveSyncInterval({ default: 60, gravl: 15 }, 'gravl', 30)).toBe(15)
+    expect(resolveSyncInterval({ default: 60, gravl: 15 }, 'garmin', 30)).toBe(60)
+    expect(resolveSyncInterval({}, 'garmin', 30)).toBe(30)
+    expect(resolveSyncInterval(undefined, 'oura', 30)).toBe(30)
+  })
+
+  test('ignores non-positive values', () => {
+    expect(resolveSyncInterval({ gravl: 0 }, 'gravl', 30)).toBe(30)
+  })
+})
+
+describe('createSyncProvider › syncGravlIfNeeded', () => {
+  const lastSync = new Date('2026-06-01T00:00:00Z')
+
+  const gravl = (kind: 'oauth' | 'token' | null) =>
+    ({ connectionKind: vi.fn().mockResolvedValue(kind) }) as unknown as GravlClient
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(getSettings).mockResolvedValue({} as never)
+    vi.mocked(dbIndex.getSyncState).mockResolvedValue({ last_sync_time: lastSync } as never)
+    vi.mocked(syncGravlWorkouts).mockResolvedValue({
+      activities_created: 0,
+      activities_enriched: 2,
+      status: 'success',
+      workouts_processed: 2,
+    })
+  })
+
+  test('syncs a connected user whose last sync is stale and fires deduction over the window', async () => {
+    const onActivitySynced = vi.fn()
+    const client = gravl('token')
+    const provider = createSyncProvider({ gravl: client, onActivitySynced })
+
+    await provider.syncGravlIfNeeded('alice')
+
+    expect(syncGravlWorkouts).toHaveBeenCalledWith('alice', client)
+    expect(onActivitySynced).toHaveBeenCalledWith('alice', '*', lastSync, expect.any(Date))
+  })
+
+  test('does nothing for a user without a Gravl connection', async () => {
+    const provider = createSyncProvider({ gravl: gravl(null) })
+    await provider.syncGravlIfNeeded('alice')
+    expect(syncGravlWorkouts).not.toHaveBeenCalled()
+  })
+
+  test('honours the user’s own interval over the server threshold', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-01T00:20:00Z'))
+    vi.mocked(getSettings).mockResolvedValue({ sync_intervals: { gravl: 60 } } as never)
+    const provider = createSyncProvider({ gravl: gravl('oauth'), recheckMs: 0, syncThresholdMinutes: 10 })
+
+    await provider.syncGravlIfNeeded('alice')
+    expect(syncGravlWorkouts).not.toHaveBeenCalled()
+
+    vi.mocked(getSettings).mockResolvedValue({ sync_intervals: { default: 15 } } as never)
+    await provider.syncGravlIfNeeded('alice')
+    expect(syncGravlWorkouts).toHaveBeenCalledTimes(1)
+    vi.useRealTimers()
+  })
+
+  test('skips when the gravl integration is not configured', async () => {
+    const provider = createSyncProvider({})
+    await provider.syncGravlIfNeeded('alice')
+    expect(syncGravlWorkouts).not.toHaveBeenCalled()
+  })
+})
+
+describe('createSyncProvider › recheck debounce', () => {
+  const stale = new Date('2026-06-01T00:00:00Z')
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(getSettings).mockResolvedValue({ rescue_time_key: 'rt-key' } as never)
+    vi.mocked(dbIndex.getSyncState).mockResolvedValue({ last_sync_time: stale } as never)
+    vi.mocked(syncRescueTimeData).mockResolvedValue({ records_processed: 0, status: 'success' } as never)
+    vi.mocked(syncOuraDataType).mockResolvedValue({ records_processed: 0, status: 'success' } as never)
+  })
+
+  const build = (overrides: Parameters<typeof createSyncProvider>[0] = {}) => {
+    const clock = { t: 1_000_000 }
+    const provider = createSyncProvider({ now: () => clock.t, recheckMs: 60_000, ...overrides })
+    return { clock, provider }
+  }
+
+  test('coalesces concurrent calls for the same key into one run', async () => {
+    const { provider } = build()
+
+    const first = provider.syncRescueTimeIfNeeded('alice')
+    const second = provider.syncRescueTimeIfNeeded('alice')
+    expect(second).toBe(first)
+    await Promise.all([first, second])
+
+    expect(getSettings).toHaveBeenCalledTimes(1)
+    expect(syncRescueTimeData).toHaveBeenCalledTimes(1)
+  })
+
+  test('skips the DB entirely for a repeat call inside the window', async () => {
+    const { clock, provider } = build()
+
+    await provider.syncRescueTimeIfNeeded('alice')
+    vi.clearAllMocks()
+    clock.t += 59_999
+    await provider.syncRescueTimeIfNeeded('alice')
+
+    expect(getSettings).not.toHaveBeenCalled()
+    expect(dbIndex.getSyncState).not.toHaveBeenCalled()
+  })
+
+  test('checks again once the window has passed', async () => {
+    const { clock, provider } = build()
+
+    await provider.syncRescueTimeIfNeeded('alice')
+    clock.t += 60_000
+    await provider.syncRescueTimeIfNeeded('alice')
+
+    expect(getSettings).toHaveBeenCalledTimes(2)
+  })
+
+  test('keeps users and data types independent', async () => {
+    const oura = { getAccessToken: vi.fn().mockResolvedValue('token') } as never
+    const { provider } = build({ oura })
+
+    await provider.syncOuraIfNeeded('alice', 'tags')
+    await provider.syncOuraIfNeeded('alice', 'sessions')
+    await provider.syncOuraIfNeeded('bob', 'tags')
+    await provider.syncOuraIfNeeded('alice', 'tags')
+
+    expect(syncOuraDataType).toHaveBeenCalledTimes(3)
+    expect(vi.mocked(dbIndex.getSyncState).mock.calls.map(([user, , type]) => `${user}:${type}`)).toEqual([
+      'alice:tags',
+      'alice:sessions',
+      'bob:tags',
+    ])
+  })
+
+  test('an error still records the check and does not reject', async () => {
+    vi.mocked(dbIndex.getSyncState).mockRejectedValue(new Error('db down'))
+    const { clock, provider } = build()
+
+    await expect(provider.syncRescueTimeIfNeeded('alice')).resolves.toBeUndefined()
+    clock.t += 1_000
+    await provider.syncRescueTimeIfNeeded('alice')
+
+    expect(dbIndex.getSyncState).toHaveBeenCalledTimes(1)
   })
 })

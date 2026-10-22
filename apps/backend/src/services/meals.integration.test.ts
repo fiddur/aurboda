@@ -1,6 +1,4 @@
 /**
- * Integration tests for the meals service.
- *
  * Covers the canonical-food + scaling pipeline: add_meal/update_meal must
  * snapshot canonical nutrient values into meal_food_items scaled by quantity,
  * and the meal's macro columns must auto-fill from the snapshot sum unless
@@ -14,9 +12,17 @@ import { insertFoodItemPortion } from '../db/food-item-portions.ts'
 import { updateFoodItem, upsertFoodItem } from '../db/food-items.ts'
 import { getMealFoodItemsBatch } from '../db/meal-food-items.ts'
 import { getMealById, getMeals as dbGetMeals } from '../db/meals.ts'
+import { getNoteById, getNotesForEntity, insertNote } from '../db/notes.ts'
 import { insertSensitivityFlag, setFoodItemSensitivities } from '../db/sensitivities.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
-import { addMeal, getMeal, queryFrequentMeals, resnapshotMealsForFoodItem, updateMealById } from './meals.ts'
+import {
+  addMeal,
+  deleteMealById,
+  getMeal,
+  queryFrequentMeals,
+  resnapshotMealsForFoodItem,
+  updateMealById,
+} from './meals.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 
@@ -143,6 +149,38 @@ describe('Meals service integration tests', () => {
     expect(meal!.calories).toBe(1000)
   })
 
+  describe('comments on a meal', () => {
+    test('move with the meal, and are deleted with it', async () => {
+      const user = getTestUser()
+      const created = await addMeal(user, { name: 'Lunch', time: '2025-06-15T12:00:00Z' })
+      const mealId = created.data!.id
+
+      const root = await insertNote(user, 'meal', mealId, 'Too salty', new Date('2025-06-15T12:00:00Z'))
+      const reply = await insertNote(
+        user,
+        'note',
+        root.id,
+        'Still thinking about it',
+        new Date('2025-06-15T12:00:00Z'),
+      )
+
+      // Moving the meal has to carry the whole thread with it, or the Timeline
+      // bubble stays at the old moment.
+      const movedTo = new Date('2025-06-16T19:45:00Z')
+      await updateMealById(user, mealId, { time: movedTo.toISOString() })
+
+      expect((await getNoteById(user, root.id))!.start_time).toEqual(movedTo)
+      expect((await getNoteById(user, reply.id))!.start_time).toEqual(movedTo)
+
+      // A meal is gone for good, so its comments cannot outlive it.
+      expect((await deleteMealById(user, mealId)).success).toBe(true)
+
+      expect(await getNotesForEntity(user, 'meal', mealId)).toEqual([])
+      expect(await getNoteById(user, root.id)).toBeNull()
+      expect(await getNoteById(user, reply.id)).toBeNull()
+    })
+  })
+
   describe('resnapshotMealsForFoodItem', () => {
     test('refreshes composite snapshots from current derived totals; leaves other items alone', async () => {
       const user = getTestUser()
@@ -181,7 +219,6 @@ describe('Meals service integration tests', () => {
         name: 'Banana',
       })
 
-      // Log a meal with the recipe + banana.
       const created = await addMeal(user, {
         food_items: [
           { food_item_id: recipe.id, name: 'Fat coffee', quantity: 1, unit: 'recipe' },
@@ -247,6 +284,13 @@ describe('Meals service integration tests', () => {
   })
 
   describe('queryFrequentMeals', () => {
+    // `queryFrequentMeals` only looks back `since_days` (default 90), so these
+    // fixtures must be dated relative to *now* — hardcoded dates silently age out
+    // of the window and the query returns nothing (they broke CI once April 2026
+    // crossed the 90-day boundary). Keep the two occurrences correctly ordered.
+    const OLDER = new Date(Date.now() - 20 * 86_400_000).toISOString()
+    const NEWER = new Date(Date.now() - 10 * 86_400_000).toISOString()
+
     test('returns frequent names with food items and icon from most recent occurrence', async () => {
       const user = getTestUser()
       const banana = await upsertFoodItem(user, {
@@ -269,7 +313,7 @@ describe('Meals service integration tests', () => {
         food_items: [{ food_item_id: banana.id, name: 'Banana', quantity: 1 }],
         meal_type: 'breakfast',
         name: 'Bananmacka',
-        time: '2026-04-20T08:00:00Z',
+        time: OLDER,
       })
       await addMeal(user, {
         food_items: [
@@ -278,7 +322,7 @@ describe('Meals service integration tests', () => {
         ],
         meal_type: 'breakfast',
         name: 'Bananmacka',
-        time: '2026-04-26T08:00:00Z',
+        time: NEWER,
       })
 
       const result = await queryFrequentMeals(user, { meal_type: 'breakfast' })
@@ -299,7 +343,7 @@ describe('Meals service integration tests', () => {
       await addMeal(user, {
         meal_type: 'breakfast',
         name: 'Toast',
-        time: '2026-04-26T08:00:00Z',
+        time: NEWER,
       })
 
       const result = await queryFrequentMeals(user, { meal_type: 'breakfast' })

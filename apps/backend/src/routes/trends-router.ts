@@ -1,10 +1,5 @@
 import type { RequestHandler } from 'express'
 
-/**
- * Trends route group.
- *
- * Handles: /trends
- */
 import { type TrendQuery, trendQuerySchema, type TrendResponse } from '@aurboda/api-spec'
 
 import { getCustomMetrics } from '../services/mutations.ts'
@@ -26,6 +21,7 @@ export const createTrendsRouter = (authMiddleware: RequestHandler): TypedRouter 
         display_period,
         half_life_days,
         lookback_days,
+        missing_days,
         pattern,
         source_type,
         tag_definition_id,
@@ -38,7 +34,6 @@ export const createTrendsRouter = (authMiddleware: RequestHandler): TypedRouter 
         : undefined
       const user = req.user!
 
-      // Require pattern or tag_definition_id
       if (!pattern && !tag_definition_id) {
         return res
           .status(400)
@@ -57,6 +52,7 @@ export const createTrendsRouter = (authMiddleware: RequestHandler): TypedRouter 
         display_period,
         half_life_days: halfLifeDays,
         lookback_days: lookbackDays,
+        missing_days,
         pattern: pattern ?? '',
         source_type,
         tag_definition_id,

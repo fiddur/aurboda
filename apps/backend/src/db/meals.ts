@@ -1,10 +1,5 @@
 import type { Meal, MealFoodItem, Micros } from './types.ts'
 
-/**
- * Meals CRUD operations.
- *
- * Meals store food intake data from various sources (Oura, Cronometer, MyFitnessPal, manual).
- */
 import { query } from './connection.ts'
 import { mapMealRow } from './row-mappers.ts'
 
@@ -28,11 +23,7 @@ export interface InsertMealInput {
   sensitivities?: string[]
 }
 
-/**
- * Upsert a meal record.
- * If `id` is provided, inserts with that ID or updates on conflict.
- * This makes the operation idempotent — retries with the same ID are safe.
- */
+/** Passing `id` makes the operation idempotent — retries with the same ID are safe. */
 export const upsertMeal = async (user: string, input: InsertMealInput): Promise<Meal> => {
   const commonParams = [
     input.source ?? 'manual',
@@ -77,9 +68,6 @@ export const upsertMeal = async (user: string, input: InsertMealInput): Promise<
 /** @deprecated Use upsertMeal instead. Kept for backwards compatibility. */
 export const insertMeal = upsertMeal
 
-/**
- * Get a single meal by ID.
- */
 export const getMealById = async (user: string, id: string): Promise<Meal | null> => {
   const result = await query(user, `SELECT ${MEAL_COLUMNS} FROM meals WHERE id = $1`, [id])
 
@@ -93,9 +81,6 @@ interface QueryMealsFilter {
   end?: Date
 }
 
-/**
- * Query meals with optional filters.
- */
 export const getMeals = async (user: string, filter: QueryMealsFilter): Promise<Meal[]> => {
   let sql = `SELECT ${MEAL_COLUMNS} FROM meals WHERE 1=1`
   const params: unknown[] = []
@@ -226,7 +211,6 @@ export interface UpdateMealInput {
   sensitivities?: string[] | null
 }
 
-// Fields that map directly from input to SQL column (no serialization needed)
 const SIMPLE_UPDATE_FIELDS = [
   'meal_type',
   'name',
@@ -240,13 +224,8 @@ const SIMPLE_UPDATE_FIELDS = [
   'sensitivities',
 ] as const
 
-// Fields that need JSON.stringify for non-null values
 const JSONB_UPDATE_FIELDS = ['food_items', 'micros'] as const
 
-/**
- * Update a meal by ID. Only provided fields are changed.
- * Returns null if the meal was not found.
- */
 export const updateMeal = async (user: string, id: string, input: UpdateMealInput): Promise<Meal | null> => {
   const setClauses: string[] = []
   const params: unknown[] = []
@@ -330,10 +309,6 @@ export const getFrequentMeals = async (
   }))
 }
 
-// ============================================================================
-// Frequent food items
-// ============================================================================
-
 export interface FrequentFoodItemRow {
   food_item_id: string
   count: number
@@ -408,22 +383,12 @@ export const getFrequentFoodItems = async (
   }))
 }
 
-/**
- * Delete a meal by ID.
- * Returns true if the meal was found and deleted.
- */
 export const deleteMeal = async (user: string, id: string): Promise<boolean> => {
   const result = await query(user, `DELETE FROM meals WHERE id = $1`, [id])
   return (result.rowCount ?? 0) > 0
 }
 
-// ============================================================================
-// Meal Log Completion
-// ============================================================================
-
 /**
- * Get which of the given YYYY-MM-DD dates are marked log-completed.
- *
  * Formats the date in SQL with TO_CHAR — a DATE column comes back as a JS
  * Date at midnight in the Node process's local tz, and toISOString then
  * shifts to UTC, which can drop the date back a day in any env east of UTC.
@@ -441,8 +406,6 @@ export const getMealLogCompleted = async (user: string, dates: string[]): Promis
 }
 
 /**
- * Get all completed dates within an inclusive [start, end] YYYY-MM-DD range.
- *
  * Formats the date in SQL with TO_CHAR rather than `date.toISOString().slice(0,10)`
  * — a DATE column comes back as a JS Date at midnight in the Node process's
  * local tz, and toISOString then shifts to UTC, which can drop the date back
@@ -462,16 +425,10 @@ export const getMealLogCompletedInRange = async (
   return result.rows.map((r) => r.date as string)
 }
 
-/**
- * Mark a date as completed.
- */
 export const setMealLogCompleted = async (user: string, date: string): Promise<void> => {
   await query(user, `INSERT INTO meal_log_completed (date) VALUES ($1) ON CONFLICT (date) DO NOTHING`, [date])
 }
 
-/**
- * Unmark a date as completed.
- */
 export const unsetMealLogCompleted = async (user: string, date: string): Promise<void> => {
   await query(user, `DELETE FROM meal_log_completed WHERE date = $1`, [date])
 }

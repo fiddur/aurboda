@@ -1,5 +1,4 @@
 /**
- * Meal type meta page — overview and icon configuration for a meal type.
  * Icons are stored in user settings item_icons with "meal:" prefix.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -11,7 +10,13 @@ import { IconInput } from '../../components/IconInput'
 import { IconPreview } from '../../components/IconPreview'
 import { SaveCancelRow } from '../../components/SaveCancelRow'
 import { useSaveStatus } from '../../components/SaveStatusIndicator'
-import { fetchItemIcons, fetchMeals, type Meal, updateUserSettings } from '../../state/api'
+import {
+  fetchMeals,
+  fetchUserSettings,
+  type Meal,
+  selectItemIcons,
+  updateUserSettings,
+} from '../../state/api'
 import { resolveItemIcon, suggestEmoji } from '../../utils/emojiLookup'
 import '../ActivityTypeMeta/style.css'
 
@@ -41,7 +46,6 @@ function IconSection({
     onSuccess: () => {
       setSaveStatus({ status: 'saved' })
       queryClient.invalidateQueries({ queryKey: ['userSettings'] })
-      queryClient.invalidateQueries({ queryKey: ['item-icons'] })
       setIconValue(undefined)
     },
   })
@@ -122,8 +126,9 @@ export function MealTypeMeta() {
   const mealType = decodeURIComponent(params.name as string)
 
   const { data: itemIcons = {} } = useQuery({
-    queryFn: fetchItemIcons,
-    queryKey: ['item-icons'],
+    queryFn: fetchUserSettings,
+    queryKey: ['userSettings'],
+    select: selectItemIcons,
     staleTime: 5 * 60 * 1000,
   })
 

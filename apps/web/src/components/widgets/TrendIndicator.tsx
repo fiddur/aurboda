@@ -1,6 +1,3 @@
-/**
- * Shared trend arrow used by metric and sparkline cards.
- */
 interface TrendIndicatorProps {
   value: number | null
   inverse?: boolean

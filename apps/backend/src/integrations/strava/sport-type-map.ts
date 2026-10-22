@@ -1,18 +1,14 @@
 /**
- * Maps Strava sport_type values to Aurboda activity type names.
- *
  * Aurboda uses snake_case identifiers that align with Health Connect exercise types.
  * Unmapped Strava types will be auto-converted to snake_case and created on the fly
  * via resolveOrCreateActivityType.
  */
 
 export const stravaSportTypeMap: Record<string, string> = {
-  // Running
   Run: 'running',
   TrailRun: 'running',
   VirtualRun: 'running_treadmill',
 
-  // Cycling
   Ride: 'biking',
   MountainBikeRide: 'biking',
   GravelRide: 'biking',
@@ -22,14 +18,12 @@ export const stravaSportTypeMap: Record<string, string> = {
   Handcycle: 'biking',
   Velomobile: 'biking',
 
-  // Swimming
   Swim: 'swimming_pool',
 
-  // Walking / Hiking
   Walk: 'walking',
   Hike: 'hiking',
 
-  // Winter sports (more granular than Health Connect's generic 'skiing')
+  // More granular than Health Connect's generic 'skiing'
   AlpineSki: 'skiing_downhill',
   BackcountrySki: 'skiing_cross_country',
   NordicSki: 'skiing_cross_country',
@@ -37,7 +31,6 @@ export const stravaSportTypeMap: Record<string, string> = {
   Snowshoe: 'snowshoeing',
   IceSkate: 'ice_skating',
 
-  // Water sports
   Rowing: 'rowing',
   Kayaking: 'kayaking',
   Canoeing: 'canoeing',
@@ -47,7 +40,6 @@ export const stravaSportTypeMap: Record<string, string> = {
   StandUpPaddling: 'paddling',
   Sail: 'sailing',
 
-  // Gym / Indoor
   WeightTraining: 'strength_training',
   Yoga: 'yoga',
   Pilates: 'pilates',
@@ -55,7 +47,6 @@ export const stravaSportTypeMap: Record<string, string> = {
   Elliptical: 'elliptical',
   StairStepper: 'stair_climbing_machine',
 
-  // Other
   RockClimbing: 'rock_climbing',
   Skateboard: 'skateboarding',
   InlineSkate: 'roller_skating',
@@ -75,7 +66,6 @@ export const stravaSportTypeMap: Record<string, string> = {
 }
 
 /**
- * Convert a Strava sport_type to an Aurboda activity type.
  * Falls back to a snake_case conversion if the type is not in the map.
  */
 export const mapStravaSportType = (sportType: string): string =>

@@ -1,19 +1,16 @@
-/**
- * Per-provider OAuth/auth endpoints: Oura connect+callback, Garmin login/MFA/disconnect,
- * Strava connect+callback+disconnect. Uses each integration's client + the central DB
- * for credential mapping cleanup.
- */
 import type { Express } from 'express'
 
-import type { GarminClient } from '../integrations/garmin/client.ts'
+import type { GravlClient } from '../integrations/gravl/client.ts'
 import type { ouraClient } from '../integrations/oura/client.ts'
 import type { StravaClient } from '../integrations/strava/client.ts'
+
+import { type GarminClient, redactSecret } from '../integrations/garmin/client.ts'
 
 type OuraClient = ReturnType<typeof ouraClient>
 import type { CentralDb } from '../services/central-db.ts'
 import type { AnyMiddleware } from '../typed-router.ts'
 
-import { upsertOAuthToken } from '../db/index.ts'
+import { resetSyncState, upsertOAuthToken } from '../db/index.ts'
 import { auditError } from '../services/audit-log.ts'
 
 interface OAuthRoutesDeps {
@@ -21,6 +18,7 @@ interface OAuthRoutesDeps {
   authMiddleware: AnyMiddleware
   centralDb: CentralDb
   garmin: GarminClient
+  gravl: GravlClient
   oura: OuraClient
   strava: StravaClient
 }
@@ -30,17 +28,31 @@ export const registerOAuthRoutes = ({
   authMiddleware,
   centralDb,
   garmin,
+  gravl,
   oura,
   strava,
 }: OAuthRoutesDeps): void => {
-  // Oura
   httpd.get('/auth/oura/connect', authMiddleware, oura.getAuthorizeUrl)
   httpd.get('/auth/ouracb', oura.authCb)
+
+  httpd.post('/auth/oura/disconnect', authMiddleware, async (req, res) => {
+    const user = req.user!
+    try {
+      await oura.disconnect(user)
+      await resetSyncState(user, 'oura')
+      await centralDb.deleteOuraUserMappingsByUsername(user)
+      res.json({ success: true })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Disconnect failed'
+      res.status(500).json({ error: message, success: false })
+    }
+  })
 
   // Garmin Connect (login with credentials, tokens-only stored)
   httpd.post('/auth/garmin/login', authMiddleware, async (req, res) => {
     const user = req.user!
-    const { email, password } = req.body ?? {}
+    const { email: rawEmail, password } = req.body ?? {}
+    const email = typeof rawEmail === 'string' ? rawEmail.trim() : rawEmail
 
     if (!email || !password) {
       res.status(400).json({ error: 'Email and password are required', success: false })
@@ -55,15 +67,17 @@ export const registerOAuthRoutes = ({
         res.json({ success: true })
       }
     } catch (error) {
-      auditError(user, 'auth', 'Garmin login endpoint error', { error: String(error) })
-      const message = error instanceof Error ? error.message : 'Login failed'
+      const secret = typeof password === 'string' ? password : ''
+      auditError(user, 'auth', 'Garmin login endpoint error', { error: redactSecret(String(error), secret) })
+      const message = error instanceof Error ? redactSecret(error.message, secret) : 'Login failed'
       res.status(401).json({ error: message, success: false })
     }
   })
 
   httpd.post('/auth/garmin/mfa', authMiddleware, async (req, res) => {
     const user = req.user!
-    const { mfa_code } = req.body ?? {}
+    const { mfa_code: rawMfaCode } = req.body ?? {}
+    const mfa_code = typeof rawMfaCode === 'string' ? rawMfaCode.trim() : rawMfaCode
 
     if (!mfa_code) {
       res.status(400).json({ error: 'MFA code is required', success: false })
@@ -98,9 +112,24 @@ export const registerOAuthRoutes = ({
   httpd.post('/auth/strava/disconnect', authMiddleware, async (req, res) => {
     const user = req.user!
     try {
-      // Clear tokens and athlete mapping
       await upsertOAuthToken(user, { access_token: '', provider: 'strava' })
       await centralDb.deleteStravaAthleteMappingByUsername(user)
+      res.json({ success: true })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Disconnect failed'
+      res.status(500).json({ error: message, success: false })
+    }
+  })
+
+  // Gravl (OAuth + PKCE; always registered — credentials checked dynamically).
+  // A personal token needs no route: it is a plain user setting.
+  httpd.get('/auth/gravl/connect', authMiddleware, gravl.getAuthorizeUrl)
+  httpd.get('/auth/gravlcb', gravl.authCb)
+
+  httpd.post('/auth/gravl/disconnect', authMiddleware, async (req, res) => {
+    const user = req.user!
+    try {
+      await gravl.disconnect(user)
       res.json({ success: true })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Disconnect failed'

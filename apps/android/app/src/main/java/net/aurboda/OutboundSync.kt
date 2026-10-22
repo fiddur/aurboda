@@ -35,9 +35,7 @@ private const val TAG = "OutboundSync"
  */
 const val OUTBOUND_SYNC_CLIENT_ID_PREFIX = "aurboda-sync-"
 
-// ============================================================================
-// API Models (hand-written because the generated models type payload as Map<String, String>)
-// ============================================================================
+// Hand-written because the generated models type payload as Map<String, String>.
 
 @Serializable
 data class OutboundSyncEntryApi(
@@ -90,18 +88,11 @@ data class OutboundSyncFailBody(
   val entries: List<OutboundSyncFailItemApi>,
 )
 
-// ============================================================================
-// API Client
-// ============================================================================
-
 data class OutboundSyncFetchResult(
   val entries: List<OutboundSyncEntryApi> = emptyList(),
   val totalPending: Int = 0,
 )
 
-/**
- * Fetch pending outbound sync entries from the backend.
- */
 suspend fun fetchOutboundSyncEntries(
   apiUrl: String,
   authToken: String,
@@ -134,9 +125,6 @@ suspend fun fetchOutboundSyncEntries(
   }
 }
 
-/**
- * Acknowledge successfully synced outbound entries to the backend.
- */
 suspend fun acknowledgeOutboundSync(
   entries: List<OutboundSyncAckItemApi>,
   apiUrl: String,
@@ -185,17 +173,11 @@ suspend fun reportOutboundSyncFailures(
       }
     response.status.isSuccess()
   } catch (e: Exception) {
-    // Best-effort — if we can't report, the entries stay pending and will retry next sync
     Log.w(TAG, "⚠️ Could not report sync failures to backend: ${e.message}")
     false
   }
 }
 
-// ============================================================================
-// Health Connect Record Builder
-// ============================================================================
-
-/** Result of a write attempt — either a record ID, a permanent skip, or a transient failure. */
 sealed class WriteResult {
   data class Success(
     val recordId: String,
@@ -215,10 +197,6 @@ sealed class WriteResult {
   data object RateLimited : WriteResult()
 }
 
-/**
- * Write an outbound sync entry to Health Connect.
- * Returns Success with the HC record ID, or Skipped with a reason.
- */
 suspend fun writeToHealthConnect(
   entry: OutboundSyncEntryApi,
   healthConnectClient: HealthConnectClient,
@@ -254,7 +232,6 @@ suspend fun writeToHealthConnect(
   }
 
 /**
- * Write an insert/update record to Health Connect.
  * Uses clientRecordId with OUTBOUND_SYNC_CLIENT_ID_PREFIX for loop prevention.
  */
 private suspend fun writeUpsertRecord(
@@ -279,7 +256,6 @@ private suspend fun writeUpsertRecord(
         val value = payload.getDouble("value") ?: return WriteResult.Skipped("missing/invalid 'value' in payload: ${payload.keys}")
         val startTime = payload.getInstant("time") ?: return WriteResult.Skipped("missing/invalid 'time' in payload: ${payload["time"]}")
         // Per-minute calorie data: each record covers a 60-second window.
-        // If end_time is provided, use it; otherwise default to start + 60s.
         val endTime = payload.getInstant("end_time") ?: startTime.plusSeconds(60)
         ActiveCaloriesBurnedRecord(
           energy =
@@ -447,7 +423,6 @@ private suspend fun writeUpsertRecord(
           payload.getInstant("end_time") ?: return WriteResult.Skipped("missing/invalid 'end_time' in payload: ${payload["end_time"]}")
         val title = payload.getString("title")
         val notes = payload.getString("notes")
-        // Extract exercise type from the nested data object; falls back to OTHER_WORKOUT.
         // Backend stores exerciseType as an int matching HC's EXERCISE_TYPE_* constants.
         val exerciseType =
           payload["data"]
@@ -501,7 +476,6 @@ private suspend fun writeUpsertRecord(
 }
 
 /**
- * Delete a record from Health Connect by its record ID.
  * Returns true if the delete succeeded or the entry is unprocessable (should be ack'd to prevent
  * infinite retry). Returns false only on transient failures that should be retried.
  */
@@ -519,7 +493,6 @@ private suspend fun deleteHealthConnectRecord(
     return true
   }
 
-  // We need to know the record class to delete. Map hc_record_type back to class.
   val recordClass = hcRecordTypeToClass(entry.hc_record_type)
   if (recordClass == null) {
     Log.w(TAG, "⚠️ Unknown record type for delete: ${entry.hc_record_type}, acknowledging as unprocessable")
@@ -535,19 +508,6 @@ private suspend fun deleteHealthConnectRecord(
   return true
 }
 
-// ============================================================================
-// Main Processor
-// ============================================================================
-
-/**
- * Process all pending outbound sync entries:
- * 1. Fetch pending entries from backend (page by page)
- * 2. Write each to Health Connect
- * 3. Acknowledge successful writes
- * 4. Repeat until queue is drained
- *
- * @return cumulative result across all pages
- */
 data class OutboundSyncResult(
   val fetched: Int = 0,
   val written: Int = 0,
@@ -642,7 +602,7 @@ suspend fun processOutboundSync(
           allFailReasons.add(reason)
           Log.w(TAG, "⚠️ Rate limited on entry ${entry.id} (${entry.hc_record_type}), stopping outbound sync")
           failItems.add(OutboundSyncFailItemApi(id = entry.id, reason = "API call quota exceeded"))
-          break // Stop processing entries in this page
+          break
         }
       }
     }
@@ -668,18 +628,15 @@ suspend fun processOutboundSync(
       }
     }
 
-    // Best-effort report transient failures so backend can track them
     if (failItems.isNotEmpty()) {
       reportOutboundSyncFailures(failItems, apiUrl, authToken, httpClient)
     }
 
-    // Stop fetching more pages if rate limited — remaining entries will retry next sync cycle
     if (rateLimited) {
       Log.w(TAG, "⚠️ Health Connect API quota exceeded, deferring remaining entries to next sync cycle")
       break
     }
 
-    // If we processed fewer entries than the total pending, there are more pages
     val remaining = fetchResult.totalPending - entries.size
     if (remaining <= 0) break
     Log.d(TAG, "📋 $remaining more entries remaining in queue, fetching next page...")
@@ -711,11 +668,6 @@ suspend fun processOutboundSync(
   )
 }
 
-// ============================================================================
-// Helpers
-// ============================================================================
-
-/** Check if write permission is granted for a specific record type. */
 private inline fun <reified T : Record> hasWritePermission(grantedPermissions: Set<String>): Boolean {
   val permission = HealthPermission.getWritePermission(T::class)
   val granted = permission in grantedPermissions
@@ -725,7 +677,6 @@ private inline fun <reified T : Record> hasWritePermission(grantedPermissions: S
   return granted
 }
 
-/** Map HC record type name back to its KClass for deletion. */
 private fun hcRecordTypeToClass(typeName: String): kotlin.reflect.KClass<out Record>? =
   when (typeName) {
     "WeightRecord" -> WeightRecord::class
@@ -743,10 +694,8 @@ private fun hcRecordTypeToClass(typeName: String): kotlin.reflect.KClass<out Rec
     else -> null
   }
 
-/** Extract a Double value from a JsonObject field. */
 private fun JsonObject.getDouble(key: String): Double? = this[key]?.jsonPrimitive?.doubleOrNull
 
-/** Extract a String value from a JsonObject field. */
 private fun JsonObject.getString(key: String): String? =
   this[key]?.let { element ->
     if (element is JsonPrimitive && !element.isString && element.content == "null") {
@@ -756,7 +705,6 @@ private fun JsonObject.getString(key: String): String? =
     }
   }
 
-/** Parse an ISO-8601 datetime string from a JsonObject field. */
 private fun JsonObject.getInstant(key: String): Instant? =
   getString(key)?.let {
     try {
@@ -766,7 +714,6 @@ private fun JsonObject.getInstant(key: String): Instant? =
     }
   }
 
-/** Earliest created_at across a list of pending entries; null when none parses. */
 internal fun List<OutboundSyncEntryApi>.oldestCreatedAt(): Instant? =
   mapNotNull {
     runCatching { Instant.parse(it.created_at) }.getOrNull()

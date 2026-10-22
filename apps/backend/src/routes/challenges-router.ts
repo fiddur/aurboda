@@ -1,10 +1,6 @@
 import type { RequestHandler } from 'express'
 
 /**
- * Challenges route group (owner + joiner facing).
- *
- * Handles: /challenges/*
- *
  * Hosts create/manage challenges (members live in the host's DB); any user joins
  * by URL (local shortcut when the host is this instance, else federated). The
  * host is always a member of their own challenge.
@@ -19,17 +15,22 @@ import {
   type ChallengeStandingsResponse,
   type CreateChallengeBody,
   createChallengeBodySchema,
+  type DiscoverChallengesResponse,
   type JoinChallengeBody,
   joinChallengeBodySchema,
   type UpdateChallengeBody,
   updateChallengeBodySchema,
 } from '@aurboda/api-spec'
+import multer from 'multer'
+
+import type { DiscoverChallenges } from '../services/challenge-discovery.ts'
 
 import {
   type ChallengeParticipationRecord,
   type ChallengeRecord,
   createChallenge,
   deleteChallenge,
+  deleteChallengeBanner,
   deleteChallengeParticipation,
   getChallengeById,
   listChallengeMembers,
@@ -37,14 +38,24 @@ import {
   listChallenges,
   removeChallengeMember,
   updateChallenge,
+  upsertChallengeBanner,
   upsertChallengeMember,
 } from '../db/index.ts'
+import { isAllowedImageType, processBanner } from '../services/avatar.ts'
+import { bannerUrlFor } from '../services/challenge-banner.ts'
 import { JoinChallengeError, joinChallenge } from '../services/challenge-federation.ts'
-import { specToApi } from '../services/challenge-spec.ts'
+import { announcementPending } from '../services/challenge-results.ts'
+import { effectiveBucketSize, specToApi } from '../services/challenge-spec.ts'
 import { getChallengeStandings } from '../services/challenge-standings.ts'
 import { buildProfileUrl, buildShareUrl } from '../services/share-urls.ts'
+import { isPublicToVisibility, visibilityToIsPublic } from '../services/visibility.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
+
+const bannerUpload = multer({
+  limits: { fileSize: 10 * 1024 * 1024 },
+  storage: multer.memoryStorage(),
+})
 
 const serializeParticipation = (p: ChallengeParticipationRecord) => ({
   challenge_url: p.challenge_url,
@@ -60,23 +71,28 @@ const serializeParticipation = (p: ChallengeParticipationRecord) => ({
 })
 
 const serialize = (record: ChallengeRecord, webHost: string, username: string): Challenge => ({
+  announce_winner: record.announce_winner,
+  announcement_pending: announcementPending(record, new Date()),
+  banner_url: bannerUrlFor(record, webHost, username),
   created_at: record.created_at.toISOString(),
   end_ts: record.end_ts.toISOString(),
   id: record.id,
-  is_public: record.is_public,
   name: record.name,
+  result_published_at: record.result_published_at?.toISOString() ?? null,
   share_url: buildShareUrl(webHost, username, record.slug),
   slug: record.slug,
   spec: specToApi(record.spec),
   start_ts: record.start_ts.toISOString(),
   timezone: record.timezone,
   updated_at: record.updated_at.toISOString(),
+  visibility: isPublicToVisibility(record.is_public),
 })
 
 export const createChallengesRouter = (
   authMiddleware: RequestHandler,
   webHost: string,
   apiBaseUrl: string,
+  discoverChallenges: DiscoverChallenges,
 ): TypedRouter => {
   const router = typedRouter()
 
@@ -93,8 +109,9 @@ export const createChallengesRouter = (
     async (req, res) => {
       const user = req.user!
       const record = await createChallenge(user, {
+        announce_winner: req.body.announce_winner,
         end_ts: new Date(req.body.end_ts),
-        is_public: req.body.is_public,
+        is_public: visibilityToIsPublic(req.body.visibility),
         name: req.body.name,
         spec: {
           activity_type_id: req.body.spec.activity_type_id ?? null,
@@ -118,6 +135,16 @@ export const createChallengesRouter = (
     },
   )
 
+  // Before `/:id`, or "discover" would be looked up as a challenge id.
+  router.get<Record<string, never>, DiscoverChallengesResponse>(
+    '/discover',
+    authMiddleware,
+    async (req, res) => {
+      const result = await discoverChallenges(req.user!)
+      res.json({ ...result, success: true })
+    },
+  )
+
   router.get<{ id: string }, ChallengeResponse>('/:id', authMiddleware, async (req, res) => {
     const user = req.user!
     const record = await getChallengeById(user, req.params.id)
@@ -133,8 +160,9 @@ export const createChallengesRouter = (
       const user = req.user!
       const b = req.body
       const record = await updateChallenge(user, req.params.id, {
+        announce_winner: b.announce_winner,
         end_ts: b.end_ts ? new Date(b.end_ts) : undefined,
-        is_public: b.is_public,
+        is_public: b.visibility === undefined ? undefined : visibilityToIsPublic(b.visibility),
         name: b.name,
         spec: b.spec
           ? {
@@ -161,6 +189,49 @@ export const createChallengesRouter = (
     res.json({ success: true })
   })
 
+  router.post<{ id: string }, ChallengeResponse>(
+    '/:id/banner',
+    authMiddleware,
+    bannerUpload.single('banner'),
+    async (req, res) => {
+      const user = req.user!
+      const file = req.file
+      if (!file) return res.status(400).json({ error: 'No file uploaded', success: false })
+      if (!isAllowedImageType(file.mimetype)) {
+        return res.status(400).json({
+          error: `Unsupported file type: ${file.mimetype}. Allowed: PNG, JPEG, WebP, GIF`,
+          success: false,
+        })
+      }
+      if (!(await getChallengeById(user, req.params.id))) {
+        return res.status(404).json({ error: 'Challenge not found', success: false })
+      }
+
+      let processed
+      try {
+        processed = await processBanner(file.buffer)
+      } catch {
+        return res.status(400).json({ error: 'Could not process image', success: false })
+      }
+
+      await upsertChallengeBanner(user, req.params.id, processed.content_type, processed.data)
+      const record = await getChallengeById(user, req.params.id)
+      if (!record) return res.status(404).json({ error: 'Challenge not found', success: false })
+      res.json({ challenge: serialize(record, webHost, user), success: true })
+    },
+  )
+
+  router.delete<{ id: string }, ChallengeResponse>('/:id/banner', authMiddleware, async (req, res) => {
+    const user = req.user!
+    if (!(await getChallengeById(user, req.params.id))) {
+      return res.status(404).json({ error: 'Challenge not found', success: false })
+    }
+    await deleteChallengeBanner(user, req.params.id)
+    const record = await getChallengeById(user, req.params.id)
+    if (!record) return res.status(404).json({ error: 'Challenge not found', success: false })
+    res.json({ challenge: serialize(record, webHost, user), success: true })
+  })
+
   router.get<{ id: string }, ChallengeStandingsResponse>(
     '/:id/standings',
     authMiddleware,
@@ -169,7 +240,11 @@ export const createChallengesRouter = (
       const record = await getChallengeById(user, req.params.id)
       if (!record) return res.status(404).json({ error: 'Challenge not found', success: false })
       const members = await getChallengeStandings(user, record, { refresh: req.query.refresh === '1' })
-      res.json({ members, success: true })
+      res.json({
+        effective_bucket_size: effectiveBucketSize(record.spec.bucket_size, record.start_ts, record.end_ts),
+        members,
+        success: true,
+      })
     },
   )
 
@@ -198,7 +273,7 @@ export const createChallengesRouter = (
     },
   )
 
-  // --- Participations (challenges I joined) ---
+  // Participations: challenges this user joined.
 
   router.get<Record<string, never>, ChallengeParticipationsResponse>(
     '/participations/mine',

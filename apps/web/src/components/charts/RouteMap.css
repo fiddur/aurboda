@@ -1,0 +1,32 @@
+/* GPS route map — square up to 600px tall, never taller than wide. Owned by
+   RouteMap so both the activity detail view and the feed's native post cards
+   are styled without depending on any one page's stylesheet. */
+.activity-map-container {
+  width: 100%;
+  aspect-ratio: 1;
+  max-height: 600px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-top: 1rem;
+}
+
+.activity-map-container .leaflet-container {
+  height: 100%;
+  width: 100%;
+}
+
+.activity-map-highlight {
+  width: 14px;
+  height: 14px;
+  background: #673ab8;
+  border: 2px solid white;
+  border-radius: 50%;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.4);
+}
+
+@media (prefers-color-scheme: dark) {
+  .activity-map-container {
+    border-color: #374151;
+  }
+}

@@ -1,8 +1,5 @@
 /**
- * Strava webhook subscription lifecycle manager.
- *
  * Strava allows exactly one webhook subscription per application.
- * This manager handles creating and verifying the subscription.
  */
 
 import axios, { isAxiosError } from 'axios'
@@ -25,9 +22,6 @@ export interface StravaWebhookSubscription {
 
 export const createStravaWebhookManager = (deps: StravaWebhookManagerDeps) => {
   return {
-    /**
-     * Get the current subscription (if any).
-     */
     async getSubscription(): Promise<StravaWebhookSubscription | null> {
       try {
         const response = await axios.get<StravaWebhookSubscription[]>(STRAVA_SUBSCRIPTIONS_URL, {
@@ -43,7 +37,6 @@ export const createStravaWebhookManager = (deps: StravaWebhookManagerDeps) => {
     },
 
     /**
-     * Create a webhook subscription.
      * Strava will send a GET to callbackUrl with hub.challenge to verify.
      */
     async createSubscription(): Promise<StravaWebhookSubscription> {
@@ -56,9 +49,6 @@ export const createStravaWebhookManager = (deps: StravaWebhookManagerDeps) => {
       return response.data
     },
 
-    /**
-     * Delete an existing subscription.
-     */
     async deleteSubscription(subscriptionId: number): Promise<void> {
       await axios.delete(`${STRAVA_SUBSCRIPTIONS_URL}/${subscriptionId}`, {
         params: {
@@ -68,9 +58,6 @@ export const createStravaWebhookManager = (deps: StravaWebhookManagerDeps) => {
       })
     },
 
-    /**
-     * Ensure a subscription exists, creating one if needed.
-     */
     async ensureSubscription(): Promise<void> {
       const existing = await this.getSubscription()
       if (existing) {

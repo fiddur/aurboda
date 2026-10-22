@@ -2,9 +2,6 @@ package net.aurboda.ble
 
 import kotlin.math.sqrt
 
-/**
- * Result of HRV calculation including RMSSD value and quality metrics.
- */
 data class HrvResult(
     val rmssd: Double?,           // null if insufficient valid data
     val validIntervals: Int,
@@ -21,7 +18,6 @@ data class HrvResult(
  * @param maxMs Maximum physiologically valid RR interval (default 2000ms = 30 bpm)
  * @param maxSuccessiveDiffPercent Maximum allowed difference between successive intervals
  *                                  as a percentage of the previous interval (default 20%)
- * @return List of filtered RR intervals
  */
 fun filterRrIntervals(
     intervals: List<Int>,
@@ -36,10 +32,8 @@ fun filterRrIntervals(
     for (i in intervals.indices) {
         val rr = intervals[i]
 
-        // Check physiological bounds
         if (rr < minMs || rr > maxMs) continue
 
-        // Check successive difference (only if we have a previous valid interval)
         if (result.isNotEmpty()) {
             val prevRr = result.last()
             val diff = kotlin.math.abs(rr - prevRr)
@@ -86,7 +80,6 @@ fun calculateRmssd(filteredIntervals: List<Int>): Double? {
  * @param rrIntervals Raw RR intervals in milliseconds
  * @param minValidIntervals Minimum number of valid intervals for reliable measurement (default 30)
  * @param maxArtifactPercent Maximum artifact percentage for reliable measurement (default 10%)
- * @return HrvResult containing RMSSD value and quality metrics
  */
 fun calculateHrv(
     rrIntervals: List<Int>,

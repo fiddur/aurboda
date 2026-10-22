@@ -65,14 +65,6 @@
   color: #111827;
 }
 
-.shared-dashboard-public {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  color: #374151;
-  font-size: 0.9rem;
-}
-
 .shared-dashboard-actions {
   display: flex;
   gap: 0.5rem;
@@ -122,10 +114,6 @@
     background: #111827;
     border-color: #4b5563;
     color: #f3f4f6;
-  }
-
-  .shared-dashboard-public {
-    color: #d1d5db;
   }
 
   .shared-dashboard-actions .btn-danger {

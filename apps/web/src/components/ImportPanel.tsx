@@ -1,11 +1,3 @@
-/**
- * Status panel for bulk imports of external food databases.
- *
- * Shows the latest job for each source — its status, progress bar, and any
- * error. The button kicks off a new import; while one is running, polls the
- * job every 2s until it finishes.
- */
-
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { type ImportJob, listImportJobsApi, startLivsmedelsverketImportApi } from '../state/api'

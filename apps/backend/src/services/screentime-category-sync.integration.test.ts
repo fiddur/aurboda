@@ -1,7 +1,3 @@
-/**
- * Integration tests for screentime category ↔ activity_type_definitions linking.
- */
-
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { query } from '../db/connection.ts'
@@ -240,8 +236,6 @@ describe('screentime category → activity type sync', () => {
     expect(s2).toBe('race')
     expect(await getActivityTypeDefinition(user, 'race')).not.toBeNull()
   })
-
-  // ─── #652 regenerate-on-change ────────────────────────────────────────────
 
   describe('rename / move propagation to activities (#652)', () => {
     const insertActivity = async (

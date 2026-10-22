@@ -3,9 +3,6 @@ package net.aurboda
 import org.junit.Test
 import org.junit.Assert.*
 
-/**
- * Unit tests for DataApi models and utilities
- */
 class DataApiTest {
 
     @Test

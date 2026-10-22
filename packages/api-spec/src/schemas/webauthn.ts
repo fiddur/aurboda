@@ -12,10 +12,6 @@ import { z } from 'zod'
 
 import { baseResponseSchema, iso8601DateTimeSchema } from './common.ts'
 
-// ============================================================================
-// Registration ceremony (authenticated)
-// ============================================================================
-
 export const webauthnRegistrationOptionsResponseSchema = baseResponseSchema
   .extend({
     options_json: z.string().meta({ description: 'JSON-stringified PublicKeyCredentialCreationOptionsJSON' }),
@@ -47,10 +43,6 @@ export const webauthnRegistrationVerifyResponseSchema = baseResponseSchema
   .meta({ id: 'WebAuthnRegistrationVerifyResponse' })
 
 export type WebAuthnRegistrationVerifyResponse = z.infer<typeof webauthnRegistrationVerifyResponseSchema>
-
-// ============================================================================
-// Signup ceremony (unauthenticated — creates the user + first passkey)
-// ============================================================================
 
 /**
  * Body for `POST /webauthn/signup/options`. The username is checked here
@@ -104,10 +96,6 @@ export const webauthnSignupVerifyResponseSchema = baseResponseSchema
 
 export type WebAuthnSignupVerifyResponse = z.infer<typeof webauthnSignupVerifyResponseSchema>
 
-// ============================================================================
-// Authentication ceremony (unauthenticated — login)
-// ============================================================================
-
 /**
  * `/webauthn/auth/options` takes no body — authentication is always
  * discoverable to avoid leaking credential IDs and user-existence info to
@@ -145,10 +133,6 @@ export const webauthnAuthVerifyResponseSchema = baseResponseSchema
   .meta({ id: 'WebAuthnAuthVerifyResponse' })
 
 export type WebAuthnAuthVerifyResponse = z.infer<typeof webauthnAuthVerifyResponseSchema>
-
-// ============================================================================
-// Credential management (authenticated)
-// ============================================================================
 
 export const webauthnCredentialSchema = z
   .object({

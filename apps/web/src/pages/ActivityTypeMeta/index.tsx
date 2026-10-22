@@ -1,7 +1,3 @@
-/**
- * Activity type meta page — overview of an activity type (e.g. "coffee", "strength_training").
- * Shows icon, display_name, category badge, trend chart, recent occurrences, and related links.
- */
 import type { DataFieldDefinition, DataSchemaDefinition } from '@aurboda/api-spec'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -13,8 +9,8 @@ import { IconPreview } from '../../components/IconPreview'
 import { MiniTrendChart } from '../../components/MiniTrendChart'
 import { SaveCancelRow } from '../../components/SaveCancelRow'
 import { useSaveStatus } from '../../components/SaveStatusIndicator'
+import { categoricalFields } from '../../components/sessions/sessionView'
 import {
-  fetchActivities,
   fetchActivityTypeDefinitions,
   fetchTrend,
   mergeActivityTypeApi,
@@ -25,7 +21,7 @@ import {
 } from '../../state/api'
 import { toDisplayName } from '../../utils/displayName'
 import { suggestEmoji } from '../../utils/emojiLookup'
-import { formatDateTime, formatDuration } from '../EntityDetail/format-utils'
+import { SessionsSection } from './SessionsSection'
 import './style.css'
 
 const LOOKBACK_OPTIONS = [
@@ -126,9 +122,8 @@ function SettingsSection({
     onError: () => setSaveStatus({ status: 'error' }),
     onSuccess: () => {
       setSaveStatus({ status: 'saved' })
-      queryClient.invalidateQueries({ queryKey: ['activity-type-definitions'] })
       queryClient.invalidateQueries({ queryKey: ['activityTypeDefinitions'] })
-      queryClient.invalidateQueries({ queryKey: ['item-icons'] })
+      queryClient.invalidateQueries({ queryKey: ['userSettings'] })
       setIconValue(undefined)
       setDisplayNameValue(undefined)
       setCategoryValue(undefined)
@@ -138,20 +133,19 @@ function SettingsSection({
   const timelineToggleMutation = useMutation({
     mutationFn: () => updateActivityTypeDefinition(name, { show_on_timeline: !showOnTimeline }),
     onMutate: async () => {
-      await queryClient.cancelQueries({ queryKey: ['activity-type-definitions'] })
-      const previous = queryClient.getQueryData<ActivityTypeDefinition[]>(['activity-type-definitions'])
-      queryClient.setQueryData<ActivityTypeDefinition[]>(['activity-type-definitions'], (old) =>
+      await queryClient.cancelQueries({ queryKey: ['activityTypeDefinitions'] })
+      const previous = queryClient.getQueryData<ActivityTypeDefinition[]>(['activityTypeDefinitions'])
+      queryClient.setQueryData<ActivityTypeDefinition[]>(['activityTypeDefinitions'], (old) =>
         old?.map((t) => (t.name === name ? { ...t, show_on_timeline: !showOnTimeline } : t)),
       )
       return { previous }
     },
     onError: (_err, _vars, context) => {
       if (context?.previous) {
-        queryClient.setQueryData(['activity-type-definitions'], context.previous)
+        queryClient.setQueryData(['activityTypeDefinitions'], context.previous)
       }
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['activity-type-definitions'] })
       queryClient.invalidateQueries({ queryKey: ['activityTypeDefinitions'] })
     },
   })
@@ -233,43 +227,6 @@ function SettingsSection({
   )
 }
 
-function RecentOccurrences({ name }: { name: string }) {
-  const recentStart = new Date()
-  recentStart.setDate(recentStart.getDate() - 30)
-
-  const { data: activities, isLoading } = useQuery({
-    queryFn: () => fetchActivities(recentStart, new Date(), [name]),
-    queryKey: ['recent-activities', name],
-    staleTime: 5 * 60 * 1000,
-  })
-
-  if (isLoading) return <p class="loading">Loading...</p>
-  if (!activities || activities.length === 0) {
-    return <p class="activity-type-meta-empty">No occurrences in the last 30 days</p>
-  }
-
-  const recent = activities.slice(-10).reverse()
-
-  return (
-    <div class="activity-type-meta-recent-list">
-      {recent.map((activity) => (
-        <a key={activity.id} href={`/detail/activity/${activity.id}`} class="activity-type-meta-recent-item">
-          <span class="activity-type-meta-recent-time">{formatDateTime(activity.start_time)}</span>
-          {activity.title && <span class="activity-type-meta-recent-title">{activity.title}</span>}
-          {activity.end_time && (
-            <span class="activity-type-meta-recent-duration">
-              {formatDuration(activity.start_time, activity.end_time)}
-            </span>
-          )}
-        </a>
-      ))}
-      {activities.length > 10 && (
-        <p class="activity-type-meta-empty">+{activities.length - 10} more in last 30 days</p>
-      )}
-    </div>
-  )
-}
-
 function RenameSection({ name }: { name: string }) {
   const queryClient = useQueryClient()
   const { route } = useLocation()
@@ -284,9 +241,8 @@ function RenameSection({ name }: { name: string }) {
       setError(msg ?? 'Rename failed')
     },
     onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ['activity-type-definitions'] })
       queryClient.invalidateQueries({ queryKey: ['activityTypeDefinitions'] })
-      queryClient.invalidateQueries({ queryKey: ['recent-activities'] })
+      queryClient.invalidateQueries({ queryKey: ['activity-sessions'] })
       route(`/activity-type/${encodeURIComponent(newName)}`)
       alert(
         `Renamed to "${newName}"` +
@@ -365,9 +321,8 @@ function MergeActivityTypeSection({
   const mergeMutation = useMutation({
     mutationFn: () => mergeActivityTypeApi(name, target),
     onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ['activity-type-definitions'] })
       queryClient.invalidateQueries({ queryKey: ['activityTypeDefinitions'] })
-      queryClient.invalidateQueries({ queryKey: ['recent-activities'] })
+      queryClient.invalidateQueries({ queryKey: ['activity-sessions'] })
       route(`/activity-type/${encodeURIComponent(target)}`)
       alert(
         `Merged ${result.activities_reassigned ?? 0} activities into "${target}"` +
@@ -478,7 +433,6 @@ function DataSchemaSection({
     onError: () => setSaveStatus({ status: 'error' }),
     onSuccess: () => {
       setSaveStatus({ status: 'saved' })
-      queryClient.invalidateQueries({ queryKey: ['activity-type-definitions'] })
       queryClient.invalidateQueries({ queryKey: ['activityTypeDefinitions'] })
     },
   })
@@ -651,7 +605,7 @@ export function ActivityTypeMeta() {
 
   const { data: definitions } = useQuery({
     queryFn: fetchActivityTypeDefinitions,
-    queryKey: ['activity-type-definitions'],
+    queryKey: ['activityTypeDefinitions'],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -667,16 +621,6 @@ export function ActivityTypeMeta() {
         color={color}
         category={category}
       />
-
-      <SettingsSection
-        name={name}
-        currentIcon={icon}
-        currentDisplayName={displayName}
-        currentCategory={category}
-        showOnTimeline={showOnTimeline}
-      />
-
-      <DataSchemaSection name={name} dataSchema={typeDef?.data_schema} />
 
       <section class="activity-type-meta-section">
         <div class="activity-type-meta-section-header">
@@ -695,12 +639,18 @@ export function ActivityTypeMeta() {
         <ActivityTypeTrendSection name={name} isDuration={isDuration} lookback={lookback} />
       </section>
 
-      <section class="activity-type-meta-section">
-        <h2>Recent Occurrences</h2>
-        <RecentOccurrences name={name} />
-      </section>
+      <SessionsSection name={name} fields={categoricalFields(typeDef?.data_schema)} />
 
-      {/* Rename & Merge (custom types only) */}
+      <SettingsSection
+        name={name}
+        currentIcon={icon}
+        currentDisplayName={displayName}
+        currentCategory={category}
+        showOnTimeline={showOnTimeline}
+      />
+
+      <DataSchemaSection name={name} dataSchema={typeDef?.data_schema} />
+
       {typeDef && !typeDef.is_builtin && (
         <>
           <RenameSection name={name} />

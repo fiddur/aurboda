@@ -1,8 +1,4 @@
-/**
- * Activities route group.
- *
- * Handles: /activities/*. Productivity routes live in productivity-router.ts.
- */
+/** Productivity routes live in productivity-router.ts. */
 import {
   type ActivitiesQuery,
   activitiesQuerySchema,
@@ -12,6 +8,11 @@ import {
   type ActivityFullDetailQuery,
   activityFullDetailQuerySchema,
   type ActivityFullDetailResponse,
+  type ActivityNeighborsQuery,
+  activityNeighborsQuerySchema,
+  type ActivityNeighborsResponse,
+  type ActivityRouteSummary,
+  type ActivityTrackResponse,
   type AddActivityBody,
   addActivityBodySchema,
   type AddActivityResponse,
@@ -27,14 +28,17 @@ import {
 } from '@aurboda/api-spec'
 import multer from 'multer'
 
+import type { ActivitySpan } from '../integrations/gps-precedence.ts'
 import type { ActivityNotifier } from '../services/deduction-queue.ts'
 
 import {
   getActivityById,
+  getActivityTrack,
   getAllActivityTypeNames,
   getDeductionRule,
   getNearbyActivities,
   getOverlappingActivities,
+  getRouteForActivity,
   insertTimeSeries,
   type TimeSeriesPoint,
 } from '../db/index.ts'
@@ -51,19 +55,48 @@ import {
   computeActivityDetailMetrics,
   dedupeCommentsForIds,
   getActivityFullDetail,
+  getActivityNeighbors,
   getCommentsMap,
   parseActivityId,
+  parseDataFilter,
   parseMetricsParam,
   queryActivities,
   resolveActivityWindow,
   type SyncProvider,
 } from '../services/queries/index.ts'
+import { serializeActivityTrack } from '../services/tracks.ts'
 import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
 type ActivityRow = Awaited<ReturnType<typeof getActivityById>> & {}
 
-/** Build the merged activity detail response. */
+/** The route of the first of `ids` that has one: a merged activity's sources may be routed individually. */
+const routeSummary = async (user: string, ids: string[]): Promise<ActivityRouteSummary | undefined> => {
+  for (const id of ids) {
+    const route = await getRouteForActivity(user, id)
+    if (route) return { activity_count: route.activity_count, id: route.id, name: route.name }
+  }
+  return undefined
+}
+
+const RULE_REFERENCE_KEYS = ['rule_id', '_enriched_by', '_retyped_by', '_titled_by'] as const
+
+/** Names of the deduction rules an activity's data points at, keyed by rule id. */
+const resolveReferencedRules = async (
+  user: string,
+  data: Record<string, unknown> | undefined,
+): Promise<Record<string, string> | undefined> => {
+  const ruleIds = new Set(
+    RULE_REFERENCE_KEYS.map((key) => data?.[key]).filter((id): id is string => typeof id === 'string'),
+  )
+  const referenced: Record<string, string> = {}
+  for (const ruleId of ruleIds) {
+    const rule = await getDeductionRule(user, ruleId)
+    if (rule) referenced[ruleId] = rule.name
+  }
+  return Object.keys(referenced).length > 0 ? referenced : undefined
+}
+
 const buildMergedResponse = async (
   user: string,
   activity: NonNullable<ActivityRow>,
@@ -118,6 +151,7 @@ const buildMergedResponse = async (
   const commentLookupIds = overlapping.map((a) => a.id).filter((id): id is string => Boolean(id))
   const commentsMap = await getCommentsMap(user, 'activity', commentLookupIds)
   const comments = dedupeCommentsForIds(commentsMap, commentLookupIds)
+  const route = await routeSummary(user, [activity.id!, ...commentLookupIds])
 
   return {
     ...metrics,
@@ -129,6 +163,7 @@ const buildMergedResponse = async (
     merged_end_time: mergedEndTime,
     merged_start_time: mergedStartTime,
     override_target_ids: activity.override_target_ids,
+    route,
     source: activity.source,
     source_records: sourceRecords,
     start_time: activity.start_time.toISOString(),
@@ -140,7 +175,13 @@ export const createActivitiesRouter = (
   authMiddleware: AnyMiddleware,
   syncProvider?: SyncProvider,
   onActivityMutated?: ActivityNotifier,
-  resyncActivityDetail?: (user: string, activityId: string, garminActivityId: number) => Promise<number>,
+  resyncActivityDetail?: (
+    user: string,
+    activityId: string,
+    garminActivityId: number,
+    activitySpan: ActivitySpan | null,
+    activityStart: Date,
+  ) => Promise<number>,
 ): TypedRouter => {
   const router = typedRouter()
 
@@ -156,31 +197,17 @@ export const createActivitiesRouter = (
         exclude_types: excludeTypesParam,
         data_filter: dataFilterStr,
         deduction_rule_id: deductionRuleId,
+        route_id: routeId,
       } = req.query
       const user = req.user!
 
       // When no types specified, query all activity types (not just those with definitions)
       let types = typesParam ? typesParam.split(',') : await getAllActivityTypeNames(user)
 
-      // Filter out excluded types when specified
       if (excludeTypesParam) {
         const excludeSet = new Set(excludeTypesParam.split(','))
         types = types.filter((t) => !excludeSet.has(t))
       }
-
-      // Parse data field filters (format: "field:value,field2:value2")
-      const dataFilters = dataFilterStr
-        ? dataFilterStr
-            .split(',')
-            .map((segment) => {
-              const colonIdx = segment.indexOf(':')
-              if (colonIdx === -1) return null
-              const field = segment.slice(0, colonIdx).trim()
-              const rawValue = segment.slice(colonIdx + 1).trim()
-              return { field, value: rawValue === '(none)' ? null : rawValue }
-            })
-            .filter((f): f is { field: string; value: string | null } => f !== null)
-        : undefined
 
       const activities = await queryActivities(
         user,
@@ -188,8 +215,9 @@ export const createActivitiesRouter = (
         new Date(start),
         new Date(end),
         syncProvider,
-        dataFilters,
+        parseDataFilter(dataFilterStr),
         deductionRuleId,
+        routeId,
       )
       res.json({ data: activities, success: true })
     },
@@ -282,7 +310,6 @@ export const createActivitiesRouter = (
         return
       }
 
-      // Insert time series data (heart rate, power, cadence, speed)
       if (fitAct.timeSeries.length > 0 && result.id) {
         const points: TimeSeriesPoint[] = fitAct.timeSeries.map((ts) => ({
           metric: ts.metric,
@@ -373,6 +400,17 @@ export const createActivitiesRouter = (
     },
   )
 
+  router.get<{ id: string }, ActivityNeighborsResponse, unknown, ActivityNeighborsQuery>(
+    '/activities/:id/neighbors',
+    authMiddleware,
+    validateQuery(activityNeighborsQuerySchema),
+    async (req, res) => {
+      const neighbors = await getActivityNeighbors(req.user!, req.params.id, req.query.same_field)
+      if (!neighbors) return res.status(404).json({ error: 'Activity not found', success: false })
+      res.json({ data: neighbors, success: true })
+    },
+  )
+
   router.delete<{ id: string }, DeleteActivityResponse>(
     '/activities/:id',
     authMiddleware,
@@ -453,35 +491,22 @@ export const createActivitiesRouter = (
       return res.status(404).json({ error: 'Activity not found', success: false })
     }
 
-    // Compute HR zones, avg HRV, and summary metrics for any activity with a time range
     const activityMetrics = await computeActivityDetailMetrics(user, activity)
 
-    // For merged: prefix, fetch overlapping activities and return merged view
     if (isMerged && !activity.deleted_at) {
       const data = await buildMergedResponse(user, activity, activityMetrics)
-      return res.json({ data, success: true })
-    }
-
-    // Resolve referenced deduction rules from activity data
-    const referencedRules: Record<string, string> = {}
-    const activityData = activity.data
-    if (activityData) {
-      const ruleIds = [
-        typeof activityData._enriched_by === 'string' ? activityData._enriched_by : undefined,
-        typeof activityData.rule_id === 'string' ? activityData.rule_id : undefined,
-      ].filter((id): id is string => id !== undefined)
-
-      for (const ruleId of ruleIds) {
-        const rule = await getDeductionRule(user, ruleId)
-        if (rule) referencedRules[ruleId] = rule.name
-      }
+      return res.json({
+        data,
+        referenced_rules: await resolveReferencedRules(user, data.data),
+        success: true,
+      })
     }
 
     // Attach user notes/comments so the detail page's Notes row and edit-mode
     // notes textarea reflect the real note (#794).
     const commentsMap = await getCommentsMap(user, 'activity', [realId])
+    const route = activity.deleted_at ? undefined : await routeSummary(user, [realId])
 
-    // Plain UUID: return raw single activity (no overlap lookup)
     res.json({
       data: {
         ...activityMetrics,
@@ -492,11 +517,12 @@ export const createActivitiesRouter = (
         end_time: activity.end_time?.toISOString(),
         id: activity.id,
         override_target_ids: activity.override_target_ids,
+        route,
         source: activity.source,
         start_time: activity.start_time.toISOString(),
         title: activity.title,
       },
-      referenced_rules: Object.keys(referencedRules).length > 0 ? referencedRules : undefined,
+      referenced_rules: await resolveReferencedRules(user, activity.data),
       success: true,
     })
   })
@@ -518,10 +544,14 @@ export const createActivitiesRouter = (
       const window = await resolveActivityWindow(user, activity, isMerged)
       const [activityMetrics, fullDetail] = await Promise.all([
         computeActivityDetailMetrics(user, window),
-        getActivityFullDetail(user, window, {
-          includeGps: include_gps,
-          metrics: parseMetricsParam(metrics),
-        }),
+        getActivityFullDetail(
+          user,
+          { ...window, id },
+          {
+            includeGps: include_gps,
+            metrics: parseMetricsParam(metrics),
+          },
+        ),
       ])
 
       res.json({
@@ -540,6 +570,19 @@ export const createActivitiesRouter = (
         },
         success: true,
       })
+    },
+  )
+
+  router.get<{ id: string }, ActivityTrackResponse>(
+    '/activities/:id/track',
+    authMiddleware,
+    async (req, res) => {
+      const { id } = parseActivityId(req.params.id)
+      const track = await getActivityTrack(req.user!, id)
+      if (!track) {
+        return res.status(404).json({ error: 'No track for activity', success: false })
+      }
+      res.json({ data: serializeActivityTrack(track), success: true })
     },
   )
 
@@ -577,7 +620,6 @@ export const createActivitiesRouter = (
         return
       }
 
-      // Look for garmin_activity_id in this activity and its overlapping (merged) sources
       const getData = (a: { data?: Record<string, unknown> }): number | undefined => {
         const garminId = a.data?.garmin_activity_id
         return typeof garminId === 'number' ? garminId : undefined
@@ -585,6 +627,7 @@ export const createActivitiesRouter = (
 
       let garminActivityId = getData(activity)
       let garminSourceId = activity.id!
+      let garminSource = activity
 
       if (!garminActivityId) {
         const overlapping = await getOverlappingActivities(user, activity)
@@ -593,6 +636,7 @@ export const createActivitiesRouter = (
           if (gid) {
             garminActivityId = gid
             garminSourceId = src.id!
+            garminSource = src
             break
           }
         }
@@ -607,7 +651,16 @@ export const createActivitiesRouter = (
         return
       }
 
-      const points = await resyncActivityDetail(user, garminSourceId, garminActivityId)
+      // Span of the row that supplied the Garmin id — for a merged activity that
+      // is the Garmin source, not the merge wrapper. Null without an end_time,
+      // so the track's own range is used rather than a start-only span.
+      const points = await resyncActivityDetail(
+        user,
+        garminSourceId,
+        garminActivityId,
+        garminSource.end_time ? { end: garminSource.end_time, start: garminSource.start_time } : null,
+        garminSource.start_time,
+      )
       res.json({ points, success: true })
     },
   )

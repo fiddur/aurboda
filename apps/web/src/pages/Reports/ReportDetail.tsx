@@ -59,14 +59,11 @@ function useReportComparison(report: Report | undefined, allReports: Report[] | 
       }
     }
 
-    // Sort by date ascending
     const sorted = [...allReports].sort((a, b) => a.date.getTime() - b.date.getTime())
 
-    // Find the previous report (the one before the current)
     const currentIdx = sorted.findIndex((r) => r.id === report.id)
     const previous = currentIdx > 0 ? sorted[currentIdx - 1] : undefined
 
-    // Build comparison map: metric -> { delta, previous_value }
     const comparisons = new Map<string, ComparisonData>()
     if (previous) {
       const prevEntries = new Map(previous.entries.map((e) => [e.metric, e]))
@@ -81,7 +78,6 @@ function useReportComparison(report: Report | undefined, allReports: Report[] | 
       }
     }
 
-    // Build sparkline data: metric -> [Date, number][] from all reports
     const sparklines = new Map<string, [Date, number][]>()
     for (const r of sorted) {
       for (const entry of r.entries) {
@@ -216,7 +212,6 @@ export function ReportDetail() {
     staleTime: 5 * 60 * 1000,
   })
 
-  // Fetch all reports of the same type for comparison
   const { data: allReports } = useQuery({
     enabled: !!report,
     queryFn: () => fetchReports({ report_type: report!.report_type }),

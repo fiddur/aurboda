@@ -1,8 +1,6 @@
 /**
- * Food item schemas — canonical food item library.
- *
- * Food items are first-class entities with their own table.
- * Meals reference food items via a junction table (meal_food_items).
+ * Food items are first-class entities with their own table; meals reference
+ * them via a junction table (meal_food_items).
  */
 
 import { z } from 'zod'
@@ -11,13 +9,6 @@ import { baseResponseSchema, createDataArrayResponseSchema, createDataResponseSc
 import { foodItemPortionSchema } from './food-item-portions.ts'
 import { nutrientFieldsSchema } from './nutrients.ts'
 
-// ============================================================================
-// Food Item Entity
-// ============================================================================
-
-/**
- * A canonical food item in the library.
- */
 export const foodItemEntitySchema = nutrientFieldsSchema
   .extend({
     created_at: z.string().optional().meta({ description: 'Creation timestamp' }),
@@ -65,10 +56,6 @@ export const foodItemEntitySchema = nutrientFieldsSchema
   .meta({ description: 'A canonical food item with default nutritional data', id: 'FoodItemEntity' })
 
 export type FoodItemEntity = z.infer<typeof foodItemEntitySchema>
-
-// ============================================================================
-// Composite (recipe) ingredients
-// ============================================================================
 
 /**
  * One ingredient line in a composite food item — points at another food
@@ -119,9 +106,6 @@ export const foodItemIngredientSchema = z
 
 export type FoodItemIngredient = z.infer<typeof foodItemIngredientSchema>
 
-/**
- * Replace the full ingredients list for a composite item.
- */
 export const setFoodItemIngredientsBodySchema = z
   .object({
     ingredients: z
@@ -249,10 +233,6 @@ export const setFoodItemReferenceBodySchema = z
 
 export type SetFoodItemReferenceBody = z.infer<typeof setFoodItemReferenceBodySchema>
 
-// ============================================================================
-// Shared (central) food-item overrides
-// ============================================================================
-
 /**
  * Per-user customization layered onto a central shared food-item row. The
  * central library is read-only from a user's perspective, so any per-user
@@ -341,13 +321,6 @@ export const sharedFoodItemOverrideResponseSchema = createDataResponseSchema(
 
 export type SharedFoodItemOverrideResponse = z.infer<typeof sharedFoodItemOverrideResponseSchema>
 
-// ============================================================================
-// Request Schemas
-// ============================================================================
-
-/**
- * Add food item request body.
- */
 export const addFoodItemBodySchema = nutrientFieldsSchema
   .extend({
     default_quantity: z.number().optional().meta({ description: 'Default quantity' }),
@@ -361,8 +334,6 @@ export const addFoodItemBodySchema = nutrientFieldsSchema
 export type AddFoodItemBody = z.infer<typeof addFoodItemBodySchema>
 
 /**
- * Update food item request body — all fields optional.
- *
  * `default_portion_id` is intentionally excluded: setting it requires a
  * cross-validation step ("the portion must belong to this food") that the
  * generic update path can't enforce without duplicating service logic.
@@ -380,9 +351,6 @@ export const updateFoodItemBodySchema = nutrientFieldsSchema
 
 export type UpdateFoodItemBody = z.infer<typeof updateFoodItemBodySchema>
 
-/**
- * Food items query — search by name prefix.
- */
 export const foodItemsQuerySchema = z
   .object({
     limit: z.string().optional().meta({ description: 'Max results (default 20)' }),
@@ -391,10 +359,6 @@ export const foodItemsQuerySchema = z
   .meta({ description: 'Query parameters for searching food items', id: 'FoodItemsQuery' })
 
 export type FoodItemsQuery = z.infer<typeof foodItemsQuerySchema>
-
-// ============================================================================
-// Response Schemas
-// ============================================================================
 
 export const foodItemResponseSchema = createDataResponseSchema(foodItemEntitySchema).meta({
   id: 'FoodItemResponse',
@@ -418,10 +382,6 @@ export const deleteFoodItemResponseSchema = baseResponseSchema.meta({ id: 'Delet
 
 export type DeleteFoodItemResponse = z.infer<typeof deleteFoodItemResponseSchema>
 
-// ============================================================================
-// Re-snapshot meals
-// ============================================================================
-
 export const resnapshotMealsResultSchema = z
   .object({
     meals_updated: z.number().int().min(0).meta({
@@ -440,10 +400,6 @@ export const resnapshotMealsResponseSchema = createDataResponseSchema(resnapshot
 })
 
 export type ResnapshotMealsResponse = z.infer<typeof resnapshotMealsResponseSchema>
-
-// ============================================================================
-// Merge food items
-// ============================================================================
 
 export const mergeFoodItemsQuerySchema = z
   .object({

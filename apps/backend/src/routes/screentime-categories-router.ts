@@ -1,10 +1,5 @@
 import type { RequestHandler } from 'express'
 
-/**
- * Screentime categories route group.
- *
- * Handles: /screentime-categories/*
- */
 import {
   type CreateScreentimeCategoryBody,
   createScreentimeCategoryBodySchema,
@@ -34,6 +29,7 @@ import {
   moveCategoryToParent,
   recategorizeAll,
   removeCategory,
+  toRecategorizeResponseFields,
   upsertCategory,
 } from '../services/screentime-categories.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
@@ -169,8 +165,8 @@ export const createScreentimeCategoriesRouter = (authMiddleware: RequestHandler)
     async (req, res) => {
       const user = req.user!
 
-      const count = await recategorizeAll(user)
-      res.json({ records_updated: count, success: true })
+      const result = await recategorizeAll(user, { rebuildSpans: true })
+      res.json({ ...toRecategorizeResponseFields(result), success: true })
     },
   )
 

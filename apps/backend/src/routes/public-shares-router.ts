@@ -1,6 +1,4 @@
 /**
- * Public sharing routes (UNAUTHENTICATED).
- *
  * Handles `/public/:username/...` for both shared dashboards and challenges.
  * Never uses `req.user`; targets the owner's database directly by username
  * (validated against the same rules as signup). Dashboards return sanitized,
@@ -29,11 +27,14 @@ import {
   listPublicSharedDashboards,
   upsertChallengeMember,
 } from '../db/index.ts'
+import { bannerUrlFor } from '../services/challenge-banner.ts'
+import { toPublicChallengeListItem } from '../services/challenge-discovery.ts'
 import { fetchMemberData } from '../services/challenge-federation.ts'
 import { effectiveBucketSize, specToApi } from '../services/challenge-spec.ts'
 import { getChallengeStandings } from '../services/challenge-standings.ts'
 import { buildProfileUrl, buildShareUrl } from '../services/share-urls.ts'
 import { resolveDashboardData } from '../services/shared-dashboard-data.ts'
+import { isPublicToVisibility } from '../services/visibility.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
 
@@ -45,6 +46,9 @@ const MAX_CHALLENGE_MEMBERS = 200
  * Quick links point into the owner's private app, so neutralize their hrefs.
  */
 export const sanitizeConfig = (config: DashboardConfig): DashboardConfig => ({
+  // Author prose is meant for public viewers — preserve it (section descriptions
+  // survive via the section spread below).
+  description: config.description,
   sections: config.sections.map((section) => ({
     ...section,
     widgets: section.widgets.map((widget) =>
@@ -71,11 +75,7 @@ export const createPublicSharesRouter = (webHost: string): TypedRouter => {
         ])
         res.setHeader('Cache-Control', 'public, max-age=60')
         res.json({
-          challenges: challenges.map((c) => ({
-            name: c.name,
-            share_url: buildShareUrl(webHost, username, c.slug),
-            slug: c.slug,
-          })),
+          challenges: challenges.map((c) => toPublicChallengeListItem(c, webHost, username)),
           dashboards: dashboards.map((r) => ({
             name: r.name,
             share_url: buildShareUrl(webHost, username, r.slug),
@@ -110,7 +110,15 @@ export const createPublicSharesRouter = (webHost: string): TypedRouter => {
         // standings reasonably fresh; the owner can force-refresh via the authed route.
         const members = await getChallengeStandings(username, challenge)
         res.setHeader('Cache-Control', 'public, max-age=60')
-        res.json({ members, success: true })
+        res.json({
+          effective_bucket_size: effectiveBucketSize(
+            challenge.spec.bucket_size,
+            challenge.start_ts,
+            challenge.end_ts,
+          ),
+          members,
+          success: true,
+        })
       } catch (error) {
         if (isMissingDatabase(error)) {
           return res.status(404).json({ error: 'Challenge not found', success: false })
@@ -204,6 +212,7 @@ export const createPublicSharesRouter = (webHost: string): TypedRouter => {
           res.setHeader('Cache-Control', 'public, max-age=60')
           return res.json({
             challenge: {
+              banner_url: bannerUrlFor(challenge, webHost, username),
               effective_bucket_size: effectiveBucketSize(
                 challenge.spec.bucket_size,
                 challenge.start_ts,
@@ -211,7 +220,6 @@ export const createPublicSharesRouter = (webHost: string): TypedRouter => {
               ),
               end_ts: challenge.end_ts.toISOString(),
               host_identity: buildProfileUrl(webHost, username),
-              is_public: challenge.is_public,
               join_token: challenge.join_token,
               members: members
                 .filter((m) => m.status === 'active')
@@ -222,6 +230,7 @@ export const createPublicSharesRouter = (webHost: string): TypedRouter => {
               spec: specToApi(challenge.spec),
               start_ts: challenge.start_ts.toISOString(),
               timezone: challenge.timezone,
+              visibility: isPublicToVisibility(challenge.is_public),
             },
             success: true,
             type: 'challenge',

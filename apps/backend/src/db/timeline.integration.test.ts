@@ -1,0 +1,809 @@
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
+
+import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
+import { getDbForUser, query, rewriteLegacyQuantpubStructured } from './connection.ts'
+import {
+  countTimelineRepliesTo,
+  deleteBoostCardsOf,
+  deleteBoostEntry,
+  deleteTimelineEntriesByActor,
+  deleteTimelineEntryByUri,
+  getBoostCardAuthor,
+  getTimelineEntryById,
+  getTimelineEntryByObjectUri,
+  hasCachedActorPresentation,
+  isTimelineEntryVisible,
+  listReplyUncheckedEntries,
+  listTimelineEntries,
+  listTimelineRepliesTo,
+  listUnenrichedAurbodaEntries,
+  markEnrichTransientFailure,
+  setTimelineEntryReplyInfo,
+  setTimelineEntryStructured,
+  type TimelineEntryInput,
+  updateBoostCardsOf,
+  updateTimelineActorPresentation,
+  upsertTimelineEntry,
+} from './timeline.ts'
+
+const CONTAINER_TIMEOUT = 120_000
+
+const entry = (n: number, overrides: Partial<TimelineEntryInput> = {}): TimelineEntryInput => ({
+  actor_uri: 'https://mastodon.example/users/alice',
+  avatar_url: 'https://mastodon.example/avatars/alice.png',
+  content: `<p>post ${n}</p>`,
+  display_name: 'Alice',
+  handle: '@alice@mastodon.example',
+  object_uri: `https://mastodon.example/notes/${n}`,
+  published_at: new Date(`2026-07-01T10:0${n}:00Z`),
+  url: `https://mastodon.example/@alice/${n}`,
+  ...overrides,
+})
+
+/** Pin an entry's `published_at` to an exact µs-precision instant (the keyset key). */
+const setPublishedAt = (user: string, id: string, ts: string): Promise<unknown> =>
+  query(user, 'UPDATE timeline_entry SET published_at = $1::timestamptz WHERE id = $2', [ts, id])
+
+describe('Timeline store integration', () => {
+  beforeAll(async () => {
+    await startTestDb()
+  }, CONTAINER_TIMEOUT)
+
+  afterAll(async () => {
+    await stopTestDb()
+  })
+
+  beforeEach(async () => {
+    await cleanTestDb()
+  })
+
+  test('stores a received post with its sanitised content + author snapshot', async () => {
+    const user = getTestUser()
+    const rec = await upsertTimelineEntry(user, entry(1))
+    expect(rec.id).toMatch(/^[0-9a-f-]{36}$/)
+    expect(rec.object_uri).toBe('https://mastodon.example/notes/1')
+    expect(rec.actor_uri).toBe('https://mastodon.example/users/alice')
+    expect(rec.handle).toBe('@alice@mastodon.example')
+    expect(rec.content).toBe('<p>post 1</p>')
+    expect(rec.published_at.toISOString()).toBe('2026-07-01T10:01:00.000Z')
+  })
+
+  test('re-delivering the same object upserts in place (an edit replaces content)', async () => {
+    const user = getTestUser()
+    // `inserted` drives "ping live subscribers only for a genuinely new post": true
+    // on the first insert, false on the re-delivery (the ON CONFLICT update path).
+    const first = await upsertTimelineEntry(user, entry(1))
+    expect(first.inserted).toBe(true)
+    const edited = await upsertTimelineEntry(user, entry(1, { content: '<p>edited</p>' }))
+    expect(edited.inserted).toBe(false)
+    expect(edited.content).toBe('<p>edited</p>')
+    expect(await listTimelineEntries(user, 10)).toHaveLength(1)
+  })
+
+  test('stores + reads back the structured payload (JSONB); plain posts are null', async () => {
+    const user = getTestUser()
+    const structured = {
+      activityType: 'exercise',
+      endTime: '2026-07-01T08:30:00.000Z',
+      kind: 'activity' as const,
+      metrics: [
+        { key: 'heartRateAvg', unit: 'bpm', value: 142 },
+        { key: 'hrZoneMinutes', value: { z2: 22, z3: 8 } },
+      ],
+      series: [
+        {
+          bucket: '5s',
+          metric: 'heartRate',
+          samples: [
+            {
+              avg: 140,
+              count: 3,
+              end: '2026-07-01T08:00:05.000Z',
+              max: 145,
+              min: 138,
+              start: '2026-07-01T08:00:00.000Z',
+            },
+          ],
+          unit: 'bpm',
+        },
+      ],
+      startTime: '2026-07-01T08:00:00.000Z',
+    }
+    const rec = await upsertTimelineEntry(user, entry(1, { structured }))
+    expect(rec.structured).toEqual(structured)
+    expect((await listTimelineEntries(user, 10))[0].structured).toEqual(structured)
+
+    // A post without structured data stores null (Mastodon / non-Aurboda).
+    const plain = await upsertTimelineEntry(user, entry(2))
+    expect(plain.structured).toBeNull()
+  })
+
+  test('rewrites stored QuantPub 0.1 activity payloads to 0.2, leaving 0.2 and articles alone', async () => {
+    const user = getTestUser()
+    const legacy = await upsertTimelineEntry(user, entry(1))
+    const current = await upsertTimelineEntry(user, entry(2))
+    const article = await upsertTimelineEntry(user, entry(3))
+    const currentPayload = {
+      activityType: 'exercise',
+      kind: 'activity',
+      metrics: [{ key: 'heartRateAvg', value: 140 }],
+      series: [],
+      startTime: '2026-07-01T08:00:00.000Z',
+    }
+    const articlePayload = { blocks: [], kind: 'article', title: 'Notes' }
+    const setRaw = (id: string, payload: unknown) =>
+      query(user, 'UPDATE timeline_entry SET structured = $1::jsonb WHERE id = $2', [
+        JSON.stringify(payload),
+        id,
+      ])
+    await setRaw(legacy.id, {
+      activity_type: 'exercise',
+      duration_seconds: 1800,
+      end_time: '2026-07-01T08:30:00.000Z',
+      metrics: [
+        { key: 'heart_rate_avg', unit: 'bpm', value: 142 },
+        { key: 'hr_zone_minutes', value: { z2: 22 } },
+      ],
+      series: [{ bucket: '5s', metric: 'heart_rate', samples: [], unit: 'bpm' }],
+      start_time: '2026-07-01T08:00:00.000Z',
+      title: 'Morning run',
+    })
+    await setRaw(current.id, currentPayload)
+    await setRaw(article.id, articlePayload)
+
+    expect(await rewriteLegacyQuantpubStructured(await getDbForUser(user))).toBe(1)
+
+    const byId = async (id: string) => (await getTimelineEntryById(user, id))?.structured
+    expect(await byId(legacy.id)).toEqual({
+      activityType: 'exercise',
+      endTime: '2026-07-01T08:30:00.000Z',
+      metrics: [
+        { key: 'heartRateAvg', unit: 'bpm', value: 142 },
+        { key: 'hrZoneMinutes', value: { z2: 22 } },
+      ],
+      name: 'Morning run',
+      series: [{ bucket: '5s', metric: 'heartRate', samples: [], unit: 'bpm' }],
+      startTime: '2026-07-01T08:00:00.000Z',
+    })
+    expect(await byId(current.id)).toEqual(currentPayload)
+    expect(await byId(article.id)).toEqual(articlePayload)
+  })
+
+  test('stores + reads back image attachments (JSONB); plain posts are null', async () => {
+    const user = getTestUser()
+    const images = [
+      {
+        height: 420,
+        media_type: 'image/png',
+        name: 'Heart rate',
+        url: 'https://aurboda.net/api/public/bob/feed/abc/chart.png?token=t',
+        width: 1000,
+      },
+    ]
+    const rec = await upsertTimelineEntry(user, entry(1, { images }))
+    expect(rec.images).toEqual(images)
+    expect((await listTimelineEntries(user, 10))[0].images).toEqual(images)
+
+    const plain = await upsertTimelineEntry(user, entry(2))
+    expect(plain.images).toBeNull()
+  })
+
+  test('a re-delivery without structured keeps the last-known structured (COALESCE)', async () => {
+    const user = getTestUser()
+    const structured = {
+      activityType: 'exercise',
+      kind: 'activity' as const,
+      metrics: [{ key: 'distance', unit: 'km', value: 5 }],
+      series: [],
+      startTime: '2026-07-01T08:00:00.000Z',
+    }
+    await upsertTimelineEntry(user, entry(1, { structured }))
+    // An edit/redelivery whose enrichment failed (structured undefined) must not
+    // wipe the working chart.
+    const edited = await upsertTimelineEntry(user, entry(1, { content: '<p>edited</p>' }))
+    expect(edited.content).toBe('<p>edited</p>')
+    expect(edited.structured).toEqual(structured)
+  })
+
+  test('an article re-delivery without structured drops the stale article, so content shows (#973)', async () => {
+    const user = getTestUser()
+    const article = { blocks: [], kind: 'article' as const, title: 'Old title' }
+    await upsertTimelineEntry(user, entry(1, { structured: article }))
+    const edited = await upsertTimelineEntry(user, entry(1, { content: '<p>New title</p>' }))
+    expect(edited.content).toBe('<p>New title</p>')
+    expect(edited.structured).toBeNull()
+
+    const fresh = { ...article, title: 'New title' }
+    expect((await upsertTimelineEntry(user, entry(1, { structured: fresh }))).structured).toEqual(fresh)
+  })
+
+  test('lists newest-first and keyset-paginates by (published_at, id)', async () => {
+    const user = getTestUser()
+    for (const n of [1, 2, 3, 4, 5]) await upsertTimelineEntry(user, entry(n))
+
+    const page1 = await listTimelineEntries(user, 2)
+    expect(page1.map((e) => e.object_uri)).toEqual([
+      'https://mastodon.example/notes/5',
+      'https://mastodon.example/notes/4',
+    ])
+
+    const last = page1[page1.length - 1]
+    const page2 = await listTimelineEntries(user, 2, { id: last.id, published_at: last.cursor_ts })
+    expect(page2.map((e) => e.object_uri)).toEqual([
+      'https://mastodon.example/notes/3',
+      'https://mastodon.example/notes/2',
+    ])
+
+    const last2 = page2[page2.length - 1]
+    const page3 = await listTimelineEntries(user, 2, { id: last2.id, published_at: last2.cursor_ts })
+    expect(page3.map((e) => e.object_uri)).toEqual(['https://mastodon.example/notes/1'])
+  })
+
+  test('pages losslessly across entries sharing a millisecond (#1025)', async () => {
+    const user = getTestUser()
+    const a = await upsertTimelineEntry(user, entry(1))
+    const b = await upsertTimelineEntry(user, entry(2))
+    // Same millisecond, different microsecond — `pg` parses both to the same JS
+    // Date, so a cursor built from one would skip the other on the next page.
+    await setPublishedAt(user, a.id, '2026-08-20 09:00:00.500700+00')
+    await setPublishedAt(user, b.id, '2026-08-20 09:00:00.500200+00')
+
+    const page1 = await listTimelineEntries(user, 1)
+    expect(page1.map((e) => e.id)).toEqual([a.id])
+    expect(page1[0].cursor_ts).toContain('.5007')
+
+    const page2 = await listTimelineEntries(user, 1, { id: page1[0].id, published_at: page1[0].cursor_ts })
+    expect(page2.map((e) => e.id)).toEqual([b.id])
+  })
+
+  test('stores in_reply_to_uri and hides only replies to posts outside the timeline (#1062)', async () => {
+    const user = getTestUser()
+    const ownPrefix = `https://aurboda.example/users/${user}/feed/`
+    await upsertTimelineEntry(user, entry(1)) // top-level post
+    // A reply to a post the timeline already holds — a thread the reader can
+    // follow, so it shows (as it does on Mastodon's home).
+    await upsertTimelineEntry(user, entry(2, { in_reply_to_uri: 'https://mastodon.example/notes/1' }))
+    const replyToMine = await upsertTimelineEntry(
+      user,
+      entry(3, { in_reply_to_uri: `${ownPrefix}11111111-1111-4111-8111-111111111111` }),
+    )
+    expect(replyToMine.in_reply_to_uri).toBe(`${ownPrefix}11111111-1111-4111-8111-111111111111`)
+    // A reply to a post NOBODY here has — half a conversation, so it is hidden.
+    await upsertTimelineEntry(user, entry(4, { in_reply_to_uri: 'https://elsewhere.example/notes/999' }))
+
+    // No filter (legacy callers): everything.
+    expect(await listTimelineEntries(user, 10)).toHaveLength(4)
+    const filtered = await listTimelineEntries(user, 10, undefined, {
+      own_object_prefix: ownPrefix,
+      show_replies: false,
+    })
+    expect(filtered.map((r) => r.object_uri)).toEqual([
+      'https://mastodon.example/notes/3',
+      'https://mastodon.example/notes/2',
+      'https://mastodon.example/notes/1',
+    ])
+    // show_replies=true: everything again.
+    const all = await listTimelineEntries(user, 10, undefined, {
+      own_object_prefix: ownPrefix,
+      show_replies: true,
+    })
+    expect(all).toHaveLength(4)
+  })
+
+  test('isTimelineEntryVisible answers for one row exactly as the page does (#1062)', async () => {
+    const user = getTestUser()
+    const ownPrefix = `https://aurboda.example/users/${user}/feed/`
+    const hidden = await upsertTimelineEntry(
+      user,
+      entry(1, { in_reply_to_uri: 'https://elsewhere.example/notes/999' }),
+    )
+    const involved = await upsertTimelineEntry(
+      user,
+      entry(2, { in_reply_to_uri: `${ownPrefix}11111111-1111-4111-8111-111111111111` }),
+    )
+    const hiding = { own_object_prefix: ownPrefix, show_replies: false }
+
+    expect(await isTimelineEntryVisible(user, hidden.id, hiding)).toBe(false)
+    expect(await isTimelineEntryVisible(user, involved.id, hiding)).toBe(true)
+    // With the setting on nothing is filtered — not even a row that is gone.
+    expect(await isTimelineEntryVisible(user, hidden.id, { ...hiding, show_replies: true })).toBe(true)
+  })
+
+  test('hasCachedActorPresentation gates the inbound Update{Person} refresh (#1111)', async () => {
+    const user = getTestUser()
+    const alice = 'https://mastodon.example/users/alice'
+    expect(await hasCachedActorPresentation(user, alice)).toBe(false)
+
+    // A post of theirs in the timeline is a cached copy of them, follow or not.
+    await upsertTimelineEntry(user, entry(1))
+    expect(await hasCachedActorPresentation(user, alice)).toBe(true)
+    expect(await hasCachedActorPresentation(user, 'https://evil.example/users/mallory')).toBe(false)
+  })
+
+  test('a BOOST of a reply stays visible with replies hidden (#1105)', async () => {
+    const user = getTestUser()
+    const ownPrefix = `https://aurboda.example/users/${user}/feed/`
+    // A followee's own reply to somebody else — hidden.
+    await upsertTimelineEntry(user, entry(1, { in_reply_to_uri: 'https://mastodon.example/notes/root' }))
+    // A boost card inherits the boosted Note's in_reply_to_uri, but it is a
+    // boost, not a reply: Mastodon shows reblogs of replies.
+    await upsertTimelineEntry(
+      user,
+      entry(2, {
+        boost_of_uri: 'https://mastodon.example/notes/1',
+        boosted_by_actor_uri: 'https://remote.example/users/bob',
+        boosted_by_handle: '@bob@remote.example',
+        in_reply_to_uri: 'https://mastodon.example/notes/root',
+        object_uri: 'https://remote.example/users/bob/statuses/9/activity',
+      }),
+    )
+
+    const filtered = await listTimelineEntries(user, 10, undefined, {
+      own_object_prefix: ownPrefix,
+      show_replies: false,
+    })
+    expect(filtered.map((r) => r.object_uri)).toEqual([
+      'https://remote.example/users/bob/statuses/9/activity',
+    ])
+  })
+
+  test('a reply to a post that is in the timeline only as a boost card stays visible (#1114)', async () => {
+    const user = getTestUser()
+    const filter = { own_object_prefix: `https://aurboda.example/users/${user}/feed/`, show_replies: false }
+    const announced = 'https://elsewhere.example/notes/77'
+    await upsertTimelineEntry(
+      user,
+      entry(1, {
+        actor_uri: 'https://elsewhere.example/users/carol',
+        boost_of_uri: announced,
+        boosted_by_actor_uri: 'https://remote.example/users/bob',
+        object_uri: 'https://remote.example/users/bob/statuses/9/activity',
+      }),
+    )
+    const reply = await upsertTimelineEntry(user, entry(2, { in_reply_to_uri: announced }))
+    await upsertTimelineEntry(user, entry(3, { in_reply_to_uri: 'https://elsewhere.example/notes/78' }))
+
+    const filtered = await listTimelineEntries(user, 10, undefined, filter)
+    expect(filtered.map((r) => r.object_uri)).toEqual([
+      'https://mastodon.example/notes/2',
+      'https://remote.example/users/bob/statuses/9/activity',
+    ])
+    expect(await isTimelineEntryVisible(user, reply.id, filter)).toBe(true)
+  })
+
+  test('a mentioned post stays visible with replies hidden; getTimelineEntryById resolves (#1060)', async () => {
+    const user = getTestUser()
+    const ownPrefix = `https://aurboda.example/users/${user}/feed/`
+    const mention = await upsertTimelineEntry(
+      user,
+      entry(1, { in_reply_to_uri: 'https://mastodon.example/notes/root', mentions_me: true }),
+    )
+    await upsertTimelineEntry(user, entry(2, { in_reply_to_uri: 'https://mastodon.example/notes/root' }))
+    const filtered = await listTimelineEntries(user, 10, undefined, {
+      own_object_prefix: ownPrefix,
+      show_replies: false,
+    })
+    expect(filtered.map((r) => r.object_uri)).toEqual(['https://mastodon.example/notes/1'])
+    expect(filtered[0].mentions_me).toBe(true)
+
+    const byId = await getTimelineEntryById(user, mention.id)
+    expect(byId?.object_uri).toBe('https://mastodon.example/notes/1')
+    expect(await getTimelineEntryById(user, '00000000-0000-4000-8000-000000000000')).toBeNull()
+  })
+
+  test('reply backfill: fresh ingests are stamped, legacy rows are listed and updatable (#1060)', async () => {
+    const user = getTestUser()
+    // A fresh ingest stamps reply_checked_at, so it is never a backfill candidate.
+    await upsertTimelineEntry(user, entry(1))
+    expect(await listReplyUncheckedEntries(user, 10)).toEqual([])
+
+    // Simulate a legacy (pre-#1060) row by clearing the stamp.
+    const legacy = await upsertTimelineEntry(user, entry(2))
+    await query(user, `UPDATE timeline_entry SET reply_checked_at = NULL WHERE id = $1`, [legacy.id])
+    const candidates = await listReplyUncheckedEntries(user, 10)
+    expect(candidates).toEqual([{ id: legacy.id, object_uri: 'https://mastodon.example/notes/2' }])
+
+    await setTimelineEntryReplyInfo(user, legacy.id, 'https://mastodon.example/notes/root', true)
+    const updated = await getTimelineEntryById(user, legacy.id)
+    expect(updated?.in_reply_to_uri).toBe('https://mastodon.example/notes/root')
+    expect(updated?.mentions_me).toBe(true)
+    expect(await listReplyUncheckedEntries(user, 10)).toEqual([])
+  })
+
+  test('deletes a single entry by object uri + authoring actor (inbound Delete)', async () => {
+    const user = getTestUser()
+    await upsertTimelineEntry(user, entry(1))
+    await upsertTimelineEntry(user, entry(2))
+    const alice = 'https://mastodon.example/users/alice'
+    expect(await deleteTimelineEntryByUri(user, 'https://mastodon.example/notes/1', alice)).toBe(true)
+    expect(await deleteTimelineEntryByUri(user, 'https://mastodon.example/notes/1', alice)).toBe(false)
+    expect((await listTimelineEntries(user, 10)).map((e) => e.object_uri)).toEqual([
+      'https://mastodon.example/notes/2',
+    ])
+  })
+
+  test('does not delete an entry when the Delete is from a different actor (spoofed Delete)', async () => {
+    const user = getTestUser()
+    await upsertTimelineEntry(user, entry(1))
+    // A signed Delete from some other actor must not evict alice's post.
+    const attacker = 'https://evil.example/users/mallory'
+    expect(await deleteTimelineEntryByUri(user, 'https://mastodon.example/notes/1', attacker)).toBe(false)
+    expect((await listTimelineEntries(user, 10)).map((e) => e.object_uri)).toEqual([
+      'https://mastodon.example/notes/1',
+    ])
+  })
+
+  test('retro-enrichment: lists Aurboda-shaped unenriched entries, marks attempts (#996)', async () => {
+    const user = getTestUser()
+    const structured = {
+      activityType: 'exercise',
+      kind: 'activity' as const,
+      metrics: [{ key: 'distance', unit: 'km', value: 5 }],
+      series: [],
+      startTime: '2026-07-01T08:00:00.000Z',
+    }
+    const aurbodaUri = (n: number) =>
+      `https://peer.example/users/bob/feed/00000000-0000-4000-8000-00000000000${n}`
+    // 1: Aurboda-shaped, unenriched → candidate. 2: Mastodon → never a candidate.
+    // 3: Aurboda-shaped but already enriched → not a candidate.
+    const one = await upsertTimelineEntry(user, entry(1, { object_uri: aurbodaUri(1) }))
+    await upsertTimelineEntry(user, entry(2))
+    await upsertTimelineEntry(user, entry(3, { object_uri: aurbodaUri(3), structured }))
+
+    const candidates = await listUnenrichedAurbodaEntries(user, 10)
+    expect(candidates.map((c) => c.object_uri)).toEqual([aurbodaUri(1)])
+
+    // A failed attempt (null) stamps the entry without inventing a payload…
+    await setTimelineEntryStructured(user, one.id, null)
+    expect(await listUnenrichedAurbodaEntries(user, 10)).toEqual([])
+    expect((await listTimelineEntries(user, 10)).find((e) => e.id === one.id)?.structured).toBeNull()
+
+    // …and a successful one stores it (visible on the next read).
+    await setTimelineEntryStructured(user, one.id, structured)
+    expect((await listTimelineEntries(user, 10)).find((e) => e.id === one.id)?.structured).toEqual(structured)
+  })
+
+  test('retro-enrichment: transient failures stay retryable until the attempt cap stamps them (#1014)', async () => {
+    const user = getTestUser()
+    const uri = 'https://dead.example/users/bob/feed/00000000-0000-4000-8000-000000000001'
+    const rec = await upsertTimelineEntry(user, entry(1, { object_uri: uri }))
+
+    // Two failures below the cap: still a candidate.
+    await markEnrichTransientFailure(user, rec.id, 3)
+    await markEnrichTransientFailure(user, rec.id, 3)
+    expect((await listUnenrichedAurbodaEntries(user, 10)).map((c) => c.id)).toEqual([rec.id])
+
+    // The third hits the cap: stamped out of the candidate set for good.
+    await markEnrichTransientFailure(user, rec.id, 3)
+    expect(await listUnenrichedAurbodaEntries(user, 10)).toEqual([])
+  })
+
+  test('retro-enrichment: setTimelineEntryStructured never wipes an existing payload with null', async () => {
+    const user = getTestUser()
+    const structured = {
+      activityType: 'exercise',
+      kind: 'activity' as const,
+      metrics: [],
+      series: [],
+      startTime: '2026-07-01T08:00:00.000Z',
+    }
+    const rec = await upsertTimelineEntry(user, entry(1, { structured }))
+    await setTimelineEntryStructured(user, rec.id, null)
+    expect((await listTimelineEntries(user, 10))[0].structured).toEqual(structured)
+  })
+
+  test('purges every entry from an actor (on unfollow)', async () => {
+    const user = getTestUser()
+    await upsertTimelineEntry(user, entry(1))
+    await upsertTimelineEntry(user, entry(2))
+    await upsertTimelineEntry(user, entry(3, { actor_uri: 'https://remote.example/users/bob' }))
+
+    expect(await deleteTimelineEntriesByActor(user, 'https://mastodon.example/users/alice')).toBe(2)
+    expect((await listTimelineEntries(user, 10)).map((e) => e.actor_uri)).toEqual([
+      'https://remote.example/users/bob',
+    ])
+  })
+
+  describe('boost cards (an Announce by a followee of a third-party post)', () => {
+    const BOB = 'https://remote.example/users/bob'
+    const ANNOUNCE = 'https://remote.example/users/bob/statuses/9/activity'
+
+    /** A boost card: keyed on the Announce id, describing alice's post. */
+    const boostOfAlice = (overrides: Partial<TimelineEntryInput> = {}): TimelineEntryInput =>
+      entry(1, {
+        boost_of_uri: 'https://mastodon.example/notes/1',
+        boosted_by_actor_uri: BOB,
+        boosted_by_display_name: 'Bob',
+        boosted_by_handle: '@bob@remote.example',
+        object_uri: ANNOUNCE,
+        published_at: new Date('2026-07-01T12:00:00Z'),
+        ...overrides,
+      })
+
+    test('round-trips the boost columns and coexists with the original entry', async () => {
+      const user = getTestUser()
+      await upsertTimelineEntry(user, entry(1))
+      const boost = await upsertTimelineEntry(user, boostOfAlice())
+      expect(boost.inserted).toBe(true)
+      expect(boost.object_uri).toBe(ANNOUNCE)
+      expect(boost.boost_of_uri).toBe('https://mastodon.example/notes/1')
+      expect(boost.boosted_by_actor_uri).toBe(BOB)
+      expect(boost.boosted_by_handle).toBe('@bob@remote.example')
+      // The author columns still describe the ORIGINAL post — that's what renders.
+      expect(boost.actor_uri).toBe('https://mastodon.example/users/alice')
+      expect(await listTimelineEntries(user, 10)).toHaveLength(2)
+      expect((await getTimelineEntryByObjectUri(user, ANNOUNCE))?.id).toBe(boost.id)
+    })
+
+    test('two followees boosting the same post give two cards (keyed on the Announce)', async () => {
+      const user = getTestUser()
+      await upsertTimelineEntry(user, boostOfAlice())
+      await upsertTimelineEntry(
+        user,
+        boostOfAlice({
+          boosted_by_actor_uri: 'https://third.example/users/carol',
+          object_uri: 'https://third.example/users/carol/statuses/3/activity',
+        }),
+      )
+      expect(await listTimelineEntries(user, 10)).toHaveLength(2)
+    })
+
+    test('the author deleting their post retracts the boosts of it too', async () => {
+      const user = getTestUser()
+      await upsertTimelineEntry(user, entry(1))
+      await upsertTimelineEntry(user, boostOfAlice())
+      await upsertTimelineEntry(user, entry(2))
+
+      // Scoped to the ORIGINAL author (the boost row's actor_uri), so the same
+      // authorization guard covers both rows.
+      expect(
+        await deleteTimelineEntryByUri(
+          user,
+          'https://mastodon.example/notes/1',
+          'https://mastodon.example/users/alice',
+        ),
+      ).toBe(true)
+      expect((await listTimelineEntries(user, 10)).map((e) => e.object_uri)).toEqual([
+        'https://mastodon.example/notes/2',
+      ])
+    })
+
+    test('deleteBoostEntry removes one boost card, scoped to the booster', async () => {
+      const user = getTestUser()
+      await upsertTimelineEntry(user, entry(1))
+      await upsertTimelineEntry(user, boostOfAlice())
+
+      // Someone else's Undo{Announce} naming that id must not evict Bob's boost.
+      expect(await deleteBoostEntry(user, ANNOUNCE, 'https://evil.example/users/mallory')).toBe(false)
+      expect(await deleteBoostEntry(user, ANNOUNCE, BOB)).toBe(true)
+      // The original post itself is untouched.
+      expect((await listTimelineEntries(user, 10)).map((e) => e.object_uri)).toEqual([
+        'https://mastodon.example/notes/1',
+      ])
+    })
+
+    test('deleteBoostCardsOf removes every boost card of one Note and nothing else (#1106)', async () => {
+      const user = getTestUser()
+      await upsertTimelineEntry(user, boostOfAlice())
+      await upsertTimelineEntry(
+        user,
+        boostOfAlice({
+          boosted_by_actor_uri: 'https://third.example/users/carol',
+          object_uri: 'https://third.example/users/carol/statuses/3/activity',
+        }),
+      )
+      await upsertTimelineEntry(
+        user,
+        boostOfAlice({
+          boost_of_uri: 'https://mastodon.example/notes/2',
+          object_uri: 'https://remote.example/users/bob/statuses/10/activity',
+        }),
+      )
+      await upsertTimelineEntry(user, entry(1))
+
+      expect(await deleteBoostCardsOf(user, 'https://mastodon.example/notes/1')).toBe(2)
+      expect((await listTimelineEntries(user, 10)).map((e) => e.object_uri).sort()).toEqual([
+        'https://mastodon.example/notes/1',
+        'https://remote.example/users/bob/statuses/10/activity',
+      ])
+      expect(await deleteBoostCardsOf(user, 'https://mastodon.example/notes/1')).toBe(0)
+    })
+
+    test('getBoostCardAuthor / updateBoostCardsOf touch only cards of that Note by that author', async () => {
+      const user = getTestUser()
+      const ALICE_URI = 'https://mastodon.example/users/alice'
+      const NOTE = 'https://mastodon.example/notes/1'
+      await upsertTimelineEntry(user, boostOfAlice())
+      await upsertTimelineEntry(user, entry(1))
+      await upsertTimelineEntry(
+        user,
+        boostOfAlice({ boost_of_uri: 'https://mastodon.example/notes/2', object_uri: `${ANNOUNCE}-2` }),
+      )
+
+      expect(await getBoostCardAuthor(user, NOTE, ALICE_URI)).toMatchObject({
+        actor_uri: ALICE_URI,
+        handle: '@alice@mastodon.example',
+      })
+      expect(await getBoostCardAuthor(user, NOTE, 'https://elsewhere.example/users/eve')).toBeNull()
+      expect(await getBoostCardAuthor(user, 'https://mastodon.example/notes/9', ALICE_URI)).toBeNull()
+
+      const edit = {
+        content: '<p>edited</p>',
+        images: null,
+        structured: null,
+        url: 'https://mastodon.example/@alice/1e',
+      }
+      expect(await updateBoostCardsOf(user, NOTE, 'https://elsewhere.example/users/eve', edit)).toBe(0)
+      expect(await updateBoostCardsOf(user, NOTE, ALICE_URI, edit)).toBe(1)
+
+      const byObject = Object.fromEntries((await listTimelineEntries(user, 10)).map((e) => [e.object_uri, e]))
+      expect(byObject[ANNOUNCE]).toMatchObject({ content: '<p>edited</p>', url: edit.url })
+      expect(byObject[ANNOUNCE].published_at).toEqual(new Date('2026-07-01T12:00:00Z'))
+      expect(byObject[NOTE].content).toBe('<p>post 1</p>')
+      expect(byObject[`${ANNOUNCE}-2`].content).toBe('<p>post 1</p>')
+    })
+
+    test('updateBoostCardsOf keeps a card’s chart but drops a stale article on a failed enrich (#973)', async () => {
+      const user = getTestUser()
+      const ALICE_URI = 'https://mastodon.example/users/alice'
+      const activity = {
+        activityType: 'exercise',
+        kind: 'activity' as const,
+        metrics: [],
+        series: [],
+        startTime: '2026-07-01T08:00:00.000Z',
+      }
+      await upsertTimelineEntry(user, boostOfAlice({ structured: activity }))
+      await upsertTimelineEntry(
+        user,
+        boostOfAlice({
+          boost_of_uri: 'https://mastodon.example/notes/2',
+          object_uri: `${ANNOUNCE}-2`,
+          structured: { blocks: [], kind: 'article', title: 'Old title' },
+        }),
+      )
+      const edit = { content: '<p>edited</p>', images: null, structured: null, url: null }
+      await updateBoostCardsOf(user, 'https://mastodon.example/notes/1', ALICE_URI, edit)
+      await updateBoostCardsOf(user, 'https://mastodon.example/notes/2', ALICE_URI, edit)
+
+      const byObject = Object.fromEntries((await listTimelineEntries(user, 10)).map((e) => [e.object_uri, e]))
+      expect(byObject[ANNOUNCE].structured).toEqual(activity)
+      expect(byObject[`${ANNOUNCE}-2`].structured).toBeNull()
+    })
+
+    test('updateTimelineActorPresentation refreshes an actor as author AND as booster (#1057)', async () => {
+      const user = getTestUser()
+      const alice = 'https://mastodon.example/users/alice'
+      await upsertTimelineEntry(user, entry(1))
+      await upsertTimelineEntry(user, boostOfAlice())
+
+      // Bob boosted; he is nobody's author here, so only the boost line moves.
+      await updateTimelineActorPresentation(user, BOB, {
+        avatar_url: null,
+        display_name: 'Bob Renamed',
+        handle: '@bob@remote.example',
+      })
+      const afterBob = await listTimelineEntries(user, 10)
+      expect(afterBob.find((e) => e.object_uri === ANNOUNCE)?.boosted_by_display_name).toBe('Bob Renamed')
+      expect(afterBob.map((e) => e.display_name)).toEqual(['Alice', 'Alice'])
+
+      // Alice authored both rows (a boost card renders HER post), so both
+      // bylines move — and the booster's line is left alone.
+      await updateTimelineActorPresentation(user, alice, {
+        avatar_url: 'https://mastodon.example/avatars/alice2.png',
+        display_name: 'Alice Renamed',
+        handle: '@alice@mastodon.example',
+      })
+      const afterAlice = await listTimelineEntries(user, 10)
+      expect(afterAlice.map((e) => e.display_name)).toEqual(['Alice Renamed', 'Alice Renamed'])
+      expect(afterAlice.find((e) => e.object_uri === ANNOUNCE)?.boosted_by_display_name).toBe('Bob Renamed')
+    })
+
+    test('unfollowing drops the actor’s own posts and their boosts, but not others’ boosts of them', async () => {
+      const user = getTestUser()
+      const alice = 'https://mastodon.example/users/alice'
+      // alice's own post, bob's boost of alice's post, and alice's boost of
+      // somebody else's post.
+      await upsertTimelineEntry(user, entry(1))
+      await upsertTimelineEntry(user, boostOfAlice())
+      await upsertTimelineEntry(
+        user,
+        entry(2, {
+          actor_uri: 'https://third.example/users/carol',
+          boost_of_uri: 'https://third.example/notes/7',
+          boosted_by_actor_uri: alice,
+          object_uri: 'https://mastodon.example/users/alice/statuses/5/activity',
+        }),
+      )
+
+      expect(await deleteTimelineEntriesByActor(user, alice)).toBe(2)
+      // Bob's boost of alice's post survives — that's in the timeline because of
+      // the (still active) follow of Bob.
+      expect((await listTimelineEntries(user, 10)).map((e) => e.object_uri)).toEqual([ANNOUNCE])
+    })
+  })
+  describe('replies to one object (comments under an own post)', () => {
+    const TARGET = 'https://aurboda.example/users/fiddur/feed/11111111-1111-4111-8111-111111111111'
+    const OTHER = 'https://aurboda.example/users/fiddur/feed/22222222-2222-4222-8222-222222222222'
+
+    test('lists a target’s replies oldest-first, ignoring other targets and top-level posts', async () => {
+      const user = getTestUser()
+      const second = await upsertTimelineEntry(
+        user,
+        entry(2, { in_reply_to_uri: TARGET, published_at: new Date('2026-07-01T11:00:00Z') }),
+      )
+      const first = await upsertTimelineEntry(
+        user,
+        entry(1, { in_reply_to_uri: TARGET, published_at: new Date('2026-07-01T10:00:00Z') }),
+      )
+      await upsertTimelineEntry(user, entry(3, { in_reply_to_uri: OTHER }))
+      await upsertTimelineEntry(user, entry(4))
+
+      const replies = await listTimelineRepliesTo(user, TARGET, 100)
+      expect(replies.map((r) => r.id)).toEqual([first.id, second.id])
+    })
+
+    test('respects the limit', async () => {
+      const user = getTestUser()
+      await upsertTimelineEntry(user, entry(1, { in_reply_to_uri: TARGET }))
+      await upsertTimelineEntry(user, entry(2, { in_reply_to_uri: TARGET }))
+      expect(await listTimelineRepliesTo(user, TARGET, 1)).toHaveLength(1)
+    })
+
+    test('past the limit it keeps the LATEST replies, still oldest first (#1109)', async () => {
+      const user = getTestUser()
+      const base = Date.parse('2026-07-01T10:00:00Z')
+      for (let i = 0; i < 105; i++) {
+        await upsertTimelineEntry(user, {
+          ...entry(1),
+          in_reply_to_uri: TARGET,
+          object_uri: `https://mastodon.example/notes/reply-${i}`,
+          published_at: new Date(base + i * 60_000),
+        })
+      }
+
+      const replies = await listTimelineRepliesTo(user, TARGET, 100)
+      expect(replies.map((r) => r.object_uri)).toEqual(
+        Array.from({ length: 100 }, (_, i) => `https://mastodon.example/notes/reply-${i + 5}`),
+      )
+    })
+
+    test('countTimelineRepliesTo tallies many targets in one query, omitting empty ones', async () => {
+      const user = getTestUser()
+      await upsertTimelineEntry(user, entry(1, { in_reply_to_uri: TARGET }))
+      await upsertTimelineEntry(user, entry(2, { in_reply_to_uri: TARGET }))
+      await upsertTimelineEntry(user, entry(3, { in_reply_to_uri: OTHER }))
+
+      const counts = await countTimelineRepliesTo(user, [TARGET, OTHER, `${OTHER}x`])
+      expect(new Map(counts.map((c) => [c.in_reply_to_uri, c.count]))).toEqual(
+        new Map([
+          [TARGET, 2],
+          [OTHER, 1],
+        ]),
+      )
+    })
+
+    test('a boost of a reply is neither listed nor counted as a comment (#1108)', async () => {
+      const user = getTestUser()
+      const reply = await upsertTimelineEntry(user, entry(1, { in_reply_to_uri: TARGET }))
+      // A followee boosting that reply copies its in_reply_to_uri, so without
+      // the boost filter the same comment would show (and count) twice.
+      await upsertTimelineEntry(
+        user,
+        entry(2, {
+          boost_of_uri: 'https://mastodon.example/notes/1',
+          boosted_by_actor_uri: 'https://remote.example/users/bob',
+          in_reply_to_uri: TARGET,
+          object_uri: 'https://remote.example/users/bob/statuses/9/activity',
+        }),
+      )
+
+      expect((await listTimelineRepliesTo(user, TARGET, 100)).map((r) => r.id)).toEqual([reply.id])
+      expect(await countTimelineRepliesTo(user, [TARGET])).toEqual([{ count: 1, in_reply_to_uri: TARGET }])
+    })
+
+    test('countTimelineRepliesTo short-circuits on an empty list', async () => {
+      expect(await countTimelineRepliesTo(getTestUser(), [])).toEqual([])
+    })
+  })
+})

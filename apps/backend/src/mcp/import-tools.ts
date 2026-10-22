@@ -1,8 +1,4 @@
-/**
- * MCP tools for triggering and inspecting bulk imports of the central
- * shared food library. Admin-only — non-admin callers see a permission
- * error.
- */
+/** Admin-only — non-admin callers see a permission error. */
 
 import { importJobsQuerySchema } from '@aurboda/api-spec'
 import { z } from 'zod'

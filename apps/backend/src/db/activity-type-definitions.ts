@@ -1,9 +1,8 @@
-/**
- * Activity type definition CRUD operations.
- */
 import type { ActivityTypeDefinition, DataSchemaDefinition, DisplayCategory } from '@aurboda/api-spec'
 
-import { query } from './connection.ts'
+import type { Queryable } from './pool.ts'
+
+import { query, withUserTransaction } from './connection.ts'
 
 const mapRow = (row: Record<string, unknown>): ActivityTypeDefinition => ({
   aliases: (row.aliases as string[]) ?? [],
@@ -45,9 +44,7 @@ export const activityTypeExists = async (user: string, name: string): Promise<bo
   return result.rows.length > 0
 }
 
-/**
- * Ensure aliases always include the lowercased name.
- */
+/** Ensure aliases always include the lowercased name. */
 const normalizeAliases = (name: string, aliases: string[] = []): string[] => {
   const lowerName = name.toLowerCase()
   const uniqueAliases = new Set(aliases.map((a) => a.toLowerCase()))
@@ -96,10 +93,7 @@ async function wouldCreateCycle(user: string, typeName: string, candidateParent:
   return result.rows.length > 0
 }
 
-/**
- * Return all descendant type names for a given parent (recursive).
- * Does NOT include the parent itself.
- */
+/** Does NOT include the parent itself. */
 export const getDescendantTypes = async (user: string, parentName: string): Promise<string[]> => {
   const result = await query(
     user,
@@ -247,10 +241,6 @@ export const updateActivityTypeDefinition = async (
   return mapRow(result.rows[0])
 }
 
-/**
- * Resolve a free-form string to an activity type definition by checking aliases.
- * Returns the definition name if found, or null if no match.
- */
 export const resolveActivityTypeByAlias = async (user: string, alias: string): Promise<string | null> => {
   const lowerAlias = alias.toLowerCase()
   const result = await query(
@@ -262,16 +252,12 @@ export const resolveActivityTypeByAlias = async (user: string, alias: string): P
   return result.rows[0].name as string
 }
 
-/**
- * Resolve or create an activity type definition from a display name.
- * Used during sync to ensure all incoming types get a definition.
- */
+/** Used during sync to ensure all incoming types get a definition. */
 export const resolveOrCreateActivityType = async (
   user: string,
   displayName: string,
   displayCategory = 'other',
 ): Promise<string> => {
-  // Try direct name match first
   const snakeName =
     displayName
       .replaceAll(/[[\]()]/g, '')
@@ -287,11 +273,9 @@ export const resolveOrCreateActivityType = async (
   const existing = await getActivityTypeDefinition(user, safeName)
   if (existing) return existing.name
 
-  // Try alias match
   const aliasMatch = await resolveActivityTypeByAlias(user, displayName)
   if (aliasMatch) return aliasMatch
 
-  // Create new definition
   const created = await insertActivityTypeDefinition(user, {
     aliases: [displayName.toLowerCase()],
     display_category: displayCategory,
@@ -301,9 +285,6 @@ export const resolveOrCreateActivityType = async (
   return created.name
 }
 
-/**
- * Look up the Health Connect exercise type int for an activity type.
- */
 export const getHealthConnectExerciseType = async (
   user: string,
   activityType: string,
@@ -317,9 +298,6 @@ export const getHealthConnectExerciseType = async (
   return (result.rows[0].health_connect_exercise_type as number) ?? null
 }
 
-/**
- * Resolve an activity type from a Health Connect exercise type int.
- */
 export const resolveActivityTypeFromHcExerciseType = async (
   user: string,
   hcExerciseType: number,
@@ -333,10 +311,7 @@ export const resolveActivityTypeFromHcExerciseType = async (
   return result.rows[0].name as string
 }
 
-/**
- * Merge a custom activity type into another activity type.
- * Merges aliases, reassigns all activities, updates deduction rules, then deletes the source.
- */
+/** Merges aliases, reassigns all activities, updates deduction rules, then deletes the source. */
 export const mergeActivityTypeDefinition = async (
   user: string,
   sourceName: string,
@@ -347,10 +322,24 @@ export const mergeActivityTypeDefinition = async (
   target: ActivityTypeDefinition
 } | null> => {
   if (sourceName === targetName) return null
+  return withUserTransaction(user, (tx) => mergeInTransaction(tx, sourceName, targetName))
+}
 
-  // Get source — must exist and not be built-in
+/**
+ * All-or-nothing, so a failure part-way can't leave a half-merged type behind: aliases merged
+ * and activities moved, but the source definition still there.
+ */
+const mergeInTransaction = async (
+  tx: Queryable,
+  sourceName: string,
+  targetName: string,
+): Promise<{
+  activities_reassigned: number
+  deduction_rules_updated: number
+  target: ActivityTypeDefinition
+} | null> => {
   const sourceResult = await query(
-    user,
+    tx,
     `SELECT ${SELECT_COLS} FROM activity_type_definitions WHERE name = $1`,
     [sourceName],
   )
@@ -358,43 +347,53 @@ export const mergeActivityTypeDefinition = async (
   const sourceDef = mapRow(sourceResult.rows[0])
   if (sourceDef.is_builtin) return null
 
-  // Get target — must exist
   const targetResult = await query(
-    user,
+    tx,
     `SELECT ${SELECT_COLS} FROM activity_type_definitions WHERE name = $1`,
     [targetName],
   )
   if (targetResult.rows.length === 0) return null
   const targetDef = mapRow(targetResult.rows[0])
 
-  // Merge aliases from source into target
   const mergedAliases = normalizeAliases(targetDef.name, [
     ...(targetDef.aliases ?? []),
     ...(sourceDef.aliases ?? []),
   ])
-  await query(user, `UPDATE activity_type_definitions SET aliases = $1, updated_at = NOW() WHERE name = $2`, [
+  await query(tx, `UPDATE activity_type_definitions SET aliases = $1, updated_at = NOW() WHERE name = $2`, [
     mergedAliases,
     targetName,
   ])
 
-  // Reassign all activities from source to target
-  const activitiesResult = await query(
-    user,
-    `UPDATE activities SET activity_type = $1 WHERE activity_type = $2 AND deleted_at IS NULL`,
+  // Soft-deleted rows move too: they still reference the source definition (blocking its delete
+  // below), and a restored activity should land on a type that exists. A deleted row that would
+  // collide with the target's (source, type, start_time) unique index is dropped instead: the
+  // target already has that activity.
+  await query(
+    tx,
+    `DELETE FROM activities a
+      WHERE a.activity_type = $2 AND a.deleted_at IS NOT NULL AND a.external_id IS NULL
+        AND EXISTS (
+          SELECT 1 FROM activities b
+           WHERE b.activity_type = $1 AND b.source = a.source AND b.start_time = a.start_time
+             AND b.external_id IS NULL
+        )`,
     [targetName, sourceName],
   )
-  const activities_reassigned = activitiesResult.rowCount ?? 0
+  const activitiesResult = await query(
+    tx,
+    `UPDATE activities SET activity_type = $1 WHERE activity_type = $2 RETURNING deleted_at IS NULL AS live`,
+    [targetName, sourceName],
+  )
+  const activities_reassigned = activitiesResult.rows.filter((r) => r.live === true).length
 
-  // Reparent any children of the source to the target
   await query(
-    user,
+    tx,
     `UPDATE activity_type_definitions SET parent_type = $1, updated_at = NOW() WHERE parent_type = $2`,
     [targetName, sourceName],
   )
 
-  // Update deduction rules: output_activity_type
   const outputResult = await query(
-    user,
+    tx,
     `UPDATE deduction_rules SET output_activity_type = $1, updated_at = NOW() WHERE output_activity_type = $2`,
     [targetName, sourceName],
   )
@@ -402,7 +401,7 @@ export const mergeActivityTypeDefinition = async (
 
   // Update deduction rules: conditions JSONB where kind = 'activity' references the source type
   const conditionsResult = await query(
-    user,
+    tx,
     `UPDATE deduction_rules
      SET conditions = (
        SELECT jsonb_agg(
@@ -423,23 +422,27 @@ export const mergeActivityTypeDefinition = async (
   )
   deduction_rules_updated += conditionsResult.rowCount ?? 0
 
-  // Delete source definition
-  await query(user, `DELETE FROM activity_type_definitions WHERE name = $1 AND is_builtin = false`, [
+  // Routes carry the type of their runs and reference the definition, so they move
+  // with the activities; left behind they would block the delete and, for a
+  // built-in source, stop matching the retyped runs.
+  await query(tx, `UPDATE routes SET activity_type = $1, updated_at = NOW() WHERE activity_type = $2`, [
+    targetName,
     sourceName,
   ])
 
-  // Return updated target
-  const updated = await getActivityTypeDefinition(user, targetName)
-  if (!updated) return null
+  await query(tx, `DELETE FROM activity_type_definitions WHERE name = $1 AND is_builtin = false`, [
+    sourceName,
+  ])
 
-  return { activities_reassigned, deduction_rules_updated, target: updated }
+  const updated = await query(tx, `SELECT ${SELECT_COLS} FROM activity_type_definitions WHERE name = $1`, [
+    targetName,
+  ])
+  if (updated.rows.length === 0) return null
+
+  return { activities_reassigned, deduction_rules_updated, target: mapRow(updated.rows[0]) }
 }
 
-/**
- * Rename an activity type's snake_case name.
- * Updates the definition, reassigns all activities, and updates deduction rules.
- * Only allowed for custom (non-built-in) types. New name must not already exist.
- */
+/** Only allowed for custom (non-built-in) types. New name must not already exist. */
 export const renameActivityTypeDefinition = async (
   user: string,
   oldName: string,
@@ -451,7 +454,6 @@ export const renameActivityTypeDefinition = async (
 } | null> => {
   if (oldName === newName) return null
 
-  // Verify source exists and is not built-in
   const sourceResult = await query(
     user,
     `SELECT ${SELECT_COLS} FROM activity_type_definitions WHERE name = $1`,
@@ -461,7 +463,6 @@ export const renameActivityTypeDefinition = async (
   const sourceDef = mapRow(sourceResult.rows[0])
   if (sourceDef.is_builtin) return null
 
-  // Verify new name doesn't already exist
   const existingResult = await query(
     user,
     `SELECT 1 FROM activity_type_definitions WHERE name = $1 LIMIT 1`,
@@ -469,7 +470,6 @@ export const renameActivityTypeDefinition = async (
   )
   if (existingResult.rows.length > 0) return null
 
-  // Count affected rows before rename (for return values)
   const activitiesCount = await query(
     user,
     `SELECT COUNT(*) AS count FROM activities WHERE activity_type = $1 AND deleted_at IS NULL`,

@@ -1,6 +1,3 @@
-/**
- * Productivity / screentime category table SQL.
- */
 export const productivityTables: Record<string, string> = {
   // Productivity data (RescueTime, ActivityWatch, etc.)
   productivity: `

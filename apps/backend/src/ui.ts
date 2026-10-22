@@ -52,12 +52,10 @@ export const getTimeline = async (oura: ReturnType<typeof ouraClient>) => {
     .append('g')
     .attr('transform', `translate(${margin.left},${margin.top})`)
 
-  // 2. Create Scales
   const xScale = d3.scaleTime().domain([start, now]).range([0, width])
 
   const yScale = d3.scaleLinear().domain([45, 190]).range([height, 0])
 
-  // 3. Draw Axes
   svg
     .append('g')
     .attr('transform', `translate(0,${height})`)
@@ -70,13 +68,10 @@ export const getTimeline = async (oura: ReturnType<typeof ouraClient>) => {
 
   svg.append('g').call(d3.axisLeft(yScale))
 
-  // 4. Draw Data Layers
-
   const heartRates = await getTimeSeries(user, 'heart_rate', start, end)
   const sleepSessions = await getActivities(user, 'sleep', start, end)
   const exerciseSessions = await getActivities(user, 'exercise', start, end)
 
-  // -- Sleep spans
   sleepSessions.forEach(({ start_time, end_time }) => {
     if (!end_time) return
     svg
@@ -132,12 +127,10 @@ export const getTimeline = async (oura: ReturnType<typeof ouraClient>) => {
       .attr('width', xScale(endTime) - xScale(startTime))
       .attr('height', trackHeight)
       .attr('fill', placeColors[region] || 'lightgray')
-    //.attr('opacity', 0.2)
   })
 
   // (repeat for exercises with green color)
 
-  // -- Heart Rate Line
   const line = d3
     .line<[Date, number]>()
     .x(([time]) => xScale(new Date(time)))
@@ -150,7 +143,6 @@ export const getTimeline = async (oura: ReturnType<typeof ouraClient>) => {
     .attr('stroke-width', 1.5)
     .attr('d', line)
 
-  // -- Tags
   tags.forEach(({ start_time, end_time }) => {
     if (end_time) {
       svg
@@ -159,7 +151,6 @@ export const getTimeline = async (oura: ReturnType<typeof ouraClient>) => {
         .attr('y', 0)
         .attr('width', xScale(end_time) - xScale(start_time))
         .attr('height', height)
-        //.attr('fill', 'black')
         .attr('stroke', 'black')
         .attr('stroke-dasharray', '4')
         .attr('opacity', 0.2)

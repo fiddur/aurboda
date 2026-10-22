@@ -33,6 +33,104 @@ const formatExpiryTime = (expiresAt: Date): string => {
 }
 
 // eslint-disable-next-line complexity -- simple form with save/clear handlers
+function GravlApiSection() {
+  const queryClient = useQueryClient()
+  const { data: settings } = useQuery({
+    queryFn: fetchAdminSettings,
+    queryKey: ['adminSettings'],
+  })
+
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>({ status: 'idle' })
+  const [clientId, setClientId] = useState('')
+  const [clientSecret, setClientSecret] = useState('')
+
+  const idSet = settings?.gravl_client_id_set ?? false
+  const secretSet = settings?.gravl_client_secret_set ?? false
+  const redirectUri = settings?.gravl_redirect_uri
+
+  const saveGravl = useCallback(
+    async (params: { gravl_client_id?: string | null; gravl_client_secret?: string | null }) => {
+      setSaveStatus({ status: 'saving' })
+      try {
+        const result = await updateAdminSettings(params)
+        queryClient.setQueryData(['adminSettings'], result)
+        setClientId('')
+        setClientSecret('')
+        setSaveStatus({ status: 'saved', time: new Date() })
+      } catch (err) {
+        setSaveStatus({ error: getErrorMessage(err), status: 'error' })
+      }
+    },
+    [queryClient],
+  )
+
+  const handleSave = useCallback(() => {
+    if (!clientId && !clientSecret) return
+    saveGravl({
+      ...(clientId ? { gravl_client_id: clientId } : {}),
+      ...(clientSecret ? { gravl_client_secret: clientSecret } : {}),
+    })
+  }, [clientId, clientSecret, saveGravl])
+
+  const handleClear = useCallback(
+    () => saveGravl({ gravl_client_id: null, gravl_client_secret: null }),
+    [saveGravl],
+  )
+
+  return (
+    <div class="form-field">
+      <div class="section-header-row">
+        <label>Gravl API</label>
+        <SaveStatusIndicator state={saveStatus} />
+      </div>
+      {(idSet || secretSet) && (
+        <p class={`connected-status${idSet && secretSet ? '' : ' warning'}`}>
+          {idSet && secretSet ? 'Configured' : 'Partially configured'}
+        </p>
+      )}
+      <div class="api-key-input-row">
+        <input
+          type="text"
+          value={clientId}
+          onInput={(e) => setClientId((e.target as HTMLInputElement).value)}
+          placeholder={idSet ? 'Enter new client ID to update' : 'Client ID (gci_…)'}
+        />
+      </div>
+      <div class="api-key-input-row">
+        <input
+          type="password"
+          value={clientSecret}
+          onInput={(e) => setClientSecret((e.target as HTMLInputElement).value)}
+          placeholder={secretSet ? 'Enter new client secret to update' : 'Client Secret (gcs_…)'}
+        />
+        {(idSet || secretSet) && (
+          <button type="button" class="clear-button" onClick={handleClear}>
+            Clear
+          </button>
+        )}
+      </div>
+      <button
+        type="button"
+        class="generate-button"
+        onClick={handleSave}
+        disabled={!clientId && !clientSecret}
+      >
+        Save Gravl Credentials
+      </button>
+      <p class="field-description">
+        Optional: lets users connect Gravl with OAuth instead of pasting a personal token. Registration is by
+        email to developers@gravl.ai (see{' '}
+        <a href="https://gravl.ai/developers/oauth" target="_blank" rel="noopener noreferrer">
+          gravl.ai/developers/oauth
+        </a>
+        ); register the redirect URI <code>{redirectUri ?? '…'}</code> and request the{' '}
+        <code>workouts:read</code> scope.
+      </p>
+    </div>
+  )
+}
+
+// eslint-disable-next-line complexity -- simple form with save/clear handlers
 function StravaApiSection() {
   const queryClient = useQueryClient()
   const { data: settings } = useQuery({
@@ -328,6 +426,8 @@ function IntegrationsSection() {
       )}
 
       <StravaApiSection />
+
+      <GravlApiSection />
     </section>
   )
 }

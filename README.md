@@ -26,21 +26,23 @@ Aurboda's reach is the point, so here's what it ingests today:
 
 <!-- BEGIN:data-sources -->
 
-| Source                                               | What it provides                                                                                       | How                              |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | -------------------------------- |
-| [**Android Health Connect**](docs/health-connect.md) | Heart rate, HRV, sleep, exercise (80+ types), steps, weight, SpO2, VO2 max, calories, and more         | Push from Android app            |
-| **BLE Sensors**                                      | Real-time heart rate, HRV (Polar H10, etc.) and steps (Zwift RunPod, etc.)                             | Live via Android app             |
-| [**Oura Ring**](docs/oura.md)                        | Sleep stages/scores, readiness, resilience, cardiovascular age, HRV, heart rate, meditation, tags      | Pull (API) + Push (webhooks)     |
-| [**Garmin Connect**](docs/garmin.md)                 | Daily summary, HR, HRV, sleep, stress, body battery, activities, SpO2, respiration, training readiness | Pull (session-based)             |
-| [**Strava**](docs/strava.md)                         | Activities with per-second heart rate, GPS routes, cadence, and power                                  | Pull (API) + Push (webhooks)     |
-| [**OwnTracks**](docs/owntracks.md)                   | GPS locations, geofences, place visits                                                                 | Push (HTTP mode)                 |
-| [**RescueTime**](docs/rescuetime.md)                 | App/website usage, productivity scores, categories                                                     | Pull (API)                       |
-| [**ActivityWatch**](docs/activitywatch.md)           | App/window usage per device (desktop and Android)                                                      | Push (agent script)              |
-| [**Last.fm**](docs/lastfm.md)                        | Music scrobbles with auto-generated tags from configurable rules                                       | Pull (API)                       |
-| [**Calendars (ICS)**](docs/calendars.md)             | Calendar events imported as tags (Google Calendar, Outlook, iCloud, Nextcloud, etc.)                   | Pull (ICS fetch)                 |
-| **Cronometer**                                       | Meals with full per-item macros and ~50 micronutrients                                                 | CSV import                       |
-| [**Livsmedelsverket**](docs/livsmedelsverket.md)     | Canonical food library: 2,500+ Swedish foods with macros + micros (per 100 g)                          | One-shot bulk import (UI button) |
-| **Manual Entry**                                     | Any metric, tag, activity, meal, or note                                                               | Web UI, REST API, or MCP         |
+| Source                                               | What it provides                                                                                       | How                                    |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | -------------------------------------- |
+| [**Android Health Connect**](docs/health-connect.md) | Heart rate, HRV, sleep, exercise (80+ types), steps, weight, SpO2, VO2 max, calories, and more         | Push from Android app                  |
+| **BLE Sensors**                                      | Real-time heart rate, HRV (Polar H10, etc.) and steps (Zwift RunPod, etc.)                             | Live via Android app                   |
+| [**Oura Ring**](docs/oura.md)                        | Sleep stages/scores, readiness, resilience, cardiovascular age, HRV, heart rate, meditation, tags      | Pull (API) + Push (webhooks)           |
+| [**Garmin Connect**](docs/garmin.md)                 | Daily summary, HR, HRV, sleep, stress, body battery, activities, SpO2, respiration, training readiness | Pull (session-based)                   |
+| [**Strava**](docs/strava.md)                         | Activities with per-second heart rate, GPS routes, cadence, and power                                  | Pull (API) + Push (webhooks)           |
+| [**Gravl**](docs/gravl.md)                           | Strength workouts with per-set exercise, weight, reps, RPE and set type                                | Pull (API) + on Health Connect arrival |
+| [**OwnTracks**](docs/owntracks.md)                   | GPS locations, geofences, place visits                                                                 | Push (HTTP mode)                       |
+| [**RescueTime**](docs/rescuetime.md)                 | App/website usage, productivity scores, categories                                                     | Pull (API)                             |
+| [**ActivityWatch**](docs/activitywatch.md)           | App/window usage per device (desktop and Android)                                                      | Push (agent script)                    |
+| [**Last.fm**](docs/lastfm.md)                        | Music scrobbles with auto-generated tags from configurable rules                                       | Pull (API)                             |
+| [**Media players (MPRIS)**](docs/media.md)           | Video, music and podcast plays with URL, played time and track length (Linux desktop)                  | Push (logger script)                   |
+| [**Calendars (ICS)**](docs/calendars.md)             | Calendar events imported as tags (Google Calendar, Outlook, iCloud, Nextcloud, etc.)                   | Pull (ICS fetch)                       |
+| **Cronometer**                                       | Meals with full per-item macros and ~50 micronutrients                                                 | CSV import                             |
+| [**Livsmedelsverket**](docs/livsmedelsverket.md)     | Canonical food library: 2,500+ Swedish foods with macros + micros (per 100 g)                          | One-shot bulk import (UI button)       |
+| **Manual Entry**                                     | Any metric, tag, activity, meal, or note                                                               | Web UI, REST API, or MCP               |
 
 <!-- END:data-sources -->
 
@@ -50,12 +52,12 @@ See [docs/data-sources.md](docs/data-sources.md) for setup overview.
 
 Everything above feeds a common data model, so every feature works across every source:
 
-- **Explore** -- [timeline](docs/features/timeline.md), [dashboards](docs/features/dashboard.md), and [maps of where you've been](docs/features/places.md)
+- **Explore** -- [timeline](docs/features/timeline.md), [dashboards](docs/features/dashboard.md), [maps of where you've been](docs/features/places.md), and full-resolution [activity tracks, routes and segments](docs/features/routes-and-segments.md)
 - **Analyze** -- [trends with EMA smoothing](docs/features/trends.md), [correlations](docs/features/correlations.md) (Pearson, chi-squared, relative risk), and [goals](docs/features/goals.md)
 - **Track health** -- [sleep](docs/features/sleep.md), [HR zones](docs/features/hr-zones.md), [training load](docs/features/training-load.md), [lab results](docs/features/lab-reports.md), and [active-calorie computation](docs/features/calories.md)
 - **Organize life** -- [activities](docs/features/activity-types.md), [meals & nutrition](docs/features/meals.md), places, and [screen time](docs/features/screentime-categories.md)
 - **Automate** -- [deduction rules](docs/features/deduction-rules.md) that create activities from your data, plus custom activity types
-- **Share** -- read-only [public dashboards and federated challenges](docs/features/sharing.md) across Aurboda instances
+- **Share** -- read-only [public dashboards and federated challenges](docs/features/sharing.md) across Aurboda instances, plus a [federated activity feed](docs/features/feed.md) followable from Mastodon
 - **AI access** -- full query access from Claude or any [MCP](docs/mcp-server.md) client (60+ tools)
 
 Each links to detailed docs, and the sections below walk through the highlights with screenshots.
@@ -192,6 +194,12 @@ Publish read-only **shared dashboards** (like the one above) under your own publ
 
 More in the [Sharing](docs/features/sharing.md) and [Challenges](docs/features/challenges.md) docs.
 
+## Federated Activity Feed
+
+Publish an activity -- a run, a night's sleep, a meditation -- to your **ActivityPub** feed, choosing **per post exactly which data leaves the instance**: which scalar summaries (duration, distance, avg/max HR, HR zones, calories), whether to opt into sharing the full high-resolution series, and the audience (public / unlisted / followers-only). Each user is a fediverse actor, so anyone on Mastodon can search `@you@your-host`, **Follow**, and see your posts; editing or unsharing federates an `Update` or `Delete`. Share from any activity's detail page and manage everything on the **Feed** page.
+
+More in the [Federated Feed docs](docs/features/feed.md).
+
 ## Android App
 
 The companion Android app syncs data from Health Connect (40+ record types including heart rate, HRV, sleep, exercise, steps, weight, SpO2, and more). It also connects to BLE heart rate monitors (Polar H10, etc.) and step sensors (Zwift RunPod, etc.) for real-time tracking.
@@ -256,6 +264,9 @@ Replace `:latest` with `:develop` in docker-compose.yml to use development build
 ## API Documentation
 
 Interactive API documentation is available at https://aurboda.net/apispec (develop branch version).
+
+String input to the REST API and the MCP tools is trimmed of surrounding whitespace, except passwords,
+patterns and markdown; see [Input conventions](docs/mcp-server.md#input-conventions).
 
 ---
 

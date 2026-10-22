@@ -1,0 +1,170 @@
+/**
+ * Shared metric-option lists for the federated feed UI (share dialog + feed
+ * view), so the labels a post is created with match the labels it's displayed
+ * with.
+ */
+import type { FeedPost, FeedVisibility, MetricType, ShareActivityBody } from '@aurboda/api-spec'
+
+/**
+ * Scalar summaries the backend knows how to resolve (see
+ * services/activitypub/scalars.ts). `source` is the time-series metric a
+ * summary is derived from — used to offer only metrics the activity actually
+ * has. `duration` has no source (it comes from the activity's window).
+ * `summaryField` is the `activity.data` key the backend falls back to when the
+ * window has no `source` series (Garmin/Strava store distance and calories only
+ * as summary fields).
+ */
+export const SUMMARY_METRICS: { key: string; label: string; source?: MetricType; summaryField?: string }[] = [
+  { key: 'duration', label: 'Duration' },
+  { key: 'distance', label: 'Distance', source: 'distance', summaryField: 'distance' },
+  { key: 'heart_rate_avg', label: 'Avg HR', source: 'heart_rate' },
+  { key: 'heart_rate_max', label: 'Max HR', source: 'heart_rate' },
+  { key: 'hr_zone_minutes', label: 'HR zones', source: 'heart_rate' },
+  { key: 'calories', label: 'Calories', source: 'calories_active', summaryField: 'calories' },
+  { key: 'stress_avg', label: 'Avg stress', source: 'stress_level' },
+]
+
+const isPositiveNumber = (v: unknown): boolean => typeof v === 'number' && Number.isFinite(v) && v > 0
+
+/**
+ * The summaries to offer for an activity: those whose source series has data in
+ * the window (`present`), or — for distance/calories — whose summary field the
+ * activity carries as a positive number, plus `keep` (what the post already
+ * shares). Every summary while `present` is unknown (loading, or no window).
+ */
+export const shareableSummaryOptions = (
+  present: ReadonlySet<string> | undefined,
+  activityData: Record<string, unknown> | undefined,
+  keep: readonly string[] = [],
+): typeof SUMMARY_METRICS => {
+  if (!present) return SUMMARY_METRICS
+  return SUMMARY_METRICS.filter(
+    (m) =>
+      m.source === undefined ||
+      present.has(m.source) ||
+      (m.summaryField !== undefined && isPositiveNumber(activityData?.[m.summaryField])) ||
+      keep.includes(m.key),
+  )
+}
+
+/** High-resolution series a user can explicitly opt into sharing. */
+export const SERIES_METRICS: { key: MetricType; label: string }[] = [
+  { key: 'heart_rate', label: 'Heart rate' },
+  { key: 'speed', label: 'Speed' },
+  { key: 'power', label: 'Power' },
+  { key: 'elevation', label: 'Elevation' },
+  { key: 'run_cadence', label: 'Cadence' },
+  { key: 'stress_level', label: 'Stress' },
+]
+
+export const DEFAULT_SUMMARY = ['duration', 'distance', 'heart_rate_avg', 'heart_rate_max', 'calories']
+
+/**
+ * Summaries whose source is cumulative and therefore NEVER drawn on the
+ * activity chart (`EXCLUDED_METRICS`) — mirroring the chart can't represent the
+ * user's intent about them, yet they're the staple share stats (a run without
+ * Distance reads wrong). Always prechecked; the dialog only offers (and
+ * `buildShareBody` only sends) metrics the activity actually has, so these
+ * silently drop out for activities without the data.
+ */
+const CUMULATIVE_STAPLES = ['distance', 'calories']
+
+/**
+ * Seed the share dialog's initial selection from the metrics currently shown on
+ * the activity's chart: `duration` and the cumulative staples (always) plus
+ * every summary whose source metric is on the chart, and the full series for
+ * each charted metric. Falls back to {@link DEFAULT_SUMMARY} (no series) when
+ * the chart selection is unknown.
+ */
+export const defaultsFromChart = (chartMetrics?: string[]): { summary: string[]; series: MetricType[] } => {
+  if (!chartMetrics || chartMetrics.length === 0) return { series: [], summary: DEFAULT_SUMMARY }
+  return {
+    series: SERIES_METRICS.filter((m) => chartMetrics.includes(m.key)).map((m) => m.key),
+    // The staples are excluded from the mirror pass so a charted `distance`
+    // (possible via a custom chart selection) isn't prechecked twice.
+    summary: [
+      'duration',
+      ...CUMULATIVE_STAPLES,
+      ...SUMMARY_METRICS.filter(
+        (m) => m.source && chartMetrics.includes(m.source) && !CUMULATIVE_STAPLES.includes(m.key),
+      ).map((m) => m.key),
+    ],
+  }
+}
+
+/**
+ * The heart-rate chart image and the heart-rate *series* are the same data in two
+ * formats, so the share dialog offers a single heart-rate control. Opting into the
+ * heart-rate series therefore also attaches the rendered chart image — an
+ * interactive native chart for Aurboda followers plus a PNG for Mastodon and other
+ * peers. `include_chart` is derived here, never toggled separately.
+ */
+const HEART_RATE: MetricType = 'heart_rate'
+
+/**
+ * Which heart-rate series a post starts with in edit mode. A post that attached
+ * the chart image but predates the unified control (no `heart_rate` in
+ * `series_metrics`) is still treated as sharing heart rate, so the one control
+ * shows checked — and re-saving backfills the series the image already implied.
+ */
+export const initialSeriesSelection = (
+  post: Pick<FeedPost, 'include_chart' | 'series_metrics'>,
+): MetricType[] => {
+  const keys = SERIES_METRICS.map((m) => m.key).filter((k) => post.series_metrics.includes(k))
+  if (post.include_chart && !keys.includes(HEART_RATE)) keys.push(HEART_RATE)
+  return keys
+}
+
+/** The dialog's current selection, resolved against what the activity can offer. */
+export interface ShareSelection {
+  summary: Set<string>
+  series: Set<MetricType>
+  includeMap: boolean
+  visibility: FeedVisibility
+  /** Personal message (plain text) — see `buildShareBody` for the clear-on-edit semantics. */
+  message: string
+  summaryOptions: readonly { key: string }[]
+  seriesOptions: readonly { key: MetricType }[]
+  canChart: boolean
+  canMap: boolean
+}
+
+/**
+ * Build the share/update request body from the dialog selection. Only metrics the
+ * dialog actually offered are sent (unavailable ones are dropped, not defaulted),
+ * and `include_chart` follows the heart-rate series toggle — the chart image is
+ * the image format of that one shared series, so the two can't diverge.
+ */
+export const buildShareBody = (sel: ShareSelection): ShareActivityBody => ({
+  include_chart: sel.canChart && sel.series.has(HEART_RATE),
+  include_map: sel.canMap && sel.includeMap,
+  included_metrics: sel.summaryOptions.map((m) => m.key).filter((k) => sel.summary.has(k)),
+  // Always sent (never omitted): on an edit, an emptied field must CLEAR the
+  // stored message — the backend maps whitespace-only to null.
+  message: sel.message,
+  series_metrics: sel.seriesOptions.map((m) => m.key).filter((k) => sel.series.has(k)),
+  visibility: sel.visibility,
+})
+
+export type SharePreviewSelection = Pick<ShareActivityBody, 'included_metrics' | 'message'>
+
+/**
+ * The part of a share body the preview route reads: it renders the summary and
+ * message only, so series, image and visibility toggles must not refetch it.
+ */
+export const previewSelection = (body: ShareActivityBody): SharePreviewSelection => ({
+  included_metrics: body.included_metrics,
+  message: body.message,
+})
+
+/**
+ * QuantPub `0.2` wire keys are lowerCamelCase (`heartRateAvg`); Aurboda's own
+ * keys are snake_case. Idempotent on a snake_case key.
+ */
+export const fromWireKey = (key: string): string => key.replaceAll(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)
+
+export const summaryLabel = (key: string): string =>
+  SUMMARY_METRICS.find((m) => m.key === fromWireKey(key))?.label ?? key
+
+export const seriesLabel = (key: string): string =>
+  SERIES_METRICS.find((m) => m.key === fromWireKey(key))?.label ?? key

@@ -1,14 +1,8 @@
 import type { UserSettings } from './types.ts'
 
-/**
- * User settings storage and retrieval.
- */
 import { query } from './connection.ts'
 
-// ============================================================================
-// One-time migration from camelCase to snake_case JSONB keys
-// ============================================================================
-
+// One-time migration from camelCase to snake_case JSONB keys.
 const topLevelRenames: Record<string, string> = {
   birthDate: 'birth_date',
   customMetrics: 'custom_metrics',
@@ -84,12 +78,7 @@ export const migrateSettingsToSnakeCase = (
   return migrated
 }
 
-// ============================================================================
-// CRUD
-// ============================================================================
-
 /**
- * Get user settings from the database.
  * On first read after the snake_case migration, converts old camelCase JSONB
  * keys and writes the result back so subsequent reads need no conversion.
  * Returns null if no settings exist.
@@ -111,14 +100,14 @@ export const getUserSettings = async (user: string): Promise<UserSettings | null
 }
 
 /**
- * Upsert user settings (creates or updates).
- * Merges the provided updates with existing settings.
+ * Merges the provided updates with existing settings; keys listed in `clear`
+ * are removed so the setting reverts to its default (#1063).
  */
 export const upsertUserSettings = async (
   user: string,
   updates: Partial<UserSettings>,
+  clear: (keyof UserSettings)[] = [],
 ): Promise<UserSettings> => {
-  // Get existing settings
   const existing = (await getUserSettings(user)) ?? {}
 
   // Merge updates into existing settings — only defined values override.
@@ -126,18 +115,16 @@ export const upsertUserSettings = async (
   const { tag_icons, ...rest } = updates
   const defined = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined))
   const merged: UserSettings = { ...existing, ...defined }
+  for (const key of clear) delete merged[key]
   if (tag_icons !== undefined) {
     merged.item_icons = { ...merged.item_icons, ...tag_icons }
   }
 
-  // Check if settings row exists
   const existingRow = await query(user, `SELECT id FROM user_settings LIMIT 1`)
 
   if (existingRow.rows.length === 0) {
-    // Insert new row
     await query(user, `INSERT INTO user_settings (settings) VALUES ($1)`, [merged])
   } else {
-    // Update existing row
     await query(user, `UPDATE user_settings SET settings = $1, updated_at = NOW()`, [merged])
   }
 

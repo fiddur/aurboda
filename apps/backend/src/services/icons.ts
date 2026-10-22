@@ -1,6 +1,3 @@
-/**
- * Icon upload processing — resize and compress images to fit within 256KB.
- */
 import sharp from 'sharp'
 
 import { deleteIcon, insertIcon } from '../db/icons.ts'
@@ -29,7 +26,6 @@ export const processIcon = async (
     throw new Error(`Unsupported content type: ${contentType}`)
   }
 
-  // SVG: store as-is, just check size
   if (contentType === 'image/svg+xml') {
     if (buffer.length > MAX_ICON_BYTES) {
       throw new Error(`SVG exceeds ${MAX_ICON_BYTES} bytes (${buffer.length} bytes)`)
@@ -37,19 +33,16 @@ export const processIcon = async (
     return { data: buffer, content_type: contentType }
   }
 
-  // Raster: if already small enough, store as-is
   if (buffer.length <= MAX_ICON_BYTES) {
     return { data: buffer, content_type: contentType }
   }
 
-  // Need to resize and compress
   const isAnimated = contentType === 'image/gif' || contentType === 'image/png'
   let pipeline = sharp(buffer, { animated: isAnimated }).resize(MAX_ICON_PIXELS, MAX_ICON_PIXELS, {
     fit: 'inside',
     withoutEnlargement: true,
   })
 
-  // Compress based on format
   if (contentType === 'image/png') {
     pipeline = pipeline.png({ compressionLevel: 9 })
   } else if (contentType === 'image/jpeg') {
@@ -70,7 +63,6 @@ export const processIcon = async (
 }
 
 /**
- * Process and store an uploaded icon image.
  * Returns the icon UUID.
  */
 export const processAndStoreIcon = async (
@@ -82,7 +74,4 @@ export const processAndStoreIcon = async (
   return insertIcon(user, processed.content_type, processed.data)
 }
 
-/**
- * Delete an uploaded icon.
- */
 export const removeIcon = async (user: string, id: string): Promise<boolean> => deleteIcon(user, id)

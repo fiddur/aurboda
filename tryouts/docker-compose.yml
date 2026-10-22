@@ -1,0 +1,53 @@
+# The tryout stack: the image CI built for one merge commit, a throwaway
+# PostGIS, nothing else. Differences from the production ../docker-compose.yml,
+# all deliberate:
+#
+#   - the image is pinned by AURBODA_TAG (the merge commit's short sha) rather
+#     than floating on :latest — a tryout must exercise one known commit;
+#   - no watchtower and no `restart:`; the stack lives for one session;
+#   - the app is published on 127.0.0.1 only, and every secret comes from the
+#     environment that up.sh generates, so nothing secret-shaped is committed;
+#   - host.docker.internal is mapped, because federation captures need an inbox
+#     the container can POST to (see AGENTS.md → "What replaces the old
+#     mechanics").
+
+name: aurboda-tryout-cloud
+
+services:
+  aurboda:
+    image: fiddur/aurboda:${AURBODA_TAG:?set by tryouts/up.sh}
+    ports:
+      - '127.0.0.1:${TRYOUT_PORT:-8080}:80'
+    environment:
+      - PGHOST=postgres
+      - PGPORT=5432
+      - PGUSER=aurboda_service
+      - PGPASSWORD=${PGPASSWORD:?set by tryouts/up.sh}
+      - SESSION_SECRET=${SESSION_SECRET:?set by tryouts/up.sh}
+      - ALLOW_SIGNUP=true
+      - WEB_HOST=http://localhost:${TRYOUT_PORT:-8080}
+      - API_BASE_URL=http://localhost:${TRYOUT_PORT:-8080}/api
+      - NODE_ENV=production
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgis/postgis:16-3.4-alpine
+    command: postgres -c max_connections=200
+    environment:
+      - POSTGRES_USER=aurboda_service
+      - POSTGRES_PASSWORD=${PGPASSWORD:?set by tryouts/up.sh}
+      - POSTGRES_DB=postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U aurboda_service']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:

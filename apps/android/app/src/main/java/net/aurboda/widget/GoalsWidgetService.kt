@@ -29,7 +29,6 @@ private const val COLOR_OVER_MAX = 0xFFF44336.toInt()   // Red
 
 private const val TAG = "GoalsWidgetService"
 
-// Friendly names for metrics
 private val metricLabels = mapOf(
     "hr_zone_0_sec" to "Zone 0",
     "hr_zone_1_sec" to "Zone 1",
@@ -99,19 +98,15 @@ class GoalsRemoteViewsFactory(private val context: Context) : RemoteViewsService
 
         val views = RemoteViews(context.packageName, R.layout.widget_goal_item)
 
-        // Set fill-in intent for click handling
         val fillInIntent = Intent()
         views.setOnClickFillInIntent(R.id.goal_item_container, fillInIntent)
 
-        // Set label
         val label = metricLabels[goal.title] ?: goal.title
         views.setTextViewText(R.id.goal_label, label)
 
-        // Set current value
         val valueText = formatGoalValue(goal.title, goal.current, goal.unit)
         views.setTextViewText(R.id.goal_value, valueText)
 
-        // Set "losing tomorrow" text
         if (goal.losingTomorrow > 0) {
             val losingText = "(-${formatGoalValue(goal.title, goal.losingTomorrow, goal.unit)} tomorrow)"
             views.setTextViewText(R.id.goal_losing, losingText)
@@ -119,13 +114,11 @@ class GoalsRemoteViewsFactory(private val context: Context) : RemoteViewsService
             views.setTextViewText(R.id.goal_losing, "")
         }
 
-        // Calculate progress percentage
         val target = goal.max ?: goal.min ?: 1.0
         val progressPercent = (goal.current / target) * 100
         val cappedProgress = progressPercent.coerceIn(0.0, 100.0).toInt()
         views.setProgressBar(R.id.goal_progress, 100, cappedProgress, false)
 
-        // Determine progress bar color based on goal status
         val progressColor = getProgressColor(goal)
         views.setColorStateList(
             R.id.goal_progress,
@@ -133,7 +126,6 @@ class GoalsRemoteViewsFactory(private val context: Context) : RemoteViewsService
             ColorStateList.valueOf(progressColor)
         )
 
-        // Show min-marker when both min and max are set
         if (goal.min != null && goal.max != null && goal.max > 0) {
             val minPercent = (goal.min / goal.max).toFloat()
             views.setViewVisibility(R.id.min_marker, View.VISIBLE)
@@ -152,12 +144,10 @@ class GoalsRemoteViewsFactory(private val context: Context) : RemoteViewsService
             views.setViewVisibility(R.id.min_marker, View.GONE)
         }
 
-        // Handle overflow (progress > 100%)
         if (progressPercent > 100) {
             val overflow = (progressPercent - 100).coerceIn(0.0, 100.0).toInt()
             views.setViewVisibility(R.id.goal_overflow, View.VISIBLE)
             views.setProgressBar(R.id.goal_overflow, 100, overflow, false)
-            // Overflow bar uses same color
             views.setColorStateList(
                 R.id.goal_overflow,
                 "setProgressTintList",
@@ -170,25 +160,18 @@ class GoalsRemoteViewsFactory(private val context: Context) : RemoteViewsService
         return views
     }
 
-    /**
-     * Determine progress bar color based on goal status.
-     * Matches the web UI color scheme.
-     */
     private fun getProgressColor(goal: WidgetGoalProgress): Int {
         val min = goal.min
         val max = goal.max
         val current = goal.current
 
         return when {
-            // Min-max goal
             min != null && max != null -> when {
                 current >= max -> COLOR_OVER_MAX
                 current >= min -> COLOR_MET
                 else -> COLOR_BELOW_MIN
             }
-            // Min-only goal
             min != null -> if (current >= min) COLOR_MET else COLOR_BELOW_MIN
-            // Max-only goal
             max != null -> if (current > max) COLOR_OVER_MAX else COLOR_MET
             // No targets (shouldn't happen)
             else -> COLOR_MET

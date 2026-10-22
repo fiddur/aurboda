@@ -1,9 +1,6 @@
-/**
- * Goals service for calculating progress toward user-defined goals.
- */
-
 import {
   cumulativeMetrics,
+  type CustomMetricDefinition,
   isCalendarBasedUnit,
   metricUnits,
   parseDuration,
@@ -15,42 +12,19 @@ import {
   type WidgetGoalProgress,
 } from '@aurboda/api-spec'
 
-import { getDailyAggregates, getDailyAggregateValue, getRawDailySum, getTimeSeries } from '../db/index.ts'
-import { computeHrZoneSecs, getEffectiveGoals, getEffectiveHrZones } from './settings.ts'
+import { getDailyAggregates, getDailyAggregateValues, getHrZoneSecs, getRawDailySum } from '../db/index.ts'
+import { getCustomMetrics } from './custom-metrics.ts'
+import { getEffectiveGoals, getEffectiveHrZones } from './settings.ts'
 import { getTrend } from './trends.ts'
 
 /**
- * Get all dates in a range (inclusive).
- */
-const getDatesInRange = (start: Date, end: Date): Date[] => {
-  const dates: Date[] = []
-  const current = new Date(start)
-  current.setUTCHours(0, 0, 0, 0)
-
-  const endDay = new Date(end)
-  endDay.setUTCHours(23, 59, 59, 999)
-
-  while (current <= endDay) {
-    dates.push(new Date(current))
-    current.setUTCDate(current.getUTCDate() + 1)
-  }
-
-  return dates
-}
-
-/**
- * Calculate the sum of a metric over a time range.
  * Handles HR zone metrics specially (computed from heart_rate).
  * Uses deduplicated aggregates for cumulative metrics (steps, distance, etc.).
  */
 const getMetricSum = async (user: string, metric: MetricType, start: Date, end: Date): Promise<number> => {
-  // HR zone metrics need to be computed from heart rate data
   if (metric.startsWith('hr_zone_')) {
-    const [hrData, { zones: hrZones }] = await Promise.all([
-      getTimeSeries(user, 'heart_rate', start, end),
-      getEffectiveHrZones(user),
-    ])
-    const zoneSecs = computeHrZoneSecs(hrData, hrZones)
+    const { zones } = await getEffectiveHrZones(user)
+    const [row] = await getHrZoneSecs(user, start, end, zones)
     const zoneIndex = parseInt(metric.replace('hr_zone_', '').replace('_sec', ''), 10) as
       | 0
       | 1
@@ -58,18 +32,15 @@ const getMetricSum = async (user: string, metric: MetricType, start: Date, end: 
       | 3
       | 4
       | 5
-    return zoneSecs[zoneIndex]
+    return row?.secs[zoneIndex] ?? 0
   }
 
-  // For cumulative metrics (steps, distance, etc.), use deduplicated daily aggregates
   if (cumulativeMetrics.includes(metric)) {
-    const dates = getDatesInRange(start, end)
-    const values = await Promise.all(dates.map((date) => getDailyAggregateValue(user, metric, date)))
-
-    // If we have any aggregate values, use them
-    const hasAggregates = values.some((v) => v !== null)
-    if (hasAggregates) {
-      return values.reduce<number>((sum, v) => sum + (v ?? 0), 0)
+    const values = await getDailyAggregateValues(user, metric, start, end)
+    if (values.size > 0) {
+      let sum = 0
+      for (const v of values.values()) sum += v
+      return sum
     }
 
     // Fall back to raw data from ALL sources if no aggregates exist.
@@ -77,14 +48,10 @@ const getMetricSum = async (user: string, metric: MetricType, start: Date, end: 
     return getRawDailySum(user, metric, start, end)
   }
 
-  // For non-cumulative metrics, use daily aggregates and sum them
   const dailyData = await getDailyAggregates(user, [metric], start, end)
   return dailyData.reduce((sum, day) => sum + day.sum, 0)
 }
 
-/**
- * Compute progress for a metric goal (windowed sum).
- */
 const computeMetricGoalProgress = async (
   user: string,
   goal: { id: string; max?: number; metric: MetricType; min?: number; window: string },
@@ -128,9 +95,14 @@ const computeMetricGoalProgress = async (
 /**
  * Compute progress for a trend goal (EMA value).
  */
-const computeTrendGoalProgress = async (user: string, goal: TrendGoal): Promise<TrendGoalProgress> => {
+const computeTrendGoalProgress = async (
+  user: string,
+  goal: TrendGoal,
+  customMetrics: CustomMetricDefinition[],
+): Promise<TrendGoalProgress> => {
   const trend = await getTrend(user, {
     aggregation: goal.aggregation,
+    custom_metrics: customMetrics,
     display_period: goal.display_period,
     half_life_days: goal.half_life_days,
     lookback_days: 90,
@@ -151,10 +123,6 @@ const computeTrendGoalProgress = async (user: string, goal: TrendGoal): Promise<
   }
 }
 
-/**
- * Get progress for all user goals.
- * Returns current value and targets for each goal.
- */
 export const getGoalsProgress = async (user: string): Promise<GoalProgress[]> => {
   const goals = await getEffectiveGoals(user)
 
@@ -162,23 +130,17 @@ export const getGoalsProgress = async (user: string): Promise<GoalProgress[]> =>
     return []
   }
 
-  const results: GoalProgress[] = []
+  const customMetrics = goals.some((goal) => goal.goal_type === 'trend') ? await getCustomMetrics(user) : []
 
-  for (const goal of goals) {
-    if (goal.goal_type === 'trend') {
-      results.push(await computeTrendGoalProgress(user, goal))
-    } else {
-      results.push(await computeMetricGoalProgress(user, goal))
-    }
-  }
-
-  return results
+  return Promise.all(
+    goals.map((goal) =>
+      goal.goal_type === 'trend'
+        ? computeTrendGoalProgress(user, goal, customMetrics)
+        : computeMetricGoalProgress(user, goal),
+    ),
+  )
 }
 
-/**
- * Map full goal progress to flat widget format.
- * Merges both metric and trend goals into a simple { title, current, min, max, losing_tomorrow, unit }.
- */
 const toWidgetProgress = (p: GoalProgress): WidgetGoalProgress => {
   if (p.goal_type === 'trend') {
     return {
@@ -202,9 +164,6 @@ const toWidgetProgress = (p: GoalProgress): WidgetGoalProgress => {
   }
 }
 
-/**
- * Get simplified goal progress for widgets (flat structure, no discriminated union).
- */
 export const getWidgetGoalsProgress = async (user: string): Promise<WidgetGoalProgress[]> => {
   const progress = await getGoalsProgress(user)
   return progress.map(toWidgetProgress)

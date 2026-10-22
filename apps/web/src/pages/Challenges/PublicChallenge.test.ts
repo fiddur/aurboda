@@ -2,7 +2,7 @@ import type { ChallengeStanding } from '@aurboda/api-spec'
 
 import { describe, expect, test } from 'vitest'
 
-import { bucketEnd, formatDateInZone, toCumulativeSeries } from './race-series'
+import { bucketEnd, formatDateInZone, formatUpdated, toCumulativeSeries } from './race-series'
 
 const standing = (buckets: { bucket_start: string; value: number }[]): ChallengeStanding => ({
   buckets,
@@ -29,6 +29,21 @@ describe('formatDateInZone', () => {
     const iso = '2026-07-01T12:00:00.000Z'
     expect(() => formatDateInZone(iso, 'Not/AZone')).not.toThrow()
     expect(formatDateInZone(iso, 'Not/AZone')).toBe(new Date(iso).toLocaleDateString())
+  })
+})
+
+describe('formatUpdated', () => {
+  test('shows the date as well as the time, in the viewer locale', () => {
+    const iso = '2026-10-01T16:30:00.000Z'
+    expect(formatUpdated(iso)).toBe(
+      new Date(iso).toLocaleString(undefined, {
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        month: 'short',
+      }),
+    )
+    expect(formatUpdated(iso)).not.toBe(new Date(iso).toLocaleTimeString())
   })
 })
 

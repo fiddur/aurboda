@@ -1,10 +1,3 @@
-/**
- * Location services for detecting frequently visited places.
- *
- * Uses GPS location data to identify "stays" - places where the user
- * spent significant time (default 60+ minutes).
- */
-
 import {
   deleteNamedLocation,
   getNamedLocationById,
@@ -17,10 +10,7 @@ import {
   type DetectedLocation as StoredDetectedLocation,
   updateNamedLocation,
 } from '../db/index.ts'
-
-// ============================================================================
-// Types
-// ============================================================================
+import { maxOf } from './numeric-extremes.ts'
 
 export interface DetectedLocation {
   lat: number
@@ -47,10 +37,6 @@ export interface Stay {
   points: LocationPoint[]
 }
 
-// ============================================================================
-// Configuration
-// ============================================================================
-
 const DEFAULT_CLUSTER_RADIUS_METERS = 200
 const DEFAULT_MIN_STAY_MINUTES = 60
 
@@ -69,10 +55,6 @@ const MAX_UNKNOWN_VISIT_GAP_MINUTES = 90
 // bridge a stay across travel or a long data gap.
 const MERGE_BRIDGE_RADIUS_METERS = DEFAULT_CLUSTER_RADIUS_METERS
 const MERGE_BRIDGE_GAP_MINUTES = 30
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
 
 const haversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
   const R = 6371000 // Earth radius in meters
@@ -100,19 +82,10 @@ const calculateSuggestedRadius = (
 ): number => {
   if (points.length === 0) return DEFAULT_CLUSTER_RADIUS_METERS
   const distances = points.map((p) => haversineDistance(centroid.lat, centroid.lon, p.lat, p.lon))
-  const maxDistance = Math.max(...distances)
-  // Round up to nearest 50m, minimum 100m
+  const maxDistance = maxOf(distances) ?? 0
   return Math.max(100, Math.ceil(maxDistance / 50) * 50)
 }
 
-// ============================================================================
-// Stay Detection Algorithm
-// ============================================================================
-
-/**
- * Detect "stays" from a sequence of location points.
- * A stay is a cluster of consecutive points within a radius where the user spent minStayMinutes+.
- */
 export const detectStays = (
   points: LocationPoint[],
   radiusMeters: number = DEFAULT_CLUSTER_RADIUS_METERS,
@@ -134,11 +107,9 @@ export const detectStays = (
     )
 
     if (distanceFromCentroid <= radiusMeters) {
-      // Point is within radius, add to current stay
       currentStay.push(point)
       currentCentroid = calculateCentroid(currentStay)
     } else {
-      // Point is outside radius, finalize current stay if long enough
       if (currentStay.length >= 2) {
         const startTime = currentStay[0].time
         const endTime = currentStay[currentStay.length - 1].time
@@ -156,13 +127,11 @@ export const detectStays = (
         }
       }
 
-      // Start new potential stay
       currentStay = [point]
       currentCentroid = { lat: point.lat, lon: point.lon }
     }
   }
 
-  // Check final stay
   if (currentStay.length >= 2) {
     const startTime = currentStay[0].time
     const endTime = currentStay[currentStay.length - 1].time
@@ -183,10 +152,6 @@ export const detectStays = (
   return stays
 }
 
-/**
- * Merge stays at similar locations into clusters.
- * Returns aggregated info about each unique location.
- */
 export const clusterStays = (
   stays: Stay[],
   radiusMeters: number = DEFAULT_CLUSTER_RADIUS_METERS,
@@ -202,7 +167,6 @@ export const clusterStays = (
       const distance = haversineDistance(cluster.centroid.lat, cluster.centroid.lon, stay.lat, stay.lon)
       if (distance <= radiusMeters) {
         cluster.stays.push(stay)
-        // Recalculate centroid
         const allPoints = cluster.stays.flatMap((s) => s.points)
         cluster.centroid = calculateCentroid(allPoints)
         foundCluster = true
@@ -242,13 +206,6 @@ export const clusterStays = (
   })
 }
 
-// ============================================================================
-// Database Queries
-// ============================================================================
-
-/**
- * Get location points from the database for a time range.
- */
 export const getLocationPoints = async (user: string, start: Date, end: Date): Promise<LocationPoint[]> => {
   const result = await query(
     user,
@@ -266,9 +223,6 @@ export const getLocationPoints = async (user: string, start: Date, end: Date): P
   }))
 }
 
-/**
- * Filter out detected locations that overlap with existing named locations.
- */
 export const filterOverlappingLocations = async (
   user: string,
   detected: DetectedLocation[],
@@ -279,7 +233,6 @@ export const filterOverlappingLocations = async (
   return detected.filter((d) => {
     for (const named of namedLocations) {
       const distance = haversineDistance(d.lat, d.lon, named.lat, named.lon)
-      // Consider overlapping if within either radius
       if (distance <= Math.max(d.suggestedRadius, named.radius)) {
         return false
       }
@@ -288,47 +241,30 @@ export const filterOverlappingLocations = async (
   })
 }
 
-// ============================================================================
-// Public API
-// ============================================================================
-
 export interface GetDetectedLocationsOptions {
   start: Date
   end: Date
   minDurationMinutes?: number
 }
 
-/**
- * Get detected locations where user spent significant time.
- * Filters out locations that already have named locations nearby.
- */
 export const getDetectedLocations = async (
   user: string,
   options: GetDetectedLocationsOptions,
 ): Promise<DetectedLocation[]> => {
   const { end, minDurationMinutes = DEFAULT_MIN_STAY_MINUTES, start } = options
 
-  // Get all location points in the time range
   const points = await getLocationPoints(user, start, end)
   if (points.length === 0) return []
 
-  // Detect stays
   const stays = detectStays(points, DEFAULT_CLUSTER_RADIUS_METERS, minDurationMinutes)
   if (stays.length === 0) return []
 
-  // Cluster stays at similar locations
   const clusters = clusterStays(stays)
 
-  // Filter out locations that overlap with named locations
   const filtered = await filterOverlappingLocations(user, clusters)
 
-  // Sort by total time spent (descending)
   return filtered.sort((a, b) => b.totalMinutes - a.totalMinutes)
 }
-
-// ============================================================================
-// Location Matching for Places
-// ============================================================================
 
 export interface PlaceVisit {
   name: string
@@ -342,12 +278,10 @@ export interface PlaceVisit {
   detected_location_id?: string
   /** Set when source='named' — the id of the matched named_location. */
   named_location_id?: string
+  /** Time of the fix before the range this visit was carried forward from; see `getPlaceVisits`. */
+  inferred_from?: Date
 }
 
-/**
- * Match a location point against named locations.
- * Returns the name of the matching location, or null if no match.
- */
 export const matchLocationToNamed = (
   lat: number,
   lon: number,
@@ -362,10 +296,6 @@ export const matchLocationToNamed = (
   return null
 }
 
-/**
- * Match a location point against stored detected locations.
- * Returns the matching detected location, or null if no match.
- */
 export const matchLocationToDetected = (
   lat: number,
   lon: number,
@@ -392,7 +322,7 @@ export const getRawLocationPoints = async (
     user,
     `SELECT ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, time
      FROM locations
-     WHERE time >= $1 AND time <= $2
+     WHERE time >= $1 AND time <= $2 AND deleted_at IS NULL
      ORDER BY time`,
     [start, end],
   )
@@ -491,7 +421,6 @@ const extendVisit = (current: VisitAccumulator, loc: LocationPoint): void => {
   }
 }
 
-/** Convert a visit accumulator into a PlaceVisit (computes duration, drops bookkeeping). */
 const finalizeVisit = (v: VisitAccumulator): PlaceVisit => ({
   address: v.address,
   detected_location_id: v.detected_location_id,
@@ -505,46 +434,21 @@ const finalizeVisit = (v: VisitAccumulator): PlaceVisit => ({
   start_time: v.start_time,
 })
 
-/**
- * Get place visits for a time range, using named locations when available.
- * Falls back to detected locations, then OwnTracks regions.
- */
-export const getPlaceVisits = async (user: string, start: Date, end: Date): Promise<PlaceVisit[]> => {
-  // Get location data from db with regions
-  const result = await query(
-    user,
-    `SELECT ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, time, regions
-     FROM locations
-     WHERE time >= $1 AND time <= $2 AND deleted_at IS NULL
-     ORDER BY time`,
-    [start, end],
-  )
+export interface PlaceFix extends LocationPoint {
+  regions: string[]
+}
 
-  if (result.rows.length === 0) return []
-
-  const [namedLocations, detectedLocations] = await Promise.all([
-    getNamedLocations(user),
-    getStoredDetectedLocations(user),
-  ])
-
-  interface LocationWithRegion extends LocationPoint {
-    regions: string[]
-  }
-
-  const locations: LocationWithRegion[] = result.rows.map((row) => ({
-    lat: row.lat,
-    lon: row.lon,
-    regions: row.regions || [],
-    time: new Date(row.time),
-  }))
-
-  // Group consecutive locations at the same place. named_location_id is part
-  // of the identity key (see continuesVisit) so two named locations with the
-  // same display name correctly split into separate visits.
+export const groupFixesIntoVisits = (
+  fixes: PlaceFix[],
+  namedLocations: NamedLocation[],
+  detectedLocations: StoredDetectedLocation[],
+): PlaceVisit[] => {
+  // named_location_id is part of the identity key (see continuesVisit) so two
+  // named locations with the same display name correctly split into separate visits.
   const visits: PlaceVisit[] = []
   let currentVisit: VisitAccumulator | null = null
 
-  for (const loc of locations) {
+  for (const loc of fixes) {
     const cls = classifyFix(loc.lat, loc.lon, loc.regions, namedLocations, detectedLocations)
 
     if (currentVisit && continuesVisit(currentVisit, cls, loc)) {
@@ -567,12 +471,122 @@ export const getPlaceVisits = async (user: string, start: Date, end: Date): Prom
     }
   }
 
-  // Don't forget the last visit
-  if (currentVisit) {
-    visits.push(finalizeVisit(currentVisit))
-  }
+  if (currentVisit) visits.push(finalizeVisit(currentVisit))
+  return visits
+}
 
-  // Filter out short "unknown" visits (GPS jumps) and merge into adjacent visits
+/**
+ * Visits for `[start, end]` when the range's first fix comes after `start`: `lastKnown` (the
+ * latest fix before the range) is moved to `start` and grouped with the rest. A visit made of
+ * that fix alone is marked `inferred_from`, and lasts until the range's first fix, which places
+ * you elsewhere, or the whole range when there is none. A visit it merely extends is observed in
+ * the range, so it is not marked.
+ */
+export const visitsWithLastKnown = (
+  inRange: PlaceFix[],
+  lastKnown: PlaceFix,
+  start: Date,
+  end: Date,
+  namedLocations: NamedLocation[],
+  detectedLocations: StoredDetectedLocation[],
+): PlaceVisit[] => {
+  const visits = groupFixesIntoVisits(
+    [{ ...lastKnown, time: start }, ...inRange],
+    namedLocations,
+    detectedLocations,
+  )
+  const [first, ...rest] = visits
+  if (!first || first.end_time.getTime() !== start.getTime()) return visits
+  const carriedEnd = inRange[0]?.time ?? end
+  return [
+    {
+      ...first,
+      duration_minutes: Math.round((carriedEnd.getTime() - start.getTime()) / 60_000),
+      end_time: carriedEnd,
+      inferred_from: lastKnown.time,
+    },
+    ...rest,
+  ]
+}
+
+interface FixRow {
+  lat: number
+  lon: number
+  time: Date | string
+  regions: string[] | null
+}
+
+const fixesFromRows = (rows: FixRow[]) =>
+  rows.map(
+    (row): PlaceFix => ({
+      lat: row.lat,
+      lon: row.lon,
+      regions: row.regions || [],
+      time: new Date(row.time),
+    }),
+  )
+
+const FIX_COLUMNS = 'ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, time, regions'
+
+const getLastFixBefore = async (
+  user: string,
+  before: Date,
+  notBefore: Date,
+): Promise<PlaceFix | undefined> => {
+  const result = await query<FixRow>(
+    user,
+    `SELECT ${FIX_COLUMNS}
+     FROM locations
+     WHERE time < $1 AND time >= $2 AND deleted_at IS NULL
+     ORDER BY time DESC
+     LIMIT 1`,
+    [before, notBefore],
+  )
+  return fixesFromRows(result.rows)[0]
+}
+
+export interface PlaceVisitOptions {
+  /**
+   * When the range starts before its first fix, carry the last fix from up to this many hours
+   * earlier forward to `start`: a phone at rest reports nothing, so a stay with no fix in the
+   * range otherwise vanishes. Never feed such visits to anything that persists them.
+   */
+  lastKnownHours?: number
+}
+
+export const getPlaceVisits = async (
+  user: string,
+  start: Date,
+  end: Date,
+  options: PlaceVisitOptions = {},
+): Promise<PlaceVisit[]> => {
+  const result = await query<FixRow>(
+    user,
+    `SELECT ${FIX_COLUMNS}
+     FROM locations
+     WHERE time >= $1 AND time <= $2 AND deleted_at IS NULL
+     ORDER BY time`,
+    [start, end],
+  )
+  const inRange = fixesFromRows(result.rows)
+
+  const lookbackMs = (options.lastKnownHours ?? 0) * 3_600_000
+  const needsLastKnown = lookbackMs > 0 && (inRange[0]?.time ?? end) > start
+  const lastKnown = needsLastKnown
+    ? await getLastFixBefore(user, start, new Date(start.getTime() - lookbackMs))
+    : undefined
+
+  if (inRange.length === 0 && !lastKnown) return []
+
+  const [namedLocations, detectedLocations] = await Promise.all([
+    getNamedLocations(user),
+    getStoredDetectedLocations(user),
+  ])
+
+  const visits = lastKnown
+    ? visitsWithLastKnown(inRange, lastKnown, start, end, namedLocations, detectedLocations)
+    : groupFixesIntoVisits(inRange, namedLocations, detectedLocations)
+
   return mergeShortUnknownVisits(visits)
 }
 
@@ -605,8 +619,7 @@ export const mergeShortUnknownVisits = (visits: PlaceVisit[], minDurationMinutes
   for (let i = 0; i < visits.length; i++) {
     const visit = visits[i]
 
-    // Keep non-unknown visits and unknown visits >= minDuration.
-    if (visit.source !== 'unknown' || visit.duration_minutes >= minDurationMinutes) {
+    if (visit.source !== 'unknown' || visit.inferred_from || visit.duration_minutes >= minDurationMinutes) {
       result.push(visit)
       continue
     }
@@ -615,11 +628,9 @@ export const mergeShortUnknownVisits = (visits: PlaceVisit[], minDurationMinutes
     const next = i + 1 < visits.length ? visits[i + 1] : null
 
     if (prev && contiguous(prev, visit)) {
-      // Extend the previous visit to cover this brief glitch.
       prev.end_time = visit.end_time
       prev.duration_minutes = Math.round((prev.end_time.getTime() - prev.start_time.getTime()) / (1000 * 60))
     } else if (next && contiguous(visit, next)) {
-      // No usable previous visit — fold backwards into the next one.
       next.start_time = visit.start_time
       next.duration_minutes = Math.round((next.end_time.getTime() - next.start_time.getTime()) / (1000 * 60))
     }
@@ -629,7 +640,6 @@ export const mergeShortUnknownVisits = (visits: PlaceVisit[], minDurationMinutes
   return result
 }
 
-// Re-export CRUD operations from db
 export {
   deleteNamedLocation,
   getNamedLocationById,

@@ -85,8 +85,6 @@ export const deleteMealApi = async (id: string): Promise<void> => {
   })
 }
 
-// Meal log completion
-
 export const setMealLogCompletedApi = async (date: string): Promise<void> => {
   const { token } = auth.value
   await axios.put(`${API_URL}/meals/log-completed/${date}`, null, {
@@ -198,8 +196,6 @@ export const duplicateFoodItemApi = async (id: string): Promise<ApiFoodItemDetai
   if (!response.data.data) throw new Error(response.data.error ?? 'Duplicate failed')
   return response.data.data
 }
-
-// ─── Food item portions ─────────────────────────────────────────────────────
 
 export const addFoodItemPortionApi = async (
   foodItemId: string,

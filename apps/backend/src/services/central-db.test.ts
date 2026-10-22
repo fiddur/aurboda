@@ -1,18 +1,32 @@
-import type pg from 'pg'
-
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
-import { createCentralDb, type CentralDb, type SignupMode } from './central-db.ts'
+import type { Queryable } from '../db/pool.ts'
 
-// Mock pg.Client
+import {
+  closeCentralDb,
+  createCentralDb,
+  type CentralDb,
+  getCentralDb,
+  type SignupMode,
+} from './central-db.ts'
+
+const poolEnd = vi.hoisted(() => vi.fn())
+
 vi.mock('pg', () => {
   const mockQuery = vi.fn()
-  const MockClient = vi.fn(() => ({
-    connect: vi.fn(),
-    end: vi.fn(),
-    query: mockQuery,
-  }))
-  return { Client: MockClient, default: { Client: MockClient } }
+  const MockClient = vi.fn(function MockClient() {
+    return { connect: vi.fn(), end: vi.fn(), query: mockQuery }
+  })
+  const MockPool = vi.fn(function MockPool() {
+    return {
+      connect: vi
+        .fn()
+        .mockResolvedValue({ query: vi.fn().mockResolvedValue({ rows: [] }), release: vi.fn() }),
+      end: poolEnd,
+      on: vi.fn(),
+    }
+  })
+  return { Client: MockClient, default: { Client: MockClient, Pool: MockPool }, Pool: MockPool }
 })
 
 describe('central-db', () => {
@@ -22,6 +36,8 @@ describe('central-db', () => {
     query: ReturnType<typeof vi.fn>
   }
   let centralDb: CentralDb
+  let transactionClient: { query: ReturnType<typeof vi.fn> }
+  let withTransaction: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -30,7 +46,14 @@ describe('central-db', () => {
       end: vi.fn(),
       query: vi.fn(),
     }
-    centralDb = createCentralDb({ getClient: async () => mockClient as unknown as pg.Client })
+    transactionClient = { query: vi.fn().mockResolvedValue({ rows: [] }) }
+    withTransaction = vi.fn(async (fn: (tx: Queryable) => Promise<unknown>) =>
+      fn(transactionClient as unknown as Queryable),
+    )
+    centralDb = createCentralDb({
+      getClient: async () => mockClient as unknown as Queryable,
+      withTransaction: withTransaction as <T>(fn: (tx: Queryable) => Promise<T>) => Promise<T>,
+    })
   })
 
   describe('initializeCentralDb', () => {
@@ -49,6 +72,24 @@ describe('central-db', () => {
       )
       // Should insert default signup_mode (third call, no params array)
       expect(mockClient.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO server_settings'))
+    })
+
+    test('seeds nutrient recommendations inside a transaction, under the advisory lock', async () => {
+      mockClient.query.mockResolvedValue({ rows: [] })
+
+      await centralDb.initializeCentralDb()
+
+      expect(withTransaction).toHaveBeenCalledTimes(1)
+      const statements = transactionClient.query.mock.calls.map(([sql]) => String(sql))
+      expect(statements[0]).toContain('pg_advisory_xact_lock')
+      expect(
+        statements.slice(1).every((sql) => sql.includes('INSERT INTO shared_nutrient_recommendations')),
+      ).toBe(true)
+      expect(
+        mockClient.query.mock.calls.some(([sql]) =>
+          /pg_advisory_xact_lock|INSERT INTO shared_nutrient_recommendations/.test(String(sql)),
+        ),
+      ).toBe(false)
     })
   })
 
@@ -357,6 +398,27 @@ describe('central-db', () => {
     })
   })
 
+  describe('deleteOuraUserMappingsByUsername', () => {
+    test('deletes every mapping for the username and returns the count', async () => {
+      mockClient.query.mockResolvedValue({ rowCount: 2 })
+
+      const result = await centralDb.deleteOuraUserMappingsByUsername('testuser')
+
+      expect(result).toBe(2)
+      expect(mockClient.query).toHaveBeenCalledWith('DELETE FROM oura_user_mappings WHERE username = $1', [
+        'testuser',
+      ])
+    })
+
+    test('returns 0 when the user has no mapping', async () => {
+      mockClient.query.mockResolvedValue({ rowCount: 0 })
+
+      const result = await centralDb.deleteOuraUserMappingsByUsername('unknown')
+
+      expect(result).toBe(0)
+    })
+  })
+
   describe('upsertOuraWebhookSubscription', () => {
     test('inserts webhook subscription', async () => {
       mockClient.query.mockResolvedValue({ rows: [] })
@@ -623,5 +685,18 @@ describe('central-db', () => {
       )
       expect(mockClient.query).toHaveBeenCalledWith(expect.stringContaining('DELETE FROM oauth_tokens'))
     })
+  })
+})
+
+describe('closeCentralDb', () => {
+  test('is a no-op before the pool opens, then ends the pool once', async () => {
+    await closeCentralDb()
+    expect(poolEnd).not.toHaveBeenCalled()
+
+    await getCentralDb().getSignupMode()
+    await closeCentralDb()
+    await closeCentralDb()
+
+    expect(poolEnd).toHaveBeenCalledTimes(1)
   })
 })

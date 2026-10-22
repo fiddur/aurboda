@@ -1,6 +1,4 @@
 /**
- * Integration tests for the composite-nutrient cache.
- *
  * The cache writes derived totals onto a composite's `food_items` row columns
  * so search dropdowns, frequent-meal queries, and parent recipes that read
  * `food.calories` directly all see live values. Editing a recipe must also

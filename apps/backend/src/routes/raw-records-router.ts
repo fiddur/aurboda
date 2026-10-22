@@ -1,8 +1,3 @@
-/**
- * Raw records route group.
- *
- * Handles: /raw-records
- */
 import {
   type QueryRawRecordsQuery,
   queryRawRecordsQuerySchema,

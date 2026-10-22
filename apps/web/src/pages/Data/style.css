@@ -10,8 +10,6 @@
   overflow: hidden;
 }
 
-/* ── Left sidebar (date + filters) ─────────────────────────── */
-
 .data-sidebar {
   display: flex;
   flex-direction: column;
@@ -26,7 +24,6 @@
   align-self: flex-start;
 }
 
-/* Time filter chip */
 .data-time-filter {
   display: flex;
   align-items: center;
@@ -55,7 +52,6 @@
   background: #ddd6fe;
 }
 
-/* Type filter buttons (stacked vertically in sidebar) */
 .data-type-filters {
   display: flex;
   flex-direction: column;
@@ -101,15 +97,12 @@
   flex-shrink: 0;
 }
 
-/* ── Right main area (scrollable list) ─────────────────────── */
-
 .data-main {
   flex: 1;
   min-width: 0;
   overflow-y: auto;
 }
 
-/* List */
 .data-list {
   display: flex;
   flex-direction: column;
@@ -172,8 +165,6 @@
   color: #dc2626;
 }
 
-/* ── Mobile: stack vertically ──────────────────────────────── */
-
 @media (max-width: 48em) {
   .data-page {
     flex-direction: column;
@@ -195,8 +186,6 @@
     overflow-y: visible;
   }
 }
-
-/* ── Dark mode ─────────────────────────────────────────────── */
 
 @media (prefers-color-scheme: dark) {
   .data-sidebar {

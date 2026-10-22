@@ -5,9 +5,6 @@ import net.aurboda.api.models.LoginResponse
 import org.junit.Test
 import org.junit.Assert.*
 
-/**
- * Unit tests for AuthApi data classes and serialization
- */
 class AuthApiTest {
 
     @Test

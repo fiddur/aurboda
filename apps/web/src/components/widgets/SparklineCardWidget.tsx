@@ -1,6 +1,4 @@
 /**
- * SparklineCardWidget - Displays a metric value with a small sparkline chart.
- *
  * Split into a presentational `SparklineCardView` and a fetching container.
  */
 
@@ -8,6 +6,7 @@ import type { SparklineCardConfig, SparklineCardData } from '@aurboda/api-spec'
 
 import { useQuery } from '@tanstack/react-query'
 import { endOfDay, formatISO, startOfDay, subDays } from 'date-fns'
+import { useMemo } from 'preact/hooks'
 
 import {
   fetchHrv,
@@ -22,9 +21,9 @@ import {
   type PeriodMetricStats,
 } from '../../state/api'
 import { SparklineChart } from '../SparklineChart'
+import { HEAVY_QUERY_OPTIONS } from './heavyQuery'
 import { TrendIndicator } from './TrendIndicator'
 
-// Map metric names to display titles
 const metricTitles: Record<string, string> = {
   hrv_rmssd: 'HRV',
   hrv_sleep: 'HRV (Sleep)',
@@ -34,7 +33,6 @@ const metricTitles: Record<string, string> = {
   steps: 'Steps',
 }
 
-// Map metric names to API fetch functions
 const metricFetchers: Record<string, (start: Date, end: Date) => Promise<[Date, number][]>> = {
   hrv_rmssd: fetchHrv,
   hrv_sleep: fetchHrvSleep,
@@ -44,7 +42,6 @@ const metricFetchers: Record<string, (start: Date, end: Date) => Promise<[Date, 
   steps: fetchSteps,
 }
 
-// Map widget metric to API metric name for period summary
 const metricToApiMetric: Record<string, string> = {
   hrv_rmssd: 'hrv_rmssd',
   hrv_sleep: 'hrv_sleep',
@@ -68,7 +65,11 @@ export function SparklineCardView({ config, data, loading = false }: SparklineCa
   const value = data?.value ?? null
   const trend = data?.trend_percent ?? null
   const subtitle = data?.count ? `${data.count} days` : undefined
-  const sparklineData: [Date, number][] = (data?.series ?? []).map((p) => [new Date(p.time), p.value])
+  const series = data?.series
+  const sparklineData = useMemo<[Date, number][]>(
+    () => (series ?? []).map((p) => [new Date(p.time), p.value]),
+    [series],
+  )
 
   return (
     <div class="metric-card">
@@ -118,6 +119,7 @@ export function SparklineCardWidget({ config }: SparklineCardWidgetProps) {
   const periodSummaryQuery = useQuery({
     queryFn: () => fetchPeriodSummary(start, end, [apiMetric]),
     queryKey: ['periodSummary', metric, formatISO(start, { representation: 'date' })],
+    ...HEAVY_QUERY_OPTIONS,
     staleTime: 5 * 60 * 1000,
   })
 
@@ -126,9 +128,15 @@ export function SparklineCardWidget({ config }: SparklineCardWidgetProps) {
     stats = (periodSummaryQuery.data.metrics ?? []).find((m) => m.metric === apiMetric)
   }
 
+  const timeSeries = timeSeriesQuery.data
+  const series = useMemo(
+    () => (timeSeries ?? []).map(([time, value]) => ({ time: time.toISOString(), value })),
+    [timeSeries],
+  )
+
   const data: SparklineCardData = {
     count: stats?.count ?? null,
-    series: (timeSeriesQuery.data ?? []).map(([time, value]) => ({ time: time.toISOString(), value })),
+    series,
     trend_percent: stats?.change_from_previous_period_percent ?? null,
     value: stats ? periodStatsValue(stats, 'avg') : null,
   }

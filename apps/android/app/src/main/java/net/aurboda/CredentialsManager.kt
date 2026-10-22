@@ -32,7 +32,6 @@ object CredentialsManager {
         val username: String,
         val authToken: String
     ) {
-        /** API URL with /api prefix for all backend requests */
         val apiUrl: String get() = "${serverUrl.trimEnd('/')}/api"
     }
 

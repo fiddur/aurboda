@@ -1,9 +1,3 @@
-/**
- * Draw the screentime stacked bar chart in the horizontal timeline metrics track.
- *
- * Each bucket is a single stacked bar showing time by top-level category,
- * with category colors applied to segments.
- */
 import type { ScreentimeCategory } from '@aurboda/api-spec'
 
 import * as d3 from 'd3'
@@ -18,19 +12,15 @@ type SvgGroup = d3.Selection<SVGGElement, unknown, any, any>
 
 export const SCREENTIME_COLOR = '#6366f1' // indigo default
 
-/** Default colors for uncategorized screentime. */
 const UNCATEGORIZED_COLOR = '#6b7280' // gray
 
-/** Get the color for a top-level category from the category list. */
 const getCategoryColor = (topLevel: string, categories: ScreentimeCategory[]): string => {
-  // Walk from exact match to parent
   for (const cat of categories) {
     if (cat.name[0] === topLevel && cat.color) return cat.color
   }
   return SCREENTIME_COLOR
 }
 
-/** Aggregate bucket categories to top-level for the stacked bar. */
 interface TopLevelCategory {
   name: string
   total_sec: number
@@ -66,7 +56,6 @@ const aggregateToTopLevel = (
   let uncategorizedSec = 0
 
   for (const cat of bucket.categories) {
-    // Skip excluded categories
     if (cat.path.length > 0 && isExcludedCategory(cat.path, categories)) continue
     if (cat.path.length === 0) {
       uncategorizedSec += cat.total_sec
@@ -124,8 +113,6 @@ const formatSec = (sec: number): string => {
   if (h > 0) return `${h}h`
   return `${m}m`
 }
-
-// ── Drawing ──────────────────────────────────────────────────────────────────
 
 export interface DrawScreentimeConfig {
   chartGroup: SvgGroup
@@ -190,12 +177,6 @@ export const drawScreentimeBars = (config: DrawScreentimeConfig): void => {
   }
 }
 
-// ── Tooltip ──────────────────────────────────────────────────────────────────
-
-/**
- * Build the screentime tooltip HTML section for a given bucket.
- * Shows hierarchical breakdown by category.
- */
 export const buildScreentimeTooltipHtml = (
   bucket: ScreentimeBucketParsed,
   categories: ScreentimeCategory[],
@@ -222,7 +203,6 @@ export const buildScreentimeTooltipHtml = (
     html += `<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${cat.color};margin-right:4px"></span>`
     html += `<strong>${cat.name}</strong> <span>${formatSec(cat.total_sec)}</span></div>`
 
-    // Show sub-categories if there are multiple children
     const children = cat.children.filter((c) => c.path.length > 1).sort((a, b) => b.total_sec - a.total_sec)
 
     for (const child of children) {
@@ -235,9 +215,6 @@ export const buildScreentimeTooltipHtml = (
   return html
 }
 
-/**
- * Find the screentime bucket that contains the given date.
- */
 export const findScreentimeBucket = (
   buckets: ScreentimeBucketParsed[],
   date: Date,

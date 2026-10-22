@@ -1,10 +1,5 @@
 import type { RequestHandler } from 'express'
 
-/**
- * Chart data route group.
- *
- * Handles: /chart-data
- */
 import { type ChartDataHttpQuery, chartDataHttpQuerySchema, type ChartDataResponse } from '@aurboda/api-spec'
 
 import { getChartData } from '../services/chart-data.ts'
@@ -28,6 +23,7 @@ export const createChartDataRouter = (authMiddleware: RequestHandler): TypedRout
         source_type,
         start,
         tag_definition_id,
+        tz,
       } = req.query
       const breakdown_fields = breakdownFieldsStr
         ? breakdownFieldsStr
@@ -52,6 +48,7 @@ export const createChartDataRouter = (authMiddleware: RequestHandler): TypedRout
         source_type,
         start,
         tag_definition_id,
+        tz,
       })
       res.json({
         data: {

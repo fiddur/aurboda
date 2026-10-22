@@ -1,8 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 /**
- * Integration test for Garmin activity detail resync flow.
- *
  * Tests processActivityDetail against a real PostgreSQL instance with PostGIS,
  * using a real (trimmed) Garmin API response as fixture.
  */
@@ -10,10 +8,21 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import type { GarminActivityDetailResponse } from './client.ts'
 
-import { getTimeSeries, insertLocations, insertRawRecord, insertTimeSeries } from '../../db/index.ts'
-import { softDeleteLocationRange } from '../../db/locations.ts'
+import {
+  activityTypeExists,
+  adoptLegacyActivity,
+  getActivityTrack,
+  getTimeSeries,
+  insertActivity,
+  insertLocations,
+  insertRawRecord,
+  insertTimeSeries,
+} from '../../db/index.ts'
+import { softDeleteSupersededLocations } from '../../db/locations.ts'
+import { upsertActivityTrack } from '../../db/tracks.ts'
+import { auditError, auditInfo, auditWarn } from '../../services/audit-log.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../../test/db-test-helper.ts'
-import { processActivityDetail } from './process.ts'
+import { extractTrackPoints, processActivityDetail } from './process.ts'
 
 const garminDetailFixture = JSON.parse(
   readFileSync(resolve(__dirname, '../../test/fixtures/garmin-activity-detail.json'), 'utf-8'),
@@ -35,30 +44,33 @@ describe('Garmin resync integration', () => {
   })
 
   const realDeps = {
+    activityTypeExists,
+    adoptLegacyActivity,
+    auditError,
+    auditInfo,
+    auditWarn,
     deleteGarminActivityWithWrongType: async () => null as string | null,
     insertActivity: async () => '' as string,
     insertLocations,
     insertRawRecord,
     insertTimeSeries,
-    softDeleteLocationRange,
+    softDeleteSupersededLocations,
+    upsertActivityTrack,
   }
 
   test('processActivityDetail inserts time series and GPS from real Garmin response', async () => {
     const user = getTestUser()
     const data = garminDetailFixture as unknown as GarminActivityDetailResponse
 
-    const points = await processActivityDetail(user, data, realDeps)
+    const points = await processActivityDetail(user, data, { deps: realDeps })
 
-    // Should have extracted per-second metrics (HR, speed, elevation, etc.)
     expect(points).toBeGreaterThan(0)
 
-    // Verify time series data was actually inserted into the DB
     const latIdx = data.metricDescriptors.findIndex((d) => d.key === 'directLatitude')
     const lonIdx = data.metricDescriptors.findIndex((d) => d.key === 'directLongitude')
     expect(latIdx).toBeGreaterThanOrEqual(0)
     expect(lonIdx).toBeGreaterThanOrEqual(0)
 
-    // Check heart rate time series was stored
     const firstMetrics = data.activityDetailMetrics[0].metrics
     const tsIdx = data.metricDescriptors.findIndex((d) => d.key === 'directTimestamp')
     const hrIdx = data.metricDescriptors.findIndex((d) => d.key === 'directHeartRate')
@@ -75,7 +87,6 @@ describe('Garmin resync integration', () => {
     const hrData = await getTimeSeries(user, 'heart_rate', new Date(firstTs - 1000), new Date(lastTs + 1000))
     expect(hrData.length).toBeGreaterThan(0)
 
-    // Verify the first HR value matches the fixture
     const expectedHr =
       typeof firstMetrics[hrIdx] === 'object'
         ? (firstMetrics[hrIdx] as { parsedValue: number }).parsedValue
@@ -89,14 +100,13 @@ describe('Garmin resync integration', () => {
     const user = getTestUser()
     const data = garminDetailFixture as unknown as GarminActivityDetailResponse
 
-    await processActivityDetail(user, data, realDeps)
+    await processActivityDetail(user, data, { deps: realDeps })
 
     // The fixture has directLatitude/directLongitude in metrics — GPS should be extracted
     // GPS is downsampled to ~1 point per minute, so 120 seconds of data = ~2 GPS points
     const latIdx = data.metricDescriptors.findIndex((d) => d.key === 'directLatitude')
     expect(latIdx).toBeGreaterThanOrEqual(0)
 
-    // Query locations from DB to verify GPS was inserted
     const { query } = await import('../../db/connection.ts')
     const result = await query(
       user,
@@ -112,12 +122,42 @@ describe('Garmin resync integration', () => {
     expect(Number(firstLoc.lon)).toBeCloseTo(12.63, 1)
   })
 
+  test('processActivityDetail writes the full-resolution track for the activity', async () => {
+    const user = getTestUser()
+    const data = garminDetailFixture as unknown as GarminActivityDetailResponse
+    const samples = extractTrackPoints(data)
+    const start = samples[0]!.time
+    const activityId = await insertActivity(user, {
+      activity_type: 'running',
+      data: { garmin_activity_id: data.activityId },
+      end_time: samples[samples.length - 1]!.time,
+      external_id: `garmin-test-${data.activityId}`,
+      source: 'garmin',
+      start_time: start,
+    })
+
+    await processActivityDetail(user, data, {
+      activityId,
+      activitySpan: { end: samples[samples.length - 1]!.time, start },
+      activityStart: start,
+      deps: realDeps,
+    })
+    await processActivityDetail(user, data, { activityId, activityStart: start, deps: realDeps })
+
+    const track = await getActivityTrack(user, activityId)
+    expect(track).toMatchObject({ activity_id: activityId, full_resolution: true, source: 'garmin' })
+    expect(track!.point_count).toBe(new Set(samples.map((p) => p.time.getTime())).size)
+    expect(track!.points[0]!.t).toBe(0)
+    expect(track!.points[0]!.lat).toBeCloseTo(57.65, 1)
+    expect(track!.length_m).toBeGreaterThan(0)
+  })
+
   test('processActivityDetail is idempotent (can be called twice)', async () => {
     const user = getTestUser()
     const data = garminDetailFixture as unknown as GarminActivityDetailResponse
 
-    const points1 = await processActivityDetail(user, data, realDeps)
-    const points2 = await processActivityDetail(user, data, realDeps)
+    const points1 = await processActivityDetail(user, data, { deps: realDeps })
+    const points2 = await processActivityDetail(user, data, { deps: realDeps })
 
     expect(points1).toBe(points2)
   })

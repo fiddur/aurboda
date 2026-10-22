@@ -1,31 +1,43 @@
-/**
- * Strava data processing — transforms Strava API responses into
- * raw_records, activities, time_series, and locations.
- */
-
 import type {
   insertActivity,
   insertLocations,
   insertRawRecord,
   insertTimeSeries,
   resolveOrCreateActivityType,
-  softDeleteLocationRange,
+  softDeleteSupersededLocations,
+  upsertActivityTrack,
 } from '../../db/index.ts'
 import type { Activity, Location, RawRecord, TimeSeriesPoint } from '../../db/types.ts'
+import type { auditInfo } from '../../services/audit-log.ts'
+import type { ActivitySpan } from '../gps-precedence.ts'
 import type { StravaDetailedActivity, StravaStreamsResponse } from './types.ts'
 
+import { buildTrack } from '../../services/tracks.ts'
+import { activityTrackSources, gpsPrecedenceSpan } from '../gps-precedence.ts'
 import { mapStravaSportType } from './sport-type-map.ts'
 
-// GPS: downsample to ~1 point per minute (same as Garmin)
+// `locations` gets ~1 point per minute; the activity track keeps every sample.
 const GPS_DOWNSAMPLE_MS = 60_000
 
 export interface StravaProcessDeps {
+  auditInfo: typeof auditInfo
   insertActivity: typeof insertActivity
   insertLocations: typeof insertLocations
   insertRawRecord: typeof insertRawRecord
   insertTimeSeries: typeof insertTimeSeries
   resolveOrCreateActivityType: typeof resolveOrCreateActivityType
-  softDeleteLocationRange: typeof softDeleteLocationRange
+  softDeleteSupersededLocations: typeof softDeleteSupersededLocations
+  upsertActivityTrack: typeof upsertActivityTrack
+  onTrackWritten?: (user: string, activityId: string) => void
+  onActivityProcessed?: (user: string, result: StravaProcessResult) => void
+}
+
+export interface StravaProcessResult {
+  activity_id: string
+  activity_type: string
+  start_time: Date
+  end_time: Date
+  point_count: number
 }
 
 const makeRaw = (recordType: string, externalId: string, recordedAt: Date, data: unknown): RawRecord => ({
@@ -36,25 +48,20 @@ const makeRaw = (recordType: string, externalId: string, recordedAt: Date, data:
   source: 'strava',
 })
 
-/**
- * Process a Strava activity (detail + optional streams) into the database.
- */
 export const processStravaActivity = async (
   user: string,
   activity: StravaDetailedActivity,
   streams: StravaStreamsResponse | null,
   deps: StravaProcessDeps,
-): Promise<number> => {
+): Promise<StravaProcessResult | null> => {
   const externalId = `strava-activity-${activity.id}`
   const startTime = new Date(activity.start_date)
   const endTime = new Date(startTime.getTime() + activity.elapsed_time * 1000)
   const mappedType = mapStravaSportType(activity.sport_type)
   const activityType = await deps.resolveOrCreateActivityType(user, mappedType, 'exercise')
 
-  // Raw record
   await deps.insertRawRecord(user, makeRaw('strava_activity', externalId, startTime, activity))
 
-  // Activity
   const activityRecord: Activity = {
     activity_type: activityType,
     data: {
@@ -78,21 +85,60 @@ export const processStravaActivity = async (
     start_time: startTime,
     title: activity.name,
   }
-  await deps.insertActivity(user, activityRecord)
+  const activityId = await deps.insertActivity(user, activityRecord)
 
   let pointCount = 0
 
-  // Process streams (per-second HR, cadence, power, altitude, GPS)
   if (streams) {
     const timeStream = streams.time
     if (timeStream) {
       const timeOffsets = timeStream.data as number[]
       pointCount += await processTimeSeriesStreams(user, startTime, timeOffsets, streams, deps)
-      await processGpsStream(user, startTime, timeOffsets, streams, deps)
+      await processGpsStream(user, { end: endTime, start: startTime }, timeOffsets, streams, deps)
+      if (activityId) await writeStravaTrack(user, activityId, startTime, timeOffsets, streams, deps)
     }
   }
 
-  return pointCount
+  // insertActivity yields no id when the upsert hit a soft-deleted row.
+  if (!activityId) return null
+
+  return {
+    activity_id: activityId,
+    activity_type: activityType,
+    end_time: endTime,
+    point_count: pointCount,
+    start_time: startTime,
+  }
+}
+
+const writeStravaTrack = async (
+  user: string,
+  activityId: string,
+  startTime: Date,
+  timeOffsets: number[],
+  streams: StravaStreamsResponse,
+  deps: StravaProcessDeps,
+): Promise<void> => {
+  const latlngData = streams.latlng?.data as [number, number][] | undefined
+  if (!latlngData) return
+  const altitudeData = streams.altitude?.data as number[] | undefined
+
+  const points = latlngData.slice(0, timeOffsets.length).map(([lat, lon], i) => ({
+    alt: altitudeData?.[i] ?? null,
+    lat,
+    lon,
+    time: new Date(startTime.getTime() + timeOffsets[i] * 1000),
+  }))
+  const track = buildTrack(points, startTime)
+  if (!track) return
+
+  await deps.upsertActivityTrack(user, {
+    activity_id: activityId,
+    ewkt: track.ewkt,
+    full_resolution: true,
+    source: 'strava',
+  })
+  deps.onTrackWritten?.(user, activityId)
 }
 
 const streamMetricMap: Record<string, { metric: string; unit: string }> = {
@@ -100,6 +146,7 @@ const streamMetricMap: Record<string, { metric: string; unit: string }> = {
   cadence: { metric: 'cadence', unit: 'rpm' },
   heartrate: { metric: 'heart_rate', unit: 'bpm' },
   temp: { metric: 'ambient_temperature', unit: 'C' },
+  velocity_smooth: { metric: 'speed', unit: 'm/s' },
   watts: { metric: 'power', unit: 'W' },
 }
 
@@ -142,13 +189,15 @@ const processTimeSeriesStreams = async (
 
 const processGpsStream = async (
   user: string,
-  startTime: Date,
+  activitySpan: ActivitySpan,
   timeOffsets: number[],
   streams: StravaStreamsResponse,
   deps: StravaProcessDeps,
 ): Promise<void> => {
   const latlngStream = streams.latlng
   if (!latlngStream) return
+
+  const startTime = activitySpan.start
 
   const latlngData = latlngStream.data as [number, number][]
   const altitudeStream = streams.altitude
@@ -175,11 +224,21 @@ const processGpsStream = async (
   }
 
   if (gpsPoints.length > 0) {
-    const start = gpsPoints[0].time
-    const end = gpsPoints[gpsPoints.length - 1].time
-    // Strava GPS is higher-resolution than phone (OwnTracks) during activities —
-    // replace the coarser phone data for this time range
-    await deps.softDeleteLocationRange(user, 'owntracks', start, end)
+    // Strava GPS is higher-resolution than phone tracking during activities —
+    // supersede the coarser data for the activity's whole span
+    const span = gpsPrecedenceSpan(gpsPoints, activitySpan)
+    const replaced = span
+      ? await deps.softDeleteSupersededLocations(user, activityTrackSources, span.start, span.end)
+      : 0
     await deps.insertLocations(user, gpsPoints)
+
+    if (span && replaced > 0) {
+      deps.auditInfo(
+        user,
+        'sync',
+        `🛰️ Strava GPS took precedence over ${replaced} location point(s) from other sources`,
+        { end: span.end.toISOString(), start: span.start.toISOString() },
+      )
+    }
   }
 }

@@ -56,7 +56,8 @@ export function FoodItemAutocomplete({
   // Debounced search — only when the input is focused. Re-runs when
   // hasFocus flips true so re-focusing a populated field also re-fetches.
   useEffect(() => {
-    if (value.length < 2) {
+    const query = value.trim()
+    if (query.length < 2) {
       setSuggestions([])
       setOpen(false)
       return
@@ -65,7 +66,7 @@ export function FoodItemAutocomplete({
 
     clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(async () => {
-      const results = await searchFoodItemsApi(value, 8)
+      const results = await searchFoodItemsApi(query, 8)
       setSuggestions(results)
       // Open the dropdown whenever there's either a suggestion or a
       // "+ Create" row to show. With explicit-create enabled, zero matches
@@ -77,7 +78,6 @@ export function FoodItemAutocomplete({
     return () => clearTimeout(debounceRef.current)
   }, [value, hasFocus, onCreate])
 
-  // Close on click outside
   useEffect(() => {
     if (!open) return
     const handler = (e: MouseEvent) => {

@@ -10,7 +10,6 @@ import {
   syncOuraDataType,
 } from './sync.ts'
 
-// Mock the db module
 vi.mock('../../db/index.ts', () => ({
   getSyncState: vi.fn(),
   getUserSettings: vi.fn(),

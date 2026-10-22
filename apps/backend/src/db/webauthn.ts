@@ -1,8 +1,4 @@
-/**
- * WebAuthn credential storage.
- *
- * One row per registered passkey for the user.
- */
+/** One row per registered passkey for the user. */
 import { query } from './connection.ts'
 
 export interface WebAuthnCredentialRow {

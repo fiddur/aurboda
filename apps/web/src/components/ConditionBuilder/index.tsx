@@ -2,11 +2,14 @@
  * ConditionBuilder — editable list of AND-combined deduction rule conditions.
  */
 import { useQuery } from '@tanstack/react-query'
+import { useRef } from 'preact/hooks'
 
 import type { DataFilter, DeductionRuleCondition } from '../../state/api'
 
 import { fetchActivityTypeDefinitions, fetchNamedLocations } from '../../state/api'
 import { ActivityTypePicker } from '../ActivityTypePicker'
+import { removeKey, syncKeys } from './conditionKeys'
+import { positiveOrUndefined } from './positiveOrUndefined'
 import './style.css'
 
 const KIND_LABELS: Record<string, string> = {
@@ -14,6 +17,7 @@ const KIND_LABELS: Record<string, string> = {
   activity_data: 'Activity Data Field',
   after_date: 'Since Date',
   location: 'Location',
+  media: 'Media play',
   scrobble: 'Scrobble (Last.fm)',
   screentime_category: 'Screentime Category',
 }
@@ -25,6 +29,7 @@ const KINDS: Array<DeductionRuleCondition['kind']> = [
   'location',
   'after_date',
   'scrobble',
+  'media',
 ]
 
 const OPERATOR_LABELS: Record<string, string> = {
@@ -33,10 +38,6 @@ const OPERATOR_LABELS: Record<string, string> = {
   neq: 'not equals',
   not_exists: 'not exists',
 }
-
-// ============================================================================
-// Condition body renderers (extracted to reduce complexity)
-// ============================================================================
 
 function ActivityTypeSelect({
   condition,
@@ -241,15 +242,138 @@ function ScrobbleBody({
   )
 }
 
-// ============================================================================
-// Single condition card
-// ============================================================================
+const splitList = (value: string): string[] =>
+  value
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+
+function ActivityTitleFilter({
+  condition,
+  onChange,
+}: {
+  condition: DeductionRuleCondition
+  onChange: (c: DeductionRuleCondition) => void
+}) {
+  return (
+    <div class="condition-data-row">
+      <select
+        value={condition.match_mode ?? 'contains'}
+        onChange={(e) =>
+          onChange({
+            ...condition,
+            match_mode: (e.target as HTMLSelectElement).value as 'exact' | 'contains',
+          })
+        }
+        class="condition-field-select condition-field-intrinsic"
+      >
+        <option value="contains">Title contains</option>
+        <option value="exact">Title is</option>
+      </select>
+      <input
+        type="text"
+        value={condition.title ?? ''}
+        onInput={(e) => onChange({ ...condition, title: (e.target as HTMLInputElement).value || undefined })}
+        placeholder="any title"
+        class="condition-field-input condition-field-narrow"
+      />
+    </div>
+  )
+}
+
+function MediaBody({
+  condition,
+  onChange,
+}: {
+  condition: DeductionRuleCondition
+  onChange: (c: DeductionRuleCondition) => void
+}) {
+  const inputValue = (e: Event) => (e.target as HTMLInputElement).value
+  return (
+    <div class="condition-data-fields">
+      <div class="condition-data-row">
+        <input
+          type="text"
+          value={(condition.url_host ?? []).join(', ')}
+          onInput={(e) => onChange({ ...condition, url_host: splitList(inputValue(e)) })}
+          placeholder="URL host(s), comma-separated (e.g. youtube.com)"
+          class="condition-field-input"
+        />
+      </div>
+      <div class="condition-data-row">
+        <input
+          type="text"
+          value={condition.title ?? ''}
+          onInput={(e) => onChange({ ...condition, title: inputValue(e) || undefined })}
+          placeholder="Title (optional)"
+          class="condition-field-input"
+        />
+      </div>
+      <div class="condition-data-row">
+        <input
+          type="text"
+          value={(condition.artist ?? []).join(', ')}
+          onInput={(e) => onChange({ ...condition, artist: splitList(inputValue(e)) })}
+          placeholder="Artist(s), comma-separated (optional)"
+          class="condition-field-input condition-field-narrow"
+        />
+        <input
+          type="text"
+          value={(condition.player ?? []).join(', ')}
+          onInput={(e) => onChange({ ...condition, player: splitList(inputValue(e)) })}
+          placeholder="Player(s), e.g. firefox, mpv"
+          class="condition-field-input condition-field-narrow"
+        />
+      </div>
+      <div class="condition-data-row">
+        <select
+          value={condition.match_mode ?? 'contains'}
+          onChange={(e) =>
+            onChange({
+              ...condition,
+              match_mode: (e.target as HTMLSelectElement).value as 'exact' | 'contains',
+            })
+          }
+          class="condition-field-select condition-field-narrow"
+        >
+          <option value="contains">Contains</option>
+          <option value="exact">Exact match</option>
+        </select>
+        <label class="condition-field-narrow" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <span style={{ fontSize: '0.85em', opacity: 0.8 }}>Min played (s)</span>
+          <input
+            type="number"
+            min="1"
+            defaultValue={condition.min_played_secs?.toString() ?? ''}
+            onInput={(e) => onChange({ ...condition, min_played_secs: positiveOrUndefined(inputValue(e)) })}
+            class="condition-field-input"
+            style={{ width: '80px' }}
+          />
+        </label>
+        <label class="condition-field-narrow" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <span style={{ fontSize: '0.85em', opacity: 0.8 }}>Min ratio</span>
+          <input
+            type="number"
+            min="0.05"
+            max="1"
+            step="0.05"
+            defaultValue={condition.min_played_ratio?.toString() ?? ''}
+            onInput={(e) => onChange({ ...condition, min_played_ratio: positiveOrUndefined(inputValue(e)) })}
+            class="condition-field-input"
+            style={{ width: '80px' }}
+          />
+        </label>
+      </div>
+    </div>
+  )
+}
 
 const KIND_DEFAULTS: Record<string, Partial<DeductionRuleCondition>> = {
   activity: { activity_type: '' },
   activity_data: { activity_type: '', field: '', operator: 'eq', value: '' },
   after_date: { date: new Date().toISOString().slice(0, 10) },
   location: { location_name: '' },
+  media: { match_mode: 'contains', url_host: [] },
   scrobble: { artist: [], track: '', match_mode: 'exact', duration_seconds: 210 },
   screentime_category: { category: [] },
 }
@@ -317,6 +441,7 @@ function ConditionCard({
         {condition.kind === 'activity' && (
           <>
             <ActivityTypeSelect condition={condition} onChange={update} />
+            <ActivityTitleFilter condition={condition} onChange={update} />
             {(() => {
               const typeDef = definitions.find((d) => d.name === condition.activity_type)
               const schemaFields = (
@@ -361,6 +486,9 @@ function ConditionCard({
               list="named-locations-list"
               value={condition.location_name ?? ''}
               onInput={(e) => update({ ...condition, location_name: (e.target as HTMLInputElement).value })}
+              onChange={(e) =>
+                update({ ...condition, location_name: (e.target as HTMLInputElement).value.trim() })
+              }
               placeholder="Start typing a location name..."
               class="condition-field-input"
             />
@@ -382,14 +510,15 @@ function ConditionCard({
         )}
 
         {condition.kind === 'scrobble' && <ScrobbleBody condition={condition} onChange={update} />}
+
+        {condition.kind === 'media' && <MediaBody condition={condition} onChange={update} />}
       </div>
     </div>
   )
 }
 
-// ============================================================================
-// Main component
-// ============================================================================
+let nextConditionKey = 0
+const newConditionKey = () => `condition-${nextConditionKey++}`
 
 export function ConditionBuilder({
   conditions,
@@ -398,6 +527,9 @@ export function ConditionBuilder({
   conditions: DeductionRuleCondition[]
   onChange: (conditions: DeductionRuleCondition[]) => void
 }) {
+  const keysRef = useRef<string[]>([])
+  keysRef.current = syncKeys(keysRef.current, conditions.length, newConditionKey)
+
   const handleChange = (index: number, updated: DeductionRuleCondition) => {
     const next = [...conditions]
     next[index] = updated
@@ -405,6 +537,7 @@ export function ConditionBuilder({
   }
 
   const handleRemove = (index: number) => {
+    keysRef.current = removeKey(keysRef.current, index)
     onChange(conditions.filter((_, i) => i !== index))
   }
 
@@ -415,7 +548,7 @@ export function ConditionBuilder({
   return (
     <div class="condition-builder">
       {conditions.map((condition, i) => (
-        <div key={i}>
+        <div key={keysRef.current[i]}>
           {i > 0 && <div class="condition-and">AND</div>}
           <ConditionCard
             condition={condition}

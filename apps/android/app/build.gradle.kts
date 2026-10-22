@@ -1,4 +1,4 @@
-import java.io.File // Assuming this was added to fix the previous 'Unresolved reference: io'
+import java.io.File
 import java.io.FileInputStream
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -13,20 +13,19 @@ plugins {
   id("org.jetbrains.kotlin.plugin.serialization") version libs.versions.kotlin.get()
 }
 
-// Function to load properties from local.properties
 fun getLocalProperty(
   key: String,
   projectRootDir: File,
-): String { // Assuming changed to File
+): String {
   val properties = Properties()
-  val localPropertiesFile = File(projectRootDir, "local.properties") // Assuming changed to File
+  val localPropertiesFile = File(projectRootDir, "local.properties")
   if (localPropertiesFile.exists()) {
-    FileInputStream(localPropertiesFile).use { stream -> properties.load(stream) } // Changed lambda parameter
+    FileInputStream(localPropertiesFile).use { stream -> properties.load(stream) }
   }
   return properties.getProperty(key) ?: ""
 }
 
-// Read version code from environment variable (set by CI) or default to 1 for local builds
+// VERSION_CODE is set by the CI release job.
 val versionCodeFromEnv = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 1
 
 android {
@@ -48,7 +47,6 @@ android {
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-    // Expose version info to runtime code
     buildConfigField("int", "VERSION_CODE_INT", "$versionCodeFromEnv")
     val buildTimestamp =
       SimpleDateFormat("yyyyMMddHHmm", Locale.US)
@@ -102,6 +100,14 @@ android {
   testOptions {
     unitTests {
       isIncludeAndroidResources = true
+
+      // One JVM per test class. Compose UI tests leak state between classes in a
+      // shared JVM — a later class's `waitForIdle` then spins until Espresso's
+      // 60s timeout, failing tests that pass in isolation and picking a
+      // different victim on every run.
+      all {
+        it.forkEvery = 1
+      }
     }
   }
 }
@@ -139,8 +145,11 @@ dependencies {
   implementation("androidx.credentials:credentials:1.3.0")
   implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
 
-  // WorkManager for background sync
   implementation("androidx.work:work-runtime-ktx:2.9.0")
+
+  // WebView helpers: origin-scoped document-start script injection for the
+  // embedded web screens (EmbeddedWebScreen)
+  implementation("androidx.webkit:webkit:1.12.1")
 
   testImplementation(libs.junit)
   testImplementation("io.mockk:mockk:1.13.9")

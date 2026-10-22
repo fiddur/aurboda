@@ -1,14 +1,8 @@
 import type { McpSessionRecord } from './types.ts'
 
-/**
- * MCP session persistence across backend restarts.
- */
 import { query } from './connection.ts'
 import { mapMcpSessionRow } from './row-mappers.ts'
 
-/**
- * Save an MCP session to the database.
- */
 export const saveMcpSession = async (user: string, sessionId: string): Promise<McpSessionRecord> => {
   const result = await query(
     user,
@@ -22,9 +16,6 @@ export const saveMcpSession = async (user: string, sessionId: string): Promise<M
   return mapMcpSessionRow(result.rows[0])
 }
 
-/**
- * Get an MCP session by ID.
- */
 export const getMcpSession = async (user: string, sessionId: string): Promise<McpSessionRecord | null> => {
   const result = await query(
     user,
@@ -38,25 +29,16 @@ export const getMcpSession = async (user: string, sessionId: string): Promise<Mc
   return mapMcpSessionRow(result.rows[0])
 }
 
-/**
- * Update the last_activity timestamp for a session.
- */
 export const touchMcpSession = async (user: string, sessionId: string): Promise<void> => {
   await query(user, `UPDATE mcp_sessions SET last_activity = NOW() WHERE session_id = $1`, [sessionId])
 }
 
-/**
- * Delete an MCP session.
- */
 export const deleteMcpSession = async (user: string, sessionId: string): Promise<boolean> => {
   const result = await query(user, `DELETE FROM mcp_sessions WHERE session_id = $1`, [sessionId])
   return (result.rowCount ?? 0) > 0
 }
 
-/**
- * Delete MCP sessions that have been inactive for longer than the specified duration.
- * @param maxInactivityMs Maximum inactivity time in milliseconds (default: 7 days)
- */
+/** @param maxInactivityMs Maximum inactivity time in milliseconds (default: 7 days) */
 export const deleteExpiredMcpSessions = async (
   user: string,
   maxInactivityMs: number = 7 * 24 * 60 * 60 * 1000,
@@ -74,9 +56,6 @@ export const deleteExpiredMcpSessions = async (
   return result.rows.map((row) => row.session_id)
 }
 
-/**
- * Get all active MCP sessions for a user.
- */
 export const getMcpSessionsForUser = async (user: string): Promise<McpSessionRecord[]> => {
   const result = await query(
     user,

@@ -18,15 +18,21 @@ import type {
   WidgetDataMap,
 } from '@aurboda/api-spec'
 
-import { hrZoneMetrics, isExerciseActivityType } from '@aurboda/api-spec'
+import {
+  hrZoneMetrics,
+  isExerciseActivityType,
+  isKnownTimezone,
+  metricCardLookbackDays,
+} from '@aurboda/api-spec'
 
-import { getAllActivityTypeNames } from '../db/index.ts'
+import { getAllActivityTypeNames, getUserSettings } from '../db/index.ts'
 import { maskBreakdownNames } from './breakdown-mask.ts'
 import { getChartData } from './chart-data.ts'
 import { getActivityImpact } from './correlations/activity-impact.ts'
 import { getBaseline } from './correlations/baseline.ts'
 import { getCustomMetrics } from './custom-metrics.ts'
 import { getGoalsProgress } from './goals.ts'
+import { getLatestSleep } from './latest-sleep.ts'
 import { getPeriodSummary, queryActivities, queryMetrics } from './queries/index.ts'
 import { getEffectiveHrZones } from './settings.ts'
 import { getTrend } from './trends.ts'
@@ -66,7 +72,7 @@ const resolveMetricCard = async (
   }
 
   const apiMetric = metricToApiMetric[metric] ?? metric
-  const { end, start } = lookbackRange(30)
+  const { end, start } = lookbackRange(metricCardLookbackDays(metric))
   const summary = await getPeriodSummary(user, [apiMetric], start, end)
   const stats = summary.metrics.find((m) => m.metric === apiMetric)
   const hasData = stats !== undefined && stats.count > 0
@@ -111,11 +117,12 @@ const resolveTrendChart = async (
 ): Promise<WidgetData> => {
   const customMetrics = await getCustomMetrics(user)
   const result = await getTrend(user, {
-    aggregation: config.aggregation ?? 'count',
+    aggregation: config.aggregation,
     custom_metrics: customMetrics,
     display_period: config.display_period ?? 'monthly',
     half_life_days: config.half_life_days ?? 15,
     lookback_days: config.lookback_days ?? 90,
+    missing_days: config.missing_days,
     pattern: config.pattern,
     source_type: config.source_type,
     ...(config.breakdown_fields?.length ? { breakdown_fields: config.breakdown_fields } : {}),
@@ -151,6 +158,7 @@ const resolveTrendChart = async (
 const resolveBarChart = async (
   user: string,
   config: Extract<DashboardWidget, { type: 'bar_chart' }>['config'],
+  tz: string,
 ): Promise<WidgetData> => {
   const { end, start } = lookbackRange(config.lookback_days)
   const result = await getChartData(user, {
@@ -161,6 +169,7 @@ const resolveBarChart = async (
     pattern: config.pattern,
     source_type: config.source_type,
     start: start.toISOString(),
+    tz,
     ...(config.breakdown_fields?.length ? { breakdown_fields: config.breakdown_fields } : {}),
   })
 
@@ -176,7 +185,9 @@ const resolveBarChart = async (
         ? [
             {
               bucket_start: b.bucket_start,
-              series: Object.fromEntries(Object.entries(b.series).map(([name, value]) => [mask(name), value])),
+              series: Object.fromEntries(
+                Object.entries(b.series).map(([name, value]) => [mask(name), value]),
+              ),
             },
           ]
         : [],
@@ -291,7 +302,7 @@ const resolveGoalProgress = async (user: string): Promise<WidgetData> => {
 }
 
 /** Resolve one widget to its minimal data payload. */
-const resolveWidget = async (user: string, widget: DashboardWidget): Promise<WidgetData> => {
+const resolveWidget = async (user: string, widget: DashboardWidget, tz: string): Promise<WidgetData> => {
   switch (widget.type) {
     case 'metric_card':
       return resolveMetricCard(user, widget.config)
@@ -300,7 +311,7 @@ const resolveWidget = async (user: string, widget: DashboardWidget): Promise<Wid
     case 'trend_chart':
       return resolveTrendChart(user, widget.config)
     case 'bar_chart':
-      return resolveBarChart(user, widget.config)
+      return resolveBarChart(user, widget.config, tz)
     case 'correlation':
       return resolveCorrelation(user, widget.config)
     case 'activity_summary':
@@ -309,6 +320,8 @@ const resolveWidget = async (user: string, widget: DashboardWidget): Promise<Wid
       return resolveHrZones(user, widget.config)
     case 'goal_progress':
       return resolveGoalProgress(user)
+    case 'last_sleep':
+      return { data: await getLatestSleep(user), type: 'last_sleep' }
     case 'quick_link':
       return { data: null, type: 'quick_link' }
   }
@@ -333,6 +346,8 @@ const nullData = (type: DashboardWidget['type']): WidgetData => {
       return { data: null, type }
     case 'goal_progress':
       return { data: null, type }
+    case 'last_sleep':
+      return { data: null, type }
     case 'quick_link':
       return { data: null, type }
   }
@@ -345,6 +360,12 @@ const nullData = (type: DashboardWidget['type']): WidgetData => {
  * a logged warning rather than silently.
  */
 const MAX_RESOLVED_WIDGETS = 60
+
+/** The owner's stored timezone, so a visitor sees the owner's calendar days. */
+const ownerTimezone = async (user: string): Promise<string> => {
+  const tz = (await getUserSettings(user))?.device_timezone
+  return tz && isKnownTimezone(tz) ? tz : 'UTC'
+}
 
 /**
  * Resolve all widget data for a stored dashboard config, keyed by widget id.
@@ -359,10 +380,11 @@ export const resolveDashboardData = async (user: string, config: DashboardConfig
     )
   }
   const widgets = allWidgets.slice(0, MAX_RESOLVED_WIDGETS)
+  const tz = await ownerTimezone(user)
   const entries = await Promise.all(
     widgets.map(async (widget): Promise<[string, WidgetData]> => {
       try {
-        return [widget.id, await resolveWidget(user, widget)]
+        return [widget.id, await resolveWidget(user, widget, tz)]
       } catch (error) {
         console.warn(`Failed to resolve widget ${widget.id} (${widget.type}):`, error)
         return [widget.id, nullData(widget.type)]

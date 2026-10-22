@@ -124,7 +124,6 @@ export const setupOuraWebhook = async ({
   // Mount proxy handler (delegates to inner router when enabled, 404 when disabled)
   httpd.use('/webhooks/oura', (req, res, next) => ouraWebhookManager.handleWebhookRequest(req, res, next))
 
-  // Enable if previously configured and host supports it
   const ouraWebhookEnabled = await centralDb.getOuraWebhookEnabled()
   if (ouraWebhookEnabled && (await ouraWebhookManager.canEnable())) {
     try {

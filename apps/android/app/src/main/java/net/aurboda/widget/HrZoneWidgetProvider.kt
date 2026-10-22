@@ -37,7 +37,6 @@ class HrZoneWidgetProvider : AppWidgetProvider() {
       val componentName = ComponentName(context, HrZoneWidgetProvider::class.java)
       val appWidgetIds = appWidgetManager.getAppWidgetIds(componentName)
 
-      // Notify the ListView adapter to refresh data
       @Suppress("DEPRECATION")
       appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetIds, R.id.goals_list)
     }
@@ -50,11 +49,14 @@ class HrZoneWidgetProvider : AppWidgetProvider() {
   ) {
     val views = RemoteViews(context.packageName, R.layout.widget_hr_zones)
 
-    // Set up click handler to open the app on the Data tab
+    // Tapping the widget opens the app on the Goals page. SINGLE_TOP reuses an
+    // already-running app rather than recreating it; MainActivity then follows
+    // the deep link from onNewIntent (or from onCreate on a cold start).
     val openAppIntent =
       Intent(context, MainActivity::class.java).apply {
-        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        putExtra(MainActivity.EXTRA_OPEN_TAB, MainActivity.TAB_ADD)
+        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        putExtra(MainActivity.EXTRA_OPEN_TAB, MainActivity.TAB_MORE)
+        putExtra(MainActivity.EXTRA_MORE_PATH, "/goals")
       }
     val pendingIntent =
       PendingIntent.getActivity(
@@ -66,7 +68,6 @@ class HrZoneWidgetProvider : AppWidgetProvider() {
     views.setPendingIntentTemplate(R.id.goals_list, pendingIntent)
     views.setOnClickPendingIntent(R.id.widget_container, pendingIntent)
 
-    // Set up the RemoteViews adapter for the ListView
     val serviceIntent =
       Intent(context, GoalsWidgetService::class.java).apply {
         putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
@@ -76,12 +77,10 @@ class HrZoneWidgetProvider : AppWidgetProvider() {
     @Suppress("DEPRECATION")
     views.setRemoteAdapter(R.id.goals_list, serviceIntent)
 
-    // Set empty view
     views.setEmptyView(R.id.goals_list, R.id.empty_view)
 
     appWidgetManager.updateAppWidget(appWidgetId, views)
 
-    // Trigger data refresh
     @Suppress("DEPRECATION")
     appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.goals_list)
   }
@@ -90,7 +89,6 @@ class HrZoneWidgetProvider : AppWidgetProvider() {
     const val ACTION_UPDATE_WIDGETS = "net.aurboda.ACTION_UPDATE_HR_ZONE_WIDGETS"
 
     /**
-     * Trigger an update of all HR Zone widgets.
      * Call this after background sync completes.
      */
     fun triggerUpdate(context: Context) {

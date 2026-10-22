@@ -1,0 +1,141 @@
+import { describe, expect, test } from 'vitest'
+
+import { chartRightMargin, countRightAxes, findNearest, findStageAtTime, fitTicks } from './chart-utils'
+
+describe('findNearest', () => {
+  test('returns undefined for empty data', () => {
+    expect(findNearest([], new Date('2024-01-15T10:00:00Z'))).toBeUndefined()
+  })
+
+  test('returns single element for single-element array', () => {
+    const data: [Date, number][] = [[new Date('2024-01-15T10:00:00Z'), 72]]
+    expect(findNearest(data, new Date('2024-01-15T12:00:00Z'))).toEqual(data[0])
+  })
+
+  test('returns exact match', () => {
+    const data: [Date, number][] = [
+      [new Date('2024-01-15T10:00:00Z'), 70],
+      [new Date('2024-01-15T10:05:00Z'), 72],
+      [new Date('2024-01-15T10:10:00Z'), 68],
+    ]
+    expect(findNearest(data, new Date('2024-01-15T10:05:00Z'))).toEqual(data[1])
+  })
+
+  test('returns closest point when between two points', () => {
+    const data: [Date, number][] = [
+      [new Date('2024-01-15T10:00:00Z'), 70],
+      [new Date('2024-01-15T10:10:00Z'), 72],
+    ]
+    // 10:03 is closer to 10:00
+    expect(findNearest(data, new Date('2024-01-15T10:03:00Z'))).toEqual(data[0])
+    // 10:08 is closer to 10:10
+    expect(findNearest(data, new Date('2024-01-15T10:08:00Z'))).toEqual(data[1])
+  })
+
+  test('returns first point when target is before all data', () => {
+    const data: [Date, number][] = [
+      [new Date('2024-01-15T10:00:00Z'), 70],
+      [new Date('2024-01-15T10:10:00Z'), 72],
+    ]
+    expect(findNearest(data, new Date('2024-01-15T09:00:00Z'))).toEqual(data[0])
+  })
+
+  test('returns last point when target is after all data', () => {
+    const data: [Date, number][] = [
+      [new Date('2024-01-15T10:00:00Z'), 70],
+      [new Date('2024-01-15T10:10:00Z'), 72],
+    ]
+    expect(findNearest(data, new Date('2024-01-15T11:00:00Z'))).toEqual(data[1])
+  })
+
+  test('handles large dataset with binary search', () => {
+    const data: [Date, number][] = Array.from({ length: 1000 }, (_, i) => [
+      new Date(new Date('2024-01-15T00:00:00Z').getTime() + i * 60000),
+      60 + Math.sin(i) * 10,
+    ])
+    const target = new Date(new Date('2024-01-15T00:00:00Z').getTime() + 500 * 60000)
+    const result = findNearest(data, target)
+    expect(result).toEqual(data[500])
+  })
+})
+
+describe('findStageAtTime', () => {
+  const stages = [
+    { endTime: '2024-01-15T00:30:00Z', stage: 4, startTime: '2024-01-15T00:00:00Z' },
+    { endTime: '2024-01-15T01:00:00Z', stage: 5, startTime: '2024-01-15T00:30:00Z' },
+    { endTime: '2024-01-15T01:30:00Z', stage: 6, startTime: '2024-01-15T01:00:00Z' },
+    { endTime: '2024-01-15T01:35:00Z', stage: 1, startTime: '2024-01-15T01:30:00Z' },
+  ]
+
+  test('returns correct stage label when time falls within a stage', () => {
+    expect(findStageAtTime(stages, new Date('2024-01-15T00:15:00Z'))).toBe('Light')
+    expect(findStageAtTime(stages, new Date('2024-01-15T00:45:00Z'))).toBe('Deep')
+    expect(findStageAtTime(stages, new Date('2024-01-15T01:15:00Z'))).toBe('REM')
+    expect(findStageAtTime(stages, new Date('2024-01-15T01:32:00Z'))).toBe('Awake')
+  })
+
+  test('returns undefined when time is outside all stages', () => {
+    expect(findStageAtTime(stages, new Date('2024-01-14T23:00:00Z'))).toBeUndefined()
+    expect(findStageAtTime(stages, new Date('2024-01-15T02:00:00Z'))).toBeUndefined()
+  })
+
+  test('returns stage at exact start boundary (inclusive)', () => {
+    expect(findStageAtTime(stages, new Date('2024-01-15T00:00:00Z'))).toBe('Light')
+  })
+
+  test('returns undefined at exact end boundary (exclusive)', () => {
+    // End of last stage should not match
+    expect(findStageAtTime(stages, new Date('2024-01-15T01:35:00Z'))).toBeUndefined()
+  })
+
+  test('returns undefined for empty stages', () => {
+    expect(findStageAtTime([], new Date('2024-01-15T00:15:00Z'))).toBeUndefined()
+  })
+})
+
+describe('countRightAxes / chartRightMargin', () => {
+  const overlay = (showAxis: boolean) => ({ showAxis })
+
+  test('a single overlay takes the left axis — no right margin reservation', () => {
+    expect(countRightAxes(false, [overlay(true)])).toBe(0)
+    expect(chartRightMargin(0)).toBe(14)
+  })
+
+  test('with a hypnogram, the first overlay already goes right', () => {
+    expect(countRightAxes(true, [overlay(true)])).toBe(1)
+  })
+
+  test('second and third overlays get right axes, capped at two', () => {
+    expect(countRightAxes(false, [overlay(true), overlay(true)])).toBe(1)
+    expect(countRightAxes(false, [overlay(true), overlay(true), overlay(true)])).toBe(2)
+    expect(countRightAxes(false, [overlay(true), overlay(true), overlay(true), overlay(true)])).toBe(2)
+  })
+
+  test('an axis-less overlay claims the left slot but never a right one', () => {
+    // Mirrors drawOverlays: the first overlay marks the left axis used even
+    // when it draws no axis, so the next one goes right.
+    expect(countRightAxes(false, [overlay(false), overlay(true)])).toBe(1)
+    expect(countRightAxes(false, [overlay(true), overlay(false)])).toBe(0)
+  })
+
+  test('margin grows 45px per axis plus label headroom', () => {
+    expect(chartRightMargin(1)).toBe(65)
+    expect(chartRightMargin(2)).toBe(110)
+  })
+})
+
+describe('fitTicks', () => {
+  const ticks = [0, 1, 2, 3, 4, 5, 6, 7]
+
+  test('keeps every tick when the width fits them all', () => {
+    expect(fitTicks(ticks, 600, 60)).toEqual(ticks)
+  })
+
+  test('keeps every k-th tick when the width is narrow', () => {
+    expect(fitTicks(ticks, 200, 60)).toEqual([0, 3, 6])
+  })
+
+  test('keeps at least one tick on a very narrow card', () => {
+    expect(fitTicks(ticks, 10, 60)).toEqual([0])
+  })
+})

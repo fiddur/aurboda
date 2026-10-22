@@ -19,10 +19,6 @@ import {
   type TrainingLoadDeps,
 } from './index.ts'
 
-// ============================================================================
-// TRIMP Calculation
-// ============================================================================
-
 describe('calculateTrimp', () => {
   test('computes classic Banister TRIMP for a typical workout', () => {
     const trimp = calculateTrimp({
@@ -120,10 +116,6 @@ describe('calculateTrimp', () => {
   })
 })
 
-// ============================================================================
-// floorToHour
-// ============================================================================
-
 describe('floorToHour', () => {
   test('floors to start of hour', () => {
     const result = floorToHour(new Date('2024-01-01T10:37:42.123Z'))
@@ -135,10 +127,6 @@ describe('floorToHour', () => {
     expect(result.toISOString()).toBe('2024-01-01T10:00:00.000Z')
   })
 })
-
-// ============================================================================
-// getWorkoutTrimpForHour
-// ============================================================================
 
 describe('getWorkoutTrimpForHour', () => {
   test('returns full TRIMP for workout within single hour', () => {
@@ -176,10 +164,6 @@ describe('getWorkoutTrimpForHour', () => {
     expect(result).toBe(0)
   })
 })
-
-// ============================================================================
-// computeHourlyImpulses
-// ============================================================================
 
 describe('computeHourlyImpulses', () => {
   test('distributes exercise TRIMP into hourly buckets', () => {
@@ -248,10 +232,6 @@ describe('computeHourlyImpulses', () => {
   })
 })
 
-// ============================================================================
-// Hourly Load Series (Banister EMA)
-// ============================================================================
-
 describe('computeHourlyLoadSeries', () => {
   test('produces correct number of hourly points', () => {
     const points = computeHourlyLoadSeries({
@@ -292,13 +272,11 @@ describe('computeHourlyLoadSeries', () => {
       trainingImpulses: impulses,
     })
 
-    // Find the hour with the impulse
     const impulseHour = points.find((p) => p.time === '2024-01-01T10:00:00.000Z')!
     expect(impulseHour.atl).toBeGreaterThan(0)
     expect(impulseHour.ctl).toBeGreaterThan(0)
     expect(impulseHour.atl).toBeGreaterThan(impulseHour.ctl) // ATL gains faster
 
-    // TSB should be negative after training (fatigue > fitness)
     expect(impulseHour.tsb).toBeLessThan(0)
 
     // 24 hours later, ATL should have decayed (CTL barely moves with tau=42d)
@@ -328,10 +306,6 @@ describe('computeHourlyLoadSeries', () => {
     expect(impulsePoint.atl).toBeGreaterThan(0)
   })
 })
-
-// ============================================================================
-// Recovery Zones
-// ============================================================================
 
 describe('computeRecoveryZones', () => {
   test('returns undefined during bootstrapping (too few points)', () => {
@@ -367,10 +341,6 @@ describe('computeRecoveryZones', () => {
     expect(zones!.strained_max).toBeCloseTo(42.5, 0)
   })
 })
-
-// ============================================================================
-// HR Data Extraction
-// ============================================================================
 
 describe('getAverageHrForSession', () => {
   test('returns average of HR samples within session window', () => {
@@ -412,10 +382,6 @@ describe('getAverageHrForSession', () => {
     expect(getAverageHrForSession(start, end, [])).toBeNull()
   })
 })
-
-// ============================================================================
-// Settings Resolution
-// ============================================================================
 
 describe('getEffectiveSettings', () => {
   test('returns defaults for male with no user settings', () => {
@@ -489,10 +455,6 @@ describe('resolveHrRest', () => {
   })
 })
 
-// ============================================================================
-// Test helpers
-// ============================================================================
-
 const makeActivity = (id: string, startStr: string, endStr: string, title?: string): Activity => ({
   activity_type: 'exercise',
   data: {},
@@ -503,17 +465,15 @@ const makeActivity = (id: string, startStr: string, endStr: string, title?: stri
   title,
 })
 
-// ============================================================================
-// Full Computation (Integration with Mocked Dependencies)
-// ============================================================================
-
 describe('computeTrainingLoad', () => {
   const makeDeps = (overrides: Partial<TrainingLoadDeps> = {}): TrainingLoadDeps => ({
+    bootstrappedFrom: new Map(),
     deleteImpulseBuckets: async () => 0,
     getActiveCalories: async () => [],
     getExercises: async () => [],
     getHourlyCalorieSums: async () => [],
     getHrSamples: async () => [],
+    getHrSamplesForWindows: async (_user, windows) => windows.map(() => []),
     getImpulseBuckets: async () => [],
     getLatestRestingHr: async () => 60,
     getMaxObservedHr: async () => 190,
@@ -554,7 +514,7 @@ describe('computeTrainingLoad', () => {
 
     const deps = makeDeps({
       getExercises: async () => exercises,
-      getHrSamples: async () => hrSamples,
+      getHrSamplesForWindows: async (_user, windows) => windows.map(() => hrSamples),
       getImpulseBuckets: async (_user, metric) => (metric === 'training_impulse' ? impulseBuckets : []),
     })
 
@@ -571,7 +531,6 @@ describe('computeTrainingLoad', () => {
     expect(result.workouts[0]!.title).toBe('Running')
     expect(result.workouts[0]!.duration_minutes).toBe(60)
 
-    // Some hourly points should have non-zero ATL/CTL after the workout
     const postWorkout = result.points.filter((p) => p.time >= '2024-01-03T10:00:00.000Z')
     expect(postWorkout.some((p) => p.atl > 0)).toBe(true)
   })
@@ -626,7 +585,6 @@ describe('computeTrainingLoad', () => {
   })
 
   test('includes pre-computed impulse buckets from storage', async () => {
-    // Simulate stored impulse data from a previous computation
     const storedTraining: [Date, number][] = [
       [new Date('2024-01-02T14:00:00Z'), 80], // 80 TRIMP at 14:00
     ]
@@ -649,7 +607,6 @@ describe('computeTrainingLoad', () => {
       new Date('2024-01-07T00:00:00Z'),
     )
 
-    // Points after the impulse should show non-zero load
     const postImpulse = result.points.filter((p) => p.time >= '2024-01-02T14:00:00.000Z')
     expect(postImpulse.some((p) => p.atl > 0)).toBe(true)
   })
@@ -674,7 +631,6 @@ describe('computeTrainingLoad', () => {
 
     const result = await computeTrainingLoad(deps, 'testuser', oneWeekAgo, tomorrow)
 
-    // Should have fetched live data for current hour
     expect(getActiveCalories).toHaveBeenCalled()
     expect(result.points.length).toBeGreaterThan(0)
   })
@@ -702,8 +658,137 @@ describe('computeTrainingLoad', () => {
       new Date('2024-01-07T00:00:00Z'),
     )
 
-    // Should have attempted to delete old buckets (recomputation triggered)
     expect(deleteImpulseBuckets).toHaveBeenCalled()
+  })
+
+  test('reads HR for all workouts in one call, an open-ended one as an hour', async () => {
+    const open: Activity = { ...makeActivity('a2', '2024-01-04T08:00:00Z', '2024-01-04T09:00:00Z') }
+    delete open.end_time
+    const exercises = [makeActivity('a1', '2024-01-03T10:00:00Z', '2024-01-03T10:30:00Z'), open]
+    const getHrSamplesForWindows = vi.fn(async (_user: string, windows: { start: Date; end: Date }[]) =>
+      windows.map(() => []),
+    )
+    const getHrSamples = vi.fn(async () => [])
+
+    await computeTrainingLoad(
+      makeDeps({ getExercises: async () => exercises, getHrSamples, getHrSamplesForWindows }),
+      'testuser',
+      new Date('2024-01-01T00:00:00Z'),
+      new Date('2024-01-07T00:00:00Z'),
+    )
+
+    const workoutCalls = getHrSamplesForWindows.mock.calls.filter(([, windows]) =>
+      windows.some((w) => w.start.getTime() === exercises[1]!.start_time.getTime()),
+    )
+    expect(workoutCalls[0]![1]).toEqual([
+      { end: new Date('2024-01-03T10:30:00Z'), start: new Date('2024-01-03T10:00:00Z') },
+      { end: new Date('2024-01-04T09:00:00Z'), start: new Date('2024-01-04T08:00:00Z') },
+    ])
+    expect(getHrSamples).not.toHaveBeenCalled()
+  })
+
+  describe('auto-bootstrap', () => {
+    const deleteSpy = () => vi.fn<TrainingLoadDeps['deleteImpulseBuckets']>(async () => 0)
+    const recomputeCount = (deleteImpulseBuckets: ReturnType<typeof deleteSpy>) =>
+      deleteImpulseBuckets.mock.calls.filter(([, metric]) => metric === 'training_impulse').length
+
+    test('runs once for repeated reads of a user without data', async () => {
+      const deleteImpulseBuckets = deleteSpy()
+      const deps = makeDeps({ deleteImpulseBuckets })
+      const start = new Date('2024-01-01T00:00:00Z')
+      const end = new Date('2024-01-07T00:00:00Z')
+
+      await computeTrainingLoad(deps, 'testuser', start, end)
+      await computeTrainingLoad(deps, 'testuser', start, end)
+      await computeTrainingLoad(deps, 'testuser', new Date('2024-02-01T00:00:00Z'), end)
+
+      expect(recomputeCount(deleteImpulseBuckets)).toBe(1)
+    })
+
+    test('runs again, once, for a range older than the one covered', async () => {
+      const deleteImpulseBuckets = deleteSpy()
+      const deps = makeDeps({ deleteImpulseBuckets })
+      const end = new Date('2024-01-07T00:00:00Z')
+
+      await computeTrainingLoad(deps, 'testuser', new Date('2024-01-01T00:00:00Z'), end)
+      await computeTrainingLoad(deps, 'testuser', new Date('2023-06-01T00:00:00Z'), end)
+      await computeTrainingLoad(deps, 'testuser', new Date('2023-06-01T00:00:00Z'), end)
+
+      expect(recomputeCount(deleteImpulseBuckets)).toBe(2)
+      expect(deleteImpulseBuckets.mock.calls[2]![3]!.getTime()).toBeLessThan(
+        deleteImpulseBuckets.mock.calls[0]![3]!.getTime(),
+      )
+    })
+
+    test('runs again once the memory is an hour old', async () => {
+      const deleteImpulseBuckets = deleteSpy()
+      const deps = makeDeps({ deleteImpulseBuckets })
+      const start = new Date('2024-01-01T00:00:00Z')
+      const end = new Date('2024-01-07T00:00:00Z')
+      const now = vi.spyOn(Date, 'now').mockReturnValue(1_000_000_000_000)
+
+      try {
+        await computeTrainingLoad(deps, 'testuser', start, end)
+        now.mockReturnValue(1_000_000_000_000 + 59 * 60 * 1000)
+        await computeTrainingLoad(deps, 'testuser', start, end)
+        now.mockReturnValue(1_000_000_000_000 + 61 * 60 * 1000)
+        await computeTrainingLoad(deps, 'testuser', start, end)
+      } finally {
+        now.mockRestore()
+      }
+
+      expect(recomputeCount(deleteImpulseBuckets)).toBe(2)
+    })
+
+    test('drops expired entries when remembering a new one', async () => {
+      const deps = makeDeps({ deleteImpulseBuckets: deleteSpy() })
+      const start = new Date('2024-01-01T00:00:00Z')
+      const end = new Date('2024-01-07T00:00:00Z')
+      const now = vi.spyOn(Date, 'now').mockReturnValue(1_000_000_000_000)
+
+      try {
+        await computeTrainingLoad(deps, 'alice', start, end)
+        now.mockReturnValue(1_000_000_000_000 + 30 * 60 * 1000)
+        await computeTrainingLoad(deps, 'bob', start, end)
+        now.mockReturnValue(1_000_000_000_000 + 61 * 60 * 1000)
+        await computeTrainingLoad(deps, 'carol', start, end)
+      } finally {
+        now.mockRestore()
+      }
+
+      expect([...deps.bootstrappedFrom.keys()].sort()).toEqual(['bob', 'carol'])
+    })
+
+    test('is remembered per user', async () => {
+      const deleteImpulseBuckets = deleteSpy()
+      const deps = makeDeps({ deleteImpulseBuckets })
+      const start = new Date('2024-01-01T00:00:00Z')
+      const end = new Date('2024-01-07T00:00:00Z')
+
+      await computeTrainingLoad(deps, 'alice', start, end)
+      await computeTrainingLoad(deps, 'bob', start, end)
+
+      expect(recomputeCount(deleteImpulseBuckets)).toBe(2)
+    })
+
+    test('does not stop the watermark recompute', async () => {
+      const deleteImpulseBuckets = deleteSpy()
+      const deps = makeDeps({
+        deleteImpulseBuckets,
+        getUserSettings: async () => ({
+          birth_date: '1985-06-15',
+          sex: 'male' as const,
+          training_load: { impulse_watermark: '2024-01-02T00:00:00Z' },
+        }),
+      })
+      const start = new Date('2024-01-01T00:00:00Z')
+      const end = new Date('2024-01-07T00:00:00Z')
+
+      await computeTrainingLoad(deps, 'testuser', start, end)
+      await computeTrainingLoad(deps, 'testuser', start, end)
+
+      expect(recomputeCount(deleteImpulseBuckets)).toBe(2)
+    })
   })
 
   test('uses cached observed_hr_max from settings instead of scanning', async () => {
@@ -725,9 +810,7 @@ describe('computeTrainingLoad', () => {
       new Date('2024-01-07T00:00:00Z'),
     )
 
-    // Should NOT call the expensive scan when cached value exists
     expect(getMaxObservedHr).not.toHaveBeenCalled()
-    // Should use the cached value (192) for hr_max resolution
     expect(result.settings.hr_max).toBe(192)
   })
 
@@ -751,10 +834,8 @@ describe('computeTrainingLoad', () => {
       new Date('2024-01-07T00:00:00Z'),
     )
 
-    // Should call the expensive scan when no cached value
     expect(getMaxObservedHr).toHaveBeenCalled()
     expect(result.settings.hr_max).toBe(195)
-    // Should cache the result (fire-and-forget, but the mock captures it)
     // Wait a tick for the fire-and-forget to resolve
     await new Promise((resolve) => setTimeout(resolve, 10))
     expect(updateTrainingLoadSettings).toHaveBeenCalledWith('testuser', { observed_hr_max: 195 })
@@ -789,17 +870,15 @@ describe('computeTrainingLoad', () => {
   })
 })
 
-// ============================================================================
-// Recompute Impulse Buckets (chunked)
-// ============================================================================
-
 describe('recomputeImpulseBuckets', () => {
   const makeDeps = (overrides: Partial<TrainingLoadDeps> = {}): TrainingLoadDeps => ({
+    bootstrappedFrom: new Map(),
     deleteImpulseBuckets: async () => 0,
     getActiveCalories: async () => [],
     getExercises: async () => [],
     getHourlyCalorieSums: async () => [],
     getHrSamples: async () => [],
+    getHrSamplesForWindows: async (_user, windows) => windows.map(() => []),
     getImpulseBuckets: async () => [],
     getLatestRestingHr: async () => 60,
     getMaxObservedHr: async () => 190,
@@ -822,25 +901,25 @@ describe('recomputeImpulseBuckets', () => {
 
     const exerciseStart = new Date('2024-01-03T10:00:00Z')
     const exerciseEnd = new Date('2024-01-03T11:00:00Z')
+    const getHrSamplesForWindows = vi.fn(async (_user: string, windows: { start: Date; end: Date }[]) =>
+      windows.map((w) =>
+        w.start.getTime() === exerciseStart.getTime()
+          ? [
+              [new Date('2024-01-03T10:00:00Z'), 150] as [Date, number],
+              [new Date('2024-01-03T10:30:00Z'), 160] as [Date, number],
+            ]
+          : [],
+      ),
+    )
 
     const deps = makeDeps({
       getExercises: async (_, start, end) => {
-        // Only return exercise if the chunk overlaps
         if (start <= exerciseStart && end >= exerciseEnd) {
           return [makeActivity('ex1', '2024-01-03T10:00:00Z', '2024-01-03T11:00:00Z', 'Running')]
         }
         return []
       },
-      getHrSamples: async (_, start) => {
-        // Return HR samples only when queried for the exercise window
-        if (start.getTime() === exerciseStart.getTime()) {
-          return [
-            [new Date('2024-01-03T10:00:00Z'), 150] as [Date, number],
-            [new Date('2024-01-03T10:30:00Z'), 160] as [Date, number],
-          ]
-        }
-        return []
-      },
+      getHrSamplesForWindows,
       updateTrainingLoadSettings: updateSettings,
       writeImpulseBuckets: async (_, points) => {
         writtenPoints.push(...points)
@@ -852,13 +931,16 @@ describe('recomputeImpulseBuckets', () => {
 
     expect(result.hours_computed).toBeGreaterThan(0)
 
-    // Check that training_impulse points were written
     const trainingPoints = writtenPoints.filter((p) => p.metric === 'training_impulse')
     expect(trainingPoints.length).toBeGreaterThan(0)
     expect(trainingPoints.some((p) => p.value > 0)).toBe(true)
 
-    // Watermark should be cleared
     expect(updateSettings).toHaveBeenCalledWith('testuser', { impulse_watermark: undefined })
+    // One HR read for the chunk holding the exercise, none for chunks without exercises
+    expect(getHrSamplesForWindows).toHaveBeenCalledTimes(1)
+    expect(getHrSamplesForWindows).toHaveBeenCalledWith('testuser', [
+      { end: exerciseEnd, start: exerciseStart },
+    ])
   })
 
   test('computes activity impulse from hourly calorie sums', async () => {
@@ -926,7 +1008,6 @@ describe('recomputeImpulseBuckets', () => {
 
     await recomputeImpulseBuckets(deps, 'testuser', new Date('2024-01-03T00:00:00Z'))
 
-    // Should NOT call the expensive scan when cached value exists
     expect(getMaxObservedHr).not.toHaveBeenCalled()
   })
 
@@ -945,17 +1026,11 @@ describe('recomputeImpulseBuckets', () => {
 
     await recomputeImpulseBuckets(deps, 'testuser', new Date('2024-01-03T00:00:00Z'))
 
-    // Should call the expensive scan
     expect(getMaxObservedHr).toHaveBeenCalled()
-    // Should cache the result and also clear watermark
     expect(updateSettings).toHaveBeenCalledWith('testuser', { observed_hr_max: 195 })
     expect(updateSettings).toHaveBeenCalledWith('testuser', { impulse_watermark: undefined })
   })
 })
-
-// ============================================================================
-// Bucket Aggregation
-// ============================================================================
 
 describe('aggregateTrainingLoadPoints', () => {
   const makePoint = (
@@ -1018,7 +1093,6 @@ describe('aggregateTrainingLoadPoints', () => {
   })
 
   test('aggregates into weekly buckets', () => {
-    // Create points spanning 2 weeks
     const points = [
       // Week starting 2024-01-01 (Monday)
       makePoint('2024-01-01T00:00:00.000Z', 10, 5, 3, 10, 7),

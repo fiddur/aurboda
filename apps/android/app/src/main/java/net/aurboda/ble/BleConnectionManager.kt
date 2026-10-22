@@ -70,7 +70,6 @@ class BleConnectionManager(
   private val _rssi = MutableStateFlow<Int?>(null)
   val rssi: StateFlow<Int?> = _rssi.asStateFlow()
 
-  // Last time we received data from the device
   private val _lastDataReceivedTime = MutableStateFlow<java.time.Instant?>(null)
   val lastDataReceivedTime: StateFlow<java.time.Instant?> = _lastDataReceivedTime.asStateFlow()
 
@@ -124,7 +123,6 @@ class BleConnectionManager(
         if (status == BluetoothGatt.GATT_SUCCESS) {
           Log.d(TAG, "Services discovered successfully")
 
-          // Check for Battery Service (common across devices)
           val batteryService = gatt.getService(BATTERY_SERVICE_UUID)
           val batteryCharacteristic = batteryService?.getCharacteristic(BATTERY_LEVEL_UUID)
           if (batteryCharacteristic != null) {
@@ -132,7 +130,6 @@ class BleConnectionManager(
             Log.d(TAG, "Battery service found, will read after setup")
           }
 
-          // Look for Heart Rate Service
           val hrService = gatt.getService(HEART_RATE_SERVICE_UUID)
           if (hrService != null) {
             val hrMeasurement = hrService.getCharacteristic(HEART_RATE_MEASUREMENT_UUID)
@@ -151,7 +148,6 @@ class BleConnectionManager(
             }
           }
 
-          // Look for RSC Service if HR not found
           val rscService = gatt.getService(RUNNING_SPEED_CADENCE_SERVICE_UUID)
           if (rscService != null) {
             val rscMeasurement = rscService.getCharacteristic(RSC_MEASUREMENT_UUID)
@@ -164,7 +160,6 @@ class BleConnectionManager(
                   name = gatt.device.name,
                   type = SensorType.RUNNING_SPEED_CADENCE,
                 )
-              // Reset step tracking for new RSC connection
               stepTrackingStartTime = java.time.Instant.now()
               lastCadenceTime = null
               accumulatedSteps = 0.0
@@ -262,7 +257,6 @@ class BleConnectionManager(
       ) {
         if (status == BluetoothGatt.GATT_SUCCESS) {
           Log.d(TAG, "Descriptor write successful")
-          // Process pending reads after notifications are set up
           processPendingReads(gatt)
         } else {
           Log.e(TAG, "Descriptor write failed: $status")
@@ -293,7 +287,6 @@ class BleConnectionManager(
         } else {
           Log.e(TAG, "Characteristic read failed: $status")
         }
-        // Continue processing any remaining pending reads
         processPendingReads(gatt)
       }
 
@@ -356,7 +349,6 @@ class BleConnectionManager(
   }
 
   /**
-   * Connect to a BLE device.
    * @param deviceAddress MAC address of the device
    * @param autoConnect When true, uses the Android BLE autoConnect mode which passively waits
    *   for the device to become available. Best for reconnecting to known devices in the background.

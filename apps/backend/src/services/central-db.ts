@@ -1,6 +1,4 @@
 /**
- * Central database service for server-wide settings and admin management.
- *
  * Uses the shared 'aurboda' database (same as pg-boss queue) for:
  * - Server-wide configuration (signup mode, etc.)
  * - Admin user list
@@ -9,6 +7,7 @@
 import { NUTRIENT_FIELD_NAMES } from '@aurboda/api-spec'
 import pg from 'pg'
 
+import { createRolePool, type Queryable, type UserDb, withTransaction } from '../db/pool.ts'
 import {
   createSharedFoodItemsApi,
   CREATE_SHARED_FOOD_ITEMS_INDEXES,
@@ -28,14 +27,12 @@ import {
   type SharedNutrientRecommendationsApi,
 } from './central-nutrient-recommendations.ts'
 
-// ============================================================================
-// Types
-// ============================================================================
-
 export type SignupMode = 'open' | 'invite_only' | 'closed'
 
 export interface ServerSettings {
   audit_log_retention_days: number
+  gravl_client_id: string
+  gravl_client_secret: string
   lastfm_api_key: string
   oura_client_id: string
   oura_client_secret: string
@@ -102,7 +99,8 @@ export interface OAuthToken {
 }
 
 export interface CentralDbDeps {
-  getClient: () => Promise<pg.Client>
+  getClient: () => Promise<Queryable>
+  withTransaction: <T>(fn: (tx: Queryable) => Promise<T>) => Promise<T>
 }
 
 export interface CentralDb
@@ -126,6 +124,7 @@ export interface CentralDb
   upsertOuraUserMapping: (ouraUserId: string, username: string) => Promise<void>
   getUsernameByOuraUserId: (ouraUserId: string) => Promise<string | null>
   deleteOuraUserMapping: (ouraUserId: string) => Promise<boolean>
+  deleteOuraUserMappingsByUsername: (username: string) => Promise<number>
   upsertOuraWebhookSubscription: (
     sub: Omit<OuraWebhookSubscription, 'created_at' | 'updated_at'>,
   ) => Promise<void>
@@ -164,19 +163,8 @@ export interface CentralDb
   getUsernameByWebAuthnUserHandle: (userHandle: string) => Promise<string | null>
 }
 
-// ============================================================================
-// Configuration
-// ============================================================================
-
 const DEFAULT_CENTRAL_DB = 'aurboda'
 
-// ============================================================================
-// Database helpers
-// ============================================================================
-
-/**
- * Get database connection parameters from environment.
- */
 const getDbParams = () => ({
   database: process.env.CENTRAL_DB || DEFAULT_CENTRAL_DB,
   host: process.env.PGHOST || 'localhost',
@@ -185,13 +173,9 @@ const getDbParams = () => ({
   user: process.env.PGUSER,
 })
 
-/**
- * Ensure the central database exists, creating it if necessary.
- */
 const ensureDatabase = async (): Promise<boolean> => {
   const params = getDbParams()
 
-  // First, try connecting directly to the target database (it might already exist)
   const targetClient = new pg.Client({ database: params.database })
 
   try {
@@ -202,7 +186,6 @@ const ensureDatabase = async (): Promise<boolean> => {
     await targetClient.end().catch(() => {})
   }
 
-  // Connect to postgres database to create the target database
   const postgresClient = new pg.Client({ database: 'postgres' })
 
   try {
@@ -217,10 +200,6 @@ const ensureDatabase = async (): Promise<boolean> => {
     await postgresClient.end()
   }
 }
-
-// ============================================================================
-// Schema initialization
-// ============================================================================
 
 const CREATE_SERVER_SETTINGS_TABLE = `
   CREATE TABLE IF NOT EXISTS server_settings (
@@ -311,13 +290,6 @@ const CREATE_WEBAUTHN_USER_HANDLES_TABLE = `
   )
 `
 
-// ============================================================================
-// Factory
-// ============================================================================
-
-/**
- * Create a central database service instance.
- */
 export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
   const { getClient } = deps
 
@@ -341,6 +313,12 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
         ouraUserId,
       ])
       return (result.rowCount ?? 0) > 0
+    },
+
+    deleteOuraUserMappingsByUsername: async (username: string): Promise<number> => {
+      const client = await getClient()
+      const result = await client.query('DELETE FROM oura_user_mappings WHERE username = $1', [username])
+      return result.rowCount ?? 0
     },
 
     deleteOuraWebhookSubscription: async (ouraSubscriptionId: string): Promise<boolean> => {
@@ -459,9 +437,8 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       for (const stmt of CREATE_IMPORT_JOBS_INDEXES) await client.query(stmt)
 
       await client.query(CREATE_SHARED_NUTRIENT_RECOMMENDATIONS_TABLE)
-      await seedSharedNutrientRecommendations(client)
+      await deps.withTransaction((tx) => seedSharedNutrientRecommendations(tx))
 
-      // Set default signup_mode if not exists
       await client.query(
         `INSERT INTO server_settings (key, value)
          VALUES ('signup_mode', '"open"')
@@ -735,44 +712,58 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
   }
 }
 
-// ============================================================================
-// Singleton instance for use in api.ts
-// ============================================================================
+const CENTRAL_POOL_MAX = 5
+const CENTRAL_POOL_IDLE_TIMEOUT_MS = 30_000
+const CENTRAL_POOL_CONNECTION_TIMEOUT_MS = 30_000
 
-let centralDbClient: pg.Client | null = null
+let centralPool: Promise<UserDb> | null = null
 let centralDbInstance: CentralDb | null = null
 
-/**
- * Get or create the singleton central database client.
- */
-const getCentralDbClient = async (): Promise<pg.Client> => {
-  if (centralDbClient) return centralDbClient
-
-  // Ensure database exists
+const createCentralPool = async (): Promise<UserDb> => {
   const dbReady = await ensureDatabase()
   if (!dbReady) {
     throw new Error('Failed to initialize central database')
   }
+  return createRolePool({
+    connectionTimeoutMillis: CENTRAL_POOL_CONNECTION_TIMEOUT_MS,
+    database: getDbParams().database,
+    idleTimeoutMillis: CENTRAL_POOL_IDLE_TIMEOUT_MS,
+    max: CENTRAL_POOL_MAX,
+  })
+}
 
-  const params = getDbParams()
-  centralDbClient = new pg.Client({ database: params.database })
-  await centralDbClient.connect()
-  return centralDbClient
+/** Cached as a promise so concurrent first callers share one pool; a failure is not cached. */
+const getCentralDbClient = (): Promise<UserDb> => {
+  if (!centralPool) {
+    centralPool = createCentralPool().catch((err: unknown) => {
+      centralPool = null
+      throw err
+    })
+  }
+  return centralPool
+}
+
+/** Ends the central pool, if one was opened. A later query opens a fresh one. */
+export const closeCentralDb = async (): Promise<void> => {
+  const pool = centralPool
+  centralPool = null
+  if (pool) await (await pool).end()
 }
 
 /**
- * Get the singleton central database instance.
  * Call initializeCentralDb() before using other methods.
  */
 export const getCentralDb = (): CentralDb => {
   if (!centralDbInstance) {
-    centralDbInstance = createCentralDb({ getClient: getCentralDbClient })
+    centralDbInstance = createCentralDb({
+      getClient: getCentralDbClient,
+      withTransaction: async (fn) => withTransaction(await getCentralDbClient(), fn),
+    })
   }
   return centralDbInstance
 }
 
 /**
- * Initialize the central database (create tables and default settings).
  * Should be called once at server startup.
  */
 export const initializeCentralDb = async (): Promise<void> => {
@@ -783,7 +774,6 @@ export const initializeCentralDb = async (): Promise<void> => {
   const allowSignupEnv = process.env.ALLOW_SIGNUP
   if (allowSignupEnv !== undefined) {
     const currentMode = await db.getSignupMode()
-    // Only migrate if still at default 'open' mode
     if (currentMode === 'open') {
       const newMode: SignupMode = allowSignupEnv === 'true' ? 'open' : 'closed'
       await db.setSignupMode(newMode)

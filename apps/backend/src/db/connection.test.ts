@@ -1,8 +1,17 @@
-import type { Client, QueryResult, QueryResultRow } from 'pg'
+import type { QueryResult, QueryResultRow } from 'pg'
 
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
-import { _isSchemaError, _runMigrationOnce, _setClientForUser, query } from './connection.ts'
+import type { UserDb } from './pool.ts'
+
+import {
+  _isSchemaError,
+  _runMigrationOnce,
+  _setDbForUser,
+  closeAllUserPools,
+  getDbForUser,
+  query,
+} from './connection.ts'
 
 describe('isSchemaError', () => {
   test('returns true for undefined_table (42P01)', () => {
@@ -109,7 +118,7 @@ const mockQueryResult = <T extends QueryResultRow>(rows: T[] = []): QueryResult<
 
 describe('query retry on schema error', () => {
   const makeClient = (queryFn: (...args: unknown[]) => Promise<QueryResult>) =>
-    ({ query: queryFn }) as unknown as Client
+    ({ end: async () => {}, query: queryFn }) as unknown as UserDb
 
   test('retries on schema error when called with username', async () => {
     const mockMigrate = vi.fn<(user: string) => Promise<void>>().mockResolvedValue(undefined)
@@ -122,7 +131,7 @@ describe('query retry on schema error', () => {
       return mockQueryResult([{ id: 1 }])
     })
 
-    _setClientForUser('retryuser', client)
+    _setDbForUser('retryuser', client)
     const result = await query('retryuser', 'SELECT * FROM metrics', undefined, mockMigrate)
 
     expect(result.rows).toEqual([{ id: 1 }])
@@ -148,7 +157,7 @@ describe('query retry on schema error', () => {
       throw Object.assign(new Error('syntax error'), { code: '42601' })
     })
 
-    _setClientForUser('syntaxuser', client)
+    _setDbForUser('syntaxuser', client)
     await expect(query('syntaxuser', 'SELECT * FROM foo', undefined, mockMigrate)).rejects.toThrow(
       'syntax error',
     )
@@ -161,10 +170,28 @@ describe('query retry on schema error', () => {
       throw Object.assign(new Error('relation "metrics" does not exist'), { code: '42P01' })
     })
 
-    _setClientForUser('doublefail', client)
+    _setDbForUser('doublefail', client)
     await expect(query('doublefail', 'SELECT * FROM metrics', undefined, mockMigrate)).rejects.toThrow(
       'relation "metrics" does not exist',
     )
     expect(mockMigrate).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('closeAllUserPools', () => {
+  const makePool = () => ({ connect: vi.fn(), end: vi.fn().mockResolvedValue(undefined), query: vi.fn() })
+
+  test('ends every cached pool once and forgets them', async () => {
+    const a = makePool()
+    const b = makePool()
+    _setDbForUser('closea', a)
+    _setDbForUser('closeb', b)
+
+    await closeAllUserPools()
+    await closeAllUserPools()
+
+    expect(a.end).toHaveBeenCalledTimes(1)
+    expect(b.end).toHaveBeenCalledTimes(1)
+    expect(await getDbForUser('closea')).not.toBe(a)
   })
 })

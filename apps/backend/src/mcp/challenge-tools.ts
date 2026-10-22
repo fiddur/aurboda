@@ -1,7 +1,4 @@
-/**
- * MCP challenge tools — create/list/update/delete a hosted challenge and join
- * one by URL (local or federated). Mirrors the REST `/challenges` capability.
- */
+/** Mirrors the REST `/challenges` capability. */
 import type { ChallengeSpec } from '@aurboda/api-spec'
 
 import {
@@ -12,6 +9,7 @@ import {
 import { z } from 'zod'
 
 import type { ChallengeRecord, ChallengeSpecFields } from '../db/index.ts'
+import type { DiscoverChallenges } from '../services/challenge-discovery.ts'
 
 import {
   createChallenge,
@@ -21,9 +19,12 @@ import {
   updateChallenge,
   upsertChallengeMember,
 } from '../db/index.ts'
+import { bannerUrlFor } from '../services/challenge-banner.ts'
 import { joinChallenge } from '../services/challenge-federation.ts'
+import { announcementPending } from '../services/challenge-results.ts'
 import { specToApi } from '../services/challenge-spec.ts'
 import { buildProfileUrl, buildShareUrl } from '../services/share-urls.ts'
+import { isPublicToVisibility, visibilityToIsPublic } from '../services/visibility.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
 const toSpecFields = (spec: ChallengeSpec): ChallengeSpecFields => ({
@@ -36,22 +37,26 @@ const toSpecFields = (spec: ChallengeSpec): ChallengeSpecFields => ({
 })
 
 const serialize = (record: ChallengeRecord, webHost: string | undefined, user: string) => ({
+  announce_winner: record.announce_winner,
+  announcement_pending: announcementPending(record, new Date()),
+  banner_url: webHost ? bannerUrlFor(record, webHost, user) : undefined,
   created_at: record.created_at.toISOString(),
   end_ts: record.end_ts.toISOString(),
   id: record.id,
-  is_public: record.is_public,
   name: record.name,
+  result_published_at: record.result_published_at?.toISOString() ?? null,
   share_url: webHost ? buildShareUrl(webHost, user, record.slug) : undefined,
   slug: record.slug,
   spec: specToApi(record.spec),
   start_ts: record.start_ts.toISOString(),
   timezone: record.timezone,
+  visibility: isPublicToVisibility(record.is_public),
 })
 
 export const registerChallengeTools = (
   server: McpServer,
   user: string,
-  deps: { webHost?: string; apiBaseUrl?: string },
+  deps: { webHost?: string; apiBaseUrl?: string; discoverChallenges?: DiscoverChallenges },
 ) => {
   server.tool(
     'list_challenges',
@@ -69,8 +74,9 @@ export const registerChallengeTools = (
     { ...createChallengeBodySchema.shape },
     async (params) => {
       const record = await createChallenge(user, {
+        announce_winner: params.announce_winner,
         end_ts: new Date(params.end_ts),
-        is_public: params.is_public,
+        is_public: visibilityToIsPublic(params.visibility),
         name: params.name,
         spec: toSpecFields(params.spec),
         start_ts: new Date(params.start_ts),
@@ -90,12 +96,13 @@ export const registerChallengeTools = (
 
   server.tool(
     'update_challenge',
-    'Update a hosted challenge (name, spec, date range, visibility). Only provided fields change.',
+    'Update a hosted challenge (name, spec, date range, visibility, announce_winner). Only provided fields change.',
     { id: z.string().uuid().describe('Challenge ID'), ...updateChallengeBodySchema.shape },
     async ({ id, ...body }) => {
       const record = await updateChallenge(user, id, {
+        announce_winner: body.announce_winner,
         end_ts: body.end_ts ? new Date(body.end_ts) : undefined,
-        is_public: body.is_public,
+        is_public: body.visibility === undefined ? undefined : visibilityToIsPublic(body.visibility),
         name: body.name,
         spec: body.spec ? toSpecFields(body.spec) : undefined,
         start_ts: body.start_ts ? new Date(body.start_ts) : undefined,
@@ -137,6 +144,16 @@ export const registerChallengeTools = (
       } catch (error) {
         return errorResponse(error instanceof Error ? error.message : 'Failed to join challenge')
       }
+    },
+  )
+
+  server.tool(
+    'discover_challenges',
+    'Open (ongoing or upcoming) public challenges hosted by people you follow — on this or any Aurboda instance — that you have not joined. Ongoing first, soonest to end. Join one with join_challenge and its share_url.',
+    {},
+    async () => {
+      if (!deps.discoverChallenges) return errorResponse('Federation is not configured on this server')
+      return jsonResponse(await deps.discoverChallenges(user))
     },
   )
 }

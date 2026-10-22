@@ -15,7 +15,6 @@ export interface RangeMarker {
 interface ReferenceRangeBarProps {
   /** Single-marker shorthand. Ignored when `markers` is provided. */
   value?: number
-  /** Flag for the single-marker shorthand. */
   flag?: ReportFlag
   /** Multi-marker mode — overrides `value`/`flag`. */
   markers?: RangeMarker[]

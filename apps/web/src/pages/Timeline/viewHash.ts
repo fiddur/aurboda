@@ -45,7 +45,6 @@ export const parseViewHash = (): {
   }
 }
 
-/** Build hash string from current view state. */
 export const buildViewHash = (
   start: Date | null,
   end: Date | null,
@@ -61,4 +60,15 @@ export const buildViewHash = (
   if (orientation !== defaultO) params.set('o', orientation === 'horizontal' ? 'h' : 'v')
   const str = params.toString()
   return str ? `#${str}` : ''
+}
+
+const LINKED_SPAN_MS = 24 * 3_600_000
+
+export const timelineHref = (start: Date, end?: Date): string => {
+  const mid = end ? (start.getTime() + end.getTime()) / 2 : start.getTime()
+  const params = new URLSearchParams({
+    from: new Date(mid - LINKED_SPAN_MS / 2).toISOString(),
+    to: new Date(mid + LINKED_SPAN_MS / 2).toISOString(),
+  })
+  return `/timeline#${params.toString()}`
 }

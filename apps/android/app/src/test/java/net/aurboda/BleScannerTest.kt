@@ -14,11 +14,6 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 import java.util.UUID
 
-/**
- * Tests for BLE scanner utilities and constants.
- * These tests verify that the Bluetooth GATT UUIDs are correct
- * according to the Bluetooth SIG specifications.
- */
 class BleScannerTest {
 
     @Test
@@ -77,10 +72,6 @@ class BleScannerTest {
         }
     }
 
-    // ========================================================================
-    // Sensor Type Detection Tests
-    // ========================================================================
-
     @Test
     fun `detectSensorTypeFromName returns null for null input`() {
         val result = detectSensorTypeFromName(null)
@@ -99,7 +90,6 @@ class BleScannerTest {
         assertNull(result)
     }
 
-    // Polar heart rate monitors
     @Test
     fun `detectSensorTypeFromName detects Polar H10`() {
         assertEquals(SensorType.HEART_RATE, detectSensorTypeFromName("Polar H10 12345678"))
@@ -125,7 +115,6 @@ class BleScannerTest {
         assertEquals(SensorType.HEART_RATE, detectSensorTypeFromName("Polar Verity Sense"))
     }
 
-    // Wahoo heart rate monitors
     @Test
     fun `detectSensorTypeFromName detects Wahoo TICKR`() {
         assertEquals(SensorType.HEART_RATE, detectSensorTypeFromName("TICKR 1234"))
@@ -136,7 +125,6 @@ class BleScannerTest {
         assertEquals(SensorType.HEART_RATE, detectSensorTypeFromName("Wahoo HR Monitor"))
     }
 
-    // Garmin heart rate monitors
     @Test
     fun `detectSensorTypeFromName detects Garmin HRM`() {
         assertEquals(SensorType.HEART_RATE, detectSensorTypeFromName("Garmin HRM-Dual"))
@@ -147,19 +135,16 @@ class BleScannerTest {
         assertEquals(SensorType.HEART_RATE, detectSensorTypeFromName("HRM-Pro"))
     }
 
-    // Coospo heart rate monitors
     @Test
     fun `detectSensorTypeFromName detects Coospo`() {
         assertEquals(SensorType.HEART_RATE, detectSensorTypeFromName("CooSpo H808S"))
     }
 
-    // Magene heart rate monitors
     @Test
     fun `detectSensorTypeFromName detects Magene`() {
         assertEquals(SensorType.HEART_RATE, detectSensorTypeFromName("Magene H64"))
     }
 
-    // Generic heart rate
     @Test
     fun `detectSensorTypeFromName detects generic Heart Rate`() {
         assertEquals(SensorType.HEART_RATE, detectSensorTypeFromName("Heart Rate Monitor"))
@@ -170,7 +155,6 @@ class BleScannerTest {
         assertEquals(SensorType.HEART_RATE, detectSensorTypeFromName("HR Sensor"))
     }
 
-    // Running/step sensors
     @Test
     fun `detectSensorTypeFromName detects Stryd`() {
         assertEquals(SensorType.RUNNING_SPEED_CADENCE, detectSensorTypeFromName("Stryd"))
@@ -206,7 +190,6 @@ class BleScannerTest {
         assertEquals(SensorType.RUNNING_SPEED_CADENCE, detectSensorTypeFromName("Cadence Sensor"))
     }
 
-    // Case insensitivity
     @Test
     fun `detectSensorTypeFromName is case insensitive for uppercase`() {
         assertEquals(SensorType.HEART_RATE, detectSensorTypeFromName("POLAR H10"))
@@ -222,7 +205,6 @@ class BleScannerTest {
         assertEquals(SensorType.RUNNING_SPEED_CADENCE, detectSensorTypeFromName("zwift runpod"))
     }
 
-    // Pattern list coverage
     @Test
     fun `HR_MONITOR_NAME_PATTERNS contains expected patterns`() {
         val expectedPatterns = listOf(

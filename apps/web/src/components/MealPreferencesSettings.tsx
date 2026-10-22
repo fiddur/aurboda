@@ -135,7 +135,6 @@ export function MealPreferencesSettings() {
         <a href="/food-items">Browse food item library</a>
       </p>
 
-      {/* Meal Flags */}
       <div class="meal-pref-subsection">
         <h3>Meal Flags</h3>
         <p class="subsection-desc">Flags for categorizing meals (e.g., gluten, dairy, keto, cheat day).</p>
@@ -170,7 +169,6 @@ export function MealPreferencesSettings() {
         </div>
       </div>
 
-      {/* Meal Slots */}
       <div class="meal-pref-subsection">
         <h3>Meal Slots</h3>
         <p class="subsection-desc">Define your typical meal times for the quick-log UI.</p>

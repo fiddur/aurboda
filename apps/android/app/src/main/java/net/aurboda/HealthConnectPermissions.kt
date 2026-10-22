@@ -13,18 +13,12 @@ import kotlin.reflect.KClass
 val HC_BACKGROUND_READ_PERMISSION: String =
     HealthPermission.PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND
 
-/**
- * A user-friendly grouping of Health Connect record types into categories.
- */
 data class HealthDataCategory(
     val name: String,
     val recordTypes: List<KClass<out Record>>,
     val description: String
 )
 
-/**
- * Permission status for a single category.
- */
 data class CategoryPermissionStatus(
     val category: HealthDataCategory,
     val grantedCount: Int,
@@ -111,9 +105,6 @@ val healthDataCategories: List<HealthDataCategory> = listOf(
     )
 )
 
-/**
- * Filter allRecordTypes to only those with a granted read permission.
- */
 fun getGrantedRecordTypes(
     grantedPermissions: Set<String>,
     recordTypes: List<KClass<out Record>> = allRecordTypes
@@ -122,9 +113,6 @@ fun getGrantedRecordTypes(
         HealthPermission.getReadPermission(recordType) in grantedPermissions
     }
 
-/**
- * Compute per-category permission status from the set of granted permissions.
- */
 fun getCategoryStatuses(
     grantedPermissions: Set<String>,
     categories: List<HealthDataCategory> = healthDataCategories

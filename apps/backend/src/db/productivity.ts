@@ -1,6 +1,3 @@
-/**
- * Productivity data storage and retrieval (RescueTime, ActivityWatch, etc.)
- */
 import format from 'pg-format'
 
 import type { ProductivityRecord } from './types.ts'
@@ -146,17 +143,13 @@ export const restoreProductivityRecord = async (user: string, id: string): Promi
   return (result.rowCount ?? 0) > 0
 }
 
-/**
- * Batch update resolved_category on productivity records.
- * Used after category rules change to recategorize all records.
- */
+/** Used after category rules change to recategorize all records. */
 export const batchUpdateResolvedCategory = async (
   user: string,
   updates: Array<{ id: string; resolved_category: string[] | null }>,
 ) => {
   if (updates.length === 0) return
 
-  // Use a CTE with VALUES for efficient batch update
   // Convert JS arrays to PostgreSQL array literals; pg-format %L treats
   // JS arrays as sub-tuples, which produces invalid TEXT[] values.
   const values = updates.map((u) => [u.id, toPgArray(u.resolved_category)])
@@ -217,9 +210,6 @@ export const getDistinctApps = async (
   }))
 }
 
-/**
- * A single row from the bucketed productivity query.
- */
 export interface ProductivityBucketRow {
   bucket_start: Date
   resolved_category: string[] | null
@@ -228,7 +218,6 @@ export interface ProductivityBucketRow {
 }
 
 /**
- * Get productivity records bucketed by time interval, grouped by resolved_category.
  * Used for the horizontal timeline stacked bar chart.
  *
  * Uses date_bin with timezone support for DST-correct bucket alignment.
@@ -262,18 +251,19 @@ export const getProductivityBucketed = async (
   }))
 }
 
-/**
- * Get all non-deleted productivity records (for recategorization).
- * Returns only id, activity, and title to minimize memory usage.
- */
+/** Returns only id, activity, and title to minimize memory usage. */
 export const getAllProductivityForCategorization = async (
   user: string,
-): Promise<Array<{ id: string; activity: string; title?: string }>> => {
-  const result = await query(user, `SELECT id, activity, title FROM productivity WHERE deleted_at IS NULL`)
+): Promise<Array<{ id: string; activity: string; title?: string; resolved_category: string[] | null }>> => {
+  const result = await query(
+    user,
+    `SELECT id, activity, title, resolved_category FROM productivity WHERE deleted_at IS NULL`,
+  )
 
   return result.rows.map((row) => ({
     activity: row.activity,
     id: row.id,
+    resolved_category: row.resolved_category ?? null,
     title: row.title || undefined,
   }))
 }

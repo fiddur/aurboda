@@ -1,6 +1,4 @@
 /**
- * Selector resolution for the generic correlation engine.
- *
  * A Selector describes any data dimension (tag/activity, metric, nutrition,
  * productivity) and resolves to a uniform shape: discrete event days (for the
  * event-outcome engine), a daily value series (for continuous correlation), and

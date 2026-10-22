@@ -58,6 +58,8 @@ CREATE TABLE time_series (
     value           DOUBLE PRECISION NOT NULL,
     unit            VARCHAR(20) NOT NULL,  -- 'bpm', 'kg', 'count', 'ms', etc.
     source          VARCHAR(50) NOT NULL,  -- Origin system
+    deleted_at      TIMESTAMPTZ,           -- Soft delete
+    updated_at      TIMESTAMPTZ DEFAULT NOW(),  -- When the value last changed (NULL for rows from before it was tracked)
 
     PRIMARY KEY (time, metric, source)
 );
@@ -139,6 +141,7 @@ CREATE TABLE locations (
     altitude        DOUBLE PRECISION,      -- Meters above sea level
     velocity        DOUBLE PRECISION,      -- Speed in m/s
     regions         VARCHAR[] DEFAULT '{}', -- Named regions device is in
+    deleted_at      TIMESTAMPTZ,           -- Soft delete (superseded by an activity's GPS track)
 
     CONSTRAINT unique_location UNIQUE (source, time)
 );
@@ -146,6 +149,71 @@ CREATE TABLE locations (
 CREATE INDEX idx_locations_time ON locations (time DESC);
 CREATE INDEX idx_locations_geo ON locations USING GIST (location);
 ```
+
+Reads must filter `deleted_at IS NULL`: when an activity carries its own GPS track, passive tracking for the activity's span is soft-deleted rather than removed. See [GPS Precedence](./data-sources.md#gps-precedence).
+
+#### `activity_tracks` - One GPS Line per Activity (PostGIS)
+
+The full-resolution track of an activity, one row per activity and source. `locations` keeps its points as before; this is an additional copy as a line, which route and segment matching run on. See [Routes and segments](./features/routes-and-segments.md).
+
+```sql
+CREATE TABLE activity_tracks (
+    activity_id      UUID NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+    source           VARCHAR(50) NOT NULL,
+    geom             GEOMETRY(LINESTRINGZM, 4326) NOT NULL,  -- Z = altitude m (0 when unknown), M = seconds since activities.start_time
+    simplified       GEOMETRY(LINESTRING, 4326) NOT NULL,    -- ST_SimplifyPreserveTopology(ST_Force2D(geom), 0.00008), ~8 m
+    length_m         DOUBLE PRECISION NOT NULL,              -- ST_Length(ST_Force2D(geom)::geography)
+    point_count      INTEGER NOT NULL,
+    full_resolution  BOOLEAN NOT NULL DEFAULT true,          -- false for a Strava polyline backfill
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (activity_id, source)
+);
+
+CREATE INDEX idx_activity_tracks_simplified ON activity_tracks USING GIST (simplified);
+```
+
+Garmin writes a track when an activity's detail is synced, Strava when its streams are processed. A track needs at least two distinct fixes; `0,0` fixes are dropped and equal timestamps collapse to the first. The derived columns are computed in SQL from `geom` on every upsert.
+
+History is backfilled from `raw_records` without new API calls: Garmin from the stored activity detail (full resolution), Strava from the stored activity's `map.polyline` (a shape without timestamps, so M is spread evenly over `elapsed_time` and `full_resolution` is false). The backfill is incremental -- activities with a usable raw record and no track -- and runs per user in the `track-backfill` queue after each startup's schema sweep, or on demand through `POST /tracks/backfill` / the `backfill_activity_tracks` MCP tool.
+
+#### `routes` and `activity_routes` - Recognised Courses (PostGIS)
+
+A route is a course run more than once: its line is the simplified track of the older of the
+first two runs that matched. See [Routes and segments](./features/routes-and-segments.md#phase-2-routes).
+
+```sql
+CREATE TABLE routes (
+    id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name                   VARCHAR(255) NOT NULL,
+    activity_type          VARCHAR(100) NOT NULL REFERENCES activity_type_definitions(name) ON UPDATE CASCADE,
+    geom                   GEOMETRY(LINESTRING, 4326) NOT NULL,   -- the canonical track's `simplified`
+    buffer                 GEOMETRY(GEOMETRY, 4326) NOT NULL,     -- ST_Buffer(geom::geography, 25)::geometry, stored at creation
+    length_m               DOUBLE PRECISION NOT NULL,
+    start_pt               GEOGRAPHY(POINT, 4326) NOT NULL,
+    end_pt                 GEOGRAPHY(POINT, 4326) NOT NULL,
+    canonical_activity_id  UUID REFERENCES activities(id) ON DELETE SET NULL,
+    created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at             TIMESTAMPTZ                             -- soft delete
+);
+CREATE INDEX idx_routes_geom ON routes USING GIST (geom);
+CREATE UNIQUE INDEX idx_routes_canonical ON routes (canonical_activity_id);
+
+CREATE TABLE activity_routes (
+    activity_id  UUID PRIMARY KEY REFERENCES activities(id) ON DELETE CASCADE,
+    route_id     UUID NOT NULL REFERENCES routes(id) ON DELETE CASCADE,
+    coverage     REAL NOT NULL,          -- the lower of the two buffer coverages when matched
+    matched_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_activity_routes_route ON activity_routes (route_id);
+```
+
+An activity is on at most one route. The run count is derived, never stored: attached,
+non-deleted activities, where rows of the same session from several sources (they overlap in
+time) count once. Deleting a route sets `deleted_at` and keeps its `activity_routes` rows, so
+its runs are never matched into a route again; merging moves the `activity_routes` rows and
+deletes the source route.
 
 #### `places` - Named Locations/Geofences
 
@@ -244,6 +312,49 @@ CREATE INDEX idx_lab_results_category ON lab_results (test_category, test_date D
 - `kidney` - Creatinine, BUN, eGFR
 - `inflammation` - CRP, ESR
 - `hormones` - Testosterone, cortisol, estrogen
+
+#### `notes` - Comments on Anything
+
+Free-text comments with a polymorphic reference. One table carries all three
+shapes, and `(entity_type, entity_id)` is what distinguishes them. See
+[Comments](features/comments.md) for the feature-level description.
+
+```sql
+CREATE TABLE notes (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    entity_type     VARCHAR(50) NOT NULL,  -- 'activity' | 'productivity' | 'metric' | 'report' | 'meal' | 'note' | 'time'
+    entity_id       TEXT,                  -- NULL only for entity_type = 'time'
+    content         TEXT NOT NULL,
+    source          VARCHAR(50),           -- NULL for user-typed; set for synced comments ('health_connect', 'oura', …)
+    start_time      TIMESTAMPTZ,
+    end_time        TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT notes_shape_check CHECK (
+        (entity_type = 'time' AND entity_id IS NULL AND start_time IS NOT NULL)
+        OR (entity_type <> 'time' AND entity_id IS NOT NULL)
+    )
+);
+```
+
+**The three shapes:**
+
+- **On an entity** -- `entity_type` names a real entity and `entity_id` points at
+  it (a UUID, or for metrics the composite key `<iso_time>|<metric>|<source>`).
+  `start_time`/`end_time` are a _cache_ of the parent's timing so comments can be
+  queried by time range; they are rewritten whenever the parent moves and are not
+  editable directly.
+- **On a moment** -- `entity_type = 'time'`, `entity_id IS NULL`. `start_time` is
+  required and `end_time` optional; both are user input and editable.
+- **A reply** -- `entity_type = 'note'`, `entity_id` is the root comment's id. It
+  inherits the root's times, so the whole thread sits at one point in time, while
+  its own `created_at` records when it was written. Threads are exactly one level
+  deep: replying to a reply re-anchors to that reply's root.
+
+Replies are never top-level -- `getNotesForTimeRange` and the Health Connect
+notes join both filter `entity_type <> 'note'`. Deleting a thread root deletes
+its replies (done explicitly; there is no FK).
 
 #### `oauth_tokens` - API Credentials
 
@@ -424,6 +535,65 @@ Support manual data entry with `source = 'manual'` for:
 - Blood pressure readings
 - Lab results
 - Activity logs
+
+## When migrations run
+
+Each user has their own database, so schema changes are applied per user. The
+full `migrateSchema` sweep is roughly 130 statements including full-table
+rewrites of `activities`, `tags`, `food_items` and `user_settings` — minutes on
+a database with years of data — so it is gated by a schema fingerprint and runs
+only when there is something to do (#1125).
+
+- **At signup.** `makeNewUserDb` runs `initializeSchema`, which creates every
+  table from `createTableStatements`.
+- **Just after the server starts listening**, in the background: a
+  `postListenCallbacks` task runs `migrateAllUsers`, which visits every
+  `aurboda_*` database sequentially. This is where a deploy's migrations
+  normally land, before any user asks for anything. One user's broken database
+  is logged and skipped rather than stopping the sweep.
+- **On a user's first authenticated request per server process.** The auth
+  middleware awaits `migrateSchemaIfNeeded` once per user, so no request runs
+  against stale schema. Gated by the fingerprint, so it is normally a single
+  `SELECT` — and after a deploy the background sweep has usually already done
+  the work.
+- **On a schema error.** `query(user, …)` catches PostgreSQL schema errors
+  (missing table or column, and NOT NULL violations from a column that has
+  become nullable), runs a **forced** full sweep once per user via
+  `_runMigrationOnce`, and retries the statement. This is the correctness
+  safety net.
+- **Never at login.** `/login` only authenticates. It used to sweep the schema
+  on every login, which grew with the data until it exceeded the reverse
+  proxy's timeout and every login failed as "Unauthorized" with nothing in the
+  logs (#1123).
+
+### The schema fingerprint
+
+`schemaFingerprint()` (in `apps/backend/src/schema.ts`) is a SHA-256 over every
+DDL statement in `tableCreationOrder`, in order, plus `MIGRATION_REVISION`. A
+successful sweep appends a `schema@<fingerprint>` row to the user's
+`schema_migrations` table; `migrateSchema` returns immediately when that row is
+already present. The rows are append-only, so what is left behind reads as the
+database's migration history.
+
+A new user's database records the fingerprint at signup: `initializeSchema`
+runs every create statement on an empty database, which is exactly the schema
+the fingerprint describes, so the first sweep is skipped. On a database that
+already held tables (the legacy importer, `migrate.ts`) it records nothing,
+because `IF NOT EXISTS` leaves those tables as they were.
+
+Two halves, because migrations have two kinds of content:
+
+- **DDL is covered automatically.** Any change to a statement in
+  `createTableStatements`, or to the order they run in, changes the hash. It
+  cannot be forgotten.
+- **`MIGRATION_REVISION` covers the rest** — the imperative backfills and data
+  fixes inside `migrateSchema` that are not expressed as DDL. Bump it when you
+  add or change one, or the sweep will be skipped on databases that already
+  record the current fingerprint.
+
+A sweep that throws records nothing, so it is retried. And the lazy path
+deliberately ignores the fingerprint: a schema error proves something is
+missing, which means the recorded fingerprint is wrong and must not be trusted.
 
 ## Migration Notes
 

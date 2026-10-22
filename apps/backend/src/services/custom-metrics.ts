@@ -1,10 +1,7 @@
-/**
- * Custom metric management — register, update, delete custom metrics and metric data.
- */
-
-import type { CustomMetricDefinition } from '@aurboda/api-spec'
+import type { CustomMetricDefinition, MetricAggregation } from '@aurboda/api-spec'
 
 import {
+  type CustomMetricDefinitionUpdates,
   deleteCustomMetricDefinition,
   deleteTimeSeriesMetric,
   deleteTimeSeriesPoint,
@@ -29,6 +26,7 @@ export interface DeleteCustomMetricResult {
 }
 
 export interface UpdateCustomMetricInput {
+  aggregation?: MetricAggregation
   unit?: string
   description?: string
   minValue?: number | null
@@ -55,14 +53,10 @@ export interface DeleteMetricDataResult {
   deletedCount: number
 }
 
-/**
- * Register a new custom metric type.
- */
 export async function addCustomMetric(
   user: string,
   definition: CustomMetricDefinition,
 ): Promise<CustomMetricResult> {
-  // Check name doesn't conflict with built-in metrics
   if (isValidMetric(definition.name)) {
     return {
       error: `Metric name "${definition.name}" conflicts with a built-in metric.`,
@@ -70,7 +64,6 @@ export async function addCustomMetric(
     }
   }
 
-  // Check for duplicate
   const existing = await getCustomMetricByName(user, definition.name)
   if (existing) {
     return {
@@ -88,7 +81,6 @@ export async function addCustomMetric(
 }
 
 /**
- * Delete a custom metric definition.
  * Note: Existing time_series data for the metric is preserved.
  */
 export async function deleteCustomMetric(user: string, name: string): Promise<DeleteCustomMetricResult> {
@@ -110,24 +102,16 @@ export async function updateCustomMetric(
   name: string,
   updates: UpdateCustomMetricInput,
 ): Promise<UpdateCustomMetricResult> {
-  const dbUpdates: Partial<
-    Pick<
-      CustomMetricDefinition,
-      'unit' | 'description' | 'min_value' | 'max_value' | 'include_in_daily_summary'
-    >
-  > = {}
+  const dbUpdates: CustomMetricDefinitionUpdates = {}
 
   if (updates.unit !== undefined) dbUpdates.unit = updates.unit
   if (updates.description !== undefined) dbUpdates.description = updates.description
-  if (updates.minValue !== undefined) {
-    dbUpdates.min_value = updates.minValue === null ? undefined : updates.minValue
-  }
-  if (updates.maxValue !== undefined) {
-    dbUpdates.max_value = updates.maxValue === null ? undefined : updates.maxValue
-  }
+  if (updates.minValue !== undefined) dbUpdates.min_value = updates.minValue
+  if (updates.maxValue !== undefined) dbUpdates.max_value = updates.maxValue
   if (updates.include_in_daily_summary !== undefined) {
     dbUpdates.include_in_daily_summary = updates.include_in_daily_summary
   }
+  if (updates.aggregation !== undefined) dbUpdates.aggregation = updates.aggregation
 
   const updated = await updateCustomMetricDefinition(user, name, dbUpdates)
   if (!updated) {
@@ -169,16 +153,9 @@ export async function deleteMetricData(user: string, metric: string): Promise<De
   }
 }
 
-/**
- * Get all custom metric definitions for a user.
- */
 export async function getCustomMetrics(user: string): Promise<CustomMetricDefinition[]> {
   return getCustomMetricDefinitions(user)
 }
-
-// =============================================================================
-// Merge
-// =============================================================================
 
 export interface MergeCustomMetricResult {
   success: boolean
@@ -188,7 +165,6 @@ export interface MergeCustomMetricResult {
 }
 
 /**
- * Merge a custom metric into another metric (built-in or custom).
  * All time_series data is reassigned; the source definition is deleted.
  */
 export async function mergeCustomMetricService(
@@ -200,13 +176,11 @@ export async function mergeCustomMetricService(
     return { error: 'Source and target cannot be the same metric.', success: false }
   }
 
-  // Source must be a custom metric
   const sourceMetric = await getCustomMetricByName(user, source)
   if (!sourceMetric) {
     return { error: `Custom metric "${source}" not found.`, success: false }
   }
 
-  // Target must be a valid metric (built-in or custom)
   let targetUnit: string
   if (isValidMetric(target)) {
     targetUnit = metricUnits[target as MetricType]

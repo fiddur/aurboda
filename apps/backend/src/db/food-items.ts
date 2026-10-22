@@ -1,14 +1,9 @@
-/**
- * Food items CRUD operations.
- *
- * Canonical food item library — each unique food is a first-class entity.
- */
-
 import { FOOD_ITEM_QUALITY_TIER_SQL, NUTRIENT_FIELD_NAMES } from '@aurboda/api-spec'
 
+import type { Queryable } from './pool.ts'
 import type { FoodItemEntity } from './types.ts'
 
-import { query } from './connection.ts'
+import { query, withUserTransaction } from './connection.ts'
 
 const FOOD_ITEM_COLUMNS = [
   'id',
@@ -52,8 +47,6 @@ const mapFoodItemRow = (row: Record<string, unknown>): FoodItemEntity => {
   return entity as unknown as FoodItemEntity
 }
 
-// ── Input types ──────────────────────────────────────────────────────────────
-
 export interface InsertFoodItemInput {
   name: string
   source?: string
@@ -69,8 +62,6 @@ export interface InsertFoodItemInput {
   icon?: string
   [nutrient: string]: string | number | undefined
 }
-
-// ── CRUD ─────────────────────────────────────────────────────────────────────
 
 const TRIGRAM_SIMILARITY_THRESHOLD = 0.2
 const TRIGRAM_MIN_QUERY_LENGTH = 3
@@ -110,9 +101,6 @@ export const searchFoodItems = async (user: string, q: string, limit = 20): Prom
   return result.rows.map(mapFoodItemRow)
 }
 
-/**
- * Get all food items (with optional limit).
- */
 export const listFoodItems = async (user: string, limit = 100): Promise<FoodItemEntity[]> => {
   const result = await query(
     user,
@@ -122,17 +110,14 @@ export const listFoodItems = async (user: string, limit = 100): Promise<FoodItem
   return result.rows.map(mapFoodItemRow)
 }
 
-/**
- * Get a food item by ID.
- */
-export const getFoodItemById = async (user: string, id: string): Promise<FoodItemEntity | null> => {
-  const result = await query(user, `SELECT ${FOOD_ITEM_COLUMNS} FROM food_items WHERE id = $1`, [id])
+const selectFoodItemById = async (db: Queryable | string, id: string): Promise<FoodItemEntity | null> => {
+  const result = await query(db, `SELECT ${FOOD_ITEM_COLUMNS} FROM food_items WHERE id = $1`, [id])
   return result.rows.length > 0 ? mapFoodItemRow(result.rows[0]) : null
 }
 
-/**
- * Get a food item by name (case-insensitive exact match).
- */
+export const getFoodItemById = async (user: string, id: string): Promise<FoodItemEntity | null> =>
+  selectFoodItemById(user, id)
+
 export const getFoodItemByName = async (user: string, name: string): Promise<FoodItemEntity | null> => {
   const result = await query(user, `SELECT ${FOOD_ITEM_COLUMNS} FROM food_items WHERE name_lower = $1`, [
     name.toLowerCase().trim(),
@@ -212,9 +197,6 @@ export const upsertFoodItem = async (user: string, input: InsertFoodItemInput): 
   return mapFoodItemRow(result.rows[0])
 }
 
-/**
- * Update a food item by ID.
- */
 export const updateFoodItem = async (
   user: string,
   id: string,
@@ -273,6 +255,11 @@ export const updateFoodItem = async (
   return result.rows.length > 0 ? mapFoodItemRow(result.rows[0]) : null
 }
 
+export const FOOD_ITEM_USED_AS_INGREDIENT_ERROR =
+  'Cannot delete: this food item is used as an ingredient in one or more recipes. Remove it from those recipes (or merge into a replacement) first.'
+
+export type DeleteFoodItemResult = 'deleted' | 'not_found' | 'used_as_ingredient'
+
 /**
  * Delete a food item by ID.
  *
@@ -290,42 +277,31 @@ export const updateFoodItem = async (
  *   by design; the dangling pointer is acceptable because every nutrient
  *   value the meal needs is already snapshotted onto the junction row.
  */
-export const deleteFoodItem = async (user: string, id: string): Promise<boolean> => {
-  try {
-    await query(user, 'BEGIN')
+export const deleteFoodItem = async (user: string, id: string): Promise<DeleteFoodItemResult> =>
+  withUserTransaction(user, async (tx) => {
     // Re-check inside the txn with FOR SHARE so a concurrent INSERT into
     // food_item_ingredients blocks until our transaction completes — without
     // this, the gap between the SELECT and DELETE is a TOCTOU window where a
     // recipe could silently lose an ingredient pointer.
     const usedAsIngredient = await query(
-      user,
+      tx,
       'SELECT 1 FROM food_item_ingredients WHERE ingredient_food_item_id = $1 LIMIT 1 FOR SHARE',
       [id],
     )
-    if (usedAsIngredient.rows.length > 0) {
-      await query(user, 'ROLLBACK').catch(() => {})
-      throw new Error(
-        'Cannot delete: this food item is used as an ingredient in one or more recipes. Remove it from those recipes (or merge into a replacement) first.',
-      )
-    }
+    if (usedAsIngredient.rows.length > 0) return 'used_as_ingredient'
     // Reference dangling: NULL out every pointer to this id.
     await query(
-      user,
+      tx,
       'UPDATE food_items SET reference_food_item_id = NULL, updated_at = NOW() WHERE reference_food_item_id = $1',
       [id],
     )
     // Sensitivity assignments — live state; drop.
-    await query(user, 'DELETE FROM food_item_sensitivities WHERE food_item_id = $1', [id])
+    await query(tx, 'DELETE FROM food_item_sensitivities WHERE food_item_id = $1', [id])
     // Portion sizings — owned by this food; drop alongside the food itself.
-    await query(user, 'DELETE FROM food_item_portions WHERE food_item_id = $1', [id])
-    const result = await query(user, 'DELETE FROM food_items WHERE id = $1', [id])
-    await query(user, 'COMMIT')
-    return (result.rowCount ?? 0) > 0
-  } catch (err) {
-    await query(user, 'ROLLBACK').catch(() => {})
-    throw err
-  }
-}
+    await query(tx, 'DELETE FROM food_item_portions WHERE food_item_id = $1', [id])
+    const result = await query(tx, 'DELETE FROM food_items WHERE id = $1', [id])
+    return (result.rowCount ?? 0) > 0 ? 'deleted' : 'not_found'
+  })
 
 /**
  * Set or clear the reference_food_item_id soft pointer. Pass null to clear.
@@ -338,8 +314,6 @@ export const setFoodItemReference = async (
   id: string,
   referenceId: string | null,
 ): Promise<FoodItemEntity | null> => {
-  // Allow clearing (referenceId === null) on any row; only block setting on a
-  // composite parent.
   const whereClause = referenceId === null ? 'WHERE id = $1' : 'WHERE id = $1 AND is_composite = FALSE'
   const result = await query(
     user,
@@ -351,10 +325,6 @@ export const setFoodItemReference = async (
   return result.rows.length > 0 ? mapFoodItemRow(result.rows[0]) : null
 }
 
-/**
- * Find a food item by name, or create it if it doesn't exist.
- * Returns the existing or newly created food item.
- */
 export const findOrCreateFoodItem = async (
   user: string,
   name: string,
@@ -414,15 +384,13 @@ export const mergeFoodItems = async (
   )
   const sourceWasComposite = sourceIngredientsRes.rows.length > 0
 
-  try {
-    await query(user, 'BEGIN')
-
+  return withUserTransaction(user, async (tx) => {
     // Re-point past-meal references. food_item_id on meal_food_items is a
     // soft pointer (#695 dropped the FK because central rows live in another
     // database); the snapshot columns remain untouched here, satisfying the
     // "old meals must not change nutritionally" requirement.
     const mealsResult = await query(
-      user,
+      tx,
       `UPDATE meal_food_items SET food_item_id = $2 WHERE food_item_id = $1`,
       [sourceId, targetId],
     )
@@ -430,7 +398,7 @@ export const mergeFoodItems = async (
     // Re-point composite ingredient references. Future re-derivation of
     // those composites will pick up the target's current nutrients.
     const ingredientsResult = await query(
-      user,
+      tx,
       `UPDATE food_item_ingredients
          SET ingredient_food_item_id = $2, updated_at = NOW()
        WHERE ingredient_food_item_id = $1`,
@@ -440,7 +408,7 @@ export const mergeFoodItems = async (
     // Re-point reference pointers: any food item that referenced the source
     // for inherited micronutrients should point at the target instead.
     await query(
-      user,
+      tx,
       `UPDATE food_items
          SET reference_food_item_id = $2, updated_at = NOW()
        WHERE reference_food_item_id = $1`,
@@ -450,7 +418,7 @@ export const mergeFoodItems = async (
     // Union sensitivity assignments source→target. UPSERT semantics handle
     // overlap (a flag both rows had collapses to one), then drop source rows.
     await query(
-      user,
+      tx,
       `INSERT INTO food_item_sensitivities (food_item_id, sensitivity_flag_id)
        SELECT $2, sensitivity_flag_id
          FROM food_item_sensitivities
@@ -458,21 +426,19 @@ export const mergeFoodItems = async (
        ON CONFLICT (food_item_id, sensitivity_flag_id) DO NOTHING`,
       [sourceId, targetId],
     )
-    await query(user, `DELETE FROM food_item_sensitivities WHERE food_item_id = $1`, [sourceId])
+    await query(tx, `DELETE FROM food_item_sensitivities WHERE food_item_id = $1`, [sourceId])
 
     // Optionally fill the target's empty fields from the source. We only
     // touch the per-user `food_items` table; central targets are filtered
     // out at the service layer.
     let fillsApplied: string[] = []
     if (options.fillEmptyFromSource && options.targetIsUserItem) {
-      fillsApplied = await fillTargetFromSource(user, sourceId, targetId)
+      fillsApplied = await fillTargetFromSource(tx, sourceId, targetId)
     }
 
     // Source row goes last — its food_item_ingredients (parent rows) cascade
     // away on delete; that's the "ingredients are discarded" semantic.
-    await query(user, `DELETE FROM food_items WHERE id = $1`, [sourceId])
-
-    await query(user, 'COMMIT')
+    await query(tx, `DELETE FROM food_items WHERE id = $1`, [sourceId])
 
     return {
       fills_applied: fillsApplied,
@@ -480,22 +446,14 @@ export const mergeFoodItems = async (
       meals_repointed: mealsResult.rowCount ?? 0,
       source_was_composite: sourceWasComposite,
     }
-  } catch (err) {
-    await query(user, 'ROLLBACK').catch(() => {})
-    throw err
-  }
+  })
 }
 
 const FILLABLE_FIELDS = [...NUTRIENT_FIELD_NAMES, 'icon', 'default_quantity', 'default_unit'] as const
 
-/**
- * Copy each NUTRIENT/icon/default_* field from source to target where the
- * target is currently NULL and the source has a value. Returns the names of
- * the fields that were actually filled — useful for the result summary.
- */
-const fillTargetFromSource = async (user: string, sourceId: string, targetId: string): Promise<string[]> => {
-  const target = await getFoodItemById(user, targetId)
-  const source = await getFoodItemById(user, sourceId)
+const fillTargetFromSource = async (tx: Queryable, sourceId: string, targetId: string): Promise<string[]> => {
+  const target = await selectFoodItemById(tx, targetId)
+  const source = await selectFoodItemById(tx, sourceId)
   if (!target || !source) return []
 
   const fields: string[] = []
@@ -516,6 +474,6 @@ const fillTargetFromSource = async (user: string, sourceId: string, targetId: st
   if (setClauses.length === 0) return []
   setClauses.push('updated_at = NOW()')
   params.push(targetId)
-  await query(user, `UPDATE food_items SET ${setClauses.join(', ')} WHERE id = $${idx}`, params)
+  await query(tx, `UPDATE food_items SET ${setClauses.join(', ')} WHERE id = $${idx}`, params)
   return fields
 }

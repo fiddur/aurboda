@@ -1,7 +1,4 @@
-/**
- * Deduction rule CRUD operations.
- */
-import type { Condition, DeductionRule, DeductionRuleMode } from '@aurboda/api-spec'
+import type { Condition, DeductionRule, DeductionRuleMode, OutputMediaField } from '@aurboda/api-spec'
 
 import { query } from './connection.ts'
 
@@ -15,12 +12,16 @@ const mapRow = (row: Record<string, unknown>): DeductionRule => ({
   name: row.name as string,
   output_activity_type: row.output_activity_type as string,
   ...(row.output_data != null ? { output_data: row.output_data as Record<string, unknown> } : {}),
+  ...(row.output_media_field != null
+    ? { output_media_field: row.output_media_field as OutputMediaField }
+    : {}),
   ...(row.output_title != null ? { output_title: row.output_title as string } : {}),
+  ...(row.output_title_field != null ? { output_title_field: row.output_title_field as string } : {}),
   priority: row.priority as number,
 })
 
 const SELECT_COLS =
-  'id, name, enabled, priority, conditions, output_activity_type, output_title, merge_gap_seconds, mode, output_data, created_at'
+  'id, name, enabled, priority, conditions, output_activity_type, output_title, merge_gap_seconds, mode, output_data, output_media_field, output_title_field, created_at'
 
 export const getDeductionRules = async (user: string): Promise<DeductionRule[]> => {
   const result = await query(user, `SELECT ${SELECT_COLS} FROM deduction_rules ORDER BY priority, name`)
@@ -64,12 +65,14 @@ export const insertDeductionRule = async (
     enabled?: boolean
     mode?: DeductionRuleMode
     output_data?: Record<string, unknown>
+    output_media_field?: OutputMediaField
+    output_title_field?: string
   },
 ): Promise<DeductionRule> => {
   const result = await query(
     user,
-    `INSERT INTO deduction_rules (name, enabled, priority, conditions, output_activity_type, output_title, merge_gap_seconds, mode, output_data)
-     VALUES ($1, COALESCE($2, true), COALESCE($3, 0), $4, $5, $6, $7, COALESCE($8, 'create'), $9)
+    `INSERT INTO deduction_rules (name, enabled, priority, conditions, output_activity_type, output_title, merge_gap_seconds, mode, output_data, output_media_field, output_title_field)
+     VALUES ($1, COALESCE($2, true), COALESCE($3, 0), $4, $5, $6, $7, COALESCE($8, 'create'), $9, $10, $11)
      RETURNING ${SELECT_COLS}`,
     [
       rule.name,
@@ -81,65 +84,55 @@ export const insertDeductionRule = async (
       rule.merge_gap_seconds ?? null,
       rule.mode ?? null,
       rule.output_data ? JSON.stringify(rule.output_data) : null,
+      rule.output_media_field ? JSON.stringify(rule.output_media_field) : null,
+      rule.output_title_field ?? null,
     ],
   )
   return mapRow(result.rows[0])
 }
 
+interface DeductionRuleUpdates {
+  name?: string
+  enabled?: boolean
+  priority?: number
+  conditions?: Condition[]
+  output_activity_type?: string
+  output_title?: string | null
+  merge_gap_seconds?: number | null
+  mode?: DeductionRuleMode
+  output_data?: Record<string, unknown> | null
+  output_media_field?: OutputMediaField | null
+  output_title_field?: string | null
+}
+
+const UPDATABLE_COLUMNS: { column: keyof DeductionRuleUpdates; json?: true }[] = [
+  { column: 'name' },
+  { column: 'enabled' },
+  { column: 'priority' },
+  { column: 'conditions', json: true },
+  { column: 'output_activity_type' },
+  { column: 'output_title' },
+  { column: 'merge_gap_seconds' },
+  { column: 'mode' },
+  { column: 'output_data', json: true },
+  { column: 'output_media_field', json: true },
+  { column: 'output_title_field' },
+]
+
 export const updateDeductionRule = async (
   user: string,
   id: string,
-  updates: {
-    name?: string
-    enabled?: boolean
-    priority?: number
-    conditions?: Condition[]
-    output_activity_type?: string
-    output_title?: string | null
-    merge_gap_seconds?: number | null
-    mode?: DeductionRuleMode
-    output_data?: Record<string, unknown> | null
-  },
+  updates: DeductionRuleUpdates,
 ): Promise<DeductionRule | null> => {
   const setClauses: string[] = []
   const values: unknown[] = []
   let paramIndex = 1
 
-  if (updates.name !== undefined) {
-    setClauses.push(`name = $${paramIndex++}`)
-    values.push(updates.name)
-  }
-  if (updates.enabled !== undefined) {
-    setClauses.push(`enabled = $${paramIndex++}`)
-    values.push(updates.enabled)
-  }
-  if (updates.priority !== undefined) {
-    setClauses.push(`priority = $${paramIndex++}`)
-    values.push(updates.priority)
-  }
-  if (updates.conditions !== undefined) {
-    setClauses.push(`conditions = $${paramIndex++}`)
-    values.push(JSON.stringify(updates.conditions))
-  }
-  if (updates.output_activity_type !== undefined) {
-    setClauses.push(`output_activity_type = $${paramIndex++}`)
-    values.push(updates.output_activity_type)
-  }
-  if (updates.output_title !== undefined) {
-    setClauses.push(`output_title = $${paramIndex++}`)
-    values.push(updates.output_title)
-  }
-  if (updates.merge_gap_seconds !== undefined) {
-    setClauses.push(`merge_gap_seconds = $${paramIndex++}`)
-    values.push(updates.merge_gap_seconds)
-  }
-  if (updates.mode !== undefined) {
-    setClauses.push(`mode = $${paramIndex++}`)
-    values.push(updates.mode)
-  }
-  if (updates.output_data !== undefined) {
-    setClauses.push(`output_data = $${paramIndex++}`)
-    values.push(updates.output_data ? JSON.stringify(updates.output_data) : null)
+  for (const { column, json } of UPDATABLE_COLUMNS) {
+    const value = updates[column]
+    if (value === undefined) continue
+    setClauses.push(`${column} = $${paramIndex++}`)
+    values.push(json && value !== null ? JSON.stringify(value) : value)
   }
   if (setClauses.length === 0) return getDeductionRule(user, id)
 
@@ -161,10 +154,7 @@ export const deleteDeductionRule = async (user: string, id: string): Promise<boo
   return (result.rowCount ?? 0) > 0
 }
 
-/**
- * Delete all activities produced by a specific deduction rule.
- * Used when re-evaluating a rule retroactively.
- */
+/** Used when re-evaluating a rule retroactively. */
 export const deleteRuleActivities = async (user: string, ruleId: string): Promise<number> => {
   const result = await query(
     user,
@@ -198,9 +188,15 @@ export const deleteStaleRuleActivities = async (
   return result.rowCount ?? 0
 }
 
-/**
- * Insert a deduction rule run audit record.
- */
+export const pruneDeductionRuleRuns = async (user: string, retentionDays: number): Promise<number> => {
+  const result = await query(
+    user,
+    `DELETE FROM deduction_rule_runs WHERE evaluated_at < NOW() - INTERVAL '1 day' * $1`,
+    [retentionDays],
+  )
+  return result.rowCount ?? 0
+}
+
 export const insertDeductionRuleRun = async (
   user: string,
   run: {

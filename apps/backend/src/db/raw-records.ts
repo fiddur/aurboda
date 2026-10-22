@@ -1,6 +1,3 @@
-/**
- * Raw record storage for incoming health data.
- */
 import format from 'pg-format'
 
 import type { RawRecord } from './types.ts'
@@ -53,10 +50,7 @@ export interface ScrobbleRecord {
   album: string
 }
 
-/**
- * Query all Last.fm scrobbles from raw_records (no time range bounds).
- * Used for re-tagging all scrobbles when rules change.
- */
+/** No time range bounds — used for re-tagging all scrobbles when rules change. */
 export const getAllScrobbles = async (user: string): Promise<ScrobbleRecord[]> => {
   const result = await query(
     user,
@@ -95,9 +89,6 @@ export interface QueryRawRecordsParams {
   offset?: number
 }
 
-/**
- * Query raw records with optional filters. Ordered by recorded_at DESC.
- */
 export const queryRawRecords = async (
   user: string,
   params: QueryRawRecordsParams = {},
@@ -150,9 +141,6 @@ export const queryRawRecords = async (
   return { rows: dataResult.rows, total }
 }
 
-/**
- * Query Last.fm scrobbles from raw_records within a time range.
- */
 export const getScrobbles = async (user: string, start: Date, end: Date): Promise<ScrobbleRecord[]> => {
   const result = await query(
     user,

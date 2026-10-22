@@ -1,6 +1,3 @@
-/**
- * Uploaded icons CRUD operations.
- */
 import { query } from './connection.ts'
 
 export const insertIcon = async (user: string, contentType: string, data: Buffer): Promise<string> => {

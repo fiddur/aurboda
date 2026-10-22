@@ -1,9 +1,12 @@
-/**
- * Deduction rule schemas — rules that automatically create activities from data conditions.
- */
+/** Rules that automatically create activities from data conditions. */
 import { z } from 'zod'
 
-import { activityTypeSchema, baseResponseSchema, createDataArrayResponseSchema } from './common.ts'
+import {
+  activityTypeSchema,
+  baseResponseSchema,
+  createDataArrayResponseSchema,
+  dataFieldNameSchema,
+} from './common.ts'
 
 /**
  * Condition kinds for deduction rules.
@@ -20,6 +23,8 @@ export const dataFilterSchema = z.object({
 
 export type DataFilter = z.infer<typeof dataFilterSchema>
 
+const matchModeSchema = z.enum(['exact', 'contains'])
+
 export const activityConditionSchema = z
   .object({
     activity_type: activityTypeSchema,
@@ -28,11 +33,17 @@ export const activityConditionSchema = z
       .optional()
       .meta({ description: 'Optional data field filters — all must match (AND logic)' }),
     kind: z.literal('activity'),
+    match_mode: matchModeSchema
+      .optional()
+      .meta({ description: 'Case-insensitive match mode for title (default contains)' }),
+    title: z.string().optional().meta({ description: 'Activity title to match (per match_mode)' }),
   })
   .meta({
     description:
-      'Matches time ranges where an activity of the given type exists, optionally filtered by data fields',
+      'Matches time ranges where an activity of the given type exists, optionally filtered by data fields and title',
   })
+
+export type ActivityCondition = z.infer<typeof activityConditionSchema>
 
 export const screentimeCategoryConditionSchema = z
   .object({
@@ -79,13 +90,44 @@ export const scrobbleConditionSchema = z
       .positive()
       .meta({ description: 'Duration each matching scrobble covers (seconds)' }),
     kind: z.literal('scrobble'),
-    match_mode: z
-      .enum(['exact', 'contains'])
-      .default('exact')
-      .meta({ description: 'Case-insensitive match mode' }),
+    match_mode: matchModeSchema.default('exact').meta({ description: 'Case-insensitive match mode' }),
     track: z.string().optional().meta({ description: 'Track name to match' }),
   })
   .meta({ description: 'Matches time ranges from Last.fm scrobbles by artist/track name' })
+
+export const mediaConditionSchema = z
+  .object({
+    artist: z
+      .array(z.string())
+      .optional()
+      .meta({ description: 'Artist name(s) to match (any of, per match_mode)' }),
+    kind: z.literal('media'),
+    match_mode: matchModeSchema
+      .default('contains')
+      .meta({ description: 'Case-insensitive match mode for title and artist' }),
+    min_played_ratio: z.number().gt(0).max(1).optional().meta({
+      description:
+        'Minimum played_secs / track_secs. Skipped when the play has no known track length (Last.fm, some mpv plays).',
+    }),
+    min_played_secs: z.number().positive().optional().meta({
+      description: 'Minimum seconds actually played. Plays without played_secs (Last.fm) never pass.',
+    }),
+    player: z
+      .array(z.string())
+      .optional()
+      .meta({ description: 'Player name(s) to match exactly, case-insensitive (e.g. "firefox", "mpv")' }),
+    title: z.string().optional().meta({ description: 'Title to match (per match_mode)' }),
+    url_host: z.array(z.string()).optional().meta({
+      description:
+        'URL host(s) to match (any of). Matches the host itself or any subdomain, case-insensitive (www.example.com matches example.com).',
+    }),
+  })
+  .meta({
+    description:
+      'Matches time ranges of media plays (MPRIS pushes and non-duplicate Last.fm scrobbles) by host, title, artist, player and how much was played',
+  })
+
+export type MediaCondition = z.infer<typeof mediaConditionSchema>
 
 export const conditionSchema = z.discriminatedUnion('kind', [
   activityConditionSchema,
@@ -94,16 +136,42 @@ export const conditionSchema = z.discriminatedUnion('kind', [
   locationConditionSchema,
   afterDateConditionSchema,
   scrobbleConditionSchema,
+  mediaConditionSchema,
 ])
 
 export type Condition = z.infer<typeof conditionSchema>
 
-/**
- * Deduction rule schema.
- */
-export const deductionRuleModeSchema = z
-  .enum(['create', 'enrich'])
-  .meta({ id: 'DeductionRuleMode', description: 'Whether to create new activities or enrich existing ones' })
+export const outputMediaFieldSchema = z
+  .object({
+    field: z
+      .string()
+      .regex(/^[a-z][a-z0-9_]*$/)
+      .meta({
+        description: 'Activity data field to write the play title into (snake_case), e.g. "session_name"',
+      }),
+    strip_pattern: z.string().max(200).optional().meta({
+      description:
+        'JavaScript regular expression (flags "giu", at most 200 characters); every match is removed from the title before writing, then whitespace is collapsed and trimmed',
+    }),
+  })
+  .meta({
+    id: 'OutputMediaField',
+    description:
+      'Enrich mode only, with at least one media condition: copy the title of the longest matching play overlapping each enriched activity into a data field',
+  })
+
+export type OutputMediaField = z.infer<typeof outputMediaFieldSchema>
+
+const outputTitleFieldDescription =
+  'Enrich mode only: copy this data field (e.g. "session_name") into the title of each enriched activity. Replaces a blank title, the type name, or a title the rule wrote itself; a title typed by hand is kept.'
+
+const outputTitleFieldSchema = dataFieldNameSchema.meta({ description: outputTitleFieldDescription })
+
+export const deductionRuleModeSchema = z.enum(['create', 'enrich', 'retype']).meta({
+  id: 'DeductionRuleMode',
+  description:
+    'Whether to create new activities, enrich existing ones, or change the type of the activities the rule\'s single "activity" condition matches',
+})
 
 export type DeductionRuleMode = z.infer<typeof deductionRuleModeSchema>
 
@@ -122,18 +190,24 @@ export const deductionRuleSchema = z
       .optional()
       .meta({ description: 'Coalesce nearby matches within this gap' }),
     mode: deductionRuleModeSchema.optional().meta({
-      description: 'create (default): create new activities. enrich: patch data onto existing activities.',
+      description:
+        'create (default): create new activities. enrich: patch data onto existing activities. retype: change the matched activities to output_activity_type.',
     }),
     name: z.string().meta({ description: 'Human-readable rule name' }),
     output_activity_type: activityTypeSchema.meta({
       description:
-        'In create mode: activity type to create. In enrich mode: activity type to patch data onto.',
+        'In create mode: activity type to create. In enrich mode: activity type to patch data onto. In retype mode: the new type.',
     }),
-    output_data: z
-      .record(z.string(), z.unknown())
-      .optional()
-      .meta({ description: 'Static data fields to set on created/enriched activities' }),
-    output_title: z.string().optional().meta({ description: 'Optional title for created activities' }),
+    output_data: z.record(z.string(), z.unknown()).optional().meta({
+      description:
+        'Static data fields to set on created activities; enrich and retype only fill missing fields',
+    }),
+    output_media_field: outputMediaFieldSchema.optional(),
+    output_title_field: outputTitleFieldSchema.optional(),
+    output_title: z.string().optional().meta({
+      description:
+        'Optional title for created activities; in retype mode, replaces the retyped activity title',
+    }),
     priority: z
       .number()
       .int()
@@ -148,9 +222,6 @@ export const deductionRuleSchema = z
 
 export type DeductionRule = z.infer<typeof deductionRuleSchema>
 
-/**
- * Add deduction rule request body.
- */
 export const addDeductionRuleBodySchema = z
   .object({
     conditions: z
@@ -166,16 +237,21 @@ export const addDeductionRuleBodySchema = z
       .meta({ description: 'Coalesce nearby matches within this gap (seconds)' }),
     mode: deductionRuleModeSchema
       .optional()
-      .meta({ description: 'create (default) or enrich existing activities' }),
+      .meta({ description: 'create (default), enrich existing activities, or retype them' }),
     name: z.string().meta({ description: 'Human-readable rule name' }),
     output_activity_type: activityTypeSchema.meta({
-      description: 'In create mode: type to create. In enrich mode: type to patch data onto.',
+      description:
+        'In create mode: type to create. In enrich mode: type to patch data onto. In retype mode: the new type.',
     }),
-    output_data: z
-      .record(z.string(), z.unknown())
-      .optional()
-      .meta({ description: 'Static data fields for created/enriched activities' }),
-    output_title: z.string().optional().meta({ description: 'Optional title for created activities' }),
+    output_data: z.record(z.string(), z.unknown()).optional().meta({
+      description: 'Static data fields for created activities; enrich and retype only fill missing fields',
+    }),
+    output_media_field: outputMediaFieldSchema.optional(),
+    output_title_field: outputTitleFieldSchema.optional(),
+    output_title: z.string().optional().meta({
+      description:
+        'Optional title for created activities; in retype mode, replaces the retyped activity title',
+    }),
     priority: z
       .number()
       .int()
@@ -188,9 +264,6 @@ export const addDeductionRuleBodySchema = z
 
 export type AddDeductionRuleBody = z.infer<typeof addDeductionRuleBodySchema>
 
-/**
- * Update deduction rule request body.
- */
 export const updateDeductionRuleBodySchema = z
   .object({
     conditions: z.array(conditionSchema).min(1).optional().meta({ description: 'New conditions' }),
@@ -210,6 +283,14 @@ export const updateDeductionRuleBodySchema = z
       .nullable()
       .optional()
       .meta({ description: 'New output data (null to clear)' }),
+    output_media_field: outputMediaFieldSchema
+      .nullable()
+      .optional()
+      .meta({ description: 'New play-title enrichment (null to clear)' }),
+    output_title_field: dataFieldNameSchema
+      .nullable()
+      .optional()
+      .meta({ description: `${outputTitleFieldDescription} Null to clear.` }),
     output_title: z.string().nullable().optional().meta({ description: 'New title (null to remove)' }),
     priority: z.number().int().min(0).max(2).optional().meta({ description: 'New priority' }),
   })
@@ -217,18 +298,12 @@ export const updateDeductionRuleBodySchema = z
 
 export type UpdateDeductionRuleBody = z.infer<typeof updateDeductionRuleBodySchema>
 
-/**
- * Deduction rules list response.
- */
 export const deductionRulesResponseSchema = createDataArrayResponseSchema(deductionRuleSchema).meta({
   id: 'DeductionRulesResponse',
 })
 
 export type DeductionRulesResponse = z.infer<typeof deductionRulesResponseSchema>
 
-/**
- * Single deduction rule response.
- */
 export const deductionRuleResponseSchema = baseResponseSchema
   .extend({
     data: deductionRuleSchema.optional(),
@@ -237,9 +312,6 @@ export const deductionRuleResponseSchema = baseResponseSchema
 
 export type DeductionRuleResponse = z.infer<typeof deductionRuleResponseSchema>
 
-/**
- * Evaluate deduction rules response.
- */
 export const evaluateDeductionRulesResponseSchema = baseResponseSchema
   .extend({
     activities_created: z.number().int().optional(),
@@ -249,9 +321,7 @@ export const evaluateDeductionRulesResponseSchema = baseResponseSchema
 
 export type EvaluateDeductionRulesResponse = z.infer<typeof evaluateDeductionRulesResponseSchema>
 
-/**
- * Preview deduction rule response — dry-run showing how many activities would be affected.
- */
+/** Dry-run showing how many activities would be affected. */
 export const previewDeductionRuleResponseSchema = baseResponseSchema
   .extend({
     would_affect: z

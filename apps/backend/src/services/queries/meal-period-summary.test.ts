@@ -293,4 +293,38 @@ describe('getMealPeriodSummary', () => {
     expect(result.nutrients).toEqual({})
     expect(result.calories_burned).toBeNull()
   })
+
+  test('a meal with only top-level macros and micros contributes them; a meal with items uses the items', async () => {
+    vi.mocked(db.getMeals).mockResolvedValue([
+      {
+        ...mealAt('quick', '2025-03-01T08:00:00Z'),
+        calories: 400,
+        micros: {
+          iron: 3,
+          retinol: { unit: 'µg', value: 300 },
+          vitamin_c: { unit: 'g', value: 1 },
+          zinc_mystery: 5,
+        },
+        protein: 20,
+      } as Meal,
+      { ...mealAt('items', '2025-03-01T12:00:00Z'), calories: 9999 } as Meal,
+      mealAt('empty', '2025-03-02T12:00:00Z'),
+    ])
+    vi.mocked(db.getMealFoodItemsBatch).mockResolvedValue(
+      new Map<string, MealFoodItemLink[]>([['items', [link('items', { calories: 600, protein: 30 })]]]),
+    )
+
+    const result = await getMealPeriodSummary('user', { start: '2025-03-01', end: '2025-03-02' })
+
+    // The meal with no nutrition at all does not make its day a day with meals.
+    expect(result.days_with_meals).toBe(1)
+    expect(result.nutrients.calories.total).toBe(1000)
+    expect(result.nutrients.protein.total).toBe(50)
+    expect(result.nutrients.iron.total).toBe(3)
+    // Micros pass through the same derivation as item rows (retinol → vitamin A).
+    expect(result.nutrients.vitamin_a.total).toBe(300)
+    // A micro in another unit than the field's is not guessed at.
+    expect(result.nutrients.vitamin_c).toBeUndefined()
+    expect(result.nutrients).not.toHaveProperty('zinc_mystery')
+  })
 })

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Sample race chart for the widget picker preview (two cumulative lines with area fills). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="40dp"
+    android:viewportWidth="120"
+    android:viewportHeight="40">
+    <path
+        android:fillColor="#308B5CF6"
+        android:pathData="M2,38 L20,32 L38,27 L56,17 L74,12 L88,6 L88,38 Z" />
+    <path
+        android:fillColor="#3010B981"
+        android:pathData="M2,38 L20,29 L38,25 L56,21 L74,15 L88,11 L88,38 Z" />
+    <path
+        android:pathData="M2,38 L118,38"
+        android:strokeColor="#40FFFFFF"
+        android:strokeWidth="1" />
+    <path
+        android:pathData="M2,38 L20,32 L38,27 L56,17 L74,12 L88,6"
+        android:strokeColor="#8B5CF6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="2" />
+    <path
+        android:pathData="M2,38 L20,29 L38,25 L56,21 L74,15 L88,11"
+        android:strokeColor="#10B981"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="2" />
+</vector>

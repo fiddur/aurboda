@@ -36,11 +36,10 @@ fun parseRscMeasurement(data: ByteArray): CadenceSample? {
     val speedMs = speedRaw / 256f
     offset += 2
 
-    // Parse instantaneous cadence
     // Raw value is in 1/minute - many sensors report stride rate (cycles/min)
     // We multiply by 2 to convert to steps per minute (left + right = 2 steps)
     val rawCadence = data[offset].toInt() and 0xFF
-    val cadence = rawCadence * 2  // Convert stride rate to step rate
+    val cadence = rawCadence * 2
     offset += 1
 
     // Parse optional stride length (cm)

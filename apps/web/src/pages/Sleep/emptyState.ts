@@ -9,9 +9,7 @@
  */
 export interface SleepScoreEmptyState {
   message: string
-  /** Path to link the user to (when relevant). */
   linkHref?: string
-  /** Label for the link. */
   linkLabel?: string
 }
 

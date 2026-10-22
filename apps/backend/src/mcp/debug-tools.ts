@@ -1,6 +1,4 @@
 /**
- * MCP debugging tools — inspect raw integration payloads and audit log entries.
- *
  * Useful when "the sync ran clean but nothing landed" — check what the
  * upstream API actually returned (query_raw_records) and any warnings/errors
  * the sync logged along the way (query_audit_log).

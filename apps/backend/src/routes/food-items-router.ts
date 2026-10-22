@@ -1,6 +1,4 @@
 /**
- * Food items route group.
- *
  * Search + read merge per-user food_items with the central shared library.
  * Writes (POST/PATCH/DELETE) target the per-user table only — central rows
  * are managed via the admin import flow.
@@ -54,6 +52,7 @@ import type { SharedFoodItemEntity } from '../services/central-food-items.ts'
 import {
   clearIngredients as dbClearIngredients,
   deleteFoodItem,
+  FOOD_ITEM_USED_AS_INGREDIENT_ERROR,
   type FoodItemEntity as DbFoodItemEntity,
   type FoodItemPortionRow,
   getFoodItemById as getUserFoodItemById,
@@ -131,7 +130,6 @@ const serializeDetail = (detail: ServiceFoodItemDetail): FoodItemDetail => {
     detail.item.default_log_quantity as number | undefined,
     detail.item.default_quantity as number | undefined,
   )
-  // Composite branch: ingredient list + derived totals.
   if (detail.ingredients) {
     return {
       ...base,
@@ -153,7 +151,6 @@ const serializeDetail = (detail: ServiceFoodItemDetail): FoodItemDetail => {
       sensitivities,
     }
   }
-  // Reference branch: emit the resolved reference + per-field origin map.
   // The service guarantees these two are set together.
   if (detail.reference) {
     return {
@@ -261,8 +258,11 @@ export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: 
   )
 
   router.delete<{ id: string }, DeleteFoodItemResponse>('/:id', authMiddleware, async (req, res) => {
-    const deleted = await deleteFoodItem(req.user!, req.params.id)
-    if (!deleted) {
+    const result = await deleteFoodItem(req.user!, req.params.id)
+    if (result === 'used_as_ingredient') {
+      return res.status(409).json({ error: FOOD_ITEM_USED_AS_INGREDIENT_ERROR, success: false })
+    }
+    if (result === 'not_found') {
       const fromCentral = await centralDb.getSharedFoodItemById(req.params.id)
       return res.status(fromCentral ? 403 : 404).json({
         error: fromCentral ? 'Cannot delete shared library item' : 'Food item not found',
@@ -399,7 +399,6 @@ export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: 
     },
   )
 
-  // Clear the reference pointer.
   router.delete<{ id: string }, FoodItemDetailResponse>(
     '/:id/reference',
     authMiddleware,
@@ -591,12 +590,10 @@ export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: 
     },
   )
 
-  // ────────────────────────────────────────────────────────────────────────
   // Portion sizings — extra named units (label_unit + base_equivalent) per
   // food item with a base_equivalent that resolves the entry into the food's
   // base unit. food_item_portions.food_item_id is a soft pointer (per-user
   // OR central), so these endpoints accept either kind of id.
-  // ────────────────────────────────────────────────────────────────────────
 
   router.get<{ id: string }, FoodItemPortionsResponse>('/:id/portions', authMiddleware, async (req, res) => {
     const user = req.user!
@@ -696,7 +693,6 @@ export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: 
     },
   )
 
-  // Execute the merge.
   router.post<{ id: string }, MergeFoodItemsResponse, MergeFoodItemsBody>(
     '/:id/merge',
     authMiddleware,

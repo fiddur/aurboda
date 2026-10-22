@@ -19,10 +19,6 @@ const fetchCategoryMap = async (user: string): Promise<Map<string, string>> => {
   return new Map(result.rows.map((r) => [r.name as string, r.display_category as string]))
 }
 
-/**
- * Compute the winner id for every raw activity based on merge output.
- * Returns a map of raw_id -> winner_id_or_null.
- */
 const computeDesiredSupersession = (
   raw: Activity[],
   merged: MergedActivity[],

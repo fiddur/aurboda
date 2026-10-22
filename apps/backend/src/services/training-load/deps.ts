@@ -8,10 +8,11 @@ import type { BiologicalSex, TrainingLoadSettings } from '@aurboda/api-spec'
 import type { Activity, TimeSeriesPoint } from '../../db/types.ts'
 
 export interface TrainingLoadDeps {
-  /** Get exercise activities in a time range */
   getExercises: (user: string, start: Date, end: Date) => Promise<Activity[]>
   /** Get HR time-series data in a time range (bucketed to 5-min) */
   getHrSamples: (user: string, start: Date, end: Date) => Promise<[Date, number][]>
+  /** `getHrSamples` for many windows in one round trip; the result is index-aligned with `windows` */
+  getHrSamplesForWindows: (user: string, windows: { start: Date; end: Date }[]) => Promise<[Date, number][][]>
   /** Get active calorie time-series data (raw samples) */
   getActiveCalories: (user: string, start: Date, end: Date) => Promise<[Date, number][]>
   /** Get active calories summed per hour (DB-level aggregation) */
@@ -28,11 +29,8 @@ export interface TrainingLoadDeps {
     start: Date,
     end: Date,
   ) => Promise<number>
-  /** Get the maximum observed HR value */
   getMaxObservedHr: (user: string) => Promise<number | undefined>
-  /** Get the most recent resting HR */
   getLatestRestingHr: (user: string) => Promise<number | undefined>
-  /** Get user settings */
   getUserSettings: (user: string) => Promise<{
     training_load?: TrainingLoadSettings
     sex?: BiologicalSex
@@ -40,23 +38,32 @@ export interface TrainingLoadDeps {
   }>
   /** Update training load settings (for watermark) */
   updateTrainingLoadSettings: (user: string, update: Partial<TrainingLoadSettings>) => Promise<void>
+  /**
+   * Per user, the earliest hour (epoch ms) an auto-bootstrap recompute has already covered, and
+   * when it ran (epoch ms). A user with no exercise or calorie data gets no buckets written, so
+   * without this every read would bootstrap again.
+   */
+  bootstrappedFrom: Map<string, { at: number; fromHour: number }>
 }
 
 import {
   deleteTimeSeriesBySource,
   getActivities,
+  getLatestTimeSeriesValue,
   getTimeSeries,
   getTimeSeriesBucketed,
+  getTimeSeriesBucketedAvgForWindows,
   getTimeSeriesStats,
   insertTimeSeries,
 } from '../../db/index.ts'
 import { upsertUserSettings } from '../../db/settings.ts'
 import { getSettings } from '../settings.ts'
 
-/**
- * Create production dependencies for the training load computation.
- */
+const processBootstrappedFrom: TrainingLoadDeps['bootstrappedFrom'] = new Map()
+
 export const createTrainingLoadDeps = (): TrainingLoadDeps => ({
+  bootstrappedFrom: processBootstrappedFrom,
+
   deleteImpulseBuckets: async (user, metric, source, start, end) => {
     return deleteTimeSeriesBySource(user, metric, source, start, end)
   },
@@ -80,16 +87,16 @@ export const createTrainingLoadDeps = (): TrainingLoadDeps => ({
     return buckets.map((b) => [b.bucket_start, b.avg] as [Date, number])
   },
 
+  getHrSamplesForWindows: async (user, windows) =>
+    getTimeSeriesBucketedAvgForWindows(user, 'heart_rate', windows, '5 minutes'),
+
   getImpulseBuckets: async (user, metric, start, end) => {
     return getTimeSeries(user, metric, start, end)
   },
 
   getLatestRestingHr: async (user) => {
-    const now = new Date()
-    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-    const samples = await getTimeSeries(user, 'resting_heart_rate', thirtyDaysAgo, now)
-    if (samples.length === 0) return undefined
-    return samples[samples.length - 1][1]
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+    return getLatestTimeSeriesValue(user, 'resting_heart_rate', thirtyDaysAgo)
   },
 
   getMaxObservedHr: async (user) => {

@@ -1,7 +1,3 @@
-/**
- * Standalone screentime categories page.
- * Extracted from data source settings so categories are a first-class navigable concept.
- */
 import { ScreentimeCategoriesSettings } from '../../components/ScreentimeCategoriesSettings'
 import { auth } from '../../state/auth'
 

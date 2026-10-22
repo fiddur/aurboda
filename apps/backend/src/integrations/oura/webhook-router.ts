@@ -1,6 +1,4 @@
 /**
- * Express router for Oura webhook callback endpoint.
- *
  * Receives push notifications from Oura when user data changes,
  * then triggers a debounced sync for the affected user and data type.
  */
@@ -67,20 +65,17 @@ export const createOuraWebhookRouter = (deps: OuraWebhookRouterDeps): OuraWebhoo
   router.post('/', async (req, res) => {
     const { data_type, event_type, user_id, verification_token } = req.body ?? {}
 
-    // Validate verification token
     if (verification_token !== deps.verificationToken) {
       res.status(403).json({ error: 'Invalid verification token' })
       return
     }
 
-    // Map Oura data type to our internal type
     const ourDataType = ouraWebhookDataTypeMap[data_type as OuraWebhookDataType]
     if (!ourDataType) {
       res.json({ status: 'ok' })
       return
     }
 
-    // Look up local username from Oura user ID
     const username = await deps.getUsernameByOuraUserId(user_id)
     if (!username) {
       res.json({ status: 'ok' })

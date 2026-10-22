@@ -4,35 +4,27 @@ import { useRef, useState } from 'preact/hooks'
 import './DateNav.css'
 
 interface DateNavProps {
-  /** Current date (for single-date mode). */
   value: string // YYYY-MM-DD
-  /** Called when the date changes. */
   onChange: (date: string) => void
   /** Format for the displayed date label. Defaults to 'EEE, MMM d'. */
   dateFormat?: string
   /** If true, disable navigating past today. */
   maxToday?: boolean
-  /** Extra class name. */
   class?: string
 }
 
 interface DateRangeNavProps {
-  /** Start date. */
   from: string // YYYY-MM-DD
-  /** End date. */
   to: string // YYYY-MM-DD
-  /** Called when the range changes. */
   onChange: (from: string, to: string) => void
   /** If true, disable navigating past today. */
   maxToday?: boolean
-  /** Extra class name. */
   class?: string
 }
 
 const toISODate = (d: Date): string => formatISO(d, { representation: 'date' })
 const todayStr = (): string => toISODate(new Date())
 
-/** Single-date navigation with day/month arrows and click-to-pick calendar. */
 export function DateNav({
   value,
   onChange,
@@ -127,7 +119,6 @@ export function DateNav({
   )
 }
 
-/** Date-range navigation with day/month arrows and click-to-pick start/end. */
 export function DateRangeNav({ from, to, onChange, maxToday = true, ...rest }: DateRangeNavProps) {
   const fromInputRef = useRef<HTMLInputElement>(null)
   const toInputRef = useRef<HTMLInputElement>(null)

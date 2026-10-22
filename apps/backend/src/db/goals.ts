@@ -1,6 +1,3 @@
-/**
- * Goals CRUD operations.
- */
 import type { Goal, MetricGoal, TrendGoal } from '@aurboda/api-spec'
 
 import { query } from './connection.ts'
@@ -8,7 +5,7 @@ import { query } from './connection.ts'
 const rowToGoal = (row: Record<string, unknown>): Goal => {
   if (row.goal_type === 'trend') {
     return {
-      aggregation: row.aggregation as TrendGoal['aggregation'],
+      ...(row.aggregation != null ? { aggregation: row.aggregation as TrendGoal['aggregation'] } : {}),
       display_period: row.display_period as TrendGoal['display_period'],
       goal_type: 'trend',
       half_life_days: row.half_life_days as number,

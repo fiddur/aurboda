@@ -1,13 +1,11 @@
 /**
- * Bulk-import job tracking on the central database.
- *
  * Imports target shared (central) reference data, so the job rows live in
  * the central DB too. State machine: pending → running → completed | failed.
  * The runner ticks `last_progress_at` on every progress update; a heartbeat-
  * based reaper marks stalled jobs as failed without killing slow-but-live ones.
  */
 
-import type pg from 'pg'
+import type { Queryable } from '../db/pool.ts'
 
 export interface CentralImportJobEntity {
   id: string
@@ -78,7 +76,7 @@ export interface CentralImportJobsApi {
   reapStaleImportJobs: (maxStaleMinutes?: number) => Promise<number>
 }
 
-export const createCentralImportJobsApi = (getClient: () => Promise<pg.Client>): CentralImportJobsApi => ({
+export const createCentralImportJobsApi = (getClient: () => Promise<Queryable>): CentralImportJobsApi => ({
   insertImportJob: async (source, startedBy) => {
     const client = await getClient()
     const result = await client.query(

@@ -34,7 +34,6 @@ const ACTIVITY_COLUMNS_ALIAS = activityColumns('a')
  * to find the full transitive chain.
  */
 export const getOverlappingActivities = async (user: string, activity: Activity): Promise<Activity[]> => {
-  // Query a wide window around the activity to catch all transitively-connected activities
   const activityTime = activity.start_time.getTime()
   const windowStart = new Date(activityTime - 12 * 60 * 60 * 1000)
   const windowEnd = new Date(activityTime + 24 * 60 * 60 * 1000)
@@ -116,34 +115,47 @@ export const getOverrideForActivity = async (user: string, targetId: string): Pr
   return mapActivityRow(result.rows[0])
 }
 
+export type DataFilter = { field: string; value: string | null }
+
+/** `AND …` clauses matching `data` JSONB fields, pushing values onto `params`. Invalid field names are skipped. */
+const dataFilterClauses = (dataFilters: DataFilter[] | undefined, params: unknown[]): string => {
+  let clauses = ''
+  for (const filter of dataFilters ?? []) {
+    if (!/^[a-z][a-z0-9_]*$/.test(filter.field)) continue
+    if (filter.value === null) {
+      clauses += `\n       AND (data->>'${filter.field}' IS NULL OR data->>'${filter.field}' = '')`
+    } else {
+      params.push(filter.value)
+      clauses += `\n       AND data->>'${filter.field}' = $${params.length}`
+    }
+  }
+  return clauses
+}
+
 export const getActivities = async (
   user: string,
   activityType: ActivityType | ActivityType[],
   start: Date,
   end: Date,
-  dataFilters?: Array<{ field: string; value: string | null }>,
+  dataFilters?: DataFilter[],
   deductionRuleId?: string,
   categoryMap?: Map<string, string>,
+  routeId?: string,
 ): Promise<MergedActivity[]> => {
   const types = Array.isArray(activityType) ? activityType : [activityType]
   const params: unknown[] = [types, start, end]
 
-  let filterClauses = ''
-  if (dataFilters?.length) {
-    for (const filter of dataFilters) {
-      if (!/^[a-z][a-z0-9_]*$/.test(filter.field)) continue
-      if (filter.value === null) {
-        filterClauses += `\n       AND (data->>'${filter.field}' IS NULL OR data->>'${filter.field}' = '')`
-      } else {
-        params.push(filter.value)
-        filterClauses += `\n       AND data->>'${filter.field}' = $${params.length}`
-      }
-    }
-  }
+  let filterClauses = dataFilterClauses(dataFilters, params)
 
   if (deductionRuleId) {
     params.push(deductionRuleId)
-    filterClauses += `\n       AND (data->>'rule_id' = $${params.length} OR data->>'_enriched_by' = $${params.length})`
+    const n = params.length
+    filterClauses += `\n       AND (data->>'rule_id' = $${n} OR data->>'_enriched_by' = $${n} OR data->>'_retyped_by' = $${n} OR data->>'_titled_by' = $${n})`
+  }
+
+  if (routeId) {
+    params.push(routeId)
+    filterClauses += `\n       AND id IN (SELECT activity_id FROM activity_routes WHERE route_id = $${params.length})`
   }
 
   const result = await query(
@@ -159,6 +171,62 @@ export const getActivities = async (
   const activities = result.rows.map(mapActivityRow)
 
   return mergeOverlappingActivities(activities, categoryMap)
+}
+
+/**
+ * The closest non-deleted activity of `activityType` starting strictly before (`'previous'`) or
+ * after (`'next'`) `time`, skipping `excludeIds`, optionally matching `dataFilters`.
+ */
+export const findAdjacentActivity = async (
+  user: string,
+  activityType: string,
+  direction: 'previous' | 'next',
+  time: Date,
+  excludeIds: string[],
+  dataFilters?: DataFilter[],
+): Promise<Activity | null> => {
+  const params: unknown[] = [activityType, time, excludeIds]
+  const filterClauses = dataFilterClauses(dataFilters, params)
+  const result = await query(
+    user,
+    `SELECT ${ACTIVITY_COLUMNS_BARE}
+     FROM activities
+     WHERE activity_type = $1 AND start_time ${direction === 'next' ? '>' : '<'} $2
+       AND id <> ALL($3::uuid[]) AND deleted_at IS NULL${filterClauses}
+     ORDER BY start_time ${direction === 'next' ? 'ASC' : 'DESC'}
+     LIMIT 1`,
+    params,
+  )
+  return result.rows.length > 0 ? mapActivityRow(result.rows[0]) : null
+}
+
+export interface ActivityFieldValueRow {
+  value: string
+  count: number
+  last_used: Date
+}
+
+export const getActivityFieldValues = async (
+  user: string,
+  activityTypes: string[],
+  field: string,
+  limit = 200,
+): Promise<ActivityFieldValueRow[]> => {
+  const result = await query(
+    user,
+    `SELECT btrim(data->>$2) AS value, COUNT(*)::int AS count, MAX(start_time) AS last_used
+     FROM activities
+     WHERE activity_type = ANY($1) AND deleted_at IS NULL AND btrim(data->>$2) <> ''
+     GROUP BY 1
+     ORDER BY last_used DESC, value
+     LIMIT $3`,
+    [activityTypes, field, limit],
+  )
+  return result.rows.map((row) => ({
+    count: row.count,
+    last_used: new Date(row.last_used),
+    value: row.value,
+  }))
 }
 
 /**
@@ -184,6 +252,43 @@ export const getSleepSessions = async (user: string, start: Date, end: Date): Pr
   return mergeOverlappingActivities(activities)
 }
 
+/** Look up a non-deleted activity by its provider identity, e.g. `('gravl', 'gravl-workout-<uuid>')`. */
+export const findActivityByExternalId = async (
+  user: string,
+  source: string,
+  externalId: string,
+): Promise<Activity | null> => {
+  const result = await query(
+    user,
+    `SELECT ${ACTIVITY_COLUMNS_ALIAS}
+     FROM activities a
+     WHERE a.source = $1 AND a.external_id = $2 AND a.deleted_at IS NULL
+     LIMIT 1`,
+    [source, externalId],
+  )
+  return result.rows.length > 0 ? mapActivityRow(result.rows[0]) : null
+}
+
+/**
+ * Callers use it to tell "we deliberately removed this" from "we have never seen
+ * this" — `findActivityByExternalId` returns null for both.
+ */
+export const findDeletedActivityByExternalId = async (
+  user: string,
+  source: string,
+  externalId: string,
+): Promise<Activity | null> => {
+  const result = await query(
+    user,
+    `SELECT ${ACTIVITY_COLUMNS_ALIAS}
+     FROM activities a
+     WHERE a.source = $1 AND a.external_id = $2 AND a.deleted_at IS NOT NULL
+     LIMIT 1`,
+    [source, externalId],
+  )
+  return result.rows.length > 0 ? mapActivityRow(result.rows[0]) : null
+}
+
 /**
  * Get activities that have a garmin_activity_id but haven't had their
  * per-second detail data synced yet. Includes merged activities (source may be
@@ -193,7 +298,7 @@ export const getActivitiesNeedingDetail = async (
   user: string,
   { forceAll = false, limit = 10 }: { forceAll?: boolean; limit?: number } = {},
 ): Promise<Activity[]> => {
-  const detailFilter = forceAll ? '' : "AND (a.data->>'detail_synced') IS NULL"
+  const detailFilter = forceAll ? '' : "AND (a.data->>'detail_synced') IS DISTINCT FROM 'true'"
   const result = await query(
     user,
     `SELECT ${ACTIVITY_COLUMNS_ALIAS}
@@ -211,11 +316,7 @@ export const getActivitiesNeedingDetail = async (
   return result.rows.map(mapActivityRow)
 }
 
-/**
- * Find nearby same-type activities for merge suggestions.
- * Returns non-deleted activities of the same type within ±hoursWindow of the given time range,
- * excluding the given activity ID.
- */
+/** Find nearby same-type activities for merge suggestions. */
 export const getNearbyActivities = async (
   user: string,
   activityId: string,
@@ -245,9 +346,8 @@ export const getNearbyActivities = async (
 }
 
 /**
- * Check if an activity with the same (source, activity_type, start_time) already exists,
- * excluding the given activity ID. Used to preemptively detect unique constraint violations
- * before changing an activity's type.
+ * Used to preemptively detect unique constraint violations before changing an
+ * activity's type.
  */
 export const checkActivityConflict = async (
   user: string,
@@ -290,21 +390,27 @@ export const getActivitiesByCategory = async (
 }
 
 /**
- * Get all distinct activity_type values from the activities table.
  * Unlike getActivityTypeNames (which reads from definitions), this reads actual data.
+ * A recursive loose index scan over `idx_activities_not_deleted`: one index probe per
+ * distinct type instead of the full scan a plain `SELECT DISTINCT` needs.
  */
 export const getAllActivityTypeNames = async (user: string): Promise<string[]> => {
   const result = await query(
     user,
-    `SELECT DISTINCT activity_type FROM activities WHERE deleted_at IS NULL ORDER BY activity_type`,
+    `WITH RECURSIVE t(activity_type) AS (
+       (SELECT activity_type FROM activities WHERE deleted_at IS NULL ORDER BY activity_type LIMIT 1)
+       UNION ALL
+       SELECT (SELECT a.activity_type FROM activities a
+                WHERE a.deleted_at IS NULL AND a.activity_type > t.activity_type
+                ORDER BY a.activity_type LIMIT 1)
+       FROM t WHERE t.activity_type IS NOT NULL
+     )
+     SELECT activity_type FROM t WHERE activity_type IS NOT NULL`,
   )
   return result.rows.map((r) => r.activity_type as string)
 }
 
-/**
- * Get activities whose type definition is NOT in the given display categories.
- * Used to get "tag-like" activities (everything except sleep/exercise).
- */
+/** Used to get "tag-like" activities (everything except sleep/exercise). */
 export const getActivitiesExcludingCategories = async (
   user: string,
   excludeCategories: string[],

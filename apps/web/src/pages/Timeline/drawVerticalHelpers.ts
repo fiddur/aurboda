@@ -5,7 +5,7 @@ import { formatISO } from 'date-fns'
 import type { ChartItem, Column } from './types'
 
 import { NOW_COLOR } from './colors'
-import { attachHoverHandlers, drawItemIcon, getDetailUrl, truncateLabel } from './drawItems'
+import { attachHoverHandlers, attachItemClick, drawItemIcon, getDetailUrl, truncateLabel } from './drawItems'
 import { formatTime } from './formatting'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -18,8 +18,6 @@ export type ColumnDataEntry = {
 }
 
 export const MIN_ITEM_HEIGHT = 4
-
-// ── Pure helpers (testable) ──────────────────────────────────────────────────
 
 export const mergeSmallItems = (
   packedItems: { item: ChartItem; lane: number }[],
@@ -51,12 +49,12 @@ export const mergeSmallItems = (
         Activity: 'activity',
         Exercise: 'activity',
         Location: 'location',
-        Music: 'music',
+        Music: 'media',
         'Screen Time': 'screentime',
         'Sleep / Rest': 'activity',
       }
       const dataType = columnToDataType[first.column]
-      const allDataTypes = ['activity', 'location', 'music', 'meal', 'report', 'screentime']
+      const allDataTypes = ['activity', 'location', 'media', 'meal', 'report', 'screentime']
       const hideTypes = dataType ? allDataTypes.filter((t) => t !== dataType) : []
       const dataParams = new URLSearchParams({
         date: formatISO(mergedStart, { representation: 'date' }),
@@ -153,8 +151,6 @@ export const stackIconPoints = (
   })
 }
 
-// ── D3 drawing functions ─────────────────────────────────────────────────────
-
 export const drawPointMarker = (
   parent: SvgParent,
   item: ChartItem,
@@ -167,6 +163,7 @@ export const drawPointMarker = (
   detailUrl: string | undefined,
   showTooltip: (event: MouseEvent, item: ChartItem) => void,
   hideTooltip: () => void,
+  onItemClick?: (item: ChartItem) => void,
 ): void => {
   const cursor = detailUrl ? 'pointer' : 'default'
   const iconSize = Math.max(18, Math.min(laneWidth, boxHeight))
@@ -174,16 +171,18 @@ export const drawPointMarker = (
   const iconEl = drawItemIcon(parent, item.icon, cx, cy, iconSize, { cursor, pointerEvents: 'all' })
   if (iconEl) {
     iconEl.on('mouseenter', (event: MouseEvent) => showTooltip(event, item)).on('mouseleave', hideTooltip)
+    attachItemClick(iconEl, item, onItemClick)
     return
   }
 
-  parent
+  const marker = parent
     .append('polygon')
     .attr('points', `${cx},${cy - size} ${cx + size},${cy} ${cx},${cy + size} ${cx - size},${cy}`)
     .attr('fill', item.color)
     .attr('opacity', 0.85)
     .on('mouseenter', (event: MouseEvent) => showTooltip(event, item))
     .on('mouseleave', hideTooltip)
+  attachItemClick(marker, item, onItemClick)
 
   const labelX = x + 2 * size + 6
   const availableWidth = laneWidth - 2 * size - 8
@@ -239,6 +238,7 @@ export const drawItem = (
   showTooltip: (event: MouseEvent, item: ChartItem) => void,
   hideTooltip: () => void,
   xOffset = 0,
+  onItemClick?: (item: ChartItem) => void,
 ): void => {
   const y1 = yScale(item.start)
   const y2 = yScale(item.end)
@@ -265,6 +265,7 @@ export const drawItem = (
       detailUrl,
       showTooltip,
       hideTooltip,
+      onItemClick,
     )
     return
   }
@@ -280,8 +281,26 @@ export const drawItem = (
     .attr('fill', item.color)
     .attr('opacity', 0.75)
   attachHoverHandlers(rect, item, showTooltip, hideTooltip, 0.75, 0.95)
+  attachItemClick(rect, item, onItemClick)
 
   drawBlockOverlay(parent, item, x, y1, laneWidth, blockHeight)
+}
+
+/** Every item left at `xOffset` 0 keeps its packed lane, points included, so the lane count
+ * covers them too: a point overlapping two spans sits in a third lane inside the column. */
+export const columnLaneWidth = (
+  stackedItems: { item: ChartItem; lane: number; xOffset: number }[],
+  laneCount: number,
+  hasMerged: boolean,
+  usableWidth: number,
+  colPadding: number,
+): number => {
+  const hasStacked = stackedItems.some((s) => s.xOffset > 0)
+  const unstackedLanes = hasStacked
+    ? Math.max(1, ...stackedItems.filter((s) => s.xOffset === 0).map((s) => s.lane + 1))
+    : laneCount
+  const lanes = hasMerged ? 1 : Math.max(unstackedLanes, 1)
+  return (usableWidth - (lanes - 1) * colPadding) / lanes
 }
 
 export const drawColumnItems = (
@@ -293,6 +312,7 @@ export const drawColumnItems = (
   yScale: d3.ScaleTime<number, number>,
   showTooltip: (event: MouseEvent, item: ChartItem) => void,
   hideTooltip: () => void,
+  onItemClick?: (item: ChartItem) => void,
 ): void => {
   for (let colIdx = 0; colIdx < columnData.length; colIdx++) {
     const { items: packedItems, laneCount } = columnData[colIdx]!
@@ -305,12 +325,7 @@ export const drawColumnItems = (
 
     const stackedItems = stackIconPoints(mergedItems, usableWidth)
 
-    const hasStacked = stackedItems.some((s) => s.xOffset > 0)
-    const nonStackedLanes = hasStacked
-      ? Math.max(1, ...stackedItems.filter((s) => s.xOffset === 0 && !s.item.isPoint).map((s) => s.lane + 1))
-      : laneCount
-    const effectiveLanes = hasMerged ? 1 : Math.max(nonStackedLanes, 1)
-    const laneWidth = (usableWidth - (effectiveLanes - 1) * colPadding) / effectiveLanes
+    const laneWidth = columnLaneWidth(stackedItems, laneCount, hasMerged, usableWidth, colPadding)
 
     for (const { item, lane, xOffset } of stackedItems) {
       const effectiveLane = hasMerged ? 0 : lane
@@ -325,12 +340,11 @@ export const drawColumnItems = (
         showTooltip,
         hideTooltip,
         xOffset,
+        onItemClick,
       )
     }
   }
 }
-
-// ── Now line helpers ─────────────────────────────────────────────────────────
 
 export const drawNowLine = (
   chartGroup: d3.Selection<SVGGElement, unknown, null, undefined>,

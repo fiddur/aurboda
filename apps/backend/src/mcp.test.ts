@@ -2,17 +2,32 @@ import express from 'express'
 import request from 'supertest'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
+import type * as ActivityQueries from './services/queries/activities.ts'
+import type * as SessionQueries from './services/queries/activity-sessions.ts'
+
 import { createAuth } from './auth.ts'
 import * as db from './db/index.ts'
-import { createMcpRouter } from './mcp.ts'
+import { createMcpRouter, trimToolCallArguments } from './mcp.ts'
+import * as latestSleep from './services/latest-sleep.ts'
 import * as mutations from './services/mutations.ts'
 import * as queries from './services/queries/index.ts'
 
-// Mock the services
-vi.mock('./services/queries/index', () => ({
+vi.mock('./services/queries/index', async () => ({
+  getActivityNeighbors: vi.fn(),
   getDailySummary: vi.fn(),
   getPeriodSummary: vi.fn(),
+  parseActivityId: (raw: string) => ({
+    id: raw.replace(/^merged:/, ''),
+    isMerged: raw.startsWith('merged:'),
+  }),
+  parseDataFilter: (await vi.importActual<typeof ActivityQueries>('./services/queries/activities.ts'))
+    .parseDataFilter,
   queryActivities: vi.fn(),
+  queryActivityFieldValues: vi.fn(),
+  queryActivitySessions: vi.fn(),
+  sessionsOptionsFromQuery: (
+    await vi.importActual<typeof SessionQueries>('./services/queries/activity-sessions.ts')
+  ).sessionsOptionsFromQuery,
   queryLocations: vi.fn(),
   queryMetrics: vi.fn(),
   queryProductivity: vi.fn(),
@@ -23,15 +38,19 @@ vi.mock('./services/mutations', () => ({
   addActivity: vi.fn(),
   addCustomMetric: vi.fn(),
   addMetric: vi.fn(),
+  addNote: vi.fn(),
   addTag: vi.fn(),
   deleteActivity: vi.fn(),
   deleteCustomMetric: vi.fn(),
+  deleteNoteById: vi.fn(),
   getCustomMetrics: vi.fn().mockResolvedValue([]),
+  getNotesForEntity: vi.fn().mockResolvedValue([]),
+  getNotesInRange: vi.fn().mockResolvedValue([]),
   restoreActivity: vi.fn(),
   updateActivity: vi.fn(),
+  updateNote: vi.fn(),
 }))
 
-// Mock db for sync status and stored detected locations
 vi.mock('./db', () => ({
   activityTypeExists: vi.fn().mockResolvedValue(true),
   deleteActivityTypeDefinition: vi.fn().mockResolvedValue(false),
@@ -43,6 +62,7 @@ vi.mock('./db', () => ({
   getActivityTypeDefinitions: vi.fn().mockResolvedValue([]),
   getActivityTypeNames: vi.fn().mockResolvedValue(['sleep', 'exercise', 'meditation', 'nap', 'rest']),
   getAllActivityTypeNames: vi.fn().mockResolvedValue(['sleep', 'exercise', 'meditation', 'nap', 'rest']),
+  getActivityTrack: vi.fn().mockResolvedValue(null),
   getAllSyncStates: vi.fn(),
   getDeductionRule: vi.fn().mockResolvedValue(null),
   getDeductionRules: vi.fn().mockResolvedValue([]),
@@ -68,14 +88,19 @@ vi.mock('./db', () => ({
   insertDeductionRuleRun: vi.fn().mockResolvedValue(undefined),
   insertRawRecord: vi.fn().mockResolvedValue(undefined),
   insertTimeSeries: vi.fn().mockResolvedValue(undefined),
-  softDeleteLocationRange: vi.fn().mockResolvedValue(undefined),
+  materializeSuperseded: vi.fn(),
+  restoreEmptyImportTombstone: vi.fn(),
+  softDeleteActivityByExternalId: vi.fn(),
+  softDeleteSupersededLocations: vi.fn().mockResolvedValue(0),
   updateActivityTypeDefinition: vi.fn(),
   updateDeductionRule: vi.fn().mockResolvedValue(null),
+  upsertActivityTrack: vi.fn().mockResolvedValue(undefined),
   upsertSyncState: vi.fn().mockResolvedValue(undefined),
   upsertUserSettings: vi.fn(),
+  adoptLegacyActivity: vi.fn(),
+  findActivityByExternalId: vi.fn(),
 }))
 
-// Mock the sync modules
 vi.mock('./services/deduction-deps', () => ({
   createDefaultEngineDeps: vi.fn().mockReturnValue({
     deleteStaleRuleActivities: vi.fn().mockResolvedValue(0),
@@ -91,6 +116,10 @@ vi.mock('./services/deduction-deps', () => ({
   }),
 }))
 
+vi.mock('./services/latest-sleep', () => ({
+  getLatestSleep: vi.fn(),
+}))
+
 vi.mock('./oura-sync', () => ({
   syncAllOuraData: vi.fn(),
 }))
@@ -103,12 +132,11 @@ const auth = createAuth('very very secretvery very secret') // 32 bytes for AES-
 
 function createTestApp() {
   const app = express()
-  // MCP router must be mounted BEFORE body-parser — stateless mode (no sessions)
+  // The MCP router parses its own body — stateless mode (no sessions)
   app.use('/mcp', createMcpRouter(auth))
   return app
 }
 
-// Helper to make MCP requests with proper headers
 function mcpPost(app: express.Express) {
   return request(app).post('/mcp').set('Accept', 'application/json, text/event-stream')
 }
@@ -117,7 +145,6 @@ function mcpDelete(app: express.Express) {
   return request(app).delete('/mcp').set('Accept', 'application/json, text/event-stream')
 }
 
-// Parse SSE response to extract JSON-RPC result
 function parseSSEResponse(text: string): unknown {
   const lines = text.split('\n')
   for (const line of lines) {
@@ -182,6 +209,89 @@ describe('MCP Server', () => {
     })
   })
 
+  describe('Malformed JSON - POST /mcp', () => {
+    test('answers a JSON-RPC parse error', async () => {
+      const app = createTestApp()
+      const response = await mcpPost(app).set('Content-Type', 'application/json').send('{"jsonrpc":')
+
+      expect(response.status).toBe(400)
+      expect(response.body).toEqual({
+        error: { code: -32700, message: 'Parse error' },
+        id: null,
+        jsonrpc: '2.0',
+      })
+    })
+  })
+
+  describe('trimToolCallArguments', () => {
+    test('trims the arguments of a single tools/call', () => {
+      expect(
+        trimToolCallArguments({
+          id: 1,
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: { arguments: { activity_type: 'yoga ', title: ' Flow ' }, name: 'add_activity' },
+        }),
+      ).toEqual({
+        id: 1,
+        jsonrpc: '2.0',
+        method: 'tools/call',
+        params: { arguments: { activity_type: 'yoga', title: 'Flow' }, name: 'add_activity' },
+      })
+    })
+
+    test('trims every tools/call in a batch and leaves other messages alone', () => {
+      const initialize = {
+        id: 1,
+        jsonrpc: '2.0',
+        method: 'initialize',
+        params: { clientInfo: { name: ' c ' } },
+      }
+      expect(
+        trimToolCallArguments([
+          initialize,
+          {
+            id: 2,
+            jsonrpc: '2.0',
+            method: 'tools/call',
+            params: { arguments: { q: ' oat ' }, name: 'search' },
+          },
+        ]),
+      ).toEqual([
+        initialize,
+        { id: 2, jsonrpc: '2.0', method: 'tools/call', params: { arguments: { q: 'oat' }, name: 'search' } },
+      ])
+    })
+
+    test('keeps untrimmed keys as sent', () => {
+      expect(
+        trimToolCallArguments({
+          id: 1,
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: {
+            arguments: { content: ' # Title\n', name: ' Rule ', rule_regex: ' ^x ' },
+            name: 'update_article',
+          },
+        }),
+      ).toEqual({
+        id: 1,
+        jsonrpc: '2.0',
+        method: 'tools/call',
+        params: {
+          arguments: { content: ' # Title\n', name: 'Rule', rule_regex: ' ^x ' },
+          name: 'update_article',
+        },
+      })
+    })
+
+    test('leaves a tools/call without arguments and a non-object body untouched', () => {
+      const noArgs = { id: 1, jsonrpc: '2.0', method: 'tools/call', params: { name: 'get_latest_sleep' } }
+      expect(trimToolCallArguments(noArgs)).toBe(noArgs)
+      expect(trimToolCallArguments(' x ')).toBe(' x ')
+    })
+  })
+
   describe('Stateless mode - GET /mcp (SSE not supported)', () => {
     test('returns 405 for GET requests', async () => {
       const app = createTestApp()
@@ -218,7 +328,6 @@ describe('MCP Server', () => {
           params: { arguments: args, name: toolName },
         })
 
-      // Parse SSE response
       const parsed = parseSSEResponse(response.text) as { result: { content: { text: string }[] } }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let toolResult: any = null
@@ -238,7 +347,6 @@ describe('MCP Server', () => {
       const app = createTestApp()
       const token = auth.createToken('testuser')
 
-      // Mock service response
       vi.mocked(queries.getPeriodSummary).mockResolvedValue({
         end: '2024-01-31T23:59:59.000Z',
         metrics: [
@@ -277,7 +385,6 @@ describe('MCP Server', () => {
       expect(result.metrics[0].unit).toBe('ms')
       expect(result.metrics[0].trend_per_day).toBe(5)
 
-      // Verify service was called with correct arguments
       expect(queries.getPeriodSummary).toHaveBeenCalledWith(
         'testuser',
         ['hrv_rmssd'],
@@ -442,6 +549,47 @@ describe('MCP Server', () => {
 
       expect(response.status).toBe(200)
       expect(response.toolResult.metrics[0].completeness_percent).toBe(48)
+    })
+  })
+
+  describe('Tool: get_latest_sleep', () => {
+    const callTool = async (app: express.Express, token: string) => {
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          id: 1,
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: { arguments: { tz: 'UTC' }, name: 'get_latest_sleep' },
+        })
+      const parsed = parseSSEResponse(response.text) as { result: { content: { text: string }[] } }
+      return { status: response.status, toolResult: JSON.parse(parsed.result.content[0].text) }
+    }
+
+    test('returns the latest sleep for the user', async () => {
+      vi.mocked(latestSleep.getLatestSleep).mockResolvedValue({
+        activity_id: 'sleep-1',
+        end_time: '2026-09-25T05:00:00.000Z',
+        sleep_score: 81,
+        stages: [],
+        start_time: '2026-09-24T21:00:00.000Z',
+        time_in_bed_min: 480,
+      })
+
+      const response = await callTool(createTestApp(), auth.createToken('testuser'))
+
+      expect(response.status).toBe(200)
+      expect(response.toolResult.success).toBe(true)
+      expect(response.toolResult.data).toMatchObject({ activity_id: 'sleep-1', sleep_score: 81 })
+      expect(latestSleep.getLatestSleep).toHaveBeenCalledWith('testuser')
+    })
+
+    test('returns null data without a recent sleep', async () => {
+      vi.mocked(latestSleep.getLatestSleep).mockResolvedValue(null)
+
+      const response = await callTool(createTestApp(), auth.createToken('testuser'))
+
+      expect(response.toolResult.data).toBeNull()
     })
   })
 
@@ -620,7 +768,160 @@ describe('MCP Server', () => {
         expect.any(Date),
         undefined,
         undefined,
+        undefined,
+        undefined,
       )
+    })
+
+    test('passes a route filter through', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      vi.mocked(queries.queryActivities).mockResolvedValue([])
+      const routeId = '6f1c3b2a-4d5e-4f60-8a7b-9c0d1e2f3a4b'
+
+      const response = await callTool(app, token, 'query_activities', {
+        end: '2024-01-31T23:59:59Z',
+        route_id: routeId,
+        start: '2024-01-01T00:00:00Z',
+        types: ['running'],
+        tz: 'UTC',
+      })
+
+      expect(response.status).toBe(200)
+      expect(vi.mocked(queries.queryActivities).mock.calls.at(-1)?.[7]).toBe(routeId)
+    })
+  })
+
+  describe('Tools: query_activity_sessions, get_activity_neighbors', () => {
+    async function callTool(
+      app: express.Express,
+      token: string,
+      toolName: string,
+      args: Record<string, unknown>,
+    ) {
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ id: 1, jsonrpc: '2.0', method: 'tools/call', params: { arguments: args, name: toolName } })
+      const parsed = parseSSEResponse(response.text) as { result: { content: { text: string }[] } }
+      return { ...response, text: parsed.result.content[0].text }
+    }
+
+    test('query_activity_sessions maps its arguments onto the service', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      vi.mocked(queries.queryActivitySessions).mockResolvedValue({
+        activity_type: 'yoga',
+        group_by: 'session_name',
+        groups: [],
+        sessions: [],
+      })
+
+      const response = await callTool(app, token, 'query_activity_sessions', {
+        activity_type: 'yoga',
+        filter_field: 'session_name',
+        filter_value: '(none)',
+        group_by: 'session_name',
+        tz: 'UTC',
+      })
+
+      expect(JSON.parse(response.text).data.group_by).toBe('session_name')
+      expect(queries.queryActivitySessions).toHaveBeenCalledWith('testuser', 'yoga', {
+        end: undefined,
+        filter: { field: 'session_name', value: null },
+        groupBy: 'session_name',
+        start: undefined,
+      })
+    })
+
+    test('query_activity_sessions rejects a filter field without a value', async () => {
+      vi.mocked(queries.queryActivitySessions).mockClear()
+      const response = await callTool(
+        createTestApp(),
+        auth.createToken('testuser'),
+        'query_activity_sessions',
+        {
+          activity_type: 'yoga',
+          filter_field: 'session_name',
+          tz: 'UTC',
+        },
+      )
+
+      expect(response.text).toBe('filter_field and filter_value must be given together')
+      expect(queries.queryActivitySessions).not.toHaveBeenCalled()
+    })
+
+    test('get_activity_neighbors returns the neighbors, or an error for a missing activity', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      vi.mocked(queries.getActivityNeighbors).mockResolvedValueOnce({
+        activity_type: 'yoga',
+        previous: { id: 'prev-id', start_time: '2024-01-14T07:00:00.000Z' },
+      })
+
+      const found = await callTool(app, token, 'get_activity_neighbors', {
+        id: 'x',
+        same_field: 'session_name',
+        tz: 'UTC',
+      })
+      expect(JSON.parse(found.text).data.previous.id).toBe('prev-id')
+      expect(queries.getActivityNeighbors).toHaveBeenCalledWith('testuser', 'x', 'session_name')
+
+      vi.mocked(queries.getActivityNeighbors).mockResolvedValueOnce(null)
+      const missing = await callTool(app, token, 'get_activity_neighbors', { id: 'y', tz: 'UTC' })
+      expect(missing.text).toBe('Activity not found')
+    })
+
+    test('get_activity_track returns the track without its start time, or an error without one', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      vi.mocked(db.getActivityTrack).mockResolvedValueOnce({
+        activity_id: 'act-1',
+        full_resolution: true,
+        length_m: 1112,
+        point_count: 2,
+        points: [
+          { alt: 0, lat: 59, lon: 18, t: 0 },
+          { alt: 0, lat: 59.01, lon: 18, t: 60 },
+        ],
+        source: 'garmin',
+        start_time: new Date('2024-01-14T07:00:00Z'),
+      })
+
+      const found = await callTool(app, token, 'get_activity_track', { id: 'merged:act-1' })
+      expect(JSON.parse(found.text)).toEqual({
+        activity_id: 'act-1',
+        full_resolution: true,
+        length_m: 1112,
+        point_count: 2,
+        points: [
+          { alt: 0, lat: 59, lon: 18, t: 0 },
+          { alt: 0, lat: 59.01, lon: 18, t: 60 },
+        ],
+        source: 'garmin',
+      })
+      expect(db.getActivityTrack).toHaveBeenCalledWith('testuser', 'act-1')
+
+      const missing = await callTool(app, token, 'get_activity_track', { id: 'act-2' })
+      expect(missing.text).toBe('No track for activity')
+    })
+
+    test('list_activity_field_values returns the values of the field', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      vi.mocked(queries.queryActivityFieldValues).mockResolvedValue({
+        activity_type: 'yoga',
+        field: 'session_name',
+        values: [{ count: 3, last_used: '2024-01-14T07:00:00.000Z', value: 'Flow' }],
+      })
+
+      const response = await callTool(app, token, 'list_activity_field_values', {
+        activity_type: 'yoga',
+        field: 'session_name',
+        tz: 'UTC',
+      })
+
+      expect(JSON.parse(response.text).data.values[0]).toMatchObject({ count: 3, value: 'Flow' })
+      expect(queries.queryActivityFieldValues).toHaveBeenCalledWith('testuser', 'yoga', 'session_name')
     })
   })
 
@@ -756,7 +1057,29 @@ describe('MCP Server', () => {
       expect(response.toolResult.data[0].name).toBe('Office')
       expect(response.toolResult.data[0].source).toBe('named')
       expect(response.toolResult.data[1].name).toBe('Gym')
-      expect(queries.queryLocations).toHaveBeenCalledWith('testuser', expect.any(Date), expect.any(Date))
+      expect(queries.queryLocations).toHaveBeenCalledWith('testuser', expect.any(Date), expect.any(Date), {
+        lastKnownHours: undefined,
+      })
+    })
+
+    test('passes last_known_hours through', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      vi.mocked(queries.queryLocations).mockResolvedValue([])
+
+      await callTool(app, token, 'query_locations', {
+        end: '2024-01-15T10:25:00Z',
+        last_known_hours: 6,
+        start: '2024-01-15T10:05:00Z',
+        tz: 'UTC',
+      })
+
+      expect(queries.queryLocations).toHaveBeenCalledWith(
+        'testuser',
+        new Date('2024-01-15T10:05:00Z'),
+        new Date('2024-01-15T10:25:00Z'),
+        { lastKnownHours: 6 },
+      )
     })
 
     test('returns empty array when no visits exist', async () => {
@@ -920,6 +1243,36 @@ describe('MCP Server', () => {
           start_time: expect.any(Date),
           title: 'Upper body',
         },
+        undefined,
+      )
+    })
+
+    test('trims surrounding whitespace from the arguments', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+
+      vi.mocked(mutations.addActivity).mockResolvedValue({
+        activity_type: 'yoga',
+        end_time: '2024-03-15T07:30:00.000Z',
+        id: 'test-uuid-3',
+        start_time: '2024-03-15T07:00:00.000Z',
+        success: true,
+        title: 'Morning flow',
+      })
+
+      const response = await callTool(app, token, 'add_activity', {
+        activity_type: 'yoga ',
+        end_time: '2024-03-15T07:30:00Z',
+        start_time: '2024-03-15T07:00:00Z',
+        title: ' Morning flow ',
+        tz: 'UTC',
+      })
+
+      expect(response.status).toBe(200)
+      expect(response.toolResult.success).toBe(true)
+      expect(mutations.addActivity).toHaveBeenCalledWith(
+        'testuser',
+        expect.objectContaining({ activity_type: 'yoga', title: 'Morning flow' }),
         undefined,
       )
     })
@@ -1220,6 +1573,110 @@ describe('MCP Server', () => {
 
       expect(response.status).toBe(200)
       expect(resetSpy).not.toHaveBeenCalled()
+    })
+  })
+  describe('Tools: notes', () => {
+    async function callNoteTool(
+      app: express.Express,
+      token: string,
+      toolName: string,
+      args: Record<string, unknown>,
+    ) {
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          id: 1,
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: { arguments: args, name: toolName },
+        })
+      const parsed = parseSSEResponse(response.text) as { result: { content: { text: string }[] } }
+      return { response, toolResult: JSON.parse(parsed.result.content[0].text) }
+    }
+
+    test('registers the note tools including query_notes', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ id: 1, jsonrpc: '2.0', method: 'tools/list' })
+
+      const parsed = parseSSEResponse(response.text) as { result: { tools: { name: string }[] } }
+      const names = parsed.result.tools.map((t) => t.name)
+
+      expect(names).toContain('add_note')
+      expect(names).toContain('get_notes')
+      expect(names).toContain('query_notes')
+      expect(names).toContain('update_note')
+      expect(names).toContain('delete_note')
+    })
+
+    test('add_note accepts the time shape (no entity_id)', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+
+      vi.mocked(mutations.addNote).mockResolvedValue({
+        data: {
+          content: 'Felt dizzy',
+          created_at: '2024-01-15T12:00:00.000Z',
+          entity_id: null,
+          entity_type: 'time',
+          id: 'note-1',
+          start_time: '2024-01-15T12:00:00.000Z',
+          updated_at: '2024-01-15T12:00:00.000Z',
+        },
+        success: true,
+      })
+
+      const { response, toolResult } = await callNoteTool(app, token, 'add_note', {
+        content: 'Felt dizzy',
+        entity_type: 'time',
+        start_time: '2024-01-15T12:00:00Z',
+      })
+
+      expect(response.status).toBe(200)
+      expect(toolResult.success).toBe(true)
+      expect(mutations.addNote).toHaveBeenCalledWith('testuser', {
+        content: 'Felt dizzy',
+        end_time: undefined,
+        entity_id: undefined,
+        entity_type: 'time',
+        start_time: '2024-01-15T12:00:00Z',
+      })
+    })
+
+    test('query_notes lists comments in a time range', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+
+      vi.mocked(mutations.getNotesInRange).mockResolvedValue([
+        {
+          content: 'Felt dizzy',
+          created_at: '2024-01-15T12:00:00.000Z',
+          entity_id: null,
+          entity_type: 'time',
+          id: 'note-1',
+          replies: [],
+          start_time: '2024-01-15T12:00:00.000Z',
+          updated_at: '2024-01-15T12:00:00.000Z',
+        },
+      ])
+
+      const { response, toolResult } = await callNoteTool(app, token, 'query_notes', {
+        from: '2024-01-15T00:00:00Z',
+        to: '2024-01-15T23:59:59Z',
+        tz: 'UTC',
+      })
+
+      expect(response.status).toBe(200)
+      expect(toolResult.success).toBe(true)
+      expect(toolResult.data).toHaveLength(1)
+      expect(mutations.getNotesInRange).toHaveBeenCalledWith(
+        'testuser',
+        new Date('2024-01-15T00:00:00Z'),
+        new Date('2024-01-15T23:59:59Z'),
+      )
     })
   })
 })

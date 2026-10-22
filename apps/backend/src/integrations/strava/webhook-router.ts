@@ -1,6 +1,4 @@
 /**
- * Express router for Strava webhook callback endpoint.
- *
  * Strava webhooks:
  * - GET: subscription validation (hub.challenge)
  * - POST: event notification (must respond < 2 seconds)
@@ -41,10 +39,8 @@ export const createStravaWebhookRouter = (deps: StravaWebhookRouterDeps): Router
 
   // Event handler — must respond immediately (< 2 seconds)
   router.post('/', (req, res) => {
-    // Respond immediately
     res.status(200).send('EVENT_RECEIVED')
 
-    // Process asynchronously
     const event = req.body as StravaWebhookEvent
     handleEvent(event, deps).catch((error) => {
       console.error('Strava webhook event handler error:', error)

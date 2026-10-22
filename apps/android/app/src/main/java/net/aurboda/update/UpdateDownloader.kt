@@ -28,7 +28,6 @@ fun getExistingDownloadState(context: Context, versionName: String): DownloadSta
     val savedVersion = prefs.getString(KEY_DOWNLOAD_VERSION, null)
     val savedDownloadId = prefs.getLong(KEY_DOWNLOAD_ID, -1)
 
-    // Check if we have a saved download for this version
     if (savedVersion == versionName && savedDownloadId != -1L) {
         val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
         val query = DownloadManager.Query().setFilterById(savedDownloadId)
@@ -60,11 +59,9 @@ fun getExistingDownloadState(context: Context, versionName: String): DownloadSta
         // Download ID not found in DownloadManager (e.g., cleared by system)
         clearSavedDownload(context)
     } else if (savedVersion != versionName) {
-        // Different version — clear stale download state
         clearSavedDownload(context)
     }
 
-    // No saved download — check if APK file happens to exist
     val apkFile = findDownloadedApk(context, versionName)
     if (apkFile != null) return DownloadState.Downloaded(apkFile)
 
@@ -101,7 +98,6 @@ fun downloadUpdate(
     val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
     val fileName = "aurboda-$versionName.apk"
 
-    // Clean up old APK files before downloading new one
     val downloadDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
     downloadDir?.listFiles()?.filter { it.name.endsWith(".apk") }?.forEach { file ->
         Log.d(TAG, "Deleting old APK: ${file.name}")

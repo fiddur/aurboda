@@ -1,6 +1,4 @@
 /**
- * HrZonesWidget - Compact HR zone progress bars for the dashboard.
- *
  * Split into a presentational `HrZonesView` and a fetching container.
  */
 
@@ -21,6 +19,7 @@ import {
   hrZoneColors,
   hrZoneWeeklyTargetMinutes,
 } from '../../utils/hrZones'
+import { HEAVY_QUERY_OPTIONS } from './heavyQuery'
 
 const hrZoneMetrics = [
   'hr_zone_0_sec',
@@ -42,7 +41,6 @@ function getDateRange(lookbackDays: number): { start: string; end: string } {
   return { end: endDate.toISOString(), start: startDate.toISOString() }
 }
 
-/** Convert the [z1..z5] threshold array to the HrZoneThresholds object form. */
 const toThresholds = (starts: number[] | null): HrZoneThresholds =>
   starts && starts.length === 5
     ? { 1: starts[0], 2: starts[1], 3: starts[2], 4: starts[3], 5: starts[4] }
@@ -120,6 +118,7 @@ export function HrZonesWidget({ config }: HrZonesWidgetProps) {
     enabled: !!isLoggedIn,
     queryFn: () => fetchPeriodSummary(new Date(dateRange.start), new Date(dateRange.end), hrZoneMetrics),
     queryKey: ['periodSummary', dateRange.start, dateRange.end],
+    ...HEAVY_QUERY_OPTIONS,
     staleTime: 5 * 60 * 1000,
   })
 

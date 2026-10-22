@@ -1,23 +1,19 @@
-/**
- * Time series integration tests using testcontainers.
- *
- * Tests insertTimeSeries, getTimeSeries, and getTimeSeriesBucketed against a real
- * PostgreSQL instance.
- */
-
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
+import { query } from './connection.ts'
 import {
   deleteTimeSeriesBySource,
   deleteTimeSeriesMetric,
   deleteTimeSeriesPoint,
   getDistinctMetrics,
   getLatestMetricValuesMulti,
+  getMetricMeansForWindows,
   getTimeSeries,
   getTimeSeriesBucketed,
   getTimeSeriesEntriesMultiMetric,
   getTimeSeriesWithSource,
+  hasTimeSeries,
   insertTimeSeries,
 } from './time-series.ts'
 
@@ -82,10 +78,38 @@ describe('Time Series Integration Tests', () => {
       expect(data[0][1]).toBe(76.0)
     })
 
+    test('stamps updated_at on insert and moves it only when the value changes', async () => {
+      const user = getTestUser()
+      const point = {
+        metric: 'steps',
+        source: 'health_connect_aggregate' as const,
+        time: new Date('2026-06-02T00:00:00Z'),
+      }
+      const readStamp = async () => {
+        const r = await query<{ updated_at: Date }>(
+          user,
+          `SELECT updated_at FROM time_series WHERE metric = 'steps'`,
+        )
+        return r.rows[0].updated_at
+      }
+
+      await insertTimeSeries(user, [{ ...point, value: 5000 }])
+      const first = await readStamp()
+      expect(Date.now() - first.getTime()).toBeLessThan(60_000)
+
+      await query(user, `UPDATE time_series SET updated_at = $1`, [new Date('2026-06-02T06:00:00Z')])
+      await insertTimeSeries(user, [{ ...point, value: 5000 }])
+      expect((await readStamp()).toISOString()).toBe('2026-06-02T06:00:00.000Z')
+
+      await insertTimeSeries(user, [{ ...point, value: 5100 }])
+      const bumped = await readStamp()
+      expect(bumped.getTime()).toBeGreaterThan(new Date('2026-06-02T06:00:00Z').getTime())
+      expect(Date.now() - bumped.getTime()).toBeLessThan(60_000)
+    })
+
     test('handles empty array gracefully', async () => {
       const user = getTestUser()
 
-      // Should not throw
       await insertTimeSeries(user, [])
 
       const data = await getTimeSeries(
@@ -223,9 +247,53 @@ describe('Time Series Integration Tests', () => {
     })
   })
 
-  // ==========================================================================
-  // Time Series With Source
-  // ==========================================================================
+  describe('hasTimeSeries', () => {
+    const start = new Date('2024-01-15T10:00:00Z')
+    const end = new Date('2024-01-15T11:00:00Z')
+
+    test('is true only when a point of the metric falls in the window', async () => {
+      const user = getTestUser()
+      expect(await hasTimeSeries(user, 'heart_rate', start, end)).toBe(false)
+
+      await insertTimeSeries(user, [
+        { metric: 'heart_rate', source: 'garmin', time: new Date('2024-01-15T12:00:00Z'), value: 72 },
+        { metric: 'stress_level', source: 'garmin', time: new Date('2024-01-15T10:30:00Z'), value: 30 },
+      ])
+      expect(await hasTimeSeries(user, 'heart_rate', start, end)).toBe(false)
+
+      await insertTimeSeries(user, [
+        { metric: 'heart_rate', source: 'garmin', time: new Date('2024-01-15T10:30:00Z'), value: 72 },
+      ])
+      expect(await hasTimeSeries(user, 'heart_rate', start, end)).toBe(true)
+    })
+
+    test('honours the same source filter as getTimeSeries', async () => {
+      const user = getTestUser()
+      await insertTimeSeries(user, [
+        { metric: 'steps', source: 'health_connect', time: new Date('2024-01-15T10:30:00Z'), value: 500 },
+      ])
+      expect(await hasTimeSeries(user, 'steps', start, end)).toBe(false)
+
+      await insertTimeSeries(user, [
+        {
+          metric: 'steps',
+          source: 'health_connect_aggregate',
+          time: new Date('2024-01-15T10:30:00Z'),
+          value: 500,
+        },
+      ])
+      expect(await hasTimeSeries(user, 'steps', start, end)).toBe(true)
+    })
+
+    test('ignores soft-deleted points', async () => {
+      const user = getTestUser()
+      await insertTimeSeries(user, [
+        { metric: 'heart_rate', source: 'garmin', time: new Date('2024-01-15T10:30:00Z'), value: 72 },
+      ])
+      await query(user, `UPDATE time_series SET deleted_at = NOW()`)
+      expect(await hasTimeSeries(user, 'heart_rate', start, end)).toBe(false)
+    })
+  })
 
   describe('getTimeSeriesWithSource', () => {
     test('returns time, value, and source for each data point', async () => {
@@ -281,10 +349,6 @@ describe('Time Series Integration Tests', () => {
       expect(data[0].value).toBe(8500)
     })
   })
-
-  // ==========================================================================
-  // Bucketed Time Series
-  // ==========================================================================
 
   describe('getTimeSeriesBucketed', () => {
     test('returns aggregated buckets for a single metric', async () => {
@@ -528,10 +592,6 @@ describe('Time Series Integration Tests', () => {
     })
   })
 
-  // ==========================================================================
-  // Time Series Deletion
-  // ==========================================================================
-
   describe('deleteTimeSeriesPoint', () => {
     test('soft-deletes a measurement and returns true', async () => {
       const user = getTestUser()
@@ -772,6 +832,27 @@ describe('Time Series Integration Tests', () => {
       const count = await deleteTimeSeriesMetric(user, 'weight')
 
       expect(count).toBe(0)
+    })
+  })
+
+  describe('getMetricMeansForWindows', () => {
+    test('averages each window and leaves an empty one undefined', async () => {
+      const user = getTestUser()
+      await insertTimeSeries(user, [
+        { metric: 'heart_rate', source: 'garmin', time: new Date('2024-01-15T10:00:00Z'), value: 120 },
+        { metric: 'heart_rate', source: 'garmin', time: new Date('2024-01-15T10:01:00Z'), value: 140 },
+        { metric: 'heart_rate', source: 'garmin', time: new Date('2024-01-15T12:00:00Z'), value: 100 },
+        { metric: 'speed', source: 'garmin', time: new Date('2024-01-15T10:00:30Z'), value: 3 },
+      ])
+
+      const means = await getMetricMeansForWindows(user, 'heart_rate', [
+        { end: new Date('2024-01-15T10:30:00Z'), start: new Date('2024-01-15T10:00:00Z') },
+        { end: new Date('2024-01-15T11:30:00Z'), start: new Date('2024-01-15T11:00:00Z') },
+        { end: new Date('2024-01-15T12:30:00Z'), start: new Date('2024-01-15T11:30:00Z') },
+      ])
+
+      expect(means).toEqual([130, undefined, 100])
+      expect(await getMetricMeansForWindows(user, 'heart_rate', [])).toEqual([])
     })
   })
 

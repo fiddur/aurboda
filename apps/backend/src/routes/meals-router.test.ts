@@ -88,6 +88,34 @@ describe('GET /meals/period-summary', () => {
     )
   })
 
+  test('accepts tz=UTC', async () => {
+    vi.mocked(periodSvc.getMealPeriodSummary).mockResolvedValue({
+      start: '2025-01-01',
+      end: '2025-01-01',
+      days_in_range: 1,
+      days_with_meals: 0,
+      days_completed: 0,
+      nutrients: {},
+      calories_burned: null,
+    })
+    const res = await supertest(buildApp()).get(
+      '/meals/period-summary?start=2025-01-01&end=2025-01-01&tz=UTC',
+    )
+    expect(res.status).toBe(200)
+    expect(periodSvc.getMealPeriodSummary).toHaveBeenCalledWith(
+      'tester',
+      expect.objectContaining({ tz: 'UTC' }),
+    )
+  })
+
+  test('400 for an unknown tz', async () => {
+    const res = await supertest(buildApp()).get(
+      '/meals/period-summary?start=2025-01-01&end=2025-01-01&tz=Mars%2FBase',
+    )
+    expect(res.status).toBe(400)
+    expect(periodSvc.getMealPeriodSummary).not.toHaveBeenCalled()
+  })
+
   test('passes through count_only_completed=true', async () => {
     vi.mocked(periodSvc.getMealPeriodSummary).mockResolvedValue({
       start: '2025-01-01',

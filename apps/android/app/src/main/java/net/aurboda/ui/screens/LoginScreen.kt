@@ -206,12 +206,12 @@ fun LoginScreen(
           isLoading = true
           errorMessage = null
 
-          // Normalize server URL
           val normalizedUrl = serverUrl.trimEnd('/')
+          val trimmedUsername = username.trim()
 
-          when (val result = authApi.login(normalizedUrl, username, password)) {
+          when (val result = authApi.login(normalizedUrl, trimmedUsername, password)) {
             is LoginResult.Success -> {
-              onSaveCredentials(normalizedUrl, username, result.token)
+              onSaveCredentials(normalizedUrl, trimmedUsername, result.token)
               onLoginSuccess()
             }
             is LoginResult.Error -> {

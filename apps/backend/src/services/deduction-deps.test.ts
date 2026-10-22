@@ -2,8 +2,9 @@ import { describe, expect, test, vi } from 'vitest'
 
 vi.mock('../db/index', () => ({
   deleteStaleRuleActivities: vi.fn(),
-  insertActivity: vi.fn().mockResolvedValue('new-id'),
+  getMediaPlays: vi.fn().mockResolvedValue([]),
   insertDeductionRuleRun: vi.fn(),
+  upsertActivity: vi.fn().mockResolvedValue({ changed: true, id: 'new-id' }),
 }))
 
 vi.mock('../db/connection', () => ({
@@ -15,11 +16,49 @@ vi.mock('./locations', () => ({
 }))
 
 import { query } from '../db/connection.ts'
+import { upsertActivity } from '../db/index.ts'
 import { createDefaultEngineDeps } from './deduction-deps.ts'
 
 const mockedQuery = vi.mocked(query)
 
 describe('createDefaultEngineDeps', () => {
+  test('insertActivity does not notify when the upsert changed nothing, but still returns the id', async () => {
+    vi.mocked(upsertActivity).mockResolvedValueOnce({ changed: false, id: 'existing-id' })
+    const notifier = vi.fn()
+    const deps = createDefaultEngineDeps(notifier)
+
+    const id = await deps.insertActivity('testuser', {
+      activity_type: 'tv',
+      data: { rule_id: 'rule-123' },
+      end_time: new Date('2024-03-15T22:00:00Z'),
+      source: 'deduction-rule',
+      start_time: new Date('2024-03-15T20:00:00Z'),
+    })
+
+    expect(id).toBe('existing-id')
+    expect(notifier).not.toHaveBeenCalled()
+  })
+
+  test('insertActivity notifies exactly once when the upsert changed the row', async () => {
+    const notifier = vi.fn()
+    const deps = createDefaultEngineDeps(notifier)
+
+    await deps.insertActivity('testuser', {
+      activity_type: 'tv',
+      data: { rule_id: 'rule-123' },
+      source: 'deduction-rule',
+      start_time: new Date('2024-03-15T20:00:00Z'),
+    })
+
+    expect(notifier).toHaveBeenCalledExactlyOnceWith(
+      'testuser',
+      'tv',
+      new Date('2024-03-15T20:00:00Z'),
+      new Date('2024-03-15T20:00:00Z'),
+      'rule-123',
+    )
+  })
+
   test('insertActivity calls notifier with activity data', async () => {
     const notifier = vi.fn()
     const deps = createDefaultEngineDeps(notifier)
@@ -215,7 +254,7 @@ describe('createDefaultEngineDeps', () => {
       const lastCall = mockedQuery.mock.calls[mockedQuery.mock.calls.length - 1]
       const sql = lastCall[1] as string
       expect(sql).toContain('FROM activities')
-      expect(sql).toContain("activity_type = 'screentime'")
+      expect(sql).not.toMatch(/activity_type\s*(=|IN)/)
       expect(sql).not.toContain('FROM productivity')
     })
 

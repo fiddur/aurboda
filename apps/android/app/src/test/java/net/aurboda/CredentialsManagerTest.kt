@@ -4,7 +4,6 @@ import org.junit.Test
 import org.junit.Assert.*
 
 /**
- * Unit tests for CredentialsManager data classes.
  * Note: Full CredentialsManager tests with EncryptedSharedPreferences
  * require instrumented tests (androidTest) due to Android Context dependency.
  */

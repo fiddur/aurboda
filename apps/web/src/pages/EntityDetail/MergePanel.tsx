@@ -1,6 +1,3 @@
-/**
- * Panel for selecting nearby activities to merge with the current activity.
- */
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useLocation } from 'preact-iso'
 import { useState } from 'preact/hooks'

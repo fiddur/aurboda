@@ -147,6 +147,54 @@ networks:
     external: true
 ```
 
+### Health check
+
+The image declares a `HEALTHCHECK` that fetches `/api/status` through nginx
+every 10 s (60 s start period, 3 retries). The backend only starts listening
+once startup is done, and `/api/status` reads the central database, so the
+container turns `healthy` only when nginx, the backend and Postgres all answer.
+
+```bash
+docker inspect --format '{{.State.Health.Status}}' aurboda   # starting → healthy
+```
+
+A deploy script or proxy can wait for `healthy` before sending traffic to a new
+container.
+
+### Graceful shutdown and stop timeout
+
+On `docker stop` (SIGTERM to the entrypoint):
+
+1. The entrypoint forwards SIGTERM to the Node backend and waits for it.
+2. The backend stops accepting connections, then in parallel lets in-flight
+   requests finish (up to 3 s, after which open streams such as the live
+   timeline are cut) and stops pg-boss (running jobs get up to 10 s; unfinished
+   ones are failed and retried by the next instance). Then it closes its
+   database pools and exits. The whole sequence is bounded at 25 s.
+3. nginx quits gracefully, and the container exits with status 0.
+
+Docker's default stop timeout is 10 s, after which it SIGKILLs the container.
+Give it room for the 25 s bound:
+
+```bash
+docker run --stop-timeout 30 ...
+```
+
+or `stop_grace_period: 30s` in Compose (the bundled `docker-compose.yml` sets
+it). The backend logs `Shutting down...` and `Shutdown complete in <n> ms`; a
+`Process exited unexpectedly` line instead means a process died on its own.
+Startup logs how many seconds after process start the central DB, pg-boss and
+the HTTP listener became ready.
+
+### Overlapping deploys: expand-only schema changes
+
+A zero-downtime (blue/green) deploy starts the new container before stopping
+the old one, so for a short while two versions run against the same databases.
+Schema changes must therefore be expand-only: add tables and nullable (or
+defaulted) columns, never drop or rename a column in the same release that
+stops writing it. Remove the old column in a later release, once no running
+version uses it.
+
 ## Building Locally
 
 ### Build the Docker image:
@@ -192,6 +240,51 @@ docker run --rm \
   alpine tar xzf /backup/postgres-backup.tar.gz -C /
 ```
 
+## Database connections and tuning
+
+Each user has their own database, so the backend keeps one pool per user:
+
+| Pool                     | Max connections | Notes                                                    |
+| ------------------------ | --------------- | -------------------------------------------------------- |
+| Per-user pool            | 5 per user      | Idle connections close after 30 s; idle pools drain to 0 |
+| Live timeline (`LISTEN`) | +1 per user     | Only while that user has a live timeline open            |
+| Central database pool    | 5               | Users, settings, shared data                             |
+| pg-boss (job queue)      | 3               |                                                          |
+
+Only active users hold connections, so the bundled `max_connections=200` in
+`docker-compose.yml` covers roughly 30 users being active at the same moment
+(6 each, plus 8 for the central pool and pg-boss). Raise it if you host more.
+
+`connectionTimeoutMillis` (30 s) also bounds the wait for a free slot in a pool.
+When all 5 of a user's connections are busy for longer than that — a slow query
+holding them during a large sync, say — further queries for that user fail
+instead of queueing indefinitely. In the backend logs that shows up as
+`timeout exceeded when trying to connect` errors (and 500 responses) for that
+user only; other users are unaffected.
+
+### Postgres tuning
+
+`docker-compose.yml` sets only `max_connections`; size the rest to the host.
+Rough starting points:
+
+- `shared_buffers` ≈ 25 % of the RAM available to Postgres
+- `effective_cache_size` ≈ 50–75 % of that RAM
+- `work_mem` modest, e.g. 16–32 MB — it is per sort/hash operation per
+  connection, and there can be many connections
+- `shm_size` on the container large enough for `shared_buffers` and parallel
+  queries (Docker's default is 64 MB)
+
+Pass them as `-c` flags on the Postgres command, e.g. for a host giving
+Postgres 4 GB:
+
+```yaml
+postgres:
+  image: postgis/postgis:16-3.4-alpine
+  shm_size: 1g
+  command: >
+    postgres -c max_connections=200 -c shared_buffers=1GB -c effective_cache_size=3GB -c work_mem=16MB
+```
+
 ## Troubleshooting
 
 ### Check logs:
@@ -224,7 +317,7 @@ If the service fails to start, check that:
 
 ### Process crashes:
 
-The container monitors both nginx and the backend. If either process crashes, the container exits and will be restarted by Docker's restart policy.
+The container monitors both nginx and the backend. If either process crashes, the container exits (logging `Process exited unexpectedly`) and will be restarted by Docker's restart policy.
 
 ## CI/CD
 

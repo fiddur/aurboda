@@ -1,6 +1,4 @@
 /**
- * MCP food item tools.
- *
  * Search and read go through the merged food-items service so MCP callers
  * see central shared-library items (e.g. Livsmedelsverket) alongside the
  * user's own. Writes (add/update/delete) target the per-user table only —
@@ -24,6 +22,7 @@ import type { CentralDb } from '../services/central-db.ts'
 import {
   clearIngredients,
   deleteFoodItem,
+  FOOD_ITEM_USED_AS_INGREDIENT_ERROR,
   getFoodItemById as getUserFoodItemById,
   getFoodItemPortionById,
   listFoodItems,
@@ -110,8 +109,9 @@ export const registerFoodItemTools = (server: McpServer, user: string, centralDb
     'Delete a per-user food item by ID. Returns "Cannot delete shared library item" for central rows.',
     { id: z.string().uuid().describe('Food item ID') },
     async ({ id }) => {
-      const deleted = await deleteFoodItem(user, id)
-      if (!deleted) {
+      const result = await deleteFoodItem(user, id)
+      if (result === 'used_as_ingredient') return errorResponse(FOOD_ITEM_USED_AS_INGREDIENT_ERROR)
+      if (result === 'not_found') {
         const fromCentral = await centralDb.getSharedFoodItemById(id)
         return errorResponse(fromCentral ? 'Cannot delete shared library item' : 'Food item not found')
       }
@@ -344,12 +344,10 @@ export const registerFoodItemTools = (server: McpServer, user: string, centralDb
     },
   )
 
-  // ────────────────────────────────────────────────────────────────────────
   // Portion sizings — extra units a food can be logged in, beyond its base
   // unit. Each portion is a named unit (`label_unit`) plus `base_equivalent`:
   // how many of the food's base unit ONE of this unit equals. Works for
   // per-user OR central food items via the soft pointer on food_item_id.
-  // ────────────────────────────────────────────────────────────────────────
 
   server.tool(
     'list_food_item_portions',

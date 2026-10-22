@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import * as db from '../../db/index.ts'
 import { getGenericCorrelation } from './generic.ts'
 
-// Mock db module
 vi.mock('../../db', () => ({
   getAllActivitiesInRange: vi.fn(),
   getProductivity: vi.fn(),
@@ -51,7 +50,6 @@ describe('getGenericCorrelation', () => {
 
   describe('single trigger with metric outcome', () => {
     test('correlates activity trigger with weight metric', async () => {
-      // Use relative dates
       const now = new Date()
 
       // Week 1: Exercise 3 times, then weight measured
@@ -172,7 +170,6 @@ describe('getGenericCorrelation', () => {
     })
 
     test('returns zero windows when compound conditions not all met', async () => {
-      // Use relative dates
       const now = new Date()
       const baseDate = new Date(now.getTime() - 15 * 24 * 60 * 60 * 1000) // 15 days ago
       baseDate.setHours(10, 0, 0, 0)
@@ -225,7 +222,6 @@ describe('getGenericCorrelation', () => {
 
   describe('productivity outcome', () => {
     test('correlates meditation with productive time', async () => {
-      // Use relative dates
       const now = new Date()
       const day1 = new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000) // 5 days ago
       day1.setHours(7, 0, 0, 0)
@@ -266,7 +262,6 @@ describe('getGenericCorrelation', () => {
 
   describe('metric baseline comparison', () => {
     test('calculates delta from baseline for metric outcomes', async () => {
-      // Use relative dates
       const now = new Date()
 
       // Week with exercise -> weight measured

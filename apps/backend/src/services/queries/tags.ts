@@ -1,7 +1,3 @@
-/**
- * Tag query functions.
- */
-
 import type { SyncProvider, TagSummary } from './types.ts'
 
 import { getActivitiesExcludingCategories } from '../../db/index.ts'
@@ -11,7 +7,6 @@ export const queryTagActivities = (user: string, start: Date, end: Date) =>
   getActivitiesExcludingCategories(user, ['sleep_rest', 'exercise'], start, end)
 
 /**
- * Query tags for a time range.
  * Kept for MCP query_tags tool backward compat. Queries activities, not legacy tags table.
  * @param sync Optional sync provider to auto-refresh stale data before querying
  */

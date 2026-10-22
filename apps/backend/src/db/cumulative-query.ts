@@ -1,8 +1,6 @@
 import type { QueryResultRow } from 'pg'
 
 /**
- * Helper for splitting metric queries by cumulative/non-cumulative type.
- *
  * Cumulative metrics (steps, distance, etc.) use only trusted sources
  * to avoid mixing raw readings with deduplicated daily totals.
  *
@@ -31,7 +29,6 @@ export const splitMetricsByCumulative = (
 })
 
 interface SplitQueryOptions<T> {
-  /** The metric names to query */
   metrics: string[]
   /** Shared query parameters after the metrics array (e.g. start, end dates) */
   params: unknown[]
@@ -41,9 +38,7 @@ interface SplitQueryOptions<T> {
   sqlCumulative: string
   /** SQL for non-cumulative metrics (all sources). $1 = metrics array, remaining = params */
   sqlNonCumulative: string
-  /** Map a database row to the result type */
   mapRow: (row: QueryResultRow) => T
-  /** Execute a query and return rows */
   queryFn: (sql: string, params: unknown[]) => Promise<{ rows: QueryResultRow[] }>
 }
 
@@ -61,6 +56,14 @@ export const querySplitByCumulative = async <T>(options: SplitQueryOptions<T>): 
   const { aurbodaOnly, cumulative, nonCumulative } = splitMetricsByCumulative(options.metrics)
   const results: T[] = []
 
+  // Map each row and append it individually. Do NOT use `results.push(...rows.map(...))`:
+  // spreading a large array into a function call passes each element as an argument, which
+  // overflows the call stack (RangeError) once a query returns ~100k+ rows (e.g. per-second
+  // heart_rate over a multi-day span).
+  const appendMapped = (rows: QueryResultRow[]): void => {
+    for (const row of rows) results.push(options.mapRow(row))
+  }
+
   if (cumulative.length > 0) {
     const extraParams = options.cumulativeExtraParams ?? []
     const result = await options.queryFn(options.sqlCumulative, [
@@ -68,13 +71,11 @@ export const querySplitByCumulative = async <T>(options: SplitQueryOptions<T>): 
       ...options.params,
       ...extraParams,
     ])
-    results.push(...result.rows.map(options.mapRow))
+    appendMapped(result.rows)
   }
 
   if (aurbodaOnly.length > 0) {
-    // Use the same cumulative SQL template but with aurbodaOnlySources (HR-computed + gap-fill)
     const extraParams = options.cumulativeExtraParams ?? []
-    // Replace the cumulativeSources param with aurbodaOnlySources
     // The cumulativeExtraParams[0] is the sources array, so we override it
     const aurbodaExtraParams =
       extraParams.length > 0 ? [aurbodaOnlySources, ...extraParams.slice(1)] : [aurbodaOnlySources]
@@ -83,12 +84,12 @@ export const querySplitByCumulative = async <T>(options: SplitQueryOptions<T>): 
       ...options.params,
       ...aurbodaExtraParams,
     ])
-    results.push(...result.rows.map(options.mapRow))
+    appendMapped(result.rows)
   }
 
   if (nonCumulative.length > 0) {
     const result = await options.queryFn(options.sqlNonCumulative, [nonCumulative, ...options.params])
-    results.push(...result.rows.map(options.mapRow))
+    appendMapped(result.rows)
   }
 
   return results

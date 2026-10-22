@@ -80,6 +80,6 @@ describe('createDebouncedFlusher', () => {
     vi.advanceTimersByTime(100)
     expect(save).toHaveBeenCalledOnce()
     f.flush()
-    expect(save).toHaveBeenCalledOnce() // still once
+    expect(save).toHaveBeenCalledOnce()
   })
 })

@@ -1,6 +1,6 @@
-import type * as TimeSeriesModule from '../db/time-series.ts'
-
 import { beforeEach, describe, expect, test, vi } from 'vitest'
+
+import type * as TimeSeriesModule from '../db/time-series.ts'
 
 import * as db from '../db/index.ts'
 import { parseMetricEntityId, toMetricEntityId } from './metric-entity-id.ts'
@@ -19,7 +19,6 @@ import {
   updateCustomMetric,
 } from './mutations.ts'
 
-// Mock the db module
 vi.mock('../db', async () => ({
   activityTypeExists: vi.fn().mockResolvedValue(true),
   checkActivityConflict: vi.fn().mockResolvedValue(false),
@@ -683,7 +682,12 @@ describe('bulkAddMetrics', () => {
     const result = await bulkAddMetrics('testuser', [
       // Default source 'aurboda' is allowed for cumulative metrics.
       { metric: 'steps', time: new Date('2026-05-27T00:00:00Z'), value: 5000 },
-      { metric: 'steps', source: 'health_connect_aggregate', time: new Date('2026-05-28T00:00:00Z'), value: 6000 },
+      {
+        metric: 'steps',
+        source: 'health_connect_aggregate',
+        time: new Date('2026-05-28T00:00:00Z'),
+        value: 6000,
+      },
     ])
 
     expect(result.inserted).toBe(2)
@@ -1374,6 +1378,7 @@ describe('updateCustomMetric', () => {
 
     const result = await updateCustomMetric('testuser', 'mood', { minValue: null })
 
+    expect(db.updateCustomMetricDefinition).toHaveBeenCalledWith('testuser', 'mood', { min_value: null })
     expect(result.success).toBe(true)
     expect(result.data?.min_value).toBeUndefined()
     expect(result.data?.max_value).toBe(10)
@@ -1388,6 +1393,7 @@ describe('updateCustomMetric', () => {
 
     const result = await updateCustomMetric('testuser', 'mood', { maxValue: null })
 
+    expect(db.updateCustomMetricDefinition).toHaveBeenCalledWith('testuser', 'mood', { max_value: null })
     expect(result.success).toBe(true)
     expect(result.data?.max_value).toBeUndefined()
     expect(result.data?.min_value).toBe(1)

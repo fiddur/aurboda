@@ -23,7 +23,6 @@ fun parseHeartRateMeasurement(data: ByteArray): HeartRateSample? {
 
   var offset = 1
 
-  // Parse heart rate value
   val heartRate: Int =
     if (isHrValueUint16) {
       if (data.size < offset + 2) return null
@@ -42,7 +41,6 @@ fun parseHeartRateMeasurement(data: ByteArray): HeartRateSample? {
     offset += 2
   }
 
-  // Parse RR-Intervals if present
   val rrIntervals: List<Int>? =
     if (hasRrIntervals && offset < data.size) {
       val intervals = mutableListOf<Int>()

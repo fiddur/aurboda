@@ -59,7 +59,6 @@ const insertReportWithTimeSeries = async (
     })),
   )
 
-  // Re-fetch to get values from the join
   return (await getReportById(user, report.id))!
 }
 

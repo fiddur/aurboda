@@ -47,7 +47,6 @@ fun syncHttpClient(): HttpClient =
  */
 private const val HEART_RATE_CHUNK_SIZE = 50
 
-/** Result of a POST operation with error details for display. */
 sealed class PostResult {
   data object Success : PostResult()
 
@@ -81,7 +80,6 @@ sealed class PostResult {
 }
 
 /**
- * Post a single pre-serialized JSON body to the server.
  * Non-inline to keep dispatch sites compact (avoids JVM "method too large" with many record types).
  */
 suspend fun postChunkRaw(
@@ -111,9 +109,6 @@ suspend fun postChunkRaw(
     PostResult.NetworkError(e.message ?: "Unknown error")
   }
 
-/**
- * Encode a PostWrapper<T> using the supplied item serializer and POST it.
- */
 suspend fun <T : Any> postChunk(
   data: PostWrapper<T>,
   itemSerializer: KSerializer<T>,
@@ -155,12 +150,6 @@ suspend fun <T : Any> postChunkWithRetry(
 /**
  * Post data in chunks to avoid 413 Request Entity Too Large errors.
  * HeartRateRecord can be very large (thousands of samples per record).
- *
- * @param dataList The list of records to post
- * @param itemSerializer kotlinx.serialization serializer for the item type
- * @param chunkSize Maximum number of records per chunk
- * @param recordTypeName Name of the record type for logging and progress reporting
- * @param reporter Sync progress reporter for per-chunk UI updates
  */
 suspend fun <T : Any> postDataChunked(
   dataList: List<T>,
@@ -224,7 +213,6 @@ suspend fun <T : Any> postDataChunked(
 }
 
 /**
- * Filter out records written by Aurboda's own outbound sync or BLE sensors.
  * This prevents sync loops where data we pushed to Health Connect gets re-ingested.
  */
 fun List<Record>.filterNotOwnOrigin(): List<Record> =
@@ -236,7 +224,7 @@ fun List<Record>.filterNotOwnOrigin(): List<Record> =
     !(isOwnOrigin || isOutboundSync)
   }
 
-/** Send deletion IDs to the backend. Shared by SyncWorker and MainActivity. */
+/** Shared by SyncWorker and MainActivity. */
 suspend fun sendDeletions(
   deletionIds: List<String>,
   serverUrl: String,
@@ -262,9 +250,6 @@ suspend fun sendDeletions(
   }
 }
 
-/**
- * Send a non-chunked record group as one POST. Reports per-record-type progress.
- */
 private suspend fun <S : Any> sendSingleType(
   serializables: List<S>,
   itemSerializer: KSerializer<S>,
@@ -295,7 +280,6 @@ private suspend fun <S : Any> sendSingleType(
 }
 
 /**
- * Send records to the server, grouped by record type and serialized appropriately.
  * Handles ALL Health Connect record types that have serializers defined.
  * Uses chunked posting for HeartRateRecord (large payloads with many samples).
  */
@@ -566,7 +550,6 @@ suspend fun sendRecords(
 }
 
 /**
- * Send a page of changes (deletions + records) to the backend.
  * Deletions are sent first, then records.
  */
 suspend fun sendPage(

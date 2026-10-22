@@ -1,0 +1,154 @@
+/**
+ * Resolve the shared scalar-summary values for a feed post.
+ *
+ * Turns the user's chosen `included_metrics` keys into the `ScalarMetric[]` that
+ * the delivery layer renders into `content` and `quant:metrics`. Pure and
+ * dependency-injected: the caller supplies `metricStat`, an aggregate of a
+ * metric over the shared activity's window (backed by `queryMetricsBucketed`
+ * with a single window-sized bucket when wired to delivery). Only the requested
+ * keys that are supported AND have data are emitted; everything else is skipped,
+ * so a post never advertises a summary it can't back.
+ */
+import { hrZoneMetrics } from '@aurboda/api-spec'
+
+import type { MetricType } from '../../schema.ts'
+import type { ScalarMetric } from './object.ts'
+
+export type ScalarStat = 'avg' | 'max' | 'sum'
+
+/** Aggregate a metric over the activity window; `undefined` when there's no data. */
+export type MetricStat = (metric: MetricType, stat: ScalarStat) => number | undefined
+
+export interface ActivityWindow {
+  startTime: Date
+  endTime?: Date
+}
+
+const roundTo = (n: number, decimals = 0): number => {
+  const f = 10 ** decimals
+  return Math.round(n * f) / f
+}
+
+/**
+ * Scalar keys resolved from a single metric aggregate. `summaryField` names the
+ * `activity.data` key (same raw unit as the aggregate) used when the window has
+ * no series: Garmin and Strava store distance and calories only as summary
+ * fields on the activity, not as time-series inside its window.
+ */
+const METRIC_SCALARS: Record<
+  string,
+  {
+    metric: MetricType
+    stat: ScalarStat
+    unit?: string
+    label: string
+    transform?: (raw: number) => number
+    summaryField?: string
+  }
+> = {
+  calories: {
+    label: 'Calories',
+    metric: 'calories_active',
+    stat: 'sum',
+    summaryField: 'calories',
+    transform: (v) => roundTo(v),
+    unit: 'kcal',
+  },
+  distance: {
+    label: 'Distance',
+    metric: 'distance',
+    stat: 'sum',
+    summaryField: 'distance',
+    transform: (v) => roundTo(v / 1000, 2),
+    unit: 'km',
+  },
+  heart_rate_avg: {
+    label: 'Avg HR',
+    metric: 'heart_rate',
+    stat: 'avg',
+    transform: (v) => roundTo(v),
+    unit: 'bpm',
+  },
+  heart_rate_max: {
+    label: 'Max HR',
+    metric: 'heart_rate',
+    stat: 'max',
+    transform: (v) => roundTo(v),
+    unit: 'bpm',
+  },
+  stress_avg: {
+    label: 'Avg stress',
+    metric: 'stress_level',
+    stat: 'avg',
+    transform: (v) => roundTo(v),
+    unit: 'score',
+  },
+}
+
+/**
+ * The distinct time-series metrics the metric-backed scalar keys read from — the
+ * set a caller aggregates over the activity window before calling
+ * `resolveSharedScalars`. HR-zone metrics are deliberately excluded: they are
+ * NOT stored in `time_series` (they're computed from `heart_rate` + effective
+ * zones), so the caller must supply their seconds separately via `metricStat`.
+ */
+export const SCALAR_SOURCE_METRICS: MetricType[] = [
+  ...new Set<MetricType>(Object.values(METRIC_SCALARS).map((c) => c.metric)),
+]
+
+/** A summary field's value when it is a usable positive number, else undefined. */
+const positiveSummaryValue = (
+  summary: Record<string, unknown> | undefined,
+  field: string,
+): number | undefined => {
+  const v = summary?.[field]
+  return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined
+}
+
+/** Build the `hr_zone_minutes` record (minutes per zone with data) from zone-second sums. */
+const hrZoneMinutes = (metricStat: MetricStat): Record<string, number> => {
+  const zones: Record<string, number> = {}
+  for (const [i, metric] of hrZoneMetrics.entries()) {
+    const seconds = metricStat(metric, 'sum')
+    if (seconds !== undefined && seconds > 0) zones[`z${i}`] = Math.round(seconds / 60)
+  }
+  return zones
+}
+
+/**
+ * Resolve the requested scalar keys into `ScalarMetric[]`, in the order given.
+ * Supported keys: `duration`, `hr_zone_minutes`, plus the `METRIC_SCALARS` set
+ * (`heart_rate_avg`/`heart_rate_max`, `stress_avg`, `distance`, `calories`).
+ * `summary` is the activity's `data` (its source summary fields), consulted for
+ * `distance`/`calories` only when the window aggregate is missing.
+ */
+export const resolveSharedScalars = (
+  window: ActivityWindow,
+  includedMetrics: string[],
+  metricStat: MetricStat,
+  summary?: Record<string, unknown>,
+): ScalarMetric[] => {
+  const out: ScalarMetric[] = []
+  for (const key of includedMetrics) {
+    if (key === 'duration') {
+      if (window.endTime) {
+        const seconds = Math.round((window.endTime.getTime() - window.startTime.getTime()) / 1000)
+        out.push({ key, label: 'Duration', unit: 'seconds', value: seconds })
+      }
+      continue
+    }
+    if (key === 'hr_zone_minutes') {
+      const zones = hrZoneMinutes(metricStat)
+      if (Object.keys(zones).length > 0) out.push({ key, label: 'HR zone minutes', value: zones })
+      continue
+    }
+    const cfg = METRIC_SCALARS[key]
+    if (cfg === undefined) continue
+    const raw =
+      metricStat(cfg.metric, cfg.stat) ??
+      (cfg.summaryField === undefined ? undefined : positiveSummaryValue(summary, cfg.summaryField))
+    if (raw === undefined) continue
+    out.push({ key, label: cfg.label, unit: cfg.unit, value: cfg.transform ? cfg.transform(raw) : raw })
+  }
+  return out
+}

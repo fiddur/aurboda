@@ -1,17 +1,12 @@
-/**
- * Activity impact timeline analysis.
- */
-
 import type { SyncProvider } from '../queries/index.ts'
 import type { ActivityImpactResult, TimeWindowStats } from './types.ts'
 
 import { getAllActivitiesInRange, getProductivity, getTimeSeries } from '../../db/index.ts'
+import { pushAll } from '../../utils.ts'
 import { getPlaceVisits } from '../locations.ts'
+import { triggerCorrelationSyncs } from './background-sync.ts'
 import { getDataInRange, mean, stddev } from './utils.ts'
 
-/**
- * Get HRV timeline before/during/after a specific activity type.
- */
 // eslint-disable-next-line complexity -- TODO: refactor
 export async function getActivityImpact(
   user: string,
@@ -27,24 +22,16 @@ export async function getActivityImpact(
   start.setDate(start.getDate() - periodDays)
   start.setHours(0, 0, 0, 0)
 
-  // Auto-sync if provider available
-  if (sync) {
-    await Promise.all([
-      sync.syncOuraIfNeeded(user, 'tags'),
-      sync.syncOuraIfNeeded(user, 'sessions'),
-      sync.syncRescueTimeIfNeeded(user),
-      sync.syncCalendarsIfNeeded(user),
-    ])
-  }
+  // Freshness syncs run in the background — never block this retrospective
+  // analysis on a slow external sync (see background-sync.ts).
+  triggerCorrelationSyncs(sync, user)
 
-  // Fetch HRV/HR/stress data
   const [hrvData, hrData, stressData] = await Promise.all([
     getTimeSeries(user, 'hrv_rmssd', start, end),
     getTimeSeries(user, 'heart_rate', start, end),
     getTimeSeries(user, 'stress_level', start, end),
   ])
 
-  // Find activity occurrences based on type
   interface ActivityWindow {
     startTime: Date
     endTime: Date
@@ -95,7 +82,6 @@ export async function getActivityImpact(
     }
   }
 
-  // Collect HRV/HR/stress for each time window
   const windows = {
     after15min: { hr: [] as number[], hrv: [] as number[], stress: [] as number[] },
     after30min: { hr: [] as number[], hrv: [] as number[], stress: [] as number[] },
@@ -112,32 +98,32 @@ export async function getActivityImpact(
     // Before 30 min (from -30 to -15)
     const before30Start = new Date(occ.startTime.getTime() - windowMinutes * 60 * 1000)
     const before30End = new Date(occ.startTime.getTime() - (windowMinutes / 2) * 60 * 1000)
-    windows.before30min.hrv.push(...getDataInRange(hrvData, before30Start, before30End))
-    windows.before30min.hr.push(...getDataInRange(hrData, before30Start, before30End))
-    windows.before30min.stress.push(...getDataInRange(stressData, before30Start, before30End))
+    pushAll(windows.before30min.hrv, getDataInRange(hrvData, before30Start, before30End))
+    pushAll(windows.before30min.hr, getDataInRange(hrData, before30Start, before30End))
+    pushAll(windows.before30min.stress, getDataInRange(stressData, before30Start, before30End))
 
     // Before 15 min (from -15 to 0)
     const before15Start = new Date(occ.startTime.getTime() - (windowMinutes / 2) * 60 * 1000)
-    windows.before15min.hrv.push(...getDataInRange(hrvData, before15Start, occ.startTime))
-    windows.before15min.hr.push(...getDataInRange(hrData, before15Start, occ.startTime))
-    windows.before15min.stress.push(...getDataInRange(stressData, before15Start, occ.startTime))
+    pushAll(windows.before15min.hrv, getDataInRange(hrvData, before15Start, occ.startTime))
+    pushAll(windows.before15min.hr, getDataInRange(hrData, before15Start, occ.startTime))
+    pushAll(windows.before15min.stress, getDataInRange(stressData, before15Start, occ.startTime))
 
     // During
-    windows.during.hrv.push(...getDataInRange(hrvData, occ.startTime, occ.endTime))
-    windows.during.hr.push(...getDataInRange(hrData, occ.startTime, occ.endTime))
-    windows.during.stress.push(...getDataInRange(stressData, occ.startTime, occ.endTime))
+    pushAll(windows.during.hrv, getDataInRange(hrvData, occ.startTime, occ.endTime))
+    pushAll(windows.during.hr, getDataInRange(hrData, occ.startTime, occ.endTime))
+    pushAll(windows.during.stress, getDataInRange(stressData, occ.startTime, occ.endTime))
 
     // After 15 min (from end to +15)
     const after15End = new Date(occ.endTime.getTime() + (windowMinutes / 2) * 60 * 1000)
-    windows.after15min.hrv.push(...getDataInRange(hrvData, occ.endTime, after15End))
-    windows.after15min.hr.push(...getDataInRange(hrData, occ.endTime, after15End))
-    windows.after15min.stress.push(...getDataInRange(stressData, occ.endTime, after15End))
+    pushAll(windows.after15min.hrv, getDataInRange(hrvData, occ.endTime, after15End))
+    pushAll(windows.after15min.hr, getDataInRange(hrData, occ.endTime, after15End))
+    pushAll(windows.after15min.stress, getDataInRange(stressData, occ.endTime, after15End))
 
     // After 30 min (from +15 to +30)
     const after30End = new Date(occ.endTime.getTime() + windowMinutes * 60 * 1000)
-    windows.after30min.hrv.push(...getDataInRange(hrvData, after15End, after30End))
-    windows.after30min.hr.push(...getDataInRange(hrData, after15End, after30End))
-    windows.after30min.stress.push(...getDataInRange(stressData, after15End, after30End))
+    pushAll(windows.after30min.hrv, getDataInRange(hrvData, after15End, after30End))
+    pushAll(windows.after30min.hr, getDataInRange(hrData, after15End, after30End))
+    pushAll(windows.after30min.stress, getDataInRange(stressData, after15End, after30End))
   }
 
   const calculateWindowStats = (values: number[]): TimeWindowStats => ({

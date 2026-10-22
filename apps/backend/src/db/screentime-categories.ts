@@ -1,8 +1,5 @@
 import type { ScreentimeCategory, ScreentimeCategoryInput } from './types.ts'
 
-/**
- * Screentime category storage and retrieval.
- */
 import { query } from './connection.ts'
 
 const mapRow = (row: Record<string, unknown>): ScreentimeCategory => ({
@@ -113,10 +110,7 @@ export const upsertScreentimeCategory = async (
   return mapRow(result.rows[0])
 }
 
-/**
- * Move a category to a new parent. Updates the category's name path and
- * all its children's name paths to reflect the new parent.
- */
+/** Updates the category's name path and all its children's name paths. */
 export const moveScreentimeCategory = async (
   user: string,
   id: string,
@@ -129,13 +123,11 @@ export const moveScreentimeCategory = async (
   const newName = newParentName ? [...newParentName, leafName] : [leafName]
   const oldNameLength = cat.name.length
 
-  // Update the category itself
   await query(user, `UPDATE screentime_categories SET name = $1, updated_at = NOW() WHERE id = $2`, [
     newName,
     id,
   ])
 
-  // Update all children: replace the old prefix with the new prefix
   const childResult = await query(
     user,
     `UPDATE screentime_categories
@@ -208,12 +200,8 @@ export const updateScreentimeCategory = async (
   return result.rows.length > 0 ? mapRow(result.rows[0]) : null
 }
 
-/**
- * Delete a category and all its children (categories whose name path starts with the target's name).
- * Returns the number of deleted categories.
- */
+/** Deletes the category and every child whose name path starts with the target's name. */
 export const deleteScreentimeCategoryWithChildren = async (user: string, id: string): Promise<number> => {
-  // First, get the category to find its name path
   const cat = await getScreentimeCategoryById(user, id)
   if (!cat) return 0
 
@@ -229,16 +217,12 @@ export const deleteScreentimeCategoryWithChildren = async (user: string, id: str
   return result.rowCount ?? 0
 }
 
-/**
- * Delete all screentime categories (used before import).
- */
+/** Used before import. */
 export const deleteAllScreentimeCategories = async (user: string): Promise<void> => {
   await query(user, `DELETE FROM screentime_categories`)
 }
 
-/**
- * Bulk insert screentime categories (used for import).
- */
+/** Used for import. */
 export const bulkInsertScreentimeCategories = async (
   user: string,
   categories: ScreentimeCategoryInput[],

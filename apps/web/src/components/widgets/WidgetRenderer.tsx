@@ -1,7 +1,3 @@
-/**
- * WidgetRenderer - Routes widget type to correct component.
- */
-
 import type { DashboardWidget } from '@aurboda/api-spec'
 
 import { ActivitySummaryWidget } from './ActivitySummaryWidget'
@@ -9,6 +5,7 @@ import { BarChartWidget } from './BarChartWidget'
 import { CorrelationWidget } from './CorrelationWidget'
 import { GoalProgressWidget } from './GoalProgressWidget'
 import { HrZonesWidget } from './HrZonesWidget'
+import { LastSleepWidget } from './LastSleepWidget'
 import { MetricCardWidget } from './MetricCardWidget'
 import { QuickLinkWidget } from './QuickLinkWidget'
 import { SparklineCardWidget } from './SparklineCardWidget'
@@ -20,7 +17,6 @@ interface WidgetRendererProps {
   onRemove?: () => void
   /** Board this widget belongs to ('home' or a shared-dashboard id) — enables update-in-place from the chart page. */
   boardId?: string
-  /** Section this widget belongs to. */
   sectionId?: string
 }
 
@@ -48,6 +44,8 @@ export function WidgetRenderer({ widget, isEditing, onRemove, boardId, sectionId
         return <HrZonesWidget config={widget.config} />
       case 'goal_progress':
         return <GoalProgressWidget config={widget.config} />
+      case 'last_sleep':
+        return <LastSleepWidget config={widget.config} />
       default:
         return <div class="widget-unknown">Unknown widget type</div>
     }

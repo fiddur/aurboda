@@ -1,10 +1,3 @@
-/**
- * Mutation services for health data.
- *
- * These functions contain the business logic for creating/updating health data.
- * They are used by both the MCP tools and the REST API.
- */
-
 import type { ActivityType, CustomMetricDefinition, DataSource } from '@aurboda/api-spec'
 
 import { randomUUID } from 'node:crypto'
@@ -48,10 +41,6 @@ import { auditError } from './audit-log.ts'
 import { getCustomMetrics } from './custom-metrics.ts'
 import { validateActivityData } from './data-schema-validation.ts'
 import { syncNoteTimesForEntity } from './notes.ts'
-
-// ============================================================================
-// Types
-// ============================================================================
 
 export interface AddMetricInput {
   metric: string
@@ -140,11 +129,6 @@ export interface UpdateActivityResult {
   error?: string
 }
 
-// ============================================================================
-// Mutation Functions
-// ============================================================================
-
-/** Validate custom metric value range; returns error string if invalid, null if ok. */
 function validateCustomMetricRange(
   customMetrics: CustomMetricDefinition[],
   metric: string,
@@ -162,10 +146,6 @@ function validateCustomMetricRange(
   return null
 }
 
-/**
- * Add a manual health metric measurement.
- * Supports both built-in and custom metrics.
- */
 export async function addMetric(user: string, input: AddMetricInput): Promise<AddMetricResult> {
   const customMetrics = await getCustomMetrics(user)
 
@@ -239,10 +219,6 @@ export async function addMetric(user: string, input: AddMetricInput): Promise<Ad
 }
 
 /**
- * Bulk insert metric data points.
- *
- * Validates all items against built-in and custom metrics, collects per-item errors,
- * and inserts all valid items in a single batch call to insertTimeSeries.
  * Skips outbound Health Connect sync for bulk imports (historical data).
  */
 export async function bulkAddMetrics(
@@ -306,10 +282,6 @@ export async function bulkAddMetrics(
   }
 }
 
-/**
- * Validate activity data against the activity type's schema, if one is defined.
- * Returns an error string if validation fails, or undefined if it passes.
- */
 const validateDataForType = async (
   user: string,
   activityType: string,
@@ -322,18 +294,12 @@ const validateDataForType = async (
   return undefined
 }
 
-/**
- * Add an activity (exercise, meditation, nap, etc.).
- *
- * Validates that end_time is after start_time.
- */
 // eslint-disable-next-line complexity -- notification callbacks add branches
 export async function addActivity(
   user: string,
   input: AddActivityInput,
   onMutated?: ActivityNotifier,
 ): Promise<AddActivityResult> {
-  // Validate activity type exists
   if (!(await activityTypeExists(user, input.activity_type))) {
     return {
       error: `Unknown activity type: "${input.activity_type}"`,
@@ -341,11 +307,10 @@ export async function addActivity(
     }
   }
 
-  // Validate data against activity type schema (if defined)
   const dataError = await validateDataForType(user, input.activity_type, input.data)
   if (dataError) return { error: dataError, success: false }
 
-  // Validate that endTime is not before startTime (equal is valid for point-in-time activities)
+  // Equal times are valid — point-in-time activities have no duration.
   if (input.end_time && input.end_time < input.start_time) {
     return {
       error: 'end_time must not be before start_time',
@@ -353,7 +318,6 @@ export async function addActivity(
     }
   }
 
-  // If merge_span is specified, try to extend an existing activity instead of creating new
   if (input.merge_span) {
     const existing = await findMergeableActivity(
       user,
@@ -437,7 +401,6 @@ export async function addActivity(
   }
 }
 
-// Re-export custom metric management functions
 export {
   addCustomMetric,
   deleteCustomMetric,
@@ -455,9 +418,6 @@ export type {
   UpdateCustomMetricResult,
 } from './custom-metrics.ts'
 
-/**
- * Delete an activity by its ID.
- */
 export async function deleteActivity(user: string, id: string): Promise<DeleteActivityResult> {
   // Look up the activity before deleting to check if it needs HC sync
   const activity = await dbGetActivityById(user, id)
@@ -504,16 +464,11 @@ export async function deleteActivity(user: string, id: string): Promise<DeleteAc
 }
 
 /**
- * Update an existing activity.
- *
  * For activities owned by aurboda (source='aurboda'), the row is updated in
  * place. For synced activities (garmin, health_connect, strava, oura, …), the
  * edit creates or updates a separate aurboda override row that wins in the
  * merged view and survives integration re-syncs (issue #715). Editing the
  * synced row directly would be reverted on the next sync.
- *
- * Validates that if both start_time and end_time are provided, end_time is
- * after start_time.
  */
 // eslint-disable-next-line complexity -- override resolution adds branches; refactor candidate
 export async function updateActivity(
@@ -772,10 +727,6 @@ export async function updateActivity(
   }
 }
 
-// ============================================================================
-// Merge Activities
-// ============================================================================
-
 export interface MergeActivitiesInput {
   activity_ids: string[]
   title?: string
@@ -793,9 +744,6 @@ export interface MergeActivitiesResult {
 }
 
 /**
- * Build the merged data object from a list of activities sorted by start_time.
- * Pure function — easy to unit-test independently.
- *
  * Notes are NOT folded in here; mergeActivities re-anchors the source rows'
  * notes onto the new merged row via reanchorNotes after the insert.
  */
@@ -825,7 +773,6 @@ export const buildMergedActivityData = (
     }
   }
 
-  // Record provenance
   mergedData.merged_from = sortedActivities.map((a) => ({
     end_time: a.end_time?.toISOString(),
     id: a.id,
@@ -833,18 +780,11 @@ export const buildMergedActivityData = (
     start_time: a.start_time.toISOString(),
   }))
 
-  // Title: override > first non-empty from sources
   const title = overrides?.title || sortedActivities.find((a) => a.title)?.title
 
   return { data: mergedData, end_time: endTime, start_time: startTime, title }
 }
 
-/**
- * Permanently merge 2+ activities of the same type into one.
- *
- * Creates a new aurboda-owned activity spanning the full time range,
- * soft-deletes the originals, and stores merged_from metadata.
- */
 export async function mergeActivities(
   user: string,
   input: MergeActivitiesInput,
@@ -865,7 +805,6 @@ export async function mergeActivities(
     return { error: 'At least 2 activity IDs are required', success: false }
   }
 
-  // Fetch all activities
   const activities: Activity[] = []
   for (const id of input.activity_ids) {
     const activity = await deps.getActivityById(user, id)
@@ -878,13 +817,11 @@ export async function mergeActivities(
     activities.push(activity)
   }
 
-  // Validate all same type
   const types = new Set(activities.map((a) => a.activity_type))
   if (types.size > 1) {
     return { error: `Cannot merge activities of different types: ${[...types].join(', ')}`, success: false }
   }
 
-  // Sort by start_time
   const sorted = [...activities].sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
 
   const merged = buildMergedActivityData(sorted, { title: input.title })
@@ -911,7 +848,6 @@ export async function mergeActivities(
     await replaceUserNotes(user, 'activity', id, input.notes, merged.start_time, merged.end_time)
   }
 
-  // Soft-delete originals
   for (const activity of sorted) {
     if (activity.id) {
       await deps.deleteActivity(user, activity.id)
@@ -933,10 +869,9 @@ export async function mergeActivities(
   }
 }
 
-// Re-export restore and delete-by-id functions
 export { deleteProductivity, restoreActivity, restoreProductivity } from './restore.ts'
 export type { RestoreResult } from './restore.ts'
 
 // Re-export notes functions for backward compatibility
-export { addNote, deleteNoteById, getNotesForEntity, updateNoteContent } from './notes.ts'
-export type { AddNoteInput, NoteResult } from './notes.ts'
+export { addNote, deleteNoteById, getNotesForEntity, getNotesInRange, updateNote } from './notes.ts'
+export type { AddNoteInput, NoteData, NoteReplyData, NoteResult, UpdateNoteInput } from './notes.ts'

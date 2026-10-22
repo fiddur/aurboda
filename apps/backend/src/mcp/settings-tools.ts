@@ -1,6 +1,3 @@
-/**
- * MCP user settings and tag mapping tools.
- */
 import { setTagMappingBodySchema, updateSettingsInputSchema } from '@aurboda/api-spec'
 
 import { getActivityTypeNames } from '../db/index.ts'
@@ -14,7 +11,6 @@ import {
 import { jsonResponse, type McpServer } from './helpers.ts'
 
 export const registerSettingsTools = (server: McpServer, user: string) => {
-  // Tool: get_user_settings
   server.tool(
     'get_user_settings',
     "Get user settings including birth date, effective HR zones, and timezone (tz). The tz field returns the auto-detected timezone from the user's device — use it as the tz parameter for all other tools that require it.",
@@ -25,7 +21,6 @@ export const registerSettingsTools = (server: McpServer, user: string) => {
     },
   )
 
-  // Tool: update_user_settings
   server.tool(
     'update_user_settings',
     'Update user settings. Can set birth date (for age-based HR zones) and/or custom HR zone thresholds.',
@@ -36,7 +31,6 @@ export const registerSettingsTools = (server: McpServer, user: string) => {
     },
   )
 
-  // Tool: get_unique_tags
   server.tool(
     'get_unique_tags',
     'Get all activity type names that have been defined. Returns a list of type identifier strings.',
@@ -47,7 +41,6 @@ export const registerSettingsTools = (server: McpServer, user: string) => {
     },
   )
 
-  // Tool: set_tag_mapping
   server.tool(
     'set_tag_mapping',
     'Set a display name for a programmatic tag (UUID, tag_* prefix, etc.).',
@@ -58,13 +51,11 @@ export const registerSettingsTools = (server: McpServer, user: string) => {
     },
   )
 
-  // Tool: get_tag_mappings
   server.tool('get_tag_mappings', 'Get all current tag mappings (tag key -> display name).', {}, async () => {
     const result = await getTagMappings(user)
     return jsonResponse({ ...result, success: true })
   })
 
-  // Tool: get_goal_progress
   server.tool(
     'get_goal_progress',
     'Get progress toward all user goals. Returns current value, min/max targets, and how much will be lost when the oldest day exits the rolling window.',

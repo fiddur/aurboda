@@ -8,23 +8,19 @@
 import { z } from 'zod'
 
 import { baseResponseSchema } from './common.ts'
+import { ianaTimezoneSchema } from './timezone.ts'
 
-/**
- * Source type for chart data queries.
- */
 export const chartDataSourceTypeSchema = z
   .enum(['tag', 'metric', 'productivity_category', 'activity_type'])
   .meta({
-    description: "Type of data source for chart data query. 'tag' is a deprecated alias for 'activity_type'.",
+    description:
+      "Type of data source for chart data query. 'tag' is a deprecated alias for 'activity_type'. 'productivity_category' selects screentime by category path (pattern 'Work > Programming', sub-categories included); each screentime category is also an activity type (its activity_type_name), usable with 'activity_type'.",
     example: 'activity_type',
     id: 'ChartDataSourceType',
   })
 
 export type ChartDataSourceType = z.infer<typeof chartDataSourceTypeSchema>
 
-/**
- * Bucket size for chart data aggregation.
- */
 export const chartDataBucketSizeSchema = z.enum(['1m', '5m', '15m', '1h', '1d', '1w', '1M']).meta({
   description:
     'Bucket size for aggregation: 1 minute, 5 minutes, 15 minutes, hourly, daily, weekly, or monthly',
@@ -34,9 +30,6 @@ export const chartDataBucketSizeSchema = z.enum(['1m', '5m', '15m', '1h', '1d', 
 
 export type ChartDataBucketSize = z.infer<typeof chartDataBucketSizeSchema>
 
-/**
- * Aggregation method for chart data.
- */
 export const chartDataAggregationSchema = z.enum(['count', 'sum', 'mean']).meta({
   description: 'Aggregation method: count, sum, or mean',
   example: 'count',
@@ -44,6 +37,14 @@ export const chartDataAggregationSchema = z.enum(['count', 'sum', 'mean']).meta(
 })
 
 export type ChartDataAggregation = z.infer<typeof chartDataAggregationSchema>
+
+const chartDataTzSchema = ianaTimezoneSchema.optional().meta({
+  description:
+    'IANA timezone for bucket alignment (e.g. "Europe/Stockholm"). Daily, weekly and monthly buckets ' +
+    'start at local midnight, local Monday and the local 1st; hourly buckets at the local hour. ' +
+    'Defaults to UTC.',
+  example: 'Europe/Stockholm',
+})
 
 /**
  * Query schema for chart data endpoint (typed, for service layer).
@@ -73,6 +74,7 @@ export const chartDataQuerySchema = z
       description:
         'Data fields to break down by (for activity_type source). Multiple fields produce compound series keys.',
     }),
+    tz: chartDataTzSchema,
   })
   .meta({ id: 'ChartDataQuery', description: 'Query parameters for bucketed chart data' })
 
@@ -104,14 +106,12 @@ export const chartDataHttpQuerySchema = z
       .uuid()
       .optional()
       .meta({ description: 'Deprecated: use activity_type_id instead' }),
+    tz: chartDataTzSchema,
   })
   .meta({ id: 'ChartDataHttpQuery', description: 'HTTP query parameters for chart data endpoint' })
 
 export type ChartDataHttpQuery = z.infer<typeof chartDataHttpQuerySchema>
 
-/**
- * A single bucket in the chart data response.
- */
 export const chartDataBucketSchema = z
   .object({
     bucket_start: z.string().meta({ description: 'Start of the bucket (ISO 8601 datetime)' }),
@@ -133,9 +133,6 @@ export const chartDataBreakdownBucketSchema = z
 
 export type ChartDataBreakdownBucket = z.infer<typeof chartDataBreakdownBucketSchema>
 
-/**
- * Response schema for chart data endpoint.
- */
 export const chartDataResponseSchema = baseResponseSchema
   .extend({
     data: z

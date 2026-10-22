@@ -83,7 +83,6 @@
   background: #f3f4f6;
 }
 
-/* Dark mode */
 @media (prefers-color-scheme: dark) {
   .report-entries-editor-header label {
     color: #d1d5db;

@@ -41,7 +41,6 @@ interface LsvListResponse {
  * `ENERC` appears twice per food (kJ + kcal); we pick the kcal row only.
  */
 const EUROFIR_TO_COLUMN: Record<string, string> = {
-  // Macros
   PROT: 'protein',
   CHO: 'carbs',
   FAT: 'fat',
@@ -58,7 +57,6 @@ const EUROFIR_TO_COLUMN: Record<string, string> = {
   DISAC: 'disaccharides',
   WHOLET: 'whole_grain',
 
-  // Fat breakdown
   FASAT: 'saturated_fat',
   FAMS: 'monounsaturated_fat',
   FAPU: 'polyunsaturated_fat',
@@ -79,7 +77,6 @@ const EUROFIR_TO_COLUMN: Record<string, string> = {
   'F18:1': 'oleic_acid',
   'F20:0': 'arachidic_acid',
 
-  // Vitamins
   VITA: 'vitamin_a',
   RETOL: 'retinol',
   CARTBTOT: 'beta_carotene',
@@ -89,8 +86,7 @@ const EUROFIR_TO_COLUMN: Record<string, string> = {
   VITE: 'vitamin_e',
   VITK: 'vitamin_k',
   // LSV ships thiamine under `THIACLHCL` (HCl form). The bare `THIA` code
-  // appears in EuroFIR docs but not in LSV's payload — we kept the wrong key
-  // for too long, dropping all B1 from imports until this PR.
+  // appears in EuroFIR docs but not in LSV's payload.
   THIACLHCL: 'b1_thiamine',
   RIBF: 'b2_riboflavin',
   NIA: 'b3_niacin',
@@ -98,11 +94,9 @@ const EUROFIR_TO_COLUMN: Record<string, string> = {
   PANTAC: 'b5_pantothenic_acid',
   VITB6: 'b6_pyridoxine',
   VITB12: 'b12_cobalamin',
-  // Same story as thiamine: LSV ships total folate under `FOL`, not `FOLFD`,
-  // so all imported foods were missing folate before this fix.
+  // Same story as thiamine: LSV ships total folate under `FOL`, not `FOLFD`.
   FOL: 'folate',
 
-  // Minerals
   CA: 'calcium',
   CU: 'copper',
   FE: 'iron',

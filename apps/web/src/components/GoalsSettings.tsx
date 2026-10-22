@@ -12,7 +12,6 @@ interface GoalsSettingsProps {
   goals: Goal[]
 }
 
-// Duration unit descriptions for the info tooltip
 const durationUnits = [
   { description: 'seconds', unit: 's' },
   { description: 'minutes', unit: 'm' },
@@ -22,7 +21,6 @@ const durationUnits = [
   { description: 'months', unit: 'M' },
 ]
 
-// Get display unit for a metric (e.g., 'sec' -> 'min' for HR zones)
 const getDisplayUnit = (metric: string): string => {
   const unit = metricUnits[metric as keyof typeof metricUnits]
   if (unit === 'sec') return 'min'
@@ -30,7 +28,6 @@ const getDisplayUnit = (metric: string): string => {
   return unit ?? ''
 }
 
-// Convert value for display (seconds to minutes for HR zones)
 const toDisplayValue = (metric: string, value: number | undefined): string => {
   if (value === undefined) return ''
   const unit = metricUnits[metric as keyof typeof metricUnits]
@@ -38,7 +35,6 @@ const toDisplayValue = (metric: string, value: number | undefined): string => {
   return String(value)
 }
 
-// Convert display value back to storage value
 const fromDisplayValue = (metric: string, displayValue: string): number | undefined => {
   if (displayValue === '') return undefined
   const num = parseFloat(displayValue)
@@ -48,7 +44,6 @@ const fromDisplayValue = (metric: string, displayValue: string): number | undefi
   return num
 }
 
-// Validate a goal - returns error message or null if valid
 const validateGoal = (goal: Goal): string | null => {
   if (goal.min === undefined && goal.max === undefined) {
     return 'At least one of Min or Max is required'
@@ -68,7 +63,6 @@ const validateGoal = (goal: Goal): string | null => {
   return null
 }
 
-// Check if all goals are valid
 const allGoalsValid = (goals: Goal[]): boolean => {
   return goals.every((g) => validateGoal(g) === null)
 }
@@ -87,14 +81,12 @@ export function GoalsSettings({ goals }: GoalsSettingsProps) {
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [dragOverId, setDragOverId] = useState<string | null>(null)
 
-  // Local state for goals being edited (includes unsaved new goals)
   const [localGoals, setLocalGoals] = useState<LocalGoal[]>(() => goals.map((g) => ({ ...g, isNew: false })))
 
   // Sync local state when props change (e.g., after successful save)
   const [prevGoals, setPrevGoals] = useState(goals)
   if (goals !== prevGoals) {
     setPrevGoals(goals)
-    // Merge: keep local new goals, update saved goals from props
     setLocalGoals((local) => {
       const newGoals = local.filter((g) => g.isNew)
       const savedGoals = goals.map((g) => ({ ...g, isNew: false }))
@@ -115,13 +107,11 @@ export function GoalsSettings({ goals }: GoalsSettingsProps) {
       void queryClient.invalidateQueries({ queryKey: ['userSettings'] })
       void queryClient.invalidateQueries({ queryKey: ['goalsProgress'] })
       setSaveStatus({ status: 'saved', time: new Date() })
-      // Mark all goals as saved
       setLocalGoals((local) => local.map((g) => ({ ...g, isNew: false })))
     },
   })
 
   const saveGoals = (goalsToSave: Goal[]) => {
-    // Only save if all goals are valid
     if (!allGoalsValid(goalsToSave)) {
       return false
     }
@@ -153,16 +143,13 @@ export function GoalsSettings({ goals }: GoalsSettingsProps) {
     const localGoal = localGoals.find((g) => g.id === goalId)
     if (!localGoal) return
 
-    // Only save if valid
     const goalToValidate = stripIsNew(localGoal)
     if (validateGoal(goalToValidate) !== null) {
       return
     }
 
-    // Build the full goals array to save
     const goalsToSave: Goal[] = localGoals.filter((g) => validateGoal(g) === null).map(stripIsNew)
 
-    // Check if anything changed from the saved state
     const savedGoal = goals.find((g) => g.id === goalId)
     if (savedGoal && JSON.stringify(goalToValidate) === JSON.stringify(savedGoal)) {
       return
@@ -180,7 +167,6 @@ export function GoalsSettings({ goals }: GoalsSettingsProps) {
       }),
     )
 
-    // Auto-save if goal is valid
     setTimeout(() => handleFieldBlur(goalId), 0)
   }
 
@@ -199,13 +185,11 @@ export function GoalsSettings({ goals }: GoalsSettingsProps) {
   const handleDeleteGoal = (goalId: string) => {
     const localGoal = localGoals.find((g) => g.id === goalId)
 
-    // If it's a new unsaved goal, just remove from local state
     if (localGoal?.isNew) {
       setLocalGoals((local) => local.filter((g) => g.id !== goalId))
       return
     }
 
-    // Otherwise, remove and save
     const updatedGoals = goals.filter((g) => g.id !== goalId)
     setLocalGoals((local) => local.filter((g) => g.id !== goalId))
     saveGoals(updatedGoals)
@@ -219,7 +203,6 @@ export function GoalsSettings({ goals }: GoalsSettingsProps) {
       const [removed] = newGoals.splice(fromIndex, 1)
       newGoals.splice(toIndex, 0, removed)
 
-      // Save the new order (only valid saved goals)
       const goalsToSave: Goal[] = newGoals.filter((g) => !g.isNew && validateGoal(g) === null).map(stripIsNew)
 
       if (goalsToSave.length > 0) {

@@ -1,6 +1,4 @@
 /**
- * Lab report schemas.
- *
  * Reports group related lab measurements (InBody scans, blood panels, hair mineral analyses, etc.)
  * into structured containers with method/confidence metadata and reference ranges.
  */
@@ -14,13 +12,6 @@ import {
   iso8601DateTimeSchema,
 } from './common.ts'
 
-// ============================================================================
-// Enums
-// ============================================================================
-
-/**
- * Confidence level of a measurement.
- */
 export const confidenceSchema = z.enum(['measured', 'estimated', 'derived']).meta({
   description: 'Confidence level: measured (direct), estimated (indirect), or derived (calculated)',
   id: 'Confidence',
@@ -28,9 +19,6 @@ export const confidenceSchema = z.enum(['measured', 'estimated', 'derived']).met
 
 export type Confidence = z.infer<typeof confidenceSchema>
 
-/**
- * Flag indicating where a value falls relative to its reference range.
- */
 export const reportFlagSchema = z.enum(['critical_low', 'low', 'normal', 'high', 'critical_high']).meta({
   description: 'Flag indicating where the value falls relative to its reference range',
   id: 'ReportFlag',
@@ -38,13 +26,6 @@ export const reportFlagSchema = z.enum(['critical_low', 'low', 'normal', 'high',
 
 export type ReportFlag = z.infer<typeof reportFlagSchema>
 
-// ============================================================================
-// Report Entry
-// ============================================================================
-
-/**
- * A single entry within a report — one measured/derived value.
- */
 export const reportEntrySchema = z
   .object({
     confidence: confidenceSchema.optional().meta({
@@ -71,13 +52,6 @@ export const reportEntrySchema = z
 
 export type ReportEntry = z.infer<typeof reportEntrySchema>
 
-// ============================================================================
-// Report
-// ============================================================================
-
-/**
- * A lab report containing grouped entries from a single lab visit or scan.
- */
 export const reportSchema = z
   .object({
     created_at: iso8601DateTimeSchema.optional(),
@@ -105,13 +79,6 @@ export const reportSchema = z
 
 export type Report = z.infer<typeof reportSchema>
 
-// ============================================================================
-// Request Schemas
-// ============================================================================
-
-/**
- * Add report request body.
- */
 export const addReportBodySchema = z
   .object({
     date: iso8601DateTimeSchema.meta({ description: 'Date/time of the report' }),
@@ -136,10 +103,7 @@ export const addReportBodySchema = z
 
 export type AddReportBody = z.infer<typeof addReportBodySchema>
 
-/**
- * Update report request body — all fields optional (PATCH semantics).
- * When entries is provided, it fully replaces all existing entries.
- */
+/** When entries is provided, it fully replaces all existing entries. */
 export const updateReportBodySchema = z
   .object({
     date: iso8601DateTimeSchema.optional().meta({ description: 'New date/time of the report' }),
@@ -166,9 +130,6 @@ export const updateReportBodySchema = z
 
 export type UpdateReportBody = z.infer<typeof updateReportBodySchema>
 
-/**
- * Reports query schema — filter by type and/or date range.
- */
 export const reportsQuerySchema = z
   .object({
     end: iso8601DateTimeSchema.optional().meta({ description: 'End date/time filter' }),
@@ -179,38 +140,22 @@ export const reportsQuerySchema = z
 
 export type ReportsQuery = z.infer<typeof reportsQuerySchema>
 
-// ============================================================================
-// Response Schemas
-// ============================================================================
-
-/**
- * Single report response.
- */
 export const reportResponseSchema = createDataResponseSchema(reportSchema).meta({
   id: 'ReportResponse',
 })
 
 export type ReportResponse = z.infer<typeof reportResponseSchema>
 
-/**
- * Multiple reports response.
- */
 export const reportsResponseSchema = createDataArrayResponseSchema(reportSchema).meta({
   id: 'ReportsResponse',
 })
 
 export type ReportsResponse = z.infer<typeof reportsResponseSchema>
 
-/**
- * Delete report response.
- */
 export const deleteReportResponseSchema = baseResponseSchema.meta({ id: 'DeleteReportResponse' })
 
 export type DeleteReportResponse = z.infer<typeof deleteReportResponseSchema>
 
-/**
- * Update report response.
- */
 export const updateReportResponseSchema = createDataResponseSchema(reportSchema).meta({
   id: 'UpdateReportResponse',
 })

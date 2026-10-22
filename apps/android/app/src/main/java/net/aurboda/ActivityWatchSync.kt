@@ -24,10 +24,6 @@ private const val AW_LAST_SYNC_PREFIX = "aw_last_sync_"
 private const val AW_URL = "http://localhost:5600"
 private const val AW_TIMEOUT_MS = 2000L
 
-// ============================================================================
-// Preferences
-// ============================================================================
-
 fun isActivityWatchSyncEnabled(context: Context): Boolean {
   val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
   return prefs.getBoolean(AW_SYNC_ENABLED_KEY, false)
@@ -57,10 +53,6 @@ private fun setLastSyncTime(
   val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
   prefs.edit().putString("$AW_LAST_SYNC_PREFIX$bucketId", timestamp).apply()
 }
-
-// ============================================================================
-// API Models
-// ============================================================================
 
 @Serializable
 data class AwEvent(
@@ -99,10 +91,6 @@ data class AurbodaAwSyncResult(
   val error: String? = null,
 )
 
-// ============================================================================
-// Result
-// ============================================================================
-
 data class ActivityWatchSyncResult(
   val available: Boolean = false,
   val bucketsFound: Int = 0,
@@ -111,13 +99,6 @@ data class ActivityWatchSyncResult(
   val error: String? = null,
 )
 
-// ============================================================================
-// AW Local API Client
-// ============================================================================
-
-/**
- * Check if ActivityWatch is reachable on localhost.
- */
 suspend fun checkActivityWatchAvailable(httpClient: HttpClient): Boolean =
   try {
     val response = httpClient.get("$AW_URL/api/0/info")
@@ -127,9 +108,6 @@ suspend fun checkActivityWatchAvailable(httpClient: HttpClient): Boolean =
   }
 
 /**
- * Fetch bucket list from ActivityWatch and filter for app-usage buckets.
- * Returns a list of (bucketId, bucketType) pairs.
- *
  * Desktop: type == "currentwindow" (aw-watcher-window)
  * Android: bucket ID starts with "aw-android-appevents"
  */
@@ -154,9 +132,6 @@ suspend fun fetchAppEventBuckets(httpClient: HttpClient): List<Pair<String, Stri
     emptyList()
   }
 
-/**
- * Fetch events from a specific bucket since the given timestamp.
- */
 suspend fun fetchBucketEvents(
   httpClient: HttpClient,
   bucketId: String,
@@ -178,9 +153,6 @@ suspend fun fetchBucketEvents(
     emptyList()
   }
 
-/**
- * Push events to the Aurboda backend.
- */
 suspend fun pushEventsToAurboda(
   httpClient: HttpClient,
   apiUrl: String,
@@ -206,18 +178,6 @@ suspend fun pushEventsToAurboda(
     AurbodaAwSyncResponse(success = false, error = e.message)
   }
 
-// ============================================================================
-// Orchestrator
-// ============================================================================
-
-/**
- * Full ActivityWatch sync pipeline:
- * 1. Check if AW is available (skip silently if not)
- * 2. Fetch app-usage buckets
- * 3. For each bucket, fetch new events since last sync
- * 4. Map to Aurboda format and push to backend
- * 5. Update last sync timestamp on success
- */
 suspend fun processActivityWatchSync(
   apiUrl: String,
   authToken: String,
@@ -251,7 +211,6 @@ suspend fun processActivityWatchSync(
     totalFetched += events.size
     Log.d(TAG, "📱 Fetched ${events.size} events from $bucketId")
 
-    // Map AW events to Aurboda format
     val aurbodaEvents =
       events.mapNotNull { event ->
         val app = event.data["app"]?.jsonPrimitive?.contentOrNull
@@ -288,7 +247,6 @@ suspend fun processActivityWatchSync(
       }
     }
 
-    // Update last sync time to the latest event timestamp
     val latestTimestamp = events.maxByOrNull { it.timestamp }?.timestamp
     if (latestTimestamp != null) {
       setLastSyncTime(context, bucketId, latestTimestamp)

@@ -1,23 +1,17 @@
-/**
- * Database test helper using testcontainers.
- *
- * Provides a real PostgreSQL instance for integration testing of db.ts functions.
- * Uses PostGIS image to match production environment.
- */
-
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
 import { Client } from 'pg'
 
-import { _setClientForUser } from '../db/index.ts'
+import { _setDbForUser } from '../db/index.ts'
+import { createRolePool, type UserDb } from '../db/pool.ts'
 import { createTableStatements, tableCreationOrder } from '../schema.ts'
 
 let container: StartedPostgreSqlContainer | null = null
 let client: Client | null = null
+let pool: UserDb | null = null
 
 const TEST_USER = 'testuser'
 
 /**
- * Start a PostgreSQL container and set up the test user's client.
  * Call this in beforeAll().
  */
 export const startTestDb = async (): Promise<void> => {
@@ -33,7 +27,6 @@ export const startTestDb = async (): Promise<void> => {
   })
   await client.connect()
 
-  // Create all tables
   for (const tableName of tableCreationOrder) {
     const statement = createTableStatements[tableName]
     if (statement) {
@@ -41,8 +34,16 @@ export const startTestDb = async (): Promise<void> => {
     }
   }
 
-  // Inject the client so db.ts functions use this connection
-  _setClientForUser(TEST_USER, client)
+  // The user's queries go through a real pool, as in production, so parallel
+  // statements and transactions run on separate connections.
+  pool = createRolePool({ connectionString: container.getConnectionUri(), max: 5 })
+  _setDbForUser(TEST_USER, pool)
+}
+
+/** Connection URI of the test container, for tests that open their own connections. */
+export const getTestConnectionUri = (): string => {
+  if (!container) throw new Error('Test DB not started — call startTestDb() first.')
+  return container.getConnectionUri()
 }
 
 /**
@@ -55,10 +56,13 @@ export const getTestDbClient = (): Client => {
 }
 
 /**
- * Stop the PostgreSQL container.
  * Call this in afterAll().
  */
 export const stopTestDb = async (): Promise<void> => {
+  if (pool) {
+    await pool.end()
+    pool = null
+  }
   if (client) {
     await client.end()
     client = null
@@ -69,13 +73,9 @@ export const stopTestDb = async (): Promise<void> => {
   }
 }
 
-/**
- * Get the test user name to pass to db.ts functions.
- */
 export const getTestUser = (): string => TEST_USER
 
 /**
- * Clean all data from tables (but keep schema).
  * Call this in beforeEach() for test isolation.
  */
 export const cleanTestDb = async (): Promise<void> => {
@@ -94,15 +94,28 @@ export const cleanTestDb = async (): Promise<void> => {
     'reports',
     'meals',
     'notes',
+    'challenge_banner',
     'challenge_members',
     'challenge_participations',
+    'challenge_left',
     'challenges',
     'shared_dashboards',
+    'autoshare_rules',
+    'autoshare_suppressions',
     'feed_posts',
     'feed_actor',
+    'feed_follower',
+    'feed_following',
+    'feed_reaction',
+    'feed_post_reaction',
+    'timeline_entry',
+    'profile_avatar',
     'tags',
     'tag_definitions',
     'time_series',
+    'activity_routes',
+    'routes',
+    'activity_tracks',
     'activities',
     'productivity',
     'places',
@@ -116,9 +129,12 @@ export const cleanTestDb = async (): Promise<void> => {
     'user_settings',
     'mcp_sessions',
     'lastfm_tag_rules',
+    'deduction_rules',
     'outbound_sync_queue',
     'screentime_categories',
     'import_jobs',
+    'custom_metrics',
+    'goals',
   ]
 
   for (const table of tables) {

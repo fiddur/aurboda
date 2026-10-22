@@ -1,6 +1,3 @@
-/**
- * MCP deduction rule management tools.
- */
 import { addDeductionRuleBodySchema, updateDeductionRuleBodySchema } from '@aurboda/api-spec'
 import { z } from 'zod'
 
@@ -11,12 +8,14 @@ import {
   activityTypeExists,
   deleteDeductionRule,
   deleteRuleActivities,
+  getDeductionRule,
   getDeductionRules,
   getEnabledDeductionRules,
   insertDeductionRule,
   updateDeductionRule,
 } from '../db/index.ts'
 import { evaluateAllRules } from '../services/deduction-engine.ts'
+import { mergeRuleUpdate, validateRuleShape } from '../services/media-plays.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
 export const registerDeductionRuleTools = (
@@ -27,7 +26,7 @@ export const registerDeductionRuleTools = (
 ) => {
   server.tool(
     'list_deduction_rules',
-    'List all deduction rules. Rules automatically create or enrich activities when data conditions are met.',
+    'List all deduction rules. Rules automatically create, enrich or retype activities when data conditions are met.',
     {},
     async () => {
       const rules = await getDeductionRules(user)
@@ -37,20 +36,26 @@ export const registerDeductionRuleTools = (
 
   server.tool(
     'add_deduction_rule',
-    `Create a deduction rule that automatically creates or enriches activities from data conditions.
+    `Create a deduction rule that automatically creates, enriches or retypes activities from data conditions.
 
 Condition kinds:
-- "activity": matches when an activity of the given type exists
+- "activity": matches when an activity of the given type exists, optionally filtered by data_filters and by title (match_mode "contains" (default) or "exact", case-insensitive)
 - "tag": matches when a tag with the given name exists
 - "screentime_category": matches productivity records in a category path
 - "activity_data": matches when an activity has a specific data field value (operators: eq, neq, exists, not_exists)
 - "location": matches when the user is at a named location
+- "scrobble": matches Last.fm scrobbles by artist/track
+- "media": matches media plays (MPRIS pushes and non-duplicate Last.fm scrobbles) by url_host (host or subdomain), title, artist, player, min_played_secs and min_played_ratio (ratio is skipped when the track length is unknown)
+- "after_date": only matches after a date
 
 Modes:
 - "create" (default): creates new activities of output_activity_type
 - "enrich": patches output_data onto existing activities of output_activity_type (only fills missing fields)
+- "retype": changes the activities matched by the rule's single "activity" condition (where they overlap the other conditions) to output_activity_type; output_title, if set, replaces their title, and output_data fills missing fields. A synced activity gets an override, like a manual type edit, so re-syncs keep the new type. Deleting the rule does not revert retyped activities. Example: Garmin "Other" activities titled "Sex" → { mode: "retype", conditions: [{ kind: "activity", activity_type: "other_workout", title: "sex" }], output_activity_type: "sex" }
 
 Use output_data to set custom data fields on created/enriched activities.
+In enrich mode with a "media" condition, output_media_field { field, strip_pattern? } copies the title of the longest matching play overlapping each activity into data[field], after removing every strip_pattern (JS regex) match. The rule overwrites a value it wrote itself, never one set by someone else.
+In enrich mode, output_title_field (e.g. "session_name") copies that data field into each enriched activity's title, through the same path as a manual edit, so a synced activity gets an override and re-syncs keep the title. It replaces only a blank title, the type's name, or a title the rule wrote itself; a title typed by hand is kept, and a missing or blank field never clears one. Combine with a media rule that fills the field, or use alone with an "activity" condition filtered on the field existing.
 Multiple conditions use AND logic — all must overlap in time. The rule is applied retroactively to all historical data.`,
     { ...addDeductionRuleBodySchema.shape },
     async (params) => {
@@ -60,9 +65,11 @@ Multiple conditions use AND logic — all must overlap in time. The rule is appl
         )
       }
 
+      const ruleShapeError = validateRuleShape(params)
+      if (ruleShapeError) return errorResponse(ruleShapeError)
+
       const rule = await insertDeductionRule(user, params)
 
-      // Queue async retroactive evaluation
       if (deductionQueue) {
         deductionQueue.enqueueRuleCrud({ user, rule_ids: [rule.id], mode: 'created' })
       }
@@ -86,10 +93,14 @@ Multiple conditions use AND logic — all must overlap in time. The rule is appl
         return errorResponse(`Unknown activity type: "${updates.output_activity_type}"`)
       }
 
+      const existing = await getDeductionRule(user, id)
+      if (!existing) return errorResponse('Deduction rule not found')
+      const ruleShapeError = validateRuleShape(mergeRuleUpdate(existing, updates))
+      if (ruleShapeError) return errorResponse(ruleShapeError)
+
       const updated = await updateDeductionRule(user, id, updates)
       if (!updated) return errorResponse('Deduction rule not found')
 
-      // Queue async re-evaluation
       if (updated.enabled && deductionQueue) {
         deductionQueue.enqueueRuleCrud({
           user,
@@ -149,6 +160,9 @@ Multiple conditions use AND logic — all must overlap in time. The rule is appl
         return errorResponse(`Unknown activity type: "${params.output_activity_type}"`)
       }
 
+      const ruleShapeError = validateRuleShape(params)
+      if (ruleShapeError) return errorResponse(ruleShapeError)
+
       // Create a temporary rule object for evaluation (no DB insert)
       const tempRule = {
         conditions: params.conditions,
@@ -159,7 +173,9 @@ Multiple conditions use AND logic — all must overlap in time. The rule is appl
         name: params.name,
         output_activity_type: params.output_activity_type,
         output_data: params.output_data as Record<string, unknown> | undefined,
+        output_media_field: params.output_media_field,
         output_title: params.output_title,
+        output_title_field: params.output_title_field,
         priority: params.priority ?? 0,
       }
 

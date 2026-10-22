@@ -48,7 +48,6 @@ describe('createDetectionTrigger', () => {
     // Detection should not run immediately
     expect(deps.runDetectionForUser).not.toHaveBeenCalled()
 
-    // Advance timers by 5 seconds
     await vi.advanceTimersByTimeAsync(5000)
 
     expect(deps.runDetectionForUser).toHaveBeenCalledWith('testuser')

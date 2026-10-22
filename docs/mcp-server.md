@@ -9,12 +9,72 @@ The MCP server exposes 60+ tools covering all of Aurboda's functionality. Tool d
 Key areas covered by MCP tools:
 
 - **Querying** -- daily summaries, metrics, activities, tags, meals, reports, correlations, trends, chart data
-- **Tracking** -- add/update/delete activities, tags, metrics, meals, notes
+- **Tracking** -- add/update/delete activities, tags, metrics, meals, comments
 - **Activity types** -- manage custom activity type definitions
 - **Deduction rules** -- create rules that auto-generate activities from data conditions
 - **Screentime** -- manage category rules and recategorize
 - **Sync** -- trigger data syncs from Garmin, Oura, Last.fm, RescueTime, calendars
 - **Settings** -- user preferences, HR zones, training load configuration
+
+### Sleep tools
+
+| Tool               | What it does                                                                                                                                                                                               |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `get_latest_sleep` | "How did I sleep last night?" -- the most recent sleep ending within 36 hours: timing, score, stage timeline and minutes, resting HR and HRV against 30-day baselines, Body Battery at bedtime and wake-up |
+
+### Chart data tools
+
+| Tool               | What it does                                                                                                                                                                                                                                                                                                                                                                                     |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `query_chart_data` | Bucketed counts, sums or means of an activity type, metric (including computed `hr_zone_<n>_sec`) or screentime category, the same as `GET /chart-data`. `tz` (IANA, e.g. `Europe/Stockholm`) makes daily, weekly and monthly buckets start at local midnight, local Monday and the local 1st, and hourly ones at the local hour; omitted, buckets are UTC. The web app sends the browser's zone |
+
+### Activity session tools
+
+See [Activity types -- sessions overview](features/activity-types.md#sessions-overview).
+
+| Tool                         | What it does                                                                                                                                                                                                                                 |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `query_activity_sessions`    | Sessions of one type, each with length, avg/max HR, HR-zone seconds and a box-plot summary of its HR samples; with `group_by` (a categorical data field) also one group per value, to compare repeats or pick a session by length and effort |
+| `get_activity_neighbors`     | The previous and next activity of the same type, optionally only those sharing a data field value (`same_field`, e.g. `session_name`)                                                                                                        |
+| `list_activity_field_values` | The values a data field (e.g. `session_name`) has taken across a type and its subtypes, most recently used first, with counts -- for reusing a value instead of spelling a new variant                                                       |
+
+### Activity track tools
+
+See [Routes and segments](features/routes-and-segments.md).
+
+| Tool                       | What it does                                                                                                                                         |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `get_activity_track`       | An activity's full-resolution GPS track: `lat`, `lon`, `alt` and `t` (seconds since the activity start) per point, with `length_m` and `point_count` |
+| `backfill_activity_tracks` | Build missing tracks from stored raw records (Garmin details at full resolution, Strava polylines shape-only) and return the counts                  |
+
+### Route tools
+
+A route is a course run more than once, recognised from the tracks. See
+[Routes and segments](features/routes-and-segments.md#phase-2-routes). `query_activities`
+takes a `route_id` to list a route's activities.
+
+| Tool           | What it does                                                                                                                              |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_routes`  | Every route with its type, length, run count and latest run; filter by `activity_type` (with subtypes), order by `sort`                   |
+| `get_route`    | One route with its line and its runs, newest first: elapsed seconds, average heart rate and pace (s/km) per run                           |
+| `update_route` | Rename a route                                                                                                                            |
+| `delete_route` | Delete a route; its runs are kept, stay attached to it and are not matched again                                                          |
+| `merge_routes` | Move every run of `source_route_id` onto the route `id` and delete the source                                                             |
+| `match_routes` | Match every tracked activity without a route (attach to a covering route, or pair two unrouted tracks into a new one); returns the counts |
+
+### Comment tools
+
+Comments (stored as "notes") hang off anything, or off a bare point in time, and
+can be threaded one level deep. See [Comments](features/comments.md) for the data
+model.
+
+| Tool          | What it does                                                                                                                                                                                                                                             |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `add_note`    | Add a comment in one of three shapes: on an entity (`entity_type` + `entity_id`), a reply (`entity_type: "note"`, `entity_id` = the comment's id), or about a moment (`entity_type: "time"`, no `entity_id`, `start_time` required, `end_time` optional) |
+| `get_notes`   | All comments on one entity, each with its thread nested in `replies` (oldest first)                                                                                                                                                                      |
+| `query_notes` | Every comment anchored in a `from`/`to` time range -- threads nested, replies never listed separately                                                                                                                                                    |
+| `update_note` | Change a comment's content; `start_time`/`end_time` only on a `time` comment, and moving one moves its whole thread                                                                                                                                      |
+| `delete_note` | Delete a comment; deleting a thread root deletes its replies too                                                                                                                                                                                         |
 
 ## Endpoint
 
@@ -130,6 +190,21 @@ Once connected, you can ask Claude questions like:
 - "Log that I just had a coffee"
 - "Record my weight as 75.5 kg"
 - "I meditated for 30 minutes starting at 2pm - add that as a tag"
+- "Note that I felt dizzy around 11:40 this morning"
+- "What did I comment on yesterday?"
+
+## Input conventions
+
+String values are trimmed of leading and trailing whitespace before validation, in MCP tool arguments as
+well as in REST request bodies and query strings, at any depth (inside `data` records and arrays too).
+Whitespace inside a value is kept, and a value that is only whitespace becomes empty, so a required field
+still rejects it. Phone keyboards append a space after an autocompleted word: `"yoga "` reaches the tool
+as `"yoga"`.
+
+These keys keep their value exactly as sent, wherever they appear: passwords (`password`,
+`current_password`, `new_password`), regular expressions and patterns (`pattern`, `regex`, `rule_regex`,
+`strip_pattern`, `message_pattern`, `outcome_pattern`), markdown (`content`, `markdown`) and the WebAuthn
+`response_json`.
 
 ## Error Handling
 

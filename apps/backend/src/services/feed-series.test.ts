@@ -33,6 +33,7 @@ describe('floorSeriesBucket', () => {
     expect(floorSeriesBucket('60s')).toBe('60s')
     expect(floorSeriesBucket('1m')).toBe('1m')
     expect(floorSeriesBucket('2h')).toBe('2h')
+    expect(floorSeriesBucket('1d')).toBe('1d') // `d` is understood, not floored to 5s
   })
 
   test('falls back to 5s for a malformed bucket', () => {

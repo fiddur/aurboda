@@ -1,6 +1,3 @@
-/**
- * MCP screentime category management tools.
- */
 import { createScreentimeCategoryBodySchema, updateScreentimeCategoryBodySchema } from '@aurboda/api-spec'
 import { z } from 'zod'
 
@@ -12,11 +9,11 @@ import {
   modifyCategory,
   recategorizeAll,
   removeCategory,
+  toRecategorizeResponseFields,
 } from '../services/screentime-categories.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
 export const registerScreentimeCategoryTools = (server: McpServer, user: string) => {
-  // Tool: list_screentime_categories
   server.tool(
     'list_screentime_categories',
     'List all screentime categories. Returns hierarchical category rules used to categorize app/website usage.',
@@ -27,7 +24,6 @@ export const registerScreentimeCategoryTools = (server: McpServer, user: string)
     },
   )
 
-  // Tool: add_screentime_category
   server.tool(
     'add_screentime_category',
     'Add a screentime category rule. Categories match app names and window titles using regex. Hierarchical: ["Work", "Programming"] is a child of ["Work"]. Triggers recategorization of all existing records.',
@@ -46,7 +42,6 @@ export const registerScreentimeCategoryTools = (server: McpServer, user: string)
     },
   )
 
-  // Tool: update_screentime_category
   server.tool(
     'update_screentime_category',
     'Update a screentime category. Only provided fields are changed. Triggers recategorization if rules or name changed.',
@@ -61,7 +56,6 @@ export const registerScreentimeCategoryTools = (server: McpServer, user: string)
     },
   )
 
-  // Tool: delete_screentime_category
   server.tool(
     'delete_screentime_category',
     'Delete a screentime category and all its children. Triggers recategorization.',
@@ -73,7 +67,6 @@ export const registerScreentimeCategoryTools = (server: McpServer, user: string)
     },
   )
 
-  // Tool: import_activitywatch_categories
   server.tool(
     'import_activitywatch_categories',
     "Import screentime categories from an ActivityWatch server. Fetches the category configuration from AW's settings API and imports them.",
@@ -97,14 +90,13 @@ export const registerScreentimeCategoryTools = (server: McpServer, user: string)
     },
   )
 
-  // Tool: recategorize_screentime
   server.tool(
     'recategorize_screentime',
-    'Force recategorization of all screentime records against current category rules. Use after bulk rule changes.',
+    'Force recategorization of all screentime records against current category rules, then rebuild the screentime activities from them. Use after bulk rule changes.',
     {},
     async () => {
-      const count = await recategorizeAll(user)
-      return jsonResponse({ records_updated: count, success: true })
+      const result = await recategorizeAll(user, { rebuildSpans: true })
+      return jsonResponse({ ...toRecategorizeResponseFields(result), success: true })
     },
   )
 }

@@ -1,10 +1,3 @@
-/**
- * Generic session grouping utility.
- *
- * Groups timestamped events into sessions based on a maximum gap between
- * consecutive events. Reusable for any timestamped-event-to-session grouping.
- */
-
 export interface TimestampedEvent {
   readonly timestamp: Date
 }
@@ -16,11 +9,8 @@ export interface Session<T> {
 }
 
 /**
- * Group sorted events into sessions based on maximum gap between consecutive events.
- *
  * @param events - Events sorted ascending by timestamp
  * @param maxGapMs - Maximum gap in milliseconds between consecutive events in the same session
- * @returns Array of sessions, each containing its events and start/end times
  */
 export const groupIntoSessions = <T extends TimestampedEvent>(
   events: T[],

@@ -1,16 +1,9 @@
-/**
- * Event probability analysis for discrete event correlation.
- */
-
 import type { SyncProvider } from '../queries/index.ts'
 import type { EventProbabilityResult, LagWindowResult } from './types.ts'
 
 import { getAllActivitiesInRange } from '../../db/index.ts'
 import { chiSquaredTest } from './utils.ts'
 
-/**
- * Get probability of outcome event after trigger event (for discrete event correlation).
- */
 // eslint-disable-next-line complexity -- TODO: refactor
 export async function getEventProbability(
   user: string,
@@ -26,7 +19,6 @@ export async function getEventProbability(
   start.setDate(start.getDate() - periodDays)
   start.setHours(0, 0, 0, 0)
 
-  // Auto-sync if provider available
   if (sync) {
     await Promise.all([
       sync.syncOuraIfNeeded(user, 'tags'),
@@ -35,10 +27,8 @@ export async function getEventProbability(
     ])
   }
 
-  // Parse outcome pattern as regex
   const outcomeRegex = new RegExp(outcome.pattern, 'i')
 
-  // Get trigger events
   let triggerEvents: Date[] = []
 
   const allActivities = await getAllActivitiesInRange(user, start, end)
@@ -49,7 +39,6 @@ export async function getEventProbability(
       .map((a) => a.start_time)
   }
 
-  // Get all outcome events (activities matching pattern)
   const outcomeEvents = allActivities
     .filter((a) => outcomeRegex.test(a.activity_type))
     .map((a) => a.start_time)
@@ -61,7 +50,6 @@ export async function getEventProbability(
   }
   const baselineProbability = daysWithOutcome.size / periodDays
 
-  // Calculate probability for each lag window
   const postTrigger: Record<string, LagWindowResult> = {}
 
   for (const lag of lagWindows) {
@@ -73,7 +61,6 @@ export async function getEventProbability(
     const lagUnit = lagMatch[2]
     const lagMs = lagUnit === 'h' ? lagValue * 60 * 60 * 1000 : lagValue * 24 * 60 * 60 * 1000
 
-    // Count outcomes within lag window after each trigger
     let outcomesAfterTrigger = 0
     const triggersWithOutcome = new Set<number>()
 

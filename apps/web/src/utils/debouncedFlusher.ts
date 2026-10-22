@@ -7,11 +7,8 @@
  * save without running it.
  */
 export interface DebouncedFlusher<T> {
-  /** Replace any pending body and (re)start the debounce timer. */
   schedule: (body: T) => void
-  /** If a save is pending, run it now and clear the timer. */
   flush: () => void
-  /** Discard any pending save without running it. */
   cancel: () => void
 }
 

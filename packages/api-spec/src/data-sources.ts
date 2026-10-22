@@ -74,6 +74,15 @@ export const dataSources: DataSourceInfo[] = [
     userSetup: 'OAuth connect',
   },
   {
+    name: 'Gravl',
+    homepage: 'https://gravl.ai/',
+    doc: 'gravl.md',
+    provides: 'Strength workouts with per-set exercise, weight, reps, RPE and set type',
+    how: 'Pull (API) + on Health Connect arrival',
+    adminSetup: 'Optional OAuth app (admin setting)',
+    userSetup: 'Personal token, or OAuth connect when configured',
+  },
+  {
     name: 'OwnTracks',
     homepage: 'https://owntracks.org/',
     doc: 'owntracks.md',
@@ -108,6 +117,14 @@ export const dataSources: DataSourceInfo[] = [
     how: 'Pull (API)',
     adminSetup: 'API key (admin setting)',
     userSetup: 'Last.fm username',
+  },
+  {
+    name: 'Media players (MPRIS)',
+    doc: 'media.md',
+    provides: 'Video, music and podcast plays with URL, played time and track length (Linux desktop)',
+    how: 'Push (logger script)',
+    adminSetup: 'None',
+    userSetup: 'Run the MPRIS logger + push script',
   },
   {
     name: 'Calendars (ICS)',

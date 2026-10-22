@@ -52,43 +52,31 @@ private const val TAG = "SensorService"
 private const val NOTIFICATION_ID = 1001
 private const val CHANNEL_ID = "sensor_service_channel"
 private const val SYNC_INTERVAL_MS = 5000L
-private const val RR_BUFFER_MIN_SIZE = 30 // Minimum intervals for HRV calculation
+private const val RR_BUFFER_MIN_SIZE = 30
 private const val RR_BUFFER_MAX_SIZE = 300 // Maximum intervals (~5 minutes at 60bpm)
-private const val CHART_HISTORY_DURATION_MS = 5 * 60 * 1000L // 5 minutes of chart history
+private const val CHART_HISTORY_DURATION_MS = 5 * 60 * 1000L
 private const val ONE_MINUTE_MS = 60_000L
 private const val RECONNECT_BASE_DELAY_MS = 2_000L
 private const val RECONNECT_MAX_DELAY_MS = 60_000L
 private const val RECONNECT_MAX_ATTEMPTS = 20
 
-/**
- * Data point for chart display with timestamp.
- */
 data class ChartDataPoint(
   val timestamp: Long, // epoch millis
   val value: Float,
 )
 
-/**
- * State for an individual connected device.
- */
 data class DeviceState(
   val device: ConnectedDevice,
   val connectionState: BleConnectionState = BleConnectionState.Connected,
   val batteryLevel: Int? = null,
   val rssi: Int? = null,
   val lastDataReceivedTime: Instant? = null,
-  // HR device specific
   val currentHeartRate: Int? = null,
-  // RSC device specific
   val currentCadence: Int? = null,
   val currentSpeed: Float? = null,
   val stepsSinceStart: Int = 0,
 )
 
-/**
- * State exposed by SensorService to the UI.
- * Supports multiple simultaneously connected devices.
- */
 data class SensorServiceState(
   val isRunning: Boolean = false,
   val connectedDevices: Map<String, DeviceState> = emptyMap(), // keyed by device address
@@ -97,11 +85,10 @@ data class SensorServiceState(
   val pendingSamples: Int = 0,
   val pendingCadenceSamples: Int = 0,
   val currentHrv: Double? = null, // Latest RMSSD in ms
-  val hrvReliable: Boolean = false, // Whether HRV measurement is reliable
-  val rrIntervalCount: Int = 0, // Number of RR intervals in buffer
+  val hrvReliable: Boolean = false,
+  val rrIntervalCount: Int = 0,
   val hrChartHistory: List<ChartDataPoint> = emptyList(), // 5 min HR history for chart
   val hrvChartHistory: List<ChartDataPoint> = emptyList(), // 5 min HRV history for chart
-  // Phone step counter
   val phoneStepCounterAvailable: Boolean = false,
   val phoneStepCounterActive: Boolean = false,
   val phoneStepsSinceStart: Int = 0,
@@ -138,9 +125,6 @@ data class LiveHeartRateRecord(
   val metadata: LiveRecordMetadata,
 )
 
-/**
- * Simplified metadata for live sensor records.
- */
 @Serializable
 data class LiveRecordMetadata(
   val id: String,
@@ -175,14 +159,10 @@ private data class StepsSyncBody(
   val data: List<LiveStepsRecord>,
 )
 
-/**
- * Accumulates steps for a specific clock minute.
- * The minute is identified by its start time (truncated to minute boundary).
- */
 data class MinuteStepBucket(
   val minuteStart: Instant, // Start of the clock minute (e.g., 11:46:00.000)
   var totalSteps: Long = 0,
-  var lastCadence: Int = 0, // Last known cadence for ongoing calculation
+  var lastCadence: Int = 0,
 )
 
 /**
@@ -201,7 +181,6 @@ private data class HrvSyncBody(
 )
 
 /**
- * Foreground service that manages BLE sensor connections.
  * Keeps connections alive in the background, buffers HR samples,
  * syncs to backend every 5 seconds, and writes to Health Connect.
  */
@@ -212,11 +191,9 @@ class SensorService : Service() {
   private var syncJob: Job? = null
   private var phoneStepJob: Job? = null
 
-  // Auto-reconnect tracking
   private val reconnectJobs = mutableMapOf<String, Job>()
   private val reconnectAttempts = mutableMapOf<String, Int>()
 
-  // Phone step counter
   private var phoneStepCounter: PhoneStepCounter? = null
 
   private val sampleBuffer = mutableListOf<HeartRateSample>()
@@ -226,7 +203,6 @@ class SensorService : Service() {
   private val hrvChartBuffer = mutableListOf<ChartDataPoint>()
 
   // Step buckets keyed by minute start time (epoch millis truncated to minute)
-  // Also used for phone step counter data
   private val stepBuckets = mutableMapOf<Long, MinuteStepBucket>()
   private val phoneStepBuckets = mutableMapOf<Long, MinuteStepBucket>()
   private val bufferLock = Any()
@@ -256,7 +232,6 @@ class SensorService : Service() {
       ACTION_CONNECT -> {
         val deviceAddress = intent.getStringExtra(EXTRA_DEVICE_ADDRESS)
         if (deviceAddress != null) {
-          // Start foreground if not already running
           if (!_serviceState.value.isRunning) {
             startForegroundWithNotification()
           }
@@ -271,11 +246,9 @@ class SensorService : Service() {
       ACTION_DISCONNECT -> {
         val deviceAddress = intent.getStringExtra(EXTRA_DEVICE_ADDRESS)
         if (deviceAddress != null) {
-          // Cancel any pending reconnect for this device
           cancelReconnect(deviceAddress)
           disconnectDevice(deviceAddress)
         } else {
-          // Cancel all reconnects
           reconnectJobs.values.forEach { it.cancel() }
           reconnectJobs.clear()
           reconnectAttempts.clear()
@@ -283,7 +256,6 @@ class SensorService : Service() {
         }
       }
       ACTION_STOP -> {
-        // Cancel all reconnects before stopping
         reconnectJobs.values.forEach { it.cancel() }
         reconnectJobs.clear()
         reconnectAttempts.clear()
@@ -433,7 +405,6 @@ class SensorService : Service() {
     deviceAddress: String,
     autoConnect: Boolean = false,
   ) {
-    // Don't connect if already connected or connecting to this device
     if (connectionManagers.containsKey(deviceAddress)) {
       Log.w(TAG, "Already connected to device: $deviceAddress")
       return
@@ -449,7 +420,6 @@ class SensorService : Service() {
     val manager = BleConnectionManager(this)
     val jobs = mutableListOf<Job>()
 
-    // Observe connection state
     jobs +=
       serviceScope.launch {
         manager.connectionState.collect { state ->
@@ -457,7 +427,6 @@ class SensorService : Service() {
 
           when (state) {
             is BleConnectionState.Connected -> {
-              // Reset reconnect counter on successful connection
               reconnectAttempts.remove(deviceAddress)
               updateState { it.copy(connectingDevices = it.connectingDevices - deviceAddress) }
               startDataCollection(manager, deviceAddress)
@@ -476,7 +445,6 @@ class SensorService : Service() {
         }
       }
 
-    // Observe connected device info
     jobs +=
       serviceScope.launch {
         manager.connectedDeviceInfo.collect { device ->
@@ -492,7 +460,6 @@ class SensorService : Service() {
         }
       }
 
-    // Observe battery level
     jobs +=
       serviceScope.launch {
         manager.batteryLevel.collect { level ->
@@ -500,7 +467,6 @@ class SensorService : Service() {
         }
       }
 
-    // Observe current heart rate
     jobs +=
       serviceScope.launch {
         manager.currentHeartRate.collect { hr ->
@@ -509,7 +475,6 @@ class SensorService : Service() {
         }
       }
 
-    // Observe current cadence
     jobs +=
       serviceScope.launch {
         manager.currentCadence.collect { cadence ->
@@ -518,7 +483,6 @@ class SensorService : Service() {
         }
       }
 
-    // Observe current speed
     jobs +=
       serviceScope.launch {
         manager.currentSpeed.collect { speed ->
@@ -526,7 +490,6 @@ class SensorService : Service() {
         }
       }
 
-    // Observe cumulative steps
     jobs +=
       serviceScope.launch {
         manager.stepsSinceStart.collect { steps ->
@@ -535,7 +498,6 @@ class SensorService : Service() {
         }
       }
 
-    // Observe RSSI (signal strength)
     jobs +=
       serviceScope.launch {
         manager.rssi.collect { rssi ->
@@ -543,7 +505,6 @@ class SensorService : Service() {
         }
       }
 
-    // Observe last data received time
     jobs +=
       serviceScope.launch {
         manager.lastDataReceivedTime.collect { time ->
@@ -570,7 +531,6 @@ class SensorService : Service() {
   private fun handleDeviceDisconnected(deviceAddress: String) {
     Log.d(TAG, "Device disconnected: $deviceAddress")
 
-    // Check if this was an HR device and clear RR buffer + HRV state + chart history
     val wasHrDevice =
       _serviceState.value.connectedDevices[deviceAddress]
         ?.device
@@ -593,15 +553,12 @@ class SensorService : Service() {
       }
     }
 
-    // Cancel jobs for this device
     deviceJobs[deviceAddress]?.forEach { it.cancel() }
     deviceJobs.remove(deviceAddress)
 
-    // Close and remove connection manager
     connectionManagers[deviceAddress]?.close()
     connectionManagers.remove(deviceAddress)
 
-    // Update state
     updateState { state ->
       state.copy(
         connectedDevices = state.connectedDevices - deviceAddress,
@@ -610,7 +567,6 @@ class SensorService : Service() {
     }
     updateNotification()
 
-    // Check if we should auto-reconnect
     val shouldAutoReconnect = AutoReconnectPrefs.isAutoReconnectEnabled(this, deviceAddress)
     if (shouldAutoReconnect) {
       Log.d(TAG, "Auto-reconnect enabled for $deviceAddress, scheduling reconnect")
@@ -618,7 +574,6 @@ class SensorService : Service() {
       return
     }
 
-    // Stop service if no devices connected, no reconnects pending, and no phone step counter
     if (connectionManagers.isEmpty() &&
       _serviceState.value.connectingDevices.isEmpty() &&
       reconnectJobs.isEmpty() &&
@@ -630,7 +585,6 @@ class SensorService : Service() {
   }
 
   private fun scheduleReconnect(deviceAddress: String) {
-    // Cancel any existing reconnect job for this device
     reconnectJobs[deviceAddress]?.cancel()
 
     val attempt = (reconnectAttempts[deviceAddress] ?: 0) + 1
@@ -640,7 +594,6 @@ class SensorService : Service() {
       Log.w(TAG, "Max reconnect attempts ($RECONNECT_MAX_ATTEMPTS) reached for $deviceAddress")
       reconnectAttempts.remove(deviceAddress)
       reconnectJobs.remove(deviceAddress)
-      // Stop service if nothing else is active
       if (connectionManagers.isEmpty() &&
         _serviceState.value.connectingDevices.isEmpty() &&
         reconnectJobs.isEmpty() &&
@@ -661,7 +614,6 @@ class SensorService : Service() {
     reconnectJobs[deviceAddress] =
       serviceScope.launch {
         delay(delayMs)
-        // Only reconnect if still in the saved list and BLE is enabled
         if (AutoReconnectPrefs.isAutoReconnectEnabled(this@SensorService, deviceAddress) &&
           isBleEnabled(this@SensorService)
         ) {
@@ -709,7 +661,6 @@ class SensorService : Service() {
     manager: BleConnectionManager,
     deviceAddress: String,
   ) {
-    // Add collection jobs to the device's job list
     val existingJobs = deviceJobs[deviceAddress]?.toMutableList() ?: mutableListOf()
 
     existingJobs +=
@@ -718,7 +669,6 @@ class SensorService : Service() {
           synchronized(bufferLock) {
             sampleBuffer.add(sample)
 
-            // Add to chart history and prune old data
             val now = System.currentTimeMillis()
             val cutoff = now - CHART_HISTORY_DURATION_MS
             hrChartBuffer.add(ChartDataPoint(now, sample.bpm.toFloat()))
@@ -731,7 +681,6 @@ class SensorService : Service() {
               )
             }
 
-            // Collect RR intervals for HRV calculation (rolling window)
             sample.rrIntervals?.forEach { rr ->
               if (rrIntervalBuffer.size >= RR_BUFFER_MAX_SIZE) {
                 rrIntervalBuffer.removeFirst()
@@ -749,7 +698,6 @@ class SensorService : Service() {
           synchronized(bufferLock) {
             cadenceSampleBuffer.add(sample)
 
-            // Accumulate steps into minute buckets
             val sampleTimeMs = sample.timestamp.toEpochMilli()
             val minuteStartMs = sampleTimeMs - (sampleTimeMs % ONE_MINUTE_MS)
             val minuteStart = Instant.ofEpochMilli(minuteStartMs)
@@ -759,13 +707,12 @@ class SensorService : Service() {
                 MinuteStepBucket(minuteStart = minuteStart)
               }
 
-            // Calculate steps since last sample using cadence
             lastSampleTime?.let { lastTime ->
               val elapsedSeconds =
                 java.time.Duration
                   .between(lastTime, sample.timestamp)
                   .toMillis() / 1000.0
-              if (elapsedSeconds > 0 && elapsedSeconds < 30) { // Sanity check
+              if (elapsedSeconds > 0 && elapsedSeconds < 30) {
                 val stepsInInterval = (sample.cadence * elapsedSeconds / 60.0).toLong()
                 bucket.totalSteps += stepsInInterval
               }
@@ -803,30 +750,25 @@ class SensorService : Service() {
       // Copy RR intervals for HRV calculation (don't clear - rolling window)
       rrIntervalsForHrv = rrIntervalBuffer.toList()
 
-      // Extract completed minute buckets (all minutes except the current one)
       val nowMs = System.currentTimeMillis()
       val currentMinuteStartMs = nowMs - (nowMs % ONE_MINUTE_MS)
 
-      // BLE foot pod step buckets
       completedStepBuckets =
         stepBuckets.entries
           .filter { it.key < currentMinuteStartMs && it.value.totalSteps > 0 }
           .map { it.value }
           .sortedBy { it.minuteStart }
 
-      // Remove completed buckets from the map
       completedStepBuckets.forEach { bucket ->
         stepBuckets.remove(bucket.minuteStart.toEpochMilli())
       }
 
-      // Phone step counter buckets
       completedPhoneStepBuckets =
         phoneStepBuckets.entries
           .filter { it.key < currentMinuteStartMs && it.value.totalSteps > 0 }
           .map { it.value }
           .sortedBy { it.minuteStart }
 
-      // Remove completed phone step buckets
       completedPhoneStepBuckets.forEach { bucket ->
         phoneStepBuckets.remove(bucket.minuteStart.toEpochMilli())
       }
@@ -839,7 +781,6 @@ class SensorService : Service() {
       updateState { it.copy(pendingSamples = 0, pendingCadenceSamples = 0) }
     }
 
-    // Sync HR samples if any
     if (hrSamplesToSync.isNotEmpty()) {
       Log.d(TAG, "Syncing ${hrSamplesToSync.size} HR samples")
       val backendSuccess = syncHeartRateToBackend(hrSamplesToSync)
@@ -853,13 +794,11 @@ class SensorService : Service() {
       }
     }
 
-    // Sync completed minute step buckets if any (from BLE foot pod)
     if (completedStepBuckets.isNotEmpty()) {
       val totalSteps = completedStepBuckets.sumOf { it.totalSteps }
       Log.d(TAG, "Syncing ${completedStepBuckets.size} BLE step bucket(s) with $totalSteps total steps")
       val backendSuccess = syncStepBucketsToBackend(completedStepBuckets, "ble-footpod")
       if (!backendSuccess) {
-        // Re-add buckets on failure
         synchronized(bufferLock) {
           completedStepBuckets.forEach { bucket ->
             stepBuckets[bucket.minuteStart.toEpochMilli()] = bucket
@@ -870,13 +809,11 @@ class SensorService : Service() {
       }
     }
 
-    // Sync completed phone step buckets if any
     if (completedPhoneStepBuckets.isNotEmpty()) {
       val totalSteps = completedPhoneStepBuckets.sumOf { it.totalSteps }
       Log.d(TAG, "Syncing ${completedPhoneStepBuckets.size} phone step bucket(s) with $totalSteps total steps")
       val backendSuccess = syncStepBucketsToBackend(completedPhoneStepBuckets, "phone")
       if (!backendSuccess) {
-        // Re-add buckets on failure
         synchronized(bufferLock) {
           completedPhoneStepBuckets.forEach { bucket ->
             phoneStepBuckets[bucket.minuteStart.toEpochMilli()] = bucket
@@ -887,7 +824,6 @@ class SensorService : Service() {
       }
     }
 
-    // Calculate and sync HRV if we have enough RR intervals
     if (rrIntervalsForHrv.size >= RR_BUFFER_MIN_SIZE) {
       val hrvResult = calculateHrv(rrIntervalsForHrv)
       Log.d(
@@ -897,7 +833,6 @@ class SensorService : Service() {
           "reliable=${hrvResult.isReliable}",
       )
 
-      // Add to HRV chart history if we have a valid value
       if (hrvResult.rmssd != null) {
         synchronized(bufferLock) {
           val now = System.currentTimeMillis()
@@ -907,7 +842,6 @@ class SensorService : Service() {
         }
       }
 
-      // Update state for UI display
       updateState {
         it.copy(
           currentHrv = hrvResult.rmssd,
@@ -923,7 +857,6 @@ class SensorService : Service() {
         writeHrvToHealthConnect(hrvResult.rmssd, timestamp)
       }
     } else {
-      // Update state to show collecting progress
       updateState {
         it.copy(
           currentHrv = null,
@@ -948,15 +881,12 @@ class SensorService : Service() {
 
     if (samples.isEmpty()) return true
 
-    // Sort samples and create a single HeartRateRecord in Health Connect format
     val sortedSamples = samples.sortedBy { it.timestamp }
     val startTime = sortedSamples.first().timestamp
     val endTime = sortedSamples.last().timestamp.plusSeconds(1)
 
-    // Generate unique ID for this batch based on start time
     val recordId = "live-hr-${startTime.epochSecond}-${startTime.nano}"
 
-    // Get device info from HR device if available
     val hrManager =
       connectionManagers.values.find {
         it.connectedDeviceInfo.value?.type == SensorType.HEART_RATE
@@ -1007,7 +937,6 @@ class SensorService : Service() {
     if (samples.isEmpty()) return
 
     try {
-      // Check write permission
       val grantedPermissions = healthConnectClient.permissionController.getGrantedPermissions()
       val writePermission = HealthPermission.getWritePermission(HeartRateRecord::class)
       if (writePermission !in grantedPermissions) {
@@ -1050,7 +979,7 @@ class SensorService : Service() {
   }
 
   /**
-   * Sync step buckets to backend. Each bucket represents one clock minute with
+   * Each bucket represents one clock minute with
    * timestamps aligned to minute boundaries (e.g., 11:46:00.000 - 11:46:59.999).
    */
   private suspend fun syncStepBucketsToBackend(
@@ -1065,7 +994,6 @@ class SensorService : Service() {
 
     if (buckets.isEmpty()) return true
 
-    // Get device info based on source
     val deviceInfo =
       when (source) {
         "phone" ->
@@ -1074,7 +1002,6 @@ class SensorService : Service() {
             model = android.os.Build.MODEL,
           )
         else -> {
-          // BLE foot pod - get device info from RSC device if available
           val rscManager =
             connectionManagers.values.find {
               it.connectedDeviceInfo.value?.type == SensorType.RUNNING_SPEED_CADENCE
@@ -1088,7 +1015,6 @@ class SensorService : Service() {
         }
       }
 
-    // Create one record per minute bucket with clock-minute-aligned timestamps
     val records =
       buckets.map { bucket ->
         val minuteEnd = bucket.minuteStart.plusMillis(ONE_MINUTE_MS - 1) // 11:46:59.999
@@ -1127,14 +1053,13 @@ class SensorService : Service() {
   }
 
   /**
-   * Write step buckets to Health Connect. Each bucket becomes one StepsRecord with
+   * Each bucket becomes one StepsRecord with
    * timestamps aligned to minute boundaries for proper aggregation/deduplication.
    */
   private suspend fun writeStepBucketsToHealthConnect(buckets: List<MinuteStepBucket>) {
     if (buckets.isEmpty()) return
 
     try {
-      // Check write permission
       val grantedPermissions = healthConnectClient.permissionController.getGrantedPermissions()
       val writePermission = HealthPermission.getWritePermission(StepsRecord::class)
       if (writePermission !in grantedPermissions) {
@@ -1142,7 +1067,6 @@ class SensorService : Service() {
         return
       }
 
-      // Create one record per minute bucket with clock-minute-aligned timestamps
       val records =
         buckets.map { bucket ->
           val minuteEnd = bucket.minuteStart.plusMillis(ONE_MINUTE_MS - 1) // 11:46:59.999
@@ -1180,7 +1104,6 @@ class SensorService : Service() {
 
     val recordId = "live-hrv-${timestamp.epochSecond}-${timestamp.nano}"
 
-    // Get device info from HR device if available
     val hrManager =
       connectionManagers.values.find {
         it.connectedDeviceInfo.value?.type == SensorType.HEART_RATE
@@ -1223,7 +1146,6 @@ class SensorService : Service() {
     timestamp: Instant,
   ) {
     try {
-      // Check write permission
       val grantedPermissions = healthConnectClient.permissionController.getGrantedPermissions()
       val writePermission = HealthPermission.getWritePermission(HeartRateVariabilityRmssdRecord::class)
       if (writePermission !in grantedPermissions) {
@@ -1264,14 +1186,12 @@ class SensorService : Service() {
   private fun startPhoneStepCounter() {
     Log.d(TAG, "Starting phone step counter")
 
-    // Create counter if needed
     if (phoneStepCounter == null) {
       phoneStepCounter = PhoneStepCounter(applicationContext)
     }
 
     val counter = phoneStepCounter!!
 
-    // Update availability state
     updateState { it.copy(phoneStepCounterAvailable = counter.isAvailable.value) }
 
     if (!counter.isAvailable.value) {
@@ -1279,21 +1199,17 @@ class SensorService : Service() {
       return
     }
 
-    // Start foreground if not already running
     if (!_serviceState.value.isRunning) {
       startForegroundWithNotification()
     }
 
-    // Start monitoring
     if (counter.startMonitoring()) {
       updateState { it.copy(phoneStepCounterActive = true) }
 
-      // Start sync loop if not already running
       if (syncJob == null || syncJob?.isActive != true) {
         startSyncLoop()
       }
 
-      // Collect step updates
       phoneStepJob?.cancel()
       phoneStepJob =
         serviceScope.launch {
@@ -1302,12 +1218,10 @@ class SensorService : Service() {
           counter.stepsSinceStart.collect { steps ->
             updateState { it.copy(phoneStepsSinceStart = steps) }
 
-            // Accumulate into minute buckets for syncing
             val now = Instant.now()
             val minuteStartMs = now.toEpochMilli() - (now.toEpochMilli() % ONE_MINUTE_MS)
 
             synchronized(bufferLock) {
-              // Calculate delta since last update
               val stepsDelta = steps - lastStepCount
 
               if (stepsDelta > 0) {
@@ -1316,8 +1230,6 @@ class SensorService : Service() {
                     MinuteStepBucket(minuteStart = Instant.ofEpochMilli(minuteStartMs))
                   }
 
-                // If we're in a new minute, add the delta to the new bucket
-                // If same minute, add to existing bucket
                 bucket.totalSteps += stepsDelta
                 Log.d(TAG, "Phone steps: +$stepsDelta in bucket ${bucket.minuteStart}, total in bucket: ${bucket.totalSteps}")
               }
@@ -1329,7 +1241,6 @@ class SensorService : Service() {
           }
         }
 
-      // Also collect last update time
       serviceScope.launch {
         counter.lastUpdateTime.collect { time ->
           updateState { it.copy(phoneStepLastUpdateTime = time) }
@@ -1358,7 +1269,6 @@ class SensorService : Service() {
       phoneStepBuckets.clear()
     }
 
-    // Stop service if nothing else is running
     if (!_serviceState.value.hasConnectedDevices &&
       !_serviceState.value.isConnecting &&
       reconnectJobs.isEmpty()
@@ -1381,26 +1291,21 @@ class SensorService : Service() {
     syncJob?.cancel()
     phoneStepJob?.cancel()
 
-    // Cancel all reconnect jobs
     reconnectJobs.values.forEach { it.cancel() }
     reconnectJobs.clear()
     reconnectAttempts.clear()
 
-    // Stop phone step counter
     phoneStepCounter?.stopMonitoring()
     phoneStepCounter = null
 
-    // Cancel all device jobs
     deviceJobs.values.forEach { jobs ->
       jobs.forEach { it.cancel() }
     }
     deviceJobs.clear()
 
-    // Close all connection managers
     connectionManagers.values.forEach { it.close() }
     connectionManagers.clear()
 
-    // Clear all buffers
     synchronized(bufferLock) {
       sampleBuffer.clear()
       cadenceSampleBuffer.clear()

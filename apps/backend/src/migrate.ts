@@ -64,7 +64,6 @@ async function migrateHcData(db: Client, user: string) {
       time: row.time,
     }
 
-    // Insert into raw_records
     await insertRawRecord(user, {
       data: fullData,
       external_id: externalId,
@@ -73,7 +72,6 @@ async function migrateHcData(db: Client, user: string) {
       source: 'health_connect',
     })
 
-    // Normalize to time_series if applicable
     const metric = healthConnectMetricMapping[recordType]
     if (metric) {
       const points = extractTimeSeriesPoints(recordType, metric, fullData)
@@ -82,7 +80,6 @@ async function migrateHcData(db: Client, user: string) {
       }
     }
 
-    // Handle blood pressure specially
     if (recordType === 'BloodPressureRecord') {
       const time = new Date(row.time || row.startTime)
       await insertTimeSeries(user, [
@@ -366,12 +363,10 @@ async function main() {
     }
     console.info('   PostGIS ready.')
 
-    // Initialize new schema
     console.info('\n2. Initializing new schema...')
     await initializeSchema(username)
     console.info('   Schema initialized.')
 
-    // Migrate each table
     console.info('\n3. Migrating hcdata...')
     await migrateHcData(db, username)
 

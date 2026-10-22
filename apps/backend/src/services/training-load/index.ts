@@ -1,14 +1,3 @@
-/**
- * Training load (Banister impulse-response model).
- *
- * The original `services/training-load.ts` was split by responsibility:
- *  - banister.ts    — pure math (TRIMP, EMA, recovery zones, settings helpers)
- *  - aggregation.ts — DST-aware bucket aggregation
- *  - hr-cache.ts    — observed_hr_max cache shared by read + write
- *  - recompute.ts   — write path (chunked impulse recomputation)
- *  - query.ts       — read path (computeTrainingLoad)
- *  - deps.ts        — TrainingLoadDeps interface + production deps factory
- */
 export { aggregateTrainingLoadPoints, floorToLocalBucket } from './aggregation.ts'
 
 export {

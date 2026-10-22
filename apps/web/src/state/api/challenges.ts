@@ -8,8 +8,10 @@ import type {
   ChallengeStanding,
   ChallengeStandingsResponse,
   CreateChallengeBody,
+  DiscoverChallengesResponse,
   PublicChallengeResponse,
   PublicSharedDashboardResponse,
+  UpdateChallengeBody,
 } from '@aurboda/api-spec'
 
 import axios from 'axios'
@@ -19,10 +21,6 @@ import { auth } from '../auth'
 
 const authHeaders = () => ({ Authorization: `Bearer ${auth.value.token}` })
 
-// ===========================================================================
-// Owner / joiner (authenticated)
-// ===========================================================================
-
 export const listChallenges = async (): Promise<Challenge[]> => {
   const res = await axios.get<ChallengesResponse>(`${API_URL}/challenges`, { headers: authHeaders() })
   return res.data.challenges
@@ -31,6 +29,32 @@ export const listChallenges = async (): Promise<Challenge[]> => {
 export const createChallenge = async (body: CreateChallengeBody): Promise<Challenge> => {
   const res = await axios.post<ChallengeResponse>(`${API_URL}/challenges`, body, { headers: authHeaders() })
   if (!res.data.challenge) throw new Error(res.data.error ?? 'Failed to create challenge')
+  return res.data.challenge
+}
+
+export const updateChallenge = async (id: string, body: UpdateChallengeBody): Promise<Challenge> => {
+  const res = await axios.put<ChallengeResponse>(`${API_URL}/challenges/${id}`, body, {
+    headers: authHeaders(),
+  })
+  if (!res.data.challenge) throw new Error(res.data.error ?? 'Failed to update challenge')
+  return res.data.challenge
+}
+
+export const uploadChallengeBanner = async (id: string, file: File): Promise<Challenge> => {
+  const formData = new FormData()
+  formData.append('banner', file)
+  const res = await axios.post<ChallengeResponse>(`${API_URL}/challenges/${id}/banner`, formData, {
+    headers: authHeaders(),
+  })
+  if (!res.data.challenge) throw new Error(res.data.error ?? 'Failed to upload banner')
+  return res.data.challenge
+}
+
+export const deleteChallengeBanner = async (id: string): Promise<Challenge> => {
+  const res = await axios.delete<ChallengeResponse>(`${API_URL}/challenges/${id}/banner`, {
+    headers: authHeaders(),
+  })
+  if (!res.data.challenge) throw new Error(res.data.error ?? 'Failed to remove banner')
   return res.data.challenge
 }
 
@@ -59,9 +83,13 @@ export const leaveChallenge = async (participationId: string): Promise<void> => 
   await axios.delete(`${API_URL}/challenges/participations/${participationId}`, { headers: authHeaders() })
 }
 
-// ===========================================================================
-// Public viewing (unauthenticated — no Authorization header)
-// ===========================================================================
+/** Open challenges hosted by people you follow that you haven't joined (walks their instances, so it can take a moment). */
+export const discoverChallenges = async (): Promise<DiscoverChallengesResponse> => {
+  const res = await axios.get<DiscoverChallengesResponse>(`${API_URL}/challenges/discover`, {
+    headers: authHeaders(),
+  })
+  return res.data
+}
 
 /** Resolve a `/u/:username/:slug` resource — either a shared dashboard or a challenge. */
 export const fetchPublicResource = async (

@@ -13,8 +13,6 @@ import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { resolve } from 'node:path'
 
-// ── Config ───────────────────────────────────────────────────────────────────
-
 const loadConfig = (): { baseUrl: string; token: string } => {
   const configPath = resolve(homedir(), '.config/aurboda/config')
   const content = readFileSync(configPath, 'utf-8')
@@ -28,8 +26,6 @@ const loadConfig = (): { baseUrl: string; token: string } => {
   }
   return { baseUrl: vars.AURBODA_BASE_URL, token: vars.AURBODA_TOKEN }
 }
-
-// ── CSV parsing ──────────────────────────────────────────────────────────────
 
 /** Parse CSV respecting quoted fields. */
 const parseCSVLine = (line: string): string[] => {
@@ -69,9 +65,6 @@ const parseCSV = (content: string): Record<string, string>[] => {
   })
 }
 
-// ── Nutrient mapping ─────────────────────────────────────────────────────────
-
-/** Map Cronometer column header to { key, unit }. */
 const parseNutrientColumn = (header: string): { key: string; unit: string } | null => {
   // Pattern: "B1 (Thiamine) (mg)" or "Vitamin C (mg)" or "Energy (kcal)"
   const match = header.match(/^(.+?)\s*\((\w+)\)\s*$/)
@@ -89,7 +82,6 @@ const parseNutrientColumn = (header: string): { key: string; unit: string } | nu
     // "B1 (Thiamine)" stays as-is, it's the name
   }
 
-  // Normalize name to snake_case key
   const key = name
     .replaceAll(/[()]/g, '')
     .replaceAll(/[\s-]+/g, '_')
@@ -103,8 +95,6 @@ const MACRO_FIELDS = new Set(['energy', 'protein', 'fat', 'carbs', 'net_carbs', 
 
 const SKIP_FIELDS = new Set(['Day', 'Group', 'Food Name', 'Amount', 'Category', 'Completed', 'Date'])
 
-// ── Default meal times ───────────────────────────────────────────────────────
-
 const MEAL_TYPE_HOURS: Record<string, number> = {
   Breakfast: 7,
   Lunch: 12,
@@ -112,15 +102,11 @@ const MEAL_TYPE_HOURS: Record<string, number> = {
   Snacks: 15,
 }
 
-// ── Parse amount string ──────────────────────────────────────────────────────
-
 const parseAmount = (amount: string): { quantity: number; unit: string } => {
   const match = amount.match(/^([\d.]+)\s+(.+)$/)
   if (match) return { quantity: parseFloat(match[1]), unit: match[2] }
   return { quantity: parseFloat(amount) || 1, unit: 'serving' }
 }
-
-// ── Build meal from servings ─────────────────────────────────────────────────
 
 interface FoodItem {
   name: string
@@ -241,8 +227,6 @@ const buildMeals = (servings: Record<string, string>[]): MealPayload[] => {
   return meals.sort((a, b) => a.time.localeCompare(b.time))
 }
 
-// ── API calls ────────────────────────────────────────────────────────────────
-
 const upsertMeal = async (baseUrl: string, token: string, meal: MealPayload): Promise<void> => {
   const response = await fetch(`${baseUrl}/api/meals`, {
     method: 'PUT',
@@ -265,8 +249,6 @@ const setLogCompleted = async (baseUrl: string, token: string, date: string): Pr
   })
 }
 
-// ── Main ─────────────────────────────────────────────────────────────────────
-
 const main = async () => {
   const args = process.argv.slice(2)
   if (args.length < 1) {
@@ -277,18 +259,15 @@ const main = async () => {
   const config = loadConfig()
   console.log(`🔑 Using API at ${config.baseUrl}`)
 
-  // Parse servings
   const servingsPath = resolve(args[0])
   console.log(`📄 Reading ${servingsPath}`)
   const servingsContent = readFileSync(servingsPath, 'utf-8')
   const servings = parseCSV(servingsContent)
   console.log(`   ${servings.length} food item rows`)
 
-  // Build meals
   const meals = buildMeals(servings)
   console.log(`🍽️  Built ${meals.length} meals from ${new Set(servings.map((r) => r.Day)).size} days`)
 
-  // Import meals
   let imported = 0
   let failed = 0
   for (const meal of meals) {

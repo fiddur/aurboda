@@ -1,8 +1,5 @@
 import type { SyncState } from './types.ts'
 
-/**
- * Sync state tracking for external data providers.
- */
 import { query } from './connection.ts'
 import { mapSyncStateRow } from './row-mappers.ts'
 

@@ -26,7 +26,6 @@ export function ActivityWatchDesktopSource() {
   )
   const hasData = awProductivity.length > 0
 
-  // Token generation
   const [activityWatchToken, setActivityWatchToken] = useState<string>('')
   const [tokenStatus, setTokenStatus] = useState<'idle' | 'loading' | 'copied'>('idle')
 

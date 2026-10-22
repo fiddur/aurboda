@@ -1,10 +1,5 @@
 import type { RequestHandler } from 'express'
 
-/**
- * Reports route group.
- *
- * Handles: /reports/*
- */
 import {
   type AddReportBody,
   addReportBodySchema,

@@ -12,11 +12,14 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
@@ -66,7 +69,7 @@ import net.aurboda.update.checkForUpdate
 import net.aurboda.update.downloadUpdate
 import net.aurboda.update.getExistingDownloadState
 import net.aurboda.update.installApk
-// Import record type lists from HealthDataModels
+import net.aurboda.widget.challengeWidgetUrls
 import net.aurboda.allRecordTypes
 import net.aurboda.writableRecordTypes
 import java.io.File
@@ -116,7 +119,6 @@ private fun loadChangesToken(context: Context): String? {
 }
 
 /**
- * Check if the set of granted record types has changed since last fetch.
  * If changed, invalidate the changes token to force a full re-fetch.
  */
 private fun invalidateTokenIfGrantedTypesChanged(
@@ -143,24 +145,78 @@ class MainActivity : ComponentActivity() {
   companion object {
     const val EXTRA_OPEN_TAB = "open_tab"
     const val TAB_ADD = "add"
+    const val TAB_FEED = "feed"
+    const val TAB_MORE = "more"
+
+    /** With [EXTRA_OPEN_TAB] = [TAB_MORE], the More web page to open (e.g. "/goals"). */
+    const val EXTRA_MORE_PATH = "more_path"
   }
 
+  /**
+   * A deep link delivered while the activity was already running. Wrapped with a
+   * sequence number so tapping the same widget twice re-navigates (a plain
+   * DeepLink would compare equal and not retrigger the effect).
+   */
+  private var runningDeepLink by mutableStateOf<DeepLinkEvent?>(null)
+  private var deepLinkSeq = 0L
+
+  // Deep links (widget / notification) steer the initial screen on a cold start
+  // and, because the activity is `singleTop`, arrive in onNewIntent when the app
+  // is already open — where they navigate the running app to the same place.
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
-    val initialTab =
-      when (intent?.getStringExtra(EXTRA_OPEN_TAB)) {
-        TAB_ADD -> MainTab.Add
-        else -> null
-      }
+    val link = deepLinkFrom(intent)
     setContent {
-      AurbodaAppTheme {
-        Surface(
-          modifier = Modifier.fillMaxSize(),
-          color = MaterialTheme.colorScheme.background,
-        ) {
-          AurbodaApp(initialTab = initialTab)
-        }
+      AurbodaAppShell {
+        AutoEnablePostNotifications()
+        AurbodaApp(initialTab = link?.tab, initialMorePath = link?.morePath, deepLinkEvent = runningDeepLink)
       }
+    }
+  }
+
+  override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    setIntent(intent)
+    deepLinkFrom(intent)?.let { runningDeepLink = DeepLinkEvent(++deepLinkSeq, it) }
+  }
+
+  private fun deepLinkFrom(intent: Intent?): DeepLink? =
+    deepLinkFrom(
+      intent?.getStringExtra(EXTRA_OPEN_TAB),
+      intent?.getStringExtra(EXTRA_MORE_PATH),
+      challengeWidgetUrls(this),
+    )
+}
+
+/** A deep link that arrived at a running activity; [seq] makes every arrival distinct. */
+data class DeepLinkEvent(val seq: Long, val link: DeepLink)
+
+/**
+ * The themed surface every screen is drawn on, sized to keep [content] above the
+ * soft keyboard.
+ *
+ * Apps targeting API 35+ are edge-to-edge, so the window no longer resizes for
+ * the IME (`adjustResize` is ignored) and the keyboard covers whatever is
+ * focused — a native text field, or an input in an embedded web page. Consuming
+ * [keyboardInsets] here shrinks the WebView too, which is what makes it scroll
+ * the focused element into view. It also zeroes the navigation-bar inset the
+ * bottom bar would otherwise add on top, so the bar lands flush above the
+ * keyboard.
+ *
+ * [keyboardInsets] is a parameter so tests can supply a fixed inset instead of
+ * driving the platform's IME.
+ */
+@Composable
+fun AurbodaAppShell(
+  keyboardInsets: WindowInsets = WindowInsets.ime,
+  content: @Composable () -> Unit,
+) {
+  AurbodaAppTheme {
+    Surface(
+      modifier = Modifier.fillMaxSize().windowInsetsPadding(keyboardInsets),
+      color = MaterialTheme.colorScheme.background,
+    ) {
+      content()
     }
   }
 }
@@ -169,13 +225,17 @@ private const val VERSION_JSON_URL = "https://github.com/fiddur/aurboda/releases
 
 @Suppress("ASSIGNED_VALUE_IS_NEVER_READ") // Compose state vars trigger false "assigned but never read" warnings
 @Composable
-fun AurbodaApp(initialTab: MainTab? = null) {
-  val appState = rememberAppState(initialTab = initialTab)
+fun AurbodaApp(
+  initialTab: MainTab? = null,
+  initialMorePath: String? = null,
+  deepLinkEvent: DeepLinkEvent? = null,
+) {
+  val appState = rememberAppState(initialTab = initialTab, initialMorePath = initialMorePath)
+  LaunchedEffect(deepLinkEvent) { deepLinkEvent?.let { appState.open(it.link) } }
   val context = LocalContext.current
   val scope = rememberCoroutineScope()
   val ktorHttpClient = remember { syncHttpClient() }
 
-  // Update check state
   var updateAvailable by remember { mutableStateOf<VersionInfo?>(null) }
   var showUpdateDialog by remember { mutableStateOf(false) }
   var showDownloadingDialog by remember { mutableStateOf(false) }
@@ -183,7 +243,6 @@ fun AurbodaApp(initialTab: MainTab? = null) {
   var downloadedApkFile by remember { mutableStateOf<File?>(null) }
   var updateError by remember { mutableStateOf<String?>(null) }
 
-  // Check for updates on app launch
   LaunchedEffect(Unit) {
     val currentVersionCode = BuildConfig.VERSION_CODE_INT
     Log.d("UpdateChecker", "Checking for updates. Current version code: $currentVersionCode")
@@ -192,7 +251,6 @@ fun AurbodaApp(initialTab: MainTab? = null) {
         Log.d("UpdateChecker", "Update available: ${result.versionInfo.versionName}")
         updateAvailable = result.versionInfo
 
-        // Check if we already have this download in progress or finished
         when (val downloadState = getExistingDownloadState(context, result.versionInfo.versionName)) {
           is DownloadState.Downloaded -> {
             Log.d("UpdateChecker", "APK already downloaded: ${downloadState.apkFile.name}")
@@ -217,7 +275,6 @@ fun AurbodaApp(initialTab: MainTab? = null) {
     }
   }
 
-  // Update dialogs
   if (showUpdateDialog && updateAvailable != null) {
     UpdateAvailableDialog(
       versionInfo = updateAvailable!!,
@@ -288,6 +345,15 @@ fun AurbodaApp(initialTab: MainTab? = null) {
         net.aurboda.ui.screens.MainScreen(
           currentTab = appState.currentTab,
           onTabSelected = { appState.selectTab(it) },
+          homeContent = { modifier ->
+            net.aurboda.ui.screens.EmbeddedWebScreen(
+              url = "${credentials.serverUrl.trimEnd('/')}/?embed=1",
+              baseUrl = credentials.serverUrl,
+              username = credentials.username,
+              authToken = credentials.authToken,
+              modifier = modifier,
+            )
+          },
           syncContent = { modifier ->
             HealthConnectScreen(
               apiUrl = credentials.apiUrl,
@@ -302,15 +368,21 @@ fun AurbodaApp(initialTab: MainTab? = null) {
               modifier = modifier,
             )
           },
-          liveContent = { modifier ->
-            net.aurboda.ui.screens.LiveScreen(
+          feedContent = { modifier ->
+            net.aurboda.ui.screens.EmbeddedWebScreen(
+              url = "${credentials.serverUrl.trimEnd('/')}/feed?embed=1",
+              baseUrl = credentials.serverUrl,
+              username = credentials.username,
+              authToken = credentials.authToken,
               modifier = modifier,
             )
           },
-          accountContent = { modifier ->
-            net.aurboda.ui.screens.AccountScreen(
-              username = credentials.username,
-              serverUrl = credentials.serverUrl,
+          moreContent = { modifier ->
+            net.aurboda.ui.screens.MoreScreen(
+              credentials = credentials,
+              destination = appState.moreDestination,
+              onSelect = { destination -> appState.openMoreDestination(destination) },
+              onBack = { appState.closeMoreDestination() },
               onServerUrlChange = { newUrl -> appState.changeServerUrl(newUrl) },
               onLogout = { appState.logout() },
               modifier = modifier,
@@ -336,7 +408,6 @@ fun HealthConnectScreen(
   val lifecycleOwner = LocalLifecycleOwner.current
   val healthConnectClient = remember { HealthConnectClient.getOrCreate(context) }
 
-  // -- Permission state (partial permissions support) --
   var grantedPermissions by remember { mutableStateOf<Set<String>>(emptySet()) }
   val grantedRecordTypes by remember(grantedPermissions) {
     derivedStateOf { getGrantedRecordTypes(grantedPermissions) }
@@ -375,7 +446,6 @@ fun HealthConnectScreen(
   }
   val bgSyncStatus by bgSyncStatusFlow.collectAsState()
 
-  // -- ActivityWatch state --
   var awSyncEnabled by remember { mutableStateOf(isActivityWatchSyncEnabled(context)) }
   var awSyncResult by remember { mutableStateOf<ActivityWatchSyncResult?>(null) }
 
@@ -570,7 +640,6 @@ fun HealthConnectScreen(
     }
   }
 
-  /** Re-query actual granted permissions from system after launcher returns. */
   suspend fun refreshPermissions() {
     grantedPermissions = healthConnectClient.permissionController.getGrantedPermissions()
     val count = grantedRecordTypes.size
@@ -629,7 +698,6 @@ fun HealthConnectScreen(
     reporter.begin()
     var fatal: String? = null
     try {
-      // Daily aggregates
       try {
         val aggregates = fetchDailyAggregates(healthConnectClient, grantedRecordTypes.toSet(), days = 7)
         if (aggregates.isNotEmpty()) {
@@ -740,6 +808,8 @@ fun HealthConnectScreen(
               }
               net.aurboda.widget.HrZoneWidgetProvider
                 .triggerUpdate(context)
+              net.aurboda.widget.ChallengeWidgetProvider
+                .triggerUpdate(context)
             }
           }
         }
@@ -750,7 +820,6 @@ fun HealthConnectScreen(
     }
   }
 
-  // Periodic sync while app is open (when background sync is enabled)
   LaunchedEffect(backgroundSyncEnabled, hasAnyPermissions) {
     if (backgroundSyncEnabled && hasAnyPermissions) {
       Log.d("HealthConnectScreen", "Starting periodic sync loop (60s interval)")
@@ -764,14 +833,11 @@ fun HealthConnectScreen(
     }
   }
 
-  // --- UI ---
-
   LazyColumn(
     modifier = modifier.fillMaxSize().padding(16.dp),
     verticalArrangement = Arrangement.spacedBy(12.dp),
     horizontalAlignment = Alignment.CenterHorizontally,
   ) {
-    // -- Sync Status Card --
     item {
       androidx.compose.material3.Card(
         modifier = Modifier.fillMaxWidth(),
@@ -963,7 +1029,6 @@ fun HealthConnectScreen(
       }
     }
 
-    // -- ActivityWatch Sync Card --
     item {
       androidx.compose.material3.Card(
         modifier = Modifier.fillMaxWidth(),
@@ -1034,7 +1099,6 @@ fun HealthConnectScreen(
       }
     }
 
-    // -- Data Source Category Cards --
     items(categoryStatuses.size) { index ->
       val status = categoryStatuses[index]
       val iconText =
@@ -1101,7 +1165,6 @@ fun HealthConnectScreen(
       }
     }
 
-    // -- Empty state --
     if (!hasAnyPermissions && !isProcessing) {
       item {
         Text(
@@ -1115,7 +1178,6 @@ fun HealthConnectScreen(
     }
   }
 
-  // Battery optimization dialog
   if (showBatteryOptimizationDialog) {
     AlertDialog(
       onDismissRequest = { showBatteryOptimizationDialog = false },

@@ -1,20 +1,9 @@
-/**
- * Detection trigger with per-user debouncing.
- *
- * When a location is inserted, we debounce detection by 5 seconds per user.
- * This prevents running detection on every single location update.
- */
-
 import type { Activity, DetectedLocation, NamedLocation } from '../db/index.ts'
 import type { GeocodeQueue } from './geocode-queue.ts'
 import type { PlaceVisit } from './locations.ts'
 
 import { auditError, auditInfo } from './audit-log.ts'
 import { materializeForRange } from './location-visit-activities.ts'
-
-// ============================================================================
-// Types
-// ============================================================================
 
 export interface DetectionTriggerDeps {
   runDetectionForUser: (user: string) => Promise<{ created: number; updated: number; needsGeocode: string[] }>
@@ -34,27 +23,11 @@ export interface DetectionTrigger {
   hasPendingDetection: (user: string) => boolean
 }
 
-// ============================================================================
-// Configuration
-// ============================================================================
-
-const DEBOUNCE_MS = 5000 // 5 seconds
+const DEBOUNCE_MS = 5000
 const DEFAULT_MATERIALIZE_LOOKBACK_DAYS = 7
 
-// ============================================================================
-// Factory
-// ============================================================================
-
-/**
- * Create a detection trigger instance with per-user debouncing.
- *
- * @param deps - Dependencies for the trigger
- * @returns DetectionTrigger instance
- */
 export const createDetectionTrigger = (deps: DetectionTriggerDeps): DetectionTrigger => {
   /**
-   * In-memory map of pending detection timeouts per user.
-   *
    * NOTE: This state is lost on server restart. This is acceptable because:
    * - Detection only delays processing by 5 seconds
    * - Worst case: a detection run is skipped, but next location update triggers new detection
@@ -85,7 +58,6 @@ export const createDetectionTrigger = (deps: DetectionTriggerDeps): DetectionTri
   }
 
   /**
-   * Execute detection and queue geocoding for a user.
    * Called after debounce period expires.
    */
   const executeDetectionForUser = async (user: string): Promise<void> => {
@@ -100,7 +72,6 @@ export const createDetectionTrigger = (deps: DetectionTriggerDeps): DetectionTri
         needs_geocode: result.needsGeocode.length,
       })
 
-      // Queue geocoding jobs if the queue is available
       if (deps.geocodeQueue && result.needsGeocode.length > 0) {
         for (const locationId of result.needsGeocode) {
           const location = await deps.getDetectedLocationById(user, locationId)
@@ -129,7 +100,6 @@ export const createDetectionTrigger = (deps: DetectionTriggerDeps): DetectionTri
   }
 
   /**
-   * Trigger location detection for a user with debouncing.
    * If called multiple times within the debounce window, only the last call runs detection.
    */
   const triggerDetectionForUser = (user: string): void => {
@@ -141,7 +111,6 @@ export const createDetectionTrigger = (deps: DetectionTriggerDeps): DetectionTri
 
     // Schedule detection after debounce period
     const timeout = setTimeout(() => {
-      // Execute detection and handle errors properly
       // Delete from pending map only after detection completes (success or failure)
       executeDetectionForUser(user)
         .catch((error) => {
@@ -165,14 +134,8 @@ export const createDetectionTrigger = (deps: DetectionTriggerDeps): DetectionTri
     pendingDetections.clear()
   }
 
-  /**
-   * Get the number of pending detections (for monitoring).
-   */
   const getPendingDetectionCount = (): number => pendingDetections.size
 
-  /**
-   * Check if a user has a pending detection.
-   */
   const hasPendingDetection = (user: string): boolean => pendingDetections.has(user)
 
   return {

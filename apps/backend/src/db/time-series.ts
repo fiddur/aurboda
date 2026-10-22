@@ -1,10 +1,10 @@
-/**
- * Time series data CRUD, bucketed aggregation, and statistics.
- */
+import type { HrZoneSecs, HrZoneThresholds } from '@aurboda/api-spec'
+
 import format from 'pg-format'
 
 import type { BucketedMetricData, DailyMetricAggregate, MetricStats, TimeSeriesPoint } from './types.ts'
 
+import { MAX_GAP_SECONDS, SINGLE_SAMPLE_SECONDS } from '../hr-zone-constants.ts'
 import {
   aurbodaOnlyMetrics,
   aurbodaOnlySources,
@@ -13,7 +13,7 @@ import {
   type MetricType,
   metricUnits,
 } from '../schema.ts'
-import { query } from './connection.ts'
+import { query, withUserTransaction } from './connection.ts'
 import { querySplitByCumulative } from './cumulative-query.ts'
 import { parseMetricType } from './row-mappers.ts'
 
@@ -48,12 +48,20 @@ export const insertTimeSeries = async (user: string, points: TimeSeriesPoint[]) 
     p.source,
   ])
 
+  // `updated_at` defaults to NOW() on insert and moves only when a re-sent
+  // point actually changes the value, so it answers "when did this number last
+  // change" rather than "when was it last written".
   await query(
     user,
     format(
       `INSERT INTO time_series (time, metric, value, unit, source)
        VALUES %L
-       ON CONFLICT (time, metric, source) DO UPDATE SET value = EXCLUDED.value
+       ON CONFLICT (time, metric, source) DO UPDATE SET
+         value = EXCLUDED.value,
+         updated_at = CASE
+           WHEN time_series.value IS DISTINCT FROM EXCLUDED.value THEN NOW()
+           ELSE time_series.updated_at
+         END
        WHERE time_series.deleted_at IS NULL`,
       values,
     ),
@@ -84,7 +92,26 @@ export const getTimeSeries = async (
   return result.rows.map((row) => [new Date(row.time), row.value])
 }
 
-/** Like getTimeSeries but also returns the source field for each data point. */
+/** Whether `getTimeSeries` would return any point for the metric in the window. */
+export const hasTimeSeries = async (
+  user: string,
+  metric: string,
+  start: Date,
+  end: Date,
+): Promise<boolean> => {
+  const sources = getSourceFilter(metric)
+  const result = await query<{ exists: boolean }>(
+    user,
+    `SELECT EXISTS (
+       SELECT 1 FROM time_series
+       WHERE metric = $1 AND time >= $2 AND time <= $3 AND deleted_at IS NULL
+         ${sources ? 'AND source = ANY($4)' : ''}
+     ) AS exists`,
+    sources ? [metric, start, end, sources] : [metric, start, end],
+  )
+  return result.rows[0]?.exists === true
+}
+
 export const getTimeSeriesWithSource = async (
   user: string,
   metric: string,
@@ -147,7 +174,6 @@ export const getRawDailySum = async (
   return Number(result.rows[0].total)
 }
 
-/** Time series entry returned by getTimeSeriesEntriesMultiMetric. */
 export interface TimeSeriesEntry {
   metric: string
   time: Date
@@ -156,10 +182,7 @@ export interface TimeSeriesEntry {
   source: string
 }
 
-/**
- * Fetch all time series entries for a list of metrics in a time range,
- * including unit and source. Supports built-in and custom metric names.
- */
+/** Supports built-in and custom metric names. */
 export const getTimeSeriesEntriesMultiMetric = async (
   user: string,
   metrics: string[],
@@ -249,10 +272,6 @@ export const getTimeSeriesMultiMetric = async (
   return data
 }
 
-// ============================================================================
-// Aggregated Time Series Statistics
-// ============================================================================
-
 export const getTimeSeriesStats = async (
   user: string,
   metrics: string[],
@@ -294,7 +313,6 @@ export const getTimeSeriesStats = async (
     sqlNonCumulative: statsSql(''),
   })
 
-  // Sort by metric name for consistent ordering
   return results.sort((a, b) => a.metric.localeCompare(b.metric))
 }
 
@@ -333,33 +351,12 @@ export const getDailyAggregates = async (
     sqlNonCumulative: dailySql(''),
   })
 
-  // Sort by metric and date for consistent ordering
   return results.sort((a, b) => {
     const metricCmp = a.metric.localeCompare(b.metric)
     if (metricCmp !== 0) return metricCmp
     return a.date.localeCompare(b.date)
   })
 }
-
-// ============================================================================
-// Bucketed Time Series Aggregation
-// ============================================================================
-
-/**
- * Get bucketed/aggregated time series data for multiple metrics.
- *
- * Uses PostgreSQL's date_bin function to efficiently bucket data by time intervals.
- * Returns pre-aggregated statistics (avg, min, max, count) for each bucket.
- *
- * @param user - The username
- * @param metrics - Array of metric types to query
- * @param start - Start of time range
- * @param end - End of time range
- * @param bucketMinutes - Bucket size in minutes (e.g., 5, 15, 30, 60, 1440 for 1 day)
- */
-// ============================================================================
-// Time Range Discovery
-// ============================================================================
 
 /** Get the min and max time for a metric (across all sources). Returns null if no data exists. */
 export const getMetricTimeRange = async (
@@ -374,10 +371,6 @@ export const getMetricTimeRange = async (
   if (result.rows.length === 0 || result.rows[0].min_time === null) return null
   return { max: new Date(result.rows[0].max_time), min: new Date(result.rows[0].min_time) }
 }
-
-// ============================================================================
-// Time Series Deletion (soft delete)
-// ============================================================================
 
 export const deleteTimeSeriesPoint = async (
   user: string,
@@ -484,7 +477,6 @@ export const getTimeSeriesBucketed = async (
   return results.sort((a, b) => a.bucket_start.getTime() - b.bucket_start.getTime())
 }
 
-/** Get distinct metric names that have data in the given time range. */
 export const getDistinctMetrics = async (user: string, start: Date, end: Date): Promise<string[]> => {
   const result = await query(
     user,
@@ -492,4 +484,291 @@ export const getDistinctMetrics = async (user: string, start: Date, end: Date): 
     [start, end],
   )
   return result.rows.map((row) => row.metric as string).sort()
+}
+
+/** Most recent value of `metric` in `[since, now]`, or undefined when there is none. */
+export const getLatestTimeSeriesValue = async (
+  user: string,
+  metric: string,
+  since: Date,
+): Promise<number | undefined> => {
+  const sources = getSourceFilter(metric)
+  const params: unknown[] = [metric, since, new Date()]
+  if (sources) params.push(sources)
+
+  const result = await query(
+    user,
+    `SELECT value FROM time_series
+     WHERE metric = $1 AND time >= $2 AND time <= $3 AND deleted_at IS NULL${sources ? ' AND source = ANY($4)' : ''}
+     ORDER BY time DESC
+     LIMIT 1`,
+    params,
+  )
+  return result.rows.length > 0 ? (result.rows[0].value as number) : undefined
+}
+
+/**
+ * The `time_series` rows inside each window of a preceding `unnest(…) AS w(…, s, e, …)`, as `ts`.
+ * Written as a plain range join, the planner can't see how narrow the windows are: it estimates a
+ * sizeable share of the table per window and picks one scan over every sample of the metric, each
+ * checked against every window (seconds on a year of heart rate, even for two windows). The lateral
+ * subquery makes it an index range scan per window; OFFSET 0 keeps it from being flattened back
+ * into the join.
+ */
+const samplesPerWindow = (conditions: string): string =>
+  `CROSS JOIN LATERAL (
+         SELECT time, source, value
+           FROM time_series
+          WHERE ${conditions}
+         OFFSET 0
+       ) ts`
+
+/**
+ * Runs a `samplesPerWindow` query with JIT off. The planner still overestimates each window
+ * (it assumes a fixed share of the table), and the inflated cost switches JIT compilation on, which
+ * for these short index range scans takes longer than the query itself.
+ */
+const queryWindowSamples = (user: string, sql: string, params: unknown[]) =>
+  withUserTransaction(user, async (tx) => {
+    await query(tx, 'SET LOCAL jit = off')
+    return query(tx, sql, params)
+  })
+
+/**
+ * Per-window equivalent of `getTimeSeriesBucketed(user, [metric], w.start, w.end, interval)`'s
+ * `[bucket_start, avg]` series (UTC bins anchored at each window's start), in one query.
+ * The result is index-aligned with `windows`.
+ */
+export const getTimeSeriesBucketedAvgForWindows = async (
+  user: string,
+  metric: string,
+  windows: { start: Date; end: Date }[],
+  interval: string,
+): Promise<[Date, number][][]> => {
+  if (windows.length === 0) return []
+
+  const sources = getSourceFilter(metric)
+  const params: unknown[] = [windows.map((w) => w.start), windows.map((w) => w.end), metric, interval]
+  if (sources) params.push(sources)
+
+  const result = await queryWindowSamples(
+    user,
+    `SELECT w.i::int AS i,
+            date_bin($4::interval, ts.time AT TIME ZONE 'UTC', (w.s AT TIME ZONE 'UTC')::timestamp)
+              AT TIME ZONE 'UTC' AS bucket_start,
+            AVG(ts.value) AS avg
+       FROM unnest($1::timestamptz[], $2::timestamptz[]) WITH ORDINALITY AS w(s, e, i)
+       ${samplesPerWindow(`metric = $3 AND time >= w.s AND time < w.e AND deleted_at IS NULL${sources ? ' AND source = ANY($5)' : ''}`)}
+      GROUP BY w.i, bucket_start
+      ORDER BY w.i, bucket_start`,
+    params,
+  )
+
+  const series: [Date, number][][] = windows.map(() => [])
+  for (const row of result.rows) {
+    series[(row.i as number) - 1].push([new Date(row.bucket_start as string), Number(row.avg)])
+  }
+  return series
+}
+
+export type HrZoneBucket = 'none' | '1m' | '5m' | '15m' | '1h' | '1d' | '1w' | '1M'
+
+/**
+ * Calendar units and hours truncate in the zone bound at `tz` (a placeholder such as `$11`),
+ * whatever the session TimeZone. Sub-hour bins count from 2000-01-01Z: every current offset is a
+ * whole number of quarter hours, so they already fall on local clock boundaries. Plain strings take
+ * no zone, so no zone parameter is bound for them (an unused placeholder's type is undeterminable).
+ */
+const hrZoneBucketExprs: Record<HrZoneBucket, ((tz: string) => string) | string> = {
+  '15m': "date_bin('15 minutes', time, '2000-01-01T00:00:00Z'::timestamptz)",
+  '1M': (tz) => `date_trunc('month', time, ${tz}::text)`,
+  '1d': (tz) => `date_trunc('day', time, ${tz}::text)`,
+  '1h': (tz) => `date_trunc('hour', time, ${tz}::text)`,
+  '1m': "date_bin('1 minute', time, '2000-01-01T00:00:00Z'::timestamptz)",
+  '1w': (tz) => `date_trunc('week', time, ${tz}::text)`,
+  '5m': "date_bin('5 minutes', time, '2000-01-01T00:00:00Z'::timestamptz)",
+  none: 'NULL::timestamptz',
+}
+
+/**
+ * Zone seconds per `b` over a preceding `hr(b, time, source, value)` CTE, the SQL counterpart of
+ * `computeHrZoneSecs`: each sample counts the gap to the next one (capped at MAX_GAP_SECONDS, $3),
+ * the last one the mean of those gaps, a lone sample SINGLE_SAMPLE_SECONDS ($4). $5–$9 are the
+ * zone 1–5 thresholds. LEAST ignores NULLs, so the last sample's missing gap has to stay NULL
+ * explicitly for AVG to skip it.
+ */
+const HR_ZONE_SECS_BY_B = `s AS (
+       SELECT b, value,
+              CASE WHEN lead(time) OVER w IS NULL THEN NULL
+                   ELSE LEAST(EXTRACT(EPOCH FROM (lead(time) OVER w - time))::float8, $3::float8)
+              END AS gap
+         FROM hr
+       WINDOW w AS (PARTITION BY b ORDER BY time, source)
+     ), g AS (
+       SELECT b, COALESCE(gap, AVG(gap) OVER (PARTITION BY b), $4::float8) AS secs,
+              CASE WHEN value >= $9 THEN 5
+                   WHEN value >= $8 THEN 4
+                   WHEN value >= $7 THEN 3
+                   WHEN value >= $6 THEN 2
+                   WHEN value >= $5 THEN 1
+                   ELSE 0
+              END AS zone
+         FROM s
+     )
+     SELECT b, COUNT(*)::int AS sample_count,
+            COALESCE(SUM(secs) FILTER (WHERE zone = 0), 0) AS z0,
+            COALESCE(SUM(secs) FILTER (WHERE zone = 1), 0) AS z1,
+            COALESCE(SUM(secs) FILTER (WHERE zone = 2), 0) AS z2,
+            COALESCE(SUM(secs) FILTER (WHERE zone = 3), 0) AS z3,
+            COALESCE(SUM(secs) FILTER (WHERE zone = 4), 0) AS z4,
+            COALESCE(SUM(secs) FILTER (WHERE zone = 5), 0) AS z5
+       FROM g
+      GROUP BY b
+      ORDER BY b`
+
+const hrZoneParams = (zones: HrZoneThresholds): unknown[] => [
+  MAX_GAP_SECONDS,
+  SINGLE_SAMPLE_SECONDS,
+  zones[1],
+  zones[2],
+  zones[3],
+  zones[4],
+  zones[5],
+]
+
+const zoneSecsFromRow = (row: Record<string, unknown>): HrZoneSecs => ({
+  0: Number(row.z0),
+  1: Number(row.z1),
+  2: Number(row.z2),
+  3: Number(row.z3),
+  4: Number(row.z4),
+  5: Number(row.z5),
+})
+
+/**
+ * `computeHrZoneSecs` over the heart_rate samples in `[start, end]`, per bucket. Buckets without
+ * samples are absent, so an empty range returns `[]` for every bucket size including 'none'.
+ */
+export const getHrZoneSecs = async (
+  user: string,
+  start: Date,
+  end: Date,
+  zones: HrZoneThresholds,
+  bucket: HrZoneBucket = 'none',
+  tz = 'UTC',
+): Promise<{ bucket_start: Date | null; sample_count: number; secs: HrZoneSecs }[]> => {
+  const sources = getSourceFilter('heart_rate')
+  const params: unknown[] = [start, end, ...hrZoneParams(zones)]
+  if (sources) params.push(sources)
+  const bucketExpr = hrZoneBucketExprs[bucket]
+  let bucketSql: string
+  if (typeof bucketExpr === 'string') {
+    bucketSql = bucketExpr
+  } else {
+    params.push(tz)
+    bucketSql = bucketExpr(`$${params.length}`)
+  }
+
+  const result = await query(
+    user,
+    `WITH hr AS (
+       SELECT ${bucketSql} AS b, time, source, value
+         FROM time_series
+        WHERE metric = 'heart_rate' AND time >= $1 AND time <= $2 AND deleted_at IS NULL${sources ? ' AND source = ANY($10)' : ''}
+     ), ${HR_ZONE_SECS_BY_B}`,
+    params,
+  )
+
+  return result.rows.map((row) => ({
+    bucket_start: row.b === null ? null : new Date(row.b as string),
+    sample_count: row.sample_count as number,
+    secs: zoneSecsFromRow(row),
+  }))
+}
+
+/**
+ * `getHrZoneSecs(user, w.start, w.end, zones)` for every window in one query, index-aligned with
+ * `windows`; undefined where a window has no samples.
+ */
+export const getHrZoneSecsForWindows = async (
+  user: string,
+  windows: { start: Date; end: Date }[],
+  zones: HrZoneThresholds,
+): Promise<(HrZoneSecs | undefined)[]> => {
+  if (windows.length === 0) return []
+
+  const sources = getSourceFilter('heart_rate')
+  const params: unknown[] = [windows.map((w) => w.start), windows.map((w) => w.end), ...hrZoneParams(zones)]
+  if (sources) params.push(sources)
+
+  const result = await queryWindowSamples(
+    user,
+    `WITH hr AS (
+       SELECT w.i AS b, ts.time, ts.source, ts.value
+         FROM unnest($1::timestamptz[], $2::timestamptz[]) WITH ORDINALITY AS w(s, e, i)
+         ${samplesPerWindow(`metric = 'heart_rate' AND time >= w.s AND time <= w.e AND deleted_at IS NULL${sources ? ' AND source = ANY($10)' : ''}`)}
+     ), ${HR_ZONE_SECS_BY_B}`,
+    params,
+  )
+
+  const secs: (HrZoneSecs | undefined)[] = windows.map(() => undefined)
+  for (const row of result.rows) secs[Number(row.b) - 1] = zoneSecsFromRow(row)
+  return secs
+}
+
+/** Mean of the `metric` samples in each `[start, end]` window, index-aligned; undefined where a window has none. */
+export const getMetricMeansForWindows = async (
+  user: string,
+  metric: string,
+  windows: { start: Date; end: Date }[],
+): Promise<(number | undefined)[]> => {
+  if (windows.length === 0) return []
+
+  const sources = getSourceFilter(metric)
+  const params: unknown[] = [windows.map((w) => w.start), windows.map((w) => w.end), metric]
+  if (sources) params.push(sources)
+
+  const result = await queryWindowSamples(
+    user,
+    `SELECT w.i::int AS i, AVG(ts.value)::float8 AS mean
+       FROM unnest($1::timestamptz[], $2::timestamptz[]) WITH ORDINALITY AS w(s, e, i)
+       ${samplesPerWindow(`metric = $3 AND time >= w.s AND time <= w.e AND deleted_at IS NULL${sources ? ' AND source = ANY($4)' : ''}`)}
+      GROUP BY 1`,
+    params,
+  )
+
+  const means: (number | undefined)[] = windows.map(() => undefined)
+  for (const row of result.rows) means[(row.i as number) - 1] = Number(row.mean)
+  return means
+}
+
+/**
+ * Histogram of the positive `metric` samples in each `[start, end]` window, rounded to whole units
+ * (value → sample count), index-aligned with `windows` and empty where a window has none. It is
+ * small to transfer, and windows pool by adding counts, so a group's distribution needs no second
+ * pass over its samples.
+ */
+export const getValueHistogramsForWindows = async (
+  user: string,
+  metric: string,
+  windows: { start: Date; end: Date }[],
+): Promise<Map<number, number>[]> => {
+  if (windows.length === 0) return []
+
+  const sources = getSourceFilter(metric)
+  const params: unknown[] = [windows.map((w) => w.start), windows.map((w) => w.end), metric]
+  if (sources) params.push(sources)
+
+  const result = await queryWindowSamples(
+    user,
+    `SELECT w.i::int AS i, round(ts.value)::int AS v, COUNT(*)::int AS n
+       FROM unnest($1::timestamptz[], $2::timestamptz[]) WITH ORDINALITY AS w(s, e, i)
+       ${samplesPerWindow(`metric = $3 AND time >= w.s AND time <= w.e AND deleted_at IS NULL AND value > 0${sources ? ' AND source = ANY($4)' : ''}`)}
+      GROUP BY 1, 2`,
+    params,
+  )
+
+  const histograms = windows.map(() => new Map<number, number>())
+  for (const row of result.rows) histograms[(row.i as number) - 1]!.set(row.v as number, row.n as number)
+  return histograms
 }

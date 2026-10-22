@@ -15,6 +15,7 @@ import {
 import type { Activity as ActivityRow } from '../../db/types.ts'
 
 import {
+  getActivityTrack,
   getDistinctMetrics,
   getLocations,
   getOverlappingActivities,
@@ -22,6 +23,7 @@ import {
   getTimeSeriesMultiMetric,
 } from '../../db/index.ts'
 import { computeHrZoneSecs, getEffectiveHrZones } from '../settings.ts'
+import { trackToGps } from '../tracks.ts'
 import { computeActivitySummaryMetrics, SUMMARY_METRICS } from './activity-summary-metrics.ts'
 
 /**
@@ -41,10 +43,6 @@ export const parseMetricsParam = (raw: string | undefined): string[] | undefined
   return list.length > 0 ? list : undefined
 }
 
-/**
- * Compute hr_zone_secs, avg_hrv, and the generic summary metrics for an
- * activity's time range. Pulls all required time-series in parallel.
- */
 export const computeActivityDetailMetrics = async (
   user: string,
   activity: { start_time: Date; end_time?: Date; data?: Record<string, unknown> },
@@ -77,6 +75,9 @@ export interface ActivityFullDetailOptions {
 
 /**
  * Fetch deep-dive detail for an activity: GPS trace + per-metric time-series.
+ * The GPS trace is the activity's full-resolution track when it has one (`id`
+ * given), else the locations in its time range, else a shape-only track: its
+ * evenly spread timestamps are worse for the hover highlight than real ones.
  *
  * Source-agnostic: works for any activity that has time-series and/or GPS
  * locations populated within its time range, regardless of which integration
@@ -84,7 +85,7 @@ export interface ActivityFullDetailOptions {
  */
 export const getActivityFullDetail = async (
   user: string,
-  activity: { start_time: Date; end_time?: Date },
+  activity: { id?: string; start_time: Date; end_time?: Date },
   options: ActivityFullDetailOptions,
 ): Promise<Pick<ActivityFullDetail, 'gps' | 'metric_series'>> => {
   const end = activity.end_time
@@ -94,13 +95,20 @@ export const getActivityFullDetail = async (
   const result: Pick<ActivityFullDetail, 'gps' | 'metric_series'> = {}
 
   if (includeGps) {
-    const { locations } = await getLocations(user, activity.start_time, end)
-    if (locations.length > 0) {
-      result.gps = locations.map((l) => ({
-        lat: l.coordinates[1],
-        lon: l.coordinates[0],
-        time: l.time.toISOString(),
-      }))
+    const track = activity.id ? await getActivityTrack(user, activity.id) : null
+    if (track?.full_resolution) {
+      result.gps = trackToGps(track)
+    } else {
+      const { locations } = await getLocations(user, activity.start_time, end)
+      if (locations.length > 0) {
+        result.gps = locations.map((l) => ({
+          lat: l.coordinates[1],
+          lon: l.coordinates[0],
+          time: l.time.toISOString(),
+        }))
+      } else if (track) {
+        result.gps = trackToGps(track)
+      }
     }
   }
 

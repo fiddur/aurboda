@@ -111,9 +111,6 @@ private val builtinMetrics = listOf(
     "respiratory_rate" to "Respiratory Rate",
 )
 
-private fun toSnakeCase(s: String): String =
-    s.trim().lowercase().replace(Regex("[^a-z0-9]+"), "_").trim('_')
-
 @Composable
 fun AddDataScreen(
     apiUrl: String,
@@ -140,8 +137,6 @@ fun AddDataScreen(
         }
     }
 }
-
-// --- DateTimePicker composable ---
 
 private val displayDateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
 private val displayTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
@@ -184,7 +179,6 @@ private fun DateTimePickerField(
                     showDatePicker = false
                     val selectedDate = dateState.selectedDateMillis
                     if (selectedDate != null) {
-                        // Keep existing time, change date
                         val pickedDate = Instant.ofEpochMilli(selectedDate)
                             .atZone(ZoneId.of("UTC"))
                             .toLocalDate()
@@ -237,8 +231,6 @@ private fun epochMillisToIso(epochMillis: Long): String =
 
 private fun nowEpochMillis(): Long = System.currentTimeMillis()
 
-// --- Autocomplete picker for activity types ---
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ActivityTypePicker(
@@ -256,17 +248,10 @@ private fun ActivityTypePicker(
         activityTypes.find { it.name == selectedType }?.displayName ?: selectedType
     }
 
-    val filtered = if (query.isBlank()) {
-        activityTypes
-    } else {
-        val q = query.lowercase()
-        activityTypes.filter { it.displayName.lowercase().contains(q) || it.name.contains(q) }
-    }
-
-    val snakeInput = toSnakeCase(query)
-    val isNewType = query.isNotBlank()
-            && snakeInput.isNotEmpty()
-            && activityTypes.none { it.name == snakeInput }
+    val match = matchActivityTypes(activityTypes, query, { it.name }, { it.displayName })
+    val filtered = match.filtered
+    val snakeInput = match.snakeInput
+    val isNewType = match.isNewType
 
     ExposedDropdownMenuBox(
         expanded = expanded,
@@ -348,8 +333,6 @@ private fun ActivityTypePicker(
     }
 }
 
-// --- Autocomplete picker for metrics ---
-
 private data class MetricEntry(
     val value: String,
     val label: String,
@@ -386,7 +369,7 @@ private fun MetricPicker(
     val filtered = if (query.isBlank()) {
         allEntries
     } else {
-        val q = query.lowercase()
+        val q = query.trim().lowercase()
         allEntries.filter { it.label.lowercase().contains(q) || it.value.contains(q) }
     }
 
@@ -473,8 +456,6 @@ private fun MetricPicker(
     }
 }
 
-// --- Structured data fields for activity types ---
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SchemaDataFields(
@@ -506,7 +487,6 @@ private fun SchemaDataFields(
             }
 
             field.type == "string" && !field.enumValues.isNullOrEmpty() -> {
-                // Dropdown for enum values
                 var enumExpanded by remember { mutableStateOf(false) }
                 ExposedDropdownMenuBox(
                     expanded = enumExpanded,
@@ -551,7 +531,6 @@ private fun SchemaDataFields(
             }
 
             else -> {
-                // Default: string text input
                 OutlinedTextField(
                     value = data[field.name] ?: "",
                     onValueChange = { onDataChange(data + (field.name to it)) },
@@ -563,8 +542,6 @@ private fun SchemaDataFields(
         }
     }
 }
-
-// --- Pending entries section ---
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -578,7 +555,6 @@ private fun PendingEntriesSection(
     var editingEntry by remember { mutableStateOf<PendingEntry?>(null) }
     var editingTimeMillis by remember { mutableLongStateOf(nowEpochMillis()) }
 
-    // Refresh pending entries periodically
     LaunchedEffect(Unit) {
         entries = getPendingEntries(context)
     }
@@ -630,7 +606,6 @@ private fun PendingEntriesSection(
                 modifier = Modifier.padding(top = 4.dp),
             ) {
                 OutlinedButton(onClick = {
-                    // Parse existing time to epoch millis for the picker
                     val millis = try {
                         ZonedDateTime.parse(timeStr, DateTimeFormatter.ISO_OFFSET_DATE_TIME)
                             .toInstant().toEpochMilli()
@@ -682,7 +657,6 @@ private fun PendingEntriesSection(
         }
     }
 
-    // Edit time dialog
     val currentEditing = editingEntry
     if (currentEditing != null) {
         DateTimePickerField(
@@ -732,8 +706,6 @@ private fun PendingEntriesSection(
     }
 }
 
-// --- Activity tab ---
-
 @Composable
 private fun AddActivityTab(
     apiUrl: String,
@@ -762,7 +734,6 @@ private fun AddActivityTab(
         }
     }
 
-    // Fetch activity types from API and cache
     LaunchedEffect(Unit) {
         when (val result = fetchActivityTypes(httpClient, apiUrl, authToken)) {
             is DataResult.Success -> {
@@ -773,7 +744,6 @@ private fun AddActivityTab(
         }
     }
 
-    // Get data schema for selected type
     val selectedTypeDef = activityTypes.find { it.name == selectedType }
     val dataFields = selectedTypeDef?.dataSchema?.fields ?: emptyList()
 
@@ -794,7 +764,6 @@ private fun AddActivityTab(
             )
         }
 
-        // Activity type autocomplete picker
         ActivityTypePicker(
             activityTypes = activityTypes,
             selectedType = selectedType,
@@ -804,7 +773,6 @@ private fun AddActivityTab(
             },
         )
 
-        // Structured data fields (e.g. Partner for sex)
         if (dataFields.isNotEmpty()) {
             SchemaDataFields(
                 fields = dataFields,
@@ -813,7 +781,6 @@ private fun AddActivityTab(
             )
         }
 
-        // Title
         OutlinedTextField(
             value = title,
             onValueChange = { title = it },
@@ -825,7 +792,6 @@ private fun AddActivityTab(
             singleLine = true,
         )
 
-        // Start time
         DateTimePickerField(
             label = "Start Time",
             epochMillis = startTimeMillis,
@@ -835,13 +801,11 @@ private fun AddActivityTab(
             },
         )
 
-        // Has end time checkbox
         Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(checked = hasEndTime, onCheckedChange = { hasEndTime = it })
             Text("Has end time", modifier = Modifier.clickable { hasEndTime = !hasEndTime })
         }
 
-        // End time
         if (hasEndTime) {
             DateTimePickerField(
                 label = "End Time",
@@ -850,7 +814,6 @@ private fun AddActivityTab(
             )
         }
 
-        // Notes
         OutlinedTextField(
             value = notes,
             onValueChange = { notes = it },
@@ -866,7 +829,6 @@ private fun AddActivityTab(
             maxLines = 5,
         )
 
-        // Pending count indicator
         val pendingCount = pendingEntryCount(context)
         if (pendingCount > 0) {
             Text(
@@ -876,7 +838,6 @@ private fun AddActivityTab(
             )
         }
 
-        // Submit button
         Button(
             onClick = {
                 if (selectedType.isBlank()) {
@@ -889,14 +850,17 @@ private fun AddActivityTab(
 
                 val startIso = epochMillisToIso(startTimeMillis)
                 val endIso = if (hasEndTime) epochMillisToIso(endTimeMillis) else null
-                val dataMap = structuredData.filterValues { it.isNotBlank() }.ifEmpty { null }
+                val dataMap = structuredData
+                    .mapValues { it.value.trim() }
+                    .filterValues { it.isNotEmpty() }
+                    .ifEmpty { null }
 
                 val body = AddActivityBody(
                     activityType = selectedType,
                     startTime = startIso,
                     endTime = endIso,
-                    title = title.ifBlank { null },
-                    notes = notes.ifBlank { null },
+                    title = title.trim().ifBlank { null },
+                    notes = notes.trim().ifBlank { null },
                     data = dataMap,
                 )
 
@@ -945,12 +909,9 @@ private fun AddActivityTab(
             Text(if (submitting) "Adding..." else "Add Activity")
         }
 
-        // Pending entries management
         PendingEntriesSection(apiUrl = apiUrl, authToken = authToken)
     }
 }
-
-// --- Metric tab ---
 
 @Composable
 private fun AddMetricTab(
@@ -976,7 +937,6 @@ private fun AddMetricTab(
         }
     }
 
-    // Fetch custom metrics from API and cache
     LaunchedEffect(Unit) {
         when (val result = fetchCustomMetrics(httpClient, apiUrl, authToken)) {
             is DataResult.Success -> {
@@ -1004,14 +964,12 @@ private fun AddMetricTab(
             )
         }
 
-        // Metric autocomplete picker
         MetricPicker(
             customMetrics = customMetrics,
             selectedMetric = selectedMetric,
             onMetricSelected = { selectedMetric = it },
         )
 
-        // Value and Time in a row
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1033,7 +991,6 @@ private fun AddMetricTab(
             )
         }
 
-        // Pending count indicator
         val pendingCount = pendingEntryCount(context)
         if (pendingCount > 0) {
             Text(
@@ -1043,7 +1000,6 @@ private fun AddMetricTab(
             )
         }
 
-        // Submit button
         Button(
             onClick = {
                 val parsedValue = value.toDoubleOrNull()
@@ -1105,7 +1061,6 @@ private fun AddMetricTab(
             Text(if (submitting) "Adding..." else "Add Metric")
         }
 
-        // Pending entries management
         PendingEntriesSection(apiUrl = apiUrl, authToken = authToken)
     }
 }

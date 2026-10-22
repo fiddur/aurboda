@@ -1,20 +1,21 @@
 /**
  * PublicChallenge - read-only challenge view at /u/:username/:slug when the slug
  * resolves to a challenge. Shows a cumulative "race" chart (one line per member)
- * and a leaderboard, plus join actions. Rendered without app chrome.
+ * and a leaderboard, plus join actions. Rendered without app chrome for
+ * anonymous visitors; logged-in viewers keep their nav (see AppShell).
  */
 import type { PublicChallenge as PublicChallengeData } from '@aurboda/api-spec'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'preact/hooks'
+import { useMemo, useState } from 'preact/hooks'
 
 import { TrendLineChart } from '../../components/charts/TrendLineChart'
 import { fetchPublicChallengeStandings, joinChallengeByUrl } from '../../state/api'
 import { auth } from '../../state/auth'
-import { formatDateInZone, toCumulativeSeries } from './race-series'
+import { competitionRanks, podiumMedal } from '../../utils/podium'
+import { memberColor } from './member-colors'
+import { formatDateInZone, formatUpdated, toCumulativeSeries } from './race-series'
 import './style.css'
-
-const COLORS = ['#8b5cf6', '#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#ec4899', '#14b8a6', '#a855f7']
 
 const shortHost = (identityBaseUrl: string): string => {
   try {
@@ -65,21 +66,28 @@ export function PublicChallenge({
   }
 
   const standings = (standingsQuery.data ?? []).filter((s) => s.status === 'active')
-  const series = standings
-    // Falls back to daily if a cross-version host omits the resolved bucket size.
-    .map((s, i) =>
-      toCumulativeSeries(
-        s,
-        COLORS[i % COLORS.length],
-        challenge.start_ts,
-        challenge.effective_bucket_size ?? '1d',
-      ),
-    )
-    // Keep members with at least one real bucket (the start-line point alone is length 1).
-    .filter((s) => s.data.length > 1)
+  // Once the window has closed, medal the podium (equal totals share a rank) like
+  // the host's completion post and the Android widget do. It is provisional until
+  // the host's announcement freezes it (grace period, up to 24 h with a stale
+  // member) — late-syncing last-day data can still reorder it (#1076).
+  const ended = Date.now() >= new Date(challenge.end_ts).getTime()
+  const ranks = competitionRanks(standings.map((s) => s.total))
+  const standingsData = standingsQuery.data
+  const { start_ts, effective_bucket_size } = challenge
+  const series = useMemo(
+    () =>
+      (standingsData ?? [])
+        .filter((s) => s.status === 'active')
+        // Falls back to daily if a cross-version host omits the resolved bucket size.
+        .map((s, i) => toCumulativeSeries(s, memberColor(i), start_ts, effective_bucket_size ?? '1d'))
+        // Keep members with at least one real bucket (the start-line point alone is length 1).
+        .filter((s) => s.data.length > 1),
+    [standingsData, start_ts, effective_bucket_size],
+  )
 
   return (
     <div class="dashboard public-dashboard public-challenge">
+      {challenge.banner_url && <img class="challenge-banner" src={challenge.banner_url} alt="" />}
       <div class="dashboard-header">
         <h1>{challenge.name}</h1>
         <a class="public-attribution" href={`/u/${encodeURIComponent(username)}`}>
@@ -123,22 +131,22 @@ export function PublicChallenge({
         ) : series.length > 0 ? (
           <TrendLineChart
             data={[]}
-            color={COLORS[0]}
+            color={memberColor(0)}
             multiSeries={series}
             height={280}
             // end_ts is the exclusive window end (midnight after the last day); step back
             // one ms so the axis ends on the inclusive last competing day (matching the
             // header) rather than drawing a trailing tick on the day after.
-            xDomain={[
-              new Date(challenge.start_ts),
-              new Date(new Date(challenge.end_ts).getTime() - 1),
-            ]}
+            xDomain={[new Date(challenge.start_ts), new Date(new Date(challenge.end_ts).getTime() - 1)]}
           />
         ) : (
           <p class="public-muted">No data yet.</p>
         )}
       </div>
 
+      {ended && standings.some((s) => s.total > 0) && (
+        <p class="challenge-final">🏁 Finished — standings settle once the host has announced the result</p>
+      )}
       <table class="challenge-leaderboard">
         <thead>
           <tr>
@@ -150,14 +158,28 @@ export function PublicChallenge({
         </thead>
         <tbody>
           {standings.map((s, i) => (
-            <tr key={s.identity_base_url}>
-              <td>{i + 1}</td>
+            <tr
+              key={s.identity_base_url}
+              class={ended && ranks[i] === 1 && s.total > 0 ? 'challenge-winner' : ''}
+            >
               <td>
+                {ended && s.total > 0 && podiumMedal(ranks[i]) ? (
+                  <span title={`#${ranks[i]}`}>{podiumMedal(ranks[i])}</span>
+                ) : (
+                  ranks[i]
+                )}
+              </td>
+              <td>
+                <span
+                  aria-hidden="true"
+                  class="challenge-member-color"
+                  style={{ background: memberColor(i) }}
+                />
                 {s.display_name} <span class="challenge-member-host">· {shortHost(s.identity_base_url)}</span>
               </td>
               <td>{Math.round(s.total).toLocaleString()}</td>
               <td class="challenge-member-updated">
-                {s.stale ? '⚠ stale' : s.last_updated ? new Date(s.last_updated).toLocaleTimeString() : '—'}
+                {s.stale ? '⚠ stale' : s.last_updated ? formatUpdated(s.last_updated) : '—'}
               </td>
             </tr>
           ))}

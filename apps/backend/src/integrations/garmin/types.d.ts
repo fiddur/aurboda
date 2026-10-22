@@ -1,10 +1,10 @@
 /**
- * Type declarations for @flow-js/garmin-connect deep imports.
+ * Type declarations for @fiddur/garmin-connect deep imports.
  *
  * The package lacks an `exports` map, so TypeScript's `nodenext` module
  * resolution cannot resolve these deep paths. We re-declare them here.
  */
-declare module '@flow-js/garmin-connect/dist/garmin/types/activity' {
+declare module '@fiddur/garmin-connect/dist/garmin/types/activity' {
   export interface IActivity {
     activityId: number
     activityName: string
@@ -38,7 +38,7 @@ declare module '@flow-js/garmin-connect/dist/garmin/types/activity' {
   }
 }
 
-declare module '@flow-js/garmin-connect/dist/garmin/types/sleep' {
+declare module '@fiddur/garmin-connect/dist/garmin/types/sleep' {
   export interface GarminNapDTO {
     userProfilePK?: number
     deviceId?: number
@@ -83,11 +83,11 @@ declare module '@flow-js/garmin-connect/dist/garmin/types/sleep' {
       endGMT: string
       activityLevel: number
     }>
-    sleepLevels: Array<{
+    sleepLevels?: Array<{
       startGMT: string
       endGMT: string
       activityLevel: number
-    }>
+    }> | null
     sleepRestlessMoments: Array<{ value: number; startGMT: string }>
     wellnessEpochSPO2DataDTOList: Array<{
       epochTimestamp: number

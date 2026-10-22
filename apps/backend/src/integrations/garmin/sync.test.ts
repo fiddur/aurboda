@@ -2,6 +2,7 @@ import { subDays } from 'date-fns'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import * as db from '../../db/index.ts'
+import { processActivityDetail } from './process.ts'
 import {
   calculateRetryAfter,
   garminDataTypes,
@@ -13,6 +14,8 @@ import {
 
 // Mock the db module (include all exports used by garmin-process.ts too)
 vi.mock('../../db/index.ts', () => ({
+  activityTypeExists: vi.fn().mockResolvedValue(true),
+  adoptLegacyActivity: vi.fn().mockResolvedValue(null),
   deleteGarminActivityWithWrongType: vi.fn().mockResolvedValue(null),
   getActivitiesNeedingDetail: vi.fn().mockResolvedValue([]),
   getSyncState: vi.fn(),
@@ -21,7 +24,8 @@ vi.mock('../../db/index.ts', () => ({
   insertRawRecord: vi.fn(),
   insertTimeSeries: vi.fn(),
   markActivityDetailSynced: vi.fn().mockResolvedValue(undefined),
-  softDeleteLocationRange: vi.fn().mockResolvedValue(undefined),
+  softDeleteSupersededLocations: vi.fn().mockResolvedValue(0),
+  upsertActivityTrack: vi.fn().mockResolvedValue(undefined),
   upsertSyncState: vi.fn(),
 }))
 
@@ -38,6 +42,7 @@ vi.mock('./process', async (importOriginal) => {
 vi.mock('../../services/audit-log', () => ({
   auditError: vi.fn(),
   auditInfo: vi.fn(),
+  auditWarn: vi.fn(),
 }))
 
 const createMockGarmin = () => ({
@@ -295,6 +300,31 @@ describe('syncActivityDetails', () => {
     expect(db.markActivityDetailSynced).toHaveBeenCalledWith(user, 'test-id')
   })
 
+  test('passes the activity id and the track callback to the detail processor', async () => {
+    const start = new Date('2026-05-01T08:00:00Z')
+    const end = new Date('2026-05-01T09:00:00Z')
+    vi.mocked(db.getActivitiesNeedingDetail).mockResolvedValue([
+      {
+        activity_type: 'running' as const,
+        data: { garmin_activity_id: 12345 },
+        end_time: end,
+        id: 'test-id',
+        source: 'garmin' as const,
+        start_time: start,
+      },
+    ])
+    const onTrackWritten = vi.fn()
+
+    await syncActivityDetails(user, createMockGarmin() as never, { onTrackWritten })
+
+    expect(processActivityDetail).toHaveBeenCalledWith(user, expect.anything(), {
+      activityId: 'test-id',
+      activitySpan: { end, start },
+      activityStart: start,
+      onTrackWritten,
+    })
+  })
+
   test('passes forceAll when fullResync is true', async () => {
     vi.mocked(db.getActivitiesNeedingDetail).mockResolvedValue([])
 
@@ -302,6 +332,52 @@ describe('syncActivityDetails', () => {
     await syncActivityDetails(user, mockGarmin as never, { fullResync: true })
 
     expect(db.getActivitiesNeedingDetail).toHaveBeenCalledWith(user, { forceAll: true })
+  })
+
+  const garminActivity = (id: string, data: Record<string, unknown>) => ({
+    activity_type: 'running' as const,
+    data,
+    end_time: new Date(),
+    id,
+    source: 'garmin' as const,
+    start_time: new Date(),
+  })
+
+  test('reports an activity whose detail landed for the first time', async () => {
+    vi.mocked(db.getActivitiesNeedingDetail).mockResolvedValue([
+      garminActivity('a1', { garmin_activity_id: 1 }),
+    ])
+    const onDetailSynced = vi.fn()
+
+    await syncActivityDetails(user, createMockGarmin() as never, { onDetailSynced })
+
+    expect(onDetailSynced).toHaveBeenCalledWith(user, 'a1')
+  })
+
+  test('does not report a failed detail fetch', async () => {
+    vi.mocked(db.getActivitiesNeedingDetail).mockResolvedValue([
+      garminActivity('a1', { garmin_activity_id: 1 }),
+    ])
+    const mockGarmin = createMockGarmin()
+    mockGarmin.getActivityDetail.mockRejectedValue(new Error('404'))
+    const onDetailSynced = vi.fn()
+
+    await syncActivityDetails(user, mockGarmin as never, { onDetailSynced })
+
+    expect(db.markActivityDetailSynced).not.toHaveBeenCalled()
+    expect(onDetailSynced).not.toHaveBeenCalled()
+  })
+
+  test('a full re-sync does not report activities that already had their detail', async () => {
+    vi.mocked(db.getActivitiesNeedingDetail).mockResolvedValue([
+      garminActivity('a1', { detail_synced: true, garmin_activity_id: 1 }),
+    ])
+    const onDetailSynced = vi.fn()
+
+    await syncActivityDetails(user, createMockGarmin() as never, { fullResync: true, onDetailSynced })
+
+    expect(db.markActivityDetailSynced).toHaveBeenCalledWith(user, 'a1')
+    expect(onDetailSynced).not.toHaveBeenCalled()
   })
 
   test('skips activities without garmin_activity_id', async () => {

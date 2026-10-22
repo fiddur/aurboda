@@ -1,7 +1,3 @@
-/**
- * Locations schemas.
- */
-
 import { z } from 'zod'
 
 import {
@@ -24,12 +20,8 @@ import {
   tzSchema,
 } from './common.ts'
 
-// Shared location name field
 const locationNameSchema = z.string().meta({ description: 'Location name', example: 'Home' })
 
-/**
- * Named location schema.
- */
 export const namedLocationSchema = z
   .object({
     auto_create_activity: z.boolean().optional().meta({
@@ -45,9 +37,6 @@ export const namedLocationSchema = z
 
 export type NamedLocation = z.infer<typeof namedLocationSchema>
 
-/**
- * Detected location schema.
- */
 export const detectedLocationSchema = z
   .object({
     address: addressNullableSchema.optional(),
@@ -66,15 +55,16 @@ export const detectedLocationSchema = z
 
 export type DetectedLocation = z.infer<typeof detectedLocationSchema>
 
-/**
- * Place visit schema.
- */
 export const placeVisitSchema = z
   .object({
     address: addressSchema.optional(),
     detected_location_id: detectedLocationIdSchema.optional(),
     duration: durationMinutesSchema,
     end_time: iso8601DateTimeSchema,
+    inferred_from: iso8601DateTimeSchema.optional().meta({
+      description:
+        'Set when no GPS fix in the range placed the visit: the time of the last fix before the range, which it was carried forward from (see last_known_hours)',
+    }),
     lat: latSchema.optional(),
     lon: lonSchema.optional(),
     name: z.string().meta({ description: 'Place name' }),
@@ -85,9 +75,6 @@ export const placeVisitSchema = z
 
 export type PlaceVisit = z.infer<typeof placeVisitSchema>
 
-/**
- * Raw GPS location point schema.
- */
 export const rawLocationPointSchema = z
   .object({
     lat: latSchema,
@@ -98,53 +85,46 @@ export const rawLocationPointSchema = z
 
 export type RawLocationPoint = z.infer<typeof rawLocationPointSchema>
 
-/**
- * Raw locations response schema.
- */
 export const rawLocationsResponseSchema = createDataArrayResponseSchema(rawLocationPointSchema).meta({
   id: 'RawLocationsResponse',
 })
 
 export type RawLocationsResponse = z.infer<typeof rawLocationsResponseSchema>
 
-/**
- * Locations query schema.
- */
-export const locationsQuerySchema = timeRangeQuerySchema.meta({ id: 'LocationsQuery' })
+export const locationsQuerySchema = timeRangeQuerySchema
+  .extend({
+    last_known_hours: z.coerce.number().min(0).max(24).optional().meta({
+      description:
+        'When the range starts before its first GPS fix (a phone at rest reports nothing), carry the last fix from up to this many hours earlier forward to the start of the range. Off by default.',
+    }),
+  })
+  .meta({ id: 'LocationsQuery' })
 
 export type LocationsQuery = z.infer<typeof locationsQuerySchema>
 
-/**
- * Locations response schema (place visits).
- */
+export const rawLocationsQuerySchema = timeRangeQuerySchema.meta({ id: 'RawLocationsQuery' })
+
+export type RawLocationsQuery = z.infer<typeof rawLocationsQuerySchema>
+
 export const locationsResponseSchema = createDataArrayResponseSchema(placeVisitSchema).meta({
   id: 'LocationsResponse',
 })
 
 export type LocationsResponse = z.infer<typeof locationsResponseSchema>
 
-/**
- * Named locations response schema.
- */
 export const namedLocationsResponseSchema = createDataArrayResponseSchema(namedLocationSchema).meta({
   id: 'NamedLocationsResponse',
 })
 
 export type NamedLocationsResponse = z.infer<typeof namedLocationsResponseSchema>
 
-/**
- * Detected locations response schema.
- */
 export const detectedLocationsResponseSchema = createDataArrayResponseSchema(detectedLocationSchema).meta({
   id: 'DetectedLocationsResponse',
 })
 
 export type DetectedLocationsResponse = z.infer<typeof detectedLocationsResponseSchema>
 
-/**
- * Detected locations query schema.
- * Note: min_duration stays as string for Express ParsedQs compatibility.
- */
+/** min_duration stays a string for Express ParsedQs compatibility. */
 export const detectedLocationsQuerySchema = timeRangeQuerySchema
   .extend({
     min_duration: z.string().regex(/^\d+$/, 'Must be a positive integer').optional().meta({
@@ -156,9 +136,6 @@ export const detectedLocationsQuerySchema = timeRangeQuerySchema
 
 export type DetectedLocationsQuery = z.infer<typeof detectedLocationsQuerySchema>
 
-/**
- * Add named location body.
- */
 export const addNamedLocationBodySchema = z
   .object({
     auto_create_activity: z.boolean().optional().meta({
@@ -175,18 +152,12 @@ export const addNamedLocationBodySchema = z
 
 export type AddNamedLocationBody = z.infer<typeof addNamedLocationBodySchema>
 
-/**
- * Add named location response.
- */
 export const addNamedLocationResponseSchema = createDataResponseSchema(namedLocationSchema).meta({
   id: 'AddNamedLocationResponse',
 })
 
 export type AddNamedLocationResponse = z.infer<typeof addNamedLocationResponseSchema>
 
-/**
- * Update named location body.
- */
 export const updateNamedLocationBodySchema = z
   .object({
     auto_create_activity: z.boolean().optional().meta({
@@ -201,9 +172,6 @@ export const updateNamedLocationBodySchema = z
 
 export type UpdateNamedLocationBody = z.infer<typeof updateNamedLocationBodySchema>
 
-/**
- * Overnight stay schema — a single detected night at a location.
- */
 export const overnightStaySchema = z
   .object({
     arrival: iso8601DateTimeSchema.meta({
@@ -226,9 +194,6 @@ export const overnightStaySchema = z
 
 export type OvernightStay = z.infer<typeof overnightStaySchema>
 
-/**
- * Overnight stays query schema.
- */
 export const overnightStaysQuerySchema = timeRangeQuerySchema
   .extend({
     arrival_before: z
@@ -259,9 +224,6 @@ export const overnightStaysQuerySchema = timeRangeQuerySchema
 
 export type OvernightStaysQuery = z.infer<typeof overnightStaysQuerySchema>
 
-/**
- * Overnight stays response schema.
- */
 export const overnightStaysResponseSchema = baseResponseSchema
   .extend({
     data: z.array(overnightStaySchema).optional(),
@@ -273,9 +235,6 @@ export const overnightStaysResponseSchema = baseResponseSchema
 
 export type OvernightStaysResponse = z.infer<typeof overnightStaysResponseSchema>
 
-/**
- * Location summary schema.
- */
 export const locationSummaryGroupBySchema = z.enum(['day', 'week', 'month', 'year']).meta({
   description: 'Group breakdown by period',
   id: 'LocationSummaryGroupBy',
@@ -328,9 +287,6 @@ export const locationSummaryResponseSchema = createDataResponseSchema(locationSu
 
 export type LocationSummaryResponse = z.infer<typeof locationSummaryResponseSchema>
 
-/**
- * Promote detected location body.
- */
 export const promoteDetectedLocationBodySchema = z
   .object({
     lat: latWithValidationSchema.meta({ description: 'Latitude from detected location' }),

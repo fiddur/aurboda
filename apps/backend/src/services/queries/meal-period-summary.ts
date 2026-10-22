@@ -9,13 +9,14 @@
 
 import type { NutrientPeriodSummary, NutrientPeriodStat } from '@aurboda/api-spec'
 
-import { NUTRIENT_FIELD_NAMES } from '@aurboda/api-spec'
+import { NUTRIENT_FIELD_NAMES, NUTRIENT_FIELDS } from '@aurboda/api-spec'
 
 import {
   getMeals,
   getMealFoodItemsBatch,
   getMealLogCompletedInRange,
   getTimeSeriesBucketed,
+  type Meal,
   type MealFoodItemLink,
 } from '../../db/index.ts'
 import { dateOnlyToRange } from '../../mcp/tz-utils.ts'
@@ -68,10 +69,10 @@ const getDateKeyFormatter = (tz: string): Intl.DateTimeFormat => {
 /** Convert a UTC Date to its local YYYY-MM-DD key for the given tz. */
 const localDateKey = (d: Date, tz: string): string => getDateKeyFormatter(tz).format(d)
 
-const aggregateNutrientsFromLinks = (links: MealFoodItemLink[]): Map<string, number> => {
+const aggregateNutrients = (rows: Record<string, unknown>[]): Map<string, number> => {
   const totals = new Map<string, number>()
-  for (const link of links) {
-    const derived = withDerivedNutrients(link as Record<string, unknown>)
+  for (const row of rows) {
+    const derived = withDerivedNutrients(row)
     for (const field of NUTRIENT_FIELD_NAMES) {
       const v = derived[field]
       if (typeof v === 'number' && v > 0) {
@@ -82,6 +83,30 @@ const aggregateNutrientsFromLinks = (links: MealFoodItemLink[]): Map<string, num
   return totals
 }
 
+const nutrientUnits = new Map<string, string>(NUTRIENT_FIELDS.map((f) => [f.name, f.unit]))
+
+const MEAL_MACRO_FIELDS = ['calories', 'protein', 'carbs', 'fat', 'fiber'] as const
+
+/**
+ * The nutrition a meal logged without food items carries on its own row: the
+ * macro columns plus `micros` keyed by nutrient field. A plain-number micro is
+ * taken as already in the field's unit; a `{ value, unit }` one is used only
+ * when its unit is the field's, never converted on a guess.
+ */
+const mealLevelNutrients = (meal: Meal): Record<string, unknown> => {
+  const row: Record<string, unknown> = {}
+  for (const [field, value] of Object.entries(meal.micros ?? {})) {
+    const unit = nutrientUnits.get(field)
+    if (unit === undefined) continue
+    if (typeof value === 'number') row[field] = value
+    else if (value.unit === unit) row[field] = value.value
+  }
+  for (const field of MEAL_MACRO_FIELDS) {
+    if (meal[field] !== undefined) row[field] = meal[field]
+  }
+  return row
+}
+
 /** Bucket meals into local-date keys and sum nutrient totals within each day. */
 const accumulateDayTotals = (
   meals: Awaited<ReturnType<typeof getMeals>>,
@@ -90,11 +115,14 @@ const accumulateDayTotals = (
 ): Map<string, Map<string, number>> => {
   const dayTotals = new Map<string, Map<string, number>>()
   for (const meal of meals) {
-    const links = junctionMap.get(meal.id)
-    if (!links || links.length === 0) continue
+    const links = junctionMap.get(meal.id) ?? []
+    const mealTotals =
+      links.length > 0
+        ? aggregateNutrients(links as unknown as Record<string, unknown>[])
+        : aggregateNutrients([mealLevelNutrients(meal)])
+    if (links.length === 0 && mealTotals.size === 0) continue
     const dayKey = localDateKey(meal.time, tz)
     const day = dayTotals.get(dayKey) ?? new Map<string, number>()
-    const mealTotals = aggregateNutrientsFromLinks(links)
     for (const [field, val] of mealTotals) {
       day.set(field, (day.get(field) ?? 0) + val)
     }

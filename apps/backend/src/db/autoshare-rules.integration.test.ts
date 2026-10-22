@@ -1,0 +1,476 @@
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
+
+import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
+import { insertActivities, insertActivity, upsertActivity } from './activities/index.ts'
+import {
+  type AutoshareRuleInput,
+  countAutosharePostsByRule,
+  deleteAutoshareRule,
+  getActivitiesChangedAt,
+  getActivityIngestTimes,
+  getAutoshareRules,
+  getEnabledAutoshareRules,
+  insertAutoshareRule,
+  listAutoshareCandidates,
+  listAutoshareSuppressedIds,
+  updateAutoshareRule,
+} from './autoshare-rules.ts'
+import { query } from './connection.ts'
+import {
+  createFeedPost,
+  deleteFeedPost,
+  listActivityPostVersions,
+  listFeedPostIdsByActivityIds,
+  listSharedActivities,
+  touchFeedPost,
+} from './feed.ts'
+
+const CONTAINER_TIMEOUT = 120_000
+
+const changeTimes = async (user: string, id: string) => {
+  const result = await query<{ created_at: Date; updated_at: Date | null }>(
+    user,
+    `SELECT created_at, updated_at FROM activities WHERE id = $1`,
+    [id],
+  )
+  return result.rows[0]
+}
+
+const ruleInput = (over: Partial<AutoshareRuleInput> = {}): AutoshareRuleInput => ({
+  activity_types: ['running'],
+  data_filters: [],
+  include_chart: false,
+  include_map: true,
+  included_metrics: ['duration', 'distance'],
+  max_age_hours: 24,
+  min_duration_seconds: 900,
+  name: 'Runs > 15 min',
+  series_metrics: ['heart_rate'],
+  visibility: 'followers',
+  ...over,
+})
+
+describe('Auto-share rules integration', () => {
+  beforeAll(async () => {
+    await startTestDb()
+  }, CONTAINER_TIMEOUT)
+
+  afterAll(async () => {
+    await stopTestDb()
+  })
+
+  beforeEach(async () => {
+    await cleanTestDb()
+  })
+
+  test('rules are created DISABLED; enabling stamps enabled_at; disabling keeps it', async () => {
+    const user = getTestUser()
+    const created = await insertAutoshareRule(user, ruleInput())
+    expect(created.enabled).toBe(false)
+    expect(created.enabled_at).toBeNull()
+    expect(created.min_duration_seconds).toBe(900)
+    expect(created.activity_types).toEqual(['running'])
+    expect(await getEnabledAutoshareRules(user)).toEqual([])
+
+    const enabled = await updateAutoshareRule(user, created.id, { enabled: true })
+    expect(enabled?.enabled).toBe(true)
+    expect(enabled?.enabled_at).toBeInstanceOf(Date)
+    expect((await getEnabledAutoshareRules(user)).map((r) => r.id)).toEqual([created.id])
+
+    const disabled = await updateAutoshareRule(user, created.id, { enabled: false })
+    expect(disabled?.enabled).toBe(false)
+    // The gate stays — a later re-enable moves it FORWARD, never backwards.
+    expect(disabled?.enabled_at).toEqual(enabled?.enabled_at)
+  })
+
+  test('re-sending enabled: true to an enabled rule keeps its enabled_at (#1031)', async () => {
+    const user = getTestUser()
+    const created = await insertAutoshareRule(user, ruleInput())
+    await updateAutoshareRule(user, created.id, { enabled: true })
+    await query(user, `UPDATE autoshare_rules SET enabled_at = '2026-08-01T00:00:00Z' WHERE id = $1`, [
+      created.id,
+    ])
+    const again = await updateAutoshareRule(user, created.id, { enabled: true, visibility: 'public' })
+    expect(again?.enabled_at).toEqual(new Date('2026-08-01T00:00:00Z'))
+    expect(again?.visibility).toBe('public')
+
+    await updateAutoshareRule(user, created.id, { enabled: false })
+    const reenabled = await updateAutoshareRule(user, created.id, { enabled: true })
+    expect(reenabled?.enabled_at?.getTime()).toBeGreaterThan(new Date('2026-08-01T00:00:00Z').getTime())
+  })
+
+  test('patches predicate/template fields; null clears the nullable ones', async () => {
+    const user = getTestUser()
+    const created = await insertAutoshareRule(user, ruleInput())
+    const updated = await updateAutoshareRule(user, created.id, {
+      message: 'Auto-shared 🏃',
+      min_distance_meters: 3000,
+      min_duration_seconds: null,
+      visibility: 'public',
+    })
+    expect(updated?.message).toBe('Auto-shared 🏃')
+    expect(updated?.min_distance_meters).toBe(3000)
+    expect(updated?.min_duration_seconds).toBeNull()
+    expect(updated?.visibility).toBe('public')
+  })
+
+  test('data_filters round-trip through insert, list and patch', async () => {
+    const user = getTestUser()
+    const plain = await insertAutoshareRule(user, ruleInput())
+    expect(plain.data_filters).toEqual([])
+
+    const filters = [
+      { field: 'session_name', operator: 'exists' as const },
+      { field: 'style', operator: 'eq' as const, value: 'yin' },
+      { field: 'laps', operator: 'neq' as const, value: 3 },
+    ]
+    const created = await insertAutoshareRule(user, ruleInput({ data_filters: filters, name: 'Named yoga' }))
+    expect(created.data_filters).toEqual(filters)
+    expect((await getAutoshareRules(user)).find((r) => r.id === created.id)?.data_filters).toEqual(filters)
+
+    const replaced = [{ field: 'session_name', operator: 'not_exists' as const }]
+    const patched = await updateAutoshareRule(user, created.id, { data_filters: replaced })
+    expect(patched?.data_filters).toEqual(replaced)
+    const untouched = await updateAutoshareRule(user, created.id, { name: 'Renamed' })
+    expect(untouched?.data_filters).toEqual(replaced)
+    const cleared = await updateAutoshareRule(user, created.id, { data_filters: [] })
+    expect(cleared?.data_filters).toEqual([])
+  })
+
+  test('the data_filters column defaults to an empty list for rows written without it', async () => {
+    const user = getTestUser()
+    const result = await query<{ id: string }>(
+      user,
+      `INSERT INTO autoshare_rules (name) VALUES ('Legacy') RETURNING id`,
+    )
+    const legacy = (await getAutoshareRules(user)).find((r) => r.id === result.rows[0].id)
+    expect(legacy?.data_filters).toEqual([])
+    expect(legacy?.max_age_hours).toBe(24)
+  })
+
+  test('max_age_hours round-trips through insert, list and patch', async () => {
+    const user = getTestUser()
+    const created = await insertAutoshareRule(user, ruleInput({ max_age_hours: 72 }))
+    expect(created.max_age_hours).toBe(72)
+    expect((await getAutoshareRules(user)).find((r) => r.id === created.id)?.max_age_hours).toBe(72)
+
+    const patched = await updateAutoshareRule(user, created.id, { max_age_hours: 6 })
+    expect(patched?.max_age_hours).toBe(6)
+    const untouched = await updateAutoshareRule(user, created.id, { name: 'Renamed' })
+    expect(untouched?.max_age_hours).toBe(6)
+  })
+
+  test('deletes a rule; posts it created keep their marker and count', async () => {
+    const user = getTestUser()
+    const rule = await insertAutoshareRule(user, ruleInput())
+    const activityId = await insertActivity(user, {
+      activity_type: 'running',
+      end_time: new Date('2026-08-01T08:30:00Z'),
+      source: 'garmin',
+      start_time: new Date('2026-08-01T08:00:00Z'),
+    })
+    await createFeedPost(user, {
+      activity_id: activityId,
+      autoshare_rule_id: rule.id,
+      include_chart: false,
+      include_map: false,
+      included_metrics: ['duration'],
+      series_metrics: [],
+      visibility: 'followers',
+    })
+    expect(await countAutosharePostsByRule(user)).toEqual({ [rule.id]: 1 })
+
+    expect(await deleteAutoshareRule(user, rule.id)).toBe(true)
+    expect(await getAutoshareRules(user)).toEqual([])
+    // The post survives (soft reference, like activity_id).
+    expect(await countAutosharePostsByRule(user)).toEqual({ [rule.id]: 1 })
+  })
+
+  test('listFeedPostIdsByActivityIds finds posts referencing any group member (dedupe)', async () => {
+    const user = getTestUser()
+    const a1 = await insertActivity(user, {
+      activity_type: 'running',
+      end_time: new Date('2026-08-01T08:30:00Z'),
+      source: 'garmin',
+      start_time: new Date('2026-08-01T08:00:00Z'),
+    })
+    const a2 = await insertActivity(user, {
+      activity_type: 'running',
+      end_time: new Date('2026-08-01T09:30:00Z'),
+      source: 'strava',
+      start_time: new Date('2026-08-01T09:00:00Z'),
+    })
+    const post = await createFeedPost(user, {
+      activity_id: a2,
+      include_chart: false,
+      include_map: false,
+      included_metrics: ['duration'],
+      series_metrics: [],
+      visibility: 'public',
+    })
+    expect(await listFeedPostIdsByActivityIds(user, [a1, a2])).toEqual([post.id])
+    expect(await listFeedPostIdsByActivityIds(user, [a1])).toEqual([])
+    expect(await listFeedPostIdsByActivityIds(user, [])).toEqual([])
+    expect(await listFeedPostIdsByActivityIds(user, [a1, a2], 'activity')).toEqual([post.id])
+    expect(await listFeedPostIdsByActivityIds(user, [a1, a2], 'article')).toEqual([])
+  })
+
+  test('deleting an activity post records a suppression that survives the hard delete', async () => {
+    const user = getTestUser()
+    const activityId = await insertActivity(user, {
+      activity_type: 'running',
+      end_time: new Date('2026-08-01T08:30:00Z'),
+      source: 'garmin',
+      start_time: new Date('2026-08-01T08:00:00Z'),
+    })
+    const post = await createFeedPost(user, {
+      activity_id: activityId,
+      include_chart: false,
+      include_map: false,
+      included_metrics: ['duration'],
+      series_metrics: [],
+      visibility: 'public',
+    })
+    expect(await listAutoshareSuppressedIds(user, [activityId])).toEqual([])
+
+    expect(await deleteFeedPost(user, post.id)).toBe(true)
+    // The post row is gone, but the suppression keeps the dedupe intact (#903).
+    expect(await listFeedPostIdsByActivityIds(user, [activityId])).toEqual([])
+    expect(await listAutoshareSuppressedIds(user, [activityId])).toEqual([activityId])
+    expect(await listAutoshareSuppressedIds(user, [])).toEqual([])
+  })
+
+  test('candidates: bounded, non-deleted activities overlapping the window, with ingest times', async () => {
+    const user = getTestUser()
+    const inWindow = await insertActivity(user, {
+      activity_type: 'running',
+      end_time: new Date('2026-08-01T08:30:00Z'),
+      source: 'garmin',
+      start_time: new Date('2026-08-01T08:00:00Z'),
+    })
+    // Open-ended (no end): not a candidate.
+    await insertActivity(user, {
+      activity_type: 'running',
+      source: 'garmin',
+      start_time: new Date('2026-08-01T08:10:00Z'),
+    })
+    // Outside the window: not a candidate.
+    await insertActivity(user, {
+      activity_type: 'running',
+      end_time: new Date('2026-08-03T08:30:00Z'),
+      source: 'garmin',
+      start_time: new Date('2026-08-03T08:00:00Z'),
+    })
+    // Superseded (cross-source/override merge loser): not a candidate — the
+    // same-type grouping can't see across types, so evaluating the loser too
+    // would double-post one physical session.
+    const superseded = await insertActivity(user, {
+      activity_type: 'walking',
+      end_time: new Date('2026-08-01T08:30:00Z'),
+      source: 'health_connect',
+      start_time: new Date('2026-08-01T08:00:00Z'),
+    })
+    await query(user, `UPDATE activities SET superseded_by = $1 WHERE id = $2`, [inWindow, superseded])
+
+    const candidates = await listAutoshareCandidates(
+      user,
+      new Date('2026-08-01T00:00:00Z'),
+      new Date('2026-08-01T23:59:59Z'),
+    )
+    expect(candidates.map((c) => c.id)).toEqual([inWindow])
+    expect(candidates[0].created_at).toBeInstanceOf(Date)
+
+    const times = await getActivityIngestTimes(user, [inWindow])
+    expect(times[inWindow]).toBeInstanceOf(Date)
+  })
+
+  test('candidates: endedAfter drops activities that ended before it', async () => {
+    const user = getTestUser()
+    const early = await insertActivity(user, {
+      activity_type: 'running',
+      end_time: new Date('2026-08-01T08:30:00Z'),
+      source: 'garmin',
+      start_time: new Date('2026-08-01T08:00:00Z'),
+    })
+    const late = await insertActivity(user, {
+      activity_type: 'running',
+      end_time: new Date('2026-08-01T10:30:00Z'),
+      source: 'garmin',
+      start_time: new Date('2026-08-01T10:00:00Z'),
+    })
+    const start = new Date('2026-08-01T00:00:00Z')
+    const end = new Date('2026-08-01T23:59:59Z')
+    expect((await listAutoshareCandidates(user, start, end)).map((c) => c.id)).toEqual([early, late])
+    expect(
+      (await listAutoshareCandidates(user, start, end, new Date('2026-08-01T09:00:00Z'))).map((c) => c.id),
+    ).toEqual([late])
+  })
+
+  test('candidates: detail_pending marks Garmin-backed rows whose detail has not synced', async () => {
+    const user = getTestUser()
+    const insertRun = (hour: number, data: Record<string, unknown> | undefined) =>
+      insertActivity(user, {
+        activity_type: 'running',
+        data,
+        end_time: new Date(`2026-08-01T${String(hour).padStart(2, '0')}:30:00Z`),
+        source: 'garmin',
+        start_time: new Date(`2026-08-01T${String(hour).padStart(2, '0')}:00:00Z`),
+      })
+    const pending = await insertRun(6, { garmin_activity_id: 101 })
+    const synced = await insertRun(8, { detail_synced: true, garmin_activity_id: 102 })
+    const plain = await insertRun(10, undefined)
+    const explicitlyUnsynced = await insertRun(12, { detail_synced: false, garmin_activity_id: 103 })
+
+    const candidates = await listAutoshareCandidates(
+      user,
+      new Date('2026-08-01T00:00:00Z'),
+      new Date('2026-08-01T23:59:59Z'),
+    )
+    expect(candidates.map((c) => [c.id, c.detail_pending])).toEqual([
+      [pending, true],
+      [synced, false],
+      [plain, false],
+      [explicitlyUnsynced, true],
+    ])
+  })
+
+  test('candidates carry the activity data', async () => {
+    const user = getTestUser()
+    const named = await insertActivity(user, {
+      activity_type: 'yoga',
+      data: { session_name: 'Yin yoga' },
+      end_time: new Date('2026-08-01T08:30:00Z'),
+      source: 'aurboda',
+      start_time: new Date('2026-08-01T08:00:00Z'),
+    })
+    const candidates = await listAutoshareCandidates(
+      user,
+      new Date('2026-08-01T00:00:00Z'),
+      new Date('2026-08-01T23:59:59Z'),
+    )
+    expect(candidates.find((c) => c.id === named)?.data).toEqual({ session_name: 'Yin yoga' })
+  })
+
+  test('activities.updated_at: NULL on insert, set by a real change, untouched by an identical re-upsert', async () => {
+    const user = getTestUser()
+    const garmin = {
+      activity_type: 'running' as const,
+      data: { garmin_activity_id: 42 },
+      end_time: new Date('2026-08-01T08:30:00Z'),
+      external_id: 'garmin-42',
+      source: 'garmin' as const,
+      start_time: new Date('2026-08-01T08:00:00Z'),
+    }
+    const id = await insertActivity(user, garmin)
+    expect((await changeTimes(user, id))?.updated_at).toBeNull()
+
+    expect((await upsertActivity(user, garmin)).changed).toBe(false)
+    await insertActivities(user, [garmin])
+    expect((await changeTimes(user, id))?.updated_at).toBeNull()
+
+    await query(user, `UPDATE activities SET title = 'Morning run' WHERE id = $1`, [id])
+    const changed = (await changeTimes(user, id))?.updated_at
+    expect(changed).toBeInstanceOf(Date)
+
+    await query(user, `UPDATE activities SET title = 'Morning run' WHERE id = $1`, [id])
+    expect((await changeTimes(user, id))?.updated_at).toEqual(changed)
+  })
+
+  test('getActivitiesChangedAt: the newest change or ingest over the ids, null for none', async () => {
+    const user = getTestUser()
+    const a1 = await insertActivity(user, {
+      activity_type: 'running',
+      end_time: new Date('2026-08-01T08:30:00Z'),
+      source: 'garmin',
+      start_time: new Date('2026-08-01T08:00:00Z'),
+    })
+    const a2 = await insertActivity(user, {
+      activity_type: 'running',
+      end_time: new Date('2026-08-01T09:30:00Z'),
+      source: 'strava',
+      start_time: new Date('2026-08-01T09:00:00Z'),
+    })
+    expect(await getActivitiesChangedAt(user, [])).toBeNull()
+    const ingested = await changeTimes(user, a1)
+    expect(await getActivitiesChangedAt(user, [a1])).toEqual(ingested?.created_at)
+
+    await query(user, `UPDATE activities SET title = 'Renamed' WHERE id = $1`, [a2])
+    const updated = (await changeTimes(user, a2))?.updated_at
+    expect(await getActivitiesChangedAt(user, [a1, a2])).toEqual(updated)
+  })
+
+  test('listActivityPostVersions: the activity posts of the ids with their version', async () => {
+    const user = getTestUser()
+    const a1 = await insertActivity(user, {
+      activity_type: 'running',
+      end_time: new Date('2026-08-01T08:30:00Z'),
+      source: 'garmin',
+      start_time: new Date('2026-08-01T08:00:00Z'),
+    })
+    const a2 = await insertActivity(user, {
+      activity_type: 'running',
+      end_time: new Date('2026-08-01T09:30:00Z'),
+      source: 'strava',
+      start_time: new Date('2026-08-01T09:00:00Z'),
+    })
+    const post = await createFeedPost(user, {
+      activity_id: a2,
+      include_chart: false,
+      include_map: false,
+      included_metrics: ['duration'],
+      series_metrics: [],
+      visibility: 'followers',
+    })
+    expect(await listActivityPostVersions(user, [])).toEqual([])
+    expect(await listActivityPostVersions(user, [a1])).toEqual([])
+    expect(await listActivityPostVersions(user, [a1, a2])).toEqual([
+      { id: post.id, updated_at: post.updated_at },
+    ])
+
+    const touched = await touchFeedPost(user, post.id)
+    expect(await listActivityPostVersions(user, [a2])).toEqual([
+      { id: post.id, updated_at: touched?.updated_at },
+    ])
+  })
+
+  test('listSharedActivities: shared activities in the window, superseded ones included, once each', async () => {
+    const user = getTestUser()
+    const share = (activityId: string) =>
+      createFeedPost(user, {
+        activity_id: activityId,
+        include_chart: false,
+        include_map: false,
+        included_metrics: ['duration'],
+        series_metrics: [],
+        visibility: 'followers',
+      })
+    const run = (source: 'garmin' | 'strava', startIso: string, endIso: string) =>
+      insertActivity(user, {
+        activity_type: 'running',
+        end_time: new Date(endIso),
+        source,
+        start_time: new Date(startIso),
+      })
+    const unshared = await run('garmin', '2026-08-01T06:00:00Z', '2026-08-01T06:30:00Z')
+    const shared = await run('garmin', '2026-08-01T08:00:00Z', '2026-08-01T08:30:00Z')
+    const superseded = await run('strava', '2026-08-01T10:00:00Z', '2026-08-01T10:30:00Z')
+    const deleted = await run('garmin', '2026-08-01T12:00:00Z', '2026-08-01T12:30:00Z')
+    const outside = await run('garmin', '2026-08-03T08:00:00Z', '2026-08-03T08:30:00Z')
+    await share(shared)
+    await share(shared)
+    await share(superseded)
+    await share(deleted)
+    await share(outside)
+    await query(user, `UPDATE activities SET superseded_by = $1 WHERE id = $2`, [shared, superseded])
+    await query(user, `UPDATE activities SET deleted_at = NOW() WHERE id = $1`, [deleted])
+
+    const listed = await listSharedActivities(
+      user,
+      new Date('2026-08-01T00:00:00Z'),
+      new Date('2026-08-02T00:00:00Z'),
+    )
+    expect(listed.map((row) => row.id)).toEqual([shared, superseded])
+    expect(listed.map((row) => row.id)).not.toContain(unshared)
+    expect(listed[1]).toMatchObject({ detail_pending: false, source: 'strava', superseded_by: shared })
+  })
+})

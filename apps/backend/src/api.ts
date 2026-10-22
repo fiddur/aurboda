@@ -1,58 +1,99 @@
-/**
- * Express server entry point.
- *
- * Setup is split across helpers in `api/`:
- *   - middleware.ts  — audit log, auth, admin
- *   - auth-routes.ts — /version, /status, /signup, /login, /auth/token
- *   - oauth-routes.ts — Garmin / Strava / Oura connect+disconnect
- *   - sync-setup.ts  — `/sync` router wiring
- *   - webhooks-setup.ts — Strava + Oura push integrations
- *   - rest-routes.ts — per-domain REST router mounts
- *
- * This file orchestrates: clients, queues, central DB, auth, error handler,
- * server lifecycle.
- */
+import { integrateFederation } from '@fedify/express'
 import cors from 'cors'
 import express, { json, type NextFunction, type Request, type Response } from 'express'
 import { Client } from 'pg'
 
+import type { FeedDeliver } from './routes/feed-router.ts'
+
 import { registerAuthRoutes } from './api/auth-routes.ts'
+import { gateFederation } from './api/federation-gate.ts'
 import { createAdminMiddleware, createAuditLogMiddleware, createAuthMiddleware } from './api/middleware.ts'
 import { registerOAuthRoutes } from './api/oauth-routes.ts'
 import { mountRestRouters } from './api/rest-routes.ts'
 import { mountSyncRouter } from './api/sync-setup.ts'
 import { setupOuraWebhook, setupStravaWebhook } from './api/webhooks-setup.ts'
 import { createAuth } from './auth.ts'
+import { closeAllUserPools } from './db/connection.ts'
 import {
+  createChallengePost,
   deleteRuleActivities,
+  emitTimelineNotify,
   getDeductionRulesByIds,
   getDetectedLocationById,
   getEnabledDeductionRules,
+  getFeedTombstone,
   getNamedLocations,
   insertActivities,
   insertActivity,
   insertLocation,
   insertLocations,
   insertPlace,
+  findActivityByExternalId,
   insertRawRecord,
   insertTimeSeries,
+  listChallengesAwaitingResult,
+  listReplyUncheckedEntries,
+  listUnenrichedAurbodaEntries,
+  getOAuthToken,
+  listUserNames,
   loginToUserDb,
+  markChallengeResultPublished,
+  markEnrichTransientFailure,
+  migrateAllUsers,
+  openTimelineChannel,
+  pruneDeductionRuleRuns,
+  pruneSyncedOutboundSync,
   resolveOrCreateActivityType,
-  softDeleteLocationRange,
+  markTimelineEntryReplyChecked,
+  setTimelineEntryReplyInfo,
+  setTimelineEntryStructured,
+  softDeleteSupersededLocations,
   updateDetectedLocation,
+  upsertActivityTrack,
   upsertSyncState,
 } from './db/index.ts'
 import { httpError, isHttpError } from './http-error.ts'
 import { garminClient } from './integrations/garmin/client.ts'
+import { garminDataTypes } from './integrations/garmin/process.ts'
+import { syncActivityDetails, syncGarminDataType } from './integrations/garmin/sync.ts'
+import { gravlClient } from './integrations/gravl/client.ts'
+import { enrichGravlWorkout } from './integrations/gravl/sync.ts'
 import { ouraClient } from './integrations/oura/client.ts'
 import { createOwnTracksRouter } from './integrations/owntracks/router.ts'
 import { stravaClient } from './integrations/strava/client.ts'
 import { createMcpRouter } from './mcp.ts'
+import { createActorAcceptNormalizer, createActorHtmlRouter } from './routes/actor-html-router.ts'
+import { createFeedTombstoneRouter } from './routes/feed-tombstone-router.ts'
 import { createOAuthRouter } from './routes/oauth-router.ts'
-import { auditError } from './services/audit-log.ts'
+import {
+  deliverFeedArticlePost,
+  deliverFeedArticleUpdate,
+  deliverFeedChallengePost,
+  deliverFeedChallengeUpdate,
+  deliverFeedDelete,
+  deliverFeedPost,
+  deliverFeedReplyPost,
+  deliverFeedReplyUpdate,
+  deliverFeedUpdate,
+  toDeliverableArticle,
+  toDeliverableChallenge,
+  toDeliverableReply,
+} from './services/activitypub/deliver.ts'
+import { createFeedFederation, deliverActorUpdate } from './services/activitypub/federation.ts'
+import { createTimelineBackfiller } from './services/activitypub/timeline-backfill.ts'
+import { createAurbodaEnrichAttempt } from './services/activitypub/timeline-enrich.ts'
+import { createAuditLogPruneQueue } from './services/audit-log-prune-queue.ts'
+import { auditError, auditInfo, pruneAuditLog } from './services/audit-log.ts'
+import { createAutoshareDeps } from './services/autoshare-deps.ts'
+import { type AutoshareQueue, createAutoshareQueue } from './services/autoshare-queue.ts'
+import { evaluateAutoshareWindow } from './services/autoshare.ts'
 import { triggerCalorieComputation } from './services/calorie-computation.ts'
 import { createCalorieQueue, type CalorieQueue } from './services/calorie-queue.ts'
-import { getCentralDb, initializeCentralDb } from './services/central-db.ts'
+import { closeCentralDb, getCentralDb, initializeCentralDb } from './services/central-db.ts'
+import { createChallengeDiscovery, defaultChallengeDiscoveryDeps } from './services/challenge-discovery.ts'
+import { createChallengeResultsQueue } from './services/challenge-results-queue.ts'
+import { publishFinishedChallengeResults } from './services/challenge-results.ts'
+import { getChallengeStandings } from './services/challenge-standings.ts'
 import { createDefaultEngineDeps } from './services/deduction-deps.ts'
 import { buildFullWindow, evaluateAllRules } from './services/deduction-engine.ts'
 import {
@@ -62,13 +103,54 @@ import {
 } from './services/deduction-queue.ts'
 import { createDetectionTrigger, type DetectionTrigger } from './services/detection-trigger.ts'
 import { runDetectionForUser } from './services/detection-worker.ts'
+import { createReactionActions } from './services/feed-reactions.ts'
+import {
+  createFeedRefreshDeps,
+  createFeedRefreshWindowDeps,
+  refreshChangedSharesInWindow,
+  refreshFeedPostsForActivity,
+} from './services/feed-refresh.ts'
+import { expandFeedActivityWindow, resolveFeedActivity } from './services/feed.ts'
+import {
+  approveFollower,
+  type FollowerActions,
+  rejectFollower,
+  serializeFollower,
+} from './services/followers.ts'
+import { type FollowActions, followActor, unfollowActor } from './services/following.ts'
 import { createGeocodeQueue } from './services/geocode-queue.ts'
 import { createInvitationAuth } from './services/invitation.ts'
 import { getPlaceVisits } from './services/locations.ts'
 import { createPgBoss } from './services/pg-boss.ts'
+import { installProcessGuards } from './services/process-guards.ts'
+import { defaultRouteMatchDeps, matchActivityRoute } from './services/routes.ts'
+import { safeFetchGet } from './services/safe-fetch.ts'
 import { initSentry, Sentry } from './services/sentry.ts'
+import {
+  closeHttpServer,
+  createShutdownHandler,
+  JOB_STOP_TIMEOUT_MS,
+  startUnrefTimer,
+} from './services/shutdown.ts'
+import { createSourceEnrichQueue, type SourceEnrichQueue } from './services/source-enrich-queue.ts'
+import { garminActivityExternalId } from './services/source-identity.ts'
 import { createStravaQueue, type StravaQueue } from './services/strava-queue.ts'
 import { createSyncProvider } from './services/sync-provider.ts'
+import { createSyncScheduler } from './services/sync-scheduler.ts'
+import { createTimelineHub } from './services/timeline-hub.ts'
+import {
+  backfillReplyLinks,
+  type RetroEnrichTrigger,
+  retroEnrichTimelineEntries,
+} from './services/timeline-retro-enrich.ts'
+import { ownActorUri } from './services/timeline.ts'
+import { defaultTrackBackfillJobDeps } from './services/track-backfill.ts'
+import {
+  createTrackAnalyseQueue,
+  createTrackBackfillQueue,
+  type TrackAnalyseQueue,
+  type TrackBackfillQueue,
+} from './services/track-queues.ts'
 import { createWebAuthnService } from './services/webauthn.ts'
 
 declare global {
@@ -89,11 +171,10 @@ const main = async () => {
   const auth = createAuth(sessionSecret)
   const invitationAuth = createInvitationAuth(sessionSecret)
 
-  // Callbacks to run after httpd.listen() — for tasks that need the server to be reachable
   const postListenCallbacks: Array<() => Promise<void>> = []
 
-  // Initialize central database (server settings, admins)
   await initializeCentralDb()
+  console.info(`⏱️ Central DB ready ${process.uptime().toFixed(1)} s after process start`)
   const centralDb = getCentralDb()
 
   // Initialize Sentry as early as possible after centralDb is available.
@@ -103,6 +184,11 @@ const main = async () => {
   const webHost = process.env.WEB_HOST ?? 'http://localhost:5173'
   const apiBaseUrl = process.env.API_BASE_URL ?? 'http://localhost:3000'
   console.info(`🌐 WEB_HOST=${webHost} API_BASE_URL=${apiBaseUrl}`)
+
+  // Path to the built SPA index.html, so /u/* share pages can serve
+  // crawler-visible <head> meta. In the Docker image nginx serves this same
+  // file. Unset in local dev (vite serves /u/* directly).
+  const webIndexPath = process.env.WEB_INDEX_PATH
 
   // WebAuthn / passkey configuration. The Relying Party ID must match the
   // origin the user's browser sees (i.e. the web host) — not the API host,
@@ -139,7 +225,6 @@ const main = async () => {
     version: process.env.BUILD_SHA ?? 'dev',
   }
 
-  // Migrate legacy OURA_CLIENT/OURA_SECRET env vars into server_settings if DB empty
   const envOuraClientId = process.env.OURA_CLIENT
   const envOuraClientSecret = process.env.OURA_SECRET
   if (envOuraClientId || envOuraClientSecret) {
@@ -173,10 +258,10 @@ const main = async () => {
     onUserAuthenticated: (ouraUserId, username) => centralDb.upsertOuraUserMapping(ouraUserId, username),
   })
 
-  // Create Garmin client (no server-side credentials needed - uses per-user session tokens)
+  // No server-side credentials: the client uses per-user session tokens.
   const garmin = garminClient()
 
-  // Create Strava client with dynamic credentials (reads from DB on each request)
+  // Credentials are read from the DB on each request, not captured at startup.
   const getStravaCredentials = async () => {
     const clientId = await centralDb.getServerSetting('strava_client_id')
     const clientSecret = await centralDb.getServerSetting('strava_client_secret')
@@ -191,9 +276,19 @@ const main = async () => {
       centralDb.upsertStravaAthleteMapping(stravaAthleteId, username),
   })
 
+  // Gravl: OAuth app is optional (admin setting); users can also paste a
+  // personal token, so the client is always created and resolves per user.
+  const getGravlCredentials = async () => {
+    const clientId = await centralDb.getServerSetting('gravl_client_id')
+    const clientSecret = await centralDb.getServerSetting('gravl_client_secret')
+    return clientId && clientSecret ? { clientId, clientSecret } : null
+  }
+  const gravl = gravlClient(getGravlCredentials, apiBaseUrl)
+
   // Deduction queue is assigned once pg-boss is up (below). The notifier closes
   // over the variable, so it starts enqueuing as soon as the queue exists.
   let deductionQueue: DeductionQueue | null = null
+  let autoshareQueue: AutoshareQueue | null = null
   const activityNotifier: ActivityNotifier = (user, activityType, start, end, sourceRuleId) => {
     deductionQueue?.enqueueEvaluation({
       activity_type: activityType,
@@ -202,6 +297,25 @@ const main = async () => {
       window_end: end.toISOString(),
       window_start: start.toISOString(),
     })
+    // Auto-share rules (#903) evaluate the same mutation windows, after a
+    // stabilisation delay (the queue's startAfter). Fire-and-forget.
+    void autoshareQueue?.enqueueEvaluation(user, start, end)
+  }
+
+  let trackAnalyseQueue: TrackAnalyseQueue | null = null
+  let trackBackfillQueue: TrackBackfillQueue | null = null
+  const onTrackWritten = (user: string, activityId: string): void => {
+    trackAnalyseQueue?.enqueue(user, activityId)
+  }
+
+  // A Garmin detail sync that lands after an activity was shared re-federates
+  // its posts as an Update. The feed fan-out is built further down, hence the let.
+  let feedUpdated: FeedDeliver['updated'] | null = null
+  const onActivityDetailSynced = (user: string, activityId: string): void => {
+    if (!feedUpdated) return
+    refreshFeedPostsForActivity(user, activityId, createFeedRefreshDeps(feedUpdated)).catch((err: unknown) =>
+      console.warn(`⚠️ feed refresh after detail sync failed for ${user}/${activityId}:`, err),
+    )
   }
 
   // Create sync provider for auto-syncing data before queries. onActivitySynced
@@ -210,8 +324,11 @@ const main = async () => {
   const syncProvider = createSyncProvider({
     garmin,
     getLastFmApiKey: () => centralDb.getLastFmApiKey(),
+    gravl,
     oura,
+    onActivityDetailSynced,
     onActivitySynced: activityNotifier,
+    onTrackWritten,
   })
 
   // Initialize shared pg-boss instance and job queues (before MCP mount)
@@ -252,7 +369,6 @@ const main = async () => {
     console.warn('⚠️ Calorie queue disabled - HR ingestion will fire-and-forget computation')
   }
 
-  // Initialize Strava queue (uses shared boss + strava client)
   let stravaQueue: StravaQueue | null = null
   if (boss) {
     try {
@@ -262,12 +378,17 @@ const main = async () => {
         getActivityStreams: (token, id) => strava.getActivityStreams(token, id),
         listActivities: (token, params) => strava.listActivities(token, params),
         processDeps: {
+          auditInfo,
           insertActivity,
           insertLocations,
           insertRawRecord,
           insertTimeSeries,
+          onActivityProcessed: (user, result) =>
+            activityNotifier(user, result.activity_type, result.start_time, result.end_time),
+          onTrackWritten,
           resolveOrCreateActivityType,
-          softDeleteLocationRange,
+          softDeleteSupersededLocations,
+          upsertActivityTrack,
         },
         updateSyncState: async (user, dataType, updates) => {
           await upsertSyncState(user, {
@@ -289,39 +410,392 @@ const main = async () => {
   const userDb = new Client({ database: 'postgres' })
   await userDb.connect()
 
+  // Land this deploy's schema changes in the background, so no user's first
+  // authenticated request pays for the sweep (#1125). Gated per user by the
+  // schema fingerprint, so a deploy that changed no DDL only reads one marker
+  // row per user.
+  postListenCallbacks.push(async () => {
+    const { migrated, skipped, failed } = await migrateAllUsers(userDb)
+    console.info(
+      `🗃️ Schema sweep done: ${migrated} migrated, ${skipped} already current, ${failed} failed ` +
+        `(${process.uptime().toFixed(1)} s after process start)`,
+    )
+    if (trackBackfillQueue) {
+      for (const user of await listUserNames(userDb)) await trackBackfillQueue.enqueue(user, 120)
+    }
+  })
+
   // CORS must come first for preflight requests
   httpd.use(cors({ origin: true }))
 
   // Mount OAuth endpoints BEFORE body-parser (uses its own parsers)
   httpd.use(createOAuthRouter({ centralDb, loginToUserDb, webHost }))
 
-  // Mount MCP server BEFORE body-parser (MCP SDK needs raw body)
+  // Live home-timeline updates: one in-process hub fans Postgres NOTIFY pings out
+  // to a user's open SSE streams. Injected into the feed router (SSE endpoint) and
+  // the federation ingest (which pings it when a new post is received).
+  const timelineHub = createTimelineHub({ emit: emitTimelineNotify, openChannel: openTimelineChannel })
+  const onNewTimelineEntry = (user: string) => {
+    void timelineHub.notify(user).catch((err) => console.error(`⚠️ timeline notify failed for ${user}:`, err))
+  }
+
+  // ActivityPub federation object (one instance, shared by the actor mount, the
+  // MCP feed tools, and the REST feed router). `feedDeliver` fans a shared post
+  // out to followers, fire-and-forget, so it's identical whether a post is
+  // created via MCP or REST.
+  // On a follow being accepted, backfill the followee's recent public posts into
+  // the follower's timeline (fire-and-forget, time-boxed). `backfill` is defined
+  // just below and only invoked later (on an inbound Accept), so the forward
+  // reference is safe.
+  const feedFederation = createFeedFederation(
+    webHost,
+    apiBaseUrl,
+    onNewTimelineEntry,
+    (user, actorUri) => backfill(user, actorUri),
+    wellKnown.version,
+    async () => (await centralDb.getSignupMode()) === 'open',
+  )
+  const backfill = createTimelineBackfiller(feedFederation, webHost)
+  const feedDeps = { apiBaseUrl, federation: feedFederation, origin: webHost }
+
+  // Lazy retro-enrichment (#996): entries ingested before structured enrichment
+  // shipped (or whose ingest-time enrichment failed transiently) get one more
+  // attempt when the timeline is read. The `attempt` variant throws on transient
+  // failures so those entries stay unstamped and retry later. One pass per user
+  // at a time: a batch can outlive the web's 30s poll interval, and overlapping
+  // passes would re-fetch the same candidates (#1014).
+  const retroEnricher = createAurbodaEnrichAttempt(webHost)
+  const retroInFlight = new Set<string>()
+  const retroEnrichTimeline: RetroEnrichTrigger = (user) => {
+    if (retroInFlight.has(user)) return
+    retroInFlight.add(user)
+    const structuredPass = retroEnrichTimelineEntries(user, {
+      enrich: retroEnricher,
+      listUnenriched: listUnenrichedAurbodaEntries,
+      recordTransientFailure: markEnrichTransientFailure,
+      save: setTimelineEntryStructured,
+    })
+    // Reply/Mention backfill for entries ingested before #1060 tracked them —
+    // re-fetches a few objects per read so legacy replies stop rendering as
+    // top-level cards.
+    const replyPass = backfillReplyLinks(user, ownActorUri(webHost, user), {
+      fetchObject: async (objectUri) =>
+        (
+          await safeFetchGet(objectUri, {
+            headers: { Accept: 'application/activity+json, application/ld+json; q=0.9' },
+          }).catch(() => null)
+        )?.data ?? null,
+      listUnchecked: listReplyUncheckedEntries,
+      markChecked: markTimelineEntryReplyChecked,
+      saveReplyInfo: setTimelineEntryReplyInfo,
+    })
+    void Promise.allSettled([structuredPass, replyPass])
+      .then((results) => {
+        for (const r of results) {
+          if (r.status === 'rejected') {
+            console.warn(`⚠️ timeline retro pass failed for ${user}:`, r.reason)
+          }
+        }
+      })
+      .finally(() => retroInFlight.delete(user))
+  }
+  const onDeliverError = (op: string, user: string, postId: string) => (err: unknown) =>
+    console.error(`⚠️ feed ${op} delivery failed for ${user}/${postId}:`, err)
+  const feedDeliver: FeedDeliver = {
+    // Expand the already-resolved activity to its merged span so the delivered
+    // Note reports what the user shared, not just the anchor sub-activity (#881).
+    created: (user, post, activity) => {
+      void (async () => {
+        const resolved = await expandFeedActivityWindow(user, activity)
+        await deliverFeedPost(feedDeps, user, post, resolved)
+      })().catch(onDeliverError('create', user, post.id))
+    },
+    // Articles and activities share the Note object id, so a deleted post of
+    // either kind tombstones there — one path.
+    deleted: (user, post) => {
+      void deliverFeedDelete(feedDeps, user, post).catch(onDeliverError('delete', user, post.id))
+    },
+    // Resolve the (merged-span) activity inside the fire-and-forget boundary so a
+    // lookup failure never bubbles into the (already-committed) edit's response.
+    updated: (user, post) => {
+      void (async () => {
+        if (!post.activity_id) return
+        const activity = await resolveFeedActivity(user, post.activity_id)
+        if (activity) await deliverFeedUpdate(feedDeps, user, post, activity)
+      })().catch(onDeliverError('update', user, post.id))
+    },
+    // Articles fan out as a Create{Note}/Update{Note} built purely from stored
+    // content (no activity to resolve). Best-effort, same as the activity path.
+    createdArticle: (user, post) => {
+      const article = toDeliverableArticle(post)
+      if (article) {
+        void deliverFeedArticlePost(feedDeps, user, article).catch(onDeliverError('create', user, post.id))
+      }
+    },
+    updatedArticle: (user, post) => {
+      const article = toDeliverableArticle(post)
+      if (article) {
+        void deliverFeedArticleUpdate(feedDeps, user, article).catch(onDeliverError('update', user, post.id))
+      }
+    },
+    // Challenge invitations federate like articles: a self-contained Note (#994).
+    createdChallenge: (user, post) => {
+      const challenge = toDeliverableChallenge(post)
+      if (challenge) {
+        void deliverFeedChallengePost(feedDeps, user, challenge).catch(
+          onDeliverError('create', user, post.id),
+        )
+      }
+    },
+    updatedChallenge: (user, post) => {
+      const challenge = toDeliverableChallenge(post)
+      if (challenge) {
+        void deliverFeedChallengeUpdate(feedDeps, user, challenge).catch(
+          onDeliverError('update', user, post.id),
+        )
+      }
+    },
+    // A reply federates like a challenge share — a self-contained Note — but
+    // additionally to the inbox of the author it answers, who need not follow us.
+    createdReply: (user, post, authorInbox) => {
+      const reply = toDeliverableReply(post)
+      if (reply) {
+        void deliverFeedReplyPost(feedDeps, user, reply, authorInbox).catch(
+          onDeliverError('create', user, post.id),
+        )
+      }
+    },
+    updatedReply: (user, post) => {
+      const reply = toDeliverableReply(post)
+      if (reply) {
+        void deliverFeedReplyUpdate(feedDeps, user, reply).catch(onDeliverError('update', user, post.id))
+      }
+    },
+  }
+  feedUpdated = feedDeliver.updated
+  // Auto-share rules (#903): evaluate settled activities against enabled rules
+  // after a stabilisation delay, publishing matches through the SAME
+  // feedDeliver.created fan-out a manual share fires. The deps double as the
+  // preview deps for the REST router and MCP tools.
+  const autoshareDeps = createAutoshareDeps(feedDeliver.created)
+  const feedRefreshWindowDeps = createFeedRefreshWindowDeps(feedDeliver.updated)
+  if (boss) {
+    try {
+      autoshareQueue = await createAutoshareQueue(boss, {
+        evaluateWindow: (user, start, end, requeue) =>
+          evaluateAutoshareWindow(user, start, end, { ...autoshareDeps, requeue }),
+        refreshWindow: (user, start, end, requeue) =>
+          refreshChangedSharesInWindow(user, start, end, { ...feedRefreshWindowDeps, requeue }),
+      })
+    } catch (error) {
+      console.error('Failed to initialize auto-share queue:', error)
+    }
+  }
+  if (!autoshareQueue) {
+    console.warn('⚠️ Auto-share evaluation disabled (no job queue)')
+  }
+  if (boss) {
+    try {
+      trackAnalyseQueue = await createTrackAnalyseQueue(boss, {
+        analyse: async (user, activityId) => {
+          await matchActivityRoute(user, activityId, defaultRouteMatchDeps)
+        },
+      })
+      trackBackfillQueue = await createTrackBackfillQueue(boss, defaultTrackBackfillJobDeps)
+    } catch (error) {
+      console.error('Failed to initialize track queues:', error)
+    }
+  }
+  if (!trackBackfillQueue) {
+    console.warn('⚠️ Activity track backfill disabled (no job queue) - run it on demand')
+  }
+  // Source enrichment (#1080): a Health Connect session from Garmin or Gravl
+  // triggers that provider's own sync for it, so the row Health Connect just
+  // created gets its sets / detail within minutes instead of at the next poll.
+  let sourceEnrichQueue: SourceEnrichQueue | null = null
+  if (boss) {
+    try {
+      sourceEnrichQueue = await createSourceEnrichQueue(boss, {
+        enrichGravl: (user, workoutId) => enrichGravlWorkout(user, gravl, workoutId),
+        garminDetailPending: async (user, garminActivityId) => {
+          const row = await findActivityByExternalId(
+            user,
+            'garmin',
+            garminActivityExternalId(garminActivityId),
+          )
+          return row != null && row.data?.detail_synced !== true
+        },
+        isGarminConnected: async (user) => {
+          const token = await getOAuthToken(user, 'garmin')
+          return token !== null && token.access_token !== ''
+        },
+        isGravlConnected: async (user) => (await gravl.connectionKind(user)) !== null,
+        onEnriched: (user) => activityNotifier(user, '*', new Date(Date.now() - 86_400_000), new Date()),
+        syncGarmin: async (user, dataType) => {
+          await syncGarminDataType(user, garmin, dataType)
+          if (dataType === 'activities') {
+            await syncActivityDetails(user, garmin, {
+              onDetailSynced: onActivityDetailSynced,
+              onTrackWritten,
+            })
+          }
+        },
+      })
+    } catch (error) {
+      console.error('Failed to initialize source enrichment queue:', error)
+    }
+  }
+  if (!sourceEnrichQueue) {
+    console.warn(
+      '⚠️ Source enrichment disabled (no job queue) - Health Connect arrivals wait for the next poll',
+    )
+  }
+
+  // Background polling (#1042): every 5 minutes, sync whatever each user's
+  // `sync_intervals` says is due, through the same sync provider queries use.
+  if (boss) {
+    try {
+      await createSyncScheduler(boss, {
+        garminDataTypes,
+        listUsers: () => listUserNames(userDb),
+        sync: syncProvider,
+      })
+    } catch (error) {
+      console.error('Failed to initialize sync scheduler:', error)
+    }
+  }
+
+  // Challenge completion: a scheduled sweep over every user's hosted challenges
+  // that closed (grace period ago) posts the final standings — winners tagged —
+  // to the host's feed through the SAME challenge fan-out a manual share uses.
+  if (boss) {
+    try {
+      await createChallengeResultsQueue(boss, {
+        sweep: () =>
+          publishFinishedChallengeResults({
+            claim: markChallengeResultPublished,
+            createPost: createChallengePost,
+            deliver: feedDeliver.createdChallenge,
+            listAwaiting: listChallengesAwaitingResult,
+            listUsers: () => listUserNames(userDb),
+            standings: (user, challenge) => getChallengeStandings(user, challenge, { refresh: true }),
+            webHost,
+          }),
+      })
+    } catch (error) {
+      console.error('Failed to initialize challenge result sweep:', error)
+    }
+  } else {
+    console.warn('⚠️ Challenge winner announcements disabled (no job queue)')
+  }
+
+  if (boss) {
+    try {
+      await createAuditLogPruneQueue(boss, {
+        getRetentionDays: () => centralDb.getAuditLogRetentionDays(),
+        listUsers: () => listUserNames(userDb),
+        prune: pruneAuditLog,
+        pruneDeductionRuleRuns,
+        pruneSyncedOutboundSync,
+      })
+    } catch (error) {
+      console.error('Failed to initialize audit log prune:', error)
+    }
+  } else {
+    console.warn('⚠️ Scheduled audit log pruning disabled (no job queue)')
+  }
+
+  // The network-requiring follow operations, bound to the same federation +
+  // origin, shared by the REST following router and the MCP follow tools.
+  const followActions: FollowActions = {
+    follow: (user, handle) => followActor(feedDeps, user, handle),
+    unfollow: (user, id) => unfollowActor(feedDeps, user, id),
+  }
+  const reactionActions = createReactionActions(feedDeps, feedDeliver)
+  // The follower-management operations (approve/reject a follow request), sharing
+  // the same federation + origin. Approve returns the serialised follower.
+  const followerActions: FollowerActions = {
+    approve: async (user, id) => {
+      const record = await approveFollower(feedDeps, user, id)
+      return record ? serializeFollower(record) : null
+    },
+    reject: (user, id) => rejectFollower(feedDeps, user, id),
+  }
+
+  // Open challenges from followed peers, shared by REST and MCP. One instance
+  // so the per-instance well-known memo is shared too.
+  const discoverChallenges = createChallengeDiscovery(defaultChallengeDiscoveryDeps(webHost))
+
+  // Mounted before the global body parser: the MCP router parses its own body
+  // so it can trim tool-call arguments and keep JSON-RPC parse errors.
   // Stateless mode — no session tracking needed (tools only, no subscriptions)
   httpd.use(
     '/mcp',
     createMcpRouter(auth, {
       apiBaseUrl,
+      autosharePreviewDeps: autoshareDeps,
       centralDb,
       deductionQueue: deductionQueue ?? undefined,
+      discoverChallenges,
       engineDeps,
+      feedDeliver,
+      followActions,
+      followerActions,
       garmin,
+      gravl,
+      onActivityDetailSynced,
       onActivityMutated: activityNotifier,
+      onTrackWritten,
       oura,
+      reactionActions,
+      retroEnrichTimeline,
       stravaQueue: stravaQueue ?? undefined,
       sync: syncProvider,
       webHost,
     }),
   )
 
+  // ActivityPub federation (actor + WebFinger). Mounted BEFORE the JSON body
+  // parser so Fedify owns the raw body of signed inbox POSTs. `gateFederation`
+  // restricts it to federation-owned paths: `integrateFederation` otherwise
+  // wraps EVERY non-GET body with `Readable.toWeb(req)` and next()s without
+  // consuming it, hanging `express.json()` on any large non-federation POST
+  // (e.g. a Health Connect batch > ~64 KB). `trust proxy` lets Fedify
+  // reconstruct the external https URL from nginx's X-Forwarded-* headers.
+  // Scope it to `loopback`: nginx proxies to the backend over loopback
+  // (proxy_pass http://127.0.0.1:3000), so Express trusts X-Forwarded-* only when
+  // the immediate peer is loopback — a direct remote client isn't, so it can't
+  // spoof them.
+  httpd.set('trust proxy', 'loopback')
+  // Any representation will do for a wildcard or absent Accept on an actor URL,
+  // and the default is the actor document: hand Fedify the type it serves.
+  httpd.use(createActorAcceptNormalizer())
+  httpd.use(gateFederation(integrateFederation(feedFederation, () => undefined)))
+
+  // `410 Gone` Tombstone for dereferenced deleted objects. Mounted right after
+  // the federation integration: when the object dispatcher returns null for a
+  // since-deleted post, `@fedify/express` calls next(), and this catches it.
+  httpd.use(createFeedTombstoneRouter({ getTombstone: getFeedTombstone, origin: webHost }))
+
+  // The actor URL's other representation: Fedify next()s whatever doesn't ask
+  // for the actor document, and this redirects a request that prefers HTML to
+  // /u/:username (or answers 406 when nothing it serves is acceptable). An
+  // account is one with a per-user database — the same existence test the
+  // background sweeps use — so an unknown actor keeps its 404.
+  httpd.use(
+    createActorHtmlRouter({
+      origin: webHost,
+      userExists: async (username) => (await listUserNames(userDb)).includes(username),
+    }),
+  )
+
   httpd.use(json({ limit: '10mb' }))
 
-  // Audit-log middleware: records non-GET requests with response status / body
   httpd.use(createAuditLogMiddleware(auth))
 
   const authMiddleware = createAuthMiddleware(auth, unauthorized)
   const adminMiddleware = createAdminMiddleware(centralDb, unauthorized, forbidden)
 
-  // Auth-related routes (version, status, signup, login, /auth/token)
   registerAuthRoutes({
     httpd,
     auth,
@@ -332,29 +806,31 @@ const main = async () => {
     unauthorized,
   })
 
-  // /sync router (cross-provider sync orchestration)
   mountSyncRouter({
     httpd,
     authMiddleware,
     centralDb,
     oura,
     garmin,
+    gravl,
     stravaQueue,
     calorieQueue,
+    sourceEnrichQueue,
     activityNotifier,
+    onActivityDetailSynced,
+    onTrackWritten,
   })
 
-  // Per-provider OAuth/connect endpoints
   registerOAuthRoutes({
     httpd,
     authMiddleware,
     centralDb,
     garmin,
+    gravl,
     oura,
     strava,
   })
 
-  // Strava webhook push integration
   if (stravaQueue) {
     const ensureStravaWebhook = setupStravaWebhook({
       httpd,
@@ -367,7 +843,6 @@ const main = async () => {
     postListenCallbacks.push(ensureStravaWebhook)
   }
 
-  // Oura webhook push integration (admin-configurable via Web UI)
   const ouraWebhookManager = await setupOuraWebhook({
     httpd,
     apiBaseUrl,
@@ -376,7 +851,6 @@ const main = async () => {
     getOuraCredentials,
   })
 
-  // Initialize geocode queue (uses shared boss)
   let geocodeQueue: Awaited<ReturnType<typeof createGeocodeQueue>> | null = null
   if (boss) {
     try {
@@ -411,24 +885,41 @@ const main = async () => {
     }),
   )
 
-  // Per-domain REST routers
   mountRestRouters({
     activityNotifier,
+    autosharePreviewDeps: autoshareDeps,
     adminMiddleware,
     apiBaseUrl,
     auth,
     authMiddleware,
     centralDb,
     deductionQueue,
+    discoverChallenges,
     engineDeps,
+    feedDeliver,
+    followActions,
+    followerActions,
     garmin,
     httpd,
     invitationAuth,
+    onActivityDetailSynced,
+    onTrackWritten,
+    // Tell followers' servers the profile changed — they cache the avatar and
+    // re-download only on an Update{Person} or a changed icon URL.
+    onAvatarChanged: (user) => {
+      deliverActorUpdate(feedDeps, user).catch((error) =>
+        console.warn(`⚠️ actor Update delivery failed for ${user}:`, error),
+      )
+    },
     ouraWebhookManager,
+    reactionActions,
+    retroEnrichTimeline,
     syncProvider,
+    timelineHub,
     userDb,
     webAuthn,
     webHost,
+    webIndexPath,
     wellKnown,
   })
 
@@ -436,7 +927,6 @@ const main = async () => {
   // error middleware. No-op if Sentry was not initialized.
   Sentry.setupExpressErrorHandler(httpd)
 
-  // Centralized error handler
   httpd.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
     const status = isHttpError(err) ? err.status : 500
     if (status >= 500) console.error(err)
@@ -451,37 +941,55 @@ const main = async () => {
     res.status(status).json({ success: false, error: err.message })
   })
 
-  // Server startup
   const port = Number(process.env.PORT ?? 80)
   const server = httpd.listen(port, () => {
-    console.info(`> Running on localhost:${port}`)
+    console.info(`> Running on localhost:${port} (${process.uptime().toFixed(1)} s after process start)`)
     for (const cb of postListenCallbacks) {
-      cb().catch(() => {})
+      cb().catch((error) => {
+        console.error('⚠️ Post-listen task failed:', error)
+        Sentry.captureException(error)
+      })
     }
   })
 
-  // Graceful shutdown
-  const shutdown = async () => {
-    console.info('Shutting down...')
-    detectionTrigger.clearPendingDetections()
-    if (ouraWebhookManager) {
-      ouraWebhookManager.shutdown()
-    }
-    if (boss) {
-      await boss.stop()
-    }
-    await new Promise<void>((resolve, reject) => {
-      server.close((err) => {
-        if (err) reject(err)
-        else resolve()
-      })
-    })
-    console.info('Server closed')
-    process.exit(0)
-  }
+  const onSignal = createShutdownHandler({
+    closeHttp: () => closeHttpServer(server),
+    closePools: async () => {
+      await Promise.all([closeAllUserPools(), closeCentralDb(), userDb.end()])
+    },
+    exit: (code) => process.exit(code),
+    log: (message) => console.info(message),
+    logError: (message, error) => console.error(message, ...(error === undefined ? [] : [error])),
+    now: () => Date.now(),
+    startTimer: startUnrefTimer,
+    stopJobs: async () => {
+      await boss?.stop({ graceful: true, timeout: JOB_STOP_TIMEOUT_MS })
+    },
+    stopTimers: () => {
+      detectionTrigger.clearPendingDetections()
+      ouraWebhookManager?.shutdown()
+    },
+  })
 
-  process.on('SIGTERM', shutdown)
-  process.on('SIGINT', shutdown)
+  process.on('SIGTERM', onSignal)
+  process.on('SIGINT', onSignal)
 }
 
-main()
+// Failures outside a request — see `services/process-guards.ts` for why the
+// rejection and exception paths deliberately differ.
+const { reportAndExit } = installProcessGuards({
+  capture: (error, hint) => Sentry.captureException(error, hint),
+  exit: (code) => process.exit(code),
+  flush: (timeoutMs) => Sentry.flush(timeoutMs),
+  log: (label, error) => console.error(label, error),
+})
+
+// Anchored explicitly rather than relying on the guards above: `main()` rejecting
+// is caught here, so it never surfaces as an unhandled rejection.
+//
+// Note the Sentry capture only lands for failures *after* `initSentry` — which
+// runs behind `initializeCentralDb`, because the DSN lives in that database. The
+// classic crash-loop (Postgres unreachable, migration failure, bad credentials)
+// therefore reports to the container log only. Alerting on those would need a
+// DSN bootstrapped from an env var before the DB is touched.
+main().catch((error) => reportAndExit('💥 Startup failed:', error))

@@ -16,7 +16,6 @@ export interface ProductivityResult {
   categories?: Record<string, { name: string[]; color?: string; score?: number }>
 }
 
-// Fetch productivity data (RescueTime) for the specified date range
 export const fetchProductivity = async (
   start: Date,
   end: Date,
@@ -45,7 +44,6 @@ export const fetchProductivity = async (
   }
 }
 
-// Fetch a single productivity record by ID
 export const fetchProductivityById = async (id: string): Promise<ProductivityRecord | null> => {
   const { token } = auth.value
   try {
@@ -64,7 +62,6 @@ export const fetchProductivityById = async (id: string): Promise<ProductivityRec
   }
 }
 
-// Fetch distinct app/title combinations with their categories and usage stats
 export interface DistinctApp {
   activity: string
   title?: string
@@ -83,7 +80,6 @@ export const fetchDistinctApps = async (): Promise<DistinctApp[]> => {
   return response.data.data ?? []
 }
 
-// Fetch screentime bucketed by time and category
 export interface ScreentimeBucketCategory {
   path: string[]
   total_sec: number

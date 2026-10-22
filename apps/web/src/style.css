@@ -17,8 +17,6 @@ body {
   margin: 0;
 }
 
-/* ── App shell: sidebar + content on wide, column on narrow ── */
-
 #app {
   display: flex;
   flex-direction: row;
@@ -45,8 +43,6 @@ body {
   }
 }
 
-/* ── Header (mobile only) ─────────────────────────────────── */
-
 header {
   background-color: #673ab8;
   display: none;
@@ -58,7 +54,6 @@ header {
   }
 }
 
-/* Mobile nav bar */
 .nav-mobile {
   display: flex;
   align-items: center;
@@ -92,8 +87,6 @@ header {
 .hamburger-btn:hover {
   background-color: #0008;
 }
-
-/* ── Drawer (mobile overlay) ──────────────────────────────── */
 
 .drawer-backdrop {
   position: fixed;
@@ -204,8 +197,6 @@ header {
   min-height: 1rem;
 }
 
-/* ── Main content ─────────────────────────────────────────── */
-
 main {
   flex: 1;
   min-height: 0;
@@ -224,8 +215,6 @@ main > div {
   flex-direction: column;
   width: 100%;
 }
-
-/* ── Footer ───────────────────────────────────────────────── */
 
 .site-footer {
   text-align: right;

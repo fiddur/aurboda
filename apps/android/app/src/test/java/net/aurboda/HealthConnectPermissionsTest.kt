@@ -12,7 +12,6 @@ class HealthConnectPermissionsTest {
         val categorized = healthDataCategories.flatMap { it.recordTypes }
         val categorizedSet = categorized.toSet()
 
-        // Every allRecordType must appear in categories
         for (recordType in allRecordTypes) {
             assertTrue(
                 "${recordType.simpleName} is not in any category",
@@ -20,14 +19,12 @@ class HealthConnectPermissionsTest {
             )
         }
 
-        // No duplicates across categories
         assertEquals(
             "Some record types appear in multiple categories",
             categorized.size,
             categorizedSet.size
         )
 
-        // Every categorized type must be in allRecordTypes
         val allRecordSet = allRecordTypes.toSet()
         for (recordType in categorizedSet) {
             assertTrue(
@@ -76,7 +73,6 @@ class HealthConnectPermissionsTest {
 
         val statuses = getCategoryStatuses(grantedPermissions)
 
-        // Activity category should be partially granted (2 of 12)
         val activityStatus = statuses.first { it.category.name == "Activity & Exercise" }
         assertEquals(2, activityStatus.grantedCount)
         assertEquals(12, activityStatus.totalCount)
@@ -84,7 +80,6 @@ class HealthConnectPermissionsTest {
         assertFalse(activityStatus.allGranted)
         assertFalse(activityStatus.noneGranted)
 
-        // Sleep should be fully granted (1 of 1)
         val sleepStatus = statuses.first { it.category.name == "Sleep" }
         assertEquals(1, sleepStatus.grantedCount)
         assertEquals(1, sleepStatus.totalCount)
@@ -92,7 +87,6 @@ class HealthConnectPermissionsTest {
         assertFalse(sleepStatus.partiallyGranted)
         assertFalse(sleepStatus.noneGranted)
 
-        // Heart should be none granted
         val heartStatus = statuses.first { it.category.name == "Heart & Vitals" }
         assertEquals(0, heartStatus.grantedCount)
         assertTrue(heartStatus.noneGranted)
@@ -131,13 +125,11 @@ class HealthConnectPermissionsTest {
             description = "Test"
         )
 
-        // None granted
         val noneStatus = CategoryPermissionStatus(singleCategory, grantedCount = 0, totalCount = 1)
         assertTrue(noneStatus.noneGranted)
         assertFalse(noneStatus.allGranted)
         assertFalse(noneStatus.partiallyGranted)
 
-        // All granted
         val allStatus = CategoryPermissionStatus(singleCategory, grantedCount = 1, totalCount = 1)
         assertTrue(allStatus.allGranted)
         assertFalse(noneStatus.partiallyGranted)

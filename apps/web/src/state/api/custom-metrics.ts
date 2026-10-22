@@ -10,7 +10,6 @@ import axios from 'axios'
 import { API_URL } from '../../config'
 import { auth } from '../auth'
 
-// Fetch user's custom metric definitions
 export const fetchCustomMetrics = async (): Promise<CustomMetricDefinition[]> => {
   const { token } = auth.value
   const response = await axios.get<CustomMetricsListResponse>(`${API_URL}/metrics/custom`, {

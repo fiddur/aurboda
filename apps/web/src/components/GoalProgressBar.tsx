@@ -4,7 +4,6 @@ import type { GoalProgress } from '../state/api'
 
 import { metricLabels } from '../utils/metricLabels'
 
-// Format value for display (e.g., seconds to hours:minutes)
 export const formatValue = (metric: string, value: number): string => {
   const unit = metricUnits[metric as keyof typeof metricUnits]
   if (unit === 'sec') {
@@ -24,7 +23,6 @@ export const formatValue = (metric: string, value: number): string => {
   return `${value.toLocaleString()} ${unit}`
 }
 
-// Format "losing tomorrow" value
 export const formatLosingTomorrow = (metric: string, value: number): string => {
   if (value === 0) return ''
   const unit = metricUnits[metric as keyof typeof metricUnits]

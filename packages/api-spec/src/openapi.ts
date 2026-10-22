@@ -1,9 +1,4 @@
-/**
- * OpenAPI document generator.
- *
- * This script generates an OpenAPI 3.1 specification from Zod schemas.
- * Run with: pnpm generate:openapi
- */
+/** Generates the OpenAPI 3.1 specification from the Zod schemas: pnpm generate:openapi */
 
 import * as fs from 'node:fs'
 import * as yaml from 'yaml'
@@ -12,7 +7,14 @@ import { createDocument } from 'zod-openapi'
 
 import { activitiesResponseSchema } from './schemas/activities.ts'
 import { loginBodySchema, loginResponseSchema } from './schemas/admin.ts'
-// Import all schemas
+import {
+  challengeParticipationsResponseSchema,
+  challengesResponseSchema,
+  discoverChallengesResponseSchema,
+  challengeStandingsResponseSchema,
+  wellKnownAurbodaSchema,
+  wellKnownQuantpubSchema,
+} from './schemas/challenges.ts'
 import { dateOnlySchema, iso8601DateTimeSchema, metricTypeSchema } from './schemas/common.ts'
 import { dailySummaryResponseSchema } from './schemas/daily-summary.ts'
 import { goalsProgressResponseSchema } from './schemas/goals.ts'
@@ -26,6 +28,12 @@ import {
   updateNamedLocationBodySchema,
 } from './schemas/locations.ts'
 import {
+  mediaPlayQuerySchema,
+  mediaPlayResponseSchema,
+  mediaPlaysQuerySchema,
+  mediaPlaysResponseSchema,
+} from './schemas/media.ts'
+import {
   addMetricBodySchema,
   addMetricResponseSchema,
   queryMetricsResponseSchema,
@@ -37,16 +45,33 @@ import {
 } from './schemas/outbound-sync.ts'
 import { periodSummaryResponseSchema } from './schemas/period-summary.ts'
 import { productivityResponseSchema } from './schemas/productivity.ts'
+import {
+  mergeRoutesBodySchema,
+  mergeRoutesResponseSchema,
+  routeDetailResponseSchema,
+  routeMatchResponseSchema,
+  routeResponseSchema,
+  routesQuerySchema,
+  routesResponseSchema,
+  updateRouteBodySchema,
+} from './schemas/routes.ts'
 import { updateSettingsInputSchema, userSettingsResponseSchema } from './schemas/settings.ts'
+import { latestSleepResponseSchema } from './schemas/sleep.ts'
 import {
   dailyAggregatesBodySchema,
   healthConnectDeletionsBodySchema,
   healthConnectSyncBodySchema,
   syncOuraBodySchema,
+  syncGravlBodySchema,
+  gravlSyncResponseSchema,
+  gravlSyncStatusResponseSchema,
+  mediaSyncResponseSchema,
+  syncMediaBodySchema,
   syncRescueTimeBodySchema,
   syncResponseSchema,
   syncStatusResponseSchema,
 } from './schemas/sync.ts'
+import { activityTrackResponseSchema, trackBackfillResponseSchema } from './schemas/tracks.ts'
 import {
   webauthnAuthOptionsBodySchema,
   webauthnAuthOptionsResponseSchema,
@@ -63,7 +88,6 @@ import {
   webauthnUpdateCredentialBodySchema,
 } from './schemas/webauthn.ts'
 
-// Error response
 const errorResponseSchema = z
   .object({
     error: z.string(),
@@ -71,19 +95,18 @@ const errorResponseSchema = z
   })
   .meta({ id: 'ErrorResponse' })
 
-// Delete response
 const deleteResponseSchema = z
   .object({
     success: z.boolean(),
   })
   .meta({ id: 'DeleteResponse' })
 
-// ============================================================================
-// Generate OpenAPI document
-// ============================================================================
-
 const openApiDocument = createDocument({
   components: {
+    // Served at the instance root (`/.well-known/aurboda`), outside the `/api`
+    // server base, so it has no path entry — the model is registered so federation
+    // clients (the Android challenge widget) get a generated type for it.
+    schemas: { WellKnownAurboda: wellKnownAurbodaSchema, WellKnownQuantpub: wellKnownQuantpubSchema },
     securitySchemes: {
       bearerAuth: {
         bearerFormat: 'JWT',
@@ -109,7 +132,73 @@ const openApiDocument = createDocument({
   },
   openapi: '3.1.0',
   paths: {
-    // --- Activities ---
+    '/challenges': {
+      get: {
+        description: 'List the challenges hosted by the authenticated user.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: challengesResponseSchema } },
+            description: 'Successful response',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List my challenges',
+        tags: ['Challenges'],
+      },
+    },
+    '/challenges/discover': {
+      get: {
+        description:
+          'Open challenges hosted by people the authenticated user follows (on this or any Aurboda instance) that they have not joined: ongoing first, then upcoming; ended challenges are never listed.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: discoverChallengesResponseSchema } },
+            description: 'Successful response',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Discover challenges from people I follow',
+        tags: ['Challenges'],
+      },
+    },
+    '/challenges/participations/mine': {
+      get: {
+        description: 'List the challenges the authenticated user has joined (possibly on other instances).',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: challengeParticipationsResponseSchema } },
+            description: 'Successful response',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List my challenge participations',
+        tags: ['Challenges'],
+      },
+    },
+    '/public/{username}/{slug}/standings': {
+      get: {
+        description:
+          "Public standings of a challenge hosted at `/u/{username}/{slug}`: each active member's bucketed series and total. No authentication.",
+        requestParams: {
+          path: z.object({
+            slug: z.string().meta({ description: 'Challenge slug' }),
+            username: z.string().meta({ description: 'Host username' }),
+          }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: challengeStandingsResponseSchema } },
+            description: 'Successful response',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Challenge not found',
+          },
+        },
+        summary: 'Get public challenge standings',
+        tags: ['Challenges'],
+      },
+    },
     '/activities': {
       get: {
         description: 'Get activities (sleep, exercise, meditation, nap) for a time range.',
@@ -119,6 +208,11 @@ const openApiDocument = createDocument({
             start: iso8601DateTimeSchema.meta({
               description: 'Start date/time',
             }),
+            route_id: z
+              .string()
+              .uuid()
+              .optional()
+              .meta({ description: 'Only activities matched to this route' }),
             types: z.string().optional().meta({ description: 'Comma-separated activity types' }),
           }),
         },
@@ -135,8 +229,173 @@ const openApiDocument = createDocument({
         tags: ['Activities'],
       },
     },
+    '/activities/{id}/track': {
+      get: {
+        description:
+          "Get an activity's full-resolution GPS track: points with altitude and seconds since the activity start.",
+        requestParams: {
+          path: z.object({
+            id: z.string().meta({ description: 'Activity ID (a merged:<id> prefix is accepted)' }),
+          }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: activityTrackResponseSchema } },
+            description: 'Successful response',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'No track for activity',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get activity track',
+        tags: ['Activities'],
+      },
+    },
+    '/routes': {
+      get: {
+        description:
+          'List recognised routes (courses run more than once), with run count and latest run. Optionally only one activity type (and its descendant types); ordered by latest run (default), run count, length or name.',
+        requestParams: { query: routesQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: routesResponseSchema } },
+            description: 'Successful response',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List routes',
+        tags: ['Routes'],
+      },
+    },
+    '/routes/match': {
+      post: {
+        description:
+          'Match every tracked activity without a route: attach it to a covering route of its type, or pair it with another unrouted track to create one.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: routeMatchResponseSchema } },
+            description: 'Successful response',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Match routes',
+        tags: ['Routes'],
+      },
+    },
+    '/routes/{id}': {
+      delete: {
+        description:
+          'Delete a route. Its runs stay attached to it and are not matched again; a later run of the same course does not revive it.',
+        requestParams: {
+          path: z.object({
+            id: z.string().uuid().meta({ description: 'Route ID' }),
+          }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: deleteResponseSchema } },
+            description: 'Successful response',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Route not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Delete route',
+        tags: ['Routes'],
+      },
+      get: {
+        description:
+          'A route with its line and its runs over time: elapsed time, average heart rate and pace per run, newest first.',
+        requestParams: {
+          path: z.object({
+            id: z.string().uuid().meta({ description: 'Route ID' }),
+          }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: routeDetailResponseSchema } },
+            description: 'Successful response',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Route not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get route',
+        tags: ['Routes'],
+      },
+      patch: {
+        description: 'Rename a route.',
+        requestBody: {
+          content: { 'application/json': { schema: updateRouteBodySchema } },
+        },
+        requestParams: {
+          path: z.object({
+            id: z.string().uuid().meta({ description: 'Route ID' }),
+          }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: routeResponseSchema } },
+            description: 'Successful response',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Route not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Update route',
+        tags: ['Routes'],
+      },
+    },
+    '/routes/{id}/merge': {
+      post: {
+        description: 'Move every run of another route onto this one and delete the other route.',
+        requestBody: {
+          content: { 'application/json': { schema: mergeRoutesBodySchema } },
+        },
+        requestParams: {
+          path: z.object({
+            id: z.string().uuid().meta({ description: 'Route ID' }),
+          }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: mergeRoutesResponseSchema } },
+            description: 'Successful response',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Route not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Merge routes',
+        tags: ['Routes'],
+      },
+    },
+    '/tracks/backfill': {
+      post: {
+        description:
+          'Build missing activity tracks from stored raw records: Garmin activity details at full resolution, Strava polylines as shape-only tracks.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: trackBackfillResponseSchema } },
+            description: 'Successful response',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Backfill activity tracks',
+        tags: ['Activities'],
+      },
+    },
 
-    // --- Daily Summary ---
     '/daily-summary': {
       get: {
         description:
@@ -166,7 +425,6 @@ const openApiDocument = createDocument({
       },
     },
 
-    // --- Goals ---
     '/goals/progress': {
       get: {
         description:
@@ -185,7 +443,24 @@ const openApiDocument = createDocument({
       },
     },
 
-    // --- Locations ---
+    '/latest-sleep': {
+      get: {
+        description:
+          'Get the most recent night of sleep that ended within the last 36 hours: timing, sleep score, stage timeline and minutes, resting heart rate and HRV against their 30-day baselines, and Body Battery at bedtime and wake-up. Data is null when no sleep was recorded.',
+        responses: {
+          200: {
+            content: {
+              'application/json': { schema: latestSleepResponseSchema },
+            },
+            description: 'Successful response',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: "Get last night's sleep",
+        tags: ['Summary'],
+      },
+    },
+
     '/locations': {
       get: {
         description: 'Get place visits for a time range.',
@@ -371,7 +646,6 @@ const openApiDocument = createDocument({
       },
     },
 
-    // --- Login ---
     '/login': {
       post: {
         description: 'Authenticate with username and password to receive access and refresh tokens.',
@@ -415,7 +689,6 @@ const openApiDocument = createDocument({
         tags: ['Metrics'],
       },
     },
-    // --- Metrics ---
     '/metrics/{metric}': {
       get: {
         description:
@@ -451,7 +724,6 @@ const openApiDocument = createDocument({
       },
     },
 
-    // --- Period Summary ---
     '/period-summary': {
       get: {
         description:
@@ -483,7 +755,6 @@ const openApiDocument = createDocument({
       },
     },
 
-    // --- Productivity ---
     '/productivity': {
       get: {
         description: 'Get RescueTime productivity data for a time range.',
@@ -538,7 +809,6 @@ const openApiDocument = createDocument({
       },
     },
 
-    // --- Sync: Health Connect ---
     '/sync/daily-aggregates': {
       post: {
         description: 'Upload daily aggregate data from Health Connect (steps, distance, calories, floors).',
@@ -608,7 +878,6 @@ const openApiDocument = createDocument({
       },
     },
 
-    // --- Sync: Outbound (backend -> Health Connect) ---
     '/sync/outbound': {
       get: {
         description:
@@ -672,7 +941,105 @@ const openApiDocument = createDocument({
       },
     },
 
-    // --- Sync ---
+    '/sync/media': {
+      post: {
+        description:
+          "Push media plays (videos, music, podcasts) from an MPRIS logger. Plays are stored as raw records deduplicated by id, so re-posting a batch is safe. Triggers deduction rule evaluation over the plays' time span.",
+        requestBody: {
+          content: { 'application/json': { schema: syncMediaBodySchema } },
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: mediaSyncResponseSchema } },
+            description: 'Plays stored',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Bad request',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Push media plays',
+        tags: ['Sync'],
+      },
+    },
+    '/media/plays': {
+      get: {
+        description:
+          'Media plays in a time window: MPRIS plays plus Last.fm scrobbles that are not duplicates of an MPRIS play. kind and played_ratio are derived at read time.',
+        requestParams: { query: mediaPlaysQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: mediaPlaysResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Bad request',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Query media plays',
+        tags: ['Media'],
+      },
+    },
+    '/media/play': {
+      get: {
+        description:
+          'One media play by id: an MPRIS play id, or a Last.fm scrobble external id when no MPRIS play has it. The id is a query parameter because Last.fm ids can contain "/".',
+        requestParams: { query: mediaPlayQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: mediaPlayResponseSchema } },
+            description: 'Successful response',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get a media play',
+        tags: ['Media'],
+      },
+    },
+
+    '/sync/gravl': {
+      post: {
+        description:
+          'Sync strength workouts from Gravl (gravl.ai): exercises with per-set weight, reps, RPE and set type. A workout that already reached Aurboda through Health Connect is enriched in place; otherwise a strength_training activity is created. Requires a Gravl OAuth connection or a personal token in user settings.',
+        requestBody: {
+          content: { 'application/json': { schema: syncGravlBodySchema } },
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: gravlSyncResponseSchema } },
+            description: 'Sync result',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Gravl integration unavailable',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Sync Gravl workouts',
+        tags: ['Sync'],
+      },
+    },
+    '/sync/gravl/status': {
+      get: {
+        description: 'Current Gravl sync state: last sync time, status, error and rate-limit hold.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: gravlSyncStatusResponseSchema } },
+            description: 'Successful response',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get Gravl sync status',
+        tags: ['Sync'],
+      },
+    },
 
     '/sync/status': {
       get: {
@@ -699,7 +1066,6 @@ const openApiDocument = createDocument({
       },
     },
 
-    // --- WebAuthn / Passkey ---
     '/webauthn/auth/options': {
       post: {
         description:
@@ -872,7 +1238,6 @@ const openApiDocument = createDocument({
       },
     },
 
-    // --- User Settings ---
     '/user/settings': {
       get: {
         description:
@@ -925,6 +1290,8 @@ const openApiDocument = createDocument({
     { description: 'Time series health metrics', name: 'Metrics' },
     { description: 'Daily and period summaries', name: 'Summary' },
     { description: 'Sleep, exercise, meditation sessions', name: 'Activities' },
+    { description: 'Media plays (videos, music, podcasts)', name: 'Media' },
+    { description: 'Federated challenges: hosted, joined, and public standings', name: 'Challenges' },
     { description: 'Named and detected locations', name: 'Locations' },
     { description: 'RescueTime productivity data', name: 'Productivity' },
     { description: 'User settings and preferences', name: 'Settings' },
@@ -935,7 +1302,6 @@ const openApiDocument = createDocument({
   ],
 })
 
-// Write to file
 fs.mkdirSync('./generated', { recursive: true })
 fs.writeFileSync('./generated/openapi.yaml', yaml.stringify(openApiDocument))
 fs.writeFileSync('./generated/openapi.json', JSON.stringify(openApiDocument, null, 2))

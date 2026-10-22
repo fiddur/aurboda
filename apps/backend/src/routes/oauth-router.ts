@@ -1,6 +1,4 @@
 /**
- * OAuth 2.1 router for MCP authentication.
- *
  * Provides endpoints required by the MCP spec for OAuth 2.1 authorization
  * server discovery, authorization, token exchange, and dynamic client
  * registration. Endpoints are mounted at the domain root level.
@@ -9,6 +7,7 @@ import express, { Router, type Request, type Response } from 'express'
 
 import type { CentralDb } from '../services/central-db.ts'
 
+import { isInvalidPasswordError } from '../db/index.ts'
 import {
   createAuthorizationCode,
   exchangeAuthorizationCode,
@@ -16,19 +15,11 @@ import {
   registerClient,
 } from '../services/oauth.ts'
 
-// ============================================================================
-// Types
-// ============================================================================
-
 export interface OAuthRouterDeps {
   centralDb: CentralDb
   loginToUserDb: (username: string, password: string) => Promise<unknown>
   webHost: string
 }
-
-// ============================================================================
-// Login form HTML
-// ============================================================================
 
 const loginFormHtml = (params: {
   client_id: string
@@ -81,16 +72,11 @@ const loginFormHtml = (params: {
 const escapeHtml = (str: string): string =>
   str.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;')
 
-// ============================================================================
-// Router factory
-// ============================================================================
-
 export const createOAuthRouter = (deps: OAuthRouterDeps): Router => {
   const { centralDb, loginToUserDb, webHost } = deps
   const router = Router()
   const oauthDeps = { centralDb }
 
-  // OAuth metadata discovery
   router.get('/.well-known/oauth-authorization-server', (_req: Request, res: Response) => {
     const issuer = webHost
     res.json({
@@ -105,7 +91,6 @@ export const createOAuthRouter = (deps: OAuthRouterDeps): Router => {
     })
   })
 
-  // Authorization endpoint — GET serves login form
   router.get('/authorize', (req: Request, res: Response) => {
     const { client_id, redirect_uri, state, code_challenge, code_challenge_method } = req.query as Record<
       string,
@@ -128,7 +113,6 @@ export const createOAuthRouter = (deps: OAuthRouterDeps): Router => {
     )
   })
 
-  // Authorization endpoint — POST handles login + redirect
   router.post('/authorize', express.urlencoded({ extended: false }), async (req: Request, res: Response) => {
     const { client_id, redirect_uri, state, code_challenge, code_challenge_method, username, password } =
       req.body
@@ -138,10 +122,15 @@ export const createOAuthRouter = (deps: OAuthRouterDeps): Router => {
       return
     }
 
-    // Authenticate user
+    // A database we cannot reach is not a bad password: report it as one and
+    // the user goes off changing a credential that was fine.
     try {
       await loginToUserDb(username, password)
-    } catch {
+    } catch (err) {
+      const badCredentials = isInvalidPasswordError(err)
+      if (!badCredentials) {
+        console.error(`OAuth login for ${username} failed to reach the database:`, err)
+      }
       res.type('html').send(
         loginFormHtml({
           client_id,
@@ -149,13 +138,14 @@ export const createOAuthRouter = (deps: OAuthRouterDeps): Router => {
           state: state ?? '',
           code_challenge,
           code_challenge_method,
-          error: 'Invalid username or password',
+          error: badCredentials
+            ? 'Invalid username or password'
+            : 'Could not reach the database — this is a server problem, not your password. Try again shortly.',
         }),
       )
       return
     }
 
-    // Generate authorization code
     try {
       const code = await createAuthorizationCode(oauthDeps, {
         client_id,
@@ -178,7 +168,6 @@ export const createOAuthRouter = (deps: OAuthRouterDeps): Router => {
     }
   })
 
-  // Token endpoint
   router.post('/token', express.urlencoded({ extended: false }), async (req: Request, res: Response) => {
     const { grant_type } = req.body
 

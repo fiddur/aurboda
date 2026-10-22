@@ -253,10 +253,14 @@ describe('Food Items Integration Tests', () => {
 
       const item = await upsertFoodItem(user, { name: 'ToDelete' })
       const deleted = await deleteFoodItem(user, item.id)
-      expect(deleted).toBe(true)
+      expect(deleted).toBe('deleted')
 
       const found = await getFoodItemById(user, item.id)
       expect(found).toBeNull()
+    })
+
+    test('reports a missing item as not_found', async () => {
+      expect(await deleteFoodItem(getTestUser(), '00000000-0000-4000-8000-000000000000')).toBe('not_found')
     })
   })
 

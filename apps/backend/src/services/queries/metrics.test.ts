@@ -6,7 +6,6 @@ import type { MetricType } from '../../schema.ts'
 import * as db from '../../db/index.ts'
 import { parseBucketSize, queryMetrics, queryMetricsBucketed } from './metrics.ts'
 
-// Mock the db module
 vi.mock('../../db', () => ({
   getActivities: vi.fn(),
   getDistinctMetrics: vi.fn(),
@@ -353,10 +352,8 @@ describe('queryMetricsBucketed', () => {
     )
 
     expect(result.buckets).toHaveLength(2)
-    // First bucket has both metrics
     expect(result.buckets[0].metrics.heart_rate).toBeDefined()
     expect(result.buckets[0].metrics.hrv_rmssd).toBeDefined()
-    // Second bucket only has heart_rate
     expect(result.buckets[1].metrics.heart_rate).toBeDefined()
     expect(result.buckets[1].metrics.hrv_rmssd).toBeUndefined()
   })
@@ -390,10 +387,8 @@ describe('queryMetricsBucketed', () => {
       '1h',
     )
 
-    // Should have buckets for the hours with HRV data during sleep
     expect(result.buckets.length).toBeGreaterThan(0)
 
-    // All returned data should be hrv_sleep
     for (const bucket of result.buckets) {
       if (bucket.metrics.hrv_sleep) {
         expect(bucket.metrics.hrv_sleep.avg).toBeGreaterThan(0)
@@ -403,7 +398,6 @@ describe('queryMetricsBucketed', () => {
   })
 
   test('returns bucketed data for mixed regular and contextual HRV metrics', async () => {
-    // Mock regular bucketed data for heart_rate
     vi.mocked(db.getTimeSeriesBucketed).mockResolvedValue([
       mkBucket({
         avg: 72,
@@ -440,12 +434,10 @@ describe('queryMetricsBucketed', () => {
       '1h',
     )
 
-    // Should have bucket with heart_rate from regular query
     const bucketWithHr = result.buckets.find((b) => b.metrics.heart_rate)
     expect(bucketWithHr).toBeDefined()
     expect(bucketWithHr!.metrics.heart_rate?.avg).toBe(72)
 
-    // Should have bucket with hrv_sleep from contextual query
     const bucketWithHrvSleep = result.buckets.find((b) => b.metrics.hrv_sleep)
     expect(bucketWithHrvSleep).toBeDefined()
   })
@@ -478,7 +470,6 @@ describe('queryMetricsBucketed', () => {
       '1h',
     )
 
-    // Should have no hrv_sleep buckets since HRV data is during awake hours
     const hrvSleepBuckets = result.buckets.filter((b) => b.metrics.hrv_sleep)
     expect(hrvSleepBuckets).toHaveLength(0)
   })
@@ -741,13 +732,11 @@ describe('queryMetrics with contextual HRV', () => {
 
     expect(result.metric).toBe('hrv_sleep')
     expect(result.unit).toBe('ms')
-    // Only samples during sleep should be included
     expect(result.count).toBe(2)
     expect(result.data.map((d) => d.value)).toEqual([45, 48])
   })
 
   test('returns filtered HRV data for hrv_awake', async () => {
-    // Raw HRV data
     vi.mocked(db.getTimeSeries).mockResolvedValue([
       [new Date('2024-01-15T02:00:00Z'), 45], // During sleep
       [new Date('2024-01-15T12:00:00Z'), 30], // During awake
@@ -773,13 +762,11 @@ describe('queryMetrics with contextual HRV', () => {
     )
 
     expect(result.metric).toBe('hrv_awake')
-    // Only samples during awake (not sleep, not activity) should be included
     expect(result.count).toBe(2)
     expect(result.data.map((d) => d.value)).toEqual([30, 28])
   })
 
   test('returns filtered HRV data for hrv_activity', async () => {
-    // Raw HRV data
     vi.mocked(db.getTimeSeries).mockResolvedValue([
       [new Date('2024-01-15T10:00:00Z'), 22], // During exercise
       [new Date('2024-01-15T10:30:00Z'), 18], // During exercise
@@ -806,7 +793,6 @@ describe('queryMetrics with contextual HRV', () => {
     )
 
     expect(result.metric).toBe('hrv_activity')
-    // Only samples during exercise should be included
     expect(result.count).toBe(2)
     expect(result.data.map((d) => d.value)).toEqual([22, 18])
   })

@@ -50,7 +50,6 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import kotlin.reflect.KClass
 
-// Global JSON configuration instance
 val appJson =
   Json {
     prettyPrint = true
@@ -60,13 +59,11 @@ val appJson =
     explicitNulls = false // Omit null fields from JSON; null means "not provided", not "set to null"
   }
 
-// Generic wrapper for POST requests
 @Serializable
 data class PostWrapper<T>(
   val data: List<T>,
 )
 
-// --- Base Metadata and Device for Serializable Records ---
 @Serializable
 data class DeviceSerializable(
   val manufacturer: String?,
@@ -85,7 +82,6 @@ data class HealthConnectRecordMetadata(
   val recordingMethod: Int,
 )
 
-// --- Active Calories Burned Record ---
 @Serializable
 data class ActiveCaloriesBurnedRecordSerializable(
   val startTime: String,
@@ -106,7 +102,6 @@ data class ActiveCaloriesBurnedRecordSerializable(
   }
 }
 
-// --- Body Fat Record ---
 @Serializable
 data class BodyFatRecordSerializable(
   val time: String,
@@ -125,7 +120,6 @@ data class BodyFatRecordSerializable(
   }
 }
 
-// --- Body Water Mass Record ---
 @Serializable
 data class BodyWaterMassRecordSerializable(
   val time: String,
@@ -144,7 +138,6 @@ data class BodyWaterMassRecordSerializable(
   }
 }
 
-// --- Bone Mass Record ---
 @Serializable
 data class BoneMassRecordSerializable(
   val time: String,
@@ -163,7 +156,6 @@ data class BoneMassRecordSerializable(
   }
 }
 
-// --- Distance Record ---
 @Serializable
 data class DistanceRecordSerializable(
   val startTime: String,
@@ -184,13 +176,11 @@ data class DistanceRecordSerializable(
   }
 }
 
-// --- Exercise Session Record Helpers ---
 @Serializable
 data class ExerciseSegmentSerializable(
   val startTime: String,
   val endTime: String,
   val segmentType: Int,
-  // val weightInKilograms: Double? = null, // Add if using a library version that supports segment.weight
 )
 
 @Serializable
@@ -215,7 +205,6 @@ data class ExerciseRouteSerializable(
   val route: List<ExerciseRouteLocationSerializable>,
 )
 
-// --- Exercise Session Record ---
 @Serializable
 data class ExerciseSessionRecordSerializable(
   val startTime: String,
@@ -244,7 +233,6 @@ data class ExerciseSessionRecordSerializable(
                   startTime = segment.startTime.toIsoString(),
                   endTime = segment.endTime.toIsoString(),
                   segmentType = segment.segmentType,
-                  // weightInKilograms = if (segment.weight != null) segment.weight!!.inKilograms else null // Enable if segment.weight is available
                 )
               }.takeIf { it.isNotEmpty() },
           laps =
@@ -282,14 +270,12 @@ data class ExerciseSessionRecordSerializable(
   }
 }
 
-// --- Heart Rate Record Helpers ---
 @Serializable
 data class HeartRateSampleSerializable(
   val time: String,
   val beatsPerMinute: Long,
 )
 
-// --- Heart Rate Record ---
 @Serializable
 data class HeartRateRecordSerializable(
   val startTime: String,
@@ -316,7 +302,6 @@ data class HeartRateRecordSerializable(
   }
 }
 
-// --- Heart Rate Variability Record ---
 @Serializable
 data class HrvRecordSerializable(
   val time: String,
@@ -335,7 +320,6 @@ data class HrvRecordSerializable(
   }
 }
 
-// --- Lean Body Mass Record ---
 @Serializable
 data class LeanBodyMassRecordSerializable(
   val time: String,
@@ -354,7 +338,6 @@ data class LeanBodyMassRecordSerializable(
   }
 }
 
-// --- Nutrition Record ---
 @Serializable
 data class NutritionRecordSerializable(
   val startTime: String,
@@ -461,14 +444,12 @@ data class NutritionRecordSerializable(
   }
 }
 
-// --- Power Record Helpers ---
 @Serializable
 data class PowerSampleSerializable(
   val time: String,
   val powerInWatts: Double,
 )
 
-// --- Power Record ---
 @Serializable
 data class PowerRecordSerializable(
   val startTime: String,
@@ -495,7 +476,6 @@ data class PowerRecordSerializable(
   }
 }
 
-// --- Sleep Session Record Helpers ---
 @Serializable
 data class SleepStageSerializable(
   val startTime: String,
@@ -503,7 +483,6 @@ data class SleepStageSerializable(
   val stage: Int,
 )
 
-// --- Sleep Session Record ---
 @Serializable
 data class SleepSessionRecordSerializable(
   val startTime: String,
@@ -535,14 +514,12 @@ data class SleepSessionRecordSerializable(
   }
 }
 
-// --- Speed Record Helpers ---
 @Serializable
 data class SpeedSampleSerializable(
   val time: String,
   val speedInMetersPerSecond: Double,
 )
 
-// --- Speed Record ---
 @Serializable
 data class SpeedRecordSerializable(
   val startTime: String,
@@ -569,7 +546,6 @@ data class SpeedRecordSerializable(
   }
 }
 
-// --- Floors Climbed Record ---
 @Serializable
 data class FloorsClimbedRecordSerializable(
   val startTime: String,
@@ -590,7 +566,6 @@ data class FloorsClimbedRecordSerializable(
   }
 }
 
-// --- Steps Record ---
 @Serializable
 data class StepsRecordSerializable(
   val startTime: String,
@@ -611,7 +586,6 @@ data class StepsRecordSerializable(
   }
 }
 
-// --- Total Calories Burned Record ---
 @Serializable
 data class TotalCaloriesBurnedRecordSerializable(
   val startTime: String,
@@ -632,7 +606,6 @@ data class TotalCaloriesBurnedRecordSerializable(
   }
 }
 
-// --- Weight Record ---
 @Serializable
 data class WeightRecordSerializable(
   val time: String,
@@ -651,7 +624,6 @@ data class WeightRecordSerializable(
   }
 }
 
-// --- Height Record ---
 @Serializable
 data class HeightRecordSerializable(
   val time: String,
@@ -670,7 +642,6 @@ data class HeightRecordSerializable(
   }
 }
 
-// --- Resting Heart Rate Record ---
 @Serializable
 data class RestingHeartRateRecordSerializable(
   val time: String,
@@ -689,7 +660,6 @@ data class RestingHeartRateRecordSerializable(
   }
 }
 
-// --- VO2 Max Record ---
 @Serializable
 data class Vo2MaxRecordSerializable(
   val time: String,
@@ -708,7 +678,6 @@ data class Vo2MaxRecordSerializable(
   }
 }
 
-// --- Basal Body Temperature Record ---
 @Serializable
 data class BasalBodyTemperatureRecordSerializable(
   val time: String,
@@ -729,7 +698,6 @@ data class BasalBodyTemperatureRecordSerializable(
   }
 }
 
-// --- Basal Metabolic Rate Record ---
 @Serializable
 data class BasalMetabolicRateRecordSerializable(
   val time: String,
@@ -748,7 +716,6 @@ data class BasalMetabolicRateRecordSerializable(
   }
 }
 
-// --- Blood Glucose Record ---
 @Serializable
 data class BloodGlucoseRecordSerializable(
   val time: String,
@@ -773,7 +740,6 @@ data class BloodGlucoseRecordSerializable(
   }
 }
 
-// --- Blood Pressure Record ---
 @Serializable
 data class BloodPressureRecordSerializable(
   val time: String,
@@ -798,7 +764,6 @@ data class BloodPressureRecordSerializable(
   }
 }
 
-// --- Body Temperature Record ---
 @Serializable
 data class BodyTemperatureRecordSerializable(
   val time: String,
@@ -819,7 +784,6 @@ data class BodyTemperatureRecordSerializable(
   }
 }
 
-// --- Cervical Mucus Record ---
 @Serializable
 data class CervicalMucusRecordSerializable(
   val time: String,
@@ -840,14 +804,12 @@ data class CervicalMucusRecordSerializable(
   }
 }
 
-// --- Cycling Pedaling Cadence Record Helpers ---
 @Serializable
 data class CyclingCadenceSampleSerializable(
   val time: String,
   val revolutionsPerMinute: Double,
 )
 
-// --- Cycling Pedaling Cadence Record ---
 @Serializable
 data class CyclingPedalingCadenceRecordSerializable(
   val startTime: String,
@@ -874,7 +836,6 @@ data class CyclingPedalingCadenceRecordSerializable(
   }
 }
 
-// --- Elevation Gained Record ---
 @Serializable
 data class ElevationGainedRecordSerializable(
   val startTime: String,
@@ -895,7 +856,6 @@ data class ElevationGainedRecordSerializable(
   }
 }
 
-// --- Hydration Record ---
 @Serializable
 data class HydrationRecordSerializable(
   val startTime: String,
@@ -916,7 +876,6 @@ data class HydrationRecordSerializable(
   }
 }
 
-// --- Intermenstrual Bleeding Record ---
 @Serializable
 data class IntermenstrualBleedingRecordSerializable(
   val time: String,
@@ -933,7 +892,6 @@ data class IntermenstrualBleedingRecordSerializable(
   }
 }
 
-// --- Menstruation Flow Record ---
 @Serializable
 data class MenstruationFlowRecordSerializable(
   val time: String,
@@ -952,7 +910,6 @@ data class MenstruationFlowRecordSerializable(
   }
 }
 
-// --- Menstruation Period Record ---
 @Serializable
 data class MenstruationPeriodRecordSerializable(
   val startTime: String,
@@ -971,7 +928,6 @@ data class MenstruationPeriodRecordSerializable(
   }
 }
 
-// --- Ovulation Test Record ---
 @Serializable
 data class OvulationTestRecordSerializable(
   val time: String,
@@ -990,7 +946,6 @@ data class OvulationTestRecordSerializable(
   }
 }
 
-// --- Oxygen Saturation Record ---
 @Serializable
 data class OxygenSaturationRecordSerializable(
   val time: String,
@@ -1009,7 +964,6 @@ data class OxygenSaturationRecordSerializable(
   }
 }
 
-// --- Respiratory Rate Record ---
 @Serializable
 data class RespiratoryRateRecordSerializable(
   val time: String,
@@ -1028,7 +982,6 @@ data class RespiratoryRateRecordSerializable(
   }
 }
 
-// --- Sexual Activity Record ---
 @Serializable
 data class SexualActivityRecordSerializable(
   val time: String,
@@ -1047,7 +1000,6 @@ data class SexualActivityRecordSerializable(
   }
 }
 
-// --- Wheelchair Pushes Record ---
 @Serializable
 data class WheelchairPushesRecordSerializable(
   val startTime: String,
@@ -1068,10 +1020,8 @@ data class WheelchairPushesRecordSerializable(
   }
 }
 
-// Helper to format Instant to ISO 8601 String
 fun Instant.toIsoString(): String = this.atOffset(ZoneOffset.UTC).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
 
-// Helper to convert Health Connect Metadata to Serializable Metadata
 fun Metadata.toSerializable(): HealthConnectRecordMetadata =
   HealthConnectRecordMetadata(
     id = this.id,
@@ -1091,7 +1041,6 @@ fun Metadata.toSerializable(): HealthConnectRecordMetadata =
   )
 
 /**
- * Record types for which we have WRITE permissions in the manifest.
  * These are the types used for outbound sync (backend → Health Connect).
  * Must match the WRITE_* permissions declared in AndroidManifest.xml.
  */
@@ -1112,7 +1061,7 @@ val writableRecordTypes: Set<KClass<out Record>> =
     WeightRecord::class,
   )
 
-// Comprehensive list of all record KClass objects we want to read, sorted alphabetically
+// Sorted alphabetically.
 val allRecordTypes: List<KClass<out Record>> =
   listOf(
     ActiveCaloriesBurnedRecord::class,

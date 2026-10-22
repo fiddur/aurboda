@@ -1,11 +1,14 @@
 import type {
   Activity as ApiActivity,
+  ActivityRouteSummary,
   DetectedLocation as ApiDetectedLocation,
   Meal as ApiMeal,
+  MediaPlay as ApiMediaPlay,
   PlaceVisit as ApiPlaceVisit,
   ProductivityRecord as ApiProductivityRecord,
   Report as ApiReport,
   DataSchemaDefinition,
+  DeductionRuleMode,
 } from '@aurboda/api-spec'
 
 // Frontend types with Date objects (converted from API string types)
@@ -33,7 +36,14 @@ export interface DataFilter {
 }
 
 export interface DeductionRuleCondition {
-  kind: 'activity' | 'screentime_category' | 'activity_data' | 'location' | 'after_date' | 'scrobble'
+  kind:
+    | 'activity'
+    | 'screentime_category'
+    | 'activity_data'
+    | 'location'
+    | 'after_date'
+    | 'scrobble'
+    | 'media'
   activity_type?: string
   data_filters?: DataFilter[]
   category?: string[]
@@ -42,11 +52,20 @@ export interface DeductionRuleCondition {
   value?: string | number | boolean
   location_name?: string
   date?: string
-  // Scrobble condition fields
   artist?: string[]
   track?: string
   match_mode?: 'exact' | 'contains'
   duration_seconds?: number
+  url_host?: string[]
+  title?: string
+  player?: string[]
+  min_played_secs?: number
+  min_played_ratio?: number
+}
+
+export interface OutputMediaField {
+  field: string
+  strip_pattern?: string
 }
 
 export interface DeductionRule {
@@ -58,8 +77,10 @@ export interface DeductionRule {
   output_activity_type: string
   output_title?: string
   merge_gap_seconds?: number
-  mode?: 'create' | 'enrich'
+  mode?: DeductionRuleMode
   output_data?: Record<string, unknown>
+  output_media_field?: OutputMediaField
+  output_title_field?: string
   created_at?: string
 }
 
@@ -79,6 +100,8 @@ export interface Activity extends Omit<ApiActivity, 'start_time' | 'end_time'> {
   source_records?: SourceRecord[]
   merged_start_time?: Date
   merged_end_time?: Date
+  /** The route the activity was matched to (activity detail only). */
+  route?: ActivityRouteSummary
   /**
    * Provenance of activities that were folded into this one by
    * `collapseToParentType`. Set only on the synthetic survivor; never on
@@ -99,9 +122,10 @@ export interface Place {
   end_time: Date
 }
 
-export interface PlaceVisit extends Omit<ApiPlaceVisit, 'start_time' | 'end_time'> {
+export interface PlaceVisit extends Omit<ApiPlaceVisit, 'start_time' | 'end_time' | 'inferred_from'> {
   start_time: Date
   end_time: Date
+  inferred_from?: Date
   durationMinutes: number
 }
 
@@ -121,6 +145,11 @@ export interface Scrobble {
   track: string
   album: string
   recorded_at: Date
+}
+
+export interface MediaPlay extends Omit<ApiMediaPlay, 'started_at' | 'ended_at'> {
+  started_at: Date
+  ended_at?: Date
 }
 
 export interface Meal extends Omit<ApiMeal, 'time' | 'created_at'> {

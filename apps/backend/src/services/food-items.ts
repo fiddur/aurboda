@@ -1,7 +1,4 @@
 /**
- * Food-items service: composes per-user food_items with central
- * shared_food_items so callers see one merged library.
- *
  * Read paths (search/get/getByName/findOrCreate) check central whenever the
  * per-user DB doesn't have the item. Write paths (upsert/update/delete)
  * stay confined to the per-user DB; central rows are managed exclusively
@@ -58,9 +55,7 @@ import { getSharedFoodItemOverridesByIds } from '../db/shared-food-item-override
 export type MergedFoodItem = FoodItemEntity | SharedFoodItemEntity
 
 export interface ResolvedIngredient {
-  /** The junction row (parent → ingredient pointer + qty/unit). */
   row: FoodItemIngredientRow
-  /** The actual ingredient food item, resolved across user + central. */
   food: MergedFoodItem | null
   /**
    * The portion (unit) the ingredient is measured in, when `row.food_item_portion_id`
@@ -81,7 +76,6 @@ export interface DerivedNutrients {
 }
 
 export interface ReferencedFood {
-  /** The reference food item resolved across user + central. */
   food: MergedFoodItem
   /** True when self.default_quantity / reference.default_quantity isn't possible (missing default_quantity, or units that can't convert). Inherited values are still emitted at scale=1 but flagged so the UI can warn. */
   unit_mismatch: boolean
@@ -159,7 +153,6 @@ export interface FoodItemsService {
     name: string,
     defaults?: Partial<InsertFoodItemInput>,
   ) => Promise<MergedFoodItem>
-  /** Get the item plus, if composite, its ingredients + derived nutrients. */
   getDetail: (user: string, id: string) => Promise<FoodItemDetail | null>
   /**
    * Cycle guard for setIngredients. Walks the ingredient graph from each
@@ -214,12 +207,10 @@ const computeIngredientScale = (ingredient: ResolvedIngredient): ScaleResult => 
   if (defaultQty === undefined || defaultQty === null || defaultQty === 0) {
     return { incomplete: true, scale: 1 }
   }
-  // Portion path.
   if (row.food_item_portion_id) {
     if (!portion || typeof row.portion_count !== 'number') return { incomplete: true, scale: 1 }
     return { incomplete: false, scale: (row.portion_count * portion.base_equivalent) / defaultQty }
   }
-  // Legacy quantity/unit path.
   const defaultUnit = food.default_unit as string | undefined
   if (row.unit && defaultUnit && row.unit !== defaultUnit) {
     const converted = convertUnit(row.quantity, row.unit, defaultUnit)
@@ -373,7 +364,6 @@ const applySharedOverride = async (
 }
 
 export interface FoodItemDisplay {
-  /** Current canonical name. */
   name: string
   /** Current canonical icon — central items have user override applied if set. */
   icon?: string
@@ -486,7 +476,7 @@ export const createFoodItemsService = (centralDb: CentralDb): FoodItemsService =
     const sensitivities = sensitivityFlags.map((f) => ({ id: f.id, name: f.name, color: f.color ?? null }))
     // Always an array (empty when the item has no portions) so the detail
     // contract is `portions: FoodItemPortion[]` on every path — consumers can
-    // rely on `.map`/`.length` without a null check (#780).
+    // rely on `.map`/`.length` without a null check.
     const portions = portionRows
 
     const fromUser = await getUserFoodItemById(user, id)
@@ -638,10 +628,6 @@ export const prepareIngredientInputs = async (
     }),
   )
 
-// ============================================================================
-// Composite nutrient cache
-// ============================================================================
-
 /**
  * Recompute a composite item's derived nutrient totals and write them onto
  * its `food_items` row columns, then walk up to every parent recipe that
@@ -712,10 +698,6 @@ export const clearCompositeNutrientCache = async (
     await cacheCompositeNutrients(user, centralDb, parentId, visited)
   }
 }
-
-// ============================================================================
-// Duplicate a food item
-// ============================================================================
 
 /**
  * Find a free per-user name for a copy of `baseName`. Tries "<name> (copy)"
@@ -813,15 +795,6 @@ const buildDefaultPortionUpdate = (
  * point of the feature: base a custom recipe on a canonical item, then tweak
  * one ingredient.
  *
- * What is copied:
- * - name → "<name> (copy)" (deduped, see findAvailableCopyName)
- * - nutrient columns + default_quantity/default_unit/icon
- * - composite ingredient list (then derived nutrients are re-cached)
- * - extra portions (new ids), with default_portion_id / default_log_quantity
- *   remapped onto the freshly-created portion rows
- * - reference_food_item_id (atomic items inheriting micronutrients)
- * - sensitivity flag assignments
- *
  * What is deliberately not copied: `source`/`source_id` provenance — the copy
  * is a user-authored fork, so it is plain `source: 'manual'` with no upstream
  * id. Returns null when the source id resolves nowhere.
@@ -840,8 +813,6 @@ export const duplicateFoodItem = async (
   const created = await upsertFoodItem(user, buildFoodItemCopyInput(source, name))
   const newId = created.id
 
-  // Composite ingredients — replace the (empty) list on the new row, then
-  // refresh its cached derived nutrient columns.
   const ingredients = detail.ingredients ?? []
   if (ingredients.length > 0) {
     await dbSetIngredients(
@@ -867,16 +838,11 @@ export const duplicateFoodItem = async (
   const referenceId = source.reference_food_item_id as string | undefined
   if (referenceId && ingredients.length === 0) await dbSetFoodItemReference(user, newId, referenceId)
 
-  // Sensitivity flag assignments.
   const flagIds = (detail.sensitivities ?? []).map((s) => s.id)
   if (flagIds.length > 0) await dbSetFoodItemSensitivities(user, newId, flagIds)
 
   return service.getDetail(user, newId)
 }
-
-// ============================================================================
-// Merge two food items
-// ============================================================================
 
 /**
  * One nutrient/icon/default_* field that the source has populated and the
@@ -915,7 +881,6 @@ const FILLABLE_FIELDS_FOR_PREVIEW = [
 export interface FoodItemsMergeService {
   preview: (user: string, sourceId: string, targetId: string) => Promise<MergeFoodItemsPreview>
   /**
-   * Execute the merge.
    * @param fillEmpty when true, fill the target's empty fields from the source.
    *   Ignored (logged) when the target is central — central items aren't
    *   editable from a per-user merge.
@@ -954,7 +919,6 @@ export const createFoodItemsMergeService = (centralDb: CentralDb): FoodItemsMerg
     }
     if (!target) throw new Error(`Target food item not found: ${targetId}`)
 
-    // Counts.
     const mealsRes = await query(
       user,
       `SELECT COUNT(*)::int AS c FROM meal_food_items WHERE food_item_id = $1`,

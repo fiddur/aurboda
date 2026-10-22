@@ -14,14 +14,6 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-/**
- * Tests for background sync scheduling logic.
- *
- * These tests verify that:
- * 1. The background sync worker is scheduled correctly on app startup when enabled
- * 2. The worker has proper network constraints
- * 3. Preferences are read correctly to determine if sync should be scheduled
- */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = android.app.Application::class)
 class BackgroundSyncTest {
@@ -33,7 +25,6 @@ class BackgroundSyncTest {
   fun setup() {
     context = ApplicationProvider.getApplicationContext()
 
-    // Initialize WorkManager for testing
     val config =
       Configuration
         .Builder()
@@ -44,23 +35,19 @@ class BackgroundSyncTest {
 
   @After
   fun teardown() {
-    // Clear preferences after each test
     context
       .getSharedPreferences(prefsName, Context.MODE_PRIVATE)
       .edit()
       .clear()
       .apply()
 
-    // Cancel all work
     WorkManager.getInstance(context).cancelAllWork()
   }
 
   @Test
   fun `schedule creates periodic work with network constraint`() {
-    // When: We schedule the background sync
     SyncWorker.schedule(context)
 
-    // Then: Work should be enqueued
     val workInfos =
       WorkManager
         .getInstance(context)
@@ -78,7 +65,6 @@ class BackgroundSyncTest {
 
   @Test
   fun `schedule uses UPDATE policy to replace existing work`() {
-    // Given: Work is already scheduled
     SyncWorker.schedule(context)
 
     val initialWorkInfos =
@@ -88,10 +74,8 @@ class BackgroundSyncTest {
         .get()
     assertEquals(1, initialWorkInfos.size)
 
-    // When: We schedule again (simulating app restart)
     SyncWorker.schedule(context)
 
-    // Then: There should still be exactly one work request (UPDATE policy)
     val workInfos =
       WorkManager
         .getInstance(context)
@@ -103,7 +87,6 @@ class BackgroundSyncTest {
 
   @Test
   fun `cancel removes scheduled work`() {
-    // Given: Work is scheduled
     SyncWorker.schedule(context)
 
     val initialWorkInfos =
@@ -113,10 +96,8 @@ class BackgroundSyncTest {
         .get()
     assertEquals(1, initialWorkInfos.size)
 
-    // When: We cancel the work
     SyncWorker.cancel(context)
 
-    // Then: Work should be cancelled
     val workInfos =
       WorkManager
         .getInstance(context)
@@ -131,50 +112,40 @@ class BackgroundSyncTest {
 
   @Test
   fun `background sync preference defaults to false`() {
-    // Given: No preference has been set
-
-    // When: We read the preference
     val prefs = context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
     val isEnabled = prefs.getBoolean(backgroundSyncEnabledKey, false)
 
-    // Then: It should default to false
     assertFalse("Background sync should default to false", isEnabled)
   }
 
   @Test
   fun `background sync preference can be enabled`() {
-    // Given: We enable background sync
     context
       .getSharedPreferences(prefsName, Context.MODE_PRIVATE)
       .edit()
       .putBoolean(backgroundSyncEnabledKey, true)
       .apply()
 
-    // When: We read the preference
     val prefs = context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
     val isEnabled = prefs.getBoolean(backgroundSyncEnabledKey, false)
 
-    // Then: It should be true
     assertTrue("Background sync should be enabled", isEnabled)
   }
 
   @Test
   fun `AurbodaApplication schedules worker when background sync was previously enabled`() {
-    // Given: Background sync is enabled in preferences
     context
       .getSharedPreferences(prefsName, Context.MODE_PRIVATE)
       .edit()
       .putBoolean(backgroundSyncEnabledKey, true)
       .apply()
 
-    // When: Application starts (simulated by calling the scheduling logic)
     val prefs = context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
     val isEnabled = prefs.getBoolean(backgroundSyncEnabledKey, false)
     if (isEnabled) {
       SyncWorker.schedule(context)
     }
 
-    // Then: Work should be scheduled
     val workInfos =
       WorkManager
         .getInstance(context)
@@ -186,21 +157,18 @@ class BackgroundSyncTest {
 
   @Test
   fun `AurbodaApplication does not schedule worker when background sync is disabled`() {
-    // Given: Background sync is disabled (default)
     context
       .getSharedPreferences(prefsName, Context.MODE_PRIVATE)
       .edit()
       .putBoolean(backgroundSyncEnabledKey, false)
       .apply()
 
-    // When: Application starts (simulated by calling the scheduling logic)
     val prefs = context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
     val isEnabled = prefs.getBoolean(backgroundSyncEnabledKey, false)
     if (isEnabled) {
       SyncWorker.schedule(context)
     }
 
-    // Then: No work should be scheduled
     val workInfos =
       WorkManager
         .getInstance(context)
@@ -241,7 +209,6 @@ class BackgroundSyncTest {
 
   @Test
   fun `recordBackgroundSyncResult success records success time and clears prior error`() {
-    // Previous failed run leaves an error
     recordBackgroundSyncResult(
       context,
       BackgroundSyncResult.Retry,
@@ -251,7 +218,6 @@ class BackgroundSyncTest {
     )
     assertEquals("boom", loadBackgroundSyncStatus(context).lastError)
 
-    // Now a success
     val finishedAt = java.time.Instant.parse("2026-05-06T12:15:00Z")
     recordBackgroundSyncResult(
       context,
@@ -269,7 +235,6 @@ class BackgroundSyncTest {
 
   @Test
   fun `recordBackgroundSyncResult retry stores error but does not advance lastSuccess`() {
-    // Seed a prior success
     recordBackgroundSyncResult(
       context,
       BackgroundSyncResult.Success,
@@ -278,7 +243,6 @@ class BackgroundSyncTest {
     )
     val priorSuccess = loadBackgroundSyncStatus(context).lastSuccess
 
-    // A subsequent retry doesn't bump lastSuccess and stores the error
     recordBackgroundSyncResult(
       context,
       BackgroundSyncResult.Retry,

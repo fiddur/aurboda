@@ -68,4 +68,17 @@ describe('sanitizeConfig', () => {
     // Original config is not mutated.
     expect(config.sections[0].widgets[0]).toMatchObject({ config: { href: '/secret/admin' } })
   })
+
+  test('preserves author prose (dashboard + section descriptions)', () => {
+    const config: DashboardConfig = {
+      description: 'Two years of training.',
+      sections: [
+        { description: 'Recovery metrics.', id: 's1', title: 'Baseline', type: 'metrics', widgets: [] },
+      ],
+      version: 1,
+    }
+    const sanitized = sanitizeConfig(config)
+    expect(sanitized.description).toBe('Two years of training.')
+    expect(sanitized.sections[0].description).toBe('Recovery metrics.')
+  })
 })

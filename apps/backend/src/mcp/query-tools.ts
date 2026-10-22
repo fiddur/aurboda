@@ -1,11 +1,14 @@
-/**
- * MCP query tools - read-only data retrieval.
- */
 import {
+  activitiesQuerySchema,
+  activityFieldValuesQuerySchema,
+  activityNeighborsQuerySchema,
+  activitySessionsQuerySchema,
   activityTypeSchema,
   bucketSizeSchema,
   dateOnlySchema,
+  locationsQuerySchema,
   locationSummaryQuerySchema,
+  mediaPlaysQuerySchema,
   type MetricType,
   overnightStaysQuerySchema,
   timeRangeQuerySchema,
@@ -14,17 +17,29 @@ import {
 } from '@aurboda/api-spec'
 import { z } from 'zod'
 
-import { getActivityById, getAllActivityTypeNames } from '../db/index.ts'
+import {
+  getActivityById,
+  getActivityTrack,
+  getAllActivityTypeNames,
+  getMediaPlayById,
+  getMediaPlays,
+} from '../db/index.ts'
+import { getLatestSleep } from '../services/latest-sleep.ts'
 import { getCustomMetrics } from '../services/mutations.ts'
 import {
   computeActivityDetailMetrics,
   getActivityFullDetail,
+  getActivityNeighbors,
   getDailySummary,
   getLocationSummary,
   getPeriodSummary,
   parseActivityId,
+  parseDataFilter,
   parseMetricsParam,
   queryActivities,
+  queryActivityFieldValues,
+  queryActivitySessions,
+  sessionsOptionsFromQuery,
   queryLocations,
   queryMetrics,
   queryMetricsBucketed,
@@ -33,8 +48,10 @@ import {
   queryTags,
   resolveActivityWindow,
 } from '../services/queries/index.ts'
+import { serializeActivityTrack } from '../services/tracks.ts'
 import {
   errorResponse,
+  jsonResponse,
   type McpServer,
   metricDescription,
   type SyncProvider,
@@ -42,7 +59,6 @@ import {
 } from './helpers.ts'
 
 export const registerQueryTools = (server: McpServer, user: string, sync?: SyncProvider) => {
-  // Tool: query_metrics
   server.tool(
     'query_metrics',
     'Query health metrics for a time range. Returns time series data with timestamps and values.',
@@ -59,7 +75,6 @@ export const registerQueryTools = (server: McpServer, user: string, sync?: SyncP
     },
   )
 
-  // Tool: query_metrics_bucketed
   server.tool(
     'query_metrics_bucketed',
     `Query pre-aggregated health metrics in time buckets. Returns buckets with min/max/avg/count for each metric.
@@ -103,7 +118,6 @@ Use cases:
     },
   )
 
-  // Tool: get_daily_summary
   server.tool(
     'get_daily_summary',
     'Get a comprehensive daily timeline of health data. Returns a unified chronological `activities` array combining exercises, meditations, screen time categories, and all other activities — each with optional stress_zone_secs and hr_zone_secs. Screen time entries have a category_path (e.g., ["Work & Dev", "Software Dev"]).\n\nAlso includes: heart_rate stats, steps, sleep_sessions (with stages, location, date attribution), meals (with macros), productivity summary (with category breakdown), places, Oura scores, and day-level stress_zones.\n\nDesigned for AI correlation analysis — overlay activities with stress/HR data to find patterns.',
@@ -127,7 +141,16 @@ Use cases:
     },
   )
 
-  // Tool: query_period_summary
+  server.tool(
+    'get_latest_sleep',
+    'How did I sleep last night? Returns the most recent sleep that ended within the last 36 hours: bedtime and wake-up, time in bed, total sleep, sleep score, the stage timeline (1 Awake, 2 Sleeping, 3 Out of bed, 4 Light, 5 Deep, 6 REM) and minutes per stage, resting heart rate and overnight HRV with their 30-day baselines, and Body Battery at bedtime and wake-up. Data is null when no sleep was recorded.',
+    { tz: tzSchema },
+    async ({ tz }) => {
+      const data = await getLatestSleep(user)
+      return tzJsonResponse({ data, success: true }, tz)
+    },
+  )
+
   server.tool(
     'query_period_summary',
     'Get aggregated statistics for a time period. Returns min/max/avg/stddev for each metric, trend compared to previous period, and data completeness.',
@@ -142,7 +165,6 @@ Use cases:
     },
   )
 
-  // Tool: query_tags
   server.tool(
     'query_tags',
     'Query non-exercise/sleep activities (formerly called tags) for a time range. Returns all tags with start times, optional end times, and tag text.',
@@ -153,7 +175,6 @@ Use cases:
     },
   )
 
-  // Tool: query_activities
   server.tool(
     'query_activities',
     'Query activities (sleep, exercise, meditation, nap, rest) for a time range. Returns activity sessions with duration, HR zones for exercise, and other metadata.',
@@ -171,35 +192,61 @@ Use cases:
         .describe(
           'Filter by JSONB data field values. Format: "field:value" (comma-separated). Use "(none)" for null/empty.',
         ),
+      route_id: activitiesQuerySchema.shape.route_id,
       tz: tzSchema,
     },
-    async ({ data_filter, end, start, types, tz }) => {
+    async ({ data_filter, end, route_id, start, types, tz }) => {
       const requestedTypes = types ?? (await getAllActivityTypeNames(user))
-      const dataFilters = data_filter
-        ? data_filter
-            .split(',')
-            .map((segment) => {
-              const colonIdx = segment.indexOf(':')
-              if (colonIdx === -1) return null
-              const field = segment.slice(0, colonIdx).trim()
-              const rawValue = segment.slice(colonIdx + 1).trim()
-              return { field, value: rawValue === '(none)' ? null : rawValue }
-            })
-            .filter((f): f is { field: string; value: string | null } => f !== null)
-        : undefined
       const activities = await queryActivities(
         user,
         requestedTypes,
         new Date(start),
         new Date(end),
         sync,
-        dataFilters,
+        parseDataFilter(data_filter),
+        undefined,
+        route_id,
       )
       return tzJsonResponse({ data: activities, success: true }, tz)
     },
   )
 
-  // Tool: get_activity_detail
+  server.tool(
+    'query_activity_sessions',
+    `Sessions of one activity type (descendant types included), newest first, each with duration, avg/max HR, HR-zone seconds and the five-number summary of its HR samples, plus the values of the type's data_schema fields.
+
+Pass group_by (a data field, typically one marked is_categorical, e.g. session_name) to also get one group per value — count, last done, duration range, median avg HR, max HR, summed zone seconds and the pooled HR distribution — for comparing or choosing sessions by length and exertion. filter_field + filter_value narrow to one value ("(none)" for sessions without one). Omit start for all time.`,
+    { activity_type: activityTypeSchema, ...activitySessionsQuerySchema.shape, tz: tzSchema },
+    async ({ activity_type, tz, ...query }) => {
+      if ((query.filter_field === undefined) !== (query.filter_value === undefined)) {
+        return errorResponse('filter_field and filter_value must be given together')
+      }
+      const sessions = await queryActivitySessions(user, activity_type, sessionsOptionsFromQuery(query))
+      return tzJsonResponse({ data: sessions, success: true }, tz)
+    },
+  )
+
+  server.tool(
+    'list_activity_field_values',
+    'The values a data field (e.g. session_name) has taken across an activity type and its subtypes, most recently used first, with how often each was used. For reusing an existing value when filling the field instead of spelling a new variant.',
+    { activity_type: activityTypeSchema, ...activityFieldValuesQuerySchema.shape, tz: tzSchema },
+    async ({ activity_type, field, tz }) => {
+      const values = await queryActivityFieldValues(user, activity_type, field)
+      return tzJsonResponse({ data: values, success: true }, tz)
+    },
+  )
+
+  server.tool(
+    'get_activity_neighbors',
+    'The previous and next activity of the same type as a given activity (plain or "merged:" id), skipping its other merged sources. With same_field, only activities sharing its value of that data field (e.g. the same session_name).',
+    { id: z.string().describe('Activity ID'), ...activityNeighborsQuerySchema.shape, tz: tzSchema },
+    async ({ id, same_field, tz }) => {
+      const neighbors = await getActivityNeighbors(user, id, same_field)
+      if (!neighbors) return errorResponse('Activity not found')
+      return tzJsonResponse({ data: neighbors, success: true }, tz)
+    },
+  )
+
   server.tool(
     'get_activity_detail',
     `Deep-dive detail for a single activity: summary metrics (distance, avg pace, avg cadence, avg power, avg ground contact time, body battery before/after, elevation gain/loss, HR zones), GPS trace, and per-metric time-series.
@@ -235,10 +282,14 @@ Source-agnostic: works for any activity that has time-series and/or GPS populate
       const window = await resolveActivityWindow(user, activity, isMerged)
       const [summary, fullDetail] = await Promise.all([
         computeActivityDetailMetrics(user, window),
-        getActivityFullDetail(user, window, {
-          includeGps: include_gps,
-          metrics: parseMetricsParam(metrics),
-        }),
+        getActivityFullDetail(
+          user,
+          { ...window, id },
+          {
+            includeGps: include_gps,
+            metrics: parseMetricsParam(metrics),
+          },
+        ),
       ])
 
       return tzJsonResponse(
@@ -261,7 +312,18 @@ Source-agnostic: works for any activity that has time-series and/or GPS populate
     },
   )
 
-  // Tool: query_productivity
+  server.tool(
+    'get_activity_track',
+    'Full-resolution GPS track of one activity: points with lat, lon, altitude (alt, metres) and t (seconds since the activity start), plus length_m and point_count. full_resolution is false for a shape-only track (a Strava polyline backfill), whose times are spread evenly and unfit for timing.',
+    { id: z.string().describe('Activity ID (a "merged:" prefix is accepted and stripped).') },
+    async ({ id: rawId }) => {
+      const { id } = parseActivityId(rawId)
+      const track = await getActivityTrack(user, id)
+      if (!track) return errorResponse('No track for activity')
+      return jsonResponse(serializeActivityTrack(track))
+    },
+  )
+
   server.tool(
     'query_productivity',
     'Query productivity data (from RescueTime) for a time range. Returns application/website usage with productivity scores.',
@@ -272,7 +334,28 @@ Source-agnostic: works for any activity that has time-series and/or GPS populate
     },
   )
 
-  // Tool: query_productivity_bucketed
+  server.tool(
+    'query_media_plays',
+    `Query media plays (videos, music, podcasts) for a time range: plays pushed by an MPRIS logger plus Last.fm scrobbles that are not duplicates of one.
+Each play has url, title, artist, album, player, device, started_at/ended_at, played_secs, track_secs (null when unknown), played_ratio and kind (music for Last.fm, otherwise null — classify MPRIS plays with a deduction rule's media condition, e.g. by url_host).`,
+    { ...mediaPlaysQuerySchema.shape, tz: tzSchema },
+    async ({ end, start, tz }) => {
+      const plays = await getMediaPlays(user, { end: new Date(end), start: new Date(start) })
+      return tzJsonResponse({ data: plays, success: true }, tz)
+    },
+  )
+
+  server.tool(
+    'get_media_play',
+    'Get one media play by id (an MPRIS play id, or a Last.fm scrobble external id), with the same fields as query_media_plays.',
+    { id: z.string().describe('Play id from query_media_plays'), tz: tzSchema },
+    async ({ id, tz }) => {
+      const play = await getMediaPlayById(user, id)
+      if (!play) return errorResponse('Media play not found')
+      return tzJsonResponse({ data: play, success: true }, tz)
+    },
+  )
+
   server.tool(
     'query_productivity_bucketed',
     'Query screentime/productivity data bucketed by time interval, grouped by category. Returns stacked duration per category per bucket. Useful for visualizing time spent on different activities over time.',
@@ -296,18 +379,18 @@ Source-agnostic: works for any activity that has time-series and/or GPS populate
     },
   )
 
-  // Tool: query_locations
   server.tool(
     'query_locations',
-    'Query location/place visits for a time range. Returns places visited with names, coordinates, duration, and source (named, detected, or owntracks).',
-    { ...timeRangeQuerySchema.shape, tz: tzSchema },
-    async ({ end, start, tz }) => {
-      const places = await queryLocations(user, new Date(start), new Date(end))
+    'Query location/place visits for a time range. Returns places visited with names, coordinates, duration, and source (named, detected, or owntracks). With last_known_hours, a range that starts before its first GPS fix gets the place of the last earlier fix, marked inferred_from.',
+    { ...locationsQuerySchema.shape, tz: tzSchema },
+    async ({ end, last_known_hours, start, tz }) => {
+      const places = await queryLocations(user, new Date(start), new Date(end), {
+        lastKnownHours: last_known_hours,
+      })
       return tzJsonResponse({ data: places, success: true }, tz)
     },
   )
 
-  // Tool: query_overnight_stays
   server.tool(
     'query_overnight_stays',
     `Detect overnight stays at a named location.
@@ -332,7 +415,6 @@ timestamps but with distinct overnight_date values.`,
     },
   )
 
-  // Tool: get_location_summary
   server.tool(
     'get_location_summary',
     `Aggregated statistics for time spent at a named location: total visits, total nights,

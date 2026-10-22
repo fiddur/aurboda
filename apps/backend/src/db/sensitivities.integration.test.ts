@@ -1,10 +1,3 @@
-/**
- * Integration tests for the sensitivity flags + food-item junction.
- *
- * Covers CRUD on flags, soft-pointer assignment behaviour, batch lookup
- * (used at meal-snapshot time), and the cascade flows that food-item
- * delete + merge depend on.
- */
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'

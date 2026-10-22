@@ -1,0 +1,240 @@
+import type { MetricType } from '@aurboda/api-spec'
+
+import { describe, expect, it } from 'vitest'
+
+import {
+  buildShareBody,
+  DEFAULT_SUMMARY,
+  defaultsFromChart,
+  initialSeriesSelection,
+  previewSelection,
+  seriesLabel,
+  shareableSummaryOptions,
+  type ShareSelection,
+  summaryLabel,
+} from './feed-metrics'
+
+describe('defaultsFromChart', () => {
+  it('falls back to DEFAULT_SUMMARY and no series when chart metrics are unknown', () => {
+    expect(defaultsFromChart()).toEqual({ series: [], summary: DEFAULT_SUMMARY })
+    expect(defaultsFromChart([])).toEqual({ series: [], summary: DEFAULT_SUMMARY })
+  })
+
+  it('maps charted metrics to their summaries (HR → avg + max + zones) and full series', () => {
+    const { summary, series } = defaultsFromChart(['heart_rate', 'distance'])
+    expect(summary).toEqual([
+      'duration',
+      'distance',
+      'calories',
+      'heart_rate_avg',
+      'heart_rate_max',
+      'hr_zone_minutes',
+    ])
+    expect(series).toEqual(['heart_rate'])
+  })
+
+  it('always prechecks the cumulative staples the chart cannot mirror (distance, calories)', () => {
+    // Distance/calories are excluded from the chart by design, so chart
+    // mirroring alone would never precheck them — a run without Distance reads
+    // wrong. The dialog drops them again for activities without the data.
+    const { summary, series } = defaultsFromChart(['speed'])
+    expect(summary).toEqual(['duration', 'distance', 'calories'])
+    expect(series).toEqual(['speed'])
+  })
+
+  it('ignores charted metrics the dialog cannot represent', () => {
+    const { summary, series } = defaultsFromChart(['hrv_rmssd'])
+    expect(summary).toEqual(['duration', 'distance', 'calories'])
+    expect(series).toEqual([])
+  })
+})
+
+describe('initialSeriesSelection', () => {
+  it('keeps the representable series the post already shares, in canonical order', () => {
+    expect(initialSeriesSelection({ include_chart: false, series_metrics: ['speed', 'heart_rate'] })).toEqual(
+      ['heart_rate', 'speed'],
+    )
+  })
+
+  it('folds a chart-image post into the heart-rate series (unified control)', () => {
+    expect(initialSeriesSelection({ include_chart: true, series_metrics: [] })).toEqual(['heart_rate'])
+    // Other shared series are kept; heart rate is appended once.
+    expect(initialSeriesSelection({ include_chart: true, series_metrics: ['speed'] })).toEqual([
+      'speed',
+      'heart_rate',
+    ])
+  })
+
+  it('does not duplicate heart rate when the post shares both the image and the series', () => {
+    expect(initialSeriesSelection({ include_chart: true, series_metrics: ['heart_rate'] })).toEqual([
+      'heart_rate',
+    ])
+  })
+
+  it('shares nothing when neither the chart image nor any series is opted in', () => {
+    expect(initialSeriesSelection({ include_chart: false, series_metrics: [] })).toEqual([])
+  })
+})
+
+describe('buildShareBody', () => {
+  const base: ShareSelection = {
+    canChart: true,
+    canMap: true,
+    includeMap: false,
+    message: '',
+    series: new Set<MetricType>(),
+    seriesOptions: [{ key: 'heart_rate' }, { key: 'speed' }],
+    summary: new Set<string>(),
+    summaryOptions: [{ key: 'duration' }, { key: 'heart_rate_avg' }],
+    visibility: 'public',
+  }
+
+  it('passes the personal message through verbatim (backend normalizes blanks)', () => {
+    expect(buildShareBody({ ...base, message: 'Great run!' })).toMatchObject({ message: 'Great run!' })
+    // Always present — an emptied field must clear a stored message on edit.
+    expect(buildShareBody(base)).toMatchObject({ message: '' })
+  })
+
+  it('attaches the chart image exactly when the heart-rate series is shared', () => {
+    expect(buildShareBody({ ...base, series: new Set<MetricType>(['heart_rate']) })).toMatchObject({
+      include_chart: true,
+      series_metrics: ['heart_rate'],
+    })
+    expect(buildShareBody({ ...base, series: new Set<MetricType>(['speed']) })).toMatchObject({
+      include_chart: false,
+      series_metrics: ['speed'],
+    })
+  })
+
+  it('never attaches a chart image the activity cannot render (no heart-rate data)', () => {
+    const body = buildShareBody({ ...base, canChart: false, series: new Set<MetricType>(['heart_rate']) })
+    // The series opt-in is still honoured; only the image is suppressed.
+    expect(body).toMatchObject({ include_chart: false, series_metrics: ['heart_rate'] })
+  })
+
+  it('only sends metrics the dialog offered, and gates the map on GPS availability', () => {
+    const body = buildShareBody({
+      ...base,
+      canMap: false,
+      includeMap: true,
+      summary: new Set(['duration', 'calories']), // calories not offered → dropped
+    })
+    expect(body.included_metrics).toEqual(['duration'])
+    expect(body.include_map).toBe(false)
+    expect(body.visibility).toBe('public')
+  })
+})
+
+describe('metric labels', () => {
+  it('resolves known labels and falls back to the raw key', () => {
+    expect(summaryLabel('heart_rate_avg')).toBe('Avg HR')
+    expect(seriesLabel('heart_rate')).toBe('Heart rate')
+    expect(summaryLabel('unknown_key')).toBe('unknown_key')
+  })
+
+  it('resolves the QuantPub 0.2 camelCase wire keys to the same labels', () => {
+    expect(summaryLabel('heartRateAvg')).toBe('Avg HR')
+    expect(summaryLabel('hrZoneMinutes')).toBe('HR zones')
+    expect(seriesLabel('heartRate')).toBe('Heart rate')
+    expect(seriesLabel('runCadence')).toBe('Cadence')
+    expect(summaryLabel('unknownKey')).toBe('unknownKey')
+  })
+})
+
+describe('previewSelection', () => {
+  const body = {
+    include_chart: false,
+    include_map: false,
+    included_metrics: ['duration'],
+    message: 'hi',
+    series_metrics: [],
+    visibility: 'public' as const,
+  }
+
+  it('keeps only what the preview renders: the summary metrics and the message', () => {
+    expect(previewSelection(body)).toEqual({ included_metrics: ['duration'], message: 'hi' })
+  })
+
+  it('is unchanged by series, image and visibility toggles', () => {
+    const toggled = {
+      ...body,
+      include_chart: true,
+      include_map: true,
+      series_metrics: ['heart_rate' as const],
+      visibility: 'followers' as const,
+    }
+    expect(JSON.stringify(previewSelection(toggled))).toBe(JSON.stringify(previewSelection(body)))
+  })
+})
+
+describe('shareableSummaryOptions', () => {
+  const keys = (opts: { key: string }[]) => opts.map((m) => m.key)
+
+  it('offers every summary while availability is unknown', () => {
+    expect(keys(shareableSummaryOptions(undefined, undefined))).toEqual([
+      'duration',
+      'distance',
+      'heart_rate_avg',
+      'heart_rate_max',
+      'hr_zone_minutes',
+      'calories',
+      'stress_avg',
+    ])
+  })
+
+  it('offers Distance/Calories from the window series', () => {
+    const opts = shareableSummaryOptions(new Set(['distance', 'calories_active']), undefined)
+    expect(keys(opts)).toEqual(['duration', 'distance', 'calories'])
+  })
+
+  it("offers Distance/Calories from the activity's summary fields when the window has no series (#1026)", () => {
+    const opts = shareableSummaryOptions(new Set(['heart_rate']), { calories: 612, distance: 8420 })
+    expect(keys(opts)).toEqual([
+      'duration',
+      'distance',
+      'heart_rate_avg',
+      'heart_rate_max',
+      'hr_zone_minutes',
+      'calories',
+    ])
+  })
+
+  it.each([
+    ['missing', {}],
+    ['zero', { calories: 0, distance: 0 }],
+    ['negative', { calories: -1, distance: -1 }],
+    ['non-numeric', { calories: '612', distance: '8420' }],
+    ['non-finite', { calories: Number.NaN, distance: Number.POSITIVE_INFINITY }],
+  ])('ignores %s summary fields', (_label, data) => {
+    expect(keys(shareableSummaryOptions(new Set<string>(), data))).toEqual(['duration'])
+  })
+
+  it('never offers other summaries from activity data', () => {
+    expect(keys(shareableSummaryOptions(new Set<string>(), { average_hr: 150, max_hr: 170 }))).toEqual([
+      'duration',
+    ])
+  })
+
+  it('keeps metrics the post already shares', () => {
+    expect(keys(shareableSummaryOptions(new Set<string>(), undefined, ['calories']))).toEqual([
+      'duration',
+      'calories',
+    ])
+  })
+
+  it('lets the chart-mirrored defaults precheck Distance/Calories offered from summary fields', () => {
+    const { summary } = defaultsFromChart(['heart_rate'])
+    const body = buildShareBody({
+      canChart: true,
+      canMap: false,
+      includeMap: false,
+      message: '',
+      series: new Set<MetricType>(),
+      seriesOptions: [],
+      summary: new Set(summary),
+      summaryOptions: shareableSummaryOptions(new Set(['heart_rate']), { calories: 612, distance: 8420 }),
+      visibility: 'public',
+    })
+    expect(body.included_metrics).toEqual(expect.arrayContaining(['distance', 'calories']))
+  })
+})

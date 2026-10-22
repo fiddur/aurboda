@@ -1,0 +1,162 @@
+import { type EntityType, entityTypes, type Note } from '@aurboda/api-spec'
+import { describe, expect, it } from 'vitest'
+
+import {
+  buildCommentGroupItem,
+  buildCommentItems,
+  commentLabel,
+  COMMENT_LABEL_MAX,
+  entityHref,
+  groupOverlappingComments,
+  stripMarkdown,
+} from './commentItems'
+
+const note = (overrides: Partial<Note> = {}): Note => ({
+  content: 'Felt dizzy right after this',
+  created_at: '2026-09-13T08:30:00.000Z',
+  entity_type: 'time',
+  id: '11111111-1111-1111-1111-111111111111',
+  start_time: '2026-09-13T08:00:00.000Z',
+  ...overrides,
+})
+
+describe('stripMarkdown', () => {
+  it('drops heading, quote and list markers', () => {
+    expect(stripMarkdown('## Felt dizzy')).toBe('Felt dizzy')
+    expect(stripMarkdown('> quoted')).toBe('quoted')
+    expect(stripMarkdown('- bullet')).toBe('bullet')
+    expect(stripMarkdown('3. numbered')).toBe('numbered')
+  })
+
+  it('unwraps emphasis, code and links', () => {
+    expect(stripMarkdown('**bold** and _italic_ and `code`')).toBe('bold and italic and code')
+    expect(stripMarkdown('see [the run](/detail/activity/42)')).toBe('see the run')
+    expect(stripMarkdown('![a photo](/img.png)')).toBe('a photo')
+  })
+})
+
+describe('commentLabel', () => {
+  it('takes the first non-empty line, markdown stripped', () => {
+    expect(commentLabel('\n\n## Felt dizzy\n\nafter the run')).toBe('Felt dizzy')
+  })
+
+  it('truncates to the label budget', () => {
+    const label = commentLabel('x'.repeat(200))
+    expect(label).toHaveLength(COMMENT_LABEL_MAX)
+    expect(label.endsWith('…')).toBe(true)
+  })
+
+  it('is empty for an empty comment', () => {
+    expect(commentLabel('')).toBe('')
+  })
+})
+
+describe('buildCommentItems', () => {
+  it('returns nothing for an empty list', () => {
+    expect(buildCommentItems([])).toEqual([])
+  })
+
+  it('maps a thread root anchored to a moment', () => {
+    const [item] = buildCommentItems([note()])
+    expect(item?.column).toBe('Comments')
+    expect(item?.comment_id).toBe('11111111-1111-1111-1111-111111111111')
+    expect(item?.icon).toBe('💬')
+    expect(item?.label).toBe('Felt dizzy right after this')
+    expect(item?.tooltip.time).toBe('08:00')
+    expect(item?.start.toISOString()).toBe('2026-09-13T08:00:00.000Z')
+  })
+
+  it('is a point without an end_time and a span with one', () => {
+    const [point] = buildCommentItems([note()])
+    expect(point?.isPoint).toBe(true)
+    expect(point?.end.getTime()).toBe(point?.start.getTime())
+
+    const [span] = buildCommentItems([note({ end_time: '2026-09-13T09:30:00.000Z' })])
+    expect(span?.isPoint).toBe(false)
+    expect(span?.end.toISOString()).toBe('2026-09-13T09:30:00.000Z')
+  })
+
+  it('puts the reply count in the tooltip, pluralised', () => {
+    const one = buildCommentItems([note({ replies: [{ content: 'still dizzy' }] })])
+    expect(one[0]?.tooltip.details[0]).toBe('1 reply')
+
+    const two = buildCommentItems([note({ replies: [{ content: 'a' }, { content: 'b' }] })])
+    expect(two[0]?.tooltip.details[0]).toBe('2 replies')
+
+    const none = buildCommentItems([note()])
+    expect(none[0]?.tooltip.details).toEqual(['Felt dizzy right after this'])
+  })
+
+  it('shows the first two content lines in the tooltip', () => {
+    const [item] = buildCommentItems([note({ content: 'one\ntwo\nthree' })])
+    expect(item?.tooltip.details).toEqual(['one', 'two'])
+  })
+
+  it('skips roots with no start_time or no id', () => {
+    expect(buildCommentItems([note({ start_time: undefined })])).toEqual([])
+    expect(buildCommentItems([note({ id: undefined })])).toEqual([])
+  })
+
+  it('maps a comment anchored to an entity just like one on a moment', () => {
+    const [item] = buildCommentItems([
+      note({ entity_id: 'activity-1', entity_type: 'activity', start_time: '2026-09-13T06:15:00.000Z' }),
+    ])
+    expect(item?.column).toBe('Comments')
+    expect(item?.tooltip.time).toBe('06:15')
+    // No entity link on the bubble itself — the panel is what leads back.
+    expect(item?.entity_id).toBeUndefined()
+    expect(item?.href).toBeUndefined()
+  })
+})
+
+describe('groupOverlappingComments', () => {
+  const xs = (groups: { x: number }[][]) => groups.map((g) => g.map((p) => p.x))
+
+  it('keeps every comment on its own when none overlap', () => {
+    expect(xs(groupOverlappingComments([{ x: 40 }, { x: 0 }, { x: 20 }], 18))).toEqual([[0], [20], [40]])
+  })
+
+  it('chains comments whose neighbours overlap into one group', () => {
+    expect(xs(groupOverlappingComments([{ x: 0 }, { x: 10 }, { x: 20 }, { x: 60 }], 18))).toEqual([
+      [0, 10, 20],
+      [60],
+    ])
+  })
+
+  it('groups comments at exactly the same moment', () => {
+    expect(xs(groupOverlappingComments([{ x: 5 }, { x: 5 }], 18))).toEqual([[5, 5]])
+  })
+})
+
+describe('buildCommentGroupItem', () => {
+  it('stands for every grouped root and lists their first lines', () => {
+    const items = buildCommentItems([
+      note({ content: 'First one', id: 'a' }),
+      note({ content: 'Second one\nmore', id: 'b' }),
+    ])
+    const group = buildCommentGroupItem(items)
+    expect(group.comment_ids).toEqual(['a', 'b'])
+    expect(group.comment_id).toBe('a')
+    expect(group.tooltip.title).toBe('2 comments')
+    expect(group.tooltip.details).toHaveLength(2)
+    expect(group.tooltip.details[0]).toContain('First one')
+    expect(group.tooltip.details[1]).toContain('Second one')
+  })
+})
+
+describe('entityHref', () => {
+  const expected: Record<EntityType, string | undefined> = {
+    activity: '/detail/activity/x%2Fy',
+    meal: '/meals/x%2Fy',
+    metric: '/detail/metric/x%2Fy',
+    note: undefined,
+    productivity: '/detail/productivity/x%2Fy',
+    report: '/reports/x%2Fy',
+    time: undefined,
+  }
+
+  it.each([...entityTypes])('links %s to its own page', (entityType) => {
+    expect(Object.keys(expected)).toContain(entityType)
+    expect(entityHref(entityType, 'x/y')).toBe(expected[entityType])
+  })
+})

@@ -1,10 +1,3 @@
-/**
- * Audit log database operations.
- *
- * Stores user-specific log entries (sync events, settings changes, errors, etc.)
- * with automatic cleanup based on configurable retention period.
- */
-
 import type { AuditLogCategory, AuditLogLevel, AuditLogQuery } from '@aurboda/api-spec'
 
 import { query } from './connection.ts'
@@ -27,9 +20,6 @@ export type AuditLogQueryParams = Omit<AuditLogQuery, 'since' | 'until'> & {
   until?: Date
 }
 
-/**
- * Insert a new audit log entry.
- */
 export const insertAuditLog = async (
   user: string,
   level: AuditLogLevel,
@@ -45,9 +35,6 @@ export const insertAuditLog = async (
   ])
 }
 
-/**
- * Query audit log entries with optional filters.
- */
 export const queryAuditLog = async (
   user: string,
   params: AuditLogQueryParams = {},
@@ -96,9 +83,6 @@ export const queryAuditLog = async (
   return { rows: dataResult.rows, total }
 }
 
-/**
- * Delete audit log entries older than the given number of days.
- */
 export const cleanupAuditLog = async (user: string, retentionDays: number): Promise<number> => {
   const result = await query(user, `DELETE FROM audit_log WHERE timestamp < NOW() - INTERVAL '1 day' * $1`, [
     retentionDays,

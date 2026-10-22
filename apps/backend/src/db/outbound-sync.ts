@@ -1,14 +1,4 @@
-/**
- * Outbound sync queue operations.
- *
- * Manages the queue of changes that need to be pushed to Health Connect
- * from the Android app.
- */
 import { query } from './connection.ts'
-
-// ============================================================================
-// Types
-// ============================================================================
 
 export type OutboundSyncOperation = 'insert' | 'update' | 'delete'
 export type OutboundSyncStatus = 'pending' | 'synced' | 'failed'
@@ -36,13 +26,7 @@ export interface EnqueueOutboundSyncInput {
   payload: Record<string, unknown>
 }
 
-// ============================================================================
-// Queue Operations
-// ============================================================================
-
 /**
- * Add an entry to the outbound sync queue.
- *
  * Dedup behaviour by `(entity_type, entity_id)`:
  * - `update` / `delete`: supersede (mark synced) any prior pending entries,
  *   then enqueue this one.
@@ -60,7 +44,6 @@ export interface EnqueueOutboundSyncInput {
  * and switch the INSERT to `ON CONFLICT … DO UPDATE`.
  */
 export const enqueueOutboundSync = async (user: string, input: EnqueueOutboundSyncInput): Promise<string> => {
-  // For update/delete: supersede any pending entries for the same entity
   if (input.operation === 'update' || input.operation === 'delete') {
     await query(
       user,
@@ -71,8 +54,6 @@ export const enqueueOutboundSync = async (user: string, input: EnqueueOutboundSy
     )
   }
 
-  // For insert: if a pending insert for the same entity already exists,
-  // update its payload (latest value wins) and return the existing id.
   if (input.operation === 'insert') {
     const existing = await query(
       user,
@@ -98,9 +79,101 @@ export const enqueueOutboundSync = async (user: string, input: EnqueueOutboundSy
   return result.rows[0].id as string
 }
 
+export interface OutboundSyncInsertItem {
+  entity_id: string
+  payload: Record<string, unknown>
+}
+
 /**
- * Get pending outbound sync entries.
- *
+ * Bulk insert path for per-minute series that are recomputed over and over:
+ * an item whose latest queue row (pending or synced) already carries the same
+ * payload is skipped, a pending insert is updated in place (as
+ * `enqueueOutboundSync` does), and only the rest get a new row. Payloads are
+ * compared as JSONB, so numbers compare by value. Resolves to the number of
+ * items queued or updated.
+ */
+export const enqueueOutboundSyncInsertsIfChanged = async (
+  user: string,
+  entityType: string,
+  hcRecordType: string,
+  items: OutboundSyncInsertItem[],
+): Promise<number> => {
+  if (items.length === 0) return 0
+
+  const unchanged = await query(
+    user,
+    `SELECT i.entity_id
+     FROM jsonb_to_recordset($2::jsonb) AS i(entity_id text, payload jsonb)
+     JOIN LATERAL (
+       SELECT q.status, q.payload
+       FROM outbound_sync_queue q
+       WHERE q.entity_type = $1 AND q.entity_id = i.entity_id
+       ORDER BY q.created_at DESC
+       LIMIT 1
+     ) latest ON true
+     WHERE latest.status IN ('pending', 'synced') AND latest.payload = i.payload`,
+    [entityType, JSON.stringify(items)],
+  )
+  const unchangedIds = new Set(unchanged.rows.map((row) => row.entity_id as string))
+  const changed = items.filter((item) => !unchangedIds.has(item.entity_id))
+  if (changed.length === 0) return 0
+
+  const updated = await query(
+    user,
+    `UPDATE outbound_sync_queue q
+     SET payload = i.payload, hc_record_type = $3
+     FROM jsonb_to_recordset($2::jsonb) AS i(entity_id text, payload jsonb)
+     WHERE q.entity_type = $1 AND q.entity_id = i.entity_id
+       AND q.status = 'pending' AND q.operation = 'insert'
+     RETURNING q.entity_id`,
+    [entityType, JSON.stringify(changed), hcRecordType],
+  )
+  const updatedIds = new Set(updated.rows.map((row) => row.entity_id as string))
+  const fresh = changed.filter((item) => !updatedIds.has(item.entity_id))
+
+  if (fresh.length > 0) {
+    await query(
+      user,
+      `INSERT INTO outbound_sync_queue (entity_type, entity_id, operation, hc_record_type, payload)
+       SELECT $1, i.entity_id, 'insert', $3, i.payload
+       FROM jsonb_to_recordset($2::jsonb) AS i(entity_id text, payload jsonb)`,
+      [entityType, JSON.stringify(fresh), hcRecordType],
+    )
+  }
+
+  return changed.length
+}
+
+/**
+ * Deletes `synced` rows older than the retention; pending and failed rows are
+ * never touched. An activity's newest row carrying an `hc_record_id` is kept
+ * whatever its age, because `findHcRecordId` reads it to delete or replace the
+ * Health Connect record when the activity changes later. Time-series records
+ * are written with a stable `clientRecordId` and are never looked up that way.
+ */
+export const pruneSyncedOutboundSync = async (user: string, retentionDays: number): Promise<number> => {
+  const result = await query(
+    user,
+    `DELETE FROM outbound_sync_queue q
+     WHERE q.status = 'synced'
+       AND COALESCE(q.synced_at, q.created_at) < NOW() - INTERVAL '1 day' * $1
+       AND NOT (
+         q.entity_type = 'activity'
+         AND q.hc_record_id IS NOT NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM outbound_sync_queue newer
+           WHERE newer.entity_type = q.entity_type
+             AND newer.entity_id = q.entity_id
+             AND newer.hc_record_id IS NOT NULL
+             AND newer.synced_at > q.synced_at
+         )
+       )`,
+    [retentionDays],
+  )
+  return result.rowCount ?? 0
+}
+
+/**
  * Ordered newest-first so recent user actions (exercises, weight entries) are
  * synced immediately instead of being starved by bulk historical data.
  *
@@ -125,7 +198,6 @@ export const getPendingOutboundSync = async (
     [],
   )
 
-  // Get total pending count and entries in a single round-trip
   const countResult = await query(
     user,
     `SELECT COUNT(*)::int AS total FROM outbound_sync_queue WHERE status = 'pending'`,
@@ -152,10 +224,6 @@ export const getPendingOutboundSync = async (
   }
 }
 
-/**
- * Acknowledge that an outbound sync entry was successfully written to Health Connect.
- * Updates the status and stores the HC-assigned record ID.
- */
 export const ackOutboundSync = async (user: string, id: string, hcRecordId?: string): Promise<boolean> => {
   const result = await query(
     user,
@@ -168,9 +236,6 @@ export const ackOutboundSync = async (user: string, id: string, hcRecordId?: str
   return (result.rowCount ?? 0) > 0
 }
 
-/**
- * Mark an outbound sync entry as failed.
- */
 export const failOutboundSync = async (user: string, id: string): Promise<boolean> => {
   const result = await query(
     user,
@@ -183,10 +248,7 @@ export const failOutboundSync = async (user: string, id: string): Promise<boolea
   return (result.rowCount ?? 0) > 0
 }
 
-/**
- * Find the HC record ID for an entity that was previously synced to Health Connect.
- * Used when deleting/updating an entity that may have a corresponding HC record.
- */
+/** Used when deleting/updating an entity that may have a corresponding HC record. */
 export const findHcRecordId = async (
   user: string,
   entityType: string,
@@ -204,18 +266,8 @@ export const findHcRecordId = async (
   return result.rows[0]?.hc_record_id as string | undefined
 }
 
-// ============================================================================
-// Failure Reporting & Retry
-// ============================================================================
-
 const MAX_RETRIES = 5
 
-/**
- * Report a sync failure for an outbound sync entry.
- *
- * Increments fail_count and stores the failure reason. If fail_count reaches
- * MAX_RETRIES, marks the entry as 'failed'. Otherwise keeps it 'pending' for retry.
- */
 export const reportSyncFailure = async (
   user: string,
   id: string,
@@ -240,11 +292,6 @@ export const reportSyncFailure = async (
   return { fail_count, retrying: fail_count < MAX_RETRIES }
 }
 
-/**
- * Re-queue a failed or synced outbound sync entry for retry.
- *
- * Resets the entry back to 'pending' with fail_count = 0 and clears fail_reason.
- */
 export const requeueOutboundSync = async (user: string, id: string): Promise<boolean> => {
   const result = await query(
     user,
@@ -257,11 +304,6 @@ export const requeueOutboundSync = async (user: string, id: string): Promise<boo
   return (result.rowCount ?? 0) > 0
 }
 
-/**
- * Get outbound sync history including completed and failed entries.
- *
- * Returns ALL entries regardless of status, ordered by created_at DESC.
- */
 export const getOutboundSyncHistory = async (user: string, limit = 50): Promise<OutboundSyncEntry[]> => {
   const result = await query(
     user,
@@ -275,10 +317,6 @@ export const getOutboundSyncHistory = async (user: string, limit = 50): Promise<
 
   return result.rows.map(mapOutboundSyncRow)
 }
-
-// ============================================================================
-// Row Mapper
-// ============================================================================
 
 const mapOutboundSyncRow = (row: Record<string, unknown>): OutboundSyncEntry => ({
   created_at: new Date(row.created_at as string),

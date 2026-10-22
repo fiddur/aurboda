@@ -1,10 +1,5 @@
 import type { RequestHandler } from 'express'
 
-/**
- * Training load route group.
- *
- * Handles: /training-load
- */
 import { type TrainingLoadQuery, trainingLoadQuerySchema, type TrainingLoadResponse } from '@aurboda/api-spec'
 
 import { computeTrainingLoad, createTrainingLoadDeps } from '../services/training-load/index.ts'

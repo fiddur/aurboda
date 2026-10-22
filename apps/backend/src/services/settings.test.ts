@@ -1,3 +1,4 @@
+import { defaultGoals } from '@aurboda/api-spec'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import * as db from '../db/index.ts'
@@ -9,12 +10,12 @@ import {
   getSettings,
   getSettingsResponse,
   getTagMappings,
+  hrZonesFromSettings,
   type HrZoneThresholds,
   setTagMapping,
   validateAndUpdateSettings,
 } from './settings.ts'
 
-// Mock the db module
 vi.mock('../db', () => ({
   getGoals: vi.fn().mockResolvedValue([]),
   getOAuthToken: vi.fn(),
@@ -24,12 +25,13 @@ vi.mock('../db', () => ({
   upsertUserSettings: vi.fn(),
 }))
 
-// Mock the central-db module
+const central = vi.hoisted(() => ({
+  getLastFmApiKey: vi.fn(async (): Promise<string | null> => null),
+  getServerSetting: vi.fn(async (_key: string): Promise<string | null> => null),
+}))
+
 vi.mock('./central-db', () => ({
-  getCentralDb: () => ({
-    getLastFmApiKey: vi.fn().mockResolvedValue(null),
-    getServerSetting: vi.fn().mockResolvedValue(null),
-  }),
+  getCentralDb: () => central,
 }))
 
 describe('calculateDefaultHrZones', () => {
@@ -147,6 +149,78 @@ describe('getSettingsResponse', () => {
   })
 })
 
+describe('getSettingsResponse derived fields', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    central.getServerSetting.mockImplementation(async () => null)
+    central.getLastFmApiKey.mockResolvedValue(null)
+  })
+
+  test('derives every connection/config flag from one read of each source', async () => {
+    const serverSettings: Record<string, string> = {
+      gravl_client_id: 'g-id',
+      gravl_client_secret: 'g-secret',
+      oura_client_id: 'o-id',
+      strava_client_id: 's-id',
+      strava_client_secret: 's-secret',
+    }
+    central.getServerSetting.mockImplementation(async (key: string) => serverSettings[key] ?? null)
+    central.getLastFmApiKey.mockResolvedValue('lastfm-key')
+    vi.mocked(db.getUserSettings).mockResolvedValue({ birth_date: '1985-03-15', gravl_api_token: 'pasted' })
+    vi.mocked(db.getGoals).mockResolvedValue([])
+    const tokens: Record<string, { access_token: string; provider: string } | null> = {
+      garmin: { access_token: '', provider: 'garmin' },
+      gravl: { access_token: 'oauth-token', provider: 'gravl' },
+      oura: { access_token: 'o', provider: 'oura' },
+      strava: { access_token: 's', provider: 'strava' },
+    }
+    vi.mocked(db.getOAuthToken).mockImplementation(async (_user, provider) => tokens[provider] as never)
+
+    const result = await getSettingsResponse('testuser')
+
+    expect(db.getUserSettings).toHaveBeenCalledTimes(1)
+    expect(result).toMatchObject({
+      birth_date: '1985-03-15',
+      garmin_connected: false,
+      goals: defaultGoals,
+      gravl_configured: true,
+      gravl_connection: 'oauth',
+      hr_zone_start: calculateDefaultHrZones('1985-03-15'),
+      hr_zone_start_source: 'age_based',
+      lastfm_configured: true,
+      oura_configured: false,
+      oura_connected: true,
+      strava_configured: true,
+      strava_connected: true,
+      success: true,
+    })
+  })
+
+  test('falls back to a pasted Gravl token when the OAuth grant is empty', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue({ gravl_api_token: 'pasted' })
+    vi.mocked(db.getOAuthToken).mockImplementation(async (_user, provider) =>
+      provider === 'gravl' ? ({ access_token: '', provider: 'gravl' } as never) : null,
+    )
+
+    const result = await getSettingsResponse('testuser')
+
+    expect(result.gravl_connection).toBe('token')
+    expect(result.gravl_configured).toBe(false)
+    expect(result.lastfm_configured).toBe(false)
+  })
+
+  test('reports no Gravl connection without a grant or a pasted token', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue(null)
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+
+    const result = await getSettingsResponse('testuser')
+
+    expect(result.gravl_connection).toBeNull()
+    expect(result.garmin_connected).toBe(false)
+    expect(result.strava_connected).toBe(false)
+  })
+})
+
 describe('getSettingsResponse with item_icons', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -213,11 +287,7 @@ describe('validateAndUpdateSettings', () => {
   })
 
   test('updates birth date with valid input', async () => {
-    // getSettingsResponse calls getSettings + getEffectiveHrZones, each calls getUserSettings
-    // So we need 2 mock returns for getSettingsResponse
-    vi.mocked(db.getUserSettings)
-      .mockResolvedValueOnce({ birth_date: '1985-03-15' }) // for getSettings in getSettingsResponse
-      .mockResolvedValueOnce({ birth_date: '1985-03-15' }) // for getEffectiveHrZones in getSettingsResponse
+    vi.mocked(db.getUserSettings).mockResolvedValueOnce({ birth_date: '1985-03-15' })
     vi.mocked(db.upsertUserSettings).mockResolvedValue({ birth_date: '1985-03-15' })
     vi.mocked(db.getOAuthToken).mockResolvedValue(null)
 
@@ -225,7 +295,23 @@ describe('validateAndUpdateSettings', () => {
 
     expect(result.success).toBe(true)
     expect(result.birth_date).toBe('1985-03-15')
-    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { birth_date: '1985-03-15' })
+    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { birth_date: '1985-03-15' }, [])
+  })
+
+  test('a null clears the stored key instead of being dropped (#1063)', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValueOnce({})
+    vi.mocked(db.upsertUserSettings).mockResolvedValue({})
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+
+    const result = await validateAndUpdateSettings('testuser', {
+      lastfm_username: 'bob',
+      timeline_show_replies: null,
+    })
+
+    expect(result.success).toBe(true)
+    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { lastfm_username: 'bob' }, [
+      'timeline_show_replies',
+    ])
   })
 
   test('updates HR zones with valid input', async () => {
@@ -274,7 +360,7 @@ describe('validateAndUpdateSettings', () => {
     const result = await validateAndUpdateSettings('testuser', { birth_date: null })
 
     expect(result.success).toBe(true)
-    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { birth_date: undefined })
+    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', {}, ['birth_date'])
   })
 
   test('clears HR zones when set to null', async () => {
@@ -285,7 +371,7 @@ describe('validateAndUpdateSettings', () => {
     const result = await validateAndUpdateSettings('testuser', { hr_zone_start: null })
 
     expect(result.success).toBe(true)
-    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { hr_zone_start: undefined })
+    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', {}, ['hr_zone_start'])
   })
 
   test('updates tag mappings with valid input', async () => {
@@ -301,7 +387,7 @@ describe('validateAndUpdateSettings', () => {
 
     expect(result.success).toBe(true)
     expect(result.tag_mappings).toEqual(tagMappings)
-    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { tag_mappings: tagMappings })
+    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { tag_mappings: tagMappings }, [])
   })
 
   test('clears tag mappings when set to null', async () => {
@@ -313,7 +399,7 @@ describe('validateAndUpdateSettings', () => {
     const result = await validateAndUpdateSettings('testuser', { tag_mappings: null })
 
     expect(result.success).toBe(true)
-    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { tag_mappings: undefined })
+    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', {}, ['tag_mappings'])
   })
 
   test('updates item_icons with valid input', async () => {
@@ -326,7 +412,7 @@ describe('validateAndUpdateSettings', () => {
 
     expect(result.success).toBe(true)
     expect(result.item_icons).toEqual(icons)
-    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { item_icons: icons })
+    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { item_icons: icons }, [])
   })
 
   test('merges partial item_icons with existing icons', async () => {
@@ -343,9 +429,13 @@ describe('validateAndUpdateSettings', () => {
 
     expect(result.success).toBe(true)
     // Should merge new icon with existing ones, not replace
-    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', {
-      item_icons: { Coffee: '☕', 'exercise:Running': '🏃', 'exercise:Yoga': '🧘' },
-    })
+    expect(db.upsertUserSettings).toHaveBeenCalledWith(
+      'testuser',
+      {
+        item_icons: { Coffee: '☕', 'exercise:Running': '🏃', 'exercise:Yoga': '🧘' },
+      },
+      [],
+    )
   })
 
   test('clears item_icons when set to null', async () => {
@@ -356,7 +446,7 @@ describe('validateAndUpdateSettings', () => {
     const result = await validateAndUpdateSettings('testuser', { item_icons: null })
 
     expect(result.success).toBe(true)
-    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { item_icons: undefined })
+    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', {}, ['item_icons'])
   })
 })
 
@@ -476,6 +566,27 @@ describe('getTagMappings', () => {
   })
 })
 
+describe('hrZonesFromSettings', () => {
+  test('custom zones win over a birth date', () => {
+    const customZones: HrZoneThresholds = { 1: 86, 2: 103, 3: 121, 4: 138, 5: 155 }
+    expect(hrZonesFromSettings({ birth_date: '1985-03-15', hr_zone_start: customZones })).toEqual({
+      source: 'custom',
+      zones: customZones,
+    })
+  })
+
+  test('age-based zones from a birth date', () => {
+    expect(hrZonesFromSettings({ birth_date: '1985-03-15' })).toEqual({
+      source: 'age_based',
+      zones: calculateDefaultHrZones('1985-03-15'),
+    })
+  })
+
+  test('default zones without settings', () => {
+    expect(hrZonesFromSettings({})).toEqual({ source: 'default', zones: calculateDefaultHrZones(null) })
+  })
+})
+
 describe('getEffectiveHrZones', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -574,17 +685,26 @@ describe('computeHrZoneSecs', () => {
     expect(result[5]).toBeGreaterThan(0)
   })
 
-  test('caps time gap at 5 seconds', () => {
+  test('counts a sample until the next one for gaps up to 60 seconds', () => {
+    const hrData: [Date, number][] = Array.from({ length: 11 }, (_, i) => [
+      new Date(Date.parse('2024-01-15T10:00:00Z') + i * 12_000),
+      130,
+    ])
+
+    const result = computeHrZoneSecs(hrData, defaultZones)
+
+    expect(result[3]).toBe(132)
+  })
+
+  test('caps time gap at 60 seconds', () => {
     const hrData: [Date, number][] = [
       [new Date('2024-01-15T10:00:00Z'), 95],
-      [new Date('2024-01-15T10:00:30Z'), 100], // 30 second gap
+      [new Date('2024-01-15T10:05:00Z'), 100],
     ]
 
     const result = computeHrZoneSecs(hrData, defaultZones)
 
-    // Total should be capped at 5 + last sample time (uses mean gap which is 5)
-    const total = Object.values(result).reduce((a, b) => a + b, 0)
-    expect(total).toBeLessThanOrEqual(10) // 5 sec + 5 sec max for last sample
+    expect(result[1]).toBe(120)
   })
 
   test('handles mixed zones correctly', () => {

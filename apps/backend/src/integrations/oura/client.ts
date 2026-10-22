@@ -3,7 +3,14 @@ import type { Request, Response } from 'express'
 import axios from 'axios'
 import { addDays, addSeconds, formatISO, isAfter, isBefore, isFuture } from 'date-fns'
 
-import { getOAuthToken, initializeSchema, schemaInitialized, upsertOAuthToken } from '../../db/index.ts'
+import {
+  deleteOAuthToken,
+  getOAuthToken,
+  initializeSchema,
+  schemaInitialized,
+  upsertOAuthToken,
+} from '../../db/index.ts'
+import { redactSecret } from '../garmin/client.ts'
 
 /** Oura tag record used during sync processing (mapped to activities). */
 export interface OuraTagWithComment {
@@ -105,7 +112,6 @@ export const ouraClient = (
 
       const user = state as string
 
-      // Ensure schema is initialized for this user
       if (!(await schemaInitialized(user))) {
         await initializeSchema(user)
       }
@@ -140,6 +146,27 @@ export const ouraClient = (
       res.end()
     },
 
+    async disconnect(user: string): Promise<void> {
+      const token = await getOAuthToken(user, 'oura')
+      if (!token) return
+
+      if (token.access_token) {
+        // A lapsed subscription answers 403 here; the local grant must go regardless.
+        try {
+          await axios.post('https://api.ouraring.com/oauth/revoke', undefined, {
+            params: { access_token: token.access_token },
+          })
+        } catch (error) {
+          console.warn(
+            `Oura token revoke failed for ${user}, deleting local grant anyway:`,
+            redactSecret(error instanceof Error ? error.message : String(error), token.access_token),
+          )
+        }
+      }
+
+      await deleteOAuthToken(user, 'oura')
+    },
+
     async getAccessToken(user: string) {
       const token = await getOAuthToken(user, 'oura')
       if (!token) throw new Error('User has no Oura OAuth token')
@@ -149,7 +176,6 @@ export const ouraClient = (
         return token.access_token
       }
 
-      // Refresh the token
       const { clientId, clientSecret } = await getCredentials()
       const tokenUrl = new URL('https://cloud.ouraring.com/oauth/token')
       tokenUrl.searchParams.append('grant_type', 'refresh_token')

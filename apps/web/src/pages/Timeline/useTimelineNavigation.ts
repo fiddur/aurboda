@@ -1,11 +1,10 @@
 import { signal } from '@preact/signals'
-import { addDays, differenceInCalendarDays, endOfDay, format, formatISO, startOfDay, subDays } from 'date-fns'
+import { addDays, differenceInCalendarDays, endOfDay, format, formatISO, subDays } from 'date-fns'
 import { useCallback, useMemo } from 'preact/hooks'
 
-import { collapseDepthForPixelsPerHour, computePixelsPerHour } from './collapseTier'
+import { collapseDepthForPixelsPerHour, computePixelsPerHour, mergeGapForZoom } from './collapseTier'
+import { fetchWindowFromRange, nextFetchRange } from './fetchRange'
 import { getDefaultViewEnd, getDefaultViewStart, parseViewHash } from './viewHash'
-
-// ── Signals (module-level, persist across SPA navigations) ────────────────────
 
 const fromDate = signal(formatISO(subDays(new Date(), 1), { representation: 'date' }))
 const toDate = signal(formatISO(new Date(), { representation: 'date' }))
@@ -68,8 +67,10 @@ export const useTimelineNavigation = (options: TimelineNavigationOptions = {}): 
   const effectiveViewStart = viewStart.value ?? getDefaultViewStart()
   const effectiveViewEnd = viewEnd.value ?? getDefaultViewEnd()
 
-  const fetchStart = startOfDay(new Date(fromDate.value))
-  const fetchEnd = endOfDay(new Date(toDate.value))
+  const { start: fetchStart, end: fetchEnd } = fetchWindowFromRange({
+    from: fromDate.value,
+    to: toDate.value,
+  })
 
   const bucketSize = useMemo(() => {
     const days = differenceInCalendarDays(effectiveViewEnd, effectiveViewStart)
@@ -88,16 +89,19 @@ export const useTimelineNavigation = (options: TimelineNavigationOptions = {}): 
   }, [effectiveViewStart, effectiveViewEnd])
 
   // Zoom-graded merge gap: as the user zooms out we bridge larger gaps so that
-  // a long string of small same-type activities reads as one bar. At the most
-  // zoomed-in tier we still merge the very small gaps (10 min) so back-to-back
-  // screentime spans don't show as a comb of identical slivers, but we keep the
-  // gap small enough that genuinely separate sessions stay separate.
-  const mergeGapMs = useMemo(() => {
-    const days = differenceInCalendarDays(effectiveViewEnd, effectiveViewStart)
-    if (days > 50) return 4 * 60 * 60 * 1000
-    if (days > 2) return 60 * 60 * 1000
-    return 10 * 60 * 1000
-  }, [effectiveViewStart, effectiveViewEnd])
+  // a long string of small same-type activities reads as one bar. At views
+  // crossing <= 2 calendar-day boundaries the gap follows pixels-per-hour, so
+  // back-to-back screentime spans still read as one bar while zooming in
+  // separates genuinely distinct sessions — see `mergeGapForZoom`.
+  const pixelsPerHour = useMemo(
+    () => computePixelsPerHour(timeAxisPixels, effectiveViewStart, effectiveViewEnd),
+    [timeAxisPixels, effectiveViewStart, effectiveViewEnd],
+  )
+
+  const mergeGapMs = useMemo(
+    () => mergeGapForZoom(differenceInCalendarDays(effectiveViewEnd, effectiveViewStart), pixelsPerHour),
+    [effectiveViewStart, effectiveViewEnd, pixelsPerHour],
+  )
 
   // Multi-tier collapse depth (#656/#658): at max zoom (high pixels-per-hour)
   // the user wants to see (and click to edit) sibling sub-types like
@@ -110,39 +114,17 @@ export const useTimelineNavigation = (options: TimelineNavigationOptions = {}): 
   // as if it were ~14 days at desktop width. `timeAxisPixels` ≤ 0 (pre-mount,
   // pre-measure) yields depth 0, which keeps the existing data visible
   // until the first measurement.
-  const collapseDepth = useMemo(
-    () =>
-      collapseDepthForPixelsPerHour(
-        computePixelsPerHour(timeAxisPixels, effectiveViewStart, effectiveViewEnd),
-      ),
-    [timeAxisPixels, effectiveViewStart, effectiveViewEnd],
-  )
+  const collapseDepth = useMemo(() => collapseDepthForPixelsPerHour(pixelsPerHour), [pixelsPerHour])
 
   const handleZoom = useCallback((zoomStart: Date, zoomEnd: Date) => {
     viewStart.value = zoomStart
     viewEnd.value = zoomEnd
 
-    const currentFetchStart = startOfDay(new Date(fromDate.value))
-    const currentFetchEnd = endOfDay(new Date(toDate.value))
-    const todayStr = formatISO(new Date(), { representation: 'date' })
-
-    let needsExpand = false
-    let newFrom = fromDate.value
-    let newTo = toDate.value
-
-    if (zoomStart < currentFetchStart) {
-      newFrom = formatISO(subDays(zoomStart, 3), { representation: 'date' })
-      needsExpand = true
-    }
-    if (zoomEnd > currentFetchEnd) {
-      const expanded = formatISO(addDays(zoomEnd, 3), { representation: 'date' })
-      newTo = expanded > todayStr ? todayStr : expanded
-      needsExpand = true
-    }
-
-    if (needsExpand) {
-      fromDate.value = newFrom
-      toDate.value = newTo
+    const current = { from: fromDate.value, to: toDate.value }
+    const next = nextFetchRange({ end: zoomEnd, start: zoomStart }, current, new Date())
+    if (next !== current) {
+      fromDate.value = next.from
+      toDate.value = next.to
     }
   }, [])
 

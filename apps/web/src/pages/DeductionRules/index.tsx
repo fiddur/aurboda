@@ -1,11 +1,8 @@
-/**
- * Deduction Rules list page — shows all deduction rules with enable toggles and actions.
- */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation } from 'preact-iso'
 import { useState } from 'preact/hooks'
 
-import type { DeductionRule, DeductionRuleCondition } from '../../state/api'
+import type { DeductionRule } from '../../state/api'
 
 import { ConfirmButton } from '../../components/ConfirmButton'
 import {
@@ -15,41 +12,14 @@ import {
   updateDeductionRule,
 } from '../../state/api'
 import { auth } from '../../state/auth'
+import { formatConditions } from './formatCondition'
 import './style.css'
-
-// ============================================================================
-// Helpers
-// ============================================================================
-
-const formatCondition = (c: DeductionRuleCondition): string => {
-  switch (c.kind) {
-    case 'activity':
-      return `Activity: ${c.activity_type}`
-    case 'screentime_category':
-      return `Screen: ${c.category?.join(' > ')}`
-    case 'scrobble': {
-      const parts: string[] = []
-      if (c.artist?.length) parts.push(`artist: ${c.artist.join(', ')}`)
-      if (c.track) parts.push(`track: ${c.track}`)
-      return `Scrobble: ${parts.length ? parts.join(', ') : 'any'}`
-    }
-    default:
-      return c.kind
-  }
-}
-
-const formatConditions = (conditions: DeductionRuleCondition[]): string =>
-  conditions.map(formatCondition).join(' AND ')
 
 const PRIORITY_LABELS: Record<number, string> = {
   0: 'Low',
   1: 'Normal',
   2: 'High',
 }
-
-// ============================================================================
-// Rule row
-// ============================================================================
 
 function RuleRow({ rule }: { rule: DeductionRule }) {
   const queryClient = useQueryClient()
@@ -112,10 +82,6 @@ function RuleRow({ rule }: { rule: DeductionRule }) {
     </div>
   )
 }
-
-// ============================================================================
-// Main page
-// ============================================================================
 
 export function DeductionRules() {
   const isLoggedIn = auth.value.token

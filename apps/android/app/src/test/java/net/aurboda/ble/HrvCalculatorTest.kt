@@ -10,8 +10,6 @@ import kotlin.math.sqrt
 
 class HrvCalculatorTest {
 
-    // --- filterRrIntervals tests ---
-
     @Test
     fun `filterRrIntervals returns empty for empty input`() {
         val result = filterRrIntervals(emptyList())
@@ -61,8 +59,6 @@ class HrvCalculatorTest {
         assertEquals(listOf(800, 850), result)
     }
 
-    // --- calculateRmssd tests ---
-
     @Test
     fun `calculateRmssd returns null for empty list`() {
         val result = calculateRmssd(emptyList())
@@ -105,8 +101,6 @@ class HrvCalculatorTest {
         assertNotNull(result)
         assertEquals(50.0, result!!, 0.001)
     }
-
-    // --- calculateHrv tests ---
 
     @Test
     fun `calculateHrv returns null rmssd for empty input`() {

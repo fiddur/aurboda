@@ -11,7 +11,8 @@ import type { DashboardConfig } from '@aurboda/api-spec'
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
-import { insertActivity } from '../db/index.ts'
+import { insertActivity, upsertUserSettings } from '../db/index.ts'
+import { insertTimeSeries } from '../db/time-series.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { resolveDashboardData } from './shared-dashboard-data.ts'
 
@@ -46,6 +47,7 @@ const everyWidgetConfig: DashboardConfig = {
         { config: { href: '/timeline', label: 'Timeline' }, id: 'ql', type: 'quick_link' },
         { config: { lookback_days: 7 }, id: 'hrz', type: 'hr_zones' },
         { config: {}, id: 'goals', type: 'goal_progress' },
+        { config: {}, id: 'sleep', type: 'last_sleep' },
       ],
     },
   ],
@@ -75,7 +77,19 @@ describe('resolveDashboardData integration', () => {
 
     // Keyed by widget id, one entry per widget.
     expect(Object.keys(data).sort()).toEqual(
-      ['actsum', 'bar', 'corr', 'goals', 'hrz', 'mc-baseline', 'mc-period', 'ql', 'spark', 'trend'].sort(),
+      [
+        'actsum',
+        'bar',
+        'corr',
+        'goals',
+        'hrz',
+        'mc-baseline',
+        'mc-period',
+        'ql',
+        'sleep',
+        'spark',
+        'trend',
+      ].sort(),
     )
 
     // Each entry carries its widget type.
@@ -87,6 +101,7 @@ describe('resolveDashboardData integration', () => {
     expect(data['actsum'].type).toBe('activity_summary')
     expect(data['hrz'].type).toBe('hr_zones')
     expect(data['goals'].type).toBe('goal_progress')
+    expect(data['sleep']).toEqual({ data: null, type: 'last_sleep' })
 
     // quick_link never carries data.
     expect(data['ql']).toEqual({ data: null, type: 'quick_link' })
@@ -289,5 +304,121 @@ describe('resolveDashboardData integration', () => {
       expect(a.data.sleep).toBeNull()
       expect(a.data.meditation).toBeNull()
     }
+  })
+
+  test('zone2_weekly metric card totals only the last 7 days of zone 2 time', async () => {
+    const user = getTestUser()
+    const DAY = 24 * 60 * 60 * 1000
+    // 115 bpm sits in zone 2 of the default zones; 61 samples 5s apart → 305s.
+    const zone2Burst = (start: Date) =>
+      Array.from({ length: 61 }, (_, i) => ({
+        metric: 'heart_rate' as const,
+        source: 'garmin' as const,
+        time: new Date(start.getTime() + i * 5_000),
+        value: 115,
+      }))
+    await insertTimeSeries(user, [
+      ...zone2Burst(new Date(Date.now() - 20 * DAY)),
+      ...zone2Burst(new Date(Date.now() - 2 * DAY)),
+    ])
+
+    const data = await resolveDashboardData(user, {
+      sections: [
+        {
+          id: 'sec',
+          title: 'Metrics',
+          type: 'metrics',
+          widgets: [{ config: { metric: 'zone2_weekly', title: 'Zone 2' }, id: 'z2', type: 'metric_card' }],
+        },
+      ],
+      version: 1,
+    })
+
+    const card = data['z2']
+    expect(card.type).toBe('metric_card')
+    if (card.type !== 'metric_card') return
+    expect(card.data?.value).toBe(305)
+  })
+
+  describe("bar_chart buckets in the owner's timezone", () => {
+    const DAY = 24 * 60 * 60 * 1000
+    const HOUR = 60 * 60 * 1000
+    const barConfig: DashboardConfig = {
+      sections: [
+        {
+          id: 's',
+          title: 'x',
+          type: 'charts',
+          widgets: [
+            {
+              config: {
+                bucket_size: '1d',
+                lookback_days: 7,
+                pattern: 'exercise',
+                source_type: 'activity_type',
+              },
+              id: 'bar',
+              type: 'bar_chart',
+            },
+          ],
+        },
+      ],
+      version: 1,
+    }
+
+    /** 23:30 UTC three days ago — already the next calendar day in Stockholm. */
+    const seedLateEvening = async (user: string): Promise<Date> => {
+      const day = new Date(Date.now() - 3 * DAY).toISOString().slice(0, 10)
+      const start = new Date(`${day}T23:30:00Z`)
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        end_time: new Date(start.getTime() + 10 * 60_000),
+        source: 'health_connect',
+        start_time: start,
+      })
+      return start
+    }
+
+    const stockholmMidnight = (instant: Date): string | undefined => {
+      const fmt = new Intl.DateTimeFormat('sv-SE', {
+        dateStyle: 'short',
+        timeStyle: 'short',
+        timeZone: 'Europe/Stockholm',
+      })
+      const localDay = fmt.format(instant).slice(0, 10)
+      const candidates = [1, 2].map((h) => new Date(Date.parse(`${localDay}T00:00:00Z`) - h * HOUR))
+      return candidates.find((c) => fmt.format(c) === `${localDay} 00:00`)?.toISOString()
+    }
+
+    const filledBucketStart = (
+      data: Awaited<ReturnType<typeof resolveDashboardData>>,
+    ): string | undefined => {
+      const bar = data['bar']
+      if (bar.type !== 'bar_chart' || !bar.data) return undefined
+      const start = bar.data.buckets.find((b) => b.value > 0)?.bucket_start
+      return start ? new Date(start).toISOString() : undefined
+    }
+
+    test("uses the owner's stored device_timezone", async () => {
+      const user = getTestUser()
+      await upsertUserSettings(user, { device_timezone: 'Europe/Stockholm' })
+      const start = await seedLateEvening(user)
+
+      const data = await resolveDashboardData(user, barConfig)
+
+      const expected = stockholmMidnight(start)
+      expect(expected).toBeDefined()
+      expect(filledBucketStart(data)).toBe(expected)
+    })
+
+    test('falls back to UTC when the stored timezone is unknown', async () => {
+      const user = getTestUser()
+      await upsertUserSettings(user, { device_timezone: 'Mars/Base' })
+      const start = await seedLateEvening(user)
+
+      const data = await resolveDashboardData(user, barConfig)
+
+      expect(filledBucketStart(data)).toBe(`${start.toISOString().slice(0, 10)}T00:00:00.000Z`)
+    })
   })
 })

@@ -1,9 +1,7 @@
 /**
- * Chart exploration page — configurable trend + bar chart with URL-driven state.
- *
  * Reads/writes config via query params so charts are shareable/bookmarkable:
  *   /chart?source_type=activity_type&pattern=coffee&lookback_days=90&display_period=monthly&half_life_days=15
- *   /chart?source_type=metric&pattern=weight&lookback_days=180&aggregation=mean
+ *   /chart?source_type=metric&pattern=weight&lookback_days=180&aggregation=sum&missing_days=zero
  *   /chart?source_type=activity_type&pattern=coffee&chart_type=bar&bucket_size=1d&lookback_days=30
  */
 import type {
@@ -12,11 +10,12 @@ import type {
   DashboardWidget,
   SectionType,
   TrendGoal,
+  TrendMissingDays,
 } from '@aurboda/api-spec'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation } from 'preact-iso'
-import { useCallback, useMemo, useState } from 'preact/hooks'
+import { useCallback, useEffect, useMemo, useState } from 'preact/hooks'
 
 import type { ChartOrigin } from '../../utils/chart-url'
 
@@ -41,6 +40,7 @@ import {
   updateUserSettings,
 } from '../../state/api'
 import { auth } from '../../state/auth'
+import { mapLegacyCategorySource } from './legacySource'
 import {
   boardReturnPath,
   chartWidgetMaskedFields,
@@ -50,7 +50,7 @@ import {
 } from './updateWidget'
 import './style.css'
 
-type SourceType = 'metric' | 'productivity_category' | 'activity_type'
+type SourceType = 'metric' | 'activity_type'
 type ChartType = 'trend' | 'bar'
 type BucketSize = '1m' | '5m' | '15m' | '1h' | '1d' | '1w' | '1M'
 
@@ -81,6 +81,8 @@ const BUCKET_SIZE_OPTIONS: { label: string; value: BucketSize }[] = [
   { label: 'Monthly', value: '1M' },
 ]
 
+type MissingDaysChoice = '' | TrendMissingDays
+
 interface ChartState {
   aggregation: 'count' | 'mean' | 'sum'
   breakdown_fields: string[]
@@ -89,23 +91,30 @@ interface ChartState {
   display_period: TrendDisplayPeriod
   half_life_days: number
   lookback_days: number
+  missing_days: MissingDaysChoice
   pattern: string
   source_type: SourceType
   activity_type_id: string
 }
 
-/** Parse URL query params into chart config state. */
+const defaultAggregation = (source_type: SourceType): ChartState['aggregation'] =>
+  source_type === 'metric' ? 'mean' : 'count'
+
+const LEGACY_CATEGORY_SOURCE = 'productivity_category'
+
 function parseQuery(query: Record<string, string>): ChartState {
+  const source_type: SourceType = query.source_type === 'metric' ? 'metric' : 'activity_type'
   return {
-    aggregation: (query.aggregation ?? 'count') as 'count' | 'mean' | 'sum',
+    aggregation: (query.aggregation ?? defaultAggregation(source_type)) as 'count' | 'mean' | 'sum',
     breakdown_fields: query.breakdown_fields ? query.breakdown_fields.split(',').filter(Boolean) : [],
     bucket_size: (query.bucket_size ?? '1d') as BucketSize,
     chart_type: (query.chart_type ?? 'trend') as ChartType,
     display_period: (query.display_period ?? 'monthly') as TrendDisplayPeriod,
     half_life_days: Number(query.half_life_days) || 15,
     lookback_days: Number(query.lookback_days) || 90,
-    pattern: query.pattern ?? '',
-    source_type: (query.source_type ?? 'activity_type') as SourceType,
+    missing_days: query.missing_days === 'zero' || query.missing_days === 'skip' ? query.missing_days : '',
+    pattern: query.source_type === LEGACY_CATEGORY_SOURCE ? '' : (query.pattern ?? ''),
+    source_type,
     activity_type_id: query.activity_type_id ?? '',
   }
 }
@@ -121,13 +130,11 @@ function syncUrl(state: ChartState, origin: ChartOrigin | null) {
   if (state.chart_type === 'trend') {
     params.set('display_period', state.display_period)
     params.set('half_life_days', String(state.half_life_days))
+    if (state.source_type === 'metric' && state.missing_days) params.set('missing_days', state.missing_days)
   } else {
     params.set('bucket_size', state.bucket_size)
   }
-  if (
-    (state.source_type === 'metric' || state.source_type === 'activity_type') &&
-    state.aggregation !== 'count'
-  ) {
+  if (state.aggregation !== 'count' || state.source_type === 'metric') {
     params.set('aggregation', state.aggregation)
   }
   if (state.breakdown_fields.length > 0) {
@@ -151,26 +158,6 @@ function lookbackToRange(lookbackDays: number): { start: string; end: string } {
   return { end: end.toISOString(), start: start.toISOString() }
 }
 
-/** Simple category picker for screentime categories. */
-function CategoryPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const { data: categories = [] } = useQuery({
-    queryFn: fetchScreentimeCategories,
-    queryKey: ['screentime-categories'],
-    staleTime: 5 * 60 * 1000,
-  })
-
-  return (
-    <select value={value} onChange={(e) => onChange((e.target as HTMLSelectElement).value)}>
-      <option value="">Select a category...</option>
-      {categories.map((cat) => (
-        <option key={cat.id} value={cat.name.join(' > ')}>
-          {cat.name.join(' > ')}
-        </option>
-      ))}
-    </select>
-  )
-}
-
 /** Source picker shared between both chart modes. */
 function SourcePicker({
   state,
@@ -181,7 +168,7 @@ function SourcePicker({
 }) {
   const { data: activityTypes = [] } = useQuery({
     queryFn: fetchActivityTypeDefinitions,
-    queryKey: ['activity-type-definitions'],
+    queryKey: ['activityTypeDefinitions'],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -193,22 +180,22 @@ function SourcePicker({
           value={state.source_type}
           onChange={(e) => {
             const source_type = (e.target as HTMLSelectElement).value as SourceType
-            onUpdate({ source_type, pattern: '', activity_type_id: '' })
+            onUpdate({
+              activity_type_id: '',
+              aggregation: defaultAggregation(source_type),
+              missing_days: '',
+              pattern: '',
+              source_type,
+            })
           }}
         >
           <option value="activity_type">Activity Type</option>
           <option value="metric">Metric</option>
-          <option value="productivity_category">Screentime Category</option>
         </select>
       </label>
 
       <label class="source-picker">
-        {state.source_type === 'productivity_category' ? (
-          <>
-            Category
-            <CategoryPicker value={state.pattern} onChange={(pattern) => onUpdate({ pattern })} />
-          </>
-        ) : state.source_type === 'activity_type' ? (
+        {state.source_type === 'activity_type' ? (
           <>
             Activity Type
             <ActivityTypePicker
@@ -361,9 +348,34 @@ function ChartControls({
                 onUpdate({ aggregation: (e.target as HTMLSelectElement).value as 'count' | 'mean' | 'sum' })
               }
             >
-              {state.source_type === 'metric' && <option value="mean">Average</option>}
-              <option value="sum">Sum (hours)</option>
-              <option value="count">Count</option>
+              {state.source_type === 'metric' ? (
+                <>
+                  <option value="mean">Average</option>
+                  <option value="sum">Sum</option>
+                  <option value="count">Count</option>
+                </>
+              ) : (
+                <>
+                  <option value="sum">Sum (hours)</option>
+                  <option value="count">Count</option>
+                </>
+              )}
+            </select>
+          </label>
+        )}
+
+        {state.source_type === 'metric' && state.chart_type === 'trend' && (
+          <label>
+            Missing days
+            <select
+              value={state.missing_days}
+              onChange={(e) =>
+                onUpdate({ missing_days: (e.target as HTMLSelectElement).value as MissingDaysChoice })
+              }
+            >
+              <option value="">Auto (by metric kind)</option>
+              <option value="zero">Count as zero</option>
+              <option value="skip">Skip</option>
             </select>
           </label>
         )}
@@ -371,6 +383,9 @@ function ChartControls({
     </div>
   )
 }
+
+const NO_TREND_POINTS: { date: string; value: number }[] = []
+const NO_BAR_BUCKETS: { bucket_start: string; value: number }[] = []
 
 function TrendDisplay({ params }: { params: FetchTrendParams }) {
   const trendQuery = useQuery({
@@ -380,26 +395,29 @@ function TrendDisplay({ params }: { params: FetchTrendParams }) {
     staleTime: 5 * 60 * 1000,
   })
 
+  const trendData = trendQuery.data
+  const multiSeries = useMemo(() => {
+    const names = trendData?.breakdown_series
+    const histories = trendData?.breakdown_histories
+    if (!names?.length || !histories) return null
+    return names.map((name, i) => ({
+      color: SERIES_COLORS[i % SERIES_COLORS.length],
+      data: (histories[name] ?? []).map((p) => ({ date: p.date, value: p.value })),
+      name,
+    }))
+  }, [trendData])
+
   if (!params.pattern) return <div class="chart-empty">Select a source to view trend data.</div>
   if (trendQuery.isLoading) return <div class="chart-loading">Loading trend data...</div>
   if (trendQuery.isError || !trendQuery.data) return <div class="chart-error">Failed to load trend data.</div>
 
-  const { breakdown_histories, breakdown_series, current_value, display_unit, history } = trendQuery.data
+  const { breakdown_series, current_value, display_unit, history } = trendQuery.data
 
-  if (breakdown_series?.length && breakdown_histories) {
+  if (breakdown_series && multiSeries) {
     return (
       <div class="chart-display">
         <BreakdownLegend series={breakdown_series} />
-        <TrendLineChart
-          data={[]}
-          color="#8b5cf6"
-          height={350}
-          multiSeries={breakdown_series.map((name, i) => ({
-            color: SERIES_COLORS[i % SERIES_COLORS.length],
-            data: (breakdown_histories[name] ?? []).map((p) => ({ date: p.date, value: p.value })),
-            name,
-          }))}
-        />
+        <TrendLineChart data={NO_TREND_POINTS} color="#8b5cf6" height={350} multiSeries={multiSeries} />
       </div>
     )
   }
@@ -415,7 +433,6 @@ function TrendDisplay({ params }: { params: FetchTrendParams }) {
   )
 }
 
-/** Compute the end of a bucket given its start and size. */
 const computeBucketEnd = (start: Date, bucketSize: string): Date => {
   const end = new Date(start)
   switch (bucketSize) {
@@ -444,7 +461,6 @@ const computeBucketEnd = (start: Date, bucketSize: string): Date => {
   return end
 }
 
-/** Build a /data URL for a bar click. */
 const buildBarDataHref = (
   info: BarClickInfo,
   pattern: string,
@@ -459,7 +475,7 @@ const buildBarDataHref = (
   urlParams.set('to', bucketEnd.toISOString())
   urlParams.set('date', bucketStart.toISOString().slice(0, 10))
   urlParams.set('types', pattern)
-  urlParams.set('hide', 'location,music,meal,report,screentime')
+  urlParams.set('hide', 'location,media,meal,report,screentime')
 
   if (info.series_name && breakdownFields?.length) {
     const values = info.series_name.split(' / ')
@@ -471,11 +487,14 @@ const buildBarDataHref = (
 }
 
 function BarDisplay({ params }: { params: FetchChartDataParams }) {
-  const getBarHref =
-    params.source_type === 'activity_type' && params.pattern
-      ? (info: BarClickInfo) =>
-          buildBarDataHref(info, params.pattern!, params.bucket_size ?? '1d', params.breakdown_fields)
-      : undefined
+  const { source_type, pattern, bucket_size, breakdown_fields } = params
+  const getBarHref = useMemo(
+    () =>
+      source_type === 'activity_type' && pattern
+        ? (info: BarClickInfo) => buildBarDataHref(info, pattern, bucket_size ?? '1d', breakdown_fields)
+        : undefined,
+    [source_type, pattern, bucket_size, breakdown_fields],
+  )
 
   const barQuery = useQuery({
     enabled: Boolean(params.pattern || params.activity_type_id),
@@ -483,6 +502,20 @@ function BarDisplay({ params }: { params: FetchChartDataParams }) {
     queryKey: ['chart-data', params],
     staleTime: 5 * 60 * 1000,
   })
+
+  const result = barQuery.data
+  const multiSeries = useMemo(() => {
+    const breakdownBuckets = result?.breakdown_buckets
+    if (!breakdownBuckets?.length) return null
+    return (result?.breakdown_series ?? []).map((name, i) => ({
+      color: SERIES_COLORS[i % SERIES_COLORS.length],
+      data: breakdownBuckets.map((b) => ({
+        bucket_start: b.bucket_start,
+        value: b.series[name] ?? 0,
+      })),
+      name,
+    }))
+  }, [result])
 
   if (!params.pattern && !params.activity_type_id) {
     return <div class="chart-empty">Select a source to view chart data.</div>
@@ -496,34 +529,24 @@ function BarDisplay({ params }: { params: FetchChartDataParams }) {
     return <div class="chart-error">Failed to load chart data.</div>
   }
 
-  const result = barQuery.data
-
-  if (result?.breakdown_buckets?.length) {
-    const series = result.breakdown_series ?? []
+  if (multiSeries) {
     return (
       <div class="chart-display">
-        <BreakdownLegend series={series} />
+        <BreakdownLegend series={result?.breakdown_series ?? []} />
         <BarChart
-          data={[]}
+          data={NO_BAR_BUCKETS}
           height={350}
           bucketSize={params.bucket_size}
           rangeStart={params.start}
           rangeEnd={params.end}
           getBarHref={getBarHref}
-          multiSeries={series.map((name, i) => ({
-            color: SERIES_COLORS[i % SERIES_COLORS.length],
-            data: result.breakdown_buckets!.map((b) => ({
-              bucket_start: b.bucket_start,
-              value: b.series[name] ?? 0,
-            })),
-            name,
-          }))}
+          multiSeries={multiSeries}
         />
       </div>
     )
   }
 
-  const buckets = result?.buckets ?? []
+  const buckets = result?.buckets ?? NO_BAR_BUCKETS
 
   return (
     <div class="chart-display">
@@ -540,7 +563,6 @@ function BarDisplay({ params }: { params: FetchChartDataParams }) {
   )
 }
 
-/** Generate unique ID for widgets and sections. */
 const generateId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
 
 /**
@@ -584,11 +606,9 @@ function buildWidgetFromState(
       display_period: state.display_period,
       half_life_days: state.half_life_days,
       lookback_days: state.lookback_days,
+      ...(state.source_type === 'metric' && state.missing_days ? { missing_days: state.missing_days } : {}),
       pattern: state.pattern,
-      source_type:
-        state.source_type === 'activity_type' || state.source_type === 'metric'
-          ? state.source_type
-          : 'activity_type',
+      source_type: state.source_type,
       ...(state.activity_type_id ? { tag_definition_id: state.activity_type_id } : {}),
       ...(title ? { title } : {}),
     },
@@ -624,7 +644,6 @@ function BreakdownMaskPicker({
   )
 }
 
-/** Modal for adding the current chart to a dashboard section. */
 function AddToDashboardModal({ state, onClose }: { state: ChartState; onClose: () => void }) {
   const queryClient = useQueryClient()
   const [title, setTitle] = useState('')
@@ -933,6 +952,9 @@ export function Chart() {
   const { query } = useLocation()
   const [state, setState] = useState(() => parseQuery(query))
   const [origin] = useState(() => parseChartOrigin(query))
+  const [legacyCategoryPath, setLegacyCategoryPath] = useState(() =>
+    query.source_type === LEGACY_CATEGORY_SOURCE ? (query.pattern ?? '') : null,
+  )
   const [showAddToDashboard, setShowAddToDashboard] = useState(false)
   const [showSetGoal, setShowSetGoal] = useState(false)
   const [goalMax, setGoalMax] = useState('')
@@ -947,6 +969,27 @@ export function Chart() {
     },
     [state, origin],
   )
+
+  const { data: screentimeCategories } = useQuery({
+    enabled: Boolean(isLoggedIn) && legacyCategoryPath !== null,
+    queryFn: fetchScreentimeCategories,
+    queryKey: ['screentime-categories'],
+    staleTime: 5 * 60 * 1000,
+  })
+
+  useEffect(() => {
+    if (legacyCategoryPath === null || !screentimeCategories) return
+    setLegacyCategoryPath(null)
+    handleUpdate(
+      mapLegacyCategorySource(
+        {
+          aggregation: query.aggregation as ChartState['aggregation'] | undefined,
+          pattern: legacyCategoryPath,
+        },
+        screentimeCategories,
+      ),
+    )
+  }, [legacyCategoryPath, screentimeCategories, handleUpdate, query.aggregation])
 
   if (!isLoggedIn) {
     return (
@@ -965,8 +1008,8 @@ export function Chart() {
     <div class="chart-page">
       <h1>Chart Explorer</h1>
       <p class="chart-page-description">
-        Explore time-weighted averages (EMA) or raw bucketed data for activity types, metrics, and screentime
-        categories. Toggle between Trend and Bar chart modes.
+        Explore time-weighted averages (EMA) or raw bucketed data for activity types and metrics. Screentime
+        categories are activity types too. Toggle between Trend and Bar chart modes.
       </p>
 
       <ChartControls state={state} onUpdate={handleUpdate} />
@@ -979,6 +1022,9 @@ export function Chart() {
             display_period: state.display_period,
             half_life_days: state.half_life_days,
             lookback_days: state.lookback_days,
+            ...(state.source_type === 'metric' && state.missing_days
+              ? { missing_days: state.missing_days }
+              : {}),
             pattern: state.pattern,
             source_type: state.source_type,
             ...(state.activity_type_id ? { activity_type_id: state.activity_type_id } : {}),

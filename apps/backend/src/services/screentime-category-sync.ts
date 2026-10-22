@@ -102,8 +102,6 @@ const insertDerivedType = async (
 }
 
 /**
- * Ensure a category has a linked activity_type_definitions row.
- *
  * Idempotent: if the category already has `activity_type_name`, returns it.
  * Otherwise generates a slug, inserts a new type def (or links to an existing
  * non-builtin same-name type), and persists the slug on the category.

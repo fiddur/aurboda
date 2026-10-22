@@ -4,14 +4,12 @@ import * as db from '../../db/index.ts'
 import * as locations from '../locations.ts'
 import { getHrvActivitiesCorrelation } from './hrv-activities.ts'
 
-// Mock db module
 vi.mock('../../db', () => ({
   getAllActivitiesInRange: vi.fn(),
   getProductivity: vi.fn(),
   getTimeSeries: vi.fn(),
 }))
 
-// Mock locations module
 vi.mock('../locations', () => ({
   getPlaceVisits: vi.fn(),
 }))
@@ -165,6 +163,7 @@ describe('getHrvActivitiesCorrelation', () => {
       syncCalendarsIfNeeded: vi.fn().mockResolvedValue(undefined),
       syncGarminIfNeeded: vi.fn().mockResolvedValue(undefined),
       syncLastFmIfNeeded: vi.fn().mockResolvedValue(undefined),
+      syncGravlIfNeeded: vi.fn().mockResolvedValue(undefined),
       syncOuraIfNeeded: vi.fn().mockResolvedValue(undefined),
       syncRescueTimeIfNeeded: vi.fn().mockResolvedValue(undefined),
     }

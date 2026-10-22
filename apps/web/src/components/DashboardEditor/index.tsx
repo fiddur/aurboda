@@ -1,7 +1,3 @@
-/**
- * DashboardEditor - Widget picker and configuration modal.
- */
-
 import type { DashboardWidget, SectionType } from '@aurboda/api-spec'
 
 import { useState } from 'preact/hooks'
@@ -17,10 +13,18 @@ interface DashboardEditorProps {
   onClose: () => void
 }
 
-// Generate unique widget ID
+const metricCardUnits: Record<string, string> = {
+  body_fat: '%',
+  hrv_30day: 'ms',
+  hrv_7day: 'ms',
+  rhr_30day: 'bpm',
+  rhr_7day: 'bpm',
+  weight: 'kg',
+  zone2_weekly: 'min',
+}
+
 const generateWidgetId = () => `widget-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
 
-// Widget templates for the picker
 interface WidgetTemplate {
   type: DashboardWidget['type']
   label: string
@@ -51,6 +55,13 @@ const widgetTemplates: WidgetTemplate[] = [
     description: 'Metric value with a mini chart',
     label: 'Sparkline Card',
     type: 'sparkline_card',
+  },
+  {
+    allowedSections: ['metrics'],
+    defaultConfig: () => ({}),
+    description: 'Latest sleep: score, stages, vitals',
+    label: 'Last night',
+    type: 'last_sleep',
   },
   {
     allowedSections: ['metrics', 'charts'],
@@ -129,7 +140,6 @@ const widgetTemplates: WidgetTemplate[] = [
   },
 ]
 
-// Link options for quick link widgets
 const linkOptions = [
   { icon: 'timeline', label: 'Timeline', value: '/timeline' },
   { icon: 'sleep', label: 'Sleep', value: '/sleep' },
@@ -144,7 +154,6 @@ export function DashboardEditor({ sectionType, onAddWidget, onClose }: Dashboard
   const [selectedTemplate, setSelectedTemplate] = useState<WidgetTemplate | null>(null)
   const [configValues, setConfigValues] = useState<Record<string, unknown>>({})
 
-  // Filter templates based on section type
   const availableTemplates = widgetTemplates.filter((t) => t.allowedSections.includes(sectionType))
 
   const handleSelectTemplate = (template: WidgetTemplate) => {
@@ -168,7 +177,6 @@ export function DashboardEditor({ sectionType, onAddWidget, onClose }: Dashboard
     setConfigValues((prev) => ({ ...prev, [key]: value }))
   }
 
-  // Render configuration form based on widget type
   // eslint-disable-next-line complexity -- TODO: refactor
   const renderConfigForm = () => {
     if (!selectedTemplate) return null
@@ -184,6 +192,7 @@ export function DashboardEditor({ sectionType, onAddWidget, onClose }: Dashboard
                 onChange={(metric) => {
                   updateConfig('metric', metric)
                   updateConfig('title', getMetricDisplayName(metric))
+                  updateConfig('unit', metricCardUnits[metric] ?? '')
                 }}
               />
             </div>
@@ -367,6 +376,21 @@ export function DashboardEditor({ sectionType, onAddWidget, onClose }: Dashboard
                 />{' '}
                 Compact mode (hide losing-tomorrow info)
               </label>
+            </div>
+          </div>
+        )
+
+      case 'last_sleep':
+        return (
+          <div class="config-form">
+            <div class="form-group">
+              <label>Title (optional)</label>
+              <input
+                type="text"
+                value={(configValues.title as string) ?? ''}
+                onChange={(e) => updateConfig('title', (e.target as HTMLInputElement).value || undefined)}
+                placeholder="Last night"
+              />
             </div>
           </div>
         )

@@ -1,9 +1,4 @@
 /**
- * Effective per-user nutrient recommendations.
- *
- * Reads central NNR2023 defaults and per-user override rows, merges them
- * per nutrient, and produces the list the API and MCP layers return.
- *
  * Merge rules (per nutrient_name):
  *   - User row exists  → user values (any explicit NULL = "suppress this
  *                        nutrient's default", which we surface by dropping

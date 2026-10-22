@@ -1,6 +1,3 @@
-/**
- * MCP chart data tools — bucketed aggregation for bar charts.
- */
 import { chartDataQuerySchema } from '@aurboda/api-spec'
 
 import { getChartData } from '../services/chart-data.ts'
@@ -14,11 +11,14 @@ Returns time-bucketed aggregated values suitable for bar charts.
 
 Bucket sizes: 1d (daily), 1w (weekly), 1M (monthly)
 Aggregation: count (number of occurrences), sum (total value), mean (average value)
+Time zone: pass tz (IANA, e.g. "Europe/Stockholm") so days, weeks and months start at the user's local midnight; omitted means UTC.
 
 Examples:
 - Daily coffee counts this month: source_type="tag", pattern="coffee", bucket_size="1d", aggregation="count"
 - Weekly average weight: source_type="metric", pattern="weight", bucket_size="1w", aggregation="mean"
-- Monthly programming hours: source_type="productivity_category", pattern="Work > Programming", bucket_size="1M"`,
+- Monthly programming hours: source_type="productivity_category", pattern="Work > Programming", bucket_size="1M"
+
+Each screentime category is also an activity type (its activity_type_name), so source_type="activity_type" with that name works too.`,
     { ...chartDataQuerySchema.shape },
     async ({
       aggregation,
@@ -29,6 +29,7 @@ Examples:
       source_type,
       start,
       tag_definition_id,
+      tz,
     }) => {
       try {
         const buckets = await getChartData(user, {
@@ -40,6 +41,7 @@ Examples:
           source_type,
           start,
           tag_definition_id,
+          tz,
         })
         return jsonResponse({ data: { buckets }, success: true })
       } catch (error) {

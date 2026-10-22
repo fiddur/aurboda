@@ -1,10 +1,3 @@
-/**
- * Meal/nutrition schemas.
- *
- * Meals store food intake data from various sources (Oura, Cronometer, MyFitnessPal, manual).
- * Each meal can optionally include food items, macros, and micronutrients.
- */
-
 import { z } from 'zod'
 
 import {
@@ -14,14 +7,7 @@ import {
   iso8601DateTimeSchema,
 } from './common.ts'
 
-// ============================================================================
-// Meal Type
-// ============================================================================
-
-/**
- * Common meal type values.
- * Flexible string — not a closed enum so sources can pass their own types.
- */
+/** A flexible string, not a closed enum, so sources can pass their own types. */
 export const mealTypeSchema = z.string().min(1).max(50).meta({
   description: 'Meal type (e.g., "breakfast", "lunch", "dinner", "snack")',
   example: 'lunch',
@@ -30,14 +16,7 @@ export const mealTypeSchema = z.string().min(1).max(50).meta({
 
 export type MealType = z.infer<typeof mealTypeSchema>
 
-// ============================================================================
-// Nutrient Value
-// ============================================================================
-
-/**
- * A nutrient measurement with explicit unit.
- * Supports both simple numbers (legacy, unit implied by key) and structured { value, unit }.
- */
+/** Supports both simple numbers (legacy, unit implied by key) and structured { value, unit }. */
 export const nutrientValueSchema = z
   .object({
     unit: z.string().max(10).meta({ description: 'Unit of measurement (e.g., "mg", "µg", "g", "IU")' }),
@@ -62,10 +41,6 @@ export const microsSchema = z
   })
 
 export type Micros = z.infer<typeof microsSchema>
-
-// ============================================================================
-// Food Item
-// ============================================================================
 
 /**
  * An individual food item within a meal — response shape.
@@ -159,13 +134,6 @@ export const foodItemInputSchema = z
 
 export type FoodItemInput = z.infer<typeof foodItemInputSchema>
 
-// ============================================================================
-// Meal
-// ============================================================================
-
-/**
- * A meal/nutrition record.
- */
 export const mealSchema = z
   .object({
     calories: z.number().optional().meta({ description: 'Total energy in kcal' }),
@@ -205,13 +173,6 @@ export const mealSchema = z
 
 export type Meal = z.infer<typeof mealSchema>
 
-// ============================================================================
-// Request Schemas
-// ============================================================================
-
-/**
- * Add meal request body.
- */
 export const addMealBodySchema = z
   .object({
     id: z
@@ -246,9 +207,6 @@ export const addMealBodySchema = z
 
 export type AddMealBody = z.infer<typeof addMealBodySchema>
 
-/**
- * Update meal request body — all fields optional.
- */
 export const updateMealBodySchema = z
   .object({
     calories: z.number().nullable().optional().meta({ description: 'Total energy in kcal' }),
@@ -279,9 +237,6 @@ export const updateMealBodySchema = z
 
 export type UpdateMealBody = z.infer<typeof updateMealBodySchema>
 
-/**
- * Meals query schema — filter by date range and/or meal type.
- */
 export const mealsQuerySchema = z
   .object({
     date: z.string().optional().meta({ description: 'Local date (YYYY-MM-DD) for log_completed check' }),
@@ -293,22 +248,12 @@ export const mealsQuerySchema = z
 
 export type MealsQuery = z.infer<typeof mealsQuerySchema>
 
-// ============================================================================
-// Response Schemas
-// ============================================================================
-
-/**
- * Single meal response.
- */
 export const mealResponseSchema = createDataResponseSchema(mealSchema).meta({
   id: 'MealResponse',
 })
 
 export type MealResponse = z.infer<typeof mealResponseSchema>
 
-/**
- * Multiple meals response.
- */
 export const mealsResponseSchema = createDataArrayResponseSchema(mealSchema)
   .extend({
     log_completed: z
@@ -320,16 +265,9 @@ export const mealsResponseSchema = createDataArrayResponseSchema(mealSchema)
 
 export type MealsResponse = z.infer<typeof mealsResponseSchema>
 
-/**
- * Delete meal response.
- */
 export const deleteMealResponseSchema = baseResponseSchema.meta({ id: 'DeleteMealResponse' })
 
 export type DeleteMealResponse = z.infer<typeof deleteMealResponseSchema>
-
-// ============================================================================
-// Frequent Meals
-// ============================================================================
 
 /**
  * Query parameters for the frequent-meals endpoint.
@@ -388,10 +326,6 @@ export const frequentMealsResponseSchema = createDataArrayResponseSchema(frequen
 })
 
 export type FrequentMealsResponse = z.infer<typeof frequentMealsResponseSchema>
-
-// ============================================================================
-// Frequent food items
-// ============================================================================
 
 /**
  * Query parameters for surfacing the food items a user logs most often. Helps

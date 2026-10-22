@@ -51,7 +51,32 @@ export interface PublicSeriesResult {
   samples: PublicSeriesSample[]
 }
 
-const BUCKET_UNIT_SECONDS: Record<string, number> = { h: 3600, m: 60, s: 1 }
+const BUCKET_UNIT_SECONDS: Record<string, number> = { d: 86_400, h: 3600, m: 60, s: 1 }
+
+/**
+ * Project one metric's stats out of a bucketed-query result into
+ * `PublicSeriesSample[]`, dropping any bucket the metric has no stats for.
+ * Shared by the public `/series` endpoint and the article structured/chart-block
+ * resolvers, which all bucket the same way and want the same sample shape.
+ */
+export const samplesFromBucketedResult = (
+  result: QueryMetricsBucketedResult,
+  metric: MetricType,
+): PublicSeriesSample[] =>
+  result.buckets.flatMap((b) => {
+    const stats = b.metrics[metric]
+    if (!stats) return []
+    const sample: PublicSeriesSample = {
+      avg: stats.avg,
+      count: stats.count,
+      end: b.end,
+      max: stats.max,
+      min: stats.min,
+      start: b.start,
+    }
+    if (stats.sum !== undefined) sample.sum = stats.sum
+    return [sample]
+  })
 
 /**
  * Floor a series bucket string to `MIN_SERIES_BUCKET_SECONDS`. Anything at or
@@ -59,7 +84,7 @@ const BUCKET_UNIT_SECONDS: Record<string, number> = { h: 3600, m: 60, s: 1 }
  * becomes `5s`.
  */
 export const floorSeriesBucket = (bucket: string): BucketSize => {
-  const match = bucket.match(/^(\d+)([smh])$/)
+  const match = bucket.match(/^(\d+)([smhd])$/)
   if (!match) return `${MIN_SERIES_BUCKET_SECONDS}s`
   const seconds = parseInt(match[1], 10) * BUCKET_UNIT_SECONDS[match[2]]
   return seconds < MIN_SERIES_BUCKET_SECONDS ? `${MIN_SERIES_BUCKET_SECONDS}s` : (bucket as BucketSize)
@@ -89,21 +114,7 @@ export const resolvePublicSeries = async (
 
   const effectiveBucket = floorSeriesBucket(bucket)
   const result = await deps.queryBucketed(metric, start, end, effectiveBucket)
-
-  const samples: PublicSeriesSample[] = result.buckets.flatMap((b) => {
-    const stats = b.metrics[metric]
-    if (!stats) return []
-    const sample: PublicSeriesSample = {
-      avg: stats.avg,
-      count: stats.count,
-      end: b.end,
-      max: stats.max,
-      min: stats.min,
-      start: b.start,
-    }
-    if (stats.sum !== undefined) sample.sum = stats.sum
-    return [sample]
-  })
+  const samples = samplesFromBucketedResult(result, metric)
 
   return {
     bucket: effectiveBucket,

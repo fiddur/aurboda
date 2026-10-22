@@ -1,6 +1,4 @@
 /**
- * Tag mapping schemas — used for programmatic tag display name mapping.
- *
  * Tags have been absorbed into activities. Tag definitions have been replaced
  * by activity type definitions. Only tag mapping schemas remain, used by
  * the settings service for Oura programmatic tag naming.
@@ -8,9 +6,6 @@
 
 import { z } from 'zod'
 
-/**
- * Set tag mapping body schema.
- */
 export const setTagMappingBodySchema = z
   .object({
     icon: z.string().optional().meta({

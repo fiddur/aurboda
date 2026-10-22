@@ -1,11 +1,4 @@
 /**
- * Merge two food items into one.
- *
- * Flow: user picks a target via the autocomplete → we call the preview
- * endpoint to surface counts and fill candidates → user confirms with
- * options for fill-empty (per-user target only) and discard-ingredients
- * (when source is a composite recipe) → we POST the merge.
- *
  * Past meal_food_items snapshots are NOT touched by the merge — the
  * dialog says so explicitly so the user knows old days remain intact.
  */
@@ -26,7 +19,6 @@ interface Props {
   /** The food item being merged AWAY (source). */
   source: { id: string; name: string }
   onClose: () => void
-  /** Called after a successful merge — caller refreshes its list. */
   onMerged?: (preview: MergeFoodItemsPreview) => void
 }
 

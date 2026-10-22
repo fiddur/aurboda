@@ -1,6 +1,3 @@
-/**
- * MCP activity management tools.
- */
 import {
   addActivityBodySchema,
   deleteActivityParamsSchema,
@@ -18,6 +15,7 @@ import {
   restoreActivity,
   updateActivity,
 } from '../services/mutations.ts'
+import { backfillUserTracks, defaultTrackBackfillDeps } from '../services/track-backfill.ts'
 import { errorResponse, jsonResponse, type McpServer, tzJsonResponse } from './helpers.ts'
 
 export const registerActivityTools = (
@@ -25,7 +23,6 @@ export const registerActivityTools = (
   user: string,
   onActivityMutated?: ActivityNotifier,
 ) => {
-  // Tool: add_activity
   server.tool(
     'add_activity',
     'Add an activity session (exercise type like yoga/running/weightlifting, meditation, nap, rest, …). Pass the specific activity_type directly; structured fields go in `data`.',
@@ -58,7 +55,6 @@ export const registerActivityTools = (
     },
   )
 
-  // Tool: delete_activity
   server.tool(
     'delete_activity',
     'Delete an activity by its ID. Returns success if the activity was found and deleted.',
@@ -69,7 +65,6 @@ export const registerActivityTools = (
     },
   )
 
-  // Tool: restore_activity
   server.tool(
     'restore_activity',
     'Restore a soft-deleted activity by its ID.',
@@ -80,7 +75,6 @@ export const registerActivityTools = (
     },
   )
 
-  // Tool: update_activity
   server.tool(
     'update_activity',
     'Update an existing activity. Can modify activity_type, start_time, end_time, title, notes, and data. Only provided fields will be updated. Validates that end_time is after start_time (considering both new and existing values).',
@@ -112,7 +106,6 @@ export const registerActivityTools = (
     },
   )
 
-  // Tool: merge_activities
   server.tool(
     'merge_activities',
     'Permanently merge 2+ activities of the same type into one. Creates a new merged activity spanning the full time range and soft-deletes the originals. Useful for fixing split activities (e.g., a run that got recorded as two separate activities).',
@@ -131,5 +124,12 @@ export const registerActivityTools = (
 
       return tzJsonResponse(result, tz)
     },
+  )
+
+  server.tool(
+    'backfill_activity_tracks',
+    'Build missing activity GPS tracks from stored raw records: Garmin activity details at full resolution, Strava polylines as shape-only tracks. Incremental: only activities without a track. Returns counts written per source and skipped.',
+    {},
+    async () => jsonResponse(await backfillUserTracks(user, defaultTrackBackfillDeps)),
   )
 }

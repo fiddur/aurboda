@@ -1,7 +1,3 @@
-/**
- * Productivity schemas.
- */
-
 import { z } from 'zod'
 
 import {
@@ -15,9 +11,6 @@ import {
 import { bucketSizeSchema } from './metrics.ts'
 import { commentSchema } from './notes.ts'
 
-/**
- * Productivity record schema.
- */
 export const productivityRecordSchema = z
   .object({
     activity: z.string().meta({ description: 'Activity/application name' }),
@@ -51,9 +44,6 @@ export const productivityRecordSchema = z
 
 export type ProductivityRecord = z.infer<typeof productivityRecordSchema>
 
-/**
- * Productivity query schema.
- */
 export const productivityQuerySchema = timeRangeQuerySchema
   .extend({
     merge_by: z
@@ -73,9 +63,6 @@ export const productivityQuerySchema = timeRangeQuerySchema
 
 export type ProductivityQuery = z.infer<typeof productivityQuerySchema>
 
-/**
- * Screentime category metadata included in normalized productivity responses.
- */
 export const screentimeCategoryInfoSchema = z
   .object({
     color: z.string().optional().meta({ description: 'Category color (hex)' }),
@@ -84,10 +71,7 @@ export const screentimeCategoryInfoSchema = z
   })
   .meta({ id: 'ScreentimeCategoryInfo' })
 
-/**
- * Productivity response schema.
- * When merge_by=category, includes a `categories` map keyed by category UUID.
- */
+/** When merge_by=category, includes a `categories` map keyed by category UUID. */
 export const productivityResponseSchema = createDataArrayResponseSchema(productivityRecordSchema)
   .extend({
     categories: z
@@ -99,18 +83,12 @@ export const productivityResponseSchema = createDataArrayResponseSchema(producti
 
 export type ProductivityResponse = z.infer<typeof productivityResponseSchema>
 
-/**
- * Single productivity record response.
- */
 export const productivityRecordResponseSchema = createDataResponseSchema(productivityRecordSchema).meta({
   id: 'ProductivityRecordResponse',
 })
 
 export type ProductivityRecordResponse = z.infer<typeof productivityRecordResponseSchema>
 
-/**
- * Distinct app/title combination with usage stats.
- */
 export const distinctAppSchema = z
   .object({
     activity: z.string().meta({ description: 'Application name' }),
@@ -126,18 +104,12 @@ export const distinctAppSchema = z
 
 export type DistinctApp = z.infer<typeof distinctAppSchema>
 
-/**
- * Distinct apps response.
- */
 export const distinctAppsResponseSchema = createDataArrayResponseSchema(distinctAppSchema).meta({
   id: 'DistinctAppsResponse',
 })
 
 export type DistinctAppsResponse = z.infer<typeof distinctAppsResponseSchema>
 
-/**
- * Category duration within a screentime bucket.
- */
 export const screentimeBucketCategorySchema = z
   .object({
     path: z.array(z.string()).meta({ description: 'Category path, e.g. ["Work", "Programming"]' }),
@@ -145,9 +117,6 @@ export const screentimeBucketCategorySchema = z
   })
   .meta({ id: 'ScreentimeBucketCategory' })
 
-/**
- * A single time bucket with aggregated screentime by category.
- */
 export const screentimeBucketSchema = z
   .object({
     categories: z.array(screentimeBucketCategorySchema).meta({
@@ -161,9 +130,6 @@ export const screentimeBucketSchema = z
 
 export type ScreentimeBucket = z.infer<typeof screentimeBucketSchema>
 
-/**
- * Query bucketed screentime request.
- */
 export const screentimeBucketedQuerySchema = timeRangeQuerySchema
   .extend({
     bucket: bucketSizeSchema,
@@ -176,9 +142,6 @@ export const screentimeBucketedQuerySchema = timeRangeQuerySchema
 
 export type ScreentimeBucketedQuery = z.infer<typeof screentimeBucketedQuerySchema>
 
-/**
- * Bucketed screentime response.
- */
 export const screentimeBucketedResponseSchema = baseResponseSchema
   .extend({
     bucket: bucketSizeSchema.optional(),

@@ -1,58 +1,45 @@
-/**
- * Chart data service — bucketed aggregation of activity types, metrics,
- * and productivity categories.
- *
- * Returns time-bucketed data for bar chart visualizations.
- */
-
 import type { ChartDataBreakdownBucket, ChartDataBucket, ChartDataSourceType } from '@aurboda/api-spec'
 
-import { expandActivityTypes, getSourceFilter, getTimeSeries, query } from '../db/index.ts'
-import { computeHrZoneSecs, getEffectiveHrZones } from './settings.ts'
+import { expandActivityTypes, getHrZoneSecs, getSourceFilter, query } from '../db/index.ts'
+import { categoryPathMatchSql } from './screentime-sql.ts'
+import { getEffectiveHrZones } from './settings.ts'
 
-/** Map bucket_size parameter to PostgreSQL date_trunc interval name (day and above). */
-const bucketToTrunc: Record<string, string> = {
+const truncUnits: Record<string, string> = {
   '1M': 'month',
   '1d': 'day',
+  '1h': 'hour',
   '1w': 'week',
 }
 
 /**
- * Build a SQL expression for bucketing a timestamp column.
+ * Bucket starts come back as timestamptz. Calendar units and hours truncate in `tz` (PG's
+ * three-argument `date_trunc`, which handles DST and half-hour offsets). Sub-hour bins stay on a
+ * UTC origin: every current offset is a whole number of quarter hours (+05:45 included), so they
+ * already fall on local clock boundaries, and binning local wall time instead would fold the
+ * repeated DST hour into one bin.
  *
- * For sub-day buckets (15m, 1h) we use PG 14+ `date_bin` which requires an
- * origin timestamp.  For day/week/month we keep the simpler `date_trunc`.
- *
- * Returns `{ expr, params }` where `expr` is the SQL fragment with positional
- * placeholders starting at `$<startIdx>` and `params` are the corresponding
- * bind values.
+ * `tz` is only ever a bind value: `params` fill `$<startIdx>`, `$<startIdx + 1>`, ….
  */
 export const buildBucketExpr = (
   bucketSize: string,
   column: string,
   startIdx: number,
+  tz = 'UTC',
 ): { expr: string; params: string[] } => {
-  const dateBinIntervals: Record<string, string> = {
+  const binIntervals: Record<string, string> = {
     '1m': '1 minute',
     '5m': '5 minutes',
     '15m': '15 minutes',
   }
-  if (dateBinIntervals[bucketSize]) {
+  if (binIntervals[bucketSize]) {
     return {
-      expr: `date_bin($${startIdx}::interval, ${column} AT TIME ZONE 'UTC', '2000-01-01'::timestamptz)`,
-      params: [dateBinIntervals[bucketSize]],
+      expr: `date_bin($${startIdx}::interval, ${column}, '2000-01-01T00:00:00Z'::timestamptz)`,
+      params: [binIntervals[bucketSize]],
     }
   }
-  if (bucketSize === '1h') {
-    return {
-      expr: `date_trunc($${startIdx}, ${column} AT TIME ZONE 'UTC')`,
-      params: ['hour'],
-    }
-  }
-  const truncInterval = bucketToTrunc[bucketSize] ?? 'day'
   return {
-    expr: `date_trunc($${startIdx}, ${column} AT TIME ZONE 'UTC')`,
-    params: [truncInterval],
+    expr: `date_trunc($${startIdx}::text, ${column}, $${startIdx + 1}::text)`,
+    params: [truncUnits[bucketSize] ?? 'day', tz],
   }
 }
 
@@ -67,18 +54,20 @@ export interface ChartDataInput {
   start: string
   /** @deprecated Use activity_type_id instead */
   tag_definition_id?: string
+  /** IANA zone the buckets align to; UTC when absent. */
+  tz?: string
 }
 
-/** Query bucketed activity counts by activity_type name (formerly tag_definition_id). */
 const queryActivitiesByType = async (
   user: string,
   activityType: string,
   start: string,
   end: string,
   bucketSize: string,
+  tz: string,
 ): Promise<ChartDataBucket[]> => {
   const types = await expandActivityTypes(user, [activityType])
-  const bucket = buildBucketExpr(bucketSize, 'start_time', 1)
+  const bucket = buildBucketExpr(bucketSize, 'start_time', 1, tz)
   const result = await query(
     user,
     `SELECT ${bucket.expr} AS bucket_start,
@@ -98,15 +87,15 @@ const queryActivitiesByType = async (
   }))
 }
 
-/** Query bucketed activity counts by activity_type regex pattern. */
 const queryActivitiesByTypePattern = async (
   user: string,
   pattern: string,
   start: string,
   end: string,
   bucketSize: string,
+  tz: string,
 ): Promise<ChartDataBucket[]> => {
-  const bucket = buildBucketExpr(bucketSize, 'start_time', 1)
+  const bucket = buildBucketExpr(bucketSize, 'start_time', 1, tz)
   const result = await query(
     user,
     `SELECT ${bucket.expr} AS bucket_start,
@@ -126,17 +115,17 @@ const queryActivitiesByTypePattern = async (
   }))
 }
 
-/** Query bucketed metric data with the specified aggregation. */
 const queryMetricBuckets = async (
   user: string,
   metric: string,
   start: string,
   end: string,
   bucketSize: string,
+  tz: string,
   aggregation: 'count' | 'mean' | 'sum',
 ): Promise<ChartDataBucket[]> => {
   const aggFn = aggregation === 'mean' ? 'AVG(value)' : aggregation === 'sum' ? 'SUM(value)' : 'COUNT(*)'
-  const bucket = buildBucketExpr(bucketSize, 'time', 1)
+  const bucket = buildBucketExpr(bucketSize, 'time', 1, tz)
   const p = bucket.params.length
   const params: unknown[] = [...bucket.params, metric, start, end]
 
@@ -170,45 +159,18 @@ const queryMetricBuckets = async (
   }))
 }
 
-const HR_ZONE_BIN_ORIGIN = Date.UTC(2000, 0, 1)
-
-/** UTC bucket-start for a timestamp, mirroring buildBucketExpr's date_trunc/date_bin. */
-const utcBucketStart = (t: Date, bucketSize: string): Date => {
-  const bin = (intervalMs: number): Date =>
-    new Date(HR_ZONE_BIN_ORIGIN + Math.floor((t.getTime() - HR_ZONE_BIN_ORIGIN) / intervalMs) * intervalMs)
-  switch (bucketSize) {
-    case '1m':
-      return bin(60_000)
-    case '5m':
-      return bin(5 * 60_000)
-    case '15m':
-      return bin(15 * 60_000)
-    case '1h':
-      return new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate(), t.getUTCHours()))
-    case '1w': {
-      const d = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate()))
-      d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)) // back to Monday (date_trunc('week'))
-      return d
-    }
-    case '1M':
-      return new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), 1))
-    default:
-      return new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate()))
-  }
-}
-
 /**
  * Bucketed seconds-in-zone for an `hr_zone_<n>_sec` metric. HR-zone metrics are
  * not stored — they're computed from heart-rate samples + the user's effective
- * zones (same as the period summary / HR-zones widget). We group the samples
- * into buckets and run the zone computation per bucket.
+ * zones (same as the period summary / HR-zones widget), per bucket in SQL.
  */
 const queryHrZoneBuckets = async (
   user: string,
   metric: string,
   start: string,
   end: string,
-  bucketSize: string,
+  bucketSize: ChartDataInput['bucket_size'],
+  tz: string,
 ): Promise<ChartDataBucket[]> => {
   const zoneIndex = Number.parseInt(metric.replace('hr_zone_', '').replace('_sec', ''), 10) as
     | 0
@@ -217,36 +179,17 @@ const queryHrZoneBuckets = async (
     | 3
     | 4
     | 5
-  const [hrData, { zones }] = await Promise.all([
-    getTimeSeries(user, 'heart_rate', new Date(start), new Date(end)),
-    getEffectiveHrZones(user),
-  ])
-  if (hrData.length === 0) return []
-
-  const groups = new Map<number, [Date, number][]>()
-  for (const point of hrData) {
-    const key = utcBucketStart(point[0], bucketSize).getTime()
-    const arr = groups.get(key)
-    if (arr) arr.push(point)
-    else groups.set(key, [point])
-  }
-
-  return [...groups.entries()]
-    .sort((a, b) => a[0] - b[0])
-    .map(([key, points]) => ({
-      bucket_start: new Date(key).toISOString(),
-      value: computeHrZoneSecs(points, zones)[zoneIndex],
-    }))
+  const { zones } = await getEffectiveHrZones(user)
+  const rows = await getHrZoneSecs(user, new Date(start), new Date(end), zones, bucketSize, tz)
+  return rows.map((row) => ({
+    bucket_start: (row.bucket_start as Date).toISOString(),
+    value: row.secs[zoneIndex],
+  }))
 }
 
 /**
- * Query bucketed productivity category hours.
- *
- * Reads from the `activities` table (activity_type='screentime') so a
- * prefix match on data->>'category_path' walks the category hierarchy
- * (e.g. categoryPath='Work' matches 'Work', 'Work > Programming', etc.).
- * Activities are derived from productivity records during sync (#648) and
- * historical data is filled in by a one-shot backfill.
+ * Sums screentime span hours from `activities`, walking the category hierarchy
+ * by path prefix (categoryPath='Work' matches 'Work', 'Work > Programming').
  */
 const queryProductivityCategoryBuckets = async (
   user: string,
@@ -254,21 +197,18 @@ const queryProductivityCategoryBuckets = async (
   start: string,
   end: string,
   bucketSize: string,
+  tz: string,
 ): Promise<ChartDataBucket[]> => {
-  const bucket = buildBucketExpr(bucketSize, 'start_time', 1)
+  const bucket = buildBucketExpr(bucketSize, 'start_time', 1, tz)
   const result = await query(
     user,
     `SELECT ${bucket.expr} AS bucket_start,
             SUM(EXTRACT(EPOCH FROM (end_time - start_time))) / 3600.0 AS value
        FROM activities
-      WHERE activity_type = 'screentime'
-        AND deleted_at IS NULL
+      WHERE deleted_at IS NULL
         AND superseded_by IS NULL
         AND end_time IS NOT NULL
-        AND (
-          data->>'category_path' = $${bucket.params.length + 1}
-          OR starts_with(data->>'category_path', $${bucket.params.length + 1} || ' > ')
-        )
+        AND ${categoryPathMatchSql(bucket.params.length + 1)}
         AND start_time BETWEEN $${bucket.params.length + 2} AND $${bucket.params.length + 3}
       GROUP BY 1
       ORDER BY 1`,
@@ -280,17 +220,17 @@ const queryProductivityCategoryBuckets = async (
   }))
 }
 
-/** Query bucketed activity type hours. */
 const queryActivityTypeBuckets = async (
   user: string,
   pattern: string,
   start: string,
   end: string,
   bucketSize: string,
+  tz: string,
   aggregation = 'sum',
 ): Promise<ChartDataBucket[]> => {
   const types = await expandActivityTypes(user, [pattern])
-  const bucket = buildBucketExpr(bucketSize, 'start_time', 1)
+  const bucket = buildBucketExpr(bucketSize, 'start_time', 1, tz)
   const valueExpr =
     aggregation === 'count'
       ? 'count(*)'
@@ -315,7 +255,6 @@ const queryActivityTypeBuckets = async (
 }
 
 /**
- * Query activity type data broken down by one or more data fields.
  * Multiple fields produce compound series keys like "spanda / external_monitor".
  */
 const queryActivityTypeBreakdown = async (
@@ -325,6 +264,7 @@ const queryActivityTypeBreakdown = async (
   start: string,
   end: string,
   bucketSize: string,
+  tz: string,
   aggregation = 'sum',
 ): Promise<{ buckets: ChartDataBreakdownBucket[]; series: string[] }> => {
   // Sanitize all field names
@@ -333,13 +273,12 @@ const queryActivityTypeBreakdown = async (
   }
 
   const types = await expandActivityTypes(user, [activityType])
-  const bucket = buildBucketExpr(bucketSize, 'start_time', 1)
+  const bucket = buildBucketExpr(bucketSize, 'start_time', 1, tz)
   const valueExpr =
     aggregation === 'count'
       ? 'count(*)'
       : "SUM(EXTRACT(EPOCH FROM (COALESCE(end_time, start_time + interval '1 hour') - start_time))) / 3600.0"
 
-  // Build SELECT and GROUP BY for each breakdown field
   const fieldSelects = fields.map((f, i) => `COALESCE(data->>'${f}', '(none)') AS field_${i}`)
   const fieldGroupBys = fields.map((_, i) => `field_${i}`)
 
@@ -358,7 +297,6 @@ const queryActivityTypeBreakdown = async (
     [...bucket.params, types, start, end],
   )
 
-  // Pivot rows into breakdown buckets with compound series keys
   const seriesSet = new Set<string>()
   const bucketMap = new Map<string, Record<string, number>>()
   for (const row of result.rows) {
@@ -391,18 +329,16 @@ const queryMetricSource = async (
   pattern: string | undefined,
   start: string,
   end: string,
-  bucketSize: string,
+  bucketSize: ChartDataInput['bucket_size'],
+  tz: string,
   aggregation: 'count' | 'mean' | 'sum',
 ): Promise<ChartDataBucket[]> => {
   const metric = pattern === 'zone2_weekly' ? 'hr_zone_2_sec' : pattern
   if (!metric) return []
-  if (/^hr_zone_[0-5]_sec$/.test(metric)) return queryHrZoneBuckets(user, metric, start, end, bucketSize)
-  return queryMetricBuckets(user, metric, start, end, bucketSize, aggregation)
+  if (/^hr_zone_[0-5]_sec$/.test(metric)) return queryHrZoneBuckets(user, metric, start, end, bucketSize, tz)
+  return queryMetricBuckets(user, metric, start, end, bucketSize, tz, aggregation)
 }
 
-/**
- * Get bucketed chart data for the given source type and parameters.
- */
 export const getChartData = async (
   user: string,
   input: ChartDataInput,
@@ -413,8 +349,8 @@ export const getChartData = async (
 }> => {
   const { activity_type_id, aggregation, bucket_size, end, pattern, source_type, start, tag_definition_id } =
     input
+  const tz = input.tz ?? 'UTC'
 
-  // Breakdown mode for activity types
   if (
     source_type === 'activity_type' &&
     pattern &&
@@ -428,6 +364,7 @@ export const getChartData = async (
       start,
       end,
       bucket_size,
+      tz,
       aggregation,
     )
     return {
@@ -444,9 +381,9 @@ export const getChartData = async (
       // 'tag' is a backward-compat alias for activity_type count
       const typeId = activity_type_id ?? tag_definition_id
       if (typeId) {
-        buckets = await queryActivitiesByType(user, typeId, start, end, bucket_size)
+        buckets = await queryActivitiesByType(user, typeId, start, end, bucket_size, tz)
       } else if (pattern) {
-        buckets = await queryActivitiesByTypePattern(user, pattern, start, end, bucket_size)
+        buckets = await queryActivitiesByTypePattern(user, pattern, start, end, bucket_size, tz)
       } else {
         buckets = []
       }
@@ -454,16 +391,18 @@ export const getChartData = async (
     }
 
     case 'metric':
-      buckets = await queryMetricSource(user, pattern, start, end, bucket_size, aggregation)
+      buckets = await queryMetricSource(user, pattern, start, end, bucket_size, tz, aggregation)
       break
 
     case 'productivity_category':
-      buckets = pattern ? await queryProductivityCategoryBuckets(user, pattern, start, end, bucket_size) : []
+      buckets = pattern
+        ? await queryProductivityCategoryBuckets(user, pattern, start, end, bucket_size, tz)
+        : []
       break
 
     case 'activity_type':
       buckets = pattern
-        ? await queryActivityTypeBuckets(user, pattern, start, end, bucket_size, aggregation)
+        ? await queryActivityTypeBuckets(user, pattern, start, end, bucket_size, tz, aggregation)
         : []
       break
 

@@ -1,25 +1,13 @@
-/**
- * Dashboard configuration schemas for customizable widgets.
- */
-
 import { z } from 'zod'
 
 import { baseResponseSchema } from './common.ts'
+import { trendMissingDaysSchema } from './trends.ts'
 
-// =============================================================================
-// Widget Configuration Schemas
-// =============================================================================
-
-/**
- * Built-in metric names available for dashboard widgets.
- */
 export const builtinDashboardMetrics = [
-  // Baseline metrics
   'hrv_7day',
   'hrv_30day',
   'rhr_7day',
   'rhr_30day',
-  // Period summary metrics
   'sleep_score',
   'readiness_score',
   'resilience_score',
@@ -27,9 +15,7 @@ export const builtinDashboardMetrics = [
   'zone2_weekly',
   'weight',
   'body_fat',
-  // Contextual HRV metrics
   'hrv_sleep',
-  // Raw metrics
   'heart_rate',
   'hrv_rmssd',
   'resting_heart_rate',
@@ -41,7 +27,6 @@ export const builtinDashboardMetrics = [
   'distance',
   'floors_climbed',
   'cardiovascular_age',
-  // Garmin metrics
   'stress_level',
   'body_battery',
   'training_readiness',
@@ -52,18 +37,19 @@ export const builtinDashboardMetrics = [
 export type BuiltinDashboardMetric = (typeof builtinDashboardMetrics)[number]
 
 /**
- * Metric types available for metric widgets.
- * Accepts any non-empty string to support custom metrics.
+ * Days a metric card summarises. HR zone metrics come back from the period
+ * summary as one total for the whole window rather than a daily average, so
+ * `zone2_weekly` asks for exactly the week it shows.
  */
+export const metricCardLookbackDays = (metric: string): number => (metric === 'zone2_weekly' ? 7 : 30)
+
+/** Any non-empty string, so custom metrics work too. */
 export const dashboardMetricSchema = z.string().min(1).meta({
   description: 'Metric name (built-in or custom)',
 })
 
 export type DashboardMetric = z.infer<typeof dashboardMetricSchema>
 
-/**
- * Metric card widget - displays a single value with optional trend.
- */
 export const metricCardConfigSchema = z
   .object({
     metric: dashboardMetricSchema.meta({ description: 'The metric to display' }),
@@ -76,9 +62,6 @@ export const metricCardConfigSchema = z
 
 export type MetricCardConfig = z.infer<typeof metricCardConfigSchema>
 
-/**
- * Sparkline card widget - displays value with a small chart.
- */
 export const sparklineCardConfigSchema = z
   .object({
     color: z.string().optional().meta({ description: 'Chart line color (CSS color)' }),
@@ -95,9 +78,6 @@ export const sparklineCardConfigSchema = z
 
 export type SparklineCardConfig = z.infer<typeof sparklineCardConfigSchema>
 
-/**
- * Trend chart widget - displays EMA trend visualization.
- */
 export const trendChartConfigSchema = z
   .object({
     aggregation: z.enum(['count', 'sum', 'mean']).optional().meta({ description: 'Aggregation method' }),
@@ -105,19 +85,17 @@ export const trendChartConfigSchema = z
       .array(z.string())
       .optional()
       .meta({ description: 'Categorical data fields to break the series down by' }),
-    masked_breakdown_fields: z
-      .array(z.string())
-      .optional()
-      .meta({
-        description:
-          'Subset of breakdown_fields whose values are masked (shown as A, B, C…) to public viewers of a shared board',
-      }),
+    masked_breakdown_fields: z.array(z.string()).optional().meta({
+      description:
+        'Subset of breakdown_fields whose values are masked (shown as A, B, C…) to public viewers of a shared board',
+    }),
     display_period: z
       .enum(['daily', 'weekly', 'monthly'])
       .optional()
       .meta({ description: 'Display period for rate' }),
     half_life_days: z.number().int().positive().optional().meta({ description: 'EMA half-life in days' }),
     lookback_days: z.number().int().positive().optional().meta({ description: 'Days of data to analyze' }),
+    missing_days: trendMissingDaysSchema.optional(),
     pattern: z.string().min(1).meta({ description: 'Tag pattern (regex) or metric name' }),
     source_type: z.enum(['tag', 'metric', 'activity_type']).meta({ description: 'Data source type' }),
     tag_definition_id: z
@@ -129,9 +107,6 @@ export const trendChartConfigSchema = z
   })
   .meta({ id: 'TrendChartConfig' })
 
-/**
- * Bar chart widget - displays bucketed bar chart visualization.
- */
 export const barChartConfigSchema = z
   .object({
     aggregation: z.enum(['count', 'sum', 'mean']).optional().meta({ description: 'Aggregation method' }),
@@ -139,13 +114,10 @@ export const barChartConfigSchema = z
       .array(z.string())
       .optional()
       .meta({ description: 'Categorical data fields to break the series down by' }),
-    masked_breakdown_fields: z
-      .array(z.string())
-      .optional()
-      .meta({
-        description:
-          'Subset of breakdown_fields whose values are masked (shown as A, B, C…) to public viewers of a shared board',
-      }),
+    masked_breakdown_fields: z.array(z.string()).optional().meta({
+      description:
+        'Subset of breakdown_fields whose values are masked (shown as A, B, C…) to public viewers of a shared board',
+    }),
     bucket_size: z
       .enum(['1m', '5m', '15m', '1h', '1d', '1w', '1M'])
       .meta({ description: 'Time bucket size' }),
@@ -167,9 +139,6 @@ export type BarChartConfig = z.infer<typeof barChartConfigSchema>
 
 export type TrendChartConfig = z.infer<typeof trendChartConfigSchema>
 
-/**
- * Correlation widget - displays activity impact on HRV/HR.
- */
 export const correlationConfigSchema = z
   .object({
     activity: z.string().min(1).meta({ description: 'Activity or tag to analyze' }),
@@ -189,9 +158,6 @@ export const correlationConfigSchema = z
 
 export type CorrelationConfig = z.infer<typeof correlationConfigSchema>
 
-/**
- * Activity summary widget - displays workout/sleep/meditation stats.
- */
 export const activitySummaryConfigSchema = z
   .object({
     lookback_days: z
@@ -211,9 +177,6 @@ export const activitySummaryConfigSchema = z
 
 export type ActivitySummaryConfig = z.infer<typeof activitySummaryConfigSchema>
 
-/**
- * Quick link widget - navigation card to other pages.
- */
 export const quickLinkConfigSchema = z
   .object({
     href: z.string().min(1).meta({ description: 'Target URL path' }),
@@ -227,9 +190,6 @@ export const quickLinkConfigSchema = z
 
 export type QuickLinkConfig = z.infer<typeof quickLinkConfigSchema>
 
-/**
- * HR Zones widget - displays heart rate zone progress bars.
- */
 export const hrZonesConfigSchema = z
   .object({
     lookback_days: z
@@ -244,9 +204,6 @@ export const hrZonesConfigSchema = z
 
 export type HrZonesConfig = z.infer<typeof hrZonesConfigSchema>
 
-/**
- * Goal progress widget - displays progress bars for user goals.
- */
 export const goalProgressConfigSchema = z
   .object({
     compact: z.boolean().optional().meta({ description: 'Hide losing-tomorrow info (default: false)' }),
@@ -255,13 +212,14 @@ export const goalProgressConfigSchema = z
 
 export type GoalProgressConfig = z.infer<typeof goalProgressConfigSchema>
 
-// =============================================================================
-// Widget Type Discriminated Union
-// =============================================================================
+export const lastSleepConfigSchema = z
+  .object({
+    title: z.string().optional().meta({ description: 'Widget title (default: "Last night")' }),
+  })
+  .meta({ id: 'LastSleepConfig' })
 
-/**
- * Widget types enum.
- */
+export type LastSleepConfig = z.infer<typeof lastSleepConfigSchema>
+
 export const widgetTypeSchema = z.enum([
   'metric_card',
   'sparkline_card',
@@ -272,13 +230,11 @@ export const widgetTypeSchema = z.enum([
   'quick_link',
   'hr_zones',
   'goal_progress',
+  'last_sleep',
 ])
 
 export type WidgetType = z.infer<typeof widgetTypeSchema>
 
-/**
- * Dashboard widget - discriminated union based on type.
- */
 export const dashboardWidgetSchema = z.discriminatedUnion('type', [
   z.object({
     config: metricCardConfigSchema,
@@ -325,27 +281,26 @@ export const dashboardWidgetSchema = z.discriminatedUnion('type', [
     id: z.string().min(1).meta({ description: 'Unique widget ID' }),
     type: z.literal('goal_progress'),
   }),
+  z.object({
+    config: lastSleepConfigSchema,
+    id: z.string().min(1).meta({ description: 'Unique widget ID' }),
+    type: z.literal('last_sleep'),
+  }),
 ])
 
 export type DashboardWidget = z.infer<typeof dashboardWidgetSchema>
 
-// =============================================================================
-// Section and Config Schemas
-// =============================================================================
-
-/**
- * Section types for organizing widgets.
- */
 export const sectionTypeSchema = z.enum(['metrics', 'charts', 'links'])
 
 export type SectionType = z.infer<typeof sectionTypeSchema>
 
-/**
- * Dashboard section - a group of widgets.
- */
 export const dashboardSectionSchema = z
   .object({
     collapsed: z.boolean().optional().meta({ description: 'Whether section is collapsed' }),
+    description: z
+      .string()
+      .optional()
+      .meta({ description: 'Optional intro text rendered above the section widgets' }),
     id: z.string().min(1).meta({ description: 'Unique section ID' }),
     title: z.string().min(1).meta({ description: 'Section title' }),
     type: sectionTypeSchema.meta({ description: 'Section type for layout' }),
@@ -355,11 +310,12 @@ export const dashboardSectionSchema = z
 
 export type DashboardSection = z.infer<typeof dashboardSectionSchema>
 
-/**
- * Dashboard configuration - the complete dashboard structure.
- */
 export const dashboardConfigSchema = z
   .object({
+    description: z.string().optional().meta({
+      description:
+        'Optional author-provided description (plain text). Feeds the shared-page meta description / link preview.',
+    }),
     sections: z.array(dashboardSectionSchema).meta({ description: 'Dashboard sections' }),
     version: z.literal(1).meta({ description: 'Config version for future migrations' }),
   })
@@ -367,13 +323,6 @@ export const dashboardConfigSchema = z
 
 export type DashboardConfig = z.infer<typeof dashboardConfigSchema>
 
-// =============================================================================
-// API Request/Response Schemas
-// =============================================================================
-
-/**
- * Dashboard response schema.
- */
 export const dashboardResponseSchema = baseResponseSchema
   .extend({
     dashboard: dashboardConfigSchema.meta({ description: 'Dashboard configuration' }),
@@ -382,20 +331,10 @@ export const dashboardResponseSchema = baseResponseSchema
 
 export type DashboardResponse = z.infer<typeof dashboardResponseSchema>
 
-/**
- * Update dashboard input schema.
- */
 export const updateDashboardInputSchema = dashboardConfigSchema.meta({ id: 'UpdateDashboardInput' })
 
 export type UpdateDashboardInput = z.infer<typeof updateDashboardInputSchema>
 
-// =============================================================================
-// Default Dashboard Configuration
-// =============================================================================
-
-/**
- * Default dashboard configuration matching current Dashboard page layout.
- */
 export const defaultDashboardConfig: DashboardConfig = {
   sections: [
     {
@@ -446,6 +385,7 @@ export const defaultDashboardConfig: DashboardConfig = {
       title: '30-Day Summary',
       type: 'metrics',
       widgets: [
+        { config: {}, id: 'last-sleep', type: 'last_sleep' },
         {
           config: { color: '#3b82f6', lookback_days: 30, metric: 'sleep_score' },
           id: 'sleep',

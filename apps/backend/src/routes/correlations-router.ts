@@ -1,10 +1,5 @@
 import type { RequestHandler } from 'express'
 
-/**
- * Correlations route group.
- *
- * Handles: /correlations/*
- */
 import {
   type ActivityImpactQuery,
   activityImpactQuerySchema,

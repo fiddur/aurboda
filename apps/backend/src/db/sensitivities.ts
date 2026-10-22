@@ -10,7 +10,7 @@
  * Soft pointers force application-layer cascade on food-item delete + merge;
  * see deleteFoodItem and mergeFoodItems in food-items.ts.
  */
-import { query } from './connection.ts'
+import { query, withUserTransaction } from './connection.ts'
 
 export interface SensitivityFlag {
   id: string
@@ -112,8 +112,6 @@ export const deleteSensitivityFlag = async (user: string, id: string): Promise<b
   return (result.rowCount ?? 0) > 0
 }
 
-// ── Junction ────────────────────────────────────────────────────────────────
-
 export interface FoodItemSensitivityRow {
   food_item_id: string
   sensitivity_flag_id: string
@@ -183,26 +181,19 @@ export const setFoodItemSensitivities = async (
   user: string,
   foodItemId: string,
   flagIds: string[],
-): Promise<void> => {
-  try {
-    await query(user, 'BEGIN')
-    await query(user, 'DELETE FROM food_item_sensitivities WHERE food_item_id = $1', [foodItemId])
+): Promise<void> =>
+  withUserTransaction(user, async (tx) => {
+    await query(tx, 'DELETE FROM food_item_sensitivities WHERE food_item_id = $1', [foodItemId])
     if (flagIds.length > 0) {
       const valuesSql = flagIds.map((_, i) => `($1, $${i + 2})`).join(', ')
       await query(
-        user,
+        tx,
         `INSERT INTO food_item_sensitivities (food_item_id, sensitivity_flag_id) VALUES ${valuesSql}`,
         [foodItemId, ...flagIds],
       )
     }
-    await query(user, 'COMMIT')
-  } catch (err) {
-    await query(user, 'ROLLBACK').catch(() => {})
-    throw err
-  }
-}
+  })
 
-/** Drop every junction row pointing at this food item. */
 export const deleteFoodItemSensitivities = async (user: string, foodItemId: string): Promise<void> => {
   await query(user, 'DELETE FROM food_item_sensitivities WHERE food_item_id = $1', [foodItemId])
 }
@@ -217,11 +208,10 @@ export const mergeFoodItemSensitivities = async (
   user: string,
   sourceId: string,
   targetId: string,
-): Promise<void> => {
-  try {
-    await query(user, 'BEGIN')
+): Promise<void> =>
+  withUserTransaction(user, async (tx) => {
     await query(
-      user,
+      tx,
       `INSERT INTO food_item_sensitivities (food_item_id, sensitivity_flag_id)
        SELECT $2, sensitivity_flag_id
          FROM food_item_sensitivities
@@ -229,10 +219,5 @@ export const mergeFoodItemSensitivities = async (
        ON CONFLICT (food_item_id, sensitivity_flag_id) DO NOTHING`,
       [sourceId, targetId],
     )
-    await query(user, 'DELETE FROM food_item_sensitivities WHERE food_item_id = $1', [sourceId])
-    await query(user, 'COMMIT')
-  } catch (err) {
-    await query(user, 'ROLLBACK').catch(() => {})
-    throw err
-  }
-}
+    await query(tx, 'DELETE FROM food_item_sensitivities WHERE food_item_id = $1', [sourceId])
+  })

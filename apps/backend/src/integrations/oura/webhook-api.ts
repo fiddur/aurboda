@@ -1,6 +1,4 @@
 /**
- * HTTP client for Oura webhook subscription management.
- *
  * Uses x-client-id / x-client-secret headers (app-level auth, not per-user OAuth).
  */
 

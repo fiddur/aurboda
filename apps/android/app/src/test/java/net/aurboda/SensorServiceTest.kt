@@ -14,15 +14,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Instant
 
-/**
- * Tests for SensorService data classes and serialization.
- * These tests verify the data structures used for BLE sensor data sync.
- */
 class SensorServiceTest {
-
-    // ========================================================================
-    // SensorServiceState Tests
-    // ========================================================================
 
     @Test
     fun `SensorServiceState has correct defaults`() {
@@ -145,10 +137,6 @@ class SensorServiceTest {
         assertEquals(3, state.pendingSamples)
     }
 
-    // ========================================================================
-    // LiveHeartRateSample Tests (Health Connect format)
-    // ========================================================================
-
     @Test
     fun `LiveHeartRateSample stores time and beatsPerMinute`() {
         val sample = LiveHeartRateSample(
@@ -218,10 +206,6 @@ class SensorServiceTest {
         assertTrue(json.contains("73"))
         assertTrue(json.contains("74"))
     }
-
-    // ========================================================================
-    // BleConnectionState Tests
-    // ========================================================================
 
     @Test
     fun `BleConnectionState Disconnected is singleton`() {

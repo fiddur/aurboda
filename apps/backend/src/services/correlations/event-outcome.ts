@@ -1,7 +1,4 @@
 /**
- * Event-outcome correlation with onset-collapsing and exposure/base-rate
- * correction (issue #792).
- *
  * Answers "does trigger X precede flare/event Y?" for presence-only outcomes
  * (e.g. back_pain, fissure_pain) where the outcome metric only has entries on
  * "bad" days. The naive approach — averaging the metric — is meaningless there.
@@ -20,7 +17,6 @@
 
 import { type ContingencyTable, riskRatio, significance2x2 } from './stats.ts'
 
-/** Result for a single lag window. */
 export interface LagExposureResult {
   /** Lag window label as supplied (e.g. "48h", "7d"). */
   lag: string
@@ -54,7 +50,6 @@ export interface LagExposureResult {
   chi_squared: number | null
   /** Two-sided p-value. */
   p_value: number
-  /** Which significance test produced the p-value. */
   test: 'chi_squared' | 'fisher'
 }
 

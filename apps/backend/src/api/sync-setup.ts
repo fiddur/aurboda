@@ -7,10 +7,12 @@
 import type { Express } from 'express'
 
 import type { GarminClient } from '../integrations/garmin/client.ts'
+import type { GravlClient } from '../integrations/gravl/client.ts'
 import type { ouraClient } from '../integrations/oura/client.ts'
 import type { CalorieQueue } from '../services/calorie-queue.ts'
 import type { CentralDb } from '../services/central-db.ts'
 import type { ActivityNotifier } from '../services/deduction-queue.ts'
+import type { SourceEnrichQueue } from '../services/source-enrich-queue.ts'
 import type { StravaQueue } from '../services/strava-queue.ts'
 import type { AnyMiddleware } from '../typed-router.ts'
 
@@ -26,10 +28,16 @@ import {
   reportSyncFailure,
   requeueOutboundSync,
   resetSyncState,
+  storeMediaPlays,
   upsertUserSettings,
 } from '../db/index.ts'
 import { processActivityWatchEvents } from '../integrations/activitywatch/sync.ts'
-import { syncAllGarminData } from '../integrations/garmin/sync.ts'
+import {
+  type DetailSyncedCallback,
+  syncAllGarminData,
+  type TrackWrittenCallback,
+} from '../integrations/garmin/sync.ts'
+import { getGravlSyncStates, resetGravlSyncState, syncGravlWorkouts } from '../integrations/gravl/sync.ts'
 import { syncAllCalendars } from '../integrations/ical/sync.ts'
 import { syncLastFmData } from '../integrations/lastfm/sync.ts'
 import { syncAllOuraData } from '../integrations/oura/sync.ts'
@@ -47,9 +55,13 @@ interface SyncSetupDeps {
   centralDb: CentralDb
   oura: OuraClient
   garmin: GarminClient
+  gravl: GravlClient
   stravaQueue: StravaQueue | null
   calorieQueue: CalorieQueue | null
+  sourceEnrichQueue: SourceEnrichQueue | null
   activityNotifier: ActivityNotifier
+  onActivityDetailSynced: DetailSyncedCallback
+  onTrackWritten: TrackWrittenCallback
 }
 
 export const mountSyncRouter = ({
@@ -58,11 +70,14 @@ export const mountSyncRouter = ({
   centralDb,
   oura,
   garmin,
+  gravl,
   stravaQueue,
   calorieQueue,
+  sourceEnrichQueue,
   activityNotifier,
+  onActivityDetailSynced,
+  onTrackWritten,
 }: SyncSetupDeps): void => {
-  // Transform SyncState to ProviderSyncStatus format (undefined -> null)
   const transformSyncStates = async (user: string, provider: string) => {
     const states = await getAllSyncStates(user, provider)
     return states.map((s) => ({
@@ -135,6 +150,7 @@ export const mountSyncRouter = ({
         resetRescueTimeSyncState: (user) => resetSyncState(user, 'rescuetime'),
         resetStravaSyncState,
         getStravaSyncStates,
+        storeMediaPlays,
         getStravaQueueStatus: stravaQueue ? () => stravaQueue.getStatus() : undefined,
         syncStrava: async (user, options) => {
           if (!stravaQueue) throw new Error('Strava integration not configured')
@@ -142,7 +158,11 @@ export const mountSyncRouter = ({
         },
         syncCalendars: (user, calendars) => syncAllCalendars(user, calendars),
         syncGarmin: async (user, options) => {
-          const results = await syncAllGarminData(user, garmin, options)
+          const results = await syncAllGarminData(user, garmin, {
+            ...options,
+            onDetailSynced: onActivityDetailSynced,
+            onTrackWritten,
+          })
           return results.map((r) => ({
             ...r,
             retry_after: r.retry_after?.toISOString(),
@@ -151,6 +171,12 @@ export const mountSyncRouter = ({
         syncLastFm: transformLastFmSyncResult,
         syncOura: transformOuraSyncResults,
         syncRescueTime: transformRescueTimeSyncResult,
+        syncGravl: (user, options) => syncGravlWorkouts(user, gravl, options),
+        getGravlSyncStates,
+        resetGravlSyncState,
+        onSourceArrivals: sourceEnrichQueue
+          ? (user, arrivals) => void sourceEnrichQueue.enqueue(user, arrivals)
+          : undefined,
         triggerCalorieComputation: (user: string, start: Date, end: Date) =>
           triggerCalorieComputation(user, start, end),
         enqueueCalorieComputation: calorieQueue?.enqueueComputation,

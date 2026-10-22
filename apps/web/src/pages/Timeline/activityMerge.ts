@@ -1,6 +1,4 @@
 /**
- * Activity merge logic: unifies duration activities with matching activity types.
- *
  * When a duration activity (e.g. "Holosync") overlaps >50% with a matching activity
  * (e.g. a meditation session from Oura), they are merged into one item instead
  * of showing as duplicates.
@@ -13,7 +11,6 @@ import type { ChartItem } from './types'
 import { toDisplayName } from '../../utils/displayName'
 import { resolveItemIcon } from '../../utils/emojiLookup'
 
-/** Maps an activity type to the activity_type values it should merge with. */
 export const ACTIVITY_TYPE_MERGE_MAP: Record<string, string[]> = {
   breathwork: ['meditation'],
   holosync: ['meditation', 'nap'],
@@ -33,7 +30,6 @@ export const EXCLUDED_ACTIVITY_SOURCES = new Set(['lastfm'])
  */
 export const EXCLUDED_ACTIVITY_TYPES = new Set(['screentime', 'location_visit'])
 
-/** Activity types that start with these prefixes are excluded from duration merging. */
 export const EXCLUDED_ACTIVITY_PREFIXES = ['computer:']
 
 /** Returns true if an activity (with end_time) should appear in the Activity lane. */
@@ -47,19 +43,13 @@ export const isDurationActivityLike = (activity: Activity): boolean => {
   return true
 }
 
-/**
- * Overlap in minutes between two intervals.
- */
 export const overlapMinutes = (aStart: Date, aEnd: Date, bStart: Date, bEnd: Date): number => {
   const start = Math.max(aStart.getTime(), bStart.getTime())
   const end = Math.min(aEnd.getTime(), bEnd.getTime())
   return Math.max(0, (end - start) / 60000)
 }
 
-/**
- * Try to merge a duration activity into an existing activity chart item.
- * Returns true if merged (the item is mutated in-place with an annotation).
- */
+/** Returns true if merged; the item is mutated in-place with an annotation. */
 export const tryMergeActivityIntoItem = (activity: Activity, items: ChartItem[]): boolean => {
   const actEnd = activity.end_time!
   const mergeableTypes = ACTIVITY_TYPE_MERGE_MAP[activity.activity_type]
@@ -72,7 +62,6 @@ export const tryMergeActivityIntoItem = (activity: Activity, items: ChartItem[])
     const overlap = overlapMinutes(activity.start_time, actEnd, item.start, item.end)
     const actDuration = (actEnd.getTime() - activity.start_time.getTime()) / 60000
     if (overlap > actDuration * 0.5) {
-      // Annotate the item tooltip with the merged activity name
       item.tooltip.details.push(`Also tagged: ${displayName}`)
       return true
     }
@@ -99,7 +88,6 @@ const formatDuration = (start: Date, end: Date): string => {
   return m > 0 ? `${h}h ${m}m` : `${h}h`
 }
 
-/** Duration activity colors — activities that appear in the Activity column */
 export const DURATION_ACTIVITY_COLORS: Record<string, string> = {
   breathwork: '#a855f7',
   holosync: '#8b5cf6',
@@ -112,10 +100,7 @@ export const DURATION_ACTIVITY_COLORS: Record<string, string> = {
 
 const DURATION_ACTIVITY_DEFAULT_COLOR = '#f59e0b'
 
-/**
- * Convert a duration activity into a ChartItem for the Activity column.
- * Also detects overlaps with existing items and records warnings.
- */
+/** Also records overlaps with existing items into `overlaps`. */
 export const createDurationActivityItem = (
   activity: Activity,
   existingItems: ChartItem[],
@@ -131,7 +116,6 @@ export const createDurationActivityItem = (
     itemIcons[displayName] ??
     itemIcons[displayName.toLowerCase()]
 
-  // Detect overlaps with existing activity items
   let overlapWarning: string | undefined
   for (const item of existingItems) {
     if (item.isPoint) continue
@@ -174,7 +158,6 @@ type ActivityMeta = {
   actType: string
 }
 
-/** Default colors and labels for built-in activity types. */
 const BUILTIN_DEFAULTS: Record<string, { color: string; label: string }> = {
   meditation: { color: '#a855f7', label: 'Meditation' },
   nap: { color: '#60a5fa', label: 'Nap' },
@@ -182,7 +165,7 @@ const BUILTIN_DEFAULTS: Record<string, { color: string; label: string }> = {
   sleep: { color: '#3b82f6', label: 'Sleep' },
 }
 
-/** Extract label, color, and activity type from an Activity. Returns null for unknown types. */
+/** Returns null for unknown activity types. */
 const getActivityMeta = (
   a: Activity,
   activityColors: Record<string, string>,
@@ -193,12 +176,10 @@ const getActivityMeta = (
   const type = a.activity_type
   if (!type) return null
 
-  // Exercise has special label/color logic
   if (type === 'exercise') {
     return { actType: 'exercise', color: exerciseColor(a), label: getExerciseTypeName(a) }
   }
 
-  // Built-in non-exercise types
   const builtin = BUILTIN_DEFAULTS[type]
   if (builtin) {
     return {
@@ -208,13 +189,11 @@ const getActivityMeta = (
     }
   }
 
-  // Custom activity type — look up definition for display metadata
   const def = typeDefinitions?.get(type)
   if (!def) return null
   return { actType: type, color: activityColors[type] ?? def.color, label: a.title || def.display_name }
 }
 
-/** Build tooltip details for an activity item. */
 const buildActivityDetails = (
   a: Activity,
   end: Date,
@@ -226,9 +205,8 @@ const buildActivityDetails = (
       ? buildSleepDetails(a, end)
       : [formatDuration(a.start_time, end), ...(a.avg_hrv ? [`Avg HRV: ${a.avg_hrv} ms`] : [])]
 
-  // User-typed comments (source-less) used to live on activity.notes — they
-  // now arrive in `comments`. Synced comments (HC, Oura) are deliberately
-  // skipped here to keep tooltip text user-driven.
+  // Synced comments (HC, Oura) are deliberately skipped to keep tooltip text
+  // user-driven.
   if (a.comments) {
     for (const c of a.comments) {
       if (!c.source) details.push(c.content)
@@ -245,26 +223,14 @@ const buildActivityDetails = (
     if (music.length > 0) details.push(`♪ ${music.slice(0, 3).join(', ')}`)
   }
 
-  // Hierarchy-collapsed bars (#657): surface the constituent sub-types so
-  // a single "exercise" bar reveals it was actually running + strength + yoga.
+  // Hierarchy-collapsed bars: surface the constituent sub-types so a single
+  // "exercise" bar reveals it was actually running + strength + yoga.
   const mergedLine = formatCollapsedTypesLine(a.collapsed_types)
   if (mergedLine) details.push(mergedLine)
 
   return details
 }
 
-/**
- * Build the unified Activity column items from activities + non-builtin activities.
- * Activities are first; then duration activities are either merged into matching
- * activities (same event, dual source) or added as separate items.
- *
- * Returns the items list and any overlap warnings for display in UI.
- */
-/**
- * Resolve the icon key for an activity based on its type.
- * - For exercise: "exercise:{TypeName}" (e.g. "exercise:Running")
- * - For other activity types: "activity:{type}" (e.g. "activity:sleep")
- */
 const getActivityIconKey = (a: Activity, getExerciseTypeName: (a: Activity) => string): string => {
   if (a.activity_type === 'exercise') {
     return `exercise:${getExerciseTypeName(a)}`
@@ -272,21 +238,15 @@ const getActivityIconKey = (a: Activity, getExerciseTypeName: (a: Activity) => s
   return `activity:${a.activity_type}`
 }
 
-// ============================================================================
-// Zoom-aware merging: bridge small gaps between same-key activities, and
-// optionally collapse sibling sub-types into their parent_type when zoomed
-// out far enough that sub-type detail is noise.
-// ============================================================================
-
-/** Default gap below which two adjacent same-parent activities merge. */
-export const COLLAPSE_MERGE_GAP_MS = 30 * 60 * 1000 // 30 minutes
+export const COLLAPSE_MERGE_GAP_MS = 30 * 60 * 1000
 
 /**
  * Format a `collapsed_types` provenance list as a tooltip line. Used by both
  * the Activity-lane (`buildActivityDetails`) and Screen-Time-lane
  * (`categorizeScreentimeActivities`) tooltip builders. Returns undefined when
  * there's nothing to show — a single-entry provenance is still informative
- * (the parent bar is one sub-type only) so we keep that case.
+ * (the parent bar is one sub-type only) so we keep that case. Callers that
+ * cannot use a self-restating entry filter it with `restatesOwnType` first.
  */
 export const formatCollapsedTypesLine = (
   collapsedTypes: { type: string; count: number }[] | undefined,
@@ -298,6 +258,22 @@ export const formatCollapsedTypesLine = (
   })
   return `Merged: ${labels.join(', ')}`
 }
+
+/**
+ * True when a provenance list adds nothing to the bar's own type: a lone entry
+ * naming it, whatever the count.
+ *
+ * The Activity lane deliberately keeps those — "Merged: Yoga ×2" is the only
+ * signal that a bar holds two sessions and that clicking reaches just the first.
+ * The Screen Time lane must not: a top-level category's derived type has no
+ * `parent_type`, so it is never retyped, and a merged run would read
+ * "Merged: Programming ×47" where the count is raw sampling spans rather than
+ * sessions, and the bar links to its category rather than to a member.
+ */
+export const restatesOwnType = (
+  collapsedTypes: { type: string; count: number }[] | undefined,
+  activityType: string,
+): boolean => collapsedTypes?.length === 1 && collapsedTypes[0].type === activityType
 
 /**
  * Look up the immediate parent_type of a type — the "collapse target" we
@@ -435,7 +411,7 @@ const recordCollapsedType = (
  *
  * The synthetic survivor of a multi-child collapse carries `collapsed_types`
  * with the original child types and counts (deduped, ordered by first
- * appearance) — used by the tooltip enrichment in #657.
+ * appearance) — used by the tooltip enrichment.
  */
 // eslint-disable-next-line complexity -- single-pass merge with provenance accumulation; splitting hurts readability
 export const collapseToParentType = (
@@ -446,8 +422,6 @@ export const collapseToParentType = (
 ): Activity[] => {
   if (activities.length === 0) return activities
 
-  // Retype each activity to its target effective type, remembering the
-  // original sub-type for provenance.
   const retyped = activities.map((a) => {
     const effective =
       depth > 0 ? collapseTargetAtDepth(a.activity_type, typeDefsByName, depth) : a.activity_type
@@ -457,8 +431,6 @@ export const collapseToParentType = (
     return { ...a, activity_type: effective, collapsed_types: [{ type: a.activity_type, count: 1 }] }
   })
 
-  // Merge adjacent same-effective-type spans, accumulating provenance from
-  // any participants that already carried one.
   if (retyped.length === 0) return retyped
   const sorted = [...retyped].sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
   const merged: Activity[] = []
@@ -482,17 +454,13 @@ export const collapseToParentType = (
     }
     merged.push({ ...current })
   }
-  // Drop trivial provenance: a survivor whose only entry matches its own
-  // type carries no useful merge signal (single sub-type wasn't mixed).
-  for (const m of merged) {
-    if (
-      m.collapsed_types &&
-      m.collapsed_types.length === 1 &&
-      m.collapsed_types[0].type === m.activity_type
-    ) {
-      delete m.collapsed_types
-    }
-  }
+  // No trivial-provenance cleanup is needed: a survivor can only carry
+  // `collapsed_types` from the retype above (where the recorded type differs
+  // from the survivor's by construction) or from the merge accumulation (which
+  // always lands on a total count ≥ 2). Either way there is something worth
+  // showing — "Merged: Running" for a collapsed sub-type, "Merged: Yoga ×2" for
+  // two folded sessions, the latter being the only clue that a bar hides more
+  // than one activity and that clicking reaches just the first.
   return merged
 }
 
@@ -529,7 +497,6 @@ export const buildActivityColumnItems = (
   const items: ChartItem[] = []
   const overlaps: OverlapWarning[] = []
 
-  // 1. Convert activities to ChartItems
   for (const a of activities) {
     const meta = getActivityMeta(a, activityColors, exerciseColor, getExerciseTypeName, typeDefinitions)
     if (!meta) continue
@@ -537,7 +504,6 @@ export const buildActivityColumnItems = (
     const end = a.end_time ?? new Date(a.start_time.getTime() + 60 * 60000)
     const details = buildActivityDetails(a, end, buildSleepDetails, scrobbles)
 
-    // Resolve icon from user overrides, defaults, or type definition.
     // For migrated exercise types (e.g., activity_type='yoga' was previously 'exercise'
     // with exerciseType=yoga), also check the legacy "exercise:{TypeName}" icon key.
     const iconKey = getActivityIconKey(a, getExerciseTypeName)
@@ -566,7 +532,6 @@ export const buildActivityColumnItems = (
     })
   }
 
-  // 2. Handle secondary activities (non-main categories like custom types)
   const durationActivities = secondaryActivities.filter(isDurationActivityLike)
 
   for (const act of durationActivities) {

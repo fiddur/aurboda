@@ -1,11 +1,3 @@
-/**
- * Integration tests for per-user overrides on central shared_food_items.
- *
- * Verifies set/get/clear semantics against a real PostgreSQL — including
- * batch lookup (which the food-items service uses to merge overrides into
- * search results in one round-trip) and explicit-null icon (user wants no
- * icon, distinct from "no override applied").
- */
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'

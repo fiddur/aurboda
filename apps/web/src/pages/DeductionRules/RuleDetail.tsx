@@ -1,5 +1,6 @@
+import type { DeductionRuleMode } from '@aurboda/api-spec'
+
 /**
- * Deduction Rule detail/edit page.
  * Handles both editing existing rules and creating new ones (/deduction-rules/new).
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -21,11 +22,16 @@ import {
   updateDeductionRule,
 } from '../../state/api'
 import { auth } from '../../state/auth'
+import {
+  defaultFields,
+  fieldsToBuildBody,
+  modeChangeBody,
+  type RuleFormFields,
+  ruleToFields,
+  toOutputMediaField,
+  toOutputTitleField,
+} from './ruleForm'
 import './style.css'
-
-// ============================================================================
-// Field components
-// ============================================================================
 
 function TextField({
   label,
@@ -57,10 +63,18 @@ function TextField({
   )
 }
 
-function OutputActivityTypePicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function OutputActivityTypePicker({
+  label,
+  value,
+  onChange,
+}: {
+  label: string
+  value: string
+  onChange: (v: string) => void
+}) {
   return (
     <div class="rule-field">
-      <span class="rule-field-label">Output Activity Type</span>
+      <span class="rule-field-label">{label}</span>
       <ActivityTypePicker value={value} onChange={onChange} placeholder="Search activity types..." />
     </div>
   )
@@ -130,58 +144,6 @@ function OutputDataEditor({
   )
 }
 
-// ============================================================================
-// Unified rule form
-// ============================================================================
-
-interface RuleFormFields {
-  conditions: DeductionRuleCondition[]
-  enabled: boolean
-  mergeGapMinutes: string
-  mode: 'create' | 'enrich'
-  name: string
-  outputData: Record<string, unknown>
-  outputTitle: string
-  outputType: string
-  priority: number
-}
-
-const defaultFields: RuleFormFields = {
-  conditions: [{ kind: 'activity' }],
-  enabled: true,
-  mergeGapMinutes: '',
-  mode: 'create',
-  name: '',
-  outputData: {},
-  outputTitle: '',
-  outputType: '',
-  priority: 1,
-}
-
-const ruleToFields = (rule: DeductionRule): RuleFormFields => ({
-  conditions: rule.conditions,
-  enabled: rule.enabled,
-  mergeGapMinutes: rule.merge_gap_seconds ? String(rule.merge_gap_seconds / 60) : '',
-  mode: rule.mode ?? 'create',
-  name: rule.name,
-  outputData: rule.output_data ?? {},
-  outputTitle: rule.output_title ?? '',
-  outputType: rule.output_activity_type,
-  priority: rule.priority,
-})
-
-const fieldsToBuildBody = (f: RuleFormFields) => ({
-  conditions: f.conditions,
-  enabled: f.enabled,
-  merge_gap_seconds: f.mergeGapMinutes ? Number(f.mergeGapMinutes) * 60 : undefined,
-  mode: f.mode !== 'create' ? f.mode : undefined,
-  name: f.name,
-  output_activity_type: f.outputType,
-  output_data: Object.keys(f.outputData).length > 0 ? f.outputData : undefined,
-  output_title: f.outputTitle || undefined,
-  priority: f.priority,
-})
-
 // eslint-disable-next-line complexity -- unified form handling create + edit modes
 function RuleForm({ id, rule }: { id?: string; rule?: DeductionRule }) {
   const isNew = !rule
@@ -207,8 +169,6 @@ function RuleForm({ id, rule }: { id?: string; rule?: DeductionRule }) {
       prevRule.current = rule
     }
   }, [rule])
-
-  // ── Mutations ──
 
   const updateMutation = useMutation({
     mutationFn: (body: Parameters<typeof updateDeductionRule>[1]) => updateDeductionRule(id!, body),
@@ -241,8 +201,6 @@ function RuleForm({ id, rule }: { id?: string; rule?: DeductionRule }) {
     onSuccess: (result) => setPreviewResult(result),
   })
 
-  // ── Field helpers ──
-
   const autoSave = useCallback(
     (body: Parameters<typeof updateDeductionRule>[1]) => {
       if (!isNew) updateMutation.mutate(body)
@@ -264,9 +222,21 @@ function RuleForm({ id, rule }: { id?: string; rule?: DeductionRule }) {
     setConditionsDirty(false)
   }, [fields.conditions, autoSave])
 
-  const canSubmit = Boolean(fields.name && fields.outputType)
+  const saveMediaField = () => {
+    if (isNew) return
+    const next = toOutputMediaField(fields) ?? null
+    if (JSON.stringify(next) !== JSON.stringify(rule?.output_media_field ?? null)) {
+      autoSave({ output_media_field: next })
+    }
+  }
 
-  // ── Render ──
+  const saveTitleField = () => {
+    if (isNew) return
+    const next = toOutputTitleField(fields) ?? null
+    if (next !== (rule?.output_title_field ?? null)) autoSave({ output_title_field: next })
+  }
+
+  const canSubmit = Boolean(fields.name && fields.outputType)
 
   return (
     <div class="data-sources-page">
@@ -297,18 +267,28 @@ function RuleForm({ id, rule }: { id?: string; rule?: DeductionRule }) {
             <select
               value={fields.mode}
               onChange={(e) => {
-                const v = (e.target as HTMLSelectElement).value as 'create' | 'enrich'
+                const v = (e.target as HTMLSelectElement).value as DeductionRuleMode
                 updateField('mode', v)
-                autoSave({ mode: v })
+                autoSave(modeChangeBody(v, rule))
               }}
               class="rule-field-select"
             >
               <option value="create">Create new activities</option>
               <option value="enrich">Enrich existing activities</option>
+              <option value="retype">Change type of matching activities</option>
             </select>
           </div>
 
+          {fields.mode === 'retype' && (
+            <p class="rule-field-hint">
+              Needs exactly one Activity condition: the activities it matches (where the other conditions also
+              hold) change to the new type. Output Title, if set, replaces their title; Output Data only fills
+              missing fields. Deleting the rule does not change them back.
+            </p>
+          )}
+
           <OutputActivityTypePicker
+            label={fields.mode === 'retype' ? 'New Activity Type' : 'Output Activity Type'}
             value={fields.outputType}
             onChange={(v) => {
               updateField('outputType', v)
@@ -323,6 +303,36 @@ function RuleForm({ id, rule }: { id?: string; rule?: DeductionRule }) {
               autoSave({ output_data: Object.keys(data).length > 0 ? data : null })
             }}
           />
+
+          {fields.mode === 'enrich' && (
+            <>
+              <TextField
+                label="Copy play title into field"
+                value={fields.mediaField}
+                onChange={(v) => updateField('mediaField', v)}
+                onBlur={saveMediaField}
+                placeholder="e.g. session_name (needs a Media play condition)"
+              />
+              <TextField
+                label="Strip from title (regex)"
+                value={fields.mediaStripPattern}
+                onChange={(v) => updateField('mediaStripPattern', v)}
+                onBlur={saveMediaField}
+                placeholder="e.g. \s*—\s*True Naked Yoga$"
+              />
+              <TextField
+                label="Copy data field into title"
+                value={fields.titleField}
+                onChange={(v) => updateField('titleField', v)}
+                onBlur={saveTitleField}
+                placeholder="e.g. session_name"
+              />
+              <p class="rule-field-hint">
+                Replaces a blank title, the type name, or a title this rule wrote; a title typed by hand is
+                kept.
+              </p>
+            </>
+          )}
 
           <TextField
             label="Output Title"
@@ -427,7 +437,7 @@ function RuleForm({ id, rule }: { id?: string; rule?: DeductionRule }) {
           <>
             <section class="rule-section">
               <a
-                href={`/data?date=${formatISO(new Date(), { representation: 'date' })}&types=${encodeURIComponent(fields.outputType)}&deduction_rule_id=${id}&hide=location,music,meal,report,screentime`}
+                href={`/data?date=${formatISO(new Date(), { representation: 'date' })}&types=${encodeURIComponent(fields.outputType)}&deduction_rule_id=${id}&hide=location,media,meal,report,screentime`}
                 class="note-action-btn"
                 style={{ display: 'inline-block', textAlign: 'center', textDecoration: 'none' }}
               >
@@ -450,10 +460,6 @@ function RuleForm({ id, rule }: { id?: string; rule?: DeductionRule }) {
     </div>
   )
 }
-
-// ============================================================================
-// Main export — fetches data for edit, dispatches to RuleForm
-// ============================================================================
 
 function EditRuleLoader({ id }: { id: string }) {
   const { data: rule, isLoading } = useQuery({

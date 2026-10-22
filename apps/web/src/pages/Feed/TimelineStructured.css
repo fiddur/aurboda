@@ -1,0 +1,32 @@
+.timeline-structured {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+/* The flex gap spaces the blocks; default <p> margins would double it and make
+   the title spacing differ from the FeedPostCard fallback body. */
+.timeline-structured p {
+  margin: 0;
+}
+
+/* The card's flex gap already spaces the map from the chart. */
+.timeline-structured .activity-map-container {
+  margin-top: 0;
+}
+
+.timeline-chart {
+  margin: 0;
+  padding: 0.5rem 0.25rem 0.25rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+}
+
+@media (prefers-color-scheme: dark) {
+  .timeline-chart {
+    border-color: #374151;
+    background: #111827;
+  }
+}

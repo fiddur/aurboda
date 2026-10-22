@@ -1,18 +1,17 @@
 import type {
   ContinuousCorrelationData,
   CorrelationSelector,
-  CorrelationSelectorsData,
   EventOutcome,
   GenericCorrelationData,
   GroupComparison,
   LagExposureResultData,
-  NutrientKey,
   TriggerCondition,
 } from '@aurboda/api-spec'
 
 import { signal } from '@preact/signals'
 import { useQuery } from '@tanstack/react-query'
 
+import { SelectorPicker } from '../../components/SelectorPicker'
 import {
   fetchContinuousCorrelation,
   fetchCorrelationSelectors,
@@ -30,7 +29,6 @@ import {
 
 type Mode = 'event' | 'continuous'
 
-// --- Form state (module signals, mirroring the rest of this page) ---
 const mode = signal<Mode>('event')
 const triggerSelector = signal<CorrelationSelector>({ kind: 'activity', pattern: '' })
 const outcomeSelector = signal<CorrelationSelector>({ kind: 'metric', metric: '' })
@@ -49,8 +47,6 @@ const periodDays = signal(365)
 // Bumped on each Run to trigger the query.
 const runToken = signal(0)
 
-const NUTRIENTS: NutrientKey[] = ['calories', 'protein', 'carbs', 'fat', 'fiber']
-
 // Trigger kinds offered in the picker (event mode has no metric trigger). The
 // legacy 'tag' kind is intentionally omitted — tags were merged into activities,
 // so 'activity' already matches them (and its picker autocompletes every
@@ -64,13 +60,6 @@ const EVENT_TRIGGER_KINDS: CorrelationSelector['kind'][] = [
 
 // Every selector kind (continuous mode allows a metric on either side).
 const ALL_SELECTOR_KINDS: CorrelationSelector['kind'][] = ['metric', ...EVENT_TRIGGER_KINDS]
-
-/** Human labels for selector kinds (the raw kind is opaque in a dropdown). */
-const KIND_LABELS: Partial<Record<CorrelationSelector['kind'], string>> = {
-  activity: 'activity / tag',
-  productivity_app: 'productivity app',
-  productivity_category: 'productivity category',
-}
 
 /** Switch mode, clamping the trigger to a kind valid in the new mode. */
 const setMode = (next: Mode) => {
@@ -142,7 +131,6 @@ const PRESETS: { label: string; apply: () => void }[] = [
   { apply: () => applyEventPreset('sauna'), label: 'Sauna → back-pain onset (Event)' },
 ]
 
-/** Build the request body for whichever mode is active. */
 const buildRequest = () => {
   if (mode.value === 'event') {
     const trigger = triggerSelector.value
@@ -164,102 +152,6 @@ const buildRequest = () => {
   return null
 }
 
-// --- Selector picker (kind + value) ---
-function SelectorPicker({
-  value,
-  onChange,
-  selectors,
-  allowedKinds,
-}: {
-  value: CorrelationSelector
-  onChange: (s: CorrelationSelector) => void
-  selectors: CorrelationSelectorsData | undefined
-  allowedKinds: CorrelationSelector['kind'][]
-}) {
-  const setKind = (kind: CorrelationSelector['kind']) => {
-    switch (kind) {
-      case 'metric':
-        return onChange({ kind: 'metric', metric: '' })
-      case 'nutrition':
-        return onChange({ kind: 'nutrition', nutrient: 'carbs' })
-      case 'activity':
-        return onChange({ kind: 'activity', pattern: '' })
-      case 'productivity_category':
-      case 'productivity_app':
-        return onChange({ kind, pattern: '' })
-      default:
-        return onChange({ kind: 'activity', pattern: '' })
-    }
-  }
-
-  return (
-    <div class="selector-picker">
-      <select
-        value={value.kind}
-        onChange={(e) => setKind((e.target as HTMLSelectElement).value as CorrelationSelector['kind'])}
-      >
-        {allowedKinds.map((k) => (
-          <option value={k}>{KIND_LABELS[k] ?? k}</option>
-        ))}
-      </select>
-
-      {value.kind === 'metric' && (
-        <>
-          <input
-            list="metric-options"
-            placeholder="metric (e.g. sleep_score)"
-            value={value.metric}
-            onInput={(e) => onChange({ ...value, metric: (e.target as HTMLInputElement).value })}
-          />
-          <datalist id="metric-options">
-            {selectors?.metrics.map((m) => (
-              <option value={m.value}>{m.label}</option>
-            ))}
-          </datalist>
-        </>
-      )}
-
-      {value.kind === 'nutrition' && (
-        <select
-          value={value.nutrient}
-          onChange={(e) =>
-            onChange({ kind: 'nutrition', nutrient: (e.target as HTMLSelectElement).value as NutrientKey })
-          }
-        >
-          {NUTRIENTS.map((n) => (
-            <option value={n}>{n}</option>
-          ))}
-        </select>
-      )}
-
-      {(value.kind === 'tag' ||
-        value.kind === 'activity' ||
-        value.kind === 'productivity_category' ||
-        value.kind === 'productivity_app') && (
-        <>
-          <input
-            list={`pattern-options-${value.kind}`}
-            placeholder="pattern (regex)"
-            value={value.pattern}
-            onInput={(e) => onChange({ ...value, pattern: (e.target as HTMLInputElement).value })}
-          />
-          <datalist id={`pattern-options-${value.kind}`}>
-            {(value.kind === 'productivity_category'
-              ? selectors?.productivity_categories
-              : value.kind === 'tag'
-                ? selectors?.tags
-                : selectors?.activity_types
-            )?.map((o) => (
-              <option value={o.value}>{o.label}</option>
-            ))}
-          </datalist>
-        </>
-      )}
-    </div>
-  )
-}
-
-// --- Results: per-lag relative-risk bars with 95% CI whiskers ---
 function RrBars({ perLag }: { perLag: LagExposureResultData[] }) {
   const items = perLag.filter((l) => l.relative_risk !== null)
   if (items.length === 0) return null
@@ -299,7 +191,6 @@ function RrBars({ perLag }: { perLag: LagExposureResultData[] }) {
   )
 }
 
-// --- Results: event-outcome table ---
 function EventOutcomeResults({ data }: { data: GenericCorrelationData }) {
   const eo = data.event_outcome
   if (!eo) return <p class="explore-empty">No event-outcome result.</p>
@@ -358,7 +249,6 @@ function EventOutcomeResults({ data }: { data: GenericCorrelationData }) {
   )
 }
 
-// --- Results: present-vs-absent group comparison for a binary trigger ---
 function GroupComparisonPanel({ gc }: { gc: GroupComparison }) {
   const better =
     gc.difference === null ? '' : gc.difference > 0 ? 'higher when present' : 'lower when present'
@@ -386,7 +276,6 @@ const CHART_W = 340
 const CHART_H = 240
 const CHART_PAD = { bottom: 38, left: 46, right: 12, top: 14 }
 
-/** Rotated y-axis label + horizontal x-axis label for a chart. */
 function AxisLabels({ x, y }: { x: string; y: string }) {
   const midX = (CHART_PAD.left + (CHART_W - CHART_PAD.right)) / 2
   const midY = (CHART_PAD.top + (CHART_H - CHART_PAD.bottom)) / 2
@@ -402,7 +291,6 @@ function AxisLabels({ x, y }: { x: string; y: string }) {
   )
 }
 
-// --- Results: continuous scatter with regression line + annotation ---
 function ScatterPlot({ data }: { data: ContinuousCorrelationData }) {
   const points = data.series
   const xs = points.map((p) => p.trigger)
@@ -456,7 +344,6 @@ function ScatterPlot({ data }: { data: ContinuousCorrelationData }) {
   )
 }
 
-// --- Results: present-vs-absent box plot for a binary trigger ---
 function BoxPlot({ data }: { data: ContinuousCorrelationData }) {
   const withVals = data.series.filter((p) => p.trigger > 0).map((p) => p.outcome)
   const withoutVals = data.series.filter((p) => p.trigger === 0).map((p) => p.outcome)
@@ -526,7 +413,6 @@ function BoxPlot({ data }: { data: ContinuousCorrelationData }) {
   )
 }
 
-// --- Results: continuous mode (scatter or box plot, with verdicts) ---
 function ContinuousResults({ data }: { data: ContinuousCorrelationData }) {
   const gc = data.group_comparison
   // A Pearson r on a binary/presence trigger is misleading, so when the trigger

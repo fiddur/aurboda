@@ -1,17 +1,33 @@
-import type { DeductionEngineDeps, EvaluationWindow, TimeRange } from './deduction-engine.ts'
+import type { ActivityCondition } from '@aurboda/api-spec'
+
+import type {
+  DeductionEngineDeps,
+  EnrichOptions,
+  EvaluationWindow,
+  MatchedActivity,
+  RetypeChange,
+  TimeRange,
+} from './deduction-engine.ts'
 import type { ActivityNotifier } from './deduction-queue.ts'
 
 import { query } from '../db/connection.ts'
-/**
- * Default dependencies for the deduction engine, wired to real DB functions.
- */
 import {
   deleteStaleRuleActivities,
   expandActivityTypes,
-  insertActivity as dbInsertActivity,
+  getActivityById,
+  getActivityTypeDefinition,
+  getMediaPlays,
   insertDeductionRuleRun,
+  upsertActivity,
 } from '../db/index.ts'
+import { auditWarn } from './audit-log.ts'
+import { computeEnrichPatch } from './deduction-engine.ts'
+import { activityTypeTitleNames, ruleTitleChange } from './deduction-title.ts'
 import { getPlaceVisits } from './locations.ts'
+import { updateActivity } from './mutations.ts'
+import { categoryPathMatchSql } from './screentime-sql.ts'
+
+const DEFAULT_SPAN_MS = 60 * 60 * 1000
 
 const getActivities = async (
   user: string,
@@ -30,7 +46,7 @@ const getActivities = async (
     [types, window.start, window.end],
   )
   return result.rows.map((r) => ({
-    end: (r.end_time as Date) ?? new Date((r.start_time as Date).getTime() + 60 * 60 * 1000),
+    end: (r.end_time as Date) ?? new Date((r.start_time as Date).getTime() + DEFAULT_SPAN_MS),
     start: r.start_time as Date,
   }))
 }
@@ -50,16 +66,12 @@ const getScreentime = async (
   const result = await query(
     user,
     `SELECT start_time, end_time FROM activities
-     WHERE activity_type = 'screentime'
-       AND deleted_at IS NULL
+     WHERE deleted_at IS NULL
        AND superseded_by IS NULL
        AND end_time IS NOT NULL
        AND start_time < $3
        AND end_time > $2
-       AND (
-         data->>'category_path' = $1
-         OR starts_with(data->>'category_path', $1 || ' > ')
-       )
+       AND ${categoryPathMatchSql(1)}
      ORDER BY start_time`,
     [categoryPath, window.start, window.end],
   )
@@ -115,22 +127,30 @@ const getActivitiesWithData = async (
     params,
   )
   return result.rows.map((r) => ({
-    end: (r.end_time as Date) ?? new Date((r.start_time as Date).getTime() + 60 * 60 * 1000),
+    end: (r.end_time as Date) ?? new Date((r.start_time as Date).getTime() + DEFAULT_SPAN_MS),
     start: r.start_time as Date,
   }))
 }
 
-const getActivitiesWithDataFilters = async (
+const escapeLike = (s: string) => s.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_')
+
+/**
+ * Activities matching an `activity` condition (type incl. descendants, data filters, title).
+ * With `retypeTo`, only rows a retype may change: not already of that type, not produced by
+ * a rule, and not superseded or overridden — so an overridden synced row is reached through
+ * its override, which is itself a candidate.
+ */
+const findActivities = async (
   user: string,
-  activityType: string,
-  filters: Array<{ field: string; operator: string; value?: string | number | boolean }>,
+  condition: ActivityCondition,
   window: EvaluationWindow,
-): Promise<TimeRange[]> => {
-  const types = await expandActivityTypes(user, [activityType])
+  retypeTo?: string,
+): Promise<MatchedActivity[]> => {
+  const types = await expandActivityTypes(user, [condition.activity_type])
   const params: unknown[] = [types, window.start, window.end]
   const whereClauses: string[] = []
 
-  for (const filter of filters) {
+  for (const filter of condition.data_filters ?? []) {
     if (!/^[a-z][a-z0-9_]*$/.test(filter.field)) return []
 
     switch (filter.operator) {
@@ -153,9 +173,28 @@ const getActivitiesWithDataFilters = async (
     }
   }
 
+  const title = condition.title?.trim().toLowerCase()
+  if (title) {
+    if (condition.match_mode === 'exact') {
+      params.push(title)
+      whereClauses.push(`AND LOWER(TRIM(title)) = $${params.length}`)
+    } else {
+      params.push(`%${escapeLike(title)}%`)
+      whereClauses.push(`AND LOWER(title) LIKE $${params.length}`)
+    }
+  }
+
+  if (retypeTo) {
+    params.push(retypeTo)
+    whereClauses.push(`AND activity_type != $${params.length}
+       AND source != 'deduction-rule'
+       AND superseded_by IS NULL
+       AND NOT EXISTS (SELECT 1 FROM activity_override_targets t WHERE t.target_id = activities.id)`)
+  }
+
   const result = await query(
     user,
-    `SELECT start_time, end_time FROM activities
+    `SELECT id, start_time, end_time FROM activities
      WHERE activity_type = ANY($1)
        AND deleted_at IS NULL
        AND start_time < $3
@@ -165,7 +204,8 @@ const getActivitiesWithDataFilters = async (
     params,
   )
   return result.rows.map((r) => ({
-    end: (r.end_time as Date) ?? new Date((r.start_time as Date).getTime() + 60 * 60 * 1000),
+    end: (r.end_time as Date) ?? new Date((r.start_time as Date).getTime() + DEFAULT_SPAN_MS),
+    id: r.id as string,
     start: r.start_time as Date,
   }))
 }
@@ -185,8 +225,6 @@ const getScrobbles = async (
     `recorded_at >= $1`,
     `recorded_at < $2`,
   ]
-
-  const escapeLike = (s: string) => s.replaceAll('%', '\\%').replaceAll('_', '\\_')
 
   if (artist && artist.length > 0) {
     if (matchMode === 'exact') {
@@ -241,16 +279,17 @@ const enrichActivities = async (
   ranges: TimeRange[],
   data: Record<string, unknown>,
   ruleId: string,
+  options: EnrichOptions = {},
 ): Promise<string[]> => {
-  if (ranges.length === 0 || Object.keys(data).length === 0) return []
+  if (ranges.length === 0 || (Object.keys(data).length === 0 && !options.dataFor)) return []
 
-  // Find activities of the target type overlapping any of the ranges
+  const seen = new Set<string>()
   const enrichedIds: string[] = []
 
   for (const range of ranges) {
     const result = await query(
       user,
-      `SELECT id, data FROM activities
+      `SELECT id, data, start_time, end_time FROM activities
        WHERE activity_type = $1
          AND deleted_at IS NULL
          AND start_time < $3
@@ -261,20 +300,19 @@ const enrichActivities = async (
 
     for (const row of result.rows) {
       const activityId = row.id as string
-      const existingData = (row.data as Record<string, unknown>) ?? {}
+      if (seen.has(activityId)) continue
+      seen.add(activityId)
 
-      // Only merge keys that are missing (null/undefined) in existing data
-      const patch: Record<string, unknown> = {}
-      for (const [key, val] of Object.entries(data)) {
-        if (existingData[key] === undefined || existingData[key] === null) {
-          patch[key] = val
-        }
-      }
-
-      if (Object.keys(patch).length === 0) continue
-
-      // Track enrichment provenance (just the ID — name resolved at query time)
-      patch._enriched_by = ruleId
+      const start = row.start_time as Date
+      const span = { end: (row.end_time as Date) ?? new Date(start.getTime() + DEFAULT_SPAN_MS), start }
+      const activityData = options.dataFor ? { ...data, ...options.dataFor(span) } : data
+      const patch = computeEnrichPatch(
+        (row.data as Record<string, unknown>) ?? {},
+        activityData,
+        ruleId,
+        options.overwriteKeys,
+      )
+      if (!patch) continue
 
       await query(
         user,
@@ -286,6 +324,107 @@ const enrichActivities = async (
   }
 
   return enrichedIds
+}
+
+const retypeActivity = async (
+  user: string,
+  id: string,
+  change: RetypeChange,
+  notifier?: ActivityNotifier,
+): Promise<boolean> => {
+  const current = await getActivityById(user, id)
+  if (!current) return false
+  const existing = current.data ?? {}
+  const fill = Object.fromEntries(
+    Object.entries(change.output_data ?? {}).filter(
+      ([key]) => existing[key] === undefined || existing[key] === null,
+    ),
+  )
+  const result = await updateActivity(
+    user,
+    id,
+    {
+      activity_type: change.activity_type,
+      data: { ...fill, _retyped_by: change.rule_id },
+      ...(change.title ? { title: change.title } : {}),
+    },
+    notifier && ((u, type, start, end) => notifier(u, type, start, end, change.rule_id)),
+  )
+  if (!result.success) {
+    auditWarn(user, 'deduction', `Rule could not retype activity ${id}`, {
+      error: result.error,
+      rule_id: change.rule_id,
+    })
+  }
+  return result.success
+}
+
+/**
+ * Reads the winning row (an override when one exists) and writes through the same update path as
+ * a manual edit, so a synced activity gets an override whose title a re-sync leaves alone.
+ */
+const retitleActivities = async (
+  user: string,
+  activityType: string,
+  ranges: TimeRange[],
+  field: string,
+  ruleId: string,
+  dryRun = false,
+  notifier?: ActivityNotifier,
+): Promise<string[]> => {
+  if (ranges.length === 0) return []
+  const definition = await getActivityTypeDefinition(user, activityType)
+  const typeNames = activityTypeTitleNames(activityType, definition?.display_name)
+
+  const seen = new Set<string>()
+  const changedIds: string[] = []
+  for (const range of ranges) {
+    const result = await query(
+      user,
+      `SELECT id, title, data FROM activities
+       WHERE activity_type = $1
+         AND deleted_at IS NULL
+         AND superseded_by IS NULL
+         AND start_time < $3
+         AND (end_time > $2 OR end_time IS NULL)
+       ORDER BY start_time`,
+      [activityType, range.start, range.end],
+    )
+
+    for (const row of result.rows) {
+      const id = row.id as string
+      if (seen.has(id)) continue
+      seen.add(id)
+
+      const change = ruleTitleChange(
+        { data: row.data as Record<string, unknown> | null, title: row.title as string | null },
+        field,
+        ruleId,
+        typeNames,
+      )
+      if (!change) continue
+      if (dryRun) {
+        changedIds.push(id)
+        continue
+      }
+
+      const updated = await updateActivity(
+        user,
+        id,
+        change,
+        notifier && ((u, type, start, end) => notifier(u, type, start, end, ruleId)),
+      )
+      if (updated.success) {
+        changedIds.push(id)
+      } else {
+        auditWarn(user, 'deduction', `Rule could not retitle activity ${id}`, {
+          error: updated.error,
+          rule_id: ruleId,
+        })
+      }
+    }
+  }
+  return changedIds
 }
 
 const getEarliestActivityTime = async (user: string): Promise<Date | null> => {
@@ -301,14 +440,17 @@ export const createDefaultEngineDeps = (notifier?: ActivityNotifier): DeductionE
   enrichActivities,
   getActivities,
   getActivitiesWithData,
-  getActivitiesWithDataFilters,
+  findActivities,
   getEarliestActivityTime,
   getLocationVisits,
+  getMediaPlays,
   getScrobbles,
   getScreentime,
   insertActivity: async (user, activity) => {
-    const id = await dbInsertActivity(user, activity)
-    if (notifier) {
+    // An unchanged re-upsert must not notify: the notification re-runs the other rules,
+    // whose own unchanged re-upserts would notify back, forever.
+    const { changed, id } = await upsertActivity(user, activity)
+    if (notifier && changed) {
       const ruleIdValue = activity.data?.rule_id
       const ruleId = typeof ruleIdValue === 'string' ? ruleIdValue : undefined
       notifier(
@@ -322,4 +464,7 @@ export const createDefaultEngineDeps = (notifier?: ActivityNotifier): DeductionE
     return id
   },
   insertRuleRun: insertDeductionRuleRun,
+  retitleActivities: (user, activityType, ranges, field, ruleId, dryRun) =>
+    retitleActivities(user, activityType, ranges, field, ruleId, dryRun, notifier),
+  retypeActivity: (user, id, change) => retypeActivity(user, id, change, notifier),
 })

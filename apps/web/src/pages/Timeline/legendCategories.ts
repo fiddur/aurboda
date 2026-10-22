@@ -7,7 +7,7 @@ import { tagSourceColors } from './colors'
 /**
  * The Activity-side legend has a curated layer (sleep_rest / meditation /
  * exercise / other / calendar / meal) plus a `screentime` umbrella toggle and
- * — new in #718 — one dynamic sub-toggle per top-level screentime category
+ * one dynamic sub-toggle per top-level screentime category
  * (e.g. `Work`, `Media`, `Comms`). Dynamic keys use the
  * `screentime:<top-level-slug>` namespace so they coexist with the static
  * union below.
@@ -18,6 +18,7 @@ export type LegendCategory =
   | 'activity'
   | 'metrics'
   | 'location'
+  | 'comments'
   // Activity sub-toggles (curated)
   | 'sleep_rest' // replaces sleep+nap+rest
   | 'meditation'
@@ -48,11 +49,9 @@ export const BASE_COLUMNS: Column[] = ['Activity', 'Location', 'Screen Time']
 
 const SCREENTIME_SUB_PREFIX = 'screentime:' as const
 
-/** A dynamic screentime sub-toggle key (one per top-level screentime category). */
 export const screentimeSubKey = (topLevelSlug: string): LegendCategory =>
   `${SCREENTIME_SUB_PREFIX}${topLevelSlug}` as LegendCategory
 
-/** True when a legend category is one of the dynamic screentime sub-toggles. */
 export const isScreentimeSubKey = (cat: string): boolean => cat.startsWith(SCREENTIME_SUB_PREFIX)
 
 const STATIC_CATEGORY_MATCHERS: Record<
@@ -62,6 +61,7 @@ const STATIC_CATEGORY_MATCHERS: Record<
   activity: (item) => item.column === 'Activity' || item.column === 'Screen Time',
   calendar: (item) => item.column === 'Activity' && item.color === tagSourceColors.calendar,
   calories: () => false, // metrics sub-toggles handled at draw level
+  comments: (item) => item.column === 'Comments',
   exercise: (item) => item.column === 'Activity' && item.activity_type === 'exercise',
   hr: () => false,
   hrv: () => false,

@@ -1,6 +1,4 @@
 /**
- * Last.fm data sync module.
- *
  * Fetches scrobbles from Last.fm and stores them in two places:
  *   - raw_records (kept for sync dedup and as the data source for the
  *     `scrobble` condition in deduction rules)
@@ -21,16 +19,12 @@ import { lastfmClient } from './client.ts'
 /** Default start date for historical sync (30 days back) */
 export const DEFAULT_SYNC_HISTORY_DAYS = 30
 
-/** Result of a sync operation */
 export interface LastFmSyncResult {
   scrobbles_processed: number
   status: 'success' | 'skipped' | 'error'
   error?: string
 }
 
-/**
- * Sync Last.fm scrobbles for a user.
- */
 export const syncLastFmData = async (
   user: string,
   apiKey: string,
@@ -39,10 +33,8 @@ export const syncLastFmData = async (
 ): Promise<LastFmSyncResult> => {
   const dataType = 'scrobbles'
 
-  // Check current sync state
   const syncState = await getSyncState(user, 'lastfm', dataType)
 
-  // Determine date range
   const end = new Date()
   let start: Date
 
@@ -52,7 +44,6 @@ export const syncLastFmData = async (
     start = syncState.last_sync_time
   }
 
-  // Mark as syncing
   await upsertSyncState(user, {
     data_type: dataType,
     provider: 'lastfm',
@@ -102,7 +93,6 @@ export const syncLastFmData = async (
       })
     }
 
-    // Update sync state on success
     await upsertSyncState(user, {
       data_type: dataType,
       last_sync_time: end,
@@ -117,7 +107,6 @@ export const syncLastFmData = async (
   } catch (error: unknown) {
     const axiosError = error as { response?: { status?: number; data?: unknown } }
 
-    // Handle specific API errors
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
     const statusCode = axiosError.response?.status
 

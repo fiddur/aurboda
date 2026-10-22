@@ -1,7 +1,8 @@
-/**
- * Activity type definition service — CRUD for custom activity types.
- */
-import type { ActivityTypeDefinition, DataSchemaDefinition } from '@aurboda/api-spec'
+import type {
+  ActivityTypeDefinition,
+  AddActivityTypeDefinitionBody,
+  DataSchemaDefinition,
+} from '@aurboda/api-spec'
 
 import { builtinActivityTypes } from '@aurboda/api-spec'
 
@@ -26,22 +27,13 @@ export const listActivityTypeDefinitions = async (user: string): Promise<Activit
 
 export const addActivityTypeDefinition = async (
   user: string,
-  input: {
-    name: string
-    display_name: string
-    display_category: string
-    color?: string
-    icon?: string
-    aliases?: string[]
-    data_schema?: DataSchemaDefinition
-  },
+  input: AddActivityTypeDefinitionBody,
 ): Promise<ActivityTypeDefinitionResult> => {
   // Block names that conflict with built-in types
   if ((builtinActivityTypes as readonly string[]).includes(input.name)) {
     return { error: `"${input.name}" is a built-in activity type and cannot be recreated`, success: false }
   }
 
-  // Check for existing definition
   const existing = await dbGet(user, input.name)
   if (existing) {
     return { error: `Activity type "${input.name}" already exists`, success: false }
@@ -93,10 +85,6 @@ export const deleteActivityTypeDefinition = async (
   return { success: true }
 }
 
-// =============================================================================
-// Rename
-// =============================================================================
-
 export interface RenameActivityTypeResult {
   success: boolean
   error?: string
@@ -135,10 +123,6 @@ export const renameActivityTypeDefinition = async (
   }
 }
 
-// =============================================================================
-// Merge
-// =============================================================================
-
 export interface MergeActivityTypeResult {
   success: boolean
   error?: string
@@ -148,7 +132,6 @@ export interface MergeActivityTypeResult {
 }
 
 /**
- * Merge a custom activity type into another activity type.
  * All activities are reassigned, aliases merged, deduction rules updated, source deleted.
  */
 export const mergeActivityType = async (

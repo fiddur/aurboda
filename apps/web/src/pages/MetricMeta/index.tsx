@@ -1,8 +1,9 @@
-/**
- * Metric meta page — overview of a metric type (e.g. "weight", "body_fat", or custom metrics).
- * Shows description, unit, trend chart, recent values, and edit for custom metrics.
- */
-import { metricUnits as builtinMetricUnits, validMetrics } from '@aurboda/api-spec'
+import {
+  metricUnits as builtinMetricUnits,
+  getMetricAggregation,
+  type MetricAggregation,
+  validMetrics,
+} from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation, useRoute } from 'preact-iso'
 import { useState } from 'preact/hooks'
@@ -20,6 +21,7 @@ import {
   type MetricDataPointWithSource,
 } from '../../state/api'
 import { buildChartUrl } from '../../utils/chart-url'
+import { METRIC_KIND_OPTIONS, metricKindLabel } from '../../utils/metric-kind'
 import { formatDateTime } from '../EntityDetail/format-utils'
 import './style.css'
 
@@ -32,17 +34,14 @@ const LOOKBACK_OPTIONS = [
   { label: 'All time', value: 3650 },
 ]
 
-/** Map metric name to human-readable display label. */
 const formatMetricLabel = (metric: string): string =>
   metric.replaceAll('_', ' ').replaceAll(/\b\w/g, (c) => c.toUpperCase())
 
-/** Format a value with appropriate precision. */
 const formatValue = (value: number): string => {
   if (Number.isInteger(value)) return String(value)
   return value.toFixed(2)
 }
 
-/** Format a data source name for display. */
 const formatSourceLabel = (source: string): string =>
   source.replaceAll('_', ' ').replaceAll(/\b\w/g, (c) => c.toUpperCase())
 
@@ -61,18 +60,15 @@ function SourceFilteredChart({ metric, unit, lookback }: { metric: string; unit:
   if (isLoading) return <p class="loading">Loading...</p>
   if (!data || data.length === 0) return <p class="metric-meta-empty">No data available</p>
 
-  // Extract unique sources
   const sources = [...new Set(data.map((d) => d.source))].sort()
 
   // Only show this section if there are multiple sources
   if (sources.length < 2) return null
 
-  // Filter data by selected source
   const filtered: MetricDataPointWithSource[] = selectedSource
     ? data.filter((d) => d.source === selectedSource)
     : data
 
-  // Convert to chart data format
   const chartData: { date: string; value: number }[] = filtered.map((d) => ({
     date: d.time.toISOString().split('T')[0],
     value: d.value,
@@ -190,10 +186,12 @@ function CustomMetricEditor({
   const [description, setDescription] = useState(metric.description ?? '')
   const [minValue, setMinValue] = useState(metric.min_value?.toString() ?? '')
   const [maxValue, setMaxValue] = useState(metric.max_value?.toString() ?? '')
+  const [aggregation, setAggregation] = useState<MetricAggregation>(metric.aggregation ?? 'avg')
 
   const updateMutation = useMutation({
     mutationFn: () =>
       updateCustomMetric(metric.name, {
+        aggregation,
         description: description || undefined,
         max_value: maxValue ? parseFloat(maxValue) : null,
         min_value: minValue ? parseFloat(minValue) : null,
@@ -218,6 +216,10 @@ function CustomMetricEditor({
           <div class="metric-meta-field-row">
             <span class="metric-meta-field-label">Unit</span>
             <span>{metric.unit}</span>
+          </div>
+          <div class="metric-meta-field-row">
+            <span class="metric-meta-field-label">Kind</span>
+            <span>{metricKindLabel(metric.aggregation)}</span>
           </div>
           {(metric.min_value !== undefined || metric.max_value !== undefined) && (
             <div class="metric-meta-field-row">
@@ -276,6 +278,19 @@ function CustomMetricEditor({
             placeholder="Max (optional)"
           />
         </label>
+        <label>
+          <span class="metric-meta-field-label">Kind</span>
+          <select
+            value={aggregation}
+            onChange={(e) => setAggregation((e.target as HTMLSelectElement).value as MetricAggregation)}
+          >
+            {METRIC_KIND_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
       <div class="metric-meta-edit-actions">
         <button
@@ -322,7 +337,6 @@ function MergeMetricSection({
     },
   })
 
-  // Build list of target options: built-in metrics + other custom metrics
   const options = [
     ...validMetrics.filter((m) => m !== metricName).map((m) => ({ label: formatMetricLabel(m), value: m })),
     ...customMetrics
@@ -448,7 +462,6 @@ export function MetricMeta() {
 
   const [lookback, setLookback] = useState(90)
 
-  // Check if it's a custom metric
   const { data: customMetrics } = useQuery({
     queryFn: fetchCustomMetrics,
     queryKey: ['custom-metrics'],
@@ -459,10 +472,10 @@ export function MetricMeta() {
   const isBuiltIn = !customMetric && metricName in (builtinMetricUnits as Record<string, string>)
   const unit = customMetric?.unit ?? (builtinMetricUnits as Record<string, string>)[metricName] ?? ''
   const label = formatMetricLabel(metricName)
+  const trendAggregation = getMetricAggregation(metricName, customMetrics ?? []) === 'sum' ? 'sum' : 'mean'
 
-  // Trend query
   const trendParams: FetchTrendParams = {
-    aggregation: 'mean',
+    aggregation: trendAggregation,
     display_period: 'daily',
     half_life_days: 15,
     lookback_days: lookback,
@@ -495,13 +508,12 @@ export function MetricMeta() {
         unit={unit}
       />
 
-      {/* Trend */}
       <section class="metric-meta-section">
         <div class="metric-meta-section-header">
           <h2>Trend</h2>
           <a
             href={buildChartUrl({
-              aggregation: 'mean',
+              aggregation: trendAggregation,
               chart_type: 'bar',
               lookback_days: lookback,
               pattern: metricName,
@@ -529,10 +541,10 @@ export function MetricMeta() {
           <>
             <div class="metric-meta-trend-value">
               <span class="metric-meta-trend-number">{trendQuery.data.current_value.toFixed(2)}</span>
-              <span class="metric-meta-trend-unit">{unit || trendQuery.data.display_unit}</span>
+              <span class="metric-meta-trend-unit">{trendQuery.data.display_unit || unit}</span>
             </div>
             <a
-              href={`/chart?source_type=metric&pattern=${encodeURIComponent(metricName)}&lookback_days=${lookback}&aggregation=mean`}
+              href={`/chart?source_type=metric&pattern=${encodeURIComponent(metricName)}&lookback_days=${lookback}&aggregation=${trendAggregation}`}
               style={{ display: 'block' }}
             >
               <MiniTrendChart data={trendQuery.data.history} color="#2563eb" />
@@ -544,13 +556,11 @@ export function MetricMeta() {
       {/* Source-filtered chart (only shown when multiple sources exist) */}
       <SourceFilteredChart metric={metricName} unit={unit} lookback={lookback} />
 
-      {/* Recent values */}
       <section class="metric-meta-section">
         <h2>Recent Values</h2>
         <RecentValues metric={metricName} unit={unit} />
       </section>
 
-      {/* Quick links */}
       <section class="metric-meta-section">
         <h2>Related</h2>
         <div class="metric-meta-links">

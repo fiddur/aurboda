@@ -18,7 +18,6 @@
   margin: 0 0 1.5rem 0;
 }
 
-/* Controls panel */
 .chart-controls {
   display: flex;
   flex-direction: column;
@@ -69,7 +68,6 @@
   box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
 }
 
-/* Chart type toggle */
 .chart-type-toggle {
   display: flex;
   gap: 0;
@@ -103,7 +101,6 @@
   background: #f3f4f6;
 }
 
-/* Chart area */
 .chart-display {
   background: #fff;
   border: 1px solid #e5e7eb;
@@ -179,7 +176,6 @@
   color: #dc2626;
 }
 
-/* Login prompt */
 .chart-login-prompt {
   text-align: center;
   padding: 4rem 2rem;
@@ -205,7 +201,6 @@
   background: #7c3aed;
 }
 
-/* Add to Dashboard button */
 .add-to-dashboard-row {
   display: flex;
   justify-content: flex-end;
@@ -240,7 +235,6 @@
   font-size: 1rem;
 }
 
-/* Dark mode */
 @media (prefers-color-scheme: dark) {
   .chart-page h1 {
     color: #f9fafb;
@@ -305,7 +299,6 @@
   }
 }
 
-/* Responsive */
 @media (max-width: 639px) {
   .chart-page {
     padding: 1rem;
@@ -320,7 +313,6 @@
   }
 }
 
-/* Set Goal form */
 .chart-goal-form {
   background: #1e1e2e;
   border: 1px solid #333;

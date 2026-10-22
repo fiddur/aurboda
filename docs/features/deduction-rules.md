@@ -1,6 +1,6 @@
 # Deduction Rules
 
-Deduction rules automatically create activities when data conditions are met. Define rules like "when I have a sauna tag, create a sauna activity" or "when I'm meditating and listening to Holosync, create a binaural meditation activity."
+Deduction rules automatically create activities when data conditions are met, or [enrich](#enrich-mode) or [retype](#retype-mode) existing ones. Define rules like "when I have a sauna tag, create a sauna activity" or "when I'm meditating and listening to Holosync, create a binaural meditation activity."
 
 ## How It Works
 
@@ -21,13 +21,134 @@ Timeline:
 
 ## Condition Types
 
-| Kind                  | Description                                                                                 | Example                                                            |
-| --------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| `activity`            | Matches time ranges of an activity type                                                     | `{kind: "activity", activity_type: "meditation"}`                  |
-| `tag`                 | Matches time ranges of a tag (duration tags use their span; point tags get 1-minute window) | `{kind: "tag", tag_name: "sauna"}`                                 |
-| `screentime_category` | Matches productivity records in a hierarchical category                                     | `{kind: "screentime_category", category: ["Work", "Programming"]}` |
+| Kind                  | Description                                                                                       | Example                                                                             |
+| --------------------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `activity`            | Matches time ranges of an activity type, optionally filtered by data fields and title             | `{kind: "activity", activity_type: "meditation"}`                                   |
+| `activity_data`       | Matches activities of a type whose data field matches (`eq`, `neq`, `exists`, `not_exists`)       | `{kind: "activity_data", activity_type: "run", field: "route", operator: "exists"}` |
+| `screentime_category` | Matches screentime in a hierarchical category                                                     | `{kind: "screentime_category", category: ["Work", "Programming"]}`                  |
+| `location`            | Matches visits to a named location                                                                | `{kind: "location", location_name: "Gym"}`                                          |
+| `after_date`          | Restricts matches to after a date                                                                 | `{kind: "after_date", date: "2024-06-01"}`                                          |
+| `scrobble`            | Matches Last.fm scrobbles by artist/track, each covering `duration_seconds`                       | `{kind: "scrobble", artist: ["Holosync"], duration_seconds: 210}`                   |
+| `media`               | Matches [media plays](../media.md) (MPRIS pushes and non-duplicate Last.fm scrobbles) — see below | `{kind: "media", url_host: ["truenakedyoga.com"], min_played_secs: 600}`            |
 
-More condition types (location, metric thresholds, scrobble patterns) are planned.
+An `activity` condition's `title` matches case-insensitively, per `match_mode`: `contains` (the default) or `exact`.
+
+### Media plays
+
+A `media` condition matches plays whose fields satisfy every matcher given (unset matchers match anything):
+
+| Field              | Match                                                                                                                                                                                          |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `url_host`         | Any of these hosts, or a subdomain of one (`www.truenakedyoga.com` matches `truenakedyoga.com`). Plays without a parsable URL (all Last.fm plays) never match                                  |
+| `title`            | Per `match_mode` (`contains`, the default, or `exact`), case-insensitive                                                                                                                       |
+| `artist`           | Any of these, per `match_mode`                                                                                                                                                                 |
+| `player`           | Any of these, exact and case-insensitive (`firefox`, `mpv`)                                                                                                                                    |
+| `min_played_secs`  | `played_secs` at least this. Plays without `played_secs` (Last.fm) never pass                                                                                                                  |
+| `min_played_ratio` | `played_secs / track_secs` at least this (0–1). **Skipped** when the track length is unknown (Last.fm, some mpv files) — combine it with `min_played_secs` for a threshold that always applies |
+
+A matching play covers `started_at`–`ended_at`; a Last.fm play (no end) covers one minute.
+
+## Enrich Mode
+
+With `mode: "enrich"`, a rule creates nothing: it patches data onto existing activities of `output_activity_type`
+that overlap the matched ranges. `output_data` keys are only filled when missing, and `data._enriched_by` records
+the rule id. Data is written in place on the matched rows; [`output_title_field`](#copying-a-data-field-into-the-title-output_title_field)
+can also set their title.
+
+### Copying a play title (`output_media_field`)
+
+In enrich mode, a rule with at least one `media` condition can copy the title of a matching play into a data field:
+
+```json
+"output_media_field": { "field": "session_name", "strip_pattern": "\\s*—\\s*True Naked Yoga$" }
+```
+
+- For each enriched activity, the plays matching **every** `media` condition within the activity's matched span are
+  considered, and the one with the most `played_secs` wins (ties: the earliest). Several videos in one session
+  therefore give the longest one's title.
+- `strip_pattern` is a JavaScript regular expression (flags `giu`, at most 200 characters); every match is
+  removed, then whitespace is collapsed and trimmed. An empty result writes nothing.
+- The field is filled when missing, and **overwritten only while it still holds the value this rule wrote**
+  (`_enriched_by` is this rule and `_enriched_values` records what it wrote), so re-evaluating after editing the
+  pattern updates old values. A value set by anyone else, or edited by hand after the rule wrote it, is never
+  overwritten. Unchanged values are not rewritten. An activity enriched before `_enriched_values` existed has no
+  record: the rule adopts the field when it already holds what the rule would write, and otherwise keeps it.
+- `_enriched_by` holds a single rule id: the last rule that enriched the activity. If another enrich rule later
+  touches the same activity, this rule no longer recognises the value as its own and falls back to fill-only there —
+  it never overwrites a value it did not write. To refresh such a value, clear the field on the activity and
+  re-evaluate.
+- The API rejects `output_media_field` outside enrich mode, without a `media` condition, or with a pattern that does
+  not compile.
+
+See [Media plays](../media.md) for a full example.
+
+### Copying a data field into the title (`output_title_field`)
+
+In enrich mode, `output_title_field` names a data field whose value becomes the title of each activity the rule
+enriches — for example the `session_name` an `output_media_field` rule writes, so a Garmin yoga session titled
+"Yoga" becomes "Heart-Opening Yin Yoga with Jade":
+
+```json
+{
+  "name": "Yoga title from session",
+  "mode": "enrich",
+  "conditions": [
+    {
+      "kind": "activity",
+      "activity_type": "yoga",
+      "data_filters": [{ "field": "session_name", "operator": "exists" }]
+    }
+  ],
+  "output_activity_type": "yoga",
+  "output_title_field": "session_name"
+}
+```
+
+- The rule only replaces a title nobody chose: a blank one, the type's name (its display name or prettified key,
+  case-insensitive), or the title the rule wrote itself (`data._titled_by` is the rule and `data._titled_value` is
+  still the current title). So the title **follows the field** as it changes, until someone types another title —
+  then that title is kept for good.
+- The value is trimmed; a missing, blank or non-string field never clears or blanks a title.
+- The title is written through the same update path as a manual edit, after the rule's data enrichment (so a field
+  filled in the same pass is used). A synced activity (Garmin, Health Connect, …) therefore gets an aurboda override
+  carrying the title, and a re-sync of the source row — which resets the source row's own title — leaves it alone.
+  The override takes the synced row's data at that moment; later enrichment writes onto both rows.
+- It may stand alone, or join `output_data` / `output_media_field` in one rule; a rule with only
+  `output_title_field` changes nothing but titles.
+- Like any rule it runs when the rule is created or updated and then on new mutations (a synced or enriched
+  activity); to re-run it over all history, use the evaluate endpoint (`POST /deduction-rules/evaluate`, MCP
+  `evaluate_deduction_rules`).
+- A preview counts the larger of the activities whose data and whose title would change, from the data stored now.
+- The API rejects `output_title_field` outside enrich mode; switching a rule's mode away from enrich in the web UI
+  clears it. Feed posts of a retitled activity show the new title (see [Feed](feed.md)).
+
+## Retype Mode
+
+With `mode: "retype"`, a rule changes the type of existing activities to `output_activity_type`. The rule needs
+exactly one `activity` condition, which selects the activities to change; the other conditions only narrow it down
+in time (an activity is retyped when it overlaps their intersection). For example, to turn Garmin activities recorded
+with a custom "Sex" profile — which Garmin reports as its base sport, `other` (stored as `other_workout`), titled
+"Sex" or "`<place> Sex`" — into the `sex` type:
+
+```json
+{
+  "name": "Sex from Garmin",
+  "mode": "retype",
+  "conditions": [{ "kind": "activity", "activity_type": "other_workout", "title": "sex" }],
+  "output_activity_type": "sex",
+  "output_title": "Sex"
+}
+```
+
+- A synced activity (Garmin, Health Connect, …) gets an aurboda override carrying the new type, exactly like a manual
+  type change, so the next sync of the source row does not undo it. An aurboda activity is changed in place.
+- `output_title`, when set, replaces the title; `output_data` only fills fields that are missing. `data._retyped_by`
+  records the rule id.
+- Activities already overridden are reached through their override, rows produced by rules are never retyped, and an
+  activity already of the target type is skipped, so re-evaluation changes nothing twice.
+- The new type's data schema applies, as for a manual type change: if it has required fields the activity lacks,
+  that activity is not retyped and an audit-log warning names it. Supply them in `output_data`.
+- Deleting or disabling the rule does not change retyped activities back; edit them like any other activity.
 
 ## Merge Gap
 
@@ -99,4 +220,10 @@ MCP tools: `list_deduction_rules`, `add_deduction_rule`, `update_deduction_rule`
 - The unique constraint `(source, activity_type, start_time)` prevents duplicate activities
 - Stale activities (from previous evaluations that no longer match) are automatically cleaned up
 - Rule evaluation is debounced per-user (5-second window) when triggered by data syncs
+- A rule's output re-triggers evaluation of the other rules (and auto-share) only when it actually
+  changed an activity. Re-evaluating a window whose generated activities are already in place writes
+  nothing and triggers nothing, so rules that match the same history settle instead of re-running each
+  other.
+- Each evaluation records a run per rule (`deduction_rule_runs`); runs older than 30 days are deleted
+  by the daily prune job, together with the audit log
 - The `output_activity_type` must reference an existing [custom activity type](activity-types.md)

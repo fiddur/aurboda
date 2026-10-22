@@ -1,13 +1,14 @@
 import type { RequestHandler } from 'express'
 
-/**
- * Activity type definitions route group.
- *
- * Handles: /activity-types/*
- */
 import {
   type ActivityTypeDefinitionResponse,
   type ActivityTypeDefinitionsResponse,
+  type ActivityFieldValuesQuery,
+  activityFieldValuesQuerySchema,
+  type ActivityFieldValuesResponse,
+  type ActivitySessionsQuery,
+  activitySessionsQuerySchema,
+  type ActivitySessionsResponse,
   type AddActivityTypeDefinitionBody,
   addActivityTypeDefinitionBodySchema,
   type MergeActivityTypeBody,
@@ -28,8 +29,13 @@ import {
   renameActivityTypeDefinition,
   updateActivityTypeDefinition,
 } from '../services/activity-type-definitions.ts'
+import {
+  queryActivityFieldValues,
+  queryActivitySessions,
+  sessionsOptionsFromQuery,
+} from '../services/queries/index.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
-import { validateBody } from '../validation.ts'
+import { validateBody, validateQuery } from '../validation.ts'
 
 export const createActivityTypesRouter = (authMiddleware: RequestHandler): TypedRouter => {
   const router = typedRouter()
@@ -44,21 +50,36 @@ export const createActivityTypesRouter = (authMiddleware: RequestHandler): Typed
     },
   )
 
+  router.get<{ name: string }, ActivitySessionsResponse, unknown, ActivitySessionsQuery>(
+    '/:name/sessions',
+    authMiddleware,
+    validateQuery(activitySessionsQuerySchema),
+    async (req, res) => {
+      const sessions = await queryActivitySessions(
+        req.user!,
+        req.params.name,
+        sessionsOptionsFromQuery(req.query),
+      )
+      res.json({ data: sessions, success: true })
+    },
+  )
+
+  router.get<{ name: string }, ActivityFieldValuesResponse, unknown, ActivityFieldValuesQuery>(
+    '/:name/field-values',
+    authMiddleware,
+    validateQuery(activityFieldValuesQuerySchema),
+    async (req, res) => {
+      const values = await queryActivityFieldValues(req.user!, req.params.name, req.query.field)
+      res.json({ data: values, success: true })
+    },
+  )
+
   router.post<Record<string, never>, ActivityTypeDefinitionResponse, AddActivityTypeDefinitionBody>(
     '/',
     authMiddleware,
     validateBody(addActivityTypeDefinitionBodySchema),
     async (req, res) => {
-      const user = req.user!
-      const { name, display_name, display_category, color, icon, data_schema } = req.body
-      const result = await addActivityTypeDefinition(user, {
-        color,
-        data_schema,
-        display_category,
-        display_name,
-        icon,
-        name,
-      })
+      const result = await addActivityTypeDefinition(req.user!, req.body)
 
       if (!result.success) {
         return res.status(400).json({ error: result.error, success: false })

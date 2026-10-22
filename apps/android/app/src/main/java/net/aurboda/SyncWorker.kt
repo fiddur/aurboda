@@ -13,6 +13,7 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import net.aurboda.widget.ChallengeWidgetProvider
 import net.aurboda.widget.HrZoneWidgetProvider
 import java.time.Instant
 import java.util.concurrent.TimeUnit
@@ -61,7 +62,6 @@ class SyncWorker(
       Log.w(TAG, "Background HC read permission not granted; skipping HC fetch")
     }
 
-    // Invalidate token if granted types changed since last sync
     invalidateTokenIfGrantedTypesChanged(grantedTypes)
 
     reporter.begin()
@@ -142,6 +142,7 @@ class SyncWorker(
       }
 
       HrZoneWidgetProvider.triggerUpdate(applicationContext)
+      ChallengeWidgetProvider.triggerUpdate(applicationContext)
       reporter.end()
       finishAttempt(attemptAt, BackgroundSyncResult.Success)
     } catch (e: Exception) {
@@ -341,9 +342,6 @@ class SyncWorker(
     return prefs.getString(CHANGES_TOKEN_KEY, null)
   }
 
-  /**
-   * Check if granted types changed and invalidate the changes token if so.
-   */
   private fun invalidateTokenIfGrantedTypesChanged(currentGrantedTypes: List<KClass<out Record>>) {
     val prefs = applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     val currentNames = currentGrantedTypes.map { it.simpleName ?: "" }.sorted().joinToString(",")
@@ -363,7 +361,6 @@ class SyncWorker(
 
   companion object {
     /**
-     * Schedule periodic background sync.
      * Sync runs every 15 minutes (minimum interval for periodic work).
      */
     fun schedule(context: Context) {
@@ -388,9 +385,6 @@ class SyncWorker(
       Log.d(TAG, "Background sync scheduled with network constraint")
     }
 
-    /**
-     * Cancel scheduled background sync.
-     */
     fun cancel(context: Context) {
       WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME)
       Log.d(TAG, "Background sync cancelled")

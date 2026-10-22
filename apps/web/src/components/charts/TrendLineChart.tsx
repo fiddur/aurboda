@@ -1,10 +1,3 @@
-/**
- * Shared D3 area+line trend chart component.
- *
- * Renders a responsive area+line chart with monotoneX curve, optional tooltip
- * crosshair and grid lines. Used by the Chart exploration page, TagMeta mini
- * charts, and compact dashboard widgets.
- */
 import * as d3 from 'd3'
 import { useEffect, useRef } from 'preact/hooks'
 
@@ -20,7 +13,6 @@ export interface LineSeriesData {
 export interface TrendLineChartProps {
   /** Data points to render — must have at least 2 entries. */
   data: { date: string; value: number }[]
-  /** Stroke / dot / area tint colour. */
   color: string
   /** Chart height in pixels (default 200). */
   height?: number
@@ -43,7 +35,6 @@ interface ParsedPoint {
   value: number
 }
 
-/** Build x-axis date formatter depending on whether the range spans years. */
 const buildDateFormat = (extent: [Date, Date]) => {
   const spanYears = extent[1].getFullYear() - extent[0].getFullYear()
   return {
@@ -53,7 +44,6 @@ const buildDateFormat = (extent: [Date, Date]) => {
   }
 }
 
-/** Render axes (x + y). */
 function renderAxes(
   g: d3.Selection<SVGGElement, unknown, null, undefined>,
   x: d3.ScaleTime<number, number>,
@@ -82,7 +72,6 @@ function renderAxes(
   g.append('g').call(d3.axisLeft(y).ticks(5)).selectAll('text').attr('font-size', '11px')
 }
 
-/** Render grid lines behind the data. */
 function renderGrid(
   g: d3.Selection<SVGGElement, unknown, null, undefined>,
   y: d3.ScaleLinear<number, number>,
@@ -101,7 +90,6 @@ function renderGrid(
     .attr('stroke-dasharray', '3,3')
 }
 
-/** Render the area fill + line path. */
 function renderAreaAndLine(
   g: d3.Selection<SVGGElement, unknown, null, undefined>,
   parsedData: ParsedPoint[],
@@ -133,7 +121,6 @@ function renderAreaAndLine(
     .attr('d', line)
 }
 
-/** Render sampled data-point dots. */
 function renderDots(
   g: d3.Selection<SVGGElement, unknown, null, undefined>,
   parsedData: ParsedPoint[],
@@ -151,7 +138,6 @@ function renderDots(
     .attr('fill', color)
 }
 
-/** Render multiple overlaid series (area + line for each). Returns scales for tooltip attachment. */
 function renderMultiSeries(
   g: d3.Selection<SVGGElement, unknown, null, undefined>,
   series: LineSeriesData[],
@@ -201,7 +187,6 @@ function renderMultiSeries(
   return { parsedSeries, tooltipFormat, x, y }
 }
 
-/** Attach tooltip crosshair + highlight dot behaviour. */
 function attachTooltip(
   g: d3.Selection<SVGGElement, unknown, null, undefined>,
   parsedData: ParsedPoint[],
@@ -275,7 +260,6 @@ function attachTooltip(
     })
 }
 
-/** Attach tooltip for multi-series: shows all series values at the hovered date. */
 function attachMultiSeriesTooltip(
   g: d3.Selection<SVGGElement, unknown, null, undefined>,
   parsedSeries: { name: string; color: string; data: ParsedPoint[] }[],
@@ -298,7 +282,6 @@ function attachMultiSeriesTooltip(
     .attr('pointer-events', 'none')
     .style('display', 'none')
 
-  // One highlight dot per series
   const dots = parsedSeries.map((s) =>
     g
       .append('circle')
@@ -374,7 +357,6 @@ function attachMultiSeriesTooltip(
     })
 }
 
-/** Render a single series with optional tooltip. */
 function renderSingleSeries(
   svg: d3.Selection<SVGSVGElement, unknown, null, undefined>,
   data: { date: string; value: number }[],
@@ -444,9 +426,18 @@ export function TrendLineChart({
 
   const effectiveData = multiSeries ? (multiSeries[0]?.data ?? []) : data
 
+  // Keyed on epoch values: callers commonly build `xDomain` inline, and a fresh
+  // tuple per render must not force a full redraw.
+  const xDomainStartMs = xDomain?.[0].getTime()
+  const xDomainEndMs = xDomain?.[1].getTime()
+
   useEffect(() => {
     if (!svgRef.current || !containerRef.current) return
 
+    const domain: [Date, Date] | undefined =
+      xDomainStartMs !== undefined && xDomainEndMs !== undefined
+        ? [new Date(xDomainStartMs), new Date(xDomainEndMs)]
+        : undefined
     const container = containerRef.current
     const chartWidth = width ?? container.clientWidth
     const chartHeight = height
@@ -461,7 +452,7 @@ export function TrendLineChart({
 
     if (multiSeries && multiSeries.length > 0) {
       const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`)
-      const result = renderMultiSeries(g, multiSeries, innerWidth, innerHeight, compact, xDomain)
+      const result = renderMultiSeries(g, multiSeries, innerWidth, innerHeight, compact, domain)
 
       if (!compact && tooltipRef.current && result) {
         attachMultiSeriesTooltip(
@@ -488,10 +479,10 @@ export function TrendLineChart({
         compact,
         container,
         tooltipRef.current,
-        xDomain,
+        domain,
       )
     }
-  }, [data, color, height, width, compact, multiSeries, xDomain])
+  }, [data, color, height, width, compact, multiSeries, xDomainStartMs, xDomainEndMs])
 
   if (effectiveData.length < 2) {
     return <div class="trend-line-chart-placeholder">Insufficient data for chart</div>

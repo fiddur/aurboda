@@ -1,8 +1,5 @@
 import type { OAuthToken } from './types.ts'
 
-/**
- * OAuth token storage and retrieval.
- */
 import { query } from './connection.ts'
 
 export const upsertOAuthToken = async (user: string, token: OAuthToken) => {
@@ -39,4 +36,9 @@ export const getOAuthToken = async (user: string, provider: string): Promise<OAu
     refresh_token: row.refresh_token,
     scopes: row.scopes,
   }
+}
+
+export const deleteOAuthToken = async (user: string, provider: string): Promise<boolean> => {
+  const result = await query(user, `DELETE FROM oauth_tokens WHERE provider = $1`, [provider])
+  return (result.rowCount ?? 0) > 0
 }

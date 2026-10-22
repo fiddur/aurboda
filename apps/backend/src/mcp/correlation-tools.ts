@@ -1,6 +1,3 @@
-/**
- * MCP correlation analysis tools.
- */
 import {
   activityImpactInputSchema,
   continuousCorrelationBodySchema,
@@ -26,7 +23,6 @@ import {
 import { type McpServer, type SyncProvider, tzJsonResponse } from './helpers.ts'
 
 export const registerCorrelationTools = (server: McpServer, user: string, sync?: SyncProvider) => {
-  // Tool: get_baseline
   server.tool(
     'get_baseline',
     'Get HRV baseline statistics (7-day and 30-day averages). Returns mean HRV (rmssd) and resting heart rate with trend percentage.',
@@ -43,7 +39,6 @@ export const registerCorrelationTools = (server: McpServer, user: string, sync?:
     },
   )
 
-  // Tool: get_hrv_activities_correlation
   server.tool(
     'get_hrv_activities_correlation',
     'Get autonomic-context correlations with activities, locations and productivity. Returns mean HRV, heart rate and stress per item (with baseline deltas). The productivity correlation is computed against context_metric — hrv_rmssd (default), heart_rate, or stress_level — so it stays meaningful when continuous HRV is sparse.',
@@ -55,7 +50,6 @@ export const registerCorrelationTools = (server: McpServer, user: string, sync?:
     },
   )
 
-  // Tool: get_activity_impact
   server.tool(
     'get_activity_impact',
     'Get the impact of a specific activity type on HRV and heart rate. Compares metric values before, during, and after the activity using time windows.',
@@ -69,7 +63,6 @@ export const registerCorrelationTools = (server: McpServer, user: string, sync?:
     },
   )
 
-  // Tool: get_event_probability
   server.tool(
     'get_event_probability',
     'Get the probability correlation between two events. Analyzes whether one event (trigger) increases or decreases the probability of another event (outcome) occurring within specified time windows. Uses chi-squared test for statistical significance.',
@@ -87,7 +80,6 @@ export const registerCorrelationTools = (server: McpServer, user: string, sync?:
     },
   )
 
-  // Tool: get_generic_correlation
   server.tool(
     'get_generic_correlation',
     `Analyze correlations between compound triggers and various outcomes. Supports:
@@ -112,7 +104,6 @@ Examples:
     },
   )
 
-  // Tool: get_metric_correlation (continuous daily correlation)
   server.tool(
     'get_metric_correlation',
     `Correlate two daily data dimensions with Pearson + Spearman and an optional day lag.
@@ -149,7 +140,6 @@ Example: "How does carb intake affect my sleep score the next day?"
     },
   )
 
-  // Tool: list_correlation_selectors
   server.tool(
     'list_correlation_selectors',
     'List the data dimensions available to correlate: metrics, tags, activity types, nutrients, and productivity categories. Use to discover valid selector values before calling get_generic_correlation or get_metric_correlation.',

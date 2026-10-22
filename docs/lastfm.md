@@ -87,6 +87,13 @@ Raw scrobbles can be queried by time range:
 
 Returns track name, artist, album, and timestamp for each scrobble in the time range.
 
+## MPRIS Plays
+
+When the same track also arrives as an [MPRIS media play](media.md) (e.g. a Navidrome web player in Firefox), the
+MPRIS play supersedes the scrobble in media queries (`GET /media/plays`, `query_media_plays`) and in `media`
+deduction-rule conditions: a scrobble with the same title and artist within five minutes of an MPRIS play is
+dropped there. The scrobble itself stays stored, and `scrobble` conditions and auto-tagging are unaffected.
+
 ## Sync
 
 ### Auto-Sync

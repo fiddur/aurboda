@@ -1,6 +1,4 @@
 /**
- * Integration tests for portion-based recipe ingredients.
- *
  * Recipes can measure an ingredient in one of the ingredient food's portions
  * (e.g. "2 brödkaka") instead of a free-form quantity/unit, mirroring meals.
  * The ingredient's nutrient contribution then scales by

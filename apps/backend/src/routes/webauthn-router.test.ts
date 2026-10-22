@@ -1,8 +1,6 @@
 import type { Client } from 'pg'
 
 /**
- * Router-level tests for `/webauthn/*`.
- *
  * Mocked deps verify status-code selection, auth gating, JSON parsing, and
  * that the router never echoes raw verifier errors back to clients.
  */

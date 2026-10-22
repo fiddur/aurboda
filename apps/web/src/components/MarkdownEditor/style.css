@@ -111,7 +111,6 @@
   color: #6b7280;
 }
 
-/* Dark mode */
 @media (prefers-color-scheme: dark) {
   .md-editor {
     border-color: #4b5563;

@@ -1,9 +1,6 @@
-/**
- * Shared component that renders activity title, time, duration, and notes
- * in either read mode (plain text) or edit mode (input fields).
- */
 import { ActivityTypePicker } from '../../components/ActivityTypePicker'
 import { IconPreview } from '../../components/IconPreview'
+import { MarkdownEditor } from '../../components/MarkdownEditor/index.jsx'
 import { formatDuration } from './format-utils'
 
 export interface ActivityDraft {
@@ -24,7 +21,6 @@ interface EditableActivityFieldsProps {
   durationLabel?: string
   /** Icon (emoji or URL) to display next to the title. */
   icon?: string
-  /** Optional link URL for the title. */
   titleHref?: string
 }
 
@@ -53,6 +49,15 @@ export const EditableActivityFields = ({
           value={draft.title}
           onInput={(e) => onDraftChange({ ...draft, title: (e.target as HTMLInputElement).value })}
         />
+
+        <div class="edit-notes-block">
+          <span class="field-label">Description</span>
+          <MarkdownEditor
+            value={draft.notes}
+            onChange={(v) => onDraftChange({ ...draft, notes: v })}
+            rows={3}
+          />
+        </div>
 
         <div class="entity-fields" style={{ marginBottom: '0.5rem' }}>
           <div class="field-row">
@@ -123,16 +128,6 @@ export const EditableActivityFields = ({
             <span class="field-label">{durationLabel}</span>
             <span class="field-value">{draftDuration}</span>
           </div>
-        </div>
-
-        <div class="edit-notes-block">
-          <span class="field-label">Notes</span>
-          <textarea
-            class="edit-notes-input"
-            value={draft.notes}
-            onInput={(e) => onDraftChange({ ...draft, notes: (e.target as HTMLTextAreaElement).value })}
-            rows={3}
-          />
         </div>
       </>
     )

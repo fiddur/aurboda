@@ -1,5 +1,7 @@
 import type { ChallengeEffectiveBucketSize, ChallengeSpec, ChartDataBucket } from '@aurboda/api-spec'
 
+import { isKnownTimezone } from '@aurboda/api-spec'
+
 /**
  * Translate a stored challenge spec into a chart-data query and compute a
  * member's series + cumulative total. Reuses the same `getChartData` engine the
@@ -49,20 +51,26 @@ export interface MemberSeries {
   buckets: ChartDataBucket[]
   total: number
   /**
-   * Timestamp of the member's most recent contributing data point in the
-   * window (ISO 8601), or null if they have no data. This is the honest "last
-   * updated" for standings — a member with no data reports null, not "now".
+   * When the member's contributing data last changed (ISO 8601): the newest
+   * value-change stamp among the points in the window (falling back to a
+   * point's own time for rows stored before that was tracked), or the latest
+   * matching activity start; null if they have no data. This is the honest
+   * "last updated" for standings — a member with no data reports null, not "now".
    */
   last_updated: string | null
 }
 
 /**
- * The most recent contributing data point for a challenge spec in a window.
+ * When a member's contributing data for a challenge spec last changed.
  *
  * Mirrors the filters `getChartData` uses to build the total so the timestamp
  * belongs to a record that actually counts:
- *  - `metric`: MAX(time) of the stored series (respecting the metric's trusted
- *    source filter). HR-zone metrics are computed from heart-rate samples, so
+ *  - `metric`: the newest of each contributing point's `updated_at` (when its
+ *    value last changed) or, for rows from before that column existed, its
+ *    `time`. Daily aggregates such as steps keep one row per day at local
+ *    midnight and are rewritten all day, so `time` alone would always read
+ *    "00:00" no matter how often the total moved. Respects the metric's trusted
+ *    source filter; HR-zone metrics are computed from heart-rate samples, so
  *    we read the underlying `heart_rate` series instead.
  *  - `activity_type`: MAX(start_time) of the matching (non-deleted, current)
  *    activities.
@@ -88,7 +96,7 @@ const resolveLastDataTime = async (
     }
     const result = await query<{ latest: Date | null }>(
       user,
-      `SELECT MAX(time) AS latest
+      `SELECT MAX(COALESCE(updated_at, time)) AS latest
          FROM time_series
         WHERE metric = $1
           AND time BETWEEN $2 AND $3
@@ -118,25 +126,33 @@ const resolveLastDataTime = async (
 
 /**
  * Resolve a member's series for a challenge window. `user` is the *local* user
- * whose data is being measured (the member, on this instance).
+ * whose data is being measured (the member, on this instance). Buckets follow
+ * the challenge's `timezone` (UTC when unknown), not the member's, so every
+ * member's days line up.
  */
 export const resolveMemberSeries = async (
   user: string,
   spec: ChallengeSpecFields,
   start: Date,
   end: Date,
+  timezone: string,
 ): Promise<MemberSeries> => {
+  // `end` is exclusive but the queries below use an inclusive BETWEEN, and daily aggregates
+  // sit at local midnight — exactly at `end` — so without this step back the day after the
+  // challenge would count.
+  const lastInstant = new Date(end.getTime() - 1)
   const [{ buckets }, lastDataTime] = await Promise.all([
     getChartData(user, {
       activity_type_id: spec.activity_type_id ?? undefined,
       aggregation: spec.aggregation,
       bucket_size: effectiveBucketSize(spec.bucket_size, start, end),
-      end: end.toISOString(),
+      end: lastInstant.toISOString(),
       pattern: spec.pattern ?? undefined,
       source_type: spec.source_type,
       start: start.toISOString(),
+      tz: isKnownTimezone(timezone) ? timezone : 'UTC',
     }),
-    resolveLastDataTime(user, spec, start, end),
+    resolveLastDataTime(user, spec, start, lastInstant),
   ])
 
   // We never request breakdown series, so every bucket has a scalar `value`.

@@ -1,6 +1,3 @@
-/**
- * Location, Place, Named Location, and Detected Location CRUD operations.
- */
 import format from 'pg-format'
 
 import type {
@@ -16,10 +13,6 @@ import type {
 import { query } from './connection.ts'
 import { buildDynamicUpdate, type UpdateEntry } from './dynamic-update.ts'
 import { mapDetectedLocationRow, mapNamedLocationRow } from './row-mappers.ts'
-
-// ============================================================================
-// Raw Locations
-// ============================================================================
 
 export const insertLocation = async (user: string, location: Location) => {
   await query(
@@ -76,19 +69,35 @@ export const insertLocations = async (user: string, locations: Location[]): Prom
   )
 }
 
-/** Soft-delete locations from a given source within a time range. */
-export const softDeleteLocationRange = async (
+/**
+ * Soft-delete locations within a time range from every source *not* in
+ * `keepSources`.
+ *
+ * Gives an activity's own GPS track precedence over passive phone tracking for
+ * the activity's full span: a watch or bike computer fixes position far more
+ * accurately than a phone does, and keeping both interleaves two tracks into one
+ * zig-zagging path. Returns the number of points soft-deleted.
+ *
+ * Callers pass every activity-track source in `keepSources`, not just their own —
+ * see `activityTrackSources` for why they must not supersede each other.
+ *
+ * Points are only soft-deleted, never removed. Note that re-inserting them does
+ * not bring them back: both insert paths are `ON CONFLICT DO NOTHING`, so a
+ * superseded point stays superseded.
+ */
+export const softDeleteSupersededLocations = async (
   user: string,
-  source: string,
+  keepSources: string[],
   start: Date,
   end: Date,
-): Promise<void> => {
-  await query(
+): Promise<number> => {
+  const result = await query(
     user,
     `UPDATE locations SET deleted_at = NOW()
-     WHERE source = $1 AND time >= $2 AND time <= $3 AND deleted_at IS NULL`,
-    [source, start, end],
+     WHERE NOT (source = ANY($1)) AND time >= $2 AND time <= $3 AND deleted_at IS NULL`,
+    [keepSources, start, end],
   )
+  return result.rowCount ?? 0
 }
 
 export const getLocations = async (user: string, start: Date, end: Date) => {
@@ -122,9 +131,17 @@ export const getLocations = async (user: string, start: Date, end: Date) => {
   return { locations, places }
 }
 
-// ============================================================================
-// Places (Geofences)
-// ============================================================================
+/** Whether any GPS point falls in the window (what a route image would draw). */
+export const hasLocations = async (user: string, start: Date, end: Date): Promise<boolean> => {
+  const result = await query<{ exists: boolean }>(
+    user,
+    `SELECT EXISTS (
+       SELECT 1 FROM locations WHERE time >= $1 AND time <= $2 AND deleted_at IS NULL
+     ) AS exists`,
+    [start, end],
+  )
+  return result.rows[0]?.exists === true
+}
 
 export const insertPlace = async (user: string, place: Place) => {
   await query(
@@ -177,6 +194,26 @@ export const getNamedLocationById = async (user: string, id: string): Promise<Na
   return mapNamedLocationRow(result.rows[0])
 }
 
+/** The nearest named location within `distanceMeters` of the given coordinates. */
+export const findNearbyNamedLocation = async (
+  user: string,
+  lat: number,
+  lon: number,
+  distanceMeters: number,
+): Promise<NamedLocation | null> => {
+  const result = await query(
+    user,
+    `SELECT ${NAMED_LOCATION_COLS}
+     FROM named_locations
+     WHERE ST_DWithin(location, ST_MakePoint($1, $2)::geography, $3)
+     ORDER BY ST_Distance(location, ST_MakePoint($1, $2)::geography)
+     LIMIT 1`,
+    [lon, lat, distanceMeters],
+  )
+  if (result.rows.length === 0) return null
+  return mapNamedLocationRow(result.rows[0])
+}
+
 export const updateNamedLocation = async (
   user: string,
   id: string,
@@ -210,10 +247,6 @@ export const deleteNamedLocation = async (user: string, id: string): Promise<boo
   const result = await query(user, `DELETE FROM named_locations WHERE id = $1`, [id])
   return (result.rowCount ?? 0) > 0
 }
-
-// ============================================================================
-// Detected Locations (clusters detected from GPS data)
-// ============================================================================
 
 export const insertDetectedLocation = async (
   user: string,
@@ -329,9 +362,6 @@ export const deleteDetectedLocation = async (user: string, id: string): Promise<
   return (result.rowCount ?? 0) > 0
 }
 
-/**
- * Get detected locations that need geocoding.
- */
 export const getDetectedLocationsNeedingGeocode = async (user: string): Promise<DetectedLocation[]> => {
   const result = await query(
     user,

@@ -7,6 +7,7 @@ import type {
   NamedLocation,
   NamedLocationsResponse,
   PromoteDetectedLocationBody,
+  RawLocationsQuery,
   RawLocationsResponse,
   UpdateNamedLocationBody,
 } from '@aurboda/api-spec'
@@ -18,7 +19,6 @@ import type { Place, PlaceVisit, StoredDetectedLocation } from './types'
 import { API_URL } from '../../config'
 import { auth } from '../auth'
 
-// Fetch location/place data for the specified date range
 export const fetchPlaces = async (start: Date, end: Date): Promise<Place[]> => {
   const { token } = auth.value
   const params: LocationsQuery = {
@@ -38,11 +38,15 @@ export const fetchPlaces = async (start: Date, end: Date): Promise<Place[]> => {
   }))
 }
 
-// Fetch place visits for the specified date range
-export const fetchPlaceVisits = async (start: Date, end: Date): Promise<PlaceVisit[]> => {
+export const fetchPlaceVisits = async (
+  start: Date,
+  end: Date,
+  lastKnownHours?: number,
+): Promise<PlaceVisit[]> => {
   const { token } = auth.value
   const params: LocationsQuery = {
     end: end.toISOString(),
+    last_known_hours: lastKnownHours,
     start: start.toISOString(),
   }
   const response = await axios.get<LocationsResponse>(`${API_URL}/locations`, {
@@ -54,17 +58,17 @@ export const fetchPlaceVisits = async (start: Date, end: Date): Promise<PlaceVis
     ...place,
     durationMinutes: place.duration,
     end_time: new Date(place.end_time),
+    inferred_from: place.inferred_from ? new Date(place.inferred_from) : undefined,
     start_time: new Date(place.start_time),
   }))
 }
 
-// Fetch raw GPS location points for the specified date range
 export const fetchRawLocations = async (
   start: Date,
   end: Date,
 ): Promise<{ lat: number; lon: number; time: Date }[]> => {
   const { token } = auth.value
-  const params: LocationsQuery = {
+  const params: RawLocationsQuery = {
     end: end.toISOString(),
     start: start.toISOString(),
   }
@@ -79,7 +83,6 @@ export const fetchRawLocations = async (
   }))
 }
 
-// Fetch stored detected locations
 export const fetchStoredDetectedLocations = async (): Promise<StoredDetectedLocation[]> => {
   const { token } = auth.value
   const response = await axios.get<{ success: boolean; data: ApiDetectedLocation[] }>(
@@ -96,7 +99,6 @@ export const fetchStoredDetectedLocations = async (): Promise<StoredDetectedLoca
   }))
 }
 
-// Fetch named locations
 export const fetchNamedLocations = async (): Promise<NamedLocation[]> => {
   const { token } = auth.value
   const response = await axios.get<NamedLocationsResponse>(`${API_URL}/locations/named`, {
@@ -106,7 +108,6 @@ export const fetchNamedLocations = async (): Promise<NamedLocation[]> => {
   return response.data.data ?? []
 }
 
-// Promote a detected location to a named location
 export const promoteDetectedLocation = async (
   params: PromoteDetectedLocationBody,
 ): Promise<NamedLocation> => {
@@ -122,7 +123,6 @@ export const promoteDetectedLocation = async (
   return response.data.data!
 }
 
-// Add a new named location directly
 export const addNamedLocation = async (params: AddNamedLocationBody): Promise<NamedLocation> => {
   const { token } = auth.value
   const response = await axios.post<AddNamedLocationResponse>(`${API_URL}/locations/named`, params, {
@@ -132,7 +132,6 @@ export const addNamedLocation = async (params: AddNamedLocationBody): Promise<Na
   return response.data.data!
 }
 
-// Update an existing named location
 export const updateNamedLocation = async (
   id: string,
   params: UpdateNamedLocationBody,

@@ -57,8 +57,6 @@ describe('mergeOverlappingActivities — aurboda override semantics (#732 follow
     expect(merged[0].title).toBe('')
   })
 
-  // note: PR #2 moved notes to the notes table; merge no longer touches them
-
   test('non-override merge still blends (cross-source pairing extends the span)', () => {
     // Sanity: the field-blending behaviour we suppressed for overrides is
     // intentional for the cross-source case (e.g. Garmin + Polar reporting

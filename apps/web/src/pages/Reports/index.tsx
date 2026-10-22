@@ -55,7 +55,6 @@ export function Reports() {
 
   const reportTypes = [...new Set((allReports ?? []).map((r) => r.report_type))].sort()
 
-  // Sort newest first
   const sorted = [...(reports ?? [])].sort((a, b) => b.date.getTime() - a.date.getTime())
 
   return (

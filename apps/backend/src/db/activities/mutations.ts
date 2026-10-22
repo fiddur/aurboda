@@ -1,13 +1,9 @@
-/**
- * Activity write operations: insert, update, soft/hard delete, restore, and
- * data-migration helpers. Triggers supersession materialization on writes that
- * may change the merge topology.
- */
+/** Triggers supersession materialization on writes that may change the merge topology. */
 import format from 'pg-format'
 
-import type { Activity, ActivityUpdate } from '../types.ts'
+import type { Activity, ActivityUpdate, LegacyMatch } from '../types.ts'
 
-import { query } from '../connection.ts'
+import { query, withUserTransaction } from '../connection.ts'
 import { buildDynamicUpdate, type UpdateEntry } from '../dynamic-update.ts'
 import { type InsertedActivityKey, mapActivityRow, mapInsertedActivityKey } from '../row-mappers.ts'
 import { isSupersedable } from './merge.ts'
@@ -67,8 +63,7 @@ export const insertOverride = async (
   if (targetIds.length === 0) {
     throw new Error('insertOverride requires at least one target id')
   }
-  await query(user, 'BEGIN')
-  try {
+  const committed = await withUserTransaction(user, async (tx) => {
     // Look for an existing aurboda row at the same (type, start_time),
     // including soft-deleted ones. The partial unique index
     // `idx_activities_type_time` doesn't filter on `deleted_at`, so a
@@ -77,7 +72,7 @@ export const insertOverride = async (
     // would 23505 — instead, revive the soft-deleted row by clearing
     // `deleted_at` and overwriting its fields with the new input.
     const existing = await query(
-      user,
+      tx,
       `SELECT id, source, external_id, activity_type, start_time, end_time, title, data, deleted_at, superseded_by
          FROM activities
         WHERE source = 'aurboda'
@@ -93,7 +88,7 @@ export const insertOverride = async (
       // is part of the lookup key so doesn't change; every other field is
       // overwritten. `deleted_at = NULL` revives a soft-deleted override.
       const updated = await query(
-        user,
+        tx,
         `UPDATE activities SET
            end_time = $2,
            title = $3,
@@ -111,7 +106,7 @@ export const insertOverride = async (
       row = updated.rows[0]
     } else {
       const inserted = await query(
-        user,
+        tx,
         `INSERT INTO activities (source, activity_type, start_time, end_time, title, data)
          VALUES ('aurboda', $1, $2, $3, $4, $5)
          RETURNING id, source, external_id, activity_type, start_time, end_time, title, data, deleted_at, superseded_by`,
@@ -123,10 +118,8 @@ export const insertOverride = async (
           override.data ? JSON.stringify(override.data) : null,
         ],
       )
-      if (inserted.rows.length === 0) {
-        await query(user, 'ROLLBACK')
-        return null
-      }
+      // Nothing was written, so committing the empty transaction equals rolling it back.
+      if (inserted.rows.length === 0) return null
       row = inserted.rows[0]
     }
     const overrideId = row.id as string
@@ -135,7 +128,7 @@ export const insertOverride = async (
     // requested targets are already linked from a prior edit.
     const valueClauses = targetIds.map((_, i) => `($1, $${i + 2})`).join(', ')
     await query(
-      user,
+      tx,
       `INSERT INTO activity_override_targets (override_id, target_id) VALUES ${valueClauses}
        ON CONFLICT DO NOTHING`,
       [overrideId, ...targetIds],
@@ -143,21 +136,31 @@ export const insertOverride = async (
     // Re-read targets so the returned row reflects the full link set
     // (including any pre-existing links on the reused row).
     const allTargets = await query<{ ids: string[] | null }>(
-      user,
+      tx,
       `SELECT array_agg(target_id) AS ids FROM activity_override_targets WHERE override_id = $1`,
       [overrideId],
     )
-    await query(user, 'COMMIT')
-    await materializeSuperseded(user, override.start_time)
-    return mapActivityRow({ ...row, override_target_ids: allTargets.rows[0]?.ids ?? targetIds })
-  } catch (err) {
-    await query(user, 'ROLLBACK').catch(() => {})
-    throw err
-  }
+    return { ids: allTargets.rows[0]?.ids ?? targetIds, row }
+  })
+  if (!committed) return null
+  await materializeSuperseded(user, override.start_time)
+  return mapActivityRow({ ...committed.row, override_target_ids: committed.ids })
 }
 
-export const insertActivity = async (user: string, activity: Activity): Promise<string> => {
-  let insertedId: string
+export interface UpsertActivityResult {
+  /** Undefined when the conflicting row is soft-deleted, which is left untouched. */
+  id: string | undefined
+  changed: boolean
+}
+
+/**
+ * Upsert that reports whether it wrote anything. An identical re-upsert fails the
+ * `IS DISTINCT FROM` guard, so it neither rewrites the row nor counts as a change:
+ * deduction rules notify only on a change, so re-evaluating a settled window does not
+ * re-trigger evaluation.
+ */
+export const upsertActivity = async (user: string, activity: Activity): Promise<UpsertActivityResult> => {
+  let writtenId: string | undefined
   if (activity.external_id) {
     // Upsert by external_id (for sourced data like calendar events, Oura tags, lastfm)
     const result = await query(
@@ -171,6 +174,10 @@ export const insertActivity = async (user: string, activity: Activity): Promise<
          title = EXCLUDED.title,
          data = COALESCE(activities.data, '{}'::jsonb) || EXCLUDED.data
        WHERE activities.deleted_at IS NULL
+         AND (activities.activity_type, activities.start_time, activities.end_time, activities.title, activities.data)
+             IS DISTINCT FROM
+             (EXCLUDED.activity_type, EXCLUDED.start_time, EXCLUDED.end_time, EXCLUDED.title,
+              COALESCE(activities.data, '{}'::jsonb) || EXCLUDED.data)
        RETURNING id`,
       [
         activity.id,
@@ -183,7 +190,7 @@ export const insertActivity = async (user: string, activity: Activity): Promise<
         activity.data,
       ],
     )
-    insertedId = result.rows[0]?.id as string
+    writtenId = result.rows[0]?.id as string | undefined
   } else {
     // Upsert by type + time (for sync data without external_id)
     const result = await query(
@@ -195,6 +202,9 @@ export const insertActivity = async (user: string, activity: Activity): Promise<
          title = EXCLUDED.title,
          data = COALESCE(activities.data, '{}'::jsonb) || EXCLUDED.data
        WHERE activities.deleted_at IS NULL
+         AND (activities.end_time, activities.title, activities.data)
+             IS DISTINCT FROM
+             (EXCLUDED.end_time, EXCLUDED.title, COALESCE(activities.data, '{}'::jsonb) || EXCLUDED.data)
        RETURNING id`,
       [
         activity.id,
@@ -206,8 +216,10 @@ export const insertActivity = async (user: string, activity: Activity): Promise<
         activity.data,
       ],
     )
-    insertedId = result.rows[0]?.id as string
+    writtenId = result.rows[0]?.id as string | undefined
   }
+
+  if (!writtenId) return { changed: false, id: await findLiveConflictingId(user, activity) }
 
   // Materialize superseded_by so chart/trend queries exclude cross-source duplicates.
   // Skipped for activity types that don't participate in merging (see isSupersedable).
@@ -215,8 +227,28 @@ export const insertActivity = async (user: string, activity: Activity): Promise<
     await materializeSuperseded(user, activity.start_time)
   }
 
-  return insertedId
+  return { changed: true, id: writtenId }
 }
+
+const findLiveConflictingId = async (user: string, activity: Activity): Promise<string | undefined> => {
+  const result = activity.external_id
+    ? await query(
+        user,
+        `SELECT id FROM activities WHERE source = $1 AND external_id = $2 AND deleted_at IS NULL`,
+        [activity.source, activity.external_id],
+      )
+    : await query(
+        user,
+        `SELECT id FROM activities
+         WHERE source = $1 AND activity_type = $2 AND start_time = $3
+           AND external_id IS NULL AND deleted_at IS NULL`,
+        [activity.source, activity.activity_type, activity.start_time],
+      )
+  return result.rows[0]?.id as string | undefined
+}
+
+export const insertActivity = async (user: string, activity: Activity): Promise<string> =>
+  (await upsertActivity(user, activity)).id as string
 
 /**
  * Bulk insert / upsert a batch of activities. Returns the persisted
@@ -357,6 +389,29 @@ export const softDeleteActivityByExternalId = async (
   return (result.rowCount ?? 0) > 0
 }
 
+/**
+ * Undo the retraction of an empty import (`data.sets = []` and no Health
+ * Connect `metadata`, the same footprint `retractEmptyGravlImport` matches).
+ * Any other tombstone — a row the user deleted, a Health Connect session —
+ * stays deleted.
+ */
+export const restoreEmptyImportTombstone = async (
+  user: string,
+  source: string,
+  externalId: string,
+): Promise<boolean> => {
+  const result = await query(
+    user,
+    `UPDATE activities SET deleted_at = NULL
+     WHERE source = $1 AND external_id = $2 AND deleted_at IS NOT NULL
+       AND data->'sets' = '[]'::jsonb AND NOT (data ? 'metadata')
+     RETURNING id`,
+    [source, externalId],
+  )
+
+  return result.rows.length > 0
+}
+
 export const restoreActivity = async (user: string, id: string): Promise<boolean> => {
   const result = await query(
     user,
@@ -394,9 +449,13 @@ export const updateActivity = async (
 }
 
 /**
- * Delete a Garmin activity that has the given garmin_activity_id but a different activity_type.
- * Used during re-sync to prevent duplicates when the type mapping changes
- * (e.g., meditation activities previously imported as exercise).
+ * Delete a legacy Garmin activity (no `external_id`) that has the given
+ * garmin_activity_id but a different activity_type. Used during re-sync to
+ * prevent duplicates when the type mapping changes (e.g., meditation
+ * activities previously imported as exercise). Rows keyed by `external_id`
+ * are left alone: the external-id upsert overwrites `activity_type` in place,
+ * and deleting them would also take the enriched Health Connect data and
+ * any notes with them (#1080).
  */
 export const deleteGarminActivityWithWrongType = async (
   user: string,
@@ -407,6 +466,7 @@ export const deleteGarminActivityWithWrongType = async (
     user,
     `DELETE FROM activities
      WHERE source = 'garmin'
+       AND external_id IS NULL
        AND (data->>'garmin_activity_id')::bigint = $1
        AND activity_type != $2
        AND deleted_at IS NULL
@@ -416,6 +476,60 @@ export const deleteGarminActivityWithWrongType = async (
   return result.rows.length > 0 ? (result.rows[0].id as string) : null
 }
 
+const legacyMatchSql = (match: LegacyMatch, params: unknown[]): string => {
+  switch (match.kind) {
+    case 'garmin_activity_id':
+      params.push(match.garmin_activity_id)
+      return `source = 'garmin' AND (data->>'garmin_activity_id') = $${params.length}::text`
+    case 'hc_client_record':
+      params.push(match.data_origin, match.client_record_id)
+      return `source = 'health_connect'
+         AND data->'metadata'->>'dataOrigin' = $${params.length - 1}
+         AND data->'metadata'->>'clientRecordId' = $${params.length}`
+    case 'source_type_start':
+      params.push(match.source, match.activity_type, match.start_time)
+      return `source = $${params.length - 2} AND activity_type = $${params.length - 1} AND start_time = $${params.length}`
+  }
+}
+
+/**
+ * Claim a row written before external ids existed for the identity
+ * `(source, external_id)`, so the following upsert enriches it instead of
+ * creating a duplicate (#1080). Tries the matchers in order and re-sources the
+ * first legacy row found (`external_id IS NULL`, not deleted, oldest first).
+ * A no-op when a row for the identity already exists. Returns the adopted
+ * row's id, or null when nothing was adopted.
+ */
+export const adoptLegacyActivity = async (
+  user: string,
+  identity: { source: string; external_id: string },
+  matches: LegacyMatch[],
+): Promise<string | null> => {
+  for (const match of matches) {
+    const params: unknown[] = [identity.source, identity.external_id]
+    const where = legacyMatchSql(match, params)
+    const result = await query(
+      user,
+      `UPDATE activities SET source = $1, external_id = $2
+       WHERE id = (
+         SELECT id FROM activities
+         WHERE ${where}
+           AND external_id IS NULL
+           AND deleted_at IS NULL
+           AND NOT EXISTS (
+             SELECT 1 FROM activities existing WHERE existing.source = $1 AND existing.external_id = $2
+           )
+         ORDER BY created_at ASC
+         LIMIT 1
+       )
+       RETURNING id`,
+      params,
+    )
+    if (result.rows.length > 0) return result.rows[0].id as string
+  }
+  return null
+}
+
 /** Mark an activity's detail data as synced using JSONB merge (preserves existing data). */
 export const markActivityDetailSynced = async (user: string, id: string): Promise<void> => {
   await query(user, `UPDATE activities SET data = data || '{"detail_synced": true}'::jsonb WHERE id = $1`, [
@@ -423,13 +537,11 @@ export const markActivityDetailSynced = async (user: string, id: string): Promis
   ])
 }
 
-/** Hard-delete all activities from a given source. */
 export const hardDeleteActivitiesBySource = async (user: string, source: string): Promise<number> => {
   const result = await query(user, `DELETE FROM activities WHERE source = $1`, [source])
   return result.rowCount ?? 0
 }
 
-/** Hard-delete activities by source and external_id prefix. */
 export const hardDeleteActivitiesByExternalIdPrefix = async (
   user: string,
   source: string,
@@ -442,7 +554,6 @@ export const hardDeleteActivitiesByExternalIdPrefix = async (
   return result.rowCount ?? 0
 }
 
-/** Update an activity's end_time by external_id. */
 export const updateActivityEndTimeByExternalId = async (
   user: string,
   externalId: string,
@@ -454,10 +565,7 @@ export const updateActivityEndTimeByExternalId = async (
   ])
 }
 
-/**
- * Update activity_type for all activities with a given tag_key in their data.
- * Used when a user renames a programmatic tag via tag mappings.
- */
+/** Used when a user renames a programmatic tag via tag mappings. */
 export const updateActivityTypeByTagKey = async (
   user: string,
   tagKey: string,
@@ -499,11 +607,7 @@ export const updateScreentimeActivityCategoryPath = async (
   return result.rowCount ?? 0
 }
 
-/**
- * Migrate activities with generic 'exercise' type to their specific type.
- * Handles both legacy activity_type_key and HC exerciseTypeName fields.
- * Returns the number of activities updated.
- */
+/** Handles both legacy activity_type_key and HC exerciseTypeName fields. */
 export const migrateExerciseTypes = async (user: string): Promise<number> => {
   // Step 1: activity_type_key path (legacy)
   const r1 = await query(

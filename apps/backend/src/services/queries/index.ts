@@ -1,10 +1,3 @@
-/**
- * Query services for health data.
- *
- * These functions contain the business logic for querying health data.
- * They are used by both the MCP tools and the REST API.
- */
-
 export {
   type ActivityResult,
   type ActivitySummary,
@@ -50,7 +43,16 @@ export { getPeriodSummary } from './period-summary.ts'
 
 export { queryTags } from './tags.ts'
 
-export { queryActivities } from './activities.ts'
+export { isExerciseLike, parseDataFilter, queryActivities } from './activities.ts'
+
+export {
+  type ActivitySessionsOptions,
+  queryActivitySessions,
+  sessionsOptionsFromQuery,
+} from './activity-sessions.ts'
+
+export { queryActivityFieldValues } from './activity-field-values.ts'
+export { getActivityNeighbors } from './activity-neighbors.ts'
 
 export {
   type ActivityFullDetailOptions,

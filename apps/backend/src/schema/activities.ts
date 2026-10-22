@@ -1,7 +1,3 @@
-/**
- * Activity-domain table SQL: activities + activity_type_definitions (with
- * built-in seed) + deduction rules + legacy tag tables.
- */
 export const activitiesTables: Record<string, string> = {
   // Unified activities table (covers all time-ranged events: sleep, exercise, tags, calendar, etc.)
   activities: `
@@ -15,8 +11,46 @@ export const activitiesTables: Record<string, string> = {
       title           VARCHAR(255),
       data            JSONB,
       deleted_at      TIMESTAMPTZ,
-      superseded_by   UUID REFERENCES activities(id) ON DELETE SET NULL
+      superseded_by   UUID REFERENCES activities(id) ON DELETE SET NULL,
+      -- When the row was INGESTED (not when the activity happened) — gates the
+      -- auto-share rules' "new arrivals only" guarantee (#903). Pre-existing
+      -- rows default to the migration moment, which necessarily predates any
+      -- rule enable (the feature ships with this column).
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `,
+
+  // Additive ingest timestamp for activities tables created before #903 (idempotent).
+  activities_created_at: `
+    ALTER TABLE activities ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  `,
+
+  // When the row last CHANGED; NULL for a row untouched since ingest, so a
+  // row's change time is COALESCE(updated_at, created_at). The WHEN guard keeps
+  // an identical re-upsert from counting as a change. Drives re-federating a
+  // shared activity's posts after it changes.
+  activities_updated_at: `
+    ALTER TABLE activities ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;
+
+    CREATE OR REPLACE FUNCTION touch_activity_updated_at() RETURNS TRIGGER AS $$
+    BEGIN
+      NEW.updated_at := NOW();
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.triggers
+         WHERE event_object_table = 'activities'
+           AND trigger_name = 'activities_touch_updated_at'
+      ) THEN
+        CREATE TRIGGER activities_touch_updated_at
+          BEFORE UPDATE ON activities
+          FOR EACH ROW WHEN (OLD IS DISTINCT FROM NEW)
+          EXECUTE FUNCTION touch_activity_updated_at();
+      END IF;
+    END $$
   `,
 
   activities_indexes: `
@@ -76,7 +110,6 @@ export const activitiesTables: Record<string, string> = {
     END $$
   `,
 
-  // Activity type definitions (built-in + custom)
   activity_type_definitions: `
     CREATE TABLE IF NOT EXISTS activity_type_definitions (
       name              VARCHAR(100) PRIMARY KEY,
@@ -251,6 +284,10 @@ export const activitiesTables: Record<string, string> = {
       output_activity_type  VARCHAR(100) NOT NULL REFERENCES activity_type_definitions(name) ON UPDATE CASCADE,
       output_title          VARCHAR(255),
       merge_gap_seconds     INTEGER,
+      mode                  VARCHAR(10) NOT NULL DEFAULT 'create',
+      output_data           JSONB,
+      output_media_field    JSONB,
+      output_title_field    TEXT,
       created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )

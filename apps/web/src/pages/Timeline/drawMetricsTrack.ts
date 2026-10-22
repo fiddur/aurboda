@@ -1,10 +1,3 @@
-/**
- * Draws the metrics track in horizontal timeline mode.
- *
- * - HR and HRV as band/ribbon charts (smoothed avg line + min-max area)
- * - Steps and calories as bar charts behind the lines
- * - Crosshair tooltip on mouseover showing all metric values at that time
- */
 import type { RecoveryZones, ScreentimeCategory, TrainingLoadPoint, WorkoutTrimp } from '@aurboda/api-spec'
 
 import * as d3 from 'd3'
@@ -12,6 +5,8 @@ import { format } from 'date-fns'
 
 import type { ScreentimeBucketParsed } from '../../state/api'
 
+import { stressBandColor } from '../../components/charts/stress-bands'
+import { BAR_BUCKET_NOMINAL_MS, type BarBucketSize } from '../../utils/barWindows'
 import { type MetricBucketParsed, aggregateBuckets, aggregateBucketsAligned } from '../../utils/chart'
 import { type BarLayoutResult, slotPixels } from './barLayout'
 import { buildScreentimeTooltipHtml, findScreentimeBucket } from './drawScreentimeTrack'
@@ -27,15 +22,11 @@ import {
   TSB_FRESH_COLOR,
 } from './drawTrainingLoadTrack'
 
-// ── Colors ────────────────────────────────────────────────────────────────────
-
 export const HR_COLOR = '#ef4444'
 export const HRV_COLOR = '#10b981'
 export const STEPS_COLOR = '#9ca3af'
 export const CALORIES_COLOR = '#f59e0b'
 export const STRESS_COLOR = '#f97316'
-
-// ── Types ─────────────────────────────────────────────────────────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SvgGroup = d3.Selection<any, unknown, null, undefined>
@@ -59,13 +50,11 @@ export interface MetricsTrackConfig {
   pixelsPerHour: number
   /** Pre-computed Y-scales for the metrics track. */
   yScales: MetricsYScales
-  /** Visibility toggles. */
   showHR: boolean
   showHRV: boolean
   showStress: boolean
   showSteps: boolean
   showCalories: boolean
-  /** Tooltip callback — receives HTML content and mouse event. */
   showTooltipHtml: (event: MouseEvent, html: string) => void
   hideTooltip: () => void
   /** Optional: training load points for combined tooltip. */
@@ -76,7 +65,6 @@ export interface MetricsTrackConfig {
   trainingLoadZones?: RecoveryZones
   /** Bar layout for side-by-side rendering. */
   barLayout?: BarLayoutResult
-  /** Slot IDs for steps and calories in the bar layout. */
   stepsSlotId?: string
   caloriesSlotId?: string
   /** Screentime bucketed data for combined tooltip. */
@@ -84,19 +72,19 @@ export interface MetricsTrackConfig {
   /** Screentime categories for tooltip rendering. */
   screentimeCategories?: ScreentimeCategory[]
   /**
-   * Target bar bucket size in ms. When set, steps/calories bars are re-aggregated
-   * to this bucket size so they align with training load and screentime bars.
-   * Defaults to native bucket size (no forced aggregation).
+   * Target bar bucket size. When set, steps/calories bars are re-aggregated into
+   * local calendar windows of this size so they align with training load and
+   * screentime bars. Defaults to native bucket size (no forced aggregation).
    */
-  barBucketMs?: number
+  barBucketSize?: BarBucketSize
 }
 
-// ── Bucket aggregation by zoom ────────────────────────────────────────────────
+/** A multiple of every factor `getAggregationFactor` returns: slicing the bucket
+ * array at a multiple of this index keeps the line-chart chunks unchanged. */
+export const LINE_CHUNK_ALIGNMENT = 6
 
-/** Pick an aggregation factor based on pixels-per-hour and bucket size.
- *  Only merges small (5m/15m) buckets — if buckets are already >= 1h, skip. */
+/** Only merges small (5m/15m) buckets — if buckets are already >= 1h, skip. */
 const getAggregationFactor = (pixelsPerHour: number, buckets: MetricBucketParsed[]): number => {
-  // If buckets are already large (>= 1 hour), don't aggregate further
   if (buckets.length >= 2) {
     const bucketMs = buckets[1]!.start.getTime() - buckets[0]!.start.getTime()
     if (bucketMs >= 3600_000) return 1
@@ -106,17 +94,11 @@ const getAggregationFactor = (pixelsPerHour: number, buckets: MetricBucketParsed
   return 6 // merge to ~30m
 }
 
-/**
- * Check if bar buckets need time-aligned aggregation.
- * Returns true if the native bucket size is smaller than the target bar bucket size.
- */
-const needsBarAggregation = (buckets: MetricBucketParsed[], barBucketMs?: number): boolean => {
-  if (!barBucketMs || buckets.length < 2) return false
+const needsBarAggregation = (buckets: MetricBucketParsed[], barBucketSize?: BarBucketSize): boolean => {
+  if (!barBucketSize || buckets.length < 2) return false
   const bucketMs = buckets[1]!.start.getTime() - buckets[0]!.start.getTime()
-  return bucketMs < barBucketMs
+  return bucketMs < BAR_BUCKET_NOMINAL_MS[barBucketSize]
 }
-
-// ── Gap detection ─────────────────────────────────────────────────────────────
 
 interface BandPoint {
   time: Date
@@ -152,9 +134,6 @@ const extractBandData = (buckets: MetricBucketParsed[], metricName: string): (Ba
   return result
 }
 
-// ── Drawing ───────────────────────────────────────────────────────────────────
-
-/** Draw a band/ribbon chart: semi-transparent min-max area + smooth avg line. */
 const drawBandChart = (
   group: SvgGroup,
   data: (BandPoint | null)[],
@@ -162,7 +141,6 @@ const drawBandChart = (
   yScale: d3.ScaleLinear<number, number>,
   color: string,
 ): void => {
-  // Area fill between min and max
   const area = d3
     .area<BandPoint | null>()
     .defined((d) => d !== null)
@@ -179,7 +157,6 @@ const drawBandChart = (
     .attr('fill-opacity', 0.15)
     .attr('pointer-events', 'none')
 
-  // Average line
   const line = d3
     .line<BandPoint | null>()
     .defined((d) => d !== null)
@@ -197,7 +174,6 @@ const drawBandChart = (
     .attr('pointer-events', 'none')
 }
 
-/** Draw bar charts for steps or calories, with optional slot positioning. */
 const drawBarChart = (
   group: SvgGroup,
   buckets: MetricBucketParsed[],
@@ -205,7 +181,7 @@ const drawBarChart = (
   xScale: d3.ScaleTime<number, number>,
   yScale: d3.ScaleLinear<number, number>,
   trackBottom: number,
-  color: string,
+  color: string | ((avg: number) => string),
   opacity: number,
   barLayout?: BarLayoutResult,
   slotId?: string,
@@ -240,17 +216,14 @@ const drawBarChart = (
       .attr('y', barTop)
       .attr('width', barWidth)
       .attr('height', barHeight)
-      .attr('fill', color)
+      .attr('fill', typeof color === 'function' ? color(stats.avg) : color)
       .attr('opacity', opacity)
       .attr('pointer-events', 'none')
   }
 }
 
-// ── Tooltip ───────────────────────────────────────────────────────────────────
-
 const formatTime = (date: Date): string => format(date, 'HH:mm')
 
-/** Build training load section for the combined tooltip. */
 const buildTrainingLoadSection = (
   bucketMid: Date,
   points: TrainingLoadPoint[],
@@ -380,7 +353,6 @@ const buildMetricsTooltipHtml = (
     }
   }
 
-  // Append training load section if available (with tolerance matching the bucket duration)
   if (trainingLoadPoints && trainingLoadPoints.length > 0) {
     const bucketMid = new Date((bucket.start.getTime() + bucket.end.getTime()) / 2)
     const section = buildTrainingLoadSection(
@@ -399,10 +371,7 @@ const buildMetricsTooltipHtml = (
   return hasContent ? html : null
 }
 
-/**
- * Build a standalone training-load tooltip (no metric data).
- * Used when metric buckets are empty but training load points exist.
- */
+/** Used when metric buckets are empty but training load points exist. */
 const buildTrainingLoadOnlyTooltipHtml = (
   hoverTime: Date,
   trainingLoadPoints: TrainingLoadPoint[],
@@ -413,7 +382,6 @@ const buildTrainingLoadOnlyTooltipHtml = (
   const point = findTrainingLoadPoint(trainingLoadPoints, hoverTime, toleranceMs)
   if (!point) return null
 
-  // Build date header from the training load point's own time + bucket duration
   const pointTime = new Date(point.time)
   const bucketDuration = inferBucketDuration(trainingLoadPoints)
   const bucketEnd = new Date(pointTime.getTime() + bucketDuration)
@@ -436,9 +404,6 @@ const buildTrainingLoadOnlyTooltipHtml = (
   return section ? html + section : null
 }
 
-// ── Y-scale computation ───────────────────────────────────────────────────────
-
-/** Extract maximum avg value from buckets for a given metric. */
 const getMetricMax = (buckets: MetricBucketParsed[], metricName: string, fallback: number): number => {
   let max = -Infinity
   for (const b of buckets) {
@@ -462,10 +427,8 @@ export const computeYScales = (
   trackBottom: number,
   barBuckets?: MetricBucketParsed[],
 ): MetricsYScales => {
-  // HR: fixed domain
   const yHr = d3.scaleLinear().domain([40, 200]).range([trackBottom, trackY])
 
-  // Stress: fixed domain 0–100
   const yStress = d3.scaleLinear().domain([0, 100]).range([trackBottom, trackY])
 
   // HRV: dynamic domain based on data
@@ -504,8 +467,6 @@ export const computeYScales = (
   return { yCal, yHr, yHrv, ySteps, yStress }
 }
 
-// ── Crosshair helpers ─────────────────────────────────────────────────────────
-
 /** Binary search for the bucket containing the given timestamp. */
 const findBucketAt = (bs: MetricBucketParsed[], timeMs: number): MetricBucketParsed | null => {
   let lo = 0
@@ -541,8 +502,6 @@ const buildTooltipBucket = (
     },
   }
 }
-
-// ── Crosshair overlay ─────────────────────────────────────────────────────────
 
 const drawCrosshairOverlay = (
   outerG: SvgGroup,
@@ -594,12 +553,10 @@ const drawCrosshairOverlay = (
       const hoverTime = xScale.invert(mx!)
       const hoverMs = hoverTime.getTime()
 
-      // Find the bar-aligned bucket (for time header + calories/steps) and fine bucket (for HR/HRV)
       const barBucket = barBuckets.length > 0 ? findBucketAt(barBuckets, hoverMs) : null
       const lineBucket = buckets.length > 0 ? findBucketAt(buckets, hoverMs) : null
       const tooltipBucket = buildTooltipBucket(barBucket, lineBucket)
 
-      // Build tooltip: use metric bucket if available, otherwise training-load-only
       let html: string | null = null
       if (tooltipBucket) {
         const bucketDuration = tooltipBucket.end.getTime() - tooltipBucket.start.getTime()
@@ -617,7 +574,6 @@ const drawCrosshairOverlay = (
           tolerance,
         )
       } else if (trainingLoadPoints && trainingLoadPoints.length > 0) {
-        // No metric bucket — build a standalone training load tooltip
         const tlBucketDuration = inferBucketDuration(trainingLoadPoints)
         const tolerance = Math.max(2 * 3600_000, tlBucketDuration)
         html = buildTrainingLoadOnlyTooltipHtml(
@@ -629,7 +585,6 @@ const drawCrosshairOverlay = (
         )
       }
 
-      // Append screentime section if available
       if (screentimeBuckets && screentimeCategories) {
         const stBucket = findScreentimeBucket(screentimeBuckets, hoverTime)
         if (stBucket) {
@@ -654,9 +609,6 @@ const drawCrosshairOverlay = (
     })
 }
 
-// ── Main draw function ────────────────────────────────────────────────────────
-
-/** Draw bar charts (steps/calories) and band charts (HR/HRV). */
 const drawBarAndBandCharts = (
   chartGroup: SvgGroup,
   barBuckets: MetricBucketParsed[],
@@ -705,7 +657,10 @@ const drawBarAndBandCharts = (
     )
   }
 
-  // Draw band charts (using finer line buckets)
+  if (showStress) {
+    drawBarChart(chartGroup, lineBuckets, 'stress_level', xScale, yStress, trackBottom, stressBandColor, 0.7)
+  }
+
   if (showHR) {
     const hrBand = extractBandData(lineBuckets, 'heart_rate')
     if (hrBand.length > 1) drawBandChart(chartGroup, hrBand, xScale, yHr, HR_COLOR)
@@ -714,18 +669,9 @@ const drawBarAndBandCharts = (
     const hrvBand = extractBandData(lineBuckets, 'hrv_rmssd')
     if (hrvBand.length > 1) drawBandChart(chartGroup, hrvBand, xScale, yHrv, HRV_COLOR)
   }
-  if (showStress) {
-    const stressBand = extractBandData(lineBuckets, 'stress_level')
-    if (stressBand.length > 1) drawBandChart(chartGroup, stressBand, xScale, yStress, STRESS_COLOR)
-  }
 }
 
-/**
- * Draw the metrics track: bars for steps/calories, then band charts for HR/HRV,
- * and an interactive crosshair overlay for tooltips.
- *
- * Y-scales are pre-computed via `computeYScales` and passed in via config.
- */
+/** Y-scales are pre-computed via `computeYScales` and passed in via config. */
 export const drawMetricsTrack = (config: MetricsTrackConfig): void => {
   const {
     chartGroup,
@@ -757,13 +703,12 @@ export const drawMetricsTrack = (config: MetricsTrackConfig): void => {
   const buckets = aggregateBuckets(rawBuckets, lineFactor)
 
   // Aggregate for bar charts (steps/calories) — time-aligned to match screentime/training load
-  const barBuckets = needsBarAggregation(rawBuckets, config.barBucketMs)
-    ? aggregateBucketsAligned(rawBuckets, config.barBucketMs!)
+  const barBuckets = needsBarAggregation(rawBuckets, config.barBucketSize)
+    ? aggregateBucketsAligned(rawBuckets, config.barBucketSize!)
     : buckets
 
   const trackBottom = trackY + trackHeight
 
-  // Draw bars and band charts (extracted to reduce complexity)
   drawBarAndBandCharts(
     chartGroup,
     barBuckets,
@@ -781,7 +726,6 @@ export const drawMetricsTrack = (config: MetricsTrackConfig): void => {
     config.caloriesSlotId,
   )
 
-  // Crosshair tooltip overlay (includes training load + screentime data in combined tooltip)
   drawCrosshairOverlay(
     outerG,
     xScale,

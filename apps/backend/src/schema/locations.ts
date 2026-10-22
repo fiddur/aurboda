@@ -1,6 +1,3 @@
-/**
- * Location-domain table SQL: detected/named locations, raw GPS, named places.
- */
 export const locationsTables: Record<string, string> = {
   // Detected locations (clusters detected from GPS data with geocoded addresses)
   detected_locations: `

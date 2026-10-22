@@ -5,7 +5,7 @@
  * Buckets are read from time_series at query time (see `query.ts`); the
  * current incomplete hour is computed on-the-fly there.
  */
-import type { TimeSeriesPoint } from '../../db/types.ts'
+import type { Activity, TimeSeriesPoint } from '../../db/types.ts'
 import type { ResolvedTrainingLoadSettings } from './banister.ts'
 import type { TrainingLoadDeps } from './deps.ts'
 
@@ -23,10 +23,16 @@ import { getOrCacheMaxObservedHr } from './hr-cache.ts'
 /** Maximum chunk size for recomputation (7 days in ms). */
 const RECOMPUTE_CHUNK_MS = 7 * 24 * MS_PER_HOUR
 
+/** The HR window read for an exercise; one without an end counts as an hour long. */
+export const exerciseWindow = (ex: Activity): { start: Date; end: Date } => ({
+  end: ex.end_time ?? new Date(ex.start_time.getTime() + MS_PER_HOUR),
+  start: ex.start_time,
+})
+
 /**
  * Recompute one chunk of impulse buckets [chunkStart, chunkEnd).
  *
- * Fetches exercises for the chunk, then HR samples per-exercise (bounded),
+ * Fetches exercises for the chunk, then HR samples for all their windows in one query (bounded),
  * and hourly calorie sums via DB-level aggregation. This keeps memory bounded
  * regardless of how much raw data exists.
  */
@@ -39,28 +45,24 @@ const recomputeChunk = async (
   hrRest: number,
   settings: ResolvedTrainingLoadSettings,
 ): Promise<TimeSeriesPoint[]> => {
-  // Fetch exercises and hourly calorie sums for this chunk
   const [exercises, hourlyCalories] = await Promise.all([
     deps.getExercises(user, chunkStart, chunkEnd),
     deps.getHourlyCalorieSums(user, chunkStart, chunkEnd),
   ])
 
-  // For each exercise, fetch HR samples just for that session window
+  const hrPerExercise =
+    exercises.length > 0 ? await deps.getHrSamplesForWindows(user, exercises.map(exerciseWindow)) : []
   const training = new Map<string, number>()
-  for (const ex of exercises) {
-    const sessionEnd = ex.end_time ?? new Date(ex.start_time.getTime() + MS_PER_HOUR)
-    const hrSamples = await deps.getHrSamples(user, ex.start_time, sessionEnd)
-    processExercise(ex, hrSamples, hrMax, hrRest, settings.k_factor, training)
-  }
+  exercises.forEach((ex, i) => {
+    processExercise(ex, hrPerExercise[i] ?? [], hrMax, hrRest, settings.k_factor, training)
+  })
 
-  // Build activity impulse map from pre-bucketed hourly calorie sums
   const activity = new Map<string, number>()
   for (const [time, kcalSum] of hourlyCalories) {
     const hourIso = floorToHour(time).toISOString()
     activity.set(hourIso, (activity.get(hourIso) ?? 0) + kcalSum * settings.activity_impulse_scale)
   }
 
-  // Build time series points
   const points: TimeSeriesPoint[] = []
 
   for (const [hourIso, value] of training) {
@@ -97,8 +99,6 @@ const recomputeChunk = async (
 /**
  * Recompute hourly impulse buckets for a user from `fromHour` to the last completed hour.
  *
- * Processes in chunks of RECOMPUTE_CHUNK_MS to keep memory bounded.
- * For each chunk: fetches exercises, HR per-exercise, hourly calorie sums.
  * Skips the current (incomplete) hour.
  */
 export const recomputeImpulseBuckets = async (
@@ -108,10 +108,8 @@ export const recomputeImpulseBuckets = async (
 ): Promise<{ hours_computed: number }> => {
   const currentHour = getCurrentHourStart()
 
-  // Don't recompute if fromHour is in the future or the current hour
   if (fromHour >= currentHour) return { hours_computed: 0 }
 
-  // Fetch user settings and latest resting HR in parallel.
   // Use cached observed_hr_max to avoid the expensive 1-year scan.
   const [userSettings, latestRestingHr] = await Promise.all([
     deps.getUserSettings(user),
@@ -131,7 +129,6 @@ export const recomputeImpulseBuckets = async (
     deps.deleteImpulseBuckets(user, 'activity_impulse', 'aurboda', fromHour, currentHour),
   ])
 
-  // Process in chunks
   let allPoints: TimeSeriesPoint[] = []
   let chunkStart = fromHour
 
@@ -148,10 +145,8 @@ export const recomputeImpulseBuckets = async (
     chunkStart = chunkEnd
   }
 
-  // Clear the watermark
   await deps.updateTrainingLoadSettings(user, { impulse_watermark: undefined })
 
-  // Count distinct hours
   const hours = new Set(allPoints.map((p) => p.time.toISOString()))
   return { hours_computed: hours.size }
 }

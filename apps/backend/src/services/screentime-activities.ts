@@ -1,6 +1,4 @@
 /**
- * Convert categorized productivity records into screentime activities.
- *
  * We mirror the frontend `productivityMerge.ts` contract: adjacent records of
  * the same resolved category within MERGE_GAP_MS collapse into a single span.
  * Each span becomes an activity whose `activity_type` is the category's
@@ -18,7 +16,28 @@ import { isScreentimeActivity } from '@aurboda/api-spec'
 import type { ProductivityRecord, ScreentimeCategory } from '../db/index.ts'
 import type { Activity } from '../db/types.ts'
 
-import { getScoreForCategory } from './screentime-categories.ts'
+/**
+ * Resolve the effective score for a category path by walking up parents.
+ */
+export const getScoreForCategory = (
+  categoryPath: string[],
+  allCategories: ScreentimeCategory[],
+): number | undefined => {
+  const exact = allCategories.find(
+    (c) => c.name.length === categoryPath.length && c.name.every((n, i) => n === categoryPath[i]),
+  )
+  if (exact?.score != null) return exact.score
+
+  for (let depth = categoryPath.length - 1; depth > 0; depth--) {
+    const parentPath = categoryPath.slice(0, depth)
+    const parent = allCategories.find(
+      (c) => c.name.length === parentPath.length && c.name.every((n, i) => n === parentPath[i]),
+    )
+    if (parent?.score != null) return parent.score
+  }
+
+  return undefined
+}
 
 const MERGE_GAP_MS = 2 * 60 * 1000 // Mirrors productivityMerge.ts
 const MIN_SPAN_MS = 60_000 // Skip spans shorter than 1 minute
@@ -119,8 +138,6 @@ export const buildScreentimeActivitySpans = (
 }
 
 /**
- * Convert spans to Activity records for bulk insert.
- *
  * external_id is deterministic: `${source}_${startEpoch}_${activity_type}`.
  * The activity_type slug replaced the joined category path in the v2 format
  * because slugs are stable across category renames (a renamed category keeps

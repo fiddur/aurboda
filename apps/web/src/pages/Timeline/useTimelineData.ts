@@ -1,6 +1,11 @@
-import { isLocationVisitActivity, isMusicScrobbleActivity, type ScreentimeCategory } from '@aurboda/api-spec'
+import {
+  isLocationVisitActivity,
+  isMusicScrobbleActivity,
+  type Note,
+  type ScreentimeCategory,
+} from '@aurboda/api-spec'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { addDays, format, subDays } from 'date-fns'
+import { format } from 'date-fns'
 import { useCallback, useMemo } from 'preact/hooks'
 
 import type { Activity, Place, Scrobble } from '../../state/api'
@@ -10,13 +15,15 @@ import {
   fetchActivities,
   fetchActivityTypeDefinitions,
   fetchBucketedMetrics,
+  fetchCommentsInRange,
   fetchMeals,
   fetchScreentimeCategories,
   fetchScreentimeBucketed,
-  fetchItemIcons,
   fetchTrainingLoad,
   fetchUserSettings,
+  selectItemIcons,
 } from '../../state/api'
+import { browserTz } from '../../state/api/client'
 import { parseBucketedResponse } from '../../utils/chart'
 import { packLanes } from '../../utils/lanePacking'
 import {
@@ -35,7 +42,9 @@ import {
 } from './categorize'
 import { categorizeMusic } from './categorizeMusic'
 import { activityColors, getExerciseColor } from './colors'
+import { buildCommentItems } from './commentItems'
 import { parseBucketedData } from './drawActivitySparklines'
+import { padFetchWindow } from './fetchRange'
 import { getExerciseTypeName } from './formatting'
 import {
   BASE_COLUMNS,
@@ -44,10 +53,8 @@ import {
   type LegendCategory,
   type ScreentimeSubEntry,
 } from './legendCategories'
+import { TIMELINE_METRICS, TIMELINE_SLEEP_METRICS } from './timelineMetrics'
 import { buildSleepDetails, type SleepMetricsByDate } from './tooltipBuilder'
-
-/** Metrics to exclude from the unified bucketed query (fetched via separate endpoints). */
-const TIMELINE_EXCLUDED_METRICS = ['training_impulse', 'activity_impulse']
 
 const ACTIVITY_CATEGORIES = new Set(['sleep_rest', 'exercise', 'meditation', 'wellness'])
 
@@ -60,25 +67,22 @@ const ACTIVITY_CATEGORIES = new Set(['sleep_rest', 'exercise', 'meditation', 'we
 const TIMELINE_EXCLUDED_ACTIVITY_TYPES: string[] = []
 
 export interface TimelineData {
-  // Raw query results needed by rendering
   activities: Activity[]
   scrobbles: Scrobble[]
-  // Derived chart data
+  /** Comment thread roots anchored in the fetch window, replies nested. */
+  commentNotes: Note[]
   chartItems: ChartItem[]
   activityItems: ChartItem[]
   columnData: { column: Column; items: { item: ChartItem; lane: number }[]; laneCount: number }[]
   columns: Column[]
   sparklineBuckets: ReturnType<typeof parseBucketedData>
   horizontalMetricBuckets: ReturnType<typeof parseBucketedResponse>
-  // Query objects needed for horizontal mode
   trainingLoadQuery: ReturnType<typeof useQuery<Awaited<ReturnType<typeof fetchTrainingLoad>>>>
   screentimeBucketedQuery: ReturnType<typeof useQuery<Awaited<ReturnType<typeof fetchScreentimeBucketed>>>>
   screentimeCategoriesQuery: ReturnType<typeof useQuery<ScreentimeCategory[]>>
-  // Status
   isFetching: boolean
   isInitialLoad: boolean
   errorSources: string[]
-  // Misc
   hasLastFm: boolean
   /** Dynamic screentime sub-toggles to render in the legend. */
   screentimeSubEntries: ScreentimeSubEntry[]
@@ -110,8 +114,7 @@ export const useTimelineData = ({
   mergeGapMs,
   collapseDepth,
 }: UseTimelineDataOptions): TimelineData => {
-  // ── Data queries ───────────────────────────────────────────────────────────
-
+  const [paddedStart, paddedEnd] = padFetchWindow(fetchStart, fetchEnd)
   const { data: activityTypeDefs = [] } = useQuery({
     queryFn: fetchActivityTypeDefinitions,
     queryKey: ['activityTypeDefinitions'],
@@ -121,13 +124,7 @@ export const useTimelineData = ({
   const activitiesQuery = useQuery({
     enabled: !hiddenCategories.has('activity'),
     placeholderData: keepPreviousData,
-    queryFn: () =>
-      fetchActivities(
-        subDays(fetchStart, 0.5),
-        addDays(fetchEnd, 0.5),
-        undefined,
-        TIMELINE_EXCLUDED_ACTIVITY_TYPES,
-      ),
+    queryFn: () => fetchActivities(paddedStart, paddedEnd, undefined, TIMELINE_EXCLUDED_ACTIVITY_TYPES),
     queryKey: ['timeline-activities', fromDateKey, toDateKey],
     staleTime: 5 * 60 * 1000,
   })
@@ -149,7 +146,7 @@ export const useTimelineData = ({
 
   const settingsQuery = useQuery({
     queryFn: fetchUserSettings,
-    queryKey: ['user-settings'],
+    queryKey: ['userSettings'],
     staleTime: 30 * 60 * 1000,
   })
 
@@ -158,28 +155,22 @@ export const useTimelineData = ({
   const bucketedMetricsQuery = useQuery({
     enabled: !hiddenCategories.has('metrics'),
     placeholderData: keepPreviousData,
-    queryFn: () =>
-      fetchBucketedMetrics(
-        subDays(fetchStart, 0.5),
-        addDays(fetchEnd, 0.5),
-        undefined,
-        bucketSize,
-        TIMELINE_EXCLUDED_METRICS,
-      ),
+    queryFn: () => fetchBucketedMetrics(paddedStart, paddedEnd, TIMELINE_METRICS, bucketSize),
     queryKey: ['timeline-bucketed-metrics', fromDateKey, toDateKey, bucketSize],
     staleTime: 5 * 60 * 1000,
   })
 
   const itemIconsQuery = useQuery({
-    queryFn: fetchItemIcons,
-    queryKey: ['item-icons'],
+    queryFn: fetchUserSettings,
+    queryKey: ['userSettings'],
+    select: selectItemIcons,
     staleTime: 30 * 60 * 1000,
   })
 
   const trainingLoadQuery = useQuery({
     enabled: !hiddenCategories.has('training_load'),
     placeholderData: keepPreviousData,
-    queryFn: () => fetchTrainingLoad(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5), barBucketSize),
+    queryFn: () => fetchTrainingLoad(paddedStart, paddedEnd, barBucketSize),
     queryKey: ['timeline-training-load', fromDateKey, toDateKey, barBucketSize],
     staleTime: 5 * 60 * 1000,
   })
@@ -187,12 +178,23 @@ export const useTimelineData = ({
   const screentimeBucketedQuery = useQuery({
     enabled: !hiddenCategories.has('screen_time_h') && !hiddenCategories.has('metrics'),
     placeholderData: keepPreviousData,
-    queryFn: () => fetchScreentimeBucketed(subDays(fetchStart, 0.5), addDays(fetchEnd, 0.5), barBucketSize),
+    queryFn: () => fetchScreentimeBucketed(paddedStart, paddedEnd, barBucketSize, browserTz),
     queryKey: ['timeline-screentime-bucketed', fromDateKey, toDateKey, barBucketSize],
     staleTime: 5 * 60 * 1000,
   })
 
-  // ── Derived data ───────────────────────────────────────────────────────────
+  // Every comment thread root anchored in the visible window. The range read
+  // matches on overlap, so a span crossing an edge is already included and the
+  // window needs no padding. Roots arrive with their replies nested, so the
+  // comment panel needs no second fetch. Hiding the track skips the request,
+  // as the other tracks do.
+  const commentsQuery = useQuery({
+    enabled: !hiddenCategories.has('comments'),
+    placeholderData: keepPreviousData,
+    queryFn: () => fetchCommentsInRange(fetchStart, fetchEnd),
+    queryKey: ['timeline-comments', fromDateKey, toDateKey],
+    staleTime: 60 * 1000,
+  })
 
   const typeDefsMap = useMemo(
     () =>
@@ -329,15 +331,8 @@ export const useTimelineData = ({
 
   const sleepMetricsByDate = useMemo<SleepMetricsByDate>(() => {
     const map: SleepMetricsByDate = new Map()
-    const sleepMetricNames = [
-      'sleep_score',
-      'sleep_efficiency',
-      'sleep_restfulness',
-      'sleep_deep_score',
-      'sleep_rem_score',
-    ]
     for (const bucket of bucketedMetricsQuery.data?.buckets ?? []) {
-      for (const name of sleepMetricNames) {
+      for (const name of TIMELINE_SLEEP_METRICS) {
         const stats = bucket.metrics[name]
         if (!stats) continue
         const key = format(new Date(bucket.start), 'yyyy-MM-dd')
@@ -389,22 +384,22 @@ export const useTimelineData = ({
     [activities, secondaryActivities, itemIcons, sleepMetricsByDate, scrobbles, typeDefsMap],
   )
 
-  const otherActivities = useMemo(
-    () =>
-      secondaryActivities.filter((a) => {
-        if (!a.end_time) return true
-        if (a.source && EXCLUDED_ACTIVITY_SOURCES.has(a.source)) return true
-        if (EXCLUDED_ACTIVITY_TYPES.has(a.activity_type)) return true
-        for (const prefix of EXCLUDED_ACTIVITY_PREFIXES) {
-          if (a.activity_type.startsWith(prefix)) return true
-        }
-        return !activityItems.some((i) => i.entity_id === a.id)
-      }),
-    [secondaryActivities, activityItems],
-  )
+  const otherActivities = useMemo(() => {
+    const shownIds = new Set(activityItems.map((i) => i.entity_id))
+    return secondaryActivities.filter((a) => {
+      if (!a.end_time) return true
+      if (a.source && EXCLUDED_ACTIVITY_SOURCES.has(a.source)) return true
+      if (EXCLUDED_ACTIVITY_TYPES.has(a.activity_type)) return true
+      for (const prefix of EXCLUDED_ACTIVITY_PREFIXES) {
+        if (a.activity_type.startsWith(prefix)) return true
+      }
+      return !shownIds.has(a.id)
+    })
+  }, [secondaryActivities, activityItems])
 
+  // Comments sit last so the 💬 column is the rightmost one in vertical mode.
   const allColumns: Column[] = useMemo(
-    () => (showMusicColumn ? [...BASE_COLUMNS, 'Music'] : BASE_COLUMNS),
+    () => [...BASE_COLUMNS, ...(showMusicColumn ? (['Music'] as Column[]) : []), 'Comments'],
     [showMusicColumn],
   )
 
@@ -412,6 +407,10 @@ export const useTimelineData = ({
     () => categorizeMeals(mealsQuery.data?.meals ?? [], itemIcons),
     [mealsQuery.data, itemIcons],
   )
+
+  const commentNotes = useMemo<Note[]>(() => commentsQuery.data ?? [], [commentsQuery.data])
+
+  const commentItems = useMemo(() => buildCommentItems(commentNotes), [commentNotes])
 
   const isItemHidden = useCallback(
     (item: ChartItem): boolean => {
@@ -442,6 +441,7 @@ export const useTimelineData = ({
       ),
       ...musicItems,
       ...mealItems,
+      ...commentItems,
     ],
     [
       activityItems,
@@ -455,6 +455,7 @@ export const useTimelineData = ({
       screentimeDerivedTypes,
       musicItems,
       mealItems,
+      commentItems,
     ],
   )
 
@@ -463,15 +464,25 @@ export const useTimelineData = ({
     [allChartItems, isItemHidden],
   )
 
+  const itemsByColumn = useMemo(() => {
+    const grouped = new Map<Column, ChartItem[]>()
+    for (const item of chartItems) {
+      const group = grouped.get(item.column)
+      if (group) group.push(item)
+      else grouped.set(item.column, [item])
+    }
+    return grouped
+  }, [chartItems])
+
   const columns = useMemo(
-    () => allColumns.filter((col) => chartItems.some((item) => item.column === col)),
-    [allColumns, chartItems],
+    () => allColumns.filter((col) => itemsByColumn.has(col)),
+    [allColumns, itemsByColumn],
   )
 
   const columnData = useMemo(
     () =>
       columns.map((col) => {
-        const colItems = chartItems.filter((i) => i.column === col)
+        const colItems = itemsByColumn.get(col) ?? []
         const packed = packLanes(
           colItems,
           (i) => i.start,
@@ -479,7 +490,7 @@ export const useTimelineData = ({
         )
         return { column: col, ...packed }
       }),
-    [columns, chartItems],
+    [columns, itemsByColumn],
   )
 
   const isFetching = activitiesQuery.isFetching || mealsQuery.isFetching || bucketedMetricsQuery.isFetching
@@ -494,6 +505,7 @@ export const useTimelineData = ({
     chartItems,
     columnData,
     columns,
+    commentNotes,
     errorSources,
     hasLastFm,
     horizontalMetricBuckets,

@@ -57,7 +57,6 @@
   background: #5b32a3;
 }
 
-/* Data sources section */
 .help-page .data-sources {
   margin-bottom: 3rem;
 }
@@ -76,7 +75,6 @@
   gap: 1.5rem;
 }
 
-/* Data source card */
 .help-page .data-source-card {
   background: #fff;
   border: 1px solid #e5e7eb;
@@ -185,7 +183,6 @@
   background: #5b32a3;
 }
 
-/* Quick tips section */
 .help-page .quick-tips {
   background: #f9fafb;
   border-radius: 12px;
@@ -218,7 +215,6 @@
   color: #1f2937;
 }
 
-/* Dark mode */
 @media (prefers-color-scheme: dark) {
   .help-page h1 {
     color: #f9fafb;
@@ -309,7 +305,6 @@
   }
 }
 
-/* Responsive */
 @media (max-width: 800px) {
   .help-page .sources-grid {
     grid-template-columns: 1fr;

@@ -13,7 +13,6 @@
  * etc.) keep the generic `Activity` shape with `data?: Record<string, unknown>`.
  */
 
-/** `data` shape for `music_scrobble` activities. */
 export interface MusicScrobbleData {
   artist: string
   track: string
@@ -26,7 +25,6 @@ export interface ScreentimeData {
   score?: number
 }
 
-/** `data` shape for `location_visit` activities. */
 export interface LocationVisitData {
   lat: number
   lon: number

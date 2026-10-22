@@ -1,6 +1,3 @@
-/**
- * Productivity record detail view.
- */
 import type { ScreentimeCategory } from '@aurboda/api-spec'
 
 import type { ProductivityRecord } from '../../state/api'
@@ -26,14 +23,12 @@ const productivityScoreLabel = (score: number | undefined | null): string => {
   }
 }
 
-/** Find the category whose name path matches the given path. */
 const findCategoryByPath = (
   categories: ScreentimeCategory[],
   path: string[],
 ): ScreentimeCategory | undefined =>
   categories.find((c) => c.name.length === path.length && c.name.every((seg, i) => seg === path[i]))
 
-/** Get the link target for the app title. */
 const getTitleHref = (record: ProductivityRecord, categories: ScreentimeCategory[]): string => {
   if (record.resolved_category && record.resolved_category.length > 0) {
     const cat = findCategoryByPath(categories, record.resolved_category)

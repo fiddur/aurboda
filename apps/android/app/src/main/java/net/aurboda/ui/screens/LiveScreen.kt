@@ -99,7 +99,6 @@ fun LiveScreen(modifier: Modifier = Modifier) {
       }
     }
 
-  // Health Connect client and write permission state
   val healthConnectClient = remember { HealthConnectClient.getOrCreate(context) }
   var hasHrWritePermission by remember { mutableStateOf<Boolean?>(null) }
   var hasStepsWritePermission by remember { mutableStateOf<Boolean?>(null) }
@@ -114,7 +113,6 @@ fun LiveScreen(modifier: Modifier = Modifier) {
       HealthPermission.getWritePermission(StepsRecord::class)
     }
 
-  // Health Connect permission launcher
   val healthConnectPermissionLauncher =
     rememberLauncherForActivityResult(
       contract = PermissionController.createRequestPermissionResultContract(),
@@ -137,7 +135,6 @@ fun LiveScreen(modifier: Modifier = Modifier) {
       }
     }
 
-  // Check Health Connect permission on launch
   // Only set to true if granted; leave as null if not granted (so we ask on first connect)
   LaunchedEffect(Unit) {
     val granted = healthConnectClient.permissionController.getGrantedPermissions()
@@ -148,7 +145,6 @@ fun LiveScreen(modifier: Modifier = Modifier) {
     Log.d("LiveScreen", "Initial Health Connect permissions: hr=$hrGranted, steps=$stepsGranted")
   }
 
-  // Observe service state
   val serviceState by SensorService.serviceState.collectAsState()
   val connectedDevices = serviceState.connectedDevices
   val connectingDevices = serviceState.connectingDevices
@@ -157,13 +153,11 @@ fun LiveScreen(modifier: Modifier = Modifier) {
   var scanError by remember { mutableStateOf<String?>(null) }
   val discoveredDevices = remember { mutableStateListOf<DiscoveredDevice>() }
 
-  // Filter out already connected devices from discovered list
   val availableDevices =
     discoveredDevices.filter { device ->
       !connectedDevices.containsKey(device.address) && !connectingDevices.contains(device.address)
     }
 
-  // Permission launcher
   val permissionLauncher =
     rememberLauncherForActivityResult(
       contract = ActivityResultContracts.RequestMultiplePermissions(),
@@ -171,7 +165,6 @@ fun LiveScreen(modifier: Modifier = Modifier) {
       hasPermissions = permissions.values.all { it }
     }
 
-  // Scan for devices
   LaunchedEffect(isScanning) {
     if (isScanning && hasPermissions && bleEnabled) {
       scanError = null
@@ -270,7 +263,6 @@ fun LiveScreen(modifier: Modifier = Modifier) {
       return@Column
     }
 
-    // Connected Devices Section
     if (connectedDevices.isNotEmpty()) {
       connectedDevices.forEach { (address, deviceState) ->
         val healthConnectEnabled =
@@ -307,7 +299,6 @@ fun LiveScreen(modifier: Modifier = Modifier) {
       }
     }
 
-    // Connecting indicator
     if (connectingDevices.isNotEmpty()) {
       Card(
         modifier = Modifier.fillMaxWidth(),
@@ -332,7 +323,6 @@ fun LiveScreen(modifier: Modifier = Modifier) {
       Spacer(modifier = Modifier.height(12.dp))
     }
 
-    // Stop All button when multiple devices connected
     if (connectedDevices.size > 1) {
       OutlinedButton(
         onClick = { SensorService.stop(context) },
@@ -343,7 +333,6 @@ fun LiveScreen(modifier: Modifier = Modifier) {
       Spacer(modifier = Modifier.height(16.dp))
     }
 
-    // Phone Step Counter Section
     PhoneStepCounterCard(
       isActive = serviceState.phoneStepCounterActive,
       stepCount = serviceState.phoneStepsSinceStart,
@@ -359,7 +348,7 @@ fun LiveScreen(modifier: Modifier = Modifier) {
     )
     Spacer(modifier = Modifier.height(16.dp))
 
-    // Scanner Section - always visible to allow adding more devices
+    // Always visible, so more devices can be added while some are connected.
     ScannerSection(
       isScanning = isScanning,
       discoveredDevices = availableDevices,
@@ -371,10 +360,8 @@ fun LiveScreen(modifier: Modifier = Modifier) {
         isScanning = false
       },
       onConnectDevice = { device ->
-        // Stop scanning once a device is being connected
         isScanning = false
 
-        // Check Health Connect write permission based on device type
         val hasPermission =
           when (device.sensorType) {
             SensorType.HEART_RATE -> hasHrWritePermission
@@ -388,7 +375,6 @@ fun LiveScreen(modifier: Modifier = Modifier) {
 
         when (hasPermission) {
           true -> {
-            // Permission already granted, connect directly
             SensorService.connect(context, device.address)
           }
           false -> {
@@ -437,7 +423,6 @@ private fun ConnectedDeviceCard(
       ),
   ) {
     Box(modifier = Modifier.fillMaxWidth()) {
-      // Chart background layer - only show for HR devices with data
       if (device.type == SensorType.HEART_RATE && (hrChartData.isNotEmpty() || hrvChartData.isNotEmpty())) {
         LiveDataChart(
           hrData = hrChartData,
@@ -449,7 +434,6 @@ private fun ConnectedDeviceCard(
         )
       }
 
-      // Foreground content
       Column(
         modifier =
           Modifier
@@ -479,14 +463,12 @@ private fun ConnectedDeviceCard(
             text = device.name ?: "Unknown Device",
             style = MaterialTheme.typography.titleMedium,
           )
-          // Battery indicator
           if (batteryLevel != null) {
             Spacer(modifier = Modifier.width(8.dp))
             BatteryIndicator(level = batteryLevel)
           }
         }
 
-        // Connection health indicator (RSSI + data freshness)
         ConnectionHealthIndicator(
           rssi = deviceState.rssi,
           lastDataReceivedTime = deviceState.lastDataReceivedTime,
@@ -570,7 +552,6 @@ private fun ConnectedDeviceCard(
           }
         }
 
-        // Service status
         if (serviceRunning) {
           Spacer(modifier = Modifier.height(8.dp))
           val statusText =
@@ -594,7 +575,6 @@ private fun ConnectedDeviceCard(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Auto-reconnect toggle
         Row(
           verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.Center,
@@ -624,8 +604,8 @@ private fun ConnectedDeviceCard(
             }
           }
         }
-      } // Column
-    } // Box
+      }
+    }
   }
 }
 
@@ -687,7 +667,6 @@ private fun PhoneStepCounterCard(
           color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f),
         )
 
-        // Data freshness indicator
         if (lastUpdateTime != null) {
           Spacer(modifier = Modifier.height(4.dp))
           val now = remember { mutableStateOf(Instant.now()) }
@@ -744,7 +723,6 @@ private fun ScannerSection(
     modifier = Modifier.fillMaxWidth(),
     horizontalAlignment = Alignment.CenterHorizontally,
   ) {
-    // Scan button
     if (isScanning) {
       Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -779,7 +757,6 @@ private fun ScannerSection(
 
     Spacer(modifier = Modifier.height(16.dp))
 
-    // Discovered devices list
     if (discoveredDevices.isNotEmpty()) {
       Text(
         text = "Discovered Devices",
@@ -935,7 +912,7 @@ private fun DiscoveredDeviceItem(
   }
 }
 
-private const val CHART_DURATION_MS = 5 * 60 * 1000L // 5 minutes
+private const val CHART_DURATION_MS = 5 * 60 * 1000L
 
 /**
  * Draws a line chart with HR (red) and HRV (green) data as a background.
@@ -956,7 +933,6 @@ private fun LiveDataChart(
     val now = System.currentTimeMillis()
     val startTime = now - CHART_DURATION_MS
 
-    // Helper function to draw a line for a dataset
     fun drawDataLine(
       data: List<ChartDataPoint>,
       color: Color,
@@ -974,7 +950,7 @@ private fun LiveDataChart(
       data.forEachIndexed { index, point ->
         val x = ((point.timestamp - startTime).toFloat() / CHART_DURATION_MS) * width
         val normalizedY = (point.value - minValue) / valueRange
-        val y = height - (normalizedY * height) // Use full height, scale to exact min/max
+        val y = height - (normalizedY * height)
 
         if (!started) {
           path.moveTo(x, y)
@@ -991,7 +967,6 @@ private fun LiveDataChart(
       )
     }
 
-    // Calculate ranges for HR data - use exact min/max from data
     if (hrData.isNotEmpty()) {
       val hrValues = hrData.map { it.value }
       val hrMin = hrValues.minOrNull() ?: 60f
@@ -999,7 +974,6 @@ private fun LiveDataChart(
       drawDataLine(hrData, hrColor, hrMin, hrMax)
     }
 
-    // Calculate ranges for HRV data - use exact min/max from data
     if (hrvData.isNotEmpty()) {
       val hrvValues = hrvData.map { it.value }
       val hrvMin = hrvValues.minOrNull() ?: 20f
@@ -1099,7 +1073,6 @@ private fun ConnectionHealthIndicator(
       else -> Color.Gray
     }
 
-  // Staleness color: green if fresh, yellow if getting stale, red if very stale
   val stalenessColor =
     staleness?.let {
       when {
@@ -1114,7 +1087,6 @@ private fun ConnectionHealthIndicator(
     horizontalArrangement = Arrangement.Center,
     modifier = Modifier.padding(vertical = 4.dp),
   ) {
-    // Signal strength indicator (4 bars)
     Row(
       horizontalArrangement = Arrangement.spacedBy(1.dp),
       verticalAlignment = Alignment.Bottom,
@@ -1144,7 +1116,6 @@ private fun ConnectionHealthIndicator(
 
     Spacer(modifier = Modifier.width(4.dp))
 
-    // RSSI value
     Text(
       text = rssi?.let { "${it}dBm" } ?: "--",
       style = MaterialTheme.typography.labelSmall,
@@ -1153,7 +1124,6 @@ private fun ConnectionHealthIndicator(
 
     Spacer(modifier = Modifier.width(8.dp))
 
-    // Data freshness indicator
     val stalenessText =
       staleness?.let {
         when {

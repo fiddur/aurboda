@@ -1,11 +1,3 @@
-/**
- * Barrel re-export for activity DB operations. The original `db/activities.ts`
- * was split into:
- *   - merge.ts        — pure merge logic (cross-source + same-type)
- *   - supersession.ts — superseded_by materialization (uses merge)
- *   - mutations.ts    — insert/update/delete writes
- *   - queries.ts      — read operations
- */
 export {
   CROSS_MERGE_SOURCES,
   findMergedGroupForActivity,
@@ -16,6 +8,7 @@ export {
 export { backfillSuperseded, materializeSuperseded } from './supersession.ts'
 
 export {
+  adoptLegacyActivity,
   deleteActivity,
   deleteGarminActivityWithWrongType,
   hardDeleteActivitiesByExternalIdPrefix,
@@ -27,15 +20,23 @@ export {
   markActivityDetailSynced,
   migrateExerciseTypes,
   restoreActivity,
+  restoreEmptyImportTombstone,
   softDeleteActivityByExternalId,
   updateActivity,
   updateActivityEndTimeByExternalId,
   updateActivityTypeByTagKey,
   updateScreentimeActivityCategoryPath,
+  upsertActivity,
+  type UpsertActivityResult,
 } from './mutations.ts'
 
 export {
   checkActivityConflict,
+  type DataFilter,
+  findAdjacentActivity,
+  getActivityFieldValues,
+  findActivityByExternalId,
+  findDeletedActivityByExternalId,
   findMergeableActivity,
   getActivities,
   getActivitiesByCategory,

@@ -1,7 +1,3 @@
-/**
- * Shared icon preview — renders emoji text or image URL.
- * Replaces duplicated IconPreview/TagIconPreview components across pages.
- */
 import { isEmoji, isIconPath, isUrl } from '../utils/emojiLookup'
 
 export const IconPreview = ({ icon, size = 24 }: { icon: string; size?: number }) => {

@@ -134,4 +134,4 @@ Different categories sample HRV from different time windows:
 - The Pearson correlation coefficient requires at least 3 data points and only measures linear relationships. Non-linear associations won't be captured.
 - Correlation does not imply causation. A strong correlation between two events might be caused by a third, unmeasured factor.
 - Tag correlations look at a 30-minute window before the tag, which means the HRV/HR values reflect your state leading into the tagged event, not necessarily caused by it.
-- Auto-sync is triggered before correlation computation, which may add a brief delay on the first load.
+- Auto-sync is triggered in the background (fire-and-forget) — it never blocks correlation computation, so the analysis returns from existing data immediately. Newly synced data lands on the next request, so the first load after a stale period may reflect slightly out-of-date data.

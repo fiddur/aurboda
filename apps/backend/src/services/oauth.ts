@@ -1,16 +1,10 @@
 /**
- * OAuth 2.1 service for MCP authentication.
- *
  * Implements authorization code flow with PKCE (S256) for Claude.ai
  * custom connectors and other OAuth 2.1 clients.
  */
 import { createHash, randomBytes } from 'node:crypto'
 
 import type { CentralDb } from './central-db.ts'
-
-// ============================================================================
-// Types
-// ============================================================================
 
 export interface OAuthDeps {
   centralDb: CentralDb
@@ -56,20 +50,12 @@ export interface RefreshTokenParams {
   client_id: string
 }
 
-// ============================================================================
-// Constants
-// ============================================================================
-
 const ACCESS_TOKEN_LIFETIME_SECONDS = 3600 // 1 hour
 const REFRESH_TOKEN_LIFETIME_SECONDS = 30 * 24 * 3600 // 30 days
 const AUTH_CODE_LIFETIME_SECONDS = 600 // 10 minutes
 
 const ACCESS_TOKEN_PREFIX = 'aur_at_'
 const REFRESH_TOKEN_PREFIX = 'aur_rt_'
-
-// ============================================================================
-// Helpers
-// ============================================================================
 
 const generateToken = (prefix: string): string => prefix + randomBytes(32).toString('base64url')
 
@@ -81,10 +67,6 @@ const verifyPkceS256 = (codeVerifier: string, codeChallenge: string): boolean =>
   const computed = createHash('sha256').update(codeVerifier).digest('base64url')
   return computed === codeChallenge
 }
-
-// ============================================================================
-// Service functions
-// ============================================================================
 
 export const registerClient = async (
   deps: OAuthDeps,

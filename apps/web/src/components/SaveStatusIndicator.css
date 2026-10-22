@@ -1,4 +1,3 @@
-/* Compact variant — inline spinner/checkmark/error icon */
 .save-status-indicator.compact {
   display: inline-flex;
   align-items: center;
@@ -29,7 +28,6 @@
   font-weight: bold;
 }
 
-/* Text variant — readable messages */
 .save-status-indicator.text {
   font-size: 0.85rem;
   white-space: nowrap;

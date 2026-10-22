@@ -2,6 +2,8 @@
 
 [OwnTracks](https://owntracks.org/) is an open-source location tracking app for iOS and Android. Aurboda can receive location data from OwnTracks in HTTP mode.
 
+Phone positions are the fallback track: where an activity carries its own GPS (Garmin, Strava), that track takes precedence for the activity's span and the phone points are soft-deleted. Re-posting them does not restore them -- see [GPS Precedence](./data-sources.md#gps-precedence).
+
 ## Endpoint
 
 ```

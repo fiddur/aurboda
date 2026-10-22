@@ -1,23 +1,28 @@
-/**
- * Entity detail page — shows an activity, tag, productivity record, or metric data point
- * with notes and action buttons (delete / restore).
- *
- * Activity detail is data-driven: features are shown based on what data exists
- * (sleep stages, HR zones, exercise type) rather than hard-coded by display_category.
- */
 import { isExerciseActivityType } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useLocation, useRoute } from 'preact-iso'
-import { useCallback, useEffect, useState } from 'preact/hooks'
+import { useCallback, useEffect, useMemo, useState } from 'preact/hooks'
 
 import type { Activity, ActivityTypeDefinition, SourceRecord } from '../../state/api'
 
 import {
+  computeSleepMinutesFromStages,
+  SLEEP_METRIC_LABELS,
+  SLEEP_METRIC_UNITS,
+  SLEEP_METRICS,
+  type SleepMetricKey,
+  parseSleepStages,
+} from '../../components/charts/sleep-utils'
+import { categoricalFields, categoricalValues, fieldLabel } from '../../components/sessions/sessionView'
+import {
   fetchActivityById,
+  fetchActivitySessions,
   fetchActivityTypeDefinitions,
   fetchBucketedMetrics,
-  fetchItemIcons,
+  fetchUserSettings,
+  selectItemIcons,
+  fetchMediaPlay,
   fetchMetricTimeSeries,
   fetchProductivityById,
   fetchScreentimeCategories,
@@ -27,29 +32,36 @@ import {
 } from '../../state/api'
 import { toDisplayName } from '../../utils/displayName'
 import { resolveItemIcon } from '../../utils/emojiLookup'
+import { hrZoneColors } from '../../utils/hrZones'
+import { renderMarkdown } from '../../utils/markdown'
 import { ActivityChart } from './ActivityChart'
 import { ActivityMap } from './ActivityMap'
-import { type BuildActivityStatRowsInput, buildActivityStatRows } from './activityStats'
+import { ActivityNeighborsNav } from './ActivityNeighborsNav'
+import {
+  type ActivityStatRow,
+  buildFieldRows,
+  buildMetricRows,
+  buildTimeRows,
+  garminConnectActivityUrl,
+  sourceDataEntries,
+  typicalAvgHr,
+} from './activityStats'
 import { type ActivityDraft, EditableActivityFields } from './EditableActivityFields'
 import { EntityActions, type EntityType } from './EntityActions'
 import { formatDateTimeLocal, formatTime } from './format-utils'
-import { LocationInfo } from './LocationInfo'
+import { LocationInfo, LocationStatRow } from './LocationInfo'
+import { MediaPlayDetail } from './MediaPlayDetail'
+import { mediaPlayRange } from './mediaPlayFields'
 import { forceMergedSpanForOverride, mergedEditAction } from './mergedEdit'
 import { MergePanel } from './MergePanel'
 import { MetricContent } from './MetricContent'
 import { MusicPlaylist } from './MusicPlaylist'
 import { NotesSection } from './NotesSection'
 import { ProductivityDetail } from './ProductivityDetail'
+import { SameValueSessions } from './SameValueSessions'
 import { activityRouteAfterSave } from './saveNavigation'
 import { SchemaDataFields } from './SchemaDataFields'
-import {
-  computeSleepMinutesFromStages,
-  SLEEP_METRIC_LABELS,
-  SLEEP_METRIC_UNITS,
-  SLEEP_METRICS,
-  type SleepMetricKey,
-  parseSleepStages,
-} from './sleep-utils'
+import { ShareActivityButton } from './ShareActivityButton'
 import './style.css'
 
 const SourceRecordsSection = ({ records }: { records: SourceRecord[] }) => (
@@ -70,8 +82,6 @@ const SourceRecordsSection = ({ records }: { records: SourceRecord[] }) => (
   </div>
 )
 
-// ── Notes / comments helpers ──────────────────────────────────────────────────
-
 /**
  * Join all user-typed comments (no `source`) attached to the activity into a
  * single string. Source-tagged comments (e.g. health_connect, oura) live in
@@ -87,8 +97,6 @@ const getUserNotesContent = (activity: Activity): string => {
     .join('\n')
 }
 
-// ── Exercise helpers ──────────────────────────────────────────────────────────
-
 const formatExerciseTypeName = (name: string): string => name.replaceAll('_', ' ')
 
 /**
@@ -101,10 +109,7 @@ export const resolveExerciseType = (activity: Activity): string | undefined => {
   return isExerciseActivityType(type) ? type : undefined
 }
 
-// ── HR Zone Bar ───────────────────────────────────────────────────────────────
-
 const hrZoneLabels = ['Rest', 'Zone 1', 'Zone 2', 'Zone 3', 'Zone 4', 'Zone 5']
-const hrZoneColors = ['#22c55e', '#22c55e', '#3b82f6', '#f59e0b', '#f97316', '#ef4444']
 
 const HrZoneBar = ({ zones }: { zones: Record<number, number> }) => {
   const total = Object.values(zones).reduce((s, v) => s + v, 0)
@@ -144,8 +149,6 @@ const HrZoneBar = ({ zones }: { zones: Record<number, number> }) => {
   )
 }
 
-// ── Sleep Metrics ────────────────────────────────────────────────────────────
-
 const extractSleepMetrics = (
   buckets: Array<{ metrics: Record<string, { avg: number }> }>,
 ): Partial<Record<SleepMetricKey, number>> => {
@@ -181,23 +184,71 @@ const SleepMetricsCards = ({ metrics }: { metrics: Partial<Record<SleepMetricKey
   </div>
 )
 
-const ActivityStatsTable = (props: BuildActivityStatRowsInput) => {
-  const rows = buildActivityStatRows(props)
+const StatRow = ({ row, onFill }: { row: ActivityStatRow; onFill?: (field: string) => void }) => {
+  const { missingField } = row
   return (
-    <table class="activity-stats-table">
-      <tbody>
-        {rows.map((row) => (
-          <tr key={row.label}>
-            <th scope="row">{row.label}</th>
-            <td>{row.value}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <tr class={missingField ? 'activity-stat-missing' : undefined}>
+      <th scope="row">{row.label}</th>
+      <td title={row.title}>
+        {missingField && onFill ? (
+          <button type="button" class="link-button" onClick={() => onFill(missingField)}>
+            Set…
+          </button>
+        ) : row.href ? (
+          <a href={row.href}>{row.value}</a>
+        ) : (
+          row.value
+        )}
+      </td>
+    </tr>
   )
 }
 
-// ── Unified Activity Detail ──────────────────────────────────────────────────
+const ActivityStatsTable = ({
+  fieldRows,
+  timeRows,
+  metricRows,
+  location,
+  onFill,
+}: {
+  fieldRows: ActivityStatRow[]
+  timeRows: ActivityStatRow[]
+  metricRows: ActivityStatRow[]
+  location?: { start: Date; end: Date }
+  onFill?: (field: string) => void
+}) => (
+  <table class="activity-stats-table">
+    <tbody>
+      {(onFill ? fieldRows : fieldRows.filter((row) => !row.missingField)).map((row, i) => (
+        <StatRow key={`field-${i}`} row={row} onFill={onFill} />
+      ))}
+      {timeRows.map((row) => (
+        <StatRow key={`time-${row.label}`} row={row} />
+      ))}
+      {location && <LocationStatRow start={location.start} end={location.end} />}
+      {metricRows.map((row) => (
+        <StatRow key={`metric-${row.label}`} row={row} />
+      ))}
+    </tbody>
+  </table>
+)
+
+const SourceDataDetails = ({ entries }: { entries: { key: string; label: string; value: string }[] }) =>
+  entries.length === 0 ? null : (
+    <details class="source-data">
+      <summary>Source data</summary>
+      <table class="activity-stats-table">
+        <tbody>
+          {entries.map((e) => (
+            <tr key={e.key}>
+              <th scope="row">{e.label}</th>
+              <td>{e.value.includes('\n') ? <pre>{e.value}</pre> : e.value}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </details>
+  )
 
 /** Data-driven activity detail: shows features based on what data exists, not display_category. */
 // eslint-disable-next-line complexity -- unified component replaces 3 separate ones
@@ -211,6 +262,9 @@ const ActivityDetailContent = ({
   referencedRules,
   onRevertOverride,
   isReverting,
+  onChartMetricsChange,
+  onFillField,
+  focusField,
 }: {
   activity: Activity
   isEditing: boolean
@@ -221,6 +275,9 @@ const ActivityDetailContent = ({
   referencedRules?: Record<string, string>
   onRevertOverride?: () => void
   isReverting?: boolean
+  onChartMetricsChange?: (metrics: string[]) => void
+  onFillField?: (field: string) => void
+  focusField?: string
 }) => {
   const displayStart = activity.merged_start_time ?? activity.start_time
   const realEnd = activity.merged_end_time ?? activity.end_time
@@ -229,7 +286,6 @@ const ActivityDetailContent = ({
   const musicEnd = displayEnd
   const hasSourceRecords = activity.source_records && activity.source_records.length > 1
 
-  // Resolve type info
   const exerciseType = resolveExerciseType(activity)
   const currentActivityType = isEditing ? draft.activity_type : activity.activity_type
   const typeDef = typeDefinitions?.find((d) => d.name === currentActivityType)
@@ -237,7 +293,6 @@ const ActivityDetailContent = ({
     ? formatExerciseTypeName(exerciseType)
     : (typeDef?.display_name ?? toDisplayName(activity.activity_type))
 
-  // Resolve icon: exercise icon key → legacy exercise:{TypeName} → type def → activity icon
   const exerciseDisplayName = exerciseType ? formatExerciseTypeName(exerciseType) : undefined
   const exerciseIconKey = exerciseDisplayName ? `exercise:${exerciseDisplayName}` : undefined
   // For migrated exercise types (e.g., activity_type='yoga'), also try "exercise:Yoga"
@@ -250,8 +305,12 @@ const ActivityDetailContent = ({
     typeDef?.icon ??
     resolveItemIcon(`activity:${activity.activity_type}`, itemIcons)
 
-  // Data-driven: what exists on this activity?
-  const stages = parseSleepStages(activity.data as Record<string, unknown> | undefined)
+  // Data-driven: what exists on this activity? `stages` is memoised because it
+  // is a dep of the chart's render effect, and `onHoverTime` re-renders this
+  // component on every mousemove — a fresh array would redraw the chart and
+  // wipe its crosshair on sleep activities (#1014).
+  const activityData = activity.data as Record<string, unknown> | undefined
+  const stages = useMemo(() => parseSleepStages(activityData), [activityData])
   const hasSleepStages = stages.length > 0
   const hrZoneSecs = activity.hr_zone_secs as Record<number, number> | undefined
   const hasHrZones = hrZoneSecs && Object.values(hrZoneSecs).some((v) => v > 0)
@@ -261,7 +320,6 @@ const ActivityDetailContent = ({
   const hasExerciseType = Boolean(exerciseType)
   const [hoverTime, setHoverTime] = useState<Date | null>(null)
 
-  // Sleep metrics (only fetch when sleep stages exist)
   const endDateStr = hasSleepStages ? format(displayEnd, 'yyyy-MM-dd') : ''
   const sleepMetricsQuery = useQuery({
     enabled: hasSleepStages,
@@ -276,7 +334,6 @@ const ActivityDetailContent = ({
   const sleepMetrics = hasSleepStages ? extractSleepMetrics(sleepMetricsQuery.data?.buckets ?? []) : {}
   const hasSleepMetrics = Object.keys(sleepMetrics).length > 0
 
-  // Active calories (only fetch when exercise type exists)
   const caloriesQuery = useQuery({
     enabled: hasExerciseType && hasEndTime,
     queryFn: () => fetchMetricTimeSeries('calories_active', displayStart, displayEnd),
@@ -288,8 +345,20 @@ const ActivityDetailContent = ({
       ? Math.round(caloriesQuery.data.reduce((sum, [, val]) => sum + val, 0))
       : undefined
 
-  // Badge link: exercise sub-type or activity type
+  const ownTypeDef = typeDefinitions?.find((d) => d.name === activity.activity_type)
+  const [groupValue] = categoricalValues(categoricalFields(ownTypeDef?.data_schema), activityData)
+  const groupField = groupValue?.field.name
+  const typicalQuery = useQuery({
+    enabled: Boolean(groupField) && activity.avg_hr !== undefined,
+    queryFn: () => fetchActivitySessions(activity.activity_type, { group_by: groupField }),
+    queryKey: ['activity-sessions', activity.activity_type, 'group', groupField],
+    staleTime: 5 * 60 * 1000,
+  })
+  const typical = groupValue && typicalAvgHr(typicalQuery.data, groupValue.field.name, groupValue.value)
+
   const badgeHref = `/activity-type/${encodeURIComponent(exerciseType ?? activity.activity_type)}`
+
+  const description = getUserNotesContent(activity)
 
   return (
     <>
@@ -318,6 +387,13 @@ const ActivityDetailContent = ({
           {activity.source && <span class="entity-source">Source: {activity.source}</span>}
         </div>
 
+        {activity.route && (
+          <div class="entity-route">
+            Route: <a href={`/routes/${activity.route.id}`}>{activity.route.name}</a> ·{' '}
+            {activity.route.activity_count} {activity.route.activity_count === 1 ? 'run' : 'runs'}
+          </div>
+        )}
+
         <EditableActivityFields
           title={activity.title || exerciseDisplayName || typeDisplayName}
           isEditing={isEditing}
@@ -327,35 +403,49 @@ const ActivityDetailContent = ({
           durationLabel={hasSleepStages ? 'In Bed' : undefined}
         />
 
-        {/* Schema data fields — editable in edit mode, read-only otherwise */}
-        {typeDef?.data_schema && (isEditing || activity.data) && (
-          <SchemaDataFields
-            data={isEditing ? (draft.data ?? {}) : ((activity.data as Record<string, unknown>) ?? {})}
-            schema={typeDef.data_schema}
-            isEditing={isEditing}
-            onDataChange={isEditing ? (newData) => onDraftChange({ ...draft, data: newData }) : undefined}
-            referencedRules={referencedRules}
+        {!isEditing && description && (
+          <div
+            class="entity-description note-content"
+            dangerouslySetInnerHTML={{ __html: renderMarkdown(description) }}
           />
         )}
 
-        {/* Read-only stats — shown based on data presence, not activity type */}
+        {isEditing && typeDef?.data_schema && (
+          <SchemaDataFields
+            activityType={currentActivityType}
+            data={draft.data ?? {}}
+            schema={typeDef.data_schema}
+            onDataChange={(newData) => onDraftChange({ ...draft, data: newData })}
+            focusField={focusField}
+          />
+        )}
+
         {!isEditing && (
           <>
             <ActivityStatsTable
-              activity={activity}
-              displayStart={displayStart}
-              displayEnd={realEnd}
-              durationLabel={hasSleepStages ? 'In Bed' : 'Duration'}
-              totalCalories={totalCalories}
-              sleepMinutes={sleepMinutes}
-              notes={getUserNotesContent(activity)}
+              fieldRows={buildFieldRows(typeDef?.data_schema, activityData, referencedRules)}
+              timeRows={buildTimeRows({
+                displayEnd: realEnd,
+                displayStart,
+                durationLabel: hasSleepStages ? 'In Bed' : 'Duration',
+              })}
+              metricRows={buildMetricRows({
+                activity,
+                sleepMinutes,
+                totalCalories,
+                typicalAvgHr: typical && {
+                  ...typical,
+                  field_label: fieldLabel(groupValue.field),
+                  value: groupValue.value,
+                },
+              })}
+              location={hasEndTime ? { end: displayEnd, start: displayStart } : undefined}
+              onFill={activity.deleted_at ? undefined : onFillField}
             />
             {hasHrZones && <HrZoneBar zones={hrZoneSecs!} />}
           </>
         )}
       </div>
-
-      {hasEndTime && !isEditing && <LocationInfo start={displayStart} end={displayEnd} />}
 
       {hasSleepMetrics && <SleepMetricsCards metrics={sleepMetrics} />}
 
@@ -367,12 +457,21 @@ const ActivityDetailContent = ({
             stages={hasSleepStages ? stages : undefined}
             defaultMetrics={['heart_rate', 'hrv_rmssd']}
             onHoverTime={setHoverTime}
+            onEnabledMetricsChange={onChartMetricsChange}
           />
-          <ActivityMap start={displayStart} end={displayEnd} hoverTime={hoverTime} />
+          <ActivityMap
+            activityId={activity.id}
+            activityStart={activity.start_time}
+            start={displayStart}
+            end={displayEnd}
+            hoverTime={hoverTime}
+          />
         </div>
       )}
 
       {hasSourceRecords && <SourceRecordsSection records={activity.source_records!} />}
+
+      <SourceDataDetails entries={sourceDataEntries(activityData, typeDef?.data_schema)} />
 
       <div class="detail-grid">
         <MusicPlaylist start={musicStart} end={musicEnd} />
@@ -394,7 +493,6 @@ const makeDraft = (activity: Activity): ActivityDraft => {
   }
 }
 
-/** Activity entity content with edit/save logic. */
 const ResyncDetailButton = ({
   activity,
   activityId,
@@ -411,8 +509,12 @@ const ResyncDetailButton = ({
     onSuccess,
   })
 
-  const hasGarminId = Boolean((activity.data as Record<string, unknown> | undefined)?.garmin_activity_id)
-  if (!hasGarminId || isEditing) return null
+  const rawGarminId = (activity.data as Record<string, unknown> | undefined)?.garmin_activity_id
+  const garminId =
+    typeof rawGarminId === 'number' || (typeof rawGarminId === 'string' && rawGarminId !== '')
+      ? rawGarminId
+      : undefined
+  if (garminId === undefined || isEditing) return null
 
   return (
     <div class="entity-actions">
@@ -424,6 +526,14 @@ const ResyncDetailButton = ({
       >
         {mutation.isPending ? 'Re-syncing...' : 'Re-sync Garmin Detail'}
       </button>
+      <a
+        class="btn-secondary"
+        href={garminConnectActivityUrl(garminId)}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        Open in Garmin Connect
+      </a>
       {mutation.isSuccess && <span class="sync-result done">Synced {mutation.data.points} data points</span>}
       {mutation.isError && (
         <span class="sync-result error">
@@ -454,16 +564,20 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
   const referencedRules = activityResult?.referenced_rules
 
   const { data: itemIcons = {} } = useQuery({
-    queryFn: fetchItemIcons,
-    queryKey: ['item-icons'],
+    queryFn: fetchUserSettings,
+    queryKey: ['userSettings'],
+    select: selectItemIcons,
     staleTime: 30 * 60 * 1000,
   })
 
   const invalidate = useCallback(
     () =>
-      queryClient.invalidateQueries({
-        queryKey: ['entity-detail', 'activity', entityId],
-      }),
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['entity-detail', 'activity', entityId] }),
+        // An edited name or time moves this activity between groups and neighbors
+        queryClient.invalidateQueries({ queryKey: ['activity-sessions'] }),
+        queryClient.invalidateQueries({ queryKey: ['activity-neighbors'] }),
+      ]),
     [queryClient, entityId],
   )
 
@@ -476,12 +590,15 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
 
   const { data: typeDefinitions } = useQuery({
     queryFn: fetchActivityTypeDefinitions,
-    queryKey: ['activity-type-definitions'],
+    queryKey: ['activityTypeDefinitions'],
     staleTime: 30 * 60 * 1000,
   })
 
   const [isEditing, setIsEditing] = useState(false)
+  const [focusField, setFocusField] = useState<string | undefined>(undefined)
   const [isMerging, setIsMerging] = useState(false)
+  // Metrics currently shown on the chart, mirrored into the share dialog defaults.
+  const [chartMetrics, setChartMetrics] = useState<string[]>([])
   const emptyDraft: ActivityDraft = {
     activity_type: '',
     data: {},
@@ -509,6 +626,11 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
     setDraft(makeDraft(activity))
     setIsEditing(true)
   }, [activity, isMergedActivity, route])
+
+  const fillField = (field: string) => {
+    setFocusField(field)
+    startEditing()
+  }
 
   const revertOverrideMutation = useMutation({
     mutationFn: () => {
@@ -594,9 +716,24 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
   if (isError || !activity) return <p class="error">Failed to load activity</p>
 
   const allEntityIds = activity.source_records ? activity.source_records.map((r) => r.id) : undefined
+  const typeDef = typeDefinitions?.find((d) => d.name === activity.activity_type)
+  const groupValues = categoricalValues(
+    categoricalFields(typeDef?.data_schema),
+    activity.data as Record<string, unknown> | undefined,
+  )
+  const showSiblings = !isEditing && !activity.deleted_at
 
   return (
     <>
+      {showSiblings && (
+        <ActivityNeighborsNav
+          activityId={entityId}
+          start={activity.merged_start_time ?? activity.start_time}
+          end={activity.merged_end_time ?? activity.end_time}
+          typeLabel={typeDef?.display_name ?? toDisplayName(activity.activity_type)}
+          values={groupValues}
+        />
+      )}
       <EntityActions
         entityType="activity"
         entityId={rawEntityId}
@@ -605,7 +742,10 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
         canEdit={true}
         isMerged={isMergedActivity}
         isEditing={isEditing}
-        onStartEditing={startEditing}
+        onStartEditing={() => {
+          setFocusField(undefined)
+          startEditing()
+        }}
         onCancelEditing={() => {
           setIsEditing(false)
           setDraft(emptyDraft)
@@ -620,6 +760,23 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
         onSuccess={() => queryClient.invalidateQueries()}
         isEditing={isEditing}
       />
+      {!activity.deleted_at && !isEditing && (
+        // `rawEntityId` is a plain activity UUID for both raw and merged views (a
+        // `merged:<uuid>` id wraps a real anchor activity), so merged activities
+        // — the common case — are shareable; the post references that anchor.
+        // The merged span bounds the metric-availability lookup so the dialog
+        // offers everything the activity has across its sources.
+        <ShareActivityButton
+          activityId={rawEntityId}
+          activityTitle={activity.title}
+          activityStart={activity.merged_start_time ?? activity.start_time}
+          activityEnd={activity.merged_end_time ?? activity.end_time}
+          chartMetrics={chartMetrics}
+          // The user-typed comments (the edit Description field's text), shown
+          // editable in the dialog — never auto-shared unseen (#995).
+          defaultMessage={getUserNotesContent(activity) || undefined}
+        />
+      )}
       {isMerging && <MergePanel activityId={rawEntityId} onCancel={() => setIsMerging(false)} />}
       <ActivityDetailContent
         activity={activity}
@@ -629,15 +786,24 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
         itemIcons={itemIcons}
         typeDefinitions={typeDefinitions}
         referencedRules={referencedRules}
+        onChartMetricsChange={setChartMetrics}
+        onFillField={fillField}
+        focusField={focusField}
         onRevertOverride={() => revertOverrideMutation.mutate()}
         isReverting={revertOverrideMutation.isPending}
       />
+      {showSiblings && (
+        <SameValueSessions
+          activityType={activity.activity_type}
+          values={groupValues}
+          start={activity.merged_start_time ?? activity.start_time}
+        />
+      )}
       <NotesSection entityType="activity" entityId={rawEntityId} allEntityIds={allEntityIds} />
     </>
   )
 }
 
-/** Productivity entity content. */
 const ProductivityContent = ({ entityId }: { entityId: string }) => {
   const queryClient = useQueryClient()
   const {
@@ -657,8 +823,9 @@ const ProductivityContent = ({ entityId }: { entityId: string }) => {
   })
 
   const { data: itemIcons = {} } = useQuery({
-    queryFn: fetchItemIcons,
-    queryKey: ['item-icons'],
+    queryFn: fetchUserSettings,
+    queryKey: ['userSettings'],
+    select: selectItemIcons,
     staleTime: 30 * 60 * 1000,
   })
 
@@ -699,12 +866,36 @@ const ProductivityContent = ({ entityId }: { entityId: string }) => {
   )
 }
 
-const VALID_ENTITY_TYPES = new Set<string>(['activity', 'productivity', 'metric'])
+const MediaContent = ({ entityId }: { entityId: string }) => {
+  const {
+    data: play,
+    isLoading,
+    isError,
+  } = useQuery({
+    queryFn: () => fetchMediaPlay(entityId),
+    queryKey: ['entity-detail', 'media', entityId],
+    staleTime: 60_000,
+  })
+
+  if (isLoading) return <p class="loading">Loading...</p>
+  if (isError) return <p class="error">Failed to load media play</p>
+  if (!play) return <p class="error">Media play not found</p>
+
+  const { start, end } = mediaPlayRange(play)
+  return (
+    <>
+      <MediaPlayDetail play={play} />
+      <LocationInfo start={start} end={end} />
+    </>
+  )
+}
+
+const VALID_ENTITY_TYPES = new Set<string>(['activity', 'productivity', 'metric', 'media'])
 
 export const EntityDetail = () => {
   const { params } = useRoute()
   const rawEntityType = params.type as string
-  const entityId = decodeURIComponent(params.id as string)
+  const entityId = params.id as string
 
   // Tags are now activities — redirect tag routes to activity
   const entityType: EntityType = rawEntityType === 'tag' ? 'activity' : (rawEntityType as EntityType)
@@ -722,6 +913,7 @@ export const EntityDetail = () => {
       {entityType === 'activity' && <ActivityContent entityId={entityId} />}
       {entityType === 'productivity' && <ProductivityContent entityId={entityId} />}
       {entityType === 'metric' && <MetricContent entityId={entityId} />}
+      {entityType === 'media' && <MediaContent entityId={entityId} />}
     </div>
   )
 }

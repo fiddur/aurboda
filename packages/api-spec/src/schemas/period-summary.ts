@@ -1,14 +1,7 @@
-/**
- * Period summary schemas.
- */
-
 import { z } from 'zod'
 
 import { baseResponseSchema, iso8601DateTimeSchema, timeRangeQuerySchema } from './common.ts'
 
-/**
- * Outlier schema.
- */
 export const outlierSchema = z
   .object({
     type: z.enum(['high', 'low']).meta({ description: 'Outlier type' }),
@@ -18,9 +11,6 @@ export const outlierSchema = z
 
 export type Outlier = z.infer<typeof outlierSchema>
 
-/**
- * Period metric stats schema.
- */
 export const periodMetricStatsSchema = z
   .object({
     avg: z.number().meta({ description: 'Average value' }),
@@ -47,9 +37,6 @@ export const periodMetricStatsSchema = z
 
 export type PeriodMetricStats = z.infer<typeof periodMetricStatsSchema>
 
-/**
- * Period summary result schema.
- */
 export const periodSummaryResultSchema = z
   .object({
     end: iso8601DateTimeSchema,
@@ -61,9 +48,6 @@ export const periodSummaryResultSchema = z
 
 export type PeriodSummaryResult = z.infer<typeof periodSummaryResultSchema>
 
-/**
- * Period summary response schema (API wrapper).
- */
 export const periodSummaryResponseSchema = baseResponseSchema
   .extend({
     end: iso8601DateTimeSchema.optional(),
@@ -75,9 +59,6 @@ export const periodSummaryResponseSchema = baseResponseSchema
 
 export type PeriodSummaryResponse = z.infer<typeof periodSummaryResponseSchema>
 
-/**
- * Period summary query schema.
- */
 export const periodSummaryQuerySchema = timeRangeQuerySchema
   .extend({
     metrics: z.string().meta({

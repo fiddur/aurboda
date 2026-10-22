@@ -1,7 +1,3 @@
-/**
- * Activity Types page — shows all activity type definitions grouped by display_category,
- * with show_on_timeline toggle switches and a search filter.
- */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'preact/hooks'
 
@@ -14,10 +10,6 @@ import {
 } from '../../state/api'
 import { auth } from '../../state/auth'
 import './style.css'
-
-// ============================================================================
-// Constants
-// ============================================================================
 
 const CATEGORY_LABELS: Record<string, string> = {
   exercise: 'Exercise',
@@ -37,10 +29,6 @@ const toSnakeName = (s: string) =>
     .toLowerCase()
     .replaceAll(/[^a-z0-9]+/g, '_')
     .replaceAll(/^_|_$/g, '')
-
-// ============================================================================
-// Add activity type form
-// ============================================================================
 
 function AddActivityTypeForm({ onDone }: { onDone: () => void }) {
   const queryClient = useQueryClient()
@@ -138,10 +126,6 @@ function AddActivityTypeForm({ onDone }: { onDone: () => void }) {
   )
 }
 
-// ============================================================================
-// Toggle row
-// ============================================================================
-
 function TypeRow({ def }: { def: ActivityTypeDefinition }) {
   const queryClient = useQueryClient()
 
@@ -189,10 +173,6 @@ function TypeRow({ def }: { def: ActivityTypeDefinition }) {
   )
 }
 
-// ============================================================================
-// Collapsible group
-// ============================================================================
-
 function CategoryGroup({ category, types }: { category: string; types: ActivityTypeDefinition[] }) {
   const [collapsed, setCollapsed] = useState(false)
   const label = CATEGORY_LABELS[category] ?? category
@@ -214,10 +194,6 @@ function CategoryGroup({ category, types }: { category: string; types: ActivityT
     </div>
   )
 }
-
-// ============================================================================
-// Main page
-// ============================================================================
 
 export function ActivityTypes() {
   const isLoggedIn = auth.value.token

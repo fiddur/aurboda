@@ -1,6 +1,4 @@
 /**
- * Slug generation for screentime category → activity_type_definitions linking.
- *
  * Slugs are derived from the category leaf name (`["Work", "TV"]` → `tv`) so a
  * category and a same-named deduction-rule activity type converge on a single
  * type. Only when the bare leaf collides with an unrelated builtin type does

@@ -14,8 +14,6 @@ import java.time.Instant
 private const val TAG = "PhoneStepCounter"
 
 /**
- * Uses the phone's built-in step counter sensor to track steps.
- *
  * Android provides TYPE_STEP_COUNTER which gives cumulative steps since last reboot.
  * We track the starting value when monitoring begins to calculate steps during the session.
  */
@@ -36,7 +34,6 @@ class PhoneStepCounter(context: Context) : SensorEventListener {
     val lastUpdateTime: StateFlow<Instant?> = _lastUpdateTime.asStateFlow()
 
     /**
-     * Start monitoring steps from the phone sensor.
      * Returns true if monitoring started successfully, false if sensor not available.
      */
     fun startMonitoring(): Boolean {
@@ -50,7 +47,6 @@ class PhoneStepCounter(context: Context) : SensorEventListener {
             return true
         }
 
-        // Reset state
         initialStepCount = null
         _stepsSinceStart.value = 0
         _lastUpdateTime.value = null
@@ -71,9 +67,6 @@ class PhoneStepCounter(context: Context) : SensorEventListener {
         return registered
     }
 
-    /**
-     * Stop monitoring steps.
-     */
     fun stopMonitoring() {
         if (!isMonitoring) return
 
@@ -82,9 +75,6 @@ class PhoneStepCounter(context: Context) : SensorEventListener {
         Log.d(TAG, "Stopped monitoring phone step counter, total steps: ${_stepsSinceStart.value}")
     }
 
-    /**
-     * Reset the step counter to zero (for starting a new session).
-     */
     fun resetSteps() {
         initialStepCount = null
         _stepsSinceStart.value = 0
@@ -98,7 +88,6 @@ class PhoneStepCounter(context: Context) : SensorEventListener {
         val totalSteps = event.values[0]
 
         if (initialStepCount == null) {
-            // First reading - store as baseline
             initialStepCount = totalSteps
             Log.d(TAG, "Initial step count baseline: $totalSteps")
         }

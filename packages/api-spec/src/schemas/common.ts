@@ -1,14 +1,5 @@
-/**
- * Common schemas shared across the Aurboda API.
- *
- * Uses Zod 4's native .meta() for OpenAPI metadata.
- */
-
 import { z } from 'zod'
 
-/**
- * List of all valid metric types.
- */
 export const validMetrics = [
   'heart_rate',
   'resting_heart_rate',
@@ -82,9 +73,6 @@ export const metricTypeSchema = z.enum(validMetrics).meta({
 
 export type MetricType = z.infer<typeof metricTypeSchema>
 
-/**
- * Check if a string is a valid metric type.
- */
 export const isValidMetric = (metric: string): metric is MetricType =>
   (validMetrics as readonly string[]).includes(metric)
 
@@ -100,9 +88,6 @@ export const hrZoneMetrics = [
   'hr_zone_5_sec',
 ] as const
 
-/**
- * Check if a metric is an HR zone metric (computed, not stored).
- */
 export const isHrZoneMetric = (metric: MetricType): boolean =>
   (hrZoneMetrics as readonly string[]).includes(metric)
 
@@ -114,9 +99,6 @@ export const isHrZoneMetric = (metric: MetricType): boolean =>
  */
 export const contextualHrvMetrics = ['hrv_sleep', 'hrv_activity', 'hrv_awake'] as const
 
-/**
- * Check if a metric is a contextual HRV metric (computed from hrv_rmssd).
- */
 export const isContextualHrvMetric = (metric: MetricType): boolean =>
   (contextualHrvMetrics as readonly string[]).includes(metric)
 
@@ -129,10 +111,9 @@ export type BuiltinActivityType = (typeof builtinActivityTypes)[number]
 /** @deprecated Use builtinActivityTypes. Kept for backward compatibility. */
 export const activityTypes = builtinActivityTypes
 
-/**
- * Activity type identifier — any snake_case string (built-in or custom).
- * Validated against activity_type_definitions table at runtime.
- */
+export const dataFieldNameSchema = z.string().regex(/^[a-z][a-z0-9_]*$/)
+
+/** Validated against the activity_type_definitions table at runtime. */
 export const activityTypeSchema = z
   .string()
   .regex(/^[a-z][a-z0-9_]*$/)
@@ -144,9 +125,6 @@ export const activityTypeSchema = z
 
 export type ActivityType = string
 
-/**
- * Display categories for grouping activity types in the timeline.
- */
 export const displayCategories = [
   'sleep_rest',
   'exercise',
@@ -163,9 +141,6 @@ export const displayCategorySchema = z.enum(displayCategories).meta({
   id: 'DisplayCategory',
 })
 
-/**
- * Supported data sources.
- */
 export const dataSourceSchema = z
   .enum([
     'activitywatch',
@@ -177,6 +152,7 @@ export const dataSourceSchema = z
     'lab_report',
     'oura',
     'garmin',
+    'gravl',
     'rescuetime',
     'owntracks',
     'strava',
@@ -184,6 +160,7 @@ export const dataSourceSchema = z
     'manual',
     'lastfm',
     'lastfm-auto',
+    'mpris',
     'location-detection',
   ])
   .meta({
@@ -194,18 +171,12 @@ export const dataSourceSchema = z
 
 export type DataSource = z.infer<typeof dataSourceSchema>
 
-/**
- * ISO 8601 date-time string schema.
- */
 export const iso8601DateTimeSchema = z.iso.datetime().meta({
   description: 'ISO 8601 date-time string',
   example: '2024-01-15T14:30:00Z',
   id: 'ISO8601DateTime',
 })
 
-/**
- * IANA timezone string schema (e.g. "Europe/Stockholm").
- */
 export const tzSchema = z.string().meta({
   description:
     'IANA timezone (e.g. "Europe/Stockholm"). Required for correct timestamp formatting and date interpretation.',
@@ -213,18 +184,12 @@ export const tzSchema = z.string().meta({
   id: 'Timezone',
 })
 
-/**
- * Date-only string schema (YYYY-MM-DD).
- */
 export const dateOnlySchema = z.iso.date().meta({
   description: 'Date in YYYY-MM-DD format',
   example: '2024-01-15',
   id: 'DateOnly',
 })
 
-/**
- * Unit definitions for metrics.
- */
 export const metricUnits: Record<MetricType, string> = {
   activity_impulse: 'impulse',
   basal_body_temperature: 'celsius',
@@ -290,12 +255,20 @@ export const metricUnits: Record<MetricType, string> = {
   performance_condition: 'score',
 }
 
-/**
- * Custom metric definition.
- * Users can define their own metric types with custom names and units.
- */
+export const metricAggregationSchema = z.enum(['avg', 'sum']).meta({
+  description:
+    "Metric kind. 'sum' for amounts (a dose, steps): a day without samples counts as 0 in trends and bar charts total the day. 'avg' for levels (weight, HR): missing days are skipped.",
+  id: 'MetricAggregation',
+})
+
+export type MetricAggregation = z.infer<typeof metricAggregationSchema>
+
 export const customMetricDefinitionSchema = z
   .object({
+    aggregation: metricAggregationSchema.optional().meta({
+      description:
+        "'sum' for amounts (a dose, steps): a day without samples counts as 0 in trends and bar charts total the day. 'avg' (default) for levels (weight, HR): missing days are skipped.",
+    }),
     description: z.string().optional().meta({ description: 'Human-readable description' }),
     include_in_daily_summary: z.boolean().optional().meta({
       description:
@@ -339,16 +312,9 @@ export const builtinMetricsForDailySummary: readonly MetricType[] = [
   'blood_pressure_diastolic',
 ] as const
 
-/**
- * Validate a custom metric name doesn't conflict with built-in metrics.
- */
 export const isValidCustomMetricName = (name: string): boolean =>
   /^[a-z][a-z0-9_]*$/.test(name) && name.length <= 50 && !isValidMetric(name)
 
-/**
- * Get the unit for a metric, checking both built-in and custom metrics.
- * Returns undefined if the metric is not found in either.
- */
 export const getMetricUnit = (
   metric: string,
   customMetrics: CustomMetricDefinition[] = [],
@@ -358,23 +324,63 @@ export const getMetricUnit = (
 }
 
 /**
- * Check if a string is a valid metric (built-in or custom).
+ * Friendly display names for built-in metrics. Shared single source used by the
+ * web UI (chart titles, pickers, goals) and the backend server-side chart
+ * renderer (article-block PNGs), so a metric reads the same everywhere. Falls
+ * back to the raw metric name for anything not listed (e.g. custom metrics).
  */
+export const metricLabels: Record<string, string> = {
+  body_fat: 'Body Fat',
+  calories_active: 'Active Calories',
+  calories_basal: 'Basal Calories',
+  calories_total: 'Total Calories',
+  distance: 'Distance',
+  floors_climbed: 'Floors Climbed',
+  heart_rate: 'Heart Rate',
+  hr_zone_0_sec: 'Zone 0 (Below Z1)',
+  hr_zone_1_sec: 'Zone 1',
+  hr_zone_2_sec: 'Zone 2',
+  hr_zone_3_sec: 'Zone 3',
+  hr_zone_4_sec: 'Zone 4',
+  hr_zone_5_sec: 'Zone 5',
+  hrv_7day: 'HRV (7-day)',
+  hrv_30day: 'HRV (30-day)',
+  hrv_rmssd: 'HRV (RMSSD)',
+  readiness_score: 'Readiness Score',
+  resilience_score: 'Resilience Score',
+  resting_heart_rate: 'Resting HR',
+  rhr_7day: 'Resting HR (7-day)',
+  rhr_30day: 'Resting HR (30-day)',
+  sleep_score: 'Sleep Score',
+  spo2: 'SpO2',
+  steps: 'Steps',
+  vo2_max: 'VO2 Max',
+  weight: 'Weight',
+  zone2_weekly: 'Zone 2 (Weekly)',
+  stress_level: 'Stress Level',
+  body_battery: 'Body Battery',
+  training_readiness: 'Training Readiness',
+  intensity_minutes: 'Intensity Minutes',
+  respiratory_rate: 'Respiratory Rate',
+  cardiovascular_age: 'Cardiovascular Age',
+  run_cadence: 'Run Cadence',
+  stride_length: 'Stride Length',
+  ground_contact_time: 'Ground Contact Time',
+  vertical_ratio: 'Vertical Ratio',
+  elevation: 'Elevation',
+  vertical_oscillation: 'Vertical Oscillation',
+  vertical_speed: 'Vertical Speed',
+  grade_adjusted_speed: 'Grade Adjusted Speed',
+  performance_condition: 'Performance Condition',
+}
+
+export const getMetricDisplayName = (metric: string): string => metricLabels[metric] ?? metric
+
 export const isValidMetricOrCustom = (
   metric: string,
   customMetrics: CustomMetricDefinition[] = [],
 ): boolean => isValidMetric(metric) || customMetrics.some((m) => m.name === metric)
 
-/**
- * Aggregation type for metrics: 'sum' for cumulative totals, 'avg' for instantaneous values.
- * Determines how values are combined in time buckets.
- */
-export type MetricAggregation = 'avg' | 'sum'
-
-/**
- * Metrics that should be summed when bucketed (cumulative totals).
- * All other metrics default to averaging.
- */
 export const sumMetrics: MetricType[] = [
   'steps',
   'distance',
@@ -392,9 +398,14 @@ export const sumMetrics: MetricType[] = [
   'activity_impulse',
 ]
 
-/** Get the aggregation type for a metric (sum or avg). */
-export const getMetricAggregation = (metric: string): MetricAggregation =>
-  (sumMetrics as string[]).includes(metric) ? 'sum' : 'avg'
+export const getMetricAggregation = (
+  metric: string,
+  customMetrics: CustomMetricDefinition[] = [],
+): MetricAggregation => {
+  if ((sumMetrics as string[]).includes(metric)) return 'sum'
+  if (isValidMetric(metric)) return 'avg'
+  return customMetrics.find((m) => m.name === metric)?.aggregation ?? 'avg'
+}
 
 /**
  * Cumulative metrics that are summed over a day and can have duplicate sources.
@@ -433,9 +444,6 @@ export const aurbodaOnlyMetrics: MetricType[] = ['calories_active', 'calories_to
  */
 export const aurbodaOnlySources: DataSource[] = ['aurboda', 'aurboda_gap_fill']
 
-/**
- * Place visit source schema.
- */
 export const placeSourceSchema = z.enum(['named', 'detected', 'owntracks', 'unknown']).meta({
   description: 'Source of place identification',
   example: 'named',
@@ -444,9 +452,6 @@ export const placeSourceSchema = z.enum(['named', 'detected', 'owntracks', 'unkn
 
 export type PlaceSource = z.infer<typeof placeSourceSchema>
 
-/**
- * Geocode status schema.
- */
 export const geocodeStatusSchema = z.enum(['pending', 'geocoding', 'success', 'failed']).meta({
   description: 'Status of geocoding operation',
   example: 'success',
@@ -455,9 +460,6 @@ export const geocodeStatusSchema = z.enum(['pending', 'geocoding', 'success', 'f
 
 export type GeocodeStatus = z.infer<typeof geocodeStatusSchema>
 
-/**
- * HR zone source schema.
- */
 export const hrZoneSourceSchema = z.enum(['custom', 'age_based', 'default']).meta({
   description: 'Source of HR zone thresholds',
   example: 'age_based',
@@ -466,9 +468,6 @@ export const hrZoneSourceSchema = z.enum(['custom', 'age_based', 'default']).met
 
 export type HrZoneSource = z.infer<typeof hrZoneSourceSchema>
 
-/**
- * Sync status schema.
- */
 export const syncStatusSchema = z.enum(['idle', 'syncing', 'error', 'rate_limited']).meta({
   description: 'Status of sync operation',
   example: 'idle',
@@ -477,94 +476,65 @@ export const syncStatusSchema = z.enum(['idle', 'syncing', 'error', 'rate_limite
 
 export type SyncStatus = z.infer<typeof syncStatusSchema>
 
-// ============================================================================
-// Reusable Field Schemas
-// ============================================================================
-
-/**
- * Geocoded address field.
- * Use addressNullableSchema when geocoding might have been attempted but returned no result.
- */
+/** Use addressNullableSchema when geocoding might have been attempted but returned no result. */
 export const addressSchema = z.string().meta({ description: 'Geocoded address' })
 export const addressNullableSchema = z.string().nullable().meta({ description: 'Geocoded address' })
 
 /**
- * Latitude field without range validation.
  * Use for response schemas where data is already validated.
  * @see latWithValidationSchema for input validation with -90 to 90 range check
  */
 export const latSchema = z.number().meta({ description: 'Latitude', example: 59.3293 })
 
 /**
- * Latitude field with -90 to 90 range validation.
  * Use for request/input schemas where user-provided data needs validation.
  * @see latSchema for response schemas without validation
  */
 export const latWithValidationSchema = z.number().min(-90).max(90).meta({ description: 'Latitude' })
 
 /**
- * Longitude field without range validation.
  * Use for response schemas where data is already validated.
  * @see lonWithValidationSchema for input validation with -180 to 180 range check
  */
 export const lonSchema = z.number().meta({ description: 'Longitude', example: 18.0686 })
 
 /**
- * Longitude field with -180 to 180 range validation.
  * Use for request/input schemas where user-provided data needs validation.
  * @see lonSchema for response schemas without validation
  */
 export const lonWithValidationSchema = z.number().min(-180).max(180).meta({ description: 'Longitude' })
 
-/**
- * Tag/label text field.
- */
 export const tagTextSchema = z.string().meta({ description: 'Tag/label text', example: 'coffee' })
 
-/**
- * Detected location ID field (UUID reference to a detected location).
- */
 export const detectedLocationIdSchema = z.string().uuid().meta({
   description: 'ID of detected location if source is detected',
 })
 
-/**
- * Radius in meters field.
- */
 export const radiusSchema = z.number().int().meta({ description: 'Radius in meters', example: 200 })
 
-/**
- * Duration in minutes field.
- */
 export const durationMinutesSchema = z.number().meta({ description: 'Duration in minutes' })
 
-/**
- * Common start/end date-time query fields.
- */
 export const startDateTimeQuerySchema = iso8601DateTimeSchema.meta({ description: 'Start date/time' })
 export const endDateTimeQuerySchema = iso8601DateTimeSchema.meta({ description: 'End date/time' })
 
 /**
- * Standard time range query schema - reusable for any query that needs start/end.
+ * A boolean flag that arrives as a query string over REST and as a real
+ * boolean over MCP. Not `z.coerce.boolean()`, which is `Boolean(value)` and so
+ * reads every non-empty string, `'false'` included, as true.
  */
+export const queryBooleanSchema = z
+  .union([z.boolean(), z.enum(['true', 'false', '1', '0'])])
+  .transform((v) => v === true || v === 'true' || v === '1')
+
 export const timeRangeQuerySchema = z.object({
   end: endDateTimeQuerySchema,
   start: startDateTimeQuerySchema,
 })
 
-/**
- * Success response field.
- */
 export const successSchema = z.boolean()
 
-/**
- * Error message field.
- */
 export const errorSchema = z.string().optional()
 
-/**
- * Base response schema with success and optional error.
- */
 export const baseResponseSchema = z.object({
   error: errorSchema,
   success: successSchema,
@@ -573,17 +543,11 @@ export const baseResponseSchema = z.object({
 export type BaseResponse = z.infer<typeof baseResponseSchema>
 export const baseResponseSchemaMeta = baseResponseSchema.meta({ id: 'BaseResponse' })
 
-/**
- * Create a data response schema wrapping an array of items.
- */
 export const createDataArrayResponseSchema = <T extends z.ZodTypeAny>(itemSchema: T) =>
   baseResponseSchema.extend({
     data: z.array(itemSchema).optional(),
   })
 
-/**
- * Create a data response schema wrapping a single item.
- */
 export const createDataResponseSchema = <T extends z.ZodTypeAny>(itemSchema: T) =>
   baseResponseSchema.extend({
     data: itemSchema.optional(),

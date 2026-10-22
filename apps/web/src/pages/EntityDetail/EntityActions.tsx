@@ -1,6 +1,3 @@
-/**
- * Entity action buttons (edit, delete, restore) shared across all entity detail views.
- */
 import { useMutation } from '@tanstack/react-query'
 
 import {
@@ -12,7 +9,7 @@ import {
 } from '../../state/api'
 import { parseMetricEntityId } from './MetricDetail'
 
-export type EntityType = 'activity' | 'productivity' | 'metric' | 'report'
+export type EntityType = 'activity' | 'productivity' | 'metric' | 'report' | 'media'
 
 export interface EntityActionsProps {
   entityType: EntityType

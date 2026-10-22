@@ -145,15 +145,11 @@
   flex-direction: column;
 }
 
-/* Type editor */
-
 .type-editor {
   display: flex;
   gap: 0.5rem;
   flex: 1;
 }
-
-/* Nutrient breakdown */
 
 .nutrient-breakdown {
   padding: 0.75rem 1rem;
@@ -221,8 +217,6 @@
   background: #fff;
 }
 
-/* Macros grid */
-
 .macros-grid {
   display: flex;
   flex-wrap: wrap;
@@ -250,8 +244,6 @@
   background: #fff;
 }
 
-/* Flags editor */
-
 .flags-editor {
   display: flex;
   flex-wrap: wrap;
@@ -270,8 +262,6 @@
 .flag-check input[type='checkbox'] {
   accent-color: #673ab8;
 }
-
-/* Food items editor */
 
 .food-items-editor {
   display: flex;
@@ -476,7 +466,6 @@ a.detail-food-link:hover {
   margin-top: 0.5rem;
 }
 
-/* Dark mode */
 @media (prefers-color-scheme: dark) {
   .incomplete-notice {
     color: #f59e0b;

@@ -1,6 +1,4 @@
 /**
- * WebAuthn / passkey service.
- *
  * Wraps `@simplewebauthn/server` and our per-user DB layer so the route
  * handlers stay thin. Challenges are kept in process memory with a TTL
  * and a hard size cap — appropriate for single-instance deploys.

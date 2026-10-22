@@ -1,10 +1,5 @@
 import type { RequestHandler } from 'express'
 
-/**
- * Metrics route group.
- *
- * Handles: /metrics/*, /daily-summary, /period-summary
- */
 import {
   type AddCustomMetricBody,
   addCustomMetricBodySchema,
@@ -23,6 +18,7 @@ import {
   deleteMetricQuerySchema,
   type DeleteMetricResponse,
   type LatestMetricResponse,
+  type LatestSleepResponse,
   type MergeCustomMetricBody,
   mergeCustomMetricBodySchema,
   type MergeCustomMetricResponse,
@@ -46,6 +42,7 @@ import type { MetricType } from '../schema.ts'
 import { auditError, auditInfo } from '../services/audit-log.ts'
 import { computeAndStoreCalories, computeAndStoreCaloriesAll } from '../services/calorie-computation.ts'
 import { mergeCustomMetricService } from '../services/custom-metrics.ts'
+import { getLatestSleep } from '../services/latest-sleep.ts'
 import {
   addCustomMetric,
   addMetric,
@@ -84,7 +81,6 @@ export const createMetricsRouter = (
 
       const customMetrics = await getCustomMetrics(user)
 
-      // Parse optional metrics and exclude lists
       const metrics = metricsParam ? metricsParam.split(',') : undefined
       const exclude = excludeParam ? excludeParam.split(',') : undefined
 
@@ -160,7 +156,12 @@ export const createMetricsRouter = (
     async (req, res) => {
       const { name } = req.params
       const user = req.user!
-      const result = await updateCustomMetric(user, name, req.body)
+      const { max_value, min_value, ...rest } = req.body
+      const result = await updateCustomMetric(user, name, {
+        ...rest,
+        ...(max_value !== undefined ? { maxValue: max_value } : {}),
+        ...(min_value !== undefined ? { minValue: min_value } : {}),
+      })
       if (!result.success) {
         return res.status(404).json({ error: result.error, success: false })
       }
@@ -303,6 +304,15 @@ export const createMetricsRouter = (
 
       const summary = await getDailySummary(user, new Date(date), syncProvider)
       res.json({ data: summary, success: true })
+    },
+  )
+
+  router.get<Record<string, never>, LatestSleepResponse>(
+    '/latest-sleep',
+    authMiddleware,
+    async (req, res) => {
+      const data = await getLatestSleep(req.user!)
+      res.json({ data, success: true })
     },
   )
 

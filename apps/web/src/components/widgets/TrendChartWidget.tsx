@@ -1,6 +1,4 @@
 /**
- * TrendChartWidget - Displays EMA trend visualization using the shared TrendLineChart.
- *
  * Split into a presentational `TrendChartView` and a fetching container. The
  * view links to the full chart page only when an `href` is supplied (the home
  * dashboard); the public renderer omits it.
@@ -9,11 +7,15 @@
 import type { TrendChartConfig, TrendChartData } from '@aurboda/api-spec'
 
 import { useQuery } from '@tanstack/react-query'
+import { useMemo } from 'preact/hooks'
 
 import { fetchTrend } from '../../state/api'
 import { buildChartUrl, type ChartOrigin } from '../../utils/chart-url'
 import { BreakdownLegend, SERIES_COLORS } from '../charts/breakdown'
 import { TrendLineChart } from '../charts/TrendLineChart'
+import { HEAVY_QUERY_OPTIONS } from './heavyQuery'
+
+const NO_POINTS: TrendChartData['history'] = []
 
 interface TrendChartViewProps {
   config: TrendChartConfig
@@ -29,6 +31,17 @@ export function TrendChartView({ config, data, href }: TrendChartViewProps) {
   const breakdownSeries = data?.breakdown_series
   const breakdownHistories = data?.breakdown_histories
   const showBreakdown = Boolean(breakdownSeries?.length && breakdownHistories)
+  const multiSeries = useMemo(
+    () =>
+      breakdownSeries && breakdownSeries.length > 0 && breakdownHistories
+        ? breakdownSeries.map((name, i) => ({
+            color: SERIES_COLORS[i % SERIES_COLORS.length],
+            data: breakdownHistories[name] ?? [],
+            name,
+          }))
+        : null,
+    [breakdownSeries, breakdownHistories],
+  )
 
   const body = (
     <>
@@ -40,23 +53,13 @@ export function TrendChartView({ config, data, href }: TrendChartViewProps) {
           </span>
         )}
       </div>
-      {breakdownSeries && breakdownSeries.length > 0 && breakdownHistories ? (
+      {breakdownSeries && multiSeries ? (
         <>
           <BreakdownLegend series={breakdownSeries} />
-          <TrendLineChart
-            data={[]}
-            color="#673ab8"
-            height={150}
-            compact
-            multiSeries={breakdownSeries.map((name, i) => ({
-              color: SERIES_COLORS[i % SERIES_COLORS.length],
-              data: breakdownHistories[name] ?? [],
-              name,
-            }))}
-          />
+          <TrendLineChart data={NO_POINTS} color="#673ab8" height={150} compact multiSeries={multiSeries} />
         </>
       ) : (
-        <TrendLineChart data={data?.history ?? []} color="#673ab8" height={150} compact />
+        <TrendLineChart data={data?.history ?? NO_POINTS} color="#673ab8" height={150} compact />
       )}
     </>
   )
@@ -84,8 +87,9 @@ export function TrendChartWidget({ config, origin }: TrendChartWidgetProps) {
     half_life_days = 15,
     lookback_days = 90,
     display_period = 'monthly',
-    aggregation = 'count',
+    aggregation = source_type === 'metric' ? 'mean' : 'count',
     breakdown_fields,
+    missing_days,
   } = config
 
   const trendQuery = useQuery({
@@ -98,6 +102,7 @@ export function TrendChartWidget({ config, origin }: TrendChartWidgetProps) {
         pattern,
         source_type,
         ...(breakdown_fields?.length ? { breakdown_fields } : {}),
+        ...(missing_days ? { missing_days } : {}),
       }),
     queryKey: [
       'trend',
@@ -108,9 +113,29 @@ export function TrendChartWidget({ config, origin }: TrendChartWidgetProps) {
       display_period,
       aggregation,
       breakdown_fields,
+      missing_days,
     ],
+    ...HEAVY_QUERY_OPTIONS,
     staleTime: 5 * 60 * 1000,
   })
+
+  const trendData = trendQuery.data
+  const data = useMemo<TrendChartData | null>(
+    () =>
+      trendData
+        ? {
+            current_value: trendData.current_value,
+            history: trendData.history,
+            ...(trendData.breakdown_series?.length
+              ? {
+                  breakdown_histories: trendData.breakdown_histories,
+                  breakdown_series: trendData.breakdown_series,
+                }
+              : {}),
+          }
+        : null,
+    [trendData],
+  )
 
   const displayTitle = title ?? `${pattern} trend`
   const chartUrl = buildChartUrl({
@@ -120,6 +145,7 @@ export function TrendChartWidget({ config, origin }: TrendChartWidgetProps) {
     display_period,
     half_life_days,
     lookback_days,
+    missing_days,
     pattern,
     source_type,
     activity_type_id: config.tag_definition_id,
@@ -135,24 +161,13 @@ export function TrendChartWidget({ config, origin }: TrendChartWidgetProps) {
     )
   }
 
-  if (trendQuery.isError || !trendQuery.data) {
+  if (trendQuery.isError || !data) {
     return (
       <div class="chart-widget">
         <h4>{displayTitle}</h4>
         <div class="chart-error">Unable to load trend data</div>
       </div>
     )
-  }
-
-  const data: TrendChartData = {
-    current_value: trendQuery.data.current_value,
-    history: trendQuery.data.history,
-    ...(trendQuery.data.breakdown_series?.length
-      ? {
-          breakdown_histories: trendQuery.data.breakdown_histories,
-          breakdown_series: trendQuery.data.breakdown_series,
-        }
-      : {}),
   }
 
   return <TrendChartView config={config} data={data} href={chartUrl} />

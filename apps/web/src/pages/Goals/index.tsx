@@ -53,10 +53,8 @@ export function Goals() {
     )
   }
 
-  // Match progress data with goals
   const progressMap = new Map(goalsProgress?.map((p) => [p.id, p]) ?? [])
 
-  // Check if all metric goals have the same window
   const metricGoals = goals.filter((g) => g.goal_type !== 'trend')
   const allSameWindow =
     metricGoals.length > 0 &&

@@ -1,10 +1,7 @@
 /**
- * Statistical primitives for correlation analysis.
- *
- * These are exact-ish numerical implementations used by the event-outcome and
- * continuous correlation engines. The previous p-value approximation
- * (`exp(-0.5 * chi^2)`) in utils.ts was wildly inaccurate (it returned ~0.146
- * at chi^2 = 3.84 instead of 0.05); these functions replace it.
+ * Exact-ish numerical implementations. The cheap p-value approximation
+ * `exp(-0.5 * chi^2)` is wildly inaccurate — it returns ~0.146 at chi^2 = 3.84
+ * instead of 0.05 — so these do the real thing.
  */
 
 /** A 2x2 contingency table laid out in epidemiology convention. */
@@ -41,7 +38,6 @@ export interface SignificanceResult {
   chi_squared: number | null
   /** Two-sided p-value */
   p_value: number
-  /** Which test produced the p-value */
   test: 'chi_squared' | 'fisher'
 }
 
@@ -220,7 +216,6 @@ export const riskRatio = ({ a, b, c, d }: ContingencyTable): RiskRatioResult => 
   }
 }
 
-/** Mean of an array, or null when empty. */
 export const mean = (values: number[]): number | null =>
   values.length === 0 ? null : values.reduce((a, b) => a + b, 0) / values.length
 

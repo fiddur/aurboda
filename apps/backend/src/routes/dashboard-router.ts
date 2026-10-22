@@ -1,10 +1,5 @@
 import type { RequestHandler } from 'express'
 
-/**
- * Dashboard route group.
- *
- * Handles: /dashboard/*
- */
 import {
   type DashboardResponse,
   defaultDashboardConfig,

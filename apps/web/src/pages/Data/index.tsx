@@ -4,40 +4,29 @@ import { format, formatISO, subDays } from 'date-fns'
 import { useLocation } from 'preact-iso'
 import { useCallback, useEffect, useState } from 'preact/hooks'
 
+import type { DataItem, ItemType } from './dataItem'
+
 import { DateNav } from '../../components/DateNav'
 import {
   fetchActivities,
   fetchBucketedMetrics,
   fetchMeals,
+  fetchMediaPlays,
   fetchPlaces,
   fetchProductivity,
   fetchReports,
-  fetchScrobbles,
   type Activity,
   type Meal,
+  type MediaPlay,
   type Place,
   type ProductivityRecord,
   type Report,
 } from '../../state/api'
 import { toDisplayName } from '../../utils/displayName'
 import { MEAL_LOCATION_WINDOW_MS } from '../EntityDetail/LocationInfo'
+import { formatTime } from './formatTime'
+import { MEDIA_COLOR, mediaToItem } from './mediaToItem'
 import './style.css'
-
-// ── Types ──────────────────────────────────────────────────────────────────
-
-type ItemType = 'activity' | 'location' | 'music' | 'meal' | 'metric' | 'report' | 'screentime'
-
-interface DataItem {
-  color: string
-  detail: string
-  end?: Date
-  href?: string
-  label: string
-  start: Date
-  type: ItemType
-}
-
-// ── Colors ─────────────────────────────────────────────────────────────────
 
 const ACTIVITY_COLORS: Record<string, string> = {
   exercise: '#10b981',
@@ -48,17 +37,10 @@ const ACTIVITY_COLORS: Record<string, string> = {
 }
 
 const LOCATION_COLOR = '#6366f1'
-const MUSIC_COLOR = '#ec4899'
 const MEAL_COLOR = '#ef4444'
 const METRIC_COLOR = '#f59e0b'
 const REPORT_COLOR = '#14b8a6'
 const SCREENTIME_COLOR = '#8b5cf6'
-
-// ── Helpers ────────────────────────────────────────────────────────────────
-
-/** Format a time, including date prefix when the view spans multiple days. */
-const formatTime = (date: Date, multiDay: boolean): string =>
-  multiDay ? format(date, 'MMM d HH:mm') : format(date, 'HH:mm')
 
 const formatDuration = (start: Date, end: Date): string => {
   const ms = end.getTime() - start.getTime()
@@ -136,7 +118,6 @@ const reportToItem = (r: Report, multiDay: boolean): DataItem => ({
   type: 'report',
 })
 
-/** Format a numeric value: integer if whole, otherwise 1 decimal. */
 const formatMetricValue = (n: number): string => {
   const rounded = Math.round(n * 10) / 10
   return Number.isInteger(rounded) ? rounded.toString() : rounded.toFixed(1)
@@ -213,16 +194,14 @@ const productivityToItem = (p: ProductivityRecord, places: Place[], multiDay: bo
   }
 }
 
-// ── Component ──────────────────────────────────────────────────────────────
-
-const ALL_TYPES: ItemType[] = ['activity', 'location', 'music', 'meal', 'metric', 'report', 'screentime']
+const ALL_TYPES: ItemType[] = ['activity', 'location', 'media', 'meal', 'metric', 'report', 'screentime']
 
 const TYPE_LABELS: Record<ItemType, string> = {
   activity: 'Activities',
   location: 'Locations',
   meal: 'Meals',
+  media: 'Media',
   metric: 'Metrics',
-  music: 'Music',
   report: 'Reports',
   screentime: 'Screen Time',
 }
@@ -231,8 +210,8 @@ const TYPE_COLORS: Record<ItemType, string> = {
   activity: ACTIVITY_COLORS.sleep!,
   location: LOCATION_COLOR,
   meal: MEAL_COLOR,
+  media: MEDIA_COLOR,
   metric: METRIC_COLOR,
-  music: MUSIC_COLOR,
   report: REPORT_COLOR,
   screentime: SCREENTIME_COLOR,
 }
@@ -241,7 +220,7 @@ const buildItems = (
   activeTypes: Set<ItemType>,
   activities: Activity[],
   places: Place[],
-  scrobbles: { artist: string; recorded_at: Date; track: string }[],
+  mediaPlays: MediaPlay[],
   meals: Meal[],
   reports: Report[],
   productivity: ProductivityRecord[],
@@ -256,16 +235,8 @@ const buildItems = (
   if (activeTypes.has('location')) {
     for (const p of places) items.push(placeToItem(p, dateStr, multiDay))
   }
-  if (activeTypes.has('music')) {
-    for (const s of scrobbles) {
-      items.push({
-        color: MUSIC_COLOR,
-        detail: `${formatTime(s.recorded_at, multiDay)} · ${s.artist}`,
-        label: s.track,
-        start: s.recorded_at,
-        type: 'music',
-      })
-    }
+  if (activeTypes.has('media')) {
+    for (const play of mediaPlays) items.push(mediaToItem(play, multiDay))
   }
   if (activeTypes.has('meal')) {
     for (const m of meals) items.push(mealToItem(m, places, multiDay))
@@ -295,7 +266,9 @@ interface UrlState {
 const parseUrlState = (query: Record<string, string>): UrlState => {
   const date = query.date ?? formatISO(new Date(), { representation: 'date' })
   const hideStr = query.hide ?? ''
-  const hidden = new Set<ItemType>(hideStr ? (hideStr.split(',') as ItemType[]) : [])
+  const hidden = new Set<ItemType>(
+    hideStr ? hideStr.split(',').map((t) => (t === 'music' ? 'media' : (t as ItemType))) : [],
+  )
   const from = query.from || undefined
   const to = query.to || undefined
   const types = query.types || undefined
@@ -341,7 +314,6 @@ export const Data = () => {
   const hasDataFilter = Boolean(typesFilter || dataFilter || deductionRuleId)
   const activeTypes = new Set(ALL_TYPES.filter((t) => !hiddenTypes.has(t)))
 
-  // Sync URL on state changes
   useEffect(() => {
     syncUrl(dateStr, hiddenTypes, timeFrom, timeTo, typesFilter, dataFilter, deductionRuleId)
   }, [dateStr, hiddenTypes, timeFrom, timeTo, typesFilter, dataFilter, deductionRuleId])
@@ -361,7 +333,7 @@ export const Data = () => {
     (newDate: string) => {
       queryClient.cancelQueries({ queryKey: ['data-activities'] })
       queryClient.cancelQueries({ queryKey: ['data-places'] })
-      queryClient.cancelQueries({ queryKey: ['data-scrobbles'] })
+      queryClient.cancelQueries({ queryKey: ['data-media'] })
       queryClient.cancelQueries({ queryKey: ['data-meals'] })
       queryClient.cancelQueries({ queryKey: ['data-reports'] })
       queryClient.cancelQueries({ queryKey: ['data-productivity'] })
@@ -399,10 +371,10 @@ export const Data = () => {
     staleTime: 5 * 60 * 1000,
   })
 
-  const scrobblesQuery = useQuery({
-    enabled: activeTypes.has('music'),
-    queryFn: () => fetchScrobbles(start, end),
-    queryKey: ['data-scrobbles', dateStr, timeFrom, timeTo],
+  const mediaQuery = useQuery({
+    enabled: activeTypes.has('media'),
+    queryFn: () => fetchMediaPlays(start, end),
+    queryKey: ['data-media', dateStr, timeFrom, timeTo],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -438,7 +410,7 @@ export const Data = () => {
   const queries = [
     { enabled: activeTypes.has('activity'), query: activitiesQuery },
     { enabled: activeTypes.has('location'), query: placesQuery },
-    { enabled: activeTypes.has('music'), query: scrobblesQuery },
+    { enabled: activeTypes.has('media'), query: mediaQuery },
     { enabled: activeTypes.has('meal'), query: mealsQuery },
     { enabled: activeTypes.has('metric'), query: metricsQuery },
     { enabled: activeTypes.has('report'), query: reportsQuery },
@@ -477,7 +449,7 @@ export const Data = () => {
     activeTypes,
     activitiesQuery.data ?? [],
     placesQuery.data ?? [],
-    scrobblesQuery.data ?? [],
+    mediaQuery.data ?? [],
     mealsQuery.data?.meals ?? [],
     reportsQuery.data ?? [],
     productivityQuery.data?.records ?? [],
