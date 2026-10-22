@@ -320,8 +320,9 @@ export const computeEnrichPatch = (
   if (Object.keys(patch).length === 0 && !valuesChanged) return null
   patch._enriched_by = ruleId
   // Taking over from another rule drops its record, so its values never count as this rule's.
-  if (valuesChanged || (!ownedByRule && existing._enriched_values !== undefined))
-    {patch._enriched_values = values}
+  if (valuesChanged || (!ownedByRule && existing._enriched_values !== undefined)) {
+    patch._enriched_values = values
+  }
   return patch
 }
 
