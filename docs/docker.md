@@ -343,8 +343,11 @@ scripts/release-pr.sh        # opens or refreshes the PR, body = merged PRs sinc
 (Also available as the "Release PR" workflow in the Actions tab.) The script labels the PR
 `release-tryout`, which makes the release tryout routine (`tryouts/routine.md`) boot the head
 image fresh and as an upgrade of `:latest`, and post a gate review. Merging it pushes
-`fiddur/aurboda:latest` and publishes the stable Android release `v1.0.<versionCode>`;
-`develop` keeps feeding the `develop` image and the `beta` Android pre-release.
+`fiddur/aurboda:latest` (when the release touches backend, web, packages or the Docker files)
+and publishes the stable Android release `v1.0.<versionCode>` (when it touches `apps/android`);
+`develop` keeps feeding the `develop` image and the `beta` Android pre-release. For the first
+release from `main` there is no previous `:latest` to upgrade from; the tryout uses the
+`develop` sha production runs as the stand-in.
 
 ## Architecture
 

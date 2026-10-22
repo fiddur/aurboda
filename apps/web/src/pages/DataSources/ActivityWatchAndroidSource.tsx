@@ -74,7 +74,7 @@ export function ActivityWatchAndroidSource() {
             ActivityWatch for Android
           </a>
           <a
-            href="https://github.com/fiddur/aurboda/releases/download/latest/aurboda.apk"
+            href="https://github.com/fiddur/aurboda/releases/latest/download/aurboda.apk"
             class="external-link"
           >
             Download Aurboda APK

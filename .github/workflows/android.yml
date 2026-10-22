@@ -169,6 +169,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd ${{ github.workspace }}
+          # Re-running a failed job must not trip over a half-made release.
+          gh release delete "${{ steps.channel.outputs.tag }}" --yes --cleanup-tag || true
           # --target: the default branch is develop, so without it the v1.0.N tag
           # would be created at develop's tip instead of this main commit.
           gh release create "${{ steps.channel.outputs.tag }}" \
@@ -183,7 +185,9 @@ jobs:
           Version code: ${{ steps.version.outputs.VERSION_CODE }}" \
             apps/android/app/build/outputs/apk/release/aurboda.apk \
             apps/android/app/build/outputs/apk/release/version.json
-          # Before stable/develop channels existed, the develop build lived on a
+          # Before stable/beta channels existed, the develop build lived on a
           # release named `latest`. Remove it once a real stable release exists so
-          # releases/latest resolves to this one.
+          # releases/latest resolves to this one. (Download links use the
+          # releases/latest/download/... form, which does not depend on a tag
+          # named `latest`.)
           gh release delete latest --yes --cleanup-tag || true
