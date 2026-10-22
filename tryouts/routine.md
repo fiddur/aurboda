@@ -203,7 +203,7 @@ bearer token the rig writes.
    `:latest`: `main`'s tip is the previous release PR's merge commit, whose second parent is the
    `develop` tip it released, and the image that release shipped is the last first-parent commit
    from there that touched an image path — the same rule and the same path list as IMAGE_SHA:
-   PREV_HEAD=$(git rev-parse origin/main^2 2>/dev/null || git rev-parse origin/main)
+   PREV_HEAD=$(git rev-parse --verify -q origin/main^2 || git rev-parse origin/main)
    PREV_SHA=$(git log --first-parent -1 --format=%H "$PREV_HEAD" -- apps/backend apps/web packages pnpm-lock.yaml Dockerfile nginx.conf entrypoint.sh .github/workflows/docker.yml | cut -c1-7)
    (The `|| git rev-parse origin/main` is for a `main` whose tip is not a merge commit; then its
    own history is walked.) If either command fails, leg B is "not run" — say so in the review.
