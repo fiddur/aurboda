@@ -162,7 +162,7 @@ export {
   hardDeleteActivitiesBySource,
   insertActivities,
   insertActivity,
-  insertNewActivity,
+  insertMergedActivity,
   insertOverride,
   markActivityDetailSynced,
   materializeSuperseded,

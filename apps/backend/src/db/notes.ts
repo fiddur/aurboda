@@ -277,14 +277,14 @@ export const getUserNotesJoined = async (
  * `entity_id` is in `sourceIds` are reassigned to `targetId`.
  */
 export const reanchorNotes = async (
-  user: string,
+  dbOrUser: Queryable | string,
   entityType: EntityType,
   sourceIds: string[],
   targetId: string,
 ): Promise<void> => {
   if (sourceIds.length === 0) return
   await query(
-    user,
+    dbOrUser,
     `UPDATE notes SET entity_id = $1, updated_at = NOW()
      WHERE entity_type = $2 AND entity_id = ANY($3)`,
     [targetId, entityType, sourceIds],
