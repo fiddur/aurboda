@@ -5,6 +5,7 @@ import type { GarminClient } from './client.ts'
 
 import {
   getActivitiesNeedingDetail,
+  getOAuthToken,
   getSyncState,
   markActivityDetailSynced,
   upsertSyncState,
@@ -48,6 +49,12 @@ export const isRateLimited = (syncState: SyncState | null): boolean => {
   return isFuture(syncState.retry_after)
 }
 
+/** Disconnecting keeps the oauth_tokens row with an empty token, so the row alone does not mean connected. */
+export const hasGarminSession = async (user: string): Promise<boolean> => {
+  const stored = await getOAuthToken(user, 'garmin')
+  return stored !== null && stored.access_token !== ''
+}
+
 const syncDateRange = async (
   user: string,
   garmin: GarminClient,
@@ -78,6 +85,15 @@ export const syncGarminDataType = async (
   dataType: GarminDataType,
   options?: { fullResync?: boolean; startDate?: Date },
 ): Promise<SyncResult> => {
+  if (!(await hasGarminSession(user))) {
+    return {
+      data_type: dataType,
+      error: 'User has no Garmin session. Please connect Garmin first.',
+      records_processed: 0,
+      status: 'error',
+    }
+  }
+
   const syncState = await getSyncState(user, 'garmin', dataType)
   if (isRateLimited(syncState)) {
     return {

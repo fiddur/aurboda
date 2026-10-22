@@ -26,6 +26,7 @@ vi.mock('../integrations/lastfm/sync.ts', () => ({
 }))
 
 vi.mock('../integrations/garmin/sync.ts', () => ({
+  hasGarminSession: vi.fn().mockResolvedValue(true),
   isRateLimited: vi.fn().mockReturnValue(false),
   syncActivityDetails: vi.fn().mockResolvedValue(undefined),
   syncGarminDataType: vi.fn(),
@@ -50,7 +51,7 @@ vi.mock('../integrations/gravl/sync.ts', () => ({
 
 import type { GravlClient } from '../integrations/gravl/client.ts'
 
-import { syncGarminDataType } from '../integrations/garmin/sync.ts'
+import { hasGarminSession, syncGarminDataType } from '../integrations/garmin/sync.ts'
 import { syncGravlWorkouts } from '../integrations/gravl/sync.ts'
 import { syncLastFmData } from '../integrations/lastfm/sync.ts'
 import { syncOuraDataType } from '../integrations/oura/sync.ts'
@@ -128,6 +129,7 @@ describe('createSyncProvider › syncGarminIfNeeded', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(hasGarminSession).mockResolvedValue(true)
     vi.mocked(getSettings).mockResolvedValue({} as never) // no disabled data types
     vi.mocked(dbIndex.getSyncState).mockResolvedValue({ last_sync_time: lastSync } as never)
   })
@@ -136,6 +138,21 @@ describe('createSyncProvider › syncGarminIfNeeded', () => {
     const onActivitySynced = vi.fn()
     return { onActivitySynced, provider: createSyncProvider({ garmin, onActivitySynced }) }
   }
+
+  test('skips a user with no Garmin session without reading sync state, syncing or auditing', async () => {
+    vi.mocked(hasGarminSession).mockResolvedValue(false)
+    vi.mocked(dbIndex.getSyncState).mockResolvedValue(null)
+    const { onActivitySynced, provider } = build()
+
+    await provider.syncGarminIfNeeded('alice', 'sleep')
+
+    expect(hasGarminSession).toHaveBeenCalledWith('alice')
+    expect(dbIndex.getSyncState).not.toHaveBeenCalled()
+    expect(syncGarminDataType).not.toHaveBeenCalled()
+    expect(auditInfo).not.toHaveBeenCalled()
+    expect(auditError).not.toHaveBeenCalled()
+    expect(onActivitySynced).not.toHaveBeenCalled()
+  })
 
   test('triggers deduction over the synced window after a successful sync with new records', async () => {
     vi.mocked(syncGarminDataType).mockResolvedValue({

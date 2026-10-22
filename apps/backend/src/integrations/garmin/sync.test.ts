@@ -2,6 +2,7 @@ import { subDays } from 'date-fns'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import * as db from '../../db/index.ts'
+import { auditError } from '../../services/audit-log.ts'
 import { processActivityDetail } from './process.ts'
 import {
   calculateRetryAfter,
@@ -18,6 +19,7 @@ vi.mock('../../db/index.ts', () => ({
   adoptLegacyActivity: vi.fn().mockResolvedValue(null),
   deleteGarminActivityWithWrongType: vi.fn().mockResolvedValue(null),
   getActivitiesNeedingDetail: vi.fn().mockResolvedValue([]),
+  getOAuthToken: vi.fn().mockResolvedValue({ access_token: '{"oauth1":{},"oauth2":{}}', provider: 'garmin' }),
   getSyncState: vi.fn(),
   insertActivity: vi.fn(),
   insertLocations: vi.fn().mockResolvedValue(undefined),
@@ -159,6 +161,27 @@ describe('syncGarminDataType', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     // Use real timers so the 100ms delay() in the sync loop resolves naturally
+  })
+
+  test.each([
+    ['no oauth_tokens row', null],
+    ['a disconnected (empty) token', { access_token: '', provider: 'garmin' }],
+  ])('a user with %s gets an error without any fetch, sync_state write or audit entry', async (_, stored) => {
+    vi.mocked(db.getOAuthToken).mockResolvedValueOnce(stored as never)
+    vi.mocked(db.getSyncState).mockResolvedValue(null)
+
+    const mockGarmin = createMockGarmin()
+    const result = await syncGarminDataType(user, mockGarmin as never, 'dailySummary')
+
+    expect(result).toEqual({
+      data_type: 'dailySummary',
+      error: 'User has no Garmin session. Please connect Garmin first.',
+      records_processed: 0,
+      status: 'error',
+    })
+    expect(mockGarmin.getDailySummary).not.toHaveBeenCalled()
+    expect(db.upsertSyncState).not.toHaveBeenCalled()
+    expect(auditError).not.toHaveBeenCalled()
   })
 
   test('skips sync when rate limited', async () => {
