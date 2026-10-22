@@ -183,21 +183,22 @@ bearer token the rig writes.
 2. `pull_request_read` with method `get`. Stop and do nothing unless all of these hold: base is
    `main`, head is `develop`, state is open, not merged, and the label `release-tryout` is on it.
 3. Take the PR: `issue_write` (method `update`) with its labels minus `release-tryout` plus
-   `release-trying` (never `reviewing`, that is the review routine's marker). HEAD_SHA is the
-   PR's head sha, SHORT_SHA its first 7 characters. Everything you post names SHORT_SHA; a
-   review on an older head is stale by definition.
+   `release-trying` (never `reviewing`, that is the review routine's marker). In the shell,
+   HEAD_SHA=<the PR's full head sha> and SHORT_SHA=${HEAD_SHA:0:7}. Everything you post names
+   SHORT_SHA; a review on an older head is stale by definition.
 4. Read the body: the "Changes" list is every PR merged to develop since the last release, the
    "Release gate" checklist is what you will tick. For each listed PR, `pull_request_read`
    (`get`) its body for the promised behaviour and read the post-merge tryout's comment on it
    (`get_comments`): what it verified needs only a smoke here; what it could not drive, or
    filed a `tryout-finding` for, is what this run must try hardest to exercise.
 5. Check out the head for the recipes at the released version:
-   git fetch origin main develop && git checkout --detach HEAD_SHA
+   git fetch origin main develop && git checkout --detach "$HEAD_SHA"
    Then resolve the image. CI only builds an image when a merge touches an image path, so the
    head's own tag often does not exist; the release image is the last first-parent commit that
    touched one of those paths:
-   IMAGE_SHA=$(git log --first-parent -1 --format=%h HEAD_SHA -- apps/backend apps/web packages pnpm-lock.yaml Dockerfile nginx.conf entrypoint.sh .github/workflows/docker.yml)
-   (`--first-parent` matters: a feature-branch commit was never built.) Name IMAGE_SHA in the
+   IMAGE_SHA=$(git log --first-parent -1 --format=%H "$HEAD_SHA" -- apps/backend apps/web packages pnpm-lock.yaml Dockerfile nginx.conf entrypoint.sh .github/workflows/docker.yml | cut -c1-7)
+   (`--first-parent` matters: a feature-branch commit was never built. `cut -c1-7` matters:
+   CI tags with 7 characters and `%h` prints 8 in this repository.) Name IMAGE_SHA in the
    review whenever it differs from SHORT_SHA, with "nothing image-relevant between them".
    Then learn what production runs, which is the previous release for leg B:
    PREV_SHA=$(curl -fsS https://aurboda.net/api/version | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>process.stdout.write(JSON.parse(s).build_sha.slice(0,7)))')
@@ -225,7 +226,7 @@ LEG A — fresh database.
 
 LEG B — upgrade from the previous release.
 10. Skip to step 12 if PREV_SHA is unset, or equals IMAGE_SHA (nothing to upgrade). Otherwise
-    tryouts/down.sh (no --purge) and then boot the previous release fresh:
+    boot the previous release fresh (--fresh tears the leg A stack down itself):
     AURBODA_TAG=$PREV_SHA tryouts/up.sh --fresh
     That is the image production runs. Seed it through the recipes: the demo user, a handful of
     activities of different types, a tag, a post on the feed, a challenge. Note the ids and the
