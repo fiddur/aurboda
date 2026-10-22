@@ -1,9 +1,12 @@
 name: Build and Push Docker Image
 
+# develop → fiddur/aurboda:<sha> + :develop   (beta / development instances)
+# main    → fiddur/aurboda:<sha> + :latest    (production, see docs/docker.md)
 on:
   push:
     branches:
       - develop
+      - main
     paths:
       - 'apps/backend/**'
       - 'apps/web/**'
@@ -15,15 +18,14 @@ on:
       - '.github/workflows/docker.yml'
   workflow_dispatch:
 
-# Only run on develop branch (prevents manual dispatch from main/other branches)
 concurrency:
   group: docker-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build:
-    # Only run on develop branch (prevents manual dispatch from main/other branches)
-    if: github.ref == 'refs/heads/develop'
+    # Only the two release branches (prevents manual dispatch from feature branches)
+    if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -45,7 +47,8 @@ jobs:
           images: fiddur/aurboda
           tags: |
             type=sha,prefix=
-            type=raw,value=develop
+            type=raw,value=develop,enable=${{ github.ref == 'refs/heads/develop' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5

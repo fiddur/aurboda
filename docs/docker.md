@@ -70,7 +70,8 @@ SESSION_SECRET=your_generated_salt_here
 
 ## Using Pre-built Images
 
-Docker images are automatically built and pushed to Docker Hub on merge to `develop`.
+Docker images are built and pushed to Docker Hub by GitHub Actions: `fiddur/aurboda:latest`
+from `main` (releases) and `fiddur/aurboda:develop` from `develop` (every merged PR).
 
 ### Pull the latest image:
 
@@ -323,13 +324,25 @@ The container monitors both nginx and the backend. If either process crashes, th
 
 Docker images are built automatically by GitHub Actions:
 
-- **Trigger**: Push to `develop` branch
+- **Trigger**: Push to `develop` or `main` (`.github/workflows/docker.yml`)
 - **Registry**: Docker Hub
 - **Image**: `fiddur/aurboda`
 - **Tags**:
-  - `develop` - latest from develop branch
-  - `<sha>` - specific commit
-  - `latest` - latest from main branch
+  - `latest` - from `main`: released state, what production runs
+  - `develop` - from `develop`: every merged PR, for beta instances
+  - `<sha>` - specific commit (both branches)
+
+### Cutting a release
+
+Releases are `develop → main` pull requests, merged with a **merge commit**:
+
+```bash
+scripts/release-pr.sh        # opens or refreshes the PR, body = merged PRs since the last release
+```
+
+(Also available as the "Release PR" workflow in the Actions tab.) Merging it pushes
+`fiddur/aurboda:latest` and publishes the stable Android release `v1.0.<versionCode>`;
+`develop` keeps feeding the `develop` image and the `develop` Android pre-release.
 
 ## Architecture
 

@@ -163,7 +163,10 @@ Row mappers in `db/row-mappers.ts` use type guards with api-spec constants (e.g.
 
 ## Git workflow
 
-- Base branch is `develop`. `main` holds released state.
+- Base branch is `develop`. `main` holds released state: a release is a `develop → main`
+  PR from `scripts/release-pr.sh`, merged with a merge commit. Pushes to `main` build
+  `fiddur/aurboda:latest` and the stable Android release; `develop` builds `:develop` and
+  the `develop` Android pre-release (see `docs/docker.md`, "Cutting a release").
 - **Never push directly to `develop`.** Always a PR.
 - **Never alter already-pushed commits.** No amend after push, no force push.
 - **Never rebase. Always merge.**

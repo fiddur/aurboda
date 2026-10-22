@@ -257,7 +257,8 @@ To change default port, modify `"8080:80"` to `"YOUR_PORT:80"` in docker-compose
 
 ### Development Builds
 
-Replace `:latest` with `:develop` in docker-compose.yml to use development builds.
+`:latest` is built from `main` on each release. Replace it with `:develop` in
+docker-compose.yml to follow every merged PR instead (what the beta channel runs).
 
 ---
 

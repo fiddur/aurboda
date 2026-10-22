@@ -28,6 +28,13 @@ fun getLocalProperty(
 // VERSION_CODE is set by the CI release job.
 val versionCodeFromEnv = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 1
 
+// Update channel: where the app looks for a newer build (see .github/workflows/android.yml).
+// CI sets it per branch — main builds follow releases/latest (stable), develop builds follow
+// the `develop` pre-release. Local builds default to the develop channel.
+val versionJsonUrlFromEnv =
+  System.getenv("VERSION_JSON_URL")
+    ?: "https://github.com/fiddur/aurboda/releases/download/develop/version.json"
+
 android {
   namespace = "net.aurboda"
   compileSdk = 36
@@ -48,6 +55,7 @@ android {
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
     buildConfigField("int", "VERSION_CODE_INT", "$versionCodeFromEnv")
+    buildConfigField("String", "VERSION_JSON_URL", "\"$versionJsonUrlFromEnv\"")
     val buildTimestamp =
       SimpleDateFormat("yyyyMMddHHmm", Locale.US)
         .apply { timeZone = TimeZone.getTimeZone("UTC") }

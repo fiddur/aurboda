@@ -221,7 +221,8 @@ fun AurbodaAppShell(
   }
 }
 
-private const val VERSION_JSON_URL = "https://github.com/fiddur/aurboda/releases/latest/download/version.json"
+/** Update channel baked in at build time: stable (main) or develop, see build.gradle.kts. */
+private const val VERSION_JSON_URL = BuildConfig.VERSION_JSON_URL
 
 @Suppress("ASSIGNED_VALUE_IS_NEVER_READ") // Compose state vars trigger false "assigned but never read" warnings
 @Composable
