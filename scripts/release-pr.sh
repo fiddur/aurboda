@@ -12,15 +12,22 @@
 set -euo pipefail
 
 git fetch -q origin main develop
+for ref in origin/main origin/develop; do
+  git rev-parse --verify -q "$ref" > /dev/null || {
+    echo "$ref is not a ref here; a single-branch or shallow clone? Fix with:" >&2
+    echo "  git config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*' && git fetch origin" >&2
+    exit 1
+  }
+done
 range="origin/main..origin/develop"
-if [ -z "$(git log -1 --format=%H "$range")" ]; then
+if [ -z "$(git log -1 --format=%H "$range" --)" ]; then
   echo "develop has nothing main does not have; no release to cut." >&2
   exit 0
 fi
 
 last_release=$(git log -1 --format='%cs (%h)' origin/main)
 head_sha=$(git rev-parse --short=7 origin/develop)
-changes=$(git log --first-parent --format='- %s' "$range" | grep -v -i '^- backmerge' || true)
+changes=$(git log --first-parent --format='- %s' "$range" -- | grep -v -i '^- backmerge' || true)
 count=$(printf '%s\n' "$changes" | grep -c . || true)
 title="Release $(date +%F)"
 body=$(cat <<BODY
