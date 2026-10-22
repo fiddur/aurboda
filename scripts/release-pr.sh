@@ -44,7 +44,7 @@ ${changes}
 Ticked by the release tryout (\`tryouts/routine.md\`) for head \`${head_sha}\`; a new head needs a new run.
 
 - [ ] Fresh boot of \`fiddur/aurboda:${head_sha}\` passes the release smoke
-- [ ] Upgrade from \`fiddur/aurboda:latest\` on a seeded database migrates clean and keeps its data
+- [ ] Upgrade from the previous release's image on a seeded database migrates clean and keeps its data
 - [ ] Tryout review on the current head starts with ✅ Approved
 - [ ] Merged as a merge commit, on an instruction naming this PR
 BODY
