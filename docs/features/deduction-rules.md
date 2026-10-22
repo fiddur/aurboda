@@ -112,7 +112,9 @@ enriches — for example the `session_name` an `output_media_field` rule writes,
 - The title is written through the same update path as a manual edit, after the rule's data enrichment (so a field
   filled in the same pass is used). A synced activity (Garmin, Health Connect, …) therefore gets an aurboda override
   carrying the title, and a re-sync of the source row — which resets the source row's own title — leaves it alone.
-  The override takes the synced row's data at that moment; later enrichment writes onto both rows.
+  The override takes the synced row's data at that moment; later enrichment writes onto both rows. A synced row
+  that already has an override is left alone whatever its `superseded_by` mark says: the override is read as its
+  own activity and judged by its own title and data, so a title typed by hand on it is kept.
 - It may stand alone, or join `output_data` / `output_media_field` in one rule; a rule with only
   `output_title_field` changes nothing but titles.
 - Like any rule it runs when the rule is created or updated and then on new mutations (a synced or enriched
