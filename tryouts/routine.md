@@ -1,4 +1,9 @@
-# The post-merge tryout routine
+# The tryout routines
+
+Two routines share this rig: the **post-merge tryout** (one merged PR to `develop`, below) and
+the **release tryout** (a `develop → main` release PR, [further down](#the-release-tryout-routine)).
+
+## The post-merge tryout routine
 
 A tryout used to run on a webhook service on Fredrik's machine: it watched for merges, pulled the
 freshly built Docker image onto that box, and started a local agent with an MCP connection to the
@@ -7,14 +12,14 @@ trigger, which boots the same image with the scripts in this folder.
 
 This file is what to type into the routine's settings, and the instructions to paste into it.
 
-**None of this has been through a cloud run yet.** The environment half in particular — whether
+**The post-merge half has run in the cloud; the release half has not.** The environment half in particular — whether
 Chrome's download passes the network level, whether `dockerd` starts, whether the registry hosts
 are allowed — is unverified until the first tryout actually fires. Fix what the first run shows
 and correct this file in the same PR.
 
 [← back to the tryout brief](./AGENTS.md)
 
-## Trigger
+### Trigger
 
 | Field      | Value                                                                                                                                |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------ |
@@ -25,7 +30,7 @@ and correct this file in the same PR.
 | Filter     | Base branch **equals** `develop`                                                                                                     |
 | Connectors | **GitHub only.** Never the Aurboda connector: the only one on claude.ai is `https://aurboda.net/mcp`, which is **production**        |
 
-## Environment
+### Environment
 
 - **Setup script**: the contents of [`setup-environment.sh`](./setup-environment.sh). It is
   optional — the instructions run it again at the start of every tryout, where it is a fast no-op
@@ -44,7 +49,7 @@ and correct this file in the same PR.
   downloads from) and the Ubuntu apt mirrors. `nodejs.org` is for the session-start hook. If the
   _Trusted_ level refuses any of them, switch to a custom allowlist that adds them.
 
-## Instructions
+### Instructions
 
 Paste this into the routine's instructions field.
 
@@ -106,8 +111,139 @@ who was not here.
 Then `tryouts/down.sh --purge`, and stop. Never commit, push, or open a pull request.
 ```
 
-## What this does not cover
+### What this does not cover
 
 The deployment itself. The image the tryout boots is the one the server picks up, but nothing here
 checks that `aurboda.net` actually took it, and nothing here touches production data — the
 production MCP connector stays off this routine on purpose.
+
+## The release tryout routine
+
+A release is a `develop → main` pull request (`scripts/release-pr.sh`, see `docs/docker.md`
+"Cutting a release"). Merging it is what production takes, so the release is tried out **before**
+the merge, as a whole, on the image CI already built for the PR's head (the develop tip is
+`fiddur/aurboda:<sha7>`), and in two legs: a fresh database, and an upgrade of the previous
+release's database. The routine posts a gate review; a human merges, on an instruction that
+names the PR.
+
+The same environment and scripts as above. A second routine rather than a branch in the first
+one's instructions, so the two triggers stay simple.
+
+### Trigger
+
+| Field      | Value                                                                                                              |
+| ---------- | ------------------------------------------------------------------------------------------------------------------ |
+| Source     | GitHub                                                                                                             |
+| Repository | `fiddur/aurboda`                                                                                                   |
+| Event      | `pull_request`, action **labeled** (or "All PR events" if the form offers no per-action choice — the instructions re-check it) |
+| Filter     | Base branch **equals** `main`                                                                                      |
+| Filter     | Label **equals** `release-tryout` (where the form has it; otherwise the instructions check)                       |
+| Connectors | **GitHub only.** Never the Aurboda connector (`https://aurboda.net/mcp` is production)                             |
+
+`scripts/release-pr.sh` puts the `release-tryout` label on when it opens the PR and again on
+every refresh, so a moved head is re-tried. The label protocol mirrors the review routine's:
+`release-tryout` → `reviewing` while the run owns the PR → neither when done. A PR with the
+label still on after forty minutes means the routine never fired; `reviewing` for longer than an
+hour means it died mid-run.
+
+### Environment
+
+As for the post-merge routine. Set `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` as environment
+secrets if the anonymous pull quota keeps biting: the release tryout pulls **two** images.
+
+### Instructions
+
+Paste this into the routine's instructions field.
+
+```
+You are running a release tryout of aurboda. A pull request from `develop` to `main` has been
+labelled `release-tryout`; your job is to gate it: prove by execution that the release as a whole
+works in the image CI built from its head, both on a fresh database and as an upgrade of the
+previous release, and to say so in one review that starts with `✅ Approved` or
+`🛑 Changes required`. You never merge: a release PR merges only on a human instruction naming it.
+
+There is no `gh` in this environment and no GraphQL. GitHub is the GitHub MCP tools, the
+`mcp__github__*` set; their schemas load through ToolSearch when only their names are listed.
+Never install `gh`. Never commit, never push, never open a pull request.
+
+There is no MCP server pointed at the rig, and you must not attach one: the only Aurboda connector
+on claude.ai is https://aurboda.net/mcp, which is PRODUCTION. Everything goes over REST with the
+bearer token the rig writes.
+
+1. Find the pull request number from the event that started this session.
+2. `pull_request_read` with method `get`. Stop and do nothing unless all of these hold: base is
+   `main`, head is `develop`, state is open, not merged, and the label `release-tryout` is on it.
+3. Take the PR: `issue_write` (method `update`) with its labels minus `release-tryout` plus
+   `reviewing`. HEAD_SHA is the PR's head sha, SHORT_SHA its first 7 characters. Everything you
+   post names SHORT_SHA; a review on an older head is stale by definition.
+4. Read the body: the "Changes" list is every PR merged to develop since the last release, the
+   "Release gate" checklist is what you will tick. For each listed PR, `pull_request_read`
+   (`get`) its body for the promised behaviour and read the post-merge tryout's comment on it
+   (`get_comments`): what it verified needs only a smoke here; what it could not drive, or
+   filed a `tryout-finding` for, is what this run must try hardest to exercise.
+5. Check out the head for the recipes at the released version:
+   git fetch origin main develop && git checkout --detach HEAD_SHA
+6. `docker ps`. If there is no daemon, `up.sh` starts one; the repository's tryouts/AGENTS.md says
+   how, and a failure there is a stop, not something to work around.
+7. `tryouts/setup-environment.sh` (a fast no-op if the environment already has the browser).
+
+LEG A — fresh database.
+8. AURBODA_TAG=$SHORT_SHA tryouts/up.sh --fresh --wait-image
+   The develop push built this tag; --wait-image polls up to 30 minutes in case it is still
+   building. If it never appears, or the stack will not boot after two attempts, post the review
+   as `🛑 Changes required` with the tail of `docker compose -p aurboda-tryout-cloud logs`,
+   remove `reviewing`, and stop.
+9. Read `tryouts/AGENTS.md` and follow it. Run the release smoke: for every area in
+   `tryouts/recipes.md` (feed and federation, timeline and activity detail, media plays,
+   challenges, sync and integrations via the in-container probes, auth/login/schema, public
+   profile and sharing) execute that area's core recipe once and quote the evidence. Then
+   exercise what step 4 singled out, PR by PR. Verification holds only if all three hold: you
+   can name the specific behaviour promised; you executed an API call or a browser interaction
+   that exercises it; you can quote the response or describe the screenshot showing it happened.
+   "200 OK" and "the page rendered" are neither.
+
+LEG B — upgrade from the previous release.
+10. tryouts/down.sh (no --purge) and then boot the previous release fresh:
+    AURBODA_TAG=latest tryouts/up.sh --fresh
+    `fiddur/aurboda:latest` is what main last built, i.e. what production runs. Seed it through
+    the recipes: the demo user, a handful of activities of different types, a tag, a post on the
+    feed, a challenge. Note the ids and the counts you created.
+11. tryouts/down.sh (no --purge, the volume must survive), then
+    AURBODA_TAG=$SHORT_SHA tryouts/up.sh
+    without --fresh, so the release image starts on the previous release's database.
+    Verify: the container log shows the schema sweep finished with 0 failed and names the
+    migrations it ran; every seeded id is still readable through the API with the same values;
+    the timeline page shows the seeded activities; the feed shows the post. A migration error, a
+    lost or changed row, or a 500 on any seeded entity is a release-block finding.
+    If `:latest` cannot be pulled or does not boot (there is no release from main yet, or the
+    tag is older than the schema the recipes assume), say so in the review and mark the leg as
+    not run; before the first release from main that is acceptable, afterwards it blocks.
+
+FINDINGS AND THE GATE.
+12. File findings as issues exactly as `tryouts/AGENTS.md` describes — one issue per distinct
+    finding, label `tryout-finding`, and search the open `tryout-finding` issues first so a known
+    one is not filed twice. A finding that makes the release unfit — data lost or wrong after
+    the upgrade, a core recipe failing, a merged PR's promise demonstrably not kept — carries
+    the label `release-block` as well and says "Blocks the release in #<pr>" in its first line.
+13. Tick the "Release gate" boxes in the PR body (`update_pull_request`, body) for what held on
+    SHORT_SHA: the fresh-boot box, the upgrade box, and the ✅ box only if you are approving.
+    Leave the merge box alone; a human ticks it.
+14. Post ONE review with `pull_request_review_write` (method `create`, event `COMMENT`) on
+    HEAD_SHA whose body starts with `✅ Approved` (no `release-block` findings, both legs ran or
+    leg B was acceptably skipped) or `🛑 Changes required` (anything else), followed by:
+    - leg A: what you verified, with the evidence quoted, area by area and PR by PR,
+    - leg B: the migrations that ran, the seeded ids checked, and what differed,
+    - what you could not drive and why,
+    - links to every issue you filed, blockers first.
+    That review is the only artifact of this session a human will ever see, so write it for
+    somebody who was not here.
+15. `issue_write` (method `update`) with the labels minus `reviewing`.
+
+Then `tryouts/down.sh --purge`, and stop. Never merge, commit, push, or open a pull request.
+```
+
+### What this does not cover
+
+Production itself, as above. And the Android app: a release also publishes the stable APK from
+`main` (`.github/workflows/android.yml`), which only CI's Android job checks; `apps/android`
+changes in the release list are "not drivable here" in the review, not a gap to work around.
