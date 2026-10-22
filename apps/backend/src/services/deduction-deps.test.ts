@@ -34,7 +34,7 @@ describe('createDefaultEngineDeps', () => {
     const notifier = vi.fn()
     const deps = createDefaultEngineDeps(notifier)
 
-    const id = await deps.insertActivity('testuser', {
+    const result = await deps.insertActivity('testuser', {
       activity_type: 'tv',
       data: { rule_id: 'rule-123' },
       end_time: new Date('2024-03-15T22:00:00Z'),
@@ -42,7 +42,7 @@ describe('createDefaultEngineDeps', () => {
       start_time: new Date('2024-03-15T20:00:00Z'),
     })
 
-    expect(id).toBe('existing-id')
+    expect(result).toEqual({ changed: false, id: 'existing-id' })
     expect(notifier).not.toHaveBeenCalled()
   })
 
@@ -100,8 +100,8 @@ describe('createDefaultEngineDeps', () => {
       start_time: new Date('2024-03-15T20:00:00Z'),
     }
 
-    const id = await deps.insertActivity('testuser', activity)
-    expect(id).toBe('new-id')
+    const result = await deps.insertActivity('testuser', activity)
+    expect(result).toEqual({ changed: true, id: 'new-id' })
   })
 
   test('insertActivity passes undefined sourceRuleId when no rule_id in data', async () => {

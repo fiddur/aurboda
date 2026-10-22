@@ -226,6 +226,7 @@ MCP tools: `list_deduction_rules`, `add_deduction_rule`, `update_deduction_rule`
   changed an activity. Re-evaluating a window whose generated activities are already in place writes
   nothing and triggers nothing, so rules that match the same history settle instead of re-running each
   other.
-- Each evaluation records a run per rule (`deduction_rule_runs`); runs older than 30 days are deleted
-  by the daily prune job, together with the audit log
+- Each evaluation records a run per rule (`deduction_rule_runs`). Its `activities_created`, like the
+  audit log's, counts only the activities the pass actually wrote, so a settled window records 0; runs
+  older than 30 days are deleted by the daily prune job, together with the audit log
 - The `output_activity_type` must reference an existing [custom activity type](activity-types.md)

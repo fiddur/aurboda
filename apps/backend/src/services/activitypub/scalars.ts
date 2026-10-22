@@ -110,7 +110,9 @@ const hrZoneMinutes = (metricStat: MetricStat): Record<string, number> => {
   const zones: Record<string, number> = {}
   for (const [i, metric] of hrZoneMetrics.entries()) {
     const seconds = metricStat(metric, 'sum')
-    if (seconds !== undefined && seconds > 0) zones[`z${i}`] = Math.round(seconds / 60)
+    if (seconds === undefined) continue
+    const minutes = Math.round(seconds / 60)
+    if (minutes > 0) zones[`z${i}`] = minutes
   }
   return zones
 }

@@ -27,7 +27,7 @@ const makeDeps = (): DeductionEngineDeps => ({
   getMediaPlays: vi.fn().mockResolvedValue([]),
   getScrobbles: vi.fn().mockResolvedValue([]),
   getScreentime: vi.fn().mockResolvedValue([]),
-  insertActivity: vi.fn().mockResolvedValue(undefined),
+  insertActivity: vi.fn().mockResolvedValue({ changed: true, id: undefined }),
   insertRuleRun: vi.fn().mockResolvedValue(undefined),
   retitleActivities: vi.fn().mockResolvedValue([]),
   retypeActivity: vi.fn().mockResolvedValue(true),
@@ -156,7 +156,7 @@ describe('evaluateRule', () => {
 
   test('reports the id the insert returns when the activity already exists', async () => {
     vi.mocked(deps.getActivities).mockResolvedValue([{ end: d(11), start: d(10) }])
-    vi.mocked(deps.insertActivity).mockResolvedValue('existing-id')
+    vi.mocked(deps.insertActivity).mockResolvedValue({ changed: false, id: 'existing-id' })
 
     const { affected_ids } = await evaluateRule(user, makeRule(), window, deps)
 
@@ -165,7 +165,7 @@ describe('evaluateRule', () => {
 
   test('falls back to the generated id when the insert returns nothing', async () => {
     vi.mocked(deps.getActivities).mockResolvedValue([{ end: d(11), start: d(10) }])
-    vi.mocked(deps.insertActivity).mockResolvedValue(undefined)
+    vi.mocked(deps.insertActivity).mockResolvedValue({ changed: true, id: undefined })
 
     const { affected_ids } = await evaluateRule(user, makeRule(), window, deps)
 
@@ -608,6 +608,36 @@ describe('evaluateAllRules', () => {
     expect(result.activities_created).toBe(2)
   })
 
+  test('counts only the inserts that changed something, but keeps every id for the stale cleanup', async () => {
+    const rules: DeductionRule[] = [
+      {
+        conditions: [{ activity_type: 'sauna', kind: 'activity' }],
+        enabled: true,
+        id: 'rule-1',
+        name: 'Rule 1',
+        output_activity_type: 'sauna',
+        priority: 0,
+      },
+    ]
+
+    vi.mocked(deps.getActivities).mockResolvedValue([
+      { end: d(11), start: d(10) },
+      { end: d(15), start: d(14) },
+    ])
+    vi.mocked(deps.insertActivity)
+      .mockResolvedValueOnce({ changed: true, id: 'new-id' })
+      .mockResolvedValueOnce({ changed: false, id: 'existing-id' })
+
+    const result = await evaluateAllRules(user, rules, window, deps)
+
+    expect(result.activities_created).toBe(1)
+    expect(deps.insertRuleRun).toHaveBeenCalledWith(user, expect.objectContaining({ activities_created: 1 }))
+    expect(deps.deleteStaleRuleActivities).toHaveBeenCalledWith(user, 'rule-1', window.start, window.end, [
+      'new-id',
+      'existing-id',
+    ])
+  })
+
   test('cleans up stale activities after evaluation', async () => {
     const rules: DeductionRule[] = [
       {
@@ -646,7 +676,7 @@ describe('evaluateAllRules', () => {
     ]
 
     vi.mocked(deps.getActivities).mockResolvedValue([{ end: d(11), start: d(10) }])
-    vi.mocked(deps.insertActivity).mockResolvedValue('existing-id')
+    vi.mocked(deps.insertActivity).mockResolvedValue({ changed: false, id: 'existing-id' })
 
     await evaluateAllRules(user, rules, window, deps)
 
