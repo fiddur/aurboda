@@ -58,6 +58,20 @@ describe('resolveSharedScalars', () => {
     ])
   })
 
+  test('drops hr zones that round to zero minutes, and the key when none remain', () => {
+    const stat = statFrom({
+      hr_zone_0_sec: { sum: 20 }, // one sample's worth: rounds to 0 min
+      hr_zone_2_sec: { sum: 1320 }, // 22 min
+      hr_zone_5_sec: { sum: 29 }, // a spike under half a minute
+    })
+    expect(resolveSharedScalars(window, ['hr_zone_minutes'], stat)).toEqual([
+      { key: 'hr_zone_minutes', label: 'HR zone minutes', value: { z2: 22 } },
+    ])
+
+    const onlyNoise = statFrom({ hr_zone_0_sec: { sum: 20 } })
+    expect(resolveSharedScalars(window, ['hr_zone_minutes'], onlyNoise)).toEqual([])
+  })
+
   test('skips unsupported keys and metrics with no data', () => {
     const stat = statFrom({ heart_rate: { avg: 150 } })
     const out = resolveSharedScalars(window, ['made_up_key', 'stress_avg', 'heart_rate_avg'], stat)

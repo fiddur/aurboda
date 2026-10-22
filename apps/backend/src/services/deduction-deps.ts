@@ -461,7 +461,7 @@ export const createDefaultEngineDeps = (notifier?: ActivityNotifier): DeductionE
         ruleId,
       )
     }
-    return id
+    return { changed, id }
   },
   insertRuleRun: insertDeductionRuleRun,
   retitleActivities: (user, activityType, ranges, field, ruleId, dryRun) =>

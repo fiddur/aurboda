@@ -85,7 +85,7 @@ export interface DeductionEngineDeps {
     durationSeconds: number,
     window: EvaluationWindow,
   ) => Promise<TimeRange[]>
-  insertActivity: (user: string, activity: Activity) => Promise<string | void>
+  insertActivity: (user: string, activity: Activity) => Promise<{ id: string | undefined; changed: boolean }>
   enrichActivities: (
     user: string,
     activityType: string,
@@ -320,8 +320,9 @@ export const computeEnrichPatch = (
   if (Object.keys(patch).length === 0 && !valuesChanged) return null
   patch._enriched_by = ruleId
   // Taking over from another rule drops its record, so its values never count as this rule's.
-  if (valuesChanged || (!ownedByRule && existing._enriched_values !== undefined))
-    {patch._enriched_values = values}
+  if (valuesChanged || (!ownedByRule && existing._enriched_values !== undefined)) {
+    patch._enriched_values = values
+  }
   return patch
 }
 
@@ -365,9 +366,27 @@ const withMemoizedMediaPlays = (deps: DeductionEngineDeps): DeductionEngineDeps 
 }
 
 export interface EvaluateRuleResult {
+  /** Activities the rule actually wrote. A settled window counts 0. */
+  activities_created: number
+  /**
+   * Every activity the rule claims in the window, changed or not: the stale cleanup keeps
+   * these, so an unchanged re-upsert must still be listed.
+   */
   affected_ids: string[]
   would_affect: number
 }
+
+const nothingAffected = (would_affect: number): EvaluateRuleResult => ({
+  activities_created: 0,
+  affected_ids: [],
+  would_affect,
+})
+
+const allAffected = (ids: string[]): EvaluateRuleResult => ({
+  activities_created: ids.length,
+  affected_ids: ids,
+  would_affect: ids.length,
+})
 
 const activityConditionsOf = (conditions: Condition[]): ActivityCondition[] =>
   conditions.filter((c): c is ActivityCondition => c.kind === 'activity')
@@ -384,11 +403,11 @@ const retype = async (
   dryRun: boolean,
 ): Promise<EvaluateRuleResult> => {
   const [target, ...others] = activityConditionsOf(rule.conditions)
-  if (!target || others.length > 0) return { affected_ids: [], would_affect: 0 }
+  if (!target || others.length > 0) return nothingAffected(0)
 
   const candidates = await deps.findActivities(user, target, window, rule.output_activity_type)
   const toRetype = candidates.filter((c) => overlapsAny(c, matched))
-  if (dryRun) return { affected_ids: [], would_affect: toRetype.length }
+  if (dryRun) return nothingAffected(toRetype.length)
 
   const retypedIds: string[] = []
   for (const activity of toRetype) {
@@ -400,7 +419,7 @@ const retype = async (
     })
     if (ok) retypedIds.push(activity.id)
   }
-  return { affected_ids: retypedIds, would_affect: retypedIds.length }
+  return allAffected(retypedIds)
 }
 
 const countEnrichable = async (
@@ -440,7 +459,7 @@ const enrich = async (
   if (dryRun) {
     const enrichable = await countEnrichable(user, rule, matched, window, deps, dataFor)
     const retitled = (await retitle(true)).length
-    return { affected_ids: [], would_affect: Math.max(enrichable, retitled) }
+    return nothingAffected(Math.max(enrichable, retitled))
   }
 
   const enrichedIds = await deps.enrichActivities(
@@ -454,7 +473,7 @@ const enrich = async (
       : undefined,
   )
   const affected = [...new Set([...enrichedIds, ...(await retitle(false))])]
-  return { affected_ids: affected, would_affect: affected.length }
+  return allAffected(affected)
 }
 
 /**
@@ -469,25 +488,24 @@ export const evaluateRule = async (
 ): Promise<EvaluateRuleResult> => {
   const deps = withMemoizedMediaPlays(baseDeps)
   const result = await resolveConditions(user, rule, window, deps)
-  if (result.length === 0) return { affected_ids: [], would_affect: 0 }
+  if (result.length === 0) return nothingAffected(0)
 
   if (rule.mode === 'retype') return retype(user, rule, result, window, deps, dryRun)
 
   if (rule.mode === 'enrich') return enrich(user, rule, result, window, deps, dryRun)
 
   // Create mode (default)
-  if (dryRun) {
-    return { affected_ids: [], would_affect: result.length }
-  }
+  if (dryRun) return nothingAffected(result.length)
 
   const createdIds: string[] = []
+  let created = 0
   for (const range of result) {
     const id = randomUUID()
     // The insert upserts on (source, activity_type, start_time), so a re-evaluation
     // returns the id of the row that already exists there rather than the one
     // generated here. Keeping the generated id would make the stale cleanup below
     // delete the real activity on every other evaluation.
-    const insertedId = await deps.insertActivity(user, {
+    const { id: insertedId, changed } = await deps.insertActivity(user, {
       activity_type: rule.output_activity_type,
       data: { rule_id: rule.id, rule_name: rule.name, ...rule.output_data },
       end_time: range.end,
@@ -497,9 +515,10 @@ export const evaluateRule = async (
       title: rule.output_title ?? rule.name,
     })
     createdIds.push(insertedId ?? id)
+    if (changed) created++
   }
 
-  return { affected_ids: createdIds, would_affect: createdIds.length }
+  return { activities_created: created, affected_ids: createdIds, would_affect: createdIds.length }
 }
 
 /**
@@ -527,7 +546,13 @@ export const evaluateAllRules = async (
     const group = byPriority.get(priority)!
     for (const rule of group) {
       const startMs = Date.now()
-      const { affected_ids, would_affect } = await evaluateRule(user, rule, window, deps, dryRun)
+      const { activities_created, affected_ids, would_affect } = await evaluateRule(
+        user,
+        rule,
+        window,
+        deps,
+        dryRun,
+      )
 
       if (!dryRun) {
         // Clean up stale activities from previous evaluations (only for create mode)
@@ -537,7 +562,7 @@ export const evaluateAllRules = async (
 
         const durationMs = Date.now() - startMs
         await deps.insertRuleRun(user, {
-          activities_created: affected_ids.length,
+          activities_created,
           duration_ms: durationMs,
           rule_id: rule.id,
           window_end: window.end,
@@ -545,7 +570,7 @@ export const evaluateAllRules = async (
         })
       }
 
-      totalActivities += dryRun ? would_affect : affected_ids.length
+      totalActivities += dryRun ? would_affect : activities_created
       totalRules++
     }
   }

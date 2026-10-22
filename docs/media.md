@@ -134,7 +134,9 @@ The play usually arrives hours before Garmin syncs the activity. Both orders wor
 
 Enrichment is idempotent: re-syncs write nothing when the value is unchanged. After editing the rule (say, a new
 `strip_pattern`, a regular expression of at most 200 characters), re-evaluation overwrites values the rule wrote
-itself (`data._enriched_by` is the rule id), but never a value set by someone else.
+itself (`data._enriched_by` is the rule id and `data._enriched_values` records what it wrote), but never a value
+set by someone else or edited by hand after the rule wrote it: a hand-edited value no longer matches
+`_enriched_values`, so it is kept.
 
 `_enriched_by` records only the last rule that enriched an activity. If another enrich rule touches the same
 activity afterwards, the media rule falls back to fill-only for it: it never overwrites a value it cannot tell it
