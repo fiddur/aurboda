@@ -213,7 +213,7 @@ LEG A — fresh database.
    The develop push built this tag; --wait-image polls up to 30 minutes in case it is still
    building. If it never appears, or the stack will not boot after two attempts, post the review
    as `🛑 Changes required` with the tail of `docker compose -p aurboda-tryout-cloud logs`,
-   remove `reviewing`, and stop.
+   remove `release-trying`, and stop.
 9. Read `tryouts/AGENTS.md` and follow it. Run the release smoke: for every area in
    `tryouts/recipes.md` (feed and federation, timeline and activity detail, media plays,
    challenges, sync and integrations via the in-container probes, auth/login/schema, public
