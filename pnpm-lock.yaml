@@ -41,6 +41,9 @@ importers:
       '@js-temporal/polyfill':
         specifier: ^0.5.1
         version: 0.5.1
+      '@logtape/logtape':
+        specifier: ^2.2.1
+        version: 2.2.1
       '@modelcontextprotocol/sdk':
         specifier: ^1.25.2
         version: 1.25.3(@cfworker/json-schema@4.1.1)(hono@4.11.6)(zod@4.3.6)
