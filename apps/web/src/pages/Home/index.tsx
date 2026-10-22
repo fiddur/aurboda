@@ -249,7 +249,7 @@ function GuestHome({ canSignup }: { canSignup: boolean }) {
         <h3>Android</h3>
         <p>
           <a
-            href="https://github.com/fiddur/aurboda/releases/download/latest/aurboda.apk"
+            href="https://github.com/fiddur/aurboda/releases/latest/download/aurboda.apk"
             target="_blank"
             rel="noopener noreferrer"
           >
