@@ -12,6 +12,7 @@ import {
   type DetailSyncedCallback,
   type TrackWrittenCallback,
   type GarminDataType,
+  hasGarminSession,
   isRateLimited as isGarminRateLimited,
   syncActivityDetails,
   syncGarminDataType,
@@ -177,6 +178,8 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
         if (!config.garmin) return
 
         try {
+          if (!(await hasGarminSession(user))) return
+
           const settings = await getSettings(user)
           if (settings.garmin_disabled_data_types?.includes(dataType as GarminDataType)) return
 
