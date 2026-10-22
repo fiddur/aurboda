@@ -486,6 +486,9 @@ function ConditionCard({
               list="named-locations-list"
               value={condition.location_name ?? ''}
               onInput={(e) => update({ ...condition, location_name: (e.target as HTMLInputElement).value })}
+              onChange={(e) =>
+                update({ ...condition, location_name: (e.target as HTMLInputElement).value.trim() })
+              }
               placeholder="Start typing a location name..."
               class="condition-field-input"
             />

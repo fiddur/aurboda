@@ -7,7 +7,7 @@ import type * as SessionQueries from './services/queries/activity-sessions.ts'
 
 import { createAuth } from './auth.ts'
 import * as db from './db/index.ts'
-import { createMcpRouter } from './mcp.ts'
+import { createMcpRouter, trimToolCallArguments } from './mcp.ts'
 import * as latestSleep from './services/latest-sleep.ts'
 import * as mutations from './services/mutations.ts'
 import * as queries from './services/queries/index.ts'
@@ -132,7 +132,7 @@ const auth = createAuth('very very secretvery very secret') // 32 bytes for AES-
 
 function createTestApp() {
   const app = express()
-  // MCP router must be mounted BEFORE body-parser — stateless mode (no sessions)
+  // The MCP router parses its own body — stateless mode (no sessions)
   app.use('/mcp', createMcpRouter(auth))
   return app
 }
@@ -206,6 +206,89 @@ describe('MCP Server', () => {
       expect(response.status).toBe(200)
       // Stateless mode: no session ID in response
       expect(response.headers['mcp-session-id']).toBeUndefined()
+    })
+  })
+
+  describe('Malformed JSON - POST /mcp', () => {
+    test('answers a JSON-RPC parse error', async () => {
+      const app = createTestApp()
+      const response = await mcpPost(app).set('Content-Type', 'application/json').send('{"jsonrpc":')
+
+      expect(response.status).toBe(400)
+      expect(response.body).toEqual({
+        error: { code: -32700, message: 'Parse error' },
+        id: null,
+        jsonrpc: '2.0',
+      })
+    })
+  })
+
+  describe('trimToolCallArguments', () => {
+    test('trims the arguments of a single tools/call', () => {
+      expect(
+        trimToolCallArguments({
+          id: 1,
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: { arguments: { activity_type: 'yoga ', title: ' Flow ' }, name: 'add_activity' },
+        }),
+      ).toEqual({
+        id: 1,
+        jsonrpc: '2.0',
+        method: 'tools/call',
+        params: { arguments: { activity_type: 'yoga', title: 'Flow' }, name: 'add_activity' },
+      })
+    })
+
+    test('trims every tools/call in a batch and leaves other messages alone', () => {
+      const initialize = {
+        id: 1,
+        jsonrpc: '2.0',
+        method: 'initialize',
+        params: { clientInfo: { name: ' c ' } },
+      }
+      expect(
+        trimToolCallArguments([
+          initialize,
+          {
+            id: 2,
+            jsonrpc: '2.0',
+            method: 'tools/call',
+            params: { arguments: { q: ' oat ' }, name: 'search' },
+          },
+        ]),
+      ).toEqual([
+        initialize,
+        { id: 2, jsonrpc: '2.0', method: 'tools/call', params: { arguments: { q: 'oat' }, name: 'search' } },
+      ])
+    })
+
+    test('keeps untrimmed keys as sent', () => {
+      expect(
+        trimToolCallArguments({
+          id: 1,
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: {
+            arguments: { content: ' # Title\n', name: ' Rule ', rule_regex: ' ^x ' },
+            name: 'update_article',
+          },
+        }),
+      ).toEqual({
+        id: 1,
+        jsonrpc: '2.0',
+        method: 'tools/call',
+        params: {
+          arguments: { content: ' # Title\n', name: 'Rule', rule_regex: ' ^x ' },
+          name: 'update_article',
+        },
+      })
+    })
+
+    test('leaves a tools/call without arguments and a non-object body untouched', () => {
+      const noArgs = { id: 1, jsonrpc: '2.0', method: 'tools/call', params: { name: 'get_latest_sleep' } }
+      expect(trimToolCallArguments(noArgs)).toBe(noArgs)
+      expect(trimToolCallArguments(' x ')).toBe(' x ')
     })
   })
 
@@ -1160,6 +1243,36 @@ describe('MCP Server', () => {
           start_time: expect.any(Date),
           title: 'Upper body',
         },
+        undefined,
+      )
+    })
+
+    test('trims surrounding whitespace from the arguments', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+
+      vi.mocked(mutations.addActivity).mockResolvedValue({
+        activity_type: 'yoga',
+        end_time: '2024-03-15T07:30:00.000Z',
+        id: 'test-uuid-3',
+        start_time: '2024-03-15T07:00:00.000Z',
+        success: true,
+        title: 'Morning flow',
+      })
+
+      const response = await callTool(app, token, 'add_activity', {
+        activity_type: 'yoga ',
+        end_time: '2024-03-15T07:30:00Z',
+        start_time: '2024-03-15T07:00:00Z',
+        title: ' Morning flow ',
+        tz: 'UTC',
+      })
+
+      expect(response.status).toBe(200)
+      expect(response.toolResult.success).toBe(true)
+      expect(mutations.addActivity).toHaveBeenCalledWith(
+        'testuser',
+        expect.objectContaining({ activity_type: 'yoga', title: 'Morning flow' }),
         undefined,
       )
     })

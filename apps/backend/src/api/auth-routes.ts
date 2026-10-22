@@ -93,7 +93,8 @@ export const registerAuthRoutes = ({
       return
     }
 
-    const { username: user, password, invitation } = req.body
+    const { username, password, invitation } = req.body
+    const user = typeof username === 'string' ? username.trim() : username
 
     if (signupMode === 'invite_only') {
       if (!invitation || typeof invitation !== 'string') {
@@ -159,7 +160,8 @@ export const registerAuthRoutes = ({
   })
 
   httpd.post<Record<string, never>, LoginResponse>('/login', async (req, res, next) => {
-    const { username: user, password } = req.body
+    const { username, password } = req.body
+    const user = typeof username === 'string' ? username.trim() : username
     // An empty password must be rejected here, not passed down: `pg` treats
     // '' as unset and falls back to the service role's PGPASSWORD from the
     // environment, so the connection attempt would not be this user's at all.

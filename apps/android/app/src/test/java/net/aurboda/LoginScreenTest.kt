@@ -173,6 +173,32 @@ class LoginScreenTest {
     }
 
     @Test
+    fun `login trims the username but not the password`() = runTest {
+        val mockAuthApi = mockk<AuthApi>()
+        var savedUsername: String? = null
+
+        coEvery { mockAuthApi.login(any(), any(), any()) } returns
+            LoginResult.Success("test-token")
+
+        composeTestRule.setContent {
+            LoginScreen(
+                authApi = mockAuthApi,
+                onSaveCredentials = { _, username, _ -> savedUsername = username },
+                onLoginSuccess = {}
+            )
+        }
+
+        composeTestRule.onNodeWithText("Username").performScrollTo().performTextInput("testuser ")
+        composeTestRule.onNodeWithText("Password").performScrollTo().performTextInput(" testpass ")
+        composeTestRule.onNodeWithText("Login").performScrollTo().performClick()
+
+        composeTestRule.waitForIdle()
+
+        coVerify { mockAuthApi.login("https://aurboda.net", "testuser", " testpass ") }
+        assertEquals("testuser", savedUsername)
+    }
+
+    @Test
     fun `failed login shows error message`() = runTest {
         val mockAuthApi = mockk<AuthApi>()
 

@@ -25,7 +25,7 @@ const { registerAuthRoutes } = await import('./auth-routes.ts')
 
 const pgError = (code: string, message = 'pg failure') => Object.assign(new Error(message), { code })
 
-const buildApp = () => {
+const buildApp = ({ signupMode = 'closed' }: { signupMode?: string } = {}) => {
   const httpd = express()
   httpd.use(express.json())
 
@@ -36,7 +36,7 @@ const buildApp = () => {
     centralDb: {
       getAdminCount: vi.fn(async () => 1),
       getAuditLogRetentionDays: vi.fn(async () => 30),
-      getSignupMode: vi.fn(async () => 'closed'),
+      getSignupMode: vi.fn(async () => signupMode),
       isAdmin: vi.fn(async () => false),
     } as never,
     httpd,
@@ -71,6 +71,14 @@ describe('POST /login', () => {
     expect(response.status).toBe(200)
     expect(response.body.token).toBe('signed-token')
     expect(db.loginToUserDb).toHaveBeenCalledWith('alice', 'secret')
+  })
+
+  test('trims the username but sends the password exactly as typed', async () => {
+    const response = await login({ password: ' secret ', username: ' alice ' })
+
+    expect(response.status).toBe(200)
+    expect(db.query).toHaveBeenCalledWith(expect.anything(), expect.any(String), ['alice'])
+    expect(db.loginToUserDb).toHaveBeenCalledWith('alice', ' secret ')
   })
 
   test('rejects an unknown username without touching the database password check', async () => {
@@ -149,5 +157,18 @@ describe('POST /login', () => {
     expect(db.migrateSchema).not.toHaveBeenCalled()
     expect(db.initializeSchema).not.toHaveBeenCalled()
     expect(db.schemaInitialized).not.toHaveBeenCalled()
+  })
+})
+
+describe('POST /signup', () => {
+  test('trims the username but keeps the password exactly as typed', async () => {
+    vi.mocked(db.query).mockResolvedValue({ rowCount: 0, rows: [] } as never)
+
+    const response = await supertest(buildApp({ signupMode: 'open' }))
+      .post('/signup')
+      .send({ password: ' pass word ', username: 'alice ' })
+
+    expect(response.status).toBe(200)
+    expect(db.makeNewUserDb).toHaveBeenCalledWith(expect.anything(), 'alice', ' pass word ')
   })
 })

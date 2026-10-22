@@ -111,9 +111,6 @@ private val builtinMetrics = listOf(
     "respiratory_rate" to "Respiratory Rate",
 )
 
-private fun toSnakeCase(s: String): String =
-    s.trim().lowercase().replace(Regex("[^a-z0-9]+"), "_").trim('_')
-
 @Composable
 fun AddDataScreen(
     apiUrl: String,
@@ -251,17 +248,10 @@ private fun ActivityTypePicker(
         activityTypes.find { it.name == selectedType }?.displayName ?: selectedType
     }
 
-    val filtered = if (query.isBlank()) {
-        activityTypes
-    } else {
-        val q = query.lowercase()
-        activityTypes.filter { it.displayName.lowercase().contains(q) || it.name.contains(q) }
-    }
-
-    val snakeInput = toSnakeCase(query)
-    val isNewType = query.isNotBlank()
-            && snakeInput.isNotEmpty()
-            && activityTypes.none { it.name == snakeInput }
+    val match = matchActivityTypes(activityTypes, query, { it.name }, { it.displayName })
+    val filtered = match.filtered
+    val snakeInput = match.snakeInput
+    val isNewType = match.isNewType
 
     ExposedDropdownMenuBox(
         expanded = expanded,
@@ -379,7 +369,7 @@ private fun MetricPicker(
     val filtered = if (query.isBlank()) {
         allEntries
     } else {
-        val q = query.lowercase()
+        val q = query.trim().lowercase()
         allEntries.filter { it.label.lowercase().contains(q) || it.value.contains(q) }
     }
 
@@ -860,14 +850,17 @@ private fun AddActivityTab(
 
                 val startIso = epochMillisToIso(startTimeMillis)
                 val endIso = if (hasEndTime) epochMillisToIso(endTimeMillis) else null
-                val dataMap = structuredData.filterValues { it.isNotBlank() }.ifEmpty { null }
+                val dataMap = structuredData
+                    .mapValues { it.value.trim() }
+                    .filterValues { it.isNotEmpty() }
+                    .ifEmpty { null }
 
                 val body = AddActivityBody(
                     activityType = selectedType,
                     startTime = startIso,
                     endTime = endIso,
-                    title = title.ifBlank { null },
-                    notes = notes.ifBlank { null },
+                    title = title.trim().ifBlank { null },
+                    notes = notes.trim().ifBlank { null },
                     data = dataMap,
                 )
 
