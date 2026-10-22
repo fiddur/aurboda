@@ -617,6 +617,16 @@ exercises both sides without seeding. Read the PNG back with the Read tool, or p
   can appear to overlay the dialog — take a viewport screenshot before believing a z-index bug.
 - Mobile 390px: no overflow; the dialog is `max-height: 90vh; overflow-y: auto`.
 
+### Activity detail: the data rows (#1270)
+
+`/detail/activity/<uuid>` puts the summary in `table.activity-stats-table` (`tr > th, td`:
+`Enriched by` links to the rule, then `Time`, `Duration`), and the rest of `data` in a collapsed
+`details.source-data` holding a second `table.activity-stats-table` — set `details.open = true`
+before reading it. Keys the summary already shows and the `_titled_value` / `_enriched_values`
+bookkeeping never appear there; assert with a text search of `document.body.innerText`. The
+`.entity-fields .field-row` selectors belong to the media play page and the edit form, not to this
+view. A no-GPS activity logs one `404 …/api/activities/<id>/track` — expected, not a finding.
+
 ### Chart geometry (#1058)
 
 `CombinedMetricChart` is used by `/feed`, `/u/:username` and `/detail/activity/:id`.
@@ -695,6 +705,35 @@ with `[activity, media{min_played_secs:600}, media{min_played_secs:900}]`, click
 remove button, then read the number inputs of the remaining second card — the fix shows `900`;
 index keys showed `600`. The "Save Conditions" button (matched by text) then persists, and
 `GET /api/deduction-rules` (`{data:[…]}`) should carry only the 900 condition.
+
+### Enrich rules and the deduction queues (#1270)
+
+- Rule CRUD (`POST`/`PATCH /api/deduction-rules`) and `POST /api/deduction-rules/evaluate` do
+  nothing inline: they enqueue a pg-boss job that a worker polls every **2 s**. Activity mutations
+  (`PATCH /api/activities/:id`, `POST /api/sync/media`, `POST /api/activities`) enqueue an
+  auto-evaluation over the mutation window, polled every **10 s**. So a hand edit _is itself_
+  followed by a re-evaluation — the exact path #1269 was about — and a check that reads straight
+  after the PATCH sees nothing.
+- **Oracle for "the job ran":** the audit log,
+  `GET /api/user/audit-log?category=deduction&since=<ISO>&message_pattern=<text>` →
+  `{total, data:[{timestamp, message, details}]}`. Messages: `Rule created evaluation completed`,
+  `Rule updated evaluation completed`, `Rule evaluate_all evaluation completed`,
+  `Auto-evaluation completed`. Take `since` just before the call and poll `total >= 1` every 2 s;
+  60 s is plenty. `details.activities_created` counts affected activities (an adopt/replace counts
+  as one, cf. #1245).
+- Rule body that enriches a `yoga` activity from the `docs/media.md` play:
+  `{"name":"…","mode":"enrich","conditions":[{"kind":"activity","activity_type":"yoga"},{"kind":"media","match_mode":"contains","min_played_ratio":0.8,"min_played_secs":600,"url_host":["truenakedyoga.com"]}],"output_activity_type":"yoga","output_media_field":{"field":"session_name","strip_pattern":"\\s*—\\s*True Naked Yoga$"}}`.
+  Inspect the result with `GET /api/activities/:id` → `.data.data` (`_enriched_by`,
+  `_enriched_values`, the field); `referenced_rules` maps rule ids to names.
+- **Legacy rows** (enriched before `_enriched_values` existed) can only be made by SQL:
+  `insert into activities (source, activity_type, start_time, end_time, title, data) values ('aurboda','yoga',…,'{"_enriched_by":"<rule id>","session_name":"…"}') returning id`.
+  A `source='garmin'` row with an `external_id` seeded the same way takes the override path on
+  PATCH: the response's `data.id` is the new aurboda override row,
+  `GET /api/activities/merged:<garmin id>` shows the override's data, and the day's
+  `GET /api/activities?start=&end=` lists `merged:<override id>`.
+- A second enrich rule with `output_data` and the same conditions takes every matching activity
+  over (`_enriched_by` moves, `_enriched_values` becomes `{}`). Disable it
+  (`PATCH … {"enabled":false}`) before checks that assume a single owner.
 
 ---
 
@@ -866,7 +905,7 @@ while the rest of the batch lands. `⚠️ auditWarn` fires once per distinct un
   the #977 body claims `insertLocations` revives soft-deleted rows on conflict; the merged code is
   `ON CONFLICT DO NOTHING` (#978).
 
-### Gravl (#1081, #1087)
+### Gravl (#1081, #1087, #1265)
 
 `integrations/gravl/client.ts` takes `{ http }` (an AxiosInstance) as an override, so the real
 `syncGravlWorkouts` / `enrichGravlWorkout` / `processGravlWorkout` run in-container against the
@@ -902,6 +941,26 @@ provider request — what a "no request is spent" claim needs its control to sho
 401 and never reaches Gravl. For a real status-code path use the in-container
 `axios.create({ adapter })` probe above.
 
+**The empty-import fixture must be seeded by SQL** (#1265). `processGravlWorkout` routes a detail
+with no sets to `retractEmptyGravlImport` and writes nothing, so the "empty row an earlier run
+imported" (the pre-#1099 shape that #1100's restore targets) cannot be made through the sync code:
+
+```sql
+INSERT INTO activities (source, external_id, activity_type, start_time, end_time, title, data)
+VALUES ('gravl', 'gravl-workout-<uuid lowercase>', 'strength_training', <start>, <end>, 'x',
+        '{"sets": [], "set_count": 0, "exercise_count": 0, "gravl_workout_id": "<uuid>", "volume_kg": 0, "workout_type": "today"}');
+```
+
+Then `retractEmptyGravlImport(user, id)` → `removed` leaves the tombstone; `enrichGravlWorkout` /
+a poll restores once the adapter serves the workout with a set (outcome `updated`, same row id,
+`workouts_processed 1, activities_created 0`). A Health Connect session that must be left alone is
+the same row with `"metadata": {...}` added. Synced notes live in
+`notes (entity_type='activity', entity_id=<activity id>)`, not `parent_id`.
+
+For the chunked listing, an adapter that answers `hasNextPage:false` on every page and keys its
+pages by the distinct `StartDate` values it sees (chunk index) and `Page` is enough to show the
+30-day chunks, the empty-page stop, the identical-page stop and the once-per-run detail fetch.
+
 ### Health Connect (#1080/#1081, #927)
 
 - `POST /api/sync/ExerciseSessionRecord {data:[…]}` with `metadata.dataOrigin`
@@ -920,6 +979,45 @@ provider request — what a "no request is spent" claim needs its control to sho
   `POST /users/<user>/inbox` → `401 "Failed to verify the request signature"` (that 401 is
   _Fedify_ answering, so the raw body reached it — a 404 or a JSON error would mean the gate broke
   federation); `GET /u/<user>` → `200 text/html`, correctly not captured.
+
+### Oura disconnect without an Oura account (#1265)
+
+`oura_connected` is "an `oauth_tokens` row for `oura` exists", so a fake grant is enough to reach
+the connected branch of `/data-sources/oura` and `POST /api/auth/oura/disconnect`:
+
+```sh
+psql aurboda_qsreddit_demo "INSERT INTO oauth_tokens (provider, access_token, refresh_token, expires_at) VALUES ('oura','fake','r', now()+interval '1 day')"
+psql aurboda_qsreddit_demo "INSERT INTO sync_state (provider, data_type, status) VALUES ('oura','tags','idle')"
+psql aurboda "INSERT INTO oura_user_mappings (oura_user_id, username) VALUES ('oura-uid-1','qsreddit_demo')"
+```
+
+Oracles after the disconnect: `oauth_tokens` empty, `sync_state` without `oura/*` rows (other
+providers kept), `oura_user_mappings` without the user's rows (other usernames kept), and
+`dc logs aurboda | grep 'Oura token revoke'` showing
+`… deleting local grant anyway: self-signed certificate in certificate chain` — the revoke reaches
+the session proxy and fails in TLS, as every provider call does here (#1151), so the failure branch
+is the one that runs. The page's `button.disconnect-button` opens a `confirm`; capture it with
+`page.on('dialog')` and `accept()` / `dismiss()`. The scheduler oracle for "no grant → no Oura
+attempt": wait for the first `sync-scheduler` tick (`pgboss.job` in the central db; the
+`Auto-syncing Garmin …` audit rows prove it ran) and count `audit_log` rows matching `%Oura%`.
+
+### Screentime span oracles (#1265)
+
+`POST /api/screentime-categories` with a regex rule, then records by SQL with
+`resolved_category NULL`:
+
+```sh
+psql aurboda_qsreddit_demo "INSERT INTO productivity (source, start_time, end_time, activity, title, duration_sec, device_name) SELECT 'activitywatch', t, t + interval '10 minutes', 'code', 'main.ts', 600, 'pc' FROM generate_series('2026-10-10T09:00:00Z'::timestamptz, '2026-10-10T09:50:00Z'::timestamptz, interval '10 minutes') t"
+```
+
+`POST /api/screentime-categories/recategorize` answers the counts; the span rows are
+`activities WHERE source='activitywatch'` with `external_id = <source>_<start ms>_<activity_type_name>`
+and `data.category_path`. A rule/score/exclusion `PATCH` rebuilds asynchronously — sleep ~4 s,
+then read `audit_log WHERE message LIKE 'Rebuilt screentime spans%'` for
+`{removed, upserted, deduplicated}`. Revival shows as the same `id` going `deleted_at` → `NULL`. A
+v1 row is seeded as `external_id = <source>_<start ms>_<category path joined by ' > '>` with
+`activity_type` set to the category's slug; with a live v2 twin it counts as `spans_deduplicated`,
+without one it keeps its id and gets its `external_id` rewritten.
 
 ### The pg-boss scheduler (#1081)
 
@@ -973,6 +1071,22 @@ changed endpoints still return correct data immediately" (16–46 ms), not a mea
 - OAuth: `POST /register {client_name, redirect_uris}`, then a form `POST /authorize`. A wrong
   password returns 200 HTML containing "Invalid username or password"; a correct one returns 302
   with `Location: …?code=`.
+
+### MCP tools over curl, no connector (#1265)
+
+The rig's MCP transport is stateless (`sessionIdGenerator: undefined`), so a single `tools/call`
+works without `initialize`, on `/mcp` or `/api/mcp`:
+
+```sh
+curl -s -X POST http://127.0.0.1:8080/mcp -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -H 'accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"recategorize_screentime","arguments":{}}}'
+```
+
+The answer is an SSE frame (`event: message` / `data: {...}`), with the tool's JSON as
+`result.content[0].text`. This is the REST-parity check for a tool's response fields and attaches
+nothing to claude.ai — the rule in [`AGENTS.md`](./AGENTS.md#auth) that no MCP **connector** is
+ever pointed at this stack still stands.
 
 ### Statement-level oracle (#1124, #1126)
 
@@ -1278,11 +1392,16 @@ the running pick ending soonest, Advance at once for an unknown URL, Suggest(fal
   took.
 - **`psql -c "a; b; c"` runs as ONE transaction** — an error in `b` silently rolls `a` back, so a
   cleanup can look done and not be. One statement per `-c`.
+- **`psql -Atc "insert … returning id"` prints the command tag too**: the variable comes back as
+  `<uuid>\nINSERT 0 1`, and every later URL built from it is garbage. Use `-Atqc` (or `| head -1`).
+  The `psql` shorthand at the top of this file is `-Atc`, so it has this property (#1270).
 - **Flatten SQL whitespace** when shelling out to psql from node (`sql.replace(/\s+/g,' ')`):
   double-quoted shell arguments keep literal `\n` and break psql.
 - **`curl -F` multipart uploads 500 with `{"error":"Unexpected end of form"}`** because of curl's
   default `Expect: 100-continue` through nginx into busboy. Add `--http1.1 -H "Expect:"`. It is a
   curl↔nginx artifact, not a product bug — browsers do not send that header.
+- **`curl -o /dev/stdout` inside a tool shell truncates everything already written to the captured
+  stdout** (O_TRUNC on the file). Use `-w ' HTTP %{http_code}'` without `-o` (#1265).
 - **`GET /api/activities` and `GET /api/notes` need full ISO datetimes.** A date-only `start`
   answers 400 "Invalid ISO datetime".
 - **Typing into a textarea and clicking the submit button immediately drops the last character**
@@ -1305,10 +1424,10 @@ still running … pid=N` or `failed to start daemon … process with PID N is st
   (#1151, #1227, #1240). A dead daemon left its `containerd.pid` or `docker.pid` behind and the
   pid was recycled. `up.sh` now clears both before starting dockerd; if it still happens,
   `ps -p N -o comm=` shows a real daemon in that slot, and that is a different problem.
-- **Docker Hub answers `429`, or `ratelimit-remaining: 0`** (#1151, #1227). The anonymous quota is
-  100 manifest requests an hour per egress IP, shared by every cloud VM, and one boot needs about
-  four. Read it without spending it from the exempt preview repository (`up.sh --wait-image` does
-  this before each poll):
+- **Docker Hub answers `429`, or `ratelimit-remaining: 0`** (#1151, #1227, #1242). The anonymous
+  quota is 100 manifest requests an hour per egress IP, shared by every cloud VM, and one boot
+  needs about four. Read it without spending it from the exempt preview repository
+  (`up.sh --wait-image` does this before each poll):
 
   ```sh
   T=$(curl -s "https://auth.docker.io/token?service=registry.docker.io&scope=repository:ratelimitpreview/test:pull" | jq -r .token)
@@ -1317,6 +1436,28 @@ still running … pid=N` or `failed to start daemon … process with PID N is st
 
   At `0`, wait for the hour to roll over. A `DOCKERHUB_USERNAME`/`DOCKERHUB_TOKEN` pair makes
   `up.sh` log in, which lifts it to a per-account limit.
+
+  **A `--wait-image` that reports the image as never appearing can be this quota, not a missing
+  tag** (#1242). `docker manifest inspect` counts against it, and before the quota-aware wait above
+  the loop polled every 20 s regardless, so a tryout that started with the budget already spent
+  (another session pulled a lot) saw `429 Too Many Requests` for the whole 30-minute wait even
+  though CI had pushed the tag minutes earlier. Check the CI run first (`actions_list` on
+  `docker.yml`, branch `develop`: a `success` for the merge sha means the tag exists), then ask
+  Docker Hub about the tag itself — the token endpoint is free and the manifest HEAD answers with
+  the limit headers:
+
+  ```sh
+  T=$(curl -s "https://auth.docker.io/token?service=registry.docker.io&scope=repository:fiddur/aurboda:pull" | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
+  curl -s -o /dev/null -I -H "Authorization: Bearer $T" \
+    -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json' \
+    -w '%{http_code} remaining=%header{ratelimit-remaining}\n' \
+    https://registry-1.docker.io/v2/fiddur/aurboda/manifests/<short sha>
+  ```
+
+  `429 remaining=0;w=3600` is the limit; `200 remaining=92;w=3600` means pull now. Kill the
+  `up.sh` poll loop (it only deepens the hole), poll this every 2 minutes instead, and when it
+  answers 200 run `AURBODA_TAG=<sha> tryouts/up.sh --fresh` **without** `--wait-image`. In the
+  #1242 run the window cleared after 6 minutes.
 
 - **The Chrome download fails with `self-signed certificate in certificate chain`** (#1208).
   Node does not trust the session proxy's CA; `setup-environment.sh` now passes
