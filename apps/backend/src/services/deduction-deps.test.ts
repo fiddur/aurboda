@@ -2,7 +2,9 @@ import { describe, expect, test, vi } from 'vitest'
 
 vi.mock('../db/index', () => ({
   deleteStaleRuleActivities: vi.fn(),
+  getActivityTypeDefinition: vi.fn().mockResolvedValue(null),
   getMediaPlays: vi.fn().mockResolvedValue([]),
+  getOverrideForActivity: vi.fn().mockResolvedValue(null),
   insertDeductionRuleRun: vi.fn(),
   upsertActivity: vi.fn().mockResolvedValue({ changed: true, id: 'new-id' }),
 }))
@@ -15,9 +17,14 @@ vi.mock('./locations', () => ({
   getPlaceVisits: vi.fn().mockResolvedValue([]),
 }))
 
+vi.mock('./mutations', () => ({
+  updateActivity: vi.fn().mockResolvedValue({ id: 'x', success: true }),
+}))
+
 import { query } from '../db/connection.ts'
-import { upsertActivity } from '../db/index.ts'
+import { getOverrideForActivity, upsertActivity } from '../db/index.ts'
 import { createDefaultEngineDeps } from './deduction-deps.ts'
+import { updateActivity } from './mutations.ts'
 
 const mockedQuery = vi.mocked(query)
 
@@ -293,5 +300,77 @@ describe('createDefaultEngineDeps', () => {
         },
       ])
     })
+  })
+})
+
+describe('retitleActivities', () => {
+  const ranges = [{ end: new Date('2026-10-05T19:00:00Z'), start: new Date('2026-10-05T18:00:00Z') }]
+  const ruleId = 'rule-1'
+  const session = 'Heart-Opening Yin Yoga with Jade'
+  const syncedRow = { data: { session_name: session }, id: 'garmin-id', source: 'garmin', title: 'Yoga' }
+
+  test('leaves a synced row with an override alone even when its superseded_by mark is missing (#1258)', async () => {
+    // Both rows are read as winners (the target lost its mark, see #1259). The write
+    // would land on the override, so the decision must be made against it: its
+    // hand-typed title is not replaceable, and it is retitled as its own row.
+    const overrideRow = {
+      data: { _titled_by: ruleId, _titled_value: 'Third Name', session_name: 'Third Name' },
+      id: 'override-id',
+      source: 'aurboda',
+      title: 'Hand typed',
+    }
+    mockedQuery.mockResolvedValueOnce({ rows: [overrideRow, syncedRow] } as never)
+    vi.mocked(getOverrideForActivity).mockResolvedValueOnce(overrideRow as never)
+    vi.mocked(updateActivity).mockClear()
+
+    const changed = await createDefaultEngineDeps().retitleActivities(
+      'user',
+      'yoga',
+      ranges,
+      'session_name',
+      ruleId,
+    )
+
+    expect(changed).toEqual([])
+    expect(updateActivity).not.toHaveBeenCalled()
+    expect(getOverrideForActivity).toHaveBeenCalledExactlyOnceWith('user', 'garmin-id')
+  })
+
+  test('retitles a synced row that has no override through updateActivity', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [syncedRow] } as never)
+    vi.mocked(getOverrideForActivity).mockResolvedValueOnce(null)
+    vi.mocked(updateActivity).mockClear()
+
+    const changed = await createDefaultEngineDeps().retitleActivities(
+      'user',
+      'yoga',
+      ranges,
+      'session_name',
+      ruleId,
+    )
+
+    expect(changed).toEqual(['garmin-id'])
+    expect(updateActivity).toHaveBeenCalledExactlyOnceWith(
+      'user',
+      'garmin-id',
+      { data: { _titled_by: ruleId, _titled_value: session }, title: session },
+      undefined,
+    )
+  })
+
+  test('a dry run skips overridden synced rows too', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [syncedRow] } as never)
+    vi.mocked(getOverrideForActivity).mockResolvedValueOnce({ id: 'override-id' } as never)
+
+    const changed = await createDefaultEngineDeps().retitleActivities(
+      'user',
+      'yoga',
+      ranges,
+      'session_name',
+      ruleId,
+      true,
+    )
+
+    expect(changed).toEqual([])
   })
 })
