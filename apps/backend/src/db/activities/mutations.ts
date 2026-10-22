@@ -5,35 +5,74 @@ import type { Activity, ActivityUpdate, LegacyMatch } from '../types.ts'
 
 import { query, withUserTransaction } from '../connection.ts'
 import { buildDynamicUpdate, type UpdateEntry } from '../dynamic-update.ts'
+import { reanchorNotes } from '../notes.ts'
 import { type InsertedActivityKey, mapActivityRow, mapInsertedActivityKey } from '../row-mappers.ts'
 import { isSupersedable } from './merge.ts'
 import { activityColumns, getActivityById } from './queries.ts'
 import { materializeSuperseded } from './supersession.ts'
 
 /**
- * Insert a new activity with a guaranteed new row (no upsert).
- * Used for merge operations where we need to ensure the activity is created.
- * Throws on conflict instead of silently doing nothing.
+ * Replace `sourceIds` with the merged activity in one transaction: the originals
+ * are soft-deleted first, then the merged row is written and the originals'
+ * notes re-anchored onto it. `idx_activities_type_time` ignores `deleted_at`, so
+ * a row of the merged row's source that already holds its (type, start_time)
+ * slot — the earliest original, when it was created by hand — becomes the merged
+ * activity instead of colliding with a duplicate INSERT (#1251).
  */
-export const insertNewActivity = async (user: string, activity: Activity): Promise<string> => {
-  const result = await query(
-    user,
-    `INSERT INTO activities (id, source, activity_type, start_time, end_time, title, data)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
-     RETURNING id`,
-    [
-      activity.id,
-      activity.source,
-      activity.activity_type,
-      activity.start_time,
-      activity.end_time,
-      activity.title,
-      activity.data,
-    ],
-  )
-
-  return result.rows[0].id as string
-}
+export const insertMergedActivity = async (
+  user: string,
+  merged: Activity,
+  sourceIds: string[],
+): Promise<string> =>
+  withUserTransaction(user, async (tx) => {
+    await query(
+      tx,
+      `UPDATE activities SET deleted_at = NOW() WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL`,
+      [sourceIds],
+    )
+    const existing = await query<{ id: string }>(
+      tx,
+      `SELECT id FROM activities
+        WHERE source = $1 AND external_id IS NULL AND activity_type = $2 AND start_time = $3
+          AND id = ANY($4::uuid[])
+        LIMIT 1`,
+      [merged.source, merged.activity_type, merged.start_time, sourceIds],
+    )
+    let id: string
+    if (existing.rows.length > 0) {
+      id = existing.rows[0].id
+      await query(
+        tx,
+        `UPDATE activities SET end_time = $2, title = $3, data = $4, deleted_at = NULL, superseded_by = NULL
+          WHERE id = $1`,
+        [id, merged.end_time ?? null, merged.title ?? null, merged.data ?? null],
+      )
+    } else {
+      const inserted = await query<{ id: string }>(
+        tx,
+        `INSERT INTO activities (id, source, activity_type, start_time, end_time, title, data)
+         VALUES (COALESCE($1, gen_random_uuid()), $2, $3, $4, $5, $6, $7)
+         RETURNING id`,
+        [
+          merged.id ?? null,
+          merged.source,
+          merged.activity_type,
+          merged.start_time,
+          merged.end_time ?? null,
+          merged.title ?? null,
+          merged.data ?? null,
+        ],
+      )
+      id = inserted.rows[0].id
+    }
+    await reanchorNotes(
+      tx,
+      'activity',
+      sourceIds.filter((sourceId) => sourceId !== id),
+      id,
+    )
+    return id
+  })
 
 /**
  * Insert an aurboda override row that supersedes one or more synced
@@ -42,7 +81,7 @@ export const insertNewActivity = async (user: string, activity: Activity): Promi
  * a target. Re-materializes supersession.
  *
  * `targetIds` is non-empty (an override with no targets is just a regular
- * aurboda activity — caller should use `insertNewActivity` instead). The
+ * aurboda activity). The
  * UNIQUE constraint on `target_id` rejects an override that tries to claim
  * a target already overridden by someone else; the caller catches the
  * unique-violation and either reuses the existing override or aborts.
