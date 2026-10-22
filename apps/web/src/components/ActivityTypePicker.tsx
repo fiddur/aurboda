@@ -8,6 +8,7 @@ import type { ActivityTypeDefinition } from '../state/api'
 import { fetchActivityTypeDefinitions } from '../state/api'
 import { toDisplayName } from '../utils/displayName'
 import { IconPreview } from './IconPreview'
+import { matchActivityTypes } from './picker-match'
 import './MetricPicker.css'
 
 interface ActivityTypePickerProps {
@@ -15,14 +16,6 @@ interface ActivityTypePickerProps {
   onChange: (activityType: string) => void
   placeholder?: string
 }
-
-const toSnakeCase = (s: string): string =>
-  s
-    .trim()
-    .toLowerCase()
-    .replaceAll(/[^a-z0-9]+/g, '_')
-    .replaceAll(/^_|_$/g, '')
-    .replaceAll(/_+/g, '_') || ''
 
 function DropdownItems({
   flatList,
@@ -110,14 +103,7 @@ export function ActivityTypePicker({
   })
 
   const allDefs = typeDefs ?? []
-  const query = inputValue.toLowerCase()
-  const filtered = query
-    ? allDefs.filter((d) => d.display_name.toLowerCase().includes(query) || d.name.includes(query))
-    : allDefs
-
-  const snakeInput = toSnakeCase(inputValue)
-  const isNewType =
-    !isLoading && query.length > 0 && snakeInput.length > 0 && !allDefs.some((d) => d.name === snakeInput)
+  const { filtered, isNewType, snakeInput } = matchActivityTypes(allDefs, inputValue, isLoading)
 
   const totalItems = filtered.length + (isNewType ? 1 : 0)
 
