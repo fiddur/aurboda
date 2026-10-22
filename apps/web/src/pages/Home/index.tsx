@@ -268,27 +268,14 @@ function GuestHome({ canSignup }: { canSignup: boolean }) {
           </a>{' '}
           on GitHub.
         </p>
-        <p>Docker images:</p>
-        <ul>
-          <li>
-            <a
-              href="https://github.com/fiddur/aurboda/pkgs/container/aurboda-backend"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              ghcr.io/fiddur/aurboda-backend
-            </a>
-          </li>
-          <li>
-            <a
-              href="https://github.com/fiddur/aurboda/pkgs/container/aurboda-web"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              ghcr.io/fiddur/aurboda-web
-            </a>
-          </li>
-        </ul>
+        <p>
+          Docker image:{' '}
+          <a href="https://hub.docker.com/r/fiddur/aurboda" target="_blank" rel="noopener noreferrer">
+            fiddur/aurboda
+          </a>{' '}
+          on Docker Hub — <code>:latest</code> is the released version (from <code>main</code>),{' '}
+          <code>:develop</code> is the beta (every merged PR).
+        </p>
       </section>
 
       <section class="name">
