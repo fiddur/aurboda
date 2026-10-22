@@ -140,6 +140,14 @@ one's instructions, so the two triggers stay simple.
 | Filter     | Label **equals** `release-tryout` (where the form has it; otherwise the instructions check)                       |
 | Connectors | **GitHub only.** Never the Aurboda connector (`https://aurboda.net/mcp` is production)                             |
 
+The routine exists: https://claude.ai/code/routines/trig_01MiwiS3ui9VnNaHhaesjsvw (environment
+"Aurboda", repository source, the instructions below, no connectors). It was created over the
+API, which attaches the GitHub event source for `pull_request` on `fiddur/aurboda` but accepts no
+filters, so it is **disabled** until these are set in the routine's settings on claude.ai: the
+base-branch and label filters from the table, and the GitHub connector the post-merge routine
+uses (copy its connector setup; nothing else — the API had auto-attached every connector on the
+account, the production Aurboda one included, and they were all removed). Then enable it.
+
 `scripts/release-pr.sh` puts the `release-tryout` label on when it opens the PR and again on
 every refresh, so a moved head is re-tried. The label protocol mirrors the review routine's:
 `release-tryout` → `reviewing` while the run owns the PR → neither when done. A PR with the
