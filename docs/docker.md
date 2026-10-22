@@ -340,7 +340,9 @@ Releases are `develop → main` pull requests, merged with a **merge commit**:
 scripts/release-pr.sh        # opens or refreshes the PR, body = merged PRs since the last release
 ```
 
-(Also available as the "Release PR" workflow in the Actions tab.) Merging it pushes
+(Also available as the "Release PR" workflow in the Actions tab.) The script labels the PR
+`release-tryout`, which makes the release tryout routine (`tryouts/routine.md`) boot the head
+image fresh and as an upgrade of `:latest`, and post a gate review. Merging it pushes
 `fiddur/aurboda:latest` and publishes the stable Android release `v1.0.<versionCode>`;
 `develop` keeps feeding the `develop` image and the `beta` Android pre-release.
 
