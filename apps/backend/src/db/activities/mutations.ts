@@ -34,8 +34,9 @@ export const insertMergedActivity = async (
       tx,
       `SELECT id FROM activities
         WHERE source = $1 AND external_id IS NULL AND activity_type = $2 AND start_time = $3
+          AND id = ANY($4::uuid[])
         LIMIT 1`,
-      [merged.source, merged.activity_type, merged.start_time],
+      [merged.source, merged.activity_type, merged.start_time, sourceIds],
     )
     let id: string
     if (existing.rows.length > 0) {
