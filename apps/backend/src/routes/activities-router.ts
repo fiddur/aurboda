@@ -40,6 +40,7 @@ import {
   getOverlappingActivities,
   getRouteForActivity,
   insertTimeSeries,
+  pickOverrideWinner,
   type TimeSeriesPoint,
 } from '../db/index.ts'
 import { httpError } from '../http-error.ts'
@@ -121,26 +122,36 @@ const buildMergedResponse = async (
       })
     : undefined
 
+  const overrideWinner = pickOverrideWinner(overlapping)
+  const blended = overrideWinner ? [overrideWinner] : overlapping
+
   const mergedStartTime = hasMultipleSources
-    ? new Date(Math.min(...overlapping.map((a) => a.start_time.getTime()))).toISOString()
+    ? new Date(Math.min(...blended.map((a) => a.start_time.getTime()))).toISOString()
     : undefined
   const mergedEndTime = hasMultipleSources
-    ? new Date(Math.max(...overlapping.map((a) => (a.end_time ?? a.start_time).getTime()))).toISOString()
+    ? new Date(Math.max(...blended.map((a) => (a.end_time ?? a.start_time).getTime()))).toISOString()
     : undefined
 
-  const sorted = [...overlapping].sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
-  const mergedTitle = sorted.find((a) => a.title)?.title ?? activity.title
-  const mergedData = sorted.reduce<Record<string, unknown>>(
+  const sorted = [...blended].sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
+  const mergedTitle = overrideWinner
+    ? overrideWinner.title
+    : (sorted.find((a) => a.title)?.title ?? activity.title)
+  const blendedData = sorted.reduce<Record<string, unknown>>(
     (acc, a) => (a.data ? { ...acc, ...a.data } : acc),
     {},
   )
+  const mergedData = overrideWinner
+    ? overrideWinner.data
+    : Object.keys(blendedData).length > 0
+      ? blendedData
+      : activity.data
 
   // For merged activities, recompute over the full merged time range — HR
   // zones, HRV, and summary metrics all need the wider window.
   let metrics = activityMetrics
   if (mergedStartTime && mergedEndTime) {
     metrics = await computeActivityDetailMetrics(user, {
-      data: Object.keys(mergedData).length > 0 ? mergedData : activity.data,
+      data: mergedData,
       end_time: new Date(mergedEndTime),
       start_time: new Date(mergedStartTime),
     })
@@ -157,7 +168,7 @@ const buildMergedResponse = async (
     ...metrics,
     activity_type: activity.activity_type,
     comments,
-    data: Object.keys(mergedData).length > 0 ? mergedData : activity.data,
+    data: mergedData,
     end_time: activity.end_time?.toISOString(),
     id: activity.id,
     merged_end_time: mergedEndTime,

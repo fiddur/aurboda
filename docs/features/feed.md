@@ -222,7 +222,9 @@ detail view as `merged:<anchor>`), the delivered/served/listed scalars and the r
 chart/route images are resolved over the **full merged span** — the same window the detail
 view and share dialog present — not the anchor sub-activity's narrower slice. The window is
 resolved at query time (via the same `resolveActivityWindow` the `merged:` detail view
-uses), so nothing denormalised is persisted on the post.
+uses), so nothing denormalised is persisted on the post. An aurboda override in the group
+wins the merged view's title, span and data outright, as it does in the listing, so the
+window is then the override's own.
 
 ### Outbox & object serving
 

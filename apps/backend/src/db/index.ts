@@ -167,6 +167,7 @@ export {
   markActivityDetailSynced,
   materializeSuperseded,
   mergeOverlappingActivities,
+  pickOverrideWinner,
   restoreActivity,
   restoreEmptyImportTombstone,
   updateActivity,
