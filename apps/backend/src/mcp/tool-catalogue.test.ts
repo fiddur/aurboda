@@ -206,6 +206,19 @@ describe('terseInputSchema', () => {
     expect(result.properties?.node).toEqual({ type: 'any' })
   })
 
+  test('mutually recursive definitions stop at the ref already on the path', () => {
+    const result = terseInputSchema(
+      withDefinitions(
+        { node: { $ref: '#/definitions/A' } },
+        {
+          A: { anyOf: [{ $ref: '#/definitions/B' }, { type: 'string' }] },
+          B: { anyOf: [{ $ref: '#/definitions/A' }, { type: 'number' }] },
+        },
+      ),
+    )
+    expect(result.properties?.node).toEqual({ type: 'number|string' })
+  })
+
   test('cuts a field description at the first sentence and 120 characters', () => {
     const result = terseInputSchema(
       withDefinitions({
