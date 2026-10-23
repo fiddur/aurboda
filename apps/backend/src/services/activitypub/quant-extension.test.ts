@@ -132,6 +132,19 @@ describe('spliceQuantExtension', () => {
     expect(once).toMatchObject({ type: ['Note', 'quant:Exercise'] })
   })
 
+  test('is idempotent on the @context (never doubles the quant entry)', () => {
+    const once = spliceQuantExtension(
+      { '@context': 'https://www.w3.org/ns/activitystreams', type: 'Note' },
+      {},
+    )
+    expect(spliceQuantExtension(once, {})).toEqual(once)
+  })
+
+  test('the context entry and document are frozen (spliced by reference into every object)', () => {
+    expect(Object.isFrozen(quantContextEntry)).toBe(true)
+    expect(Object.isFrozen(quantContextDocument)).toBe(true)
+  })
+
   test('passes a non-record document through untouched', () => {
     expect(spliceQuantExtension('x', props)).toBe('x')
     expect(spliceQuantExtension(null, props)).toBe(null)
