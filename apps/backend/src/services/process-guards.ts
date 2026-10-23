@@ -101,7 +101,9 @@ export const createProcessReporters = (deps: ProcessGuardDeps): ProcessReporters
   return {
     report,
     reportAndExit: (label, error, hint = fatalHint) => {
-      void report(label, error, hint).finally(() => deps.exit(1))
+      void report(label, error, hint)
+        .finally(() => deps.exit(1))
+        .catch(() => {})
     },
   }
 }
@@ -120,7 +122,11 @@ export const installProcessGuards = (
   const reporters = createProcessReporters(deps)
 
   target.on('unhandledRejection', (reason) => {
-    void reporters.report('⚠️ Unhandled promise rejection (background work):', reason, recoveredRejectionHint)
+    // A failing reporter must not become a new unhandled rejection: it would
+    // re-enter this handler and loop, and there is nothing left to report it with.
+    void reporters
+      .report('⚠️ Unhandled promise rejection (background work):', reason, recoveredRejectionHint)
+      .catch(() => {})
   })
   target.on('uncaughtException', (error) => {
     reporters.reportAndExit('💥 Uncaught exception (background work):', error)

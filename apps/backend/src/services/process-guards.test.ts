@@ -11,6 +11,11 @@ const makeDeps = (): ProcessGuardDeps & { flush: ReturnType<typeof vi.fn> } => (
   log: vi.fn(),
 })
 
+const settle = async () => {
+  await new Promise((resolve) => setImmediate(resolve))
+  await new Promise((resolve) => setImmediate(resolve))
+}
+
 /** Collects handlers instead of registering them on the real process. */
 const makeTarget = () => {
   const handlers = new Map<string, (arg: unknown) => void>()
@@ -64,6 +69,20 @@ describe('createProcessReporters', () => {
 
     await vi.waitFor(() => expect(deps.exit).toHaveBeenCalledWith(1))
   })
+
+  test('reportAndExit still exits once when the reporter throws, without a new unhandled rejection', async () => {
+    const deps = makeDeps()
+    deps.log = vi.fn(() => {
+      throw new Error('log down')
+    })
+
+    createProcessReporters(deps).reportAndExit('💥 label:', new Error('fatal'))
+    await settle()
+
+    expect(deps.log).toHaveBeenCalledTimes(1)
+    expect(deps.exit).toHaveBeenCalledTimes(1)
+    expect(deps.exit).toHaveBeenCalledWith(1)
+  })
 })
 
 describe('installProcessGuards', () => {
@@ -78,6 +97,21 @@ describe('installProcessGuards', () => {
     // The whole point of the asymmetry: a background sync failing must not drop
     // every in-flight request and open SSE stream.
     expect(deps.capture).toHaveBeenCalled()
+    expect(deps.exit).not.toHaveBeenCalled()
+  })
+
+  test('a reporter that throws does not become a new unhandled rejection', async () => {
+    const deps = makeDeps()
+    deps.log = vi.fn(() => {
+      throw new Error('log down')
+    })
+    const { handlers, target } = makeTarget()
+    installProcessGuards(deps, target)
+
+    handlers.get('unhandledRejection')!(new Error('transient sync failure'))
+    await settle()
+
+    expect(deps.log).toHaveBeenCalledTimes(1)
     expect(deps.exit).not.toHaveBeenCalled()
   })
 
