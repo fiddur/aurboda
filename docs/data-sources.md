@@ -49,6 +49,8 @@ Check sync status:
 - REST: `GET /api/sync/{provider}/status`
 - MCP: `get_sync_status()` (all providers, or `provider: "gravl"` etc.)
 
+Garmin and Oura report no states while the source is not connected (no Garmin session, no Oura token), which also hides rows that releases before [#1293](https://github.com/fiddur/aurboda/issues/1293) left on users who never connected ([#1299](https://github.com/fiddur/aurboda/issues/1299)).
+
 ## Data Storage
 
 All sources feed into a common data model:

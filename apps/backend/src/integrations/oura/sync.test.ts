@@ -5,12 +5,14 @@ import {
   calculateRetryAfter,
   computeSleepMinutes,
   convertOuraSleepPhases,
+  hasOuraToken,
   isRateLimited,
   processOuraData,
   syncOuraDataType,
 } from './sync.ts'
 
 vi.mock('../../db/index.ts', () => ({
+  getOAuthToken: vi.fn(),
   getSyncState: vi.fn(),
   getUserSettings: vi.fn(),
   insertActivity: vi.fn().mockResolvedValue('activity-uuid-123'),
@@ -59,6 +61,19 @@ describe('calculateRetryAfter', () => {
   test('handles invalid Retry-After header', () => {
     const result = calculateRetryAfter('invalid', 0)
     expect(result).toEqual(new Date('2025-01-01T12:01:00Z'))
+  })
+})
+
+describe('hasOuraToken', () => {
+  test('is true when an oura token is stored', async () => {
+    vi.mocked(db.getOAuthToken).mockResolvedValue({ access_token: 'token', provider: 'oura' })
+    expect(await hasOuraToken('alice')).toBe(true)
+    expect(db.getOAuthToken).toHaveBeenCalledWith('alice', 'oura')
+  })
+
+  test('is false when no oura token is stored', async () => {
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+    expect(await hasOuraToken('alice')).toBe(false)
   })
 })
 
