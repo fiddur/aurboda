@@ -947,10 +947,7 @@ const main = async () => {
   const server = httpd.listen(port, () => {
     console.info(`> Running on localhost:${port} (${process.uptime().toFixed(1)} s after process start)`)
     for (const cb of postListenCallbacks) {
-      cb().catch((error) => {
-        console.error('⚠️ Post-listen task failed:', error)
-        Sentry.captureException(error)
-      })
+      cb().catch((error) => void report('⚠️ Post-listen task failed:', error))
     }
   })
 
@@ -979,7 +976,7 @@ const main = async () => {
 
 // Failures outside a request — see `services/process-guards.ts` for why the
 // rejection and exception paths deliberately differ.
-const { reportAndExit } = installProcessGuards({
+const { report, reportAndExit } = installProcessGuards({
   capture: (error, hint) => Sentry.captureException(error, hint),
   exit: (code) => process.exit(code),
   flush: (timeoutMs) => Sentry.flush(timeoutMs),

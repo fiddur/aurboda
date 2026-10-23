@@ -220,9 +220,7 @@ describe('_runMigrationOnce', () => {
   test('a forced caller sweeps after a gated run that failed', async () => {
     const user = freshUser()
     const gatedRun = Promise.withResolvers<boolean>()
-    const migrate = vi.fn((_: string) =>
-      migrate.mock.calls.length === 1 ? gatedRun.promise : Promise.resolve(true),
-    )
+    const migrate = vi.fn((_: string) => Promise.resolve(true)).mockImplementationOnce(() => gatedRun.promise)
 
     const gated = _runMigrationOnce(user, migrate, false)
     const forced = _runMigrationOnce(user, migrate)
