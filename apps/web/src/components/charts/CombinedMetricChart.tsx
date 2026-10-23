@@ -8,6 +8,7 @@ import { format } from 'date-fns'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 
 import {
+  assignAxes,
   chartRightMargin,
   countRightAxes,
   findNearest,
@@ -42,9 +43,8 @@ const CHART_HEIGHT = 260
 const HH_MM_TICK_PX = 60
 /**
  * Exported so callers sizing their fetch to the drawable width use the same
- * margins. `right` is the MAXIMUM (two right axes drawn); the rendered chart
- * reclaims unused axis space via `chartRightMargin`, so a fetch sized with
- * this is at worst slightly coarser than the drawn width, never too fine.
+ * margins. `right` is the maximum (two right axes drawn), so a fetch sized
+ * with it is at worst slightly coarser than the drawn width, never too fine.
  */
 export const CHART_MARGIN = { bottom: 30, left: 50, right: chartRightMargin(MAX_RIGHT_AXES), top: 10 }
 const SPARSE_THRESHOLD = 10
@@ -289,15 +289,11 @@ const drawOverlays = (
   hasHypnogram: boolean,
   overlays: MetricOverlay[],
 ) => {
-  let rightAxisCount = 0
-  let leftUsed = false
   const barLayer = g.append('g')
+  const assignments = assignAxes(hasHypnogram, overlays)
 
-  for (const overlay of overlays) {
-    const axisSide = leftUsed || hasHypnogram ? 'right' : 'left'
-    const showAxis = overlay.showAxis && (axisSide === 'left' || rightAxisCount < MAX_RIGHT_AXES)
-    const offset = axisSide === 'right' ? rightAxisCount * 45 : 0
-
+  overlays.forEach((overlay, i) => {
+    const { axisSide, offset, showAxis } = assignments[i]!
     const style = METRIC_CHART_STYLES[overlay.metric]
     const drawFn = overlay.data.length < SPARSE_THRESHOLD ? drawDotOverlay : drawLineOverlay
     if (style?.kind === 'bars') {
@@ -328,10 +324,7 @@ const drawOverlays = (
         showAxis,
       )
     }
-
-    if (axisSide === 'left') leftUsed = true
-    if (axisSide === 'right' && showAxis) rightAxisCount++
-  }
+  })
 }
 
 const buildTooltipLines = (
@@ -385,9 +378,6 @@ const renderChart = ({
   const svg = d3.select(svgRef.current)
   svg.selectAll('*').remove()
 
-  // Reserve right margin only for the right axes actually drawn — a fixed
-  // maximum squeezed the plot to half a phone card's width in the common
-  // single-metric case.
   const marginRight = chartRightMargin(countRightAxes(!!hasHypnogram, overlays))
   const innerWidth = containerWidth - CHART_MARGIN.left - marginRight
   const innerHeight = CHART_HEIGHT - CHART_MARGIN.top - CHART_MARGIN.bottom
