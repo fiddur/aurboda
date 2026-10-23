@@ -38,21 +38,28 @@ export const terseDescription = (text: string | undefined, max = 200): string | 
   return (sentence ?? line).slice(0, max)
 }
 
-const MAX_REF_DEPTH = 16
+interface Resolved {
+  schema: JsonSchema
+  seen: ReadonlySet<string>
+}
 
-const resolveSchema = (schema: unknown, definitions: JsonSchema, depth = 0): JsonSchema | undefined => {
-  if (!isRecord(schema) || depth > MAX_REF_DEPTH) return undefined
+const resolveSchema = (
+  schema: unknown,
+  definitions: JsonSchema,
+  seen: ReadonlySet<string> = new Set(),
+): Resolved | undefined => {
+  if (!isRecord(schema)) return undefined
   const ref = schema.$ref
   if (typeof ref === 'string') {
     const prefix = '#/definitions/'
-    return ref.startsWith(prefix)
-      ? resolveSchema(definitions[ref.slice(prefix.length)], definitions, depth + 1)
-      : undefined
+    const name = ref.slice(prefix.length)
+    if (!ref.startsWith(prefix) || seen.has(name)) return undefined
+    return resolveSchema(definitions[name], definitions, new Set(seen).add(name))
   }
   if (Array.isArray(schema.allOf) && schema.allOf.length === 1) {
-    return resolveSchema(schema.allOf[0], definitions, depth + 1)
+    return resolveSchema(schema.allOf[0], definitions, seen)
   }
-  return schema
+  return { schema, seen }
 }
 
 const alternativesOf = (schema: JsonSchema): unknown[] | undefined =>
@@ -60,25 +67,27 @@ const alternativesOf = (schema: JsonSchema): unknown[] | undefined =>
 
 const typeOfValue = (value: unknown): string => (value === null ? 'null' : typeof value)
 
-const deriveType = (schema: unknown, definitions: JsonSchema, depth = 0): string => {
-  const resolved = resolveSchema(schema, definitions)
-  if (!resolved || depth > MAX_REF_DEPTH) return 'any'
-  if (typeof resolved.type === 'string') return resolved.type
-  if (Array.isArray(resolved.type)) return resolved.type.map(String).join('|')
-  const alternatives = alternativesOf(resolved)
+const deriveType = (schema: unknown, definitions: JsonSchema, seen?: ReadonlySet<string>): string => {
+  const resolved = resolveSchema(schema, definitions, seen)
+  if (!resolved) return 'any'
+  const { schema: target, seen: path } = resolved
+  if (typeof target.type === 'string') return target.type
+  if (Array.isArray(target.type)) return target.type.map(String).join('|')
+  const alternatives = alternativesOf(target)
   if (alternatives) {
-    const types = alternatives.flatMap((alt) => deriveType(alt, definitions, depth + 1).split('|'))
-    return [...new Set(types)].join('|')
+    const types = [...new Set(alternatives.flatMap((alt) => deriveType(alt, definitions, path).split('|')))]
+    const known = types.filter((type) => type !== 'any')
+    return (known.length > 0 ? known : types).join('|')
   }
-  if ('const' in resolved) return typeOfValue(resolved.const)
-  if (Array.isArray(resolved.enum) && resolved.enum.length > 0) return typeOfValue(resolved.enum[0])
+  if ('const' in target) return typeOfValue(target.const)
+  if (Array.isArray(target.enum) && target.enum.length > 0) return typeOfValue(target.enum[0])
   return 'any'
 }
 
 const deriveEnum = (schema: JsonSchema, definitions: JsonSchema): unknown[] | undefined => {
   if (Array.isArray(schema.enum)) return schema.enum
   if (!Array.isArray(schema.anyOf)) return undefined
-  const alternatives = schema.anyOf.map((alt) => resolveSchema(alt, definitions))
+  const alternatives = schema.anyOf.map((alt) => resolveSchema(alt, definitions)?.schema)
   if (alternatives.some((alt) => !alt || (!Array.isArray(alt.enum) && alt.type !== 'null'))) return undefined
   const values = alternatives.flatMap((alt) => (Array.isArray(alt?.enum) ? alt.enum : []))
   return values.length > 0 ? values : undefined
@@ -87,15 +96,16 @@ const deriveEnum = (schema: JsonSchema, definitions: JsonSchema): unknown[] | un
 const terseProperty = (property: unknown, definitions: JsonSchema): TerseProperty => {
   const resolved = resolveSchema(property, definitions)
   if (!resolved) return { type: 'any' }
-  const enumValues = deriveEnum(resolved, definitions)
+  const { schema: target, seen } = resolved
+  const enumValues = deriveEnum(target, definitions)
   const ownDescription = isRecord(property) ? property.description : undefined
-  const description = typeof ownDescription === 'string' ? ownDescription : resolved.description
+  const description = typeof ownDescription === 'string' ? ownDescription : target.description
   return {
-    type: deriveType(resolved, definitions),
+    type: deriveType(target, definitions, seen),
     ...(enumValues ? { enum: enumValues } : {}),
-    ...('const' in resolved ? { const: resolved.const } : {}),
-    ...(typeof resolved.format === 'string' ? { format: resolved.format } : {}),
-    ...(isRecord(resolved.items) ? { items: { type: deriveType(resolved.items, definitions) } } : {}),
+    ...('const' in target ? { const: target.const } : {}),
+    ...(typeof target.format === 'string' ? { format: target.format } : {}),
+    ...(isRecord(target.items) ? { items: { type: deriveType(target.items, definitions, seen) } } : {}),
     ...(typeof description === 'string' ? { description: terseDescription(description, 120) } : {}),
   }
 }

@@ -18,7 +18,7 @@ Key areas covered by MCP tools:
 
 ### Tool discovery
 
-The `tools/list` answer is abbreviated to keep it small: each tool shows the first sentence of its description and its top-level parameters only, each with its type, enum, format and a one-line description. Nested objects and arrays appear as `object` or `array` (with the item type), without their inner fields. `describe_tools` returns the full description and the complete JSON input schema -- nested objects, enums, formats, examples -- for up to 20 tool names, and lists any names it does not know under `unknown`. The server's `initialize` instructions tell the assistant to call it before using a tool whose parameters are objects or arrays.
+The `tools/list` answer is abbreviated to keep it small: each tool shows the first sentence of its description and its top-level parameters only, each with its type, enum, format and a one-line description. Nested objects and arrays appear as `object` or `array` (with the item type), without their inner fields. `describe_tools` returns the full description and the complete JSON input schema -- nested objects, enums, formats, examples -- for up to 20 tool names, and lists any names it does not know under `unknown`. The server's `initialize` instructions tell the assistant to call it before using a tool whose parameters are objects or arrays. It is the one MCP tool without a REST twin: it is protocol plumbing, and REST's equivalent is the OpenAPI document.
 
 ```json
 { "name": "describe_tools", "arguments": { "names": ["add_deduction_rule", "query_chart_data"] } }
