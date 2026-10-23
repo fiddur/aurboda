@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest'
 
 import type { Activity } from '../types.ts'
 
-import { mergeOverlappingActivities } from './merge.ts'
+import { mergeOverlappingActivities, pickOverrideWinner } from './merge.ts'
 
 const garmin = (overrides: Partial<Activity> = {}): Activity => ({
   activity_type: 'meditation',
@@ -29,6 +29,28 @@ const categoryMap = new Map<string, string>([
   ['meditation', 'meditation'],
   ['pipe_ceremony', 'wellness'],
 ])
+
+describe('pickOverrideWinner', () => {
+  test('returns the aurboda row whose override_target_ids names a member', () => {
+    const ov = override()
+    expect(pickOverrideWinner([garmin(), ov])).toBe(ov)
+  })
+
+  test('returns undefined when no member is an override', () => {
+    const healthConnect = garmin({ id: 'health-connect-id', source: 'health_connect' })
+    expect(pickOverrideWinner([garmin(), healthConnect])).toBeUndefined()
+  })
+
+  test('ignores an override whose target is not in the group', () => {
+    expect(pickOverrideWinner([garmin(), override({ override_target_ids: ['elsewhere'] })])).toBeUndefined()
+  })
+
+  test('picks the earliest-starting override when two are in one group', () => {
+    const later = override({ id: 'later-override' })
+    const earlier = override({ id: 'earlier-override', start_time: new Date('2026-05-05T10:01:00Z') })
+    expect(pickOverrideWinner([garmin(), later, earlier])).toBe(earlier)
+  })
+})
 
 describe('mergeOverlappingActivities — aurboda override semantics (#732 follow-up)', () => {
   test('override winner uses its own start/end times — not the source span', () => {

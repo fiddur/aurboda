@@ -21,6 +21,7 @@ import {
   getOverlappingActivities,
   getTimeSeries,
   getTimeSeriesMultiMetric,
+  pickOverrideWinner,
 } from '../../db/index.ts'
 import { computeHrZoneSecs, getEffectiveHrZones } from '../settings.ts'
 import { trackToGps } from '../tracks.ts'
@@ -145,7 +146,8 @@ export interface ResolvedActivityWindow {
 
 /**
  * For activities fetched via a `merged:` id prefix, expand the time window to
- * cover all overlapping cross-source records and merge their `data` JSONB.
+ * cover all overlapping cross-source records and merge their `data` JSONB,
+ * unless an aurboda override wins the group, whose own window and data stand.
  * Plain (non-merged) activities pass through unchanged.
  */
 export const resolveActivityWindow = async (
@@ -161,6 +163,9 @@ export const resolveActivityWindow = async (
   if (overlapping.length <= 1) {
     return { data: activity.data, end_time: activity.end_time, start_time: activity.start_time }
   }
+
+  const winner = pickOverrideWinner(overlapping)
+  if (winner) return { data: winner.data, end_time: winner.end_time, start_time: winner.start_time }
 
   const start_time = new Date(Math.min(...overlapping.map((a) => a.start_time.getTime())))
   const end_time = new Date(Math.max(...overlapping.map((a) => (a.end_time ?? a.start_time).getTime())))

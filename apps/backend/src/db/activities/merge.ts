@@ -96,7 +96,7 @@ const isCrossMergePair = (a: Activity, b: Activity, categoryMap: Map<string, str
   return !!catB && CROSS_MERGEABLE_CATEGORIES.has(catB)
 }
 
-const pickOverrideWinner = (members: Activity[]): Activity | undefined => {
+export const pickOverrideWinner = (members: Activity[]): Activity | undefined => {
   const memberIds = new Set(members.map((m) => m.id).filter((id): id is string => !!id))
   const overrides = members.filter(
     (m) => m.source === 'aurboda' && m.override_target_ids?.some((tid) => memberIds.has(tid)),
