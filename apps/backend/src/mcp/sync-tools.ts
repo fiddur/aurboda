@@ -21,7 +21,6 @@ import type { StravaQueue } from '../services/strava-queue.ts'
 
 import {
   ackOutboundSync,
-  getAllSyncStates,
   getOAuthToken,
   getOutboundSyncHistory,
   getPendingOutboundSync,
@@ -42,6 +41,7 @@ import { syncRescueTimeData } from '../integrations/rescuetime/sync.ts'
 import { syncStrava } from '../integrations/strava/sync.ts'
 import { getCentralDb } from '../services/central-db.ts'
 import { getSettings } from '../services/settings.ts'
+import { getVisibleSyncStates } from '../services/sync-states.ts'
 import { errorResponse, jsonResponse, type McpServer, tzJsonResponse } from './helpers.ts'
 import { formatInTz } from './tz-utils.ts'
 
@@ -306,7 +306,7 @@ export const registerSyncTools = (
         const providers = provider === 'all' ? syncProviders : syncProviders.filter((p) => p === provider)
 
         for (const p of providers) {
-          states[p] = await getAllSyncStates(user, p)
+          states[p] = await getVisibleSyncStates(user, p)
         }
 
         const response: Record<string, unknown> = { states, success: true }

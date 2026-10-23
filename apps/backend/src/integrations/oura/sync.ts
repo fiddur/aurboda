@@ -2,7 +2,13 @@ import { addMinutes, isFuture, subDays } from 'date-fns'
 
 import type { ouraClient } from './client.ts'
 
-import { getSyncState, getUserSettings, type SyncState, upsertSyncState } from '../../db/index.ts'
+import {
+  getOAuthToken,
+  getSyncState,
+  getUserSettings,
+  type SyncState,
+  upsertSyncState,
+} from '../../db/index.ts'
 import { triggerCalorieComputation } from '../../services/calorie-computation.ts'
 import { type OuraDataType, processOuraData } from './process.ts'
 
@@ -32,6 +38,9 @@ export const calculateRetryAfter = (retryAfterHeader?: string, attemptCount = 0)
   const backoffIndex = Math.min(attemptCount, RATE_LIMIT_BACKOFF.length - 1)
   return addMinutes(new Date(), RATE_LIMIT_BACKOFF[backoffIndex])
 }
+
+export const hasOuraToken = async (user: string): Promise<boolean> =>
+  (await getOAuthToken(user, 'oura')) !== null
 
 export const isRateLimited = (syncState: SyncState | null): boolean => {
   if (!syncState?.retry_after) return false
