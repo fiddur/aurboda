@@ -41,7 +41,7 @@ vi.mock('../db', async () => ({
   getUserSettings: vi.fn(),
   insertCustomMetricDefinition: vi.fn(),
   insertActivity: vi.fn(),
-  insertNewActivity: vi.fn().mockResolvedValue('new-id'),
+  insertMergedActivity: vi.fn().mockResolvedValue('new-id'),
   insertOverride: vi.fn(),
   insertTimeSeries: vi.fn(),
   materializeSuperseded: vi.fn().mockResolvedValue(undefined),
@@ -1569,7 +1569,6 @@ describe('mergeActivities', () => {
   test('calls onMutated callback after successful merge', async () => {
     const onMutated = vi.fn()
     const deps = {
-      deleteActivity: vi.fn().mockResolvedValue(true),
       getActivityById: vi.fn().mockImplementation((_user: string, id: string) =>
         Promise.resolve({
           activity_type: 'exercise',
@@ -1579,7 +1578,7 @@ describe('mergeActivities', () => {
           start_time: id === 'a1' ? new Date('2024-03-15T10:00:00Z') : new Date('2024-03-15T12:00:00Z'),
         }),
       ),
-      insertNewActivity: vi.fn().mockResolvedValue('merged-id'),
+      insertMergedActivity: vi.fn().mockResolvedValue('merged-id'),
       materializeSuperseded: vi.fn().mockResolvedValue(undefined),
     }
 

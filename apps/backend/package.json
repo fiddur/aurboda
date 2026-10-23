@@ -18,6 +18,7 @@
     "@fedify/fedify": "^2.3.1",
     "@fiddur/garmin-connect": "^1.7.0",
     "@js-temporal/polyfill": "^0.5.1",
+    "@logtape/logtape": "^2.2.1",
     "@modelcontextprotocol/sdk": "^1.25.2",
     "@sentry/node": "^10.52.0",
     "@simplewebauthn/server": "^13.3.0",

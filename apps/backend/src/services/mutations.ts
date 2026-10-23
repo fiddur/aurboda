@@ -16,10 +16,9 @@ import {
   getOverrideForActivity,
   getUserNotesJoined,
   insertActivity as dbInsertActivity,
-  insertNewActivity as dbInsertNewActivity,
+  insertMergedActivity as dbInsertMergedActivity,
   insertOverride as dbInsertOverride,
   materializeSuperseded,
-  reanchorNotes,
   replaceUserNotes,
   updateActivity as dbUpdateActivity,
   enqueueOutboundSync,
@@ -745,7 +744,7 @@ export interface MergeActivitiesResult {
 
 /**
  * Notes are NOT folded in here; mergeActivities re-anchors the source rows'
- * notes onto the new merged row via reanchorNotes after the insert.
+ * notes onto the merged row inside insertMergedActivity.
  */
 export const buildMergedActivityData = (
   sortedActivities: Activity[],
@@ -790,13 +789,11 @@ export async function mergeActivities(
   input: MergeActivitiesInput,
   deps: {
     getActivityById: (user: string, id: string) => Promise<Activity | null>
-    insertNewActivity: (user: string, activity: Activity) => Promise<string>
-    deleteActivity: (user: string, id: string) => Promise<boolean>
+    insertMergedActivity: (user: string, merged: Activity, sourceIds: string[]) => Promise<string>
     materializeSuperseded: (user: string, aroundTime: Date) => Promise<void>
   } = {
-    deleteActivity: dbDeleteActivity,
     getActivityById: dbGetActivityById,
-    insertNewActivity: dbInsertNewActivity,
+    insertMergedActivity: dbInsertMergedActivity,
     materializeSuperseded,
   },
   onMutated?: ActivityNotifier,
@@ -826,35 +823,30 @@ export async function mergeActivities(
 
   const merged = buildMergedActivityData(sorted, { title: input.title })
 
-  const id = await deps.insertNewActivity(user, {
-    activity_type: sorted[0].activity_type,
-    data: merged.data,
-    end_time: merged.end_time,
-    id: randomUUID(),
-    source: 'aurboda',
-    start_time: merged.start_time,
-    title: merged.title,
-  })
-
-  // Re-anchor any notes attached to the source activities onto the merged row.
-  // If the caller passed an explicit notes override, replace the user-authored
-  // notes with that single string (synced notes from the sources are still
-  // re-anchored, so HC/Oura-sourced notes survive the merge).
   const sourceIds = sorted.map((a) => a.id).filter((x): x is string => !!x)
-  if (sourceIds.length > 0) {
-    await reanchorNotes(user, 'activity', sourceIds, id)
-  }
+  const id = await deps.insertMergedActivity(
+    user,
+    {
+      activity_type: sorted[0].activity_type,
+      data: merged.data,
+      end_time: merged.end_time,
+      id: randomUUID(),
+      source: 'aurboda',
+      start_time: merged.start_time,
+      title: merged.title,
+    },
+    sourceIds,
+  )
+
+  // The source activities' notes are re-anchored onto the merged row. If the
+  // caller passed an explicit notes override, replace the user-authored notes
+  // with that single string (synced notes from the sources are still
+  // re-anchored, so HC/Oura-sourced notes survive the merge).
   if (input.notes !== undefined) {
     await replaceUserNotes(user, 'activity', id, input.notes, merged.start_time, merged.end_time)
   }
 
-  for (const activity of sorted) {
-    if (activity.id) {
-      await deps.deleteActivity(user, activity.id)
-    }
-  }
-
-  // After the soft-delete + new aurboda insert, recompute supersession once.
+  // After the soft-delete + merged aurboda row, recompute supersession once.
   await deps.materializeSuperseded(user, merged.start_time)
 
   onMutated?.(user, sorted[0].activity_type, merged.start_time, merged.end_time ?? merged.start_time)

@@ -111,3 +111,46 @@ describe('mergeOverlappingActivities — aurboda override semantics (#732 follow
     expect(merged[0].source_ids?.sort()).toEqual(['aurboda-multi', 'garmin-id', 'hc-id', 'strava-id'].sort())
   })
 })
+
+describe('mergeOverlappingActivities — override target keeps its override through a same-type merge (#1259)', () => {
+  // Garmin and Health Connect report the same session; the user edited the Garmin
+  // row, so an override targets it. The cross-source pass groups override + target,
+  // the same-type pass then adds the Health Connect row to that group — and must
+  // keep the target in `source_ids`, or supersession clears its mark.
+  const yogaMap = new Map<string, string>([['yoga', 'exercise']])
+  const garminYoga = garmin({ activity_type: 'yoga', title: 'Yoga' })
+  const overrideYoga = override({
+    activity_type: 'yoga',
+    end_time: new Date('2026-05-05T10:30:00Z'),
+    start_time: new Date('2026-05-05T10:00:00Z'),
+    title: 'Hand typed',
+  })
+
+  test('a later same-type row joins the group without dropping the target', () => {
+    const healthConnect = garmin({
+      end_time: new Date('2026-05-05T10:31:00Z'),
+      id: 'hc-id',
+      source: 'health_connect',
+      start_time: new Date('2026-05-05T10:00:30Z'),
+      activity_type: 'yoga',
+    })
+    const merged = mergeOverlappingActivities([garminYoga, overrideYoga, healthConnect], yogaMap)
+    expect(merged).toHaveLength(1)
+    expect(merged[0].id).toBe('aurboda-id')
+    expect(merged[0].title).toBe('Hand typed')
+    expect(merged[0].source_ids?.sort()).toEqual(['aurboda-id', 'garmin-id', 'hc-id'])
+  })
+
+  test('an earlier same-type row (e.g. a create-mode rule row) absorbs the group without dropping the target', () => {
+    const ruleRow = garmin({
+      activity_type: 'yoga',
+      end_time: new Date('2026-05-05T10:30:00Z'),
+      id: 'rule-id',
+      source: 'deduction-rule',
+      start_time: new Date('2026-05-05T09:59:00Z'),
+    })
+    const merged = mergeOverlappingActivities([garminYoga, overrideYoga, ruleRow], yogaMap)
+    expect(merged).toHaveLength(1)
+    expect(merged[0].source_ids?.sort()).toEqual(['aurboda-id', 'garmin-id', 'rule-id'])
+  })
+})

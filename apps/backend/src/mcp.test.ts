@@ -132,7 +132,6 @@ const auth = createAuth('very very secretvery very secret') // 32 bytes for AES-
 
 function createTestApp() {
   const app = express()
-  // The MCP router parses its own body — stateless mode (no sessions)
   app.use('/mcp', createMcpRouter(auth))
   return app
 }

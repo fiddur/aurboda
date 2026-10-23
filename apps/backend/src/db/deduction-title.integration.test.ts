@@ -149,4 +149,19 @@ describe('enrich rules with output_title_field (integration)', () => {
     expect(notifier).toHaveBeenCalled()
     for (const call of notifier.mock.calls) expect(call[4]).toBe(rule.id)
   })
+
+  test('a hand-typed override title is kept when the synced target has lost its superseded_by mark (#1258)', async () => {
+    const user = getTestUser()
+    const syncedId = await insertActivity(user, garminYoga())
+    const deps = createDefaultEngineDeps()
+    await evaluateRule(user, rule, window, deps)
+    const overrideId = (await getOverrideForActivity(user, syncedId))?.id ?? 'no-override'
+    expect((await updateActivity(user, overrideId, { title: 'Hand typed' })).success).toBe(true)
+
+    await query(user, `UPDATE activities SET superseded_by = NULL WHERE id = $1`, [syncedId])
+
+    expect((await evaluateRule(user, rule, window, deps)).affected_ids).toEqual([])
+    expect((await getActivityById(user, overrideId))?.title).toBe('Hand typed')
+    expect((await getActivityById(user, syncedId))?.title).toBe('Yoga')
+  })
 })

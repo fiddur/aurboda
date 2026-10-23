@@ -17,6 +17,7 @@ import {
   getActivityById,
   getActivityTypeDefinition,
   getMediaPlays,
+  getOverrideForActivity,
   insertDeductionRuleRun,
   upsertActivity,
 } from '../db/index.ts'
@@ -360,8 +361,10 @@ const retypeActivity = async (
 }
 
 /**
- * Reads the winning row (an override when one exists) and writes through the same update path as
- * a manual edit, so a synced activity gets an override whose title a re-sync leaves alone.
+ * Reads the winning rows and writes through the same update path as a manual edit, so a synced
+ * activity gets an override whose title a re-sync leaves alone. A synced row that already has an
+ * override is skipped whatever its `superseded_by` says: `updateActivity` would write to the
+ * override, and the override is read and decided on as its own row.
  */
 const retitleActivities = async (
   user: string,
@@ -381,7 +384,7 @@ const retitleActivities = async (
   for (const range of ranges) {
     const result = await query(
       user,
-      `SELECT id, title, data FROM activities
+      `SELECT id, source, title, data FROM activities
        WHERE activity_type = $1
          AND deleted_at IS NULL
          AND superseded_by IS NULL
@@ -395,6 +398,7 @@ const retitleActivities = async (
       const id = row.id as string
       if (seen.has(id)) continue
       seen.add(id)
+      if (row.source !== 'aurboda' && (await getOverrideForActivity(user, id))) continue
 
       const change = ruleTitleChange(
         { data: row.data as Record<string, unknown> | null, title: row.title as string | null },
@@ -461,7 +465,7 @@ export const createDefaultEngineDeps = (notifier?: ActivityNotifier): DeductionE
         ruleId,
       )
     }
-    return id
+    return { changed, id }
   },
   insertRuleRun: insertDeductionRuleRun,
   retitleActivities: (user, activityType, ranges, field, ruleId, dryRun) =>

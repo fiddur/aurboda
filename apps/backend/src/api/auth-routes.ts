@@ -95,16 +95,17 @@ export const registerAuthRoutes = ({
 
     const { username, password, invitation } = req.body
     const user = typeof username === 'string' ? username.trim() : username
+    const invite = typeof invitation === 'string' ? invitation.trim() : invitation
 
     if (signupMode === 'invite_only') {
-      if (!invitation || typeof invitation !== 'string') {
+      if (!invite || typeof invite !== 'string') {
         res.status(403).json({
           error: 'An invitation is required to sign up',
           success: false,
         })
         return
       }
-      const validation = invitationAuth.validateInvitationToken(invitation)
+      const validation = invitationAuth.validateInvitationToken(invite)
       if (!validation.valid) {
         const errorMsg = validation.expired ? 'Invitation has expired' : 'Invalid invitation'
         res.status(403).json({ error: errorMsg, success: false })

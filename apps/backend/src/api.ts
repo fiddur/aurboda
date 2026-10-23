@@ -80,6 +80,7 @@ import {
   toDeliverableReply,
 } from './services/activitypub/deliver.ts'
 import { createFeedFederation, deliverActorUpdate } from './services/activitypub/federation.ts'
+import { configureFederationLogging } from './services/activitypub/logging.ts'
 import { createTimelineBackfiller } from './services/activitypub/timeline-backfill.ts'
 import { createAurbodaEnrichAttempt } from './services/activitypub/timeline-enrich.ts'
 import { createAuditLogPruneQueue } from './services/audit-log-prune-queue.ts'
@@ -173,6 +174,7 @@ const main = async () => {
 
   const postListenCallbacks: Array<() => Promise<void>> = []
 
+  await configureFederationLogging()
   await initializeCentralDb()
   console.info(`⏱️ Central DB ready ${process.uptime().toFixed(1)} s after process start`)
   const centralDb = getCentralDb()

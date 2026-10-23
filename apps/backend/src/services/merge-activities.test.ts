@@ -115,11 +115,10 @@ describe('buildMergedActivityData', () => {
 
 describe('mergeActivities', () => {
   const makeDeps = (activitiesMap: Record<string, Activity>) => ({
-    deleteActivity: vi.fn().mockResolvedValue(true),
     getActivityById: vi
       .fn()
       .mockImplementation((_user: string, id: string) => Promise.resolve(activitiesMap[id] ?? null)),
-    insertNewActivity: vi
+    insertMergedActivity: vi
       .fn()
       .mockImplementation((_user: string, activity: Activity) =>
         Promise.resolve(activity.id ?? 'generated-id'),
@@ -149,12 +148,11 @@ describe('mergeActivities', () => {
     expect(result.end_time).toBe('2026-04-02T11:00:00.000Z')
     expect(result.id).toBeDefined()
 
-    expect(deps.insertNewActivity).toHaveBeenCalledOnce()
-    const inserted = deps.insertNewActivity.mock.calls[0][1]
+    expect(deps.insertMergedActivity).toHaveBeenCalledOnce()
+    const [, inserted, sourceIds] = deps.insertMergedActivity.mock.calls[0]
     expect(inserted.source).toBe('aurboda')
     expect(inserted.data.merged_from).toHaveLength(2)
-
-    expect(deps.deleteActivity).toHaveBeenCalledTimes(2)
+    expect(sourceIds).toEqual(['a1', 'a2'])
   })
 
   test('errors on different activity types', async () => {

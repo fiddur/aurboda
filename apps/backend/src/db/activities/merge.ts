@@ -254,6 +254,13 @@ const mergeCrossSources = (activities: Activity[], categoryMap: Map<string, stri
 }
 
 /**
+ * The rows a merge input stands for: a cross-source group carries every member in
+ * `source_ids`, and the same-type pass must keep them all or supersession loses the
+ * members that are not the group's winner (an override's target, #1259).
+ */
+const memberIds = (a: MergedActivity): string[] => (a.source_ids ? [...a.source_ids] : a.id ? [a.id] : [])
+
+/**
  * When the same activity is logged in multiple apps (e.g., Polar for HR data
  * and Gravl for workout details), this function merges them into a single
  * activity using the earliest start time and latest end time.
@@ -283,7 +290,7 @@ export const mergeOverlappingActivities = (
     const sorted = [...typeActivities].sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
 
     let current: MergedActivity = { ...sorted[0] }
-    let currentSourceIds: string[] = sorted[0].id ? [sorted[0].id] : []
+    let currentSourceIds: string[] = memberIds(sorted[0])
 
     for (let i = 1; i < sorted.length; i++) {
       const next = sorted[i]
@@ -308,16 +315,14 @@ export const mergeOverlappingActivities = (
           current.data = { ...current.data, ...next.data }
         }
 
-        if (next.id) {
-          currentSourceIds.push(next.id)
-        }
+        currentSourceIds.push(...memberIds(next))
       } else {
         if (currentSourceIds.length > 1) {
           current.source_ids = currentSourceIds
         }
         result.push(current)
         current = { ...next }
-        currentSourceIds = next.id ? [next.id] : []
+        currentSourceIds = memberIds(next)
       }
     }
 
