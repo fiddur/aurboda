@@ -158,6 +158,16 @@ describe('migrateSchema', () => {
     expect(sweepsFor(`aurboda_${user}`)).toHaveLength(1)
   })
 
+  test('reports that it swept', async () => {
+    await expect(migrateSchema(freshUser())).resolves.toBe(true)
+  })
+
+  test('reports that it skipped on the marker', async () => {
+    mocks.state.fingerprintRecorded = true
+
+    await expect(migrateSchema(freshUser())).resolves.toBe(false)
+  })
+
   test('a sweep that throws records nothing, so the next run retries it', async () => {
     mocks.state.failOn = MID_SWEEP
     const user = freshUser()
@@ -192,6 +202,35 @@ describe('_runMigrationOnce', () => {
     await Promise.all([gated, forced])
 
     expect(sweepsFor(`aurboda_${user}`)).toHaveLength(1)
+  })
+
+  test('a forced caller joins an in-flight gated run that swept', async () => {
+    const user = freshUser()
+    const gatedRun = Promise.withResolvers<boolean>()
+    const migrate = vi.fn((_: string) => gatedRun.promise)
+
+    const gated = _runMigrationOnce(user, migrate, false)
+    const forced = _runMigrationOnce(user, migrate)
+    gatedRun.resolve(true)
+    await Promise.all([gated, forced])
+
+    expect(migrate).toHaveBeenCalledTimes(1)
+  })
+
+  test('a forced caller sweeps after a gated run that failed', async () => {
+    const user = freshUser()
+    const gatedRun = Promise.withResolvers<boolean>()
+    const migrate = vi.fn((_: string) =>
+      migrate.mock.calls.length === 1 ? gatedRun.promise : Promise.resolve(true),
+    )
+
+    const gated = _runMigrationOnce(user, migrate, false)
+    const forced = _runMigrationOnce(user, migrate)
+    gatedRun.reject(new Error('gated run failed'))
+
+    await expect(gated).rejects.toThrow('gated run failed')
+    await expect(forced).resolves.toBeUndefined()
+    expect(migrate).toHaveBeenCalledTimes(2)
   })
 
   test('a forced caller joins an in-flight forced run', async () => {
