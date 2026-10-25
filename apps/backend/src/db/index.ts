@@ -79,6 +79,7 @@ export {
   getHrZoneSecsForWindows,
   getMetricMeansForWindows,
   getRawDailySum,
+  getRawDailySums,
   getSourceFilter,
   getLatestMetricValuesMulti,
   getLatestTimeSeriesValue,

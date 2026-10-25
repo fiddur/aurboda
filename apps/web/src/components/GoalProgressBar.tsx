@@ -67,7 +67,7 @@ export function GoalProgressBar({ goal, showWindow, compact }: GoalProgressBarPr
 
   const getBarColor = () => {
     if (min && max) {
-      if (current >= max) return 'over-max'
+      if (current > max) return 'over-max'
       if (current >= min) return 'in-range'
       return 'below-min'
     }

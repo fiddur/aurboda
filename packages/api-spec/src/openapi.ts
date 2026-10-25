@@ -17,7 +17,11 @@ import {
 } from './schemas/challenges.ts'
 import { dateOnlySchema, iso8601DateTimeSchema, metricTypeSchema } from './schemas/common.ts'
 import { dailySummaryResponseSchema } from './schemas/daily-summary.ts'
-import { goalsProgressResponseSchema } from './schemas/goals.ts'
+import {
+  goalHistoryQuerySchema,
+  goalHistoryResponseSchema,
+  goalsProgressResponseSchema,
+} from './schemas/goals.ts'
 import {
   addNamedLocationBodySchema,
   addNamedLocationResponseSchema,
@@ -439,6 +443,30 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'Get goal progress',
+        tags: ['Goals'],
+      },
+    },
+
+    '/goals/{id}/history': {
+      get: {
+        description:
+          "Get a goal's value and on-target status per past day (UTC), or per month as counts of on-target days. Every day is judged against the goal's current min/max; today is partial and not counted.",
+        requestParams: {
+          path: z.object({ id: z.string().meta({ description: 'Goal ID' }) }),
+          query: goalHistoryQuerySchema,
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: goalHistoryResponseSchema } },
+            description: 'Successful response',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Goal not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get goal history',
         tags: ['Goals'],
       },
     },

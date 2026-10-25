@@ -174,6 +174,25 @@ export const getRawDailySum = async (
   return Number(result.rows[0].total)
 }
 
+export const getRawDailySums = async (
+  user: string,
+  metric: string,
+  start: Date,
+  end: Date,
+): Promise<{ date: string; sum: number }[]> => {
+  const result = await query(
+    user,
+    `SELECT date_trunc('day', time, 'UTC') AS day, SUM(value) AS sum FROM time_series
+     WHERE metric = $1 AND time >= $2 AND time <= $3 AND deleted_at IS NULL
+     GROUP BY 1 ORDER BY 1`,
+    [metric, start, end],
+  )
+  return result.rows.map((row) => ({
+    date: (row.day as Date).toISOString().slice(0, 10),
+    sum: Number(row.sum),
+  }))
+}
+
 export interface TimeSeriesEntry {
   metric: string
   time: Date

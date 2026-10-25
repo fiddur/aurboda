@@ -1,5 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
+import { useLocation } from 'preact-iso'
 
+import { type GoalHistoryRange, goalsUrl, parseRange } from '../../components/goal-history-range'
+import { GoalHistoryPanel } from '../../components/GoalHistoryPanel'
 import { GoalProgressBar } from '../../components/GoalProgressBar'
 import { GoalsSettings } from '../../components/GoalsSettings'
 import { fetchGoalsProgress, fetchUserSettings } from '../../state/api'
@@ -10,6 +13,14 @@ import './style.css'
 // eslint-disable-next-line complexity -- handles both metric and trend goal types
 export function Goals() {
   const isLoggedIn = auth.value.token
+  const { query, route } = useLocation()
+  const openGoalId = query.history
+  const range = parseRange(query.range)
+  const embed = query.embed === '1'
+
+  const toggleGoal = (id: string) =>
+    route(goalsUrl({ embed, history: id === openGoalId ? undefined : id, range }))
+  const changeRange = (r: GoalHistoryRange) => route(goalsUrl({ embed, history: openGoalId, range: r }), true)
 
   const { data: userSettings, isLoading: settingsLoading } = useQuery({
     enabled: !!isLoggedIn,
@@ -84,7 +95,26 @@ export function Goals() {
               </div>
             )
           }
-          return <GoalProgressBar key={goal.id} goal={progress} showWindow={!allSameWindow} />
+          const isOpen = goal.id === openGoalId
+          return (
+            <div key={goal.id}>
+              <div
+                class="goal-card"
+                role="button"
+                tabIndex={0}
+                aria-expanded={isOpen}
+                onClick={() => toggleGoal(goal.id)}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter' && e.key !== ' ') return
+                  e.preventDefault()
+                  toggleGoal(goal.id)
+                }}
+              >
+                <GoalProgressBar goal={progress} showWindow={!allSameWindow} />
+              </div>
+              {isOpen && <GoalHistoryPanel goal={goal} range={range} onRangeChange={changeRange} />}
+            </div>
+          )
         })}
       </div>
 
