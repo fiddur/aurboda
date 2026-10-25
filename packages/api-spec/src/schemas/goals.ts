@@ -282,8 +282,8 @@ export const goalHistoryResponseSchema = baseResponseSchema
     bucket: goalHistoryBucketSchema,
     days: z.array(goalHistoryDaySchema).optional().meta({ description: 'Per-day history (bucket=day)' }),
     goal: goalSchema,
-    max: z.number().optional(),
-    min: z.number().optional(),
+    max: z.number().optional().meta({ description: 'Maximum target every day is judged against' }),
+    min: z.number().optional().meta({ description: 'Minimum target every day is judged against' }),
     months: z
       .array(goalHistoryMonthSchema)
       .optional()

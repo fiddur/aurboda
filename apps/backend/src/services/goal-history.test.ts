@@ -20,6 +20,7 @@ vi.mock('../db', () => ({
   getDailyAggregates: vi.fn(),
   getDailyAggregateValues: vi.fn(),
   getHrZoneSecs: vi.fn(),
+  getRawDailySums: vi.fn(),
 }))
 
 vi.mock('./settings', () => ({
@@ -259,23 +260,22 @@ describe('getGoalHistory', () => {
     expect(result?.unit).toBe('count')
   })
 
-  test('steps goal falls back to per-day raw sums when no aggregates exist', async () => {
+  test('steps goal falls back to all-source per-day raw sums when no aggregates exist', async () => {
     vi.mocked(settings.getEffectiveGoals).mockResolvedValue([
       { goal_type: 'metric', id: 'g1', metric: 'steps', min: 10000, window: '1d' },
     ])
     vi.mocked(db.getDailyAggregateValues).mockResolvedValue(new Map())
-    vi.mocked(db.getDailyAggregates).mockResolvedValue([
-      { avg: 4000, date: '2026-02-01', metric: 'steps', sum: 11000 },
-    ])
+    vi.mocked(db.getRawDailySums).mockResolvedValue([{ date: '2026-02-01', sum: 11000 }])
 
     const result = await getGoalHistory('u', 'g1', { bucket: 'day', lookback_days: 1 })
 
-    expect(db.getDailyAggregates).toHaveBeenCalledWith(
+    expect(db.getRawDailySums).toHaveBeenCalledWith(
       'u',
-      ['steps'],
+      'steps',
       new Date('2026-02-01T00:00:00Z'),
       new Date('2026-02-02T12:00:00Z'),
     )
+    expect(db.getDailyAggregates).not.toHaveBeenCalled()
     expect(result?.days?.map((d) => d.value)).toEqual([11000, 0])
   })
 

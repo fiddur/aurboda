@@ -15,7 +15,7 @@ import {
   type TrendGoal,
 } from '@aurboda/api-spec'
 
-import { getDailyAggregates, getDailyAggregateValues, getHrZoneSecs } from '../db/index.ts'
+import { getDailyAggregates, getDailyAggregateValues, getHrZoneSecs, getRawDailySums } from '../db/index.ts'
 import { getCustomMetrics } from './custom-metrics.ts'
 import { getEffectiveGoals, getEffectiveHrZones } from './settings.ts'
 import { getTrend } from './trends.ts'
@@ -117,7 +117,9 @@ export const getDailyMetricSums = async (
 
   if (cumulativeMetrics.includes(metric)) {
     const values = await getDailyAggregateValues(user, metric, start, end)
-    if (values.size > 0) return values
+    // Same last resort as getMetricSum in goals.ts: every source, so the history
+    // agrees with the progress bar when steps come from a non-aggregate source.
+    return values.size > 0 ? values : sumByDay(await getRawDailySums(user, metric, start, end))
   }
 
   return sumByDay(await getDailyAggregates(user, [metric], start, end))
