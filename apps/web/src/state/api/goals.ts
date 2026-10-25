@@ -1,4 +1,9 @@
-import type { GoalProgress, GoalsProgressResponse } from '@aurboda/api-spec'
+import type {
+  GoalHistoryQuery,
+  GoalHistoryResponse,
+  GoalProgress,
+  GoalsProgressResponse,
+} from '@aurboda/api-spec'
 
 import axios from 'axios'
 
@@ -12,4 +17,17 @@ export const fetchGoalsProgress = async (): Promise<GoalProgress[]> => {
   })
 
   return response.data.goals
+}
+
+export const fetchGoalHistory = async (id: string, query: GoalHistoryQuery): Promise<GoalHistoryResponse> => {
+  const { token } = auth.value
+  const response = await axios.get<GoalHistoryResponse>(
+    `${API_URL}/goals/${encodeURIComponent(id)}/history`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+      params: query,
+    },
+  )
+
+  return response.data
 }

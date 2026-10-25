@@ -1,6 +1,8 @@
-import type { RequestHandler } from 'express'
-
 import {
+  type BaseResponse,
+  goalHistoryQuerySchema,
+  type GoalHistoryQuery,
+  type GoalHistoryResponse,
   type GoalsProgressResponse,
   type UpdateSettingsInput,
   updateSettingsInputSchema,
@@ -8,12 +10,13 @@ import {
   type WidgetGoalProgress,
 } from '@aurboda/api-spec'
 
+import { getGoalHistory } from '../services/goal-history.ts'
 import { getGoalsProgress, getWidgetGoalsProgress } from '../services/goals.ts'
 import { getSettingsResponse, validateAndUpdateSettings } from '../services/settings.ts'
-import { type TypedRouter, typedRouter } from '../typed-router.ts'
-import { validateBody } from '../validation.ts'
+import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
+import { validateBody, validateQuery } from '../validation.ts'
 
-export const createSettingsRouter = (authMiddleware: RequestHandler): TypedRouter => {
+export const createSettingsRouter = (authMiddleware: AnyMiddleware): TypedRouter => {
   const router = typedRouter()
   router.get<Record<string, never>, UserSettingsResponse>(
     '/user/settings',
@@ -52,6 +55,17 @@ export const createSettingsRouter = (authMiddleware: RequestHandler): TypedRoute
     async (req, res) => {
       const goals = await getWidgetGoalsProgress(req.user!)
       res.json({ goals, success: true })
+    },
+  )
+
+  router.get<{ id: string }, GoalHistoryResponse | BaseResponse, unknown, GoalHistoryQuery>(
+    '/goals/:id/history',
+    authMiddleware,
+    validateQuery(goalHistoryQuerySchema),
+    async (req, res) => {
+      const result = await getGoalHistory(req.user!, req.params.id, req.query)
+      if (!result) return res.status(404).json({ error: 'Goal not found', success: false })
+      res.json(result)
     },
   )
 

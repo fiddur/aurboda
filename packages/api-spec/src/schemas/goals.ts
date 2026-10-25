@@ -213,3 +213,88 @@ export const widgetGoalsProgressResponseSchema = baseResponseSchema
     goals: z.array(widgetGoalProgressSchema).meta({ description: 'Flat progress for all goals' }),
   })
   .meta({ id: 'WidgetGoalsProgressResponse' })
+
+export const goalHistoryBucketSchema = z
+  .enum(['day', 'month'])
+  .meta({ description: 'History granularity: one entry per day, or per month', id: 'GoalHistoryBucket' })
+
+export type GoalHistoryBucket = z.infer<typeof goalHistoryBucketSchema>
+
+export const goalHistoryQuerySchema = z
+  .object({
+    bucket: goalHistoryBucketSchema.default('day'),
+    lookback_days: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(730)
+      .default(30)
+      .meta({ description: 'Completed days before today to include (today is always included as partial)' }),
+  })
+  .meta({ description: 'Query for a goal history', id: 'GoalHistoryQuery' })
+
+export type GoalHistoryQuery = z.infer<typeof goalHistoryQuerySchema>
+
+export const goalDayStatusSchema = z.enum(['below', 'met', 'over']).meta({
+  description: 'over when above max, met when at or above min (or no min), else below',
+  id: 'GoalDayStatus',
+})
+
+export type GoalDayStatus = z.infer<typeof goalDayStatusSchema>
+
+export const goalHistoryDaySchema = z
+  .object({
+    contribution: z.number().optional().meta({ description: "The day's own sum (metric goals only)" }),
+    date: z.string().meta({ description: 'Day in YYYY-MM-DD (UTC)' }),
+    partial: z.boolean().meta({ description: 'True for today: the day is not over' }),
+    status: goalDayStatusSchema,
+    value: z.number().meta({ description: 'Goal value at the end of the day (rolling window sum or EMA)' }),
+  })
+  .meta({ description: "A goal's value and status on one day", id: 'GoalHistoryDay' })
+
+export type GoalHistoryDay = z.infer<typeof goalHistoryDaySchema>
+
+const dayCountsShape = {
+  days_below: z.number().int().meta({ description: 'Completed days below target' }),
+  days_met: z.number().int().meta({ description: 'Completed days on target' }),
+  days_over: z.number().int().meta({ description: 'Completed days over target' }),
+  days_total: z.number().int().meta({ description: 'Completed days counted' }),
+}
+
+export const goalHistoryMonthSchema = z
+  .object({
+    ...dayCountsShape,
+    month: z.string().meta({ description: 'Month in YYYY-MM (UTC)' }),
+    partial: z.boolean().meta({ description: 'True for the month containing today' }),
+  })
+  .meta({ description: 'Counts of completed days per status in one month', id: 'GoalHistoryMonth' })
+
+export type GoalHistoryMonth = z.infer<typeof goalHistoryMonthSchema>
+
+export const goalHistorySummarySchema = z
+  .object(dayCountsShape)
+  .meta({ description: 'Counts of completed days per status over the whole range', id: 'GoalHistorySummary' })
+
+export type GoalHistorySummary = z.infer<typeof goalHistorySummarySchema>
+
+export const goalHistoryResponseSchema = baseResponseSchema
+  .extend({
+    bucket: goalHistoryBucketSchema,
+    days: z.array(goalHistoryDaySchema).optional().meta({ description: 'Per-day history (bucket=day)' }),
+    goal: goalSchema,
+    max: z.number().optional(),
+    min: z.number().optional(),
+    months: z
+      .array(goalHistoryMonthSchema)
+      .optional()
+      .meta({ description: 'Per-month day counts (bucket=month)' }),
+    summary: goalHistorySummarySchema,
+    unit: z.string().meta({ description: 'Metric storage unit, or the trend display unit' }),
+  })
+  .meta({
+    description:
+      "A goal's value per past day, or per month as counts of on-target days; today is partial and not counted",
+    id: 'GoalHistoryResponse',
+  })
+
+export type GoalHistoryResponse = z.infer<typeof goalHistoryResponseSchema>
