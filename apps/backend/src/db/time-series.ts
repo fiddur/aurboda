@@ -174,7 +174,6 @@ export const getRawDailySum = async (
   return Number(result.rows[0].total)
 }
 
-/** Per-UTC-day sums of a metric across ALL sources; the per-day twin of `getRawDailySum`. */
 export const getRawDailySums = async (
   user: string,
   metric: string,
