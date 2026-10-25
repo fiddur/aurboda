@@ -222,6 +222,40 @@ describe('MCP Server', () => {
     })
   })
 
+  describe('Request body limit - POST /mcp', () => {
+    test('answers a body over 4 MB with 413 and a JSON-RPC error', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          id: 1,
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: { arguments: { content: 'x'.repeat(4_500_000), entity_type: 'time' }, name: 'add_note' },
+        })
+
+      expect(response.status).toBe(413)
+      expect(response.body).toEqual({
+        error: { code: -32600, message: 'Request body exceeds 4 MB' },
+        id: null,
+        jsonrpc: '2.0',
+      })
+    })
+
+    test('accepts a body just under the limit', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ id: 1, jsonrpc: '2.0', method: 'tools/list', params: { pad: 'x'.repeat(3_000_000) } })
+
+      expect(response.status).toBe(200)
+    })
+  })
+
   describe('trimToolCallArguments', () => {
     test('trims the arguments of a single tools/call', () => {
       expect(
@@ -1676,6 +1710,114 @@ describe('MCP Server', () => {
         new Date('2024-01-15T00:00:00Z'),
         new Date('2024-01-15T23:59:59Z'),
       )
+    })
+  })
+
+  describe('Tool catalogue', () => {
+    interface ListedTool {
+      description?: string
+      inputSchema: { properties?: Record<string, Record<string, unknown>>; [key: string]: unknown }
+      name: string
+    }
+
+    const listTools = async (app: express.Express, token: string): Promise<ListedTool[]> => {
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ id: 1, jsonrpc: '2.0', method: 'tools/list' })
+      expect(response.status).toBe(200)
+      return (parseSSEResponse(response.text) as { result: { tools: ListedTool[] } }).result.tools
+    }
+
+    const describeTools = async (app: express.Express, token: string, names: string[]) => {
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          id: 1,
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: { arguments: { names }, name: 'describe_tools' },
+        })
+      expect(response.status).toBe(200)
+      return (parseSSEResponse(response.text) as { result: { content: { text: string }[] } }).result
+        .content[0]?.text
+    }
+
+    test('tools/list is terse', async () => {
+      const app = createTestApp()
+      const tools = await listTools(app, auth.createToken('testuser'))
+      const byName = new Map(tools.map((tool) => [tool.name, tool]))
+
+      expect(byName.has('describe_tools')).toBe(true)
+      for (const tool of tools) {
+        expect(tool.inputSchema).not.toHaveProperty('definitions')
+        expect(tool.inputSchema).not.toHaveProperty('$schema')
+        for (const property of Object.values(tool.inputSchema.properties ?? {})) {
+          expect(property).not.toHaveProperty('properties')
+          expect(property).not.toHaveProperty('$ref')
+          expect(JSON.stringify(property)).not.toContain('"properties"')
+        }
+        expect(tool.description ?? '').not.toContain('\n')
+        expect((tool.description ?? '').length).toBeLessThanOrEqual(200)
+      }
+
+      const property = (tool: string, name: string) => byName.get(tool)?.inputSchema.properties?.[name]
+      expect(property('add_deduction_rule', 'conditions')).toEqual({
+        description: expect.any(String),
+        items: { type: 'object' },
+        type: 'array',
+      })
+      expect(property('add_note', 'entity_type')?.enum).toContain('time')
+      expect(property('query_metrics', 'tz')?.type).toBe('string')
+    })
+
+    test('describe_tools returns the full description and schema, listing unknown names', async () => {
+      const app = createTestApp()
+      const text = await describeTools(app, auth.createToken('testuser'), ['add_deduction_rule', 'nope'])
+      const result = JSON.parse(text) as {
+        tools: {
+          description: string
+          input_schema: {
+            definitions: unknown
+            properties: { conditions: { items: Record<string, unknown> } }
+          }
+          name: string
+        }[]
+        unknown: string[]
+      }
+
+      const [tool] = result.tools
+      expect(result.tools).toHaveLength(1)
+      expect(tool?.name).toBe('add_deduction_rule')
+      expect(tool?.description).toContain('\n')
+      expect(typeof tool?.input_schema.definitions).toBe('object')
+      expect(tool?.input_schema.properties.conditions.items).toHaveProperty('oneOf')
+      expect(result.unknown).toEqual(['nope'])
+    })
+
+    test('describe_tools with only unknown names names them in an error', async () => {
+      const app = createTestApp()
+      const text = await describeTools(app, auth.createToken('testuser'), ['nope', 'nada'])
+
+      expect(text).toBe('Unknown tool(s): nope, nada')
+    })
+
+    test('initialize carries instructions pointing at describe_tools', async () => {
+      const app = createTestApp()
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${auth.createToken('testuser')}`)
+        .send({
+          id: 1,
+          jsonrpc: '2.0',
+          method: 'initialize',
+          params: {
+            capabilities: {},
+            clientInfo: { name: 'test-client', version: '1.0.0' },
+            protocolVersion: '2024-11-05',
+          },
+        })
+      const parsed = parseSSEResponse(response.text) as { result: { instructions?: string } }
+
+      expect(parsed.result.instructions).toContain('describe_tools')
     })
   })
 })

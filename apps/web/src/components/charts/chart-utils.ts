@@ -4,25 +4,30 @@ import { STAGE_LABELS } from './sleep-utils'
 
 export const MAX_RIGHT_AXES = 2
 
-/**
- * How many RIGHT y-axes the chart will draw for these overlays — the same
- * axis-allocation walk `drawOverlays` performs: the first overlay takes the
- * left axis (whether or not it shows one) unless a hypnogram already holds it,
- * later overlays go right, and only `showAxis` overlays up to the cap actually
- * draw an axis there.
- */
-export const countRightAxes = (hasHypnogram: boolean, overlays: { showAxis: boolean }[]): number => {
-  let rightAxisCount = 0
-  let leftUsed = false
-  for (const overlay of overlays) {
-    if (!leftUsed && !hasHypnogram) {
-      leftUsed = true
-    } else if (overlay.showAxis && rightAxisCount < MAX_RIGHT_AXES) {
-      rightAxisCount++
-    }
-  }
-  return rightAxisCount
+export interface AxisAssignment {
+  axisSide: 'left' | 'right'
+  showAxis: boolean
+  offset: number
 }
+
+/**
+ * The first overlay takes the left axis (whether or not it shows one) unless a
+ * hypnogram already holds it; later overlays go right, where only `showAxis`
+ * overlays up to the cap draw an axis, each 45px further out.
+ */
+export const assignAxes = (hasHypnogram: boolean, overlays: { showAxis: boolean }[]): AxisAssignment[] => {
+  let rightAxisCount = 0
+  return overlays.map((overlay, i) => {
+    if (i === 0 && !hasHypnogram) return { axisSide: 'left', offset: 0, showAxis: overlay.showAxis }
+    const showAxis = overlay.showAxis && rightAxisCount < MAX_RIGHT_AXES
+    const assignment: AxisAssignment = { axisSide: 'right', offset: rightAxisCount * 45, showAxis }
+    if (showAxis) rightAxisCount++
+    return assignment
+  })
+}
+
+export const countRightAxes = (hasHypnogram: boolean, overlays: { showAxis: boolean }[]): number =>
+  assignAxes(hasHypnogram, overlays).filter((a) => a.axisSide === 'right' && a.showAxis).length
 
 /** Keep every k-th tick so at least `minPxPerTick` lies between labels — d3's `ticks(n)` is only a hint. */
 export const fitTicks = <T>(ticks: T[], availableWidth: number, minPxPerTick: number): T[] => {

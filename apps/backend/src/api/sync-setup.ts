@@ -19,7 +19,6 @@ import type { AnyMiddleware } from '../typed-router.ts'
 import {
   ackOutboundSync,
   deleteHealthConnectRecords,
-  getAllSyncStates,
   getOutboundSyncHistory,
   getPendingOutboundSync,
   processDailyAggregate,
@@ -45,6 +44,7 @@ import { syncRescueTimeData } from '../integrations/rescuetime/sync.ts'
 import { getStravaSyncStates, resetStravaSyncState, syncStrava } from '../integrations/strava/sync.ts'
 import { triggerCalorieComputation } from '../services/calorie-computation.ts'
 import { getSettings } from '../services/settings.ts'
+import { getVisibleSyncStates } from '../services/sync-states.ts'
 import { createSyncRouter } from '../sync-router.ts'
 
 type OuraClient = ReturnType<typeof ouraClient>
@@ -79,7 +79,7 @@ export const mountSyncRouter = ({
   onTrackWritten,
 }: SyncSetupDeps): void => {
   const transformSyncStates = async (user: string, provider: string) => {
-    const states = await getAllSyncStates(user, provider)
+    const states = await getVisibleSyncStates(user, provider)
     return states.map((s) => ({
       error_message: s.error_message ?? null,
       last_sync_time: s.last_sync_time?.toISOString() ?? null,

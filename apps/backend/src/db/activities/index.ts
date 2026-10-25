@@ -3,6 +3,7 @@ export {
   findMergedGroupForActivity,
   isSupersedable,
   mergeOverlappingActivities,
+  pickOverrideWinner,
 } from './merge.ts'
 
 export { backfillSuperseded, materializeSuperseded } from './supersession.ts'

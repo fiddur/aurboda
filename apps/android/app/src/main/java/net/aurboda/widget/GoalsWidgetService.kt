@@ -167,7 +167,7 @@ class GoalsRemoteViewsFactory(private val context: Context) : RemoteViewsService
 
         return when {
             min != null && max != null -> when {
-                current >= max -> COLOR_OVER_MAX
+                current > max -> COLOR_OVER_MAX
                 current >= min -> COLOR_MET
                 else -> COLOR_BELOW_MIN
             }

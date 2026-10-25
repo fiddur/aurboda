@@ -18,6 +18,8 @@ The REST API and MCP tools should have the same capabilities:
 - REST API follows RESTful conventions (GET for queries, POST for mutations, etc.)
 - Shared business logic lives in `apps/backend/src/services/` and is used by both API and MCP
 - Type definitions and schemas live in `packages/api-spec/`
+- Exception: MCP discovery tools (`describe_tools`) are protocol plumbing with no REST
+  twin; REST's equivalent is the OpenAPI document
 
 When adding new features, implement both the MCP tool and REST API endpoint.
 
@@ -184,12 +186,14 @@ attention. The label is the whole protocol: the routine fires on the PR event, s
 review on the head commit, and removes `reviewing` when done. A PR with neither label
 has either not asked for a review or already got one.
 
-**The merge itself needs the go-ahead, and "merge on approval" is it.** Said once it
-stands for the whole run — the PR in hand and every later one in the same session.
-Do not ask again per PR; that is the confirmation step those words remove. Without
-them, take the PR to `✅ Approved` with every thread resolved and CI green, then stop
-and say it is ready. The rule is spelled out here in full because a cloud session has
-no `~/.claude` to find it in: this file is the whole rulebook wherever the session runs.
+**For a PR into `develop`, "merge on approval" is standing: no go-ahead is needed.**
+`main` holds the released state and a release is its own `develop → main` PR, so a
+merge into `develop` is not a release. Once the four gates in step 10 hold, merge
+without asking — asking per PR is the confirmation step this rule removes. A PR into
+`main` is the one that still needs the go-ahead: take it to `✅ Approved` with every
+thread resolved and CI green, then stop and say it is ready. The rule is spelled out
+here in full because a cloud session has no `~/.claude` to find it in: this file is
+the whole rulebook wherever the session runs.
 
 1. Sync: `git checkout develop && git fetch origin develop && git reset --hard
 origin/develop`. Reset rather than pull, so local `develop` is exactly
@@ -234,8 +238,7 @@ origin develop` and branch from `origin/develop`.
 9. A push does not start a fresh review round by itself: **add `needs-review` again**
    after every push that should be re-read — the label is the request, and putting it
    on once more is how a re-review is asked for. Then repeat from step 7.
-10. **Merge, without asking again**, once "merge on approval" is standing and all
-    four gates hold:
+10. **Merge, without asking**, once all four gates hold:
     - the latest review body starts with `✅ Approved` — the service puts a space
       after the ✅, so match the mark and not the spelling — **and** it is on the
       current head commit (a `✅ Approved` left on an older commit is stale),
@@ -258,8 +261,8 @@ origin develop` and branch from `origin/develop`.
 
 The gate is not optional. "Merge on approval" removes the human confirmation
 step, not the review — never merge an unapproved PR, and never merge with open
-threads or red CI. It removes that step for the run rather than for one PR: having
-been told once, asking again on the next PR is the same failure as never asking.
+threads or red CI. It stands for every PR into `develop`: asking before one is the
+same failure as merging without the review.
 
 **What the platform enforces lives in repository settings, not here.** GitHub will
 not let an author approve their own pull request, and every commit and review here

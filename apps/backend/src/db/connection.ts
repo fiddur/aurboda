@@ -64,7 +64,10 @@ export const _isSchemaError = (error: unknown): boolean => {
   return code === '42P01' || code === '42703' || code === '23502'
 }
 
-const migrationInProgress: Record<string, { forced: boolean; promise: Promise<void> } | undefined> = {}
+const migrationInProgress: Record<
+  string,
+  { done: Promise<void>; forced: boolean; promise: Promise<boolean> } | undefined
+> = {}
 
 /**
  * Run migration for a user, coalescing concurrent calls.
@@ -75,31 +78,38 @@ const migrationInProgress: Record<string, { forced: boolean; promise: Promise<vo
  * fingerprint has to be treated as a lie.
  *
  * Coalescing accounts for that difference. A forced caller joins an in-flight
- * forced run, but must NOT join an in-flight gated one: the gated run may
- * decide to skip on a fingerprint the forced caller already knows is wrong,
- * and the statement waiting on it would then fail anyway. So it waits for the
- * gated run to settle and sweeps for real afterwards.
+ * forced run, and an in-flight gated one only when that run turns out to have
+ * swept: a gated run that skipped on the fingerprint repaired nothing, so the
+ * forced caller waits for it to settle and sweeps itself when it skipped or
+ * failed. A `migrate` that resolves to nothing counts as having swept.
  *
  * @internal Exported for testing — pass a custom migrate function in tests.
  */
 export const _runMigrationOnce = (
   user: string,
-  migrate: (user: string) => Promise<void> = (u) => migrateSchema(u, { force: true }),
+  migrate: (user: string) => Promise<boolean | void> = (u) => migrateSchema(u, { force: true }),
   forced = true,
 ): Promise<void> => {
   const existing = migrationInProgress[user]
-  if (existing && (existing.forced || !forced)) return existing.promise
+  if (existing && (existing.forced || !forced)) return existing.done
 
+  const run = async () => (await migrate(user)) ?? true
   // Only the chained case defers: with nothing in flight, `migrate` is invoked
   // synchronously, as callers of this function have always been able to assume.
-  const swept = existing ? existing.promise.catch(() => {}).then(() => migrate(user)) : migrate(user)
-  const promise: Promise<void> = swept.finally(() => {
+  const swept = existing
+    ? existing.promise.then(
+        (didSweep) => didSweep || run(),
+        () => run(),
+      )
+    : run()
+  const promise: Promise<boolean> = swept.finally(() => {
     // Only clear our own entry: a forced run chained behind this one has
     // already replaced it.
     if (migrationInProgress[user]?.promise === promise) delete migrationInProgress[user]
   })
-  migrationInProgress[user] = { forced, promise }
-  return promise
+  const done = promise.then(() => {})
+  migrationInProgress[user] = { done, forced, promise }
+  return done
 }
 
 /**
@@ -741,14 +751,14 @@ export const recordSchemaFingerprint = async (db: Queryable, fingerprint: string
  * fingerprint is wrong.
  */
 // eslint-disable-next-line complexity -- migration functions inherently have many conditional branches
-export const migrateSchema = async (user: string, opts?: { force?: boolean }) => {
+export const migrateSchema = async (user: string, opts?: { force?: boolean }): Promise<boolean> => {
   const db = await getDbForUser(user)
   const database = `aurboda_${user}`
   const fingerprint = schemaFingerprint()
 
   if (!opts?.force && (await schemaUpToDate(db, fingerprint))) {
     console.info(`Schema for ${user} already at ${fingerprint}, skipping migration`)
-    return
+    return false
   }
 
   const existingTables = await query(
@@ -1675,6 +1685,7 @@ export const migrateSchema = async (user: string, opts?: { force?: boolean }) =>
 
   // Last, and only on success: a sweep that threw must run again next time.
   await recordSchemaFingerprint(db, fingerprint)
+  return true
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>

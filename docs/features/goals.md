@@ -46,6 +46,28 @@ The page at `/goals` shows a progress bar for each configured goal. Each display
 
 The page auto-refreshes every 60 seconds.
 
+## History
+
+Click (or tap, or focus and press Enter) a goal on the Goals page to open its history under it; click it again to close. The open goal and range live in the URL (`/goals?history=<id>&range=90d`), so the view can be linked and survives a reload.
+
+A range switch picks how far back to look:
+
+| Range       | Shows                                       |
+| ----------- | ------------------------------------------- |
+| **30 days** | One bar (or point) per day                  |
+| **90 days** | One bar (or point) per day                  |
+| **1 year**  | One bar per month: the days on target in it |
+
+- **A day's value** is the goal as it stood at the end of that day: for a metric goal, the sum over the goal's window ending that day (a `7d` goal's bar for 12 October covers 6-12 October); for a trend goal, the EMA value for that day. Days are UTC days, like the progress bar. Time-based windows (`h`, `m`, `s`) are rounded up to whole days, so a `36h` goal looks back 2 days.
+- **On target** means at or above the minimum (if there is one) and not above the maximum (if there is one); exactly the maximum is still on target. Bars are gray below target, green on target, red over. A green band marks the target range, with dashed lines at the min and max.
+- **The summary** reads e.g. "On target 12 of 30 days · 3 over", and for the daily ranges adds today's status so far.
+- **Today** is drawn faded (or as a hollow point for trend goals) and is not counted in the summary or the monthly bars, because the day is not over.
+- **Monthly bars** show the days on target in green against a gray bar of all days counted that month. The current month is faded because it is still running.
+- **Trend goals** draw the EMA as a line, with a point per day coloured by status.
+- **The current target applies to every day.** Changing a goal's min or max re-colours its whole history; past targets are not kept.
+
+The same data is available over the API as `GET /goals/{id}/history?bucket=day|month&lookback_days=N` (`lookback_days` completed days before today, 1-730, default 30; today is always included as partial) and through the MCP tool `get_goal_history`.
+
 ## "Losing Tomorrow"
 
 This is a key concept. Since goals use a rolling window, the oldest day's data drops off each day. "Losing tomorrow" tells you how much will be lost.

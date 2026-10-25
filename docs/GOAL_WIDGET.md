@@ -345,6 +345,10 @@ Existing tool, extended to accept `goals` parameter.
 
 Returns current progress for all goals with losing-tomorrow calculations.
 
+### get_goal_history
+
+Returns one goal's value and on-target status per past UTC day, or per month as counts of on-target days (`bucket=month`). Today is partial and not counted. REST twin: `GET /goals/{id}/history`. See [Goals: History](features/goals.md#history).
+
 ## Implementation Notes
 
 ### Metric Units

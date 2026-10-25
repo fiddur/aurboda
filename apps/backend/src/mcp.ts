@@ -51,6 +51,7 @@ import { registerSensitivityTools } from './mcp/sensitivity-tools.ts'
 import { registerSettingsTools } from './mcp/settings-tools.ts'
 import { registerSharedDashboardTools } from './mcp/shared-dashboard-tools.ts'
 import { registerSyncTools } from './mcp/sync-tools.ts'
+import { installToolCatalogue } from './mcp/tool-catalogue.ts'
 import { registerTrainingLoadTools } from './mcp/training-load-tools.ts'
 import { registerTrendTools } from './mcp/trend-tools.ts'
 import { createDefaultEngineDeps } from './services/deduction-deps.ts'
@@ -71,13 +72,24 @@ const trimToolCallMessage = (message: unknown): unknown => {
 export const trimToolCallArguments = (body: unknown): unknown =>
   Array.isArray(body) ? body.map(trimToolCallMessage) : trimToolCallMessage(body)
 
-const jsonRpcParseError: ErrorRequestHandler = (err, _req, res, next) => {
-  if (!(err instanceof SyntaxError)) {
-    next(err)
+const isEntityTooLarge = (err: unknown): boolean => isRecord(err) && err.type === 'entity.too.large'
+
+const jsonRpcBodyError: ErrorRequestHandler = (err, _req, res, next) => {
+  if (err instanceof SyntaxError) {
+    res.status(400).json({ error: { code: -32700, message: 'Parse error' }, id: null, jsonrpc: '2.0' })
     return
   }
-  res.status(400).json({ error: { code: -32700, message: 'Parse error' }, id: null, jsonrpc: '2.0' })
+  if (isEntityTooLarge(err)) {
+    res
+      .status(413)
+      .json({ error: { code: -32600, message: 'Request body exceeds 4 MB' }, id: null, jsonrpc: '2.0' })
+    return
+  }
+  next(err)
 }
+
+const SERVER_INSTRUCTIONS =
+  'The tool list is abbreviated: each tool shows its first sentence and its top-level parameters only. Call describe_tools with one or more tool names for the full description and complete parameter schema (nested objects, enums, examples) before using a tool whose parameters are objects or arrays.'
 
 interface McpDeps {
   apiBaseUrl?: string
@@ -104,10 +116,13 @@ interface McpDeps {
 }
 
 const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
-  const server = new McpServer({
-    name: 'aurboda',
-    version: '1.0.0',
-  })
+  const server = new McpServer(
+    {
+      name: 'aurboda',
+      version: '1.0.0',
+    },
+    { instructions: SERVER_INSTRUCTIONS },
+  )
 
   const engineDeps = deps.engineDeps ?? createDefaultEngineDeps()
 
@@ -161,6 +176,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   })
   registerScreentimeCategoryTools(server, user)
   registerDebugTools(server, user)
+  installToolCatalogue(server)
 
   return server
 }
@@ -188,7 +204,7 @@ export function createMcpRouter(auth: Auth, deps: McpDeps = {}): Router {
     }
   }
 
-  router.post('/', json({ limit: '10mb' }), async (req: Request, res: Response) => {
+  router.post('/', json({ limit: '4mb' }), async (req: Request, res: Response) => {
     const user = await getAuthenticatedUser(req)
     if (!user) {
       res.status(401).json({ error: 'Unauthorized' })
@@ -209,7 +225,7 @@ export function createMcpRouter(auth: Auth, deps: McpDeps = {}): Router {
     await server.close()
   })
 
-  router.use(jsonRpcParseError)
+  router.use(jsonRpcBodyError)
 
   // GET /mcp - Not used in stateless mode (no SSE notifications)
   router.get('/', (_req: Request, res: Response) => {

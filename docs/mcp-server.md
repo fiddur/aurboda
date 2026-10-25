@@ -4,7 +4,7 @@ Aurboda includes an MCP (Model Context Protocol) server that enables AI assistan
 
 ## Overview
 
-The MCP server exposes 60+ tools covering all of Aurboda's functionality. Tool descriptions, parameters, and schemas are self-documented via the MCP protocol itself -- AI assistants discover available tools automatically.
+The MCP server exposes 180+ tools covering all of Aurboda's functionality. Tool descriptions, parameters, and schemas are self-documented via the MCP protocol itself -- AI assistants discover available tools automatically.
 
 Key areas covered by MCP tools:
 
@@ -15,6 +15,14 @@ Key areas covered by MCP tools:
 - **Screentime** -- manage category rules and recategorize
 - **Sync** -- trigger data syncs from Garmin, Oura, Last.fm, RescueTime, calendars
 - **Settings** -- user preferences, HR zones, training load configuration
+
+### Tool discovery
+
+The `tools/list` answer is abbreviated to keep it small: each tool shows the first sentence of its description and its top-level parameters only, each with its type, enum, format and a one-line description. Nested objects and arrays appear as `object` or `array` (with the item type), without their inner fields. `describe_tools` returns the full description and the complete JSON input schema -- nested objects, enums, formats, examples -- for up to 20 tool names, and lists any names it does not know under `unknown`. The server's `initialize` instructions tell the assistant to call it before using a tool whose parameters are objects or arrays. It is the one MCP tool without a REST twin: it is protocol plumbing, and REST's equivalent is the OpenAPI document.
+
+```json
+{ "name": "describe_tools", "arguments": { "names": ["add_deduction_rule", "query_chart_data"] } }
+```
 
 ### Sleep tools
 
@@ -83,6 +91,8 @@ The MCP server is available at `/mcp` and uses the Streamable HTTP transport:
 - `POST /mcp` - Handle JSON-RPC requests
 - `GET /mcp` - SSE stream for server notifications
 - `DELETE /mcp` - End session
+
+Request bodies are limited to 4 MB; a larger body gets HTTP 413 with a JSON-RPC `-32600` error.
 
 ## Authentication
 

@@ -1,6 +1,8 @@
-import { setTagMappingBodySchema, updateSettingsInputSchema } from '@aurboda/api-spec'
+import { goalHistoryQuerySchema, setTagMappingBodySchema, updateSettingsInputSchema } from '@aurboda/api-spec'
+import { z } from 'zod'
 
 import { getActivityTypeNames } from '../db/index.ts'
+import { getGoalHistory } from '../services/goal-history.ts'
 import { getGoalsProgress } from '../services/goals.ts'
 import {
   getSettingsResponse,
@@ -8,7 +10,7 @@ import {
   setTagMapping,
   validateAndUpdateSettings,
 } from '../services/settings.ts'
-import { jsonResponse, type McpServer } from './helpers.ts'
+import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
 export const registerSettingsTools = (server: McpServer, user: string) => {
   server.tool(
@@ -63,6 +65,16 @@ export const registerSettingsTools = (server: McpServer, user: string) => {
     async () => {
       const goals = await getGoalsProgress(user)
       return jsonResponse({ goals, success: true })
+    },
+  )
+
+  server.tool(
+    'get_goal_history',
+    "Get a goal's value and on-target status (below/met/over) per past UTC day, or with bucket=month the count of on-target days per month. A day's value is the goal's rolling window (metric goals) or EMA (trend goals) at the end of that day, judged against the goal's current min/max. Today is partial and not counted in the summary or months.",
+    { id: z.string().uuid(), ...goalHistoryQuerySchema.shape },
+    async ({ id, ...query }) => {
+      const result = await getGoalHistory(user, id, query)
+      return result ? jsonResponse(result) : errorResponse('Goal not found')
     },
   )
 }

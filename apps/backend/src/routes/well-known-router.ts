@@ -1,5 +1,6 @@
 /**
- * `/.well-known/*` static metadata served by the backend.
+ * `/.well-known/*` static metadata served by the backend, and the QuantPub
+ * JSON-LD `@context` document at `/ns/quantpub`.
  *
  * - `assetlinks.json` (Digital Asset Links) lets the Android Credential
  *   Manager share passkeys registered against this backend's domain with
@@ -11,7 +12,11 @@ import type { WellKnownAurboda, WellKnownQuantpub } from '@aurboda/api-spec'
 
 import type { TypedRouter } from '../typed-router.ts'
 
-import { quantContextDocument, QUANTPUB_VERSION } from '../services/activitypub/quant-extension.ts'
+import {
+  QUANTPUB_VERSION,
+  type QuantpubContextDocument,
+  quantContextDocument,
+} from '../services/activitypub/quant-extension.ts'
 import { typedRouter } from '../typed-router.ts'
 
 export interface WellKnownConfig {
@@ -82,7 +87,7 @@ export const createWellKnownRouter = (config: WellKnownConfig): TypedRouter => {
 
   // The published QuantPub JSON-LD @context document (FEP §1) — the canonical
   // form of the inline `quant:` term definitions every delivered object embeds.
-  router.get<Record<string, never>, Record<string, unknown>>('/ns/quantpub', (_req, res) => {
+  router.get<Record<string, never>, QuantpubContextDocument>('/ns/quantpub', (_req, res) => {
     res.setHeader('Cache-Control', 'public, max-age=3600')
     // res.json only defaults the Content-Type when none is set, so this sticks.
     res.setHeader('Content-Type', 'application/ld+json')

@@ -559,8 +559,9 @@ only when there is something to do (#1125).
 - **On a schema error.** `query(user, …)` catches PostgreSQL schema errors
   (missing table or column, and NOT NULL violations from a column that has
   become nullable), runs a **forced** full sweep once per user via
-  `_runMigrationOnce`, and retries the statement. This is the correctness
-  safety net.
+  `_runMigrationOnce`, and retries the statement. A forced caller that finds a
+  gated sweep already in flight rides it, and sweeps itself only when that run
+  skipped on the fingerprint or failed. This is the correctness safety net.
 - **Never at login.** `/login` only authenticates. It used to sweep the schema
   on every login, which grew with the data until it exceeded the reverse
   proxy's timeout and every login failed as "Unauthorized" with nothing in the

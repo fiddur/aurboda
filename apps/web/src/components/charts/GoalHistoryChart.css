@@ -1,0 +1,35 @@
+.goal-history-chart {
+  position: relative;
+  width: 100%;
+}
+
+.goal-history-chart svg {
+  display: block;
+}
+
+.goal-history-tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.85);
+  color: white;
+  padding: 0.375rem 0.625rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  z-index: 10;
+  display: none;
+}
+
+.goal-history-chart-empty {
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9ca3af;
+}
+
+@media (prefers-color-scheme: dark) {
+  .goal-history-tooltip {
+    background: rgba(17, 24, 39, 0.95);
+  }
+}

@@ -9,6 +9,7 @@ import {
   getDistinctMetrics,
   getLatestMetricValuesMulti,
   getMetricMeansForWindows,
+  getRawDailySums,
   getTimeSeries,
   getTimeSeriesBucketed,
   getTimeSeriesEntriesMultiMetric,
@@ -244,6 +245,41 @@ describe('Time Series Integration Tests', () => {
       )
 
       expect(data).toHaveLength(2)
+    })
+  })
+
+  describe('getRawDailySums', () => {
+    test('sums every source per UTC day, skipping deleted points and days outside the range', async () => {
+      const user = getTestUser()
+
+      await insertTimeSeries(user, [
+        { metric: 'steps', source: 'garmin', time: new Date('2024-01-15T08:00:00Z'), value: 4000 },
+        { metric: 'steps', source: 'oura', time: new Date('2024-01-15T23:30:00Z'), value: 1000 },
+        { metric: 'steps', source: 'garmin', time: new Date('2024-01-16T09:00:00Z'), value: 7000 },
+        { metric: 'steps', source: 'garmin', time: new Date('2024-01-17T09:00:00Z'), value: 9000 },
+        { metric: 'distance', source: 'garmin', time: new Date('2024-01-15T09:00:00Z'), value: 3000 },
+      ])
+      await query(user, `UPDATE time_series SET deleted_at = NOW() WHERE metric = 'steps' AND value = 7000`)
+
+      const sums = await getRawDailySums(
+        user,
+        'steps',
+        new Date('2024-01-15T00:00:00Z'),
+        new Date('2024-01-16T23:59:59.999Z'),
+      )
+
+      expect(sums).toEqual([{ date: '2024-01-15', sum: 5000 }])
+    })
+
+    test('returns an empty list when the metric has no data', async () => {
+      const sums = await getRawDailySums(
+        getTestUser(),
+        'steps',
+        new Date('2024-01-15T00:00:00Z'),
+        new Date('2024-01-16T00:00:00Z'),
+      )
+
+      expect(sums).toEqual([])
     })
   })
 

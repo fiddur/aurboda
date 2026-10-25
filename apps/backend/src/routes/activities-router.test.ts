@@ -2,17 +2,21 @@ import express from 'express'
 import supertest from 'supertest'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
+import type * as MergeModule from '../db/activities/merge.ts'
+
 import { createActivitiesRouter } from './activities-router.ts'
 
 // Mock the DB barrel and the queries barrel the router pulls from. Only the
 // functions the GET /activities/:id plain path calls need real behaviour.
-vi.mock('../db/index.ts', () => ({
+vi.mock('../db/index.ts', async () => ({
   getActivityById: vi.fn(),
   getActivityTrack: vi.fn(),
   getDeductionRule: vi.fn().mockResolvedValue(null),
   getOverlappingActivities: vi.fn().mockResolvedValue([]),
   getAllActivityTypeNames: vi.fn().mockResolvedValue(['running']),
   getRouteForActivity: vi.fn().mockResolvedValue(null),
+  pickOverrideWinner: (await vi.importActual<typeof MergeModule>('../db/activities/merge.ts'))
+    .pickOverrideWinner,
 }))
 
 vi.mock('../services/queries/index.ts', () => ({
@@ -178,6 +182,108 @@ describe('GET /activities/:id', () => {
 
       expect(res.body).not.toHaveProperty('referenced_rules')
     })
+  })
+})
+
+describe('GET /activities/merged:id with an aurboda override', () => {
+  const GARMIN_ID = '1f5c2e8a-3b4d-4e6f-9a0b-1c2d3e4f5a6b'
+  const OVERRIDE_ID = '7a8b9c0d-1e2f-4a3b-8c5d-6e7f8a9b0c1d'
+
+  const row = (overrides: Record<string, unknown>) =>
+    activityRow(overrides) as NonNullable<Awaited<ReturnType<typeof db.getActivityById>>>
+
+  const garminRow = row({
+    activity_type: 'yoga',
+    data: { garmin_field: 1, shared: 'garmin' },
+    end_time: new Date('2026-06-08T10:30:00Z'),
+    id: GARMIN_ID,
+    title: 'Yoga',
+  })
+  const overrideRow = (overrides: Record<string, unknown> = {}) =>
+    row({
+      activity_type: 'yoga',
+      data: { shared: 'override' },
+      end_time: new Date('2026-06-08T10:20:00Z'),
+      id: OVERRIDE_ID,
+      override_target_ids: [GARMIN_ID],
+      source: 'aurboda',
+      start_time: new Date('2026-06-08T10:05:00Z'),
+      title: 'Hand typed',
+      ...overrides,
+    })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(queries.computeActivityDetailMetrics).mockResolvedValue(
+      {} as Awaited<ReturnType<typeof queries.computeActivityDetailMetrics>>,
+    )
+    vi.mocked(queries.getCommentsMap).mockResolvedValue(
+      new Map() as Awaited<ReturnType<typeof queries.getCommentsMap>>,
+    )
+    vi.mocked(queries.dedupeCommentsForIds).mockReturnValue([])
+  })
+
+  test('reports the override’s own title, span and data when the override is requested', async () => {
+    const ov = overrideRow()
+    vi.mocked(db.getActivityById).mockResolvedValue(ov)
+    vi.mocked(db.getOverlappingActivities).mockResolvedValue([garminRow, ov])
+
+    const res = await supertest(buildApp()).get(`/activities/merged:${OVERRIDE_ID}`)
+
+    expect(res.status).toBe(200)
+    expect(res.body.data.title).toBe('Hand typed')
+    expect(res.body.data.merged_start_time).toBe('2026-06-08T10:05:00.000Z')
+    expect(res.body.data.merged_end_time).toBe('2026-06-08T10:20:00.000Z')
+    expect(res.body.data.data).toEqual({ shared: 'override' })
+    expect(res.body.data.source_records.map((r: { id: string }) => r.id)).toEqual([GARMIN_ID, OVERRIDE_ID])
+    expect(queries.computeActivityDetailMetrics).toHaveBeenLastCalledWith('tester', {
+      data: { shared: 'override' },
+      end_time: new Date('2026-06-08T10:20:00Z'),
+      start_time: new Date('2026-06-08T10:05:00Z'),
+    })
+  })
+
+  test('reports the override’s title when the synced row it overrides is requested', async () => {
+    const ov = overrideRow()
+    vi.mocked(db.getActivityById).mockResolvedValue(garminRow)
+    vi.mocked(db.getOverlappingActivities).mockResolvedValue([garminRow, ov])
+
+    const res = await supertest(buildApp()).get(`/activities/merged:${GARMIN_ID}`)
+
+    expect(res.status).toBe(200)
+    expect(res.body.data.title).toBe('Hand typed')
+    expect(res.body.data.id).toBe(GARMIN_ID)
+  })
+
+  test('keeps an override’s empty title — the source title does not fill in', async () => {
+    const ov = overrideRow({ title: '' })
+    vi.mocked(db.getActivityById).mockResolvedValue(ov)
+    vi.mocked(db.getOverlappingActivities).mockResolvedValue([garminRow, ov])
+
+    const res = await supertest(buildApp()).get(`/activities/merged:${OVERRIDE_ID}`)
+
+    expect(res.status).toBe(200)
+    expect(res.body.data.title).toBe('')
+  })
+
+  test('still blends a group without an override', async () => {
+    const healthConnect = row({
+      activity_type: 'yoga',
+      end_time: new Date('2026-06-08T10:35:00Z'),
+      id: OVERRIDE_ID,
+      source: 'health_connect',
+      start_time: new Date('2026-06-08T09:55:00Z'),
+      title: 'Health Connect yoga',
+    })
+    vi.mocked(db.getActivityById).mockResolvedValue(garminRow)
+    vi.mocked(db.getOverlappingActivities).mockResolvedValue([garminRow, healthConnect])
+
+    const res = await supertest(buildApp()).get(`/activities/merged:${GARMIN_ID}`)
+
+    expect(res.status).toBe(200)
+    expect(res.body.data.title).toBe('Health Connect yoga')
+    expect(res.body.data.merged_start_time).toBe('2026-06-08T09:55:00.000Z')
+    expect(res.body.data.merged_end_time).toBe('2026-06-08T10:35:00.000Z')
   })
 })
 

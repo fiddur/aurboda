@@ -1,6 +1,13 @@
 import { describe, expect, test } from 'vitest'
 
-import { chartRightMargin, countRightAxes, findNearest, findStageAtTime, fitTicks } from './chart-utils'
+import {
+  assignAxes,
+  chartRightMargin,
+  countRightAxes,
+  findNearest,
+  findStageAtTime,
+  fitTicks,
+} from './chart-utils'
 
 describe('findNearest', () => {
   test('returns undefined for empty data', () => {
@@ -112,8 +119,6 @@ describe('countRightAxes / chartRightMargin', () => {
   })
 
   test('an axis-less overlay claims the left slot but never a right one', () => {
-    // Mirrors drawOverlays: the first overlay marks the left axis used even
-    // when it draws no axis, so the next one goes right.
     expect(countRightAxes(false, [overlay(false), overlay(true)])).toBe(1)
     expect(countRightAxes(false, [overlay(true), overlay(false)])).toBe(0)
   })
@@ -121,6 +126,56 @@ describe('countRightAxes / chartRightMargin', () => {
   test('margin grows 45px per axis plus label headroom', () => {
     expect(chartRightMargin(1)).toBe(65)
     expect(chartRightMargin(2)).toBe(110)
+  })
+})
+
+describe('assignAxes', () => {
+  const overlay = (showAxis: boolean) => ({ showAxis })
+
+  test('a single overlay takes the left axis', () => {
+    expect(assignAxes(false, [overlay(true)])).toEqual([{ axisSide: 'left', offset: 0, showAxis: true }])
+  })
+
+  test('with a hypnogram, the first overlay goes right at offset 0', () => {
+    expect(assignAxes(true, [overlay(true)])).toEqual([{ axisSide: 'right', offset: 0, showAxis: true }])
+  })
+
+  test('right axes step out 45px each, and overlays past the cap draw no axis', () => {
+    expect(assignAxes(false, [overlay(true), overlay(true), overlay(true), overlay(true)])).toEqual([
+      { axisSide: 'left', offset: 0, showAxis: true },
+      { axisSide: 'right', offset: 0, showAxis: true },
+      { axisSide: 'right', offset: 45, showAxis: true },
+      { axisSide: 'right', offset: 90, showAxis: false },
+    ])
+  })
+
+  test('an axis-less first overlay claims the left slot', () => {
+    expect(assignAxes(false, [overlay(false), overlay(true)])).toEqual([
+      { axisSide: 'left', offset: 0, showAxis: false },
+      { axisSide: 'right', offset: 0, showAxis: true },
+    ])
+  })
+
+  test('an axis-less right overlay neither draws nor advances the offset', () => {
+    expect(assignAxes(false, [overlay(true), overlay(false), overlay(true)])).toEqual([
+      { axisSide: 'left', offset: 0, showAxis: true },
+      { axisSide: 'right', offset: 0, showAxis: false },
+      { axisSide: 'right', offset: 0, showAxis: true },
+    ])
+  })
+
+  test('countRightAxes counts the right entries that show an axis', () => {
+    const inputs: [boolean, { showAxis: boolean }[]][] = [
+      [false, [overlay(true), overlay(false), overlay(true)]],
+      [true, [overlay(true), overlay(true), overlay(true)]],
+      [false, [overlay(false), overlay(true), overlay(true), overlay(true)]],
+    ]
+    for (const [hasHypnogram, overlays] of inputs) {
+      const drawnRight = assignAxes(hasHypnogram, overlays).filter(
+        (a) => a.axisSide === 'right' && a.showAxis,
+      )
+      expect(countRightAxes(hasHypnogram, overlays)).toBe(drawnRight.length)
+    }
   })
 })
 

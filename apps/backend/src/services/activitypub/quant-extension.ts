@@ -43,17 +43,27 @@ export const QUANTPUB_VERSION = '0.2'
  * their nested `key`/`value`/`unit` and `metric`/`mediaType`/`href` objects
  * verbatim instead of expanding (and losing) unmapped keys.
  */
-export const quantContextEntry: Record<string, unknown> = {
-  quant: QUANT_NS,
-  'quant:metrics': { '@type': '@json' },
-  'quant:series': { '@type': '@json' },
+export interface QuantContextEntry {
+  readonly quant: string
+  readonly 'quant:metrics': { readonly '@type': '@json' }
+  readonly 'quant:series': { readonly '@type': '@json' }
 }
+
+export const quantContextEntry: QuantContextEntry = Object.freeze({
+  quant: QUANT_NS,
+  'quant:metrics': Object.freeze({ '@type': '@json' as const }),
+  'quant:series': Object.freeze({ '@type': '@json' as const }),
+})
 
 /**
  * The published JSON-LD `@context` document (served at `/ns/quantpub`), the
  * canonical form of the inline entry every delivered object also embeds.
  */
-export const quantContextDocument: Record<string, unknown> = { '@context': quantContextEntry }
+export interface QuantpubContextDocument {
+  readonly '@context': QuantContextEntry
+}
+
+export const quantContextDocument: QuantpubContextDocument = Object.freeze({ '@context': quantContextEntry })
 
 export interface QuantExerciseInput {
   /** Public API base, e.g. `https://aurboda.net/api` (structured + series URLs hang off it). */
@@ -127,7 +137,9 @@ const withQuantContext = (context: unknown): unknown => {
   if (context === undefined || context === null) {
     return ['https://www.w3.org/ns/activitystreams', quantContextEntry]
   }
-  return Array.isArray(context) ? [...context, quantContextEntry] : [context, quantContextEntry]
+  if (context === quantContextEntry) return context
+  if (!Array.isArray(context)) return [context, quantContextEntry]
+  return context.includes(quantContextEntry) ? context : [...context, quantContextEntry]
 }
 
 /**

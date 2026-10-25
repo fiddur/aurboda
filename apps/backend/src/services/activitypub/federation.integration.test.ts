@@ -280,10 +280,12 @@ describe('Feed federation actor + WebFinger', () => {
     }
     const items = page.orderedItems ?? []
     expect(items).toHaveLength(1)
-    const create = items[0] as { type: string; object: string | { id: string; type: string } }
+    const create = items[0] as { type: string; object: { id: string; type: string | string[] } }
     expect(create.type).toBe('Create')
-    const object = typeof create.object === 'string' ? { id: create.object, type: 'Note' } : create.object
-    expect(object.id).toBe(`${ORIGIN}/users/${user}/feed/${post.id}`)
+    expect(create.object.id).toBe(`${ORIGIN}/users/${user}/feed/${post.id}`)
+    // The one path where the wrapped object is not the outermost document:
+    // the dual type must survive the collection page's serialization.
+    expect(create.object.type).toEqual(['Note', 'quant:Exercise'])
   })
 
   test('serves an individual public post object as a Note at its canonical id', async () => {
