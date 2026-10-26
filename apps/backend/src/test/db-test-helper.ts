@@ -1,49 +1,73 @@
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { randomBytes } from 'node:crypto'
 import { Client } from 'pg'
+import { inject } from 'vitest'
 
 import { _setDbForUser } from '../db/index.ts'
 import { createRolePool, type UserDb } from '../db/pool.ts'
-import { createTableStatements, tableCreationOrder } from '../schema.ts'
 
-let container: StartedPostgreSqlContainer | null = null
+export interface TestDatabase {
+  uri: string
+  drop: () => Promise<void>
+}
+
+let database: TestDatabase | null = null
 let client: Client | null = null
 let pool: UserDb | null = null
 
 const TEST_USER = 'testuser'
 
+const adminQuery = async (adminUri: string, sql: string): Promise<void> => {
+  const admin = new Client({ connectionString: adminUri })
+  await admin.connect()
+  try {
+    await admin.query(sql)
+  } finally {
+    await admin.end()
+  }
+}
+
+/**
+ * A fresh database on the run's shared server, copied from the schema template that
+ * `global-setup.ts` prepared.
+ */
+export const createTestDatabase = async (): Promise<TestDatabase> => {
+  const adminUri = inject('pgAdminUri')
+  const template = inject('pgTemplateDb')
+  if (!adminUri || !template) {
+    throw new Error('Test database not available: this run started without the integration global setup')
+  }
+
+  const name = `t_${randomBytes(6).toString('hex')}`
+  await adminQuery(adminUri, `CREATE DATABASE "${name}" TEMPLATE "${template}"`)
+  const uri = new URL(adminUri)
+  uri.pathname = `/${name}`
+
+  return {
+    // A lingering connection makes the drop fail; the container goes at the end of the run anyway.
+    drop: () => adminQuery(adminUri, `DROP DATABASE IF EXISTS "${name}"`).catch(() => {}),
+    uri: uri.toString(),
+  }
+}
+
 /**
  * Call this in beforeAll().
  */
 export const startTestDb = async (): Promise<void> => {
-  // Use PostGIS image to match production
-  container = await new PostgreSqlContainer('postgis/postgis:16-3.4-alpine')
-    .withDatabase('test_db')
-    .withUsername('test_user')
-    .withPassword('test_pass')
-    .start()
+  database = await createTestDatabase()
 
-  client = new Client({
-    connectionString: container.getConnectionUri(),
-  })
+  client = new Client({ connectionString: database.uri })
   await client.connect()
-
-  for (const tableName of tableCreationOrder) {
-    const statement = createTableStatements[tableName]
-    if (statement) {
-      await client.query(statement)
-    }
-  }
 
   // The user's queries go through a real pool, as in production, so parallel
   // statements and transactions run on separate connections.
-  pool = createRolePool({ connectionString: container.getConnectionUri(), max: 5 })
+  pool = createRolePool({ connectionString: database.uri, max: 5 })
   _setDbForUser(TEST_USER, pool)
 }
 
-/** Connection URI of the test container, for tests that open their own connections. */
+/** Connection URI of this file's test database, for tests that open their own connections. */
 export const getTestConnectionUri = (): string => {
-  if (!container) throw new Error('Test DB not started — call startTestDb() first.')
-  return container.getConnectionUri()
+  if (!database) throw new Error('Test DB not started — call startTestDb() first.')
+  return database.uri
 }
 
 /**
@@ -67,9 +91,9 @@ export const stopTestDb = async (): Promise<void> => {
     await client.end()
     client = null
   }
-  if (container) {
-    await container.stop()
-    container = null
+  if (database) {
+    await database.drop()
+    database = null
   }
 }
 

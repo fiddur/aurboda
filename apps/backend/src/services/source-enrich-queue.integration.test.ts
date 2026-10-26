@@ -1,9 +1,9 @@
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
 import * as PgBossModule from 'pg-boss'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 
 import type { PgBoss } from './pg-boss.ts'
 
+import { createTestDatabase, type TestDatabase } from '../test/db-test-helper.ts'
 import {
   createSourceEnrichQueue,
   type SourceEnrichDeps,
@@ -11,7 +11,7 @@ import {
   SOURCE_ENRICH_QUEUE,
 } from './source-enrich-queue.ts'
 
-const CONTAINER_TIMEOUT = 120_000
+const SETUP_TIMEOUT = 120_000
 
 const deps: SourceEnrichDeps = {
   enrichGravl: null,
@@ -21,24 +21,24 @@ const deps: SourceEnrichDeps = {
 }
 
 describe('source enrichment queue', () => {
-  let container: StartedPostgreSqlContainer
+  let database: TestDatabase
   let boss: PgBoss
   let queue: SourceEnrichQueue
 
   beforeAll(async () => {
-    container = await new PostgreSqlContainer('postgis/postgis:16-3.4-alpine').start()
-    boss = new PgBossModule.PgBoss(container.getConnectionUri())
+    database = await createTestDatabase()
+    boss = new PgBossModule.PgBoss(database.uri)
     await boss.start()
 
     await boss.createQueue('source-enrich')
     await boss.send('source-enrich', { user: 'u' })
 
     queue = await createSourceEnrichQueue(boss, deps)
-  }, CONTAINER_TIMEOUT)
+  }, SETUP_TIMEOUT)
 
   afterAll(async () => {
     await boss?.stop({ graceful: false })
-    await container?.stop()
+    await database?.drop()
   })
 
   test('drops the legacy standard-policy queue', async () => {
