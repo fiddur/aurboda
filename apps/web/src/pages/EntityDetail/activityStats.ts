@@ -1,9 +1,9 @@
-import type { ActivitySessions, DataSchemaDefinition } from '@aurboda/api-spec'
+import type { ActivitySessions, DataItemFieldDefinition, DataSchemaDefinition } from '@aurboda/api-spec'
 
 import type { Activity } from '../../state/api'
 
 import { formatMinutesAsHM } from '../../components/charts/sleep-utils'
-import { fieldLabel } from '../../components/sessions/sessionView'
+import { fieldLabel, type ListFieldDefinition, listFields } from '../../components/sessions/sessionView'
 import {
   formatCadence,
   formatDateTime,
@@ -168,6 +168,7 @@ export const buildFieldRows = (
 ): ActivityStatRow[] => {
   const rows: ActivityStatRow[] = []
   for (const field of schema?.fields ?? []) {
+    if (field.type === 'list') continue
     const value = data?.[field.name]
     if (!isBlank(value)) {
       rows.push({ label: fieldLabel(field), value: formatFieldValue(value, field.unit) })
@@ -186,6 +187,34 @@ export const buildFieldRows = (
   }
   return rows
 }
+
+export const formatListCell = (value: unknown, unit?: string): string =>
+  isBlank(value) ? '' : formatFieldValue(value, unit)
+
+export interface ListTable {
+  field: ListFieldDefinition
+  label: string
+  columns: DataItemFieldDefinition[]
+  rows: Record<string, unknown>[]
+}
+
+const isRow = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v)
+
+/** A table per list field with rows: the item fields that are required or used, in schema order. */
+export const buildListTables = (
+  schema: DataSchemaDefinition | undefined,
+  data: Record<string, unknown> | undefined,
+): ListTable[] =>
+  listFields(schema).flatMap((field) => {
+    const value = data?.[field.name]
+    const rows = Array.isArray(value) ? value.filter(isRow) : []
+    if (rows.length === 0) return []
+    const columns = field.item_fields.filter(
+      (item) => item.required || rows.some((row) => !isBlank(row[item.name])),
+    )
+    return [{ columns, field, label: fieldLabel(field), rows }]
+  })
 
 /** Source keys the summary already shows (as a metric, or as the activity's own times). */
 const SHOWN_DATA_KEYS = new Set([

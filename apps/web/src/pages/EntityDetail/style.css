@@ -202,6 +202,34 @@ a.entity-type-badge:hover {
   color: #6b7280;
 }
 
+.list-field-detail {
+  margin-top: 1.25rem;
+}
+
+.list-field-detail h3 {
+  font-size: 1rem;
+  margin: 0 0 0.5rem;
+}
+
+.list-field-scroll {
+  overflow-x: auto;
+}
+
+.list-field-table thead th {
+  border-bottom: 1px solid #e5e7eb;
+  padding-left: 0;
+}
+
+.list-field-table td {
+  padding-right: 1rem;
+  border-bottom: 1px solid #f3f4f6;
+  white-space: nowrap;
+}
+
+.list-field-table td.list-field-number {
+  font-variant-numeric: tabular-nums;
+}
+
 .source-data .activity-stats-table {
   margin-top: 0.5rem;
   font-size: 0.8rem;
@@ -780,6 +808,11 @@ a.btn-secondary {
   align-items: flex-start;
 }
 
+.field-row-list {
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
 @media (prefers-color-scheme: dark) {
   .deleted-banner {
     background: #450a0a;
@@ -818,6 +851,11 @@ a.btn-secondary {
 
   .activity-stats-table td {
     color: #d1d5db;
+  }
+
+  .list-field-table thead th,
+  .list-field-table td {
+    border-color: #374151;
   }
 
   .link-button {

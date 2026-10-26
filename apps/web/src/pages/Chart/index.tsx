@@ -24,6 +24,7 @@ import { BarChart, type BarClickInfo } from '../../components/charts/BarChart'
 import { BreakdownLegend, SERIES_COLORS } from '../../components/charts/breakdown'
 import { TrendLineChart } from '../../components/charts/TrendLineChart'
 import { MetricPicker } from '../../components/MetricPicker'
+import { categoricalFields } from '../../components/sessions/sessionView'
 import {
   fetchActivityTypeDefinitions,
   fetchChartData,
@@ -220,12 +221,12 @@ function SourcePicker({
         state.pattern &&
         (() => {
           const typeDef = activityTypes.find((d) => d.name === state.pattern)
-          const categoricalFields = typeDef?.data_schema?.fields.filter((f) => f.is_categorical) ?? []
-          if (categoricalFields.length === 0) return null
+          const breakdownFields = categoricalFields(typeDef?.data_schema)
+          if (breakdownFields.length === 0) return null
           return (
             <div class="breakdown-fields">
               <span class="breakdown-label">Breakdown by:</span>
-              {categoricalFields.map((field) => (
+              {breakdownFields.map((field) => (
                 <label key={field.name} class="breakdown-checkbox">
                   <input
                     type="checkbox"

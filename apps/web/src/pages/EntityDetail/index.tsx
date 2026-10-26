@@ -14,6 +14,7 @@ import {
   type SleepMetricKey,
   parseSleepStages,
 } from '../../components/charts/sleep-utils'
+import { dropBlankListRows } from '../../components/listFieldRows'
 import { categoricalFields, categoricalValues, fieldLabel } from '../../components/sessions/sessionView'
 import {
   fetchActivityById,
@@ -40,6 +41,7 @@ import { ActivityNeighborsNav } from './ActivityNeighborsNav'
 import {
   type ActivityStatRow,
   buildFieldRows,
+  buildListTables,
   buildMetricRows,
   buildTimeRows,
   garminConnectActivityUrl,
@@ -49,6 +51,7 @@ import {
 import { type ActivityDraft, EditableActivityFields } from './EditableActivityFields'
 import { EntityActions, type EntityType } from './EntityActions'
 import { formatDateTimeLocal, formatTime } from './format-utils'
+import { ListFieldTable } from './ListFieldTable'
 import { LocationInfo, LocationStatRow } from './LocationInfo'
 import { MediaPlayDetail } from './MediaPlayDetail'
 import { mediaPlayRange } from './mediaPlayFields'
@@ -442,6 +445,9 @@ const ActivityDetailContent = ({
               location={hasEndTime ? { end: displayEnd, start: displayStart } : undefined}
               onFill={activity.deleted_at ? undefined : onFillField}
             />
+            {buildListTables(typeDef?.data_schema, activityData).map((table) => (
+              <ListFieldTable key={table.field.name} table={table} />
+            ))}
             {hasHrZones && <HrZoneBar zones={hrZoneSecs!} />}
           </>
         )}
@@ -667,7 +673,10 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
       }
       if (draft.notes !== orig.notes) body.notes = draft.notes
       if (draft.data && JSON.stringify(draft.data) !== JSON.stringify(orig.data)) {
-        body.data = draft.data
+        body.data = dropBlankListRows(
+          typeDefinitions?.find((d) => d.name === draft.activity_type)?.data_schema,
+          draft.data,
+        )
       }
 
       // Merged-view edit creating a brand-new override: force the merged

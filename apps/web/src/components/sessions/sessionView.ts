@@ -2,6 +2,7 @@ import type {
   ActivitySession,
   ActivitySessionGroup,
   DataFieldDefinition,
+  DataItemFieldDefinition,
   DataSchemaDefinition,
   HrZoneSecs,
   ValueDistribution,
@@ -10,8 +11,19 @@ import type {
 export type SessionSortKey = 'date' | 'duration' | 'avg_hr' | 'max_hr' | 'hard_minutes'
 export type GroupSortKey = 'recent' | 'count' | 'duration' | 'avg_hr' | 'hard_minutes' | 'name'
 
+export type ListFieldDefinition = DataFieldDefinition & { item_fields: DataItemFieldDefinition[] }
+
 export const categoricalFields = (schema: DataSchemaDefinition | undefined): DataFieldDefinition[] =>
-  schema?.fields.filter((f) => f.is_categorical) ?? []
+  schema?.fields.filter((f) => f.is_categorical && f.type !== 'list') ?? []
+
+export const scalarFields = (schema: DataSchemaDefinition | undefined): DataFieldDefinition[] =>
+  schema?.fields.filter((f) => f.type !== 'list') ?? []
+
+const isListField = (f: DataFieldDefinition): f is ListFieldDefinition =>
+  f.type === 'list' && f.item_fields !== undefined
+
+export const listFields = (schema: DataSchemaDefinition | undefined): ListFieldDefinition[] =>
+  schema?.fields.filter(isListField) ?? []
 
 export const fieldLabel = (field: Pick<DataFieldDefinition, 'label' | 'name'>): string =>
   field.label ?? field.name.charAt(0).toUpperCase() + field.name.slice(1).replaceAll('_', ' ')

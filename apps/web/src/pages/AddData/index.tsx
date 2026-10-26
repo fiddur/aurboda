@@ -6,7 +6,9 @@ import { useLocation } from 'preact-iso'
 import { useCallback, useState } from 'preact/hooks'
 
 import { ActivityTypePicker } from '../../components/ActivityTypePicker'
+import { ListFieldEditor } from '../../components/ListFieldEditor'
 import { MetricPicker } from '../../components/MetricPicker'
+import { fieldLabel, listFields, scalarFields } from '../../components/sessions/sessionView'
 import {
   addActivity,
   addEntityComment,
@@ -15,6 +17,7 @@ import {
   uploadFitFile,
   type ActivityType,
 } from '../../state/api'
+import { buildActivityData } from './activityData'
 import './style.css'
 
 type Tab = 'activity' | 'metric'
@@ -166,6 +169,7 @@ const AddActivityForm = ({ onCreated, initialTime }: FormProps) => {
   const [notes, setNotes] = useState('')
   const [comment, setComment] = useState('')
   const [structuredData, setStructuredData] = useState<Record<string, string>>({})
+  const [listData, setListData] = useState<Record<string, Record<string, unknown>[]>>({})
   const [success, setSuccess] = useState('')
   const [error, setError] = useState('')
 
@@ -176,15 +180,18 @@ const AddActivityForm = ({ onCreated, initialTime }: FormProps) => {
   })
 
   const selectedTypeDef = typeDefs?.find((t) => t.name === activityType)
-  const dataFields = selectedTypeDef?.data_schema?.fields ?? []
+  const dataSchema = selectedTypeDef?.data_schema
+  const dataFields = scalarFields(dataSchema)
+  const dataLists = listFields(dataSchema)
+  const showExerciseNotesHint = activityType === 'exercise' && dataLists.length === 0
 
   const mutation = useMutation({
     mutationFn: async () => {
       if (!activityType) throw new Error('Please select an activity type')
-      const dataMap = Object.fromEntries(Object.entries(structuredData).filter(([, v]) => v !== ''))
+      const data = buildActivityData(dataSchema?.fields ?? [], structuredData, listData)
       const result = await addActivity({
         activity_type: activityType,
-        ...(Object.keys(dataMap).length > 0 ? { data: dataMap } : {}),
+        ...(data ? { data } : {}),
         ...(hasEndTime ? { end_time: new Date(endTime).toISOString() } : {}),
         ...(notes ? { notes } : {}),
         start_time: new Date(startTime).toISOString(),
@@ -212,6 +219,7 @@ const AddActivityForm = ({ onCreated, initialTime }: FormProps) => {
       setNotes('')
       setComment('')
       setStructuredData({})
+      setListData({})
       setStartTime(nowLocal())
       setEndTime(nowLocal())
       setHasEndTime(true)
@@ -230,6 +238,7 @@ const AddActivityForm = ({ onCreated, initialTime }: FormProps) => {
           onChange={(type) => {
             setActivityType(type)
             setStructuredData({})
+            setListData({})
           }}
         />
       </div>
@@ -274,15 +283,26 @@ const AddActivityForm = ({ onCreated, initialTime }: FormProps) => {
         </div>
       )}
 
-      {dataFields.length > 0 &&
-        dataFields.map((field) => (
-          <SchemaFieldInput
-            key={field.name}
+      {dataFields.map((field) => (
+        <SchemaFieldInput
+          key={field.name}
+          field={field}
+          value={structuredData[field.name] ?? ''}
+          onChange={(v) => setStructuredData((prev) => ({ ...prev, [field.name]: v }))}
+        />
+      ))}
+
+      {dataLists.map((field) => (
+        <div class="form-field" key={field.name}>
+          <label>{fieldLabel(field)}</label>
+          <ListFieldEditor
             field={field}
-            value={structuredData[field.name] ?? ''}
-            onChange={(v) => setStructuredData((prev) => ({ ...prev, [field.name]: v }))}
+            idPrefix={`data-${field.name}`}
+            rows={listData[field.name] ?? []}
+            onChange={(rows) => setListData((prev) => ({ ...prev, [field.name]: rows }))}
           />
-        ))}
+        </div>
+      ))}
 
       <div class="form-field">
         <label>Notes</label>
@@ -290,11 +310,11 @@ const AddActivityForm = ({ onCreated, initialTime }: FormProps) => {
           value={notes}
           onInput={(e) => setNotes((e.target as HTMLTextAreaElement).value)}
           placeholder={
-            activityType === 'exercise' ? 'e.g. Bench press: 10x80, 8x85\nSquat: 5x100' : 'Optional notes'
+            showExerciseNotesHint ? 'e.g. Bench press: 10x80, 8x85\nSquat: 5x100' : 'Optional notes'
           }
           rows={3}
         />
-        {activityType === 'exercise' && (
+        {showExerciseNotesHint && (
           <span class="form-hint">For workouts: "Exercise: reps x weight" per line</span>
         )}
       </div>

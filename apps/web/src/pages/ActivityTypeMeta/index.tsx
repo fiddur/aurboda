@@ -1,6 +1,7 @@
-import type { DataFieldDefinition, DataSchemaDefinition } from '@aurboda/api-spec'
+import type { DataFieldDefinition, DataItemFieldDefinition, DataSchemaDefinition } from '@aurboda/api-spec'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Fragment } from 'preact'
 import { useLocation, useRoute } from 'preact-iso'
 import { useCallback, useState } from 'preact/hooks'
 
@@ -21,6 +22,13 @@ import {
 } from '../../state/api'
 import { toDisplayName } from '../../utils/displayName'
 import { suggestEmoji } from '../../utils/emojiLookup'
+import {
+  addItemField,
+  removeItemField,
+  setFieldType,
+  updateItemField,
+  validSchemaFields,
+} from './schemaFields'
 import { SessionsSection } from './SessionsSection'
 import './style.css'
 
@@ -401,9 +409,117 @@ function MergeActivityTypeSection({
   )
 }
 
-const FIELD_TYPES = ['string', 'number', 'boolean'] as const
+const FIELD_TYPES = ['string', 'number', 'boolean', 'list'] as const
+const ITEM_FIELD_TYPES = ['string', 'number', 'boolean'] as const
 
 const emptyField = (): DataFieldDefinition => ({ name: '', type: 'string' })
+
+const ItemFieldsTable = ({
+  field,
+  onChange,
+}: {
+  field: DataFieldDefinition
+  onChange: (field: DataFieldDefinition) => void
+}) => (
+  <div class="activity-type-meta-item-fields">
+    <table class="activity-type-meta-schema-table">
+      <thead>
+        <tr>
+          <th>Item field</th>
+          <th>Type</th>
+          <th>Label</th>
+          <th>Unit</th>
+          <th>Required</th>
+          <th />
+        </tr>
+      </thead>
+      <tbody>
+        {(field.item_fields ?? []).map((item, j) => (
+          <tr key={j}>
+            <td>
+              <input
+                type="text"
+                class="activity-type-meta-schema-input"
+                value={item.name}
+                placeholder="item_name"
+                onInput={(e) =>
+                  onChange(updateItemField(field, j, { name: (e.target as HTMLInputElement).value }))
+                }
+              />
+            </td>
+            <td>
+              <select
+                class="activity-type-meta-schema-input"
+                value={item.type}
+                onChange={(e) =>
+                  onChange(
+                    updateItemField(field, j, {
+                      type: (e.target as HTMLSelectElement).value as DataItemFieldDefinition['type'],
+                    }),
+                  )
+                }
+              >
+                {ITEM_FIELD_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </td>
+            <td>
+              <input
+                type="text"
+                class="activity-type-meta-schema-input"
+                value={item.label ?? ''}
+                placeholder="Display label"
+                onInput={(e) =>
+                  onChange(
+                    updateItemField(field, j, { label: (e.target as HTMLInputElement).value || undefined }),
+                  )
+                }
+              />
+            </td>
+            <td>
+              <input
+                type="text"
+                class="activity-type-meta-schema-input"
+                value={item.unit ?? ''}
+                placeholder="kg"
+                onInput={(e) =>
+                  onChange(
+                    updateItemField(field, j, { unit: (e.target as HTMLInputElement).value || undefined }),
+                  )
+                }
+              />
+            </td>
+            <td style={{ textAlign: 'center' }}>
+              <input
+                type="checkbox"
+                checked={item.required ?? false}
+                onChange={() =>
+                  onChange(updateItemField(field, j, { required: !item.required || undefined }))
+                }
+              />
+            </td>
+            <td>
+              <button
+                type="button"
+                class="btn-icon-small"
+                aria-label={`Remove item field ${item.name}`}
+                onClick={() => onChange(removeItemField(field, j))}
+              >
+                ✕
+              </button>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+    <button type="button" class="btn-secondary" onClick={() => onChange(addItemField(field))}>
+      + Add item field
+    </button>
+  </div>
+)
 
 function DataSchemaSection({
   name,
@@ -426,7 +542,7 @@ function DataSchemaSection({
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const validFields = fields.filter((f) => /^[a-z][a-z0-9_]*$/.test(f.name))
+      const validFields = validSchemaFields(fields)
       const schema: DataSchemaDefinition | null = validFields.length > 0 ? { fields: validFields } : null
       await updateActivityTypeDefinition(name, { data_schema: schema })
     },
@@ -441,6 +557,10 @@ function DataSchemaSection({
     setFields((prev) => prev.map((f, i) => (i === index ? ({ ...f, ...patch } as DataFieldDefinition) : f)))
   }, [])
 
+  const replaceField = useCallback((index: number, field: DataFieldDefinition) => {
+    setFields((prev) => prev.map((f, i) => (i === index ? field : f)))
+  }, [])
+
   const removeField = useCallback((index: number) => {
     setFields((prev) => prev.filter((_, i) => i !== index))
   }, [])
@@ -452,7 +572,8 @@ function DataSchemaSection({
       <h2>Data Schema</h2>
       {fields.length === 0 ? (
         <p class="activity-type-meta-empty">
-          No data schema defined. Add fields to validate and display custom data.
+          No data schema defined. Add fields to validate and display custom data. A list field holds repeated
+          rows, such as the sets of a strength session.
         </p>
       ) : (
         <table class="activity-type-meta-schema-table">
@@ -461,6 +582,7 @@ function DataSchemaSection({
               <th>Name</th>
               <th>Type</th>
               <th>Label</th>
+              <th>Unit</th>
               <th>Required</th>
               <th title="Suitable for chart breakdowns by distinct values (e.g. device names, locations). Not for continuous numbers.">
                 Categorical
@@ -470,64 +592,90 @@ function DataSchemaSection({
           </thead>
           <tbody>
             {fields.map((field, i) => (
-              <tr key={i}>
-                <td>
-                  <input
-                    type="text"
-                    class="activity-type-meta-schema-input"
-                    value={field.name}
-                    placeholder="field_name"
-                    onInput={(e) => updateField(i, { name: (e.target as HTMLInputElement).value })}
-                  />
-                </td>
-                <td>
-                  <select
-                    class="activity-type-meta-schema-input"
-                    value={field.type}
-                    onChange={(e) =>
-                      updateField(i, {
-                        type: (e.target as HTMLSelectElement).value as DataFieldDefinition['type'],
-                      })
-                    }
-                  >
-                    {FIELD_TYPES.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-                <td>
-                  <input
-                    type="text"
-                    class="activity-type-meta-schema-input"
-                    value={field.label ?? ''}
-                    placeholder="Display label"
-                    onInput={(e) =>
-                      updateField(i, { label: (e.target as HTMLInputElement).value || undefined })
-                    }
-                  />
-                </td>
-                <td style={{ textAlign: 'center' }}>
-                  <input
-                    type="checkbox"
-                    checked={field.required ?? false}
-                    onChange={() => updateField(i, { required: !field.required || undefined })}
-                  />
-                </td>
-                <td style={{ textAlign: 'center' }}>
-                  <input
-                    type="checkbox"
-                    checked={field.is_categorical ?? false}
-                    onChange={() => updateField(i, { is_categorical: !field.is_categorical || undefined })}
-                  />
-                </td>
-                <td>
-                  <button type="button" class="btn-icon-small" onClick={() => removeField(i)}>
-                    x
-                  </button>
-                </td>
-              </tr>
+              <Fragment key={i}>
+                <tr>
+                  <td>
+                    <input
+                      type="text"
+                      class="activity-type-meta-schema-input"
+                      value={field.name}
+                      placeholder="field_name"
+                      onInput={(e) => updateField(i, { name: (e.target as HTMLInputElement).value })}
+                    />
+                  </td>
+                  <td>
+                    <select
+                      class="activity-type-meta-schema-input"
+                      value={field.type}
+                      onChange={(e) =>
+                        replaceField(
+                          i,
+                          setFieldType(
+                            field,
+                            (e.target as HTMLSelectElement).value as DataFieldDefinition['type'],
+                          ),
+                        )
+                      }
+                    >
+                      {FIELD_TYPES.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>
+                    <input
+                      type="text"
+                      class="activity-type-meta-schema-input"
+                      value={field.label ?? ''}
+                      placeholder="Display label"
+                      onInput={(e) =>
+                        updateField(i, { label: (e.target as HTMLInputElement).value || undefined })
+                      }
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="text"
+                      class="activity-type-meta-schema-input"
+                      value={field.unit ?? ''}
+                      placeholder="Unit"
+                      onInput={(e) =>
+                        updateField(i, { unit: (e.target as HTMLInputElement).value || undefined })
+                      }
+                    />
+                  </td>
+                  <td style={{ textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={field.required ?? false}
+                      onChange={() => updateField(i, { required: !field.required || undefined })}
+                    />
+                  </td>
+                  <td style={{ textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={field.is_categorical ?? false}
+                      disabled={field.type === 'list'}
+                      title={field.type === 'list' ? 'A list field cannot be categorical' : undefined}
+                      onChange={() => updateField(i, { is_categorical: !field.is_categorical || undefined })}
+                    />
+                  </td>
+                  <td>
+                    <button type="button" class="btn-icon-small" onClick={() => removeField(i)}>
+                      x
+                    </button>
+                  </td>
+                </tr>
+                {field.type === 'list' && (
+                  <tr class="activity-type-meta-item-fields-row">
+                    <td colSpan={7}>
+                      <ItemFieldsTable field={field} onChange={(next) => replaceField(i, next)} />
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             ))}
           </tbody>
         </table>
