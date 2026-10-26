@@ -45,6 +45,7 @@ See [Activity types -- sessions overview](features/activity-types.md#sessions-ov
 | `query_activity_sessions`    | Sessions of one type, each with length, avg/max HR, HR-zone seconds and a box-plot summary of its HR samples; with `group_by` (a categorical data field) also one group per value, to compare repeats or pick a session by length and effort |
 | `get_activity_neighbors`     | The previous and next activity of the same type, optionally only those sharing a data field value (`same_field`, e.g. `session_name`)                                                                                                        |
 | `list_activity_field_values` | The values a data field (e.g. `session_name`) has taken across a type and its subtypes, most recently used first, with counts -- for reusing a value instead of spelling a new variant                                                       |
+| `get_activity_item_history`  | One activity's list items grouped by an item value (`field=sets.exercise`): per value the items, their measures (volume, e1RM, max weight, set count, longest hold), the records set and the previous session with it, plus totals           |
 
 ### Activity track tools
 

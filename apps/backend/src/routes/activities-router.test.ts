@@ -24,6 +24,7 @@ vi.mock('../services/queries/index.ts', () => ({
   dedupeCommentsForIds: vi.fn(),
   getActivityFullDetail: vi.fn(),
   getActivityNeighbors: vi.fn(),
+  queryActivityItemHistory: vi.fn(),
   getCommentsMap: vi.fn(),
   parseActivityId: vi.fn(),
   parseDataFilter: vi.fn(),
@@ -509,5 +510,40 @@ describe('GET /activities/:id/neighbors', () => {
     expect(
       (await supertest(buildApp()).get(`/activities/${ACTIVITY_ID}/neighbors?same_field=Bad-Name`)).status,
     ).toBe(400)
+  })
+})
+
+describe('GET /activities/:id/item-history', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  test('passes the id and item path through', async () => {
+    vi.mocked(queries.queryActivityItemHistory).mockResolvedValue({
+      activity_id: `merged:${ACTIVITY_ID}`,
+      field: 'sets.exercise',
+      groups: [],
+      totals: {},
+    })
+
+    const res = await supertest(buildApp()).get(
+      `/activities/merged:${ACTIVITY_ID}/item-history?field=sets.exercise`,
+    )
+
+    expect(res.status).toBe(200)
+    expect(res.body.data.field).toBe('sets.exercise')
+    expect(queries.queryActivityItemHistory).toHaveBeenCalledWith(
+      'tester',
+      `merged:${ACTIVITY_ID}`,
+      'sets.exercise',
+    )
+  })
+
+  test('404s for an unknown activity, 400s for a missing or plain field', async () => {
+    vi.mocked(queries.queryActivityItemHistory).mockResolvedValue(null)
+    const app = buildApp()
+    expect(
+      (await supertest(app).get(`/activities/${ACTIVITY_ID}/item-history?field=sets.exercise`)).status,
+    ).toBe(404)
+    expect((await supertest(app).get(`/activities/${ACTIVITY_ID}/item-history`)).status).toBe(400)
+    expect((await supertest(app).get(`/activities/${ACTIVITY_ID}/item-history?field=sets`)).status).toBe(400)
   })
 })
