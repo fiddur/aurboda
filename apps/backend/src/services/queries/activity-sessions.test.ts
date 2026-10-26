@@ -78,6 +78,7 @@ describe('fieldValue', () => {
     expect(fieldValue(false)).toBe(false)
     expect(fieldValue(null)).toBeUndefined()
     expect(fieldValue({ a: 1 })).toBeUndefined()
+    expect(fieldValue([{ exercise: 'Squat', reps: 5 }])).toBeUndefined()
   })
 })
 

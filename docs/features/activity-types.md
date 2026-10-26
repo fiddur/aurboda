@@ -37,6 +37,42 @@ values -- a yoga video's `session_name`, a run's kind (`maffetone`, `intervals`)
 Chart Explorer can break charts down by these fields, and the sessions overview below groups by
 them.
 
+A field's `type` is `string`, `number`, `boolean` or `list`. A **list** field holds an array of
+objects -- a strength session's sets, a rehab session's exercises -- each shaped by the field's
+`item_fields`. Item fields are scalar only (`string`, `number`, `boolean`), so nesting stops at
+one level, and `required`, `enum_values`, `unit` and `label` apply to them as to top-level
+fields. Writes are validated against the schema: a list value must be an array of objects, and an
+error names the item, e.g. `Required field "sets[1].exercise" is missing`. Keys a schema does not
+declare are accepted, at the top level and on list items alike. A list field cannot be
+categorical, and is not offered as a deduction-rule condition, an auto-share condition or a chart
+breakdown, which all work on scalar values.
+
+The built-in `strength_training` type carries a `sets` list field:
+
+```json
+{
+  "fields": [
+    {
+      "name": "sets",
+      "type": "list",
+      "label": "Sets",
+      "item_fields": [
+        { "name": "exercise", "type": "string", "required": true },
+        { "name": "weight", "type": "number", "unit": "kg" },
+        { "name": "reps", "type": "number" },
+        { "name": "time", "type": "number", "unit": "s" }
+      ]
+    }
+  ]
+}
+```
+
+`sets` itself is optional, since watch-only strength sessions (Garmin, Health Connect) have none;
+`time` is for holds such as planks. [Gravl](../gravl.md) writes sets in this shape. The schema is
+seeded on new databases and filled in on existing ones when the type has no schema yet, so an
+edit is kept: the built-in schema can be extended (e.g. with `set_type` or `rpe` item fields) on
+the type's page or with `update_activity_type`.
+
 ## Sessions Overview
 
 The activity type page (`/activity-type/<name>`) lists the type's sessions (descendant types

@@ -4,15 +4,17 @@
 
 ## Data Synced
 
-| Gravl Data     | Stored As                                                                                                | Notes                                                                  |
-| -------------- | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| Workouts       | `strength_training` activity, source `gravl`                                                             | Keyed by `gravl-workout-<uuid>`; title is the workout name             |
-| Sets           | `data.sets` array on the activity + a note                                                               | One entry per set with the exercise repeated (the shape #1044 defines) |
-| Workout totals | `data.volume_kg`, `data.calories`, `data.personal_record_count`, `data.set_count`, `data.exercise_count` |                                                                        |
+| Gravl Data     | Stored As                                                                                                | Notes                                                                              |
+| -------------- | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Workouts       | `strength_training` activity, source `gravl`                                                             | Keyed by `gravl-workout-<uuid>`; title is the workout name                         |
+| Sets           | `data.sets` array on the activity + a note                                                               | One entry per set with the exercise repeated (see [The set shape](#the-set-shape)) |
+| Workout totals | `data.volume_kg`, `data.calories`, `data.personal_record_count`, `data.set_count`, `data.exercise_count` |                                                                                    |
 
 Every workout is also preserved as raw JSON in the `raw_records` table (`record_type = 'gravl_workout'`).
 
 ### The set shape
+
+Each set is an item of the `sets` list field of the built-in `strength_training` data schema (see [Activity types → Data Schema](./features/activity-types.md#data-schema-and-categorical-fields)): `exercise`, `weight`, `reps` and `time` are its declared item fields, and Gravl's other keys (`exercise_id`, `order`, `set_type`, `distance`, `rpe`, `superset_id`) are kept as undeclared item keys.
 
 ```json
 {
@@ -34,7 +36,7 @@ Every workout is also preserved as raw JSON in the `raw_records` table (`record_
 - `set_type` is `normal`, `warmup`, `drop_set` or `failure`. Gravl exposes warmup sets the app hides, so the API is richer than the app.
 - `superset_id` is present only when Gravl reports one (it currently reads null everywhere).
 
-A synced note (`source = 'gravl'`) renders the same data as text — `Bench Press: 10×40 kg (w), 8×80 kg, 6×80 kg (f) @8` — with Gravl's own workout notes above it, so the sets are readable in every view before the UI learns to render set arrays.
+A synced note (`source = 'gravl'`) renders the same data as text — `Bench Press: 10×40 kg (w), 8×80 kg, 6×80 kg (f) @8` — with Gravl's own workout notes above it, so the sets stay readable where set arrays are not rendered (the notes list, a shared feed post); the activity page shows `data.sets` as a table.
 
 ### What is deliberately not imported
 

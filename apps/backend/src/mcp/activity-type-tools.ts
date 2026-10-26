@@ -27,7 +27,7 @@ export const registerActivityTypeTools = (server: McpServer, user: string) => {
 
   server.tool(
     'add_activity_type',
-    'Create a custom activity type definition. The name must be snake_case (e.g. "sauna", "driving", "hot_bath"). Built-in types (sleep, exercise, meditation, nap, rest) cannot be recreated.',
+    'Create a custom activity type definition. The name must be snake_case (e.g. "sauna", "driving", "hot_bath"). Built-in types (sleep, exercise, meditation, nap, rest) cannot be recreated. A data_schema field of type `list` carries `item_fields` and holds an array of objects, e.g. the `sets` of a strength session (`exercise`, `weight`, `reps`, `time`).',
     { ...addActivityTypeDefinitionBodySchema.shape },
     async (params) => {
       const result = await addActivityTypeDefinition(user, params)
@@ -38,7 +38,7 @@ export const registerActivityTypeTools = (server: McpServer, user: string) => {
 
   server.tool(
     'update_activity_type',
-    'Update an activity type definition. Can modify display_name, display_category, color, and icon for both built-in and custom types.',
+    'Update an activity type definition. Can modify display_name, display_category, color, and icon for both built-in and custom types. A data_schema field of type `list` carries `item_fields` and holds an array of objects, e.g. the `sets` of a strength session (`exercise`, `weight`, `reps`, `time`).',
     {
       name: z.string().describe('Name of the activity type to update'),
       ...updateActivityTypeDefinitionBodySchema.shape,
