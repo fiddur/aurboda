@@ -105,6 +105,10 @@ export const systemTables: Record<string, string> = {
       half_life_days  INTEGER,
       display_period  VARCHAR(10),
       aggregation     VARCHAR(10),
+      activity_type   VARCHAR(100),
+      measure         VARCHAR(20),
+      filter_field    VARCHAR(100),
+      filter_value    TEXT,
       created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )

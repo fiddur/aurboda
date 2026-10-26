@@ -1,54 +1,38 @@
-import type { ChartDataBreakdownBucket, ChartDataBucket, ChartDataSourceType } from '@aurboda/api-spec'
+import type {
+  ActivityMeasure,
+  ActivityMeasures,
+  ChartDataAggregation,
+  ChartDataBreakdownBucket,
+  ChartDataBucket,
+  ChartDataSourceType,
+} from '@aurboda/api-spec'
 
-import { expandActivityTypes, getHrZoneSecs, getSourceFilter, query } from '../db/index.ts'
+import { buildBucketExpr } from '../db/bucket-expr.ts'
+import { expandActivityTypes, getBucketStarts, getHrZoneSecs, getSourceFilter, query } from '../db/index.ts'
+import { parseFieldPath } from './activity-measures.ts'
+import {
+  type MeasuredActivity,
+  type MeasureFilter,
+  measureFilter,
+  measuresByItemValue,
+  queryMeasuredActivities,
+} from './queries/activity-measure-series.ts'
 import { categoryPathMatchSql } from './screentime-sql.ts'
 import { getEffectiveHrZones } from './settings.ts'
 
-const truncUnits: Record<string, string> = {
-  '1M': 'month',
-  '1d': 'day',
-  '1h': 'hour',
-  '1w': 'week',
-}
-
-/**
- * Bucket starts come back as timestamptz. Calendar units and hours truncate in `tz` (PG's
- * three-argument `date_trunc`, which handles DST and half-hour offsets). Sub-hour bins stay on a
- * UTC origin: every current offset is a whole number of quarter hours (+05:45 included), so they
- * already fall on local clock boundaries, and binning local wall time instead would fold the
- * repeated DST hour into one bin.
- *
- * `tz` is only ever a bind value: `params` fill `$<startIdx>`, `$<startIdx + 1>`, ….
- */
-export const buildBucketExpr = (
-  bucketSize: string,
-  column: string,
-  startIdx: number,
-  tz = 'UTC',
-): { expr: string; params: string[] } => {
-  const binIntervals: Record<string, string> = {
-    '1m': '1 minute',
-    '5m': '5 minutes',
-    '15m': '15 minutes',
-  }
-  if (binIntervals[bucketSize]) {
-    return {
-      expr: `date_bin($${startIdx}::interval, ${column}, '2000-01-01T00:00:00Z'::timestamptz)`,
-      params: [binIntervals[bucketSize]],
-    }
-  }
-  return {
-    expr: `date_trunc($${startIdx}::text, ${column}, $${startIdx + 1}::text)`,
-    params: [truncUnits[bucketSize] ?? 'day', tz],
-  }
-}
+export { buildBucketExpr }
 
 export interface ChartDataInput {
   activity_type_id?: string
-  aggregation: 'count' | 'mean' | 'sum'
+  aggregation: ChartDataAggregation
   breakdown_fields?: string[]
   bucket_size: '1m' | '5m' | '15m' | '1M' | '1d' | '1h' | '1w'
   end: string
+  /** An item path and value whose items the measure is taken over (or a scalar field filtering sessions). */
+  filter_field?: string
+  filter_value?: string
+  /** With an activity_type source: aggregate this list-item measure per bucket instead of duration or count. */
+  measure?: ActivityMeasure
   pattern?: string
   source_type: ChartDataSourceType
   start: string
@@ -115,6 +99,24 @@ const queryActivitiesByTypePattern = async (
   }))
 }
 
+const metricAggFns: Record<ChartDataAggregation, string> = {
+  count: 'COUNT(*)',
+  max: 'MAX(value)',
+  mean: 'AVG(value)',
+  sum: 'SUM(value)',
+}
+
+const hoursExpr =
+  "EXTRACT(EPOCH FROM (COALESCE(end_time, start_time + interval '1 hour') - start_time)) / 3600.0"
+
+/** Activity-type buckets are hours, except count; mean has always meant the summed hours. */
+const activityValueExprs: Record<ChartDataAggregation, string> = {
+  count: 'count(*)',
+  max: `MAX(${hoursExpr})`,
+  mean: `SUM(${hoursExpr})`,
+  sum: `SUM(${hoursExpr})`,
+}
+
 const queryMetricBuckets = async (
   user: string,
   metric: string,
@@ -122,9 +124,9 @@ const queryMetricBuckets = async (
   end: string,
   bucketSize: string,
   tz: string,
-  aggregation: 'count' | 'mean' | 'sum',
+  aggregation: ChartDataAggregation,
 ): Promise<ChartDataBucket[]> => {
-  const aggFn = aggregation === 'mean' ? 'AVG(value)' : aggregation === 'sum' ? 'SUM(value)' : 'COUNT(*)'
+  const aggFn = metricAggFns[aggregation]
   const bucket = buildBucketExpr(bucketSize, 'time', 1, tz)
   const p = bucket.params.length
   const params: unknown[] = [...bucket.params, metric, start, end]
@@ -227,14 +229,11 @@ const queryActivityTypeBuckets = async (
   end: string,
   bucketSize: string,
   tz: string,
-  aggregation = 'sum',
+  aggregation: ChartDataAggregation = 'sum',
 ): Promise<ChartDataBucket[]> => {
   const types = await expandActivityTypes(user, [pattern])
   const bucket = buildBucketExpr(bucketSize, 'start_time', 1, tz)
-  const valueExpr =
-    aggregation === 'count'
-      ? 'count(*)'
-      : "SUM(EXTRACT(EPOCH FROM (COALESCE(end_time, start_time + interval '1 hour') - start_time))) / 3600.0"
+  const valueExpr = activityValueExprs[aggregation]
   const result = await query(
     user,
     `SELECT ${bucket.expr} AS bucket_start,
@@ -265,7 +264,7 @@ const queryActivityTypeBreakdown = async (
   end: string,
   bucketSize: string,
   tz: string,
-  aggregation = 'sum',
+  aggregation: ChartDataAggregation = 'sum',
 ): Promise<{ buckets: ChartDataBreakdownBucket[]; series: string[] }> => {
   // Sanitize all field names
   for (const field of fields) {
@@ -274,10 +273,7 @@ const queryActivityTypeBreakdown = async (
 
   const types = await expandActivityTypes(user, [activityType])
   const bucket = buildBucketExpr(bucketSize, 'start_time', 1, tz)
-  const valueExpr =
-    aggregation === 'count'
-      ? 'count(*)'
-      : "SUM(EXTRACT(EPOCH FROM (COALESCE(end_time, start_time + interval '1 hour') - start_time))) / 3600.0"
+  const valueExpr = activityValueExprs[aggregation]
 
   const fieldSelects = fields.map((f, i) => `COALESCE(data->>'${f}', '(none)') AS field_${i}`)
   const fieldGroupBys = fields.map((_, i) => `field_${i}`)
@@ -319,6 +315,125 @@ const queryActivityTypeBreakdown = async (
   return { buckets, series }
 }
 
+const aggregateValues = (values: number[], aggregation: ChartDataAggregation): number => {
+  if (aggregation === 'count') return values.length
+  if (aggregation === 'max') return Math.max(...values)
+  const sum = values.reduce((acc, v) => acc + v, 0)
+  return aggregation === 'mean' ? sum / values.length : sum
+}
+
+interface SeriesValue {
+  /** Series identity: item values compare normalised. */
+  key: string
+  name: string
+  value: number
+}
+
+/** One field's part of a series: an item value carries the measures over its items. */
+interface SeriesPart {
+  key: string
+  name: string
+  measures?: ActivityMeasures
+}
+
+/** One activity's contributions per breakdown series: the cross product of its fields' values. */
+const seriesValues = (
+  m: MeasuredActivity,
+  fields: string[],
+  measure: ActivityMeasure,
+  filter: MeasureFilter | undefined,
+): SeriesValue[] => {
+  const partsPerField = fields.map((field): SeriesPart[] => {
+    if (parseFieldPath(field).key === undefined) {
+      const name = String(m.activity.data?.[field] ?? '(none)')
+      return [{ key: `field:${name}`, name }]
+    }
+    return measuresByItemValue(m.activity, field, filter).map((g) => ({
+      key: `item:${g.normalized}`,
+      measures: g.measures,
+      name: g.value,
+    }))
+  })
+  const combos = partsPerField.reduce<SeriesPart[][]>(
+    (acc, parts) => acc.flatMap((combo) => parts.map((p) => [...combo, p])),
+    [[]],
+  )
+  return combos.flatMap((combo) => {
+    const value = (combo.findLast((p) => p.measures)?.measures ?? m.measures)[measure]
+    if (value === undefined) return []
+    return [
+      { key: combo.map((p) => p.key).join('\u0000'), name: combo.map((p) => p.name).join(' / '), value },
+    ]
+  })
+}
+
+/**
+ * Charts a list-item measure of an activity type's sessions: each session's measure (over the
+ * filtered items when filtered) aggregated per bucket, buckets bucketed by the same SQL as the other
+ * sources. With breakdown fields, an item path gives one series per item value (spelled as in the
+ * latest session) and a scalar field one per field value.
+ */
+const queryMeasureChart = async (
+  user: string,
+  input: ChartDataInput & { measure: ActivityMeasure; pattern: string },
+  tz: string,
+): Promise<{ buckets: (ChartDataBucket | ChartDataBreakdownBucket)[]; series?: string[] }> => {
+  const { aggregation, measure } = input
+  const filter = measureFilter(input.filter_field, input.filter_value)
+  const fields = input.breakdown_fields?.length ? input.breakdown_fields : undefined
+  const measured = await queryMeasuredActivities(
+    user,
+    input.pattern,
+    new Date(input.start),
+    new Date(input.end),
+    filter,
+  )
+  const bucketStarts = await getBucketStarts(
+    user,
+    measured.flatMap((m) => m.activity.id ?? []),
+    input.bucket_size,
+    tz,
+  )
+
+  const names = new Map<string, string>()
+  const byBucket = new Map<number, Map<string, number[]>>()
+  for (const m of measured) {
+    const bucketStart = m.activity.id === undefined ? undefined : bucketStarts.get(m.activity.id)
+    if (!bucketStart) continue
+    const contributions = fields
+      ? seriesValues(m, fields, measure, filter)
+      : m.measures[measure] === undefined
+        ? []
+        : [{ key: '', name: '', value: m.measures[measure] }]
+    if (contributions.length === 0) continue
+    const series = byBucket.get(bucketStart.getTime()) ?? new Map<string, number[]>()
+    for (const { key, name, value } of contributions) {
+      names.set(key, name)
+      series.set(key, [...(series.get(key) ?? []), value])
+    }
+    byBucket.set(bucketStart.getTime(), series)
+  }
+
+  const ordered = [...byBucket.entries()].toSorted(([a], [b]) => a - b)
+  if (!fields) {
+    return {
+      buckets: ordered.map(([time, series]) => ({
+        bucket_start: new Date(time).toISOString(),
+        value: aggregateValues(series.get('') ?? [], aggregation),
+      })),
+    }
+  }
+  return {
+    buckets: ordered.map(([time, series]) => ({
+      bucket_start: new Date(time).toISOString(),
+      series: Object.fromEntries(
+        [...series].map(([key, values]) => [names.get(key) ?? key, aggregateValues(values, aggregation)]),
+      ),
+    })),
+    series: [...new Set(names.values())].toSorted(),
+  }
+}
+
 /**
  * Route a metric-source query: HR-zone metrics are computed from heart-rate data,
  * `zone2_weekly` is a dashboard alias for zone-2 seconds, everything else is a
@@ -331,7 +446,7 @@ const queryMetricSource = async (
   end: string,
   bucketSize: ChartDataInput['bucket_size'],
   tz: string,
-  aggregation: 'count' | 'mean' | 'sum',
+  aggregation: ChartDataAggregation,
 ): Promise<ChartDataBucket[]> => {
   const metric = pattern === 'zone2_weekly' ? 'hr_zone_2_sec' : pattern
   if (!metric) return []
@@ -339,39 +454,52 @@ const queryMetricSource = async (
   return queryMetricBuckets(user, metric, start, end, bucketSize, tz, aggregation)
 }
 
-export const getChartData = async (
-  user: string,
-  input: ChartDataInput,
-): Promise<{
+export interface ChartDataResult {
   buckets: (ChartDataBucket | ChartDataBreakdownBucket)[]
   breakdown_fields?: string[]
   breakdown_series?: string[]
-}> => {
-  const { activity_type_id, aggregation, bucket_size, end, pattern, source_type, start, tag_definition_id } =
-    input
-  const tz = input.tz ?? 'UTC'
+}
 
-  if (
-    source_type === 'activity_type' &&
-    pattern &&
-    input.breakdown_fields &&
-    input.breakdown_fields.length > 0
-  ) {
+/** An activity type's buckets: a list-item measure, a breakdown by fields, or plain duration or count. */
+const queryActivityTypeChart = async (
+  user: string,
+  input: ChartDataInput,
+  pattern: string,
+  tz: string,
+): Promise<ChartDataResult> => {
+  const { aggregation, breakdown_fields, bucket_size, end, measure, start } = input
+
+  if (measure) {
+    const result = await queryMeasureChart(user, { ...input, measure, pattern }, tz)
+    return result.series
+      ? { breakdown_fields, breakdown_series: result.series, buckets: result.buckets }
+      : { buckets: result.buckets }
+  }
+
+  if (breakdown_fields && breakdown_fields.length > 0) {
     const result = await queryActivityTypeBreakdown(
       user,
       pattern,
-      input.breakdown_fields,
+      breakdown_fields,
       start,
       end,
       bucket_size,
       tz,
       aggregation,
     )
-    return {
-      breakdown_fields: input.breakdown_fields,
-      breakdown_series: result.series,
-      buckets: result.buckets,
-    }
+    return { breakdown_fields, breakdown_series: result.series, buckets: result.buckets }
+  }
+
+  return { buckets: await queryActivityTypeBuckets(user, pattern, start, end, bucket_size, tz, aggregation) }
+}
+
+export const getChartData = async (user: string, input: ChartDataInput): Promise<ChartDataResult> => {
+  const { activity_type_id, aggregation, bucket_size, end, pattern, source_type, start, tag_definition_id } =
+    input
+  const tz = input.tz ?? 'UTC'
+
+  if (source_type === 'activity_type') {
+    return pattern ? queryActivityTypeChart(user, input, pattern, tz) : { buckets: [] }
   }
 
   let buckets: ChartDataBucket[]
@@ -397,12 +525,6 @@ export const getChartData = async (
     case 'productivity_category':
       buckets = pattern
         ? await queryProductivityCategoryBuckets(user, pattern, start, end, bucket_size, tz)
-        : []
-      break
-
-    case 'activity_type':
-      buckets = pattern
-        ? await queryActivityTypeBuckets(user, pattern, start, end, bucket_size, tz, aggregation)
         : []
       break
 

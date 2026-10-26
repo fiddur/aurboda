@@ -5,6 +5,7 @@
 import type { ActivityType } from '../../schema.ts'
 import type { Activity, MergedActivity } from '../types.ts'
 
+import { buildBucketExpr } from '../bucket-expr.ts'
 import { query } from '../connection.ts'
 import { mapActivityRow } from '../row-mappers.ts'
 import { findMergedGroupForActivity, mergeOverlappingActivities } from './merge.ts'
@@ -113,6 +114,23 @@ export const getOverrideForActivity = async (user: string, targetId: string): Pr
   )
   if (result.rows.length === 0) return null
   return mapActivityRow(result.rows[0])
+}
+
+/** Each activity's chart bucket start, by the same SQL bucketing the chart sources use. */
+export const getBucketStarts = async (
+  user: string,
+  ids: string[],
+  bucketSize: string,
+  tz = 'UTC',
+): Promise<Map<string, Date>> => {
+  if (ids.length === 0) return new Map()
+  const bucket = buildBucketExpr(bucketSize, 'start_time', 1, tz)
+  const result = await query<{ bucket_start: Date; id: string }>(
+    user,
+    `SELECT id, ${bucket.expr} AS bucket_start FROM activities WHERE id = ANY($${bucket.params.length + 1})`,
+    [...bucket.params, ids],
+  )
+  return new Map(result.rows.map((row) => [row.id, row.bucket_start]))
 }
 
 export type DataFilter = { field: string; value: string | null }

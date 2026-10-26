@@ -1,6 +1,8 @@
 import { type ActivityMeasure, type ActivitySession, recordMeasures } from '@aurboda/api-spec'
+import { endOfDay, startOfDay, subDays } from 'date-fns'
 
-import { measureSet } from '../../utils/measures'
+import { buildChartUrl } from '../../utils/chart-url'
+import { defaultAggregation, measureSet } from '../../utils/measures'
 
 export interface ItemRecord {
   measure: ActivityMeasure
@@ -59,3 +61,38 @@ export const sliceByLookback = (
   const from = now - days * 86_400_000
   return sessions.filter((s) => new Date(s.start_time).getTime() >= from)
 }
+
+const ALL_TIME_DAYS = 730
+
+export const perWeekLookbackDays = (lookback: number): number => (lookback > 0 ? lookback : ALL_TIME_DAYS)
+
+/** Whole days, so the range (and the query key) stays the same through the day. */
+export const perWeekRange = (days: number, now: Date = new Date()): { end: string; start: string } => ({
+  end: endOfDay(now).toISOString(),
+  start: startOfDay(subDays(now, days)).toISOString(),
+})
+
+export const chartExplorerHref = ({
+  field,
+  lookbackDays,
+  measure,
+  name,
+  value,
+}: {
+  field: string
+  lookbackDays: number
+  measure: ActivityMeasure
+  name: string
+  value: string
+}): string =>
+  buildChartUrl({
+    aggregation: defaultAggregation(measure),
+    bucket_size: '1w',
+    chart_type: 'bar',
+    filter_field: field,
+    filter_value: value,
+    lookback_days: lookbackDays,
+    measure,
+    pattern: name,
+    source_type: 'activity_type',
+  })

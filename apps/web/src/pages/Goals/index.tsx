@@ -2,15 +2,19 @@ import { useQuery } from '@tanstack/react-query'
 import { useLocation } from 'preact-iso'
 
 import { type GoalHistoryRange, goalsUrl, parseRange } from '../../components/goal-history-range'
+import { goalLabel } from '../../components/goalFormat'
 import { GoalHistoryPanel } from '../../components/GoalHistoryPanel'
 import { GoalProgressBar } from '../../components/GoalProgressBar'
 import { GoalsSettings } from '../../components/GoalsSettings'
-import { fetchGoalsProgress, fetchUserSettings } from '../../state/api'
+import { fetchGoalsProgress, fetchUserSettings, type Goal } from '../../state/api'
 import { auth } from '../../state/auth'
-import { metricLabels } from '../../utils/metricLabels'
 import './style.css'
 
-// eslint-disable-next-line complexity -- handles both metric and trend goal types
+type WindowedGoal = Exclude<Goal, { goal_type: 'trend' }>
+
+const isWindowed = (goal: Goal): goal is WindowedGoal => goal.goal_type !== 'trend'
+
+// eslint-disable-next-line complexity -- loading, empty and listing states
 export function Goals() {
   const isLoggedIn = auth.value.token
   const { query, route } = useLocation()
@@ -66,12 +70,9 @@ export function Goals() {
 
   const progressMap = new Map(goalsProgress?.map((p) => [p.id, p]) ?? [])
 
-  const metricGoals = goals.filter((g) => g.goal_type !== 'trend')
-  const allSameWindow =
-    metricGoals.length > 0 &&
-    metricGoals.every(
-      (g) => g.goal_type === 'metric' && g.window === (metricGoals[0] as { window: string }).window,
-    )
+  const windowedGoals = goals.filter(isWindowed)
+  const firstWindow = windowedGoals[0]?.window
+  const allSameWindow = firstWindow !== undefined && windowedGoals.every((g) => g.window === firstWindow)
 
   return (
     <div class="goals-page">
@@ -85,9 +86,7 @@ export function Goals() {
             return (
               <div key={goal.id} class="goal-progress loading">
                 <div class="goal-header">
-                  <span class="goal-label">
-                    {goal.goal_type === 'trend' ? goal.pattern : (metricLabels[goal.metric] ?? goal.metric)}
-                  </span>
+                  <span class="goal-label">{goalLabel(goal)}</span>
                 </div>
                 <div class="progress-container">
                   <div class="progress-bar loading" style={{ width: '0%' }} />
@@ -119,9 +118,9 @@ export function Goals() {
       </div>
 
       <p class="goals-footer">
-        {allSameWindow && metricGoals.length > 0 ? (
-          <>Rolling {(metricGoals[0] as { window: string }).window} window from today.</>
-        ) : metricGoals.length > 0 ? (
+        {allSameWindow ? (
+          <>Rolling {firstWindow} window from today.</>
+        ) : windowedGoals.length > 0 ? (
           <>Rolling windows from today.</>
         ) : null}
       </p>

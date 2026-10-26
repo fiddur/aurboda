@@ -152,6 +152,7 @@ export {
   migrateExerciseTypes,
   getNonSleepActivitiesMerged,
   getAllActivityTypeNames,
+  getBucketStarts,
   getActivityById,
   getActivitySourcesByIds,
   getNearbyActivities,

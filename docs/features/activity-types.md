@@ -121,11 +121,26 @@ Where item paths are accepted:
 - `GET /activities/:id/item-history?field=sets.exercise` -- one activity (plain or `merged:` id)
   with its items grouped by exercise in order of first appearance: per exercise the items,
   measures, records and the previous session with that exercise (its id, start, items and
-  measures), plus `totals` over the whole session.
+  measures), plus `totals` over the whole session. Its records are judged among the sessions of
+  the activity's own type (and its descendants), while a sessions query judges them among the
+  sessions of the type queried, so a query on a parent type such as `exercise` can mark
+  different records.
 
 The MCP tools mirror them: `query_activity_sessions` and `list_activity_field_values` take an
 item path for `group_by` / `filter_field` / `field`, and `get_activity_item_history` is the
 item-history endpoint.
+
+Measures can be charted and set as goals too. `GET /chart-data` (and `query_chart_data`, and the
+dashboard's bar chart) with `source_type=activity_type` and `measure=<measure>` aggregates each
+session's measure per bucket instead of its duration or count: `aggregation=max` gives the best
+session in the bucket, `sum` the total, `mean` the average and `count` the sessions having the
+measure. `filter_field=sets.exercise&filter_value=Bench Press` takes the measure over that
+exercise's sets only (sessions without it drop out), and `breakdown_fields=sets.exercise` gives
+one series per exercise, spelled as in the latest session; a scalar breakdown field splits by
+the session's value as usual. Highest Bench Press e1RM per week:
+`source_type=activity_type&pattern=strength_training&measure=e1rm&aggregation=max&bucket_size=1w&filter_field=sets.exercise&filter_value=Bench Press`.
+A goal on a measure, such as "Bench Press e1RM at least 100 kg over 30 days", is a
+[measure goal](goals.md#measure-goals).
 
 On the web, the type page has an exercises table (one row per exercise with its combined
 measures), each exercise has its own page at `/activity-type/<name>/item/sets.exercise/<value>`

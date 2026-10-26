@@ -3,16 +3,19 @@
  *   /chart?source_type=activity_type&pattern=coffee&lookback_days=90&display_period=monthly&half_life_days=15
  *   /chart?source_type=metric&pattern=weight&lookback_days=180&aggregation=sum&missing_days=zero
  *   /chart?source_type=activity_type&pattern=coffee&chart_type=bar&bucket_size=1d&lookback_days=30
+ *   /chart?source_type=activity_type&pattern=strength_training&chart_type=bar&bucket_size=1w&measure=e1rm&aggregation=max&filter_field=sets.exercise&filter_value=Squat
  */
-import type {
-  DashboardConfig,
-  DashboardSection,
-  DashboardWidget,
-  SectionType,
-  TrendGoal,
-  TrendMissingDays,
+import {
+  activityMeasureLabels,
+  activityMeasures,
+  type ChartDataAggregation,
+  type DashboardConfig,
+  type DashboardSection,
+  type DashboardWidget,
+  type SectionType,
+  type TrendGoal,
+  type TrendMissingDays,
 } from '@aurboda/api-spec'
-
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation } from 'preact-iso'
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks'
@@ -24,8 +27,10 @@ import { BarChart, type BarClickInfo } from '../../components/charts/BarChart'
 import { BreakdownLegend, SERIES_COLORS } from '../../components/charts/breakdown'
 import { TrendLineChart } from '../../components/charts/TrendLineChart'
 import { MetricPicker } from '../../components/MetricPicker'
-import { categoricalFields } from '../../components/sessions/sessionView'
+import { categoricalFields, listFields } from '../../components/sessions/sessionView'
 import {
+  type ActivityTypeDefinition,
+  fetchActivityFieldValues,
   fetchActivityTypeDefinitions,
   fetchChartData,
   type FetchChartDataParams,
@@ -41,6 +46,17 @@ import {
   updateUserSettings,
 } from '../../state/api'
 import { auth } from '../../state/auth'
+import { measureFilter } from '../../utils/measures'
+import {
+  aggregationOptions,
+  filterPatch,
+  type MeasureChoice,
+  measureParams,
+  measurePatch,
+  parseAggregation,
+  parseMeasureQuery,
+  sourceDefaultAggregation,
+} from './chartMeasures'
 import { mapLegacyCategorySource } from './legacySource'
 import {
   boardReturnPath,
@@ -85,32 +101,41 @@ const BUCKET_SIZE_OPTIONS: { label: string; value: BucketSize }[] = [
 type MissingDaysChoice = '' | TrendMissingDays
 
 interface ChartState {
-  aggregation: 'count' | 'mean' | 'sum'
+  aggregation: ChartDataAggregation
   breakdown_fields: string[]
   bucket_size: BucketSize
   chart_type: ChartType
   display_period: TrendDisplayPeriod
+  filter_field: string
+  filter_value: string
   half_life_days: number
   lookback_days: number
+  measure: MeasureChoice
   missing_days: MissingDaysChoice
   pattern: string
   source_type: SourceType
   activity_type_id: string
 }
 
-const defaultAggregation = (source_type: SourceType): ChartState['aggregation'] =>
-  source_type === 'metric' ? 'mean' : 'count'
-
 const LEGACY_CATEGORY_SOURCE = 'productivity_category'
+
+type TrendAggregation = Exclude<ChartDataAggregation, 'max'>
+
+/** Trends have no max: it only comes with a measure, which charts as bars. */
+const trendAggregation = (aggregation: ChartDataAggregation): TrendAggregation | undefined =>
+  aggregation === 'max' ? undefined : aggregation
 
 function parseQuery(query: Record<string, string>): ChartState {
   const source_type: SourceType = query.source_type === 'metric' ? 'metric' : 'activity_type'
+  const measureState = parseMeasureQuery(query, source_type)
+  const { measure } = measureState
   return {
-    aggregation: (query.aggregation ?? defaultAggregation(source_type)) as 'count' | 'mean' | 'sum',
+    aggregation: parseAggregation(query.aggregation, source_type, measure),
     breakdown_fields: query.breakdown_fields ? query.breakdown_fields.split(',').filter(Boolean) : [],
     bucket_size: (query.bucket_size ?? '1d') as BucketSize,
-    chart_type: (query.chart_type ?? 'trend') as ChartType,
+    chart_type: measure ? 'bar' : ((query.chart_type ?? 'trend') as ChartType),
     display_period: (query.display_period ?? 'monthly') as TrendDisplayPeriod,
+    ...measureState,
     half_life_days: Number(query.half_life_days) || 15,
     lookback_days: Number(query.lookback_days) || 90,
     missing_days: query.missing_days === 'zero' || query.missing_days === 'skip' ? query.missing_days : '',
@@ -141,6 +166,7 @@ function syncUrl(state: ChartState, origin: ChartOrigin | null) {
   if (state.breakdown_fields.length > 0) {
     params.set('breakdown_fields', state.breakdown_fields.join(','))
   }
+  for (const [key, value] of Object.entries(measureParams(state))) params.set(key, value)
   if (origin) {
     params.set('board_id', origin.board_id)
     params.set('section_id', origin.section_id)
@@ -159,6 +185,81 @@ function lookbackToRange(lookbackDays: number): { start: string; end: string } {
   return { end: end.toISOString(), start: start.toISOString() }
 }
 
+/** For a type with list items: chart a measure of them, optionally for one item value (exercise). */
+function MeasureControls({
+  state,
+  typeDef,
+  onUpdate,
+}: {
+  state: ChartState
+  typeDef: ActivityTypeDefinition
+  onUpdate: (patch: Partial<ChartState>) => void
+}) {
+  const filter = measureFilter(typeDef)
+  const filterPath = filter?.path ?? ''
+  const { data: fieldValues } = useQuery({
+    enabled: Boolean(state.measure && filterPath),
+    queryFn: () => fetchActivityFieldValues(state.pattern, filterPath),
+    queryKey: ['activity-field-values', state.pattern, filterPath],
+    staleTime: 5 * 60 * 1000,
+  })
+
+  return (
+    <>
+      <label>
+        Measure
+        <select
+          value={state.measure}
+          onChange={(e) =>
+            onUpdate(
+              measurePatch(state.breakdown_fields, (e.target as HTMLSelectElement).value as MeasureChoice),
+            )
+          }
+        >
+          <option value="">Duration / count</option>
+          {activityMeasures.map((m) => (
+            <option key={m} value={m}>
+              {activityMeasureLabels[m]}
+            </option>
+          ))}
+        </select>
+      </label>
+      {state.measure && filter && (
+        <label>
+          {filter.label}
+          <select
+            value={state.filter_value}
+            onChange={(e) => onUpdate(filterPatch(filter.path, (e.target as HTMLSelectElement).value))}
+          >
+            <option value="">All</option>
+            {state.filter_value && !fieldValues?.values.some((v) => v.value === state.filter_value) && (
+              <option value={state.filter_value}>{state.filter_value}</option>
+            )}
+            {fieldValues?.values.map((v) => (
+              <option key={v.value} value={v.value}>
+                {v.value}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+    </>
+  )
+}
+
+/** Scalar categorical fields, plus the measure's item field (one series per exercise) when charting a measure. */
+const breakdownOptions = (
+  typeDef: ActivityTypeDefinition | undefined,
+  measure: MeasureChoice,
+): { label: string; name: string }[] => {
+  const scalar = categoricalFields(typeDef?.data_schema).map((f) => ({
+    label: f.label ?? f.name,
+    name: f.name,
+  }))
+  const filter = measure ? measureFilter(typeDef) : undefined
+  return filter ? [...scalar, { label: filter.label, name: filter.path }] : scalar
+}
+
 /** Source picker shared between both chart modes. */
 function SourcePicker({
   state,
@@ -172,6 +273,11 @@ function SourcePicker({
     queryKey: ['activityTypeDefinitions'],
     staleTime: 5 * 60 * 1000,
   })
+  const typeDef =
+    state.source_type === 'activity_type' && state.pattern
+      ? activityTypes.find((d) => d.name === state.pattern)
+      : undefined
+  const breakdownFields = typeDef ? breakdownOptions(typeDef, state.measure) : []
 
   return (
     <div class="chart-controls-row">
@@ -183,7 +289,10 @@ function SourcePicker({
             const source_type = (e.target as HTMLSelectElement).value as SourceType
             onUpdate({
               activity_type_id: '',
-              aggregation: defaultAggregation(source_type),
+              aggregation: sourceDefaultAggregation(source_type),
+              breakdown_fields: [],
+              ...filterPatch(undefined, ''),
+              measure: '',
               missing_days: '',
               pattern: '',
               source_type,
@@ -201,7 +310,9 @@ function SourcePicker({
             Activity Type
             <ActivityTypePicker
               value={state.pattern}
-              onChange={(pattern) => onUpdate({ breakdown_fields: [], pattern })}
+              onChange={(pattern) =>
+                onUpdate({ breakdown_fields: [], pattern, ...(state.measure ? measurePatch([], '') : {}) })
+              }
               placeholder="Search activity types..."
             />
           </>
@@ -217,33 +328,30 @@ function SourcePicker({
         )}
       </label>
 
-      {state.source_type === 'activity_type' &&
-        state.pattern &&
-        (() => {
-          const typeDef = activityTypes.find((d) => d.name === state.pattern)
-          const breakdownFields = categoricalFields(typeDef?.data_schema)
-          if (breakdownFields.length === 0) return null
-          return (
-            <div class="breakdown-fields">
-              <span class="breakdown-label">Breakdown by:</span>
-              {breakdownFields.map((field) => (
-                <label key={field.name} class="breakdown-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={state.breakdown_fields.includes(field.name)}
-                    onChange={() => {
-                      const next = state.breakdown_fields.includes(field.name)
-                        ? state.breakdown_fields.filter((f) => f !== field.name)
-                        : [...state.breakdown_fields, field.name]
-                      onUpdate({ breakdown_fields: next })
-                    }}
-                  />
-                  {field.label ?? field.name}
-                </label>
-              ))}
-            </div>
-          )
-        })()}
+      {typeDef && listFields(typeDef.data_schema).length > 0 && (
+        <MeasureControls state={state} typeDef={typeDef} onUpdate={onUpdate} />
+      )}
+
+      {breakdownFields.length > 0 && (
+        <div class="breakdown-fields">
+          <span class="breakdown-label">Breakdown by:</span>
+          {breakdownFields.map((field) => (
+            <label key={field.name} class="breakdown-checkbox">
+              <input
+                type="checkbox"
+                checked={state.breakdown_fields.includes(field.name)}
+                onChange={() => {
+                  const next = state.breakdown_fields.includes(field.name)
+                    ? state.breakdown_fields.filter((f) => f !== field.name)
+                    : [...state.breakdown_fields, field.name]
+                  onUpdate({ breakdown_fields: next })
+                }}
+              />
+              {field.label}
+            </label>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -264,6 +372,8 @@ function ChartControls({
             <button
               class={`chart-type-btn ${state.chart_type === 'trend' ? 'active' : ''}`}
               onClick={() => onUpdate({ chart_type: 'trend' })}
+              disabled={Boolean(state.measure)}
+              title={state.measure ? 'Measures chart as bars' : undefined}
             >
               Trend (EMA)
             </button>
@@ -346,21 +456,14 @@ function ChartControls({
             <select
               value={state.aggregation}
               onChange={(e) =>
-                onUpdate({ aggregation: (e.target as HTMLSelectElement).value as 'count' | 'mean' | 'sum' })
+                onUpdate({ aggregation: (e.target as HTMLSelectElement).value as ChartDataAggregation })
               }
             >
-              {state.source_type === 'metric' ? (
-                <>
-                  <option value="mean">Average</option>
-                  <option value="sum">Sum</option>
-                  <option value="count">Count</option>
-                </>
-              ) : (
-                <>
-                  <option value="sum">Sum (hours)</option>
-                  <option value="count">Count</option>
-                </>
-              )}
+              {aggregationOptions(state.source_type, state.measure).map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
             </select>
           </label>
         )}
@@ -589,6 +692,7 @@ function buildWidgetFromState(
         aggregation: state.aggregation,
         ...breakdownConfig,
         bucket_size: state.bucket_size,
+        ...measureParams(state),
         lookback_days: state.lookback_days,
         ...(state.pattern ? { pattern: state.pattern } : {}),
         source_type: state.source_type,
@@ -602,7 +706,7 @@ function buildWidgetFromState(
 
   return {
     config: {
-      aggregation: state.aggregation,
+      aggregation: trendAggregation(state.aggregation),
       ...breakdownConfig,
       display_period: state.display_period,
       half_life_days: state.half_life_days,
@@ -984,7 +1088,7 @@ export function Chart() {
     handleUpdate(
       mapLegacyCategorySource(
         {
-          aggregation: query.aggregation as ChartState['aggregation'] | undefined,
+          aggregation: query.aggregation as TrendAggregation | undefined,
           pattern: legacyCategoryPath,
         },
         screentimeCategories,
@@ -1018,7 +1122,7 @@ export function Chart() {
       {state.chart_type === 'trend' ? (
         <TrendDisplay
           params={{
-            aggregation: state.aggregation,
+            aggregation: trendAggregation(state.aggregation),
             breakdown_fields: state.breakdown_fields.length > 0 ? state.breakdown_fields : undefined,
             display_period: state.display_period,
             half_life_days: state.half_life_days,
@@ -1038,6 +1142,7 @@ export function Chart() {
             breakdown_fields: state.breakdown_fields.length > 0 ? state.breakdown_fields : undefined,
             bucket_size: state.bucket_size,
             end,
+            ...measureParams(state),
             pattern: state.pattern || undefined,
             source_type: state.source_type,
             start,
@@ -1125,7 +1230,7 @@ export function Chart() {
                 const settings = await fetchUserSettings()
                 const existingGoals = settings.goals ?? []
                 const newGoal: TrendGoal = {
-                  aggregation: state.aggregation,
+                  aggregation: trendAggregation(state.aggregation),
                   display_period: state.display_period,
                   goal_type: 'trend',
                   half_life_days: state.half_life_days,

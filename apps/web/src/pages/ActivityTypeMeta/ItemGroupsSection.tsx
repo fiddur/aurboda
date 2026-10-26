@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useState } from 'preact/hooks'
 
-import { fieldLabel, itemPageHref } from '../../components/sessions/sessionView'
+import { fieldLabel, itemPageHref, type ListFieldDefinition } from '../../components/sessions/sessionView'
 import { fetchActivitySessions } from '../../state/api'
 import { formatMeasure } from '../../utils/measures'
 import { type ItemGroupSortKey, sortItemGroups } from './itemGroups'
@@ -125,10 +125,12 @@ const ItemGroupsTable = ({
 export function ItemGroupsSection({
   name,
   path,
+  list,
   item,
 }: {
   name: string
   path: string
+  list: ListFieldDefinition
   item: DataItemFieldDefinition
 }) {
   const [lookback, setLookback] = useState(90)
@@ -165,7 +167,9 @@ export function ItemGroupsSection({
       {query.isError && <p class="error">Failed to load sessions</p>}
       {query.data &&
         (groups.length === 0 ? (
-          <p class="activity-type-meta-empty">No sessions with sets in this period.</p>
+          <p class="activity-type-meta-empty">
+            No sessions with {fieldLabel(list).toLowerCase()} in this period.
+          </p>
         ) : (
           <ItemGroupsTable groups={groups} name={name} path={path} item={item} />
         ))}

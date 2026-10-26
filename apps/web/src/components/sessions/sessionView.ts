@@ -28,11 +28,9 @@ export const listFields = (schema: DataSchemaDefinition | undefined): ListFieldD
 export const itemPath = (list: ListFieldDefinition, item: DataItemFieldDefinition): string =>
   `${list.name}.${item.name}`
 
-/** The page of one item value of a type, such as one exercise of strength training. */
 export const itemPageHref = (activityType: string, path: string, value: string): string =>
   `/activity-type/${encodeURIComponent(activityType)}/item/${encodeURIComponent(path)}/${encodeURIComponent(value)}`
 
-/** The item fields a list can be grouped by, such as the exercise of a strength session's sets. */
 export const categoricalItemFields = (
   schema: DataSchemaDefinition | undefined,
 ): { list: ListFieldDefinition; item: DataItemFieldDefinition }[] =>

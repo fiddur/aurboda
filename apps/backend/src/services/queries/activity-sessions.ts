@@ -32,7 +32,9 @@ import {
   combineMeasures,
   groupItemsByKey,
   type ItemGroup,
+  listFieldOf,
   listItems,
+  matchingItems,
   measureItems,
   normalizeItemValue,
   parseFieldPath,
@@ -43,7 +45,7 @@ import { mergeHistograms, summarizeHistogram, type ValueDistributionRow } from '
 
 type FieldValue = string | number | boolean
 
-interface ItemPath {
+export interface ItemPath {
   field: string
   key: string
 }
@@ -112,9 +114,9 @@ export const matchesFilter = (a: MergedActivity, filter: DataFilter): boolean =>
   return filter.value === null ? v === undefined : v !== undefined && String(v) === filter.value
 }
 
-const sessionId = (a: MergedActivity): string => (a.source_ids ? `merged:${a.id}` : a.id!)
+export const sessionId = (a: MergedActivity): string => (a.source_ids ? `merged:${a.id}` : a.id!)
 
-const itemPath = (path: string | undefined): ItemPath | undefined => {
+export const itemPath = (path: string | undefined): ItemPath | undefined => {
   if (!path) return undefined
   const { field, key } = parseFieldPath(path)
   return key === undefined ? undefined : { field, key }
@@ -122,10 +124,6 @@ const itemPath = (path: string | undefined): ItemPath | undefined => {
 
 const nonEmpty = (m: ActivityMeasures): ActivityMeasures | undefined =>
   Object.keys(m).length > 0 ? m : undefined
-
-/** The session's items whose `key` value normalises to `normalized`. */
-const matchingItems = (a: MergedActivity, path: ItemPath, normalized: string): Record<string, unknown>[] =>
-  listItems(a.data, path.field).filter((item) => normalizeItemValue(item[path.key]) === normalized)
 
 /** An item filter: sessions with an item of the value, or with `null` those with no item having a value. */
 export const matchesItemFilter = (a: MergedActivity, path: ItemPath, value: string | null): boolean => {
@@ -149,7 +147,7 @@ export const itemFilterExtras = (
   if (normalized === undefined) return extras
   const earlier: ActivityMeasures[] = []
   for (const a of chronological.toSorted((x, y) => x.start_time.getTime() - y.start_time.getTime())) {
-    const items = matchingItems(a, path, normalized)
+    const items = matchingItems(a.data, path.field, path.key, normalized)
     const measures = measureItems(items)
     extras.set(a, { items, measures: nonEmpty(measures), records: recordsFor(measures, earlier) })
     earlier.push(measures)
@@ -346,7 +344,7 @@ const sessionFieldNames = (
   const fields = definitions.filter((d) => types.includes(d.name)).flatMap((d) => d.data_schema?.fields ?? [])
   const fieldNames = [...new Set(fields.filter((f) => f.type !== 'list').map((f) => f.name))]
   if (groupBy && !itemField && !fieldNames.includes(groupBy)) fieldNames.push(groupBy)
-  return { fieldNames, listField: itemField ?? fields.find((f) => f.type === 'list')?.name }
+  return { fieldNames, listField: itemField ?? listFieldOf(definitions, types) }
 }
 
 /**

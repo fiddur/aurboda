@@ -2,13 +2,23 @@ import { type ActivityMeasure, type ActivitySession, activityMeasureLabels } fro
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useRoute } from 'preact-iso'
-import { useState } from 'preact/hooks'
+import { useMemo, useState } from 'preact/hooks'
 
+import { BarChart } from '../../components/charts/BarChart'
 import { TrendLineChart } from '../../components/charts/TrendLineChart'
-import { fetchActivitySessions, fetchActivityTypeDefinitions } from '../../state/api'
+import { fetchActivitySessions, fetchActivityTypeDefinitions, fetchChartData } from '../../state/api'
 import { toDisplayName } from '../../utils/displayName'
-import { formatMeasure, formatSet } from '../../utils/measures'
-import { doneSummary, type ItemRecord, recordsFrom, sliceByLookback, trendPoints } from './itemHistory'
+import { defaultAggregation, formatMeasure, formatSet } from '../../utils/measures'
+import {
+  chartExplorerHref,
+  doneSummary,
+  type ItemRecord,
+  perWeekLookbackDays,
+  perWeekRange,
+  recordsFrom,
+  sliceByLookback,
+  trendPoints,
+} from './itemHistory'
 import { ItemSessionsTable } from './ItemSessionsTable'
 import './style.css'
 
@@ -56,7 +66,80 @@ const Records = ({ sessions }: { sessions: ActivitySession[] }) => {
   )
 }
 
-const Trend = ({ all, shown }: { all: ActivitySession[]; shown: ActivitySession[] }) => {
+interface ItemRef {
+  name: string
+  field: string
+  value: string
+}
+
+const PerWeek = ({
+  item,
+  lookback,
+  measure,
+}: {
+  item: ItemRef
+  lookback: number
+  measure: ActivityMeasure
+}) => {
+  const lookbackDays = perWeekLookbackDays(lookback)
+  const range = useMemo(() => perWeekRange(lookbackDays), [lookbackDays])
+  const aggregation = defaultAggregation(measure)
+  const query = useQuery({
+    queryFn: () =>
+      fetchChartData({
+        aggregation,
+        bucket_size: '1w',
+        end: range.end,
+        filter_field: item.field,
+        filter_value: item.value,
+        measure,
+        pattern: item.name,
+        source_type: 'activity_type',
+        start: range.start,
+      }),
+    queryKey: ['chart-data', 'item-per-week', item, measure, range],
+    staleTime: 5 * 60 * 1000,
+  })
+
+  return (
+    <section class="activity-type-item-section">
+      <h2>Per week</h2>
+      {query.isLoading && <p class="loading">Loading...</p>}
+      {query.isError && <p class="error">Failed to load the weekly chart</p>}
+      {query.data && (
+        <>
+          <BarChart
+            data={query.data.buckets}
+            color="#8b5cf6"
+            height={200}
+            bucketSize="1w"
+            rangeStart={range.start}
+            rangeEnd={range.end}
+          />
+          <p class="activity-type-item-caption">
+            {activityMeasureLabels[measure]}, {aggregation === 'max' ? 'the best' : 'the total'} of each week.
+          </p>
+        </>
+      )}
+      <div class="activity-type-item-links">
+        <a href={chartExplorerHref({ ...item, lookbackDays, measure })}>Open in Chart Explorer</a>
+        <a href="/goals">Set a goal</a>
+      </div>
+    </section>
+  )
+}
+
+const Trend = ({
+  all,
+  item,
+  lookback,
+  shown,
+}: {
+  all: ActivitySession[]
+  item: ItemRef
+  lookback: number
+  shown: ActivitySession[]
+}) => {
   const available = TREND_MEASURES.filter((m) => all.some((s) => s.measures?.[m] !== undefined))
   const [chosen, setChosen] = useState<ActivityMeasure | undefined>(undefined)
   const measure = chosen && available.includes(chosen) ? chosen : available[0]
@@ -64,28 +147,31 @@ const Trend = ({ all, shown }: { all: ActivitySession[]; shown: ActivitySession[
   const points = trendPoints(shown, measure)
 
   return (
-    <section class="activity-type-item-section">
-      <div class="activity-type-item-section-header">
-        <h2>Trend</h2>
-        <select
-          aria-label="Measure"
-          value={measure}
-          onChange={(e) => setChosen((e.target as HTMLSelectElement).value as ActivityMeasure)}
-        >
-          {available.map((m) => (
-            <option key={m} value={m}>
-              {activityMeasureLabels[m]}
-            </option>
-          ))}
-        </select>
-      </div>
-      {points.length >= 2 && (
-        <>
-          <TrendLineChart data={points} color="#8b5cf6" height={220} />
-          <p class="activity-type-item-caption">Per session.</p>
-        </>
-      )}
-    </section>
+    <>
+      <section class="activity-type-item-section">
+        <div class="activity-type-item-section-header">
+          <h2>Trend</h2>
+          <select
+            aria-label="Measure"
+            value={measure}
+            onChange={(e) => setChosen((e.target as HTMLSelectElement).value as ActivityMeasure)}
+          >
+            {available.map((m) => (
+              <option key={m} value={m}>
+                {activityMeasureLabels[m]}
+              </option>
+            ))}
+          </select>
+        </div>
+        {points.length >= 2 && (
+          <>
+            <TrendLineChart data={points} color="#8b5cf6" height={220} />
+            <p class="activity-type-item-caption">Per session.</p>
+          </>
+        )}
+      </section>
+      <PerWeek item={item} lookback={lookback} measure={measure} />
+    </>
   )
 }
 
@@ -96,6 +182,7 @@ export function ActivityTypeItem() {
   const field = params.field as string
   const value = params.value as string
   const [lookback, setLookback] = useState(365)
+  const item = useMemo(() => ({ field, name, value }), [field, name, value])
 
   const { data: definitions } = useQuery({
     queryFn: fetchActivityTypeDefinitions,
@@ -146,7 +233,7 @@ export function ActivityTypeItem() {
             </select>
           </label>
 
-          <Trend all={sessions} shown={shown} />
+          <Trend all={sessions} item={item} lookback={lookback} shown={shown} />
 
           <section class="activity-type-item-section">
             <h2>History</h2>
