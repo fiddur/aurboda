@@ -1,14 +1,17 @@
 /**
  * Goal schemas for tracking health metrics against targets.
  *
- * Two goal types via discriminated union on `goal_type`:
+ * Three goal types via discriminated union on `goal_type`:
  * - `metric`: windowed sum of a predefined metric (e.g., "70k steps per week")
  * - `trend`: EMA trend value against a target (e.g., "keep trend below 0.7/month")
+ * - `measure`: windowed max or sum of a list-item measure of an activity type (e.g. "Bench Press
+ *   e1RM at least 100 kg over 30 days")
  */
 
 import { z } from 'zod'
 
-import { baseResponseSchema, metricTypeSchema } from './common.ts'
+import { activityMeasureSchema } from './activity-measures.ts'
+import { activityTypeSchema, baseResponseSchema, dataFieldPathSchema, metricTypeSchema } from './common.ts'
 import { trendDisplayPeriodSchema, trendSourceTypeSchema } from './trends.ts'
 
 /**
@@ -104,9 +107,55 @@ export const trendGoalSchema = z
 
 export type TrendGoal = z.infer<typeof trendGoalSchema>
 
-export const goalSchema = z.discriminatedUnion('goal_type', [metricGoalSchema, trendGoalSchema]).meta({
-  id: 'Goal',
+export const measureGoalAggregationSchema = z.enum(['max', 'sum']).meta({
+  id: 'MeasureGoalAggregation',
+  description: 'How the measure is combined over the window: the best session (max) or the total (sum)',
 })
+
+export type MeasureGoalAggregation = z.infer<typeof measureGoalAggregationSchema>
+
+const measureGoalShape = {
+  activity_type: activityTypeSchema.meta({ description: 'Activity type whose sessions are measured' }),
+  aggregation: measureGoalAggregationSchema
+    .default('max')
+    .meta({ description: 'max for e1rm, max_weight and max_time; sum for volume and set_count' }),
+  filter_field: dataFieldPathSchema
+    .optional()
+    .meta({ description: 'Item path to filter the items by, e.g. sets.exercise' }),
+  filter_value: z.string().optional().meta({ description: 'The item value to keep, e.g. an exercise name' }),
+  goal_type: z.literal('measure').meta({ description: 'Goal type discriminant' }),
+  id: z.string().uuid().meta({ description: 'Unique identifier for the goal' }),
+  max: z.number().positive().optional().meta({ description: 'Maximum target value' }),
+  measure: activityMeasureSchema.meta({ description: 'The list-item measure the goal is on' }),
+  min: z.number().positive().optional().meta({ description: 'Minimum target value' }),
+  window: durationStringSchema.default('30d').meta({ description: 'Rolling window duration' }),
+}
+
+export const measureGoalSchema = z
+  .object(measureGoalShape)
+  .refine((data) => data.min !== undefined || data.max !== undefined, {
+    message: 'At least one of min or max must be specified',
+  })
+  .refine((data) => data.min === undefined || data.max === undefined || data.min <= data.max, {
+    message: 'Min must be less than or equal to max',
+  })
+  .refine((data) => (data.filter_field === undefined) === (data.filter_value === undefined), {
+    message: 'filter_field and filter_value must be given together',
+    path: ['filter_value'],
+  })
+  .meta({
+    description:
+      'Measure goal: the best (max) or total (sum) of a list-item measure over the sessions of an activity type in a rolling window, optionally for one item value such as an exercise',
+    id: 'MeasureGoal',
+  })
+
+export type MeasureGoal = z.infer<typeof measureGoalSchema>
+
+export const goalSchema = z
+  .discriminatedUnion('goal_type', [metricGoalSchema, trendGoalSchema, measureGoalSchema])
+  .meta({
+    id: 'Goal',
+  })
 
 export type Goal = z.infer<typeof goalSchema>
 
@@ -179,8 +228,40 @@ export const trendGoalProgressSchema = z
 
 export type TrendGoalProgress = z.infer<typeof trendGoalProgressSchema>
 
+export const measureGoalProgressSchema = z
+  .object({
+    activity_type: activityTypeSchema,
+    activity_type_name: z.string().meta({ description: "The activity type's display name" }),
+    aggregation: measureGoalAggregationSchema,
+    current: z
+      .number()
+      .meta({ description: 'Current value within the window (0 when no session has the measure)' }),
+    filter_value: z
+      .string()
+      .optional()
+      .meta({ description: 'The item value the goal is on, e.g. an exercise' }),
+    goal_type: z.literal('measure').meta({ description: 'Goal type discriminant' }),
+    id: z.string().uuid().meta({ description: 'Goal ID' }),
+    losing_tomorrow: z.number().meta({
+      description:
+        "What drops off when the oldest day leaves the window: the day's total for sum, or how far the best falls when it is only on that day for max",
+    }),
+    max: z.number().positive().optional(),
+    measure: activityMeasureSchema,
+    min: z.number().positive().optional(),
+    unit: z.string().meta({ description: 'Unit of the measure (kg, s, or empty for a count)' }),
+    window: durationStringSchema,
+  })
+  .meta({ description: 'Progress for a measure goal', id: 'MeasureGoalProgress' })
+
+export type MeasureGoalProgress = z.infer<typeof measureGoalProgressSchema>
+
 export const goalProgressSchema = z
-  .discriminatedUnion('goal_type', [metricGoalProgressSchema, trendGoalProgressSchema])
+  .discriminatedUnion('goal_type', [
+    metricGoalProgressSchema,
+    trendGoalProgressSchema,
+    measureGoalProgressSchema,
+  ])
   .meta({ id: 'GoalProgress' })
 
 export type GoalProgress = z.infer<typeof goalProgressSchema>
