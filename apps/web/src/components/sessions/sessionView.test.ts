@@ -13,6 +13,8 @@ import {
   hardMinutes,
   hrDomain,
   isSameSession,
+  listFields,
+  scalarFields,
   sessionLabel,
   sortGroups,
   sortSessions,
@@ -60,6 +62,22 @@ describe('schema helpers', () => {
       { field: count, value: '3' },
     ])
     expect(categoricalValues([nameField], undefined)).toEqual([])
+  })
+
+  test('scalar and list fields split the schema, and a list field is never categorical', () => {
+    const sets = {
+      is_categorical: true,
+      item_fields: [{ name: 'exercise', type: 'string' as const }],
+      name: 'sets',
+      type: 'list' as const,
+    }
+    const props = { name: 'props', type: 'boolean' as const }
+    const schema = { fields: [nameField, sets, props] }
+    expect(scalarFields(schema)).toEqual([nameField, props])
+    expect(listFields(schema)).toEqual([sets])
+    expect(categoricalFields(schema)).toEqual([nameField])
+    expect(scalarFields(undefined)).toEqual([])
+    expect(listFields(undefined)).toEqual([])
   })
 })
 

@@ -234,7 +234,7 @@ export const queryActivitySessions = async (
     ...new Set(
       definitions
         .filter((d) => types.includes(d.name))
-        .flatMap((d) => d.data_schema?.fields.map((f) => f.name) ?? []),
+        .flatMap((d) => d.data_schema?.fields.filter((f) => f.type !== 'list').map((f) => f.name) ?? []),
     ),
   ]
   if (groupBy && !fieldNames.includes(groupBy)) fieldNames.push(groupBy)

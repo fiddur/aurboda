@@ -21,7 +21,7 @@ import { useState } from 'preact/hooks'
 
 import { ActivityTypePicker } from '../../components/ActivityTypePicker'
 import { DEFAULT_SUMMARY, SERIES_METRICS, SUMMARY_METRICS } from '../../components/feed-metrics'
-import { fieldLabel } from '../../components/sessions/sessionView'
+import { fieldLabel, scalarFields } from '../../components/sessions/sessionView'
 import { FEED_VISIBILITY_OPTIONS, VisibilitySelector } from '../../components/VisibilitySelector'
 import {
   type ActivityTypeDefinition,
@@ -60,7 +60,7 @@ const useActivityTypeDefinitions = () =>
   }).data ?? []
 
 const schemaFieldsOf = (definitions: ActivityTypeDefinition[], activityType: string): DataFieldDefinition[] =>
-  definitions.find((definition) => definition.name === activityType)?.data_schema?.fields ?? []
+  scalarFields(definitions.find((definition) => definition.name === activityType)?.data_schema)
 
 function DataConditionRow({
   activityType,

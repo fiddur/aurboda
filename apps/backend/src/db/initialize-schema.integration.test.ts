@@ -2,8 +2,9 @@ import { Client } from 'pg'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 
 import { schemaFingerprint } from '../schema.ts'
+import { strengthTrainingDataSchema } from '../schema/builtin-data-schemas.ts'
 import { getTestConnectionUri, getTestDbClient, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
-import { _setDbForUser, initializeSchema, schemaUpToDate } from './connection.ts'
+import { _setDbForUser, initializeSchema, migrateSchema, schemaUpToDate } from './connection.ts'
 import { createRolePool, type UserDb } from './pool.ts'
 
 const CONTAINER_TIMEOUT = 120_000
@@ -14,8 +15,7 @@ const SCHEMA_TIMEOUT = 60_000
 const pools: UserDb[] = []
 
 /** A new database prepared the way `makeNewUserDb` prepares one, routed to `user`. */
-const freshUserDb = async (user: string): Promise<UserDb> => {
-  const database = `init_${user}`
+const freshUserDb = async (user: string, database = `init_${user}`): Promise<UserDb> => {
   await getTestDbClient().query(`CREATE DATABASE ${database}`)
   const uri = new URL(getTestConnectionUri())
   uri.pathname = `/${database}`
@@ -62,5 +62,33 @@ describe('initializeSchema', () => {
       expect(await schemaUpToDate(db, schemaFingerprint())).toBe(false)
     },
     SCHEMA_TIMEOUT,
+  )
+
+  const strengthSchema = async (db: UserDb): Promise<unknown> =>
+    (await db.query(`SELECT data_schema FROM activity_type_definitions WHERE name = 'strength_training'`))
+      .rows[0].data_schema
+
+  test(
+    'migration fills a missing strength_training data schema and leaves a user-edited one alone',
+    async () => {
+      const db = await freshUserDb('strength', 'aurboda_strength')
+      await initializeSchema('strength')
+      expect(await strengthSchema(db)).toEqual(strengthTrainingDataSchema)
+
+      await db.query(
+        `UPDATE activity_type_definitions SET data_schema = NULL WHERE name = 'strength_training'`,
+      )
+      await migrateSchema('strength', { force: true })
+      expect(await strengthSchema(db)).toEqual(strengthTrainingDataSchema)
+
+      const edited = { fields: [{ name: 'notes', type: 'string' }] }
+      await db.query(
+        `UPDATE activity_type_definitions SET data_schema = $1::jsonb WHERE name = 'strength_training'`,
+        [JSON.stringify(edited)],
+      )
+      await migrateSchema('strength', { force: true })
+      expect(await strengthSchema(db)).toEqual(edited)
+    },
+    SCHEMA_TIMEOUT * 2,
   )
 })
