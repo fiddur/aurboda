@@ -15,7 +15,13 @@ import {
   parseSleepStages,
 } from '../../components/charts/sleep-utils'
 import { dropBlankListRows } from '../../components/listFieldRows'
-import { categoricalFields, categoricalValues, fieldLabel } from '../../components/sessions/sessionView'
+import {
+  categoricalFields,
+  categoricalItemFields,
+  categoricalValues,
+  fieldLabel,
+  itemPath,
+} from '../../components/sessions/sessionView'
 import {
   fetchActivityById,
   fetchActivitySessions,
@@ -51,6 +57,7 @@ import {
 import { type ActivityDraft, EditableActivityFields } from './EditableActivityFields'
 import { EntityActions, type EntityType } from './EntityActions'
 import { formatDateTimeLocal, formatTime } from './format-utils'
+import { ItemHistorySection } from './ItemHistorySection'
 import { ListFieldTable } from './ListFieldTable'
 import { LocationInfo, LocationStatRow } from './LocationInfo'
 import { MediaPlayDetail } from './MediaPlayDetail'
@@ -257,6 +264,7 @@ const SourceDataDetails = ({ entries }: { entries: { key: string; label: string;
 // eslint-disable-next-line complexity -- unified component replaces 3 separate ones
 const ActivityDetailContent = ({
   activity,
+  activityId,
   isEditing,
   draft,
   onDraftChange,
@@ -270,6 +278,8 @@ const ActivityDetailContent = ({
   focusField,
 }: {
   activity: Activity
+  /** The id the page is viewed by: `merged:` prefixed for a merged view. */
+  activityId: string
   isEditing: boolean
   draft: ActivityDraft
   onDraftChange: (d: ActivityDraft) => void
@@ -448,6 +458,15 @@ const ActivityDetailContent = ({
             {buildListTables(typeDef?.data_schema, activityData).map((table) => (
               <ListFieldTable key={table.field.name} table={table} />
             ))}
+            {categoricalItemFields(typeDef?.data_schema).map(({ list, item }) => (
+              <ItemHistorySection
+                key={itemPath(list, item)}
+                activityId={activityId}
+                activityType={activity.activity_type}
+                path={itemPath(list, item)}
+                item={item}
+              />
+            ))}
             {hasHrZones && <HrZoneBar zones={hrZoneSecs!} />}
           </>
         )}
@@ -583,6 +602,7 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
         // An edited name or time moves this activity between groups and neighbors
         queryClient.invalidateQueries({ queryKey: ['activity-sessions'] }),
         queryClient.invalidateQueries({ queryKey: ['activity-neighbors'] }),
+        queryClient.invalidateQueries({ queryKey: ['activity-item-history'] }),
       ]),
     [queryClient, entityId],
   )
@@ -789,6 +809,7 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
       {isMerging && <MergePanel activityId={rawEntityId} onCancel={() => setIsMerging(false)} />}
       <ActivityDetailContent
         activity={activity}
+        activityId={entityId}
         isEditing={isEditing}
         draft={draft}
         onDraftChange={setDraft}

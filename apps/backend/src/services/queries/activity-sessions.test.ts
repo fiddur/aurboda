@@ -321,3 +321,153 @@ describe('queryActivitySessions', () => {
     expect(result).toEqual({ activity_type: 'yoga', group_by: undefined, groups: undefined, sessions: [] })
   })
 })
+
+describe('queryActivitySessions over list items', () => {
+  const strengthDef: ActivityTypeDefinition = {
+    ...yogaDef,
+    data_schema: {
+      fields: [
+        { name: 'location', type: 'string' },
+        {
+          item_fields: [
+            { is_categorical: true, name: 'exercise', type: 'string' },
+            { name: 'weight', type: 'number' },
+            { name: 'reps', type: 'number' },
+          ],
+          name: 'sets',
+          type: 'list',
+        },
+      ],
+    },
+    display_name: 'Strength',
+    name: 'strength_training',
+  }
+
+  const lift = (
+    id: string,
+    startIso: string,
+    sets: Record<string, unknown>[],
+    extra: Partial<MergedActivity> = {},
+  ) => activity(id, startIso, 45, { location: 'Gym', sets }, { activity_type: 'strength_training', ...extra })
+
+  const bench = (weight: number, reps: number, extra = {}) => ({
+    exercise: 'Bench Press',
+    reps,
+    weight,
+    ...extra,
+  })
+  const squat = (weight: number, reps: number) => ({ exercise: 'squat', reps, weight })
+
+  const s1 = lift('s1', '2026-08-01T17:00:00Z', [
+    bench(40, 10, { set_type: 'warmup' }),
+    bench(80, 5),
+    squat(100, 5),
+  ])
+  const s2 = lift('s2', '2026-09-01T17:00:00Z', [bench(75, 5)])
+  const s3 = lift('s3', '2026-09-08T17:00:00Z', [
+    { exercise: ' bench press ', reps: 3, weight: 85 },
+    { exercise: 'Squat', reps: 3, weight: 100 },
+    { exercise: 'squat ', reps: 5, weight: 105 },
+  ])
+  const s4 = lift('s4', '2026-09-10T17:00:00Z', [{ exercise: '', reps: 10, weight: 20 }])
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(db.getActivityTypeDefinitions).mockResolvedValue([strengthDef])
+    vi.mocked(db.getActivities).mockResolvedValue([s1, s2, s3, s4])
+    vi.mocked(db.getHrZoneSecsForWindows).mockResolvedValue([])
+    vi.mocked(db.getValueHistogramsForWindows).mockResolvedValue([])
+  })
+
+  test('every session carries measures over its list, and only scalar fields', async () => {
+    const result = await queryActivitySessions('u', 'strength_training')
+    const byId = new Map(result.sessions.map((s) => [s.id, s]))
+    expect(byId.get('s1')).toMatchObject({
+      fields: { location: 'Gym' },
+      measures: { e1rm: 116.7, max_weight: 100, set_count: 2, volume: 900 },
+    })
+    expect(byId.get('s1')!.items).toBeUndefined()
+    expect(byId.get('s1')!.records).toBeUndefined()
+    expect(byId.get('s4')!.measures).toEqual({ e1rm: 26.7, max_weight: 20, set_count: 1, volume: 200 })
+  })
+
+  test('a type without a list field has no measures', async () => {
+    vi.mocked(db.getActivityTypeDefinitions).mockResolvedValue([yogaDef])
+    vi.mocked(db.getActivities).mockResolvedValue([
+      activity('a', '2026-09-01T07:00:00Z', 20, { session_name: 'Flow' }),
+    ])
+    const result = await queryActivitySessions('u', 'yoga')
+    expect(result.sessions[0]!.measures).toBeUndefined()
+  })
+
+  test('an item filter keeps the matching sessions with their items, measures and records, judged before start too', async () => {
+    const result = await queryActivitySessions('u', 'strength_training', {
+      filter: { field: 'sets.exercise', value: 'BENCH PRESS' },
+      start: at('2026-08-15T00:00:00Z'),
+    })
+
+    expect(vi.mocked(db.getActivities).mock.calls[0]![2]).toEqual(new Date(0))
+    expect(result.sessions.map((s) => s.id)).toEqual(['s3', 's2'])
+    expect(result.sessions[0]).toMatchObject({
+      items: [{ exercise: ' bench press ', reps: 3, weight: 85 }],
+      measures: { e1rm: 93.5, max_weight: 85, set_count: 1, volume: 255 },
+      records: ['e1rm', 'max_weight'],
+    })
+    expect(result.sessions[1]).toMatchObject({
+      items: [bench(75, 5)],
+      measures: { e1rm: 87.5, max_weight: 75, set_count: 1, volume: 375 },
+      records: [],
+    })
+    expect(result.sessions[0]!.fields).toEqual({ location: 'Gym' })
+  })
+
+  test('the first session with a value sets its records', async () => {
+    const result = await queryActivitySessions('u', 'strength_training', {
+      filter: { field: 'sets.exercise', value: 'squat' },
+    })
+    expect(result.sessions.map((s) => [s.id, s.records, s.measures?.set_count])).toEqual([
+      ['s3', ['e1rm', 'max_weight'], 2],
+      ['s1', ['e1rm', 'max_weight'], 1],
+    ])
+  })
+
+  test('an item filter on (none) keeps the sessions without an item value', async () => {
+    const result = await queryActivitySessions('u', 'strength_training', {
+      filter: { field: 'sets.exercise', value: null },
+    })
+    expect(result.sessions.map((s) => s.id)).toEqual(['s4'])
+    expect(result.sessions[0]!.items).toBeUndefined()
+  })
+
+  test('group_by an item path: a group per value, combined measures, most recent spelling, (none) last', async () => {
+    vi.mocked(db.getHrZoneSecsForWindows).mockResolvedValue([undefined, undefined, undefined, undefined])
+    vi.mocked(db.getValueHistogramsForWindows).mockResolvedValue([
+      new Map([[100, 1]]),
+      new Map([[120, 1]]),
+      new Map([[140, 1]]),
+      new Map([[90, 1]]),
+    ])
+
+    const result = await queryActivitySessions('u', 'strength_training', { groupBy: 'sets.exercise' })
+
+    expect(result.group_by).toBe('sets.exercise')
+    expect(
+      result.groups?.map((g) => [g.value, g.session_ids, g.count, g.hr?.sample_count, g.hr?.max]),
+    ).toEqual([
+      ['bench press', ['s3', 's2', 's1'], 3, 3, 140],
+      ['Squat', ['s3', 's1'], 2, 2, 140],
+      [null, ['s4'], 1, 1, 90],
+    ])
+    expect(result.groups![0]!.measures).toEqual({ e1rm: 93.5, max_weight: 85, set_count: 3, volume: 1030 })
+    expect(result.groups![1]!.measures).toEqual({ e1rm: 122.5, max_weight: 105, set_count: 3, volume: 1325 })
+    expect(result.groups![2]!.measures).toBeUndefined()
+    expect(result.groups![0]).toMatchObject({
+      first_start_time: '2026-08-01T17:00:00.000Z',
+      last_start_time: '2026-09-08T17:00:00.000Z',
+    })
+
+    const s3Session = result.sessions.find((s) => s.id === 's3')!
+    expect(s3Session.measures).toEqual({ e1rm: 122.5, max_weight: 105, set_count: 3, volume: 1080 })
+    expect(s3Session.fields).toEqual({ location: 'Gym' })
+  })
+})

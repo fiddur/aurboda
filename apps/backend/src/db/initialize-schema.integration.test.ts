@@ -2,7 +2,10 @@ import { Client } from 'pg'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 
 import { schemaFingerprint } from '../schema.ts'
-import { strengthTrainingDataSchema } from '../schema/builtin-data-schemas.ts'
+import {
+  previousStrengthTrainingDataSchemas,
+  strengthTrainingDataSchema,
+} from '../schema/builtin-data-schemas.ts'
 import { getTestConnectionUri, getTestDbClient, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { _setDbForUser, initializeSchema, migrateSchema, schemaUpToDate } from './connection.ts'
 import { createRolePool, type UserDb } from './pool.ts'
@@ -69,7 +72,7 @@ describe('initializeSchema', () => {
       .rows[0].data_schema
 
   test(
-    'migration fills a missing strength_training data schema and leaves a user-edited one alone',
+    'migration fills a missing strength_training data schema, upgrades an unedited earlier one and leaves a user-edited one alone',
     async () => {
       const db = await freshUserDb('strength', 'aurboda_strength')
       await initializeSchema('strength')
@@ -80,6 +83,15 @@ describe('initializeSchema', () => {
       )
       await migrateSchema('strength', { force: true })
       expect(await strengthSchema(db)).toEqual(strengthTrainingDataSchema)
+
+      for (const previous of previousStrengthTrainingDataSchemas) {
+        await db.query(
+          `UPDATE activity_type_definitions SET data_schema = $1::jsonb WHERE name = 'strength_training'`,
+          [JSON.stringify(previous)],
+        )
+        await migrateSchema('strength', { force: true })
+        expect(await strengthSchema(db)).toEqual(strengthTrainingDataSchema)
+      }
 
       const edited = { fields: [{ name: 'notes', type: 'string' }] }
       await db.query(

@@ -206,22 +206,43 @@ export interface ActivityFieldValueRow {
   last_used: Date
 }
 
+/**
+ * Values a data field has taken. An item path (`sets.exercise`) reads the key off each object item
+ * of the list field, comparing trimmed and case-insensitively, spelled as most recently used;
+ * `count` is then the number of activities using the value.
+ */
 export const getActivityFieldValues = async (
   user: string,
   activityTypes: string[],
   field: string,
   limit = 200,
 ): Promise<ActivityFieldValueRow[]> => {
-  const result = await query(
-    user,
-    `SELECT btrim(data->>$2) AS value, COUNT(*)::int AS count, MAX(start_time) AS last_used
+  const dot = field.indexOf('.')
+  const result =
+    dot === -1
+      ? await query(
+          user,
+          `SELECT btrim(data->>$2) AS value, COUNT(*)::int AS count, MAX(start_time) AS last_used
      FROM activities
      WHERE activity_type = ANY($1) AND deleted_at IS NULL AND btrim(data->>$2) <> ''
      GROUP BY 1
      ORDER BY last_used DESC, value
      LIMIT $3`,
-    [activityTypes, field, limit],
-  )
+          [activityTypes, field, limit],
+        )
+      : await query(
+          user,
+          `SELECT (array_agg(btrim(item->>$3) ORDER BY a.start_time DESC))[1] AS value,
+            COUNT(DISTINCT a.id)::int AS count, MAX(a.start_time) AS last_used
+     FROM activities a,
+          jsonb_array_elements(CASE WHEN jsonb_typeof(a.data->$2) = 'array' THEN a.data->$2 ELSE '[]'::jsonb END) item
+     WHERE a.activity_type = ANY($1) AND a.deleted_at IS NULL AND jsonb_typeof(item) = 'object'
+       AND btrim(COALESCE(item->>$3, '')) <> ''
+     GROUP BY lower(btrim(item->>$3))
+     ORDER BY last_used DESC, value
+     LIMIT $4`,
+          [activityTypes, field.slice(0, dot), field.slice(dot + 1), limit],
+        )
   return result.rows.map((row) => ({
     count: row.count,
     last_used: new Date(row.last_used),

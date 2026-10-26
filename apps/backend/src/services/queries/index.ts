@@ -53,6 +53,7 @@ export {
 
 export { queryActivityFieldValues } from './activity-field-values.ts'
 export { getActivityNeighbors } from './activity-neighbors.ts'
+export { queryActivityItemHistory } from './activity-item-history.ts'
 
 export {
   type ActivityFullDetailOptions,

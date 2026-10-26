@@ -24,6 +24,7 @@ vi.mock('./services/queries/index', async () => ({
     .parseDataFilter,
   queryActivities: vi.fn(),
   queryActivityFieldValues: vi.fn(),
+  queryActivityItemHistory: vi.fn(),
   queryActivitySessions: vi.fn(),
   sessionsOptionsFromQuery: (
     await vi.importActual<typeof SessionQueries>('./services/queries/activity-sessions.ts')
@@ -901,6 +902,33 @@ describe('MCP Server', () => {
 
       vi.mocked(queries.getActivityNeighbors).mockResolvedValueOnce(null)
       const missing = await callTool(app, token, 'get_activity_neighbors', { id: 'y', tz: 'UTC' })
+      expect(missing.text).toBe('Activity not found')
+    })
+
+    test('get_activity_item_history returns the history, or an error for a missing activity', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      vi.mocked(queries.queryActivityItemHistory).mockResolvedValueOnce({
+        activity_id: 'merged:x',
+        field: 'sets.exercise',
+        groups: [{ items: [], measures: { set_count: 1 }, records: ['e1rm'], value: 'Bench Press' }],
+        totals: { set_count: 1 },
+      })
+
+      const found = await callTool(app, token, 'get_activity_item_history', {
+        field: 'sets.exercise',
+        id: 'merged:x',
+        tz: 'UTC',
+      })
+      expect(JSON.parse(found.text).data.groups[0]).toMatchObject({ records: ['e1rm'], value: 'Bench Press' })
+      expect(queries.queryActivityItemHistory).toHaveBeenCalledWith('testuser', 'merged:x', 'sets.exercise')
+
+      vi.mocked(queries.queryActivityItemHistory).mockResolvedValueOnce(null)
+      const missing = await callTool(app, token, 'get_activity_item_history', {
+        field: 'sets.exercise',
+        id: 'y',
+        tz: 'UTC',
+      })
       expect(missing.text).toBe('Activity not found')
     })
 

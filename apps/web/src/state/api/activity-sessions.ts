@@ -1,6 +1,8 @@
 import type {
   ActivityFieldValues,
   ActivityFieldValuesResponse,
+  ActivityItemHistory,
+  ActivityItemHistoryResponse,
   ActivityNeighbors,
   ActivityNeighborsQuery,
   ActivityNeighborsResponse,
@@ -34,6 +36,14 @@ export const fetchActivityNeighbors = async (
     { headers: { Authorization: `Bearer ${auth.value.token}` }, params: query },
   )
   return response.data.data ?? { activity_type: '' }
+}
+
+export const fetchActivityItemHistory = async (id: string, field: string): Promise<ActivityItemHistory> => {
+  const response = await axios.get<ActivityItemHistoryResponse>(
+    `${API_URL}/activities/${encodeURIComponent(id)}/item-history`,
+    { headers: { Authorization: `Bearer ${auth.value.token}` }, params: { field } },
+  )
+  return response.data.data ?? { activity_id: id, field, groups: [], totals: {} }
 }
 
 export const fetchActivityFieldValues = async (
