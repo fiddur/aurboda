@@ -4,6 +4,7 @@ import { describe, expect, test } from 'vitest'
 
 import {
   categoricalFields,
+  categoricalItemFields,
   categoricalValues,
   fieldLabel,
   formatMinutes,
@@ -13,6 +14,8 @@ import {
   hardMinutes,
   hrDomain,
   isSameSession,
+  itemPageHref,
+  itemPath,
   listFields,
   scalarFields,
   sessionLabel,
@@ -78,6 +81,24 @@ describe('schema helpers', () => {
     expect(categoricalFields(schema)).toEqual([nameField])
     expect(scalarFields(undefined)).toEqual([])
     expect(listFields(undefined)).toEqual([])
+  })
+
+  test('categorical item fields and their paths', () => {
+    const exercise = { is_categorical: true, name: 'exercise', type: 'string' as const }
+    const weight = { name: 'weight', type: 'number' as const }
+    const sets = { item_fields: [exercise, weight], name: 'sets', type: 'list' as const }
+    const poses = {
+      item_fields: [{ name: 'pose', type: 'string' as const }],
+      name: 'poses',
+      type: 'list' as const,
+    }
+    const schema = { fields: [nameField, sets, poses] }
+    expect(categoricalItemFields(schema)).toEqual([{ item: exercise, list: sets }])
+    expect(categoricalItemFields(undefined)).toEqual([])
+    expect(itemPath(sets, exercise)).toBe('sets.exercise')
+    expect(itemPageHref('strength_training', 'sets.exercise', 'Bench Press / 50%')).toBe(
+      '/activity-type/strength_training/item/sets.exercise/Bench%20Press%20%2F%2050%25',
+    )
   })
 })
 

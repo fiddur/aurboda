@@ -10,7 +10,7 @@ import { IconPreview } from '../../components/IconPreview'
 import { MiniTrendChart } from '../../components/MiniTrendChart'
 import { SaveCancelRow } from '../../components/SaveCancelRow'
 import { useSaveStatus } from '../../components/SaveStatusIndicator'
-import { categoricalFields } from '../../components/sessions/sessionView'
+import { categoricalFields, categoricalItemFields, itemPath } from '../../components/sessions/sessionView'
 import {
   fetchActivityTypeDefinitions,
   fetchTrend,
@@ -22,6 +22,7 @@ import {
 } from '../../state/api'
 import { toDisplayName } from '../../utils/displayName'
 import { suggestEmoji } from '../../utils/emojiLookup'
+import { ItemGroupsSection } from './ItemGroupsSection'
 import {
   addItemField,
   removeItemField,
@@ -788,6 +789,10 @@ export function ActivityTypeMeta() {
       </section>
 
       <SessionsSection name={name} fields={categoricalFields(typeDef?.data_schema)} />
+
+      {categoricalItemFields(typeDef?.data_schema).map(({ list, item }) => (
+        <ItemGroupsSection key={itemPath(list, item)} name={name} path={itemPath(list, item)} item={item} />
+      ))}
 
       <SettingsSection
         name={name}

@@ -434,6 +434,66 @@ a.entity-type-badge:hover {
   margin: 0 0 0.75rem;
 }
 
+.item-history {
+  margin-top: 1.25rem;
+}
+
+.item-history h3 {
+  font-size: 1rem;
+  margin: 0 0 0.5rem;
+}
+
+.item-history-totals {
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: #6b7280;
+}
+
+.item-history-groups {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.item-history-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.item-history-name a {
+  color: inherit;
+}
+
+.item-history-pr {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1.4;
+  vertical-align: middle;
+}
+
+.item-history-line {
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.item-history-when,
+.item-history-measures {
+  color: #6b7280;
+}
+
+.item-history-when a {
+  color: inherit;
+}
+
 .hr-zones-detail {
   margin-top: 1.25rem;
 }
@@ -856,6 +916,17 @@ a.btn-secondary {
   .list-field-table thead th,
   .list-field-table td {
     border-color: #374151;
+  }
+
+  .item-history-totals,
+  .item-history-when,
+  .item-history-measures {
+    color: #9ca3af;
+  }
+
+  .item-history-pr {
+    background: #78350f;
+    color: #fde68a;
   }
 
   .link-button {
