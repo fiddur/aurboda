@@ -745,7 +745,9 @@ private fun AddActivityTab(
     }
 
     val selectedTypeDef = activityTypes.find { it.name == selectedType }
-    val dataFields = selectedTypeDef?.dataSchema?.fields ?: emptyList()
+    // A list field (a strength session's sets) has no native row editor yet (#1316); the web
+    // pages edit it, and a text box here would send a string the backend rejects.
+    val dataFields = selectedTypeDef?.dataSchema?.fields?.filter { it.type != "list" } ?: emptyList()
 
     Column(
         modifier = Modifier

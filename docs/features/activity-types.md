@@ -71,7 +71,11 @@ The built-in `strength_training` type carries a `sets` list field:
 `time` is for holds such as planks. [Gravl](../gravl.md) writes sets in this shape. The schema is
 seeded on new databases and filled in on existing ones when the type has no schema yet, so an
 edit is kept: the built-in schema can be extended (e.g. with `set_type` or `rpe` item fields) on
-the type's page or with `update_activity_type`.
+the type's page or with `update_activity_type`. Clearing it entirely does not stick, though: a
+`strength_training` type without a schema gets `sets` back on the next deploy, so to drop a field
+edit the schema rather than remove it. The Android Add tab is native and skips list fields until it
+has a row editor ([#1316](https://github.com/fiddur/aurboda/issues/1316)); sets are entered on the
+web pages.
 
 ## Sessions Overview
 

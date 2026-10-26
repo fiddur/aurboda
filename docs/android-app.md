@@ -10,13 +10,13 @@ implementations of the same UI.
 A bottom navigation bar (`ui/screens/MainScreen.kt`, tabs in `AppState.kt`'s
 `MainTab`) hosts five tabs:
 
-| Tab  | Kind     | Why                                                         |
-| ---- | -------- | ----------------------------------------------------------- |
-| Home | Embedded | Web `/` (the dashboard); the default tab on launch          |
-| Add  | Native   | Native date/time pickers, offline entry queue               |
-| Feed | Embedded | Web `/feed`                                                 |
-| Sync | Native   | Health Connect permissions, background sync management      |
-| More | Hub      | Native list of everything else (`ui/screens/MoreScreen.kt`) |
+| Tab  | Kind     | Why                                                                             |
+| ---- | -------- | ------------------------------------------------------------------------------- |
+| Home | Embedded | Web `/` (the dashboard); the default tab on launch                              |
+| Add  | Native   | Native date/time pickers, offline entry queue; skips `list` data fields (#1316) |
+| Feed | Embedded | Web `/feed`                                                                     |
+| Sync | Native   | Health Connect permissions, background sync management                          |
+| More | Hub      | Native list of everything else (`ui/screens/MoreScreen.kt`)                     |
 
 There are far more web pages than fit on a bottom bar, so the **More** tab is a
 hub (`MoreScreen.kt`, `moreGroups`): a grouped list where each entry opens the
@@ -213,10 +213,10 @@ anything else opens the More hub.
 The app checks `BuildConfig.VERSION_JSON_URL` for a newer build (`checkForUpdate` in
 `MainActivity.kt`). CI bakes the URL in per branch (`.github/workflows/android.yml`):
 
-| Built from | Release | `VERSION_JSON_URL` |
-|---|---|---|
-| `main` | `v1.0.<versionCode>`, marked latest | `releases/latest/download/version.json` |
-| `develop` | pre-release on the fixed tag `beta` | `releases/download/beta/version.json` |
+| Built from | Release                             | `VERSION_JSON_URL`                      |
+| ---------- | ----------------------------------- | --------------------------------------- |
+| `main`     | `v1.0.<versionCode>`, marked latest | `releases/latest/download/version.json` |
+| `develop`  | pre-release on the fixed tag `beta` | `releases/download/beta/version.json`   |
 
 A stable install therefore only ever updates to the next main release; a beta install
 (APK from the `beta` pre-release) follows develop. Local builds default to the beta
