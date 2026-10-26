@@ -1,4 +1,12 @@
-import type { ActivityMeasure } from '@aurboda/api-spec'
+import {
+  type ActivityMeasure,
+  activityMeasureLabels,
+  type DataSchemaDefinition,
+  type MeasureGoal,
+  type MeasureGoalAggregation,
+} from '@aurboda/api-spec'
+
+import { categoricalItemFields, fieldLabel, itemPath, listFields } from '../components/sessions/sessionView'
 
 type Item = Record<string, unknown>
 
@@ -52,7 +60,7 @@ export const formatSet = (item: Item): string => {
 
 export const formatSets = (items: Item[]): string => items.map(formatSet).join(', ')
 
-const isWorking = (item: Item): boolean => item.set_type !== 'warmup'
+const isWorking = (item: Item): boolean => String(item.set_type).trim().toLowerCase() !== 'warmup'
 
 /** The first item with the highest score; scores are compared element by element, so later ones break ties. */
 const maxBy = (items: Item[], score: (item: Item) => number[] | undefined): Item | undefined => {
@@ -108,3 +116,28 @@ export const measureSet = (items: Item[], measure: ActivityMeasure): Item | unde
       return undefined
   }
 }
+
+export const defaultAggregation = (measure: ActivityMeasure): MeasureGoalAggregation =>
+  measure === 'volume' || measure === 'set_count' ? 'sum' : 'max'
+
+export const measureGoalLabel = (
+  goal: Pick<MeasureGoal, 'activity_type' | 'filter_value' | 'measure'> & { activity_type_name?: string },
+  typeName?: string,
+): string =>
+  `${goal.filter_value ?? goal.activity_type_name ?? typeName ?? goal.activity_type} · ${activityMeasureLabels[goal.measure]}`
+
+type WithSchema = { data_schema?: DataSchemaDefinition }
+
+export const measurableTypes = <T extends WithSchema>(definitions: T[]): T[] =>
+  definitions.filter((d) => listFields(d.data_schema).length > 0)
+
+/** The item field a measure can be narrowed by, such as a strength session's exercise. */
+export const measureFilter = (
+  definition: WithSchema | undefined,
+): { label: string; path: string } | undefined => {
+  const first = categoricalItemFields(definition?.data_schema)[0]
+  return first && { label: fieldLabel(first.item), path: itemPath(first.list, first.item) }
+}
+
+export const measureFilterPath = (definition: WithSchema | undefined): string | undefined =>
+  measureFilter(definition)?.path

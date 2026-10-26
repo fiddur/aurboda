@@ -1,4 +1,10 @@
-import type { ChartDataBucket, ChartDataResponse, ChartDataSourceType } from '@aurboda/api-spec'
+import type {
+  ActivityMeasure,
+  ChartDataAggregation,
+  ChartDataBucket,
+  ChartDataResponse,
+  ChartDataSourceType,
+} from '@aurboda/api-spec'
 
 import axios from 'axios'
 
@@ -13,8 +19,11 @@ export interface FetchChartDataParams {
   pattern?: string
   activity_type_id?: string
   bucket_size?: '1m' | '5m' | '15m' | '1h' | '1d' | '1w' | '1M'
-  aggregation?: 'count' | 'sum' | 'mean'
+  aggregation?: ChartDataAggregation
   breakdown_fields?: string[]
+  measure?: ActivityMeasure
+  filter_field?: string
+  filter_value?: string
 }
 
 export interface ChartDataResult {
@@ -37,6 +46,11 @@ export const fetchChartData = async (params: FetchChartDataParams): Promise<Char
   if (params.bucket_size) query.bucket_size = params.bucket_size
   if (params.aggregation) query.aggregation = params.aggregation
   if (params.breakdown_fields?.length) query.breakdown_fields = params.breakdown_fields.join(',')
+  if (params.measure) query.measure = params.measure
+  if (params.filter_field && params.filter_value) {
+    query.filter_field = params.filter_field
+    query.filter_value = params.filter_value
+  }
 
   const response = await axios.get<ChartDataResponse>(`${API_URL}/chart-data`, {
     headers: { Authorization: `Bearer ${token}` },

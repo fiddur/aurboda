@@ -118,4 +118,38 @@ describe('buildChartUrl', () => {
     )
     expect(activity.has('aggregation')).toBe(false)
   })
+
+  test('carries a measure with its item filter', () => {
+    const p = params(
+      buildChartUrl({
+        aggregation: 'max',
+        bucket_size: '1w',
+        chart_type: 'bar',
+        filter_field: 'sets.exercise',
+        filter_value: 'Bench Press',
+        measure: 'e1rm',
+        pattern: 'strength_training',
+        source_type: 'activity_type',
+      }),
+    )
+    expect(p.get('measure')).toBe('e1rm')
+    expect(p.get('aggregation')).toBe('max')
+    expect(p.get('filter_field')).toBe('sets.exercise')
+    expect(p.get('filter_value')).toBe('Bench Press')
+  })
+
+  test('drops the item filter without a measure', () => {
+    const p = params(
+      buildChartUrl({
+        chart_type: 'bar',
+        filter_field: 'sets.exercise',
+        filter_value: 'Bench Press',
+        pattern: 'strength_training',
+        source_type: 'activity_type',
+      }),
+    )
+    expect(p.has('measure')).toBe(false)
+    expect(p.has('filter_field')).toBe(false)
+    expect(p.has('filter_value')).toBe(false)
+  })
 })

@@ -196,3 +196,11 @@
     color: #fde68a;
   }
 }
+
+.activity-type-item-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 0.75rem;
+  font-size: 0.875rem;
+}

@@ -1,6 +1,19 @@
+import type { DataSchemaDefinition } from '@aurboda/api-spec'
+
 import { describe, expect, test } from 'vitest'
 
-import { formatMeasure, formatSet, formatSets, measureSet, topSet } from './measures'
+import {
+  defaultAggregation,
+  formatMeasure,
+  formatSet,
+  formatSets,
+  measurableTypes,
+  measureFilter,
+  measureFilterPath,
+  measureGoalLabel,
+  measureSet,
+  topSet,
+} from './measures'
 
 const THIN = ' '
 
@@ -89,6 +102,7 @@ describe('topSet', () => {
   test('undefined with no working set', () => {
     expect(topSet([])).toBeUndefined()
     expect(topSet([{ reps: 8, set_type: 'warmup', weight: 60 }])).toBeUndefined()
+    expect(topSet([{ reps: 8, set_type: ' Warmup ', weight: 60 }])).toBeUndefined()
     expect(topSet([{ exercise: 'x' }])).toBeUndefined()
   })
 })
@@ -116,5 +130,66 @@ describe('measureSet', () => {
   test('undefined for measures that are not one set', () => {
     expect(measureSet(sets, 'volume')).toBeUndefined()
     expect(measureSet(sets, 'set_count')).toBeUndefined()
+  })
+})
+
+describe('defaultAggregation', () => {
+  test('max for single-set measures, sum for totals', () => {
+    expect(defaultAggregation('e1rm')).toBe('max')
+    expect(defaultAggregation('max_weight')).toBe('max')
+    expect(defaultAggregation('max_time')).toBe('max')
+    expect(defaultAggregation('volume')).toBe('sum')
+    expect(defaultAggregation('set_count')).toBe('sum')
+  })
+})
+
+describe('measureGoalLabel', () => {
+  const goal = { activity_type: 'strength_training', measure: 'e1rm' as const }
+
+  test('the exercise when the goal is on one', () => {
+    expect(measureGoalLabel({ ...goal, filter_value: 'Bench Press' })).toBe('Bench Press · Best e1RM')
+  })
+
+  test('the display name, else the given type name, else the type', () => {
+    expect(measureGoalLabel({ ...goal, activity_type_name: 'Strength' })).toBe('Strength · Best e1RM')
+    expect(measureGoalLabel(goal, 'Strength training')).toBe('Strength training · Best e1RM')
+    expect(measureGoalLabel({ ...goal, measure: 'volume' })).toBe('strength_training · Volume')
+  })
+})
+
+const strength: { name: string; data_schema?: DataSchemaDefinition } = {
+  data_schema: {
+    fields: [
+      { name: 'program', type: 'string' },
+      {
+        item_fields: [
+          { name: 'reps', type: 'number' },
+          { is_categorical: true, label: 'Exercise', name: 'exercise', type: 'string' },
+        ],
+        name: 'sets',
+        type: 'list',
+      },
+    ],
+  },
+  name: 'strength_training',
+}
+const coffee = { data_schema: { fields: [{ name: 'cups', type: 'number' as const }] }, name: 'coffee' }
+const plain = { data_schema: undefined, name: 'walk' }
+
+describe('measurableTypes', () => {
+  test('only the types with a list field', () => {
+    expect(measurableTypes([coffee, strength, plain])).toEqual([strength])
+  })
+})
+
+describe('measureFilter', () => {
+  test('the first categorical item field, with its path and label', () => {
+    expect(measureFilter(strength)).toEqual({ label: 'Exercise', path: 'sets.exercise' })
+    expect(measureFilterPath(strength)).toBe('sets.exercise')
+  })
+
+  test('undefined without one', () => {
+    expect(measureFilter(coffee)).toBeUndefined()
+    expect(measureFilterPath(undefined)).toBeUndefined()
   })
 })

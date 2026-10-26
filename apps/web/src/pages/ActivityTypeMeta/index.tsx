@@ -791,7 +791,13 @@ export function ActivityTypeMeta() {
       <SessionsSection name={name} fields={categoricalFields(typeDef?.data_schema)} />
 
       {categoricalItemFields(typeDef?.data_schema).map(({ list, item }) => (
-        <ItemGroupsSection key={itemPath(list, item)} name={name} path={itemPath(list, item)} item={item} />
+        <ItemGroupsSection
+          key={itemPath(list, item)}
+          name={name}
+          path={itemPath(list, item)}
+          list={list}
+          item={item}
+        />
       ))}
 
       <SettingsSection

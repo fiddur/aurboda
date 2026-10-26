@@ -2,7 +2,15 @@ import type { ActivitySession } from '@aurboda/api-spec'
 
 import { describe, expect, test } from 'vitest'
 
-import { doneSummary, recordsFrom, sliceByLookback, trendPoints } from './itemHistory'
+import {
+  chartExplorerHref,
+  doneSummary,
+  perWeekLookbackDays,
+  perWeekRange,
+  recordsFrom,
+  sliceByLookback,
+  trendPoints,
+} from './itemHistory'
 
 const session = (id: string, start: string, extra: Partial<ActivitySession> = {}): ActivitySession => ({
   activity_type: 'strength_training',
@@ -102,5 +110,58 @@ describe('sliceByLookback', () => {
 
   test('all time with zero days', () => {
     expect(sliceByLookback(sessions, 0, now)).toEqual(sessions)
+  })
+})
+
+describe('perWeekLookbackDays', () => {
+  test('the period, with all time as two years', () => {
+    expect(perWeekLookbackDays(90)).toBe(90)
+    expect(perWeekLookbackDays(0)).toBe(730)
+  })
+})
+
+describe('perWeekRange', () => {
+  test('from the start of the day `days` ago to the end of today', () => {
+    const now = new Date(2026, 9, 26, 14, 30)
+    const { start, end } = perWeekRange(90, now)
+    expect(new Date(start)).toEqual(new Date(2026, 6, 28, 0, 0, 0, 0))
+    expect(new Date(end)).toEqual(new Date(2026, 9, 26, 23, 59, 59, 999))
+  })
+})
+
+describe('chartExplorerHref', () => {
+  const params = (href: string) => new URLSearchParams(href.split('?')[1])
+
+  test('a weekly bar chart of the measure for this item value', () => {
+    const href = chartExplorerHref({
+      field: 'sets.exercise',
+      lookbackDays: 365,
+      measure: 'e1rm',
+      name: 'strength_training',
+      value: 'Bench Press',
+    })
+    expect(href.startsWith('/chart?')).toBe(true)
+    expect(Object.fromEntries(params(href))).toEqual({
+      aggregation: 'max',
+      bucket_size: '1w',
+      chart_type: 'bar',
+      filter_field: 'sets.exercise',
+      filter_value: 'Bench Press',
+      lookback_days: '365',
+      measure: 'e1rm',
+      pattern: 'strength_training',
+      source_type: 'activity_type',
+    })
+  })
+
+  test('sums the measures that add up', () => {
+    const href = chartExplorerHref({
+      field: 'sets.exercise',
+      lookbackDays: 90,
+      measure: 'volume',
+      name: 'strength_training',
+      value: 'Squat',
+    })
+    expect(params(href).get('aggregation')).toBe('sum')
   })
 })

@@ -8,8 +8,19 @@
   font-size: 0.9rem;
 }
 
-.add-goal-button:hover {
+.add-goal-button:hover:not(:disabled) {
   background: #7c4dcc;
+}
+
+.add-goal-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.add-goal-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
 .save-status {
@@ -118,6 +129,24 @@
 }
 
 .metric-field select {
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  width: 100%;
+  background: white;
+}
+
+.measure-field {
+  flex: 1;
+  min-width: 120px;
+}
+
+.measure-field.aggregation-field {
+  min-width: 80px;
+}
+
+.measure-field select {
   padding: 0.5rem;
   border: 1px solid #ccc;
   border-radius: 4px;
@@ -237,6 +266,7 @@
   }
 
   .metric-field select,
+  .measure-field select,
   .input-with-unit input,
   .window-field input {
     background: #333;
