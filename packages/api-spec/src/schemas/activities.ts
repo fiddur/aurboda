@@ -298,7 +298,8 @@ export const addActivityBodySchema = z
   .object({
     activity_type: activityTypeSchema.meta({ description: 'Type of activity' }),
     data: z.record(z.string(), z.unknown()).optional().meta({
-      description: 'Structured data for this activity (type-specific fields)',
+      description:
+        "Structured data for this activity: the fields the type's data_schema declares (a `list` field is an array of objects, e.g. strength_training's `sets`), plus any extra keys",
     }),
     end_time: iso8601DateTimeSchema.optional().meta({
       description: 'End time (omit for point-in-time activities)',
