@@ -1,7 +1,12 @@
 import {
+  activityMeasureLabels,
+  activityMeasureUnits,
+  type ActivityTypeDefinition,
   cumulativeMetrics,
   type CustomMetricDefinition,
   isCalendarBasedUnit,
+  type MeasureGoal,
+  type MeasureGoalProgress,
   metricUnits,
   parseDuration,
   type GoalProgress,
@@ -12,8 +17,15 @@ import {
   type WidgetGoalProgress,
 } from '@aurboda/api-spec'
 
-import { getDailyAggregates, getDailyAggregateValues, getHrZoneSecs, getRawDailySum } from '../db/index.ts'
+import {
+  getActivityTypeDefinitions,
+  getDailyAggregates,
+  getDailyAggregateValues,
+  getHrZoneSecs,
+  getRawDailySum,
+} from '../db/index.ts'
 import { getCustomMetrics } from './custom-metrics.ts'
+import { measureFilter, queryMeasuredActivities } from './queries/activity-measure-series.ts'
 import { getEffectiveGoals, getEffectiveHrZones } from './settings.ts'
 import { getTrend } from './trends.ts'
 
@@ -52,12 +64,15 @@ const getMetricSum = async (user: string, metric: MetricType, start: Date, end: 
   return dailyData.reduce((sum, day) => sum + day.sum, 0)
 }
 
-const computeMetricGoalProgress = async (
-  user: string,
-  goal: { id: string; max?: number; metric: MetricType; min?: number; window: string },
-): Promise<MetricGoalProgress> => {
-  const now = new Date()
-  const { ms: windowMs, unit, value } = parseDuration(goal.window)
+/**
+ * The window ending `now` and its oldest UTC day: calendar units (days, weeks, months) start at a
+ * UTC day start, time units exactly the duration back.
+ */
+const goalWindow = (
+  window: string,
+  now: Date,
+): { oldestDayEnd: Date; oldestDayStart: Date; windowStart: Date } => {
+  const { ms: windowMs, unit, value } = parseDuration(window)
   let windowStart: Date
 
   if (isCalendarBasedUnit(unit)) {
@@ -73,6 +88,15 @@ const computeMetricGoalProgress = async (
   oldestDayStart.setUTCHours(0, 0, 0, 0)
   const oldestDayEnd = new Date(oldestDayStart)
   oldestDayEnd.setUTCHours(23, 59, 59, 999)
+  return { oldestDayEnd, oldestDayStart, windowStart }
+}
+
+const computeMetricGoalProgress = async (
+  user: string,
+  goal: { id: string; max?: number; metric: MetricType; min?: number; window: string },
+): Promise<MetricGoalProgress> => {
+  const now = new Date()
+  const { oldestDayEnd, oldestDayStart, windowStart } = goalWindow(goal.window, now)
 
   const [current, losingTomorrow] = await Promise.all([
     getMetricSum(user, goal.metric, windowStart, now),
@@ -88,6 +112,72 @@ const computeMetricGoalProgress = async (
     metric: goal.metric,
     min: goal.min,
     unit: metricUnits[goal.metric],
+    window: goal.window,
+  }
+}
+
+export interface DatedValue {
+  time: Date
+  value: number
+}
+
+/**
+ * A measure goal's value over the window's session values, and what leaves with the oldest day:
+ * for sum that day's total; for max, how far the best falls when every session holding it is on
+ * that day (all of it when no later session has the measure).
+ */
+export const measureGoalValues = (
+  values: DatedValue[],
+  aggregation: MeasureGoal['aggregation'],
+  oldestDayEnd: Date,
+): { current: number; losing_tomorrow: number } => {
+  const onOldestDay = (v: DatedValue) => v.time.getTime() <= oldestDayEnd.getTime()
+  const oldest = values.filter(onOldestDay)
+  const later = values.filter((v) => !onOldestDay(v))
+  if (aggregation === 'sum') {
+    const total = (list: DatedValue[]) => list.reduce((sum, v) => sum + v.value, 0)
+    return { current: total(values), losing_tomorrow: total(oldest) }
+  }
+  if (values.length === 0) return { current: 0, losing_tomorrow: 0 }
+  const current = Math.max(...values.map((v) => v.value))
+  const laterBest = later.length > 0 ? Math.max(...later.map((v) => v.value)) : 0
+  return { current, losing_tomorrow: laterBest < current ? current - laterBest : 0 }
+}
+
+const computeMeasureGoalProgress = async (
+  user: string,
+  goal: MeasureGoal,
+  definitions: ActivityTypeDefinition[],
+): Promise<MeasureGoalProgress> => {
+  const now = new Date()
+  const { oldestDayEnd, windowStart } = goalWindow(goal.window, now)
+  const measured = await queryMeasuredActivities(
+    user,
+    goal.activity_type,
+    windowStart,
+    now,
+    measureFilter(goal.filter_field, goal.filter_value),
+  )
+  const values = measured.flatMap(({ activity, measures }) => {
+    const value = measures[goal.measure]
+    return value === undefined ? [] : [{ time: activity.start_time, value }]
+  })
+  const { current, losing_tomorrow } = measureGoalValues(values, goal.aggregation, oldestDayEnd)
+
+  return {
+    activity_type: goal.activity_type,
+    activity_type_name:
+      definitions.find((d) => d.name === goal.activity_type)?.display_name ?? goal.activity_type,
+    aggregation: goal.aggregation,
+    current,
+    filter_value: goal.filter_value,
+    goal_type: 'measure',
+    id: goal.id,
+    losing_tomorrow,
+    max: goal.max,
+    measure: goal.measure,
+    min: goal.min,
+    unit: activityMeasureUnits[goal.measure],
     window: goal.window,
   }
 }
@@ -130,14 +220,17 @@ export const getGoalsProgress = async (user: string): Promise<GoalProgress[]> =>
     return []
   }
 
-  const customMetrics = goals.some((goal) => goal.goal_type === 'trend') ? await getCustomMetrics(user) : []
+  const [customMetrics, definitions] = await Promise.all([
+    goals.some((goal) => goal.goal_type === 'trend') ? getCustomMetrics(user) : [],
+    goals.some((goal) => goal.goal_type === 'measure') ? getActivityTypeDefinitions(user) : [],
+  ])
 
   return Promise.all(
-    goals.map((goal) =>
-      goal.goal_type === 'trend'
-        ? computeTrendGoalProgress(user, goal, customMetrics)
-        : computeMetricGoalProgress(user, goal),
-    ),
+    goals.map((goal) => {
+      if (goal.goal_type === 'trend') return computeTrendGoalProgress(user, goal, customMetrics)
+      if (goal.goal_type === 'measure') return computeMeasureGoalProgress(user, goal, definitions)
+      return computeMetricGoalProgress(user, goal)
+    }),
   )
 }
 
@@ -151,6 +244,17 @@ const toWidgetProgress = (p: GoalProgress): WidgetGoalProgress => {
       min: p.min,
       title: p.pattern,
       unit: p.display_unit,
+    }
+  }
+  if (p.goal_type === 'measure') {
+    return {
+      current: p.current,
+      id: p.id,
+      losing_tomorrow: p.losing_tomorrow,
+      max: p.max,
+      min: p.min,
+      title: `${p.filter_value ?? p.activity_type_name} ${activityMeasureLabels[p.measure]}`,
+      unit: p.unit,
     }
   }
   return {

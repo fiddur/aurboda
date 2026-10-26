@@ -3,7 +3,12 @@
  * `data` by convention on the item field names: `weight` × `reps` gives volume and the Epley
  * estimated one-rep max, `time` the longest hold. Items with `set_type` = warmup don't count.
  */
-import { type ActivityMeasure, type ActivityMeasures, recordMeasures } from '@aurboda/api-spec'
+import {
+  type ActivityMeasure,
+  type ActivityMeasures,
+  type ActivityTypeDefinition,
+  recordMeasures,
+} from '@aurboda/api-spec'
 
 type Item = Record<string, unknown>
 
@@ -30,6 +35,21 @@ export const listItems = (data: Record<string, unknown> | undefined, field: stri
   const list = data?.[field]
   return Array.isArray(list) ? list.filter(isObject) : []
 }
+
+/** The items of list `field` whose `key` value normalises to `normalized`. */
+export const matchingItems = (
+  data: Record<string, unknown> | undefined,
+  field: string,
+  key: string,
+  normalized: string,
+): Item[] => listItems(data, field).filter((item) => normalizeItemValue(item[key]) === normalized)
+
+/** The first list field the definitions of `types` declare: the one measures are taken over by default. */
+export const listFieldOf = (definitions: ActivityTypeDefinition[], types: string[]): string | undefined =>
+  definitions
+    .filter((d) => types.includes(d.name))
+    .flatMap((d) => d.data_schema?.fields ?? [])
+    .find((f) => f.type === 'list')?.name
 
 export const isWorkingItem = (item: Item): boolean =>
   !(typeof item.set_type === 'string' && item.set_type.trim().toLowerCase() === 'warmup')

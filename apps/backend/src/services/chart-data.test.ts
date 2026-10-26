@@ -1,6 +1,9 @@
+import type { ActivityTypeDefinition } from '@aurboda/api-spec'
+
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import type * as TimeSeriesModule from '../db/time-series.ts'
+import type { MergedActivity } from '../db/types.ts'
 
 import * as db from '../db/index.ts'
 import { buildBucketExpr, getChartData } from './chart-data.ts'
@@ -10,8 +13,12 @@ import * as settings from './settings.ts'
 // the cumulative-source rules can't drift from production.
 vi.mock('../db', async () => ({
   expandActivityTypes: vi.fn().mockImplementation((_user: string, types: string[]) => Promise.resolve(types)),
+  getActivities: vi.fn(),
+  getActivityTypeDefinitions: vi.fn(),
+  getBucketStarts: vi.fn(),
   getHrZoneSecs: vi.fn(),
   getSourceFilter: (await vi.importActual<typeof TimeSeriesModule>('../db/time-series.ts')).getSourceFilter,
+  getUserSettings: vi.fn().mockResolvedValue(null),
   query: vi.fn(),
 }))
 
@@ -493,6 +500,200 @@ describe('getChartData', () => {
 
     expect(result.buckets).toEqual([])
     expect(db.query).not.toHaveBeenCalled()
+  })
+
+  test('max aggregation takes MAX(value) for metrics', async () => {
+    vi.mocked(db.query).mockResolvedValue({
+      rows: [{ bucket_start: new Date('2026-01-01T00:00:00Z'), value: 82.5 }],
+    } as never)
+
+    await getChartData('testuser', {
+      aggregation: 'max',
+      bucket_size: '1w',
+      end: '2026-01-31T23:59:59Z',
+      pattern: 'weight',
+      source_type: 'metric',
+      start: '2026-01-01T00:00:00Z',
+    })
+
+    expect(vi.mocked(db.query).mock.calls[0][1]).toContain('MAX(value) AS value')
+  })
+
+  test('max aggregation takes the longest activity of each bucket', async () => {
+    vi.mocked(db.query).mockResolvedValue({ rows: [] } as never)
+
+    await getChartData('testuser', {
+      aggregation: 'max',
+      bucket_size: '1w',
+      end: '2026-01-31T23:59:59Z',
+      pattern: 'running',
+      source_type: 'activity_type',
+      start: '2026-01-01T00:00:00Z',
+    })
+
+    const sql = vi.mocked(db.query).mock.calls[0][1] as string
+    expect(sql).toContain('MAX(EXTRACT(EPOCH')
+    expect(sql).not.toContain('SUM(')
+  })
+
+  describe('measures of list items', () => {
+    const strengthDef: ActivityTypeDefinition = {
+      aliases: [],
+      color: '#000000',
+      data_schema: {
+        fields: [
+          { name: 'location', type: 'string' },
+          { item_fields: [{ name: 'exercise', type: 'string' }], name: 'sets', type: 'list' },
+        ],
+      },
+      display_category: 'exercise',
+      display_name: 'Strength',
+      is_builtin: true,
+      name: 'strength_training',
+      show_on_timeline: true,
+    }
+
+    const lift = (
+      id: string,
+      startIso: string,
+      location: string,
+      sets: Record<string, unknown>[],
+    ): MergedActivity => ({
+      activity_type: 'strength_training',
+      data: { location, sets },
+      end_time: new Date(new Date(startIso).getTime() + 3_600_000),
+      id,
+      source: 'gravl',
+      start_time: new Date(startIso),
+    })
+    const set = (exercise: string, weight: number, reps: number) => ({ exercise, reps, weight })
+
+    // Weeks of 2026-01-05 (w1) and 2026-01-12 (w2)
+    const a1 = lift('a1', '2026-01-05T17:00:00Z', 'Gym', [set('Bench Press', 80, 5), set('Squat', 100, 5)])
+    const a2 = lift('a2', '2026-01-07T17:00:00Z', 'Home', [set('bench press', 90, 1)])
+    const a3 = lift('a3', '2026-01-12T17:00:00Z', 'Gym', [set('Squat', 110, 3)])
+    const a4 = lift('a4', '2026-01-13T17:00:00Z', 'Gym', [{ exercise: 'Plank', time: 60 }])
+    const w1 = new Date('2026-01-05T00:00:00Z')
+    const w2 = new Date('2026-01-12T00:00:00Z')
+
+    const base = {
+      bucket_size: '1w' as const,
+      end: '2026-01-31T23:59:59Z',
+      pattern: 'strength_training',
+      source_type: 'activity_type' as const,
+      start: '2026-01-01T00:00:00Z',
+    }
+
+    beforeEach(() => {
+      vi.mocked(db.getActivityTypeDefinitions).mockResolvedValue([strengthDef])
+      vi.mocked(db.getActivities).mockResolvedValue([a1, a2, a3, a4])
+      vi.mocked(db.getBucketStarts).mockResolvedValue(
+        new Map([
+          ['a1', w1],
+          ['a2', w1],
+          ['a3', w2],
+          ['a4', w2],
+        ]),
+      )
+    })
+
+    test('sums each session’s measure per bucket, bucketed in SQL', async () => {
+      const result = await getChartData('u', {
+        ...base,
+        aggregation: 'sum',
+        measure: 'volume',
+        tz: 'Europe/Stockholm',
+      })
+
+      expect(result).toEqual({
+        buckets: [
+          { bucket_start: w1.toISOString(), value: 990 },
+          { bucket_start: w2.toISOString(), value: 330 },
+        ],
+      })
+      expect(db.getBucketStarts).toHaveBeenCalledWith('u', ['a1', 'a2', 'a3', 'a4'], '1w', 'Europe/Stockholm')
+      expect(db.query).not.toHaveBeenCalled()
+    })
+
+    test('max takes the best session; count the sessions having the measure', async () => {
+      const max = await getChartData('u', { ...base, aggregation: 'max', measure: 'e1rm' })
+      const count = await getChartData('u', { ...base, aggregation: 'count', measure: 'e1rm' })
+
+      expect(max.buckets).toEqual([
+        { bucket_start: w1.toISOString(), value: 116.7 },
+        { bucket_start: w2.toISOString(), value: 121 },
+      ])
+      expect(count.buckets).toEqual([
+        { bucket_start: w1.toISOString(), value: 2 },
+        { bucket_start: w2.toISOString(), value: 1 },
+      ])
+    })
+
+    test('an exercise filter measures only its items and leaves out buckets without it', async () => {
+      const result = await getChartData('u', {
+        ...base,
+        aggregation: 'max',
+        filter_field: 'sets.exercise',
+        filter_value: 'Bench Press',
+        measure: 'e1rm',
+      })
+
+      expect(result.buckets).toEqual([{ bucket_start: w1.toISOString(), value: 93.3 }])
+    })
+
+    test('an item-path breakdown gives one series per exercise, spelled as in the latest session', async () => {
+      const result = await getChartData('u', {
+        ...base,
+        aggregation: 'max',
+        breakdown_fields: ['sets.exercise'],
+        measure: 'e1rm',
+      })
+
+      expect(result.breakdown_fields).toEqual(['sets.exercise'])
+      expect(result.breakdown_series).toEqual(['Squat', 'bench press'])
+      expect(result.buckets).toEqual([
+        { bucket_start: w1.toISOString(), series: { Squat: 116.7, 'bench press': 93.3 } },
+        { bucket_start: w2.toISOString(), series: { Squat: 121 } },
+      ])
+    })
+
+    test('a scalar and an item field compound, the measure taken over the item', async () => {
+      const result = await getChartData('u', {
+        ...base,
+        aggregation: 'sum',
+        breakdown_fields: ['location', 'sets.exercise'],
+        measure: 'set_count',
+      })
+
+      expect(result.breakdown_series).toEqual([
+        'Gym / Bench Press',
+        'Gym / Plank',
+        'Gym / Squat',
+        'Home / bench press',
+      ])
+      expect(result.buckets).toEqual([
+        {
+          bucket_start: w1.toISOString(),
+          series: { 'Gym / Bench Press': 1, 'Gym / Squat': 1, 'Home / bench press': 1 },
+        },
+        { bucket_start: w2.toISOString(), series: { 'Gym / Plank': 1, 'Gym / Squat': 1 } },
+      ])
+    })
+
+    test('a scalar breakdown uses the session’s measure', async () => {
+      const result = await getChartData('u', {
+        ...base,
+        aggregation: 'max',
+        breakdown_fields: ['location'],
+        measure: 'max_weight',
+      })
+
+      expect(result.breakdown_series).toEqual(['Gym', 'Home'])
+      expect(result.buckets).toEqual([
+        { bucket_start: w1.toISOString(), series: { Gym: 100, Home: 90 } },
+        { bucket_start: w2.toISOString(), series: { Gym: 110 } },
+      ])
+    })
   })
 
   // Regression: activity-based chart queries must skip rows that the merge

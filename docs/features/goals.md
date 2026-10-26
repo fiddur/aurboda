@@ -20,6 +20,22 @@ Progress is the sum of the metric over the rolling window. For a 7-day window, t
 | Zone 5 intensity | HR Zone 5 | 5 min   | 10 min | 7d     | 5-10 minutes of max-effort work per week        |
 | Weekly steps     | Steps     | 70,000  | --     | 7d     | At least 70,000 steps per week (~10k/day)       |
 
+### Measure Goals
+
+A measure goal tracks a measure of an activity type's list items — a strength session's sets — instead of a metric. The measures are the ones the sessions view shows (see [Activity Types: Exercises and measures](activity-types.md#exercises-and-measures)): `e1rm` (best estimated one-rep max, kg), `max_weight` (kg), `max_time` (longest hold, s), `volume` (Σ weight × reps, kg) and `set_count`. Warmup sets never count.
+
+Each measure goal has:
+
+- An **activity type** whose sessions are measured (its sub-types included), e.g. `strength_training`.
+- Optionally an **exercise filter**: an item path and value, e.g. `sets.exercise` = `Bench Press`. Only that exercise's sets are measured (compared trimmed and case-insensitively), and sessions without it don't count. Without one, every working set of the session counts.
+- A **measure**.
+- An **aggregation**: `max` (the default) takes the best session in the window — right for `e1rm`, `max_weight` and `max_time`; `sum` totals the window — right for `volume` and `set_count`.
+- A **minimum** and/or **maximum**, and a **window** (default `30d`), as for metric goals.
+
+Example: **Bench Press e1RM ≥ 100 kg over 30 days** — activity type `strength_training`, filter `sets.exercise` = `Bench Press`, measure `e1rm`, aggregation `max`, min 100, window `30d`. It is met while some Bench Press session in the last 30 days has an estimated one-rep max of at least 100 kg.
+
+A measure goal's progress is 0 when no session in the window has the measure. The Goals page and the widget title it by the exercise (or the activity type's name) and the measure, e.g. "Bench Press Best e1RM".
+
 ## Default Goals
 
 New users start with three defaults based on the Huberman/Galpin exercise science recommendations:
@@ -58,7 +74,7 @@ A range switch picks how far back to look:
 | **90 days** | One bar (or point) per day                  |
 | **1 year**  | One bar per month: the days on target in it |
 
-- **A day's value** is the goal as it stood at the end of that day: for a metric goal, the sum over the goal's window ending that day (a `7d` goal's bar for 12 October covers 6-12 October); for a trend goal, the EMA value for that day. Days are UTC days, like the progress bar. Time-based windows (`h`, `m`, `s`) are rounded up to whole days, so a `36h` goal looks back 2 days.
+- **A day's value** is the goal as it stood at the end of that day: for a metric goal, the sum over the goal's window ending that day (a `7d` goal's bar for 12 October covers 6-12 October); for a measure goal, the rolling sum or the rolling max (the best session in the window ending that day, 0 when there is none); for a trend goal, the EMA value for that day. Days are UTC days, like the progress bar. Time-based windows (`h`, `m`, `s`) are rounded up to whole days, so a `36h` goal looks back 2 days.
 - **On target** means at or above the minimum (if there is one) and not above the maximum (if there is one); exactly the maximum is still on target. Bars are gray below target, green on target, red over. A green band marks the target range, with dashed lines at the min and max.
 - **The summary** reads e.g. "On target 12 of 30 days · 3 over", and for the daily ranges adds today's status so far.
 - **Today** is drawn faded (or as a hollow point for trend goals) and is not counted in the summary or the monthly bars, because the day is not over.
@@ -76,6 +92,8 @@ This is a key concept. Since goals use a rolling window, the oldest day's data d
 
 This helps you plan: if you're close to your target and tomorrow's loss is large, you know you need to be active today.
 
+For a `sum` measure goal it reads the same way: the oldest day's volume or sets. For a `max` measure goal it is how far the best falls when the oldest day leaves the window: if your 100 kg e1RM was only lifted on that day and the best later session is 95 kg, it shows `(-5 kg tomorrow)`; if a later session also reached 100 kg, nothing is lost; if no later session has the measure, all of it is.
+
 ## Configuring Goals
 
 Goals are configured under **Data Sources > Aurboda (Web/API)** in the web UI.
@@ -88,6 +106,8 @@ For each goal you can set:
 | **Min**    | Minimum target. For time-based metrics (HR zones), enter in minutes (stored as seconds internally)                                |
 | **Max**    | Maximum target. Same display conversion. At least one of min or max required.                                                     |
 | **Window** | Rolling window duration. Default `7d`. Supports: `s` (seconds), `m` (minutes), `h` (hours), `d` (days), `w` (weeks), `M` (months) |
+
+A **measure goal** instead sets the activity type, an optional exercise filter (`filter_field` such as `sets.exercise` and `filter_value` such as `Bench Press`, given together), the measure, the aggregation (`max` or `sum`) and the window (default `30d`); min and max are in the measure's unit (kg, s, or a count). Over the API it is a goal with `goal_type: "measure"`.
 
 Goals can be **drag-reordered** -- the order determines how they appear on the Goals page and in the Android widget. Changes save automatically.
 
@@ -120,7 +140,7 @@ Goals work with any metric in the system. The metric must have data within the r
 
 ## Known Limitations
 
-- Goals only support **sum** aggregation over the window. There's no way to set a goal based on an average (e.g., "average sleep score above 80").
+- Metric goals only support **sum** aggregation over the window, and measure goals **sum** or **max**. There's no way to set a goal based on an average (e.g., "average sleep score above 80").
 - HR zone metrics are **computed on-the-fly**, not stored. This means goals for zone minutes depend on having exercise sessions with heart rate data.
 - The "losing tomorrow" calculation uses calendar day boundaries for day-based windows. For time-based windows (`h`, `m`, `s`), it uses exact time offsets.
 - There is no notification system -- you must check the Goals page, Dashboard, or Android widget to see your progress. (See issue #383 for planned notifications.)

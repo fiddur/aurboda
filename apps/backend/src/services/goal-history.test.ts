@@ -2,17 +2,21 @@ import type { GoalHistoryDay } from '@aurboda/api-spec'
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
+import type { MergedActivity } from '../db/types.ts'
+
 import * as db from '../db/index.ts'
 import {
   dayKeysEndingAt,
   foldMonths,
   getGoalHistory,
   goalStatus,
+  rollingMaxSeries,
   rollingSeries,
   summarize,
   utcDayKey,
   windowDays,
 } from './goal-history.ts'
+import * as measureSeries from './queries/activity-measure-series.ts'
 import * as settings from './settings.ts'
 import * as trends from './trends.ts'
 
@@ -26,6 +30,11 @@ vi.mock('../db', () => ({
 vi.mock('./settings', () => ({
   getEffectiveGoals: vi.fn(),
   getEffectiveHrZones: vi.fn(),
+}))
+
+vi.mock('./queries/activity-measure-series', async (importOriginal) => ({
+  ...(await importOriginal<typeof measureSeries>()),
+  queryMeasuredActivities: vi.fn(),
 }))
 
 vi.mock('./trends', () => ({
@@ -114,6 +123,27 @@ describe('rollingSeries', () => {
     const daily = new Map([['2026-02-01', 5]])
     expect(rollingSeries(daily, ['2026-02-01'], 1, '2026-02-02')).toEqual([
       { contribution: 5, date: '2026-02-01', partial: false, value: 5 },
+    ])
+  })
+})
+
+describe('rollingMaxSeries', () => {
+  test('the best day in the window ending at each day; contribution the day’s own best', () => {
+    const daily = new Map([
+      ['2026-01-29', 100],
+      ['2026-01-30', 90],
+      ['2026-02-02', 95],
+    ])
+    expect(rollingMaxSeries(daily, ['2026-01-31', '2026-02-01', '2026-02-02'], 3, '2026-02-02')).toEqual([
+      { contribution: 0, date: '2026-01-31', partial: false, value: 100 },
+      { contribution: 0, date: '2026-02-01', partial: false, value: 90 },
+      { contribution: 95, date: '2026-02-02', partial: true, value: 95 },
+    ])
+  })
+
+  test('no day in the window: 0', () => {
+    expect(rollingMaxSeries(new Map(), ['2026-02-01'], 7, '2026-02-02')).toEqual([
+      { contribution: 0, date: '2026-02-01', partial: false, value: 0 },
     ])
   })
 })
@@ -343,6 +373,83 @@ describe('getGoalHistory', () => {
       success: true,
       summary: { days_below: 0, days_met: 0, days_over: 1, days_total: 1 },
       unit: 'per month',
+    })
+  })
+
+  describe('measure goals', () => {
+    const session = (startIso: string, measures: Record<string, number>): measureSeries.MeasuredActivity => ({
+      activity: {
+        activity_type: 'strength_training',
+        id: startIso,
+        source: 'gravl',
+        start_time: new Date(startIso),
+      } as MergedActivity,
+      id: startIso,
+      measures,
+    })
+
+    beforeEach(() => {
+      vi.mocked(measureSeries.queryMeasuredActivities).mockResolvedValue([
+        session('2026-01-30T08:00:00Z', { e1rm: 100, volume: 3000 }),
+        session('2026-01-30T18:00:00Z', { e1rm: 90, volume: 2000 }),
+        session('2026-02-01T18:00:00Z', { volume: 1000 }),
+        session('2026-02-02T08:00:00Z', { e1rm: 95, volume: 500 }),
+      ])
+    })
+
+    test('max: the rolling best, fetched from the first day’s window start with the goal’s filter', async () => {
+      const goal = {
+        activity_type: 'strength_training',
+        aggregation: 'max' as const,
+        filter_field: 'sets.exercise',
+        filter_value: 'Bench Press',
+        goal_type: 'measure' as const,
+        id: 'g-measure',
+        measure: 'e1rm' as const,
+        min: 96,
+        window: '2d',
+      }
+      vi.mocked(settings.getEffectiveGoals).mockResolvedValue([goal])
+
+      const result = await getGoalHistory('u', 'g-measure', { bucket: 'day', lookback_days: 3 })
+
+      expect(measureSeries.queryMeasuredActivities).toHaveBeenCalledWith(
+        'u',
+        'strength_training',
+        new Date('2026-01-29T00:00:00Z'),
+        new Date('2026-02-02T12:00:00Z'),
+        { field: 'sets.exercise', value: 'Bench Press' },
+      )
+      expect(result?.unit).toBe('kg')
+      expect(result?.days).toEqual([
+        { contribution: 100, date: '2026-01-30', partial: false, status: 'met', value: 100 },
+        { contribution: 0, date: '2026-01-31', partial: false, status: 'met', value: 100 },
+        { contribution: 0, date: '2026-02-01', partial: false, status: 'below', value: 0 },
+        { contribution: 95, date: '2026-02-02', partial: true, status: 'below', value: 95 },
+      ])
+    })
+
+    test('sum: the rolling total of the day sums', async () => {
+      vi.mocked(settings.getEffectiveGoals).mockResolvedValue([
+        {
+          activity_type: 'strength_training',
+          aggregation: 'sum',
+          goal_type: 'measure',
+          id: 'g-volume',
+          measure: 'volume',
+          min: 4000,
+          window: '2d',
+        },
+      ])
+
+      const result = await getGoalHistory('u', 'g-volume', { bucket: 'day', lookback_days: 2 })
+
+      expect(vi.mocked(measureSeries.queryMeasuredActivities).mock.calls[0]?.[4]).toBeUndefined()
+      expect(result?.days?.map((d) => [d.date, d.contribution, d.value, d.status])).toEqual([
+        ['2026-01-31', 0, 5000, 'met'],
+        ['2026-02-01', 1000, 1000, 'below'],
+        ['2026-02-02', 500, 1500, 'below'],
+      ])
     })
   })
 })

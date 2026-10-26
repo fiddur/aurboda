@@ -56,6 +56,12 @@ A full-width EMA (Exponential Moving Average) trend chart for any tag or metric.
 
 **Configuration:** Source type (tag or metric), pattern (tag regex or metric name), half-life (default 15 days), lookback period (default 90 days), display period (daily/weekly/monthly), aggregation method (count/sum/mean).
 
+### Bar Chart
+
+A full-width bar chart of bucketed values (`GET /chart-data`) for an activity type, metric or screentime category, optionally broken down into one stacked series per value of a categorical field.
+
+**Configuration:** Source type, pattern, bucket size, lookback period, aggregation (count/sum/mean/max), optional breakdown fields. For an activity type with list items (strength sets), `measure` charts that measure of each session instead of its duration or count, `filter_field`/`filter_value` (e.g. `sets.exercise` = `Bench Press`) take it over one exercise's items, and a `sets.exercise` breakdown gives one series per exercise (see [Activity Types: Exercises and measures](activity-types.md#exercises-and-measures)).
+
 ### Correlation Impact
 
 Shows how a specific activity, tag, or location affects your HRV. Displays three bars: "before" (baseline), "during" (the activity), and "after" (recovery), showing the average HRV in each phase. Includes an occurrence count so you can judge the statistical weight.
