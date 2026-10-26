@@ -413,6 +413,9 @@ this section is the difference.
 - Backend should be well covered with tests.
 - All database functions in `apps/backend/src/db.ts` must have integration tests in `db.integration.test.ts`.
 - Integration tests use testcontainers to run against a real PostgreSQL instance.
+- Integration tests share one PostGIS container per vitest run, and each file gets its own
+  database copied from a schema template (`apps/backend/src/test/global-setup.ts`,
+  `apps/backend/src/test/db-test-helper.ts`); a unit-only `vitest run <files>` starts no container.
 
 For typescript:
 
