@@ -8,12 +8,10 @@
  */
 import { z } from 'zod'
 
-export const dataItemFieldTypeSchema = z
-  .enum(['string', 'number', 'boolean'])
-  .meta({
-    id: 'DataItemFieldType',
-    description: 'Scalar value types, the only ones allowed inside a list item',
-  })
+export const dataItemFieldTypeSchema = z.enum(['string', 'number', 'boolean']).meta({
+  id: 'DataItemFieldType',
+  description: 'Scalar value types, the only ones allowed inside a list item',
+})
 
 export type DataItemFieldType = z.infer<typeof dataItemFieldTypeSchema>
 
@@ -42,6 +40,10 @@ const fieldDefinitionShape = {
 export const dataItemFieldDefinitionSchema = z
   .object({
     ...fieldDefinitionShape,
+    is_categorical: z.boolean().optional().meta({
+      description:
+        'Whether the items can be grouped by this field (e.g. the exercise of a set): sessions, field values and chart breakdowns then accept the path `<list>.<field>`',
+    }),
     type: dataItemFieldTypeSchema.meta({ description: 'Value type for validation' }),
   })
   .meta({
@@ -54,12 +56,9 @@ export type DataItemFieldDefinition = z.infer<typeof dataItemFieldDefinitionSche
 export const dataFieldDefinitionSchema = z
   .object({
     ...fieldDefinitionShape,
-    is_categorical: z
-      .boolean()
-      .optional()
-      .meta({
-        description: 'Whether this field is suitable for group-by chart breakdowns (scalar fields only)',
-      }),
+    is_categorical: z.boolean().optional().meta({
+      description: 'Whether this field is suitable for group-by chart breakdowns (scalar fields only)',
+    }),
     item_fields: z
       .array(dataItemFieldDefinitionSchema)
       .min(1)

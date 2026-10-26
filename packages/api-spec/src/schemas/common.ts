@@ -113,6 +113,9 @@ export const activityTypes = builtinActivityTypes
 
 export const dataFieldNameSchema = z.string().regex(/^[a-z][a-z0-9_]*$/)
 
+/** A data field name, or a path into a list field's items: `sets.exercise`. */
+export const dataFieldPathSchema = z.string().regex(/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)?$/)
+
 /** Validated against the activity_type_definitions table at runtime. */
 export const activityTypeSchema = z
   .string()

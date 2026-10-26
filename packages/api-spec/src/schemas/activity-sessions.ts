@@ -1,12 +1,17 @@
 import { z } from 'zod'
 
+import { activityMeasureSchema, activityMeasuresSchema } from './activity-measures.ts'
 import {
   activityTypeSchema,
   createDataResponseSchema,
   dataFieldNameSchema,
+  dataFieldPathSchema,
   iso8601DateTimeSchema,
 } from './common.ts'
 import { hrZoneSecsSchema } from './settings.ts'
+
+const listItemSchema = z.record(z.string(), z.unknown())
+const listItemsSchema = z.array(listItemSchema)
 
 export const valueDistributionSchema = z
   .object({
@@ -40,7 +45,19 @@ export const activitySessionSchema = z
     id: z.string().meta({
       description: 'Activity ID, prefixed "merged:" when the session is merged from several sources',
     }),
+    items: listItemsSchema.optional().meta({
+      description:
+        'With filter_field on a list item path (sets.exercise): the items of this session matching the value, in order',
+    }),
     max_hr: z.number().optional().meta({ description: 'Maximum heart rate (bpm)' }),
+    measures: activityMeasuresSchema.optional().meta({
+      description:
+        "Measures over the session's list items — all of them, or only the matching ones when filter_field is an item path",
+    }),
+    records: z.array(activityMeasureSchema).optional().meta({
+      description:
+        'With filter_field on an item path: the measures this session set a record for, beating every earlier session with that value',
+    }),
     start_time: iso8601DateTimeSchema,
     title: z.string().optional(),
   })
@@ -73,11 +90,15 @@ export const activitySessionGroupSchema = z
       .meta({ description: 'HR zone seconds summed over the sessions' }),
     last_start_time: iso8601DateTimeSchema,
     max_hr: z.number().optional().meta({ description: 'Highest heart rate across the sessions' }),
+    measures: activityMeasuresSchema.optional().meta({
+      description:
+        "Grouped by an item path: the sessions' measures for this value combined — volume and set_count summed, e1rm, max_weight and max_time at their maximum",
+    }),
     session_ids: z.array(z.string()).meta({ description: 'IDs of the sessions in the group, newest first' }),
-    value: z
-      .union([z.string(), z.number(), z.boolean()])
-      .nullable()
-      .meta({ description: 'The group-by field value; null groups the sessions without one' }),
+    value: z.union([z.string(), z.number(), z.boolean()]).nullable().meta({
+      description:
+        'The group-by field value; null groups the sessions without one. For an item path, the most recent spelling of a value compared trimmed and case-insensitively',
+    }),
   })
   .meta({
     description: 'Sessions sharing a value of the group-by data field, with aggregate heart-rate stats',
@@ -89,14 +110,16 @@ export type ActivitySessionGroup = z.infer<typeof activitySessionGroupSchema>
 export const activitySessionsQuerySchema = z
   .object({
     end: iso8601DateTimeSchema.optional().meta({ description: 'End date/time (defaults to now)' }),
-    filter_field: dataFieldNameSchema.optional().meta({
-      description: 'Only sessions whose data field equals filter_value (both must be given)',
+    filter_field: dataFieldPathSchema.optional().meta({
+      description:
+        'Only sessions whose data field equals filter_value (both must be given). An item path (sets.exercise) keeps the sessions with an item of that value and restricts items, measures and records to them',
     }),
     filter_value: z.string().optional().meta({
       description: 'Value filter_field must equal; "(none)" matches sessions without a value',
     }),
-    group_by: dataFieldNameSchema.optional().meta({
-      description: 'Data field to group sessions by, typically one marked is_categorical',
+    group_by: dataFieldPathSchema.optional().meta({
+      description:
+        'Data field to group sessions by, typically one marked is_categorical; an item path (sets.exercise) gives one group per item value, a session in every group it has an item for',
       example: 'session_name',
     }),
     start: iso8601DateTimeSchema.optional().meta({ description: 'Start date/time (defaults to all time)' }),
@@ -174,7 +197,10 @@ export type ActivityNeighborsResponse = z.infer<typeof activityNeighborsResponse
 
 export const activityFieldValuesQuerySchema = z
   .object({
-    field: dataFieldNameSchema.meta({ description: 'Data field name, e.g. session_name' }),
+    field: dataFieldPathSchema.meta({
+      description:
+        'Data field name, e.g. session_name, or an item path into a list field, e.g. sets.exercise',
+    }),
   })
   .meta({ description: 'Which data field to list the values of', id: 'ActivityFieldValuesQuery' })
 
@@ -209,3 +235,65 @@ export const activityFieldValuesResponseSchema = createDataResponseSchema(activi
 })
 
 export type ActivityFieldValuesResponse = z.infer<typeof activityFieldValuesResponseSchema>
+
+export const activityItemHistoryQuerySchema = z
+  .object({
+    field: dataFieldPathSchema
+      .refine((f) => f.includes('.'), { message: 'field must be an item path such as sets.exercise' })
+      .meta({ description: 'Item path: the list field and the item field to group by, e.g. sets.exercise' }),
+  })
+  .meta({ id: 'ActivityItemHistoryQuery' })
+
+export type ActivityItemHistoryQuery = z.infer<typeof activityItemHistoryQuerySchema>
+
+export const activityItemPreviousSchema = z
+  .object({
+    id: z.string().meta({ description: 'Activity ID, prefixed "merged:" when merged from several sources' }),
+    items: listItemsSchema.meta({ description: 'Its items with this value, in order' }),
+    measures: activityMeasuresSchema,
+    start_time: iso8601DateTimeSchema,
+  })
+  .meta({ description: 'The previous session with the same item value', id: 'ActivityItemPrevious' })
+
+export type ActivityItemPrevious = z.infer<typeof activityItemPreviousSchema>
+
+export const activityItemGroupSchema = z
+  .object({
+    items: listItemsSchema.meta({ description: "This session's items with this value, in order" }),
+    measures: activityMeasuresSchema,
+    previous: activityItemPreviousSchema.optional(),
+    records: z.array(activityMeasureSchema).meta({
+      description:
+        'Measures this session set a record for: higher than in every earlier session with this value',
+    }),
+    value: z.string().meta({ description: 'The item value, as spelled in this session' }),
+  })
+  .meta({
+    description: 'One item value of the session (an exercise) and how it compares to last time',
+    id: 'ActivityItemGroup',
+  })
+
+export type ActivityItemGroup = z.infer<typeof activityItemGroupSchema>
+
+export const activityItemHistorySchema = z
+  .object({
+    activity_id: z.string(),
+    field: z.string().meta({ description: 'The item path grouped by' }),
+    groups: z
+      .array(activityItemGroupSchema)
+      .meta({ description: 'In order of first appearance in the list' }),
+    totals: activityMeasuresSchema.meta({ description: "Measures over all the session's items" }),
+  })
+  .meta({
+    description:
+      "A session's list items grouped by an item value (its exercises), each with its measures, the records it set and the previous session with that value",
+    id: 'ActivityItemHistory',
+  })
+
+export type ActivityItemHistory = z.infer<typeof activityItemHistorySchema>
+
+export const activityItemHistoryResponseSchema = createDataResponseSchema(activityItemHistorySchema).meta({
+  id: 'ActivityItemHistoryResponse',
+})
+
+export type ActivityItemHistoryResponse = z.infer<typeof activityItemHistoryResponseSchema>
