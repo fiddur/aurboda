@@ -21,7 +21,10 @@ const makeDeps = (): DeductionEngineDeps => ({
   enrichActivities: vi.fn().mockResolvedValue([]),
   getActivities: vi.fn().mockResolvedValue([]),
   findActivities: vi.fn().mockResolvedValue([]),
+  findActivitiesByFeature: vi.fn().mockResolvedValue([]),
   getActivitiesWithData: vi.fn().mockResolvedValue([]),
+  getActivityFeatures: vi.fn().mockResolvedValue(null),
+  getCategorisableActivities: vi.fn().mockResolvedValue([]),
   getEarliestActivityTime: vi.fn().mockResolvedValue(null),
   getLocationVisits: vi.fn().mockResolvedValue([]),
   getMediaPlays: vi.fn().mockResolvedValue([]),
@@ -29,6 +32,7 @@ const makeDeps = (): DeductionEngineDeps => ({
   getScreentime: vi.fn().mockResolvedValue([]),
   insertActivity: vi.fn().mockResolvedValue({ changed: true, id: undefined }),
   insertRuleRun: vi.fn().mockResolvedValue(undefined),
+  patchActivityData: vi.fn().mockResolvedValue(undefined),
   retitleActivities: vi.fn().mockResolvedValue([]),
   retypeActivity: vi.fn().mockResolvedValue(true),
 })
@@ -1209,5 +1213,114 @@ describe('computeEnrichPatch', () => {
 
   test('static keys are never overwritten, even when owned', () => {
     expect(computeEnrichPatch({ _enriched_by: 'r', a: 1 }, { a: 2 }, 'r')).toBeNull()
+  })
+})
+
+describe('output_category', () => {
+  let deps: DeductionEngineDeps
+  const window = { end: d(23), start: d(0) }
+  const lowHrRule: DeductionRule = {
+    conditions: [
+      {
+        activity_type: 'running',
+        feature: 'low_hr_fraction',
+        kind: 'activity_feature',
+        operator: 'gte',
+        value: 0.85,
+      },
+    ],
+    enabled: true,
+    id: 'rule-low-hr',
+    mode: 'enrich',
+    name: 'Low-HR run',
+    output_activity_type: 'running',
+    output_category: 'low_hr',
+    priority: 0,
+  }
+  const run = (id: string, h: number, data: Record<string, unknown> | null = null) => ({
+    data,
+    end: d(h, 45),
+    id,
+    start: d(h),
+  })
+
+  beforeEach(() => {
+    deps = makeDeps()
+  })
+
+  test('the activity_feature condition resolves to the matched activities', async () => {
+    vi.mocked(deps.findActivitiesByFeature).mockResolvedValue([
+      { end: d(8, 45), id: 'a', start: d(8), value: 0.9 },
+    ])
+    vi.mocked(deps.getCategorisableActivities).mockResolvedValue([run('a', 8)])
+
+    await evaluateRule('user', lowHrRule, window, deps)
+
+    expect(deps.findActivitiesByFeature).toHaveBeenCalledWith('user', lowHrRule.conditions[0], window)
+    expect(deps.getCategorisableActivities).toHaveBeenCalledWith('user', 'running', window)
+  })
+
+  test('adds the category with reasons to matched runs and removes it from runs no longer matched', async () => {
+    vi.mocked(deps.findActivitiesByFeature).mockResolvedValue([
+      { end: d(8, 45), id: 'a', start: d(8), value: 0.9 },
+    ])
+    vi.mocked(deps.getCategorisableActivities).mockResolvedValue([
+      run('a', 8),
+      run('b', 12, { run_categories: [{ category: 'low_hr', reasons: [], rule_id: 'rule-low-hr' }] }),
+      run('c', 16),
+    ])
+    vi.mocked(deps.getActivityFeatures).mockResolvedValue({ low_hr_fraction: 0.9 } as never)
+
+    const result = await evaluateRule('user', lowHrRule, window, deps)
+
+    expect(deps.getActivityFeatures).toHaveBeenCalledExactlyOnceWith('user', 'a')
+    expect(deps.patchActivityData).toHaveBeenCalledWith('user', 'a', {
+      run_categories: [
+        {
+          category: 'low_hr',
+          reasons: ['time at or below the low-HR ceiling 90% ≥ 85%'],
+          rule_id: 'rule-low-hr',
+        },
+      ],
+    })
+    expect(deps.patchActivityData).toHaveBeenCalledWith('user', 'b', { run_categories: [] })
+    expect(deps.patchActivityData).toHaveBeenCalledTimes(2)
+    expect(result.affected_ids.sort()).toEqual(['a', 'b'])
+  })
+
+  test('with no match in the window, still removes its category', async () => {
+    vi.mocked(deps.getCategorisableActivities).mockResolvedValue([
+      run('b', 12, { run_categories: [{ category: 'low_hr', reasons: [], rule_id: 'rule-low-hr' }] }),
+    ])
+
+    const result = await evaluateRule('user', lowHrRule, window, deps)
+
+    expect(deps.patchActivityData).toHaveBeenCalledExactlyOnceWith('user', 'b', { run_categories: [] })
+    expect(result.activities_created).toBe(1)
+  })
+
+  test('a dry run counts the changes without writing', async () => {
+    vi.mocked(deps.findActivitiesByFeature).mockResolvedValue([
+      { end: d(8, 45), id: 'a', start: d(8), value: 0.9 },
+    ])
+    vi.mocked(deps.getCategorisableActivities).mockResolvedValue([run('a', 8), run('c', 16)])
+
+    const result = await evaluateRule('user', lowHrRule, window, deps, true)
+
+    expect(deps.patchActivityData).not.toHaveBeenCalled()
+    expect(result.would_affect).toBe(1)
+  })
+
+  test('an enrich rule without output_category neither reads nor writes categories', async () => {
+    vi.mocked(deps.findActivitiesByFeature).mockResolvedValue([
+      { end: d(8, 45), id: 'a', start: d(8), value: 0.9 },
+    ])
+    const { output_category: _, ...rule } = lowHrRule
+
+    await evaluateRule('user', { ...rule, output_data: { easy: true } }, window, deps)
+
+    expect(deps.getCategorisableActivities).not.toHaveBeenCalled()
+    expect(deps.patchActivityData).not.toHaveBeenCalled()
+    expect(deps.enrichActivities).toHaveBeenCalled()
   })
 })

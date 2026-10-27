@@ -6,17 +6,26 @@
  * 4. In 'create' mode: resulting ranges become activities with source 'deduction-rule'
  * 5. In 'enrich' mode: matching target activities have output_data merged into their data
  *    (and, with output_title_field, that data field into their title)
+ *    (and, with output_category, adds or removes the rule's entry in data.run_categories)
  *    In 'retype' mode: the activities of the rule's single 'activity' condition that overlap the
  *    result change type to output_activity_type
  * 6. Rules are evaluated in priority order for chaining support
  */
 
-import type { ActivityCondition, Condition, DeductionRule, MediaPlay } from '@aurboda/api-spec'
+import type {
+  ActivityCondition,
+  ActivityFeatureCondition,
+  ActivityFeatures,
+  Condition,
+  DeductionRule,
+  MediaPlay,
+} from '@aurboda/api-spec'
 
 import { randomUUID } from 'node:crypto'
 
 import type { Activity } from '../db/types.ts'
 
+import { applyCategory, categoryReasons } from './deduction-category.ts'
 import {
   matchesMediaCondition,
   mediaConditionsOf,
@@ -52,6 +61,10 @@ export interface MatchedActivity extends TimeRange {
   id: string
 }
 
+export interface CategorisableActivity extends MatchedActivity {
+  data: Record<string, unknown> | null
+}
+
 export interface RetypeChange {
   activity_type: string
   output_data?: Record<string, unknown>
@@ -76,7 +89,20 @@ export interface DeductionEngineDeps {
     window: EvaluationWindow,
     retypeTo?: string,
   ) => Promise<MatchedActivity[]>
+  findActivitiesByFeature: (
+    user: string,
+    condition: ActivityFeatureCondition,
+    window: EvaluationWindow,
+  ) => Promise<(MatchedActivity & { value: number })[]>
+  getActivityFeatures: (user: string, activityId: string) => Promise<ActivityFeatures | null>
+  /** Activities of the type (and its descendants) overlapping the window, with their data. */
+  getCategorisableActivities: (
+    user: string,
+    activityType: string,
+    window: EvaluationWindow,
+  ) => Promise<CategorisableActivity[]>
   getLocationVisits: (user: string, locationName: string, window: EvaluationWindow) => Promise<TimeRange[]>
+  patchActivityData: (user: string, activityId: string, patch: Record<string, unknown>) => Promise<void>
   getScrobbles: (
     user: string,
     artist: string[] | undefined,
@@ -238,9 +264,19 @@ const resolveMedia: ConditionResolver = async (user, condition, window, deps) =>
   return mergeRangesWithGap(ranges, 0)
 }
 
+const resolveActivityFeature: ConditionResolver = async (user, condition, window, deps) => {
+  if (condition.kind !== 'activity_feature') return []
+  const matched = await deps.findActivitiesByFeature(user, condition, window)
+  return mergeRangesWithGap(
+    matched.map(({ end, start }) => ({ end, start })),
+    0,
+  )
+}
+
 const conditionResolvers: Record<string, ConditionResolver> = {
   activity: resolveActivity,
   activity_data: resolveActivityData,
+  activity_feature: resolveActivityFeature,
   after_date: resolveAfterDate,
   location: resolveLocation,
   media: resolveMedia,
@@ -437,9 +473,36 @@ const countEnrichable = async (
 }
 
 /**
+ * Every activity of output_activity_type in the window gets the rule's run category while it
+ * overlaps a match and loses it otherwise, so a re-tuned rule takes its category back from the
+ * runs it no longer matches. Returns the ids written, or with dryRun those that would be.
+ */
+const categorise = async (
+  user: string,
+  rule: DeductionRule,
+  matched: TimeRange[],
+  window: EvaluationWindow,
+  deps: DeductionEngineDeps,
+  dryRun: boolean,
+): Promise<string[]> => {
+  if (!rule.output_category) return []
+  const candidates = await deps.getCategorisableActivities(user, rule.output_activity_type, window)
+  const changed: string[] = []
+  for (const activity of candidates) {
+    const wanted = overlapsAny(activity, matched)
+    const reasons = wanted ? categoryReasons(rule, await deps.getActivityFeatures(user, activity.id)) : []
+    const patch = applyCategory(activity.data ?? {}, rule, wanted, reasons)
+    if (!patch) continue
+    if (!dryRun) await deps.patchActivityData(user, activity.id, patch)
+    changed.push(activity.id)
+  }
+  return changed
+}
+
+/**
  * The title step runs after the data enrichment, so it reads a field written in the same pass.
- * A dry run cannot see that data yet; it counts the larger of the two steps, since the data
- * step only counts and the same activity is often in both.
+ * A dry run cannot see that data yet; it counts the largest of the steps, since the data
+ * step only counts and the same activity is often in several.
  */
 const enrich = async (
   user: string,
@@ -459,7 +522,8 @@ const enrich = async (
   if (dryRun) {
     const enrichable = await countEnrichable(user, rule, matched, window, deps, dataFor)
     const retitled = (await retitle(true)).length
-    return nothingAffected(Math.max(enrichable, retitled))
+    const categorised = (await categorise(user, rule, matched, window, deps, true)).length
+    return nothingAffected(Math.max(enrichable, retitled, categorised))
   }
 
   const enrichedIds = await deps.enrichActivities(
@@ -472,7 +536,9 @@ const enrich = async (
       ? { dataFor, overwriteKeys: [rule.output_media_field.field] }
       : undefined,
   )
-  const affected = [...new Set([...enrichedIds, ...(await retitle(false))])]
+  const retitledIds = await retitle(false)
+  const categorisedIds = await categorise(user, rule, matched, window, deps, false)
+  const affected = [...new Set([...enrichedIds, ...retitledIds, ...categorisedIds])]
   return allAffected(affected)
 }
 
@@ -488,7 +554,9 @@ export const evaluateRule = async (
 ): Promise<EvaluateRuleResult> => {
   const deps = withMemoizedMediaPlays(baseDeps)
   const result = await resolveConditions(user, rule, window, deps)
-  if (result.length === 0) return nothingAffected(0)
+  // A categorising rule still runs on an empty match: it removes its category from the window.
+  const categorising = rule.mode === 'enrich' && Boolean(rule.output_category)
+  if (result.length === 0 && !categorising) return nothingAffected(0)
 
   if (rule.mode === 'retype') return retype(user, rule, result, window, deps, dryRun)
 

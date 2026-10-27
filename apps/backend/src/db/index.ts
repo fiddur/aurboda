@@ -590,7 +590,7 @@ export {
   type UserNutrientRecommendationRow,
 } from './user-nutrient-recommendations.ts'
 
-export { getUserSettings, upsertUserSettings } from './settings.ts'
+export { claimSettingsFlag, getUserSettings, upsertUserSettings } from './settings.ts'
 
 export { deleteGoal, getGoals, insertGoal, replaceGoals } from './goals.ts'
 

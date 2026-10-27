@@ -101,6 +101,7 @@ describe('sessionsOptionsFromQuery', () => {
       field: 'x',
       value: 'a',
     })
+    expect(sessionsOptionsFromQuery({ category: 'low_hr' }).category).toBe('low_hr')
   })
 })
 

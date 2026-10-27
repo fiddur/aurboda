@@ -366,6 +366,8 @@ describe('sourceDataEntries', () => {
         max_hr: 97,
         metadata: { device: { type: 1 } },
         note: '',
+        run_categories: [{ category: 'low_hr', reasons: [] }],
+        run_categories_excluded: ['tempo'],
         session_name: 'Flow',
         stages: Array.from({ length: 40 }, (_, i) => i),
         startTime: '2026-10-07T10:05:01Z',

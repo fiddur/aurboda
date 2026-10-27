@@ -283,7 +283,16 @@ const buildErrorSettingsResponse = async (errorMessage: string): Promise<Setting
   }
 }
 
-export const validateAndUpdateSettings = async (user: string, input: unknown): Promise<SettingsResponse> => {
+const HR_SETTINGS_KEYS = ['hr_zone_start', 'birth_date', 'maf_hr'] as const
+
+export type HrSettingsChanged = (user: string) => void
+
+/** `onHrSettingsChanged` fires when the update sets or clears a key the activity features depend on. */
+export const validateAndUpdateSettings = async (
+  user: string,
+  input: unknown,
+  onHrSettingsChanged?: HrSettingsChanged,
+): Promise<SettingsResponse> => {
   const parsed = updateSettingsInputSchema.safeParse(input)
   if (!parsed.success) {
     return buildErrorSettingsResponse(parsed.error.issues.map((e) => e.message).join('; '))
@@ -315,6 +324,8 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
   }
 
   await updateSettingsInternal(user, updates, clear)
+
+  if (HR_SETTINGS_KEYS.some((key) => parsed.data[key] !== undefined)) onHrSettingsChanged?.(user)
 
   return getSettingsResponse(user)
 }

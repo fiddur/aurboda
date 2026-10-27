@@ -25,6 +25,7 @@ import {
   getMediaPlayById,
   getMediaPlays,
 } from '../db/index.ts'
+import { firstActivityFeatures } from '../services/activity-features.ts'
 import { getLatestSleep } from '../services/latest-sleep.ts'
 import { getCustomMetrics } from '../services/mutations.ts'
 import {
@@ -179,7 +180,7 @@ Use cases:
 
   server.tool(
     'query_activities',
-    'Query activities (sleep, exercise, meditation, nap, rest) for a time range. Returns activity sessions with duration, HR zones for exercise, and other metadata.',
+    "Query activities (sleep, exercise, meditation, nap, rest) for a time range. Returns activity sessions with duration, HR zones for exercise, and other metadata. category filters to runs carrying that run category (low_hr, intervals, long, tempo, hard, or any rule's output_category).",
     {
       ...timeRangeQuerySchema.shape,
       types: z
@@ -195,9 +196,10 @@ Use cases:
           'Filter by JSONB data field values. Format: "field:value" (comma-separated). Use "(none)" for null/empty.',
         ),
       route_id: activitiesQuerySchema.shape.route_id,
+      category: activitiesQuerySchema.shape.category,
       tz: tzSchema,
     },
-    async ({ data_filter, end, route_id, start, types, tz }) => {
+    async ({ category, data_filter, end, route_id, start, types, tz }) => {
       const requestedTypes = types ?? (await getAllActivityTypeNames(user))
       const activities = await queryActivities(
         user,
@@ -208,6 +210,7 @@ Use cases:
         parseDataFilter(data_filter),
         undefined,
         route_id,
+        category,
       )
       return tzJsonResponse({ data: activities, success: true }, tz)
     },
@@ -219,7 +222,9 @@ Use cases:
 
 Pass group_by (a data field, typically one marked is_categorical, e.g. session_name) to also get one group per value — count, last done, duration range, median avg HR, max HR, summed zone seconds and the pooled HR distribution — for comparing or choosing sessions by length and exertion. filter_field + filter_value narrow to one value ("(none)" for sessions without one). Omit start for all time.
 
-group_by and filter_field also take an item path into a list field, such as sets.exercise: group_by then gives one group per item value (a session in each group it has an item for) with the members' measures for that value combined (volume, e1rm, max_weight, set_count, max_time), and filter_field keeps the sessions with an item of that value, each carrying those items, their measures and the records it set against every earlier session with the value.`,
+group_by and filter_field also take an item path into a list field, such as sets.exercise: group_by then gives one group per item value (a session in each group it has an item for) with the members' measures for that value combined (volume, e1rm, max_weight, set_count, max_time), and filter_field keeps the sessions with an item of that value, each carrying those items, their measures and the records it set against every earlier session with the value.
+
+category filters to runs carrying that run category (low_hr, intervals, long, tempo, hard, or any rule's output_category).`,
     { activity_type: activityTypeSchema, ...activitySessionsQuerySchema.shape, tz: tzSchema },
     async ({ activity_type, tz, ...query }) => {
       if ((query.filter_field === undefined) !== (query.filter_value === undefined)) {
@@ -295,7 +300,7 @@ Source-agnostic: works for any activity that has time-series and/or GPS populate
       if (!activity) return errorResponse('Activity not found')
 
       const window = await resolveActivityWindow(user, activity, isMerged)
-      const [summary, fullDetail] = await Promise.all([
+      const [summary, fullDetail, features] = await Promise.all([
         computeActivityDetailMetrics(user, window),
         getActivityFullDetail(
           user,
@@ -305,6 +310,7 @@ Source-agnostic: works for any activity that has time-series and/or GPS populate
             metrics: parseMetricsParam(metrics),
           },
         ),
+        firstActivityFeatures(user, [id, ...(activity.override_target_ids ?? [])]),
       ])
 
       return tzJsonResponse(
@@ -315,6 +321,7 @@ Source-agnostic: works for any activity that has time-series and/or GPS populate
             activity_type: activity.activity_type,
             data: window.data,
             end_time: activity.end_time?.toISOString(),
+            features,
             id: activity.id,
             source: activity.source,
             start_time: activity.start_time.toISOString(),

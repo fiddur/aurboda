@@ -21,15 +21,16 @@ Timeline:
 
 ## Condition Types
 
-| Kind                  | Description                                                                                       | Example                                                                             |
-| --------------------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `activity`            | Matches time ranges of an activity type, optionally filtered by data fields and title             | `{kind: "activity", activity_type: "meditation"}`                                   |
-| `activity_data`       | Matches activities of a type whose data field matches (`eq`, `neq`, `exists`, `not_exists`)       | `{kind: "activity_data", activity_type: "run", field: "route", operator: "exists"}` |
-| `screentime_category` | Matches screentime in a hierarchical category                                                     | `{kind: "screentime_category", category: ["Work", "Programming"]}`                  |
-| `location`            | Matches visits to a named location                                                                | `{kind: "location", location_name: "Gym"}`                                          |
-| `after_date`          | Restricts matches to after a date                                                                 | `{kind: "after_date", date: "2024-06-01"}`                                          |
-| `scrobble`            | Matches Last.fm scrobbles by artist/track, each covering `duration_seconds`                       | `{kind: "scrobble", artist: ["Holosync"], duration_seconds: 210}`                   |
-| `media`               | Matches [media plays](../media.md) (MPRIS pushes and non-duplicate Last.fm scrobbles) — see below | `{kind: "media", url_host: ["truenakedyoga.com"], min_played_secs: 600}`            |
+| Kind                  | Description                                                                                                                                                           | Example                                                                                                          |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `activity`            | Matches time ranges of an activity type, optionally filtered by data fields and title                                                                                 | `{kind: "activity", activity_type: "meditation"}`                                                                |
+| `activity_data`       | Matches activities of a type whose data field matches (`eq`, `neq`, `exists`, `not_exists`)                                                                           | `{kind: "activity_data", activity_type: "run", field: "route", operator: "exists"}`                              |
+| `screentime_category` | Matches screentime in a hierarchical category                                                                                                                         | `{kind: "screentime_category", category: ["Work", "Programming"]}`                                               |
+| `location`            | Matches visits to a named location                                                                                                                                    | `{kind: "location", location_name: "Gym"}`                                                                       |
+| `after_date`          | Restricts matches to after a date                                                                                                                                     | `{kind: "after_date", date: "2024-06-01"}`                                                                       |
+| `scrobble`            | Matches Last.fm scrobbles by artist/track, each covering `duration_seconds`                                                                                           | `{kind: "scrobble", artist: ["Holosync"], duration_seconds: 210}`                                                |
+| `media`               | Matches [media plays](../media.md) (MPRIS pushes and non-duplicate Last.fm scrobbles) — see below                                                                     | `{kind: "media", url_host: ["truenakedyoga.com"], min_played_secs: 600}`                                         |
+| `activity_feature`    | Matches activities of a type whose computed [feature](routes-and-segments.md#phase-3-run-features-and-categories) compares (`gte`, `gt`, `lte`, `lt`) against `value` | `{kind: "activity_feature", activity_type: "running", feature: "low_hr_fraction", operator: "gte", value: 0.85}` |
 
 An `activity` condition's `title` matches case-insensitively, per `match_mode`: `contains` (the default) or `exact`.
 
@@ -123,6 +124,60 @@ enriches — for example the `session_name` an `output_media_field` rule writes,
 - A preview counts the larger of the activities whose data and whose title would change, from the data stored now.
 - The API rejects `output_title_field` outside enrich mode; switching a rule's mode away from enrich in the web UI
   clears it. Feed posts of a retitled activity show the new title (see [Feed](feed.md)).
+
+### Categorising runs (`output_category`)
+
+In enrich mode, `output_category` (snake_case, e.g. `low_hr`) gives each activity of `output_activity_type` the
+rule matches a **run category**. Categories live in the activity's data:
+
+```json
+{
+  "run_categories": [
+    { "category": "low_hr", "reasons": ["time at or below the low-HR ceiling 91% ≥ 85%"], "rule_id": "…" },
+    { "category": "race", "reasons": [] }
+  ],
+  "run_categories_excluded": ["tempo"]
+}
+```
+
+- **Ownership.** A rule only ever touches the entry carrying its own `rule_id`. Entries without a `rule_id` were
+  set by hand and are never changed; other rules' entries are left to those rules. Two rules may give the same
+  category (the seeded "Long run" pair below) without interfering.
+- **Removal.** Every evaluation looks at all activities of the type in the window: the rule's entry is added or
+  updated where the activity overlaps a match and removed where it no longer does, so a re-tuned rule takes its
+  category back from runs it stopped matching. This also runs when nothing matches in the window.
+- **Exclusions.** A category in `run_categories_excluded` (the user removed it) is never added, and the rule's own
+  entry for it is removed.
+- **Reasons.** One line per `activity_feature` condition of the rule, with the activity's value when its features
+  are there (`"time in zone 4 3% ≤ 5%"`): fractions as percentages, durations as `N s`, `N min` or `h:mm`, ratios
+  with two decimals. A synced run retyped through an override is categorised on the override, and its reasons read
+  the features stored under the synced row.
+- An entry is only written when it changes (reasons included), so a settled window writes nothing. A preview
+  counts the activities whose categories would change.
+- The API rejects `output_category` outside enrich mode; switching a rule's mode away from enrich in the web UI
+  clears it.
+- **Deleting** a rule removes its entries from every activity's `run_categories` (manual and other rules' entries
+  stay). **Disabling** a rule keeps them as they are; it just stops updating them.
+
+#### Default run-category rules
+
+The first time run features are computed for a user, these enrich rules on `running` are created once. A
+settings flag (`run_category_rules_seeded`) is claimed atomically before the rules are inserted, so concurrent jobs
+cannot seed twice and a deleted default rule is never re-created; if an insert fails, it is logged to the audit log
+and not retried. They are ordinary rules — edit, disable
+or delete them like any other.
+
+| Name                | Category    | Conditions                                                                 |
+| ------------------- | ----------- | -------------------------------------------------------------------------- |
+| Low-HR run          | `low_hr`    | `low_hr_fraction ≥ 0.85`, `zone4_fraction ≤ 0.05`, `zone5_fraction ≤ 0.02` |
+| Interval run        | `intervals` | `interval_count ≥ 3`, `work_block_cv < 0.4`, `work_rest_pace_ratio ≥ 1.12` |
+| Long run            | `long`      | `moving_s ≥ 5400`                                                          |
+| Long run (vs usual) | `long`      | `duration_vs_median_90d ≥ 1.5`                                             |
+| Tempo run           | `tempo`     | `zone4_fraction ≥ 0.5`, `pace_cv ≤ 0.15`                                   |
+| Hard run            | `hard`      | `zone5_fraction ≥ 0.4`                                                     |
+
+"Low-HR" approximates "≤ 5 % in zones ≥ 4" with ≤ 5 % in zone 4 and ≤ 2 % in zone 5, since there is no combined
+zone-4+5 feature.
 
 ## Retype Mode
 

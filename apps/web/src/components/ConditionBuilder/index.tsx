@@ -1,8 +1,7 @@
 /**
  * ConditionBuilder — editable list of AND-combined deduction rule conditions.
  */
-import type { DataFieldDefinition } from '@aurboda/api-spec'
-
+import { activityFeatureNameSchema, type DataFieldDefinition } from '@aurboda/api-spec'
 import { useQuery } from '@tanstack/react-query'
 import { useRef } from 'preact/hooks'
 
@@ -18,6 +17,7 @@ import './style.css'
 const KIND_LABELS: Record<string, string> = {
   activity: 'Activity Type',
   activity_data: 'Activity Data Field',
+  activity_feature: 'Activity feature',
   after_date: 'Since Date',
   location: 'Location',
   media: 'Media play',
@@ -33,6 +33,7 @@ const KINDS: Array<DeductionRuleCondition['kind']> = [
   'after_date',
   'scrobble',
   'media',
+  'activity_feature',
 ]
 
 const OPERATOR_LABELS: Record<string, string> = {
@@ -102,6 +103,62 @@ function ActivityDataBody({
             class="condition-field-input condition-field-narrow"
           />
         )}
+      </div>
+    </div>
+  )
+}
+
+const FEATURE_OPERATOR_LABELS: Record<string, string> = { gt: '>', gte: '≥', lt: '<', lte: '≤' }
+
+function ActivityFeatureBody({
+  condition,
+  onChange,
+}: {
+  condition: DeductionRuleCondition
+  onChange: (c: DeductionRuleCondition) => void
+}) {
+  return (
+    <div class="condition-data-fields">
+      <ActivityTypeSelect condition={condition} onChange={onChange} />
+      <div class="condition-data-row">
+        <select
+          value={condition.feature ?? ''}
+          onChange={(e) => onChange({ ...condition, feature: (e.target as HTMLSelectElement).value })}
+          class="condition-field-select condition-field-narrow"
+        >
+          {activityFeatureNameSchema.options.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
+        <select
+          value={condition.operator ?? 'gte'}
+          onChange={(e) =>
+            onChange({
+              ...condition,
+              operator: (e.target as HTMLSelectElement).value as DeductionRuleCondition['operator'],
+            })
+          }
+          class="condition-field-select condition-field-intrinsic"
+        >
+          {Object.entries(FEATURE_OPERATOR_LABELS).map(([k, label]) => (
+            <option key={k} value={k}>
+              {label}
+            </option>
+          ))}
+        </select>
+        <input
+          type="number"
+          step="any"
+          value={typeof condition.value === 'number' ? String(condition.value) : ''}
+          onInput={(e) => {
+            const raw = (e.target as HTMLInputElement).value
+            onChange({ ...condition, value: raw === '' ? undefined : Number(raw) })
+          }}
+          placeholder="Value"
+          class="condition-field-input condition-field-narrow"
+        />
       </div>
     </div>
   )
@@ -371,9 +428,44 @@ function MediaBody({
   )
 }
 
+function LocationBody({
+  condition,
+  onChange,
+}: {
+  condition: DeductionRuleCondition
+  onChange: (c: DeductionRuleCondition) => void
+}) {
+  const { data: namedLocations = [] } = useQuery({
+    queryFn: fetchNamedLocations,
+    queryKey: ['namedLocations'],
+    staleTime: 5 * 60_000,
+  })
+  return (
+    <>
+      <input
+        type="text"
+        list="named-locations-list"
+        value={condition.location_name ?? ''}
+        onInput={(e) => onChange({ ...condition, location_name: (e.target as HTMLInputElement).value })}
+        onChange={(e) =>
+          onChange({ ...condition, location_name: (e.target as HTMLInputElement).value.trim() })
+        }
+        placeholder="Start typing a location name..."
+        class="condition-field-input"
+      />
+      <datalist id="named-locations-list">
+        {namedLocations.map((loc) => (
+          <option key={loc.name} value={loc.name} />
+        ))}
+      </datalist>
+    </>
+  )
+}
+
 const KIND_DEFAULTS: Record<string, Partial<DeductionRuleCondition>> = {
   activity: { activity_type: '' },
   activity_data: { activity_type: '', field: '', operator: 'eq', value: '' },
+  activity_feature: { activity_type: 'running', feature: 'low_hr_fraction', operator: 'gte', value: 0.85 },
   after_date: { date: new Date().toISOString().slice(0, 10) },
   location: { location_name: '' },
   media: { match_mode: 'contains', url_host: [] },
@@ -397,12 +489,6 @@ function ConditionCard({
   const { data: definitions = [] } = useQuery({
     queryFn: fetchActivityTypeDefinitions,
     queryKey: ['activityTypeDefinitions'],
-    staleTime: 5 * 60_000,
-  })
-
-  const { data: namedLocations = [] } = useQuery({
-    queryFn: fetchNamedLocations,
-    queryKey: ['namedLocations'],
     staleTime: 5 * 60_000,
   })
 
@@ -480,26 +566,7 @@ function ConditionCard({
 
         {condition.kind === 'activity_data' && <ActivityDataBody condition={condition} onChange={update} />}
 
-        {condition.kind === 'location' && (
-          <>
-            <input
-              type="text"
-              list="named-locations-list"
-              value={condition.location_name ?? ''}
-              onInput={(e) => update({ ...condition, location_name: (e.target as HTMLInputElement).value })}
-              onChange={(e) =>
-                update({ ...condition, location_name: (e.target as HTMLInputElement).value.trim() })
-              }
-              placeholder="Start typing a location name..."
-              class="condition-field-input"
-            />
-            <datalist id="named-locations-list">
-              {namedLocations.map((loc) => (
-                <option key={loc.name} value={loc.name} />
-              ))}
-            </datalist>
-          </>
-        )}
+        {condition.kind === 'location' && <LocationBody condition={condition} onChange={update} />}
 
         {condition.kind === 'after_date' && (
           <input
@@ -513,6 +580,10 @@ function ConditionCard({
         {condition.kind === 'scrobble' && <ScrobbleBody condition={condition} onChange={update} />}
 
         {condition.kind === 'media' && <MediaBody condition={condition} onChange={update} />}
+
+        {condition.kind === 'activity_feature' && (
+          <ActivityFeatureBody condition={condition} onChange={update} />
+        )}
       </div>
     </div>
   )

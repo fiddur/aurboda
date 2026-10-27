@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
-import { deleteActivity, insertActivity } from './activities/index.ts'
+import { deleteActivity, insertActivity, insertOverride } from './activities/index.ts'
 import {
   type ActivityFeatureValues,
   deleteAllActivityFeatures,
@@ -223,5 +223,31 @@ describe('activity features integration', () => {
         window,
       ),
     ).toEqual([])
+  })
+
+  test('findActivitiesByFeature matches a synced row by the type its override gives it', async () => {
+    const user = getTestUser()
+    const retypedToWalk = await addActivity({ start: day(1) })
+    const retypedToRun = await addActivity({ activityType: 'walking', start: day(2) })
+    for (const id of [retypedToWalk, retypedToRun]) {
+      await upsertActivityFeatures(user, id, { ...emptyFeatures, low_hr_fraction: 0.9 })
+    }
+    const overrideTo = async (id: string, activityType: string) => {
+      const [row] = (await query(user, `SELECT start_time, end_time FROM activities WHERE id = $1`, [id]))
+        .rows
+      await insertOverride(user, [id], {
+        activity_type: activityType,
+        end_time: row.end_time as Date,
+        start_time: row.start_time as Date,
+      })
+    }
+    await overrideTo(retypedToWalk, 'walking')
+    await overrideTo(retypedToRun, 'running')
+
+    const window = { end: day(10), start: day(1, 0) }
+    const runs = await findActivitiesByFeature(user, ['running'], 'low_hr_fraction', 'gte', 0.85, window)
+    expect(runs.map((m) => m.id)).toEqual([retypedToRun])
+    const walks = await findActivitiesByFeature(user, ['walking'], 'low_hr_fraction', 'gte', 0.85, window)
+    expect(walks.map((m) => m.id)).toEqual([retypedToWalk])
   })
 })

@@ -62,9 +62,11 @@ export interface ActivitySessionsOptions {
   end?: Date
   groupBy?: string
   filter?: DataFilter
+  category?: string
 }
 
 export const sessionsOptionsFromQuery = (q: ActivitySessionsQuery): ActivitySessionsOptions => ({
+  category: q.category,
   end: q.end ? new Date(q.end) : undefined,
   filter:
     q.filter_field && q.filter_value !== undefined
@@ -398,6 +400,8 @@ export const queryActivitySessions = async (
     undefined,
     undefined,
     categoryMap,
+    undefined,
+    options.category,
   )
   const { activities, filterExtras } = selectSessions(merged, filter, options.start)
   const timed = activities.filter((a) => a.id !== undefined && a.end_time)

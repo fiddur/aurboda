@@ -98,3 +98,16 @@ export const computeAndStoreActivityFeatures = async (
   await deps.upsertActivityFeatures(user, activityId, features)
   return deps.getActivityFeatures(user, activityId)
 }
+
+/** The features of the first of `ids` that has them: a merged activity's track may sit on any of its sources. */
+export const firstActivityFeatures = async (
+  user: string,
+  ids: string[],
+  getFeatures: typeof getActivityFeatures = getActivityFeatures,
+): Promise<ActivityFeatures | undefined> => {
+  for (const id of ids) {
+    const features = await getFeatures(user, id)
+    if (features) return features
+  }
+  return undefined
+}

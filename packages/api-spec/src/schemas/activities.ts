@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { runCategoryFilterSchema } from './activity-features.ts'
+import { activityFeaturesSchema, runCategoryFilterSchema } from './activity-features.ts'
 import {
   activityTypeSchema,
   baseResponseSchema,
@@ -245,6 +245,9 @@ export type SourceRecord = z.infer<typeof sourceRecordSchema>
 
 export const activityDetailSchema = activitySchema
   .extend({
+    features: activityFeaturesSchema.optional().meta({
+      description: 'Computed run features, when the activity has been analysed',
+    }),
     merged_end_time: iso8601DateTimeSchema
       .optional()
       .meta({ description: 'Merged end time across all overlapping sources' }),

@@ -159,6 +159,7 @@ export const getActivities = async (
   deductionRuleId?: string,
   categoryMap?: Map<string, string>,
   routeId?: string,
+  category?: string,
 ): Promise<MergedActivity[]> => {
   const types = Array.isArray(activityType) ? activityType : [activityType]
   const params: unknown[] = [types, start, end]
@@ -174,6 +175,11 @@ export const getActivities = async (
   if (routeId) {
     params.push(routeId)
     filterClauses += `\n       AND id IN (SELECT activity_id FROM activity_routes WHERE route_id = $${params.length})`
+  }
+
+  if (category) {
+    params.push(category)
+    filterClauses += `\n       AND data->'run_categories' @> jsonb_build_array(jsonb_build_object('category', $${params.length}::text))`
   }
 
   const result = await query(

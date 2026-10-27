@@ -301,6 +301,7 @@ export const getRouteDetail = async (
     return {
       activity_id: row.activity_id,
       ...(avgHr === undefined ? {} : { avg_hr: Math.round(avgHr * 10) / 10 }),
+      ...(row.categories.length > 0 ? { categories: row.categories } : {}),
       coverage: row.coverage,
       ...(row.data_distance === undefined ? {} : { distance_m: row.data_distance }),
       elapsed_s: elapsed,

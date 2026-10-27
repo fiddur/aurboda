@@ -29,6 +29,7 @@ import {
   type RuleFormFields,
   ruleToFields,
   toOutputMediaField,
+  toOutputCategory,
   toOutputTitleField,
 } from './ruleForm'
 import './style.css'
@@ -236,6 +237,12 @@ function RuleForm({ id, rule }: { id?: string; rule?: DeductionRule }) {
     if (next !== (rule?.output_title_field ?? null)) autoSave({ output_title_field: next })
   }
 
+  const saveCategory = () => {
+    if (isNew) return
+    const next = toOutputCategory(fields) ?? null
+    if (next !== (rule?.output_category ?? null)) autoSave({ output_category: next })
+  }
+
   const canSubmit = Boolean(fields.name && fields.outputType)
 
   return (
@@ -330,6 +337,16 @@ function RuleForm({ id, rule }: { id?: string; rule?: DeductionRule }) {
               <p class="rule-field-hint">
                 Replaces a blank title, the type name, or a title this rule wrote; a title typed by hand is
                 kept.
+              </p>
+              <TextField
+                label="Output category"
+                value={fields.category}
+                onChange={(v) => updateField('category', v)}
+                onBlur={saveCategory}
+                placeholder="e.g. low_hr"
+              />
+              <p class="rule-field-hint">
+                Adds this category to the run's categories (data.run_categories) while the rule matches.
               </p>
             </>
           )}

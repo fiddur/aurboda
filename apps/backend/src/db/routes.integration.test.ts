@@ -388,6 +388,35 @@ describe('Routes integration', () => {
       expect((await getRouteForActivity(user, second))!.id).toBe(routeId)
     })
 
+    test("efforts carry their run categories, an override's taking precedence", async () => {
+      const user = getTestUser()
+      const { activityId, routeId } = await makeRoute()
+      const second = await addTrackedActivity(jittered)
+      await attachActivityToRoute(user, second, routeId, 0.97)
+      await query(user, `UPDATE activities SET data = $2 WHERE id = $1`, [
+        activityId,
+        { run_categories: [{ category: 'long', reasons: [] }, { bogus: true }] },
+      ])
+      await query(user, `UPDATE activities SET data = $2 WHERE id = $1`, [
+        second,
+        { run_categories: [{ category: 'tempo', reasons: [] }] },
+      ])
+      const row = (await query(user, `SELECT start_time, end_time FROM activities WHERE id = $1`, [second]))
+        .rows[0]
+      await insertOverride(user, [second], {
+        activity_type: 'running',
+        data: { run_categories: [{ category: 'low_hr', reasons: ['added by hand'] }] },
+        end_time: row.end_time,
+        start_time: row.start_time,
+      })
+
+      const efforts = await listRouteEfforts(user, routeId)
+      expect(efforts.map((e) => [e.activity_id, e.categories])).toEqual([
+        [second, ['low_hr']],
+        [activityId, ['long']],
+      ])
+    })
+
     test('a deleted activity drops out of the count and its route lookup', async () => {
       const user = getTestUser()
       const { activityId, routeId } = await makeRoute()

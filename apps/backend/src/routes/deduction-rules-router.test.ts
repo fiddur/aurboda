@@ -118,3 +118,69 @@ describe('PATCH /deduction-rules/:id output_title_field', () => {
     expect(db.updateDeductionRule).not.toHaveBeenCalled()
   })
 })
+
+describe('deduction-rules output_category', () => {
+  const categoryBody = (over: Record<string, unknown> = {}) => ({
+    conditions: [
+      {
+        activity_type: 'running',
+        feature: 'low_hr_fraction',
+        kind: 'activity_feature',
+        operator: 'gte',
+        value: 0.85,
+      },
+    ],
+    mode: 'enrich',
+    name: 'Low-HR run',
+    output_activity_type: 'running',
+    output_category: 'low_hr',
+    ...over,
+  })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(db.activityTypeExists).mockResolvedValue(true)
+    vi.mocked(db.insertDeductionRule).mockImplementation(async (_user, input) => rule(input))
+  })
+
+  test('stores it on an enrich rule with an activity_feature condition', async () => {
+    const res = await supertest(buildApp()).post('/').send(categoryBody())
+    expect(res.status).toBe(201)
+    expect(vi.mocked(db.insertDeductionRule).mock.calls[0]?.[1]).toMatchObject({
+      conditions: [{ feature: 'low_hr_fraction', kind: 'activity_feature' }],
+      output_category: 'low_hr',
+    })
+  })
+
+  test.each([['create'], ['retype']])('rejects it in %s mode', async (mode) => {
+    const res = await supertest(buildApp())
+      .post('/')
+      .send(categoryBody({ conditions: [{ activity_type: 'running', kind: 'activity' }], mode }))
+    expect(res.status).toBe(400)
+    expect(res.body.error).toMatch(/output_category requires mode "enrich"/)
+    expect(db.insertDeductionRule).not.toHaveBeenCalled()
+  })
+
+  test('rejects a category that is not snake_case', async () => {
+    const res = await supertest(buildApp())
+      .post('/')
+      .send(categoryBody({ output_category: 'Low HR' }))
+    expect(res.status).toBe(400)
+    expect(db.insertDeductionRule).not.toHaveBeenCalled()
+  })
+
+  test('switching a categorising rule out of enrich mode is rejected', async () => {
+    vi.mocked(db.getDeductionRule).mockResolvedValue(rule({ output_category: 'low_hr' }))
+    const res = await supertest(buildApp()).patch(`/${RULE_ID}`).send({ mode: 'create' })
+    expect(res.status).toBe(400)
+    expect(db.updateDeductionRule).not.toHaveBeenCalled()
+  })
+
+  test('null clears it', async () => {
+    vi.mocked(db.getDeductionRule).mockResolvedValue(rule({ output_category: 'low_hr' }))
+    vi.mocked(db.updateDeductionRule).mockResolvedValue(rule())
+    const res = await supertest(buildApp()).patch(`/${RULE_ID}`).send({ output_category: null })
+    expect(res.status).toBe(200)
+    expect(vi.mocked(db.updateDeductionRule).mock.calls[0]?.[2]).toEqual({ output_category: null })
+  })
+})

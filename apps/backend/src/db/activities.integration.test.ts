@@ -509,6 +509,53 @@ describe('Activities Integration Tests', () => {
     })
   })
 
+  describe('getActivities category filter', () => {
+    test('keeps only activities whose run_categories carry the category', async () => {
+      const user = getTestUser()
+      const run = (id: string, startIso: string, data?: Record<string, unknown>) =>
+        insertActivity(user, {
+          activity_type: 'running',
+          data,
+          end_time: new Date(new Date(startIso).getTime() + 30 * 60_000),
+          id,
+          source: 'garmin',
+          start_time: new Date(startIso),
+        })
+      const easy = randomUUID()
+      const both = randomUUID()
+      await run(easy, '2024-02-01T07:00:00Z', { run_categories: [{ category: 'low_hr', reasons: ['r'] }] })
+      await run(both, '2024-02-02T07:00:00Z', {
+        run_categories: [
+          { category: 'long', reasons: [] },
+          { category: 'low_hr', reasons: ['added by hand'] },
+        ],
+      })
+      await run(randomUUID(), '2024-02-03T07:00:00Z', {
+        run_categories: [{ category: 'tempo', reasons: [] }],
+      })
+      await run(randomUUID(), '2024-02-04T07:00:00Z')
+
+      const range = [new Date('2024-02-01T00:00:00Z'), new Date('2024-02-05T00:00:00Z')] as const
+      const filtered = await getActivities(
+        user,
+        'running',
+        ...range,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        'low_hr',
+      )
+      const all = await getActivities(user, 'running', ...range)
+
+      expect(filtered.map((a) => a.id)).toEqual([easy, both])
+      expect(all).toHaveLength(4)
+      expect(
+        await getActivities(user, 'running', ...range, undefined, undefined, undefined, undefined, 'hard'),
+      ).toEqual([])
+    })
+  })
+
   describe('getActivityFieldValues', () => {
     test('distinct trimmed non-blank values over the given types, most recently used first', async () => {
       const user = getTestUser()

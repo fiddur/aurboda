@@ -47,6 +47,7 @@ Condition kinds:
 - "scrobble": matches Last.fm scrobbles by artist/track
 - "media": matches media plays (MPRIS pushes and non-duplicate Last.fm scrobbles) by url_host (host or subdomain), title, artist, player, min_played_secs and min_played_ratio (ratio is skipped when the track length is unknown)
 - "after_date": only matches after a date
+- "activity_feature": matches activities of the type (and its descendants) whose computed feature (e.g. low_hr_fraction, zone4_fraction, interval_count, moving_s, pace_cv, duration_vs_median_90d) compares (gte, gt, lte, lt) against value; activities without computed features never match
 
 Modes:
 - "create" (default): creates new activities of output_activity_type
@@ -56,6 +57,7 @@ Modes:
 Use output_data to set custom data fields on created/enriched activities.
 In enrich mode with a "media" condition, output_media_field { field, strip_pattern? } copies the title of the longest matching play overlapping each activity into data[field], after removing every strip_pattern (JS regex) match. The rule overwrites a value it wrote itself, never one set by someone else.
 In enrich mode, output_title_field (e.g. "session_name") copies that data field into each enriched activity's title, through the same path as a manual edit, so a synced activity gets an override and re-syncs keep the title. It replaces only a blank title, the type's name, or a title the rule wrote itself; a title typed by hand is kept, and a missing or blank field never clears one. Combine with a media rule that fills the field, or use alone with an "activity" condition filtered on the field existing.
+In enrich mode, output_category (snake_case, e.g. "low_hr") adds { category, reasons, rule_id } to data.run_categories of every activity of output_activity_type the rule matches, with the activity_feature conditions as reasons, and removes the rule's entry again from activities it no longer matches. Entries set by hand or by other rules are kept, and a category listed in data.run_categories_excluded is never added.
 Multiple conditions use AND logic — all must overlap in time. The rule is applied retroactively to all historical data.`,
     { ...addDeductionRuleBodySchema.shape },
     async (params) => {
@@ -172,6 +174,7 @@ Multiple conditions use AND logic — all must overlap in time. The rule is appl
         mode: params.mode,
         name: params.name,
         output_activity_type: params.output_activity_type,
+        output_category: params.output_category,
         output_data: params.output_data as Record<string, unknown> | undefined,
         output_media_field: params.output_media_field,
         output_title: params.output_title,

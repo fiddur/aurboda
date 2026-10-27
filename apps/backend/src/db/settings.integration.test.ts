@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
-import { getUserSettings, upsertUserSettings } from './settings.ts'
+import { query } from './connection.ts'
+import { claimSettingsFlag, getUserSettings, upsertUserSettings } from './settings.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 
@@ -16,6 +17,30 @@ describe('Settings Integration Tests', () => {
 
   beforeEach(async () => {
     await cleanTestDb()
+  })
+
+  describe('claimSettingsFlag', () => {
+    test('concurrent claims without a settings row: exactly one wins and one row exists', async () => {
+      const user = getTestUser()
+      const results = await Promise.all([
+        claimSettingsFlag(user, 'run_category_rules_seeded'),
+        claimSettingsFlag(user, 'run_category_rules_seeded'),
+      ])
+      expect(results.filter(Boolean)).toHaveLength(1)
+      expect((await query(user, `SELECT 1 FROM user_settings`)).rowCount).toBe(1)
+      expect(await claimSettingsFlag(user, 'run_category_rules_seeded')).toBe(false)
+    })
+
+    test('sets the flag on an existing row and keeps the other settings', async () => {
+      const user = getTestUser()
+      await upsertUserSettings(user, { lastfm_username: 'me' })
+      expect(await claimSettingsFlag(user, 'run_category_rules_seeded')).toBe(true)
+      expect(await claimSettingsFlag(user, 'run_category_rules_seeded')).toBe(false)
+      expect(await getUserSettings(user)).toMatchObject({
+        lastfm_username: 'me',
+        run_category_rules_seeded: true,
+      })
+    })
   })
 
   describe('User Settings with tag_mappings', () => {

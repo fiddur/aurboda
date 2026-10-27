@@ -21,6 +21,7 @@ import type { FollowActions } from '../services/following.ts'
 import type { InvitationAuth } from '../services/invitation.ts'
 import type { OuraWebhookManager } from '../services/oura-webhook-manager.ts'
 import type { SyncProvider } from '../services/queries/index.ts'
+import type { HrSettingsChanged } from '../services/settings.ts'
 import type { TimelineHub } from '../services/timeline-hub.ts'
 import type { RetroEnrichTrigger } from '../services/timeline-retro-enrich.ts'
 import type { WebAuthnService } from '../services/webauthn.ts'
@@ -121,6 +122,8 @@ interface RestRoutesDeps {
   onAvatarChanged: (user: string) => void
   /** Merge-group/window resolution behind the auto-share rule preview (#903). */
   autosharePreviewDeps: AutosharePreviewDeps
+  /** Fire-and-forget: recompute activity features after HR zones, birth date or maf_hr change. */
+  onHrSettingsChanged: HrSettingsChanged
 }
 
 export const mountRestRouters = ({
@@ -146,6 +149,7 @@ export const mountRestRouters = ({
   followerActions,
   reactionActions,
   onAvatarChanged,
+  onHrSettingsChanged,
   retroEnrichTimeline,
   timelineHub,
   ouraWebhookManager,
@@ -191,7 +195,7 @@ export const mountRestRouters = ({
   )
   httpd.use('/autoshare-rules', createAutoshareRulesRouter(authMiddleware, autosharePreviewDeps))
   httpd.use('/locations', createLocationsRouter(authMiddleware))
-  httpd.use(createSettingsRouter(authMiddleware))
+  httpd.use(createSettingsRouter(authMiddleware, onHrSettingsChanged))
   httpd.use(createAuditLogRouter(authMiddleware))
   httpd.use(createRawRecordsRouter(authMiddleware))
   httpd.use('/dashboard', createDashboardRouter(authMiddleware))

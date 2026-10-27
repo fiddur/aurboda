@@ -1,6 +1,6 @@
 import type { UserSettings } from './types.ts'
 
-import { query } from './connection.ts'
+import { query, withUserTransaction } from './connection.ts'
 
 // One-time migration from camelCase to snake_case JSONB keys.
 const topLevelRenames: Record<string, string> = {
@@ -130,3 +130,28 @@ export const upsertUserSettings = async (
 
   return merged
 }
+
+/**
+ * Sets a boolean settings flag unless it is already present, and says whether this call set it.
+ * user_settings has no key to conflict on, so an advisory lock serialises concurrent claims,
+ * including the insert of a first row.
+ */
+export const claimSettingsFlag = (user: string, flag: string): Promise<boolean> =>
+  withUserTransaction(user, async (tx) => {
+    await query(tx, `SELECT pg_advisory_xact_lock(hashtext('user_settings_flag'))`)
+    const patch = JSON.stringify({ [flag]: true })
+    const updated = await query(
+      tx,
+      `UPDATE user_settings SET settings = settings || $1::jsonb, updated_at = NOW()
+       WHERE NOT (settings ? $2) RETURNING 1`,
+      [patch, flag],
+    )
+    if ((updated.rowCount ?? 0) > 0) return true
+    const inserted = await query(
+      tx,
+      `INSERT INTO user_settings (settings) SELECT $1::jsonb
+       WHERE NOT EXISTS (SELECT 1 FROM user_settings) RETURNING 1`,
+      [patch],
+    )
+    return (inserted.rowCount ?? 0) > 0
+  })

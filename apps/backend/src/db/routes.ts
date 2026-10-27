@@ -2,6 +2,7 @@ import type { RouteSort } from '@aurboda/api-spec'
 import type { QueryResultRow } from 'pg'
 
 import { query, withUserTransaction } from './connection.ts'
+import { effectiveType } from './effective-type.ts'
 import { isUniqueViolation } from './pg-errors.ts'
 
 export interface LatLon {
@@ -44,6 +45,7 @@ export interface RouteEffortRow {
   source: string
   coverage: number
   data_distance?: number
+  categories: string[]
 }
 
 export interface TrackedActivity {
@@ -56,17 +58,6 @@ export const ROUTE_BUFFER_M = 25
 
 /** Degrees added around a track's bbox when looking for candidates (~100–200 m). */
 const BBOX_EXPAND_DEG = 0.002
-
-/**
- * The type the merged view shows for activity row `alias`: a retype of a synced
- * row lives on its override, while the track and route rows stay keyed by the
- * synced row.
- */
-const effectiveType = (alias: string): string => `COALESCE(
-    (SELECT o.activity_type FROM activity_override_targets ot
-     JOIN activities o ON o.id = ot.override_id AND o.deleted_at IS NULL
-     WHERE ot.target_id = ${alias}.id LIMIT 1),
-    ${alias}.activity_type)`
 
 /** The activity's preferred track (as getActivityTrack picks it), with the activity's effective type. */
 const preferredTrack = (activityParam: string): string => `
@@ -452,11 +443,26 @@ export const mergeRoutes = async (user: string, sourceId: string, targetId: stri
   })
 
 /** The route's runs, newest first (see ROUTE_RUNS for how a multi-source run counts once). */
+/** The `category` values of a `run_categories` array; anything malformed is skipped. */
+const categoryNames = (value: unknown): string[] =>
+  Array.isArray(value)
+    ? value
+        .map((entry: unknown) =>
+          entry && typeof entry === 'object' ? (entry as { category?: unknown }).category : undefined,
+        )
+        .filter((category): category is string => typeof category === 'string')
+    : []
+
 export const listRouteEfforts = async (user: string, routeId: string): Promise<RouteEffortRow[]> => {
   const result = await query(
     user,
     `SELECT runs.activity_id, runs.start_time, runs.end_time, runs.title, runs.source, runs.coverage,
-            CASE WHEN jsonb_typeof(runs.data->'distance') = 'number' THEN (runs.data->>'distance')::float8 END AS distance
+            CASE WHEN jsonb_typeof(runs.data->'distance') = 'number' THEN (runs.data->>'distance')::float8 END AS distance,
+            COALESCE(
+              (SELECT o.data->'run_categories' FROM activity_override_targets ot
+               JOIN activities o ON o.id = ot.override_id AND o.deleted_at IS NULL
+               WHERE ot.target_id = runs.activity_id LIMIT 1),
+              runs.data->'run_categories') AS run_categories
      FROM (${ROUTE_RUNS}) runs
      JOIN routes r ON r.id = runs.route_id AND r.deleted_at IS NULL
      WHERE runs.route_id = $1
@@ -465,6 +471,7 @@ export const listRouteEfforts = async (user: string, routeId: string): Promise<R
   )
   return result.rows.map((row) => ({
     activity_id: row.activity_id as string,
+    categories: categoryNames(row.run_categories),
     coverage: Number(row.coverage),
     ...(row.distance == null ? {} : { data_distance: Number(row.distance) }),
     end_time: (row.end_time as Date | null) ?? null,

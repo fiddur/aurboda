@@ -205,6 +205,7 @@ export const tableCreationOrder = [
   'outbound_sync_queue_indexes',
   'deduction_rules',
   'deduction_rules_indexes',
+  'deduction_rules_output_category',
   'deduction_rule_runs',
   'deduction_rule_runs_indexes',
   'webauthn_credentials',

@@ -178,6 +178,32 @@ Garmin writes a track when an activity's detail is synced, Strava when its strea
 
 History is backfilled from `raw_records` without new API calls: Garmin from the stored activity detail (full resolution), Strava from the stored activity's `map.polyline` (a shape without timestamps, so M is spread evenly over `elapsed_time` and `full_resolution` is false). The backfill is incremental -- activities with a usable raw record and no track -- and runs per user in the `track-backfill` queue after each startup's schema sweep, or on demand through `POST /tracks/backfill` / the `backfill_activity_tracks` MCP tool.
 
+#### `activity_features` - Computed Run Features
+
+One row per analysed activity (keyed by the row that has the track): HR-zone and low-HR fractions, moving time, HR drift, pace variability, interval block statistics, elevation and duration against the 90-day median, each null when the data cannot support it. Written by the `track-analyse` and `track-backfill` jobs and cleared for a user when their HR zones, birth date or `maf_hr` change (the backfill then recomputes it). See [Routes and segments](./features/routes-and-segments.md#phase-3-run-features-and-categories).
+
+```sql
+CREATE TABLE activity_features (
+    activity_id             UUID PRIMARY KEY REFERENCES activities(id) ON DELETE CASCADE,
+    elapsed_s               REAL,
+    moving_s                REAL,
+    zone0_fraction          REAL,  -- … zone5_fraction
+    low_hr_fraction         REAL,
+    low_hr_ceiling_bpm      INTEGER,
+    hr_drift_pct            REAL,
+    pace_cv                 REAL,
+    interval_count          INTEGER,
+    work_block_median_s     REAL,
+    rest_block_median_s     REAL,
+    work_block_cv           REAL,
+    work_rest_pace_ratio    REAL,
+    elevation_gain_m        REAL,
+    elevation_oscillation   REAL,
+    duration_vs_median_90d  REAL,
+    computed_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
 #### `routes` and `activity_routes` - Recognised Courses (PostGIS)
 
 A route is a course run more than once: its line is the simplified track of the older of the

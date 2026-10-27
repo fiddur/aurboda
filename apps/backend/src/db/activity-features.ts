@@ -6,6 +6,7 @@ import {
 } from '@aurboda/api-spec'
 
 import { query } from './connection.ts'
+import { effectiveType } from './effective-type.ts'
 
 export type ActivityFeatureValues = Omit<ActivityFeatures, 'activity_id' | 'computed_at'>
 
@@ -115,7 +116,7 @@ export const findActivitiesByFeature = async (
     `SELECT a.id, a.start_time, a.end_time, f.${feature} AS value
      FROM activities a
      JOIN activity_features f ON f.activity_id = a.id
-     WHERE a.activity_type = ANY($1)
+     WHERE ${effectiveType('a')} = ANY($1)
        AND a.deleted_at IS NULL
        AND a.start_time < $3
        AND COALESCE(a.end_time, a.start_time + INTERVAL '1 hour') > $2

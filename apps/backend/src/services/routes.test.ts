@@ -287,6 +287,7 @@ describe('getRouteDetail', () => {
     listRouteEfforts: vi.fn(async () => [
       {
         activity_id: 'a2',
+        categories: ['low_hr', 'long'],
         coverage: 0.95,
         data_distance: 2000,
         end_time: new Date(t1.getTime() + 600_000),
@@ -294,7 +295,15 @@ describe('getRouteDetail', () => {
         start_time: t1,
         title: 'Evening run',
       },
-      { activity_id: 'a1', coverage: 1, end_time: null, source: 'strava', start_time: t0, title: null },
+      {
+        activity_id: 'a1',
+        categories: [],
+        coverage: 1,
+        end_time: null,
+        source: 'strava',
+        start_time: t0,
+        title: null,
+      },
     ]),
     ...overrides,
   })
@@ -312,6 +321,7 @@ describe('getRouteDetail', () => {
         {
           activity_id: 'a2',
           avg_hr: 151.2,
+          categories: ['low_hr', 'long'],
           coverage: 0.95,
           distance_m: 2000,
           elapsed_s: 600,
