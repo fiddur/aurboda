@@ -26,6 +26,7 @@ import net.aurboda.CredentialsManager
 import net.aurboda.DataResult
 import net.aurboda.MainActivity
 import net.aurboda.R
+import net.aurboda.api.models.ChallengeAggregation
 import net.aurboda.api.models.ChallengeStanding
 import net.aurboda.api.models.DiscoveredChallenge
 import net.aurboda.parseChallengeUrl
@@ -342,7 +343,15 @@ private fun challengeViews(
     val series =
         data.standings
             .filter { it.status == ChallengeStanding.Status.active }
-            .mapIndexed { i, s -> cumulativeSeries(s, challengeMemberColor(i), data.summary.startMillis, bucketEnd) }
+            .mapIndexed { i, s ->
+                cumulativeSeries(
+                    s,
+                    challengeMemberColor(i),
+                    data.summary.startMillis,
+                    bestBucket = data.summary.aggregation == ChallengeAggregation.max,
+                    bucketEnd = bucketEnd,
+                )
+            }
 
     val perSize =
         widgetSizes(appWidgetManager, appWidgetId).associateWith { size ->
