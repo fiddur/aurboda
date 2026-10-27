@@ -173,6 +173,7 @@ export {
   pickOverrideWinner,
   restoreActivity,
   restoreEmptyImportTombstone,
+  restoreSetlessTombstone,
   updateActivity,
   updateActivityEndTimeByExternalId,
   updateActivityTypeByTagKey,

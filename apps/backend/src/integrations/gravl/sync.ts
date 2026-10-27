@@ -2,7 +2,9 @@
  * One sync-state row, `provider = 'gravl'`, `data_type = 'workouts'`. Each run
  * lists workouts in a window, removes our Health Connect copy of the `External`
  * round-trips and the empty import of set-less workouts, fetches every real
- * workout's detail (the list has no sets) and hands it to the processor.
+ * workout's detail (the list has no sets) and hands it to the processor. An
+ * `External` workout whose summary says sets may have been logged onto it is
+ * fetched too, and the processor decides.
  *
  * Windows: 90 days on the first run or a full resync; otherwise from two days
  * before the last successful sync, because Gravl workouts get edited after the
@@ -40,6 +42,7 @@ import { isGravlAuthFailure, isGravlRateLimit } from './client.ts'
 import {
   isExternalWorkout,
   isStrengthWorkout,
+  mayCarryLoggedSets,
   processGravlWorkout,
   removeExternalGravlWorkout,
   retractEmptyGravlImport,
@@ -141,7 +144,7 @@ const processWindow = async (
         const key = summary.id.toLowerCase()
         if (handled.has(key)) continue
         handled.add(key)
-        if (isExternalWorkout(summary)) {
+        if (isExternalWorkout(summary) && !mayCarryLoggedSets(summary)) {
           await deps.removeExternalWorkout(user, summary.id)
           continue
         }
@@ -250,7 +253,8 @@ export const enrichGravlWorkout = async (
   }
   // A tombstone blocks re-insert, so for a row we deliberately removed (an
   // External round-trip's copy, a Health Connect session the user deleted)
-  // the detail request would buy nothing. The empty import of a set-less
+  // the detail request is not spent here; sets logged onto an External
+  // session later arrive with the poll. The empty import of a set-less
   // workout is the exception: the user may have logged its sets since, and
   // processing restores the row when they have.
   const tombstone = await deps.findDeletedActivityByExternalId(

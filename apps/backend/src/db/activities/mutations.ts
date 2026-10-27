@@ -451,6 +451,30 @@ export const restoreEmptyImportTombstone = async (
   return result.rows.length > 0
 }
 
+/**
+ * Undo the removal of a row that holds no logged set (no `data.sets`, or an
+ * empty one), whatever else its data carries — the Health Connect copy of an
+ * External Gravl round-trip is restored once sets are logged onto it. A row
+ * that already carried sets when it was deleted was deleted by the user and
+ * stays deleted.
+ */
+export const restoreSetlessTombstone = async (
+  user: string,
+  source: string,
+  externalId: string,
+): Promise<boolean> => {
+  const result = await query(
+    user,
+    `UPDATE activities SET deleted_at = NULL
+     WHERE source = $1 AND external_id = $2 AND deleted_at IS NOT NULL
+       AND (data->'sets' IS NULL OR data->'sets' = '[]'::jsonb)
+     RETURNING id`,
+    [source, externalId],
+  )
+
+  return result.rows.length > 0
+}
+
 export const restoreActivity = async (user: string, id: string): Promise<boolean> => {
   const result = await query(
     user,

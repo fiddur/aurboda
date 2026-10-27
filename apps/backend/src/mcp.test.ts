@@ -91,6 +91,7 @@ vi.mock('./db', () => ({
   insertTimeSeries: vi.fn().mockResolvedValue(undefined),
   materializeSuperseded: vi.fn(),
   restoreEmptyImportTombstone: vi.fn(),
+  restoreSetlessTombstone: vi.fn(),
   softDeleteActivityByExternalId: vi.fn(),
   softDeleteSupersededLocations: vi.fn().mockResolvedValue(0),
   updateActivityTypeDefinition: vi.fn(),
