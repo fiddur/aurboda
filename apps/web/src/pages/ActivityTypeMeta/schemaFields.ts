@@ -10,7 +10,7 @@ export const setFieldType = (
 ): DataFieldDefinition => {
   if (type === 'list') {
     if (field.type === 'list') return field
-    const { enum_values: _enum, is_categorical: _categorical, ...rest } = field
+    const { enum_values: _enum, is_categorical: _categorical, unit: _unit, ...rest } = field
     return { ...rest, item_fields: [emptyItemField()], type }
   }
   const { item_fields: _items, ...rest } = field
@@ -35,7 +35,6 @@ export const updateItemField = (
 export const removeItemField = (field: DataFieldDefinition, index: number): DataFieldDefinition =>
   withItemFields(field, (items) => items.filter((_, i) => i !== index))
 
-/** What is saved: fields with valid names, and a list field only while it has a valid item field. */
 export const validSchemaFields = (fields: DataFieldDefinition[]): DataFieldDefinition[] =>
   fields.flatMap((field) => {
     if (!FIELD_NAME.test(field.name)) return []

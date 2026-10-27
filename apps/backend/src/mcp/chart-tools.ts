@@ -1,4 +1,8 @@
-import { chartDataQuerySchema } from '@aurboda/api-spec'
+import {
+  chartDataQuerySchema,
+  ITEM_BREAKDOWN_NEEDS_MEASURE,
+  itemBreakdownWithoutMeasure,
+} from '@aurboda/api-spec'
 
 import { getChartData } from '../services/chart-data.ts'
 import { jsonResponse, type McpServer } from './helpers.ts'
@@ -36,6 +40,9 @@ Each screentime category is also an activity type (its activity_type_name), so s
       tag_definition_id,
       tz,
     }) => {
+      if (itemBreakdownWithoutMeasure(breakdown_fields, measure)) {
+        return jsonResponse({ error: ITEM_BREAKDOWN_NEEDS_MEASURE, success: false })
+      }
       try {
         const buckets = await getChartData(user, {
           aggregation,

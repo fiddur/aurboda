@@ -1,8 +1,10 @@
 import {
   type ActivityMeasure,
   activityMeasureLabels,
+  activityMeasures,
   type DataSchemaDefinition,
   measureDefaultAggregation,
+  measureGoalTitle,
   type MeasureGoal,
   type MeasureGoalAggregation,
 } from '@aurboda/api-spec'
@@ -131,7 +133,10 @@ export const measureGoalLabel = (
   goal: Pick<MeasureGoal, 'activity_type' | 'filter_value' | 'measure'> & { activity_type_name?: string },
   typeName?: string,
 ): string =>
-  `${goal.filter_value ?? goal.activity_type_name ?? typeName ?? goal.activity_type} · ${activityMeasureLabels[goal.measure]}`
+  measureGoalTitle(goal.measure, goal.filter_value, goal.activity_type_name ?? typeName ?? goal.activity_type)
+
+export const measureOptions = (): { label: string; value: ActivityMeasure }[] =>
+  activityMeasures.map((value) => ({ label: activityMeasureLabels[value], value }))
 
 type WithSchema = { data_schema?: DataSchemaDefinition }
 

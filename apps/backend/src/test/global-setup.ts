@@ -2,7 +2,6 @@ import type { TestProject } from 'vitest/node'
 
 import { PostgreSqlContainer } from '@testcontainers/postgresql'
 import { Client } from 'pg'
-import { parseCLI } from 'vitest/node'
 
 import { createTableStatements, tableCreationOrder } from '../schema.ts'
 
@@ -25,18 +24,7 @@ const withClient = async (connectionString: string, fn: (client: Client) => Prom
   }
 }
 
-const selectsIntegrationFiles = (argv: string[]): boolean => {
-  try {
-    const { filter } = parseCLI(['vitest', ...argv], { allowUnknownOptions: true })
-    return filter.length === 0 || filter.some((f) => f.includes('integration'))
-  } catch {
-    return true
-  }
-}
-
 export default async (project: TestProject) => {
-  if (!selectsIntegrationFiles(process.argv.slice(2))) return
-
   const container = await new PostgreSqlContainer('postgis/postgis:16-3.4-alpine')
     .withDatabase('test_db')
     .withUsername('test_user')

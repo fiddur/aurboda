@@ -1,6 +1,12 @@
 import type { RequestHandler } from 'express'
 
-import { type ChartDataHttpQuery, chartDataHttpQuerySchema, type ChartDataResponse } from '@aurboda/api-spec'
+import {
+  type ChartDataHttpQuery,
+  chartDataHttpQuerySchema,
+  type ChartDataResponse,
+  ITEM_BREAKDOWN_NEEDS_MEASURE,
+  itemBreakdownWithoutMeasure,
+} from '@aurboda/api-spec'
 
 import { getChartData } from '../services/chart-data.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
@@ -40,6 +46,9 @@ export const createChartDataRouter = (authMiddleware: RequestHandler): TypedRout
         return res
           .status(400)
           .json({ error: 'Either pattern or tag_definition_id is required', success: false })
+      }
+      if (itemBreakdownWithoutMeasure(breakdown_fields, measure)) {
+        return res.status(400).json({ error: ITEM_BREAKDOWN_NEEDS_MEASURE, success: false })
       }
 
       const result = await getChartData(user, {

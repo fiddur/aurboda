@@ -37,7 +37,6 @@ export const listItems = (data: Record<string, unknown> | undefined, field: stri
   return Array.isArray(list) ? list.filter(isObject) : []
 }
 
-/** The items of list `field` whose `key` value normalises to `normalized`. */
 export const matchingItems = (
   data: Record<string, unknown> | undefined,
   field: string,
@@ -45,7 +44,6 @@ export const matchingItems = (
   normalized: string,
 ): Item[] => listItems(data, field).filter((item) => normalizeItemValue(item[key]) === normalized)
 
-/** The first list field the definitions of `types` declare: the one measures are taken over by default. */
 export const listFieldOf = (definitions: ActivityTypeDefinition[], types: string[]): string | undefined =>
   definitions
     .filter((d) => types.includes(d.name))

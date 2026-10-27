@@ -1,12 +1,12 @@
 import {
   type ActivityMeasure,
-  activityMeasureLabels,
   type ChallengeSourceType,
   challengeRangeLabel,
   challengeTimePhrase,
   challengeTimeStatus,
   type ChallengeTimeStatus,
   getMetricDisplayName,
+  measureSpecLabel,
 } from '@aurboda/api-spec'
 
 import type { ChallengeMemberRecord } from '../db/challenges.ts'
@@ -83,8 +83,7 @@ export const countJoined = (members: readonly { is_host: boolean }[]): number =>
 const measureLabel = (spec: ResolvedChallenge['spec']): string => {
   if (spec.source_type === 'metric') return getMetricDisplayName(spec.pattern)
   if (!spec.measure) return humanizeActivityType(spec.pattern)
-  const subject = spec.filter_value ?? humanizeActivityType(spec.pattern)
-  return `${subject} · ${activityMeasureLabels[spec.measure].toLowerCase()}`
+  return measureSpecLabel(spec.measure, spec.filter_value, humanizeActivityType(spec.pattern))
 }
 
 export const describeChallenge = (resolved: ResolvedChallenge, now: Date): ChallengeDescription => {

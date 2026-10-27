@@ -27,7 +27,7 @@ import {
   getParticipationByUrl,
   upsertChallengeMember,
 } from '../db/index.ts'
-import { toSpecFields } from './challenge-spec.ts'
+import { toSpecFields, unsupportedMeasureMessage } from './challenge-spec.ts'
 import { safeFetchGet, safeFetchPost } from './safe-fetch.ts'
 import { buildProfileUrl } from './share-urls.ts'
 
@@ -99,9 +99,6 @@ export const discoverInstance = async (base: string): Promise<WellKnownAurboda> 
   }
   return wellKnown
 }
-
-export const unsupportedMeasureMessage = (measure: string): string =>
-  `Your instance does not support this challenge's measure (${measure}); update Aurboda to join`
 
 const rawSpecMeasure = (data: unknown): unknown =>
   (data as { challenge?: { spec?: { measure?: unknown } } } | null)?.challenge?.spec?.measure
