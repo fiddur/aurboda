@@ -10,8 +10,9 @@
 
 /**
  * `external` workouts are Health Connect sessions round-tripped INTO Gravl
- * from other apps (Garmin, Polar, …). They carry no exercise data and must be
- * dropped, otherwise every watch session would gain a third copy.
+ * from other apps (Garmin, Polar, …). Most carry only Gravl's cardio
+ * pseudo-exercise and must be dropped, otherwise every watch session would
+ * gain a third copy; one onto which sets were logged in Gravl is imported.
  *
  * Enum values are spelled as the API serialises them, lower camelCase
  * (`external`, `newSaved`, `dropSet`), not the PascalCase of Gravl's docs.
