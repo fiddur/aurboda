@@ -45,7 +45,7 @@ export function Header() {
   }, [url])
 
   return (
-    <header>
+    <header class="app-header">
       <nav class="nav-mobile">
         <a href="/" class={`nav-mobile-home${url === '/' ? ' active' : ''}`}>
           Home
