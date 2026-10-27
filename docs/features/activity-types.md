@@ -154,6 +154,31 @@ each session that beats it, a weekly chart of a chosen measure, and the sessions
 activity's page has an exercises section comparing each exercise with last time, with record
 badges.
 
+### Merging values and aliases
+
+Apps spell the same exercise differently (Gravl's `Dumbbell Bicep Curl` is another app's
+`Dumbbell Curl`). Merging one item value into another rewrites every item with the source value
+(trimmed, case-insensitive) to the target value, in the type's sessions and those of its
+descendant types; soft-deleted activities are left alone. The source then becomes an **alias** of
+the target. An alias belongs to the item path (`sets.exercise`), not to an activity type, and
+applies to every later write that carries it, from any source: a Gravl import, an
+`add_activity` / `update_activity` or the REST equivalents. Such an item is stored with the
+target value. Aliases that pointed at the source follow it to the target, so chains stay one
+step long, and an alias spelled like the target is dropped, since the target is a value again.
+
+A source that differs from the target only in case or whitespace (`dumbbell curl` into
+`Dumbbell Curl`) only unifies the spelling: the items are rewritten and no alias is stored.
+
+Deleting an alias stops the mapping for later writes; the data the merge rewrote stays as it is.
+
+- `POST /activity-types/:name/item-values/merge` -- body `{ field, source, target }`; answers
+  with `activities_updated` and the `alias` kept (`null` for a spelling-only merge)
+- `GET /activity-types/:name/item-values/aliases?field=sets.exercise` -- the aliases of the item
+  path
+- `DELETE /activity-types/:name/item-values/aliases/:id` -- delete one alias
+
+The MCP twins are `merge_item_values`, `list_item_value_aliases` and `delete_item_value_alias`.
+
 ## Sessions Overview
 
 The activity type page (`/activity-type/<name>`) lists the type's sessions (descendant types
@@ -217,8 +242,13 @@ types in the `exercise` display category.
   to keep to the same value of a data field
 - `GET /activities/:id/item-history?field=<item path>` -- The activity's list items grouped by
   an item value, with measures, records and the previous session per value
+- `POST /activity-types/:name/item-values/merge` -- Merge one item value into another and keep
+  the source as an alias (see [Merging values and aliases](#merging-values-and-aliases))
+- `GET /activity-types/:name/item-values/aliases?field=<item path>` -- The aliases of an item
+  path
+- `DELETE /activity-types/:name/item-values/aliases/:id` -- Delete an alias
 
-MCP tools: `list_activity_types`, `add_activity_type`, `update_activity_type`, `delete_activity_type`, `query_activity_sessions`, `list_activity_field_values`, `get_activity_neighbors`, `get_activity_item_history`.
+MCP tools: `list_activity_types`, `add_activity_type`, `update_activity_type`, `delete_activity_type`, `query_activity_sessions`, `list_activity_field_values`, `get_activity_neighbors`, `get_activity_item_history`, `merge_item_values`, `list_item_value_aliases`, `delete_item_value_alias`.
 
 ## Garmin Meditation Recognition
 

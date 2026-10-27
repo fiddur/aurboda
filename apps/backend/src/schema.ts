@@ -96,6 +96,8 @@ export const tableCreationOrder = [
   'activity_routes',
   'activity_routes_indexes',
   'activity_features',
+  'item_value_aliases',
+  'item_value_aliases_indexes',
   'meals',
   'meals_indexes',
   'meal_log_completed',

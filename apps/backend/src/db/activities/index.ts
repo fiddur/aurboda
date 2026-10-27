@@ -23,6 +23,7 @@ export {
   restoreActivity,
   restoreEmptyImportTombstone,
   restoreSetlessTombstone,
+  rewriteItemValue,
   softDeleteActivityByExternalId,
   updateActivity,
   updateActivityEndTimeByExternalId,

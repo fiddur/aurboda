@@ -159,6 +159,7 @@ export const cleanTestDb = async (): Promise<void> => {
     'import_jobs',
     'custom_metrics',
     'goals',
+    'item_value_aliases',
   ]
 
   for (const table of tables) {

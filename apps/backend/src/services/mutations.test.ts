@@ -46,6 +46,7 @@ vi.mock('../db', async () => ({
   insertMergedActivity: vi.fn().mockResolvedValue('new-id'),
   insertOverride: vi.fn(),
   insertTimeSeries: vi.fn(),
+  listItemValueAliases: vi.fn().mockResolvedValue([]),
   materializeSuperseded: vi.fn().mockResolvedValue(undefined),
   reanchorNotes: vi.fn().mockResolvedValue(undefined),
   replaceUserNotes: vi.fn().mockResolvedValue(undefined),
@@ -191,6 +192,42 @@ describe('addActivity', () => {
       'Dumbbell Bench Press: 12×30kg, 8×35kg',
       new Date('2024-03-15T10:30:00Z'),
       new Date('2024-03-15T11:45:00Z'),
+    )
+  })
+
+  test('stores items carrying an alias under the merged value', async () => {
+    vi.mocked(db.listItemValueAliases).mockResolvedValueOnce([
+      {
+        alias: 'Dumbbell Bicep Curl',
+        created_at: new Date('2026-10-01T00:00:00Z'),
+        field: 'sets.exercise',
+        id: 'alias-1',
+        value: 'Dumbbell Curl',
+      },
+    ])
+
+    const result = await addActivity('testuser', {
+      activity_type: 'strength_training',
+      data: {
+        sets: [
+          { exercise: 'dumbbell bicep curl', reps: 10 },
+          { exercise: 'Bench Press', reps: 5 },
+        ],
+      },
+      start_time: new Date('2024-03-15T10:30:00Z'),
+    })
+
+    expect(result.success).toBe(true)
+    expect(db.insertActivity).toHaveBeenCalledWith(
+      'testuser',
+      expect.objectContaining({
+        data: {
+          sets: [
+            { exercise: 'Dumbbell Curl', reps: 10 },
+            { exercise: 'Bench Press', reps: 5 },
+          ],
+        },
+      }),
     )
   })
 
@@ -1070,6 +1107,41 @@ describe('updateActivity', () => {
       start_time: undefined,
       title: undefined,
     })
+  })
+
+  test('maps aliased items in the data it merges in', async () => {
+    vi.mocked(db.listItemValueAliases).mockResolvedValueOnce([
+      {
+        alias: 'Dumbbell Bicep Curl',
+        created_at: new Date('2026-10-01T00:00:00Z'),
+        field: 'sets.exercise',
+        id: 'alias-1',
+        value: 'Dumbbell Curl',
+      },
+    ])
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      activity_type: 'strength_training',
+      data: { note: 'kept' },
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+    vi.mocked(db.updateActivity).mockResolvedValue({
+      activity_type: 'strength_training',
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+
+    await updateActivity('testuser', 'activity-123', {
+      data: { sets: [{ exercise: 'Dumbbell Bicep Curl' }] },
+    })
+
+    expect(db.updateActivity).toHaveBeenCalledWith(
+      'testuser',
+      'activity-123',
+      expect.objectContaining({ data: { note: 'kept', sets: [{ exercise: 'Dumbbell Curl' }] } }),
+    )
   })
 
   test('does not pass data when input has no data field', async () => {

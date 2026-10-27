@@ -46,6 +46,9 @@ See [Activity types -- sessions overview](features/activity-types.md#sessions-ov
 | `get_activity_neighbors`     | The previous and next activity of the same type, optionally only those sharing a data field value (`same_field`, e.g. `session_name`)                                                                                                        |
 | `list_activity_field_values` | The values a data field (e.g. `session_name`) has taken across a type and its subtypes, most recently used first, with counts -- for reusing a value instead of spelling a new variant                                                       |
 | `get_activity_item_history`  | One activity's list items grouped by an item value (`field=sets.exercise`): per value the items, their measures (volume, e1RM, max weight, set count, longest hold), the records set and the previous session with it, plus totals           |
+| `merge_item_values`          | Merge one value of a categorical item path (`field=sets.exercise`) into another across a type and its subtypes; the source becomes an alias, so later writes carrying it are stored as the target                                            |
+| `list_item_value_aliases`    | The aliases kept for an item path (`field=sets.exercise`)                                                                                                                                                                                    |
+| `delete_item_value_alias`    | Delete an alias; the data the merge rewrote stays rewritten                                                                                                                                                                                  |
 
 ### Activity track tools
 

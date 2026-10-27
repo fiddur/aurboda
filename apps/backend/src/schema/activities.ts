@@ -367,4 +367,17 @@ export const activitiesTables: Record<string, string> = {
     CREATE INDEX IF NOT EXISTS idx_tags_not_deleted ON tags (start_time DESC) WHERE deleted_at IS NULL;
     CREATE INDEX IF NOT EXISTS idx_tags_definition_id ON tags (tag_definition_id) WHERE tag_definition_id IS NOT NULL
   `,
+
+  item_value_aliases: `
+    CREATE TABLE IF NOT EXISTS item_value_aliases (
+      id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      field      VARCHAR(200) NOT NULL,
+      alias      TEXT NOT NULL,
+      value      TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
+  item_value_aliases_indexes: `
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_item_value_aliases_field_alias ON item_value_aliases (field, lower(btrim(alias)))
+  `,
 }

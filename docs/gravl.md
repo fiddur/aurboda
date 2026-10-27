@@ -35,6 +35,7 @@ Each set is an item of the `sets` list field of the built-in `strength_training`
 - `time` is seconds (planks, holds), `distance` metres (carries). Zero values are stored as `null`.
 - `set_type` is `normal`, `warmup`, `drop_set` or `failure`. Gravl exposes warmup sets the app hides, so the API is richer than the app.
 - `superset_id` is present only when Gravl reports one (it currently reads null everywhere).
+- `exercise` passes through the [item value aliases](./features/activity-types.md#merging-values-and-aliases) before it is stored: an exercise merged into another is stored under the name it was merged into. The synced sets note keeps Gravl's own spelling.
 
 A synced note (`source = 'gravl'`) renders the same data as text — `Bench Press: 10×40 kg (w), 8×80 kg, 6×80 kg (f) @8` — with Gravl's own workout notes above it, so the sets stay readable where set arrays are not rendered (the notes list, a shared feed post); the activity page shows `data.sets` as a table.
 
