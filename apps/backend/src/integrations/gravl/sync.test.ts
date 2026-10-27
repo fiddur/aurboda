@@ -14,6 +14,7 @@ vi.mock('../../db/index.ts', () => ({
   insertRawRecord: vi.fn(),
   materializeSuperseded: vi.fn(),
   restoreEmptyImportTombstone: vi.fn(),
+  restoreSetlessTombstone: vi.fn(),
   softDeleteActivityByExternalId: vi.fn(),
   upsertSyncState: vi.fn(),
 }))
@@ -125,6 +126,29 @@ describe('syncGravlWorkouts', () => {
       retry_after: undefined,
       status: 'idle',
     })
+  })
+
+  it('fetches detail for an external workout that may carry logged sets, and removes the rest unfetched', async () => {
+    const client = makeClient({
+      listWorkouts: listing([
+        { ...summary('ext-many', 'external'), exerciseCount: 2 },
+        { ...summary('ext-volume', 'external'), exerciseCount: 1, volume: 5370 },
+        { ...summary('ext-plain', 'external'), exerciseCount: 1, volume: 0 },
+      ]),
+    })
+    const deps = makeDeps(null)
+
+    await syncGravlWorkouts('alice', client, {}, deps)
+
+    expect(client.getWorkout).toHaveBeenCalledTimes(2)
+    expect(client.getWorkout).toHaveBeenCalledWith('gat', 'ext-many')
+    expect(client.getWorkout).toHaveBeenCalledWith('gat', 'ext-volume')
+    expect(client.getWorkout).not.toHaveBeenCalledWith('gat', 'ext-plain')
+    expect(deps.processWorkout).toHaveBeenCalledWith('alice', expect.objectContaining({ id: 'ext-many' }))
+    expect(deps.processWorkout).toHaveBeenCalledWith('alice', expect.objectContaining({ id: 'ext-volume' }))
+    expect(deps.removeExternalWorkout).toHaveBeenCalledTimes(1)
+    expect(deps.removeExternalWorkout).toHaveBeenCalledWith('alice', 'ext-plain')
+    expect(deps.retractEmptyImport).not.toHaveBeenCalled()
   })
 
   it('re-covers two days before the last sync on an incremental run and follows pagination', async () => {

@@ -25,6 +25,7 @@ import {
   insertOverride,
   markActivityDetailSynced,
   restoreEmptyImportTombstone,
+  restoreSetlessTombstone,
   softDeleteActivityByExternalId,
   updateActivity,
   upsertActivity,
@@ -1626,6 +1627,69 @@ describe('Activities Integration Tests', () => {
     test('returns false when nothing matches', async () => {
       const user = getTestUser()
       expect(await restoreEmptyImportTombstone(user, 'gravl', 'gravl-workout-unknown')).toBe(false)
+    })
+  })
+
+  describe('restoreSetlessTombstone', () => {
+    const tombstoned = async (user: string, externalId: string, data?: Record<string, unknown>) => {
+      const id = await insertActivity(user, {
+        activity_type: 'strength_training',
+        data,
+        external_id: externalId,
+        source: 'gravl',
+        start_time: new Date('2026-08-30T12:03:00Z'),
+        title: 'External Workout',
+      })
+      await softDeleteActivityByExternalId(user, 'gravl', externalId)
+      return id
+    }
+
+    test('restores a removed Health Connect copy, whatever else its data holds', async () => {
+      const user = getTestUser()
+      const hc = await tombstoned(user, 'gravl-workout-ext-hc', {
+        metadata: { dataOrigin: 'com.liteup.getgains' },
+      })
+      const legacy = await tombstoned(user, 'gravl-workout-ext-legacy', {
+        metadata: { dataOrigin: 'com.liteup.getgains' },
+        sets: [],
+      })
+      const bare = await tombstoned(user, 'gravl-workout-ext-bare')
+
+      expect(await restoreSetlessTombstone(user, 'gravl', 'gravl-workout-ext-hc')).toBe(true)
+      expect(await restoreSetlessTombstone(user, 'gravl', 'gravl-workout-ext-legacy')).toBe(true)
+      expect(await restoreSetlessTombstone(user, 'gravl', 'gravl-workout-ext-bare')).toBe(true)
+      expect(await findActivityByExternalId(user, 'gravl', 'gravl-workout-ext-hc')).toMatchObject({ id: hc })
+      expect(await findActivityByExternalId(user, 'gravl', 'gravl-workout-ext-legacy')).toMatchObject({
+        id: legacy,
+      })
+      expect(await findActivityByExternalId(user, 'gravl', 'gravl-workout-ext-bare')).toMatchObject({
+        id: bare,
+      })
+      expect(await restoreSetlessTombstone(user, 'gravl', 'gravl-workout-ext-hc')).toBe(false)
+    })
+
+    test('leaves a tombstone that carries sets deleted', async () => {
+      const user = getTestUser()
+      await tombstoned(user, 'gravl-workout-ext-full', { sets: [{ exercise: 'Bench Press' }] })
+
+      expect(await restoreSetlessTombstone(user, 'gravl', 'gravl-workout-ext-full')).toBe(false)
+      expect(await findActivityByExternalId(user, 'gravl', 'gravl-workout-ext-full')).toBeNull()
+    })
+
+    test('touches neither a live row nor another source', async () => {
+      const user = getTestUser()
+      await insertActivity(user, {
+        activity_type: 'strength_training',
+        external_id: 'gravl-workout-ext-live',
+        source: 'gravl',
+        start_time: new Date('2026-08-30T12:03:00Z'),
+        title: 'Live',
+      })
+      await tombstoned(user, 'gravl-workout-ext-other')
+
+      expect(await restoreSetlessTombstone(user, 'gravl', 'gravl-workout-ext-live')).toBe(false)
+      expect(await restoreSetlessTombstone(user, 'garmin', 'gravl-workout-ext-other')).toBe(false)
+      expect(await restoreSetlessTombstone(user, 'gravl', 'gravl-workout-ext-unknown')).toBe(false)
     })
   })
 
