@@ -43,13 +43,13 @@ body {
   }
 }
 
-header {
+header.app-header {
   background-color: #673ab8;
   display: none;
 }
 
 @media (max-width: 60em) {
-  header {
+  header.app-header {
     display: block;
   }
 }

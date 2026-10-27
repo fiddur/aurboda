@@ -3,13 +3,15 @@ import type { ActivitySession } from '@aurboda/api-spec'
 import { describe, expect, test } from 'vitest'
 
 import {
+  availableMeasures,
   chartExplorerHref,
+  decayingBestPoints,
   doneSummary,
-  perWeekLookbackDays,
+  explorerLookbackDays,
   perWeekRange,
   recordsFrom,
   sliceByLookback,
-  trendPoints,
+  trendMeasure,
 } from './itemHistory'
 
 const session = (id: string, start: string, extra: Partial<ActivitySession> = {}): ActivitySession => ({
@@ -89,14 +91,81 @@ describe('doneSummary', () => {
   })
 })
 
-describe('trendPoints', () => {
-  test('one point per session with the measure, oldest first', () => {
-    expect(trendPoints(sessions, 'e1rm')).toEqual([
-      { date: s1.start_time, value: 105 },
-      { date: s2.start_time, value: 113.3 },
-      { date: s3.start_time, value: 108 },
+describe('trendMeasure', () => {
+  test('e1rm when any session has it', () => {
+    expect(trendMeasure(sessions)).toBe('e1rm')
+  })
+
+  test('most reps for reps-only sessions, longest hold for time-only', () => {
+    const reps = session('r', '2026-01-01T07:00:00.000Z', { measures: { max_reps: 20, total_reps: 50 } })
+    const hold = session('h', '2026-01-01T07:00:00.000Z', { measures: { max_time: 60, set_count: 3 } })
+    expect(trendMeasure([reps])).toBe('max_reps')
+    expect(trendMeasure([hold])).toBe('max_time')
+  })
+
+  test('undefined when no session has one', () => {
+    expect(trendMeasure([s4])).toBeUndefined()
+    expect(trendMeasure([])).toBeUndefined()
+  })
+})
+
+describe('availableMeasures', () => {
+  test('the measures any session has, in api-spec order', () => {
+    expect(availableMeasures(sessions)).toEqual(['volume', 'e1rm', 'max_weight'])
+    expect(availableMeasures([s4])).toEqual([])
+  })
+})
+
+describe('decayingBestPoints', () => {
+  const at = (id: string, date: string, e1rm?: number) =>
+    session(id, date, { measures: e1rm === undefined ? {} : { e1rm } })
+  const jan1 = '2026-01-01T00:00:00.000Z'
+  const may1 = '2026-05-01T00:00:00.000Z'
+  const now = new Date(may1).getTime()
+
+  test('the half-life is exact and a lower session carries the decayed best', () => {
+    expect(decayingBestPoints([at('b', may1, 10), at('a', jan1, 100)], 'e1rm', 120, now)).toEqual([
+      { date: jan1, value: 100 },
+      { date: may1, value: 50 },
     ])
-    expect(trendPoints(sessions, 'max_time')).toEqual([])
+  })
+
+  test('a higher session resets to its own value', () => {
+    expect(decayingBestPoints([at('a', jan1, 100), at('b', may1, 80)], 'e1rm', 120, now)).toEqual([
+      { date: jan1, value: 100 },
+      { date: may1, value: 80 },
+    ])
+  })
+
+  test('a trailing point at now decays from the last point', () => {
+    const later = new Date('2026-08-29T00:00:00.000Z').getTime()
+    expect(decayingBestPoints([at('a', jan1, 100), at('b', may1, 10)], 'e1rm', 120, later)).toEqual([
+      { date: jan1, value: 100 },
+      { date: may1, value: 50 },
+      { date: '2026-08-29T00:00:00.000Z', value: 25 },
+    ])
+  })
+
+  test('a single session gives itself and today', () => {
+    expect(decayingBestPoints([at('a', jan1, 100)], 'e1rm', 120, now)).toEqual([
+      { date: jan1, value: 100 },
+      { date: may1, value: 50 },
+    ])
+  })
+
+  test('rounds to one decimal', () => {
+    expect(decayingBestPoints([at('a', jan1, 113.33)], 'e1rm', 120, new Date(jan1).getTime())).toEqual([
+      { date: jan1, value: 113.3 },
+    ])
+  })
+
+  test('skips sessions without the measure, and none gives no points', () => {
+    expect(decayingBestPoints([at('a', jan1, 100), at('b', may1)], 'e1rm', 120, now)).toEqual([
+      { date: jan1, value: 100 },
+      { date: may1, value: 50 },
+    ])
+    expect(decayingBestPoints([at('b', may1)], 'e1rm', 120, now)).toEqual([])
+    expect(decayingBestPoints([], 'e1rm', 120, now)).toEqual([])
   })
 })
 
@@ -113,19 +182,33 @@ describe('sliceByLookback', () => {
   })
 })
 
-describe('perWeekLookbackDays', () => {
-  test('the period, with all time as two years', () => {
-    expect(perWeekLookbackDays(90)).toBe(90)
-    expect(perWeekLookbackDays(0)).toBe(730)
+describe('perWeekRange', () => {
+  const now = new Date(2026, 9, 26, 14, 30)
+
+  test('from the start of the day `days` ago to the end of today', () => {
+    const { start, end } = perWeekRange(90, sessions, now)
+    expect(new Date(start)).toEqual(new Date(2026, 6, 28, 0, 0, 0, 0))
+    expect(new Date(end)).toEqual(new Date(2026, 9, 26, 23, 59, 59, 999))
+  })
+
+  test('all time starts on the day of the first session', () => {
+    const first = new Date(s1.start_time)
+    const { start, end } = perWeekRange(0, sessions, now)
+    expect(new Date(start)).toEqual(new Date(first.getFullYear(), first.getMonth(), first.getDate()))
+    expect(new Date(end)).toEqual(new Date(2026, 9, 26, 23, 59, 59, 999))
   })
 })
 
-describe('perWeekRange', () => {
-  test('from the start of the day `days` ago to the end of today', () => {
-    const now = new Date(2026, 9, 26, 14, 30)
-    const { start, end } = perWeekRange(90, now)
-    expect(new Date(start)).toEqual(new Date(2026, 6, 28, 0, 0, 0, 0))
-    expect(new Date(end)).toEqual(new Date(2026, 9, 26, 23, 59, 59, 999))
+describe('explorerLookbackDays', () => {
+  const now = new Date(2026, 9, 26, 14, 30)
+
+  test('the period itself', () => {
+    expect(explorerLookbackDays(90, new Date(2026, 6, 28).toISOString(), now)).toBe(90)
+  })
+
+  test('all time is the days since the start, rounded up', () => {
+    expect(explorerLookbackDays(0, new Date(2026, 9, 20).toISOString(), now)).toBe(7)
+    expect(explorerLookbackDays(0, new Date(2026, 9, 26).toISOString(), now)).toBe(1)
   })
 })
 
