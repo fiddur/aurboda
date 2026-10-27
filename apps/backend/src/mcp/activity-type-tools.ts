@@ -1,5 +1,7 @@
 import {
   addActivityTypeDefinitionBodySchema,
+  itemValueAliasesQuerySchema,
+  mergeItemValuesBodySchema,
   updateActivityTypeDefinitionBodySchema,
 } from '@aurboda/api-spec'
 import { z } from 'zod'
@@ -12,6 +14,7 @@ import {
   renameActivityTypeDefinition,
   updateActivityTypeDefinition,
 } from '../services/activity-type-definitions.ts'
+import { deleteAlias, listAliases, mergeItemValues } from '../services/item-value-aliases.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
 export const registerActivityTypeTools = (server: McpServer, user: string) => {
@@ -89,6 +92,45 @@ export const registerActivityTypeTools = (server: McpServer, user: string) => {
       const result = await mergeActivityType(user, source, target)
       if (!result.success) return errorResponse(result.error ?? 'Failed to merge activity type')
       return jsonResponse(result)
+    },
+  )
+
+  server.tool(
+    'merge_item_values',
+    'Merge one value of a categorical item path (e.g. the exercise of a strength set, field "sets.exercise") into another: every item with the source value, in the activity type and its subtypes, is rewritten to the target value, and the source becomes an alias of the target, so later writes of that item path (Gravl imports, add_activity, update_activity) carrying the source are stored as the target. Values compare trimmed and case-insensitively; a source differing from the target only in spelling is rewritten without keeping an alias. Returns the number of activities updated and the alias kept.',
+    {
+      activity_type: z.string().describe('Activity type whose item path to merge in'),
+      ...mergeItemValuesBodySchema.shape,
+    },
+    async ({ activity_type, ...body }) => {
+      const result = await mergeItemValues(user, activity_type, body)
+      if (!result.success) return errorResponse(result.error)
+      return jsonResponse(result.data)
+    },
+  )
+
+  server.tool(
+    'list_item_value_aliases',
+    'List the aliases of a categorical item path (e.g. "sets.exercise"): each maps a spelling merged away to the value it is stored as on later writes of that item path, whatever the activity type.',
+    {
+      activity_type: z.string().describe('Activity type the item path belongs to'),
+      ...itemValueAliasesQuerySchema.shape,
+    },
+    async ({ activity_type, field }) => {
+      const result = await listAliases(user, activity_type, field)
+      if (!result.success) return errorResponse(result.error)
+      return jsonResponse(result.data)
+    },
+  )
+
+  server.tool(
+    'delete_item_value_alias',
+    'Delete an item value alias by id. Data already rewritten by the merge stays as it is; only later writes stop being mapped.',
+    { id: z.string().uuid().describe('Alias id') },
+    async ({ id }) => {
+      const result = await deleteAlias(user, id)
+      if (!result.success) return errorResponse(result.error ?? 'Failed to delete alias')
+      return jsonResponse({ deleted: true, id })
     },
   )
 }

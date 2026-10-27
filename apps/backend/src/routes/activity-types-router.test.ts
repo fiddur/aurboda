@@ -18,10 +18,17 @@ vi.mock('../services/queries/index.ts', async () => {
   return { queryActivityFieldValues: vi.fn(), queryActivitySessions: vi.fn(), sessionsOptionsFromQuery }
 })
 
+vi.mock('../services/item-value-aliases.ts', () => ({
+  deleteAlias: vi.fn(),
+  listAliases: vi.fn(),
+  mergeItemValues: vi.fn(),
+}))
+
 vi.mock('../db/index.ts', () => ({}))
 
 const queries = await import('../services/queries/index.ts')
 const service = await import('../services/activity-type-definitions.ts')
+const aliases = await import('../services/item-value-aliases.ts')
 
 const buildApp = () => {
   const app = express()
@@ -146,5 +153,110 @@ describe('POST /activity-types', () => {
     expect(res.status).toBe(201)
     expect(service.addActivityTypeDefinition).toHaveBeenCalledWith('tester', body)
     expect(res.body.data).toMatchObject({ parent_type: 'yoga', show_on_timeline: false })
+  })
+})
+
+describe('POST /activity-types/:name/item-values/merge', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const body = { field: 'sets.exercise', source: 'Dumbbell Bicep Curl', target: 'Dumbbell Curl' }
+
+  test('merges and answers with the result', async () => {
+    const data = {
+      activities_updated: 4,
+      alias: {
+        alias: 'Dumbbell Bicep Curl',
+        created_at: '2026-10-01T00:00:00.000Z',
+        field: 'sets.exercise',
+        id: '00000000-0000-4000-8000-000000000001',
+        value: 'Dumbbell Curl',
+      },
+    }
+    vi.mocked(aliases.mergeItemValues).mockResolvedValue({ data, success: true })
+
+    const res = await supertest(buildApp())
+      .post('/activity-types/strength_training/item-values/merge')
+      .send(body)
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ data, success: true })
+    expect(aliases.mergeItemValues).toHaveBeenCalledWith('tester', 'strength_training', body)
+  })
+
+  test('404s on an unknown type and 400s on another error', async () => {
+    const app = buildApp()
+    vi.mocked(aliases.mergeItemValues).mockResolvedValueOnce({
+      error: 'Activity type "nope" not found',
+      success: false,
+    })
+    expect((await supertest(app).post('/activity-types/nope/item-values/merge').send(body)).status).toBe(404)
+
+    vi.mocked(aliases.mergeItemValues).mockResolvedValueOnce({ error: 'not categorical', success: false })
+    const res = await supertest(app).post('/activity-types/strength_training/item-values/merge').send(body)
+    expect(res.status).toBe(400)
+    expect(res.body).toEqual({ error: 'not categorical', success: false })
+  })
+
+  test('400s on an invalid body without calling the service', async () => {
+    const res = await supertest(buildApp())
+      .post('/activity-types/strength_training/item-values/merge')
+      .send({ field: 'sets.exercise', source: '  ', target: 'Dumbbell Curl' })
+    expect(res.status).toBe(400)
+    expect(aliases.mergeItemValues).not.toHaveBeenCalled()
+  })
+})
+
+describe('GET /activity-types/:name/item-values/aliases', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  test('lists the aliases of the field', async () => {
+    const data = [
+      {
+        alias: 'DB Curl',
+        created_at: '2026-10-01T00:00:00.000Z',
+        field: 'sets.exercise',
+        id: '00000000-0000-4000-8000-000000000001',
+        value: 'Dumbbell Curl',
+      },
+    ]
+    vi.mocked(aliases.listAliases).mockResolvedValue({ data, success: true })
+
+    const res = await supertest(buildApp()).get(
+      '/activity-types/strength_training/item-values/aliases?field=sets.exercise',
+    )
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ data, success: true })
+    expect(aliases.listAliases).toHaveBeenCalledWith('tester', 'strength_training', 'sets.exercise')
+  })
+
+  test('400s on a missing field', async () => {
+    const res = await supertest(buildApp()).get('/activity-types/strength_training/item-values/aliases')
+    expect(res.status).toBe(400)
+    expect(aliases.listAliases).not.toHaveBeenCalled()
+  })
+})
+
+describe('DELETE /activity-types/:name/item-values/aliases/:id', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const id = '00000000-0000-4000-8000-000000000001'
+
+  test('deletes the alias', async () => {
+    vi.mocked(aliases.deleteAlias).mockResolvedValue({ success: true })
+    const res = await supertest(buildApp()).delete(
+      `/activity-types/strength_training/item-values/aliases/${id}`,
+    )
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ success: true })
+    expect(aliases.deleteAlias).toHaveBeenCalledWith('tester', id)
+  })
+
+  test('404s on an unknown alias', async () => {
+    vi.mocked(aliases.deleteAlias).mockResolvedValue({ error: 'Alias not found', success: false })
+    const res = await supertest(buildApp()).delete(
+      `/activity-types/strength_training/item-values/aliases/${id}`,
+    )
+    expect(res.status).toBe(404)
   })
 })

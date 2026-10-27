@@ -1,11 +1,11 @@
 import type { ActivityMeasure, ActivitySessionGroup, DataItemFieldDefinition } from '@aurboda/api-spec'
 
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useState } from 'preact/hooks'
 
 import { fieldLabel, itemPageHref, type ListFieldDefinition } from '../../components/sessions/sessionView'
-import { fetchActivitySessions } from '../../state/api'
+import { deleteItemValueAliasApi, fetchActivitySessions, fetchItemValueAliases } from '../../state/api'
 import { formatMeasure } from '../../utils/measures'
 import { type ItemGroupSortKey, sortItemGroups } from './itemGroups'
 import '../../components/sessions/sessions.css'
@@ -121,6 +121,49 @@ const ItemGroupsTable = ({
   )
 }
 
+const ItemValueAliases = ({ name, path }: { name: string; path: string }) => {
+  const queryClient = useQueryClient()
+  const queryKey = ['item-value-aliases', name, path]
+  const query = useQuery({
+    queryFn: () => fetchItemValueAliases(name, path),
+    queryKey,
+    staleTime: 5 * 60 * 1000,
+  })
+  const remove = useMutation({
+    mutationFn: (id: string) => deleteItemValueAliasApi(name, id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
+  })
+  const aliases = query.data ?? []
+  if (aliases.length === 0) return null
+
+  return (
+    <div class="activity-type-meta-aliases">
+      <h3>Aliases</h3>
+      <ul class="activity-type-meta-alias-list">
+        {aliases.map((a) => (
+          <li key={a.id}>
+            <span>
+              {a.alias} → <a href={itemPageHref(name, path, a.value)}>{a.value}</a>
+            </span>
+            <button
+              type="button"
+              class="btn-secondary activity-type-meta-alias-delete"
+              disabled={remove.isPending && remove.variables === a.id}
+              onClick={() => remove.mutate(a.id)}
+            >
+              Delete
+            </button>
+          </li>
+        ))}
+      </ul>
+      {remove.error && <p class="error">Failed to delete the alias.</p>}
+      <p class="session-muted activity-type-meta-alias-note">
+        Deleting an alias keeps the merged sessions; new imports of that name are stored as written.
+      </p>
+    </div>
+  )
+}
+
 /** The type's sessions broken down by an item field of a list, e.g. strength training by exercise. */
 export function ItemGroupsSection({
   name,
@@ -173,6 +216,7 @@ export function ItemGroupsSection({
         ) : (
           <ItemGroupsTable groups={groups} name={name} path={path} item={item} />
         ))}
+      <ItemValueAliases name={name} path={path} />
     </section>
   )
 }
