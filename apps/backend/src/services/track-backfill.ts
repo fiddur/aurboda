@@ -13,6 +13,7 @@ import {
 import { extractTrackPoints } from '../integrations/garmin/process.ts'
 import { auditError } from './audit-log.ts'
 import { defaultRouteMatchDeps, matchUnroutedTracks } from './routes.ts'
+import { defaultFeatureBackfillDeps, type FeatureBackfillDeps } from './track-analyse.ts'
 import { buildTrack, decodePolyline, polylineToTrackPoints, type TrackPoint } from './tracks.ts'
 
 export interface TrackBackfillDeps {
@@ -27,13 +28,17 @@ export const defaultTrackBackfillDeps: TrackBackfillDeps = {
   upsertActivityTrack,
 }
 
-/** The queued backfill also matches routes for the tracks it wrote (and any left unmatched). */
-export interface TrackBackfillJobDeps extends TrackBackfillDeps {
+/**
+ * The queued backfill also matches routes for the tracks it wrote (and any left unmatched),
+ * then computes features for tracked activities that have none.
+ */
+export interface TrackBackfillJobDeps extends TrackBackfillDeps, FeatureBackfillDeps {
   matchRoutes: (user: string) => Promise<{ matched: number; created: number }>
 }
 
-export const defaultTrackBackfillJobDeps: TrackBackfillJobDeps = {
+export const defaultTrackBackfillJobDeps: Omit<TrackBackfillJobDeps, 'notify'> = {
   ...defaultTrackBackfillDeps,
+  ...defaultFeatureBackfillDeps,
   matchRoutes: (user) => matchUnroutedTracks(user, defaultRouteMatchDeps),
 }
 

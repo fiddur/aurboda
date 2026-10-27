@@ -1,4 +1,4 @@
-import type { RouteDetail as RouteDetailData } from '@aurboda/api-spec'
+import type { RouteDetail as RouteDetailData, RouteEffort } from '@aurboda/api-spec'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
@@ -13,7 +13,7 @@ import { deleteRoute, fetchRoute, fetchRoutes, mergeRoutes, updateRoute } from '
 import { auth } from '../../state/auth'
 import { formatDistance, formatPace } from '../EntityDetail/format-utils'
 import { ActivityTypeName } from './ActivityTypeName'
-import { effortSeries, formatElapsed } from './format'
+import { effortSeries, effortsWithCategory, formatElapsed } from './format'
 import './style.css'
 
 /** RouteMap draws a line from timed points; a route line has no times and is never hovered. */
@@ -62,8 +62,8 @@ function NameEditor({ route }: { route: RouteDetailData }) {
   )
 }
 
-function EffortsTable({ route }: { route: RouteDetailData }) {
-  if (route.efforts.length === 0) return <p class="routes-empty">No runs on this route.</p>
+function EffortsTable({ efforts }: { efforts: RouteEffort[] }) {
+  if (efforts.length === 0) return <p class="routes-empty">No runs on this route.</p>
   return (
     <table class="route-efforts">
       <thead>
@@ -75,7 +75,7 @@ function EffortsTable({ route }: { route: RouteDetailData }) {
         </tr>
       </thead>
       <tbody>
-        {route.efforts.map((effort) => (
+        {efforts.map((effort) => (
           <tr key={effort.activity_id}>
             <td>
               <a href={`/detail/activity/${effort.activity_id}`}>
@@ -92,9 +92,9 @@ function EffortsTable({ route }: { route: RouteDetailData }) {
   )
 }
 
-function Trends({ route }: { route: RouteDetailData }) {
-  const pace = effortSeries(route.efforts, 'pace_s_per_km')
-  const hr = effortSeries(route.efforts, 'avg_hr')
+function Trends({ efforts }: { efforts: RouteEffort[] }) {
+  const pace = effortSeries(efforts, 'pace_s_per_km')
+  const hr = effortSeries(efforts, 'avg_hr')
   if (pace.length < MIN_TREND_POINTS && hr.length < MIN_TREND_POINTS) return null
   return (
     <section class="route-section">
@@ -180,6 +180,7 @@ function ManageRoute({ route }: { route: RouteDetailData }) {
 export function RouteDetail() {
   const { params } = useRoute()
   const id = params.id as string
+  const [lowHrOnly, setLowHrOnly] = useState(false)
 
   const { data: route, isLoading } = useQuery({
     enabled: Boolean(auth.value.token),
@@ -212,6 +213,9 @@ export function RouteDetail() {
     )
   }
 
+  const lowHr = effortsWithCategory(route.efforts, 'low_hr')
+  const efforts = lowHrOnly && lowHr.length > 0 ? lowHr : route.efforts
+
   return (
     <div class="data-sources-page">
       <div class="page-header">
@@ -227,11 +231,22 @@ export function RouteDetail() {
 
       <RouteMap points={route.points.map((p) => ({ ...p, time: NO_TIME }))} hoverTime={null} />
 
-      <Trends route={route} />
+      {lowHr.length > 0 && (
+        <label class="route-low-hr-toggle">
+          <input
+            type="checkbox"
+            checked={lowHrOnly}
+            onChange={(e) => setLowHrOnly((e.target as HTMLInputElement).checked)}
+          />{' '}
+          Low-HR runs only
+        </label>
+      )}
+
+      <Trends efforts={efforts} />
 
       <section class="route-section">
         <h2>Runs</h2>
-        <EffortsTable route={route} />
+        <EffortsTable efforts={efforts} />
       </section>
 
       <ManageRoute route={route} />

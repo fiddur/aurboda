@@ -7,6 +7,7 @@ import {
   restoreActivity as dbRestoreActivity,
   restoreProductivityRecord as dbRestoreProductivityRecord,
 } from '../db/index.ts'
+import { reanalyseOverrideTargets } from './track-analyse.ts'
 
 export interface RestoreResult {
   success: boolean
@@ -18,7 +19,10 @@ export async function restoreActivity(user: string, id: string): Promise<Restore
   const restored = await dbRestoreActivity(user, id)
   if (restored) {
     const activity = await dbGetActivityById(user, id)
-    if (activity) await materializeSuperseded(user, activity.start_time)
+    if (activity) {
+      await materializeSuperseded(user, activity.start_time)
+      await reanalyseOverrideTargets(user, activity)
+    }
   }
   return { id, restored, success: restored }
 }

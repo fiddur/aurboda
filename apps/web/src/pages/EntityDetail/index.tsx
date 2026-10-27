@@ -1,4 +1,4 @@
-import { isExerciseActivityType } from '@aurboda/api-spec'
+import { type ActivityFeatures, isExerciseActivityType } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useLocation, useRoute } from 'preact-iso'
@@ -68,6 +68,8 @@ import { MetricContent } from './MetricContent'
 import { MusicPlaylist } from './MusicPlaylist'
 import { NotesSection } from './NotesSection'
 import { ProductivityDetail } from './ProductivityDetail'
+import { isRunType, type RunCategoryChanges, runCategories } from './runCategories'
+import { RunCategories, RunFeatures } from './RunCategoryChips'
 import { SameValueSessions } from './SameValueSessions'
 import { activityRouteAfterSave } from './saveNavigation'
 import { SchemaDataFields } from './SchemaDataFields'
@@ -276,6 +278,10 @@ const ActivityDetailContent = ({
   onChartMetricsChange,
   onFillField,
   focusField,
+  features,
+  onRunCategoriesChange,
+  isSavingRunCategories,
+  runCategoriesError,
 }: {
   activity: Activity
   /** The id the page is viewed by: `merged:` prefixed for a merged view. */
@@ -291,6 +297,10 @@ const ActivityDetailContent = ({
   onChartMetricsChange?: (metrics: string[]) => void
   onFillField?: (field: string) => void
   focusField?: string
+  features?: ActivityFeatures
+  onRunCategoriesChange?: (changes: RunCategoryChanges) => void
+  isSavingRunCategories?: boolean
+  runCategoriesError?: string
 }) => {
   const displayStart = activity.merged_start_time ?? activity.start_time
   const realEnd = activity.merged_end_time ?? activity.end_time
@@ -407,6 +417,17 @@ const ActivityDetailContent = ({
           </div>
         )}
 
+        {!isEditing &&
+          (runCategories(activityData).length > 0 || isRunType(activity.activity_type, typeDefinitions)) && (
+            <RunCategories
+              data={activityData}
+              onChange={(changes) => onRunCategoriesChange?.(changes)}
+              readOnly={!onRunCategoriesChange || Boolean(activity.deleted_at)}
+              busy={isSavingRunCategories}
+              error={runCategoriesError}
+            />
+          )}
+
         <EditableActivityFields
           title={activity.title || exerciseDisplayName || typeDisplayName}
           isEditing={isEditing}
@@ -468,6 +489,7 @@ const ActivityDetailContent = ({
               />
             ))}
             {hasHrZones && <HrZoneBar zones={hrZoneSecs!} />}
+            <RunFeatures features={features} />
           </>
         )}
       </div>
@@ -580,6 +602,7 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
     data: activityResult,
     isLoading,
     isError,
+    isFetching: isRefetchingActivity,
   } = useQuery({
     queryFn: () => fetchActivityById(entityId),
     queryKey: ['entity-detail', 'activity', entityId],
@@ -669,10 +692,11 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
     onSuccess: () => invalidate(),
   })
 
-  const saveMutation = useMutation<{ id: string | undefined } | null, Error, void>({
+  const saveMutation = useMutation<{ id: string | undefined } | null, Error, ActivityDraft | void>({
     // eslint-disable-next-line complexity -- linear field-by-field diff against orig draft
-    mutationFn: async () => {
+    mutationFn: async (edited) => {
       if (!activity) return null
+      const next = edited ?? draft
       const body: {
         activity_type?: string
         start_time?: string
@@ -683,19 +707,19 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
         override_target_ids?: string[]
       } = {}
       const orig = makeDraft(activity)
-      if (draft.activity_type !== orig.activity_type) body.activity_type = draft.activity_type
-      if (draft.title !== orig.title) body.title = draft.title
-      if (draft.start_time !== orig.start_time) {
-        body.start_time = new Date(draft.start_time).toISOString()
+      if (next.activity_type !== orig.activity_type) body.activity_type = next.activity_type
+      if (next.title !== orig.title) body.title = next.title
+      if (next.start_time !== orig.start_time) {
+        body.start_time = new Date(next.start_time).toISOString()
       }
-      if (draft.end_time !== orig.end_time) {
-        body.end_time = draft.end_time ? new Date(draft.end_time).toISOString() : null
+      if (next.end_time !== orig.end_time) {
+        body.end_time = next.end_time ? new Date(next.end_time).toISOString() : null
       }
-      if (draft.notes !== orig.notes) body.notes = draft.notes
-      if (draft.data && JSON.stringify(draft.data) !== JSON.stringify(orig.data)) {
+      if (next.notes !== orig.notes) body.notes = next.notes
+      if (next.data && JSON.stringify(next.data) !== JSON.stringify(orig.data)) {
         body.data = dropBlankListRows(
-          typeDefinitions?.find((d) => d.name === draft.activity_type)?.data_schema,
-          draft.data,
+          typeDefinitions?.find((d) => d.name === next.activity_type)?.data_schema,
+          next.data,
         )
       }
 
@@ -738,6 +762,22 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
       // (which would now show the unedited source — exactly the confusing
       // state this fix avoids).
       if (target) route(target, true)
+    },
+  })
+
+  const runCategoriesMutation = useMutation<unknown, Error, RunCategoryChanges>({
+    mutationFn: async (changes) => {
+      if (!activity) return null
+      if (isMergedActivity && aurbodaSource) {
+        await updateActivity(aurbodaSource.id, { data: { ...changes } })
+        await invalidate()
+        return null
+      }
+      // A synced activity gets an override like any other edit; the page moves to it on success.
+      const current = makeDraft(activity)
+      const result = await saveMutation.mutateAsync({ ...current, data: { ...current.data, ...changes } })
+      await invalidate()
+      return result
     },
   })
 
@@ -821,6 +861,12 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
         focusField={focusField}
         onRevertOverride={() => revertOverrideMutation.mutate()}
         isReverting={revertOverrideMutation.isPending}
+        features={activity.features}
+        onRunCategoriesChange={(changes) => runCategoriesMutation.mutate(changes)}
+        isSavingRunCategories={
+          runCategoriesMutation.isPending || saveMutation.isPending || isRefetchingActivity
+        }
+        runCategoriesError={runCategoriesMutation.error?.message}
       />
       {showSiblings && (
         <SameValueSessions

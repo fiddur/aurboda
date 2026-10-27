@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import { activityFeaturesSchema, runCategoryFilterSchema } from './activity-features.ts'
 import {
   activityTypeSchema,
   baseResponseSchema,
@@ -244,6 +245,9 @@ export type SourceRecord = z.infer<typeof sourceRecordSchema>
 
 export const activityDetailSchema = activitySchema
   .extend({
+    features: activityFeaturesSchema.optional().meta({
+      description: 'Computed run features, when the activity has been analysed',
+    }),
     merged_end_time: iso8601DateTimeSchema
       .optional()
       .meta({ description: 'Merged end time across all overlapping sources' }),
@@ -282,6 +286,9 @@ export const activitiesQuerySchema = timeRangeQuerySchema
     }),
     route_id: z.string().uuid().optional().meta({
       description: 'Filter to the activities matched to a route',
+    }),
+    category: runCategoryFilterSchema.optional().meta({
+      description: 'Filter to activities carrying this run category (data.run_categories)',
     }),
   })
   .meta({ id: 'ActivitiesQuery' })

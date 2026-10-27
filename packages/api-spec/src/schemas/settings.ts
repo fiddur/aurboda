@@ -148,6 +148,8 @@ export const foodSensitivityMapSchema = z.record(z.string(), z.array(z.string())
   description: 'Mapping from food item names to sensitivity areas they contain',
 })
 
+const mafHrSchema = z.number().int().min(80).max(220)
+
 export const updateSettingsInputSchema = z
   .object({
     birth_date: birthDateSchema.nullable().optional().meta({
@@ -177,6 +179,10 @@ export const updateSettingsInputSchema = z
     }),
     lastfm_username: lastFmUsernameSchema.nullable().optional().meta({
       description: 'Last.fm username for scrobble sync (set to null to clear)',
+    }),
+    maf_hr: mafHrSchema.nullable().optional().meta({
+      description:
+        'Low-HR / MAF ceiling in bpm (180 − age with the Maffetone adjustments). When unset the zone-2 upper bound is used (set to null to clear)',
     }),
     manually_approve_followers: z.boolean().nullable().optional().meta({
       description:
@@ -257,6 +263,9 @@ export const userSettingsResponseSchema = baseResponseSchema
       .nullable()
       .default(null)
       .meta({ description: 'Last.fm username for scrobble sync' }),
+    maf_hr: mafHrSchema.nullable().default(null).meta({
+      description: 'Low-HR / MAF ceiling in bpm; null when unset (the zone-2 upper bound is used)',
+    }),
     manually_approve_followers: z.boolean().default(false).meta({
       description: 'Whether incoming follows are held for manual approval (locked account)',
     }),

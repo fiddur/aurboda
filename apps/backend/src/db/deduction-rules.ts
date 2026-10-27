@@ -1,5 +1,7 @@
 import type { Condition, DeductionRule, DeductionRuleMode, OutputMediaField } from '@aurboda/api-spec'
 
+import type { Queryable } from './pool.ts'
+
 import { query } from './connection.ts'
 
 const mapRow = (row: Record<string, unknown>): DeductionRule => ({
@@ -11,6 +13,7 @@ const mapRow = (row: Record<string, unknown>): DeductionRule => ({
   ...(row.mode && row.mode !== 'create' ? { mode: row.mode as DeductionRuleMode } : {}),
   name: row.name as string,
   output_activity_type: row.output_activity_type as string,
+  ...(row.output_category != null ? { output_category: row.output_category as string } : {}),
   ...(row.output_data != null ? { output_data: row.output_data as Record<string, unknown> } : {}),
   ...(row.output_media_field != null
     ? { output_media_field: row.output_media_field as OutputMediaField }
@@ -21,7 +24,7 @@ const mapRow = (row: Record<string, unknown>): DeductionRule => ({
 })
 
 const SELECT_COLS =
-  'id, name, enabled, priority, conditions, output_activity_type, output_title, merge_gap_seconds, mode, output_data, output_media_field, output_title_field, created_at'
+  'id, name, enabled, priority, conditions, output_activity_type, output_title, merge_gap_seconds, mode, output_data, output_media_field, output_title_field, output_category, created_at'
 
 export const getDeductionRules = async (user: string): Promise<DeductionRule[]> => {
   const result = await query(user, `SELECT ${SELECT_COLS} FROM deduction_rules ORDER BY priority, name`)
@@ -54,7 +57,7 @@ export const getDeductionRulesByIds = async (user: string, ids: string[]): Promi
 }
 
 export const insertDeductionRule = async (
-  user: string,
+  db: Queryable | string,
   rule: {
     name: string
     conditions: Condition[]
@@ -67,12 +70,13 @@ export const insertDeductionRule = async (
     output_data?: Record<string, unknown>
     output_media_field?: OutputMediaField
     output_title_field?: string
+    output_category?: string
   },
 ): Promise<DeductionRule> => {
   const result = await query(
-    user,
-    `INSERT INTO deduction_rules (name, enabled, priority, conditions, output_activity_type, output_title, merge_gap_seconds, mode, output_data, output_media_field, output_title_field)
-     VALUES ($1, COALESCE($2, true), COALESCE($3, 0), $4, $5, $6, $7, COALESCE($8, 'create'), $9, $10, $11)
+    db,
+    `INSERT INTO deduction_rules (name, enabled, priority, conditions, output_activity_type, output_title, merge_gap_seconds, mode, output_data, output_media_field, output_title_field, output_category)
+     VALUES ($1, COALESCE($2, true), COALESCE($3, 0), $4, $5, $6, $7, COALESCE($8, 'create'), $9, $10, $11, $12)
      RETURNING ${SELECT_COLS}`,
     [
       rule.name,
@@ -86,6 +90,7 @@ export const insertDeductionRule = async (
       rule.output_data ? JSON.stringify(rule.output_data) : null,
       rule.output_media_field ? JSON.stringify(rule.output_media_field) : null,
       rule.output_title_field ?? null,
+      rule.output_category ?? null,
     ],
   )
   return mapRow(result.rows[0])
@@ -103,6 +108,7 @@ interface DeductionRuleUpdates {
   output_data?: Record<string, unknown> | null
   output_media_field?: OutputMediaField | null
   output_title_field?: string | null
+  output_category?: string | null
 }
 
 const UPDATABLE_COLUMNS: { column: keyof DeductionRuleUpdates; json?: true }[] = [
@@ -117,6 +123,7 @@ const UPDATABLE_COLUMNS: { column: keyof DeductionRuleUpdates; json?: true }[] =
   { column: 'output_data', json: true },
   { column: 'output_media_field', json: true },
   { column: 'output_title_field' },
+  { column: 'output_category' },
 ]
 
 export const updateDeductionRule = async (
@@ -149,7 +156,25 @@ export const updateDeductionRule = async (
   return mapRow(result.rows[0])
 }
 
+/** Drops the rule's entries from every activity's data.run_categories; other entries stay. */
+export const removeRuleCategoryEntries = async (user: string, ruleId: string): Promise<number> => {
+  const result = await query(
+    user,
+    `UPDATE activities SET data = jsonb_set(data, '{run_categories}', COALESCE(
+       (SELECT jsonb_agg(e.entry ORDER BY e.ord)
+        FROM jsonb_array_elements(data->'run_categories') WITH ORDINALITY AS e(entry, ord)
+        WHERE (e.entry->>'rule_id') IS DISTINCT FROM $1),
+       '[]'::jsonb))
+     WHERE jsonb_typeof(data->'run_categories') = 'array'
+       AND data->'run_categories' @> jsonb_build_array(jsonb_build_object('rule_id', $1::text))`,
+    [ruleId],
+  )
+  return result.rowCount ?? 0
+}
+
+/** Deleting a rule also takes back the run categories it gave; disabling one keeps them. */
 export const deleteDeductionRule = async (user: string, id: string): Promise<boolean> => {
+  await removeRuleCategoryEntries(user, id)
   const result = await query(user, `DELETE FROM deduction_rules WHERE id = $1`, [id])
   return (result.rowCount ?? 0) > 0
 }

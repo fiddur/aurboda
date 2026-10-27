@@ -24,6 +24,7 @@ import type { ReactionActions } from './services/feed-reactions.ts'
 import type { FollowerActions } from './services/followers.ts'
 import type { FollowActions } from './services/following.ts'
 import type { SyncProvider } from './services/queries/index.ts'
+import type { HrSettingsChanged } from './services/settings.ts'
 import type { StravaQueue } from './services/strava-queue.ts'
 import type { RetroEnrichTrigger } from './services/timeline-retro-enrich.ts'
 
@@ -105,6 +106,8 @@ interface McpDeps {
   garmin?: GarminClient
   gravl?: GravlClient
   onActivityMutated?: ActivityNotifier
+  /** Fire-and-forget: recompute activity features after HR zones, birth date or maf_hr change. */
+  onHrSettingsChanged?: HrSettingsChanged
   onActivityDetailSynced?: DetailSyncedCallback
   onTrackWritten?: TrackWrittenCallback
   oura?: OuraClientType
@@ -143,7 +146,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     deps.onActivityDetailSynced,
     deps.onTrackWritten,
   )
-  registerSettingsTools(server, user)
+  registerSettingsTools(server, user, deps.onHrSettingsChanged)
   registerLocationTools(server, user)
   registerCorrelationTools(server, user, deps.sync)
   registerTrainingLoadTools(server, user)

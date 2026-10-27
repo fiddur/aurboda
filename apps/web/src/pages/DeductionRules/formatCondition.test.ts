@@ -29,6 +29,18 @@ describe('formatCondition', () => {
     ).toBe('Activity: other_workout, title is "Sex"')
   })
 
+  test('summarises an activity feature condition', () => {
+    expect(
+      formatCondition({
+        activity_type: 'running',
+        feature: 'low_hr_fraction',
+        kind: 'activity_feature',
+        operator: 'gte',
+        value: 0.85,
+      }),
+    ).toBe('Feature: running low_hr_fraction ≥ 0.85')
+  })
+
   test('a media condition without matchers matches any play', () => {
     expect(formatCondition({ kind: 'media' })).toBe('Media: any')
   })

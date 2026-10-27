@@ -60,7 +60,10 @@ See [Routes and segments](features/routes-and-segments.md).
 
 A route is a course run more than once, recognised from the tracks. See
 [Routes and segments](features/routes-and-segments.md#phase-2-routes). `query_activities`
-takes a `route_id` to list a route's activities.
+takes a `route_id` to list a route's activities. `query_activities` and
+`query_activity_sessions` also take a `category` that keeps the runs carrying that run
+category (`low_hr`, `intervals`, `long`, `tempo`, `hard`, or any rule's `output_category`);
+see [run features and categories](features/routes-and-segments.md#phase-3-run-features-and-categories).
 
 | Tool           | What it does                                                                                                                              |
 | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |

@@ -40,6 +40,7 @@ import { auditError } from './audit-log.ts'
 import { getCustomMetrics } from './custom-metrics.ts'
 import { validateActivityData } from './data-schema-validation.ts'
 import { syncNoteTimesForEntity } from './notes.ts'
+import { reanalyseActivities, reanalyseOverrideTargets } from './track-analyse.ts'
 
 export interface AddMetricInput {
   metric: string
@@ -426,6 +427,7 @@ export async function deleteActivity(user: string, id: string): Promise<DeleteAc
   // but when a winner is deleted a previously-superseded sibling becomes the new winner.
   if (deleted && activity) {
     await materializeSuperseded(user, activity.start_time)
+    await reanalyseOverrideTargets(user, activity)
   }
 
   // Enqueue outbound delete if this was an aurboda-owned HC-syncable activity (best-effort)
@@ -654,6 +656,12 @@ export async function updateActivity(
     await materializeSuperseded(user, before.start_time)
   }
 
+  if (isTypeChanging) {
+    // Tracks, routes and features are keyed by the synced rows, so every row of the edit can own one.
+    // Before the notifications, so the rules they re-evaluate read the recomputed features.
+    const trackOwnerIds = [...new Set([target.id!, updated.id!, ...(updated.override_target_ids ?? [])])]
+    await reanalyseActivities(user, trackOwnerIds)
+  }
   onMutated?.(user, updated.activity_type, updated.start_time, updated.end_time ?? updated.start_time)
   if (isTypeChanging) {
     onMutated?.(user, before.activity_type, before.start_time, before.end_time ?? before.start_time)
