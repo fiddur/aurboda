@@ -226,7 +226,9 @@ a.entity-type-badge:hover {
   white-space: nowrap;
 }
 
+.list-field-table th.list-field-number,
 .list-field-table td.list-field-number {
+  text-align: right;
   font-variant-numeric: tabular-nums;
 }
 

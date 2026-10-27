@@ -45,6 +45,19 @@ export const formatMeasure = (measure: ActivityMeasure, value: number): string =
   }
 }
 
+const RECORD_BADGES: Record<ActivityMeasure, string> = {
+  e1rm: 'e1RM',
+  max_reps: 'reps',
+  max_time: 'hold',
+  max_weight: 'weight',
+  set_count: 'sets',
+  total_reps: 'reps',
+  volume: 'volume',
+}
+
+/** The badge text for a record on a measure: `PR e1RM`, short enough to read without hovering. */
+export const recordBadge = (measure: ActivityMeasure): string => `PR ${RECORD_BADGES[measure]}`
+
 const SET_TYPE_FLAGS: Record<string, string> = { drop_set: ' (drop)', failure: ' (f)', warmup: ' (w)' }
 
 /** One set as the Gravl sync writes it in the activity note: `8×80 kg (w)`. */
