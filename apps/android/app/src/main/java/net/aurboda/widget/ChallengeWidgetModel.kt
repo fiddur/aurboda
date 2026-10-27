@@ -1,6 +1,7 @@
 package net.aurboda.widget
 
 import net.aurboda.api.models.Challenge
+import net.aurboda.api.models.ChallengeAggregation
 import net.aurboda.api.models.ChallengeEffectiveBucketSize
 import net.aurboda.api.models.ChallengeParticipation
 import net.aurboda.api.models.ChallengeStanding
@@ -14,6 +15,7 @@ import java.time.format.DateTimeParseException
 import java.util.Locale
 import kotlin.math.ceil
 import kotlin.math.floor
+import kotlin.math.max
 import kotlin.math.roundToLong
 
 /**
@@ -73,9 +75,10 @@ data class ChallengePick(
     /** IANA zone the window was chosen in — dates are rendered in it, as on the web. */
     val timezone: String,
     val unit: String,
+    val aggregation: ChallengeAggregation,
 ) {
     fun summary(): ChallengeSummary =
-        ChallengeSummary(url, name, unit, parseInstantMillis(startTs), parseInstantMillis(endTs), timezone)
+        ChallengeSummary(url, name, unit, aggregation, parseInstantMillis(startTs), parseInstantMillis(endTs), timezone)
 }
 
 /**
@@ -95,6 +98,7 @@ fun challengePicks(hosted: List<Challenge>, joined: List<ChallengeParticipation>
                 endTs = it.endTs,
                 timezone = it.timezone,
                 unit = it.spec.unit,
+                aggregation = it.spec.aggregation,
             )
         }
     val others =
@@ -110,6 +114,7 @@ fun challengePicks(hosted: List<Challenge>, joined: List<ChallengeParticipation>
                     endTs = it.endTs,
                     timezone = it.timezone,
                     unit = it.spec.unit,
+                    aggregation = it.spec.aggregation,
                 )
             }
     return own + others
@@ -169,6 +174,8 @@ data class ChallengeSummary(
     val url: String,
     val name: String,
     val unit: String,
+    /** `max` scores a member by their best bucket, so the race line is a running best, not a running sum. */
+    val aggregation: ChallengeAggregation,
     val startMillis: Long,
     val endMillis: Long,
     /** IANA zone the window was chosen in — calendar buckets (days, months) end in it. */
@@ -245,21 +252,23 @@ fun bucketEndFunction(
 }
 
 /**
- * A member's running total as a line: a zero point on the start line, then the
- * cumulative total plotted at the *end* of each bucket (a bucket's steps are only
- * fully "in" when it is over) — the same shape as the web race chart.
+ * A member's running score as a line: a zero point on the start line, then the
+ * cumulative total — or, for a best-bucket (`max`) challenge, the best bucket so
+ * far — plotted at the *end* of each bucket (a bucket's steps are only fully "in"
+ * when it is over) — the same shape as the web race chart.
  */
 fun cumulativeSeries(
     standing: ChallengeStanding,
     color: Int,
     startMillis: Long,
+    bestBucket: Boolean = false,
     bucketEnd: (Long) -> Long,
 ): RaceSeries {
     val points = ArrayList<RacePoint>(standing.buckets.size + 1)
     points.add(RacePoint(startMillis, 0.0))
     var running = 0.0
     for (b in standing.buckets.sortedBy { it.bucketStart }) {
-        running += b.value
+        running = if (bestBucket) max(running, b.value) else running + b.value
         points.add(RacePoint(bucketEnd(parseInstantMillis(b.bucketStart)), running))
     }
     return RaceSeries(color, points)

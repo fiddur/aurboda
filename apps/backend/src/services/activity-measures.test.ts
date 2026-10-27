@@ -62,8 +62,10 @@ describe('measureItems', () => {
     ])
     expect(measures).toEqual({
       e1rm: 93.5,
+      max_reps: 5,
       max_weight: 85,
       set_count: 3,
+      total_reps: 8,
       volume: 80 * 5 + 85 * 3,
     })
   })
@@ -84,8 +86,39 @@ describe('measureItems', () => {
     })
   })
 
-  test('a bodyweight set (reps only) counts but has no volume or e1rm', () => {
-    expect(measureItems([set('Pull-up', null, 8)])).toEqual({ set_count: 1 })
+  test('a bodyweight set (reps only) counts its reps but has no volume or e1rm', () => {
+    expect(measureItems([set('Pull-up', null, 8)])).toEqual({ max_reps: 8, set_count: 1, total_reps: 8 })
+  })
+
+  test('a push-up session: reps summed and the best set, the warmup left out', () => {
+    expect(
+      measureItems([
+        set('Push-ups', null, 30, { set_type: 'warmup' }),
+        set('Push-ups', null, 20, { set_type: 'working' }),
+        set('Push-ups', null, 25, { set_type: 'working' }),
+        set('Push-ups', null, 15, {}),
+      ]),
+    ).toEqual({ max_reps: 25, set_count: 3, total_reps: 60 })
+  })
+
+  test('reps count over weighted sets too, and sets without reps add nothing', () => {
+    expect(
+      measureItems([set('Bench Press', 80, 5), set('Push-ups', null, 12), { exercise: 'Plank', time: 60 }]),
+    ).toEqual({
+      e1rm: 93.3,
+      max_reps: 12,
+      max_time: 60,
+      max_weight: 80,
+      set_count: 3,
+      total_reps: 17,
+      volume: 400,
+    })
+  })
+
+  test('no working item with reps → no rep measures', () => {
+    const measures = measureItems([set('Push-ups', null, 30, { set_type: 'warmup' }), { time: 60 }])
+    expect(measures.total_reps).toBeUndefined()
+    expect(measures.max_reps).toBeUndefined()
   })
 
   test('non-positive and non-numeric values are absent', () => {
@@ -107,14 +140,22 @@ describe('measureItems', () => {
 })
 
 describe('combineMeasures', () => {
-  test('sums volume and set_count, maxes the rest, absent stays absent', () => {
+  test('sums volume, set_count and total_reps, maxes the rest, absent stays absent', () => {
     expect(
       combineMeasures([
-        { e1rm: 90, max_weight: 80, set_count: 3, volume: 1000 },
-        { e1rm: 95, max_weight: 78, set_count: 2, volume: 500 },
+        { e1rm: 90, max_reps: 5, max_weight: 80, set_count: 3, total_reps: 13, volume: 1000 },
+        { e1rm: 95, max_reps: 8, max_weight: 78, set_count: 2, total_reps: 16, volume: 500 },
         { max_time: 30, set_count: 1 },
       ]),
-    ).toEqual({ e1rm: 95, max_time: 30, max_weight: 80, set_count: 6, volume: 1500 })
+    ).toEqual({
+      e1rm: 95,
+      max_reps: 8,
+      max_time: 30,
+      max_weight: 80,
+      set_count: 6,
+      total_reps: 29,
+      volume: 1500,
+    })
     expect(combineMeasures([])).toEqual({})
     expect(combineMeasures([{}, { set_count: 1 }])).toEqual({ set_count: 1 })
   })

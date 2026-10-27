@@ -1,7 +1,10 @@
 import {
   type ActivityMeasure,
   activityMeasureLabels,
+  activityMeasures,
   type DataSchemaDefinition,
+  measureDefaultAggregation,
+  measureGoalTitle,
   type MeasureGoal,
   type MeasureGoalAggregation,
 } from '@aurboda/api-spec'
@@ -36,6 +39,9 @@ export const formatMeasure = (measure: ActivityMeasure, value: number): string =
       return String(Math.round(value))
     case 'max_time':
       return formatSeconds(value)
+    case 'total_reps':
+    case 'max_reps':
+      return `${Math.round(value)} reps`
   }
 }
 
@@ -111,20 +117,26 @@ export const measureSet = (items: Item[], measure: ActivityMeasure): Item | unde
       return topSet(items)
     case 'max_time':
       return longest(working)
+    case 'max_reps':
+      return maxBy(working, (i) => scoreOf(i.reps))
     case 'volume':
     case 'set_count':
+    case 'total_reps':
       return undefined
   }
 }
 
 export const defaultAggregation = (measure: ActivityMeasure): MeasureGoalAggregation =>
-  measure === 'volume' || measure === 'set_count' ? 'sum' : 'max'
+  measureDefaultAggregation(measure)
 
 export const measureGoalLabel = (
   goal: Pick<MeasureGoal, 'activity_type' | 'filter_value' | 'measure'> & { activity_type_name?: string },
   typeName?: string,
 ): string =>
-  `${goal.filter_value ?? goal.activity_type_name ?? typeName ?? goal.activity_type} · ${activityMeasureLabels[goal.measure]}`
+  measureGoalTitle(goal.measure, goal.filter_value, goal.activity_type_name ?? typeName ?? goal.activity_type)
+
+export const measureOptions = (): { label: string; value: ActivityMeasure }[] =>
+  activityMeasures.map((value) => ({ label: activityMeasureLabels[value], value }))
 
 type WithSchema = { data_schema?: DataSchemaDefinition }
 

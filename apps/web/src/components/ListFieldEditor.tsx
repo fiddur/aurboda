@@ -87,7 +87,6 @@ const CellInput = ({
   )
 }
 
-/** Rows of a list field (the sets of a strength session) edited in place; undeclared keys are kept. */
 export const ListFieldEditor = ({
   field,
   rows,

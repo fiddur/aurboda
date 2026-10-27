@@ -11,6 +11,7 @@ import {
   measureFilter,
   measureFilterPath,
   measureGoalLabel,
+  measureOptions,
   measureSet,
   topSet,
 } from './measures'
@@ -32,6 +33,11 @@ describe('formatMeasure', () => {
 
   test('set count is a bare number', () => {
     expect(formatMeasure('set_count', 24)).toBe('24')
+  })
+
+  test('reps are a plain integer with a unit', () => {
+    expect(formatMeasure('total_reps', 120)).toBe('120 reps')
+    expect(formatMeasure('max_reps', 41.6)).toBe('42 reps')
   })
 
   test('max time is m:ss', () => {
@@ -127,9 +133,14 @@ describe('measureSet', () => {
     expect(measureSet(sets, 'max_time')).toBe(sets[3])
   })
 
+  test('max_reps picks the working set with the most reps', () => {
+    expect(measureSet(sets, 'max_reps')).toBe(sets[1])
+  })
+
   test('undefined for measures that are not one set', () => {
     expect(measureSet(sets, 'volume')).toBeUndefined()
     expect(measureSet(sets, 'set_count')).toBeUndefined()
+    expect(measureSet(sets, 'total_reps')).toBeUndefined()
   })
 })
 
@@ -140,6 +151,8 @@ describe('defaultAggregation', () => {
     expect(defaultAggregation('max_time')).toBe('max')
     expect(defaultAggregation('volume')).toBe('sum')
     expect(defaultAggregation('set_count')).toBe('sum')
+    expect(defaultAggregation('max_reps')).toBe('max')
+    expect(defaultAggregation('total_reps')).toBe('sum')
   })
 })
 
@@ -154,6 +167,22 @@ describe('measureGoalLabel', () => {
     expect(measureGoalLabel({ ...goal, activity_type_name: 'Strength' })).toBe('Strength · Best e1RM')
     expect(measureGoalLabel(goal, 'Strength training')).toBe('Strength training · Best e1RM')
     expect(measureGoalLabel({ ...goal, measure: 'volume' })).toBe('strength_training · Volume')
+  })
+})
+
+describe('measureOptions', () => {
+  test('every measure with its label, in the order measures are declared', () => {
+    const options = measureOptions()
+    expect(options.map((o) => o.value)).toEqual([
+      'volume',
+      'e1rm',
+      'max_weight',
+      'set_count',
+      'max_time',
+      'total_reps',
+      'max_reps',
+    ])
+    expect(options[1]).toEqual({ label: 'Best e1RM', value: 'e1rm' })
   })
 })
 

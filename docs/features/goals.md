@@ -22,14 +22,14 @@ Progress is the sum of the metric over the rolling window. For a 7-day window, t
 
 ### Measure Goals
 
-A measure goal tracks a measure of an activity type's list items — a strength session's sets — instead of a metric. The measures are the ones the sessions view shows (see [Activity Types: Exercises and measures](activity-types.md#exercises-and-measures)): `e1rm` (best estimated one-rep max, kg), `max_weight` (kg), `max_time` (longest hold, s), `volume` (Σ weight × reps, kg) and `set_count`. Warmup sets never count.
+A measure goal tracks a measure of an activity type's list items — a strength session's sets — instead of a metric. The measures are the ones the sessions view shows (see [Activity Types: Exercises and measures](activity-types.md#exercises-and-measures)): `e1rm` (best estimated one-rep max, kg), `max_weight` (kg), `max_time` (longest hold, s), `max_reps` (most reps in a set), `volume` (Σ weight × reps, kg), `set_count` and `total_reps` (Σ reps). Warmup sets never count.
 
 Each measure goal has:
 
 - An **activity type** whose sessions are measured (its sub-types included), e.g. `strength_training`.
 - Optionally an **exercise filter**: an item path and value, e.g. `sets.exercise` = `Bench Press`. Only that exercise's sets are measured (compared trimmed and case-insensitively), and sessions without it don't count. Without one, every working set of the session counts.
 - A **measure**.
-- An **aggregation**: `max` (the default) takes the best session in the window — right for `e1rm`, `max_weight` and `max_time`; `sum` totals the window — right for `volume` and `set_count`.
+- An **aggregation**: `max` (the default) takes the best session in the window — right for `e1rm`, `max_weight`, `max_time` and `max_reps`; `sum` totals the window — right for `volume`, `set_count` and `total_reps`.
 - A **minimum** and/or **maximum**, and a **window** (default `30d`), as for metric goals.
 
 Example: **Bench Press e1RM ≥ 100 kg over 30 days** — activity type `strength_training`, filter `sets.exercise` = `Bench Press`, measure `e1rm`, aggregation `max`, min 100, window `30d`. It is met while some Bench Press session in the last 30 days has an estimated one-rep max of at least 100 kg.

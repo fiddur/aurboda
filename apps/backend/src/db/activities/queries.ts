@@ -117,7 +117,6 @@ export const getOverrideForActivity = async (user: string, targetId: string): Pr
   return mapActivityRow(result.rows[0])
 }
 
-/** Each activity's chart bucket start, by the same SQL bucketing the chart sources use. */
 export const getBucketStarts = async (
   user: string,
   ids: string[],

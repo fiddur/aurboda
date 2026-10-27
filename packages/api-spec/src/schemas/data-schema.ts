@@ -78,6 +78,10 @@ export const dataFieldDefinitionSchema = z
     message: 'a list field cannot be categorical',
     path: ['is_categorical'],
   })
+  .refine((field) => field.type !== 'list' || (field.enum_values === undefined && field.unit === undefined), {
+    message: 'a list field carries no enum_values or unit; its item fields do',
+    path: ['type'],
+  })
   .meta({ id: 'DataFieldDefinition', description: 'Definition of a single data field on an activity type' })
 
 export type DataFieldDefinition = z.infer<typeof dataFieldDefinitionSchema>

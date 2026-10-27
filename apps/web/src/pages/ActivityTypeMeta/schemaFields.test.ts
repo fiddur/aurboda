@@ -18,13 +18,14 @@ const listField = (item_fields: DataFieldDefinition['item_fields']): DataFieldDe
 })
 
 describe('setFieldType', () => {
-  test('to list: one empty item field, never categorical, no enum values', () => {
+  test('to list: one empty item field, never categorical, no enum values or unit', () => {
     const field: DataFieldDefinition = {
       enum_values: ['a'],
       is_categorical: true,
       label: 'Sets',
       name: 'sets',
       type: 'string',
+      unit: 'kg',
     }
     expect(setFieldType(field, 'list')).toEqual({
       item_fields: [{ name: '', type: 'string' }],

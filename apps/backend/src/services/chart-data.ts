@@ -329,7 +329,6 @@ interface SeriesValue {
   value: number
 }
 
-/** One field's part of a series: an item value carries the measures over its items. */
 interface SeriesPart {
   key: string
   name: string

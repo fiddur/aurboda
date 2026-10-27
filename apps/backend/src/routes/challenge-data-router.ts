@@ -1,8 +1,9 @@
 /**
  * Served by a member's own instance: returns only that member's series for the
  * one challenge the token belongs to (minimal projection — the host pulls this
- * to build standings). The username scopes which per-user database to read; the
- * unguessable token is the capability.
+ * to build standings), with how it was scored so the host can check both sides
+ * agree. The username scopes which per-user database to read; the unguessable
+ * token is the capability.
  */
 import type { ChallengeDataResponse } from '@aurboda/api-spec'
 
@@ -33,14 +34,19 @@ export const createChallengeDataRouter = (): TypedRouter => {
           participation.end_ts,
           participation.timezone,
         )
+        const { aggregation, filter_field, filter_value, measure } = participation.spec
         res.setHeader('Cache-Control', 'public, max-age=60')
         res.json({
+          aggregation,
           buckets,
           display_name: username,
           last_updated,
           success: true,
           total,
           unit: participation.spec.unit,
+          ...(measure !== null ? { measure } : {}),
+          ...(filter_field !== null ? { filter_field } : {}),
+          ...(filter_value !== null ? { filter_value } : {}),
         })
       } catch (error) {
         if (isMissingDatabase(error)) {

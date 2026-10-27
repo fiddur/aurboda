@@ -29,6 +29,9 @@ const spec: ChallengeSpecFields = {
   activity_type_id: null,
   aggregation: 'sum',
   bucket_size: '1d',
+  filter_field: null,
+  filter_value: null,
+  measure: null,
   pattern: 'steps',
   source_type: 'metric',
   unit: 'steps',
@@ -292,7 +295,14 @@ describe('createChallengeDiscovery', () => {
       ],
     ])
     expect(result.challenges[0].host_display_name).toBe('Bob')
-    expect(result.challenges[0].spec).toEqual({ ...spec, activity_type_id: undefined, pattern: 'steps' })
+    expect(result.challenges[0].spec).toEqual({
+      ...spec,
+      activity_type_id: undefined,
+      filter_field: undefined,
+      filter_value: undefined,
+      measure: undefined,
+      pattern: 'steps',
+    })
   })
 
   test('skips non-Aurboda followees without asking for a profile, and counts peers that fail', async () => {

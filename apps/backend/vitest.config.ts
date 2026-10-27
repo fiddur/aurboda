@@ -1,8 +1,33 @@
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
+
+import { sharedWorkerUnitFiles } from './vitest.projects.ts'
+
+const sharedFiles = sharedWorkerUnitFiles(import.meta.dirname)
 
 export default defineConfig({
   test: {
-    globalSetup: ['src/test/global-setup.ts'],
+    projects: [
+      {
+        extends: true,
+        test: { include: sharedFiles, isolate: false, name: 'unit-shared' },
+      },
+      {
+        extends: true,
+        test: {
+          exclude: [...configDefaults.exclude, '**/*.integration.test.ts', ...sharedFiles],
+          include: ['src/**/*.test.ts'],
+          name: 'unit-isolated',
+        },
+      },
+      {
+        extends: true,
+        test: {
+          globalSetup: ['src/test/global-setup.ts'],
+          include: ['src/**/*.integration.test.ts'],
+          name: 'integration',
+        },
+      },
+    ],
     setupFiles: ['src/test/setup.ts'],
   },
 })

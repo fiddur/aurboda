@@ -201,7 +201,6 @@ export interface ListTable {
 const isRow = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
 
-/** A table per list field with rows: the item fields that are required or used, in schema order. */
 export const buildListTables = (
   schema: DataSchemaDefinition | undefined,
   data: Record<string, unknown> | undefined,

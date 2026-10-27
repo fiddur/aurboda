@@ -1,7 +1,5 @@
 import {
   type ActivityMeasure,
-  activityMeasureLabels,
-  activityMeasures,
   activityMeasureUnits,
   type MeasureGoal,
   type MeasureGoalAggregation,
@@ -9,7 +7,7 @@ import {
 import { useQuery } from '@tanstack/react-query'
 
 import { type ActivityTypeDefinition, fetchActivityFieldValues } from '../state/api'
-import { measureFilter } from '../utils/measures'
+import { measureFilter, measureOptions } from '../utils/measures'
 import { setActivityType, setAggregation, setExerciseFilter, setMeasure } from './measureGoalEdits'
 
 interface MeasureGoalFieldsProps {
@@ -84,9 +82,9 @@ export function MeasureGoalFields({
           value={goal.measure}
           onChange={(e) => onEdit((g) => setMeasure(g, selectValue(e) as ActivityMeasure))}
         >
-          {activityMeasures.map((m) => (
-            <option key={m} value={m}>
-              {activityMeasureLabels[m]}
+          {measureOptions().map(({ label, value }) => (
+            <option key={value} value={value}>
+              {label}
             </option>
           ))}
         </select>
