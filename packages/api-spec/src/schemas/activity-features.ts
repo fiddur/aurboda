@@ -62,7 +62,7 @@ export const activityFeaturesSchema = z
     ),
     moving_s: feature('Seconds moving (speed above 0.5 m/s); the elapsed time without speed samples'),
     pace_cv: feature(
-      'Coefficient of variation (std ÷ mean) of the 30 s smoothed moving pace; null with fewer than 30 moving samples',
+      'Coefficient of variation (std ÷ mean) of the 30 s smoothed pace over the samples at or above 1.5 m/s (walking and stops left out); null with fewer than 30 such samples',
     ),
     rest_block_median_s: feature('Median duration in seconds of the slow blocks between two work blocks'),
     work_block_cv: feature(
@@ -87,7 +87,10 @@ export const activityFeaturesSchema = z
 
 export type ActivityFeatures = z.infer<typeof activityFeaturesSchema>
 
-const runCategoryNameSchema = z.string().regex(/^[a-z][a-z0-9_]*$/)
+export const runCategoryNameSchema = z
+  .string()
+  .regex(/^[a-z][a-z0-9_]*$/)
+  .max(64)
 
 export const runCategorySchema = z
   .object({

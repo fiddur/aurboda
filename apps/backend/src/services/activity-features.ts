@@ -3,6 +3,7 @@ import type { ActivityFeatures } from '@aurboda/api-spec'
 import { getActivityById } from '../db/activities/index.ts'
 import {
   getActivityFeatures,
+  getEffectiveActivityType,
   getMedianDurationBefore,
   upsertActivityFeatures,
 } from '../db/activity-features.ts'
@@ -31,7 +32,11 @@ export interface ActivityFeatureDeps {
   getMedianDurationBefore: typeof getMedianDurationBefore
   upsertActivityFeatures: typeof upsertActivityFeatures
   getActivityFeatures: typeof getActivityFeatures
+  getEffectiveActivityType: typeof getEffectiveActivityType
 }
+
+/** The stored features, with the activity's effective type (an override's when it has one). */
+export type StoredActivityFeatures = ActivityFeatures & { activity_type: string }
 
 export const defaultActivityFeatureDeps: ActivityFeatureDeps = {
   expandActivityTypes,
@@ -41,6 +46,7 @@ export const defaultActivityFeatureDeps: ActivityFeatureDeps = {
   },
   getActivityFeatures,
   getActivityTrack,
+  getEffectiveActivityType,
   getEffectiveHrZones,
   getMedianDurationBefore,
   getSettings,
@@ -69,10 +75,11 @@ export const computeAndStoreActivityFeatures = async (
   user: string,
   activityId: string,
   deps: ActivityFeatureDeps = defaultActivityFeatureDeps,
-): Promise<ActivityFeatures | null> => {
+): Promise<StoredActivityFeatures | null> => {
   const activity = await deps.getActivity(user, activityId)
   if (!activity?.end_time) return null
   const { start_time: start, end_time: end } = activity
+  const activityType = (await deps.getEffectiveActivityType(user, activityId)) ?? activity.activity_type
 
   const track = await deps.getActivityTrack(user, activityId)
   const source = track?.source ?? activity.source
@@ -81,7 +88,7 @@ export const computeAndStoreActivityFeatures = async (
     samplesFor(deps, user, 'speed', source, start, end),
     deps.getEffectiveHrZones(user),
     deps.getSettings(user),
-    deps.expandActivityTypes(user, [activity.activity_type]),
+    deps.expandActivityTypes(user, [activityType]),
   ])
   const median = await deps.getMedianDurationBefore(user, types, start)
 
@@ -96,7 +103,8 @@ export const computeAndStoreActivityFeatures = async (
     zones,
   })
   await deps.upsertActivityFeatures(user, activityId, features)
-  return deps.getActivityFeatures(user, activityId)
+  const stored = await deps.getActivityFeatures(user, activityId)
+  return stored && { ...stored, activity_type: activityType }
 }
 
 /** The features of the first of `ids` that has them: a merged activity's track may sit on any of its sources. */

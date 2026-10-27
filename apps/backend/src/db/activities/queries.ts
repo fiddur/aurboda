@@ -7,6 +7,7 @@ import type { Activity, MergedActivity } from '../types.ts'
 
 import { buildBucketExpr } from '../bucket-expr.ts'
 import { query } from '../connection.ts'
+import { effectiveData } from '../effective-type.ts'
 import { mapActivityRow } from '../row-mappers.ts'
 import { findMergedGroupForActivity, mergeOverlappingActivities } from './merge.ts'
 
@@ -179,7 +180,9 @@ export const getActivities = async (
 
   if (category) {
     params.push(category)
-    filterClauses += `\n       AND data->'run_categories' @> jsonb_build_array(jsonb_build_object('category', $${params.length}::text))`
+    // On the effective data, so a synced row resolves to its override's categories and both rows
+    // stay in the merge.
+    filterClauses += `\n       AND ${effectiveData('activities')}->'run_categories' @> jsonb_build_array(jsonb_build_object('category', $${params.length}::text))`
   }
 
   const result = await query(

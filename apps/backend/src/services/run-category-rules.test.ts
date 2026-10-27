@@ -1,8 +1,15 @@
 import { addDeductionRuleBodySchema } from '@aurboda/api-spec'
 import { describe, expect, test, vi } from 'vitest'
 
-vi.mock('../db/index.ts', () => ({ claimSettingsFlag: vi.fn(), insertDeductionRule: vi.fn() }))
+vi.mock('../db/index.ts', () => ({
+  claimSettingsFlagIn: vi.fn(),
+  expandActivityTypes: vi.fn(),
+  insertDeductionRule: vi.fn(),
+}))
+vi.mock('../db/connection.ts', () => ({ withUserTransaction: vi.fn() }))
 vi.mock('./audit-log.ts', () => ({ auditError: vi.fn() }))
+
+import type { Queryable } from '../db/pool.ts'
 
 import {
   defaultRunCategoryRules,
@@ -10,10 +17,14 @@ import {
   type RunCategoryRuleDeps,
 } from './run-category-rules.ts'
 
+const tx = { tx: true } as unknown as Queryable
+
 const fakeDeps = (claimed: boolean): RunCategoryRuleDeps => ({
   claimSeeding: vi.fn().mockResolvedValue(claimed),
   insertDeductionRule: vi.fn().mockResolvedValue({}),
+  isRunningType: vi.fn(async (_user: string, type: string) => ['running', 'trail_running'].includes(type)),
   reportFailure: vi.fn(),
+  withTransaction: vi.fn(async (_user, fn) => fn(tx)) as RunCategoryRuleDeps['withTransaction'],
 })
 
 describe('defaultRunCategoryRules', () => {
@@ -43,30 +54,51 @@ describe('defaultRunCategoryRules', () => {
 })
 
 describe('ensureDefaultRunCategoryRules', () => {
-  test('the caller that wins the claim inserts every default rule', async () => {
+  test('claims and inserts every default rule in one transaction', async () => {
     const deps = fakeDeps(true)
-    expect(await ensureDefaultRunCategoryRules('user', deps)).toEqual({
+    expect(await ensureDefaultRunCategoryRules('user', 'running', deps)).toEqual({
       seeded: defaultRunCategoryRules.length,
     })
-    expect(deps.claimSeeding).toHaveBeenCalledExactlyOnceWith('user')
-    expect(vi.mocked(deps.insertDeductionRule).mock.calls.map((c) => c[1])).toEqual(defaultRunCategoryRules)
+    expect(deps.withTransaction).toHaveBeenCalledOnce()
+    expect(deps.claimSeeding).toHaveBeenCalledExactlyOnceWith(tx)
+    expect(vi.mocked(deps.insertDeductionRule).mock.calls).toEqual(
+      defaultRunCategoryRules.map((r) => [tx, r]),
+    )
     expect(vi.mocked(deps.claimSeeding).mock.invocationCallOrder[0]).toBeLessThan(
       vi.mocked(deps.insertDeductionRule).mock.invocationCallOrder[0]!,
     )
   })
 
-  test('a caller that loses the claim inserts nothing', async () => {
+  test('a transaction that loses the claim inserts nothing', async () => {
     const deps = fakeDeps(false)
-    expect(await ensureDefaultRunCategoryRules('user', deps)).toEqual({ seeded: 0 })
+    expect(await ensureDefaultRunCategoryRules('user', 'running', deps)).toEqual({ seeded: 0 })
     expect(deps.insertDeductionRule).not.toHaveBeenCalled()
   })
 
-  test('a failed insert is reported and not retried', async () => {
+  test('a failed insert fails the whole transaction and is reported', async () => {
     const deps = fakeDeps(true)
     const error = new Error('boom')
     vi.mocked(deps.insertDeductionRule).mockResolvedValueOnce({}).mockRejectedValueOnce(error)
-    expect(await ensureDefaultRunCategoryRules('user', deps)).toEqual({ seeded: 1 })
-    expect(deps.insertDeductionRule).toHaveBeenCalledTimes(2)
+    expect(await ensureDefaultRunCategoryRules('user', 'running', deps)).toEqual({ seeded: 0 })
     expect(deps.reportFailure).toHaveBeenCalledExactlyOnceWith('user', error)
+  })
+
+  test('seeds for running and its descendants only', async () => {
+    const walk = fakeDeps(true)
+    expect(await ensureDefaultRunCategoryRules('user', 'walking', walk)).toEqual({ seeded: 0 })
+    expect(walk.withTransaction).not.toHaveBeenCalled()
+
+    const trail = fakeDeps(true)
+    expect((await ensureDefaultRunCategoryRules('user', 'trail_running', trail)).seeded).toBe(
+      defaultRunCategoryRules.length,
+    )
+  })
+
+  test('without a type it seeds unconditionally', async () => {
+    const deps = fakeDeps(true)
+    expect((await ensureDefaultRunCategoryRules('user', undefined, deps)).seeded).toBe(
+      defaultRunCategoryRules.length,
+    )
+    expect(deps.isRunningType).not.toHaveBeenCalled()
   })
 })

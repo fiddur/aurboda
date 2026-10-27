@@ -8,6 +8,7 @@ import { runTrackBackfillJob } from './track-queues.ts'
 
 const emptyDeps = {
   computeFeatures: vi.fn(async () => null),
+  deleteAllFeatures: vi.fn(async () => 0),
   ensureDefaultRules: vi.fn(async () => undefined),
   getGarminCandidates: vi.fn(async () => []),
   getStravaCandidates: vi.fn(async () => []),
@@ -104,7 +105,16 @@ describe('runTrackBackfillJob', () => {
     expect(order).toEqual(['routes', 'features'])
     expect(result.features).toEqual({ computed: 1 })
     expect(deps.computeFeatures).toHaveBeenCalledWith('alice', 'a1')
-    expect(deps.ensureDefaultRules).toHaveBeenCalledWith('alice')
+    expect(deps.ensureDefaultRules).toHaveBeenCalledWith('alice', 'running')
     expect(deps.notify).toHaveBeenCalledWith('alice', '*', start, end)
+  })
+
+  test('a recompute job deletes the stored features first', async () => {
+    await runTrackBackfillJob({ recompute_features: true, user: 'alice' }, emptyDeps)
+    expect(emptyDeps.deleteAllFeatures).toHaveBeenCalledWith('alice')
+
+    vi.clearAllMocks()
+    await runTrackBackfillJob({ user: 'alice' }, emptyDeps)
+    expect(emptyDeps.deleteAllFeatures).not.toHaveBeenCalled()
   })
 })

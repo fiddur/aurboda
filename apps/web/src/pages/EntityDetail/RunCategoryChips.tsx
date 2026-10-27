@@ -2,27 +2,30 @@ import type { ActivityFeatures } from '@aurboda/api-spec'
 
 import { useState } from 'preact/hooks'
 
-import {
-  addCategory,
-  normalizeCategoryName,
-  removeCategory,
-  type RunCategoryChanges,
-  runCategories,
-} from './runCategories'
+import { normalizeCategoryName } from '../../utils/runCategory'
+import { addCategory, groupedRunCategories, removeCategory, type RunCategoryChanges } from './runCategories'
 import { runFeatureRows } from './runFeatures'
+
+const label = (category: string) => category.replaceAll('_', ' ')
 
 export const RunCategories = ({
   data,
   onChange,
-  disabled,
+  readOnly,
+  busy,
+  error,
 }: {
   data: Record<string, unknown> | undefined
   onChange: (changes: RunCategoryChanges) => void
-  disabled?: boolean
+  /** No editing at all (a deleted activity). */
+  readOnly?: boolean
+  /** A save or refetch is in flight: the controls stay visible but disabled. */
+  busy?: boolean
+  error?: string
 }) => {
   const [input, setInput] = useState('')
   const [invalid, setInvalid] = useState(false)
-  const categories = runCategories(data)
+  const groups = groupedRunCategories(data)
 
   const submit = () => {
     const name = normalizeCategoryName(input)
@@ -38,32 +41,34 @@ export const RunCategories = ({
   return (
     <div class="run-categories">
       <div class="run-category-chips">
-        {categories.map((c) => (
+        {groups.map((g) => (
           <span
-            key={c.category}
-            class={`run-category-chip${c.rule_id ? '' : ' manual'}`}
-            title={c.reasons.join('\n')}
+            key={g.category}
+            class={`run-category-chip${g.from_rule ? '' : ' manual'}`}
+            title={g.reasons.join('\n')}
           >
-            {c.category.replaceAll('_', ' ')}
-            {!disabled && (
+            {label(g.category)}
+            {!readOnly && (
               <button
                 type="button"
                 class="run-category-remove"
-                aria-label={`Remove ${c.category}`}
-                onClick={() => onChange(removeCategory(data, c.category))}
+                aria-label={`Remove ${g.category}`}
+                disabled={busy}
+                onClick={() => onChange(removeCategory(data, g.category))}
               >
                 ×
               </button>
             )}
           </span>
         ))}
-        {!disabled && (
+        {!readOnly && (
           <input
             type="text"
             class={`run-category-input${invalid ? ' invalid' : ''}`}
             placeholder="Add category"
             aria-label="Add run category"
             value={input}
+            disabled={busy}
             onInput={(e) => {
               setInput((e.target as HTMLInputElement).value)
               setInvalid(false)
@@ -77,15 +82,17 @@ export const RunCategories = ({
           />
         )}
       </div>
-      {categories.some((c) => c.reasons.length > 0) && (
+      {invalid && <p class="run-category-error">Use letters, digits and _, starting with a letter.</p>}
+      {error && <p class="run-category-error">Saving the categories failed: {error}</p>}
+      {groups.some((g) => g.reasons.length > 0) && (
         <details class="run-category-reasons">
           <summary>Why</summary>
           <ul>
-            {categories
-              .filter((c) => c.reasons.length > 0)
-              .map((c) => (
-                <li key={c.category}>
-                  <strong>{c.category.replaceAll('_', ' ')}</strong>: {c.reasons.join('; ')}
+            {groups
+              .filter((g) => g.reasons.length > 0)
+              .map((g) => (
+                <li key={g.category}>
+                  <strong>{label(g.category)}</strong>: {g.reasons.join('; ')}
                 </li>
               ))}
           </ul>

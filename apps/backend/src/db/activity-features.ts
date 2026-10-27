@@ -99,6 +99,16 @@ export const getMedianDurationBefore = async (
   return toNumberOrNull(result.rows[0]?.median)
 }
 
+/** The type the merged view shows for the activity: its override's when it has one. */
+export const getEffectiveActivityType = async (user: string, activityId: string): Promise<string | null> => {
+  const result = await query<{ activity_type: string }>(
+    user,
+    `SELECT ${effectiveType('a')} AS activity_type FROM activities a WHERE a.id = $1`,
+    [activityId],
+  )
+  return result.rows[0]?.activity_type ?? null
+}
+
 export const findActivitiesByFeature = async (
   user: string,
   activityTypes: string[],
@@ -120,7 +130,7 @@ export const findActivitiesByFeature = async (
        AND a.deleted_at IS NULL
        AND a.start_time < $3
        AND COALESCE(a.end_time, a.start_time + INTERVAL '1 hour') > $2
-       AND f.${feature} ${comparison} $4
+       AND f.${feature}::float8 ${comparison} $4::float8
      ORDER BY a.start_time`,
     [activityTypes, window.start, window.end, value],
   )

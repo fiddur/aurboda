@@ -97,7 +97,7 @@ describe('categorising rules against the database', () => {
       { category: 'race', reasons: [] },
       {
         category: 'low_hr',
-        reasons: ['time at or below the low-HR ceiling 90% ≥ 85%'],
+        reasons: ['time at or below the low-HR ceiling 90.0% ≥ 85.0%'],
         rule_id: rule.id,
       },
     ])
@@ -126,8 +126,73 @@ describe('categorising rules against the database', () => {
     await evaluateAllRules(user, [rule], window, createDefaultEngineDeps())
 
     expect(await categoriesOf(override!.id!)).toEqual([
-      { category: 'low_hr', reasons: ['time at or below the low-HR ceiling 95% ≥ 85%'], rule_id: rule.id },
+      {
+        category: 'low_hr',
+        reasons: ['time at or below the low-HR ceiling 95.0% ≥ 85.0%'],
+        rule_id: rule.id,
+      },
     ])
     expect(await categoriesOf(walk)).toBeUndefined()
+  })
+
+  test('the synced row of an overridden run never gets an entry and loses an old one', async () => {
+    const user = getTestUser()
+    const synced = await addRun('running', 9)
+    await upsertActivityFeatures(user, synced, features(0.95))
+    const rule = await lowHrRule()
+    const stale = { category: 'low_hr', reasons: [], rule_id: rule.id }
+    await query(user, `UPDATE activities SET data = $2::jsonb WHERE id = $1`, [
+      synced,
+      JSON.stringify({ run_categories: [stale] }),
+    ])
+    const [row] = (await query(user, `SELECT start_time, end_time FROM activities WHERE id = $1`, [synced]))
+      .rows
+    const override = await insertOverride(user, [synced], {
+      activity_type: 'running',
+      end_time: row.end_time as Date,
+      start_time: row.start_time as Date,
+      title: 'Morning run',
+    })
+
+    await evaluateAllRules(user, [rule], window, createDefaultEngineDeps())
+
+    expect(await categoriesOf(synced)).toEqual([])
+    expect(await categoriesOf(override!.id!)).toEqual([
+      {
+        category: 'low_hr',
+        reasons: ['time at or below the low-HR ceiling 95.0% ≥ 85.0%'],
+        rule_id: rule.id,
+      },
+    ])
+  })
+
+  test('a run retyped to walking loses the entry on the next evaluation', async () => {
+    const user = getTestUser()
+    const run = await addRun('running', 11)
+    await upsertActivityFeatures(user, run, features(0.9))
+    const rule = await lowHrRule()
+    const deps = createDefaultEngineDeps()
+    await evaluateAllRules(user, [rule], window, deps)
+    expect(await categoriesOf(run)).toHaveLength(1)
+
+    await query(user, `UPDATE activities SET activity_type = 'walking' WHERE id = $1`, [run])
+    await evaluateAllRules(user, [rule], window, deps)
+
+    expect(await categoriesOf(run)).toEqual([])
+  })
+
+  test('patchActivityData writes only while run_categories is as read', async () => {
+    const user = getTestUser()
+    const run = await addRun('running', 13)
+    const deps = createDefaultEngineDeps()
+    const manual = { category: 'race', reasons: [] }
+    const patch = { run_categories: [manual] }
+
+    expect(await deps.patchActivityData(user, run, patch, undefined)).toBe(true)
+    expect(await deps.patchActivityData(user, run, { run_categories: [] }, undefined)).toBe(false)
+    expect(await categoriesOf(run)).toEqual([manual])
+    expect(await deps.patchActivityData(user, run, { run_categories: [] }, [manual])).toBe(true)
+    expect(await categoriesOf(run)).toEqual([])
+    expect(await deps.getActivityData(user, run)).toEqual({ run_categories: [] })
   })
 })

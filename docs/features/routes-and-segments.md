@@ -207,19 +207,19 @@ type hierarchy stays clean and the activity lists can filter on them.
 (`heart_rate` and `speed`, from the activity's own source first) and its track by pure
 functions (`services/run-features.ts`). A feature the data cannot support is null.
 
-| Feature                                                                               | Definition                                                                                              | Null when                              |
-| ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | -------------------------------------- |
-| `elapsed_s`                                                                           | Seconds from start to end                                                                               | never                                  |
-| `moving_s`                                                                            | Seconds with speed above 0.5 m/s                                                                        | never (the elapsed time without speed) |
-| `zone0_fraction` … `zone5_fraction`                                                   | Share of the HR-covered time in each HR zone (0–1)                                                      | no HR samples                          |
-| `low_hr_fraction`, `low_hr_ceiling_bpm`                                               | Share of the HR-covered time at or below the low-HR ceiling, and that ceiling                           | no HR samples                          |
-| `hr_drift_pct`                                                                        | Aerobic decoupling: second-half HR/speed over first-half HR/speed, minus one, in %                      | fewer than 10 HR samples in a half     |
-| `pace_cv`                                                                             | Coefficient of variation of the 30 s smoothed moving pace                                               | fewer than 30 moving samples           |
-| `interval_count`                                                                      | Work blocks: fast stretches of 30 s–8 min above the run's median moving speed                           | no speed samples                       |
-| `work_block_median_s`, `rest_block_median_s`, `work_block_cv`, `work_rest_pace_ratio` | Median work and rest block durations, the work blocks' duration CV, median rest pace ÷ median work pace | too few blocks                         |
-| `elevation_gain_m`                                                                    | Total climb from the track altitude (5-point smoothing, 3 m hysteresis)                                 | no track                               |
-| `elevation_oscillation`                                                               | Climb plus descent in metres per km of track                                                            | no track                               |
-| `duration_vs_median_90d`                                                              | Elapsed time ÷ the median of the same type (and subtypes) over the 90 days before                       | no earlier activities of the type      |
+| Feature                                                                               | Definition                                                                                                                                                          | Null when                              |
+| ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| `elapsed_s`                                                                           | Seconds from start to end                                                                                                                                           | never                                  |
+| `moving_s`                                                                            | Seconds with speed above 0.5 m/s                                                                                                                                    | never (the elapsed time without speed) |
+| `zone0_fraction` … `zone5_fraction`                                                   | Share of the HR-covered time in each HR zone (0–1)                                                                                                                  | no HR samples                          |
+| `low_hr_fraction`, `low_hr_ceiling_bpm`                                               | Share of the HR-covered time at or below the low-HR ceiling, and that ceiling                                                                                       | no HR samples                          |
+| `hr_drift_pct`                                                                        | Aerobic decoupling: second-half HR/speed over first-half HR/speed, minus one, in %                                                                                  | fewer than 10 HR samples in a half     |
+| `pace_cv`                                                                             | Coefficient of variation of the 30 s smoothed pace over the samples at or above 1.5 m/s (walking and stops left out, so a jog-walk does not read as erratic pacing) | fewer than 30 such samples             |
+| `interval_count`                                                                      | Work blocks: fast stretches of 30 s–8 min above the run's median moving speed                                                                                       | no speed samples                       |
+| `work_block_median_s`, `rest_block_median_s`, `work_block_cv`, `work_rest_pace_ratio` | Median work and rest block durations, the work blocks' duration CV, median rest pace ÷ median work pace                                                             | too few blocks                         |
+| `elevation_gain_m`                                                                    | Total climb from the track altitude (5-point smoothing, 3 m hysteresis)                                                                                             | no track                               |
+| `elevation_oscillation`                                                               | Climb plus descent in metres per km of track                                                                                                                        | no track                               |
+| `duration_vs_median_90d`                                                              | Elapsed time ÷ the median of the same type (and subtypes) over the 90 days before                                                                                   | no earlier activities of the type      |
 
 The **low-HR ceiling** is the `maf_hr` setting when set (180 − age with the Maffetone
 adjustments, entered by hand), else the start of HR zone 3, the zone-2 upper bound.
@@ -229,12 +229,22 @@ Features are computed:
 - in the `track-analyse` job, right after the route match, for every written track;
 - by the `track-backfill` job, after its route matching, for every tracked activity that
   has no features yet (that is how history gets them);
-- again for all activities when HR zones, the birth date or `maf_hr` are set or cleared:
-  the settings update deletes the user's features and queues the backfill.
+- again for all activities when a settings update changes the effective HR zones (custom
+  zones, or the age-based ones from the birth date) or the low-HR ceiling (`maf_hr`): it
+  queues a backfill job flagged `recompute_features`, which deletes the user's features
+  before computing them, so a failed enqueue loses nothing;
+- again for an activity whose shown type changes: a retype (with its route re-matched as
+  well), and the delete or restore of an override whose type differs from its targets'
+  (the targets are re-matched and recomputed). This happens before the edit's
+  notifications, so the rules they re-evaluate read the new features.
 
-Each computation then makes sure the default run category rules exist and fires the
-activity notifier for the activity's span (the backfill: one notification over all the
-activities it computed), so the deduction queue re-evaluates the categorising rules.
+Each computation then makes sure the default run category rules exist (they are seeded for
+`running` and its subtypes only) and fires the activity notifier, so the deduction queue
+re-evaluates the categorising rules: the analyse job over the activity's own span, the
+backfill once per window of at most 30 days of the activities it computed, so a long history
+neither queues one job per run nor one window spanning years. The analyse job runs every
+step even when one fails and then fails as a whole, so pg-boss retries it (each step is
+idempotent).
 
 ### Categories
 
@@ -256,10 +266,17 @@ deleted default is not seeded again.
 - MCP: `query_activities` and `query_activity_sessions` take `category`;
   `get_activity_detail` carries `features`; `get_route` efforts carry `categories`.
 - Web: the activity page shows the categories as chips under the route line on runs (and on
-  any activity that has some): hovering a chip, or opening "Why", shows the reasons; "×"
-  removes one (a rule's category is also added to `run_categories_excluded`), and the text
-  field adds one by hand (snake_case, Enter). A collapsed "Run features" block lists the
-  features. The route page has the "Low-HR runs only" toggle. The Android app embeds both.
+  any activity that has some), one chip per name: hovering a chip, or opening "Why", shows
+  the reasons; "×" removes every entry of that name (when one came from a rule, the name is
+  also added to `run_categories_excluded`), and the text field adds one by hand (snake_case,
+  Enter). A chip edit is an ordinary activity edit: on a synced activity it creates the
+  override (or updates the existing one) and the page moves to it; in a merged group that
+  already has a native aurboda row, the chips edit that row only. A collapsed "Run features"
+  block lists the features. The route page has the "Low-HR runs only" toggle. The Android
+  app embeds both.
+- The category filter and the route efforts read the categories the merged view shows: a
+  synced row with an override is judged by the override's `run_categories`, and both rows
+  stay in the merged result.
 
 Left out for now: a cadence tie-breaker for intervals and using Garmin's recorded laps as
 work blocks.

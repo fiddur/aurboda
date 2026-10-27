@@ -21,27 +21,33 @@ export const excludedRunCategories = (data: Data): string[] =>
     ? data.run_categories_excluded.filter((c): c is string => typeof c === 'string')
     : []
 
-export const RUN_CATEGORY_NAME = /^[a-z][a-z0-9_]*$/
-
-/** Lower-cases and snake_cases free text; null when nothing usable is left. */
-export const normalizeCategoryName = (input: string): string | null => {
-  const name = input
-    .trim()
-    .toLowerCase()
-    .replaceAll(/[^a-z0-9]+/g, '_')
-    .replaceAll(/^_+|_+$/g, '')
-  return RUN_CATEGORY_NAME.test(name) ? name : null
+export interface RunCategoryGroup {
+  category: string
+  reasons: string[]
+  /** Set by at least one rule (removing it then also excludes it). */
+  from_rule: boolean
 }
 
-/** A rule-set category is also excluded, so the rule does not put it back; a hand-set one just goes. */
+/** One entry per category name: a manual and a rule entry (or two rules) of the same name show as one chip. */
+export const groupedRunCategories = (data: Data): RunCategoryGroup[] => {
+  const groups = new Map<string, RunCategoryGroup>()
+  for (const entry of runCategories(data)) {
+    const group = groups.get(entry.category) ?? { category: entry.category, from_rule: false, reasons: [] }
+    for (const reason of entry.reasons) if (!group.reasons.includes(reason)) group.reasons.push(reason)
+    group.from_rule ||= Boolean(entry.rule_id)
+    groups.set(entry.category, group)
+  }
+  return [...groups.values()]
+}
+
+/** Every entry of the category goes; when any came from a rule it is also excluded, so no rule puts it back. */
 export const removeCategory = (data: Data, category: string): RunCategoryChanges => {
   const current = runCategories(data)
-  const removed = current.find((c) => c.category === category)
+  const fromRule = current.some((c) => c.category === category && c.rule_id)
   const excluded = excludedRunCategories(data)
   return {
     run_categories: current.filter((c) => c.category !== category),
-    run_categories_excluded:
-      removed?.rule_id && !excluded.includes(category) ? [...excluded, category] : excluded,
+    run_categories_excluded: fromRule && !excluded.includes(category) ? [...excluded, category] : excluded,
   }
 }
 

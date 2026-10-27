@@ -136,16 +136,46 @@ describe('matchActivityRoute', () => {
     expect(deps.markRouteMatchAttempted).toHaveBeenCalledExactlyOnceWith('u', 'new')
   })
 
-  test('a route founded concurrently on the canonical counts as already routed and leaves the track unmarked', async () => {
+  const pairCandidate = vi.fn(async () => [
+    { activity_id: 'older', coverage_route: 0.93, coverage_track: 0.96, start_time: t0 },
+  ])
+
+  test('a lost route birth with nothing to join leaves the track unmarked for a later run', async () => {
     const deps = fakeDeps({
       createRouteWithPair: vi.fn(async () => null),
-      findUnroutedTrackCandidates: vi.fn(async () => [
-        { activity_id: 'older', coverage_route: 0.93, coverage_track: 0.96, start_time: t0 },
-      ]),
+      findUnroutedTrackCandidates: pairCandidate,
+    })
+
+    expect(await matchActivityRoute('u', 'new', deps)).toBe('unmatched')
+    expect(deps.findRouteCandidates).toHaveBeenCalledTimes(2)
+    expect(deps.markRouteMatchAttempted).not.toHaveBeenCalled()
+  })
+
+  test('a lost route birth that routed this activity counts as already routed', async () => {
+    const deps = fakeDeps({
+      createRouteWithPair: vi.fn(async () => null),
+      findUnroutedTrackCandidates: pairCandidate,
+      isActivityRouted: vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true),
     })
 
     expect(await matchActivityRoute('u', 'new', deps)).toBe('already_routed')
-    expect(deps.markRouteMatchAttempted).not.toHaveBeenCalled()
+    expect(deps.findRouteCandidates).toHaveBeenCalledTimes(1)
+  })
+
+  test('a lost route birth joins the route the other job founded, retrying once', async () => {
+    const deps = fakeDeps({
+      createRouteWithPair: vi.fn(async () => null),
+      findRouteCandidates: vi
+        .fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ coverage_route: 0.9, coverage_track: 0.95, route_id: 'founded' }]),
+      findUnroutedTrackCandidates: pairCandidate,
+    })
+
+    expect(await matchActivityRoute('u', 'new', deps)).toBe('matched')
+    expect(deps.createRouteWithPair).toHaveBeenCalledTimes(1)
+    expect(deps.attachActivityToRoute).toHaveBeenCalledWith('u', 'new', 'founded', expect.any(Number))
+    expect(deps.markRouteMatchAttempted).toHaveBeenCalledExactlyOnceWith('u', 'new')
   })
 
   test('the activity itself is canonical when it is the older one', async () => {

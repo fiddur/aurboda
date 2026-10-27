@@ -19,6 +19,8 @@ export interface FeatureInput {
 }
 
 const MOVING_SPEED_MS = 0.5
+/** Pace variability ignores walking and stops, which would read a jog-walk as erratic pacing. */
+const PACE_SPEED_MS = 1.5
 const MIN_DRIFT_HALF_SAMPLES = 10
 const MIN_PACE_SAMPLES = 30
 const WORK_BLOCK_MIN_S = 30
@@ -129,7 +131,7 @@ export const smoothedSpeed = (speed: Samples, windowS = 30): Samples => {
 const paceSecPerKm = (speedMs: number): number => 1000 / speedMs
 
 export const paceCv = (smoothed: Samples): number | null => {
-  const paces = smoothed.filter(([, v]) => v > MOVING_SPEED_MS).map(([, v]) => paceSecPerKm(v))
+  const paces = smoothed.filter(([, v]) => v >= PACE_SPEED_MS).map(([, v]) => paceSecPerKm(v))
   if (paces.length < MIN_PACE_SAMPLES) return null
   return coefficientOfVariation(paces)
 }
@@ -211,10 +213,9 @@ export const elevationFeatures = (
 ): Pick<RunFeatures, 'elevation_gain_m' | 'elevation_oscillation'> => {
   const none = { elevation_gain_m: null, elevation_oscillation: null }
   if (!track || track.points.length === 0 || track.points.every((p) => p.alt === 0)) return none
-  const smoothed = movingAverage(
-    track.points.map((p) => p.alt),
-    ELEVATION_SMOOTHING_POINTS,
-  )
+  // With real altitudes around, a zero is a missing fix, not sea level.
+  const altitudes = track.points.map((p) => p.alt).filter((alt) => alt !== 0)
+  const smoothed = movingAverage(altitudes, ELEVATION_SMOOTHING_POINTS)
   let reference = smoothed[0]
   let gain = 0
   let loss = 0

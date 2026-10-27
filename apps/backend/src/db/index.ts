@@ -107,6 +107,7 @@ export {
   insertDeductionRule,
   insertDeductionRuleRun,
   pruneDeductionRuleRuns,
+  removeRuleCategoryEntries,
   updateDeductionRule,
 } from './deduction-rules.ts'
 
@@ -590,7 +591,7 @@ export {
   type UserNutrientRecommendationRow,
 } from './user-nutrient-recommendations.ts'
 
-export { claimSettingsFlag, getUserSettings, upsertUserSettings } from './settings.ts'
+export { claimSettingsFlag, claimSettingsFlagIn, getUserSettings, upsertUserSettings } from './settings.ts'
 
 export { deleteGoal, getGoals, insertGoal, replaceGoals } from './goals.ts'
 

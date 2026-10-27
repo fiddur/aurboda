@@ -248,7 +248,7 @@ export function Settings() {
               min="80"
               max="220"
               step="1"
-              placeholder={displayZones[3].toString()}
+              placeholder={(userSettings?.hr_zone_start ?? defaultHrZoneThresholds)[3].toString()}
               value={mafHr}
               onInput={(e) => setMafHr((e.target as HTMLInputElement).value)}
               onBlur={handleMafHrBlur}
@@ -256,8 +256,9 @@ export function Settings() {
             <span class="unit">bpm</span>
           </div>
           <p class="field-description">
-            Runs are low-HR when at least 85 % of the time is at or below this. Leave empty to use the start
-            of zone 3 (the zone-2 upper bound).
+            The default Low-HR rule counts a run as low-HR when at least 85 % of its time is at or below this
+            (retune it under Deduction rules). Leave empty to use the start of zone 3 (the zone-2 upper
+            bound).
           </p>
         </div>
       </SettingsSection>

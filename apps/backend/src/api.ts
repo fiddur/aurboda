@@ -13,7 +13,6 @@ import { mountRestRouters } from './api/rest-routes.ts'
 import { mountSyncRouter } from './api/sync-setup.ts'
 import { setupOuraWebhook, setupStravaWebhook } from './api/webhooks-setup.ts'
 import { createAuth } from './auth.ts'
-import { deleteAllActivityFeatures } from './db/activity-features.ts'
 import { closeAllUserPools } from './db/connection.ts'
 import {
   createChallengePost,
@@ -615,13 +614,7 @@ const main = async () => {
     console.warn('⚠️ Activity track backfill disabled (no job queue) - run it on demand')
   }
   const onHrSettingsChanged = (user: string): void => {
-    const queue = trackBackfillQueue
-    if (!queue) return
-    deleteAllActivityFeatures(user)
-      .then(() => queue.enqueue(user))
-      .catch((error: unknown) =>
-        auditError(user, 'data', 'Failed to queue activity feature recompute', { error: String(error) }),
-      )
+    void trackBackfillQueue?.enqueue(user, 0, { recomputeFeatures: true })
   }
   // Source enrichment (#1080): a Health Connect session from Garmin or Gravl
   // triggers that provider's own sync for it, so the row Health Connect just

@@ -11,6 +11,7 @@ import {
   lowHrFraction,
   median,
   movingSeconds,
+  paceCv,
   sampleDurations,
   smoothedSpeed,
 } from './run-features.ts'
@@ -240,6 +241,14 @@ describe('elevationFeatures', () => {
     expect(elevationFeatures({ length_m: 1000, points }).elevation_gain_m).toBe(0)
   })
 
+  test('zeros among real altitudes are missing fixes, not climbs', () => {
+    const points = Array.from({ length: 200 }, (_, i) => ({ alt: i % 25 === 7 ? 0 : 120, t: i }))
+    expect(elevationFeatures({ length_m: 1000, points })).toEqual({
+      elevation_gain_m: 0,
+      elevation_oscillation: 0,
+    })
+  })
+
   test('null when every altitude is 0 or there is no track', () => {
     expect(
       elevationFeatures({
@@ -254,5 +263,18 @@ describe('elevationFeatures', () => {
       elevation_oscillation: null,
     })
     expect(elevationFeatures(null).elevation_gain_m).toBeNull()
+  })
+})
+
+describe('paceCv', () => {
+  test('ignores samples under 1.5 m/s, so walk breaks do not read as erratic pacing', () => {
+    const jogWalk = series(1200, 1, (t) => (Math.floor(t / 120) % 2 === 0 ? 3 : 1.2))
+    expect(paceCv(jogWalk)).toBeCloseTo(0)
+    expect(paceCv(series(1200, 1, () => 1.2))).toBeNull()
+  })
+
+  test('still sees variation among running samples', () => {
+    const fartlek = series(1200, 1, (t) => (Math.floor(t / 120) % 2 === 0 ? 4 : 2.5))
+    expect(paceCv(fartlek)).toBeGreaterThan(0.1)
   })
 })

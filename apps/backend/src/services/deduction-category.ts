@@ -7,6 +7,8 @@ import type {
   RunCategory,
 } from '@aurboda/api-spec'
 
+import { removeRuleCategoryEntries } from '../db/index.ts'
+
 const featureLabels: Record<ActivityFeatureName, string> = {
   duration_vs_median_90d: 'duration vs the 90-day median',
   elapsed_s: 'elapsed time',
@@ -40,7 +42,7 @@ const formatDuration = (seconds: number): string => {
 }
 
 const formatFeatureValue = (feature: ActivityFeatureName, value: number): string => {
-  if (feature.endsWith('_fraction')) return `${Math.round(value * 100)}%`
+  if (feature.endsWith('_fraction')) return `${(value * 100).toFixed(1)}%`
   if (feature.endsWith('_s')) return formatDuration(value)
   switch (feature) {
     case 'interval_count':
@@ -89,7 +91,7 @@ const sameEntry = (a: unknown, b: RunCategory): boolean =>
  * The `run_categories` patch for one activity, or null when it would not change. Only the
  * rule's own entry (by rule_id) is added, updated in place or removed; manual entries and
  * other rules' entries are kept as they are, and a category in `run_categories_excluded`
- * is never added.
+ * or already set by hand is never added (an own entry for it is removed), so it never shows twice.
  */
 export const applyCategory = (
   data: Record<string, unknown>,
@@ -101,8 +103,11 @@ export const applyCategory = (
   if (!category) return null
   const current: unknown[] = Array.isArray(data.run_categories) ? data.run_categories : []
   const excluded = Array.isArray(data.run_categories_excluded) ? data.run_categories_excluded : []
+  const setByHand = current.some(
+    (item) => isRecord(item) && item.rule_id === undefined && item.category === category,
+  )
   const entry: RunCategory | null =
-    wanted && !excluded.includes(category) ? { category, reasons, rule_id: rule.id } : null
+    wanted && !excluded.includes(category) && !setByHand ? { category, reasons, rule_id: rule.id } : null
 
   const owned = (item: unknown) => isRecord(item) && item.rule_id === rule.id
   const firstOwned = current.findIndex(owned)
@@ -119,3 +124,14 @@ export const applyCategory = (
     )
   return unchanged ? null : { run_categories: next }
 }
+
+/**
+ * After a rule update, for the REST API and MCP alike: a rule that no longer categorises (no
+ * output_category, or out of enrich mode) takes its entries back, since evaluation no longer
+ * reaches them.
+ */
+export const removeCategoriesOfNonCategorisingRule = async (
+  user: string,
+  rule: Pick<DeductionRule, 'id' | 'mode' | 'output_category'>,
+  remove: typeof removeRuleCategoryEntries = removeRuleCategoryEntries,
+): Promise<number> => (rule.mode === 'enrich' && rule.output_category ? 0 : remove(user, rule.id))

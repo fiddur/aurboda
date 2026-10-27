@@ -460,18 +460,29 @@ const getFeaturesOfActivity = async (user: string, activityId: string): Promise<
 const getCategorisableActivities = async (
   user: string,
   activityType: string,
+  ruleId: string,
   window: EvaluationWindow,
 ): Promise<CategorisableActivity[]> => {
   const types = await expandActivityTypes(user, [activityType])
   const result = await query(
     user,
-    `SELECT id, start_time, end_time, data FROM activities
-     WHERE activity_type = ANY($1)
-       AND deleted_at IS NULL
-       AND start_time < $3
-       AND (end_time > $2 OR end_time IS NULL)
+    `SELECT id, start_time, end_time, data, is_primary FROM (
+       SELECT a.id, a.start_time, a.end_time, a.data,
+              (a.activity_type = ANY($1)
+               AND a.superseded_by IS NULL
+               AND NOT EXISTS (SELECT 1 FROM activity_override_targets ot
+                               JOIN activities o ON o.id = ot.override_id AND o.deleted_at IS NULL
+                               WHERE ot.target_id = a.id)) AS is_primary,
+              (jsonb_typeof(a.data->'run_categories') = 'array'
+               AND a.data->'run_categories' @> jsonb_build_array(jsonb_build_object('rule_id', $4::text))) AS has_entry
+       FROM activities a
+       WHERE a.deleted_at IS NULL
+         AND a.start_time < $3
+         AND (a.end_time > $2 OR a.end_time IS NULL)
+     ) candidates
+     WHERE is_primary OR has_entry
      ORDER BY start_time`,
-    [types, window.start, window.end],
+    [types, window.start, window.end, ruleId],
   )
   return result.rows.map((r) => {
     const start = r.start_time as Date
@@ -479,20 +490,37 @@ const getCategorisableActivities = async (
       data: (r.data as Record<string, unknown> | null) ?? null,
       end: (r.end_time as Date) ?? new Date(start.getTime() + DEFAULT_SPAN_MS),
       id: r.id as string,
+      primary: r.is_primary as boolean,
       start,
     }
   })
+}
+
+const getActivityData = async (user: string, activityId: string): Promise<Record<string, unknown> | null> => {
+  const result = await query(user, `SELECT data FROM activities WHERE id = $1 AND deleted_at IS NULL`, [
+    activityId,
+  ])
+  if (result.rows.length === 0) return null
+  return (result.rows[0].data as Record<string, unknown> | null) ?? {}
 }
 
 const patchActivityData = async (
   user: string,
   activityId: string,
   patch: Record<string, unknown>,
-): Promise<void> => {
-  await query(user, `UPDATE activities SET data = COALESCE(data, '{}'::jsonb) || $2::jsonb WHERE id = $1`, [
-    activityId,
-    JSON.stringify(patch),
-  ])
+  expectedCategories: unknown,
+): Promise<boolean> => {
+  const result = await query(
+    user,
+    `UPDATE activities SET data = COALESCE(data, '{}'::jsonb) || $2::jsonb
+     WHERE id = $1 AND data->'run_categories' IS NOT DISTINCT FROM $3::jsonb`,
+    [
+      activityId,
+      JSON.stringify(patch),
+      expectedCategories === undefined ? null : JSON.stringify(expectedCategories),
+    ],
+  )
+  return (result.rowCount ?? 0) > 0
 }
 
 const getEarliestActivityTime = async (user: string): Promise<Date | null> => {
@@ -510,6 +538,7 @@ export const createDefaultEngineDeps = (notifier?: ActivityNotifier): DeductionE
   getActivitiesWithData,
   findActivities,
   findActivitiesByFeature: findActivitiesByFeatureCondition,
+  getActivityData,
   getActivityFeatures: getFeaturesOfActivity,
   getCategorisableActivities,
   getEarliestActivityTime,

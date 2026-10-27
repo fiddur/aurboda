@@ -1,8 +1,12 @@
 import type { ActivityFeatures, DeductionRule } from '@aurboda/api-spec'
 
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
-import { applyCategory, categoryReasons } from './deduction-category.ts'
+import {
+  applyCategory,
+  categoryReasons,
+  removeCategoriesOfNonCategorisingRule,
+} from './deduction-category.ts'
 
 const rule = { id: 'rule-1', output_category: 'low_hr' }
 const own = (reasons: string[] = ['r']) => ({ category: 'low_hr', reasons, rule_id: 'rule-1' })
@@ -51,6 +55,18 @@ describe('applyCategory', () => {
     ).toEqual({ run_categories: [] })
   })
 
+  test('a category set by hand is not added again, and an own entry for it is removed', () => {
+    const manual = { category: 'low_hr', reasons: [] }
+    expect(applyCategory({ run_categories: [manual] }, rule, true, ['r'])).toBeNull()
+    expect(applyCategory({ run_categories: [manual, own()] }, rule, true, ['r'])).toEqual({
+      run_categories: [manual],
+    })
+    const otherManual = { category: 'race', reasons: [] }
+    expect(applyCategory({ run_categories: [otherManual] }, rule, true, ['r'])).toEqual({
+      run_categories: [otherManual, own()],
+    })
+  })
+
   test('treats a malformed run_categories as empty', () => {
     expect(applyCategory({ run_categories: 'low_hr' }, rule, true, ['r'])).toEqual({
       run_categories: [own()],
@@ -91,19 +107,44 @@ describe('categoryReasons', () => {
       work_block_median_s: 45,
     } as unknown as ActivityFeatures
     expect(categoryReasons({ conditions }, features)).toEqual([
-      'time at or below the low-HR ceiling 91% ≥ 85%',
+      'time at or below the low-HR ceiling 91.2% ≥ 85.0%',
       'moving time 1:40 > 1:30',
       'median work block 45 s < 20 min',
       'pace variability 0.12 ≤ 0.15',
     ])
   })
 
+  test('fractions keep one decimal, so a near miss does not read as the threshold', () => {
+    const features = { low_hr_fraction: 0.849 } as unknown as ActivityFeatures
+    expect(categoryReasons({ conditions: [conditions[0]!] }, features)).toEqual([
+      'time at or below the low-HR ceiling 84.9% ≥ 85.0%',
+    ])
+  })
+
   test('without features, only the comparison', () => {
     expect(categoryReasons({ conditions }, null)).toEqual([
-      'time at or below the low-HR ceiling ≥ 85%',
+      'time at or below the low-HR ceiling ≥ 85.0%',
       'moving time > 1:30',
       'median work block < 20 min',
       'pace variability ≤ 0.15',
     ])
+  })
+})
+
+describe('removeCategoriesOfNonCategorisingRule', () => {
+  test.each([
+    ['no category', { id: 'r', mode: 'enrich' as const }, true],
+    ['create mode', { id: 'r', mode: 'create' as const, output_category: 'low_hr' }, true],
+    ['default mode', { id: 'r', output_category: 'low_hr' }, true],
+    [
+      'an enrich rule with a category',
+      { id: 'r', mode: 'enrich' as const, output_category: 'low_hr' },
+      false,
+    ],
+  ])('%s → removes: %s', async (_label, updated, removes) => {
+    const remove = vi.fn().mockResolvedValue(3)
+    expect(await removeCategoriesOfNonCategorisingRule('user', updated, remove)).toBe(removes ? 3 : 0)
+    if (removes) expect(remove).toHaveBeenCalledExactlyOnceWith('user', 'r')
+    else expect(remove).not.toHaveBeenCalled()
   })
 })

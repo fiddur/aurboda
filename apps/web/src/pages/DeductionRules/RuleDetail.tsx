@@ -25,6 +25,7 @@ import { auth } from '../../state/auth'
 import {
   defaultFields,
   fieldsToBuildBody,
+  isOutputCategoryInvalid,
   modeChangeBody,
   type RuleFormFields,
   ruleToFields,
@@ -238,12 +239,14 @@ function RuleForm({ id, rule }: { id?: string; rule?: DeductionRule }) {
   }
 
   const saveCategory = () => {
-    if (isNew) return
+    if (isOutputCategoryInvalid(fields)) return
     const next = toOutputCategory(fields) ?? null
+    if (next && next !== fields.category) updateField('category', next)
+    if (isNew) return
     if (next !== (rule?.output_category ?? null)) autoSave({ output_category: next })
   }
 
-  const canSubmit = Boolean(fields.name && fields.outputType)
+  const canSubmit = Boolean(fields.name && fields.outputType) && !isOutputCategoryInvalid(fields)
 
   return (
     <div class="data-sources-page">
@@ -345,6 +348,11 @@ function RuleForm({ id, rule }: { id?: string; rule?: DeductionRule }) {
                 onBlur={saveCategory}
                 placeholder="e.g. low_hr"
               />
+              {isOutputCategoryInvalid(fields) && (
+                <p class="rule-field-error">
+                  A category is snake_case: letters, digits and _, starting with a letter (e.g. low_hr).
+                </p>
+              )}
               <p class="rule-field-hint">
                 Adds this category to the run's categories (data.run_categories) while the rule matches.
               </p>

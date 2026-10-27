@@ -14,6 +14,7 @@ import {
   insertDeductionRule,
   updateDeductionRule,
 } from '../db/index.ts'
+import { removeCategoriesOfNonCategorisingRule } from '../services/deduction-category.ts'
 import { evaluateAllRules } from '../services/deduction-engine.ts'
 import { mergeRuleUpdate, validateRuleShape } from '../services/media-plays.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
@@ -102,6 +103,7 @@ Multiple conditions use AND logic — all must overlap in time. The rule is appl
 
       const updated = await updateDeductionRule(user, id, updates)
       if (!updated) return errorResponse('Deduction rule not found')
+      await removeCategoriesOfNonCategorisingRule(user, updated)
 
       if (updated.enabled && deductionQueue) {
         deductionQueue.enqueueRuleCrud({

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import type * as TimeSeriesModule from '../db/time-series.ts'
+import type { Activity } from '../db/types.ts'
 
 import * as db from '../db/index.ts'
 import { parseMetricEntityId, toMetricEntityId } from './metric-entity-id.ts'
@@ -18,7 +19,7 @@ import {
   updateActivity,
   updateCustomMetric,
 } from './mutations.ts'
-import { rematchActivityRoute } from './routes.ts'
+import { reanalyseActivities, reanalyseOverrideTargets } from './track-analyse.ts'
 
 vi.mock('../db', async () => ({
   activityTypeExists: vi.fn().mockResolvedValue(true),
@@ -58,9 +59,9 @@ vi.mock('../db', async () => ({
   upsertUserSettings: vi.fn(),
 }))
 
-vi.mock('./routes.ts', () => ({
-  defaultRouteMatchDeps: {},
-  rematchActivityRoute: vi.fn().mockResolvedValue([]),
+vi.mock('./track-analyse.ts', () => ({
+  reanalyseActivities: vi.fn().mockResolvedValue(undefined),
+  reanalyseOverrideTargets: vi.fn().mockResolvedValue(undefined),
 }))
 
 // Mock notes service to avoid testing note-sync behavior here
@@ -331,11 +332,17 @@ describe('addCustomMetric', () => {
   test('creates a custom metric definition', async () => {
     vi.mocked(db.getCustomMetricByName).mockResolvedValue(null)
 
-    const result = await addCustomMetric('testuser', { name: 'mood', unit: 'score' })
+    const result = await addCustomMetric('testuser', {
+      name: 'mood',
+      unit: 'score',
+    })
 
     expect(result.success).toBe(true)
     expect(result.data).toEqual({ name: 'mood', unit: 'score' })
-    expect(db.insertCustomMetricDefinition).toHaveBeenCalledWith('testuser', { name: 'mood', unit: 'score' })
+    expect(db.insertCustomMetricDefinition).toHaveBeenCalledWith('testuser', {
+      name: 'mood',
+      unit: 'score',
+    })
   })
 
   test('creates a custom metric with all fields', async () => {
@@ -356,7 +363,10 @@ describe('addCustomMetric', () => {
   })
 
   test('rejects name conflicting with built-in metric', async () => {
-    const result = await addCustomMetric('testuser', { name: 'heart_rate', unit: 'bpm' })
+    const result = await addCustomMetric('testuser', {
+      name: 'heart_rate',
+      unit: 'bpm',
+    })
 
     expect(result.success).toBe(false)
     expect(result.error).toContain('conflicts with a built-in metric')
@@ -364,9 +374,15 @@ describe('addCustomMetric', () => {
   })
 
   test('rejects duplicate custom metric name', async () => {
-    vi.mocked(db.getCustomMetricByName).mockResolvedValue({ name: 'mood', unit: 'score' })
+    vi.mocked(db.getCustomMetricByName).mockResolvedValue({
+      name: 'mood',
+      unit: 'score',
+    })
 
-    const result = await addCustomMetric('testuser', { name: 'mood', unit: 'points' })
+    const result = await addCustomMetric('testuser', {
+      name: 'mood',
+      unit: 'points',
+    })
 
     expect(result.success).toBe(false)
     expect(result.error).toContain('already exists')
@@ -376,10 +392,16 @@ describe('addCustomMetric', () => {
   test('works when no metrics exist yet', async () => {
     vi.mocked(db.getCustomMetricByName).mockResolvedValue(null)
 
-    const result = await addCustomMetric('testuser', { name: 'mood', unit: 'score' })
+    const result = await addCustomMetric('testuser', {
+      name: 'mood',
+      unit: 'score',
+    })
 
     expect(result.success).toBe(true)
-    expect(db.insertCustomMetricDefinition).toHaveBeenCalledWith('testuser', { name: 'mood', unit: 'score' })
+    expect(db.insertCustomMetricDefinition).toHaveBeenCalledWith('testuser', {
+      name: 'mood',
+      unit: 'score',
+    })
   })
 })
 
@@ -524,8 +546,16 @@ describe('bulkAddMetrics', () => {
     vi.mocked(db.getCustomMetricDefinitions).mockResolvedValue([])
 
     const result = await bulkAddMetrics('testuser', [
-      { metric: 'heart_rate', time: new Date('2024-01-15T10:00:00Z'), value: 72 },
-      { metric: 'heart_rate', time: new Date('2024-01-15T10:05:00Z'), value: 75 },
+      {
+        metric: 'heart_rate',
+        time: new Date('2024-01-15T10:00:00Z'),
+        value: 72,
+      },
+      {
+        metric: 'heart_rate',
+        time: new Date('2024-01-15T10:05:00Z'),
+        value: 75,
+      },
       { metric: 'weight', time: new Date('2024-01-15T08:00:00Z'), value: 75.5 },
     ])
 
@@ -564,8 +594,16 @@ describe('bulkAddMetrics', () => {
     vi.mocked(db.getCustomMetricDefinitions).mockResolvedValue([])
 
     const result = await bulkAddMetrics('testuser', [
-      { metric: 'heart_rate', time: new Date('2024-01-15T10:00:00Z'), value: 72 },
-      { metric: 'invalid_metric', time: new Date('2024-01-15T10:05:00Z'), value: 42 },
+      {
+        metric: 'heart_rate',
+        time: new Date('2024-01-15T10:00:00Z'),
+        value: 72,
+      },
+      {
+        metric: 'invalid_metric',
+        time: new Date('2024-01-15T10:05:00Z'),
+        value: 42,
+      },
       { metric: 'weight', time: new Date('2024-01-15T08:00:00Z'), value: 75.5 },
     ])
 
@@ -605,7 +643,13 @@ describe('bulkAddMetrics', () => {
 
     await bulkAddMetrics(
       'testuser',
-      [{ metric: 'heart_rate', time: new Date('2024-01-15T10:00:00Z'), value: 72 }],
+      [
+        {
+          metric: 'heart_rate',
+          time: new Date('2024-01-15T10:00:00Z'),
+          value: 72,
+        },
+      ],
       'oura',
     )
 
@@ -621,8 +665,17 @@ describe('bulkAddMetrics', () => {
     await bulkAddMetrics(
       'testuser',
       [
-        { metric: 'heart_rate', source: 'garmin', time: new Date('2024-01-15T10:00:00Z'), value: 72 },
-        { metric: 'heart_rate', time: new Date('2024-01-15T10:05:00Z'), value: 75 },
+        {
+          metric: 'heart_rate',
+          source: 'garmin',
+          time: new Date('2024-01-15T10:00:00Z'),
+          value: 72,
+        },
+        {
+          metric: 'heart_rate',
+          time: new Date('2024-01-15T10:05:00Z'),
+          value: 75,
+        },
       ],
       'oura',
     )
@@ -638,7 +691,11 @@ describe('bulkAddMetrics', () => {
     vi.mocked(db.getCustomMetricDefinitions).mockResolvedValue([])
 
     await bulkAddMetrics('testuser', [
-      { metric: 'heart_rate', time: new Date('2024-01-15T10:00:00Z'), value: 72 },
+      {
+        metric: 'heart_rate',
+        time: new Date('2024-01-15T10:00:00Z'),
+        value: 72,
+      },
     ])
 
     expect(db.insertTimeSeries).toHaveBeenCalledWith('testuser', [
@@ -666,9 +723,19 @@ describe('bulkAddMetrics', () => {
 
     const result = await bulkAddMetrics('testuser', [
       // steps from an arbitrary source would never be queryable → rejected.
-      { metric: 'steps', source: 'tryout', time: new Date('2026-05-27T00:00:00Z'), value: 5000 },
+      {
+        metric: 'steps',
+        source: 'tryout',
+        time: new Date('2026-05-27T00:00:00Z'),
+        value: 5000,
+      },
       // resting_heart_rate is unrestricted → accepted from any source.
-      { metric: 'resting_heart_rate', source: 'tryout', time: new Date('2026-05-27T00:00:00Z'), value: 55 },
+      {
+        metric: 'resting_heart_rate',
+        source: 'tryout',
+        time: new Date('2026-05-27T00:00:00Z'),
+        value: 55,
+      },
     ])
 
     expect(result.inserted).toBe(1)
@@ -677,7 +744,10 @@ describe('bulkAddMetrics', () => {
     expect(result.errors[0].error).toContain('cumulative/derived')
     // Only the RHR point reaches the DB.
     expect(db.insertTimeSeries).toHaveBeenCalledWith('testuser', [
-      expect.objectContaining({ metric: 'resting_heart_rate', source: 'tryout' }),
+      expect.objectContaining({
+        metric: 'resting_heart_rate',
+        source: 'tryout',
+      }),
     ])
   })
 
@@ -707,7 +777,11 @@ describe('bulkAddMetrics', () => {
     await bulkAddMetrics('testuser', [
       { metric: 'mood', time: new Date('2024-01-15T10:00:00Z'), value: 5 },
       { metric: 'mood', time: new Date('2024-01-15T11:00:00Z'), value: 7 },
-      { metric: 'heart_rate', time: new Date('2024-01-15T10:00:00Z'), value: 72 },
+      {
+        metric: 'heart_rate',
+        time: new Date('2024-01-15T10:00:00Z'),
+        value: 72,
+      },
     ])
 
     expect(db.getCustomMetricDefinitions).toHaveBeenCalledTimes(1)
@@ -738,6 +812,23 @@ describe('deleteActivity', () => {
     expect(result.success).toBe(false)
     expect(result.deleted).toBe(false)
     expect(result.id).toBe('nonexistent-activity')
+    expect(reanalyseOverrideTargets).not.toHaveBeenCalled()
+  })
+
+  test('deleting an override re-analyses its targets', async () => {
+    const override: Activity = {
+      activity_type: 'running',
+      id: 'override-1',
+      override_target_ids: ['garmin-1'],
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    }
+    vi.mocked(db.getActivityById).mockResolvedValue(override)
+    vi.mocked(db.deleteActivity).mockResolvedValue(true)
+
+    await deleteActivity('testuser', 'override-1')
+
+    expect(reanalyseOverrideTargets).toHaveBeenCalledExactlyOnceWith('testuser', override)
   })
 })
 
@@ -908,7 +999,11 @@ describe('updateActivity', () => {
   test('merges new data fields while preserving existing ones', async () => {
     vi.mocked(db.getActivityById).mockResolvedValue({
       activity_type: 'exercise',
-      data: { calories: 300, exerciseType: 70, exerciseTypeName: 'strength_training' },
+      data: {
+        calories: 300,
+        exerciseType: 70,
+        exerciseTypeName: 'strength_training',
+      },
       end_time: new Date('2024-03-15T11:00:00Z'),
       id: 'activity-123',
       source: 'aurboda',
@@ -916,7 +1011,11 @@ describe('updateActivity', () => {
     })
     vi.mocked(db.updateActivity).mockResolvedValue({
       activity_type: 'exercise',
-      data: { calories: 300, exerciseType: 81, exerciseTypeName: 'weightlifting' },
+      data: {
+        calories: 300,
+        exerciseType: 81,
+        exerciseTypeName: 'weightlifting',
+      },
       end_time: new Date('2024-03-15T11:00:00Z'),
       id: 'activity-123',
       source: 'aurboda',
@@ -930,7 +1029,11 @@ describe('updateActivity', () => {
     // Should merge: existing {calories, exerciseType, exerciseTypeName} + new {exerciseType, exerciseTypeName}
     expect(db.updateActivity).toHaveBeenCalledWith('testuser', 'activity-123', {
       activity_type: undefined,
-      data: { calories: 300, exerciseType: 81, exerciseTypeName: 'weightlifting' },
+      data: {
+        calories: 300,
+        exerciseType: 81,
+        exerciseTypeName: 'weightlifting',
+      },
       end_time: undefined,
       notes: undefined,
       start_time: undefined,
@@ -1078,7 +1181,7 @@ describe('updateActivity', () => {
     expect(db.updateActivity).not.toHaveBeenCalled()
   })
 
-  test('a type change re-matches routes for the edited row, its override and every override target', async () => {
+  test('a type change re-analyses the edited row, its override and every override target', async () => {
     vi.mocked(db.getActivityById).mockResolvedValue({
       activity_type: 'walking',
       end_time: new Date('2024-03-15T11:00:00Z'),
@@ -1102,14 +1205,14 @@ describe('updateActivity', () => {
     })
 
     expect(result.success).toBe(true)
-    expect(rematchActivityRoute).toHaveBeenCalledExactlyOnceWith(
-      'testuser',
-      ['garmin-1', 'override-1', 'strava-1'],
-      expect.anything(),
-    )
+    expect(reanalyseActivities).toHaveBeenCalledExactlyOnceWith('testuser', [
+      'garmin-1',
+      'override-1',
+      'strava-1',
+    ])
   })
 
-  test('a failed re-match does not fail the type change', async () => {
+  test('re-analyses before notifying, so the rules read the recomputed features', async () => {
     vi.mocked(db.getActivityById).mockResolvedValue({
       activity_type: 'walking',
       id: 'activity-123',
@@ -1122,16 +1225,17 @@ describe('updateActivity', () => {
       source: 'aurboda',
       start_time: new Date('2024-03-15T10:00:00Z'),
     })
-    vi.mocked(rematchActivityRoute).mockRejectedValueOnce(new Error('db down'))
+    const order: string[] = []
+    vi.mocked(reanalyseActivities).mockImplementationOnce(async () => {
+      order.push('reanalyse')
+    })
 
-    const result = await updateActivity('testuser', 'activity-123', { activity_type: 'running' })
+    const result = await updateActivity('testuser', 'activity-123', { activity_type: 'running' }, () =>
+      order.push('notify'),
+    )
 
     expect(result.success).toBe(true)
-    expect(rematchActivityRoute).toHaveBeenCalledExactlyOnceWith(
-      'testuser',
-      ['activity-123'],
-      expect.anything(),
-    )
+    expect(order).toEqual(['reanalyse', 'notify', 'notify'])
   })
 
   test('a title-only change does not re-match routes', async () => {
@@ -1150,7 +1254,7 @@ describe('updateActivity', () => {
     })
 
     expect((await updateActivity('testuser', 'activity-123', { title: 'Renamed' })).success).toBe(true)
-    expect(rematchActivityRoute).not.toHaveBeenCalled()
+    expect(reanalyseActivities).not.toHaveBeenCalled()
   })
 
   test('returns error when activity_type change would violate unique constraint', async () => {
@@ -1350,7 +1454,9 @@ describe('updateActivity', () => {
         start_time: new Date('2026-05-05T10:00:00Z'),
       })
 
-      const result = await updateActivity('testuser', 'garmin-1', { activity_type: 'pipeceremony' })
+      const result = await updateActivity('testuser', 'garmin-1', {
+        activity_type: 'pipeceremony',
+      })
 
       expect(result.success).toBe(true)
       expect(db.insertOverride).toHaveBeenCalledWith(
@@ -1413,7 +1519,9 @@ describe('updateActivity', () => {
         start_time: new Date('2026-05-05T10:00:00Z'),
       })
 
-      const result = await updateActivity('testuser', 'aurboda-1', { activity_type: 'pipeceremony' })
+      const result = await updateActivity('testuser', 'aurboda-1', {
+        activity_type: 'pipeceremony',
+      })
 
       expect(result.success).toBe(true)
       expect(db.getOverrideForActivity).not.toHaveBeenCalled()
@@ -1429,9 +1537,14 @@ describe('updateCustomMetric', () => {
   })
 
   test('updates unit field', async () => {
-    vi.mocked(db.updateCustomMetricDefinition).mockResolvedValue({ name: 'mood', unit: 'points' })
+    vi.mocked(db.updateCustomMetricDefinition).mockResolvedValue({
+      name: 'mood',
+      unit: 'points',
+    })
 
-    const result = await updateCustomMetric('testuser', 'mood', { unit: 'points' })
+    const result = await updateCustomMetric('testuser', 'mood', {
+      unit: 'points',
+    })
 
     expect(result.success).toBe(true)
     expect(result.data?.unit).toBe('points')
@@ -1444,7 +1557,9 @@ describe('updateCustomMetric', () => {
       unit: 'score',
     })
 
-    const result = await updateCustomMetric('testuser', 'mood', { description: 'Daily mood rating' })
+    const result = await updateCustomMetric('testuser', 'mood', {
+      description: 'Daily mood rating',
+    })
 
     expect(result.success).toBe(true)
     expect(result.data?.description).toBe('Daily mood rating')
@@ -1457,7 +1572,9 @@ describe('updateCustomMetric', () => {
       unit: 'score',
     })
 
-    const result = await updateCustomMetric('testuser', 'mood', { minValue: null })
+    const result = await updateCustomMetric('testuser', 'mood', {
+      minValue: null,
+    })
 
     expect(db.updateCustomMetricDefinition).toHaveBeenCalledWith('testuser', 'mood', { min_value: null })
     expect(result.success).toBe(true)
@@ -1472,7 +1589,9 @@ describe('updateCustomMetric', () => {
       unit: 'score',
     })
 
-    const result = await updateCustomMetric('testuser', 'mood', { maxValue: null })
+    const result = await updateCustomMetric('testuser', 'mood', {
+      maxValue: null,
+    })
 
     expect(db.updateCustomMetricDefinition).toHaveBeenCalledWith('testuser', 'mood', { max_value: null })
     expect(result.success).toBe(true)
@@ -1483,7 +1602,9 @@ describe('updateCustomMetric', () => {
   test('returns error when metric not found', async () => {
     vi.mocked(db.updateCustomMetricDefinition).mockResolvedValue(null)
 
-    const result = await updateCustomMetric('testuser', 'nonexistent', { unit: 'mg' })
+    const result = await updateCustomMetric('testuser', 'nonexistent', {
+      unit: 'mg',
+    })
 
     expect(result.success).toBe(false)
     expect(result.error).toContain('not found')
@@ -1516,7 +1637,9 @@ describe('updateCustomMetric', () => {
       unit: 'points',
     })
 
-    const result = await updateCustomMetric('testuser', 'mood', { unit: 'points' })
+    const result = await updateCustomMetric('testuser', 'mood', {
+      unit: 'points',
+    })
 
     expect(result.success).toBe(true)
     expect(result.data).toEqual({

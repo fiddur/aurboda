@@ -31,6 +31,18 @@ describe('Settings Integration Tests', () => {
       expect(await claimSettingsFlag(user, 'run_category_rules_seeded')).toBe(false)
     })
 
+    test('an upsert running alongside a claim does not drop the flag', async () => {
+      const user = getTestUser()
+      await upsertUserSettings(user, { sex: 'male' })
+      for (let i = 0; i < 5; i++) {
+        await Promise.all([
+          upsertUserSettings(user, { lastfm_username: `me-${i}` }),
+          claimSettingsFlag(user, `flag_${i}`),
+        ])
+        expect(await getUserSettings(user)).toMatchObject({ lastfm_username: `me-${i}`, [`flag_${i}`]: true })
+      }
+    })
+
     test('sets the flag on an existing row and keeps the other settings', async () => {
       const user = getTestUser()
       await upsertUserSettings(user, { lastfm_username: 'me' })

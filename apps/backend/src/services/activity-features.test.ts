@@ -48,6 +48,7 @@ const makeDeps = (overrides: Partial<ActivityFeatureDeps> = {}) => {
       return features ? { ...features, activity_id: id, computed_at: '2026-06-01T08:00:00.000Z' } : null
     }),
     getActivityTrack: vi.fn(async () => track),
+    getEffectiveActivityType: vi.fn(async () => 'running'),
     getEffectiveHrZones: vi.fn(async () => ({ source: 'custom' as const, zones })),
     getMedianDurationBefore: vi.fn(async () => 1800),
     getSettings: vi.fn(async () => ({ maf_hr: 145 })),
@@ -101,6 +102,16 @@ describe('computeAndStoreActivityFeatures', () => {
 
     expect(deps.expandActivityTypes).toHaveBeenCalledWith('u', ['running'])
     expect(deps.getMedianDurationBefore).toHaveBeenCalledWith('u', ['running', 'running_treadmill'], start)
+  })
+
+  test("an overridden activity's median and returned type follow the override's type", async () => {
+    const deps = makeDeps({ getEffectiveActivityType: vi.fn(async () => 'walking') })
+    const result = await computeAndStoreActivityFeatures('u', 'a1', deps)
+
+    expect(deps.getEffectiveActivityType).toHaveBeenCalledWith('u', 'a1')
+    expect(deps.expandActivityTypes).toHaveBeenCalledWith('u', ['walking'])
+    expect(deps.getMedianDurationBefore).toHaveBeenCalledWith('u', ['walking', 'running_treadmill'], start)
+    expect(result?.activity_type).toBe('walking')
   })
 
   test('the zone-2 upper bound is the ceiling without a MAF setting', async () => {

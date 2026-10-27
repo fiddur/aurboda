@@ -1,5 +1,7 @@
 import type { Condition, DeductionRule, DeductionRuleMode, OutputMediaField } from '@aurboda/api-spec'
 
+import type { Queryable } from './pool.ts'
+
 import { query } from './connection.ts'
 
 const mapRow = (row: Record<string, unknown>): DeductionRule => ({
@@ -55,7 +57,7 @@ export const getDeductionRulesByIds = async (user: string, ids: string[]): Promi
 }
 
 export const insertDeductionRule = async (
-  user: string,
+  db: Queryable | string,
   rule: {
     name: string
     conditions: Condition[]
@@ -72,7 +74,7 @@ export const insertDeductionRule = async (
   },
 ): Promise<DeductionRule> => {
   const result = await query(
-    user,
+    db,
     `INSERT INTO deduction_rules (name, enabled, priority, conditions, output_activity_type, output_title, merge_gap_seconds, mode, output_data, output_media_field, output_title_field, output_category)
      VALUES ($1, COALESCE($2, true), COALESCE($3, 0), $4, $5, $6, $7, COALESCE($8, 'create'), $9, $10, $11, $12)
      RETURNING ${SELECT_COLS}`,

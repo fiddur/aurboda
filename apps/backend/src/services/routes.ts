@@ -154,6 +154,20 @@ const nameNear = async (
  * track is rewritten or the activity retyped; a route founded concurrently leaves
  * it unmarked, since the activity may still be unrouted.
  */
+const attachToCandidateRoute = async (
+  user: string,
+  activityId: string,
+  deps: RouteMatchDeps,
+): Promise<boolean> => {
+  for (const candidate of (await deps.findRouteCandidates(user, activityId)).filter(covers)) {
+    if (!isNotReversed(await deps.routeDirectionFractions(user, activityId, candidate.route_id))) continue
+    await deps.attachActivityToRoute(user, activityId, candidate.route_id, coverageOf(candidate))
+    await deps.markRouteMatchAttempted(user, activityId)
+    return true
+  }
+  return false
+}
+
 export const matchActivityRoute = async (
   user: string,
   activityId: string,
@@ -163,12 +177,7 @@ export const matchActivityRoute = async (
   const activity = await deps.getTrackedActivity(user, activityId)
   if (!activity) return 'no_track'
 
-  for (const candidate of (await deps.findRouteCandidates(user, activityId)).filter(covers)) {
-    if (!isNotReversed(await deps.routeDirectionFractions(user, activityId, candidate.route_id))) continue
-    await deps.attachActivityToRoute(user, activityId, candidate.route_id, coverageOf(candidate))
-    await deps.markRouteMatchAttempted(user, activityId)
-    return 'matched'
-  }
+  if (await attachToCandidateRoute(user, activityId, deps)) return 'matched'
 
   for (const other of (await deps.findUnroutedTrackCandidates(user, activityId)).filter(covers)) {
     if (!isNotReversed(await deps.trackDirectionFractions(user, activityId, other.activity_id))) continue
@@ -185,7 +194,12 @@ export const matchActivityRoute = async (
       },
       follower: { activity_id: followerId, coverage: coverageOf(other) },
     })
-    if (!routeId) return 'already_routed'
+    if (!routeId) {
+      // Another job founded a route with one of the pair first: it may now be our candidate.
+      if (await deps.isActivityRouted(user, activityId)) return 'already_routed'
+      if (await attachToCandidateRoute(user, activityId, deps)) return 'matched'
+      return 'unmatched'
+    }
     await deps.markRouteMatchAttempted(user, activityId)
     return 'created'
   }

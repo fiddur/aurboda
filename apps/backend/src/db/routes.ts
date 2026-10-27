@@ -2,7 +2,7 @@ import type { RouteSort } from '@aurboda/api-spec'
 import type { QueryResultRow } from 'pg'
 
 import { query, withUserTransaction } from './connection.ts'
-import { effectiveType } from './effective-type.ts'
+import { effectiveData, effectiveType } from './effective-type.ts'
 import { isUniqueViolation } from './pg-errors.ts'
 
 export interface LatLon {
@@ -303,6 +303,12 @@ export const trackDirectionFractions = (
  * canonical has no track, or when a concurrent matcher already founded a route on
  * it (the unique index on canonical_activity_id).
  */
+const ROUTE_BIRTH_CONFLICT = 'RouteBirthConflict'
+
+/** A pair member was routed concurrently: throwing rolls the transaction back, so no half-founded route is left. */
+const routeBirthConflict = (): Error =>
+  Object.assign(new Error('a route pair member is already routed'), { name: ROUTE_BIRTH_CONFLICT })
+
 export const createRouteWithPair = async (
   user: string,
   {
@@ -329,18 +335,22 @@ export const createRouteWithPair = async (
       const routeId = result.rows[0]?.id as string | undefined
       if (!routeId) return null
       const attached = [{ activity_id: canonical.activity_id, coverage: 1 }, ...(follower ? [follower] : [])]
-      await query(
+      const inserted = await query(
         tx,
         `INSERT INTO activity_routes (activity_id, route_id, coverage)
          SELECT x.activity_id, $1, x.coverage
          FROM UNNEST($2::uuid[], $3::real[]) AS x(activity_id, coverage)
-         ON CONFLICT (activity_id) DO NOTHING`,
+         ON CONFLICT (activity_id) DO NOTHING
+         RETURNING activity_id`,
         [routeId, attached.map((a) => a.activity_id), attached.map((a) => a.coverage)],
       )
+      if (inserted.rows.length < attached.length) throw routeBirthConflict()
       return routeId
     })
   } catch (error) {
-    if (isUniqueViolation(error)) return null
+    if (isUniqueViolation(error) || (error instanceof Error && error.name === ROUTE_BIRTH_CONFLICT)) {
+      return null
+    }
     throw error
   }
 }
@@ -442,7 +452,6 @@ export const mergeRoutes = async (user: string, sourceId: string, targetId: stri
     return moved.rowCount ?? 0
   })
 
-/** The route's runs, newest first (see ROUTE_RUNS for how a multi-source run counts once). */
 /** The `category` values of a `run_categories` array; anything malformed is skipped. */
 const categoryNames = (value: unknown): string[] =>
   Array.isArray(value)
@@ -453,17 +462,15 @@ const categoryNames = (value: unknown): string[] =>
         .filter((category): category is string => typeof category === 'string')
     : []
 
+/** The route's runs, newest first (see ROUTE_RUNS for how a multi-source run counts once). */
 export const listRouteEfforts = async (user: string, routeId: string): Promise<RouteEffortRow[]> => {
   const result = await query(
     user,
     `SELECT runs.activity_id, runs.start_time, runs.end_time, runs.title, runs.source, runs.coverage,
             CASE WHEN jsonb_typeof(runs.data->'distance') = 'number' THEN (runs.data->>'distance')::float8 END AS distance,
-            COALESCE(
-              (SELECT o.data->'run_categories' FROM activity_override_targets ot
-               JOIN activities o ON o.id = ot.override_id AND o.deleted_at IS NULL
-               WHERE ot.target_id = runs.activity_id LIMIT 1),
-              runs.data->'run_categories') AS run_categories
+            ${effectiveData('a')}->'run_categories' AS run_categories
      FROM (${ROUTE_RUNS}) runs
+     JOIN activities a ON a.id = runs.activity_id
      JOIN routes r ON r.id = runs.route_id AND r.deleted_at IS NULL
      WHERE runs.route_id = $1
      ORDER BY runs.start_time DESC`,
@@ -524,6 +531,9 @@ export const detachActivityFromRoute = async (
     )
     const routeId = removed.rows[0]?.route_id as string | undefined
     if (!routeId) return { deleted_route_id: null, detached: false }
+    // A concurrent attach takes a key-share lock on the route through its foreign key, so this waits
+    // for it (and it for us) instead of deleting a route that just gained a run.
+    await query(tx, `SELECT id FROM routes WHERE id = $1 FOR UPDATE`, [routeId])
     const deleted = await query(
       tx,
       `DELETE FROM routes r

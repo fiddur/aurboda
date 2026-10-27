@@ -7,6 +7,7 @@ import {
   deleteAllActivityFeatures,
   findActivitiesByFeature,
   getActivityFeatures,
+  getEffectiveActivityType,
   getMedianDurationBefore,
   listTrackedActivitiesWithoutFeatures,
   upsertActivityFeatures,
@@ -249,5 +250,20 @@ describe('activity features integration', () => {
     expect(runs.map((m) => m.id)).toEqual([retypedToRun])
     const walks = await findActivitiesByFeature(user, ['walking'], 'low_hr_fraction', 'gte', 0.85, window)
     expect(walks.map((m) => m.id)).toEqual([retypedToWalk])
+    expect(await getEffectiveActivityType(user, retypedToWalk)).toBe('walking')
+    expect(await getEffectiveActivityType(user, retypedToRun)).toBe('running')
+    expect(await getEffectiveActivityType(user, '00000000-0000-4000-8000-000000000000')).toBeNull()
+  })
+
+  test('findActivitiesByFeature takes a fractional threshold on an integer feature', async () => {
+    const user = getTestUser()
+    const two = await addActivity({ start: day(1) })
+    const three = await addActivity({ start: day(2) })
+    await upsertActivityFeatures(user, two, { ...emptyFeatures, interval_count: 2 })
+    await upsertActivityFeatures(user, three, { ...emptyFeatures, interval_count: 3 })
+
+    const window = { end: day(10), start: day(1, 0) }
+    const matches = await findActivitiesByFeature(user, ['running'], 'interval_count', 'gte', 2.5, window)
+    expect(matches.map((m) => m.id)).toEqual([three])
   })
 })

@@ -259,6 +259,25 @@ describe('Routes integration', () => {
       expect((await listRoutes(user)).map((r) => r.id)).toEqual([routeId])
       expect(await getRouteForActivity(user, follower)).toBeNull()
     })
+
+    test('a follower routed concurrently rolls the whole birth back', async () => {
+      const user = getTestUser()
+      const { activityId: elsewhere, routeId } = await makeRoute()
+      const follower = await addTrackedActivity(jittered)
+      await attachActivityToRoute(user, follower, routeId, 0.9)
+      const canonical = await addTrackedActivity(base)
+
+      expect(
+        await createRouteWithPair(user, {
+          canonical: { activity_id: canonical, name: 'Late' },
+          follower: { activity_id: follower, coverage: 0.95 },
+        }),
+      ).toBeNull()
+      expect((await listRoutes(user)).map((r) => r.id)).toEqual([routeId])
+      expect(await getRouteForActivity(user, canonical)).toBeNull()
+      expect((await getRouteForActivity(user, follower))!.id).toBe(routeId)
+      expect((await getRouteForActivity(user, elsewhere))!.id).toBe(routeId)
+    })
   })
 
   describe('findRouteCandidates', () => {

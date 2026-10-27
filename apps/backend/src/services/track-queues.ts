@@ -28,6 +28,8 @@ export interface TrackAnalyseJobData {
 
 export interface TrackBackfillJobData {
   user: string
+  /** Delete every stored feature first, so all are recomputed (HR settings changed). */
+  recompute_features?: boolean
 }
 
 export interface TrackAnalyseDeps {
@@ -39,7 +41,11 @@ export interface TrackAnalyseQueue {
 }
 
 export interface TrackBackfillQueue {
-  enqueue: (user: string, startAfterSeconds?: number) => Promise<void>
+  enqueue: (
+    user: string,
+    startAfterSeconds?: number,
+    options?: { recomputeFeatures?: boolean },
+  ) => Promise<void>
 }
 
 export const runTrackBackfillJob = async (
@@ -56,7 +62,9 @@ export const runTrackBackfillJob = async (
   if (routes.matched + routes.created > 0) {
     auditInfo(job.user, 'data', '🗺️ Route matching done', { ...routes })
   }
-  const features = await backfillActivityFeatures(job.user, deps)
+  const features = await backfillActivityFeatures(job.user, deps, {
+    recompute: job.recompute_features === true,
+  })
   return { ...result, features, routes }
 }
 
@@ -118,9 +126,15 @@ export const createTrackBackfillQueue = async (
   console.info('🛤️ Track backfill queue ready')
 
   return {
-    enqueue: async (user, startAfterSeconds = 0) => {
+    enqueue: async (user, startAfterSeconds = 0, { recomputeFeatures = false } = {}) => {
+      // A recompute has its own singleton key: `stately` would otherwise drop it behind a plain
+      // backfill already waiting for the user.
+      const data: TrackBackfillJobData = recomputeFeatures ? { recompute_features: true, user } : { user }
       try {
-        await boss.send(TRACK_BACKFILL_QUEUE, { user }, { singletonKey: user, startAfter: startAfterSeconds })
+        await boss.send(TRACK_BACKFILL_QUEUE, data, {
+          singletonKey: recomputeFeatures ? `${user}:recompute` : user,
+          startAfter: startAfterSeconds,
+        })
       } catch (err) {
         auditError(user, 'data', 'Failed to enqueue track backfill', { error: String(err) })
       }

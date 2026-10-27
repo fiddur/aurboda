@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { addCategory, isRunType, normalizeCategoryName, removeCategory, runCategories } from './runCategories'
+import { addCategory, groupedRunCategories, isRunType, removeCategory, runCategories } from './runCategories'
 
 const ruleId = '00000000-0000-4000-8000-000000000001'
 const data = {
@@ -26,6 +26,16 @@ describe('removeCategory', () => {
       run_categories: [{ category: 'hill', reasons: ['added by hand'] }],
       run_categories_excluded: ['tempo', 'low_hr'],
     })
+  })
+
+  test('a category set both by hand and by a rule is removed entirely and excluded', () => {
+    const both = {
+      run_categories: [
+        { category: 'long', reasons: ['added by hand'] },
+        { category: 'long', reasons: ['elapsed ≥ 90 min'], rule_id: ruleId },
+      ],
+    }
+    expect(removeCategory(both, 'long')).toEqual({ run_categories: [], run_categories_excluded: ['long'] })
   })
 
   test('a hand-set category is only removed', () => {
@@ -56,12 +66,20 @@ describe('addCategory', () => {
   })
 })
 
-describe('normalizeCategoryName', () => {
-  test('snake_cases free text and rejects what cannot be a name', () => {
-    expect(normalizeCategoryName('  Hill Repeats ')).toBe('hill_repeats')
-    expect(normalizeCategoryName('low_hr')).toBe('low_hr')
-    expect(normalizeCategoryName('9k')).toBeNull()
-    expect(normalizeCategoryName('!!')).toBeNull()
+describe('groupedRunCategories', () => {
+  test('one group per name, reasons merged without repeats', () => {
+    expect(
+      groupedRunCategories({
+        run_categories: [
+          { category: 'long', reasons: ['added by hand'] },
+          { category: 'low_hr', reasons: ['a'], rule_id: ruleId },
+          { category: 'long', reasons: ['elapsed ≥ 90 min', 'added by hand'], rule_id: ruleId },
+        ],
+      }),
+    ).toEqual([
+      { category: 'long', from_rule: true, reasons: ['added by hand', 'elapsed ≥ 90 min'] },
+      { category: 'low_hr', from_rule: true, reasons: ['a'] },
+    ])
   })
 })
 

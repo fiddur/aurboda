@@ -7,6 +7,8 @@ import type {
   updateDeductionRule,
 } from '../../state/api'
 
+import { normalizeCategoryName } from '../../utils/runCategory'
+
 export interface RuleFormFields {
   category: string
   conditions: DeductionRuleCondition[]
@@ -65,8 +67,13 @@ export const toOutputMediaField = (f: RuleFormFields): OutputMediaField | undefi
 export const toOutputTitleField = (f: RuleFormFields): string | undefined =>
   f.mode === 'enrich' && f.titleField.trim() ? f.titleField.trim() : undefined
 
+/** The category as a snake_case name; undefined outside enrich mode, when blank, or when it cannot be one. */
 export const toOutputCategory = (f: RuleFormFields): string | undefined =>
-  f.mode === 'enrich' && f.category.trim() ? f.category.trim() : undefined
+  f.mode === 'enrich' && f.category.trim() ? (normalizeCategoryName(f.category) ?? undefined) : undefined
+
+/** Typed, in enrich mode, but not something that normalises to a category name. */
+export const isOutputCategoryInvalid = (f: RuleFormFields): boolean =>
+  f.mode === 'enrich' && f.category.trim() !== '' && normalizeCategoryName(f.category) === null
 
 export const fieldsToBuildBody = (f: RuleFormFields) => ({
   conditions: f.conditions,

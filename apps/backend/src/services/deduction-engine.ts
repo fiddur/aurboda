@@ -25,6 +25,7 @@ import { randomUUID } from 'node:crypto'
 
 import type { Activity } from '../db/types.ts'
 
+import { auditError, auditWarn } from './audit-log.ts'
 import { applyCategory, categoryReasons } from './deduction-category.ts'
 import {
   matchesMediaCondition,
@@ -63,6 +64,11 @@ export interface MatchedActivity extends TimeRange {
 
 export interface CategorisableActivity extends MatchedActivity {
   data: Record<string, unknown> | null
+  /**
+   * The row the merged view shows (of the type, not superseded, no live override): only it may
+   * carry the category. Other rows are listed when they still hold the rule's entry, to lose it.
+   */
+  primary: boolean
 }
 
 export interface RetypeChange {
@@ -95,14 +101,28 @@ export interface DeductionEngineDeps {
     window: EvaluationWindow,
   ) => Promise<(MatchedActivity & { value: number })[]>
   getActivityFeatures: (user: string, activityId: string) => Promise<ActivityFeatures | null>
-  /** Activities of the type (and its descendants) overlapping the window, with their data. */
+  /**
+   * Overlapping the window: the primary rows of the type (and its descendants), and any row
+   * whose run_categories holds an entry of the rule.
+   */
   getCategorisableActivities: (
     user: string,
     activityType: string,
+    ruleId: string,
     window: EvaluationWindow,
   ) => Promise<CategorisableActivity[]>
+  getActivityData: (user: string, activityId: string) => Promise<Record<string, unknown> | null>
   getLocationVisits: (user: string, locationName: string, window: EvaluationWindow) => Promise<TimeRange[]>
-  patchActivityData: (user: string, activityId: string, patch: Record<string, unknown>) => Promise<void>
+  /**
+   * Merges the patch into the activity's data only while its run_categories still equals
+   * `expectedCategories` (undefined: absent); false when it changed meanwhile.
+   */
+  patchActivityData: (
+    user: string,
+    activityId: string,
+    patch: Record<string, unknown>,
+    expectedCategories: unknown,
+  ) => Promise<boolean>
   getScrobbles: (
     user: string,
     artist: string[] | undefined,
@@ -477,6 +497,8 @@ const countEnrichable = async (
  * overlaps a match and loses it otherwise, so a re-tuned rule takes its category back from the
  * runs it no longer matches. Returns the ids written, or with dryRun those that would be.
  */
+type CategoryWrite = 'unchanged' | 'changed' | 'conflict'
+
 const categorise = async (
   user: string,
   rule: DeductionRule,
@@ -486,15 +508,30 @@ const categorise = async (
   dryRun: boolean,
 ): Promise<string[]> => {
   if (!rule.output_category) return []
-  const candidates = await deps.getCategorisableActivities(user, rule.output_activity_type, window)
+  const candidates = await deps.getCategorisableActivities(user, rule.output_activity_type, rule.id, window)
   const changed: string[] = []
   for (const activity of candidates) {
-    const wanted = overlapsAny(activity, matched)
+    const wanted = activity.primary && overlapsAny(activity, matched)
     const reasons = wanted ? categoryReasons(rule, await deps.getActivityFeatures(user, activity.id)) : []
-    const patch = applyCategory(activity.data ?? {}, rule, wanted, reasons)
-    if (!patch) continue
-    if (!dryRun) await deps.patchActivityData(user, activity.id, patch)
-    changed.push(activity.id)
+    const write = async (data: Record<string, unknown>): Promise<CategoryWrite> => {
+      const patch = applyCategory(data, rule, wanted, reasons)
+      if (!patch) return 'unchanged'
+      if (dryRun) return 'changed'
+      const written = await deps.patchActivityData(user, activity.id, patch, data.run_categories)
+      return written ? 'changed' : 'conflict'
+    }
+    let outcome = await write(activity.data ?? {})
+    if (outcome === 'conflict') {
+      // Someone edited the categories since they were read: decide again on what is there now.
+      const fresh = await deps.getActivityData(user, activity.id)
+      outcome = fresh ? await write(fresh) : 'unchanged'
+      if (outcome === 'conflict') {
+        auditWarn(user, 'deduction', `Rule could not update the run categories of activity ${activity.id}`, {
+          rule_id: rule.id,
+        })
+      }
+    }
+    if (outcome === 'changed') changed.push(activity.id)
   }
   return changed
 }
@@ -614,13 +651,19 @@ export const evaluateAllRules = async (
     const group = byPriority.get(priority)!
     for (const rule of group) {
       const startMs = Date.now()
-      const { activities_created, affected_ids, would_affect } = await evaluateRule(
-        user,
-        rule,
-        window,
-        deps,
-        dryRun,
-      )
+      let outcome: EvaluateRuleResult
+      try {
+        outcome = await evaluateRule(user, rule, window, deps, dryRun)
+      } catch (error) {
+        // One broken rule must not keep the rules after it from running.
+        auditError(user, 'deduction', `Rule "${rule.name}" failed to evaluate`, {
+          error: error instanceof Error ? error.message : String(error),
+          rule_id: rule.id,
+        })
+        totalRules++
+        continue
+      }
+      const { activities_created, affected_ids, would_affect } = outcome
 
       if (!dryRun) {
         // Clean up stale activities from previous evaluations (only for create mode)

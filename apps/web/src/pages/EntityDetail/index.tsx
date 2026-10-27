@@ -281,6 +281,7 @@ const ActivityDetailContent = ({
   features,
   onRunCategoriesChange,
   isSavingRunCategories,
+  runCategoriesError,
 }: {
   activity: Activity
   /** The id the page is viewed by: `merged:` prefixed for a merged view. */
@@ -299,6 +300,7 @@ const ActivityDetailContent = ({
   features?: ActivityFeatures
   onRunCategoriesChange?: (changes: RunCategoryChanges) => void
   isSavingRunCategories?: boolean
+  runCategoriesError?: string
 }) => {
   const displayStart = activity.merged_start_time ?? activity.start_time
   const realEnd = activity.merged_end_time ?? activity.end_time
@@ -420,7 +422,9 @@ const ActivityDetailContent = ({
             <RunCategories
               data={activityData}
               onChange={(changes) => onRunCategoriesChange?.(changes)}
-              disabled={!onRunCategoriesChange || Boolean(activity.deleted_at) || isSavingRunCategories}
+              readOnly={!onRunCategoriesChange || Boolean(activity.deleted_at)}
+              busy={isSavingRunCategories}
+              error={runCategoriesError}
             />
           )}
 
@@ -598,6 +602,7 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
     data: activityResult,
     isLoading,
     isError,
+    isFetching: isRefetchingActivity,
   } = useQuery({
     queryFn: () => fetchActivityById(entityId),
     queryKey: ['entity-detail', 'activity', entityId],
@@ -768,8 +773,11 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
         await invalidate()
         return null
       }
+      // A synced activity gets an override like any other edit; the page moves to it on success.
       const current = makeDraft(activity)
-      return saveMutation.mutateAsync({ ...current, data: { ...current.data, ...changes } })
+      const result = await saveMutation.mutateAsync({ ...current, data: { ...current.data, ...changes } })
+      await invalidate()
+      return result
     },
   })
 
@@ -855,7 +863,10 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
         isReverting={revertOverrideMutation.isPending}
         features={activity.features}
         onRunCategoriesChange={(changes) => runCategoriesMutation.mutate(changes)}
-        isSavingRunCategories={runCategoriesMutation.isPending || saveMutation.isPending}
+        isSavingRunCategories={
+          runCategoriesMutation.isPending || saveMutation.isPending || isRefetchingActivity
+        }
+        runCategoriesError={runCategoriesMutation.error?.message}
       />
       {showSiblings && (
         <SameValueSessions

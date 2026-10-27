@@ -337,15 +337,17 @@ describe('validateAndUpdateSettings', () => {
     expect(db.upsertUserSettings).toHaveBeenLastCalledWith('testuser', {}, ['maf_hr'])
   })
 
-  test.each([
-    [{ hr_zone_start: { 1: 86, 2: 103, 3: 121, 4: 138, 5: 155 } }],
-    [{ hr_zone_start: null }],
-    [{ birth_date: '1985-03-15' }],
-    [{ birth_date: null }],
-    [{ maf_hr: 140 }],
-    [{ maf_hr: null }],
-  ])('calls the HR settings hook for %j', async (input) => {
-    vi.mocked(db.getUserSettings).mockResolvedValue({})
+  const zones: HrZoneThresholds = { 1: 86, 2: 103, 3: 121, 4: 138, 5: 155 }
+
+  test.each<[string, Record<string, unknown>, Record<string, unknown>]>([
+    ['custom zones set', {}, { hr_zone_start: zones }],
+    ['custom zones cleared', { hr_zone_start: zones }, { hr_zone_start: null }],
+    ['birth date set', {}, { birth_date: '1985-03-15' }],
+    ['birth date cleared', { birth_date: '1985-03-15' }, { birth_date: null }],
+    ['maf_hr set', {}, { maf_hr: 140 }],
+    ['maf_hr cleared', { maf_hr: 140 }, { maf_hr: null }],
+  ])('calls the HR settings hook when the effective inputs change: %s', async (_name, stored, input) => {
+    vi.mocked(db.getUserSettings).mockResolvedValue(stored)
     vi.mocked(db.upsertUserSettings).mockResolvedValue({})
     vi.mocked(db.getOAuthToken).mockResolvedValue(null)
     const onHrSettingsChanged = vi.fn()
@@ -355,14 +357,19 @@ describe('validateAndUpdateSettings', () => {
     expect(onHrSettingsChanged).toHaveBeenCalledWith('testuser')
   })
 
-  test('does not call the HR settings hook for other keys or a rejected update', async () => {
-    vi.mocked(db.getUserSettings).mockResolvedValue({})
+  test.each<[string, Record<string, unknown>, Record<string, unknown>]>([
+    ['another key', {}, { lastfm_username: 'bob' }],
+    ['the same maf_hr again', { maf_hr: 140 }, { maf_hr: 140 }],
+    ['clearing an unset maf_hr', {}, { maf_hr: null }],
+    ['a birth date under custom zones', { hr_zone_start: zones }, { birth_date: '1985-03-15' }],
+    ['a rejected update', {}, { maf_hr: 300 }],
+  ])('does not call the HR settings hook for %s', async (_name, stored, input) => {
+    vi.mocked(db.getUserSettings).mockResolvedValue(stored)
     vi.mocked(db.upsertUserSettings).mockResolvedValue({})
     vi.mocked(db.getOAuthToken).mockResolvedValue(null)
     const onHrSettingsChanged = vi.fn()
 
-    await validateAndUpdateSettings('testuser', { lastfm_username: 'bob' }, onHrSettingsChanged)
-    await validateAndUpdateSettings('testuser', { maf_hr: 300 }, onHrSettingsChanged)
+    await validateAndUpdateSettings('testuser', input, onHrSettingsChanged)
 
     expect(onHrSettingsChanged).not.toHaveBeenCalled()
   })

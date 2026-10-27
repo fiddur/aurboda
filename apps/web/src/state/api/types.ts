@@ -1,6 +1,8 @@
 import type {
   Activity as ApiActivity,
+  ActivityFeatureCondition,
   ActivityRouteSummary,
+  DeductionRule as ApiDeductionRule,
   DetectedLocation as ApiDetectedLocation,
   Meal as ApiMeal,
   MediaPlay as ApiMediaPlay,
@@ -49,7 +51,7 @@ export interface DeductionRuleCondition {
   data_filters?: DataFilter[]
   category?: string[]
   field?: string
-  feature?: string
+  feature?: ActivityFeatureCondition['feature']
   operator?: 'eq' | 'neq' | 'exists' | 'not_exists' | 'gte' | 'gt' | 'lte' | 'lt'
   value?: string | number | boolean
   location_name?: string
@@ -83,7 +85,7 @@ export interface DeductionRule {
   output_data?: Record<string, unknown>
   output_media_field?: OutputMediaField
   output_title_field?: string
-  output_category?: string
+  output_category?: NonNullable<ApiDeductionRule['output_category']>
   created_at?: string
 }
 

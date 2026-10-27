@@ -123,7 +123,12 @@ function ActivityFeatureBody({
       <div class="condition-data-row">
         <select
           value={condition.feature ?? ''}
-          onChange={(e) => onChange({ ...condition, feature: (e.target as HTMLSelectElement).value })}
+          onChange={(e) =>
+            onChange({
+              ...condition,
+              feature: (e.target as HTMLSelectElement).value as DeductionRuleCondition['feature'],
+            })
+          }
           class="condition-field-select condition-field-narrow"
         >
           {activityFeatureNameSchema.options.map((name) => (
@@ -151,10 +156,14 @@ function ActivityFeatureBody({
         <input
           type="number"
           step="any"
-          value={typeof condition.value === 'number' ? String(condition.value) : ''}
+          defaultValue={typeof condition.value === 'number' ? String(condition.value) : ''}
           onInput={(e) => {
             const raw = (e.target as HTMLInputElement).value
-            onChange({ ...condition, value: raw === '' ? undefined : Number(raw) })
+            const value = raw === '' ? undefined : Number(raw)
+            onChange({
+              ...condition,
+              value: value === undefined || Number.isFinite(value) ? value : undefined,
+            })
           }}
           placeholder="Value"
           class="condition-field-input condition-field-narrow"

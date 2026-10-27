@@ -1,6 +1,9 @@
 import type { ActivityFeatureCondition, AddDeductionRuleBody } from '@aurboda/api-spec'
 
-import { claimSettingsFlag, insertDeductionRule } from '../db/index.ts'
+import type { Queryable } from '../db/pool.ts'
+
+import { withUserTransaction } from '../db/connection.ts'
+import { claimSettingsFlagIn, expandActivityTypes, insertDeductionRule } from '../db/index.ts'
 import { auditError } from './audit-log.ts'
 
 const feature = (
@@ -29,11 +32,11 @@ const categoryRule = (
   priority: 0,
 })
 
-/** "≤ 5 % in zones ≥ 4" has no single feature, so zone 4 and zone 5 are capped separately. */
+/** "≤ 5 % in zones ≥ 4" has no single feature: zone 4 and zone 5 are capped separately, 3 % + 2 %. */
 export const defaultRunCategoryRules: AddDeductionRuleBody[] = [
   categoryRule('Low-HR run', 'low_hr', [
     feature('low_hr_fraction', 'gte', 0.85),
-    feature('zone4_fraction', 'lte', 0.05),
+    feature('zone4_fraction', 'lte', 0.03),
     feature('zone5_fraction', 'lte', 0.02),
   ]),
   categoryRule('Interval run', 'intervals', [
@@ -51,40 +54,49 @@ export const defaultRunCategoryRules: AddDeductionRuleBody[] = [
 ]
 
 export interface RunCategoryRuleDeps {
-  /** True only for the one caller that set the flag. */
-  claimSeeding: (user: string) => Promise<boolean>
-  insertDeductionRule: (user: string, rule: AddDeductionRuleBody) => Promise<unknown>
+  isRunningType: (user: string, activityType: string) => Promise<boolean>
+  withTransaction: <T>(user: string, fn: (tx: Queryable) => Promise<T>) => Promise<T>
+  /** True only for the one transaction that set the flag. */
+  claimSeeding: (tx: Queryable) => Promise<boolean>
+  insertDeductionRule: (tx: Queryable, rule: AddDeductionRuleBody) => Promise<unknown>
   reportFailure: (user: string, error: unknown) => void
 }
 
 export const defaultRunCategoryRuleDeps: RunCategoryRuleDeps = {
-  claimSeeding: (user) => claimSettingsFlag(user, 'run_category_rules_seeded'),
-  insertDeductionRule,
+  claimSeeding: (tx) => claimSettingsFlagIn(tx, 'run_category_rules_seeded'),
+  insertDeductionRule: (tx, rule) => insertDeductionRule(tx, rule),
+  isRunningType: async (user, activityType) =>
+    (await expandActivityTypes(user, ['running'])).includes(activityType),
   reportFailure: (user, error) => {
     auditError(user, 'deduction', 'Could not create the default run-category rules', {
       error: error instanceof Error ? error.message : String(error),
     })
   },
+  withTransaction: (user, fn) => withUserTransaction(user, fn),
 }
 
 /**
- * Creates the default run-category rules once per user. The settings flag is claimed first, so
- * concurrent callers cannot both seed, and a user who deletes a seeded rule never gets it back.
- * A failed insert is reported and not retried: the flag is already set.
+ * Creates the default run-category rules once per user, when an activity of `activityType` (a
+ * run or a descendant of running) got features; without a type it seeds unconditionally. The
+ * settings flag is claimed and the rules inserted in one transaction: concurrent callers cannot
+ * both seed, a failed insert gives the claim back, and a user who deletes a seeded rule never
+ * gets it back.
  */
 export const ensureDefaultRunCategoryRules = async (
   user: string,
+  activityType?: string,
   deps: RunCategoryRuleDeps = defaultRunCategoryRuleDeps,
 ): Promise<{ seeded: number }> => {
-  if (!(await deps.claimSeeding(user))) return { seeded: 0 }
-  let seeded = 0
+  if (activityType !== undefined && !(await deps.isRunningType(user, activityType))) return { seeded: 0 }
   try {
-    for (const rule of defaultRunCategoryRules) {
-      await deps.insertDeductionRule(user, rule)
-      seeded++
-    }
+    const seeded = await deps.withTransaction(user, async (tx) => {
+      if (!(await deps.claimSeeding(tx))) return 0
+      for (const rule of defaultRunCategoryRules) await deps.insertDeductionRule(tx, rule)
+      return defaultRunCategoryRules.length
+    })
+    return { seeded }
   } catch (error) {
     deps.reportFailure(user, error)
+    return { seeded: 0 }
   }
-  return { seeded }
 }

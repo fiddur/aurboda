@@ -24,6 +24,7 @@ import {
   insertDeductionRule,
   updateDeductionRule,
 } from '../db/index.ts'
+import { removeCategoriesOfNonCategorisingRule } from '../services/deduction-category.ts'
 import { evaluateAllRules } from '../services/deduction-engine.ts'
 import { mergeRuleUpdate, validateRuleShape } from '../services/media-plays.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
@@ -168,6 +169,7 @@ export const createDeductionRulesRouter = (
       if (!updated) {
         return res.status(404).json({ error: 'Deduction rule not found', success: false })
       }
+      await removeCategoriesOfNonCategorisingRule(user, updated)
 
       // Queue async re-evaluation over full history
       if (updated.enabled && deductionQueue) {

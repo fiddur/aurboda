@@ -16,6 +16,7 @@ vi.mock('../db/index.ts', () => ({
   getDeductionRules: vi.fn(),
   getEnabledDeductionRules: vi.fn(),
   insertDeductionRule: vi.fn(),
+  removeRuleCategoryEntries: vi.fn().mockResolvedValue(0),
   updateDeductionRule: vi.fn(),
 }))
 
@@ -182,5 +183,26 @@ describe('deduction-rules output_category', () => {
     const res = await supertest(buildApp()).patch(`/${RULE_ID}`).send({ output_category: null })
     expect(res.status).toBe(200)
     expect(vi.mocked(db.updateDeductionRule).mock.calls[0]?.[2]).toEqual({ output_category: null })
+  })
+})
+
+describe('PATCH /deduction-rules/:id run-category cleanup', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(db.activityTypeExists).mockResolvedValue(true)
+  })
+
+  test('clearing the category removes the rule entries', async () => {
+    vi.mocked(db.getDeductionRule).mockResolvedValue(rule({ output_category: 'low_hr' }))
+    vi.mocked(db.updateDeductionRule).mockResolvedValue(rule())
+    await supertest(buildApp()).patch(`/${RULE_ID}`).send({ output_category: null })
+    expect(db.removeRuleCategoryEntries).toHaveBeenCalledExactlyOnceWith('tester', RULE_ID)
+  })
+
+  test('an edit that keeps the category keeps the entries', async () => {
+    vi.mocked(db.getDeductionRule).mockResolvedValue(rule({ output_category: 'low_hr' }))
+    vi.mocked(db.updateDeductionRule).mockResolvedValue(rule({ name: 'x', output_category: 'low_hr' }))
+    await supertest(buildApp()).patch(`/${RULE_ID}`).send({ name: 'x' })
+    expect(db.removeRuleCategoryEntries).not.toHaveBeenCalled()
   })
 })

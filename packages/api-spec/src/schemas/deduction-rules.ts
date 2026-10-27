@@ -1,7 +1,11 @@
 /** Rules that automatically create activities from data conditions. */
 import { z } from 'zod'
 
-import { activityFeatureNameSchema, activityFeatureOperatorSchema } from './activity-features.ts'
+import {
+  activityFeatureNameSchema,
+  activityFeatureOperatorSchema,
+  runCategoryNameSchema,
+} from './activity-features.ts'
 import {
   activityTypeSchema,
   baseResponseSchema,
@@ -185,10 +189,7 @@ const outputTitleFieldDescription =
 const outputCategoryDescription =
   "Enrich mode only: add this category to data.run_categories of each matched activity of output_activity_type (with the feature conditions as reasons), and remove it again from activities the rule no longer matches; a category listed in the activity's run_categories_excluded is never added."
 
-const outputCategorySchema = z
-  .string()
-  .regex(/^[a-z][a-z0-9_]*$/)
-  .meta({ description: outputCategoryDescription })
+const outputCategorySchema = runCategoryNameSchema.meta({ description: outputCategoryDescription })
 
 const outputTitleFieldSchema = dataFieldNameSchema.meta({ description: outputTitleFieldDescription })
 
@@ -305,9 +306,7 @@ export const updateDeductionRuleBodySchema = z
     mode: deductionRuleModeSchema.optional().meta({ description: 'New mode' }),
     name: z.string().optional().meta({ description: 'New name' }),
     output_activity_type: activityTypeSchema.optional().meta({ description: 'New output activity type' }),
-    output_category: z
-      .string()
-      .regex(/^[a-z][a-z0-9_]*$/)
+    output_category: runCategoryNameSchema
       .nullable()
       .optional()
       .meta({ description: `${outputCategoryDescription} Null to clear.` }),

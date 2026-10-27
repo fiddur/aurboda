@@ -1,4 +1,4 @@
-import type { DeductionRuleMode } from '@aurboda/api-spec'
+import type { DeductionRuleMode, UpdateDeductionRuleBody } from '@aurboda/api-spec'
 
 import axios from 'axios'
 
@@ -27,7 +27,7 @@ export const previewDeductionRule = async (body: {
   output_data?: Record<string, unknown>
   output_media_field?: OutputMediaField
   output_title_field?: string
-  output_category?: string
+  output_category?: DeductionRule['output_category']
 }): Promise<{ would_affect: number; sample_days: number }> => {
   const { token } = auth.value
   const response = await axios.post<{ success: boolean; would_affect: number; sample_days: number }>(
@@ -50,7 +50,7 @@ export const createDeductionRule = async (body: {
   output_data?: Record<string, unknown>
   output_media_field?: OutputMediaField
   output_title_field?: string
-  output_category?: string
+  output_category?: DeductionRule['output_category']
 }): Promise<DeductionRule> => {
   const { token } = auth.value
   const response = await axios.post<{ success: boolean; data: DeductionRule }>(
@@ -75,7 +75,7 @@ export const updateDeductionRule = async (
     output_data: Record<string, unknown> | null
     output_media_field: OutputMediaField | null
     output_title_field: string | null
-    output_category: string | null
+    output_category: UpdateDeductionRuleBody['output_category']
   }>,
 ): Promise<DeductionRule> => {
   const { token } = auth.value
