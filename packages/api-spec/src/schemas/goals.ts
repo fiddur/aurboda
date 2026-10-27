@@ -326,7 +326,9 @@ export type GoalDayStatus = z.infer<typeof goalDayStatusSchema>
 export const goalHistoryDaySchema = z
   .object({
     contribution: z.number().optional().meta({ description: "The day's own sum (metric goals only)" }),
-    date: z.string().meta({ description: 'Day in YYYY-MM-DD (UTC)' }),
+    date: z
+      .string()
+      .meta({ description: "Day in YYYY-MM-DD, in the user's device timezone (UTC when unset)" }),
     partial: z.boolean().meta({ description: 'True for today: the day is not over' }),
     status: goalDayStatusSchema,
     value: z.number().meta({ description: 'Goal value at the end of the day (rolling window sum or EMA)' }),
@@ -345,7 +347,9 @@ const dayCountsShape = {
 export const goalHistoryMonthSchema = z
   .object({
     ...dayCountsShape,
-    month: z.string().meta({ description: 'Month in YYYY-MM (UTC)' }),
+    month: z
+      .string()
+      .meta({ description: "Month in YYYY-MM, in the user's device timezone (UTC when unset)" }),
     partial: z.boolean().meta({ description: 'True for the month containing today' }),
   })
   .meta({ description: 'Counts of completed days per status in one month', id: 'GoalHistoryMonth' })

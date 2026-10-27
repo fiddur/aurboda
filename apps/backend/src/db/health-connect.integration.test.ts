@@ -198,6 +198,36 @@ describe('Health Connect Integration Tests', () => {
       )
       expect(result.size).toBe(0)
     })
+
+    test('days and range bounds follow the given timezone', async () => {
+      const user = getTestUser()
+      await insertTimeSeries(user, [
+        {
+          metric: 'steps',
+          source: 'health_connect_aggregate',
+          time: new Date('2024-01-09T23:30:00Z'),
+          value: 100,
+        },
+        {
+          metric: 'steps',
+          source: 'health_connect_aggregate',
+          time: new Date('2024-01-10T23:30:00Z'),
+          value: 200,
+        },
+      ])
+      const start = new Date('2024-01-10T05:00:00Z')
+      const end = new Date('2024-01-11T12:00:00Z')
+
+      expect([...(await getDailyAggregateValues(user, 'steps', start, end)).entries()]).toEqual([
+        ['2024-01-10', 200],
+      ])
+      expect([
+        ...(await getDailyAggregateValues(user, 'steps', start, end, 'Europe/Stockholm')).entries(),
+      ]).toEqual([
+        ['2024-01-10', 100],
+        ['2024-01-11', 200],
+      ])
+    })
   })
 
   describe('deleteHealthConnectRecords', () => {

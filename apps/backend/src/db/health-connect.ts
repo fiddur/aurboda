@@ -55,6 +55,7 @@ const adoptForIdentity = async (
   ])
 }
 
+import { dayEndInTz, dayKey, dayStartInTz } from '../services/day-keys.ts'
 import {
   resolveHealthConnectIdentity,
   type SourceArrival,
@@ -644,7 +645,7 @@ export const getDailyAggregateValue = async (
 }
 
 /**
- * `getDailyAggregateValue` for every UTC day from `start`'s day through `end`'s day, in one query.
+ * `getDailyAggregateValue` for every day in `tz` from `start`'s day through `end`'s day, in one query.
  * Days without a value are absent. Like the single-day version it keeps each day's `[00:00, 23:59:59.999)`
  * window and does not filter `deleted_at`.
  */
@@ -653,23 +654,22 @@ export const getDailyAggregateValues = async (
   metric: MetricType,
   start: Date,
   end: Date,
+  tz = 'UTC',
 ): Promise<Map<string, number>> => {
-  const rangeStart = new Date(start)
-  rangeStart.setUTCHours(0, 0, 0, 0)
-  const rangeEnd = new Date(end)
-  rangeEnd.setUTCHours(23, 59, 59, 999)
+  const rangeStart = dayStartInTz(dayKey(start, tz), tz)
+  const rangeEnd = dayEndInTz(dayKey(end, tz), tz)
 
   const result = await query(
     user,
-    `SELECT date_trunc('day', time, 'UTC') AS day, MAX(value) AS value
+    `SELECT date_trunc('day', time, $5::text) AS day, MAX(value) AS value
        FROM time_series
       WHERE metric = $1 AND source = ANY($4)
         AND time >= $2 AND time < $3
-        AND time < date_trunc('day', time, 'UTC') + interval '23:59:59.999'
+        AND time < date_trunc('day', time, $5::text) + interval '23:59:59.999'
       GROUP BY 1
       ORDER BY 1`,
-    [metric, rangeStart, rangeEnd, cumulativeSources],
+    [metric, rangeStart, rangeEnd, cumulativeSources, tz],
   )
 
-  return new Map(result.rows.map((row) => [(row.day as Date).toISOString().slice(0, 10), Number(row.value)]))
+  return new Map(result.rows.map((row) => [dayKey(row.day as Date, tz), Number(row.value)]))
 }

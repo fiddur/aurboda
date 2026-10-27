@@ -5,15 +5,14 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { MergedActivity } from '../db/types.ts'
 
 import * as db from '../db/index.ts'
+import { dayKey, dayKeysEndingAt } from './day-keys.ts'
 import {
-  dayKeysEndingAt,
   foldMonths,
   getGoalHistory,
   goalStatus,
   rollingMaxSeries,
   rollingSeries,
   summarize,
-  utcDayKey,
   windowDays,
 } from './goal-history.ts'
 import * as measureSeries from './queries/activity-measure-series.ts'
@@ -30,6 +29,7 @@ vi.mock('../db', () => ({
 vi.mock('./settings', () => ({
   getEffectiveGoals: vi.fn(),
   getEffectiveHrZones: vi.fn(),
+  getUserTimezone: vi.fn(async () => 'UTC'),
 }))
 
 vi.mock('./queries/activity-measure-series', async (importOriginal) => ({
@@ -67,13 +67,13 @@ describe('windowDays', () => {
   })
 })
 
-describe('utcDayKey and dayKeysEndingAt', () => {
+describe('dayKey and dayKeysEndingAt in UTC', () => {
   test('keys are UTC days', () => {
-    expect(utcDayKey(new Date('2026-02-02T23:30:00-02:00'))).toBe('2026-02-03')
+    expect(dayKey(new Date('2026-02-02T23:30:00-02:00'), 'UTC')).toBe('2026-02-03')
   })
 
   test('consecutive keys ending with today, across a month edge', () => {
-    expect(dayKeysEndingAt(new Date('2026-03-02T12:00:00Z'), 4)).toEqual([
+    expect(dayKeysEndingAt(new Date('2026-03-02T12:00:00Z'), 4, 'UTC')).toEqual([
       '2026-02-27',
       '2026-02-28',
       '2026-03-01',
@@ -281,6 +281,7 @@ describe('getGoalHistory', () => {
       'steps',
       new Date('2026-02-01T00:00:00Z'),
       new Date('2026-02-02T12:00:00Z'),
+      'UTC',
     )
     expect(db.getDailyAggregates).not.toHaveBeenCalled()
     expect(result?.days).toEqual([
@@ -304,6 +305,7 @@ describe('getGoalHistory', () => {
       'steps',
       new Date('2026-02-01T00:00:00Z'),
       new Date('2026-02-02T12:00:00Z'),
+      'UTC',
     )
     expect(db.getDailyAggregates).not.toHaveBeenCalled()
     expect(result?.days?.map((d) => d.value)).toEqual([11000, 0])
@@ -449,6 +451,79 @@ describe('getGoalHistory', () => {
         ['2026-01-31', 0, 5000, 'met'],
         ['2026-02-01', 1000, 1000, 'below'],
         ['2026-02-02', 500, 1500, 'below'],
+      ])
+    })
+  })
+
+  describe("in the user's device timezone", () => {
+    beforeEach(() => {
+      vi.mocked(settings.getUserTimezone).mockResolvedValue('Pacific/Auckland')
+    })
+
+    afterEach(() => {
+      vi.mocked(settings.getUserTimezone).mockResolvedValue('UTC')
+    })
+
+    test('hr zone goal: buckets are local days and today is the local today', async () => {
+      vi.mocked(settings.getEffectiveGoals).mockResolvedValue([
+        { goal_type: 'metric', id: 'g1', metric: 'hr_zone_2_sec', min: 100, window: '2d' },
+      ])
+      vi.mocked(settings.getEffectiveHrZones).mockResolvedValue({
+        source: 'default',
+        zones: { 1: 90, 2: 108, 3: 126, 4: 144, 5: 162 },
+      })
+      const secs = (z2: number) => ({ 0: 0, 1: 0, 2: z2, 3: 0, 4: 0, 5: 0 })
+      vi.mocked(db.getHrZoneSecs).mockResolvedValue([
+        { bucket_start: new Date('2026-02-01T11:00:00Z'), sample_count: 1, secs: secs(120) },
+      ])
+
+      const result = await getGoalHistory('u', 'g1', { bucket: 'day', lookback_days: 2 })
+
+      expect(db.getHrZoneSecs).toHaveBeenCalledWith(
+        'u',
+        new Date('2026-01-30T11:00:00Z'),
+        new Date('2026-02-02T12:00:00Z'),
+        { 1: 90, 2: 108, 3: 126, 4: 144, 5: 162 },
+        '1d',
+        'Pacific/Auckland',
+      )
+      expect(result?.days?.map((d) => [d.date, d.contribution, d.value, d.partial])).toEqual([
+        ['2026-02-01', 0, 0, false],
+        ['2026-02-02', 120, 120, false],
+        ['2026-02-03', 0, 120, true],
+      ])
+    })
+
+    test('measure goal: a session is keyed by its local day', async () => {
+      vi.mocked(settings.getEffectiveGoals).mockResolvedValue([
+        {
+          activity_type: 'strength_training',
+          aggregation: 'sum',
+          goal_type: 'measure',
+          id: 'g-volume',
+          measure: 'volume',
+          min: 1,
+          window: '1d',
+        },
+      ])
+      vi.mocked(measureSeries.queryMeasuredActivities).mockResolvedValue([
+        {
+          activity: {
+            activity_type: 'strength_training',
+            id: 'a',
+            source: 'gravl',
+            start_time: new Date('2026-02-02T11:30:00Z'),
+          } as MergedActivity,
+          id: 'a',
+          measures: { volume: 700 },
+        },
+      ])
+
+      const result = await getGoalHistory('u', 'g-volume', { bucket: 'day', lookback_days: 1 })
+
+      expect(result?.days?.map((d) => [d.date, d.contribution, d.partial])).toEqual([
+        ['2026-02-02', 0, false],
+        ['2026-02-03', 700, true],
       ])
     })
   })
