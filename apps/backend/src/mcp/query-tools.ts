@@ -219,7 +219,7 @@ Use cases:
 
 Pass group_by (a data field, typically one marked is_categorical, e.g. session_name) to also get one group per value — count, last done, duration range, median avg HR, max HR, summed zone seconds and the pooled HR distribution — for comparing or choosing sessions by length and exertion. filter_field + filter_value narrow to one value ("(none)" for sessions without one). Omit start for all time.
 
-group_by and filter_field also take an item path into a list field, such as sets.exercise: group_by then gives one group per item value (a session in each group it has an item for) with the members' measures for that value combined (volume, e1rm, max_weight, set_count, max_time), and filter_field keeps the sessions with an item of that value, each carrying those items, their measures and the records it set against every earlier session with the value.`,
+group_by and filter_field also take an item path into a list field, such as sets.exercise: group_by then gives one group per item value (a session in each group it has an item for) with the members' measures for that value combined (volume, e1rm, max_weight, set_count, max_time, total_reps, max_reps), and filter_field keeps the sessions with an item of that value, each carrying those items, their measures and the records it set against every earlier session with the value.`,
     { activity_type: activityTypeSchema, ...activitySessionsQuerySchema.shape, tz: tzSchema },
     async ({ activity_type, tz, ...query }) => {
       if ((query.filter_field === undefined) !== (query.filter_value === undefined)) {
@@ -253,7 +253,7 @@ group_by and filter_field also take an item path into a list field, such as sets
 
   server.tool(
     'get_activity_item_history',
-    'For one activity (plain or merged: id), its list items grouped by an item value such as the exercise of each set (field=sets.exercise): per value the items, their measures (volume, e1rm, max_weight, set_count, max_time), which of those are records against every earlier session with that value, and the previous session with it. Totals over the whole session.',
+    'For one activity (plain or merged: id), its list items grouped by an item value such as the exercise of each set (field=sets.exercise): per value the items, their measures (volume, e1rm, max_weight, set_count, max_time, total_reps, max_reps), which of those are records against every earlier session with that value, and the previous session with it. Totals over the whole session.',
     { id: z.string().describe('Activity ID'), ...activityItemHistoryQuerySchema.shape, tz: tzSchema },
     async ({ id, field, tz }) => {
       const history = await queryActivityItemHistory(user, id, field)

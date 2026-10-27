@@ -14,8 +14,9 @@
 
 import { z } from 'zod'
 
+import { activityMeasureSchema } from './activity-measures.ts'
 import { chartDataBucketSchema } from './chart-data.ts'
-import { baseResponseSchema } from './common.ts'
+import { baseResponseSchema, dataFieldPathSchema } from './common.ts'
 import { shareVisibilitySchema } from './visibility.ts'
 
 /** What a challenge measures. v1: one built-in metric or activity type, summed. */
@@ -27,8 +28,8 @@ export const challengeSourceTypeSchema = z.enum(['metric', 'activity_type']).met
 export type ChallengeSourceType = z.infer<typeof challengeSourceTypeSchema>
 
 /** Aggregation across the period. v1: sum (e.g. total steps, total hours) or count. */
-export const challengeAggregationSchema = z.enum(['sum', 'count']).meta({
-  description: 'How values are aggregated: sum (totals/hours) or count (sessions)',
+export const challengeAggregationSchema = z.enum(['sum', 'count', 'max']).meta({
+  description: "How a member's buckets are scored: sum or count of them, or (with a measure) the best bucket",
   id: 'ChallengeAggregation',
 })
 
@@ -73,12 +74,39 @@ export const challengeSpecSchema = z
       .meta({ description: 'Reserved for future use; v1 measurement is driven entirely by `pattern`' }),
     aggregation: challengeAggregationSchema,
     bucket_size: challengeBucketSizeSchema.default('auto'),
+    filter_field: dataFieldPathSchema.optional().meta({
+      description: 'With measure: an item path (sets.exercise) whose items are measured',
+    }),
+    filter_value: z.string().min(1).optional().meta({
+      description:
+        'With filter_field: the item value to keep (compared trimmed, case-insensitively), e.g. Push-ups',
+    }),
+    measure: activityMeasureSchema.optional().meta({
+      description:
+        "For an activity_type source with list items (strength sets): score this measure of each session instead of its duration — e.g. total_reps summed for most push-ups in a month, max_reps with aggregation max for the most push-ups in one set. A member's instance must know the measure to join.",
+    }),
     pattern: z
       .string()
       .min(1)
       .meta({ description: 'Metric name, or activity-type name/regex — what is measured' }),
     source_type: challengeSourceTypeSchema,
-    unit: z.string().min(1).meta({ description: 'Display unit (e.g. "steps", "hours")' }),
+    unit: z.string().min(1).meta({ description: 'Display unit (e.g. "steps", "hours", "reps")' }),
+  })
+  .refine((spec) => spec.measure === undefined || spec.source_type === 'activity_type', {
+    message: 'measure applies to activity_type sources only',
+    path: ['measure'],
+  })
+  .refine((spec) => spec.measure !== undefined || spec.aggregation !== 'max', {
+    message: 'aggregation max needs a measure',
+    path: ['aggregation'],
+  })
+  .refine((spec) => (spec.filter_field === undefined) === (spec.filter_value === undefined), {
+    message: 'filter_field and filter_value must be given together',
+    path: ['filter_value'],
+  })
+  .refine((spec) => spec.filter_field === undefined || spec.measure !== undefined, {
+    message: 'a filter needs a measure',
+    path: ['filter_field'],
   })
   .meta({ id: 'ChallengeSpec' })
 
@@ -191,7 +219,9 @@ export const challengeStandingSchema = z
     last_updated: z.string().nullable().meta({ description: lastUpdatedDescription }),
     stale: z.boolean().meta({ description: 'True if the latest fetch failed (showing last-known data)' }),
     status: z.enum(['active', 'withdrawn']),
-    total: z.number().meta({ description: 'Cumulative total over the window' }),
+    total: z.number().meta({
+      description: 'The score over the window: the cumulative total, or the best bucket for a max challenge',
+    }),
   })
   .meta({ id: 'ChallengeStanding' })
 
@@ -300,10 +330,24 @@ export type PublicChallengeResponse = z.infer<typeof publicChallengeResponseSche
 
 export const challengeDataResponseSchema = baseResponseSchema
   .extend({
+    aggregation: challengeAggregationSchema.optional().meta({
+      description: 'How this instance scored the series; echoed so the host can verify both sides agree',
+    }),
     buckets: z.array(chartDataBucketSchema).optional(),
     display_name: z.string().optional(),
+    filter_field: dataFieldPathSchema
+      .optional()
+      .meta({ description: 'The item filter this instance applied' }),
+    filter_value: z.string().optional(),
     last_updated: z.string().nullable().optional().meta({ description: lastUpdatedDescription }),
-    total: z.number().optional(),
+    measure: activityMeasureSchema.optional().meta({
+      description:
+        "The measure this instance scored; a host refuses a member whose instance does not echo the challenge's measure, so an instance too old to know it cannot report hours as reps",
+    }),
+    total: z
+      .number()
+      .optional()
+      .meta({ description: 'The score: the buckets summed or counted, or the best bucket for max' }),
     unit: z.string().optional(),
   })
   .meta({ id: 'ChallengeDataResponse' })

@@ -26,6 +26,7 @@ import {
   updateChallengeMemberCache,
   upsertChallengeMember,
 } from './challenges.ts'
+import { query } from './connection.ts'
 import { createSharedDashboard } from './shared-dashboards.ts'
 
 const CONTAINER_TIMEOUT = 120_000
@@ -34,6 +35,9 @@ const spec: ChallengeSpecFields = {
   activity_type_id: null,
   aggregation: 'sum',
   bucket_size: '1d',
+  filter_field: null,
+  filter_value: null,
+  measure: null,
   pattern: 'steps',
   source_type: 'metric',
   unit: 'steps',
@@ -303,6 +307,62 @@ describe('Challenges integration', () => {
     expect(byToken?.id).toBe(p.id)
     expect(byToken?.spec).toEqual(spec)
     expect(await getParticipationByToken(user, 'missing')).toBeNull()
+  })
+
+  test('a measure spec (filter + max) round-trips on a challenge and a participation', async () => {
+    const user = getTestUser()
+    const pushUps: ChallengeSpecFields = {
+      ...spec,
+      aggregation: 'max',
+      filter_field: 'sets.exercise',
+      filter_value: 'Push-ups',
+      measure: 'max_reps',
+      pattern: 'strength',
+      source_type: 'activity_type',
+      unit: 'reps',
+    }
+    const c = await createChallenge(user, { ...sampleInput('Most push-ups in a set'), spec: pushUps })
+    expect(c.spec).toEqual(pushUps)
+    expect((await getChallengeById(user, c.id))?.spec).toEqual(pushUps)
+
+    const total: ChallengeSpecFields = { ...pushUps, aggregation: 'sum', measure: 'total_reps' }
+    expect((await updateChallenge(user, c.id, { spec: total }))?.spec).toEqual(total)
+    expect((await updateChallenge(user, c.id, { spec }))?.spec).toEqual(spec)
+
+    const p = await createChallengeParticipation(user, {
+      challenge_url: 'https://aurboda.net/u/alice/pushups',
+      end_ts: new Date('2026-06-08T00:00:00Z'),
+      host_identity: 'https://aurboda.net/u/alice',
+      name: 'Most push-ups in a set',
+      spec: pushUps,
+      start_ts: new Date('2026-06-01T00:00:00Z'),
+      timezone: 'Europe/Stockholm',
+    })
+    expect(p.spec).toEqual(pushUps)
+    expect((await getParticipationByToken(user, p.data_token))?.spec).toEqual(pushUps)
+  })
+
+  test('a spec stored without the measure columns reads back with nulls', async () => {
+    const user = getTestUser()
+    const inserted = await query<{ id: string }>(
+      user,
+      `INSERT INTO challenges (slug, name, source_type, pattern, aggregation, unit, start_ts, end_ts, timezone, join_token)
+       VALUES ('oldstyle', 'Old', 'metric', 'steps', 'sum', 'steps', NOW(), NOW() + INTERVAL '1 day', 'UTC', 'tok')
+       RETURNING id`,
+    )
+    const c = await getChallengeById(user, inserted.rows[0].id)
+    expect(c?.spec).toMatchObject({ filter_field: null, filter_value: null, measure: null })
+
+    await query(
+      user,
+      `INSERT INTO challenge_participations (challenge_url, host_identity, name, source_type, pattern, aggregation, unit, start_ts, end_ts, timezone, data_token)
+       VALUES ('https://x.test/u/a/old', 'https://x.test/u/a', 'Old', 'metric', 'steps', 'sum', 'steps', NOW(), NOW() + INTERVAL '1 day', 'UTC', 'oldtoken')`,
+    )
+    expect((await getParticipationByToken(user, 'oldtoken'))?.spec).toMatchObject({
+      filter_field: null,
+      filter_value: null,
+      measure: null,
+    })
   })
 
   test('announce_winner is stored, patchable, and drives the pending-result list', async () => {

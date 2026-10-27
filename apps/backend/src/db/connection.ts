@@ -1229,6 +1229,16 @@ export const migrateSchema = async (user: string, opts?: { force?: boolean }): P
     await query(db, `ALTER TABLE challenge_members ADD COLUMN IF NOT EXISTS data_last_updated TIMESTAMPTZ`)
   }
 
+  // A challenge (and the joiner's copy of its spec) can score a measure of an activity's
+  // list items, optionally over one item value (#1321).
+  for (const table of ['challenges', 'challenge_participations']) {
+    if (existingTableNames.has(table)) {
+      await query(db, `ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS measure VARCHAR(20)`)
+      await query(db, `ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS filter_field VARCHAR(100)`)
+      await query(db, `ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS filter_value TEXT`)
+    }
+  }
+
   if (existingTableNames.has('deduction_rules')) {
     await query(
       db,

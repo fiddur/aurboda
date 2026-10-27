@@ -1,14 +1,37 @@
 /**
  * Unit tests for the public-shares-router security helpers — the username
  * gate (which selects the per-user database) and the config sanitizer (which
- * neutralizes quick-link hrefs before exposing a config to anonymous viewers).
+ * neutralizes quick-link hrefs before exposing a config to anonymous viewers) —
+ * and the challenge register-back checks.
  */
 import type { DashboardConfig } from '@aurboda/api-spec'
 
-import { describe, expect, test } from 'vitest'
+import express from 'express'
+import supertest from 'supertest'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
+
+import type * as DbModule from '../db/index.ts'
+import type { ChallengeRecord, ChallengeSpecFields } from '../db/index.ts'
+import type * as FederationModule from '../services/challenge-federation.ts'
 
 import { isValidUsername } from '../api/auth-routes.ts'
-import { sanitizeConfig } from './public-shares-router.ts'
+
+vi.mock('../db/index.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof DbModule>()),
+  getChallengeBySlug: vi.fn(),
+  getChallengeMemberByIdentity: vi.fn(),
+  listChallengeMembers: vi.fn(),
+  upsertChallengeMember: vi.fn(),
+}))
+
+vi.mock('../services/challenge-federation.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof FederationModule>()),
+  fetchMemberData: vi.fn(),
+}))
+
+const db = await import('../db/index.ts')
+const federation = await import('../services/challenge-federation.ts')
+const { createPublicSharesRouter, sanitizeConfig } = await import('./public-shares-router.ts')
 
 describe('isValidUsername (public DB-selecting gate)', () => {
   test('accepts valid usernames', () => {
@@ -80,5 +103,94 @@ describe('sanitizeConfig', () => {
     const sanitized = sanitizeConfig(config)
     expect(sanitized.description).toBe('Two years of training.')
     expect(sanitized.sections[0].description).toBe('Recovery metrics.')
+  })
+})
+
+describe('POST /public/:username/:slug/members (register-back)', () => {
+  const hoursSpec: ChallengeSpecFields = {
+    activity_type_id: null,
+    aggregation: 'sum',
+    bucket_size: '1w',
+    filter_field: null,
+    filter_value: null,
+    measure: null,
+    pattern: 'strength_training',
+    source_type: 'activity_type',
+    unit: 'hours',
+  }
+  const bestSetSpec: ChallengeSpecFields = {
+    ...hoursSpec,
+    aggregation: 'max',
+    filter_field: 'sets.exercise',
+    filter_value: 'Push-ups',
+    measure: 'max_reps',
+    unit: 'reps',
+  }
+  const challenge = (spec: ChallengeSpecFields): ChallengeRecord => ({
+    announce_winner: true,
+    banner_updated_at: null,
+    created_at: new Date('2026-06-01T00:00:00Z'),
+    end_ts: new Date('2026-07-01T00:00:00Z'),
+    id: 'c1',
+    is_public: true,
+    join_token: 'jt',
+    name: 'Push-ups',
+    result_published_at: null,
+    slug: 'abc',
+    spec,
+    start_ts: new Date('2026-06-01T00:00:00Z'),
+    timezone: 'UTC',
+    updated_at: new Date('2026-06-01T00:00:00Z'),
+  })
+  const body = {
+    data_endpoint_url: 'https://peer.example/api/challenge-data/bob/tok',
+    display_name: 'bob',
+    identity_base_url: 'https://peer.example/u/bob',
+    join_token: 'jt',
+  }
+  const register = () => {
+    const app = express()
+    app.use(express.json())
+    app.use(createPublicSharesRouter('https://aurboda.net') as unknown as express.RequestHandler)
+    return supertest(app).post('/public/alice/abc/members').send(body)
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(db.getChallengeMemberByIdentity).mockResolvedValue(null)
+    vi.mocked(db.listChallengeMembers).mockResolvedValue([])
+  })
+
+  test('a measure challenge accepts a member whose instance echoes the same scoring', async () => {
+    vi.mocked(db.getChallengeBySlug).mockResolvedValue(challenge(bestSetSpec))
+    vi.mocked(federation.fetchMemberData).mockResolvedValue({
+      aggregation: 'max',
+      buckets: [],
+      filter_field: 'sets.exercise',
+      filter_value: 'push-ups',
+      measure: 'max_reps',
+      success: true,
+      total: 0,
+    })
+    const res = await register()
+    expect(res.status).toBe(200)
+    expect(db.upsertChallengeMember).toHaveBeenCalledOnce()
+  })
+
+  test('refuses with 409 a member whose instance does not echo the measure', async () => {
+    vi.mocked(db.getChallengeBySlug).mockResolvedValue(challenge(bestSetSpec))
+    vi.mocked(federation.fetchMemberData).mockResolvedValue({ buckets: [], success: true, total: 2.5 })
+    const res = await register()
+    expect(res.status).toBe(409)
+    expect(res.body.error).toBe(
+      "Your instance does not support this challenge's measure (max_reps); update Aurboda to join",
+    )
+    expect(db.upsertChallengeMember).not.toHaveBeenCalled()
+  })
+
+  test('a challenge without a measure accepts an instance that echoes nothing', async () => {
+    vi.mocked(db.getChallengeBySlug).mockResolvedValue(challenge(hoursSpec))
+    vi.mocked(federation.fetchMemberData).mockResolvedValue({ buckets: [], success: true, total: 2.5 })
+    expect((await register()).status).toBe(200)
   })
 })

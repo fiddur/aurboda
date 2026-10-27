@@ -1,6 +1,4 @@
 /** Mirrors the REST `/challenges` capability. */
-import type { ChallengeSpec } from '@aurboda/api-spec'
-
 import {
   createChallengeBodySchema,
   joinChallengeBodySchema,
@@ -8,7 +6,7 @@ import {
 } from '@aurboda/api-spec'
 import { z } from 'zod'
 
-import type { ChallengeRecord, ChallengeSpecFields } from '../db/index.ts'
+import type { ChallengeRecord } from '../db/index.ts'
 import type { DiscoverChallenges } from '../services/challenge-discovery.ts'
 
 import {
@@ -22,19 +20,10 @@ import {
 import { bannerUrlFor } from '../services/challenge-banner.ts'
 import { joinChallenge } from '../services/challenge-federation.ts'
 import { announcementPending } from '../services/challenge-results.ts'
-import { specToApi } from '../services/challenge-spec.ts'
+import { specToApi, toSpecFields } from '../services/challenge-spec.ts'
 import { buildProfileUrl, buildShareUrl } from '../services/share-urls.ts'
 import { isPublicToVisibility, visibilityToIsPublic } from '../services/visibility.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
-
-const toSpecFields = (spec: ChallengeSpec): ChallengeSpecFields => ({
-  activity_type_id: spec.activity_type_id ?? null,
-  aggregation: spec.aggregation,
-  bucket_size: spec.bucket_size,
-  pattern: spec.pattern,
-  source_type: spec.source_type,
-  unit: spec.unit,
-})
 
 const serialize = (record: ChallengeRecord, webHost: string | undefined, user: string) => ({
   announce_winner: record.announce_winner,
@@ -70,7 +59,7 @@ export const registerChallengeTools = (
 
   server.tool(
     'create_challenge',
-    'Create a challenge you host. You are automatically a member. Times are ISO 8601 instants; pick start_ts at the first day midnight and end_ts at the midnight after the last day (in the given timezone).',
+    'Create a challenge you host. You are automatically a member. Times are ISO 8601 instants; pick start_ts at the first day midnight and end_ts at the midnight after the last day (in the given timezone). For an activity type with list items (strength sets), spec.measure scores a measure of each session instead of its duration, and filter_field/filter_value take it over one exercise: most push-ups in a month is measure total_reps with aggregation sum, the most push-ups in one set is measure max_reps with aggregation max (the best bucket wins), both with filter_field sets.exercise and filter_value Push-ups.',
     { ...createChallengeBodySchema.shape },
     async (params) => {
       const record = await createChallenge(user, {

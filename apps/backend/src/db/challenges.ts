@@ -1,4 +1,9 @@
-import type { ChallengeAggregation, ChallengeSourceType, ChartDataBucket } from '@aurboda/api-spec'
+import type {
+  ActivityMeasure,
+  ChallengeAggregation,
+  ChallengeSourceType,
+  ChartDataBucket,
+} from '@aurboda/api-spec'
 
 import { randomBytes } from 'node:crypto'
 
@@ -22,6 +27,9 @@ export interface ChallengeSpecFields {
   aggregation: ChallengeAggregation
   unit: string
   bucket_size: ChallengeBucketSize
+  measure: ActivityMeasure | null
+  filter_field: string | null
+  filter_value: string | null
 }
 
 export interface ChallengeRecord {
@@ -115,7 +123,7 @@ export interface ChallengeParticipationInput {
 }
 
 const CHALLENGE_COLUMNS =
-  'id, slug, name, is_public, source_type, pattern, activity_type_id, aggregation, unit, bucket_size, start_ts, end_ts, timezone, join_token, announce_winner, result_published_at, created_at, updated_at'
+  'id, slug, name, is_public, source_type, pattern, activity_type_id, aggregation, unit, bucket_size, measure, filter_field, filter_value, start_ts, end_ts, timezone, join_token, announce_winner, result_published_at, created_at, updated_at'
 
 const CHALLENGE_SELECT_COLUMNS = `${CHALLENGE_COLUMNS}, (SELECT b.updated_at FROM challenge_banner b WHERE b.challenge_id = challenges.id) AS banner_updated_at`
 
@@ -123,7 +131,7 @@ const MEMBER_COLUMNS =
   'id, challenge_id, identity_base_url, display_name, kind, local_user, data_endpoint_url, status, joined_at, last_fetched_at, data_last_updated, cached_total, cached_buckets, last_error'
 
 const PARTICIPATION_COLUMNS =
-  'id, challenge_url, host_identity, name, source_type, pattern, activity_type_id, aggregation, unit, bucket_size, start_ts, end_ts, timezone, data_token, status, created_at'
+  'id, challenge_url, host_identity, name, source_type, pattern, activity_type_id, aggregation, unit, bucket_size, measure, filter_field, filter_value, start_ts, end_ts, timezone, data_token, status, created_at'
 
 interface ChallengeRow {
   id: string
@@ -136,6 +144,9 @@ interface ChallengeRow {
   aggregation: ChallengeAggregation
   unit: string
   bucket_size: ChallengeBucketSize
+  measure: ActivityMeasure | null
+  filter_field: string | null
+  filter_value: string | null
   start_ts: Date
   end_ts: Date
   timezone: string
@@ -151,6 +162,9 @@ const toSpec = (row: ChallengeRow | ParticipationRow): ChallengeSpecFields => ({
   activity_type_id: row.activity_type_id,
   aggregation: row.aggregation,
   bucket_size: row.bucket_size,
+  filter_field: row.filter_field,
+  filter_value: row.filter_value,
+  measure: row.measure,
   pattern: row.pattern,
   source_type: row.source_type,
   unit: row.unit,
@@ -190,6 +204,9 @@ interface ParticipationRow {
   aggregation: ChallengeAggregation
   unit: string
   bucket_size: ChallengeBucketSize
+  measure: ActivityMeasure | null
+  filter_field: string | null
+  filter_value: string | null
   start_ts: Date
   end_ts: Date
   timezone: string
@@ -266,8 +283,8 @@ export const createChallenge = async (user: string, input: ChallengeInput): Prom
       const result = await query<ChallengeRow>(
         user,
         `INSERT INTO challenges
-           (slug, name, is_public, source_type, pattern, activity_type_id, aggregation, unit, bucket_size, start_ts, end_ts, timezone, join_token, announce_winner)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+           (slug, name, is_public, source_type, pattern, activity_type_id, aggregation, unit, bucket_size, measure, filter_field, filter_value, start_ts, end_ts, timezone, join_token, announce_winner)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
          RETURNING ${CHALLENGE_COLUMNS}`,
         [
           slug,
@@ -279,6 +296,9 @@ export const createChallenge = async (user: string, input: ChallengeInput): Prom
           input.spec.aggregation,
           input.spec.unit,
           input.spec.bucket_size,
+          input.spec.measure,
+          input.spec.filter_field,
+          input.spec.filter_value,
           input.start_ts,
           input.end_ts,
           input.timezone,
@@ -320,6 +340,9 @@ export const updateChallenge = async (
     set('aggregation', patch.spec.aggregation)
     set('unit', patch.spec.unit)
     set('bucket_size', patch.spec.bucket_size)
+    set('measure', patch.spec.measure)
+    set('filter_field', patch.spec.filter_field)
+    set('filter_value', patch.spec.filter_value)
   }
 
   if (sets.length === 0) return getChallengeById(user, id)
@@ -491,8 +514,8 @@ export const createChallengeParticipation = async (
        DELETE FROM challenge_left WHERE challenge_url = $1
      )
      INSERT INTO challenge_participations
-       (challenge_url, host_identity, name, source_type, pattern, activity_type_id, aggregation, unit, bucket_size, start_ts, end_ts, timezone, data_token)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+       (challenge_url, host_identity, name, source_type, pattern, activity_type_id, aggregation, unit, bucket_size, measure, filter_field, filter_value, start_ts, end_ts, timezone, data_token)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
      RETURNING ${PARTICIPATION_COLUMNS}`,
     [
       input.challenge_url,
@@ -504,6 +527,9 @@ export const createChallengeParticipation = async (
       input.spec.aggregation,
       input.spec.unit,
       input.spec.bucket_size,
+      input.spec.measure,
+      input.spec.filter_field,
+      input.spec.filter_value,
       input.start_ts,
       input.end_ts,
       input.timezone,

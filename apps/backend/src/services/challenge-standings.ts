@@ -1,5 +1,5 @@
 /**
- * Build challenge standings: each member's series + cumulative total.
+ * Build challenge standings: each member's series + score.
  *
  * Local members are computed in-process; remote members are pulled from their
  * capability data endpoint with a short TTL cache (persisted on the member row).
@@ -11,7 +11,7 @@ import type { ChallengeRecord } from '../db/index.ts'
 
 import { listChallengeMembers, updateChallengeMemberCache } from '../db/index.ts'
 import { fetchMemberData } from './challenge-federation.ts'
-import { resolveMemberSeries } from './challenge-spec.ts'
+import { resolveMemberSeries, scoreBuckets } from './challenge-spec.ts'
 
 const CACHE_TTL_MS = 5 * 60 * 1000
 
@@ -78,7 +78,7 @@ export const getChallengeStandings = async (
       try {
         const data = await fetchMemberData(member.data_endpoint_url)
         const buckets = data.buckets ?? []
-        const total = data.total ?? buckets.reduce((s, b) => s + b.value, 0)
+        const total = data.total ?? scoreBuckets(buckets, challenge.spec.aggregation)
         // The member reports when *their* data last changed; keep it as-is (null
         // if they have none) rather than stamping our fetch time. Guard against a
         // malformed value so it can't poison the timestamptz cache column.
@@ -110,6 +110,6 @@ export const getChallengeStandings = async (
     }),
   )
 
-  // Highest total first (cumulative leaderboard order).
+  // Highest score first (leaderboard order).
   return standings.sort((a, b) => b.total - a.total)
 }

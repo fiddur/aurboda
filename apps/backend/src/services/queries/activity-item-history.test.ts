@@ -83,14 +83,14 @@ describe('queryActivityItemHistory', () => {
             bench(80, 6),
             { exercise: ' bench press', reps: 4, set_type: 'normal', weight: 82.5 },
           ],
-          measures: { e1rm: 96, max_weight: 82.5, set_count: 2, volume: 810 },
+          measures: { e1rm: 96, max_reps: 6, max_weight: 82.5, set_count: 2, total_reps: 10, volume: 810 },
           previous: {
             id: 'merged:mid',
             items: [bench(75, 5)],
-            measures: { e1rm: 87.5, max_weight: 75, set_count: 1, volume: 375 },
+            measures: { e1rm: 87.5, max_reps: 5, max_weight: 75, set_count: 1, total_reps: 5, volume: 375 },
             start_time: '2026-09-01T17:00:00.000Z',
           },
-          records: ['e1rm'],
+          records: ['e1rm', 'max_reps'],
           value: 'Bench Press',
         },
         {
@@ -106,7 +106,15 @@ describe('queryActivityItemHistory', () => {
           value: 'Plank',
         },
       ],
-      totals: { e1rm: 96, max_time: 50, max_weight: 82.5, set_count: 3, volume: 810 },
+      totals: {
+        e1rm: 96,
+        max_reps: 6,
+        max_time: 50,
+        max_weight: 82.5,
+        set_count: 3,
+        total_reps: 10,
+        volume: 810,
+      },
     })
   })
 
@@ -114,7 +122,7 @@ describe('queryActivityItemHistory', () => {
     vi.mocked(db.getActivities).mockResolvedValue([])
     const history = await queryActivityItemHistory('u', 'cur', 'sets.exercise')
     expect(history!.groups.map((g) => [g.value, g.records, g.previous])).toEqual([
-      ['Bench Press', ['e1rm', 'max_weight'], undefined],
+      ['Bench Press', ['e1rm', 'max_weight', 'max_reps'], undefined],
       ['Plank', ['max_time'], undefined],
     ])
   })

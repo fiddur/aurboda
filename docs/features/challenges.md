@@ -17,6 +17,17 @@ base-URL federation identity, and the bucketed-data engine behind dashboards.
   **challenge's** timezone — the host's choice, copied into each member's
   participation — not each member's own, so every member's days line up. An unknown
   timezone falls back to UTC.
+- **Measure spec:** an `activity_type` spec can instead score a
+  [list-item measure](./activity-types.md#exercises-and-measures) of each session
+  (`spec.measure`), optionally over one item value (`filter_field` = an item path such as
+  `sets.exercise`, `filter_value` = `Push-ups`, compared trimmed and case-insensitively).
+  Each bucket is the measure aggregated over the bucket's sessions by `aggregation`.
+  "Most push-ups in a month" is `total_reps` with `sum` (the score is the summed reps, as
+  for any cumulative challenge); "most push-ups in one set" is `max_reps` with `max`.
+  `max` needs a measure, and scores a member by their **best bucket** rather than the
+  sum, so the race chart plots the running best instead of a running total. A session
+  without the filtered exercise is not data: it adds nothing and does not move
+  `last_updated`.
 - **Members** are identified by their full public base URL
   (`https://host/u/user`). The host is always a member. A member contributes data
   through a capability **data endpoint** on their own instance.
@@ -78,7 +89,17 @@ Endpoints (under each instance's API base):
    `GET <B-api>/challenge-data/<user>/<token>` live.
 4. B registers back to `<A-api>/public/<user>/<slug>/members` with its identity,
    display name, data-endpoint URL, and the `join_token`.
-5. A validates the token, probes the endpoint, and stores the member.
+5. A validates the token, probes the endpoint, and stores the member. The data
+   endpoint echoes how B scored the series (`aggregation`, and `measure`,
+   `filter_field`, `filter_value` when the spec has them). For a measure challenge A
+   requires the echo to match its spec (the filter value compared normalised) and
+   otherwise refuses with `409` _"Your instance does not support this challenge's
+   measure (…); update Aurboda to join"_, so B rolls its participation back.
+
+An instance must know a challenge's measure to join it. One that predates measures
+drops the unknown `measure` field from the spec and would score plain duration under
+the challenge's name; it does not echo the measure, so step 5 refuses it. One that
+knows measures but not this one refuses at step 2, with the same message.
 
 The same-server "Join" button and the challenge page's "enter your host" prompt both
 funnel into this. When B === A, steps 1–5 collapse to a direct local membership.
@@ -207,8 +228,9 @@ the backend directly need no extra config.
 ## Using it in the web app
 
 - **Manage** at `/challenges` ("Challenges" under the sidebar **Sharing** section): create a challenge (name,
-  metric or activity type, sum/count, unit, date range with This-week/This-month
-  quick-sets, public/unlisted), copy its link, delete it, and **Set / Replace / Remove
+  metric or activity type, sum/count — or for a type with list items a measure, an
+  exercise and sum/max — unit, date range with This-week/This-month quick-sets,
+  public/unlisted), copy its link, delete it, and **Set / Replace / Remove
   banner** (PNG, JPEG, WebP or GIF up to 10 MB; a thumbnail shows on the row once one
   is set); see challenges you've
   joined; and **join by URL** (paste any challenge link — local or remote).

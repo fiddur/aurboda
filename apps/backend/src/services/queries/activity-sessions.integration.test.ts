@@ -211,14 +211,20 @@ describe('activity sessions, neighbors and item history against the database', (
         [
           'bench press',
           [lifts.second, lifts.first],
-          { e1rm: 93.5, max_weight: 85, set_count: 3, volume: 1055 },
+          { e1rm: 93.5, max_reps: 5, max_weight: 85, set_count: 3, total_reps: 13, volume: 1055 },
         ],
-        ['Squat', [lifts.second, lifts.first], { e1rm: 116.7, max_weight: 100, set_count: 2, volume: 1000 }],
+        [
+          'Squat',
+          [lifts.second, lifts.first],
+          { e1rm: 116.7, max_reps: 5, max_weight: 100, set_count: 2, total_reps: 10, volume: 1000 },
+        ],
       ])
       expect(grouped.sessions[0]!.measures).toEqual({
         e1rm: 116.7,
+        max_reps: 5,
         max_weight: 100,
         set_count: 2,
+        total_reps: 8,
         volume: 755,
       })
 
@@ -227,7 +233,12 @@ describe('activity sessions, neighbors and item history against the database', (
         start: at('2026-08-05T00:00:00Z'),
       })
       expect(bench.sessions.map((s) => [s.id, s.items?.length, s.measures, s.records])).toEqual([
-        [lifts.second, 2, { e1rm: 93.5, max_weight: 85, set_count: 1, volume: 255 }, ['e1rm', 'max_weight']],
+        [
+          lifts.second,
+          2,
+          { e1rm: 93.5, max_reps: 3, max_weight: 85, set_count: 1, total_reps: 3, volume: 255 },
+          ['e1rm', 'max_weight'],
+        ],
       ])
     })
 
@@ -235,20 +246,27 @@ describe('activity sessions, neighbors and item history against the database', (
       const user = getTestUser()
       const history = await queryActivityItemHistory(user, lifts.second, 'sets.exercise')
 
-      expect(history?.totals).toEqual({ e1rm: 116.7, max_weight: 100, set_count: 2, volume: 755 })
+      expect(history?.totals).toEqual({
+        e1rm: 116.7,
+        max_reps: 5,
+        max_weight: 100,
+        set_count: 2,
+        total_reps: 8,
+        volume: 755,
+      })
       expect(history?.groups.map((g) => [g.value, g.items.length, g.records, g.previous?.id])).toEqual([
         ['bench press', 2, ['e1rm', 'max_weight'], lifts.first],
         ['Squat', 1, [], lifts.first],
       ])
       expect(history?.groups[0]!.previous).toMatchObject({
-        measures: { e1rm: 93.3, max_weight: 80, set_count: 2, volume: 800 },
+        measures: { e1rm: 93.3, max_reps: 5, max_weight: 80, set_count: 2, total_reps: 10, volume: 800 },
         start_time: '2026-08-01T17:00:00.000Z',
       })
 
       const first = await queryActivityItemHistory(user, lifts.first, 'sets.exercise')
       expect(first?.groups.map((g) => [g.value, g.records, g.previous])).toEqual([
-        ['Bench Press', ['e1rm', 'max_weight'], undefined],
-        ['Squat', ['e1rm', 'max_weight'], undefined],
+        ['Bench Press', ['e1rm', 'max_weight', 'max_reps'], undefined],
+        ['Squat', ['e1rm', 'max_weight', 'max_reps'], undefined],
       ])
 
       expect(await queryActivityItemHistory(user, randomUUID(), 'sets.exercise')).toBeNull()

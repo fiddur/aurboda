@@ -64,6 +64,21 @@ describe('describeChallenge', () => {
     })
     expect(d.theme.key).toBe('running')
   })
+
+  test('a measure challenge names the exercise and the measure', () => {
+    const now = new Date('2026-10-20T12:00:00Z')
+    const pushUps = { pattern: 'strength_training', source_type: 'activity_type', unit: 'reps' } as const
+    expect(
+      describeChallenge(october({ spec: { ...pushUps, filter_value: 'Push-ups', measure: 'max_reps' } }), now)
+        .measure,
+    ).toBe('Push-ups · most reps in a set')
+    expect(describeChallenge(october({ spec: { ...pushUps, measure: 'total_reps' } }), now).measure).toBe(
+      'Strength training · total reps',
+    )
+    expect(
+      describeChallenge(october({ spec: { ...pushUps, filter_value: null, measure: null } }), now).measure,
+    ).toBe('Strength training')
+  })
 })
 
 describe('cardMembers', () => {

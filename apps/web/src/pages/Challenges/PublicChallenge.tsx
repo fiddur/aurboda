@@ -15,6 +15,7 @@ import { auth } from '../../state/auth'
 import { competitionRanks, podiumMedal } from '../../utils/podium'
 import { memberColor } from './member-colors'
 import { formatDateInZone, formatUpdated, toCumulativeSeries } from './race-series'
+import { describeSpec, formatTotal, totalHeader } from './spec-label'
 import './style.css'
 
 const shortHost = (identityBaseUrl: string): string => {
@@ -73,16 +74,18 @@ export function PublicChallenge({
   const ended = Date.now() >= new Date(challenge.end_ts).getTime()
   const ranks = competitionRanks(standings.map((s) => s.total))
   const standingsData = standingsQuery.data
-  const { start_ts, effective_bucket_size } = challenge
+  const { start_ts, effective_bucket_size, spec } = challenge
   const series = useMemo(
     () =>
       (standingsData ?? [])
         .filter((s) => s.status === 'active')
         // Falls back to daily if a cross-version host omits the resolved bucket size.
-        .map((s, i) => toCumulativeSeries(s, memberColor(i), start_ts, effective_bucket_size ?? '1d'))
+        .map((s, i) =>
+          toCumulativeSeries(s, memberColor(i), start_ts, effective_bucket_size ?? '1d', spec.aggregation),
+        )
         // Keep members with at least one real bucket (the start-line point alone is length 1).
         .filter((s) => s.data.length > 1),
-    [standingsData, start_ts, effective_bucket_size],
+    [standingsData, start_ts, effective_bucket_size, spec.aggregation],
   )
 
   return (
@@ -96,7 +99,7 @@ export function PublicChallenge({
       </div>
 
       <p class="challenge-view-meta">
-        {challenge.spec.pattern} · {challenge.spec.aggregation} ({challenge.spec.unit}) ·{' '}
+        {describeSpec(spec)} ({spec.unit}) ·{' '}
         {/* Render both dates in the timezone the range was chosen in, so they read
             exactly as entered regardless of the viewer's browser locale/timezone. */}
         {formatDateInZone(challenge.start_ts, challenge.timezone)} –{' '}
@@ -152,7 +155,7 @@ export function PublicChallenge({
           <tr>
             <th>#</th>
             <th>Member</th>
-            <th>{challenge.spec.unit}</th>
+            <th>{totalHeader(spec)}</th>
             <th>Updated</th>
           </tr>
         </thead>
@@ -177,7 +180,7 @@ export function PublicChallenge({
                 />
                 {s.display_name} <span class="challenge-member-host">· {shortHost(s.identity_base_url)}</span>
               </td>
-              <td>{Math.round(s.total).toLocaleString()}</td>
+              <td>{formatTotal(spec, s.total)}</td>
               <td class="challenge-member-updated">
                 {s.stale ? '⚠ stale' : s.last_updated ? formatUpdated(s.last_updated) : '—'}
               </td>
