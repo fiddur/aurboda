@@ -555,6 +555,13 @@ exercises both sides without seeding. Read the PNG back with the Read tool, or p
   (`"YogaA\nSat 1 Aug · 21:11 – 22:07\n57m\nMerged: Yoga ×2"`). Real wheel zoom works:
   `page.mouse.wheel({deltaY:-120})` ×14 over a bar commits the new range through `onZoomEnd` and
   updates the hash.
+- **A point-in-time activity is a marker, not a bar** (#1313). An activity with no `end_time`
+  (a custom `coffee` type with icon ☕, say) renders as a `<text>` glyph inside its own
+  `<a href="/detail/activity/<id>">`, so `a[data-clickable="true"] > rect` counts only span
+  activities. The oracle that catches both:
+  `[...svg.querySelectorAll('a')].map(a => a.getAttribute('href'))` on
+  `.timeline-chart-container svg`. A note on an activity shows as the `💬N` glyph above the
+  Comments lane.
 - **Seeding the Screen Time lane without a sync**: adding a screentime category provisions the
   derived activity type immediately (it answers with `activity_type_name`), so an activity of that
   type with `data.category_path` gives real Screen Time bars. Those bars link to
@@ -1180,6 +1187,35 @@ user_settings` is the oracle). Before that it was a silent no-op for every scala
 
 ---
 
+## Release upgrade snapshots (#1313)
+
+Leg B of a release tryout (`routine.md`) boots the previous release, seeds it, swaps the image
+and checks that nothing was lost. The cheapest proof is a diff of API snapshots: one script
+taking an output directory, run once before `down.sh` and again after the release-image `up.sh`,
+then `diff -r before after`.
+
+- **Normalise before diffing.** Pipe every response through a normaliser that drops the volatile
+  keys — `last_updated`, `updated_at`, `created_at`, `received_at`, `server_time`, `version`,
+  `build_sha`, `effective_bucket_size`, `next_cursor` — and prints sorted JSON
+  (`jq -S 'del(..|.last_updated?, …)'`, or `json.dumps(sort_keys=True)` after a recursive
+  delete).
+- **Keep status codes out of the piped curl.** `-w 'HTTP %{http_code}'` on a curl whose output
+  feeds the normaliser appends a trailing line that turns every file into `NOT JSON`, and the
+  false diff cost a reboot of the old image. Collect status codes in a separate loop with
+  `-o /dev/null -w '%{http_code}'`.
+- **`GET /api/feed/:postId` is not a route** on either release (Express `Cannot GET`; the
+  `/:postId` routes are `PATCH` and `DELETE`). Snapshot a post through `GET /api/feed`, its AS2
+  object and `GET /api/public/<user>/posts` instead.
+
+**#1305's forced-joins-gated path is not reachable from outside.** `DROP TABLE notes` as the user
+role plus a restart shows only the post-sweep forced repair (`Schema error for user …, running
+migration and retrying` after `Schema sweep done`): the auth middleware's gated
+`migrateSchemaIfNeeded` joins the in-flight boot sweep before any route query can hit a schema
+error, so a forced caller never arrives behind a running gated sweep. Record it as "unit-tested,
+not driven here" rather than spending a session on it.
+
+---
+
 ## Public profile and sharing
 
 ### `/u/:username` (#906, #916, #940, #1052)
@@ -1187,8 +1223,11 @@ user_settings` is the oracle). Before that it was a silent no-op for every scala
 The public profile is unauthenticated, has no app chrome, and renders **both** sharing surfaces on
 one page — the cheapest way to check feed and profile CSS without auth:
 
-- `.public-profile-header` (a `<div>`, not a `<header>`) = avatar + `<h1>@handle</h1>` +
-  `margin-left:auto` `.share-link-btn`.
+- `.public-profile-header` (a `<div>`, not a `<header>`) = avatar + `<h1>@handle</h1>`. **There is
+  no `.share-link-btn` on `/u/:username`** (#1313): `ShareLinkButton` is rendered only by
+  `pages/PublicDashboard/index.tsx`, so an assertion on it fails on every release and is not a
+  regression. The header oracle is `.public-profile-header h1` reading `@<user>`; the Share
+  button oracles below belong to `/public/<user>/<dashboard>`.
 - One `FeedPostCard` per public/unlisted post, each with a semantic `<header class="feed-post-head">`.
 
 APIs to check first: `GET /api/public/<user>/dashboards` and `GET /api/public/<user>/posts`.
