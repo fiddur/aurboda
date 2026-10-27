@@ -13,6 +13,7 @@ import {
   measureGoalLabel,
   measureOptions,
   measureSet,
+  recordBadge,
   topSet,
 } from './measures'
 
@@ -44,6 +45,15 @@ describe('formatMeasure', () => {
     expect(formatMeasure('max_time', 90)).toBe('1:30')
     expect(formatMeasure('max_time', 5)).toBe('0:05')
     expect(formatMeasure('max_time', 3725)).toBe('62:05')
+  })
+})
+
+describe('recordBadge', () => {
+  test('names the measure after PR, keeping the e1RM case', () => {
+    expect(recordBadge('e1rm')).toBe('PR e1RM')
+    expect(recordBadge('max_weight')).toBe('PR weight')
+    expect(recordBadge('max_reps')).toBe('PR reps')
+    expect(recordBadge('max_time')).toBe('PR hold')
   })
 })
 

@@ -9,7 +9,7 @@ import { format } from 'date-fns'
 
 import { fieldLabel, itemPageHref } from '../../components/sessions/sessionView'
 import { fetchActivityItemHistory } from '../../state/api'
-import { formatMeasure, formatSets } from '../../utils/measures'
+import { formatMeasure, formatSets, recordBadge } from '../../utils/measures'
 
 const measureSummary = (measures: ActivityMeasures): string =>
   [
@@ -38,7 +38,7 @@ const ItemGroup = ({
       <a href={itemPageHref(activityType, path, group.value)}>{group.value}</a>
       {group.records.map((m) => (
         <span key={m} class="item-history-pr" title={activityMeasureLabels[m]}>
-          PR
+          {recordBadge(m)}
         </span>
       ))}
     </div>
