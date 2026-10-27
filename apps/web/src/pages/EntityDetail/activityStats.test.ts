@@ -7,7 +7,9 @@ import type { Activity } from '../../state/api'
 import {
   buildActivityStatRows,
   buildFieldRows,
+  buildListTables,
   buildMetricRows,
+  formatListCell,
   garminConnectActivityUrl,
   sourceDataEntries,
   typicalAvgHr,
@@ -262,6 +264,93 @@ describe('buildFieldRows', () => {
 
   test('no schema and no rules: nothing', () => {
     expect(buildFieldRows(undefined, { anything: 1 }, undefined)).toEqual([])
+  })
+
+  test('skips list fields, which render as their own table', () => {
+    const withSets = {
+      fields: [
+        { name: 'props', type: 'boolean' as const },
+        { item_fields: [{ name: 'exercise', type: 'string' as const }], name: 'sets', type: 'list' as const },
+      ],
+    }
+    expect(buildFieldRows(withSets, { props: false, sets: [{ exercise: 'Squat' }] }, undefined)).toEqual([
+      { label: 'Props', value: 'No' },
+    ])
+  })
+})
+
+describe('buildListTables', () => {
+  const setsField = {
+    item_fields: [
+      { name: 'exercise', required: true, type: 'string' as const },
+      { name: 'weight', type: 'number' as const, unit: 'kg' },
+      { name: 'reps', type: 'number' as const },
+      { name: 'time', type: 'number' as const, unit: 's' },
+    ],
+    label: 'Sets',
+    name: 'sets',
+    type: 'list' as const,
+  }
+  const schema = { fields: [{ name: 'notes_ok', type: 'boolean' as const }, setsField] }
+  const [exercise, weight, reps, time] = setsField.item_fields
+
+  test('Gravl-shaped sets: columns with a value, nulls and undeclared keys left as they are', () => {
+    const sets = [
+      {
+        distance: null,
+        exercise: 'Bench press',
+        exercise_id: 'g1',
+        order: 0,
+        reps: 10,
+        rpe: null,
+        set_type: 'normal',
+        time: null,
+        weight: 80,
+      },
+      {
+        distance: null,
+        exercise: 'Bench press',
+        exercise_id: 'g1',
+        order: 1,
+        reps: 8,
+        rpe: 8,
+        set_type: 'normal',
+        time: null,
+        weight: 85,
+      },
+    ]
+    expect(buildListTables(schema, { sets })).toEqual([
+      { columns: [exercise, weight, reps], field: setsField, label: 'Sets', rows: sets },
+    ])
+  })
+
+  test('a time-only set keeps the required exercise column and the time column', () => {
+    const sets = [{ exercise: '', time: 60 }]
+    expect(buildListTables(schema, { sets })).toEqual([
+      { columns: [exercise, time], field: setsField, label: 'Sets', rows: sets },
+    ])
+  })
+
+  test('skips non-object items, empty arrays, non-arrays and a missing schema', () => {
+    expect(buildListTables(schema, { sets: ['x', null, [1], { reps: 5 }] })).toEqual([
+      { columns: [exercise, reps], field: setsField, label: 'Sets', rows: [{ reps: 5 }] },
+    ])
+    expect(buildListTables(schema, { sets: [] })).toEqual([])
+    expect(buildListTables(schema, { sets: ['x'] })).toEqual([])
+    expect(buildListTables(schema, { sets: 'Bench 10x80' })).toEqual([])
+    expect(buildListTables(schema, undefined)).toEqual([])
+    expect(buildListTables(undefined, { sets: [{ reps: 5 }] })).toEqual([])
+  })
+})
+
+describe('formatListCell', () => {
+  test('booleans, units and blanks', () => {
+    expect(formatListCell(80, 'kg')).toBe('80 kg')
+    expect(formatListCell(true)).toBe('Yes')
+    expect(formatListCell('Squat')).toBe('Squat')
+    expect(formatListCell(null, 'kg')).toBe('')
+    expect(formatListCell(undefined)).toBe('')
+    expect(formatListCell('  ')).toBe('')
   })
 })
 

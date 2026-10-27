@@ -285,3 +285,66 @@ describe('chart data local-time buckets', () => {
     ])
   })
 })
+
+describe('chart data over list-item measures', () => {
+  beforeEach(async () => {
+    await cleanTestDb()
+  })
+
+  const gravlSet = (exercise: string, weight: number, reps: number, setType = 'normal') => ({
+    distance: null,
+    exercise,
+    order: 0,
+    reps,
+    rpe: null,
+    set_type: setType,
+    time: null,
+    weight,
+  })
+
+  test('highest Bench Press e1RM per week, and one series per exercise', async () => {
+    const user = getTestUser()
+    const lift = (startIso: string, sets: Record<string, unknown>[]) =>
+      insertActivity(user, {
+        activity_type: 'strength_training',
+        data: { sets },
+        end_time: new Date(new Date(startIso).getTime() + 3_600_000),
+        source: 'gravl',
+        start_time: new Date(startIso),
+      })
+    await lift('2026-08-01T17:00:00Z', [
+      gravlSet('Bench Press', 40, 10, 'warmup'),
+      gravlSet('Bench Press', 80, 5),
+      gravlSet('Squat', 100, 5),
+    ])
+    await lift('2026-08-08T17:00:00Z', [gravlSet('bench press', 85, 3), gravlSet('Squat', 110, 3)])
+    const input = {
+      aggregation: 'max' as const,
+      bucket_size: '1w' as const,
+      end: '2026-08-31T00:00:00Z',
+      measure: 'e1rm' as const,
+      pattern: 'strength_training',
+      source_type: 'activity_type' as const,
+      start: '2026-07-01T00:00:00Z',
+    }
+
+    const bench = await getChartData(user, {
+      ...input,
+      filter_field: 'sets.exercise',
+      filter_value: 'Bench Press',
+    })
+    const perExercise = await getChartData(user, { ...input, breakdown_fields: ['sets.exercise'] })
+
+    expect(bench).toEqual({
+      buckets: [
+        { bucket_start: '2026-07-27T00:00:00.000Z', value: 93.3 },
+        { bucket_start: '2026-08-03T00:00:00.000Z', value: 93.5 },
+      ],
+    })
+    expect(perExercise.breakdown_series).toEqual(['Squat', 'bench press'])
+    expect(perExercise.buckets).toEqual([
+      { bucket_start: '2026-07-27T00:00:00.000Z', series: { Squat: 116.7, 'bench press': 93.3 } },
+      { bucket_start: '2026-08-03T00:00:00.000Z', series: { Squat: 121, 'bench press': 93.5 } },
+    ])
+  })
+})

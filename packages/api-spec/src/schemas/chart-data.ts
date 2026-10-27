@@ -7,7 +7,8 @@
 
 import { z } from 'zod'
 
-import { baseResponseSchema } from './common.ts'
+import { activityMeasureSchema } from './activity-measures.ts'
+import { baseResponseSchema, dataFieldPathSchema } from './common.ts'
 import { ianaTimezoneSchema } from './timezone.ts'
 
 export const chartDataSourceTypeSchema = z
@@ -30,8 +31,8 @@ export const chartDataBucketSizeSchema = z.enum(['1m', '5m', '15m', '1h', '1d', 
 
 export type ChartDataBucketSize = z.infer<typeof chartDataBucketSizeSchema>
 
-export const chartDataAggregationSchema = z.enum(['count', 'sum', 'mean']).meta({
-  description: 'Aggregation method: count, sum, or mean',
+export const chartDataAggregationSchema = z.enum(['count', 'sum', 'mean', 'max']).meta({
+  description: 'Aggregation method: count, sum, mean or max',
   example: 'count',
   id: 'ChartDataAggregation',
 })
@@ -45,6 +46,30 @@ const chartDataTzSchema = ianaTimezoneSchema.optional().meta({
     'Defaults to UTC.',
   example: 'Europe/Stockholm',
 })
+
+/**
+ * For an activity type with list items (strength sets): chart a measure over its sessions instead of
+ * their duration or count, optionally only the items of one value (one exercise).
+ */
+const chartMeasureShape = {
+  filter_field: dataFieldPathSchema.optional().meta({
+    description: 'With measure: an item path (sets.exercise) whose items the measure is taken over',
+  }),
+  filter_value: z.string().optional().meta({
+    description: 'With filter_field: the item value to keep (compared trimmed, case-insensitively)',
+  }),
+  measure: activityMeasureSchema.optional().meta({
+    description:
+      "For activity_type sources: aggregate this measure of each session's list items per bucket instead of duration or count — e.g. measure=e1rm with aggregation=max for the highest estimated one-rep max per week",
+  }),
+}
+
+export const ITEM_BREAKDOWN_NEEDS_MEASURE = 'breaking down by an item path needs a measure'
+
+export const itemBreakdownWithoutMeasure = (
+  breakdownFields: string[] | undefined,
+  measure: unknown,
+): boolean => !measure && (breakdownFields ?? []).some((field) => field.includes('.'))
 
 /**
  * Query schema for chart data endpoint (typed, for service layer).
@@ -72,9 +97,14 @@ export const chartDataQuerySchema = z
       .meta({ description: 'Deprecated: use activity_type_id instead' }),
     breakdown_fields: z.array(z.string()).optional().meta({
       description:
-        'Data fields to break down by (for activity_type source). Multiple fields produce compound series keys.',
+        'Data fields to break down by (for activity_type source). Multiple fields produce compound series keys. With a measure, an item path such as sets.exercise gives one series per exercise.',
     }),
+    ...chartMeasureShape,
     tz: chartDataTzSchema,
+  })
+  .refine((query) => !itemBreakdownWithoutMeasure(query.breakdown_fields, query.measure), {
+    message: ITEM_BREAKDOWN_NEEDS_MEASURE,
+    path: ['breakdown_fields'],
   })
   .meta({ id: 'ChartDataQuery', description: 'Query parameters for bucketed chart data' })
 
@@ -85,11 +115,12 @@ export type ChartDataQuery = z.infer<typeof chartDataQuerySchema>
  */
 export const chartDataHttpQuerySchema = z
   .object({
-    aggregation: z.enum(['count', 'sum', 'mean']).optional(),
+    aggregation: chartDataAggregationSchema.optional(),
     breakdown_fields: z
       .string()
       .optional()
-      .meta({ description: 'Comma-separated data fields to break down by' }),
+      .meta({ description: 'Comma-separated data fields (or item paths) to break down by' }),
+    ...chartMeasureShape,
     bucket_size: z.enum(['1m', '5m', '15m', '1h', '1d', '1w', '1M']).optional(),
     end: z.string().meta({ description: 'End of time range (ISO 8601 string)' }),
     pattern: z.string().optional().meta({ description: 'Pattern to match' }),

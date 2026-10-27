@@ -8,6 +8,9 @@ import {
   type ActivityFullDetailQuery,
   activityFullDetailQuerySchema,
   type ActivityFullDetailResponse,
+  type ActivityItemHistoryQuery,
+  activityItemHistoryQuerySchema,
+  type ActivityItemHistoryResponse,
   type ActivityNeighborsQuery,
   activityNeighborsQuerySchema,
   type ActivityNeighborsResponse,
@@ -62,6 +65,7 @@ import {
   parseDataFilter,
   parseMetricsParam,
   queryActivities,
+  queryActivityItemHistory,
   resolveActivityWindow,
   type SyncProvider,
 } from '../services/queries/index.ts'
@@ -419,6 +423,17 @@ export const createActivitiesRouter = (
       const neighbors = await getActivityNeighbors(req.user!, req.params.id, req.query.same_field)
       if (!neighbors) return res.status(404).json({ error: 'Activity not found', success: false })
       res.json({ data: neighbors, success: true })
+    },
+  )
+
+  router.get<{ id: string }, ActivityItemHistoryResponse, unknown, ActivityItemHistoryQuery>(
+    '/activities/:id/item-history',
+    authMiddleware,
+    validateQuery(activityItemHistoryQuerySchema),
+    async (req, res) => {
+      const history = await queryActivityItemHistory(req.user!, req.params.id, req.query.field)
+      if (!history) return res.status(404).json({ error: 'Activity not found', success: false })
+      res.json({ data: history, success: true })
     },
   )
 

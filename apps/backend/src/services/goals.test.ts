@@ -1,12 +1,16 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
+import type { MergedActivity } from '../db/types.ts'
+
 import * as db from '../db/index.ts'
 import * as customMetrics from './custom-metrics.ts'
-import { getGoalsProgress, getWidgetGoalsProgress } from './goals.ts'
+import { getGoalsProgress, getWidgetGoalsProgress, measureGoalValues } from './goals.ts'
+import * as measureSeries from './queries/activity-measure-series.ts'
 import * as settings from './settings.ts'
 import * as trends from './trends.ts'
 
 vi.mock('../db', () => ({
+  getActivityTypeDefinitions: vi.fn(),
   getDailyAggregates: vi.fn(),
   getDailyAggregateValues: vi.fn(),
   getGoals: vi.fn(),
@@ -17,6 +21,11 @@ vi.mock('../db', () => ({
 vi.mock('./settings', () => ({
   getEffectiveGoals: vi.fn(),
   getEffectiveHrZones: vi.fn(),
+}))
+
+vi.mock('./queries/activity-measure-series', async (importOriginal) => ({
+  ...(await importOriginal<typeof measureSeries>()),
+  queryMeasuredActivities: vi.fn(),
 }))
 
 vi.mock('./trends', () => ({
@@ -403,5 +412,165 @@ describe('getWidgetGoalsProgress', () => {
     expect(result[0].max).toBe(0.7)
     expect(result[0].unit).toBe('per month')
     expect(result[0].losing_tomorrow).toBe(0)
+  })
+})
+
+const measured = (startIso: string, measures: Record<string, number>): measureSeries.MeasuredActivity => ({
+  activity: {
+    activity_type: 'strength_training',
+    id: startIso,
+    source: 'gravl',
+    start_time: new Date(startIso),
+  } as MergedActivity,
+  id: startIso,
+  measures,
+})
+
+describe('measureGoalValues', () => {
+  const oldestDayEnd = new Date('2026-01-04T23:59:59.999Z')
+  const v = (iso: string, value: number) => ({ time: new Date(iso), value })
+
+  test('sum: the total, losing the oldest day’s total', () => {
+    expect(
+      measureGoalValues(
+        [v('2026-01-04T10:00:00Z', 100), v('2026-01-04T18:00:00Z', 50), v('2026-01-20T10:00:00Z', 30)],
+        'sum',
+        oldestDayEnd,
+      ),
+    ).toEqual({ current: 180, losing_tomorrow: 150 })
+  })
+
+  test('max: losing how far the best falls when only the oldest day holds it', () => {
+    expect(
+      measureGoalValues([v('2026-01-04T10:00:00Z', 100), v('2026-01-20T10:00:00Z', 95)], 'max', oldestDayEnd),
+    ).toEqual({ current: 100, losing_tomorrow: 5 })
+    expect(measureGoalValues([v('2026-01-04T10:00:00Z', 100)], 'max', oldestDayEnd)).toEqual({
+      current: 100,
+      losing_tomorrow: 100,
+    })
+  })
+
+  test('max: nothing lost when a later session holds the best too', () => {
+    expect(
+      measureGoalValues(
+        [v('2026-01-04T10:00:00Z', 100), v('2026-01-10T10:00:00Z', 100), v('2026-01-20T10:00:00Z', 90)],
+        'max',
+        oldestDayEnd,
+      ),
+    ).toEqual({ current: 100, losing_tomorrow: 0 })
+    expect(
+      measureGoalValues([v('2026-01-04T10:00:00Z', 80), v('2026-01-20T10:00:00Z', 90)], 'max', oldestDayEnd),
+    ).toEqual({ current: 90, losing_tomorrow: 0 })
+  })
+
+  test('no values: zero', () => {
+    expect(measureGoalValues([], 'max', oldestDayEnd)).toEqual({ current: 0, losing_tomorrow: 0 })
+    expect(measureGoalValues([], 'sum', oldestDayEnd)).toEqual({ current: 0, losing_tomorrow: 0 })
+  })
+})
+
+describe('measure goal progress', () => {
+  const benchGoal = {
+    activity_type: 'strength_training',
+    aggregation: 'max' as const,
+    filter_field: 'sets.exercise',
+    filter_value: 'Bench Press',
+    goal_type: 'measure' as const,
+    id: 'goal-measure-1',
+    measure: 'e1rm' as const,
+    min: 100,
+    window: '30d',
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-02-02T12:00:00Z'))
+    vi.mocked(db.getActivityTypeDefinitions).mockResolvedValue([
+      { display_name: 'Strength Training', name: 'strength_training' } as never,
+    ])
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  test('the best e1RM in a 30-day window, over the goal’s exercise', async () => {
+    vi.mocked(settings.getEffectiveGoals).mockResolvedValue([benchGoal])
+    vi.mocked(measureSeries.queryMeasuredActivities).mockResolvedValue([
+      measured('2026-01-04T17:00:00Z', { e1rm: 98 }),
+      measured('2026-01-20T17:00:00Z', { e1rm: 95 }),
+      measured('2026-01-25T17:00:00Z', { set_count: 3 }),
+    ])
+
+    const [progress] = await getGoalsProgress('testuser')
+
+    expect(progress).toEqual({
+      activity_type: 'strength_training',
+      activity_type_name: 'Strength Training',
+      aggregation: 'max',
+      current: 98,
+      filter_value: 'Bench Press',
+      goal_type: 'measure',
+      id: 'goal-measure-1',
+      losing_tomorrow: 3,
+      max: undefined,
+      measure: 'e1rm',
+      min: 100,
+      unit: 'kg',
+      window: '30d',
+    })
+    expect(measureSeries.queryMeasuredActivities).toHaveBeenCalledWith(
+      'testuser',
+      'strength_training',
+      new Date('2026-01-04T00:00:00Z'),
+      new Date('2026-02-02T12:00:00Z'),
+      { field: 'sets.exercise', value: 'Bench Press' },
+    )
+  })
+
+  test('a sum goal without a filter totals the window; the widget names the type', async () => {
+    vi.mocked(settings.getEffectiveGoals).mockResolvedValue([
+      {
+        activity_type: 'strength_training',
+        aggregation: 'sum',
+        goal_type: 'measure',
+        id: 'goal-measure-2',
+        measure: 'volume',
+        min: 20000,
+        window: '1w',
+      },
+    ])
+    vi.mocked(measureSeries.queryMeasuredActivities).mockResolvedValue([
+      measured('2026-01-27T17:00:00Z', { volume: 5000 }),
+      measured('2026-02-01T17:00:00Z', { volume: 6000 }),
+    ])
+
+    const [widget] = await getWidgetGoalsProgress('testuser')
+
+    expect(widget).toEqual({
+      current: 11000,
+      id: 'goal-measure-2',
+      losing_tomorrow: 5000,
+      max: undefined,
+      min: 20000,
+      title: 'Strength Training · Volume',
+      unit: 'kg',
+    })
+    expect(vi.mocked(measureSeries.queryMeasuredActivities).mock.calls[0]?.[4]).toBeUndefined()
+  })
+
+  test('the widget title names the exercise and the measure', async () => {
+    vi.mocked(settings.getEffectiveGoals).mockResolvedValue([benchGoal])
+    vi.mocked(measureSeries.queryMeasuredActivities).mockResolvedValue([])
+
+    const [widget] = await getWidgetGoalsProgress('testuser')
+
+    expect(widget).toMatchObject({
+      current: 0,
+      losing_tomorrow: 0,
+      title: 'Bench Press · Best e1RM',
+      unit: 'kg',
+    })
   })
 })

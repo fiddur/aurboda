@@ -47,6 +47,7 @@ export {
   getActivitySourcesByIds,
   getAllActivitiesInRange,
   getAllActivityTypeNames,
+  getBucketStarts,
   getNearbyActivities,
   getNonSleepActivitiesMerged,
   getOverlappingActivities,

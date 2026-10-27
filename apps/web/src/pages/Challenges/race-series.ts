@@ -1,4 +1,4 @@
-import type { ChallengeEffectiveBucketSize, ChallengeStanding } from '@aurboda/api-spec'
+import type { ChallengeAggregation, ChallengeEffectiveBucketSize, ChallengeStanding } from '@aurboda/api-spec'
 
 import type { LineSeriesData } from '../../components/charts/TrendLineChart'
 
@@ -56,19 +56,21 @@ export const bucketEnd = (bucketStartIso: string, bucketSize: BucketSize): strin
  * Every racer starts at 0 on the start line, and each cumulative total is plotted at
  * its bucket's end (the total reached by then). Seeding the start-line point means the
  * chart draws a proper rising line as soon as there is a single bucket — so it renders
- * even a few hours into the challenge with only one member.
+ * even a few hours into the challenge with only one member. A `max` challenge is scored
+ * by its best bucket, so its line is the best bucket so far.
  */
 export const toCumulativeSeries = (
   standing: ChallengeStanding,
   color: string,
   startTs: string,
   bucketSize: BucketSize,
+  aggregation: ChallengeAggregation = 'sum',
 ): LineSeriesData => {
   const sorted = [...standing.buckets].sort((a, b) => a.bucket_start.localeCompare(b.bucket_start))
   const data = [{ date: startTs, value: 0 }]
   let running = 0
   for (const b of sorted) {
-    running += b.value
+    running = aggregation === 'max' ? Math.max(running, b.value) : running + b.value
     data.push({ date: bucketEnd(b.bucket_start, bucketSize), value: running })
   }
   return { color, data, name: standing.display_name }

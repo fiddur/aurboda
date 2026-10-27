@@ -37,6 +37,120 @@ values -- a yoga video's `session_name`, a run's kind (`maffetone`, `intervals`)
 Chart Explorer can break charts down by these fields, and the sessions overview below groups by
 them.
 
+A field's `type` is `string`, `number`, `boolean` or `list`. A **list** field holds an array of
+objects -- a strength session's sets, a rehab session's exercises -- each shaped by the field's
+`item_fields`. Item fields are scalar only (`string`, `number`, `boolean`), so nesting stops at
+one level, and `required`, `enum_values`, `unit` and `label` apply to them as to top-level
+fields. Writes are validated against the schema: a list value must be an array of objects, and an
+error names the item, e.g. `Required field "sets[1].exercise" is missing`. Keys a schema does not
+declare are accepted, at the top level and on list items alike. A list field cannot be
+categorical (an item field can, see [Exercises and measures](#exercises-and-measures)), and is not offered as a deduction-rule condition, an auto-share condition or a chart
+breakdown, which all work on scalar values.
+
+The built-in `strength_training` type carries a `sets` list field:
+
+```json
+{
+  "fields": [
+    {
+      "name": "sets",
+      "type": "list",
+      "label": "Sets",
+      "item_fields": [
+        { "name": "exercise", "type": "string", "required": true, "is_categorical": true },
+        { "name": "weight", "type": "number", "unit": "kg" },
+        { "name": "reps", "type": "number" },
+        { "name": "time", "type": "number", "unit": "s" }
+      ]
+    }
+  ]
+}
+```
+
+`sets` itself is optional, since watch-only strength sessions (Garmin, Health Connect) have none;
+`time` is for holds such as planks. [Gravl](../gravl.md) writes sets in this shape. The schema is
+seeded on new databases and filled in on existing ones when the type has no schema yet; a schema
+still exactly an earlier built-in version (before `exercise` was marked categorical) is upgraded
+in place. Any other schema counts as edited and is kept: the built-in schema can be extended (e.g. with `set_type` or `rpe` item fields) on
+the type's page or with `update_activity_type`. Clearing it entirely does not stick, though: a
+`strength_training` type without a schema gets `sets` back on the next deploy, so to drop a field
+edit the schema rather than remove it. The Android Add tab is native and skips list fields until it
+has a row editor ([#1316](https://github.com/fiddur/aurboda/issues/1316)); sets are entered on the
+web pages.
+
+## Exercises and measures
+
+A list field's items can be grouped by an item field marked categorical -- a strength session's
+sets by their `exercise`. Such a value is addressed by an **item path**, `<list field>.<item
+field>`, e.g. `sets.exercise`. Strength sets are the running example below, but nothing is
+specific to the `strength_training` type: any type whose list items use these field names gets
+the same measures.
+
+Measures are computed by convention on the item field names, over the **working** items only: an
+item whose `set_type` is `warmup` (any case) is shown but never counted. `weight`, `reps` and
+`time` count when they are numbers above zero.
+
+| Measure      | Over the working items                                    |
+| ------------ | --------------------------------------------------------- |
+| `volume`     | Σ weight × reps, over items with both (kg)                |
+| `e1rm`       | Best Epley estimate weight × (1 + reps / 30), one decimal |
+| `max_weight` | Heaviest weight (kg)                                      |
+| `set_count`  | Number of working items                                   |
+| `max_time`   | Longest time (s), e.g. a plank hold                       |
+| `total_reps` | Σ reps, over items with reps (weighted or not)            |
+| `max_reps`   | Most reps in one item, e.g. a set of push-ups             |
+
+A measure no item contributes to is absent rather than 0: a bodyweight set (reps only) counts in
+`set_count`, `total_reps` and `max_reps` and nothing else. Item values compare trimmed and
+case-insensitively, so `Bench Press` and ` bench press` are one exercise, shown as spelled in the
+most recent session. A **record** is a session whose `e1rm`, `max_weight`, `max_time` or
+`max_reps` for a value is strictly higher than in every earlier session with that value; the first
+session with a value sets its records.
+
+Everything is computed on read from `data`: nothing is stored, so editing a set or a schema
+takes effect at once.
+
+Where item paths are accepted:
+
+- `GET /activity-types/:name/sessions` -- every session carries `measures` over its first list
+  field. `group_by=sets.exercise` gives one group per exercise, a session in every group it has
+  a set for (sessions without one in the no-value group), each group with its members' measures
+  for that exercise combined (volume, set count and total reps summed, the rest at their
+  maximum).
+  `filter_field=sets.exercise&filter_value=Bench Press` keeps the sessions with that exercise,
+  each with its matching `items`, their `measures` and the `records` it set, judged against all
+  earlier sessions even when `start` cuts them off.
+- `GET /activity-types/:name/field-values?field=sets.exercise` -- the exercises used, counted
+  per session.
+- `GET /activities/:id/item-history?field=sets.exercise` -- one activity (plain or `merged:` id)
+  with its items grouped by exercise in order of first appearance: per exercise the items,
+  measures, records and the previous session with that exercise (its id, start, items and
+  measures), plus `totals` over the whole session. Its records are judged among the sessions of
+  the activity's own type (and its descendants), while a sessions query judges them among the
+  sessions of the type queried, so a query on a parent type such as `exercise` can mark
+  different records.
+
+The MCP tools mirror them: `query_activity_sessions` and `list_activity_field_values` take an
+item path for `group_by` / `filter_field` / `field`, and `get_activity_item_history` is the
+item-history endpoint.
+
+Measures can be charted and set as goals too. `GET /chart-data` (and `query_chart_data`, and the
+dashboard's bar chart) with `source_type=activity_type` and `measure=<measure>` aggregates each
+session's measure per bucket instead of its duration or count: `aggregation=max` gives the best
+session in the bucket, `sum` the total, `mean` the average and `count` the sessions having the
+measure. `filter_field=sets.exercise&filter_value=Bench Press` takes the measure over that
+exercise's sets only (sessions without it drop out), and `breakdown_fields=sets.exercise` gives
+one series per exercise, spelled as in the latest session; a scalar breakdown field splits by
+the session's value as usual. Highest Bench Press e1RM per week:
+`source_type=activity_type&pattern=strength_training&measure=e1rm&aggregation=max&bucket_size=1w&filter_field=sets.exercise&filter_value=Bench Press`.
+A goal on a measure, such as "Bench Press e1RM at least 100 kg over 30 days", is a
+[measure goal](goals.md#measure-goals).
+
+On the web, the type page has an exercises table (one row per exercise with its combined
+measures), each exercise has its own page at `/activity-type/<name>/item/sets.exercise/<value>`
+listing the sessions with it, and an activity's page has an exercises section comparing each
+exercise with last time, with record badges.
+
 ## Sessions Overview
 
 The activity type page (`/activity-type/<name>`) lists the type's sessions (descendant types
@@ -90,15 +204,18 @@ types in the `exercise` display category.
 - `POST /activity-types` -- Create a custom type
 - `PATCH /activity-types/:name` -- Update display metadata
 - `DELETE /activity-types/:name` -- Delete a custom type (built-ins protected)
-- `GET /activity-types/:name/sessions` -- Sessions with HR summaries; `start`/`end` (default all
-  time), `group_by=<field>` for groups, `filter_field` + `filter_value` for one value (`(none)`
-  for sessions without one)
-- `GET /activity-types/:name/field-values?field=<field>` -- The values a data field has taken
-  across the type and its subtypes, most recently used first, with counts
+- `GET /activity-types/:name/sessions` -- Sessions with HR summaries and list-item measures;
+  `start`/`end` (default all time), `group_by=<field>` for groups, `filter_field` +
+  `filter_value` for one value (`(none)` for sessions without one); both fields also take an
+  item path such as `sets.exercise`
+- `GET /activity-types/:name/field-values?field=<field>` -- The values a data field (or an item
+  path) has taken across the type and its subtypes, most recently used first, with counts
 - `GET /activities/:id/neighbors` -- Previous and next activity of the same type; `same_field`
   to keep to the same value of a data field
+- `GET /activities/:id/item-history?field=<item path>` -- The activity's list items grouped by
+  an item value, with measures, records and the previous session per value
 
-MCP tools: `list_activity_types`, `add_activity_type`, `update_activity_type`, `delete_activity_type`, `query_activity_sessions`, `list_activity_field_values`, `get_activity_neighbors`.
+MCP tools: `list_activity_types`, `add_activity_type`, `update_activity_type`, `delete_activity_type`, `query_activity_sessions`, `list_activity_field_values`, `get_activity_neighbors`, `get_activity_item_history`.
 
 ## Garmin Meditation Recognition
 

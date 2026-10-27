@@ -426,3 +426,8 @@
     color: #333;
   }
 }
+
+.chart-type-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}

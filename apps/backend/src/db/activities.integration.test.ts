@@ -545,6 +545,36 @@ describe('Activities Integration Tests', () => {
       ).toEqual(['Intervals', 'Flow', 'Yin'])
       expect(await getActivityFieldValues(user, ['yoga'], 'other')).toEqual([])
     })
+
+    test('an item path lists the values of a key across list items, by session, latest spelling', async () => {
+      const user = getTestUser()
+      const add = (startIso: string, data: Record<string, unknown>) =>
+        insertActivity(user, {
+          activity_type: 'strength_training',
+          data,
+          id: randomUUID(),
+          source: 'aurboda',
+          start_time: new Date(startIso),
+        })
+      await add('2024-03-01T17:00:00Z', {
+        sets: [
+          { exercise: 'bench press', reps: 5, weight: 80 },
+          { exercise: 'Bench Press', reps: 5, weight: 80 },
+          { exercise: 'Squat', reps: 5, weight: 100 },
+        ],
+      })
+      await add('2024-03-05T17:00:00Z', {
+        sets: [{ exercise: ' Bench Press ', reps: 3, weight: 85 }, { exercise: '  ' }, { reps: 8 }, 'junk'],
+      })
+      await add('2024-03-07T17:00:00Z', { sets: 'not a list' })
+      await add('2024-03-08T17:00:00Z', {})
+
+      expect(await getActivityFieldValues(user, ['strength_training'], 'sets.exercise')).toEqual([
+        { count: 2, last_used: new Date('2024-03-05T17:00:00Z'), value: 'Bench Press' },
+        { count: 1, last_used: new Date('2024-03-01T17:00:00Z'), value: 'Squat' },
+      ])
+      expect(await getActivityFieldValues(user, ['strength_training'], 'sets.missing')).toEqual([])
+    })
   })
 
   describe('getActivityById', () => {

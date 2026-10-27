@@ -1,6 +1,7 @@
 import {
   activitiesQuerySchema,
   activityFieldValuesQuerySchema,
+  activityItemHistoryQuerySchema,
   activityNeighborsQuerySchema,
   activitySessionsQuerySchema,
   activityTypeSchema,
@@ -38,6 +39,7 @@ import {
   parseMetricsParam,
   queryActivities,
   queryActivityFieldValues,
+  queryActivityItemHistory,
   queryActivitySessions,
   sessionsOptionsFromQuery,
   queryLocations,
@@ -215,7 +217,9 @@ Use cases:
     'query_activity_sessions',
     `Sessions of one activity type (descendant types included), newest first, each with duration, avg/max HR, HR-zone seconds and the five-number summary of its HR samples, plus the values of the type's data_schema fields.
 
-Pass group_by (a data field, typically one marked is_categorical, e.g. session_name) to also get one group per value — count, last done, duration range, median avg HR, max HR, summed zone seconds and the pooled HR distribution — for comparing or choosing sessions by length and exertion. filter_field + filter_value narrow to one value ("(none)" for sessions without one). Omit start for all time.`,
+Pass group_by (a data field, typically one marked is_categorical, e.g. session_name) to also get one group per value — count, last done, duration range, median avg HR, max HR, summed zone seconds and the pooled HR distribution — for comparing or choosing sessions by length and exertion. filter_field + filter_value narrow to one value ("(none)" for sessions without one). Omit start for all time.
+
+group_by and filter_field also take an item path into a list field, such as sets.exercise: group_by then gives one group per item value (a session in each group it has an item for) with the members' measures for that value combined (volume, e1rm, max_weight, set_count, max_time, total_reps, max_reps), and filter_field keeps the sessions with an item of that value, each carrying those items, their measures and the records it set against every earlier session with the value.`,
     { activity_type: activityTypeSchema, ...activitySessionsQuerySchema.shape, tz: tzSchema },
     async ({ activity_type, tz, ...query }) => {
       if ((query.filter_field === undefined) !== (query.filter_value === undefined)) {
@@ -228,7 +232,7 @@ Pass group_by (a data field, typically one marked is_categorical, e.g. session_n
 
   server.tool(
     'list_activity_field_values',
-    'The values a data field (e.g. session_name) has taken across an activity type and its subtypes, most recently used first, with how often each was used. For reusing an existing value when filling the field instead of spelling a new variant.',
+    'The values a data field (e.g. session_name) has taken across an activity type and its subtypes, most recently used first, with how often each was used. For reusing an existing value when filling the field instead of spelling a new variant. field may be an item path such as sets.exercise: the values of that key across the list items, compared trimmed and case-insensitively, spelled as most recently used, counted per session.',
     { activity_type: activityTypeSchema, ...activityFieldValuesQuerySchema.shape, tz: tzSchema },
     async ({ activity_type, field, tz }) => {
       const values = await queryActivityFieldValues(user, activity_type, field)
@@ -244,6 +248,17 @@ Pass group_by (a data field, typically one marked is_categorical, e.g. session_n
       const neighbors = await getActivityNeighbors(user, id, same_field)
       if (!neighbors) return errorResponse('Activity not found')
       return tzJsonResponse({ data: neighbors, success: true }, tz)
+    },
+  )
+
+  server.tool(
+    'get_activity_item_history',
+    'For one activity (plain or merged: id), its list items grouped by an item value such as the exercise of each set (field=sets.exercise): per value the items, their measures (volume, e1rm, max_weight, set_count, max_time, total_reps, max_reps), which of those are records against every earlier session with that value, and the previous session with it. Totals over the whole session.',
+    { id: z.string().describe('Activity ID'), ...activityItemHistoryQuerySchema.shape, tz: tzSchema },
+    async ({ id, field, tz }) => {
+      const history = await queryActivityItemHistory(user, id, field)
+      if (!history) return errorResponse('Activity not found')
+      return tzJsonResponse({ data: history, success: true }, tz)
     },
   )
 

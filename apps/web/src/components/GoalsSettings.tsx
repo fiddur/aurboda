@@ -1,9 +1,12 @@
-import { metricUnits, validMetrics } from '@aurboda/api-spec'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { type MeasureGoal, metricUnits, validMetrics } from '@aurboda/api-spec'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
-import { type Goal, updateUserSettings } from '../state/api'
+import { fetchActivityTypeDefinitions, type Goal, updateUserSettings } from '../state/api'
+import { measurableTypes } from '../utils/measures'
 import { metricLabels } from '../utils/metricLabels'
+import { newMeasureGoal } from './measureGoalEdits'
+import { MeasureGoalFields } from './MeasureGoalFields'
 import { type SaveStatus, SaveStatusIndicator } from './SaveStatusIndicator'
 import { SettingsSection } from './SettingsSection'
 import './GoalsSettings.css'
@@ -83,6 +86,13 @@ export function GoalsSettings({ goals }: GoalsSettingsProps) {
 
   const [localGoals, setLocalGoals] = useState<LocalGoal[]>(() => goals.map((g) => ({ ...g, isNew: false })))
 
+  const { data: definitions = [] } = useQuery({
+    queryFn: fetchActivityTypeDefinitions,
+    queryKey: ['activityTypeDefinitions'],
+    staleTime: 5 * 60 * 1000,
+  })
+  const measurable = measurableTypes(definitions)
+
   // Sync local state when props change (e.g., after successful save)
   const [prevGoals, setPrevGoals] = useState(goals)
   if (goals !== prevGoals) {
@@ -129,18 +139,19 @@ export function GoalsSettings({ goals }: GoalsSettingsProps) {
         }
 
         const numValue =
-          g.goal_type === 'trend'
-            ? value === ''
+          g.goal_type === 'metric'
+            ? fromDisplayValue(g.metric, value)
+            : value === ''
               ? undefined
               : parseFloat(value)
-            : fromDisplayValue(g.metric, value)
         return { ...g, [field]: numValue }
       }),
     )
   }
 
-  const handleFieldBlur = (goalId: string) => {
-    const localGoal = localGoals.find((g) => g.id === goalId)
+  /** Saves `list` when the goal is valid and changed; pass the list a change just produced, as state lags. */
+  const handleFieldBlur = (goalId: string, list: LocalGoal[] = localGoals) => {
+    const localGoal = list.find((g) => g.id === goalId)
     if (!localGoal) return
 
     const goalToValidate = stripIsNew(localGoal)
@@ -148,7 +159,7 @@ export function GoalsSettings({ goals }: GoalsSettingsProps) {
       return
     }
 
-    const goalsToSave: Goal[] = localGoals.filter((g) => validateGoal(g) === null).map(stripIsNew)
+    const goalsToSave: Goal[] = list.filter((g) => validateGoal(g) === null).map(stripIsNew)
 
     const savedGoal = goals.find((g) => g.id === goalId)
     if (savedGoal && JSON.stringify(goalToValidate) === JSON.stringify(savedGoal)) {
@@ -158,16 +169,30 @@ export function GoalsSettings({ goals }: GoalsSettingsProps) {
     saveGoals(goalsToSave)
   }
 
-  const handleMetricChange = (goalId: string, newMetric: string) => {
-    setLocalGoals((local) =>
-      local.map((g) => {
-        if (g.id !== goalId) return g
-        if (g.goal_type === 'trend') return g
-        return { ...g, metric: newMetric as typeof g.metric }
-      }),
+  const commitGoals = (goalId: string, next: LocalGoal[]) => {
+    setLocalGoals(next)
+    handleFieldBlur(goalId, next)
+  }
+
+  const handleMetricChange = (goalId: string, newMetric: string) =>
+    commitGoals(
+      goalId,
+      localGoals.map((g) =>
+        g.id === goalId && g.goal_type === 'metric' ? { ...g, metric: newMetric as typeof g.metric } : g,
+      ),
     )
 
-    setTimeout(() => handleFieldBlur(goalId), 0)
+  const handleMeasureEdit = (goalId: string, edit: (goal: MeasureGoal) => MeasureGoal) =>
+    commitGoals(
+      goalId,
+      localGoals.map((g) =>
+        g.id === goalId && g.goal_type === 'measure' ? { ...edit(g), isNew: g.isNew } : g,
+      ),
+    )
+
+  const handleAddMeasureGoal = () => {
+    const goal = newMeasureGoal(measurable, crypto.randomUUID())
+    if (goal) setLocalGoals((local) => [...local, { ...goal, isNew: true }])
   }
 
   const handleAddGoal = () => {
@@ -264,14 +289,25 @@ export function GoalsSettings({ goals }: GoalsSettingsProps) {
     <SettingsSection
       title="Goals"
       class="goals-section"
-      description="Set targets for metrics over a rolling time window. Goals are saved automatically when valid. Drag goals to reorder them for the widget."
+      description="Set targets for metrics, or for measures of activities such as an exercise's best e1RM, over a rolling time window. Goals are saved automatically when valid. Drag goals to reorder them for the widget."
       headerExtra={
-        <button type="button" class="add-goal-button" onClick={handleAddGoal}>
-          + Add Goal
-        </button>
+        <div class="add-goal-buttons">
+          <button type="button" class="add-goal-button" onClick={handleAddGoal}>
+            + Metric goal
+          </button>
+          <button
+            type="button"
+            class="add-goal-button"
+            onClick={handleAddMeasureGoal}
+            disabled={measurable.length === 0}
+            title={measurable.length === 0 ? 'No activity type has list items to measure' : undefined}
+          >
+            + Measure goal
+          </button>
+        </div>
       }
       isEmpty={localGoals.length === 0}
-      emptyMessage={'No goals set. Click "+ Add Goal" to create one.'}
+      emptyMessage={'No goals set. Click "+ Metric goal" or "+ Measure goal" to create one.'}
     >
       <SaveStatusIndicator state={saveStatus} />
       {mutation.isError && (
@@ -281,7 +317,7 @@ export function GoalsSettings({ goals }: GoalsSettingsProps) {
       )}
 
       <div class="goals-list">
-        {/* eslint-disable-next-line complexity -- handles both metric and trend goal form */}
+        {/* eslint-disable-next-line complexity -- handles the metric, trend and measure goal forms */}
         {localGoals.map((goal) => {
           const validationError = validateGoal(goal)
           const isInvalid = validationError !== null
@@ -301,7 +337,15 @@ export function GoalsSettings({ goals }: GoalsSettingsProps) {
                 ⋮⋮
               </div>
 
-              {goal.goal_type === 'trend' ? (
+              {goal.goal_type === 'measure' ? (
+                <MeasureGoalFields
+                  goal={goal}
+                  types={measurable}
+                  onEdit={(edit) => handleMeasureEdit(goal.id, edit)}
+                  onBoundChange={(field, value) => handleFieldChange(goal.id, field, value)}
+                  onBoundBlur={() => handleFieldBlur(goal.id)}
+                />
+              ) : goal.goal_type === 'trend' ? (
                 <>
                   <div class="goal-field metric-field">
                     <label>Trend</label>
@@ -389,30 +433,32 @@ export function GoalsSettings({ goals }: GoalsSettingsProps) {
                       <span class="unit">{getDisplayUnit(goal.metric)}</span>
                     </div>
                   </div>
-
-                  <div class="goal-field window-field">
-                    <label>
-                      Window{' '}
-                      <button
-                        type="button"
-                        class="info-button"
-                        onClick={() => setShowDurationHelp(!showDurationHelp)}
-                        aria-label="Duration format help"
-                      >
-                        i
-                      </button>
-                    </label>
-                    <input
-                      type="text"
-                      value={goal.window}
-                      onInput={(e) =>
-                        handleFieldChange(goal.id, 'window', (e.target as HTMLInputElement).value)
-                      }
-                      onBlur={() => handleFieldBlur(goal.id)}
-                      placeholder="7d"
-                    />
-                  </div>
                 </>
+              )}
+
+              {goal.goal_type !== 'trend' && (
+                <div class="goal-field window-field">
+                  <label>
+                    Window{' '}
+                    <button
+                      type="button"
+                      class="info-button"
+                      onClick={() => setShowDurationHelp(!showDurationHelp)}
+                      aria-label="Duration format help"
+                    >
+                      i
+                    </button>
+                  </label>
+                  <input
+                    type="text"
+                    value={goal.window}
+                    onInput={(e) =>
+                      handleFieldChange(goal.id, 'window', (e.target as HTMLInputElement).value)
+                    }
+                    onBlur={() => handleFieldBlur(goal.id)}
+                    placeholder={goal.goal_type === 'measure' ? '30d' : '7d'}
+                  />
+                </div>
               )}
 
               <button

@@ -91,7 +91,14 @@ export function BarChartWidget({ config, origin }: BarChartWidgetProps) {
     lookback_days,
     aggregation = 'count',
     breakdown_fields,
+    measure,
+    filter_field,
+    filter_value,
   } = config
+  const measureConfig = {
+    ...(measure ? { measure } : {}),
+    ...(measure && filter_field && filter_value ? { filter_field, filter_value } : {}),
+  }
 
   const { start, end } = lookbackToRange(lookback_days)
 
@@ -107,6 +114,7 @@ export function BarChartWidget({ config, origin }: BarChartWidgetProps) {
         start,
         ...(activity_type_id ? { activity_type_id } : {}),
         ...(breakdown_fields?.length ? { breakdown_fields } : {}),
+        ...measureConfig,
       }),
     queryKey: [
       'chart-data',
@@ -117,6 +125,9 @@ export function BarChartWidget({ config, origin }: BarChartWidgetProps) {
       lookback_days,
       aggregation,
       breakdown_fields,
+      measure,
+      filter_field,
+      filter_value,
     ],
     ...HEAVY_QUERY_OPTIONS,
     staleTime: 5 * 60 * 1000,
@@ -149,6 +160,7 @@ export function BarChartWidget({ config, origin }: BarChartWidgetProps) {
     pattern: pattern ?? undefined,
     source_type,
     activity_type_id,
+    ...measureConfig,
     origin,
   })
 

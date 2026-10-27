@@ -1,4 +1,4 @@
-import type { Goal, MetricGoal, TrendGoal } from '@aurboda/api-spec'
+import type { Goal, MeasureGoal, MetricGoal, TrendGoal } from '@aurboda/api-spec'
 
 import { query } from './connection.ts'
 
@@ -17,6 +17,21 @@ const rowToGoal = (row: Record<string, unknown>): Goal => {
     } satisfies TrendGoal
   }
 
+  if (row.goal_type === 'measure') {
+    return {
+      activity_type: row.activity_type as string,
+      aggregation: (row.aggregation ?? 'max') as MeasureGoal['aggregation'],
+      ...(row.filter_field != null ? { filter_field: row.filter_field as string } : {}),
+      ...(row.filter_value != null ? { filter_value: row.filter_value as string } : {}),
+      goal_type: 'measure',
+      id: row.id as string,
+      ...(row.max_value != null ? { max: row.max_value as number } : {}),
+      measure: row.measure as MeasureGoal['measure'],
+      ...(row.min_value != null ? { min: row.min_value as number } : {}),
+      window: row.time_window as string,
+    } satisfies MeasureGoal
+  }
+
   return {
     goal_type: 'metric',
     id: row.id as string,
@@ -31,7 +46,8 @@ export const getGoals = async (user: string): Promise<Goal[]> => {
   const result = await query(
     user,
     `SELECT id, goal_type, metric, min_value, max_value, time_window,
-            source_type, pattern, half_life_days, display_period, aggregation
+            source_type, pattern, half_life_days, display_period, aggregation,
+            activity_type, measure, filter_field, filter_value
      FROM goals ORDER BY created_at`,
   )
 
@@ -55,6 +71,10 @@ export const insertGoal = async (user: string, goal: Goal): Promise<void> => {
          max_value = EXCLUDED.max_value,
          metric = NULL,
          time_window = NULL,
+         activity_type = NULL,
+         measure = NULL,
+         filter_field = NULL,
+         filter_value = NULL,
          updated_at = NOW()`,
       [
         goal.id,
@@ -65,6 +85,39 @@ export const insertGoal = async (user: string, goal: Goal): Promise<void> => {
         goal.aggregation,
         goal.min ?? null,
         goal.max ?? null,
+      ],
+    )
+  } else if (goal.goal_type === 'measure') {
+    await query(
+      user,
+      `INSERT INTO goals (id, goal_type, activity_type, measure, filter_field, filter_value, aggregation, min_value, max_value, time_window)
+       VALUES ($1, 'measure', $2, $3, $4, $5, $6, $7, $8, $9)
+       ON CONFLICT (id) DO UPDATE SET
+         goal_type = 'measure',
+         activity_type = EXCLUDED.activity_type,
+         measure = EXCLUDED.measure,
+         filter_field = EXCLUDED.filter_field,
+         filter_value = EXCLUDED.filter_value,
+         aggregation = EXCLUDED.aggregation,
+         min_value = EXCLUDED.min_value,
+         max_value = EXCLUDED.max_value,
+         time_window = EXCLUDED.time_window,
+         metric = NULL,
+         source_type = NULL,
+         pattern = NULL,
+         half_life_days = NULL,
+         display_period = NULL,
+         updated_at = NOW()`,
+      [
+        goal.id,
+        goal.activity_type,
+        goal.measure,
+        goal.filter_field ?? null,
+        goal.filter_value ?? null,
+        goal.aggregation,
+        goal.min ?? null,
+        goal.max ?? null,
+        goal.window,
       ],
     )
   } else {
@@ -83,6 +136,10 @@ export const insertGoal = async (user: string, goal: Goal): Promise<void> => {
          half_life_days = NULL,
          display_period = NULL,
          aggregation = NULL,
+         activity_type = NULL,
+         measure = NULL,
+         filter_field = NULL,
+         filter_value = NULL,
          updated_at = NOW()`,
       [goal.id, goal.metric, goal.min ?? null, goal.max ?? null, goal.window],
     )

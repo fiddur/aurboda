@@ -413,6 +413,18 @@ this section is the difference.
 - Backend should be well covered with tests.
 - All database functions in `apps/backend/src/db.ts` must have integration tests in `db.integration.test.ts`.
 - Integration tests use testcontainers to run against a real PostgreSQL instance.
+- The backend's vitest config (`apps/backend/vitest.config.ts`) has three projects.
+  `unit-shared` runs the unit files that use no module mocking in shared workers
+  (`isolate: false`), which is most of the speed; `unit-isolated` runs the files that call
+  `vi.mock`, `vi.doMock`, `vi.unmock`, `vi.resetModules`, `vi.stubGlobal`, `vi.stubEnv`,
+  `vi.hoisted` or `vi.useFakeTimers`, since those registries and faked globals would leak
+  into every file sharing a worker. The
+  split is computed from the file contents (`apps/backend/vitest.projects.ts`), so a file
+  moves by itself when it starts mocking. `integration` runs `*.integration.test.ts`.
+- Only the `integration` project has the global setup (`apps/backend/src/test/global-setup.ts`):
+  one PostGIS container per run, started exactly when integration files are selected, and each
+  file gets its own database copied from a schema template (`apps/backend/src/test/db-test-helper.ts`).
+  A run of unit files alone starts no container.
 
 For typescript:
 

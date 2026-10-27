@@ -1,7 +1,7 @@
 import type { GoalHistoryResponse } from '@aurboda/api-spec'
 
 import { useQuery } from '@tanstack/react-query'
-import { useCallback } from 'preact/hooks'
+import { useMemo } from 'preact/hooks'
 
 import { fetchGoalHistory, type Goal } from '../state/api'
 import { GoalHistoryChart, type GoalHistoryChartMode } from './charts/GoalHistoryChart'
@@ -12,7 +12,7 @@ import {
   rangeToQuery,
   summaryText,
 } from './goal-history-range'
-import { formatValue } from './GoalProgressBar'
+import { goalValueFormat } from './goalFormat'
 
 interface GoalHistoryPanelProps {
   goal: Goal
@@ -33,11 +33,7 @@ export function GoalHistoryPanel({ goal, range, onRangeChange }: GoalHistoryPane
   })
 
   const unit = data?.unit
-  const format = useCallback(
-    (v: number) =>
-      goal.goal_type === 'trend' ? `${v.toFixed(2)} ${unit ?? ''}`.trim() : formatValue(goal.metric, v),
-    [goal, unit],
-  )
+  const format = useMemo(() => goalValueFormat(goal, unit), [goal, unit])
 
   const today = data?.days?.find((d) => d.partial)
 

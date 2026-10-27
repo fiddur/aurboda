@@ -1,11 +1,13 @@
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql'
+import { randomBytes } from 'node:crypto'
 import { Client } from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
+import { createTestDatabase, type TestDatabase } from '../test/db-test-helper.ts'
 import { createRolePool, type UserDb, withTransaction } from './pool.ts'
 
-const CONTAINER_TIMEOUT = 120_000
-const ROLE = 'pool_role'
+const SETUP_TIMEOUT = 120_000
+// Roles are server-wide, and the server is shared by every file of the run.
+const ROLE = `pool_role_${randomBytes(4).toString('hex')}`
 
 const deferred = () => {
   let resolve!: () => void
@@ -16,29 +18,25 @@ const deferred = () => {
 }
 
 describe('role pool against real Postgres', () => {
-  let container: StartedPostgreSqlContainer
+  let database: TestDatabase
   let admin: Client
   let db: UserDb
 
   beforeAll(async () => {
-    container = await new PostgreSqlContainer('postgis/postgis:16-3.4-alpine')
-      .withDatabase('pool_db')
-      .withUsername('pool_owner')
-      .withPassword('pool_pass')
-      .start()
-    admin = new Client({ connectionString: container.getConnectionUri() })
+    database = await createTestDatabase()
+    admin = new Client({ connectionString: database.uri })
     await admin.connect()
     await admin.query(`CREATE ROLE ${ROLE} NOLOGIN`)
-    await admin.query(`GRANT ${ROLE} TO pool_owner`)
+    await admin.query(`GRANT ${ROLE} TO CURRENT_USER`)
     await admin.query(`CREATE TABLE items (name TEXT PRIMARY KEY)`)
     await admin.query(`GRANT SELECT, INSERT, DELETE ON items TO ${ROLE}`)
-    db = createRolePool({ connectionString: container.getConnectionUri(), max: 3 }, ROLE)
-  }, CONTAINER_TIMEOUT)
+    db = createRolePool({ connectionString: database.uri, max: 3 }, ROLE)
+  }, SETUP_TIMEOUT)
 
   afterAll(async () => {
     await db?.end()
     await admin?.end()
-    await container?.stop()
+    await database?.drop()
   })
 
   beforeEach(async () => {

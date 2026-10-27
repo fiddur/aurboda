@@ -21,6 +21,9 @@ interface ChartUrlParams {
   activity_type_id?: string
   breakdown_fields?: string[]
   missing_days?: string
+  measure?: string
+  filter_field?: string
+  filter_value?: string
   origin?: ChartOrigin
 }
 
@@ -47,6 +50,12 @@ export function buildChartUrl(params: ChartUrlParams): string {
 
   if (params.aggregation && (params.aggregation !== 'count' || params.source_type === 'metric')) {
     qs.set('aggregation', params.aggregation)
+  }
+
+  if (params.measure) qs.set('measure', params.measure)
+  if (params.measure && params.filter_field && params.filter_value) {
+    qs.set('filter_field', params.filter_field)
+    qs.set('filter_value', params.filter_value)
   }
 
   if (params.origin) {

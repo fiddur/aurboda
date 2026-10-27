@@ -1,3 +1,5 @@
+import { previousStrengthTrainingDataSchemas, strengthTrainingDataSchema } from './builtin-data-schemas.ts'
+
 export const activitiesTables: Record<string, string> = {
   // Unified activities table (covers all time-ranged events: sleep, exercise, tags, calendar, etc.)
   activities: `
@@ -224,6 +226,17 @@ export const activitiesTables: Record<string, string> = {
       ('wheelchair', 'Wheelchair', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 82),
       ('yoga', 'Yoga', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 83)
     ON CONFLICT (name) DO NOTHING;
+    UPDATE activity_type_definitions
+       SET data_schema = $json$${JSON.stringify(strengthTrainingDataSchema)}$json$::jsonb
+     WHERE name = 'strength_training' AND is_builtin = true AND data_schema IS NULL;
+    ${previousStrengthTrainingDataSchemas
+      .map(
+        (previous) => `UPDATE activity_type_definitions
+       SET data_schema = $json$${JSON.stringify(strengthTrainingDataSchema)}$json$::jsonb
+     WHERE name = 'strength_training' AND is_builtin = true
+       AND data_schema = $json$${JSON.stringify(previous)}$json$::jsonb;`,
+      )
+      .join('\n    ')}
     -- Seed the built-in hierarchy: exercise subtypes → 'exercise', nap/rest → 'sleep'.
     UPDATE activity_type_definitions
        SET parent_type = 'exercise'

@@ -8,6 +8,7 @@
  */
 import {
   type BaseResponse,
+  type ChallengeDataResponse,
   type ChallengeStandingsResponse,
   type DashboardConfig,
   type PublicChallengeResponse,
@@ -30,7 +31,12 @@ import {
 import { bannerUrlFor } from '../services/challenge-banner.ts'
 import { toPublicChallengeListItem } from '../services/challenge-discovery.ts'
 import { fetchMemberData } from '../services/challenge-federation.ts'
-import { effectiveBucketSize, specToApi } from '../services/challenge-spec.ts'
+import {
+  echoMismatchMessage,
+  effectiveBucketSize,
+  memberEchoMatches,
+  specToApi,
+} from '../services/challenge-spec.ts'
 import { getChallengeStandings } from '../services/challenge-standings.ts'
 import { buildProfileUrl, buildShareUrl } from '../services/share-urls.ts'
 import { resolveDashboardData } from '../services/shared-dashboard-data.ts'
@@ -161,10 +167,18 @@ export const createPublicSharesRouter = (webHost: string): TypedRouter => {
           }
         }
         // Probe the member's data endpoint before accepting them (SSRF-guarded).
+        let memberData: ChallengeDataResponse
         try {
-          await fetchMemberData(req.body.data_endpoint_url)
+          memberData = await fetchMemberData(req.body.data_endpoint_url)
         } catch {
           return res.status(400).json({ error: 'Member data endpoint unreachable', success: false })
+        }
+        // An instance too old to know the measure would score plain duration under its name.
+        if (!memberEchoMatches(challenge.spec, memberData)) {
+          return res.status(409).json({
+            error: echoMismatchMessage(challenge.spec, memberData),
+            success: false,
+          })
         }
         await upsertChallengeMember(username, challenge.id, {
           data_endpoint_url: req.body.data_endpoint_url,

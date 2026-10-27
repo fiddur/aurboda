@@ -3,7 +3,8 @@ import type { DataFieldDefinition, DataSchemaDefinition } from '@aurboda/api-spe
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useRef } from 'preact/hooks'
 
-import { fieldLabel } from '../../components/sessions/sessionView'
+import { ListFieldEditor } from '../../components/ListFieldEditor'
+import { fieldLabel, listFields, scalarFields } from '../../components/sessions/sessionView'
 import { fetchActivityFieldValues } from '../../state/api'
 
 const offersKnownValues = (field: DataFieldDefinition) =>
@@ -121,6 +122,13 @@ const FieldInput = ({
   )
 }
 
+const asRows = (value: unknown): Record<string, unknown>[] =>
+  Array.isArray(value)
+    ? value.filter(
+        (v): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v),
+      )
+    : []
+
 /**
  * Inputs for the type's declared data fields. Categorical text fields suggest the values already
  * used on this type, so a repeat (a session name, a run kind) is picked instead of retyped.
@@ -139,7 +147,7 @@ export const SchemaDataFields = ({
   focusField?: string
 }) => (
   <div class="entity-fields">
-    {schema.fields.map((field) => (
+    {scalarFields(schema).map((field) => (
       <div class="field-row" key={field.name}>
         <span class="field-label">{fieldLabel(field)}</span>
         <span class="field-value">
@@ -151,6 +159,17 @@ export const SchemaDataFields = ({
             focus={field.name === focusField}
           />
         </span>
+      </div>
+    ))}
+    {listFields(schema).map((field) => (
+      <div class="field-row field-row-list" key={field.name}>
+        <span class="field-label">{fieldLabel(field)}</span>
+        <ListFieldEditor
+          field={field}
+          idPrefix={`edit-${field.name}`}
+          rows={asRows(data[field.name])}
+          onChange={(rows) => onDataChange({ ...data, [field.name]: rows })}
+        />
       </div>
     ))}
   </div>

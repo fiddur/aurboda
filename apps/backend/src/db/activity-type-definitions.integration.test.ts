@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
+import { strengthTrainingDataSchema } from '../schema/builtin-data-schemas.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { deleteActivity, getActivityById, insertActivity } from './activities/index.ts'
 import {
@@ -53,6 +54,41 @@ describe('Hierarchical activity types', () => {
       expect(exercise?.parent_type).toBeUndefined()
       const sleep = await getActivityTypeDefinition(user, 'sleep')
       expect(sleep?.parent_type).toBeUndefined()
+    })
+  })
+
+  describe('list data fields', () => {
+    test('the built-in strength_training type carries the sets schema', async () => {
+      const strength = await getActivityTypeDefinition(getTestUser(), 'strength_training')
+      expect(strength?.data_schema).toEqual(strengthTrainingDataSchema)
+    })
+
+    test('a custom type with a list field reads back unchanged', async () => {
+      const user = getTestUser()
+      const data_schema = {
+        fields: [
+          { name: 'location', type: 'string' as const },
+          {
+            item_fields: [
+              { name: 'exercise', required: true, type: 'string' as const },
+              { name: 'side', enum_values: ['left', 'right'], type: 'string' as const },
+              { name: 'reps', type: 'number' as const },
+            ],
+            label: 'Exercises',
+            name: 'exercises',
+            type: 'list' as const,
+          },
+        ],
+      }
+      await insertActivityTypeDefinition(user, {
+        data_schema,
+        display_category: 'exercise',
+        display_name: 'Rehab',
+        name: 'rehab_session',
+      })
+      const read = await getActivityTypeDefinition(user, 'rehab_session')
+      expect(read?.data_schema).toEqual(data_schema)
+      await deleteActivityTypeDefinition(user, 'rehab_session')
     })
   })
 

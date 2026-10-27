@@ -12,6 +12,7 @@ import {
 } from '../../db/index.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../../test/db-test-helper.ts'
 import { getEffectiveHrZones } from '../settings.ts'
+import { queryActivityItemHistory } from './activity-item-history.ts'
 import { getActivityNeighbors } from './activity-neighbors.ts'
 import { queryActivitySessions } from './activity-sessions.ts'
 
@@ -32,7 +33,7 @@ const hrRamp = (startIso: string, minutes: number, from: number, to: number): Ti
   }))
 }
 
-describe('activity sessions and neighbors against the database', () => {
+describe('activity sessions, neighbors and item history against the database', () => {
   beforeAll(async () => {
     await startTestDb()
   }, CONTAINER_TIMEOUT)
@@ -158,5 +159,117 @@ describe('activity sessions and neighbors against the database', () => {
     expect(sameName?.next?.id).toBe(`merged:${ids.mergedGarmin}`)
 
     expect(await getActivityNeighbors(user, ids.unnamed, 'session_name')).toEqual({ activity_type: TYPE })
+  })
+
+  describe('strength sets (Gravl-shaped)', () => {
+    const gravlSet = (exercise: string, weight: number | null, reps: number | null, setType = 'normal') => ({
+      distance: null,
+      exercise,
+      exercise_id: exercise.length,
+      order: 0,
+      reps,
+      rpe: null,
+      set_type: setType,
+      time: null,
+      weight,
+    })
+
+    const lifts = { first: '', second: '' }
+
+    beforeEach(async () => {
+      const user = getTestUser()
+      const lift = async (startIso: string, sets: Record<string, unknown>[]) => {
+        const id = randomUUID()
+        await insertActivity(user, {
+          activity_type: 'strength_training',
+          data: { sets },
+          end_time: plus(startIso, 60),
+          id,
+          source: 'gravl',
+          start_time: at(startIso),
+        })
+        return id
+      }
+      lifts.first = await lift('2026-08-01T17:00:00Z', [
+        gravlSet('Bench Press', 40, 10, 'warmup'),
+        gravlSet('Bench Press', 80, 5),
+        gravlSet('Bench Press', 80, 5),
+        gravlSet('Squat', 100, 5),
+      ])
+      lifts.second = await lift('2026-08-08T17:00:00Z', [
+        gravlSet('bench press', 40, 10, 'warmup'),
+        gravlSet('bench press', 85, 3),
+        gravlSet('Squat', 100, 5),
+      ])
+    })
+
+    test('sessions group by exercise with combined measures, and an exercise filter carries records', async () => {
+      const user = getTestUser()
+      const grouped = await queryActivitySessions(user, 'strength_training', { groupBy: 'sets.exercise' })
+
+      expect(grouped.groups?.map((g) => [g.value, g.session_ids, g.measures])).toEqual([
+        [
+          'bench press',
+          [lifts.second, lifts.first],
+          { e1rm: 93.5, max_reps: 5, max_weight: 85, set_count: 3, total_reps: 13, volume: 1055 },
+        ],
+        [
+          'Squat',
+          [lifts.second, lifts.first],
+          { e1rm: 116.7, max_reps: 5, max_weight: 100, set_count: 2, total_reps: 10, volume: 1000 },
+        ],
+      ])
+      expect(grouped.sessions[0]!.measures).toEqual({
+        e1rm: 116.7,
+        max_reps: 5,
+        max_weight: 100,
+        set_count: 2,
+        total_reps: 8,
+        volume: 755,
+      })
+
+      const bench = await queryActivitySessions(user, 'strength_training', {
+        filter: { field: 'sets.exercise', value: 'Bench Press' },
+        start: at('2026-08-05T00:00:00Z'),
+      })
+      expect(bench.sessions.map((s) => [s.id, s.items?.length, s.measures, s.records])).toEqual([
+        [
+          lifts.second,
+          2,
+          { e1rm: 93.5, max_reps: 3, max_weight: 85, set_count: 1, total_reps: 3, volume: 255 },
+          ['e1rm', 'max_weight'],
+        ],
+      ])
+    })
+
+    test('item history compares each exercise with the previous session', async () => {
+      const user = getTestUser()
+      const history = await queryActivityItemHistory(user, lifts.second, 'sets.exercise')
+
+      expect(history?.totals).toEqual({
+        e1rm: 116.7,
+        max_reps: 5,
+        max_weight: 100,
+        set_count: 2,
+        total_reps: 8,
+        volume: 755,
+      })
+      expect(history?.groups.map((g) => [g.value, g.items.length, g.records, g.previous?.id])).toEqual([
+        ['bench press', 2, ['e1rm', 'max_weight'], lifts.first],
+        ['Squat', 1, [], lifts.first],
+      ])
+      expect(history?.groups[0]!.previous).toMatchObject({
+        measures: { e1rm: 93.3, max_reps: 5, max_weight: 80, set_count: 2, total_reps: 10, volume: 800 },
+        start_time: '2026-08-01T17:00:00.000Z',
+      })
+
+      const first = await queryActivityItemHistory(user, lifts.first, 'sets.exercise')
+      expect(first?.groups.map((g) => [g.value, g.records, g.previous])).toEqual([
+        ['Bench Press', ['e1rm', 'max_weight', 'max_reps'], undefined],
+        ['Squat', ['e1rm', 'max_weight', 'max_reps'], undefined],
+      ])
+
+      expect(await queryActivityItemHistory(user, randomUUID(), 'sets.exercise')).toBeNull()
+    })
   })
 })

@@ -14,7 +14,14 @@ import {
   type SleepMetricKey,
   parseSleepStages,
 } from '../../components/charts/sleep-utils'
-import { categoricalFields, categoricalValues, fieldLabel } from '../../components/sessions/sessionView'
+import { dropBlankListRows } from '../../components/listFieldRows'
+import {
+  categoricalFields,
+  categoricalItemFields,
+  categoricalValues,
+  fieldLabel,
+  itemPath,
+} from '../../components/sessions/sessionView'
 import {
   fetchActivityById,
   fetchActivitySessions,
@@ -40,6 +47,7 @@ import { ActivityNeighborsNav } from './ActivityNeighborsNav'
 import {
   type ActivityStatRow,
   buildFieldRows,
+  buildListTables,
   buildMetricRows,
   buildTimeRows,
   garminConnectActivityUrl,
@@ -49,6 +57,8 @@ import {
 import { type ActivityDraft, EditableActivityFields } from './EditableActivityFields'
 import { EntityActions, type EntityType } from './EntityActions'
 import { formatDateTimeLocal, formatTime } from './format-utils'
+import { ItemHistorySection } from './ItemHistorySection'
+import { ListFieldTable } from './ListFieldTable'
 import { LocationInfo, LocationStatRow } from './LocationInfo'
 import { MediaPlayDetail } from './MediaPlayDetail'
 import { mediaPlayRange } from './mediaPlayFields'
@@ -254,6 +264,7 @@ const SourceDataDetails = ({ entries }: { entries: { key: string; label: string;
 // eslint-disable-next-line complexity -- unified component replaces 3 separate ones
 const ActivityDetailContent = ({
   activity,
+  activityId,
   isEditing,
   draft,
   onDraftChange,
@@ -267,6 +278,8 @@ const ActivityDetailContent = ({
   focusField,
 }: {
   activity: Activity
+  /** The id the page is viewed by: `merged:` prefixed for a merged view. */
+  activityId: string
   isEditing: boolean
   draft: ActivityDraft
   onDraftChange: (d: ActivityDraft) => void
@@ -442,6 +455,18 @@ const ActivityDetailContent = ({
               location={hasEndTime ? { end: displayEnd, start: displayStart } : undefined}
               onFill={activity.deleted_at ? undefined : onFillField}
             />
+            {buildListTables(typeDef?.data_schema, activityData).map((table) => (
+              <ListFieldTable key={table.field.name} table={table} />
+            ))}
+            {categoricalItemFields(typeDef?.data_schema).map(({ list, item }) => (
+              <ItemHistorySection
+                key={itemPath(list, item)}
+                activityId={activityId}
+                activityType={activity.activity_type}
+                path={itemPath(list, item)}
+                item={item}
+              />
+            ))}
             {hasHrZones && <HrZoneBar zones={hrZoneSecs!} />}
           </>
         )}
@@ -577,6 +602,7 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
         // An edited name or time moves this activity between groups and neighbors
         queryClient.invalidateQueries({ queryKey: ['activity-sessions'] }),
         queryClient.invalidateQueries({ queryKey: ['activity-neighbors'] }),
+        queryClient.invalidateQueries({ queryKey: ['activity-item-history'] }),
       ]),
     [queryClient, entityId],
   )
@@ -667,7 +693,10 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
       }
       if (draft.notes !== orig.notes) body.notes = draft.notes
       if (draft.data && JSON.stringify(draft.data) !== JSON.stringify(orig.data)) {
-        body.data = draft.data
+        body.data = dropBlankListRows(
+          typeDefinitions?.find((d) => d.name === draft.activity_type)?.data_schema,
+          draft.data,
+        )
       }
 
       // Merged-view edit creating a brand-new override: force the merged
@@ -780,6 +809,7 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
       {isMerging && <MergePanel activityId={rawEntityId} onCancel={() => setIsMerging(false)} />}
       <ActivityDetailContent
         activity={activity}
+        activityId={entityId}
         isEditing={isEditing}
         draft={draft}
         onDraftChange={setDraft}

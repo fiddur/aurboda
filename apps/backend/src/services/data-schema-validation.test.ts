@@ -96,3 +96,92 @@ describe('validateActivityData', () => {
     expect(result).toEqual({ valid: true })
   })
 })
+
+describe('validateActivityData with a list field', () => {
+  const setsField = {
+    item_fields: [
+      { name: 'exercise', required: true, type: 'string' as const },
+      { name: 'weight', type: 'number' as const, unit: 'kg' },
+      { name: 'reps', type: 'number' as const },
+      { name: 'time', type: 'number' as const, unit: 's' },
+      { enum_values: ['normal', 'warmup'], name: 'set_type', type: 'string' as const },
+    ],
+    label: 'Sets',
+    name: 'sets',
+    type: 'list' as const,
+  }
+  const listSchema: DataSchemaDefinition = { fields: [setsField] }
+  const requiredListSchema: DataSchemaDefinition = { fields: [{ ...setsField, required: true }] }
+
+  it('accepts valid sets with nulls on optional keys and extra undeclared item keys', () => {
+    const result = validateActivityData(
+      {
+        sets: [
+          { exercise: 'Bench Press', reps: 8, weight: 60 },
+          { exercise: 'Bench Press', reps: 8, rpe: 8, time: null, weight: 62.5 },
+          { exercise: 'Plank', reps: null, set_type: 'normal', time: 60, weight: null },
+        ],
+      },
+      listSchema,
+    )
+    expect(result).toEqual({ valid: true })
+  })
+
+  it('accepts an absent or null list when not required', () => {
+    expect(validateActivityData({}, listSchema)).toEqual({ valid: true })
+    expect(validateActivityData({ sets: null }, listSchema)).toEqual({ valid: true })
+  })
+
+  it('rejects an absent required list', () => {
+    const result = validateActivityData({}, requiredListSchema)
+    expect(result.valid).toBe(false)
+    expect(result.errors).toContain('Required field "sets" is missing')
+  })
+
+  it('rejects a list value that is not an array', () => {
+    const result = validateActivityData({ sets: 'Bench 3x8' }, listSchema)
+    expect(result.valid).toBe(false)
+    expect(result.errors).toEqual(['Field "sets" expected an array, got "string"'])
+  })
+
+  it('rejects items that are not objects', () => {
+    const result = validateActivityData({ sets: [1, null, ['x']] }, listSchema)
+    expect(result.valid).toBe(false)
+    expect(result.errors).toEqual([
+      'Field "sets[0]" expected an object, got "number"',
+      'Field "sets[1]" expected an object, got "null"',
+      'Field "sets[2]" expected an object, got "array"',
+    ])
+  })
+
+  it('rejects an item missing a required item field', () => {
+    const result = validateActivityData({ sets: [{ exercise: 'Squat', reps: 5 }, { reps: 5 }] }, listSchema)
+    expect(result.valid).toBe(false)
+    expect(result.errors).toEqual(['Required field "sets[1].exercise" is missing'])
+  })
+
+  it('rejects a wrong item field type', () => {
+    const result = validateActivityData({ sets: [{ exercise: 'Squat', reps: '5' }] }, listSchema)
+    expect(result.valid).toBe(false)
+    expect(result.errors).toEqual(['Field "sets[0].reps" expected type "number", got "string"'])
+  })
+
+  it('rejects an item value not in enum_values', () => {
+    const result = validateActivityData({ sets: [{ exercise: 'Squat', set_type: 'drop' }] }, listSchema)
+    expect(result.valid).toBe(false)
+    expect(result.errors).toEqual(['Field "sets[0].set_type" value "drop" is not one of: normal, warmup'])
+  })
+
+  it('collects errors from several items', () => {
+    const result = validateActivityData(
+      { sets: [{ reps: 5 }, { exercise: 'Squat', weight: 'heavy' }, 'x'] },
+      listSchema,
+    )
+    expect(result.valid).toBe(false)
+    expect(result.errors).toEqual([
+      'Required field "sets[0].exercise" is missing',
+      'Field "sets[1].weight" expected type "number", got "string"',
+      'Field "sets[2]" expected an object, got "string"',
+    ])
+  })
+})

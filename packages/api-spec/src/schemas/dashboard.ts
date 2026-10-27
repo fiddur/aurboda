@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
-import { baseResponseSchema } from './common.ts'
+import { activityMeasureSchema } from './activity-measures.ts'
+import { baseResponseSchema, dataFieldPathSchema } from './common.ts'
 import { trendMissingDaysSchema } from './trends.ts'
 
 export const builtinDashboardMetrics = [
@@ -109,7 +110,17 @@ export const trendChartConfigSchema = z
 
 export const barChartConfigSchema = z
   .object({
-    aggregation: z.enum(['count', 'sum', 'mean']).optional().meta({ description: 'Aggregation method' }),
+    aggregation: z
+      .enum(['count', 'sum', 'mean', 'max'])
+      .optional()
+      .meta({ description: 'Aggregation method' }),
+    filter_field: dataFieldPathSchema
+      .optional()
+      .meta({ description: 'With measure: item path whose items are measured (sets.exercise)' }),
+    filter_value: z.string().optional().meta({ description: 'With filter_field: the item value to keep' }),
+    measure: activityMeasureSchema.optional().meta({
+      description: 'For activity_type sources: chart this list-item measure instead of duration or count',
+    }),
     breakdown_fields: z
       .array(z.string())
       .optional()

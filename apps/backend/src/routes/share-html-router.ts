@@ -85,6 +85,8 @@ export const createShareResolvers = (): Pick<
         members: cardMembers(members, username),
         name: challenge.name,
         spec: {
+          filter_value: challenge.spec.filter_value,
+          measure: challenge.spec.measure,
           pattern: challenge.spec.pattern,
           source_type: challenge.spec.source_type,
           unit: challenge.spec.unit,

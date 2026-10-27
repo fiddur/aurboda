@@ -10,7 +10,9 @@
  * for one-click joining. Federation happens server-side.
  */
 import {
+  type ActivityMeasure,
   type Challenge,
+  type ChallengeAggregation,
   type ChallengeBucketSizeChoice,
   type ChallengeParticipation,
   challengeRangeLabel,
@@ -28,10 +30,13 @@ import { MetricPicker } from '../../components/MetricPicker'
 import { ShareChallengeDialog } from '../../components/ShareChallengeDialog'
 import { SHARE_VISIBILITY_OPTIONS, VisibilitySelector } from '../../components/VisibilitySelector'
 import {
+  type ActivityTypeDefinition,
   createChallenge,
   deleteChallenge,
   deleteChallengeBanner,
   discoverChallenges,
+  fetchActivityFieldValues,
+  fetchActivityTypeDefinitions,
   joinChallengeByUrl,
   leaveChallenge,
   listChallenges,
@@ -39,6 +44,7 @@ import {
   updateChallenge,
   uploadChallengeBanner,
 } from '../../state/api'
+import { measurableTypes, measureFilter, measureOptions } from '../../utils/measures'
 import {
   type ChallengeItem,
   challengeItemKey,
@@ -53,28 +59,109 @@ import {
   thisMonthRange,
   thisWeekRange,
 } from './date-range'
+import {
+  aggregationOptions,
+  buildSpec,
+  emptySpecForm,
+  type SpecChange,
+  type SpecForm,
+  specPatch,
+} from './spec-form'
+import { describeSpec } from './spec-label'
 import './style.css'
+
+const selectValue = (e: Event): string => (e.target as HTMLSelectElement).value
+
+/** For an activity type with list items: score a measure of them, optionally for one item value (exercise). */
+function MeasureFields({
+  form,
+  typeDef,
+  onChange,
+}: {
+  form: SpecForm
+  typeDef: ActivityTypeDefinition
+  onChange: (change: SpecChange) => void
+}) {
+  const filter = measureFilter(typeDef)
+  const filterPath = filter?.path ?? ''
+  const { data: fieldValues } = useQuery({
+    enabled: Boolean(form.measure && filterPath),
+    queryFn: () => fetchActivityFieldValues(form.pattern, filterPath),
+    queryKey: ['activity-field-values', form.pattern, filterPath],
+    staleTime: 5 * 60 * 1000,
+  })
+  const valueKnown = !form.filter_value || fieldValues?.values.some((v) => v.value === form.filter_value)
+
+  return (
+    <div class="challenge-create-row">
+      <label>
+        Measure
+        <select
+          value={form.measure ?? ''}
+          onChange={(e) =>
+            onChange({
+              kind: 'measure',
+              measure: (selectValue(e) || undefined) as ActivityMeasure | undefined,
+            })
+          }
+        >
+          <option value="">Duration / count</option>
+          {measureOptions().map(({ label, value }) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </label>
+      {form.measure && filter && (
+        <label>
+          {filter.label}
+          <select
+            value={form.filter_value ?? ''}
+            onChange={(e) => onChange({ kind: 'filter', path: filter.path, value: selectValue(e) })}
+          >
+            <option value="">All</option>
+            {!valueKnown && <option value={form.filter_value}>{form.filter_value}</option>}
+            {fieldValues?.values.map((v) => (
+              <option key={v.value} value={v.value}>
+                {v.value}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+    </div>
+  )
+}
 
 function CreateChallengeForm({ onCreated }: { onCreated: () => void }) {
   const initialRange = defaultWeekRange()
   const [name, setName] = useState('')
-  const [sourceType, setSourceType] = useState<'metric' | 'activity_type'>('metric')
-  const [pattern, setPattern] = useState('')
-  const [aggregation, setAggregation] = useState<'sum' | 'count'>('sum')
-  const [unit, setUnit] = useState('')
+  const [form, setForm] = useState<SpecForm>(emptySpecForm)
   const [startDate, setStartDate] = useState(initialRange.start)
   const [endDate, setEndDate] = useState(initialRange.end)
   const [bucketSize, setBucketSize] = useState<ChallengeBucketSizeChoice>('auto')
   const [visibility, setVisibility] = useState<ShareVisibility>('unlisted')
   const [announceWinner, setAnnounceWinner] = useState(true)
 
+  const { data: activityTypes = [] } = useQuery({
+    queryFn: fetchActivityTypeDefinitions,
+    queryKey: ['activityTypeDefinitions'],
+    staleTime: 5 * 60 * 1000,
+  })
+  const measurableTypeDef =
+    form.source_type === 'activity_type' && form.pattern
+      ? measurableTypes(activityTypes).find((d) => d.name === form.pattern)
+      : undefined
+
+  const change = (c: SpecChange) => setForm((f) => ({ ...f, ...specPatch(f, c) }))
+
   const createMutation = useMutation({
     mutationFn: (body: CreateChallengeBody) => createChallenge(body),
     onError: () => alert('Failed to create the challenge. Please try again.'),
     onSuccess: () => {
       setName('')
-      setPattern('')
-      setUnit('')
+      setForm((f) => ({ ...f, ...specPatch(f, { kind: 'pattern', pattern: '' }), unit: '' }))
       onCreated()
     },
   })
@@ -84,7 +171,7 @@ function CreateChallengeForm({ onCreated }: { onCreated: () => void }) {
     setEndDate(end)
   }
 
-  const canSubmit = name.trim() && pattern.trim() && unit.trim() && !createMutation.isPending
+  const canSubmit = name.trim() && form.pattern.trim() && form.unit.trim() && !createMutation.isPending
 
   const handleSubmit = (e: Event) => {
     e.preventDefault()
@@ -93,13 +180,7 @@ function CreateChallengeForm({ onCreated }: { onCreated: () => void }) {
       announce_winner: announceWinner,
       end_ts: dateToEndIso(endDate),
       name: name.trim(),
-      spec: {
-        aggregation,
-        bucket_size: bucketSize,
-        pattern: pattern.trim(),
-        source_type: sourceType,
-        unit: unit.trim(),
-      },
+      spec: buildSpec(form, bucketSize),
       start_ts: dateToStartIso(startDate),
       timezone: browserTz(),
       visibility,
@@ -117,11 +198,10 @@ function CreateChallengeForm({ onCreated }: { onCreated: () => void }) {
       <label>
         Measures
         <select
-          value={sourceType}
-          onChange={(e) => {
-            setSourceType((e.target as HTMLSelectElement).value as 'metric' | 'activity_type')
-            setPattern('')
-          }}
+          value={form.source_type}
+          onChange={(e) =>
+            change({ kind: 'source_type', source_type: selectValue(e) as 'metric' | 'activity_type' })
+          }
         >
           <option value="metric">Metric</option>
           <option value="activity_type">Activity type</option>
@@ -129,32 +209,40 @@ function CreateChallengeForm({ onCreated }: { onCreated: () => void }) {
       </label>
 
       <label>
-        {sourceType === 'metric' ? 'Metric' : 'Activity type'}
-        {sourceType === 'metric' ? (
-          <MetricPicker value={pattern} onChange={setPattern} />
+        {form.source_type === 'metric' ? 'Metric' : 'Activity type'}
+        {form.source_type === 'metric' ? (
+          <MetricPicker value={form.pattern} onChange={(pattern) => change({ kind: 'pattern', pattern })} />
         ) : (
-          <ActivityTypePicker value={pattern} onChange={setPattern} />
+          <ActivityTypePicker
+            value={form.pattern}
+            onChange={(pattern) => change({ kind: 'pattern', pattern })}
+          />
         )}
       </label>
+
+      {measurableTypeDef && <MeasureFields form={form} typeDef={measurableTypeDef} onChange={change} />}
 
       <div class="challenge-create-row">
         <label>
           Aggregation
           <select
-            value={aggregation}
-            onChange={(e) => setAggregation((e.target as HTMLSelectElement).value as 'sum' | 'count')}
+            value={form.aggregation}
+            onChange={(e) => setForm((f) => ({ ...f, aggregation: selectValue(e) as ChallengeAggregation }))}
           >
-            <option value="sum">Sum</option>
-            <option value="count">Count</option>
+            {aggregationOptions(form.measure).map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
           </select>
         </label>
         <label>
           Unit
           <input
             type="text"
-            value={unit}
-            placeholder={sourceType === 'metric' ? 'e.g. steps' : 'e.g. hours'}
-            onInput={(e) => setUnit((e.target as HTMLInputElement).value)}
+            value={form.unit}
+            placeholder={form.source_type === 'metric' ? 'e.g. steps' : 'e.g. hours'}
+            onInput={(e) => setForm((f) => ({ ...f, unit: (e.target as HTMLInputElement).value }))}
           />
         </label>
       </div>
@@ -317,7 +405,7 @@ function HostedRow({ challenge, now }: { challenge: Challenge; now: Date }) {
     <li class="challenge-row">
       <RowMain
         endTs={challenge.end_ts}
-        meta={`${challenge.spec.pattern} · ${challenge.spec.aggregation} · ${challenge.visibility}`}
+        meta={`${describeSpec(challenge.spec)} · ${challenge.visibility}`}
         name={challenge.name}
         now={now}
         role="hosted"
@@ -446,7 +534,7 @@ function DiscoveredRow({
     <li class="challenge-row">
       <RowMain
         endTs={challenge.end_ts}
-        meta={`${discoveredHostLabel(challenge)} · ${challenge.spec.pattern} · ${challenge.spec.aggregation}`}
+        meta={`${discoveredHostLabel(challenge)} · ${describeSpec(challenge.spec)}`}
         name={challenge.name}
         now={now}
         role="open"

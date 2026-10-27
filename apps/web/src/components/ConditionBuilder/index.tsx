@@ -1,6 +1,8 @@
 /**
  * ConditionBuilder — editable list of AND-combined deduction rule conditions.
  */
+import type { DataFieldDefinition } from '@aurboda/api-spec'
+
 import { useQuery } from '@tanstack/react-query'
 import { useRef } from 'preact/hooks'
 
@@ -8,6 +10,7 @@ import type { DataFilter, DeductionRuleCondition } from '../../state/api'
 
 import { fetchActivityTypeDefinitions, fetchNamedLocations } from '../../state/api'
 import { ActivityTypePicker } from '../ActivityTypePicker'
+import { scalarFields } from '../sessions/sessionView'
 import { removeKey, syncKeys } from './conditionKeys'
 import { positiveOrUndefined } from './positiveOrUndefined'
 import './style.css'
@@ -111,7 +114,7 @@ function DataFiltersInline({
 }: {
   filters: DataFilter[]
   onChange: (filters: DataFilter[]) => void
-  schemaFields: Array<{ name: string; label?: string }>
+  schemaFields: DataFieldDefinition[]
 }) {
   const updateFilter = (i: number, patch: Partial<DataFilter>) => {
     onChange(filters.map((f, idx) => (idx === i ? { ...f, ...patch } : f)))
@@ -444,10 +447,8 @@ function ConditionCard({
             <ActivityTitleFilter condition={condition} onChange={update} />
             {(() => {
               const typeDef = definitions.find((d) => d.name === condition.activity_type)
-              const schemaFields = (
-                typeDef as { data_schema?: { fields: Array<{ name: string; label?: string }> } }
-              )?.data_schema?.fields
-              if (!schemaFields?.length) return null
+              const schemaFields = scalarFields(typeDef?.data_schema)
+              if (schemaFields.length === 0) return null
               return (
                 <DataFiltersInline
                   filters={condition.data_filters ?? []}

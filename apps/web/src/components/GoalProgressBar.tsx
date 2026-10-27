@@ -1,44 +1,6 @@
-import { metricUnits } from '@aurboda/api-spec'
-
 import type { GoalProgress } from '../state/api'
 
-import { metricLabels } from '../utils/metricLabels'
-
-export const formatValue = (metric: string, value: number): string => {
-  const unit = metricUnits[metric as keyof typeof metricUnits]
-  if (unit === 'sec') {
-    const hours = Math.floor(value / 3600)
-    const minutes = Math.floor((value % 3600) / 60)
-    if (hours > 0) {
-      return `${hours}h ${minutes}m`
-    }
-    return `${minutes}m`
-  }
-  if (unit === 'm') {
-    return `${(value / 1000).toFixed(1)} km`
-  }
-  if (unit === 'count') {
-    return value.toLocaleString()
-  }
-  return `${value.toLocaleString()} ${unit}`
-}
-
-export const formatLosingTomorrow = (metric: string, value: number): string => {
-  if (value === 0) return ''
-  const unit = metricUnits[metric as keyof typeof metricUnits]
-  if (unit === 'sec') {
-    const hours = Math.floor(value / 3600)
-    const minutes = Math.floor((value % 3600) / 60)
-    if (hours > 0) {
-      return `-${hours}h ${minutes}m`
-    }
-    return `-${minutes}m`
-  }
-  if (unit === 'count') {
-    return `-${value.toLocaleString()}`
-  }
-  return `-${value.toLocaleString()} ${unit}`
-}
+import { goalFormat } from './goalFormat'
 
 interface GoalProgressBarProps {
   goal: GoalProgress
@@ -46,18 +8,12 @@ interface GoalProgressBarProps {
   compact?: boolean
 }
 
-// eslint-disable-next-line complexity -- handles both metric and trend goal types
 export function GoalProgressBar({ goal, showWindow, compact }: GoalProgressBarProps) {
   const { current, max, min } = goal
 
-  const label = goal.goal_type === 'trend' ? goal.pattern : (metricLabels[goal.metric] ?? goal.metric)
-  const windowLabel = goal.goal_type === 'trend' ? goal.display_period : goal.window
-  const valueText =
-    goal.goal_type === 'trend'
-      ? `${current.toFixed(2)} ${goal.display_unit}`
-      : formatValue(goal.metric, current)
-  const losingText =
-    !compact && goal.goal_type === 'metric' ? formatLosingTomorrow(goal.metric, goal.losing_tomorrow) : ''
+  const { format, label, losingTomorrow, windowLabel } = goalFormat(goal)
+  const valueText = format(current)
+  const losingText = compact ? '' : losingTomorrow
 
   const target = max ?? min ?? 1
   const progressPercent = (current / target) * 100
@@ -77,9 +33,6 @@ export function GoalProgressBar({ goal, showWindow, compact }: GoalProgressBarPr
   }
 
   const barColor = getBarColor()
-
-  const formatTarget = (value: number) =>
-    goal.goal_type === 'trend' ? `${value.toFixed(2)} ${goal.display_unit}` : formatValue(goal.metric, value)
 
   return (
     <div class="goal-progress">
@@ -104,8 +57,8 @@ export function GoalProgressBar({ goal, showWindow, compact }: GoalProgressBarPr
       )}
 
       <div class="goal-targets">
-        {min != null && <span class="target-label">Min: {formatTarget(min)}</span>}
-        {max != null && <span class="target-label">Max: {formatTarget(max)}</span>}
+        {min != null && <span class="target-label">Min: {format(min)}</span>}
+        {max != null && <span class="target-label">Max: {format(max)}</span>}
       </div>
     </div>
   )

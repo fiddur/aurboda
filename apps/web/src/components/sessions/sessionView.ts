@@ -2,6 +2,7 @@ import type {
   ActivitySession,
   ActivitySessionGroup,
   DataFieldDefinition,
+  DataItemFieldDefinition,
   DataSchemaDefinition,
   HrZoneSecs,
   ValueDistribution,
@@ -10,8 +11,32 @@ import type {
 export type SessionSortKey = 'date' | 'duration' | 'avg_hr' | 'max_hr' | 'hard_minutes'
 export type GroupSortKey = 'recent' | 'count' | 'duration' | 'avg_hr' | 'hard_minutes' | 'name'
 
+export type ListFieldDefinition = DataFieldDefinition & { item_fields: DataItemFieldDefinition[] }
+
 export const categoricalFields = (schema: DataSchemaDefinition | undefined): DataFieldDefinition[] =>
-  schema?.fields.filter((f) => f.is_categorical) ?? []
+  schema?.fields.filter((f) => f.is_categorical && f.type !== 'list') ?? []
+
+export const scalarFields = (schema: DataSchemaDefinition | undefined): DataFieldDefinition[] =>
+  schema?.fields.filter((f) => f.type !== 'list') ?? []
+
+const isListField = (f: DataFieldDefinition): f is ListFieldDefinition =>
+  f.type === 'list' && f.item_fields !== undefined
+
+export const listFields = (schema: DataSchemaDefinition | undefined): ListFieldDefinition[] =>
+  schema?.fields.filter(isListField) ?? []
+
+export const itemPath = (list: ListFieldDefinition, item: DataItemFieldDefinition): string =>
+  `${list.name}.${item.name}`
+
+export const itemPageHref = (activityType: string, path: string, value: string): string =>
+  `/activity-type/${encodeURIComponent(activityType)}/item/${encodeURIComponent(path)}/${encodeURIComponent(value)}`
+
+export const categoricalItemFields = (
+  schema: DataSchemaDefinition | undefined,
+): { list: ListFieldDefinition; item: DataItemFieldDefinition }[] =>
+  listFields(schema).flatMap((list) =>
+    list.item_fields.filter((item) => item.is_categorical).map((item) => ({ item, list })),
+  )
 
 export const fieldLabel = (field: Pick<DataFieldDefinition, 'label' | 'name'>): string =>
   field.label ?? field.name.charAt(0).toUpperCase() + field.name.slice(1).replaceAll('_', ' ')
@@ -63,10 +88,10 @@ export const sessionLabel = (session: ActivitySession, fields: DataFieldDefiniti
   return values.length > 0 ? values.join(' · ') : session.title
 }
 
-type Comparable = number | string | undefined
+export type Comparable = number | string | undefined
 
 /** Missing values sort last in either direction. */
-const compare = (a: Comparable, b: Comparable, desc: boolean): number => {
+export const compare = (a: Comparable, b: Comparable, desc: boolean): number => {
   if (a === undefined || b === undefined) return a === b ? 0 : a === undefined ? 1 : -1
   const order = typeof a === 'string' ? a.localeCompare(String(b)) : a - (b as number)
   return desc ? -order : order
