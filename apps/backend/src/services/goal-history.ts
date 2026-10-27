@@ -19,8 +19,9 @@ import {
 
 import { getDailyAggregates, getDailyAggregateValues, getHrZoneSecs, getRawDailySums } from '../db/index.ts'
 import { getCustomMetrics } from './custom-metrics.ts'
+import { dayKey, dayKeysEndingAt, dayStartInTz, shiftDayKey } from './day-keys.ts'
 import { measureFilter, queryMeasuredActivities } from './queries/activity-measure-series.ts'
-import { getEffectiveGoals, getEffectiveHrZones } from './settings.ts'
+import { getEffectiveGoals, getEffectiveHrZones, getUserTimezone } from './settings.ts'
 import { getTrend } from './trends.ts'
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -29,18 +30,6 @@ export const windowDays = (window: string): number => {
   const { ms, unit, value } = parseDuration(window)
   if (isCalendarBasedUnit(unit)) return unit === 'd' ? value : unit === 'w' ? value * 7 : value * 30
   return Math.max(1, Math.ceil(ms / DAY_MS))
-}
-
-export const utcDayKey = (d: Date): string => d.toISOString().slice(0, 10)
-
-const dayStart = (key: string): Date => new Date(`${key}T00:00:00Z`)
-
-const shiftDay = (key: string, days: number): string =>
-  utcDayKey(new Date(dayStart(key).getTime() + days * DAY_MS))
-
-export const dayKeysEndingAt = (today: Date, count: number): string[] => {
-  const todayKey = utcDayKey(today)
-  return Array.from({ length: count }, (_, i) => shiftDay(todayKey, i - (count - 1)))
 }
 
 export const goalStatus = (value: number, min?: number, max?: number): GoalDayStatus => {
@@ -57,7 +46,7 @@ export const rollingSeries = (
 ): Omit<GoalHistoryDay, 'status'>[] =>
   days.map((date) => {
     let value = 0
-    for (let i = 0; i < windowLength; i++) value += daily.get(shiftDay(date, -i)) ?? 0
+    for (let i = 0; i < windowLength; i++) value += daily.get(shiftDayKey(date, -i)) ?? 0
     return { contribution: daily.get(date) ?? 0, date, partial: date === todayKey, value }
   })
 
@@ -70,7 +59,7 @@ export const rollingMaxSeries = (
 ): Omit<GoalHistoryDay, 'status'>[] =>
   days.map((date) => {
     let value = 0
-    for (let i = 0; i < windowLength; i++) value = Math.max(value, daily.get(shiftDay(date, -i)) ?? 0)
+    for (let i = 0; i < windowLength; i++) value = Math.max(value, daily.get(shiftDayKey(date, -i)) ?? 0)
     return { contribution: daily.get(date) ?? 0, date, partial: date === todayKey, value }
   })
 
@@ -113,10 +102,11 @@ export const getDailyMetricSums = async (
   metric: MetricType,
   start: Date,
   end: Date,
+  tz: string,
 ): Promise<Map<string, number>> => {
   if (metric.startsWith('hr_zone_')) {
     const { zones } = await getEffectiveHrZones(user)
-    const rows = await getHrZoneSecs(user, start, end, zones, '1d', 'UTC')
+    const rows = await getHrZoneSecs(user, start, end, zones, '1d', tz)
     const zoneIndex = parseInt(metric.replace('hr_zone_', '').replace('_sec', ''), 10) as
       | 0
       | 1
@@ -126,19 +116,19 @@ export const getDailyMetricSums = async (
       | 5
     const sums = new Map<string, number>()
     for (const row of rows) {
-      if (row.bucket_start) sums.set(utcDayKey(row.bucket_start), row.secs[zoneIndex] ?? 0)
+      if (row.bucket_start) sums.set(dayKey(row.bucket_start, tz), row.secs[zoneIndex] ?? 0)
     }
     return sums
   }
 
   if (cumulativeMetrics.includes(metric)) {
-    const values = await getDailyAggregateValues(user, metric, start, end)
+    const values = await getDailyAggregateValues(user, metric, start, end, tz)
     // Same last resort as getMetricSum in goals.ts: every source, so the history
     // agrees with the progress bar when steps come from a non-aggregate source.
-    return values.size > 0 ? values : sumByDay(await getRawDailySums(user, metric, start, end))
+    return values.size > 0 ? values : sumByDay(await getRawDailySums(user, metric, start, end, tz))
   }
 
-  return sumByDay(await getDailyAggregates(user, [metric], start, end))
+  return sumByDay(await getDailyAggregates(user, [metric], start, end, tz))
 }
 
 const metricGoalDays = async (
@@ -146,11 +136,12 @@ const metricGoalDays = async (
   goal: MetricGoal,
   days: string[],
   today: Date,
+  tz: string,
 ): Promise<GoalHistoryDay[]> => {
   const w = windowDays(goal.window)
-  const start = new Date(dayStart(days[0]).getTime() - (w - 1) * DAY_MS)
-  const daily = await getDailyMetricSums(user, goal.metric, start, today)
-  return rollingSeries(daily, days, w, utcDayKey(today)).map((d) => ({
+  const start = dayStartInTz(shiftDayKey(days[0], -(w - 1)), tz)
+  const daily = await getDailyMetricSums(user, goal.metric, start, today, tz)
+  return rollingSeries(daily, days, w, dayKey(today, tz)).map((d) => ({
     ...d,
     status: goalStatus(d.value, goal.min, goal.max),
   }))
@@ -161,9 +152,10 @@ const measureGoalDays = async (
   goal: MeasureGoal,
   days: string[],
   today: Date,
+  tz: string,
 ): Promise<GoalHistoryDay[]> => {
   const w = windowDays(goal.window)
-  const start = new Date(dayStart(days[0]).getTime() - (w - 1) * DAY_MS)
+  const start = dayStartInTz(shiftDayKey(days[0], -(w - 1)), tz)
   const measured = await queryMeasuredActivities(
     user,
     goal.activity_type,
@@ -176,12 +168,12 @@ const measureGoalDays = async (
   for (const { activity, measures } of measured) {
     const value = measures[goal.measure]
     if (value === undefined) continue
-    const key = utcDayKey(activity.start_time)
+    const key = dayKey(activity.start_time, tz)
     const prev = daily.get(key)
     daily.set(key, prev === undefined ? value : combine(prev, value))
   }
   const series = goal.aggregation === 'max' ? rollingMaxSeries : rollingSeries
-  return series(daily, days, w, utcDayKey(today)).map((d) => ({
+  return series(daily, days, w, dayKey(today, tz)).map((d) => ({
     ...d,
     status: goalStatus(d.value, goal.min, goal.max),
   }))
@@ -218,12 +210,19 @@ const goalDaysAndUnit = async (
   query: GoalHistoryQuery,
   today: Date,
 ): Promise<{ days: GoalHistoryDay[]; unit: string }> => {
-  if (goal.goal_type === 'trend') return trendGoalHistory(user, goal, query.lookback_days, utcDayKey(today))
-  const keys = dayKeysEndingAt(today, query.lookback_days + 1)
-  if (goal.goal_type === 'measure') {
-    return { days: await measureGoalDays(user, goal, keys, today), unit: activityMeasureUnits[goal.measure] }
+  // getTrend's history is keyed by UTC days, so a trend goal's today is the UTC one.
+  if (goal.goal_type === 'trend') {
+    return trendGoalHistory(user, goal, query.lookback_days, dayKey(today, 'UTC'))
   }
-  return { days: await metricGoalDays(user, goal, keys, today), unit: metricUnits[goal.metric] }
+  const tz = await getUserTimezone(user)
+  const keys = dayKeysEndingAt(today, query.lookback_days + 1, tz)
+  if (goal.goal_type === 'measure') {
+    return {
+      days: await measureGoalDays(user, goal, keys, today, tz),
+      unit: activityMeasureUnits[goal.measure],
+    }
+  }
+  return { days: await metricGoalDays(user, goal, keys, today, tz), unit: metricUnits[goal.metric] }
 }
 
 export const getGoalHistory = async (

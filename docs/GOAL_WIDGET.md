@@ -347,7 +347,7 @@ Returns current progress for all goals with losing-tomorrow calculations.
 
 ### get_goal_history
 
-Returns one goal's value and on-target status per past UTC day, or per month as counts of on-target days (`bucket=month`). Today is partial and not counted. REST twin: `GET /goals/{id}/history`. See [Goals: History](features/goals.md#history).
+Returns one goal's value and on-target status per past day in the user's device timezone (UTC when unset), or per month as counts of on-target days (`bucket=month`). Today is partial and not counted. REST twin: `GET /goals/{id}/history`. See [Goals: History](features/goals.md#history).
 
 ## Implementation Notes
 
@@ -370,8 +370,8 @@ Returns one goal's value and on-target status per past UTC day, or per month as 
 
 ### Timezone Handling
 
-- All calculations use UTC
-- "Tomorrow" means the next UTC day boundary
+- Days are calendar days in the user's device timezone (`device_timezone`, auto-detected by the Android app; UTC when unset); a day-based window starts at local midnight in that zone. Trend goals' days remain UTC days.
+- "Tomorrow" means the next local day boundary in that zone
 - Widget should display times in user's local timezone
 
 ### Performance

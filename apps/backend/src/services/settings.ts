@@ -1,6 +1,7 @@
 import {
   defaultGoals,
   type Goal,
+  isKnownTimezone,
   type HrZoneSecs,
   type HrZoneSource,
   type HrZoneThresholds,
@@ -27,6 +28,12 @@ import type { UserSettings } from '../db/types.ts'
 export type { UserSettings }
 
 export type SettingsResponse = UserSettingsResponse & { error?: string }
+
+/** The user's stored device timezone when it is a known IANA zone, else UTC. */
+export const getUserTimezone = async (user: string): Promise<string> => {
+  const tz = (await getUserSettings(user))?.device_timezone
+  return tz && isKnownTimezone(tz) ? tz : 'UTC'
+}
 
 const DEFAULT_MAX_HR = 180 // Assumes age ~40
 
