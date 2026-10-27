@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import type { GravlWorkoutDetail, GravlWorkoutSummary } from './types.ts'
+import type { GravlSet, GravlWorkoutDetail, GravlWorkoutExercise, GravlWorkoutSummary } from './types.ts'
 
 import { applyItemValueAliases } from '../../services/item-value-aliases.ts'
 
@@ -11,6 +11,7 @@ vi.mock('../../db/index.ts', () => ({
   insertRawRecord: vi.fn(),
   materializeSuperseded: vi.fn(),
   restoreEmptyImportTombstone: vi.fn(),
+  restoreSetlessTombstone: vi.fn(),
   softDeleteActivityByExternalId: vi.fn(),
 }))
 vi.mock('../../db/notes.ts', () => ({ upsertSyncedNote: vi.fn() }))
@@ -21,9 +22,11 @@ import {
   buildGravlSets,
   formatGravlSetsNote,
   type GravlProcessDeps,
+  hasLoggedSets,
   isExternalWorkout,
   isStrengthWorkout,
   lbToKg,
+  mayCarryLoggedSets,
   processGravlWorkout,
   retractEmptyGravlImport,
 } from './process.ts'
@@ -61,6 +64,39 @@ const detail = (overrides: Partial<GravlWorkoutDetail> = {}): GravlWorkoutDetail
   volume: 3527.396,
   ...overrides,
 })
+
+const set = (overrides: Partial<GravlSet> = {}): GravlSet => ({
+  distance: null,
+  duration: null,
+  order: 1,
+  reps: 0,
+  rpe: null,
+  setType: 'normal',
+  weight: 0,
+  ...overrides,
+})
+
+const exercise = (exerciseName: string, sets: GravlSet[]): GravlWorkoutExercise => ({
+  exerciseId: exerciseName.length,
+  exerciseName,
+  sets,
+  supersetId: null,
+})
+
+const walking = exercise('Walking', [set({ distance: 2400, duration: 1800 })])
+
+/** A plain round-trip: the imported session as Gravl's single cardio pseudo-exercise. */
+const roundTrip = (): GravlWorkoutDetail =>
+  detail({ exercises: [walking], name: 'External Workout - 2026-08-30', type: 'external', volume: 0 })
+
+/** An external session onto which sets were logged in Gravl (#1333). */
+const loggedExternal = (): GravlWorkoutDetail =>
+  detail({
+    exercises: [walking, exercise('Squat', [set({ reps: 8, weight: 220.462 })])],
+    name: 'External Workout - 2026-08-30',
+    type: 'external',
+    volume: 5370,
+  })
 
 describe('unit conversion', () => {
   it('converts Gravl’s pounds to kilograms with a clean round-trip', () => {
@@ -133,13 +169,14 @@ describe('processGravlWorkout', () => {
     insertRawRecord: vi.fn(),
     materializeSuperseded: vi.fn(),
     restoreEmptyImportTombstone: vi.fn().mockResolvedValue(false),
+    restoreSetlessTombstone: vi.fn().mockResolvedValue(false),
     softDeleteActivityByExternalId: vi.fn(),
     upsertSyncedNote: vi.fn(),
   })
 
   it('skips an external round-trip we never stored', async () => {
     const deps = makeDeps(null)
-    expect(await processGravlWorkout('alice', detail({ type: 'external' }), deps)).toBe('skipped')
+    expect(await processGravlWorkout('alice', roundTrip(), deps)).toBe('skipped')
     expect(deps.softDeleteActivityByExternalId).not.toHaveBeenCalled()
     expect(deps.materializeSuperseded).not.toHaveBeenCalled()
     expect(deps.insertRawRecord).not.toHaveBeenCalled()
@@ -148,7 +185,7 @@ describe('processGravlWorkout', () => {
 
   it('removes the Health Connect copy of an external round-trip and re-merges around it', async () => {
     const deps = makeDeps({ id: 'act-1', start_time: new Date('2026-09-03T05:16:12Z') })
-    expect(await processGravlWorkout('alice', detail({ type: 'external' }), deps)).toBe('removed')
+    expect(await processGravlWorkout('alice', roundTrip(), deps)).toBe('removed')
     expect(deps.softDeleteActivityByExternalId).toHaveBeenCalledWith(
       'alice',
       'gravl',
@@ -168,6 +205,76 @@ describe('processGravlWorkout', () => {
     expect(deps.insertRawRecord).not.toHaveBeenCalled()
     expect(deps.insertActivity).not.toHaveBeenCalled()
     expect(deps.adoptLegacyActivity).not.toHaveBeenCalled()
+  })
+
+  it('removes an external workout whose only sets are the cardio pseudo-exercise', async () => {
+    const deps = makeDeps({ id: 'act-1', start_time: new Date('2026-09-03T05:16:12Z') })
+    const pseudoOnly = detail({
+      exercises: [walking, exercise('Squat', [])],
+      type: 'external',
+      volume: 0,
+    })
+    expect(await processGravlWorkout('alice', pseudoOnly, deps)).toBe('removed')
+    expect(deps.restoreSetlessTombstone).not.toHaveBeenCalled()
+    expect(deps.insertActivity).not.toHaveBeenCalled()
+  })
+
+  it('imports an external workout onto which sets were logged, without its pseudo-exercise', async () => {
+    const deps = makeDeps(null)
+    expect(await processGravlWorkout('alice', loggedExternal(), deps)).toBe('created')
+
+    expect(deps.softDeleteActivityByExternalId).not.toHaveBeenCalled()
+    expect(deps.insertRawRecord).toHaveBeenCalledWith(
+      'alice',
+      expect.objectContaining({ external_id: 'gravl-workout-97248067-7947-4715-8fc9-d0048369a0d0' }),
+    )
+    expect(deps.adoptLegacyActivity).toHaveBeenCalled()
+    const activity = vi.mocked(deps.insertActivity).mock.calls[0][1]
+    expect(activity).toMatchObject({
+      activity_type: 'strength_training',
+      source: 'gravl',
+      title: 'External Workout - 2026-08-30',
+    })
+    expect(activity.data).toMatchObject({ exercise_count: 1, set_count: 1, workout_type: 'external' })
+    expect(activity.data?.sets).toEqual([
+      expect.objectContaining({ exercise: 'Squat', reps: 8, weight: 100 }),
+    ])
+    expect(deps.upsertSyncedNote).toHaveBeenCalledWith(
+      'alice',
+      'activity',
+      'act-1',
+      'gravl',
+      expect.stringContaining('Squat: 8×100 kg'),
+      new Date('2026-09-03T05:16:12Z'),
+      new Date('2026-09-03T05:45:12Z'),
+    )
+    expect(vi.mocked(deps.upsertSyncedNote).mock.calls[0][4]).not.toContain('Walking')
+    expect(deps.materializeSuperseded).not.toHaveBeenCalled()
+  })
+
+  it('enriches the live Health Connect copy of an external workout with its logged sets', async () => {
+    const deps = makeDeps({ data: { metadata: {} }, id: 'act-1' })
+    expect(await processGravlWorkout('alice', loggedExternal(), deps)).toBe('enriched')
+    expect(deps.softDeleteActivityByExternalId).not.toHaveBeenCalled()
+    expect(deps.insertActivity).toHaveBeenCalled()
+  })
+
+  it('restores the removed copy of an external workout before importing its logged sets', async () => {
+    const deps = makeDeps({ data: { metadata: {} }, id: 'act-1' })
+    vi.mocked(deps.restoreSetlessTombstone).mockResolvedValue(true)
+
+    expect(await processGravlWorkout('alice', loggedExternal(), deps)).toBe('enriched')
+
+    expect(deps.restoreSetlessTombstone).toHaveBeenCalledWith(
+      'alice',
+      'gravl',
+      'gravl-workout-97248067-7947-4715-8fc9-d0048369a0d0',
+    )
+    expect(deps.restoreEmptyImportTombstone).not.toHaveBeenCalled()
+    expect(vi.mocked(deps.restoreSetlessTombstone).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(deps.insertActivity).mock.invocationCallOrder[0],
+    )
+    expect(deps.materializeSuperseded).toHaveBeenCalledWith('alice', new Date('2026-09-03T05:16:12Z'))
   })
 
   it('skips a workout with no logged set', async () => {
@@ -272,7 +379,7 @@ describe('processGravlWorkout', () => {
     expect(await processGravlWorkout('alice', detail(), deps)).toBe('created')
 
     const stored = vi.mocked(deps.insertActivity).mock.calls[0][1]
-    const exercises = (stored.data?.sets as { exercise: string }[]).map((set) => set.exercise)
+    const exercises = (stored.data?.sets as { exercise: string }[]).map((s) => s.exercise)
     expect(exercises).toEqual(['Barbell Bench Press', 'Barbell Bench Press', 'Barbell Bench Press', 'Plank'])
     expect(deps.aliasActivityData).toHaveBeenCalledWith(
       'alice',
@@ -310,6 +417,7 @@ describe('processGravlWorkout', () => {
       'gravl',
       'gravl-workout-97248067-7947-4715-8fc9-d0048369a0d0',
     )
+    expect(deps.restoreSetlessTombstone).not.toHaveBeenCalled()
     expect(vi.mocked(deps.restoreEmptyImportTombstone).mock.invocationCallOrder[0]).toBeLessThan(
       vi.mocked(deps.findActivityByExternalId).mock.invocationCallOrder[0],
     )
@@ -368,9 +476,20 @@ describe('isStrengthWorkout', () => {
     expect(isStrengthWorkout(detail())).toBe(true)
   })
 
-  it('rejects external round-trips regardless of exercise count, whatever the casing', () => {
-    expect(isStrengthWorkout({ ...summary, type: 'external' })).toBe(false)
-    expect(isStrengthWorkout(detail({ type: 'External' as GravlWorkoutDetail['type'] }))).toBe(false)
+  it('rejects a plain external round-trip, whatever the casing', () => {
+    expect(isStrengthWorkout({ ...summary, exerciseCount: 1, type: 'external', volume: 0 })).toBe(false)
+    expect(isStrengthWorkout({ ...summary, exerciseCount: 0, type: 'external', volume: 0 })).toBe(false)
+    expect(isStrengthWorkout(roundTrip())).toBe(false)
+    expect(isStrengthWorkout({ ...roundTrip(), type: 'External' as GravlWorkoutDetail['type'] })).toBe(false)
+  })
+
+  it('accepts an external workout that may carry, or carries, logged sets', () => {
+    expect(isStrengthWorkout({ ...summary, exerciseCount: 2, type: 'external', volume: 0 })).toBe(true)
+    expect(isStrengthWorkout({ ...summary, exerciseCount: 1, type: 'external', volume: 5370 })).toBe(true)
+    expect(isStrengthWorkout(loggedExternal())).toBe(true)
+    expect(isStrengthWorkout({ ...loggedExternal(), type: 'External' as GravlWorkoutDetail['type'] })).toBe(
+      true,
+    )
   })
 
   it('rejects workouts without a logged set', () => {
@@ -381,5 +500,46 @@ describe('isStrengthWorkout', () => {
         detail({ exercises: [{ exerciseId: 1, exerciseName: 'Squat', sets: [], supersetId: null }] }),
       ),
     ).toBe(false)
+  })
+})
+
+describe('hasLoggedSets', () => {
+  const withSets = (...sets: GravlSet[]) => detail({ exercises: [exercise('Any', sets)] })
+
+  it('counts a set with reps, weight or time alone as logged', () => {
+    expect(hasLoggedSets(withSets(set({ reps: 12 })))).toBe(true)
+    expect(hasLoggedSets(withSets(set({ weight: 45 })))).toBe(true)
+    expect(hasLoggedSets(withSets(set({ duration: 60 })))).toBe(true)
+  })
+
+  it('does not count the cardio pseudo-set, duration with distance', () => {
+    expect(hasLoggedSets(withSets(set({ distance: 2400, duration: 1800 })))).toBe(false)
+    expect(hasLoggedSets(roundTrip())).toBe(false)
+  })
+
+  it('finds a real set next to the pseudo-exercise', () => {
+    expect(hasLoggedSets(loggedExternal())).toBe(true)
+  })
+
+  it('finds nothing in a workout without sets', () => {
+    expect(hasLoggedSets(detail({ exercises: [] }))).toBe(false)
+    expect(hasLoggedSets(withSets())).toBe(false)
+    expect(hasLoggedSets(withSets(set()))).toBe(false)
+  })
+})
+
+describe('mayCarryLoggedSets', () => {
+  const summary = (exerciseCount: number, volume: number) => ({ exerciseCount, volume })
+
+  it('holds for two or more exercises, or one with a positive volume', () => {
+    expect(mayCarryLoggedSets(summary(2, 0))).toBe(true)
+    expect(mayCarryLoggedSets(summary(4, 5370))).toBe(true)
+    expect(mayCarryLoggedSets(summary(1, 5370))).toBe(true)
+  })
+
+  it('does not hold for the lone pseudo-exercise or nothing at all', () => {
+    expect(mayCarryLoggedSets(summary(1, 0))).toBe(false)
+    expect(mayCarryLoggedSets(summary(0, 0))).toBe(false)
+    expect(mayCarryLoggedSets(summary(0, 100))).toBe(false)
   })
 })
