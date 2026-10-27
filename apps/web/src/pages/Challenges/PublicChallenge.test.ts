@@ -89,4 +89,33 @@ describe('toCumulativeSeries', () => {
     )
     expect(series.data.map((d) => d.value)).toEqual([0, 5000, 8000])
   })
+
+  test('a max challenge plots the best bucket so far', () => {
+    const series = toCumulativeSeries(
+      standing([
+        { bucket_start: '2026-07-01T00:00:00.000Z', value: 30 },
+        { bucket_start: '2026-07-02T00:00:00.000Z', value: 25 },
+        { bucket_start: '2026-07-03T00:00:00.000Z', value: 42 },
+      ]),
+      '#8b5cf6',
+      '2026-07-01T00:00:00.000Z',
+      '1d',
+      'max',
+    )
+    expect(series.data.map((d) => d.value)).toEqual([0, 30, 30, 42])
+  })
+
+  test('sum and count accumulate', () => {
+    const buckets = [
+      { bucket_start: '2026-07-01T00:00:00.000Z', value: 2 },
+      { bucket_start: '2026-07-02T00:00:00.000Z', value: 1 },
+    ]
+    const start = '2026-07-01T00:00:00.000Z'
+    expect(
+      toCumulativeSeries(standing(buckets), '#000', start, '1d', 'sum').data.map((d) => d.value),
+    ).toEqual([0, 2, 3])
+    expect(
+      toCumulativeSeries(standing(buckets), '#000', start, '1d', 'count').data.map((d) => d.value),
+    ).toEqual([0, 2, 3])
+  })
 })

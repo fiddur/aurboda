@@ -34,6 +34,11 @@ describe('formatMeasure', () => {
     expect(formatMeasure('set_count', 24)).toBe('24')
   })
 
+  test('reps are a plain integer with a unit', () => {
+    expect(formatMeasure('total_reps', 120)).toBe('120 reps')
+    expect(formatMeasure('max_reps', 41.6)).toBe('42 reps')
+  })
+
   test('max time is m:ss', () => {
     expect(formatMeasure('max_time', 90)).toBe('1:30')
     expect(formatMeasure('max_time', 5)).toBe('0:05')
@@ -127,9 +132,14 @@ describe('measureSet', () => {
     expect(measureSet(sets, 'max_time')).toBe(sets[3])
   })
 
+  test('max_reps picks the working set with the most reps', () => {
+    expect(measureSet(sets, 'max_reps')).toBe(sets[1])
+  })
+
   test('undefined for measures that are not one set', () => {
     expect(measureSet(sets, 'volume')).toBeUndefined()
     expect(measureSet(sets, 'set_count')).toBeUndefined()
+    expect(measureSet(sets, 'total_reps')).toBeUndefined()
   })
 })
 
@@ -140,6 +150,8 @@ describe('defaultAggregation', () => {
     expect(defaultAggregation('max_time')).toBe('max')
     expect(defaultAggregation('volume')).toBe('sum')
     expect(defaultAggregation('set_count')).toBe('sum')
+    expect(defaultAggregation('max_reps')).toBe('max')
+    expect(defaultAggregation('total_reps')).toBe('sum')
   })
 })
 

@@ -1,16 +1,25 @@
-import type { ChallengeEffectiveBucketSize, ChallengeSpec, ChartDataBucket } from '@aurboda/api-spec'
+import type {
+  ActivityMeasure,
+  ChallengeAggregation,
+  ChallengeDataResponse,
+  ChallengeEffectiveBucketSize,
+  ChallengeSpec,
+  ChartDataBucket,
+} from '@aurboda/api-spec'
 
 import { isKnownTimezone } from '@aurboda/api-spec'
 
 /**
  * Translate a stored challenge spec into a chart-data query and compute a
- * member's series + cumulative total. Reuses the same `getChartData` engine the
- * dashboards use, so a challenge metric is just a summed/counted bucketed series.
+ * member's series + score. Reuses the same `getChartData` engine the dashboards
+ * use, so a challenge is a bucketed series scored by its sum, count or best bucket.
  */
 import type { ChallengeSpecFields } from '../db/index.ts'
 
 import { expandActivityTypes, getSourceFilter, query } from '../db/index.ts'
+import { normalizeItemValue } from './activity-measures.ts'
 import { getChartData } from './chart-data.ts'
+import { measureFilter, queryMeasuredActivities } from './queries/activity-measure-series.ts'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -45,7 +54,41 @@ export const specToApi = (spec: ChallengeSpecFields): ChallengeSpec => ({
   source_type: spec.source_type,
   unit: spec.unit,
   ...(spec.activity_type_id !== null ? { activity_type_id: spec.activity_type_id } : {}),
+  ...(spec.measure !== null ? { measure: spec.measure } : {}),
+  ...(spec.filter_field !== null ? { filter_field: spec.filter_field } : {}),
+  ...(spec.filter_value !== null ? { filter_value: spec.filter_value } : {}),
 })
+
+/** Convert an api-spec spec (omitted optionals) to the stored shape (nullable optionals). */
+export const toSpecFields = (spec: ChallengeSpec): ChallengeSpecFields => ({
+  activity_type_id: spec.activity_type_id ?? null,
+  aggregation: spec.aggregation,
+  bucket_size: spec.bucket_size,
+  filter_field: spec.filter_field ?? null,
+  filter_value: spec.filter_value ?? null,
+  measure: spec.measure ?? null,
+  pattern: spec.pattern,
+  source_type: spec.source_type,
+  unit: spec.unit,
+})
+
+/** A member's score from their buckets: the best bucket for `max` (0 with none), else their sum. */
+export const scoreBuckets = (buckets: { value: number }[], aggregation: ChallengeAggregation): number =>
+  aggregation === 'max'
+    ? buckets.reduce((best, b) => Math.max(best, b.value), 0)
+    : buckets.reduce((sum, b) => sum + b.value, 0)
+
+/**
+ * Whether a member's data response was scored the way a measure challenge asks: the same measure,
+ * aggregation and item filter. An instance too old to know the measure omits it (and would report
+ * plain duration), so it does not match. A spec without a measure matches any response.
+ */
+export const memberEchoMatches = (spec: ChallengeSpecFields, data: ChallengeDataResponse): boolean =>
+  spec.measure === null ||
+  (data.measure === spec.measure &&
+    data.aggregation === spec.aggregation &&
+    (data.filter_field ?? null) === spec.filter_field &&
+    normalizeItemValue(data.filter_value) === normalizeItemValue(spec.filter_value))
 
 export interface MemberSeries {
   buckets: ChartDataBucket[]
@@ -58,6 +101,24 @@ export interface MemberSeries {
    * "last updated" for standings — a member with no data reports null, not "now".
    */
   last_updated: string | null
+}
+
+/** The start of the latest session in the window that has the measure (over the filtered items). */
+const latestMeasuredStart = async (
+  user: string,
+  spec: ChallengeSpecFields,
+  measure: ActivityMeasure,
+  start: Date,
+  end: Date,
+): Promise<Date | null> => {
+  const measured = await queryMeasuredActivities(
+    user,
+    spec.pattern,
+    start,
+    end,
+    measureFilter(spec.filter_field ?? undefined, spec.filter_value ?? undefined),
+  )
+  return measured.findLast((m) => m.measures[measure] !== undefined)?.activity.start_time ?? null
 }
 
 /**
@@ -73,7 +134,9 @@ export interface MemberSeries {
  *    source filter; HR-zone metrics are computed from heart-rate samples, so
  *    we read the underlying `heart_rate` series instead.
  *  - `activity_type`: MAX(start_time) of the matching (non-deleted, current)
- *    activities.
+ *    activities; with a measure, the latest session that has measured items
+ *    (under the item filter), so a session without the filtered exercise is
+ *    not data.
  * Returns null when there is no matching data (e.g. a member on 0).
  */
 const resolveLastDataTime = async (
@@ -104,6 +167,10 @@ const resolveLastDataTime = async (
       params,
     )
     return result.rows[0]?.latest ?? null
+  }
+
+  if (spec.source_type === 'activity_type' && spec.measure !== null) {
+    return latestMeasuredStart(user, spec, spec.measure, start, end)
   }
 
   if (spec.source_type === 'activity_type') {
@@ -147,6 +214,9 @@ export const resolveMemberSeries = async (
       aggregation: spec.aggregation,
       bucket_size: effectiveBucketSize(spec.bucket_size, start, end),
       end: lastInstant.toISOString(),
+      filter_field: spec.filter_field ?? undefined,
+      filter_value: spec.filter_value ?? undefined,
+      measure: spec.measure ?? undefined,
       pattern: spec.pattern ?? undefined,
       source_type: spec.source_type,
       start: start.toISOString(),
@@ -159,6 +229,6 @@ export const resolveMemberSeries = async (
   const plain = buckets.flatMap((b) =>
     'value' in b ? [{ bucket_start: b.bucket_start, value: b.value }] : [],
   )
-  const total = plain.reduce((sum, b) => sum + b.value, 0)
+  const total = scoreBuckets(plain, spec.aggregation)
   return { buckets: plain, last_updated: lastDataTime?.toISOString() ?? null, total }
 }

@@ -89,8 +89,10 @@ describe('queryMeasuredActivities', () => {
     expect(result.map((m) => m.id)).toEqual(['s1', 's2', 'merged:s3'])
     expect(result[0]?.measures).toEqual({
       e1rm: 116.7,
+      max_reps: 5,
       max_weight: 100,
       set_count: 2,
+      total_reps: 10,
       volume: 900,
     })
     expect(db.getActivities).toHaveBeenCalledWith(
@@ -141,12 +143,12 @@ describe('measuresByItemValue', () => {
 
     expect(groups).toEqual([
       {
-        measures: { e1rm: 93.3, max_weight: 80, set_count: 1, volume: 400 },
+        measures: { e1rm: 93.3, max_reps: 5, max_weight: 80, set_count: 1, total_reps: 5, volume: 400 },
         normalized: 'bench press',
         value: 'Bench Press',
       },
       {
-        measures: { e1rm: 116.7, max_weight: 100, set_count: 1, volume: 500 },
+        measures: { e1rm: 116.7, max_reps: 5, max_weight: 100, set_count: 1, total_reps: 5, volume: 500 },
         normalized: 'squat',
         value: 'squat',
       },

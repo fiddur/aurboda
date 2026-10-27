@@ -4,7 +4,12 @@
  */
 import { describe, expect, test } from 'vitest'
 
-import { canonicalChallengeUrl, parseChallengeUrl } from './challenge-federation.ts'
+import {
+  canonicalChallengeUrl,
+  JoinChallengeError,
+  parseChallengeUrl,
+  parsePublicChallenge,
+} from './challenge-federation.ts'
 
 describe('canonicalChallengeUrl', () => {
   test('drops the query, the fragment, trailing slashes and a default port', () => {
@@ -72,5 +77,52 @@ describe('parseChallengeUrl', () => {
     expect(parseChallengeUrl('https://peer.example/alice/abc')).toBeNull()
     expect(parseChallengeUrl('https://peer.example/u/alice')).toBeNull()
     expect(parseChallengeUrl('/u/alice/abc')).toBeNull()
+  })
+})
+
+describe('parsePublicChallenge', () => {
+  const answer = (spec: Record<string, unknown>) => ({
+    challenge: {
+      end_ts: '2026-07-01T00:00:00.000Z',
+      host_identity: 'https://peer.example/u/alice',
+      join_token: 'tok',
+      members: [],
+      name: 'Push-ups',
+      profile_url: 'https://peer.example/u/alice',
+      share_url: 'https://peer.example/u/alice/abc',
+      spec: {
+        aggregation: 'sum',
+        bucket_size: 'auto',
+        pattern: 'strength_training',
+        source_type: 'activity_type',
+        unit: 'reps',
+        ...spec,
+      },
+      start_ts: '2026-06-01T00:00:00.000Z',
+      timezone: 'UTC',
+      visibility: 'public',
+    },
+    success: true,
+    type: 'challenge',
+  })
+
+  test('parses a measure challenge with its item filter', () => {
+    const spec = { filter_field: 'sets.exercise', filter_value: 'Push-ups', measure: 'total_reps' }
+    expect(parsePublicChallenge(answer(spec)).spec).toMatchObject(spec)
+  })
+
+  test('names a measure this instance does not know instead of calling the link wrong', () => {
+    const parse = () => parsePublicChallenge(answer({ measure: 'max_distance' }))
+    expect(parse).toThrow(JoinChallengeError)
+    expect(parse).toThrow(
+      "Your instance does not support this challenge's measure (max_distance); update Aurboda to join",
+    )
+  })
+
+  test('anything else malformed is not a challenge', () => {
+    expect(() => parsePublicChallenge({ success: true, type: 'dashboard' })).toThrow(
+      'URL is not an Aurboda challenge',
+    )
+    expect(() => parsePublicChallenge(null)).toThrow('URL is not an Aurboda challenge')
   })
 })

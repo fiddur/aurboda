@@ -118,11 +118,9 @@ export const barChartConfigSchema = z
       .optional()
       .meta({ description: 'With measure: item path whose items are measured (sets.exercise)' }),
     filter_value: z.string().optional().meta({ description: 'With filter_field: the item value to keep' }),
-    measure: activityMeasureSchema
-      .optional()
-      .meta({
-        description: 'For activity_type sources: chart this list-item measure instead of duration or count',
-      }),
+    measure: activityMeasureSchema.optional().meta({
+      description: 'For activity_type sources: chart this list-item measure instead of duration or count',
+    }),
     breakdown_fields: z
       .array(z.string())
       .optional()

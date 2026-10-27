@@ -45,7 +45,7 @@ import { isAllowedImageType, processBanner } from '../services/avatar.ts'
 import { bannerUrlFor } from '../services/challenge-banner.ts'
 import { JoinChallengeError, joinChallenge } from '../services/challenge-federation.ts'
 import { announcementPending } from '../services/challenge-results.ts'
-import { effectiveBucketSize, specToApi } from '../services/challenge-spec.ts'
+import { effectiveBucketSize, specToApi, toSpecFields } from '../services/challenge-spec.ts'
 import { getChallengeStandings } from '../services/challenge-standings.ts'
 import { buildProfileUrl, buildShareUrl } from '../services/share-urls.ts'
 import { isPublicToVisibility, visibilityToIsPublic } from '../services/visibility.ts'
@@ -113,14 +113,7 @@ export const createChallengesRouter = (
         end_ts: new Date(req.body.end_ts),
         is_public: visibilityToIsPublic(req.body.visibility),
         name: req.body.name,
-        spec: {
-          activity_type_id: req.body.spec.activity_type_id ?? null,
-          aggregation: req.body.spec.aggregation,
-          bucket_size: req.body.spec.bucket_size,
-          pattern: req.body.spec.pattern,
-          source_type: req.body.spec.source_type,
-          unit: req.body.spec.unit,
-        },
+        spec: toSpecFields(req.body.spec),
         start_ts: new Date(req.body.start_ts),
         timezone: req.body.timezone,
       })
@@ -164,16 +157,7 @@ export const createChallengesRouter = (
         end_ts: b.end_ts ? new Date(b.end_ts) : undefined,
         is_public: b.visibility === undefined ? undefined : visibilityToIsPublic(b.visibility),
         name: b.name,
-        spec: b.spec
-          ? {
-              activity_type_id: b.spec.activity_type_id ?? null,
-              aggregation: b.spec.aggregation,
-              bucket_size: b.spec.bucket_size,
-              pattern: b.spec.pattern,
-              source_type: b.spec.source_type,
-              unit: b.spec.unit,
-            }
-          : undefined,
+        spec: b.spec ? toSpecFields(b.spec) : undefined,
         start_ts: b.start_ts ? new Date(b.start_ts) : undefined,
         timezone: b.timezone,
       })

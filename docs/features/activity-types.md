@@ -97,12 +97,15 @@ item whose `set_type` is `warmup` (any case) is shown but never counted. `weight
 | `max_weight` | Heaviest weight (kg)                                      |
 | `set_count`  | Number of working items                                   |
 | `max_time`   | Longest time (s), e.g. a plank hold                       |
+| `total_reps` | Σ reps, over items with reps (weighted or not)            |
+| `max_reps`   | Most reps in one item, e.g. a set of push-ups             |
 
 A measure no item contributes to is absent rather than 0: a bodyweight set (reps only) counts in
-`set_count` and nothing else. Item values compare trimmed and case-insensitively, so `Bench
-Press` and ` bench press` are one exercise, shown as spelled in the most recent session. A
-**record** is a session whose `e1rm`, `max_weight` or `max_time` for a value is strictly higher
-than in every earlier session with that value; the first session with a value sets its records.
+`set_count`, `total_reps` and `max_reps` and nothing else. Item values compare trimmed and
+case-insensitively, so `Bench Press` and ` bench press` are one exercise, shown as spelled in the
+most recent session. A **record** is a session whose `e1rm`, `max_weight`, `max_time` or
+`max_reps` for a value is strictly higher than in every earlier session with that value; the first
+session with a value sets its records.
 
 Everything is computed on read from `data`: nothing is stored, so editing a set or a schema
 takes effect at once.
@@ -112,7 +115,8 @@ Where item paths are accepted:
 - `GET /activity-types/:name/sessions` -- every session carries `measures` over its first list
   field. `group_by=sets.exercise` gives one group per exercise, a session in every group it has
   a set for (sessions without one in the no-value group), each group with its members' measures
-  for that exercise combined (volume and set count summed, the rest at their maximum).
+  for that exercise combined (volume, set count and total reps summed, the rest at their
+  maximum).
   `filter_field=sets.exercise&filter_value=Bench Press` keeps the sessions with that exercise,
   each with its matching `items`, their `measures` and the `records` it set, judged against all
   earlier sessions even when `start` cuts them off.

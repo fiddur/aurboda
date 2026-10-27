@@ -388,7 +388,14 @@ describe('queryActivitySessions over list items', () => {
     })
     expect(byId.get('s1')!.items).toBeUndefined()
     expect(byId.get('s1')!.records).toBeUndefined()
-    expect(byId.get('s4')!.measures).toEqual({ e1rm: 26.7, max_weight: 20, set_count: 1, volume: 200 })
+    expect(byId.get('s4')!.measures).toEqual({
+      e1rm: 26.7,
+      max_reps: 10,
+      max_weight: 20,
+      set_count: 1,
+      total_reps: 10,
+      volume: 200,
+    })
   })
 
   test('a type without a list field has no measures', async () => {
@@ -427,7 +434,7 @@ describe('queryActivitySessions over list items', () => {
     })
     expect(result.sessions.map((s) => [s.id, s.records, s.measures?.set_count])).toEqual([
       ['s3', ['e1rm', 'max_weight'], 2],
-      ['s1', ['e1rm', 'max_weight'], 1],
+      ['s1', ['e1rm', 'max_weight', 'max_reps'], 1],
     ])
   })
 
@@ -458,8 +465,22 @@ describe('queryActivitySessions over list items', () => {
       ['Squat', ['s3', 's1'], 2, 2, 140],
       [null, ['s4'], 1, 1, 90],
     ])
-    expect(result.groups![0]!.measures).toEqual({ e1rm: 93.5, max_weight: 85, set_count: 3, volume: 1030 })
-    expect(result.groups![1]!.measures).toEqual({ e1rm: 122.5, max_weight: 105, set_count: 3, volume: 1325 })
+    expect(result.groups![0]!.measures).toEqual({
+      e1rm: 93.5,
+      max_reps: 5,
+      max_weight: 85,
+      set_count: 3,
+      total_reps: 13,
+      volume: 1030,
+    })
+    expect(result.groups![1]!.measures).toEqual({
+      e1rm: 122.5,
+      max_reps: 5,
+      max_weight: 105,
+      set_count: 3,
+      total_reps: 13,
+      volume: 1325,
+    })
     expect(result.groups![2]!.measures).toBeUndefined()
     expect(result.groups![0]).toMatchObject({
       first_start_time: '2026-08-01T17:00:00.000Z',
@@ -467,7 +488,14 @@ describe('queryActivitySessions over list items', () => {
     })
 
     const s3Session = result.sessions.find((s) => s.id === 's3')!
-    expect(s3Session.measures).toEqual({ e1rm: 122.5, max_weight: 105, set_count: 3, volume: 1080 })
+    expect(s3Session.measures).toEqual({
+      e1rm: 122.5,
+      max_reps: 5,
+      max_weight: 105,
+      set_count: 3,
+      total_reps: 11,
+      volume: 1080,
+    })
     expect(s3Session.fields).toEqual({ location: 'Gym' })
   })
 })

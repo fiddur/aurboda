@@ -1,4 +1,6 @@
 import {
+  type ActivityMeasure,
+  activityMeasureLabels,
   type ChallengeSourceType,
   challengeRangeLabel,
   challengeTimePhrase,
@@ -17,7 +19,13 @@ export interface ResolvedChallenge {
   id: string
   name: string
   is_public: boolean
-  spec: { source_type: ChallengeSourceType; pattern: string; unit: string }
+  spec: {
+    source_type: ChallengeSourceType
+    pattern: string
+    unit: string
+    measure?: ActivityMeasure | null
+    filter_value?: string | null
+  }
   start_ts: string
   end_ts: string
   timezone: string
@@ -71,12 +79,19 @@ export const cardMembers = (
 export const countJoined = (members: readonly { is_host: boolean }[]): number =>
   members.filter((m) => !m.is_host).length
 
+/** What is measured: the metric or activity, or for a measure spec the exercise and the measure ("Push-ups · most reps in a set"). */
+const measureLabel = (spec: ResolvedChallenge['spec']): string => {
+  if (spec.source_type === 'metric') return getMetricDisplayName(spec.pattern)
+  if (!spec.measure) return humanizeActivityType(spec.pattern)
+  const subject = spec.filter_value ?? humanizeActivityType(spec.pattern)
+  return `${subject} · ${activityMeasureLabels[spec.measure].toLowerCase()}`
+}
+
 export const describeChallenge = (resolved: ResolvedChallenge, now: Date): ChallengeDescription => {
   const { end_ts, spec, start_ts, timezone } = resolved
   return {
     joined: countJoined(resolved.members),
-    measure:
-      spec.source_type === 'metric' ? getMetricDisplayName(spec.pattern) : humanizeActivityType(spec.pattern),
+    measure: measureLabel(spec),
     members: resolved.members
       .map((m) => ({ name: m.display_name, total: m.cached_total }))
       .toSorted(byTotalDesc),

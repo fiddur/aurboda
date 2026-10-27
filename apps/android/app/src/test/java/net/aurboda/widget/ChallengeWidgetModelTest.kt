@@ -132,6 +132,7 @@ class ChallengeWidgetModelTest {
         val s = pick.summary()
         assertEquals("mine", s.name)
         assertEquals("steps", s.unit)
+        assertEquals(ChallengeAggregation.sum, s.aggregation)
         assertEquals("Europe/Stockholm", s.timezone)
         assertEquals(parseInstantMillis("2026-07-31T22:00:00.000Z"), s.startMillis)
         assertEquals(parseInstantMillis("2026-08-31T22:00:00.000Z"), s.endMillis)
@@ -235,6 +236,19 @@ class ChallengeWidgetModelTest {
         assertEquals(start, series.points[0].timeMillis)
         assertEquals(parseInstantMillis("2026-08-02T00:00:00Z"), series.points[1].timeMillis)
         assertEquals(parseInstantMillis("2026-08-03T00:00:00Z"), series.points[2].timeMillis)
+    }
+
+    @Test
+    fun `cumulativeSeries plots the running best for a max challenge`() {
+        val start = parseInstantMillis("2026-07-31T22:00:00Z")
+        val s =
+            standing(
+                "a",
+                "https://x/u/a",
+                listOf("2026-08-01T00:00:00Z" to 30.0, "2026-08-02T00:00:00Z" to 25.0, "2026-08-03T00:00:00Z" to 34.0),
+            )
+        val series = cumulativeSeries(s, 0xFF123456.toInt(), start, bestBucket = true) { it + DAY_MILLIS }
+        assertEquals(listOf(0.0, 30.0, 30.0, 34.0), series.points.map { it.value })
     }
 
     @Test
