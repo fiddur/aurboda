@@ -167,6 +167,7 @@ CREATE TABLE activity_tracks (
     full_resolution  BOOLEAN NOT NULL DEFAULT true,          -- false for a Strava polyline backfill
     created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    route_matched_at TIMESTAMPTZ,                            -- route matching tried; NULL again on rewrite or retype
     PRIMARY KEY (activity_id, source)
 );
 

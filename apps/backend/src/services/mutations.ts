@@ -40,6 +40,7 @@ import { auditError } from './audit-log.ts'
 import { getCustomMetrics } from './custom-metrics.ts'
 import { validateActivityData } from './data-schema-validation.ts'
 import { syncNoteTimesForEntity } from './notes.ts'
+import { defaultRouteMatchDeps, rematchActivityRoute } from './routes.ts'
 
 export interface AddMetricInput {
   metric: string
@@ -657,6 +658,13 @@ export async function updateActivity(
   onMutated?.(user, updated.activity_type, updated.start_time, updated.end_time ?? updated.start_time)
   if (isTypeChanging) {
     onMutated?.(user, before.activity_type, before.start_time, before.end_time ?? before.start_time)
+    // Tracks and routes are keyed by the synced rows, so every row of the edit can own one.
+    const trackOwnerIds = [...new Set([target.id!, updated.id!, ...(updated.override_target_ids ?? [])])]
+    try {
+      await rematchActivityRoute(user, trackOwnerIds, defaultRouteMatchDeps)
+    } catch (err) {
+      auditError(user, 'data', 'Failed to re-match routes after activity retype', { error: String(err) })
+    }
   }
 
   // Enqueue outbound HC sync only for aurboda activities that the user owns —

@@ -7,15 +7,17 @@ import {
   defaultRouteOps,
   matchActivityRoute,
   matchUnroutedTracks,
+  rematchActivityRoute,
 } from '../services/routes.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
-import { getActivities, insertActivity } from './activities/index.ts'
+import { getActivities, insertActivity, insertOverride } from './activities/index.ts'
 import { insertActivityTypeDefinition } from './activity-type-definitions.ts'
 import { query } from './connection.ts'
 import {
   attachActivityToRoute,
-  createRouteFromTrack,
+  createRouteWithPair,
   deleteRoute,
+  detachActivityFromRoute,
   findRouteCandidates,
   findUnroutedTrackCandidates,
   getRouteById,
@@ -26,6 +28,7 @@ import {
   listRouteEfforts,
   listRoutes,
   listUnroutedTrackedActivities,
+  markRouteMatchAttempted,
   mergeRoutes,
   routeDirectionFractions,
   trackDirectionFractions,
@@ -146,12 +149,27 @@ describe('Routes integration', () => {
 
   const makeRoute = async (points: Xy[] = base, activityType?: string) => {
     const activityId = await addTrackedActivity(points, { activityType })
-    const routeId = await createRouteFromTrack(getTestUser(), { activity_id: activityId, name: 'Test route' })
-    await attachActivityToRoute(getTestUser(), activityId, routeId!, 1)
+    const routeId = await createRouteWithPair(getTestUser(), {
+      canonical: { activity_id: activityId, name: 'Test route' },
+    })
     return { activityId, routeId: routeId! }
   }
 
-  describe('createRouteFromTrack', () => {
+  /** Retypes a synced activity the way an edit does: through an aurboda override. */
+  const retype = async (activityId: string, activityType: string) => {
+    const [activity] = await query(
+      getTestUser(),
+      `SELECT start_time, end_time FROM activities WHERE id = $1`,
+      [activityId],
+    ).then((r) => r.rows)
+    await insertOverride(getTestUser(), [activityId], {
+      activity_type: activityType,
+      end_time: activity.end_time as Date,
+      start_time: activity.start_time as Date,
+    })
+  }
+
+  describe('createRouteWithPair', () => {
     test('builds the route from the track, with its type, length and ends', async () => {
       const { activityId, routeId } = await makeRoute()
       const route = await getRouteById(getTestUser(), routeId)
@@ -187,7 +205,9 @@ describe('Routes integration', () => {
         source: 'garmin',
         start_time: new Date('2026-06-01T07:00:00Z'),
       })
-      expect(await createRouteFromTrack(getTestUser(), { activity_id: id, name: 'x' })).toBeNull()
+      expect(
+        await createRouteWithPair(getTestUser(), { canonical: { activity_id: id, name: 'x' } }),
+      ).toBeNull()
       expect(await getTrackedActivity(getTestUser(), id)).toBeNull()
       expect(await getTrackSummary(getTestUser(), id)).toBeNull()
     })
@@ -207,11 +227,37 @@ describe('Routes integration', () => {
       expect(rows.rows[0].ok).toBe(true)
     })
 
-    test('a second route from the same canonical activity is rejected', async () => {
-      const { activityId } = await makeRoute()
-      await expect(
-        createRouteFromTrack(getTestUser(), { activity_id: activityId, name: 'Again' }),
-      ).rejects.toThrow()
+    test('attaches the canonical and the follower in one go', async () => {
+      const user = getTestUser()
+      const first = await addTrackedActivity(base)
+      const second = await addTrackedActivity(jittered)
+      const routeId = await createRouteWithPair(user, {
+        canonical: { activity_id: first, name: 'Pair' },
+        follower: { activity_id: second, coverage: 0.96 },
+      })
+
+      expect(await getRouteById(user, routeId!)).toMatchObject({
+        activity_count: 2,
+        canonical_activity_id: first,
+      })
+      expect((await listRouteEfforts(user, routeId!)).map((e) => [e.activity_id, e.coverage])).toEqual([
+        [second, expect.closeTo(0.96, 5)],
+        [first, 1],
+      ])
+    })
+
+    test('a second route from the same canonical activity is a no-op', async () => {
+      const user = getTestUser()
+      const { activityId, routeId } = await makeRoute()
+      const follower = await addTrackedActivity(jittered)
+      expect(
+        await createRouteWithPair(user, {
+          canonical: { activity_id: activityId, name: 'Again' },
+          follower: { activity_id: follower, coverage: 0.95 },
+        }),
+      ).toBeNull()
+      expect((await listRoutes(user)).map((r) => r.id)).toEqual([routeId])
+      expect(await getRouteForActivity(user, follower)).toBeNull()
     })
   })
 
@@ -543,6 +589,99 @@ describe('Routes integration', () => {
       expect(await matchUnroutedTracks(user, defaultRouteMatchDeps)).toEqual({ created: 2, matched: 1 })
       expect(await matchUnroutedTracks(user, defaultRouteMatchDeps)).toEqual({ created: 0, matched: 0 })
       expect((await listRoutes(user)).map((r) => r.activity_count).sort()).toEqual([2, 3])
+    })
+  })
+
+  describe('match marker', () => {
+    test('a tried track leaves the backfill list until it is rewritten', async () => {
+      const user = getTestUser()
+      const first = await addTrackedActivity(base)
+      const other = await addTrackedActivity(parallel)
+      expect((await listUnroutedTrackedActivities(user)).map((a) => a.activity_id)).toEqual([first, other])
+
+      expect(await matchActivityRoute(user, first, defaultRouteMatchDeps)).toBe('unmatched')
+      await markRouteMatchAttempted(user, other)
+      expect(await listUnroutedTrackedActivities(user)).toEqual([])
+
+      await upsertActivityTrack(user, {
+        activity_id: first,
+        ewkt: ewkt(base),
+        full_resolution: true,
+        source: 'garmin',
+      })
+      expect((await listUnroutedTrackedActivities(user)).map((a) => a.activity_id)).toEqual([first])
+    })
+
+    test('a tried, unrouted track still pairs with a later run', async () => {
+      const user = getTestUser()
+      const first = await addTrackedActivity(base)
+      expect(await matchActivityRoute(user, first, defaultRouteMatchDeps)).toBe('unmatched')
+      const second = await addTrackedActivity(jittered)
+      expect(await matchActivityRoute(user, second, defaultRouteMatchDeps)).toBe('created')
+      expect((await getRouteForActivity(user, second))!.canonical_activity_id).toBe(first)
+    })
+  })
+
+  describe('effective type and retype', () => {
+    test('a synced walk retyped to running matches running routes, not walking ones', async () => {
+      const user = getTestUser()
+      const running = await makeRoute(base)
+      await makeRoute(base, 'walking')
+      const walk = await addTrackedActivity(jittered, { activityType: 'walking' })
+      await retype(walk, 'running')
+
+      expect((await findRouteCandidates(user, walk)).map((c) => c.route_id)).toEqual([running.routeId])
+      expect(await matchActivityRoute(user, walk, defaultRouteMatchDeps)).toBe('matched')
+      expect((await getRouteForActivity(user, walk))!.id).toBe(running.routeId)
+    })
+
+    test('detach clears the canonical, re-opens the track and removes an emptied route', async () => {
+      const user = getTestUser()
+      const first = await addTrackedActivity(base)
+      const second = await addTrackedActivity(jittered)
+      expect(await matchActivityRoute(user, second, defaultRouteMatchDeps)).toBe('created')
+      const routeId = (await getRouteForActivity(user, first))!.id
+
+      expect(await detachActivityFromRoute(user, first)).toEqual({ deleted_route_id: null, detached: true })
+      expect(await getRouteById(user, routeId)).toMatchObject({
+        activity_count: 1,
+        canonical_activity_id: null,
+      })
+      expect((await listUnroutedTrackedActivities(user)).map((a) => a.activity_id)).toEqual([first])
+
+      expect(await detachActivityFromRoute(user, second)).toEqual({
+        deleted_route_id: routeId,
+        detached: true,
+      })
+      expect(await getRouteById(user, routeId)).toBeNull()
+      expect(await query(user, `SELECT 1 FROM routes WHERE id = $1`, [routeId]).then((r) => r.rows)).toEqual(
+        [],
+      )
+      expect(await detachActivityFromRoute(user, second)).toEqual({ deleted_route_id: null, detached: false })
+    })
+
+    test('retyping both runs of a route re-founds it under the new type', async () => {
+      const user = getTestUser()
+      const first = await addTrackedActivity(base)
+      const second = await addTrackedActivity(jittered)
+      expect(await matchActivityRoute(user, second, defaultRouteMatchDeps)).toBe('created')
+
+      await retype(first, 'walking')
+      expect(await rematchActivityRoute(user, [first], defaultRouteMatchDeps)).toEqual([
+        { activity_id: first, outcome: 'unmatched' },
+      ])
+      await retype(second, 'walking')
+      expect(await rematchActivityRoute(user, [second], defaultRouteMatchDeps)).toEqual([
+        { activity_id: second, outcome: 'created' },
+      ])
+
+      const routes = await listRoutes(user)
+      expect(routes).toHaveLength(1)
+      expect(routes[0]).toMatchObject({
+        activity_count: 2,
+        activity_type: 'walking',
+        canonical_activity_id: first,
+      })
     })
   })
 })

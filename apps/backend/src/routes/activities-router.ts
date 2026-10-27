@@ -166,7 +166,7 @@ const buildMergedResponse = async (
   const commentLookupIds = overlapping.map((a) => a.id).filter((id): id is string => Boolean(id))
   const commentsMap = await getCommentsMap(user, 'activity', commentLookupIds)
   const comments = dedupeCommentsForIds(commentsMap, commentLookupIds)
-  const route = await routeSummary(user, [activity.id!, ...commentLookupIds])
+  const route = await routeSummary(user, [...new Set([activity.id!, ...commentLookupIds])])
 
   return {
     ...metrics,

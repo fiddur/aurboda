@@ -126,11 +126,22 @@ overlap, projects onto either leg at random and so passes too; it has no meaning
 anyway, and the coverage test has already shown it is the same path.
 
 **Same activity type only**: a route carries the activity type of its canonical
-activity, and a track is matched only against routes of its own type.
+activity, and a track is matched only against routes of its own type. The type is the
+effective one the merged view shows: a synced activity retyped by an edit keeps its track
+and route rows on the synced row, while the new type lives on its aurboda override, and
+matching reads the override's type.
+
+**Retyping re-matches**: when an activity's type changes (an edit, `update_activity`, or a
+deduction `retype` rule), every row of it that can own a track is detached from its route
+and matched again under the new type, so a walk retyped from a run leaves the running
+route. It also stops being its route's canonical, and a route left with no runs is deleted
+outright.
 
 **Birth from a pair**: a track that matches no route is tested the same way against the
 other non-deleted, unrouted tracks of its type. The first that passes both tests makes a
-route whose geometry is the **older** run's simplified track; both runs are attached. A row
+route whose geometry is the **older** run's simplified track; both runs are attached, in one
+transaction with the route's creation. Two matchers racing on the same canonical run (the
+unique index on `routes.canonical_activity_id`) leave one route, the loser a no-op. A row
 that overlaps the track in time is the same session recorded by another source (Garmin and
 Strava), never a second run, so it is not a pairing candidate.
 
@@ -140,8 +151,11 @@ already in `activity_routes` is skipped.
 
 **Where it runs**: the `track-analyse` queue, ten minutes after a track is written; and the
 `track-backfill` job, which after building missing tracks runs the same matching over every
-tracked activity without a route, oldest first. `POST /routes/match` / `match_routes` runs
-that pass on demand.
+tracked activity without a route that has not been tried yet, oldest first.
+`POST /routes/match` / `match_routes` runs that pass on demand. A try marks the activity's
+tracks (`activity_tracks.route_matched_at`), so the pass after each deploy skips history that
+already failed to pair; a tried run still pairs with a later run of the same course, and the
+mark is cleared when the track is rewritten or the activity retyped.
 
 **Naming**: the nearest named location within 500 m of the canonical track's start, else
 the first part of the nearest detected location's address, else "Route", followed by the

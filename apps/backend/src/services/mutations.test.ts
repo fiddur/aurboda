@@ -18,6 +18,7 @@ import {
   updateActivity,
   updateCustomMetric,
 } from './mutations.ts'
+import { rematchActivityRoute } from './routes.ts'
 
 vi.mock('../db', async () => ({
   activityTypeExists: vi.fn().mockResolvedValue(true),
@@ -55,6 +56,11 @@ vi.mock('../db', async () => ({
   updateActivity: vi.fn(),
   updateCustomMetricDefinition: vi.fn(),
   upsertUserSettings: vi.fn(),
+}))
+
+vi.mock('./routes.ts', () => ({
+  defaultRouteMatchDeps: {},
+  rematchActivityRoute: vi.fn().mockResolvedValue([]),
 }))
 
 // Mock notes service to avoid testing note-sync behavior here
@@ -1070,6 +1076,81 @@ describe('updateActivity', () => {
       expect.objectContaining({ activity_type: 'meditation' }),
     )
     expect(db.updateActivity).not.toHaveBeenCalled()
+  })
+
+  test('a type change re-matches routes for the edited row, its override and every override target', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      activity_type: 'walking',
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'garmin-1',
+      source: 'garmin',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+    vi.mocked(db.getOverrideForActivity).mockResolvedValue(null)
+    vi.mocked(db.insertOverride).mockResolvedValue({
+      activity_type: 'running',
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'override-1',
+      override_target_ids: ['garmin-1', 'strava-1'],
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+
+    const result = await updateActivity('testuser', 'garmin-1', {
+      activity_type: 'running',
+      override_target_ids: ['strava-1'],
+    })
+
+    expect(result.success).toBe(true)
+    expect(rematchActivityRoute).toHaveBeenCalledExactlyOnceWith(
+      'testuser',
+      ['garmin-1', 'override-1', 'strava-1'],
+      expect.anything(),
+    )
+  })
+
+  test('a failed re-match does not fail the type change', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      activity_type: 'walking',
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+    vi.mocked(db.updateActivity).mockResolvedValue({
+      activity_type: 'running',
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+    vi.mocked(rematchActivityRoute).mockRejectedValueOnce(new Error('db down'))
+
+    const result = await updateActivity('testuser', 'activity-123', { activity_type: 'running' })
+
+    expect(result.success).toBe(true)
+    expect(rematchActivityRoute).toHaveBeenCalledExactlyOnceWith(
+      'testuser',
+      ['activity-123'],
+      expect.anything(),
+    )
+  })
+
+  test('a title-only change does not re-match routes', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      activity_type: 'running',
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+    vi.mocked(db.updateActivity).mockResolvedValue({
+      activity_type: 'running',
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+      title: 'Renamed',
+    })
+
+    expect((await updateActivity('testuser', 'activity-123', { title: 'Renamed' })).success).toBe(true)
+    expect(rematchActivityRoute).not.toHaveBeenCalled()
   })
 
   test('returns error when activity_type change would violate unique constraint', async () => {

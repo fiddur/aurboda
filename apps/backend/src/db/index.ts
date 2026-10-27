@@ -652,8 +652,9 @@ export {
 
 export {
   attachActivityToRoute,
-  createRouteFromTrack,
+  createRouteWithPair,
   deleteRoute,
+  detachActivityFromRoute,
   findRouteCandidates,
   findUnroutedTrackCandidates,
   getRouteById,
@@ -665,6 +666,7 @@ export {
   listRouteEfforts,
   listRoutes,
   listUnroutedTrackedActivities,
+  markRouteMatchAttempted,
   mergeRoutes,
   routeDirectionFractions,
   trackDirectionFractions,

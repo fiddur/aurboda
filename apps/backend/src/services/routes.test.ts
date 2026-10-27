@@ -8,6 +8,7 @@ import {
   getRouteDetail,
   isNotReversed,
   matchActivityRoute,
+  rematchActivityRoute,
   matchUnroutedTracks,
   paceSecondsPerKm,
   routeName,
@@ -68,7 +69,8 @@ const t1 = new Date('2026-06-08T07:00:00Z')
 
 const fakeDeps = (overrides: Partial<RouteMatchDeps> = {}): RouteMatchDeps => ({
   attachActivityToRoute: vi.fn(async () => undefined),
-  createRouteFromTrack: vi.fn(async () => 'new-route'),
+  createRouteWithPair: vi.fn(async () => 'new-route'),
+  detachActivityFromRoute: vi.fn(async () => ({ deleted_route_id: null, detached: true })),
   findNearbyDetectedLocation: vi.fn(async () => null),
   findNearbyNamedLocation: vi.fn(async () => null),
   findRouteCandidates: vi.fn(async () => []),
@@ -77,6 +79,7 @@ const fakeDeps = (overrides: Partial<RouteMatchDeps> = {}): RouteMatchDeps => ({
   getTrackSummary: vi.fn(async () => ({ length_m: 8240, start: { lat: 59.3, lon: 18.07 } })),
   isActivityRouted: vi.fn(async () => false),
   listUnroutedTrackedActivities: vi.fn(async () => []),
+  markRouteMatchAttempted: vi.fn(async () => undefined),
   routeDirectionFractions: vi.fn(async () => forward),
   trackDirectionFractions: vi.fn(async () => forward),
   ...overrides,
@@ -87,11 +90,13 @@ describe('matchActivityRoute', () => {
     const deps = fakeDeps({ isActivityRouted: vi.fn(async () => true) })
     expect(await matchActivityRoute('u', 'a', deps)).toBe('already_routed')
     expect(deps.findRouteCandidates).not.toHaveBeenCalled()
+    expect(deps.markRouteMatchAttempted).not.toHaveBeenCalled()
   })
 
   test('skips an activity without a track', async () => {
     const deps = fakeDeps({ getTrackedActivity: vi.fn(async () => null) })
     expect(await matchActivityRoute('u', 'a', deps)).toBe('no_track')
+    expect(deps.markRouteMatchAttempted).not.toHaveBeenCalled()
   })
 
   test('attaches to the first covering route running the same way', async () => {
@@ -110,6 +115,7 @@ describe('matchActivityRoute', () => {
     expect(deps.routeDirectionFractions).not.toHaveBeenCalledWith('u', 'a', 'too-short')
     expect(deps.attachActivityToRoute).toHaveBeenCalledExactlyOnceWith('u', 'a', 'same', 0.92)
     expect(deps.findUnroutedTrackCandidates).not.toHaveBeenCalled()
+    expect(deps.markRouteMatchAttempted).toHaveBeenCalledExactlyOnceWith('u', 'a')
   })
 
   test('creates a route from the older of a matching pair', async () => {
@@ -122,12 +128,24 @@ describe('matchActivityRoute', () => {
 
     expect(await matchActivityRoute('u', 'new', deps)).toBe('created')
     expect(deps.getTrackSummary).toHaveBeenCalledWith('u', 'older')
-    expect(deps.createRouteFromTrack).toHaveBeenCalledWith('u', {
-      activity_id: 'older',
-      name: 'Söderhallarna · 8.2 km',
+    expect(deps.createRouteWithPair).toHaveBeenCalledExactlyOnceWith('u', {
+      canonical: { activity_id: 'older', name: 'Söderhallarna · 8.2 km' },
+      follower: { activity_id: 'new', coverage: 0.93 },
     })
-    expect(deps.attachActivityToRoute).toHaveBeenCalledWith('u', 'older', 'new-route', 1)
-    expect(deps.attachActivityToRoute).toHaveBeenCalledWith('u', 'new', 'new-route', 0.93)
+    expect(deps.attachActivityToRoute).not.toHaveBeenCalled()
+    expect(deps.markRouteMatchAttempted).toHaveBeenCalledExactlyOnceWith('u', 'new')
+  })
+
+  test('a route founded concurrently on the canonical counts as already routed and leaves the track unmarked', async () => {
+    const deps = fakeDeps({
+      createRouteWithPair: vi.fn(async () => null),
+      findUnroutedTrackCandidates: vi.fn(async () => [
+        { activity_id: 'older', coverage_route: 0.93, coverage_track: 0.96, start_time: t0 },
+      ]),
+    })
+
+    expect(await matchActivityRoute('u', 'new', deps)).toBe('already_routed')
+    expect(deps.markRouteMatchAttempted).not.toHaveBeenCalled()
   })
 
   test('the activity itself is canonical when it is the older one', async () => {
@@ -143,9 +161,10 @@ describe('matchActivityRoute', () => {
     })
 
     expect(await matchActivityRoute('u', 'a', deps)).toBe('created')
-    expect(vi.mocked(deps.createRouteFromTrack).mock.calls[0]![1].activity_id).toBe('a')
-    expect(deps.attachActivityToRoute).toHaveBeenCalledWith('u', 'a', 'new-route', 1)
-    expect(deps.attachActivityToRoute).toHaveBeenCalledWith('u', 'later', 'new-route', 0.95)
+    expect(deps.createRouteWithPair).toHaveBeenCalledExactlyOnceWith('u', {
+      canonical: { activity_id: 'a', name: 'Route · 8.2 km' },
+      follower: { activity_id: 'later', coverage: 0.95 },
+    })
   })
 
   test('names after a detected location address when no named location is near, else "Route"', async () => {
@@ -155,11 +174,13 @@ describe('matchActivityRoute', () => {
       findUnroutedTrackCandidates: vi.fn(async () => pair),
     })
     await matchActivityRoute('u', 'a', withAddress)
-    expect(vi.mocked(withAddress.createRouteFromTrack).mock.calls[0]![1].name).toBe('Ringvägen 1 · 8.2 km')
+    expect(vi.mocked(withAddress.createRouteWithPair).mock.calls[0]![1].canonical.name).toBe(
+      'Ringvägen 1 · 8.2 km',
+    )
 
     const nothing = fakeDeps({ findUnroutedTrackCandidates: vi.fn(async () => pair) })
     await matchActivityRoute('u', 'a', nothing)
-    expect(vi.mocked(nothing.createRouteFromTrack).mock.calls[0]![1].name).toBe('Route · 8.2 km')
+    expect(vi.mocked(nothing.createRouteWithPair).mock.calls[0]![1].canonical.name).toBe('Route · 8.2 km')
   })
 
   test('a reversed or non-covering pair creates nothing', async () => {
@@ -173,8 +194,39 @@ describe('matchActivityRoute', () => {
 
     expect(await matchActivityRoute('u', 'a', deps)).toBe('unmatched')
     expect(deps.trackDirectionFractions).toHaveBeenCalledExactlyOnceWith('u', 'a', 'reverse')
-    expect(deps.createRouteFromTrack).not.toHaveBeenCalled()
+    expect(deps.createRouteWithPair).not.toHaveBeenCalled()
     expect(deps.attachActivityToRoute).not.toHaveBeenCalled()
+    expect(deps.markRouteMatchAttempted).toHaveBeenCalledExactlyOnceWith('u', 'a')
+  })
+})
+
+describe('rematchActivityRoute', () => {
+  test('detaches then matches each activity, and keeps going after a failure', async () => {
+    const calls: string[] = []
+    const deps = fakeDeps({
+      detachActivityFromRoute: vi.fn(async (_u: string, id: string) => {
+        calls.push(`detach ${id}`)
+        if (id === 'bad') throw new Error('boom')
+        return { deleted_route_id: null, detached: true }
+      }),
+      getTrackedActivity: vi.fn(async (_u: string, id: string) => {
+        calls.push(`match ${id}`)
+        return id === 'override' ? null : { activity_id: id, start_time: t1 }
+      }),
+    })
+
+    expect(await rematchActivityRoute('u', ['synced', 'bad', 'override'], deps)).toEqual([
+      { activity_id: 'synced', outcome: 'unmatched' },
+      { activity_id: 'bad', outcome: 'failed' },
+      { activity_id: 'override', outcome: 'no_track' },
+    ])
+    expect(calls).toEqual([
+      'detach synced',
+      'match synced',
+      'detach bad',
+      'detach override',
+      'match override',
+    ])
   })
 })
 
@@ -184,6 +236,11 @@ describe('matchUnroutedTracks', () => {
     const deps = fakeDeps({
       attachActivityToRoute: vi.fn(async (_u: string, id: string) => {
         routed.add(id)
+      }),
+      createRouteWithPair: vi.fn(async (_u: string, { canonical, follower }) => {
+        routed.add(canonical.activity_id)
+        routed.add(follower.activity_id)
+        return 'new-route'
       }),
       findRouteCandidates: vi.fn(async (_u: string, id: string) =>
         id === 'c' ? [{ coverage_route: 0.95, coverage_track: 0.95, route_id: 'new-route' }] : [],

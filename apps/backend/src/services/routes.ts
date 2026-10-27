@@ -20,8 +20,9 @@ import { expandActivityTypes } from '../db/activity-type-definitions.ts'
 import { findNearbyDetectedLocation, findNearbyNamedLocation } from '../db/locations.ts'
 import {
   attachActivityToRoute,
-  createRouteFromTrack,
+  createRouteWithPair,
   deleteRoute,
+  detachActivityFromRoute,
   findRouteCandidates,
   findUnroutedTrackCandidates,
   getRouteById,
@@ -32,6 +33,7 @@ import {
   listRouteEfforts,
   listRoutes,
   listUnroutedTrackedActivities,
+  markRouteMatchAttempted,
   mergeRoutes,
   routeDirectionFractions,
   trackDirectionFractions,
@@ -85,19 +87,31 @@ export interface RouteMatchDeps {
     lon: number,
     distanceM: number,
   ) => Promise<{ address?: string | null } | null>
-  createRouteFromTrack: (user: string, input: { activity_id: string; name: string }) => Promise<string | null>
+  createRouteWithPair: (
+    user: string,
+    input: {
+      canonical: { activity_id: string; name: string }
+      follower: { activity_id: string; coverage: number }
+    },
+  ) => Promise<string | null>
   attachActivityToRoute: (
     user: string,
     activityId: string,
     routeId: string,
     coverage: number,
   ) => Promise<void>
+  markRouteMatchAttempted: (user: string, activityId: string) => Promise<void>
+  detachActivityFromRoute: (
+    user: string,
+    activityId: string,
+  ) => Promise<{ detached: boolean; deleted_route_id: string | null }>
   listUnroutedTrackedActivities: (user: string) => Promise<TrackedActivity[]>
 }
 
 export const defaultRouteMatchDeps: RouteMatchDeps = {
   attachActivityToRoute,
-  createRouteFromTrack,
+  createRouteWithPair,
+  detachActivityFromRoute,
   findNearbyDetectedLocation,
   findNearbyNamedLocation,
   findRouteCandidates,
@@ -106,6 +120,7 @@ export const defaultRouteMatchDeps: RouteMatchDeps = {
   getTrackSummary,
   isActivityRouted,
   listUnroutedTrackedActivities,
+  markRouteMatchAttempted,
   routeDirectionFractions,
   trackDirectionFractions,
 }
@@ -131,21 +146,13 @@ const nameNear = async (
   return place ? { name: place } : null
 }
 
-const createRoute = async (
-  user: string,
-  canonicalId: string,
-  deps: RouteMatchDeps,
-): Promise<string | null> => {
-  const summary = await deps.getTrackSummary(user, canonicalId)
-  if (!summary) return null
-  const name = routeName(await nameNear(user, summary.start, deps), summary.length_m)
-  return deps.createRouteFromTrack(user, { activity_id: canonicalId, name })
-}
-
 /**
  * Attach the activity to the best covering route of its type running the same
  * way; else pair it with another unrouted track that passes the same tests and
- * create a route from the older of the two. Idempotent.
+ * create a route from the older of the two. Idempotent. 'matched', 'created' and
+ * 'unmatched' mark the track as tried, so the startup backfill skips it until the
+ * track is rewritten or the activity retyped; a route founded concurrently leaves
+ * it unmarked, since the activity may still be unrouted.
  */
 export const matchActivityRoute = async (
   user: string,
@@ -159,6 +166,7 @@ export const matchActivityRoute = async (
   for (const candidate of (await deps.findRouteCandidates(user, activityId)).filter(covers)) {
     if (!isNotReversed(await deps.routeDirectionFractions(user, activityId, candidate.route_id))) continue
     await deps.attachActivityToRoute(user, activityId, candidate.route_id, coverageOf(candidate))
+    await deps.markRouteMatchAttempted(user, activityId)
     return 'matched'
   }
 
@@ -168,14 +176,43 @@ export const matchActivityRoute = async (
     const [canonicalId, followerId] = otherIsOlder
       ? [other.activity_id, activityId]
       : [activityId, other.activity_id]
-    const routeId = await createRoute(user, canonicalId, deps)
-    if (!routeId) continue
-    await deps.attachActivityToRoute(user, canonicalId, routeId, 1)
-    await deps.attachActivityToRoute(user, followerId, routeId, coverageOf(other))
+    const summary = await deps.getTrackSummary(user, canonicalId)
+    if (!summary) continue
+    const routeId = await deps.createRouteWithPair(user, {
+      canonical: {
+        activity_id: canonicalId,
+        name: routeName(await nameNear(user, summary.start, deps), summary.length_m),
+      },
+      follower: { activity_id: followerId, coverage: coverageOf(other) },
+    })
+    if (!routeId) return 'already_routed'
+    await deps.markRouteMatchAttempted(user, activityId)
     return 'created'
   }
 
+  await deps.markRouteMatchAttempted(user, activityId)
   return 'unmatched'
+}
+
+/** Takes each activity off its route and matches it again, e.g. under a new activity type. */
+export const rematchActivityRoute = async (
+  user: string,
+  activityIds: string[],
+  deps: RouteMatchDeps,
+): Promise<{ activity_id: string; outcome: RouteMatchOutcome | 'failed' }[]> => {
+  const outcomes: { activity_id: string; outcome: RouteMatchOutcome | 'failed' }[] = []
+  for (const activityId of activityIds) {
+    try {
+      await deps.detachActivityFromRoute(user, activityId)
+      outcomes.push({ activity_id: activityId, outcome: await matchActivityRoute(user, activityId, deps) })
+    } catch (error) {
+      auditError(user, 'data', `Route re-matching failed for activity ${activityId}`, {
+        error: String(error),
+      })
+      outcomes.push({ activity_id: activityId, outcome: 'failed' })
+    }
+  }
+  return outcomes
 }
 
 /** Match every tracked activity without a route, oldest first. */

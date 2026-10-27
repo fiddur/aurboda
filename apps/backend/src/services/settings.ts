@@ -106,6 +106,9 @@ export const getEffectiveHrZones = async (
   user: string,
 ): Promise<{ zones: HrZoneThresholds; source: HrZoneSource }> => hrZonesFromSettings(await getSettings(user))
 
+export const lowHrCeiling = (settings: UserSettings, zones: HrZoneThresholds): number =>
+  settings.maf_hr ?? zones[3]
+
 /**
  * Get effective goals for a user (from goals table, falling back to defaults).
  */
@@ -177,6 +180,7 @@ const settingsWithDefaultsSchema = userSettingsResponseSchema.pick({
   garmin_disabled_data_types: true,
   item_icons: true,
   lastfm_username: true,
+  maf_hr: true,
   manually_approve_followers: true,
   meal_slots: true,
   rescue_time_key: true,

@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import { runCategoryFilterSchema } from './activity-features.ts'
 import {
   activityTypeSchema,
   baseResponseSchema,
@@ -282,6 +283,9 @@ export const activitiesQuerySchema = timeRangeQuerySchema
     }),
     route_id: z.string().uuid().optional().meta({
       description: 'Filter to the activities matched to a route',
+    }),
+    category: runCategoryFilterSchema.optional().meta({
+      description: 'Filter to activities carrying this run category (data.run_categories)',
     }),
   })
   .meta({ id: 'ActivitiesQuery' })

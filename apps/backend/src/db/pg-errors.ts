@@ -5,3 +5,7 @@
  */
 export const isMissingDatabase = (error: unknown): boolean =>
   error instanceof Error && (error as Error & { code?: string }).code === '3D000'
+
+/** True when a query violated a unique constraint or index (`unique_violation`). */
+export const isUniqueViolation = (error: unknown): boolean =>
+  error instanceof Error && (error as Error & { code?: string }).code === '23505'
