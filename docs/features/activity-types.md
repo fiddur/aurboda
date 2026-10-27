@@ -148,8 +148,11 @@ A goal on a measure, such as "Bench Press e1RM at least 100 kg over 30 days", is
 
 On the web, the type page has an exercises table (one row per exercise with its combined
 measures), each exercise has its own page at `/activity-type/<name>/item/sets.exercise/<value>`
-listing the sessions with it, and an activity's page has an exercises section comparing each
-exercise with last time, with record badges.
+with its records, a trend of its best e1RM (or most reps in a set, or longest hold, for an
+exercise without weights) that decays with a 120-day half-life between sessions and is lifted by
+each session that beats it, a weekly chart of a chosen measure, and the sessions with it; and an
+activity's page has an exercises section comparing each exercise with last time, with record
+badges.
 
 ## Sessions Overview
 
