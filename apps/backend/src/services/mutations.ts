@@ -39,6 +39,7 @@ import {
 import { auditError } from './audit-log.ts'
 import { getCustomMetrics } from './custom-metrics.ts'
 import { validateActivityData } from './data-schema-validation.ts'
+import { aliasActivityData } from './item-value-aliases.ts'
 import { syncNoteTimesForEntity } from './notes.ts'
 import { reanalyseActivities, reanalyseOverrideTargets } from './track-analyse.ts'
 
@@ -307,7 +308,8 @@ export async function addActivity(
     }
   }
 
-  const dataError = await validateDataForType(user, input.activity_type, input.data)
+  const data = await aliasActivityData(user, input.data)
+  const dataError = await validateDataForType(user, input.activity_type, data)
   if (dataError) return { error: dataError, success: false }
 
   // Equal times are valid — point-in-time activities have no duration.
@@ -325,7 +327,7 @@ export async function addActivity(
       input.start_time,
       input.merge_span,
       undefined,
-      input.data,
+      data,
     )
     if (existing?.id) {
       const newEndTime = input.end_time ?? input.start_time
@@ -348,7 +350,7 @@ export async function addActivity(
 
   await dbInsertActivity(user, {
     activity_type: input.activity_type,
-    data: input.data,
+    data,
     end_time: input.end_time,
     id,
     source: 'aurboda',
@@ -378,7 +380,7 @@ export async function addActivity(
           operation: 'insert',
           payload: {
             activity_type: input.activity_type,
-            data: input.data,
+            data,
             end_time: input.end_time?.toISOString(),
             notes: input.notes,
             start_time: input.start_time.toISOString(),
@@ -537,7 +539,8 @@ export async function updateActivity(
     }
   }
 
-  const mergedData = input.data ? { ...before.data, ...input.data } : before.data
+  const inputData = await aliasActivityData(user, input.data)
+  const mergedData = inputData ? { ...before.data, ...inputData } : before.data
 
   if (mergedData) {
     const dataError = await validateDataForType(user, finalType, mergedData)

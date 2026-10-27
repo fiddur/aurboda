@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { GravlWorkoutDetail, GravlWorkoutSummary } from './types.ts'
 
+import { applyItemValueAliases } from '../../services/item-value-aliases.ts'
+
 vi.mock('../../db/index.ts', () => ({
   adoptLegacyActivity: vi.fn(),
   findActivityByExternalId: vi.fn(),
@@ -124,6 +126,7 @@ describe('processGravlWorkout', () => {
     existing: { id: string; data?: Record<string, unknown>; start_time?: Date } | null,
   ): GravlProcessDeps => ({
     adoptLegacyActivity: vi.fn().mockResolvedValue(null),
+    aliasActivityData: vi.fn(async (_user, data) => data),
     auditInfo: vi.fn(),
     findActivityByExternalId: vi.fn().mockResolvedValue(existing),
     insertActivity: vi.fn().mockResolvedValue('act-1'),
@@ -255,6 +258,34 @@ describe('processGravlWorkout', () => {
       expect.stringContaining('Bench Press: 10×40 kg (w)'),
       new Date('2026-09-03T05:16:12Z'),
       new Date('2026-09-03T05:45:12Z'),
+    )
+  })
+
+  it('stores an aliased exercise under the value it was merged into', async () => {
+    const deps = makeDeps(null)
+    vi.mocked(deps.aliasActivityData).mockImplementation(async (_user, data) =>
+      applyItemValueAliases(data, [
+        { alias: 'bench press', field: 'sets.exercise', value: 'Barbell Bench Press' },
+      ]),
+    )
+
+    expect(await processGravlWorkout('alice', detail(), deps)).toBe('created')
+
+    const stored = vi.mocked(deps.insertActivity).mock.calls[0][1]
+    const exercises = (stored.data?.sets as { exercise: string }[]).map((set) => set.exercise)
+    expect(exercises).toEqual(['Barbell Bench Press', 'Barbell Bench Press', 'Barbell Bench Press', 'Plank'])
+    expect(deps.aliasActivityData).toHaveBeenCalledWith(
+      'alice',
+      expect.objectContaining({ sets: expect.any(Array) }),
+    )
+    expect(deps.upsertSyncedNote).toHaveBeenCalledWith(
+      'alice',
+      'activity',
+      'act-1',
+      'gravl',
+      expect.stringContaining('Bench Press: 10×40 kg (w)'),
+      expect.any(Date),
+      expect.any(Date),
     )
   })
 

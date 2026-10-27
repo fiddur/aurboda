@@ -173,6 +173,7 @@ export {
   pickOverrideWinner,
   restoreActivity,
   restoreEmptyImportTombstone,
+  rewriteItemValue,
   updateActivity,
   updateActivityEndTimeByExternalId,
   updateActivityTypeByTagKey,
@@ -693,3 +694,12 @@ export {
   type StravaBackfillCandidate,
   type TrackBackfillPage,
 } from './tracks.ts'
+
+export {
+  deleteItemValueAlias,
+  deleteItemValueAliasesByAlias,
+  type ItemValueAliasRow,
+  listItemValueAliases,
+  repointItemValueAliases,
+  upsertItemValueAlias,
+} from './item-value-aliases.ts'

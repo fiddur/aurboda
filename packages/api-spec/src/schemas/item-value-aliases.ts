@@ -51,7 +51,9 @@ export type MergeItemValuesBody = z.infer<typeof mergeItemValuesBodySchema>
 export const mergeItemValuesResultSchema = z
   .object({
     activities_updated: z.number().int().meta({ description: 'Activities whose items were rewritten' }),
-    alias: itemValueAliasSchema.nullable().meta({ description: 'The alias kept, null for a spelling-only merge' }),
+    alias: itemValueAliasSchema
+      .nullable()
+      .meta({ description: 'The alias kept, null for a spelling-only merge' }),
   })
   .meta({ id: 'MergeItemValuesResult' })
 

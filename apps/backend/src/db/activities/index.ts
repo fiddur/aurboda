@@ -22,6 +22,7 @@ export {
   migrateExerciseTypes,
   restoreActivity,
   restoreEmptyImportTombstone,
+  rewriteItemValue,
   softDeleteActivityByExternalId,
   updateActivity,
   updateActivityEndTimeByExternalId,

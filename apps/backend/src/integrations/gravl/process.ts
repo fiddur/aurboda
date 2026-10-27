@@ -36,6 +36,7 @@ import {
 } from '../../db/index.ts'
 import { upsertSyncedNote } from '../../db/notes.ts'
 import { auditInfo } from '../../services/audit-log.ts'
+import { aliasActivityData } from '../../services/item-value-aliases.ts'
 import { GRAVL_HC_ORIGIN, gravlWorkoutExternalId } from '../../services/source-identity.ts'
 
 /** Gravl reports every set weight in pounds regardless of the user's unit preference. */
@@ -64,6 +65,7 @@ export interface GravlSetRecord {
 
 export interface GravlProcessDeps {
   adoptLegacyActivity: typeof adoptLegacyActivity
+  aliasActivityData: typeof aliasActivityData
   auditInfo: typeof auditInfo
   findActivityByExternalId: typeof findActivityByExternalId
   insertActivity: typeof insertActivity
@@ -76,6 +78,7 @@ export interface GravlProcessDeps {
 
 const defaultDeps: GravlProcessDeps = {
   adoptLegacyActivity,
+  aliasActivityData,
   auditInfo,
   findActivityByExternalId,
   insertActivity,
@@ -305,7 +308,8 @@ export const processGravlWorkout = async (
   if (isExternalWorkout(detail)) return removeExternalGravlWorkout(user, detail.id, deps)
   if (!isStrengthWorkout(detail)) return retractEmptyGravlImport(user, detail.id, deps)
 
-  const activity = buildGravlActivity(detail)
+  const built = buildGravlActivity(detail)
+  const activity = { ...built, data: await deps.aliasActivityData(user, built.data) }
   const externalId = activity.external_id!
 
   const restored = await deps.restoreEmptyImportTombstone(user, 'gravl', externalId)

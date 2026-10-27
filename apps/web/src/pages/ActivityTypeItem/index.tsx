@@ -20,6 +20,7 @@ import {
   trendPoints,
 } from './itemHistory'
 import { ItemSessionsTable } from './ItemSessionsTable'
+import { MergeItemValue } from './MergeItemValue'
 import './style.css'
 
 const LOOKBACK_OPTIONS = [
@@ -207,6 +208,15 @@ export function ActivityTypeItem() {
       <header class="activity-type-item-header">
         <h1>{value}</h1>
         <p class="activity-type-item-subtitle">{typeName}</p>
+        {sessions.length > 0 && (
+          <MergeItemValue
+            key={value}
+            name={name}
+            field={field}
+            value={value}
+            sessionCount={sessions.length}
+          />
+        )}
       </header>
 
       {query.isLoading && <p class="loading">Loading...</p>}
