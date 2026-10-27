@@ -2,6 +2,11 @@
 import { z } from 'zod'
 
 import {
+  activityFeatureNameSchema,
+  activityFeatureOperatorSchema,
+  runCategoryNameSchema,
+} from './activity-features.ts'
+import {
   activityTypeSchema,
   baseResponseSchema,
   createDataArrayResponseSchema,
@@ -129,6 +134,21 @@ export const mediaConditionSchema = z
 
 export type MediaCondition = z.infer<typeof mediaConditionSchema>
 
+export const activityFeatureConditionSchema = z
+  .object({
+    activity_type: activityTypeSchema,
+    feature: activityFeatureNameSchema,
+    kind: z.literal('activity_feature'),
+    operator: activityFeatureOperatorSchema.meta({ description: 'How the feature compares against value' }),
+    value: z.number().meta({ description: 'Value to compare the feature against' }),
+  })
+  .meta({
+    description:
+      'Matches the time ranges of activities of the type (and its descendants) whose computed feature compares as given against value; activities without that feature never match',
+  })
+
+export type ActivityFeatureCondition = z.infer<typeof activityFeatureConditionSchema>
+
 export const conditionSchema = z.discriminatedUnion('kind', [
   activityConditionSchema,
   screentimeCategoryConditionSchema,
@@ -137,6 +157,7 @@ export const conditionSchema = z.discriminatedUnion('kind', [
   afterDateConditionSchema,
   scrobbleConditionSchema,
   mediaConditionSchema,
+  activityFeatureConditionSchema,
 ])
 
 export type Condition = z.infer<typeof conditionSchema>
@@ -164,6 +185,11 @@ export type OutputMediaField = z.infer<typeof outputMediaFieldSchema>
 
 const outputTitleFieldDescription =
   'Enrich mode only: copy this data field (e.g. "session_name") into the title of each enriched activity. Replaces a blank title, the type name, or a title the rule wrote itself; a title typed by hand is kept.'
+
+const outputCategoryDescription =
+  "Enrich mode only: add this category to data.run_categories of each matched activity of output_activity_type (with the feature conditions as reasons), and remove it again from activities the rule no longer matches; a category listed in the activity's run_categories_excluded is never added."
+
+const outputCategorySchema = runCategoryNameSchema.meta({ description: outputCategoryDescription })
 
 const outputTitleFieldSchema = dataFieldNameSchema.meta({ description: outputTitleFieldDescription })
 
@@ -198,6 +224,7 @@ export const deductionRuleSchema = z
       description:
         'In create mode: activity type to create. In enrich mode: activity type to patch data onto. In retype mode: the new type.',
     }),
+    output_category: outputCategorySchema.optional(),
     output_data: z.record(z.string(), z.unknown()).optional().meta({
       description:
         'Static data fields to set on created activities; enrich and retype only fill missing fields',
@@ -243,6 +270,7 @@ export const addDeductionRuleBodySchema = z
       description:
         'In create mode: type to create. In enrich mode: type to patch data onto. In retype mode: the new type.',
     }),
+    output_category: outputCategorySchema.optional(),
     output_data: z.record(z.string(), z.unknown()).optional().meta({
       description: 'Static data fields for created activities; enrich and retype only fill missing fields',
     }),
@@ -278,6 +306,10 @@ export const updateDeductionRuleBodySchema = z
     mode: deductionRuleModeSchema.optional().meta({ description: 'New mode' }),
     name: z.string().optional().meta({ description: 'New name' }),
     output_activity_type: activityTypeSchema.optional().meta({ description: 'New output activity type' }),
+    output_category: runCategoryNameSchema
+      .nullable()
+      .optional()
+      .meta({ description: `${outputCategoryDescription} Null to clear.` }),
     output_data: z
       .record(z.string(), z.unknown())
       .nullable()
@@ -327,7 +359,7 @@ export const previewDeductionRuleResponseSchema = baseResponseSchema
     would_affect: z
       .number()
       .int()
-      .meta({ description: 'Number of activities that would be created or enriched' }),
+      .meta({ description: 'Number of activities that would be created, enriched or categorised' }),
     sample_days: z.number().int().meta({ description: 'Number of days sampled in preview' }),
   })
   .meta({ id: 'PreviewDeductionRuleResponse' })

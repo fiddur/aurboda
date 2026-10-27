@@ -1,16 +1,18 @@
 /**
  * Activity-track queues (#1231).
  *
- * `track-analyse` gets one job per written track and runs route matching (run
- * features and segment matching hang there later); it starts after the same kind
+ * `track-analyse` gets one job per written track and runs route matching, then
+ * the activity's features (which re-evaluates the run category rules); it starts after the same kind
  * of stabilisation delay auto-share uses, since a track is often rewritten by a
  * re-sync shortly after it lands. `track-backfill` builds tracks for history
- * from stored raw records and matches routes for them, one job per user.
+ * from stored raw records, matches routes and computes missing features for them,
+ * one job per user.
  */
 import type { PgBoss } from './pg-boss.ts'
 import type { TrackBackfillJobDeps, TrackBackfillResult } from './track-backfill.ts'
 
 import { auditError, auditInfo } from './audit-log.ts'
+import { backfillActivityFeatures } from './track-analyse.ts'
 import { backfillUserTracks } from './track-backfill.ts'
 
 /** `stately`: a re-sync while a job waits collapses into it. The policy is fixed at creation. */
@@ -26,6 +28,8 @@ export interface TrackAnalyseJobData {
 
 export interface TrackBackfillJobData {
   user: string
+  /** Delete every stored feature first, so all are recomputed (HR settings changed). */
+  recompute_features?: boolean
 }
 
 export interface TrackAnalyseDeps {
@@ -37,13 +41,19 @@ export interface TrackAnalyseQueue {
 }
 
 export interface TrackBackfillQueue {
-  enqueue: (user: string, startAfterSeconds?: number) => Promise<void>
+  enqueue: (
+    user: string,
+    startAfterSeconds?: number,
+    options?: { recomputeFeatures?: boolean },
+  ) => Promise<void>
 }
 
 export const runTrackBackfillJob = async (
   job: TrackBackfillJobData,
   deps: TrackBackfillJobDeps,
-): Promise<TrackBackfillResult & { routes: { matched: number; created: number } }> => {
+): Promise<
+  TrackBackfillResult & { routes: { matched: number; created: number }; features: { computed: number } }
+> => {
   const result = await backfillUserTracks(job.user, deps)
   if (result.garmin + result.strava + result.skipped > 0) {
     auditInfo(job.user, 'data', '🛤️ Activity track backfill done', { ...result })
@@ -52,7 +62,10 @@ export const runTrackBackfillJob = async (
   if (routes.matched + routes.created > 0) {
     auditInfo(job.user, 'data', '🗺️ Route matching done', { ...routes })
   }
-  return { ...result, routes }
+  const features = await backfillActivityFeatures(job.user, deps, {
+    recompute: job.recompute_features === true,
+  })
+  return { ...result, features, routes }
 }
 
 /* v8 ignore start -- requires real pg-boss instance */
@@ -105,7 +118,7 @@ export const createTrackBackfillQueue = async (
       if (!job) return
       const result = await runTrackBackfillJob(job.data, deps)
       console.info(
-        `🛤️ track backfill for ${job.data.user}: ${result.garmin} garmin, ${result.strava} strava, ${result.skipped} skipped; routes: ${result.routes.matched} matched, ${result.routes.created} created`,
+        `🛤️ track backfill for ${job.data.user}: ${result.garmin} garmin, ${result.strava} strava, ${result.skipped} skipped; routes: ${result.routes.matched} matched, ${result.routes.created} created; features: ${result.features.computed} computed`,
       )
     },
   )
@@ -113,9 +126,15 @@ export const createTrackBackfillQueue = async (
   console.info('🛤️ Track backfill queue ready')
 
   return {
-    enqueue: async (user, startAfterSeconds = 0) => {
+    enqueue: async (user, startAfterSeconds = 0, { recomputeFeatures = false } = {}) => {
+      // A recompute has its own singleton key: `stately` would otherwise drop it behind a plain
+      // backfill already waiting for the user.
+      const data: TrackBackfillJobData = recomputeFeatures ? { recompute_features: true, user } : { user }
       try {
-        await boss.send(TRACK_BACKFILL_QUEUE, { user }, { singletonKey: user, startAfter: startAfterSeconds })
+        await boss.send(TRACK_BACKFILL_QUEUE, data, {
+          singletonKey: recomputeFeatures ? `${user}:recompute` : user,
+          startAfter: startAfterSeconds,
+        })
       } catch (err) {
         auditError(user, 'data', 'Failed to enqueue track backfill', { error: String(err) })
       }

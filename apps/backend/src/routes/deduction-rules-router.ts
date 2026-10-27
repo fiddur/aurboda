@@ -24,6 +24,7 @@ import {
   insertDeductionRule,
   updateDeductionRule,
 } from '../db/index.ts'
+import { removeCategoriesOfNonCategorisingRule } from '../services/deduction-category.ts'
 import { evaluateAllRules } from '../services/deduction-engine.ts'
 import { mergeRuleUpdate, validateRuleShape } from '../services/media-plays.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
@@ -57,6 +58,7 @@ export const createDeductionRulesRouter = (
         priority,
         enabled,
         mode,
+        output_category,
         output_data,
         output_media_field,
         output_title_field,
@@ -78,6 +80,7 @@ export const createDeductionRulesRouter = (
         mode,
         name,
         output_activity_type,
+        output_category,
         output_data: output_data as Record<string, unknown> | undefined,
         output_media_field,
         output_title,
@@ -126,6 +129,7 @@ export const createDeductionRulesRouter = (
         mode: req.body.mode,
         name: req.body.name,
         output_activity_type,
+        output_category: req.body.output_category,
         output_data: req.body.output_data as Record<string, unknown> | undefined,
         output_media_field: req.body.output_media_field,
         output_title: req.body.output_title,
@@ -165,6 +169,7 @@ export const createDeductionRulesRouter = (
       if (!updated) {
         return res.status(404).json({ error: 'Deduction rule not found', success: false })
       }
+      await removeCategoriesOfNonCategorisingRule(user, updated)
 
       // Queue async re-evaluation over full history
       if (updated.enabled && deductionQueue) {

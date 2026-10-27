@@ -1,4 +1,5 @@
 export * from './activities.ts'
+export * from './activity-features.ts'
 export * from './activity-subtypes.ts'
 export * from './activity-measures.ts'
 export * from './activity-sessions.ts'

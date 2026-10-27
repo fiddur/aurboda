@@ -12,11 +12,18 @@ import {
 
 import { getGoalHistory } from '../services/goal-history.ts'
 import { getGoalsProgress, getWidgetGoalsProgress } from '../services/goals.ts'
-import { getSettingsResponse, validateAndUpdateSettings } from '../services/settings.ts'
+import {
+  getSettingsResponse,
+  type HrSettingsChanged,
+  validateAndUpdateSettings,
+} from '../services/settings.ts'
 import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
-export const createSettingsRouter = (authMiddleware: AnyMiddleware): TypedRouter => {
+export const createSettingsRouter = (
+  authMiddleware: AnyMiddleware,
+  onHrSettingsChanged?: HrSettingsChanged,
+): TypedRouter => {
   const router = typedRouter()
   router.get<Record<string, never>, UserSettingsResponse>(
     '/user/settings',
@@ -32,7 +39,7 @@ export const createSettingsRouter = (authMiddleware: AnyMiddleware): TypedRouter
     authMiddleware,
     validateBody(updateSettingsInputSchema),
     async (req, res) => {
-      const result = await validateAndUpdateSettings(req.user!, req.body)
+      const result = await validateAndUpdateSettings(req.user!, req.body, onHrSettingsChanged)
       if (!result.success) {
         return res.status(400).json(result)
       }

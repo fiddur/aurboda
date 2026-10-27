@@ -2,6 +2,7 @@ import {
   isMusicScrobbleActivity,
   type ActivitiesQuery,
   type ActivitiesResponse,
+  type ActivityFeatures,
   type AddActivityBody,
   type AddActivityResponse,
   type ActivityTrackResponse,
@@ -103,7 +104,7 @@ export const restoreActivity = async (id: string): Promise<void> => {
 }
 
 export interface ActivityDetailResult {
-  activity: Activity
+  activity: Activity & { features?: ActivityFeatures }
   referenced_rules?: Record<string, string>
 }
 

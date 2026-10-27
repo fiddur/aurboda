@@ -25,10 +25,12 @@ import { auth } from '../../state/auth'
 import {
   defaultFields,
   fieldsToBuildBody,
+  isOutputCategoryInvalid,
   modeChangeBody,
   type RuleFormFields,
   ruleToFields,
   toOutputMediaField,
+  toOutputCategory,
   toOutputTitleField,
 } from './ruleForm'
 import './style.css'
@@ -236,7 +238,15 @@ function RuleForm({ id, rule }: { id?: string; rule?: DeductionRule }) {
     if (next !== (rule?.output_title_field ?? null)) autoSave({ output_title_field: next })
   }
 
-  const canSubmit = Boolean(fields.name && fields.outputType)
+  const saveCategory = () => {
+    if (isOutputCategoryInvalid(fields)) return
+    const next = toOutputCategory(fields) ?? null
+    if (next && next !== fields.category) updateField('category', next)
+    if (isNew) return
+    if (next !== (rule?.output_category ?? null)) autoSave({ output_category: next })
+  }
+
+  const canSubmit = Boolean(fields.name && fields.outputType) && !isOutputCategoryInvalid(fields)
 
   return (
     <div class="data-sources-page">
@@ -330,6 +340,21 @@ function RuleForm({ id, rule }: { id?: string; rule?: DeductionRule }) {
               <p class="rule-field-hint">
                 Replaces a blank title, the type name, or a title this rule wrote; a title typed by hand is
                 kept.
+              </p>
+              <TextField
+                label="Output category"
+                value={fields.category}
+                onChange={(v) => updateField('category', v)}
+                onBlur={saveCategory}
+                placeholder="e.g. low_hr"
+              />
+              {isOutputCategoryInvalid(fields) && (
+                <p class="rule-field-error">
+                  A category is snake_case: letters, digits and _, starting with a letter (e.g. low_hr).
+                </p>
+              )}
+              <p class="rule-field-hint">
+                Adds this category to the run's categories (data.run_categories) while the rule matches.
               </p>
             </>
           )}

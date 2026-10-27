@@ -1,6 +1,7 @@
-import type { ActivityCondition } from '@aurboda/api-spec'
+import type { ActivityCondition, ActivityFeatureCondition, ActivityFeatures } from '@aurboda/api-spec'
 
 import type {
+  CategorisableActivity,
   DeductionEngineDeps,
   EnrichOptions,
   EvaluationWindow,
@@ -10,6 +11,7 @@ import type {
 } from './deduction-engine.ts'
 import type { ActivityNotifier } from './deduction-queue.ts'
 
+import { findActivitiesByFeature, getActivityFeatures } from '../db/activity-features.ts'
 import { query } from '../db/connection.ts'
 import {
   deleteStaleRuleActivities,
@@ -431,6 +433,96 @@ const retitleActivities = async (
   return changedIds
 }
 
+const findActivitiesByFeatureCondition = async (
+  user: string,
+  condition: ActivityFeatureCondition,
+  window: EvaluationWindow,
+): Promise<(MatchedActivity & { value: number })[]> => {
+  const types = await expandActivityTypes(user, [condition.activity_type])
+  return findActivitiesByFeature(user, types, condition.feature, condition.operator, condition.value, window)
+}
+
+/** An override has no features of its own: they stay under the synced row it overrides. */
+const getFeaturesOfActivity = async (user: string, activityId: string): Promise<ActivityFeatures | null> => {
+  const result = await query<{ activity_id: string }>(
+    user,
+    `SELECT f.activity_id FROM activity_features f
+     WHERE f.activity_id = $1
+        OR f.activity_id IN (SELECT target_id FROM activity_override_targets WHERE override_id = $1)
+     ORDER BY (f.activity_id = $1) DESC
+     LIMIT 1`,
+    [activityId],
+  )
+  const featureId = result.rows[0]?.activity_id
+  return featureId ? getActivityFeatures(user, featureId) : null
+}
+
+const getCategorisableActivities = async (
+  user: string,
+  activityType: string,
+  ruleId: string,
+  window: EvaluationWindow,
+): Promise<CategorisableActivity[]> => {
+  const types = await expandActivityTypes(user, [activityType])
+  const result = await query(
+    user,
+    `SELECT id, start_time, end_time, data, is_primary FROM (
+       SELECT a.id, a.start_time, a.end_time, a.data,
+              (a.activity_type = ANY($1)
+               AND a.superseded_by IS NULL
+               AND NOT EXISTS (SELECT 1 FROM activity_override_targets ot
+                               JOIN activities o ON o.id = ot.override_id AND o.deleted_at IS NULL
+                               WHERE ot.target_id = a.id)) AS is_primary,
+              (jsonb_typeof(a.data->'run_categories') = 'array'
+               AND a.data->'run_categories' @> jsonb_build_array(jsonb_build_object('rule_id', $4::text))) AS has_entry
+       FROM activities a
+       WHERE a.deleted_at IS NULL
+         AND a.start_time < $3
+         AND (a.end_time > $2 OR a.end_time IS NULL)
+     ) candidates
+     WHERE is_primary OR has_entry
+     ORDER BY start_time`,
+    [types, window.start, window.end, ruleId],
+  )
+  return result.rows.map((r) => {
+    const start = r.start_time as Date
+    return {
+      data: (r.data as Record<string, unknown> | null) ?? null,
+      end: (r.end_time as Date) ?? new Date(start.getTime() + DEFAULT_SPAN_MS),
+      id: r.id as string,
+      primary: r.is_primary as boolean,
+      start,
+    }
+  })
+}
+
+const getActivityData = async (user: string, activityId: string): Promise<Record<string, unknown> | null> => {
+  const result = await query(user, `SELECT data FROM activities WHERE id = $1 AND deleted_at IS NULL`, [
+    activityId,
+  ])
+  if (result.rows.length === 0) return null
+  return (result.rows[0].data as Record<string, unknown> | null) ?? {}
+}
+
+const patchActivityData = async (
+  user: string,
+  activityId: string,
+  patch: Record<string, unknown>,
+  expectedCategories: unknown,
+): Promise<boolean> => {
+  const result = await query(
+    user,
+    `UPDATE activities SET data = COALESCE(data, '{}'::jsonb) || $2::jsonb
+     WHERE id = $1 AND data->'run_categories' IS NOT DISTINCT FROM $3::jsonb`,
+    [
+      activityId,
+      JSON.stringify(patch),
+      expectedCategories === undefined ? null : JSON.stringify(expectedCategories),
+    ],
+  )
+  return (result.rowCount ?? 0) > 0
+}
+
 const getEarliestActivityTime = async (user: string): Promise<Date | null> => {
   const result = await query(
     user,
@@ -445,6 +537,10 @@ export const createDefaultEngineDeps = (notifier?: ActivityNotifier): DeductionE
   getActivities,
   getActivitiesWithData,
   findActivities,
+  findActivitiesByFeature: findActivitiesByFeatureCondition,
+  getActivityData,
+  getActivityFeatures: getFeaturesOfActivity,
+  getCategorisableActivities,
   getEarliestActivityTime,
   getLocationVisits,
   getMediaPlays,
@@ -468,6 +564,7 @@ export const createDefaultEngineDeps = (notifier?: ActivityNotifier): DeductionE
     return { changed, id }
   },
   insertRuleRun: insertDeductionRuleRun,
+  patchActivityData,
   retitleActivities: (user, activityType, ranges, field, ruleId, dryRun) =>
     retitleActivities(user, activityType, ranges, field, ruleId, dryRun, notifier),
   retypeActivity: (user, id, change) => retypeActivity(user, id, change, notifier),

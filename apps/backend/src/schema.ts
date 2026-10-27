@@ -9,6 +9,7 @@
 import { createHash } from 'node:crypto'
 
 import { activitiesTables } from './schema/activities.ts'
+import { activityFeaturesTables } from './schema/activity-features.ts'
 import { locationsTables } from './schema/locations.ts'
 import { mealsTables } from './schema/meals.ts'
 import { metricsTables } from './schema/metrics.ts'
@@ -49,6 +50,7 @@ export const SCHEMA_VERSION = 1
  */
 export const createTableStatements: Record<string, string> = {
   ...activitiesTables,
+  ...activityFeaturesTables,
   ...locationsTables,
   ...mealsTables,
   ...metricsTables,
@@ -88,10 +90,12 @@ export const tableCreationOrder = [
   'activity_override_targets_trigger',
   'activity_tracks',
   'activity_tracks_indexes',
+  'activity_tracks_route_matched_at',
   'routes',
   'routes_indexes',
   'activity_routes',
   'activity_routes_indexes',
+  'activity_features',
   'meals',
   'meals_indexes',
   'meal_log_completed',
@@ -201,6 +205,7 @@ export const tableCreationOrder = [
   'outbound_sync_queue_indexes',
   'deduction_rules',
   'deduction_rules_indexes',
+  'deduction_rules_output_category',
   'deduction_rule_runs',
   'deduction_rule_runs_indexes',
   'webauthn_credentials',

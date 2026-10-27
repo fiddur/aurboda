@@ -1,7 +1,14 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
+import type { Activity } from '../db/types.ts'
+
 import * as db from '../db/index.ts'
 import { deleteProductivity, restoreActivity, restoreProductivity } from './restore.ts'
+import { reanalyseOverrideTargets } from './track-analyse.ts'
+
+vi.mock('./track-analyse.ts', () => ({
+  reanalyseOverrideTargets: vi.fn().mockResolvedValue(undefined),
+}))
 
 vi.mock('../db', () => ({
   deleteProductivityRecord: vi.fn(),
@@ -27,9 +34,29 @@ describe('restoreActivity', () => {
 
     const result = await restoreActivity('testuser', 'activity-123')
 
-    expect(result).toEqual({ id: 'activity-123', restored: true, success: true })
+    expect(result).toEqual({
+      id: 'activity-123',
+      restored: true,
+      success: true,
+    })
     expect(db.restoreActivity).toHaveBeenCalledWith('testuser', 'activity-123')
     expect(db.materializeSuperseded).toHaveBeenCalledWith('testuser', new Date('2024-03-15T10:00:00Z'))
+  })
+
+  test('a restored override re-analyses its targets', async () => {
+    const override: Activity = {
+      activity_type: 'running',
+      id: 'override-1',
+      override_target_ids: ['garmin-1'],
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    }
+    vi.mocked(db.restoreActivity).mockResolvedValue(true)
+    vi.mocked(db.getActivityById).mockResolvedValue(override)
+
+    await restoreActivity('testuser', 'override-1')
+
+    expect(reanalyseOverrideTargets).toHaveBeenCalledExactlyOnceWith('testuser', override)
   })
 
   test('returns failure when activity not found', async () => {
@@ -37,7 +64,12 @@ describe('restoreActivity', () => {
 
     const result = await restoreActivity('testuser', 'nonexistent')
 
-    expect(result).toEqual({ id: 'nonexistent', restored: false, success: false })
+    expect(result).toEqual({
+      id: 'nonexistent',
+      restored: false,
+      success: false,
+    })
+    expect(reanalyseOverrideTargets).not.toHaveBeenCalled()
   })
 })
 
@@ -60,7 +92,12 @@ describe('restoreProductivity', () => {
 
     const result = await restoreProductivity('testuser', 'nonexistent')
 
-    expect(result).toEqual({ id: 'nonexistent', restored: false, success: false })
+    expect(result).toEqual({
+      id: 'nonexistent',
+      restored: false,
+      success: false,
+    })
+    expect(reanalyseOverrideTargets).not.toHaveBeenCalled()
   })
 })
 
@@ -83,6 +120,10 @@ describe('deleteProductivity', () => {
 
     const result = await deleteProductivity('testuser', 'nonexistent')
 
-    expect(result).toEqual({ deleted: false, id: 'nonexistent', success: false })
+    expect(result).toEqual({
+      deleted: false,
+      id: 'nonexistent',
+      success: false,
+    })
   })
 })

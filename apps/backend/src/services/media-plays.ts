@@ -206,7 +206,10 @@ export const validateOutputMediaField = (rule: {
   return null
 }
 
-type RuleShape = Parameters<typeof validateOutputMediaField>[0] & { output_title_field?: string | null }
+type RuleShape = Parameters<typeof validateOutputMediaField>[0] & {
+  output_category?: string | null
+  output_title_field?: string | null
+}
 
 /** Mode-specific checks the schema cannot express, for the REST API and MCP alike. */
 export const validateRuleShape = (rule: RuleShape): string | null => {
@@ -214,6 +217,7 @@ export const validateRuleShape = (rule: RuleShape): string | null => {
     return 'mode "retype" requires exactly one "activity" condition, which selects the activities to retype'
   }
   if (rule.output_title_field && rule.mode !== 'enrich') return 'output_title_field requires mode "enrich"'
+  if (rule.output_category && rule.mode !== 'enrich') return 'output_category requires mode "enrich"'
   return validateOutputMediaField(rule)
 }
 
@@ -221,6 +225,7 @@ export const validateRuleShape = (rule: RuleShape): string | null => {
 export const mergeRuleUpdate = (existing: RuleShape, updates: Partial<RuleShape>): RuleShape => ({
   conditions: updates.conditions ?? existing.conditions,
   mode: updates.mode ?? existing.mode,
+  output_category: updates.output_category === undefined ? existing.output_category : updates.output_category,
   output_media_field:
     updates.output_media_field === undefined ? existing.output_media_field : updates.output_media_field,
   output_title_field:

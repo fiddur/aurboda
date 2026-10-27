@@ -225,6 +225,8 @@ const SHOWN_DATA_KEYS = new Set([
   'endTime',
   'max_hr',
   'rule_name',
+  'run_categories',
+  'run_categories_excluded',
   'startTime',
   'steps',
   'vo2_max',
