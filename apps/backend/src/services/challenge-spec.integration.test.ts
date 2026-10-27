@@ -18,6 +18,9 @@ const metricSpec: ChallengeSpecFields = {
   activity_type_id: null,
   aggregation: 'sum',
   bucket_size: '1d',
+  filter_field: null,
+  filter_value: null,
+  measure: null,
   pattern: 'steps',
   source_type: 'metric',
   unit: 'steps',
@@ -79,6 +82,9 @@ describe('resolveMemberSeries integration', () => {
       activity_type_id: null,
       aggregation: 'sum',
       bucket_size: '1d',
+      filter_field: null,
+      filter_value: null,
+      measure: null,
       pattern: 'steps',
       source_type: 'metric',
       unit: 'steps',
@@ -117,6 +123,9 @@ describe('resolveMemberSeries integration', () => {
         activity_type_id: null,
         aggregation: 'sum',
         bucket_size: '1d',
+        filter_field: null,
+        filter_value: null,
+        measure: null,
         pattern: 'steps',
         source_type: 'metric',
         unit: 'steps',
@@ -276,5 +285,81 @@ describe('resolveMemberSeries integration', () => {
     )
     expect(series.total).toBe(2)
     expect(series.last_updated).toBe('2026-06-02T19:45:00.000Z')
+  })
+
+  describe('activity_type with a measure over one exercise', () => {
+    const gravlSet = (exercise: string, weight: number | null, reps: number, setType = 'normal') => ({
+      distance: null,
+      exercise,
+      order: 0,
+      reps,
+      rpe: null,
+      set_type: setType,
+      time: null,
+      weight,
+    })
+    const lift = (user: string, startIso: string, sets: Record<string, unknown>[]) =>
+      insertActivity(user, {
+        activity_type: 'strength_training',
+        data: { sets },
+        end_time: new Date(new Date(startIso).getTime() + 3_600_000),
+        source: 'gravl',
+        start_time: new Date(startIso),
+      })
+    const pushUps = (
+      measure: 'total_reps' | 'max_reps',
+      aggregation: 'sum' | 'max',
+    ): ChallengeSpecFields => ({
+      ...metricSpec,
+      aggregation,
+      bucket_size: '1w',
+      filter_field: 'sets.exercise',
+      filter_value: 'push-ups',
+      measure,
+      pattern: 'strength_training',
+      source_type: 'activity_type',
+      unit: 'reps',
+    })
+    const start = new Date('2026-06-01T00:00:00Z')
+    const end = new Date('2026-06-15T00:00:00Z')
+
+    test('total_reps summed scores every push-up, max_reps with max the best set', async () => {
+      const user = getTestUser()
+      await lift(user, '2026-06-02T17:00:00Z', [
+        gravlSet('Push-ups', null, 30, 'warmup'),
+        gravlSet('Push-ups', null, 20),
+        gravlSet('Push-ups', null, 25),
+        gravlSet('Squat', 100, 5),
+      ])
+      await lift(user, '2026-06-10T17:00:00Z', [
+        gravlSet('Push-ups', null, 30),
+        gravlSet('Push-ups', null, 18),
+        gravlSet('Squat', 100, 50),
+      ])
+
+      const total = await resolveMemberSeries(user, pushUps('total_reps', 'sum'), start, end, 'UTC')
+      expect(total.buckets).toEqual([
+        { bucket_start: '2026-06-01T00:00:00.000Z', value: 45 },
+        { bucket_start: '2026-06-08T00:00:00.000Z', value: 48 },
+      ])
+      expect(total.total).toBe(93)
+      expect(total.last_updated).toBe('2026-06-10T17:00:00.000Z')
+
+      const best = await resolveMemberSeries(user, pushUps('max_reps', 'max'), start, end, 'UTC')
+      expect(best.buckets).toEqual([
+        { bucket_start: '2026-06-01T00:00:00.000Z', value: 25 },
+        { bucket_start: '2026-06-08T00:00:00.000Z', value: 30 },
+      ])
+      expect(best.total).toBe(30)
+    })
+
+    test('a session without the filtered exercise is no data', async () => {
+      const user = getTestUser()
+      await lift(user, '2026-06-03T17:00:00Z', [gravlSet('Squat', 100, 5)])
+
+      const series = await resolveMemberSeries(user, pushUps('total_reps', 'sum'), start, end, 'UTC')
+      expect(series.total).toBe(0)
+      expect(series.last_updated).toBeNull()
+    })
   })
 })

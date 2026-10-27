@@ -8,6 +8,7 @@
  * (Strava-style). Capability tokens + the unguessable slug are the only gates.
  */
 import {
+  activityMeasures,
   type ChallengeDataResponse,
   challengeDataResponseSchema,
   type PublicChallenge,
@@ -26,6 +27,7 @@ import {
   getParticipationByUrl,
   upsertChallengeMember,
 } from '../db/index.ts'
+import { toSpecFields } from './challenge-spec.ts'
 import { safeFetchGet, safeFetchPost } from './safe-fetch.ts'
 import { buildProfileUrl } from './share-urls.ts'
 
@@ -98,6 +100,29 @@ export const discoverInstance = async (base: string): Promise<WellKnownAurboda> 
   return wellKnown
 }
 
+export const unsupportedMeasureMessage = (measure: string): string =>
+  `Your instance does not support this challenge's measure (${measure}); update Aurboda to join`
+
+const rawSpecMeasure = (data: unknown): unknown =>
+  (data as { challenge?: { spec?: { measure?: unknown } } } | null)?.challenge?.spec?.measure
+
+/**
+ * A host's public resolver answer as a challenge. A measure this instance does not know fails the
+ * schema like any malformed answer would, so it is named before parsing: the join is refused
+ * because this instance cannot score the challenge, not because the link is wrong.
+ */
+export const parsePublicChallenge = (data: unknown): PublicChallenge => {
+  const measure = rawSpecMeasure(data)
+  if (measure !== undefined && !(activityMeasures as readonly unknown[]).includes(measure)) {
+    throw new JoinChallengeError(unsupportedMeasureMessage(String(measure)), 'federation')
+  }
+  const parsed = publicChallengeResponseSchema.safeParse(data)
+  if (!parsed.success || parsed.data.type !== 'challenge' || !parsed.data.challenge) {
+    throw new Error('URL is not an Aurboda challenge')
+  }
+  return parsed.data.challenge
+}
+
 /** Fetch a challenge spec from a host's public resolver; throws if not a challenge. */
 export const fetchChallengeSpec = async (
   apiBase: string,
@@ -107,11 +132,7 @@ export const fetchChallengeSpec = async (
   const res = await safeFetchGet(
     joinUrl(apiBase, `public/${encodeURIComponent(username)}/${encodeURIComponent(slug)}`),
   )
-  const parsed = publicChallengeResponseSchema.safeParse(res.data)
-  if (!parsed.success || parsed.data.type !== 'challenge' || !parsed.data.challenge) {
-    throw new Error('URL is not an Aurboda challenge')
-  }
-  return parsed.data.challenge
+  return parsePublicChallenge(res.data)
 }
 
 export const registerMemberWithHost = async (
@@ -170,14 +191,7 @@ export const joinRemoteChallenge = async ({
     end_ts: new Date(spec.end_ts),
     host_identity: spec.host_identity,
     name: spec.name,
-    spec: {
-      activity_type_id: spec.spec.activity_type_id ?? null,
-      aggregation: spec.spec.aggregation,
-      bucket_size: spec.spec.bucket_size,
-      pattern: spec.spec.pattern ?? null,
-      source_type: spec.spec.source_type,
-      unit: spec.spec.unit,
-    },
+    spec: toSpecFields(spec.spec),
     start_ts: new Date(spec.start_ts),
     timezone: spec.timezone,
   })

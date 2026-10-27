@@ -219,12 +219,9 @@ export const challengeStandingSchema = z
     last_updated: z.string().nullable().meta({ description: lastUpdatedDescription }),
     stale: z.boolean().meta({ description: 'True if the latest fetch failed (showing last-known data)' }),
     status: z.enum(['active', 'withdrawn']),
-    total: z
-      .number()
-      .meta({
-        description:
-          'The score over the window: the cumulative total, or the best bucket for a max challenge',
-      }),
+    total: z.number().meta({
+      description: 'The score over the window: the cumulative total, or the best bucket for a max challenge',
+    }),
   })
   .meta({ id: 'ChallengeStanding' })
 

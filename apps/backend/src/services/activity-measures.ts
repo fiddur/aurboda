@@ -1,7 +1,8 @@
 /**
  * Measures over the items of a list field (a strength session's sets), computed on read from
  * `data` by convention on the item field names: `weight` × `reps` gives volume and the Epley
- * estimated one-rep max, `time` the longest hold. Items with `set_type` = warmup don't count.
+ * estimated one-rep max, `reps` alone the total and the best set, `time` the longest hold.
+ * Items with `set_type` = warmup don't count.
  */
 import {
   type ActivityMeasure,
@@ -73,16 +74,19 @@ export const measureItems = (items: Item[]): ActivityMeasures => {
     return weight !== undefined && reps !== undefined ? [{ reps, weight }] : []
   })
   const e1rm = maxOf(loaded.map(({ reps, weight }) => weight * (1 + reps / 30)))
+  const repCounts = working.flatMap((item) => positive(item.reps) ?? [])
   return withoutAbsent({
     e1rm: e1rm === undefined ? undefined : round1(e1rm),
+    max_reps: maxOf(repCounts),
     max_time: maxOf(working.flatMap((item) => positive(item.time) ?? [])),
     max_weight: maxOf(working.flatMap((item) => positive(item.weight) ?? [])),
     set_count: working.length,
+    total_reps: repCounts.length > 0 ? repCounts.reduce((sum, r) => sum + r, 0) : undefined,
     volume: loaded.length > 0 ? loaded.reduce((sum, { reps, weight }) => sum + weight * reps, 0) : undefined,
   })
 }
 
-const summed: readonly ActivityMeasure[] = ['volume', 'set_count']
+const summed: readonly ActivityMeasure[] = ['volume', 'set_count', 'total_reps']
 
 export const combineMeasures = (list: ActivityMeasures[]): ActivityMeasures => {
   const combined: ActivityMeasures = {}
