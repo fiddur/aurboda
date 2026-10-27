@@ -6,6 +6,7 @@ import {
   deleteTimeSeriesBySource,
   deleteTimeSeriesMetric,
   deleteTimeSeriesPoint,
+  getDailyAggregates,
   getDistinctMetrics,
   getLatestMetricValuesMulti,
   getMetricMeansForWindows,
@@ -280,6 +281,44 @@ describe('Time Series Integration Tests', () => {
       )
 
       expect(sums).toEqual([])
+    })
+
+    test('keys days in the given timezone', async () => {
+      const user = getTestUser()
+      await insertTimeSeries(user, [
+        { metric: 'steps', source: 'garmin', time: new Date('2024-01-10T23:30:00Z'), value: 500 },
+      ])
+      const start = new Date('2024-01-10T00:00:00Z')
+      const end = new Date('2024-01-11T23:00:00Z')
+
+      expect(await getRawDailySums(user, 'steps', start, end)).toEqual([{ date: '2024-01-10', sum: 500 }])
+      expect(await getRawDailySums(user, 'steps', start, end, 'Europe/Stockholm')).toEqual([
+        { date: '2024-01-11', sum: 500 },
+      ])
+    })
+  })
+
+  describe('getDailyAggregates', () => {
+    test('groups by the calendar day in the given timezone, for cumulative and other metrics', async () => {
+      const user = getTestUser()
+      await insertTimeSeries(user, [
+        { metric: 'steps', source: 'aurboda', time: new Date('2024-01-10T23:30:00Z'), value: 500 },
+        { metric: 'weight', source: 'garmin', time: new Date('2024-01-10T23:30:00Z'), value: 72 },
+      ])
+      const start = new Date('2024-01-10T00:00:00Z')
+      const end = new Date('2024-01-11T23:00:00Z')
+      const dates = (rows: { date: string; metric: string }[]) => rows.map((r) => [r.metric, r.date])
+
+      expect(dates(await getDailyAggregates(user, ['steps', 'weight'], start, end))).toEqual([
+        ['steps', '2024-01-10'],
+        ['weight', '2024-01-10'],
+      ])
+      expect(
+        dates(await getDailyAggregates(user, ['steps', 'weight'], start, end, 'Europe/Stockholm')),
+      ).toEqual([
+        ['steps', '2024-01-11'],
+        ['weight', '2024-01-11'],
+      ])
     })
   })
 

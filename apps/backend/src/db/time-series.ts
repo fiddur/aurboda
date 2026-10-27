@@ -13,6 +13,7 @@ import {
   type MetricType,
   metricUnits,
 } from '../schema.ts'
+import { dayKey } from '../services/day-keys.ts'
 import { query, withUserTransaction } from './connection.ts'
 import { querySplitByCumulative } from './cumulative-query.ts'
 import { parseMetricType } from './row-mappers.ts'
@@ -179,16 +180,17 @@ export const getRawDailySums = async (
   metric: string,
   start: Date,
   end: Date,
+  tz = 'UTC',
 ): Promise<{ date: string; sum: number }[]> => {
   const result = await query(
     user,
-    `SELECT date_trunc('day', time, 'UTC') AS day, SUM(value) AS sum FROM time_series
+    `SELECT date_trunc('day', time, $4::text) AS day, SUM(value) AS sum FROM time_series
      WHERE metric = $1 AND time >= $2 AND time <= $3 AND deleted_at IS NULL
      GROUP BY 1 ORDER BY 1`,
-    [metric, start, end],
+    [metric, start, end, tz],
   )
   return result.rows.map((row) => ({
-    date: (row.day as Date).toISOString().slice(0, 10),
+    date: dayKey(row.day as Date, tz),
     sum: Number(row.sum),
   }))
 }
@@ -340,22 +342,23 @@ export const getDailyAggregates = async (
   metrics: string[],
   start: Date,
   end: Date,
+  tz = 'UTC',
 ): Promise<DailyMetricAggregate[]> => {
   if (metrics.length === 0) return []
 
   const dailySql = (sourceFilter: string) => `SELECT
-         DATE(time) as date,
+         to_char(date_trunc('day', time, $4::text) AT TIME ZONE $4::text, 'YYYY-MM-DD') as date,
          metric,
          AVG(value) as avg,
          SUM(value) as sum
        FROM time_series
        WHERE metric = ANY($1) AND time >= $2 AND time <= $3 AND deleted_at IS NULL${sourceFilter}
-       GROUP BY DATE(time), metric
-       ORDER BY metric, date`
+       GROUP BY 1, metric
+       ORDER BY metric, 1`
 
   const mapRow = (row: { [key: string]: unknown }): DailyMetricAggregate => ({
     avg: Number(row.avg),
-    date: (row.date as Date).toISOString().split('T')[0],
+    date: row.date as string,
     metric: row.metric as string,
     sum: Number(row.sum),
   })
@@ -364,9 +367,9 @@ export const getDailyAggregates = async (
     cumulativeExtraParams: [cumulativeSources],
     mapRow,
     metrics,
-    params: [start, end],
+    params: [start, end, tz],
     queryFn: (sql, params) => query(user, sql, params),
-    sqlCumulative: dailySql(`\n         AND source = ANY($4)`),
+    sqlCumulative: dailySql(`\n         AND source = ANY($5)`),
     sqlNonCumulative: dailySql(''),
   })
 

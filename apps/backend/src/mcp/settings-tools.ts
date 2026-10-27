@@ -70,7 +70,7 @@ export const registerSettingsTools = (server: McpServer, user: string) => {
 
   server.tool(
     'get_goal_history',
-    "Get a goal's value and on-target status (below/met/over) per past UTC day, or with bucket=month the count of on-target days per month. A day's value is the goal's rolling window sum (metric goals), rolling window sum or max (measure goals) or EMA (trend goals) at the end of that day, judged against the goal's current min/max. Today is partial and not counted in the summary or months.",
+    "Get a goal's value and on-target status (below/met/over) per past day in the user's device timezone (UTC when unset), or with bucket=month the count of on-target days per month. A day's value is the goal's rolling window sum (metric goals), rolling window sum or max (measure goals) or EMA (trend goals) at the end of that day, judged against the goal's current min/max. Today is partial and not counted in the summary or months.",
     { id: z.string().uuid(), ...goalHistoryQuerySchema.shape },
     async ({ id, ...query }) => {
       const result = await getGoalHistory(user, id, query)

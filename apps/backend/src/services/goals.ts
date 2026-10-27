@@ -25,15 +25,22 @@ import {
   getRawDailySum,
 } from '../db/index.ts'
 import { getCustomMetrics } from './custom-metrics.ts'
+import { dayEndInTz, dayKey, dayStartInTz, shiftDayKey } from './day-keys.ts'
 import { measureFilter, queryMeasuredActivities } from './queries/activity-measure-series.ts'
-import { getEffectiveGoals, getEffectiveHrZones } from './settings.ts'
+import { getEffectiveGoals, getEffectiveHrZones, getUserTimezone } from './settings.ts'
 import { getTrend } from './trends.ts'
 
 /**
  * Handles HR zone metrics specially (computed from heart_rate).
  * Uses deduplicated aggregates for cumulative metrics (steps, distance, etc.).
  */
-const getMetricSum = async (user: string, metric: MetricType, start: Date, end: Date): Promise<number> => {
+const getMetricSum = async (
+  user: string,
+  metric: MetricType,
+  start: Date,
+  end: Date,
+  tz: string,
+): Promise<number> => {
   if (metric.startsWith('hr_zone_')) {
     const { zones } = await getEffectiveHrZones(user)
     const [row] = await getHrZoneSecs(user, start, end, zones)
@@ -48,7 +55,7 @@ const getMetricSum = async (user: string, metric: MetricType, start: Date, end: 
   }
 
   if (cumulativeMetrics.includes(metric)) {
-    const values = await getDailyAggregateValues(user, metric, start, end)
+    const values = await getDailyAggregateValues(user, metric, start, end, tz)
     if (values.size > 0) {
       let sum = 0
       for (const v of values.values()) sum += v
@@ -60,47 +67,44 @@ const getMetricSum = async (user: string, metric: MetricType, start: Date, end: 
     return getRawDailySum(user, metric, start, end)
   }
 
-  const dailyData = await getDailyAggregates(user, [metric], start, end)
+  const dailyData = await getDailyAggregates(user, [metric], start, end, tz)
   return dailyData.reduce((sum, day) => sum + day.sum, 0)
 }
 
 /**
- * The window ending `now` and its oldest UTC day: calendar units (days, weeks, months) start at a
- * UTC day start, time units exactly the duration back.
+ * The window ending `now` and its oldest day, as calendar days in `tz`: calendar units (days,
+ * weeks, months) start at local midnight in `tz`, time units exactly the duration back.
  */
 const goalWindow = (
   window: string,
   now: Date,
+  tz: string,
 ): { oldestDayEnd: Date; oldestDayStart: Date; windowStart: Date } => {
   const { ms: windowMs, unit, value } = parseDuration(window)
   let windowStart: Date
 
   if (isCalendarBasedUnit(unit)) {
     const daysInWindow = unit === 'd' ? value : unit === 'w' ? value * 7 : value * 30
-    windowStart = new Date(now)
-    windowStart.setUTCHours(0, 0, 0, 0)
-    windowStart.setUTCDate(windowStart.getUTCDate() - (daysInWindow - 1))
+    windowStart = dayStartInTz(shiftDayKey(dayKey(now, tz), -(daysInWindow - 1)), tz)
   } else {
     windowStart = new Date(now.getTime() - windowMs)
   }
 
-  const oldestDayStart = new Date(windowStart)
-  oldestDayStart.setUTCHours(0, 0, 0, 0)
-  const oldestDayEnd = new Date(oldestDayStart)
-  oldestDayEnd.setUTCHours(23, 59, 59, 999)
-  return { oldestDayEnd, oldestDayStart, windowStart }
+  const oldestKey = dayKey(windowStart, tz)
+  return { oldestDayEnd: dayEndInTz(oldestKey, tz), oldestDayStart: dayStartInTz(oldestKey, tz), windowStart }
 }
 
 const computeMetricGoalProgress = async (
   user: string,
   goal: { id: string; max?: number; metric: MetricType; min?: number; window: string },
+  tz: string,
 ): Promise<MetricGoalProgress> => {
   const now = new Date()
-  const { oldestDayEnd, oldestDayStart, windowStart } = goalWindow(goal.window, now)
+  const { oldestDayEnd, oldestDayStart, windowStart } = goalWindow(goal.window, now, tz)
 
   const [current, losingTomorrow] = await Promise.all([
-    getMetricSum(user, goal.metric, windowStart, now),
-    getMetricSum(user, goal.metric, oldestDayStart, oldestDayEnd),
+    getMetricSum(user, goal.metric, windowStart, now, tz),
+    getMetricSum(user, goal.metric, oldestDayStart, oldestDayEnd, tz),
   ])
 
   return {
@@ -148,9 +152,10 @@ const computeMeasureGoalProgress = async (
   user: string,
   goal: MeasureGoal,
   definitions: ActivityTypeDefinition[],
+  tz: string,
 ): Promise<MeasureGoalProgress> => {
   const now = new Date()
-  const { oldestDayEnd, windowStart } = goalWindow(goal.window, now)
+  const { oldestDayEnd, windowStart } = goalWindow(goal.window, now, tz)
   const measured = await queryMeasuredActivities(
     user,
     goal.activity_type,
@@ -220,16 +225,17 @@ export const getGoalsProgress = async (user: string): Promise<GoalProgress[]> =>
     return []
   }
 
-  const [customMetrics, definitions] = await Promise.all([
+  const [customMetrics, definitions, tz] = await Promise.all([
     goals.some((goal) => goal.goal_type === 'trend') ? getCustomMetrics(user) : [],
     goals.some((goal) => goal.goal_type === 'measure') ? getActivityTypeDefinitions(user) : [],
+    getUserTimezone(user),
   ])
 
   return Promise.all(
     goals.map((goal) => {
       if (goal.goal_type === 'trend') return computeTrendGoalProgress(user, goal, customMetrics)
-      if (goal.goal_type === 'measure') return computeMeasureGoalProgress(user, goal, definitions)
-      return computeMetricGoalProgress(user, goal)
+      if (goal.goal_type === 'measure') return computeMeasureGoalProgress(user, goal, definitions, tz)
+      return computeMetricGoalProgress(user, goal, tz)
     }),
   )
 }

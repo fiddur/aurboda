@@ -21,6 +21,7 @@ vi.mock('../db', () => ({
 vi.mock('./settings', () => ({
   getEffectiveGoals: vi.fn(),
   getEffectiveHrZones: vi.fn(),
+  getUserTimezone: vi.fn(async () => 'UTC'),
 }))
 
 vi.mock('./queries/activity-measure-series', async (importOriginal) => ({
@@ -340,6 +341,67 @@ describe('getGoalsProgress', () => {
     // Non-cumulative metrics still use getDailyAggregates
     expect(db.getDailyAggregates).toHaveBeenCalled()
     expect(db.getDailyAggregateValues).not.toHaveBeenCalled()
+  })
+
+  describe("in the user's device timezone", () => {
+    beforeEach(() => {
+      vi.mocked(settings.getUserTimezone).mockResolvedValue('Pacific/Auckland')
+    })
+
+    afterEach(() => {
+      vi.mocked(settings.getUserTimezone).mockResolvedValue('UTC')
+    })
+
+    test('a 1d window and its losing-tomorrow day start at local midnight', async () => {
+      vi.mocked(settings.getEffectiveGoals).mockResolvedValue([
+        { goal_type: 'metric', id: 'goal-1', metric: 'steps', min: 10000, window: '1d' },
+      ])
+      vi.mocked(db.getDailyAggregateValues).mockResolvedValue(new Map([['2026-02-03', 1200]]))
+
+      const result = await getGoalsProgress('testuser')
+
+      expect(result[0].current).toBe(1200)
+      const localMidnight = new Date('2026-02-02T11:00:00Z')
+      expect(db.getDailyAggregateValues).toHaveBeenCalledWith(
+        'testuser',
+        'steps',
+        localMidnight,
+        new Date('2026-02-02T12:00:00Z'),
+        'Pacific/Auckland',
+      )
+      expect(db.getDailyAggregateValues).toHaveBeenCalledWith(
+        'testuser',
+        'steps',
+        localMidnight,
+        new Date('2026-02-03T10:59:59.999Z'),
+        'Pacific/Auckland',
+      )
+    })
+
+    test('a 7d window starts at local midnight six days back', async () => {
+      vi.mocked(settings.getEffectiveGoals).mockResolvedValue([
+        { goal_type: 'metric', id: 'goal-1', metric: 'steps', min: 70000, window: '7d' },
+      ])
+      vi.mocked(db.getDailyAggregateValues).mockResolvedValue(new Map([['2026-01-28', 1000]]))
+
+      await getGoalsProgress('testuser')
+
+      const windowStart = new Date('2026-01-27T11:00:00Z')
+      expect(db.getDailyAggregateValues).toHaveBeenCalledWith(
+        'testuser',
+        'steps',
+        windowStart,
+        new Date('2026-02-02T12:00:00Z'),
+        'Pacific/Auckland',
+      )
+      expect(db.getDailyAggregateValues).toHaveBeenCalledWith(
+        'testuser',
+        'steps',
+        windowStart,
+        new Date('2026-01-28T10:59:59.999Z'),
+        'Pacific/Auckland',
+      )
+    })
   })
 })
 
