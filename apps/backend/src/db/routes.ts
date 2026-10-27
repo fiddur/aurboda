@@ -2,6 +2,8 @@ import type { RouteSort } from '@aurboda/api-spec'
 import type { QueryResultRow } from 'pg'
 
 import { query, withUserTransaction } from './connection.ts'
+import { effectiveData, effectiveType } from './effective-type.ts'
+import { isUniqueViolation } from './pg-errors.ts'
 
 export interface LatLon {
   lat: number
@@ -43,6 +45,7 @@ export interface RouteEffortRow {
   source: string
   coverage: number
   data_distance?: number
+  categories: string[]
 }
 
 export interface TrackedActivity {
@@ -56,9 +59,10 @@ export const ROUTE_BUFFER_M = 25
 /** Degrees added around a track's bbox when looking for candidates (~100–200 m). */
 const BBOX_EXPAND_DEG = 0.002
 
-/** The activity's preferred track (as getActivityTrack picks it), with the activity's type. */
+/** The activity's preferred track (as getActivityTrack picks it), with the activity's effective type. */
 const preferredTrack = (activityParam: string): string => `
-  SELECT t.activity_id, t.simplified, a.activity_type, a.start_time, COALESCE(a.end_time, a.start_time) AS end_time
+  SELECT t.activity_id, t.simplified, ${effectiveType('a')} AS activity_type,
+         a.start_time, COALESCE(a.end_time, a.start_time) AS end_time
   FROM activity_tracks t
   JOIN activities a ON a.id = t.activity_id AND a.deleted_at IS NULL
   WHERE t.activity_id = ${activityParam}
@@ -141,7 +145,6 @@ export const getRouteById = async (user: string, id: string): Promise<RouteRecor
   return result.rows[0] ? mapRouteRow(result.rows[0]) : null
 }
 
-/** The route the activity is attached to, when the activity is not deleted. */
 export const getRouteForActivity = async (user: string, activityId: string): Promise<RouteRecord | null> => {
   const result = await query(
     user,
@@ -215,7 +218,8 @@ export const findUnroutedTrackCandidates = async (
        SELECT DISTINCT ON (t2.activity_id) t2.activity_id, a2.start_time, t2.simplified
        FROM t
        JOIN activity_tracks t2 ON t2.simplified && ST_Expand(t.simplified, $3) AND t2.activity_id <> t.activity_id
-       JOIN activities a2 ON a2.id = t2.activity_id AND a2.deleted_at IS NULL AND a2.activity_type = t.activity_type
+       JOIN activities a2 ON a2.id = t2.activity_id AND a2.deleted_at IS NULL
+                         AND ${effectiveType('a2')} = t.activity_type
        WHERE NOT EXISTS (SELECT 1 FROM activity_routes ar WHERE ar.activity_id = t2.activity_id)
          AND NOT (a2.start_time <= t.end_time AND COALESCE(a2.end_time, a2.start_time) >= t.start_time)
        ORDER BY t2.activity_id, t2.full_resolution DESC, t2.point_count DESC, t2.source
@@ -293,26 +297,64 @@ export const trackDirectionFractions = (
     [otherActivityId, ROUTE_BUFFER_M],
   )
 
-/** A route whose geometry is the activity's preferred track; null when it has none. */
-export const createRouteFromTrack = async (
+/**
+ * In one transaction, a route whose geometry is the canonical activity's preferred
+ * track, with the canonical (coverage 1) and the follower attached. Null when the
+ * canonical has no track, or when a concurrent matcher already founded a route on
+ * it (the unique index on canonical_activity_id).
+ */
+const ROUTE_BIRTH_CONFLICT = 'RouteBirthConflict'
+
+/** A pair member was routed concurrently: throwing rolls the transaction back, so no half-founded route is left. */
+const routeBirthConflict = (): Error =>
+  Object.assign(new Error('a route pair member is already routed'), { name: ROUTE_BIRTH_CONFLICT })
+
+export const createRouteWithPair = async (
   user: string,
-  { activity_id, name }: { activity_id: string; name: string },
+  {
+    canonical,
+    follower,
+  }: {
+    canonical: { activity_id: string; name: string }
+    follower?: { activity_id: string; coverage: number }
+  },
 ): Promise<string | null> => {
-  const result = await query(
-    user,
-    `WITH t AS (${preferredTrack('$1')})
-     INSERT INTO routes (name, activity_type, geom, buffer, length_m, start_pt, end_pt, canonical_activity_id)
-     SELECT $2, t.activity_type, t.simplified, ST_Buffer(t.simplified::geography, $3)::geometry,
-            ST_Length(t.simplified::geography),
-            ST_StartPoint(t.simplified)::geography, ST_EndPoint(t.simplified)::geography, t.activity_id
-     FROM t
-     RETURNING id`,
-    [activity_id, name, ROUTE_BUFFER_M],
-  )
-  return (result.rows[0]?.id as string | undefined) ?? null
+  try {
+    return await withUserTransaction(user, async (tx) => {
+      const result = await query(
+        tx,
+        `WITH t AS (${preferredTrack('$1')})
+         INSERT INTO routes (name, activity_type, geom, buffer, length_m, start_pt, end_pt, canonical_activity_id)
+         SELECT $2, t.activity_type, t.simplified, ST_Buffer(t.simplified::geography, $3)::geometry,
+                ST_Length(t.simplified::geography),
+                ST_StartPoint(t.simplified)::geography, ST_EndPoint(t.simplified)::geography, t.activity_id
+         FROM t
+         RETURNING id`,
+        [canonical.activity_id, canonical.name, ROUTE_BUFFER_M],
+      )
+      const routeId = result.rows[0]?.id as string | undefined
+      if (!routeId) return null
+      const attached = [{ activity_id: canonical.activity_id, coverage: 1 }, ...(follower ? [follower] : [])]
+      const inserted = await query(
+        tx,
+        `INSERT INTO activity_routes (activity_id, route_id, coverage)
+         SELECT x.activity_id, $1, x.coverage
+         FROM UNNEST($2::uuid[], $3::real[]) AS x(activity_id, coverage)
+         ON CONFLICT (activity_id) DO NOTHING
+         RETURNING activity_id`,
+        [routeId, attached.map((a) => a.activity_id), attached.map((a) => a.coverage)],
+      )
+      if (inserted.rows.length < attached.length) throw routeBirthConflict()
+      return routeId
+    })
+  } catch (error) {
+    if (isUniqueViolation(error) || (error instanceof Error && error.name === ROUTE_BIRTH_CONFLICT)) {
+      return null
+    }
+    throw error
+  }
 }
 
-/** Where the activity's preferred track starts and how long its simplified line is. */
 export const getTrackSummary = async (
   user: string,
   activityId: string,
@@ -350,7 +392,6 @@ export const isActivityRouted = async (user: string, activityId: string): Promis
   return result.rows.length > 0
 }
 
-/** The activity when it is not deleted and has a track. */
 export const getTrackedActivity = async (
   user: string,
   activityId: string,
@@ -411,13 +452,25 @@ export const mergeRoutes = async (user: string, sourceId: string, targetId: stri
     return moved.rowCount ?? 0
   })
 
+/** The `category` values of a `run_categories` array; anything malformed is skipped. */
+const categoryNames = (value: unknown): string[] =>
+  Array.isArray(value)
+    ? value
+        .map((entry: unknown) =>
+          entry && typeof entry === 'object' ? (entry as { category?: unknown }).category : undefined,
+        )
+        .filter((category): category is string => typeof category === 'string')
+    : []
+
 /** The route's runs, newest first (see ROUTE_RUNS for how a multi-source run counts once). */
 export const listRouteEfforts = async (user: string, routeId: string): Promise<RouteEffortRow[]> => {
   const result = await query(
     user,
     `SELECT runs.activity_id, runs.start_time, runs.end_time, runs.title, runs.source, runs.coverage,
-            CASE WHEN jsonb_typeof(runs.data->'distance') = 'number' THEN (runs.data->>'distance')::float8 END AS distance
+            CASE WHEN jsonb_typeof(runs.data->'distance') = 'number' THEN (runs.data->>'distance')::float8 END AS distance,
+            ${effectiveData('a')}->'run_categories' AS run_categories
      FROM (${ROUTE_RUNS}) runs
+     JOIN activities a ON a.id = runs.activity_id
      JOIN routes r ON r.id = runs.route_id AND r.deleted_at IS NULL
      WHERE runs.route_id = $1
      ORDER BY runs.start_time DESC`,
@@ -425,6 +478,7 @@ export const listRouteEfforts = async (user: string, routeId: string): Promise<R
   )
   return result.rows.map((row) => ({
     activity_id: row.activity_id as string,
+    categories: categoryNames(row.run_categories),
     coverage: Number(row.coverage),
     ...(row.distance == null ? {} : { data_distance: Number(row.distance) }),
     end_time: (row.end_time as Date | null) ?? null,
@@ -434,16 +488,58 @@ export const listRouteEfforts = async (user: string, routeId: string): Promise<R
   }))
 }
 
-/** Non-deleted activities with a track and no route, oldest first. */
+/** Non-deleted activities with a track not yet tried by route matching and no route, oldest first. */
 export const listUnroutedTrackedActivities = async (user: string): Promise<TrackedActivity[]> => {
   const result = await query(
     user,
     `SELECT a.id, a.start_time
      FROM activities a
      WHERE a.deleted_at IS NULL
-       AND EXISTS (SELECT 1 FROM activity_tracks t WHERE t.activity_id = a.id)
+       AND EXISTS (SELECT 1 FROM activity_tracks t WHERE t.activity_id = a.id AND t.route_matched_at IS NULL)
        AND NOT EXISTS (SELECT 1 FROM activity_routes ar WHERE ar.activity_id = a.id)
      ORDER BY a.start_time, a.id`,
   )
   return result.rows.map((row) => ({ activity_id: row.id as string, start_time: row.start_time as Date }))
 }
+
+export const markRouteMatchAttempted = async (user: string, activityId: string): Promise<void> => {
+  await query(user, `UPDATE activity_tracks SET route_matched_at = NOW() WHERE activity_id = $1`, [
+    activityId,
+  ])
+}
+
+/**
+ * Takes the activity off its route and makes it a candidate for matching again.
+ * It stops being any route's canonical (the unique index would otherwise keep it
+ * from founding a route of a new type), and a route left with no activities is
+ * deleted outright: nothing references it, and keeping it would keep its type's
+ * definition referenced.
+ */
+export const detachActivityFromRoute = async (
+  user: string,
+  activityId: string,
+): Promise<{ detached: boolean; deleted_route_id: string | null }> =>
+  withUserTransaction(user, async (tx) => {
+    const removed = await query(tx, `DELETE FROM activity_routes WHERE activity_id = $1 RETURNING route_id`, [
+      activityId,
+    ])
+    await query(tx, `UPDATE activity_tracks SET route_matched_at = NULL WHERE activity_id = $1`, [activityId])
+    await query(
+      tx,
+      `UPDATE routes SET canonical_activity_id = NULL, updated_at = NOW() WHERE canonical_activity_id = $1`,
+      [activityId],
+    )
+    const routeId = removed.rows[0]?.route_id as string | undefined
+    if (!routeId) return { deleted_route_id: null, detached: false }
+    // A concurrent attach takes a key-share lock on the route through its foreign key, so this waits
+    // for it (and it for us) instead of deleting a route that just gained a run.
+    await query(tx, `SELECT id FROM routes WHERE id = $1 FOR UPDATE`, [routeId])
+    const deleted = await query(
+      tx,
+      `DELETE FROM routes r
+       WHERE r.id = $1 AND NOT EXISTS (SELECT 1 FROM activity_routes ar WHERE ar.route_id = r.id)
+       RETURNING id`,
+      [routeId],
+    )
+    return { deleted_route_id: (deleted.rows[0]?.id as string | undefined) ?? null, detached: true }
+  })

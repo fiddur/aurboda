@@ -46,6 +46,9 @@ export const routeEffortSchema = z
   .object({
     activity_id: z.string().uuid().meta({ description: 'Activity ID' }),
     avg_hr: z.number().optional().meta({ description: 'Mean heart rate over the activity, bpm' }),
+    categories: z.array(z.string()).optional().meta({
+      description: "The run categories on the activity (its data.run_categories' category values)",
+    }),
     coverage: z.number().meta({ description: 'Lower of the two buffer coverages when matched (0–1)' }),
     distance_m: z.number().optional().meta({ description: "The activity's recorded distance, metres" }),
     elapsed_s: z.number().meta({ description: 'Elapsed seconds (end − start)' }),

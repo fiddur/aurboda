@@ -5,8 +5,10 @@ import type { DeductionRule } from '../../state/api'
 import {
   defaultFields,
   fieldsToBuildBody,
+  isOutputCategoryInvalid,
   modeChangeBody,
   ruleToFields,
+  toOutputCategory,
   toOutputTitleField,
 } from './ruleForm'
 
@@ -45,6 +47,34 @@ describe('output_title_field form mapping', () => {
   })
 })
 
+describe('output_category form mapping', () => {
+  test('round-trips through the form', () => {
+    const original = rule({ output_category: 'low_hr' })
+    expect(ruleToFields(original).category).toBe('low_hr')
+    expect(fieldsToBuildBody(ruleToFields(original)).output_category).toBe('low_hr')
+    expect(ruleToFields(rule()).category).toBe('')
+  })
+
+  test('sends the category snake_cased, in enrich mode only', () => {
+    expect(toOutputCategory({ ...defaultFields, category: ' low_hr ', mode: 'enrich' })).toBe('low_hr')
+    expect(toOutputCategory({ ...defaultFields, category: 'Hill Repeats', mode: 'enrich' })).toBe(
+      'hill_repeats',
+    )
+    expect(toOutputCategory({ ...defaultFields, category: '  ', mode: 'enrich' })).toBeUndefined()
+    expect(toOutputCategory({ ...defaultFields, category: '9k', mode: 'enrich' })).toBeUndefined()
+    expect(toOutputCategory({ ...defaultFields, category: 'low_hr', mode: 'create' })).toBeUndefined()
+  })
+
+  test('flags a typed category that cannot be a name', () => {
+    expect(isOutputCategoryInvalid({ ...defaultFields, category: '9k', mode: 'enrich' })).toBe(true)
+    expect(isOutputCategoryInvalid({ ...defaultFields, category: 'Hill Repeats', mode: 'enrich' })).toBe(
+      false,
+    )
+    expect(isOutputCategoryInvalid({ ...defaultFields, category: '', mode: 'enrich' })).toBe(false)
+    expect(isOutputCategoryInvalid({ ...defaultFields, category: '9k', mode: 'create' })).toBe(false)
+  })
+})
+
 describe('modeChangeBody', () => {
   test('leaving enrich clears both enrich-only outputs', () => {
     const titling = rule({
@@ -64,6 +94,13 @@ describe('modeChangeBody', () => {
       output_title_field: null,
     })
     expect(modeChangeBody('create', rule())).toEqual({ mode: 'create' })
+  })
+
+  test('leaving enrich clears the output category', () => {
+    expect(modeChangeBody('create', rule({ output_category: 'low_hr' }))).toEqual({
+      mode: 'create',
+      output_category: null,
+    })
   })
 
   test('switching to enrich clears nothing', () => {

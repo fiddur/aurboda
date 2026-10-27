@@ -1,8 +1,10 @@
 import {
   type ActivityMeasure,
   activityMeasureLabels,
+  activityMeasures,
   type DataSchemaDefinition,
   measureDefaultAggregation,
+  measureGoalTitle,
   type MeasureGoal,
   type MeasureGoalAggregation,
 } from '@aurboda/api-spec'
@@ -42,6 +44,19 @@ export const formatMeasure = (measure: ActivityMeasure, value: number): string =
       return `${Math.round(value)} reps`
   }
 }
+
+const RECORD_BADGES: Record<ActivityMeasure, string> = {
+  e1rm: 'e1RM',
+  max_reps: 'reps',
+  max_time: 'hold',
+  max_weight: 'weight',
+  set_count: 'sets',
+  total_reps: 'reps',
+  volume: 'volume',
+}
+
+/** The badge text for a record on a measure: `PR e1RM`, short enough to read without hovering. */
+export const recordBadge = (measure: ActivityMeasure): string => `PR ${RECORD_BADGES[measure]}`
 
 const SET_TYPE_FLAGS: Record<string, string> = { drop_set: ' (drop)', failure: ' (f)', warmup: ' (w)' }
 
@@ -131,7 +146,10 @@ export const measureGoalLabel = (
   goal: Pick<MeasureGoal, 'activity_type' | 'filter_value' | 'measure'> & { activity_type_name?: string },
   typeName?: string,
 ): string =>
-  `${goal.filter_value ?? goal.activity_type_name ?? typeName ?? goal.activity_type} · ${activityMeasureLabels[goal.measure]}`
+  measureGoalTitle(goal.measure, goal.filter_value, goal.activity_type_name ?? typeName ?? goal.activity_type)
+
+export const measureOptions = (): { label: string; value: ActivityMeasure }[] =>
+  activityMeasures.map((value) => ({ label: activityMeasureLabels[value], value }))
 
 type WithSchema = { data_schema?: DataSchemaDefinition }
 

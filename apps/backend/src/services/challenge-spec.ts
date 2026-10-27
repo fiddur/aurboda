@@ -90,6 +90,14 @@ export const memberEchoMatches = (spec: ChallengeSpecFields, data: ChallengeData
     (data.filter_field ?? null) === spec.filter_field &&
     normalizeItemValue(data.filter_value) === normalizeItemValue(spec.filter_value))
 
+export const unsupportedMeasureMessage = (measure: string): string =>
+  `Your instance does not support this challenge's measure (${measure}); update Aurboda to join`
+
+export const echoMismatchMessage = (spec: ChallengeSpecFields, data: ChallengeDataResponse): string =>
+  data.measure === spec.measure
+    ? 'Your instance scored this challenge differently (aggregation/filter); update Aurboda and rejoin'
+    : unsupportedMeasureMessage(spec.measure ?? '')
+
 export interface MemberSeries {
   buckets: ChartDataBucket[]
   total: number

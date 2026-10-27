@@ -62,9 +62,11 @@ export interface ActivitySessionsOptions {
   end?: Date
   groupBy?: string
   filter?: DataFilter
+  category?: string
 }
 
 export const sessionsOptionsFromQuery = (q: ActivitySessionsQuery): ActivitySessionsOptions => ({
+  category: q.category,
   end: q.end ? new Date(q.end) : undefined,
   filter:
     q.filter_field && q.filter_value !== undefined
@@ -343,7 +345,7 @@ const sessionFieldNames = (
 ): { fieldNames: string[]; listField?: string } => {
   const fields = definitions.filter((d) => types.includes(d.name)).flatMap((d) => d.data_schema?.fields ?? [])
   const fieldNames = [...new Set(fields.filter((f) => f.type !== 'list').map((f) => f.name))]
-  if (groupBy && !itemField && !fieldNames.includes(groupBy)) fieldNames.push(groupBy)
+  if (groupBy && !groupBy.includes('.') && !fieldNames.includes(groupBy)) fieldNames.push(groupBy)
   return { fieldNames, listField: itemField ?? listFieldOf(definitions, types) }
 }
 
@@ -398,6 +400,8 @@ export const queryActivitySessions = async (
     undefined,
     undefined,
     categoryMap,
+    undefined,
+    options.category,
   )
   const { activities, filterExtras } = selectSessions(merged, filter, options.start)
   const timed = activities.filter((a) => a.id !== undefined && a.end_time)

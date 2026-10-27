@@ -76,6 +76,10 @@ describe('describeChallenge', () => {
       'Strength training · total reps',
     )
     expect(
+      describeChallenge(october({ spec: { ...pushUps, filter_value: 'Bench Press', measure: 'e1rm' } }), now)
+        .measure,
+    ).toBe('Bench Press · best e1RM')
+    expect(
       describeChallenge(october({ spec: { ...pushUps, filter_value: null, measure: null } }), now).measure,
     ).toBe('Strength training')
   })

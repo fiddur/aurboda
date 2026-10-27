@@ -113,6 +113,9 @@ export const getEffectiveHrZones = async (
   user: string,
 ): Promise<{ zones: HrZoneThresholds; source: HrZoneSource }> => hrZonesFromSettings(await getSettings(user))
 
+export const lowHrCeiling = (settings: UserSettings, zones: HrZoneThresholds): number =>
+  settings.maf_hr ?? zones[3]
+
 /**
  * Get effective goals for a user (from goals table, falling back to defaults).
  */
@@ -184,6 +187,7 @@ const settingsWithDefaultsSchema = userSettingsResponseSchema.pick({
   garmin_disabled_data_types: true,
   item_icons: true,
   lastfm_username: true,
+  maf_hr: true,
   manually_approve_followers: true,
   meal_slots: true,
   rescue_time_key: true,
@@ -286,7 +290,35 @@ const buildErrorSettingsResponse = async (errorMessage: string): Promise<Setting
   }
 }
 
-export const validateAndUpdateSettings = async (user: string, input: unknown): Promise<SettingsResponse> => {
+const HR_SETTINGS_KEYS = ['hr_zone_start', 'birth_date', 'maf_hr'] as const
+
+export type HrSettingsChanged = (user: string) => void
+
+/** What the activity features read from the settings: the effective zones and the low-HR ceiling. */
+const featureInputs = (settings: UserSettings): string => {
+  const { zones } = hrZonesFromSettings(settings)
+  return JSON.stringify({ ceiling: lowHrCeiling(settings, zones), zones })
+}
+
+const applyUpdate = (
+  settings: UserSettings,
+  updates: Partial<UserSettings>,
+  clear: (keyof UserSettings)[],
+): UserSettings => {
+  const next: UserSettings = { ...settings, ...updates }
+  for (const key of clear) delete next[key]
+  return next
+}
+
+/**
+ * `onHrSettingsChanged` fires when the update changes what the activity features depend on: the
+ * effective HR zones (custom, or from the birth date) or the low-HR ceiling (`maf_hr`).
+ */
+export const validateAndUpdateSettings = async (
+  user: string,
+  input: unknown,
+  onHrSettingsChanged?: HrSettingsChanged,
+): Promise<SettingsResponse> => {
   const parsed = updateSettingsInputSchema.safeParse(input)
   if (!parsed.success) {
     return buildErrorSettingsResponse(parsed.error.issues.map((e) => e.message).join('; '))
@@ -317,7 +349,14 @@ export const validateAndUpdateSettings = async (user: string, input: unknown): P
     updates.item_icons = { ...current.item_icons, ...updates.item_icons }
   }
 
+  const touchesHr = onHrSettingsChanged && HR_SETTINGS_KEYS.some((key) => parsed.data[key] !== undefined)
+  const before = touchesHr ? await getSettings(user) : undefined
+
   await updateSettingsInternal(user, updates, clear)
+
+  if (before && featureInputs(before) !== featureInputs(applyUpdate(before, updates, clear))) {
+    onHrSettingsChanged?.(user)
+  }
 
   return getSettingsResponse(user)
 }

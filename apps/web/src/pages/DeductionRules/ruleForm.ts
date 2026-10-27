@@ -7,7 +7,10 @@ import type {
   updateDeductionRule,
 } from '../../state/api'
 
+import { normalizeCategoryName } from '../../utils/runCategory'
+
 export interface RuleFormFields {
+  category: string
   conditions: DeductionRuleCondition[]
   enabled: boolean
   mediaField: string
@@ -25,6 +28,7 @@ export interface RuleFormFields {
 type RuleUpdateBody = Parameters<typeof updateDeductionRule>[1]
 
 export const defaultFields: RuleFormFields = {
+  category: '',
   conditions: [{ kind: 'activity' }],
   enabled: true,
   mediaField: '',
@@ -40,6 +44,7 @@ export const defaultFields: RuleFormFields = {
 }
 
 export const ruleToFields = (rule: DeductionRule): RuleFormFields => ({
+  category: rule.output_category ?? '',
   conditions: rule.conditions,
   enabled: rule.enabled,
   mediaField: rule.output_media_field?.field ?? '',
@@ -62,6 +67,14 @@ export const toOutputMediaField = (f: RuleFormFields): OutputMediaField | undefi
 export const toOutputTitleField = (f: RuleFormFields): string | undefined =>
   f.mode === 'enrich' && f.titleField.trim() ? f.titleField.trim() : undefined
 
+/** The category as a snake_case name; undefined outside enrich mode, when blank, or when it cannot be one. */
+export const toOutputCategory = (f: RuleFormFields): string | undefined =>
+  f.mode === 'enrich' && f.category.trim() ? (normalizeCategoryName(f.category) ?? undefined) : undefined
+
+/** Typed, in enrich mode, but not something that normalises to a category name. */
+export const isOutputCategoryInvalid = (f: RuleFormFields): boolean =>
+  f.mode === 'enrich' && f.category.trim() !== '' && normalizeCategoryName(f.category) === null
+
 export const fieldsToBuildBody = (f: RuleFormFields) => ({
   conditions: f.conditions,
   enabled: f.enabled,
@@ -69,6 +82,7 @@ export const fieldsToBuildBody = (f: RuleFormFields) => ({
   mode: f.mode !== 'create' ? f.mode : undefined,
   name: f.name,
   output_activity_type: f.outputType,
+  output_category: toOutputCategory(f),
   output_data: Object.keys(f.outputData).length > 0 ? f.outputData : undefined,
   output_media_field: toOutputMediaField(f),
   output_title: f.outputTitle || undefined,
@@ -81,4 +95,5 @@ export const modeChangeBody = (mode: DeductionRuleMode, rule?: DeductionRule): R
   mode,
   ...(mode !== 'enrich' && rule?.output_media_field ? { output_media_field: null } : {}),
   ...(mode !== 'enrich' && rule?.output_title_field ? { output_title_field: null } : {}),
+  ...(mode !== 'enrich' && rule?.output_category ? { output_category: null } : {}),
 })

@@ -35,7 +35,7 @@ describe('describeSpec', () => {
     expect(describeSpec(pushUps)).toBe('Push-ups · most reps in a set (best session)')
   })
 
-  test('a measure summed over all items names the type', () => {
+  test('a measure summed over all items names the type, the leaderboard header says total', () => {
     expect(
       describeSpec(
         spec({
@@ -45,7 +45,7 @@ describe('describeSpec', () => {
           unit: 'reps',
         }),
       ),
-    ).toBe('strength_training · total reps (total)')
+    ).toBe('strength_training · total reps')
   })
 
   test('keeps the casing after the first letter', () => {
@@ -74,6 +74,13 @@ describe('formatTotal', () => {
   test('a measure is formatted with its unit', () => {
     expect(formatTotal(pushUps, 41.6)).toBe('42 reps')
     expect(formatTotal({ ...pushUps, measure: 'max_time' }, 90)).toBe('1:30')
+  })
+
+  test('a unitless measure falls back to the spec unit', () => {
+    expect(formatTotal({ ...pushUps, aggregation: 'sum', measure: 'set_count', unit: 'sets' }, 12)).toBe(
+      '12 sets',
+    )
+    expect(formatTotal({ ...pushUps, aggregation: 'sum', measure: 'set_count', unit: '' }, 12)).toBe('12')
   })
 
   test('otherwise a rounded, locale-grouped number', () => {

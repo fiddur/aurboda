@@ -509,6 +509,80 @@ describe('Activities Integration Tests', () => {
     })
   })
 
+  describe('getActivities category filter', () => {
+    test('keeps only activities whose run_categories carry the category', async () => {
+      const user = getTestUser()
+      const run = (id: string, startIso: string, data?: Record<string, unknown>) =>
+        insertActivity(user, {
+          activity_type: 'running',
+          data,
+          end_time: new Date(new Date(startIso).getTime() + 30 * 60_000),
+          id,
+          source: 'garmin',
+          start_time: new Date(startIso),
+        })
+      const easy = randomUUID()
+      const both = randomUUID()
+      await run(easy, '2024-02-01T07:00:00Z', { run_categories: [{ category: 'low_hr', reasons: ['r'] }] })
+      await run(both, '2024-02-02T07:00:00Z', {
+        run_categories: [
+          { category: 'long', reasons: [] },
+          { category: 'low_hr', reasons: ['added by hand'] },
+        ],
+      })
+      await run(randomUUID(), '2024-02-03T07:00:00Z', {
+        run_categories: [{ category: 'tempo', reasons: [] }],
+      })
+      await run(randomUUID(), '2024-02-04T07:00:00Z')
+
+      const range = [new Date('2024-02-01T00:00:00Z'), new Date('2024-02-05T00:00:00Z')] as const
+      const filtered = await getActivities(
+        user,
+        'running',
+        ...range,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        'low_hr',
+      )
+      const all = await getActivities(user, 'running', ...range)
+
+      expect(filtered.map((a) => a.id)).toEqual([easy, both])
+      expect(all).toHaveLength(4)
+      expect(
+        await getActivities(user, 'running', ...range, undefined, undefined, undefined, undefined, 'hard'),
+      ).toEqual([])
+    })
+
+    test("a synced row is judged by its override's categories, and both rows stay in the merge", async () => {
+      const user = getTestUser()
+      const start = new Date('2024-03-01T07:00:00Z')
+      const end = new Date('2024-03-01T07:30:00Z')
+      const synced = await insertActivity(user, {
+        activity_type: 'running',
+        data: { run_categories: [{ category: 'tempo', reasons: [] }] },
+        end_time: end,
+        source: 'garmin',
+        start_time: start,
+      })
+      const override = await insertOverride(user, [synced], {
+        activity_type: 'running',
+        data: { run_categories: [{ category: 'low_hr', reasons: ['added by hand'] }] },
+        end_time: end,
+        start_time: start,
+      })
+      const range = [new Date('2024-03-01T00:00:00Z'), new Date('2024-03-02T00:00:00Z')] as const
+      const byCategory = (category: string) =>
+        getActivities(user, 'running', ...range, undefined, undefined, undefined, undefined, category)
+
+      const found = await byCategory('low_hr')
+      expect(found).toHaveLength(1)
+      expect(found[0]!.source_ids?.toSorted()).toEqual([override!.id, synced].toSorted())
+      expect(await byCategory('tempo')).toEqual([])
+    })
+  })
+
   describe('getActivityFieldValues', () => {
     test('distinct trimmed non-blank values over the given types, most recently used first', async () => {
       const user = getTestUser()

@@ -101,6 +101,7 @@ describe('sessionsOptionsFromQuery', () => {
       field: 'x',
       value: 'a',
     })
+    expect(sessionsOptionsFromQuery({ category: 'low_hr' }).category).toBe('low_hr')
   })
 })
 
@@ -444,6 +445,35 @@ describe('queryActivitySessions over list items', () => {
     })
     expect(result.sessions.map((s) => s.id)).toEqual(['s4'])
     expect(result.sessions[0]!.items).toBeUndefined()
+  })
+
+  test('a scalar group_by outside the schema with an item filter groups by its value', async () => {
+    vi.mocked(db.getActivities).mockResolvedValue([
+      activity(
+        'a',
+        '2026-09-01T17:00:00Z',
+        45,
+        { gym: 'North', sets: [bench(80, 5)] },
+        { activity_type: 'strength_training' },
+      ),
+      activity(
+        'b',
+        '2026-09-08T17:00:00Z',
+        45,
+        { gym: 'South', sets: [bench(85, 3)] },
+        { activity_type: 'strength_training' },
+      ),
+    ])
+
+    const result = await queryActivitySessions('u', 'strength_training', {
+      filter: { field: 'sets.exercise', value: 'Bench Press' },
+      groupBy: 'gym',
+    })
+
+    expect(result.groups?.map((g) => [g.value, g.session_ids])).toEqual([
+      ['South', ['b']],
+      ['North', ['a']],
+    ])
   })
 
   test('group_by an item path: a group per value, combined measures, most recent spelling, (none) last', async () => {

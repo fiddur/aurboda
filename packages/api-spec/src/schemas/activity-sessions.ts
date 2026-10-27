@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import { runCategoryFilterSchema } from './activity-features.ts'
 import { activityMeasureSchema, activityMeasuresSchema } from './activity-measures.ts'
 import {
   activityTypeSchema,
@@ -109,6 +110,9 @@ export type ActivitySessionGroup = z.infer<typeof activitySessionGroupSchema>
 
 export const activitySessionsQuerySchema = z
   .object({
+    category: runCategoryFilterSchema.optional().meta({
+      description: 'Filter to activities carrying this run category (data.run_categories)',
+    }),
     end: iso8601DateTimeSchema.optional().meta({ description: 'End date/time (defaults to now)' }),
     filter_field: dataFieldPathSchema.optional().meta({
       description:

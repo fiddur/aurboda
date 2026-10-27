@@ -124,7 +124,6 @@ import { createInvitationAuth } from './services/invitation.ts'
 import { getPlaceVisits } from './services/locations.ts'
 import { createPgBoss } from './services/pg-boss.ts'
 import { installProcessGuards } from './services/process-guards.ts'
-import { defaultRouteMatchDeps, matchActivityRoute } from './services/routes.ts'
 import { safeFetchGet } from './services/safe-fetch.ts'
 import { initSentry, Sentry } from './services/sentry.ts'
 import {
@@ -145,6 +144,7 @@ import {
   retroEnrichTimelineEntries,
 } from './services/timeline-retro-enrich.ts'
 import { ownActorUri } from './services/timeline.ts'
+import { analyseTrack, createTrackAnalyseStepDeps } from './services/track-analyse.ts'
 import { defaultTrackBackfillJobDeps } from './services/track-backfill.ts'
 import {
   createTrackAnalyseQueue,
@@ -598,18 +598,23 @@ const main = async () => {
   }
   if (boss) {
     try {
+      const analyseDeps = createTrackAnalyseStepDeps(activityNotifier)
       trackAnalyseQueue = await createTrackAnalyseQueue(boss, {
-        analyse: async (user, activityId) => {
-          await matchActivityRoute(user, activityId, defaultRouteMatchDeps)
-        },
+        analyse: (user, activityId) => analyseTrack(user, activityId, analyseDeps),
       })
-      trackBackfillQueue = await createTrackBackfillQueue(boss, defaultTrackBackfillJobDeps)
+      trackBackfillQueue = await createTrackBackfillQueue(boss, {
+        ...defaultTrackBackfillJobDeps,
+        notify: activityNotifier,
+      })
     } catch (error) {
       console.error('Failed to initialize track queues:', error)
     }
   }
   if (!trackBackfillQueue) {
     console.warn('⚠️ Activity track backfill disabled (no job queue) - run it on demand')
+  }
+  const onHrSettingsChanged = (user: string): void => {
+    void trackBackfillQueue?.enqueue(user, 0, { recomputeFeatures: true })
   }
   // Source enrichment (#1080): a Health Connect session from Garmin or Gravl
   // triggers that provider's own sync for it, so the row Health Connect just
@@ -747,6 +752,7 @@ const main = async () => {
       gravl,
       onActivityDetailSynced,
       onActivityMutated: activityNotifier,
+      onHrSettingsChanged,
       onTrackWritten,
       oura,
       reactionActions,
@@ -905,6 +911,7 @@ const main = async () => {
     httpd,
     invitationAuth,
     onActivityDetailSynced,
+    onHrSettingsChanged,
     onTrackWritten,
     // Tell followers' servers the profile changed — they cache the avatar and
     // re-download only on an Update{Person} or a changed icon URL.

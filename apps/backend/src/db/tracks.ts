@@ -41,6 +41,7 @@ export const upsertActivityTrack = async (user: string, input: ActivityTrackInpu
        length_m = EXCLUDED.length_m,
        point_count = EXCLUDED.point_count,
        full_resolution = EXCLUDED.full_resolution,
+       route_matched_at = NULL,
        updated_at = NOW()`,
     [input.activity_id, input.source, input.ewkt, input.full_resolution],
   )

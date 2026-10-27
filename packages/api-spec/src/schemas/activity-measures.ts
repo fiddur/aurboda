@@ -43,6 +43,24 @@ export const activityMeasureLabels: Record<ActivityMeasure, string> = {
   volume: 'Volume',
 }
 
+const withSubject = (subject: string, label: string): string => (subject ? `${subject} · ${label}` : label)
+
+export const measureGoalTitle = (
+  measure: ActivityMeasure,
+  filterValue?: string | null,
+  typeName?: string,
+): string => withSubject(filterValue ?? typeName ?? '', activityMeasureLabels[measure])
+
+/** The label inside a phrase: `Push-ups · most reps in a set`. Only the first letter is lowered, so e1RM keeps its case. */
+export const measureSpecLabel = (
+  measure: ActivityMeasure,
+  filterValue?: string | null,
+  typeName?: string,
+): string => {
+  const label = activityMeasureLabels[measure]
+  return withSubject(filterValue ?? typeName ?? '', label.charAt(0).toLowerCase() + label.slice(1))
+}
+
 /** Whether a window of sessions is scored by its best session (max) or its total (sum). */
 export const measureDefaultAggregation = (measure: ActivityMeasure): 'max' | 'sum' =>
   measure === 'volume' || measure === 'set_count' || measure === 'total_reps' ? 'sum' : 'max'

@@ -43,8 +43,11 @@ vi.mock('../services/mutations.ts', () => ({
 
 vi.mock('../services/fit-parser.ts', () => ({ parseFitBuffer: vi.fn() }))
 
+vi.mock('../services/activity-features.ts', () => ({ firstActivityFeatures: vi.fn() }))
+
 const db = await import('../db/index.ts')
 const queries = await import('../services/queries/index.ts')
+const activityFeatures = await import('../services/activity-features.ts')
 
 const ACTIVITY_ID = '9d0124e7-d161-4855-a54f-fa8bdb45c4f2'
 
@@ -121,6 +124,25 @@ describe('GET /activities/:id', () => {
 
     expect(res.body.data.route).toEqual({ activity_count: 5, id: 'route-1', name: 'Söderhallarna · 8.2 km' })
     expect(db.getRouteForActivity).toHaveBeenCalledWith('tester', ACTIVITY_ID)
+  })
+
+  test('includes the computed features when the activity has them', async () => {
+    vi.mocked(queries.getCommentsMap).mockResolvedValue(
+      new Map() as Awaited<ReturnType<typeof queries.getCommentsMap>>,
+    )
+    const features = {
+      activity_id: ACTIVITY_ID,
+      computed_at: '2026-06-01T00:00:00.000Z',
+      low_hr_fraction: 0.9,
+    }
+    vi.mocked(activityFeatures.firstActivityFeatures).mockResolvedValueOnce(
+      features as Awaited<ReturnType<typeof activityFeatures.firstActivityFeatures>>,
+    )
+
+    const res = await supertest(buildApp()).get(`/activities/${ACTIVITY_ID}`)
+
+    expect(res.body.data.features).toEqual(features)
+    expect(activityFeatures.firstActivityFeatures).toHaveBeenCalledWith('tester', [ACTIVITY_ID])
   })
 
   test('returns an empty comments array when the activity has no notes', async () => {
@@ -302,6 +324,20 @@ describe('GET /activities', () => {
 
     expect(res.status).toBe(200)
     expect(vi.mocked(queries.queryActivities).mock.calls.at(-1)?.[7]).toBe(routeId)
+  })
+
+  test('passes a run category filter to the query', async () => {
+    vi.mocked(queries.queryActivities).mockResolvedValue([])
+
+    const res = await supertest(buildApp()).get('/activities').query({
+      category: 'low_hr',
+      end: '2026-06-30T00:00:00Z',
+      start: '2026-06-01T00:00:00Z',
+      types: 'running',
+    })
+
+    expect(res.status).toBe(200)
+    expect(vi.mocked(queries.queryActivities).mock.calls.at(-1)?.[8]).toBe('low_hr')
   })
 })
 

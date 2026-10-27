@@ -10,7 +10,7 @@ which parts exist.
 | ----- | --------------------------------------------------- | --------------- |
 | 1     | `activity_tracks`: full-resolution tracks, backfill | shipped (#1231) |
 | 2     | Routes: matching, efforts over time                 | shipped (#1232) |
-| 3     | Run features and rule-based categories              | planned (#1233) |
+| 3     | Run features and rule-based categories              | shipped (#1233) |
 | 4     | Segments: manual, timed efforts, suggestions        | planned (#1234) |
 | 5     | Federated segment challenges                        | planned (#1235) |
 
@@ -89,8 +89,8 @@ alt, t}], length_m, point_count, full_resolution }`, `t` in seconds since the
 
 Writing a track enqueues a `track-analyse` job (one per activity, `stately` so a
 re-sync collapses into one run, after a ten-minute stabilisation delay like
-auto-share). Route matching (phase 2) runs there; features and segment matching are
-added there later. Strava ingest now also fires the
+auto-share). Route matching (phase 2) runs there, then the activity's features (phase 3);
+segment matching is added there later. Strava ingest now also fires the
 activity notifier, so a Strava activity gets deduction and auto-share evaluation like a
 Garmin one.
 
@@ -126,11 +126,22 @@ overlap, projects onto either leg at random and so passes too; it has no meaning
 anyway, and the coverage test has already shown it is the same path.
 
 **Same activity type only**: a route carries the activity type of its canonical
-activity, and a track is matched only against routes of its own type.
+activity, and a track is matched only against routes of its own type. The type is the
+effective one the merged view shows: a synced activity retyped by an edit keeps its track
+and route rows on the synced row, while the new type lives on its aurboda override, and
+matching reads the override's type.
+
+**Retyping re-matches**: when an activity's type changes (an edit, `update_activity`, or a
+deduction `retype` rule), every row of it that can own a track is detached from its route
+and matched again under the new type, so a walk retyped from a run leaves the running
+route. It also stops being its route's canonical, and a route left with no runs is deleted
+outright.
 
 **Birth from a pair**: a track that matches no route is tested the same way against the
 other non-deleted, unrouted tracks of its type. The first that passes both tests makes a
-route whose geometry is the **older** run's simplified track; both runs are attached. A row
+route whose geometry is the **older** run's simplified track; both runs are attached, in one
+transaction with the route's creation. Two matchers racing on the same canonical run (the
+unique index on `routes.canonical_activity_id`) leave one route, the loser a no-op. A row
 that overlaps the track in time is the same session recorded by another source (Garmin and
 Strava), never a second run, so it is not a pairing candidate.
 
@@ -140,8 +151,11 @@ already in `activity_routes` is skipped.
 
 **Where it runs**: the `track-analyse` queue, ten minutes after a track is written; and the
 `track-backfill` job, which after building missing tracks runs the same matching over every
-tracked activity without a route, oldest first. `POST /routes/match` / `match_routes` runs
-that pass on demand.
+tracked activity without a route that has not been tried yet, oldest first.
+`POST /routes/match` / `match_routes` runs that pass on demand. A try marks the activity's
+tracks (`activity_tracks.route_matched_at`), so the pass after each deploy skips history that
+already failed to pair; a tried run still pairs with a later run of the same course, and the
+mark is cleared when the track is rewritten or the activity retyped.
 
 **Naming**: the nearest named location within 500 m of the canonical track's start, else
 the first part of the nearest detected location's address, else "Route", followed by the
@@ -161,8 +175,10 @@ route, and a later run of the same course does not revive it.
 
 A route's runs, newest first, each with `elapsed_s` (end − start), `avg_hr` (the mean
 heart-rate sample over the run) and `pace_s_per_km`: from the mean `speed` samples when
-there are any, else elapsed time over the activity's recorded `data.distance`. Pace at
-heart rate (the low-HR progress chart) waits for phase 3's run features.
+there are any, else elapsed time over the activity's recorded `data.distance`, and
+`categories` (the run categories on the activity, see phase 3). The route page's
+"Low-HR runs only" toggle narrows the trends and the table to the `low_hr` runs, which is
+pace at heart rate: the low-HR ceiling is already in the category.
 
 ### Surfaces
 
@@ -182,23 +198,88 @@ heart rate (the low-HR progress chart) waits for phase 3's run features.
 
 ## Phase 3: run features and categories
 
-Run categories are **structured data on the Run activity**
-(`data.run_categories = [{ category, reasons }]`), not child activity types, so the type
-hierarchy stays clean and `query_activities` / `query_activity_sessions` get a
-`category` filter.
+Run categories are **structured data on the activity**, not child activity types, so the
+type hierarchy stays clean and the activity lists can filter on them.
 
-Features are computed once per activity by pure functions over the stored time series
-and the track (`activity_features`: zone fractions, moving time, HR drift, pace CV,
-interval block statistics, elevation, route). Rules over the features classify, with
-seeded defaults the user can retune through the deduction-rule engine:
+### Features
 
-- **Low-HR / MAF**: ≥ 85 % of moving time in zones ≤ 2 and ≤ 5 % in ≥ 4; ceiling =
-  zone-2 upper bound, or an optional `maf_hr` setting (180 − age with the Maffetone
-  adjustments).
-- **Intervals**: pace smoothed over 30 s, binarised against the run's own median;
-  ≥ 3 fast blocks of 30 s–8 min, block-duration CV < 40 %, fast blocks ≥ 12 % faster.
-- **Long**: ≥ 90 min or ≥ 1.5 × the 90-day median run. **Tempo**: ≥ 50 % in zone 4
-  with low pace CV. **Hard/race**: ≥ 40 % in zone 5.
+`activity_features` holds one row per activity, computed from the stored time series
+(`heart_rate` and `speed`, from the activity's own source first) and its track by pure
+functions (`services/run-features.ts`). A feature the data cannot support is null.
+
+| Feature                                                                               | Definition                                                                                                                                                          | Null when                              |
+| ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| `elapsed_s`                                                                           | Seconds from start to end                                                                                                                                           | never                                  |
+| `moving_s`                                                                            | Seconds with speed above 0.5 m/s                                                                                                                                    | never (the elapsed time without speed) |
+| `zone0_fraction` … `zone5_fraction`                                                   | Share of the HR-covered time in each HR zone (0–1)                                                                                                                  | no HR samples                          |
+| `low_hr_fraction`, `low_hr_ceiling_bpm`                                               | Share of the HR-covered time at or below the low-HR ceiling, and that ceiling                                                                                       | no HR samples                          |
+| `hr_drift_pct`                                                                        | Aerobic decoupling: second-half HR/speed over first-half HR/speed, minus one, in %                                                                                  | fewer than 10 HR samples in a half     |
+| `pace_cv`                                                                             | Coefficient of variation of the 30 s smoothed pace over the samples at or above 1.5 m/s (walking and stops left out, so a jog-walk does not read as erratic pacing) | fewer than 30 such samples             |
+| `interval_count`                                                                      | Work blocks: fast stretches of 30 s–8 min above the run's median moving speed                                                                                       | no speed samples                       |
+| `work_block_median_s`, `rest_block_median_s`, `work_block_cv`, `work_rest_pace_ratio` | Median work and rest block durations, the work blocks' duration CV, median rest pace ÷ median work pace                                                             | too few blocks                         |
+| `elevation_gain_m`                                                                    | Total climb from the track altitude (5-point smoothing, 3 m hysteresis)                                                                                             | no track                               |
+| `elevation_oscillation`                                                               | Climb plus descent in metres per km of track                                                                                                                        | no track                               |
+| `duration_vs_median_90d`                                                              | Elapsed time ÷ the median of the same type (and subtypes) over the 90 days before                                                                                   | no earlier activities of the type      |
+
+The **low-HR ceiling** is the `maf_hr` setting when set (180 − age with the Maffetone
+adjustments, entered by hand), else the start of HR zone 3, the zone-2 upper bound.
+
+Features are computed:
+
+- in the `track-analyse` job, right after the route match, for every written track;
+- by the `track-backfill` job, after its route matching, for every tracked activity that
+  has no features yet (that is how history gets them);
+- again for all activities when a settings update changes the effective HR zones (custom
+  zones, or the age-based ones from the birth date) or the low-HR ceiling (`maf_hr`): it
+  queues a backfill job flagged `recompute_features`, which deletes the user's features
+  before computing them, so a failed enqueue loses nothing;
+- again for an activity whose shown type changes: a retype (with its route re-matched as
+  well), and the delete or restore of an override whose type differs from its targets'
+  (the targets are re-matched and recomputed). This happens before the edit's
+  notifications, so the rules they re-evaluate read the new features.
+
+Each computation then makes sure the default run category rules exist (they are seeded for
+`running` and its subtypes only) and fires the activity notifier, so the deduction queue
+re-evaluates the categorising rules: the analyse job over the activity's own span, the
+backfill once per window of at most 30 days of the activities it computed, so a long history
+neither queues one job per run nor one window spanning years. The analyse job runs every
+step even when one fails and then fails as a whole, so pg-boss retries it (each step is
+idempotent).
+
+### Categories
+
+`data.run_categories` is a list of `{ category, reasons, rule_id? }`. An enrich rule with
+an `output_category` adds its entry with `rule_id` and the conditions that matched as
+`reasons`, and drops it when the run no longer matches; an entry without `rule_id` was set
+by hand and no rule touches it. `data.run_categories_excluded` lists the categories the
+user removed: a rule does not add those back. The rules, their feature conditions and the
+seeded defaults (`low_hr`, `intervals`, `long`, `tempo`, `hard`) are described in
+[deduction rules](./deduction-rules.md); the user retunes or deletes them there, and a
+deleted default is not seeded again.
+
+### Surfaces
+
+- REST: `GET /activities?category=` and `GET /activity-types/:name/sessions?category=`
+  keep the activities carrying that category; `GET /activities/:id` (and `/full`) carries
+  `features` when the activity has been analysed; `GET /routes/:id` efforts carry
+  `categories`.
+- MCP: `query_activities` and `query_activity_sessions` take `category`;
+  `get_activity_detail` carries `features`; `get_route` efforts carry `categories`.
+- Web: the activity page shows the categories as chips under the route line on runs (and on
+  any activity that has some), one chip per name: hovering a chip, or opening "Why", shows
+  the reasons; "×" removes every entry of that name (when one came from a rule, the name is
+  also added to `run_categories_excluded`), and the text field adds one by hand (snake_case,
+  Enter). A chip edit is an ordinary activity edit: on a synced activity it creates the
+  override (or updates the existing one) and the page moves to it; in a merged group that
+  already has a native aurboda row, the chips edit that row only. A collapsed "Run features"
+  block lists the features. The route page has the "Low-HR runs only" toggle. The Android
+  app embeds both.
+- The category filter and the route efforts read the categories the merged view shows: a
+  synced row with an override is judged by the override's `run_categories`, and both rows
+  stay in the merged result.
+
+Left out for now: a cadence tie-breaker for intervals and using Garmin's recorded laps as
+work blocks.
 
 ## Phase 4: segments
 

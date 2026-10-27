@@ -46,7 +46,6 @@ const fieldValue = (
   return rows.length > 0 ? rows : undefined
 }
 
-/** The `data` object the add form sends: declared fields only, typed, with blanks left out. */
 export const buildActivityData = (
   fields: DataFieldDefinition[],
   scalars: Record<string, string>,

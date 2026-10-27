@@ -188,6 +188,25 @@ describe('POST /public/:username/:slug/members (register-back)', () => {
     expect(db.upsertChallengeMember).not.toHaveBeenCalled()
   })
 
+  test('refuses with 409 a member whose instance echoes the measure but scores it another way', async () => {
+    vi.mocked(db.getChallengeBySlug).mockResolvedValue(challenge(bestSetSpec))
+    vi.mocked(federation.fetchMemberData).mockResolvedValue({
+      aggregation: 'sum',
+      buckets: [],
+      filter_field: 'sets.exercise',
+      filter_value: 'Push-ups',
+      measure: 'max_reps',
+      success: true,
+      total: 0,
+    })
+    const res = await register()
+    expect(res.status).toBe(409)
+    expect(res.body.error).toBe(
+      'Your instance scored this challenge differently (aggregation/filter); update Aurboda and rejoin',
+    )
+    expect(db.upsertChallengeMember).not.toHaveBeenCalled()
+  })
+
   test('a challenge without a measure accepts an instance that echoes nothing', async () => {
     vi.mocked(db.getChallengeBySlug).mockResolvedValue(challenge(hoursSpec))
     vi.mocked(federation.fetchMemberData).mockResolvedValue({ buckets: [], success: true, total: 2.5 })

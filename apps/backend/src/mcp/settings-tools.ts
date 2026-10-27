@@ -7,12 +7,17 @@ import { getGoalsProgress } from '../services/goals.ts'
 import {
   getSettingsResponse,
   getTagMappings,
+  type HrSettingsChanged,
   setTagMapping,
   validateAndUpdateSettings,
 } from '../services/settings.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
-export const registerSettingsTools = (server: McpServer, user: string) => {
+export const registerSettingsTools = (
+  server: McpServer,
+  user: string,
+  onHrSettingsChanged?: HrSettingsChanged,
+) => {
   server.tool(
     'get_user_settings',
     "Get user settings including birth date, effective HR zones, and timezone (tz). The tz field returns the auto-detected timezone from the user's device — use it as the tz parameter for all other tools that require it.",
@@ -28,7 +33,7 @@ export const registerSettingsTools = (server: McpServer, user: string) => {
     'Update user settings. Can set birth date (for age-based HR zones) and/or custom HR zone thresholds.',
     { ...updateSettingsInputSchema.shape },
     async (params) => {
-      const result = await validateAndUpdateSettings(user, params)
+      const result = await validateAndUpdateSettings(user, params, onHrSettingsChanged)
       return jsonResponse(result)
     },
   )

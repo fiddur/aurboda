@@ -38,6 +38,17 @@ If neither custom zones nor birth date are configured, Aurboda uses default thre
 
 You can always see which mode is active in Settings. The "Reset to defaults" button clears any custom zones, falling back to age-based or default.
 
+### Low-HR ceiling (MAF)
+
+Below the zone thresholds, **Settings > HR Zone Thresholds** has a **Low-HR ceiling (MAF)** field: a single
+BPM value (80–220) for low-HR / Maffetone training, typically 180 − age with the Maffetone adjustments. The
+run features use it as the ceiling for `low_hr_fraction`, the share of a run's HR-covered time at or below
+it; the default Low-HR rule counts a run as low-HR when at least 85 % of the time is at or below the
+ceiling (retune it under [Deduction rules](./deduction-rules.md)). Leave it empty to use the start of Zone 3
+(the Zone 2 upper bound). It is the `maf_hr` setting in the REST API and MCP (`null` clears it). Changing the
+zones, the birth date or the ceiling in a way that moves the effective zones or ceiling recomputes every
+activity's features (see [Routes and segments](./routes-and-segments.md#features)).
+
 ## Weekly Targets
 
 The HR Zones page displays progress toward weekly targets based on the **Galpin/Huberman protocol** -- exercise science recommendations for cardiovascular health and longevity:

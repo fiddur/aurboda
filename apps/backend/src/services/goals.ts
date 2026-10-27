@@ -1,5 +1,5 @@
 import {
-  activityMeasureLabels,
+  measureGoalTitle,
   activityMeasureUnits,
   type ActivityTypeDefinition,
   cumulativeMetrics,
@@ -259,7 +259,7 @@ const toWidgetProgress = (p: GoalProgress): WidgetGoalProgress => {
       losing_tomorrow: p.losing_tomorrow,
       max: p.max,
       min: p.min,
-      title: `${p.filter_value ?? p.activity_type_name} ${activityMeasureLabels[p.measure]}`,
+      title: measureGoalTitle(p.measure, p.filter_value, p.activity_type_name),
       unit: p.unit,
     }
   }

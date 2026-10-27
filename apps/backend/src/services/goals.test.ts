@@ -616,7 +616,7 @@ describe('measure goal progress', () => {
       losing_tomorrow: 5000,
       max: undefined,
       min: 20000,
-      title: 'Strength Training Volume',
+      title: 'Strength Training · Volume',
       unit: 'kg',
     })
     expect(vi.mocked(measureSeries.queryMeasuredActivities).mock.calls[0]?.[4]).toBeUndefined()
@@ -631,7 +631,7 @@ describe('measure goal progress', () => {
     expect(widget).toMatchObject({
       current: 0,
       losing_tomorrow: 0,
-      title: 'Bench Press Best e1RM',
+      title: 'Bench Press · Best e1RM',
       unit: 'kg',
     })
   })

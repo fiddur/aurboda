@@ -446,8 +446,10 @@ export interface UserSettings {
   device_timezone?: string // IANA timezone from the Android device (e.g. "Europe/Stockholm")
   hr_zone_start?: { 1: number; 2: number; 3: number; 4: number; 5: number }
   lastfm_username?: string // Last.fm username for scrobble sync
+  maf_hr?: number // Low-HR (MAF) ceiling in bpm; falls back to the zone-2 upper bound
   manually_approve_followers?: boolean // Hold incoming follows for manual approval (locked account)
   rescue_time_key?: string // RescueTime API key (personal token)
+  run_category_rules_seeded?: boolean // Internal: the default run-category deduction rules were created once
   sex?: BiologicalSex // Biological sex for calorie calculation
   timeline_show_replies?: boolean // Show followed actors' replies to posts outside your timeline as own cards
   item_icons?: Record<string, string> // Unified icon mappings for all timeline items (tags, activities, exercise types)

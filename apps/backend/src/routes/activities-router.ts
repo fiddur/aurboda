@@ -47,6 +47,7 @@ import {
   type TimeSeriesPoint,
 } from '../db/index.ts'
 import { httpError } from '../http-error.ts'
+import { firstActivityFeatures } from '../services/activity-features.ts'
 import { parseFitBuffer } from '../services/fit-parser.ts'
 import {
   addActivity,
@@ -166,7 +167,11 @@ const buildMergedResponse = async (
   const commentLookupIds = overlapping.map((a) => a.id).filter((id): id is string => Boolean(id))
   const commentsMap = await getCommentsMap(user, 'activity', commentLookupIds)
   const comments = dedupeCommentsForIds(commentsMap, commentLookupIds)
-  const route = await routeSummary(user, [activity.id!, ...commentLookupIds])
+  const sourceIds = [...new Set([activity.id!, ...commentLookupIds])]
+  const [route, features] = await Promise.all([
+    routeSummary(user, sourceIds),
+    firstActivityFeatures(user, sourceIds),
+  ])
 
   return {
     ...metrics,
@@ -174,6 +179,7 @@ const buildMergedResponse = async (
     comments,
     data: mergedData,
     end_time: activity.end_time?.toISOString(),
+    features,
     id: activity.id,
     merged_end_time: mergedEndTime,
     merged_start_time: mergedStartTime,
@@ -213,6 +219,7 @@ export const createActivitiesRouter = (
         data_filter: dataFilterStr,
         deduction_rule_id: deductionRuleId,
         route_id: routeId,
+        category,
       } = req.query
       const user = req.user!
 
@@ -233,6 +240,7 @@ export const createActivitiesRouter = (
         parseDataFilter(dataFilterStr),
         deductionRuleId,
         routeId,
+        category,
       )
       res.json({ data: activities, success: true })
     },
@@ -532,6 +540,9 @@ export const createActivitiesRouter = (
     // notes textarea reflect the real note (#794).
     const commentsMap = await getCommentsMap(user, 'activity', [realId])
     const route = activity.deleted_at ? undefined : await routeSummary(user, [realId])
+    const features = activity.deleted_at
+      ? undefined
+      : await firstActivityFeatures(user, [realId, ...(activity.override_target_ids ?? [])])
 
     res.json({
       data: {
@@ -541,6 +552,7 @@ export const createActivitiesRouter = (
         data: activity.data,
         deleted_at: activity.deleted_at?.toISOString(),
         end_time: activity.end_time?.toISOString(),
+        features,
         id: activity.id,
         override_target_ids: activity.override_target_ids,
         route,
@@ -568,7 +580,7 @@ export const createActivitiesRouter = (
       }
 
       const window = await resolveActivityWindow(user, activity, isMerged)
-      const [activityMetrics, fullDetail] = await Promise.all([
+      const [activityMetrics, fullDetail, features] = await Promise.all([
         computeActivityDetailMetrics(user, window),
         getActivityFullDetail(
           user,
@@ -578,6 +590,7 @@ export const createActivitiesRouter = (
             metrics: parseMetricsParam(metrics),
           },
         ),
+        firstActivityFeatures(user, [id, ...(activity.override_target_ids ?? [])]),
       ])
 
       res.json({
@@ -588,6 +601,7 @@ export const createActivitiesRouter = (
           data: window.data,
           deleted_at: activity.deleted_at?.toISOString(),
           end_time: activity.end_time?.toISOString(),
+          features,
           id: activity.id,
           override_target_ids: activity.override_target_ids,
           source: activity.source,

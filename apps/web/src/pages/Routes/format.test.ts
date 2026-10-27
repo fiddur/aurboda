@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   effortSeries,
+  effortsWithCategory,
   formatElapsed,
   routesQueryFromParams,
   searchFromRoutesQuery,
@@ -80,5 +81,22 @@ describe('searchFromRoutesQuery', () => {
     const query = { activity_type: 'running', sort: 'runs' } as const
     const params = Object.fromEntries(new URLSearchParams(searchFromRoutesQuery(query)))
     expect(routesQueryFromParams(params)).toEqual(query)
+  })
+})
+
+describe('effortsWithCategory', () => {
+  it('keeps the efforts carrying the category', () => {
+    const effort = (id: string, categories?: string[]) => ({
+      activity_id: id,
+      categories,
+      coverage: 1,
+      elapsed_s: 600,
+      source: 'garmin',
+      start_time: '2026-06-01T07:00:00Z',
+    })
+    const efforts = [effort('a', ['low_hr', 'long']), effort('b', ['tempo']), effort('c')]
+
+    expect(effortsWithCategory(efforts, 'low_hr').map((e) => e.activity_id)).toEqual(['a'])
+    expect(effortsWithCategory(efforts, 'hard')).toEqual([])
   })
 })

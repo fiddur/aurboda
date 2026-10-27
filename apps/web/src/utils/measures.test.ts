@@ -11,7 +11,9 @@ import {
   measureFilter,
   measureFilterPath,
   measureGoalLabel,
+  measureOptions,
   measureSet,
+  recordBadge,
   topSet,
 } from './measures'
 
@@ -43,6 +45,15 @@ describe('formatMeasure', () => {
     expect(formatMeasure('max_time', 90)).toBe('1:30')
     expect(formatMeasure('max_time', 5)).toBe('0:05')
     expect(formatMeasure('max_time', 3725)).toBe('62:05')
+  })
+})
+
+describe('recordBadge', () => {
+  test('names the measure after PR, keeping the e1RM case', () => {
+    expect(recordBadge('e1rm')).toBe('PR e1RM')
+    expect(recordBadge('max_weight')).toBe('PR weight')
+    expect(recordBadge('max_reps')).toBe('PR reps')
+    expect(recordBadge('max_time')).toBe('PR hold')
   })
 })
 
@@ -166,6 +177,22 @@ describe('measureGoalLabel', () => {
     expect(measureGoalLabel({ ...goal, activity_type_name: 'Strength' })).toBe('Strength · Best e1RM')
     expect(measureGoalLabel(goal, 'Strength training')).toBe('Strength training · Best e1RM')
     expect(measureGoalLabel({ ...goal, measure: 'volume' })).toBe('strength_training · Volume')
+  })
+})
+
+describe('measureOptions', () => {
+  test('every measure with its label, in the order measures are declared', () => {
+    const options = measureOptions()
+    expect(options.map((o) => o.value)).toEqual([
+      'volume',
+      'e1rm',
+      'max_weight',
+      'set_count',
+      'max_time',
+      'total_reps',
+      'max_reps',
+    ])
+    expect(options[1]).toEqual({ label: 'Best e1RM', value: 'e1rm' })
   })
 })
 

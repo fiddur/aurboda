@@ -30,8 +30,13 @@ import {
 } from '../db/index.ts'
 import { bannerUrlFor } from '../services/challenge-banner.ts'
 import { toPublicChallengeListItem } from '../services/challenge-discovery.ts'
-import { fetchMemberData, unsupportedMeasureMessage } from '../services/challenge-federation.ts'
-import { effectiveBucketSize, memberEchoMatches, specToApi } from '../services/challenge-spec.ts'
+import { fetchMemberData } from '../services/challenge-federation.ts'
+import {
+  echoMismatchMessage,
+  effectiveBucketSize,
+  memberEchoMatches,
+  specToApi,
+} from '../services/challenge-spec.ts'
 import { getChallengeStandings } from '../services/challenge-standings.ts'
 import { buildProfileUrl, buildShareUrl } from '../services/share-urls.ts'
 import { resolveDashboardData } from '../services/shared-dashboard-data.ts'
@@ -171,7 +176,7 @@ export const createPublicSharesRouter = (webHost: string): TypedRouter => {
         // An instance too old to know the measure would score plain duration under its name.
         if (!memberEchoMatches(challenge.spec, memberData)) {
           return res.status(409).json({
-            error: unsupportedMeasureMessage(challenge.spec.measure ?? ''),
+            error: echoMismatchMessage(challenge.spec, memberData),
             success: false,
           })
         }

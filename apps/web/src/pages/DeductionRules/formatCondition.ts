@@ -1,5 +1,7 @@
 import type { DeductionRuleCondition } from '../../state/api'
 
+const FEATURE_OPERATORS: Record<string, string> = { gt: '>', gte: '≥', lt: '<', lte: '≤' }
+
 const formatMedia = (c: DeductionRuleCondition): string => {
   const parts: string[] = []
   if (c.url_host?.length) parts.push(`host ${c.url_host.join(', ')}`)
@@ -27,6 +29,8 @@ export const formatCondition = (c: DeductionRuleCondition): string => {
     }
     case 'media':
       return formatMedia(c)
+    case 'activity_feature':
+      return `Feature: ${c.activity_type} ${c.feature} ${FEATURE_OPERATORS[c.operator ?? ''] ?? c.operator} ${c.value}`
     default:
       return c.kind
   }

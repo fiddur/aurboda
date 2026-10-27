@@ -190,6 +190,12 @@
   color: #6b7280;
 }
 
+.rule-field-error {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #dc2626;
+}
+
 .rule-field-input {
   width: 280px;
   max-width: 100%;
@@ -285,6 +291,10 @@
 }
 
 @media (prefers-color-scheme: dark) {
+  .rule-field-error {
+    color: #fca5a5;
+  }
+
   .rules-list {
     border-color: #333;
   }
