@@ -49,3 +49,31 @@ describe('GET /chart-data tz', () => {
     expect(getChartData).not.toHaveBeenCalled()
   })
 })
+
+describe('GET /chart-data breakdown by an item path', () => {
+  beforeEach(() => {
+    vi.mocked(getChartData).mockReset()
+    vi.mocked(getChartData).mockResolvedValue({ buckets: [] })
+  })
+
+  const activity =
+    '/chart-data?source_type=activity_type&pattern=strength&start=2026-03-01T00:00:00Z&end=2026-04-01T00:00:00Z'
+
+  test('rejects an item path without a measure with 400 without querying', async () => {
+    const res = await supertest(app).get(`${activity}&breakdown_fields=sets.exercise`)
+    expect(res.status).toBe(400)
+    expect(res.body.error).toBe('breaking down by an item path needs a measure')
+    expect(getChartData).not.toHaveBeenCalled()
+  })
+
+  test('accepts an item path with a measure', async () => {
+    const res = await supertest(app).get(`${activity}&breakdown_fields=sets.exercise&measure=e1rm`)
+    expect(res.status).toBe(200)
+    expect(vi.mocked(getChartData).mock.calls[0]?.[1].breakdown_fields).toEqual(['sets.exercise'])
+  })
+
+  test('accepts a scalar field without a measure', async () => {
+    const res = await supertest(app).get(`${activity}&breakdown_fields=location`)
+    expect(res.status).toBe(200)
+  })
+})

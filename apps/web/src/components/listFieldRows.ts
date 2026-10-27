@@ -4,7 +4,6 @@ export type ListRow = Record<string, unknown>
 
 const isBlank = (v: unknown) => v === undefined || v === null || (typeof v === 'string' && v.trim() === '')
 
-/** A repeat of the previous row's declared values, so the next identical set is one click. */
 export const newRow = (previous: ListRow | undefined, itemFields: DataItemFieldDefinition[]): ListRow =>
   Object.fromEntries(
     itemFields.flatMap((f) => (previous && !isBlank(previous[f.name]) ? [[f.name, previous[f.name]]] : [])),
@@ -28,7 +27,6 @@ export const addRowLabel = (label: string): string => {
   return singular === '' ? '+ Add row' : `+ Add ${singular}`
 }
 
-/** Rows the user added and left empty are dropped before saving, so they never fail validation. */
 export const dropBlankListRows = (
   schema: DataSchemaDefinition | undefined,
   data: Record<string, unknown>,

@@ -11,6 +11,7 @@ import {
   measureFilter,
   measureFilterPath,
   measureGoalLabel,
+  measureOptions,
   measureSet,
   topSet,
 } from './measures'
@@ -166,6 +167,22 @@ describe('measureGoalLabel', () => {
     expect(measureGoalLabel({ ...goal, activity_type_name: 'Strength' })).toBe('Strength · Best e1RM')
     expect(measureGoalLabel(goal, 'Strength training')).toBe('Strength training · Best e1RM')
     expect(measureGoalLabel({ ...goal, measure: 'volume' })).toBe('strength_training · Volume')
+  })
+})
+
+describe('measureOptions', () => {
+  test('every measure with its label, in the order measures are declared', () => {
+    const options = measureOptions()
+    expect(options.map((o) => o.value)).toEqual([
+      'volume',
+      'e1rm',
+      'max_weight',
+      'set_count',
+      'max_time',
+      'total_reps',
+      'max_reps',
+    ])
+    expect(options[1]).toEqual({ label: 'Best e1RM', value: 'e1rm' })
   })
 })
 

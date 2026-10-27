@@ -64,6 +64,13 @@ const chartMeasureShape = {
   }),
 }
 
+export const ITEM_BREAKDOWN_NEEDS_MEASURE = 'breaking down by an item path needs a measure'
+
+export const itemBreakdownWithoutMeasure = (
+  breakdownFields: string[] | undefined,
+  measure: unknown,
+): boolean => !measure && (breakdownFields ?? []).some((field) => field.includes('.'))
+
 /**
  * Query schema for chart data endpoint (typed, for service layer).
  */
@@ -94,6 +101,10 @@ export const chartDataQuerySchema = z
     }),
     ...chartMeasureShape,
     tz: chartDataTzSchema,
+  })
+  .refine((query) => !itemBreakdownWithoutMeasure(query.breakdown_fields, query.measure), {
+    message: ITEM_BREAKDOWN_NEEDS_MEASURE,
+    path: ['breakdown_fields'],
   })
   .meta({ id: 'ChartDataQuery', description: 'Query parameters for bucketed chart data' })
 

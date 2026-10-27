@@ -343,7 +343,7 @@ const sessionFieldNames = (
 ): { fieldNames: string[]; listField?: string } => {
   const fields = definitions.filter((d) => types.includes(d.name)).flatMap((d) => d.data_schema?.fields ?? [])
   const fieldNames = [...new Set(fields.filter((f) => f.type !== 'list').map((f) => f.name))]
-  if (groupBy && !itemField && !fieldNames.includes(groupBy)) fieldNames.push(groupBy)
+  if (groupBy && !groupBy.includes('.') && !fieldNames.includes(groupBy)) fieldNames.push(groupBy)
   return { fieldNames, listField: itemField ?? listFieldOf(definitions, types) }
 }
 

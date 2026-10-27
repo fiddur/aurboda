@@ -6,6 +6,7 @@ import type { ChallengeSpecFields } from '../db/index.ts'
 
 import {
   effectiveBucketSize,
+  echoMismatchMessage,
   memberEchoMatches,
   scoreBuckets,
   specToApi,
@@ -134,5 +135,29 @@ describe('memberEchoMatches', () => {
       }),
     ).toBe(false)
     expect(memberEchoMatches({ ...bestSetSpec, filter_field: null, filter_value: null }, echo)).toBe(false)
+  })
+})
+
+describe('echoMismatchMessage', () => {
+  const echo: ChallengeDataResponse = {
+    aggregation: 'max',
+    filter_field: 'sets.exercise',
+    filter_value: 'Push-ups',
+    measure: 'max_reps',
+    success: true,
+  }
+
+  it('a missing or different measure: the instance does not support it', () => {
+    const unsupported =
+      "Your instance does not support this challenge's measure (max_reps); update Aurboda to join"
+    expect(echoMismatchMessage(bestSetSpec, { success: true, total: 2 })).toBe(unsupported)
+    expect(echoMismatchMessage(bestSetSpec, { ...echo, measure: 'total_reps' })).toBe(unsupported)
+  })
+
+  it('the same measure scored with another aggregation or filter: rejoin', () => {
+    const differently =
+      'Your instance scored this challenge differently (aggregation/filter); update Aurboda and rejoin'
+    expect(echoMismatchMessage(bestSetSpec, { ...echo, aggregation: 'sum' })).toBe(differently)
+    expect(echoMismatchMessage(bestSetSpec, { ...echo, filter_value: 'Pull-ups' })).toBe(differently)
   })
 })

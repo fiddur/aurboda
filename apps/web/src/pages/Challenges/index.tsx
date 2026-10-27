@@ -11,8 +11,6 @@
  */
 import {
   type ActivityMeasure,
-  activityMeasureLabels,
-  activityMeasures,
   type Challenge,
   type ChallengeAggregation,
   type ChallengeBucketSizeChoice,
@@ -46,7 +44,7 @@ import {
   updateChallenge,
   uploadChallengeBanner,
 } from '../../state/api'
-import { measurableTypes, measureFilter } from '../../utils/measures'
+import { measurableTypes, measureFilter, measureOptions } from '../../utils/measures'
 import {
   type ChallengeItem,
   challengeItemKey,
@@ -108,9 +106,9 @@ function MeasureFields({
           }
         >
           <option value="">Duration / count</option>
-          {activityMeasures.map((m) => (
-            <option key={m} value={m}>
-              {activityMeasureLabels[m]}
+          {measureOptions().map(({ label, value }) => (
+            <option key={value} value={value}>
+              {label}
             </option>
           ))}
         </select>
