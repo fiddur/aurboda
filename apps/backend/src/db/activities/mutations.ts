@@ -3,6 +3,7 @@ import format from 'pg-format'
 
 import type { Activity, ActivityUpdate, LegacyMatch } from '../types.ts'
 
+import { normalizeItemValue } from '../../services/activity-measures.ts'
 import { query, withUserTransaction } from '../connection.ts'
 import { buildDynamicUpdate, type UpdateEntry } from '../dynamic-update.ts'
 import { reanchorNotes } from '../notes.ts'
@@ -451,6 +452,30 @@ export const restoreEmptyImportTombstone = async (
   return result.rows.length > 0
 }
 
+/**
+ * Undo the removal of a row that holds no logged set (no `data.sets`, or an
+ * empty one), whatever else its data carries — the Health Connect copy of an
+ * External Gravl round-trip is restored once sets are logged onto it. A row
+ * that already carried sets when it was deleted was deleted by the user and
+ * stays deleted.
+ */
+export const restoreSetlessTombstone = async (
+  user: string,
+  source: string,
+  externalId: string,
+): Promise<boolean> => {
+  const result = await query(
+    user,
+    `UPDATE activities SET deleted_at = NULL
+     WHERE source = $1 AND external_id = $2 AND deleted_at IS NOT NULL
+       AND (data->'sets' IS NULL OR data->'sets' = '[]'::jsonb)
+     RETURNING id`,
+    [source, externalId],
+  )
+
+  return result.rows.length > 0
+}
+
 export const restoreActivity = async (user: string, id: string): Promise<boolean> => {
   const result = await query(
     user,
@@ -642,6 +667,43 @@ export const updateScreentimeActivityCategoryPath = async (
        AND data->>'category_path' = $2
        AND deleted_at IS NULL`,
     [activityType, oldCategoryPath, newCategoryPath],
+  )
+  return result.rowCount ?? 0
+}
+
+/**
+ * Rewrite one item value of a list field (`sets[].exercise`) on every live activity of the
+ * given types, matching trimmed and case-insensitively; item order and other keys are kept.
+ */
+export const rewriteItemValue = async (
+  user: string,
+  activityTypes: string[],
+  listField: string,
+  itemKey: string,
+  source: string,
+  target: string,
+): Promise<number> => {
+  const normalizedSource = normalizeItemValue(source)
+  if (activityTypes.length === 0 || normalizedSource === undefined) return 0
+  const result = await query(
+    user,
+    `UPDATE activities a
+        SET data = jsonb_set(a.data, ARRAY[$2::text], (
+          SELECT jsonb_agg(
+                   CASE WHEN jsonb_typeof(item) = 'object' AND lower(btrim(item->>($3::text))) = $4
+                        THEN jsonb_set(item, ARRAY[$3::text], to_jsonb($5::text))
+                        ELSE item END
+                   ORDER BY ord)
+            FROM jsonb_array_elements(a.data->($2::text)) WITH ORDINALITY AS t(item, ord)))
+      WHERE a.activity_type = ANY($1)
+        AND a.deleted_at IS NULL
+        AND jsonb_typeof(a.data->($2::text)) = 'array'
+        AND EXISTS (
+          SELECT 1 FROM jsonb_array_elements(a.data->($2::text)) i
+           WHERE jsonb_typeof(i) = 'object' AND lower(btrim(i->>($3::text))) = $4
+             AND i->>($3::text) IS DISTINCT FROM $5
+        )`,
+    [activityTypes, listField, itemKey, normalizedSource, target.trim()],
   )
   return result.rowCount ?? 0
 }

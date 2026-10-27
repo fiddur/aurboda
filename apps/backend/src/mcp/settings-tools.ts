@@ -7,12 +7,17 @@ import { getGoalsProgress } from '../services/goals.ts'
 import {
   getSettingsResponse,
   getTagMappings,
+  type HrSettingsChanged,
   setTagMapping,
   validateAndUpdateSettings,
 } from '../services/settings.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
-export const registerSettingsTools = (server: McpServer, user: string) => {
+export const registerSettingsTools = (
+  server: McpServer,
+  user: string,
+  onHrSettingsChanged?: HrSettingsChanged,
+) => {
   server.tool(
     'get_user_settings',
     "Get user settings including birth date, effective HR zones, and timezone (tz). The tz field returns the auto-detected timezone from the user's device — use it as the tz parameter for all other tools that require it.",
@@ -28,7 +33,7 @@ export const registerSettingsTools = (server: McpServer, user: string) => {
     'Update user settings. Can set birth date (for age-based HR zones) and/or custom HR zone thresholds.',
     { ...updateSettingsInputSchema.shape },
     async (params) => {
-      const result = await validateAndUpdateSettings(user, params)
+      const result = await validateAndUpdateSettings(user, params, onHrSettingsChanged)
       return jsonResponse(result)
     },
   )
@@ -70,7 +75,7 @@ export const registerSettingsTools = (server: McpServer, user: string) => {
 
   server.tool(
     'get_goal_history',
-    "Get a goal's value and on-target status (below/met/over) per past UTC day, or with bucket=month the count of on-target days per month. A day's value is the goal's rolling window sum (metric goals), rolling window sum or max (measure goals) or EMA (trend goals) at the end of that day, judged against the goal's current min/max. Today is partial and not counted in the summary or months.",
+    "Get a goal's value and on-target status (below/met/over) per past day in the user's device timezone (UTC when unset), or with bucket=month the count of on-target days per month. A day's value is the goal's rolling window sum (metric goals), rolling window sum or max (measure goals) or EMA (trend goals) at the end of that day, judged against the goal's current min/max. Today is partial and not counted in the summary or months.",
     { id: z.string().uuid(), ...goalHistoryQuerySchema.shape },
     async ({ id, ...query }) => {
       const result = await getGoalHistory(user, id, query)

@@ -19,6 +19,12 @@ export const tracksTables: Record<string, string> = {
   activity_tracks_indexes: `
     CREATE INDEX IF NOT EXISTS idx_activity_tracks_simplified ON activity_tracks USING GIST (simplified)
   `,
+  // When route matching last ran on the activity's tracks; NULL means not yet
+  // tried, so the startup backfill skips tracks already tried. Cleared when a
+  // track is rewritten or the activity is retyped. Additive (idempotent).
+  activity_tracks_route_matched_at: `
+    ALTER TABLE activity_tracks ADD COLUMN IF NOT EXISTS route_matched_at TIMESTAMPTZ
+  `,
   // A recognised course. `buffer` (25 m) is stored at creation so candidate
   // matching does not re-buffer every route. The activity count is derived from
   // activity_routes, never stored. Deleting a route only sets deleted_at: its

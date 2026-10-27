@@ -27,6 +27,7 @@ export function Settings() {
   const [birthDate, setBirthDate] = useState<string>('')
   const [sex, setSex] = useState<BiologicalSex | null>(null)
   const [hrZones, setHrZones] = useState<HrZoneThresholds | null>(null)
+  const [mafHr, setMafHr] = useState<string>('')
   const [manualApproval, setManualApproval] = useState(false)
   const [showReplies, setShowReplies] = useState(false)
 
@@ -38,6 +39,7 @@ export function Settings() {
     setBirthDate(userSettings?.birth_date ?? '')
     setSex(userSettings?.sex ?? null)
     setHrZones(userSettings?.hr_zone_start ?? null)
+    setMafHr(userSettings?.maf_hr?.toString() ?? '')
     setManualApproval(userSettings?.manually_approve_followers ?? false)
     setShowReplies(userSettings?.timeline_show_replies ?? false)
   }
@@ -114,6 +116,25 @@ export function Settings() {
   const handleResetZones = () => {
     setHrZones(null)
     saveSection({ hr_zone_start: null }, setHrZonesStatus)
+  }
+
+  const handleMafHrBlur = () => {
+    const trimmed = mafHr.trim()
+    const serverValue = userSettings?.maf_hr?.toString() ?? ''
+    if (trimmed === serverValue) return
+
+    if (trimmed === '') {
+      saveSection({ maf_hr: null }, setHrZonesStatus)
+      return
+    }
+
+    const value = Number(trimmed)
+    if (!Number.isInteger(value) || value < 80 || value > 220) {
+      setHrZonesStatus({ error: 'Low-HR ceiling must be a whole number between 80 and 220', status: 'error' })
+      return
+    }
+
+    saveSection({ maf_hr: value }, setHrZonesStatus)
   }
 
   const handleManualApprovalChange = (e: Event) => {
@@ -217,6 +238,29 @@ export function Settings() {
         {hrZones === null && (
           <p class="field-description">Using default thresholds (or age-based if birth date is set).</p>
         )}
+
+        <div class="form-field">
+          <label for="maf-hr">Low-HR ceiling (MAF)</label>
+          <div class="input-with-unit">
+            <input
+              id="maf-hr"
+              type="number"
+              min="80"
+              max="220"
+              step="1"
+              placeholder={(userSettings?.hr_zone_start ?? defaultHrZoneThresholds)[3].toString()}
+              value={mafHr}
+              onInput={(e) => setMafHr((e.target as HTMLInputElement).value)}
+              onBlur={handleMafHrBlur}
+            />
+            <span class="unit">bpm</span>
+          </div>
+          <p class="field-description">
+            The default Low-HR rule counts a run as low-HR when at least 85 % of its time is at or below this
+            (retune it under Deduction rules). Leave empty to use the start of zone 3 (the zone-2 upper
+            bound).
+          </p>
+        </div>
       </SettingsSection>
 
       <SettingsSection

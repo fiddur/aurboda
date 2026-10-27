@@ -141,3 +141,12 @@
     color: #a78bfa;
   }
 }
+
+.route-low-hr-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin: 0.75rem 0 0;
+  font-size: 0.9rem;
+  cursor: pointer;
+}

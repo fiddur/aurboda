@@ -11,9 +11,16 @@ import {
   type ActivitySessionsResponse,
   type AddActivityTypeDefinitionBody,
   addActivityTypeDefinitionBodySchema,
+  type BaseResponse,
+  type ItemValueAliasesQuery,
+  itemValueAliasesQuerySchema,
+  type ItemValueAliasesResponse,
   type MergeActivityTypeBody,
   mergeActivityTypeBodySchema,
   type MergeActivityTypeResponse,
+  type MergeItemValuesBody,
+  mergeItemValuesBodySchema,
+  type MergeItemValuesResponse,
   type RenameActivityTypeBody,
   renameActivityTypeBodySchema,
   type RenameActivityTypeResponse,
@@ -29,6 +36,7 @@ import {
   renameActivityTypeDefinition,
   updateActivityTypeDefinition,
 } from '../services/activity-type-definitions.ts'
+import { deleteAlias, listAliases, mergeItemValues } from '../services/item-value-aliases.ts'
 import {
   queryActivityFieldValues,
   queryActivitySessions,
@@ -71,6 +79,44 @@ export const createActivityTypesRouter = (authMiddleware: RequestHandler): Typed
     async (req, res) => {
       const values = await queryActivityFieldValues(req.user!, req.params.name, req.query.field)
       res.json({ data: values, success: true })
+    },
+  )
+
+  router.post<{ name: string }, MergeItemValuesResponse, MergeItemValuesBody>(
+    '/:name/item-values/merge',
+    authMiddleware,
+    validateBody(mergeItemValuesBodySchema),
+    async (req, res) => {
+      const result = await mergeItemValues(req.user!, req.params.name, req.body)
+      if (!result.success) {
+        const status = result.error.includes('not found') ? 404 : 400
+        return res.status(status).json({ error: result.error, success: false })
+      }
+      res.json({ data: result.data, success: true })
+    },
+  )
+
+  router.get<{ name: string }, ItemValueAliasesResponse, unknown, ItemValueAliasesQuery>(
+    '/:name/item-values/aliases',
+    authMiddleware,
+    validateQuery(itemValueAliasesQuerySchema),
+    async (req, res) => {
+      const result = await listAliases(req.user!, req.params.name, req.query.field)
+      if (!result.success) {
+        const status = result.error.includes('not found') ? 404 : 400
+        return res.status(status).json({ error: result.error, success: false })
+      }
+      res.json({ data: result.data, success: true })
+    },
+  )
+
+  router.delete<{ name: string; id: string }, BaseResponse>(
+    '/:name/item-values/aliases/:id',
+    authMiddleware,
+    async (req, res) => {
+      const result = await deleteAlias(req.user!, req.params.id)
+      if (!result.success) return res.status(404).json({ error: result.error, success: false })
+      res.json({ success: true })
     },
   )
 

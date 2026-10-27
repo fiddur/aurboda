@@ -39,7 +39,9 @@ import {
 import { auditError } from './audit-log.ts'
 import { getCustomMetrics } from './custom-metrics.ts'
 import { validateActivityData } from './data-schema-validation.ts'
+import { aliasActivityData } from './item-value-aliases.ts'
 import { syncNoteTimesForEntity } from './notes.ts'
+import { reanalyseActivities, reanalyseOverrideTargets } from './track-analyse.ts'
 
 export interface AddMetricInput {
   metric: string
@@ -306,7 +308,8 @@ export async function addActivity(
     }
   }
 
-  const dataError = await validateDataForType(user, input.activity_type, input.data)
+  const data = await aliasActivityData(user, input.data)
+  const dataError = await validateDataForType(user, input.activity_type, data)
   if (dataError) return { error: dataError, success: false }
 
   // Equal times are valid — point-in-time activities have no duration.
@@ -324,7 +327,7 @@ export async function addActivity(
       input.start_time,
       input.merge_span,
       undefined,
-      input.data,
+      data,
     )
     if (existing?.id) {
       const newEndTime = input.end_time ?? input.start_time
@@ -347,7 +350,7 @@ export async function addActivity(
 
   await dbInsertActivity(user, {
     activity_type: input.activity_type,
-    data: input.data,
+    data,
     end_time: input.end_time,
     id,
     source: 'aurboda',
@@ -377,7 +380,7 @@ export async function addActivity(
           operation: 'insert',
           payload: {
             activity_type: input.activity_type,
-            data: input.data,
+            data,
             end_time: input.end_time?.toISOString(),
             notes: input.notes,
             start_time: input.start_time.toISOString(),
@@ -426,6 +429,7 @@ export async function deleteActivity(user: string, id: string): Promise<DeleteAc
   // but when a winner is deleted a previously-superseded sibling becomes the new winner.
   if (deleted && activity) {
     await materializeSuperseded(user, activity.start_time)
+    await reanalyseOverrideTargets(user, activity)
   }
 
   // Enqueue outbound delete if this was an aurboda-owned HC-syncable activity (best-effort)
@@ -535,7 +539,8 @@ export async function updateActivity(
     }
   }
 
-  const mergedData = input.data ? { ...before.data, ...input.data } : before.data
+  const inputData = await aliasActivityData(user, input.data)
+  const mergedData = inputData ? { ...before.data, ...inputData } : before.data
 
   if (mergedData) {
     const dataError = await validateDataForType(user, finalType, mergedData)
@@ -654,6 +659,12 @@ export async function updateActivity(
     await materializeSuperseded(user, before.start_time)
   }
 
+  if (isTypeChanging) {
+    // Tracks, routes and features are keyed by the synced rows, so every row of the edit can own one.
+    // Before the notifications, so the rules they re-evaluate read the recomputed features.
+    const trackOwnerIds = [...new Set([target.id!, updated.id!, ...(updated.override_target_ids ?? [])])]
+    await reanalyseActivities(user, trackOwnerIds)
+  }
   onMutated?.(user, updated.activity_type, updated.start_time, updated.end_time ?? updated.start_time)
   if (isTypeChanging) {
     onMutated?.(user, before.activity_type, before.start_time, before.end_time ?? before.start_time)

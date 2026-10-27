@@ -204,3 +204,114 @@
   margin-top: 0.75rem;
   font-size: 0.875rem;
 }
+
+.activity-type-item-merge-open {
+  margin-top: 0.5rem;
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 0.85rem;
+  color: #673ab8;
+  cursor: pointer;
+}
+
+.activity-type-item-merge-open:hover {
+  text-decoration: underline;
+}
+
+.activity-type-item-merge {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: 28rem;
+  margin-top: 0.75rem;
+}
+
+.activity-type-item-merge label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.activity-type-item-merge-label {
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.activity-type-item-merge input {
+  padding: 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+.activity-type-item-merge-note {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+.activity-type-item-merge-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.activity-type-item-merge-confirm,
+.activity-type-item-merge-cancel {
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.activity-type-item-merge-confirm {
+  border: none;
+  background: #673ab8;
+  color: #fff;
+}
+
+.activity-type-item-merge-confirm:hover:not(:disabled) {
+  background: #5a32a3;
+}
+
+.activity-type-item-merge-confirm:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.activity-type-item-merge-cancel {
+  border: 1px solid #d1d5db;
+  background: transparent;
+  color: #374151;
+}
+
+.activity-type-item-merge-cancel:hover {
+  background: #f3f4f6;
+}
+
+@media (prefers-color-scheme: dark) {
+  .activity-type-item-merge-open {
+    color: #a78bfa;
+  }
+
+  .activity-type-item-merge-label,
+  .activity-type-item-merge-note {
+    color: #9ca3af;
+  }
+
+  .activity-type-item-merge input {
+    background: #111827;
+    border-color: #4b5563;
+    color: #e5e7eb;
+  }
+
+  .activity-type-item-merge-cancel {
+    border-color: #4b5563;
+    color: #d1d5db;
+  }
+
+  .activity-type-item-merge-cancel:hover {
+    background: #374151;
+  }
+}

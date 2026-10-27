@@ -305,6 +305,9 @@ export const activitiesTables: Record<string, string> = {
       updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `,
+  deduction_rules_output_category: `
+    ALTER TABLE deduction_rules ADD COLUMN IF NOT EXISTS output_category VARCHAR(64)
+  `,
   deduction_rules_indexes: `
     CREATE INDEX IF NOT EXISTS idx_deduction_rules_enabled ON deduction_rules (enabled, priority) WHERE enabled = true
   `,
@@ -363,5 +366,18 @@ export const activitiesTables: Record<string, string> = {
     CREATE INDEX IF NOT EXISTS idx_tags_tag_key ON tags (tag_key) WHERE tag_key IS NOT NULL;
     CREATE INDEX IF NOT EXISTS idx_tags_not_deleted ON tags (start_time DESC) WHERE deleted_at IS NULL;
     CREATE INDEX IF NOT EXISTS idx_tags_definition_id ON tags (tag_definition_id) WHERE tag_definition_id IS NOT NULL
+  `,
+
+  item_value_aliases: `
+    CREATE TABLE IF NOT EXISTS item_value_aliases (
+      id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      field      VARCHAR(200) NOT NULL,
+      alias      TEXT NOT NULL,
+      value      TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
+  item_value_aliases_indexes: `
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_item_value_aliases_field_alias ON item_value_aliases (field, lower(btrim(alias)))
   `,
 }

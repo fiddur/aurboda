@@ -2,7 +2,7 @@ import { type ActivitySession, activityMeasureLabels } from '@aurboda/api-spec'
 import { format } from 'date-fns'
 import { useState } from 'preact/hooks'
 
-import { formatMeasure, formatSet, formatSets, topSet } from '../../utils/measures'
+import { formatMeasure, formatSet, formatSets, recordBadge, topSet } from '../../utils/measures'
 import '../../components/sessions/sessions.css'
 
 const PAGE = 25
@@ -50,7 +50,7 @@ export const ItemSessionsTable = ({ sessions }: { sessions: ActivitySession[] })
                 <td class="activity-type-item-badges">
                   {s.records?.map((m) => (
                     <span key={m} class="activity-type-item-pr" title={activityMeasureLabels[m]}>
-                      PR
+                      {recordBadge(m)}
                     </span>
                   ))}
                 </td>

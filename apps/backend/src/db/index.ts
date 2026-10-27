@@ -107,6 +107,7 @@ export {
   insertDeductionRule,
   insertDeductionRuleRun,
   pruneDeductionRuleRuns,
+  removeRuleCategoryEntries,
   updateDeductionRule,
 } from './deduction-rules.ts'
 
@@ -172,6 +173,8 @@ export {
   pickOverrideWinner,
   restoreActivity,
   restoreEmptyImportTombstone,
+  restoreSetlessTombstone,
+  rewriteItemValue,
   updateActivity,
   updateActivityEndTimeByExternalId,
   updateActivityTypeByTagKey,
@@ -590,7 +593,7 @@ export {
   type UserNutrientRecommendationRow,
 } from './user-nutrient-recommendations.ts'
 
-export { getUserSettings, upsertUserSettings } from './settings.ts'
+export { claimSettingsFlag, claimSettingsFlagIn, getUserSettings, upsertUserSettings } from './settings.ts'
 
 export { deleteGoal, getGoals, insertGoal, replaceGoals } from './goals.ts'
 
@@ -652,8 +655,9 @@ export {
 
 export {
   attachActivityToRoute,
-  createRouteFromTrack,
+  createRouteWithPair,
   deleteRoute,
+  detachActivityFromRoute,
   findRouteCandidates,
   findUnroutedTrackCandidates,
   getRouteById,
@@ -665,6 +669,7 @@ export {
   listRouteEfforts,
   listRoutes,
   listUnroutedTrackedActivities,
+  markRouteMatchAttempted,
   mergeRoutes,
   routeDirectionFractions,
   trackDirectionFractions,
@@ -690,3 +695,12 @@ export {
   type StravaBackfillCandidate,
   type TrackBackfillPage,
 } from './tracks.ts'
+
+export {
+  deleteItemValueAlias,
+  deleteItemValueAliasesByAlias,
+  type ItemValueAliasRow,
+  listItemValueAliases,
+  repointItemValueAliases,
+  upsertItemValueAlias,
+} from './item-value-aliases.ts'

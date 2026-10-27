@@ -12,6 +12,7 @@ import {
   getTagMappings,
   hrZonesFromSettings,
   type HrZoneThresholds,
+  lowHrCeiling,
   setTagMapping,
   validateAndUpdateSettings,
 } from './settings.ts'
@@ -127,6 +128,16 @@ describe('getSettingsResponse', () => {
     expect(result.hr_zone_start).toEqual({ 1: 90, 2: 108, 3: 126, 4: 144, 5: 162 })
     expect(result.oura_connected).toBe(false)
     expect(result.rescue_time_key).toBeNull()
+    expect(result.maf_hr).toBeNull()
+  })
+
+  test('passes a stored maf_hr through', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue({ maf_hr: 142 })
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+
+    const result = await getSettingsResponse('testuser')
+
+    expect(result.maf_hr).toBe(142)
   })
 
   test('returns formatted response with custom zones', async () => {
@@ -312,6 +323,63 @@ describe('validateAndUpdateSettings', () => {
     expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { lastfm_username: 'bob' }, [
       'timeline_show_replies',
     ])
+  })
+
+  test('stores maf_hr and clears it with null', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue({})
+    vi.mocked(db.upsertUserSettings).mockResolvedValue({})
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+
+    await validateAndUpdateSettings('testuser', { maf_hr: 140 })
+    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { maf_hr: 140 }, [])
+
+    await validateAndUpdateSettings('testuser', { maf_hr: null })
+    expect(db.upsertUserSettings).toHaveBeenLastCalledWith('testuser', {}, ['maf_hr'])
+  })
+
+  const zones: HrZoneThresholds = { 1: 86, 2: 103, 3: 121, 4: 138, 5: 155 }
+
+  test.each<[string, Record<string, unknown>, Record<string, unknown>]>([
+    ['custom zones set', {}, { hr_zone_start: zones }],
+    ['custom zones cleared', { hr_zone_start: zones }, { hr_zone_start: null }],
+    ['birth date set', {}, { birth_date: '1985-03-15' }],
+    ['birth date cleared', { birth_date: '1985-03-15' }, { birth_date: null }],
+    ['maf_hr set', {}, { maf_hr: 140 }],
+    ['maf_hr cleared', { maf_hr: 140 }, { maf_hr: null }],
+  ])('calls the HR settings hook when the effective inputs change: %s', async (_name, stored, input) => {
+    vi.mocked(db.getUserSettings).mockResolvedValue(stored)
+    vi.mocked(db.upsertUserSettings).mockResolvedValue({})
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+    const onHrSettingsChanged = vi.fn()
+
+    await validateAndUpdateSettings('testuser', input, onHrSettingsChanged)
+
+    expect(onHrSettingsChanged).toHaveBeenCalledWith('testuser')
+  })
+
+  test.each<[string, Record<string, unknown>, Record<string, unknown>]>([
+    ['another key', {}, { lastfm_username: 'bob' }],
+    ['the same maf_hr again', { maf_hr: 140 }, { maf_hr: 140 }],
+    ['clearing an unset maf_hr', {}, { maf_hr: null }],
+    ['a birth date under custom zones', { hr_zone_start: zones }, { birth_date: '1985-03-15' }],
+    ['a rejected update', {}, { maf_hr: 300 }],
+  ])('does not call the HR settings hook for %s', async (_name, stored, input) => {
+    vi.mocked(db.getUserSettings).mockResolvedValue(stored)
+    vi.mocked(db.upsertUserSettings).mockResolvedValue({})
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+    const onHrSettingsChanged = vi.fn()
+
+    await validateAndUpdateSettings('testuser', input, onHrSettingsChanged)
+
+    expect(onHrSettingsChanged).not.toHaveBeenCalled()
+  })
+
+  test('rejects a maf_hr out of range', async () => {
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+
+    const result = await validateAndUpdateSettings('testuser', { maf_hr: 300 })
+
+    expect(result.success).toBe(false)
   })
 
   test('updates HR zones with valid input', async () => {
@@ -584,6 +652,18 @@ describe('hrZonesFromSettings', () => {
 
   test('default zones without settings', () => {
     expect(hrZonesFromSettings({})).toEqual({ source: 'default', zones: calculateDefaultHrZones(null) })
+  })
+})
+
+describe('lowHrCeiling', () => {
+  const zones: HrZoneThresholds = { 1: 86, 2: 103, 3: 121, 4: 138, 5: 155 }
+
+  test('the MAF setting wins', () => {
+    expect(lowHrCeiling({ maf_hr: 142 }, zones)).toBe(142)
+  })
+
+  test('falls back to the zone-2 upper bound (start of zone 3)', () => {
+    expect(lowHrCeiling({}, zones)).toBe(121)
   })
 })
 

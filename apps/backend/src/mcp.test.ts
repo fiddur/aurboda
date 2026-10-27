@@ -91,6 +91,7 @@ vi.mock('./db', () => ({
   insertTimeSeries: vi.fn().mockResolvedValue(undefined),
   materializeSuperseded: vi.fn(),
   restoreEmptyImportTombstone: vi.fn(),
+  restoreSetlessTombstone: vi.fn(),
   softDeleteActivityByExternalId: vi.fn(),
   softDeleteSupersededLocations: vi.fn().mockResolvedValue(0),
   updateActivityTypeDefinition: vi.fn(),
@@ -804,7 +805,25 @@ describe('MCP Server', () => {
         undefined,
         undefined,
         undefined,
+        undefined,
       )
+    })
+
+    test('passes a run category filter through', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      vi.mocked(queries.queryActivities).mockResolvedValue([])
+
+      const response = await callTool(app, token, 'query_activities', {
+        category: 'low_hr',
+        end: '2024-01-31T23:59:59Z',
+        start: '2024-01-01T00:00:00Z',
+        types: ['running'],
+        tz: 'UTC',
+      })
+
+      expect(response.status).toBe(200)
+      expect(vi.mocked(queries.queryActivities).mock.calls.at(-1)?.[8]).toBe('low_hr')
     })
 
     test('passes a route filter through', async () => {

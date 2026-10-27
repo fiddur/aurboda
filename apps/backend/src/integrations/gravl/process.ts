@@ -14,7 +14,9 @@
  * A workout the Gravl app itself imported from another app (`type: 'external'`)
  * is a round-trip: Gravl writes it back into Health Connect under its own
  * `clientRecordId`, so it first lands here as a `gravl` strength session that
- * outranks the original. Those copies are removed rather than ignored.
+ * outranks the original. Those copies are removed rather than ignored, unless
+ * sets were logged onto the session in Gravl (#1333): then it is imported like
+ * any other workout, restoring a copy an earlier run removed.
  *
  * A workout with no logged set (started and abandoned in Gravl) is not
  * imported either: it carries nothing Aurboda lacks, and its empty row would
@@ -32,10 +34,12 @@ import {
   insertRawRecord,
   materializeSuperseded,
   restoreEmptyImportTombstone,
+  restoreSetlessTombstone,
   softDeleteActivityByExternalId,
 } from '../../db/index.ts'
 import { upsertSyncedNote } from '../../db/notes.ts'
 import { auditInfo } from '../../services/audit-log.ts'
+import { aliasActivityData } from '../../services/item-value-aliases.ts'
 import { GRAVL_HC_ORIGIN, gravlWorkoutExternalId } from '../../services/source-identity.ts'
 
 /** Gravl reports every set weight in pounds regardless of the user's unit preference. */
@@ -64,38 +68,73 @@ export interface GravlSetRecord {
 
 export interface GravlProcessDeps {
   adoptLegacyActivity: typeof adoptLegacyActivity
+  aliasActivityData: typeof aliasActivityData
   auditInfo: typeof auditInfo
   findActivityByExternalId: typeof findActivityByExternalId
   insertActivity: typeof insertActivity
   insertRawRecord: typeof insertRawRecord
   materializeSuperseded: typeof materializeSuperseded
   restoreEmptyImportTombstone: typeof restoreEmptyImportTombstone
+  restoreSetlessTombstone: typeof restoreSetlessTombstone
   softDeleteActivityByExternalId: typeof softDeleteActivityByExternalId
   upsertSyncedNote: typeof upsertSyncedNote
 }
 
 const defaultDeps: GravlProcessDeps = {
   adoptLegacyActivity,
+  aliasActivityData,
   auditInfo,
   findActivityByExternalId,
   insertActivity,
   insertRawRecord,
   materializeSuperseded,
   restoreEmptyImportTombstone,
+  restoreSetlessTombstone,
   softDeleteActivityByExternalId,
   upsertSyncedNote,
 }
 
-/** Health Connect sessions round-tripped into Gravl from other apps carry no sets and must not be imported. */
+/** A Health Connect session round-tripped into Gravl from another app. */
 export const isExternalWorkout = (workout: { type: string }): boolean =>
   workout.type.toLowerCase() === 'external'
 
-/** Only a workout Gravl logged itself, holding at least one set, carries anything Aurboda does not already have. */
-export const isStrengthWorkout = (workout: GravlWorkoutSummary | GravlWorkoutDetail): boolean =>
-  !isExternalWorkout(workout) &&
-  ('exercises' in workout
-    ? workout.exercises.some((exercise) => exercise.sets.length > 0)
-    : workout.exerciseCount > 0)
+const positive = (value: number | null | undefined): number | null =>
+  typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null
+
+const isPositive = (value: number | null | undefined): boolean => positive(value) !== null
+
+/**
+ * Gravl stores the session it imported as one cardio pseudo-exercise whose set
+ * holds duration and distance; a timed strength set (a plank) has no distance.
+ */
+const isLoggedSet = (set: GravlSet): boolean =>
+  isPositive(set.reps) || isPositive(set.weight) || (isPositive(set.duration) && !isPositive(set.distance))
+
+export const hasLoggedSets = (detail: GravlWorkoutDetail): boolean =>
+  detail.exercises.some((exercise) => exercise.sets.some(isLoggedSet))
+
+/** An external workout without its pseudo-exercise, so the imported session is only what was logged in Gravl. */
+export const withLoggedExercises = (detail: GravlWorkoutDetail): GravlWorkoutDetail =>
+  isExternalWorkout(detail)
+    ? { ...detail, exercises: detail.exercises.filter((exercise) => exercise.sets.some(isLoggedSet)) }
+    : detail
+
+/** The list has no sets, and the pseudo-exercise alone counts as one exercise with no volume. */
+export const mayCarryLoggedSets = (summary: Pick<GravlWorkoutSummary, 'exerciseCount' | 'volume'>): boolean =>
+  summary.exerciseCount >= 2 || (summary.exerciseCount === 1 && isPositive(summary.volume))
+
+/**
+ * Only a workout holding at least one set carries anything Aurboda does not
+ * already have; for an external one, the sets must have been logged in Gravl.
+ */
+export const isStrengthWorkout = (workout: GravlWorkoutSummary | GravlWorkoutDetail): boolean => {
+  if ('exercises' in workout) {
+    return isExternalWorkout(workout)
+      ? hasLoggedSets(workout)
+      : workout.exercises.some((exercise) => exercise.sets.length > 0)
+  }
+  return isExternalWorkout(workout) ? mayCarryLoggedSets(workout) : workout.exerciseCount > 0
+}
 
 const setKind = (setType: GravlSet['setType']): GravlSetKind => {
   switch (setType.toLowerCase()) {
@@ -109,9 +148,6 @@ const setKind = (setType: GravlSet['setType']): GravlSetKind => {
       return 'normal'
   }
 }
-
-const positive = (value: number | null | undefined): number | null =>
-  typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null
 
 const buildSet = (exercise: GravlWorkoutExercise, set: GravlSet): GravlSetRecord => ({
   distance: positive(set.distance),
@@ -210,10 +246,10 @@ export const buildGravlRawRecord = (detail: GravlWorkoutDetail): RawRecord => ({
  * `enriched`: a row that reached us another way (Health Connect) gained its
  * sets; `updated`: a row Gravl itself wrote earlier was re-processed;
  * `created`: nothing existed for the workout; `removed`: an External
- * round-trip whose Health Connect copy was removed, or a set-less workout
- * whose empty import was retracted; `skipped`: an External or set-less
- * workout with no live row of ours, a workout whose row is tombstoned (for
- * any reason), or a rate-limit hold (enrichment).
+ * round-trip without logged sets whose Health Connect copy was removed, or a
+ * set-less workout whose empty import was retracted; `skipped`: an External
+ * or set-less workout with no live row of ours, a workout whose row is
+ * tombstoned (for any reason), or a rate-limit hold (enrichment).
  */
 export type GravlProcessOutcome = 'enriched' | 'updated' | 'created' | 'removed' | 'skipped'
 
@@ -294,21 +330,30 @@ export const retractEmptyGravlImport = async (
  * (matched on Gravl's own `clientRecordId`) before upserting, so an existing
  * session is enriched in place and a new one created only when Health Connect
  * never delivered it. A retracted empty import is restored first, since the
- * workout now has sets; any other tombstone blocks the write and the workout
- * is reported `skipped`.
+ * workout now has sets, and so is the removed copy of an external workout
+ * whose sets were logged since; any other tombstone blocks the write and the
+ * workout is reported `skipped`.
  */
 export const processGravlWorkout = async (
   user: string,
   detail: GravlWorkoutDetail,
   deps: GravlProcessDeps = defaultDeps,
 ): Promise<GravlProcessOutcome> => {
-  if (isExternalWorkout(detail)) return removeExternalGravlWorkout(user, detail.id, deps)
-  if (!isStrengthWorkout(detail)) return retractEmptyGravlImport(user, detail.id, deps)
+  const external = isExternalWorkout(detail)
+  if (!isStrengthWorkout(detail)) {
+    return external
+      ? removeExternalGravlWorkout(user, detail.id, deps)
+      : retractEmptyGravlImport(user, detail.id, deps)
+  }
 
-  const activity = buildGravlActivity(detail)
+  const logged = withLoggedExercises(detail)
+  const built = buildGravlActivity(logged)
+  const activity = { ...built, data: await deps.aliasActivityData(user, built.data) }
   const externalId = activity.external_id!
 
-  const restored = await deps.restoreEmptyImportTombstone(user, 'gravl', externalId)
+  const restored = external
+    ? await deps.restoreSetlessTombstone(user, 'gravl', externalId)
+    : await deps.restoreEmptyImportTombstone(user, 'gravl', externalId)
 
   await deps.insertRawRecord(user, buildGravlRawRecord(detail))
 
@@ -334,7 +379,7 @@ export const processGravlWorkout = async (
     'activity',
     id,
     'gravl',
-    formatGravlSetsNote(detail),
+    formatGravlSetsNote(logged),
     activity.start_time,
     activity.end_time,
   )

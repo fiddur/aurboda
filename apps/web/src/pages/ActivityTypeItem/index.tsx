@@ -10,16 +10,21 @@ import { fetchActivitySessions, fetchActivityTypeDefinitions, fetchChartData } f
 import { toDisplayName } from '../../utils/displayName'
 import { defaultAggregation, formatMeasure, formatSet } from '../../utils/measures'
 import {
+  availableMeasures,
+  BEST_HALF_LIFE_DAYS,
   chartExplorerHref,
+  decayingBestPoints,
   doneSummary,
+  explorerLookbackDays,
   type ItemRecord,
-  perWeekLookbackDays,
+  lookbackStart,
   perWeekRange,
   recordsFrom,
   sliceByLookback,
-  trendPoints,
+  trendMeasure,
 } from './itemHistory'
 import { ItemSessionsTable } from './ItemSessionsTable'
+import { MergeItemValue } from './MergeItemValue'
 import './style.css'
 
 const LOOKBACK_OPTIONS = [
@@ -28,8 +33,6 @@ const LOOKBACK_OPTIONS = [
   { label: '2 years', value: 730 },
   { label: 'All time', value: 0 },
 ]
-
-const TREND_MEASURES: ActivityMeasure[] = ['e1rm', 'max_weight', 'volume', 'max_time']
 
 const SET_MEASURES = new Set<ActivityMeasure>(['e1rm', 'max_weight'])
 
@@ -72,17 +75,18 @@ interface ItemRef {
   value: string
 }
 
-const PerWeek = ({
+const PerWeekChart = ({
+  all,
   item,
   lookback,
   measure,
 }: {
+  all: ActivitySession[]
   item: ItemRef
   lookback: number
   measure: ActivityMeasure
 }) => {
-  const lookbackDays = perWeekLookbackDays(lookback)
-  const range = useMemo(() => perWeekRange(lookbackDays), [lookbackDays])
+  const range = useMemo(() => perWeekRange(lookback, all), [lookback, all])
   const aggregation = defaultAggregation(measure)
   const query = useQuery({
     queryFn: () =>
@@ -100,10 +104,10 @@ const PerWeek = ({
     queryKey: ['chart-data', 'item-per-week', item, measure, range],
     staleTime: 5 * 60 * 1000,
   })
+  const lookbackDays = explorerLookbackDays(lookback, range.start)
 
   return (
-    <section class="activity-type-item-section">
-      <h2>Per week</h2>
+    <>
       {query.isLoading && <p class="loading">Loading...</p>}
       {query.isError && <p class="error">Failed to load the weekly chart</p>}
       {query.data && (
@@ -125,53 +129,60 @@ const PerWeek = ({
         <a href={chartExplorerHref({ ...item, lookbackDays, measure })}>Open in Chart Explorer</a>
         <a href="/goals">Set a goal</a>
       </div>
+    </>
+  )
+}
+
+const PerWeek = ({ all, item, lookback }: { all: ActivitySession[]; item: ItemRef; lookback: number }) => {
+  const available = availableMeasures(all)
+  const [chosen, setChosen] = useState<ActivityMeasure | undefined>(undefined)
+  const measure =
+    chosen && available.includes(chosen) ? chosen : available.includes('e1rm') ? 'e1rm' : available[0]
+  if (!measure) return null
+
+  return (
+    <section class="activity-type-item-section">
+      <div class="activity-type-item-section-header">
+        <h2>Per week</h2>
+        <select
+          aria-label="Measure"
+          value={measure}
+          onChange={(e) => setChosen((e.target as HTMLSelectElement).value as ActivityMeasure)}
+        >
+          {available.map((m) => (
+            <option key={m} value={m}>
+              {activityMeasureLabels[m]}
+            </option>
+          ))}
+        </select>
+      </div>
+      <PerWeekChart all={all} item={item} lookback={lookback} measure={measure} />
     </section>
   )
 }
 
-const Trend = ({
-  all,
-  item,
-  lookback,
-  shown,
-}: {
-  all: ActivitySession[]
-  item: ItemRef
-  lookback: number
-  shown: ActivitySession[]
-}) => {
-  const available = TREND_MEASURES.filter((m) => all.some((s) => s.measures?.[m] !== undefined))
-  const [chosen, setChosen] = useState<ActivityMeasure | undefined>(undefined)
-  const measure = chosen && available.includes(chosen) ? chosen : available[0]
+const Trend = ({ all, lookback }: { all: ActivitySession[]; lookback: number }) => {
+  const measure = trendMeasure(all)
   if (!measure) return null
-  const points = trendPoints(shown, measure)
+  const now = Date.now()
+  const from = lookback > 0 ? lookbackStart(lookback, now) : -Infinity
+  const points = decayingBestPoints(all, measure, BEST_HALF_LIFE_DAYS, now).filter(
+    (p) => new Date(p.date).getTime() >= from,
+  )
 
   return (
-    <>
-      <section class="activity-type-item-section">
-        <div class="activity-type-item-section-header">
-          <h2>Trend</h2>
-          <select
-            aria-label="Measure"
-            value={measure}
-            onChange={(e) => setChosen((e.target as HTMLSelectElement).value as ActivityMeasure)}
-          >
-            {available.map((m) => (
-              <option key={m} value={m}>
-                {activityMeasureLabels[m]}
-              </option>
-            ))}
-          </select>
-        </div>
-        {points.length >= 2 && (
-          <>
-            <TrendLineChart data={points} color="#8b5cf6" height={220} />
-            <p class="activity-type-item-caption">Per session.</p>
-          </>
-        )}
-      </section>
-      <PerWeek item={item} lookback={lookback} measure={measure} />
-    </>
+    <section class="activity-type-item-section">
+      <h2>Trend</h2>
+      {points.length >= 2 && (
+        <>
+          <TrendLineChart data={points} color="#8b5cf6" height={220} />
+          <p class="activity-type-item-caption">
+            {activityMeasureLabels[measure]}, decaying with a {BEST_HALF_LIFE_DAYS}-day half-life between
+            sessions.
+          </p>
+        </>
+      )}
+    </section>
   )
 }
 
@@ -207,6 +218,15 @@ export function ActivityTypeItem() {
       <header class="activity-type-item-header">
         <h1>{value}</h1>
         <p class="activity-type-item-subtitle">{typeName}</p>
+        {sessions.length > 0 && (
+          <MergeItemValue
+            key={value}
+            name={name}
+            field={field}
+            value={value}
+            sessionCount={sessions.length}
+          />
+        )}
       </header>
 
       {query.isLoading && <p class="loading">Loading...</p>}
@@ -233,7 +253,8 @@ export function ActivityTypeItem() {
             </select>
           </label>
 
-          <Trend all={sessions} item={item} lookback={lookback} shown={shown} />
+          <Trend all={sessions} lookback={lookback} />
+          <PerWeek all={sessions} item={item} lookback={lookback} />
 
           <section class="activity-type-item-section">
             <h2>History</h2>

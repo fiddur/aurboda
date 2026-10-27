@@ -18,14 +18,9 @@ import type {
   WidgetDataMap,
 } from '@aurboda/api-spec'
 
-import {
-  hrZoneMetrics,
-  isExerciseActivityType,
-  isKnownTimezone,
-  metricCardLookbackDays,
-} from '@aurboda/api-spec'
+import { hrZoneMetrics, isExerciseActivityType, metricCardLookbackDays } from '@aurboda/api-spec'
 
-import { getAllActivityTypeNames, getUserSettings } from '../db/index.ts'
+import { getAllActivityTypeNames } from '../db/index.ts'
 import { maskBreakdownNames } from './breakdown-mask.ts'
 import { getChartData } from './chart-data.ts'
 import { getActivityImpact } from './correlations/activity-impact.ts'
@@ -34,7 +29,7 @@ import { getCustomMetrics } from './custom-metrics.ts'
 import { getGoalsProgress } from './goals.ts'
 import { getLatestSleep } from './latest-sleep.ts'
 import { getPeriodSummary, queryActivities, queryMetrics } from './queries/index.ts'
-import { getEffectiveHrZones } from './settings.ts'
+import { getEffectiveHrZones, getUserTimezone } from './settings.ts'
 import { getTrend } from './trends.ts'
 
 /** Widget metric names that map to a different stored metric name. */
@@ -364,12 +359,6 @@ const nullData = (type: DashboardWidget['type']): WidgetData => {
  */
 const MAX_RESOLVED_WIDGETS = 60
 
-/** The owner's stored timezone, so a visitor sees the owner's calendar days. */
-const ownerTimezone = async (user: string): Promise<string> => {
-  const tz = (await getUserSettings(user))?.device_timezone
-  return tz && isKnownTimezone(tz) ? tz : 'UTC'
-}
-
 /**
  * Resolve all widget data for a stored dashboard config, keyed by widget id.
  * Each widget resolves independently; a failure yields a null-data entry rather
@@ -383,7 +372,7 @@ export const resolveDashboardData = async (user: string, config: DashboardConfig
     )
   }
   const widgets = allWidgets.slice(0, MAX_RESOLVED_WIDGETS)
-  const tz = await ownerTimezone(user)
+  const tz = await getUserTimezone(user)
   const entries = await Promise.all(
     widgets.map(async (widget): Promise<[string, WidgetData]> => {
       try {

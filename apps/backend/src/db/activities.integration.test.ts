@@ -25,6 +25,7 @@ import {
   insertOverride,
   markActivityDetailSynced,
   restoreEmptyImportTombstone,
+  restoreSetlessTombstone,
   softDeleteActivityByExternalId,
   updateActivity,
   upsertActivity,
@@ -506,6 +507,80 @@ describe('Activities Integration Tests', () => {
       expect((await findAdjacentActivity(user, 'yoga', 'next', time, [ids.sameGroup], none))?.id).toBe(
         ids.after,
       )
+    })
+  })
+
+  describe('getActivities category filter', () => {
+    test('keeps only activities whose run_categories carry the category', async () => {
+      const user = getTestUser()
+      const run = (id: string, startIso: string, data?: Record<string, unknown>) =>
+        insertActivity(user, {
+          activity_type: 'running',
+          data,
+          end_time: new Date(new Date(startIso).getTime() + 30 * 60_000),
+          id,
+          source: 'garmin',
+          start_time: new Date(startIso),
+        })
+      const easy = randomUUID()
+      const both = randomUUID()
+      await run(easy, '2024-02-01T07:00:00Z', { run_categories: [{ category: 'low_hr', reasons: ['r'] }] })
+      await run(both, '2024-02-02T07:00:00Z', {
+        run_categories: [
+          { category: 'long', reasons: [] },
+          { category: 'low_hr', reasons: ['added by hand'] },
+        ],
+      })
+      await run(randomUUID(), '2024-02-03T07:00:00Z', {
+        run_categories: [{ category: 'tempo', reasons: [] }],
+      })
+      await run(randomUUID(), '2024-02-04T07:00:00Z')
+
+      const range = [new Date('2024-02-01T00:00:00Z'), new Date('2024-02-05T00:00:00Z')] as const
+      const filtered = await getActivities(
+        user,
+        'running',
+        ...range,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        'low_hr',
+      )
+      const all = await getActivities(user, 'running', ...range)
+
+      expect(filtered.map((a) => a.id)).toEqual([easy, both])
+      expect(all).toHaveLength(4)
+      expect(
+        await getActivities(user, 'running', ...range, undefined, undefined, undefined, undefined, 'hard'),
+      ).toEqual([])
+    })
+
+    test("a synced row is judged by its override's categories, and both rows stay in the merge", async () => {
+      const user = getTestUser()
+      const start = new Date('2024-03-01T07:00:00Z')
+      const end = new Date('2024-03-01T07:30:00Z')
+      const synced = await insertActivity(user, {
+        activity_type: 'running',
+        data: { run_categories: [{ category: 'tempo', reasons: [] }] },
+        end_time: end,
+        source: 'garmin',
+        start_time: start,
+      })
+      const override = await insertOverride(user, [synced], {
+        activity_type: 'running',
+        data: { run_categories: [{ category: 'low_hr', reasons: ['added by hand'] }] },
+        end_time: end,
+        start_time: start,
+      })
+      const range = [new Date('2024-03-01T00:00:00Z'), new Date('2024-03-02T00:00:00Z')] as const
+      const byCategory = (category: string) =>
+        getActivities(user, 'running', ...range, undefined, undefined, undefined, undefined, category)
+
+      const found = await byCategory('low_hr')
+      expect(found).toHaveLength(1)
+      expect(found[0]!.source_ids?.toSorted()).toEqual([override!.id, synced].toSorted())
+      expect(await byCategory('tempo')).toEqual([])
     })
   })
 
@@ -1552,6 +1627,69 @@ describe('Activities Integration Tests', () => {
     test('returns false when nothing matches', async () => {
       const user = getTestUser()
       expect(await restoreEmptyImportTombstone(user, 'gravl', 'gravl-workout-unknown')).toBe(false)
+    })
+  })
+
+  describe('restoreSetlessTombstone', () => {
+    const tombstoned = async (user: string, externalId: string, data?: Record<string, unknown>) => {
+      const id = await insertActivity(user, {
+        activity_type: 'strength_training',
+        data,
+        external_id: externalId,
+        source: 'gravl',
+        start_time: new Date('2026-08-30T12:03:00Z'),
+        title: 'External Workout',
+      })
+      await softDeleteActivityByExternalId(user, 'gravl', externalId)
+      return id
+    }
+
+    test('restores a removed Health Connect copy, whatever else its data holds', async () => {
+      const user = getTestUser()
+      const hc = await tombstoned(user, 'gravl-workout-ext-hc', {
+        metadata: { dataOrigin: 'com.liteup.getgains' },
+      })
+      const legacy = await tombstoned(user, 'gravl-workout-ext-legacy', {
+        metadata: { dataOrigin: 'com.liteup.getgains' },
+        sets: [],
+      })
+      const bare = await tombstoned(user, 'gravl-workout-ext-bare')
+
+      expect(await restoreSetlessTombstone(user, 'gravl', 'gravl-workout-ext-hc')).toBe(true)
+      expect(await restoreSetlessTombstone(user, 'gravl', 'gravl-workout-ext-legacy')).toBe(true)
+      expect(await restoreSetlessTombstone(user, 'gravl', 'gravl-workout-ext-bare')).toBe(true)
+      expect(await findActivityByExternalId(user, 'gravl', 'gravl-workout-ext-hc')).toMatchObject({ id: hc })
+      expect(await findActivityByExternalId(user, 'gravl', 'gravl-workout-ext-legacy')).toMatchObject({
+        id: legacy,
+      })
+      expect(await findActivityByExternalId(user, 'gravl', 'gravl-workout-ext-bare')).toMatchObject({
+        id: bare,
+      })
+      expect(await restoreSetlessTombstone(user, 'gravl', 'gravl-workout-ext-hc')).toBe(false)
+    })
+
+    test('leaves a tombstone that carries sets deleted', async () => {
+      const user = getTestUser()
+      await tombstoned(user, 'gravl-workout-ext-full', { sets: [{ exercise: 'Bench Press' }] })
+
+      expect(await restoreSetlessTombstone(user, 'gravl', 'gravl-workout-ext-full')).toBe(false)
+      expect(await findActivityByExternalId(user, 'gravl', 'gravl-workout-ext-full')).toBeNull()
+    })
+
+    test('touches neither a live row nor another source', async () => {
+      const user = getTestUser()
+      await insertActivity(user, {
+        activity_type: 'strength_training',
+        external_id: 'gravl-workout-ext-live',
+        source: 'gravl',
+        start_time: new Date('2026-08-30T12:03:00Z'),
+        title: 'Live',
+      })
+      await tombstoned(user, 'gravl-workout-ext-other')
+
+      expect(await restoreSetlessTombstone(user, 'gravl', 'gravl-workout-ext-live')).toBe(false)
+      expect(await restoreSetlessTombstone(user, 'garmin', 'gravl-workout-ext-other')).toBe(false)
+      expect(await restoreSetlessTombstone(user, 'gravl', 'gravl-workout-ext-unknown')).toBe(false)
     })
   })
 

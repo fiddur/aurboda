@@ -31,6 +31,9 @@ export const effortSeries = (
     })
     .reverse()
 
+export const effortsWithCategory = (efforts: RouteEffort[], category: string): RouteEffort[] =>
+  efforts.filter((e) => e.categories?.includes(category))
+
 /** The type's display name, or the raw name while definitions are loading or for an unknown type. */
 export const typeDisplayName = (
   name: string,
