@@ -108,6 +108,29 @@
   padding: 1.5rem;
 }
 
+.chart-display-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.chart-display-header .chart-current-value {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.chart-display-header .chart-menu-root {
+  margin-left: auto;
+}
+
+.chart-caption {
+  margin: 0.5rem 0 0;
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
 .breakdown-fields {
   display: flex;
   gap: 0.75rem;
@@ -227,14 +250,6 @@
   background: #5b32a3;
 }
 
-.add-to-dash-success {
-  text-align: center;
-  padding: 1.5rem;
-  color: #059669;
-  font-weight: 500;
-  font-size: 1rem;
-}
-
 @media (prefers-color-scheme: dark) {
   .chart-page h1 {
     color: #f9fafb;
@@ -290,12 +305,12 @@
     color: #f9fafb;
   }
 
-  .chart-login-prompt h2 {
-    color: #e5e7eb;
+  .chart-caption {
+    color: #9ca3af;
   }
 
-  .add-to-dash-success {
-    color: #34d399;
+  .chart-login-prompt h2 {
+    color: #e5e7eb;
   }
 }
 
@@ -360,32 +375,6 @@
   width: 100%;
 }
 
-.mask-fields {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  margin-top: 0.25rem;
-}
-
-.mask-field-checkbox {
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  font-size: 0.9rem;
-}
-
-.mask-hint {
-  color: #999;
-  font-size: 0.8rem;
-  margin: 0.375rem 0 0;
-}
-
-.goal-form-error {
-  color: #e53e3e;
-  font-size: 0.8rem;
-  margin: 0 0 0.5rem;
-}
-
 .goal-form-actions {
   display: flex;
   gap: 0.5rem;
@@ -425,9 +414,4 @@
     border-color: #ccc;
     color: #333;
   }
-}
-
-.chart-type-btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
 }

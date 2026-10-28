@@ -111,7 +111,7 @@
 }
 
 .activity-type-item-section-header h2 {
-  margin: 0;
+  margin: 0 auto 0 0;
 }
 
 .activity-type-item-caption {
@@ -195,14 +195,6 @@
     background: #78350f;
     color: #fde68a;
   }
-}
-
-.activity-type-item-links {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  margin-top: 0.75rem;
-  font-size: 0.875rem;
 }
 
 .activity-type-item-merge-open {

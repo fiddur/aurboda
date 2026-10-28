@@ -63,44 +63,6 @@ export const availableMeasures = (sessions: ActivitySession[]): ActivityMeasure[
 
 export const BEST_HALF_LIFE_DAYS = 120
 
-const decay = (value: number, from: number, to: number, halfLifeDays: number): number =>
-  value * 2 ** (-(to - from) / DAY_MS / halfLifeDays)
-
-const oneDecimal = (value: number): number => Math.round(value * 10) / 10
-
-/**
- * A running best that decays with a half-life between sessions: each session's point is the higher of its own
- * value and the previous point decayed to it, plus a last point at `now`. Rounding happens only on output, so the
- * carried value does not accumulate rounding error.
- */
-export const decayingBestPoints = (
-  sessions: ActivitySession[],
-  measure: ActivityMeasure,
-  halfLifeDays: number,
-  now: number = Date.now(),
-): { date: string; value: number }[] => {
-  const points = oldestFirst(sessions).reduce<{ date: string; time: number; value: number }[]>((acc, s) => {
-    const value = s.measures?.[measure]
-    if (value === undefined) return acc
-    const time = new Date(s.start_time).getTime()
-    const prev = acc.at(-1)
-    const carried = prev ? decay(prev.value, prev.time, time, halfLifeDays) : -Infinity
-    return [...acc, { date: s.start_time, time, value: Math.max(value, carried) }]
-  }, [])
-  const last = points.at(-1)
-  const today =
-    last && now > last.time
-      ? [
-          {
-            date: new Date(now).toISOString(),
-            time: now,
-            value: decay(last.value, last.time, now, halfLifeDays),
-          },
-        ]
-      : []
-  return [...points, ...today].map(({ date, value }) => ({ date, value: oneDecimal(value) }))
-}
-
 export const lookbackStart = (days: number, now: number = Date.now()): number => now - days * DAY_MS
 
 /** The sessions of the last `days` days; 0 keeps them all. */

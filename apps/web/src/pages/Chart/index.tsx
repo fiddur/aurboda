@@ -1,19 +1,19 @@
+import type { ComponentChild } from 'preact'
+
 /**
  * Reads/writes config via query params so charts are shareable/bookmarkable:
  *   /chart?source_type=activity_type&pattern=coffee&lookback_days=90&display_period=monthly&half_life_days=15
  *   /chart?source_type=metric&pattern=weight&lookback_days=180&aggregation=sum&missing_days=zero
  *   /chart?source_type=activity_type&pattern=coffee&chart_type=bar&bucket_size=1d&lookback_days=30
  *   /chart?source_type=activity_type&pattern=strength_training&chart_type=bar&bucket_size=1w&measure=e1rm&aggregation=max&filter_field=sets.exercise&filter_value=Squat
+ *   /chart?source_type=activity_type&pattern=strength_training&chart_type=trend&half_life_days=120&measure=e1rm&filter_field=sets.exercise&filter_value=Squat
  */
 import {
   activityMeasureLabels,
   activityMeasures,
   type ChartDataAggregation,
   type DashboardConfig,
-  type DashboardSection,
   type DashboardWidget,
-  type SectionType,
-  type TrendGoal,
   type TrendMissingDays,
 } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -23,9 +23,12 @@ import { useCallback, useEffect, useMemo, useState } from 'preact/hooks'
 import type { ChartOrigin } from '../../utils/chart-url'
 
 import { ActivityTypePicker } from '../../components/ActivityTypePicker'
+import { BreakdownMaskPicker } from '../../components/AddToDashboardModal'
 import { BarChart, type BarClickInfo } from '../../components/charts/BarChart'
 import { BreakdownLegend, SERIES_COLORS } from '../../components/charts/breakdown'
+import { ChartMenu } from '../../components/charts/ChartMenu'
 import { TrendLineChart } from '../../components/charts/TrendLineChart'
+import { goalsHref } from '../../components/goalPrefill'
 import { MetricPicker } from '../../components/MetricPicker'
 import { categoricalFields, listFields } from '../../components/sessions/sessionView'
 import {
@@ -38,22 +41,24 @@ import {
   fetchScreentimeCategories,
   fetchTrend,
   type FetchTrendParams,
-  fetchUserSettings,
   listSharedDashboards,
   saveDashboard,
   type TrendDisplayPeriod,
   updateSharedDashboard,
-  updateUserSettings,
 } from '../../state/api'
 import { auth } from '../../state/auth'
 import { measureFilter } from '../../utils/measures'
+import { newWidgetId } from '../../utils/widget-id'
 import {
   aggregationOptions,
   filterPatch,
+  halfLifeOptions,
+  MEASURE_HALF_LIFE_DEFAULT,
   type MeasureChoice,
   measureParams,
   measurePatch,
   parseAggregation,
+  parseChartMode,
   parseMeasureQuery,
   sourceDefaultAggregation,
 } from './chartMeasures'
@@ -80,12 +85,6 @@ const LOOKBACK_OPTIONS = [
   { label: '1 year', value: 365 },
   { label: '2 years', value: 730 },
   { label: 'All time', value: 3650 },
-]
-
-const HALF_LIFE_OPTIONS = [
-  { label: '7 days (Quick)', value: 7 },
-  { label: '15 days (Responsive)', value: 15 },
-  { label: '30 days (Stable)', value: 30 },
 ]
 
 const BUCKET_SIZE_OPTIONS: { label: string; value: BucketSize }[] = [
@@ -121,9 +120,12 @@ const LEGACY_CATEGORY_SOURCE = 'productivity_category'
 
 type TrendAggregation = Exclude<ChartDataAggregation, 'max'>
 
-/** Trends have no max: it only comes with a measure, which charts as bars. */
+/** An EMA trend has no max: only a measure has one, and its trend is the decaying best. */
 const trendAggregation = (aggregation: ChartDataAggregation): TrendAggregation | undefined =>
   aggregation === 'max' ? undefined : aggregation
+
+/** A measure charted as its decaying best: no display period or aggregation applies. */
+const isMeasureTrend = (state: ChartState): boolean => state.chart_type === 'trend' && Boolean(state.measure)
 
 function parseQuery(query: Record<string, string>): ChartState {
   const source_type: SourceType = query.source_type === 'metric' ? 'metric' : 'activity_type'
@@ -133,10 +135,9 @@ function parseQuery(query: Record<string, string>): ChartState {
     aggregation: parseAggregation(query.aggregation, source_type, measure),
     breakdown_fields: query.breakdown_fields ? query.breakdown_fields.split(',').filter(Boolean) : [],
     bucket_size: (query.bucket_size ?? '1d') as BucketSize,
-    chart_type: measure ? 'bar' : ((query.chart_type ?? 'trend') as ChartType),
+    ...parseChartMode(query, measure),
     display_period: (query.display_period ?? 'monthly') as TrendDisplayPeriod,
     ...measureState,
-    half_life_days: Number(query.half_life_days) || 15,
     lookback_days: Number(query.lookback_days) || 90,
     missing_days: query.missing_days === 'zero' || query.missing_days === 'skip' ? query.missing_days : '',
     pattern: query.source_type === LEGACY_CATEGORY_SOURCE ? '' : (query.pattern ?? ''),
@@ -153,14 +154,15 @@ function syncUrl(state: ChartState, origin: ChartOrigin | null) {
   if (state.activity_type_id) params.set('activity_type_id', state.activity_type_id)
   params.set('lookback_days', String(state.lookback_days))
   params.set('chart_type', state.chart_type)
+  const measureTrend = isMeasureTrend(state)
   if (state.chart_type === 'trend') {
-    params.set('display_period', state.display_period)
+    if (!measureTrend) params.set('display_period', state.display_period)
     params.set('half_life_days', String(state.half_life_days))
     if (state.source_type === 'metric' && state.missing_days) params.set('missing_days', state.missing_days)
   } else {
     params.set('bucket_size', state.bucket_size)
   }
-  if (state.aggregation !== 'count' || state.source_type === 'metric') {
+  if (!measureTrend && (state.aggregation !== 'count' || state.source_type === 'metric')) {
     params.set('aggregation', state.aggregation)
   }
   if (state.breakdown_fields.length > 0) {
@@ -363,6 +365,7 @@ function ChartControls({
   state: ChartState
   onUpdate: (patch: Partial<ChartState>) => void
 }) {
+  const measureTrend = isMeasureTrend(state)
   return (
     <div class="chart-controls">
       <div class="chart-controls-row">
@@ -371,11 +374,19 @@ function ChartControls({
           <div class="chart-type-toggle">
             <button
               class={`chart-type-btn ${state.chart_type === 'trend' ? 'active' : ''}`}
-              onClick={() => onUpdate({ chart_type: 'trend' })}
-              disabled={Boolean(state.measure)}
-              title={state.measure ? 'Measures chart as bars' : undefined}
+              onClick={() =>
+                onUpdate(
+                  state.measure
+                    ? {
+                        chart_type: 'trend',
+                        half_life_days:
+                          state.half_life_days >= 30 ? state.half_life_days : MEASURE_HALF_LIFE_DEFAULT,
+                      }
+                    : { chart_type: 'trend' },
+                )
+              }
             >
-              Trend (EMA)
+              {state.measure ? 'Trend (best)' : 'Trend (EMA)'}
             </button>
             <button
               class={`chart-type-btn ${state.chart_type === 'bar' ? 'active' : ''}`}
@@ -406,19 +417,21 @@ function ChartControls({
 
         {state.chart_type === 'trend' ? (
           <>
-            <label>
-              Display Period
-              <select
-                value={state.display_period}
-                onChange={(e) =>
-                  onUpdate({ display_period: (e.target as HTMLSelectElement).value as TrendDisplayPeriod })
-                }
-              >
-                <option value="daily">Per day</option>
-                <option value="weekly">Per week</option>
-                <option value="monthly">Per month</option>
-              </select>
-            </label>
+            {!measureTrend && (
+              <label>
+                Display Period
+                <select
+                  value={state.display_period}
+                  onChange={(e) =>
+                    onUpdate({ display_period: (e.target as HTMLSelectElement).value as TrendDisplayPeriod })
+                  }
+                >
+                  <option value="daily">Per day</option>
+                  <option value="weekly">Per week</option>
+                  <option value="monthly">Per month</option>
+                </select>
+              </label>
+            )}
 
             <label>
               Half-life
@@ -426,7 +439,7 @@ function ChartControls({
                 value={state.half_life_days}
                 onChange={(e) => onUpdate({ half_life_days: Number((e.target as HTMLSelectElement).value) })}
               >
-                {HALF_LIFE_OPTIONS.map((opt) => (
+                {halfLifeOptions(state.measure).map((opt) => (
                   <option key={opt.value} value={opt.value}>
                     {opt.label}
                   </option>
@@ -450,7 +463,7 @@ function ChartControls({
           </label>
         )}
 
-        {(state.source_type === 'metric' || state.source_type === 'activity_type') && (
+        {!measureTrend && (
           <label>
             Aggregation
             <select
@@ -491,7 +504,7 @@ function ChartControls({
 const NO_TREND_POINTS: { date: string; value: number }[] = []
 const NO_BAR_BUCKETS: { bucket_start: string; value: number }[] = []
 
-function TrendDisplay({ params }: { params: FetchTrendParams }) {
+function TrendDisplay({ params, menu }: { params: FetchTrendParams; menu: ComponentChild }) {
   const trendQuery = useQuery({
     enabled: Boolean(params.pattern),
     queryFn: () => fetchTrend(params),
@@ -520,6 +533,7 @@ function TrendDisplay({ params }: { params: FetchTrendParams }) {
   if (breakdown_series && multiSeries) {
     return (
       <div class="chart-display">
+        <div class="chart-display-header">{menu}</div>
         <BreakdownLegend series={breakdown_series} />
         <TrendLineChart data={NO_TREND_POINTS} color="#8b5cf6" height={350} multiSeries={multiSeries} />
       </div>
@@ -528,11 +542,20 @@ function TrendDisplay({ params }: { params: FetchTrendParams }) {
 
   return (
     <div class="chart-display">
-      <div class="chart-current-value">
-        <span class="chart-current-number">{current_value.toFixed(1)}</span>
-        <span class="chart-current-unit">{display_unit}</span>
+      <div class="chart-display-header">
+        <div class="chart-current-value">
+          <span class="chart-current-number">{current_value.toFixed(1)}</span>
+          <span class="chart-current-unit">{display_unit}</span>
+        </div>
+        {menu}
       </div>
       <TrendLineChart data={history} color="#8b5cf6" height={350} />
+      {params.measure && (
+        <p class="chart-caption">
+          {activityMeasureLabels[params.measure]}, decaying with a {params.half_life_days}-day half-life
+          between sessions.
+        </p>
+      )}
     </div>
   )
 }
@@ -590,7 +613,7 @@ const buildBarDataHref = (
   return `/data?${urlParams}`
 }
 
-function BarDisplay({ params }: { params: FetchChartDataParams }) {
+function BarDisplay({ params, menu }: { params: FetchChartDataParams; menu: ComponentChild }) {
   const { source_type, pattern, bucket_size, breakdown_fields } = params
   const getBarHref = useMemo(
     () =>
@@ -636,6 +659,7 @@ function BarDisplay({ params }: { params: FetchChartDataParams }) {
   if (multiSeries) {
     return (
       <div class="chart-display">
+        <div class="chart-display-header">{menu}</div>
         <BreakdownLegend series={result?.breakdown_series ?? []} />
         <BarChart
           data={NO_BAR_BUCKETS}
@@ -654,6 +678,7 @@ function BarDisplay({ params }: { params: FetchChartDataParams }) {
 
   return (
     <div class="chart-display">
+      <div class="chart-display-header">{menu}</div>
       <BarChart
         data={buckets}
         color="#8b5cf6"
@@ -667,8 +692,6 @@ function BarDisplay({ params }: { params: FetchChartDataParams }) {
   )
 }
 
-const generateId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
-
 /**
  * Build a dashboard widget config from the current chart state. Pass `id` to
  * update an existing widget in place; omit it to create a new one.
@@ -676,7 +699,7 @@ const generateId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().
 function buildWidgetFromState(
   state: ChartState,
   title: string,
-  id: string = generateId('widget'),
+  id: string = newWidgetId(),
   maskedBreakdownFields: string[] = [],
 ): DashboardWidget {
   // Only mask fields that are actually part of the breakdown.
@@ -706,9 +729,10 @@ function buildWidgetFromState(
 
   return {
     config: {
-      aggregation: trendAggregation(state.aggregation),
+      ...(state.measure
+        ? measureParams(state)
+        : { aggregation: trendAggregation(state.aggregation), display_period: state.display_period }),
       ...breakdownConfig,
-      display_period: state.display_period,
       half_life_days: state.half_life_days,
       lookback_days: state.lookback_days,
       ...(state.source_type === 'metric' && state.missing_days ? { missing_days: state.missing_days } : {}),
@@ -722,219 +746,28 @@ function buildWidgetFromState(
   } as DashboardWidget
 }
 
-/** Per-field toggle to mask breakdown values (shown as A, B, C…) on public boards. */
-function BreakdownMaskPicker({
-  fields,
-  masked,
-  onToggle,
-}: {
-  fields: string[]
-  masked: string[]
-  onToggle: (field: string) => void
-}) {
-  if (fields.length === 0) return null
-  return (
-    <div class="form-group">
-      <label>Mask on public boards</label>
-      <div class="mask-fields">
-        {fields.map((field) => (
-          <label key={field} class="mask-field-checkbox">
-            <input type="checkbox" checked={masked.includes(field)} onChange={() => onToggle(field)} />
-            {field}
-          </label>
-        ))}
-      </div>
-      <p class="mask-hint">Masked field values are shown as A, B, C… to public viewers.</p>
-    </div>
-  )
-}
-
-function AddToDashboardModal({ state, onClose }: { state: ChartState; onClose: () => void }) {
-  const queryClient = useQueryClient()
-  const [title, setTitle] = useState('')
-  const [targetId, setTargetId] = useState('home') // 'home' or a shared dashboard id
-  const [selectedSectionId, setSelectedSectionId] = useState('')
-  const [newSectionTitle, setNewSectionTitle] = useState('')
-  const [masked, setMasked] = useState<string[]>([])
-  const [saved, setSaved] = useState(false)
-
-  const toggleMasked = (field: string) =>
-    setMasked((prev) => (prev.includes(field) ? prev.filter((f) => f !== field) : [...prev, field]))
-
-  const dashboardQuery = useQuery({
-    queryFn: fetchDashboard,
-    queryKey: ['dashboard'],
-    staleTime: 5 * 60 * 1000,
-  })
-
-  const sharedQuery = useQuery({
-    queryFn: listSharedDashboards,
-    queryKey: ['sharedDashboards'],
-    staleTime: 60 * 1000,
-  })
-
-  const saveMutation = useMutation({
-    mutationFn: async (next: { targetId: string; config: DashboardConfig }) => {
-      if (next.targetId === 'home') {
-        await saveDashboard(next.config)
-      } else {
-        await updateSharedDashboard(next.targetId, { config: next.config })
-      }
-    },
-    onError: () => alert('Failed to add the widget. Please try again.'),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
-      void queryClient.invalidateQueries({ queryKey: ['sharedDashboards'] })
-      setSaved(true)
-    },
-  })
-
-  const sharedDashboards = sharedQuery.data ?? []
-  // The config of the currently selected target (home or a shared dashboard).
-  const targetConfig: DashboardConfig | undefined =
-    targetId === 'home' ? dashboardQuery.data : sharedDashboards.find((d) => d.id === targetId)?.config
-  const chartsSections = targetConfig?.sections.filter((s) => s.type === 'charts') ?? []
-
-  // Reset the section choice when the target dashboard changes.
-  const handleTargetChange = (id: string) => {
-    setTargetId(id)
-    setSelectedSectionId('')
-    setNewSectionTitle('')
+/** The Goals page prefilled with a goal on this chart: its trend, or its measure for a measure's bars. */
+function chartGoalHref(state: ChartState): string | undefined {
+  if (!state.pattern) return undefined
+  if (state.chart_type === 'trend') {
+    return goalsHref({
+      ...(state.measure
+        ? measureParams(state)
+        : { aggregation: trendAggregation(state.aggregation), display_period: state.display_period }),
+      half_life_days: state.half_life_days,
+      new: 'trend',
+      pattern: state.pattern,
+      source_type: state.source_type,
+    })
   }
-
-  const handleSave = () => {
-    if (!targetConfig) return
-
-    const widget = buildWidgetFromState(state, title, undefined, masked)
-
-    let newConfig: DashboardConfig
-    if (selectedSectionId === '__new__') {
-      const sectionTitle = newSectionTitle.trim() || 'Charts'
-      const newSection: DashboardSection = {
-        id: generateId('section'),
-        title: sectionTitle,
-        type: 'charts' as SectionType,
-        widgets: [widget],
-      }
-      newConfig = { ...targetConfig, sections: [...targetConfig.sections, newSection] }
-    } else {
-      newConfig = {
-        ...targetConfig,
-        sections: targetConfig.sections.map((section) =>
-          section.id === selectedSectionId ? { ...section, widgets: [...section.widgets, widget] } : section,
-        ),
-      }
-    }
-
-    saveMutation.mutate({ config: newConfig, targetId })
-  }
-
-  const canSave =
-    !saveMutation.isPending &&
-    !!targetConfig &&
-    (selectedSectionId === '__new__' ? newSectionTitle.trim().length > 0 : selectedSectionId.length > 0)
-
-  return (
-    <div class="dashboard-editor-overlay" onClick={onClose}>
-      <div class="dashboard-editor-modal" onClick={(e) => e.stopPropagation()}>
-        <div class="modal-header">
-          <h3>Add to Dashboard</h3>
-          <button class="close-btn" onClick={onClose}>
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        <div class="modal-content">
-          {saved ? (
-            <div class="add-to-dash-success">Widget added to dashboard!</div>
-          ) : (
-            <div class="config-form">
-              <div class="form-group">
-                <label>Title (optional)</label>
-                <input
-                  type="text"
-                  value={title}
-                  onInput={(e) => setTitle((e.target as HTMLInputElement).value)}
-                  placeholder={state.pattern || 'Chart title'}
-                />
-              </div>
-
-              <div class="form-group">
-                <label>Dashboard</label>
-                <select
-                  value={targetId}
-                  onChange={(e) => handleTargetChange((e.target as HTMLSelectElement).value)}
-                >
-                  <option value="home">My dashboard (home)</option>
-                  {sharedDashboards.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name} (shared)
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div class="form-group">
-                <label>Dashboard Section</label>
-                <select
-                  value={selectedSectionId}
-                  onChange={(e) => setSelectedSectionId((e.target as HTMLSelectElement).value)}
-                >
-                  <option value="">Select a section...</option>
-                  {chartsSections.map((section) => (
-                    <option key={section.id} value={section.id}>
-                      {section.title}
-                    </option>
-                  ))}
-                  <option value="__new__">+ Create new section</option>
-                </select>
-              </div>
-
-              {selectedSectionId === '__new__' && (
-                <div class="form-group">
-                  <label>New Section Title</label>
-                  <input
-                    type="text"
-                    value={newSectionTitle}
-                    onInput={(e) => setNewSectionTitle((e.target as HTMLInputElement).value)}
-                    placeholder="e.g., My Charts"
-                  />
-                </div>
-              )}
-
-              <BreakdownMaskPicker fields={state.breakdown_fields} masked={masked} onToggle={toggleMasked} />
-            </div>
-          )}
-        </div>
-
-        <div class="modal-footer">
-          {saved ? (
-            <button class="btn-primary" onClick={onClose}>
-              Done
-            </button>
-          ) : (
-            <>
-              <button class="btn-secondary" onClick={onClose}>
-                Cancel
-              </button>
-              <button class="btn-primary" onClick={handleSave} disabled={!canSave}>
-                {saveMutation.isPending ? 'Saving...' : 'Add Widget'}
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  )
+  return state.measure
+    ? goalsHref({
+        activity_type: state.pattern,
+        ...measureParams(state),
+        measure: state.measure,
+        new: 'measure',
+      })
+    : undefined
 }
 
 /**
@@ -1053,18 +886,12 @@ function UpdateChartOnBoard({ state, origin }: { state: ChartState; origin: Char
 // eslint-disable-next-line complexity -- chart page with multiple feature sections
 export function Chart() {
   const isLoggedIn = auth.value.token
-  const queryClient = useQueryClient()
   const { query } = useLocation()
   const [state, setState] = useState(() => parseQuery(query))
   const [origin] = useState(() => parseChartOrigin(query))
   const [legacyCategoryPath, setLegacyCategoryPath] = useState(() =>
     query.source_type === LEGACY_CATEGORY_SOURCE ? (query.pattern ?? '') : null,
   )
-  const [showAddToDashboard, setShowAddToDashboard] = useState(false)
-  const [showSetGoal, setShowSetGoal] = useState(false)
-  const [goalMax, setGoalMax] = useState('')
-  const [goalMin, setGoalMin] = useState('')
-  const [goalSaving, setGoalSaving] = useState(false)
 
   const handleUpdate = useCallback(
     (patch: Partial<ChartState>) => {
@@ -1108,23 +935,34 @@ export function Chart() {
   }
 
   const { start, end } = useMemo(() => lookbackToRange(state.lookback_days), [state.lookback_days])
+  const menu =
+    state.pattern || state.activity_type_id ? (
+      <ChartMenu
+        widget={(title, masked) => buildWidgetFromState(state, title, undefined, masked)}
+        breakdownFields={state.breakdown_fields}
+        goalHref={chartGoalHref(state)}
+      />
+    ) : null
 
   return (
     <div class="chart-page">
       <h1>Chart Explorer</h1>
       <p class="chart-page-description">
         Explore time-weighted averages (EMA) or raw bucketed data for activity types and metrics. Screentime
-        categories are activity types too. Toggle between Trend and Bar chart modes.
+        categories are activity types too. Toggle between Trend and Bar chart modes. A measure of an
+        activity's list items, such as an exercise's e1RM, charts as bars or as its decaying best.
       </p>
 
       <ChartControls state={state} onUpdate={handleUpdate} />
 
       {state.chart_type === 'trend' ? (
         <TrendDisplay
+          menu={menu}
           params={{
-            aggregation: trendAggregation(state.aggregation),
+            ...(state.measure
+              ? measureParams(state)
+              : { aggregation: trendAggregation(state.aggregation), display_period: state.display_period }),
             breakdown_fields: state.breakdown_fields.length > 0 ? state.breakdown_fields : undefined,
-            display_period: state.display_period,
             half_life_days: state.half_life_days,
             lookback_days: state.lookback_days,
             ...(state.source_type === 'metric' && state.missing_days
@@ -1137,6 +975,7 @@ export function Chart() {
         />
       ) : (
         <BarDisplay
+          menu={menu}
           params={{
             aggregation: state.aggregation,
             breakdown_fields: state.breakdown_fields.length > 0 ? state.breakdown_fields : undefined,
@@ -1151,113 +990,7 @@ export function Chart() {
         />
       )}
 
-      {(state.pattern || state.activity_type_id) && (
-        <div class="add-to-dashboard-row">
-          <button class="btn-add-to-dashboard" onClick={() => setShowAddToDashboard(true)}>
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-            Add to Dashboard
-          </button>
-          {state.chart_type === 'trend' && (
-            <button class="btn-add-to-dashboard" onClick={() => setShowSetGoal((v) => !v)}>
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <circle cx="12" cy="12" r="10" />
-                <circle cx="12" cy="12" r="6" />
-                <circle cx="12" cy="12" r="2" />
-              </svg>
-              Set Goal
-            </button>
-          )}
-        </div>
-      )}
-
       {origin && <UpdateChartOnBoard state={state} origin={origin} />}
-
-      {showSetGoal && (
-        <div class="chart-goal-form">
-          <h3>Set Trend Goal</h3>
-          <p class="goal-form-description">
-            Set a target for the <strong>{state.pattern}</strong> trend ({state.display_period},{' '}
-            {state.half_life_days}d half-life).
-          </p>
-          <div class="goal-form-fields">
-            <label>
-              Min
-              <input
-                type="number"
-                step="0.1"
-                value={goalMin}
-                onInput={(e) => setGoalMin((e.target as HTMLInputElement).value)}
-                placeholder="e.g. 0.5"
-              />
-            </label>
-            <label>
-              Max
-              <input
-                type="number"
-                step="0.1"
-                value={goalMax}
-                onInput={(e) => setGoalMax((e.target as HTMLInputElement).value)}
-                placeholder="e.g. 0.7"
-              />
-            </label>
-          </div>
-          {!goalMin && !goalMax && <p class="goal-form-error">Set at least min or max.</p>}
-          <div class="goal-form-actions">
-            <button class="btn-cancel" onClick={() => setShowSetGoal(false)}>
-              Cancel
-            </button>
-            <button
-              class="btn-save"
-              disabled={goalSaving || (!goalMin && !goalMax)}
-              onClick={async () => {
-                setGoalSaving(true)
-                const settings = await fetchUserSettings()
-                const existingGoals = settings.goals ?? []
-                const newGoal: TrendGoal = {
-                  aggregation: trendAggregation(state.aggregation),
-                  display_period: state.display_period,
-                  goal_type: 'trend',
-                  half_life_days: state.half_life_days,
-                  id: crypto.randomUUID(),
-                  ...(goalMax ? { max: parseFloat(goalMax) } : {}),
-                  ...(goalMin ? { min: parseFloat(goalMin) } : {}),
-                  pattern: state.pattern,
-                  source_type: state.source_type,
-                }
-                await updateUserSettings({ goals: [...existingGoals, newGoal] })
-                queryClient.invalidateQueries({ queryKey: ['userSettings'] })
-                queryClient.invalidateQueries({ queryKey: ['goalsProgress'] })
-                setGoalSaving(false)
-                setShowSetGoal(false)
-                setGoalMin('')
-                setGoalMax('')
-              }}
-            >
-              {goalSaving ? 'Saving...' : 'Save Goal'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {showAddToDashboard && (
-        <AddToDashboardModal state={state} onClose={() => setShowAddToDashboard(false)} />
-      )}
     </div>
   )
 }

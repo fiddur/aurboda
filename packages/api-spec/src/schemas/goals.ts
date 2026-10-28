@@ -218,7 +218,9 @@ export type MetricGoalProgress = z.infer<typeof metricGoalProgressSchema>
 
 export const trendGoalProgressSchema = z
   .object({
-    current: z.number().meta({ description: 'Current EMA trend value' }),
+    current: z
+      .number()
+      .meta({ description: 'Current trend value: the EMA, or the decaying best of a measure' }),
     display_period: trendDisplayPeriodSchema.meta({ description: 'Display period for the value' }),
     display_unit: z.string().meta({ description: 'Human-readable unit (e.g., "per month")' }),
     goal_type: z.literal('trend').meta({ description: 'Goal type discriminant' }),
@@ -227,6 +229,7 @@ export const trendGoalProgressSchema = z
     min: z.number().optional(),
     pattern: z.string().meta({ description: 'Source pattern name' }),
     source_type: trendSourceTypeSchema,
+    ...trendMeasureShape,
   })
   .meta({ description: 'Progress for a trend goal', id: 'TrendGoalProgress' })
 

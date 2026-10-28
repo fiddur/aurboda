@@ -475,6 +475,60 @@ describe('getWidgetGoalsProgress', () => {
     expect(result[0].unit).toBe('per month')
     expect(result[0].losing_tomorrow).toBe(0)
   })
+
+  test('a trend goal on a measure scores the decaying best and is titled by the exercise and measure', async () => {
+    vi.mocked(settings.getEffectiveGoals).mockResolvedValue([
+      {
+        display_period: 'monthly' as const,
+        filter_field: 'sets.exercise',
+        filter_value: 'Squat',
+        goal_type: 'trend' as const,
+        half_life_days: 120,
+        id: 'goal-trend-squat',
+        measure: 'e1rm' as const,
+        min: 100,
+        pattern: 'strength_training',
+        source_type: 'activity_type' as const,
+      },
+    ])
+    vi.mocked(trends.getTrend).mockResolvedValue({
+      aggregation: 'max',
+      current_value: 104.2,
+      display_period: 'monthly',
+      display_unit: 'kg',
+      filter_field: 'sets.exercise',
+      filter_value: 'Squat',
+      half_life_days: 120,
+      history: [],
+      lookback_days: 90,
+      measure: 'e1rm',
+      pattern: 'strength_training',
+      source_type: 'activity_type',
+    })
+
+    const [progress] = await getGoalsProgress('testuser')
+    const [widget] = await getWidgetGoalsProgress('testuser')
+
+    expect(trends.getTrend).toHaveBeenCalledWith(
+      'testuser',
+      expect.objectContaining({
+        filter_field: 'sets.exercise',
+        filter_value: 'Squat',
+        half_life_days: 120,
+        measure: 'e1rm',
+        pattern: 'strength_training',
+        source_type: 'activity_type',
+      }),
+    )
+    expect(progress).toMatchObject({
+      current: 104.2,
+      display_unit: 'kg',
+      filter_field: 'sets.exercise',
+      filter_value: 'Squat',
+      measure: 'e1rm',
+    })
+    expect(widget).toMatchObject({ current: 104.2, title: 'Squat · Best e1RM', unit: 'kg' })
+  })
 })
 
 const measured = (startIso: string, measures: Record<string, number>): measureSeries.MeasuredActivity => ({

@@ -68,6 +68,21 @@ describe('chartWidgetTitle', () => {
     expect(chartWidgetTitle(trendWidget('w-1'))).toBeUndefined()
   })
 
+  test("defaults a measure trend to the measure's title", () => {
+    const widget: DashboardWidget = {
+      config: {
+        filter_field: 'sets.exercise',
+        filter_value: 'Squat',
+        measure: 'e1rm',
+        pattern: 'strength_training',
+        source_type: 'activity_type',
+      },
+      id: 'w-1',
+      type: 'trend_chart',
+    }
+    expect(chartWidgetTitle(widget)).toBe('Squat · Best e1RM')
+  })
+
   test('returns undefined for non-chart widgets', () => {
     const link: DashboardWidget = { config: { href: '/x', label: 'X' }, id: 'l-1', type: 'quick_link' }
     expect(chartWidgetTitle(link)).toBeUndefined()

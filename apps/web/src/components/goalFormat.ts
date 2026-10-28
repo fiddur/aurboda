@@ -1,4 +1,4 @@
-import { type Goal, type GoalProgress, metricUnits } from '@aurboda/api-spec'
+import { type Goal, type GoalProgress, measureGoalTitle, metricUnits } from '@aurboda/api-spec'
 
 import { formatMeasure, measureGoalLabel } from '../utils/measures'
 import { metricLabels } from '../utils/metricLabels'
@@ -51,8 +51,11 @@ export const goalFormat = (progress: GoalProgress): GoalFormat => {
   switch (progress.goal_type) {
     case 'trend':
       return {
-        format: (v) => `${v.toFixed(2)} ${progress.display_unit}`,
-        label: progress.pattern,
+        format: (v) =>
+          progress.measure ? formatMeasure(progress.measure, v) : `${v.toFixed(2)} ${progress.display_unit}`,
+        label: progress.measure
+          ? measureGoalTitle(progress.measure, progress.filter_value, progress.pattern)
+          : progress.pattern,
         losingTomorrow: '',
         windowLabel: progress.display_period,
       }
@@ -79,7 +82,7 @@ export const goalFormat = (progress: GoalProgress): GoalFormat => {
 export const goalLabel = (goal: Goal): string => {
   switch (goal.goal_type) {
     case 'trend':
-      return goal.pattern
+      return goal.measure ? measureGoalTitle(goal.measure, goal.filter_value, goal.pattern) : goal.pattern
     case 'metric':
       return metricLabels[goal.metric] ?? goal.metric
     case 'measure':
@@ -91,7 +94,9 @@ export const goalLabel = (goal: Goal): string => {
 export const goalValueFormat = (goal: Goal, unit?: string): ((value: number) => string) => {
   switch (goal.goal_type) {
     case 'trend':
-      return (v) => `${v.toFixed(2)} ${unit ?? ''}`.trim()
+      return goal.measure
+        ? (v) => formatMeasure(goal.measure!, v)
+        : (v) => `${v.toFixed(2)} ${unit ?? ''}`.trim()
     case 'metric':
       return (v) => formatValue(goal.metric, v)
     case 'measure':

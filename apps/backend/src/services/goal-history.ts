@@ -190,8 +190,11 @@ const trendGoalHistory = async (
     aggregation: goal.aggregation,
     custom_metrics: customMetrics,
     display_period: goal.display_period,
+    filter_field: goal.filter_field,
+    filter_value: goal.filter_value,
     half_life_days: goal.half_life_days,
     lookback_days: lookbackDays,
+    measure: goal.measure,
     pattern: goal.pattern,
     source_type: goal.source_type,
   })

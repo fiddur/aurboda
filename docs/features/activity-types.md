@@ -150,9 +150,12 @@ On the web, the type page has an exercises table (one row per exercise with its 
 measures), each exercise has its own page at `/activity-type/<name>/item/sets.exercise/<value>`
 with its records, a trend of its best e1RM (or most reps in a set, or longest hold, for an
 exercise without weights) that decays with a 120-day half-life between sessions and is lifted by
-each session that beats it, a weekly chart of a chosen measure, and the sessions with it; and an
-activity's page has an exercises section comparing each exercise with last time, with record
-badges.
+each session that beats it (a measure trend from the [trends API](trends.md), `GET /trends` with
+`measure`, `filter_field` and `filter_value`), a weekly chart of a chosen measure, and the
+sessions with it; and an activity's page has an exercises section comparing each exercise with
+last time, with record badges. Each chart on the exercise page has a ⋮ menu with **Open in Chart
+Explorer**, **Add to dashboard** and **Set a goal** (a trend goal on the decaying best for the
+trend, a measure goal for the weekly chart, prefilled on the Goals page).
 
 ### Merging values and aliases
 

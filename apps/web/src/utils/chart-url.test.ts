@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
+import { parseMeasureQuery } from '../pages/Chart/chartMeasures'
 import { buildChartUrl } from './chart-url'
 
 const params = (url: string) => new URLSearchParams(url.split('?')[1])
@@ -151,5 +152,29 @@ describe('buildChartUrl', () => {
     expect(p.has('measure')).toBe(false)
     expect(p.has('filter_field')).toBe(false)
     expect(p.has('filter_value')).toBe(false)
+  })
+
+  test('a measure trend round-trips its mode, half-life and measure', () => {
+    const p = params(
+      buildChartUrl({
+        chart_type: 'trend',
+        filter_field: 'sets.exercise',
+        filter_value: 'Squat',
+        half_life_days: 120,
+        lookback_days: 365,
+        measure: 'e1rm',
+        pattern: 'strength_training',
+        source_type: 'activity_type',
+      }),
+    )
+    expect(p.get('chart_type')).toBe('trend')
+    expect(p.get('half_life_days')).toBe('120')
+    expect(p.get('lookback_days')).toBe('365')
+    expect(p.has('bucket_size')).toBe(false)
+    expect(parseMeasureQuery(Object.fromEntries(p), 'activity_type')).toEqual({
+      filter_field: 'sets.exercise',
+      filter_value: 'Squat',
+      measure: 'e1rm',
+    })
   })
 })

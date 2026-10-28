@@ -1,9 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { useLocation } from 'preact-iso'
+import { useEffect, useState } from 'preact/hooks'
 
 import { type GoalHistoryRange, goalsUrl, parseRange } from '../../components/goal-history-range'
 import { goalLabel } from '../../components/goalFormat'
 import { GoalHistoryPanel } from '../../components/GoalHistoryPanel'
+import { goalFromQuery } from '../../components/goalPrefill'
 import { GoalProgressBar } from '../../components/GoalProgressBar'
 import { GoalsSettings } from '../../components/GoalsSettings'
 import { fetchGoalsProgress, fetchUserSettings, type Goal } from '../../state/api'
@@ -21,6 +23,11 @@ export function Goals() {
   const openGoalId = query.history
   const range = parseRange(query.range)
   const embed = query.embed === '1'
+  const [initialGoal] = useState(() => goalFromQuery(query, crypto.randomUUID()))
+
+  useEffect(() => {
+    if (query.new) route(goalsUrl({ embed, range }), true)
+  }, [])
 
   const toggleGoal = (id: string) =>
     route(goalsUrl({ embed, history: id === openGoalId ? undefined : id, range }))
@@ -63,7 +70,7 @@ export function Goals() {
     return (
       <div class="goals-page">
         <h1>Goals</h1>
-        <GoalsSettings goals={goals} />
+        <GoalsSettings goals={goals} initialGoal={initialGoal} />
       </div>
     )
   }
@@ -125,7 +132,7 @@ export function Goals() {
         ) : null}
       </p>
 
-      <GoalsSettings goals={goals} />
+      <GoalsSettings goals={goals} initialGoal={initialGoal} />
     </div>
   )
 }
