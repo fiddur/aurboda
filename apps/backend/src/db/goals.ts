@@ -2,16 +2,27 @@ import type { Goal, MeasureGoal, MetricGoal, TrendGoal } from '@aurboda/api-spec
 
 import { query } from './connection.ts'
 
+const rowBounds = (row: Record<string, unknown>): { max?: number; min?: number } => ({
+  ...(row.max_value != null ? { max: row.max_value as number } : {}),
+  ...(row.min_value != null ? { min: row.min_value as number } : {}),
+})
+
+const rowItemFilter = (row: Record<string, unknown>): { filter_field?: string; filter_value?: string } => ({
+  ...(row.filter_field != null ? { filter_field: row.filter_field as string } : {}),
+  ...(row.filter_value != null ? { filter_value: row.filter_value as string } : {}),
+})
+
 const rowToGoal = (row: Record<string, unknown>): Goal => {
   if (row.goal_type === 'trend') {
     return {
       ...(row.aggregation != null ? { aggregation: row.aggregation as TrendGoal['aggregation'] } : {}),
       display_period: row.display_period as TrendGoal['display_period'],
+      ...rowItemFilter(row),
       goal_type: 'trend',
       half_life_days: row.half_life_days as number,
       id: row.id as string,
-      ...(row.max_value != null ? { max: row.max_value as number } : {}),
-      ...(row.min_value != null ? { min: row.min_value as number } : {}),
+      ...rowBounds(row),
+      ...(row.measure != null ? { measure: row.measure as TrendGoal['measure'] } : {}),
       pattern: row.pattern as string,
       source_type: row.source_type as TrendGoal['source_type'],
     } satisfies TrendGoal
@@ -21,13 +32,11 @@ const rowToGoal = (row: Record<string, unknown>): Goal => {
     return {
       activity_type: row.activity_type as string,
       aggregation: (row.aggregation ?? 'max') as MeasureGoal['aggregation'],
-      ...(row.filter_field != null ? { filter_field: row.filter_field as string } : {}),
-      ...(row.filter_value != null ? { filter_value: row.filter_value as string } : {}),
+      ...rowItemFilter(row),
       goal_type: 'measure',
       id: row.id as string,
-      ...(row.max_value != null ? { max: row.max_value as number } : {}),
+      ...rowBounds(row),
       measure: row.measure as MeasureGoal['measure'],
-      ...(row.min_value != null ? { min: row.min_value as number } : {}),
       window: row.time_window as string,
     } satisfies MeasureGoal
   }
@@ -36,8 +45,7 @@ const rowToGoal = (row: Record<string, unknown>): Goal => {
     goal_type: 'metric',
     id: row.id as string,
     metric: row.metric as MetricGoal['metric'],
-    ...(row.min_value != null ? { min: row.min_value as number } : {}),
-    ...(row.max_value != null ? { max: row.max_value as number } : {}),
+    ...rowBounds(row),
     window: row.time_window as string,
   } satisfies MetricGoal
 }
@@ -58,8 +66,9 @@ export const insertGoal = async (user: string, goal: Goal): Promise<void> => {
   if (goal.goal_type === 'trend') {
     await query(
       user,
-      `INSERT INTO goals (id, goal_type, source_type, pattern, half_life_days, display_period, aggregation, min_value, max_value)
-       VALUES ($1, 'trend', $2, $3, $4, $5, $6, $7, $8)
+      `INSERT INTO goals (id, goal_type, source_type, pattern, half_life_days, display_period, aggregation, min_value, max_value,
+                          measure, filter_field, filter_value)
+       VALUES ($1, 'trend', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        ON CONFLICT (id) DO UPDATE SET
          goal_type = 'trend',
          source_type = EXCLUDED.source_type,
@@ -72,9 +81,9 @@ export const insertGoal = async (user: string, goal: Goal): Promise<void> => {
          metric = NULL,
          time_window = NULL,
          activity_type = NULL,
-         measure = NULL,
-         filter_field = NULL,
-         filter_value = NULL,
+         measure = EXCLUDED.measure,
+         filter_field = EXCLUDED.filter_field,
+         filter_value = EXCLUDED.filter_value,
          updated_at = NOW()`,
       [
         goal.id,
@@ -85,6 +94,9 @@ export const insertGoal = async (user: string, goal: Goal): Promise<void> => {
         goal.aggregation,
         goal.min ?? null,
         goal.max ?? null,
+        goal.measure ?? null,
+        goal.filter_field ?? null,
+        goal.filter_value ?? null,
       ],
     )
   } else if (goal.goal_type === 'measure') {

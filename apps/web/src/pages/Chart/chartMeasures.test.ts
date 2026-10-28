@@ -2,10 +2,15 @@ import { describe, expect, test } from 'vitest'
 
 import {
   aggregationOptions,
+  EMA_HALF_LIFE_OPTIONS,
   filterPatch,
+  halfLifeOptions,
+  MEASURE_HALF_LIFE_DEFAULT,
+  MEASURE_HALF_LIFE_OPTIONS,
   measureParams,
   measurePatch,
   parseAggregation,
+  parseChartMode,
   parseMeasure,
   parseMeasureQuery,
 } from './chartMeasures'
@@ -139,5 +144,46 @@ describe('aggregationOptions', () => {
 
   test('sum, max and average with a measure', () => {
     expect(values(aggregationOptions('activity_type', 'e1rm'))).toEqual(['sum', 'max', 'mean'])
+  })
+})
+
+describe('halfLifeOptions', () => {
+  test('the EMA choices without a measure', () => {
+    expect(halfLifeOptions('')).toBe(EMA_HALF_LIFE_OPTIONS)
+    expect(EMA_HALF_LIFE_OPTIONS.map((o) => o.value)).toEqual([7, 15, 30])
+  })
+
+  test('longer choices for a measure, the default among them', () => {
+    expect(halfLifeOptions('e1rm')).toBe(MEASURE_HALF_LIFE_OPTIONS)
+    expect(MEASURE_HALF_LIFE_OPTIONS).toEqual([
+      { label: '30 days', value: 30 },
+      { label: '60 days', value: 60 },
+      { label: '120 days', value: 120 },
+      { label: '240 days', value: 240 },
+      { label: '1 year', value: 365 },
+    ])
+    expect(MEASURE_HALF_LIFE_OPTIONS.map((o) => o.value)).toContain(MEASURE_HALF_LIFE_DEFAULT)
+  })
+})
+
+describe('parseChartMode', () => {
+  test('a trend with a 15-day half-life by default without a measure', () => {
+    expect(parseChartMode({}, '')).toEqual({ chart_type: 'trend', half_life_days: 15 })
+    expect(parseChartMode({ chart_type: 'bar', half_life_days: '7' }, '')).toEqual({
+      chart_type: 'bar',
+      half_life_days: 7,
+    })
+  })
+
+  test('bars by default with a measure, its trend when asked, 120 days by default', () => {
+    expect(parseChartMode({}, 'e1rm')).toEqual({ chart_type: 'bar', half_life_days: 15 })
+    expect(parseChartMode({ chart_type: 'trend' }, 'e1rm')).toEqual({
+      chart_type: 'trend',
+      half_life_days: MEASURE_HALF_LIFE_DEFAULT,
+    })
+    expect(parseChartMode({ chart_type: 'trend', half_life_days: '240' }, 'e1rm')).toEqual({
+      chart_type: 'trend',
+      half_life_days: 240,
+    })
   })
 })

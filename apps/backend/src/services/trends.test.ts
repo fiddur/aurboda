@@ -1,13 +1,20 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import type * as TimeSeries from '../db/time-series.ts'
+import type { MergedActivity } from '../db/types.ts'
 
 import * as db from '../db/index.ts'
-import { getTrend } from './trends.ts'
+import * as measureSeries from './queries/activity-measure-series.ts'
+import { decayingBestHistory, getTrend } from './trends.ts'
 
 vi.mock('../db', async () => ({
   getSourceFilter: (await vi.importActual<typeof TimeSeries>('../db/time-series.ts')).getSourceFilter,
   query: vi.fn(),
+}))
+
+vi.mock('./queries/activity-measure-series', async (importOriginal) => ({
+  ...(await importOriginal<typeof measureSeries>()),
+  queryMeasuredActivities: vi.fn(),
 }))
 
 describe('getTrend', () => {
@@ -402,6 +409,143 @@ describe('getTrend', () => {
       })
       const sql = vi.mocked(db.query).mock.calls[0][1] as string
       expect(sql).toContain('superseded_by IS NULL')
+    })
+  })
+})
+
+describe('decayingBestHistory', () => {
+  const days = ['2026-01-01', '2026-01-02', '2026-01-03', '2026-01-04', '2026-01-05']
+
+  test('a single session starts the line at its value, then halves every half-life', () => {
+    expect(decayingBestHistory([{ day: '2026-01-02', value: 100 }], days, 2, 0)).toEqual([
+      { date: '2026-01-02', value: 100 },
+      { date: '2026-01-03', value: 70.7 },
+      { date: '2026-01-04', value: 50 },
+      { date: '2026-01-05', value: 35.4 },
+    ])
+  })
+
+  test('a weaker later session carries the decayed best', () => {
+    const history = decayingBestHistory(
+      [
+        { day: '2026-01-01', value: 100 },
+        { day: '2026-01-03', value: 40 },
+      ],
+      days,
+      2,
+      0,
+    )
+
+    expect(history.find((p) => p.date === '2026-01-03')?.value).toBe(50)
+  })
+
+  test('a stronger later session lifts the best, which then decays from there', () => {
+    const history = decayingBestHistory(
+      [
+        { day: '2026-01-01', value: 100 },
+        { day: '2026-01-03', value: 60 },
+      ],
+      days,
+      2,
+      0,
+    )
+
+    expect(history.slice(2)).toEqual([
+      { date: '2026-01-03', value: 60 },
+      { date: '2026-01-04', value: 42.4 },
+      { date: '2026-01-05', value: 30 },
+    ])
+  })
+
+  test('the best session of a day counts', () => {
+    const history = decayingBestHistory(
+      [
+        { day: '2026-01-01', value: 80 },
+        { day: '2026-01-01', value: 90 },
+      ],
+      days,
+      2,
+      0,
+    )
+
+    expect(history[0]).toEqual({ date: '2026-01-01', value: 90 })
+  })
+
+  test('a warm-up session carries into the display range without its own point', () => {
+    expect(decayingBestHistory([{ day: '2026-01-01', value: 100 }], days, 2, 2)).toEqual([
+      { date: '2026-01-03', value: 50 },
+      { date: '2026-01-04', value: 35.4 },
+      { date: '2026-01-05', value: 25 },
+    ])
+  })
+
+  test('no sessions, no points', () => {
+    expect(decayingBestHistory([], days, 2, 0)).toEqual([])
+  })
+})
+
+describe('getTrend measure trend', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-02-02T12:00:00Z'))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  const measured = (startIso: string, measures: Record<string, number>): measureSeries.MeasuredActivity => ({
+    activity: { activity_type: 'strength_training', start_time: new Date(startIso) } as MergedActivity,
+    id: startIso,
+    measures,
+  })
+
+  test('the decaying best of the measure, fetched from the warm-up start with the item filter', async () => {
+    vi.mocked(measureSeries.queryMeasuredActivities).mockResolvedValue([
+      measured('2026-01-21T17:00:00Z', { e1rm: 100 }),
+      measured('2026-01-28T17:00:00Z', { volume: 3000 }),
+      measured('2026-01-31T17:00:00Z', { e1rm: 40 }),
+    ])
+
+    const result = await getTrend('u', {
+      filter_field: 'sets.exercise',
+      filter_value: 'Squat',
+      half_life_days: 10,
+      lookback_days: 5,
+      measure: 'e1rm',
+      pattern: 'strength_training',
+      source_type: 'activity_type',
+    })
+
+    expect(measureSeries.queryMeasuredActivities).toHaveBeenCalledWith(
+      'u',
+      'strength_training',
+      new Date('2025-12-29T00:00:00Z'),
+      new Date('2026-02-02T12:00:00Z'),
+      { field: 'sets.exercise', value: 'Squat' },
+    )
+    expect(db.query).not.toHaveBeenCalled()
+    expect(result).toEqual({
+      aggregation: 'max',
+      current_value: 43.5,
+      display_period: 'monthly',
+      display_unit: 'kg',
+      filter_field: 'sets.exercise',
+      filter_value: 'Squat',
+      half_life_days: 10,
+      history: [
+        { date: '2026-01-28', value: 61.6 },
+        { date: '2026-01-29', value: 57.4 },
+        { date: '2026-01-30', value: 53.6 },
+        { date: '2026-01-31', value: 50 },
+        { date: '2026-02-01', value: 46.7 },
+        { date: '2026-02-02', value: 43.5 },
+      ],
+      lookback_days: 5,
+      measure: 'e1rm',
+      pattern: 'strength_training',
+      source_type: 'activity_type',
     })
   })
 })

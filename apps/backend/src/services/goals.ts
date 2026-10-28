@@ -188,7 +188,7 @@ const computeMeasureGoalProgress = async (
 }
 
 /**
- * Compute progress for a trend goal (EMA value).
+ * Compute progress for a trend goal (EMA value, or the decaying best of a measure).
  */
 const computeTrendGoalProgress = async (
   user: string,
@@ -199,8 +199,11 @@ const computeTrendGoalProgress = async (
     aggregation: goal.aggregation,
     custom_metrics: customMetrics,
     display_period: goal.display_period,
+    filter_field: goal.filter_field,
+    filter_value: goal.filter_value,
     half_life_days: goal.half_life_days,
     lookback_days: 90,
+    measure: goal.measure,
     pattern: goal.pattern,
     source_type: goal.source_type,
   })
@@ -209,9 +212,12 @@ const computeTrendGoalProgress = async (
     current: trend.current_value,
     display_period: goal.display_period,
     display_unit: trend.display_unit,
+    filter_field: goal.filter_field,
+    filter_value: goal.filter_value,
     goal_type: 'trend',
     id: goal.id,
     max: goal.max,
+    measure: goal.measure,
     min: goal.min,
     pattern: goal.pattern,
     source_type: goal.source_type,
@@ -248,7 +254,7 @@ const toWidgetProgress = (p: GoalProgress): WidgetGoalProgress => {
       losing_tomorrow: 0,
       max: p.max,
       min: p.min,
-      title: p.pattern,
+      title: p.measure ? measureGoalTitle(p.measure, p.filter_value, p.pattern) : p.pattern,
       unit: p.display_unit,
     }
   }

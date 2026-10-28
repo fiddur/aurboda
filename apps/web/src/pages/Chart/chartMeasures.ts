@@ -1,5 +1,8 @@
 import { type ActivityMeasure, activityMeasures, type ChartDataAggregation } from '@aurboda/api-spec'
 
+import { EMA_HALF_LIFE_DEFAULT, MEASURE_HALF_LIFE_DEFAULT } from '../../utils/half-life'
+
+export { MEASURE_HALF_LIFE_DEFAULT }
 import { defaultAggregation } from '../../utils/measures'
 
 type SourceType = 'metric' | 'activity_type'
@@ -97,4 +100,38 @@ export const aggregationOptions = (
     { label: 'Sum (hours)', value: 'sum' },
     { label: 'Count', value: 'count' },
   ]
+}
+
+export const EMA_HALF_LIFE_OPTIONS = [
+  { label: '7 days (Quick)', value: 7 },
+  { label: '15 days (Responsive)', value: 15 },
+  { label: '30 days (Stable)', value: 30 },
+]
+
+export const MEASURE_HALF_LIFE_OPTIONS = [
+  { label: '30 days', value: 30 },
+  { label: '60 days', value: 60 },
+  { label: '120 days', value: MEASURE_HALF_LIFE_DEFAULT },
+  { label: '240 days', value: 240 },
+  { label: '1 year', value: 365 },
+]
+
+/** A measure's decaying best moves slower than an EMA of a rate, so it takes longer half-lives. */
+export const halfLifeOptions = (measure: MeasureChoice): { label: string; value: number }[] =>
+  measure ? MEASURE_HALF_LIFE_OPTIONS : EMA_HALF_LIFE_OPTIONS
+
+/** A measure charts as bars unless the URL asks for its trend, whose half-life defaults longer than an EMA's. */
+export const parseChartMode = (
+  query: Partial<Record<'chart_type' | 'half_life_days', string>>,
+  measure: MeasureChoice,
+): { chart_type: 'bar' | 'trend'; half_life_days: number } => {
+  const chart_type = measure
+    ? query.chart_type === 'trend'
+      ? 'trend'
+      : 'bar'
+    : query.chart_type === 'bar'
+      ? 'bar'
+      : 'trend'
+  const fallback = chart_type === 'trend' && measure ? MEASURE_HALF_LIFE_DEFAULT : EMA_HALF_LIFE_DEFAULT
+  return { chart_type, half_life_days: Number(query.half_life_days) || fallback }
 }

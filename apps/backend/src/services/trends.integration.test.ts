@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { insertCustomMetricDefinition } from '../db/custom-metrics.ts'
+import { insertActivity } from '../db/index.ts'
 import { deleteTimeSeriesPoint, insertTimeSeries } from '../db/time-series.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { getTrend } from './trends.ts'
@@ -117,6 +118,86 @@ describe('getTrend metric integration', () => {
       expect(result.missing_days).toBe('skip')
       expect(result.current_value).toBeGreaterThan(70)
       expect(result.current_value).toBeLessThan(72)
+    })
+  })
+
+  describe('measure trends (decaying best)', () => {
+    const daysAgo = (days: number) => {
+      const d = new Date()
+      d.setUTCDate(d.getUTCDate() - days)
+      d.setUTCHours(12, 0, 0, 0)
+      return d
+    }
+    const dayKey = (d: Date) => d.toISOString().slice(0, 10)
+    const set = (exercise: string, weight: number, reps: number) => ({
+      distance: null,
+      exercise,
+      order: 0,
+      reps,
+      rpe: null,
+      set_type: 'normal',
+      time: null,
+      weight,
+    })
+    const lift = (start: Date, sets: Record<string, unknown>[]) =>
+      insertActivity(getTestUser(), {
+        activity_type: 'strength_training',
+        data: { sets },
+        end_time: new Date(start.getTime() + 3_600_000),
+        source: 'gravl',
+        start_time: start,
+      })
+    const squatTrend = (lookbackDays: number) =>
+      getTrend(getTestUser(), {
+        filter_field: 'sets.exercise',
+        filter_value: 'Squat',
+        half_life_days: 10,
+        lookback_days: lookbackDays,
+        measure: 'e1rm',
+        pattern: 'strength_training',
+        source_type: 'activity_type',
+      })
+
+    test("one exercise's best e1RM, carried down by its half-life and lifted by a stronger session", async () => {
+      await lift(daysAgo(70), [set('Squat', 200, 3)])
+      await lift(daysAgo(20), [set('Squat', 100, 3), set('Bench Press', 80, 5)])
+      await lift(daysAgo(10), [set('Squat', 40, 3)])
+      await lift(daysAgo(5), [set('Squat', 100, 6), set('Bench Press', 150, 3)])
+
+      const result = await squatTrend(30)
+      const valueOn = (d: Date) => result.history.find((p) => p.date === dayKey(d))?.value
+
+      expect(result.history[0]).toEqual({ date: dayKey(daysAgo(20)), value: 110 })
+      expect(result.history).toHaveLength(21)
+      expect(valueOn(daysAgo(10))).toBe(55)
+      expect(valueOn(daysAgo(5))).toBe(120)
+      expect(result.history.at(-1)).toEqual({ date: dayKey(daysAgo(0)), value: 84.9 })
+      expect(result.current_value).toBe(84.9)
+      expect(result).toMatchObject({
+        aggregation: 'max',
+        display_unit: 'kg',
+        filter_field: 'sets.exercise',
+        filter_value: 'Squat',
+        measure: 'e1rm',
+        source_type: 'activity_type',
+      })
+    })
+
+    test('a session in the warm-up carries into the lookback', async () => {
+      await lift(daysAgo(25), [set('Squat', 100, 3)])
+
+      const result = await squatTrend(10)
+
+      expect(result.history).toHaveLength(11)
+      expect(result.history[0]).toEqual({ date: dayKey(daysAgo(10)), value: 38.9 })
+      expect(result.current_value).toBe(19.4)
+    })
+
+    test('no sessions, no history', async () => {
+      const result = await squatTrend(30)
+
+      expect(result.history).toEqual([])
+      expect(result.current_value).toBe(0)
     })
   })
 })

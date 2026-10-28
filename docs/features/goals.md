@@ -36,6 +36,12 @@ Example: **Bench Press e1RM ≥ 100 kg over 30 days** — activity type `strengt
 
 A measure goal's progress is 0 when no session in the window has the measure. The Goals page and the widget title it by the exercise (or the activity type's name) and the measure, e.g. "Bench Press Best e1RM".
 
+### Trend Goals
+
+A trend goal sets a minimum and/or maximum on a [trend](trends.md) value instead of a windowed sum: an EMA of a tag, activity type, metric or screentime category (`source_type`, `pattern`, `half_life_days`, `display_period`, `aggregation`), e.g. "keep painkillers below 0.7 per month".
+
+A trend goal on an activity type can instead be on a **measure** (`measure`, with `filter_field` / `filter_value` for one exercise): it is scored on the [decaying best](trends.md#measure-trends-decaying-best) of that measure, e.g. "Squat e1RM trend ≥ 100 kg" with a 120-day half-life. Its progress carries the measure fields, and the widget titles it like a measure goal ("Squat · Best e1RM").
+
 ## Default Goals
 
 New users start with three defaults based on the Huberman/Galpin exercise science recommendations:
@@ -74,12 +80,12 @@ A range switch picks how far back to look:
 | **90 days** | One bar (or point) per day                  |
 | **1 year**  | One bar per month: the days on target in it |
 
-- **A day's value** is the goal as it stood at the end of that day: for a metric goal, the sum over the goal's window ending that day (a `7d` goal's bar for 12 October covers 6-12 October); for a measure goal, the rolling sum or the rolling max (the best session in the window ending that day, 0 when there is none); for a trend goal, the EMA value for that day. Days are calendar days in the user's device timezone (`device_timezone`, auto-detected by the Android app; UTC when unset), like the progress bar, so a day-based window starts at local midnight in that zone. Trend goals' days remain UTC days. Time-based windows (`h`, `m`, `s`) are rounded up to whole days, so a `36h` goal looks back 2 days.
+- **A day's value** is the goal as it stood at the end of that day: for a metric goal, the sum over the goal's window ending that day (a `7d` goal's bar for 12 October covers 6-12 October); for a measure goal, the rolling sum or the rolling max (the best session in the window ending that day, 0 when there is none); for a trend goal, the trend value for that day (the EMA, or the decaying best for a trend goal on a measure). Days are calendar days in the user's device timezone (`device_timezone`, auto-detected by the Android app; UTC when unset), like the progress bar, so a day-based window starts at local midnight in that zone. Trend goals' days remain UTC days. Time-based windows (`h`, `m`, `s`) are rounded up to whole days, so a `36h` goal looks back 2 days.
 - **On target** means at or above the minimum (if there is one) and not above the maximum (if there is one); exactly the maximum is still on target. Bars are gray below target, green on target, red over. A green band marks the target range, with dashed lines at the min and max.
 - **The summary** reads e.g. "On target 12 of 30 days · 3 over", and for the daily ranges adds today's status so far.
 - **Today** is drawn faded (or as a hollow point for trend goals) and is not counted in the summary or the monthly bars, because the day is not over.
 - **Monthly bars** show the days on target in green against a gray bar of all days counted that month. The current month is faded because it is still running.
-- **Trend goals** draw the EMA as a line, with a point per day coloured by status.
+- **Trend goals** draw the trend (EMA or decaying best) as a line, with a point per day coloured by status.
 - **The current target applies to every day.** Changing a goal's min or max re-colours its whole history; past targets are not kept.
 
 The same data is available over the API as `GET /goals/{id}/history?bucket=day|month&lookback_days=N` (`lookback_days` completed days before today, 1-730, default 30; today is always included as partial) and through the MCP tool `get_goal_history`.
@@ -108,6 +114,10 @@ For each goal you can set:
 | **Window** | Rolling window duration. Default `7d`. Supports: `s` (seconds), `m` (minutes), `h` (hours), `d` (days), `w` (weeks), `M` (months) |
 
 A **measure goal** instead sets the activity type, an optional exercise filter (`filter_field` such as `sets.exercise` and `filter_value` such as `Bench Press`, given together), the measure, the aggregation (`max` or `sum`) and the window (default `30d`); min and max are in the measure's unit (kg, s, or a count). Over the API it is a goal with `goal_type: "measure"`.
+
+A **trend goal** targets a trend's current value: an EMA of an activity type or metric, or the decaying best of a measure (`measure`, with `filter_field` and `filter_value` for one exercise; half-life 120 days by default), such as "Squat e1RM trend at least 100 kg".
+
+A goal can be created from a chart's ⋮ menu (**Set a goal**, in the Chart Explorer and on an exercise's page): the Goals page opens with the new goal prefilled from the chart — a trend goal for a trend, a measure goal for a measure's bars — and only the min or max is left to type. The prefill comes in the URL (`/goals?new=trend&source_type=…&pattern=…&half_life_days=…&measure=…` or `/goals?new=measure&activity_type=…&measure=…`), which the page drops once read so a reload does not add it again.
 
 Goals can be **drag-reordered** -- the order determines how they appear on the Goals page and in the Android widget. Changes save automatically.
 

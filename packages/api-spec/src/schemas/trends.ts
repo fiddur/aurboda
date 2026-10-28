@@ -7,7 +7,8 @@
 
 import { z } from 'zod'
 
-import { baseResponseSchema } from './common.ts'
+import { activityMeasureSchema } from './activity-measures.ts'
+import { baseResponseSchema, dataFieldPathSchema } from './common.ts'
 
 export const trendSourceTypeSchema = z
   .enum(['tag', 'metric', 'productivity_category', 'activity_type'])
@@ -55,6 +56,22 @@ export const halfLifePresets = {
   stable: 30,
 } as const
 
+/**
+ * A trend of a list-item measure (activity_type source only): the decaying best. Each session's
+ * measure lifts a running best that decays with the half-life between sessions, so one weak
+ * session never pulls it down. display_period and aggregation do not apply.
+ */
+export const trendMeasureShape = {
+  filter_field: dataFieldPathSchema
+    .optional()
+    .meta({ description: 'With measure: item path whose items are measured (sets.exercise)' }),
+  filter_value: z.string().optional().meta({ description: 'With filter_field: the item value to keep' }),
+  measure: activityMeasureSchema.optional().meta({
+    description:
+      'For activity_type sources: trend the decaying best of this list-item measure instead of a rate',
+  }),
+}
+
 export const getTrendQuerySchema = z
   .object({
     aggregation: z.enum(['count', 'sum', 'mean']).optional().meta({
@@ -64,11 +81,10 @@ export const getTrendQuerySchema = z
     display_period: trendDisplayPeriodSchema
       .default('monthly')
       .meta({ description: 'Period to normalize the rate to (daily, weekly, monthly)' }),
-    half_life_days: z
-      .number()
-      .positive()
-      .default(15)
-      .meta({ description: 'EMA half-life in days. Common values: 7 (quick), 15 (responsive), 30 (stable)' }),
+    half_life_days: z.number().positive().default(15).meta({
+      description:
+        'Half-life in days. EMA: 7 (quick), 15 (responsive), 30 (stable); a measure trend decays slower, and the UI uses 120 for one',
+    }),
     lookback_days: z
       .number()
       .positive()
@@ -94,6 +110,7 @@ export const getTrendQuerySchema = z
         'Data fields to break down by (for activity_type source). Produces per-series EMA histories.',
     }),
     missing_days: trendMissingDaysSchema.optional(),
+    ...trendMeasureShape,
   })
   .meta({ id: 'GetTrendQuery' })
 
@@ -110,9 +127,10 @@ export type TrendHistoryPoint = z.infer<typeof trendHistoryPointSchema>
 
 export const trendResultSchema = z
   .object({
-    aggregation: z
-      .enum(['count', 'sum', 'mean'])
-      .meta({ description: 'Aggregation method used. count: occurrences / samples per period' }),
+    aggregation: z.enum(['count', 'sum', 'mean', 'max']).meta({
+      description:
+        'Aggregation method used. count: occurrences / samples per period; max: the decaying best of a measure',
+    }),
     current_value: z.number().meta({ description: 'Current trend value' }),
     display_period: trendDisplayPeriodSchema.meta({ description: 'Period the value is normalized to' }),
     display_unit: z.string().meta({ description: 'Human-readable unit (e.g., "per month")' }),
@@ -132,6 +150,7 @@ export const trendResultSchema = z
       .meta({ description: 'How days without samples were treated (metric source only)' }),
     pattern: z.string().meta({ description: 'Pattern used for matching' }),
     source_type: trendSourceTypeSchema.meta({ description: 'Source type queried' }),
+    ...trendMeasureShape,
   })
   .meta({ id: 'TrendResult' })
 
@@ -176,6 +195,7 @@ export const trendQuerySchema = z
       .optional()
       .meta({ description: 'Comma-separated data fields to break down by' }),
     missing_days: trendMissingDaysSchema.optional(),
+    ...trendMeasureShape,
   })
   .meta({ id: 'TrendQuery' })
 

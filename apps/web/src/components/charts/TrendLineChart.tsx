@@ -1,7 +1,7 @@
 import * as d3 from 'd3'
 import { useEffect, useRef } from 'preact/hooks'
 
-import { daySpanTickStep } from './chart-ticks'
+import { renderTimeAxis, renderYearBreaks, type TimeAxisLayout, timeAxisLayout } from './time-axis'
 import './TrendLineChart.css'
 
 export interface LineSeriesData {
@@ -35,40 +35,19 @@ interface ParsedPoint {
   value: number
 }
 
-const buildDateFormat = (extent: [Date, Date]) => {
-  const spanYears = extent[1].getFullYear() - extent[0].getFullYear()
-  return {
-    axisFormat: spanYears >= 1 ? d3.timeFormat("%b '%y") : d3.timeFormat('%b %d'),
-    spanYears,
-    tooltipFormat: spanYears >= 1 ? d3.timeFormat("%b %d, '%y") : d3.timeFormat('%b %d'),
-  }
-}
+const buildTooltipFormat = (extent: [Date, Date]) =>
+  extent[1].getFullYear() - extent[0].getFullYear() >= 1
+    ? d3.timeFormat("%b %d, '%y")
+    : d3.timeFormat('%b %d')
 
 function renderAxes(
   g: d3.Selection<SVGGElement, unknown, null, undefined>,
   x: d3.ScaleTime<number, number>,
   y: d3.ScaleLinear<number, number>,
-  innerWidth: number,
   innerHeight: number,
-  dateFormat: (date: Date) => string,
+  axis: TimeAxisLayout,
 ) {
-  const [start, end] = x.domain()
-  const spanDays = (end.getTime() - start.getTime()) / 86_400_000
-  const xAxis = d3.axisBottom(x).tickFormat((d) => dateFormat(d as Date))
-  // For short spans, place ticks on day boundaries so labels stay distinct
-  // instead of repeating the same day across sub-day ticks (e.g. a 3-day
-  // challenge). Capped at ~6 ticks so compact widgets aren't crowded.
-  const step = daySpanTickStep(spanDays)
-  const dayInterval = step === null ? null : d3.timeDay.every(step)
-  if (dayInterval) xAxis.ticks(dayInterval)
-  else xAxis.ticks(6)
-
-  g.append('g')
-    .attr('transform', `translate(0,${innerHeight})`)
-    .call(xAxis)
-    .selectAll('text')
-    .attr('font-size', '11px')
-
+  renderTimeAxis(g, x, innerHeight, axis)
   g.append('g').call(d3.axisLeft(y).ticks(5)).selectAll('text').attr('font-size', '11px')
 }
 
@@ -86,7 +65,8 @@ function renderGrid(
         .tickFormat(() => ''),
     )
     .selectAll('line')
-    .attr('stroke', '#e5e7eb')
+    .attr('stroke', 'currentColor')
+    .attr('stroke-opacity', 0.15)
     .attr('stroke-dasharray', '3,3')
 }
 
@@ -144,7 +124,8 @@ function renderMultiSeries(
   innerWidth: number,
   innerHeight: number,
   compact: boolean,
-  xDomain?: [Date, Date],
+  dateDomain: [Date, Date],
+  axis: TimeAxisLayout,
 ): {
   x: d3.ScaleTime<number, number>
   y: d3.ScaleLinear<number, number>
@@ -154,7 +135,6 @@ function renderMultiSeries(
   const allPoints = series.flatMap((s) => s.data.map((d) => ({ date: new Date(d.date), value: d.value })))
   if (allPoints.length < 2) return null
 
-  const dateDomain = xDomain ?? (d3.extent(allPoints, (d) => d.date) as [Date, Date])
   const x = d3.scaleTime().domain(dateDomain).range([0, innerWidth])
 
   const yExtent = d3.extent(allPoints, (d) => d.value) as [number, number]
@@ -167,9 +147,8 @@ function renderMultiSeries(
     .nice()
     .range([innerHeight, 0])
 
-  const { axisFormat, tooltipFormat } = buildDateFormat(dateDomain)
-
   if (!compact) renderGrid(g, y, innerWidth)
+  renderYearBreaks(g, x, innerHeight, axis)
 
   const parsedSeries = series.map((s) => ({
     color: s.color,
@@ -182,9 +161,9 @@ function renderMultiSeries(
     renderAreaAndLine(g, s.data, x, y, innerHeight, s.color)
   }
 
-  renderAxes(g, x, y, innerWidth, innerHeight, axisFormat)
+  renderAxes(g, x, y, innerHeight, axis)
 
-  return { parsedSeries, tooltipFormat, x, y }
+  return { parsedSeries, tooltipFormat: buildTooltipFormat(dateDomain), x, y }
 }
 
 function attachTooltip(
@@ -367,12 +346,12 @@ function renderSingleSeries(
   compact: boolean,
   container: HTMLDivElement,
   tooltip: HTMLDivElement | null,
-  xDomain?: [Date, Date],
+  dateDomain: [Date, Date],
+  axis: TimeAxisLayout,
 ) {
   const parsedData: ParsedPoint[] = data.map((d) => ({ date: new Date(d.date), value: d.value }))
   if (parsedData.length < 2) return
 
-  const dateDomain = xDomain ?? (d3.extent(parsedData, (d) => d.date) as [Date, Date])
   const x = d3.scaleTime().domain(dateDomain).range([0, innerWidth])
 
   const yExtent = d3.extent(parsedData, (d) => d.value) as [number, number]
@@ -387,12 +366,11 @@ function renderSingleSeries(
 
   const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`)
 
-  const { axisFormat, tooltipFormat } = buildDateFormat(dateDomain)
-
   if (!compact) renderGrid(g, y, innerWidth)
+  renderYearBreaks(g, x, innerHeight, axis)
   renderAreaAndLine(g, parsedData, x, y, innerHeight, color)
   if (!compact) renderDots(g, parsedData, x, y, color)
-  renderAxes(g, x, y, innerWidth, innerHeight, axisFormat)
+  renderAxes(g, x, y, innerHeight, axis)
 
   if (!compact && tooltip) {
     attachTooltip(
@@ -406,7 +384,7 @@ function renderSingleSeries(
       container,
       tooltip,
       margin,
-      tooltipFormat,
+      buildTooltipFormat(dateDomain),
     )
   }
 }
@@ -446,13 +424,20 @@ export function TrendLineChart({
     svg.selectAll('*').remove()
     svg.attr('width', chartWidth).attr('height', chartHeight)
 
-    const margin = { bottom: 30, left: 50, right: 20, top: 20 }
-    const innerWidth = chartWidth - margin.left - margin.right
+    const series = multiSeries && multiSeries.length > 0 ? multiSeries : null
+    const points = series ? series.flatMap((s) => s.data) : data
+    if (points.length < 2) return
+    const dateDomain = domain ?? (d3.extent(points, (d) => new Date(d.date)) as [Date, Date])
+
+    const sideMargin = { left: 50, right: 20, top: 20 }
+    const innerWidth = chartWidth - sideMargin.left - sideMargin.right
+    const axis = timeAxisLayout(dateDomain, innerWidth)
+    const margin = { ...sideMargin, bottom: axis.bottomMargin }
     const innerHeight = chartHeight - margin.top - margin.bottom
 
-    if (multiSeries && multiSeries.length > 0) {
+    if (series) {
       const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`)
-      const result = renderMultiSeries(g, multiSeries, innerWidth, innerHeight, compact, domain)
+      const result = renderMultiSeries(g, series, innerWidth, innerHeight, compact, dateDomain, axis)
 
       if (!compact && tooltipRef.current && result) {
         attachMultiSeriesTooltip(
@@ -479,7 +464,8 @@ export function TrendLineChart({
         compact,
         container,
         tooltipRef.current,
-        domain,
+        dateDomain,
+        axis,
       )
     }
   }, [data, color, height, width, compact, multiSeries, xDomainStartMs, xDomainEndMs])

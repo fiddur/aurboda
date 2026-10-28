@@ -325,6 +325,51 @@ describe('getGoalHistory', () => {
     expect(result?.days?.map((d) => d.value)).toEqual([0, 72])
   })
 
+  test('a trend goal on a measure asks getTrend for the measure trend', async () => {
+    const goal = {
+      display_period: 'monthly' as const,
+      filter_field: 'sets.exercise',
+      filter_value: 'Squat',
+      goal_type: 'trend' as const,
+      half_life_days: 120,
+      id: 'g-trend-squat',
+      measure: 'e1rm' as const,
+      min: 100,
+      pattern: 'strength_training',
+      source_type: 'activity_type' as const,
+    }
+    vi.mocked(settings.getEffectiveGoals).mockResolvedValue([goal])
+    vi.mocked(trends.getTrend).mockResolvedValue({
+      aggregation: 'max',
+      current_value: 104.2,
+      display_period: 'monthly',
+      display_unit: 'kg',
+      half_life_days: 120,
+      history: [{ date: '2026-02-02', value: 104.2 }],
+      lookback_days: 1,
+      measure: 'e1rm',
+      pattern: 'strength_training',
+      source_type: 'activity_type',
+    })
+
+    const result = await getGoalHistory('u', 'g-trend-squat', { bucket: 'day', lookback_days: 1 })
+
+    expect(trends.getTrend).toHaveBeenCalledWith(
+      'u',
+      expect.objectContaining({
+        filter_field: 'sets.exercise',
+        filter_value: 'Squat',
+        half_life_days: 120,
+        lookback_days: 1,
+        measure: 'e1rm',
+      }),
+    )
+    expect(result).toMatchObject({
+      days: [{ date: '2026-02-02', partial: true, status: 'met', value: 104.2 }],
+      unit: 'kg',
+    })
+  })
+
   test('trend goal maps the EMA history', async () => {
     const goal = {
       aggregation: 'count' as const,

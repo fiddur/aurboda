@@ -2,7 +2,7 @@
  * Pure helpers for updating an existing board chart widget in place from the
  * chart page. Kept separate from the component so they can be unit-tested.
  */
-import type { DashboardConfig, DashboardWidget } from '@aurboda/api-spec'
+import { type DashboardConfig, type DashboardWidget, measureGoalTitle } from '@aurboda/api-spec'
 
 import type { ChartOrigin } from '../../utils/chart-url'
 
@@ -26,9 +26,13 @@ export function boardReturnPath(
   return `/u/${encodeURIComponent(username ?? '')}/${encodeURIComponent(slug ?? '')}`
 }
 
-/** Existing display title of a chart widget, if any (used to pre-fill the update form). */
+/** Display title of a chart widget, if any (used to pre-fill the update form); a measure trend has a default. */
 export function chartWidgetTitle(widget: DashboardWidget): string | undefined {
-  if (widget.type === 'trend_chart' || widget.type === 'bar_chart') return widget.config.title
+  if (widget.type === 'trend_chart') {
+    const { filter_value, measure, pattern, title } = widget.config
+    return title ?? (measure ? measureGoalTitle(measure, filter_value, pattern) : undefined)
+  }
+  if (widget.type === 'bar_chart') return widget.config.title
   return undefined
 }
 

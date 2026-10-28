@@ -51,6 +51,23 @@ Tracks hours spent in a screentime category per day, summed from its screen time
 
 The trend value is shown as "hours per day" (or per week/month).
 
+## Measure Trends (Decaying Best)
+
+An activity type with list items -- a strength session's sets -- can also be trended on a **measure** of those items (`e1rm`, `max_weight`, `max_time`, `max_reps`, `volume`, `set_count`, `total_reps`; see [Activity Types: Exercises and measures](activity-types.md#exercises-and-measures)). Instead of an EMA, the trend is the **decaying best**: a running best that decays with the half-life between sessions and is lifted back by any session that beats the decayed value. One weak session never pulls it down; a long break lets it fade.
+
+Each UTC day's value is the higher of that day's best session and the previous day's value decayed by `2^(-1 / half-life)`. The line starts at the first session -- days before it have no point -- and runs to today, decayed to today. Like the EMA sources, sessions up to three half-lives before the lookback are read first, so an older best still carries into the chart. Values are rounded to one decimal.
+
+Parameters (`GET /trends`, the `get_trend` MCP tool):
+
+- `source_type: 'activity_type'` and `pattern`: the activity type (its sub-types included).
+- `measure`: the measure to trend. Without it, an activity-type trend is the usual EMA rate.
+- `filter_field` / `filter_value`: one exercise, e.g. `sets.exercise` = `Squat`. Only that exercise's sets are measured and sessions without it do not count. Without them, every working set counts.
+- `half_life_days` and `lookback_days` as for any trend. The API default half-life is 15 days; the web app uses **120 days** for measure trends, which suits a strength best.
+
+`display_period`, `aggregation`, `breakdown_fields` and `missing_days` do not apply. The result has `aggregation: 'max'`, the measure's unit as `display_unit` (`kg`, `s`, `reps`, or empty for a set count), and echoes `measure`, `filter_field` and `filter_value`.
+
+It is the trend shown on an exercise's page (`/activity-type/strength_training/item/sets.exercise/Squat`), and is available in the Chart Explorer (a Trend with a measure), as a dashboard trend widget (`measure`, `filter_field`, `filter_value` in the widget config) and as a [trend goal](goals.md#trend-goals).
+
 ## Configuration Options
 
 When adding or editing a trend, you can configure:
@@ -106,6 +123,14 @@ Each category detail page shows a "Time trend" section with a mini chart of hour
 ### Dashboard
 
 Trend charts can be added as widgets on the Dashboard. Configure the source type (tag or metric), pattern, and display period directly in the dashboard editor.
+
+### Chart Explorer
+
+The Chart Explorer (`/chart`) charts any activity type or metric as a trend or as bars. For an activity type with list items (a strength session's sets), a **measure** such as an exercise's e1RM charts as bars or, with **Trend (best)**, as its decaying best: a running best of the measure that decays with a half-life between sessions and is lifted by any session that beats it. Its half-life choices are 30, 60, 120 (the default), 240 days and 1 year; display period and aggregation do not apply. The URL carries it as `chart_type=trend&measure=e1rm&half_life_days=120`, with `filter_field` and `filter_value` for one exercise.
+
+### Chart menu
+
+Charts in the Chart Explorer and on an exercise's page have a ⋮ menu with **Open in Chart Explorer** (not shown in the explorer itself), **Add to dashboard** and **Set a goal**. Set a goal opens the Goals page with a new goal prefilled from the chart (a trend goal for a trend, a measure goal for a measure's bars), so only the target is left to type.
 
 ## What Data It Needs
 

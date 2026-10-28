@@ -4,18 +4,21 @@
  * dashboard); the public renderer omits it.
  */
 
-import type { TrendChartConfig, TrendChartData } from '@aurboda/api-spec'
-
+import { measureGoalTitle, type TrendChartConfig, type TrendChartData } from '@aurboda/api-spec'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'preact/hooks'
 
 import { fetchTrend } from '../../state/api'
 import { buildChartUrl, type ChartOrigin } from '../../utils/chart-url'
+import { EMA_HALF_LIFE_DEFAULT, MEASURE_HALF_LIFE_DEFAULT } from '../../utils/half-life'
 import { BreakdownLegend, SERIES_COLORS } from '../charts/breakdown'
 import { TrendLineChart } from '../charts/TrendLineChart'
 import { HEAVY_QUERY_OPTIONS } from './heavyQuery'
 
 const NO_POINTS: TrendChartData['history'] = []
+
+const trendChartTitle = ({ filter_value, measure, pattern, title }: TrendChartConfig): string =>
+  title ?? (measure ? measureGoalTitle(measure, filter_value, pattern) : `${pattern} trend`)
 
 interface TrendChartViewProps {
   config: TrendChartConfig
@@ -25,8 +28,8 @@ interface TrendChartViewProps {
 }
 
 export function TrendChartView({ config, data, href }: TrendChartViewProps) {
-  const { pattern, title, display_period = 'monthly' } = config
-  const displayTitle = title ?? `${pattern} trend`
+  const { display_period = 'monthly' } = config
+  const displayTitle = trendChartTitle(config)
 
   const breakdownSeries = data?.breakdown_series
   const breakdownHistories = data?.breakdown_histories
@@ -49,7 +52,9 @@ export function TrendChartView({ config, data, href }: TrendChartViewProps) {
         <h4>{displayTitle}</h4>
         {data && !showBreakdown && (
           <span class="chart-widget-value">
-            {data.current_value.toFixed(1)} / {display_period}
+            {config.measure
+              ? data.current_value.toFixed(1)
+              : `${data.current_value.toFixed(1)} / ${display_period}`}
           </span>
         )}
       </div>
@@ -83,8 +88,10 @@ export function TrendChartWidget({ config, origin }: TrendChartWidgetProps) {
   const {
     source_type,
     pattern,
-    title,
-    half_life_days = 15,
+    measure,
+    filter_field,
+    filter_value,
+    half_life_days = measure ? MEASURE_HALF_LIFE_DEFAULT : EMA_HALF_LIFE_DEFAULT,
     lookback_days = 90,
     display_period = 'monthly',
     aggregation = source_type === 'metric' ? 'mean' : 'count',
@@ -95,8 +102,7 @@ export function TrendChartWidget({ config, origin }: TrendChartWidgetProps) {
   const trendQuery = useQuery({
     queryFn: () =>
       fetchTrend({
-        aggregation,
-        display_period,
+        ...(measure ? { filter_field, filter_value, measure } : { aggregation, display_period }),
         half_life_days,
         lookback_days,
         pattern,
@@ -114,6 +120,9 @@ export function TrendChartWidget({ config, origin }: TrendChartWidgetProps) {
       aggregation,
       breakdown_fields,
       missing_days,
+      measure,
+      filter_field,
+      filter_value,
     ],
     ...HEAVY_QUERY_OPTIONS,
     staleTime: 5 * 60 * 1000,
@@ -137,12 +146,11 @@ export function TrendChartWidget({ config, origin }: TrendChartWidgetProps) {
     [trendData],
   )
 
-  const displayTitle = title ?? `${pattern} trend`
+  const displayTitle = trendChartTitle(config)
   const chartUrl = buildChartUrl({
-    aggregation,
+    ...(measure ? { filter_field, filter_value, measure } : { aggregation, display_period }),
     breakdown_fields,
     chart_type: 'trend',
-    display_period,
     half_life_days,
     lookback_days,
     missing_days,

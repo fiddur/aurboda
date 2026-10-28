@@ -202,6 +202,55 @@ describe('resolveDashboardData integration', () => {
     }
   })
 
+  test('a trend_chart with a measure resolves the decaying best of that exercise', async () => {
+    const user = getTestUser()
+    const start = new Date()
+    start.setUTCHours(0, 0, 0, 0)
+    start.setUTCDate(start.getUTCDate() - 10)
+    const set = (exercise: string, weight: number) => ({ exercise, reps: 3, set_type: 'normal', weight })
+    await insertActivity(user, {
+      activity_type: 'strength_training',
+      data: { sets: [set('Squat', 100), set('Bench Press', 150)] },
+      end_time: new Date(start.getTime() + 3_600_000),
+      source: 'gravl',
+      start_time: start,
+    })
+
+    const data = await resolveDashboardData(user, {
+      sections: [
+        {
+          id: 's',
+          title: 'x',
+          type: 'charts',
+          widgets: [
+            {
+              config: {
+                filter_field: 'sets.exercise',
+                filter_value: 'Squat',
+                half_life_days: 10,
+                lookback_days: 30,
+                measure: 'e1rm',
+                pattern: 'strength_training',
+                source_type: 'activity_type',
+              },
+              id: 'trend',
+              type: 'trend_chart',
+            },
+          ],
+        },
+      ],
+      version: 1,
+    })
+
+    expect(data['trend']).toEqual({
+      data: {
+        current_value: 55,
+        history: expect.arrayContaining([{ date: start.toISOString().slice(0, 10), value: 110 }]),
+      },
+      type: 'trend_chart',
+    })
+  })
+
   test('masked_breakdown_fields anonymizes breakdown series as A/B for public viewers', async () => {
     const user = getTestUser()
     const base = new Date('2026-03-01T12:00:00Z')

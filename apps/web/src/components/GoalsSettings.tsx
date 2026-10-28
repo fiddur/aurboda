@@ -1,4 +1,4 @@
-import { type MeasureGoal, metricUnits, validMetrics } from '@aurboda/api-spec'
+import { type MeasureGoal, measureGoalTitle, metricUnits, validMetrics } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
@@ -13,6 +13,8 @@ import './GoalsSettings.css'
 
 interface GoalsSettingsProps {
   goals: Goal[]
+  /** A new goal to start editing, such as one prefilled from a chart; left out once it is saved. */
+  initialGoal?: Goal
 }
 
 const durationUnits = [
@@ -77,14 +79,17 @@ type LocalGoal = Goal & {
 
 const stripIsNew = ({ isNew: _, ...goal }: LocalGoal): Goal => goal
 
-export function GoalsSettings({ goals }: GoalsSettingsProps) {
+export function GoalsSettings({ goals, initialGoal }: GoalsSettingsProps) {
   const queryClient = useQueryClient()
   const [saveStatus, setSaveStatus] = useState<SaveStatus>({ status: 'idle' })
   const [showDurationHelp, setShowDurationHelp] = useState(false)
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [dragOverId, setDragOverId] = useState<string | null>(null)
 
-  const [localGoals, setLocalGoals] = useState<LocalGoal[]>(() => goals.map((g) => ({ ...g, isNew: false })))
+  const [localGoals, setLocalGoals] = useState<LocalGoal[]>(() => [
+    ...goals.map((g) => ({ ...g, isNew: false })),
+    ...(initialGoal && !goals.some((g) => g.id === initialGoal.id) ? [{ ...initialGoal, isNew: true }] : []),
+  ])
 
   const { data: definitions = [] } = useQuery({
     queryFn: fetchActivityTypeDefinitions,
@@ -350,7 +355,9 @@ export function GoalsSettings({ goals }: GoalsSettingsProps) {
                   <div class="goal-field metric-field">
                     <label>Trend</label>
                     <span class="trend-label">
-                      {goal.pattern} ({goal.display_period})
+                      {goal.measure
+                        ? `${measureGoalTitle(goal.measure, goal.filter_value, goal.pattern)} (${goal.half_life_days}-day half-life)`
+                        : `${goal.pattern} (${goal.display_period})`}
                     </span>
                   </div>
 
