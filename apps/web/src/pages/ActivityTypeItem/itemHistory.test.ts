@@ -5,7 +5,6 @@ import { describe, expect, test } from 'vitest'
 import {
   availableMeasures,
   chartExplorerHref,
-  decayingBestPoints,
   doneSummary,
   explorerLookbackDays,
   perWeekRange,
@@ -113,59 +112,6 @@ describe('availableMeasures', () => {
   test('the measures any session has, in api-spec order', () => {
     expect(availableMeasures(sessions)).toEqual(['volume', 'e1rm', 'max_weight'])
     expect(availableMeasures([s4])).toEqual([])
-  })
-})
-
-describe('decayingBestPoints', () => {
-  const at = (id: string, date: string, e1rm?: number) =>
-    session(id, date, { measures: e1rm === undefined ? {} : { e1rm } })
-  const jan1 = '2026-01-01T00:00:00.000Z'
-  const may1 = '2026-05-01T00:00:00.000Z'
-  const now = new Date(may1).getTime()
-
-  test('the half-life is exact and a lower session carries the decayed best', () => {
-    expect(decayingBestPoints([at('b', may1, 10), at('a', jan1, 100)], 'e1rm', 120, now)).toEqual([
-      { date: jan1, value: 100 },
-      { date: may1, value: 50 },
-    ])
-  })
-
-  test('a higher session resets to its own value', () => {
-    expect(decayingBestPoints([at('a', jan1, 100), at('b', may1, 80)], 'e1rm', 120, now)).toEqual([
-      { date: jan1, value: 100 },
-      { date: may1, value: 80 },
-    ])
-  })
-
-  test('a trailing point at now decays from the last point', () => {
-    const later = new Date('2026-08-29T00:00:00.000Z').getTime()
-    expect(decayingBestPoints([at('a', jan1, 100), at('b', may1, 10)], 'e1rm', 120, later)).toEqual([
-      { date: jan1, value: 100 },
-      { date: may1, value: 50 },
-      { date: '2026-08-29T00:00:00.000Z', value: 25 },
-    ])
-  })
-
-  test('a single session gives itself and today', () => {
-    expect(decayingBestPoints([at('a', jan1, 100)], 'e1rm', 120, now)).toEqual([
-      { date: jan1, value: 100 },
-      { date: may1, value: 50 },
-    ])
-  })
-
-  test('rounds to one decimal', () => {
-    expect(decayingBestPoints([at('a', jan1, 113.33)], 'e1rm', 120, new Date(jan1).getTime())).toEqual([
-      { date: jan1, value: 113.3 },
-    ])
-  })
-
-  test('skips sessions without the measure, and none gives no points', () => {
-    expect(decayingBestPoints([at('a', jan1, 100), at('b', may1)], 'e1rm', 120, now)).toEqual([
-      { date: jan1, value: 100 },
-      { date: may1, value: 50 },
-    ])
-    expect(decayingBestPoints([at('b', may1)], 'e1rm', 120, now)).toEqual([])
-    expect(decayingBestPoints([], 'e1rm', 120, now)).toEqual([])
   })
 })
 

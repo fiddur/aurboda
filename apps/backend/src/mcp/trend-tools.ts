@@ -15,6 +15,12 @@ Examples:
 - Tag trend: "How many painkillers per month?" -> pattern: "pain_killer", sourceType: "tag"
 - Metric trend: "What's my average weight trend?" -> pattern: "weight", sourceType: "metric"
 
+Measure trend (activity_type only): with measure set, the trend is the decaying best of that list-item measure
+(e1rm, max_weight, ...) per session: a running best that decays with the half-life between sessions and is lifted by
+any session that beats it, so one weak session never pulls it down. filter_field/filter_value pick one exercise
+(filter_field: "sets.exercise", filter_value: "Squat"). A longer half-life such as 120 days suits it. display_period,
+aggregation, breakdown_fields and missing_days do not apply; the result's aggregation is 'max'.
+
 missing_days (metric only): 'zero' counts days without samples as 0, 'skip' leaves them out; defaults to the metric kind (zero for amounts like steps or a custom metric with aggregation 'sum', skip for levels like weight).
 
 Common half-life values:
@@ -26,8 +32,11 @@ Common half-life values:
       aggregation,
       breakdown_fields,
       display_period,
+      filter_field,
+      filter_value,
       half_life_days,
       lookback_days,
+      measure,
       missing_days,
       pattern,
       source_type,
@@ -41,8 +50,11 @@ Common half-life values:
           breakdown_fields,
           custom_metrics: customMetrics,
           display_period,
+          filter_field,
+          filter_value,
           half_life_days,
           lookback_days,
+          measure,
           missing_days,
           pattern: pattern ?? '',
           source_type,

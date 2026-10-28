@@ -5,6 +5,7 @@
 import * as d3 from 'd3'
 import { useEffect, useRef } from 'preact/hooks'
 
+import { renderTimeAxis, renderYearBreaks, type TimeAxisLayout, timeAxisLayout } from './time-axis'
 import './BarChart.css'
 
 export interface BarSeriesData {
@@ -74,7 +75,8 @@ function renderGrid(
         .tickFormat(() => ''),
     )
     .selectAll('line')
-    .attr('stroke', '#e5e7eb')
+    .attr('stroke', 'currentColor')
+    .attr('stroke-opacity', 0.15)
     .attr('stroke-dasharray', '3,3')
 }
 
@@ -82,17 +84,10 @@ function renderTimeAxes(
   g: d3.Selection<SVGGElement, unknown, null, undefined>,
   x: d3.ScaleTime<number, number>,
   y: d3.ScaleLinear<number, number>,
-  innerWidth: number,
   innerHeight: number,
+  axis: TimeAxisLayout,
 ) {
-  g.append('g')
-    .attr('transform', `translate(0,${innerHeight})`)
-    .call(d3.axisBottom(x).ticks(8))
-    .selectAll('text')
-    .attr('font-size', '11px')
-    .attr('text-anchor', 'end')
-    .attr('transform', 'rotate(-35)')
-
+  renderTimeAxis(g, x, innerHeight, axis)
   g.append('g').call(d3.axisLeft(y).ticks(5)).selectAll('text').attr('font-size', '11px')
 }
 
@@ -264,9 +259,8 @@ export function BarChart({
     svg.selectAll('*').remove()
     svg.attr('width', chartWidth).attr('height', chartHeight)
 
-    const margin = { bottom: 50, left: 50, right: 20, top: 20 }
+    const margin = { left: 50, right: 20, top: 20 }
     const innerWidth = chartWidth - margin.left - margin.right
-    const innerHeight = chartHeight - margin.top - margin.bottom
     const bMs = bucketSizeMs(bucketSize)
 
     if (multiSeries && multiSeries.length > 0) {
@@ -278,6 +272,8 @@ export function BarChart({
       const xMax = rangeEnd
         ? new Date(rangeEnd)
         : new Date(allBuckets[allBuckets.length - 1].getTime() + bMs * 1.5)
+      const axis = timeAxisLayout([xMin, xMax], innerWidth)
+      const innerHeight = chartHeight - margin.top - axis.bottomMargin
       const x = d3.scaleTime().domain([xMin, xMax]).range([0, innerWidth])
 
       const barWidth = Math.max(x(new Date(xMin.getTime() + bMs)) - x(xMin) - 2, 2)
@@ -290,7 +286,8 @@ export function BarChart({
 
       const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`)
       renderGrid(g, y, innerWidth)
-      renderTimeAxes(g, x, y, innerWidth, innerHeight)
+      renderYearBreaks(g, x, innerHeight, axis)
+      renderTimeAxes(g, x, y, innerHeight, axis)
 
       if (tooltipRef.current) {
         renderMultiSeriesBars(
@@ -314,6 +311,8 @@ export function BarChart({
       const bars: ParsedBar[] = data.map((d) => ({ date: new Date(d.bucket_start), value: d.value }))
       const xMin = rangeStart ? new Date(rangeStart) : new Date(bars[0].date.getTime() - bMs * 0.5)
       const xMax = rangeEnd ? new Date(rangeEnd) : new Date(bars[bars.length - 1].date.getTime() + bMs * 1.5)
+      const axis = timeAxisLayout([xMin, xMax], innerWidth)
+      const innerHeight = chartHeight - margin.top - axis.bottomMargin
       const x = d3.scaleTime().domain([xMin, xMax]).range([0, innerWidth])
 
       const barWidth = Math.max(x(new Date(xMin.getTime() + bMs)) - x(xMin) - 2, 2)
@@ -326,7 +325,8 @@ export function BarChart({
 
       const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`)
       renderGrid(g, y, innerWidth)
-      renderTimeAxes(g, x, y, innerWidth, innerHeight)
+      renderYearBreaks(g, x, innerHeight, axis)
+      renderTimeAxes(g, x, y, innerHeight, axis)
 
       if (tooltipRef.current) {
         renderBars(

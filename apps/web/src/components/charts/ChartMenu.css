@@ -1,0 +1,83 @@
+.chart-menu-root {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.chart-menu-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #6b7280;
+  cursor: pointer;
+}
+
+.chart-menu-button:hover,
+.chart-menu-button[aria-expanded='true'] {
+  background: #f3f4f6;
+}
+
+.chart-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 12rem;
+  padding: 0.25rem 0;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow:
+    0 10px 15px -3px rgb(0 0 0 / 10%),
+    0 4px 6px -4px rgb(0 0 0 / 10%);
+}
+
+.chart-menu-item {
+  display: block;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  background: none;
+  color: #374151;
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.chart-menu-item:hover,
+.chart-menu-item:focus-visible {
+  background: #f3f4f6;
+  outline: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  .chart-menu-button:hover,
+  .chart-menu-button[aria-expanded='true'] {
+    background: #374151;
+  }
+
+  .chart-menu {
+    background: #1f2937;
+    border-color: #374151;
+    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 40%);
+  }
+
+  .chart-menu-item {
+    color: #e5e7eb;
+  }
+
+  .chart-menu-item:hover,
+  .chart-menu-item:focus-visible {
+    background: #374151;
+  }
+}

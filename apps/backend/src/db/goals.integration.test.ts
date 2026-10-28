@@ -58,6 +58,39 @@ describe('goals', () => {
     })
   })
 
+  test('a measure trend goal round-trips with its measure fields, and a plain trend goal without them', async () => {
+    const user = getTestUser()
+    const measureTrend: Goal = {
+      display_period: 'monthly',
+      filter_field: 'sets.exercise',
+      filter_value: 'Squat',
+      goal_type: 'trend',
+      half_life_days: 120,
+      id: ID,
+      measure: 'e1rm',
+      min: 100,
+      pattern: 'strength_training',
+      source_type: 'activity_type',
+    }
+    await insertGoal(user, measureTrend)
+
+    expect(await getGoals(user)).toEqual([measureTrend])
+
+    const emaTrend: Goal = {
+      aggregation: 'count',
+      display_period: 'weekly',
+      goal_type: 'trend',
+      half_life_days: 15,
+      id: ID,
+      max: 3,
+      pattern: 'coffee',
+      source_type: 'activity_type',
+    }
+    await insertGoal(user, emaTrend)
+
+    expect(await getGoals(user)).toEqual([emaTrend])
+  })
+
   test('a sum measure goal without a filter round-trips', async () => {
     const user = getTestUser()
     const goal: Goal = {

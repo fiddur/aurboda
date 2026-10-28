@@ -62,6 +62,20 @@ describe('goalFormat', () => {
     expect(f.losingTomorrow).toBe('')
   })
 
+  test('a measure trend goal takes the measure title and format', () => {
+    const f = goalFormat({
+      ...trend,
+      current: 102.5,
+      display_unit: 'kg',
+      filter_field: 'sets.exercise',
+      filter_value: 'Squat',
+      measure: 'e1rm',
+      pattern: 'strength_training',
+    })
+    expect(f.label).toBe('Squat · Best e1RM')
+    expect(f.format(102.5)).toBe('102.5 kg')
+  })
+
   test('measure goals use the exercise and measure, formatted like the measure', () => {
     const f = goalFormat(measure)
     expect(f.label).toBe('Bench Press · Best e1RM')
@@ -102,6 +116,23 @@ describe('goalLabel', () => {
       }),
     ).toBe('strength_training · Longest hold')
   })
+
+  test("a measure trend goal takes the measure's title", () => {
+    expect(
+      goalLabel({
+        display_period: 'monthly',
+        filter_field: 'sets.exercise',
+        filter_value: 'Squat',
+        goal_type: 'trend',
+        half_life_days: 120,
+        id: ID,
+        measure: 'e1rm',
+        min: 100,
+        pattern: 'strength_training',
+        source_type: 'activity_type',
+      }),
+    ).toBe('Squat · Best e1RM')
+  })
 })
 
 describe('goalValueFormat', () => {
@@ -118,6 +149,24 @@ describe('goalValueFormat', () => {
       'per month',
     )
     expect(f(0.456)).toBe('0.46 per month')
+  })
+
+  test('measure trend values format like the measure', () => {
+    const f = goalValueFormat(
+      {
+        display_period: 'monthly',
+        filter_field: 'sets.exercise',
+        filter_value: 'Squat',
+        goal_type: 'trend',
+        half_life_days: 120,
+        id: ID,
+        measure: 'e1rm',
+        pattern: 'strength_training',
+        source_type: 'activity_type',
+      },
+      'kg',
+    )
+    expect(f(102.5)).toBe('102.5 kg')
   })
 
   test('metric and measure values', () => {

@@ -5,6 +5,8 @@
  */
 
 import {
+  type ActivityMeasure,
+  activityMeasureUnits,
   type CustomMetricDefinition,
   displayPeriodMultipliers,
   getMetricAggregation,
@@ -18,6 +20,11 @@ import {
 } from '@aurboda/api-spec'
 
 import { getSourceFilter, query } from '../db/index.ts'
+import {
+  type MeasureFilter,
+  measureFilter,
+  queryMeasuredActivities,
+} from './queries/activity-measure-series.ts'
 import { categoryPathMatchSql } from './screentime-sql.ts'
 
 /**
@@ -32,8 +39,11 @@ export interface GetTrendInput {
   breakdown_fields?: string[]
   custom_metrics?: CustomMetricDefinition[]
   display_period?: TrendDisplayPeriod
+  filter_field?: string
+  filter_value?: string
   half_life_days?: number
   lookback_days?: number
+  measure?: ActivityMeasure
   missing_days?: TrendMissingDays
   pattern: string
   source_type: TrendSourceType
@@ -388,6 +398,75 @@ const computeEma = (
   return history
 }
 
+const DAY_MS = 86_400_000
+
+const oneDecimal = (value: number): number => Math.round(value * 10) / 10
+
+/**
+ * The decaying best over `days`: each day's value is the higher of its best session and the previous day's value
+ * decayed by its half-life, so a weak session never pulls it down. Days before the first session have no point, and
+ * only points from `displayStartIdx` on are returned. The carry is unrounded; rounding happens only on output.
+ */
+export const decayingBestHistory = (
+  sessions: { day: string; value: number }[],
+  days: string[],
+  halfLifeDays: number,
+  displayStartIdx: number,
+): TrendHistoryPoint[] => {
+  const bestByDay = new Map<string, number>()
+  for (const { day, value } of sessions) bestByDay.set(day, Math.max(bestByDay.get(day) ?? -Infinity, value))
+
+  const history: TrendHistoryPoint[] = []
+  let prev: { time: number; value: number } | undefined
+  days.forEach((day, i) => {
+    const time = Date.parse(day)
+    const carried = prev ? prev.value * 2 ** (-(time - prev.time) / DAY_MS / halfLifeDays) : -Infinity
+    const value = Math.max(bestByDay.get(day) ?? -Infinity, carried)
+    if (value === -Infinity) return
+    prev = { time, value }
+    if (i >= displayStartIdx) history.push({ date: day, value: oneDecimal(value) })
+  })
+  return history
+}
+
+/** The UTC day keys from `count` days before today through today. */
+const utcDaysBack = (count: number): string[] => {
+  const now = new Date()
+  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+  return Array.from({ length: count + 1 }, (_, i) =>
+    new Date(today - (count - i) * DAY_MS).toISOString().slice(0, 10),
+  )
+}
+
+/**
+ * The decaying best of a list-item measure over an activity type's sessions, warmed up over three half-lives before
+ * the lookback so a best set then still carries into it.
+ */
+const calculateMeasureBestTrend = async (
+  user: string,
+  pattern: string,
+  measure: ActivityMeasure,
+  filter: MeasureFilter | undefined,
+  halfLifeDays: number,
+  lookbackDays: number,
+): Promise<{ currentValue: number; history: TrendHistoryPoint[] }> => {
+  const lookback = Math.ceil(lookbackDays)
+  const days = utcDaysBack(lookback + Math.ceil(3 * halfLifeDays))
+  const activities = await queryMeasuredActivities(
+    user,
+    pattern,
+    new Date(`${days[0]}T00:00:00Z`),
+    new Date(),
+    filter,
+  )
+  const sessions = activities.flatMap(({ activity, measures }) => {
+    const value = measures[measure]
+    return value === undefined ? [] : [{ day: activity.start_time.toISOString().slice(0, 10), value }]
+  })
+  const history = decayingBestHistory(sessions, days, halfLifeDays, days.length - 1 - lookback)
+  return { currentValue: history.at(-1)?.value ?? 0, history }
+}
+
 /**
  * Groups daily values by breakdown field, then computes EMA independently per series.
  */
@@ -539,6 +618,33 @@ export const getTrend = async (user: string, input: GetTrendInput): Promise<Tren
     pattern,
     source_type: sourceType,
   } = input
+
+  if (sourceType === 'activity_type' && input.measure) {
+    const { filter_field: filterField, filter_value: filterValue, measure } = input
+    const { currentValue, history } = await calculateMeasureBestTrend(
+      user,
+      pattern,
+      measure,
+      measureFilter(filterField, filterValue),
+      halfLifeDays,
+      lookbackDays,
+    )
+
+    return {
+      aggregation: 'max',
+      current_value: currentValue,
+      display_period: displayPeriod,
+      display_unit: activityMeasureUnits[measure],
+      filter_field: filterField,
+      filter_value: filterValue,
+      half_life_days: halfLifeDays,
+      history,
+      lookback_days: lookbackDays,
+      measure,
+      pattern,
+      source_type: sourceType,
+    }
+  }
 
   if (sourceType === 'tag') {
     // 'tag' is a backward-compat alias for activity_type count trend
