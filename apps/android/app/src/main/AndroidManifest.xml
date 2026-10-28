@@ -57,6 +57,7 @@
     <uses-permission android:name="android.permission.health.READ_MENSTRUATION" />
     <uses-permission android:name="android.permission.health.READ_MENSTRUATION_FLOW" />
     <uses-permission android:name="android.permission.health.READ_MENSTRUATION_PERIOD" />
+    <uses-permission android:name="android.permission.health.READ_MINDFULNESS" />
     <uses-permission android:name="android.permission.health.READ_NUTRITION"/>
     <uses-permission android:name="android.permission.health.READ_OVULATION_TEST" />
     <uses-permission android:name="android.permission.health.READ_OXYGEN_SATURATION" />
