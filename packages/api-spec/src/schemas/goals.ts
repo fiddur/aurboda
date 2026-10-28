@@ -12,7 +12,7 @@ import { z } from 'zod'
 
 import { activityMeasureSchema } from './activity-measures.ts'
 import { activityTypeSchema, baseResponseSchema, dataFieldPathSchema, metricTypeSchema } from './common.ts'
-import { trendDisplayPeriodSchema, trendSourceTypeSchema } from './trends.ts'
+import { trendMeasureShape, trendDisplayPeriodSchema, trendSourceTypeSchema } from './trends.ts'
 
 /**
  * Duration string for goal window (e.g., '7d', '2w', '1M').
@@ -96,6 +96,7 @@ export const trendGoalSchema = z
     min: z.number().optional().meta({ description: 'Minimum target value' }),
     pattern: z.string().meta({ description: 'Activity type name, metric name, or category path' }),
     source_type: trendSourceTypeSchema.meta({ description: 'Type of data source for the trend' }),
+    ...trendMeasureShape,
   })
   .refine((data) => data.min !== undefined || data.max !== undefined, {
     message: 'At least one of min or max must be specified',
@@ -103,7 +104,10 @@ export const trendGoalSchema = z
   .refine((data) => data.min === undefined || data.max === undefined || data.min <= data.max, {
     message: 'Min must be less than or equal to max',
   })
-  .meta({ description: 'Trend goal: EMA trend value against a target', id: 'TrendGoal' })
+  .meta({
+    description: 'Trend goal: EMA trend value, or the decaying best of a measure, against a target',
+    id: 'TrendGoal',
+  })
 
 export type TrendGoal = z.infer<typeof trendGoalSchema>
 

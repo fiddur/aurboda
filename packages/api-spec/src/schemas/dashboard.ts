@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 import { activityMeasureSchema } from './activity-measures.ts'
 import { baseResponseSchema, dataFieldPathSchema } from './common.ts'
-import { trendMissingDaysSchema } from './trends.ts'
+import { trendMeasureShape, trendMissingDaysSchema } from './trends.ts'
 
 export const builtinDashboardMetrics = [
   'hrv_7day',
@@ -105,6 +105,7 @@ export const trendChartConfigSchema = z
       .optional()
       .meta({ description: 'Tag definition ID (alternative to pattern)' }),
     title: z.string().optional().meta({ description: 'Chart title' }),
+    ...trendMeasureShape,
   })
   .meta({ id: 'TrendChartConfig' })
 
