@@ -36,6 +36,7 @@ export const healthConnectMetricMapping: Record<string, MetricType | null> = {
 
 export const healthConnectActivityMapping: Record<string, ActivityType | null> = {
   ExerciseSessionRecord: 'exercise',
+  MindfulnessSessionRecord: 'meditation',
   SleepSessionRecord: 'sleep',
 }
 

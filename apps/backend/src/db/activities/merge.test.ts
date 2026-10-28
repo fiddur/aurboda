@@ -176,3 +176,45 @@ describe('mergeOverlappingActivities — override target keeps its override thro
     expect(merged[0].source_ids?.sort()).toEqual(['aurboda-id', 'garmin-id', 'rule-id'])
   })
 })
+
+describe('mergeOverlappingActivities — Health Connect mindfulness session overlapping a Garmin meditation (#1341)', () => {
+  const garminMeditation = garmin({
+    end_time: new Date('2026-05-05T10:20:00Z'),
+    start_time: new Date('2026-05-05T10:00:30Z'),
+    title: 'Breathwork',
+  })
+  const hcMeditation = (overrides: Partial<Activity> = {}): Activity => ({
+    activity_type: 'meditation',
+    end_time: new Date('2026-05-05T10:21:00Z'),
+    id: 'health-connect-id',
+    source: 'health_connect',
+    start_time: new Date('2026-05-05T10:00:00Z'),
+    title: 'Meditation • What Is Real?',
+    ...overrides,
+  })
+
+  test('merges into one activity spanning both', () => {
+    const merged = mergeOverlappingActivities([garminMeditation, hcMeditation()], categoryMap)
+    expect(merged).toHaveLength(1)
+    expect(merged[0].activity_type).toBe('meditation')
+    expect(merged[0].start_time).toEqual(new Date('2026-05-05T10:00:00Z'))
+    expect(merged[0].end_time).toEqual(new Date('2026-05-05T10:21:00Z'))
+    expect(merged[0].source_ids).toEqual(expect.arrayContaining(['garmin-id', 'health-connect-id']))
+    expect(merged[0].source_ids).toHaveLength(2)
+  })
+
+  test('stays two activities when the sessions do not overlap', () => {
+    const merged = mergeOverlappingActivities(
+      [
+        garminMeditation,
+        hcMeditation({
+          end_time: new Date('2026-05-05T10:35:00Z'),
+          start_time: new Date('2026-05-05T10:25:00Z'),
+        }),
+      ],
+      categoryMap,
+    )
+    expect(merged).toHaveLength(2)
+    expect(merged.every((m) => m.source_ids === undefined)).toBe(true)
+  })
+})

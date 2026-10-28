@@ -44,10 +44,16 @@ These are sent as daily aggregates (one value per day) rather than raw records.
 
 ### Activities
 
-| Health Connect Record | Aurboda Activity Type                                    |
-| --------------------- | -------------------------------------------------------- |
-| ExerciseSessionRecord | `exercise` (with exercise type, title, notes, GPS route) |
-| SleepSessionRecord    | `sleep` (with sleep stage breakdowns)                    |
+| Health Connect Record    | Aurboda Activity Type                                                                                         |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| ExerciseSessionRecord    | `exercise` (with exercise type, title, notes, GPS route)                                                      |
+| MindfulnessSessionRecord | `meditation` (with title, session type and notes; merged with an overlapping Garmin meditation at query time) |
+| SleepSessionRecord       | `sleep` (with sleep stage breakdowns)                                                                         |
+
+Mindfulness sessions (written by apps such as Waking Up) are read only when Health Connect reports
+`FEATURE_MINDFULNESS_SESSION` available; older Health Connect versions do not have the record type, so the
+app neither requests the permission nor reads it there. Every mindfulness session type becomes a `meditation`
+activity, with the raw `mindfulnessSessionType` integer kept in the activity's `data`.
 
 ## Admin Setup
 
@@ -119,7 +125,7 @@ Each recognised session also enqueues a **source enrichment** job so the provide
 
 ### Activity notes
 
-`ExerciseSessionRecord.notes` (and the same field on sleep records) are not kept on the activity row itself. They are persisted as rows in the `notes` table with `source = 'health_connect'`, anchored to the activity's id. This means:
+`ExerciseSessionRecord.notes` (and the same field on sleep and mindfulness records) are not kept on the activity row itself. They are persisted as rows in the `notes` table with `source = 'health_connect'`, anchored to the activity's id. This means:
 
 - The same `notes` table also holds user-typed text and synced notes from other sources (Oura, etc.). Each row's `source` column distinguishes them — user-authored rows have `source IS NULL`.
 - Outbound HC sync (aurboda activity → Health Connect) only serializes user-authored notes into the HC record's `notes` field, joined with newlines. HC-sourced notes are deliberately skipped so a round-tripped record doesn't echo its own note back as "user input".

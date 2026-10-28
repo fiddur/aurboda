@@ -32,7 +32,7 @@ export const dataSources: DataSourceInfo[] = [
     name: 'Android Health Connect',
     doc: 'health-connect.md',
     provides:
-      'Heart rate, HRV, sleep, exercise (80+ types), steps, weight, SpO2, VO2 max, calories, and more',
+      'Heart rate, HRV, sleep, exercise (80+ types), mindfulness/meditation sessions, steps, weight, SpO2, VO2 max, calories, and more',
     how: 'Push from Android app',
     adminSetup: 'None',
     userSetup: 'Install Android app',

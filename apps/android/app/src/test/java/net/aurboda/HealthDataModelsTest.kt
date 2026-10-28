@@ -1,5 +1,7 @@
 package net.aurboda
 
+import androidx.health.connect.client.HealthConnectFeatures
+import androidx.health.connect.client.records.MindfulnessSessionRecord
 import org.junit.Assert.*
 import org.junit.Test
 import java.time.Instant
@@ -289,6 +291,7 @@ class HealthDataModelsTest {
         "LeanBodyMassRecord",
         "MenstruationFlowRecord",
         "MenstruationPeriodRecord",
+        "MindfulnessSessionRecord",
         "NutritionRecord",
         "OvulationTestRecord",
         "OxygenSaturationRecord",
@@ -330,5 +333,77 @@ class HealthDataModelsTest {
       )
     val actualTypes = writableRecordTypes.map { it.simpleName }.toSet()
     assertEquals(expectedTypes, actualTypes)
+  }
+
+  @Test
+  fun `MindfulnessSessionRecordSerializable round-trips through JSON`() {
+    val metadata =
+      HealthConnectRecordMetadata(
+        id = "hc-mind-1",
+        dataOrigin = "com.wakingup.android",
+        lastModifiedTime = "2024-01-15T10:30:00Z",
+        clientRecordId = null,
+        clientRecordVersion = 0L,
+        device = null,
+        recordingMethod = 0,
+      )
+    val record =
+      MindfulnessSessionRecordSerializable(
+        startTime = "2024-01-15T10:00:00Z",
+        endTime = "2024-01-15T10:21:00Z",
+        mindfulnessSessionType = MindfulnessSessionRecord.MINDFULNESS_SESSION_TYPE_MEDITATION,
+        title = "Meditation • What Is Real?",
+        notes = "x",
+        metadata = metadata,
+      )
+    val json = appJson.encodeToString(MindfulnessSessionRecordSerializable.serializer(), record)
+    val decoded = appJson.decodeFromString<MindfulnessSessionRecordSerializable>(json)
+    assertEquals(record, decoded)
+    assertEquals(1, decoded.mindfulnessSessionType)
+  }
+
+  @Test
+  fun `MindfulnessSessionRecordSerializable omits absent title and notes`() {
+    val metadata =
+      HealthConnectRecordMetadata(
+        id = "hc-mind-2",
+        dataOrigin = "com.example",
+        lastModifiedTime = "2024-01-15T10:30:00Z",
+        clientRecordId = null,
+        clientRecordVersion = 0L,
+        device = null,
+        recordingMethod = 0,
+      )
+    val record =
+      MindfulnessSessionRecordSerializable(
+        startTime = "2024-01-15T10:00:00Z",
+        endTime = "2024-01-15T10:10:00Z",
+        mindfulnessSessionType = MindfulnessSessionRecord.MINDFULNESS_SESSION_TYPE_UNKNOWN,
+        metadata = metadata,
+      )
+    val json = appJson.encodeToString(MindfulnessSessionRecordSerializable.serializer(), record)
+    assertFalse(json.contains("\"title\""))
+    assertFalse(json.contains("\"notes\""))
+  }
+
+  @Test
+  fun `filterAvailableRecordTypes drops mindfulness sessions when the feature is unavailable`() {
+    val available = filterAvailableRecordTypes(isFeatureAvailable = { false })
+    assertFalse(MindfulnessSessionRecord::class in available)
+    assertEquals(allRecordTypes - MindfulnessSessionRecord::class, available)
+  }
+
+  @Test
+  fun `filterAvailableRecordTypes keeps mindfulness sessions when the feature is available`() {
+    val available = filterAvailableRecordTypes(isFeatureAvailable = { true })
+    assertTrue(MindfulnessSessionRecord::class in available)
+    assertEquals(allRecordTypes, available)
+  }
+
+  @Test
+  fun `filterAvailableRecordTypes asks about the mindfulness feature`() {
+    val asked = mutableListOf<Int>()
+    filterAvailableRecordTypes(isFeatureAvailable = { feature -> asked.add(feature) })
+    assertEquals(listOf(HealthConnectFeatures.FEATURE_MINDFULNESS_SESSION), asked)
   }
 }
