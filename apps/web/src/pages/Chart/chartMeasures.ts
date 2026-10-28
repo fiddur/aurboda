@@ -1,5 +1,8 @@
 import { type ActivityMeasure, activityMeasures, type ChartDataAggregation } from '@aurboda/api-spec'
 
+import { EMA_HALF_LIFE_DEFAULT, MEASURE_HALF_LIFE_DEFAULT } from '../../utils/half-life'
+
+export { MEASURE_HALF_LIFE_DEFAULT }
 import { defaultAggregation } from '../../utils/measures'
 
 type SourceType = 'metric' | 'activity_type'
@@ -105,8 +108,6 @@ export const EMA_HALF_LIFE_OPTIONS = [
   { label: '30 days (Stable)', value: 30 },
 ]
 
-export const MEASURE_HALF_LIFE_DEFAULT = 120
-
 export const MEASURE_HALF_LIFE_OPTIONS = [
   { label: '30 days', value: 30 },
   { label: '60 days', value: 60 },
@@ -131,6 +132,6 @@ export const parseChartMode = (
     : query.chart_type === 'bar'
       ? 'bar'
       : 'trend'
-  const fallback = chart_type === 'trend' && measure ? MEASURE_HALF_LIFE_DEFAULT : 15
+  const fallback = chart_type === 'trend' && measure ? MEASURE_HALF_LIFE_DEFAULT : EMA_HALF_LIFE_DEFAULT
   return { chart_type, half_life_days: Number(query.half_life_days) || fallback }
 }

@@ -61,8 +61,6 @@ export const trendMeasure = (sessions: ActivitySession[]): ActivityMeasure | und
 export const availableMeasures = (sessions: ActivitySession[]): ActivityMeasure[] =>
   activityMeasures.filter((m) => has(sessions, m))
 
-export const BEST_HALF_LIFE_DAYS = 120
-
 export const lookbackStart = (days: number, now: number = Date.now()): number => now - days * DAY_MS
 
 /** The sessions of the last `days` days; 0 keeps them all. */

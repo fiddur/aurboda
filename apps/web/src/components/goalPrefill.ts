@@ -7,6 +7,7 @@ import {
   type TrendSourceType,
 } from '@aurboda/api-spec'
 
+import { EMA_HALF_LIFE_DEFAULT, MEASURE_HALF_LIFE_DEFAULT } from '../utils/half-life'
 import { defaultAggregation } from '../utils/measures'
 
 type TrendAggregation = NonNullable<TrendGoal['aggregation']>
@@ -36,9 +37,6 @@ const SOURCE_TYPES: readonly string[] = [
 ] satisfies TrendSourceType[]
 const DISPLAY_PERIODS: readonly string[] = ['daily', 'weekly', 'monthly'] satisfies TrendDisplayPeriod[]
 const TREND_AGGREGATIONS: readonly string[] = ['count', 'sum', 'mean'] satisfies TrendAggregation[]
-
-const EMA_HALF_LIFE_DEFAULT = 15
-const MEASURE_HALF_LIFE_DEFAULT = 120
 
 const filterOf = ({ filter_field, filter_value }: ItemFilter): Required<ItemFilter> | undefined =>
   filter_field && filter_value ? { filter_field, filter_value } : undefined

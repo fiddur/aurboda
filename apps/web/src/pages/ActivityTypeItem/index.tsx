@@ -16,11 +16,11 @@ import {
 } from '../../state/api'
 import { buildChartUrl } from '../../utils/chart-url'
 import { toDisplayName } from '../../utils/displayName'
+import { MEASURE_HALF_LIFE_DEFAULT } from '../../utils/half-life'
 import { defaultAggregation, formatMeasure, formatSet } from '../../utils/measures'
 import { newWidgetId } from '../../utils/widget-id'
 import {
   availableMeasures,
-  BEST_HALF_LIFE_DAYS,
   chartExplorerHref,
   doneSummary,
   explorerLookbackDays,
@@ -195,7 +195,7 @@ const TrendChart = ({
       fetchTrend({
         filter_field: item.field,
         filter_value: item.value,
-        half_life_days: BEST_HALF_LIFE_DAYS,
+        half_life_days: MEASURE_HALF_LIFE_DEFAULT,
         lookback_days: lookbackDays,
         measure,
         pattern: item.name,
@@ -213,8 +213,8 @@ const TrendChart = ({
         <>
           <TrendLineChart data={query.data.history} color="#8b5cf6" height={220} />
           <p class="activity-type-item-caption">
-            {activityMeasureLabels[measure]}, decaying with a {BEST_HALF_LIFE_DAYS}-day half-life between
-            sessions.
+            {activityMeasureLabels[measure]}, decaying with a {MEASURE_HALF_LIFE_DEFAULT}-day half-life
+            between sessions.
           </p>
         </>
       )}
@@ -230,7 +230,7 @@ const Trend = ({ all, item, lookback }: { all: ActivitySession[]; item: ItemRef;
   const trend = {
     filter_field: item.field,
     filter_value: item.value,
-    half_life_days: BEST_HALF_LIFE_DAYS,
+    half_life_days: MEASURE_HALF_LIFE_DEFAULT,
     measure,
     pattern: item.name,
     source_type: 'activity_type' as const,

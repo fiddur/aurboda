@@ -45,7 +45,7 @@ export interface AddToDashboardModalProps {
 export function AddToDashboardModal({ widget, breakdownFields, onClose }: AddToDashboardModalProps) {
   const queryClient = useQueryClient()
   const [title, setTitle] = useState('')
-  const [targetId, setTargetId] = useState('home') // 'home' or a shared dashboard id
+  const [targetId, setTargetId] = useState('home')
   const [selectedSectionId, setSelectedSectionId] = useState('')
   const [newSectionTitle, setNewSectionTitle] = useState('')
   const [masked, setMasked] = useState<string[]>([])
@@ -83,14 +83,12 @@ export function AddToDashboardModal({ widget, breakdownFields, onClose }: AddToD
   })
 
   const sharedDashboards = sharedQuery.data ?? []
-  // The config of the currently selected target (home or a shared dashboard).
   const targetConfig: DashboardConfig | undefined =
     targetId === 'home' ? dashboardQuery.data : sharedDashboards.find((d) => d.id === targetId)?.config
   const chartsSections = targetConfig?.sections.filter((s) => s.type === 'charts') ?? []
   const placeholder = widget('', []).config
   const titlePlaceholder = ('pattern' in placeholder && placeholder.pattern) || 'Chart title'
 
-  // Reset the section choice when the target dashboard changes.
   const handleTargetChange = (id: string) => {
     setTargetId(id)
     setSelectedSectionId('')

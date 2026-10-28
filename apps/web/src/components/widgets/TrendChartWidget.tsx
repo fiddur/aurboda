@@ -10,6 +10,7 @@ import { useMemo } from 'preact/hooks'
 
 import { fetchTrend } from '../../state/api'
 import { buildChartUrl, type ChartOrigin } from '../../utils/chart-url'
+import { EMA_HALF_LIFE_DEFAULT, MEASURE_HALF_LIFE_DEFAULT } from '../../utils/half-life'
 import { BreakdownLegend, SERIES_COLORS } from '../charts/breakdown'
 import { TrendLineChart } from '../charts/TrendLineChart'
 import { HEAVY_QUERY_OPTIONS } from './heavyQuery'
@@ -90,7 +91,7 @@ export function TrendChartWidget({ config, origin }: TrendChartWidgetProps) {
     measure,
     filter_field,
     filter_value,
-    half_life_days = measure ? 120 : 15,
+    half_life_days = measure ? MEASURE_HALF_LIFE_DEFAULT : EMA_HALF_LIFE_DEFAULT,
     lookback_days = 90,
     display_period = 'monthly',
     aggregation = source_type === 'metric' ? 'mean' : 'count',

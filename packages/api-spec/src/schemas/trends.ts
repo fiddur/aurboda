@@ -83,7 +83,7 @@ export const getTrendQuerySchema = z
       .meta({ description: 'Period to normalize the rate to (daily, weekly, monthly)' }),
     half_life_days: z.number().positive().default(15).meta({
       description:
-        'Half-life in days. EMA: 7 (quick), 15 (responsive), 30 (stable); a measure trend decays slower, 120 by default',
+        'Half-life in days. EMA: 7 (quick), 15 (responsive), 30 (stable); a measure trend decays slower, and the UI uses 120 for one',
     }),
     lookback_days: z
       .number()
