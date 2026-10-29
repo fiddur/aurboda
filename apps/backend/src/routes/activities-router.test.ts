@@ -558,6 +558,7 @@ describe('GET /activities/:id/item-history', () => {
       field: 'sets.exercise',
       groups: [],
       totals: {},
+      trend_half_life_days: 120,
     })
 
     const res = await supertest(buildApp()).get(

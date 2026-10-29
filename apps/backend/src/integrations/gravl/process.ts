@@ -8,8 +8,7 @@
  * Sets are stored structurally in `data.sets`, one entry per set with the
  * exercise name repeated, in the shape #1044 defines for repeated data
  * (`exercise`, `weight` in kg, `reps`, `time` in seconds) plus Gravl's extras.
- * A human-readable rendering also goes into a synced note so the detail is
- * visible before the UI can render set arrays.
+ * Gravl's own workout notes, if any, go into a synced note.
  *
  * A workout the Gravl app itself imported from another app (`type: 'external'`)
  * is a round-trip: Gravl writes it back into Health Connect under its own
@@ -169,48 +168,9 @@ export const buildGravlSets = (detail: GravlWorkoutDetail): GravlSetRecord[] =>
     [...exercise.sets].sort((a, b) => a.order - b.order).map((set) => buildSet(exercise, set)),
   )
 
-const formatSeconds = (seconds: number): string => {
-  const m = Math.floor(seconds / 60)
-  const s = seconds % 60
-  return `${m}:${String(s).padStart(2, '0')}`
-}
-
-const formatSet = (set: GravlSetRecord): string => {
-  const parts: string[] = []
-  if (set.reps !== null && set.weight !== null) parts.push(`${set.reps}×${set.weight} kg`)
-  else if (set.reps !== null) parts.push(`${set.reps} reps`)
-  else if (set.weight !== null) parts.push(`${set.weight} kg`)
-  if (set.time !== null) parts.push(formatSeconds(set.time))
-  if (set.distance !== null) parts.push(`${set.distance} m`)
-  if (parts.length === 0) parts.push('—')
-  const flag =
-    set.set_type === 'warmup'
-      ? ' (w)'
-      : set.set_type === 'drop_set'
-        ? ' (drop)'
-        : set.set_type === 'failure'
-          ? ' (f)'
-          : ''
-  const rpe = set.rpe !== null ? ` @${set.rpe}` : ''
-  return `${parts.join(' ')}${flag}${rpe}`
-}
-
-/**
- * Sets as readable text, one line per exercise in workout order:
- * `Bench Press: 8×60 kg (w), 8×80 kg, 6×80 kg @8`.
- */
-export const formatGravlSetsNote = (detail: GravlWorkoutDetail): string => {
-  const lines = detail.exercises
-    .filter((exercise) => exercise.sets.length > 0)
-    .map((exercise) => {
-      const sets = [...exercise.sets]
-        .sort((a, b) => a.order - b.order)
-        .map((set) => formatSet(buildSet(exercise, set)))
-      return `${exercise.exerciseName}: ${sets.join(', ')}`
-    })
-  const notes = detail.notes?.trim()
-  return [notes, lines.join('\n')].filter((part) => part && part.length > 0).join('\n\n')
-}
+/** Gravl's own workout notes; the sets render from `data.sets`, so they are not repeated here. */
+export const gravlWorkoutNote = (detail: GravlWorkoutDetail): string | undefined =>
+  detail.notes?.trim() || undefined
 
 export const buildGravlActivity = (detail: GravlWorkoutDetail): Activity => {
   const sets = buildGravlSets(detail)
@@ -379,7 +339,7 @@ export const processGravlWorkout = async (
     'activity',
     id,
     'gravl',
-    formatGravlSetsNote(logged),
+    gravlWorkoutNote(logged),
     activity.start_time,
     activity.end_time,
   )

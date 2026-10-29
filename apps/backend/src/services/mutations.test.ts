@@ -1575,6 +1575,57 @@ describe('updateActivity', () => {
       expect(db.updateActivity).toHaveBeenCalledWith('testuser', 'override-1', expect.any(Object))
     })
 
+    test('a merged-view edit snapshots every source into the new override', async () => {
+      const sets = [{ exercise: 'Bench Press', reps: 8, weight_kg: 60 }]
+      const rows: Record<string, Activity> = {
+        'garmin-1': {
+          activity_type: 'strength_training',
+          data: { avg_hr: 110, calories: 300 },
+          end_time: new Date('2026-10-27T17:50:00Z'),
+          id: 'garmin-1',
+          source: 'garmin',
+          start_time: new Date('2026-10-27T17:00:00Z'),
+          title: 'Styrka',
+        },
+        'gravl-1': {
+          activity_type: 'strength_training',
+          data: { sets },
+          end_time: new Date('2026-10-27T17:45:00Z'),
+          id: 'gravl-1',
+          source: 'gravl',
+          start_time: new Date('2026-10-27T16:58:00Z'),
+          title: 'Hotel gym',
+        },
+      }
+      vi.mocked(db.getActivityById).mockImplementation(async (_user, id) => rows[id] ?? null)
+      vi.mocked(db.getOverrideForActivity).mockResolvedValue(null)
+      vi.mocked(db.getActivitySourcesByIds).mockResolvedValue([
+        { id: 'garmin-1', source: 'garmin' },
+        { id: 'gravl-1', source: 'gravl' },
+      ])
+      vi.mocked(db.insertOverride).mockResolvedValue({
+        activity_type: 'strength_training',
+        id: 'override-1',
+        override_target_ids: ['garmin-1', 'gravl-1'],
+        source: 'aurboda',
+        start_time: new Date('2026-10-27T16:58:00Z'),
+      })
+
+      const result = await updateActivity('testuser', 'garmin-1', {
+        notes: 'Felt strong',
+        override_target_ids: ['garmin-1', 'gravl-1'],
+      })
+
+      expect(result.success).toBe(true)
+      expect(db.insertOverride).toHaveBeenCalledExactlyOnceWith('testuser', ['garmin-1', 'gravl-1'], {
+        activity_type: 'strength_training',
+        data: { avg_hr: 110, calories: 300, sets },
+        end_time: new Date('2026-10-27T17:50:00Z'),
+        start_time: new Date('2026-10-27T16:58:00Z'),
+        title: 'Hotel gym',
+      })
+    })
+
     test('aurboda-source target is updated in place (no override created)', async () => {
       vi.mocked(db.getActivityById).mockResolvedValue({
         activity_type: 'meditation',

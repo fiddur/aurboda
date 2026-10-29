@@ -2,9 +2,10 @@ import type { ActivityType, CustomMetricDefinition, DataSource } from '@aurboda/
 
 import { randomUUID } from 'node:crypto'
 
-import type { Activity } from '../db/types.ts'
+import type { Activity, MergedActivity } from '../db/types.ts'
 import type { ActivityNotifier } from './deduction-queue.ts'
 
+import { mergeGroupByPriority } from '../db/activities/merge.ts'
 import {
   activityTypeExists,
   checkActivityConflict,
@@ -466,6 +467,17 @@ export async function deleteActivity(user: string, id: string): Promise<DeleteAc
   }
 }
 
+const mergedTargets = async (
+  user: string,
+  target: Activity,
+  targetIds: string[],
+): Promise<MergedActivity> => {
+  const others = await Promise.all(
+    targetIds.filter((tid) => tid !== target.id).map((tid) => dbGetActivityById(user, tid)),
+  )
+  return mergeGroupByPriority([target, ...others.filter((row): row is Activity => row !== null)])
+}
+
 /**
  * For activities owned by aurboda (source='aurboda'), the row is updated in
  * place. For synced activities (garmin, health_connect, strava, oura, …), the
@@ -494,9 +506,37 @@ export async function updateActivity(
   const isSyncedTarget = target.source !== 'aurboda'
   const existingOverride = isSyncedTarget ? await getOverrideForActivity(user, target.id!) : null
   const editRow = existingOverride ?? target
-  // The "before" snapshot used for time/type comparisons — what the merged
-  // view currently shows.
-  const before = editRow
+  const createsOverride = isSyncedTarget && !existingOverride
+
+  // Multi-target (#735): the caller may pass `override_target_ids` from a
+  // merged-view edit so the new override claims all the merged source rows
+  // at once. Always include `target.id` in the list (defaulting to just
+  // that single source when the caller didn't pass anything).
+  const targetIds = input.override_target_ids?.length
+    ? Array.from(new Set([target.id!, ...input.override_target_ids]))
+    : [target.id!]
+  // Defensive check: targets must be synced (non-aurboda) rows. The web
+  // client filters this client-side, but a buggy or non-web caller could
+  // pass an aurboda id and create an "override of an override" the merge
+  // logic isn't designed for.
+  if (createsOverride && input.override_target_ids?.length) {
+    const sources = await getActivitySourcesByIds(user, targetIds)
+    const aurbodaTarget = sources.find((r) => r.source === 'aurboda')
+    if (aurbodaTarget) {
+      return {
+        error: `override targets must be synced rows; ${aurbodaTarget.id} is an aurboda row`,
+        id,
+        success: false,
+      }
+    }
+  }
+
+  // The "before" snapshot used for time/type comparisons and as the base of a
+  // fresh override — what the merged view currently shows. A fresh override
+  // over several sources hides all of them, so it must start from their blend
+  // or the lower-priority sources' data (e.g. Gravl's sets) is lost.
+  const before =
+    createsOverride && targetIds.length > 1 ? await mergedTargets(user, target, targetIds) : editRow
 
   const finalStartTime = input.start_time ?? before.start_time
   const finalEndTime = input.end_time === null ? null : (input.end_time ?? before.end_time)
@@ -548,41 +588,18 @@ export async function updateActivity(
   }
 
   let updated: Activity | null
-  if (isSyncedTarget && !existingOverride) {
+  if (createsOverride) {
     // First user edit on a synced activity → create an aurboda override
     // carrying the synced row's snapshot overlaid with the user's input.
     // Mirror in-place semantics: input.notes / input.title === undefined keeps
     // the snapshot value; explicit '' (or null) clears it.
-    //
-    // Multi-target (#735): the caller may pass `override_target_ids` from a
-    // merged-view edit so the new override claims all the merged source rows
-    // at once. Always include `target.id` in the list (defaulting to just
-    // that single source when the caller didn't pass anything).
-    const targetIds = input.override_target_ids?.length
-      ? Array.from(new Set([target.id!, ...input.override_target_ids]))
-      : [target.id!]
-    // Defensive check: targets must be synced (non-aurboda) rows. The web
-    // client filters this client-side, but a buggy or non-web caller could
-    // pass an aurboda id and create an "override of an override" the merge
-    // logic isn't designed for.
-    if (input.override_target_ids?.length) {
-      const sources = await getActivitySourcesByIds(user, targetIds)
-      const aurbodaTarget = sources.find((r) => r.source === 'aurboda')
-      if (aurbodaTarget) {
-        return {
-          error: `override targets must be synced rows; ${aurbodaTarget.id} is an aurboda row`,
-          id,
-          success: false,
-        }
-      }
-    }
     try {
       updated = await dbInsertOverride(user, targetIds, {
         activity_type: finalType,
         data: mergedData,
         end_time: input.end_time === null ? undefined : (finalEndTime ?? undefined),
         start_time: finalStartTime,
-        title: input.title !== undefined ? input.title : target.title,
+        title: input.title !== undefined ? input.title : before.title,
       })
     } catch (err) {
       // Race: a concurrent edit created the override first; the UNIQUE
