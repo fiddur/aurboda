@@ -441,6 +441,8 @@ For typescript:
 
 ## Deployment
 
-- aurboda-backend is automatically deployed to https://aurboda.net/api on merge to `develop`.
-- aurboda-web is automatically deployed to https://aurboda.net/ on merge to `develop`.
+- https://aurboda.net (backend at `/api`, web at `/`) runs the released image, `fiddur/aurboda:latest`,
+  which only moves when a release PR merges `develop` into `main`. A merge into `develop` builds
+  `fiddur/aurboda:develop` and does not reach aurboda.net: say it is on `develop`, not that it is
+  live or deploying, until the release that carries it has merged.
 - Deploys overlap: the new version starts against the same databases before the old one stops, so schema changes must be expand-only — never drop or rename a column in the release that stops writing it (see `docs/docker.md`).

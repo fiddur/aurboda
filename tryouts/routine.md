@@ -110,9 +110,9 @@ Then `tryouts/down.sh --purge`, and stop. Never commit, push, or open a pull req
 
 ### What this does not cover
 
-The deployment itself. The image the tryout boots is the one the server picks up, but nothing here
-checks that `aurboda.net` actually took it, and nothing here touches production data — the
-production MCP connector stays off this routine on purpose.
+The deployment itself. The image the tryout boots is the `develop` build; `aurboda.net` only picks
+up `:latest` when the release merges (see the release tryout routine below), and nothing here
+touches production data — the production MCP connector stays off this routine on purpose.
 
 ## The release tryout routine
 
