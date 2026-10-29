@@ -264,7 +264,7 @@ docker-compose.yml to follow every merged PR instead (what the beta channel runs
 
 ## API Documentation
 
-Interactive API documentation is available at https://aurboda.net/apispec (develop branch version).
+Interactive API documentation is available at https://aurboda.net/apispec (the released version, from `main`).
 
 String input to the REST API and the MCP tools is trimmed of surrounding whitespace, except passwords,
 patterns and markdown; see [Input conventions](docs/mcp-server.md#input-conventions).
