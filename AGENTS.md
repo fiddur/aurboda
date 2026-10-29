@@ -324,18 +324,18 @@ A session started from claude.ai/code runs in a fresh VM with a fresh clone.
 `~/.claude`, no memory, no review log — so everything above applies as written and
 this section is the difference.
 
-- **Node 25, and check it before believing a check or test run.** The image ships
+- **Node 26, and check it before believing a check or test run.** The image ships
   Node 20–22 and puts `/opt/node22/bin` first, and the tool shell is a non-login
   `bash -c` whose `PATH` was fixed when the session launched, so nothing an
   environment setup script exports, and no `/etc/profile.d` file, ever reaches it.
   What does reach it is `CLAUDE_ENV_FILE`, which every tool shell sources:
-  `.claude/hooks/session-start.sh` runs at session start and resume, installs Node 25
-  into `/opt/node25` if it is not there (from `nodejs.org`, checksum verified) with
+  `.claude/hooks/session-start.sh` runs at session start and resume, installs Node 26
+  into `/opt/node26` if it is not there (from `nodejs.org`, checksum verified) with
   the pinned pnpm, and writes the `PATH` line to that file. Run `node --version`
-  first anyway. Anything but `v25` means the hook did not run — a clone from before
+  first anyway. Anything but `v26` means the hook did not run — a clone from before
   it merged, or a failure in its output — so run it by hand,
   `CLAUDE_CODE_REMOTE=true .claude/hooks/session-start.sh`, and prefix every command
-  with `export PATH="/opt/node25/bin:$PATH"` for the rest of the session.
+  with `export PATH="/opt/node26/bin:$PATH"` for the rest of the session.
 - **The hook is checked in, so there is nothing to paste** into the environment's
   settings, whose setup script stays empty. It reads the major from `.nvmrc` and the
   pnpm version from `packageManager`, so moving either moves the hook with it. It runs

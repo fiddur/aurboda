@@ -71,7 +71,7 @@ const referenceHrZoneSecs = async (
   const groups = new Map<number, [Date, number][]>()
   for (const point of points) {
     const key = keyOf(point[0]).getTime()
-    groups.set(key, [...(groups.get(key) ?? []), point])
+    groups.getOrInsert(key, []).push(point)
   }
   return [...groups.entries()]
     .sort((a, b) => a[0] - b[0])

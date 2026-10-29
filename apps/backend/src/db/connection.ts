@@ -270,21 +270,19 @@ export const listUserNames = async (client: Client): Promise<string[]> => {
  * never each build a pool.
  */
 export const getDbForUser = (user: string): Promise<UserDb> => {
-  const cached = dbByUser.get(user)
-  if (cached) return cached
-  const db = Promise.resolve(
-    createRolePool(
-      {
-        connectionTimeoutMillis: POOL_CONNECTION_TIMEOUT_MS,
-        database: userDbName(user),
-        idleTimeoutMillis: POOL_IDLE_TIMEOUT_MS,
-        max: USER_POOL_MAX,
-      },
-      user,
+  return dbByUser.getOrInsertComputed(user, () =>
+    Promise.resolve(
+      createRolePool(
+        {
+          connectionTimeoutMillis: POOL_CONNECTION_TIMEOUT_MS,
+          database: userDbName(user),
+          idleTimeoutMillis: POOL_IDLE_TIMEOUT_MS,
+          max: USER_POOL_MAX,
+        },
+        user,
+      ),
     ),
   )
-  dbByUser.set(user, db)
-  return db
 }
 
 /** Ends every cached user pool. A later `getDbForUser` builds a fresh one. */

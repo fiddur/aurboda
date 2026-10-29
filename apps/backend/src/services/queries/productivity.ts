@@ -143,9 +143,7 @@ export const promoteOverlappingSubcategories = (
       continue
     }
     const parent = span.groupKey.slice(0, sepIdx)
-    const list = byParent.get(parent)
-    if (list) list.push(span)
-    else byParent.set(parent, [span])
+    byParent.getOrInsert(parent, []).push(span)
   }
 
   for (const [parent, childSpans] of byParent) {
@@ -233,9 +231,7 @@ export function mergeByCategorySpans(
   const byKey = new Map<string, MergeRecord[]>()
   for (const record of categorized) {
     const key = categoryGroupKey(record)
-    const list = byKey.get(key)
-    if (list) list.push(record)
-    else byKey.set(key, [record])
+    byKey.getOrInsert(key, []).push(record)
   }
 
   const categorySpans: CategoryMergedSpan[] = []
@@ -346,11 +342,11 @@ export const assembleScreentimeBuckets = (
 
   for (const row of rows) {
     const key = row.bucket_start.toISOString()
-    let entry = bucketMap.get(key)
-    if (!entry) {
-      entry = { categories: [], start: row.bucket_start, total_sec: 0 }
-      bucketMap.set(key, entry)
-    }
+    const entry = bucketMap.getOrInsertComputed(key, () => ({
+      categories: [],
+      start: row.bucket_start,
+      total_sec: 0,
+    }))
     entry.total_sec += row.total_sec
     entry.categories.push({
       path: row.resolved_category ?? [],

@@ -151,9 +151,7 @@ export const getMealFoodItemsBatch = async (
   const map = new Map<string, MealFoodItemLink[]>()
   for (const row of result.rows) {
     const link = mapJunctionRow(row)
-    const existing = map.get(link.meal_id) ?? []
-    existing.push(link)
-    map.set(link.meal_id, existing)
+    map.getOrInsert(link.meal_id, []).push(link)
   }
   return map
 }

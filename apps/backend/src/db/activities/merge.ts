@@ -220,9 +220,7 @@ const buildGroups = (parent: number[], len: number): Map<number, number[]> => {
   const groups = new Map<number, number[]>()
   for (let i = 0; i < len; i++) {
     const root = ufFind(parent, i)
-    const group = groups.get(root)
-    if (group) group.push(i)
-    else groups.set(root, [i])
+    groups.getOrInsert(root, []).push(i)
   }
   return groups
 }
@@ -279,9 +277,7 @@ export const mergeOverlappingActivities = (
 
   const byType = new Map<string, Activity[]>()
   for (const a of input) {
-    const group = byType.get(a.activity_type) ?? []
-    group.push(a)
-    byType.set(a.activity_type, group)
+    byType.getOrInsert(a.activity_type, []).push(a)
   }
 
   const result: MergedActivity[] = []

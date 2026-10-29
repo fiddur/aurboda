@@ -66,17 +66,14 @@ export async function getHrvActivitiesCorrelation(
 
   for (const record of productivity) {
     const category = record.resolved_category?.join(' > ') || record.category || 'Uncategorized'
-    if (!productivityByCategory.has(category)) {
-      productivityByCategory.set(category, {
-        contextValues: [],
-        hrValues: [],
-        hrvValues: [],
-        minutes: 0,
-        scores: [],
-        stressValues: [],
-      })
-    }
-    const cat = productivityByCategory.get(category)!
+    const cat = productivityByCategory.getOrInsertComputed(category, () => ({
+      contextValues: [],
+      hrValues: [],
+      hrvValues: [],
+      minutes: 0,
+      scores: [],
+      stressValues: [],
+    }))
     cat.minutes += record.duration_sec / 60
 
     // Get HRV/HR/stress during this productivity window (all shown in the table).
@@ -127,10 +124,13 @@ export async function getHrvActivitiesCorrelation(
 
   for (const visit of locations) {
     const name = visit.name || 'Unknown'
-    if (!locationByName.has(name)) {
-      locationByName.set(name, { hrValues: [], hrvValues: [], minutes: 0, stressValues: [], visits: 0 })
-    }
-    const loc = locationByName.get(name)!
+    const loc = locationByName.getOrInsertComputed(name, () => ({
+      hrValues: [],
+      hrvValues: [],
+      minutes: 0,
+      stressValues: [],
+      visits: 0,
+    }))
     loc.minutes += visit.duration_minutes
     loc.visits++
 
@@ -173,17 +173,14 @@ export async function getHrvActivitiesCorrelation(
 
   for (const activity of activities) {
     const type = activity.activity_type
-    if (!activityByType.has(type)) {
-      activityByType.set(type, {
-        count: 0,
-        hasDuration: false,
-        hrValues: [],
-        hrvValues: [],
-        minutes: 0,
-        stressValues: [],
-      })
-    }
-    const act = activityByType.get(type)!
+    const act = activityByType.getOrInsertComputed(type, () => ({
+      count: 0,
+      hasDuration: false,
+      hrValues: [],
+      hrvValues: [],
+      minutes: 0,
+      stressValues: [],
+    }))
     act.count++
 
     if (activity.end_time) {

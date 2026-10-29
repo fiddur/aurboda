@@ -174,9 +174,7 @@ export const getIngredientsBatch = async (
   const map = new Map<string, FoodItemIngredientRow[]>()
   for (const row of result.rows) {
     const link = mapRow(row)
-    const existing = map.get(link.parent_food_item_id) ?? []
-    existing.push(link)
-    map.set(link.parent_food_item_id, existing)
+    map.getOrInsert(link.parent_food_item_id, []).push(link)
   }
   return map
 }

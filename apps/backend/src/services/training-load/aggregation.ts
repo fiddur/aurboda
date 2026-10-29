@@ -5,8 +5,6 @@
  */
 import type { TrainingLoadPoint, trainingLoadBucketSizes } from '@aurboda/api-spec'
 
-import { Temporal } from '@js-temporal/polyfill'
-
 type TrainingLoadBucketSize = (typeof trainingLoadBucketSizes)[number]
 
 /**
@@ -51,12 +49,7 @@ export const aggregateTrainingLoadPoints = (
   for (const p of points) {
     const t = new Date(p.time).getTime()
     const key = floorToLocalBucket(t, bucketSize, tz)
-    let arr = buckets.get(key)
-    if (!arr) {
-      arr = []
-      buckets.set(key, arr)
-    }
-    arr.push(p)
+    buckets.getOrInsert(key, []).push(p)
   }
 
   const result: TrainingLoadPoint[] = []

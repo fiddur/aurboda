@@ -301,9 +301,7 @@ const queryActivityTypeBreakdown = async (
     const seriesKey = keyParts.join(' / ')
     const value = Number(row.value)
     seriesSet.add(seriesKey)
-    const existing = bucketMap.get(bucketStart) ?? {}
-    existing[seriesKey] = value
-    bucketMap.set(bucketStart, existing)
+    bucketMap.getOrInsert(bucketStart, {})[seriesKey] = value
   }
 
   const series = [...seriesSet].sort()
@@ -405,12 +403,11 @@ const queryMeasureChart = async (
         ? []
         : [{ key: '', name: '', value: m.measures[measure] }]
     if (contributions.length === 0) continue
-    const series = byBucket.get(bucketStart.getTime()) ?? new Map<string, number[]>()
+    const series = byBucket.getOrInsertComputed(bucketStart.getTime(), () => new Map<string, number[]>())
     for (const { key, name, value } of contributions) {
       names.set(key, name)
-      series.set(key, [...(series.get(key) ?? []), value])
+      series.getOrInsert(key, []).push(value)
     }
-    byBucket.set(bucketStart.getTime(), series)
   }
 
   const ordered = [...byBucket.entries()].toSorted(([a], [b]) => a - b)
