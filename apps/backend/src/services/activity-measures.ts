@@ -104,9 +104,9 @@ export const groupItemsByKey = (items: Item[], key: string): ItemGroup[] => {
   for (const item of items) {
     const normalized = normalizeItemValue(item[key])
     if (normalized === undefined) continue
-    const group = groups.get(normalized) ?? { items: [], normalized, value: String(item[key]).trim() }
-    group.items.push(item)
-    groups.set(normalized, group)
+    groups
+      .getOrInsertComputed(normalized, () => ({ items: [], normalized, value: String(item[key]).trim() }))
+      .items.push(item)
   }
   return [...groups.values()]
 }

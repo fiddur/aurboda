@@ -5,6 +5,9 @@ import { sharedWorkerUnitFiles } from './vitest.projects.ts'
 const sharedFiles = sharedWorkerUnitFiles(import.meta.dirname)
 
 export default defineConfig({
+  // Vite's esbuild does not know tsconfig's `es2025` target and warns once per file;
+  // these fields are merged over the loaded tsconfig, not replacing it.
+  esbuild: { tsconfigRaw: { compilerOptions: { target: 'esnext' } } },
   test: {
     projects: [
       {

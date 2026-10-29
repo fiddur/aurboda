@@ -61,9 +61,7 @@ const diffSupersessionChanges = (
     if (want === null) {
       toClear.push(a.id)
     } else {
-      const list = toLoserByWinner.get(want) ?? []
-      list.push(a.id)
-      toLoserByWinner.set(want, list)
+      toLoserByWinner.getOrInsert(want, []).push(a.id)
     }
   }
   return { toClear, toLoserByWinner }

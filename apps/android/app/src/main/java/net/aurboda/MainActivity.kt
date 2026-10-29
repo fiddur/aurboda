@@ -70,7 +70,6 @@ import net.aurboda.update.downloadUpdate
 import net.aurboda.update.getExistingDownloadState
 import net.aurboda.update.installApk
 import net.aurboda.widget.challengeWidgetUrls
-import net.aurboda.allRecordTypes
 import net.aurboda.writableRecordTypes
 import java.io.File
 import java.time.Instant
@@ -408,6 +407,7 @@ fun HealthConnectScreen(
   val context = LocalContext.current
   val lifecycleOwner = LocalLifecycleOwner.current
   val healthConnectClient = remember { HealthConnectClient.getOrCreate(context) }
+  val readableRecordTypes = remember { healthConnectClient.availableRecordTypes() }
 
   var grantedPermissions by remember { mutableStateOf<Set<String>>(emptySet()) }
   val grantedRecordTypes by remember(grantedPermissions) {
@@ -418,7 +418,7 @@ fun HealthConnectScreen(
   }
   val hasAllReadPermissions by remember(grantedPermissions) {
     derivedStateOf {
-      val readPerms = allRecordTypes.map { HealthPermission.getReadPermission(it) }.toSet()
+      val readPerms = readableRecordTypes.map { HealthPermission.getReadPermission(it) }.toSet()
       grantedPermissions.containsAll(readPerms)
     }
   }
@@ -432,7 +432,13 @@ fun HealthConnectScreen(
     derivedStateOf { hasAllReadPermissions && hasAllWritePermissions }
   }
   val categoryStatuses by remember(grantedPermissions) {
-    derivedStateOf { getCategoryStatuses(grantedPermissions) }
+    derivedStateOf {
+      val readableCategories =
+        healthDataCategories
+          .map { category -> category.copy(recordTypes = category.recordTypes.filter { it in readableRecordTypes }) }
+          .filter { it.recordTypes.isNotEmpty() }
+      getCategoryStatuses(grantedPermissions, readableCategories)
+    }
   }
 
   val reporter = remember(context) { context.syncProgressReporter() }
@@ -463,8 +469,8 @@ fun HealthConnectScreen(
 
   val scope = rememberCoroutineScope()
   val allPermissions =
-    remember(allRecordTypes) {
-      val readPerms = allRecordTypes.map { HealthPermission.getReadPermission(it) }
+    remember(readableRecordTypes) {
+      val readPerms = readableRecordTypes.map { HealthPermission.getReadPermission(it) }
       val writePerms = writableRecordTypes.map { HealthPermission.getWritePermission(it) }
       (readPerms + writePerms + HC_BACKGROUND_READ_PERMISSION).toSet()
     }
@@ -644,9 +650,9 @@ fun HealthConnectScreen(
   suspend fun refreshPermissions() {
     grantedPermissions = healthConnectClient.permissionController.getGrantedPermissions()
     val count = grantedRecordTypes.size
-    Log.d("HealthConnect", "Permissions refreshed: $count/${allRecordTypes.size} types granted")
+    Log.d("HealthConnect", "Permissions refreshed: $count/${readableRecordTypes.size} types granted")
     permissionStatusMessage =
-      if (count > 0) "$count of ${allRecordTypes.size} data types authorized."
+      if (count > 0) "$count of ${readableRecordTypes.size} data types authorized."
       else "No permissions granted."
   }
 
@@ -674,10 +680,10 @@ fun HealthConnectScreen(
   ) {
     grantedPermissions = healthConnectClient.permissionController.getGrantedPermissions()
     val grantedCount = grantedRecordTypes.size
-    Log.d("HealthConnect", "Permission check: $grantedCount/${allRecordTypes.size} types granted")
+    Log.d("HealthConnect", "Permission check: $grantedCount/${readableRecordTypes.size} types granted")
 
     if (grantedCount > 0) {
-      permissionStatusMessage = "$grantedCount of ${allRecordTypes.size} data types authorized."
+      permissionStatusMessage = "$grantedCount of ${readableRecordTypes.size} data types authorized."
       coroutineScope.launch {
         if (reporter.state.value.isRunning) return@launch
         reporter.begin()
@@ -871,7 +877,7 @@ fun HealthConnectScreen(
           )
 
           Text(
-            "${grantedRecordTypes.size} of ${allRecordTypes.size} data types authorized",
+            "${grantedRecordTypes.size} of ${readableRecordTypes.size} data types authorized",
             style = MaterialTheme.typography.bodyMedium,
           )
 

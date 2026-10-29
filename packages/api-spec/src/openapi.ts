@@ -810,7 +810,7 @@ const openApiDocument = createDocument({
     '/sync/{recordType}': {
       post: {
         description:
-          'Upload Health Connect records of a specific type (e.g., HeartRateRecord, SleepSessionRecord).',
+          'Upload Health Connect records of a specific type (e.g., HeartRateRecord, SleepSessionRecord, MindfulnessSessionRecord).',
         requestBody: {
           content: {
             'application/json': { schema: healthConnectSyncBodySchema },

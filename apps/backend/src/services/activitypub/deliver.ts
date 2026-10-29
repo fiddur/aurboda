@@ -183,9 +183,7 @@ const dbImageLookups: ImageDataLookups = { hasRoute: hasLocations, hasSeries: ha
  * object and the one served at that URL are guaranteed identical.
  *
  * `published` is the post's `created_at` (its share time), so remote servers
- * order and timestamp it correctly instead of stamping it at receipt. Fedify
- * types `published` as the ambient `Temporal.Instant`; `dateToTemporalInstant`
- * bridges our `@js-temporal/polyfill` value to it.
+ * order and timestamp it correctly instead of stamping it at receipt.
  */
 const buildFeedNoteParts = async (
   ctx: Context<void>,

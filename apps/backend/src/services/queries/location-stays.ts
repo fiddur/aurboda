@@ -10,8 +10,6 @@ import type {
   OvernightStay,
 } from '@aurboda/api-spec'
 
-import { Temporal } from '@js-temporal/polyfill'
-
 import { getPlaceVisits as defaultGetPlaceVisits, type PlaceVisit } from '../locations.ts'
 
 const DEFAULT_DEPARTURE_AFTER = '17:00'
@@ -124,23 +122,14 @@ export const summarizeVisits = (visits: PlaceVisit[], options: SummaryOptions): 
   for (const v of visits) {
     const date = dateInTz(v.start_time.getTime(), options.tz)
     const key = periodKey(date, options.groupBy)
-    let bucket = buckets.get(key)
-    if (!bucket) {
-      bucket = { hours: 0, nights: 0, period: key, visits: 0 }
-      buckets.set(key, bucket)
-    }
+    const bucket = buckets.getOrInsertComputed(key, () => ({ hours: 0, nights: 0, period: key, visits: 0 }))
     bucket.visits += 1
     bucket.hours += v.duration_minutes / 60
   }
   for (const stay of overnight) {
     const date = Temporal.PlainDate.from(stay.overnight_date)
     const key = periodKey(date, options.groupBy)
-    let bucket = buckets.get(key)
-    if (!bucket) {
-      bucket = { hours: 0, nights: 0, period: key, visits: 0 }
-      buckets.set(key, bucket)
-    }
-    bucket.nights += 1
+    buckets.getOrInsertComputed(key, () => ({ hours: 0, nights: 0, period: key, visits: 0 })).nights += 1
   }
   // Round hours after summation to avoid drift.
   const breakdown = [...buckets.values()]

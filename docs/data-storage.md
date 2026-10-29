@@ -513,6 +513,7 @@ Record types mapped to normalized tables:
 | BloodPressureRecord             | time_series  | blood*pressure*\*  |
 | SleepSessionRecord              | activities   | sleep              |
 | ExerciseSessionRecord           | activities   | exercise           |
+| MindfulnessSessionRecord        | activities   | meditation         |
 
 ### Oura Ring
 

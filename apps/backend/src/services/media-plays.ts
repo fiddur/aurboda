@@ -102,9 +102,7 @@ export const dedupeAgainstLastfm = (mpris: MediaPlay[], lastfm: MediaPlay[]): Me
   for (const m of mpris) {
     if (norm(m.artist) === '') continue
     const key = trackKey(m)
-    const starts = startsByTrack.get(key) ?? []
-    starts.push(Date.parse(m.started_at))
-    startsByTrack.set(key, starts)
+    startsByTrack.getOrInsert(key, []).push(Date.parse(m.started_at))
   }
   const kept = lastfm.filter((s) => {
     const scrobbledAt = Date.parse(s.started_at)

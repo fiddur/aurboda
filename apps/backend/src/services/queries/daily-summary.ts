@@ -210,9 +210,7 @@ export const buildMetricsToday = async (
 
   const grouped = new Map<string, typeof entries>()
   for (const entry of entries) {
-    const list = grouped.get(entry.metric) ?? []
-    list.push(entry)
-    grouped.set(entry.metric, list)
+    grouped.getOrInsert(entry.metric, []).push(entry)
   }
 
   const result: Record<string, DailySummaryMetricStats> = {}

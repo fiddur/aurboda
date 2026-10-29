@@ -169,9 +169,7 @@ export const getReports = async (user: string, filter: QueryReportsFilter): Prom
   const entriesByReport = new Map<string, ReportEntry[]>()
   for (const row of entriesResult.rows) {
     const entry = mapReportEntryRow(row)
-    const existing = entriesByReport.get(entry.report_id) ?? []
-    existing.push(entry)
-    entriesByReport.set(entry.report_id, existing)
+    entriesByReport.getOrInsert(entry.report_id, []).push(entry)
   }
 
   return reportResult.rows.map((row) => mapReportRow(row, entriesByReport.get(row.id as string) ?? []))

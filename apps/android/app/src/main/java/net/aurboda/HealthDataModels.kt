@@ -1,5 +1,7 @@
 package net.aurboda
 
+import androidx.health.connect.client.HealthConnectClient
+import androidx.health.connect.client.HealthConnectFeatures
 import androidx.health.connect.client.records.ActiveCaloriesBurnedRecord
 import androidx.health.connect.client.records.BasalBodyTemperatureRecord
 import androidx.health.connect.client.records.BasalMetabolicRateRecord
@@ -27,6 +29,7 @@ import androidx.health.connect.client.records.IntermenstrualBleedingRecord
 import androidx.health.connect.client.records.LeanBodyMassRecord
 import androidx.health.connect.client.records.MenstruationFlowRecord
 import androidx.health.connect.client.records.MenstruationPeriodRecord
+import androidx.health.connect.client.records.MindfulnessSessionRecord
 import androidx.health.connect.client.records.NutritionRecord
 import androidx.health.connect.client.records.OvulationTestRecord
 import androidx.health.connect.client.records.OxygenSaturationRecord
@@ -929,6 +932,30 @@ data class MenstruationPeriodRecordSerializable(
 }
 
 @Serializable
+data class MindfulnessSessionRecordSerializable(
+  val startTime: String,
+  val endTime: String,
+  val mindfulnessSessionType: Int,
+  val title: String? = null,
+  val notes: String? = null,
+  val metadata: HealthConnectRecordMetadata,
+) {
+  companion object {
+    fun fromRecordsList(classRecords: List<Record>): List<MindfulnessSessionRecordSerializable> =
+      classRecords.filterIsInstance<MindfulnessSessionRecord>().map { record ->
+        MindfulnessSessionRecordSerializable(
+          startTime = record.startTime.toIsoString(),
+          endTime = record.endTime.toIsoString(),
+          mindfulnessSessionType = record.mindfulnessSessionType,
+          title = record.title,
+          notes = record.notes,
+          metadata = record.metadata.toSerializable(),
+        )
+      }
+  }
+}
+
+@Serializable
 data class OvulationTestRecordSerializable(
   val time: String,
   val result: Int,
@@ -1090,6 +1117,7 @@ val allRecordTypes: List<KClass<out Record>> =
     // Note: MenstruationRecord is not an actual Health Connect SDK Record type for direct reading.
     // Permissions for MenstruationFlowRecord and MenstruationPeriodRecord cover this category.
     // If a general "MenstruationRecord::class" was intended, it should be reviewed as it's not standard.
+    MindfulnessSessionRecord::class,
     NutritionRecord::class,
     OvulationTestRecord::class,
     OxygenSaturationRecord::class,
@@ -1104,4 +1132,23 @@ val allRecordTypes: List<KClass<out Record>> =
     Vo2MaxRecord::class,
     WeightRecord::class,
     WheelchairPushesRecord::class,
+  )
+
+/** Record types newer Health Connect versions added; read only where the feature is reported available. */
+val featureGatedRecordTypes: Map<KClass<out Record>, Int> =
+  mapOf(MindfulnessSessionRecord::class to HealthConnectFeatures.FEATURE_MINDFULNESS_SESSION)
+
+fun filterAvailableRecordTypes(
+  isFeatureAvailable: (Int) -> Boolean,
+  recordTypes: List<KClass<out Record>> = allRecordTypes,
+): List<KClass<out Record>> =
+  recordTypes.filter { type -> featureGatedRecordTypes[type]?.let(isFeatureAvailable) ?: true }
+
+/** Old Health Connect APKs can throw from the feature query; a feature that cannot be queried counts as unavailable. */
+fun HealthConnectClient.availableRecordTypes(): List<KClass<out Record>> =
+  filterAvailableRecordTypes(
+    isFeatureAvailable = { feature ->
+      runCatching { features.getFeatureStatus(feature) == HealthConnectFeatures.FEATURE_STATUS_AVAILABLE }
+        .getOrDefault(false)
+    },
   )

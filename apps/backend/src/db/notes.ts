@@ -135,9 +135,7 @@ export const getNotesByEntityIds = async (
   for (const row of result.rows) {
     const note = mapNoteRow(row)
     if (note.entity_id === null) continue
-    const existing = map.get(note.entity_id) ?? []
-    existing.push(note)
-    map.set(note.entity_id, existing)
+    map.getOrInsert(note.entity_id, []).push(note)
   }
   return map
 }

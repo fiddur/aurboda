@@ -51,7 +51,7 @@ AURBODA_TAG=1a2b3c4 tryouts/up.sh --fresh --wait-image
 
 **Node.** Every script here runs on the VM's stock Node (≥ 20) with no dependencies — `fetch`,
 `node:crypto`, `node:fs` and nothing else — and puppeteer resolves out of `$TRYOUT_HOME`. That
-is deliberate: a tryout never needs the Node 25 or the `node_modules` that
+is deliberate: a tryout never needs the Node 26 or the `node_modules` that
 `.claude/hooks/session-start.sh` installs (see
 [Running in the cloud](../AGENTS.md#running-in-the-cloud)), so a failed install does not block it.
 

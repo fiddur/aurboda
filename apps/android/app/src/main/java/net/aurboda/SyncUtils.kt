@@ -448,6 +448,12 @@ suspend fun sendRecords(
             MenstruationPeriodRecordSerializable.serializer(),
             syncUrl, authToken, httpClient, typeName, reporter, logTag,
           )
+        MindfulnessSessionRecord::class ->
+          sendSingleType(
+            MindfulnessSessionRecordSerializable.fromRecordsList(classRecords),
+            MindfulnessSessionRecordSerializable.serializer(),
+            syncUrl, authToken, httpClient, typeName, reporter, logTag,
+          )
         NutritionRecord::class ->
           sendSingleType(
             NutritionRecordSerializable.fromRecordsList(classRecords),

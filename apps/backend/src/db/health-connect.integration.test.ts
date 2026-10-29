@@ -3,7 +3,7 @@ import type { DataSource } from '@aurboda/api-spec'
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
-import { getActivityById, insertActivity } from './activities/index.ts'
+import { getActivities, getActivityById, insertActivity } from './activities/index.ts'
 import { query } from './connection.ts'
 import {
   deleteHealthConnectRecords,
@@ -440,6 +440,114 @@ describe('Health Connect Integration Tests', () => {
       expect(arrivals).toEqual([])
       const rows = await query(user, `SELECT source, external_id FROM activities`)
       expect(rows.rows[0]).toEqual({ external_id: null, source: 'health_connect' })
+    })
+  })
+
+  describe('MindfulnessSessionRecord (#1341)', () => {
+    const mindfulnessSession = (overrides: Record<string, unknown> = {}) => ({
+      endTime: '2026-09-03T10:21:00Z',
+      metadata: { dataOrigin: 'com.wakingup.android', id: 'hc-mind-1' },
+      mindfulnessSessionType: 1,
+      notes: 'x',
+      startTime: '2026-09-03T10:00:00Z',
+      title: 'Meditation • What Is Real?',
+      ...overrides,
+    })
+
+    test('stores a session as a plain health_connect meditation activity with its note', async () => {
+      const user = getTestUser()
+
+      const arrivals = await processHealthConnectBatch(user, 'MindfulnessSessionRecord', [
+        mindfulnessSession(),
+      ])
+
+      expect(arrivals).toEqual([])
+      const rows = await query(
+        user,
+        `SELECT id, activity_type, source, external_id, title, data FROM activities WHERE deleted_at IS NULL`,
+      )
+      expect(rows.rows).toHaveLength(1)
+      expect(rows.rows[0]).toMatchObject({
+        activity_type: 'meditation',
+        external_id: null,
+        source: 'health_connect',
+        title: 'Meditation • What Is Real?',
+      })
+      expect(rows.rows[0].data.mindfulnessSessionType).toBe(1)
+      const notes = await query(
+        user,
+        `SELECT content, source FROM notes WHERE entity_type = 'activity' AND entity_id = $1`,
+        [rows.rows[0].id],
+      )
+      expect(notes.rows).toEqual([{ content: 'x', source: 'health_connect' }])
+    })
+
+    test('re-sending the same session upserts the activity', async () => {
+      const user = getTestUser()
+
+      await processHealthConnectBatch(user, 'MindfulnessSessionRecord', [mindfulnessSession()])
+      await processHealthConnectBatch(user, 'MindfulnessSessionRecord', [mindfulnessSession({ notes: 'y' })])
+
+      const rows = await query(user, `SELECT id FROM activities WHERE deleted_at IS NULL`)
+      expect(rows.rows).toHaveLength(1)
+      const notes = await query(user, `SELECT content FROM notes WHERE entity_id = $1`, [rows.rows[0].id])
+      expect(notes.rows).toEqual([{ content: 'y' }])
+    })
+
+    test('deleting the Health Connect record removes the activity', async () => {
+      const user = getTestUser()
+
+      await processHealthConnectBatch(user, 'MindfulnessSessionRecord', [mindfulnessSession()])
+
+      const deleted = await deleteHealthConnectRecords(user, ['hc-mind-1'])
+      expect(deleted).toBe(1)
+
+      const rows = await query(user, `SELECT * FROM activities WHERE source = 'health_connect'`)
+      expect(rows.rows).toHaveLength(0)
+    })
+
+    test('merges with an overlapping Garmin meditation into one activity', async () => {
+      const user = getTestUser()
+      const garminId = await insertActivity(user, {
+        activity_type: 'meditation',
+        data: {},
+        end_time: new Date('2026-09-03T10:20:00Z'),
+        external_id: 'garmin-activity-1',
+        source: 'garmin',
+        start_time: new Date('2026-09-03T10:00:30Z'),
+        title: 'Breathwork',
+      })
+
+      await processHealthConnectBatch(user, 'MindfulnessSessionRecord', [mindfulnessSession()])
+
+      const hcRows = await query(user, `SELECT id FROM activities WHERE source = 'health_connect'`)
+      const hcId = hcRows.rows[0].id as string
+
+      const merged = await getActivities(
+        user,
+        'meditation',
+        new Date('2026-09-03T00:00:00Z'),
+        new Date('2026-09-04T00:00:00Z'),
+      )
+      expect(merged).toHaveLength(1)
+      expect(merged[0].activity_type).toBe('meditation')
+      expect(merged[0].start_time).toEqual(new Date('2026-09-03T10:00:00Z'))
+      expect(merged[0].end_time).toEqual(new Date('2026-09-03T10:21:00Z'))
+      expect(merged[0].source_ids).toEqual(expect.arrayContaining([garminId, hcId]))
+      expect(merged[0].source_ids).toHaveLength(2)
+
+      const supersession = await query(
+        user,
+        `SELECT id, superseded_by FROM activities WHERE id = ANY($1::uuid[])`,
+        [[garminId, hcId]],
+      )
+      const supersededBy = new Map(
+        supersession.rows.map((r) => [r.id as string, r.superseded_by as string | null]),
+      )
+      const losers = [...supersededBy].filter(([, winner]) => winner !== null)
+      expect(losers).toHaveLength(1)
+      const [loserId, winnerId] = losers[0]
+      expect(new Set([loserId, winnerId])).toEqual(new Set([garminId, hcId]))
     })
   })
 })

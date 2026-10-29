@@ -260,9 +260,7 @@ export const groupSessions = (
   for (const session of sessions) {
     const value = session.fields[groupBy] ?? null
     const key = groupKey(value)
-    const group = byValue.get(key) ?? { sessions: [], value }
-    group.sessions.push(session)
-    byValue.set(key, group)
+    byValue.getOrInsertComputed(key, () => ({ sessions: [], value })).sessions.push(session)
   }
 
   return [...byValue.entries()]
@@ -286,10 +284,9 @@ export const groupSessionsByItem = (
     { value: string | null; sessions: ActivitySession[]; measures: ActivityMeasures[] }
   >()
   const add = (key: string, value: string | null, session: ActivitySession, measures?: ActivityMeasures) => {
-    const group = byValue.get(key) ?? { measures: [], sessions: [], value }
+    const group = byValue.getOrInsertComputed(key, () => ({ measures: [], sessions: [], value }))
     group.sessions.push(session)
     if (measures) group.measures.push(measures)
-    byValue.set(key, group)
   }
   for (const session of sessions) {
     const groups = itemGroups.get(session.id) ?? []
@@ -321,9 +318,7 @@ export const distributionsByKey = (
     const summary = summarizeHistogram(histogram)
     if (summary) byKey.set(sessionId(a), summary)
     for (const key of membership?.(a) ?? []) {
-      const members = groupHistograms.get(key) ?? []
-      members.push(histogram)
-      groupHistograms.set(key, members)
+      groupHistograms.getOrInsert(key, []).push(histogram)
     }
   })
   for (const [key, members] of groupHistograms) {

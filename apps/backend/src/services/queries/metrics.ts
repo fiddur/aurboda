@@ -1,7 +1,5 @@
 import type { CustomMetricDefinition } from '@aurboda/api-spec'
 
-import { Temporal } from '@js-temporal/polyfill'
-
 import type {
   BucketMetricStats,
   BucketSize,
@@ -100,10 +98,7 @@ export const computeContextualHrvBuckets = (
   for (const [time, value] of hrvData) {
     const bucketStart = getBucketStart(time, bucketMs, rangeStart, tz)
     const key = bucketStart.toISOString()
-    if (!bucketMap.has(key)) {
-      bucketMap.set(key, { times: [], values: [] })
-    }
-    const entry = bucketMap.get(key)!
+    const entry = bucketMap.getOrInsertComputed(key, () => ({ times: [], values: [] }))
     entry.values.push(value)
     entry.times.push(time)
   }
@@ -293,15 +288,11 @@ export async function queryMetricsBucketed(
     const bucketEndMs = row.bucket_start.getTime() + bucketMs
     const bucketEnd = new Date(bucketEndMs).toISOString()
 
-    if (!bucketMap.has(bucketKey)) {
-      bucketMap.set(bucketKey, {
-        end: bucketEnd,
-        metrics: {},
-        start: bucketKey,
-      })
-    }
-
-    const bucketEntry = bucketMap.get(bucketKey)!
+    const bucketEntry = bucketMap.getOrInsertComputed(bucketKey, () => ({
+      end: bucketEnd,
+      metrics: {},
+      start: bucketKey,
+    }))
     const stats: BucketMetricStats = {
       avg: row.avg,
       count: row.count,

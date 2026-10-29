@@ -172,7 +172,8 @@ What has been driven this way:
   HTTP `Accept` trigger is swapped for a direct call.
 - **`ingestNoteForRecipient`** (#1061, #1110): the shared core behind both inbox delivery and the
   backfill. `new Note({ replyTarget: new URL(...) })` proves `inReplyTo` is captured; `published`
-  wants a `@js-temporal/polyfill` Instant. For the inbox branches that need an actor serving
+  takes a native `Temporal.Instant` (`Temporal.Instant.from('…Z')`, or `dateToTemporalInstant` from
+  `services/activitypub/temporal-interop.ts`). For the inbox branches that need an actor serving
   _nothing_ (unreadable actor → no signature verification → no signed delivery possible), the
   image ships `apps/backend/src/test/inbox-context.ts`: `createFeedFederation('http://localhost:8080', …)`
   so `parseUri` resolves own-post URIs, then `handleInboundFollow` / `handleInboundCreate` with

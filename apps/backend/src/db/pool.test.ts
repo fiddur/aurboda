@@ -18,22 +18,20 @@ interface FakeClient {
  */
 const fakePool = (opts: { checkouts: number[]; failOn?: string[] }) => {
   const clients = new Map<number, FakeClient>()
-  const clientFor = (id: number): FakeClient => {
-    const existing = clients.get(id)
-    if (existing) return existing
-    const client: FakeClient = {
-      id,
-      query: vi.fn(async (sql: string) => {
-        client.statements.push(sql)
-        if (opts.failOn?.some((f) => sql.includes(f))) throw new Error(`failed: ${sql}`)
-        return { rowCount: 0, rows: [{ sql }] }
-      }),
-      release: vi.fn(),
-      statements: [],
-    }
-    clients.set(id, client)
-    return client
-  }
+  const clientFor = (id: number): FakeClient =>
+    clients.getOrInsertComputed(id, () => {
+      const client: FakeClient = {
+        id,
+        query: vi.fn(async (sql: string) => {
+          client.statements.push(sql)
+          if (opts.failOn?.some((f) => sql.includes(f))) throw new Error(`failed: ${sql}`)
+          return { rowCount: 0, rows: [{ sql }] }
+        }),
+        release: vi.fn(),
+        statements: [],
+      }
+      return client
+    })
   const queue = [...opts.checkouts]
   const pool: PoolLike = {
     connect: vi.fn(async () => {

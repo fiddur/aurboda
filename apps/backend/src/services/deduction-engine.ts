@@ -414,9 +414,7 @@ const withMemoizedMediaPlays = (deps: DeductionEngineDeps): DeductionEngineDeps 
     ...deps,
     getMediaPlays: (user, window) => {
       const key = `${user}|${window.start.getTime()}|${window.end.getTime()}`
-      const cached = cache.get(key) ?? deps.getMediaPlays(user, window)
-      cache.set(key, cached)
-      return cached
+      return cache.getOrInsertComputed(key, () => deps.getMediaPlays(user, window))
     },
   }
 }
@@ -638,9 +636,7 @@ export const evaluateAllRules = async (
 ): Promise<{ rules_evaluated: number; activities_created: number }> => {
   const byPriority = new Map<number, DeductionRule[]>()
   for (const rule of rules) {
-    const group = byPriority.get(rule.priority) ?? []
-    group.push(rule)
-    byPriority.set(rule.priority, group)
+    byPriority.getOrInsert(rule.priority, []).push(rule)
   }
 
   const priorities = [...byPriority.keys()].sort((a, b) => a - b)

@@ -84,6 +84,13 @@ val healthDataCategories: List<HealthDataCategory> = listOf(
         description = "Sleep sessions and stages"
     ),
     HealthDataCategory(
+        name = "Mindfulness",
+        recordTypes = listOf(
+            MindfulnessSessionRecord::class
+        ),
+        description = "Meditation and mindfulness sessions"
+    ),
+    HealthDataCategory(
         name = "Nutrition & Hydration",
         recordTypes = listOf(
             NutritionRecord::class,
