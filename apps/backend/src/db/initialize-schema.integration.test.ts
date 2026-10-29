@@ -23,6 +23,7 @@ const suffix = randomUUID().slice(0, 8)
 const FRESH = `fresh_${suffix}`
 const LEGACY = `legacy_${suffix}`
 const STRENGTH = `strength_${suffix}`
+const NULL_NOTES = `null_notes_${suffix}`
 
 /** A new database prepared the way `makeNewUserDb` prepares one, routed to `user`. */
 const freshUserDb = async (user: string, database = `init_${user}`): Promise<UserDb> => {
@@ -110,5 +111,37 @@ describe('initializeSchema', () => {
       expect(await strengthSchema(db)).toEqual(edited)
     },
     SCHEMA_TIMEOUT * 2,
+  )
+
+  test(
+    'migration drops the "null" Health Connect notes Waking Up wrote and keeps every other note (#1349)',
+    async () => {
+      const db = await freshUserDb(NULL_NOTES, `aurboda_${NULL_NOTES}`)
+      await initializeSchema(NULL_NOTES)
+      const insertNote = async (content: string, source: string | null, entityType = 'activity') =>
+        (
+          await db.query(
+            `INSERT INTO notes (entity_type, entity_id, content, source) VALUES ($1, $2, $3, $4) RETURNING id`,
+            [entityType, randomUUID(), content, source],
+          )
+        ).rows[0].id as string
+      await insertNote('null', 'health_connect')
+      await insertNote(' null ', 'health_connect')
+      const real = await insertNote('felt calm', 'health_connect')
+      const typed = await insertNote('null', null)
+      const answered = await insertNote('null', 'health_connect')
+      const reply = (
+        await db.query(
+          `INSERT INTO notes (entity_type, entity_id, content) VALUES ('note', $1, 'why null?') RETURNING id`,
+          [answered],
+        )
+      ).rows[0].id as string
+
+      await migrateSchema(NULL_NOTES, { force: true })
+
+      const left = (await db.query(`SELECT id FROM notes`)).rows.map((r) => r.id as string)
+      expect(left.sort()).toEqual([real, typed, answered, reply].sort())
+    },
+    SCHEMA_TIMEOUT,
   )
 })
