@@ -1141,6 +1141,16 @@ export const migrateSchema = async (user: string, opts?: { force?: boolean }): P
       })
     }
   }
+  if (existingTableNames.has('notes')) {
+    // Waking Up wrote the text "null" as session notes; ingest now drops it (#1349).
+    await query(
+      db,
+      `DELETE FROM notes n
+        WHERE n.source = 'health_connect'
+          AND btrim(n.content) IN ('', 'null')
+          AND NOT EXISTS (SELECT 1 FROM notes r WHERE r.entity_type = 'note' AND r.entity_id = n.id::text)`,
+    )
+  }
   if (existingTableNames.has('locations')) {
     await query(db, `ALTER TABLE locations ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`)
   }

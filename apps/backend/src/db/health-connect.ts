@@ -31,6 +31,14 @@ const stripExerciseTypeFromData = (data: Record<string, unknown>): Record<string
   return rest
 }
 
+/** Waking Up writes the text "null" as the notes of a session that has none (#1349). */
+export const healthConnectNotes = (data: Record<string, unknown>): string | undefined => {
+  const { notes } = data
+  if (typeof notes !== 'string') return undefined
+  const trimmed = notes.trim()
+  return trimmed === '' || trimmed === 'null' ? undefined : notes
+}
+
 /**
  * Claim a legacy row for a session that maps to a synced provider (#1080), so
  * the insert that follows enriches it instead of adding a duplicate. Besides
@@ -102,7 +110,7 @@ const storeHealthConnectActivity = async (
   // (source='health_connect') so it round-trips cleanly: outbound HC sync
   // only includes user-authored (source IS NULL) notes, so this row never
   // gets echoed back as user input.
-  const hcNotes = data.notes as string | undefined
+  const hcNotes = healthConnectNotes(data)
   if (activityId && hcNotes) {
     await upsertSyncedNote(user, 'activity', activityId, 'health_connect', hcNotes, startTime, endTime)
   }
@@ -245,7 +253,7 @@ export const processHealthConnectBatch = async (
         start_time: startTime,
         title: data.title as string | undefined,
       })
-      const noteContent = data.notes as string | undefined
+      const noteContent = healthConnectNotes(data)
       if (noteContent) {
         activityNotes.push({
           activityType: resolvedType,
