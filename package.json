@@ -21,7 +21,7 @@
     "@typescript/native-preview": "^7.0.0-0",
     "oxfmt": "^0",
     "oxlint": "^1",
-    "typescript": "^5.6.3"
+    "typescript": "^6.0.3"
   },
   "engines": {
     "node": "~26"
