@@ -53,17 +53,16 @@ const round2 = (n: number): number => Math.round(n * 100) / 100
 const dateKeyFormatterCache = new Map<string, Intl.DateTimeFormat>()
 
 const getDateKeyFormatter = (tz: string): Intl.DateTimeFormat => {
-  let fmt = dateKeyFormatterCache.get(tz)
-  if (!fmt) {
-    fmt = new Intl.DateTimeFormat('sv-SE', {
-      timeZone: tz,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    })
-    dateKeyFormatterCache.set(tz, fmt)
-  }
-  return fmt
+  return dateKeyFormatterCache.getOrInsertComputed(
+    tz,
+    () =>
+      new Intl.DateTimeFormat('sv-SE', {
+        timeZone: tz,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }),
+  )
 }
 
 /** Convert a UTC Date to its local YYYY-MM-DD key for the given tz. */
@@ -122,11 +121,10 @@ const accumulateDayTotals = (
         : aggregateNutrients([mealLevelNutrients(meal)])
     if (links.length === 0 && mealTotals.size === 0) continue
     const dayKey = localDateKey(meal.time, tz)
-    const day = dayTotals.get(dayKey) ?? new Map<string, number>()
+    const day = dayTotals.getOrInsertComputed(dayKey, () => new Map<string, number>())
     for (const [field, val] of mealTotals) {
       day.set(field, (day.get(field) ?? 0) + val)
     }
-    dayTotals.set(dayKey, day)
   }
   return dayTotals
 }

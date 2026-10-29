@@ -80,11 +80,7 @@ export const foldMonths = (days: GoalHistoryDay[]): GoalHistoryMonth[] => {
   const months = new Map<string, GoalHistoryMonth>()
   for (const d of days) {
     const month = d.date.slice(0, 7)
-    let entry = months.get(month)
-    if (!entry) {
-      entry = { ...emptyCounts(), month, partial: false }
-      months.set(month, entry)
-    }
+    const entry = months.getOrInsertComputed(month, () => ({ ...emptyCounts(), month, partial: false }))
     if (d.partial) entry.partial = true
     else countDay(entry, d.status)
   }

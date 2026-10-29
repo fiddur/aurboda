@@ -212,7 +212,7 @@ const resolveNutrition = async (
   // Known = any day with a meal logged, plus days the user marked complete
   // (a completed day with no meal is a true zero, not unknown).
   const knownSet = new Set<string>([...daily.keys(), ...completed])
-  for (const day of completed) if (!daily.has(day)) daily.set(day, 0)
+  for (const day of completed) daily.getOrInsert(day, 0)
 
   // Complete = days with a real logged value for *this* nutrient, so callers can
   // exclude or count flag-only days that otherwise read as noisy zeros.

@@ -37,12 +37,11 @@ export const windowMetricStat = (result: QueryMetricsBucketedResult): MetricStat
   for (const bucket of result.buckets) {
     for (const [metric, stats] of Object.entries(bucket.metrics)) {
       if (!stats) continue
-      const m = merged.get(metric) ?? { count: 0, max: -Infinity, sum: 0, weighted: 0 }
+      const m = merged.getOrInsertComputed(metric, () => ({ count: 0, max: -Infinity, sum: 0, weighted: 0 }))
       m.sum += stats.sum ?? 0
       m.max = Math.max(m.max, stats.max)
       m.count += stats.count
       m.weighted += stats.avg * stats.count
-      merged.set(metric, m)
     }
   }
   return (metric: MetricType, stat: ScalarStat): number | undefined => {

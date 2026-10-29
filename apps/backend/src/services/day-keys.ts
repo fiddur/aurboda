@@ -1,17 +1,16 @@
 const dayKeyFormatters = new Map<string, Intl.DateTimeFormat>()
 
 const dayKeyFormatter = (tz: string): Intl.DateTimeFormat => {
-  let fmt = dayKeyFormatters.get(tz)
-  if (!fmt) {
-    fmt = new Intl.DateTimeFormat('sv-SE', {
-      day: '2-digit',
-      month: '2-digit',
-      timeZone: tz,
-      year: 'numeric',
-    })
-    dayKeyFormatters.set(tz, fmt)
-  }
-  return fmt
+  return dayKeyFormatters.getOrInsertComputed(
+    tz,
+    () =>
+      new Intl.DateTimeFormat('sv-SE', {
+        day: '2-digit',
+        month: '2-digit',
+        timeZone: tz,
+        year: 'numeric',
+      }),
+  )
 }
 
 /** `YYYY-MM-DD` of `d` as a calendar day in `tz`. */

@@ -514,8 +514,7 @@ const calculateActivityTypeBreakdownTrend = async (
     const day = (row.day as Date).toISOString().split('T')[0]
     const value = Number(row.value)
 
-    if (!seriesDaily.has(seriesKey)) seriesDaily.set(seriesKey, new Map())
-    seriesDaily.get(seriesKey)!.set(day, value)
+    seriesDaily.getOrInsertComputed(seriesKey, () => new Map()).set(day, value)
   }
 
   const warmupCount = 3 * halfLifeDays

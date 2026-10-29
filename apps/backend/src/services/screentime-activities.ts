@@ -97,9 +97,7 @@ export const buildScreentimeActivitySpans = (
     if (!record.source) continue
     if (isCategoryExcluded(cat, excludedPaths)) continue
     const key = `${record.source}:${categoryPathToString(cat)}`
-    const bucket = groups.get(key) ?? []
-    bucket.push(record)
-    groups.set(key, bucket)
+    groups.getOrInsert(key, []).push(record)
   }
 
   const spans: Span[] = []

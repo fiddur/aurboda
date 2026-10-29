@@ -166,9 +166,7 @@ export const getFoodItemSensitivityNamesBatch = async (
   )
   const map = new Map<string, string[]>()
   for (const row of result.rows) {
-    const arr = map.get(row.food_item_id as string) ?? []
-    arr.push(row.name as string)
-    map.set(row.food_item_id as string, arr)
+    map.getOrInsert(row.food_item_id as string, []).push(row.name as string)
   }
   return map
 }

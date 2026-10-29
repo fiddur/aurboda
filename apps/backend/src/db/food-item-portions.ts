@@ -131,9 +131,7 @@ export const getPortionsByFoodItemIds = async (
   )
   for (const row of result.rows) {
     const portion = mapRow(row)
-    const list = map.get(portion.food_item_id)
-    if (list) list.push(portion)
-    else map.set(portion.food_item_id, [portion])
+    map.getOrInsert(portion.food_item_id, []).push(portion)
   }
   return map
 }

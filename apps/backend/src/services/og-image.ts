@@ -110,12 +110,7 @@ const createEmojiLoader = (): ((segment: string) => Promise<string | []>) => {
   }
   return async (segment) => {
     const candidates = twemojiFileCandidates(segment)
-    let dataUri = cache.get(candidates[0])
-    if (!dataUri) {
-      dataUri = readSvg(candidates)
-      cache.set(candidates[0], dataUri)
-    }
-    return (await dataUri) ?? []
+    return (await cache.getOrInsertComputed(candidates[0], () => readSvg(candidates))) ?? []
   }
 }
 
