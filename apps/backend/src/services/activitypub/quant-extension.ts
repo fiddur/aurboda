@@ -23,7 +23,7 @@
  * RSA Linked-Data signature and HTTP signatures both operate on the spliced
  * document, so they stay valid.
  */
-import type { FeedVisibility } from '@aurboda/api-spec'
+import type { FeedStructuredExercise, FeedVisibility } from '@aurboda/api-spec'
 import type { Object as APObject } from '@fedify/fedify/vocab'
 
 import type { ScalarMetric } from './object.ts'
@@ -38,19 +38,21 @@ export const QUANT_NS = 'https://w3id.org/quantpub#'
 export const QUANTPUB_VERSION = '0.2'
 
 /**
- * The inline `@context` entry defining the `quant:` prefix. `quant:metrics` and
- * `quant:series` are JSON literals (`@json`) so conforming processors preserve
+ * The inline `@context` entry defining the `quant:` prefix. `quant:metrics`,
+ * `quant:series` and `quant:exercises` are JSON literals (`@json`) so conforming processors preserve
  * their nested `key`/`value`/`unit` and `metric`/`mediaType`/`href` objects
  * verbatim instead of expanding (and losing) unmapped keys.
  */
 export interface QuantContextEntry {
   readonly quant: string
+  readonly 'quant:exercises': { readonly '@type': '@json' }
   readonly 'quant:metrics': { readonly '@type': '@json' }
   readonly 'quant:series': { readonly '@type': '@json' }
 }
 
 export const quantContextEntry: QuantContextEntry = Object.freeze({
   quant: QUANT_NS,
+  'quant:exercises': Object.freeze({ '@type': '@json' as const }),
   'quant:metrics': Object.freeze({ '@type': '@json' as const }),
   'quant:series': Object.freeze({ '@type': '@json' as const }),
 })
@@ -82,6 +84,8 @@ export interface QuantExerciseInput {
   seriesMetrics: string[]
   /** Bucket granularity for the series links (defaults to `5s`). */
   seriesBucket?: string
+  /** The shared exercises (`include_exercises`), already in wire form. */
+  exercises?: FeedStructuredExercise[]
 }
 
 /**
@@ -105,6 +109,7 @@ export const quantExerciseExtension = (input: QuantExerciseInput): Record<string
     })),
     'quant:structuredUrl': `${publicBase}/feed/${input.postId}${token}`,
   }
+  if (input.exercises && input.exercises.length > 0) props['quant:exercises'] = input.exercises
   const endTime = input.endTime
   if (isPubliclyVisible(input.visibility) && endTime !== undefined && input.seriesMetrics.length > 0) {
     const bucket = input.seriesBucket ?? '5s'

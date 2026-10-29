@@ -157,6 +157,7 @@ export const socialTables: Record<string, string> = {
       visibility        VARCHAR(12) NOT NULL DEFAULT 'public',
       include_map       BOOLEAN NOT NULL DEFAULT false,
       include_chart     BOOLEAN NOT NULL DEFAULT false,
+      include_exercises BOOLEAN NOT NULL DEFAULT false,
       article           JSONB,
       -- Challenge link payload (name + canonical URL) for kind = 'challenge' (#994).
       challenge         JSONB,
@@ -184,6 +185,10 @@ export const socialTables: Record<string, string> = {
   // (manual or auto) is never auto-shared again. Additive (idempotent).
   feed_posts_autoshare_column: `
     ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS autoshare_rule_id UUID;
+  `,
+  // Whether a post shares the session's exercises (sets, e1RM, volume, records).
+  feed_posts_exercises_column: `
+    ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS include_exercises BOOLEAN NOT NULL DEFAULT false;
   `,
   // Reply posts (kind = 'reply'): what this post answers. The target object id
   // and its author's actor URI come from the timeline entry being replied to
@@ -235,6 +240,7 @@ export const socialTables: Record<string, string> = {
       series_metrics        TEXT[] NOT NULL DEFAULT '{}',
       include_chart         BOOLEAN NOT NULL DEFAULT false,
       include_map           BOOLEAN NOT NULL DEFAULT false,
+      include_exercises     BOOLEAN NOT NULL DEFAULT false,
       visibility            VARCHAR(12) NOT NULL DEFAULT 'followers',
       message               TEXT,
       created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -246,6 +252,9 @@ export const socialTables: Record<string, string> = {
   `,
   autoshare_rules_max_age_hours: `
     ALTER TABLE autoshare_rules ADD COLUMN IF NOT EXISTS max_age_hours INTEGER NOT NULL DEFAULT 24
+  `,
+  autoshare_rules_include_exercises: `
+    ALTER TABLE autoshare_rules ADD COLUMN IF NOT EXISTS include_exercises BOOLEAN NOT NULL DEFAULT false
   `,
   // `idx_feed_posts_series` is a GIN index over the shared-series set — the hot
   // path for the public series endpoint's `metric = ANY(series_metrics)` check.

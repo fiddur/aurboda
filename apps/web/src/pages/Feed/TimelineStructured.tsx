@@ -23,6 +23,7 @@ import {
   structuredRoutePoints,
 } from './timeline-structured'
 import { TimelineArticle } from './TimelineArticle'
+import { TimelineExercises } from './TimelineExercises'
 import './TimelineStructured.css'
 
 function ActivityStructured({ structured }: { structured: FeedStructuredActivity }) {
@@ -43,6 +44,7 @@ function ActivityStructured({ structured }: { structured: FeedStructuredActivity
       {structured.message && <p class="feed-post-message">{structured.message}</p>}
       <p class="feed-post-window">{formatEntryWindow(structured.startTime, structured.endTime)}</p>
       <ActivityStatGrid metrics={structured.metrics} />
+      {structured.exercises && <TimelineExercises exercises={structured.exercises} />}
       {series.length > 0 && structured.endTime && (
         <div class="timeline-chart">
           <CombinedMetricChart

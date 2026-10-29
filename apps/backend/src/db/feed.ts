@@ -24,6 +24,7 @@ export interface FeedPostRecord {
   visibility: FeedVisibility
   include_map: boolean
   include_chart: boolean
+  include_exercises: boolean
   /** Stored article payload (title + default window + blocks); null for `activity` posts. */
   article: ArticleContent | null
   /** Stored challenge link payload (name + canonical URL); null unless kind = 'challenge'. */
@@ -51,6 +52,8 @@ export interface FeedPostInput {
   visibility: FeedVisibility
   include_map: boolean
   include_chart: boolean
+  /** Omitted stores false. */
+  include_exercises?: boolean
   /** The author's personal message; omitted/undefined stores NULL. */
   message?: string | null
   /** The auto-share rule creating this post (#903); omitted for manual shares. */
@@ -93,6 +96,7 @@ export interface FeedPostPatch {
   visibility?: FeedVisibility
   include_map?: boolean
   include_chart?: boolean
+  include_exercises?: boolean
   /** Replacement article payload (whole `article` JSONB), for editing an article post. */
   article?: ArticleContent
   /** Replacement personal message; `null` clears it, `undefined` leaves it unchanged. */
@@ -100,7 +104,7 @@ export interface FeedPostPatch {
 }
 
 const FEED_POST_COLUMNS =
-  'id, kind, activity_id, included_metrics, series_metrics, visibility, include_map, include_chart, article, challenge, message, in_reply_to_uri, in_reply_to_actor_uri, in_reply_to_handle, autoshare_rule_id, image_token, created_at, updated_at'
+  'id, kind, activity_id, included_metrics, series_metrics, visibility, include_map, include_chart, include_exercises, article, challenge, message, in_reply_to_uri, in_reply_to_actor_uri, in_reply_to_handle, autoshare_rule_id, image_token, created_at, updated_at'
 
 interface FeedPostRow {
   id: string
@@ -111,6 +115,7 @@ interface FeedPostRow {
   visibility: FeedVisibility
   include_map: boolean
   include_chart: boolean
+  include_exercises: boolean
   // pg parses a jsonb column to its JS value on read (null for `activity` posts).
   article: ArticleContent | null
   challenge: ChallengeShare | null
@@ -130,8 +135,9 @@ export const createFeedPost = async (user: string, input: FeedPostInput): Promis
   const result = await query<FeedPostRow>(
     user,
     `INSERT INTO feed_posts
-       (activity_id, included_metrics, series_metrics, visibility, include_map, include_chart, message, autoshare_rule_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       (activity_id, included_metrics, series_metrics, visibility, include_map, include_chart, include_exercises,
+        message, autoshare_rule_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      RETURNING ${FEED_POST_COLUMNS}`,
     [
       input.activity_id,
@@ -140,6 +146,7 @@ export const createFeedPost = async (user: string, input: FeedPostInput): Promis
       input.visibility,
       input.include_map,
       input.include_chart,
+      input.include_exercises ?? false,
       input.message ?? null,
       input.autoshare_rule_id ?? null,
     ],
@@ -368,6 +375,7 @@ export const updateFeedPost = async (
   if (patch.visibility !== undefined) set('visibility', patch.visibility)
   if (patch.include_map !== undefined) set('include_map', patch.include_map)
   if (patch.include_chart !== undefined) set('include_chart', patch.include_chart)
+  if (patch.include_exercises !== undefined) set('include_exercises', patch.include_exercises)
   if (patch.article !== undefined) set('article', JSON.stringify(patch.article))
   if (patch.message !== undefined) set('message', patch.message)
 

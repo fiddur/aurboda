@@ -21,7 +21,9 @@ import {
 import {
   buildShareBody,
   defaultsFromChart,
+  initialIncludeExercises,
   initialSeriesSelection,
+  offersExercises,
   previewSelection,
   SERIES_METRICS,
   shareableSummaryOptions,
@@ -149,6 +151,7 @@ export function ShareActivityDialog({
   )
   const [visibility, setVisibility] = useState<FeedVisibility>(post?.visibility ?? 'public')
   const [includeMap, setIncludeMap] = useState(post?.include_map ?? false)
+  const [includeExercises, setIncludeExercises] = useState(() => initialIncludeExercises(post))
   const [message, setMessage] = useState(post ? (post.message ?? '') : (defaultMessage ?? ''))
   const { summaryOptions, seriesOptions, canChart, canMap } = useShareableMetricOptions(
     activityId,
@@ -166,10 +169,18 @@ export function ShareActivityDialog({
   // actually offered as a control here.
   const offersHeartRate = seriesOptions.some((m) => m.key === 'heart_rate')
 
+  // Whether the session has exercises comes from the preview (resolved over the
+  // merged session, where a Garmin row's sets live on its Gravl twin); the last
+  // answer is kept so the toggle doesn't blink while the next preview loads.
+  const [previewHasExercises, setPreviewHasExercises] = useState<boolean | undefined>(undefined)
+  const canExercises = offersExercises(previewHasExercises, post)
+
   const currentBody = () =>
     buildShareBody({
       canChart,
+      canExercises,
       canMap,
+      includeExercises,
       includeMap,
       message,
       series,
@@ -184,7 +195,7 @@ export function ShareActivityDialog({
   // the message doesn't fire a request per keystroke. Keyed on only what the
   // preview renders, and the last answer stays up while the next one loads.
   const [debouncedKey, setDebouncedKey] = useState('')
-  const previewKey = JSON.stringify(previewSelection(currentBody()))
+  const previewKey = JSON.stringify(previewSelection(currentBody(), includeExercises))
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedKey(previewKey), 400)
     return () => clearTimeout(timer)
@@ -197,6 +208,10 @@ export function ShareActivityDialog({
     staleTime: 60_000,
   })
   const previewContent = previewQuery.data?.content
+  const hasExercises = previewQuery.data?.has_exercises
+  useEffect(() => {
+    if (hasExercises !== undefined) setPreviewHasExercises(hasExercises)
+  }, [hasExercises])
 
   const mutation = useMutation({
     mutationFn: () => {
@@ -283,6 +298,22 @@ export function ShareActivityDialog({
                   {label}
                 </label>
               ))}
+            </div>
+          </fieldset>
+        )}
+
+        {canExercises && (
+          <fieldset class="share-dialog-group">
+            <legend>Exercises</legend>
+            <div class="share-dialog-options">
+              <label class="share-dialog-checkbox">
+                <input
+                  type="checkbox"
+                  checked={includeExercises}
+                  onChange={(e) => setIncludeExercises((e.target as HTMLInputElement).checked)}
+                />
+                Exercises (sets, e1RM, volume)
+              </label>
             </div>
           </fieldset>
         )}

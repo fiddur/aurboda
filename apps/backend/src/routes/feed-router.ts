@@ -349,6 +349,7 @@ export const createFeedRouter = (
       const record = await createFeedPost(user, {
         activity_id: activity.id ?? req.params.id,
         include_chart: req.body.include_chart,
+        include_exercises: req.body.include_exercises,
         include_map: req.body.include_map,
         included_metrics: req.body.included_metrics,
         message: normalizeFeedMessage(req.body.message) ?? null,
@@ -374,10 +375,11 @@ export const createFeedRouter = (
         return res.status(404).json({ error: 'Activity not found', success: false })
       }
       const preview = await previewActivityShare(user, activity, {
+        include_exercises: req.body.include_exercises,
         included_metrics: req.body.included_metrics,
         ...(req.body.message === undefined ? {} : { message: req.body.message }),
       })
-      res.json({ content: preview.content, metrics: preview.metrics, success: true })
+      res.json({ ...preview, success: true })
     },
   )
 
@@ -500,6 +502,7 @@ export const createFeedRouter = (
       const user = req.user!
       const record = await updateFeedPost(user, req.params.postId, {
         include_chart: req.body.include_chart,
+        include_exercises: req.body.include_exercises,
         include_map: req.body.include_map,
         included_metrics: req.body.included_metrics,
         message: normalizeFeedMessage(req.body.message),

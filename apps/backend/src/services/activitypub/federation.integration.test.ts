@@ -342,6 +342,7 @@ describe('Feed federation actor + WebFinger', () => {
     // The inline @context defines the quant prefix and the @json literal terms.
     expect(doc['@context']).toContainEqual({
       quant: 'https://w3id.org/quantpub#',
+      'quant:exercises': { '@type': '@json' },
       'quant:metrics': { '@type': '@json' },
       'quant:series': { '@type': '@json' },
     })

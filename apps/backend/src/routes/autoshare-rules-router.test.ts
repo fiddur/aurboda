@@ -34,6 +34,7 @@ const record = (over: Partial<AutoshareRuleRecord> = {}): AutoshareRuleRecord =>
   id: RULE_ID,
   include_chart: false,
   include_map: false,
+  include_exercises: false,
   included_metrics: [],
   max_age_hours: 24,
   max_duration_seconds: null,

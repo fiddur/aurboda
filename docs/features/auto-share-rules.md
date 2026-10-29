@@ -29,8 +29,9 @@ A per-user set of rules, each combining a **predicate** and a **share template**
   an activity whose phone sync is delayed past the max age is not shared either. Rules
   created before the field existed have 24.
 - **Share template** — exactly the fields of a manual share: `included_metrics`,
-  `series_metrics`, `include_chart`/`include_map`, `visibility`, and an optional fixed
-  `message` for the created posts.
+  `series_metrics`, `include_chart`/`include_map`, `include_exercises` (off by default; a
+  strength-training rule can share each exercise's sets, e1RM, volume and records),
+  `visibility`, and an optional fixed `message` for the created posts.
 - Rules are **created disabled**. Enabling is a separate, deliberate act — the UI states
   plainly that matching data will leave the instance without further confirmation — and
   stamps `enabled_at`. Only a real off→on transition stamps it: re-sending

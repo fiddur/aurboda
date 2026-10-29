@@ -48,6 +48,9 @@ const autoshareRuleFields = {
     .boolean()
     .default(false)
     .meta({ description: 'Attach the rendered heart-rate chart image to auto-created posts' }),
+  include_exercises: z.boolean().default(false).meta({
+    description: "Share the session's exercises (sets, e1RM, volume, records) in auto-created posts",
+  }),
   include_map: z
     .boolean()
     .default(false)
@@ -133,6 +136,7 @@ export const updateAutoshareRuleBodySchema = z
       .meta({ description: `${dataFiltersDescription} Replaces the whole list.` }),
     enabled: z.boolean().optional().meta({ description: 'Enable/disable the rule' }),
     include_chart: z.boolean().optional(),
+    include_exercises: z.boolean().optional(),
     include_map: z.boolean().optional(),
     included_metrics: z.array(scalarMetricKeySchema).max(64).optional(),
     max_age_hours: autoshareRuleFields.max_age_hours.removeDefault().optional(),

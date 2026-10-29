@@ -28,6 +28,7 @@ export interface AutoshareRuleRecord {
   series_metrics: string[]
   include_chart: boolean
   include_map: boolean
+  include_exercises: boolean
   visibility: FeedVisibility
   /** Fixed personal message for auto-created posts, or null for none. */
   message: string | null
@@ -48,6 +49,7 @@ export interface AutoshareRuleInput {
   series_metrics: string[]
   include_chart: boolean
   include_map: boolean
+  include_exercises: boolean
   visibility: FeedVisibility
   message?: string | null
 }
@@ -66,12 +68,13 @@ export interface AutoshareRulePatch {
   series_metrics?: string[]
   include_chart?: boolean
   include_map?: boolean
+  include_exercises?: boolean
   visibility?: FeedVisibility
   message?: string | null
 }
 
 const COLS =
-  'id, name, enabled, enabled_at, activity_types, min_duration_seconds, max_duration_seconds, min_distance_meters, source, data_filters, max_age_hours, included_metrics, series_metrics, include_chart, include_map, visibility, message, created_at, updated_at'
+  'id, name, enabled, enabled_at, activity_types, min_duration_seconds, max_duration_seconds, min_distance_meters, source, data_filters, max_age_hours, included_metrics, series_metrics, include_chart, include_map, include_exercises, visibility, message, created_at, updated_at'
 
 export const getAutoshareRules = async (user: string): Promise<AutoshareRuleRecord[]> => {
   const result = await query<AutoshareRuleRecord>(
@@ -98,8 +101,9 @@ export const insertAutoshareRule = async (
     user,
     `INSERT INTO autoshare_rules
        (name, activity_types, min_duration_seconds, max_duration_seconds, min_distance_meters, source,
-        data_filters, max_age_hours, included_metrics, series_metrics, include_chart, include_map, visibility, message)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+        data_filters, max_age_hours, included_metrics, series_metrics, include_chart, include_map, include_exercises,
+        visibility, message)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
      RETURNING ${COLS}`,
     [
       input.name,
@@ -114,6 +118,7 @@ export const insertAutoshareRule = async (
       input.series_metrics,
       input.include_chart,
       input.include_map,
+      input.include_exercises,
       input.visibility,
       input.message ?? null,
     ],
@@ -136,6 +141,7 @@ const PATCH_COLUMNS = [
   'series_metrics',
   'include_chart',
   'include_map',
+  'include_exercises',
   'visibility',
   'message',
 ] as const

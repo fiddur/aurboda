@@ -41,6 +41,7 @@ const ruleInput = (over: Partial<AutoshareRuleInput> = {}): AutoshareRuleInput =
   data_filters: [],
   include_chart: false,
   include_map: true,
+  include_exercises: false,
   included_metrics: ['duration', 'distance'],
   max_age_hours: 24,
   min_duration_seconds: 900,
@@ -97,6 +98,16 @@ describe('Auto-share rules integration', () => {
     await updateAutoshareRule(user, created.id, { enabled: false })
     const reenabled = await updateAutoshareRule(user, created.id, { enabled: true })
     expect(reenabled?.enabled_at?.getTime()).toBeGreaterThan(new Date('2026-08-01T00:00:00Z').getTime())
+  })
+
+  test('stores the exercises opt-in and patches it', async () => {
+    const user = getTestUser()
+    const created = await insertAutoshareRule(user, ruleInput({ include_exercises: true }))
+    expect(created.include_exercises).toBe(true)
+    expect(
+      (await updateAutoshareRule(user, created.id, { include_exercises: false }))?.include_exercises,
+    ).toBe(false)
+    expect((await getAutoshareRules(user))[0]?.include_exercises).toBe(false)
   })
 
   test('patches predicate/template fields; null clears the nullable ones', async () => {
@@ -174,6 +185,7 @@ describe('Auto-share rules integration', () => {
       autoshare_rule_id: rule.id,
       include_chart: false,
       include_map: false,
+      include_exercises: false,
       included_metrics: ['duration'],
       series_metrics: [],
       visibility: 'followers',
@@ -204,6 +216,7 @@ describe('Auto-share rules integration', () => {
       activity_id: a2,
       include_chart: false,
       include_map: false,
+      include_exercises: false,
       included_metrics: ['duration'],
       series_metrics: [],
       visibility: 'public',
@@ -227,6 +240,7 @@ describe('Auto-share rules integration', () => {
       activity_id: activityId,
       include_chart: false,
       include_map: false,
+      include_exercises: false,
       included_metrics: ['duration'],
       series_metrics: [],
       visibility: 'public',
@@ -417,6 +431,7 @@ describe('Auto-share rules integration', () => {
       activity_id: a2,
       include_chart: false,
       include_map: false,
+      include_exercises: false,
       included_metrics: ['duration'],
       series_metrics: [],
       visibility: 'followers',
@@ -440,6 +455,7 @@ describe('Auto-share rules integration', () => {
         activity_id: activityId,
         include_chart: false,
         include_map: false,
+        include_exercises: false,
         included_metrics: ['duration'],
         series_metrics: [],
         visibility: 'followers',

@@ -6,7 +6,9 @@ import {
   buildShareBody,
   DEFAULT_SUMMARY,
   defaultsFromChart,
+  initialIncludeExercises,
   initialSeriesSelection,
+  offersExercises,
   previewSelection,
   seriesLabel,
   shareableSummaryOptions,
@@ -79,7 +81,9 @@ describe('initialSeriesSelection', () => {
 describe('buildShareBody', () => {
   const base: ShareSelection = {
     canChart: true,
+    canExercises: true,
     canMap: true,
+    includeExercises: false,
     includeMap: false,
     message: '',
     series: new Set<MetricType>(),
@@ -123,6 +127,30 @@ describe('buildShareBody', () => {
     expect(body.include_map).toBe(false)
     expect(body.visibility).toBe('public')
   })
+
+  it('shares the exercises only when the session has them', () => {
+    expect(buildShareBody({ ...base, includeExercises: true }).include_exercises).toBe(true)
+    expect(buildShareBody({ ...base, canExercises: false, includeExercises: true }).include_exercises).toBe(
+      false,
+    )
+    expect(buildShareBody({ ...base, includeExercises: false }).include_exercises).toBe(false)
+  })
+})
+
+describe('exercises opt-in', () => {
+  it('is offered when the preview found exercises or the edited post already shares them', () => {
+    expect(offersExercises(undefined)).toBe(false)
+    expect(offersExercises(false)).toBe(false)
+    expect(offersExercises(true)).toBe(true)
+    expect(offersExercises(false, { include_exercises: true })).toBe(true)
+    expect(offersExercises(undefined, { include_exercises: false })).toBe(false)
+  })
+
+  it('starts checked for a new share and follows the post when editing', () => {
+    expect(initialIncludeExercises()).toBe(true)
+    expect(initialIncludeExercises({ include_exercises: false })).toBe(false)
+    expect(initialIncludeExercises({ include_exercises: true })).toBe(true)
+  })
 })
 
 describe('metric labels', () => {
@@ -144,6 +172,7 @@ describe('metric labels', () => {
 describe('previewSelection', () => {
   const body = {
     include_chart: false,
+    include_exercises: false,
     include_map: false,
     included_metrics: ['duration'],
     message: 'hi',
@@ -151,19 +180,26 @@ describe('previewSelection', () => {
     visibility: 'public' as const,
   }
 
-  it('keeps only what the preview renders: the summary metrics and the message', () => {
-    expect(previewSelection(body)).toEqual({ included_metrics: ['duration'], message: 'hi' })
+  it('keeps only what the preview renders: the summary metrics, the message and the exercises', () => {
+    expect(previewSelection(body, true)).toEqual({
+      include_exercises: true,
+      included_metrics: ['duration'],
+      message: 'hi',
+    })
   })
 
   it('is unchanged by series, image and visibility toggles', () => {
     const toggled = {
       ...body,
       include_chart: true,
+      include_exercises: false,
       include_map: true,
       series_metrics: ['heart_rate' as const],
       visibility: 'followers' as const,
     }
-    expect(JSON.stringify(previewSelection(toggled))).toBe(JSON.stringify(previewSelection(body)))
+    expect(JSON.stringify(previewSelection(toggled, false))).toBe(
+      JSON.stringify(previewSelection(body, false)),
+    )
   })
 })
 
@@ -226,7 +262,9 @@ describe('shareableSummaryOptions', () => {
     const { summary } = defaultsFromChart(['heart_rate'])
     const body = buildShareBody({
       canChart: true,
+      canExercises: false,
       canMap: false,
+      includeExercises: false,
       includeMap: false,
       message: '',
       series: new Set<MetricType>(),

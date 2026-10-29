@@ -109,6 +109,8 @@ export const formatActivityWindow = (
 export interface FeedPostContentExtras {
   /** The author's personal message (plain text; linebreaks become `<br>`). */
   message?: string
+  /** One pre-formatted plain-text line per shared exercise (see `formatExerciseLine`). */
+  exerciseLines?: string[]
   /** Pre-formatted activity-date line (see `formatActivityWindow`). */
   windowLabel?: string
 }
@@ -132,6 +134,9 @@ export const feedPostContent = (
   if (message) parts.push(`<p>${escapeHtml(message).replaceAll('\n', '<br>')}</p>`)
   if (extras.windowLabel) parts.push(`<p>${escapeHtml(extras.windowLabel)}</p>`)
   if (scalars.length > 0) parts.push(`<p>${scalars.map((s) => escapeHtml(formatScalar(s))).join('<br>')}</p>`)
+  if (extras.exerciseLines && extras.exerciseLines.length > 0) {
+    parts.push(`<p><strong>Exercises</strong><br>${extras.exerciseLines.map(escapeHtml).join('<br>')}</p>`)
+  }
   return { content: parts.join(''), name: heading }
 }
 

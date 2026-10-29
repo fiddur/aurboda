@@ -31,6 +31,7 @@ const post = (overrides: Partial<FeedPost>): FeedPost => ({
   created_at: '2026-07-02T00:00:00.000Z',
   id: '00000000-0000-0000-0000-000000000001',
   include_chart: false,
+  include_exercises: false,
   include_map: false,
   included_metrics: [],
   kind: 'article',
