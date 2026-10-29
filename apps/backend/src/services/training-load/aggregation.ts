@@ -5,8 +5,6 @@
  */
 import type { TrainingLoadPoint, trainingLoadBucketSizes } from '@aurboda/api-spec'
 
-import { Temporal } from '@js-temporal/polyfill'
-
 type TrainingLoadBucketSize = (typeof trainingLoadBucketSizes)[number]
 
 /**

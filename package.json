@@ -17,14 +17,14 @@
     "fix": "oxfmt . && oxlint --fix"
   },
   "devDependencies": {
-    "@tsconfig/node24": "^24.0.4",
+    "@tsconfig/node26": "^26.0.1",
     "@typescript/native-preview": "^7.0.0-0",
     "oxfmt": "^0",
     "oxlint": "^1",
     "typescript": "^5.6.3"
   },
   "engines": {
-    "node": "~25"
+    "node": "~26"
   },
   "packageManager": "pnpm@10.33.4"
 }

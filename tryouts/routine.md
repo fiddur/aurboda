@@ -38,7 +38,7 @@ This file is what to type into the routine's settings, and the instructions to p
 - **Docker is required**, and it is what makes this environment different from the reviewer's. The
   VM has `dockerd` installed but not running; `up.sh` starts it (with `sudo` when it is not root).
   Without a daemon there is no tryout at all.
-- **Node.** Nothing in `tryouts/` needs the Node 25 or the `node_modules` the session-start
+- **Node.** Nothing in `tryouts/` needs the Node 26 or the `node_modules` the session-start
   hook installs. The scripts run on the stock Node; puppeteer resolves from `/opt/tryout`.
 - **Network.** The rig pulls images, so it needs `registry-1.docker.io`, `auth.docker.io`,
   `production.cloudflare.docker.com` and `hub.docker.com`. `setup-environment.sh` needs

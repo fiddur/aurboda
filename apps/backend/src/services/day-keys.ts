@@ -1,5 +1,3 @@
-import { Temporal } from '@js-temporal/polyfill'
-
 const dayKeyFormatters = new Map<string, Intl.DateTimeFormat>()
 
 const dayKeyFormatter = (tz: string): Intl.DateTimeFormat => {
