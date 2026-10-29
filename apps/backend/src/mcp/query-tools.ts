@@ -258,7 +258,7 @@ category filters to runs carrying that run category (low_hr, intervals, long, te
 
   server.tool(
     'get_activity_item_history',
-    'For one activity (plain or merged: id), its list items grouped by an item value such as the exercise of each set (field=sets.exercise): per value the items, their measures (volume, e1rm, max_weight, set_count, max_time, total_reps, max_reps), which of those are records against every earlier session with that value, and the previous session with it. Totals over the whole session.',
+    'For one activity (plain or merged: id), its list items grouped by an item value such as the exercise of each set (field=sets.exercise): per value the items, their measures (volume, e1rm, max_weight, set_count, max_time, total_reps, max_reps), which of those are records against every earlier session with that value, the previous session with it, and per measure the decaying-best trend (as on the exercise page, trend_half_life_days) just before and after this session. Totals over the whole session.',
     { id: z.string().describe('Activity ID'), ...activityItemHistoryQuerySchema.shape, tz: tzSchema },
     async ({ id, field, tz }) => {
       const history = await queryActivityItemHistory(user, id, field)

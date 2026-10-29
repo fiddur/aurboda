@@ -20,8 +20,8 @@ vi.mock('../../services/audit-log.ts', () => ({ auditInfo: vi.fn() }))
 import {
   buildGravlActivity,
   buildGravlSets,
-  formatGravlSetsNote,
   type GravlProcessDeps,
+  gravlWorkoutNote,
   hasLoggedSets,
   isExternalWorkout,
   isStrengthWorkout,
@@ -143,17 +143,14 @@ describe('buildGravlActivity', () => {
   })
 })
 
-describe('formatGravlSetsNote', () => {
-  it('renders one line per exercise with warmup, failure, rpe and timed sets', () => {
-    expect(formatGravlSetsNote(detail())).toBe(
-      'Felt strong\n\nBench Press: 10×40 kg (w), 8×80 kg, 6×80 kg (f) @8\nPlank: 0:40 (drop)',
-    )
+describe('gravlWorkoutNote', () => {
+  it('is Gravl’s own workout notes, trimmed, without the sets', () => {
+    expect(gravlWorkoutNote(detail({ notes: '  Felt strong \n' }))).toBe('Felt strong')
   })
 
-  it('omits the notes block when the workout has none', () => {
-    expect(formatGravlSetsNote(detail({ notes: null }))).toBe(
-      'Bench Press: 10×40 kg (w), 8×80 kg, 6×80 kg (f) @8\nPlank: 0:40 (drop)',
-    )
+  it('is undefined when the workout has no notes', () => {
+    expect(gravlWorkoutNote(detail({ notes: null }))).toBeUndefined()
+    expect(gravlWorkoutNote(detail({ notes: '   ' }))).toBeUndefined()
   })
 })
 
@@ -244,11 +241,10 @@ describe('processGravlWorkout', () => {
       'activity',
       'act-1',
       'gravl',
-      expect.stringContaining('Squat: 8×100 kg'),
+      'Felt strong',
       new Date('2026-09-03T05:16:12Z'),
       new Date('2026-09-03T05:45:12Z'),
     )
-    expect(vi.mocked(deps.upsertSyncedNote).mock.calls[0][4]).not.toContain('Walking')
     expect(deps.materializeSuperseded).not.toHaveBeenCalled()
   })
 
@@ -362,7 +358,7 @@ describe('processGravlWorkout', () => {
       'activity',
       'act-1',
       'gravl',
-      expect.stringContaining('Bench Press: 10×40 kg (w)'),
+      'Felt strong',
       new Date('2026-09-03T05:16:12Z'),
       new Date('2026-09-03T05:45:12Z'),
     )
@@ -390,9 +386,23 @@ describe('processGravlWorkout', () => {
       'activity',
       'act-1',
       'gravl',
-      expect.stringContaining('Bench Press: 10×40 kg (w)'),
+      'Felt strong',
       expect.any(Date),
       expect.any(Date),
+    )
+  })
+
+  it('removes the synced note of a workout without notes of its own', async () => {
+    const deps = makeDeps(null)
+    expect(await processGravlWorkout('alice', detail({ notes: null }), deps)).toBe('created')
+    expect(deps.upsertSyncedNote).toHaveBeenCalledWith(
+      'alice',
+      'activity',
+      'act-1',
+      'gravl',
+      undefined,
+      new Date('2026-09-03T05:16:12Z'),
+      new Date('2026-09-03T05:45:12Z'),
     )
   })
 
@@ -428,7 +438,7 @@ describe('processGravlWorkout', () => {
       'activity',
       'act-1',
       'gravl',
-      expect.stringContaining('Bench Press'),
+      'Felt strong',
       new Date('2026-09-03T05:16:12Z'),
       new Date('2026-09-03T05:45:12Z'),
     )

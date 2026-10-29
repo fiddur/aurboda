@@ -211,6 +211,39 @@ a.entity-type-badge:hover {
   margin: 0 0 0.5rem;
 }
 
+details.list-field-detail > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+details.list-field-detail > summary::-webkit-details-marker {
+  display: none;
+}
+
+details.list-field-detail > summary h3 {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+details.list-field-detail > summary h3::before {
+  content: '';
+  width: 0.4rem;
+  height: 0.4rem;
+  border-right: 2px solid currentcolor;
+  border-bottom: 2px solid currentcolor;
+  transform: rotate(-45deg);
+  transition: transform 0.15s;
+}
+
+details.list-field-detail[open] > summary h3::before {
+  transform: rotate(45deg);
+}
+
+details.list-field-detail:not([open]) > summary h3 {
+  margin-bottom: 0;
+}
+
 .list-field-scroll {
   overflow-x: auto;
 }
@@ -494,6 +527,16 @@ a.entity-type-badge:hover {
 
 .item-history-when a {
   color: inherit;
+}
+
+.item-history-part {
+  white-space: nowrap;
+}
+
+.item-history-when[title] {
+  cursor: help;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
 }
 
 .hr-zones-detail {

@@ -124,8 +124,11 @@ Where item paths are accepted:
   per session.
 - `GET /activities/:id/item-history?field=sets.exercise` -- one activity (plain or `merged:` id)
   with its items grouped by exercise in order of first appearance: per exercise the items,
-  measures, records and the previous session with that exercise (its id, start, items and
-  measures), plus `totals` over the whole session. Its records are judged among the sessions of
+  measures, records, the previous session with that exercise (its id, start, items and
+  measures) and `trend`: per measure the exercise's decaying best (the exercise page's trend,
+  half-life `trend_half_life_days`, 120 days) just `before` this session — the earlier sessions'
+  best decayed to its day, absent the first time — and `after` it, the higher of that and this
+  session's value. Plus `totals` over the whole session. Its records are judged among the sessions of
   the activity's own type (and its descendants), while a sessions query judges them among the
   sessions of the type queried, so a query on a parent type such as `exercise` can mark
   different records.
@@ -152,8 +155,10 @@ with its records, a trend of its best e1RM (or most reps in a set, or longest ho
 exercise without weights) that decays with a 120-day half-life between sessions and is lifted by
 each session that beats it (a measure trend from the [trends API](trends.md), `GET /trends` with
 `measure`, `filter_field` and `filter_value`), a weekly chart of a chosen measure, and the
-sessions with it; and an activity's page has an exercises section comparing each exercise with
-last time, with record badges. Each chart on the exercise page has a ⋮ menu with **Open in Chart
+sessions with it; and an activity's page has an exercises section showing each exercise's sets
+with record badges and its trend around the session — `Trend e1RM 12.2 kg ↗ 15.2 kg · volume
+250 kg ↗ 296 kg`, just the value where the session did not lift it (the longest hold or most reps
+for an exercise without weights) — with the full sets table collapsed under it. Each chart on the exercise page has a ⋮ menu with **Open in Chart
 Explorer**, **Add to dashboard** and **Set a goal** (a trend goal on the decaying best for the
 trend, a measure goal for the weekly chart, prefilled on the Goals page).
 

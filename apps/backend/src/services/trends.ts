@@ -429,6 +429,29 @@ export const decayingBestHistory = (
   return history
 }
 
+/**
+ * The decaying best of the points strictly before `day`, decayed to `day` (UTC `YYYY-MM-DD` keys): the value
+ * `decayingBestHistory` would hold on `day` before that day's own sessions. Undefined without earlier points.
+ * Unrounded.
+ */
+export const decayedBestAt = (
+  points: { day: string; value: number }[],
+  day: string,
+  halfLifeDays: number,
+): number | undefined => {
+  const decay = (value: number, from: string, to: string) =>
+    value * 2 ** (-(Date.parse(to) - Date.parse(from)) / DAY_MS / halfLifeDays)
+  const earlier = points.filter((p) => p.day < day).toSorted((a, b) => a.day.localeCompare(b.day))
+  const last = earlier.reduce<{ day: string; value: number } | undefined>(
+    (prev, p) => ({
+      day: p.day,
+      value: Math.max(p.value, prev ? decay(prev.value, prev.day, p.day) : -Infinity),
+    }),
+    undefined,
+  )
+  return last && decay(last.value, last.day, day)
+}
+
 /** The UTC day keys from `count` days before today through today. */
 const utcDaysBack = (count: number): string[] => {
   const now = new Date()

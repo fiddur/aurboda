@@ -5,7 +5,7 @@ import type { MergedActivity } from '../db/types.ts'
 
 import * as db from '../db/index.ts'
 import * as measureSeries from './queries/activity-measure-series.ts'
-import { decayingBestHistory, getTrend } from './trends.ts'
+import { decayedBestAt, decayingBestHistory, getTrend } from './trends.ts'
 
 vi.mock('../db', async () => ({
   getSourceFilter: (await vi.importActual<typeof TimeSeries>('../db/time-series.ts')).getSourceFilter,
@@ -410,6 +410,45 @@ describe('getTrend', () => {
       const sql = vi.mocked(db.query).mock.calls[0][1] as string
       expect(sql).toContain('superseded_by IS NULL')
     })
+  })
+})
+
+describe('decayedBestAt', () => {
+  test('is undefined without earlier points', () => {
+    expect(decayedBestAt([], '2026-01-05', 2)).toBeUndefined()
+    expect(decayedBestAt([{ day: '2026-01-05', value: 100 }], '2026-01-05', 2)).toBeUndefined()
+  })
+
+  test('halves a single point after one half-life', () => {
+    expect(decayedBestAt([{ day: '2026-01-01', value: 100 }], '2026-01-03', 2)).toBe(50)
+  })
+
+  test('a weaker later point carries the decayed best, and a day keeps its best point', () => {
+    const points = [
+      { day: '2026-01-01', value: 80 },
+      { day: '2026-01-01', value: 100 },
+      { day: '2026-01-03', value: 40 },
+    ]
+    expect(decayedBestAt(points, '2026-01-05', 2)).toBeCloseTo(25)
+  })
+
+  test("agrees with decayingBestHistory's value on that day", () => {
+    const points = [
+      { day: '2026-01-01', value: 100 },
+      { day: '2026-01-02', value: 90 },
+      { day: '2026-01-04', value: 60 },
+    ]
+    const days = [
+      '2026-01-01',
+      '2026-01-02',
+      '2026-01-03',
+      '2026-01-04',
+      '2026-01-05',
+      '2026-01-06',
+      '2026-01-07',
+    ]
+    const history = decayingBestHistory(points, days, 3, 0)
+    expect(Math.round(decayedBestAt(points, '2026-01-07', 3)! * 10) / 10).toBe(history.at(-1)!.value)
   })
 })
 

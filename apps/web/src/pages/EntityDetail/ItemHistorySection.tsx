@@ -5,33 +5,68 @@ import {
   type DataItemFieldDefinition,
 } from '@aurboda/api-spec'
 import { useQuery } from '@tanstack/react-query'
-import { format } from 'date-fns'
+import { Fragment } from 'preact'
 
 import { fieldLabel, itemPageHref } from '../../components/sessions/sessionView'
 import { fetchActivityItemHistory } from '../../state/api'
-import { formatMeasure, formatSets, recordBadge } from '../../utils/measures'
+import { formatMeasure, formatSet, recordBadge, trendParts } from '../../utils/measures'
 
-const measureSummary = (measures: ActivityMeasures): string =>
+const Parts = ({ parts, separator = ' · ' }: { parts: string[]; separator?: string }) => (
+  <>
+    {parts.map((part, i) => (
+      <Fragment key={i}>
+        {i > 0 && separator}
+        <span class="item-history-part">{part}</span>
+      </Fragment>
+    ))}
+  </>
+)
+
+const measureParts = (measures: ActivityMeasures): string[] =>
   [
     measures.e1rm !== undefined && `e1RM ${formatMeasure('e1rm', measures.e1rm)}`,
     measures.volume !== undefined && `volume ${formatMeasure('volume', measures.volume)}`,
-  ]
-    .filter(Boolean)
-    .join(' · ')
+  ].filter((part) => part !== false)
 
 const Measures = ({ measures }: { measures: ActivityMeasures }) => {
-  const text = measureSummary(measures)
-  return text ? <span class="item-history-measures"> · {text}</span> : null
+  const parts = measureParts(measures)
+  return parts.length > 0 ? (
+    <span class="item-history-measures">
+      {' · '}
+      <Parts parts={parts} />
+    </span>
+  ) : null
+}
+
+const TrendLine = ({ group, halfLifeDays }: { group: ActivityItemGroup; halfLifeDays: number }) => {
+  const parts = trendParts(group.trend)
+  if (parts) {
+    return (
+      <div class="item-history-line">
+        <span class="item-history-when" title={`Decaying best with a ${halfLifeDays}-day half-life`}>
+          Trend
+        </span>{' '}
+        <Parts parts={parts} />
+      </div>
+    )
+  }
+  return group.previous ? null : (
+    <div class="item-history-line">
+      <span class="item-history-when">First time</span>
+    </div>
+  )
 }
 
 const ItemGroup = ({
   group,
   activityType,
   path,
+  halfLifeDays,
 }: {
   group: ActivityItemGroup
   activityType: string
   path: string
+  halfLifeDays: number
 }) => (
   <li class="item-history-group">
     <div class="item-history-name">
@@ -43,29 +78,15 @@ const ItemGroup = ({
       ))}
     </div>
     <div class="item-history-line">
-      <span class="item-history-when">This time</span> {formatSets(group.items)}
+      <span class="item-history-when">This time</span>{' '}
+      <Parts parts={group.items.map(formatSet)} separator=", " />
       <Measures measures={group.measures} />
     </div>
-    <div class="item-history-line">
-      {group.previous ? (
-        <>
-          <span class="item-history-when">
-            Last time{' '}
-            <a href={`/detail/activity/${group.previous.id}`}>
-              {format(new Date(group.previous.start_time), 'd MMM yyyy')}
-            </a>
-          </span>{' '}
-          {formatSets(group.previous.items)}
-          <Measures measures={group.previous.measures} />
-        </>
-      ) : (
-        <span class="item-history-when">First time</span>
-      )}
-    </div>
+    <TrendLine group={group} halfLifeDays={halfLifeDays} />
   </li>
 )
 
-/** The session's items grouped by an item field (its exercises), each compared with the last time. */
+/** The session's items grouped by an item field (its exercises), each with its trend before and after the session. */
 export const ItemHistorySection = ({
   activityId,
   activityType,
@@ -98,7 +119,13 @@ export const ItemHistorySection = ({
       </h3>
       <ul class="item-history-groups">
         {data.groups.map((g) => (
-          <ItemGroup key={g.value} group={g} activityType={activityType} path={path} />
+          <ItemGroup
+            key={g.value}
+            group={g}
+            activityType={activityType}
+            path={path}
+            halfLifeDays={data.trend_half_life_days}
+          />
         ))}
       </ul>
     </div>

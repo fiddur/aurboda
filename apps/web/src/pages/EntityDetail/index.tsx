@@ -1,6 +1,7 @@
 import { type ActivityFeatures, isExerciseActivityType } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
+import { Fragment } from 'preact'
 import { useLocation, useRoute } from 'preact-iso'
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks'
 
@@ -476,18 +477,25 @@ const ActivityDetailContent = ({
               location={hasEndTime ? { end: displayEnd, start: displayStart } : undefined}
               onFill={activity.deleted_at ? undefined : onFillField}
             />
-            {buildListTables(typeDef?.data_schema, activityData).map((table) => (
-              <ListFieldTable key={table.field.name} table={table} />
-            ))}
-            {categoricalItemFields(typeDef?.data_schema).map(({ list, item }) => (
-              <ItemHistorySection
-                key={itemPath(list, item)}
-                activityId={activityId}
-                activityType={activity.activity_type}
-                path={itemPath(list, item)}
-                item={item}
-              />
-            ))}
+            {buildListTables(typeDef?.data_schema, activityData).map((table) => {
+              const summaries = categoricalItemFields(typeDef?.data_schema).filter(
+                ({ list }) => list.name === table.field.name,
+              )
+              return (
+                <Fragment key={table.field.name}>
+                  {summaries.map(({ list, item }) => (
+                    <ItemHistorySection
+                      key={itemPath(list, item)}
+                      activityId={activityId}
+                      activityType={activity.activity_type}
+                      path={itemPath(list, item)}
+                      item={item}
+                    />
+                  ))}
+                  <ListFieldTable table={table} collapsed={summaries.length > 0} />
+                </Fragment>
+              )
+            })}
             {hasHrZones && <HrZoneBar zones={hrZoneSecs!} />}
             <RunFeatures features={features} />
           </>

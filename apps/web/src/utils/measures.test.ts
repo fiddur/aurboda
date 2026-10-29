@@ -15,6 +15,7 @@ import {
   measureSet,
   recordBadge,
   topSet,
+  trendParts,
 } from './measures'
 
 const THIN = ' '
@@ -230,5 +231,46 @@ describe('measureFilter', () => {
   test('undefined without one', () => {
     expect(measureFilter(coffee)).toBeUndefined()
     expect(measureFilterPath(undefined)).toBeUndefined()
+  })
+})
+
+describe('trendParts', () => {
+  test('shows e1RM and volume rising with an arrow', () => {
+    expect(
+      trendParts([
+        { after: 296, before: 250, measure: 'volume' },
+        { after: 15.2, before: 12.2, measure: 'e1rm' },
+        { after: 12, before: 10, measure: 'max_weight' },
+      ]),
+    ).toEqual(['e1RM 12.2 kg ↗ 15.2 kg', 'volume 250 kg ↗ 296 kg'])
+  })
+
+  test('a held trend shows just its value', () => {
+    expect(
+      trendParts([
+        { after: 1200, before: 1100, measure: 'volume' },
+        { after: 15.8, before: 15.8, measure: 'e1rm' },
+      ]),
+    ).toEqual(['e1RM 15.8 kg', `volume 1${THIN}100 kg ↗ 1${THIN}200 kg`])
+  })
+
+  test('falls back to the longest hold, then the best set, when there is no weight', () => {
+    expect(trendParts([{ after: 60, before: 45, measure: 'max_time' }])).toEqual(['hold 0:45 ↗ 1:00'])
+    expect(
+      trendParts([
+        { after: 2, before: 1, measure: 'set_count' },
+        { after: 12, before: 12, measure: 'max_reps' },
+      ]),
+    ).toEqual(['best set 12 reps'])
+  })
+
+  test('is undefined the first time, or with nothing to show', () => {
+    expect(
+      trendParts([
+        { after: 296, measure: 'volume' },
+        { after: 15.2, measure: 'e1rm' },
+      ]),
+    ).toBeUndefined()
+    expect(trendParts([{ after: 3, before: 2, measure: 'set_count' }])).toBeUndefined()
   })
 })
