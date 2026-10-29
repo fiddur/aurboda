@@ -80,6 +80,7 @@ describe('ruleSummary', () => {
     enabled_at: null,
     id: 'r1',
     include_chart: false,
+    include_exercises: false,
     include_map: false,
     included_metrics: [],
     max_age_hours: 24,

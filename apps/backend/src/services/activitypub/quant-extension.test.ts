@@ -75,6 +75,15 @@ describe('quantExerciseExtension', () => {
   test('no series links for an open-ended activity (no end time)', () => {
     expect(quantExerciseExtension({ ...base, endTime: undefined })['quant:series']).toBeUndefined()
   })
+
+  test('carries the shared exercises as quant:exercises, and none when there are none', () => {
+    const exercises = [
+      { metrics: [{ key: 'e1rm', unit: 'kg', value: 101.3 }], name: 'Bench Press', sets: [] },
+    ]
+    expect(quantExerciseExtension({ ...base, exercises })['quant:exercises']).toEqual(exercises)
+    expect(quantExerciseExtension({ ...base, exercises: [] })).not.toHaveProperty('quant:exercises')
+    expect(quantExerciseExtension(base)).not.toHaveProperty('quant:exercises')
+  })
 })
 
 describe('spliceQuantExtension', () => {

@@ -55,6 +55,18 @@ describe('assembleStructuredActivity', () => {
     expect(structured).not.toHaveProperty('durationSeconds')
   })
 
+  test('carries the shared exercises when there are any', () => {
+    const exercise = {
+      metrics: [{ key: 'e1rm', unit: 'kg', value: 101.3 }],
+      name: 'Bench Press',
+      records: ['e1rm', 'maxWeight'],
+      sets: [{ reps: 8, setType: 'warmup', weight: 60 }],
+    }
+    const activity = { activity_type: 'strength_training', start_time: start }
+    expect(assembleStructuredActivity(activity, [], [], null, [], [exercise]).exercises).toEqual([exercise])
+    expect(assembleStructuredActivity(activity, [], [], null, [], [])).not.toHaveProperty('exercises')
+  })
+
   test('omits the optional fields when absent', () => {
     const structured = assembleStructuredActivity({ activity_type: 'yoga', start_time: start }, [], [])
     expect(structured).toEqual({

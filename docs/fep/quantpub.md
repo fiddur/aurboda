@@ -97,8 +97,8 @@ name. AS2 properties are reused where they exist (`startTime`, `endTime`,
 `name`). Timestamps are ISO 8601 with timezone. The `quant:` namespace is
 `https://w3id.org/quantpub#` (final IRI to be settled with the FEP number).
 
-`quant:metrics` and `quant:series` are **JSON literals**: the published
-`@context` defines both with `"@type": "@json"` (JSON-LD 1.1), so processors
+`quant:metrics`, `quant:series` and `quant:exercises` are **JSON literals**: the
+published `@context` defines them with `"@type": "@json"` (JSON-LD 1.1), so processors
 preserve the nested objects verbatim instead of expanding, and losing,
 unmapped keys. Consumers MUST treat these values as plain JSON; a series
 entry's `mediaType`/`href` are data, not an AS2 `Link`.
@@ -112,14 +112,15 @@ detection (§7) keys on the object id or `quant:structuredUrl`, never on the
 type, so a publisher MAY emit a single-typed `Note` where deployed consumers
 mishandle array-valued `type` (§10). Consumers MUST tolerate both forms.
 
-| Property              | Type                    | Notes                                                                   |
-| --------------------- | ----------------------- | ----------------------------------------------------------------------- |
-| `startTime` (AS2)     | ISO 8601                | REQUIRED. Start of the bounded activity window                          |
-| `endTime` (AS2)       | ISO 8601                | RECOMMENDED. End of the window                                          |
-| `quant:activityType`  | string                  | e.g. `running`, `cycling`, `meditation`                                 |
-| `quant:metrics`       | array of metric objects | The scalar summaries the author chose to share (§2.1)                   |
-| `quant:series`        | array of series links   | Links into §6 — only for series opted in on a **publicly-visible** post |
-| `quant:structuredUrl` | URL                     | OPTIONAL explicit link to the object's §5 payload (§7)                  |
+| Property              | Type                    | Notes                                                                      |
+| --------------------- | ----------------------- | -------------------------------------------------------------------------- |
+| `startTime` (AS2)     | ISO 8601                | REQUIRED. Start of the bounded activity window                             |
+| `endTime` (AS2)       | ISO 8601                | RECOMMENDED. End of the window                                             |
+| `quant:activityType`  | string                  | e.g. `running`, `cycling`, `meditation`                                    |
+| `quant:metrics`       | array of metric objects | The scalar summaries the author chose to share (§2.1)                      |
+| `quant:series`        | array of series links   | Links into §6 — only for series opted in on a **publicly-visible** post    |
+| `quant:exercises`     | array of exercise items | OPTIONAL. The session's exercises, only when the author shared them (§2.2) |
+| `quant:structuredUrl` | URL                     | OPTIONAL explicit link to the object's §5 payload (§7)                     |
 
 There is no duration property: duration is derivable from the window, and when
 shared as a stat it is the `duration` metric key (seconds). AS2 `duration` MAY
@@ -148,6 +149,42 @@ followers' timelines.
 
 A publisher MUST emit only the metrics the author explicitly chose to share.
 Absence of a key means "not shared", never "zero".
+
+#### 2.2 Exercise items
+
+A session made of distinct exercises (a strength workout's sets) MAY carry
+them as `quant:exercises` (and `exercises` in the §5 payload), one item per
+exercise in session order:
+
+```json
+{
+  "name": "Bench Press",
+  "sets": [
+    { "reps": 8, "weight": 60, "setType": "warmup" },
+    { "reps": 8, "weight": 80 }
+  ],
+  "metrics": [
+    { "key": "e1rm", "value": 101.3, "unit": "kg" },
+    { "key": "volume", "value": 640, "unit": "kg" }
+  ],
+  "records": ["e1rm"]
+}
+```
+
+- `name` (REQUIRED): the exercise.
+- `sets` (REQUIRED): the sets in logged order, each with any of `reps`,
+  `weight` (kg) and `time` (seconds), and an OPTIONAL `setType` as logged
+  (`warmup`, `drop_set`, `failure`; absent for a working set).
+- `metrics` (REQUIRED, MAY be empty): §2.1 metric objects summarising the
+  exercise. RECOMMENDED keys, over the working sets (warm-ups excluded):
+  `e1rm` (best Epley estimated one-rep max, kg), `volume` (Σ weight × reps,
+  kg), `maxWeight` (kg), `setCount`, `totalReps`, `maxReps`, `maxTime`
+  (seconds).
+- `records` (OPTIONAL): the metric keys on which this session beat every
+  earlier session of the exercise in the author's own history.
+
+Exercises are their own opt-in: sharing scalars MUST NOT imply them, and the
+default MUST be: no exercises.
 
 ### 3. `quant:Observation` — a measured metric over a window
 
@@ -245,6 +282,8 @@ share is `kind: "activity"`:
   `Note` summarised.
 - `series` MUST contain only series the author _separately_ opted in (§8.2),
   as bucketed samples (§6.1) over the activity window. It MAY be empty.
+- `exercises` (OPTIONAL) carries the §2.2 exercise items, present only when
+  the author shared them, identical to the object's `quant:exercises`.
 - `route` (OPTIONAL) is the GPS track as a time-ordered array of
   `{ "lat", "lon", "t" }` (WGS84, ISO 8601), present only under the geography
   opt-in (§8.6). Timestamped points are used instead of a GeoJSON `LineString`
@@ -446,6 +485,7 @@ QuantPub peer, with the structured channel already in place.
     "https://www.w3.org/ns/activitystreams",
     {
       "quant": "https://w3id.org/quantpub#",
+      "quant:exercises": { "@type": "@json" },
       "quant:metrics": { "@type": "@json" },
       "quant:series": { "@type": "@json" }
     }

@@ -6,14 +6,20 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
  * and serialising an enriched feed post. Backed by a real DB so the merge
  * (`resolveActivityWindow` → `getOverlappingActivities`) actually runs.
  */
-import { deleteActivity, insertActivity } from '../db/activities/index.ts'
+import { deleteActivity, getActivityById, insertActivity } from '../db/activities/index.ts'
 import { query } from '../db/connection.ts'
-import { createFeedPost, type FeedPostInput } from '../db/feed.ts'
+import { createFeedPost, type FeedPostInput, updateFeedPost } from '../db/feed.ts'
 import { insertLocations } from '../db/locations.ts'
 import { insertTimeSeries } from '../db/time-series.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { resolveStructuredContent } from './feed-structured.ts'
-import { expandFeedActivityWindow, getFeedPage, resolveFeedActivity, serializeFeedPost } from './feed.ts'
+import {
+  expandFeedActivityWindow,
+  getFeedPage,
+  previewActivityShare,
+  resolveFeedActivity,
+  serializeFeedPost,
+} from './feed.ts'
 import { updateActivity } from './mutations.ts'
 
 const CONTAINER_TIMEOUT = 120_000
@@ -312,6 +318,129 @@ describe('feed service', () => {
       const post = await createFeedPost(user, postInput(null))
       const page = await getFeedPage(user, 10, 'garbage-cursor')
       expect(page.posts.map((p) => p.id)).toEqual([post.id])
+    })
+  })
+
+  describe('shared exercises', () => {
+    // Garmin logs the session (HR, no sets); Gravl logs the sets on an overlapping row. The post
+    // references the Garmin row, so the sets only come through the merged view.
+    const insertStrengthPair = async (user: string): Promise<string> => {
+      const garminId = await insertActivity(user, {
+        activity_type: 'strength_training',
+        end_time: new Date('2026-07-01T09:00:00Z'),
+        source: 'garmin',
+        start_time: new Date('2026-07-01T08:00:00Z'),
+        title: 'Strength',
+      })
+      await insertActivity(user, {
+        activity_type: 'strength_training',
+        data: {
+          sets: [
+            { exercise: 'Bench Press', reps: 8, set_type: 'warmup', weight: 60 },
+            { exercise: 'Bench Press', reps: 8, weight: 80 },
+            { exercise: 'Pull-up', reps: 10 },
+          ],
+        },
+        end_time: new Date('2026-07-01T08:55:00Z'),
+        source: 'gravl',
+        start_time: new Date('2026-07-01T08:02:00Z'),
+        title: 'Push day',
+      })
+      return garminId
+    }
+
+    test("a share of the Garmin row carries the Gravl row's sets in content and payload", async () => {
+      const user = getTestUser()
+      const garminId = await insertStrengthPair(user)
+      const post = await createFeedPost(user, postInput(garminId, { include_exercises: true }))
+
+      const dto = await serializeFeedPost(user, post, { includeStructured: true })
+      expect(dto.include_exercises).toBe(true)
+      expect(dto.content).toContain(
+        '<p><strong>Exercises</strong><br>Bench Press: 8×60 kg (w), 8×80 kg · e1RM 101.3 kg · volume 640 kg · PR e1RM · PR weight · PR reps<br>Pull-up: 10 reps · PR reps</p>',
+      )
+      if (dto.structured?.kind !== 'activity') throw new Error('expected an activity payload')
+      expect(dto.structured.exercises).toEqual([
+        {
+          metrics: [
+            { key: 'e1rm', unit: 'kg', value: 101.3 },
+            { key: 'maxReps', unit: 'reps', value: 8 },
+            { key: 'maxWeight', unit: 'kg', value: 80 },
+            { key: 'setCount', value: 1 },
+            { key: 'totalReps', unit: 'reps', value: 8 },
+            { key: 'volume', unit: 'kg', value: 640 },
+          ],
+          name: 'Bench Press',
+          records: ['e1rm', 'maxWeight', 'maxReps'],
+          sets: [
+            { reps: 8, setType: 'warmup', weight: 60 },
+            { reps: 8, weight: 80 },
+          ],
+        },
+        {
+          metrics: [
+            { key: 'maxReps', unit: 'reps', value: 10 },
+            { key: 'setCount', value: 1 },
+            { key: 'totalReps', unit: 'reps', value: 10 },
+          ],
+          name: 'Pull-up',
+          records: ['maxReps'],
+          sets: [{ reps: 10 }],
+        },
+      ])
+      expect(await resolveStructuredContent(user, post)).toEqual(dto.structured)
+    })
+
+    test('a share without the opt-in carries no exercises', async () => {
+      const user = getTestUser()
+      const garminId = await insertStrengthPair(user)
+      const post = await createFeedPost(user, postInput(garminId))
+
+      const dto = await serializeFeedPost(user, post, { includeStructured: true })
+      expect(dto.include_exercises).toBe(false)
+      expect(dto.content).not.toContain('Exercises')
+      if (dto.structured?.kind !== 'activity') throw new Error('expected an activity payload')
+      expect(dto.structured).not.toHaveProperty('exercises')
+    })
+
+    test('the flag round-trips through an update', async () => {
+      const user = getTestUser()
+      const garminId = await insertStrengthPair(user)
+      const post = await createFeedPost(user, postInput(garminId))
+      expect((await updateFeedPost(user, post.id, { include_exercises: true }))?.include_exercises).toBe(true)
+      expect((await updateFeedPost(user, post.id, { include_exercises: false }))?.include_exercises).toBe(
+        false,
+      )
+    })
+
+    test('the preview says the session has exercises and renders them only when asked', async () => {
+      const user = getTestUser()
+      const garminId = await insertStrengthPair(user)
+      const activity = await getActivityById(user, garminId)
+      if (!activity) throw new Error('expected the activity')
+
+      const without = await previewActivityShare(user, activity, { included_metrics: ['duration'] })
+      expect(without.has_exercises).toBe(true)
+      expect(without.content).not.toContain('Exercises')
+      const withExercises = await previewActivityShare(user, activity, {
+        include_exercises: true,
+        included_metrics: ['duration'],
+      })
+      expect(withExercises.content).toContain('Bench Press: 8×60 kg (w), 8×80 kg')
+
+      const post = await createFeedPost(user, postInput(garminId, { include_exercises: true }))
+      expect(withExercises.content).toBe((await serializeFeedPost(user, post)).content)
+    })
+
+    test('an activity type without a categorical item field has no exercises', async () => {
+      const user = getTestUser()
+      const anchorId = await insertAnchor(user)
+      const activity = await getActivityById(user, anchorId)
+      if (!activity) throw new Error('expected the activity')
+      expect(
+        (await previewActivityShare(user, activity, { include_exercises: true, included_metrics: [] }))
+          .has_exercises,
+      ).toBe(false)
     })
   })
 })

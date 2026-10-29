@@ -1,0 +1,71 @@
+.timeline-exercises {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.timeline-exercises-heading {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #6b7280;
+}
+
+.timeline-exercises ul {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.timeline-exercise {
+  min-width: 0;
+}
+
+.timeline-exercise-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  overflow-wrap: anywhere;
+}
+
+.timeline-exercise-pr {
+  display: inline-block;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.timeline-exercise-line {
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+.timeline-exercise-chunk {
+  white-space: nowrap;
+}
+
+.timeline-exercise-summary {
+  color: #6b7280;
+}
+
+@media (prefers-color-scheme: dark) {
+  .timeline-exercises-heading,
+  .timeline-exercise-summary {
+    color: #9ca3af;
+  }
+
+  .timeline-exercise-pr {
+    background: #78350f;
+    color: #fde68a;
+  }
+}

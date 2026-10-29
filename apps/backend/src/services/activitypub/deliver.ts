@@ -36,6 +36,7 @@ import type { FeedPostRecord } from '../../db/index.ts'
 
 import { hasLocations, hasTimeSeries } from '../../db/index.ts'
 import { challengeWinners } from '../challenge-results.ts'
+import { formatExerciseLine, resolvePostExercises, toStructuredExercise } from '../feed-exercises.ts'
 import { getSettings } from '../settings.ts'
 import { articleImageAttachments, renderArticleContentHtml } from './article-object.ts'
 import { identityToActorUri, identityToHandle, renderChallengeShareHtml } from './challenge-object.ts'
@@ -66,6 +67,8 @@ export interface FeedDeliveryDeps {
 
 export interface DeliverablePost {
   id: string
+  /** The shared activity's anchor id; the exercises resolve over its merged view. */
+  activity_id?: string | null
   included_metrics: string[]
   /** Metric keys whose series were explicitly shared (drive `quant:series` links). */
   series_metrics: string[]
@@ -79,6 +82,8 @@ export interface DeliverablePost {
   include_chart: boolean
   /** Attach a rendered GPS route-map image. */
   include_map: boolean
+  /** Share the session's exercises (sets, e1RM, volume, records). */
+  include_exercises: boolean
   /** Capability token appended to `followers`-only image URLs (see `imageAttachments`). */
   image_token: string
 }
@@ -193,10 +198,12 @@ const buildFeedNoteParts = async (
   apiBaseUrl: string,
 ): Promise<{ note: Note; quant: Record<string, unknown> }> => {
   const scalars = await resolveActivityScalars(user, activity, post.included_metrics)
+  const exercises = await resolvePostExercises(user, post, activity.activity_type)
   // The activity-date line renders in the author's device timezone (like the
   // article block images); unknown/invalid falls back to UTC inside the formatter.
   const settings = await getSettings(user).catch(() => null)
   const { content, name } = feedPostContent(activity.title, activity.activity_type, scalars, {
+    exerciseLines: exercises.map(formatExerciseLine),
     message: post.message ?? undefined,
     windowLabel: formatActivityWindow(
       activity.start_time,
@@ -229,6 +236,7 @@ const buildFeedNoteParts = async (
     activityType: activity.activity_type,
     apiBaseUrl,
     endTime: activity.end_time,
+    exercises: exercises.map(toStructuredExercise),
     imageToken: post.image_token,
     postId: post.id,
     scalars,

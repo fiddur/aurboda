@@ -11,6 +11,7 @@
  */
 import {
   type FeedStructuredActivity,
+  type FeedStructuredExercise,
   type FeedStructuredRoutePoint,
   type FeedStructuredSeries,
   metricTypeSchema,
@@ -110,6 +111,7 @@ export const assembleStructuredActivity = (
   series: FeedStructuredSeries[],
   message?: string | null,
   route: FeedStructuredRoutePoint[] = [],
+  exercises: FeedStructuredExercise[] = [],
 ): FeedStructuredActivity => {
   const structured: FeedStructuredActivity = {
     activityType: activity.activity_type,
@@ -125,6 +127,7 @@ export const assembleStructuredActivity = (
   if (activity.title !== undefined) structured.name = activity.title
   if (message != null) structured.message = message
   if (route.length > 0) structured.route = route
+  if (exercises.length > 0) structured.exercises = exercises
   if (activity.end_time) structured.endTime = activity.end_time.toISOString()
   return structured
 }

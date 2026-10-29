@@ -86,6 +86,7 @@ export const createAutoshareDeps = (
       activity_id: anchor.id,
       autoshare_rule_id: rule.id,
       include_chart: rule.include_chart,
+      include_exercises: rule.include_exercises,
       include_map: rule.include_map,
       included_metrics: rule.included_metrics,
       message: rule.message,
