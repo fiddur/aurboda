@@ -1,4 +1,5 @@
 import {
+  type ActivityItemTrend,
   type ActivityMeasure,
   activityMeasureLabels,
   activityMeasures,
@@ -57,6 +58,42 @@ const RECORD_BADGES: Record<ActivityMeasure, string> = {
 
 /** The badge text for a record on a measure: `PR e1RM`, short enough to read without hovering. */
 export const recordBadge = (measure: ActivityMeasure): string => `PR ${RECORD_BADGES[measure]}`
+
+const TREND_LABELS: Partial<Record<ActivityMeasure, string>> = {
+  e1rm: 'e1RM',
+  max_reps: 'best set',
+  max_time: 'hold',
+  volume: 'volume',
+}
+
+const TREND_UP = '↗'
+
+const trendShown = (trend: ActivityItemTrend[]): ActivityItemTrend[] => {
+  const of = (measure: ActivityMeasure) => trend.find((t) => t.measure === measure)
+  const main = [of('e1rm'), of('volume')].filter((t) => t !== undefined)
+  if (main.length > 0) return main
+  const fallback = of('max_time') ?? of('max_reps')
+  return fallback ? [fallback] : []
+}
+
+const trendPart = ({ after, before, measure }: ActivityItemTrend): string => {
+  const label = TREND_LABELS[measure]
+  const value =
+    before !== undefined && after > before
+      ? `${formatMeasure(measure, before)} ${TREND_UP} ${formatMeasure(measure, after)}`
+      : formatMeasure(measure, after)
+  return `${label} ${value}`
+}
+
+/**
+ * The exercise's decaying-best trend around this session, one part per measure: `e1RM 12.2 kg ↗ 15.2 kg`,
+ * `volume 250 kg ↗ 296 kg`; just the value where the session did not lift it. Undefined when no shown measure
+ * has an earlier trend (a first time).
+ */
+export const trendParts = (trend: ActivityItemTrend[]): string[] | undefined => {
+  const shown = trendShown(trend)
+  return shown.some((t) => t.before !== undefined) ? shown.map(trendPart) : undefined
+}
 
 const SET_TYPE_FLAGS: Record<string, string> = { drop_set: ' (drop)', failure: ' (f)', warmup: ' (w)' }
 

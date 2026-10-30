@@ -56,6 +56,9 @@ export const halfLifePresets = {
   stable: 30,
 } as const
 
+/** Default half-life (days) of a list-item measure's decaying-best trend. */
+export const measureTrendHalfLifeDays = 120
+
 /**
  * A trend of a list-item measure (activity_type source only): the decaying best. Each session's
  * measure lifts a running best that decays with the half-life between sessions, so one weak

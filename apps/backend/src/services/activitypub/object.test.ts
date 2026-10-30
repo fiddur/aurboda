@@ -95,6 +95,29 @@ describe('feedPostContent', () => {
     expect(content).toBe('<p><strong>Long ride</strong></p><p>Duration 1h 2m</p>')
   })
 
+  test('lists the shared exercises after the stats, one escaped line each', () => {
+    const { content } = feedPostContent(
+      'Push day',
+      'strength_training',
+      [{ key: 'duration', label: 'Duration', unit: 'seconds', value: 3600 }],
+      {
+        exerciseLines: ['Bench Press: 8×80 kg · e1RM 101.3 kg · PR e1RM', 'Curl <EZ> & hold: 10 reps'],
+      },
+    )
+    expect(content).toBe(
+      '<p><strong>Push day</strong></p>' +
+        '<p>Duration 1h</p>' +
+        '<p><strong>Exercises</strong><br>Bench Press: 8×80 kg · e1RM 101.3 kg · PR e1RM<br>' +
+        'Curl &lt;EZ&gt; &amp; hold: 10 reps</p>',
+    )
+  })
+
+  test('no exercises paragraph without exercise lines', () => {
+    expect(feedPostContent('Row', 'rowing', [], { exerciseLines: [] }).content).toBe(
+      '<p><strong>Row</strong></p>',
+    )
+  })
+
   test('untitled activity gets a type-derived headline and no stats line when nothing is shared', () => {
     const { content, name } = feedPostContent(undefined, 'yoga', [])
     expect(content).toBe('<p><strong>Yoga activity</strong></p>')

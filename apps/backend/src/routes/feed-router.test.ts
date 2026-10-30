@@ -205,6 +205,7 @@ describe('POST /feed/timeline/:id/reply', () => {
     in_reply_to_uri: 'https://mastodon.example/notes/1',
     include_chart: false,
     include_map: false,
+    include_exercises: false,
     included_metrics: [],
     kind: 'reply',
     message: 'Nice run!',

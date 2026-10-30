@@ -120,6 +120,8 @@ export interface ShareSelection {
   summary: Set<string>
   series: Set<MetricType>
   includeMap: boolean
+  /** Share the session's exercises; sent only when `canExercises`. */
+  includeExercises: boolean
   visibility: FeedVisibility
   /** Personal message (plain text) — see `buildShareBody` for the clear-on-edit semantics. */
   message: string
@@ -127,6 +129,7 @@ export interface ShareSelection {
   seriesOptions: readonly { key: MetricType }[]
   canChart: boolean
   canMap: boolean
+  canExercises: boolean
 }
 
 /**
@@ -137,6 +140,7 @@ export interface ShareSelection {
  */
 export const buildShareBody = (sel: ShareSelection): ShareActivityBody => ({
   include_chart: sel.canChart && sel.series.has(HEART_RATE),
+  include_exercises: sel.canExercises && sel.includeExercises,
   include_map: sel.canMap && sel.includeMap,
   included_metrics: sel.summaryOptions.map((m) => m.key).filter((k) => sel.summary.has(k)),
   // Always sent (never omitted): on an edit, an emptied field must CLEAR the
@@ -146,16 +150,40 @@ export const buildShareBody = (sel: ShareSelection): ShareActivityBody => ({
   visibility: sel.visibility,
 })
 
-export type SharePreviewSelection = Pick<ShareActivityBody, 'included_metrics' | 'message'>
+export type SharePreviewSelection = Pick<
+  ShareActivityBody,
+  'include_exercises' | 'included_metrics' | 'message'
+>
 
 /**
- * The part of a share body the preview route reads: it renders the summary and
- * message only, so series, image and visibility toggles must not refetch it.
+ * The part of a share body the preview route reads: it renders the summary, the
+ * message and the exercises only, so series, image and visibility toggles must
+ * not refetch it. The exercise toggle goes in as chosen rather than gated: the
+ * preview is what says whether there are exercises at all, and it renders none
+ * when there are none, so the content still matches what is sent.
  */
-export const previewSelection = (body: ShareActivityBody): SharePreviewSelection => ({
+export const previewSelection = (
+  body: ShareActivityBody,
+  includeExercises: boolean,
+): SharePreviewSelection => ({
+  include_exercises: includeExercises,
   included_metrics: body.included_metrics,
   message: body.message,
 })
+
+/**
+ * Whether the dialog offers the exercises opt-in: when the preview found
+ * exercises in the session, or the post being edited already shares them (so
+ * an existing choice is never stuck on).
+ */
+export const offersExercises = (
+  previewHasExercises: boolean | undefined,
+  post?: Pick<FeedPost, 'include_exercises'>,
+): boolean => (previewHasExercises ?? false) || (post?.include_exercises ?? false)
+
+/** A new share starts with the exercises on (when offered); an edit keeps the post's choice. */
+export const initialIncludeExercises = (post?: Pick<FeedPost, 'include_exercises'>): boolean =>
+  post ? post.include_exercises : true
 
 /**
  * QuantPub `0.2` wire keys are lowerCamelCase (`heartRateAvg`); Aurboda's own

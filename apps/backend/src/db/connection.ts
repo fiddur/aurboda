@@ -1141,6 +1141,16 @@ export const migrateSchema = async (user: string, opts?: { force?: boolean }): P
       })
     }
   }
+  if (existingTableNames.has('notes')) {
+    // Waking Up wrote the text "null" as session notes; ingest now drops it (#1349).
+    await query(
+      db,
+      `DELETE FROM notes n
+        WHERE n.source = 'health_connect'
+          AND btrim(n.content) IN ('', 'null')
+          AND NOT EXISTS (SELECT 1 FROM notes r WHERE r.entity_type = 'note' AND r.entity_id = n.id::text)`,
+    )
+  }
   if (existingTableNames.has('locations')) {
     await query(db, `ALTER TABLE locations ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`)
   }
@@ -1695,9 +1705,53 @@ export const migrateSchema = async (user: string, opts?: { force?: boolean }): P
     })
   }
 
+  const gravlNotesApplied = await query(
+    db,
+    `SELECT 1 FROM schema_migrations WHERE name = 'gravl_sets_note_v1'`,
+  )
+  if (gravlNotesApplied.rows.length === 0) {
+    await withTransaction(db, async (tx) => {
+      await stripGravlSetsNotes(tx)
+      await query(
+        tx,
+        `INSERT INTO schema_migrations (name) VALUES ('gravl_sets_note_v1') ON CONFLICT DO NOTHING`,
+      )
+    })
+  }
+
   // Last, and only on success: a sweep that threw must run again next time.
   await recordSchemaFingerprint(db, fingerprint)
   return true
+}
+
+const GRAVL_NOTE_WORKOUT_NOTES = `
+  SELECT n.id, btrim(rr.data->>'notes') AS workout_notes
+    FROM notes n
+    JOIN activities a ON a.id::text = n.entity_id AND a.source = 'gravl'
+    JOIN raw_records rr
+      ON rr.source = 'gravl' AND rr.record_type = 'gravl_workout' AND rr.external_id = a.external_id
+   WHERE n.source = 'gravl' AND n.entity_type = 'activity'`
+
+/**
+ * Gravl's synced note used to carry a text rendering of the sets, which now render from `data.sets`.
+ * Cuts each note down to the workout's own notes from its raw record, or deletes it when there are
+ * none. A note whose raw record is missing is left as it is. Idempotent. Returns the rows touched.
+ * @internal Exported for testing.
+ */
+export const stripGravlSetsNotes = async (db: Queryable): Promise<number> => {
+  const deleted = await query(
+    db,
+    `DELETE FROM notes WHERE id IN (
+       SELECT id FROM (${GRAVL_NOTE_WORKOUT_NOTES}) m WHERE coalesce(m.workout_notes, '') = ''
+     )`,
+  )
+  const updated = await query(
+    db,
+    `UPDATE notes SET content = m.workout_notes, updated_at = NOW()
+       FROM (${GRAVL_NOTE_WORKOUT_NOTES}) m
+      WHERE notes.id = m.id AND m.workout_notes <> '' AND notes.content <> m.workout_notes`,
+  )
+  return (deleted.rowCount ?? 0) + (updated.rowCount ?? 0)
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>

@@ -61,6 +61,10 @@ export const shareActivityBodySchema = z
       .boolean()
       .default(false)
       .meta({ description: 'Attach a rendered chart image (drawn only from shared metrics)' }),
+    include_exercises: z.boolean().default(false).meta({
+      description:
+        "Share each exercise of the session (a list field's categorical item, e.g. a strength session's sets by exercise) with its sets, e1RM, volume and the records it set",
+    }),
     include_map: z
       .boolean()
       .default(false)
@@ -87,6 +91,10 @@ export type ShareActivityBody = z.infer<typeof shareActivityBodySchema>
 export const updateFeedPostBodySchema = z
   .object({
     include_chart: z.boolean().optional().meta({ description: 'Attach a rendered chart image' }),
+    include_exercises: z
+      .boolean()
+      .optional()
+      .meta({ description: "Share the session's exercises with their sets, e1RM, volume and records" }),
     include_map: z.boolean().optional().meta({ description: 'Attach a rendered route-map image' }),
     included_metrics: z
       .array(scalarMetricKeySchema)
@@ -363,6 +371,9 @@ export const feedPostSchema = z
     created_at: z.string().meta({ description: 'Creation timestamp (ISO 8601)' }),
     id: z.string().uuid().meta({ description: 'Feed post ID' }),
     include_chart: z.boolean().meta({ description: 'Whether a chart image is attached' }),
+    include_exercises: z
+      .boolean()
+      .meta({ description: "Whether the session's exercises (sets, e1RM, volume, records) are shared" }),
     include_map: z.boolean().meta({ description: 'Whether a route-map image is attached' }),
     included_metrics: z.array(z.string()).meta({ description: 'Shared scalar-summary metric keys' }),
     // Present only for `reply` posts: what this post answers. The handle is a
@@ -471,6 +482,9 @@ export const sharePreviewResponseSchema = baseResponseSchema
       .string()
       .optional()
       .meta({ description: 'The AS2 `content` HTML the post would federate with' }),
+    has_exercises: z.boolean().optional().meta({
+      description: 'Whether the session has exercises that `include_exercises` would share',
+    }),
     metrics: z
       .array(feedStructuredMetricSchema)
       .optional()

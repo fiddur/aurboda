@@ -91,6 +91,14 @@ describe('queryActivityItemHistory', () => {
             start_time: '2026-09-01T17:00:00.000Z',
           },
           records: ['e1rm', 'max_reps'],
+          trend: [
+            { after: 810, before: 356, measure: 'volume' },
+            { after: 96, before: 83.1, measure: 'e1rm' },
+            { after: 82.5, before: 71.2, measure: 'max_weight' },
+            { after: 2, before: 0.9, measure: 'set_count' },
+            { after: 10, before: 4.7, measure: 'total_reps' },
+            { after: 6, before: 4.7, measure: 'max_reps' },
+          ],
           value: 'Bench Press',
         },
         {
@@ -103,6 +111,10 @@ describe('queryActivityItemHistory', () => {
             start_time: '2026-08-01T17:00:00.000Z',
           },
           records: [],
+          trend: [
+            { after: 1, before: 0.8, measure: 'set_count' },
+            { after: 50, before: 47.6, measure: 'max_time' },
+          ],
           value: 'Plank',
         },
       ],
@@ -115,7 +127,42 @@ describe('queryActivityItemHistory', () => {
         total_reps: 10,
         volume: 810,
       },
+      trend_half_life_days: 120,
     })
+  })
+
+  test('the trend before is the decayed best of the earlier sessions, same-day ones included; after is lifted by this one', async () => {
+    vi.mocked(db.getActivities).mockResolvedValue([
+      lift('a', '2026-05-13T17:00:00Z', [bench(100, 6)]),
+      lift('b', '2026-09-10T08:00:00Z', [bench(60, 5)]),
+    ])
+
+    const history = await queryActivityItemHistory('u', 'cur', 'sets.exercise')
+    const trend = (measure: string) => history!.groups[0]!.trend.find((t) => t.measure === measure)
+
+    expect(trend('e1rm')).toEqual({ after: 96, before: 70, measure: 'e1rm' })
+    expect(trend('volume')).toEqual({ after: 810, before: 300, measure: 'volume' })
+  })
+
+  test('a weaker session leaves the trend where it was', async () => {
+    vi.mocked(db.getActivities).mockResolvedValue([lift('a', '2026-09-09T17:00:00Z', [bench(120, 5)])])
+
+    const history = await queryActivityItemHistory('u', 'cur', 'sets.exercise')
+
+    expect(history!.groups[0]!.trend.find((t) => t.measure === 'e1rm')).toEqual({
+      after: 139.2,
+      before: 139.2,
+      measure: 'e1rm',
+    })
+  })
+
+  test('a first-time exercise has a trend with no before', async () => {
+    vi.mocked(db.getActivities).mockResolvedValue([])
+    const history = await queryActivityItemHistory('u', 'cur', 'sets.exercise')
+    expect(history!.groups[1]!.trend).toEqual([
+      { after: 1, measure: 'set_count' },
+      { after: 50, measure: 'max_time' },
+    ])
   })
 
   test('a first time has every present record measure and no previous', async () => {
@@ -150,6 +197,7 @@ describe('queryActivityItemHistory', () => {
       field: 'sets.exercise',
       groups: [],
       totals: {},
+      trend_half_life_days: 120,
     })
     expect(db.getActivities).not.toHaveBeenCalled()
   })

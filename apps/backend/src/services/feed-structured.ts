@@ -36,6 +36,7 @@ import { resolveActivityScalars } from './activitypub/feed-activity.ts'
 import { blockWindow, isZeroDurationBucket } from './article.ts'
 import { getContinuousCorrelation } from './correlations/explore.ts'
 import { isCapabilityAuthorized } from './feed-capability.ts'
+import { resolvePostExercises, toStructuredExercise } from './feed-exercises.ts'
 import { floorSeriesBucket, samplesFromBucketedResult } from './feed-series.ts'
 import {
   assembleStructuredActivity,
@@ -228,7 +229,16 @@ export const resolveStructuredContent = async (
       ? await resolveStructuredRoute(user, activity.start_time, activity.end_time)
       : []
 
-  return assembleStructuredActivity(activity, scalars, series, post.message, route)
+  const exercises = await resolvePostExercises(user, post, activity.activity_type)
+
+  return assembleStructuredActivity(
+    activity,
+    scalars,
+    series,
+    post.message,
+    route,
+    exercises.map(toStructuredExercise),
+  )
 }
 
 /**

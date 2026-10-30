@@ -63,6 +63,7 @@ describe('well-known/quantpub (#896)', () => {
     expect(res.body).toEqual({
       '@context': {
         quant: 'https://w3id.org/quantpub#',
+        'quant:exercises': { '@type': '@json' },
         'quant:metrics': { '@type': '@json' },
         'quant:series': { '@type': '@json' },
       },

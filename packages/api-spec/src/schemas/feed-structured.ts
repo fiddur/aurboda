@@ -84,6 +84,42 @@ export const feedStructuredRoutePointSchema = z
 
 export type FeedStructuredRoutePoint = z.infer<typeof feedStructuredRoutePointSchema>
 
+/** One set of a shared exercise, as logged: any of reps, weight (kg) and time (seconds). */
+export const feedStructuredExerciseSetSchema = z
+  .object({
+    reps: z.number().optional().meta({ description: 'Repetitions' }),
+    setType: z.string().optional().meta({
+      description: 'Set type as logged, e.g. `warmup`, `drop_set`, `failure`; absent for a working set',
+    }),
+    time: z.number().optional().meta({ description: 'Time under load or hold, in seconds' }),
+    weight: z.number().optional().meta({ description: 'Load in kg' }),
+  })
+  .meta({ id: 'FeedStructuredExerciseSet' })
+
+export type FeedStructuredExerciseSet = z.infer<typeof feedStructuredExerciseSetSchema>
+
+/**
+ * One exercise of a shared session (QuantPub `quant:exercises` entry): its sets
+ * in logged order, its measures over the working sets as metric objects
+ * (`e1rm`, `volume`, `maxWeight`, …) and the record measures it set.
+ */
+export const feedStructuredExerciseSchema = z
+  .object({
+    metrics: z.array(feedStructuredMetricSchema).meta({
+      description:
+        'Measures over the working sets (warm-ups excluded), lowerCamelCase keys: `e1rm`, `volume`, `maxWeight`, `setCount`, `totalReps`, `maxReps`, `maxTime`',
+    }),
+    name: z.string().meta({ description: 'Exercise name, e.g. `Bench Press`' }),
+    records: z.array(z.string()).optional().meta({
+      description:
+        "Measure keys (lowerCamelCase) on which this session beat every earlier session of the exercise in the author's history",
+    }),
+    sets: z.array(feedStructuredExerciseSetSchema).meta({ description: 'The sets, in logged order' }),
+  })
+  .meta({ id: 'FeedStructuredExercise' })
+
+export type FeedStructuredExercise = z.infer<typeof feedStructuredExerciseSchema>
+
 /**
  * The full structured payload for a shared exercise post. Only the metrics and
  * series the author actually shared are present. Rendered natively by a
@@ -93,6 +129,10 @@ export const feedStructuredSchema = z
   .object({
     activityType: z.string().meta({ description: 'Activity type, e.g. `exercise`' }),
     endTime: iso8601DateTimeSchema.optional().meta({ description: 'Activity end (ISO 8601), if any' }),
+    exercises: z.array(feedStructuredExerciseSchema).optional().meta({
+      description:
+        "The session's exercises with their sets, measures and records, present only when the author shared them (`include_exercises`)",
+    }),
     message: z
       .string()
       .optional()

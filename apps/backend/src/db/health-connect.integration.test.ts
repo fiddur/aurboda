@@ -494,6 +494,29 @@ describe('Health Connect Integration Tests', () => {
       expect(notes.rows).toEqual([{ content: 'y' }])
     })
 
+    test('ignores the "null" notes Waking Up writes for a session without notes (#1349)', async () => {
+      const user = getTestUser()
+
+      await processHealthConnectBatch(user, 'MindfulnessSessionRecord', [
+        mindfulnessSession({ notes: 'null' }),
+      ])
+      await processHealthConnectData(
+        user,
+        'MindfulnessSessionRecord',
+        mindfulnessSession({
+          endTime: '2026-09-03T11:21:00Z',
+          metadata: { dataOrigin: 'org.wakingup.android', id: 'hc-mind-2' },
+          notes: 'null',
+          startTime: '2026-09-03T11:00:00Z',
+        }),
+      )
+
+      const activities = await query(user, `SELECT id FROM activities WHERE deleted_at IS NULL`)
+      expect(activities.rows).toHaveLength(2)
+      const notes = await query(user, `SELECT content FROM notes`)
+      expect(notes.rows).toEqual([])
+    })
+
     test('deleting the Health Connect record removes the activity', async () => {
       const user = getTestUser()
 

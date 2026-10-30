@@ -14,6 +14,7 @@ import type {
 import axios from 'axios'
 
 import { API_URL } from '../../config'
+import { MEASURE_HALF_LIFE_DEFAULT } from '../../utils/half-life'
 import { auth } from '../auth'
 
 export const fetchActivitySessions = async (
@@ -43,7 +44,15 @@ export const fetchActivityItemHistory = async (id: string, field: string): Promi
     `${API_URL}/activities/${encodeURIComponent(id)}/item-history`,
     { headers: { Authorization: `Bearer ${auth.value.token}` }, params: { field } },
   )
-  return response.data.data ?? { activity_id: id, field, groups: [], totals: {} }
+  return (
+    response.data.data ?? {
+      activity_id: id,
+      field,
+      groups: [],
+      totals: {},
+      trend_half_life_days: MEASURE_HALF_LIFE_DEFAULT,
+    }
+  )
 }
 
 export const fetchActivityFieldValues = async (

@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest'
 
 import type { Activity } from '../types.ts'
 
-import { mergeOverlappingActivities, pickOverrideWinner } from './merge.ts'
+import { mergeGroupByPriority, mergeOverlappingActivities, pickOverrideWinner } from './merge.ts'
 
 const garmin = (overrides: Partial<Activity> = {}): Activity => ({
   activity_type: 'meditation',
@@ -49,6 +49,23 @@ describe('pickOverrideWinner', () => {
     const later = override({ id: 'later-override' })
     const earlier = override({ id: 'earlier-override', start_time: new Date('2026-05-05T10:01:00Z') })
     expect(pickOverrideWinner([garmin(), later, earlier])).toBe(earlier)
+  })
+})
+
+describe('mergeGroupByPriority', () => {
+  test('blends data with the higher-priority source winning and fills the title from the first that has one', () => {
+    const gravl = garmin({
+      activity_type: 'strength_training',
+      data: { calories: 250, sets: [{ reps: 8 }] },
+      id: 'gravl-id',
+      source: 'gravl',
+      title: undefined,
+    })
+    const merged = mergeGroupByPriority([garmin({ data: { avg_hr: 110, calories: 300 } }), gravl])
+    expect(merged.id).toBe('gravl-id')
+    expect(merged.data).toEqual({ avg_hr: 110, calories: 250, sets: [{ reps: 8 }] })
+    expect(merged.title).toBe('Meditation')
+    expect(merged.source_ids).toEqual(['gravl-id', 'garmin-id'])
   })
 })
 

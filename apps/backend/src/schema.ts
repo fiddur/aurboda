@@ -168,10 +168,12 @@ export const tableCreationOrder = [
   'feed_posts_message_column',
   'feed_posts_challenge_column',
   'feed_posts_autoshare_column',
+  'feed_posts_exercises_column',
   'feed_posts_reply_columns',
   'autoshare_rules',
   'autoshare_rules_data_filters',
   'autoshare_rules_max_age_hours',
+  'autoshare_rules_include_exercises',
   'autoshare_suppressions',
   'feed_posts_indexes',
   'feed_posts_keyset_index',
@@ -229,7 +231,7 @@ export {
  * data fixes that are not expressed in `createTableStatements`. DDL changes are
  * picked up automatically by the fingerprint below.
  */
-export const MIGRATION_REVISION = 5
+export const MIGRATION_REVISION = 7
 
 /**
  * Hash the inputs a migration is derived from. Split out from

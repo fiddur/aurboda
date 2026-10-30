@@ -111,7 +111,7 @@ export const pickOverrideWinner = (members: Activity[]): Activity | undefined =>
 }
 
 // eslint-disable-next-line complexity -- single-pass winner selection + field blending; splitting hurts readability
-const mergeGroupByPriority = (members: Activity[]): MergedActivity => {
+export const mergeGroupByPriority = (members: Activity[]): MergedActivity => {
   // An aurboda override row referencing any group member must win regardless
   // of computed priority — overrides are explicit user intent.
   const overrideWinner = pickOverrideWinner(members)

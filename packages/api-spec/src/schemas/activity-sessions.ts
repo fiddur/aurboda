@@ -261,6 +261,25 @@ export const activityItemPreviousSchema = z
 
 export type ActivityItemPrevious = z.infer<typeof activityItemPreviousSchema>
 
+export const activityItemTrendSchema = z
+  .object({
+    after: z
+      .number()
+      .meta({ description: "The trend after this session: max(before, this session's value)" }),
+    before: z.number().optional().meta({
+      description:
+        "The decaying best of the earlier sessions with this value, decayed to this session's day; absent when none has the measure",
+    }),
+    measure: activityMeasureSchema,
+  })
+  .meta({
+    description:
+      'The decaying-best trend of one measure (as on the exercise page) just before and after this session, to one decimal',
+    id: 'ActivityItemTrend',
+  })
+
+export type ActivityItemTrend = z.infer<typeof activityItemTrendSchema>
+
 export const activityItemGroupSchema = z
   .object({
     items: listItemsSchema.meta({ description: "This session's items with this value, in order" }),
@@ -270,10 +289,14 @@ export const activityItemGroupSchema = z
       description:
         'Measures this session set a record for: higher than in every earlier session with this value',
     }),
+    trend: z.array(activityItemTrendSchema).meta({
+      description: 'One entry per measure this session has a value for, in ActivityMeasure order',
+    }),
     value: z.string().meta({ description: 'The item value, as spelled in this session' }),
   })
   .meta({
-    description: 'One item value of the session (an exercise) and how it compares to last time',
+    description:
+      'One item value of the session (an exercise) and how it compares to last time and to its trend',
     id: 'ActivityItemGroup',
   })
 
@@ -287,10 +310,13 @@ export const activityItemHistorySchema = z
       .array(activityItemGroupSchema)
       .meta({ description: 'In order of first appearance in the list' }),
     totals: activityMeasuresSchema.meta({ description: "Measures over all the session's items" }),
+    trend_half_life_days: z
+      .number()
+      .meta({ description: "Half-life (days) of the groups' decaying-best trend" }),
   })
   .meta({
     description:
-      "A session's list items grouped by an item value (its exercises), each with its measures, the records it set and the previous session with that value",
+      "A session's list items grouped by an item value (its exercises), each with its measures, the records it set, the previous session with that value and its trend before and after",
     id: 'ActivityItemHistory',
   })
 

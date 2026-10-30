@@ -38,6 +38,7 @@ const replyPost = (id: string, createdAt: string, over: Partial<FeedPostRecord> 
   in_reply_to_uri: 'https://mastodon.example/users/alice/statuses/9',
   include_chart: false,
   include_map: false,
+  include_exercises: false,
   included_metrics: [],
   kind: 'reply',
   message: 'my reply',

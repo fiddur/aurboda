@@ -16,7 +16,8 @@
   border-radius: 12px;
   width: 90%;
   max-width: 500px;
-  max-height: 80vh;
+  /* Not vh: the Android WebView resolves viewport units to 0 (see docs/android-app.md). */
+  max-height: 80%;
   display: flex;
   flex-direction: column;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);

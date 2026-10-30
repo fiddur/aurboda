@@ -217,6 +217,7 @@ function CreateRuleForm({ onDone }: { onDone: () => void }) {
   const [summary, setSummary] = useState<Set<string>>(() => new Set(DEFAULT_SUMMARY))
   const [series, setSeries] = useState<Set<MetricType>>(() => new Set())
   const [includeMap, setIncludeMap] = useState(false)
+  const [includeExercises, setIncludeExercises] = useState(false)
   const [visibility, setVisibility] = useState<FeedVisibility>('followers')
   const [message, setMessage] = useState('')
   const [conditions, setConditions] = useState<DataFilterRow[]>([])
@@ -233,6 +234,7 @@ function CreateRuleForm({ onDone }: { onDone: () => void }) {
     data_filters: conditions.map(rowToDataFilter),
     name: name.trim() || 'Unnamed rule',
     include_chart: series.has('heart_rate'),
+    include_exercises: includeExercises,
     include_map: includeMap,
     included_metrics: SUMMARY_METRICS.map((m) => m.key).filter((k) => summary.has(k)),
     max_age_hours: maxAgeHours.trim() === '' ? DEFAULT_MAX_AGE_HOURS : Number(maxAgeHours),
@@ -375,6 +377,14 @@ function CreateRuleForm({ onDone }: { onDone: () => void }) {
               onChange={(e) => setIncludeMap((e.target as HTMLInputElement).checked)}
             />
             Route map
+          </label>
+          <label class="share-dialog-checkbox">
+            <input
+              type="checkbox"
+              checked={includeExercises}
+              onChange={(e) => setIncludeExercises((e.target as HTMLInputElement).checked)}
+            />
+            Exercises (sets, e1RM, volume)
           </label>
         </div>
       </fieldset>

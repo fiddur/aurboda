@@ -103,6 +103,19 @@ explicit metric selection that bounds what is shared:
   with the `followers` audience.
 - **`include_chart` / `include_map`** — attach a rendered heart-rate chart and/or
   GPS route-map image to the post (see [Images](#images)).
+- **`include_exercises`** — share each exercise of the session: its sets (reps, weight,
+  time, warm-up/drop/failure flag), its e1RM and volume and the other measures over the
+  working sets, and the records it set against the author's earlier sessions (the same
+  measures and records as the activity detail page's item history). The exercises are the
+  activity type's first categorical list item field (`sets.exercise` for
+  `strength_training`), resolved over the **merged** session, so a post anchored on a
+  Garmin row carries the sets logged on its overlapping Gravl row. They appear as an
+  "Exercises" paragraph in the Note content (one line per exercise, e.g.
+  `Bench Press: 8×60 kg (w), 8×80 kg · e1RM 101.3 kg · volume 640 kg · PR e1RM`), as
+  `quant:exercises` in-band, and as `exercises` in the structured payload, which the
+  native card renders as a list under the stats. Off by default in the API; the share
+  dialog offers the checkbox only when the preview finds exercises in the session
+  (`has_exercises` on the preview response), checked for a new share.
 - **`message`** — an optional personal message (plain text, linebreaks preserved)
   shown at the top of the post. The share dialog prefills it from the activity's
   description (its user-typed comments) — always shown editable before sharing, so
@@ -192,11 +205,12 @@ extension in-band: the AS2 window as native `startTime`/`endTime`, plus
 `quant:activityType`, `quant:metrics` (the shared scalar summaries as
 `key`/`value`/`unit` objects, keys in lowerCamelCase such as `heartRateAvg`),
 `quant:series` links into the public series endpoint (`metric` such as `heartRate`)
-(only for `public`/`unlisted` posts with a bounded window), and
+(only for `public`/`unlisted` posts with a bounded window), `quant:exercises` (the
+shared exercises, only under `include_exercises`), and
 `quant:structuredUrl` pointing at the structured post endpoint (carrying the
 capability token on `followers`-only deliveries). The `quant:` term definitions are
 embedded as an inline `@context` entry on every delivered/served document
-(`quant:metrics`/`quant:series` are JSON literals, `"@type": "@json"`), and the
+(`quant:metrics`/`quant:series`/`quant:exercises` are JSON literals, `"@type": "@json"`), and the
 canonical context document is served at `GET /ns/quantpub`
 (`application/ld+json`); `GET /.well-known/quantpub` is the FEP §4 discovery
 document. Fedify's typed vocabulary drops unknown properties, so the extension is
@@ -592,7 +606,8 @@ id-convention path — reliable even when a typed consumer drops the in-band ext
    `startTime`/`endTime` window, `name`, typed scalar `metrics`, inline
    high-resolution `series` samples, and — only when the post attaches the route map
    (`include_map`) — a downsampled GPS `route` of timestamped points, capped at 500, from the
-   same locations the route image draws), reusing the exact same scalar resolution as delivery
+   same locations the route image draws, and — only under `include_exercises` — the session's
+   `exercises` with their sets, measures and records), reusing the exact same scalar resolution as delivery
    and the same data-scoped series resolution as the [public series
    endpoint](#public-series-endpoint-the-privacy-boundary). An **article** post resolves to
    `FeedStructuredArticle` (the title and every block, resolved in the same order as the
@@ -805,6 +820,7 @@ resolving.
 - **Share** — an activity's detail page has a **Share to feed** button. It opens a dialog
   to write an optional personal message (prefilled from the activity's description /
   comments, fully editable), pick the summary metrics, optionally opt into full series,
+  share a strength session's exercises (offered when it has any, checked by default),
   and choose the audience — with a **live preview** (#902) of the exact federated
   content (resolved server-side through the same code path as delivery, debounced) and
   which images would attach, so what leaves the instance is visible before Share. The **owner's own feed** renders each activity post with the

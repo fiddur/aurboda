@@ -930,8 +930,17 @@ describe('MCP Server', () => {
       vi.mocked(queries.queryActivityItemHistory).mockResolvedValueOnce({
         activity_id: 'merged:x',
         field: 'sets.exercise',
-        groups: [{ items: [], measures: { set_count: 1 }, records: ['e1rm'], value: 'Bench Press' }],
+        groups: [
+          {
+            items: [],
+            measures: { set_count: 1 },
+            records: ['e1rm'],
+            trend: [{ after: 80, before: 75, measure: 'e1rm' }],
+            value: 'Bench Press',
+          },
+        ],
         totals: { set_count: 1 },
+        trend_half_life_days: 120,
       })
 
       const found = await callTool(app, token, 'get_activity_item_history', {
@@ -939,7 +948,12 @@ describe('MCP Server', () => {
         id: 'merged:x',
         tz: 'UTC',
       })
-      expect(JSON.parse(found.text).data.groups[0]).toMatchObject({ records: ['e1rm'], value: 'Bench Press' })
+      expect(JSON.parse(found.text).data).toMatchObject({
+        groups: [
+          { records: ['e1rm'], trend: [{ after: 80, before: 75, measure: 'e1rm' }], value: 'Bench Press' },
+        ],
+        trend_half_life_days: 120,
+      })
       expect(queries.queryActivityItemHistory).toHaveBeenCalledWith('testuser', 'merged:x', 'sets.exercise')
 
       vi.mocked(queries.queryActivityItemHistory).mockResolvedValueOnce(null)

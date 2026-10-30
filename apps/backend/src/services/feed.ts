@@ -37,6 +37,12 @@ import {
 import { resolveActivityScalars } from './activitypub/feed-activity.ts'
 import { feedPostContent, formatActivityWindow } from './activitypub/object.ts'
 import {
+  formatExerciseLine,
+  resolvePostExercises,
+  resolveSharedExercises,
+  toStructuredExercise,
+} from './feed-exercises.ts'
+import {
   assembleStructuredActivity,
   resolveStructuredRoute,
   resolveStructuredSeries,
@@ -144,8 +150,10 @@ const resolveActivityPresentation = async (
   opts: SerializeFeedPostOpts,
 ): Promise<Pick<FeedPost, 'content' | 'metrics' | 'structured'>> => {
   const scalars = await resolveActivityScalars(user, activity, record.included_metrics)
+  const exercises = await resolvePostExercises(user, record, activity.activity_type)
   const settings = opts.settings !== undefined ? opts.settings : await getSettings(user).catch(() => null)
   const content = feedPostContent(activity.title, activity.activity_type, scalars, {
+    exerciseLines: exercises.map(formatExerciseLine),
     message: record.message ?? undefined,
     windowLabel: formatActivityWindow(activity.start_time, activity.end_time, settings?.device_timezone),
   }).content
@@ -160,7 +168,14 @@ const resolveActivityPresentation = async (
       record.include_map && activity.end_time
         ? await resolveStructuredRoute(user, activity.start_time, activity.end_time)
         : []
-    structured = assembleStructuredActivity(activity, scalars, series, record.message, route)
+    structured = assembleStructuredActivity(
+      activity,
+      scalars,
+      series,
+      record.message,
+      route,
+      exercises.map(toStructuredExercise),
+    )
   }
   return {
     content,
@@ -227,6 +242,7 @@ export const serializeFeedPost = async (
     created_at: record.created_at.toISOString(),
     id: record.id,
     include_chart: record.include_chart,
+    include_exercises: record.include_exercises,
     include_map: record.include_map,
     included_metrics: record.included_metrics,
     ...replyTargetFields(record),
@@ -322,22 +338,27 @@ export const getFeedPage = async (
  * the exact `content` HTML (via the same `feedPostContent` used for delivery
  * and the owner card) and the typed scalars — without creating a post. Backs
  * the Share dialog's live preview, so what the user sees before clicking
- * Share is byte-for-byte what leaves the instance.
+ * Share is byte-for-byte what leaves the instance. `has_exercises` says whether
+ * the session has exercises `include_exercises` would share, whatever the
+ * selection, so the dialog offers that opt-in only where it means something.
  */
 export const previewActivityShare = async (
   user: string,
   activity: Activity,
-  selection: { included_metrics: string[]; message?: string },
-): Promise<{ content: string; metrics: FeedPost['metrics'] }> => {
+  selection: { included_metrics: string[]; message?: string; include_exercises?: boolean },
+): Promise<{ content: string; metrics: FeedPost['metrics']; has_exercises: boolean }> => {
   const window = await expandFeedActivityWindow(user, activity)
   const scalars = await resolveActivityScalars(user, window, selection.included_metrics)
+  const exercises = activity.id ? await resolveSharedExercises(user, activity.id, activity.activity_type) : []
   const settings = await getSettings(user).catch(() => null)
   const content = feedPostContent(window.title, window.activity_type, scalars, {
+    exerciseLines: selection.include_exercises ? exercises.map(formatExerciseLine) : [],
     message: normalizeFeedMessage(selection.message) ?? undefined,
     windowLabel: formatActivityWindow(window.start_time, window.end_time, settings?.device_timezone),
   }).content
   return {
     content,
+    has_exercises: exercises.length > 0,
     metrics: scalars.map(({ key, unit, value }) => ({ key, value, ...(unit === undefined ? {} : { unit }) })),
   }
 }
