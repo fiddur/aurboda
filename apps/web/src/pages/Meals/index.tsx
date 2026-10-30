@@ -24,6 +24,7 @@ import {
 } from '../../state/api'
 import { auth } from '../../state/auth'
 import { isEmoji, isIconPath, isUrl } from '../../utils/emojiLookup'
+import { newId } from '../../utils/uuid'
 import { aggregateDayNutrients } from './dayNutrients'
 import { MealsOverview } from './MealsOverview'
 import './style.css'
@@ -860,7 +861,7 @@ function useMealMutations(mealsQueryKey: string[], meals: Meal[] | undefined) {
       )
       updateMutation.mutate({ id: existingMeal.id!, sensitivities: next })
     } else {
-      const id = crypto.randomUUID()
+      const id = newId()
       const mealTime = new Date(mealsQueryKey[1])
       mealTime.setHours(slot.default_hour, 0, 0, 0)
       const placeholder: Meal = {
@@ -1031,7 +1032,7 @@ function MealsContent({ dayKey }: { dayKey: string }) {
   } = useMealMutations(mealsQueryKey, meals)
 
   const handleCreateAndOpen = async (slot: MealSlot) => {
-    const id = crypto.randomUUID()
+    const id = newId()
     const mealTime = new Date(dayKey)
     mealTime.setHours(slot.default_hour, 0, 0, 0)
     await addMealApi({
@@ -1047,7 +1048,7 @@ function MealsContent({ dayKey }: { dayKey: string }) {
 
   const handleCreateAtTime = (slot: MealSlot, hour: number, minute: number) => {
     const slotName = slot.name.toLowerCase()
-    const id = crypto.randomUUID()
+    const id = newId()
     const mealTime = new Date(dayKey)
     mealTime.setHours(hour, minute, 0, 0)
     optimisticUpdate((old) => [...old, { id, meal_type: slotName, source: 'manual', time: mealTime }])
@@ -1062,7 +1063,7 @@ function MealsContent({ dayKey }: { dayKey: string }) {
 
   const handleQuickLog = (slot: MealSlot, hour: number, minute: number, foodItem: FrequentFoodItem) => {
     const slotName = slot.name.toLowerCase()
-    const id = crypto.randomUUID()
+    const id = newId()
     const mealTime = new Date(dayKey)
     mealTime.setHours(hour, minute, 0, 0)
     const foodItemPayload = {
@@ -1097,7 +1098,7 @@ function MealsContent({ dayKey }: { dayKey: string }) {
   }
 
   const handleCreateAdHocMeal = async () => {
-    const id = crypto.randomUUID()
+    const id = newId()
     const mealTime = new Date()
     const dayDate = new Date(dayKey)
     mealTime.setFullYear(dayDate.getFullYear(), dayDate.getMonth(), dayDate.getDate())
