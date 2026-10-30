@@ -56,6 +56,7 @@ export interface DeductionQueueDeps {
   ) => Promise<{ rules_evaluated: number; activities_created: number }>
   deleteRuleActivities: (user: string, ruleId: string) => Promise<number>
   buildFullWindow: (user: string) => Promise<EvaluationWindow>
+  expandAncestorTypes: (user: string, types: string[]) => Promise<string[]>
   engineDeps: DeductionEngineDeps
 }
 
@@ -66,7 +67,33 @@ const WINDOW_BUFFER_MS = 60 * 60 * 1000 // 1 hour buffer on each side
 interface MergedEvaluation {
   window: EvaluationWindow
   excludeRuleIds: Set<string>
+  activityTypes: Set<string>
 }
+
+const ALL_TYPES = '*'
+
+export const rulesReferencedTypes = (rule: DeductionRule): string[] => [
+  rule.output_activity_type,
+  ...rule.conditions.flatMap((c) =>
+    c.kind === 'activity' || c.kind === 'activity_data' || c.kind === 'activity_feature'
+      ? [c.activity_type]
+      : [],
+  ),
+]
+
+/**
+ * Rules an activity change can affect, given the changed types plus all their ancestors.
+ * Screen-time conditions read activities of any type by category, so they are always relevant.
+ */
+export const selectRelevantRules = (
+  rules: DeductionRule[],
+  affectedTypes: ReadonlySet<string>,
+): DeductionRule[] =>
+  rules.filter(
+    (rule) =>
+      rule.conditions.some((c) => c.kind === 'screentime_category') ||
+      rulesReferencedTypes(rule).some((t) => affectedTypes.has(t)),
+  )
 
 /**
  * Group eval jobs by user and merge their windows + source rule IDs.
@@ -75,7 +102,7 @@ export const groupEvalJobs = (jobs: Job<DeductionEvalJobData>[]): Map<string, Me
   const byUser = new Map<string, MergedEvaluation>()
 
   for (const job of jobs) {
-    const { user, window_start, window_end, source_rule_id } = job.data
+    const { user, activity_type, window_start, window_end, source_rule_id } = job.data
     const start = new Date(window_start)
     const end = new Date(window_end)
 
@@ -84,10 +111,11 @@ export const groupEvalJobs = (jobs: Job<DeductionEvalJobData>[]): Map<string, Me
       if (start < existing.window.start) existing.window.start = start
       if (end > existing.window.end) existing.window.end = end
       if (source_rule_id) existing.excludeRuleIds.add(source_rule_id)
+      existing.activityTypes.add(activity_type)
     } else {
       const excludeRuleIds = new Set<string>()
       if (source_rule_id) excludeRuleIds.add(source_rule_id)
-      byUser.set(user, { excludeRuleIds, window: { end, start } })
+      byUser.set(user, { activityTypes: new Set([activity_type]), excludeRuleIds, window: { end, start } })
     }
   }
 
@@ -113,10 +141,17 @@ export const createDeductionQueue = async (
     async (jobs) => {
       const grouped = groupEvalJobs(jobs)
 
-      for (const [user, { excludeRuleIds, window }] of grouped) {
+      for (const [user, { activityTypes, excludeRuleIds, window }] of grouped) {
         try {
           const allRules = await deps.getEnabledRules(user)
-          const rules = excludeRuleIds.size > 0 ? allRules.filter((r) => !excludeRuleIds.has(r.id)) : allRules
+          const candidates =
+            excludeRuleIds.size > 0 ? allRules.filter((r) => !excludeRuleIds.has(r.id)) : allRules
+          const rules = activityTypes.has(ALL_TYPES)
+            ? candidates
+            : selectRelevantRules(
+                candidates,
+                new Set(await deps.expandAncestorTypes(user, [...activityTypes])),
+              )
 
           if (rules.length === 0) continue
 
@@ -125,8 +160,10 @@ export const createDeductionQueue = async (
 
           auditInfo(user, 'deduction', '🔄 Auto-evaluation completed', {
             activities_created: result.activities_created,
+            activity_types: [...activityTypes],
             excluded_rules: [...excludeRuleIds],
             rules_evaluated: result.rules_evaluated,
+            skipped_rules: candidates.length - rules.length,
             window_end: expanded.end.toISOString(),
             window_start: expanded.start.toISOString(),
           })
