@@ -3,6 +3,7 @@ package net.aurboda
 import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -69,6 +70,10 @@ class AppState(
     var moreDestination by mutableStateOf(initialMoreDestination)
         private set
 
+    /** Bumped when the current tab is tapped again; embedded tabs key on it to restart at their root page. */
+    var tabReselections by mutableIntStateOf(0)
+        private set
+
     var pendingServerUrl by mutableStateOf<String?>(null)
         private set
 
@@ -93,10 +98,12 @@ class AppState(
     }
 
     fun selectTab(tab: MainTab) {
-        // Tapping More always shows its hub -- also when More is already the
-        // current tab on one of its sub-pages, which would otherwise leave the
-        // menu unreachable except by the back gesture.
+        // Tapping a tab returns it to its root: More always shows its hub (also
+        // when More is already current on a sub-page), and tapping the current
+        // tab again counts a reselection so embedded tabs reload their root page.
+        // Otherwise those would be unreachable except by the back gesture.
         if (tab == MainTab.More) moreDestination = null
+        if (tab == currentTab) tabReselections++
         currentTab = tab
     }
 
@@ -106,7 +113,10 @@ class AppState(
 
     /** Follow a deep link that arrived while the app was already running. */
     fun open(link: DeepLink) {
-        selectTab(link.tab)
+        // Not selectTab: a link to the tab already showing must not count as a
+        // reselection, which would reload it and drop e.g. an unsaved article draft.
+        if (link.tab == MainTab.More) moreDestination = null
+        currentTab = link.tab
         link.morePath?.let { moreDestination = MoreDestination.Web(it) }
     }
 
