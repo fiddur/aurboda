@@ -33,6 +33,20 @@ class AppStateNavigationTest {
     }
 
     @Test
+    fun `tapping the current tab again counts a reselection`() {
+        val state = appState(initialTab = MainTab.Home)
+        state.selectTab(MainTab.Home)
+        assertEquals(1, state.tabReselections)
+    }
+
+    @Test
+    fun `switching to another tab is not a reselection`() {
+        val state = appState(initialTab = MainTab.Home)
+        state.selectTab(MainTab.Feed)
+        assertEquals(0, state.tabReselections)
+    }
+
+    @Test
     fun `More starts on the hub`() {
         assertNull(appState(initialTab = MainTab.More).moreDestination)
     }

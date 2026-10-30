@@ -30,6 +30,12 @@ tapping **More** on the bottom bar again. The pushed sub-page lives in
 clear it — otherwise the hub would be unreachable from a sub-page. Keep
 `moreGroups` in sync with the web navigation (`apps/web/src/components/nav-links.ts`).
 
+Tapping **Home** or **Feed** while already on it reloads that tab's root page in
+a fresh WebView (with fresh history): `selectTab` bumps `AppState.tabReselections`
+when the current tab is tapped again, and both embedded tabs are wrapped in
+`key(appState.tabReselections)`. The native Add and Sync tabs are not reset, so a
+half-filled form survives an accidental tap.
+
 A tab can move from embedded to native later (e.g. if the feed becomes a heavily
 used, interaction-rich screen) without affecting the other tabs.
 
@@ -88,6 +94,13 @@ desktop browser (the Places list did exactly this). A page that fills the shell
 shell: on narrow screens `.app-content` is `height: auto`, so a tall list would
 inflate it past the viewport and the page would scroll instead. `contain: size`
 on the page root prevents that (see the Places page).
+
+Modal dialogs cap their height with `%` of their `position: fixed` backdrop (or,
+for a dialog that is itself fixed, `%` of the viewport it resolves against)
+rather than `vh`: a `max-height: 90vh` share dialog collapsed to its own padding
+in the app, showing only half its title. `apps/web/src/no-viewport-height-units.test.ts`
+fails on any viewport-height unit in the web CSS outside a short allowlist of
+files where it cannot reach the app.
 
 ### Soft keyboard
 

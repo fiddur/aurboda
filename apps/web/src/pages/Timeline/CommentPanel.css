@@ -13,8 +13,10 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: min(32rem, calc(100vw - 2rem));
-  max-height: min(80vh, 44rem);
+  /* Not vw/vh: the Android WebView resolves viewport units to 0 (see
+     docs/android-app.md); % of a fixed box resolves against the viewport. */
+  width: min(32rem, calc(100% - 2rem));
+  max-height: min(80%, 44rem);
   overflow-y: auto;
   padding: 1rem;
   border-radius: 8px;

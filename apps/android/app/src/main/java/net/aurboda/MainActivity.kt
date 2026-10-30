@@ -32,6 +32,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -346,13 +347,15 @@ fun AurbodaApp(
           currentTab = appState.currentTab,
           onTabSelected = { appState.selectTab(it) },
           homeContent = { modifier ->
-            net.aurboda.ui.screens.EmbeddedWebScreen(
-              url = "${credentials.serverUrl.trimEnd('/')}/?embed=1",
-              baseUrl = credentials.serverUrl,
-              username = credentials.username,
-              authToken = credentials.authToken,
-              modifier = modifier,
-            )
+            key(appState.tabReselections) {
+              net.aurboda.ui.screens.EmbeddedWebScreen(
+                url = "${credentials.serverUrl.trimEnd('/')}/?embed=1",
+                baseUrl = credentials.serverUrl,
+                username = credentials.username,
+                authToken = credentials.authToken,
+                modifier = modifier,
+              )
+            }
           },
           syncContent = { modifier ->
             HealthConnectScreen(
@@ -369,13 +372,15 @@ fun AurbodaApp(
             )
           },
           feedContent = { modifier ->
-            net.aurboda.ui.screens.EmbeddedWebScreen(
-              url = "${credentials.serverUrl.trimEnd('/')}/feed?embed=1",
-              baseUrl = credentials.serverUrl,
-              username = credentials.username,
-              authToken = credentials.authToken,
-              modifier = modifier,
-            )
+            key(appState.tabReselections) {
+              net.aurboda.ui.screens.EmbeddedWebScreen(
+                url = "${credentials.serverUrl.trimEnd('/')}/feed?embed=1",
+                baseUrl = credentials.serverUrl,
+                username = credentials.username,
+                authToken = credentials.authToken,
+                modifier = modifier,
+              )
+            }
           },
           moreContent = { modifier ->
             net.aurboda.ui.screens.MoreScreen(
