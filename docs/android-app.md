@@ -34,7 +34,8 @@ Tapping **Home** or **Feed** while already on it reloads that tab's root page in
 a fresh WebView (with fresh history): `selectTab` bumps `AppState.tabReselections`
 when the current tab is tapped again, and both embedded tabs are wrapped in
 `key(appState.tabReselections)`. The native Add and Sync tabs are not reset, so a
-half-filled form survives an accidental tap.
+half-filled form survives an accidental tap, and a notification or widget link to
+the tab already showing (`AppState.open`) switches tabs without reloading it.
 
 A tab can move from embedded to native later (e.g. if the feed becomes a heavily
 used, interaction-rich screen) without affecting the other tabs.
@@ -99,8 +100,9 @@ Modal dialogs cap their height with `%` of their `position: fixed` backdrop (or,
 for a dialog that is itself fixed, `%` of the viewport it resolves against)
 rather than `vh`: a `max-height: 90vh` share dialog collapsed to its own padding
 in the app, showing only half its title. `apps/web/src/no-viewport-height-units.test.ts`
-fails on any viewport-height unit in the web CSS outside a short allowlist of
-files where it cannot reach the app.
+fails on any viewport-height unit in the web CSS outside a short allowlist; the
+allowlisted uses only apply at tablet widths and are tracked in #1356, which also
+has the likely native root cause (the WebView's `WRAP_CONTENT` layout params).
 
 ### Soft keyboard
 

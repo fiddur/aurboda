@@ -113,7 +113,10 @@ class AppState(
 
     /** Follow a deep link that arrived while the app was already running. */
     fun open(link: DeepLink) {
-        selectTab(link.tab)
+        // Not selectTab: a link to the tab already showing must not count as a
+        // reselection, which would reload it and drop e.g. an unsaved article draft.
+        if (link.tab == MainTab.More) moreDestination = null
+        currentTab = link.tab
         link.morePath?.let { moreDestination = MoreDestination.Web(it) }
     }
 

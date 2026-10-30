@@ -47,6 +47,14 @@ class AppStateNavigationTest {
     }
 
     @Test
+    fun `a deep link to the current tab does not reload it`() {
+        val state = appState(initialTab = MainTab.Feed)
+        state.open(DeepLink(MainTab.Feed))
+        assertEquals(MainTab.Feed, state.currentTab)
+        assertEquals(0, state.tabReselections)
+    }
+
+    @Test
     fun `More starts on the hub`() {
         assertNull(appState(initialTab = MainTab.More).moreDestination)
     }
