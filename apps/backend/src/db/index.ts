@@ -117,6 +117,7 @@ export {
   activityTypeExists,
   deleteActivityTypeDefinition,
   expandActivityTypes,
+  expandAncestorTypes,
   getActivityTypeDefinition,
   getActivityTypeDefinitions,
   getActivityTypeNames,

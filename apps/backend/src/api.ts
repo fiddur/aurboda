@@ -18,6 +18,7 @@ import {
   createChallengePost,
   deleteRuleActivities,
   emitTimelineNotify,
+  expandAncestorTypes,
   getDeductionRulesByIds,
   getDetectedLocationById,
   getEnabledDeductionRules,
@@ -345,6 +346,7 @@ const main = async () => {
         deleteRuleActivities,
         engineDeps,
         evaluateAllRules,
+        expandAncestorTypes,
         getDeductionRules: getDeductionRulesByIds,
         getEnabledRules: getEnabledDeductionRules,
       })
@@ -386,7 +388,7 @@ const main = async () => {
           insertRawRecord,
           insertTimeSeries,
           onActivityProcessed: (user, result) =>
-            activityNotifier(user, result.activity_type, result.start_time, result.end_time),
+            activityNotifier(user, '*', result.start_time, result.end_time),
           onTrackWritten,
           resolveOrCreateActivityType,
           softDeleteSupersededLocations,

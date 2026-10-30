@@ -132,6 +132,29 @@ export const expandActivityTypes = async (user: string, types: string[]): Promis
   return result.rows.map((r) => r.name as string)
 }
 
+/**
+ * Expand a list of activity type names to include all ancestors via parent_type.
+ * Each input type is returned (whether it exists in the definitions table
+ * or not) along with its recursive parents. Returns deduplicated names.
+ */
+export const expandAncestorTypes = async (user: string, types: string[]): Promise<string[]> => {
+  if (types.length === 0) return []
+  const result = await query(
+    user,
+    `WITH RECURSIVE tree AS (
+       SELECT unnest($1::text[]) AS name
+       UNION
+       SELECT atd.parent_type
+         FROM activity_type_definitions atd
+         JOIN tree t ON atd.name = t.name
+        WHERE atd.parent_type IS NOT NULL
+     )
+     SELECT DISTINCT name FROM tree`,
+    [types],
+  )
+  return result.rows.map((r) => r.name as string)
+}
+
 export const insertActivityTypeDefinition = async (
   user: string,
   def: {

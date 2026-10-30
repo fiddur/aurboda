@@ -6,6 +6,7 @@ import { deleteActivity, getActivityById, insertActivity } from './activities/in
 import {
   deleteActivityTypeDefinition,
   expandActivityTypes,
+  expandAncestorTypes,
   getActivityTypeDefinition,
   getDescendantTypes,
   insertActivityTypeDefinition,
@@ -241,6 +242,43 @@ describe('Hierarchical activity types', () => {
       const user = getTestUser()
       const expanded = await expandActivityTypes(user, ['nonexistent'])
       expect(expanded).toEqual(['nonexistent'])
+    })
+  })
+
+  describe('expandAncestorTypes', () => {
+    test('includes self and all ancestors of a 3-level chain', async () => {
+      const user = getTestUser()
+      await insertActivityTypeDefinition(user, {
+        name: 'endurance',
+        display_name: 'Endurance',
+        display_category: 'exercise',
+        parent_type: 'exercise',
+      })
+      await insertActivityTypeDefinition(user, {
+        name: 'hill_sprint',
+        display_name: 'Hill Sprint',
+        display_category: 'exercise',
+        parent_type: 'endurance',
+      })
+      const expanded = await expandAncestorTypes(user, ['hill_sprint'])
+      expect(expanded.sort()).toEqual(['endurance', 'exercise', 'hill_sprint'])
+    })
+
+    test('type without a definition row is returned as-is', async () => {
+      const user = getTestUser()
+      const expanded = await expandAncestorTypes(user, ['nonexistent'])
+      expect(expanded).toEqual(['nonexistent'])
+    })
+
+    test('empty input returns empty array', async () => {
+      const user = getTestUser()
+      expect(await expandAncestorTypes(user, [])).toEqual([])
+    })
+
+    test('deduplicates shared ancestors and repeated inputs', async () => {
+      const user = getTestUser()
+      const expanded = await expandAncestorTypes(user, ['running', 'yoga', 'running'])
+      expect(expanded.sort()).toEqual(['exercise', 'running', 'yoga'])
     })
   })
 
