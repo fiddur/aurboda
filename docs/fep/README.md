@@ -14,6 +14,13 @@ federation code, before submission to the
   [issue #905](https://github.com/fiddur/aurboda/issues/905). Aurboda's own
   implementation of the pattern is documented in
   [docs/features/feed.md](../features/feed.md).
+- **[quantpub-challenges.md](./quantpub-challenges.md)** — _QuantPub Challenges:
+  federated competitions over shared metrics_. A companion to QuantPub: a
+  `quant:Challenge` object on [FEP-8a8e](https://codeberg.org/fediverse/fep/src/branch/main/fep/8a8e/fep-8a8e.md)
+  `Event` conventions, `Join`/`Leave` with an HTTP equivalent for trackers without
+  ActivityPub, pulled member entries in QuantPub's bucketed-sample shape, and a
+  standings document. Its §10 maps Aurboda's running challenge protocol
+  ([docs/features/challenges.md](../features/challenges.md)) onto it.
 - **[quantpub-reddit-draft.md](./quantpub-reddit-draft.md)** — draft of the
   r/QuantifiedSelf outreach post (issue #905 step 3), kept in-repo for review;
   not itself a FEP. Placeholders mark the screenshots and links to fill in
