@@ -51,7 +51,7 @@ class SyncWorker(
       Log.w(TAG, "No permissions granted, skipping sync")
       return finishAttempt(attemptAt, BackgroundSyncResult.Skipped, error = "No HC permissions granted")
     }
-    Log.d(TAG, "Granted ${grantedTypes.size}/${allRecordTypes.size} record types")
+    Log.d(TAG, "Granted ${grantedTypes.size}/${healthConnectClient.availableRecordTypes().size} record types")
 
     // Without the background read permission, every Health Connect read here
     // throws SecurityException/HealthConnectException. Skip HC reads cleanly
