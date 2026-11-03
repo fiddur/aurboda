@@ -167,9 +167,10 @@ GET {apiBase}/public/{username}/challenges/{slug}
 document; presenting it in an HTTP join (§4.2) proves the joiner read the
 challenge. It is rotated when the host wants to stop new joins from an old
 link. A `public` challenge is also listed at
-`GET {apiBase}/public/{username}/challenges` (an array of the same documents
-without `joinToken` and `members`), which is how a peer discovers open
-challenges from people its users follow. An `unlisted` challenge is reachable
+`GET {apiBase}/public/{username}/challenges`, a `kind: "challengeList"`
+document whose `items` are the same documents without `joinToken` and
+`members`, which is how a peer discovers open challenges from people its users
+follow. An `unlisted` challenge is reachable
 by slug only and is not listed.
 
 ### 4. Joining and leaving
@@ -389,8 +390,15 @@ proposal's ancestor, Aurboda-to-Aurboda only. The mapping:
 | `challenge` feed post (`Note` + link)             | `Create{Event, quant:Challenge}` and the result `Note`    |
 | no `Join`; register-back only                     | `Join` / `Leave` at Level 2, register-back at Level 1     |
 
-Aurboda will serve both shapes for a transition period and read either from
-members, so instances on either side of the move keep competing.
+Aurboda serves the HTTP half of this proposal — the discovery flag, the
+challenge document and listing (§3), HTTP join and leave (§4.2), entries (§5) and
+standings (§6) — alongside the old protocol, prefers it when joining a host that
+advertises `challenges: true`, and reads either shape from members, so instances
+on either side of the move keep competing. Its documents carry a vendor `aurboda`
+block (the exact spec on a challenge, the measure echo on an entry) that other
+implementations ignore. The ActivityPub half — the `Event` object (§2), `Join` /
+`Leave` in the inbox (§4.1) and `attendees` — is not yet implemented, nor is
+`joinMode: restricted`.
 
 ## Security considerations
 

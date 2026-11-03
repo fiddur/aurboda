@@ -49,6 +49,7 @@ describe('well-known/quantpub (#896)', () => {
     expect(res.status).toBe(200)
     expect(res.body).toEqual({
       apiBase: 'http://localhost:3000',
+      challenges: true,
       product: 'aurboda',
       quantpub: '0.2',
       version: 'test',

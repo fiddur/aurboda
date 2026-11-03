@@ -5,10 +5,12 @@
  *
  * Followees come from the ActivityPub following list. Every accepted followee
  * whose actor id has the `<base>/users/<name>` shape is a *candidate* Aurboda
- * peer — Mastodon mints the same shape — and `/.well-known/aurboda` decides,
+ * peer — Mastodon mints the same shape — and the well-known documents decide
+ * (`/.well-known/quantpub` with `challenges: true`, else `/.well-known/aurboda`),
  * cached per instance so a Mastodon followee costs one probe an hour rather
- * than one per page load. A peer's public challenges are its public-profile
- * listing (`GET <api>/public/<name>/dashboards`); a followee on this very
+ * than one per page load. A QuantPub peer's public challenges are its
+ * challenge listing (`GET <api>/public/<name>/challenges`), an older Aurboda
+ * peer's its public-profile listing (`GET <api>/public/<name>/dashboards`); a followee on this very
  * instance is read in-process. Unlisted challenges are not discoverable, by
  * design: they are reachable only by their link.
  *
@@ -21,8 +23,10 @@ import {
   type PublicChallengeListItem,
   type PublicProfileResponse,
   publicProfileResponseSchema,
+  type QuantChallengeDocument,
+  type QuantChallengeList,
+  quantChallengeListSchema,
 } from '@aurboda/api-spec'
-import { isAxiosError } from 'axios'
 
 import type { ChallengeParticipationRecord, ChallengeRecord, FeedFollowingRecord } from '../db/index.ts'
 
@@ -35,9 +39,14 @@ import {
   listPublicChallenges,
 } from '../db/index.ts'
 import { isMissingDatabase } from '../db/pg-errors.ts'
-import { canonicalChallengeUrl, discoverInstance } from './challenge-federation.ts'
+import {
+  canonicalChallengeUrl,
+  type ChallengeHost,
+  discoverInstance,
+  specFromChallengeDocument,
+} from './challenge-federation.ts'
 import { specToApi } from './challenge-spec.ts'
-import { safeFetchGet, SafeFetchError } from './safe-fetch.ts'
+import { isTransientFetchError, safeFetchGet } from './safe-fetch.ts'
 import { buildProfileUrl, buildShareUrl } from './share-urls.ts'
 
 /** How long a peer may take to list its challenges before it counts as unreachable this round. */
@@ -82,58 +91,29 @@ export const parseActorUri = (actorUri: string): ParsedActorUri | null => {
 }
 
 /** What a well-known probe of an instance concluded. A transient failure throws instead. */
-export type InstanceProbe = { kind: 'aurboda'; api_base: string } | { kind: 'not_aurboda' }
+export type InstanceProbe =
+  | { kind: 'aurboda'; api_base: string }
+  | { kind: 'quantpub'; api_base: string }
+  | { kind: 'not_aurboda' }
 
-/** Node network errors that mean "could not reach it right now", not "it is not Aurboda". */
-const TRANSIENT_NETWORK_CODES = new Set([
-  'ECONNREFUSED',
-  'ECONNRESET',
-  'EAI_AGAIN',
-  'EHOSTUNREACH',
-  'ENOTFOUND',
-  'ETIMEDOUT',
-])
-
-const systemErrorCode = (error: unknown): string | undefined =>
-  typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string'
-    ? error.code
-    : undefined
-
-/**
- * A failure that says nothing about whether the host is an Aurboda instance —
- * no answer at all, a server error, a throttle (429) or a blanket 403, a DNS
- * hiccup — as opposed to a definite "no" (a 404 for the well-known document, a
- * non-Aurboda body, a private address we refuse). Only definite answers are
- * worth remembering for an hour; a transient one must be retried (#1094).
- */
-export const isTransientFetchError = (error: unknown): boolean => {
-  if (isAxiosError(error)) {
-    const status = error.response?.status
-    return status === undefined || status >= 500 || status === 429 || status === 403
-  }
-  if (error instanceof SafeFetchError) return error.code === 'dns'
-  const code = systemErrorCode(error)
-  if (code !== undefined) return TRANSIENT_NETWORK_CODES.has(code)
-  return error instanceof Error && /timed out|timeout/i.test(error.message)
-}
-
-/** Probe `<base>/.well-known/aurboda`, folding definite negatives into a value. */
+/** Probe the instance's well-known documents, folding definite negatives into a value. */
 export const probeInstance = async (base: string): Promise<InstanceProbe> => {
   try {
-    const wellKnown = await discoverInstance(base)
-    return { api_base: wellKnown.api_base, kind: 'aurboda' }
+    const host = await discoverInstance(base)
+    return { api_base: host.apiBase, kind: host.kind }
   } catch (error) {
     if (isTransientFetchError(error)) throw error
     return { kind: 'not_aurboda' }
   }
 }
 
-export type ApiBaseResolver = (base: string) => Promise<string | null>
+export type ApiBaseResolver = (base: string) => Promise<ChallengeHost | null>
 
 /**
- * A per-instance memo of the well-known probe: an Aurboda host's API base, or
- * null for any other server. Both answers are kept for [ttlMs]; a transient
- * failure is not remembered (and rethrown) so the peer is retried next time.
+ * A per-instance memo of the well-known probe: a challenge host's protocol and
+ * API base, or null for any other server. Both answers are kept for [ttlMs]; a
+ * transient failure is not remembered (and rethrown) so the peer is retried
+ * next time.
  *
  * The in-flight promise is memoised too: followees are walked concurrently, so
  * without it every followee on one instance would fire its own probe on a cold
@@ -145,24 +125,49 @@ export const createApiBaseResolver = (
   ttlMs = INSTANCE_TTL_MS,
   now: () => number = Date.now,
 ): ApiBaseResolver => {
-  const cache = new Map<string, { apiBase: string | null; expiresAt: number }>()
-  const inFlight = new Map<string, Promise<string | null>>()
+  const cache = new Map<string, { host: ChallengeHost | null; expiresAt: number }>()
+  const inFlight = new Map<string, Promise<ChallengeHost | null>>()
   return async (base) => {
     const hit = cache.get(base)
-    if (hit && hit.expiresAt > now()) return hit.apiBase
+    if (hit && hit.expiresAt > now()) return hit.host
     const pending = inFlight.get(base)
     if (pending) return pending
     const request = probe(base)
       .then((outcome) => {
-        const apiBase = outcome.kind === 'aurboda' ? trimSlashes(outcome.api_base) : null
-        cache.set(base, { apiBase, expiresAt: now() + ttlMs })
-        return apiBase
+        const host =
+          outcome.kind === 'not_aurboda'
+            ? null
+            : { apiBase: trimSlashes(outcome.api_base), kind: outcome.kind }
+        cache.set(base, { expiresAt: now() + ttlMs, host })
+        return host
       })
       .finally(() => {
         inFlight.delete(base)
       })
     inFlight.set(base, request)
     return request
+  }
+}
+
+/**
+ * A QuantPub listing item in the shape discovery maps from. An item this
+ * instance could not score (an unknown extension key) is left out: the user
+ * could not join it anyway.
+ */
+export const quantListItemToPublic = (item: QuantChallengeDocument): PublicChallengeListItem | null => {
+  try {
+    const spec = specToApi(specFromChallengeDocument(item))
+    return {
+      end_ts: item.endTime,
+      name: item.name,
+      share_url: item.url,
+      slug: item.url.replace(/\/+$/, '').split('/').pop() ?? '',
+      spec,
+      start_ts: item.startTime,
+      timezone: item.timezone,
+    }
+  } catch {
+    return null
   }
 }
 
@@ -192,6 +197,8 @@ export interface ChallengeDiscoveryDeps {
   listLocalPublic: (username: string) => Promise<ChallengeRecord[]>
   resolveApiBase: ApiBaseResolver
   fetchPeerProfile: (apiBase: string, username: string) => Promise<PublicProfileResponse>
+  /** A QuantPub host's public challenge listing. */
+  fetchPeerChallenges: (apiBase: string, username: string) => Promise<QuantChallengeList>
   now?: () => Date
   concurrency?: number
 }
@@ -240,9 +247,13 @@ const listPeerChallenges = async (
       throw error
     }
   }
-  const apiBase = await deps.resolveApiBase(parsed.base)
-  if (apiBase == null) return null
-  const profile = await deps.fetchPeerProfile(apiBase, parsed.username)
+  const host = await deps.resolveApiBase(parsed.base)
+  if (host == null) return null
+  if (host.kind === 'quantpub') {
+    const list = await deps.fetchPeerChallenges(host.apiBase, parsed.username)
+    return list.items.flatMap((item) => quantListItemToPublic(item) ?? [])
+  }
+  const profile = await deps.fetchPeerProfile(host.apiBase, parsed.username)
   return profile.challenges ?? []
 }
 
@@ -350,6 +361,12 @@ export const createChallengeDiscovery =
 
 /** The production wiring: real DB reads, SSRF-guarded peer fetches, a memoised well-known probe. */
 export const defaultChallengeDiscoveryDeps = (webHost: string): ChallengeDiscoveryDeps => ({
+  fetchPeerChallenges: async (apiBase, username) => {
+    const res = await safeFetchGet(`${apiBase}/public/${encodeURIComponent(username)}/challenges`, {
+      timeout: PEER_TIMEOUT_MS,
+    })
+    return quantChallengeListSchema.parse(res.data)
+  },
   fetchPeerProfile: async (apiBase, username) => {
     const res = await safeFetchGet(`${apiBase}/public/${encodeURIComponent(username)}/dashboards`, {
       timeout: PEER_TIMEOUT_MS,

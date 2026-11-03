@@ -76,7 +76,7 @@ export const getChallengeStandings = async (
       }
 
       try {
-        const data = await fetchMemberData(member.data_endpoint_url)
+        const data = await fetchMemberData(member.data_endpoint_url, challenge)
         const buckets = data.buckets ?? []
         const total = data.total ?? scoreBuckets(buckets, challenge.spec.aggregation)
         // The member reports when *their* data last changed; keep it as-is (null

@@ -467,6 +467,10 @@ export const wellKnownQuantpubSchema = z
     apiBase: z
       .string()
       .meta({ description: 'Absolute base URL under which the structured-post and series endpoints live' }),
+    challenges: z
+      .boolean()
+      .optional()
+      .meta({ description: 'Whether this implementation serves and accepts QuantPub Challenges endpoints' }),
     product: z.string().meta({ description: 'Free-form implementation identity' }),
     quantpub: z.string().meta({ description: 'QuantPub spec version implemented' }),
     version: z.string().meta({ description: 'Implementation build/version identifier' }),
