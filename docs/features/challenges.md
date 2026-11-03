@@ -156,6 +156,10 @@ Any app can join a challenge hosted on an Aurboda instance; it does not need to 
 Aurboda, ActivityPub or [QuantPub](../fep/quantpub.md). It takes one public JSON URL
 and one `POST`. The host pulls your numbers from that URL; you never push.
 
+This is Aurboda's own protocol. The vendor-neutral version it is moving to, on
+top of QuantPub, is drafted in [docs/fep/quantpub-challenges.md](../fep/quantpub-challenges.md);
+its §10 maps the fields below onto that draft.
+
 The examples use a challenge at `https://aurboda.net/u/fiddur/november-steps`. Replace
 the host, user and slug with the ones in the link you were given.
 
