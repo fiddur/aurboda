@@ -159,6 +159,7 @@ export {
   getActivitySourcesByIds,
   getNearbyActivities,
   backfillSuperseded,
+  fetchCategoryMap,
   getOverlappingActivities,
   getOverrideForActivity,
   getSleepSessions,

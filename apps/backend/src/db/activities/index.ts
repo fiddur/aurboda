@@ -6,7 +6,7 @@ export {
   pickOverrideWinner,
 } from './merge.ts'
 
-export { backfillSuperseded, materializeSuperseded } from './supersession.ts'
+export { backfillSuperseded, fetchCategoryMap, materializeSuperseded } from './supersession.ts'
 
 export {
   adoptLegacyActivity,
