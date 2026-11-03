@@ -262,9 +262,7 @@ To change default port, modify `"8080:80"` to `"YOUR_PORT:80"` in docker-compose
 docker compose pull && docker compose up -d
 ```
 
-For automatic updates, run [Watchtower](https://github.com/nicholas-fedor/watchtower) (the maintained
-fork; the original `containrrr/watchtower` no longer works with current Docker) next to the stack. It
-pulls and restarts `aurboda` whenever a new `:latest` release is published.
+For automatic updates and the details, see [Updating](docs/docker.md#updating) in the Docker guide.
 
 ### Development Builds
 

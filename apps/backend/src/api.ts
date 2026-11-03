@@ -293,7 +293,7 @@ const main = async () => {
   let deductionQueue: DeductionQueue | null = null
   let autoshareQueue: AutoshareQueue | null = null
   const activityNotifier: ActivityNotifier = (user, activityType, start, end, sourceRuleId) => {
-    deductionQueue?.enqueueEvaluation({
+    void deductionQueue?.enqueueEvaluation({
       activity_type: activityType,
       source_rule_id: sourceRuleId,
       user,

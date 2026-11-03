@@ -373,9 +373,6 @@ describe('getTrend', () => {
     expect(result.breakdown_histories).toEqual({})
   })
 
-  // Regression: activity-based trend queries must skip cross-source duplicates
-  // (rows with superseded_by set) so a single physical activity synced from
-  // multiple sources doesn't inflate the trend.
   describe('calendar days in a timezone', () => {
     beforeEach(() => {
       vi.mocked(db.query).mockResolvedValue({ rows: [] } as never)
@@ -421,6 +418,9 @@ describe('getTrend', () => {
     })
   })
 
+  // Regression: activity-based trend queries must skip cross-source duplicates
+  // (rows with superseded_by set) so a single physical activity synced from
+  // multiple sources doesn't inflate the trend.
   describe('superseded_by filtering', () => {
     test('activity_type sum trend filters superseded rows', async () => {
       vi.mocked(db.query).mockResolvedValue({ rows: [] } as never)
