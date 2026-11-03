@@ -407,6 +407,7 @@ describe('getGoalHistory', () => {
       lookback_days: 1,
       pattern: 'coffee',
       source_type: 'activity_type',
+      tz: 'UTC',
     })
     expect(result).toEqual({
       bucket: 'day',
@@ -507,6 +508,43 @@ describe('getGoalHistory', () => {
 
     afterEach(() => {
       vi.mocked(settings.getUserTimezone).mockResolvedValue('UTC')
+    })
+
+    test("trend goal: the trend is computed in the zone and today is the zone's today", async () => {
+      vi.mocked(settings.getEffectiveGoals).mockResolvedValue([
+        {
+          aggregation: 'count',
+          display_period: 'monthly',
+          goal_type: 'trend',
+          half_life_days: 30,
+          id: 'g-trend',
+          max: 0.7,
+          pattern: 'coffee',
+          source_type: 'activity_type',
+        },
+      ])
+      vi.mocked(trends.getTrend).mockResolvedValue({
+        aggregation: 'count',
+        current_value: 0.5,
+        display_period: 'monthly',
+        display_unit: 'per month',
+        half_life_days: 30,
+        history: [
+          { date: '2026-02-02', value: 0.8 },
+          { date: '2026-02-03', value: 0.5 },
+        ],
+        lookback_days: 1,
+        pattern: 'coffee',
+        source_type: 'activity_type',
+      })
+
+      const result = await getGoalHistory('u', 'g-trend', { bucket: 'day', lookback_days: 1 })
+
+      expect(trends.getTrend).toHaveBeenCalledWith('u', expect.objectContaining({ tz: 'Pacific/Auckland' }))
+      expect(result?.days).toEqual([
+        { date: '2026-02-02', partial: false, status: 'over', value: 0.8 },
+        { date: '2026-02-03', partial: true, status: 'met', value: 0.5 },
+      ])
     })
 
     test('hr zone goal: buckets are local days and today is the local today', async () => {

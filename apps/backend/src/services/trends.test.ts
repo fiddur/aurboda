@@ -376,6 +376,51 @@ describe('getTrend', () => {
   // Regression: activity-based trend queries must skip cross-source duplicates
   // (rows with superseded_by set) so a single physical activity synced from
   // multiple sources doesn't inflate the trend.
+  describe('calendar days in a timezone', () => {
+    beforeEach(() => {
+      vi.mocked(db.query).mockResolvedValue({ rows: [] } as never)
+    })
+
+    test('days and today are UTC without tz', async () => {
+      await getTrend('testuser', { pattern: 'coffee', source_type: 'tag' })
+
+      const [, sql, params] = vi.mocked(db.query).mock.calls[0]
+      expect(sql).not.toContain('CURRENT_DATE')
+      expect(sql).toContain('AT TIME ZONE $7::text')
+      expect(params?.[6]).toBe('UTC')
+    })
+
+    test('a metric trend binds tz before the source filter', async () => {
+      await getTrend('testuser', { pattern: 'steps', source_type: 'metric', tz: 'Europe/Stockholm' })
+
+      const [, sql, params] = vi.mocked(db.query).mock.calls[0]
+      expect(sql).toContain('time AT TIME ZONE $7::text')
+      expect(sql).toContain('source = ANY($8)')
+      expect(params?.[6]).toBe('Europe/Stockholm')
+      expect(Array.isArray(params?.[7])).toBe(true)
+    })
+
+    test('a breakdown trend lists its days in tz', async () => {
+      vi.mocked(db.query).mockResolvedValue({
+        rows: [{ day: new Date('2026-02-03'), field_0: 'alice', value: 1 }],
+      } as never)
+
+      const result = await getTrend('testuser', {
+        aggregation: 'count',
+        breakdown_fields: ['partner'],
+        display_period: 'daily',
+        half_life_days: 1,
+        lookback_days: 1,
+        pattern: 'running',
+        source_type: 'activity_type',
+        tz: 'Pacific/Kiritimati',
+      })
+
+      expect(vi.mocked(db.query).mock.calls[0][2]?.[2]).toBe('Pacific/Kiritimati')
+      expect(result.breakdown_histories?.alice?.map((p) => p.date)).toEqual(['2026-02-02', '2026-02-03'])
+    })
+  })
+
   describe('superseded_by filtering', () => {
     test('activity_type sum trend filters superseded rows', async () => {
       vi.mocked(db.query).mockResolvedValue({ rows: [] } as never)
@@ -586,5 +631,29 @@ describe('getTrend measure trend', () => {
       pattern: 'strength_training',
       source_type: 'activity_type',
     })
+  })
+
+  test("days are tz calendar days, so today can be UTC's tomorrow", async () => {
+    vi.mocked(measureSeries.queryMeasuredActivities).mockResolvedValue([
+      measured('2026-02-02T11:00:00Z', { e1rm: 100 }),
+    ])
+
+    const result = await getTrend('u', {
+      half_life_days: 10,
+      lookback_days: 2,
+      measure: 'e1rm',
+      pattern: 'strength_training',
+      source_type: 'activity_type',
+      tz: 'Pacific/Kiritimati',
+    })
+
+    expect(measureSeries.queryMeasuredActivities).toHaveBeenCalledWith(
+      'u',
+      'strength_training',
+      new Date('2026-01-01T10:00:00Z'),
+      new Date('2026-02-02T12:00:00Z'),
+      undefined,
+    )
+    expect(result.history).toEqual([{ date: '2026-02-03', value: 100 }])
   })
 })

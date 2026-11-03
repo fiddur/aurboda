@@ -109,6 +109,7 @@ const resolveSparklineCard = async (
 const resolveTrendChart = async (
   user: string,
   config: Extract<DashboardWidget, { type: 'trend_chart' }>['config'],
+  tz: string,
 ): Promise<WidgetData> => {
   const customMetrics = await getCustomMetrics(user)
   const result = await getTrend(user, {
@@ -123,6 +124,7 @@ const resolveTrendChart = async (
     missing_days: config.missing_days,
     pattern: config.pattern,
     source_type: config.source_type,
+    tz,
     ...(config.breakdown_fields?.length ? { breakdown_fields: config.breakdown_fields } : {}),
   })
   if (result.breakdown_series?.length) {
@@ -310,7 +312,7 @@ const resolveWidget = async (user: string, widget: DashboardWidget, tz: string):
     case 'sparkline_card':
       return resolveSparklineCard(user, widget.config)
     case 'trend_chart':
-      return resolveTrendChart(user, widget.config)
+      return resolveTrendChart(user, widget.config, tz)
     case 'bar_chart':
       return resolveBarChart(user, widget.config, tz)
     case 'correlation':

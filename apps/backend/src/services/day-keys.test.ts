@@ -51,6 +51,14 @@ describe('dayStartInTz and dayEndInTz', () => {
     expect(start.toISOString()).toBe('2026-03-28T23:00:00.000Z')
     expect(end.getTime() - start.getTime()).toBe(23 * HOUR_MS - 1)
   })
+
+  it('span 25 hours on a fall-back day, ending 1 ms before the next local midnight', () => {
+    const start = dayStartInTz('2026-10-25', 'Europe/Stockholm')
+    const end = dayEndInTz('2026-10-25', 'Europe/Stockholm')
+    expect(end.toISOString()).toBe('2026-10-25T22:59:59.999Z')
+    expect(end.getTime() - start.getTime()).toBe(25 * HOUR_MS - 1)
+    expect(dayStartInTz('2026-10-26', 'Europe/Stockholm').getTime()).toBe(end.getTime() + 1)
+  })
 })
 
 describe('dayKeysEndingAt', () => {

@@ -64,9 +64,7 @@ export function GoalHistoryPanel({ goal, range, onRangeChange }: GoalHistoryPane
           <p class="goal-history-footnote">
             {data.bucket === 'month'
               ? 'Bars show the days on target each month, out of the days counted. '
-              : data.goal.goal_type === 'trend'
-                ? 'Each day shows the goal value at the end of that day (UTC). '
-                : 'Each day shows the goal value at the end of that day in your device timezone (UTC when unset). '}
+              : 'Each day shows the goal value at the end of that day in your device timezone (UTC when unset). '}
             Today is not counted yet. Every day is judged against the current target.
           </p>
         </>
