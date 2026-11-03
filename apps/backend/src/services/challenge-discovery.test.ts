@@ -14,13 +14,13 @@ import {
   type ChallengeDiscoveryDeps,
   createApiBaseResolver,
   createChallengeDiscovery,
-  isTransientFetchError,
   parseActorUri,
   sortDiscovered,
   toPublicChallengeListItem,
 } from './challenge-discovery.ts'
+import { buildChallengeListItem } from './challenge-quantpub.ts'
 import { specToApi } from './challenge-spec.ts'
-import { SafeFetchError } from './safe-fetch.ts'
+import { isTransientFetchError, SafeFetchError } from './safe-fetch.ts'
 
 const WEB_HOST = 'https://home.example'
 const NOW = new Date('2026-09-07T12:00:00Z')
@@ -96,6 +96,7 @@ const profile = (username: string, base: string, records: ChallengeRecord[]): Pu
 })
 
 const deps = (overrides: Partial<ChallengeDiscoveryDeps> = {}): ChallengeDiscoveryDeps => ({
+  fetchPeerChallenges: async () => ({ items: [], kind: 'challengeList' }),
   fetchPeerProfile: async () => ({ challenges: [], success: true }),
   listFollowing: async () => [],
   listHosted: async () => [],
@@ -103,7 +104,7 @@ const deps = (overrides: Partial<ChallengeDiscoveryDeps> = {}): ChallengeDiscove
   listLocalPublic: async () => [],
   listParticipations: async () => [],
   now: () => NOW,
-  resolveApiBase: async (base) => `${base}/api`,
+  resolveApiBase: async (base) => ({ apiBase: `${base}/api`, kind: 'aurboda' }),
   webHost: WEB_HOST,
   ...overrides,
 })
@@ -195,8 +196,9 @@ describe('createApiBaseResolver', () => {
     let clock = 0
     const resolve = createApiBaseResolver(probe, 1000, () => clock)
 
-    expect(await resolve('https://aurboda.example')).toBe('https://aurboda.example/api')
-    expect(await resolve('https://aurboda.example')).toBe('https://aurboda.example/api')
+    const aurboda = { apiBase: 'https://aurboda.example/api', kind: 'aurboda' }
+    expect(await resolve('https://aurboda.example')).toEqual(aurboda)
+    expect(await resolve('https://aurboda.example')).toEqual(aurboda)
     expect(await resolve('https://mastodon.example')).toBeNull()
     expect(await resolve('https://mastodon.example')).toBeNull()
     expect(probe).toHaveBeenCalledTimes(2)
@@ -204,6 +206,20 @@ describe('createApiBaseResolver', () => {
     clock = 1001
     await resolve('https://mastodon.example')
     expect(probe).toHaveBeenCalledTimes(3)
+  })
+
+  test('remembers which protocol a host speaks', async () => {
+    const probe = vi.fn(async (base: string) => ({ api_base: `${base}/api`, kind: 'quantpub' as const }))
+    const resolve = createApiBaseResolver(probe, 1000, () => 0)
+    expect(await resolve('https://qp.example')).toEqual({
+      apiBase: 'https://qp.example/api',
+      kind: 'quantpub',
+    })
+    expect(await resolve('https://qp.example')).toEqual({
+      apiBase: 'https://qp.example/api',
+      kind: 'quantpub',
+    })
+    expect(probe).toHaveBeenCalledOnce()
   })
 
   test('concurrent callers for one instance share a single in-flight probe', async () => {
@@ -219,7 +235,8 @@ describe('createApiBaseResolver', () => {
 
     const both = Promise.all([resolve('https://p.example'), resolve('https://p.example')])
     release()
-    expect(await both).toEqual(['https://p.example/api', 'https://p.example/api'])
+    const host = { apiBase: 'https://p.example/api', kind: 'aurboda' }
+    expect(await both).toEqual([host, host])
     expect(probe).toHaveBeenCalledTimes(1)
   })
 
@@ -236,7 +253,7 @@ describe('createApiBaseResolver', () => {
     await expect(second).rejects.toThrow('EAI_AGAIN')
     expect(probe).toHaveBeenCalledTimes(1)
 
-    expect(await resolve('https://p.example')).toBe('https://p.example/api')
+    expect(await resolve('https://p.example')).toEqual({ apiBase: 'https://p.example/api', kind: 'aurboda' })
     expect(probe).toHaveBeenCalledTimes(2)
   })
 
@@ -247,7 +264,7 @@ describe('createApiBaseResolver', () => {
       .mockResolvedValueOnce({ api_base: 'https://p.example/api', kind: 'aurboda' })
     const resolve = createApiBaseResolver(probe, 1000, () => 0)
     await expect(resolve('https://p.example')).rejects.toThrow('ECONNRESET')
-    expect(await resolve('https://p.example')).toBe('https://p.example/api')
+    expect(await resolve('https://p.example')).toEqual({ apiBase: 'https://p.example/api', kind: 'aurboda' })
     expect(probe).toHaveBeenCalledTimes(2)
   })
 })
@@ -305,6 +322,42 @@ describe('createChallengeDiscovery', () => {
     })
   })
 
+  test('lists a QuantPub peer through its challenge listing, skipping what it could not score', async () => {
+    const base = 'https://qp.example'
+    const ctx = { apiBaseUrl: `${base}/api`, now: NOW, username: 'freja', webHost: base }
+    const vendorItem = buildChallengeListItem(record('vendor'), ctx)
+    const { aurboda: _vendor, ...bareSteps } = buildChallengeListItem(record('bare'), ctx)
+    const unknownKey = { ...bareSteps, metric: 'tracker:pushups', name: 'Unscorable', unit: '1' }
+    const fetchPeerChallenges = vi.fn(async () => ({
+      items: [vendorItem, bareSteps, unknownKey],
+      kind: 'challengeList' as const,
+    }))
+    const fetchPeerProfile = vi.fn(async () => ({ challenges: [], success: true }))
+    const discover = createChallengeDiscovery(
+      deps({
+        fetchPeerChallenges,
+        fetchPeerProfile,
+        listFollowing: async () => [followee(`${base}/users/freja`)],
+        resolveApiBase: async () => ({ apiBase: `${base}/api`, kind: 'quantpub' }),
+      }),
+    )
+
+    const result = await discover('me')
+
+    expect(fetchPeerChallenges).toHaveBeenCalledWith(`${base}/api`, 'freja')
+    expect(fetchPeerProfile).not.toHaveBeenCalled()
+    expect(result.challenges.map((c) => [c.name, c.share_url, c.status])).toEqual([
+      ['Challenge vendor', `${base}/u/freja/vendor`, 'ongoing'],
+      ['Challenge bare', `${base}/u/freja/bare`, 'ongoing'],
+    ])
+    expect(result.challenges[1].spec).toMatchObject({
+      aggregation: 'sum',
+      pattern: 'steps',
+      source_type: 'metric',
+      unit: '1',
+    })
+  })
+
   test('skips non-Aurboda followees without asking for a profile, and counts peers that fail', async () => {
     const fetchPeerProfile = vi.fn(async () => {
       throw new Error('timeout')
@@ -317,7 +370,8 @@ describe('createChallengeDiscovery', () => {
           followee('https://mastodon.example/@dave'),
           followee('https://down.example/users/erin'),
         ],
-        resolveApiBase: async (base) => (base === 'https://down.example' ? `${base}/api` : null),
+        resolveApiBase: async (base) =>
+          base === 'https://down.example' ? { apiBase: `${base}/api`, kind: 'aurboda' } : null,
       }),
     )
 

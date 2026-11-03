@@ -59,3 +59,16 @@ context document published at `https://<host>/ns/activitystreams` (served with
 the delivery slice). Only the metrics a user explicitly shared are ever emitted;
 high-resolution series are referenced as links to the public, data-scoped
 `/series` endpoint rather than inlined.
+
+## Challenges (HTTP, outside ActivityPub)
+
+Federated challenges use the HTTP half of the
+[QuantPub Challenges](docs/fep/quantpub-challenges.md) draft, advertised by
+`"challenges": true` in `/.well-known/quantpub`: a challenge listing and document
+(`GET /api/public/<username>/challenges[/<slug>]`), HTTP join and leave
+(`POST` / `DELETE …/challenges/<slug>/members`), standings
+(`GET …/challenges/<slug>/standings`) and a member's entry
+(`GET /api/public/<username>/challenge-entries/<token>`). The ActivityPub half (the
+challenge as an `Event`, `Join` / `Leave`) is not implemented yet. Aurboda's older
+challenge protocol (`/.well-known/aurboda`) is still served for instances that predate
+it. See [docs/features/challenges.md](docs/features/challenges.md).

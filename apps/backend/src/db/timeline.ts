@@ -14,6 +14,7 @@ import type { FeedFollowingRecord } from './feed-following.ts'
 import type { CachedActorPresentation } from './types.ts'
 
 import { query } from './connection.ts'
+import { removeOrphanedFeedReactions } from './feed-reactions.ts'
 
 export interface TimelineEntryRecord {
   id: string
@@ -509,6 +510,20 @@ export const markTimelineEntryReplyChecked = async (user: string, id: string): P
   await query(user, `UPDATE timeline_entry SET reply_checked_at = NOW() WHERE id = $1`, [id])
 }
 
+interface RemovedTimelineUris {
+  object_uri: string
+  boost_of_uri: string | null
+}
+
+const dropOrphanedReactions = async (user: string, removed: RemovedTimelineUris[]): Promise<void> => {
+  const uris = new Set<string>()
+  for (const row of removed) {
+    uris.add(row.object_uri)
+    if (row.boost_of_uri != null) uris.add(row.boost_of_uri)
+  }
+  await removeOrphanedFeedReactions(user, [...uris])
+}
+
 /**
  * Remove a received post by its remote object id (on an inbound `Delete`), scoped
  * to the actor that authored it. The `actor_uri` guard is an authorization check:
@@ -525,11 +540,13 @@ export const deleteTimelineEntryByUri = async (
   objectUri: string,
   actorUri: string,
 ): Promise<boolean> => {
-  const result = await query(
+  const result = await query<RemovedTimelineUris>(
     user,
-    `DELETE FROM timeline_entry WHERE actor_uri = $2 AND (object_uri = $1 OR boost_of_uri = $1)`,
+    `DELETE FROM timeline_entry WHERE actor_uri = $2 AND (object_uri = $1 OR boost_of_uri = $1)
+     RETURNING object_uri, boost_of_uri`,
     [objectUri, actorUri],
   )
+  await dropOrphanedReactions(user, result.rows)
   return (result.rowCount ?? 0) > 0
 }
 
@@ -543,11 +560,13 @@ export const deleteBoostEntry = async (
   announceUri: string,
   boosterActorUri: string,
 ): Promise<boolean> => {
-  const result = await query(
+  const result = await query<RemovedTimelineUris>(
     user,
-    `DELETE FROM timeline_entry WHERE object_uri = $1 AND boosted_by_actor_uri = $2`,
+    `DELETE FROM timeline_entry WHERE object_uri = $1 AND boosted_by_actor_uri = $2
+     RETURNING object_uri, boost_of_uri`,
     [announceUri, boosterActorUri],
   )
+  await dropOrphanedReactions(user, result.rows)
   return (result.rowCount ?? 0) > 0
 }
 
@@ -559,12 +578,14 @@ export const deleteBoostEntry = async (
  * follow is untouched.
  */
 export const deleteTimelineEntriesByActor = async (user: string, actorUri: string): Promise<number> => {
-  const result = await query(
+  const result = await query<RemovedTimelineUris>(
     user,
     `DELETE FROM timeline_entry
-     WHERE (actor_uri = $1 AND boost_of_uri IS NULL) OR boosted_by_actor_uri = $1`,
+     WHERE (actor_uri = $1 AND boost_of_uri IS NULL) OR boosted_by_actor_uri = $1
+     RETURNING object_uri, boost_of_uri`,
     [actorUri],
   )
+  await dropOrphanedReactions(user, result.rows)
   return result.rowCount ?? 0
 }
 

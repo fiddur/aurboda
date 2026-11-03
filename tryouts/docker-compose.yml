@@ -4,7 +4,7 @@
 #
 #   - the image is pinned by AURBODA_TAG (the merge commit's short sha) rather
 #     than floating on :latest — a tryout must exercise one known commit;
-#   - no watchtower and no `restart:`; the stack lives for one session;
+#   - no `restart:`; the stack lives for one session;
 #   - the app is published on 127.0.0.1 only, and every secret comes from the
 #     environment that up.sh generates, so nothing secret-shaped is committed;
 #   - host.docker.internal is mapped, because federation captures need an inbox

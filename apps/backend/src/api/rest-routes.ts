@@ -19,6 +19,7 @@ import type { ReactionActions } from '../services/feed-reactions.ts'
 import type { FollowerActions } from '../services/followers.ts'
 import type { FollowActions } from '../services/following.ts'
 import type { InvitationAuth } from '../services/invitation.ts'
+import type { NamedLocationsChanged } from '../services/locations.ts'
 import type { OuraWebhookManager } from '../services/oura-webhook-manager.ts'
 import type { SyncProvider } from '../services/queries/index.ts'
 import type { HrSettingsChanged } from '../services/settings.ts'
@@ -36,6 +37,7 @@ import { createAdminRouter } from '../routes/admin-router.ts'
 import { createAuditLogRouter } from '../routes/audit-log-router.ts'
 import { createAutoshareRulesRouter } from '../routes/autoshare-rules-router.ts'
 import { createChallengeDataRouter } from '../routes/challenge-data-router.ts'
+import { createChallengeQuantpubRouter } from '../routes/challenge-quantpub-router.ts'
 import { createChallengesRouter } from '../routes/challenges-router.ts'
 import { createChartDataRouter } from '../routes/chart-data-router.ts'
 import { createCorrelationsRouter } from '../routes/correlations-router.ts'
@@ -70,6 +72,7 @@ import { createSensitivityFlagsRouter } from '../routes/sensitivity-flags-router
 import { createSettingsRouter } from '../routes/settings-router.ts'
 import { createShareHtmlRouter, createShareResolvers } from '../routes/share-html-router.ts'
 import { createSharedDashboardsRouter } from '../routes/shared-dashboards-router.ts'
+import { createSharedExercisesRouter } from '../routes/shared-exercises-router.ts'
 import { createTracksRouter } from '../routes/tracks-router.ts'
 import { createTrainingLoadRouter } from '../routes/training-load-router.ts'
 import { createTrendsRouter } from '../routes/trends-router.ts'
@@ -124,6 +127,7 @@ interface RestRoutesDeps {
   autosharePreviewDeps: AutosharePreviewDeps
   /** Fire-and-forget: recompute activity features after HR zones, birth date or maf_hr change. */
   onHrSettingsChanged: HrSettingsChanged
+  onNamedLocationsChanged: NamedLocationsChanged
 }
 
 export const mountRestRouters = ({
@@ -150,6 +154,7 @@ export const mountRestRouters = ({
   reactionActions,
   onAvatarChanged,
   onHrSettingsChanged,
+  onNamedLocationsChanged,
   retroEnrichTimeline,
   timelineHub,
   ouraWebhookManager,
@@ -194,12 +199,13 @@ export const mountRestRouters = ({
     createDeductionRulesRouter(authMiddleware, engineDeps, deductionQueue ?? undefined),
   )
   httpd.use('/autoshare-rules', createAutoshareRulesRouter(authMiddleware, autosharePreviewDeps))
-  httpd.use('/locations', createLocationsRouter(authMiddleware))
+  httpd.use('/locations', createLocationsRouter(authMiddleware, onNamedLocationsChanged))
   httpd.use(createSettingsRouter(authMiddleware, onHrSettingsChanged))
   httpd.use(createAuditLogRouter(authMiddleware))
   httpd.use(createRawRecordsRouter(authMiddleware))
   httpd.use('/dashboard', createDashboardRouter(authMiddleware))
   httpd.use('/shared-dashboards', createSharedDashboardsRouter(authMiddleware, webHost))
+  httpd.use('/shared-exercises', createSharedExercisesRouter(authMiddleware, webHost))
   httpd.use('/profile', createProfileRouter(authMiddleware, webHost, onAvatarChanged))
   // Mount the following + followers routers before `/feed` so `/feed/following/*`
   // and `/feed/followers/*` (two path segments) resolve here and never touch the
@@ -248,6 +254,9 @@ export const mountRestRouters = ({
       renderScatterSvg: buildScatterSvg,
     }),
   )
+  // Before the public-shares router, whose `/public/:username/:slug` resolver
+  // would otherwise take `/public/:username/challenges`.
+  httpd.use(createChallengeQuantpubRouter({ apiBaseUrl, webHost }))
   httpd.use(createPublicSharesRouter(webHost))
   // Mounted before the share-html router so `/u/.../opengraph-image.png`,
   // `/u/:username/avatar.png` and `/u/:username/:slug/banner.webp` win over the

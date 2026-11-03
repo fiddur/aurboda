@@ -16,6 +16,8 @@ EMA is a weighted average where recent data counts more than old data. The **hal
 
 After one half-life, old data has 50% weight. After two half-lives, 25%. After three, 12.5%. So a 15-day half-life means data from 45 days ago has essentially no influence.
 
+Trend days are calendar days in the user's device timezone (`device_timezone`, UTC when unset): a sample or activity counts for the local day it falls on, and the last point is the local today. `GET /trends` and the `get_trend` MCP tool accept an optional `tz` (an IANA name such as `Europe/Stockholm`) to compute the trend in another timezone.
+
 ## Three Source Types
 
 ### Tags
@@ -55,7 +57,7 @@ The trend value is shown as "hours per day" (or per week/month).
 
 An activity type with list items -- a strength session's sets -- can also be trended on a **measure** of those items (`e1rm`, `max_weight`, `max_time`, `max_reps`, `volume`, `set_count`, `total_reps`; see [Activity Types: Exercises and measures](activity-types.md#exercises-and-measures)). Instead of an EMA, the trend is the **decaying best**: a running best that decays with the half-life between sessions and is lifted back by any session that beats the decayed value. One weak session never pulls it down; a long break lets it fade.
 
-Each UTC day's value is the higher of that day's best session and the previous day's value decayed by `2^(-1 / half-life)`. The line starts at the first session -- days before it have no point -- and runs to today, decayed to today. Like the EMA sources, sessions up to three half-lives before the lookback are read first, so an older best still carries into the chart. Values are rounded to one decimal.
+Each day's value is the higher of that day's best session and the previous day's value decayed by `2^(-1 / half-life)`. The line starts at the first session -- days before it have no point -- and runs to today, decayed to today. Like the EMA sources, sessions up to three half-lives before the lookback are read first, so an older best still carries into the chart. Values are rounded to one decimal.
 
 Parameters (`GET /trends`, the `get_trend` MCP tool):
 

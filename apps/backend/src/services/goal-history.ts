@@ -180,6 +180,7 @@ const trendGoalHistory = async (
   goal: TrendGoal,
   lookbackDays: number,
   todayKey: string,
+  tz: string,
 ): Promise<{ days: GoalHistoryDay[]; unit: string }> => {
   const customMetrics = await getCustomMetrics(user)
   const trend = await getTrend(user, {
@@ -193,6 +194,7 @@ const trendGoalHistory = async (
     measure: goal.measure,
     pattern: goal.pattern,
     source_type: goal.source_type,
+    tz,
   })
   const days = trend.history.map(({ date, value }) => ({
     date,
@@ -208,12 +210,11 @@ const goalDaysAndUnit = async (
   goal: Goal,
   query: GoalHistoryQuery,
   today: Date,
+  tz: string,
 ): Promise<{ days: GoalHistoryDay[]; unit: string }> => {
-  // getTrend's history is keyed by UTC days, so a trend goal's today is the UTC one.
   if (goal.goal_type === 'trend') {
-    return trendGoalHistory(user, goal, query.lookback_days, dayKey(today, 'UTC'))
+    return trendGoalHistory(user, goal, query.lookback_days, dayKey(today, tz), tz)
   }
-  const tz = await getUserTimezone(user)
   const keys = dayKeysEndingAt(today, query.lookback_days + 1, tz)
   if (goal.goal_type === 'measure') {
     return {
@@ -229,11 +230,11 @@ export const getGoalHistory = async (
   goalId: string,
   query: GoalHistoryQuery,
 ): Promise<GoalHistoryResponse | null> => {
-  const goals = await getEffectiveGoals(user)
+  const [goals, tz] = await Promise.all([getEffectiveGoals(user), getUserTimezone(user)])
   const goal = goals.find((g) => g.id === goalId)
   if (!goal) return null
 
-  const { days, unit } = await goalDaysAndUnit(user, goal, query, new Date())
+  const { days, unit } = await goalDaysAndUnit(user, goal, query, new Date(), tz)
 
   return {
     bucket: query.bucket,

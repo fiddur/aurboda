@@ -3,6 +3,7 @@ import type { RequestHandler } from 'express'
 import { type TrendQuery, trendQuerySchema, type TrendResponse } from '@aurboda/api-spec'
 
 import { getCustomMetrics } from '../services/mutations.ts'
+import { getUserTimezone } from '../services/settings.ts'
 import { getTrend } from '../services/trends.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateQuery } from '../validation.ts'
@@ -28,6 +29,7 @@ export const createTrendsRouter = (authMiddleware: RequestHandler): TypedRouter 
         pattern,
         source_type,
         tag_definition_id,
+        tz,
       } = req.query
       const breakdown_fields = breakdownFieldsStr
         ? breakdownFieldsStr
@@ -62,6 +64,7 @@ export const createTrendsRouter = (authMiddleware: RequestHandler): TypedRouter 
         pattern: pattern ?? '',
         source_type,
         tag_definition_id,
+        tz: tz ?? (await getUserTimezone(user)),
       })
       res.json({ data: result, success: true })
     },

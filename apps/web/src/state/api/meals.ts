@@ -28,6 +28,7 @@ import axios from 'axios'
 import type { Meal } from './types'
 
 import { API_URL } from '../../config'
+import { newId } from '../../utils/uuid'
 import { auth } from '../auth'
 
 const mapMeal = (m: ApiMeal): Meal => ({
@@ -63,7 +64,7 @@ export const fetchMeal = async (id: string): Promise<Meal> => {
 
 export const addMealApi = async (body: AddMealBody): Promise<Meal> => {
   const { token } = auth.value
-  const payload = { ...body, id: body.id ?? crypto.randomUUID() }
+  const payload = { ...body, id: body.id ?? newId() }
   const response = await axios.put<MealResponse>(`${API_URL}/meals`, payload, {
     headers: { Authorization: `Bearer ${token}` },
   })

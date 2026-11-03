@@ -5,6 +5,7 @@ import { useState } from 'preact/hooks'
 import { fetchActivityTypeDefinitions, type Goal, updateUserSettings } from '../state/api'
 import { measurableTypes } from '../utils/measures'
 import { metricLabels } from '../utils/metricLabels'
+import { newId } from '../utils/uuid'
 import { newMeasureGoal } from './measureGoalEdits'
 import { MeasureGoalFields } from './MeasureGoalFields'
 import { type SaveStatus, SaveStatusIndicator } from './SaveStatusIndicator'
@@ -196,14 +197,14 @@ export function GoalsSettings({ goals, initialGoal }: GoalsSettingsProps) {
     )
 
   const handleAddMeasureGoal = () => {
-    const goal = newMeasureGoal(measurable, crypto.randomUUID())
+    const goal = newMeasureGoal(measurable, newId())
     if (goal) setLocalGoals((local) => [...local, { ...goal, isNew: true }])
   }
 
   const handleAddGoal = () => {
     const newGoal: LocalGoal = {
       goal_type: 'metric',
-      id: crypto.randomUUID(),
+      id: newId(),
       isNew: true,
       metric: 'steps',
       min: undefined, // Start empty so user fills it in

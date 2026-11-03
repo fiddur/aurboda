@@ -20,6 +20,7 @@ import {
 } from '@aurboda/api-spec'
 
 import { getSourceFilter, query } from '../db/index.ts'
+import { dayKey, dayKeysEndingAt, dayStartInTz } from './day-keys.ts'
 import {
   type MeasureFilter,
   measureFilter,
@@ -49,7 +50,12 @@ export interface GetTrendInput {
   source_type: TrendSourceType
   /** @deprecated Use activity_type_id instead */
   tag_definition_id?: string
+  /** IANA timezone whose calendar days the trend is computed over; UTC when unset. */
+  tz?: string
 }
+
+/** Today's date in the timezone bound to parameter `$n`. */
+const todaySql = (n: number): string => `(now() AT TIME ZONE $${n}::text)::date`
 
 const metricDailyValueSql: Record<'count' | 'mean' | 'sum', string> = {
   count: 'COUNT(*)',
@@ -69,6 +75,7 @@ const calculateMetricTrend = async (
   displayPeriod: TrendDisplayPeriod,
   aggregation: 'count' | 'mean' | 'sum',
   missingDays: TrendMissingDays,
+  tz: string,
 ): Promise<{ currentValue: number; history: TrendHistoryPoint[] }> => {
   const multiplier = aggregation === 'mean' ? 1 : displayPeriodMultipliers[displayPeriod]
   const warmupDays = lookbackDays + 3 * halfLifeDays
@@ -87,8 +94,8 @@ const calculateMetricTrend = async (
     `
     WITH date_range AS (
       SELECT generate_series(
-        CURRENT_DATE - INTERVAL '1 day' * $6::integer,
-        CURRENT_DATE,
+        ${todaySql(7)} - INTERVAL '1 day' * $6::integer,
+        ${todaySql(7)},
         '1 day'
       )::date AS day
     ),
@@ -99,12 +106,12 @@ const calculateMetricTrend = async (
       FROM date_range d
       LEFT JOIN (
         SELECT
-          date_trunc('day', time AT TIME ZONE 'UTC')::date as day,
+          date_trunc('day', time AT TIME ZONE $7::text)::date as day,
           ${metricDailyValueSql[aggregation]} as daily_value
         FROM time_series
         WHERE metric = $1
-          AND time > CURRENT_DATE - INTERVAL '1 day' * ($6::integer + 1)
-          AND deleted_at IS NULL${sources ? '\n          AND source = ANY($7)' : ''}
+          AND time > ${todaySql(7)} - INTERVAL '1 day' * ($6::integer + 1)
+          AND deleted_at IS NULL${sources ? '\n          AND source = ANY($8)' : ''}
         GROUP BY 1
       ) t ON d.day = t.day
     ),
@@ -122,10 +129,10 @@ const calculateMetricTrend = async (
     )
     SELECT day, ${emaValueSql}
     FROM ema_calc
-    WHERE day >= CURRENT_DATE - INTERVAL '1 day' * $2::integer
+    WHERE day >= ${todaySql(7)} - INTERVAL '1 day' * $2::integer
     ORDER BY day
     `,
-    [metric, lookbackDays, LN2, multiplier, halfLifeDays, warmupDays, ...(sources ? [sources] : [])],
+    [metric, lookbackDays, LN2, multiplier, halfLifeDays, warmupDays, tz, ...(sources ? [sources] : [])],
   )
 
   const history: TrendHistoryPoint[] = result.rows
@@ -151,6 +158,7 @@ const calculateProductivityCategoryTrend = async (
   halfLifeDays: number,
   lookbackDays: number,
   displayPeriod: TrendDisplayPeriod,
+  tz: string,
 ): Promise<{ currentValue: number; history: TrendHistoryPoint[] }> => {
   const multiplier = displayPeriodMultipliers[displayPeriod]
   const warmupDays = lookbackDays + 3 * halfLifeDays
@@ -160,8 +168,8 @@ const calculateProductivityCategoryTrend = async (
     `
     WITH date_range AS (
       SELECT generate_series(
-        CURRENT_DATE - INTERVAL '1 day' * $6::integer,
-        CURRENT_DATE,
+        ${todaySql(7)} - INTERVAL '1 day' * $6::integer,
+        ${todaySql(7)},
         '1 day'
       )::date AS day
     ),
@@ -172,14 +180,14 @@ const calculateProductivityCategoryTrend = async (
       FROM date_range d
       LEFT JOIN (
         SELECT
-          date_trunc('day', start_time AT TIME ZONE 'UTC')::date as day,
+          date_trunc('day', start_time AT TIME ZONE $7::text)::date as day,
           SUM(EXTRACT(EPOCH FROM (end_time - start_time))) / 3600.0 as daily_hours
         FROM activities
         WHERE deleted_at IS NULL
           AND superseded_by IS NULL
           AND end_time IS NOT NULL
           AND ${categoryPathMatchSql(1)}
-          AND start_time > CURRENT_DATE - INTERVAL '1 day' * ($6::integer + 1)
+          AND start_time > ${todaySql(7)} - INTERVAL '1 day' * ($6::integer + 1)
         GROUP BY 1
       ) t ON d.day = t.day
     ),
@@ -198,10 +206,10 @@ const calculateProductivityCategoryTrend = async (
     )
     SELECT day, COALESCE(ema_value, 0) as ema_value
     FROM ema_calc
-    WHERE day >= CURRENT_DATE - INTERVAL '1 day' * $2::integer
+    WHERE day >= ${todaySql(7)} - INTERVAL '1 day' * $2::integer
     ORDER BY day
     `,
-    [categoryPath, lookbackDays, LN2, multiplier, halfLifeDays, warmupDays],
+    [categoryPath, lookbackDays, LN2, multiplier, halfLifeDays, warmupDays, tz],
   )
 
   const history: TrendHistoryPoint[] = result.rows.map((row) => ({
@@ -224,6 +232,7 @@ const calculateActivityTypeTrend = async (
   halfLifeDays: number,
   lookbackDays: number,
   displayPeriod: TrendDisplayPeriod,
+  tz: string,
 ): Promise<{ currentValue: number; history: TrendHistoryPoint[] }> => {
   const multiplier = displayPeriodMultipliers[displayPeriod]
   const warmupDays = lookbackDays + 3 * halfLifeDays
@@ -233,8 +242,8 @@ const calculateActivityTypeTrend = async (
     `
     WITH date_range AS (
       SELECT generate_series(
-        CURRENT_DATE - INTERVAL '1 day' * $6::integer,
-        CURRENT_DATE,
+        ${todaySql(7)} - INTERVAL '1 day' * $6::integer,
+        ${todaySql(7)},
         '1 day'
       )::date AS day
     ),
@@ -245,13 +254,13 @@ const calculateActivityTypeTrend = async (
       FROM date_range d
       LEFT JOIN (
         SELECT
-          date_trunc('day', start_time AT TIME ZONE 'UTC')::date as day,
+          date_trunc('day', start_time AT TIME ZONE $7::text)::date as day,
           SUM(EXTRACT(EPOCH FROM (end_time - start_time))) / 3600.0 as daily_hours
         FROM activities
         WHERE activity_type = $1
           AND deleted_at IS NULL
           AND superseded_by IS NULL
-          AND start_time > CURRENT_DATE - INTERVAL '1 day' * ($6::integer + 1)
+          AND start_time > ${todaySql(7)} - INTERVAL '1 day' * ($6::integer + 1)
         GROUP BY 1
       ) t ON d.day = t.day
     ),
@@ -270,10 +279,10 @@ const calculateActivityTypeTrend = async (
     )
     SELECT day, COALESCE(ema_value, 0) as ema_value
     FROM ema_calc
-    WHERE day >= CURRENT_DATE - INTERVAL '1 day' * $2::integer
+    WHERE day >= ${todaySql(7)} - INTERVAL '1 day' * $2::integer
     ORDER BY day
     `,
-    [pattern, lookbackDays, LN2, multiplier, halfLifeDays, warmupDays],
+    [pattern, lookbackDays, LN2, multiplier, halfLifeDays, warmupDays, tz],
   )
 
   const history: TrendHistoryPoint[] = result.rows.map((row) => ({
@@ -295,6 +304,7 @@ const calculateActivityTypeCountTrend = async (
   halfLifeDays: number,
   lookbackDays: number,
   displayPeriod: TrendDisplayPeriod,
+  tz: string,
 ): Promise<{ currentValue: number; history: TrendHistoryPoint[] }> => {
   const multiplier = displayPeriodMultipliers[displayPeriod]
   const warmupDays = lookbackDays + 3 * halfLifeDays
@@ -304,8 +314,8 @@ const calculateActivityTypeCountTrend = async (
     `
     WITH date_range AS (
       SELECT generate_series(
-        CURRENT_DATE - INTERVAL '1 day' * $6::integer,
-        CURRENT_DATE,
+        ${todaySql(7)} - INTERVAL '1 day' * $6::integer,
+        ${todaySql(7)},
         '1 day'
       )::date AS day
     ),
@@ -316,13 +326,13 @@ const calculateActivityTypeCountTrend = async (
       FROM date_range d
       LEFT JOIN (
         SELECT
-          date_trunc('day', start_time AT TIME ZONE 'UTC')::date as day,
+          date_trunc('day', start_time AT TIME ZONE $7::text)::date as day,
           count(*) as cnt
         FROM activities
         WHERE activity_type = $1
           AND deleted_at IS NULL
           AND superseded_by IS NULL
-          AND start_time > CURRENT_DATE - INTERVAL '1 day' * ($6::integer + 1)
+          AND start_time > ${todaySql(7)} - INTERVAL '1 day' * ($6::integer + 1)
         GROUP BY 1
       ) t ON d.day = t.day
     ),
@@ -341,10 +351,10 @@ const calculateActivityTypeCountTrend = async (
     )
     SELECT day, COALESCE(ema_value, 0) as ema_value
     FROM ema_calc
-    WHERE day >= CURRENT_DATE - INTERVAL '1 day' * $2::integer
+    WHERE day >= ${todaySql(7)} - INTERVAL '1 day' * $2::integer
     ORDER BY day
     `,
-    [pattern, lookbackDays, LN2, multiplier, halfLifeDays, warmupDays],
+    [pattern, lookbackDays, LN2, multiplier, halfLifeDays, warmupDays, tz],
   )
 
   const history: TrendHistoryPoint[] = result.rows.map((row) => ({
@@ -430,7 +440,7 @@ export const decayingBestHistory = (
 }
 
 /**
- * The decaying best of the points strictly before `day`, decayed to `day` (UTC `YYYY-MM-DD` keys): the value
+ * The decaying best of the points strictly before `day`, decayed to `day` (day keys): the value
  * `decayingBestHistory` would hold on `day` before that day's own sessions. Undefined without earlier points.
  * Unrounded.
  */
@@ -452,15 +462,6 @@ export const decayedBestAt = (
   return last && decay(last.value, last.day, day)
 }
 
-/** The UTC day keys from `count` days before today through today. */
-const utcDaysBack = (count: number): string[] => {
-  const now = new Date()
-  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
-  return Array.from({ length: count + 1 }, (_, i) =>
-    new Date(today - (count - i) * DAY_MS).toISOString().slice(0, 10),
-  )
-}
-
 /**
  * The decaying best of a list-item measure over an activity type's sessions, warmed up over three half-lives before
  * the lookback so a best set then still carries into it.
@@ -472,19 +473,15 @@ const calculateMeasureBestTrend = async (
   filter: MeasureFilter | undefined,
   halfLifeDays: number,
   lookbackDays: number,
+  tz: string,
 ): Promise<{ currentValue: number; history: TrendHistoryPoint[] }> => {
   const lookback = Math.ceil(lookbackDays)
-  const days = utcDaysBack(lookback + Math.ceil(3 * halfLifeDays))
-  const activities = await queryMeasuredActivities(
-    user,
-    pattern,
-    new Date(`${days[0]}T00:00:00Z`),
-    new Date(),
-    filter,
-  )
+  const now = new Date()
+  const days = dayKeysEndingAt(now, lookback + Math.ceil(3 * halfLifeDays) + 1, tz)
+  const activities = await queryMeasuredActivities(user, pattern, dayStartInTz(days[0], tz), now, filter)
   const sessions = activities.flatMap(({ activity, measures }) => {
     const value = measures[measure]
-    return value === undefined ? [] : [{ day: activity.start_time.toISOString().slice(0, 10), value }]
+    return value === undefined ? [] : [{ day: dayKey(activity.start_time, tz), value }]
   })
   const history = decayingBestHistory(sessions, days, halfLifeDays, days.length - 1 - lookback)
   return { currentValue: history.at(-1)?.value ?? 0, history }
@@ -501,6 +498,7 @@ const calculateActivityTypeBreakdownTrend = async (
   lookbackDays: number,
   displayPeriod: TrendDisplayPeriod,
   aggregation: 'count' | 'sum',
+  tz: string,
 ): Promise<{ series: string[]; histories: Record<string, TrendHistoryPoint[]> }> => {
   for (const field of breakdownFields) {
     if (!/^[a-z][a-z0-9_]*$/.test(field)) return { histories: {}, series: [] }
@@ -517,17 +515,17 @@ const calculateActivityTypeBreakdownTrend = async (
   const warmupDays = lookbackDays + 3 * halfLifeDays
   const result = await query(
     user,
-    `SELECT date_trunc('day', start_time AT TIME ZONE 'UTC')::date AS day,
+    `SELECT date_trunc('day', start_time AT TIME ZONE $3::text)::date AS day,
             ${fieldSelects.join(', ')},
             ${valueExpr} AS value
        FROM activities
       WHERE activity_type = $1
         AND deleted_at IS NULL
         AND superseded_by IS NULL
-        AND start_time > CURRENT_DATE - INTERVAL '1 day' * ($2::integer + 1)
+        AND start_time > ${todaySql(3)} - INTERVAL '1 day' * ($2::integer + 1)
       GROUP BY 1, ${fieldGroupBys.join(', ')}
       ORDER BY 1`,
-    [pattern, warmupDays],
+    [pattern, warmupDays, tz],
   )
 
   const seriesDaily = new Map<string, Map<string, number>>()
@@ -541,14 +539,7 @@ const calculateActivityTypeBreakdownTrend = async (
   }
 
   const warmupCount = 3 * halfLifeDays
-  const days: string[] = []
-  const now = new Date()
-  now.setUTCHours(0, 0, 0, 0)
-  for (let d = warmupDays; d >= 0; d--) {
-    const date = new Date(now)
-    date.setUTCDate(date.getUTCDate() - d)
-    days.push(date.toISOString().split('T')[0])
-  }
+  const days = dayKeysEndingAt(new Date(), warmupDays + 1, tz)
 
   const displayStartIdx = warmupCount
   const series = [...seriesDaily.keys()].sort()
@@ -572,6 +563,7 @@ const getActivityTypeTrend = async (
   halfLifeDays: number,
   lookbackDays: number,
   displayPeriod: TrendDisplayPeriod,
+  tz: string,
 ): Promise<TrendResult> => {
   const effectiveAggregation = input.aggregation === 'mean' ? 'sum' : input.aggregation
   const displayUnit =
@@ -586,6 +578,7 @@ const getActivityTypeTrend = async (
       lookbackDays,
       displayPeriod,
       effectiveAggregation,
+      tz,
     )
 
     return {
@@ -605,8 +598,15 @@ const getActivityTypeTrend = async (
 
   const { currentValue, history } =
     effectiveAggregation === 'count'
-      ? await calculateActivityTypeCountTrend(user, input.pattern, halfLifeDays, lookbackDays, displayPeriod)
-      : await calculateActivityTypeTrend(user, input.pattern, halfLifeDays, lookbackDays, displayPeriod)
+      ? await calculateActivityTypeCountTrend(
+          user,
+          input.pattern,
+          halfLifeDays,
+          lookbackDays,
+          displayPeriod,
+          tz,
+        )
+      : await calculateActivityTypeTrend(user, input.pattern, halfLifeDays, lookbackDays, displayPeriod, tz)
 
   return {
     aggregation: effectiveAggregation,
@@ -631,6 +631,47 @@ const metricDisplayUnit = (
   return displayUnits[displayPeriod]
 }
 
+const getMetricTrend = async (
+  user: string,
+  input: GetTrendInput,
+  halfLifeDays: number,
+  lookbackDays: number,
+  displayPeriod: TrendDisplayPeriod,
+  tz: string,
+): Promise<TrendResult> => {
+  const { pattern, source_type: sourceType } = input
+  const customMetrics = input.custom_metrics ?? []
+  const metricAggregation = input.aggregation ?? 'mean'
+  const missingDays: TrendMissingDays =
+    metricAggregation === 'count'
+      ? 'zero'
+      : (input.missing_days ?? (getMetricAggregation(pattern, customMetrics) === 'sum' ? 'zero' : 'skip'))
+
+  const { currentValue, history } = await calculateMetricTrend(
+    user,
+    pattern as MetricType,
+    halfLifeDays,
+    lookbackDays,
+    displayPeriod,
+    metricAggregation,
+    missingDays,
+    tz,
+  )
+
+  return {
+    aggregation: metricAggregation,
+    current_value: currentValue,
+    display_period: displayPeriod,
+    display_unit: metricDisplayUnit(metricAggregation, getMetricUnit(pattern, customMetrics), displayPeriod),
+    half_life_days: halfLifeDays,
+    history,
+    lookback_days: lookbackDays,
+    missing_days: missingDays,
+    pattern,
+    source_type: sourceType,
+  }
+}
+
 export const getTrend = async (user: string, input: GetTrendInput): Promise<TrendResult> => {
   const {
     aggregation = 'count',
@@ -639,6 +680,7 @@ export const getTrend = async (user: string, input: GetTrendInput): Promise<Tren
     lookback_days: lookbackDays = 90,
     pattern,
     source_type: sourceType,
+    tz = 'UTC',
   } = input
 
   if (sourceType === 'activity_type' && input.measure) {
@@ -650,6 +692,7 @@ export const getTrend = async (user: string, input: GetTrendInput): Promise<Tren
       measureFilter(filterField, filterValue),
       halfLifeDays,
       lookbackDays,
+      tz,
     )
 
     return {
@@ -676,6 +719,7 @@ export const getTrend = async (user: string, input: GetTrendInput): Promise<Tren
       halfLifeDays,
       lookbackDays,
       displayPeriod,
+      tz,
     )
 
     return {
@@ -690,7 +734,14 @@ export const getTrend = async (user: string, input: GetTrendInput): Promise<Tren
       source_type: sourceType,
     }
   } else if (sourceType === 'activity_type') {
-    return getActivityTypeTrend(user, { ...input, aggregation }, halfLifeDays, lookbackDays, displayPeriod)
+    return getActivityTypeTrend(
+      user,
+      { ...input, aggregation },
+      halfLifeDays,
+      lookbackDays,
+      displayPeriod,
+      tz,
+    )
   } else if (sourceType === 'productivity_category') {
     const { currentValue, history } = await calculateProductivityCategoryTrend(
       user,
@@ -698,6 +749,7 @@ export const getTrend = async (user: string, input: GetTrendInput): Promise<Tren
       halfLifeDays,
       lookbackDays,
       displayPeriod,
+      tz,
     )
 
     return {
@@ -712,38 +764,6 @@ export const getTrend = async (user: string, input: GetTrendInput): Promise<Tren
       source_type: sourceType,
     }
   } else {
-    const customMetrics = input.custom_metrics ?? []
-    const metricAggregation = input.aggregation ?? 'mean'
-    const missingDays: TrendMissingDays =
-      metricAggregation === 'count'
-        ? 'zero'
-        : (input.missing_days ?? (getMetricAggregation(pattern, customMetrics) === 'sum' ? 'zero' : 'skip'))
-
-    const { currentValue, history } = await calculateMetricTrend(
-      user,
-      pattern as MetricType,
-      halfLifeDays,
-      lookbackDays,
-      displayPeriod,
-      metricAggregation,
-      missingDays,
-    )
-
-    return {
-      aggregation: metricAggregation,
-      current_value: currentValue,
-      display_period: displayPeriod,
-      display_unit: metricDisplayUnit(
-        metricAggregation,
-        getMetricUnit(pattern, customMetrics),
-        displayPeriod,
-      ),
-      half_life_days: halfLifeDays,
-      history,
-      lookback_days: lookbackDays,
-      missing_days: missingDays,
-      pattern,
-      source_type: sourceType,
-    }
+    return getMetricTrend(user, input, halfLifeDays, lookbackDays, displayPeriod, tz)
   }
 }

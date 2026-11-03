@@ -272,6 +272,7 @@ describe('getGoalsProgress', () => {
       lookback_days: 90,
       pattern: 'ejaculation',
       source_type: 'activity_type',
+      tz: 'UTC',
     })
 
     // Should not touch the db directly for trend goals
@@ -322,6 +323,7 @@ describe('getGoalsProgress', () => {
         custom_metrics: [{ aggregation: 'sum', name: 'ibuprofen_mg', unit: 'mg' }],
         pattern: 'ibuprofen_mg',
         source_type: 'metric',
+        tz: 'UTC',
       }),
     )
     expect(customMetrics.getCustomMetrics).toHaveBeenCalledTimes(1)

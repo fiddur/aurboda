@@ -416,7 +416,7 @@ fun HealthConnectScreen(
 
   var grantedPermissions by remember { mutableStateOf<Set<String>>(emptySet()) }
   val grantedRecordTypes by remember(grantedPermissions) {
-    derivedStateOf { getGrantedRecordTypes(grantedPermissions) }
+    derivedStateOf { getGrantedRecordTypes(grantedPermissions, readableRecordTypes) }
   }
   val hasAnyPermissions by remember(grantedRecordTypes) {
     derivedStateOf { grantedRecordTypes.isNotEmpty() }

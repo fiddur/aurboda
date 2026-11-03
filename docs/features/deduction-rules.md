@@ -294,6 +294,11 @@ MCP tools: `list_deduction_rules`, `add_deduction_rule`, `update_deduction_rule`
 - The unique constraint `(source, activity_type, start_time)` prevents duplicate activities
 - Stale activities (from previous evaluations that no longer match) are automatically cleaned up
 - Rule evaluation is debounced per-user (5-second window) when triggered by data syncs
+- A change to an activity re-evaluates only the rules whose conditions (`activity`, `activity_data`,
+  `activity_feature`) or `output_activity_type` reference its type or an ancestor of it, plus every rule
+  with a `screentime_category` condition. Sync completions, media-play pushes, Strava imports (which
+  also write GPS locations), an OwnTracks location push (for that point's hour) and creating, changing
+  or deleting a named location (the last 90 days) re-evaluate all rules
 - A rule's output re-triggers evaluation of the other rules (and auto-share) only when it actually
   changed an activity. Re-evaluating a window whose generated activities are already in place writes
   nothing and triggers nothing, so rules that match the same history settle instead of re-running each

@@ -2,8 +2,10 @@ import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
+import { withUserTransaction } from './connection.ts'
 import {
   deleteNote,
+  deleteNotesForEntitiesIn,
   deleteNotesForEntity,
   getNoteById,
   getNoteRoot,
@@ -697,6 +699,38 @@ describe('Notes Integration Tests', () => {
       const user = getTestUser()
 
       expect(await deleteNotesForEntity(user, 'meal', randomUUID())).toBe(0)
+    })
+  })
+
+  describe('deleteNotesForEntitiesIn', () => {
+    test('removes every comment on the given entities and their replies', async () => {
+      const user = getTestUser()
+      const firstId = randomUUID()
+      const secondId = randomUUID()
+      const otherId = randomUUID()
+      const start = new Date('2024-01-15T12:00:00Z')
+
+      const first = await insertNote(user, 'activity', firstId, 'First', start)
+      const second = await insertNote(user, 'activity', secondId, 'Second', start)
+      const reply = await insertNote(user, 'note', first.id, 'Reply', start)
+      const other = await insertNote(user, 'activity', otherId, 'Other', start)
+
+      expect(
+        await withUserTransaction(user, (tx) =>
+          deleteNotesForEntitiesIn(tx, 'activity', [firstId, secondId]),
+        ),
+      ).toBe(2)
+
+      expect(await getNoteById(user, first.id)).toBeNull()
+      expect(await getNoteById(user, second.id)).toBeNull()
+      expect(await getNoteById(user, reply.id)).toBeNull()
+      expect(await getNoteById(user, other.id)).not.toBeNull()
+    })
+
+    test('returns 0 for no entity ids', async () => {
+      const user = getTestUser()
+
+      expect(await withUserTransaction(user, (tx) => deleteNotesForEntitiesIn(tx, 'activity', []))).toBe(0)
     })
   })
 

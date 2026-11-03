@@ -374,8 +374,22 @@ this section is the difference.
   `merge_pull_request`. `subscribe_pr_activity` on the PR right after opening it, so
   reviews and check suites arrive as events rather than only by polling. Git itself
   goes through a proxy, and a push is accepted for the session's own branch only,
-  which is all this workflow needs. Projects v2 has no tool there, so **the board
-  cannot be read**: work the issue the session was started on.
+  which is all this workflow needs.
+- **The board is read through its own MCP server**, `github-projects` in the repo's
+  `.mcp.json`, which points at GitHub's hosted server's Projects toolset
+  (`https://api.githubcopilot.com/mcp/x/projects/`) and authenticates with
+  `GITHUB_PERSONAL_ACCESS_TOKEN` from the environment's variables. Its three tools are
+  `projects_list` (`list_projects`, `list_project_items` with `field_names` for
+  `Status` and `Priority`, `list_project_fields`, `list_project_views`), `projects_get`
+  and `projects_write` (`update_project_item` with `updated_field` to move an item
+  between columns, `add_project_item`). The kanban is user `fiddur`'s project 2; its
+  items come back in the board's manual order. This is the only route to it: the
+  session proxy replaces the `Authorization` header on `api.github.com` with its own
+  repository-scoped token and refuses GraphQL and every non-repository REST path, so
+  neither `/users/fiddur/projectsV2` nor a GraphQL query reaches GitHub with that token.
+  The token must be a classic one with `read:project` (`project` to move items); a
+  missing or scope-less token shows as "Resource not accessible by personal access
+  token" from `projects_list`, not as a proxy error.
 - **Waiting for CI and for the review is a bounded poll of GitHub** between events, a
   minute or two between reads and a deadline on the loop. CI: `pull_request_read` with
   `get_check_runs`, every run `completed` and `success`. The review: `get_reviews`, and

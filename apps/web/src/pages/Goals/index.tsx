@@ -10,6 +10,7 @@ import { GoalProgressBar } from '../../components/GoalProgressBar'
 import { GoalsSettings } from '../../components/GoalsSettings'
 import { fetchGoalsProgress, fetchUserSettings, type Goal } from '../../state/api'
 import { auth } from '../../state/auth'
+import { newId } from '../../utils/uuid'
 import './style.css'
 
 type WindowedGoal = Exclude<Goal, { goal_type: 'trend' }>
@@ -23,7 +24,7 @@ export function Goals() {
   const openGoalId = query.history
   const range = parseRange(query.range)
   const embed = query.embed === '1'
-  const [initialGoal] = useState(() => goalFromQuery(query, crypto.randomUUID()))
+  const [initialGoal] = useState(() => goalFromQuery(query, query.new ? newId() : ''))
 
   useEffect(() => {
     if (query.new) route(goalsUrl({ embed, range }), true)

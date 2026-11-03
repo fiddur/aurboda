@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest'
 import {
   buildChallengeShareMeta,
   buildDashboardShareMeta,
+  buildExerciseShareMeta,
   buildDefaultShareMeta,
   buildProfileShareMeta,
   defaultOgImage,
@@ -119,6 +120,22 @@ describe('builders', () => {
     })
     expect(m.description.length).toBeLessThanOrEqual(201)
     expect(m.description.endsWith('…')).toBe(true)
+  })
+
+  test('exercise meta uses the name, the progress description and the default image', () => {
+    const m = buildExerciseShareMeta({
+      activityTypeName: 'Strength training',
+      name: 'Bench',
+      url: 'https://aurboda.net/u/fiddur/ex1',
+      username: 'fiddur',
+      value: 'Bench Press',
+      webHost: 'https://aurboda.net/',
+    })
+    expect(m.title).toBe('Bench — Aurboda')
+    expect(m.description).toBe("Bench — fiddur's progress on Aurboda.")
+    expect(m.image).toBe('https://aurboda.net/og-default.png')
+    expect(m.imageAlt).toBe('Aurboda exercise: Bench Press (Strength training)')
+    expect(m.oembedUrl).toBeUndefined()
   })
 
   test('profile meta is of type profile with ProfilePage JSON-LD', () => {

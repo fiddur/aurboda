@@ -153,6 +153,15 @@ describe('GET /u/:username/:slug/opengraph-image.png', () => {
     expect(res.headers.location).toBe('https://aurboda.net/og-default.png')
   })
 
+  test('redirects a shared exercise to the default image', async () => {
+    const resolveExercise = async () => ({ is_public: true, name: 'Bench' })
+    const { app, deps } = buildApp({ resolveExercise } as Partial<OgImageDeps>)
+    const res = await supertest(app).get('/u/fiddur/ex1/opengraph-image.png')
+    expect(res.status).toBe(302)
+    expect(res.headers.location).toBe('https://aurboda.net/og-default.png')
+    expect(deps.renderImage).not.toHaveBeenCalled()
+  })
+
   test('memoises renders across identical requests', async () => {
     const { app, deps } = buildApp({
       resolveDashboard: async () => ({ is_public: true, name: 'Training' }),

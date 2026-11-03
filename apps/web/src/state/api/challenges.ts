@@ -11,6 +11,7 @@ import type {
   DiscoverChallengesResponse,
   PublicChallengeResponse,
   PublicSharedDashboardResponse,
+  PublicSharedExerciseResponse,
   UpdateChallengeBody,
 } from '@aurboda/api-spec'
 
@@ -91,12 +92,17 @@ export const discoverChallenges = async (): Promise<DiscoverChallengesResponse> 
   return res.data
 }
 
-/** Resolve a `/u/:username/:slug` resource — either a shared dashboard or a challenge. */
+type PublicResourceResponse =
+  | PublicSharedDashboardResponse
+  | PublicChallengeResponse
+  | PublicSharedExerciseResponse
+
+/** Resolve a `/u/:username/:slug` resource — a shared dashboard, a challenge or a shared exercise. */
 export const fetchPublicResource = async (
   username: string,
   slug: string,
-): Promise<PublicSharedDashboardResponse | PublicChallengeResponse> => {
-  const res = await axios.get<PublicSharedDashboardResponse | PublicChallengeResponse>(
+): Promise<PublicResourceResponse> => {
+  const res = await axios.get<PublicResourceResponse>(
     `${API_URL}/public/${encodeURIComponent(username)}/${encodeURIComponent(slug)}`,
   )
   return res.data

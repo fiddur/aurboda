@@ -117,6 +117,7 @@ export {
   activityTypeExists,
   deleteActivityTypeDefinition,
   expandActivityTypes,
+  expandAncestorTypes,
   getActivityTypeDefinition,
   getActivityTypeDefinitions,
   getActivityTypeNames,
@@ -158,6 +159,7 @@ export {
   getActivitySourcesByIds,
   getNearbyActivities,
   backfillSuperseded,
+  fetchCategoryMap,
   getOverlappingActivities,
   getOverrideForActivity,
   getSleepSessions,
@@ -262,6 +264,22 @@ export {
   type SharedDashboardRecord,
   updateSharedDashboard,
 } from './shared-dashboards.ts'
+
+export {
+  createSharedExercise,
+  deleteSharedExercise,
+  findSharedExercise,
+  getSharedExerciseById,
+  getSharedExerciseBySlug,
+  isDuplicateSharedExercise,
+  isUnknownSharedExerciseType,
+  listPublicSharedExercises,
+  listSharedExercises,
+  type SharedExerciseInput,
+  type SharedExercisePatch,
+  type SharedExerciseRecord,
+  updateSharedExercise,
+} from './shared-exercises.ts'
 
 export {
   type ChallengeInput,

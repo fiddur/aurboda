@@ -121,6 +121,74 @@ describe('getTrend metric integration', () => {
     })
   })
 
+  describe('calendar days in a timezone', () => {
+    const utcDayKey = (d: Date) => d.toISOString().slice(0, 10)
+    const at = (daysBack: number, hour: number, minute: number) => {
+      const d = new Date()
+      d.setUTCDate(d.getUTCDate() - daysBack)
+      d.setUTCHours(hour, minute, 0, 0)
+      return d
+    }
+
+    test('a metric sample counts for the local day it falls on', async () => {
+      const user = getTestUser()
+      const late = at(3, 23, 30)
+      const early = at(2, 0, 30)
+      await insertTimeSeries(user, [
+        { metric: 'steps', source: 'aurboda', time: late, value: 100 },
+        { metric: 'steps', source: 'aurboda', time: early, value: 200 },
+      ])
+      const stepsTrend = (tz?: string) =>
+        getTrend(user, {
+          aggregation: 'sum',
+          display_period: 'daily',
+          lookback_days: 7,
+          missing_days: 'skip',
+          pattern: 'steps',
+          source_type: 'metric',
+          ...(tz ? { tz } : {}),
+        })
+
+      const local = await stepsTrend('Pacific/Kiritimati')
+      expect(local.history[0]).toEqual({ date: utcDayKey(early), value: 300 })
+
+      const utc = await stepsTrend()
+      expect(utc.history[0]).toEqual({ date: utcDayKey(late), value: 100 })
+      expect(utc.history[1]?.date).toBe(utcDayKey(early))
+    })
+
+    test('an activity counts for the local day it starts on', async () => {
+      const user = getTestUser()
+      const start = at(3, 23, 30)
+      await insertActivity(user, {
+        activity_type: 'strength_training',
+        end_time: new Date(start.getTime() + 600_000),
+        source: 'aurboda',
+        start_time: start,
+      })
+      const strengthTrend = (tz?: string) =>
+        getTrend(user, {
+          aggregation: 'count',
+          display_period: 'daily',
+          lookback_days: 7,
+          pattern: 'strength_training',
+          source_type: 'activity_type',
+          ...(tz ? { tz } : {}),
+        })
+      const valueOn = (history: { date: string; value: number }[], key: string) =>
+        history.find((p) => p.date === key)?.value
+      const utcDay = utcDayKey(start)
+      const nextDay = utcDayKey(at(2, 12, 0))
+
+      const local = await strengthTrend('Pacific/Kiritimati')
+      expect(valueOn(local.history, utcDay)).toBe(0)
+      expect(valueOn(local.history, nextDay)).toBeGreaterThan(0)
+
+      const utc = await strengthTrend()
+      expect(valueOn(utc.history, utcDay)).toBeGreaterThan(0)
+    })
+  })
+
   describe('measure trends (decaying best)', () => {
     const daysAgo = (days: number) => {
       const d = new Date()

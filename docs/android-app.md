@@ -101,8 +101,13 @@ for a dialog that is itself fixed, `%` of the viewport it resolves against)
 rather than `vh`: a `max-height: 90vh` share dialog collapsed to its own padding
 in the app, showing only half its title. `apps/web/src/no-viewport-height-units.test.ts`
 fails on any viewport-height unit in the web CSS outside a short allowlist; the
-allowlisted uses only apply at tablet widths and are tracked in #1356, which also
-has the likely native root cause (the WebView's `WRAP_CONTENT` layout params).
+allowlisted uses only apply at tablet widths and are tracked in #1356.
+
+The likely native root cause is that a WebView created without layout params
+gets `WRAP_CONTENT`, which makes Chromium force a zero layout height.
+`EmbeddedWebScreen` therefore gives the WebView `MATCH_PARENT` layout params
+(what Accompanist's WebView does). Until that is confirmed on a device, the
+injected viewport fix and the `vh` allowlist stay; #1356 tracks dropping them.
 
 ### Soft keyboard
 

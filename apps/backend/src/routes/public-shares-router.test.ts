@@ -11,18 +11,26 @@ import supertest from 'supertest'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import type * as DbModule from '../db/index.ts'
-import type { ChallengeRecord, ChallengeSpecFields } from '../db/index.ts'
+import type { ChallengeRecord, ChallengeSpecFields, SharedExerciseRecord } from '../db/index.ts'
 import type * as FederationModule from '../services/challenge-federation.ts'
 
 import { isValidUsername } from '../api/auth-routes.ts'
 
 vi.mock('../db/index.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof DbModule>()),
+  getActivityTypeDefinition: vi.fn(),
   getChallengeBySlug: vi.fn(),
   getChallengeMemberByIdentity: vi.fn(),
+  getSharedDashboardBySlug: vi.fn(),
+  getSharedExerciseBySlug: vi.fn(),
   listChallengeMembers: vi.fn(),
+  listPublicChallenges: vi.fn(),
+  listPublicSharedDashboards: vi.fn(),
+  listPublicSharedExercises: vi.fn(),
   upsertChallengeMember: vi.fn(),
 }))
+
+vi.mock('../services/shared-exercise-data.ts', () => ({ resolveSharedExerciseData: vi.fn() }))
 
 vi.mock('../services/challenge-federation.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof FederationModule>()),
@@ -31,6 +39,7 @@ vi.mock('../services/challenge-federation.ts', async (importOriginal) => ({
 
 const db = await import('../db/index.ts')
 const federation = await import('../services/challenge-federation.ts')
+const exerciseData = await import('../services/shared-exercise-data.ts')
 const { createPublicSharesRouter, sanitizeConfig } = await import('./public-shares-router.ts')
 
 describe('isValidUsername (public DB-selecting gate)', () => {
@@ -211,5 +220,75 @@ describe('POST /public/:username/:slug/members (register-back)', () => {
     vi.mocked(db.getChallengeBySlug).mockResolvedValue(challenge(hoursSpec))
     vi.mocked(federation.fetchMemberData).mockResolvedValue({ buckets: [], success: true, total: 2.5 })
     expect((await register()).status).toBe(200)
+  })
+})
+
+describe('shared exercises on the public surface', () => {
+  const exercise: SharedExerciseRecord = {
+    activity_type: 'strength_training',
+    created_at: new Date('2026-10-01T00:00:00Z'),
+    field: 'sets.exercise',
+    id: 'e1',
+    is_public: true,
+    name: 'Bench',
+    slug: 'ex1',
+    updated_at: new Date('2026-10-01T00:00:00Z'),
+    value: 'Bench Press',
+  }
+  const data = { done: null, history: [], per_week: null, records: [], trend: null }
+  const app = () => {
+    const a = express()
+    a.use(createPublicSharesRouter('https://aurboda.net') as unknown as express.RequestHandler)
+    return supertest(a)
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(db.getSharedDashboardBySlug).mockResolvedValue(null)
+    vi.mocked(db.getChallengeBySlug).mockResolvedValue(null)
+    vi.mocked(db.getSharedExerciseBySlug).mockResolvedValue(exercise)
+    vi.mocked(exerciseData.resolveSharedExerciseData).mockResolvedValue(data)
+  })
+
+  test('a slug that is neither a dashboard nor a challenge resolves to the exercise', async () => {
+    vi.mocked(db.getActivityTypeDefinition).mockResolvedValue({
+      display_name: 'Strength training',
+    } as Awaited<ReturnType<typeof db.getActivityTypeDefinition>>)
+    const res = await app().get('/public/alice/ex1')
+    expect(res.status).toBe(200)
+    expect(res.headers['cache-control']).toBe('public, max-age=60')
+    expect(res.body).toEqual({
+      activity_type: 'strength_training',
+      activity_type_name: 'Strength training',
+      data,
+      name: 'Bench',
+      profile_url: 'https://aurboda.net/u/alice',
+      share_url: 'https://aurboda.net/u/alice/ex1',
+      success: true,
+      type: 'exercise',
+      value: 'Bench Press',
+    })
+    expect(exerciseData.resolveSharedExerciseData).toHaveBeenCalledWith('alice', exercise)
+  })
+
+  test('the type name falls back to the type when it has no definition', async () => {
+    vi.mocked(db.getActivityTypeDefinition).mockResolvedValue(null)
+    const res = await app().get('/public/alice/ex1')
+    expect(res.body.activity_type_name).toBe('strength_training')
+  })
+
+  test('an unknown slug is still a 404', async () => {
+    vi.mocked(db.getSharedExerciseBySlug).mockResolvedValue(null)
+    expect((await app().get('/public/alice/nope')).status).toBe(404)
+  })
+
+  test('the profile lists public exercises next to dashboards', async () => {
+    vi.mocked(db.listPublicSharedDashboards).mockResolvedValue([])
+    vi.mocked(db.listPublicChallenges).mockResolvedValue([])
+    vi.mocked(db.listPublicSharedExercises).mockResolvedValue([exercise])
+    const res = await app().get('/public/alice/dashboards')
+    expect(res.body.exercises).toEqual([
+      { name: 'Bench', share_url: 'https://aurboda.net/u/alice/ex1', slug: 'ex1' },
+    ])
   })
 })

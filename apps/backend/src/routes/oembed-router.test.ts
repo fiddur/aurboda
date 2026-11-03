@@ -73,6 +73,15 @@ describe('GET /oembed', () => {
     expect(res.body.thumbnail_url).toBe('https://aurboda.net/u/fiddur/opengraph-image.png')
   })
 
+  test('404 for a shared exercise, which has no oEmbed', async () => {
+    const resolveExercise = async () => ({ is_public: true, name: 'Bench' })
+    const res = await get(
+      buildApp({ resolveExercise } as Partial<OEmbedDeps>),
+      'https://aurboda.net/u/fiddur/ex1',
+    )
+    expect(res.status).toBe(404)
+  })
+
   test('404 for a missing profile', async () => {
     expect((await get(buildApp(), 'https://aurboda.net/u/ghost')).status).toBe(404)
   })

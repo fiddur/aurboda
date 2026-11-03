@@ -11,6 +11,7 @@ import {
   importAwCategories,
   recategorizeScreentime,
 } from '../../state/api'
+import { newId } from '../../utils/uuid'
 import './style.css'
 
 interface TreeNode {
@@ -195,7 +196,7 @@ export function ScreentimeCategoriesSettings() {
   const flat = flattenTree(tree)
 
   const handleAddCategory = () => {
-    const id = crypto.randomUUID()
+    const id = newId()
     location.href = `/screentime-categories/${id}`
   }
 

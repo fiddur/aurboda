@@ -52,6 +52,8 @@ Location updates are stored with:
 - Velocity
 - Regions (geofences the device is currently in)
 
+Each location push re-evaluates [deduction rules](./features/deduction-rules.md) around that point, so a rule with a `location` condition follows the phone in near real time.
+
 ### Waypoint (`_type: "waypoint"`)
 
 Waypoints/geofences are stored as places with:

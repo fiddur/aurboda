@@ -121,7 +121,7 @@ The Garmin sleep date comes from the client record id plus the offset in the rec
 
 The provider's own sync then upserts onto the **same row** (`ON CONFLICT (source, external_id)`) and enriches it: Gravl adds the sets, Garmin adds distance/calories/HR and the per-second detail. Rows written before this existed (no `external_id`) are claimed rather than duplicated: a `garmin` row with the same `garmin_activity_id`, a `health_connect` row with the same client record, or one at the same type and start time.
 
-Each recognised session also enqueues a **source enrichment** job so the provider is asked for that session right away instead of at the next poll (one minute delay, retried with backoff; Garmin jobs collapse to one sync per kind per user). A Garmin activity job also retries while Garmin has not served the activity's detail yet (the row has no `data.detail_synced`), and a detail that lands later refreshes any existing share of the activity (see [Garmin](./garmin.md#auto-sync)). Health Connect deletions only remove `health_connect` rows; a re-sourced row belongs to its provider and stays — though the provider itself can still drop it: Gravl removes its copy of a session its API reports as `External`, a round-trip of another app's session (see [Gravl](./gravl.md#what-is-deliberately-not-imported)). Nothing is merged or deleted retroactively — pairs that existed before are still hidden by the query-time cross-source merge.
+Each recognised session also enqueues a **source enrichment** job so the provider is asked for that session right away instead of at the next poll (one minute delay, retried with backoff; Garmin jobs collapse to one sync per kind per user). A Garmin activity job also retries while Garmin has not served the activity's detail yet (the row has no `data.detail_synced`), and a detail that lands later refreshes any existing share of the activity (see [Garmin](./garmin.md#auto-sync)). Health Connect deletions only remove `health_connect` rows, and a deleted session takes its notes with it (the synced note and any comments and replies on it); a re-sourced row belongs to its provider and stays — though the provider itself can still drop it: Gravl removes its copy of a session its API reports as `External`, a round-trip of another app's session (see [Gravl](./gravl.md#what-is-deliberately-not-imported)). Nothing is merged or deleted retroactively — pairs that existed before are still hidden by the query-time cross-source merge.
 
 ### Activity notes
 
@@ -130,6 +130,7 @@ Each recognised session also enqueues a **source enrichment** job so the provide
 - The same `notes` table also holds user-typed text and synced notes from other sources (Oura, etc.). Each row's `source` column distinguishes them — user-authored rows have `source IS NULL`.
 - Outbound HC sync (aurboda activity → Health Connect) only serializes user-authored notes into the HC record's `notes` field, joined with newlines. HC-sourced notes are deliberately skipped so a round-tripped record doesn't echo its own note back as "user input".
 - Re-syncing an HC record is idempotent: the same `(entity_id, source='health_connect')` row is upserted, not duplicated.
+- An empty `notes` value, or the literal string `"null"` (which Waking Up writes for a session without notes), is not stored as a note.
 
 ### Chunking
 

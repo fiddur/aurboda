@@ -22,7 +22,6 @@ This starts:
 
 - **aurboda** (web frontend + API) on port 8080
 - **postgres** (PostGIS) on port 5432
-- **watchtower** for automatic updates
 
 3. Open the web frontend at `http://localhost:8080` and register your first user.
 
@@ -93,6 +92,14 @@ rm docker-compose.yml.bak
 # Start services
 docker compose up -d
 ```
+
+### Updating
+
+`fiddur/aurboda:latest` only moves when a release merges to `main`. Upgrade with
+`docker compose pull && docker compose up -d`. The compose file no longer bundles Watchtower: the
+original `containrrr/watchtower` speaks Docker API 1.25, which current Docker daemons reject. For
+automatic updates, run the maintained fork, [`nickfedor/watchtower`](https://github.com/nicholas-fedor/watchtower),
+which polls for a new `:latest` and restarts `aurboda` on it.
 
 ### Using existing PostgreSQL
 

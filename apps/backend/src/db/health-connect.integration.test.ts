@@ -13,6 +13,7 @@ import {
   processHealthConnectBatch,
   processHealthConnectData,
 } from './health-connect.ts'
+import { insertNote } from './notes.ts'
 import { deleteTimeSeriesPoint, getTimeSeries, insertTimeSeries } from './time-series.ts'
 
 const CONTAINER_TIMEOUT = 120_000
@@ -158,9 +159,7 @@ describe('Health Connect Integration Tests', () => {
         steps('2024-01-10T13:00:00Z', 7000, 'aurboda'),
         steps('2024-01-10T14:00:00Z', 90000, 'garmin'),
         // 2024-01-11 has no rows
-        // The single-day window ends before 23:59:59.999, also on days inside the range
         steps('2024-01-12T23:59:59.998Z', 4000, 'aurboda'),
-        steps('2024-01-12T23:59:59.999Z', 80000, 'aurboda'),
         steps('2024-01-13T06:00:00Z', 3000, 'health_connect_aggregate'),
         steps('2024-01-13T07:00:00Z', 6000, 'health_connect_aggregate'),
         steps('2024-01-14T22:00:00Z', 2500, 'aurboda'),
@@ -228,6 +227,43 @@ describe('Health Connect Integration Tests', () => {
         ['2024-01-11', 200],
       ])
     })
+
+    test('a day runs to the next local midnight, its last millisecond included', async () => {
+      const user = getTestUser()
+      await insertTimeSeries(user, [
+        { metric: 'steps', source: 'aurboda', time: new Date('2024-01-12T23:59:59.999Z'), value: 80000 },
+        { metric: 'steps', source: 'aurboda', time: new Date('2024-01-13T00:00:00Z'), value: 10 },
+      ])
+
+      const result = await getDailyAggregateValues(
+        user,
+        'steps',
+        new Date('2024-01-12T00:00:00Z'),
+        new Date('2024-01-12T12:00:00Z'),
+      )
+      expect([...result.entries()]).toEqual([['2024-01-12', 80000]])
+    })
+
+    test('a 25-hour fall-back day keeps its last local hour', async () => {
+      const user = getTestUser()
+      await insertTimeSeries(user, [
+        {
+          metric: 'steps',
+          source: 'health_connect_aggregate',
+          time: new Date('2026-10-25T22:30:00Z'),
+          value: 4321,
+        },
+      ])
+
+      const result = await getDailyAggregateValues(
+        user,
+        'steps',
+        new Date('2026-10-25T12:00:00Z'),
+        new Date('2026-10-25T12:00:00Z'),
+        'Europe/Stockholm',
+      )
+      expect([...result.entries()]).toEqual([['2026-10-25', 4321]])
+    })
   })
 
   describe('deleteHealthConnectRecords', () => {
@@ -285,6 +321,42 @@ describe('Health Connect Integration Tests', () => {
 
       const activitiesAfter = await query(user, `SELECT * FROM activities WHERE source = 'health_connect'`)
       expect(activitiesAfter.rows).toHaveLength(0)
+    })
+
+    const walk = {
+      endTime: '2024-01-15T11:00:00Z',
+      exerciseType: 79,
+      metadata: { id: 'hc-ex-1' },
+      startTime: '2024-01-15T10:00:00Z',
+      title: 'HC walk',
+    }
+
+    test('deletes an exercise session stored under its exercise subtype (#1347)', async () => {
+      const user = getTestUser()
+
+      await processHealthConnectData(user, 'ExerciseSessionRecord', walk)
+
+      const before = await query(user, `SELECT activity_type FROM activities WHERE source = 'health_connect'`)
+      expect(before.rows).toEqual([{ activity_type: 'walking' }])
+
+      expect(await deleteHealthConnectRecords(user, ['hc-ex-1'])).toBe(1)
+
+      const after = await query(user, `SELECT id FROM activities WHERE source = 'health_connect'`)
+      expect(after.rows).toHaveLength(0)
+    })
+
+    test('deletes a batch-synced exercise session stored under its exercise subtype (#1347)', async () => {
+      const user = getTestUser()
+
+      await processHealthConnectBatch(user, 'ExerciseSessionRecord', [walk])
+
+      const before = await query(user, `SELECT activity_type FROM activities WHERE source = 'health_connect'`)
+      expect(before.rows).toEqual([{ activity_type: 'walking' }])
+
+      expect(await deleteHealthConnectRecords(user, ['hc-ex-1'])).toBe(1)
+
+      const after = await query(user, `SELECT id FROM activities WHERE source = 'health_connect'`)
+      expect(after.rows).toHaveLength(0)
     })
 
     test('handles batch deletions', async () => {
@@ -527,6 +599,48 @@ describe('Health Connect Integration Tests', () => {
 
       const rows = await query(user, `SELECT * FROM activities WHERE source = 'health_connect'`)
       expect(rows.rows).toHaveLength(0)
+    })
+
+    test('deleting the Health Connect record removes its synced note (#1348)', async () => {
+      const user = getTestUser()
+
+      await processHealthConnectBatch(user, 'MindfulnessSessionRecord', [
+        mindfulnessSession({ notes: 'Felt calm' }),
+      ])
+      const activity = await query(user, `SELECT id FROM activities WHERE source = 'health_connect'`)
+      const activityId = activity.rows[0].id as string
+      const before = await query(
+        user,
+        `SELECT content, source FROM notes WHERE entity_type = 'activity' AND entity_id = $1`,
+        [activityId],
+      )
+      expect(before.rows).toEqual([{ content: 'Felt calm', source: 'health_connect' }])
+
+      expect(await deleteHealthConnectRecords(user, ['hc-mind-1'])).toBe(1)
+
+      const after = await query(
+        user,
+        `SELECT id FROM notes WHERE entity_type = 'activity' AND entity_id = $1`,
+        [activityId],
+      )
+      expect(after.rows).toEqual([])
+    })
+
+    test('deleting the Health Connect record removes user comments and replies on it too', async () => {
+      const user = getTestUser()
+
+      await processHealthConnectBatch(user, 'MindfulnessSessionRecord', [
+        mindfulnessSession({ notes: 'Felt calm' }),
+      ])
+      const activity = await query(user, `SELECT id FROM activities WHERE source = 'health_connect'`)
+      const activityId = activity.rows[0].id as string
+      const comment = await insertNote(user, 'activity', activityId, 'Great session')
+      await insertNote(user, 'note', comment.id, 'Agreed')
+
+      expect(await deleteHealthConnectRecords(user, ['hc-mind-1'])).toBe(1)
+
+      const remaining = await query(user, `SELECT id FROM notes`)
+      expect(remaining.rows).toEqual([])
     })
 
     test('merges with an overlapping Garmin meditation into one activity', async () => {

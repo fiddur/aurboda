@@ -23,6 +23,7 @@ import type { ActivityNotifier, DeductionQueue } from './services/deduction-queu
 import type { ReactionActions } from './services/feed-reactions.ts'
 import type { FollowerActions } from './services/followers.ts'
 import type { FollowActions } from './services/following.ts'
+import type { NamedLocationsChanged } from './services/locations.ts'
 import type { SyncProvider } from './services/queries/index.ts'
 import type { HrSettingsChanged } from './services/settings.ts'
 import type { StravaQueue } from './services/strava-queue.ts'
@@ -51,6 +52,7 @@ import { registerScreentimeCategoryTools } from './mcp/screentime-category-tools
 import { registerSensitivityTools } from './mcp/sensitivity-tools.ts'
 import { registerSettingsTools } from './mcp/settings-tools.ts'
 import { registerSharedDashboardTools } from './mcp/shared-dashboard-tools.ts'
+import { registerSharedExerciseTools } from './mcp/shared-exercise-tools.ts'
 import { registerSyncTools } from './mcp/sync-tools.ts'
 import { installToolCatalogue } from './mcp/tool-catalogue.ts'
 import { registerTrainingLoadTools } from './mcp/training-load-tools.ts'
@@ -106,6 +108,7 @@ interface McpDeps {
   garmin?: GarminClient
   gravl?: GravlClient
   onActivityMutated?: ActivityNotifier
+  onNamedLocationsChanged?: NamedLocationsChanged
   /** Fire-and-forget: recompute activity features after HR zones, birth date or maf_hr change. */
   onHrSettingsChanged?: HrSettingsChanged
   onActivityDetailSynced?: DetailSyncedCallback
@@ -147,7 +150,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     deps.onTrackWritten,
   )
   registerSettingsTools(server, user, deps.onHrSettingsChanged)
-  registerLocationTools(server, user)
+  registerLocationTools(server, user, deps.onNamedLocationsChanged)
   registerCorrelationTools(server, user, deps.sync)
   registerTrainingLoadTools(server, user)
   registerTrendTools(server, user)
@@ -163,6 +166,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   registerReportTools(server, user)
   registerRouteTools(server, user)
   registerSharedDashboardTools(server, user)
+  registerSharedExerciseTools(server, user, deps.webHost)
   registerFeedTools(server, user, {
     apiBaseUrl: deps.apiBaseUrl,
     deliver: deps.feedDeliver,

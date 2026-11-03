@@ -10,10 +10,18 @@ import {
   removeFeedPostReaction,
   removeFeedPostReactionByActivity,
   removeFeedReaction,
+  removeOrphanedFeedReactions,
   updateFeedPostReactionPresentation,
   upsertFeedPostReaction,
 } from './feed-reactions.ts'
 import { createFeedPost, deleteFeedPost } from './feed.ts'
+import {
+  deleteBoostEntry,
+  deleteTimelineEntriesByActor,
+  deleteTimelineEntryByUri,
+  type TimelineEntryInput,
+  upsertTimelineEntry,
+} from './timeline.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 const NOTE = 'https://mastodon.example/notes/1'
@@ -27,6 +35,21 @@ const reaction = () => ({
   object_uri: NOTE,
   shared_inbox_uri: 'https://mastodon.example/inbox',
 })
+
+const CAROL = 'https://third.example/users/carol'
+const BOB_ANNOUNCE = `${BOB}/statuses/9/activity`
+const CAROL_ANNOUNCE = `${CAROL}/statuses/3/activity`
+
+const aliceNote = (overrides: Partial<TimelineEntryInput> = {}): TimelineEntryInput => ({
+  actor_uri: ALICE,
+  content: '<p>hello</p>',
+  object_uri: NOTE,
+  published_at: new Date('2026-07-01T10:00:00Z'),
+  ...overrides,
+})
+
+const boostOfAliceNote = (booster: string, announceUri: string): TimelineEntryInput =>
+  aliceNote({ boost_of_uri: NOTE, boosted_by_actor_uri: booster, object_uri: announceUri })
 
 const post = (user: string) =>
   createFeedPost(user, {
@@ -100,6 +123,77 @@ describe('Feed reaction stores integration', () => {
       expect(rows).toContainEqual({ kind: 'like', object_uri: NOTE })
       expect(rows).toContainEqual({ kind: 'announce', object_uri: `${NOTE}-other` })
       expect(await listFeedReactionsForObjects(user, [])).toEqual([])
+    })
+  })
+
+  describe('feed_reaction cleanup when the reacted-to Note leaves the timeline', () => {
+    test('an author Delete of a liked Note removes the reaction', async () => {
+      const user = getTestUser()
+      await upsertTimelineEntry(user, aliceNote())
+      await upsertTimelineEntry(user, boostOfAliceNote(BOB, BOB_ANNOUNCE))
+      await insertFeedReaction(user, reaction())
+      await insertFeedReaction(user, { ...reaction(), kind: 'announce' })
+
+      expect(await deleteTimelineEntryByUri(user, NOTE, ALICE)).toBe(true)
+      expect(await listFeedReactionsForObjects(user, [NOTE])).toEqual([])
+    })
+
+    test('a Delete by someone other than the author leaves the reaction', async () => {
+      const user = getTestUser()
+      await upsertTimelineEntry(user, aliceNote())
+      await insertFeedReaction(user, reaction())
+
+      expect(await deleteTimelineEntryByUri(user, NOTE, BOB)).toBe(false)
+      expect(await getFeedReaction(user, 'like', NOTE)).not.toBeNull()
+    })
+
+    test('unfollowing removes reactions to the actor’s posts but keeps one still boosted in by someone else', async () => {
+      const user = getTestUser()
+      const aliceOther = `${NOTE}-other`
+      await upsertTimelineEntry(user, aliceNote())
+      await upsertTimelineEntry(user, boostOfAliceNote(CAROL, CAROL_ANNOUNCE))
+      await upsertTimelineEntry(user, aliceNote({ object_uri: aliceOther }))
+      await insertFeedReaction(user, reaction())
+      await insertFeedReaction(user, { ...reaction(), object_uri: aliceOther })
+
+      expect(await deleteTimelineEntriesByActor(user, ALICE)).toBe(2)
+      expect(await getFeedReaction(user, 'like', NOTE)).not.toBeNull()
+      expect(await getFeedReaction(user, 'like', aliceOther)).toBeNull()
+    })
+
+    test('unfollowing a booster removes the reaction to a Note only they boosted in', async () => {
+      const user = getTestUser()
+      await upsertTimelineEntry(user, boostOfAliceNote(BOB, BOB_ANNOUNCE))
+      await insertFeedReaction(user, reaction())
+
+      expect(await deleteTimelineEntriesByActor(user, BOB)).toBe(1)
+      expect(await getFeedReaction(user, 'like', NOTE)).toBeNull()
+    })
+
+    test('an Undo of one boost keeps the reaction while a direct entry remains', async () => {
+      const user = getTestUser()
+      await upsertTimelineEntry(user, aliceNote())
+      await upsertTimelineEntry(user, boostOfAliceNote(BOB, BOB_ANNOUNCE))
+      await insertFeedReaction(user, reaction())
+
+      expect(await deleteBoostEntry(user, BOB_ANNOUNCE, BOB)).toBe(true)
+      expect(await getFeedReaction(user, 'like', NOTE)).not.toBeNull()
+    })
+
+    test('an Undo of the Note’s only boost card removes the reaction', async () => {
+      const user = getTestUser()
+      await upsertTimelineEntry(user, boostOfAliceNote(BOB, BOB_ANNOUNCE))
+      await insertFeedReaction(user, reaction())
+
+      expect(await deleteBoostEntry(user, BOB_ANNOUNCE, BOB)).toBe(true)
+      expect(await getFeedReaction(user, 'like', NOTE)).toBeNull()
+    })
+
+    test('removeOrphanedFeedReactions with an empty list removes nothing', async () => {
+      const user = getTestUser()
+      await insertFeedReaction(user, reaction())
+      expect(await removeOrphanedFeedReactions(user, [])).toBe(0)
+      expect(await getFeedReaction(user, 'like', NOTE)).not.toBeNull()
     })
   })
 

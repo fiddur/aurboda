@@ -1,6 +1,7 @@
 import { getTrendQuerySchema } from '@aurboda/api-spec'
 
 import { getCustomMetrics } from '../services/mutations.ts'
+import { getUserTimezone } from '../services/settings.ts'
 import { getTrend } from '../services/trends.ts'
 import { jsonResponse, type McpServer } from './helpers.ts'
 
@@ -41,6 +42,7 @@ Common half-life values:
       pattern,
       source_type,
       tag_definition_id,
+      tz,
     }) => {
       try {
         const customMetrics = await getCustomMetrics(user)
@@ -59,6 +61,7 @@ Common half-life values:
           pattern: pattern ?? '',
           source_type,
           tag_definition_id,
+          tz: tz ?? (await getUserTimezone(user)),
         })
         return jsonResponse({ data: result, success: true })
       } catch (error) {

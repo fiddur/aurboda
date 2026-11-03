@@ -21,6 +21,26 @@ export const socialTables: Record<string, string> = {
       ON shared_dashboards (is_public, created_at DESC)
   `,
 
+  // One item value of one activity type (an exercise) published by this user.
+  shared_exercises: `
+    CREATE TABLE IF NOT EXISTS shared_exercises (
+      id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      slug          VARCHAR(32) NOT NULL UNIQUE,
+      activity_type VARCHAR(100) NOT NULL REFERENCES activity_type_definitions(name) ON UPDATE CASCADE ON DELETE CASCADE,
+      field         TEXT NOT NULL,
+      value         TEXT NOT NULL,
+      name          TEXT NOT NULL,
+      is_public     BOOLEAN NOT NULL DEFAULT false,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CONSTRAINT shared_exercises_item_key UNIQUE (activity_type, field, value)
+    )
+  `,
+  shared_exercises_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_shared_exercises_public
+      ON shared_exercises (is_public, created_at DESC)
+  `,
+
   // Challenges hosted by this user (federated competitions).
   challenges: `
     CREATE TABLE IF NOT EXISTS challenges (
@@ -78,6 +98,10 @@ export const socialTables: Record<string, string> = {
   `,
   challenge_members_indexes: `
     CREATE INDEX IF NOT EXISTS idx_challenge_members_challenge ON challenge_members (challenge_id)
+  `,
+  // The member's ActivityPub actor id, given on a QuantPub HTTP join. Additive (idempotent).
+  challenge_members_actor_column: `
+    ALTER TABLE challenge_members ADD COLUMN IF NOT EXISTS actor TEXT;
   `,
 
   // The host-set banner image of a challenge, apart from `challenges` so listing
