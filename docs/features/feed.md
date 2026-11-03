@@ -1001,6 +1001,10 @@ retraction needs no actor re-resolve — the uniqueness is what makes liking ide
 duplicating, with the remote activity's own id (`activity_uri`) so a bare-id `Undo` still
 matches, and an index on `(post_id, created_at DESC)`. `post_id` is a **soft reference** like
 `activity_id`, so `deleteFeedPost` drops the post's reactions in the same statement.
+A `feed_reaction` row goes when its post leaves the timeline altogether (the author's `Delete`,
+an unfollow, or an `Undo{Announce}` of the post's last boost card), while a direct entry or
+another boost of it keeps the row. `feed_post_reaction` is kept unbounded by design: it is the
+record of who reacted to the user's own posts, and goes only with the post or an `Undo`.
 
 ## Caveats & limitations
 
