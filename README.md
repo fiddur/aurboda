@@ -235,7 +235,6 @@ This starts:
 
 - **aurboda** (web + API) on port 8080
 - **PostgreSQL** with PostGIS
-- **Watchtower** -- polls Docker Hub once a day and automatically pulls/restarts the `aurboda` container when a new image is published. Convenient, but if you'd rather control your own update cadence, remove the `watchtower` service from `docker-compose.yml` before starting.
 
 ### Creating Your User
 
@@ -254,6 +253,18 @@ After creating your user, switch signup to `invite_only` or `closed` from the in
 ### Port Configuration
 
 To change default port, modify `"8080:80"` to `"YOUR_PORT:80"` in docker-compose.yml.
+
+### Updating
+
+`:latest` is the released state, built from `main` on each release. To upgrade:
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+For automatic updates, run [Watchtower](https://github.com/nicholas-fedor/watchtower) (the maintained
+fork; the original `containrrr/watchtower` no longer works with current Docker) next to the stack. It
+pulls and restarts `aurboda` whenever a new `:latest` release is published.
 
 ### Development Builds
 
