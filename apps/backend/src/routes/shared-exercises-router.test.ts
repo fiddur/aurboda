@@ -95,6 +95,17 @@ describe('shared exercises router', () => {
     expect(res.body).toEqual({ error: 'This exercise is already shared', success: false })
   })
 
+  test('answers 404 when the activity type does not exist', async () => {
+    vi.mocked(db.createSharedExercise).mockRejectedValue(
+      Object.assign(new Error('fk'), { code: '23503', constraint: 'shared_exercises_activity_type_fkey' }),
+    )
+    const res = await buildApp()
+      .post('/shared-exercises')
+      .send({ activity_type: 'nope', field: 'sets.exercise', value: 'Bench Press' })
+    expect(res.status).toBe(404)
+    expect(res.body).toEqual({ error: 'Activity type not found', success: false })
+  })
+
   test('rejects an invalid item path', async () => {
     const res = await buildApp()
       .post('/shared-exercises')

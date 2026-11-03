@@ -261,7 +261,9 @@ the `shared_dashboards` table. The `slug` is unique per database; the `username`
 the URL disambiguates globally, so no central slug index is needed. Deleting a
 shared dashboard immediately makes its slug return 404. Shared exercises are in
 `shared_exercises` (`activity_type`, `field`, `value`, unique together), and a new
-one's slug is checked free against dashboards and challenges.
+one's slug is checked free against dashboards and challenges. `activity_type`
+references `activity_type_definitions` with cascading update and delete, so renaming
+a custom type carries its shares along and deleting the type removes them.
 
 ## Related
 

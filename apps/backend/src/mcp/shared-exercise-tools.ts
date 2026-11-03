@@ -5,6 +5,7 @@ import {
   createSharedExercise,
   deleteSharedExercise,
   isDuplicateSharedExercise,
+  isUnknownSharedExerciseType,
   listSharedExercises,
   updateSharedExercise,
 } from '../db/index.ts'
@@ -40,6 +41,7 @@ export const registerSharedExerciseTools = (server: McpServer, user: string, web
         return jsonResponse(serialize(record))
       } catch (error) {
         if (isDuplicateSharedExercise(error)) return errorResponse('This exercise is already shared')
+        if (isUnknownSharedExerciseType(error)) return errorResponse('Activity type not found')
         throw error
       }
     },

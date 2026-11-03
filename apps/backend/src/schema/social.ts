@@ -26,7 +26,7 @@ export const socialTables: Record<string, string> = {
     CREATE TABLE IF NOT EXISTS shared_exercises (
       id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       slug          VARCHAR(32) NOT NULL UNIQUE,
-      activity_type TEXT NOT NULL,
+      activity_type VARCHAR(100) NOT NULL REFERENCES activity_type_definitions(name) ON UPDATE CASCADE ON DELETE CASCADE,
       field         TEXT NOT NULL,
       value         TEXT NOT NULL,
       name          TEXT NOT NULL,

@@ -14,6 +14,7 @@ import {
   deleteSharedExercise,
   getSharedExerciseById,
   isDuplicateSharedExercise,
+  isUnknownSharedExerciseType,
   listSharedExercises,
   updateSharedExercise,
 } from '../db/index.ts'
@@ -51,6 +52,9 @@ export const createSharedExercisesRouter = (authMiddleware: RequestHandler, webH
       } catch (error) {
         if (isDuplicateSharedExercise(error)) {
           return res.status(409).json({ error: 'This exercise is already shared', success: false })
+        }
+        if (isUnknownSharedExerciseType(error)) {
+          return res.status(404).json({ error: 'Activity type not found', success: false })
         }
         throw error
       }

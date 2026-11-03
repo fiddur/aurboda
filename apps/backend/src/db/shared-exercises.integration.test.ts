@@ -2,12 +2,18 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import {
+  deleteActivityTypeDefinition,
+  insertActivityTypeDefinition,
+  renameActivityTypeDefinition,
+} from './activity-type-definitions.ts'
+import {
   createSharedExercise,
   deleteSharedExercise,
   findSharedExercise,
   getSharedExerciseById,
   getSharedExerciseBySlug,
   isDuplicateSharedExercise,
+  isUnknownSharedExerciseType,
   listPublicSharedExercises,
   listSharedExercises,
   type SharedExerciseInput,
@@ -98,5 +104,32 @@ describe('Shared exercises integration', () => {
     expect(await deleteSharedExercise(user, created.id)).toBe(true)
     expect(await getSharedExerciseBySlug(user, created.slug)).toBeNull()
     expect(await deleteSharedExercise(user, created.id)).toBe(false)
+  })
+
+  test('rejects an activity type that does not exist', async () => {
+    const user = getTestUser()
+    const error = await createSharedExercise(user, { ...input('Bench Press'), activity_type: 'nope' }).catch(
+      (e: unknown) => e,
+    )
+    expect(isUnknownSharedExerciseType(error)).toBe(true)
+    expect(isDuplicateSharedExercise(error)).toBe(false)
+  })
+
+  test('follows a renamed activity type and goes with a deleted one', async () => {
+    const user = getTestUser()
+    await insertActivityTypeDefinition(user, {
+      display_category: 'exercise',
+      display_name: 'Kettlebell',
+      name: 'kettlebell',
+    })
+    const created = await createSharedExercise(user, { ...input('Swing'), activity_type: 'kettlebell' })
+
+    expect(await renameActivityTypeDefinition(user, 'kettlebell', 'kettlebells')).not.toBeNull()
+    expect((await getSharedExerciseBySlug(user, created.slug))?.activity_type).toBe('kettlebells')
+    expect((await findSharedExercise(user, 'kettlebells', 'sets.exercise', 'Swing'))?.id).toBe(created.id)
+    expect(await findSharedExercise(user, 'kettlebell', 'sets.exercise', 'Swing')).toBeNull()
+
+    expect(await deleteActivityTypeDefinition(user, 'kettlebells')).toBe(true)
+    expect(await getSharedExerciseBySlug(user, created.slug)).toBeNull()
   })
 })

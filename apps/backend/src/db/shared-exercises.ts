@@ -54,6 +54,10 @@ const isUniqueViolation = (error: unknown): error is PgError =>
 export const isDuplicateSharedExercise = (error: unknown): boolean =>
   isUniqueViolation(error) && error.constraint === ITEM_CONSTRAINT
 
+/** The error `createSharedExercise` throws when the activity type does not exist. */
+export const isUnknownSharedExerciseType = (error: unknown): boolean =>
+  error instanceof Error && (error as PgError).code === '23503'
+
 export const listSharedExercises = async (user: string): Promise<SharedExerciseRecord[]> => {
   const result = await query<SharedExerciseRecord>(
     user,

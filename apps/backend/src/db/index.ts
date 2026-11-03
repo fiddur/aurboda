@@ -272,6 +272,7 @@ export {
   getSharedExerciseById,
   getSharedExerciseBySlug,
   isDuplicateSharedExercise,
+  isUnknownSharedExerciseType,
   listPublicSharedExercises,
   listSharedExercises,
   type SharedExerciseInput,
