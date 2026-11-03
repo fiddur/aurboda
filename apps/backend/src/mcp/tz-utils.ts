@@ -1,8 +1,4 @@
 /**
- * Uses Temporal API for DST-correct timezone conversion.
- */
-
-/**
  * Format a UTC Date as an ISO 8601 string with the correct offset for the given timezone.
  * E.g. formatInTz(new Date('2024-01-15T14:30:00Z'), 'Europe/Stockholm') => '2024-01-15T15:30:00+01:00'
  */

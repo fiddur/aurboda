@@ -20,6 +20,7 @@ import {
   type MealFoodItemLink,
 } from '../../db/index.ts'
 import { dateOnlyToRange } from '../../mcp/tz-utils.ts'
+import { dayKey } from '../day-keys.ts'
 import { withDerivedNutrients } from '../derived-nutrients.ts'
 
 export interface MealPeriodSummaryInput {
@@ -44,29 +45,6 @@ const inclusiveDayCount = (startDate: string, endDate: string): number => {
 }
 
 const round2 = (n: number): number => Math.round(n * 100) / 100
-
-/**
- * One-formatter-per-tz cache. `Intl.DateTimeFormat` is non-trivial to
- * construct (locale data lookup); a 90-day window with dozens of meals would
- * otherwise allocate a fresh formatter for every meal.
- */
-const dateKeyFormatterCache = new Map<string, Intl.DateTimeFormat>()
-
-const getDateKeyFormatter = (tz: string): Intl.DateTimeFormat => {
-  return dateKeyFormatterCache.getOrInsertComputed(
-    tz,
-    () =>
-      new Intl.DateTimeFormat('sv-SE', {
-        timeZone: tz,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-      }),
-  )
-}
-
-/** Convert a UTC Date to its local YYYY-MM-DD key for the given tz. */
-const localDateKey = (d: Date, tz: string): string => getDateKeyFormatter(tz).format(d)
 
 const aggregateNutrients = (rows: Record<string, unknown>[]): Map<string, number> => {
   const totals = new Map<string, number>()
@@ -120,8 +98,8 @@ const accumulateDayTotals = (
         ? aggregateNutrients(links as unknown as Record<string, unknown>[])
         : aggregateNutrients([mealLevelNutrients(meal)])
     if (links.length === 0 && mealTotals.size === 0) continue
-    const dayKey = localDateKey(meal.time, tz)
-    const day = dayTotals.getOrInsertComputed(dayKey, () => new Map<string, number>())
+    const key = dayKey(meal.time, tz)
+    const day = dayTotals.getOrInsertComputed(key, () => new Map<string, number>())
     for (const [field, val] of mealTotals) {
       day.set(field, (day.get(field) ?? 0) + val)
     }
@@ -200,8 +178,8 @@ export const getMealPeriodSummary = async (
 
   if (input.count_only_completed) {
     const completedSet = new Set(completedDates)
-    for (const dayKey of dayTotals.keys()) {
-      if (!completedSet.has(dayKey)) dayTotals.delete(dayKey)
+    for (const day of dayTotals.keys()) {
+      if (!completedSet.has(day)) dayTotals.delete(day)
     }
   }
 

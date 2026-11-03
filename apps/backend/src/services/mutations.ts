@@ -537,7 +537,7 @@ export async function updateActivity(
   // The "before" snapshot used for time/type comparisons and as the base of a
   // fresh override — what the merged view currently shows. A fresh override
   // over several sources hides all of them, so it must start from their blend
-  // or the lower-priority sources' data (e.g. Gravl's sets) is lost.
+  // or the other sources' data (e.g. Gravl's sets) is lost.
   const before =
     createsOverride && targetIds.length > 1 ? await mergedTargets(user, target, targetIds) : editRow
 
