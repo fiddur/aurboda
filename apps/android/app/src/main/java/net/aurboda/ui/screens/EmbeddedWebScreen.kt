@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Intent
 import android.graphics.Bitmap
 import android.view.ContextThemeWrapper
+import android.view.ViewGroup
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -143,6 +144,12 @@ fun EmbeddedWebScreen(
                 // app UI stays on the light Theme.Aurboda.
                 val webViewContext = ContextThemeWrapper(ctx, R.style.Theme_Aurboda_WebView)
                 WebView(webViewContext).apply {
+                    // Chromium forces a zero layout height on a WRAP_CONTENT
+                    // WebView, which is what makes CSS `vh` resolve to 0 (#1356).
+                    layoutParams = ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                    )
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
                     // Establish a proper layout viewport from the page's
