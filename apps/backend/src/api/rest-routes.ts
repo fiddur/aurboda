@@ -19,6 +19,7 @@ import type { ReactionActions } from '../services/feed-reactions.ts'
 import type { FollowerActions } from '../services/followers.ts'
 import type { FollowActions } from '../services/following.ts'
 import type { InvitationAuth } from '../services/invitation.ts'
+import type { NamedLocationsChanged } from '../services/locations.ts'
 import type { OuraWebhookManager } from '../services/oura-webhook-manager.ts'
 import type { SyncProvider } from '../services/queries/index.ts'
 import type { HrSettingsChanged } from '../services/settings.ts'
@@ -124,6 +125,7 @@ interface RestRoutesDeps {
   autosharePreviewDeps: AutosharePreviewDeps
   /** Fire-and-forget: recompute activity features after HR zones, birth date or maf_hr change. */
   onHrSettingsChanged: HrSettingsChanged
+  onNamedLocationsChanged: NamedLocationsChanged
 }
 
 export const mountRestRouters = ({
@@ -150,6 +152,7 @@ export const mountRestRouters = ({
   reactionActions,
   onAvatarChanged,
   onHrSettingsChanged,
+  onNamedLocationsChanged,
   retroEnrichTimeline,
   timelineHub,
   ouraWebhookManager,
@@ -194,7 +197,7 @@ export const mountRestRouters = ({
     createDeductionRulesRouter(authMiddleware, engineDeps, deductionQueue ?? undefined),
   )
   httpd.use('/autoshare-rules', createAutoshareRulesRouter(authMiddleware, autosharePreviewDeps))
-  httpd.use('/locations', createLocationsRouter(authMiddleware))
+  httpd.use('/locations', createLocationsRouter(authMiddleware, onNamedLocationsChanged))
   httpd.use(createSettingsRouter(authMiddleware, onHrSettingsChanged))
   httpd.use(createAuditLogRouter(authMiddleware))
   httpd.use(createRawRecordsRouter(authMiddleware))

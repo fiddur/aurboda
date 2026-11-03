@@ -75,6 +75,7 @@ describe('OwnTracks Router', () => {
     insertLocation: vi.fn(),
     insertPlace: vi.fn(),
     loginToUserDb: vi.fn(),
+    onLocationInserted: vi.fn(),
   }
 
   function createTestApp() {
@@ -328,6 +329,33 @@ describe('OwnTracks Router', () => {
 
       expect(mockDeps.insertLocation).not.toHaveBeenCalled()
       expect(mockDeps.insertPlace).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('onLocationInserted', () => {
+    beforeEach(() => {
+      vi.mocked(mockDeps.loginToUserDb).mockResolvedValue()
+    })
+
+    test('a location message reports the user and the point time', async () => {
+      const timestamp = 1705936800
+
+      await request(createTestApp())
+        .post('/ownTracks')
+        .set('Authorization', basicAuth('testuser', 'testpass'))
+        .send({ _type: 'location', lat: 59.3293, lon: 18.0686, tst: timestamp })
+
+      expect(mockDeps.onLocationInserted).toHaveBeenCalledTimes(1)
+      expect(mockDeps.onLocationInserted).toHaveBeenCalledWith('testuser', new Date(timestamp * 1000))
+    })
+
+    test('a waypoint message does not report a location', async () => {
+      await request(createTestApp())
+        .post('/ownTracks')
+        .set('Authorization', basicAuth('testuser', 'testpass'))
+        .send({ _type: 'waypoint', desc: 'Home', lat: 59.3293, lon: 18.0686, rad: 100, rid: 'home-123' })
+
+      expect(mockDeps.onLocationInserted).not.toHaveBeenCalled()
     })
   })
 })

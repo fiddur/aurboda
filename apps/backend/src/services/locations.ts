@@ -640,6 +640,8 @@ export const mergeShortUnknownVisits = (visits: PlaceVisit[], minDurationMinutes
   return result
 }
 
+export type NamedLocationsChanged = (user: string) => void
+
 export {
   deleteNamedLocation,
   getNamedLocationById,

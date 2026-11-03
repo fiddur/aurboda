@@ -27,7 +27,7 @@ export interface OwnTracksDeps {
       velocity?: number
     },
   ) => Promise<void>
-  onLocationInserted?: (user: string) => void
+  onLocationInserted?: (user: string, time: Date) => void
 }
 
 /**
@@ -89,6 +89,7 @@ export function createOwnTracksRouter(deps: OwnTracksDeps): TypedRouter {
         })
       } else if (type === 'location') {
         const { lat, lon, tst, inregions, acc, alt, vel } = req.body
+        const time = new Date(tst * 1000)
         await deps.insertLocation(user, {
           accuracy: acc,
           altitude: alt,
@@ -96,10 +97,10 @@ export function createOwnTracksRouter(deps: OwnTracksDeps): TypedRouter {
           lon,
           regions: inregions,
           source: 'owntracks',
-          time: new Date(tst * 1000),
+          time,
           velocity: vel,
         })
-        deps.onLocationInserted?.(user)
+        deps.onLocationInserted?.(user, time)
       }
 
       res.end(`[]`)

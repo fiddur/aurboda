@@ -122,7 +122,7 @@ import {
 import { type FollowActions, followActor, unfollowActor } from './services/following.ts'
 import { createGeocodeQueue } from './services/geocode-queue.ts'
 import { createInvitationAuth } from './services/invitation.ts'
-import { getPlaceVisits } from './services/locations.ts'
+import { getPlaceVisits, type NamedLocationsChanged } from './services/locations.ts'
 import { createPgBoss } from './services/pg-boss.ts'
 import { installProcessGuards } from './services/process-guards.ts'
 import { safeFetchGet } from './services/safe-fetch.ts'
@@ -304,6 +304,9 @@ const main = async () => {
     // stabilisation delay (the queue's startAfter). Fire-and-forget.
     void autoshareQueue?.enqueueEvaluation(user, start, end)
   }
+  const NAMED_LOCATION_LOOKBACK_MS = 90 * 86_400_000
+  const onNamedLocationsChanged: NamedLocationsChanged = (user) =>
+    activityNotifier(user, '*', new Date(Date.now() - NAMED_LOCATION_LOOKBACK_MS), new Date())
 
   let trackAnalyseQueue: TrackAnalyseQueue | null = null
   let trackBackfillQueue: TrackBackfillQueue | null = null
@@ -755,6 +758,7 @@ const main = async () => {
       onActivityDetailSynced,
       onActivityMutated: activityNotifier,
       onHrSettingsChanged,
+      onNamedLocationsChanged,
       onTrackWritten,
       oura,
       reactionActions,
@@ -891,7 +895,10 @@ const main = async () => {
       insertLocation,
       insertPlace,
       loginToUserDb,
-      onLocationInserted: detectionTrigger.triggerDetectionForUser,
+      onLocationInserted: (user, time) => {
+        detectionTrigger.triggerDetectionForUser(user)
+        activityNotifier(user, '*', time, time)
+      },
     }),
   )
 
@@ -914,6 +921,7 @@ const main = async () => {
     invitationAuth,
     onActivityDetailSynced,
     onHrSettingsChanged,
+    onNamedLocationsChanged,
     onTrackWritten,
     // Tell followers' servers the profile changed — they cache the avatar and
     // re-download only on an Update{Person} or a changed icon URL.

@@ -31,13 +31,17 @@ import {
   getNamedLocations,
   getRawLocationPoints,
   insertNamedLocation,
+  type NamedLocationsChanged,
   updateNamedLocation,
 } from '../services/locations.ts'
 import { getLocationSummary, queryLocations, queryOvernightStays } from '../services/queries/index.ts'
 import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
-export const createLocationsRouter = (authMiddleware: AnyMiddleware): TypedRouter => {
+export const createLocationsRouter = (
+  authMiddleware: AnyMiddleware,
+  onNamedLocationsChanged?: NamedLocationsChanged,
+): TypedRouter => {
   const router = typedRouter()
 
   router.get<Record<string, never>, LocationsResponse, unknown, LocationsQuery>(
@@ -124,6 +128,7 @@ export const createLocationsRouter = (authMiddleware: AnyMiddleware): TypedRoute
         name,
         radius,
       })
+      onNamedLocationsChanged?.(user)
       res.json({ data: location, success: true })
     },
   )
@@ -152,6 +157,7 @@ export const createLocationsRouter = (authMiddleware: AnyMiddleware): TypedRoute
       if (!location) {
         return res.status(404).json({ error: 'Named location not found', success: false })
       }
+      onNamedLocationsChanged?.(user)
       res.json({ data: location, success: true })
     },
   )
@@ -161,10 +167,12 @@ export const createLocationsRouter = (authMiddleware: AnyMiddleware): TypedRoute
     authMiddleware,
     async (req, res) => {
       const { id } = req.params
-      const deleted = await deleteNamedLocation(req.user!, id)
+      const user = req.user!
+      const deleted = await deleteNamedLocation(user, id)
       if (!deleted) {
         return res.status(404).json({ error: 'Named location not found', success: false })
       }
+      onNamedLocationsChanged?.(user)
       res.json({ success: true })
     },
   )
@@ -219,6 +227,7 @@ export const createLocationsRouter = (authMiddleware: AnyMiddleware): TypedRoute
       const user = req.user!
 
       const location = await insertNamedLocation(user, { lat, lon, name, radius })
+      onNamedLocationsChanged?.(user)
       res.json({ data: location, success: true })
     },
   )

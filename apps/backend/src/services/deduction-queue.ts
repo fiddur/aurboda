@@ -72,7 +72,7 @@ interface MergedEvaluation {
 
 const ALL_TYPES = '*'
 
-export const rulesReferencedTypes = (rule: DeductionRule): string[] => [
+const rulesReferencedTypes = (rule: DeductionRule): string[] => [
   rule.output_activity_type,
   ...rule.conditions.flatMap((c) =>
     c.kind === 'activity' || c.kind === 'activity_data' || c.kind === 'activity_feature'

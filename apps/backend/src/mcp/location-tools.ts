@@ -13,11 +13,16 @@ import {
   getDetectedLocations,
   getNamedLocations,
   insertNamedLocation,
+  type NamedLocationsChanged,
   updateNamedLocation,
 } from '../services/locations.ts'
 import { errorResponse, jsonResponse, type McpServer, tzJsonResponse } from './helpers.ts'
 
-export const registerLocationTools = (server: McpServer, user: string) => {
+export const registerLocationTools = (
+  server: McpServer,
+  user: string,
+  onNamedLocationsChanged?: NamedLocationsChanged,
+) => {
   server.tool(
     'get_named_locations',
     'List all named locations. These are user-defined places with names and coordinates.',
@@ -63,6 +68,7 @@ export const registerLocationTools = (server: McpServer, user: string) => {
     { ...addNamedLocationBodySchema.shape },
     async ({ lat, lon, name, radius }) => {
       const location = await insertNamedLocation(user, { lat, lon, name, radius })
+      onNamedLocationsChanged?.(user)
       return jsonResponse({ data: location, success: true })
     },
   )
@@ -90,6 +96,7 @@ export const registerLocationTools = (server: McpServer, user: string) => {
       if (!location) {
         return jsonResponse({ error: 'Named location not found', success: false })
       }
+      onNamedLocationsChanged?.(user)
       return jsonResponse({ data: location, success: true })
     },
   )
@@ -105,6 +112,7 @@ export const registerLocationTools = (server: McpServer, user: string) => {
       if (!deleted) {
         return jsonResponse({ error: 'Named location not found', success: false })
       }
+      onNamedLocationsChanged?.(user)
       return jsonResponse({ success: true })
     },
   )
@@ -115,6 +123,7 @@ export const registerLocationTools = (server: McpServer, user: string) => {
     { ...promoteDetectedLocationBodySchema.shape },
     async ({ lat, lon, name, radius }) => {
       const location = await insertNamedLocation(user, { lat, lon, name, radius })
+      onNamedLocationsChanged?.(user)
       return jsonResponse({ data: location, success: true })
     },
   )
