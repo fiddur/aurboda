@@ -52,6 +52,7 @@ import { registerScreentimeCategoryTools } from './mcp/screentime-category-tools
 import { registerSensitivityTools } from './mcp/sensitivity-tools.ts'
 import { registerSettingsTools } from './mcp/settings-tools.ts'
 import { registerSharedDashboardTools } from './mcp/shared-dashboard-tools.ts'
+import { registerSharedExerciseTools } from './mcp/shared-exercise-tools.ts'
 import { registerSyncTools } from './mcp/sync-tools.ts'
 import { installToolCatalogue } from './mcp/tool-catalogue.ts'
 import { registerTrainingLoadTools } from './mcp/training-load-tools.ts'
@@ -165,6 +166,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   registerReportTools(server, user)
   registerRouteTools(server, user)
   registerSharedDashboardTools(server, user)
+  registerSharedExerciseTools(server, user, deps.webHost)
   registerFeedTools(server, user, {
     apiBaseUrl: deps.apiBaseUrl,
     deliver: deps.feedDeliver,

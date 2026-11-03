@@ -266,6 +266,22 @@ export {
 } from './shared-dashboards.ts'
 
 export {
+  createSharedExercise,
+  deleteSharedExercise,
+  findSharedExercise,
+  getSharedExerciseById,
+  getSharedExerciseBySlug,
+  isDuplicateSharedExercise,
+  isUnknownSharedExerciseType,
+  listPublicSharedExercises,
+  listSharedExercises,
+  type SharedExerciseInput,
+  type SharedExercisePatch,
+  type SharedExerciseRecord,
+  updateSharedExercise,
+} from './shared-exercises.ts'
+
+export {
   type ChallengeInput,
   type ChallengeMemberInput,
   type ChallengeMemberRecord,

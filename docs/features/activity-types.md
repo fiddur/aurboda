@@ -160,7 +160,9 @@ with record badges and its trend around the session — `Trend e1RM 12.2 kg ↗ 
 250 kg ↗ 296 kg`, just the value where the session did not lift it (the longest hold or most reps
 for an exercise without weights) — with the full sets table collapsed under it. Each chart on the exercise page has a ⋮ menu with **Open in Chart
 Explorer**, **Add to dashboard** and **Set a goal** (a trend goal on the decaying best for the
-trend, a measure goal for the weekly chart, prefilled on the Goals page).
+trend, a measure goal for the weekly chart, prefilled on the Goals page). An exercise page can be shared at a public link, with its
+records, trend, weekly chart and sessions' sets but nothing else of the sessions — see
+[Sharing → Shared exercises](./sharing.md#shared-exercises).
 
 ### Merging values and aliases
 

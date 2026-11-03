@@ -4,26 +4,52 @@
  * Create a shareable copy (seeded from the home dashboard or blank), toggle
  * public/unlisted, copy the share link, rename (auto-saves on blur), delete.
  * Per-widget editing of a shared dashboard is a follow-up; today a share is
- * seeded from the home dashboard's current layout.
+ * seeded from the home dashboard's current layout. Below them, the exercises
+ * shared from their exercise pages.
  */
-import type { DashboardConfig, ShareVisibility, SharedDashboard } from '@aurboda/api-spec'
+import type { DashboardConfig, ShareVisibility, SharedDashboard, SharedExercise } from '@aurboda/api-spec'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
+import { itemPageHref } from '../../components/sessions/sessionView'
 import { SHARE_VISIBILITY_OPTIONS, VisibilitySelector } from '../../components/VisibilitySelector'
 import {
   createSharedDashboard,
   deleteSharedDashboard,
+  deleteSharedExercise,
   fetchDashboard,
   listSharedDashboards,
+  listSharedExercises,
   updateSharedDashboard,
+  updateSharedExercise,
 } from '../../state/api'
+import { toDisplayName } from '../../utils/displayName'
 import './style.css'
+
+function useCopyLink(url: string): { copied: boolean; copy: () => Promise<void> } {
+  const [copied, setCopied] = useState(false)
+  const copy = async () => {
+    // navigator.clipboard is only available in secure contexts; instances may be
+    // served over plain http, so guard and fall back to a manual prompt.
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1500)
+      } else {
+        window.prompt('Copy this link:', url)
+      }
+    } catch {
+      window.prompt('Copy this link:', url)
+    }
+  }
+  return { copied, copy }
+}
 
 function SharedDashboardRow({ dashboard }: { dashboard: SharedDashboard }) {
   const queryClient = useQueryClient()
-  const [copied, setCopied] = useState(false)
+  const { copied, copy: handleCopy } = useCopyLink(dashboard.share_url)
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['sharedDashboards'] })
 
@@ -43,22 +69,6 @@ function SharedDashboardRow({ dashboard }: { dashboard: SharedDashboard }) {
   const handleRename = (e: Event) => {
     const value = (e.target as HTMLInputElement).value.trim()
     if (value && value !== dashboard.name) updateMutation.mutate({ name: value })
-  }
-
-  const handleCopy = async () => {
-    // navigator.clipboard is only available in secure contexts; instances may be
-    // served over plain http, so guard and fall back to a manual prompt.
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(dashboard.share_url)
-        setCopied(true)
-        setTimeout(() => setCopied(false), 1500)
-      } else {
-        window.prompt('Copy this link:', dashboard.share_url)
-      }
-    } catch {
-      window.prompt('Copy this link:', dashboard.share_url)
-    }
   }
 
   const handleDelete = () => {
@@ -95,6 +105,100 @@ function SharedDashboardRow({ dashboard }: { dashboard: SharedDashboard }) {
         </button>
       </div>
     </li>
+  )
+}
+
+function SharedExerciseRow({ exercise }: { exercise: SharedExercise }) {
+  const queryClient = useQueryClient()
+  const { copied, copy } = useCopyLink(exercise.share_url)
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['sharedExercises'] })
+
+  const updateMutation = useMutation({
+    mutationFn: (body: { name?: string; visibility?: ShareVisibility }) =>
+      updateSharedExercise(exercise.id, body),
+    onError: () => alert('Failed to update the shared exercise. Please try again.'),
+    onSuccess: invalidate,
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteSharedExercise(exercise.id),
+    onError: () => alert('Failed to stop sharing the exercise. Please try again.'),
+    onSuccess: invalidate,
+  })
+
+  const handleRename = (e: Event) => {
+    const value = (e.target as HTMLInputElement).value.trim()
+    if (value && value !== exercise.name) updateMutation.mutate({ name: value })
+  }
+
+  const handleDelete = () => {
+    if (confirm(`Stop sharing "${exercise.name}"? Its link will stop working.`)) deleteMutation.mutate()
+  }
+
+  return (
+    <li class="shared-dashboard-row">
+      <input
+        class="shared-dashboard-name"
+        type="text"
+        value={exercise.name}
+        onBlur={handleRename}
+        aria-label="Exercise name"
+      />
+      <a
+        class="shared-exercise-item"
+        href={itemPageHref(exercise.activity_type, exercise.field, exercise.value)}
+      >
+        {exercise.value} · {toDisplayName(exercise.activity_type)}
+      </a>
+      <VisibilitySelector
+        compact
+        name={`exercise-visibility-${exercise.id}`}
+        options={SHARE_VISIBILITY_OPTIONS}
+        value={exercise.visibility}
+        onChange={(visibility) => updateMutation.mutate({ visibility })}
+      />
+      <div class="shared-dashboard-actions">
+        <a class="btn-secondary" href={exercise.share_url} target="_blank" rel="noopener noreferrer">
+          View
+        </a>
+        <button class="btn-secondary" onClick={copy}>
+          {copied ? 'Copied!' : 'Copy link'}
+        </button>
+        <button class="btn-danger" onClick={handleDelete}>
+          Delete
+        </button>
+      </div>
+    </li>
+  )
+}
+
+function SharedExercises() {
+  const query = useQuery({
+    queryFn: listSharedExercises,
+    queryKey: ['sharedExercises'],
+    staleTime: 60 * 1000,
+  })
+  const exercises = query.data ?? []
+
+  return (
+    <section class="shared-exercises">
+      <h2>Exercises</h2>
+      <p class="shared-dashboards-intro">
+        Share one exercise’s progress from its page (an exercise under an activity type).
+      </p>
+      {query.isLoading && <div class="loading">Loading…</div>}
+      {!query.isLoading &&
+        (exercises.length === 0 ? (
+          <p class="shared-dashboards-empty">You haven’t shared any exercises yet.</p>
+        ) : (
+          <ul class="shared-dashboards-list">
+            {exercises.map((e) => (
+              <SharedExerciseRow key={e.id} exercise={e} />
+            ))}
+          </ul>
+        ))}
+    </section>
   )
 }
 
@@ -173,6 +277,8 @@ export function SharedDashboards() {
             ))}
           </ul>
         ))}
+
+      <SharedExercises />
     </div>
   )
 }

@@ -1,10 +1,11 @@
 /**
- * Handles `/public/:username/...` for both shared dashboards and challenges.
- * Never uses `req.user`; targets the owner's database directly by username
- * (validated against the same rules as signup). Dashboards return sanitized,
- * server-resolved data; challenges expose their spec (so other instances can
- * join), a public member list, and aggregated standings. Member data-endpoint
- * URLs are host-only secrets and never appear in any public response.
+ * Handles `/public/:username/...` for shared dashboards, challenges and shared
+ * exercises. Never uses `req.user`; targets the owner's database directly by
+ * username (validated against the same rules as signup). Dashboards and
+ * exercises return sanitized, server-resolved data; challenges expose their
+ * spec (so other instances can join), a public member list, and aggregated
+ * standings. Member data-endpoint URLs are host-only secrets and never appear
+ * in any public response.
  */
 import {
   type BaseResponse,
@@ -14,18 +15,22 @@ import {
   type PublicChallengeResponse,
   type PublicProfileResponse,
   type PublicSharedDashboardResponse,
+  type PublicSharedExerciseResponse,
   registerChallengeMemberBodySchema,
 } from '@aurboda/api-spec'
 
 import { isValidUsername } from '../api/auth-routes.ts'
 import {
+  getActivityTypeDefinition,
   getChallengeBySlug,
   getChallengeMemberByIdentity,
   getSharedDashboardBySlug,
+  getSharedExerciseBySlug,
   isMissingDatabase,
   listChallengeMembers,
   listPublicChallenges,
   listPublicSharedDashboards,
+  listPublicSharedExercises,
   upsertChallengeMember,
 } from '../db/index.ts'
 import { bannerUrlFor } from '../services/challenge-banner.ts'
@@ -40,6 +45,7 @@ import {
 import { getChallengeStandings } from '../services/challenge-standings.ts'
 import { buildProfileUrl, buildShareUrl } from '../services/share-urls.ts'
 import { resolveDashboardData } from '../services/shared-dashboard-data.ts'
+import { resolveSharedExerciseData } from '../services/shared-exercise-data.ts'
 import { isPublicToVisibility } from '../services/visibility.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
@@ -72,18 +78,21 @@ export const createPublicSharesRouter = (webHost: string): TypedRouter => {
         return res.status(404).json({ error: 'Profile not found', success: false })
       }
       try {
-        const [dashboards, challenges] = await Promise.all([
+        const [dashboards, challenges, exercises] = await Promise.all([
           listPublicSharedDashboards(username),
           listPublicChallenges(username),
+          listPublicSharedExercises(username),
         ])
+        const listItem = (r: { name: string; slug: string }) => ({
+          name: r.name,
+          share_url: buildShareUrl(webHost, username, r.slug),
+          slug: r.slug,
+        })
         res.setHeader('Cache-Control', 'public, max-age=60')
         res.json({
           challenges: challenges.map((c) => toPublicChallengeListItem(c, webHost, username)),
-          dashboards: dashboards.map((r) => ({
-            name: r.name,
-            share_url: buildShareUrl(webHost, username, r.slug),
-            slug: r.slug,
-          })),
+          dashboards: dashboards.map(listItem),
+          exercises: exercises.map(listItem),
           profile_url: buildProfileUrl(webHost, username),
           success: true,
           username,
@@ -193,70 +202,90 @@ export const createPublicSharesRouter = (webHost: string): TypedRouter => {
     },
   )
 
-  // Resolve a slug to either a shared dashboard or a challenge.
-  router.get<{ username: string; slug: string }, PublicSharedDashboardResponse | PublicChallengeResponse>(
-    '/public/:username/:slug',
-    async (req, res) => {
-      const { slug, username } = req.params
-      if (!isValidUsername(username)) {
-        return res.status(404).json({ error: 'Not found', success: false })
+  // One slug namespace: a shared dashboard, then a challenge, then a shared exercise.
+  router.get<
+    { username: string; slug: string },
+    PublicSharedDashboardResponse | PublicChallengeResponse | PublicSharedExerciseResponse
+  >('/public/:username/:slug', async (req, res) => {
+    const { slug, username } = req.params
+    if (!isValidUsername(username)) {
+      return res.status(404).json({ error: 'Not found', success: false })
+    }
+    try {
+      const dashboard = await getSharedDashboardBySlug(username, slug)
+      if (dashboard) {
+        const widgetData = await resolveDashboardData(username, dashboard.config)
+        res.setHeader('Cache-Control', 'public, max-age=60')
+        return res.json({
+          config: sanitizeConfig(dashboard.config),
+          name: dashboard.name,
+          profile_url: buildProfileUrl(webHost, username),
+          share_url: buildShareUrl(webHost, username, dashboard.slug),
+          success: true,
+          type: 'dashboard',
+          widget_data: widgetData,
+        })
       }
-      try {
-        const dashboard = await getSharedDashboardBySlug(username, slug)
-        if (dashboard) {
-          const widgetData = await resolveDashboardData(username, dashboard.config)
-          res.setHeader('Cache-Control', 'public, max-age=60')
-          return res.json({
-            config: sanitizeConfig(dashboard.config),
-            name: dashboard.name,
+
+      const challenge = await getChallengeBySlug(username, slug)
+      if (challenge) {
+        const members = await listChallengeMembers(username, challenge.id)
+        res.setHeader('Cache-Control', 'public, max-age=60')
+        return res.json({
+          challenge: {
+            banner_url: bannerUrlFor(challenge, webHost, username),
+            effective_bucket_size: effectiveBucketSize(
+              challenge.spec.bucket_size,
+              challenge.start_ts,
+              challenge.end_ts,
+            ),
+            end_ts: challenge.end_ts.toISOString(),
+            host_identity: buildProfileUrl(webHost, username),
+            join_token: challenge.join_token,
+            members: members
+              .filter((m) => m.status === 'active')
+              .map((m) => ({ display_name: m.display_name, identity_base_url: m.identity_base_url })),
+            name: challenge.name,
             profile_url: buildProfileUrl(webHost, username),
-            share_url: buildShareUrl(webHost, username, dashboard.slug),
-            success: true,
-            type: 'dashboard',
-            widget_data: widgetData,
-          })
-        }
-
-        const challenge = await getChallengeBySlug(username, slug)
-        if (challenge) {
-          const members = await listChallengeMembers(username, challenge.id)
-          res.setHeader('Cache-Control', 'public, max-age=60')
-          return res.json({
-            challenge: {
-              banner_url: bannerUrlFor(challenge, webHost, username),
-              effective_bucket_size: effectiveBucketSize(
-                challenge.spec.bucket_size,
-                challenge.start_ts,
-                challenge.end_ts,
-              ),
-              end_ts: challenge.end_ts.toISOString(),
-              host_identity: buildProfileUrl(webHost, username),
-              join_token: challenge.join_token,
-              members: members
-                .filter((m) => m.status === 'active')
-                .map((m) => ({ display_name: m.display_name, identity_base_url: m.identity_base_url })),
-              name: challenge.name,
-              profile_url: buildProfileUrl(webHost, username),
-              share_url: buildShareUrl(webHost, username, challenge.slug),
-              spec: specToApi(challenge.spec),
-              start_ts: challenge.start_ts.toISOString(),
-              timezone: challenge.timezone,
-              visibility: isPublicToVisibility(challenge.is_public),
-            },
-            success: true,
-            type: 'challenge',
-          })
-        }
-
-        return res.status(404).json({ error: 'Not found', success: false })
-      } catch (error) {
-        if (isMissingDatabase(error)) {
-          return res.status(404).json({ error: 'Not found', success: false })
-        }
-        throw error
+            share_url: buildShareUrl(webHost, username, challenge.slug),
+            spec: specToApi(challenge.spec),
+            start_ts: challenge.start_ts.toISOString(),
+            timezone: challenge.timezone,
+            visibility: isPublicToVisibility(challenge.is_public),
+          },
+          success: true,
+          type: 'challenge',
+        })
       }
-    },
-  )
+
+      const exercise = await getSharedExerciseBySlug(username, slug)
+      if (exercise) {
+        const [definition, data] = await Promise.all([
+          getActivityTypeDefinition(username, exercise.activity_type),
+          resolveSharedExerciseData(username, exercise),
+        ])
+        res.setHeader('Cache-Control', 'public, max-age=60')
+        return res.json({
+          activity_type: exercise.activity_type,
+          activity_type_name: definition?.display_name ?? exercise.activity_type,
+          data,
+          name: exercise.name,
+          profile_url: buildProfileUrl(webHost, username),
+          share_url: buildShareUrl(webHost, username, exercise.slug),
+          success: true,
+          type: 'exercise',
+          value: exercise.value,
+        })
+      }
+
+      return res.status(404).json({ error: 'Not found', success: false })
+    } catch (error) {
+      if (isMissingDatabase(error)) {
+        return res.status(404).json({ error: 'Not found', success: false })
+      }
+      throw error
+    }
+  })
 
   return router
 }

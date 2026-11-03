@@ -13,8 +13,10 @@ import { type Response, Router } from 'express'
 
 import { isValidUsername } from '../api/auth-routes.ts'
 import {
+  getActivityTypeDefinition,
   getChallengeBySlug,
   getSharedDashboardBySlug,
+  getSharedExerciseBySlug,
   listChallengeMembers,
   listPublicSharedDashboards,
 } from '../db/index.ts'
@@ -23,6 +25,7 @@ import {
   buildChallengeShareMeta,
   buildDashboardShareMeta,
   buildDefaultShareMeta,
+  buildExerciseShareMeta,
   buildProfileShareMeta,
   injectShareMeta,
   oembedDiscoveryUrl,
@@ -39,6 +42,13 @@ interface ResolvedResource {
   description?: string
 }
 
+interface ResolvedExercise {
+  is_public: boolean
+  name: string
+  value: string
+  activity_type_name: string
+}
+
 export interface ShareHtmlDeps {
   /** Public base URL of the web app, used to build canonical/share URLs. */
   webHost: string
@@ -46,6 +56,7 @@ export interface ShareHtmlDeps {
   loadTemplate: () => Promise<string | null>
   resolveDashboard: (username: string, slug: string) => Promise<ResolvedResource | null>
   resolveChallenge: (username: string, slug: string) => Promise<ResolvedChallenge | null>
+  resolveExercise: (username: string, slug: string) => Promise<ResolvedExercise | null>
   /** True if the user's public profile exists (db reachable). */
   profileExists: (username: string) => Promise<boolean>
   now?: () => Date
@@ -61,7 +72,7 @@ const isMissingDatabase = (error: unknown): boolean =>
  */
 export const createShareResolvers = (): Pick<
   ShareHtmlDeps,
-  'resolveDashboard' | 'resolveChallenge' | 'profileExists'
+  'resolveDashboard' | 'resolveChallenge' | 'resolveExercise' | 'profileExists'
 > => ({
   profileExists: async (username) => {
     try {
@@ -93,6 +104,24 @@ export const createShareResolvers = (): Pick<
         },
         start_ts: challenge.start_ts.toISOString(),
         timezone: challenge.timezone,
+      }
+    } catch (error) {
+      if (isMissingDatabase(error)) return null
+      throw error
+    }
+  },
+  resolveExercise: async (username, slug) => {
+    try {
+      const exercise = await getSharedExerciseBySlug(username, slug)
+      if (!exercise) return null
+      const definition = exercise.is_public
+        ? await getActivityTypeDefinition(username, exercise.activity_type)
+        : null
+      return {
+        activity_type_name: definition?.display_name ?? exercise.activity_type,
+        is_public: exercise.is_public,
+        name: exercise.name,
+        value: exercise.value,
       }
     } catch (error) {
       if (isMissingDatabase(error)) return null
@@ -145,7 +174,7 @@ const sendHtml = async (
 }
 
 export const createShareHtmlRouter = (deps: ShareHtmlDeps): Router => {
-  const { loadTemplate, profileExists, resolveChallenge, resolveDashboard, webHost } = deps
+  const { loadTemplate, profileExists, resolveChallenge, resolveDashboard, resolveExercise, webHost } = deps
   const now = deps.now ?? (() => new Date())
   const router = Router()
 
@@ -194,6 +223,23 @@ export const createShareHtmlRouter = (deps: ShareHtmlDeps): Router => {
           }),
           url,
         ),
+        true,
+        res,
+      )
+    }
+
+    const exercise = dashboard || challenge ? null : await resolveExercise(username, slug)
+    if (exercise?.is_public) {
+      return sendHtml(
+        loadTemplate,
+        buildExerciseShareMeta({
+          activityTypeName: exercise.activity_type_name,
+          name: exercise.name,
+          url,
+          username,
+          value: exercise.value,
+          webHost,
+        }),
         true,
         res,
       )

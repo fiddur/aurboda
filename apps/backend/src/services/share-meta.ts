@@ -190,6 +190,38 @@ export const buildChallengeShareMeta = (input: ChallengeMetaInput): ShareMeta =>
   }
 }
 
+interface ExerciseMetaInput {
+  username: string
+  name: string
+  url: string
+  webHost: string
+  /** The item value shared and its activity type's display name, for the image alt text. */
+  value: string
+  activityTypeName: string
+}
+
+export const buildExerciseShareMeta = ({
+  activityTypeName,
+  name,
+  url,
+  username,
+  value,
+  webHost,
+}: ExerciseMetaInput): ShareMeta => ({
+  description: clampDescription(`${name} — ${username}'s progress on ${SITE_NAME}.`),
+  image: defaultOgImage(webHost),
+  imageAlt: `${SITE_NAME} exercise: ${value} (${activityTypeName})`,
+  jsonLd: {
+    '@context': 'https://schema.org',
+    '@type': 'WebPage',
+    name,
+    url,
+  },
+  title: `${name} — ${SITE_NAME}`,
+  type: 'website',
+  url,
+})
+
 interface ProfileMetaInput {
   username: string
   url: string

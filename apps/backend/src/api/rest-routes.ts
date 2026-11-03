@@ -72,6 +72,7 @@ import { createSensitivityFlagsRouter } from '../routes/sensitivity-flags-router
 import { createSettingsRouter } from '../routes/settings-router.ts'
 import { createShareHtmlRouter, createShareResolvers } from '../routes/share-html-router.ts'
 import { createSharedDashboardsRouter } from '../routes/shared-dashboards-router.ts'
+import { createSharedExercisesRouter } from '../routes/shared-exercises-router.ts'
 import { createTracksRouter } from '../routes/tracks-router.ts'
 import { createTrainingLoadRouter } from '../routes/training-load-router.ts'
 import { createTrendsRouter } from '../routes/trends-router.ts'
@@ -204,6 +205,7 @@ export const mountRestRouters = ({
   httpd.use(createRawRecordsRouter(authMiddleware))
   httpd.use('/dashboard', createDashboardRouter(authMiddleware))
   httpd.use('/shared-dashboards', createSharedDashboardsRouter(authMiddleware, webHost))
+  httpd.use('/shared-exercises', createSharedExercisesRouter(authMiddleware, webHost))
   httpd.use('/profile', createProfileRouter(authMiddleware, webHost, onAvatarChanged))
   // Mount the following + followers routers before `/feed` so `/feed/following/*`
   // and `/feed/followers/*` (two path segments) resolve here and never touch the

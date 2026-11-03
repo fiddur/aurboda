@@ -7,8 +7,13 @@ import '../../components/sessions/sessions.css'
 
 const PAGE = 25
 
+/** A session row; without an `id` (a public page) the date is not a link. */
+export type ItemSessionRow = Pick<ActivitySession, 'items' | 'measures' | 'records' | 'start_time'> & {
+  id?: string
+}
+
 /** Every session with one item value (an exercise): its sets, top set, e1RM, volume and the records it set. */
-export const ItemSessionsTable = ({ sessions }: { sessions: ActivitySession[] }) => {
+export const ItemSessionsTable = ({ sessions }: { sessions: ItemSessionRow[] }) => {
   const [shown, setShown] = useState(PAGE)
   const sorted = sessions.toSorted((a, b) => b.start_time.localeCompare(a.start_time))
 
@@ -36,10 +41,11 @@ export const ItemSessionsTable = ({ sessions }: { sessions: ActivitySession[] })
             const items = s.items ?? []
             const top = topSet(items)
             const { e1rm, volume } = s.measures ?? {}
+            const date = format(new Date(s.start_time), 'yyyy-MM-dd')
             return (
-              <tr key={s.id}>
+              <tr key={s.id ?? s.start_time}>
                 <td class="session-date">
-                  <a href={`/detail/activity/${s.id}`}>{format(new Date(s.start_time), 'yyyy-MM-dd')}</a>
+                  {s.id === undefined ? date : <a href={`/detail/activity/${s.id}`}>{date}</a>}
                 </td>
                 <td class="activity-type-item-sets">{formatSets(items)}</td>
                 <td class="session-opt">{top ? formatSet(top) : <span class="session-muted">–</span>}</td>
