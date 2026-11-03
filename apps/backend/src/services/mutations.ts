@@ -5,11 +5,12 @@ import { randomUUID } from 'node:crypto'
 import type { Activity, MergedActivity } from '../db/types.ts'
 import type { ActivityNotifier } from './deduction-queue.ts'
 
-import { mergeGroupByPriority } from '../db/activities/merge.ts'
+import { mergeOverlappingActivities } from '../db/activities/merge.ts'
 import {
   activityTypeExists,
   checkActivityConflict,
   deleteActivity as dbDeleteActivity,
+  fetchCategoryMap,
   findMergeableActivity,
   getActivityById as dbGetActivityById,
   getActivitySourcesByIds,
@@ -475,7 +476,9 @@ const mergedTargets = async (
   const others = await Promise.all(
     targetIds.filter((tid) => tid !== target.id).map((tid) => dbGetActivityById(user, tid)),
   )
-  return mergeGroupByPriority([target, ...others.filter((row): row is Activity => row !== null)])
+  const rows = [target, ...others.filter((row): row is Activity => row !== null)]
+  const merged = mergeOverlappingActivities(rows, await fetchCategoryMap(user))
+  return merged.find((row) => row.source_ids?.includes(target.id!) || row.id === target.id) ?? target
 }
 
 /**

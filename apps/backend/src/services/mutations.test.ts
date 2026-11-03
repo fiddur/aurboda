@@ -30,6 +30,7 @@ vi.mock('../db', async () => ({
   deleteTimeSeriesMetric: vi.fn(),
   deleteTimeSeriesPoint: vi.fn(),
   enqueueOutboundSync: vi.fn().mockResolvedValue(undefined),
+  fetchCategoryMap: vi.fn().mockResolvedValue(new Map()),
   findHcRecordId: vi.fn().mockResolvedValue(null),
   findMergeableActivity: vi.fn().mockResolvedValue(null),
   getActivityById: vi.fn(),
@@ -1624,6 +1625,59 @@ describe('updateActivity', () => {
         start_time: new Date('2026-10-27T16:58:00Z'),
         title: 'Hotel gym',
       })
+    })
+
+    test('a merged-view edit merges different-type targets by category, as the merged view does', async () => {
+      const rows: Record<string, Activity> = {
+        'garmin-1': {
+          activity_type: 'running',
+          end_time: new Date('2026-10-28T11:00:00Z'),
+          id: 'garmin-1',
+          source: 'garmin',
+          start_time: new Date('2026-10-28T10:00:00Z'),
+          title: 'A',
+        },
+        'strava-1': {
+          activity_type: 'run',
+          data: { x: 1 },
+          end_time: new Date('2026-10-28T10:55:00Z'),
+          id: 'strava-1',
+          source: 'strava',
+          start_time: new Date('2026-10-28T10:01:00Z'),
+          title: 'B',
+        },
+      }
+      vi.mocked(db.getActivityById).mockImplementation(async (_user, id) => rows[id] ?? null)
+      vi.mocked(db.getOverrideForActivity).mockResolvedValue(null)
+      vi.mocked(db.getActivitySourcesByIds).mockResolvedValue([
+        { id: 'garmin-1', source: 'garmin' },
+        { id: 'strava-1', source: 'strava' },
+      ])
+      vi.mocked(db.fetchCategoryMap).mockResolvedValueOnce(
+        new Map([
+          ['run', 'exercise'],
+          ['running', 'exercise'],
+        ]),
+      )
+      vi.mocked(db.insertOverride).mockResolvedValue({
+        activity_type: 'running',
+        id: 'override-1',
+        override_target_ids: ['garmin-1', 'strava-1'],
+        source: 'aurboda',
+        start_time: new Date('2026-10-28T10:00:00Z'),
+      })
+
+      const result = await updateActivity('testuser', 'garmin-1', {
+        notes: 'Easy',
+        override_target_ids: ['garmin-1', 'strava-1'],
+      })
+
+      expect(result.success).toBe(true)
+      expect(db.insertOverride).toHaveBeenCalledExactlyOnceWith(
+        'testuser',
+        ['garmin-1', 'strava-1'],
+        expect.objectContaining({ data: expect.objectContaining({ x: 1 }), title: 'A' }),
+      )
     })
 
     test('aurboda-source target is updated in place (no override created)', async () => {

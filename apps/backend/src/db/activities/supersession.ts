@@ -14,7 +14,7 @@ import { activityColumns } from './queries.ts'
 const MATERIALIZE_WINDOW_MS = 12 * 60 * 60 * 1000
 
 /** Fetch a small category map (name -> display_category) for cross-source merge eligibility. */
-const fetchCategoryMap = async (user: string): Promise<Map<string, string>> => {
+export const fetchCategoryMap = async (user: string): Promise<Map<string, string>> => {
   const result = await query(user, `SELECT name, display_category FROM activity_type_definitions`)
   return new Map(result.rows.map((r) => [r.name as string, r.display_category as string]))
 }
