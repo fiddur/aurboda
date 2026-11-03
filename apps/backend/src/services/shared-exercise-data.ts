@@ -1,0 +1,153 @@
+/**
+ * Shared exercise data resolver — the security boundary for a public exercise page. Every query
+ * takes its parameters from the stored share alone, and the result is a projection: dates, sets
+ * (reps, weight, time, set type), measures and records. Session ids, titles, notes, locations,
+ * heart rate and raw fields never leave this function.
+ */
+import type {
+  ActivityMeasure,
+  ActivitySession,
+  ChartDataBucket,
+  SharedExerciseData,
+  SharedExerciseRecord as SharedExerciseBest,
+} from '@aurboda/api-spec'
+
+import {
+  activityMeasures,
+  measureDefaultAggregation,
+  measureTrendHalfLifeDays,
+  recordMeasures,
+} from '@aurboda/api-spec'
+
+import type { SharedExerciseRecord } from '../db/index.ts'
+
+import { measureSet } from './activity-measures.ts'
+import { getChartData } from './chart-data.ts'
+import { dayEndInTz, dayKey, dayStartInTz, shiftDayKey } from './day-keys.ts'
+import { toSharedSet } from './feed-exercises.ts'
+import { queryActivitySessions } from './queries/activity-sessions.ts'
+import { getUserTimezone } from './settings.ts'
+import { getTrend } from './trends.ts'
+
+export interface SharedExerciseDataDeps {
+  queryActivitySessions: typeof queryActivitySessions
+  getTrend: typeof getTrend
+  getChartData: typeof getChartData
+  getUserTimezone: typeof getUserTimezone
+  now: () => Date
+}
+
+const defaultDeps: SharedExerciseDataDeps = {
+  getChartData,
+  getTrend,
+  getUserTimezone,
+  now: () => new Date(),
+  queryActivitySessions,
+}
+
+type Share = Pick<SharedExerciseRecord, 'activity_type' | 'field' | 'value'>
+
+const DAY_MS = 86_400_000
+
+const TREND_MEASURES: ActivityMeasure[] = ['e1rm', 'max_reps', 'max_time']
+
+const PER_WEEK_DAYS = 365
+
+const oldestFirst = (sessions: ActivitySession[]): ActivitySession[] =>
+  sessions.toSorted((a, b) => a.start_time.localeCompare(b.start_time))
+
+const has = (sessions: ActivitySession[], measure: ActivityMeasure): boolean =>
+  sessions.some((s) => s.measures?.[measure] !== undefined)
+
+/** The best value of each record measure, with the first session that reached it. */
+export const recordsOf = (ordered: ActivitySession[]): SharedExerciseBest[] =>
+  recordMeasures.flatMap((measure) => {
+    let best: ActivitySession | undefined
+    for (const s of ordered) {
+      const v = s.measures?.[measure]
+      if (v !== undefined && (best === undefined || v > (best.measures?.[measure] ?? -Infinity))) best = s
+    }
+    const value = best?.measures?.[measure]
+    if (best === undefined || value === undefined) return []
+    const set = measureSet(best.items ?? [], measure)
+    return [{ measure, start_time: best.start_time, value, ...(set && { set: toSharedSet(set) }) }]
+  })
+
+export const resolveSharedExerciseData = async (
+  user: string,
+  share: Share,
+  deps: SharedExerciseDataDeps = defaultDeps,
+): Promise<SharedExerciseData> => {
+  const filter = { filter_field: share.field, filter_value: share.value }
+  const [tz, { sessions }] = await Promise.all([
+    deps.getUserTimezone(user),
+    deps.queryActivitySessions(user, share.activity_type, {
+      filter: { field: share.field, value: share.value },
+    }),
+  ])
+  const ordered = oldestFirst(sessions)
+  const first = ordered[0]
+  const last = ordered.at(-1)
+  const now = deps.now()
+
+  const trendMeasure = TREND_MEASURES.find((m) => has(sessions, m))
+  const trend =
+    trendMeasure && first
+      ? {
+          half_life_days: measureTrendHalfLifeDays,
+          history: (
+            await deps.getTrend(user, {
+              ...filter,
+              half_life_days: measureTrendHalfLifeDays,
+              lookback_days: Math.max(
+                1,
+                Math.ceil((now.getTime() - new Date(first.start_time).getTime()) / DAY_MS),
+              ),
+              measure: trendMeasure,
+              pattern: share.activity_type,
+              source_type: 'activity_type',
+              tz,
+            })
+          ).history,
+          measure: trendMeasure,
+        }
+      : null
+
+  const available = activityMeasures.filter((m) => has(sessions, m))
+  const perWeekMeasure = available.includes('e1rm') ? 'e1rm' : available[0]
+  let perWeek: SharedExerciseData['per_week'] = null
+  if (perWeekMeasure) {
+    const today = dayKey(now, tz)
+    const start = dayStartInTz(shiftDayKey(today, -PER_WEEK_DAYS), tz).toISOString()
+    const end = dayEndInTz(today, tz).toISOString()
+    const aggregation = measureDefaultAggregation(perWeekMeasure)
+    const chart = await deps.getChartData(user, {
+      ...filter,
+      aggregation,
+      bucket_size: '1w',
+      end,
+      measure: perWeekMeasure,
+      pattern: share.activity_type,
+      source_type: 'activity_type',
+      start,
+      tz,
+    })
+    const buckets = chart.buckets.flatMap((b): ChartDataBucket[] =>
+      'value' in b ? [{ bucket_start: b.bucket_start, value: b.value }] : [],
+    )
+    perWeek = { aggregation, buckets, end, measure: perWeekMeasure, start }
+  }
+
+  return {
+    done: first && last ? { count: ordered.length, first: first.start_time, last: last.start_time } : null,
+    history: ordered.toReversed().map((s) => ({
+      items: (s.items ?? []).map(toSharedSet),
+      measures: s.measures ?? {},
+      records: s.records ?? [],
+      start_time: s.start_time,
+    })),
+    per_week: perWeek,
+    records: recordsOf(ordered),
+    trend,
+  }
+}

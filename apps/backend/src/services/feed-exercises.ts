@@ -10,6 +10,7 @@ import type {
   ActivityMeasures,
   DataSchemaDefinition,
   FeedStructuredExercise,
+  SharedExerciseSet,
 } from '@aurboda/api-spec'
 
 import { activityMeasureUnits } from '@aurboda/api-spec'
@@ -17,13 +18,6 @@ import { activityMeasureUnits } from '@aurboda/api-spec'
 import { getActivityTypeDefinition } from '../db/index.ts'
 import { toWireKey } from './activitypub/quant-wire.ts'
 import { queryActivityItemHistory } from './queries/activity-item-history.ts'
-
-export interface SharedExerciseSet {
-  reps?: number
-  weight?: number
-  time?: number
-  set_type?: string
-}
 
 export interface SharedExercise {
   name: string

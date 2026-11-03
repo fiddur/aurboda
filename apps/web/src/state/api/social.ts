@@ -1,11 +1,16 @@
 import type {
   CreateSharedDashboardBody,
+  CreateSharedExerciseBody,
   FeedPostsResponse,
   PublicProfileResponse,
   SharedDashboard,
   SharedDashboardResponse,
   SharedDashboardsResponse,
+  SharedExercise,
+  SharedExerciseResponse,
+  SharedExercisesResponse,
   UpdateSharedDashboardBody,
+  UpdateSharedExerciseBody,
 } from '@aurboda/api-spec'
 
 import axios from 'axios'
@@ -43,6 +48,36 @@ export const updateSharedDashboard = async (
 
 export const deleteSharedDashboard = async (id: string): Promise<void> => {
   await axios.delete(`${API_URL}/shared-dashboards/${id}`, { headers: authHeaders() })
+}
+
+export const listSharedExercises = async (): Promise<SharedExercise[]> => {
+  const response = await axios.get<SharedExercisesResponse>(`${API_URL}/shared-exercises`, {
+    headers: authHeaders(),
+  })
+  return response.data.exercises
+}
+
+export const createSharedExercise = async (body: CreateSharedExerciseBody): Promise<SharedExercise> => {
+  const response = await axios.post<SharedExerciseResponse>(`${API_URL}/shared-exercises`, body, {
+    headers: authHeaders(),
+  })
+  if (!response.data.exercise) throw new Error(response.data.error ?? 'Failed to share the exercise')
+  return response.data.exercise
+}
+
+export const updateSharedExercise = async (
+  id: string,
+  body: UpdateSharedExerciseBody,
+): Promise<SharedExercise> => {
+  const response = await axios.put<SharedExerciseResponse>(`${API_URL}/shared-exercises/${id}`, body, {
+    headers: authHeaders(),
+  })
+  if (!response.data.exercise) throw new Error(response.data.error ?? 'Failed to update the shared exercise')
+  return response.data.exercise
+}
+
+export const deleteSharedExercise = async (id: string): Promise<void> => {
+  await axios.delete(`${API_URL}/shared-exercises/${id}`, { headers: authHeaders() })
 }
 
 export const fetchPublicProfile = async (username: string): Promise<PublicProfileResponse> => {

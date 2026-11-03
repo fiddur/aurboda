@@ -117,3 +117,62 @@ export const recordsFor = (current: ActivityMeasures, earlier: ActivityMeasures[
     const value = current[m]
     return value !== undefined && earlier.every((e) => e[m] === undefined || value > e[m])
   })
+
+const finite = (v: unknown): number | undefined =>
+  typeof v === 'number' && Number.isFinite(v) ? v : undefined
+
+/** The first item with the highest score; scores compare element by element, so later ones break ties. */
+const maxBy = (items: Item[], score: (item: Item) => number[] | undefined): Item | undefined => {
+  let best: Item | undefined
+  let bestScore: number[] = []
+  for (const item of items) {
+    const s = score(item)
+    if (s === undefined) continue
+    const diff = s.map((v, i) => v - (bestScore[i] ?? -Infinity)).find((d) => d !== 0) ?? 0
+    if (best === undefined || diff > 0) {
+      best = item
+      bestScore = s
+    }
+  }
+  return best
+}
+
+const scoreOf = (v: unknown): number[] | undefined => {
+  const n = finite(v)
+  return n === undefined ? undefined : [n]
+}
+
+const epley = (item: Item): number | undefined => {
+  const weight = finite(item.weight)
+  const reps = finite(item.reps)
+  return weight === undefined || reps === undefined || reps < 1 ? undefined : weight * (1 + reps / 30)
+}
+
+/**
+ * The working set a single-set measure came from; undefined for measures summed over sets. Mirrors the web's
+ * `measureSet`, so a public page names the same set as the owner's.
+ */
+export const measureSet = (items: Item[], measure: ActivityMeasure): Item | undefined => {
+  const working = items.filter(isWorkingItem)
+  switch (measure) {
+    case 'e1rm':
+      return maxBy(working, (i) => scoreOf(epley(i)))
+    case 'max_weight':
+      return (
+        maxBy(working, (i) => {
+          const weight = finite(i.weight)
+          return weight === undefined ? undefined : [weight, finite(i.reps) ?? 0]
+        }) ??
+        maxBy(working, (i) => scoreOf(i.reps)) ??
+        maxBy(working, (i) => scoreOf(i.time))
+      )
+    case 'max_time':
+      return maxBy(working, (i) => scoreOf(i.time))
+    case 'max_reps':
+      return maxBy(working, (i) => scoreOf(i.reps))
+    case 'volume':
+    case 'set_count':
+    case 'total_reps':
+      return undefined
+  }
+}

@@ -154,6 +154,8 @@ export const tableCreationOrder = [
   'notes_indexes',
   'shared_dashboards',
   'shared_dashboards_indexes',
+  'shared_exercises',
+  'shared_exercises_indexes',
   'challenges',
   'challenges_indexes',
   'challenges_result_columns',

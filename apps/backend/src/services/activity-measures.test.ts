@@ -6,6 +6,7 @@ import {
   isWorkingItem,
   listItems,
   measureItems,
+  measureSet,
   normalizeItemValue,
   parseFieldPath,
   recordsFor,
@@ -190,5 +191,34 @@ describe('recordsFor', () => {
   test('the first time is a record; an absent measure never is', () => {
     expect(recordsFor({ max_weight: 50, set_count: 1 }, [])).toEqual(['max_weight'])
     expect(recordsFor({ set_count: 1 }, [{ e1rm: 10 }])).toEqual([])
+  })
+})
+
+describe('measureSet', () => {
+  const warmup = { reps: 10, set_type: 'warmup', weight: 120 }
+
+  test('e1rm picks the working set with the best Epley estimate', () => {
+    const items = [warmup, { reps: 5, weight: 100 }, { reps: 10, weight: 90 }]
+    expect(measureSet(items, 'e1rm')).toEqual({ reps: 10, weight: 90 })
+  })
+
+  test('max_weight picks the heaviest working set, more reps breaking a tie', () => {
+    const items = [warmup, { reps: 3, weight: 100 }, { reps: 5, weight: 100 }, { reps: 8, weight: 80 }]
+    expect(measureSet(items, 'max_weight')).toEqual({ reps: 5, weight: 100 })
+  })
+
+  test('max_weight falls back to the most reps, then the longest time', () => {
+    expect(measureSet([{ reps: 12 }, { reps: 15 }], 'max_weight')).toEqual({ reps: 15 })
+    expect(measureSet([{ time: 30 }, { time: 45 }], 'max_weight')).toEqual({ time: 45 })
+  })
+
+  test('max_time and max_reps pick the single best set', () => {
+    expect(measureSet([{ time: 30 }, { time: 60 }], 'max_time')).toEqual({ time: 60 })
+    expect(measureSet([{ reps: 8 }, { reps: 12 }, { reps: 12 }], 'max_reps')).toEqual({ reps: 12 })
+  })
+
+  test('summed measures have no single set', () => {
+    expect(measureSet([{ reps: 5, weight: 100 }], 'volume')).toBeUndefined()
+    expect(measureSet([{ reps: 5, weight: 100 }], 'total_reps')).toBeUndefined()
   })
 })

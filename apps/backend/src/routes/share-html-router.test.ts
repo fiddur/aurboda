@@ -15,6 +15,7 @@ const buildApp = (overrides: Partial<ShareHtmlDeps> = {}) => {
     profileExists: async () => false,
     resolveChallenge: async () => null,
     resolveDashboard: async () => null,
+    resolveExercise: async () => null,
     webHost: 'https://aurboda.net',
     ...overrides,
   }
@@ -105,6 +106,44 @@ describe('GET /u/:username/:slug', () => {
     const description = /og:description" content="([^"]*)"/.exec(res.text)?.[1]
     expect(description).toContain('· 1 took part.')
     expect(description).not.toMatch(/join/i)
+  })
+
+  const exercise = {
+    activity_type_name: 'Strength training',
+    is_public: true,
+    name: 'Bench',
+    value: 'Bench Press',
+  }
+
+  test('renders meta with the default image for a public exercise', async () => {
+    const app = buildApp({ resolveExercise: async () => exercise })
+    const res = await supertest(app).get('/u/fiddur/ex1')
+    expect(res.text).toContain('<title>Bench — Aurboda</title>')
+    expect(res.text).toContain(`property="og:description" content="Bench — fiddur's progress on Aurboda."`)
+    expect(res.text).toContain('property="og:image" content="https://aurboda.net/og-default.png"')
+    expect(res.text).not.toContain('oembed')
+    expect(res.headers['cache-control']).toBe('public, max-age=300')
+  })
+
+  test('does not leak an unlisted exercise name', async () => {
+    const app = buildApp({ resolveExercise: async () => ({ ...exercise, is_public: false, name: 'Secret' }) })
+    const res = await supertest(app).get('/u/fiddur/ex1')
+    expect(res.text).not.toContain('Secret')
+    expect(res.text).toContain('<title>Aurboda</title>')
+  })
+
+  test('does not look up an exercise when a dashboard holds the slug', async () => {
+    let asked = false
+    const app = buildApp({
+      resolveDashboard: async () => ({ is_public: false, name: 'Hidden' }),
+      resolveExercise: async () => {
+        asked = true
+        return exercise
+      },
+    })
+    const res = await supertest(app).get('/u/fiddur/ex1')
+    expect(asked).toBe(false)
+    expect(res.text).toContain('<title>Aurboda</title>')
   })
 
   test('falls back to default meta for an unknown slug', async () => {

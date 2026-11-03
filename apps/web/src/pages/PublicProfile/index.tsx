@@ -6,13 +6,40 @@ import { useRoute } from 'preact-iso'
 
 /**
  * PublicProfile - a user's public page at /u/:username, listing their public
- * shared dashboards and challenges. Unauthenticated; rendered without app chrome.
+ * shared dashboards, challenges and exercises. Unauthenticated; rendered without app chrome.
  */
 import type { PostAuthor } from '../Feed/FeedPostCard'
 
 import { avatarUrl, fetchPublicPosts, fetchPublicProfile } from '../../state/api'
 import { FeedPostCard } from '../Feed/FeedPostCard'
 import './style.css'
+
+function PublicList({
+  items = [],
+  title,
+  username,
+}: {
+  items?: { name: string; slug: string }[]
+  title: string
+  username: string
+}) {
+  return (
+    <section class="public-section">
+      <h2>{title}</h2>
+      {items.length === 0 ? (
+        <p class="public-muted">This user has no public {title.toLowerCase()}.</p>
+      ) : (
+        <ul class="public-item-list">
+          {items.map((item) => (
+            <li key={item.slug}>
+              <a href={`/u/${encodeURIComponent(username)}/${encodeURIComponent(item.slug)}`}>{item.name}</a>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
 
 export function PublicProfile() {
   const { params } = useRoute()
@@ -60,8 +87,6 @@ export function PublicProfile() {
     )
   }
 
-  const dashboards = query.data.dashboards ?? []
-  const challenges = query.data.challenges ?? []
   const posts = postsQuery.data?.pages.flatMap((page) => page.posts) ?? []
 
   // The profile owner is the author of every post shown here; the same identity
@@ -73,12 +98,6 @@ export function PublicProfile() {
     profileUrl: `/u/${encodeURIComponent(username)}`,
     username,
   }
-
-  const renderItem = (item: { name: string; slug: string }) => (
-    <li key={item.slug}>
-      <a href={`/u/${encodeURIComponent(username)}/${encodeURIComponent(item.slug)}`}>{item.name}</a>
-    </li>
-  )
 
   return (
     <div class="public-profile">
@@ -117,23 +136,9 @@ export function PublicProfile() {
         )}
       </section>
 
-      <section class="public-section">
-        <h2>Dashboards</h2>
-        {dashboards.length === 0 ? (
-          <p class="public-muted">This user has no public dashboards.</p>
-        ) : (
-          <ul class="public-item-list">{dashboards.map(renderItem)}</ul>
-        )}
-      </section>
-
-      <section class="public-section">
-        <h2>Challenges</h2>
-        {challenges.length === 0 ? (
-          <p class="public-muted">This user has no public challenges.</p>
-        ) : (
-          <ul class="public-item-list">{challenges.map(renderItem)}</ul>
-        )}
-      </section>
+      <PublicList username={username} title="Dashboards" items={query.data.dashboards} />
+      <PublicList username={username} title="Challenges" items={query.data.challenges} />
+      <PublicList username={username} title="Exercises" items={query.data.exercises} />
     </div>
   )
 }

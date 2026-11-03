@@ -1,12 +1,13 @@
 /**
- * PublicResource - resolves `/u/:username/:slug` to either a shared dashboard or
- * a challenge and renders the appropriate view. Rendered without app chrome for
+ * PublicResource - resolves `/u/:username/:slug` to a shared dashboard, a
+ * challenge or a shared exercise and renders the appropriate view. Rendered without app chrome for
  * anonymous visitors; logged-in viewers keep their nav (see AppShell).
  *
  * - Dashboard, owner viewing their own: live, editable dashboard (own controls),
  *   saved via `updateSharedDashboard`.
  * - Dashboard, anyone else: read-only from server-resolved `widget_data`.
  * - Challenge: the race-chart + leaderboard view.
+ * - Exercise: one exercise's records, trend and history, the same for everyone.
  */
 import type { DashboardConfig, SectionType, WidgetDataMap } from '@aurboda/api-spec'
 
@@ -14,28 +15,19 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRoute } from 'preact-iso'
 import { useState } from 'preact/hooks'
 
+import { AttributionLink } from '../../components/AttributionLink'
 import { EditableDashboard } from '../../components/EditableDashboard'
 import { ShareLinkButton } from '../../components/ShareLinkButton'
 import { PublicWidgetRenderer } from '../../components/widgets'
-import { avatarUrl, fetchPublicResource, listSharedDashboards, updateSharedDashboard } from '../../state/api'
+import { fetchPublicResource, listSharedDashboards, updateSharedDashboard } from '../../state/api'
 import { auth } from '../../state/auth'
 import { PublicChallenge } from '../Challenges/PublicChallenge'
+import { PublicExercise } from '../PublicExercise'
 import '../Dashboard/style.css'
 import './style.css'
 
 const gridClass = (type: SectionType): string =>
   type === 'links' ? 'links-grid' : type === 'charts' ? 'charts-grid' : 'metrics-grid'
-
-/** Author attribution (avatar + @handle). Shared so the owner and public views
- *  can't drift apart (#879). */
-function AttributionLink({ username }: { username: string }) {
-  return (
-    <a class="public-attribution" href={`/u/${encodeURIComponent(username)}`}>
-      <img class="public-attribution__avatar" src={avatarUrl(username)} alt="" width={28} height={28} />@
-      {username}
-    </a>
-  )
-}
 
 function OwnerSharedDashboard({ username, slug }: { username: string; slug: string }) {
   const queryClient = useQueryClient()
@@ -154,6 +146,24 @@ function ReadOnlyDashboard({
   )
 }
 
+/**
+ * A challenge, or an exercise (whose owner edits it on the private exercise page), renders the same for
+ * everyone from the public fetch.
+ */
+const sameForEveryoneView = (
+  data: Awaited<ReturnType<typeof fetchPublicResource>>,
+  username: string,
+  slug: string,
+) => {
+  if (data.type === 'challenge' && data.challenge) {
+    return <PublicChallenge username={username} slug={slug} challenge={data.challenge} />
+  }
+  if (data.type === 'exercise' && data.data) {
+    return <PublicExercise username={username} resource={data} data={data.data} />
+  }
+  return null
+}
+
 export function PublicResource() {
   const { params } = useRoute()
   const username = params.username
@@ -176,11 +186,8 @@ export function PublicResource() {
   }
 
   const data = query.data
-
-  // Challenge — same view for everyone (from a successful public fetch).
-  if (data?.success && data.type === 'challenge' && data.challenge) {
-    return <PublicChallenge username={username} slug={slug} challenge={data.challenge} />
-  }
+  const sameForEveryone = data?.success ? sameForEveryoneView(data, username, slug) : null
+  if (sameForEveryone) return sameForEveryone
 
   // Owner of this profile → their live, editable dashboard, independent of the
   // (unauthenticated, retry:false) public fetch — so a transient failure of that

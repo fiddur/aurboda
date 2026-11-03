@@ -20,6 +20,7 @@ import { chartDataBreakdownBucketSchema, chartDataBucketSchema } from './chart-d
 import { baseResponseSchema } from './common.ts'
 import { dashboardConfigSchema } from './dashboard.ts'
 import { goalProgressSchema } from './goals.ts'
+import { publicExerciseListItemSchema } from './shared-exercises.ts'
 import { latestSleepSchema } from './sleep.ts'
 import { trendHistoryPointSchema } from './trends.ts'
 import { shareVisibilitySchema } from './visibility.ts'
@@ -287,6 +288,10 @@ export const publicProfileResponseSchema = baseResponseSchema
       .array(publicDashboardListItemSchema)
       .optional()
       .meta({ description: 'Public shared dashboards' }),
+    exercises: z
+      .array(publicExerciseListItemSchema)
+      .optional()
+      .meta({ description: 'Public shared exercises' }),
     profile_url: z.string().optional().meta({ description: 'Absolute URL of the public profile' }),
     username: z.string().optional().meta({ description: 'The profile username' }),
   })

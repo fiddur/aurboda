@@ -14,6 +14,8 @@ presence is addressed by their full public **base URL**:
 - Public profile: `<public-base>/u/<username>` — e.g. `https://aurboda.net/u/fiddur`
 - A shared dashboard: `<public-base>/u/<username>/<slug>` — e.g.
   `https://aurboda.net/u/fiddur/a3GVcs14D`
+- A shared exercise: `<public-base>/u/<username>/<slug>`, the same namespace (see
+  [Shared exercises](#shared-exercises))
 
 The federation key is this full base URL, **not** `username@host`. That means an
 instance can be served over http or under a sub-path of another site
@@ -66,6 +68,46 @@ Bar-chart buckets (days, weeks, months, hours) follow the **owner's** stored tim
 (`tz` in settings), not the visitor's, so every visitor sees the owner's calendar days.
 Without a stored timezone, or with one that is not a valid IANA name, they fall back
 to UTC.
+
+## Shared exercises
+
+A shared exercise publishes the progress on **one exercise**: one item value of one
+activity type, such as `sets.exercise` = `Bench Press` of `strength_training` — the
+exercise page at `/activity-type/<name>/item/<field>/<value>` (see
+[Activity types → Exercises and measures](./activity-types.md)). An item is shared at
+most once. It has a slug in the same `/u/<username>/<slug>` namespace as dashboards
+and challenges, a display `name` (the value by default), and the same `visibility`
+(`unlisted` by default): public exercises are listed on the profile under
+**Exercises**.
+
+The public data is resolved on the server from the stored share alone
+(`services/shared-exercise-data.ts`), the same boundary as dashboards' widgets. The
+viewer gets exactly:
+
+- **records** — per record measure (e1RM, max weight, longest hold, most reps in a
+  set), the best value, the start time of the first session that reached it, and the
+  set it came from;
+- **done** — the number of sessions with the exercise and the first and latest start;
+- **trend** — the decaying best of e1RM (else most reps in a set, else longest hold)
+  over all time, with the 120-day half-life the exercise page uses;
+- **per week** — e1RM (else the first measure the sessions have) per week over the
+  last 365 days, the best or the total of each week as on the exercise page;
+- **history** — every session, newest first: its start time, its sets of the exercise
+  (reps, weight, time and set type only), its measures and the records it set.
+
+Never included: session ids, titles, notes, locations, heart rate, calories, the
+session's other fields, other exercises of the same sessions, and any other key a set
+was logged with. Days and weeks follow the owner's stored timezone. There is no period
+selector; the owner's own exercise page keeps one.
+
+On the web, the exercise page's header has a **Share** button; once shared it shows
+the link, the visibility and **Stop sharing**. `/shared-dashboards` lists the shared
+exercises under **Exercises** too (rename, visibility, copy link, delete). The owner
+viewing their own shared exercise sees the same read-only page as everyone else.
+
+Link previews of a public shared exercise carry its name, "&lt;name&gt; — &lt;user&gt;'s
+progress on Aurboda." and the static default image; there is no rendered image card and
+no oEmbed for exercises yet.
 
 ## Using it in the web app
 
@@ -186,24 +228,40 @@ Owner-facing CRUD (authenticated, scoped to the caller):
 | `GET /shared-dashboards/:id`    | Fetch one (with config)            |
 | `PUT /shared-dashboards/:id`    | Update name / config / visibility  |
 | `DELETE /shared-dashboards/:id` | Delete (its slug stops resolving)  |
+| `GET /shared-exercises`         | List my shared exercises           |
+| `POST /shared-exercises`        | Share an exercise (409 if shared)  |
+| `GET /shared-exercises/:id`     | Fetch one                          |
+| `PUT /shared-exercises/:id`     | Update name / visibility           |
+| `DELETE /shared-exercises/:id`  | Stop sharing (its slug stops)      |
+
+`POST /shared-exercises` takes `activity_type`, `field` (the item path, e.g.
+`sets.exercise`), `value`, and optionally `name` and `visibility`.
 
 Public (unauthenticated):
 
-| Method & path                      | Purpose                                    |
-| ---------------------------------- | ------------------------------------------ |
-| `GET /public/:username/dashboards` | List a user's **public** shared dashboards |
-| `GET /public/:username/:slug`      | View one shared dashboard + resolved data  |
+| Method & path                      | Purpose                                                           |
+| ---------------------------------- | ----------------------------------------------------------------- |
+| `GET /public/:username/dashboards` | List a user's **public** shared dashboards, challenges, exercises |
+| `GET /public/:username/:slug`      | View one shared dashboard, challenge or exercise                  |
+
+`GET /public/:username/:slug` resolves a slug as a dashboard, then a challenge, then
+a shared exercise; an exercise answers `type: 'exercise'` with `name`,
+`activity_type`, `activity_type_name`, `value`, `profile_url`, `share_url` and `data`
+(the projection above).
 
 The same CRUD capability is available over MCP as `list_shared_dashboards`,
-`create_shared_dashboard`, `update_shared_dashboard`, and `delete_shared_dashboard`.
-Public viewing is web-only.
+`create_shared_dashboard`, `update_shared_dashboard`, and `delete_shared_dashboard`,
+and for exercises `list_shared_exercises`, `create_shared_exercise`,
+`update_shared_exercise` and `delete_shared_exercise`. Public viewing is web-only.
 
 ## Storage
 
 Shared dashboards live in the user's own database (the config is the user's data) in
 the `shared_dashboards` table. The `slug` is unique per database; the `username` in
 the URL disambiguates globally, so no central slug index is needed. Deleting a
-shared dashboard immediately makes its slug return 404.
+shared dashboard immediately makes its slug return 404. Shared exercises are in
+`shared_exercises` (`activity_type`, `field`, `value`, unique together), and a new
+one's slug is checked free against dashboards and challenges.
 
 ## Related
 

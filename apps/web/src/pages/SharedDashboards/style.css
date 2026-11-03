@@ -126,3 +126,23 @@
     background: #4c1d1d;
   }
 }
+
+.shared-exercises {
+  margin-top: 2rem;
+}
+
+.shared-exercises h2 {
+  font-size: 1.25rem;
+  margin: 0 0 0.5rem;
+}
+
+.shared-exercise-item {
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+@media (prefers-color-scheme: dark) {
+  .shared-exercise-item {
+    color: #9ca3af;
+  }
+}

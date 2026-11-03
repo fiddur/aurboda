@@ -1,6 +1,5 @@
 import { type ActivityMeasure, type ActivitySession, activityMeasureLabels } from '@aurboda/api-spec'
 import { useQuery } from '@tanstack/react-query'
-import { format } from 'date-fns'
 import { useRoute } from 'preact-iso'
 import { useMemo, useState } from 'preact/hooks'
 
@@ -17,14 +16,14 @@ import {
 import { buildChartUrl } from '../../utils/chart-url'
 import { toDisplayName } from '../../utils/displayName'
 import { MEASURE_HALF_LIFE_DEFAULT } from '../../utils/half-life'
-import { defaultAggregation, formatMeasure, formatSet } from '../../utils/measures'
+import { defaultAggregation } from '../../utils/measures'
 import { newWidgetId } from '../../utils/widget-id'
+import { DoneCard, RecordCard } from './ItemCards'
 import {
   availableMeasures,
   chartExplorerHref,
   doneSummary,
   explorerLookbackDays,
-  type ItemRecord,
   perWeekRange,
   recordsFrom,
   sliceByLookback,
@@ -32,6 +31,7 @@ import {
 } from './itemHistory'
 import { ItemSessionsTable } from './ItemSessionsTable'
 import { MergeItemValue } from './MergeItemValue'
+import { ShareExercise } from './ShareExercise'
 import './style.css'
 
 const LOOKBACK_OPTIONS = [
@@ -41,21 +41,6 @@ const LOOKBACK_OPTIONS = [
   { label: 'All time', value: 0 },
 ]
 
-const SET_MEASURES = new Set<ActivityMeasure>(['e1rm', 'max_weight'])
-
-const day = (iso: string): string => format(new Date(iso), 'd MMM yyyy')
-
-const RecordCard = ({ record }: { record: ItemRecord }) => (
-  <div class="activity-type-item-card">
-    <div class="activity-type-item-card-label">{activityMeasureLabels[record.measure]}</div>
-    <div class="activity-type-item-card-value">{formatMeasure(record.measure, record.value)}</div>
-    <div class="activity-type-item-card-detail">
-      <a href={`/detail/activity/${record.session_id}`}>{day(record.start_time)}</a>
-      {SET_MEASURES.has(record.measure) && record.set && <> · {formatSet(record.set)}</>}
-    </div>
-  </div>
-)
-
 const Records = ({ sessions }: { sessions: ActivitySession[] }) => {
   const done = doneSummary(sessions)
   return (
@@ -63,15 +48,7 @@ const Records = ({ sessions }: { sessions: ActivitySession[] }) => {
       {recordsFrom(sessions).map((r) => (
         <RecordCard key={r.measure} record={r} />
       ))}
-      {done && (
-        <div class="activity-type-item-card">
-          <div class="activity-type-item-card-label">Done</div>
-          <div class="activity-type-item-card-value">{done.count}×</div>
-          <div class="activity-type-item-card-detail">
-            {done.count === 1 ? day(done.first) : `${day(done.first)} – ${day(done.last)}`}
-          </div>
-        </div>
-      )}
+      {done && <DoneCard done={done} />}
     </div>
   )
 }
@@ -288,13 +265,16 @@ export function ActivityTypeItem() {
         <h1>{value}</h1>
         <p class="activity-type-item-subtitle">{typeName}</p>
         {sessions.length > 0 && (
-          <MergeItemValue
-            key={value}
-            name={name}
-            field={field}
-            value={value}
-            sessionCount={sessions.length}
-          />
+          <>
+            <ShareExercise key={`share-${value}`} name={name} field={field} value={value} />
+            <MergeItemValue
+              key={value}
+              name={name}
+              field={field}
+              value={value}
+              sessionCount={sessions.length}
+            />
+          </>
         )}
       </header>
 
