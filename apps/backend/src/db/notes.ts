@@ -177,21 +177,22 @@ export const deleteNote = async (user: string, id: string): Promise<boolean> => 
 }
 
 /**
- * Delete every comment on an entity, replies included. For an entity that is
+ * Delete every comment on the given entities, replies included. For an entity that is
  * removed for good (a meal, unlike a soft-deleted activity), its comments have
  * nothing left to hang off: they would keep drawing a Timeline bubble linking
  * to a page that 404s. Returns how many thread roots were removed. Runs inside
- * the caller's transaction, so the entity and its threads go together.
+ * the caller's transaction, so the entities and their threads go together.
  */
-export const deleteNotesForEntityIn = async (
+export const deleteNotesForEntitiesIn = async (
   tx: Queryable,
   entityType: EntityType,
-  entityId: string,
+  entityIds: string[],
 ): Promise<number> => {
+  if (entityIds.length === 0) return 0
   const deleted = await query<{ id: string }>(
     tx,
-    `DELETE FROM notes WHERE entity_type = $1 AND entity_id = $2 RETURNING id`,
-    [entityType, entityId],
+    `DELETE FROM notes WHERE entity_type = $1 AND entity_id = ANY($2) RETURNING id`,
+    [entityType, entityIds],
   )
   const deletedIds = deleted.rows.map((r) => r.id)
   if (deletedIds.length > 0) {
@@ -199,6 +200,12 @@ export const deleteNotesForEntityIn = async (
   }
   return deletedIds.length
 }
+
+export const deleteNotesForEntityIn = async (
+  tx: Queryable,
+  entityType: EntityType,
+  entityId: string,
+): Promise<number> => deleteNotesForEntitiesIn(tx, entityType, [entityId])
 
 /** `deleteNotesForEntityIn` in a transaction of its own. */
 export const deleteNotesForEntity = async (

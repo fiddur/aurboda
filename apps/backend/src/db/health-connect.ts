@@ -72,9 +72,9 @@ import {
 } from '../services/source-identity.ts'
 import { pushAll } from '../utils.ts'
 import { adoptLegacyActivity, insertActivities, insertActivity } from './activities/index.ts'
-import { query } from './connection.ts'
+import { query, withUserTransaction } from './connection.ts'
 import { insertMeal } from './meals.ts'
-import { upsertSyncedNote } from './notes.ts'
+import { deleteNotesForEntitiesIn, upsertSyncedNote } from './notes.ts'
 import { insertRawRecord, insertRawRecords } from './raw-records.ts'
 import { insertTimeSeries } from './time-series.ts'
 
@@ -458,76 +458,85 @@ const processNutritionRecord = async (user: string, data: Record<string, unknown
  *
  * @returns Number of raw records actually deleted.
  */
-export const deleteHealthConnectRecords = async (user: string, externalIds: string[]): Promise<number> => {
-  const result = await query(
-    user,
-    `DELETE FROM raw_records
-     WHERE source = 'health_connect' AND external_id = ANY($1)
-     RETURNING record_type, data`,
-    [externalIds],
-  )
+export const deleteHealthConnectRecords = async (user: string, externalIds: string[]): Promise<number> =>
+  withUserTransaction(user, async (tx) => {
+    const result = await query(
+      tx,
+      `DELETE FROM raw_records
+       WHERE source = 'health_connect' AND external_id = ANY($1)
+       RETURNING record_type, data`,
+      [externalIds],
+    )
 
-  const deleted = result.rows.length
-  if (deleted === 0) return 0
+    const deleted = result.rows.length
+    if (deleted === 0) return 0
 
-  const timeSeriesDeletes: { time: Date; metric: string }[] = []
-  const activityDeletes: { activityType: string; startTime: Date }[] = []
+    const timeSeriesDeletes: { time: Date; metric: string }[] = []
+    const activityDeletes: { activityType: string; startTime: Date }[] = []
 
-  for (const row of result.rows as { record_type: string; data: Record<string, unknown> }[]) {
-    const { record_type: recordType, data } = row
+    for (const row of result.rows as { record_type: string; data: Record<string, unknown> }[]) {
+      const { record_type: recordType, data } = row
 
-    const metric = healthConnectMetricMapping[recordType]
-    if (metric) {
-      const points = extractTimeSeriesPoints(recordType, metric, data)
-      for (const point of points) {
-        timeSeriesDeletes.push({ metric: point.metric, time: point.time })
+      const metric = healthConnectMetricMapping[recordType]
+      if (metric) {
+        const points = extractTimeSeriesPoints(recordType, metric, data)
+        for (const point of points) {
+          timeSeriesDeletes.push({ metric: point.metric, time: point.time })
+        }
+      }
+
+      if (recordType === 'BloodPressureRecord') {
+        const time = new Date((data.time as string) || (data.startTime as string))
+        timeSeriesDeletes.push({ metric: 'blood_pressure_systolic', time })
+        timeSeriesDeletes.push({ metric: 'blood_pressure_diastolic', time })
+      }
+
+      const baseActivityType = healthConnectActivityMapping[recordType]
+      if (baseActivityType && data.startTime) {
+        const activityType =
+          baseActivityType === 'exercise' ? resolveExerciseActivityType(data) : baseActivityType
+        activityDeletes.push({ activityType, startTime: new Date(data.startTime as string) })
       }
     }
 
-    if (recordType === 'BloodPressureRecord') {
-      const time = new Date((data.time as string) || (data.startTime as string))
-      timeSeriesDeletes.push({ metric: 'blood_pressure_systolic', time })
-      timeSeriesDeletes.push({ metric: 'blood_pressure_diastolic', time })
+    if (timeSeriesDeletes.length > 0) {
+      const params: unknown[] = []
+      const conditions = timeSeriesDeletes.map((d, i) => {
+        params.push(d.time, d.metric)
+        return `($${i * 2 + 1}::timestamptz, $${i * 2 + 2}::text)`
+      })
+      await query(
+        tx,
+        `DELETE FROM time_series
+         WHERE source = 'health_connect'
+           AND (time, metric) IN (VALUES ${conditions.join(', ')})`,
+        params,
+      )
     }
 
-    const activityType = healthConnectActivityMapping[recordType]
-    if (activityType && data.startTime) {
-      activityDeletes.push({ activityType, startTime: new Date(data.startTime as string) })
+    if (activityDeletes.length > 0) {
+      const params: unknown[] = []
+      const conditions = activityDeletes.map((d, i) => {
+        params.push(d.activityType, d.startTime)
+        return `($${i * 2 + 1}::text, $${i * 2 + 2}::timestamptz)`
+      })
+      const deletedActivities = await query<{ id: string }>(
+        tx,
+        `DELETE FROM activities
+         WHERE source = 'health_connect'
+           AND (activity_type, start_time) IN (VALUES ${conditions.join(', ')})
+         RETURNING id`,
+        params,
+      )
+      await deleteNotesForEntitiesIn(
+        tx,
+        'activity',
+        deletedActivities.rows.map((r) => r.id),
+      )
     }
-  }
 
-  if (timeSeriesDeletes.length > 0) {
-    const params: unknown[] = []
-    const conditions = timeSeriesDeletes.map((d, i) => {
-      params.push(d.time, d.metric)
-      return `($${i * 2 + 1}::timestamptz, $${i * 2 + 2}::text)`
-    })
-    await query(
-      user,
-      `DELETE FROM time_series
-       WHERE source = 'health_connect'
-         AND (time, metric) IN (VALUES ${conditions.join(', ')})`,
-      params,
-    )
-  }
-
-  if (activityDeletes.length > 0) {
-    const params: unknown[] = []
-    const conditions = activityDeletes.map((d, i) => {
-      params.push(d.activityType, d.startTime)
-      return `($${i * 2 + 1}::text, $${i * 2 + 2}::timestamptz)`
-    })
-    await query(
-      user,
-      `DELETE FROM activities
-       WHERE source = 'health_connect'
-         AND (activity_type, start_time) IN (VALUES ${conditions.join(', ')})`,
-      params,
-    )
-  }
-
-  return deleted
-}
+    return deleted
+  })
 
 /**
  * Convert a date string (YYYY-MM-DD) to midnight in the given IANA timezone, returned as UTC.

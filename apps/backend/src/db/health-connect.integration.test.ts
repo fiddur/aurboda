@@ -13,6 +13,7 @@ import {
   processHealthConnectBatch,
   processHealthConnectData,
 } from './health-connect.ts'
+import { insertNote } from './notes.ts'
 import { deleteTimeSeriesPoint, getTimeSeries, insertTimeSeries } from './time-series.ts'
 
 const CONTAINER_TIMEOUT = 120_000
@@ -287,6 +288,42 @@ describe('Health Connect Integration Tests', () => {
       expect(activitiesAfter.rows).toHaveLength(0)
     })
 
+    const walk = {
+      endTime: '2024-01-15T11:00:00Z',
+      exerciseType: 79,
+      metadata: { id: 'hc-ex-1' },
+      startTime: '2024-01-15T10:00:00Z',
+      title: 'HC walk',
+    }
+
+    test('deletes an exercise session stored under its exercise subtype (#1347)', async () => {
+      const user = getTestUser()
+
+      await processHealthConnectData(user, 'ExerciseSessionRecord', walk)
+
+      const before = await query(user, `SELECT activity_type FROM activities WHERE source = 'health_connect'`)
+      expect(before.rows).toEqual([{ activity_type: 'walking' }])
+
+      expect(await deleteHealthConnectRecords(user, ['hc-ex-1'])).toBe(1)
+
+      const after = await query(user, `SELECT id FROM activities WHERE source = 'health_connect'`)
+      expect(after.rows).toHaveLength(0)
+    })
+
+    test('deletes a batch-synced exercise session stored under its exercise subtype (#1347)', async () => {
+      const user = getTestUser()
+
+      await processHealthConnectBatch(user, 'ExerciseSessionRecord', [walk])
+
+      const before = await query(user, `SELECT activity_type FROM activities WHERE source = 'health_connect'`)
+      expect(before.rows).toEqual([{ activity_type: 'walking' }])
+
+      expect(await deleteHealthConnectRecords(user, ['hc-ex-1'])).toBe(1)
+
+      const after = await query(user, `SELECT id FROM activities WHERE source = 'health_connect'`)
+      expect(after.rows).toHaveLength(0)
+    })
+
     test('handles batch deletions', async () => {
       const user = getTestUser()
 
@@ -527,6 +564,48 @@ describe('Health Connect Integration Tests', () => {
 
       const rows = await query(user, `SELECT * FROM activities WHERE source = 'health_connect'`)
       expect(rows.rows).toHaveLength(0)
+    })
+
+    test('deleting the Health Connect record removes its synced note (#1348)', async () => {
+      const user = getTestUser()
+
+      await processHealthConnectBatch(user, 'MindfulnessSessionRecord', [
+        mindfulnessSession({ notes: 'Felt calm' }),
+      ])
+      const activity = await query(user, `SELECT id FROM activities WHERE source = 'health_connect'`)
+      const activityId = activity.rows[0].id as string
+      const before = await query(
+        user,
+        `SELECT content, source FROM notes WHERE entity_type = 'activity' AND entity_id = $1`,
+        [activityId],
+      )
+      expect(before.rows).toEqual([{ content: 'Felt calm', source: 'health_connect' }])
+
+      expect(await deleteHealthConnectRecords(user, ['hc-mind-1'])).toBe(1)
+
+      const after = await query(
+        user,
+        `SELECT id FROM notes WHERE entity_type = 'activity' AND entity_id = $1`,
+        [activityId],
+      )
+      expect(after.rows).toEqual([])
+    })
+
+    test('deleting the Health Connect record removes user comments and replies on it too', async () => {
+      const user = getTestUser()
+
+      await processHealthConnectBatch(user, 'MindfulnessSessionRecord', [
+        mindfulnessSession({ notes: 'Felt calm' }),
+      ])
+      const activity = await query(user, `SELECT id FROM activities WHERE source = 'health_connect'`)
+      const activityId = activity.rows[0].id as string
+      const comment = await insertNote(user, 'activity', activityId, 'Great session')
+      await insertNote(user, 'note', comment.id, 'Agreed')
+
+      expect(await deleteHealthConnectRecords(user, ['hc-mind-1'])).toBe(1)
+
+      const remaining = await query(user, `SELECT id FROM notes`)
+      expect(remaining.rows).toEqual([])
     })
 
     test('merges with an overlapping Garmin meditation into one activity', async () => {
