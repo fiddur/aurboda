@@ -1,4 +1,4 @@
-import axios, { type AxiosRequestConfig, type AxiosResponse } from 'axios'
+import axios, { type AxiosRequestConfig, type AxiosResponse, isAxiosError } from 'axios'
 /**
  * Guarded outbound HTTP for federation (SSRF protection).
  *
@@ -124,4 +124,46 @@ export const safeFetchPost = async <T = unknown>(
 ): Promise<AxiosResponse<T>> => {
   await assertPublicUrl(url)
   return axios.post<T>(url, body, guardedConfig(config))
+}
+
+export const safeFetchDelete = async <T = unknown>(
+  url: string,
+  body: unknown,
+  config?: AxiosRequestConfig,
+): Promise<AxiosResponse<T>> => {
+  await assertPublicUrl(url)
+  return axios.delete<T>(url, { ...guardedConfig(config), data: body })
+}
+
+/** Node network errors that mean "could not reach it right now", not "it is not Aurboda". */
+const TRANSIENT_NETWORK_CODES = new Set([
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'EAI_AGAIN',
+  'EHOSTUNREACH',
+  'ENOTFOUND',
+  'ETIMEDOUT',
+])
+
+const systemErrorCode = (error: unknown): string | undefined =>
+  typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string'
+    ? error.code
+    : undefined
+
+/**
+ * A failure that says nothing about whether the host is an Aurboda instance —
+ * no answer at all, a server error, a throttle (429) or a blanket 403, a DNS
+ * hiccup — as opposed to a definite "no" (a 404 for the well-known document, a
+ * non-Aurboda body, a private address we refuse). Only definite answers are
+ * worth remembering for an hour; a transient one must be retried (#1094).
+ */
+export const isTransientFetchError = (error: unknown): boolean => {
+  if (isAxiosError(error)) {
+    const status = error.response?.status
+    return status === undefined || status >= 500 || status === 429 || status === 403
+  }
+  if (error instanceof SafeFetchError) return error.code === 'dns'
+  const code = systemErrorCode(error)
+  if (code !== undefined) return TRANSIENT_NETWORK_CODES.has(code)
+  return error instanceof Error && /timed out|timeout/i.test(error.message)
 }

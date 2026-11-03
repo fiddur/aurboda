@@ -1,15 +1,42 @@
 /**
- * Unit tests for the pure parts of challenge federation: how a public challenge
- * link is canonicalised (what every URL comparison keys off) and parsed.
+ * Challenge federation: how a public challenge link is canonicalised (what
+ * every URL comparison keys off) and parsed, and — with the network and the
+ * database mocked — how a host is discovered, joined and left.
  */
-import { describe, expect, test } from 'vitest'
+import { AxiosError, AxiosHeaders } from 'axios'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
 
-import {
+import type * as DbModule from '../db/index.ts'
+import type { ChallengeParticipationRecord, ChallengeSpecFields } from '../db/index.ts'
+import type * as SafeFetchModule from './safe-fetch.ts'
+
+vi.mock('./safe-fetch.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof SafeFetchModule>()),
+  safeFetchDelete: vi.fn(),
+  safeFetchGet: vi.fn(),
+  safeFetchPost: vi.fn(),
+}))
+
+vi.mock('../db/index.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof DbModule>()),
+  createChallengeParticipation: vi.fn(),
+  deleteChallengeParticipation: vi.fn(),
+  getParticipationById: vi.fn(),
+  getParticipationByUrl: vi.fn(),
+}))
+
+const safeFetch = await import('./safe-fetch.ts')
+const db = await import('../db/index.ts')
+const {
   canonicalChallengeUrl,
+  discoverInstance,
   JoinChallengeError,
+  joinChallenge,
+  leaveChallenge,
   parseChallengeUrl,
   parsePublicChallenge,
-} from './challenge-federation.ts'
+  specFromChallengeDocument,
+} = await import('./challenge-federation.ts')
 
 describe('canonicalChallengeUrl', () => {
   test('drops the query, the fragment, trailing slashes and a default port', () => {
@@ -124,5 +151,287 @@ describe('parsePublicChallenge', () => {
       'URL is not an Aurboda challenge',
     )
     expect(() => parsePublicChallenge(null)).toThrow('URL is not an Aurboda challenge')
+  })
+})
+
+const response = (data: unknown) =>
+  ({ config: {}, data, headers: {}, status: 200, statusText: 'OK' }) as never
+
+const httpError = (status: number, data: unknown = {}) =>
+  new AxiosError('failed', String(status), undefined, undefined, {
+    config: { headers: new AxiosHeaders() },
+    data,
+    headers: {},
+    status,
+    statusText: '',
+  })
+
+const stepsSpec: ChallengeSpecFields = {
+  activity_type_id: null,
+  aggregation: 'sum',
+  bucket_size: 'auto',
+  filter_field: null,
+  filter_value: null,
+  measure: null,
+  pattern: 'steps',
+  source_type: 'metric',
+  unit: '1',
+}
+
+const quantDocument = (overrides: Record<string, unknown> = {}) => ({
+  endTime: '2026-11-30T23:00:00.000Z',
+  host: { name: 'freja', url: 'https://qs.example/u/freja' },
+  joinToken: 'jt',
+  kind: 'challenge',
+  metric: 'steps',
+  name: 'November steps',
+  scoring: 'sum',
+  startTime: '2026-10-31T23:00:00.000Z',
+  timezone: 'Europe/Stockholm',
+  url: 'https://qs.example/u/freja/nov',
+  ...overrides,
+})
+
+const participationRecord = (
+  overrides: Partial<ChallengeParticipationRecord> = {},
+): ChallengeParticipationRecord => ({
+  challenge_url: 'https://qs.example/u/freja/nov',
+  created_at: new Date('2026-11-01T00:00:00Z'),
+  data_token: 'dtok',
+  end_ts: new Date('2026-11-30T23:00:00Z'),
+  host_identity: 'https://qs.example/u/freja',
+  id: 'p1',
+  name: 'November steps',
+  spec: stepsSpec,
+  start_ts: new Date('2026-10-31T23:00:00Z'),
+  status: 'active',
+  timezone: 'Europe/Stockholm',
+  ...overrides,
+})
+
+/** Route GETs by URL suffix; anything unrouted 404s. */
+const routeGets = (routes: Record<string, unknown>) => {
+  vi.mocked(safeFetch.safeFetchGet).mockImplementation(async (url: string) => {
+    const hit = Object.entries(routes).find(([suffix]) => url.endsWith(suffix))
+    if (!hit) throw httpError(404)
+    if (hit[1] instanceof Error) throw hit[1]
+    return response(hit[1])
+  })
+}
+
+const quantWellKnown = {
+  apiBase: 'https://qs.example/api',
+  challenges: true,
+  product: 'x',
+  quantpub: '0.3',
+  version: '1',
+}
+const aurbodaWellKnown = {
+  api_base: 'https://qs.example/api',
+  federation: true,
+  product: 'aurboda',
+  version: '1',
+}
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  vi.mocked(db.getParticipationByUrl).mockResolvedValue(null)
+  vi.mocked(db.createChallengeParticipation).mockImplementation(async (_user, input) =>
+    participationRecord({ ...input }),
+  )
+  vi.mocked(db.deleteChallengeParticipation).mockResolvedValue(true)
+})
+
+describe('discoverInstance', () => {
+  test('prefers a QuantPub host that serves challenges', async () => {
+    routeGets({ '/.well-known/aurboda': aurbodaWellKnown, '/.well-known/quantpub': quantWellKnown })
+    expect(await discoverInstance('https://qs.example')).toEqual({
+      apiBase: 'https://qs.example/api',
+      kind: 'quantpub',
+    })
+  })
+
+  test('falls back to the Aurboda document without the flag or without a QuantPub document', async () => {
+    routeGets({
+      '/.well-known/aurboda': aurbodaWellKnown,
+      '/.well-known/quantpub': { ...quantWellKnown, challenges: undefined },
+    })
+    expect(await discoverInstance('https://qs.example')).toEqual({
+      apiBase: 'https://qs.example/api',
+      kind: 'aurboda',
+    })
+    routeGets({ '/.well-known/aurboda': aurbodaWellKnown })
+    expect((await discoverInstance('https://qs.example')).kind).toBe('aurboda')
+  })
+
+  test('rethrows a transient QuantPub failure rather than falling back', async () => {
+    routeGets({ '/.well-known/aurboda': aurbodaWellKnown, '/.well-known/quantpub': httpError(503) })
+    await expect(discoverInstance('https://qs.example')).rejects.toThrow('failed')
+  })
+})
+
+describe('specFromChallengeDocument', () => {
+  test('takes the vendor spec as is', () => {
+    const vendor = {
+      aggregation: 'max',
+      bucket_size: 'auto',
+      measure: 'max_reps',
+      pattern: 'strength_training',
+      source_type: 'activity_type',
+      unit: 'reps',
+    } as const
+    const doc = { ...quantDocument({ metric: 'aurboda:maxReps', scoring: 'max' }), aurboda: { spec: vendor } }
+    expect(specFromChallengeDocument(doc as never)).toMatchObject({
+      measure: 'max_reps',
+      pattern: 'strength_training',
+    })
+  })
+
+  test('synthesises a metric spec from a bare RECOMMENDED key', () => {
+    expect(specFromChallengeDocument(quantDocument() as never)).toEqual(stepsSpec)
+  })
+
+  test('refuses what this instance cannot score', () => {
+    for (const metric of ['tracker:pushups', 'heartRate', 'aurboda:steps']) {
+      expect(() => specFromChallengeDocument(quantDocument({ metric }) as never)).toThrow(
+        `This instance cannot score ${metric}`,
+      )
+    }
+  })
+})
+
+describe('joinChallenge on a QuantPub host', () => {
+  const deps = {
+    apiBaseUrl: 'https://home.example/api',
+    challengeUrl: 'https://qs.example/u/freja/nov?embed=1',
+    user: 'ola',
+    webHost: 'https://home.example',
+  }
+
+  test('reads the challenge document and registers with the new body', async () => {
+    routeGets({ '/.well-known/quantpub': quantWellKnown, '/public/freja/challenges/nov': quantDocument() })
+    vi.mocked(safeFetch.safeFetchPost).mockResolvedValue(response({ status: 'member' }))
+
+    const participation = await joinChallenge(deps)
+
+    expect(db.createChallengeParticipation).toHaveBeenCalledWith('ola', {
+      challenge_url: 'https://qs.example/u/freja/nov',
+      end_ts: new Date('2026-11-30T23:00:00.000Z'),
+      host_identity: 'https://qs.example/u/freja',
+      name: 'November steps',
+      spec: stepsSpec,
+      start_ts: new Date('2026-10-31T23:00:00.000Z'),
+      timezone: 'Europe/Stockholm',
+    })
+    expect(safeFetch.safeFetchPost).toHaveBeenCalledWith(
+      'https://qs.example/api/public/freja/challenges/nov/members',
+      {
+        actor: 'https://home.example/users/ola',
+        entryUrl: `https://home.example/api/public/ola/challenge-entries/${participation.data_token}`,
+        joinToken: 'jt',
+        name: 'ola',
+        url: 'https://home.example/u/ola',
+      },
+    )
+  })
+
+  test('refuses a metric it cannot score before creating anything', async () => {
+    routeGets({
+      '/.well-known/quantpub': quantWellKnown,
+      '/public/freja/challenges/nov': quantDocument({ metric: 'tracker:pushups', unit: '1' }),
+    })
+    await expect(joinChallenge(deps)).rejects.toThrow('This instance cannot score tracker:pushups')
+    expect(db.createChallengeParticipation).not.toHaveBeenCalled()
+  })
+
+  test("rolls the participation back, without a tombstone, and surfaces the host's reason", async () => {
+    routeGets({ '/.well-known/quantpub': quantWellKnown, '/public/freja/challenges/nov': quantDocument() })
+    vi.mocked(safeFetch.safeFetchPost).mockRejectedValue(httpError(409, { error: 'Challenge is full' }))
+    await expect(joinChallenge(deps)).rejects.toThrow('Challenge is full')
+    expect(db.deleteChallengeParticipation).toHaveBeenCalledWith('ola', 'p1', { tombstone: false })
+  })
+
+  test('an Aurboda-protocol host is still joined the old way', async () => {
+    routeGets({
+      '/.well-known/aurboda': aurbodaWellKnown,
+      '/public/freja/nov': {
+        challenge: {
+          end_ts: '2026-11-30T23:00:00.000Z',
+          host_identity: 'https://qs.example/u/freja',
+          join_token: 'jt',
+          members: [],
+          name: 'November steps',
+          profile_url: 'https://qs.example/u/freja',
+          share_url: 'https://qs.example/u/freja/nov',
+          spec: {
+            aggregation: 'sum',
+            bucket_size: 'auto',
+            pattern: 'steps',
+            source_type: 'metric',
+            unit: 'steps',
+          },
+          start_ts: '2026-10-31T23:00:00.000Z',
+          timezone: 'Europe/Stockholm',
+          visibility: 'public',
+        },
+        success: true,
+        type: 'challenge',
+      },
+    })
+    vi.mocked(safeFetch.safeFetchPost).mockResolvedValue(response({ success: true }))
+    await joinChallenge(deps)
+    expect(safeFetch.safeFetchPost).toHaveBeenCalledWith(
+      'https://qs.example/api/public/freja/nov/members',
+      expect.objectContaining({
+        data_endpoint_url: 'https://home.example/api/challenge-data/ola/dtok',
+        join_token: 'jt',
+      }),
+    )
+  })
+})
+
+describe('leaveChallenge', () => {
+  const ctx = { apiBaseUrl: 'https://home.example/api', webHost: 'https://home.example' }
+
+  test('tells a QuantPub host with the entry URL, then deletes the participation', async () => {
+    vi.mocked(db.getParticipationById).mockResolvedValue(participationRecord())
+    routeGets({ '/.well-known/quantpub': quantWellKnown })
+    vi.mocked(safeFetch.safeFetchDelete).mockResolvedValue(response({ status: 'left' }))
+    expect(await leaveChallenge('ola', 'p1', ctx)).toBe(true)
+    expect(safeFetch.safeFetchDelete).toHaveBeenCalledWith(
+      'https://qs.example/api/public/freja/challenges/nov/members',
+      {
+        entryUrl: 'https://home.example/api/public/ola/challenge-entries/dtok',
+      },
+    )
+    expect(db.deleteChallengeParticipation).toHaveBeenCalledWith('ola', 'p1')
+  })
+
+  test('a host that fails does not block the leave', async () => {
+    vi.mocked(db.getParticipationById).mockResolvedValue(participationRecord())
+    routeGets({ '/.well-known/quantpub': quantWellKnown })
+    vi.mocked(safeFetch.safeFetchDelete).mockRejectedValue(httpError(404))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(await leaveChallenge('ola', 'p1', ctx)).toBe(true)
+    expect(warn).toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  test('an Aurboda-protocol host and a local challenge are not told', async () => {
+    vi.mocked(db.getParticipationById).mockResolvedValue(participationRecord())
+    routeGets({ '/.well-known/aurboda': aurbodaWellKnown })
+    await leaveChallenge('ola', 'p1', ctx)
+    vi.mocked(db.getParticipationById).mockResolvedValue(
+      participationRecord({ challenge_url: 'https://home.example/u/freja/nov' }),
+    )
+    await leaveChallenge('ola', 'p1', ctx)
+    expect(safeFetch.safeFetchDelete).not.toHaveBeenCalled()
+    expect(db.deleteChallengeParticipation).toHaveBeenCalledTimes(2)
+  })
+
+  test('an unknown participation is not found', async () => {
+    vi.mocked(db.getParticipationById).mockResolvedValue(null)
+    expect(await leaveChallenge('ola', 'nope', ctx)).toBe(false)
+    expect(db.deleteChallengeParticipation).not.toHaveBeenCalled()
   })
 })

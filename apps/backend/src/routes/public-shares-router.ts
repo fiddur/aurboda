@@ -35,7 +35,7 @@ import {
 } from '../db/index.ts'
 import { bannerUrlFor } from '../services/challenge-banner.ts'
 import { toPublicChallengeListItem } from '../services/challenge-discovery.ts'
-import { fetchMemberData } from '../services/challenge-federation.ts'
+import { fetchMemberData, MAX_CHALLENGE_MEMBERS } from '../services/challenge-federation.ts'
 import {
   echoMismatchMessage,
   effectiveBucketSize,
@@ -49,9 +49,6 @@ import { resolveSharedExerciseData } from '../services/shared-exercise-data.ts'
 import { isPublicToVisibility } from '../services/visibility.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
-
-/** Upper bound on members a challenge can accept via unauthenticated register-back. */
-const MAX_CHALLENGE_MEMBERS = 200
 
 /**
  * Strip viewer-useless / internal fields from a config before exposing it.
@@ -178,7 +175,7 @@ export const createPublicSharesRouter = (webHost: string): TypedRouter => {
         // Probe the member's data endpoint before accepting them (SSRF-guarded).
         let memberData: ChallengeDataResponse
         try {
-          memberData = await fetchMemberData(req.body.data_endpoint_url)
+          memberData = await fetchMemberData(req.body.data_endpoint_url, challenge)
         } catch {
           return res.status(400).json({ error: 'Member data endpoint unreachable', success: false })
         }

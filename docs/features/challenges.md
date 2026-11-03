@@ -70,7 +70,35 @@ base-URL federation identity, and the bucketed-data engine behind dashboards.
 
 ## Federation protocol
 
-Endpoints (under each instance's API base):
+Aurboda serves two shapes side by side. The current one is the HTTP half of the
+[QuantPub Challenges](../fep/quantpub-challenges.md) draft, advertised by
+`"challenges": true` in `/.well-known/quantpub`; its documents are lowerCamelCase, as
+QuantPub's are. The legacy one is Aurboda's own vendor protocol, served for instances
+that predate the QuantPub shape. A joining instance prefers the QuantPub shape and falls
+back to the legacy one, and a host reads a member's data in either shape.
+
+QuantPub Challenges endpoints (under each instance's API base; discovery at the web base):
+
+| Endpoint                                            | Auth               | Purpose                                                                                     |
+| --------------------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------- |
+| `GET /.well-known/quantpub`                         | none               | Discovery: `{ product, version, quantpub, apiBase, challenges: true }`                      |
+| `GET /public/:username/challenges`                  | none               | `{ kind: "challengeList", items }`: public challenges, without `joinToken` and `members`    |
+| `GET /public/:username/challenges/:slug`            | none (slug-gated)  | `kind: "challenge"` document, incl. `joinToken` and the member list (`no-store`)            |
+| `POST /public/:username/challenges/:slug/members`   | none (`joinToken`) | HTTP join: `{ joinToken, name, url, actor?, entryUrl, currentEntryUrl? }`                   |
+| `DELETE /public/:username/challenges/:slug/members` | none (entry URL)   | Leave: `{ entryUrl }` removes the member that registered it                                 |
+| `GET /public/:username/challenges/:slug/standings`  | none (slug-gated)  | `kind: "standings"`; cached a minute for a public challenge, `no-store` for an unlisted one |
+| `GET /public/:username/challenge-entries/:token`    | none (token)       | A member instance serves its `kind: "challengeEntry"` for one challenge (`no-store`)        |
+
+The challenge's metric is a QuantPub key: a built-in metric with a RECOMMENDED key
+([FEP-302f §2.1](../fep/quantpub.md)) is published under it in its canonical unit
+(`steps` → `1`, `distance` → `m`, `sleep_score` → `sleepScore`, `1`); any other metric
+is `aurboda:<metric>`, an activity type `aurboda:activityDuration`, and a measure
+`aurboda:<measure>` (`aurboda:totalReps`), each in the spec's own unit. `scoring` is the
+spec's `aggregation`, `bucket` the resolved chart size (`1w` as `7d`, `1M` as `30d`). The
+document also carries `aurboda.spec`, the exact spec, so an Aurboda joiner scores the
+challenge the same way; other implementations ignore it.
+
+Legacy endpoints (served for instances that predate the QuantPub shape):
 
 | Endpoint                                | Auth              | Purpose                                                                                  |
 | --------------------------------------- | ----------------- | ---------------------------------------------------------------------------------------- |
@@ -83,18 +111,37 @@ Endpoints (under each instance's API base):
 
 **Join (canonical: "join by challenge URL on your own instance B", host = A):**
 
-1. B reads `<A-base>/.well-known/aurboda` to verify A is an Aurboda host + locate its API.
-2. B fetches the spec from `<A-api>/public/<user>/<slug>`.
+1. B reads `<A-base>/.well-known/quantpub`. With `"challenges": true` A is a QuantPub
+   Challenges host and `apiBase` is its API; otherwise (no document, no flag) B reads
+   `<A-base>/.well-known/aurboda` and takes the legacy path below. A transient failure
+   (no answer, a 5xx, a 429) fails the join rather than falling back.
+2. B fetches `<A-api>/public/<user>/challenges/<slug>` and takes the spec from its
+   `aurboda.spec`, or, from another implementation, builds one from a bare RECOMMENDED
+   metric key (`steps` summed, say). A key B cannot score (an unknown extension key)
+   refuses the join: _"This instance cannot score …"_.
 3. B records a local participation (spec snapshot + random `data_token`), making
-   `GET <B-api>/challenge-data/<user>/<token>` live.
-4. B registers back to `<A-api>/public/<user>/<slug>/members` with its identity,
-   display name, data-endpoint URL, and the `join_token`.
-5. A validates the token, probes the endpoint, and stores the member. The data
-   endpoint echoes how B scored the series (`aggregation`, and `measure`,
-   `filter_field`, `filter_value` when the spec has them). For a measure challenge A
-   requires the echo to match its spec (the filter value compared normalised) and
-   otherwise refuses with `409` _"Your instance does not support this challenge's
-   measure (…); update Aurboda to join"_, so B rolls its participation back.
+   `GET <B-api>/public/<user>/challenge-entries/<token>` live.
+4. B joins with `POST <A-api>/public/<user>/challenges/<slug>/members`: `url` (its
+   profile, the identity), `name`, `actor` (its ActivityPub actor), `entryUrl` and the
+   `joinToken`.
+5. A validates the token, refuses a closed or full challenge, probes the entry, and
+   stores the member with its `actor`. The entry echoes `metric` and `scoring`, and for
+   a measure challenge an `aurboda` block (`measure`, `aggregation`, `filterField`,
+   `filterValue`); A requires both to match its spec and otherwise refuses with `409`,
+   so B rolls its participation back.
+
+On the legacy path B fetches the spec from `<A-api>/public/<user>/<slug>`, serves
+`GET <B-api>/challenge-data/<user>/<token>`, and registers back to
+`<A-api>/public/<user>/<slug>/members` with `identity_base_url`, `display_name`,
+`data_endpoint_url` and `join_token`; the data endpoint echoes `aggregation`, and
+`measure`, `filter_field`, `filter_value` when the spec has them, and A refuses a
+mismatch with `409` _"Your instance does not support this challenge's measure (…);
+update Aurboda to join"_.
+
+**Leave:** leaving a challenge on a QuantPub host also sends
+`DELETE <A-api>/public/<user>/challenges/<slug>/members` with the entry URL, best
+effort: a host that is down or speaks only the legacy protocol is logged and the leave
+goes ahead. Either way the participation is deleted, so its entry 404s.
 
 An instance must know a challenge's measure to join it. One that predates measures
 drops the unknown `measure` field from the spec and would score plain duration under
@@ -104,9 +151,10 @@ knows measures but not this one refuses at step 2, with the same message.
 The same-server "Join" button and the challenge page's "enter your host" prompt both
 funnel into this. When B === A, steps 1–5 collapse to a direct local membership.
 
-**Standings:** the host pulls each remote member's data endpoint (5-minute TTL cache,
-persisted per member; a failed fetch falls back to last-known data flagged `stale`)
-and computes local members in-process.
+**Standings:** the host pulls each remote member's entry or data endpoint (5-minute TTL
+cache, persisted per member; a failed fetch falls back to last-known data flagged
+`stale`) and computes local members in-process. An entry's samples are read back as
+buckets at `startTime + offset`, its values converted back to Aurboda's stored unit.
 
 Each standing carries a **`last_updated`** — when that member's _contributing_ data
 last changed. For a metric it is the newest `updated_at` among the contributing points
@@ -125,7 +173,8 @@ host fetched) and surfaces it in standings.
 **Discovery — open challenges from people you follow:** `GET /challenges/discover`
 (MCP `discover_challenges`) walks the user's accepted ActivityPub followees. A followee
 whose actor id has the `<base>/users/<name>` shape is a _candidate_ Aurboda peer
-(Mastodon mints the same shape); `<base>/.well-known/aurboda` decides, remembered per
+(Mastodon mints the same shape); the well-known documents decide (`/.well-known/quantpub`
+with `challenges: true`, else `/.well-known/aurboda`), remembered per
 instance for an hour so a Mastodon followee costs one probe, not one per page load (and
 one probe per instance even on a cold round: concurrent followees share the in-flight
 one). Only a _definite_ answer is remembered — a 404 for the well-known document, a body
@@ -136,8 +185,9 @@ it is not cached, the peer is retried next round, and it is counted instead in
 of an instance has failed transiently, its other followees are skipped rather than each
 asking it again.
 
-An Aurboda peer's public challenges are read from its public-profile listing (a followee
-on the same instance in-process); ended ones, anything the user hosts, joined or left,
+A QuantPub peer's public challenges are read from its `GET …/public/<name>/challenges`
+listing (an item this instance could not score is left out), a legacy Aurboda peer's
+from its public-profile listing (a followee on the same instance in-process); ended ones, anything the user hosts, joined or left,
 and any link that doesn't point into the host's own `/u/<name>/` space are dropped.
 Leaving a challenge hard-deletes the participation row, so the "don't offer this again"
 fact is kept as a tombstone in `challenge_left`, keyed by the canonical challenge URL
@@ -153,12 +203,9 @@ listing carried windows lists name + link only and is skipped rather than shown 
 ## Join from your own app
 
 Any app can join a challenge hosted on an Aurboda instance; it does not need to run
-Aurboda, ActivityPub or [QuantPub](../fep/quantpub.md). It takes one public JSON URL
-and one `POST`. The host pulls your numbers from that URL; you never push.
-
-This is Aurboda's own protocol. The vendor-neutral version it is moving to, on
-top of QuantPub, is drafted in [docs/fep/quantpub-challenges.md](../fep/quantpub-challenges.md);
-its §10 maps the fields below onto that draft.
+Aurboda or ActivityPub. It takes one public JSON URL and one `POST`, in the shape of the
+[QuantPub Challenges](../fep/quantpub-challenges.md) draft (§4.2 and §5). The host pulls
+your numbers from that URL; you never push.
 
 The examples use a challenge at `https://aurboda.net/u/fiddur/november-steps`. Replace
 the host, user and slug with the ones in the link you were given.
@@ -166,102 +213,138 @@ the host, user and slug with the ones in the link you were given.
 **1. Find the API and read the challenge.**
 
 ```sh
-curl https://aurboda.net/.well-known/aurboda
-# {"product":"aurboda","federation":true,"api_base":"https://aurboda.net/api",...}
+curl https://aurboda.net/.well-known/quantpub
+# {"product":"aurboda","quantpub":"0.2","challenges":true,"apiBase":"https://aurboda.net/api",...}
 
-curl https://aurboda.net/api/public/fiddur/november-steps
+curl https://aurboda.net/api/public/fiddur/challenges/november-steps
 ```
 
-The second answer's `challenge` holds what you need: `start_ts` and `end_ts` (the
-window, end exclusive), `timezone` (the host's; days are counted in it),
-`spec.pattern` (`steps`), `spec.aggregation` (`sum`), `spec.unit`, and `join_token`.
+The second answer is the `kind: "challenge"` document: `startTime` and `endTime` (the
+window, end exclusive), `timezone` (the host's; days are counted in it), `metric`
+(`steps`), `scoring` (`sum`), `unit` (`1`), `bucket` and `joinToken`.
 
-This recipe is written for metric challenges such as steps: `spec.source_type` is
-`metric` and there is no `spec.measure`. A measure challenge (see _Measure spec_ above)
-also needs your JSON to copy `measure` and `aggregation` from `spec`, plus
-`filter_field` and `filter_value` when the spec has them; without them the join is
-refused with a `409`.
+This recipe is written for metric challenges such as steps, whose `metric` is a bare
+QuantPub key. A challenge with an `aurboda:` key (an activity type, a measure such as
+`aurboda:totalReps`, a metric without a QuantPub key) is scored the way its `aurboda.spec`
+says, and a measure challenge also needs your entry to carry
+`"aurboda": { "measure", "aggregation", "filterField", "filterValue" }` copied from that
+spec; without it the join is refused with a `409`.
 
-**2. Publish your steps at a public URL.** Any URL that answers `GET` with JSON works,
+**2. Publish your entry at a public URL.** Any URL that answers `GET` with JSON works,
 including a static file regenerated by a nightly job. The minimum is your total for the
-window so far:
-
-```json
-{ "success": true, "total": 123456 }
-```
-
-For a line on the race chart, add one bucket per day, starting at midnight in the
-challenge's `timezone`:
+window so far, echoing the challenge's `metric` and `scoring`:
 
 ```json
 {
-  "success": true,
-  "total": 123456,
-  "unit": "steps",
-  "last_updated": "2026-11-03T21:40:00+01:00",
-  "buckets": [
-    { "bucket_start": "2026-11-01T00:00:00+01:00", "value": 8412 },
-    { "bucket_start": "2026-11-02T00:00:00+01:00", "value": 11230 }
-  ]
+  "kind": "challengeEntry",
+  "challenge": "https://aurboda.net/u/fiddur/november-steps",
+  "metric": "steps",
+  "scoring": "sum",
+  "total": 123456
 }
 ```
 
-- `total` is what ranks you. Without it the host scores your `buckets` by
-  `spec.aggregation`: summed for `sum`, counted for `count`, the best one for `max`.
-- `last_updated` is when your data last changed; the leaderboard shows it. Leave it
-  out or `null` rather than sending the current time.
-- Daily buckets match the chart of a challenge between two weeks and four months long,
-  such as a month, unless the host fixed another size: step 1's
-  `effective_bucket_size` says which (see _Chart granularity_ above). Other bucket
-  sizes still score correctly; only your line looks different.
+For a line on the race chart, add a `series` with one sample per day:
 
-**3. Register as a member.**
+```json
+{
+  "kind": "challengeEntry",
+  "challenge": "https://aurboda.net/u/fiddur/november-steps",
+  "metric": "steps",
+  "scoring": "sum",
+  "total": 123456,
+  "lastUpdated": "2026-11-03T21:40:00+01:00",
+  "series": {
+    "metric": "steps",
+    "unit": "1",
+    "bucket": "1d",
+    "samples": [
+      { "offset": 0, "sum": 8412, "count": 1 },
+      { "offset": 86400, "sum": 11230, "count": 1 }
+    ]
+  }
+}
+```
+
+- `offset` is seconds from the challenge's `startTime` to the start of the sample's day
+  in the challenge's `timezone`: the local midnight, so a 23- or 25-hour day moves the
+  next offset by 23 or 25 hours, not 24.
+- `total` is what ranks you. Without it the host scores your samples by `scoring`: their
+  `sum`s added for `sum` and `count`, the best `max` for `max`.
+- `lastUpdated` is when your data last changed; the leaderboard shows it. Leave it out or
+  `null` rather than sending the current time.
+- Daily samples match the chart of a challenge between two weeks and four months long,
+  such as a month; the document's `bucket` says which width the host draws. Other widths
+  still score correctly; only your line looks different.
+
+**3. Join.**
 
 ```sh
-curl -X POST https://aurboda.net/api/public/fiddur/november-steps/members \
+curl -X POST https://aurboda.net/api/public/fiddur/challenges/november-steps/members \
   -H 'Content-Type: application/json' \
   -d '{
-    "identity_base_url": "https://you.example/",
-    "display_name": "you",
-    "data_endpoint_url": "https://you.example/steps/9f2c41d7.json",
-    "join_token": "<join_token from step 1>"
+    "joinToken": "<joinToken from step 1>",
+    "name": "you",
+    "url": "https://you.example/",
+    "actor": null,
+    "entryUrl": "https://you.example/steps/9f2c41d7.json"
   }'
 ```
 
-The host fetches `data_endpoint_url` right away and accepts you only if it answers.
-`{"success": true}` means you are on the leaderboard, shown as
-`display_name · <host of identity_base_url>`. Posting again with the same
-`identity_base_url` updates your name or URL instead of adding a second member.
+The host fetches `entryUrl` right away and accepts you only if it answers with an entry
+for the same `metric` and `scoring`. `{"status": "member"}` means you are on the
+leaderboard, shown as `name · <host of url>`. `url` is your identity: to change your
+`name` or `entryUrl` later, post again with the same `url` and your current entry URL as
+`currentEntryUrl`. `actor` is your ActivityPub actor, if you have one.
 
-| Status | Meaning                                                                                                               |
-| ------ | --------------------------------------------------------------------------------------------------------------------- |
-| 400    | Your URL did not answer, or answered something other than the JSON above                                              |
-| 403    | Wrong `join_token`                                                                                                    |
-| 404    | No such challenge                                                                                                     |
-| 409    | The challenge is full (200 members), that identity is a local member, or your JSON lacks a measure challenge's fields |
+| Status | Meaning                                                                                                                                         |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| 200    | `{ "status": "member" }`                                                                                                                        |
+| 400    | A malformed body, or your URL did not answer with a `challengeEntry`                                                                            |
+| 403    | Wrong `joinToken`                                                                                                                               |
+| 404    | No such challenge                                                                                                                               |
+| 409    | The challenge has ended or is full (200 members), your entry scores another metric, or `url` is a local member or registered with another entry |
 
-**Rules for the data URL.**
+**Rules for the entry URL.**
 
 - It must be `http` or `https` on a public address: localhost and private networks are
   refused, redirects are not followed, the answer must come within 8 seconds and be
   under 1 MB.
-- Make it unguessable. Only the host learns it, and it is the only thing guarding your
-  numbers, so put a random token in the path.
+- Make it unguessable. Only the host learns it, it never appears in any public
+  response, and it is both what guards your numbers and what proves you are you when
+  you change or leave, so put a random token in the path.
 - The host reads it at most every 5 minutes, when someone opens the standings, and once
   more when the winner is announced, 6 hours after the window closes. Have your last day
   published by then.
 
-**Leaving.** Make the URL answer `404`. The host keeps showing your last total, marked
-stale, until the host removes you; ask them to.
+**Leaving.**
+
+```sh
+curl -X DELETE https://aurboda.net/api/public/fiddur/challenges/november-steps/members \
+  -H 'Content-Type: application/json' \
+  -d '{ "entryUrl": "https://you.example/steps/9f2c41d7.json" }'
+```
+
+`{"status": "left"}` removes you from the standings; `404` means no member registered
+that entry URL. Make the URL answer `404` too.
+
+**Standings.** `GET https://aurboda.net/api/public/fiddur/challenges/november-steps/standings`
+answers `kind: "standings"`: every member's `rank` (equal totals share one), `total`,
+`lastUpdated`, `stale` and `samples`.
 
 **Trust.** Numbers are self-reported, as for every member (see _Security & trust_). This
 is meant for friendly competitions.
 
-**Not supported yet.** Hosting a challenge in your own app for Aurboda users to join:
-an Aurboda instance only joins hosts whose `/.well-known/aurboda` says
-`"product": "aurboda"`. The winner announcement tags winners as ActivityPub mentions
-by mapping `<base>/u/<name>` to `<base>/users/<name>`, so a winner whose app has no
-actor there is named in the post but not notified.
+**Not supported yet.** The ActivityPub half of the draft (the challenge as an `Event`,
+`Join` / `Leave` in the inbox), `joinMode: restricted`, pushed entries and teams. An
+Aurboda instance joins another app's challenge only when its `metric` is a bare QuantPub
+key Aurboda has as a metric (`steps`, `distance`, `sleepScore`). The winner announcement
+tags winners as ActivityPub mentions by mapping `<base>/u/<name>` to
+`<base>/users/<name>`, so a winner whose app has no actor there is named in the post but
+not notified.
+
+The older Aurboda-only shape (`/.well-known/aurboda`, `POST /public/<user>/<slug>/members`
+with a `{ total, buckets }` data URL) still works; see the legacy table above.
 
 ## Completion & winner announcement
 
@@ -327,14 +410,17 @@ calling the standings final.
 - `join_token` proves a joiner actually fetched the spec; the host probes the data
   endpoint before accepting and can remove members. Leaving deletes the participation
   so the endpoint 404s.
+- On the QuantPub path a member's `url` is its identity and its registered entry URL the
+  proof: a `joinToken` holder can join, but changing or removing a member takes that
+  member's current entry URL.
 - **Trust model:** a member's instance is trusted to report honest numbers
   (Strava-style). A malicious self-hoster could serve fabricated values — accepted
   for now; instance-key signed requests are a future hardening.
 
 ## Deployment note
 
-`GET /.well-known/aurboda` must be reachable at the **web base URL** an operator
-gives out (e.g. `https://aurboda.net/.well-known/aurboda`). Route `/.well-known/*`
+`GET /.well-known/quantpub` and `GET /.well-known/aurboda` must be reachable at the
+**web base URL** an operator gives out (e.g. `https://aurboda.net/.well-known/quantpub`). Route `/.well-known/*`
 to the backend in the reverse proxy (standard for federation). Dev instances that hit
 the backend directly need no extra config.
 
@@ -414,8 +500,9 @@ avatar.
   registering member's identity to the instance that vouches for it, closing the
   register-back gaps below.
 - Register-back is capped per challenge (`MAX_CHALLENGE_MEMBERS`) to bound growth,
-  but within the v1 trust model a slug+`join_token` holder can still re-register an
-  existing _remote_ member (overwriting its data-endpoint URL). Accepted for now.
+  but on the legacy path a slug+`join_token` holder can still re-register an existing
+  _remote_ member (overwriting its data-endpoint URL). The QuantPub join closes this
+  (`currentEntryUrl`); the legacy route stays as it is for older instances.
 - Standings has no in-flight de-duplication, so concurrent requests on a cold/expired
   cache each fan out to every remote member (thundering herd, bounded by the TTL +
   8s per-fetch timeout). A shared in-flight promise per challenge would remove it.
