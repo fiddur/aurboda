@@ -25,7 +25,7 @@ export const dayStartInTz = (key: string, tz: string): Date =>
 
 /** The last millisecond of the calendar day `key` in `tz`. */
 export const dayEndInTz = (key: string, tz: string): Date =>
-  new Date(dayStartInTz(shiftDayKey(key, 1), tz).getTime() - 1)
+  new Date(Temporal.PlainDate.from(key).add({ days: 1 }).toZonedDateTime(tz).epochMilliseconds - 1)
 
 export const dayKeysEndingAt = (today: Date, count: number, tz: string): string[] => {
   const todayKey = dayKey(today, tz)

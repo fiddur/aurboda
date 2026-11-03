@@ -450,7 +450,7 @@ const openApiDocument = createDocument({
     '/goals/{id}/history': {
       get: {
         description:
-          "Get a goal's value and on-target status per past day (UTC), or per month as counts of on-target days. Every day is judged against the goal's current min/max; today is partial and not counted.",
+          "Get a goal's value and on-target status per past day in the user's device timezone (UTC when unset), or per month as counts of on-target days. Every day is judged against the goal's current min/max; today is partial and not counted.",
         requestParams: {
           path: z.object({ id: z.string().meta({ description: 'Goal ID' }) }),
           query: goalHistoryQuerySchema,

@@ -10,6 +10,8 @@ import {
   isValidMetric,
   metricUnits,
 } from '../schema.ts'
+import { dayKey, dayStartInTz, shiftDayKey } from '../services/day-keys.ts'
+
 /** Exercise type codes that remain as generic 'exercise' (UNKNOWN=0, OTHER_WORKOUT=2). */
 const GENERIC_EXERCISE_CODES = new Set([0, 2])
 
@@ -63,7 +65,6 @@ const adoptForIdentity = async (
   ])
 }
 
-import { dayEndInTz, dayKey, dayStartInTz } from '../services/day-keys.ts'
 import {
   resolveHealthConnectIdentity,
   type SourceArrival,
@@ -663,8 +664,8 @@ export const getDailyAggregateValue = async (
 
 /**
  * `getDailyAggregateValue` for every day in `tz` from `start`'s day through `end`'s day, in one query.
- * Days without a value are absent. Like the single-day version it keeps each day's `[00:00, 23:59:59.999)`
- * window and does not filter `deleted_at`.
+ * Days without a value are absent. Each day is `[local midnight, next local midnight)` in `tz`, so a
+ * 23- or 25-hour day keeps all its hours. Like the single-day version it does not filter `deleted_at`.
  */
 export const getDailyAggregateValues = async (
   user: string,
@@ -674,7 +675,7 @@ export const getDailyAggregateValues = async (
   tz = 'UTC',
 ): Promise<Map<string, number>> => {
   const rangeStart = dayStartInTz(dayKey(start, tz), tz)
-  const rangeEnd = dayEndInTz(dayKey(end, tz), tz)
+  const rangeEnd = dayStartInTz(shiftDayKey(dayKey(end, tz), 1), tz)
 
   const result = await query(
     user,
@@ -682,7 +683,6 @@ export const getDailyAggregateValues = async (
        FROM time_series
       WHERE metric = $1 AND source = ANY($4)
         AND time >= $2 AND time < $3
-        AND time < date_trunc('day', time, $5::text) + interval '23:59:59.999'
       GROUP BY 1
       ORDER BY 1`,
     [metric, rangeStart, rangeEnd, cumulativeSources, tz],

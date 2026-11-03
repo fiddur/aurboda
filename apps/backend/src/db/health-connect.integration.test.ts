@@ -159,9 +159,7 @@ describe('Health Connect Integration Tests', () => {
         steps('2024-01-10T13:00:00Z', 7000, 'aurboda'),
         steps('2024-01-10T14:00:00Z', 90000, 'garmin'),
         // 2024-01-11 has no rows
-        // The single-day window ends before 23:59:59.999, also on days inside the range
         steps('2024-01-12T23:59:59.998Z', 4000, 'aurboda'),
-        steps('2024-01-12T23:59:59.999Z', 80000, 'aurboda'),
         steps('2024-01-13T06:00:00Z', 3000, 'health_connect_aggregate'),
         steps('2024-01-13T07:00:00Z', 6000, 'health_connect_aggregate'),
         steps('2024-01-14T22:00:00Z', 2500, 'aurboda'),
@@ -228,6 +226,43 @@ describe('Health Connect Integration Tests', () => {
         ['2024-01-10', 100],
         ['2024-01-11', 200],
       ])
+    })
+
+    test('a day runs to the next local midnight, its last millisecond included', async () => {
+      const user = getTestUser()
+      await insertTimeSeries(user, [
+        { metric: 'steps', source: 'aurboda', time: new Date('2024-01-12T23:59:59.999Z'), value: 80000 },
+        { metric: 'steps', source: 'aurboda', time: new Date('2024-01-13T00:00:00Z'), value: 10 },
+      ])
+
+      const result = await getDailyAggregateValues(
+        user,
+        'steps',
+        new Date('2024-01-12T00:00:00Z'),
+        new Date('2024-01-12T12:00:00Z'),
+      )
+      expect([...result.entries()]).toEqual([['2024-01-12', 80000]])
+    })
+
+    test('a 25-hour fall-back day keeps its last local hour', async () => {
+      const user = getTestUser()
+      await insertTimeSeries(user, [
+        {
+          metric: 'steps',
+          source: 'health_connect_aggregate',
+          time: new Date('2026-10-25T22:30:00Z'),
+          value: 4321,
+        },
+      ])
+
+      const result = await getDailyAggregateValues(
+        user,
+        'steps',
+        new Date('2026-10-25T12:00:00Z'),
+        new Date('2026-10-25T12:00:00Z'),
+        'Europe/Stockholm',
+      )
+      expect([...result.entries()]).toEqual([['2026-10-25', 4321]])
     })
   })
 

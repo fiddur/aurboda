@@ -194,6 +194,7 @@ const computeTrendGoalProgress = async (
   user: string,
   goal: TrendGoal,
   customMetrics: CustomMetricDefinition[],
+  tz: string,
 ): Promise<TrendGoalProgress> => {
   const trend = await getTrend(user, {
     aggregation: goal.aggregation,
@@ -206,6 +207,7 @@ const computeTrendGoalProgress = async (
     measure: goal.measure,
     pattern: goal.pattern,
     source_type: goal.source_type,
+    tz,
   })
 
   return {
@@ -239,7 +241,7 @@ export const getGoalsProgress = async (user: string): Promise<GoalProgress[]> =>
 
   return Promise.all(
     goals.map((goal) => {
-      if (goal.goal_type === 'trend') return computeTrendGoalProgress(user, goal, customMetrics)
+      if (goal.goal_type === 'trend') return computeTrendGoalProgress(user, goal, customMetrics, tz)
       if (goal.goal_type === 'measure') return computeMeasureGoalProgress(user, goal, definitions, tz)
       return computeMetricGoalProgress(user, goal, tz)
     }),
