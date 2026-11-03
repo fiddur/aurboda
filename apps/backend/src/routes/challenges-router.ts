@@ -31,7 +31,6 @@ import {
   createChallenge,
   deleteChallenge,
   deleteChallengeBanner,
-  deleteChallengeParticipation,
   getChallengeById,
   listChallengeMembers,
   listChallengeParticipations,
@@ -43,7 +42,7 @@ import {
 } from '../db/index.ts'
 import { isAllowedImageType, processBanner } from '../services/avatar.ts'
 import { bannerUrlFor } from '../services/challenge-banner.ts'
-import { JoinChallengeError, joinChallenge } from '../services/challenge-federation.ts'
+import { JoinChallengeError, joinChallenge, leaveChallenge } from '../services/challenge-federation.ts'
 import { announcementPending } from '../services/challenge-results.ts'
 import { effectiveBucketSize, specToApi, toSpecFields } from '../services/challenge-spec.ts'
 import { getChallengeStandings } from '../services/challenge-standings.ts'
@@ -298,7 +297,7 @@ export const createChallengesRouter = (
     authMiddleware,
     async (req, res) => {
       const user = req.user!
-      const deleted = await deleteChallengeParticipation(user, req.params.id)
+      const deleted = await leaveChallenge(user, req.params.id, { apiBaseUrl, webHost })
       if (!deleted) return res.status(404).json({ error: 'Participation not found', success: false })
       res.json({ success: true })
     },

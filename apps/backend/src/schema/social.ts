@@ -79,6 +79,10 @@ export const socialTables: Record<string, string> = {
   challenge_members_indexes: `
     CREATE INDEX IF NOT EXISTS idx_challenge_members_challenge ON challenge_members (challenge_id)
   `,
+  // The member's ActivityPub actor id, given on a QuantPub HTTP join. Additive (idempotent).
+  challenge_members_actor_column: `
+    ALTER TABLE challenge_members ADD COLUMN IF NOT EXISTS actor TEXT;
+  `,
 
   // The host-set banner image of a challenge, apart from `challenges` so listing
   // challenges never loads image bytes.

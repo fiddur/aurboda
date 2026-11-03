@@ -13,23 +13,35 @@ import {
   challengeDataResponseSchema,
   type PublicChallenge,
   publicChallengeResponseSchema,
-  type WellKnownAurboda,
+  type QuantChallengeDocument,
+  quantChallengeDocumentSchema,
+  type QuantChallengeEntry,
+  quantChallengeEntrySchema,
+  type QuantChallengeJoinBody,
   wellKnownAurbodaSchema,
+  wellKnownQuantpubSchema,
 } from '@aurboda/api-spec'
 import { isAxiosError } from 'axios'
 
 import { isValidUsername } from '../api/auth-routes.ts'
 import {
   type ChallengeParticipationRecord,
+  type ChallengeSpecFields,
   createChallengeParticipation,
   deleteChallengeParticipation,
   getChallengeBySlug,
+  getParticipationById,
   getParticipationByUrl,
   upsertChallengeMember,
 } from '../db/index.ts'
+import { normalizeWellKnownQuantpub, wireMetricToMetricType } from './activitypub/quant-wire.ts'
+import { entryToMemberData, quantMetricForSpec } from './challenge-quantpub.ts'
 import { toSpecFields, unsupportedMeasureMessage } from './challenge-spec.ts'
-import { safeFetchGet, safeFetchPost } from './safe-fetch.ts'
-import { buildProfileUrl } from './share-urls.ts'
+import { isTransientFetchError, safeFetchDelete, safeFetchGet, safeFetchPost } from './safe-fetch.ts'
+import { buildActorUrl, buildProfileUrl } from './share-urls.ts'
+
+/** Upper bound on members a challenge accepts through unauthenticated HTTP joins. */
+export const MAX_CHALLENGE_MEMBERS = 200
 
 export type JoinChallengeErrorKind = 'invalid_url' | 'not_found' | 'federation'
 
@@ -91,13 +103,41 @@ export const parseChallengeUrl = (url: string): ParsedChallengeUrl | null => {
   return { base, slug, username }
 }
 
-export const discoverInstance = async (base: string): Promise<WellKnownAurboda> => {
+/**
+ * How a host speaks challenges: the QuantPub Challenges shape, or Aurboda's
+ * older vendor protocol for instances that predate it.
+ */
+export interface ChallengeHost {
+  kind: 'quantpub' | 'aurboda'
+  apiBase: string
+}
+
+const discoverAurboda = async (base: string): Promise<ChallengeHost> => {
   const res = await safeFetchGet(joinUrl(base, '.well-known/aurboda'))
   const wellKnown = wellKnownAurbodaSchema.parse(res.data)
   if (wellKnown.product !== 'aurboda' || !wellKnown.federation) {
     throw new Error('Host does not support Aurboda federation')
   }
-  return wellKnown
+  return { apiBase: wellKnown.api_base, kind: 'aurboda' }
+}
+
+/**
+ * Prefer `/.well-known/quantpub` with `challenges: true`; anything else short
+ * of a transient failure (a 404, another document, no flag) falls back to
+ * `/.well-known/aurboda`. A transient failure is rethrown so callers that
+ * cache a verdict do not remember "not a challenge host" for a hiccup.
+ */
+export const discoverInstance = async (base: string): Promise<ChallengeHost> => {
+  try {
+    const res = await safeFetchGet(joinUrl(base, '.well-known/quantpub'))
+    const parsed = wellKnownQuantpubSchema.safeParse(normalizeWellKnownQuantpub(res.data))
+    if (parsed.success && parsed.data.challenges === true) {
+      return { apiBase: parsed.data.apiBase, kind: 'quantpub' }
+    }
+  } catch (error) {
+    if (isTransientFetchError(error)) throw error
+  }
+  return discoverAurboda(base)
 }
 
 const rawSpecMeasure = (data: unknown): unknown =>
@@ -132,6 +172,16 @@ export const fetchChallengeSpec = async (
   return parsePublicChallenge(res.data)
 }
 
+/**
+ * The host signals rejection with a non-2xx status (axios throws). Surface the
+ * host's own message (e.g. "Challenge is full") rather than a generic status.
+ */
+const hostRejection = (error: unknown): unknown => {
+  if (!isAxiosError(error)) return error
+  const hostError = (error.response?.data as { error?: unknown } | undefined)?.error
+  return new Error(typeof hostError === 'string' ? hostError : 'Host rejected the join')
+}
+
 export const registerMemberWithHost = async (
   apiBase: string,
   username: string,
@@ -144,21 +194,102 @@ export const registerMemberWithHost = async (
       body,
     )
   } catch (error) {
-    // The host signals rejection with a non-2xx status (axios throws). Surface the
-    // host's own message (e.g. "Challenge is full") rather than a generic status.
-    if (isAxiosError(error)) {
-      const hostError = (error.response?.data as { error?: string } | undefined)?.error
-      throw new Error(hostError ?? 'Host rejected the join')
-    }
-    throw error
+    throw hostRejection(error)
   }
 }
 
-/** Fetch a remote member's data endpoint (SSRF-guarded). */
-export const fetchMemberData = async (dataEndpointUrl: string): Promise<ChallengeDataResponse> => {
+const isEntryDocument = (data: unknown): boolean =>
+  typeof data === 'object' && data !== null && (data as { kind?: unknown }).kind === 'challengeEntry'
+
+/** Fetch a member's QuantPub entry (SSRF-guarded); throws unless it is one. */
+export const fetchChallengeEntry = async (entryUrl: string): Promise<QuantChallengeEntry> => {
+  const res = await safeFetchGet(entryUrl)
+  return quantChallengeEntrySchema.parse(res.data)
+}
+
+/**
+ * Fetch a remote member's data (SSRF-guarded), in either shape: a QuantPub
+ * entry is converted to the data response standings are built from, using the
+ * challenge's metric factor and window start.
+ */
+export const fetchMemberData = async (
+  dataEndpointUrl: string,
+  challenge: { spec: ChallengeSpecFields; start_ts: Date },
+): Promise<ChallengeDataResponse> => {
   const res = await safeFetchGet(dataEndpointUrl)
+  if (isEntryDocument(res.data)) {
+    return entryToMemberData(quantChallengeEntrySchema.parse(res.data), challenge)
+  }
   return challengeDataResponseSchema.parse(res.data)
 }
+
+const rawDocumentSpecMeasure = (data: unknown): unknown =>
+  (data as { aurboda?: { spec?: { measure?: unknown } } } | null)?.aurboda?.spec?.measure
+
+/**
+ * The spec an Aurboda member scores a QuantPub challenge with: the host's
+ * exact spec when it sent the vendor block, else one synthesised from a bare
+ * RECOMMENDED metric key. Anything else cannot be scored here.
+ */
+export const specFromChallengeDocument = (doc: QuantChallengeDocument): ChallengeSpecFields => {
+  if (doc.aurboda) return toSpecFields(doc.aurboda.spec)
+  const pattern = wireMetricToMetricType(doc.metric)
+  const cannotScore = new JoinChallengeError(`This instance cannot score ${doc.metric}`, 'federation')
+  if (pattern === null || doc.scoring === 'max') throw cannotScore
+  const published = quantMetricForSpec({ measure: null, pattern, source_type: 'metric', unit: '' })
+  if (published.key !== doc.metric) throw cannotScore
+  return {
+    activity_type_id: null,
+    aggregation: doc.scoring,
+    bucket_size: 'auto',
+    filter_field: null,
+    filter_value: null,
+    measure: null,
+    pattern,
+    source_type: 'metric',
+    unit: doc.unit ?? published.unit,
+  }
+}
+
+/** A host's QuantPub challenge document; a measure this instance does not know is named, as in `parsePublicChallenge`. */
+export const parseChallengeDocument = (data: unknown): QuantChallengeDocument => {
+  const measure = rawDocumentSpecMeasure(data)
+  if (measure !== undefined && !(activityMeasures as readonly unknown[]).includes(measure)) {
+    throw new JoinChallengeError(unsupportedMeasureMessage(String(measure)), 'federation')
+  }
+  const parsed = quantChallengeDocumentSchema.safeParse(data)
+  if (!parsed.success) throw new Error('URL is not a QuantPub challenge')
+  return parsed.data
+}
+
+const quantChallengePath = (username: string, slug: string, rest = ''): string =>
+  `public/${encodeURIComponent(username)}/challenges/${encodeURIComponent(slug)}${rest}`
+
+export const fetchChallengeDocument = async (
+  apiBase: string,
+  username: string,
+  slug: string,
+): Promise<QuantChallengeDocument> => {
+  const res = await safeFetchGet(joinUrl(apiBase, quantChallengePath(username, slug)))
+  return parseChallengeDocument(res.data)
+}
+
+export const joinQuantChallenge = async (
+  apiBase: string,
+  username: string,
+  slug: string,
+  body: QuantChallengeJoinBody,
+): Promise<void> => {
+  try {
+    await safeFetchPost(joinUrl(apiBase, quantChallengePath(username, slug, '/members')), body)
+  } catch (error) {
+    throw hostRejection(error)
+  }
+}
+
+/** The URL a member serves its entry for one participation at. */
+export const buildEntryUrl = (apiBase: string, user: string, dataToken: string): string =>
+  joinUrl(apiBase, `public/${encodeURIComponent(user)}/challenge-entries/${dataToken}`)
 
 export interface JoinRemoteDeps {
   user: string
@@ -171,47 +302,134 @@ export interface JoinRemoteDeps {
 /**
  * Join a challenge hosted on another instance: discover host, fetch spec, create
  * a local participation + data endpoint, and register back. Returns the
- * participation (its `data_token` backs `/challenge-data/:token`).
+ * participation (its `data_token` backs the member's entry or data endpoint).
  */
-export const joinRemoteChallenge = async ({
-  user,
-  challengeUrl,
-  parsed,
-  ourWebHost,
-  ourApiBase,
-}: JoinRemoteDeps): Promise<ChallengeParticipationRecord> => {
-  const wellKnown = await discoverInstance(parsed.base)
-  const spec = await fetchChallengeSpec(wellKnown.api_base, parsed.username, parsed.slug)
+export const joinRemoteChallenge = async (deps: JoinRemoteDeps): Promise<ChallengeParticipationRecord> => {
+  const host = await discoverInstance(deps.parsed.base)
+  return host.kind === 'quantpub' ? joinQuantpubHost(deps, host.apiBase) : joinAurbodaHost(deps, host.apiBase)
+}
 
-  const participation = await createChallengeParticipation(user, {
-    challenge_url: challengeUrl,
-    end_ts: new Date(spec.end_ts),
-    host_identity: spec.host_identity,
-    name: spec.name,
-    spec: toSpecFields(spec.spec),
-    start_ts: new Date(spec.start_ts),
-    timezone: spec.timezone,
-  })
-
+/**
+ * Create the local participation, register it with `register`, and roll the
+ * participation back if the host would not take us. That is a failed join, not
+ * a leave: no tombstone, or discovery would stop offering a challenge the user
+ * never got into.
+ */
+const createAndRegister = async (
+  user: string,
+  input: Parameters<typeof createChallengeParticipation>[1],
+  register: (participation: ChallengeParticipationRecord) => Promise<void>,
+): Promise<ChallengeParticipationRecord> => {
+  const participation = await createChallengeParticipation(user, input)
   try {
-    await registerMemberWithHost(wellKnown.api_base, parsed.username, parsed.slug, {
-      data_endpoint_url: joinUrl(
-        ourApiBase,
-        `challenge-data/${encodeURIComponent(user)}/${participation.data_token}`,
-      ),
-      display_name: user,
-      identity_base_url: buildProfileUrl(ourWebHost, user),
-      join_token: spec.join_token,
-    })
+    await register(participation)
   } catch (error) {
-    // Roll back the local participation if the host wouldn't accept us. This is
-    // a failed join, not a leave: no tombstone, or discovery would stop
-    // offering a challenge the user never got into.
     await deleteChallengeParticipation(user, participation.id, { tombstone: false }).catch(() => {})
     throw error
   }
-
   return participation
+}
+
+const joinQuantpubHost = async (
+  { challengeUrl, ourApiBase, ourWebHost, parsed, user }: JoinRemoteDeps,
+  apiBase: string,
+): Promise<ChallengeParticipationRecord> => {
+  const doc = await fetchChallengeDocument(apiBase, parsed.username, parsed.slug)
+  const spec = specFromChallengeDocument(doc)
+  if (!doc.joinToken) throw new Error('The host did not offer a join token')
+  const joinToken = doc.joinToken
+  return createAndRegister(
+    user,
+    {
+      challenge_url: challengeUrl,
+      end_ts: new Date(doc.endTime),
+      host_identity: doc.host.url,
+      name: doc.name,
+      spec,
+      start_ts: new Date(doc.startTime),
+      timezone: doc.timezone,
+    },
+    (participation) =>
+      joinQuantChallenge(apiBase, parsed.username, parsed.slug, {
+        actor: buildActorUrl(ourWebHost, user),
+        entryUrl: buildEntryUrl(ourApiBase, user, participation.data_token),
+        joinToken,
+        name: user,
+        url: buildProfileUrl(ourWebHost, user),
+      }),
+  )
+}
+
+const joinAurbodaHost = async (
+  { challengeUrl, ourApiBase, ourWebHost, parsed, user }: JoinRemoteDeps,
+  apiBase: string,
+): Promise<ChallengeParticipationRecord> => {
+  const spec = await fetchChallengeSpec(apiBase, parsed.username, parsed.slug)
+  return createAndRegister(
+    user,
+    {
+      challenge_url: challengeUrl,
+      end_ts: new Date(spec.end_ts),
+      host_identity: spec.host_identity,
+      name: spec.name,
+      spec: toSpecFields(spec.spec),
+      start_ts: new Date(spec.start_ts),
+      timezone: spec.timezone,
+    },
+    (participation) =>
+      registerMemberWithHost(apiBase, parsed.username, parsed.slug, {
+        data_endpoint_url: joinUrl(
+          ourApiBase,
+          `challenge-data/${encodeURIComponent(user)}/${participation.data_token}`,
+        ),
+        display_name: user,
+        identity_base_url: buildProfileUrl(ourWebHost, user),
+        join_token: spec.join_token,
+      }),
+  )
+}
+
+/**
+ * Tell a QuantPub host that a participation is leaving, by presenting its
+ * entry URL. Best effort: an Aurboda-protocol host, a host that is down or one
+ * that no longer knows the member is logged and otherwise ignored, so a leave
+ * never waits on another instance's consent.
+ */
+export const leaveRemoteChallenge = async (
+  user: string,
+  participation: ChallengeParticipationRecord,
+  ctx: { webHost: string; apiBaseUrl: string },
+): Promise<void> => {
+  const canonical = canonicalChallengeUrl(participation.challenge_url)
+  const parsed = canonical === null ? null : parseChallengeUrl(canonical)
+  if (!parsed || parsed.base === trimSlashes(ctx.webHost)) return
+  try {
+    const host = await discoverInstance(parsed.base)
+    if (host.kind !== 'quantpub') return
+    await safeFetchDelete(
+      joinUrl(host.apiBase, quantChallengePath(parsed.username, parsed.slug, '/members')),
+      {
+        entryUrl: buildEntryUrl(ctx.apiBaseUrl, user, participation.data_token),
+      },
+    )
+  } catch (error) {
+    console.warn(
+      `⚠️ Challenge leave: could not tell ${participation.challenge_url}:`,
+      error instanceof Error ? error.message : error,
+    )
+  }
+}
+
+/** Leave a joined challenge: tell a QuantPub host (best effort), then delete the participation. */
+export const leaveChallenge = async (
+  user: string,
+  participationId: string,
+  ctx: { webHost: string; apiBaseUrl: string },
+): Promise<boolean> => {
+  const participation = await getParticipationById(user, participationId)
+  if (!participation) return false
+  await leaveRemoteChallenge(user, participation, ctx)
+  return deleteChallengeParticipation(user, participation.id)
 }
 
 export interface JoinChallengeDeps {

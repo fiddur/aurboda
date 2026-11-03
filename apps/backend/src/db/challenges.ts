@@ -80,6 +80,8 @@ export interface ChallengeMemberRecord {
   kind: 'local' | 'remote'
   local_user: string | null
   data_endpoint_url: string | null
+  /** The member's ActivityPub actor id, when their join named one. */
+  actor: string | null
   status: 'active' | 'withdrawn'
   joined_at: Date
   last_fetched_at: Date | null
@@ -96,6 +98,7 @@ export interface ChallengeMemberInput {
   kind: 'local' | 'remote'
   local_user?: string | null
   data_endpoint_url?: string | null
+  actor?: string | null
 }
 
 export interface ChallengeParticipationRecord {
@@ -128,7 +131,7 @@ const CHALLENGE_COLUMNS =
 const CHALLENGE_SELECT_COLUMNS = `${CHALLENGE_COLUMNS}, (SELECT b.updated_at FROM challenge_banner b WHERE b.challenge_id = challenges.id) AS banner_updated_at`
 
 const MEMBER_COLUMNS =
-  'id, challenge_id, identity_base_url, display_name, kind, local_user, data_endpoint_url, status, joined_at, last_fetched_at, data_last_updated, cached_total, cached_buckets, last_error'
+  'id, challenge_id, identity_base_url, display_name, kind, local_user, data_endpoint_url, actor, status, joined_at, last_fetched_at, data_last_updated, cached_total, cached_buckets, last_error'
 
 const PARTICIPATION_COLUMNS =
   'id, challenge_url, host_identity, name, source_type, pattern, activity_type_id, aggregation, unit, bucket_size, measure, filter_field, filter_value, start_ts, end_ts, timezone, data_token, status, created_at'
@@ -434,13 +437,14 @@ export const upsertChallengeMember = async (
   const result = await query<MemberRow>(
     user,
     `INSERT INTO challenge_members
-       (challenge_id, identity_base_url, display_name, kind, local_user, data_endpoint_url, status)
-     VALUES ($1,$2,$3,$4,$5,$6,'active')
+       (challenge_id, identity_base_url, display_name, kind, local_user, data_endpoint_url, actor, status)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,'active')
      ON CONFLICT (challenge_id, identity_base_url)
      DO UPDATE SET display_name = EXCLUDED.display_name,
                    kind = EXCLUDED.kind,
                    local_user = EXCLUDED.local_user,
                    data_endpoint_url = EXCLUDED.data_endpoint_url,
+                   actor = EXCLUDED.actor,
                    status = 'active'
      RETURNING ${MEMBER_COLUMNS}`,
     [
@@ -450,6 +454,7 @@ export const upsertChallengeMember = async (
       input.kind,
       input.local_user ?? null,
       input.data_endpoint_url ?? null,
+      input.actor ?? null,
     ],
   )
   return mapMember(result.rows[0])

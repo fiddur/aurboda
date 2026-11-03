@@ -37,6 +37,7 @@ import { createAdminRouter } from '../routes/admin-router.ts'
 import { createAuditLogRouter } from '../routes/audit-log-router.ts'
 import { createAutoshareRulesRouter } from '../routes/autoshare-rules-router.ts'
 import { createChallengeDataRouter } from '../routes/challenge-data-router.ts'
+import { createChallengeQuantpubRouter } from '../routes/challenge-quantpub-router.ts'
 import { createChallengesRouter } from '../routes/challenges-router.ts'
 import { createChartDataRouter } from '../routes/chart-data-router.ts'
 import { createCorrelationsRouter } from '../routes/correlations-router.ts'
@@ -251,6 +252,9 @@ export const mountRestRouters = ({
       renderScatterSvg: buildScatterSvg,
     }),
   )
+  // Before the public-shares router, whose `/public/:username/:slug` resolver
+  // would otherwise take `/public/:username/challenges`.
+  httpd.use(createChallengeQuantpubRouter({ apiBaseUrl, webHost }))
   httpd.use(createPublicSharesRouter(webHost))
   // Mounted before the share-html router so `/u/.../opengraph-image.png`,
   // `/u/:username/avatar.png` and `/u/:username/:slug/banner.webp` win over the

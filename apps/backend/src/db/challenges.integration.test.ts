@@ -192,6 +192,32 @@ describe('Challenges integration', () => {
     expect((await listChallengeMembers(user, c.id)).length).toBe(1)
   })
 
+  test('stores a member actor, and a re-registration without one clears it', async () => {
+    const user = getTestUser()
+    const c = await createChallenge(user, sampleInput('actor'))
+    const member = await upsertChallengeMember(user, c.id, {
+      actor: 'https://foo.bar/users/bob',
+      data_endpoint_url: 'https://foo.bar/api/public/bob/challenge-entries/tok',
+      display_name: 'bob',
+      identity_base_url: 'https://foo.bar/u/bob',
+      kind: 'remote',
+    })
+    expect(member.actor).toBe('https://foo.bar/users/bob')
+    expect((await getChallengeMemberByIdentity(user, c.id, 'https://foo.bar/u/bob'))?.actor).toBe(
+      'https://foo.bar/users/bob',
+    )
+
+    const again = await upsertChallengeMember(user, c.id, {
+      data_endpoint_url: 'https://foo.bar/api/public/bob/challenge-entries/tok2',
+      display_name: 'bob',
+      identity_base_url: 'https://foo.bar/u/bob',
+      kind: 'remote',
+    })
+    expect(again.id).toBe(member.id)
+    expect(again.actor).toBeNull()
+    expect((await listChallengeMembers(user, c.id))[0].actor).toBeNull()
+  })
+
   test('cascade deletes members with the challenge', async () => {
     const user = getTestUser()
     const c = await createChallenge(user, sampleInput('casc'))
