@@ -1,7 +1,7 @@
 # Fediverse Enhancement Proposal drafts
 
 This directory holds FEP drafts developed in the open from Aurboda's running
-federation code, before submission to the
+federation code, before and during submission to the
 [FEP process](https://codeberg.org/fediverse/fep).
 
 - **[quantpub.md](./quantpub.md)** — _QuantPub: federated personal metrics for
@@ -10,7 +10,13 @@ federation code, before submission to the
   out-of-band structured-payload pattern (well-known discovery, structured post
   endpoint, data-driven public series endpoint, capability tokens), and the
   privacy model — scalar/series/geography sharing each a separate explicit
-  opt-in — as normative requirements. Tracked in
+  opt-in — as normative requirements. Submitted as
+  [FEP-302f](https://codeberg.org/fediverse/fep/pulls/938); this file mirrors
+  the `0.3` revision
+  ([commit 3815169](https://codeberg.org/fediverse/fep/src/commit/3815169a149c9b13a891bfefdf83fa9be43bd423/fep/302f/fep-302f.md)),
+  which the discussion on
+  [SocialHub](https://socialhub.activitypub.rocks/t/fep-302f-quantpub-federated-personal-metrics-for-quantified-self-sharing/8919)
+  shaped. Aurboda serves `0.2` and accepts `0.1`; `0.3` is in progress. Tracked in
   [issue #905](https://github.com/fiddur/aurboda/issues/905). Aurboda's own
   implementation of the pattern is documented in
   [docs/features/feed.md](../features/feed.md).

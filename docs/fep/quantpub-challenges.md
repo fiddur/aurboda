@@ -100,7 +100,7 @@ id convention (§3), never on the type.
 | `quant:metric`        | string                           | REQUIRED. A [FEP-302f] §2.1 key (`steps`, `duration`, …) or `prefix:name`  |
 | `quant:unit`          | UCUM code                        | REQUIRED for an extension key, MUST be omitted or canonical for a bare key |
 | `quant:scoring`       | `sum` \| `count` \| `max`        | REQUIRED. How a member's samples become a score (§5)                       |
-| `quant:bucket`        | `1d` (default) \| `1h` \| `1w`   | OPTIONAL. The sample width standings are drawn at                          |
+| `quant:bucket`        | `1d` (default) \| `1h` \| `7d`   | OPTIONAL. The sample width standings are drawn at ([FEP-302f] §6 syntax)   |
 | `quant:structuredUrl` | URL                              | OPTIONAL. The §3 document, where the id convention does not apply          |
 | `content`             | HTML                             | RECOMMENDED. A readable summary for plain clients                          |
 
@@ -234,17 +234,20 @@ POST {apiBase}/public/{username}/challenges/{slug}/members
 `actor` is OPTIONAL and lets a Level 2 host mention the member in the result
 post (§7). The host fetches `entryUrl` once and answers:
 
-| Status | Meaning                                                                                  |
-| ------ | ---------------------------------------------------------------------------------------- |
-| 200    | `{ "status": "member" }` or `{ "status": "pending" }` (`joinMode: restricted`)           |
-| 400    | Malformed body, or `entryUrl` did not answer with a valid entry                          |
-| 403    | Wrong `joinToken`                                                                        |
-| 404    | No such challenge                                                                        |
-| 409    | Closed, full, the entry scores a different metric, or the identity is already registered |
+| Status | Meaning                                                                                      |
+| ------ | -------------------------------------------------------------------------------------------- |
+| 200    | `{ "status": "member" }` or `{ "status": "pending" }` (`joinMode: restricted`)               |
+| 400    | Malformed body, or `entryUrl` did not answer with a valid entry                              |
+| 403    | Wrong `joinToken`                                                                            |
+| 404    | No such challenge                                                                            |
+| 409    | Closed, full, the entry scores a different metric, or `url` is registered with another entry |
 
-A second `POST` with the same `url` updates `name` and `entryUrl` rather than
-adding a member. `DELETE` on the same path with `{ "entryUrl" }` leaves: the
-entry URL is the capability that proves the caller is that member.
+A registered `url` is an identity, and its registered `entryUrl` is the
+capability that proves a caller is that member: a second `POST` for the same
+`url` MUST carry the currently registered `entryUrl` as `currentEntryUrl` to
+change `name` or `entryUrl`, and is otherwise `409`; `DELETE` on the same path
+with `{ "entryUrl" }` leaves. Holding `joinToken` therefore lets anyone join,
+never take over or remove someone who has.
 
 ### 5. Entries — a member's progress
 

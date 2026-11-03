@@ -1,16 +1,13 @@
 ---
-slug: 'xxxx'
-authors: Fredrik Liljegren
+slug: "302f"
+authors: Fredrik Liljegren <@fiddur@aurboda.net>
 status: DRAFT
-dateReceived: (not yet submitted)
+discussionsTo: https://socialhub.activitypub.rocks/t/fep-302f-quantpub-federated-personal-metrics-for-quantified-self-sharing/8919
+dateReceived: 2026-10-02
+trackingIssue: https://codeberg.org/fediverse/fep/issues/942
 ---
 
-# FEP-xxxx: QuantPub — federated personal metrics for quantified-self sharing
-
-> **Status of this document.** A pre-submission draft, developed in the open in
-> the [Aurboda](https://github.com/fiddur/aurboda) repository (issue
-> [#905](https://github.com/fiddur/aurboda/issues/905)). The FEP number is a
-> placeholder until submission.
+# FEP-302f: QuantPub — federated personal metrics for quantified-self sharing
 
 ## Summary
 
@@ -23,17 +20,17 @@ leaves their instance.
 It has three parts:
 
 1. A tiny **vocabulary** (`quant:Exercise`, `quant:Observation`) that attaches
-   typed scalar summaries and a bounded time window to an ordinary AS2 `Note`,
-   so Mastodon-class servers render a readable status while implementing peers
-   read machine-readable data.
+   typed scalar summaries in canonical units and a bounded time window to an
+   ordinary AS2 `Note`, so Mastodon-class servers render a readable status
+   while implementing peers read machine-readable data.
 2. An **out-of-band structured-payload pattern** — a well-known discovery
    document plus two public HTTP endpoints — because typed vocabulary
    extensions are, in practice, dropped by mainstream fediverse software. This
    channel is the interoperable core of the proposal.
-3. **Privacy principles as normative requirements**: scalar summaries never
-   imply series access, series and geography are separate explicit opt-ins,
-   unshared data is indistinguishable from nonexistent data, and revocation is
-   immediate.
+3. **Privacy principles as normative requirements**: every element of a share
+   is the author's choice, scalar summaries never imply series access, series
+   and geography are separate choices, unshared data is
+   indistinguishable from nonexistent data, and revocation is immediate.
 
 A home-built tool interoperates by implementing the discovery document and
 the two endpoint contracts — no ActivityPub actor required — and can grow into
@@ -94,11 +91,13 @@ interpreted as described in [RFC-2119].
 All names are lowerCamelCase, on the JSON-LD layer and the plain-JSON payload
 layer alike, so a post's `startTime` and its payload's `startTime` are the same
 name. AS2 properties are reused where they exist (`startTime`, `endTime`,
-`name`). Timestamps are ISO 8601 with timezone. The `quant:` namespace is
-`https://w3id.org/quantpub#` (final IRI to be settled with the FEP number).
+`name`). Timestamps are ISO 8601 with timezone; time _inside_ an activity is
+an integer second offset from its start (§2.3). Units are [UCUM] codes
+(§2.1). The `quant:` namespace is `https://w3id.org/quantpub#` (final IRI to
+be settled with the FEP number).
 
-`quant:metrics`, `quant:series` and `quant:exercises` are **JSON literals**: the
-published `@context` defines them with `"@type": "@json"` (JSON-LD 1.1), so processors
+`quant:metrics` and `quant:series` are **JSON literals**: the published
+`@context` defines both with `"@type": "@json"` (JSON-LD 1.1), so processors
 preserve the nested objects verbatim instead of expanding, and losing,
 unmapped keys. Consumers MUST treat these values as plain JSON; a series
 entry's `mediaType`/`href` are data, not an AS2 `Link`.
@@ -112,19 +111,21 @@ detection (§7) keys on the object id or `quant:structuredUrl`, never on the
 type, so a publisher MAY emit a single-typed `Note` where deployed consumers
 mishandle array-valued `type` (§10). Consumers MUST tolerate both forms.
 
-| Property              | Type                    | Notes                                                                      |
-| --------------------- | ----------------------- | -------------------------------------------------------------------------- |
-| `startTime` (AS2)     | ISO 8601                | REQUIRED. Start of the bounded activity window                             |
-| `endTime` (AS2)       | ISO 8601                | RECOMMENDED. End of the window                                             |
-| `quant:activityType`  | string                  | e.g. `running`, `cycling`, `meditation`                                    |
-| `quant:metrics`       | array of metric objects | The scalar summaries the author chose to share (§2.1)                      |
-| `quant:series`        | array of series links   | Links into §6 — only for series opted in on a **publicly-visible** post    |
-| `quant:exercises`     | array of exercise items | OPTIONAL. The session's exercises, only when the author shared them (§2.2) |
-| `quant:structuredUrl` | URL                     | OPTIONAL explicit link to the object's §5 payload (§7)                     |
+| Property                | Type                    | Notes                                                                   |
+| ----------------------- | ----------------------- | ----------------------------------------------------------------------- |
+| `startTime` (AS2)       | ISO 8601                | REQUIRED. Start of the bounded activity window (§2.3)                   |
+| `endTime` (AS2)         | ISO 8601                | RECOMMENDED. End of the window; omitted under `"day"` precision (§2.3)  |
+| `quant:timePrecision`   | `"second"` \| `"day"`   | OPTIONAL, default `"second"` (§2.3)                                     |
+| `quant:activityType`    | string                  | A FIT `sport` key, e.g. `running`, `cycling`, `alpine_skiing` (§2.4)    |
+| `quant:activitySubtype` | string                  | OPTIONAL. A FIT `sub_sport` key or `prefix:name` (§2.4)                 |
+| `quant:source`          | object                  | OPTIONAL `{ "device", "via" }` attribution (§2.5)                       |
+| `quant:metrics`         | array of metric objects | REQUIRED at Level 2+. The shared scalar summaries (§2.1); empty if none |
+| `quant:series`          | array of series links   | Links into §6 — only for series opted in on a **publicly-visible** post |
+| `quant:structuredUrl`   | URL                     | OPTIONAL explicit link to the object's §5 payload (§7)                  |
 
 There is no duration property: duration is derivable from the window, and when
-shared as a stat it is the `duration` metric key (seconds). AS2 `duration` MAY
-be set additionally for plain-AS2 consumers.
+shared as a stat it is the `duration` metric key (`s`). AS2 `duration` MAY be
+set additionally for plain-AS2 consumers.
 
 `published` is the _share_ time and orders the timeline; the workout time lives
 in `startTime`. A workout shared a week later MUST NOT be back-dated in
@@ -133,58 +134,100 @@ followers' timelines.
 #### 2.1 Metric objects
 
 ```json
-{ "key": "heartRateAvg", "value": 152, "unit": "bpm" }
+{ "key": "heartRateAvg", "value": 152 }
 ```
 
-- `key` (REQUIRED): a lowerCamelCase machine key. RECOMMENDED common keys:
-  `duration`, `distance`, `heartRateAvg`, `heartRateMax`, `hrZoneMinutes`,
-  `calories`, `steps`, `elevationGain`, `paceAvg`, `stressAvg`.
-  Implementations MAY add their own. A scalar key names an aggregate
-  (`heartRateAvg`); the series it summarises is named by the raw metric
-  (`heartRate`, §6).
+- `key` (REQUIRED): a RECOMMENDED bare key from the table below, or an
+  extension key of the form `prefix:name` (§2.2). A scalar key names an
+  aggregate (`heartRateAvg`); the series it summarises is named by the raw
+  metric (`heartRate`, §6).
 - `value` (REQUIRED): a number, or a small keyed record of numbers (e.g.
   HR-zone minutes `{ "z2": 22, "z3": 10 }`).
-- `unit` (OPTIONAL): a unit string for the scalar form (`bpm`, `km`,
-  `seconds`, `kcal`). Consumers SHOULD render `seconds` as a duration.
+- `unit`: a [UCUM] code. For a RECOMMENDED key `unit` MUST be omitted or equal
+  to the canonical unit; a publisher holding the value in another unit
+  converts before emitting. For an extension key `unit` is REQUIRED; a count
+  or a score is `1`, optionally with a UCUM annotation such as `{TEP}`.
+- `label` (OPTIONAL): a human-readable name for the key (§2.2).
 
-A publisher MUST emit only the metrics the author explicitly chose to share.
-Absence of a key means "not shared", never "zero".
+Every RECOMMENDED key has one canonical unit, so readers never guess:
 
-#### 2.2 Exercise items
+| Key                            | Unit   | Notes                                              |
+| ------------------------------ | ------ | -------------------------------------------------- |
+| `duration`                     | `s`    | Consumers SHOULD render as a duration              |
+| `distance`                     | `m`    |                                                    |
+| `elevationGain`                | `m`    |                                                    |
+| `heartRateAvg`, `heartRateMax` | `/min` |                                                    |
+| `hrZoneMinutes`                | `min`  | Record of zone → minutes, `{ "z2": 22, "z3": 10 }` |
+| `calories`                     | `kcal` |                                                    |
+| `speedAvg`                     | `m/s`  | Replaces 0.2's `paceAvg`                           |
+| `steps`                        | `1`    | Count                                              |
+| `stressAvg`                    | `1`    | Implementation scale                               |
+| `sleepDuration`                | `s`    | Observation keys (§3)                              |
+| `sleepScore`, `mood`           | `1`    | Implementation scale                               |
+| `hrvAvg`                       | `ms`   |                                                    |
 
-A session made of distinct exercises (a strength workout's sets) MAY carry
-them as `quant:exercises` (and `exercises` in the §5 payload), one item per
-exercise in session order:
+A series `unit` (§6.1) follows the same rule; a `heartRate` series is `/min`.
+
+A publisher MUST emit only the metrics the author explicitly chose to share;
+absence is "not shared", never "zero" (§8.1).
+
+#### 2.2 Extension keys
+
+A metric or series key is either a RECOMMENDED bare key (§2.1) or
+`prefix:name`. `quant:metrics` is a JSON literal (§1), so JSON-LD does not
+expand keys inside it and this document has to say what a prefix means. The
+prefix resolves to an IRI: at Level 2+ through the object's JSON-LD `@context`
+(the mechanism `quant:` itself uses), at Level 1 through the OPTIONAL
+`prefixes` map in the discovery document (§4). The resolved IRI
+(`vertmatch:tep` → `https://vertmatch.run/ns#tep`) is the key's documentation
+link.
 
 ```json
-{
-  "name": "Bench Press",
-  "sets": [
-    { "reps": 8, "weight": 60, "setType": "warmup" },
-    { "reps": 8, "weight": 80 }
-  ],
-  "metrics": [
-    { "key": "e1rm", "value": 101.3, "unit": "kg" },
-    { "key": "volume", "value": 640, "unit": "kg" }
-  ],
-  "records": ["e1rm"]
-}
+{ "key": "vertmatch:tep", "value": 180, "unit": "1", "label": "TEP" }
 ```
 
-- `name` (REQUIRED): the exercise.
-- `sets` (REQUIRED): the sets in logged order, each with any of `reps`,
-  `weight` (kg) and `time` (seconds), and an OPTIONAL `setType` as logged
-  (`warmup`, `drop_set`, `failure`; absent for a working set).
-- `metrics` (REQUIRED, MAY be empty): §2.1 metric objects summarising the
-  exercise. RECOMMENDED keys, over the working sets (warm-ups excluded):
-  `e1rm` (best Epley estimated one-rep max, kg), `volume` (Σ weight × reps,
-  kg), `maxWeight` (kg), `setCount`, `totalReps`, `maxReps`, `maxTime`
-  (seconds).
-- `records` (OPTIONAL): the metric keys on which this session beat every
-  earlier session of the exercise in the author's own history.
+Receivers MAY render an unknown key as `label` plus `value`, MUST NOT guess
+its unit, and MUST NOT treat a prefixed key as any RECOMMENDED key even if the
+local name matches.
 
-Exercises are their own opt-in: sharing scalars MUST NOT imply them, and the
-default MUST be: no exercises.
+#### 2.3 Time precision and the activity clock
+
+`quant:timePrecision` (OPTIONAL) is `"second"` (default) or `"day"`.
+`startTime` stays an AS2 `xsd:dateTime` in both cases: a bare date where AS2
+declares a dateTime breaks typed consumers, the kind of breakage §10 exists to
+avoid. Under `"day"`, `startTime` carries the local midnight with timezone
+offset, `endTime` is omitted, and receivers MUST NOT render a time of day.
+Receivers MUST show the date in the offset `startTime` carries, never
+converted to the viewer's zone: a run sent as `2026-09-20T00:00:00+02:00` is
+20 September everywhere.
+
+All time _inside_ an activity — series samples (§6.1), route points and
+segments (§5) — is an integer `offset` in seconds since the activity's
+**true** start. Offsets count from the true start, never from a
+`"day"`-precision midnight placeholder. A consumer with a precise `startTime`
+reconstructs absolute times by addition; one without still gets the chart.
+Day precision therefore does not exclude series (§8.8).
+
+#### 2.4 Activity type and subtype
+
+`quant:activityType` is a [FIT] profile `sport` key (`running`, `cycling`,
+`alpine_skiing`, …). `quant:activitySubtype` (OPTIONAL) is a FIT `sub_sport`
+key (`trail`, `gravel_cycling`, `backcountry`, …) or, where FIT has no key, a
+`prefix:name` extension resolved as in §2.2 (e.g. `alpine_skiing` +
+`vertmatch:skimo`). A reader that does not know the subtype falls back to the
+type. The FIT lists are referenced, not copied: they are open, and FIT is the
+one vocabulary with both a hierarchy and an installed base.
+
+#### 2.5 Source attribution
+
+```json
+{ "device": "Garmin Forerunner 965", "via": "Intervals.icu" }
+```
+
+`quant:source` (OPTIONAL) carries two free-text strings, `device` and `via`;
+either MAY be absent. Device makers' and services' terms often require naming
+them wherever the data is shown; receivers SHOULD show `source` next to the
+workout.
 
 ### 3. `quant:Observation` — a measured metric over a window
 
@@ -192,7 +235,8 @@ Exercise is one case of the general shape: _something was measured over a
 bounded window_. A `quant:Observation` covers sleep, HRV, steps, mood, weight,
 blood glucose — anything with a window and values. It is dual-typed
 `["Note", "quant:Observation"]` (RECOMMENDED, same single-type allowance as
-§2) and carries the §2 properties with `quant:activityType` replaced by:
+§2) and carries the §2 properties with `quant:activityType` and
+`quant:activitySubtype` replaced by:
 
 | Property              | Type   | Notes                                              |
 | --------------------- | ------ | -------------------------------------------------- |
@@ -214,17 +258,24 @@ GET /.well-known/quantpub
 {
   "product": "my-qs-tool",
   "version": "1.0.0",
-  "quantpub": "0.2",
-  "apiBase": "https://qs.example.net/api"
+  "quantpub": "0.3",
+  "apiBase": "https://qs.example.net/api",
+  "prefixes": { "vertmatch": "https://vertmatch.run/ns#" }
 }
 ```
 
 - `product` / `version`: free-form implementation identity.
-- `quantpub`: the spec version implemented. `0.2` is this document; `0.1`
-  differed only in snake_case payload field names and metric keys
-  (`api_base`, `start_time`, `heart_rate_avg`). Consumers MAY accept both
-  forms during the transition.
+- `quantpub`: the spec version implemented. `0.3` is this document. Earlier
+  versions differed: `0.1` used snake_case payload field names and metric keys
+  (`api_base`, `start_time`, `heart_rate_avg`); `0.2` used camelCase names
+  with absolute-timestamped samples, a window-addressed series endpoint and
+  free-form units; `0.3` has relative offsets, the per-post series endpoint
+  and canonical units. Consumers MAY accept earlier versions, and MUST
+  interpret a metric without `unit` by the sender's version: `0.2` distance
+  without a unit was km, `0.3` is m.
 - `apiBase`: the absolute base URL under which the §5/§6 endpoints live.
+- `prefixes` (OPTIONAL): extension-key prefixes mapped to IRIs (§2.2), the
+  Level 1 counterpart of a JSON-LD `@context`.
 
 One cacheable request (responses SHOULD carry e.g. `max-age=3600`) tells a
 peer whether a host speaks QuantPub and where its API is. NodeInfo is
@@ -246,107 +297,119 @@ share is `kind: "activity"`:
 {
   "kind": "activity",
   "activityType": "running",
+  "activitySubtype": "trail",
   "name": "Morning run",
   "startTime": "2026-08-15T06:30:00+02:00",
   "endTime": "2026-08-15T07:09:00+02:00",
+  "source": { "device": "Garmin Forerunner 965", "via": "Intervals.icu" },
   "metrics": [
-    { "key": "duration", "value": 2340, "unit": "seconds" },
-    { "key": "distance", "value": 8.2, "unit": "km" },
-    { "key": "heartRateAvg", "value": 152, "unit": "bpm" },
-    { "key": "hrZoneMinutes", "value": { "z2": 22, "z3": 10 } }
+    { "key": "duration", "value": 2340 },
+    { "key": "distance", "value": 8200 },
+    { "key": "heartRateAvg", "value": 152 },
+    { "key": "hrZoneMinutes", "value": { "z2": 22, "z3": 10 } },
+    { "key": "vertmatch:tep", "value": 180, "unit": "1", "label": "TEP" }
   ],
   "series": [
     {
       "metric": "heartRate",
-      "unit": "bpm",
+      "unit": "/min",
       "bucket": "5s",
       "samples": [
-        {
-          "start": "2026-08-15T06:30:00+02:00",
-          "end": "2026-08-15T06:30:05+02:00",
-          "avg": 121,
-          "min": 118,
-          "max": 124,
-          "count": 5
-        }
+        { "offset": 0, "avg": 121, "min": 118, "max": 124, "count": 5 }
       ]
     }
   ],
-  "route": [{ "lat": 59.3251, "lon": 18.071, "t": "2026-08-15T06:30:00+02:00" }]
+  "segments": [
+    {
+      "kind": "climb",
+      "name": "Rumer Alm",
+      "id": "https://example.app/climbs/123",
+      "startOffset": 1140,
+      "endOffset": 3840,
+      "startDistance": 3200,
+      "endDistance": 7800,
+      "metrics": [
+        { "key": "elevationGain", "value": 640 },
+        { "key": "duration", "value": 2700 }
+      ]
+    }
+  ],
+  "route": [{ "lat": 59.3251, "lon": 18.071, "offset": 0 }]
 }
 ```
 
-- `activityType` (exercise) or `observationOf` (observation), `name`,
-  `startTime` and `endTime` mirror the object's properties.
-- `metrics` MUST contain exactly the shared scalars — the set the delivered
-  `Note` summarised.
-- `series` MUST contain only series the author _separately_ opted in (§8.2),
-  as bucketed samples (§6.1) over the activity window. It MAY be empty.
-- `exercises` (OPTIONAL) carries the §2.2 exercise items, present only when
-  the author shared them, identical to the object's `quant:exercises`.
-- `route` (OPTIONAL) is the GPS track as a time-ordered array of
-  `{ "lat", "lon", "t" }` (WGS84, ISO 8601), present only under the geography
-  opt-in (§8.6). Timestamped points are used instead of a GeoJSON `LineString`
-  because the time is what lets a consumer sync the route to the series
-  chart. It also exposes position-at-time, hence pace; a client offering route
-  sharing SHOULD say so.
+- `activityType` and `activitySubtype` (exercise) or `observationOf`
+  (observation), `name`, `startTime`, `endTime`, `timePrecision` and `source`
+  mirror the object's properties (§2).
+- `metrics` MUST contain exactly the shared scalars — the same array as the
+  delivered `Note`'s `quant:metrics`, so a receiver can render the card from
+  the object alone and fetch the payload only for series, segments and route.
+- `series` MUST contain only series the author _separately_ opted in (§8.3),
+  as bucketed samples (§6.1) on the activity clock (§2.3). It MAY be empty.
+- `segments` (OPTIONAL): parts of the activity — climbs, descents, laps,
+  intervals. Each carries `kind` (free text), OPTIONAL `name`, OPTIONAL `id`
+  (an IRI), OPTIONAL `startOffset` and `endOffset` (seconds on the activity
+  clock, as for series), OPTIONAL `startDistance` and `endDistance` (`m`), and
+  `metrics` in the §2.1 shape with the same unit rules. A segment carries at
+  least one of the two pairs, so an untimed climb can be given by distance
+  alone. Like metrics, segments are
+  emitted only when the author chose to share them; a segment with a public
+  `id` locates the activity, and a sharing UI SHOULD say so.
+- `route` (OPTIONAL) is the GPS track as an ordered array of
+  `{ "lat", "lon", "offset" }` (WGS84; `offset` on the activity clock),
+  present only when the author chose to share the route (§8.7). `offset` is
+  OPTIONAL (§8.7); without it points are `{ "lat", "lon" }`. Offset points
+  are used instead of a GeoJSON
+  `LineString` because the time is what lets a consumer sync the route to the
+  series chart. It also exposes position-at-time, hence pace; a client
+  offering route sharing SHOULD say so.
 - Implementations MAY define further `kind`s. Consumers MUST ignore unknown
   kinds.
 
 Authorization follows post visibility: a public or unlisted post resolves
 unconditionally; a followers-only post resolves only with a valid capability
 token or signed follower fetch (§9); anything else, a nonexistent post
-included, returns 404 (§8.3).
+included, returns 404 (§8.4).
 
 ### 6. Series endpoint
 
 High-resolution series MUST NOT be embedded in federated objects. They are
-served from one public, read-only endpoint:
+served per post from one public, read-only endpoint:
 
 ```
-GET {apiBase}/public/{username}/series?metric={key}&start={iso}&end={iso}&bucket={size}
+GET {apiBase}/public/{username}/feed/{postId}/series/{metric}?bucket={size}
 ```
 
 `bucket` is an integer followed by `s`, `m`, `h` or `d` (`5s`, `60s`, `1d`).
 
-A request resolves **only when all of the following hold**; this data-driven
+A request resolves **only when both of the following hold**; this data-driven
 check is the entire authorization boundary:
 
-1. some shared post opted that exact `metric` in as a **series** (a shared
-   scalar summary alone MUST NOT satisfy this);
-2. that post is publicly visible;
-3. the underlying activity still exists and has a bounded window;
-4. the activity's window covers the requested `[start, end]`.
+1. the post is publicly visible;
+2. the author opted that exact `metric` in as a **series** on that post (a
+   shared scalar summary alone MUST NOT satisfy this).
 
-Anything else returns 404 (§8.3). The server SHOULD additionally clamp the
-range to the shared window as defence in depth. The bucket size MUST be
-floored server-side (RECOMMENDED minimum: 5 seconds), and only aggregated
-buckets are returned (§8.5).
+Anything else — a nonexistent post or metric included — returns 404 (§8.4).
+Samples are aggregated buckets (§6.1). A publisher SHOULD floor the bucket
+size server-side, 5 seconds being the RECOMMENDED floor; the resolution it
+serves is its own choice (§8.6).
 
 #### 6.1 Bucketed samples
 
 ```json
 {
   "metric": "heartRate",
-  "unit": "bpm",
+  "unit": "/min",
   "bucket": "5s",
-  "samples": [
-    {
-      "start": "2026-08-15T06:30:00+02:00",
-      "end": "2026-08-15T06:30:05+02:00",
-      "avg": 121,
-      "min": 118,
-      "max": 124,
-      "count": 5
-    }
-  ]
+  "samples": [{ "offset": 0, "avg": 121, "min": 118, "max": 124, "count": 5 }]
 }
 ```
 
-Each sample carries `start`, `end`, `avg`, `min`, `max`, `count`, and `sum`
-for cumulative metrics such as steps. One shape serves heart-rate traces,
-nightly HRV, daily step counts and mood check-ins alike; only the metric key
-and bucket size differ.
+Each sample carries `offset` (seconds since the activity's true start, §2.3),
+`avg`, `min`, `max`, `count`, and `sum` for cumulative metrics such as steps;
+a sample's width is the series-level `bucket`. `unit` follows §2.1. One shape
+serves heart-rate traces, nightly HRV, daily step counts and mood check-ins
+alike; only the metric key and bucket size differ.
 
 ### 7. Detection and enrichment (Level 3)
 
@@ -380,27 +443,42 @@ SSRF-guarded (see Security considerations).
 
 ### 8. Privacy model (normative)
 
-1. **Scalars never imply series.** Sharing `heartRateAvg` MUST NOT expose the
+1. **Every element of a share is the author's choice.** A publisher MUST emit
+   only the metrics, series, segments and route the author chose to share.
+   Absence means "not shared", never "zero". A platform MAY set any element's
+   default on or off, open-by-design included, provided the default is clear
+   to the author; the defaults below are RECOMMENDED, not required.
+2. **Scalars never imply series.** Sharing `heartRateAvg` MUST NOT expose the
    heart-rate series. A per-sample trace is far more revealing than an average.
-2. **Series are a separate, explicit opt-in**, per post, per metric. The
-   default for any share MUST be: no series.
-3. **Unshared equals nonexistent.** Requests for unshared data MUST return
+3. **Series are a separate choice**, per post, per metric. RECOMMENDED
+   default: no series.
+4. **Unshared equals nonexistent.** Requests for unshared data MUST return
    404, never 403, so the response cannot reveal that unshared data exists.
-4. **Revocation is immediate.** Deleting a post, narrowing its visibility, or
-   withdrawing a series opt-in MUST immediately stop the corresponding
-   endpoints from resolving. **All** §5 and §6 responses — public and unlisted
-   included — MUST be served `Cache-Control: no-store`, so no intermediary
-   extends access beyond revocation. Only the discovery document (§4) is
-   cacheable.
-5. **Bounded resolution.** The bucket floor (§6) is a privacy floor, not only
-   a payload bound: implementations MUST NOT serve raw per-measurement series
-   timestamps on public endpoints. (A `route`'s per-fix `t` is not a series
-   timestamp; it is governed by item 6.)
-6. **Geography is its own explicit opt-in.** A route MUST NOT be exposed by
-   any scalar or series share; the default MUST be: no route. Publishers
-   SHOULD bound route resolution (RECOMMENDED: at most 500 points, or an
-   equivalent minimum spacing) and SHOULD apply privacy geo-masking (home-zone
-   trimming) before export, not only in rendering.
+5. **Revocation is immediate and reaches stored copies.** Deleting a post,
+   narrowing its visibility, or withdrawing a series opt-in MUST immediately
+   stop the corresponding endpoints from resolving. **All** §5 and §6
+   responses — public and unlisted included — MUST be served
+   `Cache-Control: no-store`, so no intermediary extends access beyond
+   revocation. Only the discovery document (§4) is cacheable. A peer that
+   stored a payload (§7) MUST drop it on `Delete`, and on `Update` MUST
+   refetch the payload and drop it if the fetch returns 404.
+6. **Resolution is the publisher's choice.** The series bucket floor (§6)
+   and any route downsampling are RECOMMENDED bounds, not requirements: a
+   platform that is open by design MAY serve full resolution, and route
+   matching and segments need it. The resolution a publisher serves SHOULD be
+   clear to its authors.
+7. **Geography is its own choice.** A route MUST NOT be exposed by any
+   scalar or series share (item 1); RECOMMENDED default: no route. Route
+   points MAY carry `offset`; offsets expose pace, so a publisher SHOULD
+   present a timed route as a choice distinct from the route's shape, or
+   include offsets only when a series is also shared. Publishers SHOULD offer
+   privacy geo-masking (home-zone trimming), applied before export and not
+   only in rendering. The payload MUST NOT indicate whether or how much a
+   route was masked.
+8. **Day precision hides the time of day.** A `"day"`-precision post (§2.3)
+   does not exclude series, since offsets are relative, but it MUST NOT carry
+   anything that reveals the time of day: no `endTime`, and no timestamp
+   finer than the date anywhere in the object or payload.
 
 ### 9. Capability tokens for follower-scoped payloads
 
@@ -424,10 +502,18 @@ a Level 1 publisher has no actor keys at all. QuantPub therefore uses
 - Consumers SHOULD lift the token from a delivered attachment URL, falling
   back to a same-host `quant:structuredUrl`, and forward it to the payload
   fetch.
-- A matching token resolves the payload; anything else is 404 (§8.3).
+- A matching token resolves the payload; anything else is 404 (§8.4).
 - Tokens MUST be revocable — regenerated or invalidated when the post is
-  deleted or its visibility changes — so that with `no-store` (§8.4)
+  deleted or its visibility changes — so that with `no-store` (§8.5)
   revocation is immediate.
+- A publisher MAY rotate a followers-only post's token at any time and SHOULD
+  do so when it blocks an actor or widens what the post shares (an `Update`
+  adding a series, say); it then delivers an `Update` to the post's current
+  audience so they receive the new token. Rotation stops fetches that have not
+  yet happened; a copy a peer already stored is governed by §8.5. Unfollowing
+  by itself calls for no rotation: as with any delivered object, the former
+  follower already holds what was delivered, and ActivityPub does not recall
+  it.
 - A leaked capability URL grants access to that one post's shared payload,
   never to the public series endpoint, which serves publicly-visible shares
   only.
@@ -467,8 +553,9 @@ routes and no ActivityPub stack:
 1. Serve `/.well-known/quantpub` (static JSON, §4).
 2. Serve `GET /public/{you}/feed/{postId}` for each thing you choose to
    publish (§5) — near-static JSON for a single-user tool.
-3. Optionally serve the series endpoint (§6) for the series you explicitly
-   share, with the four-condition check and 404 fallback.
+3. Optionally serve `GET /public/{you}/feed/{postId}/series/{metric}` (§6)
+   for the series you explicitly share, with the two-condition check and 404
+   fallback.
 
 Any Level 3 peer that learns one of your post URLs can now render your data
 natively. Adding a minimal ActivityPub actor later (WebFinger, inbox/outbox,
@@ -485,9 +572,9 @@ QuantPub peer, with the structured channel already in place.
     "https://www.w3.org/ns/activitystreams",
     {
       "quant": "https://w3id.org/quantpub#",
-      "quant:exercises": { "@type": "@json" },
       "quant:metrics": { "@type": "@json" },
-      "quant:series": { "@type": "@json" }
+      "quant:series": { "@type": "@json" },
+      "vertmatch": "https://vertmatch.run/ns#"
     }
   ],
   "id": "https://qs.example.net/users/freja/feed/01J5X0#create",
@@ -501,23 +588,29 @@ QuantPub peer, with the structured channel already in place.
     "type": ["Note", "quant:Exercise"],
     "attributedTo": "https://qs.example.net/users/freja",
     "name": "Morning run",
-    "content": "<p><strong>Morning run</strong></p><p>Duration 39m · Distance 8.2 km · Heart rate avg 152 bpm · HR zones z2 22, z3 10</p>",
+    "content": "<p><strong>Morning run</strong></p><p>Duration 39m · Distance 8.2 km · Heart rate avg 152 bpm · HR zones z2 22, z3 10 · TEP 180</p>",
     "published": "2026-08-15T08:02:11+02:00",
     "startTime": "2026-08-15T06:30:00+02:00",
     "endTime": "2026-08-15T07:09:00+02:00",
     "quant:activityType": "running",
+    "quant:activitySubtype": "trail",
+    "quant:source": {
+      "device": "Garmin Forerunner 965",
+      "via": "Intervals.icu"
+    },
     "quant:structuredUrl": "https://qs.example.net/api/public/freja/feed/01J5X0",
     "quant:metrics": [
-      { "key": "duration", "value": 2340, "unit": "seconds" },
-      { "key": "distance", "value": 8.2, "unit": "km" },
-      { "key": "heartRateAvg", "value": 152, "unit": "bpm" },
-      { "key": "hrZoneMinutes", "value": { "z2": 22, "z3": 10 } }
+      { "key": "duration", "value": 2340 },
+      { "key": "distance", "value": 8200 },
+      { "key": "heartRateAvg", "value": 152 },
+      { "key": "hrZoneMinutes", "value": { "z2": 22, "z3": 10 } },
+      { "key": "vertmatch:tep", "value": 180, "unit": "1", "label": "TEP" }
     ],
     "quant:series": [
       {
         "metric": "heartRate",
         "mediaType": "application/json",
-        "href": "https://qs.example.net/api/public/freja/series?metric=heartRate&start=2026-08-15T06%3A30%3A00%2B02%3A00&end=2026-08-15T07%3A09%3A00%2B02%3A00&bucket=5s"
+        "href": "https://qs.example.net/api/public/freja/feed/01J5X0/series/heartRate?bucket=5s"
       }
     ]
   }
@@ -528,7 +621,8 @@ Mastodon renders `content` and any attached chart image; a QuantPub peer
 recognises the id shape (or the same-host `quant:structuredUrl`), discovers the
 origin and fetches the §5 payload. The inline `"@type": "@json"` definitions
 mirror the published `@context`; once the final context IRI is settled,
-referencing it alone suffices.
+referencing it alone suffices. The `vertmatch` prefix in the `@context` is
+what resolves the `vertmatch:tep` key (§2.2).
 
 ### A sleep observation (object only)
 
@@ -541,24 +635,43 @@ referencing it alone suffices.
   "startTime": "2026-08-14T23:05:00+02:00",
   "endTime": "2026-08-15T06:45:00+02:00",
   "quant:metrics": [
-    { "key": "sleepDuration", "value": 27600, "unit": "seconds" },
-    { "key": "hrvAvg", "value": 64, "unit": "ms" },
+    { "key": "sleepDuration", "value": 27600 },
+    { "key": "hrvAvg", "value": 64 },
     { "key": "sleepScore", "value": 86 }
   ]
 }
 ```
 
+### A day-precision share (object only)
+
+```json
+{
+  "type": ["Note", "quant:Exercise"],
+  "name": "Long run",
+  "startTime": "2026-09-20T00:00:00+02:00",
+  "quant:timePrecision": "day",
+  "quant:activityType": "running",
+  "quant:metrics": [
+    { "key": "distance", "value": 24300 },
+    { "key": "duration", "value": 8100 }
+  ]
+}
+```
+
+No `endTime`, and a receiver shows the date only. Any series on this post
+still uses offsets from the run's true start (§2.3).
+
 ### Series requests and the 404 boundary
 
 ```
-GET /api/public/freja/series?metric=heartRate&start=2026-08-15T06:30:00%2B02:00&end=2026-08-15T07:09:00%2B02:00&bucket=60s
-→ 200, bucketed samples (shared as a series on a public post, window covered)
+GET /api/public/freja/feed/01J5X0/series/heartRate?bucket=60s
+→ 200, bucketed samples (heartRate opted in as a series on a public post)
 
-GET /api/public/freja/series?metric=heartRate&start=2026-08-14T00:00:00Z&end=2026-08-16T00:00:00Z&bucket=60s
-→ 404 (window not covered by any shared activity — the share can't be widened)
+GET /api/public/freja/feed/01J5X0/series/stress?bucket=60s
+→ 404 (stressAvg scalar was shared, but the stress series was not opted in)
 
-GET /api/public/freja/series?metric=stress&start=...&end=...&bucket=60s
-→ 404 (stress scalar was shared, but its series was not opted in)
+GET /api/public/freja/feed/01J5X1/series/heartRate?bucket=60s
+→ 404 (followers-only post: the series endpoint serves public shares only)
 ```
 
 ## Security considerations
@@ -581,8 +694,8 @@ GET /api/public/freja/series?metric=stress&start=...&end=...&bucket=60s
   per-post opt-in exists so authors make this choice deliberately; clients
   SHOULD present series sharing as distinct from summary sharing.
 - **Routes are the most identifying payload.** A track typically starts or
-  ends at home; hence the separate opt-in and the geo-masking recommendation
-  (§8.6).
+  ends at home; hence the separate choice and the geo-masking recommendation
+  (§8.7). An open-by-design platform SHOULD make that clear to its authors.
 
 ## Prior art
 
@@ -615,20 +728,15 @@ GET /api/public/freja/series?metric=stress&start=...&end=...&bucket=60s
 
 ## Implementations
 
-- **[Aurboda](https://github.com/fiddur/aurboda)** — ships this document's
-  vocabulary on the wire (dual-typed exercise shares with `quant:metrics`,
-  `quant:series` and `quant:structuredUrl`), the discovery document, a
-  published context at `/ns/quantpub`, the structured post endpoint (with the
-  optional `route`), the data-driven series endpoint, capability tokens
-  conveyed on attachment URLs, and Level 3 enrichment between Aurboda
-  instances via the §7 id convention.
-- **[VertMatch](https://vertmatch.run)** — a trail-running and training
-  platform federating via ActivityPub; serves the `/.well-known/quantpub`
-  discovery document and structured activity shares, and follows FitPub
-  actors alongside.
-
-VertMatch serves the `0.1` snake_case field names at the time of writing;
-Aurboda serves `0.2` and accepts both on ingest.
+- **[Aurboda](https://github.com/fiddur/aurboda)** — full stack: vocabulary
+  on the wire, discovery document, published context at `/ns/quantpub`,
+  structured post and series endpoints, capability tokens on attachment URLs,
+  and Level 3 enrichment via the §7 id convention. Serves `0.2`, accepts
+  `0.1`; `0.3` in progress.
+- **[VertMatch](https://vertmatch.run)** — trail-running and training
+  platform: discovery document, structured activity shares, Level 3 reading
+  via `quant:structuredUrl` and the id convention; also follows FitPub actors.
+  Serves `0.1`, moving to `0.2`; `0.3` intended.
 
 ## References
 
@@ -638,6 +746,9 @@ Aurboda serves `0.2` and accepts both on ingest.
   Levels_, 1997
 - [HTTP Signature] — A. Backman, J. Richer, M. Sporny, _Signing HTTP
   Messages_ (draft-cavage-http-signatures), 2019
+- [UCUM] — G. Schadow, C. J. McDonald, _The Unified Code for Units of
+  Measure_
+- [FIT] — Garmin, _FIT SDK_ (profile `sport` and `sub_sport` types)
 - [FEP-67ff] — silverpill, _FEDERATION.md_, 2023
 - [FEP-400e] — Gregory Klyushnikov, _Publicly-appendable ActivityPub
   collections_, 2021
@@ -653,5 +764,7 @@ work.
 [ActivityPub]: https://www.w3.org/TR/activitypub/
 [HTTP Signature]: https://datatracker.ietf.org/doc/html/draft-cavage-http-signatures
 [RFC-2119]: https://datatracker.ietf.org/doc/html/rfc2119
+[UCUM]: https://ucum.org/
+[FIT]: https://developer.garmin.com/fit/
 [FEP-67ff]: https://codeberg.org/fediverse/fep/src/branch/main/fep/67ff/fep-67ff.md
 [FEP-400e]: https://codeberg.org/fediverse/fep/src/branch/main/fep/400e/fep-400e.md
