@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { activityMeasureSchema } from './activity-measures.ts'
 import { baseResponseSchema, dataFieldPathSchema } from './common.ts'
+import { ianaTimezoneSchema } from './timezone.ts'
 
 export const trendSourceTypeSchema = z
   .enum(['tag', 'metric', 'productivity_category', 'activity_type'])
@@ -46,6 +47,12 @@ export const trendMissingDaysSchema = z.enum(['zero', 'skip']).meta({
 })
 
 export type TrendMissingDays = z.infer<typeof trendMissingDaysSchema>
+
+const trendTzSchema = ianaTimezoneSchema.optional().meta({
+  description:
+    'IANA timezone whose calendar days the trend is computed over (e.g. "Europe/Stockholm"). Defaults to the user\'s device timezone, UTC when unset.',
+  example: 'Europe/Stockholm',
+})
 
 export const halfLifePresets = {
   /** 7 days - responds to changes within a week */
@@ -113,6 +120,7 @@ export const getTrendQuerySchema = z
         'Data fields to break down by (for activity_type source). Produces per-series EMA histories.',
     }),
     missing_days: trendMissingDaysSchema.optional(),
+    tz: trendTzSchema,
     ...trendMeasureShape,
   })
   .meta({ id: 'GetTrendQuery' })
@@ -198,6 +206,7 @@ export const trendQuerySchema = z
       .optional()
       .meta({ description: 'Comma-separated data fields to break down by' }),
     missing_days: trendMissingDaysSchema.optional(),
+    tz: trendTzSchema,
     ...trendMeasureShape,
   })
   .meta({ id: 'TrendQuery' })

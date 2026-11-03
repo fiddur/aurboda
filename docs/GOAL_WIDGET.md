@@ -370,7 +370,7 @@ Returns one goal's value and on-target status per past day in the user's device 
 
 ### Timezone Handling
 
-- Days are calendar days in the user's device timezone (`device_timezone`, auto-detected by the Android app; UTC when unset); a day-based window starts at local midnight in that zone. Trend goals' days remain UTC days.
+- Days are calendar days in the user's device timezone (`device_timezone`, auto-detected by the Android app; UTC when unset); a day-based window starts at local midnight in that zone.
 - "Tomorrow" means the next local day boundary in that zone
 - Widget should display times in user's local timezone
 
