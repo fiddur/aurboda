@@ -22,9 +22,9 @@ const buildApp = (overrides: Partial<PublicBannerDeps> = {}) => {
 }
 
 describe('GET /u/:username/:slug/banner.webp', () => {
-  test('serves the stored banner with an immutable cache when versioned', async () => {
+  test('serves the stored banner with an immutable cache when the version matches', async () => {
     const { app, deps } = buildApp()
-    const res = await supertest(app).get('/u/fiddur/abc/banner.webp?v=123')
+    const res = await supertest(app).get(`/u/fiddur/abc/banner.webp?v=${storedBanner.updated_at.getTime()}`)
     expect(res.status).toBe(200)
     expect(res.type).toBe('image/webp')
     expect(res.headers['cache-control']).toBe('public, max-age=31536000, immutable')
@@ -34,6 +34,13 @@ describe('GET /u/:username/:slug/banner.webp', () => {
   test('caches briefly when the request is not versioned', async () => {
     const { app } = buildApp()
     const res = await supertest(app).get('/u/fiddur/abc/banner.webp')
+    expect(res.status).toBe(200)
+    expect(res.headers['cache-control']).toBe('public, max-age=300')
+  })
+
+  test('caches briefly when the version does not match the stored banner', async () => {
+    const { app } = buildApp()
+    const res = await supertest(app).get('/u/fiddur/abc/banner.webp?v=123')
     expect(res.status).toBe(200)
     expect(res.headers['cache-control']).toBe('public, max-age=300')
   })

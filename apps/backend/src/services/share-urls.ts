@@ -17,8 +17,10 @@ export const buildShareUrl = (webHost: string, username: string, slug: string): 
   joinUrl(webHost, `u/${encodeURIComponent(username)}/${encodeURIComponent(slug)}`)
 
 /** Absolute URL of a challenge's banner image, versioned so a replacement busts caches. */
+export const bannerVersion = (updatedAt: Date): string => String(updatedAt.getTime())
+
 export const buildBannerUrl = (webHost: string, username: string, slug: string, version: Date): string =>
-  `${buildShareUrl(webHost, username, slug)}/banner.webp?v=${version.getTime()}`
+  `${buildShareUrl(webHost, username, slug)}/banner.webp?v=${bannerVersion(version)}`
 
 /** A user's ActivityPub actor id. */
 export const buildActorUrl = (webHost: string, username: string): string =>
