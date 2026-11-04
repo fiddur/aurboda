@@ -340,8 +340,13 @@ this section is the difference.
   pre-approves `git`, `pnpm`, `node`, `npx`, `docker`, the shells and the usual file and text
   utilities, so a cloud thread never halts on them: Fredrik's standing rule (2026-11-04) is that
   git, bash and node work in the cloud runs without asking. The list applies in a project with
-  one repository, which this is. When a command still prompts, add its `Bash(<cmd>:*)` rule
+  one repository, which this is, and, being the checked-in project settings, to sessions on
+  Fredrik's machine as well. When a command still prompts, add its `Bash(<cmd>:*)` rule
   there in the next PR rather than answering the prompt by hand each time.
+- **Commits are authored as `Fredrik Liljegren <fredrik@liljegren.org>`.** The clone has no
+  git identity, so set it once per session (`git config user.name "Fredrik Liljegren" && git
+  config user.email fredrik@liljegren.org`) before the first commit; never the account's
+  gmail address.
 - **The hook is checked in, so there is nothing to paste** into the environment's
   settings, whose setup script stays empty. It reads the major from `.nvmrc` and the
   pnpm version from `packageManager`, so moving either moves the hook with it. It runs
