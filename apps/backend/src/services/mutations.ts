@@ -472,13 +472,16 @@ const mergedTargets = async (
   user: string,
   target: Activity,
   targetIds: string[],
-): Promise<MergedActivity> => {
+): Promise<{ merged: MergedActivity; missing: string[] }> => {
   const others = await Promise.all(
     targetIds.filter((tid) => tid !== target.id).map((tid) => dbGetActivityById(user, tid)),
   )
   const rows = [target, ...others.filter((row): row is Activity => row !== null)]
-  const merged = mergeOverlappingActivities(rows, await fetchCategoryMap(user))
-  return merged.find((row) => row.source_ids?.includes(target.id!) || row.id === target.id) ?? target
+  const groups = mergeOverlappingActivities(rows, await fetchCategoryMap(user))
+  const merged: MergedActivity =
+    groups.find((row) => row.source_ids?.includes(target.id!) || row.id === target.id) ?? target
+  const covered = new Set(merged.source_ids ?? [target.id!])
+  return { merged, missing: targetIds.filter((tid) => !covered.has(tid)) }
 }
 
 /**
@@ -538,8 +541,18 @@ export async function updateActivity(
   // fresh override — what the merged view currently shows. A fresh override
   // over several sources hides all of them, so it must start from their blend
   // or the other sources' data (e.g. Gravl's sets) is lost.
-  const before =
-    createsOverride && targetIds.length > 1 ? await mergedTargets(user, target, targetIds) : editRow
+  let before: MergedActivity = editRow
+  if (createsOverride && targetIds.length > 1) {
+    const { merged, missing } = await mergedTargets(user, target, targetIds)
+    if (missing.length > 0) {
+      return {
+        error: `override targets must merge into one activity; ${missing.join(', ')} do not overlap ${target.id}`,
+        id,
+        success: false,
+      }
+    }
+    before = merged
+  }
 
   const finalStartTime = input.start_time ?? before.start_time
   const finalEndTime = input.end_time === null ? null : (input.end_time ?? before.end_time)

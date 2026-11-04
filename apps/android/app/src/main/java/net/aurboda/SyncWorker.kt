@@ -46,12 +46,13 @@ class SyncWorker(
 
     // Check permissions -- proceed with whatever is granted (partial permissions support)
     val grantedPermissions = healthConnectClient.permissionController.getGrantedPermissions()
-    val grantedTypes = getGrantedRecordTypes(grantedPermissions)
+    val availableTypes = healthConnectClient.availableRecordTypes()
+    val grantedTypes = getGrantedRecordTypes(grantedPermissions, availableTypes)
     if (grantedTypes.isEmpty()) {
       Log.w(TAG, "No permissions granted, skipping sync")
       return finishAttempt(attemptAt, BackgroundSyncResult.Skipped, error = "No HC permissions granted")
     }
-    Log.d(TAG, "Granted ${grantedTypes.size}/${healthConnectClient.availableRecordTypes().size} record types")
+    Log.d(TAG, "Granted ${grantedTypes.size}/${availableTypes.size} record types")
 
     // Without the background read permission, every Health Connect read here
     // throws SecurityException/HealthConnectException. Skip HC reads cleanly

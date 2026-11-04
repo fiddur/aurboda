@@ -642,11 +642,11 @@ export const getDailyAggregateValue = async (
   user: string,
   metric: MetricType,
   date: Date,
+  tz = 'UTC',
 ): Promise<number | null> => {
-  const start = new Date(date)
-  start.setUTCHours(0, 0, 0, 0)
-  const end = new Date(date)
-  end.setUTCHours(23, 59, 59, 999)
+  const key = dayKey(date, tz)
+  const start = dayStartInTz(key, tz)
+  const end = dayStartInTz(shiftDayKey(key, 1), tz)
 
   const result = await query(
     user,
