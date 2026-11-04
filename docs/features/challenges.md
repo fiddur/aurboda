@@ -141,7 +141,12 @@ update Aurboda to join"_.
 **Leave:** leaving a challenge on a QuantPub host also sends
 `DELETE <A-api>/public/<user>/challenges/<slug>/members` with the entry URL, best
 effort: a host that is down or speaks only the legacy protocol is logged and the leave
-goes ahead. Either way the participation is deleted, so its entry 404s.
+goes ahead. Either way the participation is deleted, so its entry 404s. A
+participation joined over the legacy protocol sends nothing. Leaving a challenge hosted
+on the same instance removes you from the host's standings directly. The tombstone
+keeps the left participation's data token, so a rejoin after a leave the host never
+heard presents the old entry URL as `currentEntryUrl` and reclaims the registration
+instead of being refused as a second one.
 
 An instance must know a challenge's measure to join it. One that predates measures
 drops the unknown `measure` field from the spec and would score plain duration under

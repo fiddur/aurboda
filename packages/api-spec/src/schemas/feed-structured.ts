@@ -13,7 +13,8 @@
  * (see the backend feed-public router); a following instance fetches it on
  * ingest (see `timeline-enrich.ts`) and stores it on the timeline entry.
  *
- * The activity payload is the QuantPub `0.2` wire payload (`docs/fep/quantpub.md`),
+ * The activity payload is the QuantPub `0.2` wire payload (`docs/fep/quantpub.md`
+ * now describes `0.3`, whose relative offsets Aurboda does not emit yet),
  * so its field names and metric keys are lowerCamelCase by design: the one
  * sanctioned exception to the snake_case convention. Aurboda's internal metric
  * names stay snake_case and are converted at the boundary

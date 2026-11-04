@@ -7,7 +7,12 @@ import { AxiosError, AxiosHeaders } from 'axios'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import type * as DbModule from '../db/index.ts'
-import type { ChallengeParticipationRecord, ChallengeSpecFields } from '../db/index.ts'
+import type {
+  ChallengeMemberRecord,
+  ChallengeParticipationRecord,
+  ChallengeRecord,
+  ChallengeSpecFields,
+} from '../db/index.ts'
 import type * as SafeFetchModule from './safe-fetch.ts'
 
 vi.mock('./safe-fetch.ts', async (importOriginal) => ({
@@ -21,8 +26,13 @@ vi.mock('../db/index.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof DbModule>()),
   createChallengeParticipation: vi.fn(),
   deleteChallengeParticipation: vi.fn(),
+  getChallengeBySlug: vi.fn(),
+  getChallengeMemberByIdentity: vi.fn(),
+  getLeftChallengeToken: vi.fn(),
   getParticipationById: vi.fn(),
   getParticipationByUrl: vi.fn(),
+  removeChallengeMember: vi.fn(),
+  upsertChallengeMember: vi.fn(),
 }))
 
 const safeFetch = await import('./safe-fetch.ts')
@@ -202,6 +212,7 @@ const participationRecord = (
   host_identity: 'https://qs.example/u/freja',
   id: 'p1',
   name: 'November steps',
+  protocol: null,
   spec: stepsSpec,
   start_ts: new Date('2026-10-31T23:00:00Z'),
   status: 'active',
@@ -240,6 +251,10 @@ beforeEach(() => {
     participationRecord({ ...input }),
   )
   vi.mocked(db.deleteChallengeParticipation).mockResolvedValue(true)
+  vi.mocked(db.getLeftChallengeToken).mockResolvedValue(null)
+  vi.mocked(db.getChallengeBySlug).mockResolvedValue(null)
+  vi.mocked(db.getChallengeMemberByIdentity).mockResolvedValue(null)
+  vi.mocked(db.removeChallengeMember).mockResolvedValue(true)
 })
 
 describe('discoverInstance', () => {
@@ -320,6 +335,7 @@ describe('joinChallenge on a QuantPub host', () => {
       host_identity: 'https://qs.example/u/freja',
       name: 'November steps',
       spec: stepsSpec,
+      protocol: 'quantpub',
       start_ts: new Date('2026-10-31T23:00:00.000Z'),
       timezone: 'Europe/Stockholm',
     })
@@ -333,6 +349,30 @@ describe('joinChallenge on a QuantPub host', () => {
         url: 'https://home.example/u/ola',
       },
     )
+  })
+
+  test('a rejoin presents the entry URL of the participation it left', async () => {
+    routeGets({ '/.well-known/quantpub': quantWellKnown, '/public/freja/challenges/nov': quantDocument() })
+    vi.mocked(safeFetch.safeFetchPost).mockResolvedValue(response({ status: 'member' }))
+    vi.mocked(db.getLeftChallengeToken).mockResolvedValue('oldtok')
+
+    await joinChallenge(deps)
+
+    expect(db.getLeftChallengeToken).toHaveBeenCalledWith('ola', 'https://qs.example/u/freja/nov')
+    expect(safeFetch.safeFetchPost).toHaveBeenCalledWith(
+      'https://qs.example/api/public/freja/challenges/nov/members',
+      expect.objectContaining({
+        currentEntryUrl: 'https://home.example/api/public/ola/challenge-entries/oldtok',
+        entryUrl: 'https://home.example/api/public/ola/challenge-entries/dtok',
+      }),
+    )
+  })
+
+  test('a first join sends no currentEntryUrl', async () => {
+    routeGets({ '/.well-known/quantpub': quantWellKnown, '/public/freja/challenges/nov': quantDocument() })
+    vi.mocked(safeFetch.safeFetchPost).mockResolvedValue(response({ status: 'member' }))
+    await joinChallenge(deps)
+    expect(vi.mocked(safeFetch.safeFetchPost).mock.calls[0][1]).not.toHaveProperty('currentEntryUrl')
   })
 
   test('refuses a metric it cannot score before creating anything', async () => {
@@ -380,6 +420,10 @@ describe('joinChallenge on a QuantPub host', () => {
     })
     vi.mocked(safeFetch.safeFetchPost).mockResolvedValue(response({ success: true }))
     await joinChallenge(deps)
+    expect(db.createChallengeParticipation).toHaveBeenCalledWith(
+      'ola',
+      expect.objectContaining({ protocol: 'aurboda' }),
+    )
     expect(safeFetch.safeFetchPost).toHaveBeenCalledWith(
       'https://qs.example/api/public/freja/nov/members',
       expect.objectContaining({
@@ -387,6 +431,35 @@ describe('joinChallenge on a QuantPub host', () => {
         join_token: 'jt',
       }),
     )
+  })
+})
+
+describe('joinChallenge on this instance', () => {
+  test('joins the host challenge directly and records the Aurboda protocol', async () => {
+    vi.mocked(db.getChallengeBySlug).mockResolvedValue({
+      end_ts: new Date('2026-11-30T23:00:00Z'),
+      id: 'c1',
+      name: 'November steps',
+      spec: stepsSpec,
+      start_ts: new Date('2026-10-31T23:00:00Z'),
+      timezone: 'Europe/Stockholm',
+    } as ChallengeRecord)
+    await joinChallenge({
+      apiBaseUrl: 'https://home.example/api',
+      challengeUrl: 'https://home.example/u/freja/nov',
+      user: 'ola',
+      webHost: 'https://home.example',
+    })
+    expect(db.upsertChallengeMember).toHaveBeenCalledWith(
+      'freja',
+      'c1',
+      expect.objectContaining({ kind: 'local' }),
+    )
+    expect(db.createChallengeParticipation).toHaveBeenCalledWith(
+      'ola',
+      expect.objectContaining({ protocol: 'aurboda' }),
+    )
+    expect(safeFetch.safeFetchPost).not.toHaveBeenCalled()
   })
 })
 
@@ -427,6 +500,51 @@ describe('leaveChallenge', () => {
     await leaveChallenge('ola', 'p1', ctx)
     expect(safeFetch.safeFetchDelete).not.toHaveBeenCalled()
     expect(db.deleteChallengeParticipation).toHaveBeenCalledTimes(2)
+  })
+
+  test('a participation joined over the Aurboda protocol is not told, without even discovering', async () => {
+    vi.mocked(db.getParticipationById).mockResolvedValue(participationRecord({ protocol: 'aurboda' }))
+    routeGets({ '/.well-known/quantpub': quantWellKnown })
+    expect(await leaveChallenge('ola', 'p1', ctx)).toBe(true)
+    expect(safeFetch.safeFetchGet).not.toHaveBeenCalled()
+    expect(safeFetch.safeFetchDelete).not.toHaveBeenCalled()
+    expect(db.deleteChallengeParticipation).toHaveBeenCalledWith('ola', 'p1')
+  })
+
+  test('a challenge hosted on this instance drops the leaver from the host standings', async () => {
+    vi.mocked(db.getParticipationById).mockResolvedValue(
+      participationRecord({ challenge_url: 'https://home.example/u/freja/nov', protocol: 'aurboda' }),
+    )
+    vi.mocked(db.getChallengeBySlug).mockResolvedValue({ id: 'c1' } as ChallengeRecord)
+    vi.mocked(db.getChallengeMemberByIdentity).mockResolvedValue({ id: 'm1' } as ChallengeMemberRecord)
+
+    expect(await leaveChallenge('ola', 'p1', ctx)).toBe(true)
+
+    expect(db.getChallengeBySlug).toHaveBeenCalledWith('freja', 'nov')
+    expect(db.getChallengeMemberByIdentity).toHaveBeenCalledWith('freja', 'c1', 'https://home.example/u/ola')
+    expect(db.removeChallengeMember).toHaveBeenCalledWith('freja', 'c1', 'm1')
+    expect(db.deleteChallengeParticipation).toHaveBeenCalledWith('ola', 'p1')
+    expect(safeFetch.safeFetchGet).not.toHaveBeenCalled()
+  })
+
+  test('a same-instance leave with no host member row still leaves', async () => {
+    vi.mocked(db.getParticipationById).mockResolvedValue(
+      participationRecord({ challenge_url: 'https://home.example/u/freja/nov' }),
+    )
+    vi.mocked(db.getChallengeBySlug).mockResolvedValue({ id: 'c1' } as ChallengeRecord)
+
+    expect(await leaveChallenge('ola', 'p1', ctx)).toBe(true)
+    expect(db.removeChallengeMember).not.toHaveBeenCalled()
+    expect(db.deleteChallengeParticipation).toHaveBeenCalledWith('ola', 'p1')
+  })
+
+  test('a same-instance leave of a deleted challenge still leaves', async () => {
+    vi.mocked(db.getParticipationById).mockResolvedValue(
+      participationRecord({ challenge_url: 'https://home.example/u/freja/nov' }),
+    )
+    expect(await leaveChallenge('ola', 'p1', ctx)).toBe(true)
+    expect(db.getChallengeMemberByIdentity).not.toHaveBeenCalled()
+    expect(db.deleteChallengeParticipation).toHaveBeenCalledWith('ola', 'p1')
   })
 
   test('an unknown participation is not found', async () => {

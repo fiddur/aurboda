@@ -142,6 +142,11 @@ export const socialTables: Record<string, string> = {
   challenge_participations_indexes: `
     CREATE INDEX IF NOT EXISTS idx_challenge_participations_url ON challenge_participations (challenge_url)
   `,
+  // Which protocol the host was joined over: 'quantpub', 'aurboda', or NULL for
+  // rows from before this column. Leave tells only a QuantPub host. Additive (idempotent).
+  challenge_participations_protocol_column: `
+    ALTER TABLE challenge_participations ADD COLUMN IF NOT EXISTS protocol VARCHAR(10);
+  `,
 
   // Challenges the user LEFT (#1093). Leaving hard-deletes the participation
   // row, so the "don't suggest this again" fact needs its own record to survive
@@ -152,6 +157,11 @@ export const socialTables: Record<string, string> = {
       challenge_url  TEXT PRIMARY KEY,
       left_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `,
+  // The left participation's data token, so a rejoin can present the old entry
+  // URL to a host that never heard the leave and still holds the member. Additive (idempotent).
+  challenge_left_token_column: `
+    ALTER TABLE challenge_left ADD COLUMN IF NOT EXISTS last_data_token TEXT;
   `,
 
   // Federated feed posts: activities the user published to their public feed.

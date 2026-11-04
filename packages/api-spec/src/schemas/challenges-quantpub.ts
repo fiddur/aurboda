@@ -125,11 +125,10 @@ export const quantChallengeSampleSchema = z
     count: z.number().optional(),
     max: z.number().optional(),
     min: z.number().optional(),
-    offset: z
-      .number()
-      .int()
-      .min(0)
-      .meta({ description: 'Seconds since the challenge startTime to the start of this bucket' }),
+    offset: z.number().int().meta({
+      description:
+        'Seconds since the challenge startTime to the start of this bucket; negative for a first bucket that begins before startTime',
+    }),
     sum: z.number().optional(),
   })
   .meta({ id: 'QuantChallengeSample' })

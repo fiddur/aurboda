@@ -1,5 +1,6 @@
 /**
- * Implements the vocabulary from `docs/fep/quantpub.md` on the wire: a shared
+ * Implements the QuantPub `0.2` vocabulary (`docs/fep/quantpub.md` now describes
+ * `0.3`, which Aurboda does not emit yet) on the wire: a shared
  * activity's Note is dual-typed `["Note", "quant:Exercise"]` and carries the
  * typed extension properties (`quant:activityType`, `quant:metrics`,
  * `quant:series`, `quant:structuredUrl`) so a QuantPub peer reads structured

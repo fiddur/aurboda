@@ -167,12 +167,22 @@ describe('buckets and samples', () => {
     ])
   })
 
-  test('apply the factor both ways, carry max for max scoring, and clamp a bucket before the start', () => {
-    const samples = bucketsToSamples([{ bucket_start: '2026-10-26T23:00:00Z', value: 2 }], START, 1000, 'max')
+  test('apply the factor both ways and carry max for max scoring', () => {
+    const samples = bucketsToSamples([{ bucket_start: '2026-10-31T23:00:00Z', value: 2 }], START, 1000, 'max')
     expect(samples).toEqual([{ count: 1, max: 2000, offset: 0, sum: 2000 }])
     expect(samplesToBuckets([{ max: 2000, offset: 60 }], START, 1000, 'max')).toEqual([
       { bucket_start: '2026-10-31T23:01:00.000Z', value: 2 },
     ])
+  })
+
+  test('a week bucket starting on the Monday before the start keeps its negative offset', () => {
+    const buckets = [
+      { bucket_start: '2026-10-26T00:00:00.000Z', value: 5 },
+      { bucket_start: '2026-11-02T00:00:00.000Z', value: 7 },
+    ]
+    const samples = bucketsToSamples(buckets, START, 1, 'sum')
+    expect(samples[0].offset).toBe(-(5 * 86_400 + 23 * 3600))
+    expect(samplesToBuckets(samples, START, 1, 'sum')).toEqual(buckets)
   })
 })
 
@@ -185,6 +195,7 @@ describe('entries', () => {
     host_identity: 'https://qs.example/u/freja',
     id: 'p1',
     name: 'November steps',
+    protocol: null,
     spec: stepsSpec,
     start_ts: START,
     status: 'active',

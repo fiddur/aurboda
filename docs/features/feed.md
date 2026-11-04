@@ -201,7 +201,8 @@ renames the post.
 
 **QuantPub extension (#896).** An activity share's `Note` is dual-typed
 `["Note", "quant:Exercise"]` and carries the typed [QuantPub](../fep/quantpub.md)
-extension in-band: the AS2 window as native `startTime`/`endTime`, plus
+`0.2` extension in-band (the draft now describes `0.3`, which Aurboda does not emit
+yet): the AS2 window as native `startTime`/`endTime`, plus
 `quant:activityType`, `quant:metrics` (the shared scalar summaries as
 `key`/`value`/`unit` objects, keys in lowerCamelCase such as `heartRateAvg`),
 `quant:series` links into the public series endpoint (`metric` such as `heartRate`)
@@ -1048,6 +1049,6 @@ These are known and intentional for the current implementation:
   base-URL identity model this reuses.
 - [Challenges](./challenges.md) — cross-instance federated competitions on the same
   `/u/:username` namespace.
-- [QuantPub FEP draft](../fep/quantpub.md) — the vendor-neutral generalisation of
+- [QuantPub FEP draft](../fep/quantpub.md) (`0.3`; Aurboda implements `0.2`) — the vendor-neutral generalisation of
   this feed's federation pattern (vocabulary + out-of-band structured payloads),
   drafted for the FEP process so other QS tools can interoperate.
