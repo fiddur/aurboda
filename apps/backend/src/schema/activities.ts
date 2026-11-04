@@ -30,13 +30,15 @@ export const activitiesTables: Record<string, string> = {
   // When the row last CHANGED; NULL for a row untouched since ingest, so a
   // row's change time is COALESCE(updated_at, created_at). The WHEN guard keeps
   // an identical re-upsert from counting as a change. Drives re-federating a
-  // shared activity's posts after it changes.
+  // shared activity's posts after it changes. clock_timestamp(), not NOW(): a
+  // row touched late in a long sync transaction must compare as newer than a
+  // post created earlier in that same transaction.
   activities_updated_at: `
     ALTER TABLE activities ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;
 
     CREATE OR REPLACE FUNCTION touch_activity_updated_at() RETURNS TRIGGER AS $$
     BEGIN
-      NEW.updated_at := NOW();
+      NEW.updated_at := clock_timestamp();
       RETURN NEW;
     END;
     $$ LANGUAGE plpgsql;
