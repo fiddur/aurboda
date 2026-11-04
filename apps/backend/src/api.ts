@@ -112,6 +112,7 @@ import {
   refreshChangedSharesInWindow,
   refreshFeedPostsForActivity,
 } from './services/feed-refresh.ts'
+import { configureStructuredChallenge } from './services/feed-structured-challenge.ts'
 import { expandFeedActivityWindow, resolveFeedActivity } from './services/feed.ts'
 import {
   approveFollower,
@@ -187,6 +188,7 @@ const main = async () => {
   const webHost = process.env.WEB_HOST ?? 'http://localhost:5173'
   const apiBaseUrl = process.env.API_BASE_URL ?? 'http://localhost:3000'
   console.info(`🌐 WEB_HOST=${webHost} API_BASE_URL=${apiBaseUrl}`)
+  configureStructuredChallenge({ apiBaseUrl, webHost })
 
   // Path to the built SPA index.html, so /u/* share pages can serve
   // crawler-visible <head> meta. In the Docker image nginx serves this same

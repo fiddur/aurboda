@@ -11,8 +11,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
  * public/unlisted visibility filter, the response shape, and the 404 branches.
  */
 import { insertActivity } from '../db/activities/index.ts'
-import { createArticlePost, createFeedPost } from '../db/feed.ts'
+import { createChallenge } from '../db/challenges.ts'
+import { createArticlePost, createChallengePost, createFeedPost } from '../db/feed.ts'
 import { insertTimeSeries } from '../db/time-series.ts'
+import { configureStructuredChallenge } from '../services/feed-structured-challenge.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { createFeedPublicRouter } from './feed-public-router.ts'
 
@@ -156,6 +158,48 @@ describe('GET /public/:username/posts', () => {
         title: 'My resting HR',
       })
       expect(post.structured.blocks[1].samples.length).toBeGreaterThan(0)
+    } finally {
+      await close()
+    }
+  })
+
+  test('attaches the structured challenge so a visitor sees the standings (#994)', async () => {
+    configureStructuredChallenge({ apiBaseUrl: 'https://qs.example/api', webHost: 'https://qs.example' })
+    const user = getTestUser()
+    const challenge = await createChallenge(user, {
+      announce_winner: true,
+      end_ts: new Date('2026-06-03T00:00:00Z'),
+      is_public: true,
+      name: 'June RHR',
+      spec: {
+        activity_type_id: null,
+        aggregation: 'sum',
+        bucket_size: '1d',
+        filter_field: null,
+        filter_value: null,
+        measure: null,
+        pattern: 'resting_heart_rate',
+        source_type: 'metric',
+        unit: 'bpm',
+      },
+      start_ts: new Date('2026-06-01T00:00:00Z'),
+      timezone: 'UTC',
+    })
+    const share = await createChallengePost(user, {
+      challenge: { name: 'June RHR', url: `https://qs.example/u/${user}/${challenge.slug}` },
+      visibility: 'public',
+    })
+
+    const { request, close } = startApp()
+    try {
+      const res = await request.get(`/public/${user}/posts`)
+      expect(res.status).toBe(200)
+      const post = res.body.posts.find((p: { id: string }) => p.id === share.id)
+      expect(post.structured).toMatchObject({
+        challenge: { kind: 'challenge', name: 'June RHR' },
+        kind: 'challenge',
+        standings: { kind: 'standings', members: [] },
+      })
     } finally {
       await close()
     }

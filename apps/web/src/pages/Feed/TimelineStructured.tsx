@@ -5,7 +5,8 @@
  * and — just like the activity detail view (#1011) — ONE combined multi-metric
  * chart with per-metric toggles plus a time-synced interactive map that marks
  * the position at the hovered chart time. An `article` post renders the full
- * inline article (title + resolved blocks — see `TimelineArticle`). Only
+ * inline article (title + resolved blocks — see `TimelineArticle`); a
+ * `challenge` post its race chart and leaderboard (`TimelineChallenge`). Only
  * rendered for posts from Aurboda instances (which carry `structured`);
  * Mastodon posts have none.
  */
@@ -23,6 +24,7 @@ import {
   structuredRoutePoints,
 } from './timeline-structured'
 import { TimelineArticle } from './TimelineArticle'
+import { TimelineChallenge } from './TimelineChallenge'
 import { TimelineExercises } from './TimelineExercises'
 import './TimelineStructured.css'
 
@@ -67,5 +69,6 @@ function ActivityStructured({ structured }: { structured: FeedStructuredActivity
 
 export function TimelineStructured({ structured }: { structured: FeedStructuredPost }) {
   if (structured.kind === 'article') return <TimelineArticle article={structured} />
+  if (structured.kind === 'challenge') return <TimelineChallenge structured={structured} />
   return <ActivityStructured structured={structured} />
 }

@@ -455,8 +455,10 @@ the backend directly need no extra config.
   optional personal note (markdown, previewed in the dialog) plus the challenge's
   canonical link, with the usual `public`/`unlisted`/`followers` audience. The server
   resolves the linked name/URL from the challenge (or the joined participation) itself,
-  and never embeds a join token or standings data. Federates as a `Note`; Mastodon shows
-  the link with the challenge page's OG preview card. Also available as the
+  and never embeds a join token. Federates as a `Note`; Mastodon shows
+  the link with the challenge page's OG preview card; an Aurboda peer fetches the post's
+  structured payload (the challenge document plus a standings snapshot) and renders the
+  race chart and leaderboard natively on its timeline. Also available as the
   `share_challenge` MCP tool / `POST /feed/challenges`. See
   [feed.md](feed.md#feed-posts) for the post model.
 
