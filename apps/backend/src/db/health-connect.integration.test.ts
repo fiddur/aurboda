@@ -141,6 +141,17 @@ describe('Health Connect Integration Tests', () => {
       const result = await getDailyAggregateValue(user, 'steps', new Date('2024-01-15'))
       expect(result).toBeNull()
     })
+
+    test('reads the local day in the given timezone', async () => {
+      const user = getTestUser()
+      const tz = 'Europe/Stockholm'
+      await insertTimeSeries(user, [
+        { metric: 'steps', source: 'aurboda', time: new Date('2024-07-15T21:30:00Z'), value: 8000 },
+      ])
+
+      expect(await getDailyAggregateValue(user, 'steps', new Date('2024-07-14T22:00:00Z'), tz)).toBe(8000)
+      expect(await getDailyAggregateValue(user, 'steps', new Date('2024-07-15T22:00:00Z'), tz)).toBeNull()
+    })
   })
 
   describe('getDailyAggregateValues', () => {

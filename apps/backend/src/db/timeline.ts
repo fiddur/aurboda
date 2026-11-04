@@ -14,7 +14,6 @@ import type { FeedFollowingRecord } from './feed-following.ts'
 import type { CachedActorPresentation } from './types.ts'
 
 import { query } from './connection.ts'
-import { removeOrphanedFeedReactions } from './feed-reactions.ts'
 
 export interface TimelineEntryRecord {
   id: string
@@ -510,18 +509,40 @@ export const markTimelineEntryReplyChecked = async (user: string, id: string): P
   await query(user, `UPDATE timeline_entry SET reply_checked_at = NOW() WHERE id = $1`, [id])
 }
 
-interface RemovedTimelineUris {
-  object_uri: string
-  boost_of_uri: string | null
-}
-
-const dropOrphanedReactions = async (user: string, removed: RemovedTimelineUris[]): Promise<void> => {
-  const uris = new Set<string>()
-  for (const row of removed) {
-    uris.add(row.object_uri)
-    if (row.boost_of_uri != null) uris.add(row.boost_of_uri)
-  }
-  await removeOrphanedFeedReactions(user, [...uris])
+/**
+ * Delete the timeline rows matching `predicate` and, in the same statement, the user's
+ * own reactions to Notes no removed row leaves in the timeline — a reaction outlives
+ * its card only while a direct entry or another boost of the Note remains. Every part
+ * of a data-modifying CTE reads one snapshot, where `timeline_entry` still holds the
+ * rows being removed, so the orphan check must exclude them by id.
+ */
+const deleteTimelineEntriesWhere = async (
+  user: string,
+  predicate: string,
+  params: unknown[],
+): Promise<number> => {
+  const result = await query<{ removed_count: number }>(
+    user,
+    `WITH removed AS (
+       DELETE FROM timeline_entry WHERE ${predicate}
+       RETURNING id, object_uri, boost_of_uri
+     ), uris AS (
+       SELECT object_uri AS uri FROM removed
+       UNION SELECT boost_of_uri FROM removed WHERE boost_of_uri IS NOT NULL
+     ), dropped AS (
+       DELETE FROM feed_reaction fr
+       WHERE fr.object_uri IN (SELECT uri FROM uris)
+         AND NOT EXISTS (
+           SELECT 1 FROM timeline_entry te
+           WHERE (te.object_uri = fr.object_uri OR te.boost_of_uri = fr.object_uri)
+             AND te.id NOT IN (SELECT id FROM removed)
+         )
+       RETURNING 1
+     )
+     SELECT (SELECT count(*) FROM removed)::int AS removed_count`,
+    params,
+  )
+  return result.rows[0].removed_count
 }
 
 /**
@@ -540,14 +561,12 @@ export const deleteTimelineEntryByUri = async (
   objectUri: string,
   actorUri: string,
 ): Promise<boolean> => {
-  const result = await query<RemovedTimelineUris>(
+  const removed = await deleteTimelineEntriesWhere(
     user,
-    `DELETE FROM timeline_entry WHERE actor_uri = $2 AND (object_uri = $1 OR boost_of_uri = $1)
-     RETURNING object_uri, boost_of_uri`,
+    'actor_uri = $2 AND (object_uri = $1 OR boost_of_uri = $1)',
     [objectUri, actorUri],
   )
-  await dropOrphanedReactions(user, result.rows)
-  return (result.rowCount ?? 0) > 0
+  return removed > 0
 }
 
 /**
@@ -560,14 +579,11 @@ export const deleteBoostEntry = async (
   announceUri: string,
   boosterActorUri: string,
 ): Promise<boolean> => {
-  const result = await query<RemovedTimelineUris>(
-    user,
-    `DELETE FROM timeline_entry WHERE object_uri = $1 AND boosted_by_actor_uri = $2
-     RETURNING object_uri, boost_of_uri`,
-    [announceUri, boosterActorUri],
-  )
-  await dropOrphanedReactions(user, result.rows)
-  return (result.rowCount ?? 0) > 0
+  const removed = await deleteTimelineEntriesWhere(user, 'object_uri = $1 AND boosted_by_actor_uri = $2', [
+    announceUri,
+    boosterActorUri,
+  ])
+  return removed > 0
 }
 
 /**
@@ -578,15 +594,11 @@ export const deleteBoostEntry = async (
  * follow is untouched.
  */
 export const deleteTimelineEntriesByActor = async (user: string, actorUri: string): Promise<number> => {
-  const result = await query<RemovedTimelineUris>(
+  return deleteTimelineEntriesWhere(
     user,
-    `DELETE FROM timeline_entry
-     WHERE (actor_uri = $1 AND boost_of_uri IS NULL) OR boosted_by_actor_uri = $1
-     RETURNING object_uri, boost_of_uri`,
+    '(actor_uri = $1 AND boost_of_uri IS NULL) OR boosted_by_actor_uri = $1',
     [actorUri],
   )
-  await dropOrphanedReactions(user, result.rows)
-  return result.rowCount ?? 0
 }
 
 /** The fields a lazy retro-enrichment attempt needs (#996). */
