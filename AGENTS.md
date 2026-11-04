@@ -336,6 +336,12 @@ this section is the difference.
   it merged, or a failure in its output — so run it by hand,
   `CLAUDE_CODE_REMOTE=true .claude/hooks/session-start.sh`, and prefix every command
   with `export PATH="/opt/node26/bin:$PATH"` for the rest of the session.
+- **No permission prompts for the toolchain.** `permissions.allow` in `.claude/settings.json`
+  pre-approves `git`, `pnpm`, `node`, `npx`, `docker`, the shells and the usual file and text
+  utilities, so a cloud thread never halts on them: Fredrik's standing rule (2026-11-04) is that
+  git, bash and node work in the cloud runs without asking. The list applies in a project with
+  one repository, which this is. When a command still prompts, add its `Bash(<cmd>:*)` rule
+  there in the next PR rather than answering the prompt by hand each time.
 - **The hook is checked in, so there is nothing to paste** into the environment's
   settings, whose setup script stays empty. It reads the major from `.nvmrc` and the
   pnpm version from `packageManager`, so moving either moves the hook with it. It runs
