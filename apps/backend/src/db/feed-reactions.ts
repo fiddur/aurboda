@@ -116,25 +116,6 @@ export const listFeedReactionsForObjects = async (
   return result.rows
 }
 
-/**
- * Drop the user's own reactions to Notes the timeline no longer holds, among
- * `objectUris` — run after a timeline removal, so a reaction outlives its card
- * only while a direct entry or another boost of the Note remains.
- */
-export const removeOrphanedFeedReactions = async (user: string, objectUris: string[]): Promise<number> => {
-  if (objectUris.length === 0) return 0
-  const result = await query(
-    user,
-    `DELETE FROM feed_reaction fr
-     WHERE fr.object_uri = ANY($1)
-       AND NOT EXISTS (
-         SELECT 1 FROM timeline_entry te WHERE te.object_uri = fr.object_uri OR te.boost_of_uri = fr.object_uri
-       )`,
-    [objectUris],
-  )
-  return result.rowCount ?? 0
-}
-
 export interface FeedPostReactionRecord {
   post_id: string
   kind: FeedReactionKind

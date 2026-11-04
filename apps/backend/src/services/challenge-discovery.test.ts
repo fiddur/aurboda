@@ -80,6 +80,7 @@ const participation = (
   host_identity: 'https://peer.example/u/alice',
   id: `p-${url}`,
   name: 'joined',
+  protocol: null,
   spec,
   start_ts: new Date('2026-08-31T22:00:00Z'),
   status,

@@ -18,7 +18,7 @@ import {
   listSharedExercises,
   updateSharedExercise,
 } from '../db/index.ts'
-import { serializeSharedExercise } from '../services/shared-exercises.ts'
+import { assertItemPath, serializeSharedExercise } from '../services/shared-exercises.ts'
 import { visibilityToIsPublic } from '../services/visibility.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
@@ -40,6 +40,8 @@ export const createSharedExercisesRouter = (authMiddleware: RequestHandler, webH
     validateBody(createSharedExerciseBodySchema),
     async (req, res) => {
       const user = req.user!
+      const rejection = await assertItemPath(user, req.body.activity_type, req.body.field)
+      if (rejection) return res.status(rejection.status).json({ error: rejection.error, success: false })
       try {
         const record = await createSharedExercise(user, {
           activity_type: req.body.activity_type,

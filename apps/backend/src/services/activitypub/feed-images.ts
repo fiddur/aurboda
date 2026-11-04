@@ -14,6 +14,7 @@
 import sharp from 'sharp'
 
 import { buildChartSvg } from '../charts/chart-svg.ts'
+import { buildRaceChartSvg, type RaceChartSvgData } from '../charts/race-chart-svg.ts'
 import { type ScatterSvgData, buildScatterSvg } from '../charts/scatter-svg.ts'
 import { maxOf, minOf } from '../numeric-extremes.ts'
 import { chooseZoom, latToWorldY, lonToWorldX, TILE_SIZE, type TileFetcher } from './osm-tiles.ts'
@@ -63,6 +64,10 @@ export const renderChartPng = (
  * only adds the `sharp` rasterization.
  */
 export const renderScatterPng = (data: ScatterSvgData): Promise<Buffer> => svgToPng(buildScatterSvg(data))
+
+/** A challenge's standings race (one line per member) rasterized for the `Standings` attachment. */
+export const renderRaceChartPng = (data: RaceChartSvgData): Promise<Buffer> =>
+  svgToPng(buildRaceChartSvg(data))
 
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v))
 

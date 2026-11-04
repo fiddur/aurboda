@@ -16,7 +16,7 @@ import { randomBytes } from 'node:crypto'
  * database, each backed by an unguessable `data_token`.
  */
 import { query } from './connection.ts'
-import { getSharedDashboardBySlug } from './shared-dashboards.ts'
+import { publicSlugIsFree } from './public-slugs.ts'
 
 export type ChallengeBucketSize = 'auto' | '1d' | '1w' | '1M'
 
@@ -46,7 +46,6 @@ export interface ChallengeRecord {
   announce_winner: boolean
   /** When the completion sweep published (or deliberately skipped) the result; null while pending. */
   result_published_at: Date | null
-  /** When the host last set the banner image; null when none is set. */
   banner_updated_at: Date | null
   created_at: Date
   updated_at: Date
@@ -112,8 +111,12 @@ export interface ChallengeParticipationRecord {
   timezone: string
   data_token: string
   status: 'active' | 'withdrawn'
+  /** How the host was joined; null for participations from before it was recorded. */
+  protocol: ChallengeParticipationProtocol | null
   created_at: Date
 }
+
+export type ChallengeParticipationProtocol = 'quantpub' | 'aurboda'
 
 export interface ChallengeParticipationInput {
   challenge_url: string
@@ -123,6 +126,7 @@ export interface ChallengeParticipationInput {
   start_ts: Date
   end_ts: Date
   timezone: string
+  protocol?: ChallengeParticipationProtocol | null
 }
 
 const CHALLENGE_COLUMNS =
@@ -134,7 +138,7 @@ const MEMBER_COLUMNS =
   'id, challenge_id, identity_base_url, display_name, kind, local_user, data_endpoint_url, actor, status, joined_at, last_fetched_at, data_last_updated, cached_total, cached_buckets, last_error'
 
 const PARTICIPATION_COLUMNS =
-  'id, challenge_url, host_identity, name, source_type, pattern, activity_type_id, aggregation, unit, bucket_size, measure, filter_field, filter_value, start_ts, end_ts, timezone, data_token, status, created_at'
+  'id, challenge_url, host_identity, name, source_type, pattern, activity_type_id, aggregation, unit, bucket_size, measure, filter_field, filter_value, start_ts, end_ts, timezone, data_token, status, protocol, created_at'
 
 interface ChallengeRow {
   id: string
@@ -215,8 +219,12 @@ interface ParticipationRow {
   timezone: string
   data_token: string
   status: 'active' | 'withdrawn'
+  protocol: string | null
   created_at: Date
 }
+
+const isParticipationProtocol = (value: string | null): value is ChallengeParticipationProtocol =>
+  value === 'quantpub' || value === 'aurboda'
 
 const mapParticipation = (row: ParticipationRow): ChallengeParticipationRecord => ({
   challenge_url: row.challenge_url,
@@ -226,6 +234,7 @@ const mapParticipation = (row: ParticipationRow): ChallengeParticipationRecord =
   host_identity: row.host_identity,
   id: row.id,
   name: row.name,
+  protocol: isParticipationProtocol(row.protocol) ? row.protocol : null,
   spec: toSpec(row),
   start_ts: row.start_ts,
   status: row.status,
@@ -271,17 +280,12 @@ export const getChallengeBySlug = async (user: string, slug: string): Promise<Ch
   return result.rows.length ? mapChallenge(result.rows[0]) : null
 }
 
-/** True if a slug is free across BOTH challenges and shared dashboards for this user. */
-const slugIsFree = async (user: string, slug: string): Promise<boolean> =>
-  (await getChallengeBySlug(user, slug)) === null && (await getSharedDashboardBySlug(user, slug)) === null
-
 export const createChallenge = async (user: string, input: ChallengeInput): Promise<ChallengeRecord> => {
   const joinToken = randomToken(24)
   const maxAttempts = 5
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const slug = randomToken(7)
-    // Cheap pre-check across both slug namespaces; UNIQUE handles the race.
-    if (!(await slugIsFree(user, slug))) continue
+    if (!(await publicSlugIsFree(user, slug))) continue
     try {
       const result = await query<ChallengeRow>(
         user,
@@ -519,8 +523,8 @@ export const createChallengeParticipation = async (
        DELETE FROM challenge_left WHERE challenge_url = $1
      )
      INSERT INTO challenge_participations
-       (challenge_url, host_identity, name, source_type, pattern, activity_type_id, aggregation, unit, bucket_size, measure, filter_field, filter_value, start_ts, end_ts, timezone, data_token)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+       (challenge_url, host_identity, name, source_type, pattern, activity_type_id, aggregation, unit, bucket_size, measure, filter_field, filter_value, start_ts, end_ts, timezone, data_token, protocol)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
      RETURNING ${PARTICIPATION_COLUMNS}`,
     [
       input.challenge_url,
@@ -539,6 +543,7 @@ export const createChallengeParticipation = async (
       input.end_ts,
       input.timezone,
       dataToken,
+      input.protocol ?? null,
     ],
   )
   return mapParticipation(result.rows[0])
@@ -610,11 +615,11 @@ export const deleteChallengeParticipation = async (
     user,
     `WITH deleted AS (
        DELETE FROM challenge_participations WHERE id = $1
-       RETURNING id, challenge_url
+       RETURNING id, challenge_url, data_token
      ), tomb AS (
-       INSERT INTO challenge_left (challenge_url)
-       SELECT challenge_url FROM deleted
-       ON CONFLICT (challenge_url) DO NOTHING
+       INSERT INTO challenge_left (challenge_url, last_data_token)
+       SELECT challenge_url, data_token FROM deleted
+       ON CONFLICT (challenge_url) DO UPDATE SET last_data_token = EXCLUDED.last_data_token
      )
      SELECT id FROM deleted`,
     [id],
@@ -626,4 +631,18 @@ export const deleteChallengeParticipation = async (
 export const listLeftChallengeUrls = async (user: string): Promise<string[]> => {
   const result = await query<{ challenge_url: string }>(user, `SELECT challenge_url FROM challenge_left`)
   return result.rows.map((row) => row.challenge_url)
+}
+
+/**
+ * The data token of the participation last left for this challenge URL, if any.
+ * A rejoin presents its entry URL so a host that never heard the leave swaps the
+ * old registration rather than refusing a second one.
+ */
+export const getLeftChallengeToken = async (user: string, challengeUrl: string): Promise<string | null> => {
+  const result = await query<{ last_data_token: string | null }>(
+    user,
+    `SELECT last_data_token FROM challenge_left WHERE challenge_url = $1`,
+    [challengeUrl],
+  )
+  return result.rows[0]?.last_data_token ?? null
 }

@@ -202,6 +202,10 @@ export const shareChallengeBodySchema = z
       .uuid()
       .optional()
       .meta({ description: 'One of your own challenges to share (exclusive with `participation_id`)' }),
+    include_chart: z.boolean().default(true).meta({
+      description:
+        'Attach a rendered standings race-chart image (`standings.png`) for consumers that cannot draw the race themselves',
+    }),
     message: z.string().max(feedPostMessageMaxLength).optional().meta({
       description:
         'Personal note shown above the link (markdown, rendered through the shared sanitiser). Empty/absent shares no text.',
@@ -415,7 +419,7 @@ export const feedPostSchema = z
     series_metrics: z.array(z.string()).meta({ description: 'Explicitly-shared series metrics' }),
     structured: feedStructuredPostSchema.optional().meta({
       description:
-        "The post's native structured payload (an activity's typed metrics + inline series; on the public profile listing also an article's resolved blocks), identical to what a subscribing peer receives — drives the native card render",
+        "The post's native structured payload (an activity's typed metrics + inline series; on the public profile listing also an article's resolved blocks or a challenge's document + standings snapshot), identical to what a subscribing peer receives — drives the native card render",
     }),
     updated_at: z.string().meta({ description: 'Last update timestamp (ISO 8601)' }),
     visibility: feedVisibilitySchema,
@@ -722,7 +726,7 @@ export const timelineEntrySchema = z
     }),
     structured: feedStructuredPostSchema.optional().meta({
       description:
-        'Native structured data (an activity share’s typed metrics/series, or an article’s title + resolved blocks), present only for posts from Aurboda instances — drives a native render instead of the HTML.',
+        'Native structured data (an activity share’s typed metrics/series, an article’s title + resolved blocks, or a challenge’s document + standings snapshot), present only for posts from Aurboda instances — drives a native render instead of the HTML.',
     }),
     url: z.string().nullable().meta({ description: 'Link to the original post' }),
   })

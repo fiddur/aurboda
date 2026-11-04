@@ -15,7 +15,7 @@ import {
   listAutoshareSuppressedIds,
   updateAutoshareRule,
 } from './autoshare-rules.ts'
-import { query } from './connection.ts'
+import { query, withUserTransaction } from './connection.ts'
 import {
   createFeedPost,
   deleteFeedPost,
@@ -388,6 +388,25 @@ describe('Auto-share rules integration', () => {
 
     await query(user, `UPDATE activities SET title = 'Morning run' WHERE id = $1`, [id])
     expect((await changeTimes(user, id))?.updated_at).toEqual(changed)
+  })
+
+  test('activities.updated_at: wall-clock time of the change, later than its transaction start', async () => {
+    const user = getTestUser()
+    const { started, updated } = await withUserTransaction(user, async (tx) => {
+      const inserted = await tx.query<{ id: string }>(
+        `INSERT INTO activities (activity_type, source, start_time, end_time)
+         VALUES ('running', 'garmin', '2026-08-02T08:00:00Z', '2026-08-02T08:30:00Z') RETURNING id`,
+      )
+      const id = inserted.rows[0]?.id
+      await tx.query(`SELECT pg_sleep(0.05)`)
+      await tx.query(`UPDATE activities SET title = 'Late in the sync' WHERE id = $1`, [id])
+      const row = await tx.query<{ started: Date; updated: Date }>(
+        `SELECT transaction_timestamp() AS started, updated_at AS updated FROM activities WHERE id = $1`,
+        [id],
+      )
+      return row.rows[0] ?? { started: new Date(0), updated: new Date(0) }
+    })
+    expect(updated.getTime()).toBeGreaterThan(started.getTime())
   })
 
   test('getActivitiesChangedAt: the newest change or ingest over the ids, null for none', async () => {

@@ -214,6 +214,25 @@ describe('getDailySummary', () => {
     expect(result.steps.total).toBe(5000)
   })
 
+  test('reads the steps aggregate for the local day of the requested timezone', async () => {
+    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    vi.mocked(db.getSleepSessions).mockResolvedValue([])
+    vi.mocked(db.getNonSleepActivitiesMerged).mockResolvedValue([])
+    vi.mocked(db.getProductivity).mockResolvedValue([])
+    vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
+    vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({} as Record<MetricType, [Date, number][]>)
+    vi.mocked(db.getDailyAggregateValue).mockResolvedValue(5000)
+
+    await getDailySummary('testuser', new Date('2024-01-15'), undefined, 'America/Los_Angeles')
+
+    expect(db.getDailyAggregateValue).toHaveBeenCalledWith(
+      'testuser',
+      'steps',
+      new Date('2024-01-15T08:00:00Z'),
+      'America/Los_Angeles',
+    )
+  })
+
   test('falls back to summing raw steps when no aggregate exists', async () => {
     vi.mocked(db.getTimeSeries)
       .mockResolvedValueOnce([]) // heart_rate

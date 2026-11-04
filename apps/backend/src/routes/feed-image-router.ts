@@ -19,6 +19,7 @@ import { type Response, Router } from 'express'
 
 import type { FeedPostRecord } from '../db/index.ts'
 import type { CorrelationBlockParams } from '../services/article-block-data.ts'
+import type { RaceChartSvgData } from '../services/charts/race-chart-svg.ts'
 import type { ScatterSvgData } from '../services/charts/scatter-svg.ts'
 
 import { isValidUsername } from '../api/auth-routes.ts'
@@ -76,6 +77,10 @@ export interface FeedImageDeps {
   getCorrelationScatter: (user: string, params: CorrelationBlockParams) => Promise<ScatterSvgData | null>
   renderScatter: (data: ScatterSvgData) => Promise<Buffer>
   renderScatterSvg: (data: ScatterSvgData) => string
+  /** A challenge post's standings race, or null when it has no standings to draw. */
+  getStandingsChart: (user: string, post: FeedPostRecord) => Promise<RaceChartSvgData | null>
+  renderRaceChart: (data: RaceChartSvgData) => Promise<Buffer>
+  renderRaceChartSvg: (data: RaceChartSvgData) => string
   /** Remembered block-image misses, shared with the markdown export (a fresh one when omitted). */
   articleBlockMisses?: NegativeCache
 }
@@ -296,8 +301,49 @@ const sendSvg = (res: Response, svg: Buffer) => {
  * Keyed on the post's stored version, not the URL's `v`: a detail sync or an
  * edit bumps `updated_at` and re-renders, while a guessed `v` cannot bust the cache.
  */
-export const imageCacheKey = (kind: string, username: string, postId: string, window: ImageWindow): string =>
-  `${kind}:${username}:${postId}:${window.updated_at.getTime()}`
+export const imageCacheKey = (
+  kind: string,
+  username: string,
+  postId: string,
+  window: Pick<ImageWindow, 'updated_at'>,
+): string => `${kind}:${username}:${postId}:${window.updated_at.getTime()}`
+
+/** Remote members' standings are cached for this long, so a finer render key buys nothing. */
+const STANDINGS_BUCKET_MS = 300_000
+
+/** The post's version plus a 5-minute bucket: an edit busts it, and so does the standings moving on. */
+export const standingsCacheKey = (
+  kind: string,
+  username: string,
+  postId: string,
+  updatedAt: Date,
+  now: number,
+): string =>
+  `${imageCacheKey(kind, username, postId, { updated_at: updatedAt })}:${Math.floor(now / STANDINGS_BUCKET_MS)}`
+
+/**
+ * The challenge post a `standings` image request may render, or `null` when
+ * ineligible: invalid username / non-UUID id, missing DB, missing post, not a
+ * challenge post, a `followers`-only post without a matching capability
+ * `token`, or the post not opted into `include_chart`.
+ */
+export const resolveStandingsPost = async (
+  deps: Pick<FeedImageDeps, 'getPost'>,
+  username: string,
+  postId: string,
+  token?: string,
+): Promise<FeedPostRecord | null> => {
+  if (!isValidUsername(username) || !UUID_RE.test(postId)) return null
+  let post: FeedPostRecord | null
+  try {
+    post = await deps.getPost(username, postId)
+  } catch (error) {
+    if (isMissingDatabase(error)) return null
+    throw error
+  }
+  if (post == null || post.kind !== 'challenge' || !post.include_chart) return null
+  return isCapabilityAuthorized(post, token) ? post : null
+}
 
 export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
   const router = Router()
@@ -346,6 +392,41 @@ export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
     })
     if (!png) return notFound(res)
     sendPng(res, png)
+  })
+
+  const standingsImage = async (
+    username: string,
+    post: FeedPostRecord,
+    format: 'png' | 'svg',
+  ): Promise<Buffer | null> => {
+    const key = standingsCacheKey(`standings${format}`, username, post.id, post.updated_at, Date.now())
+    return cached(key, async () => {
+      const data = await deps.getStandingsChart(username, post)
+      if (data == null || data.lines.length === 0) return null
+      return format === 'png'
+        ? deps.renderRaceChart(data)
+        : Buffer.from(deps.renderRaceChartSvg(data), 'utf8')
+    })
+  }
+
+  router.get('/public/:username/feed/:postId/standings.png', async (req, res) => {
+    const { postId, username } = req.params
+    const token = typeof req.query.token === 'string' ? req.query.token : undefined
+    const post = await resolveStandingsPost(deps, username, postId, token)
+    if (!post) return notFound(res)
+    const png = await standingsImage(username, post, 'png')
+    if (!png) return notFound(res)
+    sendPng(res, png)
+  })
+
+  router.get('/public/:username/feed/:postId/standings.svg', async (req, res) => {
+    const { postId, username } = req.params
+    const token = typeof req.query.token === 'string' ? req.query.token : undefined
+    const post = await resolveStandingsPost(deps, username, postId, token)
+    if (!post) return notFound(res)
+    const svg = await standingsImage(username, post, 'svg')
+    if (!svg) return notFound(res)
+    sendSvg(res, svg)
   })
 
   // Article chart/correlation block images. Gated by post visibility + capability

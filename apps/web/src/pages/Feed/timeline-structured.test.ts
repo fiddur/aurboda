@@ -45,6 +45,21 @@ const structured = (over: Partial<FeedStructuredActivity> = {}): FeedStructuredA
 
 const article: FeedStructuredPost = { blocks: [], kind: 'article', title: 'My analysis' }
 
+const challenge: FeedStructuredPost = {
+  challenge: {
+    endTime: '2026-12-01T00:00:00.000Z',
+    host: { name: 'freja', url: 'https://qs.example/u/freja' },
+    kind: 'challenge',
+    metric: 'steps',
+    name: 'November steps',
+    scoring: 'sum',
+    startTime: '2026-11-01T00:00:00.000Z',
+    timezone: 'UTC',
+    url: 'https://qs.example/u/freja/nov',
+  },
+  kind: 'challenge',
+}
+
 describe('structuredCombinedSeries', () => {
   test('maps samples to [bucket midpoint, avg] chart points, carrying the unit and the internal metric name', () => {
     const result = structuredCombinedSeries(structured({ series: [hrSeries] }))
@@ -65,8 +80,9 @@ describe('structuredCombinedSeries', () => {
     expect(structuredCombinedSeries(structured({ series: [oneSample] }))).toEqual([])
   })
 
-  test('is empty for an article post and for no payload at all', () => {
+  test('is empty for an article or challenge post and for no payload at all', () => {
     expect(structuredCombinedSeries(article)).toEqual([])
+    expect(structuredCombinedSeries(challenge)).toEqual([])
     expect(structuredCombinedSeries(undefined)).toEqual([])
   })
 })
@@ -82,6 +98,7 @@ describe('structuredRoutePoints', () => {
   test('is empty without a route, for an article, and without a payload', () => {
     expect(structuredRoutePoints(structured())).toEqual([])
     expect(structuredRoutePoints(article)).toEqual([])
+    expect(structuredRoutePoints(challenge)).toEqual([])
     expect(structuredRoutePoints(undefined)).toEqual([])
   })
 })
@@ -99,6 +116,7 @@ describe('native-render predicates', () => {
       ),
     ).toBe(false)
     expect(structuredHasNativeHrChart(undefined)).toBe(false)
+    expect(structuredHasNativeHrChart(challenge)).toBe(false)
   })
 
   test('map: needs at least two route points', () => {
@@ -106,6 +124,7 @@ describe('native-render predicates', () => {
     expect(structuredHasNativeMap(structured({ route: route.slice(0, 1) }))).toBe(false)
     expect(structuredHasNativeMap(structured())).toBe(false)
     expect(structuredHasNativeMap(undefined)).toBe(false)
+    expect(structuredHasNativeMap(challenge)).toBe(false)
   })
 })
 
@@ -115,8 +134,9 @@ describe('timelineImageVisible', () => {
     expect(timelineImageVisible(undefined, 'Route')).toBe(true)
   })
 
-  test('hides every image for an article (rendered fully natively)', () => {
+  test('hides every image for an article or a challenge (rendered fully natively)', () => {
     expect(timelineImageVisible(article, 'anything')).toBe(false)
+    expect(timelineImageVisible(challenge, 'Standings')).toBe(false)
   })
 
   test('hides exactly the image whose native counterpart draws', () => {

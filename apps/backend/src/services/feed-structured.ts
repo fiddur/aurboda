@@ -12,9 +12,11 @@
  * over its own locked window — the same bucketing (`queryMetricsBucketed`) and
  * correlation engine (`getContinuousCorrelation`) the block's own PNG and the
  * web's inline render use — so a peer's native render matches byte-for-byte
- * what the author sees. Only `public`/`unlisted` posts resolve unconditionally;
- * a `followers`-only post resolves only with a matching capability `token`
- * (the same gate as the object dispatcher, the outbox, and the block images).
+ * what the author sees. A `challenge` post resolves to its challenge document
+ * and a standings snapshot (`feed-structured-challenge.ts`). Only
+ * `public`/`unlisted` posts resolve unconditionally; a `followers`-only post
+ * resolves only with a matching capability `token` (the same gate as the
+ * object dispatcher, the outbox, and the block images).
  */
 import type {
   ArticleBlock,
@@ -43,6 +45,7 @@ import {
   resolveStructuredRoute,
   resolveStructuredSeries,
 } from './feed-structured-activity.ts'
+import { configuredStructuredChallengeDeps, resolveStructuredChallenge } from './feed-structured-challenge.ts'
 import { resolveFeedActivity } from './feed.ts'
 import { queryMetricsBucketed } from './queries/index.ts'
 
@@ -209,6 +212,11 @@ export const resolveStructuredContent = async (
   if (post.kind === 'article') {
     if (post.article == null) return null
     return resolveStructuredArticle(user, post.article)
+  }
+
+  if (post.kind === 'challenge') {
+    const deps = configuredStructuredChallengeDeps()
+    return deps ? resolveStructuredChallenge(user, post, deps) : null
   }
 
   if (post.activity_id == null) return null

@@ -466,6 +466,18 @@ describe('Feed posts integration', () => {
       expect((await listFeedPosts(user, 10)).map((p) => p.id)).toContain(post.id)
       // Public/unlisted challenge shares appear on the outbox listing like any post.
       expect((await listPublicFeedPosts(user)).map((p) => p.id)).toContain(post.id)
+      expect(post.include_chart).toBe(false)
+    })
+
+    test('createChallengePost writes the standings-chart opt-in', async () => {
+      const user = getTestUser()
+      const post = await createChallengePost(user, {
+        challenge: { name: 'August 10k', url: 'https://aurboda.example/u/me/aug10k' },
+        include_chart: true,
+        visibility: 'public',
+      })
+      expect(post.include_chart).toBe(true)
+      expect((await getFeedPostById(user, post.id))?.include_chart).toBe(true)
     })
   })
   describe('reply posts', () => {

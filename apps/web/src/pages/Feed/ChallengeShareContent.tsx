@@ -13,7 +13,7 @@ import type { ChallengeResult, ChallengeShare } from '@aurboda/api-spec'
 import { renderMarkdown } from '../../utils/markdown'
 import { podiumMedal } from '../../utils/podium'
 
-const ChallengeResultPodium = ({ result }: { result: ChallengeResult }) => (
+export const ChallengeResultPodium = ({ result }: { result: ChallengeResult }) => (
   <div class="challenge-podium">
     <ol class="challenge-podium-list">
       {result.podium.map((entry) => (

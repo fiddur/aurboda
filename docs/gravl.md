@@ -59,7 +59,7 @@ Aurboda uses that key ([#1080](https://github.com/fiddur/aurboda/issues/1080)): 
 
 Sessions Health Connect delivered _before_ this existed are claimed the first time the Gravl sync sees their workout: the old `health_connect` row is re-sourced and enriched in place.
 
-When both a Garmin watch and Gravl record the same session, the Garmin and Gravl rows still merge in the timeline. Both are `strength_training`, so the same-type merge takes the earlier-starting row as the base (its title) and overlays the other row's data: Gravl's sets and Garmin's HR show together. Editing the merged session (adding a description, say) creates one override over both rows that starts from exactly the blend the merged view shows — its title, span and data — so only what you edited changes ([#1357](https://github.com/fiddur/aurboda/issues/1357)).
+When both a Garmin watch and Gravl record the same session, the Garmin and Gravl rows still merge in the timeline. Both are `strength_training`, so the same-type merge takes the earlier-starting row as the base (its title) and overlays the other row's data: Gravl's sets and Garmin's HR show together. Editing the merged session (adding a description, say) creates one override over both rows that starts from exactly the blend the merged view shows — its title, span and data — so only what you edited changes ([#1357](https://github.com/fiddur/aurboda/issues/1357)); an edit whose target rows do not all merge into the one session is rejected rather than snapshotting only some of them ([#1369](https://github.com/fiddur/aurboda/issues/1369)).
 
 ## Admin Setup
 

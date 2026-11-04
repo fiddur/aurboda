@@ -12,6 +12,8 @@ import {
   getChallengeById,
   getChallengeBySlug,
   getChallengeMemberByIdentity,
+  getLeftChallengeToken,
+  getParticipationById,
   getParticipationByToken,
   getParticipationByUrl,
   listChallengeMembers,
@@ -297,6 +299,62 @@ describe('Challenges integration', () => {
 
     expect(await deleteChallengeParticipation(user, second.id)).toBe(true)
     expect(await listLeftChallengeUrls(user)).toEqual([url])
+  })
+
+  test("the tombstone keeps the left participation's data token until a rejoin clears it", async () => {
+    const user = getTestUser()
+    const url = 'https://peer.example/u/alice/left-token'
+    const join = async () =>
+      createChallengeParticipation(user, {
+        challenge_url: url,
+        end_ts: new Date('2026-06-08T00:00:00Z'),
+        host_identity: 'https://peer.example/u/alice',
+        name: 'C',
+        protocol: 'quantpub',
+        spec,
+        start_ts: new Date('2026-06-01T00:00:00Z'),
+        timezone: 'UTC',
+      })
+
+    expect(await getLeftChallengeToken(user, url)).toBeNull()
+    const first = await join()
+    expect(await deleteChallengeParticipation(user, first.id)).toBe(true)
+    expect(await getLeftChallengeToken(user, url)).toBe(first.data_token)
+
+    const second = await join()
+    expect(await getLeftChallengeToken(user, url)).toBeNull()
+    expect(await deleteChallengeParticipation(user, second.id)).toBe(true)
+    expect(await getLeftChallengeToken(user, url)).toBe(second.data_token)
+  })
+
+  test('a participation keeps the protocol it was joined over; none given is null', async () => {
+    const user = getTestUser()
+    const input = {
+      end_ts: new Date('2026-06-08T00:00:00Z'),
+      host_identity: 'https://peer.example/u/alice',
+      name: 'C',
+      spec,
+      start_ts: new Date('2026-06-01T00:00:00Z'),
+      timezone: 'UTC',
+    }
+    const quant = await createChallengeParticipation(user, {
+      ...input,
+      challenge_url: 'https://peer.example/u/alice/proto-q',
+      protocol: 'quantpub',
+    })
+    const legacy = await createChallengeParticipation(user, {
+      ...input,
+      challenge_url: 'https://peer.example/u/alice/proto-a',
+      protocol: 'aurboda',
+    })
+    const old = await createChallengeParticipation(user, {
+      ...input,
+      challenge_url: 'https://peer.example/u/alice/proto-none',
+    })
+    expect(quant.protocol).toBe('quantpub')
+    expect((await getParticipationById(user, quant.id))?.protocol).toBe('quantpub')
+    expect((await getParticipationById(user, legacy.id))?.protocol).toBe('aurboda')
+    expect((await getParticipationById(user, old.id))?.protocol).toBeNull()
   })
 
   test('a rolled-back join (tombstone: false) leaves the challenge discoverable', async () => {

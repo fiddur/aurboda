@@ -346,6 +346,7 @@ describe('GET /public/:username/challenge-entries/:token', () => {
     host_identity: 'https://qs.example/u/freja',
     id: 'p1',
     name: 'November steps',
+    protocol: null,
     spec: stepsSpec,
     start_ts: new Date('2026-10-31T23:00:00Z'),
     status: 'active',

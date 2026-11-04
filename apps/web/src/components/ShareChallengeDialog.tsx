@@ -38,11 +38,13 @@ export function ShareChallengeDialog({
   const queryClient = useQueryClient()
   const [message, setMessage] = useState('')
   const [visibility, setVisibility] = useState<FeedVisibility>('public')
+  const [includeChart, setIncludeChart] = useState(true)
 
   const mutation = useMutation({
     mutationFn: () =>
       shareChallenge({
         challenge_id: challengeId,
+        include_chart: includeChart,
         message,
         participation_id: participationId,
         visibility,
@@ -97,6 +99,23 @@ export function ShareChallengeDialog({
                 {challengeUrl}
               </a>
             </p>
+          </div>
+        </fieldset>
+
+        <fieldset class="share-dialog-group">
+          <legend>Image</legend>
+          <p class="share-dialog-note">
+            For Mastodon and other apps that cannot draw the race: Aurboda followers see the live chart.
+          </p>
+          <div class="share-dialog-options">
+            <label class="share-dialog-checkbox">
+              <input
+                type="checkbox"
+                checked={includeChart}
+                onChange={(e) => setIncludeChart((e.target as HTMLInputElement).checked)}
+              />
+              Attach standings chart image
+            </label>
           </div>
         </fieldset>
 

@@ -1255,13 +1255,23 @@ describe('updateActivity', () => {
   })
 
   test('a type change re-analyses the edited row, its override and every override target', async () => {
-    vi.mocked(db.getActivityById).mockResolvedValue({
-      activity_type: 'walking',
-      end_time: new Date('2024-03-15T11:00:00Z'),
-      id: 'garmin-1',
-      source: 'garmin',
-      start_time: new Date('2024-03-15T10:00:00Z'),
-    })
+    const rows: Record<string, Activity> = {
+      'garmin-1': {
+        activity_type: 'walking',
+        end_time: new Date('2024-03-15T11:00:00Z'),
+        id: 'garmin-1',
+        source: 'garmin',
+        start_time: new Date('2024-03-15T10:00:00Z'),
+      },
+      'strava-1': {
+        activity_type: 'walking',
+        end_time: new Date('2024-03-15T10:58:00Z'),
+        id: 'strava-1',
+        source: 'strava',
+        start_time: new Date('2024-03-15T10:01:00Z'),
+      },
+    }
+    vi.mocked(db.getActivityById).mockImplementation(async (_user, id) => rows[id] ?? null)
     vi.mocked(db.getOverrideForActivity).mockResolvedValue(null)
     vi.mocked(db.insertOverride).mockResolvedValue({
       activity_type: 'running',
@@ -1283,6 +1293,43 @@ describe('updateActivity', () => {
       'override-1',
       'strava-1',
     ])
+  })
+
+  test('rejects override targets that do not merge with the edited activity', async () => {
+    const rows: Record<string, Activity> = {
+      'garmin-1': {
+        activity_type: 'walking',
+        end_time: new Date('2024-03-15T11:00:00Z'),
+        id: 'garmin-1',
+        source: 'garmin',
+        start_time: new Date('2024-03-15T10:00:00Z'),
+      },
+      'strava-1': {
+        activity_type: 'walking',
+        end_time: new Date('2024-03-15T18:00:00Z'),
+        id: 'strava-1',
+        source: 'strava',
+        start_time: new Date('2024-03-15T17:00:00Z'),
+      },
+    }
+    vi.mocked(db.getActivityById).mockImplementation(async (_user, id) => rows[id] ?? null)
+    vi.mocked(db.getOverrideForActivity).mockResolvedValue(null)
+    vi.mocked(db.getActivitySourcesByIds).mockResolvedValue([
+      { id: 'garmin-1', source: 'garmin' },
+      { id: 'strava-1', source: 'strava' },
+    ])
+
+    const result = await updateActivity('testuser', 'garmin-1', {
+      notes: 'Evening walk',
+      override_target_ids: ['strava-1'],
+    })
+
+    expect(result).toEqual({
+      error: 'override targets must merge into one activity; strava-1 do not overlap garmin-1',
+      id: 'garmin-1',
+      success: false,
+    })
+    expect(db.insertOverride).not.toHaveBeenCalled()
   })
 
   test('re-analyses before notifying, so the rules read the recomputed features', async () => {

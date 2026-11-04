@@ -21,7 +21,6 @@ const ALLOWED_DETECTED_FORMATS = new Set(['png', 'jpeg', 'webp', 'gif'])
 
 export const isAllowedImageType = (contentType: string): boolean => ALLOWED_UPLOAD_TYPES.has(contentType)
 
-/** Output size (px) of processed challenge banners — the Open Graph card size. */
 export const BANNER_WIDTH = 1200
 export const BANNER_HEIGHT = 630
 
@@ -52,10 +51,6 @@ export const processAvatar = async (buffer: Buffer): Promise<StoredImage> => {
   return { content_type: 'image/webp', data }
 }
 
-/**
- * Normalize an uploaded challenge banner to a 1200×630 WebP (cropped to cover),
- * under the same format guard as avatars.
- */
 export const processBanner = async (buffer: Buffer): Promise<StoredImage> => {
   await assertAllowedFormat(buffer)
   const data = await sharp(buffer)

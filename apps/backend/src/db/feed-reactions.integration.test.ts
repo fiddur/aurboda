@@ -10,7 +10,6 @@ import {
   removeFeedPostReaction,
   removeFeedPostReactionByActivity,
   removeFeedReaction,
-  removeOrphanedFeedReactions,
   updateFeedPostReactionPresentation,
   upsertFeedPostReaction,
 } from './feed-reactions.ts'
@@ -189,10 +188,20 @@ describe('Feed reaction stores integration', () => {
       expect(await getFeedReaction(user, 'like', NOTE)).toBeNull()
     })
 
-    test('removeOrphanedFeedReactions with an empty list removes nothing', async () => {
+    test('an Undo of one boost keeps the reaction while another boost of the Note remains', async () => {
+      const user = getTestUser()
+      await upsertTimelineEntry(user, boostOfAliceNote(BOB, BOB_ANNOUNCE))
+      await upsertTimelineEntry(user, boostOfAliceNote(CAROL, CAROL_ANNOUNCE))
+      await insertFeedReaction(user, reaction())
+
+      expect(await deleteBoostEntry(user, BOB_ANNOUNCE, BOB)).toBe(true)
+      expect(await getFeedReaction(user, 'like', NOTE)).not.toBeNull()
+    })
+
+    test('a removal that matches nothing leaves reactions alone', async () => {
       const user = getTestUser()
       await insertFeedReaction(user, reaction())
-      expect(await removeOrphanedFeedReactions(user, [])).toBe(0)
+      expect(await deleteBoostEntry(user, BOB_ANNOUNCE, BOB)).toBe(false)
       expect(await getFeedReaction(user, 'like', NOTE)).not.toBeNull()
     })
   })

@@ -357,7 +357,7 @@ export async function getDailySummary(
     ),
     getNotesForTimeRange(user, start, end),
     getMeals(user, { start, end }),
-    getDailyAggregateValue(user, 'steps', date),
+    getDailyAggregateValue(user, 'steps', tz ? start : date, tz),
     getScreentimeCategories(user),
     getTimeSeries(user, 'stress_level', start, end),
     buildMetricsToday(user, dailySummaryMetrics, start, end),

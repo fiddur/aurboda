@@ -1,6 +1,8 @@
 import { randomBytes } from 'node:crypto'
 
+import { normalizeItemValue } from '../services/activity-measures.ts'
 import { query } from './connection.ts'
+import { publicSlugIsFree } from './public-slugs.ts'
 
 export interface SharedExerciseRecord {
   id: string
@@ -101,16 +103,6 @@ export const findSharedExercise = (
 ): Promise<SharedExerciseRecord | null> =>
   getOne(user, 'activity_type = $1 AND field = $2 AND value = $3', [activityType, field, value])
 
-/** Public slugs resolve dashboard → challenge → exercise, so an exercise must not take either's slug. */
-const slugIsFree = async (user: string, slug: string): Promise<boolean> => {
-  const result = await query(
-    user,
-    `SELECT 1 FROM shared_dashboards WHERE slug = $1 UNION ALL SELECT 1 FROM challenges WHERE slug = $1`,
-    [slug],
-  )
-  return result.rows.length === 0
-}
-
 export const createSharedExercise = async (
   user: string,
   input: SharedExerciseInput,
@@ -118,7 +110,7 @@ export const createSharedExercise = async (
   const maxAttempts = 5
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const slug = generateSlug()
-    if (!(await slugIsFree(user, slug))) continue
+    if (!(await publicSlugIsFree(user, slug))) continue
     try {
       const result = await query<SharedExerciseRecord>(
         user,
@@ -164,4 +156,43 @@ export const updateSharedExercise = async (
 export const deleteSharedExercise = async (user: string, id: string): Promise<boolean> => {
   const result = await query(user, `DELETE FROM shared_exercises WHERE id = $1`, [id])
   return (result.rowCount ?? 0) > 0
+}
+
+/**
+ * Move shares of `source` (trimmed, case-insensitive, as `rewriteItemValue` matches it) in `field`
+ * of `activityTypes` to `target`. An item is shared at most once, so where the type already shares
+ * `target`, or several spellings of `source` are shared, only the oldest share survives the move.
+ */
+export const repointSharedExercises = async (
+  user: string,
+  activityTypes: string[],
+  field: string,
+  source: string,
+  target: string,
+): Promise<number> => {
+  const normalizedSource = normalizeItemValue(source)
+  if (activityTypes.length === 0 || normalizedSource === undefined) return 0
+  const params = [activityTypes, field, normalizedSource, target.trim()]
+  const matches = `activity_type = ANY($1) AND field = $2 AND lower(btrim(value)) = $3 AND value <> $4`
+  await query(
+    user,
+    `WITH sources AS (
+       SELECT s.id,
+              row_number() OVER (PARTITION BY s.activity_type ORDER BY s.created_at, s.id) AS rn,
+              EXISTS (
+                SELECT 1 FROM shared_exercises t
+                WHERE t.activity_type = s.activity_type AND t.field = s.field AND t.value = $4
+              ) AS taken
+       FROM shared_exercises s
+       WHERE ${matches}
+     )
+     DELETE FROM shared_exercises WHERE id IN (SELECT id FROM sources WHERE taken OR rn > 1)`,
+    params,
+  )
+  const result = await query(
+    user,
+    `UPDATE shared_exercises SET value = $4, updated_at = NOW() WHERE ${matches}`,
+    params,
+  )
+  return result.rowCount ?? 0
 }

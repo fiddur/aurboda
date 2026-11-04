@@ -70,10 +70,17 @@ A feed post has a **`kind`**:
   they joined (the host's URL), resolved **server-side** so a post can never carry a
   spoofed link. The payload (name + URL, and the host identity for a joined challenge)
   lives in a nullable `challenge` JSONB column; no join token and no standings data are
-  embedded — anyone following the link goes through the normal public page / join-by-URL
-  flow. Federates as a `Note` (Mastodon renders the link with the challenge page's
-  existing OG preview card). Shared via `POST /feed/challenges` (and the
-  `share_challenge` MCP tool) or the **Share to feed** button on the challenges page.
+  stored on the post — anyone following the link goes through the normal public page /
+  join-by-URL flow. Federates as a `Note` (Mastodon renders the link with the challenge
+  page's existing OG preview card); an Aurboda peer additionally fetches the post's
+  [structured payload](#native-charts-from-aurboda-peers-structured-enrichment) — the
+  challenge document and a standings snapshot resolved at fetch time — and renders the
+  race chart and leaderboard natively. With `include_chart` (the default for a share,
+  "Attach standings chart image" in the dialog) the `Note` delivered to followers also
+  attaches the race rendered as a `Standings` PNG (see [Images](#images)), which an
+  Aurboda peer hides because its card draws the race itself. Shared via
+  `POST /feed/challenges` (and the `share_challenge` MCP tool) or the **Share to feed**
+  button on the challenges page.
   The host instance's automatic **completion post** (see
   [challenges.md](challenges.md#completion--winner-announcement)) is the same kind
   with a `result` payload in the `challenge` column — the final podium (ranks, names,
@@ -178,13 +185,20 @@ included) is re-delivered by the window pass described next.
 More generally, a shared activity that **changes** after it was shared — a new title or
 data (an enrich rule, a re-sync with different values, an edit), a merge with another
 source's row — is re-delivered the same way once the change has settled (the auto-share
-stabilisation delay, 10 minutes). Every activity row records when it last changed
-(`activities.updated_at`, set by a trigger only on a real change, so an identical
-re-sync counts as nothing), and the auto-share queue's pass over each mutation window
+stabilisation delay, 10 minutes). A rename of the activity type or of its category, and
+the one-off data migrations that rewrite activity rows at boot, are changes too, on
+purpose: the post's title carries the type name. Every shared activity they touch is
+re-delivered, lazily, as later mutation windows cover it, so renaming a widely shared
+type fans its `Update`s out over days rather than all at once. Every activity row
+records when it last changed (`activities.updated_at`, set by a trigger only on a real
+change, so an identical re-sync counts as nothing, and stamped with the statement's
+wall-clock time, so a row touched late in a long sync transaction still compares as
+newer than a post created mid-transaction), and the auto-share queue's pass over each mutation window
 looks at the shared activities in it (the ones an activity post references, superseded
 rows included) and re-delivers every activity post whose version (`updated_at`) is
 older than its merge group's newest change. This covers manual shares too, has no age limit, and runs
-whether or not any auto-share rule is enabled.
+whether or not any auto-share rule is enabled. During a deploy's overlap two replicas may
+both deliver an `Update` for the same post; remotes treat the duplicate as idempotent.
 
 The `Note` is Mastodon-compatible: a structured HTML `content` — the bold title
 headline, the author's personal message (if any), a line saying when the **activity**
@@ -201,7 +215,8 @@ renames the post.
 
 **QuantPub extension (#896).** An activity share's `Note` is dual-typed
 `["Note", "quant:Exercise"]` and carries the typed [QuantPub](../fep/quantpub.md)
-extension in-band: the AS2 window as native `startTime`/`endTime`, plus
+`0.2` extension in-band (the draft now describes `0.3`, which Aurboda does not emit
+yet): the AS2 window as native `startTime`/`endTime`, plus
 `quant:activityType`, `quant:metrics` (the shared scalar summaries as
 `key`/`value`/`unit` objects, keys in lowerCamelCase such as `heartRateAvg`),
 `quant:series` links into the public series endpoint (`metric` such as `heartRate`)
@@ -614,7 +629,16 @@ id-convention path — reliable even when a typed consumer drops the in-band ext
    article: a prose block's raw markdown verbatim; a chart block's bucketed samples over its
    locked window, bucketed the same way as its block image; a correlation block's computed
    Pearson/Spearman/n, the present-vs-absent group comparison, and the aligned scatter points —
-   the same `getContinuousCorrelation` call the block image uses). Either way a peer can never
+   the same `getContinuousCorrelation` call the block image uses). A **challenge** post
+   resolves to `FeedStructuredChallenge`: the author's note, the frozen `result` on a
+   completion post, the challenge as its QuantPub Challenges §3 document (as publicly listed,
+   without `joinToken`/`members`) and a §6 `standings` snapshot. An own challenge is found by
+   parsing its share URL back to a slug; a joined one through the participation row, its
+   document built locally and its standings fetched from the host only when the host speaks
+   QuantPub (`/.well-known/quantpub` with `challenges: true`), time-boxed to 8 s and omitted on
+   any failure. A challenge that is gone (deleted, or the participation left) 404s. The
+   snapshot is only as fresh as the fetch that stored it, so the card says when it was taken
+   and links the live page. Either way a peer can never
    read more than the author shared/published. `public`/`unlisted` posts resolve
    unconditionally; a `followers`-only post resolves only with a matching `?token=<image_token>`
    — the **same capability token** that authorizes its followers-only images (below), so the
@@ -638,9 +662,10 @@ id-convention path — reliable even when a typed consumer drops the in-band ext
    so a broken enrichment path is diagnosable instead of looking identical to a Mastodon post
    (#996).
 3. **Store + render.** The payload is stored on `timeline_entry.structured` (JSONB, NULL for
-   non-Aurboda posts; a redelivery that can't re-fetch keeps the last-known value — except
-   an article's, which is dropped so the card falls back to the fresh `content` rather
-   than showing the pre-edit title and prose (#973)). The web
+   non-Aurboda posts; a redelivery that can't re-fetch keeps the last-known value — a
+   challenge's stale standings snapshot included — except an article's, which is dropped so
+   the card falls back to the fresh `content` rather than showing the pre-edit title and prose
+   (#973)). The web
    timeline card renders, per `structured.kind`: for an **activity** post the native
    activity card — title, personal message, the activity's date, a Strava-style **stat
    grid** from the typed scalars, one **combined multi-metric chart** (per-metric toggles,
@@ -649,7 +674,12 @@ id-convention path — reliable even when a typed consumer drops the in-band ext
    view) — or the full inline article — title, prose, per-block chart/scatter — for
    an **article** post (mirroring the author's own live `ArticleContent` render, but built from
    the embedded payload rather than a live fetch, since a receiving peer has no credentials to
-   call the author's authenticated endpoints).
+   call the author's authenticated endpoints) — or, for a **challenge** post, the name linked
+   to the live page, the podium on a completion post, the note, the spec line, the same
+   cumulative race chart the public challenge page draws, a leaderboard, a "Standings as of"
+   line and the join link. The author's public profile listing (`/public/:username/posts`)
+   attaches the same payload, so a visitor sees the same card; the owner's own authenticated
+   feed keeps the plain invitation card.
 
 Enrichment is strictly best-effort and additive: it never blocks or fails basic ingest, an
 activity's series that weren't shared (the opt-in) simply produce no chart, and an article's
@@ -712,6 +742,26 @@ what Mastodon and other peers attach, while **`chart.svg`** serves the same char
 crisp, scalable `image/svg+xml` for **Aurboda-native** rendering (it stays sharp at
 any size). Both share the same eligibility gate, capability-token model, and
 `no-store` revocability.
+
+A **challenge** post opted into `include_chart` renders its **standings race** (one
+cumulative line per member, in leaderboard colours, with a legend of the first eight
+members, the window's dates in the challenge timezone and the snapshot time) at:
+
+```
+GET /api/public/:username/feed/:postId/standings.png
+GET /api/public/:username/feed/:postId/standings.svg
+```
+
+The data is the post's [structured payload](#native-charts-from-aurboda-peers-structured-enrichment)
+resolved at request time, so the image shows the standings as they are, not as they were
+at share time. The endpoints 404 for a non-challenge post, a post without the opt-in, a
+`followers`-only post without its token, and a challenge without standings or without a
+member that has a sample. The render cache keys on the post's `updated_at` plus a
+5-minute bucket, the time remote members' standings are cached for. The delivered `Note`
+attaches it as `Standings` (1000×420) only when it would draw, checked by resolving the
+same payload before the `Create`/`Update` is sent; the `Note` served by the object
+dispatcher and the outbox does not carry it. The owner's own feed card shows it in place
+of the native race only when the post has no structured payload.
 
 An **article** renders one image per chart/correlation block for the same reason (so
 Mastodon and export tools attach a raster of each block), at its own endpoints:
@@ -909,10 +959,12 @@ Public / federation (unauthenticated):
 | Method & path                                                | Purpose                                                                                                                                                                                                                                                                 |
 | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /public/:username/series`                               | Bucketed samples for a **shared** series within its window                                                                                                                                                                                                              |
-| `GET /public/:username/feed/:postId`                         | Native structured post (`FeedStructuredPost`: an activity's typed metrics + inline series, or an article's title + resolved blocks) for Aurboda-to-Aurboda enrichment                                                                                                   |
+| `GET /public/:username/feed/:postId`                         | Native structured post (`FeedStructuredPost`: an activity's typed metrics + inline series, an article's title + resolved blocks, or a challenge's document + standings snapshot) for Aurboda-to-Aurboda enrichment                                                      |
 | `GET /public/:username/feed/:postId/chart.png`               | Rendered HR chart (PNG) for an opted-in post (`?token=` for followers-only)                                                                                                                                                                                             |
 | `GET /public/:username/feed/:postId/chart.svg`               | Same HR chart as crisp `image/svg+xml` for Aurboda-native rendering (`?token=` for followers-only)                                                                                                                                                                      |
 | `GET /public/:username/feed/:postId/route.png`               | Rendered GPS route map for an opted-in post (`?token=` for followers-only)                                                                                                                                                                                              |
+| `GET /public/:username/feed/:postId/standings.png`           | Rendered standings race chart (PNG) for an opted-in challenge post (`?token=` for followers-only)                                                                                                                                                                       |
+| `GET /public/:username/feed/:postId/standings.svg`           | Same standings race as crisp `image/svg+xml`                                                                                                                                                                                                                            |
 | `GET /public/:username/feed/:postId/blocks/:index/image.png` | Rendered PNG of an article's chart/correlation block (visibility-gated; `?token=` for followers-only)                                                                                                                                                                   |
 | `GET /public/:username/feed/:postId/blocks/:index/image.svg` | Same article block as crisp `image/svg+xml`                                                                                                                                                                                                                             |
 | `GET /public/:username/posts`                                | A user's public/unlisted posts (newest-first, keyset page of 20 + `next_cursor`) for their profile feed                                                                                                                                                                 |
@@ -1048,6 +1100,6 @@ These are known and intentional for the current implementation:
   base-URL identity model this reuses.
 - [Challenges](./challenges.md) — cross-instance federated competitions on the same
   `/u/:username` namespace.
-- [QuantPub FEP draft](../fep/quantpub.md) — the vendor-neutral generalisation of
+- [QuantPub FEP draft](../fep/quantpub.md) (`0.3`; Aurboda implements `0.2`) — the vendor-neutral generalisation of
   this feed's federation pattern (vocabulary + out-of-band structured payloads),
   drafted for the FEP process so other QS tools can interoperate.

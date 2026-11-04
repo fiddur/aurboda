@@ -71,6 +71,8 @@ export interface ChallengePostInput {
   challenge: ChallengeShare
   /** The author's personal note (markdown); omitted/undefined stores NULL. */
   message?: string | null
+  /** Attach the rendered standings race chart (`standings.png`); omitted stores false. */
+  include_chart?: boolean
 }
 
 /**
@@ -181,10 +183,10 @@ export const createChallengePost = async (
 ): Promise<FeedPostRecord> => {
   const result = await query<FeedPostRow>(
     user,
-    `INSERT INTO feed_posts (kind, visibility, challenge, message)
-     VALUES ('challenge', $1, $2, $3)
+    `INSERT INTO feed_posts (kind, visibility, challenge, message, include_chart)
+     VALUES ('challenge', $1, $2, $3, $4)
      RETURNING ${FEED_POST_COLUMNS}`,
-    [input.visibility, JSON.stringify(input.challenge), input.message ?? null],
+    [input.visibility, JSON.stringify(input.challenge), input.message ?? null, input.include_chart ?? false],
   )
   return mapFeedPost(result.rows[0])
 }

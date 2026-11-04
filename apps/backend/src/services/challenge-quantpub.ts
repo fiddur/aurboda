@@ -92,7 +92,8 @@ const challengeBucket = (spec: ChallengeSpecFields, start: Date, end: Date): str
  * Buckets as FEP samples: `offset` is the seconds from the window start to the
  * bucket's start, so a day sample sits at the local midnight whatever the
  * day's length. A bucket aligned before the window start (a week bucket
- * starting on the Monday before) is clamped to offset 0.
+ * starting on the Monday before) keeps its negative offset, so it reads back
+ * at the same start.
  */
 export const bucketsToSamples = (
   buckets: ChartDataBucket[],
@@ -104,7 +105,7 @@ export const bucketsToSamples = (
     const value = bucket.value * factor
     return {
       count: 1,
-      offset: Math.max(0, Math.round((Date.parse(bucket.bucket_start) - start.getTime()) / 1000)),
+      offset: Math.round((Date.parse(bucket.bucket_start) - start.getTime()) / 1000),
       sum: value,
       ...(scoring === 'max' ? { max: value } : {}),
     }

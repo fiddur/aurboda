@@ -4,12 +4,13 @@ import { z } from 'zod'
 import {
   createSharedExercise,
   deleteSharedExercise,
+  getSharedExerciseById,
   isDuplicateSharedExercise,
   isUnknownSharedExerciseType,
   listSharedExercises,
   updateSharedExercise,
 } from '../db/index.ts'
-import { serializeSharedExercise } from '../services/shared-exercises.ts'
+import { assertItemPath, serializeSharedExercise } from '../services/shared-exercises.ts'
 import { visibilityToIsPublic } from '../services/visibility.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
@@ -28,10 +29,23 @@ export const registerSharedExerciseTools = (server: McpServer, user: string, web
   )
 
   server.tool(
+    'get_shared_exercise',
+    'Get one shared exercise by ID, with its share_url and visibility.',
+    { id: z.string().uuid().describe('The shared exercise ID') },
+    async ({ id }) => {
+      const record = await getSharedExerciseById(user, id)
+      if (!record) return errorResponse('Shared exercise not found')
+      return jsonResponse(serialize(record))
+    },
+  )
+
+  server.tool(
     'create_shared_exercise',
     `Share one exercise’s progress publicly: an activity type, its item path (sets.exercise) and the value. An item is shared at most once. Visibility "public" lists it on the public profile; "unlisted" (default) keeps it reachable only by its link. ${EXPOSES}`,
     { ...createSharedExerciseBodySchema.shape },
     async ({ name, visibility, ...item }) => {
+      const rejection = await assertItemPath(user, item.activity_type, item.field)
+      if (rejection) return errorResponse(rejection.error)
       try {
         const record = await createSharedExercise(user, {
           ...item,

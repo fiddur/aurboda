@@ -275,17 +275,21 @@ export {
   isUnknownSharedExerciseType,
   listPublicSharedExercises,
   listSharedExercises,
+  repointSharedExercises,
   type SharedExerciseInput,
   type SharedExercisePatch,
   type SharedExerciseRecord,
   updateSharedExercise,
 } from './shared-exercises.ts'
 
+export { publicSlugIsFree } from './public-slugs.ts'
+
 export {
   type ChallengeInput,
   type ChallengeMemberInput,
   type ChallengeMemberRecord,
   type ChallengeParticipationInput,
+  type ChallengeParticipationProtocol,
   type ChallengeParticipationRecord,
   type ChallengePatch,
   type ChallengeRecord,
@@ -297,6 +301,7 @@ export {
   getChallengeById,
   getChallengeBySlug,
   getChallengeMemberByIdentity,
+  getLeftChallengeToken,
   getParticipationById,
   getParticipationByToken,
   getParticipationByUrl,

@@ -10,8 +10,8 @@ dateReceived: (not yet submitted)
 > **Status of this document.** A pre-submission companion to
 > [FEP-302f] (QuantPub), developed in the open in the
 > [Aurboda](https://github.com/fiddur/aurboda) repository. It describes the
-> protocol Aurboda is moving its federated challenges to; the sections marked
-> _Aurboda today_ say how the running code differs while the move is under way.
+> protocol Aurboda is moving its federated challenges to; §10, _Aurboda today_,
+> says how the running code differs while the move is under way.
 > The FEP number is a placeholder until submission.
 
 ## Summary
@@ -286,7 +286,10 @@ condition is 404 too, [FEP-302f] §8.4):
 - `series` is one [FEP-302f] §6.1 series. `offset` is seconds since the
   challenge `startTime`; a sample covers one `bucket` of the challenge's
   `timezone` starting at that offset, so a day sample's offset is that of the
-  local midnight (23- and 25-hour days included). `samples` MAY be omitted
+  local midnight (23- and 25-hour days included). An offset MAY be negative
+  when the first bucket of the challenge's bucket grid begins before
+  `startTime` (a week bucket starting on the Monday before a mid-week start);
+  it still covers one full bucket. `samples` MAY be omitted
   for a `total`-only entry; it is then shown as a total without a chart.
 - `lastUpdated` is when the member's underlying data last changed, or `null`
   when there is none yet; it MUST NOT be the request time.
@@ -340,8 +343,8 @@ audience: the podium as readable `content`, each winner as a `Mention` tag
 addressed in `cc` (so their instance notifies them whether or not they follow
 the host), and `quant:structuredUrl` pointing at the frozen §6 document. The
 host also delivers `Update{Challenge}` with `joinMode: none`. A member
-registered over HTTP with an `actor` is mentioned like any other; one without
-is named in the text.
+registered over HTTP with a verified `actor` is mentioned like any other; one
+without is named in the text.
 
 ### 8. Privacy and trust (normative)
 
@@ -400,15 +403,28 @@ implementations ignore. The ActivityPub half — the `Event` object (§2), `Join
 `Leave` in the inbox (§4.1) and `attendees` — is not yet implemented, nor is
 `joinMode: restricted`.
 
+A `challenge` feed post is still a plain `Note` with a link. Aurboda peers also
+fetch the post's Aurboda-only structured payload, which carries the §3 document
+(as listed, so without `joinToken` and `members`) and a §6 standings snapshot,
+and render the race from that.
+
 ## Security considerations
 
-- Entry and standings fetches are the host's outbound requests to URLs that
-  members chose: SSRF guards (public addresses only, no redirects, bounded
-  size and time) are REQUIRED, as in [FEP-302f].
+- Entry fetches are the host's outbound requests to URLs that members chose:
+  SSRF guards (public addresses only, no redirects, bounded size and time) are
+  REQUIRED, as in [FEP-302f]. Standings are served by the host, so they are
+  inbound requests and need no such guard.
 - `joinToken` gates nothing but registration; it is in a document anyone with
   the link can read, so a host MUST also cap members and MUST NOT let a token
   holder overwrite another member's registration (`url` is the identity, and
   a registered `entryUrl` is the proof for `DELETE`).
+- An HTTP join registers `url` and `actor` unverified: any `joinToken` holder
+  can claim someone else's identity. A host MUST NOT `Mention` an
+  HTTP-registered `actor` in the results post (§7) until it has verified that
+  the `actor` belongs to the instance serving `entryUrl` (for instance through
+  that origin's discovery document, §3); until then the member is named in the
+  text only. Same origin is not the test: an instance may serve its API and its
+  actors from different origins.
 - Self-reported numbers (§8.3) are the design, not an oversight: a challenge
   is a social object, and the remedy for a cheat is removal, not cryptography.
 

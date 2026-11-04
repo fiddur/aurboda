@@ -62,8 +62,9 @@ base-URL federation identity, and the bucketed-data engine behind dashboards.
   `type` (`dashboard` | `challenge`); slugs are unique across both per user.
 - The banner is served at `<public-base>/u/<username>/<slug>/banner.webp` for public
   **and** unlisted challenges (anyone with the link sees the page that shows it); 404
-  when there is none. `banner_url` carries a `?v=<updated-at>` version, and a
-  versioned request is cached `immutable` for a year (unversioned: 5 minutes).
+  when there is none. `banner_url` carries a `?v=<updated-at>` version, and a request
+  whose `v` matches the stored banner's is cached `immutable` for a year (a missing or
+  stale `v`: 5 minutes).
 - Challenges + members live in the **host's** per-user DB; a joiner's
   _participations_ live in the **joiner's** DB, each backed by an unguessable
   `data_token`. No central-DB tables.
@@ -141,7 +142,12 @@ update Aurboda to join"_.
 **Leave:** leaving a challenge on a QuantPub host also sends
 `DELETE <A-api>/public/<user>/challenges/<slug>/members` with the entry URL, best
 effort: a host that is down or speaks only the legacy protocol is logged and the leave
-goes ahead. Either way the participation is deleted, so its entry 404s.
+goes ahead. Either way the participation is deleted, so its entry 404s. A
+participation joined over the legacy protocol sends nothing. Leaving a challenge hosted
+on the same instance removes you from the host's standings directly. The tombstone
+keeps the left participation's data token, so a rejoin after a leave the host never
+heard presents the old entry URL as `currentEntryUrl` and reclaims the registration
+instead of being refused as a second one.
 
 An instance must know a challenge's measure to join it. One that predates measures
 drops the unknown `measure` field from the spec and would score plain duration under
@@ -450,10 +456,14 @@ the backend directly need no extra config.
   optional personal note (markdown, previewed in the dialog) plus the challenge's
   canonical link, with the usual `public`/`unlisted`/`followers` audience. The server
   resolves the linked name/URL from the challenge (or the joined participation) itself,
-  and never embeds a join token or standings data. Federates as a `Note`; Mastodon shows
-  the link with the challenge page's OG preview card. Also available as the
-  `share_challenge` MCP tool / `POST /feed/challenges`. See
-  [feed.md](feed.md#feed-posts) for the post model.
+  and never embeds a join token. Federates as a `Note`; Mastodon shows
+  the link with the challenge page's OG preview card; an Aurboda peer fetches the post's
+  structured payload (the challenge document plus a standings snapshot) and renders the
+  race chart and leaderboard natively on its timeline. **Attach standings chart image**
+  (on by default, `include_chart`) also attaches the race as a PNG rendered from the
+  standings at fetch time, for Mastodon and other apps that cannot draw it (see
+  [feed.md](feed.md#images)). Also available as the `share_challenge` MCP tool /
+  `POST /feed/challenges`. See [feed.md](feed.md#feed-posts) for the post model.
 
 ## Android widget
 
@@ -487,11 +497,11 @@ See `docs/android-app.md` → _Home-screen widgets_.
 
 Banner: `POST /challenges/:id/banner` (multipart, field `banner`; 400 for a missing,
 unsupported or undecodable file, 404 for a challenge that isn't yours) and
-`DELETE /challenges/:id/banner` both answer with the `Challenge`. `banner_url`
-(absolute, versioned; `null` when none) is on `Challenge` (REST and the MCP
-`list/update_challenge` output) and on the public `PublicChallenge`. There is no MCP
-tool for the upload itself: a binary upload has no MCP counterpart, as with the profile
-avatar.
+`DELETE /challenges/:id/banner` both answer with the `Challenge`; the removal is also
+the MCP tool `remove_challenge_banner`. `banner_url` (absolute, versioned; `null` when
+none) is on `Challenge` (REST and the MCP `list/update_challenge` output) and on the
+public `PublicChallenge`. There is no MCP tool for the upload itself: a binary upload
+has no MCP counterpart, as with the profile avatar.
 
 ## Out of scope (v1) / future hardening
 

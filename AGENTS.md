@@ -59,7 +59,7 @@ Use `.meta({ id: 'SchemaName', description: '...' })` on schemas — the `id` dr
 ### Naming convention
 
 All field names use **snake_case** everywhere: schemas, REST API, MCP tools, DB columns, JSONB keys, frontend types. The only exception is Kotlin, which uses camelCase properties internally with `@SerialName("snake_case")` for serialization.
-The QuantPub wire payload schemas (`packages/api-spec/src/schemas/feed-structured.ts`'s activity payload and `wellKnownQuantpubSchema`) are lowerCamelCase because the spec (`docs/fep/quantpub.md`) defines them so; Aurboda converts to and from them at the boundary.
+The QuantPub wire payload schemas (`packages/api-spec/src/schemas/feed-structured.ts`'s activity payload and `wellKnownQuantpubSchema`), the QuantPub Challenges schemas (`packages/api-spec/src/schemas/challenges-quantpub.ts`) and the service that maps to them (`apps/backend/src/services/challenge-quantpub.ts`) are lowerCamelCase because the specs (`docs/fep/quantpub.md`, whose `0.2` Aurboda implements while the draft now describes `0.3`, and `docs/fep/quantpub-challenges.md`) define them so; Aurboda converts to and from them at the boundary.
 
 ### How each layer uses api-spec
 
@@ -336,6 +336,17 @@ this section is the difference.
   it merged, or a failure in its output — so run it by hand,
   `CLAUDE_CODE_REMOTE=true .claude/hooks/session-start.sh`, and prefix every command
   with `export PATH="/opt/node26/bin:$PATH"` for the rest of the session.
+- **No permission prompts for the toolchain.** `permissions.allow` in `.claude/settings.json`
+  pre-approves `git`, `pnpm`, `node`, `npx`, `docker`, the shells and the usual file and text
+  utilities, so a cloud thread never halts on them: Fredrik's standing rule (2026-11-04) is that
+  git, bash and node work in the cloud runs without asking. The list applies in a project with
+  one repository, which this is, and, being the checked-in project settings, to sessions on
+  Fredrik's machine as well. When a command still prompts, add its `Bash(<cmd>:*)` rule
+  there in the next PR rather than answering the prompt by hand each time.
+- **Commits are authored as `Fredrik Liljegren <fredrik@liljegren.org>`.** The clone has no
+  git identity, so set it once per session (`git config user.name "Fredrik Liljegren" && git
+  config user.email fredrik@liljegren.org`) before the first commit; never the account's
+  gmail address.
 - **The hook is checked in, so there is nothing to paste** into the environment's
   settings, whose setup script stays empty. It reads the major from `.nvmrc` and the
   pnpm version from `packageManager`, so moving either moves the hook with it. It runs

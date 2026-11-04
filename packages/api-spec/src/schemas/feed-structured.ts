@@ -1,19 +1,21 @@
 /**
- * Structured, machine-readable representation of a shared exercise or article
- * post — the data an Aurboda instance federates to *other Aurboda instances* so
+ * Structured, machine-readable representation of a shared exercise, article or
+ * challenge post — the data an Aurboda instance federates to *other Aurboda instances* so
  * they can render a native chart + typed stats instead of just the
  * Mastodon-style HTML.
  *
- * Imports only `common` and `correlations` (never `feed.ts`), so both the
- * public-series endpoint and the timeline entry can reuse
- * `publicSeriesSampleSchema` without a circular import back through `feed.ts`;
- * `correlations.ts` is itself a `common`-only leaf, so no cycle is introduced.
+ * Imports only `common`, `correlations` and the two challenge schema files
+ * (never `feed.ts`), so both the public-series endpoint and the timeline entry
+ * can reuse `publicSeriesSampleSchema` without a circular import back through
+ * `feed.ts`; none of those import `feed.ts` or this file, so no cycle is
+ * introduced.
  *
  * The origin instance serves this at `GET /public/:username/feed/:postId`
  * (see the backend feed-public router); a following instance fetches it on
  * ingest (see `timeline-enrich.ts`) and stores it on the timeline entry.
  *
- * The activity payload is the QuantPub `0.2` wire payload (`docs/fep/quantpub.md`),
+ * The activity payload is the QuantPub `0.2` wire payload (`docs/fep/quantpub.md`
+ * now describes `0.3`, whose relative offsets Aurboda does not emit yet),
  * so its field names and metric keys are lowerCamelCase by design: the one
  * sanctioned exception to the snake_case convention. Aurboda's internal metric
  * names stay snake_case and are converted at the boundary
@@ -21,6 +23,8 @@
  */
 import { z } from 'zod'
 
+import { quantChallengeDocumentSchema, quantStandingsSchema } from './challenges-quantpub.ts'
+import { challengeResultSchema } from './challenges.ts'
 import { iso8601DateTimeSchema } from './common.ts'
 import { alignedPointSchema, groupComparisonSchema, selectorSchema } from './correlations.ts'
 
@@ -267,9 +271,37 @@ export const feedStructuredArticleSchema = z
 export type FeedStructuredArticle = z.infer<typeof feedStructuredArticleSchema>
 
 /**
+ * The native structured representation of a shared *challenge* post: the
+ * challenge (QuantPub Challenges §3 document as listed publicly) and a snapshot
+ * of its standings (§6) taken when the origin resolved the payload. A peer
+ * stores the payload at ingest, so its standings are only as fresh as that
+ * fetch; `standings.asOf` says when.
+ */
+export const feedStructuredChallengeSchema = z
+  .object({
+    challenge: quantChallengeDocumentSchema.meta({
+      description: 'The challenge (QuantPub Challenges §3 document, without joinToken/members)',
+    }),
+    kind: z.literal('challenge').meta({ description: 'Discriminator: a challenge-share post' }),
+    message: z.string().optional().meta({
+      description: "The author's note, raw markdown (rendered by the receiver's sanitiser)",
+    }),
+    result: challengeResultSchema
+      .optional()
+      .meta({ description: 'Frozen final standings, present only on the completion post' }),
+    standings: quantStandingsSchema.optional().meta({
+      description:
+        'Standings snapshot at resolve time (QuantPub Challenges §6); absent when the host could not be read',
+    }),
+  })
+  .meta({ id: 'FeedStructuredChallenge' })
+
+export type FeedStructuredChallenge = z.infer<typeof feedStructuredChallengeSchema>
+
+/**
  * Discriminated union of everything the structured-enrichment endpoint may
- * return: an activity share's typed scalars/series, or an article's title +
- * resolved blocks. `kind` tells a consuming peer (and the web timeline card)
+ * return: an activity share's typed scalars/series, an article's title +
+ * resolved blocks, or a challenge's document + standings snapshot. `kind` tells a consuming peer (and the web timeline card)
  * which native render to use.
  *
  * A payload with NO `kind` is treated as an `activity` before discriminating, so
@@ -280,7 +312,11 @@ export type FeedStructuredArticle = z.infer<typeof feedStructuredArticleSchema>
 export const feedStructuredPostSchema = z
   .preprocess(
     (v) => (v != null && typeof v === 'object' && !('kind' in v) ? { ...v, kind: 'activity' } : v),
-    z.discriminatedUnion('kind', [feedStructuredActivitySchema, feedStructuredArticleSchema]),
+    z.discriminatedUnion('kind', [
+      feedStructuredActivitySchema,
+      feedStructuredArticleSchema,
+      feedStructuredChallengeSchema,
+    ]),
   )
   .meta({ id: 'FeedStructuredPost' })
 
