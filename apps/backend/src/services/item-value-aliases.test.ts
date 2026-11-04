@@ -19,6 +19,7 @@ vi.mock('../db/index.ts', () => ({
   getActivityTypeDefinition: vi.fn(),
   listItemValueAliases: vi.fn(),
   repointItemValueAliases: vi.fn().mockResolvedValue(0),
+  repointSharedExercises: vi.fn().mockResolvedValue(0),
   rewriteItemValue: vi.fn(),
   upsertItemValueAlias: vi.fn(),
 }))
@@ -187,6 +188,13 @@ describe('mergeItemValues', () => {
       'Dumbbell Bicep Curl',
       'Dumbbell Curl',
     )
+    expect(db.repointSharedExercises).toHaveBeenCalledWith(
+      user,
+      ['strength_training', 'calisthenics'],
+      'sets.exercise',
+      'Dumbbell Bicep Curl',
+      'Dumbbell Curl',
+    )
     expect(db.deleteItemValueAliasesByAlias).toHaveBeenCalledWith(user, 'sets.exercise', 'Dumbbell Curl')
     expect(db.upsertItemValueAlias).toHaveBeenCalledWith(
       user,
@@ -205,6 +213,13 @@ describe('mergeItemValues', () => {
 
     expect(result).toEqual({ data: { activities_updated: 3, alias: null }, success: true })
     expect(db.rewriteItemValue).toHaveBeenCalled()
+    expect(db.repointSharedExercises).toHaveBeenCalledWith(
+      user,
+      ['strength_training', 'calisthenics'],
+      'sets.exercise',
+      'dumbbell curl',
+      'Dumbbell Curl',
+    )
     expect(db.deleteItemValueAliasesByAlias).not.toHaveBeenCalled()
     expect(db.upsertItemValueAlias).not.toHaveBeenCalled()
   })
@@ -217,6 +232,7 @@ describe('mergeItemValues', () => {
     })
     expect(result.success).toBe(false)
     expect(db.rewriteItemValue).not.toHaveBeenCalled()
+    expect(db.repointSharedExercises).not.toHaveBeenCalled()
   })
 
   test('rejects an unknown type with a not found error', async () => {

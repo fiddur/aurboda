@@ -174,7 +174,9 @@ the target. An alias belongs to the item path (`sets.exercise`), not to an activ
 applies to every later write that carries it, from any source: a Gravl import, an
 `add_activity` / `update_activity` or the REST equivalents. Such an item is stored with the
 target value. Aliases that pointed at the source follow it to the target, so chains stay one
-step long, and an alias spelled like the target is dropped, since the target is a value again.
+step long, and an alias spelled like the target is dropped, since the target is a value again. A
+[shared exercise](./sharing.md#shared-exercises) of the source moves to the target with its name
+and slug, unless the target is already shared, in which case the source's share is dropped.
 
 A source that differs from the target only in case or whitespace (`dumbbell curl` into
 `Dumbbell Curl`) only unifies the spelling: the items are rewritten and no alias is stored.

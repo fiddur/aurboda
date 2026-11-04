@@ -1,3 +1,5 @@
+import type { ActivityTypeDefinition } from '@aurboda/api-spec'
+
 import express from 'express'
 import supertest from 'supertest'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
@@ -9,6 +11,7 @@ vi.mock('../db/index.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof DbModule>()),
   createSharedExercise: vi.fn(),
   deleteSharedExercise: vi.fn(),
+  getActivityTypeDefinition: vi.fn(),
   getSharedExerciseById: vi.fn(),
   listSharedExercises: vi.fn(),
   updateSharedExercise: vi.fn(),
@@ -29,6 +32,25 @@ const record: SharedExerciseRecord = {
   value: 'Bench Press',
 }
 
+const strength: ActivityTypeDefinition = {
+  color: '#000000',
+  data_schema: {
+    fields: [
+      { is_categorical: true, name: 'session_name', type: 'string' },
+      {
+        item_fields: [{ is_categorical: true, name: 'exercise', type: 'string' }],
+        name: 'sets',
+        type: 'list',
+      },
+    ],
+  },
+  display_category: 'exercise',
+  display_name: 'Strength',
+  is_builtin: true,
+  name: 'strength_training',
+  show_on_timeline: true,
+}
+
 const buildApp = () => {
   const app = express()
   app.use(express.json())
@@ -46,6 +68,7 @@ const buildApp = () => {
 describe('shared exercises router', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(db.getActivityTypeDefinition).mockResolvedValue(strength)
   })
 
   test('lists the shares with their absolute URL and visibility', async () => {
@@ -93,6 +116,25 @@ describe('shared exercises router', () => {
       .send({ activity_type: 'strength_training', field: 'sets.exercise', value: 'Bench Press' })
     expect(res.status).toBe(409)
     expect(res.body).toEqual({ error: 'This exercise is already shared', success: false })
+  })
+
+  test('answers 400 for a session-level field without creating', async () => {
+    const res = await buildApp()
+      .post('/shared-exercises')
+      .send({ activity_type: 'strength_training', field: 'session_name', value: 'Push day' })
+    expect(res.status).toBe(400)
+    expect(res.body).toEqual({ error: expect.stringContaining('session_name'), success: false })
+    expect(db.createSharedExercise).not.toHaveBeenCalled()
+  })
+
+  test('answers 404 without creating when the activity type has no definition', async () => {
+    vi.mocked(db.getActivityTypeDefinition).mockResolvedValue(null)
+    const res = await buildApp()
+      .post('/shared-exercises')
+      .send({ activity_type: 'nope', field: 'sets.exercise', value: 'Bench Press' })
+    expect(res.status).toBe(404)
+    expect(res.body).toEqual({ error: 'Activity type not found', success: false })
+    expect(db.createSharedExercise).not.toHaveBeenCalled()
   })
 
   test('answers 404 when the activity type does not exist', async () => {

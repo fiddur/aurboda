@@ -234,8 +234,9 @@ Owner-facing CRUD (authenticated, scoped to the caller):
 | `PUT /shared-exercises/:id`     | Update name / visibility           |
 | `DELETE /shared-exercises/:id`  | Stop sharing (its slug stops)      |
 
-`POST /shared-exercises` takes `activity_type`, `field` (the item path, e.g.
-`sets.exercise`), `value`, and optionally `name` and `visibility`.
+`POST /shared-exercises` takes `activity_type`, `field` (a categorical list-item path
+of the type, e.g. `sets.exercise`; a session-level field or any other path answers 400),
+`value`, and optionally `name` and `visibility`.
 
 Public (unauthenticated):
 
@@ -251,8 +252,8 @@ a shared exercise; an exercise answers `type: 'exercise'` with `name`,
 
 The same CRUD capability is available over MCP as `list_shared_dashboards`,
 `create_shared_dashboard`, `update_shared_dashboard`, and `delete_shared_dashboard`,
-and for exercises `list_shared_exercises`, `create_shared_exercise`,
-`update_shared_exercise` and `delete_shared_exercise`. Public viewing is web-only.
+and for exercises `list_shared_exercises`, `get_shared_exercise`,
+`create_shared_exercise`, `update_shared_exercise` and `delete_shared_exercise`. Public viewing is web-only.
 
 ## Storage
 
@@ -260,8 +261,12 @@ Shared dashboards live in the user's own database (the config is the user's data
 the `shared_dashboards` table. The `slug` is unique per database; the `username` in
 the URL disambiguates globally, so no central slug index is needed. Deleting a
 shared dashboard immediately makes its slug return 404. Shared exercises are in
-`shared_exercises` (`activity_type`, `field`, `value`, unique together), and a new
-one's slug is checked free against dashboards and challenges. `activity_type`
+`shared_exercises` (`activity_type`, `field`, `value`, unique together). A new
+dashboard's, challenge's or exercise's slug is checked free against all three tables,
+since they share one namespace. Merging an item value (see
+[Activity types](./activity-types.md)) moves the shares of the merged-away value to the
+target, keeping their name and slug; if the target is already shared, the source's share
+is dropped. `activity_type`
 references `activity_type_definitions` with cascading update and delete, so renaming
 a custom type carries its shares along and deleting the type removes them.
 
