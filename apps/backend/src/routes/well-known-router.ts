@@ -75,7 +75,6 @@ export const createWellKnownRouter = (config: WellKnownConfig): TypedRouter => {
 
   // QuantPub discovery (FEP §4): lets any QuantPub peer — not just Aurboda —
   // verify this host speaks the spec and locate the structured/series API base.
-  // `challenges` advertises the QuantPub Challenges endpoints.
   router.get<Record<string, never>, WellKnownQuantpub>('/.well-known/quantpub', (_req, res) => {
     res.setHeader('Cache-Control', 'public, max-age=3600')
     res.json({

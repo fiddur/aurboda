@@ -1,5 +1,6 @@
 /**
- * The QuantPub wire boundary (`docs/fep/quantpub.md`). Aurboda keeps its metric
+ * The QuantPub `0.2` wire boundary (`docs/fep/quantpub.md` now describes `0.3`,
+ * which Aurboda does not emit yet). Aurboda keeps its metric
  * names and scalar keys snake_case internally; the `0.2` wire payload is
  * lowerCamelCase. Inbound documents from `0.1` peers are normalised to `0.2`
  * before schema validation.

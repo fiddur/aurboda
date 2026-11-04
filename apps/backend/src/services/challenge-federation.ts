@@ -30,8 +30,11 @@ import {
   createChallengeParticipation,
   deleteChallengeParticipation,
   getChallengeBySlug,
+  getChallengeMemberByIdentity,
+  getLeftChallengeToken,
   getParticipationById,
   getParticipationByUrl,
+  removeChallengeMember,
   upsertChallengeMember,
 } from '../db/index.ts'
 import { normalizeWellKnownQuantpub, wireMetricToMetricType } from './activitypub/quant-wire.ts'
@@ -338,6 +341,8 @@ const joinQuantpubHost = async (
   const spec = specFromChallengeDocument(doc)
   if (!doc.joinToken) throw new Error('The host did not offer a join token')
   const joinToken = doc.joinToken
+  // Read before createAndRegister: creating the participation clears the tombstone.
+  const leftToken = await getLeftChallengeToken(user, challengeUrl)
   return createAndRegister(
     user,
     {
@@ -345,6 +350,7 @@ const joinQuantpubHost = async (
       end_ts: new Date(doc.endTime),
       host_identity: doc.host.url,
       name: doc.name,
+      protocol: 'quantpub',
       spec,
       start_ts: new Date(doc.startTime),
       timezone: doc.timezone,
@@ -352,6 +358,7 @@ const joinQuantpubHost = async (
     (participation) =>
       joinQuantChallenge(apiBase, parsed.username, parsed.slug, {
         actor: buildActorUrl(ourWebHost, user),
+        ...(leftToken === null ? {} : { currentEntryUrl: buildEntryUrl(ourApiBase, user, leftToken) }),
         entryUrl: buildEntryUrl(ourApiBase, user, participation.data_token),
         joinToken,
         name: user,
@@ -372,6 +379,7 @@ const joinAurbodaHost = async (
       end_ts: new Date(spec.end_ts),
       host_identity: spec.host_identity,
       name: spec.name,
+      protocol: 'aurboda',
       spec: toSpecFields(spec.spec),
       start_ts: new Date(spec.start_ts),
       timezone: spec.timezone,
@@ -390,16 +398,40 @@ const joinAurbodaHost = async (
 }
 
 /**
+ * Drop the leaver from the standings of a challenge this instance hosts. A
+ * challenge or member that is already gone leaves nothing to do.
+ */
+export const leaveLocalChallenge = async (
+  user: string,
+  parsed: ParsedChallengeUrl,
+  ctx: { webHost: string },
+): Promise<void> => {
+  if (!isValidUsername(parsed.username)) return
+  const challenge = await getChallengeBySlug(parsed.username, parsed.slug)
+  if (!challenge) return
+  const member = await getChallengeMemberByIdentity(
+    parsed.username,
+    challenge.id,
+    buildProfileUrl(ctx.webHost, user),
+  )
+  if (!member) return
+  await removeChallengeMember(parsed.username, challenge.id, member.id)
+}
+
+/**
  * Tell a QuantPub host that a participation is leaving, by presenting its
  * entry URL. Best effort: an Aurboda-protocol host, a host that is down or one
  * that no longer knows the member is logged and otherwise ignored, so a leave
- * never waits on another instance's consent.
+ * never waits on another instance's consent. A participation recorded as joined
+ * over the Aurboda protocol has no leave to send; one from before the protocol
+ * was recorded is discovered.
  */
 export const leaveRemoteChallenge = async (
   user: string,
   participation: ChallengeParticipationRecord,
   ctx: { webHost: string; apiBaseUrl: string },
 ): Promise<void> => {
+  if (participation.protocol === 'aurboda') return
   const canonical = canonicalChallengeUrl(participation.challenge_url)
   const parsed = canonical === null ? null : parseChallengeUrl(canonical)
   if (!parsed || parsed.base === trimSlashes(ctx.webHost)) return
@@ -420,7 +452,10 @@ export const leaveRemoteChallenge = async (
   }
 }
 
-/** Leave a joined challenge: tell a QuantPub host (best effort), then delete the participation. */
+/**
+ * Leave a joined challenge: drop the member from a challenge this instance
+ * hosts, or tell a QuantPub host (best effort), then delete the participation.
+ */
 export const leaveChallenge = async (
   user: string,
   participationId: string,
@@ -428,7 +463,13 @@ export const leaveChallenge = async (
 ): Promise<boolean> => {
   const participation = await getParticipationById(user, participationId)
   if (!participation) return false
-  await leaveRemoteChallenge(user, participation, ctx)
+  const canonical = canonicalChallengeUrl(participation.challenge_url)
+  const parsed = canonical === null ? null : parseChallengeUrl(canonical)
+  if (parsed && parsed.base === trimSlashes(ctx.webHost)) {
+    await leaveLocalChallenge(user, parsed, ctx)
+  } else {
+    await leaveRemoteChallenge(user, participation, ctx)
+  }
   return deleteChallengeParticipation(user, participation.id)
 }
 
@@ -479,6 +520,7 @@ export const joinChallenge = async ({
       end_ts: challenge.end_ts,
       host_identity: buildProfileUrl(webHost, parsed.username),
       name: challenge.name,
+      protocol: 'aurboda',
       spec: challenge.spec,
       start_ts: challenge.start_ts,
       timezone: challenge.timezone,

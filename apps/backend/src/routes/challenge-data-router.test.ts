@@ -40,6 +40,7 @@ const participation = (specFields: ChallengeSpecFields): ChallengeParticipationR
   host_identity: 'https://peer.example/u/alice',
   id: 'p1',
   name: 'Push-ups',
+  protocol: null,
   spec: specFields,
   start_ts: new Date('2026-06-01T00:00:00Z'),
   status: 'active',
