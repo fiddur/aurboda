@@ -85,6 +85,7 @@ const participation: ChallengeParticipationRecord = {
   host_identity: '@olle@other.example',
   id: 'p1',
   name: 'Olle’s steps',
+  protocol: 'quantpub',
   spec,
   start_ts: START,
   status: 'active',
