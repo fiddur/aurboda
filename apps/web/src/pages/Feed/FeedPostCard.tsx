@@ -44,7 +44,7 @@ const VISIBILITY: Record<FeedVisibility, { icon: string; label: string }> = {
  * A public/unlisted post's rendered image URL, or `null`. `followers`-only images
  * are token-gated and the browser has no token (#893), so they're omitted here.
  */
-const imageUrl = (username: string, post: FeedPost, kind: 'chart' | 'route'): string | null =>
+const imageUrl = (username: string, post: FeedPost, kind: 'chart' | 'route' | 'standings'): string | null =>
   post.visibility === 'followers'
     ? null
     : `${API_URL}/public/${encodeURIComponent(username)}/feed/${post.id}/${kind}.png`
@@ -54,15 +54,24 @@ const imageUrl = (username: string, post: FeedPost, kind: 'chart' | 'route'): st
  * counterpart ACTUALLY renders — `structured` is attached to every activity
  * post, so keying on its mere presence would drop an image whose native render
  * is empty/undrawable. chart.png draws heart rate only, so only a drawable
- * heart-rate series makes it redundant; route.png only a drawable route.
+ * heart-rate series makes it redundant; route.png only a drawable route. A
+ * challenge post's standings.png stands in for the race only where the card
+ * has no `structured` payload to draw it natively.
  */
-const mediaUrls = (post: FeedPost, username: string): { chart: string | null; route: string | null } => ({
+const mediaUrls = (
+  post: FeedPost,
+  username: string,
+): { chart: string | null; route: string | null; standings: string | null } => ({
   chart:
-    post.include_chart && !structuredHasNativeHrChart(post.structured)
+    post.kind !== 'challenge' && post.include_chart && !structuredHasNativeHrChart(post.structured)
       ? imageUrl(username, post, 'chart')
       : null,
   route:
     post.include_map && !structuredHasNativeMap(post.structured) ? imageUrl(username, post, 'route') : null,
+  standings:
+    post.kind === 'challenge' && post.include_chart && post.structured == null
+      ? imageUrl(username, post, 'standings')
+      : null,
 })
 
 /**
@@ -155,7 +164,7 @@ export const FeedPostCard = ({
 }) => {
   const vis = VISIBILITY[post.visibility]
   const when = formatDistanceToNow(new Date(post.created_at), { addSuffix: true })
-  const { chart, route } = mediaUrls(post, author.username)
+  const { chart, route, standings } = mediaUrls(post, author.username)
 
   return (
     <article class="feed-post">
@@ -174,10 +183,11 @@ export const FeedPostCard = ({
 
       <FeedPostBody post={post} visitor={visitor} />
 
-      {(chart || route) && (
+      {(chart || route || standings) && (
         <div class="feed-post-media">
           {chart && <img class="feed-post-image" src={chart} alt="Heart rate chart" loading="lazy" />}
           {route && <img class="feed-post-image" src={route} alt="Route map" loading="lazy" />}
+          {standings && <img class="feed-post-image" src={standings} alt="Standings chart" loading="lazy" />}
         </div>
       )}
 

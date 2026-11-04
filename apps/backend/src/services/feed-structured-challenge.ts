@@ -32,6 +32,7 @@ import {
 } from './challenge-quantpub.ts'
 import { effectiveBucketSize, specToApi } from './challenge-spec.ts'
 import { getChallengeStandings } from './challenge-standings.ts'
+import { raceChartDataFor, type RaceChartSvgData } from './charts/race-chart-svg.ts'
 import { safeFetchGet } from './safe-fetch.ts'
 import { withTimeout } from './with-timeout.ts'
 
@@ -170,6 +171,21 @@ export const resolveStructuredChallenge = async (
 }
 
 let configured: StructuredChallengeDeps | null = null
+
+/**
+ * The standings race chart a challenge post's `Standings` attachment draws, or
+ * null when there is nothing to draw: resolver unconfigured, the challenge
+ * unresolvable, or no standings snapshot.
+ */
+export const resolveStandingsChart = async (
+  user: string,
+  post: StructuredChallengePost,
+  deps: StructuredChallengeDeps | null = configured,
+): Promise<RaceChartSvgData | null> => {
+  if (deps == null) return null
+  const structured = await resolveStructuredChallenge(user, post, deps)
+  return structured == null ? null : raceChartDataFor(structured)
+}
 
 /**
  * Wire the real dependencies once at startup. Until this runs (unit tests,

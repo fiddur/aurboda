@@ -1,7 +1,7 @@
 import sharp from 'sharp'
 import { describe, expect, test, vi } from 'vitest'
 
-import { renderChartPng, renderRoutePng } from './feed-images.ts'
+import { renderChartPng, renderRaceChartPng, renderRoutePng } from './feed-images.ts'
 
 /** PNG files start with this 8-byte signature. */
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
@@ -41,6 +41,31 @@ describe('renderChartPng', () => {
       [new Date('2026-07-01T06:35:00Z'), Number.NaN],
     ])
     expect(isPng(png)).toBe(true)
+  })
+})
+
+describe('renderRaceChartPng', () => {
+  test('renders the standings race as a 1000x420 PNG', async () => {
+    const png = await renderRaceChartPng({
+      asOf: new Date('2026-11-03T12:00:00Z'),
+      endTime: new Date('2026-11-08T00:00:00Z'),
+      lines: [
+        {
+          color: '#8b5cf6',
+          name: 'alice',
+          points: [
+            [new Date('2026-11-01T00:00:00Z'), 0],
+            [new Date('2026-11-02T00:00:00Z'), 10_000],
+          ],
+        },
+      ],
+      startTime: new Date('2026-11-01T00:00:00Z'),
+      timezone: 'Europe/Stockholm',
+      title: 'November steps',
+    })
+    expect(isPng(png)).toBe(true)
+    const meta = await sharp(png).metadata()
+    expect([meta.width, meta.height]).toEqual([1000, 420])
   })
 })
 

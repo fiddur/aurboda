@@ -458,9 +458,11 @@ the backend directly need no extra config.
   and never embeds a join token. Federates as a `Note`; Mastodon shows
   the link with the challenge page's OG preview card; an Aurboda peer fetches the post's
   structured payload (the challenge document plus a standings snapshot) and renders the
-  race chart and leaderboard natively on its timeline. Also available as the
-  `share_challenge` MCP tool / `POST /feed/challenges`. See
-  [feed.md](feed.md#feed-posts) for the post model.
+  race chart and leaderboard natively on its timeline. **Attach standings chart image**
+  (on by default, `include_chart`) also attaches the race as a PNG rendered from the
+  standings at fetch time, for Mastodon and other apps that cannot draw it (see
+  [feed.md](feed.md#images)). Also available as the `share_challenge` MCP tool /
+  `POST /feed/challenges`. See [feed.md](feed.md#feed-posts) for the post model.
 
 ## Android widget
 

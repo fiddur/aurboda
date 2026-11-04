@@ -11,6 +11,7 @@ import type {
 } from '../db/index.ts'
 
 import {
+  resolveStandingsChart,
   resolveStructuredChallenge,
   type StructuredChallengeDeps,
   type StructuredChallengePost,
@@ -304,5 +305,28 @@ describe('resolveStructuredChallenge', () => {
       makeDeps(),
     )
     expect(out?.result).toEqual(result)
+  })
+})
+
+describe('resolveStandingsChart', () => {
+  test('null while the resolver is unconfigured', async () => {
+    expect(await resolveStandingsChart('freja', ownPost, null)).toBeNull()
+  })
+
+  test('the race over the own challenge window, one line per member', async () => {
+    const chart = await resolveStandingsChart('freja', ownPost, makeDeps())
+    expect(chart).toMatchObject({ asOf: NOW, endTime: END, startTime: START, title: 'November steps' })
+    expect(chart?.lines.map((line) => line.name)).toEqual(['freja'])
+    expect(chart?.lines[0].points.at(-1)?.[1]).toBe(1200)
+  })
+
+  test('null when a joined challenge has no reachable standings', async () => {
+    const deps = makeDeps({
+      discoverInstance: vi.fn(async () => ({
+        apiBase: 'https://other.example/api',
+        kind: 'aurboda' as const,
+      })),
+    })
+    expect(await resolveStandingsChart('freja', joinedPost, deps)).toBeNull()
   })
 })

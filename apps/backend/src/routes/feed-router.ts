@@ -397,6 +397,7 @@ export const createFeedRouter = (
       if (!resolved.ok) return res.status(resolved.status).json({ error: resolved.error, success: false })
       const record = await createChallengePost(user, {
         challenge: resolved.challenge,
+        include_chart: req.body.include_chart,
         message: normalizeFeedMessage(req.body.message) ?? null,
         visibility: req.body.visibility,
       })

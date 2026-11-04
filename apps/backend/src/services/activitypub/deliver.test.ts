@@ -1,6 +1,6 @@
 import type { ArticleContent } from '@aurboda/api-spec'
 
-import { Delete, Mention, Note, Person, Tombstone } from '@fedify/fedify/vocab'
+import { Create, Delete, Image, Mention, Note, Person, Tombstone, Update } from '@fedify/fedify/vocab'
 import { describe, expect, test, vi } from 'vitest'
 
 import {
@@ -11,13 +11,16 @@ import {
   buildFeedDelete,
   buildReplyNote,
   buildReplyNoteCreate,
+  challengeImageAttachments,
   challengeMentions,
   type DeliverableArticle,
   type DeliverableChallenge,
   type DeliverablePost,
   type DeliverableReply,
   deliverFeedChallengePost,
+  deliverFeedChallengeUpdate,
   deliverFeedDelete,
+  hasDrawableStandings,
   deliverFeedReplyPost,
   type FeedDeliveryDeps,
   imageAttachments,
@@ -300,6 +303,8 @@ describe('buildChallengeNote / buildChallengeNoteCreate', () => {
     challenge: { name: 'August 10k', url: `${ORIGIN}/u/fiddur/august-10k` },
     created_at: new Date('2026-08-01T00:00:00Z'),
     id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    image_token: 'tok',
+    include_chart: false,
     message,
     updated_at: new Date('2026-08-01T00:00:00Z'),
     visibility,
@@ -419,6 +424,8 @@ describe('completion-post fan-out to tagged winners (#1074, #1079)', () => {
     },
     created_at: new Date('2026-08-01T00:00:00Z'),
     id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+    image_token: 'tok',
+    include_chart: false,
     message: null,
     updated_at: new Date('2026-08-01T00:00:00Z'),
     visibility: 'public',
@@ -505,6 +512,106 @@ describe('completion-post fan-out to tagged winners (#1074, #1079)', () => {
     expect(sentTo(sendActivity)).toEqual(['followers'])
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('actor not resolvable'))
     warn.mockRestore()
+  })
+
+  const attachedUrls = async (activity: unknown): Promise<(string | undefined)[]> => {
+    const note = await (activity as Create | Update).getObject()
+    const urls: (string | undefined)[] = []
+    if (note instanceof Note) {
+      for await (const attachment of note.getAttachments()) {
+        expect(attachment).toBeInstanceOf(Image)
+        if (attachment instanceof Image) {
+          expect(attachment.name?.toString()).toBe('Standings')
+          urls.push(attachment.url instanceof URL ? attachment.url.href : undefined)
+        }
+      }
+    }
+    return urls
+  }
+  const base = `${ORIGIN}/api/public/fiddur/feed/dddddddd-dddd-4ddd-8ddd-dddddddddddd/standings.png`
+
+  test('an opted-in post with drawable standings carries the Standings attachment', async () => {
+    const { deps, sendActivity } = await fakeDeps()
+    const post = { ...completion(), include_chart: true }
+    const hasStandings = vi.fn(async () => true)
+    await deliverFeedChallengePost(deps, 'fiddur', post, hasStandings)
+    expect(hasStandings).toHaveBeenCalledWith('fiddur', post)
+    const [, , create] = sendActivity.mock.calls[0]
+    expect(create).toBeInstanceOf(Create)
+    expect(await attachedUrls(create)).toEqual([`${base}?v=${post.updated_at.getTime()}`])
+  })
+
+  test('a followers-only post’s attachment carries the token; an Update re-sends it with the new v', async () => {
+    const { deps, sendActivity } = await fakeDeps()
+    const edited = new Date('2026-08-03T00:00:00Z')
+    const post = {
+      ...completion(),
+      include_chart: true,
+      updated_at: edited,
+      visibility: 'followers' as const,
+    }
+    await deliverFeedChallengeUpdate(deps, 'fiddur', post, async () => true)
+    const [, , update] = sendActivity.mock.calls[0]
+    expect(update).toBeInstanceOf(Update)
+    expect(await attachedUrls(update)).toEqual([`${base}?token=tok&v=${edited.getTime()}`])
+  })
+
+  test('no attachment without standings to draw, or without the opt-in', async () => {
+    const unavailable = await fakeDeps()
+    await deliverFeedChallengePost(
+      unavailable.deps,
+      'fiddur',
+      { ...completion(), include_chart: true },
+      async () => false,
+    )
+    expect(await attachedUrls(unavailable.sendActivity.mock.calls[0][2])).toEqual([])
+
+    const optedOut = await fakeDeps()
+    const hasStandings = vi.fn(async () => true)
+    await deliverFeedChallengePost(optedOut.deps, 'fiddur', completion(), hasStandings)
+    expect(hasStandings).not.toHaveBeenCalled()
+    expect(await attachedUrls(optedOut.sendActivity.mock.calls[0][2])).toEqual([])
+  })
+})
+
+describe('challengeImageAttachments', () => {
+  const post = {
+    id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+    image_token: 'tok',
+    include_chart: true,
+    updated_at: new Date('2026-08-01T00:00:00Z'),
+    visibility: 'unlisted' as const,
+  }
+
+  test('a 1000x420 PNG at the standings endpoint, without a token for an unlisted post', () => {
+    const [image] = challengeImageAttachments('https://aurboda.example/api/', 'fiddur', post, true)
+    expect(image.url).toEqual(
+      new URL(
+        `https://aurboda.example/api/public/fiddur/feed/${post.id}/standings.png?v=${post.updated_at.getTime()}`,
+      ),
+    )
+    expect([image.width, image.height, image.mediaType]).toEqual([1000, 420, 'image/png'])
+  })
+
+  test('nothing when unavailable or not opted in', () => {
+    expect(challengeImageAttachments('https://a.example/api', 'fiddur', post, false)).toEqual([])
+    expect(
+      challengeImageAttachments('https://a.example/api', 'fiddur', { ...post, include_chart: false }, true),
+    ).toEqual([])
+  })
+
+  test('hasDrawableStandings is false without the opt-in or an unconfigured resolver', async () => {
+    const challenge = {
+      challenge: { name: 'x', url: 'https://aurboda.example/u/fiddur/x' },
+      created_at: new Date(),
+      id: post.id,
+      image_token: 'tok',
+      message: null,
+      updated_at: new Date(),
+      visibility: 'public' as const,
+    }
+    expect(await hasDrawableStandings('fiddur', { ...challenge, include_chart: false })).toBe(false)
+    expect(await hasDrawableStandings('fiddur', { ...challenge, include_chart: true })).toBe(false)
   })
 })
 

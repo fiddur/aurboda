@@ -78,13 +78,20 @@ import { createTrainingLoadRouter } from '../routes/training-load-router.ts'
 import { createTrendsRouter } from '../routes/trends-router.ts'
 import { createWebAuthnRouter } from '../routes/webauthn-router.ts'
 import { createWellKnownRouter, type WellKnownConfig } from '../routes/well-known-router.ts'
-import { renderChartPng, renderRoutePng, renderScatterPng } from '../services/activitypub/feed-images.ts'
+import {
+  renderChartPng,
+  renderRaceChartPng,
+  renderRoutePng,
+  renderScatterPng,
+} from '../services/activitypub/feed-images.ts'
 import { fetchOsmTile } from '../services/activitypub/osm-tiles.ts'
 import { getArticleChartSeriesData, getArticleCorrelationScatter } from '../services/article-block-data.ts'
 import { articleBlockMisses } from '../services/article-block-misses.ts'
 import { loadAvatarDataUri, loadChallengeBannerDataUri } from '../services/avatar-resolve.ts'
 import { buildChartSvg } from '../services/charts/chart-svg.ts'
+import { buildRaceChartSvg } from '../services/charts/race-chart-svg.ts'
 import { buildScatterSvg } from '../services/charts/scatter-svg.ts'
+import { resolveStandingsChart } from '../services/feed-structured-challenge.ts'
 import { resolveFeedActivity } from '../services/feed.ts'
 import { createOgImageRenderer } from '../services/og-image.ts'
 import { createTemplateLoader } from '../services/web-template.ts'
@@ -245,8 +252,11 @@ export const mountRestRouters = ({
       getRoute: async (user, start, end) =>
         (await getLocations(user, start, end)).locations.map((l) => l.coordinates),
       getSeries: getTimeSeries,
+      getStandingsChart: resolveStandingsChart,
       renderChart: renderChartPng,
       renderChartSvg: buildChartSvg,
+      renderRaceChart: renderRaceChartPng,
+      renderRaceChartSvg: buildRaceChartSvg,
       // Draw the route over the OSM basemap; falls back to a bare shape if tiles
       // can't be fetched (e.g. offline).
       renderRoute: (coords) => renderRoutePng(coords, { fetchTile: fetchOsmTile }),

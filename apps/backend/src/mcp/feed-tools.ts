@@ -170,11 +170,12 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
     'share_challenge',
     "Publish a challenge INVITATION to your feed: your personal note (markdown) plus the challenge's canonical join-by-URL link. Pass exactly one of `challenge_id` (one of your own challenges) or `participation_id` (a challenge you joined, possibly hosted elsewhere) — the server resolves the linked name/URL itself.",
     { ...shareChallengeBodySchema.shape },
-    async ({ challenge_id, message, participation_id, visibility }) => {
+    async ({ challenge_id, include_chart, message, participation_id, visibility }) => {
       const resolved = await resolveChallengeShare(user, { challenge_id, participation_id }, webHost)
       if (!resolved.ok) return errorResponse(resolved.error)
       const record = await createChallengePost(user, {
         challenge: resolved.challenge,
+        include_chart,
         message: normalizeFeedMessage(message) ?? null,
         visibility,
       })
