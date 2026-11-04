@@ -275,11 +275,14 @@ export {
   isUnknownSharedExerciseType,
   listPublicSharedExercises,
   listSharedExercises,
+  repointSharedExercises,
   type SharedExerciseInput,
   type SharedExercisePatch,
   type SharedExerciseRecord,
   updateSharedExercise,
 } from './shared-exercises.ts'
+
+export { publicSlugIsFree } from './public-slugs.ts'
 
 export {
   type ChallengeInput,

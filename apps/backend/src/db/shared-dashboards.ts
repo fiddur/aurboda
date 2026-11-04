@@ -10,6 +10,7 @@ import { randomBytes } from 'node:crypto'
  * a share is listed on the public profile.
  */
 import { query } from './connection.ts'
+import { publicSlugIsFree } from './public-slugs.ts'
 
 export interface SharedDashboardRecord {
   id: string
@@ -110,6 +111,7 @@ export const createSharedDashboard = async (
   const maxAttempts = 5
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const slug = generateSlug()
+    if (!(await publicSlugIsFree(user, slug))) continue
     try {
       const result = await query<SharedDashboardRow>(
         user,

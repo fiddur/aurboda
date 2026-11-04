@@ -16,7 +16,7 @@ import { randomBytes } from 'node:crypto'
  * database, each backed by an unguessable `data_token`.
  */
 import { query } from './connection.ts'
-import { getSharedDashboardBySlug } from './shared-dashboards.ts'
+import { publicSlugIsFree } from './public-slugs.ts'
 
 export type ChallengeBucketSize = 'auto' | '1d' | '1w' | '1M'
 
@@ -271,17 +271,12 @@ export const getChallengeBySlug = async (user: string, slug: string): Promise<Ch
   return result.rows.length ? mapChallenge(result.rows[0]) : null
 }
 
-/** True if a slug is free across BOTH challenges and shared dashboards for this user. */
-const slugIsFree = async (user: string, slug: string): Promise<boolean> =>
-  (await getChallengeBySlug(user, slug)) === null && (await getSharedDashboardBySlug(user, slug)) === null
-
 export const createChallenge = async (user: string, input: ChallengeInput): Promise<ChallengeRecord> => {
   const joinToken = randomToken(24)
   const maxAttempts = 5
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const slug = randomToken(7)
-    // Cheap pre-check across both slug namespaces; UNIQUE handles the race.
-    if (!(await slugIsFree(user, slug))) continue
+    if (!(await publicSlugIsFree(user, slug))) continue
     try {
       const result = await query<ChallengeRow>(
         user,

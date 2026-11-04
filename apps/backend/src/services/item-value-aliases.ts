@@ -15,6 +15,7 @@ import {
   type ItemValueAliasRow,
   listItemValueAliases,
   repointItemValueAliases,
+  repointSharedExercises,
   rewriteItemValue,
   upsertItemValueAlias,
 } from '../db/index.ts'
@@ -106,7 +107,7 @@ const resolveItemPath = async (
  * Rewrite `source` to `target` in the item path across the type and its descendants. Unless the
  * two differ only in spelling, `source` becomes an alias of `target`: aliases that pointed at
  * `source` follow it to `target`, and an alias spelled like `target` is dropped since `target`
- * is a value again.
+ * is a value again. Shares of `source` move to `target` with it.
  */
 export const mergeItemValues = async (
   user: string,
@@ -130,6 +131,7 @@ export const mergeItemValues = async (
   const types = await expandActivityTypes(user, [activityType])
   const activitiesUpdated = await rewriteItemValue(user, types, list, key, source, target)
   await repointItemValueAliases(user, body.field, source, target)
+  await repointSharedExercises(user, types, body.field, source, target)
   if (spellingOnly) return { data: { activities_updated: activitiesUpdated, alias: null }, success: true }
 
   await deleteItemValueAliasesByAlias(user, body.field, target)

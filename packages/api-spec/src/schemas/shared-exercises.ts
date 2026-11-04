@@ -43,7 +43,8 @@ export const createSharedExerciseBodySchema = z
   .object({
     activity_type: activityTypeSchema,
     field: dataFieldPathSchema.meta({
-      description: 'Item path whose value is shared, e.g. `sets.exercise`',
+      description:
+        'A categorical list-item path of the activity type whose value is shared, such as `sets.exercise`; session-level fields are rejected',
     }),
     name: sharedExerciseNameSchema.optional().meta({ description: 'Display name; defaults to the value' }),
     value: z.string().min(1).meta({ description: 'The item value to share, e.g. `Bench Press`' }),
