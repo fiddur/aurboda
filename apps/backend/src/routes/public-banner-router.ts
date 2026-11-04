@@ -10,6 +10,7 @@ import type { ChallengeBanner } from '../db/index.ts'
 
 import { isValidUsername } from '../api/auth-routes.ts'
 import { getChallengeBanner, getChallengeBySlug, isMissingDatabase } from '../db/index.ts'
+import { bannerVersion } from '../services/share-urls.ts'
 
 export interface PublicBannerDeps {
   getChallengeIdBySlug: (username: string, slug: string) => Promise<string | null>
@@ -42,7 +43,9 @@ export const createPublicBannerRouter = (deps: PublicBannerDeps = defaultDeps): 
     res.set('Content-Type', banner.content_type)
     res.set(
       'Cache-Control',
-      req.query.v === undefined ? 'public, max-age=300' : 'public, max-age=31536000, immutable',
+      req.query.v === bannerVersion(banner.updated_at)
+        ? 'public, max-age=31536000, immutable'
+        : 'public, max-age=300',
     )
     res.send(banner.data)
   })

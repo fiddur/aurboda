@@ -62,8 +62,9 @@ base-URL federation identity, and the bucketed-data engine behind dashboards.
   `type` (`dashboard` | `challenge`); slugs are unique across both per user.
 - The banner is served at `<public-base>/u/<username>/<slug>/banner.webp` for public
   **and** unlisted challenges (anyone with the link sees the page that shows it); 404
-  when there is none. `banner_url` carries a `?v=<updated-at>` version, and a
-  versioned request is cached `immutable` for a year (unversioned: 5 minutes).
+  when there is none. `banner_url` carries a `?v=<updated-at>` version, and a request
+  whose `v` matches the stored banner's is cached `immutable` for a year (a missing or
+  stale `v`: 5 minutes).
 - Challenges + members live in the **host's** per-user DB; a joiner's
   _participations_ live in the **joiner's** DB, each backed by an unguessable
   `data_token`. No central-DB tables.
@@ -496,11 +497,11 @@ See `docs/android-app.md` → _Home-screen widgets_.
 
 Banner: `POST /challenges/:id/banner` (multipart, field `banner`; 400 for a missing,
 unsupported or undecodable file, 404 for a challenge that isn't yours) and
-`DELETE /challenges/:id/banner` both answer with the `Challenge`. `banner_url`
-(absolute, versioned; `null` when none) is on `Challenge` (REST and the MCP
-`list/update_challenge` output) and on the public `PublicChallenge`. There is no MCP
-tool for the upload itself: a binary upload has no MCP counterpart, as with the profile
-avatar.
+`DELETE /challenges/:id/banner` both answer with the `Challenge`; the removal is also
+the MCP tool `remove_challenge_banner`. `banner_url` (absolute, versioned; `null` when
+none) is on `Challenge` (REST and the MCP `list/update_challenge` output) and on the
+public `PublicChallenge`. There is no MCP tool for the upload itself: a binary upload
+has no MCP counterpart, as with the profile avatar.
 
 ## Out of scope (v1) / future hardening
 

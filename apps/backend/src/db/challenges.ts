@@ -46,7 +46,6 @@ export interface ChallengeRecord {
   announce_winner: boolean
   /** When the completion sweep published (or deliberately skipped) the result; null while pending. */
   result_published_at: Date | null
-  /** When the host last set the banner image; null when none is set. */
   banner_updated_at: Date | null
   created_at: Date
   updated_at: Date

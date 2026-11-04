@@ -12,6 +12,7 @@ import type { DiscoverChallenges } from '../services/challenge-discovery.ts'
 import {
   createChallenge,
   deleteChallenge,
+  deleteChallengeBanner,
   getChallengeById,
   listChallenges,
   updateChallenge,
@@ -111,6 +112,19 @@ export const registerChallengeTools = (
       if (!existing) return errorResponse('Challenge not found')
       await deleteChallenge(user, id)
       return jsonResponse({ deleted: true, id })
+    },
+  )
+
+  server.tool(
+    'remove_challenge_banner',
+    'Remove the banner image of a hosted challenge, bringing back the themed card. Returns the updated challenge. Setting a banner is a binary upload, REST only (POST /challenges/:id/banner).',
+    { id: z.string().uuid().describe('Challenge ID') },
+    async ({ id }) => {
+      if (!(await getChallengeById(user, id))) return errorResponse('Challenge not found')
+      await deleteChallengeBanner(user, id)
+      const record = await getChallengeById(user, id)
+      if (!record) return errorResponse('Challenge not found')
+      return jsonResponse(serialize(record, deps.webHost, user))
     },
   )
 
