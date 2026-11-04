@@ -15,7 +15,7 @@ import { memberColor } from '../Challenges/member-colors'
 import { formatUpdated } from '../Challenges/race-series'
 import { describeSpec, totalHeader } from '../Challenges/spec-label'
 import { ChallengeResultPodium } from './ChallengeShareContent'
-import { formatStandingTotal, standingsRaceSeries } from './timeline-challenge'
+import { challengeLink, formatStandingTotal, standingsRaceSeries } from './timeline-challenge'
 import '../Challenges/style.css'
 import './FeedPostCard.css'
 import './TimelineStructured.css'
@@ -25,14 +25,19 @@ export const TimelineChallenge = ({ structured }: { structured: FeedStructuredCh
   const spec = challenge.aurboda?.spec
   const series = useMemo(() => standingsRaceSeries(structured), [structured])
   const members = standings?.members ?? []
+  const link = challengeLink(challenge.url)
 
   return (
     <div class="timeline-structured timeline-challenge">
       <p class="feed-post-title">
         <strong>
-          <a href={challenge.url} target="_blank" rel="noopener noreferrer">
-            {challenge.name}
-          </a>
+          {link ? (
+            <a href={link} target="_blank" rel="noopener noreferrer">
+              {challenge.name}
+            </a>
+          ) : (
+            challenge.name
+          )}
         </strong>
         {result && ' has finished! 🏁'}
       </p>
@@ -83,11 +88,13 @@ export const TimelineChallenge = ({ structured }: { structured: FeedStructuredCh
         </table>
       )}
       {standings && <p class="timeline-challenge-asof">Standings as of {formatUpdated(standings.asOf)}</p>}
-      <p>
-        <a href={challenge.url} target="_blank" rel="noopener noreferrer">
-          Join / view challenge
-        </a>
-      </p>
+      {link && (
+        <p>
+          <a href={link} target="_blank" rel="noopener noreferrer">
+            Join / view challenge
+          </a>
+        </p>
+      )}
     </div>
   )
 }

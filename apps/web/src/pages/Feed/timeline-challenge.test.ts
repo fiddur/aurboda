@@ -3,7 +3,12 @@ import type { FeedStructuredChallenge, QuantStandingsMember } from '@aurboda/api
 import { describe, expect, test } from 'vitest'
 
 import { memberColor } from '../Challenges/member-colors'
-import { formatStandingTotal, quantBucketSeconds, standingsRaceSeries } from './timeline-challenge'
+import {
+  challengeLink,
+  formatStandingTotal,
+  quantBucketSeconds,
+  standingsRaceSeries,
+} from './timeline-challenge'
 
 const START = '2026-11-01T00:00:00.000Z'
 
@@ -131,5 +136,20 @@ describe('formatStandingTotal', () => {
     expect(formatStandingTotal(bare, 1500.2)).toBe(`${(1500).toLocaleString()} m`)
     const unitless = payload({ challenge: { ...base.challenge, aurboda: undefined, unit: undefined } })
     expect(formatStandingTotal(unitless, 7)).toBe('7')
+  })
+})
+
+describe('challengeLink', () => {
+  test('keeps http(s) URLs', () => {
+    expect(challengeLink('https://peer.example/challenges/steps')).toBe(
+      'https://peer.example/challenges/steps',
+    )
+    expect(challengeLink('http://peer.example/challenges/steps')).toBe('http://peer.example/challenges/steps')
+  })
+
+  test('drops javascript: and other non-http schemes and junk', () => {
+    expect(challengeLink('javascript:alert(document.cookie)')).toBeNull()
+    expect(challengeLink('data:text/html,<script>alert(1)</script>')).toBeNull()
+    expect(challengeLink('not a url')).toBeNull()
   })
 })
