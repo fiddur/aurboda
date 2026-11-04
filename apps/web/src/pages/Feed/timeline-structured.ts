@@ -73,7 +73,8 @@ export const structuredHasNativeMap = (structured: FeedStructuredPost | undefine
 /**
  * Whether a delivered attachment image is still wanted next to the native
  * render, by its Aurboda attachment `name` (stable — we set it on delivery).
- * An article's or a challenge's card renders everything natively; an activity
+ * An article's or a challenge's card renders everything natively (a challenge's
+ * `Standings` race chart included); an activity
  * keeps each image unless its native counterpart actually draws (chart.png ↔
  * the heart-rate line, route.png ↔ the interactive map); non-Aurboda images
  * always show.

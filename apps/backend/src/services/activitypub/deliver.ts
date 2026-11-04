@@ -36,7 +36,9 @@ import type { FeedPostRecord } from '../../db/index.ts'
 
 import { hasLocations, hasTimeSeries } from '../../db/index.ts'
 import { challengeWinners } from '../challenge-results.ts'
+import { CHART_HEIGHT, CHART_WIDTH } from '../charts/chart-svg.ts'
 import { formatExerciseLine, resolvePostExercises, toStructuredExercise } from '../feed-exercises.ts'
+import { resolveStandingsChart } from '../feed-structured-challenge.ts'
 import { getSettings } from '../settings.ts'
 import { articleImageAttachments, renderArticleContentHtml } from './article-object.ts'
 import { identityToActorUri, identityToHandle, renderChallengeShareHtml } from './challenge-object.ts'
@@ -520,7 +522,8 @@ export const deliverFeedArticleUpdate = async (
 // an article): the user's markdown note + the challenge's canonical public
 // URL. Mastodon renders the link with the challenge page's existing OG preview
 // card. Served on the SAME object path as every post kind, so it tombstones
-// like any post. No activity to resolve and no attachments in phase 1.
+// like any post. No activity to resolve; an opted-in post delivered to
+// followers attaches the standings race chart (`standings.png`).
 
 /** The delivery-facing view of a challenge post (its `challenge` guaranteed present). */
 export interface DeliverableChallenge {
@@ -530,6 +533,10 @@ export interface DeliverableChallenge {
   updated_at: Date
   challenge: ChallengeShare
   message: string | null
+  /** Attach the rendered standings race chart. */
+  include_chart: boolean
+  /** Capability token appended to a `followers`-only post's image URL. */
+  image_token: string
 }
 
 export const toDeliverableChallenge = (post: FeedPostRecord): DeliverableChallenge | null =>
@@ -538,11 +545,59 @@ export const toDeliverableChallenge = (post: FeedPostRecord): DeliverableChallen
         challenge: post.challenge,
         created_at: post.created_at,
         id: post.id,
+        image_token: post.image_token,
+        include_chart: post.include_chart,
         message: post.message,
         updated_at: post.updated_at,
         visibility: post.visibility,
       }
     : null
+
+/**
+ * The `Standings` race-chart attachment of an opted-in challenge post, under
+ * the same URL rules as `imageAttachments`: a `followers`-only post's URL
+ * carries its capability `token`, every URL the post's version `v`, and only
+ * an image with data behind it (`available`) is attached.
+ */
+export const challengeImageAttachments = (
+  apiBaseUrl: string,
+  user: string,
+  post: Pick<DeliverableChallenge, 'id' | 'image_token' | 'include_chart' | 'updated_at' | 'visibility'>,
+  available: boolean,
+): Image[] => {
+  if (!post.include_chart || !available) return []
+  const base = `${apiBaseUrl.replace(/\/+$/, '')}/public/${encodeURIComponent(user)}/feed/${post.id}`
+  const params = new URLSearchParams()
+  if (!isPubliclyVisible(post.visibility)) params.set('token', post.image_token)
+  params.set('v', String(post.updated_at.getTime()))
+  return [
+    new Image({
+      height: CHART_HEIGHT,
+      mediaType: 'image/png',
+      name: 'Standings',
+      url: new URL(`${base}/standings.png?${params.toString()}`),
+      width: CHART_WIDTH,
+    }),
+  ]
+}
+
+/** Whether a challenge post's standings would draw at least one race line (what `standings.png` needs). */
+export type HasDrawableStandings = (user: string, post: DeliverableChallenge) => Promise<boolean>
+
+export const hasDrawableStandings: HasDrawableStandings = async (user, post) => {
+  if (!post.include_chart) return false
+  try {
+    const chart = await resolveStandingsChart(user, {
+      challenge: post.challenge,
+      kind: 'challenge',
+      message: post.message,
+    })
+    return chart != null && chart.lines.length > 0
+  } catch (error) {
+    console.warn(`⚠️ Standings chart availability for post ${post.id} failed:`, error)
+    return false
+  }
+}
 
 /**
  * Someone an activity tags: the actor id the `Mention` points at and its
@@ -603,12 +658,20 @@ const challengeAddressing = (
  * Build the Fedify `Note` for a challenge share: name heading + sanitised
  * markdown note + canonical link as `content` (a completion post: the podium),
  * addressed per visibility, at the post's canonical Note id, with a `Mention`
- * tag per winner. Synchronous — nothing to resolve.
+ * tag per winner. Synchronous: the delivery path resolves the `Standings`
+ * attachment beforehand (`challengeImageAttachments`); the object dispatcher
+ * and outbox serve the Note without it.
  */
-export const buildChallengeNote = (ctx: Context<void>, user: string, post: DeliverableChallenge): Note => {
+export const buildChallengeNote = (
+  ctx: Context<void>,
+  user: string,
+  post: DeliverableChallenge,
+  attachments: Image[] = [],
+): Note => {
   const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
   const { cc, mentions, to } = challengeAddressing(ctx, user, post)
   return new Note({
+    attachments,
     attribution: ctx.getActorUri(user),
     ccs: cc,
     content: renderChallengeShareHtml(post.challenge, post.message),
@@ -627,6 +690,7 @@ export const buildChallengeNoteCreate = (
   ctx: Context<void>,
   user: string,
   post: DeliverableChallenge,
+  attachments: Image[] = [],
 ): Create => {
   const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
   const { cc, to } = challengeAddressing(ctx, user, post)
@@ -634,7 +698,7 @@ export const buildChallengeNoteCreate = (
     actor: ctx.getActorUri(user),
     ccs: cc,
     id: new URL(`${noteId.href}#create`),
-    object: buildChallengeNote(ctx, user, post),
+    object: buildChallengeNote(ctx, user, post, attachments),
     published: dateToTemporalInstant(post.created_at),
     tos: to,
   })
@@ -645,6 +709,7 @@ export const buildChallengeNoteUpdate = (
   ctx: Context<void>,
   user: string,
   post: DeliverableChallenge,
+  attachments: Image[] = [],
 ): Update => {
   const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
   const { cc, to } = challengeAddressing(ctx, user, post)
@@ -652,7 +717,7 @@ export const buildChallengeNoteUpdate = (
     actor: ctx.getActorUri(user),
     ccs: cc,
     id: new URL(`${noteId.href}#update-${post.updated_at.getTime()}`),
-    object: buildChallengeNote(ctx, user, post),
+    object: buildChallengeNote(ctx, user, post, attachments),
     tos: to,
   })
 }
@@ -730,23 +795,41 @@ const sendToFollowersAndMentioned = async (
   if (followers.status === 'rejected') throw followers.reason
 }
 
+const deliveredChallengeAttachments = async (
+  deps: FeedDeliveryDeps,
+  user: string,
+  post: DeliverableChallenge,
+  hasStandings: HasDrawableStandings,
+): Promise<Image[]> =>
+  challengeImageAttachments(
+    deps.apiBaseUrl,
+    user,
+    post,
+    post.include_chart && (await hasStandings(user, post)),
+  )
+
 export const deliverFeedChallengePost = async (
   deps: FeedDeliveryDeps,
   user: string,
   post: DeliverableChallenge,
+  hasStandings: HasDrawableStandings = hasDrawableStandings,
 ): Promise<void> => {
+  const attachments = await deliveredChallengeAttachments(deps, user, post, hasStandings)
   const ctx = await deps.federation.createContext(new URL(deps.origin))
-  const create = buildChallengeNoteCreate(ctx, user, post)
+  const create = buildChallengeNoteCreate(ctx, user, post, attachments)
   await sendToFollowersAndMentioned(ctx, user, challengeMentions(post.challenge), create)
 }
 
+/** An edit re-sends the attachment under the new `v`, so Mastodon fetches the chart afresh. */
 export const deliverFeedChallengeUpdate = async (
   deps: FeedDeliveryDeps,
   user: string,
   post: DeliverableChallenge,
+  hasStandings: HasDrawableStandings = hasDrawableStandings,
 ): Promise<void> => {
+  const attachments = await deliveredChallengeAttachments(deps, user, post, hasStandings)
   const ctx = await deps.federation.createContext(new URL(deps.origin))
-  const update = buildChallengeNoteUpdate(ctx, user, post)
+  const update = buildChallengeNoteUpdate(ctx, user, post, attachments)
   await sendToFollowersAndMentioned(ctx, user, challengeMentions(post.challenge), update)
 }
 

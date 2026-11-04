@@ -75,8 +75,12 @@ A feed post has a **`kind`**:
   page's existing OG preview card); an Aurboda peer additionally fetches the post's
   [structured payload](#native-charts-from-aurboda-peers-structured-enrichment) — the
   challenge document and a standings snapshot resolved at fetch time — and renders the
-  race chart and leaderboard natively. Shared via `POST /feed/challenges` (and the
-  `share_challenge` MCP tool) or the **Share to feed** button on the challenges page.
+  race chart and leaderboard natively. With `include_chart` (the default for a share,
+  "Attach standings chart image" in the dialog) the `Note` delivered to followers also
+  attaches the race rendered as a `Standings` PNG (see [Images](#images)), which an
+  Aurboda peer hides because its card draws the race itself. Shared via
+  `POST /feed/challenges` (and the `share_challenge` MCP tool) or the **Share to feed**
+  button on the challenges page.
   The host instance's automatic **completion post** (see
   [challenges.md](challenges.md#completion--winner-announcement)) is the same kind
   with a `result` payload in the `challenge` column — the final podium (ranks, names,
@@ -732,6 +736,26 @@ crisp, scalable `image/svg+xml` for **Aurboda-native** rendering (it stays sharp
 any size). Both share the same eligibility gate, capability-token model, and
 `no-store` revocability.
 
+A **challenge** post opted into `include_chart` renders its **standings race** (one
+cumulative line per member, in leaderboard colours, with a legend of the first eight
+members, the window's dates in the challenge timezone and the snapshot time) at:
+
+```
+GET /api/public/:username/feed/:postId/standings.png
+GET /api/public/:username/feed/:postId/standings.svg
+```
+
+The data is the post's [structured payload](#native-charts-from-aurboda-peers-structured-enrichment)
+resolved at request time, so the image shows the standings as they are, not as they were
+at share time. The endpoints 404 for a non-challenge post, a post without the opt-in, a
+`followers`-only post without its token, and a challenge without standings or without a
+member that has a sample. The render cache keys on the post's `updated_at` plus a
+5-minute bucket, the time remote members' standings are cached for. The delivered `Note`
+attaches it as `Standings` (1000×420) only when it would draw, checked by resolving the
+same payload before the `Create`/`Update` is sent; the `Note` served by the object
+dispatcher and the outbox does not carry it. The owner's own feed card shows it in place
+of the native race only when the post has no structured payload.
+
 An **article** renders one image per chart/correlation block for the same reason (so
 Mastodon and export tools attach a raster of each block), at its own endpoints:
 
@@ -932,6 +956,8 @@ Public / federation (unauthenticated):
 | `GET /public/:username/feed/:postId/chart.png`               | Rendered HR chart (PNG) for an opted-in post (`?token=` for followers-only)                                                                                                                                                                                             |
 | `GET /public/:username/feed/:postId/chart.svg`               | Same HR chart as crisp `image/svg+xml` for Aurboda-native rendering (`?token=` for followers-only)                                                                                                                                                                      |
 | `GET /public/:username/feed/:postId/route.png`               | Rendered GPS route map for an opted-in post (`?token=` for followers-only)                                                                                                                                                                                              |
+| `GET /public/:username/feed/:postId/standings.png`           | Rendered standings race chart (PNG) for an opted-in challenge post (`?token=` for followers-only)                                                                                                                                                                       |
+| `GET /public/:username/feed/:postId/standings.svg`           | Same standings race as crisp `image/svg+xml`                                                                                                                                                                                                                            |
 | `GET /public/:username/feed/:postId/blocks/:index/image.png` | Rendered PNG of an article's chart/correlation block (visibility-gated; `?token=` for followers-only)                                                                                                                                                                   |
 | `GET /public/:username/feed/:postId/blocks/:index/image.svg` | Same article block as crisp `image/svg+xml`                                                                                                                                                                                                                             |
 | `GET /public/:username/posts`                                | A user's public/unlisted posts (newest-first, keyset page of 20 + `next_cursor`) for their profile feed                                                                                                                                                                 |

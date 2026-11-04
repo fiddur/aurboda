@@ -5,6 +5,7 @@ import supertest from 'supertest'
 import { describe, expect, test, vi } from 'vitest'
 
 import type { FeedPostRecord } from '../db/index.ts'
+import type { RaceChartSvgData } from '../services/charts/race-chart-svg.ts'
 import type { ScatterSvgData } from '../services/charts/scatter-svg.ts'
 
 import { createNegativeCache, forgetArticleBlockMisses } from '../services/article-block-misses.ts'
@@ -19,6 +20,8 @@ import {
   type ResolvedArticleBlock,
   imageCacheKey,
   resolveImageWindow,
+  resolveStandingsPost,
+  standingsCacheKey,
 } from './feed-image-router.ts'
 
 const POST_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
@@ -290,10 +293,13 @@ describe('renderArticleBlockImage', () => {
     getPost: async () => null,
     getRoute: async () => [],
     getSeries: async () => [],
+    getStandingsChart: async () => null,
     renderChart: vi.fn(async () => Buffer.from('chart-png')),
     renderChartSvg: vi.fn(() => '<svg>chart</svg>'),
     renderRoute: async () => Buffer.from(''),
     renderScatter: vi.fn(async () => Buffer.from('scatter-png')),
+    renderRaceChart: async () => Buffer.from(''),
+    renderRaceChartSvg: () => '',
     renderScatterSvg: vi.fn(() => '<svg>scatter</svg>'),
     ...over,
   })
@@ -418,8 +424,11 @@ describe('article block image misses', () => {
         getPost: async () => post,
         getRoute: async () => [],
         getSeries: async () => [],
+        getStandingsChart: async () => null,
         renderChart: async () => Buffer.from('chart-png'),
         renderChartSvg: () => '<svg>chart</svg>',
+        renderRaceChart: async () => Buffer.from(''),
+        renderRaceChartSvg: () => '',
         renderRoute: async () => Buffer.from(''),
         renderScatter: async () => Buffer.from(''),
         renderScatterSvg: () => '',
@@ -446,5 +455,124 @@ describe('article block image misses', () => {
     const res = await supertest(app).get(path)
     expect(res.status).toBe(200)
     expect(res.headers['content-type']).toMatch(/image\/png/)
+  })
+})
+
+describe('standings images', () => {
+  const challengePost = (over: Partial<FeedPostRecord> = {}) =>
+    makePost({
+      activity_id: null,
+      challenge: { name: 'November steps', url: 'https://aurboda.example/u/fiddur/nov' },
+      include_map: false,
+      kind: 'challenge',
+      ...over,
+    })
+  const chart: RaceChartSvgData = {
+    asOf: new Date('2026-11-03T12:00:00Z'),
+    endTime: new Date('2026-11-30T23:00:00Z'),
+    lines: [
+      {
+        color: '#8b5cf6',
+        name: 'freja',
+        points: [
+          [new Date('2026-10-31T23:00:00Z'), 0],
+          [new Date('2026-11-01T23:00:00Z'), 1200],
+        ],
+      },
+    ],
+    startTime: new Date('2026-10-31T23:00:00Z'),
+    timezone: 'Europe/Stockholm',
+    title: 'November steps',
+  }
+  const appWith = (post: FeedPostRecord, data: RaceChartSvgData | null = chart) => {
+    const getStandingsChart = vi.fn(async () => data)
+    const renderRaceChart = vi.fn(async () => Buffer.from('race-png'))
+    const app = express()
+    app.use(
+      createFeedImageRouter({
+        getActivity: async () => null,
+        getArticleChartSeries: async () => [],
+        getCorrelationScatter: async () => null,
+        getPost: async () => post,
+        getRoute: async () => [],
+        getSeries: async () => [],
+        getStandingsChart,
+        renderChart: async () => Buffer.from(''),
+        renderChartSvg: () => '',
+        renderRaceChart,
+        renderRaceChartSvg: () => '<svg>race</svg>',
+        renderRoute: async () => Buffer.from(''),
+        renderScatter: async () => Buffer.from(''),
+        renderScatterSvg: () => '',
+      }),
+    )
+    return { app, getStandingsChart, renderRaceChart }
+  }
+  const png = `/public/fiddur/feed/${POST_ID}/standings.png`
+
+  test('resolveStandingsPost gates on kind, opt-in and capability token', async () => {
+    const get = (post: FeedPostRecord | null) => ({ getPost: async () => post })
+    expect(await resolveStandingsPost(get(challengePost()), 'fiddur', POST_ID)).not.toBeNull()
+    expect(await resolveStandingsPost(get(makePost()), 'fiddur', POST_ID)).toBeNull()
+    expect(
+      await resolveStandingsPost(get(challengePost({ include_chart: false })), 'fiddur', POST_ID),
+    ).toBeNull()
+    const followers = challengePost({ visibility: 'followers' })
+    expect(await resolveStandingsPost(get(followers), 'fiddur', POST_ID)).toBeNull()
+    expect(await resolveStandingsPost(get(followers), 'fiddur', POST_ID, 'secret-token')).not.toBeNull()
+    expect(await resolveStandingsPost(get(challengePost()), 'fiddur', 'not-a-uuid')).toBeNull()
+  })
+
+  test('404 for a non-challenge post', async () => {
+    expect((await supertest(appWith(makePost()).app).get(png)).status).toBe(404)
+  })
+
+  test('404 when the post did not opt into the chart', async () => {
+    const { app, getStandingsChart } = appWith(challengePost({ include_chart: false }))
+    expect((await supertest(app).get(png)).status).toBe(404)
+    expect(getStandingsChart).not.toHaveBeenCalled()
+  })
+
+  test('a followers-only post needs its token', async () => {
+    const { app } = appWith(challengePost({ visibility: 'followers' }))
+    expect((await supertest(app).get(png)).status).toBe(404)
+    const res = await supertest(app).get(`${png}?token=secret-token`)
+    expect(res.status).toBe(200)
+    expect(res.headers['content-type']).toMatch(/image\/png/)
+    expect(res.headers['cache-control']).toBe('no-store')
+  })
+
+  test('404 without standings or without a drawable line', async () => {
+    expect((await supertest(appWith(challengePost(), null).app).get(png)).status).toBe(404)
+    expect((await supertest(appWith(challengePost(), { ...chart, lines: [] }).app).get(png)).status).toBe(404)
+  })
+
+  test('renders once and serves the cached PNG on the second call', async () => {
+    const { app, getStandingsChart, renderRaceChart } = appWith(challengePost())
+    const first = await supertest(app).get(png)
+    expect(first.status).toBe(200)
+    expect(first.body).toEqual(Buffer.from('race-png'))
+    expect((await supertest(app).get(png)).status).toBe(200)
+    expect(getStandingsChart).toHaveBeenCalledTimes(1)
+    expect(renderRaceChart).toHaveBeenCalledTimes(1)
+  })
+
+  test('serves the SVG', async () => {
+    const res = await supertest(appWith(challengePost()).app).get(
+      `/public/fiddur/feed/${POST_ID}/standings.svg`,
+    )
+    expect(res.status).toBe(200)
+    expect(res.headers['content-type']).toMatch(/image\/svg\+xml/)
+  })
+
+  test('the cache key moves with the post version and every five minutes', () => {
+    const updated = new Date('2026-11-04T08:00:00Z')
+    const t = Date.parse('2026-11-04T12:00:00Z')
+    const key = standingsCacheKey('standingspng', 'fiddur', POST_ID, updated, t)
+    expect(standingsCacheKey('standingspng', 'fiddur', POST_ID, updated, t + 299_999)).toBe(key)
+    expect(standingsCacheKey('standingspng', 'fiddur', POST_ID, updated, t + 300_000)).not.toBe(key)
+    expect(standingsCacheKey('standingspng', 'fiddur', POST_ID, new Date(updated.getTime() + 1), t)).not.toBe(
+      key,
+    )
   })
 })

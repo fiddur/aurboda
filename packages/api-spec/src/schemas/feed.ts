@@ -202,6 +202,10 @@ export const shareChallengeBodySchema = z
       .uuid()
       .optional()
       .meta({ description: 'One of your own challenges to share (exclusive with `participation_id`)' }),
+    include_chart: z.boolean().default(true).meta({
+      description:
+        'Attach a rendered standings race-chart image (`standings.png`) for consumers that cannot draw the race themselves',
+    }),
     message: z.string().max(feedPostMessageMaxLength).optional().meta({
       description:
         'Personal note shown above the link (markdown, rendered through the shared sanitiser). Empty/absent shares no text.',
