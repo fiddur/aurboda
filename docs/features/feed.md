@@ -185,13 +185,20 @@ included) is re-delivered by the window pass described next.
 More generally, a shared activity that **changes** after it was shared — a new title or
 data (an enrich rule, a re-sync with different values, an edit), a merge with another
 source's row — is re-delivered the same way once the change has settled (the auto-share
-stabilisation delay, 10 minutes). Every activity row records when it last changed
-(`activities.updated_at`, set by a trigger only on a real change, so an identical
-re-sync counts as nothing), and the auto-share queue's pass over each mutation window
+stabilisation delay, 10 minutes). A rename of the activity type or of its category, and
+the one-off data migrations that rewrite activity rows at boot, are changes too, on
+purpose: the post's title carries the type name. Every shared activity they touch is
+re-delivered, lazily, as later mutation windows cover it, so renaming a widely shared
+type fans its `Update`s out over days rather than all at once. Every activity row
+records when it last changed (`activities.updated_at`, set by a trigger only on a real
+change, so an identical re-sync counts as nothing, and stamped with the statement's
+wall-clock time, so a row touched late in a long sync transaction still compares as
+newer than a post created mid-transaction), and the auto-share queue's pass over each mutation window
 looks at the shared activities in it (the ones an activity post references, superseded
 rows included) and re-delivers every activity post whose version (`updated_at`) is
 older than its merge group's newest change. This covers manual shares too, has no age limit, and runs
-whether or not any auto-share rule is enabled.
+whether or not any auto-share rule is enabled. During a deploy's overlap two replicas may
+both deliver an `Update` for the same post; remotes treat the duplicate as idempotent.
 
 The `Note` is Mastodon-compatible: a structured HTML `content` — the bold title
 headline, the author's personal message (if any), a line saying when the **activity**
