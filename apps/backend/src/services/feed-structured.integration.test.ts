@@ -9,9 +9,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
  * against a live database.
  */
 import { insertActivity } from '../db/activities/index.ts'
-import { createArticlePost, createFeedPost } from '../db/feed.ts'
+import { createChallenge, upsertChallengeMember } from '../db/challenges.ts'
+import { createArticlePost, createChallengePost, createFeedPost } from '../db/feed.ts'
 import { insertTimeSeries } from '../db/time-series.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
+import { configureStructuredChallenge } from './feed-structured-challenge.ts'
 import { resolveStructuredPost } from './feed-structured.ts'
 
 const CONTAINER_TIMEOUT = 120_000
@@ -307,5 +309,75 @@ describe('resolveStructuredPost — article posts', () => {
     const structured = await resolveStructuredPost(user, post.id)
     if (structured?.kind !== 'article') throw new Error('expected an article payload')
     expect(structured.blocks).toEqual([{ markdown: 'Intro', type: 'prose' }])
+  })
+})
+
+describe('resolveStructuredPost — challenge posts', () => {
+  beforeAll(async () => {
+    await startTestDb()
+    configureStructuredChallenge({ apiBaseUrl: 'https://qs.example/api', webHost: 'https://qs.example' })
+  }, CONTAINER_TIMEOUT)
+
+  afterAll(async () => {
+    await stopTestDb()
+  })
+
+  beforeEach(async () => {
+    await cleanTestDb()
+  })
+
+  test("resolves an own challenge share to its document and the local member's standings", async () => {
+    const user = getTestUser()
+    await insertTimeSeries(user, [
+      { metric: 'resting_heart_rate', source: 'manual', time: new Date('2026-06-01T08:00:00Z'), value: 50 },
+      { metric: 'resting_heart_rate', source: 'manual', time: new Date('2026-06-02T08:00:00Z'), value: 60 },
+    ])
+    const challenge = await createChallenge(user, {
+      announce_winner: true,
+      end_ts: new Date('2026-06-03T00:00:00Z'),
+      is_public: true,
+      name: 'June RHR',
+      spec: {
+        activity_type_id: null,
+        aggregation: 'sum',
+        bucket_size: '1d',
+        filter_field: null,
+        filter_value: null,
+        measure: null,
+        pattern: 'resting_heart_rate',
+        source_type: 'metric',
+        unit: 'bpm',
+      },
+      start_ts: new Date('2026-06-01T00:00:00Z'),
+      timezone: 'UTC',
+    })
+    await upsertChallengeMember(user, challenge.id, {
+      display_name: user,
+      identity_base_url: `https://qs.example/u/${user}`,
+      kind: 'local',
+      local_user: user,
+    })
+    const post = await createChallengePost(user, {
+      challenge: { name: 'June RHR', url: `https://qs.example/u/${user}/${challenge.slug}` },
+      message: 'Come along',
+      visibility: 'public',
+    })
+
+    const structured = await resolveStructuredPost(user, post.id)
+    if (structured?.kind !== 'challenge') throw new Error('expected a challenge payload')
+    expect(structured.message).toBe('Come along')
+    expect(structured.challenge.name).toBe('June RHR')
+    expect(structured.challenge.url).toBe(`https://qs.example/u/${user}/${challenge.slug}`)
+    expect(structured.standings?.members).toHaveLength(1)
+    expect(structured.standings?.members[0].total).toBe(110)
+  })
+
+  test('a challenge share whose challenge is gone resolves to null', async () => {
+    const user = getTestUser()
+    const post = await createChallengePost(user, {
+      challenge: { name: 'Gone', url: `https://qs.example/u/${user}/nope` },
+      visibility: 'public',
+    })
+    expect(await resolveStructuredPost(user, post.id)).toBeNull()
   })
 })

@@ -403,6 +403,11 @@ implementations ignore. The ActivityPub half — the `Event` object (§2), `Join
 `Leave` in the inbox (§4.1) and `attendees` — is not yet implemented, nor is
 `joinMode: restricted`.
 
+A `challenge` feed post is still a plain `Note` with a link. Aurboda peers also
+fetch the post's Aurboda-only structured payload, which carries the §3 document
+(as listed, so without `joinToken` and `members`) and a §6 standings snapshot,
+and render the race from that.
+
 ## Security considerations
 
 - Entry fetches are the host's outbound requests to URLs that members chose:
