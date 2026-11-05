@@ -1,39 +1,13 @@
 import type { DataFieldDefinition, DataSchemaDefinition } from '@aurboda/api-spec'
 
-import { useQuery } from '@tanstack/react-query'
 import { useEffect, useRef } from 'preact/hooks'
 
+import { KnownValuesInput } from '../../components/KnownValuesInput'
 import { ListFieldEditor } from '../../components/ListFieldEditor'
 import { fieldLabel, listFields, scalarFields } from '../../components/sessions/sessionView'
-import { fetchActivityFieldValues } from '../../state/api'
 
 const offersKnownValues = (field: DataFieldDefinition) =>
   field.type === 'string' && Boolean(field.is_categorical) && !field.enum_values
-
-export const KnownValues = ({
-  id,
-  activityType,
-  field,
-}: {
-  id: string
-  activityType: string
-  field: string
-}) => {
-  const { data } = useQuery({
-    queryFn: () => fetchActivityFieldValues(activityType, field),
-    queryKey: ['activity-field-values', activityType, field],
-    staleTime: 5 * 60 * 1000,
-  })
-  return (
-    <datalist id={id}>
-      {data?.values.map((v) => (
-        <option key={v.value} value={v.value}>
-          {v.count}×
-        </option>
-      ))}
-    </datalist>
-  )
-}
 
 const FieldInput = ({
   field,
@@ -105,20 +79,28 @@ const FieldInput = ({
     )
   }
 
-  const listId = offersKnownValues(field) ? `known-values-${field.name}` : undefined
-  return (
-    <>
-      <input
-        ref={ref}
-        type="text"
+  if (offersKnownValues(field)) {
+    return (
+      <KnownValuesInput
+        activityType={activityType}
+        field={field.name}
         class="edit-datetime-input"
-        list={listId}
-        autoComplete="off"
         value={(value as string) ?? ''}
-        onInput={(e) => onChange((e.target as HTMLInputElement).value || null)}
+        onChange={(v) => onChange(v || null)}
+        focus={focus}
       />
-      {listId && <KnownValues id={listId} activityType={activityType} field={field.name} />}
-    </>
+    )
+  }
+
+  return (
+    <input
+      ref={ref}
+      type="text"
+      class="edit-datetime-input"
+      autoComplete="off"
+      value={(value as string) ?? ''}
+      onInput={(e) => onChange((e.target as HTMLInputElement).value || null)}
+    />
   )
 }
 
