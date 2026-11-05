@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { barChartYMax, overlayLine, parseLinePoints } from './bar-chart-utils'
+import { barChartYMax, clipBarSpan, overlayLine, parseLinePoints } from './bar-chart-utils'
 
 describe('barChartYMax', () => {
   test('takes the largest bar without a line', () => {
@@ -45,5 +45,24 @@ describe('overlayLine', () => {
   test('is undefined without a line or with no point in range', () => {
     expect(overlayLine(undefined, domain)).toBeUndefined()
     expect(overlayLine({ data: [data[0]] }, domain)).toBeUndefined()
+  })
+})
+
+describe('clipBarSpan', () => {
+  test('keeps a bar inside the plot as it is', () => {
+    expect(clipBarSpan(10, 8, 100)).toEqual({ width: 8, x: 10 })
+  })
+
+  test('cuts a bar that starts left of the y axis at the axis', () => {
+    expect(clipBarSpan(-5, 8, 100)).toEqual({ width: 3, x: 0 })
+  })
+
+  test('cuts a bar that runs past the right edge', () => {
+    expect(clipBarSpan(95, 8, 100)).toEqual({ width: 5, x: 95 })
+  })
+
+  test('drops a bar entirely outside the plot', () => {
+    expect(clipBarSpan(-10, 8, 100)).toBeNull()
+    expect(clipBarSpan(100, 8, 100)).toBeNull()
   })
 })
