@@ -10,6 +10,8 @@
  * never mistaken for a share slug.
  */
 import {
+  type FeedPost,
+  type FeedPostResponse,
   type FeedPostsResponse,
   type FeedPostStructuredResponse,
   type FeedStructuredPost,
@@ -21,14 +23,21 @@ import {
 } from '@aurboda/api-spec'
 
 import { isValidUsername } from '../api/auth-routes.ts'
-import { findCoveringSharedSeriesWindow, isMissingDatabase, listPublicFeedPostsKeyset } from '../db/index.ts'
+import {
+  type FeedPostRecord,
+  findCoveringSharedSeriesWindow,
+  getFeedPostById,
+  isMissingDatabase,
+  listPublicFeedPostsKeyset,
+} from '../db/index.ts'
+import { isPubliclyVisible } from '../services/activitypub/object.ts'
 import { toWireKey, wireMetricToMetricType } from '../services/activitypub/quant-wire.ts'
 import { resolvePublicSeries } from '../services/feed-series.ts'
 import { loadAuthorizedStructuredPost, resolveStructuredContent } from '../services/feed-structured.ts'
 import { serializeFeedPost } from '../services/feed.ts'
 import { decodeKeysetCursor, encodeKeysetCursor } from '../services/keyset-cursor.ts'
 import { queryMetricsBucketed } from '../services/queries/index.ts'
-import { getSettings } from '../services/settings.ts'
+import { getSettings, type UserSettings } from '../services/settings.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateQuery } from '../validation.ts'
 import { createRenderCache } from './feed-image-router.ts'
@@ -58,6 +67,27 @@ export const createFeedPublicRouter = (): TypedRouter => {
   // to PROFILE_FEED_LIMIT entries per profile without a handful of concurrently
   // browsed profiles thrashing it. Producing `null` (no content) isn't cached.
   const structuredCache = createRenderCache<FeedStructuredPost>(200)
+
+  // One post as a visitor sees it, shared by the profile listing and the single-post
+  // permalink so the two never drift.
+  const serializePublicPost = async (
+    username: string,
+    record: FeedPostRecord,
+    settings: UserSettings | null,
+  ): Promise<FeedPost> => {
+    const post = await serializeFeedPost(username, record, { settings })
+    if (
+      record.kind === 'activity' ||
+      record.kind === 'article' ||
+      record.kind === 'challenge' ||
+      record.kind === 'exercise'
+    ) {
+      const key = `structured:${username}:${record.id}:${record.updated_at.getTime()}:${Math.floor(Date.now() / 3_600_000)}`
+      post.structured =
+        (await structuredCache(key, () => resolveStructuredContent(username, record))) ?? undefined
+    }
+    return post
+  }
 
   router.get<{ username: string }, PublicSeriesResponse, unknown, PublicSeriesQuery>(
     '/public/:username/series',
@@ -140,22 +170,8 @@ export const createFeedPublicRouter = (): TypedRouter => {
         const records = hasMore ? rows.slice(0, PROFILE_FEED_LIMIT) : rows
         const last = records[records.length - 1]
         const settings = await getSettings(username).catch(() => null)
-        const hourBucket = Math.floor(Date.now() / 3_600_000)
         const posts = await Promise.all(
-          records.map(async (record) => {
-            const post = await serializeFeedPost(username, record, { settings })
-            if (
-              record.kind === 'activity' ||
-              record.kind === 'article' ||
-              record.kind === 'challenge' ||
-              record.kind === 'exercise'
-            ) {
-              const key = `structured:${username}:${record.id}:${record.updated_at.getTime()}:${hourBucket}`
-              post.structured =
-                (await structuredCache(key, () => resolveStructuredContent(username, record))) ?? undefined
-            }
-            return post
-          }),
+          records.map((record) => serializePublicPost(username, record, settings)),
         )
         res.setHeader('Cache-Control', 'no-store')
         res.json({
@@ -166,6 +182,35 @@ export const createFeedPublicRouter = (): TypedRouter => {
       } catch (error) {
         if (isMissingDatabase(error)) {
           return res.status(404).json({ error: 'Not found', posts: [], success: false })
+        }
+        throw error
+      }
+    },
+  )
+
+  // One post's permalink page (`/u/:username/posts/:postId`), which a federated
+  // Note's id URL redirects a browser to. Only `public`/`unlisted` resolve — no
+  // capability token here, so a followers-only post never renders on the web.
+  // Replies resolve too: their ids are opened from remote servers like any other.
+  router.get<{ username: string; postId: string }, FeedPostResponse>(
+    '/public/:username/posts/:postId',
+    async (req, res) => {
+      const { postId, username } = req.params
+      if (!isValidUsername(username) || !UUID_RE.test(postId)) {
+        return res.status(404).json({ error: 'Not found', success: false })
+      }
+      try {
+        const record = await getFeedPostById(username, postId)
+        if (!record || !isPubliclyVisible(record.visibility)) {
+          return res.status(404).json({ error: 'Not found', success: false })
+        }
+        const settings = await getSettings(username).catch(() => null)
+        const post = await serializePublicPost(username, record, settings)
+        res.setHeader('Cache-Control', 'no-store')
+        res.json({ post, success: true })
+      } catch (error) {
+        if (isMissingDatabase(error)) {
+          return res.status(404).json({ error: 'Not found', success: false })
         }
         throw error
       }

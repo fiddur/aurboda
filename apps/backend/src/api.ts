@@ -22,6 +22,7 @@ import {
   getDeductionRulesByIds,
   getDetectedLocationById,
   getEnabledDeductionRules,
+  getFeedPostById,
   getFeedTombstone,
   getNamedLocations,
   insertActivities,
@@ -32,6 +33,7 @@ import {
   findActivityByExternalId,
   insertRawRecord,
   insertTimeSeries,
+  isMissingDatabase,
   listChallengesAwaitingResult,
   listReplyUncheckedEntries,
   listUnenrichedAurbodaEntries,
@@ -85,6 +87,7 @@ import {
 } from './services/activitypub/deliver.ts'
 import { createFeedFederation, deliverActorUpdate } from './services/activitypub/federation.ts'
 import { configureFederationLogging } from './services/activitypub/logging.ts'
+import { isPubliclyVisible } from './services/activitypub/object.ts'
 import { createTimelineBackfiller } from './services/activitypub/timeline-backfill.ts'
 import { createAurbodaEnrichAttempt } from './services/activitypub/timeline-enrich.ts'
 import { createAuditLogPruneQueue } from './services/audit-log-prune-queue.ts'
@@ -815,9 +818,19 @@ const main = async () => {
   // for the actor document, and this redirects a request that prefers HTML to
   // /u/:username (or answers 406 when nothing it serves is acceptable). An
   // account is one with a per-user database — the same existence test the
-  // background sweeps use — so an unknown actor keeps its 404.
+  // background sweeps use — so an unknown actor keeps its 404. A public post's
+  // id redirects a browser to its permalink page /u/:username/posts/:postId.
   httpd.use(
     createActorHtmlRouter({
+      isPublicPost: async (username, postId) => {
+        try {
+          const post = await getFeedPostById(username, postId)
+          return post != null && isPubliclyVisible(post.visibility)
+        } catch (error) {
+          if (isMissingDatabase(error)) return false
+          throw error
+        }
+      },
       origin: webHost,
       userExists: async (username) => (await listUserNames(userDb)).includes(username),
     }),
