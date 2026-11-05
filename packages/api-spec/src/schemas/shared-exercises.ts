@@ -181,6 +181,10 @@ export const publicSharedExerciseResponseSchema = baseResponseSchema
     activity_type: z.string().optional().meta({ description: 'Activity type the exercise belongs to' }),
     activity_type_name: z.string().optional().meta({ description: 'Display name of the activity type' }),
     data: sharedExerciseDataSchema.optional(),
+    field: z
+      .string()
+      .optional()
+      .meta({ description: 'Item path the exercise is a value of, e.g. `sets.exercise`' }),
     name: sharedExerciseNameSchema.optional(),
     profile_url: z.string().optional().meta({ description: 'Absolute URL of the owner public profile' }),
     share_url: z.string().optional().meta({ description: 'Absolute URL of this shared exercise' }),

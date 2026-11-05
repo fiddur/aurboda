@@ -1,0 +1,35 @@
+.public-exercise-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+
+.public-exercise-header h1 {
+  margin: 0;
+}
+
+.public-exercise-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: auto;
+}
+
+.public-exercise-manage {
+  margin-left: 0.5rem;
+  color: #6b7280;
+  font-size: 0.95rem;
+  text-decoration: none;
+}
+
+.public-exercise-manage:hover {
+  color: #8b5cf6;
+}
+
+@media (prefers-color-scheme: dark) {
+  .public-exercise-manage {
+    color: #9ca3af;
+  }
+}

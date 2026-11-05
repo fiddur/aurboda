@@ -318,9 +318,7 @@
 }
 
 .activity-type-item-share a,
-.activity-type-item-share-open,
-.activity-type-item-share-stop,
-.activity-type-item-share .share-link-btn {
+.activity-type-item-share-stop {
   padding: 0;
   border: none;
   background: none;
@@ -334,10 +332,39 @@
 }
 
 .activity-type-item-share a:hover,
-.activity-type-item-share-open:hover,
-.activity-type-item-share-stop:hover,
-.activity-type-item-share .share-link-btn:hover {
+.activity-type-item-share-stop:hover {
   text-decoration: underline;
+}
+
+.activity-type-item-published,
+.activity-type-item-publish {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.activity-type-item-published {
+  color: #374151;
+}
+
+.activity-type-item-publish {
+  padding: 0.3rem 0.7rem;
+  border: 1px solid #673ab8;
+  border-radius: 6px;
+  background: transparent;
+  color: #673ab8;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.activity-type-item-publish:hover {
+  background: #673ab8;
+  color: #fff;
+}
+
+.activity-type-item-publish:focus-visible {
+  outline: 2px solid #673ab8;
+  outline-offset: 2px;
 }
 
 .activity-type-item-share .error {
@@ -346,10 +373,22 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  .activity-type-item-share a,
-  .activity-type-item-share-open,
-  .activity-type-item-share .share-link-btn {
+  .activity-type-item-share a {
     color: #a78bfa;
+  }
+
+  .activity-type-item-published {
+    color: #d1d5db;
+  }
+
+  .activity-type-item-publish {
+    border-color: #8b5cf6;
+    color: #a78bfa;
+  }
+
+  .activity-type-item-publish:hover {
+    background: #673ab8;
+    color: #fff;
   }
 
   .activity-type-item-share-stop {

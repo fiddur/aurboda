@@ -1,36 +1,93 @@
 import { useState } from 'preact/hooks'
 
-/**
- * Share control for public pages: uses the native share sheet
- * (`navigator.share`, mainly mobile) when available, otherwise copies the link
- * to the clipboard with brief "Copied!" feedback.
- */
-export function ShareLinkButton({ url, title }: { url: string; title?: string }) {
-  const [copied, setCopied] = useState(false)
+import { canNativeShare, canWriteClipboard, isAbortError } from './share-link'
+import './ShareLinkButton.css'
 
-  const onClick = async () => {
-    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
-      try {
-        await navigator.share({ title, url })
-        return
-      } catch (err) {
-        // A deliberate cancel (AbortError) is a no-op; only a real failure
-        // falls through to the clipboard copy.
-        if (err instanceof Error && err.name === 'AbortError') return
-      }
-    }
+const iconProps = {
+  'aria-hidden': true,
+  fill: 'none',
+  height: 18,
+  stroke: 'currentColor',
+  'stroke-linecap': 'round',
+  'stroke-linejoin': 'round',
+  'stroke-width': 2,
+  viewBox: '0 0 24 24',
+  width: 18,
+} as const
+
+export const GlobeIcon = () => (
+  <svg {...iconProps}>
+    <circle cx="12" cy="12" r="10" />
+    <line x1="2" y1="12" x2="22" y2="12" />
+    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+  </svg>
+)
+
+const LinkIcon = () => (
+  <svg {...iconProps}>
+    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+  </svg>
+)
+
+const ShareSheetIcon = () => (
+  <svg {...iconProps}>
+    <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+    <polyline points="16 6 12 2 8 6" />
+    <line x1="12" y1="2" x2="12" y2="15" />
+  </svg>
+)
+
+/** Copies `url`, falling back to a prompt where the clipboard API is missing (instances served over plain http). */
+export function useCopyLink(url: string): { copied: boolean; copy: () => Promise<void> } {
+  const [copied, setCopied] = useState(false)
+  const copy = async () => {
     try {
-      await navigator.clipboard.writeText(url)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+      if (canWriteClipboard(navigator)) {
+        await navigator.clipboard.writeText(url)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      } else {
+        window.prompt('Copy this link:', url)
+      }
     } catch {
-      // Clipboard unavailable (e.g. insecure context) — nothing more we can do.
+      window.prompt('Copy this link:', url)
+    }
+  }
+  return { copied, copy }
+}
+
+export function CopyLinkButton({ url, label = 'Copy link' }: { url: string; label?: string }) {
+  const { copied, copy } = useCopyLink(url)
+  const text = copied ? 'Copied!' : label
+  return (
+    <>
+      <button type="button" class="icon-button" onClick={copy} aria-label={text} title={text}>
+        <LinkIcon />
+      </button>
+      {copied && (
+        <span class="copy-link-feedback" role="status">
+          Copied!
+        </span>
+      )}
+    </>
+  )
+}
+
+export function NativeShareButton({ url, title }: { url: string; title?: string }) {
+  if (typeof navigator === 'undefined' || !canNativeShare(navigator)) return null
+
+  const share = async () => {
+    try {
+      await navigator.share({ title, url })
+    } catch (err) {
+      if (!isAbortError(err)) console.error('Share failed', err)
     }
   }
 
   return (
-    <button type="button" class="share-link-btn" onClick={onClick} title="Share this page">
-      {copied ? 'Copied!' : 'Share'}
+    <button type="button" class="icon-button" onClick={share} aria-label="Share…" title="Share…">
+      <ShareSheetIcon />
     </button>
   )
 }

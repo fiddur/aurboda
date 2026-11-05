@@ -269,6 +269,7 @@ export const createPublicSharesRouter = (webHost: string): TypedRouter => {
           activity_type: exercise.activity_type,
           activity_type_name: definition?.display_name ?? exercise.activity_type,
           data,
+          field: exercise.field,
           name: exercise.name,
           profile_url: buildProfileUrl(webHost, username),
           share_url: buildShareUrl(webHost, username, exercise.slug),
