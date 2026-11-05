@@ -5,7 +5,13 @@
 import * as d3 from 'd3'
 import { useEffect, useRef } from 'preact/hooks'
 
-import { type BarChartLine, type BarLinePoint, barChartYMax, overlayLine } from './bar-chart-utils'
+import {
+  type BarChartLine,
+  type BarLinePoint,
+  barChartYMax,
+  clipBarSpan,
+  overlayLine,
+} from './bar-chart-utils'
 import { renderTimeAxis, renderYearBreaks, type TimeAxisLayout, timeAxisLayout } from './time-axis'
 import './BarChart.css'
 
@@ -136,15 +142,18 @@ function renderBars(
   dateFormat: (date: Date) => string,
   getBarHref?: (info: BarClickInfo) => string,
 ) {
+  const plotWidth = x.range()[1]
   for (const d of bars) {
+    const span = clipBarSpan(x(d.date), Math.max(barWidth, 1), plotWidth)
+    if (!span) continue
     const href = getBarHref?.({ bucket_start: d.date.toISOString() })
     const wrapper = createBarWrapper(g, href)
     wrapper
       .append('rect')
       .attr('class', 'bar')
-      .attr('x', x(d.date))
+      .attr('x', span.x)
       .attr('y', y(d.value))
-      .attr('width', Math.max(barWidth, 1))
+      .attr('width', span.width)
       .attr('height', Math.max(innerHeight - y(d.value), 0))
       .attr('fill', color)
       .attr('rx', 2)
@@ -199,6 +208,7 @@ function renderMultiSeriesBars(
   dateFormat: (date: Date) => string,
   getBarHref?: (info: BarClickInfo) => string,
 ) {
+  const plotWidth = x.range()[1]
   const seriesCount = multiSeries.length
   const subBarWidth = Math.max(barWidth / seriesCount - 1, 1)
 
@@ -236,6 +246,8 @@ function renderMultiSeriesBars(
     const dataMap = new Map(series.data.map((d) => [d.bucket_start, d.value]))
 
     for (const bucketDate of allBuckets) {
+      const span = clipBarSpan(x(bucketDate) + si * (subBarWidth + 1), Math.max(subBarWidth, 1), plotWidth)
+      if (!span) continue
       const bucketIso = bucketDate.toISOString()
       const value = dataMap.get(bucketIso) ?? 0
       const href = getBarHref?.({ bucket_start: bucketIso, series_name: series.name })
@@ -244,9 +256,9 @@ function renderMultiSeriesBars(
         .append('rect')
         .attr('class', `bar-s${si}`)
         .attr('data-bucket', bucketIso)
-        .attr('x', x(bucketDate) + si * (subBarWidth + 1))
+        .attr('x', span.x)
         .attr('y', y(value))
-        .attr('width', Math.max(subBarWidth, 1))
+        .attr('width', span.width)
         .attr('height', Math.max(innerHeight - y(value), 0))
         .attr('fill', series.color)
         .attr('rx', 1)
