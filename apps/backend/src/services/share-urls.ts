@@ -12,6 +12,10 @@ const joinUrl = (base: string, path: string): string =>
 export const buildProfileUrl = (webHost: string, username: string): string =>
   joinUrl(webHost, `u/${encodeURIComponent(username)}`)
 
+/** Absolute URL of a single feed post's permalink page. */
+export const buildPostUrl = (webHost: string, username: string, postId: string): string =>
+  joinUrl(webHost, `u/${encodeURIComponent(username)}/posts/${encodeURIComponent(postId)}`)
+
 /** Absolute URL of a single shared dashboard. */
 export const buildShareUrl = (webHost: string, username: string, slug: string): string =>
   joinUrl(webHost, `u/${encodeURIComponent(username)}/${encodeURIComponent(slug)}`)

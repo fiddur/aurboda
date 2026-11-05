@@ -3,6 +3,7 @@ import {
   activityFieldValuesQuerySchema,
   activityItemHistoryQuerySchema,
   activityNeighborsQuerySchema,
+  activityRecordsQuerySchema,
   activitySessionsQuerySchema,
   activityTypeSchema,
   bucketSizeSchema,
@@ -26,6 +27,7 @@ import {
   getMediaPlays,
 } from '../db/index.ts'
 import { firstActivityFeatures } from '../services/activity-features.ts'
+import { getActivityRecords } from '../services/activity-records.ts'
 import { getLatestSleep } from '../services/latest-sleep.ts'
 import { getCustomMetrics } from '../services/mutations.ts'
 import {
@@ -232,6 +234,19 @@ category filters to runs carrying that run category (low_hr, intervals, long, te
       }
       const sessions = await queryActivitySessions(user, activity_type, sessionsOptionsFromQuery(query))
       return tzJsonResponse({ data: sessions, success: true }, tz)
+    },
+  )
+
+  server.tool(
+    'get_activity_records',
+    'The best value of each record measure (e1rm, max_weight, max_time, max_reps) for one activity type, optionally one item value such as sets.exercise = Bench Press, with the date and set that reached it and the session it was reached in. filter_field + filter_value narrow to one value ("(none)" for sessions without one); start limits it to sessions from then on, all time when omitted.',
+    { activity_type: activityTypeSchema, ...activityRecordsQuerySchema.shape, tz: tzSchema },
+    async ({ activity_type, tz, ...query }) => {
+      if ((query.filter_field === undefined) !== (query.filter_value === undefined)) {
+        return errorResponse('filter_field and filter_value must be given together')
+      }
+      const records = await getActivityRecords(user, activity_type, query)
+      return tzJsonResponse({ data: records, success: true }, tz)
     },
   )
 

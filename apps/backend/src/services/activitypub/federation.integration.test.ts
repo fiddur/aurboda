@@ -22,6 +22,7 @@ import {
   createReplyPost,
   deleteFeedPost,
   type FeedPostInput,
+  getFeedPostById,
   getFeedTombstone,
   listPublicFeedPostsPage,
 } from '../../db/feed.ts'
@@ -40,6 +41,7 @@ import {
   handleInboundFollow,
   handleInboundUpdate,
 } from './federation.ts'
+import { isPubliclyVisible } from './object.ts'
 import { dateToTemporalInstant } from './temporal-interop.ts'
 
 const CONTAINER_TIMEOUT = 120_000
@@ -628,6 +630,10 @@ describe('Feed federation actor + WebFinger', () => {
     app.use(integrateFederation(fed, () => undefined))
     app.use(
       createActorHtmlRouter({
+        isPublicPost: async (username, postId) => {
+          const post = await getFeedPostById(username, postId)
+          return post != null && isPubliclyVisible(post.visibility)
+        },
         origin: ORIGIN,
         userExists: async (username) => users.includes(username),
       }),
@@ -676,6 +682,43 @@ describe('Feed federation actor + WebFinger', () => {
       .get(`/users/${user}`)
       .set('Accept', 'image/png')
     expect(res.status).toBe(406)
+  })
+
+  test('a browser opening a public post id redirects to its permalink page (#1406)', async () => {
+    const user = getTestUser()
+    const post = await sharePost(user, await insertExercise(user))
+    const res = await supertest(buildActorApp([user]))
+      .get(`/users/${user}/feed/${post.id}`)
+      .set('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8')
+    expect(res.status).toBe(302)
+    expect(res.headers.location).toBe(`${ORIGIN}/u/${user}/posts/${post.id}`)
+  })
+
+  test('a wildcard Accept on a post id gets the Note', async () => {
+    const user = getTestUser()
+    const post = await sharePost(user, await insertExercise(user))
+    const res = await supertest(buildActorApp([user]))
+      .get(`/users/${user}/feed/${post.id}`)
+      .set('Accept', '*/*')
+      .buffer(true)
+      .parse((response, done) => {
+        let body = ''
+        response.on('data', (chunk: Buffer) => (body += chunk.toString()))
+        response.on('end', () => done(null, body))
+      })
+    expect(res.status).toBe(200)
+    const note = JSON.parse(res.body as string)
+    expect(note.id).toBe(`${ORIGIN}/users/${user}/feed/${post.id}`)
+    expect(note.type).toContain('Note')
+  })
+
+  test('a browser opening a followers-only post id is not redirected', async () => {
+    const user = getTestUser()
+    const post = await sharePost(user, await insertExercise(user), { visibility: 'followers' })
+    const res = await supertest(buildActorApp([user]))
+      .get(`/users/${user}/feed/${post.id}`)
+      .set('Accept', 'text/html')
+    expect(res.status).toBe(404)
   })
 
   test('a browser navigation to an UNKNOWN actor is not redirected either', async () => {

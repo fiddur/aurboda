@@ -64,6 +64,71 @@ A full-width bar chart of bucketed values (`GET /chart-data`) for an activity ty
 
 **Configuration:** Source type, pattern, bucket size, lookback period, aggregation (count/sum/mean/max), optional breakdown fields. For an activity type with list items (strength sets), `measure` charts that measure of each session instead of its duration or count, `filter_field`/`filter_value` (e.g. `sets.exercise` = `Bench Press`) take it over one exercise's items, and a `sets.exercise` breakdown gives one series per exercise (see [Activity Types: Exercises and measures](activity-types.md#exercises-and-measures)).
 
+### Combined Chart
+
+Bars and one or more trend lines drawn over one time axis and one y scale, like an exercise's
+weekly best e1RM with its decaying best over it. Add one from an exercise page's chart menu
+(**Add to dashboard** when the line is drawn), or through the API or MCP; the add-widget dialog does not
+offer it yet.
+
+**Configuration:** optional `title` (default "Combined chart"), `lookback_days` shared by every
+layer, and `layers`, a list of typed layers drawn in order:
+
+- `{ "kind": "bars", ... }` takes a bar chart's source fields (`source_type`, `pattern`,
+  `bucket_size`, `aggregation`, `measure`, `filter_field`, `filter_value`, `tag_definition_id`);
+- `{ "kind": "trend", ... }` takes a trend chart's source fields (`source_type`, `pattern`,
+  `half_life_days`, `aggregation`, `display_period`, `missing_days`, `measure`, `filter_field`,
+  `filter_value`, `tag_definition_id`) and an optional line `color`.
+
+A layer has no title, lookback or breakdown of its own. For now a combined chart has exactly one
+`bars` layer and one to three `trend` layers; that rule may be relaxed as more layer kinds are
+added. The first trend line without a `color` takes the usual line colour, later ones the
+breakdown palette. On a shared dashboard a layer that cannot be resolved is drawn without data
+while the others still show.
+
+```json
+{
+  "type": "combined_chart",
+  "config": {
+    "lookback_days": 365,
+    "layers": [
+      {
+        "kind": "bars",
+        "source_type": "activity_type",
+        "pattern": "strength_training",
+        "bucket_size": "1w",
+        "aggregation": "max",
+        "measure": "e1rm",
+        "filter_field": "sets.exercise",
+        "filter_value": "Bench Press"
+      },
+      {
+        "kind": "trend",
+        "source_type": "activity_type",
+        "pattern": "strength_training",
+        "half_life_days": 120,
+        "measure": "e1rm",
+        "filter_field": "sets.exercise",
+        "filter_value": "Bench Press"
+      }
+    ]
+  }
+}
+```
+
+### Record Card
+
+The best value of one activity measure with the date it was first reached and, for e1RM and max
+weight, the set behind it, e.g. "Bench Press · Best e1RM: 39.5 kg, 21 Dec 2025 · 7×32 kg". On your
+own dashboard the date links to that session. Add one from the ⋮ menu on an exercise page's record
+card, or through the API or MCP; it is placed in a metrics section.
+
+**Configuration:** `source_type` (`activity_type`), `pattern` (the activity type), `measure` (one of
+the record measures `e1rm`, `max_weight`, `max_time`, `max_reps`), optional `filter_field` +
+`filter_value` (both or neither, e.g. `sets.exercise` = `Bench Press`), optional `lookback_days`
+(all time when absent) and optional `title` (default "<value or type> · <measure>"). Data comes
+from `GET /activity-types/:name/records` (MCP: `get_activity_records`).
+
 ### Correlation Impact
 
 Shows how a specific activity, tag, or location affects your HRV. Displays three bars: "before" (baseline), "during" (the activity), and "after" (recovery), showing the average HRV in each phase. Includes an occurrence count so you can judge the statistical weight.
@@ -80,11 +145,11 @@ A clickable navigation tile with a colored icon and label. Links to any page in 
 
 Widgets are organized into sections, each with a title and a layout type:
 
-| Section type | Layout                                                        | Best for                                     |
-| ------------ | ------------------------------------------------------------- | -------------------------------------------- |
-| **Metrics**  | Responsive card grid (auto-fills columns, minimum 200px wide) | Metric cards, sparklines, activity summaries |
-| **Charts**   | Single column, full width                                     | Trend charts, correlation charts             |
-| **Links**    | Responsive grid of smaller tiles (minimum 140px wide)         | Quick-link navigation                        |
+| Section type | Layout                                                        | Best for                                                   |
+| ------------ | ------------------------------------------------------------- | ---------------------------------------------------------- |
+| **Metrics**  | Responsive card grid (auto-fills columns, minimum 200px wide) | Metric cards, sparklines, activity summaries, record cards |
+| **Charts**   | Single column, full width                                     | Trend charts, combined charts, correlation charts          |
+| **Links**    | Responsive grid of smaller tiles (minimum 140px wide)         | Quick-link navigation                                      |
 
 Sections are collapsible -- click the section header to toggle between expanded and collapsed. On wide screens, multiple sections can appear side by side.
 

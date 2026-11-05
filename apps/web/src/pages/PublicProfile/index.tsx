@@ -8,10 +8,9 @@ import { useRoute } from 'preact-iso'
  * PublicProfile - a user's public page at /u/:username, listing their public
  * shared dashboards, challenges and exercises. Unauthenticated; rendered without app chrome.
  */
-import type { PostAuthor } from '../Feed/FeedPostCard'
-
 import { avatarUrl, fetchPublicPosts, fetchPublicProfile } from '../../state/api'
 import { FeedPostCard } from '../Feed/FeedPostCard'
+import { publicAuthor } from './public-author'
 import './style.css'
 
 function PublicList({
@@ -89,15 +88,8 @@ export function PublicProfile() {
 
   const posts = postsQuery.data?.pages.flatMap((page) => page.posts) ?? []
 
-  // The profile owner is the author of every post shown here; the same identity
-  // the owner's own feed builds (`@user@host`, avatar on this host).
-  const author: PostAuthor = {
-    avatarUrl: avatarUrl(username),
-    displayName: username,
-    handle: `@${username}@${window.location.host}`,
-    profileUrl: `/u/${encodeURIComponent(username)}`,
-    username,
-  }
+  // The profile owner is the author of every post shown here.
+  const author = publicAuthor(username)
 
   return (
     <div class="public-profile">

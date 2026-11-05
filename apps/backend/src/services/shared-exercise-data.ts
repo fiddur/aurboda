@@ -4,24 +4,13 @@
  * (reps, weight, time, set type), measures and records. Session ids, titles, notes, locations,
  * heart rate and raw fields never leave this function.
  */
-import type {
-  ActivityMeasure,
-  ActivitySession,
-  ChartDataBucket,
-  SharedExerciseData,
-  SharedExerciseRecord as SharedExerciseBest,
-} from '@aurboda/api-spec'
+import type { ActivityMeasure, ActivitySession, ChartDataBucket, SharedExerciseData } from '@aurboda/api-spec'
 
-import {
-  activityMeasures,
-  measureDefaultAggregation,
-  measureTrendHalfLifeDays,
-  recordMeasures,
-} from '@aurboda/api-spec'
+import { activityMeasures, measureDefaultAggregation, measureTrendHalfLifeDays } from '@aurboda/api-spec'
 
 import type { SharedExerciseRecord } from '../db/index.ts'
 
-import { measureSet } from './activity-measures.ts'
+import { publicRecord, recordsOf } from './activity-records.ts'
 import { getChartData } from './chart-data.ts'
 import { dayEndInTz, dayKey, dayStartInTz } from './day-keys.ts'
 import { toSharedSet } from './feed-exercises.ts'
@@ -56,20 +45,6 @@ const oldestFirst = (sessions: ActivitySession[]): ActivitySession[] =>
 
 const has = (sessions: ActivitySession[], measure: ActivityMeasure): boolean =>
   sessions.some((s) => s.measures?.[measure] !== undefined)
-
-/** The best value of each record measure, with the first session that reached it. */
-export const recordsOf = (ordered: ActivitySession[]): SharedExerciseBest[] =>
-  recordMeasures.flatMap((measure) => {
-    let best: ActivitySession | undefined
-    for (const s of ordered) {
-      const v = s.measures?.[measure]
-      if (v !== undefined && (best === undefined || v > (best.measures?.[measure] ?? -Infinity))) best = s
-    }
-    const value = best?.measures?.[measure]
-    if (best === undefined || value === undefined) return []
-    const set = measureSet(best.items ?? [], measure)
-    return [{ measure, start_time: best.start_time, value, ...(set && { set: toSharedSet(set) }) }]
-  })
 
 export const resolveSharedExerciseData = async (
   user: string,
@@ -144,7 +119,7 @@ export const resolveSharedExerciseData = async (
       start_time: s.start_time,
     })),
     per_week: perWeek,
-    records: recordsOf(ordered),
+    records: recordsOf(ordered).map(publicRecord),
     trend,
   }
 }

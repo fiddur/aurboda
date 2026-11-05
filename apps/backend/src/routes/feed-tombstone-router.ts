@@ -7,8 +7,9 @@
  * object is *permanently* gone (vs a `404`, which reads as transient/unknown).
  * Anything without a tombstone — a live post (served by Fedify, never reaches
  * here), a `followers`-only id, or one that never existed — falls through to the
- * normal 404. Articles federate as a `Note` at this same id, so a deleted article
- * tombstones here too (formerType `Note`).
+ * normal 404, as does a browser (a request preferring HTML). Articles federate
+ * as a `Note` at this same id, so a deleted article tombstones here too
+ * (formerType `Note`).
  *
  * Fedify's `handleObject` serialises a returned `Tombstone` as `200`, so the 410
  * can't come from the dispatcher; the Express layer is the only place to set it.
@@ -17,9 +18,7 @@ import { type Response, Router } from 'express'
 
 import { isValidUsername } from '../api/auth-routes.ts'
 import { isMissingDatabase } from '../db/index.ts'
-
-/** RFC 4122 canonical form — mirrors the object dispatcher's guard. */
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+import { negotiateActor, UUID_RE } from './actor-html-router.ts'
 
 export interface FeedTombstoneDeps {
   /** Canonical web origin, e.g. `https://aurboda.net` — the Tombstone `id` base. */
@@ -57,6 +56,7 @@ export const createFeedTombstoneRouter = (deps: FeedTombstoneDeps): Router => {
   router.get('/users/:username/feed/:postId', async (req, res, next) => {
     const { postId, username } = req.params
     if (!isValidUsername(username) || !UUID_RE.test(postId)) return next()
+    if (negotiateActor(req.headers.accept) === 'html') return next()
     let tombstone: { deleted_at: Date } | null
     try {
       tombstone = await deps.getTombstone(username, postId)

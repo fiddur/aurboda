@@ -4,10 +4,19 @@ import { describe, expect, test } from 'vitest'
 
 import { createActorAcceptNormalizer, createActorHtmlRouter, negotiateActor } from './actor-html-router.ts'
 
+const PUBLIC_POST = '11111111-1111-4111-8111-111111111111'
+const FOLLOWERS_POST = '22222222-2222-4222-8222-222222222222'
+
 /** Mounts the router with a fallback 404 so `next()` fall-through is observable. */
 const buildApp = (origin = 'https://aurboda.net', users = ['fiddur']) => {
   const app = express()
-  app.use(createActorHtmlRouter({ origin, userExists: async (username) => users.includes(username) }))
+  app.use(
+    createActorHtmlRouter({
+      isPublicPost: async (username, postId) => users.includes(username) && postId === PUBLIC_POST,
+      origin,
+      userExists: async (username) => users.includes(username),
+    }),
+  )
   app.use((_req, res) => res.status(404).json({ fellThrough: true }))
   return app
 }
@@ -79,8 +88,19 @@ describe('createActorAcceptNormalizer', () => {
     expect((await seenAccept('image/png')).body.accept).toBe('image/png')
   })
 
+  test('rewrites a wildcard or absent Accept on a post id to the type Fedify serves the Note for', async () => {
+    for (const accept of ['*/*', undefined]) {
+      const res = await seenAccept(accept, `/users/fiddur/feed/${PUBLIC_POST}`)
+      expect(res.body.accept).toBe('application/activity+json')
+      expect(res.headers.vary).toBe('Accept')
+    }
+    expect((await seenAccept(BROWSER, `/users/fiddur/feed/${PUBLIC_POST}`)).body.accept).toBe(BROWSER)
+  })
+
   test('touches neither sub-resources, nor other methods, nor malformed usernames', async () => {
     expect((await seenAccept('*/*', '/users/fiddur/outbox')).body.accept).toBe('*/*')
+    expect((await seenAccept('*/*', '/users/fiddur/followers')).body.accept).toBe('*/*')
+    expect((await seenAccept('*/*', `/users/fiddur/feed/${PUBLIC_POST}/extra`)).body.accept).toBe('*/*')
     expect((await seenAccept('*/*', '/users/fiddur', 'post')).body.accept).toBe('*/*')
     expect((await seenAccept('*/*', '/users/Invalid..Name')).body.accept).toBe('*/*')
   })
@@ -139,6 +159,58 @@ describe('GET /users/:username (browser HTML fallback)', () => {
 
   test('does not claim actor sub-resources like the outbox', async () => {
     const res = await supertest(buildApp()).get('/users/fiddur/outbox').set('Accept', 'text/html')
+    expect(res.status).toBe(404)
+    expect(res.body).toEqual({ fellThrough: true })
+  })
+})
+
+describe('GET /users/:username/feed/:postId (browser HTML fallback)', () => {
+  test('redirects a browser to the post permalink page, varying on Accept', async () => {
+    const res = await supertest(buildApp()).get(`/users/fiddur/feed/${PUBLIC_POST}`).set('Accept', BROWSER)
+    expect(res.status).toBe(302)
+    expect(res.headers.location).toBe(`https://aurboda.net/u/fiddur/posts/${PUBLIC_POST}`)
+    expect(res.headers.vary).toBe('Accept')
+  })
+
+  test('keeps a configured origin sub-path without doubling slashes', async () => {
+    const res = await supertest(buildApp('https://example.org/qs/'))
+      .get(`/users/fiddur/feed/${PUBLIC_POST}`)
+      .set('Accept', 'text/html')
+    expect(res.headers.location).toBe(`https://example.org/qs/u/fiddur/posts/${PUBLIC_POST}`)
+  })
+
+  test('falls through for a followers-only or unknown post, or an unknown user', async () => {
+    for (const path of [
+      `/users/fiddur/feed/${FOLLOWERS_POST}`,
+      '/users/fiddur/feed/33333333-3333-4333-8333-333333333333',
+      `/users/nosuchuser/feed/${PUBLIC_POST}`,
+    ]) {
+      const res = await supertest(buildApp()).get(path).set('Accept', BROWSER)
+      expect(res.status).toBe(404)
+      expect(res.body).toEqual({ fellThrough: true })
+    }
+  })
+
+  test('falls through for a non-UUID post id or a malformed username', async () => {
+    for (const path of ['/users/fiddur/feed/not-a-uuid', `/users/Invalid..Name/feed/${PUBLIC_POST}`]) {
+      const res = await supertest(buildApp()).get(path).set('Accept', BROWSER)
+      expect(res.status).toBe(404)
+      expect(res.body).toEqual({ fellThrough: true })
+    }
+  })
+
+  test("falls through untouched for an ActivityPub or wildcard Accept: the Note is Fedify's", async () => {
+    for (const accept of ['application/activity+json', '*/*']) {
+      const res = await supertest(buildApp()).get(`/users/fiddur/feed/${PUBLIC_POST}`).set('Accept', accept)
+      expect(res.status).toBe(404)
+      expect(res.body).toEqual({ fellThrough: true })
+    }
+  })
+
+  test('falls through (never a 406) when nothing it serves is acceptable', async () => {
+    const res = await supertest(buildApp())
+      .get(`/users/fiddur/feed/${PUBLIC_POST}`)
+      .set('Accept', 'image/png')
     expect(res.status).toBe(404)
     expect(res.body).toEqual({ fellThrough: true })
   })

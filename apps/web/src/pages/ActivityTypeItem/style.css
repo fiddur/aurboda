@@ -47,6 +47,20 @@
   background: #fff;
 }
 
+.activity-type-item-card.has-menu {
+  position: relative;
+}
+
+.activity-type-item-card.has-menu .activity-type-item-card-label {
+  padding-right: 1.5rem;
+}
+
+.activity-type-item-card-menu {
+  position: absolute;
+  top: 0.25rem;
+  right: 0.25rem;
+}
+
 .activity-type-item-card-label {
   font-size: 0.8rem;
   color: #6b7280;

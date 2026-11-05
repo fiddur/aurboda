@@ -6,6 +6,9 @@ import type {
   ActivityNeighbors,
   ActivityNeighborsQuery,
   ActivityNeighborsResponse,
+  ActivityRecords,
+  ActivityRecordsQuery,
+  ActivityRecordsResponse,
   ActivitySessions,
   ActivitySessionsQuery,
   ActivitySessionsResponse,
@@ -26,6 +29,17 @@ export const fetchActivitySessions = async (
     { headers: { Authorization: `Bearer ${auth.value.token}` }, params: query },
   )
   return response.data.data ?? { activity_type: activityType, sessions: [] }
+}
+
+export const fetchActivityRecords = async (
+  activityType: string,
+  query: ActivityRecordsQuery = {},
+): Promise<ActivityRecords> => {
+  const response = await axios.get<ActivityRecordsResponse>(
+    `${API_URL}/activity-types/${encodeURIComponent(activityType)}/records`,
+    { headers: { Authorization: `Bearer ${auth.value.token}` }, params: query },
+  )
+  return response.data.data ?? { activity_type: activityType, records: [] }
 }
 
 export const fetchActivityNeighbors = async (

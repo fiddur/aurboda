@@ -7,9 +7,10 @@ import type { ExerciseShare, FeedStructuredExerciseShare } from '@aurboda/api-sp
 
 import { exerciseChartTitle } from '../../components/charts/exercise-chart'
 import { ExerciseChart } from '../../components/charts/ExerciseChart'
+import { RecordCard } from '../../components/RecordCard'
 import { httpLink } from '../../utils/http-link'
 import { renderRemoteMarkdown } from '../../utils/markdown'
-import { DoneCard, RecordCard } from '../ActivityTypeItem/ItemCards'
+import { DoneCard } from '../ActivityTypeItem/ItemCards'
 import { ItemSessionsTable } from '../ActivityTypeItem/ItemSessionsTable'
 import '../ActivityTypeItem/style.css'
 import './FeedPostCard.css'

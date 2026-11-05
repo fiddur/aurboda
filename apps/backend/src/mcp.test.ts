@@ -8,6 +8,7 @@ import type * as SessionQueries from './services/queries/activity-sessions.ts'
 import { createAuth } from './auth.ts'
 import * as db from './db/index.ts'
 import { createMcpRouter, trimToolCallArguments } from './mcp.ts'
+import * as activityRecords from './services/activity-records.ts'
 import * as latestSleep from './services/latest-sleep.ts'
 import * as mutations from './services/mutations.ts'
 import * as queries from './services/queries/index.ts'
@@ -116,6 +117,11 @@ vi.mock('./services/deduction-deps', () => ({
     insertActivity: vi.fn().mockResolvedValue(undefined),
     insertRuleRun: vi.fn().mockResolvedValue(undefined),
   }),
+}))
+
+vi.mock('./services/activity-records', async (importOriginal) => ({
+  ...(await importOriginal<typeof activityRecords>()),
+  getActivityRecords: vi.fn(),
 }))
 
 vi.mock('./services/latest-sleep', () => ({
@@ -922,6 +928,38 @@ describe('MCP Server', () => {
       vi.mocked(queries.getActivityNeighbors).mockResolvedValueOnce(null)
       const missing = await callTool(app, token, 'get_activity_neighbors', { id: 'y', tz: 'UTC' })
       expect(missing.text).toBe('Activity not found')
+    })
+
+    test('get_activity_records maps its arguments onto the service', async () => {
+      vi.mocked(activityRecords.getActivityRecords).mockResolvedValue({
+        activity_type: 'strength_training',
+        records: [{ measure: 'e1rm', start_time: '2026-03-01T08:00:00.000Z', value: 99 }],
+      })
+
+      const response = await callTool(createTestApp(), auth.createToken('testuser'), 'get_activity_records', {
+        activity_type: 'strength_training',
+        filter_field: 'sets.exercise',
+        filter_value: 'Bench Press',
+        tz: 'UTC',
+      })
+
+      expect(JSON.parse(response.text).data.records[0]).toMatchObject({ measure: 'e1rm', value: 99 })
+      expect(activityRecords.getActivityRecords).toHaveBeenCalledWith('testuser', 'strength_training', {
+        filter_field: 'sets.exercise',
+        filter_value: 'Bench Press',
+      })
+    })
+
+    test('get_activity_records rejects a filter field without a value', async () => {
+      vi.mocked(activityRecords.getActivityRecords).mockClear()
+      const response = await callTool(createTestApp(), auth.createToken('testuser'), 'get_activity_records', {
+        activity_type: 'strength_training',
+        filter_field: 'sets.exercise',
+        tz: 'UTC',
+      })
+
+      expect(response.text).toBe('filter_field and filter_value must be given together')
+      expect(activityRecords.getActivityRecords).not.toHaveBeenCalled()
     })
 
     test('get_activity_item_history returns the history, or an error for a missing activity', async () => {
