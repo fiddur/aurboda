@@ -133,9 +133,14 @@ Where item paths are accepted:
   sessions of the type queried, so a query on a parent type such as `exercise` can mark
   different records.
 
+- `GET /activity-types/:name/records?filter_field=sets.exercise&filter_value=Bench Press` -- the
+  best value of each record measure (`e1rm`, `max_weight`, `max_time`, `max_reps`) with the
+  start and id of the first session that reached it and the set behind it; `start` limits it to
+  the sessions from then on (default all time).
+
 The MCP tools mirror them: `query_activity_sessions` and `list_activity_field_values` take an
-item path for `group_by` / `filter_field` / `field`, and `get_activity_item_history` is the
-item-history endpoint.
+item path for `group_by` / `filter_field` / `field`, `get_activity_records` is the records
+endpoint and `get_activity_item_history` is the item-history endpoint.
 
 Measures can be charted and set as goals too. `GET /chart-data` (and `query_chart_data`, and the
 dashboard's bar chart) with `source_type=activity_type` and `measure=<measure>` aggregates each
@@ -250,6 +255,9 @@ types in the `exercise` display category.
   `start`/`end` (default all time), `group_by=<field>` for groups, `filter_field` +
   `filter_value` for one value (`(none)` for sessions without one); both fields also take an
   item path such as `sets.exercise`
+- `GET /activity-types/:name/records` -- The best value of each record measure with the first
+  session that reached it and its set; `filter_field` + `filter_value` for one value (also an
+  item path such as `sets.exercise`), `start` (default all time)
 - `GET /activity-types/:name/field-values?field=<field>` -- The values a data field (or an item
   path) has taken across the type and its subtypes, most recently used first, with counts
 - `GET /activities/:id/neighbors` -- Previous and next activity of the same type; `same_field`
@@ -262,7 +270,7 @@ types in the `exercise` display category.
   path
 - `DELETE /activity-types/:name/item-values/aliases/:id` -- Delete an alias
 
-MCP tools: `list_activity_types`, `add_activity_type`, `update_activity_type`, `delete_activity_type`, `query_activity_sessions`, `list_activity_field_values`, `get_activity_neighbors`, `get_activity_item_history`, `merge_item_values`, `list_item_value_aliases`, `delete_item_value_alias`.
+MCP tools: `list_activity_types`, `add_activity_type`, `update_activity_type`, `delete_activity_type`, `query_activity_sessions`, `get_activity_records`, `list_activity_field_values`, `get_activity_neighbors`, `get_activity_item_history`, `merge_item_values`, `list_item_value_aliases`, `delete_item_value_alias`.
 
 ## Garmin Meditation Recognition
 

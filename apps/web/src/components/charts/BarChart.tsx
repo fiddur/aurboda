@@ -10,8 +10,9 @@ import {
   type BarLinePoint,
   barChartYMax,
   clipBarSpan,
-  overlayLine,
+  overlayLines,
 } from './bar-chart-utils'
+import { SERIES_COLORS } from './breakdown'
 import { renderTimeAxis, renderYearBreaks, type TimeAxisLayout, timeAxisLayout } from './time-axis'
 import './BarChart.css'
 
@@ -37,9 +38,11 @@ export interface BarChartProps {
   rangeEnd?: string
   multiSeries?: BarSeriesData[]
   getBarHref?: (info: BarClickInfo) => string
-  /** A line drawn over the bars on the same scales; ignored with `multiSeries`. */
-  line?: BarChartLine
+  /** Lines drawn over the bars on the same scales, in order; ignored with `multiSeries`. */
+  lines?: BarChartLine[]
 }
+
+const NO_LINES: BarChartLine[] = []
 
 interface ParsedBar {
   date: Date
@@ -173,11 +176,10 @@ function renderBars(
 
 function renderOverlayLine(
   g: d3.Selection<SVGGElement, unknown, null, undefined>,
-  overlay: { color?: string; points: BarLinePoint[] } | undefined,
+  overlay: { color?: string; points: BarLinePoint[] },
   x: d3.ScaleTime<number, number>,
   y: d3.ScaleLinear<number, number>,
 ) {
-  if (!overlay) return
   const line = d3
     .line<BarLinePoint>()
     .x((d) => x(d.date))
@@ -279,7 +281,7 @@ export function BarChart({
   rangeEnd,
   multiSeries,
   getBarHref,
-  line,
+  lines = NO_LINES,
 }: BarChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
@@ -355,10 +357,10 @@ export function BarChart({
       const x = d3.scaleTime().domain([xMin, xMax]).range([0, innerWidth])
 
       const barWidth = Math.max(x(new Date(xMin.getTime() + bMs)) - x(xMin) - 2, 2)
-      const overlay = overlayLine(line, [xMin, xMax])
+      const overlays = overlayLines(lines, [xMin, xMax], SERIES_COLORS)
       const yMax = barChartYMax(
         bars.map((d) => d.value),
-        overlay?.points,
+        ...overlays.map((o) => o.points),
       )
       const y = d3
         .scaleLinear()
@@ -387,9 +389,9 @@ export function BarChart({
           getBarHref,
         )
       }
-      renderOverlayLine(g, overlay, x, y)
+      for (const overlay of overlays) renderOverlayLine(g, overlay, x, y)
     }
-  }, [data, color, height, multiSeries, getBarHref, bucketSize, rangeStart, rangeEnd, line])
+  }, [data, color, height, multiSeries, getBarHref, bucketSize, rangeStart, rangeEnd, lines])
 
   if (effectiveData.length === 0) {
     return <div class="bar-chart-placeholder">No data for the selected range</div>

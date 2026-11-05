@@ -10,7 +10,7 @@ import { buildChartUrl } from '../../utils/chart-url'
 import { defaultAggregation, measureSet } from '../../utils/measures'
 
 export interface ItemRecord {
-  measure: ActivityMeasure
+  measure: (typeof recordMeasures)[number]
   value: number
   session_id: string
   start_time: string

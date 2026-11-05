@@ -24,11 +24,14 @@ vi.mock('../services/item-value-aliases.ts', () => ({
   mergeItemValues: vi.fn(),
 }))
 
+vi.mock('../services/activity-records.ts', () => ({ getActivityRecords: vi.fn() }))
+
 vi.mock('../db/index.ts', () => ({}))
 
 const queries = await import('../services/queries/index.ts')
 const service = await import('../services/activity-type-definitions.ts')
 const aliases = await import('../services/item-value-aliases.ts')
+const records = await import('../services/activity-records.ts')
 
 const buildApp = () => {
   const app = express()
@@ -69,6 +72,49 @@ describe('GET /activity-types/:name/sessions', () => {
 
     expect(res.status).toBe(400)
     expect(queries.queryActivitySessions).not.toHaveBeenCalled()
+  })
+})
+
+describe('GET /activity-types/:name/records', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  test('returns the records for the filter and start', async () => {
+    const data = {
+      activity_type: 'strength_training',
+      records: [
+        {
+          measure: 'e1rm' as const,
+          session_id: 'a1',
+          set: { reps: 3, weight: 90 },
+          start_time: '2026-03-01T08:00:00.000Z',
+          value: 99,
+        },
+      ],
+    }
+    vi.mocked(records.getActivityRecords).mockResolvedValue(data)
+
+    const res = await supertest(buildApp()).get('/activity-types/strength_training/records').query({
+      filter_field: 'sets.exercise',
+      filter_value: 'Bench Press',
+      start: '2026-01-01T00:00:00Z',
+    })
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ data, success: true })
+    expect(records.getActivityRecords).toHaveBeenCalledWith('tester', 'strength_training', {
+      filter_field: 'sets.exercise',
+      filter_value: 'Bench Press',
+      start: '2026-01-01T00:00:00Z',
+    })
+  })
+
+  test('400s on a filter field without a value', async () => {
+    const res = await supertest(buildApp()).get(
+      '/activity-types/strength_training/records?filter_field=sets.exercise',
+    )
+
+    expect(res.status).toBe(400)
+    expect(records.getActivityRecords).not.toHaveBeenCalled()
   })
 })
 

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { activityMeasureSchema } from './activity-measures.ts'
+import { activityMeasureSchema, recordMeasures } from './activity-measures.ts'
 import { baseResponseSchema, dataFieldPathSchema } from './common.ts'
 import { trendMeasureShape, trendMissingDaysSchema } from './trends.ts'
 
@@ -151,6 +151,91 @@ export type BarChartConfig = z.infer<typeof barChartConfigSchema>
 
 export type TrendChartConfig = z.infer<typeof trendChartConfigSchema>
 
+const widgetOnlyFields = {
+  breakdown_fields: true,
+  lookback_days: true,
+  masked_breakdown_fields: true,
+  title: true,
+} as const
+
+export const combinedChartBarsLayerSchema = barChartConfigSchema
+  .omit(widgetOnlyFields)
+  .extend({ kind: z.literal('bars') })
+  .meta({ description: 'Bars of a bar chart source', id: 'CombinedChartBarsLayer' })
+
+export const combinedChartTrendLayerSchema = trendChartConfigSchema
+  .omit(widgetOnlyFields)
+  .extend({
+    color: z.string().optional().meta({ description: 'Line color (CSS color)' }),
+    kind: z.literal('trend'),
+  })
+  .meta({ description: 'A trend line of a trend chart source', id: 'CombinedChartTrendLayer' })
+
+export const combinedChartLayerSchema = z
+  .discriminatedUnion('kind', [combinedChartBarsLayerSchema, combinedChartTrendLayerSchema])
+  .meta({
+    description: 'One layer of a combined chart: a chart source without its own title, range or breakdown',
+    id: 'CombinedChartLayer',
+  })
+
+export type CombinedChartLayer = z.infer<typeof combinedChartLayerSchema>
+
+export const combinedChartConfigSchema = z
+  .object({
+    layers: z.array(combinedChartLayerSchema).min(1).max(4).meta({
+      description:
+        'The layers, drawn in this order over one time axis. For now exactly one bars layer and one to three trend layers; the rule may be relaxed as more kinds are supported',
+    }),
+    lookback_days: z
+      .number()
+      .int()
+      .positive()
+      .meta({ description: 'Days of data shown, shared by every layer' }),
+    title: z.string().optional().meta({ description: 'Chart title' }),
+  })
+  .refine(
+    (c) => {
+      const bars = c.layers.filter((l) => l.kind === 'bars').length
+      const trends = c.layers.filter((l) => l.kind === 'trend').length
+      return bars === 1 && trends >= 1 && trends <= 3
+    },
+    { message: 'layers must be exactly one bars layer and one to three trend layers', path: ['layers'] },
+  )
+  .meta({
+    description: 'Bars and trend lines drawn together over one time axis',
+    id: 'CombinedChartConfig',
+  })
+
+export type CombinedChartConfig = z.infer<typeof combinedChartConfigSchema>
+
+export const recordCardConfigSchema = z
+  .object({
+    filter_field: dataFieldPathSchema
+      .optional()
+      .meta({ description: 'With filter_value: item path whose items are measured (sets.exercise)' }),
+    filter_value: z.string().optional().meta({ description: 'With filter_field: the item value to keep' }),
+    lookback_days: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .meta({ description: 'Only sessions in the last this many days; all time when absent' }),
+    measure: z.enum(recordMeasures).meta({ description: 'The record measure shown' }),
+    pattern: z.string().min(1).meta({ description: 'Activity type name' }),
+    source_type: z.enum(['activity_type']).meta({ description: 'Data source type' }),
+    title: z.string().optional().meta({ description: 'Card title' }),
+  })
+  .refine((c) => (c.filter_field === undefined) === (c.filter_value === undefined), {
+    message: 'filter_field and filter_value must be given together',
+    path: ['filter_value'],
+  })
+  .meta({
+    description: 'The best value of an activity measure, with the date and the set that reached it',
+    id: 'RecordCardConfig',
+  })
+
+export type RecordCardConfig = z.infer<typeof recordCardConfigSchema>
+
 export const correlationConfigSchema = z
   .object({
     activity: z.string().min(1).meta({ description: 'Activity or tag to analyze' }),
@@ -243,6 +328,8 @@ export const widgetTypeSchema = z.enum([
   'hr_zones',
   'goal_progress',
   'last_sleep',
+  'combined_chart',
+  'record_card',
 ])
 
 export type WidgetType = z.infer<typeof widgetTypeSchema>
@@ -297,6 +384,16 @@ export const dashboardWidgetSchema = z.discriminatedUnion('type', [
     config: lastSleepConfigSchema,
     id: z.string().min(1).meta({ description: 'Unique widget ID' }),
     type: z.literal('last_sleep'),
+  }),
+  z.object({
+    config: combinedChartConfigSchema,
+    id: z.string().min(1).meta({ description: 'Unique widget ID' }),
+    type: z.literal('combined_chart'),
+  }),
+  z.object({
+    config: recordCardConfigSchema,
+    id: z.string().min(1).meta({ description: 'Unique widget ID' }),
+    type: z.literal('record_card'),
   }),
 ])
 

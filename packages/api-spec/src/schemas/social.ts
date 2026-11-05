@@ -15,6 +15,7 @@
 
 import { z } from 'zod'
 
+import { activityRecordSchema } from './activity-sessions.ts'
 import { challengeSpecSchema } from './challenges.ts'
 import { chartDataBreakdownBucketSchema, chartDataBucketSchema } from './chart-data.ts'
 import { baseResponseSchema } from './common.ts'
@@ -138,6 +139,30 @@ export const barChartDataSchema = z
   })
   .meta({ id: 'BarChartData' })
 
+export const combinedChartLayerDataSchema = z
+  .discriminatedUnion('kind', [
+    z.object({ data: barChartDataSchema.nullable(), kind: z.literal('bars') }),
+    z.object({ data: trendChartDataSchema.nullable(), kind: z.literal('trend') }),
+  ])
+  .meta({
+    description: "One layer's data; null when the layer could not be resolved",
+    id: 'CombinedChartLayerData',
+  })
+
+export const combinedChartDataSchema = z
+  .object({
+    layers: z.array(combinedChartLayerDataSchema).meta({ description: "In the config's layer order" }),
+  })
+  .meta({ id: 'CombinedChartData' })
+
+export const recordCardDataSchema = z
+  .object({
+    record: activityRecordSchema
+      .nullable()
+      .meta({ description: 'The record, or null when there is none yet' }),
+  })
+  .meta({ id: 'RecordCardData' })
+
 export const correlationDataSchema = z
   .object({
     hrv_after30: z.number().nullable().meta({ description: 'Mean HRV 30 min after the activity' }),
@@ -228,6 +253,8 @@ export const widgetDataSchema = z
     z.object({ data: hrZonesDataSchema.nullable(), type: z.literal('hr_zones') }),
     z.object({ data: goalProgressDataSchema.nullable(), type: z.literal('goal_progress') }),
     z.object({ data: latestSleepSchema.nullable(), type: z.literal('last_sleep') }),
+    z.object({ data: combinedChartDataSchema.nullable(), type: z.literal('combined_chart') }),
+    z.object({ data: recordCardDataSchema.nullable(), type: z.literal('record_card') }),
   ])
   .meta({ id: 'WidgetData' })
 
@@ -242,6 +269,9 @@ export type ActivitySummaryData = z.infer<typeof activitySummaryDataSchema>
 export type HrZonesData = z.infer<typeof hrZonesDataSchema>
 export type GoalProgressData = z.infer<typeof goalProgressDataSchema>
 export type LastSleepData = z.infer<typeof latestSleepSchema>
+export type CombinedChartLayerData = z.infer<typeof combinedChartLayerDataSchema>
+export type CombinedChartData = z.infer<typeof combinedChartDataSchema>
+export type RecordCardData = z.infer<typeof recordCardDataSchema>
 
 export const widgetDataMapSchema = z.record(z.string(), widgetDataSchema).meta({ id: 'WidgetDataMap' })
 

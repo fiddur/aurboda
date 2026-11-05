@@ -48,6 +48,22 @@ const everyWidgetConfig: DashboardConfig = {
         { config: { lookback_days: 7 }, id: 'hrz', type: 'hr_zones' },
         { config: {}, id: 'goals', type: 'goal_progress' },
         { config: {}, id: 'sleep', type: 'last_sleep' },
+        {
+          config: {
+            layers: [
+              { bucket_size: '1w', kind: 'bars', pattern: 'exercise', source_type: 'activity_type' },
+              { kind: 'trend', pattern: 'exercise', source_type: 'activity_type' },
+            ],
+            lookback_days: 30,
+          },
+          id: 'combined',
+          type: 'combined_chart',
+        },
+        {
+          config: { measure: 'e1rm', pattern: 'strength_training', source_type: 'activity_type' },
+          id: 'record',
+          type: 'record_card',
+        },
       ],
     },
   ],
@@ -80,12 +96,14 @@ describe('resolveDashboardData integration', () => {
       [
         'actsum',
         'bar',
+        'combined',
         'corr',
         'goals',
         'hrz',
         'mc-baseline',
         'mc-period',
         'ql',
+        'record',
         'sleep',
         'spark',
         'trend',
@@ -102,6 +120,11 @@ describe('resolveDashboardData integration', () => {
     expect(data['hrz'].type).toBe('hr_zones')
     expect(data['goals'].type).toBe('goal_progress')
     expect(data['sleep']).toEqual({ data: null, type: 'last_sleep' })
+    expect(data['combined']).toMatchObject({
+      data: { layers: [{ data: { buckets: expect.any(Array) }, kind: 'bars' }, { kind: 'trend' }] },
+      type: 'combined_chart',
+    })
+    expect(data['record']).toEqual({ data: { record: null }, type: 'record_card' })
 
     // quick_link never carries data.
     expect(data['ql']).toEqual({ data: null, type: 'quick_link' })

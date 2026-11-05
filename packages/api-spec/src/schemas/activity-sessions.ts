@@ -10,6 +10,7 @@ import {
   iso8601DateTimeSchema,
 } from './common.ts'
 import { hrZoneSecsSchema } from './settings.ts'
+import { sharedExerciseSetSchema } from './shared-exercises.ts'
 
 const listItemSchema = z.record(z.string(), z.unknown())
 const listItemsSchema = z.array(listItemSchema)
@@ -156,6 +157,62 @@ export const activitySessionsResponseSchema = createDataResponseSchema(activityS
 })
 
 export type ActivitySessionsResponse = z.infer<typeof activitySessionsResponseSchema>
+
+export const activityRecordsQuerySchema = z
+  .object({
+    filter_field: dataFieldPathSchema.optional().meta({
+      description:
+        'Only sessions whose data field equals filter_value (both must be given). An item path (sets.exercise) measures only the items of that value',
+    }),
+    filter_value: z.string().optional().meta({
+      description: 'Value filter_field must equal; "(none)" matches sessions without a value',
+    }),
+    start: iso8601DateTimeSchema
+      .optional()
+      .meta({ description: 'Only sessions from this date/time (defaults to all time)' }),
+  })
+  .refine((q) => (q.filter_field === undefined) === (q.filter_value === undefined), {
+    message: 'filter_field and filter_value must be given together',
+    path: ['filter_value'],
+  })
+  .meta({ id: 'ActivityRecordsQuery' })
+
+export type ActivityRecordsQuery = z.infer<typeof activityRecordsQuerySchema>
+
+export const activityRecordSchema = z
+  .object({
+    measure: activityMeasureSchema,
+    session_id: z.string().optional().meta({
+      description:
+        'Activity ID of the first session that reached it, prefixed "merged:" when merged; absent on public data',
+    }),
+    set: sharedExerciseSetSchema.optional().meta({ description: 'The set the value came from' }),
+    start_time: iso8601DateTimeSchema.meta({ description: 'Start of the first session that reached it' }),
+    value: z.number().meta({ description: 'The best value of the measure' }),
+  })
+  .meta({ description: 'The best value of one record measure', id: 'ActivityRecord' })
+
+export type ActivityRecord = z.infer<typeof activityRecordSchema>
+
+export const activityRecordsSchema = z
+  .object({
+    activity_type: z
+      .string()
+      .meta({ description: 'The requested activity type (descendant types included)' }),
+    records: z.array(activityRecordSchema).meta({
+      description:
+        'One entry per record measure a session has a value for: e1rm, max_weight, max_time, max_reps, in that order',
+    }),
+  })
+  .meta({ id: 'ActivityRecords' })
+
+export type ActivityRecords = z.infer<typeof activityRecordsSchema>
+
+export const activityRecordsResponseSchema = createDataResponseSchema(activityRecordsSchema).meta({
+  id: 'ActivityRecordsResponse',
+})
+
+export type ActivityRecordsResponse = z.infer<typeof activityRecordsResponseSchema>
 
 export const activityNeighborSchema = z
   .object({
