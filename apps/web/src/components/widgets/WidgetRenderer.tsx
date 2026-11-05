@@ -2,12 +2,14 @@ import type { DashboardWidget } from '@aurboda/api-spec'
 
 import { ActivitySummaryWidget } from './ActivitySummaryWidget'
 import { BarChartWidget } from './BarChartWidget'
+import { CombinedChartWidget } from './CombinedChartWidget'
 import { CorrelationWidget } from './CorrelationWidget'
 import { GoalProgressWidget } from './GoalProgressWidget'
 import { HrZonesWidget } from './HrZonesWidget'
 import { LastSleepWidget } from './LastSleepWidget'
 import { MetricCardWidget } from './MetricCardWidget'
 import { QuickLinkWidget } from './QuickLinkWidget'
+import { RecordCardWidget } from './RecordCardWidget'
 import { SparklineCardWidget } from './SparklineCardWidget'
 import { TrendChartWidget } from './TrendChartWidget'
 
@@ -46,6 +48,10 @@ export function WidgetRenderer({ widget, isEditing, onRemove, boardId, sectionId
         return <GoalProgressWidget config={widget.config} />
       case 'last_sleep':
         return <LastSleepWidget config={widget.config} />
+      case 'combined_chart':
+        return <CombinedChartWidget config={widget.config} />
+      case 'record_card':
+        return <RecordCardWidget config={widget.config} />
       default:
         return <div class="widget-unknown">Unknown widget type</div>
     }

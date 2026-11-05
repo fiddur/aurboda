@@ -6,6 +6,7 @@ import { useMemo, useState } from 'preact/hooks'
 import { BarChart } from '../../components/charts/BarChart'
 import { ChartMenu } from '../../components/charts/ChartMenu'
 import { goalsHref } from '../../components/goalPrefill'
+import { RecordCard } from '../../components/RecordCard'
 import {
   fetchActivitySessions,
   fetchActivityTypeDefinitions,
@@ -17,7 +18,7 @@ import { toDisplayName } from '../../utils/displayName'
 import { MEASURE_HALF_LIFE_DEFAULT } from '../../utils/half-life'
 import { defaultAggregation } from '../../utils/measures'
 import { newWidgetId } from '../../utils/widget-id'
-import { DoneCard, RecordCard } from './ItemCards'
+import { DoneCard } from './ItemCards'
 import {
   availableMeasures,
   chartExplorerHref,
@@ -40,22 +41,41 @@ const LOOKBACK_OPTIONS = [
   { label: 'All time', value: 0 },
 ]
 
-const Records = ({ sessions }: { sessions: ActivitySession[] }) => {
-  const done = doneSummary(sessions)
-  return (
-    <div class="activity-type-item-cards">
-      {recordsFrom(sessions).map((r) => (
-        <RecordCard key={r.measure} record={r} />
-      ))}
-      {done && <DoneCard done={done} />}
-    </div>
-  )
-}
-
 interface ItemRef {
   name: string
   field: string
   value: string
+}
+
+const Records = ({ item, sessions }: { item: ItemRef; sessions: ActivitySession[] }) => {
+  const done = doneSummary(sessions)
+  return (
+    <div class="activity-type-item-cards">
+      {recordsFrom(sessions).map((r) => (
+        <RecordCard
+          key={r.measure}
+          record={r}
+          menu={
+            <ChartMenu
+              widget={(title) => ({
+                config: {
+                  filter_field: item.field,
+                  filter_value: item.value,
+                  measure: r.measure,
+                  pattern: item.name,
+                  source_type: 'activity_type',
+                  ...(title ? { title } : {}),
+                },
+                id: newWidgetId(),
+                type: 'record_card',
+              })}
+            />
+          }
+        />
+      ))}
+      {done && <DoneCard done={done} />}
+    </div>
+  )
 }
 
 const MeasureChartBody = ({
@@ -104,7 +124,7 @@ const MeasureChartBody = ({
     staleTime: 5 * 60 * 1000,
   })
   const trendHistory = withLine ? trendQuery.data?.history : undefined
-  const line = useMemo(() => (trendHistory ? { data: trendHistory } : undefined), [trendHistory])
+  const lines = useMemo(() => (trendHistory ? [{ data: trendHistory }] : undefined), [trendHistory])
   const label = activityMeasureLabels[measure]
 
   return (
@@ -120,7 +140,7 @@ const MeasureChartBody = ({
             bucketSize="1w"
             rangeStart={range.start}
             rangeEnd={range.end}
-            line={line}
+            lines={lines}
           />
           {withLine && trendQuery.isError && <p class="error">Failed to load the trend</p>}
           <p class="activity-type-item-caption">
@@ -196,6 +216,29 @@ const MeasureChart = ({
           extraWidgets={
             withLine
               ? [
+                  {
+                    label: 'Add combined chart to dashboard',
+                    widget: (title) => ({
+                      config: {
+                        layers: [
+                          {
+                            aggregation: defaultAggregation(measure),
+                            bucket_size: '1w',
+                            ...filter,
+                            kind: 'bars',
+                            measure,
+                            pattern: item.name,
+                            source_type: 'activity_type',
+                          },
+                          { kind: 'trend', ...trend },
+                        ],
+                        lookback_days: lookbackDays,
+                        ...(title ? { title } : {}),
+                      },
+                      id: newWidgetId(),
+                      type: 'combined_chart',
+                    }),
+                  },
                   {
                     label: 'Add trend to dashboard',
                     widget: (title) => ({
@@ -285,7 +328,7 @@ export function ActivityTypeItem() {
 
       {sessions.length > 0 && (
         <>
-          <Records sessions={sessions} />
+          <Records item={item} sessions={sessions} />
 
           <label class="activity-type-item-period">
             Period

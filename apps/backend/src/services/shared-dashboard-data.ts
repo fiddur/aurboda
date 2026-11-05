@@ -11,6 +11,7 @@
  * embeddable chart) can match data to the widget it belongs to.
  */
 import type {
+  CombinedChartLayerData,
   DashboardConfig,
   DashboardWidget,
   TrendHistoryPoint,
@@ -21,6 +22,7 @@ import type {
 import { hrZoneMetrics, isExerciseActivityType, metricCardLookbackDays } from '@aurboda/api-spec'
 
 import { getAllActivityTypeNames } from '../db/index.ts'
+import { getActivityRecords, publicRecord } from './activity-records.ts'
 import { maskBreakdownNames } from './breakdown-mask.ts'
 import { getChartData } from './chart-data.ts'
 import { getActivityImpact } from './correlations/activity-impact.ts'
@@ -207,6 +209,53 @@ const resolveBarChart = async (
   return { data: { buckets }, type: 'bar_chart' }
 }
 
+const resolveCombinedLayer = async (
+  user: string,
+  layer: Extract<DashboardWidget, { type: 'combined_chart' }>['config']['layers'][number],
+  lookback_days: number,
+  tz: string,
+): Promise<CombinedChartLayerData> => {
+  if (layer.kind === 'bars') {
+    const { kind, ...source } = layer
+    const resolved = await resolveBarChart(user, { ...source, lookback_days }, tz)
+    return { data: resolved.type === 'bar_chart' ? resolved.data : null, kind }
+  }
+  const { color: _color, kind, ...source } = layer
+  const resolved = await resolveTrendChart(user, { ...source, lookback_days }, tz)
+  return { data: resolved.type === 'trend_chart' ? resolved.data : null, kind }
+}
+
+const resolveCombinedChart = async (
+  user: string,
+  config: Extract<DashboardWidget, { type: 'combined_chart' }>['config'],
+  tz: string,
+): Promise<WidgetData> => {
+  const layers = await Promise.all(
+    config.layers.map((layer) =>
+      resolveCombinedLayer(user, layer, config.lookback_days, tz).catch(
+        (error: unknown): CombinedChartLayerData => {
+          console.warn(`Failed to resolve a ${layer.kind} layer of a combined chart:`, error)
+          return layer.kind === 'bars' ? { data: null, kind: 'bars' } : { data: null, kind: 'trend' }
+        },
+      ),
+    ),
+  )
+  return { data: { layers }, type: 'combined_chart' }
+}
+
+const resolveRecordCard = async (
+  user: string,
+  config: Extract<DashboardWidget, { type: 'record_card' }>['config'],
+): Promise<WidgetData> => {
+  const { filter_field, filter_value, lookback_days } = config
+  const { records } = await getActivityRecords(user, config.pattern, {
+    ...(filter_field !== undefined && filter_value !== undefined ? { filter_field, filter_value } : {}),
+    ...(lookback_days !== undefined ? { start: lookbackRange(lookback_days).start.toISOString() } : {}),
+  })
+  const record = records.find((r) => r.measure === config.measure)
+  return { data: { record: record ? publicRecord(record) : null }, type: 'record_card' }
+}
+
 const resolveCorrelation = async (
   user: string,
   config: Extract<DashboardWidget, { type: 'correlation' }>['config'],
@@ -325,6 +374,10 @@ const resolveWidget = async (user: string, widget: DashboardWidget, tz: string):
       return resolveGoalProgress(user)
     case 'last_sleep':
       return { data: await getLatestSleep(user), type: 'last_sleep' }
+    case 'combined_chart':
+      return resolveCombinedChart(user, widget.config, tz)
+    case 'record_card':
+      return resolveRecordCard(user, widget.config)
     case 'quick_link':
       return { data: null, type: 'quick_link' }
   }
@@ -350,6 +403,10 @@ const nullData = (type: DashboardWidget['type']): WidgetData => {
     case 'goal_progress':
       return { data: null, type }
     case 'last_sleep':
+      return { data: null, type }
+    case 'combined_chart':
+      return { data: null, type }
+    case 'record_card':
       return { data: null, type }
     case 'quick_link':
       return { data: null, type }

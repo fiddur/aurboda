@@ -19,7 +19,7 @@ export function ExerciseChart({
   height = 220,
 }: Pick<SharedExerciseData, 'trend'> & { perWeek: SharedExerciseData['per_week']; height?: number }) {
   const lineTrend = exerciseLineTrend(perWeek, trend)
-  const line = useMemo(() => (lineTrend ? { data: lineTrend.history } : undefined), [lineTrend])
+  const lines = useMemo(() => (lineTrend ? [{ data: lineTrend.history }] : undefined), [lineTrend])
 
   if (perWeek) {
     return (
@@ -31,7 +31,7 @@ export function ExerciseChart({
           bucketSize="1w"
           rangeStart={perWeek.start}
           rangeEnd={perWeek.end}
-          line={line}
+          lines={lines}
         />
         <p class="exercise-chart-caption">
           {lineTrend

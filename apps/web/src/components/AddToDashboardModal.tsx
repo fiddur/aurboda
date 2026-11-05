@@ -1,4 +1,4 @@
-import type { DashboardConfig, DashboardSection, DashboardWidget } from '@aurboda/api-spec'
+import type { DashboardConfig, DashboardSection, DashboardWidget, SectionType } from '@aurboda/api-spec'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
@@ -33,6 +33,15 @@ export function BreakdownMaskPicker({
       <p class="mask-hint">Masked field values are shown as A, B, C… to public viewers.</p>
     </div>
   )
+}
+
+/** The section kind a widget is added to: a record card sits with the metric cards, the rest with the charts. */
+const sectionTypeFor = (type: DashboardWidget['type']): Exclude<SectionType, 'links'> =>
+  type === 'record_card' ? 'metrics' : 'charts'
+
+const newSectionText = {
+  charts: { example: 'e.g., My Charts', title: 'Charts' },
+  metrics: { example: 'e.g., Records', title: 'Records' },
 }
 
 export interface AddToDashboardModalProps {
@@ -85,8 +94,10 @@ export function AddToDashboardModal({ widget, breakdownFields, onClose }: AddToD
   const sharedDashboards = sharedQuery.data ?? []
   const targetConfig: DashboardConfig | undefined =
     targetId === 'home' ? dashboardQuery.data : sharedDashboards.find((d) => d.id === targetId)?.config
-  const chartsSections = targetConfig?.sections.filter((s) => s.type === 'charts') ?? []
-  const placeholder = widget('', []).config
+  const placeholderWidget = widget('', [])
+  const sectionType = sectionTypeFor(placeholderWidget.type)
+  const sections = targetConfig?.sections.filter((s) => s.type === sectionType) ?? []
+  const placeholder = placeholderWidget.config
   const titlePlaceholder = ('pattern' in placeholder && placeholder.pattern) || 'Chart title'
 
   const handleTargetChange = (id: string) => {
@@ -102,11 +113,11 @@ export function AddToDashboardModal({ widget, breakdownFields, onClose }: AddToD
 
     let newConfig: DashboardConfig
     if (selectedSectionId === '__new__') {
-      const sectionTitle = newSectionTitle.trim() || 'Charts'
+      const sectionTitle = newSectionTitle.trim() || newSectionText[sectionType].title
       const newSection: DashboardSection = {
         id: newSectionId(),
         title: sectionTitle,
-        type: 'charts',
+        type: sectionType,
         widgets: [added],
       }
       newConfig = { ...targetConfig, sections: [...targetConfig.sections, newSection] }
@@ -183,7 +194,7 @@ export function AddToDashboardModal({ widget, breakdownFields, onClose }: AddToD
                   onChange={(e) => setSelectedSectionId((e.target as HTMLSelectElement).value)}
                 >
                   <option value="">Select a section...</option>
-                  {chartsSections.map((section) => (
+                  {sections.map((section) => (
                     <option key={section.id} value={section.id}>
                       {section.title}
                     </option>
@@ -199,7 +210,7 @@ export function AddToDashboardModal({ widget, breakdownFields, onClose }: AddToD
                     type="text"
                     value={newSectionTitle}
                     onInput={(e) => setNewSectionTitle((e.target as HTMLInputElement).value)}
-                    placeholder="e.g., My Charts"
+                    placeholder={newSectionText[sectionType].example}
                   />
                 </div>
               )}

@@ -6,6 +6,9 @@ import {
   type ActivityFieldValuesQuery,
   activityFieldValuesQuerySchema,
   type ActivityFieldValuesResponse,
+  type ActivityRecordsQuery,
+  activityRecordsQuerySchema,
+  type ActivityRecordsResponse,
   type ActivitySessionsQuery,
   activitySessionsQuerySchema,
   type ActivitySessionsResponse,
@@ -28,6 +31,7 @@ import {
   updateActivityTypeDefinitionBodySchema,
 } from '@aurboda/api-spec'
 
+import { getActivityRecords } from '../services/activity-records.ts'
 import {
   addActivityTypeDefinition,
   deleteActivityTypeDefinition,
@@ -69,6 +73,16 @@ export const createActivityTypesRouter = (authMiddleware: RequestHandler): Typed
         sessionsOptionsFromQuery(req.query),
       )
       res.json({ data: sessions, success: true })
+    },
+  )
+
+  router.get<{ name: string }, ActivityRecordsResponse, unknown, ActivityRecordsQuery>(
+    '/:name/records',
+    authMiddleware,
+    validateQuery(activityRecordsQuerySchema),
+    async (req, res) => {
+      const records = await getActivityRecords(req.user!, req.params.name, req.query)
+      res.json({ data: records, success: true })
     },
   )
 
