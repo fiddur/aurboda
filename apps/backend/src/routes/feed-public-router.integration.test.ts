@@ -284,6 +284,77 @@ describe('GET /public/:username/posts', () => {
   })
 })
 
+describe('GET /public/:username/posts/:postId', () => {
+  beforeAll(async () => {
+    await startTestDb()
+  }, CONTAINER_TIMEOUT)
+
+  afterAll(async () => {
+    await stopTestDb()
+  })
+
+  beforeEach(async () => {
+    await cleanTestDb()
+  })
+
+  test('serves a public post serialized like the listing, structured payload included', async () => {
+    const user = getTestUser()
+    const id = await seedPost(user, 'public')
+    const { request, close } = startApp()
+    try {
+      const res = await request.get(`/public/${user}/posts/${id}`)
+      expect(res.status).toBe(200)
+      expect(res.headers['cache-control']).toBe('no-store')
+      expect(res.body.success).toBe(true)
+      expect(res.body.post).toMatchObject({ id, visibility: 'public' })
+      expect(res.body.post.structured).toMatchObject({
+        activityType: 'exercise',
+        kind: 'activity',
+        metrics: [{ key: 'duration', unit: 'seconds', value: 2400 }],
+        name: 'Morning run',
+      })
+
+      const listed = await request.get(`/public/${user}/posts`)
+      expect(listed.body.posts.find((p: { id: string }) => p.id === id)).toEqual(res.body.post)
+    } finally {
+      await close()
+    }
+  })
+
+  test('serves an unlisted post', async () => {
+    const user = getTestUser()
+    const id = await seedPost(user, 'unlisted')
+    const { request, close } = startApp()
+    try {
+      const res = await request.get(`/public/${user}/posts/${id}`)
+      expect(res.status).toBe(200)
+      expect(res.body.post).toMatchObject({ id, visibility: 'unlisted' })
+    } finally {
+      await close()
+    }
+  })
+
+  test('404s for a followers-only post, an unknown id, a non-UUID id and a malformed username', async () => {
+    const user = getTestUser()
+    const followersId = await seedPost(user, 'followers')
+    const { request, close } = startApp()
+    try {
+      for (const path of [
+        `/public/${user}/posts/${followersId}`,
+        `/public/${user}/posts/33333333-3333-4333-8333-333333333333`,
+        `/public/${user}/posts/not-a-uuid`,
+        `/public/Invalid/posts/${followersId}`,
+      ]) {
+        const res = await request.get(path)
+        expect(res.status).toBe(404)
+        expect(res.body).toEqual({ error: 'Not found', success: false })
+      }
+    } finally {
+      await close()
+    }
+  })
+})
+
 describe('GET /public/:username/series (QuantPub 0.2)', () => {
   beforeAll(async () => {
     await startTestDb()
