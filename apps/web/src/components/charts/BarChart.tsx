@@ -5,6 +5,7 @@
 import * as d3 from 'd3'
 import { useEffect, useRef } from 'preact/hooks'
 
+import { type BarChartLine, type BarLinePoint, barChartYMax, overlayLine } from './bar-chart-utils'
 import { renderTimeAxis, renderYearBreaks, type TimeAxisLayout, timeAxisLayout } from './time-axis'
 import './BarChart.css'
 
@@ -30,6 +31,8 @@ export interface BarChartProps {
   rangeEnd?: string
   multiSeries?: BarSeriesData[]
   getBarHref?: (info: BarClickInfo) => string
+  /** A line drawn over the bars on the same scales; ignored with `multiSeries`. */
+  line?: BarChartLine
 }
 
 interface ParsedBar {
@@ -159,6 +162,29 @@ function renderBars(
   }
 }
 
+function renderOverlayLine(
+  g: d3.Selection<SVGGElement, unknown, null, undefined>,
+  overlay: { color?: string; points: BarLinePoint[] } | undefined,
+  x: d3.ScaleTime<number, number>,
+  y: d3.ScaleLinear<number, number>,
+) {
+  if (!overlay) return
+  const line = d3
+    .line<BarLinePoint>()
+    .x((d) => x(d.date))
+    .y((d) => y(d.value))
+    .curve(d3.curveMonotoneX)
+  const path = g
+    .append('path')
+    .datum(overlay.points)
+    .attr('class', 'bar-chart-line')
+    .attr('fill', 'none')
+    .attr('stroke-width', 2)
+    .attr('pointer-events', 'none')
+    .attr('d', line)
+  if (overlay.color) path.attr('stroke', overlay.color)
+}
+
 function renderMultiSeriesBars(
   g: d3.Selection<SVGGElement, unknown, null, undefined>,
   multiSeries: BarSeriesData[],
@@ -241,6 +267,7 @@ export function BarChart({
   rangeEnd,
   multiSeries,
   getBarHref,
+  line,
 }: BarChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
@@ -316,7 +343,11 @@ export function BarChart({
       const x = d3.scaleTime().domain([xMin, xMax]).range([0, innerWidth])
 
       const barWidth = Math.max(x(new Date(xMin.getTime() + bMs)) - x(xMin) - 2, 2)
-      const yMax = d3.max(bars, (d) => d.value) ?? 1
+      const overlay = overlayLine(line, [xMin, xMax])
+      const yMax = barChartYMax(
+        bars.map((d) => d.value),
+        overlay?.points,
+      )
       const y = d3
         .scaleLinear()
         .domain([0, yMax * 1.1])
@@ -344,8 +375,9 @@ export function BarChart({
           getBarHref,
         )
       }
+      renderOverlayLine(g, overlay, x, y)
     }
-  }, [data, color, height, multiSeries, getBarHref, bucketSize, rangeStart, rangeEnd])
+  }, [data, color, height, multiSeries, getBarHref, bucketSize, rangeStart, rangeEnd, line])
 
   if (effectiveData.length === 0) {
     return <div class="bar-chart-placeholder">No data for the selected range</div>

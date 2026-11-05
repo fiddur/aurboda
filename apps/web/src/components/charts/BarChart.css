@@ -7,6 +7,10 @@
   display: block;
 }
 
+.bar-chart-line {
+  stroke: #5b21b6;
+}
+
 .bar-chart-tooltip {
   position: absolute;
   pointer-events: none;
@@ -31,6 +35,10 @@
 }
 
 @media (prefers-color-scheme: dark) {
+  .bar-chart-line {
+    stroke: #ddd6fe;
+  }
+
   .bar-chart-tooltip {
     background: rgba(17, 24, 39, 0.95);
   }

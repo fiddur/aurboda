@@ -88,10 +88,11 @@ viewer gets exactly:
   set), the best value, the start time of the first session that reached it, and the
   set it came from;
 - **done** — the number of sessions with the exercise and the first and latest start;
-- **trend** — the decaying best of e1RM (else most reps in a set, else longest hold)
-  over all time, with the 120-day half-life the exercise page uses;
-- **per week** — e1RM (else the first measure the sessions have) per week over the
-  last 365 days, the best or the total of each week as on the exercise page;
+- **per week** and **trend**, drawn as one chart — weekly bars of the trend measure
+  (e1RM, else most reps in a set, else longest hold; for an exercise without one, the
+  first measure the sessions have, the best or the total of each week as on the exercise
+  page) over all time from the first session's day, with the decaying best of the trend
+  measure (the 120-day half-life the exercise page uses) drawn over them as a line;
 - **history** — every session, newest first: its start time, its sets of the exercise
   (reps, weight, time and set type only), its measures and the records it set.
 
@@ -100,10 +101,16 @@ session's other fields, other exercises of the same sessions, and any other key 
 was logged with. Days and weeks follow the owner's stored timezone. There is no period
 selector; the owner's own exercise page keeps one.
 
-On the web, the exercise page's header has a **Share** button; once shared it shows
-the link, the visibility and **Stop sharing**. `/shared-dashboards` lists the shared
-exercises under **Exercises** too (rename, visibility, copy link, delete). The owner
-viewing their own shared exercise sees the same read-only page as everyone else.
+On the web, the exercise page's header has a **Publish** button that opens a dialog
+first: it says what the page shows, and takes the name (defaults to the exercise) and
+the visibility (unlisted by default); nothing is created until it is confirmed. Once
+published the header shows **Published** · the visibility · **Open page** · **Copy link**
+(and the system share sheet where the browser offers one) · **Unpublish**.
+`/shared-dashboards` lists the published exercises under **Exercises** too (rename,
+visibility, copy link, unpublish). The public page's header has **Copy link** (and the
+system share sheet where the browser offers one); the owner viewing their own published
+exercise sees the same read-only page as everyone else, plus a **Manage** link back to
+the exercise page.
 
 An exercise can also be posted to your [feed](./feed.md) from its page (**Share to
 feed**), whether or not it is shared here: the post carries the progress (records,
@@ -215,9 +222,11 @@ type="application/json+oembed">` pointing at `GET /oembed?url=<share url>`, whic
   returns a `type: "link"` document (title, author, provider, OG-image thumbnail).
   Only public resources resolve — unlisted/unknown/private URLs 404, so nothing
   private is exposed. Primarily benefits Mastodon and other oEmbed-aware consumers.
-- **Share button**: public profile and shared-dashboard pages have a Share control
-  that uses the native share sheet (`navigator.share`) where available and otherwise
-  copies the link to the clipboard.
+- **Copy link and Share…**: public shared-dashboard and shared-exercise pages have a
+  **Copy link** icon button that copies the URL to the clipboard (a prompt with the
+  URL where the clipboard is unavailable), plus a **Share…** button that opens the
+  system share sheet where `navigator.share` exists (phones; not in the Android
+  WebView).
 - **`theme-color`** and favicons/apple-touch-icon are set so tabs and mobile share
   sheets look finished.
 

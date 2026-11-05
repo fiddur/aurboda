@@ -1,37 +1,35 @@
 import type { ShareVisibility } from '@aurboda/api-spec'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'preact/hooks'
 
-import { ShareLinkButton } from '../../components/ShareLinkButton'
+import { CopyLinkButton, GlobeIcon, NativeShareButton } from '../../components/ShareLinkButton'
 import { SHARE_VISIBILITY_OPTIONS, VisibilitySelector } from '../../components/VisibilitySelector'
 import {
   apiErrorMessage,
-  createSharedExercise,
   deleteSharedExercise,
   listSharedExercises,
   updateSharedExercise,
 } from '../../state/api'
+import { PublishExerciseDialog } from './PublishExerciseDialog'
 
 const QUERY_KEY = ['sharedExercises']
 
-/** Shares this exercise's progress at a public link, or shows the existing share's link and visibility. */
+/** Publishes this exercise's progress at a public page, or shows the published page's controls. */
 export const ShareExercise = ({ name, field, value }: { name: string; field: string; value: string }) => {
   const queryClient = useQueryClient()
+  const [publishing, setPublishing] = useState(false)
   const query = useQuery({ queryFn: listSharedExercises, queryKey: QUERY_KEY, staleTime: 60 * 1000 })
   const share = query.data?.find((e) => e.activity_type === name && e.field === field && e.value === value)
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: QUERY_KEY })
-  const create = useMutation({
-    mutationFn: () => createSharedExercise({ activity_type: name, field, value, visibility: 'unlisted' }),
-    onSuccess: invalidate,
-  })
   const update = useMutation({
     mutationFn: ({ id, visibility }: { id: string; visibility: ShareVisibility }) =>
       updateSharedExercise(id, { visibility }),
     onSuccess: invalidate,
   })
   const remove = useMutation({ mutationFn: deleteSharedExercise, onSuccess: invalidate })
-  const failed = create.error ?? update.error ?? remove.error
+  const failed = update.error ?? remove.error
 
   if (query.isLoading || query.isError) return null
 
@@ -39,10 +37,10 @@ export const ShareExercise = ({ name, field, value }: { name: string; field: str
     <div class="activity-type-item-share">
       {share ? (
         <>
-          <a href={share.share_url} target="_blank" rel="noopener noreferrer">
-            Shared page
-          </a>
-          <ShareLinkButton url={share.share_url} title={`${share.name} — Aurboda`} />
+          <span class="activity-type-item-published">
+            <GlobeIcon />
+            Published
+          </span>
           <VisibilitySelector
             compact
             name={`exercise-visibility-${share.id}`}
@@ -50,28 +48,42 @@ export const ShareExercise = ({ name, field, value }: { name: string; field: str
             value={share.visibility}
             onChange={(visibility) => update.mutate({ id: share.id, visibility })}
           />
+          <a href={share.share_url} target="_blank" rel="noopener noreferrer">
+            Open page
+          </a>
+          <CopyLinkButton url={share.share_url} />
+          <NativeShareButton url={share.share_url} title={`${share.name} — Aurboda`} />
           <button
             type="button"
             class="activity-type-item-share-stop"
             disabled={remove.isPending}
             onClick={() => {
-              if (confirm(`Stop sharing ${share.name}? Its link will stop working.`)) remove.mutate(share.id)
+              if (confirm(`Unpublish ${share.name}? Its link will stop working.`)) remove.mutate(share.id)
             }}
           >
-            Stop sharing
+            Unpublish
           </button>
         </>
       ) : (
         <button
           type="button"
-          class="activity-type-item-share-open"
-          disabled={create.isPending}
-          onClick={() => create.mutate()}
+          class="activity-type-item-publish"
+          title="Publish a public page for this exercise"
+          onClick={() => setPublishing(true)}
         >
-          Share
+          <GlobeIcon />
+          Publish
         </button>
       )}
-      {failed && <p class="error">{apiErrorMessage(failed, 'Failed to update the share')}</p>}
+      {publishing && (
+        <PublishExerciseDialog
+          activityType={name}
+          field={field}
+          value={value}
+          onClose={() => setPublishing(false)}
+        />
+      )}
+      {failed && <p class="error">{apiErrorMessage(failed, 'Failed to update the published page')}</p>}
     </div>
   )
 }

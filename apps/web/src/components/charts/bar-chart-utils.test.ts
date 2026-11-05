@@ -1,0 +1,49 @@
+import { describe, expect, test } from 'vitest'
+
+import { barChartYMax, overlayLine, parseLinePoints } from './bar-chart-utils'
+
+describe('barChartYMax', () => {
+  test('takes the largest bar without a line', () => {
+    expect(barChartYMax([3, 9, 4])).toBe(9)
+  })
+
+  test('takes the line when it rises above the bars', () => {
+    expect(barChartYMax([3, 9], parseLinePoints([{ date: '2026-01-01', value: 12 }]))).toBe(12)
+  })
+
+  test('falls back to 1 when nothing is drawn', () => {
+    expect(barChartYMax([], [])).toBe(1)
+  })
+})
+
+describe('parseLinePoints', () => {
+  test('parses dates the way TrendLineChart does', () => {
+    expect(parseLinePoints([{ date: '2026-03-01', value: 99 }])).toEqual([
+      { date: new Date('2026-03-01'), value: 99 },
+    ])
+  })
+})
+
+describe('overlayLine', () => {
+  const domain: [Date, Date] = [new Date('2026-01-01'), new Date('2026-02-01')]
+  const data = [
+    { date: '2025-12-31', value: 1 },
+    { date: '2026-01-15', value: 2 },
+    { date: '2026-02-02', value: 3 },
+  ]
+
+  test('keeps the points inside the x domain, with no color of its own', () => {
+    expect(overlayLine({ data }, domain)).toEqual({
+      points: [{ date: new Date('2026-01-15'), value: 2 }],
+    })
+  })
+
+  test('carries the given color', () => {
+    expect(overlayLine({ color: '#000', data }, domain)?.color).toBe('#000')
+  })
+
+  test('is undefined without a line or with no point in range', () => {
+    expect(overlayLine(undefined, domain)).toBeUndefined()
+    expect(overlayLine({ data: [data[0]] }, domain)).toBeUndefined()
+  })
+})
