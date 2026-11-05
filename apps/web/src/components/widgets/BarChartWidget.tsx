@@ -12,6 +12,7 @@ import { fetchChartData } from '../../state/api'
 import { buildChartUrl, type ChartOrigin } from '../../utils/chart-url'
 import { BarChart } from '../charts/BarChart'
 import { BreakdownLegend, SERIES_COLORS } from '../charts/breakdown'
+import { measureChartTitle } from './chartTitle'
 import { HEAVY_QUERY_OPTIONS } from './heavyQuery'
 
 /** Compute start/end ISO strings from lookback_days. */
@@ -33,7 +34,7 @@ interface BarChartViewProps {
 
 export function BarChartView({ config, data, href }: BarChartViewProps) {
   const { pattern, title, bucket_size } = config
-  const displayTitle = title ?? `${pattern ?? 'chart'} (${bucket_size})`
+  const displayTitle = title ?? measureChartTitle(config) ?? `${pattern ?? 'chart'} (${bucket_size})`
 
   const breakdownSeries = data?.breakdown_series
   const breakdownBuckets = data?.breakdown_buckets
@@ -150,7 +151,7 @@ export function BarChartWidget({ config, origin }: BarChartWidgetProps) {
     [chartData],
   )
 
-  const displayTitle = title ?? `${pattern ?? 'chart'} (${bucket_size})`
+  const displayTitle = title ?? measureChartTitle(config) ?? `${pattern ?? 'chart'} (${bucket_size})`
   const chartUrl = buildChartUrl({
     aggregation,
     breakdown_fields,
