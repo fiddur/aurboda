@@ -165,9 +165,10 @@ session that beats it (a measure trend from the [trends API](trends.md), `GET /t
 with record badges and its trend around the session — `Trend e1RM 12.2 kg ↗ 15.2 kg · volume
 250 kg ↗ 296 kg`, just the value where the session did not lift it (the longest hold or most reps
 for an exercise without weights) — with the full sets table collapsed under it. The chart has a ⋮ menu with **Open in Chart
-Explorer**, **Add to dashboard** and **Set a goal** for the weekly bars (a measure goal, prefilled
-on the Goals page), plus **Add trend to dashboard**, **Set a trend goal** (on the decaying best) and **Open trend in Chart Explorer**
-when the line is drawn. An exercise page can be shared at a public link, with its
+Explorer** and **Set a goal** for the weekly bars (a measure goal, prefilled on the Goals page),
+**Add to dashboard** for the chart as shown (a combined chart of the bars and the line when the
+line is drawn, otherwise a bar chart), plus **Set a trend goal** (on the decaying best) and **Open
+trend in Chart Explorer** when the line is drawn. An exercise page can be shared at a public link, with its
 records, weekly chart with its trend line, and sessions' sets but nothing else of the sessions — see
 [Sharing → Shared exercises](./sharing.md#shared-exercises).
 
