@@ -21,6 +21,7 @@ import { useState } from 'preact/hooks'
 
 import { ActivityTypePicker } from '../../components/ActivityTypePicker'
 import { DEFAULT_SUMMARY, SERIES_METRICS, SUMMARY_METRICS } from '../../components/feed-metrics'
+import { KnownValuesInput } from '../../components/KnownValuesInput'
 import { fieldLabel, scalarFields } from '../../components/sessions/sessionView'
 import { FEED_VISIBILITY_OPTIONS, VisibilitySelector } from '../../components/VisibilitySelector'
 import {
@@ -32,7 +33,6 @@ import {
   previewAutoshareRule,
   updateAutoshareRule,
 } from '../../state/api'
-import { KnownValues } from '../EntityDetail/SchemaDataFields'
 import {
   DATA_FILTER_OPERATOR_LABELS,
   DATA_FILTER_OPERATORS,
@@ -64,20 +64,17 @@ const schemaFieldsOf = (definitions: ActivityTypeDefinition[], activityType: str
 
 function DataConditionRow({
   activityType,
-  index,
   row,
   schemaFields,
   onChange,
   onRemove,
 }: {
   activityType: string
-  index: number
   row: DataFilterRow
   schemaFields: DataFieldDefinition[]
   onChange: (row: DataFilterRow) => void
   onRemove: () => void
 }) {
-  const listId = `autoshare-known-values-${index}`
   const knownField = schemaFields.some((field) => field.name === row.field)
   const offerValues = activityType !== '' && knownField && operatorTakesValue(row.operator)
   return (
@@ -117,17 +114,25 @@ function DataConditionRow({
           </option>
         ))}
       </select>
-      {operatorTakesValue(row.operator) && (
-        <input
-          type="text"
-          aria-label="Value"
-          placeholder="Value"
-          list={offerValues ? listId : undefined}
-          value={row.value}
-          onInput={(e) => onChange({ ...row, value: (e.target as HTMLInputElement).value })}
-        />
-      )}
-      {offerValues && <KnownValues id={listId} activityType={activityType} field={row.field} />}
+      {operatorTakesValue(row.operator) &&
+        (offerValues ? (
+          <KnownValuesInput
+            activityType={activityType}
+            field={row.field}
+            aria-label="Value"
+            placeholder="Value"
+            value={row.value}
+            onChange={(value) => onChange({ ...row, value })}
+          />
+        ) : (
+          <input
+            type="text"
+            aria-label="Value"
+            placeholder="Value"
+            value={row.value}
+            onInput={(e) => onChange({ ...row, value: (e.target as HTMLInputElement).value })}
+          />
+        ))}
       <button type="button" class="btn-secondary" onClick={onRemove} title="Remove condition">
         Remove
       </button>
@@ -325,7 +330,6 @@ function CreateRuleForm({ onDone }: { onDone: () => void }) {
           <DataConditionRow
             key={index}
             activityType={activityType}
-            index={index}
             row={row}
             schemaFields={schemaFields}
             onChange={(updated) => updateCondition(index, updated)}

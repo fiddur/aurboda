@@ -364,9 +364,15 @@
 }
 
 .autoshare-condition-row > input,
-.autoshare-condition-row > select {
+.autoshare-condition-row > select,
+.autoshare-condition-row > .known-values {
   flex: 1 1 120px;
   min-width: 0;
+}
+
+.autoshare-condition-row > .known-values > input {
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .autoshare-create-actions {
