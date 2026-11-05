@@ -151,17 +151,19 @@ A goal on a measure, such as "Bench Press e1RM at least 100 kg over 30 days", is
 
 On the web, the type page has an exercises table (one row per exercise with its combined
 measures), each exercise has its own page at `/activity-type/<name>/item/sets.exercise/<value>`
-with its records, a trend of its best e1RM (or most reps in a set, or longest hold, for an
-exercise without weights) that decays with a 120-day half-life between sessions and is lifted by
-each session that beats it (a measure trend from the [trends API](trends.md), `GET /trends` with
-`measure`, `filter_field` and `filter_value`), a weekly chart of a chosen measure, and the
-sessions with it; and an activity's page has an exercises section showing each exercise's sets
+with its records, one chart of a chosen measure's weekly best (or total) — titled by the
+measure — with, when the measure is the exercise's trend measure (best e1RM, or most reps in a
+set, or longest hold, for an exercise without weights, the default pick), its decaying best drawn
+over the bars as a line: it decays with a 120-day half-life between sessions and is lifted by each
+session that beats it (a measure trend from the [trends API](trends.md), `GET /trends` with
+`measure`, `filter_field` and `filter_value`), and the sessions with it; and an activity's page has an exercises section showing each exercise's sets
 with record badges and its trend around the session — `Trend e1RM 12.2 kg ↗ 15.2 kg · volume
 250 kg ↗ 296 kg`, just the value where the session did not lift it (the longest hold or most reps
-for an exercise without weights) — with the full sets table collapsed under it. Each chart on the exercise page has a ⋮ menu with **Open in Chart
-Explorer**, **Add to dashboard** and **Set a goal** (a trend goal on the decaying best for the
-trend, a measure goal for the weekly chart, prefilled on the Goals page). An exercise page can be shared at a public link, with its
-records, trend, weekly chart and sessions' sets but nothing else of the sessions — see
+for an exercise without weights) — with the full sets table collapsed under it. The chart has a ⋮ menu with **Open in Chart
+Explorer**, **Add to dashboard** and **Set a goal** for the weekly bars (a measure goal, prefilled
+on the Goals page), plus **Add trend to dashboard**, **Set a trend goal** (on the decaying best) and **Open trend in Chart Explorer**
+when the line is drawn. An exercise page can be shared at a public link, with its
+records, weekly chart with its trend line, and sessions' sets but nothing else of the sessions — see
 [Sharing → Shared exercises](./sharing.md#shared-exercises).
 
 ### Merging values and aliases

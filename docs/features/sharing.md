@@ -88,10 +88,11 @@ viewer gets exactly:
   set), the best value, the start time of the first session that reached it, and the
   set it came from;
 - **done** — the number of sessions with the exercise and the first and latest start;
-- **trend** — the decaying best of e1RM (else most reps in a set, else longest hold)
-  over all time, with the 120-day half-life the exercise page uses;
-- **per week** — e1RM (else the first measure the sessions have) per week over the
-  last 365 days, the best or the total of each week as on the exercise page;
+- **per week** and **trend**, drawn as one chart — weekly bars of the trend measure
+  (e1RM, else most reps in a set, else longest hold; for an exercise without one, the
+  first measure the sessions have, the best or the total of each week as on the exercise
+  page) over all time from the first session's day, with the decaying best of the trend
+  measure (the 120-day half-life the exercise page uses) drawn over them as a line;
 - **history** — every session, newest first: its start time, its sets of the exercise
   (reps, weight, time and set type only), its measures and the records it set.
 

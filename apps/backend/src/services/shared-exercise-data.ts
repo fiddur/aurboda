@@ -23,7 +23,7 @@ import type { SharedExerciseRecord } from '../db/index.ts'
 
 import { measureSet } from './activity-measures.ts'
 import { getChartData } from './chart-data.ts'
-import { dayEndInTz, dayKey, dayStartInTz, shiftDayKey } from './day-keys.ts'
+import { dayEndInTz, dayKey, dayStartInTz } from './day-keys.ts'
 import { toSharedSet } from './feed-exercises.ts'
 import { queryActivitySessions } from './queries/activity-sessions.ts'
 import { getUserTimezone } from './settings.ts'
@@ -50,8 +50,6 @@ type Share = Pick<SharedExerciseRecord, 'activity_type' | 'field' | 'value'>
 const DAY_MS = 86_400_000
 
 const TREND_MEASURES: ActivityMeasure[] = ['e1rm', 'max_reps', 'max_time']
-
-const PER_WEEK_DAYS = 365
 
 const oldestFirst = (sessions: ActivitySession[]): ActivitySession[] =>
   sessions.toSorted((a, b) => a.start_time.localeCompare(b.start_time))
@@ -114,12 +112,11 @@ export const resolveSharedExerciseData = async (
       : null
 
   const available = activityMeasures.filter((m) => has(sessions, m))
-  const perWeekMeasure = available.includes('e1rm') ? 'e1rm' : available[0]
+  const perWeekMeasure = trendMeasure ?? available[0]
   let perWeek: SharedExerciseData['per_week'] = null
-  if (perWeekMeasure) {
-    const today = dayKey(now, tz)
-    const start = dayStartInTz(shiftDayKey(today, -PER_WEEK_DAYS), tz).toISOString()
-    const end = dayEndInTz(today, tz).toISOString()
+  if (perWeekMeasure && first) {
+    const start = dayStartInTz(dayKey(new Date(first.start_time), tz), tz).toISOString()
+    const end = dayEndInTz(dayKey(now, tz), tz).toISOString()
     const aggregation = measureDefaultAggregation(perWeekMeasure)
     const chart = await deps.getChartData(user, {
       ...filter,

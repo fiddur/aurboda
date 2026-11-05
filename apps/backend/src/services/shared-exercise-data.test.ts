@@ -109,10 +109,10 @@ describe('resolveSharedExerciseData', () => {
     )
   })
 
-  test('per week charts e1rm over the last 365 local days, keeping plain buckets', async () => {
+  test('per week charts e1rm from the local day of the first session, keeping plain buckets', async () => {
     const { deps, typed } = makeDeps([newer, older])
     const data = await resolveSharedExerciseData('alice', share, typed)
-    const range = { end: '2026-03-11T22:59:59.999Z', start: '2025-03-10T23:00:00.000Z' }
+    const range = { end: '2026-03-11T22:59:59.999Z', start: '2026-01-09T23:00:00.000Z' }
     expect(deps.getChartData).toHaveBeenCalledWith('alice', {
       aggregation: 'max',
       bucket_size: '1w',
@@ -143,6 +143,17 @@ describe('resolveSharedExerciseData', () => {
     expect(data.per_week).toMatchObject({ aggregation: 'sum', measure: 'set_count' })
     expect(data.trend).toBeNull()
     expect(deps.getTrend).not.toHaveBeenCalled()
+  })
+
+  test('per week follows the trend measure for an exercise without weights, so the line has bars', async () => {
+    const pushups = session({
+      id: 'p',
+      measures: { max_reps: 20, set_count: 3, total_reps: 50 },
+      start_time: older.start_time,
+    })
+    const data = await resolveSharedExerciseData('alice', share, makeDeps([pushups]).typed)
+    expect(data.trend?.measure).toBe('max_reps')
+    expect(data.per_week).toMatchObject({ aggregation: 'max', measure: 'max_reps' })
   })
 
   test('history is newest first with projected sets and no private fields', async () => {
