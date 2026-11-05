@@ -78,9 +78,9 @@ describe('filterExerciseData', () => {
     expect(filtered.done).toEqual(data.done)
   })
 
-  test('leaves out what was not opted into, but always keeps the session count', () => {
+  test('leaves out what was not opted into, the session count with the records', () => {
     const filtered = filterExerciseData(data, { include_records: false, include_sessions: false }, false)
-    expect(filtered).toEqual({ done: data.done, history: [], per_week: null, records: [], trend: null })
+    expect(filtered).toEqual({ done: null, history: [], per_week: null, records: [], trend: null })
   })
 })
 

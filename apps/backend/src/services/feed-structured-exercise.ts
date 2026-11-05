@@ -39,7 +39,7 @@ export const filterExerciseData = (
   exercise: Pick<ExerciseShare, 'include_records' | 'include_sessions'>,
   includeChart: boolean,
 ): SharedExerciseData => ({
-  done: data.done,
+  done: exercise.include_records ? data.done : null,
   history: exercise.include_sessions ? data.history.slice(0, SHARED_SESSION_COUNT) : [],
   per_week: includeChart ? data.per_week : null,
   records: exercise.include_records ? data.records : [],

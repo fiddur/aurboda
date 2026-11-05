@@ -665,7 +665,7 @@ id-convention path — reliable even when a typed consumer drops the in-band ext
    and links the live page. An **exercise** post resolves to `FeedStructuredExerciseShare`:
    the name, the activity type and its display name, the author's note, the link when the
    exercise was published, and `data` — the public exercise page's `SharedExerciseData`
-   with the records emptied unless shared, the trend and per-week series nulled unless the
+   with the records and session count emptied unless shared, the trend and per-week series nulled unless the
    chart was, and the history cut to the newest 5 sessions when sessions were shared (else
    empty); an exercise left with no sessions (its value merged away) 404s. Either way a peer can never
    read more than the author shared/published. `public`/`unlisted` posts resolve
