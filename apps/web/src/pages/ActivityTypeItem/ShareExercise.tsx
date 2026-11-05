@@ -3,7 +3,8 @@ import type { ShareVisibility } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
-import { CopyLinkButton, GlobeIcon, NativeShareButton } from '../../components/ShareLinkButton'
+import { CopyLinkButton, GlobeIcon, NativeShareButton, ShareArrowIcon } from '../../components/ShareControls'
+import { ShareExerciseDialog } from '../../components/ShareExerciseDialog'
 import { SHARE_VISIBILITY_OPTIONS, VisibilitySelector } from '../../components/VisibilitySelector'
 import {
   apiErrorMessage,
@@ -15,10 +16,14 @@ import { PublishExerciseDialog } from './PublishExerciseDialog'
 
 const QUERY_KEY = ['sharedExercises']
 
-/** Publishes this exercise's progress at a public page, or shows the published page's controls. */
+/**
+ * The exercise's sharing verbs: publish its progress at a public page (or manage the published page),
+ * and post it to the feed.
+ */
 export const ShareExercise = ({ name, field, value }: { name: string; field: string; value: string }) => {
   const queryClient = useQueryClient()
   const [publishing, setPublishing] = useState(false)
+  const [sharingToFeed, setSharingToFeed] = useState(false)
   const query = useQuery({ queryFn: listSharedExercises, queryKey: QUERY_KEY, staleTime: 60 * 1000 })
   const share = query.data?.find((e) => e.activity_type === name && e.field === field && e.value === value)
 
@@ -32,6 +37,18 @@ export const ShareExercise = ({ name, field, value }: { name: string; field: str
   const failed = update.error ?? remove.error
 
   if (query.isLoading || query.isError) return null
+
+  const shareToFeedButton = (
+    <button
+      type="button"
+      class="icon-button"
+      aria-label="Share to feed"
+      title="Share to feed"
+      onClick={() => setSharingToFeed(true)}
+    >
+      <ShareArrowIcon />
+    </button>
+  )
 
   return (
     <div class="activity-type-item-share">
@@ -53,6 +70,7 @@ export const ShareExercise = ({ name, field, value }: { name: string; field: str
           </a>
           <CopyLinkButton url={share.share_url} />
           <NativeShareButton url={share.share_url} title={`${share.name} — Aurboda`} />
+          {shareToFeedButton}
           <button
             type="button"
             class="activity-type-item-share-stop"
@@ -65,15 +83,18 @@ export const ShareExercise = ({ name, field, value }: { name: string; field: str
           </button>
         </>
       ) : (
-        <button
-          type="button"
-          class="activity-type-item-publish"
-          title="Publish a public page for this exercise"
-          onClick={() => setPublishing(true)}
-        >
-          <GlobeIcon />
-          Publish
-        </button>
+        <>
+          {shareToFeedButton}
+          <button
+            type="button"
+            class="activity-type-item-publish"
+            title="Publish a public page for this exercise"
+            onClick={() => setPublishing(true)}
+          >
+            <GlobeIcon />
+            Publish
+          </button>
+        </>
       )}
       {publishing && (
         <PublishExerciseDialog
@@ -81,6 +102,15 @@ export const ShareExercise = ({ name, field, value }: { name: string; field: str
           field={field}
           value={value}
           onClose={() => setPublishing(false)}
+        />
+      )}
+      {sharingToFeed && (
+        <ShareExerciseDialog
+          activityType={name}
+          field={field}
+          value={value}
+          publishedUrl={share?.share_url}
+          onClose={() => setSharingToFeed(false)}
         />
       )}
       {failed && <p class="error">{apiErrorMessage(failed, 'Failed to update the published page')}</p>}

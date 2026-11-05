@@ -17,7 +17,7 @@ import { useState } from 'preact/hooks'
 
 import { AttributionLink } from '../../components/AttributionLink'
 import { EditableDashboard } from '../../components/EditableDashboard'
-import { CopyLinkButton, NativeShareButton } from '../../components/ShareLinkButton'
+import { CopyLinkButton, NativeShareButton } from '../../components/ShareControls'
 import { PublicWidgetRenderer } from '../../components/widgets'
 import { fetchPublicResource, listSharedDashboards, updateSharedDashboard } from '../../state/api'
 import { auth } from '../../state/auth'

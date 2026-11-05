@@ -13,7 +13,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
 import { itemPageHref } from '../../components/sessions/sessionView'
-import { useCopyLink } from '../../components/ShareLinkButton'
+import { useCopyLink } from '../../components/ShareControls'
 import { SHARE_VISIBILITY_OPTIONS, VisibilitySelector } from '../../components/VisibilitySelector'
 import {
   createSharedDashboard,

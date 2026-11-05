@@ -169,3 +169,20 @@
     border-color: #374151;
   }
 }
+
+.share-dialog-plain {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.share-dialog-plain summary {
+  cursor: pointer;
+  color: #6b7280;
+  margin-bottom: 0.4rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  .share-dialog-plain summary {
+    color: #9ca3af;
+  }
+}

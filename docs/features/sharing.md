@@ -105,7 +105,12 @@ On the web, the exercise page's header has a **Publish** button that opens a dia
 first: it says what the page shows, and takes the name (defaults to the exercise) and
 the visibility (unlisted by default); nothing is created until it is confirmed. Once
 published the header shows **Published** · the visibility · **Open page** · **Copy link**
-(and the system share sheet where the browser offers one) · **Unpublish**.
+(and the system share sheet where the browser offers one) · **Unpublish**. Published or
+not, the row also has a **Share to feed** arrow button, which opens a dialog: a message,
+the three data opt-ins (records and session count, the trend chart, the last 5 sessions'
+sets), a **Link the public page** checkbox only when the exercise is published, the
+audience, and a live preview of the exact card a follower sees and of the plain text
+Mastodon gets. See [feed.md](./feed.md#feed-posts) for what the post carries.
 `/shared-dashboards` lists the published exercises under **Exercises** too (rename,
 visibility, copy link, unpublish). The public page's header has **Copy link** (and the
 system share sheet where the browser offers one); the owner viewing their own published

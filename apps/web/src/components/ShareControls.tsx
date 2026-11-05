@@ -1,7 +1,7 @@
 import { useState } from 'preact/hooks'
 
 import { canNativeShare, canWriteClipboard, isAbortError } from './share-link'
-import './ShareLinkButton.css'
+import './ShareControls.css'
 
 const iconProps = {
   'aria-hidden': true,
@@ -38,6 +38,13 @@ const ShareSheetIcon = () => (
   </svg>
 )
 
+export const ShareArrowIcon = () => (
+  <svg {...iconProps}>
+    <polyline points="15 14 20 9 15 4" />
+    <path d="M4 20v-7a4 4 0 0 1 4-4h12" />
+  </svg>
+)
+
 /** Copies `url`, falling back to a prompt where the clipboard API is missing (instances served over plain http). */
 export function useCopyLink(url: string): { copied: boolean; copy: () => Promise<void> } {
   const [copied, setCopied] = useState(false)
@@ -59,10 +66,9 @@ export function useCopyLink(url: string): { copied: boolean; copy: () => Promise
 
 export function CopyLinkButton({ url, label = 'Copy link' }: { url: string; label?: string }) {
   const { copied, copy } = useCopyLink(url)
-  const text = copied ? 'Copied!' : label
   return (
     <>
-      <button type="button" class="icon-button" onClick={copy} aria-label={text} title={text}>
+      <button type="button" class="icon-button" onClick={copy} aria-label={label} title={label}>
         <LinkIcon />
       </button>
       {copied && (

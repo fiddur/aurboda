@@ -6,7 +6,8 @@
  * chart with per-metric toggles plus a time-synced interactive map that marks
  * the position at the hovered chart time. An `article` post renders the full
  * inline article (title + resolved blocks — see `TimelineArticle`); a
- * `challenge` post its race chart and leaderboard (`TimelineChallenge`). Only
+ * `challenge` post its race chart and leaderboard (`TimelineChallenge`); an
+ * `exercise` post its records, chart and last sessions (`ExerciseShareContent`). Only
  * rendered for posts from Aurboda instances (which carry `structured`);
  * Mastodon posts have none.
  */
@@ -18,6 +19,7 @@ import { CombinedMetricChart } from '../../components/charts/CombinedMetricChart
 import { RouteMap } from '../../components/charts/RouteMap'
 import { formatEntryWindow } from './activity-stats'
 import { ActivityStatGrid } from './ActivityStatGrid'
+import { ExerciseShareContent } from './ExerciseShareContent'
 import {
   structuredCombinedSeries,
   structuredHasNativeMap,
@@ -70,6 +72,6 @@ function ActivityStructured({ structured }: { structured: FeedStructuredActivity
 export function TimelineStructured({ structured }: { structured: FeedStructuredPost }) {
   if (structured.kind === 'article') return <TimelineArticle article={structured} />
   if (structured.kind === 'challenge') return <TimelineChallenge structured={structured} />
-  if (structured.kind === 'exercise') return null
+  if (structured.kind === 'exercise') return <ExerciseShareContent structured={structured} />
   return <ActivityStructured structured={structured} />
 }

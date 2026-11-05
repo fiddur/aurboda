@@ -19,7 +19,12 @@ import { ActivityStatGrid } from './ActivityStatGrid'
 import { articleRenderSource } from './article-render-source'
 import { ArticleContent } from './ArticleContent'
 import { ChallengeShareContent } from './ChallengeShareContent'
-import { structuredHasNativeHrChart, structuredHasNativeMap } from './timeline-structured'
+import { ExerciseShareContent, ExerciseShareFallback } from './ExerciseShareContent'
+import {
+  structuredHasNativeExerciseChart,
+  structuredHasNativeHrChart,
+  structuredHasNativeMap,
+} from './timeline-structured'
 import { TimelineArticle } from './TimelineArticle'
 import { TimelineStructured } from './TimelineStructured'
 import './FeedPostCard.css'
@@ -44,7 +49,11 @@ const VISIBILITY: Record<FeedVisibility, { icon: string; label: string }> = {
  * A public/unlisted post's rendered image URL, or `null`. `followers`-only images
  * are token-gated and the browser has no token (#893), so they're omitted here.
  */
-const imageUrl = (username: string, post: FeedPost, kind: 'chart' | 'route' | 'standings'): string | null =>
+const imageUrl = (
+  username: string,
+  post: FeedPost,
+  kind: 'chart' | 'route' | 'standings' | 'trend',
+): string | null =>
   post.visibility === 'followers'
     ? null
     : `${API_URL}/public/${encodeURIComponent(username)}/feed/${post.id}/${kind}.png`
@@ -56,14 +65,18 @@ const imageUrl = (username: string, post: FeedPost, kind: 'chart' | 'route' | 's
  * is empty/undrawable. chart.png draws heart rate only, so only a drawable
  * heart-rate series makes it redundant; route.png only a drawable route. A
  * challenge post's standings.png stands in for the race only where the card
- * has no `structured` payload to draw it natively.
+ * has no `structured` payload to draw it natively; an exercise post's trend.png
+ * only where the card cannot draw its chart.
  */
 const mediaUrls = (
   post: FeedPost,
   username: string,
-): { chart: string | null; route: string | null; standings: string | null } => ({
+): { chart: string | null; route: string | null; standings: string | null; trend: string | null } => ({
   chart:
-    post.kind !== 'challenge' && post.include_chart && !structuredHasNativeHrChart(post.structured)
+    post.kind !== 'challenge' &&
+    post.kind !== 'exercise' &&
+    post.include_chart &&
+    !structuredHasNativeHrChart(post.structured)
       ? imageUrl(username, post, 'chart')
       : null,
   route:
@@ -71,6 +84,10 @@ const mediaUrls = (
   standings:
     post.kind === 'challenge' && post.include_chart && post.structured == null
       ? imageUrl(username, post, 'standings')
+      : null,
+  trend:
+    post.kind === 'exercise' && post.include_chart && !structuredHasNativeExerciseChart(post.structured)
+      ? imageUrl(username, post, 'trend')
       : null,
 })
 
@@ -117,6 +134,19 @@ const ReplyPostBody = ({ post }: { post: FeedPost }) => {
 }
 
 /**
+ * An exercise post renders the same card a peer's timeline does; without a structured payload (the
+ * exercise has no sessions any more) only its title and note.
+ */
+const ExercisePostBody = ({ post }: { post: FeedPost }) =>
+  post.structured?.kind === 'exercise' ? (
+    <ExerciseShareContent structured={post.structured} />
+  ) : post.exercise ? (
+    <ExerciseShareFallback exercise={post.exercise} message={post.message} />
+  ) : post.content ? (
+    <div class="feed-post-content" dangerouslySetInnerHTML={{ __html: post.content }} />
+  ) : null
+
+/**
  * The card body. An article renders its own title + prose/chart blocks (prose sanitised
  * via the shared sanitiser) — live for the owner, server-resolved for a
  * visitor. An activity post with the full structured
@@ -139,6 +169,8 @@ const FeedPostBody = ({ post, visitor }: { post: FeedPost; visitor: boolean }) =
     <ChallengeShareContent challenge={post.challenge} message={post.message} />
   ) : post.kind === 'reply' ? (
     <ReplyPostBody post={post} />
+  ) : post.kind === 'exercise' ? (
+    <ExercisePostBody post={post} />
   ) : post.structured ? (
     <TimelineStructured structured={post.structured} />
   ) : post.metrics ? (
@@ -164,7 +196,7 @@ export const FeedPostCard = ({
 }) => {
   const vis = VISIBILITY[post.visibility]
   const when = formatDistanceToNow(new Date(post.created_at), { addSuffix: true })
-  const { chart, route, standings } = mediaUrls(post, author.username)
+  const { chart, route, standings, trend } = mediaUrls(post, author.username)
 
   return (
     <article class="feed-post">
@@ -183,11 +215,12 @@ export const FeedPostCard = ({
 
       <FeedPostBody post={post} visitor={visitor} />
 
-      {(chart || route || standings) && (
+      {(chart || route || standings || trend) && (
         <div class="feed-post-media">
           {chart && <img class="feed-post-image" src={chart} alt="Heart rate chart" loading="lazy" />}
           {route && <img class="feed-post-image" src={route} alt="Route map" loading="lazy" />}
           {standings && <img class="feed-post-image" src={standings} alt="Standings chart" loading="lazy" />}
+          {trend && <img class="feed-post-image" src={trend} alt="Trend chart" loading="lazy" />}
         </div>
       )}
 

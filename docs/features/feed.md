@@ -935,6 +935,15 @@ resolving.
   tool remains the one surface that omits `structured` (an intentional payload-weight divergence
   from `GET /feed`, not a capability gap: the underlying data is all reachable via the
   metric-query tools).
+- **Share an exercise** — an exercise's page (`/activity-type/:name/item/…`) has a **Share
+  to feed** arrow button next to **Publish** / **Published**. Its dialog takes an optional
+  message (markdown), the data opt-ins (records and session count, the trend chart, the last
+  5 sessions' sets), **Link the public page** (offered only when the exercise is published;
+  otherwise a note says to publish it first) and the audience, with a debounced **live
+  preview** of the exact native card and, folded under it, the plain text Mastodon sees. The
+  owner's feed, the public profile and a peer's timeline render the post natively — records,
+  the one chart (weekly bars with the decaying-best line, or the trend alone), the last
+  sessions — and show the `Trend` image only where the card has no chart to draw.
 - **New article** — the **Feed** page has a **New article** button that opens the article
   composer: a title, an optional default time window, and an ordered list of **prose**
   (markdown), **chart** (a metric + optional per-block window + caption), and **correlation**

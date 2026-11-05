@@ -3,8 +3,8 @@
  * renders — kept free of any DOM/`window` import so it can be unit-tested in
  * Node (the web test runner has no jsdom).
  *
- * Only meaningful for an `activity` post's typed series/route; an `article` or
- * `challenge` post renders via its own card instead, so everything here is
+ * Only meaningful for an `activity` post's typed series/route; an `article`,
+ * `challenge` or `exercise` post renders via its own card instead, so everything here is
  * empty/false for one. A legacy entry stored before the `kind` tag existed has
  * the activity shape, so gates name the non-activity kinds (not
  * `!== 'activity'`) to avoid dropping the native render on pre-existing
@@ -15,6 +15,7 @@ import type { FeedStructuredActivity, FeedStructuredPost } from '@aurboda/api-sp
 import type { CombinedChartSeries } from '../../components/charts/CombinedMetricChart'
 import type { RoutePoint } from '../../components/charts/RouteMap'
 
+import { exerciseChartTitle } from '../../components/charts/exercise-chart'
 import { fromWireKey } from '../../components/feed-metrics'
 
 const activityPayload = (structured: FeedStructuredPost | undefined): FeedStructuredActivity | null =>
@@ -75,11 +76,17 @@ export const structuredHasNativeHrChart = (structured: FeedStructuredPost | unde
 export const structuredHasNativeMap = (structured: FeedStructuredPost | undefined): boolean =>
   (activityPayload(structured)?.route?.length ?? 0) >= MIN_DRAWABLE_POINTS
 
+/** Whether an exercise post's card draws its chart natively, which makes the `Trend` image redundant. */
+export const structuredHasNativeExerciseChart = (structured: FeedStructuredPost | undefined): boolean =>
+  structured?.kind === 'exercise' &&
+  exerciseChartTitle(structured.data.per_week, structured.data.trend) !== null
+
 /**
  * Whether a delivered attachment image is still wanted next to the native
  * render, by its Aurboda attachment `name` (stable — we set it on delivery).
  * An article's or a challenge's card renders everything natively (a challenge's
- * `Standings` race chart included); an activity
+ * `Standings` race chart included); an exercise keeps its `Trend` image only where
+ * the card cannot draw the chart; an activity
  * keeps each image unless its native counterpart actually draws (chart.png ↔
  * the heart-rate line, route.png ↔ the interactive map); non-Aurboda images
  * always show.
@@ -90,6 +97,7 @@ export const timelineImageVisible = (
 ): boolean => {
   if (structured == null) return true
   if (structured.kind === 'article' || structured.kind === 'challenge') return false
+  if (structured.kind === 'exercise') return name !== 'Trend' || !structuredHasNativeExerciseChart(structured)
   if (name === 'Heart rate') return !structuredHasNativeHrChart(structured)
   if (name === 'Route') return !structuredHasNativeMap(structured)
   return true
