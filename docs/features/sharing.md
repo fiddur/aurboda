@@ -100,10 +100,16 @@ session's other fields, other exercises of the same sessions, and any other key 
 was logged with. Days and weeks follow the owner's stored timezone. There is no period
 selector; the owner's own exercise page keeps one.
 
-On the web, the exercise page's header has a **Share** button; once shared it shows
-the link, the visibility and **Stop sharing**. `/shared-dashboards` lists the shared
-exercises under **Exercises** too (rename, visibility, copy link, delete). The owner
-viewing their own shared exercise sees the same read-only page as everyone else.
+On the web, the exercise page's header has a **Publish** button that opens a dialog
+first: it says what the page shows, and takes the name (defaults to the exercise) and
+the visibility (unlisted by default); nothing is created until it is confirmed. Once
+published the header shows **Published** · the visibility · **Open page** · **Copy link**
+(and the system share sheet where the browser offers one) · **Unpublish**.
+`/shared-dashboards` lists the published exercises under **Exercises** too (rename,
+visibility, copy link, unpublish). The public page's header has **Copy link** (and the
+system share sheet where the browser offers one); the owner viewing their own published
+exercise sees the same read-only page as everyone else, plus a **Manage** link back to
+the exercise page.
 
 Link previews of a public shared exercise carry its name, "&lt;name&gt; — &lt;user&gt;'s
 progress on Aurboda." and the static default image; there is no rendered image card and
@@ -209,9 +215,11 @@ type="application/json+oembed">` pointing at `GET /oembed?url=<share url>`, whic
   returns a `type: "link"` document (title, author, provider, OG-image thumbnail).
   Only public resources resolve — unlisted/unknown/private URLs 404, so nothing
   private is exposed. Primarily benefits Mastodon and other oEmbed-aware consumers.
-- **Share button**: public profile and shared-dashboard pages have a Share control
-  that uses the native share sheet (`navigator.share`) where available and otherwise
-  copies the link to the clipboard.
+- **Copy link and Share…**: public shared-dashboard and shared-exercise pages have a
+  **Copy link** icon button that copies the URL to the clipboard (a prompt with the
+  URL where the clipboard is unavailable), plus a **Share…** button that opens the
+  system share sheet where `navigator.share` exists (phones; not in the Android
+  WebView).
 - **`theme-color`** and favicons/apple-touch-icon are set so tabs and mobile share
   sheets look finished.
 

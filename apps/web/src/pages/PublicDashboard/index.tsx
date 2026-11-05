@@ -17,7 +17,7 @@ import { useState } from 'preact/hooks'
 
 import { AttributionLink } from '../../components/AttributionLink'
 import { EditableDashboard } from '../../components/EditableDashboard'
-import { ShareLinkButton } from '../../components/ShareLinkButton'
+import { CopyLinkButton, NativeShareButton } from '../../components/ShareLinkButton'
 import { PublicWidgetRenderer } from '../../components/widgets'
 import { fetchPublicResource, listSharedDashboards, updateSharedDashboard } from '../../state/api'
 import { auth } from '../../state/auth'
@@ -121,8 +121,11 @@ function ReadOnlyDashboard({
     <div class="dashboard public-dashboard">
       <div class="dashboard-header">
         <h1>{name}</h1>
-        <AttributionLink username={username} />
-        <ShareLinkButton url={window.location.href} title={`${name} — Aurboda`} />
+        <div class="dashboard-actions">
+          <AttributionLink username={username} />
+          <CopyLinkButton url={window.location.href} />
+          <NativeShareButton url={window.location.href} title={`${name} — Aurboda`} />
+        </div>
       </div>
 
       {config.description ? <p class="dashboard-intro">{config.description}</p> : null}
@@ -154,12 +157,13 @@ const sameForEveryoneView = (
   data: Awaited<ReturnType<typeof fetchPublicResource>>,
   username: string,
   slug: string,
+  isOwner: boolean,
 ) => {
   if (data.type === 'challenge' && data.challenge) {
     return <PublicChallenge username={username} slug={slug} challenge={data.challenge} />
   }
   if (data.type === 'exercise' && data.data) {
-    return <PublicExercise username={username} resource={data} data={data.data} />
+    return <PublicExercise username={username} resource={data} data={data.data} isOwner={isOwner} />
   }
   return null
 }
@@ -186,7 +190,7 @@ export function PublicResource() {
   }
 
   const data = query.data
-  const sameForEveryone = data?.success ? sameForEveryoneView(data, username, slug) : null
+  const sameForEveryone = data?.success ? sameForEveryoneView(data, username, slug, isOwner) : null
   if (sameForEveryone) return sameForEveryone
 
   // Owner of this profile → their live, editable dashboard, independent of the

@@ -1,0 +1,45 @@
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #673ab8;
+  cursor: pointer;
+}
+
+.icon-button:hover {
+  background: #ede9fe;
+}
+
+.icon-button:focus-visible {
+  outline: 2px solid #673ab8;
+  outline-offset: 2px;
+}
+
+.copy-link-feedback {
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+@media (prefers-color-scheme: dark) {
+  .icon-button {
+    color: #a78bfa;
+  }
+
+  .icon-button:hover {
+    background: #312e81;
+  }
+
+  .icon-button:focus-visible {
+    outline-color: #a78bfa;
+  }
+
+  .copy-link-feedback {
+    color: #9ca3af;
+  }
+}
