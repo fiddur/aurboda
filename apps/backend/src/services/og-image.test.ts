@@ -11,6 +11,7 @@ import {
   OG_WIDTH,
   type OgCard,
   type OgChallengeMember,
+  sparklineSvg,
   twemojiFileCandidates,
   twemojiFileName,
 } from './og-image.ts'
@@ -99,6 +100,39 @@ describe('clampTitle', () => {
   })
 })
 
+const polylinePoints = (svg: string): [number, number][] =>
+  (/points="([^"]*)"/.exec(svg)?.[1] ?? '')
+    .split(' ')
+    .map((pair) => pair.split(',').map(Number) as [number, number])
+
+describe('sparklineSvg', () => {
+  test('draws one point per value, evenly spread inside the box', () => {
+    const svg = sparklineSvg([1, 3, 2, 5], 460, 170)
+    expect(svg).toContain('width="460" height="170" viewBox="0 0 460 170"')
+    const points = polylinePoints(svg)
+    expect(points).toHaveLength(4)
+    const xs = points.map(([x]) => x)
+    expect(xs[1] - xs[0]).toBeCloseTo(xs[3] - xs[2], 1)
+    for (const [x, y] of points) {
+      expect(x).toBeGreaterThan(0)
+      expect(x).toBeLessThan(460)
+      expect(y).toBeGreaterThan(0)
+      expect(y).toBeLessThan(170)
+    }
+  })
+
+  test('puts the highest value at the top and the lowest at the bottom', () => {
+    const [low, high] = polylinePoints(sparklineSvg([1, 5], 460, 170))
+    expect(high[1]).toBeLessThan(low[1])
+    expect(high[1]).toBeLessThan(170 / 2)
+    expect(low[1]).toBeGreaterThan(170 / 2)
+  })
+
+  test('draws a flat series at mid-height', () => {
+    for (const [, y] of polylinePoints(sparklineSvg([4, 4, 4], 460, 170))) expect(y).toBe(85)
+  })
+})
+
 describe('twemojiFileName', () => {
   test.each([
     ['🍂', '1f342'],
@@ -171,6 +205,53 @@ describe('renderOgImage', () => {
     const meta = await sharp(png).metadata()
     expect(meta.width).toBe(OG_WIDTH)
     expect(meta.height).toBe(OG_HEIGHT)
+  })
+
+  test('renders an exercise card at 1200x630', async () => {
+    const exerciseCard = (exercise: OgCard['exercise']): OgCard => ({
+      exercise,
+      kind: 'exercise',
+      title: 'Dumbbell Bench Press',
+      username: 'fiddur',
+    })
+    const headline = { date: '21 Dec 2025', label: 'Best e1RM', value: '39.5 kg' }
+    const sessions = '43 sessions since Mar 2025'
+    for (const card of [
+      exerciseCard({
+        activityTypeName: 'Strength training',
+        headline,
+        sessions,
+        sparkline: [30, 34, 39.5, 39],
+      }),
+      exerciseCard({ activityTypeName: 'Strength training', headline, sessions, sparkline: [] }),
+      exerciseCard({ activityTypeName: 'Running', sessions: '1 session, 4 Nov 2026', sparkline: [] }),
+      exerciseCard({ activityTypeName: 'Running', sparkline: [] }),
+    ]) {
+      const meta = await sharp(await renderOgImage(card)).metadata()
+      expect(meta.width).toBe(OG_WIDTH)
+      expect(meta.height).toBe(OG_HEIGHT)
+    }
+  })
+
+  test('draws the exercise sparkline', async () => {
+    const card = (sparkline: number[]): OgCard => ({
+      exercise: { activityTypeName: 'Strength training', sessions: '43 sessions since Mar 2025', sparkline },
+      kind: 'exercise',
+      title: 'Bench',
+    })
+    const brightPixels = async (png: Buffer): Promise<number> => {
+      const { data, info } = await sharp(png)
+        .extract({ height: 200, left: 660, top: 230, width: 460 })
+        .raw()
+        .toBuffer({ resolveWithObject: true })
+      let count = 0
+      for (let i = 0; i < data.length; i += info.channels) if (data[i + 1] > 200) count++
+      return count
+    }
+    const without = await brightPixels(await renderOgImage(card([])))
+    const withLine = await brightPixels(await renderOgImage(card([1, 2, 3, 4])))
+    expect(without).toBe(0)
+    expect(withLine).toBeGreaterThan(100)
   })
 
   test('renders an upcoming challenge nobody has joined yet', async () => {

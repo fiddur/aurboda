@@ -1,8 +1,11 @@
+import type { SharedExerciseData } from '@aurboda/api-spec'
+
 import express from 'express'
 import supertest from 'supertest'
 import { describe, expect, test, vi } from 'vitest'
 
 import type { ResolvedChallenge } from '../services/challenge-card.ts'
+import type { ResolvedExercise } from './share-html-router.ts'
 
 import { createOgImageRouter, type OgImageDeps } from './og-image-router.ts'
 
@@ -21,15 +24,37 @@ const resolvedChallenge = (overrides: Partial<ResolvedChallenge> = {}): Resolved
   ...overrides,
 })
 
+const resolvedExercise = (overrides: Partial<ResolvedExercise> = {}): ResolvedExercise => ({
+  activity_type: 'strength_training',
+  activity_type_name: 'Strength training',
+  field: 'sets.exercise',
+  id: 'e1',
+  is_public: true,
+  name: 'Bench',
+  value: 'Bench Press',
+  ...overrides,
+})
+
+const exerciseData: SharedExerciseData = {
+  done: { count: 43, first: '2025-03-04T08:00:00.000Z', last: '2026-11-04T08:00:00.000Z' },
+  history: [],
+  per_week: null,
+  records: [{ measure: 'e1rm', start_time: '2025-12-21T09:00:00.000Z', value: 39.5 }],
+  trend: null,
+}
+
 const buildApp = (overrides: Partial<OgImageDeps> = {}) => {
   const deps: OgImageDeps = {
     loadAvatarDataUri: async () => 'data:image/png;base64,AAAA',
+    latestExerciseSession: vi.fn(async () => '2026-11-04T08:00:00.000Z'),
     loadBannerDataUri: vi.fn(async () => 'data:image/jpeg;base64,BBBB'),
+    loadExerciseCard: vi.fn(async () => ({ data: exerciseData, timeZone: 'Europe/Stockholm' })),
     now: () => new Date('2026-10-01T12:00:00Z'),
     profileExists: async () => false,
     renderImage: vi.fn(async () => fakePng),
     resolveChallenge: async () => null,
     resolveDashboard: async () => null,
+    resolveExercise: async () => null,
     webHost: 'https://aurboda.net',
     ...overrides,
   }
@@ -153,9 +178,74 @@ describe('GET /u/:username/:slug/opengraph-image.png', () => {
     expect(res.headers.location).toBe('https://aurboda.net/og-default.png')
   })
 
-  test('redirects a shared exercise to the default image', async () => {
-    const resolveExercise = async () => ({ is_public: true, name: 'Bench' })
-    const { app, deps } = buildApp({ resolveExercise } as Partial<OgImageDeps>)
+  test('renders a public shared exercise', async () => {
+    const { app, deps } = buildApp({ resolveExercise: async () => resolvedExercise() })
+    const res = await supertest(app).get('/u/fiddur/ex1/opengraph-image.png')
+    expect(res.status).toBe(200)
+    expect(res.type).toBe('image/png')
+    expect(deps.loadExerciseCard).toHaveBeenCalledWith(
+      'fiddur',
+      expect.objectContaining({
+        activity_type: 'strength_training',
+        field: 'sets.exercise',
+        value: 'Bench Press',
+      }),
+    )
+    expect(deps.renderImage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        exercise: expect.objectContaining({
+          activityTypeName: 'Strength training',
+          headline: { date: '21 Dec 2025', label: 'Best e1RM', value: '39.5 kg' },
+          sessions: '43 sessions since Mar 2025',
+        }),
+        kind: 'exercise',
+        title: 'Bench',
+        username: 'fiddur',
+      }),
+    )
+  })
+
+  test('memoises an exercise card until a new session lands', async () => {
+    let latest = '2026-11-04T08:00:00.000Z'
+    const { app, deps } = buildApp({
+      latestExerciseSession: vi.fn(async () => latest),
+      resolveExercise: async () => resolvedExercise(),
+    })
+    await supertest(app).get('/u/fiddur/ex1/opengraph-image.png')
+    await supertest(app).get('/u/fiddur/ex1/opengraph-image.png')
+    expect(deps.loadExerciseCard).toHaveBeenCalledTimes(1)
+    expect(deps.renderImage).toHaveBeenCalledTimes(1)
+    latest = '2026-11-05T08:00:00.000Z'
+    await supertest(app).get('/u/fiddur/ex1/opengraph-image.png')
+    expect(deps.loadExerciseCard).toHaveBeenCalledTimes(2)
+    expect(deps.renderImage).toHaveBeenCalledTimes(2)
+  })
+
+  test('redirects an unlisted shared exercise to the default image', async () => {
+    const { app, deps } = buildApp({ resolveExercise: async () => resolvedExercise({ is_public: false }) })
+    const res = await supertest(app).get('/u/fiddur/ex1/opengraph-image.png')
+    expect(res.status).toBe(302)
+    expect(res.headers.location).toBe('https://aurboda.net/og-default.png')
+    expect(deps.loadExerciseCard).not.toHaveBeenCalled()
+    expect(deps.renderImage).not.toHaveBeenCalled()
+  })
+
+  test('a dashboard of the same slug wins over an exercise', async () => {
+    const resolveExercise = vi.fn(async () => resolvedExercise())
+    const { app, deps } = buildApp({
+      resolveDashboard: async () => ({ is_public: true, name: 'Training' }),
+      resolveExercise,
+    })
+    await supertest(app).get('/u/fiddur/ex1/opengraph-image.png')
+    expect(resolveExercise).not.toHaveBeenCalled()
+    expect(deps.renderImage).toHaveBeenCalledWith(expect.objectContaining({ kind: 'dashboard' }))
+  })
+
+  test('degrades to the default image when the exercise data fails to load', async () => {
+    const { app, deps } = buildApp({
+      loadExerciseCard: vi.fn(async () => Promise.reject(new Error('db down'))),
+      resolveExercise: async () => resolvedExercise(),
+    })
     const res = await supertest(app).get('/u/fiddur/ex1/opengraph-image.png')
     expect(res.status).toBe(302)
     expect(res.headers.location).toBe('https://aurboda.net/og-default.png')
