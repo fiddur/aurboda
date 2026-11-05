@@ -284,7 +284,7 @@ export const shareExerciseBodySchema = z
       description:
         'Personal note shown above the progress (markdown, rendered through the shared sanitiser). Empty/absent shares no text.',
     }),
-    value: z.string().min(1).meta({ description: 'The item value to share, e.g. `Bench Press`' }),
+    value: z.string().min(1).max(200).meta({ description: 'The item value to share, e.g. `Bench Press`' }),
     visibility: feedVisibilitySchema.default('public'),
   })
   .meta({ id: 'ShareExerciseBody' })

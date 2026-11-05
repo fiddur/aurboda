@@ -7,6 +7,7 @@ import type { ExerciseShare, FeedStructuredExerciseShare } from '@aurboda/api-sp
 
 import { exerciseChartTitle } from '../../components/charts/exercise-chart'
 import { ExerciseChart } from '../../components/charts/ExerciseChart'
+import { httpLink } from '../../utils/http-link'
 import { renderRemoteMarkdown } from '../../utils/markdown'
 import { DoneCard, RecordCard } from '../ActivityTypeItem/ItemCards'
 import { ItemSessionsTable } from '../ActivityTypeItem/ItemSessionsTable'
@@ -15,19 +16,22 @@ import './FeedPostCard.css'
 import './TimelineStructured.css'
 import './ExerciseShareContent.css'
 
-const ExerciseTitle = ({ name, url }: { name: string; url?: string }) => (
-  <p class="feed-post-title">
-    <strong>
-      {url ? (
-        <a href={url} target="_blank" rel="noopener noreferrer">
-          {name}
-        </a>
-      ) : (
-        name
-      )}
-    </strong>
-  </p>
-)
+const ExerciseTitle = ({ name, url }: { name: string; url?: string }) => {
+  const link = httpLink(url)
+  return (
+    <p class="feed-post-title">
+      <strong>
+        {link ? (
+          <a href={link} target="_blank" rel="noopener noreferrer">
+            {name}
+          </a>
+        ) : (
+          name
+        )}
+      </strong>
+    </p>
+  )
+}
 
 const Message = ({ message }: { message?: string | null }) =>
   message ? <div dangerouslySetInnerHTML={{ __html: renderRemoteMarkdown(message) }} /> : null

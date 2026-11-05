@@ -317,9 +317,13 @@ export const feedStructuredExerciseShareSchema = z
       description: "The author's note, raw markdown (rendered by the receiver's sanitiser)",
     }),
     name: z.string().meta({ description: 'Exercise display name at share time' }),
-    url: z.string().optional().meta({
-      description: "The exercise's public page, present only when it was published and linked at share time",
-    }),
+    url: z
+      .url({ protocol: /^https?$/ })
+      .optional()
+      .meta({
+        description:
+          "The exercise's public page (http or https), present only when it was published and linked at share time",
+      }),
   })
   .meta({ id: 'FeedStructuredExerciseShare' })
 
