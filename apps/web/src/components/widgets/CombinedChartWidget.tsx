@@ -10,6 +10,7 @@ import { useCallback, useMemo } from 'preact/hooks'
 
 import { fetchChartData, fetchTrend } from '../../state/api'
 import { BarChart } from '../charts/BarChart'
+import { measureChartTitle } from './chartTitle'
 import {
   barsLayerParams,
   type CombinedChartBars,
@@ -28,7 +29,11 @@ const lookbackToRange = (lookbackDays: number): { start: string; end: string } =
 
 const NO_BUCKETS: CombinedChartBars['buckets'] = []
 
-const combinedChartTitle = (config: CombinedChartConfig): string => config.title ?? 'Combined chart'
+const combinedChartTitle = ({ layers, title }: CombinedChartConfig): string => {
+  if (title) return title
+  const bars = layers.find((layer) => layer.kind === 'bars')
+  return (bars && (measureChartTitle(bars) ?? bars.pattern)) ?? 'Combined chart'
+}
 
 interface CombinedChartViewProps {
   config: CombinedChartConfig
