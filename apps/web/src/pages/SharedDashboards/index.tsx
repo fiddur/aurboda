@@ -13,6 +13,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
 import { itemPageHref } from '../../components/sessions/sessionView'
+import { useCopyLink } from '../../components/ShareLinkButton'
 import { SHARE_VISIBILITY_OPTIONS, VisibilitySelector } from '../../components/VisibilitySelector'
 import {
   createSharedDashboard,
@@ -26,26 +27,6 @@ import {
 } from '../../state/api'
 import { toDisplayName } from '../../utils/displayName'
 import './style.css'
-
-function useCopyLink(url: string): { copied: boolean; copy: () => Promise<void> } {
-  const [copied, setCopied] = useState(false)
-  const copy = async () => {
-    // navigator.clipboard is only available in secure contexts; instances may be
-    // served over plain http, so guard and fall back to a manual prompt.
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(url)
-        setCopied(true)
-        setTimeout(() => setCopied(false), 1500)
-      } else {
-        window.prompt('Copy this link:', url)
-      }
-    } catch {
-      window.prompt('Copy this link:', url)
-    }
-  }
-  return { copied, copy }
-}
 
 function SharedDashboardRow({ dashboard }: { dashboard: SharedDashboard }) {
   const queryClient = useQueryClient()
@@ -123,7 +104,7 @@ function SharedExerciseRow({ exercise }: { exercise: SharedExercise }) {
 
   const deleteMutation = useMutation({
     mutationFn: () => deleteSharedExercise(exercise.id),
-    onError: () => alert('Failed to stop sharing the exercise. Please try again.'),
+    onError: () => alert('Failed to unpublish the exercise. Please try again.'),
     onSuccess: invalidate,
   })
 
@@ -133,7 +114,7 @@ function SharedExerciseRow({ exercise }: { exercise: SharedExercise }) {
   }
 
   const handleDelete = () => {
-    if (confirm(`Stop sharing "${exercise.name}"? Its link will stop working.`)) deleteMutation.mutate()
+    if (confirm(`Unpublish "${exercise.name}"? Its link will stop working.`)) deleteMutation.mutate()
   }
 
   return (
@@ -166,7 +147,7 @@ function SharedExerciseRow({ exercise }: { exercise: SharedExercise }) {
           {copied ? 'Copied!' : 'Copy link'}
         </button>
         <button class="btn-danger" onClick={handleDelete}>
-          Delete
+          Unpublish
         </button>
       </div>
     </li>

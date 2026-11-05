@@ -5,18 +5,22 @@ import { activityMeasureLabels } from '@aurboda/api-spec'
 import { AttributionLink } from '../../components/AttributionLink'
 import { BarChart } from '../../components/charts/BarChart'
 import { TrendLineChart } from '../../components/charts/TrendLineChart'
-import { ShareLinkButton } from '../../components/ShareLinkButton'
+import { itemPageHref } from '../../components/sessions/sessionView'
+import { CopyLinkButton, NativeShareButton } from '../../components/ShareLinkButton'
 import { DoneCard, RecordCard } from '../ActivityTypeItem/ItemCards'
 import { ItemSessionsTable } from '../ActivityTypeItem/ItemSessionsTable'
 import '../ActivityTypeItem/style.css'
+import './style.css'
 
 /** One shared exercise, read-only, from the server-resolved projection of its sessions. */
 export function PublicExercise({
   data,
+  isOwner,
   resource,
   username,
 }: {
   data: SharedExerciseData
+  isOwner: boolean
   resource: PublicSharedExerciseResponse
   username: string
 }) {
@@ -25,11 +29,22 @@ export function PublicExercise({
 
   return (
     <div class="public-dashboard">
-      <div class="dashboard-header">
+      <header class="public-exercise-header">
         <h1>{name}</h1>
         <AttributionLink username={username} />
-        <ShareLinkButton url={window.location.href} title={`${name} — Aurboda`} />
-      </div>
+        <div class="public-exercise-actions">
+          <CopyLinkButton url={window.location.href} />
+          <NativeShareButton url={window.location.href} title={`${name} — Aurboda`} />
+          {isOwner && resource.activity_type && resource.field && resource.value && (
+            <a
+              class="public-exercise-manage"
+              href={itemPageHref(resource.activity_type, resource.field, resource.value)}
+            >
+              Manage
+            </a>
+          )}
+        </div>
+      </header>
       <p class="activity-type-item-subtitle">
         {resource.activity_type_name}
         {resource.value && resource.value !== name && ` · ${resource.value}`}
