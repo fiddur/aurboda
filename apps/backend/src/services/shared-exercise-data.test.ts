@@ -145,6 +145,17 @@ describe('resolveSharedExerciseData', () => {
     expect(deps.getTrend).not.toHaveBeenCalled()
   })
 
+  test('per week follows the trend measure for an exercise without weights, so the line has bars', async () => {
+    const pushups = session({
+      id: 'p',
+      measures: { max_reps: 20, set_count: 3, total_reps: 50 },
+      start_time: older.start_time,
+    })
+    const data = await resolveSharedExerciseData('alice', share, makeDeps([pushups]).typed)
+    expect(data.trend?.measure).toBe('max_reps')
+    expect(data.per_week).toMatchObject({ aggregation: 'max', measure: 'max_reps' })
+  })
+
   test('history is newest first with projected sets and no private fields', async () => {
     const { typed } = makeDeps([newer, older])
     const data = await resolveSharedExerciseData('alice', share, typed)

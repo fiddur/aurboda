@@ -146,13 +146,13 @@ const MeasureChart = ({
 }) => {
   const available = availableMeasures(all)
   const [chosen, setChosen] = useState<ActivityMeasure | undefined>(undefined)
-  const measure =
-    chosen && available.includes(chosen) ? chosen : available.includes('e1rm') ? 'e1rm' : available[0]
+  const trendOf = trendMeasure(all)
+  const measure = chosen && available.includes(chosen) ? chosen : (trendOf ?? available[0])
   const range = useMemo(() => perWeekRange(lookback, all), [lookback, all])
   if (!measure) return null
   const lookbackDays = explorerLookbackDays(lookback, range.start)
   const filter = { filter_field: item.field, filter_value: item.value }
-  const withLine = measure === trendMeasure(all)
+  const withLine = measure === trendOf
   const trend = {
     ...filter,
     half_life_days: MEASURE_HALF_LIFE_DEFAULT,

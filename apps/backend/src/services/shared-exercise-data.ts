@@ -112,7 +112,7 @@ export const resolveSharedExerciseData = async (
       : null
 
   const available = activityMeasures.filter((m) => has(sessions, m))
-  const perWeekMeasure = available.includes('e1rm') ? 'e1rm' : available[0]
+  const perWeekMeasure = trendMeasure ?? available[0]
   let perWeek: SharedExerciseData['per_week'] = null
   if (perWeekMeasure && first) {
     const start = dayStartInTz(dayKey(new Date(first.start_time), tz), tz).toISOString()

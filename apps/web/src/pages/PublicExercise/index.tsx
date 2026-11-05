@@ -23,10 +23,8 @@ export function PublicExercise({
 }) {
   const name = resource.name ?? resource.value ?? 'Exercise'
   const { done, history, per_week: perWeek, records, trend } = data
-  const line = useMemo(
-    () => (trend && perWeek && trend.measure === perWeek.measure ? { data: trend.history } : undefined),
-    [trend, perWeek],
-  )
+  const lineTrend = trend && perWeek && trend.measure === perWeek.measure ? trend : undefined
+  const line = useMemo(() => (lineTrend ? { data: lineTrend.history } : undefined), [lineTrend])
 
   return (
     <div class="public-dashboard">
@@ -64,8 +62,8 @@ export function PublicExercise({
                 line={line}
               />
               <p class="activity-type-item-caption">
-                {line
-                  ? `${activityMeasureLabels[perWeek.measure]} of each week; the line is the decaying best, with a ${trend?.half_life_days}-day half-life between sessions.`
+                {lineTrend
+                  ? `${activityMeasureLabels[perWeek.measure]} of each week; the line is the decaying best, with a ${lineTrend.half_life_days}-day half-life between sessions.`
                   : `${activityMeasureLabels[perWeek.measure]}, ${perWeek.aggregation === 'max' ? 'the best' : 'the total'} of each week.`}
               </p>
             </section>
