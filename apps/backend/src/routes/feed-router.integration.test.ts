@@ -17,6 +17,7 @@ import { insertActivity } from '../db/activities/index.ts'
 import { createChallenge, createChallengeParticipation } from '../db/challenges.ts'
 import { upsertFeedPostReaction } from '../db/feed-reactions.ts'
 import { createFeedPost } from '../db/feed.ts'
+import { createSharedExercise } from '../db/shared-exercises.ts'
 import { insertTimeSeries } from '../db/time-series.ts'
 import { upsertTimelineEntry } from '../db/timeline.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
@@ -148,6 +149,8 @@ describe('Article feed routes (integration)', () => {
       createdChallenge: vi.fn(),
       updatedArticle: vi.fn(),
       updatedChallenge: vi.fn(),
+      createdExercise: vi.fn(),
+      updatedExercise: vi.fn(),
     }
     const spied = startApp(deliver)
     try {
@@ -315,6 +318,8 @@ describe('POST /feed/challenges (share a challenge — #994)', () => {
       updated: vi.fn(),
       updatedArticle: vi.fn(),
       updatedChallenge: vi.fn(),
+      createdExercise: vi.fn(),
+      updatedExercise: vi.fn(),
       updatedReply: vi.fn(),
     }
     app = startApp(deliver, undefined, 'https://aurboda.example')
@@ -429,6 +434,152 @@ describe('POST /feed/challenges (share a challenge — #994)', () => {
     expect(deliver.updatedChallenge).toHaveBeenCalledTimes(1)
     expect(deliver.updated).not.toHaveBeenCalled()
     expect(deliver.updatedArticle).not.toHaveBeenCalled()
+  })
+})
+
+describe('POST /feed/exercises (share an exercise — #1398)', () => {
+  let app: ReturnType<typeof startApp>
+  let deliver: FeedDeliver
+
+  beforeAll(async () => {
+    await startTestDb()
+    deliver = {
+      created: vi.fn(),
+      createdArticle: vi.fn(),
+      createdChallenge: vi.fn(),
+      createdExercise: vi.fn(),
+      createdReply: vi.fn(),
+      deleted: vi.fn(),
+      updated: vi.fn(),
+      updatedArticle: vi.fn(),
+      updatedChallenge: vi.fn(),
+      updatedExercise: vi.fn(),
+      updatedReply: vi.fn(),
+    }
+    app = startApp(deliver, undefined, 'https://aurboda.example')
+  }, CONTAINER_TIMEOUT)
+
+  afterAll(async () => {
+    await app.close()
+    await stopTestDb()
+  })
+
+  beforeEach(async () => {
+    await cleanTestDb()
+    vi.clearAllMocks()
+  })
+
+  const insertSessions = async (user: string) => {
+    for (const [day, weight] of [
+      [1, 60],
+      [8, 70],
+    ] as const) {
+      await insertActivity(user, {
+        activity_type: 'strength_training',
+        data: { sets: [{ exercise: 'Bench Press', reps: 8, weight }] },
+        end_time: new Date(`2026-07-0${day}T09:00:00Z`),
+        source: 'gravl',
+        start_time: new Date(`2026-07-0${day}T08:00:00Z`),
+        title: 'Push day',
+      })
+    }
+  }
+
+  const body = (over: Record<string, unknown> = {}) => ({
+    activity_type: 'strength_training',
+    field: 'sets.exercise',
+    value: 'Bench Press',
+    ...over,
+  })
+
+  test('shares an unpublished exercise: a snapshot without a link, resolved at read time', async () => {
+    const user = getTestUser()
+    await insertSessions(user)
+
+    const res = await app.request.post('/feed/exercises').send(body({ message: 'Getting **stronger**' }))
+    expect(res.status).toBe(200)
+    expect(res.body.post.kind).toBe('exercise')
+    expect(res.body.post.exercise).toEqual({
+      activity_type: 'strength_training',
+      field: 'sets.exercise',
+      include_records: true,
+      include_sessions: false,
+      name: 'Bench Press',
+      value: 'Bench Press',
+    })
+    expect(res.body.post.include_chart).toBe(true)
+    expect(res.body.post.visibility).toBe('public')
+    expect(res.body.post.content).toContain('<strong>Bench Press</strong>')
+    expect(res.body.post.content).toContain('Max weight 70 kg')
+    expect(res.body.post.content).toContain('2 sessions since 1 Jul 2026')
+    expect(res.body.post.content).not.toContain('<a ')
+    expect(res.body.post.structured).toMatchObject({ kind: 'exercise', name: 'Bench Press' })
+    expect(res.body.post.structured.data.done.count).toBe(2)
+    expect(res.body.post.structured.data.history).toEqual([])
+    expect(deliver.createdExercise).toHaveBeenCalledTimes(1)
+  })
+
+  test("links a published exercise's public page under its name, unless the link is declined", async () => {
+    const user = getTestUser()
+    await insertSessions(user)
+    const shared = await createSharedExercise(user, {
+      activity_type: 'strength_training',
+      field: 'sets.exercise',
+      is_public: true,
+      name: 'Bench',
+      value: 'Bench Press',
+    })
+
+    const linked = await app.request.post('/feed/exercises').send(body({ include_sessions: true }))
+    expect(linked.status).toBe(200)
+    expect(linked.body.post.exercise.name).toBe('Bench')
+    expect(linked.body.post.exercise.url).toBe(`https://aurboda.example/u/${user}/${shared.slug}`)
+    expect(linked.body.post.content).toContain(`https://aurboda.example/u/${user}/${shared.slug}`)
+    expect(linked.body.post.structured.data.history).toHaveLength(2)
+
+    const unlinked = await app.request.post('/feed/exercises').send(body({ include_link: false }))
+    expect(unlinked.body.post.exercise.name).toBe('Bench')
+    expect(unlinked.body.post.exercise).not.toHaveProperty('url')
+  })
+
+  test('400 for a non-categorical item path, 404 for an exercise without sessions', async () => {
+    const user = getTestUser()
+    await insertSessions(user)
+    expect((await app.request.post('/feed/exercises').send(body({ field: 'sets.reps' }))).status).toBe(400)
+    const none = await app.request.post('/feed/exercises').send(body({ value: 'Squat' }))
+    expect(none.status).toBe(404)
+    expect(none.body.error).toBe('No sessions with that exercise')
+    expect(deliver.createdExercise).not.toHaveBeenCalled()
+  })
+
+  test('the preview returns the Note HTML and structured payload and creates nothing', async () => {
+    const user = getTestUser()
+    await insertSessions(user)
+    const res = await app.request
+      .post('/feed/exercises/preview')
+      .send(body({ include_chart: false, include_records: false, message: 'Hi' }))
+    expect(res.status).toBe(200)
+    expect(res.body.content).toContain('<p>Hi</p>')
+    expect(res.body.content).not.toContain('Max weight')
+    expect(res.body.structured).toMatchObject({ kind: 'exercise', message: 'Hi' })
+    expect(res.body.structured.data.records).toEqual([])
+    expect(res.body.structured.data.trend).toBeNull()
+    expect((await app.request.get('/feed')).body.posts).toEqual([])
+
+    expect((await app.request.post('/feed/exercises/preview').send(body({ value: 'Squat' }))).status).toBe(
+      404,
+    )
+  })
+
+  test('a visibility flip via the generic PATCH federates through the exercise path', async () => {
+    const user = getTestUser()
+    await insertSessions(user)
+    const created = await app.request.post('/feed/exercises').send(body())
+    const patched = await app.request.patch(`/feed/${created.body.post.id}`).send({ visibility: 'unlisted' })
+    expect(patched.status).toBe(200)
+    expect(patched.body.post.visibility).toBe('unlisted')
+    expect(deliver.updatedExercise).toHaveBeenCalledTimes(1)
+    expect(deliver.updated).not.toHaveBeenCalled()
   })
 })
 

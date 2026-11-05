@@ -34,6 +34,7 @@ import {
   getActivityById,
   listFeedPosts,
 } from '../db/index.ts'
+import { renderExerciseShareHtml } from './activitypub/exercise-object.ts'
 import { resolveActivityScalars } from './activitypub/feed-activity.ts'
 import { feedPostContent, formatActivityWindow } from './activitypub/object.ts'
 import {
@@ -47,9 +48,10 @@ import {
   resolveStructuredRoute,
   resolveStructuredSeries,
 } from './feed-structured-activity.ts'
+import { resolveStructuredExercise } from './feed-structured-exercise.ts'
 import { decodeKeysetCursor, encodeKeysetCursor } from './keyset-cursor.ts'
 import { resolveActivityWindow } from './queries/index.ts'
-import { getSettings } from './settings.ts'
+import { getSettings, getUserTimezone } from './settings.ts'
 import { withReplyCounts } from './timeline-replies.ts'
 
 export interface SerializeFeedPostOpts {
@@ -191,6 +193,32 @@ const resolveActivityPresentation = async (
 }
 
 /**
+ * An exercise post's Note `content` and (per `SerializeFeedPostOpts`) its structured payload, both
+ * from one resolve of the exercise's data.
+ */
+const resolveExercisePresentation = async (
+  user: string,
+  record: FeedPostRecord,
+  opts: SerializeFeedPostOpts,
+): Promise<Pick<FeedPost, 'content' | 'structured'>> => {
+  if (record.exercise == null) return {}
+  const [structured, timeZone] = await Promise.all([
+    resolveStructuredExercise(user, record).catch((error) => {
+      console.warn(`⚠️ Exercise post ${record.id} could not be resolved:`, error)
+      return null
+    }),
+    opts.settings === undefined
+      ? getUserTimezone(user).catch(() => 'UTC')
+      : (opts.settings?.device_timezone ?? 'UTC'),
+  ])
+  const snapshot = structured && { activity_type_name: structured.activity_type_name, data: structured.data }
+  return {
+    content: renderExerciseShareHtml(record.exercise, snapshot, record.message, timeZone),
+    ...((opts.includeStructured ?? false) && structured != null ? { structured } : {}),
+  }
+}
+
+/**
  * What a `reply` post answers — the target object, its author, and the handle
  * snapshot naming the federated `Mention`. Every other kind exposes none of it.
  */
@@ -225,7 +253,9 @@ export const serializeFeedPost = async (
   const activity = record.activity_id ? await resolveFeedActivity(user, record.activity_id) : null
   const { content, metrics, structured } = activity
     ? await resolveActivityPresentation(user, record, activity, opts)
-    : { content: undefined, metrics: undefined, structured: undefined }
+    : record.kind === 'exercise'
+      ? { ...(await resolveExercisePresentation(user, record, opts)), metrics: undefined }
+      : { content: undefined, metrics: undefined, structured: undefined }
   return {
     activity_end_time: activity?.end_time?.toISOString(),
     activity_id: record.activity_id,
@@ -239,6 +269,7 @@ export const serializeFeedPost = async (
     // The stored challenge link payload; present only for `challenge` posts.
     challenge: record.challenge ?? undefined,
     content,
+    exercise: record.exercise ?? undefined,
     created_at: record.created_at.toISOString(),
     id: record.id,
     include_chart: record.include_chart,

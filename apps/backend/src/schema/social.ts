@@ -195,6 +195,8 @@ export const socialTables: Record<string, string> = {
       article           JSONB,
       -- Challenge link payload (name + canonical URL) for kind = 'challenge' (#994).
       challenge         JSONB,
+      -- Exercise share pointer (type, item path, value, opt-ins) for kind = 'exercise' (#1398).
+      exercise          JSONB,
       message           TEXT,
       image_token       TEXT NOT NULL DEFAULT gen_random_uuid()::text,
       created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -233,6 +235,10 @@ export const socialTables: Record<string, string> = {
     ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS in_reply_to_uri TEXT;
     ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS in_reply_to_actor_uri TEXT;
     ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS in_reply_to_handle TEXT;
+  `,
+  // Exercise share posts (#1398). Additive for pre-existing tables (idempotent).
+  feed_posts_exercise_column: `
+    ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS exercise JSONB;
   `,
   // The owner's own replies to one target, for the thread-snapshot merge.
   feed_posts_reply_indexes: `

@@ -1,6 +1,7 @@
 import type {
   ArticleExportResponse,
   CreateArticleBody,
+  ExerciseSharePreviewResponse,
   FeedPost,
   FeedPostReaction,
   FeedPostReactionsResponse,
@@ -17,6 +18,7 @@ import type {
   ReplyToPostBody,
   ShareActivityBody,
   ShareChallengeBody,
+  ShareExerciseBody,
   SharePreviewResponse,
   TimelineEntry,
   TimelineEntryResponse,
@@ -78,6 +80,24 @@ export const shareChallenge = async (body: ShareChallengeBody): Promise<FeedPost
   })
   if (!response.data.post) throw new Error('Share failed: no post returned')
   return response.data.post
+}
+
+export const shareExercise = async (body: ShareExerciseBody): Promise<FeedPost> => {
+  const response = await axios.post<FeedPostResponse>(`${API_URL}/feed/exercises`, body, {
+    headers: authHeaders(),
+  })
+  if (!response.data.post) throw new Error('Share failed: no post returned')
+  return response.data.post
+}
+
+/** What sharing this exercise with these opt-ins would post: the Note HTML and the native payload. Creates nothing. */
+export const previewExerciseShare = async (
+  body: Omit<ShareExerciseBody, 'visibility'>,
+): Promise<ExerciseSharePreviewResponse> => {
+  const response = await axios.post<ExerciseSharePreviewResponse>(`${API_URL}/feed/exercises/preview`, body, {
+    headers: authHeaders(),
+  })
+  return response.data
 }
 
 export const updateFeedPost = async (postId: string, body: UpdateFeedPostBody): Promise<FeedPost> => {

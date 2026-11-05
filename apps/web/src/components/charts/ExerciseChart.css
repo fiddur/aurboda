@@ -1,0 +1,11 @@
+.exercise-chart-caption {
+  margin: 0.25rem 0 0;
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+@media (prefers-color-scheme: dark) {
+  .exercise-chart-caption {
+    color: #9ca3af;
+  }
+}

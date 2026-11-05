@@ -72,12 +72,15 @@ import {
   deliverFeedChallengePost,
   deliverFeedChallengeUpdate,
   deliverFeedDelete,
+  deliverFeedExercisePost,
+  deliverFeedExerciseUpdate,
   deliverFeedPost,
   deliverFeedReplyPost,
   deliverFeedReplyUpdate,
   deliverFeedUpdate,
   toDeliverableArticle,
   toDeliverableChallenge,
+  toDeliverableExercise,
   toDeliverableReply,
 } from './services/activitypub/deliver.ts'
 import { createFeedFederation, deliverActorUpdate } from './services/activitypub/federation.ts'
@@ -560,6 +563,21 @@ const main = async () => {
       const challenge = toDeliverableChallenge(post)
       if (challenge) {
         void deliverFeedChallengeUpdate(feedDeps, user, challenge).catch(
+          onDeliverError('update', user, post.id),
+        )
+      }
+    },
+    // An exercise share federates as a Note whose content is resolved at delivery (#1398).
+    createdExercise: (user, post) => {
+      const exercise = toDeliverableExercise(post)
+      if (exercise) {
+        void deliverFeedExercisePost(feedDeps, user, exercise).catch(onDeliverError('create', user, post.id))
+      }
+    },
+    updatedExercise: (user, post) => {
+      const exercise = toDeliverableExercise(post)
+      if (exercise) {
+        void deliverFeedExerciseUpdate(feedDeps, user, exercise).catch(
           onDeliverError('update', user, post.id),
         )
       }

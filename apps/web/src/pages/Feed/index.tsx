@@ -148,7 +148,8 @@ export function Feed() {
       {error && <p class="feed-error">Couldn't load your feed. Please try again.</p>}
       {posts && posts.length === 0 && (
         <p class="feed-empty">
-          You haven't shared anything yet. Open an activity and choose <strong>Share to feed</strong>.
+          You haven't shared anything yet. Open an activity or an exercise and choose{' '}
+          <strong>Share to feed</strong>.
         </p>
       )}
       {posts?.map((post) => (

@@ -98,7 +98,7 @@ export const createFeedPublicRouter = (): TypedRouter => {
   // A user's public feed for their profile page: the most recent `public`/
   // `unlisted` posts, newest-first (the ActivityPub outbox's set), serialized
   // like the authenticated `/feed` with the structured payload attached per
-  // activity, article and challenge post — `structured` carries only the author's per-post
+  // activity, article, challenge and exercise post — `structured` carries only the author's per-post
   // opt-ins, the same payload `/public/:username/feed/:postId` serves. An
   // article's live blocks fetch the owner-authenticated metric endpoints, which
   // a visitor can't reach, so the page renders its server-resolved blocks
@@ -144,7 +144,12 @@ export const createFeedPublicRouter = (): TypedRouter => {
         const posts = await Promise.all(
           records.map(async (record) => {
             const post = await serializeFeedPost(username, record, { settings })
-            if (record.kind === 'activity' || record.kind === 'article' || record.kind === 'challenge') {
+            if (
+              record.kind === 'activity' ||
+              record.kind === 'article' ||
+              record.kind === 'challenge' ||
+              record.kind === 'exercise'
+            ) {
               const key = `structured:${username}:${record.id}:${record.updated_at.getTime()}:${hourBucket}`
               post.structured =
                 (await structuredCache(key, () => resolveStructuredContent(username, record))) ?? undefined
