@@ -1,4 +1,4 @@
-import type { ArticleContent, ChallengeShare, FeedVisibility } from '@aurboda/api-spec'
+import type { ArticleContent, ChallengeShare, ExerciseShare, FeedVisibility } from '@aurboda/api-spec'
 /**
  * The Mastodon-compatible representation is a Fedify `Create{Note}` — an HTML
  * `content` summary + `name`/`url`, addressed per the post's visibility. The
@@ -39,9 +39,11 @@ import { challengeWinners } from '../challenge-results.ts'
 import { CHART_HEIGHT, CHART_WIDTH } from '../charts/chart-svg.ts'
 import { formatExerciseLine, resolvePostExercises, toStructuredExercise } from '../feed-exercises.ts'
 import { resolveStandingsChart } from '../feed-structured-challenge.ts'
+import { resolveExerciseTrendSeries } from '../feed-structured-exercise.ts'
 import { getSettings } from '../settings.ts'
 import { articleImageAttachments, renderArticleContentHtml } from './article-object.ts'
 import { identityToActorUri, identityToHandle, renderChallengeShareHtml } from './challenge-object.ts'
+import { exerciseNoteContent } from './exercise-object.ts'
 import { resolveActivityScalars } from './feed-activity.ts'
 import { addressingFor, feedPostContent, formatActivityWindow, isPubliclyVisible } from './object.ts'
 import { quantExerciseExtension, withQuantJsonLd } from './quant-extension.ts'
@@ -831,6 +833,192 @@ export const deliverFeedChallengeUpdate = async (
   const ctx = await deps.federation.createContext(new URL(deps.origin))
   const update = buildChallengeNoteUpdate(ctx, user, post, attachments)
   await sendToFollowersAndMentioned(ctx, user, challengeMentions(post.challenge), update)
+}
+
+// Exercise shares (#1398). An exercise's progress federates as a `Note` (like a challenge
+// invitation) whose content is resolved from the exercise's data when the Note is built, so the
+// builders take the pre-rendered `content` (`exerciseNoteContent`) and stay synchronous. Delivered
+// to followers only (no mentions); an opted-in post attaches the trend line (`trend.png`).
+
+/** The delivery-facing view of an exercise post (its `exercise` guaranteed present). */
+export interface DeliverableExercise {
+  id: string
+  visibility: FeedVisibility
+  created_at: Date
+  updated_at: Date
+  exercise: ExerciseShare
+  message: string | null
+  /** Attach the rendered trend image. */
+  include_chart: boolean
+  /** Capability token appended to a `followers`-only post's image URL. */
+  image_token: string
+}
+
+export const toDeliverableExercise = (post: FeedPostRecord): DeliverableExercise | null =>
+  post.kind === 'exercise' && post.exercise != null
+    ? {
+        created_at: post.created_at,
+        exercise: post.exercise,
+        id: post.id,
+        image_token: post.image_token,
+        include_chart: post.include_chart,
+        message: post.message,
+        updated_at: post.updated_at,
+        visibility: post.visibility,
+      }
+    : null
+
+/** The `Trend` attachment of an opted-in exercise post, under the same URL rules as `imageAttachments`. */
+export const exerciseImageAttachments = (
+  apiBaseUrl: string,
+  user: string,
+  post: Pick<DeliverableExercise, 'id' | 'image_token' | 'include_chart' | 'updated_at' | 'visibility'>,
+  available: boolean,
+): Image[] => {
+  if (!post.include_chart || !available) return []
+  const base = `${apiBaseUrl.replace(/\/+$/, '')}/public/${encodeURIComponent(user)}/feed/${post.id}`
+  const params = new URLSearchParams()
+  if (!isPubliclyVisible(post.visibility)) params.set('token', post.image_token)
+  params.set('v', String(post.updated_at.getTime()))
+  return [
+    new Image({
+      height: CHART_HEIGHT,
+      mediaType: 'image/png',
+      name: 'Trend',
+      url: new URL(`${base}/trend.png?${params.toString()}`),
+      width: CHART_WIDTH,
+    }),
+  ]
+}
+
+/** Whether an exercise post's trend has the 2+ points `trend.png` needs. */
+export type HasDrawableTrend = (user: string, post: DeliverableExercise) => Promise<boolean>
+
+export const hasDrawableTrend: HasDrawableTrend = async (user, post) => {
+  if (!post.include_chart) return false
+  try {
+    return (await resolveExerciseTrendSeries(user, { ...post, kind: 'exercise' })) != null
+  } catch (error) {
+    console.warn(`⚠️ Trend availability for post ${post.id} failed:`, error)
+    return false
+  }
+}
+
+/** Build the Fedify `Note` for an exercise share from its pre-rendered `content`. */
+export const buildExerciseNote = (
+  ctx: Context<void>,
+  user: string,
+  post: DeliverableExercise,
+  content: string,
+  attachments: Image[] = [],
+): Note => {
+  const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
+  const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
+  return new Note({
+    attachments,
+    attribution: ctx.getActorUri(user),
+    ccs: cc,
+    content,
+    id: noteId,
+    name: post.exercise.name,
+    published: dateToTemporalInstant(post.created_at),
+    tos: to,
+    updated: dateToTemporalInstant(post.updated_at),
+    url: noteId,
+  })
+}
+
+/** Wrap the exercise Note in the `Create` delivered to followers and listed in the outbox. */
+export const buildExerciseNoteCreate = (
+  ctx: Context<void>,
+  user: string,
+  post: DeliverableExercise,
+  content: string,
+  attachments: Image[] = [],
+): Create => {
+  const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
+  const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
+  return new Create({
+    actor: ctx.getActorUri(user),
+    ccs: cc,
+    id: new URL(`${noteId.href}#create`),
+    object: buildExerciseNote(ctx, user, post, content, attachments),
+    published: dateToTemporalInstant(post.created_at),
+    tos: to,
+  })
+}
+
+/** Wrap the exercise Note in an `Update`; id carries `updated_at` so each edit is distinct. */
+export const buildExerciseNoteUpdate = (
+  ctx: Context<void>,
+  user: string,
+  post: DeliverableExercise,
+  content: string,
+  attachments: Image[] = [],
+): Update => {
+  const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
+  const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
+  return new Update({
+    actor: ctx.getActorUri(user),
+    ccs: cc,
+    id: new URL(`${noteId.href}#update-${post.updated_at.getTime()}`),
+    object: buildExerciseNote(ctx, user, post, content, attachments),
+    tos: to,
+  })
+}
+
+export interface ExerciseDeliveryHooks {
+  hasTrend: HasDrawableTrend
+  content: (user: string, post: DeliverableExercise) => Promise<string>
+}
+
+const defaultExerciseHooks: ExerciseDeliveryHooks = {
+  content: exerciseNoteContent,
+  hasTrend: hasDrawableTrend,
+}
+
+const preparedExerciseNote = async (
+  deps: FeedDeliveryDeps,
+  user: string,
+  post: DeliverableExercise,
+  hooks: ExerciseDeliveryHooks,
+): Promise<{ content: string; attachments: Image[] }> => {
+  const [content, trend] = await Promise.all([
+    hooks.content(user, post),
+    post.include_chart ? hooks.hasTrend(user, post) : Promise.resolve(false),
+  ])
+  return { attachments: exerciseImageAttachments(deps.apiBaseUrl, user, post, trend), content }
+}
+
+export const deliverFeedExercisePost = async (
+  deps: FeedDeliveryDeps,
+  user: string,
+  post: DeliverableExercise,
+  hooks: ExerciseDeliveryHooks = defaultExerciseHooks,
+): Promise<void> => {
+  const { attachments, content } = await preparedExerciseNote(deps, user, post, hooks)
+  const ctx = await deps.federation.createContext(new URL(deps.origin))
+  await ctx.sendActivity(
+    { identifier: user },
+    'followers',
+    buildExerciseNoteCreate(ctx, user, post, content, attachments),
+  )
+}
+
+/** An edit re-sends the attachment under the new `v`, so Mastodon fetches the trend afresh. */
+export const deliverFeedExerciseUpdate = async (
+  deps: FeedDeliveryDeps,
+  user: string,
+  post: DeliverableExercise,
+  hooks: ExerciseDeliveryHooks = defaultExerciseHooks,
+): Promise<void> => {
+  const { attachments, content } = await preparedExerciseNote(deps, user, post, hooks)
+  const ctx = await deps.federation.createContext(new URL(deps.origin))
+  await ctx.sendActivity(
+    { identifier: user },
+    'followers',
+    buildExerciseNoteUpdate(ctx, user, post, content, attachments),
+  )
 }
 
 // Replies (comments). A reply federates as a `Note` with `inReplyTo` pointing at

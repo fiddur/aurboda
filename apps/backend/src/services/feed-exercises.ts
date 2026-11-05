@@ -126,6 +126,15 @@ const RECORD_BADGES: Record<ActivityMeasure, string> = {
 
 const kg = (value: number): string => `${Number(value.toFixed(1))} kg`
 
+/** A measure's value as the Note writes it: `39.5 kg`, `1:30`, `12 reps`, `4`. */
+export const formatMeasureValue = (measure: ActivityMeasure, value: number): string => {
+  const unit = activityMeasureUnits[measure]
+  if (unit === 'kg') return kg(value)
+  if (unit === 's') return formatSeconds(value)
+  const rounded = Number(value.toFixed(1))
+  return unit === '' ? String(rounded) : `${rounded} ${unit}`
+}
+
 /** `Bench Press: 8×60 kg (w), 8×80 kg · e1RM 101.3 kg · volume 640 kg · PR e1RM` */
 export const formatExerciseLine = (exercise: SharedExercise): string => {
   const parts = [`${exercise.name}: ${exercise.sets.map(formatExerciseSet).join(', ')}`]

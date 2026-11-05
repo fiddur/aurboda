@@ -7,6 +7,7 @@ import { describe, expect, test, vi } from 'vitest'
 import type { FeedPostRecord } from '../db/index.ts'
 import type { RaceChartSvgData } from '../services/charts/race-chart-svg.ts'
 import type { ScatterSvgData } from '../services/charts/scatter-svg.ts'
+import type { ExerciseTrendSeries } from '../services/feed-structured-exercise.ts'
 
 import { createNegativeCache, forgetArticleBlockMisses } from '../services/article-block-misses.ts'
 import {
@@ -19,9 +20,11 @@ import {
   resolveArticleBlock,
   type ResolvedArticleBlock,
   imageCacheKey,
+  resolveExercisePost,
   resolveImageWindow,
   resolveStandingsPost,
   standingsCacheKey,
+  trendCacheKey,
 } from './feed-image-router.ts'
 
 const POST_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
@@ -37,6 +40,7 @@ const makePost = (overrides: Partial<FeedPostRecord> = {}): FeedPostRecord => ({
   article: null,
   autoshare_rule_id: null,
   challenge: null,
+  exercise: null,
   created_at: new Date('2026-07-01T08:00:00Z'),
   id: POST_ID,
   image_token: 'secret-token',
@@ -293,6 +297,7 @@ describe('renderArticleBlockImage', () => {
     getPost: async () => null,
     getRoute: async () => [],
     getSeries: async () => [],
+    getExerciseTrend: async () => null,
     getStandingsChart: async () => null,
     renderChart: vi.fn(async () => Buffer.from('chart-png')),
     renderChartSvg: vi.fn(() => '<svg>chart</svg>'),
@@ -424,6 +429,7 @@ describe('article block image misses', () => {
         getPost: async () => post,
         getRoute: async () => [],
         getSeries: async () => [],
+        getExerciseTrend: async () => null,
         getStandingsChart: async () => null,
         renderChart: async () => Buffer.from('chart-png'),
         renderChartSvg: () => '<svg>chart</svg>',
@@ -496,6 +502,7 @@ describe('standings images', () => {
         getPost: async () => post,
         getRoute: async () => [],
         getSeries: async () => [],
+        getExerciseTrend: async () => null,
         getStandingsChart,
         renderChart: async () => Buffer.from(''),
         renderChartSvg: () => '',
@@ -574,5 +581,122 @@ describe('standings images', () => {
     expect(standingsCacheKey('standingspng', 'fiddur', POST_ID, new Date(updated.getTime() + 1), t)).not.toBe(
       key,
     )
+  })
+})
+
+describe('exercise trend images (#1398)', () => {
+  const exercisePost = (over: Partial<FeedPostRecord> = {}) =>
+    makePost({
+      activity_id: null,
+      exercise: {
+        activity_type: 'strength_training',
+        field: 'sets.exercise',
+        include_records: true,
+        include_sessions: false,
+        name: 'Bench Press',
+        value: 'Bench Press',
+      },
+      include_map: false,
+      kind: 'exercise',
+      ...over,
+    })
+  const trend: ExerciseTrendSeries = {
+    measure: 'e1rm',
+    series: [
+      [new Date('2026-10-01'), 77],
+      [new Date('2026-10-07'), 82],
+    ],
+  }
+  const appWith = (post: FeedPostRecord, data: ExerciseTrendSeries | null = trend) => {
+    const getExerciseTrend = vi.fn(async () => data)
+    const renderChart = vi.fn(async () => Buffer.from('trend-png'))
+    const renderChartSvg = vi.fn(() => '<svg>trend</svg>')
+    const app = express()
+    app.use(
+      createFeedImageRouter({
+        getActivity: async () => null,
+        getArticleChartSeries: async () => [],
+        getCorrelationScatter: async () => null,
+        getExerciseTrend,
+        getPost: async () => post,
+        getRoute: async () => [],
+        getSeries: async () => [],
+        getStandingsChart: async () => null,
+        renderChart,
+        renderChartSvg,
+        renderRaceChart: async () => Buffer.from(''),
+        renderRaceChartSvg: () => '',
+        renderRoute: async () => Buffer.from(''),
+        renderScatter: async () => Buffer.from(''),
+        renderScatterSvg: () => '',
+      }),
+    )
+    return { app, getExerciseTrend, renderChart, renderChartSvg }
+  }
+  const png = `/public/fiddur/feed/${POST_ID}/trend.png`
+
+  test('resolveExercisePost gates on kind, opt-in and capability token', async () => {
+    const get = (post: FeedPostRecord | null) => ({ getPost: async () => post })
+    expect(await resolveExercisePost(get(exercisePost()), 'fiddur', POST_ID)).not.toBeNull()
+    expect(await resolveExercisePost(get(makePost()), 'fiddur', POST_ID)).toBeNull()
+    expect(
+      await resolveExercisePost(get(exercisePost({ include_chart: false })), 'fiddur', POST_ID),
+    ).toBeNull()
+    const followers = exercisePost({ visibility: 'followers' })
+    expect(await resolveExercisePost(get(followers), 'fiddur', POST_ID)).toBeNull()
+    expect(await resolveExercisePost(get(followers), 'fiddur', POST_ID, 'secret-token')).not.toBeNull()
+    expect(await resolveExercisePost(get(null), 'fiddur', POST_ID)).toBeNull()
+  })
+
+  test('404 for a non-exercise post or without the opt-in', async () => {
+    expect((await supertest(appWith(makePost()).app).get(png)).status).toBe(404)
+    const { app, getExerciseTrend } = appWith(exercisePost({ include_chart: false }))
+    expect((await supertest(app).get(png)).status).toBe(404)
+    expect(getExerciseTrend).not.toHaveBeenCalled()
+  })
+
+  test('a followers-only post needs its token', async () => {
+    const { app } = appWith(exercisePost({ visibility: 'followers' }))
+    expect((await supertest(app).get(png)).status).toBe(404)
+    const res = await supertest(app).get(`${png}?token=secret-token`)
+    expect(res.status).toBe(200)
+    expect(res.headers['content-type']).toMatch(/image\/png/)
+    expect(res.headers['cache-control']).toBe('no-store')
+  })
+
+  test('404 without a drawable trend', async () => {
+    expect((await supertest(appWith(exercisePost(), null).app).get(png)).status).toBe(404)
+    const single: ExerciseTrendSeries = { ...trend, series: trend.series.slice(0, 1) }
+    expect((await supertest(appWith(exercisePost(), single).app).get(png)).status).toBe(404)
+  })
+
+  test('renders the labelled line once and serves the cached PNG on the second call', async () => {
+    const { app, getExerciseTrend, renderChart } = appWith(exercisePost())
+    const first = await supertest(app).get(png)
+    expect(first.status).toBe(200)
+    expect(first.body).toEqual(Buffer.from('trend-png'))
+    expect((await supertest(app).get(png)).status).toBe(200)
+    expect(getExerciseTrend).toHaveBeenCalledTimes(1)
+    expect(renderChart).toHaveBeenCalledExactlyOnceWith(trend.series, {
+      color: '#8b5cf6',
+      label: 'Best e1RM · Bench Press',
+    })
+  })
+
+  test('serves the SVG', async () => {
+    const { app, renderChartSvg } = appWith(exercisePost())
+    const res = await supertest(app).get(`/public/fiddur/feed/${POST_ID}/trend.svg`)
+    expect(res.status).toBe(200)
+    expect(res.headers['content-type']).toMatch(/image\/svg\+xml/)
+    expect(renderChartSvg).toHaveBeenCalledTimes(1)
+  })
+
+  test('the cache key moves with the post version and every hour', () => {
+    const updated = new Date('2026-11-04T08:00:00Z')
+    const t = Date.parse('2026-11-04T12:00:00Z')
+    const key = trendCacheKey('trendpng', 'fiddur', POST_ID, updated, t)
+    expect(trendCacheKey('trendpng', 'fiddur', POST_ID, updated, t + 3_599_999)).toBe(key)
+    expect(trendCacheKey('trendpng', 'fiddur', POST_ID, updated, t + 3_600_000)).not.toBe(key)
+    expect(trendCacheKey('trendpng', 'fiddur', POST_ID, new Date(updated.getTime() + 1), t)).not.toBe(key)
   })
 })

@@ -261,6 +261,7 @@ describe('shared exercises on the public surface', () => {
       activity_type: 'strength_training',
       activity_type_name: 'Strength training',
       data,
+      field: 'sets.exercise',
       name: 'Bench',
       profile_url: 'https://aurboda.net/u/alice',
       share_url: 'https://aurboda.net/u/alice/ex1',

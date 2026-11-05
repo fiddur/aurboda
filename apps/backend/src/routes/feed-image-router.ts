@@ -14,13 +14,14 @@
  */
 import type { ArticleContent, CorrelationSelector, MetricType } from '@aurboda/api-spec'
 
-import { defaultArticleChartBucket, getMetricDisplayName } from '@aurboda/api-spec'
+import { activityMeasureLabels, defaultArticleChartBucket, getMetricDisplayName } from '@aurboda/api-spec'
 import { type Response, Router } from 'express'
 
 import type { FeedPostRecord } from '../db/index.ts'
 import type { CorrelationBlockParams } from '../services/article-block-data.ts'
 import type { RaceChartSvgData } from '../services/charts/race-chart-svg.ts'
 import type { ScatterSvgData } from '../services/charts/scatter-svg.ts'
+import type { ExerciseTrendSeries } from '../services/feed-structured-exercise.ts'
 
 import { isValidUsername } from '../api/auth-routes.ts'
 import { isMissingDatabase } from '../db/index.ts'
@@ -81,6 +82,8 @@ export interface FeedImageDeps {
   getStandingsChart: (user: string, post: FeedPostRecord) => Promise<RaceChartSvgData | null>
   renderRaceChart: (data: RaceChartSvgData) => Promise<Buffer>
   renderRaceChartSvg: (data: RaceChartSvgData) => string
+  /** An exercise post's trend line, or null when it has fewer than 2 points. */
+  getExerciseTrend: (user: string, post: FeedPostRecord) => Promise<ExerciseTrendSeries | null>
   /** Remembered block-image misses, shared with the markdown export (a fresh one when omitted). */
   articleBlockMisses?: NegativeCache
 }
@@ -308,27 +311,42 @@ export const imageCacheKey = (
   window: Pick<ImageWindow, 'updated_at'>,
 ): string => `${kind}:${username}:${postId}:${window.updated_at.getTime()}`
 
+/** The post's version plus a time bucket: an edit busts it, and so does the data moving on. */
+export const bucketedCacheKey = (
+  kind: string,
+  username: string,
+  postId: string,
+  updatedAt: Date,
+  now: number,
+  bucketMs: number,
+): string =>
+  `${imageCacheKey(kind, username, postId, { updated_at: updatedAt })}:${Math.floor(now / bucketMs)}`
+
 /** Remote members' standings are cached for this long, so a finer render key buys nothing. */
 const STANDINGS_BUCKET_MS = 300_000
 
-/** The post's version plus a 5-minute bucket: an edit busts it, and so does the standings moving on. */
+/** New sessions move an exercise's trend, at most a few times a day. */
+const TREND_BUCKET_MS = 3_600_000
+
 export const standingsCacheKey = (
   kind: string,
   username: string,
   postId: string,
   updatedAt: Date,
   now: number,
-): string =>
-  `${imageCacheKey(kind, username, postId, { updated_at: updatedAt })}:${Math.floor(now / STANDINGS_BUCKET_MS)}`
+): string => bucketedCacheKey(kind, username, postId, updatedAt, now, STANDINGS_BUCKET_MS)
 
-/**
- * The challenge post a `standings` image request may render, or `null` when
- * ineligible: invalid username / non-UUID id, missing DB, missing post, not a
- * challenge post, a `followers`-only post without a matching capability
- * `token`, or the post not opted into `include_chart`.
- */
-export const resolveStandingsPost = async (
+export const trendCacheKey = (
+  kind: string,
+  username: string,
+  postId: string,
+  updatedAt: Date,
+  now: number,
+): string => bucketedCacheKey(kind, username, postId, updatedAt, now, TREND_BUCKET_MS)
+
+const resolveChartPost = async (
   deps: Pick<FeedImageDeps, 'getPost'>,
+  kind: 'challenge' | 'exercise',
   username: string,
   postId: string,
   token?: string,
@@ -341,9 +359,35 @@ export const resolveStandingsPost = async (
     if (isMissingDatabase(error)) return null
     throw error
   }
-  if (post == null || post.kind !== 'challenge' || !post.include_chart) return null
+  if (post == null || post.kind !== kind || !post.include_chart) return null
   return isCapabilityAuthorized(post, token) ? post : null
 }
+
+/**
+ * The challenge post a `standings` image request may render, or `null` when
+ * ineligible: invalid username / non-UUID id, missing DB, missing post, not a
+ * challenge post, a `followers`-only post without a matching capability
+ * `token`, or the post not opted into `include_chart`.
+ */
+export const resolveStandingsPost = (
+  deps: Pick<FeedImageDeps, 'getPost'>,
+  username: string,
+  postId: string,
+  token?: string,
+): Promise<FeedPostRecord | null> => resolveChartPost(deps, 'challenge', username, postId, token)
+
+/**
+ * The exercise post a `trend` image request may render, or `null` when ineligible: the same rules
+ * as `resolveStandingsPost`, for an `exercise` post.
+ */
+export const resolveExercisePost = (
+  deps: Pick<FeedImageDeps, 'getPost'>,
+  username: string,
+  postId: string,
+  token?: string,
+): Promise<FeedPostRecord | null> => resolveChartPost(deps, 'exercise', username, postId, token)
+
+const TREND_COLOR = '#8b5cf6'
 
 export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
   const router = Router()
@@ -425,6 +469,43 @@ export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
     const post = await resolveStandingsPost(deps, username, postId, token)
     if (!post) return notFound(res)
     const svg = await standingsImage(username, post, 'svg')
+    if (!svg) return notFound(res)
+    sendSvg(res, svg)
+  })
+
+  const trendImage = async (
+    username: string,
+    post: FeedPostRecord,
+    format: 'png' | 'svg',
+  ): Promise<Buffer | null> => {
+    const key = trendCacheKey(`trend${format}`, username, post.id, post.updated_at, Date.now())
+    return cached(key, async () => {
+      const trend = await deps.getExerciseTrend(username, post)
+      if (trend == null || trend.series.length < 2) return null
+      const label = [activityMeasureLabels[trend.measure], post.exercise?.name].filter(Boolean).join(' · ')
+      const opts: ChartRenderOpts = { color: TREND_COLOR, label }
+      return format === 'png'
+        ? deps.renderChart(trend.series, opts)
+        : Buffer.from(deps.renderChartSvg(trend.series, opts), 'utf8')
+    })
+  }
+
+  router.get('/public/:username/feed/:postId/trend.png', async (req, res) => {
+    const { postId, username } = req.params
+    const token = typeof req.query.token === 'string' ? req.query.token : undefined
+    const post = await resolveExercisePost(deps, username, postId, token)
+    if (!post) return notFound(res)
+    const png = await trendImage(username, post, 'png')
+    if (!png) return notFound(res)
+    sendPng(res, png)
+  })
+
+  router.get('/public/:username/feed/:postId/trend.svg', async (req, res) => {
+    const { postId, username } = req.params
+    const token = typeof req.query.token === 'string' ? req.query.token : undefined
+    const post = await resolveExercisePost(deps, username, postId, token)
+    if (!post) return notFound(res)
+    const svg = await trendImage(username, post, 'svg')
     if (!svg) return notFound(res)
     sendSvg(res, svg)
   })

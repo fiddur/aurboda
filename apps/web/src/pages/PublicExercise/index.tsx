@@ -1,35 +1,49 @@
 import type { PublicSharedExerciseResponse, SharedExerciseData } from '@aurboda/api-spec'
 
-import { activityMeasureLabels } from '@aurboda/api-spec'
-
 import { AttributionLink } from '../../components/AttributionLink'
-import { BarChart } from '../../components/charts/BarChart'
-import { TrendLineChart } from '../../components/charts/TrendLineChart'
-import { ShareLinkButton } from '../../components/ShareLinkButton'
+import { exerciseChartTitle } from '../../components/charts/exercise-chart'
+import { ExerciseChart } from '../../components/charts/ExerciseChart'
+import { itemPageHref } from '../../components/sessions/sessionView'
+import { CopyLinkButton, NativeShareButton } from '../../components/ShareControls'
 import { DoneCard, RecordCard } from '../ActivityTypeItem/ItemCards'
 import { ItemSessionsTable } from '../ActivityTypeItem/ItemSessionsTable'
 import '../ActivityTypeItem/style.css'
+import './style.css'
 
 /** One shared exercise, read-only, from the server-resolved projection of its sessions. */
 export function PublicExercise({
   data,
+  isOwner,
   resource,
   username,
 }: {
   data: SharedExerciseData
+  isOwner: boolean
   resource: PublicSharedExerciseResponse
   username: string
 }) {
   const name = resource.name ?? resource.value ?? 'Exercise'
   const { done, history, per_week: perWeek, records, trend } = data
+  const chartTitle = exerciseChartTitle(perWeek, trend)
 
   return (
     <div class="public-dashboard">
-      <div class="dashboard-header">
+      <header class="public-exercise-header">
         <h1>{name}</h1>
         <AttributionLink username={username} />
-        <ShareLinkButton url={window.location.href} title={`${name} — Aurboda`} />
-      </div>
+        <div class="public-exercise-actions">
+          <CopyLinkButton url={window.location.href} />
+          <NativeShareButton url={window.location.href} title={`${name} — Aurboda`} />
+          {isOwner && resource.activity_type && resource.field && resource.value && (
+            <a
+              class="public-exercise-manage"
+              href={itemPageHref(resource.activity_type, resource.field, resource.value)}
+            >
+              Manage
+            </a>
+          )}
+        </div>
+      </header>
       <p class="activity-type-item-subtitle">
         {resource.activity_type_name}
         {resource.value && resource.value !== name && ` · ${resource.value}`}
@@ -46,32 +60,10 @@ export function PublicExercise({
             {done && <DoneCard done={done} />}
           </div>
 
-          {trend && (
+          {chartTitle && (
             <section class="activity-type-item-section">
-              <h2>Trend</h2>
-              <TrendLineChart data={trend.history} color="#8b5cf6" height={220} />
-              <p class="activity-type-item-caption">
-                {activityMeasureLabels[trend.measure]}, decaying with a {trend.half_life_days}-day half-life
-                between sessions.
-              </p>
-            </section>
-          )}
-
-          {perWeek && (
-            <section class="activity-type-item-section">
-              <h2>Per week</h2>
-              <BarChart
-                data={perWeek.buckets}
-                color="#8b5cf6"
-                height={200}
-                bucketSize="1w"
-                rangeStart={perWeek.start}
-                rangeEnd={perWeek.end}
-              />
-              <p class="activity-type-item-caption">
-                {activityMeasureLabels[perWeek.measure]},{' '}
-                {perWeek.aggregation === 'max' ? 'the best' : 'the total'} of each week.
-              </p>
+              <h2>{chartTitle}</h2>
+              <ExerciseChart perWeek={perWeek} trend={trend} />
             </section>
           )}
 

@@ -88,10 +88,11 @@ viewer gets exactly:
   set), the best value, the start time of the first session that reached it, and the
   set it came from;
 - **done** — the number of sessions with the exercise and the first and latest start;
-- **trend** — the decaying best of e1RM (else most reps in a set, else longest hold)
-  over all time, with the 120-day half-life the exercise page uses;
-- **per week** — e1RM (else the first measure the sessions have) per week over the
-  last 365 days, the best or the total of each week as on the exercise page;
+- **per week** and **trend**, drawn as one chart — weekly bars of the trend measure
+  (e1RM, else most reps in a set, else longest hold; for an exercise without one, the
+  first measure the sessions have, the best or the total of each week as on the exercise
+  page) over all time from the first session's day, with the decaying best of the trend
+  measure (the 120-day half-life the exercise page uses) drawn over them as a line;
 - **history** — every session, newest first: its start time, its sets of the exercise
   (reps, weight, time and set type only), its measures and the records it set.
 
@@ -100,14 +101,32 @@ session's other fields, other exercises of the same sessions, and any other key 
 was logged with. Days and weeks follow the owner's stored timezone. There is no period
 selector; the owner's own exercise page keeps one.
 
-On the web, the exercise page's header has a **Share** button; once shared it shows
-the link, the visibility and **Stop sharing**. `/shared-dashboards` lists the shared
-exercises under **Exercises** too (rename, visibility, copy link, delete). The owner
-viewing their own shared exercise sees the same read-only page as everyone else.
+On the web, the exercise page's header has a **Publish** button that opens a dialog
+first: it says what the page shows, and takes the name (defaults to the exercise) and
+the visibility (unlisted by default); nothing is created until it is confirmed. Once
+published the header shows **Published** · the visibility · **Open page** · **Copy link**
+(and the system share sheet where the browser offers one) · **Unpublish**. Published or
+not, the row also has a **Share to feed** arrow button, which opens a dialog: a message,
+the three data opt-ins (records and session count, the trend chart, the last 5 sessions'
+sets), a **Link the public page** checkbox only when the exercise is published, the
+audience, and a live preview of the exact card a follower sees and of the plain text
+Mastodon gets. See [feed.md](./feed.md#feed-posts) for what the post carries.
+`/shared-dashboards` lists the published exercises under **Exercises** too (rename,
+visibility, copy link, unpublish). The public page's header has **Copy link** (and the
+system share sheet where the browser offers one); the owner viewing their own published
+exercise sees the same read-only page as everyone else, plus a **Manage** link back to
+the exercise page.
+
+An exercise can also be posted to your [feed](./feed.md) from its page (**Share to
+feed**), whether or not it is shared here: the post carries the progress (records,
+trend, optionally the latest sessions) resolved whenever it is read, and links this
+public page only when the exercise is published (see the `exercise` post kind in
+[feed.md](./feed.md#feed-posts)).
 
 Link previews of a public shared exercise carry its name, "&lt;name&gt; — &lt;user&gt;'s
-progress on Aurboda." and the static default image; there is no rendered image card and
-no oEmbed for exercises yet.
+progress on Aurboda.", a rendered image card and oEmbed, like dashboards and challenges
+(see [Link previews](#link-previews-open-graph--twitter-card)); an unlisted one keeps the
+static default image and has no oEmbed.
 
 ## Using it in the web app
 
@@ -142,8 +161,8 @@ proxies the public share routes (`/u/*`) to the backend, which returns the same
 `description` meta plus schema.org JSON-LD for the resolved resource. Browsers still
 get the full SPA and hydrate normally — only the head is enriched.
 
-- **Dashboards** and **challenges** get a title (resource name), a description, and
-  a canonical URL; profiles get a `profile`-typed card with `ProfilePage` JSON-LD.
+- **Dashboards**, **challenges** and **shared exercises** get a title (resource name), a
+  description, and a canonical URL; profiles get a `profile`-typed card with `ProfilePage` JSON-LD.
   A dashboard's description uses the author-provided text when set (see
   [Dashboard → Descriptive text](./dashboard.md#descriptive-text)), else a generated
   fallback. A challenge's description says what it measures, its dates and where it
@@ -153,7 +172,7 @@ get the full SPA and hydrate normally — only the head is enriched.
   stops inviting: "… · Ended 31 Oct 2026 · 3 took part. Hosted by … on Aurboda."
 - Every public resource has a **dynamically rendered 1200×630 preview image** at
   `<resource-url>/opengraph-image.png`. Satori renders a branded card (title +
-  DASHBOARD/CHALLENGE/PROFILE eyebrow + the owner's avatar + Aurboda wordmark +
+  DASHBOARD/CHALLENGE/EXERCISE/PROFILE eyebrow + the owner's avatar + Aurboda wordmark +
   `@owner`, except on the profile card whose title already is the name) to SVG and
   sharp rasterizes it to PNG; fonts are bundled (no system fonts in the image), and
   emoji in titles are drawn from bundled Twemoji SVGs (`@twemoji/svg`), so no system
@@ -173,6 +192,14 @@ get the full SPA and hydrate normally — only the head is enriched.
   text over it, and no emoji motif (see [Challenges](./challenges.md#model)). The memo
   key includes the status phrase, the totals and the banner's version, so a new day, a
   data sync or a new banner re-renders the card.
+- An **exercise card** shows progress on a shared exercise over the default purple
+  gradient: the eyebrow names the activity type (`EXERCISE · STRENGTH TRAINING`), and
+  under the title the headline record as a large value ("39.5 kg", the record of the
+  trend's measure, else the first record) over its label and date ("Best e1RM · 21 Dec
+  2025") and the session count ("43 sessions since Mar 2025", or "1 session, 4 Nov
+  2026"), in the owner's timezone, with the trend drawn as a sparkline beside them.
+  Without records the session count stands alone. The memo key includes the newest
+  session's start, so a new session re-renders the card.
   Non-public / unknown resources fall back to the branded static default
   (`/og-default.png`).
 - **Visibility is respected**: rich meta and rendered images are emitted only for
@@ -209,9 +236,11 @@ type="application/json+oembed">` pointing at `GET /oembed?url=<share url>`, whic
   returns a `type: "link"` document (title, author, provider, OG-image thumbnail).
   Only public resources resolve — unlisted/unknown/private URLs 404, so nothing
   private is exposed. Primarily benefits Mastodon and other oEmbed-aware consumers.
-- **Share button**: public profile and shared-dashboard pages have a Share control
-  that uses the native share sheet (`navigator.share`) where available and otherwise
-  copies the link to the clipboard.
+- **Copy link and Share…**: public shared-dashboard and shared-exercise pages have a
+  **Copy link** icon button that copies the URL to the clipboard (a prompt with the
+  URL where the clipboard is unavailable), plus a **Share…** button that opens the
+  system share sheet where `navigator.share` exists (phones; not in the Android
+  WebView).
 - **`theme-color`** and favicons/apple-touch-icon are set so tabs and mobile share
   sheets look finished.
 

@@ -5,7 +5,6 @@ import { useMemo, useState } from 'preact/hooks'
 
 import { BarChart } from '../../components/charts/BarChart'
 import { ChartMenu } from '../../components/charts/ChartMenu'
-import { TrendLineChart } from '../../components/charts/TrendLineChart'
 import { goalsHref } from '../../components/goalPrefill'
 import {
   fetchActivitySessions,
@@ -59,14 +58,18 @@ interface ItemRef {
   value: string
 }
 
-const PerWeekChart = ({
+const MeasureChartBody = ({
   item,
+  lookbackDays,
   measure,
   range,
+  withLine,
 }: {
   item: ItemRef
+  lookbackDays: number
   measure: ActivityMeasure
   range: { end: string; start: string }
+  withLine: boolean
 }) => {
   const aggregation = defaultAggregation(measure)
   const query = useQuery({
@@ -85,6 +88,24 @@ const PerWeekChart = ({
     queryKey: ['chart-data', 'item-per-week', item, measure, range],
     staleTime: 5 * 60 * 1000,
   })
+  const trendQuery = useQuery({
+    enabled: withLine,
+    queryFn: () =>
+      fetchTrend({
+        filter_field: item.field,
+        filter_value: item.value,
+        half_life_days: MEASURE_HALF_LIFE_DEFAULT,
+        lookback_days: lookbackDays,
+        measure,
+        pattern: item.name,
+        source_type: 'activity_type',
+      }),
+    queryKey: ['trend', 'item-best', item, measure, lookbackDays],
+    staleTime: 5 * 60 * 1000,
+  })
+  const trendHistory = withLine ? trendQuery.data?.history : undefined
+  const line = useMemo(() => (trendHistory ? { data: trendHistory } : undefined), [trendHistory])
+  const label = activityMeasureLabels[measure]
 
   return (
     <>
@@ -95,13 +116,17 @@ const PerWeekChart = ({
           <BarChart
             data={query.data.buckets}
             color="#8b5cf6"
-            height={200}
+            height={220}
             bucketSize="1w"
             rangeStart={range.start}
             rangeEnd={range.end}
+            line={line}
           />
+          {withLine && trendQuery.isError && <p class="error">Failed to load the trend</p>}
           <p class="activity-type-item-caption">
-            {activityMeasureLabels[measure]}, {aggregation === 'max' ? 'the best' : 'the total'} of each week.
+            {withLine
+              ? `${label} of each week; the line is the decaying best, with a ${MEASURE_HALF_LIFE_DEFAULT}-day half-life between sessions.`
+              : `${label}, ${aggregation === 'max' ? 'the best' : 'the total'} of each week.`}
           </p>
         </>
       )}
@@ -109,20 +134,37 @@ const PerWeekChart = ({
   )
 }
 
-const PerWeek = ({ all, item, lookback }: { all: ActivitySession[]; item: ItemRef; lookback: number }) => {
+/** Weekly bars of one measure, with the decaying-best trend drawn over them when the measure is the trend's. */
+const MeasureChart = ({
+  all,
+  item,
+  lookback,
+}: {
+  all: ActivitySession[]
+  item: ItemRef
+  lookback: number
+}) => {
   const available = availableMeasures(all)
   const [chosen, setChosen] = useState<ActivityMeasure | undefined>(undefined)
-  const measure =
-    chosen && available.includes(chosen) ? chosen : available.includes('e1rm') ? 'e1rm' : available[0]
+  const trendOf = trendMeasure(all)
+  const measure = chosen && available.includes(chosen) ? chosen : (trendOf ?? available[0])
   const range = useMemo(() => perWeekRange(lookback, all), [lookback, all])
   if (!measure) return null
   const lookbackDays = explorerLookbackDays(lookback, range.start)
   const filter = { filter_field: item.field, filter_value: item.value }
+  const withLine = measure === trendOf
+  const trend = {
+    ...filter,
+    half_life_days: MEASURE_HALF_LIFE_DEFAULT,
+    measure,
+    pattern: item.name,
+    source_type: 'activity_type' as const,
+  }
 
   return (
     <section class="activity-type-item-section">
       <div class="activity-type-item-section-header">
-        <h2>Per week</h2>
+        <h2>{activityMeasureLabels[measure]}</h2>
         <select
           aria-label="Measure"
           value={measure}
@@ -151,83 +193,40 @@ const PerWeek = ({ all, item, lookback }: { all: ActivitySession[]; item: ItemRe
             type: 'bar_chart',
           })}
           goalHref={goalsHref({ activity_type: item.name, ...filter, measure, new: 'measure' })}
+          extraWidgets={
+            withLine
+              ? [
+                  {
+                    label: 'Add trend to dashboard',
+                    widget: (title) => ({
+                      config: { ...trend, lookback_days: lookbackDays, ...(title ? { title } : {}) },
+                      id: newWidgetId(),
+                      type: 'trend_chart',
+                    }),
+                  },
+                ]
+              : undefined
+          }
+          extraLinks={
+            withLine
+              ? [
+                  { href: goalsHref({ ...trend, new: 'trend' }), label: 'Set a trend goal' },
+                  {
+                    href: buildChartUrl({ ...trend, chart_type: 'trend', lookback_days: lookbackDays }),
+                    label: 'Open trend in Chart Explorer',
+                  },
+                ]
+              : undefined
+          }
         />
       </div>
-      <PerWeekChart item={item} measure={measure} range={range} />
-    </section>
-  )
-}
-
-const TrendChart = ({
-  item,
-  lookbackDays,
-  measure,
-}: {
-  item: ItemRef
-  lookbackDays: number
-  measure: ActivityMeasure
-}) => {
-  const query = useQuery({
-    queryFn: () =>
-      fetchTrend({
-        filter_field: item.field,
-        filter_value: item.value,
-        half_life_days: MEASURE_HALF_LIFE_DEFAULT,
-        lookback_days: lookbackDays,
-        measure,
-        pattern: item.name,
-        source_type: 'activity_type',
-      }),
-    queryKey: ['trend', 'item-best', item, measure, lookbackDays],
-    staleTime: 5 * 60 * 1000,
-  })
-
-  return (
-    <>
-      {query.isLoading && <p class="loading">Loading...</p>}
-      {query.isError && <p class="error">Failed to load the trend</p>}
-      {query.data && (
-        <>
-          <TrendLineChart data={query.data.history} color="#8b5cf6" height={220} />
-          <p class="activity-type-item-caption">
-            {activityMeasureLabels[measure]}, decaying with a {MEASURE_HALF_LIFE_DEFAULT}-day half-life
-            between sessions.
-          </p>
-        </>
-      )}
-    </>
-  )
-}
-
-const Trend = ({ all, item, lookback }: { all: ActivitySession[]; item: ItemRef; lookback: number }) => {
-  const measure = trendMeasure(all)
-  const range = useMemo(() => perWeekRange(lookback, all), [lookback, all])
-  if (!measure) return null
-  const lookbackDays = explorerLookbackDays(lookback, range.start)
-  const trend = {
-    filter_field: item.field,
-    filter_value: item.value,
-    half_life_days: MEASURE_HALF_LIFE_DEFAULT,
-    measure,
-    pattern: item.name,
-    source_type: 'activity_type' as const,
-  }
-
-  return (
-    <section class="activity-type-item-section">
-      <div class="activity-type-item-section-header">
-        <h2>Trend</h2>
-        <ChartMenu
-          exploreHref={buildChartUrl({ ...trend, chart_type: 'trend', lookback_days: lookbackDays })}
-          widget={(title) => ({
-            config: { ...trend, lookback_days: lookbackDays, ...(title ? { title } : {}) },
-            id: newWidgetId(),
-            type: 'trend_chart',
-          })}
-          goalHref={goalsHref({ ...trend, new: 'trend' })}
-        />
-      </div>
-      <TrendChart item={item} lookbackDays={lookbackDays} measure={measure} />
+      <MeasureChartBody
+        item={item}
+        lookbackDays={lookbackDays}
+        measure={measure}
+        range={range}
+        withLine={withLine}
+      />
     </section>
   )
 }
@@ -302,8 +301,7 @@ export function ActivityTypeItem() {
             </select>
           </label>
 
-          <Trend all={sessions} item={item} lookback={lookback} />
-          <PerWeek all={sessions} item={item} lookback={lookback} />
+          <MeasureChart all={sessions} item={item} lookback={lookback} />
 
           <section class="activity-type-item-section">
             <h2>History</h2>

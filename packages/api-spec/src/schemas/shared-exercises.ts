@@ -150,7 +150,7 @@ export const sharedExerciseDataSchema = z
       .meta({ description: 'Every session with the exercise, newest first' }),
     per_week: sharedExercisePerWeekSchema
       .nullable()
-      .meta({ description: 'A measure per week over the last 365 days; null without a measure' }),
+      .meta({ description: "A measure per week from the first session's week; null without a measure" }),
     records: z
       .array(sharedExerciseRecordSchema)
       .meta({ description: 'The best value of each record measure' }),
@@ -181,6 +181,10 @@ export const publicSharedExerciseResponseSchema = baseResponseSchema
     activity_type: z.string().optional().meta({ description: 'Activity type the exercise belongs to' }),
     activity_type_name: z.string().optional().meta({ description: 'Display name of the activity type' }),
     data: sharedExerciseDataSchema.optional(),
+    field: z
+      .string()
+      .optional()
+      .meta({ description: 'Item path the exercise is a value of, e.g. `sets.exercise`' }),
     name: sharedExerciseNameSchema.optional(),
     profile_url: z.string().optional().meta({ description: 'Absolute URL of the owner public profile' }),
     share_url: z.string().optional().meta({ description: 'Absolute URL of this shared exercise' }),

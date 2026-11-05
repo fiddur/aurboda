@@ -109,19 +109,26 @@ describe('GET /u/:username/:slug', () => {
   })
 
   const exercise = {
+    activity_type: 'strength_training',
     activity_type_name: 'Strength training',
+    field: 'sets.exercise',
+    id: 'e1',
     is_public: true,
     name: 'Bench',
     value: 'Bench Press',
   }
 
-  test('renders meta with the default image for a public exercise', async () => {
+  test('renders meta with the rendered image and oEmbed for a public exercise', async () => {
     const app = buildApp({ resolveExercise: async () => exercise })
     const res = await supertest(app).get('/u/fiddur/ex1')
     expect(res.text).toContain('<title>Bench — Aurboda</title>')
     expect(res.text).toContain(`property="og:description" content="Bench — fiddur's progress on Aurboda."`)
-    expect(res.text).toContain('property="og:image" content="https://aurboda.net/og-default.png"')
-    expect(res.text).not.toContain('oembed')
+    expect(res.text).toContain(
+      'property="og:image" content="https://aurboda.net/u/fiddur/ex1/opengraph-image.png"',
+    )
+    expect(res.text).toContain(
+      'type="application/json+oembed" href="https://aurboda.net/oembed?url=https%3A%2F%2Faurboda.net%2Fu%2Ffiddur%2Fex1&amp;format=json"',
+    )
     expect(res.headers['cache-control']).toBe('public, max-age=300')
   })
 
@@ -130,6 +137,8 @@ describe('GET /u/:username/:slug', () => {
     const res = await supertest(app).get('/u/fiddur/ex1')
     expect(res.text).not.toContain('Secret')
     expect(res.text).toContain('<title>Aurboda</title>')
+    expect(res.text).not.toContain('oembed')
+    expect(res.text).toContain('property="og:image" content="https://aurboda.net/og-default.png"')
   })
 
   test('does not look up an exercise when a dashboard holds the slug', async () => {

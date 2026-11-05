@@ -1,4 +1,10 @@
-import type { ArticleContent, ChallengeShare, FeedPostKind, FeedVisibility } from '@aurboda/api-spec'
+import type {
+  ArticleContent,
+  ChallengeShare,
+  ExerciseShare,
+  FeedPostKind,
+  FeedVisibility,
+} from '@aurboda/api-spec'
 
 /**
  * Posts live in the user's own database. Each records the explicit metric
@@ -29,6 +35,8 @@ export interface FeedPostRecord {
   article: ArticleContent | null
   /** Stored challenge link payload (name + canonical URL); null unless kind = 'challenge'. */
   challenge: ChallengeShare | null
+  /** Stored exercise share pointer (type, item path, value, opt-ins); null unless kind = 'exercise'. */
+  exercise: ExerciseShare | null
   /** The author's personal message (plain text), or null when none was shared. */
   message: string | null
   /** The replied-to object id; null unless kind = 'reply'. */
@@ -75,6 +83,15 @@ export interface ChallengePostInput {
   include_chart?: boolean
 }
 
+export interface ExercisePostInput {
+  visibility: FeedVisibility
+  exercise: ExerciseShare
+  /** The author's personal note (markdown); omitted/undefined stores NULL. */
+  message?: string | null
+  /** Attach the rendered trend image (`trend.png`); omitted stores false. */
+  include_chart?: boolean
+}
+
 /**
  * Input for a `reply` post: the reply text plus what it answers. Every target
  * field is resolved server-side from the timeline entry being replied to, so a
@@ -106,7 +123,7 @@ export interface FeedPostPatch {
 }
 
 const FEED_POST_COLUMNS =
-  'id, kind, activity_id, included_metrics, series_metrics, visibility, include_map, include_chart, include_exercises, article, challenge, message, in_reply_to_uri, in_reply_to_actor_uri, in_reply_to_handle, autoshare_rule_id, image_token, created_at, updated_at'
+  'id, kind, activity_id, included_metrics, series_metrics, visibility, include_map, include_chart, include_exercises, article, challenge, exercise, message, in_reply_to_uri, in_reply_to_actor_uri, in_reply_to_handle, autoshare_rule_id, image_token, created_at, updated_at'
 
 interface FeedPostRow {
   id: string
@@ -121,6 +138,7 @@ interface FeedPostRow {
   // pg parses a jsonb column to its JS value on read (null for `activity` posts).
   article: ArticleContent | null
   challenge: ChallengeShare | null
+  exercise: ExerciseShare | null
   message: string | null
   in_reply_to_uri: string | null
   in_reply_to_actor_uri: string | null
@@ -187,6 +205,21 @@ export const createChallengePost = async (
      VALUES ('challenge', $1, $2, $3, $4)
      RETURNING ${FEED_POST_COLUMNS}`,
     [input.visibility, JSON.stringify(input.challenge), input.message ?? null, input.include_chart ?? false],
+  )
+  return mapFeedPost(result.rows[0])
+}
+
+/**
+ * Create an `exercise` post (#1398): a pointer to one exercise (type, item path, value) and the
+ * owner's opt-ins in the `exercise` JSONB. The exercise's data is resolved at read time.
+ */
+export const createExercisePost = async (user: string, input: ExercisePostInput): Promise<FeedPostRecord> => {
+  const result = await query<FeedPostRow>(
+    user,
+    `INSERT INTO feed_posts (kind, visibility, exercise, message, include_chart)
+     VALUES ('exercise', $1, $2, $3, $4)
+     RETURNING ${FEED_POST_COLUMNS}`,
+    [input.visibility, JSON.stringify(input.exercise), input.message ?? null, input.include_chart ?? false],
   )
   return mapFeedPost(result.rows[0])
 }

@@ -9,6 +9,7 @@ const buildApp = (overrides: Partial<OEmbedDeps> = {}) => {
     profileExists: async () => false,
     resolveChallenge: async () => null,
     resolveDashboard: async () => null,
+    resolveExercise: async () => null,
     webHost: 'https://aurboda.net',
     ...overrides,
   }
@@ -73,13 +74,32 @@ describe('GET /oembed', () => {
     expect(res.body.thumbnail_url).toBe('https://aurboda.net/u/fiddur/opengraph-image.png')
   })
 
-  test('404 for a shared exercise, which has no oEmbed', async () => {
-    const resolveExercise = async () => ({ is_public: true, name: 'Bench' })
-    const res = await get(
-      buildApp({ resolveExercise } as Partial<OEmbedDeps>),
-      'https://aurboda.net/u/fiddur/ex1',
-    )
+  test('falls through to a public shared exercise', async () => {
+    const app = buildApp({ resolveExercise: async () => ({ is_public: true, name: 'Bench' }) })
+    const res = await get(app, 'https://aurboda.net/u/fiddur/ex1')
+    expect(res.status).toBe(200)
+    expect(res.body.title).toBe('Bench')
+    expect(res.body.thumbnail_url).toBe('https://aurboda.net/u/fiddur/ex1/opengraph-image.png')
+  })
+
+  test('404 for an unlisted shared exercise', async () => {
+    const app = buildApp({ resolveExercise: async () => ({ is_public: false, name: 'Secret' }) })
+    const res = await get(app, 'https://aurboda.net/u/fiddur/ex1')
     expect(res.status).toBe(404)
+    expect(JSON.stringify(res.body)).not.toContain('Secret')
+  })
+
+  test('does not look up an exercise when a dashboard holds the slug', async () => {
+    let asked = false
+    const app = buildApp({
+      resolveDashboard: async () => ({ is_public: false, name: 'Hidden' }),
+      resolveExercise: async () => {
+        asked = true
+        return { is_public: true, name: 'Bench' }
+      },
+    })
+    expect((await get(app, 'https://aurboda.net/u/fiddur/ex1')).status).toBe(404)
+    expect(asked).toBe(false)
   })
 
   test('404 for a missing profile', async () => {

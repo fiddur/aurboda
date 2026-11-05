@@ -8,24 +8,14 @@ import type { FeedStructuredChallenge, QuantChallengeSample } from '@aurboda/api
 
 import type { LineSeriesData } from '../../components/charts/TrendLineChart'
 
+import { httpLink } from '../../utils/http-link'
 import { memberColor } from '../Challenges/member-colors'
 import { formatTotal } from '../Challenges/spec-label'
 
 const MIN_DRAWABLE_POINTS = 2
 
-/**
- * A peer-supplied challenge URL, kept only when it is http(s): the card renders
- * it as an `href`, and a hostile followed instance could otherwise hand us a
- * `javascript:` URL that runs in the app origin on click.
- */
-export const challengeLink = (raw: string): string | null => {
-  try {
-    const url = new URL(raw)
-    return url.protocol === 'https:' || url.protocol === 'http:' ? raw : null
-  } catch {
-    return null
-  }
-}
+/** A peer-supplied challenge URL, kept only when it is http(s) (see `httpLink`). */
+export const challengeLink = (raw: string): string | null => httpLink(raw) ?? null
 
 const UNIT_SECONDS: Record<string, number> = { d: 86_400, h: 3_600, m: 60, s: 1 }
 

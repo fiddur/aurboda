@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url'
 import satori, { type Font } from 'satori'
 import sharp from 'sharp'
 
+import type { OgExerciseDetails } from './exercise-card.ts'
 import type { ChallengeTheme } from './og-challenge-theme.ts'
 
 export const OG_WIDTH = 1200
@@ -45,7 +46,7 @@ export interface OgChallengeDetails {
 
 /** What the card should say. `kind` drives the small uppercase eyebrow label. */
 export interface OgCard {
-  kind: 'dashboard' | 'challenge' | 'profile'
+  kind: 'dashboard' | 'challenge' | 'exercise' | 'profile'
   title: string
   subtitle?: string
   /** Optional `data:` URI for the owner's avatar, shown next to the wordmark. */
@@ -53,6 +54,7 @@ export interface OgCard {
   /** Who owns the resource, shown next to the wordmark as "@name". */
   username?: string
   challenge?: OgChallengeDetails
+  exercise?: OgExerciseDetails
 }
 
 const FONT_FAMILY = 'Liberation Sans'
@@ -117,6 +119,7 @@ const createEmojiLoader = (): ((segment: string) => Promise<string | []>) => {
 const KIND_LABEL: Record<OgCard['kind'], string> = {
   challenge: 'Challenge',
   dashboard: 'Dashboard',
+  exercise: 'Exercise',
   profile: 'Profile',
 }
 
@@ -239,8 +242,60 @@ const challengeMiddle = (challenge: OgChallengeDetails): El[] => {
   return action ? [callToAction(action)] : []
 }
 
-/** A challenge card also carries standings, so a long name steps down rather than wrapping onto them. */
-const challengeTitleSize = (title: string): number => {
+const SPARKLINE_WIDTH = 460
+const SPARKLINE_HEIGHT = 170
+const SPARKLINE_STROKE = 6
+
+/** A trend line as a standalone SVG: x evenly spread, y scaled min→max, inset so the stroke is not clipped. */
+export const sparklineSvg = (values: number[], width: number, height: number): string => {
+  const inset = SPARKLINE_STROKE
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+  const step = values.length > 1 ? (width - 2 * inset) / (values.length - 1) : 0
+  const y = (v: number): number =>
+    max === min ? height / 2 : inset + ((max - v) / (max - min)) * (height - 2 * inset)
+  const points = values
+    .map((v, i) => `${Number((inset + i * step).toFixed(1))},${Number(y(v).toFixed(1))}`)
+    .join(' ')
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">` +
+    `<polyline fill="none" stroke="#ffffff" stroke-opacity="0.9" stroke-width="${SPARKLINE_STROKE}" ` +
+    `stroke-linejoin="round" stroke-linecap="round" points="${points}"/></svg>`
+  )
+}
+
+const sparkline = (values: number[]): El => ({
+  props: {
+    height: SPARKLINE_HEIGHT,
+    src: `data:image/svg+xml;base64,${Buffer.from(sparklineSvg(values, SPARKLINE_WIDTH, SPARKLINE_HEIGHT)).toString('base64')}`,
+    style: { flexShrink: 0 },
+    width: SPARKLINE_WIDTH,
+  },
+  type: 'img',
+})
+
+/** The headline record over its label and the session count, the trend line beside them. */
+const exerciseMiddle = ({ headline, sessions, sparkline: values }: OgExerciseDetails): El[] => {
+  const facts = headline
+    ? [
+        el('div', { display: 'flex', fontSize: 72, fontWeight: 700, lineHeight: 1 }, headline.value),
+        mutedLine(`${headline.label} · ${headline.date}`, 16),
+        ...(sessions ? [mutedLine(sessions, 8)] : []),
+      ]
+    : sessions
+      ? [el('div', { display: 'flex', fontSize: 40, fontWeight: 700 }, sessions)]
+      : []
+  if (facts.length === 0) return []
+  return [
+    el('div', { alignItems: 'flex-end', display: 'flex', justifyContent: 'space-between' }, [
+      el('div', { display: 'flex', flexDirection: 'column' }, facts),
+      ...(values.length >= 2 ? [sparkline(values)] : []),
+    ]),
+  ]
+}
+
+/** A challenge or exercise card carries a middle block, so a long name steps down rather than wrapping onto it. */
+const steppedTitleSize = (title: string): number => {
   const length = graphemesOf(title).length
   if (length <= 20) return 82
   if (length <= 30) return 64
@@ -275,13 +330,21 @@ const bannerBackground = (dataUri: string): El[] => [
   }),
 ]
 
+const eyebrowOf = ({ challenge, exercise, kind }: OgCard): string => {
+  const qualifier = challenge?.measure ?? exercise?.activityTypeName
+  return qualifier ? `${KIND_LABEL[kind]} · ${clampTitle(qualifier, 24)}` : KIND_LABEL[kind]
+}
+
+const middleOf = ({ challenge, exercise }: OgCard): El[] => {
+  if (challenge) return challengeMiddle(challenge)
+  return exercise ? exerciseMiddle(exercise) : []
+}
+
 /** Build the Satori element tree for a card. */
 const cardTree = (card: OgCard): El => {
-  const { challenge } = card
+  const { challenge, exercise } = card
   const [dark, mid, light] = challenge?.theme.gradient ?? DEFAULT_GRADIENT
-  const eyebrow = challenge
-    ? `${KIND_LABEL[card.kind]} · ${clampTitle(challenge.measure, 24)}`
-    : KIND_LABEL[card.kind]
+  const eyebrow = eyebrowOf(card)
   const underTitle = challenge
     ? el(
         'div',
@@ -338,7 +401,7 @@ const cardTree = (card: OgCard): El => {
           'div',
           {
             display: 'flex',
-            fontSize: challenge ? challengeTitleSize(card.title) : 82,
+            fontSize: challenge || exercise ? steppedTitleSize(card.title) : 82,
             fontWeight: 700,
             lineHeight: 1.1,
             marginTop: 24,
@@ -348,7 +411,7 @@ const cardTree = (card: OgCard): El => {
         ),
         ...(underTitle ? [underTitle] : []),
       ]),
-      ...(challenge ? challengeMiddle(challenge) : []),
+      ...middleOf(card),
       el('div', { alignItems: 'center', display: 'flex' }, [
         card.avatarDataUri ? avatarBadge(card.avatarDataUri) : ringBadge(),
         el('div', { display: 'flex', fontSize: 44, fontWeight: 700, marginLeft: 24 }, 'Aurboda'),

@@ -75,14 +75,18 @@ import {
   buildArticleNoteCreate,
   buildChallengeNote,
   buildChallengeNoteCreate,
+  buildExerciseNote,
+  buildExerciseNoteCreate,
   buildFeedCreate,
   buildFeedNote,
   buildReplyNote,
   buildReplyNoteCreate,
   toDeliverableArticle,
   toDeliverableChallenge,
+  toDeliverableExercise,
   toDeliverableReply,
 } from './deliver.ts'
+import { exerciseNoteContent } from './exercise-object.ts'
 import { toCryptoKeyPair } from './keys.ts'
 import { AS_PUBLIC, isPubliclyVisible } from './object.ts'
 import { signedFetchOptions } from './signed-lookup.ts'
@@ -991,6 +995,10 @@ export const createFeedFederation = (
       if (article != null) return buildArticleNote(ctx, identifier, article, apiBaseUrl)
       const challenge = toDeliverableChallenge(post)
       if (challenge != null) return buildChallengeNote(ctx, identifier, challenge)
+      const exercise = toDeliverableExercise(post)
+      if (exercise != null) {
+        return buildExerciseNote(ctx, identifier, exercise, await exerciseNoteContent(identifier, exercise))
+      }
       const reply = toDeliverableReply(post)
       if (reply != null) return buildReplyNote(ctx, identifier, reply)
       if (post.activity_id == null) return null
@@ -1033,6 +1041,11 @@ export const createFeedFederation = (
             if (article != null) return buildArticleNoteCreate(ctx, identifier, article, apiBaseUrl)
             const challenge = toDeliverableChallenge(post)
             if (challenge != null) return buildChallengeNoteCreate(ctx, identifier, challenge)
+            const exercise = toDeliverableExercise(post)
+            if (exercise != null) {
+              const content = await exerciseNoteContent(identifier, exercise)
+              return buildExerciseNoteCreate(ctx, identifier, exercise, content)
+            }
             const reply = toDeliverableReply(post)
             if (reply != null) return buildReplyNoteCreate(ctx, identifier, reply)
             if (post.activity_id == null) return null

@@ -194,7 +194,6 @@ interface ExerciseMetaInput {
   username: string
   name: string
   url: string
-  webHost: string
   /** The item value shared and its activity type's display name, for the image alt text. */
   value: string
   activityTypeName: string
@@ -206,10 +205,9 @@ export const buildExerciseShareMeta = ({
   url,
   username,
   value,
-  webHost,
 }: ExerciseMetaInput): ShareMeta => ({
   description: clampDescription(`${name} — ${username}'s progress on ${SITE_NAME}.`),
-  image: defaultOgImage(webHost),
+  image: resourceOgImage(url),
   imageAlt: `${SITE_NAME} exercise: ${value} (${activityTypeName})`,
   jsonLd: {
     '@context': 'https://schema.org',

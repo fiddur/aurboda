@@ -1,9 +1,14 @@
-import type { FeedStructuredActivity, FeedStructuredPost } from '@aurboda/api-spec'
+import type {
+  FeedStructuredActivity,
+  FeedStructuredExerciseShare,
+  FeedStructuredPost,
+} from '@aurboda/api-spec'
 
 import { describe, expect, test } from 'vitest'
 
 import {
   structuredCombinedSeries,
+  structuredHasNativeExerciseChart,
   structuredHasNativeHrChart,
   structuredHasNativeMap,
   structuredRoutePoints,
@@ -103,6 +108,40 @@ describe('structuredRoutePoints', () => {
   })
 })
 
+const exercise = (data: Partial<FeedStructuredExerciseShare['data']> = {}): FeedStructuredExerciseShare => ({
+  activity_type: 'strength_training',
+  activity_type_name: 'Strength training',
+  data: { done: null, history: [], per_week: null, records: [], trend: null, ...data },
+  kind: 'exercise',
+  name: 'Bench Press',
+})
+
+const exerciseTrend = {
+  half_life_days: 30,
+  history: [
+    { date: '2026-07-01', value: 40 },
+    { date: '2026-07-08', value: 42 },
+  ],
+  measure: 'e1rm' as const,
+}
+
+describe('exercise payload', () => {
+  test('has no activity series or route', () => {
+    const post = exercise({ trend: exerciseTrend })
+    expect(structuredCombinedSeries(post)).toEqual([])
+    expect(structuredRoutePoints(post)).toEqual([])
+    expect(structuredHasNativeHrChart(post)).toBe(false)
+    expect(structuredHasNativeMap(post)).toBe(false)
+  })
+
+  test('draws its chart natively only with a trend or weekly series', () => {
+    expect(structuredHasNativeExerciseChart(exercise({ trend: exerciseTrend }))).toBe(true)
+    expect(structuredHasNativeExerciseChart(exercise())).toBe(false)
+    expect(structuredHasNativeExerciseChart(structured())).toBe(false)
+    expect(structuredHasNativeExerciseChart(undefined)).toBe(false)
+  })
+})
+
 describe('native-render predicates', () => {
   test('HR chart: only a drawable heart-rate series counts — not another metric (#1001)', () => {
     expect(structuredHasNativeHrChart(structured({ series: [hrSeries] }))).toBe(true)
@@ -147,6 +186,12 @@ describe('timelineImageVisible', () => {
     const neither = structured({ series: [{ ...hrSeries, metric: 'power' }] })
     expect(timelineImageVisible(neither, 'Heart rate')).toBe(true)
     expect(timelineImageVisible(neither, 'Route')).toBe(true)
+  })
+
+  test("hides an exercise's Trend image exactly when the card draws the chart", () => {
+    expect(timelineImageVisible(exercise({ trend: exerciseTrend }), 'Trend')).toBe(false)
+    expect(timelineImageVisible(exercise(), 'Trend')).toBe(true)
+    expect(timelineImageVisible(exercise({ trend: exerciseTrend }), 'sunset.jpg')).toBe(true)
   })
 
   test('keeps a non-Aurboda image (e.g. a Mastodon photo) regardless', () => {

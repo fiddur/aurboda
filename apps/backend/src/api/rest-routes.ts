@@ -91,9 +91,13 @@ import { loadAvatarDataUri, loadChallengeBannerDataUri } from '../services/avata
 import { buildChartSvg } from '../services/charts/chart-svg.ts'
 import { buildRaceChartSvg } from '../services/charts/race-chart-svg.ts'
 import { buildScatterSvg } from '../services/charts/scatter-svg.ts'
+import { latestExerciseSession } from '../services/exercise-card.ts'
 import { resolveStandingsChart } from '../services/feed-structured-challenge.ts'
+import { resolveExerciseTrendSeries } from '../services/feed-structured-exercise.ts'
 import { resolveFeedActivity } from '../services/feed.ts'
 import { createOgImageRenderer } from '../services/og-image.ts'
+import { getUserTimezone } from '../services/settings.ts'
+import { resolveSharedExerciseData } from '../services/shared-exercise-data.ts'
 import { createTemplateLoader } from '../services/web-template.ts'
 
 interface RestRoutesDeps {
@@ -252,6 +256,7 @@ export const mountRestRouters = ({
       getRoute: async (user, start, end) =>
         (await getLocations(user, start, end)).locations.map((l) => l.coordinates),
       getSeries: getTimeSeries,
+      getExerciseTrend: (user, post) => resolveExerciseTrendSeries(user, post),
       getStandingsChart: resolveStandingsChart,
       renderChart: renderChartPng,
       renderChartSvg: buildChartSvg,
@@ -276,8 +281,16 @@ export const mountRestRouters = ({
   httpd.use(createOEmbedRouter({ webHost, ...createShareResolvers() }))
   httpd.use(
     createOgImageRouter({
+      latestExerciseSession: (username, exercise) => latestExerciseSession(username, exercise),
       loadAvatarDataUri,
       loadBannerDataUri: loadChallengeBannerDataUri,
+      loadExerciseCard: async (username, exercise) => {
+        const [data, timeZone] = await Promise.all([
+          resolveSharedExerciseData(username, exercise),
+          getUserTimezone(username),
+        ])
+        return { data, timeZone }
+      },
       renderImage: createOgImageRenderer(),
       webHost,
       ...createShareResolvers(),

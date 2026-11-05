@@ -20,6 +20,9 @@ import {
   type SharePreviewResponse,
   type ShareChallengeBody,
   shareChallengeBodySchema,
+  type ShareExerciseBody,
+  shareExerciseBodySchema,
+  type ExerciseSharePreviewResponse,
   type TimelineEntryResponse,
   type TimelineQuery,
   timelineQuerySchema,
@@ -40,6 +43,7 @@ import type { RetroEnrichTrigger } from '../services/timeline-retro-enrich.ts'
 import {
   createArticlePost,
   createChallengePost,
+  createExercisePost,
   createFeedPost,
   deleteFeedPost,
   getActivityById,
@@ -53,6 +57,7 @@ import { REPLIES_TIMEOUT_MS } from '../services/activitypub/remote-replies.ts'
 import { buildArticleMarkdown, renderableArticleBlocks } from '../services/article-export.ts'
 import { buildArticleContent, mergeArticleContent } from '../services/article.ts'
 import { resolveChallengeShare } from '../services/challenge-share.ts'
+import { previewExerciseShare, resolveExerciseShare } from '../services/feed-exercise-share.ts'
 import { MAX_POST_REACTIONS, serializeFeedPostReaction } from '../services/feed-reactions.ts'
 import {
   getFeedPage,
@@ -88,6 +93,8 @@ export interface FeedDeliver {
   updatedArticle: (user: string, post: FeedPostRecord) => void
   createdChallenge: (user: string, post: FeedPostRecord) => void
   updatedChallenge: (user: string, post: FeedPostRecord) => void
+  createdExercise: (user: string, post: FeedPostRecord) => void
+  updatedExercise: (user: string, post: FeedPostRecord) => void
   /**
    * Fan a fresh reply out to followers AND the inbox of the author it answers —
    * `authorInbox` being the one the reply handler already resolved (#1108).
@@ -406,6 +413,38 @@ export const createFeedRouter = (
     },
   )
 
+  // Exercise shares (#1398): one exercise's progress, resolved from a stored pointer whenever the
+  // post is rendered. Registered before the generic `/:postId` routes.
+  router.post<Record<string, never>, FeedPostResponse, ShareExerciseBody>(
+    '/exercises',
+    authMiddleware,
+    validateBody(shareExerciseBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      const resolved = await resolveExerciseShare(user, req.body, webHost)
+      if (!resolved.ok) return res.status(resolved.status).json({ error: resolved.error, success: false })
+      const record = await createExercisePost(user, {
+        exercise: resolved.exercise,
+        include_chart: req.body.include_chart,
+        message: normalizeFeedMessage(req.body.message) ?? null,
+        visibility: req.body.visibility,
+      })
+      deliver?.createdExercise(user, record)
+      res.json({ post: await serializeFeedPost(user, record, { includeStructured: true }), success: true })
+    },
+  )
+
+  router.post<Record<string, never>, ExerciseSharePreviewResponse, ShareExerciseBody>(
+    '/exercises/preview',
+    authMiddleware,
+    validateBody(shareExerciseBodySchema),
+    async (req, res) => {
+      const preview = await previewExerciseShare(req.user!, req.body, webHost)
+      if (!preview.ok) return res.status(preview.status).json({ error: preview.error, success: false })
+      res.json({ content: preview.content, structured: preview.structured, success: true })
+    },
+  )
+
   // Article posts (long-form: title + prose + inline chart/correlation blocks).
   // Create/edit have their own body shape; delete reuses `DELETE /:postId`.
   // Registered before the generic `/:postId` routes. Federated as a `Note`
@@ -519,6 +558,7 @@ export const createFeedRouter = (
       // activity, so it must go through the article path — `updated` would no-op.
       if (record.kind === 'article') deliver?.updatedArticle(user, record)
       else if (record.kind === 'challenge') deliver?.updatedChallenge(user, record)
+      else if (record.kind === 'exercise') deliver?.updatedExercise(user, record)
       else if (record.kind === 'reply') deliver?.updatedReply(user, record)
       else deliver?.updated(user, record)
       res.json({ post: await serializeFeedPost(user, record, { includeStructured: true }), success: true })
