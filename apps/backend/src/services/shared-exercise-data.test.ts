@@ -109,10 +109,10 @@ describe('resolveSharedExerciseData', () => {
     )
   })
 
-  test('per week charts e1rm over the last 365 local days, keeping plain buckets', async () => {
+  test('per week charts e1rm from the local day of the first session, keeping plain buckets', async () => {
     const { deps, typed } = makeDeps([newer, older])
     const data = await resolveSharedExerciseData('alice', share, typed)
-    const range = { end: '2026-03-11T22:59:59.999Z', start: '2025-03-10T23:00:00.000Z' }
+    const range = { end: '2026-03-11T22:59:59.999Z', start: '2026-01-09T23:00:00.000Z' }
     expect(deps.getChartData).toHaveBeenCalledWith('alice', {
       aggregation: 'max',
       bucket_size: '1w',
