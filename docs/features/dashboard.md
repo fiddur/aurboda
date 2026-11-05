@@ -68,7 +68,7 @@ A full-width bar chart of bucketed values (`GET /chart-data`) for an activity ty
 
 Bars and one or more trend lines drawn over one time axis and one y scale, like an exercise's
 weekly best e1RM with its decaying best over it. Add one from an exercise page's chart menu
-(**Add combined chart to dashboard**), or through the API or MCP; the add-widget dialog does not
+(**Add to dashboard** when the line is drawn), or through the API or MCP; the add-widget dialog does not
 offer it yet.
 
 **Configuration:** optional `title` (default "Combined chart"), `lookback_days` shared by every

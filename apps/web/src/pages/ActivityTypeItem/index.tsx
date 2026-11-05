@@ -173,6 +173,14 @@ const MeasureChart = ({
   const lookbackDays = explorerLookbackDays(lookback, range.start)
   const filter = { filter_field: item.field, filter_value: item.value }
   const withLine = measure === trendOf
+  const bars = {
+    aggregation: defaultAggregation(measure),
+    bucket_size: '1w' as const,
+    ...filter,
+    measure,
+    pattern: item.name,
+    source_type: 'activity_type' as const,
+  }
   const trend = {
     ...filter,
     half_life_days: MEASURE_HALF_LIFE_DEFAULT,
@@ -198,58 +206,27 @@ const MeasureChart = ({
         </select>
         <ChartMenu
           exploreHref={chartExplorerHref({ ...item, lookbackDays, measure })}
-          widget={(title) => ({
-            config: {
-              aggregation: defaultAggregation(measure),
-              bucket_size: '1w',
-              ...filter,
-              lookback_days: lookbackDays,
-              measure,
-              pattern: item.name,
-              source_type: 'activity_type',
-              ...(title ? { title } : {}),
-            },
-            id: newWidgetId(),
-            type: 'bar_chart',
-          })}
-          goalHref={goalsHref({ activity_type: item.name, ...filter, measure, new: 'measure' })}
-          extraWidgets={
+          widget={(title) =>
             withLine
-              ? [
-                  {
-                    label: 'Add combined chart to dashboard',
-                    widget: (title) => ({
-                      config: {
-                        layers: [
-                          {
-                            aggregation: defaultAggregation(measure),
-                            bucket_size: '1w',
-                            ...filter,
-                            kind: 'bars',
-                            measure,
-                            pattern: item.name,
-                            source_type: 'activity_type',
-                          },
-                          { kind: 'trend', ...trend },
-                        ],
-                        lookback_days: lookbackDays,
-                        ...(title ? { title } : {}),
-                      },
-                      id: newWidgetId(),
-                      type: 'combined_chart',
-                    }),
+              ? {
+                  config: {
+                    layers: [
+                      { ...bars, kind: 'bars' },
+                      { kind: 'trend', ...trend },
+                    ],
+                    lookback_days: lookbackDays,
+                    ...(title ? { title } : {}),
                   },
-                  {
-                    label: 'Add trend to dashboard',
-                    widget: (title) => ({
-                      config: { ...trend, lookback_days: lookbackDays, ...(title ? { title } : {}) },
-                      id: newWidgetId(),
-                      type: 'trend_chart',
-                    }),
-                  },
-                ]
-              : undefined
+                  id: newWidgetId(),
+                  type: 'combined_chart',
+                }
+              : {
+                  config: { ...bars, lookback_days: lookbackDays, ...(title ? { title } : {}) },
+                  id: newWidgetId(),
+                  type: 'bar_chart',
+                }
           }
+          goalHref={goalsHref({ activity_type: item.name, ...filter, measure, new: 'measure' })}
           extraLinks={
             withLine
               ? [
