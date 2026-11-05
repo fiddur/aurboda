@@ -42,9 +42,12 @@ interface ResolvedResource {
   description?: string
 }
 
-interface ResolvedExercise {
+export interface ResolvedExercise {
+  id: string
   is_public: boolean
   name: string
+  activity_type: string
+  field: string
   value: string
   activity_type_name: string
 }
@@ -118,7 +121,10 @@ export const createShareResolvers = (): Pick<
         ? await getActivityTypeDefinition(username, exercise.activity_type)
         : null
       return {
+        activity_type: exercise.activity_type,
         activity_type_name: definition?.display_name ?? exercise.activity_type,
+        field: exercise.field,
+        id: exercise.id,
         is_public: exercise.is_public,
         name: exercise.name,
         value: exercise.value,
@@ -232,14 +238,16 @@ export const createShareHtmlRouter = (deps: ShareHtmlDeps): Router => {
     if (exercise?.is_public) {
       return sendHtml(
         loadTemplate,
-        buildExerciseShareMeta({
-          activityTypeName: exercise.activity_type_name,
-          name: exercise.name,
+        withOembed(
+          buildExerciseShareMeta({
+            activityTypeName: exercise.activity_type_name,
+            name: exercise.name,
+            url,
+            username,
+            value: exercise.value,
+          }),
           url,
-          username,
-          value: exercise.value,
-          webHost,
-        }),
+        ),
         true,
         res,
       )

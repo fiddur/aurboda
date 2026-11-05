@@ -8,12 +8,16 @@
  * yields a bespoke image. Rendered PNGs are memoised in a small bounded cache
  * (render is CPU-heavy and inputs rarely change).
  */
+import type { SharedExerciseData } from '@aurboda/api-spec'
+
 import { type Response, Router } from 'express'
 
 import type { OgCard } from '../services/og-image.ts'
+import type { ResolvedExercise } from './share-html-router.ts'
 
 import { isValidUsername } from '../api/auth-routes.ts'
 import { describeChallenge, type ResolvedChallenge } from '../services/challenge-card.ts'
+import { describeExercise } from '../services/exercise-card.ts'
 import { defaultOgImage } from '../services/share-meta.ts'
 
 interface ResolvedResource {
@@ -25,6 +29,14 @@ export interface OgImageDeps {
   webHost: string
   resolveDashboard: (username: string, slug: string) => Promise<ResolvedResource | null>
   resolveChallenge: (username: string, slug: string) => Promise<ResolvedChallenge | null>
+  resolveExercise: (username: string, slug: string) => Promise<ResolvedExercise | null>
+  /** The public page's data for a shared exercise, with the owner's timezone. */
+  loadExerciseCard: (
+    username: string,
+    exercise: ExerciseShare,
+  ) => Promise<{ data: SharedExerciseData; timeZone: string }>
+  /** Start of the newest session with the shared value, or null; cheap enough to run per request. */
+  latestExerciseSession: (username: string, exercise: ExerciseShare) => Promise<string | null>
   profileExists: (username: string) => Promise<boolean>
   renderImage: (card: OgCard) => Promise<Buffer>
   /** The owner's avatar as a `data:` URI, embedded in the rendered card. */
@@ -34,17 +46,22 @@ export interface OgImageDeps {
   now?: () => Date
 }
 
+type ExerciseShare = Pick<ResolvedExercise, 'activity_type' | 'field' | 'value'>
+
 /** How many rendered cards to keep in memory before evicting the oldest. */
 const MAX_CACHE_ENTRIES = 200
 
 export const createOgImageRouter = (deps: OgImageDeps): Router => {
   const {
+    latestExerciseSession,
     loadAvatarDataUri,
     loadBannerDataUri,
+    loadExerciseCard,
     profileExists,
     renderImage,
     resolveChallenge,
     resolveDashboard,
+    resolveExercise,
     webHost,
   } = deps
   const now = deps.now ?? (() => new Date())
@@ -155,6 +172,26 @@ export const createOgImageRouter = (deps: OgImageDeps): Router => {
           title: challenge.name,
           username,
         }),
+      )
+    }
+
+    const exercise = dashboard || challenge ? null : await resolveExercise(username, slug)
+    if (exercise?.is_public) {
+      // A new session moves the records and the trend; keying on its start re-renders the card.
+      const latest = await latestExerciseSession(username, exercise)
+      return sendImage(
+        res,
+        `x:${username}/${slug}:${exercise.name}:${exercise.activity_type_name}:${latest ?? ''}`,
+        async () => {
+          const { data, timeZone } = await loadExerciseCard(username, exercise)
+          return {
+            avatarDataUri: await avatarOrUndefined(username),
+            exercise: describeExercise(data, exercise.activity_type_name, timeZone),
+            kind: 'exercise',
+            title: exercise.name,
+            username,
+          }
+        },
       )
     }
 

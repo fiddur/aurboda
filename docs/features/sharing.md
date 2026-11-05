@@ -124,8 +124,9 @@ public page only when the exercise is published (see the `exercise` post kind in
 [feed.md](./feed.md#feed-posts)).
 
 Link previews of a public shared exercise carry its name, "&lt;name&gt; — &lt;user&gt;'s
-progress on Aurboda." and the static default image; there is no rendered image card and
-no oEmbed for exercises yet.
+progress on Aurboda.", a rendered image card and oEmbed, like dashboards and challenges
+(see [Link previews](#link-previews-open-graph--twitter-card)); an unlisted one keeps the
+static default image and has no oEmbed.
 
 ## Using it in the web app
 
@@ -160,8 +161,8 @@ proxies the public share routes (`/u/*`) to the backend, which returns the same
 `description` meta plus schema.org JSON-LD for the resolved resource. Browsers still
 get the full SPA and hydrate normally — only the head is enriched.
 
-- **Dashboards** and **challenges** get a title (resource name), a description, and
-  a canonical URL; profiles get a `profile`-typed card with `ProfilePage` JSON-LD.
+- **Dashboards**, **challenges** and **shared exercises** get a title (resource name), a
+  description, and a canonical URL; profiles get a `profile`-typed card with `ProfilePage` JSON-LD.
   A dashboard's description uses the author-provided text when set (see
   [Dashboard → Descriptive text](./dashboard.md#descriptive-text)), else a generated
   fallback. A challenge's description says what it measures, its dates and where it
@@ -171,7 +172,7 @@ get the full SPA and hydrate normally — only the head is enriched.
   stops inviting: "… · Ended 31 Oct 2026 · 3 took part. Hosted by … on Aurboda."
 - Every public resource has a **dynamically rendered 1200×630 preview image** at
   `<resource-url>/opengraph-image.png`. Satori renders a branded card (title +
-  DASHBOARD/CHALLENGE/PROFILE eyebrow + the owner's avatar + Aurboda wordmark +
+  DASHBOARD/CHALLENGE/EXERCISE/PROFILE eyebrow + the owner's avatar + Aurboda wordmark +
   `@owner`, except on the profile card whose title already is the name) to SVG and
   sharp rasterizes it to PNG; fonts are bundled (no system fonts in the image), and
   emoji in titles are drawn from bundled Twemoji SVGs (`@twemoji/svg`), so no system
@@ -191,6 +192,14 @@ get the full SPA and hydrate normally — only the head is enriched.
   text over it, and no emoji motif (see [Challenges](./challenges.md#model)). The memo
   key includes the status phrase, the totals and the banner's version, so a new day, a
   data sync or a new banner re-renders the card.
+- An **exercise card** shows progress on a shared exercise over the default purple
+  gradient: the eyebrow names the activity type (`EXERCISE · STRENGTH TRAINING`), and
+  under the title the headline record as a large value ("39.5 kg", the record of the
+  trend's measure, else the first record) over its label and date ("Best e1RM · 21 Dec
+  2025") and the session count ("43 sessions since Mar 2025", or "1 session, 4 Nov
+  2026"), in the owner's timezone, with the trend drawn as a sparkline beside them.
+  Without records the session count stands alone. The memo key includes the newest
+  session's start, so a new session re-renders the card.
   Non-public / unknown resources fall back to the branded static default
   (`/og-default.png`).
 - **Visibility is respected**: rich meta and rendered images are emitted only for

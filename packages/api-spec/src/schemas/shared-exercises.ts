@@ -150,7 +150,7 @@ export const sharedExerciseDataSchema = z
       .meta({ description: 'Every session with the exercise, newest first' }),
     per_week: sharedExercisePerWeekSchema
       .nullable()
-      .meta({ description: 'A measure per week over the last 365 days; null without a measure' }),
+      .meta({ description: "A measure per week from the first session's week; null without a measure" }),
     records: z
       .array(sharedExerciseRecordSchema)
       .meta({ description: 'The best value of each record measure' }),
