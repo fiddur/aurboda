@@ -1,6 +1,7 @@
 import type {
   CreateSharedDashboardBody,
   CreateSharedExerciseBody,
+  FeedPostResponse,
   FeedPostsResponse,
   PublicProfileResponse,
   SharedDashboard,
@@ -95,6 +96,14 @@ export const fetchPublicPosts = async (username: string, cursor?: string): Promi
   const response = await axios.get<FeedPostsResponse>(
     `${API_URL}/public/${encodeURIComponent(username)}/posts`,
     { params: cursor == null ? {} : { cursor } },
+  )
+  return response.data
+}
+
+/** One public/unlisted feed post, for its permalink page `/u/:username/posts/:postId`. */
+export const fetchPublicPost = async (username: string, postId: string): Promise<FeedPostResponse> => {
+  const response = await axios.get<FeedPostResponse>(
+    `${API_URL}/public/${encodeURIComponent(username)}/posts/${encodeURIComponent(postId)}`,
   )
   return response.data
 }

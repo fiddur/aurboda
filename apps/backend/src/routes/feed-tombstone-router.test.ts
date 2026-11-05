@@ -52,6 +52,22 @@ describe('GET /users/:username/feed/:postId (tombstone)', () => {
     })
   })
 
+  test('still serves the 410 to an ActivityPub or absent Accept', async () => {
+    for (const accept of ['application/activity+json', '*/*', undefined]) {
+      const request = supertest(buildApp()).get(`/users/fiddur/feed/${POST_ID}`)
+      const res = await (accept === undefined ? request : request.set('Accept', accept))
+      expect(res.status).toBe(410)
+    }
+  })
+
+  test('falls through for a browser, which gets the normal 404 rather than AS2 JSON', async () => {
+    const res = await supertest(buildApp())
+      .get(`/users/fiddur/feed/${POST_ID}`)
+      .set('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8')
+    expect(res.status).toBe(404)
+    expect(res.body).toEqual({ fellThrough: true })
+  })
+
   test('normalises a trailing slash on the origin so the id has no double slash', async () => {
     const res = await supertest(buildApp({ origin: 'https://aurboda.net/' })).get(
       `/users/fiddur/feed/${POST_ID}`,

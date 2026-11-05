@@ -295,6 +295,13 @@ window is then the override's own.
   `feed_tombstone`) so a dereferencing server learns the object is _permanently_ gone
   rather than transiently missing. A `followers`-only id is never tombstoned — it never
   resolved publicly, so a 410 would leak that a post once existed.
+- **Permalink page** — the Note's `url` is that same id, so Mastodon's "Open original
+  page" opens it in a browser. The id is content-negotiated like the actor URL: an
+  ActivityPub type, a wildcard or no `Accept` gets the Note, while a request that prefers
+  HTML gets a `302` (`Vary: Accept`) to the post's web page `/u/:username/posts/:postId`,
+  which renders the post through `GET /api/public/:username/posts/:postId`. Only
+  `public`/`unlisted` posts redirect; a `followers`-only, unknown or deleted id gives a
+  browser the normal 404 (the `410` Tombstone is for machine clients only).
 
 The `Note` carries `published` = the post's share time (its `created_at`), so remote
 servers order and timestamp it correctly instead of stamping it at receipt.
@@ -1025,6 +1032,7 @@ Public / federation (unauthenticated):
 | `GET /public/:username/feed/:postId/blocks/:index/image.png` | Rendered PNG of an article's chart/correlation block (visibility-gated; `?token=` for followers-only)                                                                                                                                                                   |
 | `GET /public/:username/feed/:postId/blocks/:index/image.svg` | Same article block as crisp `image/svg+xml`                                                                                                                                                                                                                             |
 | `GET /public/:username/posts`                                | A user's public/unlisted posts (newest-first, keyset page of 20 + `next_cursor`) for their profile feed                                                                                                                                                                 |
+| `GET /public/:username/posts/:postId`                        | One public/unlisted post, serialized like the listing (`FeedPostResponse`), for its permalink page `/u/:username/posts/:postId`                                                                                                                                         |
 | `GET /.well-known/webfinger`                                 | Resolve `acct:<username>@<host>` → the actor                                                                                                                                                                                                                            |
 | `GET /.well-known/quantpub`                                  | QuantPub discovery document (FEP §4): product, versions, `apiBase`                                                                                                                                                                                                      |
 | `GET /ns/quantpub`                                           | The published QuantPub JSON-LD `@context` document (`application/ld+json`)                                                                                                                                                                                              |
@@ -1034,7 +1042,7 @@ Public / federation (unauthenticated):
 | `GET /users/:username/outbox`                                | Public + unlisted posts as `Create` activities                                                                                                                                                                                                                          |
 | `GET /users/:username/followers`                             | The actor's followers collection                                                                                                                                                                                                                                        |
 | `GET /users/:username/following`                             | The actor's following collection (accepted follows only)                                                                                                                                                                                                                |
-| `GET /users/:username/feed/:postId`                          | A single post's `Note` — an activity share or an article (or `410` Tombstone once deleted)                                                                                                                                                                              |
+| `GET /users/:username/feed/:postId`                          | Content-negotiated like the actor: a single post's `Note` — an activity share or an article (or `410` Tombstone once deleted); a 302 to `/u/:username/posts/:postId` for a browser on a public/unlisted post                                                            |
 | `POST /users/:username/inbox` (+ `/inbox`)                   | Inbound `Follow` / `Undo{Follow}` / `Accept` / `Reject` (HTTP-Signature verified)                                                                                                                                                                                       |
 
 The actor's `icon` URL carries the avatar's upload time as a `?v=` version, and an avatar
