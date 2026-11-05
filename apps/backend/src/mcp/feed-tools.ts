@@ -3,6 +3,7 @@ import {
   createArticleBodySchema,
   feedPostsQuerySchema,
   shareChallengeBodySchema,
+  shareExerciseBodySchema,
   followActorBodySchema,
   followersQuerySchema,
   replyToPostBodySchema,
@@ -23,6 +24,7 @@ import type { RetroEnrichTrigger } from '../services/timeline-retro-enrich.ts'
 import {
   createArticlePost,
   createChallengePost,
+  createExercisePost,
   createFeedPost,
   deleteFeedPost,
   getActivityById,
@@ -39,6 +41,7 @@ import { REPLIES_TIMEOUT_MS } from '../services/activitypub/remote-replies.ts'
 import { buildArticleMarkdown, renderableArticleBlocks } from '../services/article-export.ts'
 import { buildArticleContent, mergeArticleContent } from '../services/article.ts'
 import { resolveChallengeShare } from '../services/challenge-share.ts'
+import { previewExerciseShare, resolveExerciseShare } from '../services/feed-exercise-share.ts'
 import { MAX_POST_REACTIONS, serializeFeedPostReaction } from '../services/feed-reactions.ts'
 import {
   getFeedPage,
@@ -160,6 +163,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
       // their own paths — the generic `updated` would silently no-op.
       if (record.kind === 'article') deliver?.updatedArticle(user, record)
       else if (record.kind === 'challenge') deliver?.updatedChallenge(user, record)
+      else if (record.kind === 'exercise') deliver?.updatedExercise(user, record)
       else if (record.kind === 'reply') deliver?.updatedReply(user, record)
       else deliver?.updated(user, record)
       return jsonResponse(await serializeFeedPost(user, record))
@@ -181,6 +185,35 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
       })
       deliver?.createdChallenge(user, record)
       return jsonResponse(await serializeFeedPost(user, record))
+    },
+  )
+
+  server.tool(
+    'share_exercise',
+    "Publish one exercise's progress to your feed (one item value of one activity type, e.g. `sets.exercise` = `Bench Press` of `strength_training`): records and session count, the trend (with a trend image), optionally the last 5 sessions' sets, and a link to the exercise's public page only when it is published as a shared exercise. The data is resolved whenever the post is read. Use preview_exercise_share first to show what leaves the instance.",
+    { ...shareExerciseBodySchema.shape },
+    async (body) => {
+      const resolved = await resolveExerciseShare(user, body, webHost)
+      if (!resolved.ok) return errorResponse(resolved.error)
+      const record = await createExercisePost(user, {
+        exercise: resolved.exercise,
+        include_chart: body.include_chart,
+        message: normalizeFeedMessage(body.message) ?? null,
+        visibility: body.visibility,
+      })
+      deliver?.createdExercise(user, record)
+      return jsonResponse(await serializeFeedPost(user, record))
+    },
+  )
+
+  server.tool(
+    'preview_exercise_share',
+    'Preview what sharing an exercise WOULD federate — the exact post text (HTML) and the structured payload for the given opt-ins — without creating a post.',
+    { ...shareExerciseBodySchema.shape },
+    async (body) => {
+      const preview = await previewExerciseShare(user, body, webHost)
+      if (!preview.ok) return errorResponse(preview.error)
+      return jsonResponse({ content: preview.content, structured: preview.structured })
     },
   )
 

@@ -88,6 +88,30 @@ A feed post has a **`kind`**:
   federated with a "has finished" heading, the winner as a Mastodon-style mention link,
   and a `Mention` tag (plus `cc` + inbox delivery) per winner.
 
+- **`exercise`** — **one exercise's progress** (#1398): one item value of one activity
+  type, e.g. `sets.exercise` = `Dumbbell Bench Press` of `strength_training`, the same
+  thing a [shared exercise](sharing.md#shared-exercises) publishes. The post stores only a
+  pointer and the author's opt-ins in a nullable `exercise` JSONB column (type, item path,
+  value, the display name at share time, `include_records`, `include_sessions`, and the
+  `url` of the exercise's public page); the data itself is **resolved at read time**
+  through the same projection a public exercise page gets (`resolveSharedExerciseData`),
+  filtered by the opt-ins: the records (best e1RM, max weight, …) and the session count
+  (`include_records`, default on), the decaying-best trend and weekly series
+  (`include_chart`, default on), and the last 5 sessions' sets (`include_sessions`, default
+  off). Publishing the exercise is **not** a prerequisite: the post links the public page
+  (and takes its name) only when the exercise is published as a shared exercise at share
+  time and `include_link` (default on) is set; otherwise it carries no link and is named
+  by the value. An exercise without sessions can't be shared (404), and a non-categorical
+  item path is rejected (400). Federates as a `Note` whose content — name and type, the
+  note, a line per record (`Best e1RM 39.5 kg (21 Dec 2025, 7×32 kg)`), the session count,
+  a line per shared session and the link — is rendered from the data as of delivery; with
+  `include_chart` the `Note` delivered to followers also attaches the trend as a `Trend`
+  PNG (see [Images](#images)). An Aurboda peer fetches the
+  [structured payload](#native-charts-from-aurboda-peers-structured-enrichment) instead,
+  resolved as of that fetch. Shared via `POST /feed/exercises` (and the `share_exercise`
+  MCP tool); `POST /feed/exercises/preview` (`preview_exercise_share`) returns the exact
+  `Note` HTML and structured payload without creating a post.
+
 An **`activity`** feed post references one of the user's activities and records the
 explicit metric selection that bounds what is shared:
 
@@ -638,7 +662,12 @@ id-convention path — reliable even when a typed consumer drops the in-band ext
    QuantPub (`/.well-known/quantpub` with `challenges: true`), time-boxed to 8 s and omitted on
    any failure. A challenge that is gone (deleted, or the participation left) 404s. The
    snapshot is only as fresh as the fetch that stored it, so the card says when it was taken
-   and links the live page. Either way a peer can never
+   and links the live page. An **exercise** post resolves to `FeedStructuredExerciseShare`:
+   the name, the activity type and its display name, the author's note, the link when the
+   exercise was published, and `data` — the public exercise page's `SharedExerciseData`
+   with the records emptied unless shared, the trend and per-week series nulled unless the
+   chart was, and the history cut to the newest 5 sessions when sessions were shared (else
+   empty); an exercise left with no sessions (its value merged away) 404s. Either way a peer can never
    read more than the author shared/published. `public`/`unlisted` posts resolve
    unconditionally; a `followers`-only post resolves only with a matching `?token=<image_token>`
    — the **same capability token** that authorizes its followers-only images (below), so the
@@ -762,6 +791,21 @@ attaches it as `Standings` (1000×420) only when it would draw, checked by resol
 same payload before the `Create`/`Update` is sent; the `Note` served by the object
 dispatcher and the outbox does not carry it. The owner's own feed card shows it in place
 of the native race only when the post has no structured payload.
+
+An **exercise** post opted into `include_chart` renders its **trend** (the decaying best of
+the exercise's primary measure, labelled e.g. `Best e1RM · Dumbbell Bench Press`) at:
+
+```
+GET /api/public/:username/feed/:postId/trend.png
+GET /api/public/:username/feed/:postId/trend.svg
+```
+
+resolved at request time from the post's structured payload, so the line includes sessions
+logged after the share. The endpoints 404 for a non-exercise post, a post without the
+opt-in, a `followers`-only post without its token, and a trend of fewer than 2 points. The
+render cache keys on the post's `updated_at` plus a 1-hour bucket. The delivered `Note`
+attaches it as `Trend` (1000×420) only when it would draw; the `Note` served by the object
+dispatcher and the outbox does not carry it.
 
 An **article** renders one image per chart/correlation block for the same reason (so
 Mastodon and export tools attach a raster of each block), at its own endpoints:
@@ -934,6 +978,8 @@ Owner-facing (authenticated, scoped to the caller):
 | `POST /feed/articles`                             | Publish a long-form **article** (title + prose + inline chart/correlation blocks)                                                                                                                            |
 | `POST /feed/activities/:id/preview`               | Live share **preview** (#902): the exact federated content + resolved metrics for a selection; creates nothing                                                                                               |
 | `POST /feed/challenges`                           | Share a **challenge invitation** (personal note + canonical link); exactly one of `challenge_id`/`participation_id`                                                                                          |
+| `POST /feed/exercises`                            | Share an **exercise's progress** (records, trend, recent sessions per the opt-ins; a link only when the exercise is published)                                                                               |
+| `POST /feed/exercises/preview`                    | Exercise share **preview**: the exact `Note` HTML and structured payload for the opt-ins; creates nothing                                                                                                    |
 | `GET/POST /autoshare-rules` (+`/:id`, `/preview`) | [Auto-share rules](auto-share-rules.md): automatically publish matching settled activities (#903)                                                                                                            |
 | `PATCH /feed/articles/:postId`                    | Edit an article (title / blocks / default window / visibility)                                                                                                                                               |
 | `GET /feed/articles/:postId/export`               | Export an article as paste-ready markdown (title + prose + one image link per block) for Reddit/text-only destinations                                                                                       |
@@ -959,12 +1005,14 @@ Public / federation (unauthenticated):
 | Method & path                                                | Purpose                                                                                                                                                                                                                                                                 |
 | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /public/:username/series`                               | Bucketed samples for a **shared** series within its window                                                                                                                                                                                                              |
-| `GET /public/:username/feed/:postId`                         | Native structured post (`FeedStructuredPost`: an activity's typed metrics + inline series, an article's title + resolved blocks, or a challenge's document + standings snapshot) for Aurboda-to-Aurboda enrichment                                                      |
+| `GET /public/:username/feed/:postId`                         | Native structured post (`FeedStructuredPost`: an activity's typed metrics + inline series, an article's title + resolved blocks, a challenge's document + standings snapshot, or an exercise's progress) for Aurboda-to-Aurboda enrichment                              |
 | `GET /public/:username/feed/:postId/chart.png`               | Rendered HR chart (PNG) for an opted-in post (`?token=` for followers-only)                                                                                                                                                                                             |
 | `GET /public/:username/feed/:postId/chart.svg`               | Same HR chart as crisp `image/svg+xml` for Aurboda-native rendering (`?token=` for followers-only)                                                                                                                                                                      |
 | `GET /public/:username/feed/:postId/route.png`               | Rendered GPS route map for an opted-in post (`?token=` for followers-only)                                                                                                                                                                                              |
 | `GET /public/:username/feed/:postId/standings.png`           | Rendered standings race chart (PNG) for an opted-in challenge post (`?token=` for followers-only)                                                                                                                                                                       |
 | `GET /public/:username/feed/:postId/standings.svg`           | Same standings race as crisp `image/svg+xml`                                                                                                                                                                                                                            |
+| `GET /public/:username/feed/:postId/trend.png`               | Rendered exercise trend (PNG) for an opted-in exercise post (`?token=` for followers-only)                                                                                                                                                                              |
+| `GET /public/:username/feed/:postId/trend.svg`               | Same exercise trend as crisp `image/svg+xml`                                                                                                                                                                                                                            |
 | `GET /public/:username/feed/:postId/blocks/:index/image.png` | Rendered PNG of an article's chart/correlation block (visibility-gated; `?token=` for followers-only)                                                                                                                                                                   |
 | `GET /public/:username/feed/:postId/blocks/:index/image.svg` | Same article block as crisp `image/svg+xml`                                                                                                                                                                                                                             |
 | `GET /public/:username/posts`                                | A user's public/unlisted posts (newest-first, keyset page of 20 + `next_cursor`) for their profile feed                                                                                                                                                                 |
@@ -986,7 +1034,7 @@ et al.) cache a copied avatar and re-download it only on one of those two signal
 them a changed avatar never propagates.
 
 The owner-facing capability is also available over MCP as `list_feed`, `share_activity`,
-`preview_activity_share`, `share_challenge`, `create_article`, `update_article`, `export_article_markdown`, `update_feed_post`,
+`preview_activity_share`, `share_challenge`, `share_exercise`, `preview_exercise_share`, `create_article`, `update_article`, `export_article_markdown`, `update_feed_post`,
 `delete_feed_post`, `list_following`, `follow_actor`, `unfollow_actor`, `list_followers`,
 `approve_follower`, `reject_follower`, `list_timeline`, `like_timeline_post`,
 `unlike_timeline_post`, `boost_timeline_post`, `unboost_timeline_post`,
@@ -1001,11 +1049,12 @@ toggled with the `manually_approve_followers` user setting (`get_user_settings` 
 ## Storage
 
 Feed posts live in the user's own database in the `feed_posts` table. A `kind` column
-discriminates an `activity` post from an `article`, `challenge` or `reply` post; an article's
-content (title + default window + ordered blocks) lives in a nullable `article` JSONB
+discriminates an `activity` post from an `article`, `challenge`, `exercise` or `reply` post; an
+article's content (title + default window + ordered blocks) lives in a nullable `article` JSONB
 column, a challenge share's link payload (name + canonical URL + optional host identity)
-in a nullable `challenge` JSONB column, and in both cases the `activity_id`/metric
-columns stay empty. A **reply** post likewise carries no activity or metrics: three nullable
+in a nullable `challenge` JSONB column, an exercise share's pointer and opt-ins (type, item
+path, value, name, `include_records`, `include_sessions`, optional `url`) in a nullable
+`exercise` JSONB column, and in all three cases the `activity_id`/metric columns stay empty. A **reply** post likewise carries no activity or metrics: three nullable
 columns hold what it answers — `in_reply_to_uri` (the AS2 object id), `in_reply_to_actor_uri`
 (the `Mention` href) and `in_reply_to_handle` (the `@user@host` snapshot naming that mention,
 taken at reply time like `timeline_entry.handle`) — with the reply text in `message`. All

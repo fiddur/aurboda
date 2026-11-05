@@ -175,6 +175,7 @@ export const tableCreationOrder = [
   'feed_posts_autoshare_column',
   'feed_posts_exercises_column',
   'feed_posts_reply_columns',
+  'feed_posts_exercise_column',
   'autoshare_rules',
   'autoshare_rules_data_filters',
   'autoshare_rules_max_age_hours',

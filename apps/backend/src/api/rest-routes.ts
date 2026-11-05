@@ -92,6 +92,7 @@ import { buildChartSvg } from '../services/charts/chart-svg.ts'
 import { buildRaceChartSvg } from '../services/charts/race-chart-svg.ts'
 import { buildScatterSvg } from '../services/charts/scatter-svg.ts'
 import { resolveStandingsChart } from '../services/feed-structured-challenge.ts'
+import { resolveExerciseTrendSeries } from '../services/feed-structured-exercise.ts'
 import { resolveFeedActivity } from '../services/feed.ts'
 import { createOgImageRenderer } from '../services/og-image.ts'
 import { createTemplateLoader } from '../services/web-template.ts'
@@ -252,6 +253,7 @@ export const mountRestRouters = ({
       getRoute: async (user, start, end) =>
         (await getLocations(user, start, end)).locations.map((l) => l.coordinates),
       getSeries: getTimeSeries,
+      getExerciseTrend: (user, post) => resolveExerciseTrendSeries(user, post),
       getStandingsChart: resolveStandingsChart,
       renderChart: renderChartPng,
       renderChartSvg: buildChartSvg,

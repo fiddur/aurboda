@@ -105,6 +105,12 @@ the link, the visibility and **Stop sharing**. `/shared-dashboards` lists the sh
 exercises under **Exercises** too (rename, visibility, copy link, delete). The owner
 viewing their own shared exercise sees the same read-only page as everyone else.
 
+An exercise can also be posted to your [feed](./feed.md) from its page (**Share to
+feed**), whether or not it is shared here: the post carries the progress (records,
+trend, optionally the latest sessions) resolved whenever it is read, and links this
+public page only when the exercise is published (see the `exercise` post kind in
+[feed.md](./feed.md#feed-posts)).
+
 Link previews of a public shared exercise carry its name, "&lt;name&gt; — &lt;user&gt;'s
 progress on Aurboda." and the static default image; there is no rendered image card and
 no oEmbed for exercises yet.

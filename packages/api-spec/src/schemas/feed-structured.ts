@@ -4,7 +4,7 @@
  * they can render a native chart + typed stats instead of just the
  * Mastodon-style HTML.
  *
- * Imports only `common`, `correlations` and the two challenge schema files
+ * Imports only `common`, `correlations`, `shared-exercises` and the two challenge schema files
  * (never `feed.ts`), so both the public-series endpoint and the timeline entry
  * can reuse `publicSeriesSampleSchema` without a circular import back through
  * `feed.ts`; none of those import `feed.ts` or this file, so no cycle is
@@ -27,6 +27,7 @@ import { quantChallengeDocumentSchema, quantStandingsSchema } from './challenges
 import { challengeResultSchema } from './challenges.ts'
 import { iso8601DateTimeSchema } from './common.ts'
 import { alignedPointSchema, groupComparisonSchema, selectorSchema } from './correlations.ts'
+import { sharedExerciseDataSchema } from './shared-exercises.ts'
 
 /**
  * One bucketed sample. Individual-measurement timestamps are deliberately
@@ -299,9 +300,35 @@ export const feedStructuredChallengeSchema = z
 export type FeedStructuredChallenge = z.infer<typeof feedStructuredChallengeSchema>
 
 /**
+ * The native structured representation of an *exercise* share post (#1398): one exercise's
+ * progress as the public exercise page projects it, filtered by the author's opt-ins and resolved
+ * when the origin serves the payload. Aurboda's own kind, so snake_case.
+ */
+export const feedStructuredExerciseShareSchema = z
+  .object({
+    activity_type: z.string().meta({ description: 'Activity type the exercise belongs to' }),
+    activity_type_name: z.string().meta({ description: 'Display name of the activity type' }),
+    data: sharedExerciseDataSchema.meta({
+      description:
+        'The exercise progress, filtered by the opt-ins: `records` empty unless records were shared, `trend`/`per_week` null unless the chart was, `history` the newest 5 sessions when sessions were shared, else empty',
+    }),
+    kind: z.literal('exercise').meta({ description: 'Discriminator: an exercise-share post' }),
+    message: z.string().optional().meta({
+      description: "The author's note, raw markdown (rendered by the receiver's sanitiser)",
+    }),
+    name: z.string().meta({ description: 'Exercise display name at share time' }),
+    url: z.string().optional().meta({
+      description: "The exercise's public page, present only when it was published and linked at share time",
+    }),
+  })
+  .meta({ id: 'FeedStructuredExerciseShare' })
+
+export type FeedStructuredExerciseShare = z.infer<typeof feedStructuredExerciseShareSchema>
+
+/**
  * Discriminated union of everything the structured-enrichment endpoint may
  * return: an activity share's typed scalars/series, an article's title +
- * resolved blocks, or a challenge's document + standings snapshot. `kind` tells a consuming peer (and the web timeline card)
+ * resolved blocks, a challenge's document + standings snapshot, or an exercise's progress. `kind` tells a consuming peer (and the web timeline card)
  * which native render to use.
  *
  * A payload with NO `kind` is treated as an `activity` before discriminating, so
@@ -316,6 +343,7 @@ export const feedStructuredPostSchema = z
       feedStructuredActivitySchema,
       feedStructuredArticleSchema,
       feedStructuredChallengeSchema,
+      feedStructuredExerciseShareSchema,
     ]),
   )
   .meta({ id: 'FeedStructuredPost' })

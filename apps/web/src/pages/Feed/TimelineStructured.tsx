@@ -70,5 +70,6 @@ function ActivityStructured({ structured }: { structured: FeedStructuredActivity
 export function TimelineStructured({ structured }: { structured: FeedStructuredPost }) {
   if (structured.kind === 'article') return <TimelineArticle article={structured} />
   if (structured.kind === 'challenge') return <TimelineChallenge structured={structured} />
+  if (structured.kind === 'exercise') return null
   return <ActivityStructured structured={structured} />
 }

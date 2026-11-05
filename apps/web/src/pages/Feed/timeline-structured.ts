@@ -18,7 +18,12 @@ import type { RoutePoint } from '../../components/charts/RouteMap'
 import { fromWireKey } from '../../components/feed-metrics'
 
 const activityPayload = (structured: FeedStructuredPost | undefined): FeedStructuredActivity | null =>
-  structured == null || structured.kind === 'article' || structured.kind === 'challenge' ? null : structured
+  structured == null ||
+  structured.kind === 'article' ||
+  structured.kind === 'challenge' ||
+  structured.kind === 'exercise'
+    ? null
+    : structured
 
 /** A line (and a route polyline) needs at least two points to draw. */
 const MIN_DRAWABLE_POINTS = 2

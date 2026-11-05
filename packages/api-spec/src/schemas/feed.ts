@@ -19,9 +19,16 @@
 import { z } from 'zod'
 
 import { challengeResultSchema } from './challenges.ts'
-import { baseResponseSchema, iso8601DateTimeSchema, metricTypeSchema } from './common.ts'
+import {
+  activityTypeSchema,
+  baseResponseSchema,
+  dataFieldPathSchema,
+  iso8601DateTimeSchema,
+  metricTypeSchema,
+} from './common.ts'
 import { selectorSchema } from './correlations.ts'
 import {
+  feedStructuredExerciseShareSchema,
   feedStructuredMetricSchema,
   feedStructuredPostSchema,
   publicSeriesSampleSchema,
@@ -120,14 +127,15 @@ export type UpdateFeedPostBody = z.infer<typeof updateFeedPostBodySchema>
  * activities; `article` is a long-form post carrying markdown prose and inline
  * chart blocks over locked time windows; `challenge` invites people to a
  * challenge (a personal note plus the challenge's canonical join-by-URL link);
+ * `exercise` shares one exercise's progress (records, trend, recent sessions);
  * `reply` is a Mastodon-style comment on another post (`inReplyTo` + a `Mention`
  * of its author). Modelled as a post *kind* rather than a separate entity so
  * every kind reuses the whole feed (visibility, federation, home timeline, the
  * public-profile feed, permalinks).
  */
-export const feedPostKindSchema = z.enum(['activity', 'article', 'challenge', 'reply']).meta({
+export const feedPostKindSchema = z.enum(['activity', 'article', 'challenge', 'exercise', 'reply']).meta({
   description:
-    'Feed post kind: an activity share, a long-form article, a challenge invitation, or a reply to another post',
+    "Feed post kind: an activity share, a long-form article, a challenge invitation, an exercise's progress, or a reply to another post",
   id: 'FeedPostKind',
 })
 
@@ -220,6 +228,68 @@ export const shareChallengeBodySchema = z
   .meta({ id: 'ShareChallengeBody' })
 
 export type ShareChallengeBody = z.infer<typeof shareChallengeBodySchema>
+
+/**
+ * The stored payload of an `exercise` post (#1398): a pointer to one exercise (one item value of
+ * one activity type) and the owner's opt-ins, resolved server-side at share time. The exercise's
+ * data is not stored: it is resolved from the pointer whenever the post is rendered, so the post
+ * shows the progress as of that read.
+ */
+export const exerciseShareSchema = z
+  .object({
+    activity_type: z.string().meta({ description: 'Activity type the exercise belongs to' }),
+    field: z.string().meta({ description: 'Item path the exercise is a value of, e.g. `sets.exercise`' }),
+    include_records: z
+      .boolean()
+      .meta({ description: 'Whether the records (best e1RM, max weight, …) and session count are shared' }),
+    include_sessions: z.boolean().meta({ description: "Whether the last 5 sessions' sets are shared" }),
+    name: z.string().min(1).max(200).meta({
+      description: "Display name at share time: the published exercise's name, else the value",
+    }),
+    url: z.string().url().max(500).optional().meta({
+      description: "The exercise's public page, present only when it was published and linked at share time",
+    }),
+    value: z.string().min(1).meta({ description: 'The item value, e.g. `Bench Press`' }),
+  })
+  .meta({ id: 'ExerciseShare' })
+
+export type ExerciseShare = z.infer<typeof exerciseShareSchema>
+
+/**
+ * Body for sharing an exercise's progress to the feed. The server resolves the name and link
+ * itself; the link is only included when the exercise is published as a shared exercise.
+ */
+export const shareExerciseBodySchema = z
+  .object({
+    activity_type: activityTypeSchema,
+    field: dataFieldPathSchema.meta({
+      description:
+        'A categorical list-item path of the activity type whose value is shared, such as `sets.exercise`; session-level fields are rejected',
+    }),
+    include_chart: z.boolean().default(true).meta({
+      description: 'Share the trend and per-week series, and attach a rendered trend image (`trend.png`)',
+    }),
+    include_link: z.boolean().default(true).meta({
+      description: "Link the exercise's public page; only has an effect when the exercise is published",
+    }),
+    include_records: z
+      .boolean()
+      .default(true)
+      .meta({ description: 'Share the records (best e1RM, max weight, …) and the session count' }),
+    include_sessions: z
+      .boolean()
+      .default(false)
+      .meta({ description: "Share the last 5 sessions' sets and measures" }),
+    message: z.string().max(feedPostMessageMaxLength).optional().meta({
+      description:
+        'Personal note shown above the progress (markdown, rendered through the shared sanitiser). Empty/absent shares no text.',
+    }),
+    value: z.string().min(1).meta({ description: 'The item value to share, e.g. `Bench Press`' }),
+    visibility: feedVisibilitySchema.default('public'),
+  })
+  .meta({ id: 'ShareExerciseBody' })
+
+export type ShareExerciseBody = z.infer<typeof shareExerciseBodySchema>
 
 /** A run of markdown, rendered through the shared sanitiser. */
 export const articleProseBlockSchema = z
@@ -364,6 +434,9 @@ export const feedPostSchema = z
     challenge: challengeShareSchema
       .optional()
       .meta({ description: 'Challenge link payload, present only for `challenge` posts' }),
+    exercise: exerciseShareSchema
+      .optional()
+      .meta({ description: 'Exercise share pointer and opt-ins, present only for `exercise` posts' }),
     // The exact HTML `content` that federates for this post (headline + shared
     // scalar summary), so a client can render the post WYSIWYG — matching what
     // Mastodon shows — instead of reconstructing it from the metric keys. Absent
@@ -394,7 +467,7 @@ export const feedPostSchema = z
       .optional()
       .meta({ description: 'The replied-to object id, present only for `reply` posts' }),
     kind: feedPostKindSchema.meta({
-      description: 'Post kind: `activity`, `article`, `challenge` or `reply`',
+      description: 'Post kind: `activity`, `article`, `challenge`, `exercise` or `reply`',
     }),
     like_count: z.number().int().optional().meta({
       description: 'How many remote actors favourited (`Like`d) this post; absent on single-post responses',
@@ -497,6 +570,21 @@ export const sharePreviewResponseSchema = baseResponseSchema
   .meta({ id: 'SharePreviewResponse' })
 
 export type SharePreviewResponse = z.infer<typeof sharePreviewResponseSchema>
+
+/** The exercise share PREVIEW: the exact Note HTML and structured payload, creating nothing. */
+export const exerciseSharePreviewResponseSchema = baseResponseSchema
+  .extend({
+    content: z
+      .string()
+      .optional()
+      .meta({ description: 'The AS2 `content` HTML the post would federate with' }),
+    structured: feedStructuredExerciseShareSchema
+      .optional()
+      .meta({ description: 'The structured payload an Aurboda peer would receive' }),
+  })
+  .meta({ id: 'ExerciseSharePreviewResponse' })
+
+export type ExerciseSharePreviewResponse = z.infer<typeof exerciseSharePreviewResponseSchema>
 
 export const createArticleBodySchema = z
   .object({

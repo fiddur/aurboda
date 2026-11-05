@@ -8,6 +8,8 @@ import {
   buildArticleNoteCreate,
   buildChallengeNote,
   buildChallengeNoteCreate,
+  buildExerciseNote,
+  buildExerciseNoteCreate,
   buildFeedDelete,
   buildReplyNote,
   buildReplyNoteCreate,
@@ -15,17 +17,23 @@ import {
   challengeMentions,
   type DeliverableArticle,
   type DeliverableChallenge,
+  type DeliverableExercise,
   type DeliverablePost,
   type DeliverableReply,
   deliverFeedChallengePost,
   deliverFeedChallengeUpdate,
   deliverFeedDelete,
+  deliverFeedExercisePost,
+  deliverFeedExerciseUpdate,
+  exerciseImageAttachments,
   hasDrawableStandings,
+  hasDrawableTrend,
   deliverFeedReplyPost,
   type FeedDeliveryDeps,
   imageAttachments,
   imageAvailability,
   recipients,
+  toDeliverableExercise,
   toDeliverableReply,
 } from './deliver.ts'
 import { createFeedFederation } from './federation.ts'
@@ -702,6 +710,7 @@ describe('buildReplyNote / buildReplyNoteCreate', () => {
       article: null,
       autoshare_rule_id: null,
       challenge: null,
+      exercise: null,
       created_at: new Date(),
       id: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
       image_token: 'tok',
@@ -789,5 +798,165 @@ describe('reply fan-out to the answered author (#1079 shape)', () => {
     })
     expect(sentTo(sendActivity).sort()).toEqual(['followers', TARGET_ACTOR])
     for (const [, , activity] of sendActivity.mock.calls) expect(activity).toBeInstanceOf(Delete)
+  })
+})
+
+describe('exercise shares (#1398)', () => {
+  const ORIGIN = 'https://aurboda.example'
+  const contextFor = () => createFeedFederation(ORIGIN, `${ORIGIN}/api`).createContext(new URL(ORIGIN))
+  const CONTENT = '<p><strong>Bench Press</strong> · Strength training</p>'
+
+  const deliverableExercise = (over: Partial<DeliverableExercise> = {}): DeliverableExercise => ({
+    created_at: new Date('2026-11-01T00:00:00Z'),
+    exercise: {
+      activity_type: 'strength_training',
+      field: 'sets.exercise',
+      include_records: true,
+      include_sessions: false,
+      name: 'Bench Press',
+      value: 'Bench Press',
+    },
+    id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+    image_token: 'tok',
+    include_chart: true,
+    message: null,
+    updated_at: new Date('2026-11-01T00:00:00Z'),
+    visibility: 'public',
+    ...over,
+  })
+
+  test('toDeliverableExercise narrows only an exercise post with its pointer', () => {
+    const record = {
+      activity_id: null,
+      article: null,
+      autoshare_rule_id: null,
+      challenge: null,
+      created_at: new Date(),
+      exercise: deliverableExercise().exercise,
+      id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+      image_token: 'tok',
+      in_reply_to_actor_uri: null,
+      in_reply_to_handle: null,
+      in_reply_to_uri: null,
+      include_chart: false,
+      include_exercises: false,
+      include_map: false,
+      included_metrics: [],
+      kind: 'exercise' as const,
+      message: 'PR!',
+      series_metrics: [],
+      updated_at: new Date(),
+      visibility: 'public' as const,
+    }
+    expect(toDeliverableExercise(record)).toMatchObject({ exercise: record.exercise, message: 'PR!' })
+    expect(toDeliverableExercise({ ...record, exercise: null })).toBeNull()
+    expect(toDeliverableExercise({ ...record, kind: 'challenge' })).toBeNull()
+  })
+
+  test('the Note is at the canonical post id with the given content, addressed by visibility', async () => {
+    const ctx = await contextFor()
+    const post = deliverableExercise()
+    const note = buildExerciseNote(ctx, 'fiddur', post, CONTENT)
+    const noteId = `${ORIGIN}/users/fiddur/feed/${post.id}`
+    expect(note).toBeInstanceOf(Note)
+    expect(note.id?.href).toBe(noteId)
+    expect(note.name?.toString()).toBe('Bench Press')
+    expect(note.content?.toString()).toBe(CONTENT)
+    expect(hrefs([...note.toIds])).toEqual([PUBLIC])
+    expect(note.tagIds).toEqual([])
+  })
+
+  test('the Create wraps the Note with a #create id; followers-only never addresses Public', async () => {
+    const ctx = await contextFor()
+    const post = deliverableExercise({ visibility: 'followers' })
+    const create = buildExerciseNoteCreate(ctx, 'fiddur', post, CONTENT)
+    expect(create.id?.href).toBe(`${ORIGIN}/users/fiddur/feed/${post.id}#create`)
+    expect(hrefs([...create.toIds])).toEqual([`${ORIGIN}/users/fiddur/followers`])
+    expect([...create.ccIds]).toEqual([])
+    expect(await create.getObject()).toBeInstanceOf(Note)
+  })
+
+  test('exerciseImageAttachments: a Trend PNG, token only for followers-only, nothing unavailable', () => {
+    const post = deliverableExercise({ visibility: 'unlisted' })
+    const base = `${ORIGIN}/api/public/fiddur/feed/${post.id}/trend.png`
+    const [image] = exerciseImageAttachments(`${ORIGIN}/api/`, 'fiddur', post, true)
+    expect(image.url).toEqual(new URL(`${base}?v=${post.updated_at.getTime()}`))
+    expect(image.name?.toString()).toBe('Trend')
+    expect([image.width, image.height, image.mediaType]).toEqual([1000, 420, 'image/png'])
+
+    const [followersImage] = exerciseImageAttachments(
+      `${ORIGIN}/api`,
+      'fiddur',
+      { ...post, visibility: 'followers' },
+      true,
+    )
+    expect(followersImage.url).toEqual(new URL(`${base}?token=tok&v=${post.updated_at.getTime()}`))
+    expect(exerciseImageAttachments(`${ORIGIN}/api`, 'fiddur', post, false)).toEqual([])
+    expect(
+      exerciseImageAttachments(`${ORIGIN}/api`, 'fiddur', { ...post, include_chart: false }, true),
+    ).toEqual([])
+  })
+
+  test('hasDrawableTrend is false without the opt-in', async () => {
+    expect(await hasDrawableTrend('fiddur', deliverableExercise({ include_chart: false }))).toBe(false)
+  })
+
+  const fakeDeps = async () => {
+    const ctx = await contextFor()
+    const sendActivity = vi.fn().mockResolvedValue(undefined)
+    Object.assign(ctx, { sendActivity })
+    const deps: FeedDeliveryDeps = {
+      apiBaseUrl: `${ORIGIN}/api`,
+      federation: { createContext: async () => ctx } as unknown as FeedDeliveryDeps['federation'],
+      origin: ORIGIN,
+    }
+    return { deps, sendActivity }
+  }
+
+  const attachedNames = async (activity: Create | Update): Promise<(string | undefined)[]> => {
+    const note = await activity.getObject()
+    const names: (string | undefined)[] = []
+    if (note instanceof Note) {
+      for await (const attachment of note.getAttachments()) {
+        if (attachment instanceof Image) names.push(attachment.name?.toString())
+      }
+    }
+    return names
+  }
+
+  test('a Create goes to followers only, with the resolved content and the Trend attachment', async () => {
+    const { deps, sendActivity } = await fakeDeps()
+    const post = deliverableExercise()
+    const content = vi.fn(async () => CONTENT)
+    const hasTrend = vi.fn(async () => true)
+    await deliverFeedExercisePost(deps, 'fiddur', post, { content, hasTrend })
+    expect(content).toHaveBeenCalledWith('fiddur', post)
+    expect(sendActivity).toHaveBeenCalledTimes(1)
+    const [, recipient, create] = sendActivity.mock.calls[0]
+    expect(recipient).toBe('followers')
+    expect(create).toBeInstanceOf(Create)
+    const note = await create.getObject()
+    expect(note.content?.toString()).toBe(CONTENT)
+    expect(await attachedNames(create)).toEqual(['Trend'])
+  })
+
+  test('an Update without a drawable trend or the opt-in carries no attachment', async () => {
+    const unavailable = await fakeDeps()
+    await deliverFeedExerciseUpdate(unavailable.deps, 'fiddur', deliverableExercise(), {
+      content: async () => CONTENT,
+      hasTrend: async () => false,
+    })
+    const [, , update] = unavailable.sendActivity.mock.calls[0]
+    expect(update).toBeInstanceOf(Update)
+    expect(await attachedNames(update)).toEqual([])
+
+    const optedOut = await fakeDeps()
+    const hasTrend = vi.fn(async () => true)
+    await deliverFeedExerciseUpdate(optedOut.deps, 'fiddur', deliverableExercise({ include_chart: false }), {
+      content: async () => CONTENT,
+      hasTrend,
+    })
+    expect(hasTrend).not.toHaveBeenCalled()
+    expect(await attachedNames(optedOut.sendActivity.mock.calls[0][2])).toEqual([])
   })
 })

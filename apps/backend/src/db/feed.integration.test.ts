@@ -7,6 +7,7 @@ import {
   countPublicFeedPosts,
   createArticlePost,
   createChallengePost,
+  createExercisePost,
   createFeedPost,
   createReplyPost,
   deleteFeedPost,
@@ -480,6 +481,47 @@ describe('Feed posts integration', () => {
       expect((await getFeedPostById(user, post.id))?.include_chart).toBe(true)
     })
   })
+
+  describe('exercise posts (#1398)', () => {
+    const exercise = {
+      activity_type: 'strength_training',
+      field: 'sets.exercise',
+      include_records: true,
+      include_sessions: false,
+      name: 'Bench',
+      url: 'https://aurboda.example/u/me/bench',
+      value: 'Bench Press',
+    }
+
+    test('createExercisePost stores the pointer, note and chart opt-in and lists like any post', async () => {
+      const user = getTestUser()
+      const post = await createExercisePost(user, {
+        exercise,
+        include_chart: true,
+        message: 'New PR!',
+        visibility: 'public',
+      })
+      expect(post.kind).toBe('exercise')
+      expect(post.exercise).toEqual(exercise)
+      expect(post.message).toBe('New PR!')
+      expect(post.include_chart).toBe(true)
+      expect(post.activity_id).toBeNull()
+      expect(post.challenge).toBeNull()
+
+      expect((await getFeedPostById(user, post.id))?.exercise).toEqual(exercise)
+      expect((await listFeedPosts(user, 10)).map((p) => p.id)).toContain(post.id)
+      expect((await listPublicFeedPosts(user)).map((p) => p.id)).toContain(post.id)
+    })
+
+    test('createExercisePost defaults the chart opt-in and note', async () => {
+      const user = getTestUser()
+      const post = await createExercisePost(user, { exercise, visibility: 'followers' })
+      expect(post.include_chart).toBe(false)
+      expect(post.message).toBeNull()
+      expect((await listPublicFeedPosts(user)).map((p) => p.id)).not.toContain(post.id)
+    })
+  })
+
   describe('reply posts', () => {
     const TARGET = 'https://mastodon.example/users/alice/statuses/9'
     const TARGET_ACTOR = 'https://mastodon.example/users/alice'
@@ -504,6 +546,7 @@ describe('Feed posts integration', () => {
       expect(post.activity_id).toBeNull()
       expect(post.article).toBeNull()
       expect(post.challenge).toBeNull()
+      expect(post.exercise).toBeNull()
 
       const fetched = await getFeedPostById(user, post.id)
       expect(fetched?.in_reply_to_uri).toBe(TARGET)

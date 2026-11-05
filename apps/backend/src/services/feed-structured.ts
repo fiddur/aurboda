@@ -13,7 +13,8 @@
  * correlation engine (`getContinuousCorrelation`) the block's own PNG and the
  * web's inline render use — so a peer's native render matches byte-for-byte
  * what the author sees. A `challenge` post resolves to its challenge document
- * and a standings snapshot (`feed-structured-challenge.ts`). Only
+ * and a standings snapshot (`feed-structured-challenge.ts`); an `exercise` post to the
+ * exercise's progress filtered by its opt-ins (`feed-structured-exercise.ts`). Only
  * `public`/`unlisted` posts resolve unconditionally; a `followers`-only post
  * resolves only with a matching capability `token` (the same gate as the
  * object dispatcher, the outbox, and the block images).
@@ -46,6 +47,7 @@ import {
   resolveStructuredSeries,
 } from './feed-structured-activity.ts'
 import { configuredStructuredChallengeDeps, resolveStructuredChallenge } from './feed-structured-challenge.ts'
+import { resolveStructuredExercise } from './feed-structured-exercise.ts'
 import { resolveFeedActivity } from './feed.ts'
 import { queryMetricsBucketed } from './queries/index.ts'
 
@@ -218,6 +220,8 @@ export const resolveStructuredContent = async (
     const deps = configuredStructuredChallengeDeps()
     return deps ? resolveStructuredChallenge(user, post, deps) : null
   }
+
+  if (post.kind === 'exercise') return resolveStructuredExercise(user, post)
 
   if (post.activity_id == null) return null
 
