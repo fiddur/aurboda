@@ -21,6 +21,7 @@ import type { CentralDb } from './services/central-db.ts'
 import type { DiscoverChallenges } from './services/challenge-discovery.ts'
 import type { DeductionEngineDeps } from './services/deduction-engine.ts'
 import type { ActivityNotifier, DeductionQueue } from './services/deduction-queue.ts'
+import type { DumpLinkIssuer } from './services/export-dump.ts'
 import type { ReactionActions } from './services/feed-reactions.ts'
 import type { FollowerActions } from './services/followers.ts'
 import type { FollowActions } from './services/following.ts'
@@ -39,6 +40,7 @@ import { registerChartTools } from './mcp/chart-tools.ts'
 import { registerCorrelationTools } from './mcp/correlation-tools.ts'
 import { registerDebugTools } from './mcp/debug-tools.ts'
 import { registerDeductionRuleTools } from './mcp/deduction-rule-tools.ts'
+import { registerExportTools } from './mcp/export-tools.ts'
 import { registerFeedTools } from './mcp/feed-tools.ts'
 import { registerFoodItemTools } from './mcp/food-item-tools.ts'
 import { registerImportTools } from './mcp/import-tools.ts'
@@ -121,6 +123,8 @@ interface McpDeps {
   oura?: OuraClientType
   reactionActions?: ReactionActions
   retroEnrichTimeline?: RetroEnrichTrigger
+  /** Whole-database export link (`export_data_dump`). */
+  requestDumpLink?: DumpLinkIssuer
   stravaQueue?: StravaQueue
   sync?: SyncProvider
   webHost?: string
@@ -188,6 +192,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     webHost: deps.webHost,
   })
   registerScreentimeCategoryTools(server, user)
+  if (deps.requestDumpLink) registerExportTools(server, user, deps.requestDumpLink)
   registerDebugTools(server, user)
   installToolCatalogue(server)
 
