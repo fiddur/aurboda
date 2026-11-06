@@ -139,7 +139,7 @@ describe('database export', () => {
       await db.query('CREATE EXTENSION unaccent')
     })
 
-    const restore = `(echo 'SET ROLE "${target}";'; gunzip -c "$DUMP" | grep -v '^COMMENT ON EXTENSION') | psql -v ON_ERROR_STOP=1 --quiet "$TARGET_URI"`
+    const restore = `(echo 'SET ROLE "${target}";'; gunzip -c "$DUMP" | grep -v -e '^COMMENT ON EXTENSION' -e '^SET transaction_timeout') | psql -v ON_ERROR_STOP=1 --quiet "$TARGET_URI"`
     execFileSync('bash', ['-c', restore], {
       env: { ...process.env, DUMP: dumpPath, TARGET_URI: databaseUri(database) },
       stdio: ['ignore', 'ignore', 'pipe'],

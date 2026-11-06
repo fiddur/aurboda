@@ -58,13 +58,15 @@ file name with yours. Run them from the directory with the compose file.
 3. **Load the dump as your user**, so every restored table is owned by `alice`:
 
    ```sh
-   (echo 'SET ROLE "alice";'; gunzip -c aurboda-alice-2026-11-06.sql.gz | grep -v '^COMMENT ON EXTENSION') \
+   (echo 'SET ROLE "alice";'; gunzip -c aurboda-alice-2026-11-06.sql.gz \
+     | grep -v -e '^COMMENT ON EXTENSION' -e '^SET transaction_timeout') \
      | docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U aurboda_service -d aurboda_alice
    ```
 
    The dump's `CREATE EXTENSION IF NOT EXISTS` lines only note that step 2 already created them. Its
-   `COMMENT ON EXTENSION` lines would fail, since only the extension's owner may comment on it, so
-   `grep -v` drops them; with `ON_ERROR_STOP=1` anything else that fails stops the restore and shows
+   `COMMENT ON EXTENSION` lines would fail, since only the extension's owner may comment on it, and a
+   dump made by a newer `pg_dump` than the target server sets `transaction_timeout`, which PostgreSQL
+   16 does not know, so `grep -v` drops both; with `ON_ERROR_STOP=1` anything else that fails stops the restore and shows
    the error.
 
 4. **Start Aurboda and log in** (`docker compose start aurboda`). The next request migrates the restored schema to the target server's version, so a dump
