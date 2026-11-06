@@ -68,8 +68,9 @@ A full-width bar chart of bucketed values (`GET /chart-data`) for an activity ty
 
 Bars and one or more trend lines drawn over one time axis and one y scale, like an exercise's
 weekly best e1RM with its decaying best over it. Add one from an exercise page's chart menu
-(**Add to dashboard** when the line is drawn), or through the API or MCP; the add-widget dialog does not
-offer it yet.
+(**Add to dashboard** when the line is drawn), from a charts section's add-widget dialog, or through the
+API or MCP. The dialog adds a starter chart (weekly `coffee` counts with their weekly trend over 90
+days); it has no form for the layers.
 
 **Configuration:** optional `title` (default "Combined chart"), `lookback_days` shared by every
 layer, and `layers`, a list of typed layers drawn in order:
@@ -121,7 +122,8 @@ while the others still show.
 The best value of one activity measure with the date it was first reached and, for e1RM and max
 weight, the set behind it, e.g. "Bench Press · Best e1RM: 39.5 kg, 21 Dec 2025 · 7×32 kg". On your
 own dashboard the date links to that session. Add one from the ⋮ menu on an exercise page's record
-card, or through the API or MCP; it is placed in a metrics section.
+card, from a metrics section's add-widget dialog (activity type, record measure and an optional
+exercise), or through the API or MCP; it is placed in a metrics section.
 
 **Configuration:** `source_type` (`activity_type`), `pattern` (the activity type), `measure` (one of
 the record measures `e1rm`, `max_weight`, `max_time`, `max_reps`), optional `filter_field` +

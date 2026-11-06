@@ -12,6 +12,7 @@ import { fetchChartData } from '../../state/api'
 import { buildChartUrl, type ChartOrigin } from '../../utils/chart-url'
 import { BarChart } from '../charts/BarChart'
 import { BreakdownLegend, SERIES_COLORS } from '../charts/breakdown'
+import { barsFetchParams } from './chartFetchParams'
 import { measureChartTitle } from './chartTitle'
 import { HEAVY_QUERY_OPTIONS } from './heavyQuery'
 
@@ -90,33 +91,21 @@ export function BarChartWidget({ config, origin }: BarChartWidgetProps) {
     title,
     bucket_size,
     lookback_days,
-    aggregation = 'count',
     breakdown_fields,
     measure,
     filter_field,
     filter_value,
   } = config
+  const params = barsFetchParams(config, lookbackToRange(lookback_days))
+  const { aggregation } = params
   const measureConfig = {
     ...(measure ? { measure } : {}),
     ...(measure && filter_field && filter_value ? { filter_field, filter_value } : {}),
   }
 
-  const { start, end } = lookbackToRange(lookback_days)
-
   const chartQuery = useQuery({
     enabled: Boolean(pattern ?? activity_type_id),
-    queryFn: () =>
-      fetchChartData({
-        aggregation,
-        bucket_size,
-        end,
-        pattern: pattern ?? undefined,
-        source_type,
-        start,
-        ...(activity_type_id ? { activity_type_id } : {}),
-        ...(breakdown_fields?.length ? { breakdown_fields } : {}),
-        ...measureConfig,
-      }),
+    queryFn: () => fetchChartData({ ...params, ...(breakdown_fields?.length ? { breakdown_fields } : {}) }),
     queryKey: [
       'chart-data',
       source_type,

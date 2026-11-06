@@ -1,8 +1,3 @@
-/**
- * Split into a presentational `CombinedChartView` and a fetching container. Every layer is fetched
- * with the query its own widget would make, over the chart's shared lookback.
- */
-
 import type { CombinedChartConfig, CombinedChartData, CombinedChartLayerData } from '@aurboda/api-spec'
 
 import { useQueries, type UseQueryResult } from '@tanstack/react-query'
@@ -10,14 +5,9 @@ import { useCallback, useMemo } from 'preact/hooks'
 
 import { fetchChartData, fetchTrend } from '../../state/api'
 import { BarChart } from '../charts/BarChart'
+import { barsFetchParams, trendFetchParams } from './chartFetchParams'
 import { measureChartTitle } from './chartTitle'
-import {
-  barsLayerParams,
-  type CombinedChartBars,
-  combinedChartParts,
-  nullLayer,
-  trendLayerParams,
-} from './combinedChart'
+import { type CombinedChartBars, combinedChartParts, nullLayer } from './combinedChart'
 import { HEAVY_QUERY_OPTIONS } from './heavyQuery'
 
 const lookbackToRange = (lookbackDays: number): { start: string; end: string } => {
@@ -78,10 +68,10 @@ export function CombinedChartWidget({ config }: { config: CombinedChartConfig })
     queries: layers.map((layer) => ({
       queryFn: async (): Promise<CombinedChartLayerData> => {
         if (layer.kind === 'bars') {
-          const chart = await fetchChartData(barsLayerParams(layer, lookbackToRange(lookback_days)))
+          const chart = await fetchChartData(barsFetchParams(layer, lookbackToRange(lookback_days)))
           return { data: { buckets: chart.buckets }, kind: 'bars' }
         }
-        const trend = await fetchTrend(trendLayerParams(layer, lookback_days))
+        const trend = await fetchTrend(trendFetchParams(layer, lookback_days))
         return { data: { current_value: trend.current_value, history: trend.history }, kind: 'trend' }
       },
       queryKey: ['combined-chart-layer', layer, lookback_days],

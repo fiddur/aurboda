@@ -1,5 +1,9 @@
-import type { DashboardWidget, SectionType } from '@aurboda/api-spec'
-
+import {
+  activityMeasureLabels,
+  type DashboardWidget,
+  recordMeasures,
+  type SectionType,
+} from '@aurboda/api-spec'
 import { useState } from 'preact/hooks'
 
 import { getMetricDisplayName } from '../../utils/metricLabels'
@@ -64,6 +68,17 @@ const widgetTemplates: WidgetTemplate[] = [
     type: 'last_sleep',
   },
   {
+    allowedSections: ['metrics'],
+    defaultConfig: () => ({
+      measure: 'e1rm',
+      pattern: 'strength_training',
+      source_type: 'activity_type',
+    }),
+    description: 'Best value of an activity measure, with the date it was reached',
+    label: 'Record Card',
+    type: 'record_card',
+  },
+  {
     allowedSections: ['metrics', 'charts'],
     defaultConfig: () => ({
       lookback_days: 7,
@@ -96,6 +111,19 @@ const widgetTemplates: WidgetTemplate[] = [
     description: 'Bucketed bar chart for activity types, metrics, or categories',
     label: 'Bar Chart',
     type: 'bar_chart',
+  },
+  {
+    allowedSections: ['charts'],
+    defaultConfig: () => ({
+      layers: [
+        { bucket_size: '1w', kind: 'bars', pattern: 'coffee', source_type: 'activity_type' },
+        { display_period: 'weekly', kind: 'trend', pattern: 'coffee', source_type: 'activity_type' },
+      ],
+      lookback_days: 90,
+    }),
+    description: 'Bars and trend lines over one time axis',
+    label: 'Combined Chart',
+    type: 'combined_chart',
   },
   {
     allowedSections: ['charts'],
@@ -307,6 +335,48 @@ export function DashboardEditor({ sectionType, onAddWidget, onClose }: Dashboard
                 <option value="weekly">Weekly</option>
                 <option value="monthly">Monthly</option>
               </select>
+            </div>
+          </div>
+        )
+
+      case 'record_card':
+        return (
+          <div class="config-form">
+            <div class="form-group">
+              <label>Activity Type</label>
+              <input
+                type="text"
+                value={(configValues.pattern as string) ?? ''}
+                onChange={(e) => updateConfig('pattern', (e.target as HTMLInputElement).value)}
+                placeholder="e.g., strength_training"
+              />
+            </div>
+            <div class="form-group">
+              <label>Measure</label>
+              <select
+                value={(configValues.measure as string) ?? 'e1rm'}
+                onChange={(e) => updateConfig('measure', (e.target as HTMLSelectElement).value)}
+              >
+                {recordMeasures.map((m) => (
+                  <option key={m} value={m}>
+                    {activityMeasureLabels[m]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Exercise (optional)</label>
+              <input
+                type="text"
+                value={(configValues.filter_value as string) ?? ''}
+                onChange={(e) => {
+                  const value = (e.target as HTMLInputElement).value.trim()
+                  setConfigValues(({ filter_field: _field, filter_value: _value, ...rest }) =>
+                    value ? { ...rest, filter_field: 'sets.exercise', filter_value: value } : rest,
+                  )
+                }}
+                placeholder="e.g., Bench Press"
+              />
             </div>
           </div>
         )

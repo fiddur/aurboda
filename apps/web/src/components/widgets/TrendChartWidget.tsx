@@ -10,9 +10,9 @@ import { useMemo } from 'preact/hooks'
 
 import { fetchTrend } from '../../state/api'
 import { buildChartUrl, type ChartOrigin } from '../../utils/chart-url'
-import { EMA_HALF_LIFE_DEFAULT, MEASURE_HALF_LIFE_DEFAULT } from '../../utils/half-life'
 import { BreakdownLegend, SERIES_COLORS } from '../charts/breakdown'
 import { TrendLineChart } from '../charts/TrendLineChart'
+import { trendFetchParams } from './chartFetchParams'
 import { HEAVY_QUERY_OPTIONS } from './heavyQuery'
 
 const NO_POINTS: TrendChartData['history'] = []
@@ -91,25 +91,15 @@ export function TrendChartWidget({ config, origin }: TrendChartWidgetProps) {
     measure,
     filter_field,
     filter_value,
-    half_life_days = measure ? MEASURE_HALF_LIFE_DEFAULT : EMA_HALF_LIFE_DEFAULT,
     lookback_days = 90,
-    display_period = 'monthly',
-    aggregation = source_type === 'metric' ? 'mean' : 'count',
     breakdown_fields,
     missing_days,
   } = config
+  const params = trendFetchParams(config, lookback_days)
+  const { aggregation, display_period, half_life_days } = params
 
   const trendQuery = useQuery({
-    queryFn: () =>
-      fetchTrend({
-        ...(measure ? { filter_field, filter_value, measure } : { aggregation, display_period }),
-        half_life_days,
-        lookback_days,
-        pattern,
-        source_type,
-        ...(breakdown_fields?.length ? { breakdown_fields } : {}),
-        ...(missing_days ? { missing_days } : {}),
-      }),
+    queryFn: () => fetchTrend({ ...params, ...(breakdown_fields?.length ? { breakdown_fields } : {}) }),
     queryKey: [
       'trend',
       source_type,
