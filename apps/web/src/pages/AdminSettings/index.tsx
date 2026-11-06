@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation } from 'preact-iso'
 import { useCallback, useState } from 'preact/hooks'
 
-import type { InvitationResult, SignupMode } from '../../state/api'
+import type { AdminSettings, InvitationResult, SignupMode } from '../../state/api'
 
 import { ImportPanel } from '../../components/ImportPanel'
 import { type SaveStatus, SaveStatusIndicator } from '../../components/SaveStatusIndicator'
@@ -438,6 +438,141 @@ function IntegrationsSection() {
   )
 }
 
+interface BillingForm {
+  billing_enabled: boolean
+  trial_days: string
+  grace_days: string
+  price_text: string
+  payment_url: string
+}
+
+const billingForm = (settings: AdminSettings): BillingForm => ({
+  billing_enabled: settings.billing_enabled,
+  grace_days: String(settings.grace_days),
+  payment_url: settings.payment_url,
+  price_text: settings.price_text,
+  trial_days: String(settings.trial_days),
+})
+
+function BillingSection() {
+  const { data: settings } = useQuery({ queryFn: fetchAdminSettings, queryKey: ['adminSettings'] })
+  return settings ? <BillingSettingsForm settings={settings} /> : null
+}
+
+function BillingSettingsForm({ settings }: { settings: AdminSettings }) {
+  const queryClient = useQueryClient()
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>({ status: 'idle' })
+  const [form, setForm] = useState<BillingForm>(() => billingForm(settings))
+
+  const set = <K extends keyof BillingForm>(key: K, value: BillingForm[K]) =>
+    setForm((current) => ({ ...current, [key]: value }))
+
+  const save = async (e: Event) => {
+    e.preventDefault()
+    setSaveStatus({ status: 'saving' })
+    try {
+      const result = await updateAdminSettings({
+        billing_enabled: form.billing_enabled,
+        grace_days: Number(form.grace_days),
+        payment_url: form.payment_url.trim(),
+        price_text: form.price_text.trim(),
+        trial_days: Number(form.trial_days),
+      })
+      queryClient.setQueryData(['adminSettings'], result)
+      void queryClient.invalidateQueries({ queryKey: ['adminUsers'] })
+      void queryClient.invalidateQueries({ queryKey: ['myPlan'] })
+      setForm(billingForm(result))
+      setSaveStatus({ status: 'saved', time: new Date() })
+    } catch (err) {
+      setSaveStatus({ error: apiErrorMessage(err, 'Failed to save'), status: 'error' })
+    }
+  }
+
+  return (
+    <section class="settings-section">
+      <div class="section-header-row">
+        <h2>Plans and billing</h2>
+        <SaveStatusIndicator state={saveStatus} />
+      </div>
+      <p class="section-description">
+        Charge for accounts after a free trial. New accounts start on the trial; when it (or a paid period)
+        ends and the grace period has passed, the account becomes read-only until you record a payment on its
+        page under <a href="/admin/users">Users</a>. Off by default.
+      </p>
+      <form onSubmit={save}>
+        <div class="form-field">
+          <label class="toggle-row">
+            <input
+              type="checkbox"
+              checked={form.billing_enabled}
+              onChange={(e) => set('billing_enabled', (e.target as HTMLInputElement).checked)}
+            />
+            <span>Enable billing</span>
+          </label>
+          <p class="field-description">
+            Enabling marks every account that exists now as exempt: only accounts created afterwards are
+            billed. Admins are never restricted.
+          </p>
+        </div>
+        <div class="form-field">
+          <label for="trial-days">Free trial (days)</label>
+          <input
+            id="trial-days"
+            type="number"
+            min="0"
+            max="3650"
+            required
+            value={form.trial_days}
+            onInput={(e) => set('trial_days', (e.target as HTMLInputElement).value)}
+          />
+        </div>
+        <div class="form-field">
+          <label for="grace-days">Grace period (days)</label>
+          <input
+            id="grace-days"
+            type="number"
+            min="0"
+            max="365"
+            required
+            value={form.grace_days}
+            onInput={(e) => set('grace_days', (e.target as HTMLInputElement).value)}
+          />
+          <p class="field-description">
+            How long after a trial or paid period ends before the account turns read-only.
+          </p>
+        </div>
+        <div class="form-field">
+          <label for="price-text">Price</label>
+          <input
+            id="price-text"
+            type="text"
+            maxLength={200}
+            placeholder="3 € / month"
+            value={form.price_text}
+            onInput={(e) => set('price_text', (e.target as HTMLInputElement).value)}
+          />
+          <p class="field-description">Shown on the signup page and to users whose plan is ending.</p>
+        </div>
+        <div class="form-field">
+          <label for="payment-url">Payment link</label>
+          <input
+            id="payment-url"
+            type="url"
+            pattern="https://.*"
+            placeholder="https://www.patreon.com/…"
+            value={form.payment_url}
+            onInput={(e) => set('payment_url', (e.target as HTMLInputElement).value)}
+          />
+          <p class="field-description">Where users pay, e.g. a Patreon page (https).</p>
+        </div>
+        <button type="submit" class="generate-button" disabled={saveStatus.status === 'saving'}>
+          Save billing settings
+        </button>
+      </form>
+    </section>
+  )
+}
+
 function SentrySection() {
   const queryClient = useQueryClient()
   const { data: settings } = useQuery({
@@ -719,6 +854,8 @@ export function AdminSettings() {
           <p class="field-description">Number of users with admin privileges.</p>
         </div>
       </section>
+
+      <BillingSection />
 
       <IntegrationsSection />
 

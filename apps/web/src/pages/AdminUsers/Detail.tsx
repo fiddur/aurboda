@@ -7,6 +7,7 @@ import { deleteAdminUser, fetchAdminUserUsage } from '../../state/api'
 import { auth } from '../../state/auth'
 import { AdminAccessDenied } from './AccessDenied'
 import { formatBytes, stackDaily } from './admin-users-utils'
+import { PlanEditor } from './PlanEditor'
 import { StackedDailyChart } from './StackedDailyChart'
 import './style.css'
 
@@ -67,6 +68,8 @@ export function AdminUserDetail() {
               <dd>{formatBytes(usage.storage_bytes)}</dd>
             </div>
           </dl>
+
+          <PlanEditor key={username} username={username} plan={usage} />
 
           <section class="au-section">
             <h2>Data in</h2>

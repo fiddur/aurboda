@@ -8,6 +8,9 @@ import {
   formatPerDay,
   formatRelative,
   nextSort,
+  planForm,
+  planLabel,
+  planUpdateBody,
   sortUsers,
   stackDaily,
 } from './admin-users-utils'
@@ -18,6 +21,13 @@ const idle = { active_days_30d: 0, last_at: null, reads_30d: 0, writes_30d: 0 }
 
 const user = (username: string, overrides: Partial<AdminUserOverview> = {}): AdminUserOverview => ({
   created_at: null,
+  ends_at: null,
+  paid_until: null,
+  plan: null,
+  plan_note: null,
+  read_only_at: null,
+  state: 'active',
+  trial_ends_at: null,
   ingest: { items_30d: 0, last_at: null, per_day_30d: 0, per_day_7d: 0, sources: [] },
   is_admin: false,
   last_api_at: null,
@@ -139,5 +149,99 @@ describe('stackDaily', () => {
       '2026-11-06',
     )
     expect(result.rows).toEqual([{ web: 5 }])
+  })
+})
+
+describe('planLabel', () => {
+  const base = { ends_at: null, plan: null, read_only_at: null, state: 'active' as const }
+
+  test.each([
+    [base, { text: '–', tone: 'muted' }],
+    [
+      { ...base, plan: 'exempt' as const },
+      { text: 'exempt', tone: 'muted' },
+    ],
+    [
+      { ...base, ends_at: '2027-02-04T00:00:00.000Z', plan: 'trial' as const, state: 'trial' as const },
+      { text: 'trial until 2027-02-04', tone: 'ok' },
+    ],
+    [
+      { ...base, ends_at: '2027-06-01T00:00:00.000Z', plan: 'paid' as const },
+      { text: 'paid until 2027-06-01', tone: 'ok' },
+    ],
+    [
+      { ...base, plan: 'paid' as const },
+      { text: 'paid', tone: 'ok' },
+    ],
+    [
+      { ...base, plan: 'trial' as const, read_only_at: '2027-02-18T00:00:00.000Z', state: 'grace' as const },
+      { text: 'grace until 2027-02-18', tone: 'warn' },
+    ],
+    [
+      {
+        ...base,
+        plan: 'paid' as const,
+        read_only_at: '2026-10-01T00:00:00.000Z',
+        state: 'read_only' as const,
+      },
+      { text: 'read-only since 2026-10-01', tone: 'bad' },
+    ],
+  ])('%#', (input, label) => {
+    expect(planLabel(input)).toEqual(label)
+  })
+})
+
+describe('plan sorting', () => {
+  test('a new plan sort starts soonest-ending first, without an end last', () => {
+    expect(nextSort(DEFAULT_SORT, 'plan')).toEqual({ descending: false, key: 'plan' })
+    const users = [
+      user('exempt'),
+      user('later', { ends_at: '2027-06-01T00:00:00.000Z' }),
+      user('sooner', { ends_at: '2026-12-01T00:00:00.000Z' }),
+    ]
+    expect(sortUsers(users, { descending: false, key: 'plan' }).map((u) => u.username)).toEqual([
+      'sooner',
+      'later',
+      'exempt',
+    ])
+  })
+})
+
+describe('planUpdateBody', () => {
+  const stored = {
+    ends_at: '2027-02-04T10:30:00.000Z',
+    paid_until: null,
+    plan: 'trial' as const,
+    plan_note: null,
+    read_only_at: '2027-02-18T10:30:00.000Z',
+    state: 'trial' as const,
+    trial_ends_at: '2027-02-04T10:30:00.000Z',
+  }
+
+  test('keeps unchanged dates exactly as stored and leaves the plan out when unchanged', () => {
+    expect(planUpdateBody(stored, planForm(stored))).toEqual({
+      paid_until: null,
+      plan_note: null,
+      trial_ends_at: '2027-02-04T10:30:00.000Z',
+    })
+  })
+
+  test('a changed date runs to the end of that UTC day; a changed plan and note are sent', () => {
+    const form = {
+      ...planForm(stored),
+      paid_until: '2027-06-01',
+      plan: 'exempt' as const,
+      plan_note: ' Patreon ',
+    }
+    expect(planUpdateBody(stored, form)).toEqual({
+      paid_until: '2027-06-01T23:59:59.000Z',
+      plan: 'exempt',
+      plan_note: 'Patreon',
+      trial_ends_at: '2027-02-04T10:30:00.000Z',
+    })
+  })
+
+  test('a cleared date is sent as null', () => {
+    expect(planUpdateBody(stored, { ...planForm(stored), trial_ends_at: '' }).trial_ends_at).toBeNull()
   })
 })

@@ -23,6 +23,9 @@ auth.subscribe((value) => localStorage.setItem('auth', JSON.stringify(value)))
 // Keep signupAllowed for backwards compatibility
 export const signupAllowed = signal<boolean | undefined>(undefined)
 export const signupMode = signal<SignupMode | undefined>(undefined)
+export const serverBilling = signal<
+  Pick<ServerStatusResponse, 'billing_enabled' | 'trial_days' | 'price_text'>
+>({})
 /** Username whose public articles are this instance's blog; null when the admin set none. */
 export const blogUsername = signal<string | null>(null)
 
@@ -35,9 +38,12 @@ export const fetchStatus = async () => {
   statusFetchPromise = (async () => {
     try {
       const response = await axios.get<ServerStatusResponse>(`${API_URL}/status`)
-      signupAllowed.value = response.data.signup_allowed
-      signupMode.value = response.data.signup_mode
-      blogUsername.value = response.data.blog_username ?? null
+      const { billing_enabled, blog_username, price_text, signup_allowed, signup_mode, trial_days } =
+        response.data
+      signupAllowed.value = signup_allowed
+      signupMode.value = signup_mode
+      blogUsername.value = blog_username ?? null
+      serverBilling.value = { billing_enabled, price_text, trial_days }
     } catch (error) {
       console.error('Status fetch error:', error)
       signupAllowed.value = false

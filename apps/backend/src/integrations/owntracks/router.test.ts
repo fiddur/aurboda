@@ -358,4 +358,29 @@ describe('OwnTracks Router', () => {
       expect(mockDeps.onLocationInserted).not.toHaveBeenCalled()
     })
   })
+  describe('read-only accounts', () => {
+    test('answers 402 and stores nothing', async () => {
+      vi.mocked(mockDeps.loginToUserDb).mockResolvedValue()
+      const app = express()
+      app.use(json())
+      app.use(
+        '/ownTracks',
+        createOwnTracksRouter({ ...mockDeps, isReadOnly: async (user) => user === 'expired' }),
+      )
+
+      const refused = await request(app)
+        .post('/ownTracks')
+        .set('Authorization', basicAuth('expired', 'testpass'))
+        .send({ _type: 'location', lat: 59.3293, lon: 18.0686, tst: 1705936800 })
+      expect(refused.status).toBe(402)
+      expect(mockDeps.insertLocation).not.toHaveBeenCalled()
+
+      const stored = await request(app)
+        .post('/ownTracks')
+        .set('Authorization', basicAuth('testuser', 'testpass'))
+        .send({ _type: 'location', lat: 59.3293, lon: 18.0686, tst: 1705936800 })
+      expect(stored.status).toBe(200)
+      expect(mockDeps.insertLocation).toHaveBeenCalledTimes(1)
+    })
+  })
 })

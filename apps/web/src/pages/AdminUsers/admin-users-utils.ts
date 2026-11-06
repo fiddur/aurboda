@@ -1,4 +1,10 @@
-import type { AdminUserOverview, AdminUserUsageDay } from '@aurboda/api-spec'
+import type {
+  AccountPlan,
+  AdminUserOverview,
+  AdminUserPlan,
+  AdminUserUsageDay,
+  UpdateUserPlanBody,
+} from '@aurboda/api-spec'
 
 const UNITS = ['B', 'KB', 'MB', 'GB', 'TB']
 
@@ -28,7 +34,7 @@ export const formatRelative = (iso: string | null, now: Date = new Date()): stri
 export const formatPerDay = (value: number): string =>
   value === 0 ? '0' : value < 10 ? value.toFixed(1) : String(Math.round(value))
 
-export type SortKey = 'username' | 'created_at' | 'storage' | 'ingest' | 'last_ui' | 'last_api'
+export type SortKey = 'username' | 'created_at' | 'plan' | 'storage' | 'ingest' | 'last_ui' | 'last_api'
 
 export interface SortState {
   key: SortKey
@@ -45,6 +51,8 @@ const sortValue = (user: AdminUserOverview, key: SortKey): number | string | nul
       return user.username
     case 'created_at':
       return time(user.created_at)
+    case 'plan':
+      return time(user.ends_at)
     case 'storage':
       return user.storage_bytes
     case 'ingest':
@@ -70,9 +78,71 @@ export const sortUsers = (users: AdminUserOverview[], { key, descending }: SortS
     return a.username.localeCompare(b.username)
   })
 
-/** Clicking the current column flips its direction; another column starts newest/largest first, names A–Z. */
+/**
+ * Clicking the current column flips its direction; another column starts newest/largest first, names A–Z
+ * and plans soonest-ending first.
+ */
 export const nextSort = (current: SortState, key: SortKey): SortState =>
-  current.key === key ? { descending: !current.descending, key } : { descending: key !== 'username', key }
+  current.key === key
+    ? { descending: !current.descending, key }
+    : { descending: key !== 'username' && key !== 'plan', key }
+
+export interface PlanLabel {
+  text: string
+  tone: 'muted' | 'ok' | 'warn' | 'bad'
+}
+
+const isoDay = (iso: string | null): string => (iso ? iso.slice(0, 10) : '')
+
+/** The plan column's text: exempt, trial until X, paid until X, grace or read-only. */
+export const planLabel = (
+  user: Pick<AdminUserPlan, 'plan' | 'state' | 'ends_at' | 'read_only_at'>,
+  format: (iso: string | null) => string = isoDay,
+): PlanLabel => {
+  if (user.state === 'read_only') return { text: `read-only since ${format(user.read_only_at)}`, tone: 'bad' }
+  if (user.state === 'grace') return { text: `grace until ${format(user.read_only_at)}`, tone: 'warn' }
+  if (user.plan === null) return { text: '–', tone: 'muted' }
+  if (user.plan === 'exempt') return { text: 'exempt', tone: 'muted' }
+  const until = user.ends_at ? ` until ${format(user.ends_at)}` : ''
+  return { text: `${user.plan}${until}`, tone: 'ok' }
+}
+
+/** `YYYY-MM-DD` for a date input, from an ISO time (UTC day). */
+export const toDateInput = (iso: string | null): string => isoDay(iso)
+
+/** An ISO time at the end of the given UTC day, or null for an empty input. */
+export const fromDateInput = (day: string): string | null => (day ? `${day}T23:59:59.000Z` : null)
+
+export interface PlanForm {
+  plan: AccountPlan | ''
+  paid_until: string
+  trial_ends_at: string
+  plan_note: string
+}
+
+export const planForm = (plan: AdminUserPlan): PlanForm => ({
+  paid_until: toDateInput(plan.paid_until),
+  plan: plan.plan ?? '',
+  plan_note: plan.plan_note ?? '',
+  trial_ends_at: toDateInput(plan.trial_ends_at),
+})
+
+/**
+ * The plan editor's request. A date left unchanged is sent as it was stored, so a stored time keeps its
+ * time of day; only a changed plan is sent, so a future paid-until on a trial switches it to paid
+ * server-side.
+ */
+export const planUpdateBody = (stored: AdminUserPlan, form: PlanForm): UpdateUserPlanBody => {
+  const initial = planForm(stored)
+  const date = (key: 'paid_until' | 'trial_ends_at') =>
+    form[key] === initial[key] ? stored[key] : fromDateInput(form[key])
+  return {
+    paid_until: date('paid_until'),
+    plan_note: form.plan_note.trim() || null,
+    trial_ends_at: date('trial_ends_at'),
+    ...(form.plan !== '' && form.plan !== initial.plan && { plan: form.plan }),
+  }
+}
 
 export interface StackedDays {
   days: string[]

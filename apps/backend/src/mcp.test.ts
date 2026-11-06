@@ -2,6 +2,7 @@ import express from 'express'
 import request from 'supertest'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
+import type { AccountGate } from './services/account-gate.ts'
 import type * as ActivityQueries from './services/queries/activities.ts'
 import type * as SessionQueries from './services/queries/activity-sessions.ts'
 
@@ -646,6 +647,67 @@ describe('MCP Server', () => {
 
       expect(response.status).toBe(200)
       expect(response.toolResult.metrics[0].completeness_percent).toBe(48)
+    })
+  })
+
+  describe('Read-only accounts - POST /mcp', () => {
+    const refusal = {
+      error: 'This account is read-only until the plan is renewed',
+      payment_url: 'https://pay.example',
+    }
+    const accountGate: AccountGate = {
+      getStatus: vi.fn(),
+      invalidate: vi.fn(),
+      isReadOnly: vi.fn(),
+      refusal: vi.fn(),
+    }
+
+    const gatedApp = () => {
+      const app = express()
+      app.use('/mcp', createMcpRouter(auth, { accountGate }))
+      return app
+    }
+
+    const callTool = async (user: string, name: string, args: Record<string, unknown>) => {
+      const response = await mcpPost(gatedApp())
+        .set('Authorization', `Bearer ${auth.createToken(user)}`)
+        .send({ id: 1, jsonrpc: '2.0', method: 'tools/call', params: { arguments: args, name } })
+      return (
+        parseSSEResponse(response.text) as { result: { content: { text: string }[]; isError?: boolean } }
+      ).result
+    }
+
+    beforeEach(() => {
+      vi.mocked(accountGate.refusal).mockImplementation(async (user) => (user === 'expired' ? refusal : null))
+    })
+
+    test('refuses a mutating tool with a tool error carrying the payment link, without running it', async () => {
+      const result = await callTool('expired', 'delete_note', { id: '00000000-0000-4000-8000-000000000000' })
+
+      expect(result.isError).toBe(true)
+      expect(result.content[0].text).toBe(
+        'This account is read-only until the plan is renewed. Renew it at https://pay.example',
+      )
+      expect(mutations.deleteNoteById).not.toHaveBeenCalled()
+    })
+
+    test('runs a reading tool without consulting the gate', async () => {
+      vi.mocked(latestSleep.getLatestSleep).mockResolvedValue(null)
+
+      const result = await callTool('expired', 'get_latest_sleep', { tz: 'UTC' })
+
+      expect(result.isError).toBeUndefined()
+      expect(latestSleep.getLatestSleep).toHaveBeenCalledWith('expired')
+      expect(accountGate.refusal).not.toHaveBeenCalled()
+    })
+
+    test('runs mutating tools for an account that is not read-only', async () => {
+      vi.mocked(mutations.deleteNoteById).mockResolvedValue({ success: true } as never)
+
+      const result = await callTool('alice', 'delete_note', { id: '00000000-0000-4000-8000-000000000000' })
+
+      expect(result.isError).toBeUndefined()
+      expect(mutations.deleteNoteById).toHaveBeenCalledWith('alice', '00000000-0000-4000-8000-000000000000')
     })
   })
 

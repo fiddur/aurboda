@@ -8,9 +8,11 @@ import {
 
 import type { TableSize } from '../db/database-sizes.ts'
 import type { CentralDb } from './central-db.ts'
+import type { UserAccount } from './central-user-accounts.ts'
 import type { UsageSummaryRow } from './central-user-usage.ts'
 import type { UsageRow } from './usage-recorder.ts'
 
+import { accountStatus, adminUserPlan, BILLING_DISABLED, type BillingSettings } from './account-plan.ts'
 import { USAGE_RETENTION_DAYS } from './central-user-usage.ts'
 
 const DAY_MS = 86_400_000
@@ -28,6 +30,7 @@ export interface AdminUsersDeps {
   /** Database size in bytes, by username. */
   databaseSizes: () => Promise<Map<string, number>>
   tableSizes: (username: string) => Promise<TableSize[]>
+  billingSettings?: () => Promise<BillingSettings>
   now?: () => Date
 }
 
@@ -69,10 +72,21 @@ const channelUse = (
   }
 }
 
+const planOf = (
+  account: UserAccount | null,
+  context: { billing: BillingSettings; isAdmin: boolean; now: Date },
+) =>
+  adminUserPlan(
+    account,
+    accountStatus({ account, billing: context.billing, isAdmin: context.isAdmin, now: context.now }),
+  )
+
 const buildOverview = (
   username: string,
   context: {
-    account: { created_at: Date | null; pre_existing: boolean } | undefined
+    account: UserAccount | undefined
+    billing: BillingSettings
+    now: Date
     isAdmin: boolean
     storageBytes: number | undefined
     allTime: UsageSummaryRow[]
@@ -93,6 +107,7 @@ const buildOverview = (
   )
 
   return {
+    ...planOf(account ?? null, context),
     created_at: iso(account?.created_at),
     ingest: {
       items_30d: ingest.reduce((n, r) => n + r.items, 0),
@@ -126,6 +141,7 @@ export const createAdminUsers = ({
   listUsers,
   databaseSizes,
   tableSizes,
+  billingSettings = async () => BILLING_DISABLED,
   now = () => new Date(),
 }: AdminUsersDeps): AdminUsers => {
   let sizeCache: { at: number; sizes: Promise<Map<string, number>> } | null = null
@@ -145,15 +161,18 @@ export const createAdminUsers = ({
   return {
     getUserUsage: async (username, days = 90) => {
       if (!(await listUsers()).includes(username)) return null
-      const since = windowStart(now(), days)
-      const [account, isAdmin, daily, sizes, tables] = await Promise.all([
+      const current = now()
+      const since = windowStart(current, days)
+      const [account, isAdmin, daily, sizes, tables, billing] = await Promise.all([
         centralDb.getUserAccount(username),
         centralDb.isAdmin(username),
         centralDb.getUsageDaily({ since, username }),
         cachedSizes(),
         tableSizes(username),
+        billingSettings(),
       ])
       return {
+        ...planOf(account, { billing, isAdmin, now: current }),
         created_at: iso(account?.created_at),
         daily: daily.map(({ channel, count, day, items, kind }) => ({ channel, count, day, items, kind })),
         is_admin: isAdmin,
@@ -167,13 +186,14 @@ export const createAdminUsers = ({
 
     listUsersOverview: async () => {
       const current = now()
-      const [names, accounts, admins, allTime, recent, sizes] = await Promise.all([
+      const [names, accounts, admins, allTime, recent, sizes, billing] = await Promise.all([
         listUsers(),
         centralDb.listUserAccounts(),
         centralDb.getAdmins(),
         centralDb.getUsageSummary(windowStart(current, USAGE_RETENTION_DAYS)),
         centralDb.getUsageDaily({ since: windowStart(current, RECENT_DAYS) }),
         cachedSizes(),
+        billingSettings(),
       ])
       const accountByName = new Map(accounts.map((a) => [a.username, a]))
       const adminSet = new Set(admins)
@@ -185,7 +205,9 @@ export const createAdminUsers = ({
         buildOverview(username, {
           account: accountByName.get(username),
           allTime: allTimeByUser.get(username) ?? [],
+          billing,
           isAdmin: adminSet.has(username),
+          now: current,
           recent: recentByUser.get(username) ?? [],
           storageBytes: sizes.get(username),
           weekStart,

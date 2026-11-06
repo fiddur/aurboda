@@ -71,6 +71,8 @@ import { createActorAcceptNormalizer, createActorHtmlRouter } from './routes/act
 import { createFeedTombstoneRouter } from './routes/feed-tombstone-router.ts'
 import { createOAuthRouter } from './routes/oauth-router.ts'
 import { createAccountDeleter } from './services/account-deletion.ts'
+import { createAccountGate, gateSyncProvider, safeIsReadOnly } from './services/account-gate.ts'
+import { createAccountPlans, readBillingSettings } from './services/account-plan.ts'
 import {
   deliverFeedArticlePost,
   deliverFeedArticleUpdate,
@@ -367,10 +369,14 @@ const main = async () => {
     )
   }
 
+  const accountGate = createAccountGate({ centralDb })
+  const isReadOnly = (user: string) => safeIsReadOnly(accountGate, user)
+
   // Create sync provider for auto-syncing data before queries. onActivitySynced
   // lets background scrobble syncs trigger deduction rules (e.g. auto-tagging),
   // like the REST /sync routes — here fired only when a sync ingests new data.
-  const syncProvider = createSyncProvider({
+  // A read-only account (plan expired past the grace period) is never pulled.
+  const ungatedSyncProvider = createSyncProvider({
     garmin,
     getLastFmApiKey: () => centralDb.getLastFmApiKey(),
     gravl,
@@ -379,6 +385,7 @@ const main = async () => {
     onActivitySynced: activityNotifier,
     onTrackWritten,
   })
+  const syncProvider = gateSyncProvider(ungatedSyncProvider, isReadOnly)
 
   // Initialize shared pg-boss instance and job queues (before MCP mount)
   const boss = await createPgBoss()
@@ -461,6 +468,7 @@ const main = async () => {
   await userDb.connect()
 
   const adminUsers = createAdminUsers({
+    billingSettings: () => readBillingSettings(centralDb),
     centralDb,
     databaseSizes: () => getUserDatabaseSizes(userDb),
     listUsers: () => listUserNames(userDb),
@@ -537,6 +545,12 @@ const main = async () => {
     ],
     listUsers: () => listUserNames(userDb),
     onDeleted: (user) => deletedUsers.add(user),
+  })
+
+  const accountPlans = createAccountPlans({
+    centralDb,
+    invalidate: (username) => accountGate.invalidate(username),
+    userExists: async (username) => (await listUserNames(userDb)).includes(username),
   })
 
   // Lazy retro-enrichment (#996): entries ingested before structured enrichment
@@ -835,6 +849,8 @@ const main = async () => {
     '/mcp',
     createMcpRouter(auth, {
       accountDeleter,
+      accountGate,
+      accountPlans,
       adminUsers,
       apiBaseUrl,
       autosharePreviewDeps: autoshareDeps,
@@ -912,7 +928,7 @@ const main = async () => {
   httpd.use(createAuditLogMiddleware(auth, isDeletedUser))
   httpd.use(createUsageMiddleware(recordUsage))
 
-  const authMiddleware = createAuthMiddleware(auth, unauthorized, isDeletedUser)
+  const authMiddleware = createAuthMiddleware(auth, unauthorized, isDeletedUser, accountGate)
   const adminMiddleware = createAdminMiddleware(centralDb, unauthorized, forbidden)
 
   registerAuthRoutes({
@@ -958,6 +974,7 @@ const main = async () => {
       centralDb,
       stravaQueue,
       getStravaCredentials,
+      isReadOnly,
     })
     postListenCallbacks.push(ensureStravaWebhook)
   }
@@ -968,6 +985,7 @@ const main = async () => {
     centralDb,
     oura,
     getOuraCredentials,
+    isReadOnly,
   })
 
   let geocodeQueue: Awaited<ReturnType<typeof createGeocodeQueue>> | null = null
@@ -999,6 +1017,7 @@ const main = async () => {
     createOwnTracksRouter({
       insertLocation,
       insertPlace,
+      isReadOnly,
       loginToUserDb,
       onLocationInserted: (user, time) => {
         detectionTrigger.triggerDetectionForUser(user)
@@ -1009,6 +1028,7 @@ const main = async () => {
 
   mountRestRouters({
     accountDeleter,
+    accountPlans,
     activityNotifier,
     autosharePreviewDeps: autoshareDeps,
     adminMiddleware,

@@ -1,4 +1,5 @@
 import { isInvalidPasswordError } from '../../db/index.ts'
+import { READ_ONLY_MESSAGE } from '../../services/account-gate.ts'
 import { type TypedRouter, typedRouter } from '../../typed-router.ts'
 
 export interface OwnTracksDeps {
@@ -28,6 +29,8 @@ export interface OwnTracksDeps {
     },
   ) => Promise<void>
   onLocationInserted?: (user: string, time: Date) => void
+  /** A read-only account (plan expired past the grace period) stores nothing new. */
+  isReadOnly?: (user: string) => Promise<boolean>
 }
 
 /**
@@ -72,6 +75,11 @@ export function createOwnTracksRouter(deps: OwnTracksDeps): TypedRouter {
     try {
       // Authenticate using existing PostgreSQL user credentials
       await deps.loginToUserDb(user, password)
+
+      if (await deps.isReadOnly?.(user)) {
+        res.status(402).json({ error: READ_ONLY_MESSAGE })
+        return
+      }
 
       const { _type: type } = req.body
 
