@@ -100,6 +100,23 @@ const sanitizeArticleHtml = (html: string): string =>
 export const renderProse = (markdown: string): string =>
   sanitizeArticleHtml(marked.parse(markdown, { async: false, breaks: true, gfm: true }))
 
+const decodeTextEntities = (text: string): string =>
+  text.replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&quot;', '"').replaceAll('&amp;', '&')
+
+/**
+ * Authored markdown as one line of plain text (formatting, links and images
+ * dropped, whitespace collapsed) — for a link preview's description.
+ */
+export const proseToPlainText = (markdown: string): string =>
+  decodeTextEntities(
+    sanitizeHtml(marked.parse(markdown, { async: false, gfm: true }), {
+      allowedAttributes: {},
+      allowedTags: [],
+    }),
+  )
+    .replaceAll(/\s+/g, ' ')
+    .trim()
+
 /**
  * The AS2 `content` HTML for an article: the **title** as a bold heading, then
  * each prose block rendered from markdown, and each chart/correlation block's

@@ -30,7 +30,13 @@ import type { RetroEnrichTrigger } from '../services/timeline-retro-enrich.ts'
 import type { WebAuthnService } from '../services/webauthn.ts'
 import type { AnyMiddleware } from '../typed-router.ts'
 
-import { getFeedPostById, getLocations, getTimeSeries, markActivityDetailSynced } from '../db/index.ts'
+import {
+  getFeedPostById,
+  getLocations,
+  getTimeSeries,
+  listUserNames,
+  markActivityDetailSynced,
+} from '../db/index.ts'
 import { processActivityDetail } from '../integrations/garmin/process.ts'
 import { gravlRedirectUri } from '../integrations/gravl/client.ts'
 import { createActivitiesRouter } from '../routes/activities-router.ts'
@@ -246,7 +252,7 @@ export const mountRestRouters = ({
   httpd.use(createChallengeDataRouter())
   // Public feed series must be mounted before the generic /public/:username/:slug
   // resolver so `series` is not matched as a share slug.
-  httpd.use(createFeedPublicRouter())
+  httpd.use(createFeedPublicRouter({ apiBaseUrl, webHost }))
   // Public feed-post images (chart / route map), rendered on demand for opted-in
   // public/unlisted posts. Mounted alongside the series router (same guard).
   httpd.use(
@@ -305,6 +311,7 @@ export const mountRestRouters = ({
   )
   httpd.use(
     createShareHtmlRouter({
+      apiBaseUrl,
       loadTemplate: createTemplateLoader(webIndexPath),
       webHost,
       ...createShareResolvers(),
@@ -326,6 +333,7 @@ export const mountRestRouters = ({
       invitationAuth,
       webHost,
       gravlRedirectUri(apiBaseUrl),
+      async (username) => (await listUserNames(userDb)).includes(username),
       ouraWebhookManager,
     ),
   )

@@ -8,7 +8,7 @@ import { useRoute } from 'preact-iso'
  * PublicProfile - a user's public page at /u/:username, listing their public
  * shared dashboards, challenges and exercises. Unauthenticated; rendered without app chrome.
  */
-import { avatarUrl, fetchPublicPosts, fetchPublicProfile } from '../../state/api'
+import { avatarUrl, blogPath, fetchPublicPosts, fetchPublicProfile } from '../../state/api'
 import { FeedPostCard } from '../Feed/FeedPostCard'
 import { publicAuthor } from './public-author'
 import './style.css'
@@ -105,6 +105,11 @@ export function PublicProfile() {
           height={80}
         />
         <h1>@{username}</h1>
+        {query.data.has_articles && (
+          <a class="public-blog-link" href={blogPath(username)}>
+            Blog
+          </a>
+        )}
       </div>
 
       <section class="public-section">

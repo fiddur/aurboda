@@ -28,6 +28,18 @@
   overflow-wrap: anywhere;
 }
 
+.public-blog-link {
+  padding: 0.35rem 0.9rem;
+  border: 1px solid #8b5cf6;
+  border-radius: 999px;
+  color: #6d28d9;
+  text-decoration: none;
+}
+
+.public-blog-link:hover {
+  background: #faf5ff;
+}
+
 .public-avatar {
   width: 80px;
   height: 80px;
@@ -90,6 +102,14 @@
 
   .public-section h2 {
     color: #f3f4f6;
+  }
+
+  .public-blog-link {
+    color: #c4b5fd;
+  }
+
+  .public-blog-link:hover {
+    background: #1e1b4b;
   }
 
   .public-item-list a {
