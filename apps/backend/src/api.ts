@@ -111,6 +111,8 @@ import {
 } from './services/deduction-queue.ts'
 import { createDetectionTrigger, type DetectionTrigger } from './services/detection-trigger.ts'
 import { runDetectionForUser } from './services/detection-worker.ts'
+import { createDumpExporter, createDumpLinkIssuer } from './services/export-dump.ts'
+import { createExportTokens } from './services/export-token.ts'
 import { createReactionActions } from './services/feed-reactions.ts'
 import {
   createFeedRefreshDeps,
@@ -179,6 +181,7 @@ const main = async () => {
   const sessionSecret = process.env.SESSION_SECRET ?? ''
   const auth = createAuth(sessionSecret)
   const invitationAuth = createInvitationAuth(sessionSecret)
+  const exportTokens = createExportTokens(sessionSecret)
 
   const postListenCallbacks: Array<() => Promise<void>> = []
 
@@ -195,6 +198,12 @@ const main = async () => {
   const apiBaseUrl = process.env.API_BASE_URL ?? 'http://localhost:3000'
   console.info(`🌐 WEB_HOST=${webHost} API_BASE_URL=${apiBaseUrl}`)
   configureStructuredChallenge({ apiBaseUrl, webHost })
+  const dumpExporter = createDumpExporter()
+  const dataExport = {
+    exporter: dumpExporter,
+    requestDumpLink: createDumpLinkIssuer({ apiBaseUrl, exporter: dumpExporter, tokens: exportTokens }),
+    tokens: exportTokens,
+  }
 
   // Path to the built SPA index.html, so /u/* share pages can serve
   // crawler-visible <head> meta. In the Docker image nginx serves this same
@@ -770,6 +779,7 @@ const main = async () => {
       apiBaseUrl,
       autosharePreviewDeps: autoshareDeps,
       centralDb,
+      requestDumpLink: dataExport.requestDumpLink,
       deductionQueue: deductionQueue ?? undefined,
       discoverChallenges,
       engineDeps,
@@ -939,6 +949,7 @@ const main = async () => {
     activityNotifier,
     autosharePreviewDeps: autoshareDeps,
     adminMiddleware,
+    dataExport,
     apiBaseUrl,
     auth,
     authMiddleware,

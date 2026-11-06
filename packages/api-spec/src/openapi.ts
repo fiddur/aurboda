@@ -17,6 +17,7 @@ import {
 } from './schemas/challenges.ts'
 import { dateOnlySchema, iso8601DateTimeSchema, metricTypeSchema } from './schemas/common.ts'
 import { dailySummaryResponseSchema } from './schemas/daily-summary.ts'
+import { exportDumpLinkResponseSchema, exportDumpQuerySchema } from './schemas/export.ts'
 import {
   goalHistoryQuerySchema,
   goalHistoryResponseSchema,
@@ -1263,6 +1264,57 @@ const openApiDocument = createDocument({
         security: [{ bearerAuth: [] }],
         summary: 'Verify registration',
         tags: ['Auth'],
+      },
+    },
+
+    '/export/dump-link': {
+      post: {
+        description:
+          "Issue a short-lived link to download the authenticated user's whole database as a gzipped plain SQL dump (pg_dump). Fails before issuing a link when this server cannot produce the dump.",
+        responses: {
+          200: {
+            content: { 'application/json': { schema: exportDumpLinkResponseSchema } },
+            description: 'Download link',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'An export is already running',
+          },
+          503: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'pg_dump is missing or older than the database server',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Create a database export link',
+        tags: ['Settings'],
+      },
+    },
+    '/export/dump': {
+      get: {
+        description:
+          'Stream the database dump named by a token from POST /export/dump-link, as `aurboda-<user>-<date>.sql.gz`. Authenticated by the token alone. See docs/data-export.md for restoring it.',
+        requestParams: { query: exportDumpQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/gzip': { schema: z.string().meta({ format: 'binary' }) } },
+            description: 'Gzipped plain SQL dump',
+          },
+          401: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid, expired or spent token',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'An export is already running',
+          },
+          503: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'pg_dump is missing or older than the database server',
+          },
+        },
+        summary: 'Download a database export',
+        tags: ['Settings'],
       },
     },
 

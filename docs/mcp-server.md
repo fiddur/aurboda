@@ -15,6 +15,7 @@ Key areas covered by MCP tools:
 - **Screentime** -- manage category rules and recategorize
 - **Sync** -- trigger data syncs from Garmin, Oura, Last.fm, RescueTime, calendars
 - **Settings** -- user preferences, HR zones, training load configuration
+- **Export** -- `export_data_dump` links a download of your whole database as SQL ([data export](data-export.md))
 
 ### Tool discovery
 
