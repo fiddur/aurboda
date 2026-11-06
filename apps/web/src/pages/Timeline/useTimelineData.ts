@@ -98,6 +98,8 @@ export interface UseTimelineDataOptions {
   barBucketSize: '1h' | '1d' | '1w'
   /** Gap (ms) below which adjacent same-key activities merge in the timeline. */
   mergeGapMs: number
+  /** Activity lane only: keep exactly abutting same-type activities as separate bars. */
+  splitAbutting: boolean
   /** Hierarchy walk depth: 0=no walk, 1=one hop, Infinity=walk to root. */
   collapseDepth: number
 }
@@ -112,6 +114,7 @@ export const useTimelineData = ({
   bucketSize,
   barBucketSize,
   mergeGapMs,
+  splitAbutting,
   collapseDepth,
 }: UseTimelineDataOptions): TimelineData => {
   const [paddedStart, paddedEnd] = padFetchWindow(fetchStart, fetchEnd)
@@ -255,8 +258,8 @@ export const useTimelineData = ({
     const filtered = allActivities.filter((a) =>
       ACTIVITY_CATEGORIES.has(categoryByType.get(a.activity_type) ?? 'other'),
     )
-    return collapseToParentType(filtered, typeDefsMap, mergeGapMs, collapseDepth)
-  }, [allActivities, categoryByType, collapseDepth, typeDefsMap, mergeGapMs])
+    return collapseToParentType(filtered, typeDefsMap, mergeGapMs, collapseDepth, { splitAbutting })
+  }, [allActivities, categoryByType, collapseDepth, typeDefsMap, mergeGapMs, splitAbutting])
   // Anything that's neither a primary Activity-lane type, nor a screentime
   // type (legacy umbrella `screentime` + per-category derived types), nor a
   // music_scrobble / location_visit (own columns) goes here. Excluding

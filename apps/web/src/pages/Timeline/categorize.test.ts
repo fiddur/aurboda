@@ -230,7 +230,24 @@ describe('categorizeScreentimeActivities', () => {
       new Set(['work']),
       new Map([['work', { color: '#22c55e', display_name: 'Work' }]]),
     )
-    expect(items[0]!.tooltip.details.some((d) => d.startsWith('Merged:'))).toBe(true)
+    expect(items[0]!.tooltip.details).toContain('Merged: Programming, Meetings')
+  })
+
+  it('names the sub-category of a nested bar without its sampling-span count', () => {
+    const collapsed = makeActivity({
+      activity_type: 'work',
+      collapsed_types: [{ count: 47, type: 'programming' }],
+      data: { category_path: 'Work > Programming' },
+    })
+    const items = categorizeScreentimeActivities(
+      [collapsed],
+      [],
+      {},
+      new Set(['work', 'programming']),
+      new Map([['work', { color: '#22c55e', display_name: 'Work' }]]),
+    )
+    const merged = items[0]?.tooltip.details.filter((d) => d.startsWith('Merged:'))
+    expect(merged).toEqual(['Merged: Programming'])
   })
 
   it('omits the "Merged: ..." line when the provenance only restates the bar', () => {
