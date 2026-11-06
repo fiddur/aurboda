@@ -330,6 +330,19 @@ describe('Feed posts integration', () => {
       expect(await countPublicFeedPosts(user)).toBe(4)
     })
 
+    test('listPublicFeedPostsKeyset leaves unlisted posts out when asked for public only, as the Atom feed does', async () => {
+      const user = getTestUser()
+      const pubArticle = await createArticlePost(user, articleInput({ visibility: 'public' }))
+      await createArticlePost(user, articleInput({ visibility: 'unlisted' }))
+      await createArticlePost(user, articleInput({ visibility: 'followers' }))
+
+      expect(
+        (await listPublicFeedPostsKeyset(user, 10, undefined, { kind: 'article', publicOnly: true })).map(
+          (p) => p.id,
+        ),
+      ).toEqual([pubArticle.id])
+    })
+
     test('countPublicFeedPosts by kind is 0 when the only articles are followers-only', async () => {
       const user = getTestUser()
       await createFeedPost(user, postInput())

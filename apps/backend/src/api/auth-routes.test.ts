@@ -32,7 +32,13 @@ const buildApp = ({
   blogUsername = null,
   signupMode = 'closed',
   settings = {},
-}: { blogUsername?: string | null; signupMode?: string; settings?: Record<string, unknown> } = {}) => {
+  users = ['fiddur'],
+}: {
+  blogUsername?: string | null
+  signupMode?: string
+  settings?: Record<string, unknown>
+  users?: string[]
+} = {}) => {
   const httpd = express()
   httpd.use(express.json())
 
@@ -55,6 +61,7 @@ const buildApp = ({
     invitationAuth: {} as never,
     unauthorized: httpError(401, 'Unauthorized'),
     userDb: {} as never,
+    userExists: async (username) => users.includes(username),
   })
 
   httpd.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
@@ -86,6 +93,12 @@ describe('GET /status', () => {
 
   test('says null when no blog is configured', async () => {
     const response = await supertest(buildApp()).get('/status')
+    expect(response.body.blog_username).toBeNull()
+  })
+
+  test('says null when the blog user has been deleted since it was set', async () => {
+    const response = await supertest(buildApp({ blogUsername: 'fiddur', users: [] })).get('/status')
+    expect(response.status).toBe(200)
     expect(response.body.blog_username).toBeNull()
   })
 })

@@ -16,8 +16,10 @@ export interface AccountDeletionDeps {
     | 'deleteOuraUserMappingsByUsername'
     | 'deleteStravaAthleteMappingByUsername'
     | 'getAdmins'
+    | 'getServerSetting'
     | 'isUsernameDeleted'
     | 'reserveDeletedUsername'
+    | 'setServerSetting'
   >
   /** Every user with a per-user database. */
   listUsers: () => Promise<string[]>
@@ -107,14 +109,23 @@ export const createAccountDeleter = (deps: AccountDeletionDeps): AccountDeleter 
     return live <= 1
   }
 
+  /** The instance blog setting goes with the user it names, so the Blog links never lead to "Blog not found". */
+  const removeCentralData = async (username: string) => {
+    const { centralDb } = deps
+    await bestEffort('central data removal', username, () => centralDb.deleteAllCentralUserData(username))
+    await bestEffort('blog setting removal', username, async () => {
+      if ((await centralDb.getServerSetting('blog_username')) === username) {
+        await centralDb.setServerSetting('blog_username', '')
+      }
+    })
+  }
+
   const deletedBy = (username: string, actor: string) => (actor === username ? 'self' : `admin ${actor}`)
 
   const finishPartialDeletion = async (username: string, actor: string): Promise<AccountDeletionResult> => {
     deps.onDeleted(username)
     if (!(await drop(username))) return fail('drop_failed')
-    await bestEffort('central data removal', username, () =>
-      deps.centralDb.deleteAllCentralUserData(username),
-    )
+    await removeCentralData(username)
     log.info(`🗑️ Account ${username}: unfinished deletion completed by ${deletedBy(username, actor)}`)
     return { ok: true }
   }
@@ -147,7 +158,7 @@ export const createAccountDeleter = (deps: AccountDeletionDeps): AccountDeleter 
 
     if (!(await drop(username))) return fail('drop_failed')
 
-    await bestEffort('central data removal', username, () => centralDb.deleteAllCentralUserData(username))
+    await removeCentralData(username)
 
     log.info(`🗑️ Account ${username} deleted by ${deletedBy(username, actor)}`)
     return { ok: true }

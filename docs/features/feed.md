@@ -995,22 +995,26 @@ An instance's blog is a user's **articles** — there is no separate blog storag
   articles, newest-first, with **Load more**, via `GET /public/:username/posts?kind=article`
   (the profile listing's `kind` filter; replies and `followers`-only posts never appear).
 - **Atom feed** — `GET /public/:username/articles.atom` (under `/api` behind nginx) serves
-  the 20 newest of those articles as Atom 1.0 for readers without a fediverse account. Each
+  the 20 newest **`public`** articles as Atom 1.0 for readers without a fediverse account —
+  `unlisted` ones stay out, since syndicating to feed readers is listing them. Each
   entry's id and link are the post's permalink (`/u/:username/posts/:postId`), and its HTML
   content is the article's markdown export (prose plus each chart block as an inline image of
   its public PNG, a "not enough data" line where the block would not render) through the same
   sanitiser as federated prose. Unlike the JSON listing (`no-store`), the feed is cached for
   five minutes (`public, max-age=300`) because feed readers poll; an un-shared article drops
-  out within that window. It has **no MCP twin**: it is a syndication format, like the
-  OpenAPI document.
+  out within that window. The server also memoizes the rendered XML in-process (100 feeds),
+  keyed on the listed articles' ids and `updated_at` plus the hour, so a poll with nothing
+  changed costs the listing query rather than a chart query per block. It has **no MCP
+  twin**: it is a syndication format, like the OpenAPI document.
 - **Link previews** — the share-HTML router gives `/u/:username/articles` blog meta with an
   Atom discovery `<link rel="alternate" type="application/atom+xml">`, and a **`public`**
   article's permalink `/u/:username/posts/:postId` its title and an excerpt of its first prose
   block (`og:type` `article`). Unlisted articles and other post kinds keep the generic meta.
 - **Instance blog** — the admin setting `blog_username` (Admin Settings → Instance Blog,
   `PATCH /admin/settings`; an unknown user is a 400, `null` clears it) names whose articles
-  are the instance's blog. `GET /status` returns it as `blog_username`, and the web app links
-  **Blog** from the logged-out front page and the site footer when it is set.
+  are the instance's blog. `GET /status` returns it as `blog_username` (`null` when that user
+  no longer exists), and the web app links **Blog** from the logged-out front page and the
+  site footer when it is set. Deleting that user's account clears the setting.
 
 ## API
 
@@ -1061,7 +1065,7 @@ Public / federation (unauthenticated):
 | `GET /public/:username/feed/:postId/blocks/:index/image.png` | Rendered PNG of an article's chart/correlation block (visibility-gated; `?token=` for followers-only)                                                                                                                                                                   |
 | `GET /public/:username/feed/:postId/blocks/:index/image.svg` | Same article block as crisp `image/svg+xml`                                                                                                                                                                                                                             |
 | `GET /public/:username/posts`                                | A user's public/unlisted posts (newest-first, keyset page of 20 + `next_cursor`) for their profile feed; `?kind=article` for the blog view                                                                                                                              |
-| `GET /public/:username/articles.atom`                        | Atom 1.0 feed of the user's 20 newest public/unlisted articles ([Blog view and Atom feed](#blog-view-and-atom-feed))                                                                                                                                                    |
+| `GET /public/:username/articles.atom`                        | Atom 1.0 feed of the user's 20 newest public articles ([Blog view and Atom feed](#blog-view-and-atom-feed))                                                                                                                                                             |
 | `GET /public/:username/posts/:postId`                        | One public/unlisted post, serialized like the listing (`FeedPostResponse`), for its permalink page `/u/:username/posts/:postId`                                                                                                                                         |
 | `GET /.well-known/webfinger`                                 | Resolve `acct:<username>@<host>` → the actor                                                                                                                                                                                                                            |
 | `GET /.well-known/quantpub`                                  | QuantPub discovery document (FEP §4): product, versions, `apiBase`                                                                                                                                                                                                      |

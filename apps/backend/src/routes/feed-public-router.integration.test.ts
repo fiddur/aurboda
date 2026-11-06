@@ -12,19 +12,21 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
  */
 import { insertActivity } from '../db/activities/index.ts'
 import { createChallenge } from '../db/challenges.ts'
-import { createArticlePost, createChallengePost, createFeedPost } from '../db/feed.ts'
+import { createArticlePost, createChallengePost, createFeedPost, updateFeedPost } from '../db/feed.ts'
 import { insertTimeSeries } from '../db/time-series.ts'
 import { configureStructuredChallenge } from '../services/feed-structured-challenge.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
-import { createFeedPublicRouter } from './feed-public-router.ts'
+import { createFeedPublicRouter, type FeedPublicRouterDeps } from './feed-public-router.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 const START = new Date('2026-07-01T08:00:00Z')
 const END = new Date('2026-07-01T08:40:00Z')
 
-const startApp = () => {
+const startApp = (deps: Pick<FeedPublicRouterDeps, 'renderableBlocks'> = {}) => {
   const app = express()
-  app.use(createFeedPublicRouter({ apiBaseUrl: 'https://qs.example/api', webHost: 'https://qs.example' }))
+  app.use(
+    createFeedPublicRouter({ apiBaseUrl: 'https://qs.example/api', webHost: 'https://qs.example', ...deps }),
+  )
   const server = app.listen(0)
   const port = (server.address() as AddressInfo).port
   const close = () =>
@@ -321,7 +323,7 @@ describe('GET /public/:username/articles.atom', () => {
     await cleanTestDb()
   })
 
-  test('serves public and unlisted articles as Atom, never followers-only or other kinds', async () => {
+  test('serves public articles as Atom, never unlisted, followers-only or other kinds', async () => {
     const user = getTestUser()
     await seedPost(user, 'public')
     const pub = await createArticlePost(user, {
@@ -348,12 +350,42 @@ describe('GET /public/:username/articles.atom', () => {
         `<link rel="self" type="application/atom+xml" href="https://qs.example/api/public/${user}/articles.atom"/>`,
       )
       expect(res.text).toContain(`<id>https://qs.example/u/${user}/posts/${pub.id}</id>`)
-      expect(res.text).toContain(`<id>https://qs.example/u/${user}/posts/${unlisted.id}</id>`)
+      expect(res.text).not.toContain(unlisted.id)
+      expect(res.text).not.toContain('Unlisted body')
       expect(res.text).toContain('<title type="text">First &lt;post&gt;</title>')
       expect(res.text).toContain('&lt;strong&gt;world&lt;/strong&gt; &amp;amp; more')
       expect(res.text).not.toContain('Followers only')
       expect(res.text).not.toContain('Secret')
-      expect(res.text.indexOf(unlisted.id)).toBeLessThan(res.text.indexOf(pub.id))
+    } finally {
+      await close()
+    }
+  })
+
+  test('renders once until an article changes', async () => {
+    const user = getTestUser()
+    const post = await createArticlePost(user, {
+      article: { blocks: [{ markdown: 'Body', type: 'prose' }], title: 'Cached' },
+      visibility: 'public',
+    })
+    const rendered: string[] = []
+    const { request, close } = startApp({
+      renderableBlocks: async (_user, postId) => {
+        rendered.push(postId)
+        return new Set()
+      },
+    })
+    try {
+      const first = await request.get(`/public/${user}/articles.atom`)
+      const second = await request.get(`/public/${user}/articles.atom`)
+      expect(second.text).toBe(first.text)
+      expect(rendered).toEqual([post.id])
+
+      await updateFeedPost(user, post.id, {
+        article: { blocks: [{ markdown: 'Body', type: 'prose' }], title: 'Edited' },
+      })
+      const third = await request.get(`/public/${user}/articles.atom`)
+      expect(third.text).toContain('<title type="text">Edited</title>')
+      expect(rendered).toEqual([post.id, post.id])
     } finally {
       await close()
     }

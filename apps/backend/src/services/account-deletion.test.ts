@@ -13,6 +13,7 @@ const setup = (
     drop?: () => Promise<void>
     central?: () => Promise<void>
     stravaDisconnect?: () => Promise<void>
+    blogUsername?: string
   } = {},
 ) => {
   const calls: string[] = []
@@ -41,10 +42,15 @@ const setup = (
         return true
       },
       getAdmins: async () => admins,
+      getServerSetting: (async () =>
+        overrides.blogUsername ?? null) as AccountDeletionDeps['centralDb']['getServerSetting'],
       isUsernameDeleted: async (username) => (overrides.reserved ?? []).includes(username),
       reserveDeletedUsername: async (username, by) => {
         calls.push(`reserve(${username},${by})`)
         return true
+      },
+      setServerSetting: async (key, value) => {
+        calls.push(`setting(${key},${value})`)
       },
     },
     dropUserDb: step('drop', overrides.drop),
@@ -75,6 +81,24 @@ describe('createAccountDeleter', () => {
       'drop(alice)',
       'central(alice)',
     ])
+  })
+
+  test('clears the instance blog setting when it names the deleted user', async () => {
+    const { calls, deleteAccount } = setup({ blogUsername: 'alice' })
+    expect(await deleteAccount('alice', { actor: 'root1', confirmUsername: 'alice' })).toEqual({ ok: true })
+    expect(calls.slice(-2)).toEqual(['central(alice)', 'setting(blog_username,)'])
+  })
+
+  test('leaves the instance blog setting alone when it names someone else', async () => {
+    const { calls, deleteAccount } = setup({ blogUsername: 'root1' })
+    expect(await deleteAccount('alice', { actor: 'alice', confirmUsername: 'alice' })).toEqual({ ok: true })
+    expect(calls.some((call) => call.startsWith('setting('))).toBe(false)
+  })
+
+  test('clears the blog setting when finishing an unfinished deletion', async () => {
+    const { calls, deleteAccount } = setup({ blogUsername: 'ghost', reserved: ['ghost'] })
+    expect(await deleteAccount('ghost', { actor: 'root1', confirmUsername: 'ghost' })).toEqual({ ok: true })
+    expect(calls).toEqual(['deleted(ghost)', 'drop(ghost)', 'central(ghost)', 'setting(blog_username,)'])
   })
 
   test('records the admin as the one who deleted', async () => {
