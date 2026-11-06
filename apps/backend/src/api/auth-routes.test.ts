@@ -234,6 +234,19 @@ describe('POST /signup', () => {
     expect(db.makeNewUserDb).not.toHaveBeenCalled()
   })
 
+  test('answers 409 when the role appears between the check and CREATE USER', async () => {
+    vi.mocked(db.query).mockResolvedValue({ rowCount: 0, rows: [] } as never)
+    vi.mocked(db.makeNewUserDb).mockRejectedValueOnce(pgError('42710', 'role "racer" already exists'))
+
+    const response = await supertest(buildApp({ signupMode: 'open' }))
+      .post('/signup')
+      .send({ password: 'secret', username: 'racer' })
+
+    expect(response.status).toBe(409)
+    expect(response.body.error).toBe('Username already exists')
+    expect(ensureUserAccount).not.toHaveBeenCalled()
+  })
+
   test('refuses the name of a deleted account as taken', async () => {
     vi.mocked(db.query).mockResolvedValue({ rowCount: 0, rows: [] } as never)
     isUsernameDeleted.mockImplementation(async (username) => username === 'gone')

@@ -47,6 +47,7 @@ import net.aurboda.PasskeyLoginResult
 @Composable
 fun LoginScreen(
   initialServerUrl: String? = null,
+  notice: String? = null,
   authApi: AuthApi = remember { AuthApi.create() },
   passkeyApi: PasskeyApi = remember { PasskeyApi.create() },
   onSaveCredentials: (serverUrl: String, username: String, token: String) -> Unit = { _, _, _ ->
@@ -96,6 +97,15 @@ fun LoginScreen(
       text = "Aurboda",
       style = MaterialTheme.typography.headlineLarge,
     )
+
+    if (notice != null) {
+      Spacer(modifier = Modifier.height(16.dp))
+      Text(
+        text = notice,
+        color = MaterialTheme.colorScheme.error,
+        style = MaterialTheme.typography.bodyMedium,
+      )
+    }
 
     Spacer(modifier = Modifier.height(32.dp))
 

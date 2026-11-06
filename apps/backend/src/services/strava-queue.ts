@@ -37,6 +37,11 @@ export interface StravaQueueDeps {
   getActivityStreams: (token: string, activityId: number) => Promise<StravaApiResponse<StravaStreamsResponse>>
   processDeps: StravaProcessDeps
   updateSyncState: (user: string, dataType: string, updates: Record<string, unknown>) => Promise<void>
+  /**
+   * Checked when a job runs, not only when it is enqueued: a job queued before the account turned
+   * read-only completes without fetching or storing anything.
+   */
+  isReadOnly?: (user: string) => Promise<boolean>
 }
 
 export interface StravaQueueStatus {
@@ -184,9 +189,27 @@ const createJobHandler = (deps: StravaQueueDeps, boss: PgBoss) => {
     await deps.updateSyncState(user, 'activity_details', { last_sync_time: new Date(), status: 'idle' })
   }
 
+  /** A list job also frees the sync state its enqueue set to `syncing`. */
+  const skipForReadOnly = async (
+    user: string,
+    requestType: StravaSyncJobData['request_type'],
+  ): Promise<boolean> => {
+    if (!(await deps.isReadOnly?.(user))) return false
+    auditInfo(user, 'sync', `⏸️ Strava: skipped ${requestType}, the account is read-only`)
+    if (requestType === 'list_activities') {
+      await deps.updateSyncState(user, 'activities', { status: 'idle' }).catch((error: unknown) => {
+        const msg = error instanceof Error ? error.message : String(error)
+        auditError(user, 'sync', `Failed to reset Strava sync_state for a read-only account: ${msg}`)
+      })
+    }
+    return true
+  }
+
   return async (jobs: Job<StravaSyncJobData>[]): Promise<void> => {
     for (const job of jobs) {
       const { user, request_type, strava_activity_id, list_params } = job.data
+
+      if (await skipForReadOnly(user, request_type)) continue
 
       if (reads15min >= MAX_READS_15MIN || readsDaily >= MAX_READS_DAILY) {
         const waitMs = reads15min >= MAX_READS_15MIN ? msUntilNext15MinBoundary() : 60_000

@@ -80,6 +80,22 @@ describe('central user_accounts', () => {
     ])
   })
 
+  test('backfillUserAccounts stores the given starting plan on the rows it inserts only', async () => {
+    const a = api()
+    const trialEnd = new Date('2027-02-04T10:00:00Z')
+    await a.ensureUserAccount('alice', { createdAt: null, plan: 'exempt', preExisting: false })
+
+    expect(await a.backfillUserAccounts(['alice', 'bob'], { plan: 'trial', trialEndsAt: trialEnd })).toBe(1)
+
+    expect(await a.getUserAccount('alice')).toMatchObject({ plan: 'exempt', trial_ends_at: null })
+    expect(await a.getUserAccount('bob')).toMatchObject({
+      created_at: null,
+      plan: 'trial',
+      pre_existing: true,
+      trial_ends_at: trialEnd,
+    })
+  })
+
   test('ensureUserAccount stores a starting plan; without one the plan is null', async () => {
     const a = api()
     const trialEnd = new Date('2027-02-04T10:00:00Z')

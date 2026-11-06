@@ -193,11 +193,13 @@ fun BackgroundSyncStatusRow(status: BackgroundSyncStatus) {
     BackgroundSyncResult.Success -> "success"
     BackgroundSyncResult.Retry -> "retry pending"
     BackgroundSyncResult.Skipped -> "skipped"
+    BackgroundSyncResult.ReadOnly -> "stopped, account is read-only"
+    BackgroundSyncResult.LoggedOut -> "stopped, logged out"
     null -> "running…"
   }
 
   val color = when (status.lastResult) {
-    BackgroundSyncResult.Retry -> MaterialTheme.colorScheme.error
+    BackgroundSyncResult.Retry, BackgroundSyncResult.ReadOnly, BackgroundSyncResult.LoggedOut -> MaterialTheme.colorScheme.error
     else -> MaterialTheme.colorScheme.onSurfaceVariant
   }
 

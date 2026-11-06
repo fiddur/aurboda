@@ -1,3 +1,4 @@
+import type { AccountReadOnlyResponse } from '@aurboda/api-spec'
 import type { RequestHandler } from 'express'
 
 import type { Auth } from '../auth.ts'
@@ -124,7 +125,8 @@ export const createAuthMiddleware = (
         if (accountGate && !isAllowedWhenReadOnly(req.method, req.baseUrl + req.path)) {
           const refusal = await safeRefusal(accountGate, user)
           if (refusal) {
-            res.status(402).json({ ...refusal, success: false })
+            const body: AccountReadOnlyResponse = { ...refusal, success: false }
+            res.status(402).json(body)
             return
           }
         }

@@ -365,7 +365,11 @@ describe('OwnTracks Router', () => {
       app.use(json())
       app.use(
         '/ownTracks',
-        createOwnTracksRouter({ ...mockDeps, isReadOnly: async (user) => user === 'expired' }),
+        createOwnTracksRouter({
+          ...mockDeps,
+          readOnlyRefusal: async (user) =>
+            user === 'expired' ? { error: 'read-only', payment_url: 'https://pay.example' } : null,
+        }),
       )
 
       const refused = await request(app)
@@ -373,6 +377,7 @@ describe('OwnTracks Router', () => {
         .set('Authorization', basicAuth('expired', 'testpass'))
         .send({ _type: 'location', lat: 59.3293, lon: 18.0686, tst: 1705936800 })
       expect(refused.status).toBe(402)
+      expect(refused.body).toEqual({ error: 'read-only', payment_url: 'https://pay.example', success: false })
       expect(mockDeps.insertLocation).not.toHaveBeenCalled()
 
       const stored = await request(app)

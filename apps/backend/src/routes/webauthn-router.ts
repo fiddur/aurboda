@@ -64,6 +64,11 @@ export const createWebAuthnRouter = ({
 }: WebAuthnRouterDeps): TypedRouter => {
   const router = typedRouter()
 
+  const usernameTaken = async (username: string): Promise<boolean> => {
+    const existing = await query(userDb, 'SELECT usename FROM pg_user WHERE usename=$1', [username])
+    return (existing.rowCount ?? 0) > 0 || (await centralDb.isUsernameDeleted(username))
+  }
+
   router.post<Record<string, never>, WebAuthnSignupOptionsResponse, WebAuthnSignupOptionsBody>(
     '/signup/options',
     validateBody(webauthnSignupOptionsBodySchema),
@@ -104,8 +109,7 @@ export const createWebAuthnRouter = ({
         return
       }
 
-      const existing = await query(userDb, 'SELECT usename FROM pg_user WHERE usename=$1', [username])
-      if ((existing.rowCount ?? 0) > 0 || (await centralDb.isUsernameDeleted(username))) {
+      if (await usernameTaken(username)) {
         res.status(409).json({ error: 'Username already exists', success: false, options_json: '' })
         return
       }
@@ -145,7 +149,7 @@ export const createWebAuthnRouter = ({
 
       const { credential, userHandleUuid } = verifyResult
 
-      if (await centralDb.isUsernameDeleted(username)) {
+      if (await usernameTaken(username)) {
         res.status(409).json({ error: 'Username already exists', success: false, verified: true })
         return
       }
@@ -181,12 +185,21 @@ export const createWebAuthnRouter = ({
       // — only Postgres ever sees it; we discard it after the connect call.
       // makeNewUserDb is multi-step (CREATE USER + CREATE DATABASE +
       // initializeSchema). A failure mid-way can leave a partial role/DB
-      // that blocks future signup attempts, so always run dropUserDb in
-      // the rollback path as defense-in-depth.
+      // that blocks future signup attempts, so the rollback drops them —
+      // unless CREATE USER itself failed with duplicate_object (42710): then
+      // the role belongs to someone else and dropping would destroy their data.
       const randomPassword = randomBytes(32).toString('base64url')
       try {
         await makeNewUserDb(userDb, username, randomPassword)
       } catch (err) {
+        if ((err as { code?: string }).code === '42710') {
+          console.warn('WebAuthn signup: role already exists at create time:', username)
+          await centralDb
+            .deleteWebAuthnUserHandle(username)
+            .catch((e) => logRollbackFailure('deleteWebAuthnUserHandle', e))
+          res.status(409).json({ error: 'Username already exists', success: false, verified: true })
+          return
+        }
         console.error('Failed to create user DB during signup; rolling back:', err)
         await dropUserDb(userDb, username).catch((e) => logRollbackFailure('dropUserDb', e))
         await centralDb

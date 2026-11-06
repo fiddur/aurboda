@@ -19,7 +19,7 @@ import net.aurboda.api.models.UserSettingsResponse
 
 sealed class DataResult<out T> {
     data class Success<T>(val data: T) : DataResult<T>()
-    data class Error(val message: String) : DataResult<Nothing>()
+    data class Error(val message: String, val statusCode: Int? = null) : DataResult<Nothing>()
 }
 
 /** Flat goal progress for the widget — works for both metric and trend goals. */
@@ -134,6 +134,13 @@ data class AddActivityResponse(
     val error: String? = null,
 )
 
+/** A refused write keeps its status, so a sync can tell a read-only account (402) or refused token (401) from a bad entry. */
+private fun writeError(status: HttpStatusCode, body: String): DataResult.Error =
+    DataResult.Error(
+        if (classifyHttpStatus(status.value) == HttpOutcome.ReadOnly) readOnlyMessage(body) else "Server returned $status",
+        status.value,
+    )
+
 suspend fun postActivity(
     httpClient: HttpClient,
     serverUrl: String,
@@ -156,7 +163,7 @@ suspend fun postActivity(
         } else {
             val errorBody = response.bodyAsText()
             Log.e("DataApi", "Add activity error: ${response.status} - $errorBody")
-            DataResult.Error("Server returned ${response.status}")
+            writeError(response.status, errorBody)
         }
     } catch (e: Exception) {
         Log.e("DataApi", "Error posting activity", e)
@@ -186,7 +193,7 @@ suspend fun postMetric(
         } else {
             val errorBody = response.bodyAsText()
             Log.e("DataApi", "Add metric error: ${response.status} - $errorBody")
-            DataResult.Error("Server returned ${response.status}")
+            writeError(response.status, errorBody)
         }
     } catch (e: Exception) {
         Log.e("DataApi", "Error posting metric", e)

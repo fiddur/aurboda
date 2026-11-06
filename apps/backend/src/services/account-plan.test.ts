@@ -6,6 +6,7 @@ import type { UserAccount } from './central-user-accounts.ts'
 import {
   type AccountPlansDeps,
   accountStatus,
+  backfillAccounts,
   BILLING_DISABLED,
   createAccountPlans,
   newAccountPlan,
@@ -172,6 +173,19 @@ describe('new accounts', () => {
     })
   })
 
+  test('backfillAccounts starts a trial from now while billing is enabled, no plan otherwise', async () => {
+    const backfillUserAccounts = vi.fn(async () => 1)
+    await backfillAccounts(
+      { backfillUserAccounts, ...settingsDb({ billing_enabled: true, trial_days: 10 }) },
+      ['bob'],
+      NOW,
+    )
+    expect(backfillUserAccounts).toHaveBeenLastCalledWith(['bob'], { plan: 'trial', trialEndsAt: day(10) })
+
+    await backfillAccounts({ backfillUserAccounts, ...settingsDb({}) }, ['carol'], NOW)
+    expect(backfillUserAccounts).toHaveBeenLastCalledWith(['carol'], { plan: null, trialEndsAt: null })
+  })
+
   test('recordNewAccount writes no plan while billing is off', async () => {
     const ensureUserAccount = vi.fn(async () => true)
     await recordNewAccount({ ensureUserAccount, ...settingsDb({}) }, 'bob', NOW)
@@ -267,6 +281,21 @@ describe('createAccountPlans', () => {
       price_text: '3 € / month',
       read_only_at: day(44).toISOString(),
       state: 'trial',
+    })
+  })
+
+  test('getMyPlan reports an admin as exempt, whatever plan row they carry', async () => {
+    const { centralDb, plans } = plansSetup(
+      { billing_enabled: true },
+      account({ plan: 'trial', trial_ends_at: day(-100) }),
+    )
+    centralDb.isAdmin.mockResolvedValue(true)
+    expect(await plans.getMyPlan('alice')).toMatchObject({
+      ends_at: null,
+      expiring_soon: false,
+      plan: 'exempt',
+      read_only_at: null,
+      state: 'active',
     })
   })
 

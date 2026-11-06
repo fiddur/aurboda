@@ -71,8 +71,8 @@ import { createActorAcceptNormalizer, createActorHtmlRouter } from './routes/act
 import { createFeedTombstoneRouter } from './routes/feed-tombstone-router.ts'
 import { createOAuthRouter } from './routes/oauth-router.ts'
 import { createAccountDeleter } from './services/account-deletion.ts'
-import { createAccountGate, gateSyncProvider, safeIsReadOnly } from './services/account-gate.ts'
-import { createAccountPlans, readBillingSettings } from './services/account-plan.ts'
+import { createAccountGate, gateSyncProvider, safeIsReadOnly, safeRefusal } from './services/account-gate.ts'
+import { backfillAccounts, createAccountPlans, readBillingSettings } from './services/account-plan.ts'
 import {
   deliverFeedArticlePost,
   deliverFeedArticleUpdate,
@@ -433,6 +433,7 @@ const main = async () => {
         getAccessToken: (user) => strava.getAccessToken(user),
         getActivity: (token, id) => strava.getActivity(token, id),
         getActivityStreams: (token, id) => strava.getActivityStreams(token, id),
+        isReadOnly,
         listActivities: (token, params) => strava.listActivities(token, params),
         processDeps: {
           auditInfo,
@@ -493,7 +494,7 @@ const main = async () => {
   // Accounts from before signup dates were tracked get a row without one.
   postListenCallbacks.push(async () => {
     try {
-      const added = await centralDb.backfillUserAccounts(await listUserNames(userDb))
+      const added = await backfillAccounts(centralDb, await listUserNames(userDb))
       if (added > 0) console.info(`👤 Recorded ${added} pre-existing user account(s)`)
     } catch (error) {
       console.error('⚠️ User account backfill failed:', error)
@@ -530,6 +531,7 @@ const main = async () => {
     wellKnown.version,
     async () => (await centralDb.getSignupMode()) === 'open',
     isDeletedUser,
+    isReadOnly,
   )
   const backfill = createTimelineBackfiller(feedFederation, webHost)
   const feedDeps = { apiBaseUrl, federation: feedFederation, origin: webHost }
@@ -1017,8 +1019,8 @@ const main = async () => {
     createOwnTracksRouter({
       insertLocation,
       insertPlace,
-      isReadOnly,
       loginToUserDb,
+      readOnlyRefusal: (user) => safeRefusal(accountGate, user),
       onLocationInserted: (user, time) => {
         detectionTrigger.triggerDetectionForUser(user)
         activityNotifier(user, '*', time, time)
