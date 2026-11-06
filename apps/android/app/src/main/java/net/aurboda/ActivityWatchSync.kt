@@ -13,6 +13,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
@@ -81,6 +82,7 @@ data class AurbodaAwSyncResponse(
   val success: Boolean,
   val result: AurbodaAwSyncResult? = null,
   val error: String? = null,
+  @Transient val stop: SyncStop? = null,
 )
 
 @Serializable
@@ -97,6 +99,7 @@ data class ActivityWatchSyncResult(
   val eventsFetched: Int = 0,
   val eventsPushed: Int = 0,
   val error: String? = null,
+  val stop: SyncStop? = null,
 )
 
 suspend fun checkActivityWatchAvailable(httpClient: HttpClient): Boolean =
@@ -171,7 +174,12 @@ suspend fun pushEventsToAurboda(
       val body = response.bodyAsText()
       appJson.decodeFromString<AurbodaAwSyncResponse>(body)
     } else {
-      AurbodaAwSyncResponse(success = false, error = "HTTP ${response.status.value}")
+      val error = httpErrorOf(response)
+      AurbodaAwSyncResponse(
+        success = false,
+        error = error.serverMessage ?: "HTTP ${response.status.value}",
+        stop = error.syncStop(),
+      )
     }
   } catch (e: Exception) {
     Log.e(TAG, "🚫 Error pushing AW events to Aurboda: ${e.message}")
@@ -243,6 +251,7 @@ suspend fun processActivityWatchSync(
           eventsFetched = totalFetched,
           eventsPushed = totalPushed,
           error = response.error,
+          stop = response.stop,
         )
       }
     }

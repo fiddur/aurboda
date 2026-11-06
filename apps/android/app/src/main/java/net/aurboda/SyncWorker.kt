@@ -30,7 +30,7 @@ class SyncWorker(
   params: WorkerParameters,
 ) : CoroutineWorker(context, params) {
   private val healthConnectClient by lazy { HealthConnectClient.getOrCreate(applicationContext) }
-  private val httpClient by lazy { syncHttpClient() }
+  private val httpClient by lazy { syncHttpClient(onTokenRefused = { forgetRefusedToken(applicationContext, it) }) }
 
   override suspend fun doWork(): Result {
     Log.d(TAG, "Starting background sync")
@@ -68,7 +68,9 @@ class SyncWorker(
     reporter.begin()
     return try {
       // Step 0: Process pending local data entries (Add Data offline queue)
-      processPendingData(credentials.apiUrl, credentials.authToken, reporter)
+      processPendingData(credentials.apiUrl, credentials.authToken, reporter)?.let {
+        return stopRun(attemptAt, reporter, it)
+      }
 
       // Steps 1 & 2 both read from Health Connect (aggregate / getChanges) and
       // both fail with HealthConnectException without the background read
@@ -79,9 +81,10 @@ class SyncWorker(
         // Step 1: Fetch and send daily aggregates for cumulative metrics (deduplicated)
         val aggregates = fetchDailyAggregates(healthConnectClient, grantedTypes.toSet(), days = 7)
         if (aggregates.isNotEmpty()) {
-          val aggregateSuccess =
+          val aggregateResult =
             sendDailyAggregates(aggregates, credentials.apiUrl, credentials.authToken, httpClient, reporter)
-          if (!aggregateSuccess) {
+          if (!aggregateResult.isSuccess) {
+            aggregateResult.syncStop()?.let { return stopRun(attemptAt, reporter, it) }
             Log.w(TAG, "Failed to send daily aggregates, will retry")
             reporter.end("Daily aggregates failed")
             return finishAttempt(attemptAt, BackgroundSyncResult.Retry, error = "Daily aggregates failed")
@@ -94,8 +97,9 @@ class SyncWorker(
         }
 
         // Step 2: Fetch and send raw records incrementally (page by page).
-        val syncSuccess = fetchAndSyncHealthData(credentials.apiUrl, credentials.authToken, reporter)
-        if (!syncSuccess) {
+        val syncResult = fetchAndSyncHealthData(credentials.apiUrl, credentials.authToken, reporter)
+        if (!syncResult.isSuccess) {
+          syncResult.syncStop()?.let { return stopRun(attemptAt, reporter, it) }
           Log.w(TAG, "Incremental sync failed, will retry")
           reporter.end("Health Connect sync failed")
           return finishAttempt(attemptAt, BackgroundSyncResult.Retry, error = "Health Connect sync failed")
@@ -111,35 +115,41 @@ class SyncWorker(
 
       // Step 3: Process outbound sync (backend -> Health Connect).
       // Reuses grantedPermissions from step 0 above -- permissions don't change mid-sync.
-      try {
-        processOutboundSync(
-          apiUrl = credentials.apiUrl,
-          authToken = credentials.authToken,
-          httpClient = httpClient,
-          healthConnectClient = healthConnectClient,
-          grantedPermissions = grantedPermissions,
-          reporter = reporter,
-        )
-      } catch (e: Exception) {
-        Log.w(TAG, "Outbound sync failed: ${e.message}")
-        reporter.updateStage(SyncStage.Outbound) {
-          it.copy(status = SyncStageStatus.Failed, errorMessage = e.message)
+      val outboundStop =
+        try {
+          processOutboundSync(
+            apiUrl = credentials.apiUrl,
+            authToken = credentials.authToken,
+            httpClient = httpClient,
+            healthConnectClient = healthConnectClient,
+            grantedPermissions = grantedPermissions,
+            reporter = reporter,
+          ).stop
+        } catch (e: Exception) {
+          Log.w(TAG, "Outbound sync failed: ${e.message}")
+          reporter.updateStage(SyncStage.Outbound) {
+            it.copy(status = SyncStageStatus.Failed, errorMessage = e.message)
+          }
+          null
         }
-      }
+      if (outboundStop != null) return stopRun(attemptAt, reporter, outboundStop)
 
       // Step 4: ActivityWatch sync (if enabled).
       // Best-effort: failures don't affect overall sync result.
       if (isActivityWatchSyncEnabled(applicationContext)) {
-        try {
-          processActivityWatchSync(
-            apiUrl = credentials.apiUrl,
-            authToken = credentials.authToken,
-            httpClient = httpClient,
-            context = applicationContext,
-          )
-        } catch (e: Exception) {
-          Log.w(TAG, "ActivityWatch sync failed: ${e.message}")
-        }
+        val activityWatchStop =
+          try {
+            processActivityWatchSync(
+              apiUrl = credentials.apiUrl,
+              authToken = credentials.authToken,
+              httpClient = httpClient,
+              context = applicationContext,
+            ).stop
+          } catch (e: Exception) {
+            Log.w(TAG, "ActivityWatch sync failed: ${e.message}")
+            null
+          }
+        if (activityWatchStop != null) return stopRun(attemptAt, reporter, activityWatchStop)
       }
 
       HrZoneWidgetProvider.triggerUpdate(applicationContext)
@@ -151,6 +161,22 @@ class SyncWorker(
       reporter.end(e.message)
       finishAttempt(attemptAt, BackgroundSyncResult.Retry, error = e.message)
     }
+  }
+
+  /**
+   * End the run without a retry: a refused token (whose credentials [forgetRefusedToken] has
+   * cleared) or a read-only account would refuse the retry too. Queued data stays where it is.
+   */
+  private fun stopRun(
+    attemptAt: Instant,
+    reporter: SyncProgressReporter,
+    stop: SyncStop,
+  ): Result {
+    Log.w(TAG, "Sync stopped: ${stop.message}")
+    reporter.end(stop.message)
+    val outcome =
+      if (stop.outcome == HttpOutcome.Unauthorized) BackgroundSyncResult.LoggedOut else BackgroundSyncResult.ReadOnly
+    return finishAttempt(attemptAt, outcome, error = stop.message)
   }
 
   private fun finishAttempt(
@@ -167,7 +193,11 @@ class SyncWorker(
       error,
     )
     return when (outcome) {
-      BackgroundSyncResult.Success, BackgroundSyncResult.Skipped -> Result.success()
+      BackgroundSyncResult.Success,
+      BackgroundSyncResult.Skipped,
+      BackgroundSyncResult.ReadOnly,
+      BackgroundSyncResult.LoggedOut,
+      -> Result.success()
       BackgroundSyncResult.Retry -> Result.retry()
     }
   }
@@ -175,14 +205,16 @@ class SyncWorker(
   /**
    * Process pending local data entries (activities and metrics queued offline).
    * Successfully sent entries are removed; failures are left for the next sync cycle.
+   *
+   * @return non-null when the server's answer ends the whole run, with the rest of the queue kept.
    */
-  private suspend fun processPendingData(serverUrl: String, authToken: String, reporter: SyncProgressReporter) {
+  private suspend fun processPendingData(serverUrl: String, authToken: String, reporter: SyncProgressReporter): SyncStop? {
     val entries = getPendingEntries(applicationContext)
     if (entries.isEmpty()) {
       reporter.updateStage(SyncStage.PendingData) {
         it.copy(status = SyncStageStatus.Done, message = "No queued entries")
       }
-      return
+      return null
     }
     Log.d(TAG, "Processing ${entries.size} pending data entries")
     reporter.updateStage(SyncStage.PendingData) {
@@ -228,6 +260,17 @@ class SyncWorker(
           markPendingEntryFailed(applicationContext, entry.id, result.message)
           Log.w(TAG, "Pending entry ${entry.id} failed: ${result.message}")
           failed++
+          val stop = syncStopOf(result.statusCode, result.message)
+          if (stop != null) {
+            reporter.updateStage(SyncStage.PendingData) {
+              it.copy(
+                status = SyncStageStatus.Failed,
+                message = "$sent uploaded, ${entries.size - sent} kept",
+                errorMessage = stop.message,
+              )
+            }
+            return stop
+          }
         }
       }
     }
@@ -237,6 +280,7 @@ class SyncWorker(
         message = "$sent uploaded, $failed failed",
       )
     }
+    return null
   }
 
   /**
@@ -250,14 +294,14 @@ class SyncWorker(
     serverUrl: String,
     authToken: String,
     reporter: SyncProgressReporter,
-  ): Boolean {
+  ): PostResult {
     val lastToken = loadChangesToken()
     if (lastToken == null) {
       Log.d(TAG, "No token found, skipping background fetch (initial fetch should be done in foreground)")
       reporter.updateStage(SyncStage.HealthConnect) {
         it.copy(status = SyncStageStatus.Skipped, message = "Initial fetch must run in foreground")
       }
-      return true
+      return PostResult.Success
     }
 
     reporter.updateStage(SyncStage.HealthConnect) {
@@ -299,7 +343,7 @@ class SyncWorker(
           reporter.updateStage(SyncStage.HealthConnect) {
             it.copy(status = SyncStageStatus.Failed, errorMessage = result.errorMessage())
           }
-          return false
+          return result
         }
         totalRecords += upsertions.size
         totalDeletions += deletionIds.size
@@ -329,7 +373,7 @@ class SyncWorker(
         it.copy(status = SyncStageStatus.Done, message = "Up to date")
       }
     }
-    return true
+    return PostResult.Success
   }
 
   private fun saveChangesToken(token: String?) {
