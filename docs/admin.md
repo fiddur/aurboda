@@ -128,8 +128,11 @@ The signup page says "Free for N days, then &lt;price&gt;." while billing is on 
 - **Enabling billing marks every account that exists then as exempt.** Only accounts created after
   that start on a trial. Disabling billing lifts every restriction at once and does not undo the
   exempt marks, so enabling it again does not bill those accounts either.
-- **Admins are never restricted**, whatever their plan says.
+- **Admins are never restricted**, whatever their plan says, and `GET /account/plan` reports them as
+  `exempt`.
 - An account signed up while billing is on starts on the `trial` plan, ending `trial_days` later.
+  If its `user_accounts` row could not be written at signup, the backfill at the next server start
+  creates the row and, while billing is on, starts the trial then.
 
 Each account's plan is kept on its `user_accounts` row: `plan` (`exempt`, `trial` or `paid`; empty
 for an account billing has never applied to, which is treated as exempt), `trial_ends_at`,
@@ -157,16 +160,24 @@ A read-only user can still log in, browse everything, [export](data-export.md) t
 their account. No new data is stored until the plan is renewed:
 
 - Authenticated REST writes (`POST`, `PUT`, `PATCH`, `DELETE`) answer `402` with
-  `{ "success": false, "error": "This account is read-only until the plan is renewed", "payment_url": … }`.
-  Allowed anyway: `/export/*`, `DELETE /account` and passkey management (`/webauthn/*`).
+  `{ "success": false, "error": "This account is read-only until the plan is renewed", "payment_url": … }`
+  (the `AccountReadOnlyResponse` schema in the OpenAPI document).
+  Allowed anyway: `/export/*`, `DELETE /account`, passkey management (`/webauthn/*`) and the
+  previews that store nothing (`POST /autoshare-rules/preview`, `/deduction-rules/preview`,
+  `/feed/activities/:id/preview` and `/feed/exercises/preview`).
 - MCP tools that change data (the same verbs the usage counters treat as writes) return a tool error
   with the same message and the payment link, without running; `export_data_dump` and
   `delete_my_account` still work.
-- OwnTracks posts answer `402`.
+- OwnTracks posts answer `402` with the same body.
 - Oura and Strava webhooks are acknowledged but not processed, and the background and on-demand
-  pulls (Oura, Garmin, Gravl, RescueTime, Last.fm, calendars) skip the user.
-- The Android app's sync gets the `402`s, does not retry them in a loop (WorkManager backs off), and
-  shows the failure in its sync status.
+  pulls (Oura, Garmin, Gravl, RescueTime, Last.fm, calendars) skip the user. Strava jobs queued
+  before the account turned read-only are checked again when they run and complete without fetching.
+- Inbound ActivityPub posts and replies (`Create`/`Update` of a Note, boosts of other people's
+  posts) are acknowledged but not stored. Follows, unfollows, accepts, deletes, profile updates and
+  likes or boosts of the user's own posts are still processed.
+- The Android app's sync stops its run at the first `402` without retrying, keeps the queued data
+  for when the plan is renewed, and shows the server's message in its sync status. A `402` never
+  logs the app out (a `401` does).
 
 Data is never deleted automatically. A status is cached for up to 30 seconds per server process; an
 admin's change takes effect at once on the process that handled it.

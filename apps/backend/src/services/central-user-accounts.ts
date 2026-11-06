@@ -66,8 +66,14 @@ export interface UserAccountsApi {
       trialEndsAt?: Date | null
     },
   ) => Promise<boolean>
-  /** Inserts a pre-existing row, without a signup date, for each name that has none. Resolves to the count inserted. */
-  backfillUserAccounts: (usernames: string[]) => Promise<number>
+  /**
+   * Inserts a pre-existing row, without a signup date, for each name that has none, on the given
+   * starting plan (none by default). Resolves to the count inserted.
+   */
+  backfillUserAccounts: (
+    usernames: string[],
+    start?: { plan: AccountPlan | null; trialEndsAt: Date | null },
+  ) => Promise<number>
   getUserAccount: (username: string) => Promise<UserAccount | null>
   listUserAccounts: () => Promise<UserAccount[]>
   deleteUserAccount: (username: string) => Promise<boolean>
@@ -81,14 +87,14 @@ export interface UserAccountsApi {
 }
 
 export const createUserAccountsApi = (getClient: () => Promise<Queryable>): UserAccountsApi => ({
-  backfillUserAccounts: async (usernames) => {
+  backfillUserAccounts: async (usernames, { plan, trialEndsAt } = { plan: null, trialEndsAt: null }) => {
     if (usernames.length === 0) return 0
     const client = await getClient()
     const result = await client.query(
-      `INSERT INTO user_accounts (username, created_at, pre_existing)
-       SELECT name, NULL, TRUE FROM unnest($1::text[]) AS name
+      `INSERT INTO user_accounts (username, created_at, pre_existing, plan, trial_ends_at)
+       SELECT name, NULL, TRUE, $2, $3 FROM unnest($1::text[]) AS name
        ON CONFLICT (username) DO NOTHING`,
-      [usernames],
+      [usernames, plan, trialEndsAt],
     )
     return result.rowCount ?? 0
   },

@@ -119,6 +119,19 @@ export const recordNewAccount = async (
   await centralDb.ensureUserAccount(username, { createdAt: now, plan, preExisting: false, trialEndsAt })
 }
 
+/**
+ * Records a row for each account that has none, at startup. Accounts from before billing was
+ * enabled got their rows at an earlier start and were marked exempt when it was enabled, so while
+ * billing is enabled a missing row means the signup's own row failed: that account starts its
+ * trial now.
+ */
+export const backfillAccounts = async (
+  centralDb: Pick<CentralDb, 'backfillUserAccounts' | 'getServerSetting'>,
+  usernames: string[],
+  now: Date = new Date(),
+): Promise<number> =>
+  centralDb.backfillUserAccounts(usernames, newAccountPlan(await readBillingSettings(centralDb), now))
+
 const parseDate = (value: string | null | undefined): Date | null | undefined =>
   value === undefined ? undefined : value === null ? null : new Date(value)
 
@@ -202,7 +215,10 @@ export const createAccountPlans = ({
       centralDb.getUserAccount(username),
       centralDb.isAdmin(username),
     ])
-    const status = accountStatus({ account, billing, isAdmin, now: now() })
+    // Admins are never restricted, whatever plan row they carry, so they see themselves as exempt.
+    const status: AccountStatus = isAdmin
+      ? { ends_at: null, expiring_soon: false, plan: 'exempt', read_only_at: null, state: 'active' }
+      : accountStatus({ account, billing, isAdmin, now: now() })
     return {
       ...serializeStatus(status),
       billing_enabled: billing.enabled,

@@ -144,6 +144,10 @@ describe('isAllowedWhenReadOnly', () => {
     ['POST', '/webauthn/register/verify'],
     ['PATCH', '/webauthn/credentials/abc'],
     ['DELETE', '/webauthn/credentials/abc'],
+    ['POST', '/autoshare-rules/preview'],
+    ['POST', '/deduction-rules/preview'],
+    ['POST', '/feed/activities/0b6c1f0e-3f7e-4a43-9a51-3c1d7d1f2a10/preview'],
+    ['POST', '/feed/exercises/preview'],
   ])('allows %s %s', (method, path) => {
     expect(isAllowedWhenReadOnly(method, path)).toBe(true)
   })
@@ -157,6 +161,11 @@ describe('isAllowedWhenReadOnly', () => {
     ['POST', '/account'],
     ['POST', '/exporter'],
     ['DELETE', '/account/plan'],
+    ['POST', '/autoshare-rules'],
+    ['PUT', '/autoshare-rules/preview'],
+    ['POST', '/feed/activities/abc/share'],
+    ['POST', '/feed/activities/abc/def/preview'],
+    ['POST', '/feed/abc/preview'],
   ])('refuses %s %s', (method, path) => {
     expect(isAllowedWhenReadOnly(method, path)).toBe(false)
   })

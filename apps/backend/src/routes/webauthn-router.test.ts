@@ -298,6 +298,21 @@ describe('POST /webauthn/signup/options', () => {
   })
 })
 
+const verifiedSignup = (): Partial<WebAuthnService> => ({
+  verifySignup: vi.fn(async () => ({
+    credential: {
+      backedUp: false,
+      counter: 0,
+      credentialId: 'cred-x',
+      deviceType: 'singleDevice' as const,
+      publicKey: Buffer.from([1]),
+      transports: [],
+    },
+    userHandleUuid: '55555555-5555-5555-5555-555555555555',
+    verified: true,
+  })),
+})
+
 describe('POST /webauthn/signup/verify', () => {
   test('400 on invalid response_json', async () => {
     const app = buildApp({})
@@ -345,6 +360,46 @@ describe('POST /webauthn/signup/verify', () => {
     expect(res.status).toBe(409)
     expect(insertHandle).not.toHaveBeenCalled()
     expect(dbIndex.makeNewUserDb).not.toHaveBeenCalled()
+  })
+
+  test('409 without touching the existing user when the role exists at verify time', async () => {
+    vi.mocked(dbIndex.query).mockResolvedValueOnce({ rowCount: 1, rows: [{ usename: 'alice' }] } as never)
+    const insertHandle = vi.fn(async () => {})
+    const app = buildApp(verifiedSignup(), { centralDb: { insertWebAuthnUserHandle: insertHandle } })
+    const res = await supertest(app)
+      .post('/webauthn/signup/verify')
+      .send({ username: 'alice', response_json: '{}' })
+
+    expect(res.status).toBe(409)
+    expect(res.body).toMatchObject({ error: 'Username already exists', verified: true })
+    expect(insertHandle).not.toHaveBeenCalled()
+    expect(dbIndex.makeNewUserDb).not.toHaveBeenCalled()
+    expect(dbIndex.dropUserDb).not.toHaveBeenCalled()
+  })
+
+  test('409 and no drop when CREATE USER finds the role already there (42710)', async () => {
+    vi.mocked(dbIndex.makeNewUserDb).mockRejectedValueOnce(
+      Object.assign(new Error('role "erin" already exists'), { code: '42710' }),
+    )
+    const deleteHandle = vi.fn(async () => {})
+    const deleteUserAccount = vi.fn(async () => true)
+    const app = buildApp(verifiedSignup(), {
+      centralDb: {
+        deleteUserAccount,
+        deleteWebAuthnUserHandle: deleteHandle,
+        insertWebAuthnUserHandle: vi.fn(async () => {}),
+      },
+    })
+    const res = await supertest(app)
+      .post('/webauthn/signup/verify')
+      .send({ username: 'erin', response_json: '{}' })
+
+    expect(res.status).toBe(409)
+    expect(res.body).toMatchObject({ error: 'Username already exists', verified: true })
+    expect(dbIndex.dropUserDb).not.toHaveBeenCalled()
+    expect(deleteUserAccount).not.toHaveBeenCalled()
+    expect(deleteHandle).toHaveBeenCalledWith('erin')
+    expect(webauthnDb.insertWebAuthnCredential).not.toHaveBeenCalled()
   })
 
   test('200 happy path: token issued, no password ever leaves the server', async () => {
