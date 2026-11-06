@@ -2,6 +2,7 @@ import type { RequestHandler } from 'express'
 
 import {
   type AdminSettingsResponse,
+  type BaseResponse,
   type CreateInvitationBody,
   createInvitationBodySchema,
   type InvitationResponse,
@@ -23,6 +24,7 @@ export const createAdminRouter = (
   invitationAuth: InvitationAuth,
   webHost: string,
   gravlRedirectUri: string,
+  userExists: (username: string) => Promise<boolean>,
   ouraWebhookManager?: OuraWebhookManager | null,
 ): TypedRouter => {
   const router = typedRouter()
@@ -45,6 +47,7 @@ export const createAdminRouter = (
         sentryDsn,
         gravlClientId,
         gravlClientSecret,
+        blogUsername,
       ] = await Promise.all([
         centralDb.getSignupMode(),
         centralDb.getAdminCount(),
@@ -59,10 +62,12 @@ export const createAdminRouter = (
         centralDb.getServerSetting('sentry_dsn'),
         centralDb.getServerSetting('gravl_client_id'),
         centralDb.getServerSetting('gravl_client_secret'),
+        centralDb.getServerSetting('blog_username'),
       ])
       res.json({
         admin_count: adminCount,
         audit_log_retention_days: auditLogRetentionDays,
+        blog_username: blogUsername || null,
         gravl_client_id_set: !!gravlClientId,
         gravl_client_secret_set: !!gravlClientSecret,
         gravl_redirect_uri: gravlRedirectUri,
@@ -82,7 +87,7 @@ export const createAdminRouter = (
     },
   )
 
-  router.patch<Record<string, never>, AdminSettingsResponse, UpdateAdminSettingsBody>(
+  router.patch<Record<string, never>, AdminSettingsResponse | BaseResponse, UpdateAdminSettingsBody>(
     '/settings',
     authMiddleware,
     adminMiddleware,
@@ -91,6 +96,7 @@ export const createAdminRouter = (
     async (req, res) => {
       const {
         audit_log_retention_days,
+        blog_username,
         gravl_client_id,
         gravl_client_secret,
         lastfm_api_key,
@@ -102,6 +108,12 @@ export const createAdminRouter = (
         strava_client_id,
         strava_client_secret,
       } = req.body
+      if (blog_username != null && !(await userExists(blog_username))) {
+        return res.status(400).json({ error: `No user named "${blog_username}"`, success: false })
+      }
+      if (blog_username !== undefined) {
+        await centralDb.setServerSetting('blog_username', blog_username ?? '')
+      }
       if (signup_mode) {
         await centralDb.setSignupMode(signup_mode)
       }
@@ -156,6 +168,7 @@ export const createAdminRouter = (
         currentSentryDsn,
         currentGravlClientId,
         currentGravlClientSecret,
+        currentBlogUsername,
       ] = await Promise.all([
         centralDb.getSignupMode(),
         centralDb.getAdminCount(),
@@ -170,10 +183,12 @@ export const createAdminRouter = (
         centralDb.getServerSetting('sentry_dsn'),
         centralDb.getServerSetting('gravl_client_id'),
         centralDb.getServerSetting('gravl_client_secret'),
+        centralDb.getServerSetting('blog_username'),
       ])
       res.json({
         admin_count: adminCount,
         audit_log_retention_days: currentRetentionDays,
+        blog_username: currentBlogUsername || null,
         gravl_client_id_set: !!currentGravlClientId,
         gravl_client_secret_set: !!currentGravlClientSecret,
         gravl_redirect_uri: gravlRedirectUri,

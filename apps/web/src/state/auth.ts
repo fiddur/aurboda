@@ -1,3 +1,4 @@
+import type { ServerStatusResponse } from '@aurboda/api-spec'
 import type { AxiosError } from 'axios'
 
 import { signal } from '@preact/signals'
@@ -22,6 +23,8 @@ auth.subscribe((value) => localStorage.setItem('auth', JSON.stringify(value)))
 // Keep signupAllowed for backwards compatibility
 export const signupAllowed = signal<boolean | undefined>(undefined)
 export const signupMode = signal<SignupMode | undefined>(undefined)
+/** Username whose public articles are this instance's blog; null when the admin set none. */
+export const blogUsername = signal<string | null>(null)
 
 let statusFetchPromise: Promise<void> | null = null
 
@@ -31,11 +34,10 @@ export const fetchStatus = async () => {
 
   statusFetchPromise = (async () => {
     try {
-      const response = await axios.get<{ signup_allowed: boolean; signup_mode: SignupMode }>(
-        `${API_URL}/status`,
-      )
+      const response = await axios.get<ServerStatusResponse>(`${API_URL}/status`)
       signupAllowed.value = response.data.signup_allowed
       signupMode.value = response.data.signup_mode
+      blogUsername.value = response.data.blog_username ?? null
     } catch (error) {
       console.error('Status fetch error:', error)
       signupAllowed.value = false

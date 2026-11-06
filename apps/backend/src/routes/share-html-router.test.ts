@@ -11,8 +11,10 @@ const template = `<!doctype html>
 
 const buildApp = (overrides: Partial<ShareHtmlDeps> = {}) => {
   const deps: ShareHtmlDeps = {
+    apiBaseUrl: 'https://aurboda.net/api',
     loadTemplate: async () => template,
     profileExists: async () => false,
+    resolveArticle: async () => null,
     resolveChallenge: async () => null,
     resolveDashboard: async () => null,
     resolveExercise: async () => null,
@@ -214,5 +216,84 @@ describe('GET /u/:username', () => {
     expect(res.text).toContain('<title>Aurboda</title>')
     expect(res.text).not.toContain('ghost — Aurboda')
     expect(res.headers['cache-control']).toBe('public, max-age=60')
+  })
+})
+
+describe('GET /u/:username/articles', () => {
+  test('renders blog meta with Atom discovery when the profile exists', async () => {
+    const app = buildApp({ profileExists: async () => true, resolveDashboard: async () => null })
+    const res = await supertest(app).get('/u/fiddur/articles')
+    expect(res.text).toContain("<title>fiddur's blog — Aurboda</title>")
+    expect(res.text).toContain('<link rel="canonical" href="https://aurboda.net/u/fiddur/articles">')
+    expect(res.text).toContain(
+      'type="application/atom+xml" title="fiddur\'s blog — Aurboda" href="https://aurboda.net/api/public/fiddur/articles.atom">',
+    )
+    expect(res.headers['cache-control']).toBe('public, max-age=300')
+  })
+
+  test('is not resolved as a dashboard slug', async () => {
+    let looked = false
+    const app = buildApp({
+      profileExists: async () => true,
+      resolveDashboard: async () => {
+        looked = true
+        return null
+      },
+    })
+    await supertest(app).get('/u/fiddur/articles')
+    expect(looked).toBe(false)
+  })
+
+  test('renders default meta for an unknown profile', async () => {
+    const res = await supertest(buildApp()).get('/u/ghost/articles')
+    expect(res.text).toContain('<title>Aurboda</title>')
+    expect(res.text).not.toContain('application/atom+xml')
+    expect(res.headers['cache-control']).toBe('public, max-age=60')
+  })
+})
+
+describe('GET /u/:username/posts/:postId', () => {
+  const postId = '11111111-2222-4333-8444-555555555555'
+
+  test('renders article meta for a public article', async () => {
+    const app = buildApp({
+      resolveArticle: async () => ({
+        excerpt: 'Two weeks of sleep data.',
+        is_public: true,
+        title: 'Sleep & HRV',
+      }),
+    })
+    const res = await supertest(app).get(`/u/fiddur/posts/${postId}`)
+    expect(res.text).toContain('<title>Sleep &amp; HRV — Aurboda</title>')
+    expect(res.text).toContain('property="og:type" content="article"')
+    expect(res.text).toContain('property="og:description" content="Two weeks of sleep data."')
+    expect(res.text).toContain(`property="og:url" content="https://aurboda.net/u/fiddur/posts/${postId}"`)
+    expect(res.text).toContain('href="https://aurboda.net/api/public/fiddur/articles.atom"')
+    expect(res.headers['cache-control']).toBe('public, max-age=300')
+  })
+
+  test('does not describe an unlisted article', async () => {
+    const app = buildApp({
+      resolveArticle: async () => ({ excerpt: 'Secret words', is_public: false, title: 'Hidden title' }),
+    })
+    const res = await supertest(app).get(`/u/fiddur/posts/${postId}`)
+    expect(res.text).not.toContain('Hidden title')
+    expect(res.text).not.toContain('Secret words')
+    expect(res.text).toContain('<title>Aurboda</title>')
+  })
+
+  test('falls back to default meta for a non-article post or a malformed id without resolving it', async () => {
+    let calls = 0
+    const app = buildApp({
+      resolveArticle: async () => {
+        calls++
+        return null
+      },
+    })
+    const res = await supertest(app).get(`/u/fiddur/posts/${postId}`)
+    expect(res.text).toContain('<title>Aurboda</title>')
+    await supertest(app).get('/u/fiddur/posts/not-a-uuid')
+    await supertest(app).get(`/u/Invalid..Name/posts/${postId}`)
+    expect(calls).toBe(1)
   })
 })

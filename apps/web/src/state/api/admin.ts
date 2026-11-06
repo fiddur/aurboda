@@ -8,6 +8,8 @@ export type SignupMode = 'open' | 'invite_only' | 'closed'
 export interface AdminSettings {
   signup_mode: SignupMode
   admin_count: number
+  /** Username whose public articles are the instance blog; null when unset. */
+  blog_username: string | null
   gravl_client_id_set: boolean
   gravl_client_secret_set: boolean
   /** Absolute OAuth callback URL to register with Gravl, as the backend derives it. */
@@ -36,6 +38,7 @@ export const fetchAdminSettings = async (): Promise<AdminSettings> => {
 
   return {
     admin_count: response.data.admin_count,
+    blog_username: response.data.blog_username ?? null,
     gravl_client_id_set: response.data.gravl_client_id_set,
     gravl_client_secret_set: response.data.gravl_client_secret_set,
     gravl_redirect_uri: response.data.gravl_redirect_uri,
@@ -53,6 +56,7 @@ export const fetchAdminSettings = async (): Promise<AdminSettings> => {
 
 export const updateAdminSettings = async (params: {
   signup_mode?: SignupMode
+  blog_username?: string | null
   gravl_client_id?: string | null
   gravl_client_secret?: string | null
   lastfm_api_key?: string | null
@@ -74,6 +78,7 @@ export const updateAdminSettings = async (params: {
 
   return {
     admin_count: response.data.admin_count,
+    blog_username: response.data.blog_username ?? null,
     gravl_client_id_set: response.data.gravl_client_id_set,
     gravl_client_secret_set: response.data.gravl_client_secret_set,
     gravl_redirect_uri: response.data.gravl_redirect_uri,

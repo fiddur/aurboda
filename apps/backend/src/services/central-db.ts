@@ -31,6 +31,7 @@ export type SignupMode = 'open' | 'invite_only' | 'closed'
 
 export interface ServerSettings {
   audit_log_retention_days: number
+  blog_username: string
   gravl_client_id: string
   gravl_client_secret: string
   lastfm_api_key: string

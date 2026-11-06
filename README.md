@@ -242,6 +242,8 @@ Navigate to http://localhost:8080 and create your account through the web interf
 
 After creating your user, switch signup to `invite_only` or `closed` from the in-app admin settings (or set `ALLOW_SIGNUP=false` in docker-compose.yml as a legacy fallback) to disallow other signups.
 
+To give your instance a blog, write articles on a user's feed and name that user under **Instance Blog** in the admin settings: their public articles get a "Blog" link from the front page and footer, at `/u/<username>/articles` with an Atom feed. See [Blog view and Atom feed](docs/features/feed.md#blog-view-and-atom-feed).
+
 ### Environment Variables
 
 | Variable         | Description                                | Default  |
@@ -307,6 +309,10 @@ In Norse mythology, Aurboda (pronounced "owr-BO-tha", using a hard D in "aurboda
 This project embodies that spirit: gathering scattered health data into a unified foundation for understanding your wellbeing.
 
 ---
+
+## Community
+
+Questions, ideas and feedback go in [GitHub Discussions](https://github.com/fiddur/aurboda/discussions); bugs go in [Issues](https://github.com/fiddur/aurboda/issues).
 
 ## Contact
 

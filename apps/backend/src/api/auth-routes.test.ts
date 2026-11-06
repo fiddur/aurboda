@@ -25,7 +25,10 @@ const { registerAuthRoutes } = await import('./auth-routes.ts')
 
 const pgError = (code: string, message = 'pg failure') => Object.assign(new Error(message), { code })
 
-const buildApp = ({ signupMode = 'closed' }: { signupMode?: string } = {}) => {
+const buildApp = ({
+  blogUsername = null,
+  signupMode = 'closed',
+}: { blogUsername?: string | null; signupMode?: string } = {}) => {
   const httpd = express()
   httpd.use(express.json())
 
@@ -36,6 +39,7 @@ const buildApp = ({ signupMode = 'closed' }: { signupMode?: string } = {}) => {
     centralDb: {
       getAdminCount: vi.fn(async () => 1),
       getAuditLogRetentionDays: vi.fn(async () => 30),
+      getServerSetting: vi.fn(async (key: string) => (key === 'blog_username' ? blogUsername : null)),
       getSignupMode: vi.fn(async () => signupMode),
       isAdmin: vi.fn(async () => false),
     } as never,
@@ -62,6 +66,19 @@ beforeEach(() => {
   vi.mocked(db.query).mockResolvedValue({ rowCount: 1, rows: [{ usename: 'alice' }] } as never)
   vi.mocked(db.loginToUserDb).mockResolvedValue(undefined)
   vi.mocked(db.isInvalidPasswordError).mockReturnValue(false)
+})
+
+describe('GET /status', () => {
+  test('names the instance blog user when the admin set one', async () => {
+    const response = await supertest(buildApp({ blogUsername: 'fiddur' })).get('/status')
+    expect(response.status).toBe(200)
+    expect(response.body.blog_username).toBe('fiddur')
+  })
+
+  test('says null when no blog is configured', async () => {
+    const response = await supertest(buildApp()).get('/status')
+    expect(response.body.blog_username).toBeNull()
+  })
 })
 
 describe('POST /login', () => {

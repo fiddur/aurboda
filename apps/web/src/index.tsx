@@ -71,6 +71,7 @@ const RoutesPage = lazyPage(() => import('./pages/Routes/index.jsx'), 'Routes')
 const RouteDetailPage = lazyPage(() => import('./pages/Routes/RouteDetail.jsx'), 'RouteDetail')
 const Privacy = lazyPage(() => import('./pages/Privacy/index.jsx'), 'Privacy')
 const PublicResource = lazyPage(() => import('./pages/PublicDashboard/index.jsx'), 'PublicResource')
+const PublicArticles = lazyPage(() => import('./pages/PublicArticles/index.jsx'), 'PublicArticles')
 const PublicProfile = lazyPage(() => import('./pages/PublicProfile/index.jsx'), 'PublicProfile')
 const PublicPost = lazyPage(() => import('./pages/PublicPost/index.jsx'), 'PublicPost')
 const AddReport = lazyPage(() => import('./pages/Reports/AddReport.jsx'), 'AddReport')
@@ -106,6 +107,7 @@ function AppShell() {
         <main>
           <Router>
             <Route path="/u/:username/posts/:postId" component={PublicPost} />
+            <Route path="/u/:username/articles" component={PublicArticles} />
             <Route path="/u/:username/:slug" component={PublicResource} />
             <Route path="/u/:username" component={PublicProfile} />
             <Route path="/shared-dashboards" component={SharedDashboards} />

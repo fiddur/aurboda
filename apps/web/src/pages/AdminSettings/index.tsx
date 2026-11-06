@@ -6,8 +6,14 @@ import type { InvitationResult, SignupMode } from '../../state/api'
 
 import { ImportPanel } from '../../components/ImportPanel'
 import { type SaveStatus, SaveStatusIndicator } from '../../components/SaveStatusIndicator'
-import { fetchAdminSettings, generateInvitation, updateAdminSettings } from '../../state/api'
-import { auth } from '../../state/auth'
+import {
+  apiErrorMessage,
+  blogPath,
+  fetchAdminSettings,
+  generateInvitation,
+  updateAdminSettings,
+} from '../../state/api'
+import { auth, blogUsername } from '../../state/auth'
 import './style.css'
 
 const signupModeDescriptions: Record<SignupMode, string> = {
@@ -498,6 +504,81 @@ function SentrySection() {
   )
 }
 
+function BlogSection() {
+  const queryClient = useQueryClient()
+  const { data: settings } = useQuery({
+    queryFn: fetchAdminSettings,
+    queryKey: ['adminSettings'],
+  })
+
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>({ status: 'idle' })
+  const [username, setUsername] = useState('')
+
+  const configured = settings?.blog_username ?? null
+
+  const saveBlogUsername = useCallback(
+    async (value: string | null) => {
+      setSaveStatus({ status: 'saving' })
+      try {
+        const result = await updateAdminSettings({ blog_username: value })
+        queryClient.setQueryData(['adminSettings'], result)
+        blogUsername.value = result.blog_username
+        setUsername('')
+        setSaveStatus({ status: 'saved', time: new Date() })
+      } catch (err) {
+        setSaveStatus({ error: apiErrorMessage(err, getErrorMessage(err)), status: 'error' })
+      }
+    },
+    [queryClient],
+  )
+
+  const trimmed = username.trim()
+
+  return (
+    <section class="settings-section">
+      <h2>Instance Blog</h2>
+      <div class="form-field">
+        <div class="section-header-row">
+          <label for="blog-username">Blog user</label>
+          <SaveStatusIndicator state={saveStatus} />
+        </div>
+        {configured && (
+          <p class="connected-status">
+            <a href={blogPath(configured)}>@{configured}</a>
+          </p>
+        )}
+        <div class="api-key-input-row">
+          <input
+            id="blog-username"
+            type="text"
+            value={username}
+            onInput={(e) => setUsername((e.target as HTMLInputElement).value)}
+            placeholder={configured ? 'Enter another username to change' : 'username'}
+            autocapitalize="off"
+            spellcheck={false}
+          />
+          {configured && (
+            <button type="button" class="clear-button" onClick={() => saveBlogUsername(null)}>
+              Clear
+            </button>
+          )}
+        </div>
+        <button
+          type="button"
+          class="generate-button"
+          onClick={() => trimmed && saveBlogUsername(trimmed)}
+          disabled={!trimmed}
+        >
+          Save
+        </button>
+        <p class="field-description">
+          Public articles by this user are linked as the instance blog from the front page and footer.
+        </p>
+      </div>
+    </section>
+  )
+}
+
 function InvitationsSection() {
   const [invitation, setInvitation] = useState<InvitationResult | null>(null)
   const [invitationLoading, setInvitationLoading] = useState(false)
@@ -639,6 +720,8 @@ export function AdminSettings() {
       <IntegrationsSection />
 
       <SentrySection />
+
+      <BlogSection />
 
       <section class="settings-section">
         <h2>Shared Food Library</h2>

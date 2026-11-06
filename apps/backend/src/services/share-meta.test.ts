@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'vitest'
 
 import {
+  buildArticleShareMeta,
+  buildBlogShareMeta,
   buildChallengeShareMeta,
   buildDashboardShareMeta,
   buildExerciseShareMeta,
@@ -218,6 +220,51 @@ describe('builders', () => {
     expect(m.title).toBe('Aurboda')
     expect(m.jsonLd).toBeUndefined()
     expect(m.image).toBe('https://aurboda.net/og-default.png')
+  })
+})
+
+describe('blog and article meta', () => {
+  test('blog meta links the Atom feed and uses the profile image', () => {
+    const blog = buildBlogShareMeta({
+      feedUrl: 'https://x.test/api/public/fiddur/articles.atom',
+      profileUrl: 'https://x.test/u/fiddur',
+      url: 'https://x.test/u/fiddur/articles',
+      username: 'fiddur',
+    })
+    expect(blog.title).toBe("fiddur's blog — Aurboda")
+    expect(blog.image).toBe('https://x.test/u/fiddur/opengraph-image.png')
+    expect(blog.jsonLd?.['@type']).toBe('Blog')
+    expect(renderShareMetaTags(blog)).toContain(
+      '<link rel="alternate" type="application/atom+xml" title="fiddur\'s blog — Aurboda" href="https://x.test/api/public/fiddur/articles.atom">',
+    )
+  })
+
+  test('article meta uses the title and clamps the excerpt', () => {
+    const article = buildArticleShareMeta({
+      excerpt: 'word '.repeat(80),
+      feedUrl: 'https://x.test/api/public/fiddur/articles.atom',
+      profileUrl: 'https://x.test/u/fiddur',
+      title: 'Sleep vs HRV',
+      url: 'https://x.test/u/fiddur/posts/abc',
+      username: 'fiddur',
+    })
+    expect(article.title).toBe('Sleep vs HRV — Aurboda')
+    expect(article.type).toBe('article')
+    expect(article.description.length).toBeLessThanOrEqual(201)
+    expect(article.description.endsWith('…')).toBe(true)
+    expect(article.jsonLd).toMatchObject({ '@type': 'Article', headline: 'Sleep vs HRV' })
+  })
+
+  test('article meta falls back to a generic line when there is no prose', () => {
+    const article = buildArticleShareMeta({
+      excerpt: '  ',
+      feedUrl: 'https://x.test/api/public/fiddur/articles.atom',
+      profileUrl: 'https://x.test/u/fiddur',
+      title: 'Charts only',
+      url: 'https://x.test/u/fiddur/posts/abc',
+      username: 'fiddur',
+    })
+    expect(article.description).toBe('An article by fiddur on Aurboda.')
   })
 })
 
