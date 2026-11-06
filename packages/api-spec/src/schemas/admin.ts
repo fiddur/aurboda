@@ -12,6 +12,11 @@ export type SignupMode = z.infer<typeof signupModeSchema>
 
 export const serverStatusResponseSchema = baseResponseSchema
   .extend({
+    blog_username: z
+      .string()
+      .nullable()
+      .optional()
+      .meta({ description: "Username whose public articles are this instance's blog (null when unset)" }),
     federation: z
       .boolean()
       .optional()
@@ -93,6 +98,10 @@ export const adminSettingsResponseSchema = baseResponseSchema
       .number()
       .int()
       .meta({ description: 'Number of days to keep audit log entries (default: 3)' }),
+    blog_username: z
+      .string()
+      .nullable()
+      .meta({ description: "Username whose public articles are this instance's blog (null when unset)" }),
     gravl_client_id_set: z.boolean().meta({ description: 'Whether a Gravl OAuth client ID is configured' }),
     gravl_client_secret_set: z
       .boolean()
@@ -130,6 +139,10 @@ export const updateAdminSettingsBodySchema = z
       .max(365)
       .optional()
       .meta({ description: 'Number of days to keep audit log entries (1-365, default: 3)' }),
+    blog_username: z.string().min(1).nullable().optional().meta({
+      description:
+        "Username whose public articles are this instance's blog, linked from the front page and footer (set to null to clear)",
+    }),
     gravl_client_id: z
       .string()
       .nullable()

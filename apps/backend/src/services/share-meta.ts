@@ -27,11 +27,13 @@ export interface ShareMeta {
   image: string
   imageAlt: string
   /** Open Graph object type. */
-  type: 'website' | 'profile'
+  type: 'website' | 'profile' | 'article'
   /** Optional schema.org JSON-LD object embedded as a <script> tag. */
   jsonLd?: Record<string, unknown>
   /** Optional oEmbed discovery URL (adds a `<link rel="alternate">`). */
   oembedUrl?: string
+  /** Optional Atom feed URL (adds a feed-discovery `<link rel="alternate">`). */
+  feedUrl?: string
 }
 
 /** oEmbed discovery URL for a resource (consumers fetch this for a rich unfurl). */
@@ -82,6 +84,11 @@ export const renderShareMetaTags = (meta: ShareMeta): string => {
   ]
   if (meta.oembedUrl) {
     tags.push(`<link rel="alternate" type="application/json+oembed" href="${escapeAttr(meta.oembedUrl)}">`)
+  }
+  if (meta.feedUrl) {
+    tags.push(
+      `<link rel="alternate" type="application/atom+xml" title="${escapeAttr(meta.title)}" href="${escapeAttr(meta.feedUrl)}">`,
+    )
   }
   if (meta.jsonLd) tags.push(jsonLdScript(meta.jsonLd))
   return tags.join('\n    ')
@@ -237,6 +244,64 @@ export const buildProfileShareMeta = ({ username, url }: ProfileMetaInput): Shar
   },
   title: `${username} — ${SITE_NAME}`,
   type: 'profile',
+  url,
+})
+
+interface BlogMetaInput {
+  username: string
+  url: string
+  profileUrl: string
+  feedUrl: string
+}
+
+export const buildBlogShareMeta = ({ feedUrl, profileUrl, url, username }: BlogMetaInput): ShareMeta => ({
+  description: clampDescription(`Articles by ${username} on ${SITE_NAME}.`),
+  feedUrl,
+  image: resourceOgImage(profileUrl),
+  imageAlt: `${SITE_NAME} blog: ${username}`,
+  jsonLd: {
+    '@context': 'https://schema.org',
+    '@type': 'Blog',
+    author: { '@type': 'Person', name: username },
+    name: `${username}'s blog`,
+    url,
+  },
+  title: `${username}'s blog — ${SITE_NAME}`,
+  type: 'website',
+  url,
+})
+
+interface ArticleMetaInput {
+  username: string
+  title: string
+  /** Plain-text excerpt of the article; empty falls back to a generic line. */
+  excerpt: string
+  url: string
+  profileUrl: string
+  feedUrl: string
+}
+
+export const buildArticleShareMeta = ({
+  excerpt,
+  feedUrl,
+  profileUrl,
+  title,
+  url,
+  username,
+}: ArticleMetaInput): ShareMeta => ({
+  description: clampDescription(excerpt.trim() ? excerpt : `An article by ${username} on ${SITE_NAME}.`),
+  feedUrl,
+  image: resourceOgImage(profileUrl),
+  imageAlt: `${SITE_NAME} article: ${title}`,
+  jsonLd: {
+    '@context': 'https://schema.org',
+    '@type': 'Article',
+    author: { '@type': 'Person', name: username },
+    headline: title,
+    url,
+  },
+  title: `${title} — ${SITE_NAME}`,
+  type: 'article',
   url,
 })
 

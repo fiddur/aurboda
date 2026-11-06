@@ -18,6 +18,7 @@ import { isValidUsername } from '../api/auth-routes.ts'
 
 vi.mock('../db/index.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof DbModule>()),
+  countPublicFeedPosts: vi.fn(),
   getActivityTypeDefinition: vi.fn(),
   getChallengeBySlug: vi.fn(),
   getChallengeMemberByIdentity: vi.fn(),
@@ -287,9 +288,21 @@ describe('shared exercises on the public surface', () => {
     vi.mocked(db.listPublicSharedDashboards).mockResolvedValue([])
     vi.mocked(db.listPublicChallenges).mockResolvedValue([])
     vi.mocked(db.listPublicSharedExercises).mockResolvedValue([exercise])
+    vi.mocked(db.countPublicFeedPosts).mockResolvedValue(0)
     const res = await app().get('/public/alice/dashboards')
     expect(res.body.exercises).toEqual([
       { name: 'Bench', share_url: 'https://aurboda.net/u/alice/ex1', slug: 'ex1' },
     ])
+    expect(res.body.has_articles).toBe(false)
+  })
+
+  test('the profile says whether the user has public articles, for the Blog link', async () => {
+    vi.mocked(db.listPublicSharedDashboards).mockResolvedValue([])
+    vi.mocked(db.listPublicChallenges).mockResolvedValue([])
+    vi.mocked(db.listPublicSharedExercises).mockResolvedValue([])
+    vi.mocked(db.countPublicFeedPosts).mockResolvedValue(3)
+    const res = await app().get('/public/alice/dashboards')
+    expect(res.body.has_articles).toBe(true)
+    expect(db.countPublicFeedPosts).toHaveBeenCalledWith('alice', 'article')
   })
 })

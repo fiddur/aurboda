@@ -2,7 +2,7 @@ import type { ArticleContent } from '@aurboda/api-spec'
 
 import { describe, expect, test } from 'vitest'
 
-import { articleImageAttachments, renderArticleContentHtml } from './article-object.ts'
+import { articleImageAttachments, proseToPlainText, renderArticleContentHtml } from './article-object.ts'
 
 const WINDOW = { end: '2026-07-02T00:00:00Z', start: '2026-07-01T00:00:00Z' }
 
@@ -146,5 +146,15 @@ describe('articleImageAttachments', () => {
       withBlocks([{ markdown: 'Just words', type: 'prose' }]),
     )
     expect(atts).toEqual([])
+  })
+})
+
+describe('proseToPlainText', () => {
+  test('drops markdown formatting, links and images, keeping the words on one line', () => {
+    expect(
+      proseToPlainText(
+        '# Sleep vs HRV\n\nA **close** look at [my data](https://x.test) & <script>alert(1)</script> "notes".\n\n![chart](https://x.test/c.png)',
+      ),
+    ).toBe('Sleep vs HRV A close look at my data & "notes".')
   })
 })

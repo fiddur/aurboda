@@ -21,6 +21,7 @@ import {
 
 import { isValidUsername } from '../api/auth-routes.ts'
 import {
+  countPublicFeedPosts,
   getActivityTypeDefinition,
   getChallengeBySlug,
   getChallengeMemberByIdentity,
@@ -78,10 +79,11 @@ export const createPublicSharesRouter = (webHost: string): TypedRouter => {
         return res.status(404).json({ error: 'Profile not found', success: false })
       }
       try {
-        const [dashboards, challenges, exercises] = await Promise.all([
+        const [dashboards, challenges, exercises, articleCount] = await Promise.all([
           listPublicSharedDashboards(username),
           listPublicChallenges(username),
           listPublicSharedExercises(username),
+          countPublicFeedPosts(username, 'article'),
         ])
         const listItem = (r: { name: string; slug: string }) => ({
           name: r.name,
@@ -93,6 +95,7 @@ export const createPublicSharesRouter = (webHost: string): TypedRouter => {
           challenges: challenges.map((c) => toPublicChallengeListItem(c, webHost, username)),
           dashboards: dashboards.map(listItem),
           exercises: exercises.map(listItem),
+          has_articles: articleCount > 0,
           profile_url: buildProfileUrl(webHost, username),
           success: true,
           username,

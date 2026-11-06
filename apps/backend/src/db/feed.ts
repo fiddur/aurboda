@@ -328,6 +328,8 @@ export interface PublicFeedPageOpts {
    * comment out of its thread reads as noise.
    */
   includeReplies?: boolean
+  /** Only posts of this kind — `article` for a profile's blog view. */
+  kind?: FeedPostKind
 }
 
 /**
@@ -369,18 +371,21 @@ export const listPublicFeedPostsKeyset = async (
     `SELECT ${FEED_POST_COLUMNS}, created_at::text AS cursor_ts FROM feed_posts
       WHERE visibility IN ('public', 'unlisted')
         AND ($4::boolean OR kind <> 'reply')
+        AND ($5::text IS NULL OR kind = $5)
         AND ($1::timestamptz IS NULL OR (created_at, id) < ($1::timestamptz, $2::uuid))
       ORDER BY created_at DESC, id DESC
       LIMIT $3`,
-    [before?.created_at ?? null, before?.id ?? null, limit, opts.includeReplies ?? true],
+    [before?.created_at ?? null, before?.id ?? null, limit, opts.includeReplies ?? true, opts.kind ?? null],
   )
   return result.rows.map(mapFeedPostPageRow)
 }
 
-export const countPublicFeedPosts = async (user: string): Promise<number> => {
+export const countPublicFeedPosts = async (user: string, kind?: FeedPostKind): Promise<number> => {
   const result = await query<{ count: number }>(
     user,
-    `SELECT count(*)::int AS count FROM feed_posts WHERE visibility IN ('public', 'unlisted')`,
+    `SELECT count(*)::int AS count FROM feed_posts
+      WHERE visibility IN ('public', 'unlisted') AND ($1::text IS NULL OR kind = $1)`,
+    [kind ?? null],
   )
   return Number(result.rows[0]?.count ?? 0)
 }

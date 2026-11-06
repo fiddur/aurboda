@@ -529,6 +529,9 @@ export type FeedPostsQuery = z.infer<typeof feedPostsQuerySchema>
 export const publicPostsQuerySchema = z
   .object({
     cursor: z.string().optional().meta({ description: "Opaque cursor from a previous page's `next_cursor`" }),
+    kind: feedPostKindSchema
+      .optional()
+      .meta({ description: 'Only posts of this kind, e.g. `article` for a blog view' }),
   })
   .meta({ id: 'PublicPostsQuery' })
 

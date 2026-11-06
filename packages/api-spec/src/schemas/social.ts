@@ -322,6 +322,10 @@ export const publicProfileResponseSchema = baseResponseSchema
       .array(publicExerciseListItemSchema)
       .optional()
       .meta({ description: 'Public shared exercises' }),
+    has_articles: z
+      .boolean()
+      .optional()
+      .meta({ description: 'Whether the user has any public articles (drives the Blog link)' }),
     profile_url: z.string().optional().meta({ description: 'Absolute URL of the public profile' }),
     username: z.string().optional().meta({ description: 'The profile username' }),
   })
