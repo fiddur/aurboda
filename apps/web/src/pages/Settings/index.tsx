@@ -4,6 +4,7 @@ import { useCallback, useState } from 'preact/hooks'
 import type { BiologicalSex, HrZoneThresholds, UpdateSettingsInput } from '../../state/api'
 
 import { AvatarSettings } from '../../components/AvatarSettings'
+import { DataExportSettings } from '../../components/DataExportSettings'
 import { MealPreferencesSettings } from '../../components/MealPreferencesSettings'
 import { PasskeySettings } from '../../components/PasskeySettings'
 import { type SaveStatus, SaveStatusIndicator } from '../../components/SaveStatusIndicator'
@@ -303,6 +304,8 @@ export function Settings() {
           <a href="/data-sources">Data Sources</a>.
         </p>
       </section>
+
+      <DataExportSettings />
 
       <section class="settings-section">
         <h2>Audit Log</h2>

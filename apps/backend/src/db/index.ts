@@ -54,6 +54,7 @@ export {
   migrateSchemaIfNeeded,
   query,
   schemaInitialized,
+  userDbName,
   withUserTransaction,
 } from './connection.ts'
 

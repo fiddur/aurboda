@@ -1,4 +1,4 @@
-import type { UpdateSettingsInput, UserSettingsResponse } from '@aurboda/api-spec'
+import type { ExportDumpLinkResponse, UpdateSettingsInput, UserSettingsResponse } from '@aurboda/api-spec'
 
 import axios from 'axios'
 
@@ -29,6 +29,15 @@ export const updateUserSettings = async (params: UpdateSettingsInput): Promise<U
     headers: { Authorization: `Bearer ${token}` },
   })
 
+  return response.data
+}
+
+/** A short-lived URL that downloads the user's whole database as a gzipped SQL dump. */
+export const requestExportDumpLink = async (): Promise<ExportDumpLinkResponse> => {
+  const { token } = auth.value
+  const response = await axios.post<ExportDumpLinkResponse>(`${API_URL}/export/dump-link`, undefined, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
   return response.data
 }
 

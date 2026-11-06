@@ -248,6 +248,14 @@ docker run --rm \
   alpine tar xzf /backup/postgres-backup.tar.gz -C /
 ```
 
+### Per-user export
+
+Each user can download their own database as a gzipped SQL dump from Settings and restore it into
+another installation; see [Exporting all your data](data-export.md). The image runs the PostgreSQL 16
+`pg_dump` for it, which matches the `postgis/postgis:16` server in `docker-compose.yml` and works against
+older servers too. Against a newer server (17+) the export answers `503` until the image's client is
+raised to match.
+
 ## Database connections and tuning
 
 Each user has their own database, so the backend keeps one pool per user:
