@@ -13,6 +13,7 @@ import {
 } from './common.ts'
 import { commentSchema, noteSchema } from './notes.ts'
 import { hrZoneSecsSchema } from './settings.ts'
+import { ianaTimezoneSchema } from './timezone.ts'
 
 export const heartRateStatsSchema = z
   .object({
@@ -305,6 +306,12 @@ export type DailySummaryResponse = z.infer<typeof dailySummaryResponseSchema>
 export const dailySummaryQuerySchema = z
   .object({
     date: dateOnlySchema.meta({ description: 'Date in YYYY-MM-DD format' }),
+    tz: ianaTimezoneSchema.optional().meta({
+      description:
+        'IANA timezone (e.g. "Europe/Stockholm") whose local day `date` names. Defaults to the ' +
+        "user's stored device timezone, else UTC.",
+      example: 'Europe/Stockholm',
+    }),
   })
   .meta({ id: 'DailySummaryQuery' })
 

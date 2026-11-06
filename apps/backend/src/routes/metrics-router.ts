@@ -61,6 +61,7 @@ import {
   type SyncProvider,
 } from '../services/queries/index.ts'
 import { getLatestMetric } from '../services/reports.ts'
+import { getUserTimezone } from '../services/settings.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
@@ -301,8 +302,9 @@ export const createMetricsRouter = (
     async (req, res) => {
       const { date } = req.query
       const user = req.user!
+      const tz = req.query.tz ?? (await getUserTimezone(user))
 
-      const summary = await getDailySummary(user, new Date(date), syncProvider)
+      const summary = await getDailySummary(user, new Date(date), syncProvider, tz)
       res.json({ data: summary, success: true })
     },
   )
