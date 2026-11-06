@@ -1,5 +1,6 @@
 import { QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
+import axios from 'axios'
 import { render } from 'preact'
 import { LocationProvider, Route, Router, useLocation } from 'preact-iso'
 
@@ -180,5 +181,7 @@ export function App() {
     </QueryClientProvider>
   )
 }
+
+axios.defaults.headers.common['X-Aurboda-Client'] = 'web'
 
 render(<App />, document.getElementById('app')!)

@@ -60,7 +60,12 @@ const buildApp = (
     createWebAuthnRouter({
       auth: { createToken: vi.fn(() => 'fake-token'), ...options.auth } as Auth,
       authMiddleware,
-      centralDb: { isAdmin: vi.fn(async () => false), ...options.centralDb } as unknown as CentralDb,
+      centralDb: {
+        deleteUserAccount: vi.fn(async () => true),
+        ensureUserAccount: vi.fn(async () => true),
+        isAdmin: vi.fn(async () => false),
+        ...options.centralDb,
+      } as unknown as CentralDb,
       invitationAuth: {
         validateInvitationToken: vi.fn(() => ({ valid: true })),
       } as unknown as InvitationAuth,
@@ -312,10 +317,12 @@ describe('POST /webauthn/signup/verify', () => {
     }
     const insertHandle = vi.fn(async () => {})
     const addAdmin = vi.fn(async () => {})
+    const ensureUserAccount = vi.fn(async () => true)
     const app = buildApp(webAuthn, {
       auth: { createToken: vi.fn(() => 'fresh-token') },
       centralDb: {
         addAdmin,
+        ensureUserAccount,
         getAdminCount: vi.fn(async () => 0),
         insertWebAuthnUserHandle: insertHandle,
         isAdmin: vi.fn(async () => false),
@@ -343,6 +350,10 @@ describe('POST /webauthn/signup/verify', () => {
     // The wire payload must not include the random password we generated.
     expect(JSON.stringify(res.body)).not.toMatch(/password/i)
     expect(addAdmin).toHaveBeenCalledWith('alice')
+    expect(ensureUserAccount).toHaveBeenCalledWith('alice', {
+      createdAt: expect.any(Date),
+      preExisting: false,
+    })
   })
 
   test('rolls back when credential persistence fails', async () => {
@@ -364,10 +375,12 @@ describe('POST /webauthn/signup/verify', () => {
 
     const insertHandle = vi.fn(async () => {})
     const deleteHandle = vi.fn(async () => {})
+    const deleteUserAccount = vi.fn(async () => true)
     const app = buildApp(webAuthn, {
       centralDb: {
         getAdminCount: vi.fn(async () => 1),
         insertWebAuthnUserHandle: insertHandle,
+        deleteUserAccount,
         deleteWebAuthnUserHandle: deleteHandle,
         isAdmin: vi.fn(async () => false),
       },
@@ -379,6 +392,7 @@ describe('POST /webauthn/signup/verify', () => {
     expect(res.status).toBe(500)
     expect(dbIndex.dropUserDb).toHaveBeenCalledWith(expect.anything(), 'bob')
     expect(deleteHandle).toHaveBeenCalledWith('bob')
+    expect(deleteUserAccount).toHaveBeenCalledWith('bob')
   })
 
   test('rolls back when makeNewUserDb fails (drops potentially partial role + DB)', async () => {

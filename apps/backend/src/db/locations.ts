@@ -10,18 +10,20 @@ import type {
   Place,
 } from './types.ts'
 
+import { recordIngestBySource, recordUsage } from '../services/usage-recorder.ts'
 import { query } from './connection.ts'
 import { buildDynamicUpdate, type UpdateEntry } from './dynamic-update.ts'
 import { mapDetectedLocationRow, mapNamedLocationRow } from './row-mappers.ts'
 
 export const insertLocation = async (user: string, location: Location) => {
-  await query(
+  const source = location.source || 'owntracks'
+  const result = await query(
     user,
     `INSERT INTO locations (source, time, location, accuracy, altitude, velocity, regions)
      VALUES ($1, $2, ST_MakePoint($3, $4)::geography, $5, $6, $7, $8)
      ON CONFLICT (source, time) DO NOTHING`,
     [
-      location.source || 'owntracks',
+      source,
       location.time,
       location.lon,
       location.lat,
@@ -31,6 +33,7 @@ export const insertLocation = async (user: string, location: Location) => {
       location.regions || [],
     ],
   )
+  if ((result.rowCount ?? 0) > 0) recordUsage(user, 'ingest', source)
 }
 
 /** Batch-insert multiple locations in a single query. */
@@ -54,7 +57,7 @@ export const insertLocations = async (user: string, locations: Location[]): Prom
   ])
 
   // pg-format %L quotes all values as text; cast to correct types for PostGIS and numeric columns
-  await query(
+  const result = await query<{ source: string }>(
     user,
     format(
       `INSERT INTO locations (source, time, location, accuracy, altitude, velocity, regions)
@@ -63,10 +66,12 @@ export const insertLocations = async (user: string, locations: Location[]): Prom
               v.accuracy::double precision, v.altitude::double precision,
               v.velocity::double precision, v.regions::text[]
        FROM (VALUES %L) AS v(source, time, lon, lat, accuracy, altitude, velocity, regions)
-       ON CONFLICT (source, time) DO NOTHING`,
+       ON CONFLICT (source, time) DO NOTHING
+       RETURNING source`,
       values,
     ),
   )
+  recordIngestBySource(user, result.rows, (row) => row.source)
 }
 
 /**

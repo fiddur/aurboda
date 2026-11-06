@@ -11,6 +11,7 @@ import { createAdminMiddleware, createAuditLogMiddleware, createAuthMiddleware }
 import { registerOAuthRoutes } from './api/oauth-routes.ts'
 import { mountRestRouters } from './api/rest-routes.ts'
 import { mountSyncRouter } from './api/sync-setup.ts'
+import { createUsageMiddleware } from './api/usage-middleware.ts'
 import { setupOuraWebhook, setupStravaWebhook } from './api/webhooks-setup.ts'
 import { createAuth } from './auth.ts'
 import { closeAllUserPools } from './db/connection.ts'
@@ -160,6 +161,12 @@ import {
   type TrackAnalyseQueue,
   type TrackBackfillQueue,
 } from './services/track-queues.ts'
+import {
+  createUsageRecorder,
+  installUsageRecorder,
+  recordUsage,
+  startUsageFlushing,
+} from './services/usage-recorder.ts'
 import { createWebAuthnService } from './services/webauthn.ts'
 
 declare global {
@@ -186,6 +193,10 @@ const main = async () => {
   await initializeCentralDb()
   console.info(`⏱️ Central DB ready ${process.uptime().toFixed(1)} s after process start`)
   const centralDb = getCentralDb()
+
+  const usageRecorder = createUsageRecorder({ flush: (rows) => centralDb.upsertUsageRows(rows) })
+  installUsageRecorder(usageRecorder)
+  const stopUsageFlushing = startUsageFlushing(usageRecorder)
 
   // Initialize Sentry as early as possible after centralDb is available.
   // DSN is read from server_settings (configured via Admin Settings).
@@ -437,6 +448,16 @@ const main = async () => {
     )
     if (trackBackfillQueue) {
       for (const user of await listUserNames(userDb)) await trackBackfillQueue.enqueue(user, 120)
+    }
+  })
+
+  // Accounts from before signup dates were tracked get a row without one.
+  postListenCallbacks.push(async () => {
+    try {
+      const added = await centralDb.backfillUserAccounts(await listUserNames(userDb))
+      if (added > 0) console.info(`👤 Recorded ${added} pre-existing user account(s)`)
+    } catch (error) {
+      console.error('⚠️ User account backfill failed:', error)
     }
   })
 
@@ -732,6 +753,7 @@ const main = async () => {
         prune: pruneAuditLog,
         pruneDeductionRuleRuns,
         pruneSyncedOutboundSync,
+        pruneUsageBefore: (day) => centralDb.pruneUsageBefore(day),
       })
     } catch (error) {
       console.error('Failed to initialize audit log prune:', error)
@@ -839,6 +861,7 @@ const main = async () => {
   httpd.use(json({ limit: '10mb' }))
 
   httpd.use(createAuditLogMiddleware(auth))
+  httpd.use(createUsageMiddleware(recordUsage))
 
   const authMiddleware = createAuthMiddleware(auth, unauthorized)
   const adminMiddleware = createAdminMiddleware(centralDb, unauthorized, forbidden)
@@ -1004,6 +1027,7 @@ const main = async () => {
   const onSignal = createShutdownHandler({
     closeHttp: () => closeHttpServer(server),
     closePools: async () => {
+      await usageRecorder.flushNow()
       await Promise.all([closeAllUserPools(), closeCentralDb(), userDb.end()])
     },
     exit: (code) => process.exit(code),
@@ -1015,6 +1039,7 @@ const main = async () => {
       await boss?.stop({ graceful: true, timeout: JOB_STOP_TIMEOUT_MS })
     },
     stopTimers: () => {
+      stopUsageFlushing()
       detectionTrigger.clearPendingDetections()
       ouraWebhookManager?.shutdown()
     },
