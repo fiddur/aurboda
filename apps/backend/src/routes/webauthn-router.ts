@@ -39,6 +39,7 @@ import type { AnyMiddleware, TypedRouter } from '../typed-router.ts'
 import { RESERVED_USERNAMES } from '../api/auth-routes.ts'
 import { dropUserDb, makeNewUserDb, query } from '../db/index.ts'
 import { insertWebAuthnCredential } from '../db/webauthn.ts'
+import { recordNewAccount } from '../services/account-plan.ts'
 import { typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
 
@@ -194,9 +195,9 @@ export const createWebAuthnRouter = ({
         res.status(500).json({ error: 'Signup failed', success: false, verified: true })
         return
       }
-      await centralDb
-        .ensureUserAccount(username, { createdAt: new Date(), preExisting: false })
-        .catch((e) => console.error(`⚠️ Failed to record account row for ${username}:`, e))
+      await recordNewAccount(centralDb, username).catch((e) =>
+        console.error(`⚠️ Failed to record account row for ${username}:`, e),
+      )
 
       // Step 3: persist the credential in the user's DB. If this fails we
       // would orphan an account that has no way to log in — roll back.

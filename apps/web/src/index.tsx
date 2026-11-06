@@ -6,11 +6,12 @@ import { LocationProvider, Route, Router, useLocation } from 'preact-iso'
 
 import { Footer } from './components/Footer.jsx'
 import { Header } from './components/Header.jsx'
+import { PlanBanner } from './components/PlanBanner.jsx'
 import { Sidebar } from './components/Sidebar.jsx'
 import { isEmbedded } from './embed.js'
 import { lazyPage } from './lazyPage.js'
 import { NotFound } from './pages/_404.jsx'
-import { shouldShowNav } from './shell.js'
+import { shouldShowNav, shouldShowPlanBanner } from './shell.js'
 import { auth } from './state/auth.js'
 import { queryClient } from './state/queryClient.js'
 import './style.css'
@@ -100,12 +101,15 @@ function AppShell() {
   // all web chrome (header, sidebar, footer) and just render page content.
   const embedded = isEmbedded()
   const showNav = !embedded && shouldShowNav(path, Boolean(auth.value.token))
+  // Shown in the native app's WebView too: Android users would otherwise only see the 402s.
+  const showPlanBanner = shouldShowPlanBanner(path, Boolean(auth.value.token))
 
   return (
     <>
       {showNav && <Header />}
       {showNav && <Sidebar />}
       <div class="app-content">
+        {showPlanBanner && <PlanBanner />}
         <main>
           <Router>
             <Route path="/u/:username/posts/:postId" component={PublicPost} />
@@ -187,5 +191,13 @@ export function App() {
 }
 
 axios.defaults.headers.common['X-Aurboda-Client'] = 'web'
+
+// A 402 means the account just turned read-only: refresh the plan so the banner says so.
+axios.interceptors.response.use(undefined, (error: unknown) => {
+  if (axios.isAxiosError(error) && error.response?.status === 402) {
+    void queryClient.invalidateQueries({ queryKey: ['myPlan'] })
+  }
+  return Promise.reject(error)
+})
 
 render(<App />, document.getElementById('app')!)

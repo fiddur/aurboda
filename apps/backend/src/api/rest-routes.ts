@@ -12,6 +12,7 @@ import type { GarminClient } from '../integrations/garmin/client.ts'
 import type { DetailSyncedCallback, TrackWrittenCallback } from '../integrations/garmin/sync.ts'
 import type { AutosharePreviewDeps } from '../mcp/autoshare-rule-tools.ts'
 import type { AccountDeleter } from '../services/account-deletion.ts'
+import type { AccountPlans } from '../services/account-plan.ts'
 import type { AdminUsers } from '../services/admin-users.ts'
 import type { CentralDb } from '../services/central-db.ts'
 import type { DiscoverChallenges } from '../services/challenge-discovery.ts'
@@ -109,6 +110,7 @@ import { createTemplateLoader } from '../services/web-template.ts'
 interface RestRoutesDeps {
   httpd: Express
   accountDeleter: AccountDeleter
+  accountPlans: AccountPlans
   authMiddleware: AnyMiddleware
   adminMiddleware: AnyMiddleware
   adminUsers: AdminUsers
@@ -154,6 +156,7 @@ interface RestRoutesDeps {
 export const mountRestRouters = ({
   httpd,
   accountDeleter,
+  accountPlans,
   authMiddleware,
   adminMiddleware,
   adminUsers,
@@ -227,7 +230,7 @@ export const mountRestRouters = ({
   httpd.use(createSettingsRouter(authMiddleware, onHrSettingsChanged))
   httpd.use(createAuditLogRouter(authMiddleware))
   httpd.use('/export', createExportRouter({ authMiddleware, ...dataExport }))
-  httpd.use('/account', createAccountRouter(authMiddleware, accountDeleter))
+  httpd.use('/account', createAccountRouter(authMiddleware, accountDeleter, accountPlans))
   httpd.use(createRawRecordsRouter(authMiddleware))
   httpd.use('/dashboard', createDashboardRouter(authMiddleware))
   httpd.use('/shared-dashboards', createSharedDashboardsRouter(authMiddleware, webHost))
@@ -337,6 +340,7 @@ export const mountRestRouters = ({
       gravlRedirectUri(apiBaseUrl),
       ouraWebhookManager,
       accountDeleter,
+      accountPlans,
     ),
   )
   httpd.use(

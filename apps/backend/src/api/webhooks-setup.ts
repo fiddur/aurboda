@@ -29,6 +29,8 @@ interface StravaWebhookSetupDeps {
   centralDb: CentralDb
   stravaQueue: StravaQueue
   getStravaCredentials: StravaCredentialGetter
+  /** Events for a read-only account are acknowledged but not processed. */
+  isReadOnly?: (user: string) => Promise<boolean>
 }
 
 /**
@@ -43,14 +45,17 @@ export const setupStravaWebhook = ({
   centralDb,
   stravaQueue,
   getStravaCredentials,
+  isReadOnly = async () => false,
 }: StravaWebhookSetupDeps): (() => Promise<void>) => {
   const stravaVerifyToken = `aurboda-strava-${sessionSecret.slice(0, 8)}`
 
   httpd.use(
     '/webhooks/strava',
     createStravaWebhookRouter({
-      enqueueActivityFetch: (user, activityId, priority) =>
-        stravaQueue.enqueueActivityFetch(user, activityId, priority),
+      enqueueActivityFetch: async (user, activityId, priority) => {
+        if (await isReadOnly(user)) return
+        await stravaQueue.enqueueActivityFetch(user, activityId, priority)
+      },
       getUsernameByStravaAthleteId: (stravaAthleteId) =>
         centralDb.getUsernameByStravaAthleteId(stravaAthleteId),
       handleDeauthorization: async (stravaAthleteId) => {
@@ -62,6 +67,7 @@ export const setupStravaWebhook = ({
         }
       },
       softDeleteStravaActivity: async (user, stravaActivityId) => {
+        if (await isReadOnly(user)) return
         await softDeleteActivityByExternalId(user, 'strava', `strava-activity-${stravaActivityId}`)
       },
       verifyToken: stravaVerifyToken,
@@ -94,6 +100,8 @@ interface OuraWebhookSetupDeps {
   centralDb: CentralDb
   oura: OuraClient
   getOuraCredentials: () => Promise<{ clientId: string; clientSecret: string }>
+  /** Events for a read-only account are acknowledged but not processed. */
+  isReadOnly?: (user: string) => Promise<boolean>
 }
 
 /**
@@ -108,8 +116,10 @@ export const setupOuraWebhook = async ({
   centralDb,
   oura,
   getOuraCredentials,
+  isReadOnly = async () => false,
 }: OuraWebhookSetupDeps): Promise<OuraWebhookManager> => {
   const syncOuraDataTypeForUser = async (username: string, dataType: OuraDataType) => {
+    if (await isReadOnly(username)) return
     const accessToken = await oura.getAccessToken(username)
     await syncOuraDataType(username, oura, dataType, accessToken)
   }

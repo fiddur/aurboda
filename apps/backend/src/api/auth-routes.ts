@@ -19,6 +19,7 @@ import type { AnyMiddleware } from '../typed-router.ts'
 
 import { isInvalidPasswordError, loginToUserDb, makeNewUserDb, query } from '../db/index.ts'
 import { httpError } from '../http-error.ts'
+import { readBillingSettings, recordNewAccount } from '../services/account-plan.ts'
 import { pruneAuditLog } from '../services/audit-log.ts'
 
 interface AuthRoutesDeps {
@@ -73,14 +74,19 @@ export const registerAuthRoutes = ({
   })
 
   httpd.get<Record<string, never>, ServerStatusResponse>('/status', async (_req, res) => {
-    const signupMode = await centralDb.getSignupMode()
+    const [signupMode, billing] = await Promise.all([
+      centralDb.getSignupMode(),
+      readBillingSettings(centralDb),
+    ])
     res.json({
+      billing_enabled: billing.enabled,
       federation: true,
       product: 'aurboda',
       signup_allowed: signupMode === 'open',
       signup_mode: signupMode,
       success: true,
       version: process.env.BUILD_SHA ?? 'dev',
+      ...(billing.enabled && { price_text: billing.price_text || null, trial_days: billing.trial_days }),
     })
   })
 
@@ -143,9 +149,9 @@ export const registerAuthRoutes = ({
 
     try {
       await makeNewUserDb(userDb, user, password)
-      await centralDb
-        .ensureUserAccount(user, { createdAt: new Date(), preExisting: false })
-        .catch((e) => console.error(`⚠️ Failed to record account row for ${user}:`, e))
+      await recordNewAccount(centralDb, user).catch((e) =>
+        console.error(`⚠️ Failed to record account row for ${user}:`, e),
+      )
       const token = auth.createToken(user)
 
       const adminCount = await centralDb.getAdminCount()

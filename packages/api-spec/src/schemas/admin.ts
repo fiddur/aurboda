@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { baseResponseSchema, dateOnlySchema, iso8601DateTimeSchema } from './common.ts'
+import { adminUserPlanShape } from './plans.ts'
 
 export const signupModeSchema = z.enum(['open', 'invite_only', 'closed']).meta({
   description: 'Server signup mode',
@@ -23,7 +24,21 @@ export const serverStatusResponseSchema = baseResponseSchema
     signup_allowed: z
       .boolean()
       .meta({ description: 'Whether signup is allowed (deprecated, use signupMode)' }),
+    billing_enabled: z
+      .boolean()
+      .optional()
+      .meta({ description: 'Whether this server charges for accounts after a free trial' }),
+    price_text: z
+      .string()
+      .nullable()
+      .optional()
+      .meta({ description: 'The price after the trial, as the admin wrote it (when billing is enabled)' }),
     signup_mode: signupModeSchema.meta({ description: 'Current signup mode' }),
+    trial_days: z
+      .number()
+      .int()
+      .optional()
+      .meta({ description: 'Length of the free trial for new accounts, in days (when billing is enabled)' }),
     version: z.string().optional().meta({ description: 'Instance build/version identifier' }),
   })
   .meta({ id: 'ServerStatusResponse' })
@@ -93,6 +108,14 @@ export const adminSettingsResponseSchema = baseResponseSchema
       .number()
       .int()
       .meta({ description: 'Number of days to keep audit log entries (default: 3)' }),
+    billing_enabled: z.boolean().meta({
+      description:
+        'Whether accounts are billed: new accounts get a free trial, then become read-only unless paid',
+    }),
+    grace_days: z
+      .number()
+      .int()
+      .meta({ description: 'Days after a trial or paid period ends before the account becomes read-only' }),
     gravl_client_id_set: z.boolean().meta({ description: 'Whether a Gravl OAuth client ID is configured' }),
     gravl_client_secret_set: z
       .boolean()
@@ -107,6 +130,12 @@ export const adminSettingsResponseSchema = baseResponseSchema
       description: 'Whether Oura webhook push can be enabled (requires HTTPS and Oura credentials)',
     }),
     oura_webhook_enabled: z.boolean().meta({ description: 'Whether Oura webhook push sync is enabled' }),
+    payment_url: z
+      .string()
+      .meta({ description: 'Where users pay, e.g. a Patreon page (empty when not set)' }),
+    price_text: z
+      .string()
+      .meta({ description: 'The price shown to users, e.g. "3 € / month" (empty when not set)' }),
     sentry_dsn: z
       .string()
       .nullable()
@@ -116,6 +145,7 @@ export const adminSettingsResponseSchema = baseResponseSchema
     strava_client_secret_set: z
       .boolean()
       .meta({ description: 'Whether a Strava client secret is configured' }),
+    trial_days: z.number().int().meta({ description: 'Length of the free trial for new accounts, in days' }),
   })
   .meta({ id: 'AdminSettingsResponse' })
 
@@ -130,6 +160,17 @@ export const updateAdminSettingsBodySchema = z
       .max(365)
       .optional()
       .meta({ description: 'Number of days to keep audit log entries (1-365, default: 3)' }),
+    billing_enabled: z.boolean().optional().meta({
+      description:
+        'Enable or disable billing. Enabling it marks every account that exists then as exempt; disabling lifts every restriction.',
+    }),
+    grace_days: z
+      .number()
+      .int()
+      .min(0)
+      .max(365)
+      .optional()
+      .meta({ description: 'Days after expiry before an account becomes read-only (0-365, default 14)' }),
     gravl_client_id: z
       .string()
       .nullable()
@@ -159,6 +200,15 @@ export const updateAdminSettingsBodySchema = z
       .boolean()
       .optional()
       .meta({ description: 'Enable or disable Oura webhook push sync' }),
+    payment_url: z
+      .union([z.literal(''), z.url({ protocol: /^https$/ })])
+      .optional()
+      .meta({ description: 'Where users pay, an https URL (e.g. a Patreon page); empty to clear' }),
+    price_text: z
+      .string()
+      .max(200)
+      .optional()
+      .meta({ description: 'The price shown to users, e.g. "3 € / month"; empty to clear' }),
     sentry_dsn: z.string().url().nullable().optional().meta({
       description:
         'Sentry DSN for backend error reporting (set to null to clear). Takes effect after the next backend restart.',
@@ -174,6 +224,13 @@ export const updateAdminSettingsBodySchema = z
       .nullable()
       .optional()
       .meta({ description: 'Strava API client secret (set to null to clear)' }),
+    trial_days: z
+      .number()
+      .int()
+      .min(0)
+      .max(3650)
+      .optional()
+      .meta({ description: 'Length of the free trial for new accounts, in days (0-3650, default 90)' }),
   })
   .meta({ id: 'UpdateAdminSettingsBody' })
 
@@ -201,6 +258,7 @@ export const invitationResponseSchema = baseResponseSchema
 export type InvitationResponse = z.infer<typeof invitationResponseSchema>
 
 const adminUserAccountShape = {
+  ...adminUserPlanShape,
   created_at: iso8601DateTimeSchema
     .nullable()
     .meta({ description: 'Signup time; null for an account that existed before signup dates were tracked' }),

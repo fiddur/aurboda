@@ -1,10 +1,15 @@
 import type {
-  BaseResponse,
-  DeleteAccountBody,
+  AdminSettingsResponse,
   AdminUserOverview,
+  AdminUserPlan,
+  AdminUserPlanResponse,
   AdminUserUsage,
   AdminUserUsageResponse,
   AdminUsersResponse,
+  BaseResponse,
+  DeleteAccountBody,
+  UpdateAdminSettingsBody,
+  UpdateUserPlanBody,
 } from '@aurboda/api-spec'
 
 import axios from 'axios'
@@ -14,22 +19,7 @@ import { auth } from '../auth'
 
 export type SignupMode = 'open' | 'invite_only' | 'closed'
 
-export interface AdminSettings {
-  signup_mode: SignupMode
-  admin_count: number
-  gravl_client_id_set: boolean
-  gravl_client_secret_set: boolean
-  /** Absolute OAuth callback URL to register with Gravl, as the backend derives it. */
-  gravl_redirect_uri: string
-  lastfm_api_key_set: boolean
-  oura_client_id_set: boolean
-  oura_client_secret_set: boolean
-  oura_webhook_available: boolean
-  oura_webhook_enabled: boolean
-  sentry_dsn: string | null
-  strava_client_id_set: boolean
-  strava_client_secret_set: boolean
-}
+export type AdminSettings = Omit<AdminSettingsResponse, 'success' | 'error'>
 
 export interface InvitationResult {
   token: string
@@ -39,63 +29,18 @@ export interface InvitationResult {
 
 export const fetchAdminSettings = async (): Promise<AdminSettings> => {
   const { token } = auth.value
-  const response = await axios.get<{ success: boolean } & AdminSettings>(`${API_URL}/admin/settings`, {
+  const response = await axios.get<AdminSettingsResponse>(`${API_URL}/admin/settings`, {
     headers: { Authorization: `Bearer ${token}` },
   })
-
-  return {
-    admin_count: response.data.admin_count,
-    gravl_client_id_set: response.data.gravl_client_id_set,
-    gravl_client_secret_set: response.data.gravl_client_secret_set,
-    gravl_redirect_uri: response.data.gravl_redirect_uri,
-    lastfm_api_key_set: response.data.lastfm_api_key_set,
-    oura_client_id_set: response.data.oura_client_id_set,
-    oura_client_secret_set: response.data.oura_client_secret_set,
-    oura_webhook_available: response.data.oura_webhook_available,
-    oura_webhook_enabled: response.data.oura_webhook_enabled,
-    sentry_dsn: response.data.sentry_dsn,
-    signup_mode: response.data.signup_mode,
-    strava_client_id_set: response.data.strava_client_id_set,
-    strava_client_secret_set: response.data.strava_client_secret_set,
-  }
+  return response.data
 }
 
-export const updateAdminSettings = async (params: {
-  signup_mode?: SignupMode
-  gravl_client_id?: string | null
-  gravl_client_secret?: string | null
-  lastfm_api_key?: string | null
-  oura_client_id?: string | null
-  oura_client_secret?: string | null
-  oura_webhook_enabled?: boolean
-  sentry_dsn?: string | null
-  strava_client_id?: string | null
-  strava_client_secret?: string | null
-}): Promise<AdminSettings> => {
+export const updateAdminSettings = async (params: UpdateAdminSettingsBody): Promise<AdminSettings> => {
   const { token } = auth.value
-  const response = await axios.patch<{ success: boolean } & AdminSettings>(
-    `${API_URL}/admin/settings`,
-    params,
-    {
-      headers: { Authorization: `Bearer ${token}` },
-    },
-  )
-
-  return {
-    admin_count: response.data.admin_count,
-    gravl_client_id_set: response.data.gravl_client_id_set,
-    gravl_client_secret_set: response.data.gravl_client_secret_set,
-    gravl_redirect_uri: response.data.gravl_redirect_uri,
-    lastfm_api_key_set: response.data.lastfm_api_key_set,
-    oura_client_id_set: response.data.oura_client_id_set,
-    oura_client_secret_set: response.data.oura_client_secret_set,
-    oura_webhook_available: response.data.oura_webhook_available,
-    oura_webhook_enabled: response.data.oura_webhook_enabled,
-    sentry_dsn: response.data.sentry_dsn,
-    signup_mode: response.data.signup_mode,
-    strava_client_id_set: response.data.strava_client_id_set,
-    strava_client_secret_set: response.data.strava_client_secret_set,
-  }
+  const response = await axios.patch<AdminSettingsResponse>(`${API_URL}/admin/settings`, params, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return response.data
 }
 
 export const generateInvitation = async (expiryHours?: number): Promise<InvitationResult> => {
@@ -145,4 +90,19 @@ export const deleteAdminUser = async (username: string, body: DeleteAccountBody)
     data: body,
     headers: { Authorization: `Bearer ${token}` },
   })
+}
+
+/** Changes a user's plan, paid-until date, trial end or note. Admin-only. */
+export const updateAdminUserPlan = async (
+  username: string,
+  body: UpdateUserPlanBody,
+): Promise<AdminUserPlan> => {
+  const { token } = auth.value
+  const response = await axios.patch<AdminUserPlanResponse>(
+    `${API_URL}/admin/users/${encodeURIComponent(username)}/plan`,
+    body,
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  if (!response.data.status) throw new Error(response.data.error ?? 'User not found')
+  return response.data.status
 }

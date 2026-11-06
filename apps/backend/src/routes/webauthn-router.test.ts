@@ -63,6 +63,7 @@ const buildApp = (
       centralDb: {
         deleteUserAccount: vi.fn(async () => true),
         ensureUserAccount: vi.fn(async () => true),
+        getServerSetting: vi.fn(async () => null),
         isAdmin: vi.fn(async () => false),
         isUsernameDeleted: vi.fn(async () => false),
         ...options.centralDb,
@@ -398,7 +399,9 @@ describe('POST /webauthn/signup/verify', () => {
     expect(addAdmin).toHaveBeenCalledWith('alice')
     expect(ensureUserAccount).toHaveBeenCalledWith('alice', {
       createdAt: expect.any(Date),
+      plan: null,
       preExisting: false,
+      trialEndsAt: null,
     })
   })
 

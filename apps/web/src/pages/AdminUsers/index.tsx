@@ -14,6 +14,7 @@ import {
   formatPerDay,
   formatRelative,
   nextSort,
+  planLabel,
   type SortKey,
   type SortState,
   sortUsers,
@@ -46,6 +47,7 @@ function UserRow({ user, now }: { user: AdminUserOverview; now: Date }) {
   const { route } = useLocation()
   const href = `/admin/users/${encodeURIComponent(user.username)}`
   const apiReads = user.use.mcp.reads_30d + user.use.api.reads_30d
+  const plan = planLabel(user, (iso) => (iso ? new Date(iso).toLocaleDateString() : ''))
   return (
     <tr class="au-row" onClick={() => route(href)}>
       <td>
@@ -60,6 +62,9 @@ function UserRow({ user, now }: { user: AdminUserOverview; now: Date }) {
         ) : (
           <span class="au-muted">before tracking</span>
         )}
+      </td>
+      <td>
+        <span class={`au-plan au-plan-${plan.tone}`}>{plan.text}</span>
       </td>
       <td class="au-num">{formatBytes(user.storage_bytes)}</td>
       <td>
@@ -123,6 +128,9 @@ export function AdminUsers() {
                   </SortHeader>
                   <SortHeader column="created_at" sort={sort} onSort={onSort}>
                     Signed up
+                  </SortHeader>
+                  <SortHeader column="plan" sort={sort} onSort={onSort}>
+                    Plan
                   </SortHeader>
                   <SortHeader column="storage" sort={sort} onSort={onSort}>
                     Storage

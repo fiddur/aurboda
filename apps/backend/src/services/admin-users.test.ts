@@ -4,6 +4,7 @@ import type { UserAccount } from './central-user-accounts.ts'
 import type { UsageSummaryRow } from './central-user-usage.ts'
 import type { UsageRow } from './usage-recorder.ts'
 
+import { BILLING_DISABLED, type BillingSettings } from './account-plan.ts'
 import { type AdminUsersDeps, createAdminUsers, SIZE_CACHE_MS, windowStart } from './admin-users.ts'
 
 const NOW = new Date('2026-11-06T12:00:00Z')
@@ -31,6 +32,7 @@ const summary = (overrides: Partial<UsageSummaryRow>): UsageSummaryRow => ({
 })
 
 interface Fixture {
+  billing?: BillingSettings
   users?: string[]
   accounts?: UserAccount[]
   admins?: string[]
@@ -61,6 +63,7 @@ const setup = (fixture: Fixture = {}) => {
       isAdmin: async (username) => admins.includes(username),
       listUserAccounts: async () => accounts,
     },
+    billingSettings: async () => fixture.billing ?? BILLING_DISABLED,
     databaseSizes: async () => {
       calls.databaseSizes += 1
       return fixture.sizes ?? new Map()
@@ -91,6 +94,13 @@ describe('listUsersOverview', () => {
     expect(users.map((u) => u.username)).toEqual(['alice', 'bob'])
     expect(users[1]).toEqual({
       created_at: null,
+      ends_at: null,
+      paid_until: null,
+      plan: null,
+      plan_note: null,
+      read_only_at: null,
+      state: 'active',
+      trial_ends_at: null,
       ingest: { items_30d: 0, last_at: null, per_day_30d: 0, per_day_7d: 0, sources: [] },
       is_admin: false,
       last_api_at: null,
@@ -111,8 +121,26 @@ describe('listUsersOverview', () => {
     const signup = new Date('2026-10-01T08:00:00Z')
     const { service } = setup({
       accounts: [
-        { created_at: signup, inserted_at: signup, pre_existing: false, username: 'alice' },
-        { created_at: null, inserted_at: signup, pre_existing: true, username: 'bob' },
+        {
+          created_at: signup,
+          inserted_at: signup,
+          paid_until: null,
+          plan: null,
+          plan_note: null,
+          trial_ends_at: null,
+          pre_existing: false,
+          username: 'alice',
+        },
+        {
+          created_at: null,
+          inserted_at: signup,
+          paid_until: null,
+          plan: null,
+          plan_note: null,
+          trial_ends_at: null,
+          pre_existing: true,
+          username: 'bob',
+        },
       ],
       admins: ['bob'],
       sizes: new Map([
@@ -130,6 +158,49 @@ describe('listUsersOverview', () => {
       storage_bytes: 1234,
     })
     expect(bob).toMatchObject({ created_at: null, is_admin: true, pre_existing: true, storage_bytes: 5678 })
+  })
+
+  test("each user's plan and state, admins never restricted", async () => {
+    const signup = new Date('2026-01-01T08:00:00Z')
+    const expired = new Date('2026-10-01T00:00:00Z')
+    const { service } = setup({
+      accounts: [
+        {
+          created_at: signup,
+          inserted_at: signup,
+          paid_until: null,
+          plan: 'trial',
+          plan_note: 'patreon',
+          pre_existing: false,
+          trial_ends_at: expired,
+          username: 'alice',
+        },
+        {
+          created_at: signup,
+          inserted_at: signup,
+          paid_until: null,
+          plan: 'trial',
+          plan_note: null,
+          pre_existing: false,
+          trial_ends_at: expired,
+          username: 'bob',
+        },
+      ],
+      admins: ['bob'],
+      billing: { ...BILLING_DISABLED, enabled: true, grace_days: 14 },
+      users: ['alice', 'bob'],
+    })
+    const [alice, bob] = await service.listUsersOverview()
+
+    expect(alice).toMatchObject({
+      ends_at: expired.toISOString(),
+      plan: 'trial',
+      plan_note: 'patreon',
+      read_only_at: '2026-10-15T00:00:00.000Z',
+      state: 'read_only',
+      trial_ends_at: expired.toISOString(),
+    })
+    expect(bob).toMatchObject({ plan: 'trial', read_only_at: null, state: 'active' })
   })
 
   test('ingest per day divides events over the 7 and 30 day windows', async () => {
@@ -242,7 +313,18 @@ describe('getUserUsage', () => {
   test('returns account facts, daily rows from the window and the largest tables', async () => {
     const signup = new Date('2026-10-01T08:00:00Z')
     const { calls, service } = setup({
-      accounts: [{ created_at: signup, inserted_at: signup, pre_existing: false, username: 'alice' }],
+      accounts: [
+        {
+          created_at: signup,
+          inserted_at: signup,
+          paid_until: null,
+          plan: null,
+          plan_note: null,
+          trial_ends_at: null,
+          pre_existing: false,
+          username: 'alice',
+        },
+      ],
       admins: ['alice'],
       dailyRows: [
         daily({ channel: 'oura', count: 3, day: '2026-11-05', items: 30, kind: 'ingest' }),
@@ -257,6 +339,13 @@ describe('getUserUsage', () => {
     expect(calls.dailySince).toEqual(['2026-10-31T00:00:00.000Z'])
     expect(usage).toEqual({
       created_at: signup.toISOString(),
+      ends_at: null,
+      paid_until: null,
+      plan: null,
+      plan_note: null,
+      read_only_at: null,
+      state: 'active',
+      trial_ends_at: null,
       daily: [
         { channel: 'oura', count: 3, day: '2026-11-05', items: 30, kind: 'ingest' },
         { channel: 'web', count: 2, day: '2026-11-06', items: 0, kind: 'read' },

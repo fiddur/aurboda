@@ -8,6 +8,7 @@ import { DataExportSettings } from '../../components/DataExportSettings'
 import { DeleteAccountSettings } from '../../components/DeleteAccountSettings'
 import { MealPreferencesSettings } from '../../components/MealPreferencesSettings'
 import { PasskeySettings } from '../../components/PasskeySettings'
+import { PlanSettings } from '../../components/PlanSettings'
 import { type SaveStatus, SaveStatusIndicator } from '../../components/SaveStatusIndicator'
 import { SettingsSection } from '../../components/SettingsSection'
 import { fetchUserSettings, updateUserSettings } from '../../state/api'
@@ -174,6 +175,8 @@ export function Settings() {
   return (
     <div class="settings-page">
       <h1>Settings</h1>
+
+      <PlanSettings />
 
       <AvatarSettings />
 

@@ -49,6 +49,11 @@ import {
   outboundSyncResponseSchema,
 } from './schemas/outbound-sync.ts'
 import { periodSummaryResponseSchema } from './schemas/period-summary.ts'
+import {
+  accountPlanResponseSchema,
+  adminUserPlanResponseSchema,
+  updateUserPlanBodySchema,
+} from './schemas/plans.ts'
 import { productivityResponseSchema } from './schemas/productivity.ts'
 import {
   mergeRoutesBodySchema,
@@ -1339,6 +1344,44 @@ const openApiDocument = createDocument({
         security: [{ bearerAuth: [] }],
         summary: 'Delete my account',
         tags: ['Settings'],
+      },
+    },
+    '/account/plan': {
+      get: {
+        description:
+          "The authenticated user's billing plan and state. With billing enabled, an account whose trial or paid period ended more than the grace period ago is read-only: writes answer 402 with the payment link, while reading, exporting and deleting the account still work.",
+        responses: {
+          200: {
+            content: { 'application/json': { schema: accountPlanResponseSchema } },
+            description: 'The plan',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get my plan',
+        tags: ['Settings'],
+      },
+    },
+    '/admin/users/{username}/plan': {
+      patch: {
+        description:
+          "Change a user's plan, paid-until date, trial end or note. Payments are recorded by hand. A future paid_until on a trial account switches it to the paid plan. Admin-only.",
+        requestBody: { content: { 'application/json': { schema: updateUserPlanBodySchema } } },
+        requestParams: {
+          path: z.object({ username: z.string().meta({ description: 'Username' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: adminUserPlanResponseSchema } },
+            description: 'The updated plan',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'User not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: "Change a user's plan",
+        tags: ['Auth'],
       },
     },
     '/admin/users/{username}': {

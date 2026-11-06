@@ -17,6 +17,7 @@ import type { ouraClient } from './integrations/oura/client.ts'
 import type { AutosharePreviewDeps } from './mcp/autoshare-rule-tools.ts'
 import type { FeedDeliver } from './routes/feed-router.ts'
 import type { AccountDeleter } from './services/account-deletion.ts'
+import type { AccountPlans } from './services/account-plan.ts'
 import type { AdminUsers } from './services/admin-users.ts'
 import type { CentralDb } from './services/central-db.ts'
 import type { DiscoverChallenges } from './services/challenge-discovery.ts'
@@ -33,6 +34,7 @@ import type { StravaQueue } from './services/strava-queue.ts'
 import type { RetroEnrichTrigger } from './services/timeline-retro-enrich.ts'
 
 import { registerAccountDeletionTools } from './mcp/account-deletion-tools.ts'
+import { registerAccountPlanTools } from './mcp/account-plan-tools.ts'
 import { registerActivityTools } from './mcp/activity-tools.ts'
 import { registerActivityTypeTools } from './mcp/activity-type-tools.ts'
 import { registerAdminUserTools } from './mcp/admin-user-tools.ts'
@@ -52,6 +54,7 @@ import { registerMetricTools } from './mcp/metric-tools.ts'
 import { registerNoteTools } from './mcp/note-tools.ts'
 import { registerNutrientRecommendationTools } from './mcp/nutrient-recommendation-tools.ts'
 import { registerQueryTools } from './mcp/query-tools.ts'
+import { refuseMutatingTools } from './mcp/read-only-gate.ts'
 import { registerReportTools } from './mcp/report-tools.ts'
 import { registerRouteTools } from './mcp/route-tools.ts'
 import { registerScreentimeCategoryTools } from './mcp/screentime-category-tools.ts'
@@ -63,6 +66,7 @@ import { registerSyncTools } from './mcp/sync-tools.ts'
 import { installToolCatalogue } from './mcp/tool-catalogue.ts'
 import { registerTrainingLoadTools } from './mcp/training-load-tools.ts'
 import { registerTrendTools } from './mcp/trend-tools.ts'
+import { type AccountGate, safeRefusal } from './services/account-gate.ts'
 import { createDefaultEngineDeps } from './services/deduction-deps.ts'
 import { isOAuthAccessToken, validateAccessToken } from './services/oauth.ts'
 import { isMutatingMcpTool, mcpToolCallNames } from './services/usage-channel.ts'
@@ -105,6 +109,10 @@ const SERVER_INSTRUCTIONS =
 interface McpDeps {
   /** Account deletion (`delete_my_account`, `delete_user`). */
   accountDeleter?: AccountDeleter
+  /** Refuses mutating tools for a read-only account (plan expired past the grace period). */
+  accountGate?: AccountGate
+  /** Plans and billing (`get_my_plan`, `set_user_plan`). */
+  accountPlans?: AccountPlans
   adminUsers?: AdminUsers
   apiBaseUrl?: string
   autosharePreviewDeps?: AutosharePreviewDeps
@@ -179,6 +187,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     registerImportTools(server, user, deps.centralDb)
     if (deps.adminUsers) registerAdminUserTools(server, user, deps.centralDb, deps.adminUsers)
     if (deps.accountDeleter) registerAccountDeletionTools(server, user, deps.centralDb, deps.accountDeleter)
+    if (deps.accountPlans) registerAccountPlanTools(server, user, deps.centralDb, deps.accountPlans)
   }
   registerReportTools(server, user)
   registerRouteTools(server, user)
@@ -239,11 +248,15 @@ export function createMcpRouter(auth: Auth, deps: McpDeps = {}): Router {
       return
     }
 
-    for (const tool of mcpToolCallNames(req.body)) {
+    const tools = mcpToolCallNames(req.body)
+    for (const tool of tools) {
       recordUsage(user, isMutatingMcpTool(tool) ? 'write' : 'read', 'mcp')
     }
+    const refusal =
+      deps.accountGate && tools.some(isMutatingMcpTool) ? await safeRefusal(deps.accountGate, user) : null
 
     const server = createMcpServer(user, deps)
+    if (refusal) refuseMutatingTools(server, refusal)
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
     })

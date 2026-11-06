@@ -125,3 +125,16 @@
     font-size: 1.5rem;
   }
 }
+
+.signup-page .billing-notice {
+  text-align: center;
+  margin: 0 0 1rem;
+  color: #4b5563;
+  font-size: 0.9rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  .signup-page .billing-notice {
+    color: #d1d5db;
+  }
+}

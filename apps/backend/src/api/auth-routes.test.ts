@@ -28,7 +28,10 @@ const pgError = (code: string, message = 'pg failure') => Object.assign(new Erro
 const ensureUserAccount = vi.fn(async () => true)
 const isUsernameDeleted = vi.fn(async (_username: string) => false)
 
-const buildApp = ({ signupMode = 'closed' }: { signupMode?: string } = {}) => {
+const buildApp = ({
+  signupMode = 'closed',
+  settings = {},
+}: { signupMode?: string; settings?: Record<string, unknown> } = {}) => {
   const httpd = express()
   httpd.use(express.json())
 
@@ -40,6 +43,7 @@ const buildApp = ({ signupMode = 'closed' }: { signupMode?: string } = {}) => {
       ensureUserAccount,
       getAdminCount: vi.fn(async () => 1),
       getAuditLogRetentionDays: vi.fn(async () => 30),
+      getServerSetting: vi.fn(async (key: string) => settings[key] ?? null),
       getSignupMode: vi.fn(async () => signupMode),
       isAdmin: vi.fn(async () => false),
       isUsernameDeleted,
@@ -178,8 +182,28 @@ describe('POST /signup', () => {
     expect(db.makeNewUserDb).toHaveBeenCalledWith(expect.anything(), 'alice', ' pass word ')
     expect(ensureUserAccount).toHaveBeenCalledWith('alice', {
       createdAt: expect.any(Date),
+      plan: null,
       preExisting: false,
+      trialEndsAt: null,
     })
+  })
+
+  test('starts the account on a trial while billing is enabled', async () => {
+    vi.mocked(db.query).mockResolvedValue({ rowCount: 0, rows: [] } as never)
+
+    const response = await supertest(
+      buildApp({ settings: { billing_enabled: true, trial_days: 30 }, signupMode: 'open' }),
+    )
+      .post('/signup')
+      .send({ password: 'secret', username: 'alice' })
+
+    expect(response.status).toBe(200)
+    const [, options] = ensureUserAccount.mock.lastCall as unknown as [
+      string,
+      { createdAt: Date; trialEndsAt: Date },
+    ]
+    expect(options).toMatchObject({ plan: 'trial', preExisting: false })
+    expect(options.trialEndsAt.getTime() - options.createdAt.getTime()).toBe(30 * 86_400_000)
   })
 
   test('refuses the name of a deleted account as taken', async () => {
@@ -193,5 +217,23 @@ describe('POST /signup', () => {
     expect(response.status).toBe(409)
     expect(response.body.error).toBe('Username already exists')
     expect(db.makeNewUserDb).not.toHaveBeenCalled()
+  })
+})
+
+describe('GET /status', () => {
+  test('says billing is off without trial or price', async () => {
+    const response = await supertest(buildApp({ signupMode: 'open' })).get('/status')
+
+    expect(response.body).toMatchObject({ billing_enabled: false, signup_mode: 'open', success: true })
+    expect(response.body.trial_days).toBeUndefined()
+    expect(response.body.price_text).toBeUndefined()
+  })
+
+  test('with billing on, carries the trial length and price for the signup page', async () => {
+    const response = await supertest(
+      buildApp({ settings: { billing_enabled: true, price_text: '3 € / month', trial_days: 60 } }),
+    ).get('/status')
+
+    expect(response.body).toMatchObject({ billing_enabled: true, price_text: '3 € / month', trial_days: 60 })
   })
 })

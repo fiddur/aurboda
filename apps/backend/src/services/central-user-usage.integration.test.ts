@@ -3,7 +3,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import type { UsageRow } from './usage-recorder.ts'
 
 import { getTestDbClient, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
-import { createUserAccountsApi, CREATE_USER_ACCOUNTS_TABLE } from './central-user-accounts.ts'
+import {
+  ALTER_USER_ACCOUNTS_PLAN_COLUMNS,
+  createUserAccountsApi,
+  CREATE_USER_ACCOUNTS_TABLE,
+} from './central-user-accounts.ts'
 import {
   createUserUsageApi,
   CREATE_USER_USAGE_DAILY_INDEXES,
@@ -27,6 +31,10 @@ beforeAll(async () => {
   await startTestDb()
   const client = getTestDbClient()
   await client.query(CREATE_USER_ACCOUNTS_TABLE)
+  // Twice, as every start runs them: the columns are added once and kept.
+  for (const stmt of [...ALTER_USER_ACCOUNTS_PLAN_COLUMNS, ...ALTER_USER_ACCOUNTS_PLAN_COLUMNS]) {
+    await client.query(stmt)
+  }
   await client.query(CREATE_USER_USAGE_DAILY_TABLE)
   for (const stmt of CREATE_USER_USAGE_DAILY_INDEXES) await client.query(stmt)
 }, CONTAINER_TIMEOUT)
@@ -70,6 +78,81 @@ describe('central user_accounts', () => {
       ['bob', true, null],
       ['carol', true, null],
     ])
+  })
+
+  test('ensureUserAccount stores a starting plan; without one the plan is null', async () => {
+    const a = api()
+    const trialEnd = new Date('2027-02-04T10:00:00Z')
+    await a.ensureUserAccount('alice', {
+      createdAt: null,
+      plan: 'trial',
+      preExisting: false,
+      trialEndsAt: trialEnd,
+    })
+    await a.ensureUserAccount('bob', { createdAt: null, preExisting: false })
+
+    expect(await a.getUserAccount('alice')).toMatchObject({
+      paid_until: null,
+      plan: 'trial',
+      plan_note: null,
+      trial_ends_at: trialEnd,
+    })
+    expect(await a.getUserAccount('bob')).toMatchObject({ plan: null, trial_ends_at: null })
+  })
+
+  test('markUnplannedAccountsExempt marks only the accounts without a plan', async () => {
+    const a = api()
+    await a.ensureUserAccount('alice', { createdAt: null, plan: 'trial', preExisting: false })
+    await a.backfillUserAccounts(['bob', 'carol'])
+
+    expect(await a.markUnplannedAccountsExempt()).toBe(2)
+    expect(await a.markUnplannedAccountsExempt()).toBe(0)
+    expect((await a.listUserAccounts()).map(({ plan, username }) => [username, plan])).toEqual([
+      ['alice', 'trial'],
+      ['bob', 'exempt'],
+      ['carol', 'exempt'],
+    ])
+  })
+
+  test('updateUserPlan writes the given fields, clears nulls and leaves the rest', async () => {
+    const a = api()
+    const trialEnd = new Date('2027-02-04T10:00:00Z')
+    const paidUntil = new Date('2027-06-01T00:00:00Z')
+    await a.ensureUserAccount('alice', {
+      createdAt: null,
+      plan: 'trial',
+      preExisting: false,
+      trialEndsAt: trialEnd,
+    })
+
+    const paid = await a.updateUserPlan('alice', {
+      paid_until: paidUntil,
+      plan: 'paid',
+      plan_note: 'Patreon',
+    })
+    expect(paid).toMatchObject({
+      paid_until: paidUntil,
+      plan: 'paid',
+      plan_note: 'Patreon',
+      trial_ends_at: trialEnd,
+    })
+
+    const cleared = await a.updateUserPlan('alice', { plan_note: null, trial_ends_at: null })
+    expect(cleared).toMatchObject({
+      paid_until: paidUntil,
+      plan: 'paid',
+      plan_note: null,
+      trial_ends_at: null,
+    })
+    expect(await a.getUserAccount('alice')).toEqual(cleared)
+  })
+
+  test('updateUserPlan inserts a pre-existing row for an account without one', async () => {
+    const a = api()
+    const account = await a.updateUserPlan('dave', { plan: 'exempt' })
+
+    expect(account).toMatchObject({ created_at: null, plan: 'exempt', pre_existing: true, username: 'dave' })
+    expect(await a.updateUserPlan('dave', {})).toMatchObject({ plan: 'exempt', username: 'dave' })
   })
 
   test('deleteUserAccount removes the row', async () => {

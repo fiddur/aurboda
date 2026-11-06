@@ -11,3 +11,10 @@ export function shouldShowNav(path: string, isLoggedIn: boolean): boolean {
   const isPublicSharePage = path.startsWith('/u/')
   return !isPublicSharePage || isLoggedIn
 }
+
+const PUBLIC_PAGES = ['/login', '/signup', '/privacy', '/terms']
+
+/** The plan banner is for the signed-in app, not public share pages or the login and legal pages. */
+export function shouldShowPlanBanner(path: string, isLoggedIn: boolean): boolean {
+  return isLoggedIn && !path.startsWith('/u/') && !PUBLIC_PAGES.includes(path)
+}

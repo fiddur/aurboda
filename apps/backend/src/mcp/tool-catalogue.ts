@@ -143,7 +143,7 @@ export const fullToolDefinition = (name: string, tool: RegisteredTool) => ({
 
 // Reads the SDK's private tool registry so every tool keeps its full registration (and
 // server-side validation); the tools/list test in mcp.test.ts pins this assumption.
-const registeredTools = (server: McpServer): Record<string, RegisteredTool> =>
+export const registeredTools = (server: McpServer): Record<string, RegisteredTool> =>
   (server as unknown as { _registeredTools: Record<string, RegisteredTool> })._registeredTools
 
 const enabledTools = (server: McpServer): [string, RegisteredTool][] =>
