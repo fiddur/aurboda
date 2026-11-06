@@ -117,7 +117,7 @@ suspend fun fetchDailyAggregates(
 }
 
 /**
- * @return true if successful (including when there's nothing to send), false on failure.
+ * @return [PostResult.Success] when sent (or there is nothing to send), otherwise the failure.
  */
 suspend fun sendDailyAggregates(
   aggregates: List<DailyAggregate>,
@@ -125,13 +125,13 @@ suspend fun sendDailyAggregates(
   authToken: String,
   httpClient: HttpClient,
   reporter: SyncProgressReporter = NoOpSyncProgressReporter,
-): Boolean {
+): PostResult {
   if (aggregates.isEmpty()) {
     Log.d(TAG, "No aggregates to send")
     reporter.updateStage(SyncStage.DailyAggregates) {
       it.copy(status = SyncStageStatus.Done, message = "Up to date")
     }
-    return true
+    return PostResult.Success
   }
 
   reporter.updateStage(SyncStage.DailyAggregates) {
@@ -157,19 +157,20 @@ suspend fun sendDailyAggregates(
       }
     val ok = response.status == HttpStatusCode.OK || response.status == HttpStatusCode.Created
     Log.d(TAG, "Daily aggregates response: ${response.status} (${aggregates.size} aggregates)")
+    val result = if (ok) PostResult.Success else httpErrorOf(response)
     reporter.updateStage(SyncStage.DailyAggregates) {
       if (ok) {
         it.copy(status = SyncStageStatus.Done, sentRecords = aggregates.size, message = "${aggregates.size} aggregates sent")
       } else {
-        it.copy(status = SyncStageStatus.Failed, errorMessage = "HTTP ${response.status.value}")
+        it.copy(status = SyncStageStatus.Failed, errorMessage = result.errorMessage())
       }
     }
-    ok
+    result
   } catch (e: Exception) {
     Log.e(TAG, "Error posting daily aggregates: ${e.message}", e)
     reporter.updateStage(SyncStage.DailyAggregates) {
       it.copy(status = SyncStageStatus.Failed, errorMessage = e.message)
     }
-    false
+    PostResult.NetworkError(e.message ?: "Unknown error")
   }
 }

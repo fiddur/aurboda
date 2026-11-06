@@ -91,6 +91,7 @@ data class OutboundSyncFailBody(
 data class OutboundSyncFetchResult(
   val entries: List<OutboundSyncEntryApi> = emptyList(),
   val totalPending: Int = 0,
+  val stop: SyncStop? = null,
 )
 
 suspend fun fetchOutboundSyncEntries(
@@ -105,7 +106,7 @@ suspend fun fetchOutboundSyncEntries(
       }
     if (response.status != HttpStatusCode.OK) {
       Log.e(TAG, "🚫 Failed to fetch outbound sync: HTTP ${response.status.value}")
-      return OutboundSyncFetchResult()
+      return OutboundSyncFetchResult(stop = httpErrorOf(response).syncStop())
     }
     val body = response.bodyAsText()
     val parsed = appJson.decodeFromString<OutboundSyncResponseApi>(body)
@@ -130,8 +131,8 @@ suspend fun acknowledgeOutboundSync(
   apiUrl: String,
   authToken: String,
   httpClient: HttpClient,
-): Boolean {
-  if (entries.isEmpty()) return true
+): PostResult {
+  if (entries.isEmpty()) return PostResult.Success
   return try {
     val response =
       httpClient.post("$apiUrl/sync/outbound/ack") {
@@ -141,14 +142,14 @@ suspend fun acknowledgeOutboundSync(
       }
     if (response.status == HttpStatusCode.OK) {
       Log.d(TAG, "✅ Acknowledged ${entries.size} outbound sync entries")
-      true
+      PostResult.Success
     } else {
       Log.e(TAG, "🚫 Ack failed: HTTP ${response.status.value}")
-      false
+      httpErrorOf(response)
     }
   } catch (e: Exception) {
     Log.e(TAG, "🚫 Error acknowledging outbound sync", e)
-    false
+    PostResult.NetworkError(e.message ?: "Unknown error")
   }
 }
 
@@ -518,6 +519,7 @@ data class OutboundSyncResult(
   val skipReasons: List<String> = emptyList(),
   val failReasons: List<String> = emptyList(),
   val pagesProcessed: Int = 0,
+  val stop: SyncStop? = null,
 )
 
 /** Maximum number of pages to process in a single sync pass to avoid runaway loops. */
@@ -540,6 +542,7 @@ suspend fun processOutboundSync(
   val allFailReasons = mutableListOf<String>()
   var pagesProcessed = 0
   var rateLimited = false
+  var stop: SyncStop? = null
 
   reporter.updateStage(SyncStage.Outbound) {
     it.copy(status = SyncStageStatus.Active, message = "Checking pending write-back…")
@@ -547,6 +550,10 @@ suspend fun processOutboundSync(
 
   for (page in 1..MAX_OUTBOUND_SYNC_PAGES) {
     val fetchResult = fetchOutboundSyncEntries(apiUrl, authToken, httpClient)
+    if (fetchResult.stop != null) {
+      stop = fetchResult.stop
+      break
+    }
     val entries = fetchResult.entries
     if (entries.isEmpty()) break
 
@@ -618,12 +625,13 @@ suspend fun processOutboundSync(
     }
 
     if (ackItems.isNotEmpty()) {
-      val ackSuccess = acknowledgeOutboundSync(ackItems, apiUrl, authToken, httpClient)
-      if (ackSuccess) {
+      val ackResult = acknowledgeOutboundSync(ackItems, apiUrl, authToken, httpClient)
+      if (ackResult.isSuccess) {
         Log.d(TAG, "✅ Page $page complete: ${ackItems.size}/${entries.size} entries acked")
       } else {
         Log.w(TAG, "⚠️ Outbound sync page $page: wrote to HC but failed to acknowledge")
         allAcknowledged = false
+        stop = ackResult.syncStop()
         break
       }
     }
@@ -642,7 +650,13 @@ suspend fun processOutboundSync(
     Log.d(TAG, "📋 $remaining more entries remaining in queue, fetching next page...")
   }
 
-  if (pagesProcessed > 0) {
+  val stopped = stop
+  if (stopped != null) {
+    Log.w(TAG, "⚠️ Outbound sync stopped: ${stopped.message}")
+    reporter.updateStage(SyncStage.Outbound) {
+      it.copy(status = SyncStageStatus.Failed, errorMessage = stopped.message)
+    }
+  } else if (pagesProcessed > 0) {
     Log.d(TAG, "✅ Outbound sync finished: $totalWritten written, $totalSkipped skipped, $totalTransientFailures transient failures across $pagesProcessed pages")
     reporter.updateStage(SyncStage.Outbound) {
       it.copy(
@@ -665,6 +679,7 @@ suspend fun processOutboundSync(
     skipReasons = allSkipReasons,
     failReasons = allFailReasons,
     pagesProcessed = pagesProcessed,
+    stop = stop,
   )
 }
 

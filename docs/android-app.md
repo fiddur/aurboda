@@ -157,6 +157,26 @@ The decision is a pure, unit-tested helper: `ui/screens/WebLink.kt`
 (`isExternalLink`). Non-http(s) schemes (`mailto:`, `tel:`, …) are treated as
 external.
 
+## Refused tokens and read-only accounts
+
+- **401: logged out.** The HTTP clients that carry the stored token (background
+  sync, the Sync tab, the app shell) install `tokenRefusalPlugin`
+  (`SessionRefusal.kt`): a `401` to a request whose bearer token is the stored one
+  clears the credentials and flags the session as refused. The app then shows the
+  login screen with "Your session is no longer valid. Please log in again." — at
+  once when it is open, otherwise on the next open. The embedded pages never tell
+  the app about a `401` (they get the token through the auth bridge), so the app
+  checks the stored token itself (`GET /api/user/settings`) whenever the main
+  screen resumes. Background sync that hits a `401` stops without a retry.
+- **402: read-only.** A read-only account (plan or trial expired) is answered
+  `402` with `{ error, payment_url }` on every write. Sync stops that run without
+  a retry or backoff, keeps the queued data (the Add Data queue, the Health Connect
+  changes token, unacknowledged write-backs) for when the plan is renewed, and
+  shows the server's `error` as the background sync status and in the sync
+  progress view. It does not log out; the periodic run tries again on its normal
+  schedule. `classifyHttpStatus` (`HttpOutcome.kt`) is where the status codes get
+  their meaning.
+
 ## Home-screen widgets
 
 Two `AppWidgetProvider`s live in `widget/`:
