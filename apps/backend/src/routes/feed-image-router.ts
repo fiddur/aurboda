@@ -32,10 +32,9 @@ import {
 } from '../services/article-block-misses.ts'
 import { blockWindow, isZeroDurationBucket } from '../services/article.ts'
 import { isCapabilityAuthorized } from '../services/feed-capability.ts'
+import { UUID_RE } from '../utils.ts'
 
 export type { CorrelationBlockParams }
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /** The window an image renders over. */
 export interface ImageActivity {

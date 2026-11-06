@@ -43,6 +43,7 @@ import {
   buildProfileUrl,
   buildShareUrl,
 } from '../services/share-urls.ts'
+import { UUID_RE } from '../utils.ts'
 
 /** A public resource resolved just far enough to build meta from. */
 interface ResolvedResource {
@@ -70,8 +71,6 @@ export interface ResolvedArticle {
   /** Plain text of the article's first prose block. */
   excerpt: string
 }
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export interface ShareHtmlDeps {
   /** Public base URL of the web app, used to build canonical/share URLs. */

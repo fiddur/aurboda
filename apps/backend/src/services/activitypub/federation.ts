@@ -66,6 +66,7 @@ import {
   upsertFeedPostReaction,
   upsertTimelineEntry,
 } from '../../db/index.ts'
+import { UUID_RE } from '../../utils.ts'
 import { resolveFeedActivity } from '../feed.ts'
 import { buildProfileUrl } from '../share-urls.ts'
 import { ownActorUri, ownObjectPrefix } from '../timeline.ts'
@@ -102,10 +103,6 @@ import {
 } from './timeline-ingest.ts'
 
 const OUTBOX_PAGE_SIZE = 20
-
-/** RFC 4122 canonical form — guards `getFeedPostById` from a non-UUID `postId`
- * (Postgres would otherwise raise `invalid input syntax for type uuid`). */
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /**
  * The local follower (inbox owner) that an `Accept`/`Reject` response to a Follow

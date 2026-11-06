@@ -1,13 +1,13 @@
+/**
+ * PublicProfile - a user's public page at /u/:username, listing their public
+ * shared dashboards, challenges and exercises. Unauthenticated; rendered without app chrome.
+ */
 import type { FeedPostsResponse } from '@aurboda/api-spec'
 import type { InfiniteData } from '@tanstack/react-query'
 
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { useRoute } from 'preact-iso'
 
-/**
- * PublicProfile - a user's public page at /u/:username, listing their public
- * shared dashboards, challenges and exercises. Unauthenticated; rendered without app chrome.
- */
 import { avatarUrl, blogPath, fetchPublicPosts, fetchPublicProfile } from '../../state/api'
 import { FeedPostCard } from '../Feed/FeedPostCard'
 import { publicAuthor } from './public-author'
@@ -88,7 +88,6 @@ export function PublicProfile() {
 
   const posts = postsQuery.data?.pages.flatMap((page) => page.posts) ?? []
 
-  // The profile owner is the author of every post shown here.
   const author = publicAuthor(username)
 
   return (

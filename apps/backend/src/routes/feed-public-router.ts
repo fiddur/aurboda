@@ -48,10 +48,9 @@ import { decodeKeysetCursor, encodeKeysetCursor } from '../services/keyset-curso
 import { queryMetricsBucketed } from '../services/queries/index.ts'
 import { getSettings, type UserSettings } from '../services/settings.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
+import { UUID_RE } from '../utils.ts'
 import { validateQuery } from '../validation.ts'
 import { createRenderCache } from './feed-image-router.ts'
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /**
  * Page size of a profile's public feed listing (newest-first). Matches the authed
@@ -103,8 +102,6 @@ export const createFeedPublicRouter = ({
   // articles, while the listing query that keys it is cheap.
   const atomCache = createRenderCache<string>(100)
 
-  // One post as a visitor sees it, shared by the profile listing and the single-post
-  // permalink so the two never drift.
   const serializePublicPost = async (
     username: string,
     record: FeedPostRecord,

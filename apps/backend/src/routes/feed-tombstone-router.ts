@@ -6,8 +6,10 @@
  * answers `410 Gone` with an AS2 `Tombstone`, which tells a remote server the
  * object is *permanently* gone (vs a `404`, which reads as transient/unknown).
  * Anything without a tombstone — a live post (served by Fedify, never reaches
- * here), a `followers`-only id, or one that never existed — falls through to the
- * normal 404, as does a browser (a request preferring HTML). Articles federate
+ * here), a `followers`-only id, or one that never existed — falls through, as
+ * does a browser (a request preferring HTML). The next router,
+ * `actor-html-router`, redirects a browser on any post id of an existing account
+ * to the permalink page; everything else ends in the normal 404. Articles federate
  * as a `Note` at this same id, so a deleted article tombstones here too
  * (formerType `Note`).
  *
@@ -18,7 +20,8 @@ import { type Response, Router } from 'express'
 
 import { isValidUsername } from '../api/auth-routes.ts'
 import { isMissingDatabase } from '../db/index.ts'
-import { negotiateActor, UUID_RE } from './actor-html-router.ts'
+import { UUID_RE } from '../utils.ts'
+import { negotiateActor } from './actor-html-router.ts'
 
 export interface FeedTombstoneDeps {
   /** Canonical web origin, e.g. `https://aurboda.net` — the Tombstone `id` base. */

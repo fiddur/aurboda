@@ -900,13 +900,9 @@ const main = async () => {
   // since-deleted post, `@fedify/express` calls next(), and this catches it.
   httpd.use(createFeedTombstoneRouter({ getTombstone: getFeedTombstone, origin: webHost }))
 
-  // The actor URL's other representation: Fedify next()s whatever doesn't ask
-  // for the actor document, and this redirects a request that prefers HTML to
-  // /u/:username (or answers 406 when nothing it serves is acceptable). An
-  // account is one with a per-user database — the same existence test the
-  // background sweeps use — so an unknown actor keeps its 404. Any post id of an
-  // existing account redirects a browser to its permalink page
-  // /u/:username/posts/:postId, which says when the post isn't public.
+  // An account is one with a per-user database — the same existence test the
+  // background sweeps use — so an unknown actor keeps its 404. A post id of an
+  // existing account redirects a browser to its permalink page.
   httpd.use(
     createActorHtmlRouter({
       origin: webHost,
