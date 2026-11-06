@@ -15,8 +15,8 @@ export interface AccountDeletionDeps {
     | 'deleteAllCentralUserData'
     | 'deleteOuraUserMappingsByUsername'
     | 'deleteStravaAthleteMappingByUsername'
-    | 'getAdminCount'
-    | 'isAdmin'
+    | 'getAdmins'
+    | 'isUsernameDeleted'
     | 'reserveDeletedUsername'
   >
   /** Every user with a per-user database. */
@@ -66,10 +66,14 @@ export type AccountDeleter = (
 ) => Promise<AccountDeletionResult>
 
 /**
- * Everything after the reservation is best effort except dropping the database:
- * a federation or integration failure is logged and the deletion goes on, while a
- * failed drop is returned so it can be retried (the reservation stays, which a
- * retry tolerates).
+ * Everything before the drop is best effort: a federation or integration failure
+ * is logged and the deletion goes on, while a failed drop is returned so it can be
+ * retried. The name is reserved only after the steps that need the database, since
+ * the role and database already keep signup from taking it until the drop.
+ *
+ * A user with no database whose name is reserved was dropped by an attempt that
+ * failed afterwards: running the deletion again finishes it rather than answering
+ * `not_found`.
  */
 export const createAccountDeleter = (deps: AccountDeletionDeps): AccountDeleter => {
   const log = deps.log ?? console
@@ -82,16 +86,50 @@ export const createAccountDeleter = (deps: AccountDeletionDeps): AccountDeleter 
     }
   }
 
+  const drop = async (username: string): Promise<boolean> => {
+    try {
+      await deps.dropUserDb(username)
+      return true
+    } catch (error) {
+      log.error(`⚠️ Account deletion of ${username}: dropping the database failed:`, error)
+      return false
+    }
+  }
+
+  /** An admin row whose name is reserved and has no database is left over from an unfinished deletion. */
+  const isLastAdmin = async (username: string, users: string[]): Promise<boolean> => {
+    const admins = await deps.centralDb.getAdmins()
+    if (!admins.includes(username)) return false
+    let live = 0
+    for (const admin of admins) {
+      if (users.includes(admin) || !(await deps.centralDb.isUsernameDeleted(admin))) live += 1
+    }
+    return live <= 1
+  }
+
+  const deletedBy = (username: string, actor: string) => (actor === username ? 'self' : `admin ${actor}`)
+
+  const finishPartialDeletion = async (username: string, actor: string): Promise<AccountDeletionResult> => {
+    deps.onDeleted(username)
+    if (!(await drop(username))) return fail('drop_failed')
+    await bestEffort('central data removal', username, () =>
+      deps.centralDb.deleteAllCentralUserData(username),
+    )
+    log.info(`🗑️ Account ${username}: unfinished deletion completed by ${deletedBy(username, actor)}`)
+    return { ok: true }
+  }
+
   return async (username, { actor, confirmUsername }) => {
     if (confirmUsername !== username) return fail('confirmation_mismatch')
     const { centralDb } = deps
 
-    if ((await centralDb.isAdmin(username)) && (await centralDb.getAdminCount()) <= 1) {
-      return fail('last_admin')
+    const users = await deps.listUsers()
+    if (!users.includes(username)) {
+      if (!(await centralDb.isUsernameDeleted(username))) return fail('not_found')
+      return finishPartialDeletion(username, actor)
     }
-    if (!(await deps.listUsers()).includes(username)) return fail('not_found')
 
-    await centralDb.reserveDeletedUsername(username, actor)
+    if (await isLastAdmin(username, users)) return fail('last_admin')
 
     await bestEffort('federation Delete', username, () => deps.announceDeletion(username))
     for (const integration of deps.integrations) {
@@ -104,18 +142,14 @@ export const createAccountDeleter = (deps: AccountDeletionDeps): AccountDeleter 
       centralDb.deleteStravaAthleteMappingByUsername(username),
     )
 
+    await centralDb.reserveDeletedUsername(username, actor)
     deps.onDeleted(username)
 
-    try {
-      await deps.dropUserDb(username)
-    } catch (error) {
-      log.error(`⚠️ Account deletion of ${username}: dropping the database failed:`, error)
-      return fail('drop_failed')
-    }
+    if (!(await drop(username))) return fail('drop_failed')
 
     await bestEffort('central data removal', username, () => centralDb.deleteAllCentralUserData(username))
 
-    log.info(`🗑️ Account ${username} deleted by ${actor === username ? 'self' : `admin ${actor}`}`)
+    log.info(`🗑️ Account ${username} deleted by ${deletedBy(username, actor)}`)
     return { ok: true }
   }
 }
