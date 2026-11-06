@@ -48,10 +48,9 @@ import { decodeKeysetCursor, encodeKeysetCursor } from '../services/keyset-curso
 import { queryMetricsBucketed } from '../services/queries/index.ts'
 import { getSettings, type UserSettings } from '../services/settings.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
+import { UUID_RE } from '../utils.ts'
 import { validateQuery } from '../validation.ts'
 import { createRenderCache } from './feed-image-router.ts'
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /**
  * Page size of a profile's public feed listing (newest-first). Matches the authed
@@ -98,13 +97,8 @@ export const createFeedPublicRouter = ({
   // to PROFILE_FEED_LIMIT entries per profile without a handful of concurrently
   // browsed profiles thrashing it. Producing `null` (no content) isn't cached.
   const structuredCache = createRenderCache<FeedStructuredPost>(200)
-  // The rendered Atom XML. The feed is unauthenticated and polled, and rendering
-  // runs a series or correlation query per chart block of up to ATOM_ENTRY_LIMIT
-  // articles, while the listing query that keys it is cheap.
   const atomCache = createRenderCache<string>(100)
 
-  // One post as a visitor sees it, shared by the profile listing and the single-post
-  // permalink so the two never drift.
   const serializePublicPost = async (
     username: string,
     record: FeedPostRecord,

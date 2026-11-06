@@ -5,13 +5,12 @@ import multer from 'multer'
 import { getIcon } from '../db/icons.ts'
 import { isAllowedContentType, processAndStoreIcon, removeIcon } from '../services/icons.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
+import { UUID_RE } from '../utils.ts'
 
 const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 },
   storage: multer.memoryStorage(),
 })
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export const createIconsRouter = (authMiddleware: RequestHandler): TypedRouter => {
   const router = typedRouter()

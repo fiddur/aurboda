@@ -30,7 +30,6 @@ interface AuthRoutesDeps {
   invitationAuth: InvitationAuth
   userDb: Client
   unauthorized: Error
-  /** Whether a user with a database exists, so `/status` never names a blog user deleted since. */
   userExists: (username: string) => Promise<boolean>
 }
 

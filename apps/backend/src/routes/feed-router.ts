@@ -70,6 +70,7 @@ import { getThreadSnapshot, listOwnPostReplies, MAX_POST_REPLIES } from '../serv
 import { getTimelinePage, reactionTarget } from '../services/timeline.ts'
 import { withTimeout } from '../services/with-timeout.ts'
 import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
+import { UUID_RE } from '../utils.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
 /**
@@ -103,9 +104,6 @@ export interface FeedDeliver {
   /** Federate a reply edit as an `Update`, to the same recipients. */
   updatedReply: (user: string, post: FeedPostRecord) => void
 }
-
-/** RFC 4122 canonical form — timeline entry ids are UUIDs. */
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /**
  * Map a reaction toggle's outcome to its HTTP status + body. Pure, so the four

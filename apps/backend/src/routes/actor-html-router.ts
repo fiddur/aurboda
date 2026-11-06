@@ -21,6 +21,7 @@ import { Router, type RequestHandler } from 'express'
 
 import { isValidUsername } from '../api/auth-routes.ts'
 import { buildPostUrl, buildProfileUrl } from '../services/share-urls.ts'
+import { UUID_RE } from '../utils.ts'
 
 export interface ActorHtmlDeps {
   /** Canonical web origin, e.g. `https://aurboda.net` — the profile URL base. */
@@ -35,9 +36,6 @@ const HTML_TYPES = ['text/html', 'application/xhtml+xml']
 const ACTOR_TYPE = 'application/activity+json'
 const ACTOR_PATH = /^\/users\/([^/]+)$/
 const NOTE_PATH = /^\/users\/([^/]+)\/feed\/([^/]+)$/
-
-/** RFC 4122 canonical form — mirrors the object dispatcher's guard. */
-export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /** One `Accept` entry: its media type (lowercased) and quality weight. */
 const parseAcceptEntry = (raw: string): { type: string; q: number } => {

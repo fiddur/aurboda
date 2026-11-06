@@ -13,13 +13,14 @@
 
 import type { LegacyMatch } from '../db/types.ts'
 
+import { UUID_RE } from '../utils.ts'
+
 export type { LegacyMatch }
 
 export const GARMIN_HC_ORIGIN = 'com.garmin.android.apps.connectmobile'
 export const GRAVL_HC_ORIGIN = 'com.liteup.getgains'
 
 const GRAVL_CLIENT_RECORD_PREFIX = 'gravl-session-'
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export const garminActivityExternalId = (activityId: number | string): string =>
   `garmin-activity-${activityId}`

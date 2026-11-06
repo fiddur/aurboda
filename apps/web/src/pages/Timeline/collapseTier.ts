@@ -63,11 +63,8 @@ const FINE_MERGE_GAP_CAP_MS = 10 * 60 * 1000
  * to stay welded together at every zoom level, because
  * `differenceInCalendarDays` is 0 for any view inside one day.
  *
- * The merge test is `gap <= this`, which bridges a zero gap however small this
- * gets, so two sessions that abut exactly would never split. In this pixel tier
- * the Activity lane therefore also keeps exact zero gaps apart — see
- * `splitsAbuttingForZoom`. Screen Time does not: a zero gap is exactly what
- * makes contiguous sampling spans read as one bar.
+ * The merge test is `gap <= this`, so a zero gap always merges here; see
+ * `collapseToParentType`'s `splitAbutting` and `splitsAbuttingForZoom`.
  *
  * Capped at the previous fixed floor. The cap binds below ~42 pixels-per-hour —
  * a narrow container, or a range stretched toward the 2-boundary limit — where
