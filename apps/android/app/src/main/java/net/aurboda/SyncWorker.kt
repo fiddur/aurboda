@@ -261,8 +261,10 @@ class SyncWorker(
           if (countsAsEntryFailure(stop)) {
             markPendingEntryFailed(applicationContext, entry.id, result.message)
             failed++
+            Log.w(TAG, "Pending entry ${entry.id} failed: ${result.message}")
+          } else {
+            Log.i(TAG, "Pending entry ${entry.id} kept (read-only): ${result.message}")
           }
-          Log.w(TAG, "Pending entry ${entry.id} failed: ${result.message}")
           if (stop != null) {
             reporter.updateStage(SyncStage.PendingData) {
               it.copy(

@@ -98,10 +98,6 @@ export function BarChartWidget({ config, origin }: BarChartWidgetProps) {
   } = config
   const params = barsFetchParams(config, lookbackToRange(lookback_days))
   const { aggregation } = params
-  const measureConfig = {
-    ...(measure ? { measure } : {}),
-    ...(measure && filter_field && filter_value ? { filter_field, filter_value } : {}),
-  }
 
   const chartQuery = useQuery({
     enabled: Boolean(pattern ?? activity_type_id),
@@ -150,7 +146,9 @@ export function BarChartWidget({ config, origin }: BarChartWidgetProps) {
     pattern: pattern ?? undefined,
     source_type,
     activity_type_id,
-    ...measureConfig,
+    measure: params.measure,
+    filter_field: params.filter_field,
+    filter_value: params.filter_value,
     origin,
   })
 

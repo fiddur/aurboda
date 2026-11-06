@@ -8,6 +8,7 @@ import { useState } from 'preact/hooks'
 
 import { getMetricDisplayName } from '../../utils/metricLabels'
 import { MetricPicker } from '../MetricPicker'
+import { blankRequiredFields } from './requiredConfig'
 import './style.css'
 
 interface DashboardEditorProps {
@@ -189,8 +190,10 @@ export function DashboardEditor({ sectionType, onAddWidget, onClose }: Dashboard
     setConfigValues(template.defaultConfig() as Record<string, unknown>)
   }
 
+  const blankFields = selectedTemplate ? blankRequiredFields(selectedTemplate.type, configValues) : []
+
   const handleAddWidget = () => {
-    if (!selectedTemplate) return
+    if (!selectedTemplate || blankFields.length > 0) return
 
     const widget: DashboardWidget = {
       config: configValues,
@@ -561,7 +564,12 @@ export function DashboardEditor({ sectionType, onAddWidget, onClose }: Dashboard
             <button class="btn-secondary" onClick={onClose}>
               Cancel
             </button>
-            <button class="btn-primary" onClick={handleAddWidget}>
+            <button
+              class="btn-primary"
+              onClick={handleAddWidget}
+              disabled={blankFields.length > 0}
+              title={blankFields.length > 0 ? `Fill in: ${blankFields.join(', ')}` : undefined}
+            >
               Add Widget
             </button>
           </div>
