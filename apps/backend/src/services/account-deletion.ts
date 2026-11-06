@@ -109,7 +109,6 @@ export const createAccountDeleter = (deps: AccountDeletionDeps): AccountDeleter 
     return live <= 1
   }
 
-  /** The instance blog setting goes with the user it names, so the Blog links never lead to "Blog not found". */
   const removeCentralData = async (username: string) => {
     const { centralDb } = deps
     await bestEffort('central data removal', username, () => centralDb.deleteAllCentralUserData(username))

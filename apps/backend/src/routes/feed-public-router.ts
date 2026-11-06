@@ -97,9 +97,6 @@ export const createFeedPublicRouter = ({
   // to PROFILE_FEED_LIMIT entries per profile without a handful of concurrently
   // browsed profiles thrashing it. Producing `null` (no content) isn't cached.
   const structuredCache = createRenderCache<FeedStructuredPost>(200)
-  // The rendered Atom XML. The feed is unauthenticated and polled, and rendering
-  // runs a series or correlation query per chart block of up to ATOM_ENTRY_LIMIT
-  // articles, while the listing query that keys it is cheap.
   const atomCache = createRenderCache<string>(100)
 
   const serializePublicPost = async (
