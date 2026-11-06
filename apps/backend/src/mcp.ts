@@ -16,6 +16,7 @@ import type { GravlClient } from './integrations/gravl/client.ts'
 import type { ouraClient } from './integrations/oura/client.ts'
 import type { AutosharePreviewDeps } from './mcp/autoshare-rule-tools.ts'
 import type { FeedDeliver } from './routes/feed-router.ts'
+import type { AdminUsers } from './services/admin-users.ts'
 import type { CentralDb } from './services/central-db.ts'
 import type { DiscoverChallenges } from './services/challenge-discovery.ts'
 import type { DeductionEngineDeps } from './services/deduction-engine.ts'
@@ -32,6 +33,7 @@ import type { RetroEnrichTrigger } from './services/timeline-retro-enrich.ts'
 
 import { registerActivityTools } from './mcp/activity-tools.ts'
 import { registerActivityTypeTools } from './mcp/activity-type-tools.ts'
+import { registerAdminUserTools } from './mcp/admin-user-tools.ts'
 import { registerAutoshareRuleTools } from './mcp/autoshare-rule-tools.ts'
 import { registerChallengeTools } from './mcp/challenge-tools.ts'
 import { registerChartTools } from './mcp/chart-tools.ts'
@@ -99,6 +101,7 @@ const SERVER_INSTRUCTIONS =
   'The tool list is abbreviated: each tool shows its first sentence and its top-level parameters only. Call describe_tools with one or more tool names for the full description and complete parameter schema (nested objects, enums, examples) before using a tool whose parameters are objects or arrays.'
 
 interface McpDeps {
+  adminUsers?: AdminUsers
   apiBaseUrl?: string
   autosharePreviewDeps?: AutosharePreviewDeps
   centralDb?: CentralDb
@@ -168,6 +171,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     registerFoodItemTools(server, user, deps.centralDb)
     registerSensitivityTools(server, user, deps.centralDb)
     registerImportTools(server, user, deps.centralDb)
+    if (deps.adminUsers) registerAdminUserTools(server, user, deps.centralDb, deps.adminUsers)
   }
   registerReportTools(server, user)
   registerRouteTools(server, user)

@@ -11,6 +11,7 @@ import type { Auth } from '../auth.ts'
 import type { GarminClient } from '../integrations/garmin/client.ts'
 import type { DetailSyncedCallback, TrackWrittenCallback } from '../integrations/garmin/sync.ts'
 import type { AutosharePreviewDeps } from '../mcp/autoshare-rule-tools.ts'
+import type { AdminUsers } from '../services/admin-users.ts'
 import type { CentralDb } from '../services/central-db.ts'
 import type { DiscoverChallenges } from '../services/challenge-discovery.ts'
 import type { DeductionEngineDeps } from '../services/deduction-engine.ts'
@@ -113,6 +114,7 @@ interface RestRoutesDeps {
   httpd: Express
   authMiddleware: AnyMiddleware
   adminMiddleware: AnyMiddleware
+  adminUsers: AdminUsers
   centralDb: CentralDb
   invitationAuth: InvitationAuth
   webHost: string
@@ -156,6 +158,7 @@ export const mountRestRouters = ({
   httpd,
   authMiddleware,
   adminMiddleware,
+  adminUsers,
   centralDb,
   invitationAuth,
   webHost,
@@ -330,6 +333,7 @@ export const mountRestRouters = ({
       authMiddleware,
       adminMiddleware,
       centralDb,
+      adminUsers,
       invitationAuth,
       webHost,
       gravlRedirectUri(apiBaseUrl),

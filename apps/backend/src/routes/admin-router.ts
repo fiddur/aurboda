@@ -1,7 +1,9 @@
-import type { RequestHandler } from 'express'
-
 import {
   type AdminSettingsResponse,
+  type AdminUserUsageQuery,
+  adminUserUsageQuerySchema,
+  type AdminUserUsageResponse,
+  type AdminUsersResponse,
   type BaseResponse,
   type CreateInvitationBody,
   createInvitationBodySchema,
@@ -10,17 +12,19 @@ import {
   updateAdminSettingsBodySchema,
 } from '@aurboda/api-spec'
 
+import type { AdminUsers } from '../services/admin-users.ts'
 import type { CentralDb } from '../services/central-db.ts'
 import type { InvitationAuth } from '../services/invitation.ts'
 import type { OuraWebhookManager } from '../services/oura-webhook-manager.ts'
 
-import { type TypedRouter, typedRouter } from '../typed-router.ts'
-import { validateBody } from '../validation.ts'
+import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
+import { validateBody, validateQuery } from '../validation.ts'
 
 export const createAdminRouter = (
-  authMiddleware: RequestHandler,
-  adminMiddleware: RequestHandler,
+  authMiddleware: AnyMiddleware,
+  adminMiddleware: AnyMiddleware,
   centralDb: CentralDb,
+  adminUsers: AdminUsers,
   invitationAuth: InvitationAuth,
   webHost: string,
   gravlRedirectUri: string,
@@ -222,6 +226,30 @@ export const createAdminRouter = (
         token,
         url: `${webHost}/signup?invite=${encodeURIComponent(token)}`,
       })
+    },
+  )
+
+  router.get<Record<string, never>, AdminUsersResponse>(
+    '/users',
+    authMiddleware,
+    adminMiddleware,
+    async (_req, res) => {
+      res.json({ success: true, users: await adminUsers.listUsersOverview() })
+    },
+  )
+
+  router.get<{ username: string }, AdminUserUsageResponse, unknown, AdminUserUsageQuery>(
+    '/users/:username',
+    authMiddleware,
+    adminMiddleware,
+    validateQuery(adminUserUsageQuerySchema),
+    async (req, res) => {
+      const user = await adminUsers.getUserUsage(req.params.username, req.query.days)
+      if (!user) {
+        res.status(404).json({ error: 'User not found', success: false })
+        return
+      }
+      res.json({ success: true, user })
     },
   )
 
