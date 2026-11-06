@@ -1,6 +1,7 @@
 import type {
   AddNamedLocationBody,
   AddNamedLocationResponse,
+  BaseResponse,
   DetectedLocation as ApiDetectedLocation,
   LocationsQuery,
   LocationsResponse,
@@ -142,4 +143,11 @@ export const updateNamedLocation = async (
   })
 
   return response.data.data!
+}
+
+export const deleteNamedLocation = async (id: string): Promise<void> => {
+  const { token } = auth.value
+  await axios.delete<BaseResponse>(`${API_URL}/locations/named/${id}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
 }

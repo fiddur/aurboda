@@ -1,4 +1,5 @@
 .places-page {
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -140,6 +141,92 @@
   padding: 0.25rem 0.5rem;
   color: #9ca3af;
   font-size: 0.9em;
+}
+
+.named-places {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+.named-places h2 {
+  margin: 0 0 0.5rem 0.25rem;
+  font-size: 1rem;
+  color: #1f2937;
+}
+
+.named-places ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.named-places-empty {
+  color: #6b7280;
+  font-size: 0.9em;
+  padding: 0.25rem 0.5rem;
+}
+
+.named-place-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-left: 3px solid #22c55e;
+  border-radius: 6px;
+  margin-bottom: 0.25rem;
+}
+
+.named-place-row:hover {
+  background: #f3f4f6;
+}
+
+.named-place-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.named-place-name {
+  font-weight: 500;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.named-place-meta {
+  color: #6b7280;
+  font-size: 0.8em;
+}
+
+.named-place-delete {
+  flex-shrink: 0;
+  margin-right: 0.5rem;
+  padding: 0.25rem 0.625rem;
+  border: 1px solid #fca5a5;
+  border-radius: 4px;
+  background: white;
+  color: #dc2626;
+  font-size: 0.85em;
+  cursor: pointer;
+}
+
+.named-place-delete:hover:not(:disabled) {
+  background: #fef2f2;
+}
+
+.named-place-delete:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .map-container {
@@ -342,6 +429,33 @@
 
   .place-item.selected {
     background: #1e3a5f;
+  }
+
+  .named-places {
+    border-color: #374151;
+  }
+
+  .named-places h2 {
+    color: #f3f4f6;
+  }
+
+  .named-places-empty,
+  .named-place-meta {
+    color: #9ca3af;
+  }
+
+  .named-place-row:hover {
+    background: #374151;
+  }
+
+  .named-place-delete {
+    background: #374151;
+    border-color: #7f1d1d;
+    color: #fca5a5;
+  }
+
+  .named-place-delete:hover:not(:disabled) {
+    background: #4b5563;
   }
 
   .map-container {

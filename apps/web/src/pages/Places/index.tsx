@@ -1,5 +1,7 @@
 import 'leaflet/dist/leaflet.css'
 import './style.css'
+import type { NamedLocation, UpdateNamedLocationBody } from '@aurboda/api-spec'
+
 import { signal } from '@preact/signals'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { endOfDay, format, formatISO, startOfDay, subDays } from 'date-fns'
@@ -11,12 +13,15 @@ import type { PlaceVisit, StoredDetectedLocation } from '../../state/api'
 
 import {
   addNamedLocation,
+  deleteNamedLocation,
   fetchNamedLocations,
   fetchPlaceVisits,
   fetchStoredDetectedLocations,
   promoteDetectedLocation,
   updateNamedLocation,
 } from '../../state/api'
+import { namedPlaceUpdateBody } from './namedPlaces'
+import { NamedPlacesSection } from './NamedPlacesSection'
 
 // Fix Leaflet default marker icon path issue with bundlers
 // @ts-expect-error - Leaflet marker icon fix
@@ -54,6 +59,7 @@ export const Places = () => {
     address?: string
     /** When set, the modal is in edit mode for an existing named location. */
     editingId?: string
+    originalName?: string
   } | null>(null)
   const [nameInput, setNameInput] = useState('')
   const [autoCreateActivity, setAutoCreateActivity] = useState(false)
@@ -100,8 +106,13 @@ export const Places = () => {
   })
 
   const updateNamedMutation = useMutation({
-    mutationFn: ({ id, body }: { id: string; body: { auto_create_activity?: boolean } }) =>
+    mutationFn: ({ id, body }: { id: string; body: UpdateNamedLocationBody }) =>
       updateNamedLocation(id, body),
+    onSuccess: invalidateAfterMutation,
+  })
+
+  const deleteNamedMutation = useMutation({
+    mutationFn: deleteNamedLocation,
     onSuccess: invalidateAfterMutation,
   })
 
@@ -194,15 +205,21 @@ export const Places = () => {
     updateDate(formatISO(next, { representation: 'date' }))
   }
 
+  const openEditModal = (named: NamedLocation) => {
+    setNamingLocation({ editingId: named.id, lat: named.lat, lon: named.lon, originalName: named.name })
+    setNameInput(named.name)
+    setAutoCreateActivity(named.auto_create_activity ?? false)
+  }
+
+  const handleDeleteNamed = (named: NamedLocation) => {
+    if (confirm(`Delete the named place "${named.name}"?`)) deleteNamedMutation.mutate(named.id)
+  }
+
   const handlePlaceClick = (place: PlaceVisit) => {
     setSelectedPlace(place)
     if (place.source === 'named') {
       const named = namedQuery.data?.find((nl) => nl.name === place.name)
-      if (named?.id && place.lat && place.lon) {
-        setNamingLocation({ editingId: named.id, lat: place.lat, lon: place.lon })
-        setNameInput(named.name)
-        setAutoCreateActivity(named.auto_create_activity ?? false)
-      }
+      if (named) openEditModal(named)
       return
     }
     if ((place.source === 'detected' || place.source === 'unknown') && place.lat && place.lon) {
@@ -217,7 +234,10 @@ export const Places = () => {
 
     if (namingLocation.editingId) {
       updateNamedMutation.mutate({
-        body: { auto_create_activity: autoCreateActivity },
+        body: namedPlaceUpdateBody(namingLocation.originalName ?? '', {
+          auto_create_activity: autoCreateActivity,
+          name: nameInput,
+        }),
         id: namingLocation.editingId,
       })
       return
@@ -368,6 +388,15 @@ export const Places = () => {
                 </div>
               )
             })}
+
+            {namedQuery.data && (
+              <NamedPlacesSection
+                locations={namedQuery.data}
+                deleting={deleteNamedMutation.isPending}
+                onEdit={openEditModal}
+                onDelete={handleDeleteNamed}
+              />
+            )}
           </div>
 
           <div class="places-list-footer">
@@ -398,7 +427,6 @@ export const Places = () => {
                 onInput={(e) => setNameInput((e.target as HTMLInputElement).value)}
                 placeholder="e.g., Home, Office, Gym"
                 autofocus
-                disabled={!!namingLocation.editingId}
               />
             </div>
 
