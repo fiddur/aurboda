@@ -111,6 +111,35 @@ describe('createStravaQueue', () => {
     }
   })
 
+  test('a job for a read-only account completes without fetching, and a list job frees the sync state', async () => {
+    const boss = createMockBoss()
+    const getActivity = vi.fn()
+    const listActivities = vi.fn()
+    const updateSyncState = vi.fn().mockResolvedValue(undefined)
+    await createStravaQueue(boss as never, {
+      ...mockDeps,
+      getActivity,
+      isReadOnly: async (user) => user === 'expired',
+      listActivities,
+      updateSyncState,
+    })
+    const mainCall = boss.work.mock.calls.find((args) => args[0] === 'strava-sync')
+    const handler = mainCall?.[2] as (jobs: { data: unknown }[]) => Promise<void>
+
+    await handler([
+      { data: { request_type: 'fetch_activity', strava_activity_id: 7, user: 'expired' } },
+      { data: { request_type: 'list_activities', user: 'expired' } },
+    ])
+
+    expect(mockDeps.getAccessToken).not.toHaveBeenCalled()
+    expect(getActivity).not.toHaveBeenCalled()
+    expect(listActivities).not.toHaveBeenCalled()
+    expect(processStravaActivity).not.toHaveBeenCalled()
+    expect(boss.send).not.toHaveBeenCalled()
+    expect(updateSyncState).toHaveBeenCalledTimes(1)
+    expect(updateSyncState).toHaveBeenCalledWith('expired', 'activities', { status: 'idle' })
+  })
+
   test('creates main queue + dead-letter queue and registers both workers', async () => {
     const boss = createMockBoss()
     const queue = await createStravaQueue(boss as never, mockDeps)

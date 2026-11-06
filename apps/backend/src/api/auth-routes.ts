@@ -166,6 +166,10 @@ export const registerAuthRoutes = ({
 
       res.json({ is_admin: isAdmin, success: true, token })
     } catch (err) {
+      if ((err as { code?: string }).code === '42710') {
+        res.status(409).json({ error: 'Username already exists', success: false })
+        return
+      }
       console.error('Signup error:', err)
       next(err)
     }

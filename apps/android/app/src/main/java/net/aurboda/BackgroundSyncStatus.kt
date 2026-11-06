@@ -10,7 +10,8 @@ private const val LAST_RESULT_KEY = "bgSyncLastResult"
 private const val LAST_ERROR_KEY = "bgSyncLastError"
 private const val LAST_DURATION_KEY = "bgSyncLastDurationMs"
 
-enum class BackgroundSyncResult { Success, Retry, Skipped }
+/** [ReadOnly] and [LoggedOut] stop the run without a retry; the next periodic run tries again. */
+enum class BackgroundSyncResult { Success, Retry, Skipped, ReadOnly, LoggedOut }
 
 data class BackgroundSyncStatus(
   val lastAttempt: Instant? = null,
@@ -59,7 +60,8 @@ fun recordBackgroundSyncResult(
   when (result) {
     BackgroundSyncResult.Success -> edit.putLong(LAST_SUCCESS_KEY, finishedAt.toEpochMilli()).remove(LAST_ERROR_KEY)
     BackgroundSyncResult.Skipped -> edit.remove(LAST_ERROR_KEY)
-    BackgroundSyncResult.Retry -> if (error != null) edit.putString(LAST_ERROR_KEY, error) else edit.remove(LAST_ERROR_KEY)
+    BackgroundSyncResult.Retry, BackgroundSyncResult.ReadOnly, BackgroundSyncResult.LoggedOut ->
+      if (error != null) edit.putString(LAST_ERROR_KEY, error) else edit.remove(LAST_ERROR_KEY)
   }
   edit.apply()
   publishStatus(context)

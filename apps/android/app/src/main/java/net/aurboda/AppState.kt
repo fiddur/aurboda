@@ -77,16 +77,22 @@ class AppState(
     var pendingServerUrl by mutableStateOf<String?>(null)
         private set
 
+    /** Shown on the login screen to say why the user was logged out, e.g. [SESSION_REFUSED_MESSAGE]. */
+    var loginNotice by mutableStateOf<String?>(null)
+        private set
+
     val credentials: CredentialsManager.Credentials?
         get() = CredentialsManager.getCredentials(context)
 
     fun onLoginSuccess() {
         pendingServerUrl = null
+        loginNotice = null
         currentScreen = AppScreen.Main
     }
 
-    fun logout() {
+    fun logout(notice: String? = null) {
         CredentialsManager.clearCredentials(context)
+        loginNotice = notice
         currentTab = MainTab.Home
         moreDestination = null
         currentScreen = AppScreen.Login

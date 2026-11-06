@@ -51,6 +51,7 @@ import {
 import { periodSummaryResponseSchema } from './schemas/period-summary.ts'
 import {
   accountPlanResponseSchema,
+  accountReadOnlyResponseSchema,
   adminUserPlanResponseSchema,
   updateUserPlanBodySchema,
 } from './schemas/plans.ts'
@@ -116,7 +117,11 @@ const openApiDocument = createDocument({
     // Served at the instance root (`/.well-known/aurboda`), outside the `/api`
     // server base, so it has no path entry — the model is registered so federation
     // clients (the Android challenge widget) get a generated type for it.
-    schemas: { WellKnownAurboda: wellKnownAurbodaSchema, WellKnownQuantpub: wellKnownQuantpubSchema },
+    schemas: {
+      AccountReadOnlyResponse: accountReadOnlyResponseSchema,
+      WellKnownAurboda: wellKnownAurbodaSchema,
+      WellKnownQuantpub: wellKnownQuantpubSchema,
+    },
     securitySchemes: {
       bearerAuth: {
         bearerFormat: 'JWT',
@@ -1485,6 +1490,41 @@ const openApiDocument = createDocument({
     },
   ],
 })
+
+// Mirrors `isAllowedWhenReadOnly` in the backend's account gate: every authenticated write
+// except exporting, passkeys and deleting the account can be refused for a read-only account.
+// Admin routes are left out because admins are always exempt.
+const WRITE_METHODS = ['post', 'put', 'patch', 'delete'] as const
+const mayBeRefusedWhenReadOnly = (path: string, method: string) =>
+  !path.startsWith('/export') &&
+  !path.startsWith('/webauthn/') &&
+  !path.startsWith('/admin/') &&
+  !(method === 'delete' && path === '/account')
+
+interface GeneratedOperation {
+  responses?: Record<string, unknown>
+  security?: Record<string, unknown>[]
+}
+
+openApiDocument.components = {
+  ...openApiDocument.components,
+  responses: {
+    ...openApiDocument.components?.responses,
+    AccountReadOnly: {
+      content: { 'application/json': { schema: { $ref: '#/components/schemas/AccountReadOnlyResponse' } } },
+      description:
+        'The account is read-only: its plan expired past the grace period, so no new data is stored until it is renewed',
+    },
+  },
+}
+for (const [path, item] of Object.entries(openApiDocument.paths ?? {})) {
+  for (const method of WRITE_METHODS) {
+    const operation = (item as Record<string, GeneratedOperation | undefined>)[method]
+    if (!operation?.security?.some((s) => 'bearerAuth' in s)) continue
+    if (!mayBeRefusedWhenReadOnly(path, method)) continue
+    operation.responses = { ...operation.responses, 402: { $ref: '#/components/responses/AccountReadOnly' } }
+  }
+}
 
 fs.mkdirSync('./generated', { recursive: true })
 fs.writeFileSync('./generated/openapi.yaml', yaml.stringify(openApiDocument))

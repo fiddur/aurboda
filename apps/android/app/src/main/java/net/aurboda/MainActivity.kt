@@ -234,8 +234,28 @@ fun AurbodaApp(
   val appState = rememberAppState(initialTab = initialTab, initialMorePath = initialMorePath)
   LaunchedEffect(deepLinkEvent) { deepLinkEvent?.let { appState.open(it.link) } }
   val context = LocalContext.current
+  val lifecycleOwner = LocalLifecycleOwner.current
   val scope = rememberCoroutineScope()
-  val ktorHttpClient = remember { syncHttpClient() }
+  val ktorHttpClient = remember { syncHttpClient(onTokenRefused = { forgetRefusedToken(context, it) }) }
+
+  val sessionRefused by remember(context) { sessionRefusedFlow(context) }.collectAsState()
+  LaunchedEffect(sessionRefused) {
+    if (sessionRefused) {
+      clearSessionRefused(context)
+      appState.logout(SESSION_REFUSED_MESSAGE)
+    }
+  }
+
+  if (appState.currentScreen == AppScreen.Main) {
+    DisposableEffect(lifecycleOwner) {
+      val observer =
+        LifecycleEventObserver { _, event ->
+          if (event == Lifecycle.Event.ON_RESUME) scope.launch { verifyStoredToken(context, ktorHttpClient) }
+        }
+      lifecycleOwner.lifecycle.addObserver(observer)
+      onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+  }
 
   var updateAvailable by remember { mutableStateOf<VersionInfo?>(null) }
   var showUpdateDialog by remember { mutableStateOf(false) }
@@ -334,6 +354,7 @@ fun AurbodaApp(
       val context = LocalContext.current
       net.aurboda.ui.screens.LoginScreen(
         initialServerUrl = appState.pendingServerUrl,
+        notice = appState.loginNotice,
         onSaveCredentials = { serverUrl, username, token ->
           CredentialsManager.saveCredentials(context, serverUrl, username, token)
         },
@@ -482,7 +503,7 @@ fun HealthConnectScreen(
   val hasBackgroundReadPermission by remember(grantedPermissions) {
     derivedStateOf { HC_BACKGROUND_READ_PERMISSION in grantedPermissions }
   }
-  val ktorHttpClient = remember { syncHttpClient() }
+  val ktorHttpClient = remember { syncHttpClient(onTokenRefused = { forgetRefusedToken(context, it) }) }
 
   /**
    * Sync Health Connect data incrementally: fetch and send page by page.
