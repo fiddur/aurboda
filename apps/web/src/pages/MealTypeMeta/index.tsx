@@ -123,7 +123,7 @@ function RecentMeals({ mealType }: { mealType: string }) {
 
 export function MealTypeMeta() {
   const { params } = useRoute()
-  const mealType = decodeURIComponent(params.name as string)
+  const mealType = params.name as string
 
   const { data: itemIcons = {} } = useQuery({
     queryFn: fetchUserSettings,

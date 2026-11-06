@@ -749,7 +749,7 @@ function ActivityTypeHeader({
 
 export function ActivityTypeMeta() {
   const { params } = useRoute()
-  const name = decodeURIComponent(params.name as string)
+  const name = params.name as string
   const [lookback, setLookback] = useState(90)
 
   const { data: definitions } = useQuery({
