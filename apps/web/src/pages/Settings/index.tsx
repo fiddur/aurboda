@@ -5,6 +5,7 @@ import type { BiologicalSex, HrZoneThresholds, UpdateSettingsInput } from '../..
 
 import { AvatarSettings } from '../../components/AvatarSettings'
 import { DataExportSettings } from '../../components/DataExportSettings'
+import { DeleteAccountSettings } from '../../components/DeleteAccountSettings'
 import { MealPreferencesSettings } from '../../components/MealPreferencesSettings'
 import { PasskeySettings } from '../../components/PasskeySettings'
 import { type SaveStatus, SaveStatusIndicator } from '../../components/SaveStatusIndicator'
@@ -313,6 +314,8 @@ export function Settings() {
           View recent system events, sync operations, and errors. <a href="/audit-log">View audit log</a>
         </p>
       </section>
+
+      <DeleteAccountSettings />
     </div>
   )
 }

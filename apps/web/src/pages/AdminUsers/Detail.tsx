@@ -1,8 +1,9 @@
-import { useQuery } from '@tanstack/react-query'
-import { useRoute } from 'preact-iso'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useLocation, useRoute } from 'preact-iso'
 import { useMemo } from 'preact/hooks'
 
-import { fetchAdminUserUsage } from '../../state/api'
+import { DeleteAccountConfirm } from '../../components/DeleteAccountConfirm'
+import { deleteAdminUser, fetchAdminUserUsage } from '../../state/api'
 import { auth } from '../../state/auth'
 import { AdminAccessDenied } from './AccessDenied'
 import { formatBytes, stackDaily } from './admin-users-utils'
@@ -15,8 +16,11 @@ const todayUtc = () => new Date().toISOString().slice(0, 10)
 
 export function AdminUserDetail() {
   const { params } = useRoute()
+  const { route } = useLocation()
+  const queryClient = useQueryClient()
   const username = params.username ?? ''
   const isAllowed = !!auth.value.token && !!auth.value.is_admin
+  const isSelf = username === auth.value.user
   const {
     data: usage,
     error,
@@ -93,6 +97,26 @@ export function AdminUserDetail() {
               </table>
             )}
           </section>
+
+          {!isSelf && (
+            <section class="au-section">
+              <h2>Delete user</h2>
+              <p class="au-muted">
+                Removes all of {username}'s data, integration connections and public profile for good, tells
+                their followers on other servers the account is gone, and reserves the username so it can
+                never be signed up again. They can download an export from their Settings first.
+              </p>
+              <DeleteAccountConfirm
+                username={username}
+                label="Delete user"
+                onDelete={() => deleteAdminUser(username, { confirm_username: username })}
+                onDeleted={() => {
+                  void queryClient.invalidateQueries({ queryKey: ['adminUsers'] })
+                  route('/admin/users')
+                }}
+              />
+            </section>
+          )}
         </>
       )}
     </div>

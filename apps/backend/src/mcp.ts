@@ -16,6 +16,7 @@ import type { GravlClient } from './integrations/gravl/client.ts'
 import type { ouraClient } from './integrations/oura/client.ts'
 import type { AutosharePreviewDeps } from './mcp/autoshare-rule-tools.ts'
 import type { FeedDeliver } from './routes/feed-router.ts'
+import type { AccountDeleter } from './services/account-deletion.ts'
 import type { AdminUsers } from './services/admin-users.ts'
 import type { CentralDb } from './services/central-db.ts'
 import type { DiscoverChallenges } from './services/challenge-discovery.ts'
@@ -31,6 +32,7 @@ import type { HrSettingsChanged } from './services/settings.ts'
 import type { StravaQueue } from './services/strava-queue.ts'
 import type { RetroEnrichTrigger } from './services/timeline-retro-enrich.ts'
 
+import { registerAccountDeletionTools } from './mcp/account-deletion-tools.ts'
 import { registerActivityTools } from './mcp/activity-tools.ts'
 import { registerActivityTypeTools } from './mcp/activity-type-tools.ts'
 import { registerAdminUserTools } from './mcp/admin-user-tools.ts'
@@ -101,6 +103,8 @@ const SERVER_INSTRUCTIONS =
   'The tool list is abbreviated: each tool shows its first sentence and its top-level parameters only. Call describe_tools with one or more tool names for the full description and complete parameter schema (nested objects, enums, examples) before using a tool whose parameters are objects or arrays.'
 
 interface McpDeps {
+  /** Account deletion (`delete_my_account`, `delete_user`). */
+  accountDeleter?: AccountDeleter
   adminUsers?: AdminUsers
   apiBaseUrl?: string
   autosharePreviewDeps?: AutosharePreviewDeps
@@ -114,6 +118,8 @@ interface McpDeps {
   followerActions?: FollowerActions
   garmin?: GarminClient
   gravl?: GravlClient
+  /** Deleted accounts, whose stateless tokens still decode. */
+  isDeletedUser?: (user: string) => boolean
   onActivityMutated?: ActivityNotifier
   onNamedLocationsChanged?: NamedLocationsChanged
   /** Fire-and-forget: recompute activity features after HR zones, birth date or maf_hr change. */
@@ -172,6 +178,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     registerSensitivityTools(server, user, deps.centralDb)
     registerImportTools(server, user, deps.centralDb)
     if (deps.adminUsers) registerAdminUserTools(server, user, deps.centralDb, deps.adminUsers)
+    if (deps.accountDeleter) registerAccountDeletionTools(server, user, deps.centralDb, deps.accountDeleter)
   }
   registerReportTools(server, user)
   registerRouteTools(server, user)
@@ -209,17 +216,20 @@ export function createMcpRouter(auth: Auth, deps: McpDeps = {}): Router {
     }
     const token = authHeader.slice('Bearer '.length)
 
-    // Try OAuth access token first (prefixed with aur_at_)
-    if (isOAuthAccessToken(token) && deps.centralDb) {
-      return validateAccessToken({ centralDb: deps.centralDb }, token)
-    }
+    const user = await (async () => {
+      // Try OAuth access token first (prefixed with aur_at_)
+      if (isOAuthAccessToken(token) && deps.centralDb) {
+        return validateAccessToken({ centralDb: deps.centralDb }, token)
+      }
 
-    // Fall back to existing AES-256-GCM token
-    try {
-      return auth.getUsernameFromToken(token)
-    } catch {
-      return null
-    }
+      // Fall back to existing AES-256-GCM token
+      try {
+        return auth.getUsernameFromToken(token)
+      } catch {
+        return null
+      }
+    })()
+    return user && deps.isDeletedUser?.(user) ? null : user
   }
 
   router.post('/', json({ limit: '4mb' }), async (req: Request, res: Response) => {

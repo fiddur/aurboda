@@ -26,6 +26,7 @@ const { registerAuthRoutes } = await import('./auth-routes.ts')
 const pgError = (code: string, message = 'pg failure') => Object.assign(new Error(message), { code })
 
 const ensureUserAccount = vi.fn(async () => true)
+const isUsernameDeleted = vi.fn(async (_username: string) => false)
 
 const buildApp = ({
   blogUsername = null,
@@ -45,6 +46,7 @@ const buildApp = ({
       getServerSetting: vi.fn(async (key: string) => (key === 'blog_username' ? blogUsername : null)),
       getSignupMode: vi.fn(async () => signupMode),
       isAdmin: vi.fn(async () => false),
+      isUsernameDeleted,
     } as never,
     httpd,
     invitationAuth: {} as never,
@@ -66,6 +68,7 @@ const login = (body: unknown) =>
 
 beforeEach(() => {
   vi.clearAllMocks()
+  isUsernameDeleted.mockResolvedValue(false)
   vi.mocked(db.query).mockResolvedValue({ rowCount: 1, rows: [{ usename: 'alice' }] } as never)
   vi.mocked(db.loginToUserDb).mockResolvedValue(undefined)
   vi.mocked(db.isInvalidPasswordError).mockReturnValue(false)
@@ -194,5 +197,18 @@ describe('POST /signup', () => {
       createdAt: expect.any(Date),
       preExisting: false,
     })
+  })
+
+  test('refuses the name of a deleted account as taken', async () => {
+    vi.mocked(db.query).mockResolvedValue({ rowCount: 0, rows: [] } as never)
+    isUsernameDeleted.mockImplementation(async (username) => username === 'gone')
+
+    const response = await supertest(buildApp({ signupMode: 'open' }))
+      .post('/signup')
+      .send({ password: 'secret', username: 'gone' })
+
+    expect(response.status).toBe(409)
+    expect(response.body.error).toBe('Username already exists')
+    expect(db.makeNewUserDb).not.toHaveBeenCalled()
   })
 })

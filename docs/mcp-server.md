@@ -16,6 +16,7 @@ Key areas covered by MCP tools:
 - **Sync** -- trigger data syncs from Garmin, Oura, Last.fm, RescueTime, calendars
 - **Settings** -- user preferences, HR zones, training load configuration
 - **Export** -- `export_data_dump` links a download of your whole database as SQL ([data export](data-export.md))
+- **Account** -- `delete_my_account` deletes your account for good; admins can `delete_user` ([deleting accounts](admin.md#deleting-accounts))
 
 ### Tool discovery
 

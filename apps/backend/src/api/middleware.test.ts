@@ -49,9 +49,9 @@ const auth: Auth = {
 }
 
 /** One app per test, so the middleware's per-instance map starts empty. */
-const buildApp = () => {
+const buildApp = (isDeletedUser?: (user: string) => boolean) => {
   const httpd = express()
-  httpd.use(createAuthMiddleware(auth, httpError(401, 'Unauthorized')))
+  httpd.use(createAuthMiddleware(auth, httpError(401, 'Unauthorized'), isDeletedUser))
   httpd.get('/who', (req, res) => {
     res.json({ user: req.user })
   })
@@ -158,5 +158,13 @@ describe('createAuthMiddleware', () => {
 
     expect(response.status).toBe(401)
     expect(db.migrateSchemaIfNeeded).not.toHaveBeenCalled()
+  })
+
+  test("rejects a deleted user's still-valid token without touching the schema", async () => {
+    const httpd = buildApp((user) => user === 'gone')
+
+    expect((await get(httpd, 'gone')).status).toBe(401)
+    expect(db.migrateSchemaIfNeeded).not.toHaveBeenCalled()
+    expect((await get(httpd, 'alice')).status).toBe(200)
   })
 })

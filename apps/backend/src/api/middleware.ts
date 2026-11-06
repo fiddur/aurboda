@@ -19,7 +19,7 @@ const summarizeResponse = (body: unknown): unknown =>
  * Redacts `password` and summarizes large request/response bodies (see `summarizeAuditBody`).
  */
 export const createAuditLogMiddleware =
-  (auth: Auth): RequestHandler =>
+  (auth: Auth, isDeletedUser: (user: string) => boolean = () => false): RequestHandler =>
   (req, res, next) => {
     if (req.method !== 'GET' && req.method !== 'OPTIONS' && req.method !== 'HEAD') {
       const user = (() => {
@@ -44,6 +44,7 @@ export const createAuditLogMiddleware =
         }
 
         res.on('finish', () => {
+          if (isDeletedUser(user)) return
           if (res.statusCode >= 500) {
             auditError(user, 'data', `${req.method} ${req.path}`, {
               ...sanitizedBody,
@@ -76,7 +77,12 @@ export const createAuditLogMiddleware =
  * off a one-shot background backfill of historical screentime activities,
  * gated via sync_state.
  */
-export const createAuthMiddleware = (auth: Auth, unauthorized: Error): AnyMiddleware => {
+export const createAuthMiddleware = (
+  auth: Auth,
+  unauthorized: Error,
+  /** A deleted user's token still decodes (it is stateless), so it is refused here. */
+  isDeletedUser: (user: string) => boolean = () => false,
+): AnyMiddleware => {
   const migratedUsers = new Map<string, Promise<void>>()
 
   return async (req, res, next) => {
@@ -84,6 +90,7 @@ export const createAuthMiddleware = (auth: Auth, unauthorized: Error): AnyMiddle
       if (typeof req.headers.authorization === 'string') {
         const token = req.headers.authorization.slice('bearer '.length)
         const user = auth.getUsernameFromToken(token)
+        if (isDeletedUser(user)) return next(unauthorized)
         req.user = user
 
         if (!migratedUsers.has(user)) {
