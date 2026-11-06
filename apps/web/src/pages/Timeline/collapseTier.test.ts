@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { collapseDepthForPixelsPerHour, computePixelsPerHour, mergeGapForZoom } from './collapseTier'
+import {
+  collapseDepthForPixelsPerHour,
+  computePixelsPerHour,
+  mergeGapForZoom,
+  splitsAbuttingForZoom,
+} from './collapseTier'
 
 const MINUTE = 60_000
 
@@ -61,6 +66,16 @@ describe('mergeGapForZoom', () => {
 
   it('bridges nothing but touching spans at unbounded zoom', () => {
     expect(mergeGapForZoom(0, Number.POSITIVE_INFINITY)).toBe(0)
+  })
+})
+
+describe('splitsAbuttingForZoom', () => {
+  it('splits abutting activities in the pixel tier of mergeGapForZoom', () => {
+    for (const days of [0, 1, 2]) expect(splitsAbuttingForZoom(days)).toBe(true)
+  })
+
+  it('merges them in the coarse tiers', () => {
+    for (const days of [3, 14, 51]) expect(splitsAbuttingForZoom(days)).toBe(false)
   })
 })
 

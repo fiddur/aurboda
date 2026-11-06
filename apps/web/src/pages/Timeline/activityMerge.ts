@@ -247,14 +247,18 @@ export const COLLAPSE_MERGE_GAP_MS = 30 * 60 * 1000
  * there's nothing to show — a single-entry provenance is still informative
  * (the parent bar is one sub-type only) so we keep that case. Callers that
  * cannot use a self-restating entry filter it with `restatesOwnType` first.
+ *
+ * `withCounts: false` drops the "×N" suffixes, for lanes where a count would
+ * tally raw sampling spans rather than sessions.
  */
 export const formatCollapsedTypesLine = (
   collapsedTypes: { type: string; count: number }[] | undefined,
+  { withCounts = true }: { withCounts?: boolean } = {},
 ): string | undefined => {
   if (!collapsedTypes || collapsedTypes.length < 1) return undefined
   const labels = collapsedTypes.map((e) => {
     const display = toDisplayName(e.type)
-    return e.count > 1 ? `${display} ×${e.count}` : display
+    return withCounts && e.count > 1 ? `${display} ×${e.count}` : display
   })
   return `Merged: ${labels.join(', ')}`
 }
@@ -265,10 +269,8 @@ export const formatCollapsedTypesLine = (
  *
  * The Activity lane deliberately keeps those — "Merged: Yoga ×2" is the only
  * signal that a bar holds two sessions and that clicking reaches just the first.
- * The Screen Time lane must not: a top-level category's derived type has no
- * `parent_type`, so it is never retyped, and a merged run would read
- * "Merged: Programming ×47" where the count is raw sampling spans rather than
- * sessions, and the bar links to its category rather than to a member.
+ * The Screen Time lane must not: it shows no counts, so a top-level category
+ * listing only itself would read "Merged: Programming" and say nothing.
  */
 export const restatesOwnType = (
   collapsedTypes: { type: string; count: number }[] | undefined,
@@ -409,6 +411,12 @@ const recordCollapsedType = (
  *      within `mergeGapMs`. Identical sub-types still merge at depth=0 (a
  *      comb of consecutive `running` slivers folds to one).
  *
+ * `splitAbutting` keeps an exact zero gap (one activity ending as the next
+ * begins) apart while overlaps and positive gaps within `mergeGapMs` still
+ * merge: two back-to-back sessions stay separately clickable once zoomed in.
+ * Off by default because contiguous screentime sampling spans abut exactly and
+ * must read as one bar.
+ *
  * The synthetic survivor of a multi-child collapse carries `collapsed_types`
  * with the original child types and counts (deduped, ordered by first
  * appearance) — used by the tooltip enrichment.
@@ -419,6 +427,7 @@ export const collapseToParentType = (
   typeDefsByName: ReadonlyMap<string, { parent_type?: string }>,
   mergeGapMs: number = COLLAPSE_MERGE_GAP_MS,
   depth = 1,
+  { splitAbutting = false }: { splitAbutting?: boolean } = {},
 ): Activity[] => {
   if (activities.length === 0) return activities
 
@@ -434,6 +443,7 @@ export const collapseToParentType = (
   if (retyped.length === 0) return retyped
   const sorted = [...retyped].sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
   const merged: Activity[] = []
+  const withinGap = (gap: number) => gap <= mergeGapMs && !(splitAbutting && gap === 0)
   for (const current of sorted) {
     const prev = merged[merged.length - 1]
     if (
@@ -441,7 +451,7 @@ export const collapseToParentType = (
       prev.activity_type === current.activity_type &&
       prev.end_time &&
       current.end_time &&
-      current.start_time.getTime() - prev.end_time.getTime() <= mergeGapMs
+      withinGap(current.start_time.getTime() - prev.end_time.getTime())
     ) {
       if (current.end_time > prev.end_time) prev.end_time = current.end_time
       const incoming = current.collapsed_types ?? [{ type: current.activity_type, count: 1 }]

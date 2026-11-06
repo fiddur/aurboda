@@ -91,6 +91,7 @@ export const Timeline = () => {
     bucketSize,
     barBucketSize,
     mergeGapMs,
+    splitAbutting,
     collapseDepth,
   } = nav
 
@@ -134,6 +135,7 @@ export const Timeline = () => {
     fromDateKey: fromDate.value,
     hiddenCategories,
     mergeGapMs,
+    splitAbutting,
     toDateKey: toDate.value,
   })
   const {

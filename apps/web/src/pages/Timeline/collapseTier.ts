@@ -63,10 +63,11 @@ const FINE_MERGE_GAP_CAP_MS = 10 * 60 * 1000
  * to stay welded together at every zoom level, because
  * `differenceInCalendarDays` is 0 for any view inside one day.
  *
- * Not unconditional: the merge test is `gap <= this`, and this is always > 0 for
- * a finite `pixelsPerHour`, so two sessions that abut exactly never split at any
- * zoom. Tightening to `<` is not the answer — a zero gap is exactly what makes
- * contiguous screentime sampling spans read as one bar.
+ * The merge test is `gap <= this`, which bridges a zero gap however small this
+ * gets, so two sessions that abut exactly would never split. In this pixel tier
+ * the Activity lane therefore also keeps exact zero gaps apart — see
+ * `splitsAbuttingForZoom`. Screen Time does not: a zero gap is exactly what
+ * makes contiguous sampling spans read as one bar.
  *
  * Capped at the previous fixed floor. The cap binds below ~42 pixels-per-hour —
  * a narrow container, or a range stretched toward the 2-boundary limit — where
@@ -89,3 +90,11 @@ export const mergeGapForZoom = (days: number, pixelsPerHour: number): number => 
   // changes.
   return Math.round(gap / 1000) * 1000
 }
+
+/**
+ * Whether the Activity lane keeps exactly abutting same-type activities as
+ * separate bars: true in the pixel tier of `mergeGapForZoom` (views crossing
+ * <= 2 calendar-day boundaries). Coarser tiers still merge them, and zooming in
+ * reaches this tier, where a merged bar's second member becomes clickable.
+ */
+export const splitsAbuttingForZoom = (days: number): boolean => days <= 2
