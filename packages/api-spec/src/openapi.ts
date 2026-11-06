@@ -15,8 +15,8 @@ import {
   wellKnownAurbodaSchema,
   wellKnownQuantpubSchema,
 } from './schemas/challenges.ts'
-import { dateOnlySchema, iso8601DateTimeSchema, metricTypeSchema } from './schemas/common.ts'
-import { dailySummaryResponseSchema } from './schemas/daily-summary.ts'
+import { iso8601DateTimeSchema, metricTypeSchema } from './schemas/common.ts'
+import { dailySummaryQuerySchema, dailySummaryResponseSchema } from './schemas/daily-summary.ts'
 import { exportDumpLinkResponseSchema, exportDumpQuerySchema } from './schemas/export.ts'
 import {
   goalHistoryQuerySchema,
@@ -410,13 +410,7 @@ const openApiDocument = createDocument({
       get: {
         description:
           'Get a comprehensive summary of health data for a specific day including heart rate, steps, sleep, exercise, tags, productivity, and visited places.',
-        requestParams: {
-          query: z.object({
-            date: dateOnlySchema.meta({
-              description: 'Date in YYYY-MM-DD format',
-            }),
-          }),
-        },
+        requestParams: { query: dailySummaryQuerySchema },
         responses: {
           200: {
             content: {
