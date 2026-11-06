@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { baseResponseSchema, iso8601DateTimeSchema } from './common.ts'
+import { baseResponseSchema, dateOnlySchema, iso8601DateTimeSchema } from './common.ts'
 
 export const signupModeSchema = z.enum(['open', 'invite_only', 'closed']).meta({
   description: 'Server signup mode',
@@ -199,3 +199,149 @@ export const invitationResponseSchema = baseResponseSchema
   .meta({ id: 'InvitationResponse' })
 
 export type InvitationResponse = z.infer<typeof invitationResponseSchema>
+
+const adminUserAccountShape = {
+  created_at: iso8601DateTimeSchema
+    .nullable()
+    .meta({ description: 'Signup time; null for an account that existed before signup dates were tracked' }),
+  is_admin: z.boolean().meta({ description: 'Whether the user is an admin' }),
+  pre_existing: z
+    .boolean()
+    .meta({ description: 'Whether the account existed before signup dates were tracked' }),
+  storage_bytes: z
+    .number()
+    .int()
+    .nullable()
+    .meta({ description: "Size of the user's database in bytes (null when unknown)" }),
+  username: z.string().meta({ description: 'Username' }),
+}
+
+export const adminUserIngestSchema = z
+  .object({
+    items_30d: z
+      .number()
+      .int()
+      .meta({ description: 'Records or points stored over the last 30 days (today included)' }),
+    last_at: iso8601DateTimeSchema
+      .nullable()
+      .meta({ description: 'Time of the last ingest within the usage retention (400 days)' }),
+    per_day_30d: z.number().meta({ description: 'Ingest events per day over the last 30 days' }),
+    per_day_7d: z.number().meta({ description: 'Ingest events per day over the last 7 days' }),
+    sources: z.array(z.string()).meta({
+      description: 'Data sources that ingested in the last 30 days (garmin, oura, health_connect, ...)',
+    }),
+  })
+  .meta({ description: 'How often data comes in for a user', id: 'AdminUserIngest' })
+
+export type AdminUserIngest = z.infer<typeof adminUserIngestSchema>
+
+export const adminUserChannelUseSchema = z
+  .object({
+    active_days_30d: z
+      .number()
+      .int()
+      .meta({ description: 'Days with a read or write on this channel over the last 30 days' }),
+    last_at: iso8601DateTimeSchema
+      .nullable()
+      .meta({ description: 'Time of the last read or write within the usage retention (400 days)' }),
+    reads_30d: z.number().int().meta({ description: 'Reads over the last 30 days' }),
+    writes_30d: z.number().int().meta({ description: 'Writes over the last 30 days' }),
+  })
+  .meta({ description: "A user's use of one channel", id: 'AdminUserChannelUse' })
+
+export type AdminUserChannelUse = z.infer<typeof adminUserChannelUseSchema>
+
+export const adminUsageChannels = ['web', 'android', 'mcp', 'api'] as const
+
+export const adminUsageChannelSchema = z
+  .enum(adminUsageChannels)
+  .meta({ description: 'Channel a user reads or writes through', id: 'AdminUsageChannel' })
+
+export type AdminUsageChannel = z.infer<typeof adminUsageChannelSchema>
+
+export const adminUserOverviewSchema = z
+  .object({
+    ...adminUserAccountShape,
+    ingest: adminUserIngestSchema,
+    last_api_at: iso8601DateTimeSchema
+      .nullable()
+      .meta({ description: 'Latest last use of the mcp or api channel' }),
+    last_ui_at: iso8601DateTimeSchema.nullable().meta({ description: 'Last use of the web app' }),
+    use: z
+      .object({
+        android: adminUserChannelUseSchema,
+        api: adminUserChannelUseSchema,
+        mcp: adminUserChannelUseSchema,
+        web: adminUserChannelUseSchema,
+      })
+      .meta({ description: 'Use per channel' }),
+  })
+  .meta({ description: 'One user on the installation, with storage and usage', id: 'AdminUserOverview' })
+
+export type AdminUserOverview = z.infer<typeof adminUserOverviewSchema>
+
+export const adminUsersResponseSchema = baseResponseSchema
+  .extend({
+    users: z.array(adminUserOverviewSchema).meta({ description: 'Every user, by username' }),
+  })
+  .meta({ id: 'AdminUsersResponse' })
+
+export type AdminUsersResponse = z.infer<typeof adminUsersResponseSchema>
+
+export const adminUserUsageQuerySchema = z
+  .object({
+    days: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(400)
+      .default(90)
+      .meta({ description: 'Days of daily usage to return, today included (1-400, default 90)' }),
+  })
+  .meta({ id: 'AdminUserUsageQuery' })
+
+export type AdminUserUsageQuery = z.infer<typeof adminUserUsageQuerySchema>
+
+export const adminUserUsageDaySchema = z
+  .object({
+    channel: z
+      .string()
+      .meta({ description: 'web, android, mcp or api for read/write; the data source for ingest' }),
+    count: z.number().int().meta({ description: 'Events that day' }),
+    day: dateOnlySchema.meta({ description: 'UTC day' }),
+    items: z.number().int().meta({ description: 'Items that day (records or points stored, for ingest)' }),
+    kind: z.enum(['read', 'write', 'ingest']).meta({ description: 'Kind of usage' }),
+  })
+  .meta({ description: 'Usage of one kind and channel on one day', id: 'AdminUserUsageDay' })
+
+export type AdminUserUsageDay = z.infer<typeof adminUserUsageDaySchema>
+
+export const adminUserTableSizeSchema = z
+  .object({
+    bytes: z.number().int().meta({ description: 'Total size including indexes and TOAST' }),
+    table: z.string().meta({ description: 'Table name' }),
+  })
+  .meta({ description: 'Size of one table in a user database', id: 'AdminUserTableSize' })
+
+export type AdminUserTableSize = z.infer<typeof adminUserTableSizeSchema>
+
+export const adminUserUsageSchema = z
+  .object({
+    ...adminUserAccountShape,
+    daily: z.array(adminUserUsageDaySchema).meta({ description: 'Daily usage, oldest first' }),
+    largest_tables: z
+      .array(adminUserTableSizeSchema)
+      .meta({ description: "The user database's ten largest tables, largest first" }),
+    since: dateOnlySchema.meta({ description: 'First UTC day covered by daily' }),
+  })
+  .meta({ description: "One user's daily usage and storage", id: 'AdminUserUsage' })
+
+export type AdminUserUsage = z.infer<typeof adminUserUsageSchema>
+
+export const adminUserUsageResponseSchema = baseResponseSchema
+  .extend({
+    user: adminUserUsageSchema.optional().meta({ description: 'The user; absent when not found' }),
+  })
+  .meta({ id: 'AdminUserUsageResponse' })
+
+export type AdminUserUsageResponse = z.infer<typeof adminUserUsageResponseSchema>

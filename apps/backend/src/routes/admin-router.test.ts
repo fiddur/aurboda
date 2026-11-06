@@ -2,6 +2,7 @@ import express, { type RequestHandler } from 'express'
 import supertest from 'supertest'
 import { describe, expect, test, vi } from 'vitest'
 
+import type { AdminUsers } from '../services/admin-users.ts'
 import type { CentralDb } from '../services/central-db.ts'
 import type { InvitationAuth } from '../services/invitation.ts'
 
@@ -19,16 +20,55 @@ const centralDb = {
 } as unknown as CentralDb
 
 const pass: RequestHandler = (_req, _res, next) => next()
+const forbid: RequestHandler = (_req, res) => {
+  res.status(403).json({ error: 'Forbidden', success: false })
+}
 
-const buildApp = () => {
+const overview = {
+  created_at: null,
+  ingest: { items_30d: 0, last_at: null, per_day_30d: 0, per_day_7d: 0, sources: [] },
+  is_admin: true,
+  last_api_at: null,
+  last_ui_at: '2026-11-06T10:00:00.000Z',
+  pre_existing: true,
+  storage_bytes: 1024,
+  use: {
+    android: { active_days_30d: 0, last_at: null, reads_30d: 0, writes_30d: 0 },
+    api: { active_days_30d: 0, last_at: null, reads_30d: 0, writes_30d: 0 },
+    mcp: { active_days_30d: 0, last_at: null, reads_30d: 0, writes_30d: 0 },
+    web: { active_days_30d: 1, last_at: '2026-11-06T10:00:00.000Z', reads_30d: 3, writes_30d: 0 },
+  },
+  username: 'alice',
+}
+
+const adminUsers: AdminUsers = {
+  getUserUsage: vi.fn(async (username: string) =>
+    username === 'alice'
+      ? {
+          created_at: null,
+          daily: [],
+          is_admin: true,
+          largest_tables: [{ bytes: 512, table: 'time_series' }],
+          pre_existing: true,
+          since: '2026-08-09',
+          storage_bytes: 1024,
+          username,
+        }
+      : null,
+  ),
+  listUsersOverview: vi.fn(async () => [overview]),
+}
+
+const buildApp = (adminMiddleware: RequestHandler = pass) => {
   const app = express()
   app.use(express.json())
   app.use(
     '/admin',
     createAdminRouter(
       pass,
-      pass,
+      adminMiddleware,
       centralDb,
+      adminUsers,
       {} as InvitationAuth,
       'https://web.example.test',
       gravlRedirectUri('https://api.example.test/api'),
@@ -48,5 +88,45 @@ describe('admin settings', () => {
     const res = await supertest(buildApp()).patch('/admin/settings').send({ gravl_client_id: 'abc' })
     expect(res.status).toBe(200)
     expect(res.body.gravl_redirect_uri).toBe('https://api.example.test/api/auth/gravlcb')
+  })
+})
+
+describe('admin users', () => {
+  test('GET /users lists every user', async () => {
+    const res = await supertest(buildApp()).get('/admin/users')
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ success: true, users: [overview] })
+  })
+
+  test('GET /users/:username returns the usage, 90 days by default', async () => {
+    const res = await supertest(buildApp()).get('/admin/users/alice')
+    expect(res.status).toBe(200)
+    expect(res.body.success).toBe(true)
+    expect(res.body.user).toMatchObject({ largest_tables: [{ bytes: 512, table: 'time_series' }] })
+    expect(adminUsers.getUserUsage).toHaveBeenLastCalledWith('alice', 90)
+  })
+
+  test('GET /users/:username passes days through and rejects out-of-range values', async () => {
+    await supertest(buildApp()).get('/admin/users/alice?days=14')
+    expect(adminUsers.getUserUsage).toHaveBeenLastCalledWith('alice', 14)
+
+    const res = await supertest(buildApp()).get('/admin/users/alice?days=401')
+    expect(res.status).toBe(400)
+  })
+
+  test('GET /users/:username answers 404 for an unknown user', async () => {
+    const res = await supertest(buildApp()).get('/admin/users/mallory')
+    expect(res.status).toBe(404)
+    expect(res.body).toEqual({ error: 'User not found', success: false })
+  })
+
+  test('non-admins are refused', async () => {
+    vi.mocked(adminUsers.listUsersOverview).mockClear()
+    vi.mocked(adminUsers.getUserUsage).mockClear()
+    const app = buildApp(forbid)
+    expect((await supertest(app).get('/admin/users')).status).toBe(403)
+    expect((await supertest(app).get('/admin/users/alice')).status).toBe(403)
+    expect(adminUsers.listUsersOverview).not.toHaveBeenCalled()
+    expect(adminUsers.getUserUsage).not.toHaveBeenCalled()
   })
 })

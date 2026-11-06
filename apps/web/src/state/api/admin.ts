@@ -1,3 +1,10 @@
+import type {
+  AdminUserOverview,
+  AdminUserUsage,
+  AdminUserUsageResponse,
+  AdminUsersResponse,
+} from '@aurboda/api-spec'
+
 import axios from 'axios'
 
 import { API_URL } from '../../config'
@@ -109,4 +116,22 @@ export const generateInvitation = async (expiryHours?: number): Promise<Invitati
     token: response.data.token,
     url: response.data.url,
   }
+}
+
+export const fetchAdminUsers = async (): Promise<AdminUserOverview[]> => {
+  const { token } = auth.value
+  const response = await axios.get<AdminUsersResponse>(`${API_URL}/admin/users`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return response.data.users
+}
+
+export const fetchAdminUserUsage = async (username: string, days = 90): Promise<AdminUserUsage> => {
+  const { token } = auth.value
+  const response = await axios.get<AdminUserUsageResponse>(
+    `${API_URL}/admin/users/${encodeURIComponent(username)}`,
+    { headers: { Authorization: `Bearer ${token}` }, params: { days } },
+  )
+  if (!response.data.user) throw new Error(response.data.error ?? 'User not found')
+  return response.data.user
 }

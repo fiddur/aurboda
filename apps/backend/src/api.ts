@@ -14,7 +14,8 @@ import { mountSyncRouter } from './api/sync-setup.ts'
 import { createUsageMiddleware } from './api/usage-middleware.ts'
 import { setupOuraWebhook, setupStravaWebhook } from './api/webhooks-setup.ts'
 import { createAuth } from './auth.ts'
-import { closeAllUserPools } from './db/connection.ts'
+import { closeAllUserPools, getDbForUser } from './db/connection.ts'
+import { getLargestTables, getUserDatabaseSizes } from './db/database-sizes.ts'
 import {
   createChallengePost,
   deleteRuleActivities,
@@ -91,6 +92,7 @@ import { configureFederationLogging } from './services/activitypub/logging.ts'
 import { isPubliclyVisible } from './services/activitypub/object.ts'
 import { createTimelineBackfiller } from './services/activitypub/timeline-backfill.ts'
 import { createAurbodaEnrichAttempt } from './services/activitypub/timeline-enrich.ts'
+import { createAdminUsers } from './services/admin-users.ts'
 import { createAuditLogPruneQueue } from './services/audit-log-prune-queue.ts'
 import { auditError, auditInfo, pruneAuditLog } from './services/audit-log.ts'
 import { createAutoshareDeps } from './services/autoshare-deps.ts'
@@ -435,6 +437,13 @@ const main = async () => {
 
   const userDb = new Client({ database: 'postgres' })
   await userDb.connect()
+
+  const adminUsers = createAdminUsers({
+    centralDb,
+    databaseSizes: () => getUserDatabaseSizes(userDb),
+    listUsers: () => listUserNames(userDb),
+    tableSizes: async (username) => getLargestTables(await getDbForUser(username)),
+  })
 
   // Land this deploy's schema changes in the background, so no user's first
   // authenticated request pays for the sweep (#1125). Gated per user by the
@@ -789,6 +798,7 @@ const main = async () => {
   httpd.use(
     '/mcp',
     createMcpRouter(auth, {
+      adminUsers,
       apiBaseUrl,
       autosharePreviewDeps: autoshareDeps,
       centralDb,
@@ -962,6 +972,7 @@ const main = async () => {
     activityNotifier,
     autosharePreviewDeps: autoshareDeps,
     adminMiddleware,
+    adminUsers,
     apiBaseUrl,
     auth,
     authMiddleware,

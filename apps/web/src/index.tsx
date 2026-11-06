@@ -20,6 +20,8 @@ const ActivityTypeMeta = lazyPage(() => import('./pages/ActivityTypeMeta/index.j
 const ActivityTypes = lazyPage(() => import('./pages/ActivityTypes/index.jsx'), 'ActivityTypes')
 const AddData = lazyPage(() => import('./pages/AddData/index.jsx'), 'AddData')
 const AdminSettings = lazyPage(() => import('./pages/AdminSettings/index.jsx'), 'AdminSettings')
+const AdminUsers = lazyPage(() => import('./pages/AdminUsers/index.jsx'), 'AdminUsers')
+const AdminUserDetail = lazyPage(() => import('./pages/AdminUsers/Detail.jsx'), 'AdminUserDetail')
 const AuditLog = lazyPage(() => import('./pages/AuditLog/index.jsx'), 'AuditLog')
 const Challenges = lazyPage(() => import('./pages/Challenges/index.jsx'), 'Challenges')
 const ChallengeJoin = lazyPage(() => import('./pages/Challenges/Join.jsx'), 'ChallengeJoin')
@@ -161,6 +163,8 @@ function AppShell() {
             <Route path="/settings" component={Settings} />
             <Route path="/audit-log" component={AuditLog} />
             <Route path="/admin" component={AdminSettings} />
+            <Route path="/admin/users" component={AdminUsers} />
+            <Route path="/admin/users/:username" component={AdminUserDetail} />
             <Route path="/help" component={DataSources} />
             <Route default component={NotFound} />
           </Router>
