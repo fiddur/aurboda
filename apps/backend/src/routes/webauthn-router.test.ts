@@ -64,6 +64,7 @@ const buildApp = (
         deleteUserAccount: vi.fn(async () => true),
         ensureUserAccount: vi.fn(async () => true),
         isAdmin: vi.fn(async () => false),
+        isUsernameDeleted: vi.fn(async () => false),
         ...options.centralDb,
       } as unknown as CentralDb,
       invitationAuth: {
@@ -264,6 +265,23 @@ describe('POST /webauthn/signup/options', () => {
     expect(webAuthn.getSignupOptions).not.toHaveBeenCalled()
   })
 
+  test('409 for the name of a deleted account, like a taken one', async () => {
+    vi.mocked(dbIndex.query).mockResolvedValue({ rowCount: 0, rows: [] } as never)
+    const webAuthn: Partial<WebAuthnService> = {
+      getSignupOptions: vi.fn(async () => ({ challenge: 'c' }) as never),
+    }
+    const app = buildApp(webAuthn, {
+      centralDb: {
+        getSignupMode: vi.fn(async (): Promise<'open'> => 'open'),
+        isUsernameDeleted: vi.fn(async (name: string) => name === 'gone'),
+      },
+    })
+    const res = await supertest(app).post('/webauthn/signup/options').send({ username: 'gone' })
+    expect(res.status).toBe(409)
+    expect(res.body.error).toBe('Username already exists')
+    expect(webAuthn.getSignupOptions).not.toHaveBeenCalled()
+  })
+
   test('200 with options_json on success', async () => {
     vi.mocked(dbIndex.query).mockResolvedValue({ rowCount: 0, rows: [] } as never)
     const webAuthn: Partial<WebAuthnService> = {
@@ -298,6 +316,34 @@ describe('POST /webauthn/signup/verify', () => {
       .send({ username: 'alice', response_json: '{}' })
     expect(res.status).toBe(400)
     expect(res.body.error).toBe('Verification failed')
+  })
+
+  test('409 when the name was reserved by a deletion between options and verify', async () => {
+    const webAuthn: Partial<WebAuthnService> = {
+      verifySignup: vi.fn(async () => ({
+        credential: {
+          backedUp: true,
+          counter: 0,
+          credentialId: 'cred-1',
+          deviceType: 'multiDevice',
+          publicKey: Buffer.from([1]),
+          transports: ['internal'],
+        },
+        userHandleUuid: '11111111-1111-1111-1111-111111111111',
+        verified: true,
+      })),
+    }
+    const insertHandle = vi.fn(async () => {})
+    const app = buildApp(webAuthn, {
+      centralDb: { insertWebAuthnUserHandle: insertHandle, isUsernameDeleted: vi.fn(async () => true) },
+    })
+    const res = await supertest(app)
+      .post('/webauthn/signup/verify')
+      .send({ username: 'alice', response_json: '{}' })
+
+    expect(res.status).toBe(409)
+    expect(insertHandle).not.toHaveBeenCalled()
+    expect(dbIndex.makeNewUserDb).not.toHaveBeenCalled()
   })
 
   test('200 happy path: token issued, no password ever leaves the server', async () => {

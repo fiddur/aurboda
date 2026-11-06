@@ -59,3 +59,36 @@ owns, such as PostGIS's `spatial_ref_sys`, are left out).
 
 The same data is available to admins over REST, `GET /admin/users` and
 `GET /admin/users/:username?days=90` (1–400 days), and over MCP, `list_users` and `get_user_usage`.
+
+## Deleting accounts
+
+A user deletes their own account at the bottom of Settings; an admin deletes any other user from
+that user's page (`/admin/users/<username>`). Either way the username has to be typed again to
+confirm, and the deletion cannot be undone. REST: `DELETE /account` and
+`DELETE /admin/users/:username`, each with `{ "confirm_username": "<username>" }`; MCP:
+`delete_my_account` and the admin-only `delete_user`. Point the user at
+[the data export](data-export.md) first if they want to keep their data.
+
+Deleting an account, in order:
+
+1. Reserves the username in the central `deleted_usernames` table (with who deleted it and when).
+   Signup refuses a reserved name as taken, for good: other ActivityPub servers cache an actor and
+   its key by URL, so a new account under the old name would inherit its followers and trust.
+2. Sends a `Delete` of the actor to the user's followers on other servers, so they drop the follow
+   and the cached profile.
+3. Revokes the Oura, Strava and Gravl grants upstream and removes the Oura and Strava user mappings.
+4. Drops the user's database and Postgres role: every metric, activity, location, setting,
+   integration token, passkey, feed post, follower and key pair.
+5. Removes every central row that names the user (admin entry, OAuth codes and tokens, passkey user
+   handle, Oura and Strava mappings, the `user_accounts` row and the usage counters) and clears their
+   name from the shared import jobs they started.
+
+Steps 2 and 3 are best effort: a server or provider that cannot be reached is logged and skipped.
+Dropping the database must succeed; if it fails the request answers 500 and can be retried (the
+reservation stays). Nothing else of the user is kept; the server log gets one line naming the
+account and who deleted it.
+
+A deleted user's login tokens stop working at once, on every instance (each refreshes the list of
+deleted names every two minutes). The actor URL and WebFinger answer `410 Gone` with a `Tombstone`.
+
+The last admin cannot be deleted (the request answers 409): make another user admin first.

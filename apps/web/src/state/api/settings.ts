@@ -1,4 +1,10 @@
-import type { ExportDumpLinkResponse, UpdateSettingsInput, UserSettingsResponse } from '@aurboda/api-spec'
+import type {
+  BaseResponse,
+  DeleteAccountBody,
+  ExportDumpLinkResponse,
+  UpdateSettingsInput,
+  UserSettingsResponse,
+} from '@aurboda/api-spec'
 
 import axios from 'axios'
 
@@ -39,6 +45,15 @@ export const requestExportDumpLink = async (): Promise<ExportDumpLinkResponse> =
     headers: { Authorization: `Bearer ${token}` },
   })
   return response.data
+}
+
+/** Permanently deletes the signed-in account. `confirm_username` must be its username. */
+export const deleteMyAccount = async (body: DeleteAccountBody): Promise<void> => {
+  const { token } = auth.value
+  await axios.delete<BaseResponse>(`${API_URL}/account`, {
+    data: body,
+    headers: { Authorization: `Bearer ${token}` },
+  })
 }
 
 export const uploadIcon = async (file: File): Promise<{ id: string; url: string }> => {

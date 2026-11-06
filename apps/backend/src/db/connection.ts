@@ -221,10 +221,9 @@ export const makeNewUserDb = async (adminClient: Client, user: string, password:
 }
 
 /**
- * Tear down a user that was just created by `makeNewUserDb`. Used by
- * passkey-only signup to roll back when something fails after the role
- * + database exist (e.g. credential persistence). Best-effort: each step
- * is wrapped so the next still runs even if one throws.
+ * Drop a user's database and role: signup rollback and account deletion.
+ * Every step runs even when an earlier one fails, so a failed DROP DATABASE
+ * still drops what it can; the first DROP failure is rethrown at the end.
  */
 export const dropUserDb = async (adminClient: Client, user: string) => {
   const database = userDbName(user)
@@ -243,8 +242,10 @@ export const dropUserDb = async (adminClient: Client, user: string) => {
       database,
     ),
   ).catch(() => {})
-  await query(adminClient, format('DROP DATABASE IF EXISTS %I', database)).catch(() => {})
-  await query(adminClient, format('DROP USER IF EXISTS %I', user)).catch(() => {})
+  const failures: unknown[] = []
+  await query(adminClient, format('DROP DATABASE IF EXISTS %I', database)).catch((e) => failures.push(e))
+  await query(adminClient, format('DROP USER IF EXISTS %I', user)).catch((e) => failures.push(e))
+  if (failures.length > 0) throw failures[0]
 }
 
 /**

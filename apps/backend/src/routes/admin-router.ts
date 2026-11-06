@@ -7,16 +7,20 @@ import {
   type BaseResponse,
   type CreateInvitationBody,
   createInvitationBodySchema,
+  type DeleteAccountBody,
+  deleteAccountBodySchema,
   type InvitationResponse,
   type UpdateAdminSettingsBody,
   updateAdminSettingsBodySchema,
 } from '@aurboda/api-spec'
 
+import type { AccountDeleter } from '../services/account-deletion.ts'
 import type { AdminUsers } from '../services/admin-users.ts'
 import type { CentralDb } from '../services/central-db.ts'
 import type { InvitationAuth } from '../services/invitation.ts'
 import type { OuraWebhookManager } from '../services/oura-webhook-manager.ts'
 
+import { accountDeletionStatus } from '../services/account-deletion.ts'
 import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
@@ -30,6 +34,7 @@ export const createAdminRouter = (
   gravlRedirectUri: string,
   userExists: (username: string) => Promise<boolean>,
   ouraWebhookManager?: OuraWebhookManager | null,
+  deleteAccount?: AccountDeleter,
 ): TypedRouter => {
   const router = typedRouter()
   router.get<Record<string, never>, AdminSettingsResponse>(
@@ -252,6 +257,26 @@ export const createAdminRouter = (
       res.json({ success: true, user })
     },
   )
+
+  if (deleteAccount) {
+    router.delete<{ username: string }, BaseResponse, DeleteAccountBody>(
+      '/users/:username',
+      authMiddleware,
+      adminMiddleware,
+      validateBody(deleteAccountBodySchema),
+      async (req, res) => {
+        const result = await deleteAccount(req.params.username, {
+          actor: req.user!,
+          confirmUsername: req.body.confirm_username,
+        })
+        if (!result.ok) {
+          res.status(accountDeletionStatus[result.error]).json({ error: result.message, success: false })
+          return
+        }
+        res.json({ success: true })
+      },
+    )
+  }
 
   return router
 }

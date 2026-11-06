@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { createDocument } from 'zod-openapi'
 
 import { activitiesResponseSchema } from './schemas/activities.ts'
-import { loginBodySchema, loginResponseSchema } from './schemas/admin.ts'
+import { deleteAccountBodySchema, loginBodySchema, loginResponseSchema } from './schemas/admin.ts'
 import {
   challengeParticipationsResponseSchema,
   challengesResponseSchema,
@@ -1315,6 +1315,61 @@ const openApiDocument = createDocument({
         },
         summary: 'Download a database export',
         tags: ['Settings'],
+      },
+    },
+    '/account': {
+      delete: {
+        description:
+          "Permanently delete the authenticated user's account: the whole database, integration grants, central records and the public profile. Followers on other servers are sent a Delete of the actor, and the username is reserved so it can never be signed up again. Export the data first (POST /export/dump-link) if it should be kept.",
+        requestBody: { content: { 'application/json': { schema: deleteAccountBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: deleteResponseSchema } },
+            description: 'Account deleted',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'confirm_username does not match the account',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The account is the last admin',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Delete my account',
+        tags: ['Settings'],
+      },
+    },
+    '/admin/users/{username}': {
+      delete: {
+        description:
+          'Permanently delete a user, as DELETE /account does for oneself. Admin-only. The last admin cannot be deleted.',
+        requestBody: { content: { 'application/json': { schema: deleteAccountBodySchema } } },
+        requestParams: {
+          path: z.object({ username: z.string().meta({ description: 'Username' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: deleteResponseSchema } },
+            description: 'User deleted',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'confirm_username does not match the username',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'User not found',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The user is the last admin',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Delete a user',
+        tags: ['Auth'],
       },
     },
 

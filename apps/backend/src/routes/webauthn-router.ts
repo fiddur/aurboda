@@ -104,7 +104,7 @@ export const createWebAuthnRouter = ({
       }
 
       const existing = await query(userDb, 'SELECT usename FROM pg_user WHERE usename=$1', [username])
-      if ((existing.rowCount ?? 0) > 0) {
+      if ((existing.rowCount ?? 0) > 0 || (await centralDb.isUsernameDeleted(username))) {
         res.status(409).json({ error: 'Username already exists', success: false, options_json: '' })
         return
       }
@@ -143,6 +143,11 @@ export const createWebAuthnRouter = ({
       }
 
       const { credential, userHandleUuid } = verifyResult
+
+      if (await centralDb.isUsernameDeleted(username)) {
+        res.status(409).json({ error: 'Username already exists', success: false, verified: true })
+        return
+      }
 
       const logRollbackFailure = (step: string, err: unknown) =>
         console.error(
