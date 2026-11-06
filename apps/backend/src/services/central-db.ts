@@ -9,6 +9,11 @@ import pg from 'pg'
 
 import { createRolePool, type Queryable, type UserDb, withTransaction } from '../db/pool.ts'
 import {
+  createDeletedUsernamesApi,
+  CREATE_DELETED_USERNAMES_TABLE,
+  type DeletedUsernamesApi,
+} from './central-deleted-usernames.ts'
+import {
   createSharedFoodItemsApi,
   CREATE_SHARED_FOOD_ITEMS_INDEXES,
   CREATE_SHARED_FOOD_ITEMS_TABLE,
@@ -26,11 +31,26 @@ import {
   seedSharedNutrientRecommendations,
   type SharedNutrientRecommendationsApi,
 } from './central-nutrient-recommendations.ts'
+import {
+  ALTER_USER_ACCOUNTS_PLAN_COLUMNS,
+  createUserAccountsApi,
+  CREATE_USER_ACCOUNTS_TABLE,
+  type UserAccountsApi,
+} from './central-user-accounts.ts'
+import {
+  createUserUsageApi,
+  CREATE_USER_USAGE_DAILY_INDEXES,
+  CREATE_USER_USAGE_DAILY_TABLE,
+  type UserUsageApi,
+} from './central-user-usage.ts'
 
 export type SignupMode = 'open' | 'invite_only' | 'closed'
 
 export interface ServerSettings {
   audit_log_retention_days: number
+  billing_enabled: boolean
+  blog_username: string
+  grace_days: number
   gravl_client_id: string
   gravl_client_secret: string
   lastfm_api_key: string
@@ -38,10 +58,13 @@ export interface ServerSettings {
   oura_client_secret: string
   oura_webhook_enabled: boolean
   oura_webhook_verification_token: string
+  payment_url: string
+  price_text: string
   sentry_dsn: string
   signup_mode: SignupMode
   strava_client_id: string
   strava_client_secret: string
+  trial_days: number
 }
 
 export interface OuraUserMapping {
@@ -104,7 +127,13 @@ export interface CentralDbDeps {
 }
 
 export interface CentralDb
-  extends SharedFoodItemsApi, CentralImportJobsApi, SharedNutrientRecommendationsApi {
+  extends
+    SharedFoodItemsApi,
+    CentralImportJobsApi,
+    DeletedUsernamesApi,
+    SharedNutrientRecommendationsApi,
+    UserAccountsApi,
+    UserUsageApi {
   initializeCentralDb: () => Promise<void>
   getServerSetting: <K extends keyof ServerSettings>(key: K) => Promise<ServerSettings[K] | null>
   setServerSetting: <K extends keyof ServerSettings>(key: K, value: ServerSettings[K]) => Promise<void>
@@ -436,6 +465,12 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       await client.query(CREATE_IMPORT_JOBS_TABLE)
       for (const stmt of CREATE_IMPORT_JOBS_INDEXES) await client.query(stmt)
 
+      await client.query(CREATE_USER_ACCOUNTS_TABLE)
+      for (const stmt of ALTER_USER_ACCOUNTS_PLAN_COLUMNS) await client.query(stmt)
+      await client.query(CREATE_DELETED_USERNAMES_TABLE)
+      await client.query(CREATE_USER_USAGE_DAILY_TABLE)
+      for (const stmt of CREATE_USER_USAGE_DAILY_INDEXES) await client.query(stmt)
+
       await client.query(CREATE_SHARED_NUTRIENT_RECOMMENDATIONS_TABLE)
       await deps.withTransaction((tx) => seedSharedNutrientRecommendations(tx))
 
@@ -448,7 +483,10 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
 
     ...createSharedFoodItemsApi(getClient),
     ...createCentralImportJobsApi(getClient),
+    ...createDeletedUsernamesApi(getClient, deps.withTransaction),
     ...createSharedNutrientRecommendationsApi(getClient),
+    ...createUserAccountsApi(getClient),
+    ...createUserUsageApi(getClient),
 
     isAdmin: async (username: string): Promise<boolean> => {
       const client = await getClient()

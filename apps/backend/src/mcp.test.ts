@@ -2,6 +2,7 @@ import express from 'express'
 import request from 'supertest'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
+import type { AccountGate } from './services/account-gate.ts'
 import type * as ActivityQueries from './services/queries/activities.ts'
 import type * as SessionQueries from './services/queries/activity-sessions.ts'
 
@@ -12,6 +13,7 @@ import * as activityRecords from './services/activity-records.ts'
 import * as latestSleep from './services/latest-sleep.ts'
 import * as mutations from './services/mutations.ts'
 import * as queries from './services/queries/index.ts'
+import { createUsageRecorder, installUsageRecorder, type UsageRow } from './services/usage-recorder.ts'
 
 vi.mock('./services/queries/index', async () => ({
   getActivityNeighbors: vi.fn(),
@@ -261,6 +263,61 @@ describe('MCP Server', () => {
         .send({ id: 1, jsonrpc: '2.0', method: 'tools/list', params: { pad: 'x'.repeat(3_000_000) } })
 
       expect(response.status).toBe(200)
+    })
+  })
+
+  describe('Usage recording - POST /mcp', () => {
+    const recorded: UsageRow[] = []
+    const recorder = createUsageRecorder({ flush: async (rows) => void recorded.push(...rows) })
+
+    beforeEach(() => {
+      recorded.length = 0
+      installUsageRecorder(recorder)
+    })
+
+    afterEach(() => {
+      installUsageRecorder(null)
+    })
+
+    test('counts each tool call by whether the tool mutates, and nothing else', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+
+      await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .send([
+          { id: 1, jsonrpc: '2.0', method: 'tools/list' },
+          {
+            id: 2,
+            jsonrpc: '2.0',
+            method: 'tools/call',
+            params: { arguments: {}, name: 'get_latest_sleep' },
+          },
+          { id: 3, jsonrpc: '2.0', method: 'tools/call', params: { arguments: {}, name: 'add_note' } },
+          { id: 4, jsonrpc: '2.0', method: 'tools/call', params: { arguments: {}, name: 'query_tags' } },
+        ])
+      await recorder.flushNow()
+
+      expect(
+        recorded.map(({ channel, count, kind, username }) => ({ channel, count, kind, username })),
+      ).toEqual([
+        { channel: 'mcp', count: 2, kind: 'read', username: 'testuser' },
+        { channel: 'mcp', count: 1, kind: 'write', username: 'testuser' },
+      ])
+    })
+
+    test('counts nothing for an unauthenticated call', async () => {
+      const app = createTestApp()
+
+      await mcpPost(app).send({
+        id: 1,
+        jsonrpc: '2.0',
+        method: 'tools/call',
+        params: { arguments: {}, name: 'get_latest_sleep' },
+      })
+      await recorder.flushNow()
+
+      expect(recorded).toEqual([])
     })
   })
 
@@ -590,6 +647,67 @@ describe('MCP Server', () => {
 
       expect(response.status).toBe(200)
       expect(response.toolResult.metrics[0].completeness_percent).toBe(48)
+    })
+  })
+
+  describe('Read-only accounts - POST /mcp', () => {
+    const refusal = {
+      error: 'This account is read-only until the plan is renewed',
+      payment_url: 'https://pay.example',
+    }
+    const accountGate: AccountGate = {
+      getStatus: vi.fn(),
+      invalidate: vi.fn(),
+      isReadOnly: vi.fn(),
+      refusal: vi.fn(),
+    }
+
+    const gatedApp = () => {
+      const app = express()
+      app.use('/mcp', createMcpRouter(auth, { accountGate }))
+      return app
+    }
+
+    const callTool = async (user: string, name: string, args: Record<string, unknown>) => {
+      const response = await mcpPost(gatedApp())
+        .set('Authorization', `Bearer ${auth.createToken(user)}`)
+        .send({ id: 1, jsonrpc: '2.0', method: 'tools/call', params: { arguments: args, name } })
+      return (
+        parseSSEResponse(response.text) as { result: { content: { text: string }[]; isError?: boolean } }
+      ).result
+    }
+
+    beforeEach(() => {
+      vi.mocked(accountGate.refusal).mockImplementation(async (user) => (user === 'expired' ? refusal : null))
+    })
+
+    test('refuses a mutating tool with a tool error carrying the payment link, without running it', async () => {
+      const result = await callTool('expired', 'delete_note', { id: '00000000-0000-4000-8000-000000000000' })
+
+      expect(result.isError).toBe(true)
+      expect(result.content[0].text).toBe(
+        'This account is read-only until the plan is renewed. Renew it at https://pay.example',
+      )
+      expect(mutations.deleteNoteById).not.toHaveBeenCalled()
+    })
+
+    test('runs a reading tool without consulting the gate', async () => {
+      vi.mocked(latestSleep.getLatestSleep).mockResolvedValue(null)
+
+      const result = await callTool('expired', 'get_latest_sleep', { tz: 'UTC' })
+
+      expect(result.isError).toBeUndefined()
+      expect(latestSleep.getLatestSleep).toHaveBeenCalledWith('expired')
+      expect(accountGate.refusal).not.toHaveBeenCalled()
+    })
+
+    test('runs mutating tools for an account that is not read-only', async () => {
+      vi.mocked(mutations.deleteNoteById).mockResolvedValue({ success: true } as never)
+
+      const result = await callTool('alice', 'delete_note', { id: '00000000-0000-4000-8000-000000000000' })
+
+      expect(result.isError).toBeUndefined()
+      expect(mutations.deleteNoteById).toHaveBeenCalledWith('alice', '00000000-0000-4000-8000-000000000000')
     })
   })
 

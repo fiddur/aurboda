@@ -1,7 +1,8 @@
 import { dataSources } from '@aurboda/api-spec'
 import { useEffect } from 'preact/hooks'
 
-import { auth, ensureStatusLoaded, signupAllowed } from '../../state/auth'
+import { blogPath } from '../../state/api/blogUrls'
+import { auth, blogUsername, ensureStatusLoaded, signupAllowed } from '../../state/auth'
 import { Dashboard } from '../Dashboard'
 import './style.css'
 
@@ -43,7 +44,7 @@ function Screenshot({
   )
 }
 
-function GuestHome({ canSignup }: { canSignup: boolean }) {
+function GuestHome({ blogUser, canSignup }: { blogUser: string | null; canSignup: boolean }) {
   return (
     <>
       <section class="intro">
@@ -162,6 +163,12 @@ function GuestHome({ canSignup }: { canSignup: boolean }) {
           <a href="https://github.com/fiddur/aurboda" target="_blank" rel="noopener noreferrer">
             View on GitHub
           </a>
+          {blogUser && (
+            <>
+              {' · '}
+              <a href={blogPath(blogUser)}>Read the blog</a>
+            </>
+          )}
         </p>
         <p class="note">
           No public signup — self-host your own instance or{' '}
@@ -325,7 +332,7 @@ export function Home() {
         </div>
       </div>
 
-      <GuestHome canSignup={canSignup ?? false} />
+      <GuestHome blogUser={blogUsername.value} canSignup={canSignup ?? false} />
     </div>
   )
 }

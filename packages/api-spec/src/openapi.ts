@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { createDocument } from 'zod-openapi'
 
 import { activitiesResponseSchema } from './schemas/activities.ts'
-import { loginBodySchema, loginResponseSchema } from './schemas/admin.ts'
+import { deleteAccountBodySchema, loginBodySchema, loginResponseSchema } from './schemas/admin.ts'
 import {
   challengeParticipationsResponseSchema,
   challengesResponseSchema,
@@ -17,6 +17,7 @@ import {
 } from './schemas/challenges.ts'
 import { dateOnlySchema, iso8601DateTimeSchema, metricTypeSchema } from './schemas/common.ts'
 import { dailySummaryResponseSchema } from './schemas/daily-summary.ts'
+import { exportDumpLinkResponseSchema, exportDumpQuerySchema } from './schemas/export.ts'
 import {
   goalHistoryQuerySchema,
   goalHistoryResponseSchema,
@@ -48,6 +49,12 @@ import {
   outboundSyncResponseSchema,
 } from './schemas/outbound-sync.ts'
 import { periodSummaryResponseSchema } from './schemas/period-summary.ts'
+import {
+  accountPlanResponseSchema,
+  accountReadOnlyResponseSchema,
+  adminUserPlanResponseSchema,
+  updateUserPlanBodySchema,
+} from './schemas/plans.ts'
 import { productivityResponseSchema } from './schemas/productivity.ts'
 import {
   mergeRoutesBodySchema,
@@ -110,7 +117,11 @@ const openApiDocument = createDocument({
     // Served at the instance root (`/.well-known/aurboda`), outside the `/api`
     // server base, so it has no path entry — the model is registered so federation
     // clients (the Android challenge widget) get a generated type for it.
-    schemas: { WellKnownAurboda: wellKnownAurbodaSchema, WellKnownQuantpub: wellKnownQuantpubSchema },
+    schemas: {
+      AccountReadOnlyResponse: accountReadOnlyResponseSchema,
+      WellKnownAurboda: wellKnownAurbodaSchema,
+      WellKnownQuantpub: wellKnownQuantpubSchema,
+    },
     securitySchemes: {
       bearerAuth: {
         bearerFormat: 'JWT',
@@ -1266,6 +1277,162 @@ const openApiDocument = createDocument({
       },
     },
 
+    '/export/dump-link': {
+      post: {
+        description:
+          "Issue a short-lived link to download the authenticated user's whole database as a gzipped plain SQL dump (pg_dump). Fails before issuing a link when this server cannot produce the dump.",
+        responses: {
+          200: {
+            content: { 'application/json': { schema: exportDumpLinkResponseSchema } },
+            description: 'Download link',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'An export is already running',
+          },
+          503: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'pg_dump is missing or older than the database server',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Create a database export link',
+        tags: ['Settings'],
+      },
+    },
+    '/export/dump': {
+      get: {
+        description:
+          'Stream the database dump named by a token from POST /export/dump-link, as `aurboda-<user>-<date>.sql.gz`. Authenticated by the token alone. See docs/data-export.md for restoring it.',
+        requestParams: { query: exportDumpQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/gzip': { schema: z.string().meta({ format: 'binary' }) } },
+            description: 'Gzipped plain SQL dump',
+          },
+          401: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid, expired or spent token',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'An export is already running',
+          },
+          503: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'pg_dump is missing or older than the database server',
+          },
+        },
+        summary: 'Download a database export',
+        tags: ['Settings'],
+      },
+    },
+    '/account': {
+      delete: {
+        description:
+          "Permanently delete the authenticated user's account: the whole database, integration grants, central records and the public profile. Followers on other servers are sent a Delete of the actor, and the username is reserved so it can never be signed up again. Export the data first (POST /export/dump-link) if it should be kept.",
+        requestBody: { content: { 'application/json': { schema: deleteAccountBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: deleteResponseSchema } },
+            description: 'Account deleted',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'confirm_username does not match the account',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The account no longer exists',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The account is the last admin',
+          },
+          500: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The account database could not be dropped; retrying is safe',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Delete my account',
+        tags: ['Settings'],
+      },
+    },
+    '/account/plan': {
+      get: {
+        description:
+          "The authenticated user's billing plan and state. With billing enabled, an account whose trial or paid period ended more than the grace period ago is read-only: writes answer 402 with the payment link, while reading, exporting and deleting the account still work.",
+        responses: {
+          200: {
+            content: { 'application/json': { schema: accountPlanResponseSchema } },
+            description: 'The plan',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get my plan',
+        tags: ['Settings'],
+      },
+    },
+    '/admin/users/{username}/plan': {
+      patch: {
+        description:
+          "Change a user's plan, paid-until date, trial end or note. Payments are recorded by hand. A future paid_until on a trial account switches it to the paid plan. Admin-only.",
+        requestBody: { content: { 'application/json': { schema: updateUserPlanBodySchema } } },
+        requestParams: {
+          path: z.object({ username: z.string().meta({ description: 'Username' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: adminUserPlanResponseSchema } },
+            description: 'The updated plan',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'User not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: "Change a user's plan",
+        tags: ['Auth'],
+      },
+    },
+    '/admin/users/{username}': {
+      delete: {
+        description:
+          'Permanently delete a user, as DELETE /account does for oneself. Admin-only. The last admin cannot be deleted. Running it again for a deletion that failed part-way finishes it, even when the user no longer has a database.',
+        requestBody: { content: { 'application/json': { schema: deleteAccountBodySchema } } },
+        requestParams: {
+          path: z.object({ username: z.string().meta({ description: 'Username' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: deleteResponseSchema } },
+            description: 'User deleted',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'confirm_username does not match the username',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'User not found',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The user is the last admin',
+          },
+          500: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The user database could not be dropped; retrying is safe',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Delete a user',
+        tags: ['Auth'],
+      },
+    },
+
     '/user/settings': {
       get: {
         description:
@@ -1329,6 +1496,41 @@ const openApiDocument = createDocument({
     },
   ],
 })
+
+// Mirrors `isAllowedWhenReadOnly` in the backend's account gate: every authenticated write
+// except exporting, passkeys and deleting the account can be refused for a read-only account.
+// Admin routes are left out because admins are always exempt.
+const WRITE_METHODS = ['post', 'put', 'patch', 'delete'] as const
+const mayBeRefusedWhenReadOnly = (path: string, method: string) =>
+  !path.startsWith('/export') &&
+  !path.startsWith('/webauthn/') &&
+  !path.startsWith('/admin/') &&
+  !(method === 'delete' && path === '/account')
+
+interface GeneratedOperation {
+  responses?: Record<string, unknown>
+  security?: Record<string, unknown>[]
+}
+
+openApiDocument.components = {
+  ...openApiDocument.components,
+  responses: {
+    ...openApiDocument.components?.responses,
+    AccountReadOnly: {
+      content: { 'application/json': { schema: { $ref: '#/components/schemas/AccountReadOnlyResponse' } } },
+      description:
+        'The account is read-only: its plan expired past the grace period, so no new data is stored until it is renewed',
+    },
+  },
+}
+for (const [path, item] of Object.entries(openApiDocument.paths ?? {})) {
+  for (const method of WRITE_METHODS) {
+    const operation = (item as Record<string, GeneratedOperation | undefined>)[method]
+    if (!operation?.security?.some((s) => 'bearerAuth' in s)) continue
+    if (!mayBeRefusedWhenReadOnly(path, method)) continue
+    operation.responses = { ...operation.responses, 402: { $ref: '#/components/responses/AccountReadOnly' } }
+  }
+}
 
 fs.mkdirSync('./generated', { recursive: true })
 fs.writeFileSync('./generated/openapi.yaml', yaml.stringify(openApiDocument))

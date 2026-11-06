@@ -13,6 +13,7 @@ import supertest from 'supertest'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import type { Auth } from '../auth.ts'
+import type { AccountGate } from '../services/account-gate.ts'
 
 import { httpError } from '../http-error.ts'
 
@@ -49,9 +50,9 @@ const auth: Auth = {
 }
 
 /** One app per test, so the middleware's per-instance map starts empty. */
-const buildApp = () => {
+const buildApp = (isDeletedUser?: (user: string) => boolean) => {
   const httpd = express()
-  httpd.use(createAuthMiddleware(auth, httpError(401, 'Unauthorized')))
+  httpd.use(createAuthMiddleware(auth, httpError(401, 'Unauthorized'), isDeletedUser))
   httpd.get('/who', (req, res) => {
     res.json({ user: req.user })
   })
@@ -158,5 +159,82 @@ describe('createAuthMiddleware', () => {
 
     expect(response.status).toBe(401)
     expect(db.migrateSchemaIfNeeded).not.toHaveBeenCalled()
+  })
+
+  test("rejects a deleted user's still-valid token without touching the schema", async () => {
+    const httpd = buildApp((user) => user === 'gone')
+
+    expect((await get(httpd, 'gone')).status).toBe(401)
+    expect(db.migrateSchemaIfNeeded).not.toHaveBeenCalled()
+    expect((await get(httpd, 'alice')).status).toBe(200)
+  })
+})
+
+describe('createAuthMiddleware with an account gate', () => {
+  const refusal = {
+    error: 'This account is read-only until the plan is renewed',
+    payment_url: 'https://pay.example',
+  }
+  const gate: AccountGate = {
+    getStatus: vi.fn(),
+    invalidate: vi.fn(),
+    isReadOnly: vi.fn(async (user: string) => user === 'expired'),
+    refusal: vi.fn(async (user: string) => (user === 'expired' ? refusal : null)),
+  }
+
+  const buildGatedApp = () => {
+    const httpd = express()
+    const authMiddleware = createAuthMiddleware(auth, httpError(401, 'Unauthorized'), undefined, gate)
+    const ok = (req: express.Request, res: express.Response) => {
+      res.json({ ok: true, user: req.user })
+    }
+    httpd.get('/activities', authMiddleware, ok)
+    httpd.post('/activities', authMiddleware, ok)
+    httpd.patch('/user/settings', authMiddleware, ok)
+    const exportRouter = express.Router()
+    exportRouter.post('/dump-link', authMiddleware, ok)
+    httpd.use('/export', exportRouter)
+    const accountRouter = express.Router()
+    accountRouter.delete('/', authMiddleware, ok)
+    httpd.use('/account', accountRouter)
+    httpd.delete('/webauthn/credentials/:id', authMiddleware, ok)
+    return httpd
+  }
+
+  const as = (user: string) => ({ Authorization: `Bearer token-${user}` })
+
+  test('answers a write by a read-only account with 402 and the payment link', async () => {
+    const httpd = buildGatedApp()
+    for (const response of [
+      await supertest(httpd).post('/activities').set(as('expired')),
+      await supertest(httpd).patch('/user/settings').set(as('expired')),
+    ]) {
+      expect(response.status).toBe(402)
+      expect(response.body).toEqual({ ...refusal, success: false })
+    }
+  })
+
+  test('lets a read-only account read, export, delete itself and manage passkeys', async () => {
+    const httpd = buildGatedApp()
+    expect((await supertest(httpd).get('/activities').set(as('expired'))).status).toBe(200)
+    expect((await supertest(httpd).post('/export/dump-link').set(as('expired'))).status).toBe(200)
+    expect((await supertest(httpd).delete('/account').set(as('expired'))).status).toBe(200)
+    expect((await supertest(httpd).delete('/webauthn/credentials/abc').set(as('expired'))).status).toBe(200)
+  })
+
+  test('lets everyone else write, and never consults the gate on a read', async () => {
+    const httpd = buildGatedApp()
+    vi.mocked(gate.refusal).mockClear()
+    expect((await supertest(httpd).get('/activities').set(as('alice'))).status).toBe(200)
+    expect(gate.refusal).not.toHaveBeenCalled()
+    expect((await supertest(httpd).post('/activities').set(as('alice'))).status).toBe(200)
+    expect(gate.refusal).toHaveBeenCalledWith('alice')
+  })
+
+  test('fails open when the gate lookup throws', async () => {
+    vi.mocked(gate.refusal).mockRejectedValueOnce(new Error('db down'))
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect((await supertest(buildGatedApp()).post('/activities').set(as('expired'))).status).toBe(200)
+    errorSpy.mockRestore()
   })
 })

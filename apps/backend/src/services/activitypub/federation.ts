@@ -20,6 +20,7 @@ import {
   Note,
   Person,
   Reject,
+  Tombstone,
   Undo,
   Update,
 } from '@fedify/fedify/vocab'
@@ -772,6 +773,24 @@ export const handleInboundUpdate = async (
 }
 
 /**
+ * Whether an inbound activity would store a new post for a read-only recipient and so is
+ * dropped (still acknowledged): a Create or Update of a Note, or a boost of a third-party
+ * post. A remote actor editing themselves and a boost of one of the recipient's own posts
+ * only touch what is already there, so they go through.
+ */
+export const dropsForReadOnly = async (
+  ctx: InboxContext<void>,
+  activity: Create | Update | Announce,
+  isReadOnly: (user: string) => Promise<boolean>,
+): Promise<boolean> => {
+  const me = ctx.recipient
+  if (me == null || !isValidUsername(me)) return false
+  if (activity instanceof Update && isSelfActorUpdate(activity)) return false
+  if (activity instanceof Announce && ownTargetPostId(ctx, activity.objectId, me) != null) return false
+  return await isReadOnly(me)
+}
+
+/**
  * Build a user's full `Person` actor document — shared by the actor dispatcher
  * and the profile-change `Update{Person}` delivery, so followers' servers
  * always receive exactly the representation the actor URL serves. The icon URL
@@ -844,6 +863,28 @@ export const deliverActorUpdate = async (
   await ctx.sendActivity({ identifier: user }, 'followers', update)
 }
 
+/**
+ * Tell the user's followers' servers that the actor is gone, so they drop the
+ * follow and the cached profile. Needs the user's database (key pair, follower
+ * list), so it runs before the database is dropped; delivery is synchronous
+ * (no message queue), so nothing reads that database after this resolves.
+ */
+export const deliverActorDelete = async (
+  deps: { federation: Federation<void>; origin: string },
+  user: string,
+): Promise<void> => {
+  const ctx = await deps.federation.createContext(new URL(deps.origin))
+  const actorId = ctx.getActorUri(user)
+  const del = new Delete({
+    actor: actorId,
+    cc: ctx.getFollowersUri(user),
+    id: new URL(`${actorId.href}#delete`),
+    object: new Tombstone({ id: actorId }),
+    to: new URL(AS_PUBLIC),
+  })
+  await ctx.sendActivity({ identifier: user }, 'followers', del)
+}
+
 export const createFeedFederation = (
   origin: string,
   apiBaseUrl: string,
@@ -858,6 +899,10 @@ export const createFeedFederation = (
   version = 'dev',
   /** Whether anyone can sign up (`signup_mode = 'open'`), reported as NodeInfo `openRegistrations` (#1050). */
   isSignupOpen: () => Promise<boolean> = async () => false,
+  /** A deleted account's actor answers 410 Gone with a Tombstone instead of 404. */
+  isDeletedUser: (username: string) => boolean = () => false,
+  /** A read-only account (plan expired past the grace period) stores no new inbound posts. */
+  isReadOnly: (username: string) => Promise<boolean> = async () => false,
 ): Federation<void> => {
   const federation = createFederation<void>({
     kv: new MemoryKvStore(),
@@ -895,9 +940,13 @@ export const createFeedFederation = (
   }))
 
   federation
-    .setActorDispatcher('/users/{identifier}', (ctx, identifier) => buildActorPerson(ctx, identifier, origin))
+    .setActorDispatcher('/users/{identifier}', (ctx, identifier) =>
+      isDeletedUser(identifier)
+        ? new Tombstone({ id: ctx.getActorUri(identifier) })
+        : buildActorPerson(ctx, identifier, origin),
+    )
     .setKeyPairsDispatcher(async (_ctx, identifier) => {
-      if (!isValidUsername(identifier)) return []
+      if (!isValidUsername(identifier) || isDeletedUser(identifier)) return []
       try {
         const kp = await getOrCreateActorKeyPair(identifier)
         return [await toCryptoKeyPair(kp.private_key_pem, kp.public_key_pem)]
@@ -951,10 +1000,19 @@ export const createFeedFederation = (
     // the only stranger Note admitted is a reply to one of the recipient's own
     // posts (see ingestFeedActivity). An Update of the SENDING ACTOR instead
     // refreshes our cached copies of their presentation (#1057).
-    .on(Create, (ctx, create) => handleInboundCreate(ctx, create, origin, onNewTimelineEntry, enrich))
-    .on(Update, (ctx, update) => handleInboundUpdate(ctx, update, origin, onNewTimelineEntry, enrich))
+    .on(Create, async (ctx, create) => {
+      if (await dropsForReadOnly(ctx, create, isReadOnly)) return
+      await handleInboundCreate(ctx, create, origin, onNewTimelineEntry, enrich)
+    })
+    .on(Update, async (ctx, update) => {
+      if (await dropsForReadOnly(ctx, update, isReadOnly)) return
+      await handleInboundUpdate(ctx, update, origin, onNewTimelineEntry, enrich)
+    })
     .on(Like, handleInboundLike)
-    .on(Announce, (ctx, announce) => handleInboundAnnounce(ctx, announce, origin, onNewTimelineEntry, enrich))
+    .on(Announce, async (ctx, announce) => {
+      if (await dropsForReadOnly(ctx, announce, isReadOnly)) return
+      await handleInboundAnnounce(ctx, announce, origin, onNewTimelineEntry, enrich)
+    })
     .on(Delete, async (ctx, del) => {
       // Delete of a post we received → drop it from the timeline. `del.objectId`
       // is the removed object's id (a Tombstone or bare id); we key on it, but

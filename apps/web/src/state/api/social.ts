@@ -1,8 +1,10 @@
 import type {
   CreateSharedDashboardBody,
   CreateSharedExerciseBody,
+  FeedPostKind,
   FeedPostResponse,
   FeedPostsResponse,
+  PublicPostsQuery,
   PublicProfileResponse,
   SharedDashboard,
   SharedDashboardResponse,
@@ -18,6 +20,7 @@ import axios from 'axios'
 
 import { API_URL } from '../../config'
 import { auth } from '../auth'
+import { buildArticlesAtomUrl } from './blogUrls'
 
 const authHeaders = () => ({ Authorization: `Bearer ${auth.value.token}` })
 
@@ -90,15 +93,27 @@ export const fetchPublicProfile = async (username: string): Promise<PublicProfil
 
 /**
  * One keyset page of a user's public/unlisted feed posts (newest-first) for
- * their profile page. Pass the previous page's `next_cursor` for the next one.
+ * their profile page. Pass the previous page's `next_cursor` for the next one,
+ * and `kind` to list only one kind of post (`article` for the blog view).
  */
-export const fetchPublicPosts = async (username: string, cursor?: string): Promise<FeedPostsResponse> => {
+export const fetchPublicPosts = async (
+  username: string,
+  cursor?: string,
+  kind?: FeedPostKind,
+): Promise<FeedPostsResponse> => {
+  const params: PublicPostsQuery = {}
+  if (cursor != null) params.cursor = cursor
+  if (kind != null) params.kind = kind
   const response = await axios.get<FeedPostsResponse>(
     `${API_URL}/public/${encodeURIComponent(username)}/posts`,
-    { params: cursor == null ? {} : { cursor } },
+    { params },
   )
   return response.data
 }
+
+/** Absolute URL of the Atom feed of a user's public articles. */
+export const articlesAtomUrl = (username: string): string =>
+  buildArticlesAtomUrl(username, API_URL, window.location.origin)
 
 /** One public/unlisted feed post, for its permalink page `/u/:username/posts/:postId`. */
 export const fetchPublicPost = async (username: string, postId: string): Promise<FeedPostResponse> => {

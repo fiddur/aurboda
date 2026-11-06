@@ -6,14 +6,19 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.android.Android
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.plugins.defaultRequest
+import io.ktor.client.request.header
 import io.ktor.client.request.headers
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.TextContent
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.builtins.serializer
@@ -29,8 +34,10 @@ internal const val MAX_CHUNK_ATTEMPTS: Int = 4
  * indefinitely on stalled connections — an HR chunk POST that black-holes will hang the whole
  * sync until WorkManager kills the worker at its 10-minute limit. The retry path in
  * postChunkWithRetry only fires on actual errors, so timeouts are what surface a stall as one.
+ *
+ * [onTokenRefused] gets the bearer token of any request the server answers 401 (see [tokenRefusalPlugin]).
  */
-fun syncHttpClient(): HttpClient =
+fun syncHttpClient(onTokenRefused: ((token: String) -> Unit)? = null): HttpClient =
   HttpClient(Android) {
     install(ContentNegotiation) { json(appJson) }
     install(HttpTimeout) {
@@ -38,6 +45,8 @@ fun syncHttpClient(): HttpClient =
       socketTimeoutMillis = 60_000
       requestTimeoutMillis = 120_000
     }
+    if (onTokenRefused != null) install(tokenRefusalPlugin(onTokenRefused))
+    defaultRequest { header("X-Aurboda-Client", "android") }
   }
 
 /**
@@ -53,6 +62,8 @@ sealed class PostResult {
   data class HttpError(
     val statusCode: Int,
     val statusDescription: String,
+    /** The server's explanation, kept for a read-only refusal (402). */
+    val serverMessage: String? = null,
   ) : PostResult()
 
   data class NetworkError(
@@ -62,21 +73,47 @@ sealed class PostResult {
   val isSuccess: Boolean
     get() = this is Success
 
-  /** Errors that may succeed on retry (network failures and server-side hiccups). */
-  val isTransient: Boolean
+  val outcome: HttpOutcome
     get() =
       when (this) {
-        is Success -> false
-        is NetworkError -> true
-        is HttpError -> statusCode >= 500 || statusCode == 408 || statusCode == 429
+        is Success -> HttpOutcome.Ok
+        is NetworkError -> HttpOutcome.Retryable
+        is HttpError -> classifyHttpStatus(statusCode)
       }
+
+  /** Errors that may succeed on retry (network failures and server-side hiccups). */
+  val isTransient: Boolean
+    get() = outcome == HttpOutcome.Retryable
 
   fun errorMessage(): String? =
     when (this) {
       is Success -> null
-      is HttpError -> "HTTP $statusCode $statusDescription"
+      is HttpError -> serverMessage ?: "HTTP $statusCode $statusDescription"
       is NetworkError -> "Network error: $message"
     }
+
+  /** Non-null when this failure ends the whole sync run (refused token, read-only account). */
+  fun syncStop(): SyncStop? = (this as? HttpError)?.let { syncStopOf(it.statusCode, it.serverMessage) }
+}
+
+/** A failed response as a [PostResult.HttpError], reading the server's message out of a 402 body. */
+suspend fun httpErrorOf(response: HttpResponse): PostResult.HttpError {
+  val status = response.status
+  val serverMessage =
+    if (classifyHttpStatus(status.value) == HttpOutcome.ReadOnly) {
+      readOnlyMessage(
+        try {
+          response.bodyAsText()
+        } catch (e: CancellationException) {
+          throw e
+        } catch (e: Exception) {
+          null
+        },
+      )
+    } else {
+      null
+    }
+  return PostResult.HttpError(status.value, status.description, serverMessage)
 }
 
 /**
@@ -102,7 +139,7 @@ suspend fun postChunkRaw(
       PostResult.Success
     } else {
       Log.e(logTag, "POST failed: HTTP ${response.status.value} ${response.status.description}")
-      PostResult.HttpError(response.status.value, response.status.description)
+      httpErrorOf(response)
     }
   } catch (e: Exception) {
     Log.e(logTag, "POST error: ${e.message}", e)

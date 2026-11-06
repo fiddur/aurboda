@@ -11,9 +11,11 @@ import { createAdminMiddleware, createAuditLogMiddleware, createAuthMiddleware }
 import { registerOAuthRoutes } from './api/oauth-routes.ts'
 import { mountRestRouters } from './api/rest-routes.ts'
 import { mountSyncRouter } from './api/sync-setup.ts'
+import { createUsageMiddleware } from './api/usage-middleware.ts'
 import { setupOuraWebhook, setupStravaWebhook } from './api/webhooks-setup.ts'
 import { createAuth } from './auth.ts'
-import { closeAllUserPools } from './db/connection.ts'
+import { closeAllUserPools, dropUserDb, getDbForUser } from './db/connection.ts'
+import { getLargestTables, getUserDatabaseSizes } from './db/database-sizes.ts'
 import {
   createChallengePost,
   deleteRuleActivities,
@@ -68,6 +70,9 @@ import { createMcpRouter } from './mcp.ts'
 import { createActorAcceptNormalizer, createActorHtmlRouter } from './routes/actor-html-router.ts'
 import { createFeedTombstoneRouter } from './routes/feed-tombstone-router.ts'
 import { createOAuthRouter } from './routes/oauth-router.ts'
+import { createAccountDeleter } from './services/account-deletion.ts'
+import { createAccountGate, gateSyncProvider, safeIsReadOnly, safeRefusal } from './services/account-gate.ts'
+import { backfillAccounts, createAccountPlans, readBillingSettings } from './services/account-plan.ts'
 import {
   deliverFeedArticlePost,
   deliverFeedArticleUpdate,
@@ -85,11 +90,16 @@ import {
   toDeliverableExercise,
   toDeliverableReply,
 } from './services/activitypub/deliver.ts'
-import { createFeedFederation, deliverActorUpdate } from './services/activitypub/federation.ts'
+import {
+  createFeedFederation,
+  deliverActorDelete,
+  deliverActorUpdate,
+} from './services/activitypub/federation.ts'
 import { configureFederationLogging } from './services/activitypub/logging.ts'
 import { isPubliclyVisible } from './services/activitypub/object.ts'
 import { createTimelineBackfiller } from './services/activitypub/timeline-backfill.ts'
 import { createAurbodaEnrichAttempt } from './services/activitypub/timeline-enrich.ts'
+import { createAdminUsers } from './services/admin-users.ts'
 import { createAuditLogPruneQueue } from './services/audit-log-prune-queue.ts'
 import { auditError, auditInfo, pruneAuditLog } from './services/audit-log.ts'
 import { createAutoshareDeps } from './services/autoshare-deps.ts'
@@ -109,8 +119,11 @@ import {
   createDeductionQueue,
   type DeductionQueue,
 } from './services/deduction-queue.ts'
+import { createDeletedUsers } from './services/deleted-users.ts'
 import { createDetectionTrigger, type DetectionTrigger } from './services/detection-trigger.ts'
 import { runDetectionForUser } from './services/detection-worker.ts'
+import { createDumpExporter, createDumpLinkIssuer } from './services/export-dump.ts'
+import { createExportTokens } from './services/export-token.ts'
 import { createReactionActions } from './services/feed-reactions.ts'
 import {
   createFeedRefreshDeps,
@@ -160,6 +173,12 @@ import {
   type TrackAnalyseQueue,
   type TrackBackfillQueue,
 } from './services/track-queues.ts'
+import {
+  createUsageRecorder,
+  installUsageRecorder,
+  recordUsage,
+  startUsageFlushing,
+} from './services/usage-recorder.ts'
 import { createWebAuthnService } from './services/webauthn.ts'
 
 declare global {
@@ -179,6 +198,7 @@ const main = async () => {
   const sessionSecret = process.env.SESSION_SECRET ?? ''
   const auth = createAuth(sessionSecret)
   const invitationAuth = createInvitationAuth(sessionSecret)
+  const exportTokens = createExportTokens(sessionSecret)
 
   const postListenCallbacks: Array<() => Promise<void>> = []
 
@@ -186,6 +206,17 @@ const main = async () => {
   await initializeCentralDb()
   console.info(`⏱️ Central DB ready ${process.uptime().toFixed(1)} s after process start`)
   const centralDb = getCentralDb()
+
+  const deletedUsers = createDeletedUsers({ list: () => centralDb.listDeletedUsernames() })
+  await deletedUsers.refresh()
+  const stopDeletedUsersRefresh = deletedUsers.startRefreshing()
+  const isDeletedUser = (user: string) => deletedUsers.has(user)
+
+  const usageRecorder = createUsageRecorder({
+    flush: (rows) => centralDb.upsertUsageRows(rows.filter((row) => !isDeletedUser(row.username))),
+  })
+  installUsageRecorder(usageRecorder)
+  const stopUsageFlushing = startUsageFlushing(usageRecorder)
 
   // Initialize Sentry as early as possible after centralDb is available.
   // DSN is read from server_settings (configured via Admin Settings).
@@ -195,6 +226,12 @@ const main = async () => {
   const apiBaseUrl = process.env.API_BASE_URL ?? 'http://localhost:3000'
   console.info(`🌐 WEB_HOST=${webHost} API_BASE_URL=${apiBaseUrl}`)
   configureStructuredChallenge({ apiBaseUrl, webHost })
+  const dumpExporter = createDumpExporter()
+  const dataExport = {
+    exporter: dumpExporter,
+    requestDumpLink: createDumpLinkIssuer({ apiBaseUrl, exporter: dumpExporter, tokens: exportTokens }),
+    tokens: exportTokens,
+  }
 
   // Path to the built SPA index.html, so /u/* share pages can serve
   // crawler-visible <head> meta. In the Docker image nginx serves this same
@@ -332,10 +369,14 @@ const main = async () => {
     )
   }
 
+  const accountGate = createAccountGate({ centralDb })
+  const isReadOnly = (user: string) => safeIsReadOnly(accountGate, user)
+
   // Create sync provider for auto-syncing data before queries. onActivitySynced
   // lets background scrobble syncs trigger deduction rules (e.g. auto-tagging),
   // like the REST /sync routes — here fired only when a sync ingests new data.
-  const syncProvider = createSyncProvider({
+  // A read-only account (plan expired past the grace period) is never pulled.
+  const ungatedSyncProvider = createSyncProvider({
     garmin,
     getLastFmApiKey: () => centralDb.getLastFmApiKey(),
     gravl,
@@ -344,6 +385,7 @@ const main = async () => {
     onActivitySynced: activityNotifier,
     onTrackWritten,
   })
+  const syncProvider = gateSyncProvider(ungatedSyncProvider, isReadOnly)
 
   // Initialize shared pg-boss instance and job queues (before MCP mount)
   const boss = await createPgBoss()
@@ -391,6 +433,7 @@ const main = async () => {
         getAccessToken: (user) => strava.getAccessToken(user),
         getActivity: (token, id) => strava.getActivity(token, id),
         getActivityStreams: (token, id) => strava.getActivityStreams(token, id),
+        isReadOnly,
         listActivities: (token, params) => strava.listActivities(token, params),
         processDeps: {
           auditInfo,
@@ -425,6 +468,14 @@ const main = async () => {
   const userDb = new Client({ database: 'postgres' })
   await userDb.connect()
 
+  const adminUsers = createAdminUsers({
+    billingSettings: () => readBillingSettings(centralDb),
+    centralDb,
+    databaseSizes: () => getUserDatabaseSizes(userDb),
+    listUsers: () => listUserNames(userDb),
+    tableSizes: async (username) => getLargestTables(await getDbForUser(username)),
+  })
+
   // Land this deploy's schema changes in the background, so no user's first
   // authenticated request pays for the sweep (#1125). Gated per user by the
   // schema fingerprint, so a deploy that changed no DDL only reads one marker
@@ -437,6 +488,16 @@ const main = async () => {
     )
     if (trackBackfillQueue) {
       for (const user of await listUserNames(userDb)) await trackBackfillQueue.enqueue(user, 120)
+    }
+  })
+
+  // Accounts from before signup dates were tracked get a row without one.
+  postListenCallbacks.push(async () => {
+    try {
+      const added = await backfillAccounts(centralDb, await listUserNames(userDb))
+      if (added > 0) console.info(`👤 Recorded ${added} pre-existing user account(s)`)
+    } catch (error) {
+      console.error('⚠️ User account backfill failed:', error)
     }
   })
 
@@ -469,9 +530,30 @@ const main = async () => {
     (user, actorUri) => backfill(user, actorUri),
     wellKnown.version,
     async () => (await centralDb.getSignupMode()) === 'open',
+    isDeletedUser,
+    isReadOnly,
   )
   const backfill = createTimelineBackfiller(feedFederation, webHost)
   const feedDeps = { apiBaseUrl, federation: feedFederation, origin: webHost }
+
+  const accountDeleter = createAccountDeleter({
+    announceDeletion: (user) => deliverActorDelete(feedDeps, user),
+    centralDb,
+    dropUserDb: (user) => dropUserDb(userDb, user),
+    integrations: [
+      { disconnect: (user) => oura.disconnect(user), name: 'Oura' },
+      { disconnect: (user) => strava.deauthorize(user), name: 'Strava' },
+      { disconnect: (user) => gravl.disconnect(user), name: 'Gravl' },
+    ],
+    listUsers: () => listUserNames(userDb),
+    onDeleted: (user) => deletedUsers.add(user),
+  })
+
+  const accountPlans = createAccountPlans({
+    centralDb,
+    invalidate: (username) => accountGate.invalidate(username),
+    userExists: async (username) => (await listUserNames(userDb)).includes(username),
+  })
 
   // Lazy retro-enrichment (#996): entries ingested before structured enrichment
   // shipped (or whose ingest-time enrichment failed transiently) get one more
@@ -732,6 +814,7 @@ const main = async () => {
         prune: pruneAuditLog,
         pruneDeductionRuleRuns,
         pruneSyncedOutboundSync,
+        pruneUsageBefore: (day) => centralDb.pruneUsageBefore(day),
       })
     } catch (error) {
       console.error('Failed to initialize audit log prune:', error)
@@ -767,9 +850,14 @@ const main = async () => {
   httpd.use(
     '/mcp',
     createMcpRouter(auth, {
+      accountDeleter,
+      accountGate,
+      accountPlans,
+      adminUsers,
       apiBaseUrl,
       autosharePreviewDeps: autoshareDeps,
       centralDb,
+      requestDumpLink: dataExport.requestDumpLink,
       deductionQueue: deductionQueue ?? undefined,
       discoverChallenges,
       engineDeps,
@@ -778,6 +866,7 @@ const main = async () => {
       followerActions,
       garmin,
       gravl,
+      isDeletedUser,
       onActivityDetailSynced,
       onActivityMutated: activityNotifier,
       onHrSettingsChanged,
@@ -838,9 +927,10 @@ const main = async () => {
 
   httpd.use(json({ limit: '10mb' }))
 
-  httpd.use(createAuditLogMiddleware(auth))
+  httpd.use(createAuditLogMiddleware(auth, isDeletedUser))
+  httpd.use(createUsageMiddleware(recordUsage))
 
-  const authMiddleware = createAuthMiddleware(auth, unauthorized)
+  const authMiddleware = createAuthMiddleware(auth, unauthorized, isDeletedUser, accountGate)
   const adminMiddleware = createAdminMiddleware(centralDb, unauthorized, forbidden)
 
   registerAuthRoutes({
@@ -886,6 +976,7 @@ const main = async () => {
       centralDb,
       stravaQueue,
       getStravaCredentials,
+      isReadOnly,
     })
     postListenCallbacks.push(ensureStravaWebhook)
   }
@@ -896,6 +987,7 @@ const main = async () => {
     centralDb,
     oura,
     getOuraCredentials,
+    isReadOnly,
   })
 
   let geocodeQueue: Awaited<ReturnType<typeof createGeocodeQueue>> | null = null
@@ -928,6 +1020,7 @@ const main = async () => {
       insertLocation,
       insertPlace,
       loginToUserDb,
+      readOnlyRefusal: (user) => safeRefusal(accountGate, user),
       onLocationInserted: (user, time) => {
         detectionTrigger.triggerDetectionForUser(user)
         activityNotifier(user, '*', time, time)
@@ -936,9 +1029,13 @@ const main = async () => {
   )
 
   mountRestRouters({
+    accountDeleter,
+    accountPlans,
     activityNotifier,
     autosharePreviewDeps: autoshareDeps,
     adminMiddleware,
+    dataExport,
+    adminUsers,
     apiBaseUrl,
     auth,
     authMiddleware,
@@ -1004,6 +1101,7 @@ const main = async () => {
   const onSignal = createShutdownHandler({
     closeHttp: () => closeHttpServer(server),
     closePools: async () => {
+      await usageRecorder.flushNow()
       await Promise.all([closeAllUserPools(), closeCentralDb(), userDb.end()])
     },
     exit: (code) => process.exit(code),
@@ -1015,6 +1113,8 @@ const main = async () => {
       await boss?.stop({ graceful: true, timeout: JOB_STOP_TIMEOUT_MS })
     },
     stopTimers: () => {
+      stopUsageFlushing()
+      stopDeletedUsersRefresh()
       detectionTrigger.clearPendingDetections()
       ouraWebhookManager?.shutdown()
     },

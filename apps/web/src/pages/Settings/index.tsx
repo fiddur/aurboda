@@ -4,8 +4,11 @@ import { useCallback, useState } from 'preact/hooks'
 import type { BiologicalSex, HrZoneThresholds, UpdateSettingsInput } from '../../state/api'
 
 import { AvatarSettings } from '../../components/AvatarSettings'
+import { DataExportSettings } from '../../components/DataExportSettings'
+import { DeleteAccountSettings } from '../../components/DeleteAccountSettings'
 import { MealPreferencesSettings } from '../../components/MealPreferencesSettings'
 import { PasskeySettings } from '../../components/PasskeySettings'
+import { PlanSettings } from '../../components/PlanSettings'
 import { type SaveStatus, SaveStatusIndicator } from '../../components/SaveStatusIndicator'
 import { SettingsSection } from '../../components/SettingsSection'
 import { fetchUserSettings, updateUserSettings } from '../../state/api'
@@ -173,6 +176,8 @@ export function Settings() {
     <div class="settings-page">
       <h1>Settings</h1>
 
+      <PlanSettings />
+
       <AvatarSettings />
 
       <SettingsSection
@@ -304,12 +309,16 @@ export function Settings() {
         </p>
       </section>
 
+      <DataExportSettings />
+
       <section class="settings-section">
         <h2>Audit Log</h2>
         <p class="section-description">
           View recent system events, sync operations, and errors. <a href="/audit-log">View audit log</a>
         </p>
       </section>
+
+      <DeleteAccountSettings />
     </div>
   )
 }

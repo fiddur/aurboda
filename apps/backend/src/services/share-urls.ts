@@ -12,6 +12,14 @@ const joinUrl = (base: string, path: string): string =>
 export const buildProfileUrl = (webHost: string, username: string): string =>
   joinUrl(webHost, `u/${encodeURIComponent(username)}`)
 
+/** Absolute URL of a user's blog view: their public articles. */
+export const buildBlogUrl = (webHost: string, username: string): string =>
+  joinUrl(webHost, `u/${encodeURIComponent(username)}/articles`)
+
+/** Absolute URL of the Atom feed of a user's public articles (an API endpoint). */
+export const buildArticlesAtomUrl = (apiBaseUrl: string, username: string): string =>
+  joinUrl(apiBaseUrl, `public/${encodeURIComponent(username)}/articles.atom`)
+
 /** Absolute URL of a single feed post's permalink page. */
 export const buildPostUrl = (webHost: string, username: string, postId: string): string =>
   joinUrl(webHost, `u/${encodeURIComponent(username)}/posts/${encodeURIComponent(postId)}`)

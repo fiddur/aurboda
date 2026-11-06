@@ -1,10 +1,13 @@
+import type { AccountReadOnlyResponse } from '@aurboda/api-spec'
 import type { RequestHandler } from 'express'
 
 import type { Auth } from '../auth.ts'
+import type { AccountGate } from '../services/account-gate.ts'
 import type { CentralDb } from '../services/central-db.ts'
 import type { AnyMiddleware } from '../typed-router.ts'
 
 import { migrateSchemaIfNeeded } from '../db/index.ts'
+import { isAllowedWhenReadOnly, safeRefusal } from '../services/account-gate.ts'
 import { auditError, auditInfo, auditWarn } from '../services/audit-log.ts'
 import { backfillScreentimeActivities } from '../services/backfill-screentime-activities.ts'
 import { redactGarminLoginAudit } from '../services/redact-garmin-login-audit.ts'
@@ -19,7 +22,7 @@ const summarizeResponse = (body: unknown): unknown =>
  * Redacts `password` and summarizes large request/response bodies (see `summarizeAuditBody`).
  */
 export const createAuditLogMiddleware =
-  (auth: Auth): RequestHandler =>
+  (auth: Auth, isDeletedUser: (user: string) => boolean = () => false): RequestHandler =>
   (req, res, next) => {
     if (req.method !== 'GET' && req.method !== 'OPTIONS' && req.method !== 'HEAD') {
       const user = (() => {
@@ -44,6 +47,7 @@ export const createAuditLogMiddleware =
         }
 
         res.on('finish', () => {
+          if (isDeletedUser(user)) return
           if (res.statusCode >= 500) {
             auditError(user, 'data', `${req.method} ${req.path}`, {
               ...sanitizedBody,
@@ -75,8 +79,17 @@ export const createAuditLogMiddleware =
  * stale schema; subsequent requests wait if it is still in flight. Also kicks
  * off a one-shot background backfill of historical screentime activities,
  * gated via sync_state.
+ *
+ * With an account gate, a write by a read-only account (its plan expired past the
+ * grace period) is answered 402 unless `isAllowedWhenReadOnly` lets it through.
  */
-export const createAuthMiddleware = (auth: Auth, unauthorized: Error): AnyMiddleware => {
+export const createAuthMiddleware = (
+  auth: Auth,
+  unauthorized: Error,
+  /** A deleted user's token still decodes (it is stateless), so it is refused here. */
+  isDeletedUser: (user: string) => boolean = () => false,
+  accountGate?: AccountGate,
+): AnyMiddleware => {
   const migratedUsers = new Map<string, Promise<void>>()
 
   return async (req, res, next) => {
@@ -84,6 +97,7 @@ export const createAuthMiddleware = (auth: Auth, unauthorized: Error): AnyMiddle
       if (typeof req.headers.authorization === 'string') {
         const token = req.headers.authorization.slice('bearer '.length)
         const user = auth.getUsernameFromToken(token)
+        if (isDeletedUser(user)) return next(unauthorized)
         req.user = user
 
         if (!migratedUsers.has(user)) {
@@ -106,6 +120,15 @@ export const createAuthMiddleware = (auth: Auth, unauthorized: Error): AnyMiddle
           await migrationPromise
         } else {
           await migratedUsers.get(user)
+        }
+
+        if (accountGate && !isAllowedWhenReadOnly(req.method, req.baseUrl + req.path)) {
+          const refusal = await safeRefusal(accountGate, user)
+          if (refusal) {
+            const body: AccountReadOnlyResponse = { ...refusal, success: false }
+            res.status(402).json(body)
+            return
+          }
         }
 
         return next()

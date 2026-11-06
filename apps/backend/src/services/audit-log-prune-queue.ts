@@ -3,9 +3,12 @@
  * clients (Android app, MCP) never log in with a password, so without this
  * their audit logs grow without bound. The same pass prunes deduction rule
  * runs, which nothing reads back and every rule evaluation appends to, and
- * outbound sync rows the phone has already written to Health Connect.
+ * outbound sync rows the phone has already written to Health Connect. It also
+ * prunes the server-wide per-user usage counters.
  */
 import type { PgBoss } from './pg-boss.ts'
+
+import { USAGE_RETENTION_DAYS } from './central-user-usage.ts'
 
 const QUEUE_NAME = 'audit-log-prune'
 
@@ -21,10 +24,21 @@ export interface AuditLogPruneDeps {
   prune: (user: string, retentionDays: number) => Promise<unknown>
   pruneDeductionRuleRuns: (user: string, retentionDays: number) => Promise<unknown>
   pruneSyncedOutboundSync: (user: string, retentionDays: number) => Promise<unknown>
+  pruneUsageBefore: (day: Date) => Promise<unknown>
+  now?: () => Date
 }
+
+const DAY_MS = 24 * 60 * 60 * 1000
 
 /** Resolves to the number of users whose every prune step succeeded. */
 export const pruneAllAuditLogs = async (deps: AuditLogPruneDeps): Promise<number> => {
+  const now = deps.now?.() ?? new Date()
+  try {
+    await deps.pruneUsageBefore(new Date(now.getTime() - USAGE_RETENTION_DAYS * DAY_MS))
+  } catch (error) {
+    console.error('⚠️ Usage counter prune failed:', error)
+  }
+
   const retentionDays = await deps.getRetentionDays()
   const users = await deps.listUsers()
   const steps: [string, (user: string) => Promise<unknown>][] = [

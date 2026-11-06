@@ -9,7 +9,12 @@ import { repairGarminSleepStages } from './repair-garmin-sleep-stages.ts'
 
 const dbByUser = new Map<string, Promise<UserDb>>()
 
-const userDbName = (user: string) => `aurboda_${user}`
+export const USER_DB_PREFIX = 'aurboda_'
+
+/** `LIKE` pattern matching every per-user database; `\_` keeps the underscore literal, not a wildcard. */
+export const USER_DB_LIKE_PATTERN = `${USER_DB_PREFIX.replaceAll('_', '\\_')}%`
+
+export const userDbName = (user: string) => `${USER_DB_PREFIX}${user}`
 
 /**
  * How long to wait for a Postgres connection before giving up. `pg` defaults
@@ -221,10 +226,9 @@ export const makeNewUserDb = async (adminClient: Client, user: string, password:
 }
 
 /**
- * Tear down a user that was just created by `makeNewUserDb`. Used by
- * passkey-only signup to roll back when something fails after the role
- * + database exist (e.g. credential persistence). Best-effort: each step
- * is wrapped so the next still runs even if one throws.
+ * Drop a user's database and role: signup rollback and account deletion.
+ * Every step runs even when an earlier one fails, so a failed DROP DATABASE
+ * still drops what it can; the first DROP failure is rethrown at the end.
  */
 export const dropUserDb = async (adminClient: Client, user: string) => {
   const database = userDbName(user)
@@ -243,8 +247,10 @@ export const dropUserDb = async (adminClient: Client, user: string) => {
       database,
     ),
   ).catch(() => {})
-  await query(adminClient, format('DROP DATABASE IF EXISTS %I', database)).catch(() => {})
-  await query(adminClient, format('DROP USER IF EXISTS %I', user)).catch(() => {})
+  const failures: unknown[] = []
+  await query(adminClient, format('DROP DATABASE IF EXISTS %I', database)).catch((e) => failures.push(e))
+  await query(adminClient, format('DROP USER IF EXISTS %I', user)).catch((e) => failures.push(e))
+  if (failures.length > 0) throw failures[0]
 }
 
 /**
@@ -253,14 +259,12 @@ export const dropUserDb = async (adminClient: Client, user: string) => {
  * the cluster (any database) — `pg_database` is cluster-wide.
  */
 export const listUserNames = async (client: Client): Promise<string[]> => {
-  const prefix = 'aurboda_'
-  // `\_` keeps the underscore literal (LIKE's `_` is a single-char wildcard).
   const result = await query<{ datname: string }>(
     client,
     `SELECT datname FROM pg_database WHERE datname LIKE $1 ORDER BY datname`,
-    [`${prefix.replace('_', '\\_')}%`],
+    [USER_DB_LIKE_PATTERN],
   )
-  return result.rows.map((row) => row.datname.slice(prefix.length))
+  return result.rows.map((row) => row.datname.slice(USER_DB_PREFIX.length))
 }
 
 /**
@@ -751,7 +755,7 @@ export const recordSchemaFingerprint = async (db: Queryable, fingerprint: string
 // eslint-disable-next-line complexity -- migration functions inherently have many conditional branches
 export const migrateSchema = async (user: string, opts?: { force?: boolean }): Promise<boolean> => {
   const db = await getDbForUser(user)
-  const database = `aurboda_${user}`
+  const database = userDbName(user)
   const fingerprint = schemaFingerprint()
 
   if (!opts?.force && (await schemaUpToDate(db, fingerprint))) {

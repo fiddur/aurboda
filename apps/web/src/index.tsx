@@ -1,15 +1,17 @@
 import { QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
+import axios from 'axios'
 import { render } from 'preact'
 import { LocationProvider, Route, Router, useLocation } from 'preact-iso'
 
 import { Footer } from './components/Footer.jsx'
 import { Header } from './components/Header.jsx'
+import { PlanBanner } from './components/PlanBanner.jsx'
 import { Sidebar } from './components/Sidebar.jsx'
 import { isEmbedded } from './embed.js'
 import { lazyPage } from './lazyPage.js'
 import { NotFound } from './pages/_404.jsx'
-import { shouldShowNav } from './shell.js'
+import { shouldShowNav, shouldShowPlanBanner } from './shell.js'
 import { auth } from './state/auth.js'
 import { queryClient } from './state/queryClient.js'
 import './style.css'
@@ -19,6 +21,8 @@ const ActivityTypeMeta = lazyPage(() => import('./pages/ActivityTypeMeta/index.j
 const ActivityTypes = lazyPage(() => import('./pages/ActivityTypes/index.jsx'), 'ActivityTypes')
 const AddData = lazyPage(() => import('./pages/AddData/index.jsx'), 'AddData')
 const AdminSettings = lazyPage(() => import('./pages/AdminSettings/index.jsx'), 'AdminSettings')
+const AdminUsers = lazyPage(() => import('./pages/AdminUsers/index.jsx'), 'AdminUsers')
+const AdminUserDetail = lazyPage(() => import('./pages/AdminUsers/Detail.jsx'), 'AdminUserDetail')
 const AuditLog = lazyPage(() => import('./pages/AuditLog/index.jsx'), 'AuditLog')
 const Challenges = lazyPage(() => import('./pages/Challenges/index.jsx'), 'Challenges')
 const ChallengeJoin = lazyPage(() => import('./pages/Challenges/Join.jsx'), 'ChallengeJoin')
@@ -71,6 +75,7 @@ const RoutesPage = lazyPage(() => import('./pages/Routes/index.jsx'), 'Routes')
 const RouteDetailPage = lazyPage(() => import('./pages/Routes/RouteDetail.jsx'), 'RouteDetail')
 const Privacy = lazyPage(() => import('./pages/Privacy/index.jsx'), 'Privacy')
 const PublicResource = lazyPage(() => import('./pages/PublicDashboard/index.jsx'), 'PublicResource')
+const PublicArticles = lazyPage(() => import('./pages/PublicArticles/index.jsx'), 'PublicArticles')
 const PublicProfile = lazyPage(() => import('./pages/PublicProfile/index.jsx'), 'PublicProfile')
 const PublicPost = lazyPage(() => import('./pages/PublicPost/index.jsx'), 'PublicPost')
 const AddReport = lazyPage(() => import('./pages/Reports/AddReport.jsx'), 'AddReport')
@@ -97,15 +102,19 @@ function AppShell() {
   // all web chrome (header, sidebar, footer) and just render page content.
   const embedded = isEmbedded()
   const showNav = !embedded && shouldShowNav(path, Boolean(auth.value.token))
+  // Shown in the native app's WebView too: Android users would otherwise only see the 402s.
+  const showPlanBanner = shouldShowPlanBanner(path, Boolean(auth.value.token))
 
   return (
     <>
       {showNav && <Header />}
       {showNav && <Sidebar />}
       <div class="app-content">
+        {showPlanBanner && <PlanBanner />}
         <main>
           <Router>
             <Route path="/u/:username/posts/:postId" component={PublicPost} />
+            <Route path="/u/:username/articles" component={PublicArticles} />
             <Route path="/u/:username/:slug" component={PublicResource} />
             <Route path="/u/:username" component={PublicProfile} />
             <Route path="/shared-dashboards" component={SharedDashboards} />
@@ -160,6 +169,8 @@ function AppShell() {
             <Route path="/settings" component={Settings} />
             <Route path="/audit-log" component={AuditLog} />
             <Route path="/admin" component={AdminSettings} />
+            <Route path="/admin/users" component={AdminUsers} />
+            <Route path="/admin/users/:username" component={AdminUserDetail} />
             <Route path="/help" component={DataSources} />
             <Route default component={NotFound} />
           </Router>
@@ -180,5 +191,15 @@ export function App() {
     </QueryClientProvider>
   )
 }
+
+axios.defaults.headers.common['X-Aurboda-Client'] = 'web'
+
+// A 402 means the account just turned read-only: refresh the plan so the banner says so.
+axios.interceptors.response.use(undefined, (error: unknown) => {
+  if (axios.isAxiosError(error) && error.response?.status === 402) {
+    void queryClient.invalidateQueries({ queryKey: ['myPlan'] })
+  }
+  return Promise.reject(error)
+})
 
 render(<App />, document.getElementById('app')!)

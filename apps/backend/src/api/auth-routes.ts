@@ -19,6 +19,7 @@ import type { AnyMiddleware } from '../typed-router.ts'
 
 import { isInvalidPasswordError, loginToUserDb, makeNewUserDb, query } from '../db/index.ts'
 import { httpError } from '../http-error.ts'
+import { readBillingSettings, recordNewAccount } from '../services/account-plan.ts'
 import { pruneAuditLog } from '../services/audit-log.ts'
 
 interface AuthRoutesDeps {
@@ -73,14 +74,21 @@ export const registerAuthRoutes = ({
   })
 
   httpd.get<Record<string, never>, ServerStatusResponse>('/status', async (_req, res) => {
-    const signupMode = await centralDb.getSignupMode()
+    const [signupMode, blogUsername, billing] = await Promise.all([
+      centralDb.getSignupMode(),
+      centralDb.getServerSetting('blog_username'),
+      readBillingSettings(centralDb),
+    ])
     res.json({
+      billing_enabled: billing.enabled,
+      blog_username: blogUsername || null,
       federation: true,
       product: 'aurboda',
       signup_allowed: signupMode === 'open',
       signup_mode: signupMode,
       success: true,
       version: process.env.BUILD_SHA ?? 'dev',
+      ...(billing.enabled && { price_text: billing.price_text || null, trial_days: billing.trial_days }),
     })
   })
 
@@ -136,13 +144,16 @@ export const registerAuthRoutes = ({
     }
 
     const existingUser = await query(userDb, 'SELECT usename FROM pg_user WHERE usename=$1', [user])
-    if (existingUser.rowCount && existingUser.rowCount > 0) {
+    if ((existingUser.rowCount && existingUser.rowCount > 0) || (await centralDb.isUsernameDeleted(user))) {
       res.status(409).json({ error: 'Username already exists', success: false })
       return
     }
 
     try {
       await makeNewUserDb(userDb, user, password)
+      await recordNewAccount(centralDb, user).catch((e) =>
+        console.error(`⚠️ Failed to record account row for ${user}:`, e),
+      )
       const token = auth.createToken(user)
 
       const adminCount = await centralDb.getAdminCount()
@@ -155,6 +166,10 @@ export const registerAuthRoutes = ({
 
       res.json({ is_admin: isAdmin, success: true, token })
     } catch (err) {
+      if ((err as { code?: string }).code === '42710') {
+        res.status(409).json({ error: 'Username already exists', success: false })
+        return
+      }
       console.error('Signup error:', err)
       next(err)
     }

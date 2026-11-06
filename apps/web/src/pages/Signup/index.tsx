@@ -1,7 +1,15 @@
 import { useLocation } from 'preact-iso'
 import { useEffect, useMemo, useState } from 'preact/hooks'
 
-import { auth, ensureStatusLoaded, signup, signupMode, signupWithPasskey } from '../../state/auth'
+import {
+  auth,
+  ensureStatusLoaded,
+  serverBilling,
+  signup,
+  signupMode,
+  signupWithPasskey,
+} from '../../state/auth'
+import { signupBillingLine } from '../../utils/plan'
 import './style.css'
 
 export function Signup() {
@@ -25,6 +33,8 @@ export function Signup() {
     route('/')
     return null
   }
+
+  const billingLine = signupBillingLine(serverBilling.value)
 
   if (signupMode.value === 'closed') {
     return (
@@ -99,6 +109,7 @@ export function Signup() {
       <h1>Sign Up</h1>
 
       {invitation && <p class="invitation-notice">You have been invited to create an account.</p>}
+      {billingLine && <p class="billing-notice">{billingLine}</p>}
 
       <div class="form-field">
         <label for="user">Username</label>

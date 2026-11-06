@@ -13,10 +13,14 @@ class AurbodaApplication : Application() {
   val syncProgress: SyncProgressReporter = DefaultSyncProgressReporter()
   val backgroundSyncStatus: MutableStateFlow<BackgroundSyncStatus> = MutableStateFlow(BackgroundSyncStatus())
 
+  /** Set by [forgetRefusedToken]; the UI logs out with a notice and clears it. */
+  val sessionRefused: MutableStateFlow<Boolean> = MutableStateFlow(false)
+
   override fun onCreate() {
     super.onCreate()
 
     backgroundSyncStatus.value = loadBackgroundSyncStatus(this)
+    sessionRefused.value = isSessionRefused(this)
 
     // Keeps sync going across app restarts and device reboots.
     if (isBackgroundSyncEnabled(this)) {

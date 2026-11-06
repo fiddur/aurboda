@@ -39,6 +39,7 @@ import type { AnyMiddleware, TypedRouter } from '../typed-router.ts'
 import { RESERVED_USERNAMES } from '../api/auth-routes.ts'
 import { dropUserDb, makeNewUserDb, query } from '../db/index.ts'
 import { insertWebAuthnCredential } from '../db/webauthn.ts'
+import { recordNewAccount } from '../services/account-plan.ts'
 import { typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
 
@@ -62,6 +63,11 @@ export const createWebAuthnRouter = ({
   userDb,
 }: WebAuthnRouterDeps): TypedRouter => {
   const router = typedRouter()
+
+  const usernameTaken = async (username: string): Promise<boolean> => {
+    const existing = await query(userDb, 'SELECT usename FROM pg_user WHERE usename=$1', [username])
+    return (existing.rowCount ?? 0) > 0 || (await centralDb.isUsernameDeleted(username))
+  }
 
   router.post<Record<string, never>, WebAuthnSignupOptionsResponse, WebAuthnSignupOptionsBody>(
     '/signup/options',
@@ -103,8 +109,7 @@ export const createWebAuthnRouter = ({
         return
       }
 
-      const existing = await query(userDb, 'SELECT usename FROM pg_user WHERE usename=$1', [username])
-      if ((existing.rowCount ?? 0) > 0) {
+      if (await usernameTaken(username)) {
         res.status(409).json({ error: 'Username already exists', success: false, options_json: '' })
         return
       }
@@ -144,6 +149,11 @@ export const createWebAuthnRouter = ({
 
       const { credential, userHandleUuid } = verifyResult
 
+      if (await usernameTaken(username)) {
+        res.status(409).json({ error: 'Username already exists', success: false, verified: true })
+        return
+      }
+
       const logRollbackFailure = (step: string, err: unknown) =>
         console.error(
           `Signup rollback ${step} failed; manual cleanup may be needed for username "${username}":`,
@@ -175,12 +185,21 @@ export const createWebAuthnRouter = ({
       // — only Postgres ever sees it; we discard it after the connect call.
       // makeNewUserDb is multi-step (CREATE USER + CREATE DATABASE +
       // initializeSchema). A failure mid-way can leave a partial role/DB
-      // that blocks future signup attempts, so always run dropUserDb in
-      // the rollback path as defense-in-depth.
+      // that blocks future signup attempts, so the rollback drops them —
+      // unless CREATE USER itself failed with duplicate_object (42710): then
+      // the role belongs to someone else and dropping would destroy their data.
       const randomPassword = randomBytes(32).toString('base64url')
       try {
         await makeNewUserDb(userDb, username, randomPassword)
       } catch (err) {
+        if ((err as { code?: string }).code === '42710') {
+          console.warn('WebAuthn signup: role already exists at create time:', username)
+          await centralDb
+            .deleteWebAuthnUserHandle(username)
+            .catch((e) => logRollbackFailure('deleteWebAuthnUserHandle', e))
+          res.status(409).json({ error: 'Username already exists', success: false, verified: true })
+          return
+        }
         console.error('Failed to create user DB during signup; rolling back:', err)
         await dropUserDb(userDb, username).catch((e) => logRollbackFailure('dropUserDb', e))
         await centralDb
@@ -189,6 +208,9 @@ export const createWebAuthnRouter = ({
         res.status(500).json({ error: 'Signup failed', success: false, verified: true })
         return
       }
+      await recordNewAccount(centralDb, username).catch((e) =>
+        console.error(`⚠️ Failed to record account row for ${username}:`, e),
+      )
 
       // Step 3: persist the credential in the user's DB. If this fails we
       // would orphan an account that has no way to log in — roll back.
@@ -208,6 +230,7 @@ export const createWebAuthnRouter = ({
         await centralDb
           .deleteWebAuthnUserHandle(username)
           .catch((e) => logRollbackFailure('deleteWebAuthnUserHandle', e))
+        await centralDb.deleteUserAccount(username).catch((e) => logRollbackFailure('deleteUserAccount', e))
         res.status(500).json({ error: 'Signup failed', success: false, verified: true })
         return
       }

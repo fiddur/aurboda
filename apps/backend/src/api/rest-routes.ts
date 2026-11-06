@@ -11,10 +11,15 @@ import type { Auth } from '../auth.ts'
 import type { GarminClient } from '../integrations/garmin/client.ts'
 import type { DetailSyncedCallback, TrackWrittenCallback } from '../integrations/garmin/sync.ts'
 import type { AutosharePreviewDeps } from '../mcp/autoshare-rule-tools.ts'
+import type { AccountDeleter } from '../services/account-deletion.ts'
+import type { AccountPlans } from '../services/account-plan.ts'
+import type { AdminUsers } from '../services/admin-users.ts'
 import type { CentralDb } from '../services/central-db.ts'
 import type { DiscoverChallenges } from '../services/challenge-discovery.ts'
 import type { DeductionEngineDeps } from '../services/deduction-engine.ts'
 import type { ActivityNotifier, DeductionQueue } from '../services/deduction-queue.ts'
+import type { DumpExporter, DumpLinkIssuer } from '../services/export-dump.ts'
+import type { ExportTokens } from '../services/export-token.ts'
 import type { ReactionActions } from '../services/feed-reactions.ts'
 import type { FollowerActions } from '../services/followers.ts'
 import type { FollowActions } from '../services/following.ts'
@@ -28,9 +33,16 @@ import type { RetroEnrichTrigger } from '../services/timeline-retro-enrich.ts'
 import type { WebAuthnService } from '../services/webauthn.ts'
 import type { AnyMiddleware } from '../typed-router.ts'
 
-import { getFeedPostById, getLocations, getTimeSeries, markActivityDetailSynced } from '../db/index.ts'
+import {
+  getFeedPostById,
+  getLocations,
+  getTimeSeries,
+  listUserNames,
+  markActivityDetailSynced,
+} from '../db/index.ts'
 import { processActivityDetail } from '../integrations/garmin/process.ts'
 import { gravlRedirectUri } from '../integrations/gravl/client.ts'
+import { createAccountRouter } from '../routes/account-router.ts'
 import { createActivitiesRouter } from '../routes/activities-router.ts'
 import { createActivityTypesRouter } from '../routes/activity-types-router.ts'
 import { createAdminRouter } from '../routes/admin-router.ts'
@@ -43,6 +55,7 @@ import { createChartDataRouter } from '../routes/chart-data-router.ts'
 import { createCorrelationsRouter } from '../routes/correlations-router.ts'
 import { createDashboardRouter } from '../routes/dashboard-router.ts'
 import { createDeductionRulesRouter } from '../routes/deduction-rules-router.ts'
+import { createExportRouter } from '../routes/export-router.ts'
 import { createFeedFollowersRouter } from '../routes/feed-followers-router.ts'
 import { createFeedFollowingRouter } from '../routes/feed-following-router.ts'
 import { createFeedImageRouter } from '../routes/feed-image-router.ts'
@@ -102,8 +115,11 @@ import { createTemplateLoader } from '../services/web-template.ts'
 
 interface RestRoutesDeps {
   httpd: Express
+  accountDeleter: AccountDeleter
+  accountPlans: AccountPlans
   authMiddleware: AnyMiddleware
   adminMiddleware: AnyMiddleware
+  adminUsers: AdminUsers
   centralDb: CentralDb
   invitationAuth: InvitationAuth
   webHost: string
@@ -139,12 +155,16 @@ interface RestRoutesDeps {
   /** Fire-and-forget: recompute activity features after HR zones, birth date or maf_hr change. */
   onHrSettingsChanged: HrSettingsChanged
   onNamedLocationsChanged: NamedLocationsChanged
+  dataExport: { exporter: DumpExporter; requestDumpLink: DumpLinkIssuer; tokens: ExportTokens }
 }
 
 export const mountRestRouters = ({
   httpd,
+  accountDeleter,
+  accountPlans,
   authMiddleware,
   adminMiddleware,
+  adminUsers,
   centralDb,
   invitationAuth,
   webHost,
@@ -159,6 +179,7 @@ export const mountRestRouters = ({
   engineDeps,
   deductionQueue,
   autosharePreviewDeps,
+  dataExport,
   feedDeliver,
   followActions,
   followerActions,
@@ -213,6 +234,8 @@ export const mountRestRouters = ({
   httpd.use('/locations', createLocationsRouter(authMiddleware, onNamedLocationsChanged))
   httpd.use(createSettingsRouter(authMiddleware, onHrSettingsChanged))
   httpd.use(createAuditLogRouter(authMiddleware))
+  httpd.use('/export', createExportRouter({ authMiddleware, ...dataExport }))
+  httpd.use('/account', createAccountRouter(authMiddleware, accountDeleter, accountPlans))
   httpd.use(createRawRecordsRouter(authMiddleware))
   httpd.use('/dashboard', createDashboardRouter(authMiddleware))
   httpd.use('/shared-dashboards', createSharedDashboardsRouter(authMiddleware, webHost))
@@ -239,7 +262,7 @@ export const mountRestRouters = ({
   httpd.use(createChallengeDataRouter())
   // Public feed series must be mounted before the generic /public/:username/:slug
   // resolver so `series` is not matched as a share slug.
-  httpd.use(createFeedPublicRouter())
+  httpd.use(createFeedPublicRouter({ apiBaseUrl, webHost }))
   // Public feed-post images (chart / route map), rendered on demand for opted-in
   // public/unlisted posts. Mounted alongside the series router (same guard).
   httpd.use(
@@ -298,6 +321,7 @@ export const mountRestRouters = ({
   )
   httpd.use(
     createShareHtmlRouter({
+      apiBaseUrl,
       loadTemplate: createTemplateLoader(webIndexPath),
       webHost,
       ...createShareResolvers(),
@@ -316,10 +340,14 @@ export const mountRestRouters = ({
       authMiddleware,
       adminMiddleware,
       centralDb,
+      adminUsers,
       invitationAuth,
       webHost,
       gravlRedirectUri(apiBaseUrl),
+      async (username) => (await listUserNames(userDb)).includes(username),
       ouraWebhookManager,
+      accountDeleter,
+      accountPlans,
     ),
   )
   httpd.use(

@@ -26,6 +26,11 @@ export function Privacy() {
           <li>Music listening history if Last.fm is connected</li>
           <li>Calendar events if calendar feeds are connected</li>
           <li>Account credentials (username, hashed password) for authentication</li>
+          <li>
+            Usage statistics: per day, how often you read or change data through the web app, Android app, API
+            or MCP, and how much data each source sends in (counts only, no content or IP addresses), kept for
+            400 days
+          </li>
         </ul>
       </section>
 
@@ -60,7 +65,8 @@ export function Privacy() {
         <h2>Your Rights</h2>
         <p>
           You can view, export, or delete your data at any time through the Aurboda interface, REST API, or
-          MCP tools. Contact your server administrator for account deletion.
+          MCP tools. You can delete your whole account from Settings: all of your data is removed from the
+          server for good, and servers that follow you are told the account is gone.
         </p>
       </section>
 

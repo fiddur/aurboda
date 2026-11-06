@@ -25,7 +25,14 @@ const { registerAuthRoutes } = await import('./auth-routes.ts')
 
 const pgError = (code: string, message = 'pg failure') => Object.assign(new Error(message), { code })
 
-const buildApp = ({ signupMode = 'closed' }: { signupMode?: string } = {}) => {
+const ensureUserAccount = vi.fn(async () => true)
+const isUsernameDeleted = vi.fn(async (_username: string) => false)
+
+const buildApp = ({
+  blogUsername = null,
+  signupMode = 'closed',
+  settings = {},
+}: { blogUsername?: string | null; signupMode?: string; settings?: Record<string, unknown> } = {}) => {
   const httpd = express()
   httpd.use(express.json())
 
@@ -34,10 +41,15 @@ const buildApp = ({ signupMode = 'closed' }: { signupMode?: string } = {}) => {
     authMiddleware: ((_req: express.Request, _res: express.Response, next: express.NextFunction) =>
       next()) as never,
     centralDb: {
+      ensureUserAccount,
       getAdminCount: vi.fn(async () => 1),
       getAuditLogRetentionDays: vi.fn(async () => 30),
+      getServerSetting: vi.fn(async (key: string) =>
+        key === 'blog_username' ? blogUsername : (settings[key] ?? null),
+      ),
       getSignupMode: vi.fn(async () => signupMode),
       isAdmin: vi.fn(async () => false),
+      isUsernameDeleted,
     } as never,
     httpd,
     invitationAuth: {} as never,
@@ -59,9 +71,23 @@ const login = (body: unknown) =>
 
 beforeEach(() => {
   vi.clearAllMocks()
+  isUsernameDeleted.mockResolvedValue(false)
   vi.mocked(db.query).mockResolvedValue({ rowCount: 1, rows: [{ usename: 'alice' }] } as never)
   vi.mocked(db.loginToUserDb).mockResolvedValue(undefined)
   vi.mocked(db.isInvalidPasswordError).mockReturnValue(false)
+})
+
+describe('GET /status', () => {
+  test('names the instance blog user when the admin set one', async () => {
+    const response = await supertest(buildApp({ blogUsername: 'fiddur' })).get('/status')
+    expect(response.status).toBe(200)
+    expect(response.body.blog_username).toBe('fiddur')
+  })
+
+  test('says null when no blog is configured', async () => {
+    const response = await supertest(buildApp()).get('/status')
+    expect(response.body.blog_username).toBeNull()
+  })
 })
 
 describe('POST /login', () => {
@@ -170,5 +196,85 @@ describe('POST /signup', () => {
 
     expect(response.status).toBe(200)
     expect(db.makeNewUserDb).toHaveBeenCalledWith(expect.anything(), 'alice', ' pass word ')
+    expect(ensureUserAccount).toHaveBeenCalledWith('alice', {
+      createdAt: expect.any(Date),
+      plan: null,
+      preExisting: false,
+      trialEndsAt: null,
+    })
+  })
+
+  test('starts the account on a trial while billing is enabled', async () => {
+    vi.mocked(db.query).mockResolvedValue({ rowCount: 0, rows: [] } as never)
+
+    const response = await supertest(
+      buildApp({ settings: { billing_enabled: true, trial_days: 30 }, signupMode: 'open' }),
+    )
+      .post('/signup')
+      .send({ password: 'secret', username: 'alice' })
+
+    expect(response.status).toBe(200)
+    const [, options] = ensureUserAccount.mock.lastCall as unknown as [
+      string,
+      { createdAt: Date; trialEndsAt: Date },
+    ]
+    expect(options).toMatchObject({ plan: 'trial', preExisting: false })
+    expect(options.trialEndsAt.getTime() - options.createdAt.getTime()).toBe(30 * 86_400_000)
+  })
+
+  test('refuses a name whose role still exists, as during an account deletion before the name is reserved', async () => {
+    vi.mocked(db.query).mockResolvedValue({ rowCount: 1, rows: [{ usename: 'leaving' }] } as never)
+
+    const response = await supertest(buildApp({ signupMode: 'open' }))
+      .post('/signup')
+      .send({ password: 'secret', username: 'leaving' })
+
+    expect(response.status).toBe(409)
+    expect(response.body.error).toBe('Username already exists')
+    expect(db.makeNewUserDb).not.toHaveBeenCalled()
+  })
+
+  test('answers 409 when the role appears between the check and CREATE USER', async () => {
+    vi.mocked(db.query).mockResolvedValue({ rowCount: 0, rows: [] } as never)
+    vi.mocked(db.makeNewUserDb).mockRejectedValueOnce(pgError('42710', 'role "racer" already exists'))
+
+    const response = await supertest(buildApp({ signupMode: 'open' }))
+      .post('/signup')
+      .send({ password: 'secret', username: 'racer' })
+
+    expect(response.status).toBe(409)
+    expect(response.body.error).toBe('Username already exists')
+    expect(ensureUserAccount).not.toHaveBeenCalled()
+  })
+
+  test('refuses the name of a deleted account as taken', async () => {
+    vi.mocked(db.query).mockResolvedValue({ rowCount: 0, rows: [] } as never)
+    isUsernameDeleted.mockImplementation(async (username) => username === 'gone')
+
+    const response = await supertest(buildApp({ signupMode: 'open' }))
+      .post('/signup')
+      .send({ password: 'secret', username: 'gone' })
+
+    expect(response.status).toBe(409)
+    expect(response.body.error).toBe('Username already exists')
+    expect(db.makeNewUserDb).not.toHaveBeenCalled()
+  })
+})
+
+describe('GET /status', () => {
+  test('says billing is off without trial or price', async () => {
+    const response = await supertest(buildApp({ signupMode: 'open' })).get('/status')
+
+    expect(response.body).toMatchObject({ billing_enabled: false, signup_mode: 'open', success: true })
+    expect(response.body.trial_days).toBeUndefined()
+    expect(response.body.price_text).toBeUndefined()
+  })
+
+  test('with billing on, carries the trial length and price for the signup page', async () => {
+    const response = await supertest(
+      buildApp({ settings: { billing_enabled: true, price_text: '3 € / month', trial_days: 60 } }),
+    ).get('/status')
+
+    expect(response.body).toMatchObject({ billing_enabled: true, price_text: '3 € / month', trial_days: 60 })
   })
 })

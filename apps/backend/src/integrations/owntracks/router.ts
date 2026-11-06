@@ -1,3 +1,7 @@
+import type { AccountReadOnlyResponse } from '@aurboda/api-spec'
+
+import type { ReadOnlyRefusal } from '../../services/account-gate.ts'
+
 import { isInvalidPasswordError } from '../../db/index.ts'
 import { type TypedRouter, typedRouter } from '../../typed-router.ts'
 
@@ -28,6 +32,8 @@ export interface OwnTracksDeps {
     },
   ) => Promise<void>
   onLocationInserted?: (user: string, time: Date) => void
+  /** The 402 body for a read-only account (plan expired past the grace period), which stores nothing new. */
+  readOnlyRefusal?: (user: string) => Promise<ReadOnlyRefusal | null>
 }
 
 /**
@@ -60,7 +66,7 @@ export function parseBasicAuth(
 export function createOwnTracksRouter(deps: OwnTracksDeps): TypedRouter {
   const router = typedRouter()
 
-  router.post<Record<string, string>, { error: string }>('/', async (req, res) => {
+  router.post<Record<string, never>, AccountReadOnlyResponse | { error: string }>('/', async (req, res) => {
     const credentials = parseBasicAuth(req.headers.authorization)
     if (!credentials) {
       res.status(401).set('WWW-Authenticate', 'Basic realm="OwnTracks"').json({ error: 'Unauthorized' })
@@ -72,6 +78,12 @@ export function createOwnTracksRouter(deps: OwnTracksDeps): TypedRouter {
     try {
       // Authenticate using existing PostgreSQL user credentials
       await deps.loginToUserDb(user, password)
+
+      const refusal = await deps.readOnlyRefusal?.(user)
+      if (refusal) {
+        res.status(402).json({ ...refusal, success: false })
+        return
+      }
 
       const { _type: type } = req.body
 

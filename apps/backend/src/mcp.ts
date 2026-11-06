@@ -16,10 +16,14 @@ import type { GravlClient } from './integrations/gravl/client.ts'
 import type { ouraClient } from './integrations/oura/client.ts'
 import type { AutosharePreviewDeps } from './mcp/autoshare-rule-tools.ts'
 import type { FeedDeliver } from './routes/feed-router.ts'
+import type { AccountDeleter } from './services/account-deletion.ts'
+import type { AccountPlans } from './services/account-plan.ts'
+import type { AdminUsers } from './services/admin-users.ts'
 import type { CentralDb } from './services/central-db.ts'
 import type { DiscoverChallenges } from './services/challenge-discovery.ts'
 import type { DeductionEngineDeps } from './services/deduction-engine.ts'
 import type { ActivityNotifier, DeductionQueue } from './services/deduction-queue.ts'
+import type { DumpLinkIssuer } from './services/export-dump.ts'
 import type { ReactionActions } from './services/feed-reactions.ts'
 import type { FollowerActions } from './services/followers.ts'
 import type { FollowActions } from './services/following.ts'
@@ -29,14 +33,18 @@ import type { HrSettingsChanged } from './services/settings.ts'
 import type { StravaQueue } from './services/strava-queue.ts'
 import type { RetroEnrichTrigger } from './services/timeline-retro-enrich.ts'
 
+import { registerAccountDeletionTools } from './mcp/account-deletion-tools.ts'
+import { registerAccountPlanTools } from './mcp/account-plan-tools.ts'
 import { registerActivityTools } from './mcp/activity-tools.ts'
 import { registerActivityTypeTools } from './mcp/activity-type-tools.ts'
+import { registerAdminUserTools } from './mcp/admin-user-tools.ts'
 import { registerAutoshareRuleTools } from './mcp/autoshare-rule-tools.ts'
 import { registerChallengeTools } from './mcp/challenge-tools.ts'
 import { registerChartTools } from './mcp/chart-tools.ts'
 import { registerCorrelationTools } from './mcp/correlation-tools.ts'
 import { registerDebugTools } from './mcp/debug-tools.ts'
 import { registerDeductionRuleTools } from './mcp/deduction-rule-tools.ts'
+import { registerExportTools } from './mcp/export-tools.ts'
 import { registerFeedTools } from './mcp/feed-tools.ts'
 import { registerFoodItemTools } from './mcp/food-item-tools.ts'
 import { registerImportTools } from './mcp/import-tools.ts'
@@ -46,6 +54,7 @@ import { registerMetricTools } from './mcp/metric-tools.ts'
 import { registerNoteTools } from './mcp/note-tools.ts'
 import { registerNutrientRecommendationTools } from './mcp/nutrient-recommendation-tools.ts'
 import { registerQueryTools } from './mcp/query-tools.ts'
+import { refuseMutatingTools } from './mcp/read-only-gate.ts'
 import { registerReportTools } from './mcp/report-tools.ts'
 import { registerRouteTools } from './mcp/route-tools.ts'
 import { registerScreentimeCategoryTools } from './mcp/screentime-category-tools.ts'
@@ -57,8 +66,11 @@ import { registerSyncTools } from './mcp/sync-tools.ts'
 import { installToolCatalogue } from './mcp/tool-catalogue.ts'
 import { registerTrainingLoadTools } from './mcp/training-load-tools.ts'
 import { registerTrendTools } from './mcp/trend-tools.ts'
+import { type AccountGate, safeRefusal } from './services/account-gate.ts'
 import { createDefaultEngineDeps } from './services/deduction-deps.ts'
 import { isOAuthAccessToken, validateAccessToken } from './services/oauth.ts'
+import { isMutatingMcpTool, mcpToolCallNames } from './services/usage-channel.ts'
+import { recordUsage } from './services/usage-recorder.ts'
 import { trimStrings } from './trim-input.ts'
 
 type OuraClientType = ReturnType<typeof ouraClient>
@@ -95,6 +107,13 @@ const SERVER_INSTRUCTIONS =
   'The tool list is abbreviated: each tool shows its first sentence and its top-level parameters only. Call describe_tools with one or more tool names for the full description and complete parameter schema (nested objects, enums, examples) before using a tool whose parameters are objects or arrays.'
 
 interface McpDeps {
+  /** Account deletion (`delete_my_account`, `delete_user`). */
+  accountDeleter?: AccountDeleter
+  /** Refuses mutating tools for a read-only account (plan expired past the grace period). */
+  accountGate?: AccountGate
+  /** Plans and billing (`get_my_plan`, `set_user_plan`). */
+  accountPlans?: AccountPlans
+  adminUsers?: AdminUsers
   apiBaseUrl?: string
   autosharePreviewDeps?: AutosharePreviewDeps
   centralDb?: CentralDb
@@ -107,6 +126,8 @@ interface McpDeps {
   followerActions?: FollowerActions
   garmin?: GarminClient
   gravl?: GravlClient
+  /** Deleted accounts, whose stateless tokens still decode. */
+  isDeletedUser?: (user: string) => boolean
   onActivityMutated?: ActivityNotifier
   onNamedLocationsChanged?: NamedLocationsChanged
   /** Fire-and-forget: recompute activity features after HR zones, birth date or maf_hr change. */
@@ -116,6 +137,7 @@ interface McpDeps {
   oura?: OuraClientType
   reactionActions?: ReactionActions
   retroEnrichTimeline?: RetroEnrichTrigger
+  requestDumpLink?: DumpLinkIssuer
   stravaQueue?: StravaQueue
   sync?: SyncProvider
   webHost?: string
@@ -162,6 +184,9 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     registerFoodItemTools(server, user, deps.centralDb)
     registerSensitivityTools(server, user, deps.centralDb)
     registerImportTools(server, user, deps.centralDb)
+    if (deps.adminUsers) registerAdminUserTools(server, user, deps.centralDb, deps.adminUsers)
+    if (deps.accountDeleter) registerAccountDeletionTools(server, user, deps.centralDb, deps.accountDeleter)
+    if (deps.accountPlans) registerAccountPlanTools(server, user, deps.centralDb, deps.accountPlans)
   }
   registerReportTools(server, user)
   registerRouteTools(server, user)
@@ -182,6 +207,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     webHost: deps.webHost,
   })
   registerScreentimeCategoryTools(server, user)
+  if (deps.requestDumpLink) registerExportTools(server, user, deps.requestDumpLink)
   registerDebugTools(server, user)
   installToolCatalogue(server)
 
@@ -198,17 +224,20 @@ export function createMcpRouter(auth: Auth, deps: McpDeps = {}): Router {
     }
     const token = authHeader.slice('Bearer '.length)
 
-    // Try OAuth access token first (prefixed with aur_at_)
-    if (isOAuthAccessToken(token) && deps.centralDb) {
-      return validateAccessToken({ centralDb: deps.centralDb }, token)
-    }
+    const user = await (async () => {
+      // Try OAuth access token first (prefixed with aur_at_)
+      if (isOAuthAccessToken(token) && deps.centralDb) {
+        return validateAccessToken({ centralDb: deps.centralDb }, token)
+      }
 
-    // Fall back to existing AES-256-GCM token
-    try {
-      return auth.getUsernameFromToken(token)
-    } catch {
-      return null
-    }
+      // Fall back to existing AES-256-GCM token
+      try {
+        return auth.getUsernameFromToken(token)
+      } catch {
+        return null
+      }
+    })()
+    return user && deps.isDeletedUser?.(user) ? null : user
   }
 
   router.post('/', json({ limit: '4mb' }), async (req: Request, res: Response) => {
@@ -218,7 +247,15 @@ export function createMcpRouter(auth: Auth, deps: McpDeps = {}): Router {
       return
     }
 
+    const tools = mcpToolCallNames(req.body)
+    for (const tool of tools) {
+      recordUsage(user, isMutatingMcpTool(tool) ? 'write' : 'read', 'mcp')
+    }
+    const refusal =
+      deps.accountGate && tools.some(isMutatingMcpTool) ? await safeRefusal(deps.accountGate, user) : null
+
     const server = createMcpServer(user, deps)
+    if (refusal) refuseMutatingTools(server, refusal)
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
     })

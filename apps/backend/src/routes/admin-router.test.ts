@@ -2,6 +2,9 @@ import express, { type RequestHandler } from 'express'
 import supertest from 'supertest'
 import { describe, expect, test, vi } from 'vitest'
 
+import type { AccountDeleter } from '../services/account-deletion.ts'
+import type { AccountPlans } from '../services/account-plan.ts'
+import type { AdminUsers } from '../services/admin-users.ts'
 import type { CentralDb } from '../services/central-db.ts'
 import type { InvitationAuth } from '../services/invitation.ts'
 
@@ -18,20 +21,102 @@ const centralDb = {
   setServerSetting: vi.fn().mockResolvedValue(undefined),
 } as unknown as CentralDb
 
-const pass: RequestHandler = (_req, _res, next) => next()
+const pass: RequestHandler = (req, _res, next) => {
+  req.user = 'root'
+  next()
+}
+const forbid: RequestHandler = (_req, res) => {
+  res.status(403).json({ error: 'Forbidden', success: false })
+}
 
-const buildApp = () => {
+const noPlan = {
+  ends_at: null,
+  paid_until: null,
+  plan: null,
+  plan_note: null,
+  read_only_at: null,
+  state: 'active' as const,
+  trial_ends_at: null,
+}
+
+const overview = {
+  ...noPlan,
+  created_at: null,
+  ingest: { items_30d: 0, last_at: null, per_day_30d: 0, per_day_7d: 0, sources: [] },
+  is_admin: true,
+  last_api_at: null,
+  last_ui_at: '2026-11-06T10:00:00.000Z',
+  pre_existing: true,
+  storage_bytes: 1024,
+  use: {
+    android: { active_days_30d: 0, last_at: null, reads_30d: 0, writes_30d: 0 },
+    api: { active_days_30d: 0, last_at: null, reads_30d: 0, writes_30d: 0 },
+    mcp: { active_days_30d: 0, last_at: null, reads_30d: 0, writes_30d: 0 },
+    web: { active_days_30d: 1, last_at: '2026-11-06T10:00:00.000Z', reads_30d: 3, writes_30d: 0 },
+  },
+  username: 'alice',
+}
+
+const adminUsers: AdminUsers = {
+  getUserUsage: vi.fn(async (username: string) =>
+    username === 'alice'
+      ? {
+          ...noPlan,
+          created_at: null,
+          daily: [],
+          is_admin: true,
+          largest_tables: [{ bytes: 512, table: 'time_series' }],
+          pre_existing: true,
+          since: '2026-08-09',
+          storage_bytes: 1024,
+          username,
+        }
+      : null,
+  ),
+  listUsersOverview: vi.fn(async () => [overview]),
+}
+
+const deleteAccount = vi.fn<AccountDeleter>(async (username, { confirmUsername }) => {
+  if (confirmUsername !== username) {
+    return { error: 'confirmation_mismatch', message: 'mismatch', ok: false }
+  }
+  if (username === 'root') return { error: 'last_admin', message: 'last admin', ok: false }
+  if (username !== 'alice') return { error: 'not_found', message: 'User not found', ok: false }
+  return { ok: true }
+})
+
+const accountPlans: AccountPlans = {
+  billingSettingsChanged: vi.fn(async () => {}),
+  getMyPlan: vi.fn(),
+  setUserPlan: vi.fn(async (username: string, body) =>
+    username === 'alice'
+      ? {
+          ...noPlan,
+          paid_until: body.paid_until ?? null,
+          plan: 'paid' as const,
+          plan_note: body.plan_note ?? null,
+        }
+      : null,
+  ),
+}
+
+const buildApp = (adminMiddleware: RequestHandler = pass) => {
   const app = express()
   app.use(express.json())
   app.use(
     '/admin',
     createAdminRouter(
       pass,
-      pass,
+      adminMiddleware,
       centralDb,
+      adminUsers,
       {} as InvitationAuth,
       'https://web.example.test',
       gravlRedirectUri('https://api.example.test/api'),
+      async (username) => username === 'fiddur',
+      null,
+      deleteAccount,
+      accountPlans,
     ),
   )
   return app
@@ -48,5 +133,201 @@ describe('admin settings', () => {
     const res = await supertest(buildApp()).patch('/admin/settings').send({ gravl_client_id: 'abc' })
     expect(res.status).toBe(200)
     expect(res.body.gravl_redirect_uri).toBe('https://api.example.test/api/auth/gravlcb')
+  })
+})
+
+describe('instance blog setting', () => {
+  test('GET returns null when no blog user is set', async () => {
+    const res = await supertest(buildApp()).get('/admin/settings')
+    expect(res.body.blog_username).toBeNull()
+  })
+
+  test('PATCH stores an existing user as the blog user', async () => {
+    vi.mocked(centralDb.setServerSetting).mockClear()
+    const res = await supertest(buildApp()).patch('/admin/settings').send({ blog_username: 'fiddur' })
+    expect(res.status).toBe(200)
+    expect(centralDb.setServerSetting).toHaveBeenCalledWith('blog_username', 'fiddur')
+  })
+
+  test('PATCH rejects an unknown user with 400 and stores nothing', async () => {
+    vi.mocked(centralDb.setServerSetting).mockClear()
+    const res = await supertest(buildApp()).patch('/admin/settings').send({ blog_username: 'ghost' })
+    expect(res.status).toBe(400)
+    expect(res.body.error).toContain('ghost')
+    expect(centralDb.setServerSetting).not.toHaveBeenCalled()
+  })
+
+  test('PATCH with null clears the setting', async () => {
+    vi.mocked(centralDb.setServerSetting).mockClear()
+    const res = await supertest(buildApp()).patch('/admin/settings').send({ blog_username: null })
+    expect(res.status).toBe(200)
+    expect(centralDb.setServerSetting).toHaveBeenCalledWith('blog_username', '')
+  })
+})
+
+describe('admin billing settings', () => {
+  test('GET reports billing off with the default trial and grace days', async () => {
+    const res = await supertest(buildApp()).get('/admin/settings')
+    expect(res.body).toMatchObject({
+      billing_enabled: false,
+      grace_days: 14,
+      payment_url: '',
+      price_text: '',
+      trial_days: 90,
+    })
+  })
+
+  test('PATCH stores the billing fields and tells the plans service what billing was before', async () => {
+    vi.mocked(centralDb.setServerSetting).mockClear()
+    const res = await supertest(buildApp()).patch('/admin/settings').send({
+      billing_enabled: true,
+      grace_days: 7,
+      payment_url: 'https://patreon.example/aurboda',
+      price_text: '3 € / month',
+      trial_days: 30,
+    })
+
+    expect(res.status).toBe(200)
+    expect(vi.mocked(centralDb.setServerSetting).mock.calls).toEqual([
+      ['trial_days', 30],
+      ['grace_days', 7],
+      ['price_text', '3 € / month'],
+      ['payment_url', 'https://patreon.example/aurboda'],
+      ['billing_enabled', true],
+    ])
+    expect(accountPlans.billingSettingsChanged).toHaveBeenCalledWith(false)
+  })
+
+  test('PATCH without billing fields leaves billing alone', async () => {
+    vi.mocked(accountPlans.billingSettingsChanged).mockClear()
+    await supertest(buildApp()).patch('/admin/settings').send({ gravl_client_id: 'abc' })
+    expect(accountPlans.billingSettingsChanged).not.toHaveBeenCalled()
+  })
+
+  test.each([
+    [{ trial_days: -1 }],
+    [{ trial_days: 3651 }],
+    [{ grace_days: 366 }],
+    [{ payment_url: 'http://patreon.example/aurboda' }],
+    [{ payment_url: 'not a url' }],
+    [{ price_text: 'x'.repeat(201) }],
+  ])('PATCH rejects %j', async (body) => {
+    const res = await supertest(buildApp()).patch('/admin/settings').send(body)
+    expect(res.status).toBe(400)
+  })
+
+  test('PATCH accepts an empty payment link to clear it', async () => {
+    const res = await supertest(buildApp()).patch('/admin/settings').send({ payment_url: '' })
+    expect(res.status).toBe(200)
+  })
+})
+
+describe('PATCH /admin/users/:username/plan', () => {
+  test("updates the user's plan and returns it", async () => {
+    const res = await supertest(buildApp())
+      .patch('/admin/users/alice/plan')
+      .send({ paid_until: '2027-06-01T00:00:00.000Z', plan_note: 'Patreon' })
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({
+      status: { ...noPlan, paid_until: '2027-06-01T00:00:00.000Z', plan: 'paid', plan_note: 'Patreon' },
+      success: true,
+    })
+    expect(accountPlans.setUserPlan).toHaveBeenLastCalledWith('alice', {
+      paid_until: '2027-06-01T00:00:00.000Z',
+      plan_note: 'Patreon',
+    })
+  })
+
+  test('404 for an unknown user', async () => {
+    const res = await supertest(buildApp()).patch('/admin/users/mallory/plan').send({ plan: 'exempt' })
+    expect(res.status).toBe(404)
+    expect(res.body).toEqual({ error: 'User not found', success: false })
+  })
+
+  test.each([[{ plan: 'gold' }], [{ paid_until: 'tomorrow' }], [{ plan_note: 'x'.repeat(1001) }]])(
+    '400 for %j',
+    async (body) => {
+      const res = await supertest(buildApp()).patch('/admin/users/alice/plan').send(body)
+      expect(res.status).toBe(400)
+    },
+  )
+
+  test('non-admins are refused', async () => {
+    vi.mocked(accountPlans.setUserPlan).mockClear()
+    const res = await supertest(buildApp(forbid)).patch('/admin/users/alice/plan').send({ plan: 'exempt' })
+    expect(res.status).toBe(403)
+    expect(accountPlans.setUserPlan).not.toHaveBeenCalled()
+  })
+})
+
+describe('admin users', () => {
+  test('GET /users lists every user', async () => {
+    const res = await supertest(buildApp()).get('/admin/users')
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ success: true, users: [overview] })
+  })
+
+  test('GET /users/:username returns the usage, 90 days by default', async () => {
+    const res = await supertest(buildApp()).get('/admin/users/alice')
+    expect(res.status).toBe(200)
+    expect(res.body.success).toBe(true)
+    expect(res.body.user).toMatchObject({ largest_tables: [{ bytes: 512, table: 'time_series' }] })
+    expect(adminUsers.getUserUsage).toHaveBeenLastCalledWith('alice', 90)
+  })
+
+  test('GET /users/:username passes days through and rejects out-of-range values', async () => {
+    await supertest(buildApp()).get('/admin/users/alice?days=14')
+    expect(adminUsers.getUserUsage).toHaveBeenLastCalledWith('alice', 14)
+
+    const res = await supertest(buildApp()).get('/admin/users/alice?days=401')
+    expect(res.status).toBe(400)
+  })
+
+  test('GET /users/:username answers 404 for an unknown user', async () => {
+    const res = await supertest(buildApp()).get('/admin/users/mallory')
+    expect(res.status).toBe(404)
+    expect(res.body).toEqual({ error: 'User not found', success: false })
+  })
+
+  test('non-admins are refused', async () => {
+    vi.mocked(adminUsers.listUsersOverview).mockClear()
+    vi.mocked(adminUsers.getUserUsage).mockClear()
+    const app = buildApp(forbid)
+    expect((await supertest(app).get('/admin/users')).status).toBe(403)
+    expect((await supertest(app).get('/admin/users/alice')).status).toBe(403)
+    expect(adminUsers.listUsersOverview).not.toHaveBeenCalled()
+    expect(adminUsers.getUserUsage).not.toHaveBeenCalled()
+  })
+})
+
+describe('DELETE /admin/users/:username', () => {
+  test('deletes the user, with the admin as actor', async () => {
+    const res = await supertest(buildApp()).delete('/admin/users/alice').send({ confirm_username: 'alice' })
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ success: true })
+    expect(deleteAccount).toHaveBeenCalledWith('alice', { actor: 'root', confirmUsername: 'alice' })
+  })
+
+  test('400 on a confirmation mismatch, 404 for an unknown user, 409 for the last admin', async () => {
+    const app = buildApp()
+    expect((await supertest(app).delete('/admin/users/alice').send({ confirm_username: 'bob' })).status).toBe(
+      400,
+    )
+    expect(
+      (await supertest(app).delete('/admin/users/mallory').send({ confirm_username: 'mallory' })).status,
+    ).toBe(404)
+    expect((await supertest(app).delete('/admin/users/root').send({ confirm_username: 'root' })).status).toBe(
+      409,
+    )
+  })
+
+  test('non-admins are refused', async () => {
+    deleteAccount.mockClear()
+    const res = await supertest(buildApp(forbid))
+      .delete('/admin/users/alice')
+      .send({ confirm_username: 'alice' })
+    expect(res.status).toBe(403)
+    expect(deleteAccount).not.toHaveBeenCalled()
   })
 })
