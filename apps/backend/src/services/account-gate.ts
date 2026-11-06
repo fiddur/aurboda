@@ -122,28 +122,6 @@ export const safeRefusal = async (gate: AccountGate, username: string): Promise<
 export const safeIsReadOnly = async (gate: AccountGate, username: string): Promise<boolean> =>
   (await safeRefusal(gate, username)) !== null
 
-const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
-
-const PREVIEW_POSTS = new Set([
-  '/autoshare-rules/preview',
-  '/deduction-rules/preview',
-  '/feed/exercises/preview',
-])
-const ACTIVITY_SHARE_PREVIEW = /^\/feed\/activities\/[^/]+\/preview$/
-
-/**
- * Whether a request is allowed for a read-only account: every read, plus the previews that
- * store nothing, exporting the data, deleting the account and managing passkeys.
- */
-export const isAllowedWhenReadOnly = (method: string, path: string): boolean => {
-  const verb = method.toUpperCase()
-  if (SAFE_METHODS.has(verb)) return true
-  if (path === '/export' || path.startsWith('/export/')) return true
-  if (path.startsWith('/webauthn/')) return true
-  if (verb === 'POST' && (PREVIEW_POSTS.has(path) || ACTIVITY_SHARE_PREVIEW.test(path))) return true
-  return verb === 'DELETE' && (path === '/account' || path === '/account/')
-}
-
 /** Every pull for a read-only user returns without syncing. */
 export const gateSyncProvider = (
   sync: SyncProvider,

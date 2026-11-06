@@ -1,3 +1,4 @@
+import { isAllowedWhenReadOnly } from '@aurboda/api-spec'
 import { describe, expect, test, vi } from 'vitest'
 
 import type { ServerSettings } from './central-db.ts'
@@ -8,7 +9,6 @@ import {
   createAccountGate,
   GATE_CACHE_MS,
   gateSyncProvider,
-  isAllowedWhenReadOnly,
   READ_ONLY_MESSAGE,
   safeRefusal,
 } from './account-gate.ts'
@@ -147,6 +147,7 @@ describe('isAllowedWhenReadOnly', () => {
     ['POST', '/autoshare-rules/preview'],
     ['POST', '/deduction-rules/preview'],
     ['POST', '/feed/activities/0b6c1f0e-3f7e-4a43-9a51-3c1d7d1f2a10/preview'],
+    ['POST', '/feed/activities/{id}/preview'],
     ['POST', '/feed/exercises/preview'],
   ])('allows %s %s', (method, path) => {
     expect(isAllowedWhenReadOnly(method, path)).toBe(true)
