@@ -1,5 +1,6 @@
-import type { AccountReadOnlyResponse } from '@aurboda/api-spec'
 import type { RequestHandler } from 'express'
+
+import { type AccountReadOnlyResponse, isAllowedWhenReadOnly } from '@aurboda/api-spec'
 
 import type { Auth } from '../auth.ts'
 import type { AccountGate } from '../services/account-gate.ts'
@@ -7,7 +8,7 @@ import type { CentralDb } from '../services/central-db.ts'
 import type { AnyMiddleware } from '../typed-router.ts'
 
 import { migrateSchemaIfNeeded } from '../db/index.ts'
-import { isAllowedWhenReadOnly, safeRefusal } from '../services/account-gate.ts'
+import { safeRefusal } from '../services/account-gate.ts'
 import { auditError, auditInfo, auditWarn } from '../services/audit-log.ts'
 import { backfillScreentimeActivities } from '../services/backfill-screentime-activities.ts'
 import { redactGarminLoginAudit } from '../services/redact-garmin-login-audit.ts'

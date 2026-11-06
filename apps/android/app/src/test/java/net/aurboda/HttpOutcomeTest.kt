@@ -52,6 +52,13 @@ class HttpOutcomeTest {
   }
 
   @Test
+  fun `countsAsEntryFailure skips only a read-only refusal`() {
+    assertTrue(countsAsEntryFailure(null))
+    assertTrue(countsAsEntryFailure(syncStopOf(401)))
+    assertFalse(countsAsEntryFailure(syncStopOf(402, "Renew to write")))
+  }
+
+  @Test
   fun `readOnlyMessage reads the error of a 402 body`() {
     val body = """{"success":false,"error":"This account is read-only until the plan is renewed","payment_url":null}"""
     assertEquals("This account is read-only until the plan is renewed", readOnlyMessage(body))

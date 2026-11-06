@@ -5,6 +5,7 @@ import * as yaml from 'yaml'
 import { z } from 'zod'
 import { createDocument } from 'zod-openapi'
 
+import { isAllowedWhenReadOnly } from './read-only.ts'
 import { activitiesResponseSchema } from './schemas/activities.ts'
 import { deleteAccountBodySchema, loginBodySchema, loginResponseSchema } from './schemas/admin.ts'
 import {
@@ -1491,15 +1492,10 @@ const openApiDocument = createDocument({
   ],
 })
 
-// Mirrors `isAllowedWhenReadOnly` in the backend's account gate: every authenticated write
-// except exporting, passkeys and deleting the account can be refused for a read-only account.
-// Admin routes are left out because admins are always exempt.
+// Admin routes are left out: an admin is never read-only, so the gate never refuses one.
 const WRITE_METHODS = ['post', 'put', 'patch', 'delete'] as const
 const mayBeRefusedWhenReadOnly = (path: string, method: string) =>
-  !path.startsWith('/export') &&
-  !path.startsWith('/webauthn/') &&
-  !path.startsWith('/admin/') &&
-  !(method === 'delete' && path === '/account')
+  !isAllowedWhenReadOnly(method, path) && !path.startsWith('/admin/')
 
 interface GeneratedOperation {
   responses?: Record<string, unknown>
