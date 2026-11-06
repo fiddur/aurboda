@@ -97,14 +97,14 @@ export function StackedDailyChart({ data, height = 220 }: { data: StackedDays; h
 
     g.append('g')
       .selectAll('rect')
-      .data(data.days)
+      .data(data.days.map((day, index) => ({ day, index })))
       .join('rect')
-      .attr('x', (day) => x(dayDate(day)))
+      .attr('x', ({ day }) => x(dayDate(day)))
       .attr('y', 0)
       .attr('width', barWidth + 1)
       .attr('height', innerHeight)
       .attr('fill', 'transparent')
-      .on('mousemove', (event: MouseEvent, day) => showTooltip(event, data.days.indexOf(day)))
+      .on('mousemove', (event: MouseEvent, { index }) => showTooltip(event, index))
       .on('mouseleave', () => {
         tooltip.style.display = 'none'
       })

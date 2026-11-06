@@ -42,6 +42,7 @@ const createUser = async (admin: Client, user: string): Promise<void> => {
 describe('account deletion', () => {
   const suffix = randomBytes(4).toString('hex')
   const user = `del_${suffix}`
+  const halfDeleted = `half_${suffix}`
   const keeper = `keep_${suffix}`
   const centralDatabase = `central_${suffix}`
   let admin: Client
@@ -64,11 +65,24 @@ describe('account deletion', () => {
     await createUser(admin, user)
   }, CONTAINER_TIMEOUT)
 
+  const makeDeleter = (deleted: string[] = []) =>
+    createAccountDeleter({
+      announceDeletion: async () => {},
+      centralDb,
+      dropUserDb: (name) => dropUserDb(admin, name),
+      integrations: [],
+      listUsers: () => listUserNames(admin),
+      log: { error: () => {}, info: () => {}, warn: () => {} },
+      onDeleted: (name) => deleted.push(name),
+    })
+
   afterAll(async () => {
-    await admin
-      .query(format('DROP DATABASE IF EXISTS %I WITH (FORCE)', userDbName(user)))
-      .then(() => admin.query(format('DROP USER IF EXISTS %I', user)))
-      .catch(() => {})
+    for (const name of [user, halfDeleted]) {
+      await admin
+        .query(format('DROP DATABASE IF EXISTS %I WITH (FORCE)', userDbName(name)))
+        .then(() => admin.query(format('DROP USER IF EXISTS %I', name)))
+        .catch(() => {})
+    }
     await centralPool.end()
     await admin.query(format('DROP DATABASE IF EXISTS %I WITH (FORCE)', centralDatabase)).catch(() => {})
     await admin.end()
@@ -113,15 +127,7 @@ describe('account deletion', () => {
       const job = await centralDb.insertImportJob('livsmedelsverket', user)
 
       const deleted: string[] = []
-      const deleteAccount = createAccountDeleter({
-        announceDeletion: async () => {},
-        centralDb,
-        dropUserDb: (name) => dropUserDb(admin, name),
-        integrations: [],
-        listUsers: () => listUserNames(admin),
-        log: { error: () => {}, info: () => {}, warn: () => {} },
-        onDeleted: (name) => deleted.push(name),
-      })
+      const deleteAccount = makeDeleter(deleted)
 
       expect(await deleteAccount(user, { actor: keeper, confirmUsername: user })).toEqual({ ok: true })
       expect(deleted).toEqual([user])
@@ -154,6 +160,38 @@ describe('account deletion', () => {
         user,
       ])
       expect(reservation.rows[0].deleted_by).toBe(keeper)
+    },
+    CONTAINER_TIMEOUT,
+  )
+
+  test(
+    'finishes a deletion that dropped the database but left the role and central rows',
+    async () => {
+      await centralDb.addAdmin(keeper)
+      await centralDb.addAdmin(halfDeleted)
+      await centralDb.ensureUserAccount(halfDeleted, { createdAt: new Date(), preExisting: false })
+      await centralDb.insertWebAuthnUserHandle(halfDeleted, '22222222-2222-2222-2222-222222222222')
+      await centralDb.reserveDeletedUsername(halfDeleted, keeper)
+      await admin.query(format('CREATE USER %I', halfDeleted))
+
+      const deleteAccount = makeDeleter()
+      expect(await deleteAccount(halfDeleted, { actor: keeper, confirmUsername: halfDeleted })).toEqual({
+        ok: true,
+      })
+
+      const roles = await admin.query('SELECT 1 FROM pg_roles WHERE rolname = $1', [halfDeleted])
+      expect(roles.rowCount).toBe(0)
+      for (const table of ['admins', 'user_accounts', 'webauthn_user_handles']) {
+        const rows = await centralPool.query(`SELECT 1 FROM ${table} WHERE username = $1`, [halfDeleted])
+        expect({ count: rows.rowCount, table }).toEqual({ count: 0, table })
+      }
+      expect(await centralDb.isUsernameDeleted(halfDeleted)).toBe(true)
+
+      const unknown = `nobody_${suffix}`
+      expect(await deleteAccount(unknown, { actor: keeper, confirmUsername: unknown })).toMatchObject({
+        error: 'not_found',
+        ok: false,
+      })
     },
     CONTAINER_TIMEOUT,
   )

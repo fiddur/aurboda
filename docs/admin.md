@@ -72,22 +72,30 @@ confirm, and the deletion cannot be undone. REST: `DELETE /account` and
 
 Deleting an account, in order:
 
-1. Reserves the username in the central `deleted_usernames` table (with who deleted it and when).
-   Signup refuses a reserved name as taken, for good: other ActivityPub servers cache an actor and
-   its key by URL, so a new account under the old name would inherit its followers and trust.
-2. Sends a `Delete` of the actor to the user's followers on other servers, so they drop the follow
+1. Sends a `Delete` of the actor to the user's followers on other servers, so they drop the follow
    and the cached profile.
-3. Revokes the Oura, Strava and Gravl grants upstream and removes the Oura and Strava user mappings.
+2. Revokes the Oura, Strava and Gravl grants upstream and removes the Oura and Strava user mappings.
+3. Reserves the username in the central `deleted_usernames` table (with who deleted it and when).
+   Signup refuses a reserved name as taken, for good: other ActivityPub servers cache an actor and
+   its key by URL, so a new account under the old name would inherit its followers and trust. Until
+   this step the user's role and database keep signup from taking the name.
 4. Drops the user's database and Postgres role: every metric, activity, location, setting,
    integration token, passkey, feed post, follower and key pair.
 5. Removes every central row that names the user (admin entry, OAuth codes and tokens, passkey user
    handle, Oura and Strava mappings, the `user_accounts` row and the usage counters) and clears their
    name from the shared import jobs they started.
 
-Steps 2 and 3 are best effort: a server or provider that cannot be reached is logged and skipped.
+Steps 1 and 2 are best effort: a server or provider that cannot be reached is logged and skipped.
 Dropping the database must succeed; if it fails the request answers 500 and can be retried (the
 reservation stays). Nothing else of the user is kept; the server log gets one line naming the
 account and who deleted it.
+
+If a deletion fails part-way, run it again from the admin users page or `delete_user`: it finishes
+the job. Once the database is gone the user no longer appears on the admin users page (it lists
+databases), so finish it with MCP `delete_user` or `DELETE /admin/users/:username`: for a reserved
+name without a database they drop the role if it is still there and remove the remaining central
+rows. A failure of step 5 is only logged and the deletion still reports success, so the server log
+is where it shows.
 
 A deleted user's login tokens stop working at once, on every instance (each refreshes the list of
 deleted names every two minutes). The actor URL and WebFinger answer `410 Gone` with a `Tombstone`.

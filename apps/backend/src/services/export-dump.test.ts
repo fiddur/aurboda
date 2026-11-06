@@ -307,6 +307,28 @@ describe('createDumpExporter', () => {
     expect(exported).toHaveLength(0)
     expect(await exporter.check('alice')).toEqual({ ok: true })
   })
+
+  test('a failed audit write after a complete dump still counts as a successful export', async () => {
+    const { spawn } = versionSpawn('pg_dump (PostgreSQL) 16.1\n', ({ proc }) => {
+      setImmediate(() => {
+        proc.stdout.write('data')
+        proc.exit(0)
+      })
+    })
+    const exporter = createDumpExporter({
+      conn: {},
+      onExported: async () => {
+        throw new Error('audit log unavailable')
+      },
+      serverVersionNum: async () => '160004',
+      spawn,
+    })
+
+    const started = await exporter.start('alice')
+    if (!started.ok) throw new Error('expected the export to start')
+    await expect(started.run(collector().out)).resolves.toMatchObject({ bytes: expect.any(Number) })
+    expect(await exporter.check('alice')).toEqual({ ok: true })
+  })
 })
 
 describe('createDumpLinkIssuer', () => {

@@ -1,6 +1,6 @@
 import type { Queryable } from './pool.ts'
 
-const USER_DB_PREFIX = 'aurboda_'
+import { USER_DB_LIKE_PATTERN, USER_DB_PREFIX } from './connection.ts'
 
 /** Size in bytes of every per-user database, by username. Needs a connection on the cluster. */
 export const getUserDatabaseSizes = async (cluster: Queryable): Promise<Map<string, number>> => {
@@ -8,7 +8,7 @@ export const getUserDatabaseSizes = async (cluster: Queryable): Promise<Map<stri
     `SELECT datname, pg_database_size(datname)::bigint AS bytes
      FROM pg_database
      WHERE datname LIKE $1`,
-    [`${USER_DB_PREFIX.replace('_', '\\_')}%`],
+    [USER_DB_LIKE_PATTERN],
   )
   return new Map(result.rows.map((row) => [row.datname.slice(USER_DB_PREFIX.length), Number(row.bytes)]))
 }

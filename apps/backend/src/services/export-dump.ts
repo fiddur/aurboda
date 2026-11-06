@@ -266,7 +266,10 @@ export const createDumpExporter = ({
           cancel = () => out.destroy()
           try {
             const result = await streamUserDump({ conn, out, spawn, user })
-            await onExported(user, result.bytes)
+            // The dump reached the user: a failed audit write must not unspend the link.
+            await onExported(user, result.bytes).catch((error: unknown) =>
+              console.error(`⚠️ Recording the database export for ${user} failed:`, error),
+            )
             return result
           } finally {
             if (running.get(user) === entry) running.delete(user)

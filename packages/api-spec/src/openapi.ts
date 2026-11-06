@@ -1336,9 +1336,17 @@ const openApiDocument = createDocument({
             content: { 'application/json': { schema: errorResponseSchema } },
             description: 'confirm_username does not match the account',
           },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The account no longer exists',
+          },
           409: {
             content: { 'application/json': { schema: errorResponseSchema } },
             description: 'The account is the last admin',
+          },
+          500: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The account database could not be dropped; retrying is safe',
           },
         },
         security: [{ bearerAuth: [] }],
@@ -1387,7 +1395,7 @@ const openApiDocument = createDocument({
     '/admin/users/{username}': {
       delete: {
         description:
-          'Permanently delete a user, as DELETE /account does for oneself. Admin-only. The last admin cannot be deleted.',
+          'Permanently delete a user, as DELETE /account does for oneself. Admin-only. The last admin cannot be deleted. Running it again for a deletion that failed part-way finishes it, even when the user no longer has a database.',
         requestBody: { content: { 'application/json': { schema: deleteAccountBodySchema } } },
         requestParams: {
           path: z.object({ username: z.string().meta({ description: 'Username' }) }),
@@ -1408,6 +1416,10 @@ const openApiDocument = createDocument({
           409: {
             content: { 'application/json': { schema: errorResponseSchema } },
             description: 'The user is the last admin',
+          },
+          500: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The user database could not be dropped; retrying is safe',
           },
         },
         security: [{ bearerAuth: [] }],

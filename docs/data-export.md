@@ -29,7 +29,9 @@ again, and reconnect integrations whose tokens belong to the old server's OAuth 
   ten minutes and is spent once a download completes.
 - **MCP**: the `export_data_dump` tool returns the same link.
 
-One export per user runs at a time (a second answers `409`). The server needs `pg_dump` at least as
+One export per user runs at a time (a second answers `409`). The link's single use and that limit
+are kept in the backend process's memory, so with more than one backend process (an overlapping
+deploy, say) a link could be used once on each. The server needs `pg_dump` at least as
 new as its PostgreSQL server; the Docker image ships a PostgreSQL 16 client to match the
 `postgis/postgis:16` database in `docker-compose.yml`. Without it the export answers `503` and says why.
 

@@ -222,6 +222,18 @@ describe('POST /signup', () => {
     expect(options.trialEndsAt.getTime() - options.createdAt.getTime()).toBe(30 * 86_400_000)
   })
 
+  test('refuses a name whose role still exists, as during an account deletion before the name is reserved', async () => {
+    vi.mocked(db.query).mockResolvedValue({ rowCount: 1, rows: [{ usename: 'leaving' }] } as never)
+
+    const response = await supertest(buildApp({ signupMode: 'open' }))
+      .post('/signup')
+      .send({ password: 'secret', username: 'leaving' })
+
+    expect(response.status).toBe(409)
+    expect(response.body.error).toBe('Username already exists')
+    expect(db.makeNewUserDb).not.toHaveBeenCalled()
+  })
+
   test('refuses the name of a deleted account as taken', async () => {
     vi.mocked(db.query).mockResolvedValue({ rowCount: 0, rows: [] } as never)
     isUsernameDeleted.mockImplementation(async (username) => username === 'gone')
