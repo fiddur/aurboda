@@ -59,6 +59,8 @@ import { registerTrainingLoadTools } from './mcp/training-load-tools.ts'
 import { registerTrendTools } from './mcp/trend-tools.ts'
 import { createDefaultEngineDeps } from './services/deduction-deps.ts'
 import { isOAuthAccessToken, validateAccessToken } from './services/oauth.ts'
+import { isMutatingMcpTool, mcpToolCallNames } from './services/usage-channel.ts'
+import { recordUsage } from './services/usage-recorder.ts'
 import { trimStrings } from './trim-input.ts'
 
 type OuraClientType = ReturnType<typeof ouraClient>
@@ -216,6 +218,10 @@ export function createMcpRouter(auth: Auth, deps: McpDeps = {}): Router {
     if (!user) {
       res.status(401).json({ error: 'Unauthorized' })
       return
+    }
+
+    for (const tool of mcpToolCallNames(req.body)) {
+      recordUsage(user, isMutatingMcpTool(tool) ? 'write' : 'read', 'mcp')
     }
 
     const server = createMcpServer(user, deps)

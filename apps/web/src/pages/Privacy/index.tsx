@@ -26,6 +26,11 @@ export function Privacy() {
           <li>Music listening history if Last.fm is connected</li>
           <li>Calendar events if calendar feeds are connected</li>
           <li>Account credentials (username, hashed password) for authentication</li>
+          <li>
+            Usage statistics: per day, how often you read or change data through the web app, Android app, API
+            or MCP, and how much data each source sends in (counts only, no content or IP addresses), kept for
+            400 days
+          </li>
         </ul>
       </section>
 

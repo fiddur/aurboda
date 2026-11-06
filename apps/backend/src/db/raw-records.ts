@@ -2,6 +2,7 @@ import format from 'pg-format'
 
 import type { RawRecord } from './types.ts'
 
+import { recordIngestBySource, recordUsage } from '../services/usage-recorder.ts'
 import { query } from './connection.ts'
 import { dedupeLastWins } from './dedupe.ts'
 
@@ -15,6 +16,7 @@ export const insertRawRecord = async (user: string, record: RawRecord) => {
        received_at = NOW()`,
     [record.source, record.record_type, record.external_id, record.recorded_at, record.data],
   )
+  recordUsage(user, 'ingest', record.source)
 }
 
 export const insertRawRecords = async (user: string, records: RawRecord[]) => {
@@ -41,6 +43,7 @@ export const insertRawRecords = async (user: string, records: RawRecord[]) => {
       values,
     ),
   )
+  recordIngestBySource(user, deduped, (r) => r.source)
 }
 
 export interface ScrobbleRecord {

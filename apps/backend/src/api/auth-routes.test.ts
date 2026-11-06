@@ -25,6 +25,8 @@ const { registerAuthRoutes } = await import('./auth-routes.ts')
 
 const pgError = (code: string, message = 'pg failure') => Object.assign(new Error(message), { code })
 
+const ensureUserAccount = vi.fn(async () => true)
+
 const buildApp = ({ signupMode = 'closed' }: { signupMode?: string } = {}) => {
   const httpd = express()
   httpd.use(express.json())
@@ -34,6 +36,7 @@ const buildApp = ({ signupMode = 'closed' }: { signupMode?: string } = {}) => {
     authMiddleware: ((_req: express.Request, _res: express.Response, next: express.NextFunction) =>
       next()) as never,
     centralDb: {
+      ensureUserAccount,
       getAdminCount: vi.fn(async () => 1),
       getAuditLogRetentionDays: vi.fn(async () => 30),
       getSignupMode: vi.fn(async () => signupMode),
@@ -170,5 +173,9 @@ describe('POST /signup', () => {
 
     expect(response.status).toBe(200)
     expect(db.makeNewUserDb).toHaveBeenCalledWith(expect.anything(), 'alice', ' pass word ')
+    expect(ensureUserAccount).toHaveBeenCalledWith('alice', {
+      createdAt: expect.any(Date),
+      preExisting: false,
+    })
   })
 })
