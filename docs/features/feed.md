@@ -299,9 +299,12 @@ window is then the override's own.
   page" opens it in a browser. The id is content-negotiated like the actor URL: an
   ActivityPub type, a wildcard or no `Accept` gets the Note, while a request that prefers
   HTML gets a `302` (`Vary: Accept`) to the post's web page `/u/:username/posts/:postId`,
-  which renders the post through `GET /api/public/:username/posts/:postId`. Only
-  `public`/`unlisted` posts redirect; a `followers`-only, unknown or deleted id gives a
-  browser the normal 404 (the `410` Tombstone is for machine clients only).
+  which renders the post through `GET /api/public/:username/posts/:postId`. Any post id
+  of an existing account redirects — `public`, `unlisted`, `followers`-only, deleted or
+  never-existing alike — so the redirect leaks nothing about the post; the page itself
+  shows "Post not found" for anything that isn't public. An unknown account's id is a 404.
+  Machine clients are unaffected: a `followers`-only or unknown id is still a 404 and a
+  deleted one the `410` Tombstone.
 
 The `Note` carries `published` = the post's share time (its `created_at`), so remote
 servers order and timestamp it correctly instead of stamping it at receipt.
@@ -1069,7 +1072,7 @@ Public / federation (unauthenticated):
 | `GET /users/:username/outbox`                                | Public + unlisted posts as `Create` activities                                                                                                                                                                                                                          |
 | `GET /users/:username/followers`                             | The actor's followers collection                                                                                                                                                                                                                                        |
 | `GET /users/:username/following`                             | The actor's following collection (accepted follows only)                                                                                                                                                                                                                |
-| `GET /users/:username/feed/:postId`                          | Content-negotiated like the actor: a single post's `Note` — an activity share or an article (or `410` Tombstone once deleted); a 302 to `/u/:username/posts/:postId` for a browser on a public/unlisted post                                                            |
+| `GET /users/:username/feed/:postId`                          | Content-negotiated like the actor: a single post's `Note` — an activity share or an article (or `410` Tombstone once deleted); a 302 to `/u/:username/posts/:postId` for a browser on any post id of an existing user                                                   |
 | `POST /users/:username/inbox` (+ `/inbox`)                   | Inbound `Follow` / `Undo{Follow}` / `Accept` / `Reject` (HTTP-Signature verified)                                                                                                                                                                                       |
 
 The actor's `icon` URL carries the avatar's upload time as a `?v=` version, and an avatar
