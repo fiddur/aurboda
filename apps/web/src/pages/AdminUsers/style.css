@@ -1,0 +1,179 @@
+.admin-users-page {
+  width: 100%;
+  min-width: 0;
+  padding: 2rem;
+  box-sizing: border-box;
+}
+
+.admin-users-page h1 {
+  font-size: 1.75rem;
+  margin-bottom: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.au-back {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+}
+
+.au-muted {
+  color: #6b7280;
+  font-size: 0.85rem;
+}
+
+.au-error {
+  color: #dc2626;
+}
+
+.au-badge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0 0.375rem;
+  border-radius: 4px;
+  background: #ede9fe;
+  color: #5b21b6;
+  font-size: 0.7rem;
+  font-weight: 500;
+  vertical-align: middle;
+  text-transform: uppercase;
+}
+
+.au-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.au-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.au-table th {
+  text-align: left;
+  padding: 0;
+  border-bottom: 2px solid #e5e7eb;
+  white-space: nowrap;
+}
+
+.au-sort {
+  background: none;
+  border: none;
+  padding: 0.5rem;
+  color: #6b7280;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.au-sort-arrow {
+  margin-left: 0.25rem;
+  font-size: 0.6rem;
+}
+
+.au-table td {
+  padding: 0.5rem;
+  border-bottom: 1px solid #f3f4f6;
+  color: #374151;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.au-row {
+  cursor: pointer;
+}
+
+.au-row:hover {
+  background: #f9fafb;
+}
+
+.au-name {
+  font-weight: 500;
+}
+
+.au-num,
+.au-num-inline {
+  font-variant-numeric: tabular-nums;
+}
+
+.au-num {
+  text-align: right;
+}
+
+.au-sub {
+  color: #9ca3af;
+  font-size: 0.75rem;
+}
+
+.au-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2rem;
+  margin: 0 0 1.5rem;
+}
+
+.au-facts dt {
+  color: #6b7280;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+
+.au-facts dd {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.au-section {
+  margin-bottom: 2rem;
+}
+
+.au-section h2 {
+  font-size: 1.25rem;
+  margin-bottom: 0.25rem;
+}
+
+.au-tables {
+  max-width: 28rem;
+}
+
+@media (max-width: 639px) {
+  .admin-users-page {
+    padding: 1rem;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .au-muted,
+  .au-sort,
+  .au-facts dt {
+    color: #9ca3af;
+  }
+
+  .au-sub {
+    color: #6b7280;
+  }
+
+  .au-table th {
+    border-bottom-color: #444;
+  }
+
+  .au-table td {
+    border-bottom-color: #333;
+    color: #e5e7eb;
+  }
+
+  .au-row:hover {
+    background: #1f2937;
+  }
+
+  .au-badge {
+    background: #4c1d95;
+    color: #ede9fe;
+  }
+
+  .au-error {
+    color: #f87171;
+  }
+}

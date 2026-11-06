@@ -693,6 +693,9 @@ export function AdminSettings() {
   return (
     <div class="admin-settings-page">
       <h1>Admin Settings</h1>
+      <p>
+        <a href="/admin/users">Users</a>: storage, incoming data and use per user.
+      </p>
 
       <section class="settings-section">
         <div class="section-header-row">
