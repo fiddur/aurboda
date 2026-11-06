@@ -13,6 +13,7 @@ const deps = (overrides: Partial<AuditLogPruneDeps>): AuditLogPruneDeps => ({
   prune: async () => 0,
   pruneDeductionRuleRuns: async () => 0,
   pruneSyncedOutboundSync: async () => 0,
+  pruneUsageBefore: async () => 0,
   ...overrides,
 })
 
@@ -79,6 +80,29 @@ describe('pruneAllAuditLogs', () => {
     expect(pruned).toBe(0)
     expect(pruneDeductionRuleRuns).toHaveBeenCalledOnce()
     expect(pruneSyncedOutboundSync).toHaveBeenCalledOnce()
+    consoleError.mockRestore()
+  })
+
+  test('prunes usage counters older than 400 days, once per run', async () => {
+    const pruneUsageBefore = vi.fn(async () => 0)
+    await pruneAllAuditLogs(deps({ now: () => new Date('2026-11-06T03:17:00Z'), pruneUsageBefore }))
+    expect(pruneUsageBefore.mock.calls).toEqual([[new Date('2025-10-02T03:17:00Z')]])
+  })
+
+  test('a failed usage prune still prunes every user', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const prune = vi.fn(async () => 0)
+    const pruned = await pruneAllAuditLogs(
+      deps({
+        prune,
+        pruneUsageBefore: async () => {
+          throw new Error('boom')
+        },
+      }),
+    )
+    expect(pruned).toBe(2)
+    expect(prune).toHaveBeenCalledTimes(2)
+    expect(consoleError).toHaveBeenCalledOnce()
     consoleError.mockRestore()
   })
 })

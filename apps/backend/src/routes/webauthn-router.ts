@@ -189,6 +189,9 @@ export const createWebAuthnRouter = ({
         res.status(500).json({ error: 'Signup failed', success: false, verified: true })
         return
       }
+      await centralDb
+        .ensureUserAccount(username, { createdAt: new Date(), preExisting: false })
+        .catch((e) => console.error(`⚠️ Failed to record account row for ${username}:`, e))
 
       // Step 3: persist the credential in the user's DB. If this fails we
       // would orphan an account that has no way to log in — roll back.
@@ -208,6 +211,7 @@ export const createWebAuthnRouter = ({
         await centralDb
           .deleteWebAuthnUserHandle(username)
           .catch((e) => logRollbackFailure('deleteWebAuthnUserHandle', e))
+        await centralDb.deleteUserAccount(username).catch((e) => logRollbackFailure('deleteUserAccount', e))
         res.status(500).json({ error: 'Signup failed', success: false, verified: true })
         return
       }

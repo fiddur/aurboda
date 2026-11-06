@@ -12,6 +12,7 @@ import * as activityRecords from './services/activity-records.ts'
 import * as latestSleep from './services/latest-sleep.ts'
 import * as mutations from './services/mutations.ts'
 import * as queries from './services/queries/index.ts'
+import { createUsageRecorder, installUsageRecorder, type UsageRow } from './services/usage-recorder.ts'
 
 vi.mock('./services/queries/index', async () => ({
   getActivityNeighbors: vi.fn(),
@@ -261,6 +262,61 @@ describe('MCP Server', () => {
         .send({ id: 1, jsonrpc: '2.0', method: 'tools/list', params: { pad: 'x'.repeat(3_000_000) } })
 
       expect(response.status).toBe(200)
+    })
+  })
+
+  describe('Usage recording - POST /mcp', () => {
+    const recorded: UsageRow[] = []
+    const recorder = createUsageRecorder({ flush: async (rows) => void recorded.push(...rows) })
+
+    beforeEach(() => {
+      recorded.length = 0
+      installUsageRecorder(recorder)
+    })
+
+    afterEach(() => {
+      installUsageRecorder(null)
+    })
+
+    test('counts each tool call by whether the tool mutates, and nothing else', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+
+      await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .send([
+          { id: 1, jsonrpc: '2.0', method: 'tools/list' },
+          {
+            id: 2,
+            jsonrpc: '2.0',
+            method: 'tools/call',
+            params: { arguments: {}, name: 'get_latest_sleep' },
+          },
+          { id: 3, jsonrpc: '2.0', method: 'tools/call', params: { arguments: {}, name: 'add_note' } },
+          { id: 4, jsonrpc: '2.0', method: 'tools/call', params: { arguments: {}, name: 'query_tags' } },
+        ])
+      await recorder.flushNow()
+
+      expect(
+        recorded.map(({ channel, count, kind, username }) => ({ channel, count, kind, username })),
+      ).toEqual([
+        { channel: 'mcp', count: 2, kind: 'read', username: 'testuser' },
+        { channel: 'mcp', count: 1, kind: 'write', username: 'testuser' },
+      ])
+    })
+
+    test('counts nothing for an unauthenticated call', async () => {
+      const app = createTestApp()
+
+      await mcpPost(app).send({
+        id: 1,
+        jsonrpc: '2.0',
+        method: 'tools/call',
+        params: { arguments: {}, name: 'get_latest_sleep' },
+      })
+      await recorder.flushNow()
+
+      expect(recorded).toEqual([])
     })
   })
 

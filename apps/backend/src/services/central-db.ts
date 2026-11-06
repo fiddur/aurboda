@@ -26,6 +26,17 @@ import {
   seedSharedNutrientRecommendations,
   type SharedNutrientRecommendationsApi,
 } from './central-nutrient-recommendations.ts'
+import {
+  createUserAccountsApi,
+  CREATE_USER_ACCOUNTS_TABLE,
+  type UserAccountsApi,
+} from './central-user-accounts.ts'
+import {
+  createUserUsageApi,
+  CREATE_USER_USAGE_DAILY_INDEXES,
+  CREATE_USER_USAGE_DAILY_TABLE,
+  type UserUsageApi,
+} from './central-user-usage.ts'
 
 export type SignupMode = 'open' | 'invite_only' | 'closed'
 
@@ -105,7 +116,12 @@ export interface CentralDbDeps {
 }
 
 export interface CentralDb
-  extends SharedFoodItemsApi, CentralImportJobsApi, SharedNutrientRecommendationsApi {
+  extends
+    SharedFoodItemsApi,
+    CentralImportJobsApi,
+    SharedNutrientRecommendationsApi,
+    UserAccountsApi,
+    UserUsageApi {
   initializeCentralDb: () => Promise<void>
   getServerSetting: <K extends keyof ServerSettings>(key: K) => Promise<ServerSettings[K] | null>
   setServerSetting: <K extends keyof ServerSettings>(key: K, value: ServerSettings[K]) => Promise<void>
@@ -437,6 +453,10 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       await client.query(CREATE_IMPORT_JOBS_TABLE)
       for (const stmt of CREATE_IMPORT_JOBS_INDEXES) await client.query(stmt)
 
+      await client.query(CREATE_USER_ACCOUNTS_TABLE)
+      await client.query(CREATE_USER_USAGE_DAILY_TABLE)
+      for (const stmt of CREATE_USER_USAGE_DAILY_INDEXES) await client.query(stmt)
+
       await client.query(CREATE_SHARED_NUTRIENT_RECOMMENDATIONS_TABLE)
       await deps.withTransaction((tx) => seedSharedNutrientRecommendations(tx))
 
@@ -450,6 +470,8 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
     ...createSharedFoodItemsApi(getClient),
     ...createCentralImportJobsApi(getClient),
     ...createSharedNutrientRecommendationsApi(getClient),
+    ...createUserAccountsApi(getClient),
+    ...createUserUsageApi(getClient),
 
     isAdmin: async (username: string): Promise<boolean> => {
       const client = await getClient()

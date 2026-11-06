@@ -72,6 +72,7 @@ For the self-hosting crowd, the appeal is ownership:
 - **Docker deployment** in minutes (see [Quick Start](#quick-start-docker)).
 - Open **REST API** and **MCP** -- nothing is locked in.
 - [Passkey / WebAuthn login](docs/passkeys.md) for web and Android.
+- [Server administration](docs/admin.md): admins, signup mode and per-user usage counters.
 
 ---
 

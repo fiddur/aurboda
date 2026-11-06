@@ -147,6 +147,9 @@ export const registerAuthRoutes = ({
 
     try {
       await makeNewUserDb(userDb, user, password)
+      await centralDb
+        .ensureUserAccount(user, { createdAt: new Date(), preExisting: false })
+        .catch((e) => console.error(`⚠️ Failed to record account row for ${user}:`, e))
       const token = auth.createToken(user)
 
       const adminCount = await centralDb.getAdminCount()

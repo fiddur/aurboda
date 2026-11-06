@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
+import { createUsageRecorder, installUsageRecorder, type UsageRow } from '../services/usage-recorder.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { getScrobbles, insertRawRecord, insertRawRecords, queryRawRecords } from './raw-records.ts'
 
@@ -273,6 +274,38 @@ describe('Raw Records Integration Tests', () => {
         source: 'health_connect',
       })
       expect(total).toBe(2)
+    })
+  })
+
+  describe('ingest usage', () => {
+    test('records one ingest per source with the rows stored', async () => {
+      const user = getTestUser()
+      const flushed: UsageRow[] = []
+      const recorder = createUsageRecorder({ flush: async (rows) => void flushed.push(...rows) })
+      installUsageRecorder(recorder)
+      try {
+        await insertRawRecords(user, [
+          { data: {}, external_id: 'a', record_type: 'Sleep', recorded_at: new Date(), source: 'oura' },
+          { data: {}, external_id: 'b', record_type: 'Sleep', recorded_at: new Date(), source: 'oura' },
+          { data: {}, external_id: 'c', record_type: 'Hrv', recorded_at: new Date(), source: 'garmin' },
+        ])
+        await insertRawRecord(user, {
+          data: {},
+          external_id: 'd',
+          record_type: 'Sleep',
+          recorded_at: new Date(),
+          source: 'oura',
+        })
+        await insertRawRecords(user, [])
+        await recorder.flushNow()
+      } finally {
+        installUsageRecorder(null)
+      }
+
+      expect(flushed.map(({ channel, count, items, kind }) => ({ channel, count, items, kind }))).toEqual([
+        { channel: 'oura', count: 2, items: 3, kind: 'ingest' },
+        { channel: 'garmin', count: 1, items: 1, kind: 'ingest' },
+      ])
     })
   })
 })
