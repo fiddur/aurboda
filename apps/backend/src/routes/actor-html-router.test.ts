@@ -5,14 +5,13 @@ import { describe, expect, test } from 'vitest'
 import { createActorAcceptNormalizer, createActorHtmlRouter, negotiateActor } from './actor-html-router.ts'
 
 const PUBLIC_POST = '11111111-1111-4111-8111-111111111111'
-const FOLLOWERS_POST = '22222222-2222-4222-8222-222222222222'
+const UNKNOWN_POST = '33333333-3333-4333-8333-333333333333'
 
 /** Mounts the router with a fallback 404 so `next()` fall-through is observable. */
 const buildApp = (origin = 'https://aurboda.net', users = ['fiddur']) => {
   const app = express()
   app.use(
     createActorHtmlRouter({
-      isPublicPost: async (username, postId) => users.includes(username) && postId === PUBLIC_POST,
       origin,
       userExists: async (username) => users.includes(username),
     }),
@@ -179,16 +178,19 @@ describe('GET /users/:username/feed/:postId (browser HTML fallback)', () => {
     expect(res.headers.location).toBe(`https://example.org/qs/u/fiddur/posts/${PUBLIC_POST}`)
   })
 
-  test('falls through for a followers-only or unknown post, or an unknown user', async () => {
-    for (const path of [
-      `/users/fiddur/feed/${FOLLOWERS_POST}`,
-      '/users/fiddur/feed/33333333-3333-4333-8333-333333333333',
-      `/users/nosuchuser/feed/${PUBLIC_POST}`,
-    ]) {
-      const res = await supertest(buildApp()).get(path).set('Accept', BROWSER)
-      expect(res.status).toBe(404)
-      expect(res.body).toEqual({ fellThrough: true })
-    }
+  test("redirects any post id of an existing account, so a hidden or deleted post's id leaks nothing", async () => {
+    const res = await supertest(buildApp()).get(`/users/fiddur/feed/${UNKNOWN_POST}`).set('Accept', BROWSER)
+    expect(res.status).toBe(302)
+    expect(res.headers.location).toBe(`https://aurboda.net/u/fiddur/posts/${UNKNOWN_POST}`)
+    expect(res.headers.vary).toBe('Accept')
+  })
+
+  test('falls through for an unknown user', async () => {
+    const res = await supertest(buildApp())
+      .get(`/users/nosuchuser/feed/${PUBLIC_POST}`)
+      .set('Accept', BROWSER)
+    expect(res.status).toBe(404)
+    expect(res.body).toEqual({ fellThrough: true })
   })
 
   test('falls through for a non-UUID post id or a malformed username', async () => {

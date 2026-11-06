@@ -22,7 +22,6 @@ import {
   createReplyPost,
   deleteFeedPost,
   type FeedPostInput,
-  getFeedPostById,
   getFeedTombstone,
   listPublicFeedPostsPage,
 } from '../../db/feed.ts'
@@ -41,7 +40,6 @@ import {
   handleInboundFollow,
   handleInboundUpdate,
 } from './federation.ts'
-import { isPubliclyVisible } from './object.ts'
 import { dateToTemporalInstant } from './temporal-interop.ts'
 
 const CONTAINER_TIMEOUT = 120_000
@@ -628,12 +626,9 @@ describe('Feed federation actor + WebFinger', () => {
     app.set('trust proxy', 'loopback')
     app.use(createActorAcceptNormalizer())
     app.use(integrateFederation(fed, () => undefined))
+    app.use(createFeedTombstoneRouter({ getTombstone: getFeedTombstone, origin: ORIGIN }))
     app.use(
       createActorHtmlRouter({
-        isPublicPost: async (username, postId) => {
-          const post = await getFeedPostById(username, postId)
-          return post != null && isPubliclyVisible(post.visibility)
-        },
         origin: ORIGIN,
         userExists: async (username) => users.includes(username),
       }),
@@ -712,11 +707,33 @@ describe('Feed federation actor + WebFinger', () => {
     expect(note.type).toContain('Note')
   })
 
-  test('a browser opening a followers-only post id is not redirected', async () => {
+  test('a browser opening a followers-only post id is redirected; a machine client still gets 404 (#1418)', async () => {
     const user = getTestUser()
     const post = await sharePost(user, await insertExercise(user), { visibility: 'followers' })
-    const res = await supertest(buildActorApp([user]))
-      .get(`/users/${user}/feed/${post.id}`)
+    const app = buildActorApp([user])
+    const html = await supertest(app).get(`/users/${user}/feed/${post.id}`).set('Accept', 'text/html')
+    expect(html.status).toBe(302)
+    expect(html.headers.location).toBe(`${ORIGIN}/u/${user}/posts/${post.id}`)
+    expect(html.headers.vary).toMatch(/Accept/)
+    expect((await getObject(app, `/users/${user}/feed/${post.id}`)).status).toBe(404)
+  })
+
+  test('a browser opening a deleted post id is redirected; a machine client still gets the 410 (#1418)', async () => {
+    const user = getTestUser()
+    const post = await sharePost(user, await insertExercise(user))
+    await deleteFeedPost(user, post.id)
+    const app = buildActorApp([user])
+    const html = await supertest(app).get(`/users/${user}/feed/${post.id}`).set('Accept', 'text/html')
+    expect(html.status).toBe(302)
+    expect(html.headers.location).toBe(`${ORIGIN}/u/${user}/posts/${post.id}`)
+    const gone = await getObject(app, `/users/${user}/feed/${post.id}`)
+    expect(gone.status).toBe(410)
+    expect(gone.body.type).toBe('Tombstone')
+  })
+
+  test('a browser opening a post id of an UNKNOWN actor is not redirected', async () => {
+    const res = await supertest(buildActorApp([getTestUser()]))
+      .get('/users/nosuchuser/feed/11111111-1111-4111-8111-111111111111')
       .set('Accept', 'text/html')
     expect(res.status).toBe(404)
   })
