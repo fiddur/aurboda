@@ -308,6 +308,35 @@ describe('Feed posts integration', () => {
       ).toEqual([share.id])
     })
 
+    test('listPublicFeedPostsKeyset and countPublicFeedPosts filter by kind for the blog view', async () => {
+      const user = getTestUser()
+      await createFeedPost(user, postInput())
+      const pubArticle = await createArticlePost(user, articleInput({ visibility: 'public' }))
+      const unlistedArticle = await createArticlePost(user, articleInput({ visibility: 'unlisted' }))
+      await createArticlePost(user, articleInput({ visibility: 'followers' }))
+      await createReplyPost(user, {
+        in_reply_to_actor_uri: 'https://mastodon.example/users/alice',
+        in_reply_to_uri: 'https://mastodon.example/statuses/1',
+        message: 'Nice!',
+        visibility: 'public',
+      })
+
+      expect(
+        (
+          await listPublicFeedPostsKeyset(user, 10, undefined, { includeReplies: false, kind: 'article' })
+        ).map((p) => p.id),
+      ).toEqual([unlistedArticle.id, pubArticle.id])
+      expect(await countPublicFeedPosts(user, 'article')).toBe(2)
+      expect(await countPublicFeedPosts(user)).toBe(4)
+    })
+
+    test('countPublicFeedPosts by kind is 0 when the only articles are followers-only', async () => {
+      const user = getTestUser()
+      await createFeedPost(user, postInput())
+      await createArticlePost(user, articleInput({ visibility: 'followers' }))
+      expect(await countPublicFeedPosts(user, 'article')).toBe(0)
+    })
+
     test('listPublicFeedPostsPage returns newest-first pages by limit/offset', async () => {
       const user = getTestUser()
       const a = await createFeedPost(user, postInput())

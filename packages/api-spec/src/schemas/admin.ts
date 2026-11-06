@@ -13,6 +13,11 @@ export type SignupMode = z.infer<typeof signupModeSchema>
 
 export const serverStatusResponseSchema = baseResponseSchema
   .extend({
+    blog_username: z
+      .string()
+      .nullable()
+      .optional()
+      .meta({ description: "Username whose public articles are this instance's blog (null when unset)" }),
     federation: z
       .boolean()
       .optional()
@@ -112,6 +117,10 @@ export const adminSettingsResponseSchema = baseResponseSchema
       description:
         'Whether accounts are billed: new accounts get a free trial, then become read-only unless paid',
     }),
+    blog_username: z
+      .string()
+      .nullable()
+      .meta({ description: "Username whose public articles are this instance's blog (null when unset)" }),
     grace_days: z
       .number()
       .int()
@@ -163,6 +172,10 @@ export const updateAdminSettingsBodySchema = z
     billing_enabled: z.boolean().optional().meta({
       description:
         'Enable or disable billing. Enabling it marks every account that exists then as exempt; disabling lifts every restriction.',
+    }),
+    blog_username: z.string().min(1).nullable().optional().meta({
+      description:
+        "Username whose public articles are this instance's blog, linked from the front page and footer (set to null to clear)",
     }),
     grace_days: z
       .number()

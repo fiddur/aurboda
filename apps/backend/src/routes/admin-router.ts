@@ -37,6 +37,7 @@ export const createAdminRouter = (
   invitationAuth: InvitationAuth,
   webHost: string,
   gravlRedirectUri: string,
+  userExists: (username: string) => Promise<boolean>,
   ouraWebhookManager?: OuraWebhookManager | null,
   deleteAccount?: AccountDeleter,
   accountPlans?: AccountPlans,
@@ -57,6 +58,7 @@ export const createAdminRouter = (
       sentryDsn,
       gravlClientId,
       gravlClientSecret,
+      blogUsername,
       billing,
     ] = await Promise.all([
       centralDb.getSignupMode(),
@@ -72,12 +74,14 @@ export const createAdminRouter = (
       centralDb.getServerSetting('sentry_dsn'),
       centralDb.getServerSetting('gravl_client_id'),
       centralDb.getServerSetting('gravl_client_secret'),
+      centralDb.getServerSetting('blog_username'),
       readBillingSettings(centralDb),
     ])
     return {
       admin_count: adminCount,
       audit_log_retention_days: auditLogRetentionDays,
       billing_enabled: billing.enabled,
+      blog_username: blogUsername || null,
       grace_days: billing.grace_days,
       gravl_client_id_set: !!gravlClientId,
       gravl_client_secret_set: !!gravlClientSecret,
@@ -109,7 +113,7 @@ export const createAdminRouter = (
     },
   )
 
-  router.patch<Record<string, never>, AdminSettingsResponse, UpdateAdminSettingsBody>(
+  router.patch<Record<string, never>, AdminSettingsResponse | BaseResponse, UpdateAdminSettingsBody>(
     '/settings',
     authMiddleware,
     adminMiddleware,
@@ -119,6 +123,7 @@ export const createAdminRouter = (
       const {
         audit_log_retention_days,
         billing_enabled,
+        blog_username,
         grace_days,
         gravl_client_id,
         gravl_client_secret,
@@ -134,6 +139,12 @@ export const createAdminRouter = (
         strava_client_secret,
         trial_days,
       } = req.body
+      if (blog_username != null && !(await userExists(blog_username))) {
+        return res.status(400).json({ error: `No user named "${blog_username}"`, success: false })
+      }
+      if (blog_username !== undefined) {
+        await centralDb.setServerSetting('blog_username', blog_username ?? '')
+      }
       if (signup_mode) {
         await centralDb.setSignupMode(signup_mode)
       }

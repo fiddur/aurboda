@@ -74,12 +74,14 @@ export const registerAuthRoutes = ({
   })
 
   httpd.get<Record<string, never>, ServerStatusResponse>('/status', async (_req, res) => {
-    const [signupMode, billing] = await Promise.all([
+    const [signupMode, blogUsername, billing] = await Promise.all([
       centralDb.getSignupMode(),
+      centralDb.getServerSetting('blog_username'),
       readBillingSettings(centralDb),
     ])
     res.json({
       billing_enabled: billing.enabled,
+      blog_username: blogUsername || null,
       federation: true,
       product: 'aurboda',
       signup_allowed: signupMode === 'open',

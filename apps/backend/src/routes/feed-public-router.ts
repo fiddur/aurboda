@@ -10,6 +10,7 @@
  * never mistaken for a share slug.
  */
 import {
+  type ArticleContent,
   type FeedPost,
   type FeedPostResponse,
   type FeedPostsResponse,
@@ -24,6 +25,7 @@ import {
 
 import { isValidUsername } from '../api/auth-routes.ts'
 import {
+  type FeedPostPageRow,
   type FeedPostRecord,
   findCoveringSharedSeriesWindow,
   getFeedPostById,
@@ -32,6 +34,13 @@ import {
 } from '../db/index.ts'
 import { isPubliclyVisible } from '../services/activitypub/object.ts'
 import { toWireKey, wireMetricToMetricType } from '../services/activitypub/quant-wire.ts'
+import {
+  ATOM_CONTENT_TYPE,
+  ATOM_ENTRY_LIMIT,
+  articleEntryHtml,
+  buildArticlesAtom,
+} from '../services/article-atom.ts'
+import { renderableArticleBlocks } from '../services/article-export.ts'
 import { resolvePublicSeries } from '../services/feed-series.ts'
 import { loadAuthorizedStructuredPost, resolveStructuredContent } from '../services/feed-structured.ts'
 import { serializeFeedPost } from '../services/feed.ts'
@@ -52,7 +61,14 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  */
 const PROFILE_FEED_LIMIT = 20
 
-export const createFeedPublicRouter = (): TypedRouter => {
+export interface FeedPublicRouterDeps {
+  /** Public base URL of this API, for the Atom feed's self link and chart image URLs. */
+  apiBaseUrl: string
+  /** Public base URL of the web app, for the Atom feed's blog and permalink URLs. */
+  webHost: string
+}
+
+export const createFeedPublicRouter = ({ apiBaseUrl, webHost }: FeedPublicRouterDeps): TypedRouter => {
   const router = typedRouter()
   // Caches the resolved structured payload OBJECT, shared (one key shape) by the
   // unauthenticated `/feed/:postId` endpoint and the `/posts` profile listing, so
@@ -164,7 +180,7 @@ export const createFeedPublicRouter = (): TypedRouter => {
           username,
           PROFILE_FEED_LIMIT + 1,
           decoded && { created_at: decoded.ts, id: decoded.id },
-          { includeReplies: false },
+          { includeReplies: false, kind: req.query.kind },
         )
         const hasMore = rows.length > PROFILE_FEED_LIMIT
         const records = hasMore ? rows.slice(0, PROFILE_FEED_LIMIT) : rows
@@ -187,6 +203,49 @@ export const createFeedPublicRouter = (): TypedRouter => {
       }
     },
   )
+
+  // The Atom feed of a profile's public/unlisted articles — the instance blog for
+  // readers without a fediverse account. No MCP twin: a syndication format, like
+  // the OpenAPI document. Feed readers poll, so unlike the JSON listing it may be
+  // cached briefly; an un-shared article drops out within `max-age`.
+  router.get<{ username: string }, string>('/public/:username/articles.atom', async (req, res) => {
+    const { username } = req.params
+    if (!isValidUsername(username)) {
+      return res.status(404).type('text/plain').send('Not found')
+    }
+    try {
+      const rows = await listPublicFeedPostsKeyset(username, ATOM_ENTRY_LIMIT, undefined, {
+        includeReplies: false,
+        kind: 'article',
+      })
+      const articles = rows.filter(
+        (record): record is FeedPostPageRow & { article: ArticleContent } => record.article != null,
+      )
+      const entries = await Promise.all(
+        articles.map(async (record) => ({
+          created_at: record.created_at,
+          html: articleEntryHtml(
+            apiBaseUrl,
+            username,
+            record,
+            await renderableArticleBlocks(username, record.id, record.article),
+          ),
+          id: record.id,
+          title: record.article.title,
+          updated_at: record.updated_at,
+        })),
+      )
+      res.setHeader('Cache-Control', 'public, max-age=300')
+      res
+        .type(ATOM_CONTENT_TYPE)
+        .send(buildArticlesAtom({ apiBaseUrl, entries, now: new Date(), username, webHost }))
+    } catch (error) {
+      if (isMissingDatabase(error)) {
+        return res.status(404).type('text/plain').send('Not found')
+      }
+      throw error
+    }
+  })
 
   // One post's permalink page (`/u/:username/posts/:postId`), which a federated
   // Note's id URL redirects a browser to. Only `public`/`unlisted` resolve — no

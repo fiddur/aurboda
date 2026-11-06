@@ -1,0 +1,20 @@
+.public-blog-author {
+  flex-shrink: 0;
+}
+
+.public-blog-title {
+  min-width: 0;
+}
+
+.public-blog-title h1 a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.public-blog-title h1 a:hover {
+  text-decoration: underline;
+}
+
+.public-blog-links {
+  margin: 0.25rem 0 0;
+}

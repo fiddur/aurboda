@@ -15,13 +15,17 @@ import { isValidUsername } from '../api/auth-routes.ts'
 import {
   getActivityTypeDefinition,
   getChallengeBySlug,
+  getFeedPostById,
   getSharedDashboardBySlug,
   getSharedExerciseBySlug,
   listChallengeMembers,
   listPublicSharedDashboards,
 } from '../db/index.ts'
+import { proseToPlainText } from '../services/activitypub/article-object.ts'
 import { cardMembers, describeChallenge, type ResolvedChallenge } from '../services/challenge-card.ts'
 import {
+  buildArticleShareMeta,
+  buildBlogShareMeta,
   buildChallengeShareMeta,
   buildDashboardShareMeta,
   buildDefaultShareMeta,
@@ -32,7 +36,13 @@ import {
   renderShareMetaTags,
   type ShareMeta,
 } from '../services/share-meta.ts'
-import { buildProfileUrl, buildShareUrl } from '../services/share-urls.ts'
+import {
+  buildArticlesAtomUrl,
+  buildBlogUrl,
+  buildPostUrl,
+  buildProfileUrl,
+  buildShareUrl,
+} from '../services/share-urls.ts'
 
 /** A public resource resolved just far enough to build meta from. */
 interface ResolvedResource {
@@ -52,14 +62,29 @@ export interface ResolvedExercise {
   activity_type_name: string
 }
 
+/** An article post resolved just far enough to build its permalink meta from. */
+export interface ResolvedArticle {
+  /** `public` only: an unlisted article is reachable but never described to crawlers. */
+  is_public: boolean
+  title: string
+  /** Plain text of the article's first prose block. */
+  excerpt: string
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export interface ShareHtmlDeps {
   /** Public base URL of the web app, used to build canonical/share URLs. */
   webHost: string
+  /** Public base URL of the API, for the Atom feed discovery link. */
+  apiBaseUrl: string
   /** Loads the SPA index.html template, or null if unavailable. */
   loadTemplate: () => Promise<string | null>
   resolveDashboard: (username: string, slug: string) => Promise<ResolvedResource | null>
   resolveChallenge: (username: string, slug: string) => Promise<ResolvedChallenge | null>
   resolveExercise: (username: string, slug: string) => Promise<ResolvedExercise | null>
+  /** An article post by id (non-article posts resolve to null). */
+  resolveArticle: (username: string, postId: string) => Promise<ResolvedArticle | null>
   /** True if the user's public profile exists (db reachable). */
   profileExists: (username: string) => Promise<boolean>
   now?: () => Date
@@ -75,7 +100,7 @@ const isMissingDatabase = (error: unknown): boolean =>
  */
 export const createShareResolvers = (): Pick<
   ShareHtmlDeps,
-  'resolveDashboard' | 'resolveChallenge' | 'resolveExercise' | 'profileExists'
+  'resolveDashboard' | 'resolveChallenge' | 'resolveExercise' | 'resolveArticle' | 'profileExists'
 > => ({
   profileExists: async (username) => {
     try {
@@ -83,6 +108,21 @@ export const createShareResolvers = (): Pick<
       return true
     } catch (error) {
       if (isMissingDatabase(error)) return false
+      throw error
+    }
+  },
+  resolveArticle: async (username, postId) => {
+    try {
+      const post = await getFeedPostById(username, postId)
+      if (!post || post.kind !== 'article' || !post.article) return null
+      const firstProse = post.article.blocks.find((block) => block.type === 'prose')
+      return {
+        excerpt: firstProse ? proseToPlainText(firstProse.markdown) : '',
+        is_public: post.visibility === 'public',
+        title: post.article.title,
+      }
+    } catch (error) {
+      if (isMissingDatabase(error)) return null
       throw error
     }
   },
@@ -180,7 +220,16 @@ const sendHtml = async (
 }
 
 export const createShareHtmlRouter = (deps: ShareHtmlDeps): Router => {
-  const { loadTemplate, profileExists, resolveChallenge, resolveDashboard, resolveExercise, webHost } = deps
+  const {
+    apiBaseUrl,
+    loadTemplate,
+    profileExists,
+    resolveArticle,
+    resolveChallenge,
+    resolveDashboard,
+    resolveExercise,
+    webHost,
+  } = deps
   const now = deps.now ?? (() => new Date())
   const router = Router()
 
@@ -188,6 +237,40 @@ export const createShareHtmlRouter = (deps: ShareHtmlDeps): Router => {
   const withOembed = (meta: ShareMeta, resourceUrl: string): ShareMeta => ({
     ...meta,
     oembedUrl: oembedDiscoveryUrl(webHost, resourceUrl),
+  })
+
+  router.get('/u/:username/articles', async (req, res) => {
+    const { username } = req.params
+    const url = buildBlogUrl(webHost, username)
+    if (isValidUsername(username) && (await profileExists(username))) {
+      const meta = buildBlogShareMeta({
+        feedUrl: buildArticlesAtomUrl(apiBaseUrl, username),
+        profileUrl: buildProfileUrl(webHost, username),
+        url,
+        username,
+      })
+      return sendHtml(loadTemplate, meta, true, res)
+    }
+    return sendHtml(loadTemplate, buildDefaultShareMeta(webHost, url), false, res)
+  })
+
+  router.get('/u/:username/posts/:postId', async (req, res) => {
+    const { postId, username } = req.params
+    const url = buildPostUrl(webHost, username, postId)
+    const article =
+      isValidUsername(username) && UUID_RE.test(postId) ? await resolveArticle(username, postId) : null
+    if (article?.is_public) {
+      const meta = buildArticleShareMeta({
+        excerpt: article.excerpt,
+        feedUrl: buildArticlesAtomUrl(apiBaseUrl, username),
+        profileUrl: buildProfileUrl(webHost, username),
+        title: article.title,
+        url,
+        username,
+      })
+      return sendHtml(loadTemplate, meta, true, res)
+    }
+    return sendHtml(loadTemplate, buildDefaultShareMeta(webHost, url), false, res)
   })
 
   router.get('/u/:username/:slug', async (req, res) => {

@@ -49,6 +49,7 @@ export type SignupMode = 'open' | 'invite_only' | 'closed'
 export interface ServerSettings {
   audit_log_retention_days: number
   billing_enabled: boolean
+  blog_username: string
   grace_days: number
   gravl_client_id: string
   gravl_client_secret: string

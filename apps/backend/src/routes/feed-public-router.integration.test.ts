@@ -24,7 +24,7 @@ const END = new Date('2026-07-01T08:40:00Z')
 
 const startApp = () => {
   const app = express()
-  app.use(createFeedPublicRouter())
+  app.use(createFeedPublicRouter({ apiBaseUrl: 'https://qs.example/api', webHost: 'https://qs.example' }))
   const server = app.listen(0)
   const port = (server.address() as AddressInfo).port
   const close = () =>
@@ -259,6 +259,30 @@ describe('GET /public/:username/posts', () => {
     }
   })
 
+  test('?kind=article lists only articles, for the blog view', async () => {
+    const user = getTestUser()
+    await seedPost(user, 'public')
+    const article = await createArticlePost(user, {
+      article: { blocks: [{ markdown: 'Hello', type: 'prose' }], title: 'First post' },
+      visibility: 'public',
+    })
+    await createArticlePost(user, {
+      article: { blocks: [{ markdown: 'Secret', type: 'prose' }], title: 'Followers only' },
+      visibility: 'followers',
+    })
+    const { request, close } = startApp()
+    try {
+      const res = await request.get(`/public/${user}/posts`).query({ kind: 'article' })
+      expect(res.status).toBe(200)
+      expect(res.body.posts.map((p: { id: string }) => p.id)).toEqual([article.id])
+
+      const invalid = await request.get(`/public/${user}/posts`).query({ kind: 'blog' })
+      expect(invalid.status).toBe(400)
+    } finally {
+      await close()
+    }
+  })
+
   test('returns an empty list for a user with no public posts', async () => {
     const user = getTestUser()
     await seedPost(user, 'followers') // only a followers-only post exists
@@ -278,6 +302,67 @@ describe('GET /public/:username/posts', () => {
       const res = await request.get('/public/Invalid/posts')
       expect(res.status).toBe(404)
       expect(res.body).toEqual({ error: 'Not found', posts: [], success: false })
+    } finally {
+      await close()
+    }
+  })
+})
+
+describe('GET /public/:username/articles.atom', () => {
+  beforeAll(async () => {
+    await startTestDb()
+  }, CONTAINER_TIMEOUT)
+
+  afterAll(async () => {
+    await stopTestDb()
+  })
+
+  beforeEach(async () => {
+    await cleanTestDb()
+  })
+
+  test('serves public and unlisted articles as Atom, never followers-only or other kinds', async () => {
+    const user = getTestUser()
+    await seedPost(user, 'public')
+    const pub = await createArticlePost(user, {
+      article: { blocks: [{ markdown: 'Hello **world** & more', type: 'prose' }], title: 'First <post>' },
+      visibility: 'public',
+    })
+    const unlisted = await createArticlePost(user, {
+      article: { blocks: [{ markdown: 'Unlisted body', type: 'prose' }], title: 'Second post' },
+      visibility: 'unlisted',
+    })
+    await createArticlePost(user, {
+      article: { blocks: [{ markdown: 'Secret', type: 'prose' }], title: 'Followers only' },
+      visibility: 'followers',
+    })
+
+    const { request, close } = startApp()
+    try {
+      const res = await request.get(`/public/${user}/articles.atom`)
+      expect(res.status).toBe(200)
+      expect(res.headers['content-type']).toBe('application/atom+xml; charset=utf-8')
+      expect(res.headers['cache-control']).toBe('public, max-age=300')
+      expect(res.text).toContain(`<id>https://qs.example/u/${user}/articles</id>`)
+      expect(res.text).toContain(
+        `<link rel="self" type="application/atom+xml" href="https://qs.example/api/public/${user}/articles.atom"/>`,
+      )
+      expect(res.text).toContain(`<id>https://qs.example/u/${user}/posts/${pub.id}</id>`)
+      expect(res.text).toContain(`<id>https://qs.example/u/${user}/posts/${unlisted.id}</id>`)
+      expect(res.text).toContain('<title type="text">First &lt;post&gt;</title>')
+      expect(res.text).toContain('&lt;strong&gt;world&lt;/strong&gt; &amp;amp; more')
+      expect(res.text).not.toContain('Followers only')
+      expect(res.text).not.toContain('Secret')
+      expect(res.text.indexOf(unlisted.id)).toBeLessThan(res.text.indexOf(pub.id))
+    } finally {
+      await close()
+    }
+  })
+
+  test('404s for a malformed username (never touches a database)', async () => {
+    const { request, close } = startApp()
+    try {
+      expect((await request.get('/public/Invalid/articles.atom')).status).toBe(404)
     } finally {
       await close()
     }

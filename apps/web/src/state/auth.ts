@@ -26,6 +26,8 @@ export const signupMode = signal<SignupMode | undefined>(undefined)
 export const serverBilling = signal<
   Pick<ServerStatusResponse, 'billing_enabled' | 'trial_days' | 'price_text'>
 >({})
+/** Username whose public articles are this instance's blog; null when the admin set none. */
+export const blogUsername = signal<string | null>(null)
 
 let statusFetchPromise: Promise<void> | null = null
 
@@ -36,9 +38,11 @@ export const fetchStatus = async () => {
   statusFetchPromise = (async () => {
     try {
       const response = await axios.get<ServerStatusResponse>(`${API_URL}/status`)
-      const { billing_enabled, price_text, signup_allowed, signup_mode, trial_days } = response.data
+      const { billing_enabled, blog_username, price_text, signup_allowed, signup_mode, trial_days } =
+        response.data
       signupAllowed.value = signup_allowed
       signupMode.value = signup_mode
+      blogUsername.value = blog_username ?? null
       serverBilling.value = { billing_enabled, price_text, trial_days }
     } catch (error) {
       console.error('Status fetch error:', error)

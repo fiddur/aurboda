@@ -1,0 +1,16 @@
+/** Path of a user's blog view: their public articles. */
+export const blogPath = (username: string): string => `/u/${encodeURIComponent(username)}/articles`
+
+/**
+ * Absolute URL of the Atom feed of a user's public articles, resolved against
+ * the page origin so a relative `API_URL` (`/api` in production) still yields a
+ * URL a feed reader can subscribe to.
+ */
+export const buildArticlesAtomUrl = (username: string, apiUrl: string, pageOrigin: string): string => {
+  const path = `${apiUrl.replace(/\/+$/, '')}/public/${encodeURIComponent(username)}/articles.atom`
+  try {
+    return new URL(path, pageOrigin).toString()
+  } catch {
+    return path
+  }
+}

@@ -113,6 +113,7 @@ const buildApp = (adminMiddleware: RequestHandler = pass) => {
       {} as InvitationAuth,
       'https://web.example.test',
       gravlRedirectUri('https://api.example.test/api'),
+      async (username) => username === 'fiddur',
       null,
       deleteAccount,
       accountPlans,
@@ -132,6 +133,35 @@ describe('admin settings', () => {
     const res = await supertest(buildApp()).patch('/admin/settings').send({ gravl_client_id: 'abc' })
     expect(res.status).toBe(200)
     expect(res.body.gravl_redirect_uri).toBe('https://api.example.test/api/auth/gravlcb')
+  })
+})
+
+describe('instance blog setting', () => {
+  test('GET returns null when no blog user is set', async () => {
+    const res = await supertest(buildApp()).get('/admin/settings')
+    expect(res.body.blog_username).toBeNull()
+  })
+
+  test('PATCH stores an existing user as the blog user', async () => {
+    vi.mocked(centralDb.setServerSetting).mockClear()
+    const res = await supertest(buildApp()).patch('/admin/settings').send({ blog_username: 'fiddur' })
+    expect(res.status).toBe(200)
+    expect(centralDb.setServerSetting).toHaveBeenCalledWith('blog_username', 'fiddur')
+  })
+
+  test('PATCH rejects an unknown user with 400 and stores nothing', async () => {
+    vi.mocked(centralDb.setServerSetting).mockClear()
+    const res = await supertest(buildApp()).patch('/admin/settings').send({ blog_username: 'ghost' })
+    expect(res.status).toBe(400)
+    expect(res.body.error).toContain('ghost')
+    expect(centralDb.setServerSetting).not.toHaveBeenCalled()
+  })
+
+  test('PATCH with null clears the setting', async () => {
+    vi.mocked(centralDb.setServerSetting).mockClear()
+    const res = await supertest(buildApp()).patch('/admin/settings').send({ blog_username: null })
+    expect(res.status).toBe(200)
+    expect(centralDb.setServerSetting).toHaveBeenCalledWith('blog_username', '')
   })
 })
 
