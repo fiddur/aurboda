@@ -1240,6 +1240,11 @@ original bug, across 320/360/390/414/480: `boxSizing === 'border-box'`, profile 
 (`scrollWidth === innerWidth`), so the overflowing strip was simply clipped — the screenshot showed
 "Shar".
 
+`.public-dashboard` (`/u/:user/:slug`, both shared dashboards and shared exercises) had the same
+bug until #1405 and is `box-sizing: border-box` since. Check it with the same oracles at
+320–480px anonymous and at 1280px signed in (sidebar): its right edge equals `main`'s, and the
+owner's **Manage** link (`a.public-exercise-manage`) ends inside the viewport.
+
 ### Enriched public posts (#1052)
 
 - **The A/B for "is the enrichment doing anything"**: `page.setRequestInterception(true)`, refetch
