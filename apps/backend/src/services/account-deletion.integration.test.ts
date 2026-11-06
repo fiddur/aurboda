@@ -89,7 +89,7 @@ describe('account deletion', () => {
   })
 
   test(
-    'drops the database and role, removes every central row and reserves the name',
+    'drops the database and role, removes every central row and the blog setting naming it, and reserves the name',
     async () => {
       await centralDb.addAdmin(keeper)
       await centralDb.addAdmin(user)
@@ -125,6 +125,7 @@ describe('account deletion', () => {
       await centralDb.upsertOuraUserMapping(`oura_${suffix}`, user)
       await centralDb.upsertStravaAthleteMapping(4242, user)
       const job = await centralDb.insertImportJob('livsmedelsverket', user)
+      await centralDb.setServerSetting('blog_username', user)
 
       const deleted: string[] = []
       const deleteAccount = makeDeleter(deleted)
@@ -153,6 +154,7 @@ describe('account deletion', () => {
       }
       expect((await centralDb.getImportJobById(job.id))?.started_by).toBeUndefined()
       expect(await centralDb.isAdmin(keeper)).toBe(true)
+      expect(await centralDb.getServerSetting('blog_username')).toBeFalsy()
 
       expect(await centralDb.isUsernameDeleted(user)).toBe(true)
       expect(await centralDb.listDeletedUsernames()).toContain(user)

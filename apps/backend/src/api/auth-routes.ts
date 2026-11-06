@@ -30,6 +30,8 @@ interface AuthRoutesDeps {
   invitationAuth: InvitationAuth
   userDb: Client
   unauthorized: Error
+  /** Whether a user with a database exists, so `/status` never names a blog user deleted since. */
+  userExists: (username: string) => Promise<boolean>
 }
 
 export const RESERVED_USERNAMES = [
@@ -65,6 +67,7 @@ export const registerAuthRoutes = ({
   invitationAuth,
   userDb,
   unauthorized,
+  userExists,
 }: AuthRoutesDeps): void => {
   httpd.get<Record<string, never>, VersionResponse>('/version', (_req, res) => {
     res.json({
@@ -79,9 +82,10 @@ export const registerAuthRoutes = ({
       centralDb.getServerSetting('blog_username'),
       readBillingSettings(centralDb),
     ])
+    const blogUserLive = !!blogUsername && (await userExists(blogUsername))
     res.json({
       billing_enabled: billing.enabled,
-      blog_username: blogUsername || null,
+      blog_username: blogUserLive ? blogUsername : null,
       federation: true,
       product: 'aurboda',
       signup_allowed: signupMode === 'open',

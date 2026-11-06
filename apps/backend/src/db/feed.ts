@@ -330,6 +330,11 @@ export interface PublicFeedPageOpts {
   includeReplies?: boolean
   /** Only posts of this kind — `article` for a profile's blog view. */
   kind?: FeedPostKind
+  /**
+   * Only `public` posts, leaving `unlisted` out: a syndication feed lists what it
+   * carries, which an unlisted post must not be.
+   */
+  publicOnly?: boolean
 }
 
 /**
@@ -372,10 +377,18 @@ export const listPublicFeedPostsKeyset = async (
       WHERE visibility IN ('public', 'unlisted')
         AND ($4::boolean OR kind <> 'reply')
         AND ($5::text IS NULL OR kind = $5)
+        AND (NOT $6::boolean OR visibility = 'public')
         AND ($1::timestamptz IS NULL OR (created_at, id) < ($1::timestamptz, $2::uuid))
       ORDER BY created_at DESC, id DESC
       LIMIT $3`,
-    [before?.created_at ?? null, before?.id ?? null, limit, opts.includeReplies ?? true, opts.kind ?? null],
+    [
+      before?.created_at ?? null,
+      before?.id ?? null,
+      limit,
+      opts.includeReplies ?? true,
+      opts.kind ?? null,
+      opts.publicOnly ?? false,
+    ],
   )
   return result.rows.map(mapFeedPostPageRow)
 }

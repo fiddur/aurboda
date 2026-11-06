@@ -930,6 +930,7 @@ const main = async () => {
     invitationAuth,
     userDb,
     unauthorized,
+    userExists: async (username) => (await listUserNames(userDb)).includes(username),
   })
 
   mountSyncRouter({

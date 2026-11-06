@@ -66,9 +66,24 @@ export interface FeedPublicRouterDeps {
   apiBaseUrl: string
   /** Public base URL of the web app, for the Atom feed's blog and permalink URLs. */
   webHost: string
+  /** Which of an article's chart blocks would render; injectable so the Atom memo is observable in tests. */
+  renderableBlocks?: (user: string, postId: string, article: ArticleContent) => Promise<ReadonlySet<number>>
 }
 
-export const createFeedPublicRouter = ({ apiBaseUrl, webHost }: FeedPublicRouterDeps): TypedRouter => {
+/**
+ * The Atom memo's key: every listed entry's id and `updated_at`, so an edit, a
+ * new article or one dropping out (deleted, or flipped away from `public`)
+ * misses it, plus the hourly bucket the structured cache uses, since a chart
+ * block's data can arrive without touching the post.
+ */
+const atomMemoKey = (username: string, rows: { id: string; updated_at: Date }[], now: number): string =>
+  `atom:${username}:${Math.floor(now / 3_600_000)}:${rows.map((r) => `${r.id}@${r.updated_at.getTime()}`).join(',')}`
+
+export const createFeedPublicRouter = ({
+  apiBaseUrl,
+  renderableBlocks = renderableArticleBlocks,
+  webHost,
+}: FeedPublicRouterDeps): TypedRouter => {
   const router = typedRouter()
   // Caches the resolved structured payload OBJECT, shared (one key shape) by the
   // unauthenticated `/feed/:postId` endpoint and the `/posts` profile listing, so
@@ -83,6 +98,10 @@ export const createFeedPublicRouter = ({ apiBaseUrl, webHost }: FeedPublicRouter
   // to PROFILE_FEED_LIMIT entries per profile without a handful of concurrently
   // browsed profiles thrashing it. Producing `null` (no content) isn't cached.
   const structuredCache = createRenderCache<FeedStructuredPost>(200)
+  // The rendered Atom XML. The feed is unauthenticated and polled, and rendering
+  // runs a series or correlation query per chart block of up to ATOM_ENTRY_LIMIT
+  // articles, while the listing query that keys it is cheap.
+  const atomCache = createRenderCache<string>(100)
 
   // One post as a visitor sees it, shared by the profile listing and the single-post
   // permalink so the two never drift.
@@ -204,10 +223,11 @@ export const createFeedPublicRouter = ({ apiBaseUrl, webHost }: FeedPublicRouter
     },
   )
 
-  // The Atom feed of a profile's public/unlisted articles — the instance blog for
-  // readers without a fediverse account. No MCP twin: a syndication format, like
-  // the OpenAPI document. Feed readers poll, so unlike the JSON listing it may be
-  // cached briefly; an un-shared article drops out within `max-age`.
+  // The Atom feed of a profile's public articles — the instance blog for readers
+  // without a fediverse account. Unlisted articles stay out: syndicating to feed
+  // readers is listing. No MCP twin: a syndication format, like the OpenAPI
+  // document. Feed readers poll, so unlike the JSON listing it may be cached
+  // briefly; an un-shared article drops out within `max-age`.
   router.get<{ username: string }, string>('/public/:username/articles.atom', async (req, res) => {
     const { username } = req.params
     if (!isValidUsername(username)) {
@@ -217,28 +237,30 @@ export const createFeedPublicRouter = ({ apiBaseUrl, webHost }: FeedPublicRouter
       const rows = await listPublicFeedPostsKeyset(username, ATOM_ENTRY_LIMIT, undefined, {
         includeReplies: false,
         kind: 'article',
+        publicOnly: true,
       })
       const articles = rows.filter(
         (record): record is FeedPostPageRow & { article: ArticleContent } => record.article != null,
       )
-      const entries = await Promise.all(
-        articles.map(async (record) => ({
-          created_at: record.created_at,
-          html: articleEntryHtml(
-            apiBaseUrl,
-            username,
-            record,
-            await renderableArticleBlocks(username, record.id, record.article),
-          ),
-          id: record.id,
-          title: record.article.title,
-          updated_at: record.updated_at,
-        })),
-      )
+      const xml = await atomCache(atomMemoKey(username, articles, Date.now()), async () => {
+        const entries = await Promise.all(
+          articles.map(async (record) => ({
+            created_at: record.created_at,
+            html: articleEntryHtml(
+              apiBaseUrl,
+              username,
+              record,
+              await renderableBlocks(username, record.id, record.article),
+            ),
+            id: record.id,
+            title: record.article.title,
+            updated_at: record.updated_at,
+          })),
+        )
+        return buildArticlesAtom({ apiBaseUrl, entries, now: new Date(), username, webHost })
+      })
       res.setHeader('Cache-Control', 'public, max-age=300')
-      res
-        .type(ATOM_CONTENT_TYPE)
-        .send(buildArticlesAtom({ apiBaseUrl, entries, now: new Date(), username, webHost }))
+      res.type(ATOM_CONTENT_TYPE).send(xml ?? '')
     } catch (error) {
       if (isMissingDatabase(error)) {
         return res.status(404).type('text/plain').send('Not found')
