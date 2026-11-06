@@ -25,7 +25,7 @@ export const registerAccountDeletionTools = (
 
   server.tool(
     'delete_user',
-    "Permanently delete another user's account, as delete_my_account does for oneself. Irreversible — the user should run export_data_dump first. `confirm_username` must repeat `username`. The last admin cannot be deleted. Admin-only.",
+    "Permanently delete another user's account, as delete_my_account does for oneself. Irreversible — the user should run export_data_dump first. `confirm_username` must repeat `username`. The last admin cannot be deleted. Running it again for a deletion that failed part-way finishes it. Admin-only.",
     {
       username: z.string().min(1).describe('Username of the account to delete'),
       ...deleteAccountBodySchema.shape,

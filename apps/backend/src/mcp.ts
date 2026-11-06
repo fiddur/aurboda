@@ -129,7 +129,6 @@ interface McpDeps {
   oura?: OuraClientType
   reactionActions?: ReactionActions
   retroEnrichTimeline?: RetroEnrichTrigger
-  /** Whole-database export link (`export_data_dump`). */
   requestDumpLink?: DumpLinkIssuer
   stravaQueue?: StravaQueue
   sync?: SyncProvider

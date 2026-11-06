@@ -8,8 +8,10 @@ const setup = (
   overrides: {
     admins?: string[]
     users?: string[]
+    reserved?: string[]
     announce?: () => Promise<void>
     drop?: () => Promise<void>
+    central?: () => Promise<void>
     stravaDisconnect?: () => Promise<void>
   } = {},
 ) => {
@@ -27,6 +29,7 @@ const setup = (
     centralDb: {
       deleteAllCentralUserData: async (username) => {
         calls.push(`central(${username})`)
+        await overrides.central?.()
         return {}
       },
       deleteOuraUserMappingsByUsername: async (username) => {
@@ -37,8 +40,8 @@ const setup = (
         calls.push(`stravaMapping(${username})`)
         return true
       },
-      getAdminCount: async () => admins.length,
-      isAdmin: async (username) => admins.includes(username),
+      getAdmins: async () => admins,
+      isUsernameDeleted: async (username) => (overrides.reserved ?? []).includes(username),
       reserveDeletedUsername: async (username, by) => {
         calls.push(`reserve(${username},${by})`)
         return true
@@ -57,17 +60,17 @@ const setup = (
 }
 
 describe('createAccountDeleter', () => {
-  test('runs every step in order: reserve, federate, revoke, drop, then central rows', async () => {
+  test('runs every step in order: federate, revoke, reserve, drop, then central rows', async () => {
     const { calls, deleteAccount } = setup()
 
     expect(await deleteAccount('alice', { actor: 'alice', confirmUsername: 'alice' })).toEqual({ ok: true })
     expect(calls).toEqual([
-      'reserve(alice,alice)',
       'announce(alice)',
       'oura(alice)',
       'strava(alice)',
       'ouraMapping(alice)',
       'stravaMapping(alice)',
+      'reserve(alice,alice)',
       'deleted(alice)',
       'drop(alice)',
       'central(alice)',
@@ -77,7 +80,7 @@ describe('createAccountDeleter', () => {
   test('records the admin as the one who deleted', async () => {
     const { calls, deleteAccount } = setup()
     await deleteAccount('alice', { actor: 'root1', confirmUsername: 'alice' })
-    expect(calls[0]).toBe('reserve(alice,root1)')
+    expect(calls).toContain('reserve(alice,root1)')
   })
 
   test('refuses a confirmation that does not match, touching nothing', async () => {
@@ -99,6 +102,31 @@ describe('createAccountDeleter', () => {
     expect(await deleteAccount('root1', { actor: 'root2', confirmUsername: 'root1' })).toEqual({ ok: true })
   })
 
+  test('refuses the last admin even when a stale admin row of a dropped user remains', async () => {
+    const { calls, deleteAccount } = setup({ admins: ['root1', 'ghost'], reserved: ['ghost'] })
+    const result = await deleteAccount('root1', { actor: 'root1', confirmUsername: 'root1' })
+    expect(result).toMatchObject({ error: 'last_admin', ok: false })
+    expect(calls).toEqual([])
+  })
+
+  test('finishes a deletion that dropped the database and then failed, without the steps that need it', async () => {
+    const { calls, deleteAccount } = setup({ admins: ['root1', 'ghost'], reserved: ['ghost'] })
+    expect(await deleteAccount('ghost', { actor: 'root1', confirmUsername: 'ghost' })).toEqual({ ok: true })
+    expect(calls).toEqual(['deleted(ghost)', 'drop(ghost)', 'central(ghost)'])
+  })
+
+  test('reports a failed drop while finishing an unfinished deletion', async () => {
+    const { calls, deleteAccount } = setup({
+      drop: async () => {
+        throw new Error('role is still referenced')
+      },
+      reserved: ['ghost'],
+    })
+    const result = await deleteAccount('ghost', { actor: 'root1', confirmUsername: 'ghost' })
+    expect(result).toMatchObject({ error: 'drop_failed', ok: false })
+    expect(calls).not.toContain('central(ghost)')
+  })
+
   test('answers not_found for an unknown user without reserving the name', async () => {
     const { calls, deleteAccount } = setup()
     const result = await deleteAccount('mallory', { actor: 'root1', confirmUsername: 'mallory' })
@@ -118,6 +146,15 @@ describe('createAccountDeleter', () => {
     expect(await deleteAccount('alice', { actor: 'alice', confirmUsername: 'alice' })).toEqual({ ok: true })
     expect(calls).toContain('drop(alice)')
     expect(calls.at(-1)).toBe('central(alice)')
+  })
+
+  test('still succeeds when the central rows cannot be removed after the drop', async () => {
+    const { deleteAccount } = setup({
+      central: async () => {
+        throw new Error('central db down')
+      },
+    })
+    expect(await deleteAccount('alice', { actor: 'alice', confirmUsername: 'alice' })).toEqual({ ok: true })
   })
 
   test('returns the error when the database cannot be dropped, keeping central rows for a retry', async () => {

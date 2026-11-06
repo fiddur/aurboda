@@ -38,7 +38,6 @@ export const updateUserSettings = async (params: UpdateSettingsInput): Promise<U
   return response.data
 }
 
-/** A short-lived URL that downloads the user's whole database as a gzipped SQL dump. */
 export const requestExportDumpLink = async (): Promise<ExportDumpLinkResponse> => {
   const { token } = auth.value
   const response = await axios.post<ExportDumpLinkResponse>(`${API_URL}/export/dump-link`, undefined, {
