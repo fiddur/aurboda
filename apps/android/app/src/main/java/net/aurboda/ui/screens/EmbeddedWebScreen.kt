@@ -1,16 +1,22 @@
 package net.aurboda.ui.screens
 
 import android.annotation.SuppressLint
+import android.app.DownloadManager
+import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.net.Uri
+import android.os.Environment
 import android.view.ContextThemeWrapper
 import android.view.ViewGroup
 import android.webkit.JavascriptInterface
+import android.webkit.URLUtil
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -92,6 +98,42 @@ private fun installAuthBridge(webView: WebView, authJson: String, origin: String
         if (installed) return
     }
     webView.addJavascriptInterface(AuthBridge(authJson), "AurbodaNative")
+}
+
+/**
+ * Hand a download the page started (the data export, `/api/export/dump?token=…`)
+ * to [DownloadManager], which saves it to Downloads with a notification. The URL
+ * carries its own short-lived token, so no auth header is needed. Only URLs on
+ * the signed-in server's origin are downloaded in-app; anything else opens in the
+ * external browser.
+ */
+private fun startDownload(
+    context: Context,
+    baseOrigin: String?,
+    url: String,
+    contentDisposition: String?,
+    mimeType: String?,
+) {
+    if (baseOrigin == null || originOf(url) != baseOrigin) {
+        runCatching {
+            context.startActivity(
+                Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }
+        return
+    }
+    val fileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
+    val started = runCatching {
+        val request = DownloadManager.Request(Uri.parse(url))
+            .setTitle(fileName)
+            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
+        if (mimeType != null) request.setMimeType(mimeType)
+        val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        downloadManager.enqueue(request)
+    }.isSuccess
+    val message = if (started) "Downloading $fileName…" else "Could not start the download"
+    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
 }
 
 /**
@@ -233,6 +275,9 @@ fun EmbeddedWebScreen(
                                 errorMessage = "Could not load page"
                             }
                         }
+                    }
+                    setDownloadListener { downloadUrl, _, contentDisposition, mimeType, _ ->
+                        startDownload(context, baseOrigin, downloadUrl, contentDisposition, mimeType)
                     }
                     installViewportFix(this, originOf(baseUrl))
                     webView = this

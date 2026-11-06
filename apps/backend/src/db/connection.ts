@@ -9,7 +9,7 @@ import { repairGarminSleepStages } from './repair-garmin-sleep-stages.ts'
 
 const dbByUser = new Map<string, Promise<UserDb>>()
 
-const userDbName = (user: string) => `aurboda_${user}`
+export const userDbName = (user: string) => `aurboda_${user}`
 
 /**
  * How long to wait for a Postgres connection before giving up. `pg` defaults

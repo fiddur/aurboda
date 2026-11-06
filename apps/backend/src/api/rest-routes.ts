@@ -15,6 +15,8 @@ import type { CentralDb } from '../services/central-db.ts'
 import type { DiscoverChallenges } from '../services/challenge-discovery.ts'
 import type { DeductionEngineDeps } from '../services/deduction-engine.ts'
 import type { ActivityNotifier, DeductionQueue } from '../services/deduction-queue.ts'
+import type { DumpExporter, DumpLinkIssuer } from '../services/export-dump.ts'
+import type { ExportTokens } from '../services/export-token.ts'
 import type { ReactionActions } from '../services/feed-reactions.ts'
 import type { FollowerActions } from '../services/followers.ts'
 import type { FollowActions } from '../services/following.ts'
@@ -49,6 +51,7 @@ import { createChartDataRouter } from '../routes/chart-data-router.ts'
 import { createCorrelationsRouter } from '../routes/correlations-router.ts'
 import { createDashboardRouter } from '../routes/dashboard-router.ts'
 import { createDeductionRulesRouter } from '../routes/deduction-rules-router.ts'
+import { createExportRouter } from '../routes/export-router.ts'
 import { createFeedFollowersRouter } from '../routes/feed-followers-router.ts'
 import { createFeedFollowingRouter } from '../routes/feed-following-router.ts'
 import { createFeedImageRouter } from '../routes/feed-image-router.ts'
@@ -145,6 +148,8 @@ interface RestRoutesDeps {
   /** Fire-and-forget: recompute activity features after HR zones, birth date or maf_hr change. */
   onHrSettingsChanged: HrSettingsChanged
   onNamedLocationsChanged: NamedLocationsChanged
+  /** Whole-database export (`/export/*`). */
+  dataExport: { exporter: DumpExporter; requestDumpLink: DumpLinkIssuer; tokens: ExportTokens }
 }
 
 export const mountRestRouters = ({
@@ -165,6 +170,7 @@ export const mountRestRouters = ({
   engineDeps,
   deductionQueue,
   autosharePreviewDeps,
+  dataExport,
   feedDeliver,
   followActions,
   followerActions,
@@ -219,6 +225,7 @@ export const mountRestRouters = ({
   httpd.use('/locations', createLocationsRouter(authMiddleware, onNamedLocationsChanged))
   httpd.use(createSettingsRouter(authMiddleware, onHrSettingsChanged))
   httpd.use(createAuditLogRouter(authMiddleware))
+  httpd.use('/export', createExportRouter({ authMiddleware, ...dataExport }))
   httpd.use(createRawRecordsRouter(authMiddleware))
   httpd.use('/dashboard', createDashboardRouter(authMiddleware))
   httpd.use('/shared-dashboards', createSharedDashboardsRouter(authMiddleware, webHost))

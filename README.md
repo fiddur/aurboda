@@ -69,6 +69,7 @@ For the self-hosting crowd, the appeal is ownership:
 - Your data stays on your machine -- no cloud account, no third party.
 - No subscription, ever.
 - Stored in **standard PostgreSQL** you can query directly.
+- [Export all your data](docs/data-export.md) as a PostgreSQL dump you can restore into your own install.
 - **Docker deployment** in minutes (see [Quick Start](#quick-start-docker)).
 - Open **REST API** and **MCP** -- nothing is locked in.
 - [Passkey / WebAuthn login](docs/passkeys.md) for web and Android.
@@ -300,6 +301,9 @@ PGUSER=aurboda_service
 PGPASSWORD=your_password
 SESSION_SECRET=your_32_byte_secret
 ```
+
+The data export (Settings → Export all data) runs `pg_dump`, so it needs a PostgreSQL client on `PATH` at
+least as new as the database server (e.g. `postgresql-client-16`).
 
 ---
 
