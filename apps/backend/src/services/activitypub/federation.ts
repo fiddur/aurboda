@@ -20,6 +20,7 @@ import {
   Note,
   Person,
   Reject,
+  Tombstone,
   Undo,
   Update,
 } from '@fedify/fedify/vocab'
@@ -844,6 +845,28 @@ export const deliverActorUpdate = async (
   await ctx.sendActivity({ identifier: user }, 'followers', update)
 }
 
+/**
+ * Tell the user's followers' servers that the actor is gone, so they drop the
+ * follow and the cached profile. Needs the user's database (key pair, follower
+ * list), so it runs before the database is dropped; delivery is synchronous
+ * (no message queue), so nothing reads that database after this resolves.
+ */
+export const deliverActorDelete = async (
+  deps: { federation: Federation<void>; origin: string },
+  user: string,
+): Promise<void> => {
+  const ctx = await deps.federation.createContext(new URL(deps.origin))
+  const actorId = ctx.getActorUri(user)
+  const del = new Delete({
+    actor: actorId,
+    cc: ctx.getFollowersUri(user),
+    id: new URL(`${actorId.href}#delete`),
+    object: new Tombstone({ id: actorId }),
+    to: new URL(AS_PUBLIC),
+  })
+  await ctx.sendActivity({ identifier: user }, 'followers', del)
+}
+
 export const createFeedFederation = (
   origin: string,
   apiBaseUrl: string,
@@ -858,6 +881,8 @@ export const createFeedFederation = (
   version = 'dev',
   /** Whether anyone can sign up (`signup_mode = 'open'`), reported as NodeInfo `openRegistrations` (#1050). */
   isSignupOpen: () => Promise<boolean> = async () => false,
+  /** A deleted account's actor answers 410 Gone with a Tombstone instead of 404. */
+  isDeletedUser: (username: string) => boolean = () => false,
 ): Federation<void> => {
   const federation = createFederation<void>({
     kv: new MemoryKvStore(),
@@ -895,9 +920,13 @@ export const createFeedFederation = (
   }))
 
   federation
-    .setActorDispatcher('/users/{identifier}', (ctx, identifier) => buildActorPerson(ctx, identifier, origin))
+    .setActorDispatcher('/users/{identifier}', (ctx, identifier) =>
+      isDeletedUser(identifier)
+        ? new Tombstone({ id: ctx.getActorUri(identifier) })
+        : buildActorPerson(ctx, identifier, origin),
+    )
     .setKeyPairsDispatcher(async (_ctx, identifier) => {
-      if (!isValidUsername(identifier)) return []
+      if (!isValidUsername(identifier) || isDeletedUser(identifier)) return []
       try {
         const kp = await getOrCreateActorKeyPair(identifier)
         return [await toCryptoKeyPair(kp.private_key_pem, kp.public_key_pem)]

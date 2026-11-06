@@ -345,3 +345,18 @@ export const adminUserUsageResponseSchema = baseResponseSchema
   .meta({ id: 'AdminUserUsageResponse' })
 
 export type AdminUserUsageResponse = z.infer<typeof adminUserUsageResponseSchema>
+
+export const deleteAccountBodySchema = z
+  .object({
+    confirm_username: z
+      .string()
+      .min(1)
+      .meta({ description: 'The username of the account being deleted, typed again to confirm' }),
+  })
+  .meta({
+    description:
+      'Confirmation for deleting an account. Deletion is permanent: every piece of data is removed and the username can never be used again.',
+    id: 'DeleteAccountBody',
+  })
+
+export type DeleteAccountBody = z.infer<typeof deleteAccountBodySchema>

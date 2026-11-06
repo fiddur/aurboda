@@ -14,7 +14,7 @@ import { mountSyncRouter } from './api/sync-setup.ts'
 import { createUsageMiddleware } from './api/usage-middleware.ts'
 import { setupOuraWebhook, setupStravaWebhook } from './api/webhooks-setup.ts'
 import { createAuth } from './auth.ts'
-import { closeAllUserPools, getDbForUser } from './db/connection.ts'
+import { closeAllUserPools, dropUserDb, getDbForUser } from './db/connection.ts'
 import { getLargestTables, getUserDatabaseSizes } from './db/database-sizes.ts'
 import {
   createChallengePost,
@@ -70,6 +70,7 @@ import { createMcpRouter } from './mcp.ts'
 import { createActorAcceptNormalizer, createActorHtmlRouter } from './routes/actor-html-router.ts'
 import { createFeedTombstoneRouter } from './routes/feed-tombstone-router.ts'
 import { createOAuthRouter } from './routes/oauth-router.ts'
+import { createAccountDeleter } from './services/account-deletion.ts'
 import {
   deliverFeedArticlePost,
   deliverFeedArticleUpdate,
@@ -87,7 +88,11 @@ import {
   toDeliverableExercise,
   toDeliverableReply,
 } from './services/activitypub/deliver.ts'
-import { createFeedFederation, deliverActorUpdate } from './services/activitypub/federation.ts'
+import {
+  createFeedFederation,
+  deliverActorDelete,
+  deliverActorUpdate,
+} from './services/activitypub/federation.ts'
 import { configureFederationLogging } from './services/activitypub/logging.ts'
 import { isPubliclyVisible } from './services/activitypub/object.ts'
 import { createTimelineBackfiller } from './services/activitypub/timeline-backfill.ts'
@@ -112,6 +117,7 @@ import {
   createDeductionQueue,
   type DeductionQueue,
 } from './services/deduction-queue.ts'
+import { createDeletedUsers } from './services/deleted-users.ts'
 import { createDetectionTrigger, type DetectionTrigger } from './services/detection-trigger.ts'
 import { runDetectionForUser } from './services/detection-worker.ts'
 import { createDumpExporter, createDumpLinkIssuer } from './services/export-dump.ts'
@@ -199,7 +205,14 @@ const main = async () => {
   console.info(`⏱️ Central DB ready ${process.uptime().toFixed(1)} s after process start`)
   const centralDb = getCentralDb()
 
-  const usageRecorder = createUsageRecorder({ flush: (rows) => centralDb.upsertUsageRows(rows) })
+  const deletedUsers = createDeletedUsers({ list: () => centralDb.listDeletedUsernames() })
+  await deletedUsers.refresh()
+  const stopDeletedUsersRefresh = deletedUsers.startRefreshing()
+  const isDeletedUser = (user: string) => deletedUsers.has(user)
+
+  const usageRecorder = createUsageRecorder({
+    flush: (rows) => centralDb.upsertUsageRows(rows.filter((row) => !isDeletedUser(row.username))),
+  })
   installUsageRecorder(usageRecorder)
   const stopUsageFlushing = startUsageFlushing(usageRecorder)
 
@@ -508,9 +521,23 @@ const main = async () => {
     (user, actorUri) => backfill(user, actorUri),
     wellKnown.version,
     async () => (await centralDb.getSignupMode()) === 'open',
+    isDeletedUser,
   )
   const backfill = createTimelineBackfiller(feedFederation, webHost)
   const feedDeps = { apiBaseUrl, federation: feedFederation, origin: webHost }
+
+  const accountDeleter = createAccountDeleter({
+    announceDeletion: (user) => deliverActorDelete(feedDeps, user),
+    centralDb,
+    dropUserDb: (user) => dropUserDb(userDb, user),
+    integrations: [
+      { disconnect: (user) => oura.disconnect(user), name: 'Oura' },
+      { disconnect: (user) => strava.deauthorize(user), name: 'Strava' },
+      { disconnect: (user) => gravl.disconnect(user), name: 'Gravl' },
+    ],
+    listUsers: () => listUserNames(userDb),
+    onDeleted: (user) => deletedUsers.add(user),
+  })
 
   // Lazy retro-enrichment (#996): entries ingested before structured enrichment
   // shipped (or whose ingest-time enrichment failed transiently) get one more
@@ -807,6 +834,7 @@ const main = async () => {
   httpd.use(
     '/mcp',
     createMcpRouter(auth, {
+      accountDeleter,
       adminUsers,
       apiBaseUrl,
       autosharePreviewDeps: autoshareDeps,
@@ -820,6 +848,7 @@ const main = async () => {
       followerActions,
       garmin,
       gravl,
+      isDeletedUser,
       onActivityDetailSynced,
       onActivityMutated: activityNotifier,
       onHrSettingsChanged,
@@ -880,10 +909,10 @@ const main = async () => {
 
   httpd.use(json({ limit: '10mb' }))
 
-  httpd.use(createAuditLogMiddleware(auth))
+  httpd.use(createAuditLogMiddleware(auth, isDeletedUser))
   httpd.use(createUsageMiddleware(recordUsage))
 
-  const authMiddleware = createAuthMiddleware(auth, unauthorized)
+  const authMiddleware = createAuthMiddleware(auth, unauthorized, isDeletedUser)
   const adminMiddleware = createAdminMiddleware(centralDb, unauthorized, forbidden)
 
   registerAuthRoutes({
@@ -979,6 +1008,7 @@ const main = async () => {
   )
 
   mountRestRouters({
+    accountDeleter,
     activityNotifier,
     autosharePreviewDeps: autoshareDeps,
     adminMiddleware,
@@ -1062,6 +1092,7 @@ const main = async () => {
     },
     stopTimers: () => {
       stopUsageFlushing()
+      stopDeletedUsersRefresh()
       detectionTrigger.clearPendingDetections()
       ouraWebhookManager?.shutdown()
     },

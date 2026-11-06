@@ -2,6 +2,7 @@ import express, { type RequestHandler } from 'express'
 import supertest from 'supertest'
 import { describe, expect, test, vi } from 'vitest'
 
+import type { AccountDeleter } from '../services/account-deletion.ts'
 import type { AdminUsers } from '../services/admin-users.ts'
 import type { CentralDb } from '../services/central-db.ts'
 import type { InvitationAuth } from '../services/invitation.ts'
@@ -19,7 +20,10 @@ const centralDb = {
   setServerSetting: vi.fn().mockResolvedValue(undefined),
 } as unknown as CentralDb
 
-const pass: RequestHandler = (_req, _res, next) => next()
+const pass: RequestHandler = (req, _res, next) => {
+  req.user = 'root'
+  next()
+}
 const forbid: RequestHandler = (_req, res) => {
   res.status(403).json({ error: 'Forbidden', success: false })
 }
@@ -59,6 +63,15 @@ const adminUsers: AdminUsers = {
   listUsersOverview: vi.fn(async () => [overview]),
 }
 
+const deleteAccount = vi.fn<AccountDeleter>(async (username, { confirmUsername }) => {
+  if (confirmUsername !== username) {
+    return { error: 'confirmation_mismatch', message: 'mismatch', ok: false }
+  }
+  if (username === 'root') return { error: 'last_admin', message: 'last admin', ok: false }
+  if (username !== 'alice') return { error: 'not_found', message: 'User not found', ok: false }
+  return { ok: true }
+})
+
 const buildApp = (adminMiddleware: RequestHandler = pass) => {
   const app = express()
   app.use(express.json())
@@ -72,6 +85,8 @@ const buildApp = (adminMiddleware: RequestHandler = pass) => {
       {} as InvitationAuth,
       'https://web.example.test',
       gravlRedirectUri('https://api.example.test/api'),
+      null,
+      deleteAccount,
     ),
   )
   return app
@@ -128,5 +143,36 @@ describe('admin users', () => {
     expect((await supertest(app).get('/admin/users/alice')).status).toBe(403)
     expect(adminUsers.listUsersOverview).not.toHaveBeenCalled()
     expect(adminUsers.getUserUsage).not.toHaveBeenCalled()
+  })
+})
+
+describe('DELETE /admin/users/:username', () => {
+  test('deletes the user, with the admin as actor', async () => {
+    const res = await supertest(buildApp()).delete('/admin/users/alice').send({ confirm_username: 'alice' })
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ success: true })
+    expect(deleteAccount).toHaveBeenCalledWith('alice', { actor: 'root', confirmUsername: 'alice' })
+  })
+
+  test('400 on a confirmation mismatch, 404 for an unknown user, 409 for the last admin', async () => {
+    const app = buildApp()
+    expect((await supertest(app).delete('/admin/users/alice').send({ confirm_username: 'bob' })).status).toBe(
+      400,
+    )
+    expect(
+      (await supertest(app).delete('/admin/users/mallory').send({ confirm_username: 'mallory' })).status,
+    ).toBe(404)
+    expect((await supertest(app).delete('/admin/users/root').send({ confirm_username: 'root' })).status).toBe(
+      409,
+    )
+  })
+
+  test('non-admins are refused', async () => {
+    deleteAccount.mockClear()
+    const res = await supertest(buildApp(forbid))
+      .delete('/admin/users/alice')
+      .send({ confirm_username: 'alice' })
+    expect(res.status).toBe(403)
+    expect(deleteAccount).not.toHaveBeenCalled()
   })
 })

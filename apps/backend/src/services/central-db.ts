@@ -9,6 +9,11 @@ import pg from 'pg'
 
 import { createRolePool, type Queryable, type UserDb, withTransaction } from '../db/pool.ts'
 import {
+  createDeletedUsernamesApi,
+  CREATE_DELETED_USERNAMES_TABLE,
+  type DeletedUsernamesApi,
+} from './central-deleted-usernames.ts'
+import {
   createSharedFoodItemsApi,
   CREATE_SHARED_FOOD_ITEMS_INDEXES,
   CREATE_SHARED_FOOD_ITEMS_TABLE,
@@ -118,6 +123,7 @@ export interface CentralDb
   extends
     SharedFoodItemsApi,
     CentralImportJobsApi,
+    DeletedUsernamesApi,
     SharedNutrientRecommendationsApi,
     UserAccountsApi,
     UserUsageApi {
@@ -453,6 +459,7 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       for (const stmt of CREATE_IMPORT_JOBS_INDEXES) await client.query(stmt)
 
       await client.query(CREATE_USER_ACCOUNTS_TABLE)
+      await client.query(CREATE_DELETED_USERNAMES_TABLE)
       await client.query(CREATE_USER_USAGE_DAILY_TABLE)
       for (const stmt of CREATE_USER_USAGE_DAILY_INDEXES) await client.query(stmt)
 
@@ -468,6 +475,7 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
 
     ...createSharedFoodItemsApi(getClient),
     ...createCentralImportJobsApi(getClient),
+    ...createDeletedUsernamesApi(getClient, deps.withTransaction),
     ...createSharedNutrientRecommendationsApi(getClient),
     ...createUserAccountsApi(getClient),
     ...createUserUsageApi(getClient),

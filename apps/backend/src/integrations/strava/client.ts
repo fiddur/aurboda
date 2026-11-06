@@ -23,6 +23,7 @@ import { parseRateLimitHeaders } from './types.ts'
 
 const STRAVA_AUTH_URL = 'https://www.strava.com/oauth/authorize'
 const STRAVA_TOKEN_URL = 'https://www.strava.com/oauth/token'
+const STRAVA_DEAUTHORIZE_URL = 'https://www.strava.com/oauth/deauthorize'
 const STRAVA_API_BASE = 'https://www.strava.com/api/v3'
 const STRAVA_SCOPES = 'activity:read_all,profile:read_all,read'
 
@@ -86,6 +87,35 @@ export const stravaClient = (
     }
   }
 
+  const getAccessToken = async (user: string): Promise<string> => {
+    const token = await getOAuthToken(user, 'strava')
+    if (!token) throw new Error('User has no Strava OAuth token')
+
+    // Return token if not expired (with 100 second buffer)
+    if (token.expires_at && isFuture(addSeconds(token.expires_at, -100))) {
+      return token.access_token
+    }
+
+    const { clientId, clientSecret } = await getCredentials()
+    const response = await axios.post<StravaTokenResponse>(STRAVA_TOKEN_URL, {
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: 'refresh_token',
+      refresh_token: token.refresh_token,
+    })
+
+    const { access_token, refresh_token, expires_at } = response.data
+
+    await upsertOAuthToken(user, {
+      access_token,
+      expires_at: new Date(expires_at * 1000),
+      provider: 'strava',
+      refresh_token,
+    })
+
+    return access_token
+  }
+
   return {
     async authCb(req: Request, res: Response) {
       const { code, state, error } = req.query as Record<string, string | undefined>
@@ -139,33 +169,15 @@ export const stravaClient = (
       }
     },
 
-    async getAccessToken(user: string): Promise<string> {
+    getAccessToken,
+
+    /** Revoke the app's access at Strava and clear the stored grant. Does nothing without a grant. */
+    async deauthorize(user: string): Promise<void> {
       const token = await getOAuthToken(user, 'strava')
-      if (!token) throw new Error('User has no Strava OAuth token')
-
-      // Return token if not expired (with 100 second buffer)
-      if (token.expires_at && isFuture(addSeconds(token.expires_at, -100))) {
-        return token.access_token
-      }
-
-      const { clientId, clientSecret } = await getCredentials()
-      const response = await axios.post<StravaTokenResponse>(STRAVA_TOKEN_URL, {
-        client_id: clientId,
-        client_secret: clientSecret,
-        grant_type: 'refresh_token',
-        refresh_token: token.refresh_token,
-      })
-
-      const { access_token, refresh_token, expires_at } = response.data
-
-      await upsertOAuthToken(user, {
-        access_token,
-        expires_at: new Date(expires_at * 1000),
-        provider: 'strava',
-        refresh_token,
-      })
-
-      return access_token
+      if (!token?.access_token) return
+      const accessToken = await getAccessToken(user)
+      await axios.post(STRAVA_DEAUTHORIZE_URL, undefined, { params: { access_token: accessToken } })
+      await upsertOAuthToken(user, { access_token: '', provider: 'strava' })
     },
 
     async getActivity(token: string, activityId: number): Promise<StravaApiResponse<StravaDetailedActivity>> {

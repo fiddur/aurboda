@@ -136,7 +136,7 @@ export const registerAuthRoutes = ({
     }
 
     const existingUser = await query(userDb, 'SELECT usename FROM pg_user WHERE usename=$1', [user])
-    if (existingUser.rowCount && existingUser.rowCount > 0) {
+    if ((existingUser.rowCount && existingUser.rowCount > 0) || (await centralDb.isUsernameDeleted(user))) {
       res.status(409).json({ error: 'Username already exists', success: false })
       return
     }

@@ -1,4 +1,6 @@
 import type {
+  BaseResponse,
+  DeleteAccountBody,
   AdminUserOverview,
   AdminUserUsage,
   AdminUserUsageResponse,
@@ -134,4 +136,13 @@ export const fetchAdminUserUsage = async (username: string, days = 90): Promise<
   )
   if (!response.data.user) throw new Error(response.data.error ?? 'User not found')
   return response.data.user
+}
+
+/** Permanently deletes a user. Admin-only; `confirm_username` must repeat the username. */
+export const deleteAdminUser = async (username: string, body: DeleteAccountBody): Promise<void> => {
+  const { token } = auth.value
+  await axios.delete<BaseResponse>(`${API_URL}/admin/users/${encodeURIComponent(username)}`, {
+    data: body,
+    headers: { Authorization: `Bearer ${token}` },
+  })
 }
