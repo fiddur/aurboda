@@ -6,6 +6,8 @@
  *
  * No database access; this module is straightforward to unit test.
  */
+import type { DataSource } from '@aurboda/api-spec'
+
 import type { Activity, MergedActivity } from '../types.ts'
 
 /** Max start_time difference (ms) for cross-source merge eligibility. */
@@ -259,9 +261,34 @@ const mergeCrossSources = (activities: Activity[], categoryMap: Map<string, stri
 const memberIds = (a: MergedActivity): string[] => (a.source_ids ? [...a.source_ids] : a.id ? [a.id] : [])
 
 /**
+ * Sources whose rows are whole sessions, logged by a person or a device in one piece. Two such rows
+ * of one type that only touch (one ends as the next begins) are back-to-back sessions and stay apart
+ * (#981, #1488). Every other source, listed or not, is treated as fragmenting: screen-time and
+ * location spans, scrobbles, deduction-rule rows cut at evaluation-window edges and Health Connect's
+ * aggregated records abut by construction, so a zero gap between them still joins.
+ */
+const DISCRETE_SESSION_SOURCES = new Set<DataSource>([
+  'aurboda',
+  'calendar',
+  'garmin',
+  'gravl',
+  'manual',
+  'oura',
+  'strava',
+])
+
+const bridgesTouch = (a: Activity, b: Activity): boolean =>
+  !DISCRETE_SESSION_SOURCES.has(a.source) || !DISCRETE_SESSION_SOURCES.has(b.source)
+
+/**
  * When the same activity is logged in multiple apps (e.g., Polar for HR data
  * and Gravl for workout details), this function merges them into a single
  * activity using the earliest start time and latest end time.
+ *
+ * Same-type rows merge when they overlap. Rows that only touch merge only when
+ * `bridgesTouch` says so for the next row and the row whose end is the run's end
+ * (the later-starting one on a tie); the run's earlier members end before the
+ * touch point. A cross-source group counts as its winner's source.
  *
  * @param categoryMap Optional map of activity_type -> display_category. When provided,
  *   enables cross-source merge for near-simultaneous activities from different sources.
@@ -287,15 +314,19 @@ export const mergeOverlappingActivities = (
 
     let current: MergedActivity = { ...sorted[0] }
     let currentSourceIds: string[] = memberIds(sorted[0])
+    let endingRow: Activity = sorted[0]
 
     for (let i = 1; i < sorted.length; i++) {
       const next = sorted[i]
       const currentEnd = current.end_time?.getTime() ?? current.start_time.getTime()
       const nextStart = next.start_time.getTime()
+      // A shared start is an overlap even when the run so far has no duration.
+      const overlaps = currentEnd > nextStart || nextStart === current.start_time.getTime()
+      const touches = currentEnd === nextStart
 
-      // Check if activities overlap or touch
-      if (currentEnd >= nextStart) {
+      if (overlaps || (touches && bridgesTouch(endingRow, next))) {
         const nextEnd = next.end_time?.getTime()
+        if (nextEnd !== undefined && nextEnd >= currentEnd) endingRow = next
         if (
           nextEnd !== undefined &&
           (current.end_time === undefined || nextEnd > current.end_time.getTime())
@@ -319,6 +350,7 @@ export const mergeOverlappingActivities = (
         result.push(current)
         current = { ...next }
         currentSourceIds = memberIds(next)
+        endingRow = next
       }
     }
 

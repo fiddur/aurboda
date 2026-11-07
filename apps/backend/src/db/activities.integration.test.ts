@@ -8,6 +8,7 @@ import {
   adoptLegacyActivity,
   deleteActivity,
   deleteGarminActivityWithWrongType,
+  fetchCategoryMap,
   findActivityByExternalId,
   findAdjacentActivity,
   findDeletedActivityByExternalId,
@@ -581,6 +582,67 @@ describe('Activities Integration Tests', () => {
       expect(found).toHaveLength(1)
       expect(found[0]!.source_ids?.toSorted()).toEqual([override!.id, synced].toSorted())
       expect(await byCategory('tempo')).toEqual([])
+    })
+  })
+
+  describe('same-type activities that touch (#981, #1488)', () => {
+    const day = [new Date('2026-11-06T00:00:00Z'), new Date('2026-11-07T00:00:00Z')] as const
+    const session = (
+      user: string,
+      source: Activity['source'],
+      startIso: string,
+      endIso: string,
+      title: string,
+    ) =>
+      insertActivity(user, {
+        activity_type: 'yoga',
+        end_time: new Date(endIso),
+        source,
+        start_time: new Date(startIso),
+        title,
+      })
+
+    test('two back-to-back sessions come back as two activities, neither superseded', async () => {
+      const user = getTestUser()
+      const first = await session(user, 'aurboda', '2026-11-06T21:00:00Z', '2026-11-06T21:30:00Z', 'Yoga A')
+      const second = await session(user, 'aurboda', '2026-11-06T21:30:00Z', '2026-11-06T22:00:00Z', 'Yoga B')
+
+      const activities = await getActivities(
+        user,
+        'yoga',
+        ...day,
+        undefined,
+        undefined,
+        await fetchCategoryMap(user),
+      )
+
+      expect(activities.map((a) => [a.id, a.title, a.source_ids])).toEqual([
+        [first, 'Yoga A', undefined],
+        [second, 'Yoga B', undefined],
+      ])
+      expect((await getActivityById(user, first))?.superseded_by).toBeUndefined()
+      expect((await getActivityById(user, second))?.superseded_by).toBeUndefined()
+      expect(
+        (await getOverlappingActivities(user, (await getActivityById(user, second))!)).map((a) => a.id),
+      ).toEqual([second])
+    })
+
+    test('touching rows from a fragmenting source still come back as one', async () => {
+      const user = getTestUser()
+      const first = await session(user, 'health_connect', '2026-11-06T21:00:00Z', '2026-11-06T21:30:00Z', 'A')
+      const second = await session(
+        user,
+        'health_connect',
+        '2026-11-06T21:30:00Z',
+        '2026-11-06T22:00:00Z',
+        'B',
+      )
+
+      const activities = await getActivities(user, 'yoga', ...day)
+
+      expect(activities).toHaveLength(1)
+      expect(activities[0].source_ids?.toSorted()).toEqual([first, second].toSorted())
+      expect(activities[0].end_time).toEqual(new Date('2026-11-06T22:00:00Z'))
     })
   })
 

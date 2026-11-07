@@ -495,7 +495,7 @@ describe('findMergedGroupForActivity', () => {
   })
 
   test('real-world scenario: 4 activities with transitive chaining (same-type)', () => {
-    // Simulates: Health Connect 10:27-11:37, Gravl 10:27-10:40, Polar 10:27-11:32, Manual 11:32-12:37
+    // Simulates: Health Connect 10:27-11:30, Gravl 10:27-10:40, Polar 10:27-11:32, Manual 11:31-12:37
     // HC overlaps Gravl, HC overlaps Polar, Polar overlaps Manual
     const activities = [
       makeActivity({
@@ -522,7 +522,7 @@ describe('findMergedGroupForActivity', () => {
         end_time: new Date('2024-01-15T12:37:00Z'),
         id: 'manual',
         source: 'manual',
-        start_time: new Date('2024-01-15T11:32:00Z'),
+        start_time: new Date('2024-01-15T11:31:00Z'),
         title: 'Extra sets',
       }),
     ]
