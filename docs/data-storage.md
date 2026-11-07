@@ -624,6 +624,23 @@ A sweep that throws records nothing, so it is retried. And the lazy path
 deliberately ignores the fingerprint: a schema error proves something is
 missing, which means the recorded fingerprint is wrong and must not be trusted.
 
+The one step allowed to fail without failing the sweep is the legacy
+`tags` → `activities` migration: its error is logged and the sweep goes on,
+because one row it cannot migrate would otherwise keep that user's fingerprint,
+and every later schema change, from ever landing (#1489). It first creates an
+`activity_type_definitions` row (category `other`) for every type a legacy tag
+migrates to, and leaves out tags whose text keeps no letter or digit.
+
+### One-offs outside the sweep
+
+A data fix that must reach databases whose fingerprint is already current
+cannot live in `migrateSchema`. After `migrateAllUsers`, the same post-listen
+task runs `rematerializeSupersededOnce` for each user: it re-materializes
+`superseded_by` for every day with activities, so marks from before #1490
+changed which touching same-type sessions merge are cleared (#1491). It records
+`rematerialize_superseded_v1` in `schema_migrations` only after a complete run,
+so a user whose run failed is logged and tried again at the next start.
+
 ## Migration Notes
 
 This schema replaces the previous ad-hoc table creation. Key changes:
