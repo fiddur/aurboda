@@ -1,4 +1,4 @@
-import { periodLabel, shiftPeriodKey } from '@aurboda/api-spec'
+import { comparePeriodKeys, periodLabel, shiftPeriodKey } from '@aurboda/api-spec'
 
 import type { PeriodDashboardState } from './usePeriodDashboard'
 
@@ -17,7 +17,7 @@ export const periodSteps = (
   value: string,
   latest: string,
 ): { next: string | null; previous: string | null } => ({
-  next: value >= latest ? null : shiftPeriodKey(value, 1),
+  next: comparePeriodKeys(value, latest) >= 0 ? null : shiftPeriodKey(value, 1),
   previous: shiftPeriodKey(value, -1),
 })
 

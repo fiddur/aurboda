@@ -97,7 +97,6 @@ const inclusiveRange = (window: ResolveWindow): Range => ({
   start: window.start,
 })
 
-/** The option window when there is one, else the widget's own lookback ending now. */
 const windowOf = (options: ResolveOptions, lookbackDays: number): Range =>
   options.window ? inclusiveRange(options.window) : lookbackRange(lookbackDays)
 
@@ -617,10 +616,6 @@ export interface PeriodDashboardData {
   window: PeriodWindow
 }
 
-/**
- * Resolves a period dashboard over one finished calendar period in the owner's timezone, the latest
- * finished one when `periodKey` is absent, with the previous period for comparison.
- */
 export const resolvePeriodDashboard = async (
   user: string,
   config: DashboardConfig,
