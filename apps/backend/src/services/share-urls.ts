@@ -20,6 +20,13 @@ export const buildBlogUrl = (webHost: string, username: string): string =>
 export const buildArticlesAtomUrl = (apiBaseUrl: string, username: string): string =>
   joinUrl(apiBaseUrl, `public/${encodeURIComponent(username)}/articles.atom`)
 
+/** Absolute URL of the instance's official feed, its blog. */
+export const buildOfficialFeedUrl = (webHost: string): string => joinUrl(webHost, 'blog')
+
+/** Absolute URL of the official feed's Atom document (an API endpoint). */
+export const buildOfficialFeedAtomUrl = (apiBaseUrl: string): string =>
+  joinUrl(apiBaseUrl, 'public/official-feed.atom')
+
 /** Absolute URL of a single feed post's permalink page. */
 export const buildPostUrl = (webHost: string, username: string, postId: string): string =>
   joinUrl(webHost, `u/${encodeURIComponent(username)}/posts/${encodeURIComponent(postId)}`)

@@ -1,14 +1,12 @@
 import { useEffect } from 'preact/hooks'
 
-import { blogPath } from '../state/api/blogUrls'
-import { blogUsername, ensureStatusLoaded } from '../state/auth'
+import { officialFeedPath } from '../state/api/blogUrls'
+import { ensureStatusLoaded, officialFeedEnabled } from '../state/auth'
 
 export function Footer() {
   useEffect(() => {
     ensureStatusLoaded()
   }, [])
-
-  const blogUser = blogUsername.value
 
   return (
     <footer class="site-footer">
@@ -17,10 +15,10 @@ export function Footer() {
         <a href="http://www.gnu.org/licenses/agpl-3.0.html">GNU AGPL-3.0</a> · <a href="/privacy">Privacy</a>{' '}
         · <a href="/terms">Terms</a> ·{' '}
         <a href="https://github.com/fiddur/aurboda/discussions">Feedback &amp; questions</a>
-        {blogUser && (
+        {officialFeedEnabled.value && (
           <>
             {' · '}
-            <a href={blogPath(blogUser)}>Blog</a>
+            <a href={officialFeedPath}>Blog</a>
           </>
         )}
       </p>

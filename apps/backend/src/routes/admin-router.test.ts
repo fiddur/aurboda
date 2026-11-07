@@ -113,7 +113,7 @@ const buildApp = (adminMiddleware: RequestHandler = pass) => {
       {} as InvitationAuth,
       'https://web.example.test',
       gravlRedirectUri('https://api.example.test/api'),
-      async (username) => username === 'fiddur',
+      async (username) => username === 'fiddur' || username === 'alice',
       null,
       deleteAccount,
       accountPlans,
@@ -136,32 +136,76 @@ describe('admin settings', () => {
   })
 })
 
-describe('instance blog setting', () => {
-  test('GET returns null when no blog user is set', async () => {
+describe('official feed setting', () => {
+  test('GET returns it off when nothing is set', async () => {
     const res = await supertest(buildApp()).get('/admin/settings')
-    expect(res.body.blog_username).toBeNull()
+    expect(res.body.official_feed).toEqual({ tags: [], users: [] })
+    expect(res.body).not.toHaveProperty('blog_username')
   })
 
-  test('PATCH stores an existing user as the blog user', async () => {
+  test('GET reads a legacy blog user as a one-user feed', async () => {
+    vi.mocked(centralDb.getServerSetting).mockImplementation(async (key) =>
+      key === 'blog_username' ? 'fiddur' : null,
+    )
+    try {
+      const res = await supertest(buildApp()).get('/admin/settings')
+      expect(res.body.official_feed).toEqual({ tags: [], users: ['fiddur'] })
+    } finally {
+      vi.mocked(centralDb.getServerSetting).mockReset().mockResolvedValue(null)
+    }
+  })
+
+  test('PATCH stores existing users and normalised tags, and retires blog_username', async () => {
+    vi.mocked(centralDb.setServerSetting).mockClear()
+    const res = await supertest(buildApp())
+      .patch('/admin/settings')
+      .send({ official_feed: { tags: ['#Aurboda', 'qs', 'aurboda'], users: ['fiddur', 'alice', 'fiddur'] } })
+    expect(res.status).toBe(200)
+    expect(centralDb.setServerSetting).toHaveBeenCalledWith('official_feed', {
+      tags: ['aurboda', 'qs'],
+      users: ['fiddur', 'alice'],
+    })
+    expect(centralDb.setServerSetting).toHaveBeenCalledWith('blog_username', '')
+  })
+
+  test('PATCH rejects unknown users with 400, naming each, and stores nothing', async () => {
+    vi.mocked(centralDb.setServerSetting).mockClear()
+    const res = await supertest(buildApp())
+      .patch('/admin/settings')
+      .send({ official_feed: { tags: [], users: ['fiddur', 'ghost', 'nobody'] } })
+    expect(res.status).toBe(400)
+    expect(res.body.error).toContain('"ghost"')
+    expect(res.body.error).toContain('"nobody"')
+    expect(centralDb.setServerSetting).not.toHaveBeenCalled()
+  })
+
+  test('PATCH rejects an invalid tag or more than 20 users', async () => {
+    const badTag = await supertest(buildApp())
+      .patch('/admin/settings')
+      .send({ official_feed: { tags: ['not a tag'], users: ['fiddur'] } })
+    expect(badTag.status).toBe(400)
+    const tooMany = await supertest(buildApp())
+      .patch('/admin/settings')
+      .send({ official_feed: { tags: [], users: Array.from({ length: 21 }, () => 'fiddur') } })
+    expect(tooMany.status).toBe(400)
+  })
+
+  test('PATCH with the deprecated blog_username sets a one-user feed, null turns it off', async () => {
     vi.mocked(centralDb.setServerSetting).mockClear()
     const res = await supertest(buildApp()).patch('/admin/settings').send({ blog_username: 'fiddur' })
     expect(res.status).toBe(200)
-    expect(centralDb.setServerSetting).toHaveBeenCalledWith('blog_username', 'fiddur')
+    expect(centralDb.setServerSetting).toHaveBeenCalledWith('official_feed', { tags: [], users: ['fiddur'] })
+    vi.mocked(centralDb.setServerSetting).mockClear()
+    await supertest(buildApp()).patch('/admin/settings').send({ blog_username: null })
+    expect(centralDb.setServerSetting).toHaveBeenCalledWith('official_feed', { tags: [], users: [] })
   })
 
-  test('PATCH rejects an unknown user with 400 and stores nothing', async () => {
+  test('PATCH with the deprecated blog_username rejects an unknown user', async () => {
     vi.mocked(centralDb.setServerSetting).mockClear()
     const res = await supertest(buildApp()).patch('/admin/settings').send({ blog_username: 'ghost' })
     expect(res.status).toBe(400)
     expect(res.body.error).toContain('ghost')
     expect(centralDb.setServerSetting).not.toHaveBeenCalled()
-  })
-
-  test('PATCH with null clears the setting', async () => {
-    vi.mocked(centralDb.setServerSetting).mockClear()
-    const res = await supertest(buildApp()).patch('/admin/settings').send({ blog_username: null })
-    expect(res.status).toBe(200)
-    expect(centralDb.setServerSetting).toHaveBeenCalledWith('blog_username', '')
   })
 })
 

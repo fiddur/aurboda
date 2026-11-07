@@ -2,7 +2,14 @@ import { describe, expect, test } from 'vitest'
 
 import { shouldShowGuestBar, shouldShowNav, shouldShowPlanBanner, shouldShowSiteFooter } from './shell'
 
-const GUEST_PAGES = ['/', '/u/fiddur', '/u/fiddur/a3GVcs14D', '/u/fiddur/posts/abc', '/challenges/join']
+const GUEST_PAGES = [
+  '/',
+  '/u/fiddur',
+  '/u/fiddur/a3GVcs14D',
+  '/u/fiddur/posts/abc',
+  '/challenges/join',
+  '/blog',
+]
 
 describe('shouldShowNav', () => {
   test('shows nav on app, login and legal routes regardless of auth', () => {
@@ -62,7 +69,15 @@ describe('shouldShowPlanBanner', () => {
   })
 
   test('hides on public share pages and the login and legal pages', () => {
-    for (const path of ['/u/fiddur', '/u/fiddur/a3GVcs14D', '/login', '/signup', '/privacy', '/terms']) {
+    for (const path of [
+      '/u/fiddur',
+      '/u/fiddur/a3GVcs14D',
+      '/blog',
+      '/login',
+      '/signup',
+      '/privacy',
+      '/terms',
+    ]) {
       expect(shouldShowPlanBanner(path, true)).toBe(false)
     }
   })

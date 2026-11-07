@@ -1,6 +1,14 @@
 import { describe, expect, test } from 'vitest'
 
-import { type AtomArticleSource, articleEntryHtml, buildArticlesAtom } from './article-atom.ts'
+import {
+  type AtomArticleSource,
+  articleEntryHtml,
+  buildArticlesAtom,
+  buildOfficialFeedAtom,
+  officialFeedTitle,
+  postEntryHtml,
+  postEntryTitle,
+} from './article-atom.ts'
 
 const source = (overrides: Partial<AtomArticleSource> = {}): AtomArticleSource => ({
   article: {
@@ -102,5 +110,87 @@ describe('buildArticlesAtom', () => {
     })
     expect(xml).toContain('<updated>2030-01-01T00:00:00.000Z</updated>')
     expect(xml).not.toContain('<entry>')
+  })
+})
+
+describe('postEntryTitle', () => {
+  test('names a post by its article, activity, exercise or challenge name', () => {
+    expect(postEntryTitle({ article: { blocks: [], title: 'Sleep & HRV' }, kind: 'article' })).toBe(
+      'Sleep & HRV',
+    )
+    expect(postEntryTitle({ activity_title: 'Morning run', kind: 'activity', message: 'Felt good' })).toBe(
+      'Morning run',
+    )
+    expect(
+      postEntryTitle({ exercise: { name: 'Bench press' } as never, kind: 'exercise', message: 'PR!' }),
+    ).toBe('Bench press')
+    expect(
+      postEntryTitle({
+        challenge: { name: 'Step-tember', url: 'https://qs.example/u/fiddur/c' },
+        kind: 'challenge',
+      }),
+    ).toBe('Step-tember')
+  })
+
+  test('falls back to the start of the text, cut at a word', () => {
+    expect(postEntryTitle({ kind: 'activity', message: 'Short note' })).toBe('Short note')
+    const long = `${'word '.repeat(30)}end`
+    const title = postEntryTitle({ kind: 'activity', message: long })
+    expect(title.length).toBeLessThanOrEqual(80)
+    expect(title.endsWith('word…')).toBe(true)
+    expect(postEntryTitle({ content: '<p>Ran <strong>5 km</strong> &amp; more</p>', kind: 'activity' })).toBe(
+      'Ran 5 km & more',
+    )
+    expect(postEntryTitle({ kind: 'activity' })).toBe('Post')
+  })
+})
+
+describe('postEntryHtml', () => {
+  test('uses the federated content, a challenge invitation, or the message as prose', () => {
+    expect(postEntryHtml({ content: '<p>Ran 5 km</p>', kind: 'activity', message: 'ignored' })).toBe(
+      '<p>Ran 5 km</p>',
+    )
+    const challenge = postEntryHtml({
+      challenge: { name: 'Step-tember', url: 'https://qs.example/u/fiddur/c' },
+      kind: 'challenge',
+      message: 'Join **us**',
+    })
+    expect(challenge).toContain('<strong>Step-tember</strong>')
+    expect(challenge).toContain('<strong>us</strong>')
+    expect(challenge).toContain('href="https://qs.example/u/fiddur/c"')
+    expect(postEntryHtml({ kind: 'exercise', message: 'Hello *there*' })).toContain('<em>there</em>')
+    expect(postEntryHtml({ kind: 'exercise' })).toBe('')
+  })
+})
+
+describe('buildOfficialFeedAtom', () => {
+  test('titles the feed by the instance host and names each entry its own author and permalink', () => {
+    const xml = buildOfficialFeedAtom({
+      apiBaseUrl: 'https://qs.example/api',
+      entries: [
+        {
+          created_at: new Date('2026-07-08T10:00:00Z'),
+          html: '<p>Hi</p>',
+          id: 'abc',
+          title: 'Morning run',
+          updated_at: new Date('2026-07-09T10:00:00Z'),
+          username: 'alice',
+        },
+      ],
+      now: new Date('2030-01-01T00:00:00Z'),
+      webHost: 'https://qs.example',
+    })
+    expect(xml).toContain('<id>https://qs.example/blog</id>')
+    expect(xml).toContain('<title type="text">qs.example blog</title>')
+    expect(xml).toContain(
+      '<link rel="self" type="application/atom+xml" href="https://qs.example/api/public/official-feed.atom"/>',
+    )
+    expect(xml).toContain('<id>https://qs.example/u/alice/posts/abc</id>')
+    expect(xml).toContain('    <author><name>alice</name><uri>https://qs.example/u/alice</uri></author>')
+    expect(xml).not.toContain('\n  <author>')
+  })
+
+  test('falls back to a plain title when the web host is not a URL', () => {
+    expect(officialFeedTitle('not a url')).toBe('Blog')
   })
 })

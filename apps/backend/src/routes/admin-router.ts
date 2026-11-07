@@ -26,6 +26,11 @@ import type { OuraWebhookManager } from '../services/oura-webhook-manager.ts'
 
 import { accountDeletionStatus } from '../services/account-deletion.ts'
 import { readBillingSettings } from '../services/account-plan.ts'
+import {
+  normalizeOfficialFeedSetting,
+  readOfficialFeedSetting,
+  writeOfficialFeedSetting,
+} from '../services/official-feed.ts'
 import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
@@ -58,7 +63,7 @@ export const createAdminRouter = (
       sentryDsn,
       gravlClientId,
       gravlClientSecret,
-      blogUsername,
+      officialFeed,
       billing,
     ] = await Promise.all([
       centralDb.getSignupMode(),
@@ -74,14 +79,13 @@ export const createAdminRouter = (
       centralDb.getServerSetting('sentry_dsn'),
       centralDb.getServerSetting('gravl_client_id'),
       centralDb.getServerSetting('gravl_client_secret'),
-      centralDb.getServerSetting('blog_username'),
+      readOfficialFeedSetting(centralDb),
       readBillingSettings(centralDb),
     ])
     return {
       admin_count: adminCount,
       audit_log_retention_days: auditLogRetentionDays,
       billing_enabled: billing.enabled,
-      blog_username: blogUsername || null,
       grace_days: billing.grace_days,
       gravl_client_id_set: !!gravlClientId,
       gravl_client_secret_set: !!gravlClientSecret,
@@ -91,6 +95,7 @@ export const createAdminRouter = (
       oura_client_secret_set: !!ouraClientSecret,
       oura_webhook_available: ouraWebhookAvailable,
       oura_webhook_enabled: ouraWebhookEnabled,
+      official_feed: officialFeed,
       payment_url: billing.payment_url,
       price_text: billing.price_text,
       // DSN is returned in full (not `_set` boolean like other secrets):
@@ -131,6 +136,7 @@ export const createAdminRouter = (
         oura_client_id,
         oura_client_secret,
         oura_webhook_enabled,
+        official_feed,
         payment_url,
         price_text,
         sentry_dsn,
@@ -139,11 +145,20 @@ export const createAdminRouter = (
         strava_client_secret,
         trial_days,
       } = req.body
-      if (blog_username != null && !(await userExists(blog_username))) {
-        return res.status(400).json({ error: `No user named "${blog_username}"`, success: false })
-      }
-      if (blog_username !== undefined) {
-        await centralDb.setServerSetting('blog_username', blog_username ?? '')
+      const legacyFeed =
+        blog_username === undefined
+          ? undefined
+          : { tags: [], users: blog_username == null ? [] : [blog_username] }
+      const feedInput = official_feed ?? legacyFeed
+      if (feedInput) {
+        const feed = normalizeOfficialFeedSetting(feedInput)
+        const exists = await Promise.all(feed.users.map(userExists))
+        const unknown = feed.users.filter((_, i) => !exists[i])
+        if (unknown.length > 0) {
+          const names = unknown.map((user) => `"${user}"`).join(', ')
+          return res.status(400).json({ error: `No user named ${names}`, success: false })
+        }
+        await writeOfficialFeedSetting(centralDb, feed)
       }
       if (signup_mode) {
         await centralDb.setSignupMode(signup_mode)

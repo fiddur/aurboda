@@ -85,21 +85,31 @@ beforeEach(() => {
 })
 
 describe('GET /status', () => {
-  test('names the instance blog user when the admin set one', async () => {
+  test('says the official feed is on when it lists a user', async () => {
+    const response = await supertest(
+      buildApp({ settings: { official_feed: { tags: ['aurboda'], users: ['ghost', 'fiddur'] } } }),
+    ).get('/status')
+    expect(response.status).toBe(200)
+    expect(response.body.official_feed).toBe(true)
+    expect(response.body).not.toHaveProperty('blog_username')
+  })
+
+  test('reads a legacy blog user as an official feed', async () => {
     const response = await supertest(buildApp({ blogUsername: 'fiddur' })).get('/status')
-    expect(response.status).toBe(200)
-    expect(response.body.blog_username).toBe('fiddur')
+    expect(response.body.official_feed).toBe(true)
   })
 
-  test('says null when no blog is configured', async () => {
+  test('says off when no official feed is configured', async () => {
     const response = await supertest(buildApp()).get('/status')
-    expect(response.body.blog_username).toBeNull()
+    expect(response.body.official_feed).toBe(false)
   })
 
-  test('says null when the blog user has been deleted since it was set', async () => {
-    const response = await supertest(buildApp({ blogUsername: 'fiddur', users: [] })).get('/status')
+  test('says off when every listed user has been deleted since', async () => {
+    const response = await supertest(
+      buildApp({ settings: { official_feed: { tags: [], users: ['fiddur'] } }, users: [] }),
+    ).get('/status')
     expect(response.status).toBe(200)
-    expect(response.body.blog_username).toBeNull()
+    expect(response.body.official_feed).toBe(false)
   })
 })
 

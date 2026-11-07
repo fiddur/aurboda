@@ -1,10 +1,10 @@
 /**
  * Pages a logged-out visitor can land on from outside: the welcome page and the public
- * sharing pages (`/u/...`: a profile, post, article, shared dashboard or challenge, and
- * `/challenges/join`). They get the guest bar instead of the app navigation.
+ * sharing pages (`/u/...`: a profile, post, article, shared dashboard or challenge,
+ * `/challenges/join`, and the instance blog at `/blog`). They get the guest bar instead of the app navigation.
  */
 const isGuestPage = (path: string): boolean =>
-  path === '/' || path.startsWith('/u/') || path === '/challenges/join'
+  path === '/' || path.startsWith('/u/') || path === '/challenges/join' || path === '/blog'
 
 /** Whether to render the guest bar: a logged-out visitor on the welcome page or a public page. */
 export function shouldShowGuestBar(path: string, isLoggedIn: boolean): boolean {
@@ -29,5 +29,5 @@ const PUBLIC_PAGES = ['/login', '/signup', '/privacy', '/terms']
 
 /** The plan banner is for the signed-in app, not public share pages or the login and legal pages. */
 export function shouldShowPlanBanner(path: string, isLoggedIn: boolean): boolean {
-  return isLoggedIn && !path.startsWith('/u/') && !PUBLIC_PAGES.includes(path)
+  return isLoggedIn && !path.startsWith('/u/') && path !== '/blog' && !PUBLIC_PAGES.includes(path)
 }

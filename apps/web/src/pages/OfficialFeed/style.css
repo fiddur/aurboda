@@ -1,0 +1,19 @@
+.official-feed-header h1 {
+  margin: 0;
+}
+
+.official-feed-host {
+  color: var(--color-text-muted);
+  font-weight: normal;
+  font-size: 0.7em;
+  overflow-wrap: anywhere;
+}
+
+.official-feed-summary {
+  margin: 0.25rem 0 0;
+  color: var(--color-text-muted);
+}
+
+.official-feed-links {
+  margin: 0.25rem 0 0;
+}

@@ -4,6 +4,7 @@ import {
   autoTagsFor,
   formatTagsInput,
   invalidTagTokens,
+  parseTagFilterInput,
   parseTagsInput,
   profileTagPath,
   tagFilterFromQuery,
@@ -18,6 +19,12 @@ describe('tags input', () => {
   test('drops and reports what is not a tag', () => {
     expect(parseTagsInput('#ok #not-ok 42')).toEqual(['ok'])
     expect(invalidTagTokens('#ok #not-ok 42')).toEqual(['#not-ok', '42'])
+  })
+
+  test('parses a filter of more tags than a post may carry', () => {
+    const many = Array.from({ length: 15 }, (_, i) => `#tag${i}`).join(' ')
+    expect(parseTagFilterInput(many)).toHaveLength(15)
+    expect(parseTagFilterInput('#A a #not-ok')).toEqual(['a'])
   })
 
   test('formats tags with # for the field', () => {
