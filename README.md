@@ -292,6 +292,8 @@ pnpm fix    # Format and lint
 pnpm check  # TypeScript checks
 ```
 
+The web app's colours are tokens on `:root`; see [docs/web-theme.md](docs/web-theme.md).
+
 Backend requires PostgreSQL with PostGIS. Configure connection in `.env`:
 
 ```

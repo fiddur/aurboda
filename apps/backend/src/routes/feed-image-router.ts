@@ -250,7 +250,7 @@ export const resolveArticleBlock = async (
 }
 
 /** Article-chart line colour, matching the web inline render (`ArticleChartBlock`). */
-const ARTICLE_CHART_COLOR = '#673ab8'
+const ARTICLE_CHART_COLOR = '#2b9ea7'
 
 /**
  * Render one resolved article block to its image bytes (PNG or the crisp SVG),
@@ -386,7 +386,7 @@ export const resolveExercisePost = (
   token?: string,
 ): Promise<FeedPostRecord | null> => resolveChartPost(deps, 'exercise', username, postId, token)
 
-const TREND_COLOR = '#8b5cf6'
+const TREND_COLOR = '#2b9ea7'
 
 export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
   const router = Router()

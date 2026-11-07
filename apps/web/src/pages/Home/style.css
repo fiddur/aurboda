@@ -106,7 +106,7 @@
 
 .home .data-sources-table th {
   font-weight: 600;
-  border-bottom: 2px solid #673ab8;
+  border-bottom: 2px solid var(--color-accent);
 }
 
 .home .data-sources-table td:first-child {
@@ -143,18 +143,18 @@
 }
 
 .home a {
-  color: #673ab8;
+  color: var(--color-accent);
   text-decoration: underline;
 }
 
 .home a:hover {
-  color: #8b5cf6;
+  color: var(--color-accent-hover);
 }
 
 .home h2 {
   font-size: 1.5rem;
   margin-bottom: 0.75rem;
-  border-bottom: 2px solid #673ab8;
+  border-bottom: 2px solid var(--color-accent);
   padding-bottom: 0.25rem;
 }
 
@@ -199,8 +199,8 @@
 }
 
 .home .signup-callout-button {
-  background: #673ab8;
-  color: #fff;
+  background: var(--color-cta);
+  color: var(--color-cta-text);
   padding: 0.5rem 1rem;
   border-radius: 6px;
   font-weight: 600;
@@ -209,7 +209,7 @@
 }
 
 .home .signup-callout-button:hover {
-  background: #5a2fa3;
+  background: var(--color-cta-hover);
 }
 
 .home .quickstart h3 {
@@ -239,10 +239,10 @@
 }
 
 .home .user-actions {
-  background: #f5f3ff;
+  background: var(--color-accent-soft);
   padding: 1.5rem;
   border-radius: 0.5rem;
-  border: 1px solid #673ab8;
+  border: 1px solid var(--color-accent);
 }
 
 .home .user-actions a {
@@ -288,10 +288,5 @@
 
   .home .signup-callout {
     border-color: #444;
-  }
-
-  .home .user-actions {
-    background: #1a1a2e;
-    border-color: #8b5cf6;
   }
 }

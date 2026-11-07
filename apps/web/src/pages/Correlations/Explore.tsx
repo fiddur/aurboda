@@ -17,6 +17,7 @@ import {
   fetchCorrelationSelectors,
   fetchGenericCorrelation,
 } from '../../state/api'
+import { CHART_PRIMARY } from '../../theme'
 import { describeSelectorAxis, fiveNumberSummary, linearRegression } from './exploreCharts'
 import {
   describeCorrelationStrength,
@@ -180,7 +181,7 @@ function RrBars({ perLag }: { perLag: LagExposureResultData[] }) {
             {l.ci_low !== null && l.ci_high !== null && (
               <line x1={cx} y1={sy(l.ci_low)} x2={cx} y2={sy(l.ci_high)} stroke="#555" />
             )}
-            <circle cx={cx} cy={sy(l.relative_risk!)} r={4} fill={sig ? '#2e7d32' : '#673ab8'} />
+            <circle cx={cx} cy={sy(l.relative_risk!)} r={4} fill={sig ? '#2e7d32' : CHART_PRIMARY} />
             <text x={cx} y={h - 10} text-anchor="middle" class="axis-label">
               {l.lag}
             </text>
@@ -324,7 +325,7 @@ function ScatterPlot({ data }: { data: ContinuousCorrelationData }) {
         stroke="#ccc"
       />
       {points.map((p) => (
-        <circle cx={sx(p.trigger)} cy={sy(p.outcome)} r={3} fill="#673ab8" opacity={0.45} />
+        <circle cx={sx(p.trigger)} cy={sy(p.outcome)} r={3} fill={CHART_PRIMARY} opacity={0.45} />
       ))}
       {reg && (
         <line
@@ -366,7 +367,7 @@ function BoxPlot({ data }: { data: ContinuousCorrelationData }) {
       x: CHART_W * 0.34,
     },
     {
-      color: '#673ab8',
+      color: CHART_PRIMARY,
       label: `Present (n=${gc?.n_with ?? withVals.length})`,
       s: present,
       x: CHART_W * 0.68,

@@ -29,8 +29,8 @@
 .nav-today {
   font-size: 0.75rem;
   padding: 0.2rem 0.5rem;
-  color: #673ab8;
-  border-color: #c4b5fd;
+  color: var(--color-accent);
+  border-color: var(--color-accent-border);
 }
 
 .nav-date-label {

@@ -315,7 +315,7 @@ describe('renderArticleBlockImage', () => {
     const png = await renderArticleBlockImage(d, 'fiddur', chartBlock, 'png')
     expect(png).toEqual(Buffer.from('chart-png'))
     expect(d.getArticleChartSeries).toHaveBeenCalledWith('fiddur', 'heart_rate', START, END, '1d')
-    expect(d.renderChart).toHaveBeenCalledWith(series, { color: '#673ab8', label: 'Heart Rate' })
+    expect(d.renderChart).toHaveBeenCalledWith(series, { color: '#2b9ea7', label: 'Heart Rate' })
   })
 
   test('renders a chart block as SVG bytes', async () => {
@@ -679,7 +679,7 @@ describe('exercise trend images (#1398)', () => {
     expect((await supertest(app).get(png)).status).toBe(200)
     expect(getExerciseTrend).toHaveBeenCalledTimes(1)
     expect(renderChart).toHaveBeenCalledExactlyOnceWith(trend.series, {
-      color: '#8b5cf6',
+      color: '#2b9ea7',
       label: 'Best e1RM · Bench Press',
     })
   })

@@ -131,8 +131,8 @@
 }
 
 .challenge-row-badge-hosted {
-  color: #6d28d9;
-  background: #ede9fe;
+  color: var(--color-accent-hover);
+  background: var(--color-accent-soft);
 }
 
 .challenge-row-badge-joined {
@@ -193,7 +193,7 @@
 }
 
 .challenge-row-upload:focus-within {
-  outline: 2px solid #8b5cf6;
+  outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
 
@@ -423,11 +423,6 @@
   .challenge-group-count {
     color: #6ee7b7;
     background: #064e3b;
-  }
-
-  .challenge-row-badge-hosted {
-    color: #c4b5fd;
-    background: #3b2a63;
   }
 
   .challenge-row-badge-joined {

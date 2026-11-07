@@ -15,8 +15,8 @@
 }
 
 .metric-picker-input:focus {
-  border-color: #8b5cf6;
-  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 10%, transparent);
   outline: none;
 }
 
@@ -62,7 +62,7 @@
 
 .metric-picker-option:hover,
 .metric-picker-option.highlighted {
-  background: #f3f0ff;
+  background: var(--color-accent-soft);
 }
 
 .metric-picker-option.selected {

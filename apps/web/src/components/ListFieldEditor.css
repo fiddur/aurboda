@@ -86,14 +86,14 @@
   border: 1px dashed #d1d5db;
   border-radius: 4px;
   background: transparent;
-  color: #673ab8;
+  color: var(--color-accent);
   cursor: pointer;
   font-size: 0.85rem;
   padding: 0.3rem 0.75rem;
 }
 
 .list-field-editor-add:hover {
-  border-color: #673ab8;
+  border-color: var(--color-accent);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -118,10 +118,5 @@
 
   .list-field-editor-add {
     border-color: #4b5563;
-    color: #a78bfa;
-  }
-
-  .list-field-editor-add:hover {
-    border-color: #a78bfa;
   }
 }

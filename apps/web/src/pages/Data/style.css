@@ -30,11 +30,11 @@
   justify-content: space-between;
   gap: 0.5rem;
   padding: 0.3rem 0.625rem;
-  background: #ede9fe;
-  border: 1px solid #c4b5fd;
+  background: var(--color-accent-soft);
+  border: 1px solid var(--color-accent-border);
   border-radius: 20px;
   font-size: 0.8rem;
-  color: #5b21b6;
+  color: var(--color-accent-hover);
 }
 
 .data-time-filter button {
@@ -43,13 +43,13 @@
   cursor: pointer;
   font-size: 1rem;
   line-height: 1;
-  color: #7c3aed;
+  color: var(--color-accent);
   padding: 0 0.15rem;
   border-radius: 50%;
 }
 
 .data-time-filter button:hover {
-  background: #ddd6fe;
+  background: var(--color-accent-border);
 }
 
 .data-type-filters {
@@ -222,19 +222,5 @@
 
   .data-item-detail {
     color: #9ca3af;
-  }
-
-  .data-time-filter {
-    background: #2e1065;
-    border-color: #6d28d9;
-    color: #c4b5fd;
-  }
-
-  .data-time-filter button {
-    color: #a78bfa;
-  }
-
-  .data-time-filter button:hover {
-    background: #4c1d95;
   }
 }

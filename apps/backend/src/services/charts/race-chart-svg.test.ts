@@ -89,7 +89,7 @@ describe('raceLinesFromStandings', () => {
       ]),
     )
     expect(lines.map((l) => l.name)).toEqual(['alice', 'bob'])
-    expect(lines.map((l) => l.color)).toEqual(['#8b5cf6', '#10b981'])
+    expect(lines.map((l) => l.color)).toEqual(['#2b9ea7', '#10b981'])
     expect(lines[0].points).toEqual([
       [new Date(START), 0],
       [new Date('2026-11-02T00:00:00.000Z'), 10],
@@ -129,9 +129,9 @@ describe('raceLinesFromStandings', () => {
   })
 
   test('colours past the palette go lighter, like the web', () => {
-    expect(raceMemberColor(0)).toBe('#8b5cf6')
-    expect(raceMemberColor(8)).toBe('#b495f9')
-    expect(raceMemberColor(16)).toBe('#8b5cf6')
+    expect(raceMemberColor(0)).toBe('#2b9ea7')
+    expect(raceMemberColor(8)).toBe('#75c0c6')
+    expect(raceMemberColor(16)).toBe('#2b9ea7')
   })
 })
 

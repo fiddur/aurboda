@@ -3,6 +3,7 @@ import type { SharedExerciseData } from '@aurboda/api-spec'
 import { activityMeasureLabels } from '@aurboda/api-spec'
 import { useMemo } from 'preact/hooks'
 
+import { CHART_PRIMARY } from '../../theme'
 import { BarChart } from './BarChart'
 import { exerciseLineTrend } from './exercise-chart'
 import { TrendLineChart } from './TrendLineChart'
@@ -26,7 +27,7 @@ export function ExerciseChart({
       <>
         <BarChart
           data={perWeek.buckets}
-          color="#8b5cf6"
+          color={CHART_PRIMARY}
           height={height}
           bucketSize="1w"
           rangeStart={perWeek.start}
@@ -44,7 +45,7 @@ export function ExerciseChart({
   if (!trend) return null
   return (
     <>
-      <TrendLineChart data={trend.history} color="#8b5cf6" height={height} />
+      <TrendLineChart data={trend.history} color={CHART_PRIMARY} height={height} />
       <p class="exercise-chart-caption">
         {activityMeasureLabels[trend.measure]}, decaying with a {trend.half_life_days}-day half-life between
         sessions.

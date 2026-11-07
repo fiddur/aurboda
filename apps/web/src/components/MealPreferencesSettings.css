@@ -28,8 +28,8 @@
   gap: 0.25rem;
   padding: 0.25rem 0.5rem;
   font-size: 0.8rem;
-  background: #ede9f0;
-  color: #673ab8;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
   border-radius: 12px;
   font-weight: 500;
 }
@@ -37,7 +37,7 @@
 .chip-remove {
   background: none;
   border: none;
-  color: #673ab8;
+  color: var(--color-accent);
   cursor: pointer;
   font-size: 1rem;
   line-height: 1;
@@ -148,15 +148,6 @@
 
   .subsection-desc {
     color: #9ca3af;
-  }
-
-  .area-chip {
-    background: #312e81;
-    color: #c4b5fd;
-  }
-
-  .chip-remove {
-    color: #c4b5fd;
   }
 
   .add-row input[type='text'],

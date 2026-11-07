@@ -130,7 +130,7 @@
 .connect-button {
   padding: 0.5rem 1rem;
   font-size: 0.875rem;
-  background: #673ab8;
+  background: var(--color-primary);
   color: white;
   border: none;
   border-radius: 4px;
@@ -138,7 +138,7 @@
 }
 
 .connect-button:hover:not(:disabled) {
-  background: #5e35b1;
+  background: var(--color-primary-hover);
 }
 
 .connect-button:disabled {
@@ -403,8 +403,8 @@
 
 .custom-metric-input:focus {
   outline: none;
-  border-color: #673ab8;
-  box-shadow: 0 0 0 2px rgba(103, 58, 184, 0.2);
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
 }
 
 .custom-metric-add-form {
@@ -447,8 +447,7 @@
   }
 
   .custom-metric-input:focus {
-    border-color: #8b5cf6;
-    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.3);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 30%, transparent);
   }
 
   .section-description,
@@ -549,7 +548,7 @@
   display: inline-block;
   padding: 0.4rem 0.9rem;
   border-radius: 6px;
-  background: #673ab8;
+  background: var(--color-primary);
   color: #fff;
   cursor: pointer;
   font-size: 0.9rem;
@@ -570,7 +569,7 @@
 }
 
 .avatar-settings__upload:focus-within {
-  outline: 2px solid #8b5cf6;
+  outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
 
