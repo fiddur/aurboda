@@ -187,6 +187,31 @@
   margin-top: 0.5rem;
 }
 
+.home .signup-callout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  margin: 0 0 2rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+}
+
+.home .signup-callout-button {
+  background: #673ab8;
+  color: #fff;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.home .signup-callout-button:hover {
+  background: #5a2fa3;
+}
+
 .home .quickstart h3 {
   margin-top: 1.25rem;
 }
@@ -259,6 +284,10 @@
 
   .home .quickstart code {
     background: #2d2d2d;
+  }
+
+  .home .signup-callout {
+    border-color: #444;
   }
 
   .home .user-actions {
