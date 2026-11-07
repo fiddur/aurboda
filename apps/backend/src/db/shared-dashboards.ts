@@ -7,7 +7,8 @@ import { randomBytes } from 'node:crypto'
  *
  * Lives in the user's own database. The `slug` is a url-safe random token that
  * acts as the capability for unlisted shares; `is_public` only governs whether
- * a share is listed on the public profile.
+ * a share is listed on the public profile, and `is_private` hides it from every
+ * public path (the `getPublic…`/`listPublic…` functions).
  */
 import { query } from './connection.ts'
 import { publicSlugIsFree } from './public-slugs.ts'
@@ -18,6 +19,7 @@ export interface SharedDashboardRecord {
   name: string
   config: DashboardConfig
   is_public: boolean
+  is_private: boolean
   created_at: Date
   updated_at: Date
 }
@@ -26,15 +28,17 @@ export interface SharedDashboardInput {
   name: string
   config: DashboardConfig
   is_public: boolean
+  is_private: boolean
 }
 
 export interface SharedDashboardPatch {
   name?: string
   config?: DashboardConfig
   is_public?: boolean
+  is_private?: boolean
 }
 
-const COLUMNS = 'id, slug, name, config, is_public, created_at, updated_at'
+const COLUMNS = 'id, slug, name, config, is_public, is_private, created_at, updated_at'
 
 interface SharedDashboardRow {
   id: string
@@ -42,6 +46,7 @@ interface SharedDashboardRow {
   name: string
   config: DashboardConfig
   is_public: boolean
+  is_private: boolean
   created_at: Date
   updated_at: Date
 }
@@ -50,6 +55,7 @@ const mapRow = (row: SharedDashboardRow): SharedDashboardRecord => ({
   config: row.config,
   created_at: row.created_at,
   id: row.id,
+  is_private: row.is_private,
   is_public: row.is_public,
   name: row.name,
   slug: row.slug,
@@ -73,7 +79,7 @@ export const listSharedDashboards = async (user: string): Promise<SharedDashboar
 export const listPublicSharedDashboards = async (user: string): Promise<SharedDashboardRecord[]> => {
   const result = await query<SharedDashboardRow>(
     user,
-    `SELECT ${COLUMNS} FROM shared_dashboards WHERE is_public = true ORDER BY created_at DESC`,
+    `SELECT ${COLUMNS} FROM shared_dashboards WHERE is_public = true AND NOT is_private ORDER BY created_at DESC`,
   )
   return result.rows.map(mapRow)
 }
@@ -104,6 +110,19 @@ export const getSharedDashboardBySlug = async (
   return mapRow(result.rows[0])
 }
 
+export const getPublicSharedDashboardBySlug = async (
+  user: string,
+  slug: string,
+): Promise<SharedDashboardRecord | null> => {
+  const result = await query<SharedDashboardRow>(
+    user,
+    `SELECT ${COLUMNS} FROM shared_dashboards WHERE slug = $1 AND NOT is_private`,
+    [slug],
+  )
+  if (result.rows.length === 0) return null
+  return mapRow(result.rows[0])
+}
+
 export const createSharedDashboard = async (
   user: string,
   input: SharedDashboardInput,
@@ -115,10 +134,10 @@ export const createSharedDashboard = async (
     try {
       const result = await query<SharedDashboardRow>(
         user,
-        `INSERT INTO shared_dashboards (slug, name, config, is_public)
-         VALUES ($1, $2, $3::jsonb, $4)
+        `INSERT INTO shared_dashboards (slug, name, config, is_public, is_private)
+         VALUES ($1, $2, $3::jsonb, $4, $5)
          RETURNING ${COLUMNS}`,
-        [slug, input.name, JSON.stringify(input.config), input.is_public],
+        [slug, input.name, JSON.stringify(input.config), input.is_public, input.is_private],
       )
       return mapRow(result.rows[0])
     } catch (error) {
@@ -149,6 +168,10 @@ export const updateSharedDashboard = async (
   if (patch.is_public !== undefined) {
     sets.push(`is_public = $${idx++}`)
     params.push(patch.is_public)
+  }
+  if (patch.is_private !== undefined) {
+    sets.push(`is_private = $${idx++}`)
+    params.push(patch.is_private)
   }
 
   if (sets.length === 0) return getSharedDashboardById(user, id)

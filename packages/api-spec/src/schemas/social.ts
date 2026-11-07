@@ -3,9 +3,9 @@
  *
  * A *shared dashboard* is a named, independently-editable copy of a
  * `DashboardConfig` that a user publishes under their public namespace
- * (`<public-base>/u/<username>/<slug>`). Each share is either **public**
- * (listed on the user's public profile) or **unlisted** (reachable only via the
- * unguessable slug).
+ * (`<public-base>/u/<username>/<slug>`). Each one is **private** (only its owner
+ * sees it), **unlisted** (reachable only via the unguessable slug) or **public**
+ * (listed on the user's public profile).
  *
  * The federation key is a user's full public base URL, not `user@host`, so an
  * instance may be served over http or under a sub-path of another site. Public
@@ -19,12 +19,19 @@ import { activityRecordSchema } from './activity-sessions.ts'
 import { challengeSpecSchema } from './challenges.ts'
 import { chartDataBreakdownBucketSchema, chartDataBucketSchema } from './chart-data.ts'
 import { baseResponseSchema } from './common.ts'
-import { dashboardConfigSchema, periodKeySchema } from './dashboard.ts'
+import { dashboardConfigSchema, dashboardPresetSchema, periodKeySchema } from './dashboard.ts'
 import { goalProgressSchema } from './goals.ts'
 import { publicExerciseListItemSchema } from './shared-exercises.ts'
 import { latestSleepSchema } from './sleep.ts'
 import { trendHistoryPointSchema } from './trends.ts'
-import { shareVisibilitySchema } from './visibility.ts'
+
+export const dashboardVisibilitySchema = z.enum(['private', 'unlisted', 'public']).meta({
+  description:
+    'Who can see a dashboard: `private` (only you), `unlisted` (anyone with its link) or `public` (listed on your public profile).',
+  id: 'DashboardVisibility',
+})
+
+export type DashboardVisibility = z.infer<typeof dashboardVisibilitySchema>
 
 export const sharedDashboardNameSchema = z
   .string()
@@ -41,8 +48,9 @@ export const sharedDashboardSchema = z
     share_url: z.string().meta({ description: 'Absolute URL of the shared dashboard' }),
     slug: z.string().meta({ description: 'URL-safe public slug' }),
     updated_at: z.string().meta({ description: 'Last update timestamp (ISO 8601)' }),
-    visibility: shareVisibilitySchema.meta({
-      description: 'public → listed on the public profile; unlisted → reachable only by its link',
+    visibility: dashboardVisibilitySchema.meta({
+      description:
+        'private → only the owner; unlisted → reachable only by its link; public → listed on the public profile',
     }),
   })
   .meta({ id: 'SharedDashboard' })
@@ -51,11 +59,20 @@ export type SharedDashboard = z.infer<typeof sharedDashboardSchema>
 
 export const createSharedDashboardBodySchema = z
   .object({
-    config: dashboardConfigSchema.meta({ description: 'The dashboard configuration to publish' }),
+    config: dashboardConfigSchema
+      .optional()
+      .meta({ description: 'The dashboard configuration; give either this or preset' }),
     name: sharedDashboardNameSchema,
-    visibility: shareVisibilitySchema
-      .default('unlisted')
-      .meta({ description: 'public → listed on the public profile; unlisted (default) → link-only' }),
+    preset: dashboardPresetSchema
+      .optional()
+      .meta({ description: 'Start from a preset instead of an explicit config; give either this or config' }),
+    visibility: dashboardVisibilitySchema.default('private').meta({
+      description:
+        'private (default) → only the owner; unlisted → link-only; public → listed on the public profile',
+    }),
+  })
+  .refine((body) => (body.config === undefined) !== (body.preset === undefined), {
+    message: 'Give exactly one of config or preset',
   })
   .meta({ id: 'CreateSharedDashboardBody' })
 
@@ -65,9 +82,11 @@ export const updateSharedDashboardBodySchema = z
   .object({
     config: dashboardConfigSchema.optional().meta({ description: 'Replacement dashboard configuration' }),
     name: sharedDashboardNameSchema.optional(),
-    visibility: shareVisibilitySchema
+    visibility: dashboardVisibilitySchema
       .optional()
-      .meta({ description: 'public → listed on the public profile; unlisted → link-only' }),
+      .meta({
+        description: 'private → only the owner; unlisted → link-only; public → listed on the public profile',
+      }),
   })
   .meta({ id: 'UpdateSharedDashboardBody' })
 

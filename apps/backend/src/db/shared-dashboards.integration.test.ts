@@ -7,6 +7,7 @@ import {
   createSharedDashboard,
   deleteSharedDashboard,
   getSharedDashboardById,
+  getPublicSharedDashboardBySlug,
   getSharedDashboardBySlug,
   listPublicSharedDashboards,
   listSharedDashboards,
@@ -44,6 +45,7 @@ describe('Shared dashboards integration', () => {
     const user = getTestUser()
     const created = await createSharedDashboard(user, {
       config: sampleConfig('Mine'),
+      is_private: false,
       is_public: false,
       name: 'My dashboard',
     })
@@ -62,11 +64,13 @@ describe('Shared dashboards integration', () => {
     const user = getTestUser()
     const a = await createSharedDashboard(user, {
       config: sampleConfig('A'),
+      is_private: false,
       is_public: false,
       name: 'A',
     })
     const b = await createSharedDashboard(user, {
       config: sampleConfig('B'),
+      is_private: false,
       is_public: false,
       name: 'B',
     })
@@ -75,10 +79,21 @@ describe('Shared dashboards integration', () => {
 
   test('lists all (newest first) and filters public-only', async () => {
     const user = getTestUser()
-    await createSharedDashboard(user, { config: sampleConfig('p1'), is_public: true, name: 'Public 1' })
-    await createSharedDashboard(user, { config: sampleConfig('u1'), is_public: false, name: 'Unlisted 1' })
+    await createSharedDashboard(user, {
+      config: sampleConfig('p1'),
+      is_private: false,
+      is_public: true,
+      name: 'Public 1',
+    })
+    await createSharedDashboard(user, {
+      config: sampleConfig('u1'),
+      is_private: false,
+      is_public: false,
+      name: 'Unlisted 1',
+    })
     const pub2 = await createSharedDashboard(user, {
       config: sampleConfig('p2'),
+      is_private: false,
       is_public: true,
       name: 'Public 2',
     })
@@ -95,12 +110,14 @@ describe('Shared dashboards integration', () => {
     const user = getTestUser()
     const created = await createSharedDashboard(user, {
       config: sampleConfig('before'),
+      is_private: false,
       is_public: false,
       name: 'Before',
     })
 
     const updated = await updateSharedDashboard(user, created.id, {
       config: sampleConfig('after'),
+      is_private: false,
       is_public: true,
       name: 'After',
     })
@@ -123,6 +140,7 @@ describe('Shared dashboards integration', () => {
     const user = getTestUser()
     const created = await createSharedDashboard(user, {
       config: sampleConfig('x'),
+      is_private: false,
       is_public: true,
       name: 'X',
     })
@@ -131,5 +149,49 @@ describe('Shared dashboards integration', () => {
     expect(await getSharedDashboardById(user, created.id)).toBeNull()
     expect(await getSharedDashboardBySlug(user, created.slug)).toBeNull()
     expect(await deleteSharedDashboard(user, created.id)).toBe(false)
+  })
+
+  test('hides a private dashboard from the public getters but not from its owner', async () => {
+    const user = getTestUser()
+    const priv = await createSharedDashboard(user, {
+      config: sampleConfig('p'),
+      is_private: true,
+      is_public: false,
+      name: 'Private',
+    })
+    const unlisted = await createSharedDashboard(user, {
+      config: sampleConfig('u'),
+      is_private: false,
+      is_public: false,
+      name: 'Unlisted',
+    })
+
+    expect(priv.is_private).toBe(true)
+    expect(await getPublicSharedDashboardBySlug(user, priv.slug)).toBeNull()
+    expect((await getPublicSharedDashboardBySlug(user, unlisted.slug))?.id).toBe(unlisted.id)
+    expect((await getSharedDashboardById(user, priv.id))?.is_private).toBe(true)
+    expect((await getSharedDashboardBySlug(user, priv.slug))?.id).toBe(priv.id)
+    expect((await listSharedDashboards(user)).map((d) => d.name)).toEqual(['Unlisted', 'Private'])
+  })
+
+  test('never lists a private dashboard publicly, even with is_public set', async () => {
+    const user = getTestUser()
+    const created = await createSharedDashboard(user, {
+      config: sampleConfig('x'),
+      is_private: false,
+      is_public: true,
+      name: 'Listed',
+    })
+    expect((await listPublicSharedDashboards(user)).map((d) => d.id)).toEqual([created.id])
+
+    const hidden = await updateSharedDashboard(user, created.id, { is_private: true, is_public: false })
+    expect(hidden?.is_private).toBe(true)
+    expect(hidden?.is_public).toBe(false)
+    expect(await listPublicSharedDashboards(user)).toEqual([])
+    expect(await getPublicSharedDashboardBySlug(user, created.slug)).toBeNull()
+
+    const shown = await updateSharedDashboard(user, created.id, { is_private: false, is_public: true })
+    expect(shown?.is_private).toBe(false)
+    expect((await getPublicSharedDashboardBySlug(user, created.slug))?.id).toBe(created.id)
   })
 })

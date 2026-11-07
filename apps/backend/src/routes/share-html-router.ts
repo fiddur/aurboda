@@ -18,7 +18,7 @@ import {
   getActivityTypeDefinition,
   getChallengeBySlug,
   getFeedPostById,
-  getSharedDashboardBySlug,
+  getPublicSharedDashboardBySlug,
   getSharedExerciseBySlug,
   listChallengeMembers,
   listPublicSharedDashboards,
@@ -183,7 +183,7 @@ export const createShareResolvers = (): Pick<
   },
   resolveDashboard: async (username, slug) => {
     try {
-      const dashboard = await getSharedDashboardBySlug(username, slug)
+      const dashboard = await getPublicSharedDashboardBySlug(username, slug)
       return dashboard
         ? {
             description: dashboard.config.description,

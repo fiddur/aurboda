@@ -1,5 +1,5 @@
 // Primary nav (top of the sidebar), the Sharing group, then the secondary nav.
-// The three sharing surfaces (feed, shared dashboards, challenges) are grouped
+// The three sharing surfaces (feed, dashboards, challenges) are grouped
 // under one collapsible "Sharing" section (see Sidebar/Header) instead of being
 // three flat siblings, so "Share" stops being an ambiguous top-level label.
 
@@ -16,7 +16,7 @@ export const NAV_LINKS_PRIMARY = [
 
 export const SHARING_LINKS = [
   { href: '/feed', label: 'Feed', icon: '📣' },
-  { href: '/shared-dashboards', label: 'Dashboards', icon: '🔆' },
+  { href: '/dashboards', label: 'Dashboards', icon: '🔆' },
   { href: '/challenges', label: 'Challenges', icon: '🏆' },
 ]
 
@@ -49,6 +49,7 @@ export const DATA_SOURCE_LINKS = [
 ]
 
 const OTHER_PAGE_TITLES = [
+  { href: '/shared-dashboards', label: 'Dashboards' },
   { href: '/data-sources', label: 'Data Sources' },
   { href: '/settings', label: 'Settings' },
   { href: '/admin', label: 'Admin' },
