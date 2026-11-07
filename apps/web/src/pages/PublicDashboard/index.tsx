@@ -9,17 +9,25 @@
  * - Challenge: the race-chart + leaderboard view.
  * - Exercise: one exercise's records, trend and history, the same for everyone.
  */
-import type { DashboardConfig, SectionType, WidgetDataMap } from '@aurboda/api-spec'
+import type { DashboardConfig, SectionType, SharedDashboard, WidgetDataMap } from '@aurboda/api-spec'
 
+import { periodLabel } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRoute } from 'preact-iso'
 import { useState } from 'preact/hooks'
 
 import { AttributionLink } from '../../components/AttributionLink'
 import { EditableDashboard } from '../../components/EditableDashboard'
+import { PeriodDashboardBar } from '../../components/PeriodSwitcher'
 import { CopyLinkButton, NativeShareButton } from '../../components/ShareControls'
+import { usePeriodDashboard } from '../../components/usePeriodDashboard'
 import { PublicWidgetRenderer } from '../../components/widgets'
-import { fetchPublicResource, listSharedDashboards, updateSharedDashboard } from '../../state/api'
+import {
+  fetchPublicResource,
+  fetchSharedDashboardData,
+  listSharedDashboards,
+  updateSharedDashboard,
+} from '../../state/api'
 import { auth } from '../../state/auth'
 import { PublicChallenge } from '../Challenges/PublicChallenge'
 import { PublicExercise } from '../PublicExercise'
@@ -47,6 +55,7 @@ function OwnerSharedDashboard({ username, slug }: { username: string; slug: stri
       queryClient.setQueryData(['sharedDashboards'], (old: typeof listQuery.data) =>
         old?.map((d) => (d.id === updated.id ? updated : d)),
       )
+      void queryClient.invalidateQueries({ queryKey: ['dashboardData', updated.id] })
     },
   })
 
@@ -96,13 +105,37 @@ function OwnerSharedDashboard({ username, slug }: { username: string; slug: stri
         </div>
       </div>
 
+      <OwnerSharedDashboardBody
+        share={share}
+        isEditing={isEditing}
+        onChange={(next) => saveMutation.mutate({ config: next, id: share.id })}
+      />
+    </div>
+  )
+}
+
+function OwnerSharedDashboardBody({
+  share,
+  isEditing,
+  onChange,
+}: {
+  share: SharedDashboard
+  isEditing: boolean
+  onChange: (next: DashboardConfig) => void
+}) {
+  const period = usePeriodDashboard(share.id, share.config, (key) => fetchSharedDashboardData(share.id, key))
+  return (
+    <>
+      {period && <PeriodDashboardBar state={period} />}
       <EditableDashboard
         config={share.config}
         isEditing={isEditing}
         boardId={share.id}
-        onChange={(next) => saveMutation.mutate({ config: next, id: share.id })}
+        onChange={onChange}
+        widgetData={period?.widgetData}
+        periodLabel={period?.periodLabel}
       />
-    </div>
+    </>
   )
 }
 
@@ -111,12 +144,15 @@ function ReadOnlyDashboard({
   name,
   config,
   widgetData,
+  period,
 }: {
   username: string
   name: string
   config: DashboardConfig
   widgetData: WidgetDataMap | undefined
+  period: string | null | undefined
 }) {
+  const shownPeriod = period ? periodLabel(period) : undefined
   return (
     <div class="dashboard public-dashboard">
       <div class="dashboard-header">
@@ -127,6 +163,8 @@ function ReadOnlyDashboard({
           <NativeShareButton url={window.location.href} title={`${name} — Aurboda`} />
         </div>
       </div>
+
+      {shownPeriod ? <p class="dashboard-period-label">{shownPeriod}</p> : null}
 
       {config.description ? <p class="dashboard-intro">{config.description}</p> : null}
 
@@ -139,7 +177,12 @@ function ReadOnlyDashboard({
             {section.description ? <p class="section-intro">{section.description}</p> : null}
             <div class={gridClass(section.type)}>
               {section.widgets.map((widget) => (
-                <PublicWidgetRenderer key={widget.id} widget={widget} data={widgetData?.[widget.id]} />
+                <PublicWidgetRenderer
+                  key={widget.id}
+                  widget={widget}
+                  data={widgetData?.[widget.id]}
+                  periodLabel={shownPeriod}
+                />
               ))}
             </div>
           </section>
@@ -208,6 +251,7 @@ export function PublicResource() {
         name={data.name ?? 'Dashboard'}
         config={data.config}
         widgetData={data.widget_data}
+        period={data.period}
       />
     )
   }

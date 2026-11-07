@@ -24,10 +24,14 @@ interface PublicWidgetRendererProps {
   widget: DashboardWidget
   /** Resolved data for this widget id (from the public endpoint). */
   data?: WidgetData
+  /** On a period dashboard: the shown period, for headers and the not-applicable note. */
+  periodLabel?: string
 }
 
+const NotForAPeriod = () => <div class="widget-note">Not available for a period</div>
+
 // eslint-disable-next-line complexity -- one arm per widget type
-export function PublicWidgetRenderer({ widget, data }: PublicWidgetRendererProps) {
+export function PublicWidgetRenderer({ widget, data, periodLabel }: PublicWidgetRendererProps) {
   switch (widget.type) {
     case 'metric_card':
       return <MetricCardView config={widget.config} data={data?.type === 'metric_card' ? data.data : null} />
@@ -46,17 +50,26 @@ export function PublicWidgetRenderer({ widget, data }: PublicWidgetRendererProps
         <ActivitySummaryView
           config={widget.config}
           data={data?.type === 'activity_summary' ? data.data : null}
+          periodLabel={periodLabel}
         />
       )
     case 'quick_link':
       return <QuickLinkView config={widget.config} />
     case 'hr_zones':
-      return <HrZonesView config={widget.config} data={data?.type === 'hr_zones' ? data.data : null} />
+      return (
+        <HrZonesView
+          config={widget.config}
+          data={data?.type === 'hr_zones' ? data.data : null}
+          periodLabel={periodLabel}
+        />
+      )
     case 'goal_progress':
+      if (periodLabel && !data?.data) return <NotForAPeriod />
       return (
         <GoalProgressView config={widget.config} data={data?.type === 'goal_progress' ? data.data : null} />
       )
     case 'last_sleep':
+      if (periodLabel && !data?.data) return <NotForAPeriod />
       return <LastSleepView config={widget.config} data={data?.type === 'last_sleep' ? data.data : null} />
     case 'combined_chart':
       return (

@@ -160,6 +160,9 @@ export type ActivitySessionsResponse = z.infer<typeof activitySessionsResponseSc
 
 export const activityRecordsQuerySchema = z
   .object({
+    end: iso8601DateTimeSchema
+      .optional()
+      .meta({ description: 'Only sessions before this date/time (defaults to now)' }),
     filter_field: dataFieldPathSchema.optional().meta({
       description:
         'Only sessions whose data field equals filter_value (both must be given). An item path (sets.exercise) measures only the items of that value',

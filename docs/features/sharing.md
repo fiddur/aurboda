@@ -69,6 +69,13 @@ Bar-chart buckets (days, weeks, months, hours) follow the **owner's** stored tim
 Without a stored timezone, or with one that is not a valid IANA name, they fall back
 to UTC.
 
+A published [period dashboard](./dashboard.md#period-dashboards) shows its **latest
+finished period** (last month, last ISO week, last year), bounded in the owner's
+timezone, with each figure compared against the period before it. The public page
+names the period under the title and has no switcher: the public endpoint takes no
+period parameter, so a viewer cannot pick another period. Lock modes (pinning a share
+to one period, or letting viewers browse) are planned.
+
 ## Shared exercises
 
 A shared exercise publishes the progress on **one exercise**: one item value of one
@@ -250,18 +257,19 @@ QR codes and per-share preview overrides are possible future additions.
 
 Owner-facing CRUD (authenticated, scoped to the caller):
 
-| Method & path                   | Purpose                            |
-| ------------------------------- | ---------------------------------- |
-| `GET /shared-dashboards`        | List my shared dashboards          |
-| `POST /shared-dashboards`       | Create one from a dashboard config |
-| `GET /shared-dashboards/:id`    | Fetch one (with config)            |
-| `PUT /shared-dashboards/:id`    | Update name / config / visibility  |
-| `DELETE /shared-dashboards/:id` | Delete (its slug stops resolving)  |
-| `GET /shared-exercises`         | List my shared exercises           |
-| `POST /shared-exercises`        | Share an exercise (409 if shared)  |
-| `GET /shared-exercises/:id`     | Fetch one                          |
-| `PUT /shared-exercises/:id`     | Update name / visibility           |
-| `DELETE /shared-exercises/:id`  | Stop sharing (its slug stops)      |
+| Method & path                     | Purpose                                                     |
+| --------------------------------- | ----------------------------------------------------------- |
+| `GET /shared-dashboards`          | List my shared dashboards                                   |
+| `POST /shared-dashboards`         | Create one from a dashboard config                          |
+| `GET /shared-dashboards/:id`      | Fetch one (with config)                                     |
+| `GET /shared-dashboards/:id/data` | Its resolved widget data (`?period=` on a period dashboard) |
+| `PUT /shared-dashboards/:id`      | Update name / config / visibility                           |
+| `DELETE /shared-dashboards/:id`   | Delete (its slug stops resolving)                           |
+| `GET /shared-exercises`           | List my shared exercises                                    |
+| `POST /shared-exercises`          | Share an exercise (409 if shared)                           |
+| `GET /shared-exercises/:id`       | Fetch one                                                   |
+| `PUT /shared-exercises/:id`       | Update name / visibility                                    |
+| `DELETE /shared-exercises/:id`    | Stop sharing (its slug stops)                               |
 
 `POST /shared-exercises` takes `activity_type`, `field` (a categorical list-item path
 of the type, e.g. `sets.exercise`; a session-level field or any other path answers 400),
@@ -277,10 +285,14 @@ Public (unauthenticated):
 `GET /public/:username/:slug` resolves a slug as a dashboard, then a challenge, then
 a shared exercise; an exercise answers `type: 'exercise'` with `name`,
 `activity_type`, `activity_type_name`, `value`, `profile_url`, `share_url` and `data`
-(the projection above).
+(the projection above). A dashboard answers `type: 'dashboard'` with `name`, the
+sanitized `config`, `profile_url`, `share_url` and `widget_data`; a period dashboard
+also carries `period` (the key, e.g. `2026-10`) and `window` (`start` and exclusive
+`end`, ISO) of the period it shows.
 
 The same CRUD capability is available over MCP as `list_shared_dashboards`,
-`create_shared_dashboard`, `update_shared_dashboard`, and `delete_shared_dashboard`,
+`create_shared_dashboard`, `update_shared_dashboard`, and `delete_shared_dashboard`
+(and `get_dashboard_data` for the resolved widget data),
 and for exercises `list_shared_exercises`, `get_shared_exercise`,
 `create_shared_exercise`, `update_shared_exercise` and `delete_shared_exercise`. Public viewing is web-only.
 

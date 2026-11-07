@@ -1,10 +1,17 @@
 /**
  * CRUD for the user's published dashboards (the same capability as the
- * `/shared-dashboards` REST endpoints). Public viewing is web-only and has no
- * MCP tool. Responses include the `slug` so a URL can be constructed; the
- * absolute share URL is provided by the REST layer.
+ * `/shared-dashboards` REST endpoints), and the resolved widget data of the
+ * home dashboard or a shared one (`/dashboard/data`, `/shared-dashboards/:id/data`).
+ * Public viewing is web-only and has no MCP tool. Responses include the `slug`
+ * so a URL can be constructed; the absolute share URL is provided by the REST layer.
  */
-import { createSharedDashboardBodySchema, updateSharedDashboardBodySchema } from '@aurboda/api-spec'
+import {
+  createSharedDashboardBodySchema,
+  dashboardDataQuerySchema,
+  defaultDashboardConfig,
+  tzSchema,
+  updateSharedDashboardBodySchema,
+} from '@aurboda/api-spec'
 import { z } from 'zod'
 
 import type { SharedDashboardRecord } from '../db/index.ts'
@@ -16,8 +23,11 @@ import {
   listSharedDashboards,
   updateSharedDashboard,
 } from '../db/index.ts'
+import { PeriodError } from '../services/periods.ts'
+import { getSettings } from '../services/settings.ts'
+import { resolveDashboardView } from '../services/shared-dashboard-data.ts'
 import { isPublicToVisibility, visibilityToIsPublic } from '../services/visibility.ts'
-import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
+import { errorResponse, jsonResponse, type McpServer, tzJsonResponse } from './helpers.ts'
 
 const serialize = (record: SharedDashboardRecord) => ({
   config: record.config,
@@ -65,6 +75,33 @@ export const registerSharedDashboardTools = (server: McpServer, user: string) =>
       })
       if (!record) return errorResponse('Shared dashboard not found')
       return jsonResponse(serialize(record))
+    },
+  )
+
+  server.tool(
+    'get_dashboard_data',
+    'Get the data each widget of a dashboard renders, keyed by widget id: the home dashboard, or a shared dashboard by dashboard_id. A rolling dashboard answers each widget over its own lookback ending now (period and window are null). A calendar-period dashboard (config.period set) answers the latest finished period unless `period` is given (2026-10, 2026-W44 or 2026; it must be finished and match the granularity), with each figure compared against the previous period (previous_value, previous_* fields, trend_percent).',
+    {
+      dashboard_id: z
+        .string()
+        .uuid()
+        .optional()
+        .describe('A shared dashboard ID; the home dashboard when omitted'),
+      ...dashboardDataQuerySchema.shape,
+      tz: tzSchema,
+    },
+    async ({ dashboard_id, period, tz }) => {
+      const config =
+        dashboard_id === undefined
+          ? ((await getSettings(user)).dashboard ?? defaultDashboardConfig)
+          : (await getSharedDashboardById(user, dashboard_id))?.config
+      if (!config) return errorResponse('Shared dashboard not found')
+      try {
+        return tzJsonResponse(await resolveDashboardView(user, config, period), tz)
+      } catch (error) {
+        if (error instanceof PeriodError) return errorResponse(error.message)
+        throw error
+      }
     },
   )
 

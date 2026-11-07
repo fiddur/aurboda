@@ -32,6 +32,7 @@ vi.mock('../db/index.ts', async (importOriginal) => ({
 }))
 
 vi.mock('../services/shared-exercise-data.ts', () => ({ resolveSharedExerciseData: vi.fn() }))
+vi.mock('../services/shared-dashboard-data.ts', () => ({ resolveDashboardView: vi.fn() }))
 
 vi.mock('../services/challenge-federation.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof FederationModule>()),
@@ -41,6 +42,7 @@ vi.mock('../services/challenge-federation.ts', async (importOriginal) => ({
 const db = await import('../db/index.ts')
 const federation = await import('../services/challenge-federation.ts')
 const exerciseData = await import('../services/shared-exercise-data.ts')
+const dashboardData = await import('../services/shared-dashboard-data.ts')
 const { createPublicSharesRouter, sanitizeConfig } = await import('./public-shares-router.ts')
 
 describe('isValidUsername (public DB-selecting gate)', () => {
@@ -113,6 +115,60 @@ describe('sanitizeConfig', () => {
     const sanitized = sanitizeConfig(config)
     expect(sanitized.description).toBe('Two years of training.')
     expect(sanitized.sections[0].description).toBe('Recovery metrics.')
+  })
+
+  test('keeps the period of a period dashboard', () => {
+    const config: DashboardConfig = { period: { granularity: 'month' }, sections: [], version: 1 }
+    expect(sanitizeConfig(config).period).toEqual({ granularity: 'month' })
+    expect('period' in sanitizeConfig({ sections: [], version: 1 })).toBe(false)
+  })
+})
+
+describe('GET /public/:username/:slug (dashboard)', () => {
+  const app = () => {
+    const a = express()
+    a.use(createPublicSharesRouter('https://aurboda.net') as unknown as express.RequestHandler)
+    return supertest(a)
+  }
+  const record = (config: DashboardConfig) =>
+    ({ config, name: 'Board', slug: 'board' }) as Awaited<ReturnType<typeof db.getSharedDashboardBySlug>>
+  const widget_data = { link: { data: null, type: 'quick_link' as const } }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('a period dashboard says which finished period it shows', async () => {
+    const config: DashboardConfig = { period: { granularity: 'month' }, sections: [], version: 1 }
+    vi.mocked(db.getSharedDashboardBySlug).mockResolvedValue(record(config))
+    const window = { end: '2026-10-31T23:00:00.000Z', start: '2026-09-30T22:00:00.000Z' }
+    vi.mocked(dashboardData.resolveDashboardView).mockResolvedValue({
+      period: '2026-10',
+      widget_data,
+      window,
+    })
+
+    const res = await app().get('/public/alice/board')
+
+    expect(res.status).toBe(200)
+    expect(res.body).toMatchObject({ config, period: '2026-10', widget_data, window })
+    expect(dashboardData.resolveDashboardView).toHaveBeenCalledWith('alice', config)
+  })
+
+  test('a rolling dashboard has no period', async () => {
+    const config: DashboardConfig = { sections: [], version: 1 }
+    vi.mocked(db.getSharedDashboardBySlug).mockResolvedValue(record(config))
+    vi.mocked(dashboardData.resolveDashboardView).mockResolvedValue({
+      period: null,
+      widget_data,
+      window: null,
+    })
+
+    const res = await app().get('/public/alice/board')
+
+    expect(res.body.widget_data).toEqual(widget_data)
+    expect('period' in res.body).toBe(false)
+    expect('window' in res.body).toBe(false)
   })
 })
 

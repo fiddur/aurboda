@@ -19,7 +19,7 @@ import { activityRecordSchema } from './activity-sessions.ts'
 import { challengeSpecSchema } from './challenges.ts'
 import { chartDataBreakdownBucketSchema, chartDataBucketSchema } from './chart-data.ts'
 import { baseResponseSchema } from './common.ts'
-import { dashboardConfigSchema } from './dashboard.ts'
+import { dashboardConfigSchema, periodKeySchema } from './dashboard.ts'
 import { goalProgressSchema } from './goals.ts'
 import { publicExerciseListItemSchema } from './shared-exercises.ts'
 import { latestSleepSchema } from './sleep.ts'
@@ -92,11 +92,26 @@ export const metricSeriesPointSchema = z
   })
   .meta({ id: 'MetricSeriesPoint' })
 
+const previousValueSchema = z.number().nullable().optional().meta({
+  description: 'On a period dashboard: the headline value of the previous calendar period',
+})
+
+const previousFigure = (description: string) =>
+  z
+    .number()
+    .nullable()
+    .optional()
+    .meta({ description: `On a period dashboard: ${description} in the previous calendar period` })
+
 export const metricCardDataSchema = z
   .object({
     count: z.number().nullable().meta({ description: 'Number of contributing days, if applicable' }),
     max: z.number().nullable().meta({ description: 'Period max, if applicable' }),
-    trend_percent: z.number().nullable().meta({ description: 'Trend vs previous period (percent)' }),
+    previous_value: previousValueSchema,
+    trend_percent: z.number().nullable().meta({
+      description:
+        'Trend vs previous period (percent); on a period dashboard, the change against previous_value',
+    }),
     value: z.number().nullable().meta({ description: 'Headline value' }),
   })
   .meta({ id: 'MetricCardData' })
@@ -104,8 +119,12 @@ export const metricCardDataSchema = z
 export const sparklineCardDataSchema = z
   .object({
     count: z.number().nullable().meta({ description: 'Number of contributing days, if applicable' }),
+    previous_value: previousValueSchema,
     series: z.array(metricSeriesPointSchema).meta({ description: 'Sparkline time series' }),
-    trend_percent: z.number().nullable().meta({ description: 'Trend vs previous period (percent)' }),
+    trend_percent: z.number().nullable().meta({
+      description:
+        'Trend vs previous period (percent); on a period dashboard, the change against previous_value',
+    }),
     value: z.number().nullable().meta({ description: 'Headline value' }),
   })
   .meta({ id: 'SparklineCardData' })
@@ -180,6 +199,8 @@ export const correlationDataSchema = z
 export const activitySummaryExerciseSchema = z
   .object({
     count: z.number().meta({ description: 'Number of workout sessions' }),
+    previous_count: previousFigure('the number of workout sessions'),
+    previous_total_minutes: previousFigure('the total workout minutes'),
     total_minutes: z.number().meta({ description: 'Total workout minutes' }),
   })
   .meta({ id: 'ActivitySummaryExercise' })
@@ -188,12 +209,16 @@ export const activitySummarySleepSchema = z
   .object({
     avg_hours: z.number().nullable().meta({ description: 'Average sleep hours per night' }),
     count: z.number().meta({ description: 'Number of nights tracked' }),
+    previous_avg_hours: previousFigure('the average sleep hours per night'),
+    previous_count: previousFigure('the number of nights tracked'),
   })
   .meta({ id: 'ActivitySummarySleep' })
 
 export const activitySummaryMeditationSchema = z
   .object({
     count: z.number().meta({ description: 'Number of meditation sessions' }),
+    previous_count: previousFigure('the number of meditation sessions'),
+    previous_total_minutes: previousFigure('the total meditation minutes'),
     total_minutes: z.number().meta({ description: 'Total meditation minutes' }),
   })
   .meta({ id: 'ActivitySummaryMeditation' })
@@ -216,6 +241,7 @@ export const hrZoneDatumSchema = z
   .object({
     avg_seconds: z.number().nullable().meta({ description: 'Average seconds per day in this zone' }),
     metric: z.string().meta({ description: 'HR zone metric name (e.g. hr_zone_2_sec)' }),
+    previous_avg_seconds: previousFigure('the average seconds per day in this zone'),
   })
   .meta({ id: 'HrZoneDatum' })
 
@@ -276,6 +302,35 @@ export type RecordCardData = z.infer<typeof recordCardDataSchema>
 export const widgetDataMapSchema = z.record(z.string(), widgetDataSchema).meta({ id: 'WidgetDataMap' })
 
 export type WidgetDataMap = z.infer<typeof widgetDataMapSchema>
+
+export const periodWindowSchema = z
+  .object({
+    end: z.string().meta({ description: 'End instant, exclusive (ISO 8601)' }),
+    start: z.string().meta({ description: 'Start instant, inclusive (ISO 8601)' }),
+  })
+  .meta({ description: "A calendar period's bounds in the owner's timezone", id: 'PeriodWindow' })
+
+export type PeriodWindow = z.infer<typeof periodWindowSchema>
+
+const periodFields = {
+  period: periodKeySchema
+    .nullable()
+    .optional()
+    .meta({ description: 'The calendar period shown; null for a rolling dashboard' }),
+  window: periodWindowSchema
+    .nullable()
+    .optional()
+    .meta({ description: "The shown period's bounds; null for a rolling dashboard" }),
+}
+
+export const dashboardDataResponseSchema = baseResponseSchema
+  .extend({
+    ...periodFields,
+    widget_data: widgetDataMapSchema.optional().meta({ description: 'Resolved data per widget id' }),
+  })
+  .meta({ id: 'DashboardDataResponse' })
+
+export type DashboardDataResponse = z.infer<typeof dashboardDataResponseSchema>
 
 export const publicDashboardListItemSchema = z
   .object({
@@ -341,6 +396,7 @@ export const publicSharedDashboardResponseSchema = baseResponseSchema
   .extend({
     config: dashboardConfigSchema.optional().meta({ description: 'Sanitized dashboard configuration' }),
     name: sharedDashboardNameSchema.optional(),
+    ...periodFields,
     profile_url: z.string().optional().meta({ description: 'Absolute URL of the owner public profile' }),
     share_url: z.string().optional().meta({ description: 'Absolute URL of this shared dashboard' }),
     type: z.literal('dashboard').optional().meta({ description: 'Resource type discriminator' }),

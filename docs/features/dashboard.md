@@ -51,6 +51,8 @@ Displays a single metric value with an optional unit, trend indicator, and subti
 
 Values are sourced from either the HRV/HR baseline endpoint (for 7-day and 30-day averages) or the period summary (for everything else). The period summary compares the current 30-day window against the previous 30 days to calculate the trend percentage.
 
+On a [period dashboard](#period-dashboards) the card shows the period's value and, unless the card has its own subtitle, `Previous: <value>` for the previous period (`previous_value` in the widget data); the trend arrow is the change against it.
+
 **Configuration:** Metric name, title, optional unit, optional subtitle, optional inverse trend.
 
 ### Sparkline Card
@@ -186,6 +188,36 @@ and optional, so existing dashboards are unaffected):
 - A **per-section intro** rendered above that section's widgets, so the page reads
   as a narrative rather than just a wall of charts.
 
+## Period dashboards
+
+A dashboard is either **rolling** (the default: every widget has its own lookback ending now) or a
+**calendar-period** dashboard with a granularity of **week**, **month** or **year**. A period
+dashboard shows one finished period -- October 2026, ISO week 44 of 2026, the year 2025 -- and every
+widget renders against that one window, ignoring the lookbacks in its configuration.
+
+- **The setting.** In edit mode, the **Period** select above the description switches the dashboard
+  between Rolling, Weekly, Monthly and Yearly. It is stored in the config as
+  `period: { granularity: 'week' | 'month' | 'year' }`; absent means rolling.
+- **Period keys.** A period is named by a key: `2026-10` (month), `2026-W44` (ISO week, Monday
+  start, in the ISO week-year) or `2026` (year). Its bounds are calendar days in your timezone
+  (the device timezone in your settings; UTC when unset), the end exclusive.
+- **Finished periods only.** The dashboard opens on the latest finished period. A switcher above the
+  widgets steps back and forth between finished periods; the next button stops at the latest one.
+  Asking for a period that has not ended (or a malformed one) is a 400.
+- **Previous-period deltas.** Figures compare with the previous calendar period of the same kind
+  (September for October, the previous ISO week, the previous year) -- not an equal-length rolling
+  window. Metric and sparkline cards carry `previous_value` and a `trend_percent` against it; the
+  activity summary carries `previous_count`, `previous_total_minutes` and `previous_avg_hours`; HR
+  zones carry `previous_avg_seconds`.
+- **Baselines.** The 7- and 30-day HRV and resting HR baseline cards become the period average of
+  `hrv_rmssd` and `resting_heart_rate`.
+- **Widgets that do not apply.** **Last night** and **Goal progress** have no meaning for a past
+  period: the widget palette hides them, and existing ones show "Not available for a period".
+- **API.** `GET /dashboard/data?period=2026-10` (the home dashboard) and
+  `GET /shared-dashboards/:id/data?period=2026-10` (a shared one) return `period`, `window`
+  (`start`/`end`, ISO) and `widget_data`; without `period` they answer the latest finished one, and
+  for a rolling dashboard `period` and `window` are null. MCP: `get_dashboard_data`.
+
 ## Editing the Dashboard
 
 Click the pencil icon next to the "Dashboard" title to enter edit mode.
@@ -255,5 +287,6 @@ widgets render.
 
 - Widgets cannot be moved between sections -- only reordered within a section.
 - There is no drag-and-drop; reordering uses up/down arrow buttons.
-- The dashboard is not available via MCP tools -- it is managed through the web UI only.
+- The dashboard layout is managed through the web UI only; MCP can read its data
+  (`get_dashboard_data`) but not edit the home dashboard.
 - Sparkline cards fetch up to 365 days of time-series data, which may be slow for very high-frequency metrics like heart rate. Use metric cards for those.
