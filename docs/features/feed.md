@@ -1049,9 +1049,10 @@ resolving.
   sessions — and show the `Trend` image only where the card has no chart to draw.
 - **Feed page layout** — the **Feed** page (`/feed`, the 📣 item under the **Sharing** section
   in the sidebar) puts writing first: a **Write an article** button with your **Drafts** listed
-  under it, then the posts in two tabs — **Following** (your home timeline, the default) and
+  under it, then tabs — **Following** (your home timeline, the default) and
   **Your posts** — kept in the URL as `?tab=mine` so a reload or the Android embed stays on it.
-  Following, followers and auto-share rules sit in a collapsed **Manage** section at the bottom.
+  A third tab, **People & sharing** (`?tab=manage`), holds the Following, Followers and auto-share
+  rule panels.
 - **Write an article** — opens the article composer: a title, an optional default time
   window, and an ordered list of **prose** (markdown), **chart** (a metric + optional
   per-block window + caption), **correlation** (a trigger + outcome selector + optional
@@ -1067,10 +1068,10 @@ resolving.
   (federates a `Delete`). An article also has an **Export markdown** button that fetches its
   paste-ready markdown export and offers a **Copy to clipboard** button for pasting into
   r/QuantifiedSelf or a similar text-only destination.
-- **Follow** — the **Following** panel (under **Manage**) lets you follow a fediverse actor by
+- **Follow** — the **Following** panel (under **People & sharing**) lets you follow a fediverse actor by
   handle (`@user@host`) and see who you follow, with a **Pending** badge until the remote
   server accepts and an **Unfollow** button.
-- **Followers** — the **Followers** panel (under **Manage**) lists who follows you. If you've
+- **Followers** — the **Followers** panel (under **People & sharing**) lists who follows you. If you've
   turned on **Manually approve new followers** (Settings → _Feed & Followers_), incoming follows
   show up here as **follow requests** with **Approve** / **Reject** buttons; accepted followers
   can be **Removed**. With approval off (the default), anyone can follow you automatically.
