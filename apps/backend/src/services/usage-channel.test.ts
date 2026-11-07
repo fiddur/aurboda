@@ -39,6 +39,7 @@ describe('isMutatingMcpTool', () => {
     'ack_outbound_sync',
     'unfollow_actor',
     'resnapshot_meals_for_food_item',
+    'publish_article_draft',
   ])('%s mutates', (name) => {
     expect(isMutatingMcpTool(name)).toBe(true)
   })

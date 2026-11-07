@@ -1,19 +1,31 @@
-import type { CorrelationSelectorsData, FeedPost, FeedVisibility } from '@aurboda/api-spec'
+import type { ArticleDraft, CorrelationSelectorsData, FeedPost, FeedVisibility } from '@aurboda/api-spec'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useRef, useState } from 'preact/hooks'
+import { format } from 'date-fns'
+import { useEffect, useRef, useState } from 'preact/hooks'
 
-/**
- * Passing an existing `post` (kind `article`) switches to edit mode (PATCH);
- * otherwise it creates one (POST). Windowed blocks inherit the article default
- * when left blank.
- */
-import type { BlockDraft, ChartDraft, CorrelationDraft, ProseDraft } from './article-editor-body'
+import type {
+  ArticleEditorState,
+  BlockDraft,
+  ChartDraft,
+  CorrelationDraft,
+  ProseDraft,
+} from './article-editor-body'
 
-import { createArticle, fetchCorrelationSelectors, updateArticle } from '../state/api'
+import {
+  createArticle,
+  createArticleDraft,
+  fetchCorrelationSelectors,
+  publishArticleDraft,
+  updateArticle,
+  updateArticleDraft,
+} from '../state/api'
 import {
   buildArticleBody,
+  buildDraftContent,
   deriveSubmitError,
+  draftSnapshot,
+  draftUpdateBody,
   emptyCorrelationDraft,
   initialArticleEditorState,
 } from './article-editor-body'
@@ -200,10 +212,97 @@ const ArticleBlockEditor = ({
   </div>
 )
 
-export const ArticleEditorDialog = ({ post, onClose }: { post?: FeedPost; onClose: () => void }) => {
+type CloseState = 'open' | 'confirming'
+
+const CloseConfirm = ({
+  busy,
+  saving,
+  onSave,
+  onDiscard,
+  onKeepEditing,
+}: {
+  busy: boolean
+  saving: boolean
+  onSave: () => void
+  onDiscard: () => void
+  onKeepEditing: () => void
+}) => (
+  <div class="article-close-confirm" role="alertdialog" aria-label="Unsaved changes">
+    <span>Save as draft?</span>
+    <div class="article-close-confirm-actions">
+      <button type="button" class="btn-primary" disabled={busy} onClick={onSave}>
+        {saving ? 'Saving…' : 'Save'}
+      </button>
+      <button type="button" class="btn-danger" disabled={busy} onClick={onDiscard}>
+        Discard
+      </button>
+      <button type="button" class="btn-secondary" onClick={onKeepEditing}>
+        Keep editing
+      </button>
+    </div>
+  </div>
+)
+
+const publishLabel = (editing: boolean, pending: boolean): string => {
+  if (editing) return pending ? 'Saving…' : 'Save changes'
+  return pending ? 'Publishing…' : 'Publish'
+}
+
+const EditorActions = ({
+  editing,
+  savedAt,
+  busy,
+  canPublish,
+  savingDraft,
+  publishing,
+  onCancel,
+  onSaveDraft,
+  onPublish,
+}: {
+  editing: boolean
+  /** When the draft was last saved, shown only while nothing has changed since. */
+  savedAt: Date | undefined
+  busy: boolean
+  canPublish: boolean
+  savingDraft: boolean
+  publishing: boolean
+  onCancel: () => void
+  onSaveDraft: () => void
+  onPublish: () => void
+}) => (
+  <div class="share-dialog-actions">
+    {savedAt && <span class="article-saved-at">Saved {format(savedAt, 'HH:mm')}</span>}
+    <button type="button" class="btn-secondary" onClick={onCancel}>
+      Cancel
+    </button>
+    {!editing && (
+      <button type="button" class="btn-secondary" disabled={busy} onClick={onSaveDraft}>
+        {savingDraft ? 'Saving…' : 'Save draft'}
+      </button>
+    )}
+    <button type="button" class="btn-primary" disabled={busy || !canPublish} onClick={onPublish}>
+      {publishLabel(editing, publishing)}
+    </button>
+  </div>
+)
+
+/**
+ * The article composer. With a published `post` it edits that article (PATCH)
+ * as before. Otherwise it works on a draft: `draft` reopens a saved one, and
+ * nothing starts a new article that becomes a draft on its first save.
+ */
+export const ArticleEditorDialog = ({
+  post,
+  draft,
+  onClose,
+}: {
+  post?: FeedPost
+  draft?: ArticleDraft
+  onClose: () => void
+}) => {
   const queryClient = useQueryClient()
   const editing = post?.kind === 'article'
-  const [initial] = useState(() => initialArticleEditorState(post))
+  const [initial] = useState(() => initialArticleEditorState(editing ? post : draft))
   const { data: selectors } = useQuery({
     queryFn: fetchCorrelationSelectors,
     queryKey: ['correlationSelectors'],
@@ -218,6 +317,19 @@ export const ArticleEditorDialog = ({ post, onClose }: { post?: FeedPost; onClos
   const [blocks, setBlocks] = useState<KeyedBlock[]>(() => initial.blocks.map(keyed))
   const [visibility, setVisibility] = useState<FeedVisibility>(initial.visibility)
   const [validationError, setValidationError] = useState<string | null>(null)
+  const [draftId, setDraftId] = useState<string | undefined>(draft?.id)
+  const [savedAt, setSavedAt] = useState<Date | undefined>(undefined)
+  const [savedSnapshot, setSavedSnapshot] = useState(() => draftSnapshot(initial))
+  const [closeState, setCloseState] = useState<CloseState>('open')
+
+  const editorState = (): ArticleEditorState => ({
+    blocks: blocks.map((kb) => kb.block),
+    defaultEnd,
+    defaultStart,
+    title,
+    visibility,
+  })
+  const dirty = !editing && draftSnapshot(editorState()) !== savedSnapshot
 
   const patchBlock = (i: number, patch: BlockPatch) =>
     setBlocks((bs) =>
@@ -240,36 +352,76 @@ export const ArticleEditorDialog = ({ post, onClose }: { post?: FeedPost; onClos
     ])
   const addCorrelation = () => setBlocks((bs) => [...bs, keyed(emptyCorrelationDraft())])
 
-  const mutation = useMutation({
-    mutationFn: () => {
-      const result = buildArticleBody({
-        blocks: blocks.map((kb) => kb.block),
-        defaultEnd,
-        defaultStart,
-        title,
-        visibility,
-      })
+  /** Create the draft on first save, PATCH it after; returns its id. */
+  const persistDraft = async (): Promise<string> => {
+    const state = editorState()
+    const saved = draftId
+      ? await updateArticleDraft(draftId, draftUpdateBody(state))
+      : await createArticleDraft({ article: buildDraftContent(state), visibility: state.visibility })
+    setDraftId(saved.id)
+    setSavedAt(new Date(saved.updated_at))
+    setSavedSnapshot(draftSnapshot(state))
+    queryClient.invalidateQueries({ queryKey: ['articleDrafts'] })
+    return saved.id
+  }
+
+  const saveDraft = useMutation({
+    mutationFn: persistDraft,
+    onSuccess: () => setValidationError(null),
+  })
+
+  const saveAndClose = useMutation({
+    mutationFn: persistDraft,
+    onSuccess: onClose,
+  })
+
+  const publish = useMutation({
+    mutationFn: async () => {
+      const result = buildArticleBody(editorState())
       if (!result.ok) {
         setValidationError(result.error)
-        return Promise.reject(new Error('validation'))
+        throw new Error('validation')
       }
       setValidationError(null)
-      return editing && post ? updateArticle(post.id, result.body) : createArticle(result.body)
+      if (editing && post) return updateArticle(post.id, result.body)
+      if (!draftId) return createArticle(result.body)
+      const id = await persistDraft()
+      return publishArticleDraft(id, result.body.visibility)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['feed'] })
+      queryClient.invalidateQueries({ queryKey: ['articleDrafts'] })
       onClose()
     },
   })
 
-  const submitError = deriveSubmitError(validationError, mutation.error)
+  const requestClose = () => {
+    if (dirty) setCloseState('confirming')
+    else onClose()
+  }
+  const requestCloseRef = useRef(requestClose)
+  requestCloseRef.current = requestClose
+  useEffect(() => {
+    if (editing) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') requestCloseRef.current()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [])
+
+  const busy = publish.isPending || saveDraft.isPending || saveAndClose.isPending
+  const submitError =
+    deriveSubmitError(validationError, publish.error) ??
+    deriveSubmitError(null, saveDraft.error) ??
+    deriveSubmitError(null, saveAndClose.error)
 
   return (
-    <div class="share-dialog-backdrop" onClick={onClose}>
+    <div class="share-dialog-backdrop" onClick={requestClose}>
       <div class="share-dialog article-editor" onClick={(e) => e.stopPropagation()}>
         <div class="share-dialog-header">
-          <h2>{editing ? 'Edit article' : 'New article'}</h2>
-          <button type="button" class="share-dialog-close" onClick={onClose} aria-label="Close">
+          <h2>{editing ? 'Edit article' : draftId ? 'Edit draft' : 'New article'}</h2>
+          <button type="button" class="share-dialog-close" onClick={requestClose} aria-label="Close">
             ×
           </button>
         </div>
@@ -280,6 +432,7 @@ export const ArticleEditorDialog = ({ post, onClose }: { post?: FeedPost; onClos
             type="text"
             class="article-input"
             value={title}
+            maxLength={200}
             placeholder="e.g. A week of sleep and HRV"
             onInput={(e) => setTitle((e.target as HTMLInputElement).value)}
           />
@@ -348,19 +501,27 @@ export const ArticleEditorDialog = ({ post, onClose }: { post?: FeedPost; onClos
 
         {submitError && <p class="share-dialog-error">{submitError}</p>}
 
-        <div class="share-dialog-actions">
-          <button type="button" class="btn-secondary" onClick={onClose}>
-            Cancel
-          </button>
-          <button
-            type="button"
-            class="btn-primary"
-            disabled={mutation.isPending || !title.trim()}
-            onClick={() => mutation.mutate()}
-          >
-            {mutation.isPending ? 'Saving…' : editing ? 'Save changes' : 'Publish article'}
-          </button>
-        </div>
+        {closeState === 'confirming' ? (
+          <CloseConfirm
+            busy={busy}
+            saving={saveAndClose.isPending}
+            onSave={() => saveAndClose.mutate()}
+            onDiscard={onClose}
+            onKeepEditing={() => setCloseState('open')}
+          />
+        ) : (
+          <EditorActions
+            editing={editing}
+            savedAt={dirty ? undefined : savedAt}
+            busy={busy}
+            canPublish={!!title.trim()}
+            savingDraft={saveDraft.isPending}
+            publishing={publish.isPending}
+            onCancel={requestClose}
+            onSaveDraft={() => saveDraft.mutate()}
+            onPublish={() => publish.mutate()}
+          />
+        )}
       </div>
     </div>
   )

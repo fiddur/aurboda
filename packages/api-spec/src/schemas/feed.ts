@@ -625,6 +625,124 @@ export const updateArticleBodySchema = z
 
 export type UpdateArticleBody = z.infer<typeof updateArticleBodySchema>
 
+/**
+ * Article drafts are private work in progress: stored apart from feed posts, so
+ * they never federate or appear on any feed, and lenient, so an unfinished
+ * article can be saved. The block schemas below loosen only what a draft may
+ * leave unset; publishing re-validates against `createArticleBodySchema`.
+ */
+export const articleDraftChartBlockSchema = articleChartBlockSchema
+  .extend({ metric: metricTypeSchema.optional().meta({ description: 'The metric to chart, once chosen' }) })
+  .meta({ description: 'A chart block in a draft; the metric may be unset', id: 'ArticleDraftChartBlock' })
+
+export const articleDraftCorrelationBlockSchema = articleCorrelationBlockSchema
+  .extend({
+    outcome: selectorSchema.optional().meta({ description: 'Outcome dimension, once chosen' }),
+    trigger: selectorSchema.optional().meta({ description: 'Trigger / predictor dimension, once chosen' }),
+  })
+  .meta({
+    description: 'A correlation block in a draft; trigger and outcome may be unset',
+    id: 'ArticleDraftCorrelationBlock',
+  })
+
+export const articleDraftBlockSchema = z
+  .discriminatedUnion('type', [
+    articleProseBlockSchema,
+    articleDraftChartBlockSchema,
+    articleDraftCorrelationBlockSchema,
+  ])
+  .meta({ description: 'A draft article block (prose, chart, or correlation)', id: 'ArticleDraftBlock' })
+
+export type ArticleDraftBlock = z.infer<typeof articleDraftBlockSchema>
+
+export const articleDraftContentSchema = z
+  .object({
+    blocks: z.array(articleDraftBlockSchema).max(100).meta({ description: 'Ordered content blocks' }),
+    default_end: iso8601DateTimeSchema
+      .optional()
+      .meta({ description: 'Default window end inherited by chart and correlation blocks (ISO 8601)' }),
+    default_start: iso8601DateTimeSchema
+      .optional()
+      .meta({ description: 'Default window start inherited by chart and correlation blocks (ISO 8601)' }),
+    title: z.string().max(200).meta({ description: 'Article title (may be empty in a draft)' }),
+  })
+  .meta({ description: 'Draft article content, possibly incomplete', id: 'ArticleDraftContent' })
+
+export type ArticleDraftContent = z.infer<typeof articleDraftContentSchema>
+
+export const articleDraftSchema = z
+  .object({
+    article: articleDraftContentSchema,
+    created_at: z.string().meta({ description: 'Creation timestamp (ISO 8601)' }),
+    id: z.string().uuid().meta({ description: 'Draft ID' }),
+    updated_at: z.string().meta({ description: 'Last save timestamp (ISO 8601)' }),
+    visibility: feedVisibilitySchema.meta({ description: 'Audience the article gets when published' }),
+  })
+  .meta({
+    description: 'A private, unpublished article draft. Never federated or shown on any feed.',
+    id: 'ArticleDraft',
+  })
+
+export type ArticleDraft = z.infer<typeof articleDraftSchema>
+
+export const articleDraftResponseSchema = baseResponseSchema
+  .extend({ draft: articleDraftSchema.optional() })
+  .meta({ id: 'ArticleDraftResponse' })
+
+export type ArticleDraftResponse = z.infer<typeof articleDraftResponseSchema>
+
+export const articleDraftsResponseSchema = baseResponseSchema
+  .extend({ drafts: z.array(articleDraftSchema).meta({ description: 'Drafts, most recently saved first' }) })
+  .meta({ id: 'ArticleDraftsResponse' })
+
+export type ArticleDraftsResponse = z.infer<typeof articleDraftsResponseSchema>
+
+export const createArticleDraftBodySchema = z
+  .object({
+    article: articleDraftContentSchema
+      .optional()
+      .meta({ description: 'Initial content (may be incomplete); omitted starts an empty, untitled draft' }),
+    visibility: feedVisibilitySchema.default('public'),
+  })
+  .meta({ description: 'Start a new article draft', id: 'CreateArticleDraftBody' })
+
+export type CreateArticleDraftBody = z.infer<typeof createArticleDraftBodySchema>
+
+export const updateArticleDraftBodySchema = z
+  .object({
+    blocks: z
+      .array(articleDraftBlockSchema)
+      .max(100)
+      .optional()
+      .meta({ description: 'Replacement ordered content blocks' }),
+    default_end: iso8601DateTimeSchema
+      .nullable()
+      .optional()
+      .meta({ description: 'Default window end (ISO 8601); `null` clears it, omitted keeps it' }),
+    default_start: iso8601DateTimeSchema
+      .nullable()
+      .optional()
+      .meta({ description: 'Default window start (ISO 8601); `null` clears it, omitted keeps it' }),
+    title: z.string().max(200).optional().meta({ description: 'Article title' }),
+    visibility: feedVisibilitySchema.optional(),
+  })
+  .meta({
+    description: 'Save changes to a draft; provided fields replace stored ones',
+    id: 'UpdateArticleDraftBody',
+  })
+
+export type UpdateArticleDraftBody = z.infer<typeof updateArticleDraftBodySchema>
+
+export const publishArticleDraftBodySchema = z
+  .object({
+    visibility: feedVisibilitySchema
+      .optional()
+      .meta({ description: "Audience for the published article; defaults to the draft's visibility" }),
+  })
+  .meta({ description: 'Publish a draft as an article post', id: 'PublishArticleDraftBody' })
+
+export type PublishArticleDraftBody = z.infer<typeof publishArticleDraftBodySchema>
+
 export const followActorBodySchema = z
   .object({
     handle: z.string().trim().min(1).max(512).meta({

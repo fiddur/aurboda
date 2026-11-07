@@ -11,6 +11,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
  * public/unlisted visibility filter, the response shape, and the 404 branches.
  */
 import { insertActivity } from '../db/activities/index.ts'
+import { createArticleDraft } from '../db/article-drafts.ts'
 import { createChallenge } from '../db/challenges.ts'
 import { createArticlePost, createChallengePost, createFeedPost, updateFeedPost } from '../db/feed.ts'
 import { insertTimeSeries } from '../db/time-series.ts'
@@ -92,6 +93,25 @@ describe('GET /public/:username/posts', () => {
       for (const post of res.body.posts) {
         expect(['public', 'unlisted']).toContain(post.visibility)
       }
+    } finally {
+      await close()
+    }
+  })
+
+  test('never serves an article draft, whatever its visibility', async () => {
+    const user = getTestUser()
+    await createArticleDraft(user, {
+      article: { blocks: [{ markdown: 'Not ready', type: 'prose' }], title: 'Unpublished' },
+      visibility: 'public',
+    })
+
+    const { request, close } = startApp()
+    try {
+      const res = await request.get(`/public/${user}/posts`)
+      expect(res.status).toBe(200)
+      expect(res.body.posts).toEqual([])
+      const articles = await request.get(`/public/${user}/posts?kind=article`)
+      expect(articles.body.posts).toEqual([])
     } finally {
       await close()
     }

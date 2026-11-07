@@ -104,7 +104,7 @@ A per-user set of rules, each combining a **predicate** and a **share template**
 
 ## Surface
 
-- **Web**: the "Auto-share rules" panel on the Feed page — list with enable toggles
+- **Web**: the "Auto-share rules" panel in the Feed page's **Manage** section — list with enable toggles
   (with an explicit confirmation of what will be published), post counts per rule,
   and a create form (with a **Data conditions** list: field, "has a value" / "is" /
   "is not" / "has no value", and a value suggested from the type's known values) and a
