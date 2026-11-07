@@ -636,6 +636,21 @@ const toSnakeCase = (s: string): string =>
     .replaceAll(/^_|_$/g, '')
     .replaceAll(/_+/g, '_') || 'unknown'
 
+/**
+ * Close to `toSnakeCase`, not equal: brackets separate words rather than vanish, and a name with
+ * nothing to keep becomes '' rather than 'unknown'.
+ */
+const sqlSnakeCase = (expr: string) =>
+  `lower(regexp_replace(regexp_replace(trim(both '_' from regexp_replace(lower(${expr}), '[^a-z0-9]+', '_', 'g')), '_+', '_', 'g'), '^_|_$', '', 'g'))`
+
+/** Every legacy tag with the activity type it migrates to: its definition's name, else its own text. */
+const LEGACY_TAG_TYPES = `
+  SELECT t.*,
+         COALESCE(td.name, t.tag) AS type_display_name,
+         COALESCE(${sqlSnakeCase('td.name')}, ${sqlSnakeCase('t.tag')}) AS activity_type
+    FROM tags t
+    LEFT JOIN tag_definitions td ON td.id = t.tag_definition_id`
+
 /** Migrate tags into activities and tag_definitions into activity_type_definitions. */
 const migrateTagsToActivities = async (db: Queryable, existingTableNames: Set<string>) => {
   if (!existingTableNames.has('tags')) return
@@ -663,10 +678,10 @@ const migrateTagsToActivities = async (db: Queryable, existingTableNames: Set<st
          VALUES ($1, $2, 'other', $3, $4, $5)
          ON CONFLICT (name) DO UPDATE SET
            icon = COALESCE(EXCLUDED.icon, activity_type_definitions.icon),
-           aliases = (
+           aliases = COALESCE((
              SELECT array_agg(DISTINCT elem)
              FROM unnest(activity_type_definitions.aliases || EXCLUDED.aliases) AS elem
-           ),
+           ), '{}'),
            show_on_timeline = EXCLUDED.show_on_timeline,
            updated_at = NOW()`,
         [name, displayName, icon, aliases, showOnTimeline],
@@ -679,23 +694,31 @@ const migrateTagsToActivities = async (db: Queryable, existingTableNames: Set<st
     `UPDATE activities
      SET activity_type = data->>'exerciseTypeName'
      WHERE activity_type = 'exercise'
-       AND data->>'exerciseTypeName' IS NOT NULL
-       AND data->>'exerciseTypeName' != ''`,
+       AND EXISTS (SELECT 1 FROM activity_type_definitions WHERE name = data->>'exerciseTypeName')`,
   )
 
-  // Use tag_definition name (snake_cased) as activity_type, or the tag text itself
+  // A type the tags carry but no definition names yet would fail the activities FK (#1489),
+  // and a name that snake-cases to nothing has no type to land in.
   await query(
     db,
-    `INSERT INTO activities (id, source, external_id, activity_type, start_time, end_time, title, data, deleted_at)
+    `WITH typed AS (${LEGACY_TAG_TYPES})
+     INSERT INTO activity_type_definitions (name, display_name, display_category)
+     SELECT activity_type, min(type_display_name), 'other'
+       FROM typed
+      WHERE activity_type <> ''
+      GROUP BY activity_type
+     ON CONFLICT (name) DO NOTHING`,
+  )
+
+  await query(
+    db,
+    `WITH typed AS (${LEGACY_TAG_TYPES})
+     INSERT INTO activities (id, source, external_id, activity_type, start_time, end_time, title, data, deleted_at)
      SELECT
        t.id,
        t.source,
        t.external_id,
-       COALESCE(
-         (SELECT lower(regexp_replace(regexp_replace(trim(both '_' from regexp_replace(lower(td.name), '[^a-z0-9]+', '_', 'g')), '_+', '_', 'g'), '^_|_$', '', 'g'))
-          FROM tag_definitions td WHERE td.id = t.tag_definition_id),
-         lower(regexp_replace(regexp_replace(trim(both '_' from regexp_replace(lower(t.tag), '[^a-z0-9]+', '_', 'g')), '_+', '_', 'g'), '^_|_$', '', 'g'))
-       ),
+       t.activity_type,
        t.start_time,
        t.end_time,
        CASE
@@ -708,7 +731,8 @@ const migrateTagsToActivities = async (db: Queryable, existingTableNames: Set<st
          ELSE NULL
        END,
        t.deleted_at
-     FROM tags t
+     FROM typed t
+     WHERE t.activity_type <> ''
      ON CONFLICT DO NOTHING`,
   )
 
@@ -1463,7 +1487,12 @@ export const migrateSchema = async (user: string, opts?: { force?: boolean }): P
 
   await backfillTagDefinitions(db, existingTableNames)
 
-  await migrateTagsToActivities(db, existingTableNames)
+  // A legacy one-off: its failure must not keep the rest of the sweep, and the fingerprint, from landing.
+  try {
+    await migrateTagsToActivities(db, existingTableNames)
+  } catch (error) {
+    console.warn(`⚠️ Migrating legacy tags into activities failed for ${user}, continuing:`, error)
+  }
 
   // Migrate generic 'exercise' activities to their specific type.
   // Must run BEFORE the definition backfill so new exercise types get definitions created.
