@@ -2,7 +2,15 @@ import { dataSources } from '@aurboda/api-spec'
 import { useEffect } from 'preact/hooks'
 
 import { blogPath } from '../../state/api/blogUrls'
-import { auth, blogUsername, ensureStatusLoaded, signupAllowed } from '../../state/auth'
+import {
+  auth,
+  blogUsername,
+  ensureStatusLoaded,
+  serverBilling,
+  type SignupMode,
+  signupMode,
+} from '../../state/auth'
+import { signupBillingLine } from '../../utils/plan'
 import { Dashboard } from '../Dashboard'
 import './style.css'
 
@@ -44,7 +52,41 @@ function Screenshot({
   )
 }
 
-function GuestHome({ blogUser, canSignup }: { blogUser: string | null; canSignup: boolean }) {
+const contactLink = (
+  <a href="https://www.reddit.com/user/fiddur/" target="_blank" rel="noopener noreferrer">
+    reddit
+  </a>
+)
+
+function SignupCallout({ mode }: { mode: SignupMode | undefined }) {
+  if (mode === undefined) return null
+  if (mode === 'open') {
+    const billing = signupBillingLine(serverBilling.value)
+    return (
+      <p class="signup-callout">
+        <a href="/signup" class="signup-callout-button">
+          Create an account
+        </a>
+        <span>
+          {billing ?? 'Open for new accounts.'} Already have one? <a href="/login">Log in</a>.
+        </span>
+      </p>
+    )
+  }
+  return (
+    <p class="signup-callout">
+      <span>
+        {mode === 'invite_only'
+          ? 'Signing up on this server needs an invitation link'
+          : 'This server is not taking new accounts'}{' '}
+        — ask for one through {contactLink}, or self-host your own instance (see below). Already have an
+        account? <a href="/login">Log in</a>.
+      </span>
+    </p>
+  )
+}
+
+function GuestHome({ blogUser }: { blogUser: string | null }) {
   return (
     <>
       <section class="intro">
@@ -170,22 +212,6 @@ function GuestHome({ blogUser, canSignup }: { blogUser: string | null; canSignup
             </>
           )}
         </p>
-        <p class="note">
-          No public signup — self-host your own instance or{' '}
-          {canSignup ? (
-            <>
-              <a href="/signup">sign up</a> if you have an invite.
-            </>
-          ) : (
-            <>
-              contact me through{' '}
-              <a href="https://www.reddit.com/user/fiddur/" target="_blank" rel="noopener noreferrer">
-                reddit
-              </a>
-              .
-            </>
-          )}
-        </p>
       </section>
 
       <section class="features">
@@ -253,15 +279,19 @@ function GuestHome({ blogUser, canSignup }: { blogUser: string | null; canSignup
 
       <section class="downloads">
         <h2>Downloads &amp; Deployment</h2>
-        <h3>Android</h3>
+        <h3>Android app</h3>
         <p>
           <a
             href="https://github.com/fiddur/aurboda/releases/latest/download/aurboda.apk"
             target="_blank"
             rel="noopener noreferrer"
           >
-            Android APK
+            Download the Aurboda Android app (APK)
           </a>
+        </p>
+        <p class="note">
+          Not in Google Play or F-Droid yet: open the downloaded file on your phone and allow installing from
+          your browser. The app updates itself after that.
         </p>
         <h3>Self-hosting with Docker</h3>
         <p>
@@ -311,7 +341,6 @@ function GuestHome({ blogUser, canSignup }: { blogUser: string | null; canSignup
 
 export function Home() {
   const isLoggedIn = auth.value.token
-  const canSignup = signupAllowed.value
 
   useEffect(() => {
     ensureStatusLoaded()
@@ -332,7 +361,9 @@ export function Home() {
         </div>
       </div>
 
-      <GuestHome blogUser={blogUsername.value} canSignup={canSignup ?? false} />
+      <SignupCallout mode={signupMode.value} />
+
+      <GuestHome blogUser={blogUsername.value} />
     </div>
   )
 }
