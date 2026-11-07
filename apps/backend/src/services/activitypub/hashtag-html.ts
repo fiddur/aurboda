@@ -43,7 +43,8 @@ const TAG_NAME = /^<\s*(\/)?\s*([a-zA-Z][a-zA-Z0-9]*)/
  * each typed `#tag` in a text node — not inside `<a>`, `<code>` or `<pre>` —
  * becomes a hashtag link keeping its written casing, and the tags the text
  * does not show are appended as one trailing paragraph of links. Tags typed but
- * not among the post's tags (past the cap) stay plain text.
+ * not among the post's tags (past the cap) stay plain text. The tag splitting
+ * assumes no attribute value holds a raw `>`, which sanitiser output guarantees.
  */
 export const linkifyHashtags = (html: string, links: HashtagLinks | undefined): string => {
   if (links == null || links.tags.length === 0) return html

@@ -5,13 +5,14 @@ import { render } from 'preact'
 import { LocationProvider, Route, Router, useLocation } from 'preact-iso'
 
 import { Footer } from './components/Footer.jsx'
+import { GuestBar } from './components/GuestBar.jsx'
 import { Header } from './components/Header.jsx'
 import { PlanBanner } from './components/PlanBanner.jsx'
 import { Sidebar } from './components/Sidebar.jsx'
 import { isEmbedded } from './embed.js'
 import { lazyPage } from './lazyPage.js'
 import { NotFound } from './pages/_404.jsx'
-import { shouldShowNav, shouldShowPlanBanner } from './shell.js'
+import { shouldShowGuestBar, shouldShowNav, shouldShowPlanBanner, shouldShowSiteFooter } from './shell.js'
 import { auth } from './state/auth.js'
 import { queryClient } from './state/queryClient.js'
 import './style.css'
@@ -102,15 +103,18 @@ function AppShell() {
   // Embedded in the native app's WebView: the app supplies navigation, so hide
   // all web chrome (header, sidebar, footer) and just render page content.
   const embedded = isEmbedded()
-  const showNav = !embedded && shouldShowNav(path, Boolean(auth.value.token))
+  const isLoggedIn = Boolean(auth.value.token)
+  const showNav = !embedded && shouldShowNav(path, isLoggedIn)
+  const showGuestBar = !embedded && shouldShowGuestBar(path, isLoggedIn)
   // Shown in the native app's WebView too: Android users would otherwise only see the 402s.
-  const showPlanBanner = shouldShowPlanBanner(path, Boolean(auth.value.token))
+  const showPlanBanner = shouldShowPlanBanner(path, isLoggedIn)
 
   return (
     <>
       {showNav && <Header />}
       {showNav && <Sidebar />}
       <div class="app-content">
+        {showGuestBar && <GuestBar />}
         {showPlanBanner && <PlanBanner />}
         <main>
           <Router>
@@ -177,7 +181,7 @@ function AppShell() {
             <Route default component={NotFound} />
           </Router>
         </main>
-        {!embedded && <Footer />}
+        {!embedded && shouldShowSiteFooter(path, isLoggedIn) && <Footer />}
       </div>
     </>
   )

@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { endOfDay, formatISO, startOfDay, subDays } from 'date-fns'
 import { useState } from 'preact/hooks'
 
+import { ActivityWatchInstall } from '../../components/ActivityWatchInstall'
 import { fetchProductivity, generateApiToken } from '../../state/api'
 import { auth } from '../../state/auth'
 import './style.css'
@@ -107,9 +108,18 @@ export function ActivityWatchDesktopSource() {
           </a>
         </div>
 
-        {!hasData && (
+        <section class="settings-section">
+          <h2>Install with one command</h2>
+          <p class="section-description">
+            Install ActivityWatch first, then paste this into a terminal on the computer to track. It installs
+            the push agent and sends app usage here every 5 minutes.
+          </p>
+          <ActivityWatchInstall manualHref="#manual-setup" />
+        </section>
+
+        <section class="settings-section" id="manual-setup">
+          <h2>Manual setup</h2>
           <div class="setup-instructions">
-            <h3>Setup</h3>
             <ol>
               <li>Install ActivityWatch on your computer from the ActivityWatch website.</li>
               <li>Generate an API token below.</li>
@@ -119,10 +129,6 @@ export function ActivityWatchDesktopSource() {
               </li>
             </ol>
           </div>
-        )}
-
-        <section class="settings-section">
-          <h2>API Token</h2>
           <p class="section-description">
             The push agent needs your Aurboda API token. Generate one and paste it into the agent config.
           </p>
