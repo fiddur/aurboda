@@ -95,7 +95,6 @@ export interface DeliverablePost {
   include_exercises: boolean
   /** Capability token appended to `followers`-only image URLs (see `imageAttachments`). */
   image_token: string
-  /** Hashtags, lowercase without `#`. */
   tags?: readonly string[]
 }
 

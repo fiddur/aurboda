@@ -47,7 +47,6 @@ export interface FeedPostRecord {
   in_reply_to_handle: string | null
   /** The auto-share rule that created this post (#903), or null for manual posts. */
   autoshare_rule_id: string | null
-  /** Hashtags, lowercase without `#`. */
   tags: string[]
   /** Unguessable capability token for `followers`-only image URLs (see schema). */
   image_token: string

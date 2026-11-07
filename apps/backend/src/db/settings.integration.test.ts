@@ -325,4 +325,28 @@ describe('Settings Integration Tests', () => {
       expect(settings?.birth_date).toBe('2000-01-01')
     })
   })
+
+  describe('User Settings with the get-started guide state', () => {
+    test('stores the dismissal and manual steps, and clears them', async () => {
+      const user = getTestUser()
+
+      await upsertUserSettings(user, { sex: 'male' })
+      await upsertUserSettings(user, {
+        onboarding_dismissed_at: '2026-11-01T10:00:00.000Z',
+        onboarding_manual_done: ['ask_ai'],
+      })
+
+      const stored = await getUserSettings(user)
+      expect(stored?.onboarding_dismissed_at).toBe('2026-11-01T10:00:00.000Z')
+      expect(stored?.onboarding_manual_done).toEqual(['ask_ai'])
+      expect(stored?.sex).toBe('male')
+
+      await upsertUserSettings(user, {}, ['onboarding_dismissed_at', 'onboarding_manual_done'])
+
+      const cleared = await getUserSettings(user)
+      expect(cleared?.onboarding_dismissed_at).toBeUndefined()
+      expect(cleared?.onboarding_manual_done).toBeUndefined()
+      expect(cleared?.sex).toBe('male')
+    })
+  })
 })

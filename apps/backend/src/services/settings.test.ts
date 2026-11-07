@@ -140,6 +140,29 @@ describe('getSettingsResponse', () => {
     expect(result.maf_hr).toBe(142)
   })
 
+  test('defaults the get-started guide state to shown with nothing marked done', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue(null)
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+
+    const result = await getSettingsResponse('testuser')
+
+    expect(result.onboarding_dismissed_at).toBeNull()
+    expect(result.onboarding_manual_done).toEqual([])
+  })
+
+  test('passes stored get-started guide state through', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue({
+      onboarding_dismissed_at: '2026-11-01T10:00:00.000Z',
+      onboarding_manual_done: ['ask_ai'],
+    })
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+
+    const result = await getSettingsResponse('testuser')
+
+    expect(result.onboarding_dismissed_at).toBe('2026-11-01T10:00:00.000Z')
+    expect(result.onboarding_manual_done).toEqual(['ask_ai'])
+  })
+
   test('returns formatted response with custom zones', async () => {
     const customZones: HrZoneThresholds = { 1: 86, 2: 103, 3: 121, 4: 138, 5: 155 }
     vi.mocked(db.getUserSettings).mockResolvedValue({
@@ -335,6 +358,43 @@ describe('validateAndUpdateSettings', () => {
 
     await validateAndUpdateSettings('testuser', { maf_hr: null })
     expect(db.upsertUserSettings).toHaveBeenLastCalledWith('testuser', {}, ['maf_hr'])
+  })
+
+  test('stores the get-started guide dismissal and manual steps, and clears them with null', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue({})
+    vi.mocked(db.upsertUserSettings).mockResolvedValue({})
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+
+    await validateAndUpdateSettings('testuser', {
+      onboarding_dismissed_at: '2026-11-01T10:00:00.000Z',
+      onboarding_manual_done: ['ask_ai'],
+    })
+    expect(db.upsertUserSettings).toHaveBeenCalledWith(
+      'testuser',
+      { onboarding_dismissed_at: '2026-11-01T10:00:00.000Z', onboarding_manual_done: ['ask_ai'] },
+      [],
+    )
+
+    await validateAndUpdateSettings('testuser', {
+      onboarding_dismissed_at: null,
+      onboarding_manual_done: null,
+    })
+    expect(db.upsertUserSettings).toHaveBeenLastCalledWith('testuser', {}, [
+      'onboarding_dismissed_at',
+      'onboarding_manual_done',
+    ])
+  })
+
+  test.each([
+    ['a dismissal that is not a date-time', { onboarding_dismissed_at: 'yesterday' }],
+    ['an unknown step id', { onboarding_manual_done: ['learn_to_fly'] }],
+  ])('rejects %s', async (_name, input) => {
+    vi.mocked(db.upsertUserSettings).mockClear()
+
+    const result = await validateAndUpdateSettings('testuser', input)
+
+    expect(result.success).toBe(false)
+    expect(db.upsertUserSettings).not.toHaveBeenCalled()
   })
 
   const zones: HrZoneThresholds = { 1: 86, 2: 103, 3: 121, 4: 138, 5: 155 }

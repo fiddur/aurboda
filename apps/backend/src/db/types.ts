@@ -9,6 +9,7 @@ import type {
   GarminDataType,
   GeocodeStatus,
   MetricType,
+  OnboardingStepId,
   ReportFlag,
   SyncStatus,
   TrainingLoadSettings,
@@ -450,6 +451,8 @@ export interface UserSettings {
   lastfm_username?: string // Last.fm username for scrobble sync
   maf_hr?: number // Low-HR (MAF) ceiling in bpm; falls back to the zone-2 upper bound
   manually_approve_followers?: boolean // Hold incoming follows for manual approval (locked account)
+  onboarding_dismissed_at?: string // ISO 8601; the dashboard "Get started" guide stays hidden while set
+  onboarding_manual_done?: OnboardingStepId[] // Get-started steps marked done by hand
   rescue_time_key?: string // RescueTime API key (personal token)
   run_category_rules_seeded?: boolean // Internal: the default run-category deduction rules were created once
   sex?: BiologicalSex // Biological sex for calorie calculation

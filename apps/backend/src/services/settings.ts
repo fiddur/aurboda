@@ -193,6 +193,8 @@ const settingsWithDefaultsSchema = userSettingsResponseSchema.pick({
   maf_hr: true,
   manually_approve_followers: true,
   meal_slots: true,
+  onboarding_dismissed_at: true,
+  onboarding_manual_done: true,
   rescue_time_key: true,
   sensitivity_areas: true,
   sex: true,

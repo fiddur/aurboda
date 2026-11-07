@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
 import { EditableDashboard } from '../../components/EditableDashboard'
+import { GetStartedGuide } from '../../components/GetStartedGuide'
 import { fetchDashboard, resetDashboard, saveDashboard } from '../../state/api'
 import { auth } from '../../state/auth'
 import { readCachedDashboard, writeCachedDashboard } from '../../state/dashboardCache'
@@ -86,6 +87,8 @@ export function Dashboard() {
           )}
         </div>
       </div>
+
+      {!isEditing && <GetStartedGuide />}
 
       {isLoading && <div class="loading">Loading your dashboard...</div>}
 

@@ -612,6 +612,11 @@ a.garmin-data-type-label:hover {
   margin-bottom: 0.5rem;
 }
 
+.data-sources-page .mcp-url {
+  width: 100%;
+  box-sizing: border-box;
+}
+
 .data-sources-page .token-display {
   flex: 1;
   min-width: 0;

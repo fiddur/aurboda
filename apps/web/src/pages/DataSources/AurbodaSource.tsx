@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 
+import { absoluteApiUrl } from '../../components/activitywatch-install'
 import { CustomMetricsSettings } from '../../components/CustomMetricsSettings'
+import { API_URL } from '../../config'
 import { fetchMetricTimeSeries, fetchUserSettings } from '../../state/api'
 import { auth } from '../../state/auth'
 import './style.css'
@@ -110,6 +112,32 @@ export function AurbodaSource() {
           <span class="status-dot connected" /> Always available — no setup required
         </div>
       </div>
+
+      <section class="settings-section" id="ai-assistant">
+        <h2>Connect an AI assistant</h2>
+        <p class="section-description">
+          Claude and other AI assistants that speak MCP can query and add to your data. In Claude, add a
+          custom connector with this URL; it asks you to sign in to Aurboda the first time. Then ask it
+          something like “did I sleep better on days I ran?”
+        </p>
+        <input
+          class="token-display mcp-url"
+          type="text"
+          readOnly
+          aria-label="MCP server URL"
+          value={new URL('/mcp', absoluteApiUrl(API_URL, window.location.origin)).href}
+          onClick={(e) => (e.target as HTMLInputElement).select()}
+        />
+        <p class="section-description">
+          <a
+            href="https://github.com/fiddur/aurboda/blob/develop/docs/mcp-server.md#authentication"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            More on connecting MCP clients
+          </a>
+        </p>
+      </section>
 
       <section class="settings-section">
         <h2>Calorie Estimation</h2>

@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import { defaultFeedTags, maxPostTags } from '../hashtags.ts'
-import { baseResponseSchema, hrZoneSourceSchema } from './common.ts'
+import { baseResponseSchema, hrZoneSourceSchema, iso8601DateTimeSchema } from './common.ts'
 import { dashboardConfigSchema } from './dashboard.ts'
 import { hashtagInputSchema } from './feed.ts'
 import { goalsSchema } from './goals.ts'
@@ -152,6 +152,15 @@ export const foodSensitivityMapSchema = z.record(z.string(), z.array(z.string())
 
 const mafHrSchema = z.number().int().min(80).max(220)
 
+export const onboardingStepIds = ['android_app', 'wearable', 'computer_time', 'social', 'ask_ai'] as const
+
+export const onboardingStepIdSchema = z.enum(onboardingStepIds).meta({
+  description: 'A step of the dashboard "Get started" guide',
+  id: 'OnboardingStepId',
+})
+
+export type OnboardingStepId = z.infer<typeof onboardingStepIdSchema>
+
 export const updateSettingsInputSchema = z
   .object({
     birth_date: birthDateSchema.nullable().optional().meta({
@@ -197,6 +206,14 @@ export const updateSettingsInputSchema = z
     manually_approve_followers: z.boolean().nullable().optional().meta({
       description:
         'When true, incoming follows are held as pending requests you approve or reject; when false (default), anyone can follow you automatically (set to null to reset to the default).',
+    }),
+    onboarding_dismissed_at: iso8601DateTimeSchema.nullable().optional().meta({
+      description:
+        'When the dashboard "Get started" guide was hidden; the guide stays hidden while set (set to null to show it again)',
+    }),
+    onboarding_manual_done: z.array(onboardingStepIdSchema).nullable().optional().meta({
+      description:
+        'Get-started steps the user marked as done by hand, for steps Aurboda cannot detect by itself (set to null to clear)',
     }),
     rescue_time_key: rescueTimeKeySchema.nullable().optional().meta({
       description: 'RescueTime API key (set to null to clear)',
@@ -288,6 +305,12 @@ export const userSettingsResponseSchema = baseResponseSchema
       description: 'Whether incoming follows are held for manual approval (locked account)',
     }),
     meal_slots: mealSlotsSchema.default([]).meta({ description: 'Configured meal slots for quick-logging' }),
+    onboarding_dismissed_at: z.string().nullable().default(null).meta({
+      description: 'When the dashboard "Get started" guide was hidden (ISO 8601), or null while it shows',
+    }),
+    onboarding_manual_done: z.array(onboardingStepIdSchema).default([]).meta({
+      description: 'Get-started steps the user marked as done by hand',
+    }),
     oura_configured: z
       .boolean()
       .default(false)

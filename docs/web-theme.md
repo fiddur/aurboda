@@ -41,7 +41,7 @@ that white text cannot be read on.
   multi-series palettes, challenge member colours) is not the brand.
 - Charts drawn on canvas or SVG take their colours from TypeScript, where CSS variables do not
   reach: `apps/web/src/theme.ts` has `CHART_PRIMARY` (the logo teal, `#2b9ea7`, for a
-  single-series or default line, bar or area) and `CHART_SECONDARY` (for a second series).
+  single-series or default line, bar or area).
 - The images the backend renders (share cards, feed charts, route maps) use the same palette as
   literals: navy `#0f2a4f` for backgrounds, teal `#2b9ea7` for the main series, orange
   `#f9ab33` for a highlight.

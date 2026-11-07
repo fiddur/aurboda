@@ -205,6 +205,9 @@ blocks; code spans, fences and URL fragments do not count):
   exercise's name, else its value (`Dumbbell Bench Press` → `dumbbellbenchpress`), or
   `challenge`. An article has no kind tag.
 
+The list is cut at 10 in that order (automatic or explicit first, then typed), so a typed tag
+past the cap stays plain text.
+
 A **reply** gets only the tags typed in it. An [auto-share rule](auto-share-rules.md) with
 its own `tags` uses them in place of the default tags; the kind tag still follows the setting.
 Editing a post with an explicit `tags` list replaces its tags (plus those typed in the text);

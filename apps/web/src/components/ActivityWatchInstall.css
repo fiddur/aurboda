@@ -1,0 +1,106 @@
+.aw-install {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.aw-install-tabs {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.aw-install-tab {
+  min-height: 44px;
+  padding: 0 1rem;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--color-text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.aw-install-tab:hover {
+  color: var(--color-text);
+}
+
+.aw-install-tab.active {
+  border-bottom-color: var(--color-accent);
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.aw-install-box {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 44px;
+  padding: 0.5rem 0.5rem 0.5rem 0.75rem;
+  border-radius: 8px;
+  background: var(--color-chrome);
+  color: var(--color-chrome-text);
+}
+
+.aw-install-command {
+  flex: 1;
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: none;
+  color: inherit;
+}
+
+.aw-install-copy,
+.aw-install-reveal {
+  min-height: 44px;
+  padding: 0 1rem;
+  border: none;
+  border-radius: 6px;
+  background: var(--color-primary);
+  color: #fff;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.aw-install-copy {
+  flex-shrink: 0;
+}
+
+.aw-install-copy:hover,
+.aw-install-reveal:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+
+.aw-install-reveal:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+.aw-install-note,
+.aw-install-error {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.aw-install-note {
+  color: var(--color-text-muted);
+}
+
+.aw-install-error {
+  color: #dc2626;
+}
+
+.aw-install-manual {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--color-accent);
+  font-size: 0.9rem;
+}
