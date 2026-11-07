@@ -6,22 +6,19 @@
  * leave the instance: enabling is the deliberate act. A preview shows how many
  * activities in the last 30 days would have matched, BEFORE anything is on.
  * Enabling only affects activities that arrive afterwards — never history.
+ *
+ * Each rule opens in the same form, prefilled, to see and edit its settings.
+ * An edit changes what the rule shares from then on; posts it already
+ * published stay as they were.
  */
-import type {
-  AddAutoshareRuleBody,
-  AutoshareRule,
-  DataFieldDefinition,
-  FeedVisibility,
-  MetricType,
-} from '@aurboda/api-spec'
+import type { AutoshareRule, DataFieldDefinition } from '@aurboda/api-spec'
 
 import { feedPostMessageMaxLength } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
 import { ActivityTypePicker } from '../../components/ActivityTypePicker'
-import { DEFAULT_SUMMARY, SERIES_METRICS, SUMMARY_METRICS } from '../../components/feed-metrics'
-import { formatTagsInput, parseTagsInput } from '../../components/hashtags'
+import { SERIES_METRICS, SUMMARY_METRICS } from '../../components/feed-metrics'
 import { KnownValuesInput } from '../../components/KnownValuesInput'
 import { fieldLabel, scalarFields } from '../../components/sessions/sessionView'
 import { TagsInput } from '../../components/TagsInput'
@@ -36,6 +33,14 @@ import {
   updateAutoshareRule,
 } from '../../state/api'
 import {
+  emptyRuleFormState,
+  formStateToAddBody,
+  formStateToUpdateBody,
+  ruleHasManyActivityTypes,
+  type RuleFormState,
+  ruleToFormState,
+} from './autoshare-rule-form'
+import {
   DATA_FILTER_OPERATOR_LABELS,
   DATA_FILTER_OPERATORS,
   type DataFilterOperator,
@@ -43,8 +48,8 @@ import {
   dataFilterRowComplete,
   newDataFilterRow,
   operatorTakesValue,
-  rowToDataFilter,
   ruleSummary,
+  ruleTagsText,
 } from './autoshare-rule-text'
 
 const toggleKey = <T extends string>(set: Set<T>, key: T): Set<T> => {
@@ -143,6 +148,7 @@ function DataConditionRow({
 }
 
 function RuleRow({ rule, postCount }: { rule: AutoshareRule; postCount: number }) {
+  const [editing, setEditing] = useState(false)
   const definitions = useActivityTypeDefinitions()
   const labelFor = (field: string): string | undefined => {
     for (const activityType of rule.activity_types) {
@@ -180,84 +186,72 @@ function RuleRow({ rule, postCount }: { rule: AutoshareRule; postCount: number }
   }
 
   return (
-    <li class="autoshare-rule-row">
-      <div class="autoshare-rule-main">
-        <span class="autoshare-rule-name">{rule.name}</span>
-        <span class="autoshare-rule-meta">
-          {ruleSummary(rule, labelFor)}
-          {rule.tags && ` · ${rule.tags.length > 0 ? formatTagsInput(rule.tags) : 'no tags'}`}
-          {postCount > 0 && ` · ${postCount} post${postCount === 1 ? '' : 's'} auto-shared`}
-        </span>
+    <li class="autoshare-rule-item">
+      <div class="autoshare-rule-row">
+        <div class="autoshare-rule-main">
+          <span class="autoshare-rule-name">{rule.name}</span>
+          <span class="autoshare-rule-meta">
+            {ruleSummary(rule, labelFor)} · {ruleTagsText(rule.tags)}
+            {postCount > 0 && ` · ${postCount} post${postCount === 1 ? '' : 's'} auto-shared`}
+          </span>
+        </div>
+        <div class="autoshare-rule-actions">
+          <label class="autoshare-rule-toggle">
+            <input
+              type="checkbox"
+              checked={rule.enabled}
+              onClick={onToggleClick}
+              onChange={() => toggle.mutate()}
+              disabled={toggle.isPending}
+            />
+            {rule.enabled ? 'On' : 'Off'}
+          </label>
+          <button type="button" class="btn-secondary" onClick={() => setEditing((v) => !v)}>
+            {editing ? 'Close' : 'Edit'}
+          </button>
+          <button
+            type="button"
+            class="btn-danger"
+            onClick={() => window.confirm(`Delete "${rule.name}"?`) && del.mutate()}
+            disabled={del.isPending}
+          >
+            Delete
+          </button>
+        </div>
       </div>
-      <div class="autoshare-rule-actions">
-        <label class="autoshare-rule-toggle">
-          <input
-            type="checkbox"
-            checked={rule.enabled}
-            onClick={onToggleClick}
-            onChange={() => toggle.mutate()}
-            disabled={toggle.isPending}
-          />
-          {rule.enabled ? 'On' : 'Off'}
-        </label>
-        <button
-          type="button"
-          class="btn-danger"
-          onClick={() => window.confirm(`Delete "${rule.name}"?`) && del.mutate()}
-          disabled={del.isPending}
-        >
-          Delete
-        </button>
-      </div>
+      {editing && (
+        <RuleForm
+          rule={rule}
+          onDone={() => {
+            setEditing(false)
+            invalidate()
+          }}
+        />
+      )}
     </li>
   )
 }
 
-const DEFAULT_MAX_AGE_HOURS = 24
-
 // eslint-disable-next-line complexity -- one form, one field per predicate/template knob
-function CreateRuleForm({ onDone }: { onDone: () => void }) {
-  const [name, setName] = useState('')
-  const [activityType, setActivityType] = useState('')
-  const [minMinutes, setMinMinutes] = useState('')
-  const [minKm, setMinKm] = useState('')
-  const [maxAgeHours, setMaxAgeHours] = useState(String(DEFAULT_MAX_AGE_HOURS))
-  const [summary, setSummary] = useState<Set<string>>(() => new Set(DEFAULT_SUMMARY))
-  const [series, setSeries] = useState<Set<MetricType>>(() => new Set())
-  const [includeMap, setIncludeMap] = useState(false)
-  const [includeExercises, setIncludeExercises] = useState(false)
-  const [visibility, setVisibility] = useState<FeedVisibility>('followers')
-  const [message, setMessage] = useState('')
-  const [ownTags, setOwnTags] = useState(false)
-  const [tagsText, setTagsText] = useState('')
-  const [conditions, setConditions] = useState<DataFilterRow[]>([])
+function RuleForm({ rule, onDone }: { rule?: AutoshareRule; onDone: () => void }) {
+  const [state, setState] = useState<RuleFormState>(() =>
+    rule ? ruleToFormState(rule) : emptyRuleFormState(),
+  )
   const [preview, setPreview] = useState<{ would_match: number; sample_days: number } | null>(null)
   const [previewError, setPreviewError] = useState<string | null>(null)
+  const set = (patch: Partial<RuleFormState>) => setState((current) => ({ ...current, ...patch }))
+  const setConditions = (update: (rows: DataFilterRow[]) => DataFilterRow[]) =>
+    setState((current) => ({ ...current, conditions: update(current.conditions) }))
 
+  const manyTypes = rule !== undefined && ruleHasManyActivityTypes(rule)
+  const { activityType, conditions, summary, series } = state
   const schemaFields = schemaFieldsOf(useActivityTypeDefinitions(), activityType)
   const updateCondition = (index: number, row: DataFilterRow) =>
     setConditions((rows) => rows.map((current, i) => (i === index ? row : current)))
   const conditionsComplete = conditions.every(dataFilterRowComplete)
 
-  const body = (): AddAutoshareRuleBody => ({
-    activity_types: activityType ? [activityType] : [],
-    data_filters: conditions.map(rowToDataFilter),
-    name: name.trim() || 'Unnamed rule',
-    include_chart: series.has('heart_rate'),
-    include_exercises: includeExercises,
-    include_map: includeMap,
-    included_metrics: SUMMARY_METRICS.map((m) => m.key).filter((k) => summary.has(k)),
-    max_age_hours: maxAgeHours.trim() === '' ? DEFAULT_MAX_AGE_HOURS : Number(maxAgeHours),
-    ...(message.trim() === '' ? {} : { message: message.trim() }),
-    ...(ownTags ? { tags: parseTagsInput(tagsText) } : {}),
-    ...(minKm.trim() === '' ? {} : { min_distance_meters: Number(minKm) * 1000 }),
-    ...(minMinutes.trim() === '' ? {} : { min_duration_seconds: Number(minMinutes) * 60 }),
-    series_metrics: SERIES_METRICS.map((m) => m.key).filter((k) => series.has(k)),
-    visibility,
-  })
-
   const previewMutation = useMutation({
-    mutationFn: () => previewAutoshareRule(body()),
+    mutationFn: () => previewAutoshareRule(formStateToAddBody(state, rule)),
     onError: (err) => {
       setPreview(null)
       setPreviewError(err.message)
@@ -267,44 +261,63 @@ function CreateRuleForm({ onDone }: { onDone: () => void }) {
       setPreview({ sample_days: result.sample_days ?? 30, would_match: result.would_match ?? 0 })
     },
   })
-  const createMutation = useMutation({
-    mutationFn: () => addAutoshareRule(body()),
-    onError: () => alert('Failed to create the rule.'),
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      rule
+        ? updateAutoshareRule(rule.id, formStateToUpdateBody(state, rule))
+        : addAutoshareRule(formStateToAddBody(state)),
+    onError: () => alert(rule ? 'Failed to save the rule.' : 'Failed to create the rule.'),
     onSuccess: onDone,
   })
 
-  const canSubmit = name.trim() !== '' && summary.size > 0 && conditionsComplete && !createMutation.isPending
+  const canSubmit =
+    state.name.trim() !== '' && summary.size > 0 && conditionsComplete && !saveMutation.isPending
+  // A prefilled value set through the API need not sit on the input's step.
+  const step = (createStep: string) => (rule ? 'any' : createStep)
 
   return (
     <form
       class="autoshare-create"
       onSubmit={(e) => {
         e.preventDefault()
-        if (canSubmit) createMutation.mutate()
+        if (canSubmit) saveMutation.mutate()
       }}
     >
+      {rule?.enabled && (
+        <p class="autoshare-edit-note">
+          This rule is on. Saved changes apply to activities shared from now on; posts it has already
+          published are not changed.
+        </p>
+      )}
       <label>
         Name
         <input
           type="text"
-          value={name}
+          value={state.name}
           placeholder="e.g. Runs longer than 15 minutes"
-          onInput={(e) => setName((e.target as HTMLInputElement).value)}
+          onInput={(e) => set({ name: (e.target as HTMLInputElement).value })}
         />
       </label>
 
       <div class="autoshare-create-row">
-        <label>
-          Activity type (empty = any)
-          <ActivityTypePicker value={activityType} onChange={setActivityType} />
-        </label>
+        {manyTypes ? (
+          <p class="autoshare-edit-note">
+            Activity types: {rule.activity_types.join(', ')} (edit via API/MCP)
+          </p>
+        ) : (
+          <label>
+            Activity type (empty = any)
+            <ActivityTypePicker value={activityType} onChange={(value) => set({ activityType: value })} />
+          </label>
+        )}
         <label>
           Min duration (minutes)
           <input
             type="number"
             min="1"
-            value={minMinutes}
-            onInput={(e) => setMinMinutes((e.target as HTMLInputElement).value)}
+            step={step('1')}
+            value={state.minMinutes}
+            onInput={(e) => set({ minMinutes: (e.target as HTMLInputElement).value })}
           />
         </label>
         <label>
@@ -312,9 +325,9 @@ function CreateRuleForm({ onDone }: { onDone: () => void }) {
           <input
             type="number"
             min="0.1"
-            step="0.1"
-            value={minKm}
-            onInput={(e) => setMinKm((e.target as HTMLInputElement).value)}
+            step={step('0.1')}
+            value={state.minKm}
+            onInput={(e) => set({ minKm: (e.target as HTMLInputElement).value })}
           />
         </label>
         <label>
@@ -324,8 +337,8 @@ function CreateRuleForm({ onDone }: { onDone: () => void }) {
             min="1"
             max="8760"
             step="1"
-            value={maxAgeHours}
-            onInput={(e) => setMaxAgeHours((e.target as HTMLInputElement).value)}
+            value={state.maxAgeHours}
+            onInput={(e) => set({ maxAgeHours: (e.target as HTMLInputElement).value })}
           />
         </label>
       </div>
@@ -359,7 +372,9 @@ function CreateRuleForm({ onDone }: { onDone: () => void }) {
               <input
                 type="checkbox"
                 checked={summary.has(key)}
-                onChange={() => setSummary((s) => toggleKey(s, key))}
+                onChange={() =>
+                  setState((current) => ({ ...current, summary: toggleKey(current.summary, key) }))
+                }
               />
               {label}
             </label>
@@ -375,7 +390,9 @@ function CreateRuleForm({ onDone }: { onDone: () => void }) {
               <input
                 type="checkbox"
                 checked={series.has(key)}
-                onChange={() => setSeries((s) => toggleKey(s, key))}
+                onChange={() =>
+                  setState((current) => ({ ...current, series: toggleKey(current.series, key) }))
+                }
               />
               {label}
             </label>
@@ -383,16 +400,16 @@ function CreateRuleForm({ onDone }: { onDone: () => void }) {
           <label class="share-dialog-checkbox">
             <input
               type="checkbox"
-              checked={includeMap}
-              onChange={(e) => setIncludeMap((e.target as HTMLInputElement).checked)}
+              checked={state.includeMap}
+              onChange={(e) => set({ includeMap: (e.target as HTMLInputElement).checked })}
             />
             Route map
           </label>
           <label class="share-dialog-checkbox">
             <input
               type="checkbox"
-              checked={includeExercises}
-              onChange={(e) => setIncludeExercises((e.target as HTMLInputElement).checked)}
+              checked={state.includeExercises}
+              onChange={(e) => set({ includeExercises: (e.target as HTMLInputElement).checked })}
             />
             Exercises (sets, e1RM, volume)
           </label>
@@ -404,8 +421,8 @@ function CreateRuleForm({ onDone }: { onDone: () => void }) {
         <input
           type="text"
           maxLength={feedPostMessageMaxLength}
-          value={message}
-          onInput={(e) => setMessage((e.target as HTMLInputElement).value)}
+          value={state.message}
+          onInput={(e) => set({ message: (e.target as HTMLInputElement).value })}
         />
       </label>
 
@@ -414,26 +431,26 @@ function CreateRuleForm({ onDone }: { onDone: () => void }) {
         <label class="share-dialog-checkbox">
           <input
             type="checkbox"
-            checked={!ownTags}
-            onChange={(e) => setOwnTags(!(e.target as HTMLInputElement).checked)}
+            checked={!state.ownTags}
+            onChange={(e) => set({ ownTags: !(e.target as HTMLInputElement).checked })}
           />
           Use my default tags (set in Settings)
         </label>
-        {ownTags && (
+        {state.ownTags && (
           <TagsInput
             legend="This rule's tags"
-            value={tagsText}
-            onInput={setTagsText}
+            value={state.tagsText}
+            onInput={(tagsText) => set({ tagsText })}
             note="These replace your default tags on this rule's posts. The activity type tag still follows your setting."
           />
         )}
       </fieldset>
 
       <VisibilitySelector
-        name="autoshare-visibility"
+        name={rule ? `autoshare-visibility-${rule.id}` : 'autoshare-visibility'}
         options={FEED_VISIBILITY_OPTIONS}
-        value={visibility}
-        onChange={setVisibility}
+        value={state.visibility}
+        onChange={(visibility) => set({ visibility })}
       />
 
       <div class="autoshare-create-actions">
@@ -446,7 +463,7 @@ function CreateRuleForm({ onDone }: { onDone: () => void }) {
           {previewMutation.isPending ? 'Previewing…' : 'Preview'}
         </button>
         <button type="submit" class="btn-primary" disabled={!canSubmit}>
-          Create (starts off)
+          {rule ? 'Save' : 'Create (starts off)'}
         </button>
       </div>
       {preview && (
@@ -481,7 +498,7 @@ export function AutoShareRulesPanel() {
         confirmation.
       </p>
       {creating && (
-        <CreateRuleForm
+        <RuleForm
           onDone={() => {
             setCreating(false)
             queryClient.invalidateQueries({ queryKey: ['autoshare-rules'] })

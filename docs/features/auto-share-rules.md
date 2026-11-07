@@ -116,7 +116,14 @@ A per-user set of rules, each combining a **predicate** and a **share template**
   30 days" — regardless of shared status, `enabled_at` and the max age, so the number
   shows the predicate's true reach). The form's "Only activities that ended within …
   hours" field sets the max age (default 24), and the rule list states it ("ended
-  within 24 h").
+  within 24 h") along with the rule's tags (its own, "no tags", or "your default
+  tags"). Each rule's **Edit** button opens the same form prefilled under the rule, to
+  see its full settings and change them; **Save** sends an update (a cleared field
+  goes back to unset, cleared own tags back to the default tags). An edit applies to
+  activities shared from then on; posts the rule already published are not changed,
+  and the rule keeps its on/off state. What the form does not show — max duration,
+  source, and more than one activity type (listed read-only) — is left as it is;
+  those are edited through the REST API or MCP. The Android app embeds this page.
 - **REST**: `GET/POST /autoshare-rules`, `PATCH/DELETE /autoshare-rules/:id`,
   `POST /autoshare-rules/preview`.
 - **MCP** (parity): `list_autoshare_rules`, `add_autoshare_rule`,
