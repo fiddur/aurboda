@@ -60,12 +60,10 @@ const realDeps: BlockImageDataDeps = {
 }
 
 /**
- * The indices of the chart/correlation/challenge blocks whose image endpoint
- * would actually render — the same static window checks as
- * `resolveArticleBlock` and the same data checks as `renderArticleBlockImage`
- * (chart: ≥ 2 points over a non-zero bucket; correlation: n ≥ 3; challenge: a
- * race line), via the same shared data fetchers, so the export can't link an
- * image that will 404.
+ * The indices of the blocks whose image endpoint would actually render — the
+ * same static checks as `resolveArticleBlock` and the same data checks as
+ * `renderArticleBlockImage`, via the same shared data fetchers, so the export
+ * can't link an image that will 404.
  */
 export const renderableArticleBlocks = async (
   user: string,

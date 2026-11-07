@@ -618,7 +618,9 @@ export const createFeedRouter = (
       if (!existing || existing.kind !== 'article' || existing.article == null) {
         return res.status(404).json({ error: 'Article not found', success: false })
       }
-      const built = await validateArticleContent(mergeArticleContent(existing.article, req.body))
+      const built = await validateArticleContent(mergeArticleContent(existing.article, req.body), {
+        stored: existing.article,
+      })
       if (!built.ok) return res.status(400).json({ error: built.error, success: false })
       const record = await updateFeedPost(user, req.params.postId, {
         article: built.article,

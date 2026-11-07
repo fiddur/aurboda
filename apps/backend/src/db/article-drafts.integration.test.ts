@@ -1,15 +1,15 @@
-import type { ArticleDraftContent } from '@aurboda/api-spec'
+import type { ArticleContent, ArticleDraftContent, FeedVisibility } from '@aurboda/api-spec'
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestDbClient, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import {
-  claimArticleDraft,
   createArticleDraft,
   deleteArticleDraft,
+  type DraftPostPreparation,
   getArticleDraft,
   listArticleDrafts,
-  restoreArticleDraft,
+  publishArticleDraftPost,
   updateArticleDraft,
 } from './article-drafts.ts'
 import { listFeedPosts } from './feed.ts'
@@ -106,24 +106,80 @@ describe('Article drafts integration', () => {
     expect(await deleteArticleDraft(user, created.id)).toBe(false)
   })
 
-  test('claims a draft once, and restores it unchanged', async () => {
-    const user = getTestUser()
-    const created = await createArticleDraft(user, {
-      article: content({ title: 'Mine' }),
-      visibility: 'unlisted',
+  describe('publishArticleDraftPost', () => {
+    const article: ArticleContent = { blocks: [{ markdown: 'Done.', type: 'prose' }], title: 'Finished' }
+    const prepared =
+      (visibility: FeedVisibility = 'public') =>
+      async (): Promise<DraftPostPreparation> => ({
+        input: { article, tags: ['aurboda'], visibility },
+        ok: true,
+      })
+
+    test('removes the draft and creates the post together', async () => {
+      const user = getTestUser()
+      const created = await createArticleDraft(user, { article: content(), visibility: 'unlisted' })
+      const seen: unknown[] = []
+
+      const outcome = await publishArticleDraftPost(user, created.id, async (draft) => {
+        seen.push(draft)
+        return prepared('unlisted')()
+      })
+
+      expect(seen).toEqual([created])
+      expect(outcome.status).toBe('published')
+      const posts = await listFeedPosts(user, 50)
+      expect(posts.map((p) => [p.id, p.kind, p.article, p.tags, p.visibility])).toEqual([
+        [outcome.status === 'published' && outcome.post.id, 'article', article, ['aurboda'], 'unlisted'],
+      ])
+      expect(await getArticleDraft(user, created.id)).toBeNull()
     })
 
-    const [first, second] = await Promise.all([
-      claimArticleDraft(user, created.id),
-      claimArticleDraft(user, created.id),
-    ])
-    expect([first, second].filter((claimed) => claimed !== null)).toEqual([created])
-    expect(await getArticleDraft(user, created.id)).toBeNull()
+    test('a failed post insert keeps the draft and creates no post', async () => {
+      const user = getTestUser()
+      const created = await createArticleDraft(user, { article: content(), visibility: 'public' })
 
-    await restoreArticleDraft(user, created)
-    expect(await getArticleDraft(user, created.id)).toEqual(created)
-    await restoreArticleDraft(user, created)
-    expect(await listArticleDrafts(user)).toEqual([created])
+      // `visibility` is VARCHAR(12): a longer value makes the INSERT fail after the DELETE.
+      await expect(
+        publishArticleDraftPost(user, created.id, prepared('x'.repeat(13) as FeedVisibility)),
+      ).rejects.toThrow()
+
+      expect(await getArticleDraft(user, created.id)).toEqual(created)
+      expect(await listFeedPosts(user, 50)).toEqual([])
+    })
+
+    test('a rejection keeps the draft and reports the error', async () => {
+      const user = getTestUser()
+      const created = await createArticleDraft(user, { article: content(), visibility: 'public' })
+
+      const outcome = await publishArticleDraftPost(user, created.id, async () => ({
+        error: 'Give the article a title before publishing.',
+        ok: false,
+      }))
+
+      expect(outcome).toEqual({ error: 'Give the article a title before publishing.', status: 'rejected' })
+      expect(await getArticleDraft(user, created.id)).toEqual(created)
+      expect(await listFeedPosts(user, 50)).toEqual([])
+    })
+
+    test('of two concurrent publishes one creates the post, the other finds the draft gone', async () => {
+      const user = getTestUser()
+      const created = await createArticleDraft(user, { article: content(), visibility: 'public' })
+
+      const outcomes = await Promise.all([
+        publishArticleDraftPost(user, created.id, prepared()),
+        publishArticleDraftPost(user, created.id, prepared()),
+      ])
+
+      expect(outcomes.map((o) => o.status).sort()).toEqual(['missing', 'published'])
+      expect(await listFeedPosts(user, 50)).toHaveLength(1)
+      expect(await getArticleDraft(user, created.id)).toBeNull()
+    })
+
+    test('an unknown draft is missing', async () => {
+      expect(await publishArticleDraftPost(getTestUser(), MISSING_ID, prepared())).toEqual({
+        status: 'missing',
+      })
+    })
   })
 
   test('a draft is not a feed post', async () => {
