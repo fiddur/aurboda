@@ -3,8 +3,9 @@
  * QuantPub Challenges document plus a standings snapshot, so a following
  * Aurboda instance can render the race natively instead of the flat Note.
  *
- * The challenge is resolved from the post's stored link: an own challenge by
- * parsing its share URL back to a slug, a joined one through the
+ * The challenge is resolved from the post's stored link (`resolveChallengeByUrl`,
+ * which an article's challenge block shares): a challenge hosted here by
+ * parsing its URL back to a user and slug, a joined one through the
  * participation row. A joined challenge's standings live on its host, so they
  * are fetched (QuantPub hosts only) and omitted on any failure: the card then
  * still shows the invitation.
@@ -15,7 +16,13 @@ import { quantStandingsSchema } from '@aurboda/api-spec'
 
 import type { ChallengeParticipationRecord, FeedPostRecord } from '../db/index.ts'
 
-import { getChallengeBySlug, getParticipationByUrl, listChallengeMembers } from '../db/index.ts'
+import { isValidUsername } from '../api/auth-routes.ts'
+import {
+  getChallengeBySlug,
+  getParticipationByUrl,
+  isMissingDatabase,
+  listChallengeMembers,
+} from '../db/index.ts'
 import {
   type ChallengeHost,
   discoverInstance,
@@ -124,12 +131,123 @@ const remoteStandingsOrNothing = async (
   }
 }
 
-const isOwnChallengeUrl = (
-  parsed: ParsedChallengeUrl | null,
-  user: string,
+/** A challenge resolved from its public URL: its document and, when readable, a standings snapshot. */
+export interface ResolvedChallenge {
+  challenge: QuantChallengeDocument
+  standings?: QuantStandings
+}
+
+const localChallenge = async (
+  owner: string,
+  slug: string,
+  deps: StructuredChallengeDeps,
   webHost: string,
-): parsed is ParsedChallengeUrl =>
-  parsed != null && parsed.base === trimSlashes(webHost) && safeDecode(parsed.username) === user
+  now: Date,
+): Promise<ResolvedChallenge | null> => {
+  const record = await deps.getChallengeBySlug(owner, slug)
+  if (record == null) return null
+  const ctx: HostContext = { apiBaseUrl: deps.apiBaseUrl, now, username: owner, webHost }
+  const [memberStandings, members] = await Promise.all([
+    deps.getChallengeStandings(owner, record),
+    deps.listChallengeMembers(owner, record.id),
+  ])
+  return {
+    challenge: buildChallengeListItem(record, ctx),
+    standings: buildStandingsDocument(record, memberStandings, members, ctx),
+  }
+}
+
+/** Another local user's challenge; an unknown user (no database) has none. */
+const otherLocalChallenge = async (
+  owner: string,
+  slug: string,
+  deps: StructuredChallengeDeps,
+  webHost: string,
+  now: Date,
+): Promise<ResolvedChallenge | null> => {
+  if (!isValidUsername(owner)) return null
+  try {
+    return await localChallenge(owner, slug, deps, webHost, now)
+  } catch (error) {
+    if (isMissingDatabase(error)) return null
+    throw error
+  }
+}
+
+/** The host's public document, without the join capability and member list a listing never carries. */
+const publicDocument = (doc: QuantChallengeDocument): QuantChallengeDocument => {
+  const listed = { ...doc }
+  delete listed.joinToken
+  delete listed.members
+  return listed
+}
+
+const fetchRemoteChallenge = async (
+  parsed: ParsedChallengeUrl,
+  deps: StructuredChallengeDeps,
+): Promise<ResolvedChallenge | null> => {
+  const host = await deps.discoverInstance(parsed.base)
+  if (host.kind !== 'quantpub') return null
+  const doc = await deps.fetchChallengeDocument(
+    host.apiBase,
+    safeDecode(parsed.username),
+    safeDecode(parsed.slug),
+  )
+  const challenge = publicDocument(doc)
+  if (!doc.standingsUrl) return { challenge }
+  const result = quantStandingsSchema.safeParse(await deps.fetchStandings(doc.standingsUrl))
+  return result.success ? { challenge, standings: result.data } : { challenge }
+}
+
+const remoteChallengeOrNothing = async (
+  parsed: ParsedChallengeUrl | null,
+  deps: StructuredChallengeDeps,
+): Promise<ResolvedChallenge | null> => {
+  if (parsed == null) return null
+  try {
+    return await withTimeout(fetchRemoteChallenge(parsed, deps), REMOTE_STANDINGS_TIMEOUT_MS)
+  } catch (error) {
+    console.warn(
+      `Could not read challenge at ${parsed.base}: ${error instanceof Error ? error.message : String(error)}`,
+    )
+    return null
+  }
+}
+
+/**
+ * Resolve a public challenge URL as `user` sees it: a challenge hosted here
+ * (the user's own or another local user's) from the database with live
+ * standings; a remote one the user joined through the participation row (and
+ * the host's standings, best-effort); any other remote one by fetching the
+ * host's QuantPub document and standings, null on any failure.
+ *
+ * `joinedOnly` keeps a challenge-share post to what it has always resolved: its
+ * author's own challenge or a participation, never another user's or a fetch of
+ * one the author is not in.
+ */
+export const resolveChallengeByUrl = async (
+  user: string,
+  url: string,
+  deps: StructuredChallengeDeps,
+  { joinedOnly = false }: { joinedOnly?: boolean } = {},
+): Promise<ResolvedChallenge | null> => {
+  const parsed = parseChallengeUrl(url)
+  const now = deps.now()
+  const { webHost } = deps
+  if (webHost != null && parsed != null && parsed.base === trimSlashes(webHost)) {
+    const owner = safeDecode(parsed.username)
+    const slug = safeDecode(parsed.slug)
+    if (owner === user) return localChallenge(user, slug, deps, webHost, now)
+    if (!joinedOnly) return otherLocalChallenge(owner, slug, deps, webHost, now)
+  }
+  const participation = await deps.getParticipationByUrl(user, url)
+  if (participation == null) return joinedOnly ? null : remoteChallengeOrNothing(parsed, deps)
+  const standings = await remoteStandingsOrNothing(parsed, deps)
+  return {
+    challenge: participationDocument(participation, parsed, now),
+    ...(standings != null ? { standings } : {}),
+  }
+}
 
 export const resolveStructuredChallenge = async (
   user: string,
@@ -138,35 +256,15 @@ export const resolveStructuredChallenge = async (
 ): Promise<FeedStructuredChallenge | null> => {
   if (post.kind !== 'challenge' || post.challenge == null) return null
   const share = post.challenge
-  const parsed = parseChallengeUrl(share.url)
-  const now = deps.now()
-  const { webHost } = deps
-
-  let challenge: QuantChallengeDocument
-  let standings: QuantStandings | undefined
-  if (webHost != null && isOwnChallengeUrl(parsed, user, webHost)) {
-    const record = await deps.getChallengeBySlug(user, safeDecode(parsed.slug))
-    if (record == null) return null
-    const ctx: HostContext = { apiBaseUrl: deps.apiBaseUrl, now, username: user, webHost }
-    const [memberStandings, members] = await Promise.all([
-      deps.getChallengeStandings(user, record),
-      deps.listChallengeMembers(user, record.id),
-    ])
-    challenge = buildChallengeListItem(record, ctx)
-    standings = buildStandingsDocument(record, memberStandings, members, ctx)
-  } else {
-    const participation = await deps.getParticipationByUrl(user, share.url)
-    if (participation == null) return null
-    challenge = participationDocument(participation, parsed, now)
-    standings = await remoteStandingsOrNothing(parsed, deps)
-  }
+  const resolved = await resolveChallengeByUrl(user, share.url, deps, { joinedOnly: true })
+  if (resolved == null) return null
 
   return {
-    challenge,
+    challenge: resolved.challenge,
     kind: 'challenge',
     ...(post.message != null ? { message: post.message } : {}),
     ...(share.result != null ? { result: share.result } : {}),
-    ...(standings != null ? { standings } : {}),
+    ...(resolved.standings != null ? { standings: resolved.standings } : {}),
   }
 }
 
@@ -185,6 +283,21 @@ export const resolveStandingsChart = async (
   if (deps == null) return null
   const structured = await resolveStructuredChallenge(user, post, deps)
   return structured == null ? null : raceChartDataFor(structured)
+}
+
+/**
+ * The standings race chart of the challenge at `url` (an article's challenge
+ * block), or null when there is nothing to draw: resolver unconfigured, the
+ * challenge unresolvable, or no standings.
+ */
+export const resolveChallengeRaceByUrl = async (
+  user: string,
+  url: string,
+  deps: StructuredChallengeDeps | null = configured,
+): Promise<RaceChartSvgData | null> => {
+  if (deps == null) return null
+  const resolved = await resolveChallengeByUrl(user, url, deps)
+  return resolved == null ? null : raceChartDataFor({ ...resolved, kind: 'challenge' })
 }
 
 /**

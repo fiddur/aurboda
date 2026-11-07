@@ -6,6 +6,8 @@
 import type {
   ArticleBlock,
   ArticleDraftBlock,
+  Challenge,
+  ChallengeParticipation,
   ArticleDraftContent,
   CorrelationSelector,
   CreateArticleBody,
@@ -40,7 +42,38 @@ export interface CorrelationDraft {
   lagDays: string
   caption: string
 }
-export type BlockDraft = ChartDraft | CorrelationDraft | ProseDraft
+/** A challenge block: a challenge picked from the user's own or joined ones, or a pasted URL. */
+export interface ChallengeDraft {
+  type: 'challenge'
+  /** The challenge's public URL ('' = not chosen yet). */
+  url: string
+  caption: string
+}
+export type BlockDraft = ChallengeDraft | ChartDraft | CorrelationDraft | ProseDraft
+
+export const emptyChallengeDraft = (): ChallengeDraft => ({ caption: '', type: 'challenge', url: '' })
+
+export interface ChallengeOption {
+  url: string
+  label: string
+}
+
+/**
+ * What a challenge block's picker offers: the user's own challenges (by their
+ * public `share_url`) and the ones they have joined and not left (by the
+ * challenge's URL), each URL once.
+ */
+export const challengePickerOptions = (
+  own: Pick<Challenge, 'name' | 'share_url'>[],
+  joined: Pick<ChallengeParticipation, 'challenge_url' | 'name' | 'status'>[],
+): { own: ChallengeOption[]; joined: ChallengeOption[] } => {
+  const ownOptions = own.map((c) => ({ label: c.name, url: c.share_url }))
+  const seen = new Set(ownOptions.map((o) => o.url))
+  const joinedOptions = joined
+    .filter((p) => p.status === 'active' && !seen.has(p.challenge_url))
+    .map((p) => ({ label: p.name, url: p.challenge_url }))
+  return { joined: joinedOptions, own: ownOptions }
+}
 
 export const emptyCorrelationDraft = (): CorrelationDraft => ({
   caption: '',
@@ -90,6 +123,9 @@ export const draftsFromPost = (source?: { article?: ArticleDraftContent }): Bloc
   if (!source?.article) return []
   return source.article.blocks.map((b): BlockDraft => {
     if (b.type === 'prose') return { markdown: b.markdown, type: 'prose' }
+    if (b.type === 'challenge') {
+      return { caption: b.caption ?? '', type: 'challenge', url: b.challenge_url ?? '' }
+    }
     if (b.type === 'correlation') {
       const empty = emptyCorrelationDraft()
       return {
@@ -129,6 +165,13 @@ const windowFields = (b: { start: string; end: string }) => ({
 
 const draftBlock = (b: BlockDraft): ArticleDraftBlock => {
   if (b.type === 'prose') return { markdown: b.markdown, type: 'prose' }
+  if (b.type === 'challenge') {
+    return {
+      type: 'challenge',
+      ...(b.url.trim() ? { challenge_url: b.url.trim() } : {}),
+      ...(b.caption.trim() ? { caption: b.caption.trim() } : {}),
+    }
+  }
   if (b.type === 'chart') {
     return {
       type: 'chart',
@@ -236,9 +279,25 @@ const buildCorrelationBlock = (b: CorrelationDraft, i: number): BlockResult => {
   }
 }
 
+const buildChallengeBlock = (b: ChallengeDraft, i: number): BlockResult => {
+  if (!b.url.trim()) return { error: `Pick a challenge or paste its link for challenge block ${i + 1}.` }
+  return {
+    block: {
+      challenge_url: b.url.trim(),
+      type: 'challenge',
+      ...(b.caption.trim() ? { caption: b.caption.trim() } : {}),
+    },
+  }
+}
+
+const buildBlock = (b: Exclude<BlockDraft, ProseDraft>, i: number): BlockResult => {
+  if (b.type === 'challenge') return buildChallengeBlock(b, i)
+  return b.type === 'correlation' ? buildCorrelationBlock(b, i) : buildChartBlock(b, i)
+}
+
 /**
- * The server re-validates windows (`buildArticleContent`), so this only guards
- * what the form can catch early.
+ * The server re-validates windows and challenge links (`buildArticleContent`),
+ * so this only guards what the form can catch early.
  */
 export const buildArticleBody = (state: ArticleEditorState): BuildResult => {
   if (!state.title.trim()) return { error: 'Give your article a title.', ok: false }
@@ -249,7 +308,7 @@ export const buildArticleBody = (state: ArticleEditorState): BuildResult => {
       blocks.push({ markdown: b.markdown, type: 'prose' })
       continue
     }
-    const built = b.type === 'correlation' ? buildCorrelationBlock(b, i) : buildChartBlock(b, i)
+    const built = buildBlock(b, i)
     if ('error' in built) return { error: built.error, ok: false }
     blocks.push(built.block)
   }

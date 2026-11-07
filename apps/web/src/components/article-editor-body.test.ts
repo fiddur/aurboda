@@ -6,10 +6,12 @@ import {
   type ArticleEditorState,
   buildArticleBody,
   buildDraftContent,
+  challengePickerOptions,
   deriveSubmitError,
   draftSnapshot,
   draftsFromPost,
   draftUpdateBody,
+  emptyChallengeDraft,
   emptyCorrelationDraft,
   initialArticleEditorState,
   toInputValue,
@@ -290,6 +292,62 @@ describe('buildDraftContent', () => {
       }),
     )
     expect(content.blocks[0]).toEqual({ type: 'chart' })
+  })
+})
+
+describe('challenge blocks', () => {
+  const URL_ = 'https://aurboda.example/u/olle/nov'
+
+  it('a draft keeps an unchosen challenge, and carries a chosen one with its caption', () => {
+    const content = buildDraftContent(
+      state({
+        blocks: [emptyChallengeDraft(), { caption: ' Join! ', type: 'challenge', url: ` ${URL_} ` }],
+      }),
+    )
+    expect(content.blocks).toEqual([
+      { type: 'challenge' },
+      { caption: 'Join!', challenge_url: URL_, type: 'challenge' },
+    ])
+  })
+
+  it('seeds the editor from a stored challenge block, and from a draft without a URL', () => {
+    const drafts = draftsFromPost({
+      article: {
+        blocks: [{ caption: 'Race', challenge_url: URL_, type: 'challenge' }, { type: 'challenge' }],
+        title: 'T',
+      },
+    })
+    expect(drafts).toEqual([
+      { caption: 'Race', type: 'challenge', url: URL_ },
+      { caption: '', type: 'challenge', url: '' },
+    ])
+  })
+
+  it('publishing needs a challenge', () => {
+    expect(buildArticleBody(state({ blocks: [emptyChallengeDraft()] }))).toEqual({
+      error: 'Pick a challenge or paste its link for challenge block 1.',
+      ok: false,
+    })
+  })
+
+  it('offers own challenges by share URL and active joined ones by challenge URL, each once', () => {
+    const options = challengePickerOptions(
+      [{ name: 'Mine', share_url: URL_ }],
+      [
+        { challenge_url: 'https://other.example/u/eva/oct', name: 'Eva’s', status: 'active' },
+        { challenge_url: 'https://other.example/u/eva/left', name: 'Left', status: 'withdrawn' },
+        { challenge_url: URL_, name: 'Mine again', status: 'active' },
+      ],
+    )
+    expect(options).toEqual({
+      joined: [{ label: 'Eva’s', url: 'https://other.example/u/eva/oct' }],
+      own: [{ label: 'Mine', url: URL_ }],
+    })
+  })
+
+  it('publishes a chosen challenge', () => {
+    const result = buildArticleBody(state({ blocks: [{ caption: '', type: 'challenge', url: URL_ }] }))
+    expect(result.ok && result.body.blocks).toEqual([{ challenge_url: URL_, type: 'challenge' }])
   })
 })
 

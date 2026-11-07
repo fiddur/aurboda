@@ -15,9 +15,11 @@ import type {
 import { createArticleBodySchema, normalizeTags } from '@aurboda/api-spec'
 
 import type { ArticleDraftPatch, ArticleDraftRecord, ArticlePostInput, FeedPostRecord } from '../db/index.ts'
+import type { BuildArticleResult } from './article.ts'
 
 import { claimArticleDraft, createArticlePost, getArticleDraft, restoreArticleDraft } from '../db/index.ts'
-import { buildArticleContent, mergeArticleContent } from './article.ts'
+import { buildArticleContent, checkArticleChallenges, mergeArticleContent } from './article.ts'
+import { configuredStructuredChallengeDeps } from './feed-structured-challenge.ts'
 import { articleTexts, resolvePostTags } from './post-tags.ts'
 
 export const emptyArticleDraftContent = (): ArticleDraftContent => ({ blocks: [], title: '' })
@@ -70,6 +72,9 @@ const incompleteDraftError = (content: ArticleDraftContent): string | null => {
     if (block.type === 'correlation' && (block.trigger === undefined || block.outcome === undefined)) {
       return `Correlation block ${i + 1} needs both a trigger and an outcome before publishing.`
     }
+    if (block.type === 'challenge' && !block.challenge_url) {
+      return `Challenge block ${i + 1} has no challenge — pick one or paste its link before publishing.`
+    }
   }
   return null
 }
@@ -114,10 +119,15 @@ export interface PublishDraftDeps {
   logError: (message: string, error: unknown) => void
   /** The published article's tags; defaults to the owner's default tags (or the draft's) plus typed ones. */
   postTags?: (user: string, content: ArticleDraftContent) => Promise<string[]>
+  /** The lookup-backed checks (local challenges exist); defaults to `checkArticleChallenges` with the configured lookup. */
+  checkContent?: (content: ArticlePostInput['article']) => Promise<BuildArticleResult>
 }
 
 const draftPostTags = (user: string, content: ArticleDraftContent): Promise<string[]> =>
   resolvePostTags(user, { explicit: content.tags, texts: articleTexts(content) })
+
+const checkDraftChallenges = (content: ArticlePostInput['article']): Promise<BuildArticleResult> =>
+  checkArticleChallenges(content, configuredStructuredChallengeDeps())
 
 const defaultDeps: PublishDraftDeps = {
   claimDraft: (user, id) => claimArticleDraft(user, id),
@@ -130,6 +140,18 @@ const defaultDeps: PublishDraftDeps = {
 export type PublishDraftResult =
   | { ok: true; post: FeedPostRecord }
   | { ok: false; status: 400 | 404; error: string }
+
+/** `publishableArticle`, then the lookup-backed checks on what it would publish. */
+const checkedPublishable = async (
+  content: ArticleDraftContent,
+  visibility: FeedVisibility,
+  checkContent: NonNullable<PublishDraftDeps['checkContent']>,
+): Promise<PublishableResult> => {
+  const result = publishableArticle(content, visibility)
+  if (!result.ok) return result
+  const looked = await checkContent(result.input.article)
+  return looked.ok ? result : looked
+}
 
 const DRAFT_NOT_FOUND = { error: 'Draft not found', ok: false, status: 404 } as const
 
@@ -147,7 +169,8 @@ export const publishArticleDraft = async (
 ): Promise<PublishDraftResult> => {
   const draft = await deps.getDraft(user, id)
   if (!draft) return DRAFT_NOT_FOUND
-  const checked = publishableArticle(draft.article, body.visibility ?? draft.visibility)
+  const checkContent = deps.checkContent ?? checkDraftChallenges
+  const checked = await checkedPublishable(draft.article, body.visibility ?? draft.visibility, checkContent)
   if (!checked.ok) return { error: checked.error, ok: false, status: 400 }
 
   const claimed = await deps.claimDraft(user, id)
@@ -160,7 +183,11 @@ export const publishArticleDraft = async (
       )
   try {
     // Validated again: the draft may have been saved between the check and the claim.
-    const publishable = publishableArticle(claimed.article, body.visibility ?? claimed.visibility)
+    const publishable = await checkedPublishable(
+      claimed.article,
+      body.visibility ?? claimed.visibility,
+      checkContent,
+    )
     if (!publishable.ok) {
       await restore()
       return { error: publishable.error, ok: false, status: 400 }

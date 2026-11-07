@@ -79,6 +79,8 @@ export interface FeedImageDeps {
   renderScatterSvg: (data: ScatterSvgData) => string
   /** A challenge post's standings race, or null when it has no standings to draw. */
   getStandingsChart: (user: string, post: FeedPostRecord) => Promise<RaceChartSvgData | null>
+  /** The standings race of the challenge at a URL (an article's challenge block), or null. */
+  getChallengeRaceByUrl: (user: string, url: string) => Promise<RaceChartSvgData | null>
   renderRaceChart: (data: RaceChartSvgData) => Promise<Buffer>
   renderRaceChartSvg: (data: RaceChartSvgData) => string
   /** An exercise post's trend line, or null when it has fewer than 2 points. */
@@ -88,9 +90,10 @@ export interface FeedImageDeps {
 }
 
 /**
- * One article chart/correlation block resolved to its render inputs: the block's
- * kind and its effective `[start, end]` window (its own override, else the
- * article default). Prose blocks and out-of-range indices don't resolve.
+ * One article chart/correlation/challenge block resolved to its render inputs:
+ * the block's kind and its effective `[start, end]` window (its own override,
+ * else the article default), or a challenge block's URL. Prose blocks and
+ * out-of-range indices don't resolve.
  */
 export type ResolvedArticleBlock =
   | { type: 'chart'; metric: MetricType; bucket?: string; start: Date; end: Date; updatedAt: Date }
@@ -103,6 +106,7 @@ export type ResolvedArticleBlock =
       periodEnd: string
       updatedAt: Date
     }
+  | { type: 'challenge'; url: string; updatedAt: Date }
 
 /**
  * A tiny memoising cache with in-flight de-duplication (mirrors og-image-router):
@@ -197,11 +201,12 @@ const loadArticleForImage = async (
 }
 
 /**
- * Resolve one article chart/correlation block to its render inputs, or `null`
- * when the request isn't eligible: invalid username / non-UUID id / bad index,
- * missing DB, missing post, a non-article post, a `followers`-only post without a
- * matching capability `token`, an out-of-range or prose block, or a block whose
- * effective window is unbounded / non-increasing. Pure of Express — unit-testable.
+ * Resolve one article chart/correlation/challenge block to its render inputs, or
+ * `null` when the request isn't eligible: invalid username / non-UUID id / bad
+ * index, missing DB, missing post, a non-article post, a `followers`-only post
+ * without a matching capability `token`, an out-of-range or prose block, or a
+ * windowed block whose effective window is unbounded / non-increasing. Pure of
+ * Express — unit-testable.
  *
  * Unlike a shared activity's chart, an article block has NO `include_chart`
  * opt-in flag: a chart/correlation block can embed any metric over any window, so
@@ -219,7 +224,10 @@ export const resolveArticleBlock = async (
   const loaded = await loadArticleForImage(deps, username, postId, token)
   if (loaded == null) return null
   const block = loaded.article.blocks[index]
-  if (block == null || (block.type !== 'chart' && block.type !== 'correlation')) return null
+  if (block == null || block.type === 'prose') return null
+  if (block.type === 'challenge') {
+    return { type: 'challenge', updatedAt: loaded.updatedAt, url: block.challenge_url }
+  }
   const { end, start } = blockWindow(block, loaded.article)
   if (start == null || end == null) return null
   const startDate = new Date(start)
@@ -255,8 +263,9 @@ const ARTICLE_CHART_COLOR = '#2b9ea7'
 /**
  * Render one resolved article block to its image bytes (PNG or the crisp SVG),
  * or `null` when the block has too little data to draw (a chart needs ≥ 2 points;
- * a correlation needs n ≥ 3, surfaced by `getCorrelationScatter` returning null)
- * or its bucket is a zero duration. Pure of Express so the routes stay thin.
+ * a correlation needs n ≥ 3, surfaced by `getCorrelationScatter` returning null;
+ * a challenge needs a race line) or its bucket is a zero duration. Pure of
+ * Express so the routes stay thin.
  */
 export const renderArticleBlockImage = async (
   deps: FeedImageDeps,
@@ -264,6 +273,11 @@ export const renderArticleBlockImage = async (
   block: ResolvedArticleBlock,
   format: 'png' | 'svg',
 ): Promise<Buffer | null> => {
+  if (block.type === 'challenge') {
+    const race = await deps.getChallengeRaceByUrl(user, block.url)
+    if (race == null || race.lines.length === 0) return null
+    return format === 'png' ? deps.renderRaceChart(race) : Buffer.from(deps.renderRaceChartSvg(race), 'utf8')
+  }
   if (block.type === 'chart') {
     const bucket = block.bucket ?? defaultArticleChartBucket(block.start, block.end)
     if (isZeroDurationBucket(bucket)) return null
@@ -387,6 +401,10 @@ export const resolveExercisePost = (
 ): Promise<FeedPostRecord | null> => resolveChartPost(deps, 'exercise', username, postId, token)
 
 const TREND_COLOR = '#2b9ea7'
+
+/** A challenge block's standings move like a challenge post's (`standings.png`); a windowed block's data, hourly. */
+const blockBucketMs = (block: ResolvedArticleBlock): number | undefined =>
+  block.type === 'challenge' ? STANDINGS_BUCKET_MS : undefined
 
 export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
   const router = Router()
@@ -523,7 +541,7 @@ export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
     const idx = Number(index)
     const block = await resolveArticleBlock(deps, username, postId, idx, token)
     if (!block) return notFound(res)
-    const key = articleBlockCacheKey('blockpng', username, postId, idx, block.updatedAt)
+    const key = articleBlockCacheKey('blockpng', username, postId, idx, block.updatedAt, blockBucketMs(block))
     if (negativeBlocks.has(key)) return notFound(res)
     const png = await cached(key, () => renderArticleBlockImage(deps, username, block, 'png'))
     if (!png) {
@@ -539,7 +557,7 @@ export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
     const idx = Number(index)
     const block = await resolveArticleBlock(deps, username, postId, idx, token)
     if (!block) return notFound(res)
-    const key = articleBlockCacheKey('blocksvg', username, postId, idx, block.updatedAt)
+    const key = articleBlockCacheKey('blocksvg', username, postId, idx, block.updatedAt, blockBucketMs(block))
     if (negativeBlocks.has(key)) return notFound(res)
     const svg = await cached(key, () => renderArticleBlockImage(deps, username, block, 'svg'))
     if (!svg) {

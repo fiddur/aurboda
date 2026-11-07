@@ -3,11 +3,6 @@ import type { InfiniteData } from '@tanstack/react-query'
 
 import { useInfiniteQuery } from '@tanstack/react-query'
 
-/**
- * OfficialFeed - the instance's blog at /blog: public posts by the users the
- * admin chose that carry one of the chosen tags, newest first, with an Atom
- * feed. Unauthenticated.
- */
 import { officialFeedSummary } from '../../components/official-feed'
 import { fetchOfficialFeed, officialFeedAtomUrl } from '../../state/api'
 import { FeedPostCard } from '../Feed/FeedPostCard'
@@ -15,6 +10,11 @@ import { publicAuthor } from '../PublicProfile/public-author'
 import '../PublicProfile/style.css'
 import './style.css'
 
+/**
+ * OfficialFeed - the instance's blog at /blog: public posts by the users the
+ * admin chose that carry one of the chosen tags, newest first, with an Atom
+ * feed. Unauthenticated.
+ */
 export function OfficialFeed() {
   const postsQuery = useInfiniteQuery<
     OfficialFeedResponse,

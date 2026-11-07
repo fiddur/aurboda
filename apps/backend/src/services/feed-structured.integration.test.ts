@@ -380,4 +380,60 @@ describe('resolveStructuredPost — challenge posts', () => {
     })
     expect(await resolveStructuredPost(user, post.id)).toBeNull()
   })
+
+  test("an article's challenge block resolves to the challenge and its standings", async () => {
+    const user = getTestUser()
+    const challenge = await createChallenge(user, {
+      announce_winner: true,
+      end_ts: new Date('2026-06-03T00:00:00Z'),
+      is_public: true,
+      name: 'June RHR',
+      spec: {
+        activity_type_id: null,
+        aggregation: 'sum',
+        bucket_size: '1d',
+        filter_field: null,
+        filter_value: null,
+        measure: null,
+        pattern: 'resting_heart_rate',
+        source_type: 'metric',
+        unit: 'bpm',
+      },
+      start_ts: new Date('2026-06-01T00:00:00Z'),
+      timezone: 'UTC',
+    })
+    const url = `https://qs.example/u/${user}/${challenge.slug}`
+    const post = await createArticlePost(user, {
+      article: {
+        blocks: [{ caption: 'Join me', challenge_url: url, type: 'challenge' }],
+        title: 'Signup open',
+      },
+      visibility: 'public',
+    })
+
+    const structured = await resolveStructuredPost(user, post.id)
+    if (structured?.kind !== 'article') throw new Error('expected an article payload')
+    expect(structured.blocks).toHaveLength(1)
+    expect(structured.blocks[0]).toMatchObject({ caption: 'Join me', type: 'challenge', url })
+    const block = structured.blocks[0]
+    if (block.type !== 'challenge') throw new Error('expected a challenge block')
+    expect(block.challenge?.name).toBe('June RHR')
+    expect(block.standings?.kind).toBe('standings')
+  })
+
+  test("an article's unresolvable challenge block keeps only its URL and caption", async () => {
+    const user = getTestUser()
+    const url = `https://qs.example/u/${user}/gone`
+    const post = await createArticlePost(user, {
+      article: {
+        blocks: [{ caption: 'Join me', challenge_url: url, type: 'challenge' }],
+        title: 'Signup open',
+      },
+      visibility: 'public',
+    })
+
+    const structured = await resolveStructuredPost(user, post.id)
+    if (structured?.kind !== 'article') throw new Error('expected an article payload')
+    expect(structured.blocks).toEqual([{ caption: 'Join me', type: 'challenge', url }])
+  })
 })

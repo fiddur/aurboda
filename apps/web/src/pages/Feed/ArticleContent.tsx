@@ -4,11 +4,13 @@
  * boundary; article prose may be authored by AI or, later, a different user).
  * Chart and correlation blocks resolve their effective window (own override else
  * the article default) and render live via `ArticleChartBlock` /
- * `ArticleCorrelationBlock`.
+ * `ArticleCorrelationBlock`; a challenge block renders live via
+ * `LiveArticleChallenge`.
  */
 import type { ArticleContent as ArticleContentType } from '@aurboda/api-spec'
 
 import { renderMarkdown } from '../../utils/markdown'
+import { LiveArticleChallenge } from './ArticleChallengeBlock'
 import { ArticleChartBlock } from './ArticleChartBlock'
 import { ArticleCorrelationBlock } from './ArticleCorrelationBlock'
 
@@ -23,6 +25,11 @@ export const ArticleContent = ({ article }: { article: ArticleContentType }) => 
             class="article-prose"
             dangerouslySetInnerHTML={{ __html: renderMarkdown(block.markdown) }}
           />
+        )
+      }
+      if (block.type === 'challenge') {
+        return (
+          <LiveArticleChallenge key={`challenge-${i}`} url={block.challenge_url} caption={block.caption} />
         )
       }
       const start = block.start ?? article.default_start

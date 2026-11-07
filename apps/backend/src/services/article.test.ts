@@ -1,11 +1,13 @@
 import type { ArticleContent } from '@aurboda/api-spec'
 
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 import {
   articleBlockImageUrl,
+  articleBlockLabel,
   blockWindow,
   buildArticleContent,
+  checkArticleChallenges,
   isZeroDurationBucket,
   mergeArticleContent,
 } from './article.ts'
@@ -162,6 +164,95 @@ describe('buildArticleContent', () => {
     )
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.error).toContain('Correlation block 1')
+  })
+})
+
+describe('challenge blocks', () => {
+  const challenge = (challenge_url: string): ArticleContent['blocks'][number] => ({
+    challenge_url,
+    type: 'challenge',
+  })
+  const noWindow = { default_end: undefined, default_start: undefined }
+
+  test('a challenge block needs no window', () => {
+    const result = buildArticleContent(
+      content({ blocks: [challenge('https://qs.example/u/freja/nov')], ...noWindow }),
+    )
+    expect(result.ok).toBe(true)
+  })
+
+  test('rejects a URL that is not a challenge link', () => {
+    const result = buildArticleContent(
+      content({ blocks: [{ markdown: 'Hi', type: 'prose' }, challenge('https://qs.example/about')] }),
+    )
+    expect(result).toEqual({ error: 'Block 2: not a challenge URL.', ok: false })
+  })
+
+  test('rejects a challenge-shaped URL that is not http(s)', () => {
+    const result = buildArticleContent(content({ blocks: [challenge('javascript://x/u/a/b')] }))
+    expect(result).toEqual({ error: 'Block 1: not a challenge URL.', ok: false })
+  })
+
+  test('labels a challenge block by its caption, else as standings', () => {
+    expect(articleBlockLabel({ challenge_url: 'https://qs.example/u/a/b', type: 'challenge' })).toBe(
+      'Challenge standings',
+    )
+    expect(
+      articleBlockLabel({ caption: 'Join us', challenge_url: 'https://qs.example/u/a/b', type: 'challenge' }),
+    ).toBe('Join us')
+  })
+
+  const lookup = (found: boolean | Error) => ({
+    getChallengeBySlug: vi.fn(async () => {
+      if (found instanceof Error) throw found
+      return found ? { id: 'c1' } : null
+    }),
+    webHost: 'https://qs.example/',
+  })
+
+  test('accepts a local challenge that exists', async () => {
+    const deps = lookup(true)
+    const result = await checkArticleChallenges(
+      content({ blocks: [challenge('https://qs.example/u/olle/nov')] }),
+      deps,
+    )
+    expect(result.ok).toBe(true)
+    expect(deps.getChallengeBySlug).toHaveBeenCalledWith('olle', 'nov')
+  })
+
+  test('rejects a local challenge that does not exist', async () => {
+    const result = await checkArticleChallenges(
+      content({ blocks: [challenge('https://qs.example/u/olle/nov')] }),
+      lookup(false),
+    )
+    expect(result).toEqual({ error: 'Block 1: challenge not found.', ok: false })
+  })
+
+  test('a local user without a database counts as missing', async () => {
+    const missing = Object.assign(new Error('no db'), { code: '3D000' })
+    const result = await checkArticleChallenges(
+      content({ blocks: [challenge('https://qs.example/u/nobody/nov')] }),
+      lookup(missing),
+    )
+    expect(result).toEqual({ error: 'Block 1: challenge not found.', ok: false })
+  })
+
+  test('a remote challenge is accepted without a lookup', async () => {
+    const deps = lookup(false)
+    const result = await checkArticleChallenges(
+      content({ blocks: [challenge('https://other.example/u/olle/oct')] }),
+      deps,
+    )
+    expect(result.ok).toBe(true)
+    expect(deps.getChallengeBySlug).not.toHaveBeenCalled()
+  })
+
+  test('nothing is checked without a lookup', async () => {
+    const result = await checkArticleChallenges(
+      content({ blocks: [challenge('https://qs.example/u/olle/nov')] }),
+      null,
+    )
+    expect(result.ok).toBe(true)
   })
 })
 
