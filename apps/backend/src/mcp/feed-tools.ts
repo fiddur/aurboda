@@ -1,15 +1,19 @@
 /** Mirrors the REST `/feed` and `/feed/following` capabilities. */
 import {
   createArticleBodySchema,
+  createArticleDraftBodySchema,
   feedPostsQuerySchema,
   shareChallengeBodySchema,
   shareExerciseBodySchema,
   followActorBodySchema,
   followersQuerySchema,
+  iso8601DateTimeSchema,
+  publishArticleDraftBodySchema,
   replyToPostBodySchema,
   shareActivityBodySchema,
   timelineQuerySchema,
   updateArticleBodySchema,
+  updateArticleDraftBodySchema,
   updateFeedPostBodySchema,
   updateFollowingBodySchema,
 } from '@aurboda/api-spec'
@@ -22,22 +26,33 @@ import type { FollowActions } from '../services/following.ts'
 import type { RetroEnrichTrigger } from '../services/timeline-retro-enrich.ts'
 
 import {
+  createArticleDraft,
   createArticlePost,
   createChallengePost,
   createExercisePost,
   createFeedPost,
+  deleteArticleDraft,
   deleteFeedPost,
   getActivityById,
+  getArticleDraft,
   getFeedPostById,
   getTimelineEntryById,
+  listArticleDrafts,
   listFeedFollowers,
   listFeedFollowing,
   listFeedPostReactions,
+  updateArticleDraft,
   updateFeedFollowingNotify,
   updateFeedPost,
 } from '../db/index.ts'
 import { isPubliclyVisible } from '../services/activitypub/object.ts'
 import { REPLIES_TIMEOUT_MS } from '../services/activitypub/remote-replies.ts'
+import {
+  articleDraftPatch,
+  emptyArticleDraftContent,
+  publishArticleDraft,
+  serializeArticleDraft,
+} from '../services/article-drafts.ts'
 import { buildArticleMarkdown, renderableArticleBlocks } from '../services/article-export.ts'
 import { buildArticleContent, mergeArticleContent } from '../services/article.ts'
 import { resolveChallengeShare } from '../services/challenge-share.ts'
@@ -219,7 +234,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
 
   server.tool(
     'create_article',
-    'Publish a long-form ARTICLE to your feed: a title, markdown prose, and inline chart blocks over locked time windows. `blocks` is an ordered list of `{type:"prose", markdown}` or `{type:"chart", metric, start?, end?, bucket?, caption?}`. A chart block over `[start, end]` re-resolves live against that window; omit its start/end to inherit `default_start`/`default_end`. Use this (not `share_activity`) for a written analysis spanning multiple charts.',
+    'Publish a long-form ARTICLE to your feed: a title, markdown prose, and inline chart blocks over locked time windows. `blocks` is an ordered list of `{type:"prose", markdown}` or `{type:"chart", metric, start?, end?, bucket?, caption?}`. A chart block over `[start, end]` re-resolves live against that window; omit its start/end to inherit `default_start`/`default_end`. Use this (not `share_activity`) for a written analysis spanning multiple charts. It publishes (and federates) immediately; to let the user review first, use `create_article_draft` instead.',
     { ...createArticleBodySchema.shape },
     async (body) => {
       const built = buildArticleContent({
@@ -250,6 +265,78 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
       if (!record) return errorResponse('Article not found')
       deliver?.updatedArticle(user, record)
       return jsonResponse(await serializeFeedPost(user, record))
+    },
+  )
+
+  server.tool(
+    'create_article_draft',
+    'Save an ARTICLE DRAFT: a private, unpublished article the user can keep working on in the web editor (or via `update_article_draft`) and publish when ready. A draft is never federated or shown on any feed. It may be incomplete — an empty title, a chart block without `metric`, a correlation block without `trigger`/`outcome`. `article` takes the same shape as `create_article` (`title`, `blocks`, `default_start`, `default_end`); `visibility` is the audience it gets once published.',
+    { ...createArticleDraftBodySchema.shape },
+    async ({ article, visibility }) => {
+      const record = await createArticleDraft(user, {
+        article: article ?? emptyArticleDraftContent(),
+        visibility,
+      })
+      return jsonResponse(serializeArticleDraft(record))
+    },
+  )
+
+  server.tool(
+    'update_article_draft',
+    'Update an ARTICLE DRAFT (title, blocks, default window, visibility). Provided fields replace the stored ones; omitted fields are unchanged. The `blocks` array, when given, replaces the whole ordered block list. The draft stays private until `publish_article_draft`.',
+    // The window bounds are re-declared without `.nullable()`: a nullable field makes
+    // clients that validate the tool list (e.g. Claude) drop the whole tool.
+    {
+      id: z.string().uuid().describe('Draft ID'),
+      ...updateArticleDraftBodySchema.shape,
+      default_end: iso8601DateTimeSchema.optional().describe('Default window end (ISO 8601)'),
+      default_start: iso8601DateTimeSchema.optional().describe('Default window start (ISO 8601)'),
+    },
+    async ({ id, ...body }) => {
+      const existing = await getArticleDraft(user, id)
+      if (!existing) return errorResponse('Draft not found')
+      const record = await updateArticleDraft(user, id, articleDraftPatch(existing.article, body))
+      if (!record) return errorResponse('Draft not found')
+      return jsonResponse(serializeArticleDraft(record))
+    },
+  )
+
+  server.tool(
+    'list_article_drafts',
+    'List your private ARTICLE DRAFTS, most recently saved first, with their content. Drafts are never federated or shown on any feed.',
+    {},
+    async () => jsonResponse({ drafts: (await listArticleDrafts(user)).map(serializeArticleDraft) }),
+  )
+
+  server.tool(
+    'get_article_draft',
+    'Get one private ARTICLE DRAFT by ID, with its full content.',
+    { id: z.string().uuid().describe('Draft ID') },
+    async ({ id }) => {
+      const record = await getArticleDraft(user, id)
+      return record ? jsonResponse(serializeArticleDraft(record)) : errorResponse('Draft not found')
+    },
+  )
+
+  server.tool(
+    'delete_article_draft',
+    'Delete a private ARTICLE DRAFT by ID. Nothing was ever published from it, so nothing is retracted.',
+    { id: z.string().uuid().describe('Draft ID') },
+    async ({ id }) =>
+      (await deleteArticleDraft(user, id))
+        ? jsonResponse({ deleted: true, id })
+        : errorResponse('Draft not found'),
+  )
+
+  server.tool(
+    'publish_article_draft',
+    "Publish an ARTICLE DRAFT to your feed (and federate it): validates it exactly like `create_article` — a title, a metric on every chart, trigger and outcome on every correlation, and a time window for each — and on success creates the article post and deletes the draft. An incomplete draft is refused with the reason and kept. `visibility` overrides the draft's own.",
+    { id: z.string().uuid().describe('Draft ID'), ...publishArticleDraftBodySchema.shape },
+    async ({ id, ...body }) => {
+      const result = await publishArticleDraft(user, id, body)
+      if (!result.ok) return errorResponse(result.error)
+      deliver?.createdArticle(user, result.post)
+      return jsonResponse(await serializeFeedPost(user, result.post))
     },
   )
 

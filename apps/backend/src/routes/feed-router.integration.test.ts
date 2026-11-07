@@ -3,7 +3,7 @@ import type { AddressInfo } from 'node:net'
 
 import express from 'express'
 import supertest from 'supertest'
-import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 
 /**
  * Integration test for the owner-facing article routes on the feed router
@@ -754,5 +754,177 @@ describe('Own-post comments (GET /feed/:postId/replies + reply_count)', () => {
     )
     expect(counts.get(first.post.id)).toBe(2)
     expect(counts.get(second.post.id)).toBe(0)
+  })
+})
+
+describe('Article drafts (/feed/article-drafts)', () => {
+  const MISSING = '00000000-0000-0000-0000-000000000000'
+  const spyDeliver = (): FeedDeliver => ({
+    created: vi.fn(),
+    createdArticle: vi.fn(),
+    createdChallenge: vi.fn(),
+    createdExercise: vi.fn(),
+    createdReply: vi.fn(),
+    deleted: vi.fn(),
+    updated: vi.fn(),
+    updatedArticle: vi.fn(),
+    updatedChallenge: vi.fn(),
+    updatedExercise: vi.fn(),
+    updatedReply: vi.fn(),
+  })
+  const draftArticle = () => ({
+    blocks: [
+      { markdown: 'Work in progress', type: 'prose' },
+      { metric: 'heart_rate', type: 'chart' },
+    ],
+    default_end: '2026-07-07T00:00:00.000Z',
+    default_start: '2026-07-01T00:00:00.000Z',
+    title: 'Draft title',
+  })
+
+  let deliver: FeedDeliver
+  let app: ReturnType<typeof startApp>
+
+  beforeAll(async () => {
+    await startTestDb()
+  }, CONTAINER_TIMEOUT)
+
+  afterAll(async () => {
+    await stopTestDb()
+  })
+
+  beforeEach(async () => {
+    await cleanTestDb()
+    deliver = spyDeliver()
+    app = startApp(deliver)
+  })
+
+  afterEach(async () => {
+    await app.close()
+  })
+
+  test('POST with no body starts an empty, untitled public draft', async () => {
+    const res = await app.request.post('/feed/article-drafts').send({})
+    expect(res.status).toBe(200)
+    expect(res.body.draft.article).toEqual({ blocks: [], title: '' })
+    expect(res.body.draft.visibility).toBe('public')
+    expect(res.body.draft.id).toMatch(/^[0-9a-f-]{36}$/)
+  })
+
+  test('saves an incomplete draft (no title, chart without metric, half a correlation)', async () => {
+    const article = {
+      blocks: [{ type: 'chart' }, { outcome: { kind: 'metric', metric: 'hrv' }, type: 'correlation' }],
+      title: '',
+    }
+    const res = await app.request.post('/feed/article-drafts').send({ article, visibility: 'followers' })
+    expect(res.status).toBe(200)
+    expect(res.body.draft.article).toEqual(article)
+
+    const fetched = await app.request.get(`/feed/article-drafts/${res.body.draft.id}`)
+    expect(fetched.status).toBe(200)
+    expect(fetched.body.draft).toEqual(res.body.draft)
+  })
+
+  test('lists drafts most recently saved first', async () => {
+    const first = await app.request
+      .post('/feed/article-drafts')
+      .send({ article: { ...draftArticle(), title: 'A' } })
+    const second = await app.request
+      .post('/feed/article-drafts')
+      .send({ article: { ...draftArticle(), title: 'B' } })
+    await app.request.patch(`/feed/article-drafts/${first.body.draft.id}`).send({ title: 'A2' })
+
+    const res = await app.request.get('/feed/article-drafts')
+    expect(res.status).toBe(200)
+    expect(res.body.drafts.map((d: { id: string }) => d.id)).toEqual([
+      first.body.draft.id,
+      second.body.draft.id,
+    ])
+  })
+
+  test('PATCH replaces only the provided fields', async () => {
+    const created = await app.request.post('/feed/article-drafts').send({ article: draftArticle() })
+    const res = await app.request
+      .patch(`/feed/article-drafts/${created.body.draft.id}`)
+      .send({ blocks: [{ markdown: 'Rewritten', type: 'prose' }], visibility: 'unlisted' })
+    expect(res.status).toBe(200)
+    expect(res.body.draft.article).toEqual({
+      ...draftArticle(),
+      blocks: [{ markdown: 'Rewritten', type: 'prose' }],
+    })
+    expect(res.body.draft.visibility).toBe('unlisted')
+  })
+
+  test('PATCH with a null default window bound clears it; an omitted one is kept', async () => {
+    const created = await app.request.post('/feed/article-drafts').send({ article: draftArticle() })
+    const id = created.body.draft.id
+
+    const cleared = await app.request.patch(`/feed/article-drafts/${id}`).send({ default_start: null })
+    expect(cleared.status).toBe(200)
+    expect(cleared.body.draft.article).not.toHaveProperty('default_start')
+    expect(cleared.body.draft.article.default_end).toBe('2026-07-07T00:00:00.000Z')
+
+    const fetched = await app.request.get(`/feed/article-drafts/${id}`)
+    expect(fetched.body.draft.article).not.toHaveProperty('default_start')
+  })
+
+  test('GET, PATCH, DELETE and publish 404 an unknown or non-UUID id', async () => {
+    for (const id of [MISSING, 'not-a-uuid']) {
+      expect((await app.request.get(`/feed/article-drafts/${id}`)).status).toBe(404)
+      expect((await app.request.patch(`/feed/article-drafts/${id}`).send({ title: 'x' })).status).toBe(404)
+      expect((await app.request.delete(`/feed/article-drafts/${id}`)).status).toBe(404)
+      expect((await app.request.post(`/feed/article-drafts/${id}/publish`).send({})).status).toBe(404)
+    }
+  })
+
+  test('DELETE removes the draft', async () => {
+    const created = await app.request.post('/feed/article-drafts').send({ article: draftArticle() })
+    const del = await app.request.delete(`/feed/article-drafts/${created.body.draft.id}`)
+    expect(del.status).toBe(200)
+    expect(del.body.success).toBe(true)
+    expect((await app.request.get('/feed/article-drafts')).body.drafts).toEqual([])
+  })
+
+  test('a draft never appears in the feed listing and is never delivered', async () => {
+    await app.request.post('/feed/article-drafts').send({ article: draftArticle() })
+    const feed = await app.request.get('/feed')
+    expect(feed.body.posts).toEqual([])
+    expect(deliver.createdArticle).not.toHaveBeenCalled()
+  })
+
+  test('publish creates the article post, federates it and deletes the draft', async () => {
+    const created = await app.request
+      .post('/feed/article-drafts')
+      .send({ article: draftArticle(), visibility: 'followers' })
+    const res = await app.request.post(`/feed/article-drafts/${created.body.draft.id}/publish`).send({})
+    expect(res.status).toBe(200)
+    expect(res.body.post.kind).toBe('article')
+    expect(res.body.post.article.title).toBe('Draft title')
+    expect(res.body.post.visibility).toBe('followers')
+    expect(deliver.createdArticle).toHaveBeenCalledTimes(1)
+
+    expect((await app.request.get(`/feed/article-drafts/${created.body.draft.id}`)).status).toBe(404)
+    const feed = await app.request.get('/feed')
+    expect(feed.body.posts.map((p: { id: string }) => p.id)).toEqual([res.body.post.id])
+  })
+
+  test('publish takes a visibility override', async () => {
+    const created = await app.request.post('/feed/article-drafts').send({ article: draftArticle() })
+    const res = await app.request
+      .post(`/feed/article-drafts/${created.body.draft.id}/publish`)
+      .send({ visibility: 'unlisted' })
+    expect(res.body.post.visibility).toBe('unlisted')
+  })
+
+  test('publishing an incomplete draft is a 400 and keeps the draft', async () => {
+    const created = await app.request
+      .post('/feed/article-drafts')
+      .send({ article: { ...draftArticle(), default_end: undefined, default_start: undefined } })
+    const res = await app.request.post(`/feed/article-drafts/${created.body.draft.id}/publish`).send({})
+    expect(res.status).toBe(400)
+    expect(res.body.error).toContain('no time window')
+    expect(deliver.createdArticle).not.toHaveBeenCalled()
+    expect((await app.request.get(`/feed/article-drafts/${created.body.draft.id}`)).status).toBe(200)
+    expect((await app.request.get('/feed')).body.posts).toEqual([])
   })
 })

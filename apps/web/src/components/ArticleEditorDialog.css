@@ -116,3 +116,45 @@
     color: #d1d5db;
   }
 }
+
+.article-saved-at {
+  margin-right: auto;
+  align-self: center;
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.article-close-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f9fafb;
+  font-weight: 600;
+}
+
+.article-close-confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  .article-saved-at {
+    color: #9ca3af;
+  }
+
+  .article-close-confirm {
+    background: #1f2937;
+    border-color: #374151;
+  }
+}
+
+.article-editor .share-dialog-actions {
+  flex-wrap: wrap;
+}

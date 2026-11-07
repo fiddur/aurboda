@@ -1,13 +1,13 @@
 /**
- * Feed / outbox view — the activities the user has published to their federated
- * (ActivityPub) feed, rendered as native Mastodon-style cards (matching how they
- * actually appear once federated), each with an Edit / Unshare shortcut. Editing
- * reuses the share dialog; unsharing retracts a Delete to followers.
+ * Feed page: the article composer and drafts first, then the home timeline or
+ * your own posts (rendered as the native cards followers see, each with Edit /
+ * Unshare), and the follow / follower / auto-share management at the bottom.
  */
-import type { FeedPost, FeedPostsResponse } from '@aurboda/api-spec'
+import type { ArticleDraft, FeedPost, FeedPostsResponse } from '@aurboda/api-spec'
 import type { InfiniteData } from '@tanstack/react-query'
 
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useLocation } from 'preact-iso'
 import { useState } from 'preact/hooks'
 
 import { ArticleEditorDialog } from '../../components/ArticleEditorDialog'
@@ -15,7 +15,9 @@ import { ArticleExportDialog } from '../../components/ArticleExportDialog'
 import { ShareActivityDialog } from '../../components/ShareActivityDialog'
 import { avatarUrl, deleteFeedPost, fetchFeed } from '../../state/api'
 import { auth } from '../../state/auth'
+import { ArticleDrafts } from './ArticleDrafts'
 import { AutoShareRulesPanel } from './AutoShareRulesPanel'
+import { type FeedTab, feedTabFromQuery, feedTabUrl } from './feed-tab'
 import { FeedPostCard, type PostAuthor } from './FeedPostCard'
 import { FollowersPanel } from './FollowersPanel'
 import { FollowingPanel } from './FollowingPanel'
@@ -91,7 +93,7 @@ function OwnPostCard({ post, author }: { post: FeedPost; author: PostAuthor }) {
   )
 }
 
-export function Feed() {
+function OwnPosts({ author }: { author: PostAuthor }) {
   // Keyset-paginated like the home timeline (#1012): each page carries the full
   // structured payloads, so the first load stays light however many posts exist.
   const { data, isLoading, error, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery<
@@ -107,7 +109,44 @@ export function Feed() {
     queryKey: ['feed', 'posts'],
   })
   const posts = data?.pages.flatMap((page) => page.posts)
-  const [composing, setComposing] = useState(false)
+
+  return (
+    <section>
+      {isLoading && <p>Loading…</p>}
+      {error && <p class="feed-error">Couldn't load your feed. Please try again.</p>}
+      {posts && posts.length === 0 && (
+        <p class="feed-empty">
+          You haven't shared anything yet. Write an article above, or open an activity or an exercise and
+          choose <strong>Share to feed</strong>.
+        </p>
+      )}
+      {posts?.map((post) => (
+        <OwnPostCard key={post.id} post={post} author={author} />
+      ))}
+      {hasNextPage && (
+        <button
+          type="button"
+          class="btn-secondary timeline-more"
+          onClick={() => fetchNextPage()}
+          disabled={isFetchingNextPage}
+        >
+          {isFetchingNextPage ? 'Loading…' : 'Load more'}
+        </button>
+      )}
+    </section>
+  )
+}
+
+const TABS: { id: FeedTab; label: string }[] = [
+  { id: 'following', label: 'Following' },
+  { id: 'mine', label: 'Your posts' },
+]
+
+/** Write first, then what the people you follow posted, with follower management tucked away below. */
+export function Feed() {
+  const { path, query, route } = useLocation()
+  const tab = feedTabFromQuery(query)
+  const [composer, setComposer] = useState<{ draft?: ArticleDraft } | null>(null)
 
   const username = auth.value.user ?? ''
   // The actor handle host is the web host the user is browsing (`<user>@<host>`);
@@ -125,46 +164,48 @@ export function Feed() {
     <div class="feed-page">
       <h1>Feed</h1>
       <p class="feed-intro">
-        Activities you've published to your federated feed, shown the way they appear once federated. People
-        can follow your <code>{author.handle}</code> from Mastodon and the wider fediverse to see these posts.
+        Your federated feed. Anyone on Mastodon and the wider fediverse can follow{' '}
+        <code>{author.handle}</code>.
       </p>
 
-      <FollowingPanel />
-
-      <FollowersPanel />
-
-      <HomeTimeline />
-
-      <AutoShareRulesPanel />
-
-      <div class="feed-section-header">
-        <h2 class="feed-section-title">Your posts</h2>
-        <button type="button" class="btn-primary" onClick={() => setComposing(true)}>
-          New article
+      <section class="feed-composer">
+        <button type="button" class="btn-primary feed-composer-write" onClick={() => setComposer({})}>
+          Write an article
         </button>
+        <ArticleDrafts onContinue={(draft) => setComposer({ draft })} />
+      </section>
+      {composer && (
+        <ArticleEditorDialog
+          key={composer.draft?.id ?? 'new'}
+          draft={composer.draft}
+          onClose={() => setComposer(null)}
+        />
+      )}
+
+      <div class="feed-tabs" role="tablist" aria-label="Posts">
+        {TABS.map(({ id, label }) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            class={id === tab ? 'feed-tab feed-tab--active' : 'feed-tab'}
+            aria-selected={id === tab}
+            onClick={() => route(feedTabUrl(path, query, id), true)}
+          >
+            {label}
+          </button>
+        ))}
       </div>
-      {composing && <ArticleEditorDialog onClose={() => setComposing(false)} />}
-      {isLoading && <p>Loading…</p>}
-      {error && <p class="feed-error">Couldn't load your feed. Please try again.</p>}
-      {posts && posts.length === 0 && (
-        <p class="feed-empty">
-          You haven't shared anything yet. Open an activity or an exercise and choose{' '}
-          <strong>Share to feed</strong>.
-        </p>
-      )}
-      {posts?.map((post) => (
-        <OwnPostCard key={post.id} post={post} author={author} />
-      ))}
-      {hasNextPage && (
-        <button
-          type="button"
-          class="btn-secondary timeline-more"
-          onClick={() => fetchNextPage()}
-          disabled={isFetchingNextPage}
-        >
-          {isFetchingNextPage ? 'Loading…' : 'Load more'}
-        </button>
-      )}
+      <div role="tabpanel">{tab === 'mine' ? <OwnPosts author={author} /> : <HomeTimeline />}</div>
+
+      <details class="feed-manage">
+        <summary class="feed-manage-summary">Manage following, followers and auto-sharing</summary>
+        <div class="feed-manage-body">
+          <FollowingPanel />
+          <FollowersPanel />
+          <AutoShareRulesPanel />
+        </div>
+      </details>
     </div>
   )
 }

@@ -5,10 +5,12 @@
  */
 import type {
   ArticleBlock,
+  ArticleDraftBlock,
+  ArticleDraftContent,
   CorrelationSelector,
   CreateArticleBody,
-  FeedPost,
   FeedVisibility,
+  UpdateArticleDraftBody,
 } from '@aurboda/api-spec'
 
 import { isValidMetric } from '@aurboda/api-spec'
@@ -76,18 +78,25 @@ export const toInputValue = (iso?: string): string => {
 export const toIso = (local: string): string | undefined =>
   local ? new Date(local).toISOString() : undefined
 
-export const draftsFromPost = (post?: FeedPost): BlockDraft[] => {
-  if (!post?.article) return []
-  return post.article.blocks.map((b): BlockDraft => {
+/** What the editor opens: a published article post, a saved draft, or nothing for a new one. */
+export interface ArticleEditorSource {
+  article?: ArticleDraftContent
+  visibility: FeedVisibility
+}
+
+export const draftsFromPost = (source?: { article?: ArticleDraftContent }): BlockDraft[] => {
+  if (!source?.article) return []
+  return source.article.blocks.map((b): BlockDraft => {
     if (b.type === 'prose') return { markdown: b.markdown, type: 'prose' }
     if (b.type === 'correlation') {
+      const empty = emptyCorrelationDraft()
       return {
         caption: b.caption ?? '',
         end: toInputValue(b.end),
         lagDays: b.lag_days != null ? String(b.lag_days) : '',
-        outcome: b.outcome,
+        outcome: b.outcome ?? empty.outcome,
         start: toInputValue(b.start),
-        trigger: b.trigger,
+        trigger: b.trigger ?? empty.trigger,
         type: 'correlation',
       }
     }
@@ -95,20 +104,77 @@ export const draftsFromPost = (post?: FeedPost): BlockDraft[] => {
       bucket: b.bucket ?? '',
       caption: b.caption ?? '',
       end: toInputValue(b.end),
-      metric: b.metric,
+      metric: b.metric ?? '',
       start: toInputValue(b.start),
       type: 'chart',
     }
   })
 }
 
-export const initialArticleEditorState = (post?: FeedPost): ArticleEditorState => ({
-  blocks: draftsFromPost(post),
-  defaultEnd: toInputValue(post?.article?.default_end),
-  defaultStart: toInputValue(post?.article?.default_start),
-  title: post?.article?.title ?? '',
-  visibility: post?.visibility ?? 'public',
+export const initialArticleEditorState = (source?: ArticleEditorSource): ArticleEditorState => ({
+  blocks: draftsFromPost(source),
+  defaultEnd: toInputValue(source?.article?.default_end),
+  defaultStart: toInputValue(source?.article?.default_start),
+  title: source?.article?.title ?? '',
+  visibility: source?.visibility ?? 'public',
 })
+
+const windowFields = (b: { start: string; end: string }) => ({
+  ...(toIso(b.start) ? { start: toIso(b.start) } : {}),
+  ...(toIso(b.end) ? { end: toIso(b.end) } : {}),
+})
+
+const draftBlock = (b: BlockDraft): ArticleDraftBlock => {
+  if (b.type === 'prose') return { markdown: b.markdown, type: 'prose' }
+  if (b.type === 'chart') {
+    return {
+      type: 'chart',
+      ...(isValidMetric(b.metric) ? { metric: b.metric } : {}),
+      ...windowFields(b),
+      ...(b.bucket ? { bucket: b.bucket } : {}),
+      ...(b.caption.trim() ? { caption: b.caption.trim() } : {}),
+    }
+  }
+  const lag = Number(b.lagDays)
+  return {
+    outcome: b.outcome,
+    trigger: b.trigger,
+    type: 'correlation',
+    ...windowFields(b),
+    ...(b.lagDays.trim() && Number.isInteger(lag) && lag !== 0 ? { lag_days: lag } : {}),
+    ...(b.caption.trim() ? { caption: b.caption.trim() } : {}),
+  }
+}
+
+/**
+ * Editor state → draft content, with no completeness checks: a draft may lack a
+ * title, a chart metric or a correlation selector. Publishing validates.
+ */
+export const buildDraftContent = (state: ArticleEditorState): ArticleDraftContent => ({
+  blocks: state.blocks.map(draftBlock),
+  title: state.title.trim(),
+  ...(toIso(state.defaultStart) ? { default_start: toIso(state.defaultStart) } : {}),
+  ...(toIso(state.defaultEnd) ? { default_end: toIso(state.defaultEnd) } : {}),
+})
+
+/**
+ * The PATCH body that saves the editor's content over an existing draft. An
+ * empty default window bound is sent as `null`, so clearing it in the editor
+ * clears it on the server (an omitted field would keep the stored value).
+ */
+export const draftUpdateBody = (state: ArticleEditorState): UpdateArticleDraftBody => {
+  const content = buildDraftContent(state)
+  return {
+    ...content,
+    default_end: content.default_end ?? null,
+    default_start: content.default_start ?? null,
+    visibility: state.visibility,
+  }
+}
+
+/** A comparable fingerprint of what saving a draft would store, to tell whether there are unsaved changes. */
+export const draftSnapshot = (state: ArticleEditorState): string =>
+  JSON.stringify({ article: buildDraftContent(state), visibility: state.visibility })
 
 /**
  * The message to show under the editor: a form-validation error takes precedence,

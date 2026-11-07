@@ -3,10 +3,14 @@
  * owner-facing routers; the public read surface lives in `feed-public-router.ts`.
  */
 import {
+  type ArticleDraftResponse,
+  type ArticleDraftsResponse,
   type ArticleExportResponse,
   type BaseResponse,
   type CreateArticleBody,
   createArticleBodySchema,
+  type CreateArticleDraftBody,
+  createArticleDraftBodySchema,
   type FeedPostReactionsResponse,
   type FeedPostRepliesResponse,
   type FeedPostResponse,
@@ -23,6 +27,8 @@ import {
   type ShareExerciseBody,
   shareExerciseBodySchema,
   type ExerciseSharePreviewResponse,
+  type PublishArticleDraftBody,
+  publishArticleDraftBodySchema,
   type TimelineEntryResponse,
   type TimelineQuery,
   timelineQuerySchema,
@@ -30,6 +36,8 @@ import {
   type TimelineResponse,
   type UpdateArticleBody,
   updateArticleBodySchema,
+  type UpdateArticleDraftBody,
+  updateArticleDraftBodySchema,
   type UpdateFeedPostBody,
   updateFeedPostBodySchema,
 } from '@aurboda/api-spec'
@@ -41,19 +49,30 @@ import type { TimelineHub } from '../services/timeline-hub.ts'
 import type { RetroEnrichTrigger } from '../services/timeline-retro-enrich.ts'
 
 import {
+  createArticleDraft,
   createArticlePost,
   createChallengePost,
   createExercisePost,
   createFeedPost,
+  deleteArticleDraft,
   deleteFeedPost,
   getActivityById,
+  getArticleDraft,
   getFeedPostById,
   getTimelineEntryById,
+  listArticleDrafts,
   listFeedPostReactions,
+  updateArticleDraft,
   updateFeedPost,
 } from '../db/index.ts'
 import { isPubliclyVisible } from '../services/activitypub/object.ts'
 import { REPLIES_TIMEOUT_MS } from '../services/activitypub/remote-replies.ts'
+import {
+  articleDraftPatch,
+  emptyArticleDraftContent,
+  publishArticleDraft,
+  serializeArticleDraft,
+} from '../services/article-drafts.ts'
 import { buildArticleMarkdown, renderableArticleBlocks } from '../services/article-export.ts'
 import { buildArticleContent, mergeArticleContent } from '../services/article.ts'
 import { resolveChallengeShare } from '../services/challenge-share.ts'
@@ -297,6 +316,80 @@ export const createFeedRouter = (
       if (!UUID_RE.test(req.params.id)) return res.status(404).json({ error: 'Not found', success: false })
       const { body, status } = reactionResponse(await reactions.unboost(req.user!, req.params.id))
       res.status(status).json(body)
+    },
+  )
+
+  // Article drafts: private, never federated (a separate table, so no feed or
+  // public listing can see one). Registered before the generic `/:postId` routes.
+  router.get<Record<string, never>, ArticleDraftsResponse>(
+    '/article-drafts',
+    authMiddleware,
+    async (req, res) => {
+      const drafts = await listArticleDrafts(req.user!)
+      res.json({ drafts: drafts.map(serializeArticleDraft), success: true })
+    },
+  )
+
+  router.post<Record<string, never>, ArticleDraftResponse, CreateArticleDraftBody>(
+    '/article-drafts',
+    authMiddleware,
+    validateBody(createArticleDraftBodySchema),
+    async (req, res) => {
+      const record = await createArticleDraft(req.user!, {
+        article: req.body.article ?? emptyArticleDraftContent(),
+        visibility: req.body.visibility,
+      })
+      res.json({ draft: serializeArticleDraft(record), success: true })
+    },
+  )
+
+  router.get<{ id: string }, ArticleDraftResponse>(
+    '/article-drafts/:id',
+    authMiddleware,
+    async (req, res) => {
+      const record = UUID_RE.test(req.params.id) ? await getArticleDraft(req.user!, req.params.id) : null
+      if (!record) return res.status(404).json({ error: 'Draft not found', success: false })
+      res.json({ draft: serializeArticleDraft(record), success: true })
+    },
+  )
+
+  router.patch<{ id: string }, ArticleDraftResponse, UpdateArticleDraftBody>(
+    '/article-drafts/:id',
+    authMiddleware,
+    validateBody(updateArticleDraftBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      const existing = UUID_RE.test(req.params.id) ? await getArticleDraft(user, req.params.id) : null
+      if (!existing) return res.status(404).json({ error: 'Draft not found', success: false })
+      const record = await updateArticleDraft(
+        user,
+        existing.id,
+        articleDraftPatch(existing.article, req.body),
+      )
+      if (!record) return res.status(404).json({ error: 'Draft not found', success: false })
+      res.json({ draft: serializeArticleDraft(record), success: true })
+    },
+  )
+
+  router.delete<{ id: string }, BaseResponse>('/article-drafts/:id', authMiddleware, async (req, res) => {
+    const deleted = UUID_RE.test(req.params.id) && (await deleteArticleDraft(req.user!, req.params.id))
+    if (!deleted) return res.status(404).json({ error: 'Draft not found', success: false })
+    res.json({ success: true })
+  })
+
+  router.post<{ id: string }, FeedPostResponse, PublishArticleDraftBody>(
+    '/article-drafts/:id/publish',
+    authMiddleware,
+    validateBody(publishArticleDraftBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      if (!UUID_RE.test(req.params.id)) {
+        return res.status(404).json({ error: 'Draft not found', success: false })
+      }
+      const result = await publishArticleDraft(user, req.params.id, req.body)
+      if (!result.ok) return res.status(result.status).json({ error: result.error, success: false })
+      deliver?.createdArticle(user, result.post)
+      res.json({ post: await serializeFeedPost(user, result.post), success: true })
     },
   )
 

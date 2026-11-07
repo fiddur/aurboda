@@ -156,6 +156,32 @@ explicit metric selection that bounds what is shared:
 Defaults are privacy-conservative: sharing an activity with no explicit selection
 shares no scalars and, crucially, **no series**.
 
+### Article drafts
+
+An article can be saved as a **draft** and worked on over time — in the web editor, or
+started by Claude over MCP and finished in the editor (#1465). Drafts live in their own
+`article_drafts` table (`id`, `article` JSONB, `visibility`, `created_at`, `updated_at`),
+**not** as a status on `feed_posts`, so no query that reads posts — the feed listing, the
+outbox, federation delivery, the public profile, the blog view, the Atom feed, timelines,
+`list_feed` — can ever see one. A draft is never federated.
+
+A draft may be **incomplete** (`ArticleDraftContent`): the title may be empty, a chart
+block's `metric` and a correlation block's `trigger`/`outcome` may be unset, and windows are
+not checked. **Publishing** validates it exactly like `POST /feed/articles` — the
+`CreateArticleBody` schema, then the same window checks — and on success creates the
+article post (its `created_at` is the publish time), federates it, and deletes the draft; an
+invalid draft gets a 400 with the reason and is kept. A published article is edited in place
+as before (`PATCH /feed/articles/:postId`); there is no unpublish-to-draft.
+
+| REST                                    | MCP                     | Purpose                                                                                                                                                         |
+| --------------------------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /feed/article-drafts`              | `list_article_drafts`   | My drafts, most recently saved first                                                                                                                            |
+| `POST /feed/article-drafts`             | `create_article_draft`  | Start a draft (`{ article?, visibility? }`; no `article` = empty and untitled)                                                                                  |
+| `GET /feed/article-drafts/:id`          | `get_article_draft`     | One draft                                                                                                                                                       |
+| `PATCH /feed/article-drafts/:id`        | `update_article_draft`  | Save changes; provided `title` / `blocks` / default window / `visibility` replace the stored ones; over REST a `null` `default_start` / `default_end` clears it |
+| `DELETE /feed/article-drafts/:id`       | `delete_article_draft`  | Delete a draft (nothing to retract)                                                                                                                             |
+| `POST /feed/article-drafts/:id/publish` | `publish_article_draft` | Validate and publish; `{ visibility? }` overrides the draft's                                                                                                   |
+
 ## ActivityPub federation
 
 Each user is a single ActivityPub **actor** (a `Person`) at:
@@ -954,31 +980,36 @@ resolving.
   owner's feed, the public profile and a peer's timeline render the post natively — records,
   the one chart (weekly bars with the decaying-best line, or the trend alone), the last
   sessions — and show the `Trend` image only where the card has no chart to draw.
-- **New article** — the **Feed** page has a **New article** button that opens the article
-  composer: a title, an optional default time window, and an ordered list of **prose**
-  (markdown), **chart** (a metric + optional per-block window + caption), and **correlation**
-  (a trigger + outcome selector + optional lag/window/caption) blocks, plus the audience.
-  Each chart draws its metric live over the locked window; each correlation draws a live
-  scatter (with the coefficients) over its window.
-- **Manage** — the **Feed** page (`/feed`, the 📣 item under the **Sharing** section in
-  the sidebar) lists everything
-  you've shared, with each post's audience and metrics. From there you can **Edit** a
-  post — an activity share re-opens the share dialog (saving federates an `Update`); an
-  article re-opens the article composer — or **Unshare** it (federates a `Delete`). An
-  article also has an **Export markdown** button that fetches its paste-ready markdown
-  export and offers a **Copy to clipboard** button for pasting into r/QuantifiedSelf or a
-  similar text-only destination.
-- **Follow** — the Feed page's **Following** panel lets you follow a fediverse actor by
+- **Feed page layout** — the **Feed** page (`/feed`, the 📣 item under the **Sharing** section
+  in the sidebar) puts writing first: a **Write an article** button with your **Drafts** listed
+  under it, then the posts in two tabs — **Following** (your home timeline, the default) and
+  **Your posts** — kept in the URL as `?tab=mine` so a reload or the Android embed stays on it.
+  Following, followers and auto-share rules sit in a collapsed **Manage** section at the bottom.
+- **Write an article** — opens the article composer: a title, an optional default time
+  window, and an ordered list of **prose** (markdown), **chart** (a metric + optional
+  per-block window + caption), and **correlation** (a trigger + outcome selector + optional
+  lag/window/caption) blocks, plus the audience. Each chart draws its metric live over the
+  locked window; each correlation draws a live scatter (with the coefficients) over its
+  window. **Save draft** saves without publishing (and shows "Saved hh:mm"); **Publish**
+  validates and publishes. Closing with unsaved changes asks whether to save them as a
+  draft. Each listed draft has **Continue** (reopens it in the composer) and **Delete**.
+- **Your posts** — lists everything you've shared, with each post's audience and metrics.
+  From there you can **Edit** a post — an activity share re-opens the share dialog (saving
+  federates an `Update`); an article re-opens the article composer — or **Unshare** it
+  (federates a `Delete`). An article also has an **Export markdown** button that fetches its
+  paste-ready markdown export and offers a **Copy to clipboard** button for pasting into
+  r/QuantifiedSelf or a similar text-only destination.
+- **Follow** — the **Following** panel (under **Manage**) lets you follow a fediverse actor by
   handle (`@user@host`) and see who you follow, with a **Pending** badge until the remote
   server accepts and an **Unfollow** button.
-- **Followers** — the Feed page's **Followers** panel lists who follows you. If you've turned
-  on **Manually approve new followers** (Settings → _Feed & Followers_), incoming follows show
-  up here as **follow requests** with **Approve** / **Reject** buttons; accepted followers can
-  be **Removed**. With approval off (the default), anyone can follow you automatically.
-- **Home timeline** — below the Following panel, the Feed page shows your **Home timeline**:
-  posts from the actors you follow, newest-first, as native cards with a **Load more** button
-  to page further back. New posts arrive **live** (or via polling fallback) as a **"N new
-  posts"** pill at the top; click it to reveal them.
+- **Followers** — the **Followers** panel (under **Manage**) lists who follows you. If you've
+  turned on **Manually approve new followers** (Settings → _Feed & Followers_), incoming follows
+  show up here as **follow requests** with **Approve** / **Reject** buttons; accepted followers
+  can be **Removed**. With approval off (the default), anyone can follow you automatically.
+- **Home timeline** — the **Following** tab shows posts from the actors you follow,
+  newest-first, as native cards with a **Load more** button to page further back. New posts
+  arrive **live** (or via polling fallback) as a **"N new posts"** pill at the top; click it to
+  reveal them.
 - **Public profile** — a user's `/u/<username>` page shows their public feed (their
   `public`/`unlisted` posts, newest-first, as the same post card) alongside their shared
   dashboards and challenges. It's unauthenticated, so anyone — including a follower who saw
@@ -1031,6 +1062,7 @@ Owner-facing (authenticated, scoped to the caller):
 | `POST /feed/exercises/preview`                    | Exercise share **preview**: the exact `Note` HTML and structured payload for the opt-ins; creates nothing                                                                                                    |
 | `GET/POST /autoshare-rules` (+`/:id`, `/preview`) | [Auto-share rules](auto-share-rules.md): automatically publish matching settled activities (#903)                                                                                                            |
 | `PATCH /feed/articles/:postId`                    | Edit an article (title / blocks / default window / visibility)                                                                                                                                               |
+| `/feed/article-drafts` (+`/:id`, `/:id/publish`)  | Private [article drafts](#article-drafts): list, save, edit, delete, publish (validated like `POST /feed/articles`)                                                                                          |
 | `GET /feed/articles/:postId/export`               | Export an article as paste-ready markdown (title + prose + one image link per block) for Reddit/text-only destinations                                                                                       |
 | `PATCH /feed/:postId`                             | Edit an activity post's selection / visibility / attachments                                                                                                                                                 |
 | `DELETE /feed/:postId`                            | Unpublish any post (an activity post's public series stops resolving)                                                                                                                                        |
@@ -1085,7 +1117,7 @@ et al.) cache a copied avatar and re-download it only on one of those two signal
 them a changed avatar never propagates.
 
 The owner-facing capability is also available over MCP as `list_feed`, `share_activity`,
-`preview_activity_share`, `share_challenge`, `share_exercise`, `preview_exercise_share`, `create_article`, `update_article`, `export_article_markdown`, `update_feed_post`,
+`preview_activity_share`, `share_challenge`, `share_exercise`, `preview_exercise_share`, `create_article`, `update_article`, the [article draft](#article-drafts) tools, `export_article_markdown`, `update_feed_post`,
 `delete_feed_post`, `list_following`, `follow_actor`, `unfollow_actor`, `list_followers`,
 `approve_follower`, `reject_follower`, `list_timeline`, `like_timeline_post`,
 `unlike_timeline_post`, `boost_timeline_post`, `unboost_timeline_post`,
@@ -1093,13 +1125,15 @@ The owner-facing capability is also available over MCP as `list_feed`, `share_ac
 `list_feed_post_reactions` — all backed by the same services as
 the REST routes (`create_article` / `update_article` ↔ `POST /feed/articles` / `PATCH
 /feed/articles/:postId`; `export_article_markdown` ↔ `GET /feed/articles/:postId/export`), so an
-article can be drafted conversationally by Claude via the same tools. Manual follower approval is
+article can be drafted conversationally by Claude via the same tools — as a private draft
+(`create_article_draft`) the user finishes in the web editor, or published directly. Manual follower approval is
 toggled with the `manually_approve_followers` user setting (`get_user_settings` /
 `update_user_settings`).
 
 ## Storage
 
-Feed posts live in the user's own database in the `feed_posts` table. A `kind` column
+Feed posts live in the user's own database in the `feed_posts` table (unpublished
+[article drafts](#article-drafts) live apart, in `article_drafts`). A `kind` column
 discriminates an `activity` post from an `article`, `challenge`, `exercise` or `reply` post; an
 article's content (title + default window + ordered blocks) lives in a nullable `article` JSONB
 column, a challenge share's link payload (name + canonical URL + optional host identity)

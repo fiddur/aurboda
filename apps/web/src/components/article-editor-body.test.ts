@@ -1,13 +1,17 @@
-import type { ArticleBlock, FeedPost } from '@aurboda/api-spec'
+import type { ArticleBlock, ArticleDraft, FeedPost } from '@aurboda/api-spec'
 
 import { describe, expect, it } from 'vitest'
 
 import {
   type ArticleEditorState,
   buildArticleBody,
+  buildDraftContent,
   deriveSubmitError,
+  draftSnapshot,
   draftsFromPost,
+  draftUpdateBody,
   emptyCorrelationDraft,
+  initialArticleEditorState,
   toInputValue,
   toIso,
 } from './article-editor-body'
@@ -215,5 +219,146 @@ describe('draftsFromPost', () => {
       start: '',
       type: 'chart',
     })
+  })
+})
+
+describe('buildDraftContent', () => {
+  it('keeps an incomplete article: no title, no chart metric, empty selectors', () => {
+    const content = buildDraftContent(
+      state({
+        blocks: [
+          { markdown: 'half a thought', type: 'prose' },
+          { bucket: '', caption: '  ', end: '', metric: '', start: '', type: 'chart' },
+          emptyCorrelationDraft(),
+        ],
+        title: '  ',
+      }),
+    )
+    expect(content).toEqual({
+      blocks: [
+        { markdown: 'half a thought', type: 'prose' },
+        { type: 'chart' },
+        {
+          outcome: { kind: 'metric', metric: '' },
+          trigger: { kind: 'activity', pattern: '' },
+          type: 'correlation',
+        },
+      ],
+      title: '',
+    })
+  })
+
+  it('carries windows, bucket, caption and a whole-number lag', () => {
+    const iso = '2026-07-01T00:00:00.000Z'
+    const local = toInputValue(iso)
+    const content = buildDraftContent(
+      state({
+        blocks: [
+          {
+            bucket: '1h',
+            caption: ' Resting HR ',
+            end: local,
+            metric: 'heart_rate',
+            start: local,
+            type: 'chart',
+          },
+          { ...emptyCorrelationDraft(), lagDays: '2' },
+          { ...emptyCorrelationDraft(), lagDays: '1.5' },
+        ],
+        defaultEnd: local,
+        defaultStart: local,
+      }),
+    )
+    expect(content.default_start).toBe(iso)
+    expect(content.default_end).toBe(iso)
+    expect(content.blocks[0]).toEqual({
+      bucket: '1h',
+      caption: 'Resting HR',
+      end: iso,
+      metric: 'heart_rate',
+      start: iso,
+      type: 'chart',
+    })
+    expect(content.blocks[1]).toMatchObject({ lag_days: 2 })
+    expect(content.blocks[2]).not.toHaveProperty('lag_days')
+  })
+
+  it('drops a metric that cannot be charted', () => {
+    const content = buildDraftContent(
+      state({
+        blocks: [{ bucket: '', caption: '', end: '', metric: 'my_custom', start: '', type: 'chart' }],
+      }),
+    )
+    expect(content.blocks[0]).toEqual({ type: 'chart' })
+  })
+})
+
+describe('initialArticleEditorState', () => {
+  it('starts empty and public with nothing to open', () => {
+    expect(initialArticleEditorState()).toEqual(state({ title: '' }))
+  })
+
+  it('opens a draft, filling unset chart metrics and selectors with empty editor values', () => {
+    const draft: ArticleDraft = {
+      article: {
+        blocks: [{ type: 'chart' }, { outcome: { kind: 'metric', metric: 'hrv' }, type: 'correlation' }],
+        default_start: '2026-07-01T00:00:00.000Z',
+        title: '',
+      },
+      created_at: '2026-07-08T10:00:00.000Z',
+      id: 'd1',
+      updated_at: '2026-07-08T11:00:00.000Z',
+      visibility: 'followers',
+    }
+    const initial = initialArticleEditorState(draft)
+    expect(initial.title).toBe('')
+    expect(initial.visibility).toBe('followers')
+    expect(initial.defaultStart).toBe(toInputValue('2026-07-01T00:00:00.000Z'))
+    expect(initial.blocks).toEqual([
+      { bucket: '', caption: '', end: '', metric: '', start: '', type: 'chart' },
+      { ...emptyCorrelationDraft(), outcome: { kind: 'metric', metric: 'hrv' } },
+    ])
+  })
+
+  it('round-trips a saved draft without registering a change', () => {
+    const edited = state({
+      blocks: [
+        { markdown: 'intro', type: 'prose' },
+        { bucket: '', caption: '', end: '', metric: 'heart_rate', start: '', type: 'chart' },
+      ],
+      visibility: 'unlisted',
+    })
+    const reopened = initialArticleEditorState({ article: buildDraftContent(edited), visibility: 'unlisted' })
+    expect(draftSnapshot(reopened)).toBe(draftSnapshot(edited))
+  })
+})
+
+describe('draftSnapshot', () => {
+  it('changes when the content or the audience does', () => {
+    const base = draftSnapshot(state())
+    expect(draftSnapshot(state({ title: 'Other' }))).not.toBe(base)
+    expect(draftSnapshot(state({ visibility: 'followers' }))).not.toBe(base)
+    expect(draftSnapshot(state())).toBe(base)
+  })
+})
+
+describe('draftUpdateBody', () => {
+  it('sends null for an emptied default window so the server clears it', () => {
+    const body = draftUpdateBody(state({ defaultEnd: '', defaultStart: '', visibility: 'unlisted' }))
+    expect(body).toEqual({
+      blocks: [],
+      default_end: null,
+      default_start: null,
+      title: 'A week of HRV',
+      visibility: 'unlisted',
+    })
+  })
+
+  it('sends a set default window as ISO', () => {
+    const iso = '2026-07-01T00:00:00.000Z'
+    const local = toInputValue(iso)
+    const body = draftUpdateBody(state({ defaultEnd: local, defaultStart: local }))
+    expect(body.default_start).toBe(iso)
+    expect(body.default_end).toBe(iso)
   })
 })
