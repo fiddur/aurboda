@@ -23,7 +23,7 @@
 }
 
 .public-dashboard .public-attribution:hover {
-  color: #8b5cf6;
+  color: var(--color-accent);
 }
 
 .public-dashboard .public-muted {

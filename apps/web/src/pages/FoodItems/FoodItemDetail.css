@@ -113,7 +113,7 @@
 .btn-primary {
   padding: 0.375rem 0.75rem;
   font-size: 0.85rem;
-  background: #673ab8;
+  background: var(--color-primary);
   color: white;
   border: none;
   border-radius: 4px;
@@ -122,7 +122,7 @@
 }
 
 .btn-primary:hover {
-  background: #5e35b1;
+  background: var(--color-primary-hover);
 }
 .btn-primary:disabled {
   opacity: 0.6;
@@ -144,7 +144,7 @@
 }
 
 .back-link {
-  color: #673ab8;
+  color: var(--color-accent);
   text-decoration: none;
   font-size: 0.9rem;
 }
@@ -287,10 +287,6 @@
 
   .food-item-detail-page h1 {
     color: #e5e7eb;
-  }
-
-  .back-link {
-    color: #c4b5fd;
   }
 
   .fi-meta {
@@ -443,7 +439,7 @@
 .btn-link {
   background: none;
   border: none;
-  color: #673ab8;
+  color: var(--color-accent);
   font-size: 0.8rem;
   cursor: pointer;
   padding: 0.125rem 0.25rem;
@@ -504,10 +500,6 @@
 
   .fi-reference-name {
     color: #d1d5db;
-  }
-
-  .btn-link {
-    color: #c4b5fd;
   }
 
   .btn-link-danger {

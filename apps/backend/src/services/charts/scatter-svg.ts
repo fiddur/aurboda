@@ -21,7 +21,7 @@ const PAD = { bottom: 64, left: 80, right: 28, top: 44 }
 /** Dark card background, matching the metric chart and route map. */
 const SCATTER_BG = '#0b0f19'
 const AXIS_COLOR = '#4b5563'
-const POINT_COLOR = '#a78bfa'
+const POINT_COLOR = '#2b9ea7'
 const REG_COLOR = '#f472b6'
 const TEXT_COLOR = '#e5e7eb'
 const MUTED_COLOR = '#9ca3af'

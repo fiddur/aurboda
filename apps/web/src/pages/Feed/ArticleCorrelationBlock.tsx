@@ -13,12 +13,13 @@ import type { ContinuousCorrelationData, CorrelationSelector } from '@aurboda/ap
 import { useQuery } from '@tanstack/react-query'
 
 import { fetchContinuousCorrelation } from '../../state/api'
+import { CHART_PRIMARY } from '../../theme'
 import { describeSelectorAxis, linearRegression } from '../Correlations/exploreCharts'
 
 const W = 520
 const H = 300
 const PAD = { bottom: 44, left: 52, right: 16, top: 16 }
-const POINT_COLOR = '#673ab8'
+const POINT_COLOR = CHART_PRIMARY
 const REG_COLOR = '#e0457b'
 
 const fmt = (value: number | null | undefined, digits = 2): string =>

@@ -38,7 +38,7 @@
 }
 
 .rule-info:hover .rule-name {
-  color: #673ab8;
+  color: var(--color-accent);
 }
 
 .rule-name {
@@ -103,7 +103,7 @@
 }
 
 .rule-toggle input {
-  accent-color: #673ab8;
+  accent-color: var(--color-accent);
   width: 16px;
   height: 16px;
   cursor: pointer;
@@ -142,7 +142,7 @@
 }
 
 .rule-back-link {
-  color: #673ab8;
+  color: var(--color-accent);
   text-decoration: none;
   font-size: 0.85rem;
 }
@@ -209,8 +209,8 @@
 
 .rule-field-input:focus {
   outline: none;
-  border-color: #673ab8;
-  box-shadow: 0 0 0 2px rgba(103, 58, 184, 0.2);
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
 }
 
 .rule-field-select {
@@ -225,7 +225,7 @@
 
 .rule-field-select:focus {
   outline: none;
-  border-color: #673ab8;
+  border-color: var(--color-accent);
 }
 
 .rule-checkbox {
@@ -237,7 +237,7 @@
 }
 
 .rule-checkbox input {
-  accent-color: #673ab8;
+  accent-color: var(--color-accent);
   width: 16px;
   height: 16px;
   cursor: pointer;
@@ -303,10 +303,6 @@
     border-bottom-color: #333;
   }
 
-  .rule-info:hover .rule-name {
-    color: #8b5cf6;
-  }
-
   .rule-conditions {
     background: #374151;
     color: #9ca3af;
@@ -326,18 +322,9 @@
     color: #9ca3af;
   }
 
-  .rule-toggle input,
-  .rule-checkbox input {
-    accent-color: #8b5cf6;
-  }
-
   .eval-result {
     background: #052e16;
     color: #6ee7b7;
-  }
-
-  .rule-back-link {
-    color: #8b5cf6;
   }
 
   .rule-section h2 {
@@ -353,16 +340,11 @@
   }
 
   .rule-field-input:focus {
-    border-color: #8b5cf6;
-    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.3);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 30%, transparent);
   }
 
   .rule-field-select {
     border-color: #4b5563;
-  }
-
-  .rule-field-select:focus {
-    border-color: #8b5cf6;
   }
 
   .rule-danger-zone {

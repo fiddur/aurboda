@@ -301,7 +301,7 @@ class ChallengeWidgetModelTest {
         val firstRound = (0 until 8).map { challengeMemberColor(it) }
         assertEquals(CHALLENGE_MEMBER_COLORS.toList(), firstRound)
         assertEquals(8, firstRound.toSet().size)
-        assertEquals(0xFFB495F9.toInt(), challengeMemberColor(8))
+        assertEquals(0xFF75C0C6.toInt(), challengeMemberColor(8))
         assertEquals(0xFF64D2AD.toInt(), challengeMemberColor(9))
         assertEquals(0xFFAFDE68.toInt(), challengeMemberColor(15))
         assertEquals(16, (0 until 16).map { challengeMemberColor(it) }.toSet().size)

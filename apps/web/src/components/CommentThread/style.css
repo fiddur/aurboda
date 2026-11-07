@@ -163,7 +163,7 @@
   border: none;
   cursor: pointer;
   font-size: 0.75rem;
-  color: #673ab8;
+  color: var(--color-accent);
 }
 
 .comment-reply-link:hover {
@@ -195,9 +195,5 @@
 
   .comment-times input {
     border-color: #4b5563;
-  }
-
-  .comment-reply-link {
-    color: #a78bfa;
   }
 }

@@ -1,5 +1,5 @@
 .add-goal-button {
-  background: #673ab8;
+  background: var(--color-primary);
   color: white;
   border: none;
   padding: 0.5rem 1rem;
@@ -9,7 +9,7 @@
 }
 
 .add-goal-button:hover:not(:disabled) {
-  background: #7c4dcc;
+  background: var(--color-primary-hover);
 }
 
 .add-goal-button:disabled {
@@ -69,7 +69,7 @@
 }
 
 .goal-row.new {
-  border: 2px dashed #673ab8;
+  border: 2px dashed var(--color-accent);
 }
 
 .goal-row.dragging {
@@ -77,7 +77,7 @@
 }
 
 .goal-row.drag-over {
-  border-top: 2px solid #673ab8;
+  border-top: 2px solid var(--color-accent);
 }
 
 .drag-handle {
@@ -288,10 +288,6 @@
 
   .drag-handle {
     color: #666;
-  }
-
-  .goal-row.drag-over {
-    border-top-color: #9c77db;
   }
 
   .field-error input {

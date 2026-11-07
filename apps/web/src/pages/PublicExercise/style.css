@@ -25,7 +25,7 @@
 }
 
 .public-exercise-manage:hover {
-  color: #8b5cf6;
+  color: var(--color-accent);
 }
 
 @media (prefers-color-scheme: dark) {

@@ -58,7 +58,7 @@
 
 .source-card:hover {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  border-color: #673ab8;
+  border-color: var(--color-accent);
 }
 
 .source-card.connected {
@@ -157,7 +157,7 @@
 
 .data-source-detail a.data-type-link {
   text-decoration: none;
-  color: #673ab8;
+  color: var(--color-accent);
   cursor: pointer;
   transition:
     background 0.15s,
@@ -165,8 +165,8 @@
 }
 
 .data-source-detail a.data-type-link:hover {
-  background: #f3f0ff;
-  border-color: #673ab8;
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent);
 }
 
 .garmin-data-types-grid {
@@ -196,7 +196,7 @@
 
 .garmin-data-type-row input[type='checkbox'] {
   margin-top: 0.15rem;
-  accent-color: #673ab8;
+  accent-color: var(--color-accent);
 }
 
 .garmin-data-type-info {
@@ -212,7 +212,7 @@
 }
 
 a.garmin-data-type-label {
-  color: #673ab8;
+  color: var(--color-accent);
   text-decoration: none;
 }
 
@@ -234,7 +234,7 @@ a.garmin-data-type-label:hover {
   border: 1px solid #e5e7eb;
   border-radius: 6px;
   text-decoration: none;
-  color: #673ab8;
+  color: var(--color-accent);
   font-size: 0.875rem;
   font-weight: 500;
   margin-bottom: 1.5rem;
@@ -244,8 +244,8 @@ a.garmin-data-type-label:hover {
 }
 
 .data-source-detail .doc-link:hover {
-  background: #f3f0ff;
-  border-color: #673ab8;
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent);
 }
 
 .data-source-detail .external-link {
@@ -253,7 +253,7 @@ a.garmin-data-type-label:hover {
   align-items: center;
   gap: 0.375rem;
   padding: 0.5rem 1rem;
-  background: #673ab8;
+  background: var(--color-primary);
   border-radius: 6px;
   text-decoration: none;
   color: #fff;
@@ -265,7 +265,7 @@ a.garmin-data-type-label:hover {
 }
 
 .data-source-detail .external-link:hover {
-  background: #5b32a3;
+  background: var(--color-primary-hover);
 }
 
 .data-source-detail .links-row {
@@ -397,7 +397,7 @@ a.garmin-data-type-label:hover {
 .data-sources-page .connect-button {
   padding: 0.5rem 1rem;
   font-size: 0.875rem;
-  background: #673ab8;
+  background: var(--color-primary);
   color: white;
   border: none;
   border-radius: 4px;
@@ -405,7 +405,7 @@ a.garmin-data-type-label:hover {
 }
 
 .data-sources-page .connect-button:hover:not(:disabled) {
-  background: #5e35b1;
+  background: var(--color-primary-hover);
 }
 
 .data-sources-page .connect-button:disabled {
@@ -421,7 +421,7 @@ a.garmin-data-type-label:hover {
 }
 
 .data-sources-page .field-description a {
-  color: #673ab8;
+  color: var(--color-accent);
 }
 
 .data-sources-page .field-description.warning {
@@ -510,7 +510,7 @@ a.garmin-data-type-label:hover {
 .data-sources-page .sync-now-button {
   padding: 0.3rem 0.75rem;
   font-size: 0.8rem;
-  background: #673ab8;
+  background: var(--color-primary);
   color: white;
   border: none;
   border-radius: 4px;
@@ -518,7 +518,7 @@ a.garmin-data-type-label:hover {
 }
 
 .data-sources-page .sync-now-button:hover:not(:disabled) {
-  background: #5e35b1;
+  background: var(--color-primary-hover);
 }
 
 .data-sources-page .sync-now-button:disabled {
@@ -705,7 +705,6 @@ a.garmin-data-type-label:hover {
 
   .source-card:hover {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    border-color: #8b5cf6;
   }
 
   .source-card.connected {
@@ -747,32 +746,9 @@ a.garmin-data-type-label:hover {
     color: #d1d5db;
   }
 
-  .data-source-detail a.data-type-link {
-    color: #a78bfa;
-  }
-
-  .data-source-detail a.data-type-link:hover {
-    background: #2d2053;
-    border-color: #8b5cf6;
-  }
-
   .data-source-detail .doc-link {
     background: #1f2937;
     border-color: #374151;
-    color: #a78bfa;
-  }
-
-  .data-source-detail .doc-link:hover {
-    background: #2d2053;
-    border-color: #8b5cf6;
-  }
-
-  .data-source-detail .external-link {
-    background: #7c3aed;
-  }
-
-  .data-source-detail .external-link:hover {
-    background: #6d28d9;
   }
 
   .data-source-detail .status-banner.connected {
@@ -850,24 +826,12 @@ a.garmin-data-type-label:hover {
     color: #9ca3af;
   }
 
-  .data-sources-page .sync-now-button {
-    background: #7c3aed;
-  }
-
-  .data-sources-page .sync-now-button:hover:not(:disabled) {
-    background: #6d28d9;
-  }
-
   .garmin-data-type-row:hover {
     background: #374151;
   }
 
   .garmin-data-type-label {
     color: #f9fafb;
-  }
-
-  a.garmin-data-type-label {
-    color: #a78bfa;
   }
 
   .garmin-data-type-note {
@@ -892,7 +856,7 @@ a.garmin-data-type-label:hover {
 }
 
 .manage-link {
-  color: #673ab8;
+  color: var(--color-accent);
   text-decoration: none;
   font-weight: 500;
 }

@@ -47,6 +47,7 @@ import {
   updateSharedDashboard,
 } from '../../state/api'
 import { auth } from '../../state/auth'
+import { CHART_PRIMARY } from '../../theme'
 import { measureFilter } from '../../utils/measures'
 import { newWidgetId } from '../../utils/widget-id'
 import {
@@ -535,7 +536,7 @@ function TrendDisplay({ params, menu }: { params: FetchTrendParams; menu: Compon
       <div class="chart-display">
         <div class="chart-display-header">{menu}</div>
         <BreakdownLegend series={breakdown_series} />
-        <TrendLineChart data={NO_TREND_POINTS} color="#8b5cf6" height={350} multiSeries={multiSeries} />
+        <TrendLineChart data={NO_TREND_POINTS} color={CHART_PRIMARY} height={350} multiSeries={multiSeries} />
       </div>
     )
   }
@@ -549,7 +550,7 @@ function TrendDisplay({ params, menu }: { params: FetchTrendParams; menu: Compon
         </div>
         {menu}
       </div>
-      <TrendLineChart data={history} color="#8b5cf6" height={350} />
+      <TrendLineChart data={history} color={CHART_PRIMARY} height={350} />
       {params.measure && (
         <p class="chart-caption">
           {activityMeasureLabels[params.measure]}, decaying with a {params.half_life_days}-day half-life
@@ -681,7 +682,7 @@ function BarDisplay({ params, menu }: { params: FetchChartDataParams; menu: Comp
       <div class="chart-display-header">{menu}</div>
       <BarChart
         data={buckets}
-        color="#8b5cf6"
+        color={CHART_PRIMARY}
         height={350}
         bucketSize={params.bucket_size}
         rangeStart={params.start}

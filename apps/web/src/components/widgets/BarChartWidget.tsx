@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'preact/hooks'
 
 import { fetchChartData } from '../../state/api'
+import { CHART_PRIMARY } from '../../theme'
 import { buildChartUrl, type ChartOrigin } from '../../utils/chart-url'
 import { BarChart } from '../charts/BarChart'
 import { BreakdownLegend, SERIES_COLORS } from '../charts/breakdown'
@@ -63,7 +64,7 @@ export function BarChartView({ config, data, href }: BarChartViewProps) {
           <BarChart data={NO_BUCKETS} height={200} multiSeries={multiSeries} />
         </>
       ) : (
-        <BarChart data={data?.buckets ?? NO_BUCKETS} color="#8b5cf6" height={200} />
+        <BarChart data={data?.buckets ?? NO_BUCKETS} color={CHART_PRIMARY} height={200} />
       )}
     </>
   )

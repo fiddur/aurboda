@@ -12,9 +12,10 @@ import { useMemo } from 'preact/hooks'
 
 import { TrendLineChart } from '../../components/charts/TrendLineChart'
 import { fetchBucketedMetrics } from '../../state/api'
+import { CHART_PRIMARY } from '../../theme'
 import { getMetricDisplayName } from '../../utils/metricLabels'
 
-const CHART_COLOR = '#673ab8'
+const CHART_COLOR = CHART_PRIMARY
 
 export const ArticleChartBlock = ({
   metric,

@@ -27,8 +27,8 @@
 }
 
 .btn-add-entry:hover {
-  border-color: #673ab8;
-  color: #673ab8;
+  border-color: var(--color-accent);
+  color: var(--color-accent);
 }
 
 .report-entry-form {
@@ -91,11 +91,6 @@
   .btn-add-entry {
     border-color: #4b5563;
     color: #9ca3af;
-  }
-
-  .btn-add-entry:hover {
-    border-color: #a78bfa;
-    color: #a78bfa;
   }
 
   .report-entry-form {

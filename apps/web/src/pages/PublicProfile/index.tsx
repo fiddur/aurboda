@@ -92,7 +92,7 @@ export function PublicProfile() {
 
   return (
     <div class="public-profile">
-      {/* A <div>, not <header>: the global `header` rule paints a #673ab8 bar
+      {/* A <div>, not <header>: the global `header` rule paints the chrome bar
           (mobile nav style) behind the content, so avoid the semantic element
           here (#883). */}
       <div class="public-profile-header">

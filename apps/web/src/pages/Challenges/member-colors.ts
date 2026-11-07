@@ -4,13 +4,13 @@
  * the phone as on the web page — change both together.
  */
 export const MEMBER_COLORS = [
-  '#8b5cf6',
+  '#2b9ea7',
   '#10b981',
   '#3b82f6',
   '#f59e0b',
   '#ef4444',
   '#ec4899',
-  '#14b8a6',
+  '#8b5cf6',
   '#84cc16',
 ] as const
 

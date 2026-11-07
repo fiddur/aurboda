@@ -144,7 +144,7 @@
 .generate-button {
   padding: 0.75rem 1.5rem;
   font-size: 1rem;
-  background: #673ab8;
+  background: var(--color-primary);
   color: white;
   border: none;
   border-radius: 4px;
@@ -153,7 +153,7 @@
 }
 
 .generate-button:hover:not(:disabled) {
-  background: #5e35b1;
+  background: var(--color-primary-hover);
 }
 
 .generate-button:disabled {

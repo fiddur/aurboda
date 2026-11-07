@@ -9,6 +9,7 @@ import * as d3 from 'd3'
 import { useEffect, useRef } from 'preact/hooks'
 
 import { fetchActivityImpact } from '../../state/api'
+import { CHART_PRIMARY } from '../../theme'
 import { HEAVY_QUERY_OPTIONS } from './heavyQuery'
 
 interface PhaseData {
@@ -85,7 +86,7 @@ function ImpactChart({
       .attr('height', (d) => (d.avgHrv !== null ? innerHeight - y(d.avgHrv) : 0))
       .attr('fill', (d) => {
         if (d.phase === 'before') return '#9ca3af'
-        if (d.phase === 'during') return '#673ab8'
+        if (d.phase === 'during') return CHART_PRIMARY
         return '#10b981'
       })
       .attr('rx', 4)

@@ -29,13 +29,13 @@ import kotlin.math.roundToLong
  */
 val CHALLENGE_MEMBER_COLORS: IntArray =
     intArrayOf(
-        0xFF8B5CF6.toInt(),
+        0xFF2B9EA7.toInt(),
         0xFF10B981.toInt(),
         0xFF3B82F6.toInt(),
         0xFFF59E0B.toInt(),
         0xFFEF4444.toInt(),
         0xFFEC4899.toInt(),
-        0xFF14B8A6.toInt(),
+        0xFF8B5CF6.toInt(),
         0xFF84CC16.toInt(),
     )
 

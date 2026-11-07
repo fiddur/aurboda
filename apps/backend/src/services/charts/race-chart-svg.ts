@@ -54,7 +54,7 @@ const MIN_DRAWABLE_POINTS = 2
  * (`apps/web/src/pages/Challenges/member-colors.ts`, mirrored by Android's
  * `challengeMemberColor` in `ChallengeWidgetModel.kt`): change all three together.
  */
-const MEMBER_COLORS = ['#8b5cf6', '#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#ec4899', '#14b8a6', '#84cc16']
+const MEMBER_COLORS = ['#2b9ea7', '#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#ec4899', '#8b5cf6', '#84cc16']
 const LIGHTEN_PERCENT = 35
 
 const hex2 = (n: number): string => n.toString(16).padStart(2, '0')

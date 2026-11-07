@@ -80,7 +80,7 @@
 }
 
 .audit-log-category {
-  color: #673ab8;
+  color: var(--color-accent);
   font-weight: 500;
   font-size: 0.8rem;
   flex-shrink: 0;
@@ -157,10 +157,6 @@
 
   .audit-log-time {
     color: #aaa;
-  }
-
-  .audit-log-category {
-    color: #b388ff;
   }
 
   .audit-log-count {

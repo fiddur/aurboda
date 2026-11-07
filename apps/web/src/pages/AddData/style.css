@@ -42,7 +42,7 @@
 }
 
 .toggle-switch.active {
-  background: #673ab8;
+  background: var(--color-primary);
 }
 
 .toggle-knob {
@@ -86,8 +86,8 @@
 }
 
 .add-data-tab.active {
-  color: #673ab8;
-  border-bottom-color: #673ab8;
+  color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
 }
 
 .add-form {
@@ -124,8 +124,8 @@
 .add-form .form-field select:focus,
 .add-form .form-field textarea:focus {
   outline: none;
-  border-color: #673ab8;
-  box-shadow: 0 0 0 2px rgba(103, 58, 184, 0.2);
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
 }
 
 .add-form .form-field textarea {
@@ -151,7 +151,7 @@
 .add-form-actions .btn-primary {
   padding: 0.5rem 1.5rem;
   font-size: 0.9rem;
-  background: #673ab8;
+  background: var(--color-primary);
   color: white;
   border: none;
   border-radius: 6px;
@@ -160,7 +160,7 @@
 }
 
 .add-form-actions .btn-primary:hover:not(:disabled) {
-  background: #5e35b1;
+  background: var(--color-primary-hover);
 }
 
 .add-form-actions .btn-primary:disabled {
@@ -225,17 +225,8 @@
     background: #4b5563;
   }
 
-  .toggle-switch.active {
-    background: #8b5cf6;
-  }
-
   .add-data-tab:hover {
     color: #d1d5db;
-  }
-
-  .add-data-tab.active {
-    color: #a78bfa;
-    border-bottom-color: #a78bfa;
   }
 
   .add-form .form-field label {
@@ -251,8 +242,7 @@
   .add-form .form-field input:focus,
   .add-form .form-field select:focus,
   .add-form .form-field textarea:focus {
-    border-color: #8b5cf6;
-    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.3);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 30%, transparent);
   }
 
   .add-form .form-hint {
@@ -291,8 +281,8 @@
 }
 
 .fit-upload-area:hover {
-  border-color: #6366f1;
-  background: #f0f0ff;
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
 }
 
 .fit-upload-input {
@@ -339,11 +329,6 @@
 @media (prefers-color-scheme: dark) {
   .fit-upload-area {
     border-color: #4b5563;
-  }
-
-  .fit-upload-area:hover {
-    border-color: #818cf8;
-    background: #1e1b4b33;
   }
 
   .fit-upload-label {
