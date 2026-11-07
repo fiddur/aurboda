@@ -69,6 +69,16 @@ const alternativesOf = (schema: JsonSchema): unknown[] | undefined =>
 
 const typeOfValue = (value: unknown): string => (value === null ? 'null' : typeof value)
 
+const constraintKeys = ['$ref', 'allOf', 'anyOf', 'const', 'enum', 'not', 'oneOf', 'type']
+
+const admitsAnything = (schema: unknown, definitions: JsonSchema, seen?: ReadonlySet<string>): boolean => {
+  const resolved = resolveSchema(schema, definitions, seen)
+  if (!resolved) return false
+  const { schema: target, seen: path } = resolved
+  if (!constraintKeys.some((key) => key in target)) return true
+  return alternativesOf(target)?.some((alt) => admitsAnything(alt, definitions, path)) ?? false
+}
+
 /** The JSON Schema types a schema admits; empty means any. */
 const deriveTypes = (schema: unknown, definitions: JsonSchema, seen?: ReadonlySet<string>): string[] => {
   const resolved = resolveSchema(schema, definitions, seen)
@@ -78,6 +88,7 @@ const deriveTypes = (schema: unknown, definitions: JsonSchema, seen?: ReadonlySe
   if (Array.isArray(target.type)) return target.type.map(String)
   const alternatives = alternativesOf(target)
   if (alternatives) {
+    if (alternatives.some((alt) => admitsAnything(alt, definitions, path))) return []
     return [...new Set(alternatives.flatMap((alt) => deriveTypes(alt, definitions, path)))]
   }
   if ('const' in target) return [typeOfValue(target.const)]
@@ -95,7 +106,9 @@ const deriveEnum = (schema: JsonSchema, definitions: JsonSchema): unknown[] | un
   const alternatives = schema.anyOf.map((alt) => resolveSchema(alt, definitions)?.schema)
   if (alternatives.some((alt) => !alt || (!Array.isArray(alt.enum) && alt.type !== 'null'))) return undefined
   const values = alternatives.flatMap((alt) => (Array.isArray(alt?.enum) ? alt.enum : []))
-  return values.length > 0 ? values : undefined
+  if (values.length === 0) return undefined
+  const nullable = alternatives.some((alt) => alt?.type === 'null') && !values.includes(null)
+  return nullable ? [...values, null] : values
 }
 
 const terseProperty = (property: unknown, definitions: JsonSchema): TerseProperty => {
