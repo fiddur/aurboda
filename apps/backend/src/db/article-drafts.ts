@@ -74,3 +74,24 @@ export const deleteArticleDraft = async (user: string, id: string): Promise<bool
   const result = await query(user, 'DELETE FROM article_drafts WHERE id = $1', [id])
   return (result.rowCount ?? 0) > 0
 }
+
+/** Remove a draft and return it, so of concurrent publishes exactly one gets it; null when it is gone. */
+export const claimArticleDraft = async (user: string, id: string): Promise<ArticleDraftRecord | null> => {
+  const result = await query<ArticleDraftRecord>(
+    user,
+    `DELETE FROM article_drafts WHERE id = $1 RETURNING ${COLUMNS}`,
+    [id],
+  )
+  return result.rows[0] ?? null
+}
+
+/** Put a claimed draft back as it was, same id and timestamps, after its publish failed. */
+export const restoreArticleDraft = async (user: string, draft: ArticleDraftRecord): Promise<void> => {
+  await query(
+    user,
+    `INSERT INTO article_drafts (id, article, visibility, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (id) DO NOTHING`,
+    [draft.id, JSON.stringify(draft.article), draft.visibility, draft.created_at, draft.updated_at],
+  )
+}

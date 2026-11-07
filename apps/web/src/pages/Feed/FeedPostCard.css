@@ -141,6 +141,24 @@
   }
 }
 
+.feed-post-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.4rem 0 0;
+  font-size: 0.85rem;
+}
+
+.feed-post-tags a {
+  color: var(--color-text-muted);
+  text-decoration: none;
+}
+
+.feed-post-tags a:hover {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+
 .feed-post-media {
   display: flex;
   flex-wrap: wrap;

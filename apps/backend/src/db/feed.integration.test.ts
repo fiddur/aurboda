@@ -109,6 +109,21 @@ describe('Feed posts integration', () => {
     expect(await getFeedPostById(user, '00000000-0000-0000-0000-000000000000')).toBeNull()
   })
 
+  test('stores, patches and keeps hashtags', async () => {
+    const user = getTestUser()
+    expect((await createFeedPost(user, postInput())).tags).toEqual([])
+    const created = await createFeedPost(user, postInput({ tags: ['aurboda', 'running'] }))
+    expect(created.tags).toEqual(['aurboda', 'running'])
+    expect((await getFeedPostById(user, created.id))?.tags).toEqual(['aurboda', 'running'])
+    expect((await updateFeedPost(user, created.id, { visibility: 'unlisted' }))?.tags).toEqual([
+      'aurboda',
+      'running',
+    ])
+    expect((await updateFeedPost(user, created.id, { tags: ['löpning'] }))?.tags).toEqual(['löpning'])
+    const article = await createArticlePost(user, articleInput({ tags: ['qs'] }))
+    expect(article.tags).toEqual(['qs'])
+  })
+
   test('assigns an unguessable image_token that round-trips (#893)', async () => {
     const user = getTestUser()
     const created = await createFeedPost(user, postInput())
@@ -306,6 +321,24 @@ describe('Feed posts integration', () => {
       expect(
         (await listPublicFeedPostsKeyset(user, 10, undefined, { includeReplies: false })).map((p) => p.id),
       ).toEqual([share.id])
+    })
+
+    test('listPublicFeedPostsKeyset filters by hashtag', async () => {
+      const user = getTestUser()
+      const running = await createFeedPost(user, postInput({ tags: ['aurboda', 'running'] }))
+      const article = await createArticlePost(user, articleInput({ tags: ['running'] }))
+      await createFeedPost(user, postInput({ tags: ['aurboda'] }))
+      await createFeedPost(user, postInput({ tags: ['running'], visibility: 'followers' }))
+
+      expect(
+        (await listPublicFeedPostsKeyset(user, 10, undefined, { tag: 'running' })).map((p) => p.id),
+      ).toEqual([article.id, running.id])
+      expect(
+        (await listPublicFeedPostsKeyset(user, 10, undefined, { kind: 'article', tag: 'running' })).map(
+          (p) => p.id,
+        ),
+      ).toEqual([article.id])
+      expect(await listPublicFeedPostsKeyset(user, 10, undefined, { tag: 'nope' })).toEqual([])
     })
 
     test('listPublicFeedPostsKeyset and countPublicFeedPosts filter by kind for the blog view', async () => {

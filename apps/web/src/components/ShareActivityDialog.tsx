@@ -28,6 +28,8 @@ import {
   SERIES_METRICS,
   shareableSummaryOptions,
 } from './feed-metrics'
+import { formatTagsInput, parseTagsInput } from './hashtags'
+import { TagsInput } from './TagsInput'
 import { FEED_VISIBILITY_OPTIONS, VisibilitySelector } from './VisibilitySelector'
 import './ShareActivityDialog.css'
 
@@ -153,6 +155,11 @@ export function ShareActivityDialog({
   const [includeMap, setIncludeMap] = useState(post?.include_map ?? false)
   const [includeExercises, setIncludeExercises] = useState(() => initialIncludeExercises(post))
   const [message, setMessage] = useState(post ? (post.message ?? '') : (defaultMessage ?? ''))
+  // Prefilled with the post's tags (edit) or the automatic ones the preview reports
+  // (create); sent only once the user changes them, so untouched they stay automatic.
+  const [tagsText, setTagsText] = useState(post ? formatTagsInput(post.tags) : '')
+  const [tagsEdited, setTagsEdited] = useState(false)
+  const explicitTags = tagsEdited ? parseTagsInput(tagsText) : undefined
   const { summaryOptions, seriesOptions, canChart, canMap } = useShareableMetricOptions(
     activityId,
     activityStart,
@@ -175,8 +182,8 @@ export function ShareActivityDialog({
   const [previewHasExercises, setPreviewHasExercises] = useState<boolean | undefined>(undefined)
   const canExercises = offersExercises(previewHasExercises, post)
 
-  const currentBody = () =>
-    buildShareBody({
+  const currentBody = () => ({
+    ...buildShareBody({
       canChart,
       canExercises,
       canMap,
@@ -188,14 +195,22 @@ export function ShareActivityDialog({
       summary,
       summaryOptions,
       visibility,
-    })
+    }),
+    ...(explicitTags === undefined ? {} : { tags: explicitTags }),
+  })
 
   // Live preview: the server resolves the EXACT federated content for
   // the current selection (same code path as delivery), debounced so typing in
   // the message doesn't fire a request per keystroke. Keyed on only what the
   // preview renders, and the last answer stays up while the next one loads.
   const [debouncedKey, setDebouncedKey] = useState('')
-  const previewKey = JSON.stringify(previewSelection(currentBody(), includeExercises))
+  // An edit previews with the post's own tags until they are changed.
+  const previewKey = JSON.stringify(
+    previewSelection(
+      { ...currentBody(), ...(post && explicitTags === undefined ? { tags: post.tags } : {}) },
+      includeExercises,
+    ),
+  )
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedKey(previewKey), 400)
     return () => clearTimeout(timer)
@@ -209,6 +224,10 @@ export function ShareActivityDialog({
   })
   const previewContent = previewQuery.data?.content
   const hasExercises = previewQuery.data?.has_exercises
+  const previewTags = previewQuery.data?.tags
+  useEffect(() => {
+    if (!post && !tagsEdited && previewTags) setTagsText(formatTagsInput(previewTags))
+  }, [previewTags?.join(' ')])
   useEffect(() => {
     if (hasExercises !== undefined) setPreviewHasExercises(hasExercises)
   }, [hasExercises])
@@ -333,6 +352,14 @@ export function ShareActivityDialog({
             </div>
           </fieldset>
         )}
+
+        <TagsInput
+          value={tagsText}
+          onInput={(value) => {
+            setTagsText(value)
+            setTagsEdited(true)
+          }}
+        />
 
         <VisibilitySelector
           name="feed-visibility"

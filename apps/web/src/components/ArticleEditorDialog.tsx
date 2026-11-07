@@ -16,6 +16,7 @@ import {
   createArticle,
   createArticleDraft,
   fetchCorrelationSelectors,
+  fetchUserSettings,
   publishArticleDraft,
   updateArticle,
   updateArticleDraft,
@@ -29,9 +30,11 @@ import {
   emptyCorrelationDraft,
   initialArticleEditorState,
 } from './article-editor-body'
+import { autoTagsFor, formatTagsInput, parseTagsInput } from './hashtags'
 import { MarkdownEditor } from './MarkdownEditor'
 import { MetricPicker } from './MetricPicker'
 import { ALL_SELECTOR_KINDS, SelectorPicker } from './SelectorPicker'
+import { TagsInput } from './TagsInput'
 import { FEED_VISIBILITY_OPTIONS, VisibilitySelector } from './VisibilitySelector'
 import './ShareActivityDialog.css'
 import './ArticleEditorDialog.css'
@@ -287,6 +290,34 @@ const EditorActions = ({
 )
 
 /**
+ * The editor's tags field. A draft's own tags, or tags once typed in, are
+ * explicit and sent; otherwise the field shows what the post has (`stored`) or
+ * would get from the settings, and nothing is sent.
+ */
+const useArticleTags = (draftTags: string[] | undefined, stored: string[] | undefined) => {
+  const [text, setText] = useState(() => formatTagsInput(draftTags ?? stored ?? []))
+  const [edited, setEdited] = useState(false)
+  const automatic = draftTags === undefined && stored === undefined
+  const { data: settings } = useQuery({
+    enabled: automatic,
+    queryFn: fetchUserSettings,
+    queryKey: ['userSettings'],
+  })
+  const autoTags = automatic && settings ? autoTagsFor(settings, null) : undefined
+  useEffect(() => {
+    if (!edited && autoTags) setText(formatTagsInput(autoTags))
+  }, [autoTags?.join(' ')])
+  return {
+    explicit: edited ? parseTagsInput(text) : draftTags,
+    onInput: (value: string) => {
+      setText(value)
+      setEdited(true)
+    },
+    text,
+  }
+}
+
+/**
  * The article composer. With a published `post` it edits that article (PATCH)
  * as before. Otherwise it works on a draft: `draft` reopens a saved one, and
  * nothing starts a new article that becomes a draft on its first save.
@@ -321,6 +352,7 @@ export const ArticleEditorDialog = ({
   const [savedAt, setSavedAt] = useState<Date | undefined>(undefined)
   const [savedSnapshot, setSavedSnapshot] = useState(() => draftSnapshot(initial))
   const [closeState, setCloseState] = useState<CloseState>('open')
+  const tags = useArticleTags(initial.tags, editing ? post?.tags : undefined)
 
   const editorState = (): ArticleEditorState => ({
     blocks: blocks.map((kb) => kb.block),
@@ -328,6 +360,7 @@ export const ArticleEditorDialog = ({
     defaultStart,
     title,
     visibility,
+    ...(tags.explicit ? { tags: tags.explicit } : {}),
   })
   const dirty = !editing && draftSnapshot(editorState()) !== savedSnapshot
 
@@ -491,6 +524,8 @@ export const ArticleEditorDialog = ({
             + Correlation
           </button>
         </div>
+
+        <TagsInput value={tags.text} onInput={tags.onInput} />
 
         <VisibilitySelector
           name="article-visibility"

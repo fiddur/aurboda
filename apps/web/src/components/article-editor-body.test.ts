@@ -331,12 +331,25 @@ describe('initialArticleEditorState', () => {
     const reopened = initialArticleEditorState({ article: buildDraftContent(edited), visibility: 'unlisted' })
     expect(draftSnapshot(reopened)).toBe(draftSnapshot(edited))
   })
+
+  it("keeps a draft's explicit tags, and none when it has none", () => {
+    const tagged = initialArticleEditorState({
+      article: { blocks: [], tags: ['hrv'], title: 'T' },
+      visibility: 'public',
+    })
+    expect(tagged.tags).toEqual(['hrv'])
+    expect(buildDraftContent(tagged).tags).toEqual(['hrv'])
+    expect(
+      initialArticleEditorState({ article: { blocks: [], title: 'T' }, visibility: 'public' }),
+    ).not.toHaveProperty('tags')
+  })
 })
 
 describe('draftSnapshot', () => {
   it('changes when the content or the audience does', () => {
     const base = draftSnapshot(state())
     expect(draftSnapshot(state({ title: 'Other' }))).not.toBe(base)
+    expect(draftSnapshot(state({ tags: ['hrv'] }))).not.toBe(base)
     expect(draftSnapshot(state({ visibility: 'followers' }))).not.toBe(base)
     expect(draftSnapshot(state())).toBe(base)
   })
@@ -349,9 +362,15 @@ describe('draftUpdateBody', () => {
       blocks: [],
       default_end: null,
       default_start: null,
+      tags: null,
       title: 'A week of HRV',
       visibility: 'unlisted',
     })
+  })
+
+  it('sends explicit tags, and null for the automatic ones', () => {
+    expect(draftUpdateBody(state({ tags: ['hrv'] })).tags).toEqual(['hrv'])
+    expect(draftUpdateBody(state({ tags: [] })).tags).toEqual([])
   })
 
   it('sends a set default window as ISO', () => {
@@ -360,5 +379,14 @@ describe('draftUpdateBody', () => {
     const body = draftUpdateBody(state({ defaultEnd: local, defaultStart: local }))
     expect(body.default_start).toBe(iso)
     expect(body.default_end).toBe(iso)
+  })
+})
+
+describe('article tags', () => {
+  it('publishes explicit tags only', () => {
+    const tagged = buildArticleBody(state({ tags: ['hrv', 'sleep'] }))
+    expect(tagged.ok && tagged.body.tags).toEqual(['hrv', 'sleep'])
+    const automatic = buildArticleBody(state())
+    expect(automatic.ok && automatic.body).not.toHaveProperty('tags')
   })
 })

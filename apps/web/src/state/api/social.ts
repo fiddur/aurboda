@@ -100,10 +100,12 @@ export const fetchPublicPosts = async (
   username: string,
   cursor?: string,
   kind?: FeedPostKind,
+  tag?: string,
 ): Promise<FeedPostsResponse> => {
   const params: PublicPostsQuery = {}
   if (cursor != null) params.cursor = cursor
   if (kind != null) params.kind = kind
+  if (tag != null) params.tag = tag
   const response = await axios.get<FeedPostsResponse>(
     `${API_URL}/public/${encodeURIComponent(username)}/posts`,
     { params },

@@ -512,7 +512,10 @@ describe('POST /feed/exercises (share an exercise — #1398)', () => {
     expect(res.body.post.content).toContain('<strong>Bench Press</strong>')
     expect(res.body.post.content).toContain('Max weight 70 kg')
     expect(res.body.post.content).toContain('2 sessions since 1 Jul 2026')
-    expect(res.body.post.content).not.toContain('<a ')
+    // No link to an exercise page — only the hashtag links.
+    expect(res.body.post.content.replaceAll(/<a [^>]*class="mention hashtag"[^>]*>/g, '')).not.toContain(
+      '<a ',
+    )
     expect(res.body.post.structured).toMatchObject({ kind: 'exercise', name: 'Bench Press' })
     expect(res.body.post.structured.data.done.count).toBe(2)
     expect(res.body.post.structured.data.history).toEqual([])
@@ -564,6 +567,8 @@ describe('POST /feed/exercises (share an exercise — #1398)', () => {
     expect(res.body.structured).toMatchObject({ kind: 'exercise', message: 'Hi' })
     expect(res.body.structured.data.records).toEqual([])
     expect(res.body.structured.data.trend).toBeNull()
+    expect(res.body.tags).toEqual(['aurboda', 'benchpress'])
+    expect(res.body.content).toContain('?tag=benchpress')
     expect((await app.request.get('/feed')).body.posts).toEqual([])
 
     expect((await app.request.post('/feed/exercises/preview').send(body({ value: 'Squat' }))).status).toBe(
@@ -926,5 +931,131 @@ describe('Article drafts (/feed/article-drafts)', () => {
     expect(deliver.createdArticle).not.toHaveBeenCalled()
     expect((await app.request.get(`/feed/article-drafts/${created.body.draft.id}`)).status).toBe(200)
     expect((await app.request.get('/feed')).body.posts).toEqual([])
+  })
+})
+
+describe('Hashtags on feed posts', () => {
+  const WEB = 'https://aurboda.example'
+  let app: ReturnType<typeof startApp>
+
+  beforeAll(async () => {
+    await startTestDb()
+    app = startApp(undefined, undefined, WEB)
+  }, CONTAINER_TIMEOUT)
+
+  afterAll(async () => {
+    await app.close()
+    await stopTestDb()
+  })
+
+  beforeEach(async () => {
+    await cleanTestDb()
+  })
+
+  const insertRun = (user: string) =>
+    insertActivity(user, {
+      activity_type: 'running',
+      end_time: new Date('2026-08-01T08:30:00Z'),
+      source: 'garmin',
+      start_time: new Date('2026-08-01T08:00:00Z'),
+      title: 'Morning run',
+    })
+
+  test('an activity share gets #aurboda, its type and typed tags; the preview says the same', async () => {
+    const user = getTestUser()
+    const activityId = await insertRun(user)
+    const selection = { included_metrics: ['duration'], message: 'Easy #Zone2', visibility: 'public' }
+
+    const preview = await app.request.post(`/feed/activities/${activityId}/preview`).send(selection)
+    expect(preview.body.tags).toEqual(['aurboda', 'running', 'zone2'])
+    expect(preview.body.content).toContain(
+      `<a href="${WEB}/u/${user}?tag=zone2" class="mention hashtag" rel="tag">#<span>Zone2</span></a>`,
+    )
+
+    const shared = await app.request.post(`/feed/activities/${activityId}/share`).send(selection)
+    expect(shared.body.post.tags).toEqual(['aurboda', 'running', 'zone2'])
+    expect(shared.body.post.content).toBe(preview.body.content)
+  })
+
+  test('explicit tags replace the automatic ones; edits keep or swap them', async () => {
+    const user = getTestUser()
+    const activityId = await insertRun(user)
+    const shared = await app.request
+      .post(`/feed/activities/${activityId}/share`)
+      .send({ message: 'with #friends', tags: ['#Mine'], visibility: 'public' })
+    expect(shared.status).toBe(200)
+    const id = shared.body.post.id
+    expect(shared.body.post.tags).toEqual(['mine', 'friends'])
+
+    const visibilityOnly = await app.request.patch(`/feed/${id}`).send({ visibility: 'unlisted' })
+    expect(visibilityOnly.body.post.tags).toEqual(['mine', 'friends'])
+
+    const newMessage = await app.request.patch(`/feed/${id}`).send({ message: 'solo #longrun' })
+    expect(newMessage.body.post.tags).toEqual(['mine', 'longrun'])
+
+    const retagged = await app.request.patch(`/feed/${id}`).send({ tags: ['aurboda'] })
+    expect(retagged.body.post.tags).toEqual(['aurboda', 'longrun'])
+  })
+
+  test('rejects an invalid tag', async () => {
+    const activityId = await insertRun(getTestUser())
+    const res = await app.request
+      .post(`/feed/activities/${activityId}/share`)
+      .send({ tags: ['not a tag'], visibility: 'public' })
+    expect(res.status).toBe(400)
+  })
+
+  test('an article gets the default tags plus those typed in its title and prose', async () => {
+    const created = await app.request.post('/feed/articles').send({ ...articleBody(), title: 'Week #QS' })
+    expect(created.body.post.tags).toEqual(['aurboda', 'qs'])
+    const edited = await app.request
+      .patch(`/feed/articles/${created.body.post.id}`)
+      .send({ title: 'Week #sleep' })
+    expect(edited.body.post.tags).toEqual(['aurboda', 'sleep'])
+  })
+
+  test('a draft keeps its tags and its published article gets them', async () => {
+    const created = await app.request
+      .post('/feed/article-drafts')
+      .send({ article: { ...articleBody(), tags: ['#Sleep'] } })
+    expect(created.body.draft.article.tags).toEqual(['sleep'])
+    const id = created.body.draft.id
+    const kept = await app.request.patch(`/feed/article-drafts/${id}`).send({ title: 'New title #hrv' })
+    expect(kept.body.draft.article.tags).toEqual(['sleep'])
+    const published = await app.request.post(`/feed/article-drafts/${id}/publish`).send({})
+    expect(published.body.post.tags).toEqual(['sleep', 'hrv'])
+
+    const other = await app.request
+      .post('/feed/article-drafts')
+      .send({ article: { ...articleBody(), tags: ['x'] } })
+    const cleared = await app.request
+      .patch(`/feed/article-drafts/${other.body.draft.id}`)
+      .send({ tags: null })
+    expect(cleared.body.draft.article.tags).toBeUndefined()
+  })
+
+  test('a challenge share gets #challenge', async () => {
+    const user = getTestUser()
+    const participation = await createChallengeParticipation(user, {
+      challenge_url: 'https://peer.example/u/bob/spring-run',
+      end_ts: new Date('2026-08-31T00:00:00Z'),
+      host_identity: '@bob@peer.example',
+      name: 'Spring run',
+      spec: {
+        activity_type_id: null,
+        aggregation: 'sum',
+        bucket_size: '1d',
+        filter_field: null,
+        filter_value: null,
+        measure: null,
+        pattern: 'steps',
+        source_type: 'metric',
+        unit: 'steps',
+      },
+      start_ts: new Date('2026-08-01T00:00:00Z'),
+      timezone: 'UTC',
+    })
+    const res = await app.request.post('/feed/challenges').send({ participation_id: participation.id })
+    expect(res.body.post.tags).toEqual(['aurboda', 'challenge'])
   })
 })

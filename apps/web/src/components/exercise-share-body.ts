@@ -12,6 +12,8 @@ export interface ExerciseShareForm {
   includeLink: boolean
   /** Whether the exercise is published, the only case where a link can be included. */
   published: boolean
+  /** Explicit tags; left out, the post gets the automatic ones. */
+  tags?: string[]
 }
 
 export const buildExerciseShareBody = (form: ExerciseShareForm): ShareExerciseBody => {
@@ -24,6 +26,7 @@ export const buildExerciseShareBody = (form: ExerciseShareForm): ShareExerciseBo
     include_records: form.includeRecords,
     include_sessions: form.includeSessions,
     ...(message === '' ? {} : { message }),
+    ...(form.tags === undefined ? {} : { tags: form.tags }),
     value: form.value,
     visibility: form.visibility,
   }

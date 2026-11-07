@@ -8,11 +8,13 @@
 import type { FeedVisibility } from '@aurboda/api-spec'
 
 import { feedPostMessageMaxLength } from '@aurboda/api-spec'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'preact/hooks'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useState } from 'preact/hooks'
 
-import { shareChallenge } from '../state/api'
+import { fetchUserSettings, shareChallenge } from '../state/api'
 import { renderMarkdown } from '../utils/markdown'
+import { autoTagsFor, formatTagsInput, parseTagsInput } from './hashtags'
+import { TagsInput } from './TagsInput'
 import { FEED_VISIBILITY_OPTIONS, VisibilitySelector } from './VisibilitySelector'
 import './ShareActivityDialog.css'
 
@@ -39,6 +41,13 @@ export function ShareChallengeDialog({
   const [message, setMessage] = useState('')
   const [visibility, setVisibility] = useState<FeedVisibility>('public')
   const [includeChart, setIncludeChart] = useState(true)
+  const [tagsText, setTagsText] = useState('')
+  const [tagsEdited, setTagsEdited] = useState(false)
+  const settingsQuery = useQuery({ queryFn: fetchUserSettings, queryKey: ['userSettings'] })
+  const autoTags = settingsQuery.data ? autoTagsFor(settingsQuery.data, 'challenge') : undefined
+  useEffect(() => {
+    if (!tagsEdited && autoTags) setTagsText(formatTagsInput(autoTags))
+  }, [autoTags?.join(' ')])
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -47,6 +56,7 @@ export function ShareChallengeDialog({
         include_chart: includeChart,
         message,
         participation_id: participationId,
+        ...(tagsEdited ? { tags: parseTagsInput(tagsText) } : {}),
         visibility,
       }),
     onSuccess: () => {
@@ -118,6 +128,14 @@ export function ShareChallengeDialog({
             </label>
           </div>
         </fieldset>
+
+        <TagsInput
+          value={tagsText}
+          onInput={(text) => {
+            setTagsText(text)
+            setTagsEdited(true)
+          }}
+        />
 
         <VisibilitySelector
           name="challenge-share-visibility"

@@ -8,6 +8,7 @@ import type { InfiniteData } from '@tanstack/react-query'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { useRoute } from 'preact-iso'
 
+import { tagFilterFromQuery } from '../../components/hashtags'
 import { avatarUrl, blogPath, fetchPublicPosts, fetchPublicProfile } from '../../state/api'
 import { FeedPostCard } from '../Feed/FeedPostCard'
 import { publicAuthor } from './public-author'
@@ -41,8 +42,9 @@ function PublicList({
 }
 
 export function PublicProfile() {
-  const { params } = useRoute()
+  const { params, query: search } = useRoute()
   const username = params.username
+  const tag = tagFilterFromQuery(search.tag)
 
   const query = useQuery({
     queryFn: () => fetchPublicProfile(username),
@@ -63,8 +65,8 @@ export function PublicProfile() {
   >({
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
     initialPageParam: undefined,
-    queryFn: ({ pageParam }) => fetchPublicPosts(username, pageParam),
-    queryKey: ['publicPosts', username],
+    queryFn: ({ pageParam }) => fetchPublicPosts(username, pageParam, undefined, tag ?? undefined),
+    queryKey: ['publicPosts', username, tag ?? ''],
     retry: false,
     staleTime: 60 * 1000,
   })
@@ -113,10 +115,17 @@ export function PublicProfile() {
 
       <section class="public-section">
         <h2>Posts</h2>
+        {tag && (
+          <p class="public-muted">
+            Posts tagged #{tag} · <a href={`/u/${encodeURIComponent(username)}`}>clear</a>
+          </p>
+        )}
         {postsQuery.isLoading ? (
           <p class="public-muted">Loading…</p>
         ) : posts.length === 0 ? (
-          <p class="public-muted">This user has no public posts.</p>
+          <p class="public-muted">
+            {tag ? `This user has no public posts tagged #${tag}.` : 'This user has no public posts.'}
+          </p>
         ) : (
           posts.map((post) => <FeedPostCard key={post.id} post={post} author={author} visitor />)
         )}

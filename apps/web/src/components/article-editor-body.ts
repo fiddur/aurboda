@@ -61,6 +61,8 @@ export interface ArticleEditorState {
   defaultEnd: string
   blocks: BlockDraft[]
   visibility: FeedVisibility
+  /** Explicit tags; undefined leaves the post's automatic (or, when editing, stored) ones. */
+  tags?: string[]
 }
 
 export type BuildResult = { ok: true; body: CreateArticleBody } | { ok: false; error: string }
@@ -117,6 +119,7 @@ export const initialArticleEditorState = (source?: ArticleEditorSource): Article
   defaultStart: toInputValue(source?.article?.default_start),
   title: source?.article?.title ?? '',
   visibility: source?.visibility ?? 'public',
+  ...(source?.article?.tags ? { tags: source.article.tags } : {}),
 })
 
 const windowFields = (b: { start: string; end: string }) => ({
@@ -155,12 +158,13 @@ export const buildDraftContent = (state: ArticleEditorState): ArticleDraftConten
   title: state.title.trim(),
   ...(toIso(state.defaultStart) ? { default_start: toIso(state.defaultStart) } : {}),
   ...(toIso(state.defaultEnd) ? { default_end: toIso(state.defaultEnd) } : {}),
+  ...(state.tags ? { tags: state.tags } : {}),
 })
 
 /**
  * The PATCH body that saves the editor's content over an existing draft. An
- * empty default window bound is sent as `null`, so clearing it in the editor
- * clears it on the server (an omitted field would keep the stored value).
+ * empty default window bound, or no explicit tags, is sent as `null`, so clearing
+ * it in the editor clears it on the server (an omitted field would keep the stored value).
  */
 export const draftUpdateBody = (state: ArticleEditorState): UpdateArticleDraftBody => {
   const content = buildDraftContent(state)
@@ -168,6 +172,7 @@ export const draftUpdateBody = (state: ArticleEditorState): UpdateArticleDraftBo
     ...content,
     default_end: content.default_end ?? null,
     default_start: content.default_start ?? null,
+    tags: content.tags ?? null,
     visibility: state.visibility,
   }
 }
@@ -256,6 +261,7 @@ export const buildArticleBody = (state: ArticleEditorState): BuildResult => {
       visibility: state.visibility,
       ...(toIso(state.defaultStart) ? { default_start: toIso(state.defaultStart) } : {}),
       ...(toIso(state.defaultEnd) ? { default_end: toIso(state.defaultEnd) } : {}),
+      ...(state.tags ? { tags: state.tags } : {}),
     },
     ok: true,
   }

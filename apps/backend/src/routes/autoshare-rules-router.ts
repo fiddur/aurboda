@@ -15,9 +15,10 @@ import {
   type PreviewAutoshareRuleResponse,
   type UpdateAutoshareRuleBody,
   updateAutoshareRuleBodySchema,
+  normalizeTags,
 } from '@aurboda/api-spec'
 
-import type { AutoshareRuleRecord } from '../db/index.ts'
+import type { AutoshareRulePatch, AutoshareRuleRecord } from '../db/index.ts'
 import type { AutoshareGroupMember } from '../services/autoshare-deps.ts'
 import type { AutosharePreviewDeps } from '../services/autoshare.ts'
 
@@ -53,6 +54,7 @@ export const serializeAutoshareRule = (record: AutoshareRuleRecord): AutoshareRu
   name: record.name,
   series_metrics: record.series_metrics,
   source: record.source ?? undefined,
+  tags: record.tags,
   updated_at: record.updated_at.toISOString(),
   visibility: record.visibility,
 })
@@ -73,7 +75,17 @@ export const autoshareRuleInputFromBody = (body: AddAutoshareRuleBody) => ({
   name: body.name,
   series_metrics: body.series_metrics,
   source: body.source ?? null,
+  tags: body.tags == null ? null : normalizeTags(body.tags),
   visibility: body.visibility,
+})
+
+/** Map an update body to the rule patch, storing `tags` normalised (shared with the MCP tools). */
+export const autoshareRulePatchFromBody = ({
+  tags,
+  ...rest
+}: UpdateAutoshareRuleBody): AutoshareRulePatch => ({
+  ...rest,
+  ...(tags === undefined ? {} : { tags: tags === null ? null : normalizeTags(tags) }),
 })
 
 export const createAutoshareRulesRouter = (
@@ -131,7 +143,7 @@ export const createAutoshareRulesRouter = (
       if (!UUID_RE.test(req.params.id)) {
         return res.status(404).json({ error: 'Rule not found', success: false })
       }
-      const record = await updateAutoshareRule(user, req.params.id, req.body)
+      const record = await updateAutoshareRule(user, req.params.id, autoshareRulePatchFromBody(req.body))
       if (!record) return res.status(404).json({ error: 'Rule not found', success: false })
       res.json({ rule: serializeAutoshareRule(record), success: true })
     },

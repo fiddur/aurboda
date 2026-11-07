@@ -21,6 +21,7 @@ import {
   type PublicSeriesQuery,
   publicSeriesQuerySchema,
   type PublicSeriesResponse,
+  normalizeTag,
 } from '@aurboda/api-spec'
 
 import { isValidUsername } from '../api/auth-routes.ts'
@@ -104,7 +105,7 @@ export const createFeedPublicRouter = ({
     record: FeedPostRecord,
     settings: UserSettings | null,
   ): Promise<FeedPost> => {
-    const post = await serializeFeedPost(username, record, { settings })
+    const post = await serializeFeedPost(username, record, { settings, webHost })
     if (
       record.kind === 'activity' ||
       record.kind === 'article' ||
@@ -193,7 +194,11 @@ export const createFeedPublicRouter = ({
           username,
           PROFILE_FEED_LIMIT + 1,
           decoded && { created_at: decoded.ts, id: decoded.id },
-          { includeReplies: false, kind: req.query.kind },
+          {
+            includeReplies: false,
+            kind: req.query.kind,
+            ...(req.query.tag === undefined ? {} : { tag: normalizeTag(req.query.tag) ?? undefined }),
+          },
         )
         const hasMore = rows.length > PROFILE_FEED_LIMIT
         const records = hasMore ? rows.slice(0, PROFILE_FEED_LIMIT) : rows

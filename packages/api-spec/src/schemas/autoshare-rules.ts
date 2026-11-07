@@ -12,7 +12,7 @@ import { z } from 'zod'
 
 import { baseResponseSchema, dataFieldNameSchema, iso8601DateTimeSchema, metricTypeSchema } from './common.ts'
 import { dataFilterSchema } from './deduction-rules.ts'
-import { feedPostMessageMaxLength, feedVisibilitySchema } from './feed.ts'
+import { feedPostMessageMaxLength, feedVisibilitySchema, postTagsInputSchema } from './feed.ts'
 
 const scalarMetricKeySchema = z.string().min(1).max(64)
 
@@ -30,6 +30,9 @@ export type AutoshareDataFilter = z.infer<typeof autoshareDataFilterSchema>
 
 const dataFiltersDescription =
   'Conditions on the activity data fields, all must hold. A blank value counts as missing, so exists means the field has a value.'
+
+const tagsDescription =
+  'Hashtags for auto-created posts instead of your default tags (the activity-type tag still follows your settings, and `#tags` typed in the message are added); absent (or null on an update) uses your default tags'
 
 const maxAgeHoursDescription =
   'Share only activities that ended at most this many hours before the rule looks at them; protects against history updates and imports publishing old activities'
@@ -91,6 +94,7 @@ const autoshareRuleFields = {
     .max(64)
     .optional()
     .meta({ description: 'Match only activities from this source (e.g. `garmin`)' }),
+  tags: postTagsInputSchema.optional().meta({ description: tagsDescription }),
   visibility: feedVisibilitySchema.default('followers'),
 }
 
@@ -111,6 +115,7 @@ export const autoshareRuleSchema = z
         'When the rule was last enabled — only activities ingested after this are ever auto-shared',
     }),
     id: z.string().uuid().meta({ description: 'Rule ID' }),
+    tags: z.array(z.string()).nullable().meta({ description: tagsDescription }),
     updated_at: iso8601DateTimeSchema.meta({ description: 'Last update timestamp (ISO 8601)' }),
   })
   .meta({ id: 'AutoshareRule' })
@@ -147,6 +152,7 @@ export const updateAutoshareRuleBodySchema = z
     name: z.string().min(1).max(255).optional(),
     series_metrics: z.array(metricTypeSchema).max(64).optional(),
     source: z.string().min(1).max(64).nullable().optional(),
+    tags: postTagsInputSchema.nullable().optional().meta({ description: tagsDescription }),
     visibility: feedVisibilitySchema.optional(),
   })
   .meta({ id: 'UpdateAutoshareRuleBody' })

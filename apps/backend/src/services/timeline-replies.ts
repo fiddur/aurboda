@@ -21,6 +21,7 @@ import type { FeedPostRecord } from '../db/index.ts'
 import type { RemoteRepliesDeps } from './activitypub/remote-replies.ts'
 
 import { listReplyPostsTo, listTimelineRepliesTo } from '../db/index.ts'
+import { type HashtagLinks, hashtagLinks, linkifyHashtags } from './activitypub/hashtag-html.ts'
 import { fetchRemoteReplies } from './activitypub/remote-replies.ts'
 import { renderReplyContent } from './activitypub/reply-object.ts'
 import { loadReactionsForRows, ownActorUri, ownObjectPrefix, serializeTimelineEntry } from './timeline.ts'
@@ -62,11 +63,12 @@ export const ownReplyToTimelineReply = (
   post: FeedPostRecord,
   objectPrefix: string,
   author: OwnReplyAuthor,
+  hashtags?: HashtagLinks,
 ): TimelineReply => {
   const objectUri = `${objectPrefix}${post.id}`
   return {
     actor_uri: author.actor_uri,
-    content: renderReplyContent(post),
+    content: linkifyHashtags(renderReplyContent(post), hashtags),
     display_name: null,
     handle: author.handle,
     mine: true,
@@ -132,7 +134,9 @@ export const getThreadSnapshot = async (
   const ownPosts = await (deps.listOwn ?? listReplyPostsTo)(user, objectUri).catch(() => [])
   const author = ownReplyAuthor(origin, user)
   const prefix = ownObjectPrefix(origin, user)
-  const own = ownPosts.map((post) => ownReplyToTimelineReply(post, prefix, author))
+  const own = ownPosts.map((post) =>
+    ownReplyToTimelineReply(post, prefix, author, hashtagLinks(origin, user, post.tags)),
+  )
   return { ...remote, replies: mergeOwnReplies(remote.replies, own) }
 }
 

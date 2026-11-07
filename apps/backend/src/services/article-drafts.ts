@@ -12,12 +12,13 @@ import type {
   UpdateArticleDraftBody,
 } from '@aurboda/api-spec'
 
-import { createArticleBodySchema } from '@aurboda/api-spec'
+import { createArticleBodySchema, normalizeTags } from '@aurboda/api-spec'
 
 import type { ArticleDraftPatch, ArticleDraftRecord, ArticlePostInput, FeedPostRecord } from '../db/index.ts'
 
-import { createArticlePost, deleteArticleDraft, getArticleDraft } from '../db/index.ts'
+import { claimArticleDraft, createArticlePost, getArticleDraft, restoreArticleDraft } from '../db/index.ts'
 import { buildArticleContent, mergeArticleContent } from './article.ts'
+import { articleTexts, resolvePostTags } from './post-tags.ts'
 
 export const emptyArticleDraftContent = (): ArticleDraftContent => ({ blocks: [], title: '' })
 
@@ -31,15 +32,17 @@ export const serializeArticleDraft = (record: ArticleDraftRecord): ArticleDraft 
 
 /**
  * The DB patch for an update body: the merged content when any content field is
- * given, plus visibility. A `null` default window bound clears the stored one;
- * an omitted one keeps it.
+ * given, plus visibility. A `null` default window bound or `tags` clears the
+ * stored one; an omitted one keeps it.
  */
 export const articleDraftPatch = (
   existing: ArticleDraftContent,
   body: UpdateArticleDraftBody,
 ): ArticleDraftPatch => {
-  const { default_end, default_start, visibility, ...rest } = body
-  const touchesContent = [...Object.values(rest), default_start, default_end].some((v) => v !== undefined)
+  const { default_end, default_start, tags, visibility, ...rest } = body
+  const touchesContent = [...Object.values(rest), default_start, default_end, tags].some(
+    (v) => v !== undefined,
+  )
   if (!touchesContent) return visibility ? { visibility } : {}
   const merged: ArticleDraftContent = mergeArticleContent(existing, {
     ...rest,
@@ -48,8 +51,14 @@ export const articleDraftPatch = (
   })
   if (default_start === null) delete merged.default_start
   if (default_end === null) delete merged.default_end
+  const keptTags = tags === undefined ? existing.tags : tags === null ? undefined : normalizeTags(tags)
+  if (keptTags !== undefined) merged.tags = keptTags
   return { article: merged, ...(visibility ? { visibility } : {}) }
 }
+
+/** Draft content as stored: its explicit tags normalised. */
+export const normalizeArticleDraftContent = (content: ArticleDraftContent): ArticleDraftContent =>
+  content.tags === undefined ? content : { ...content, tags: normalizeTags(content.tags) }
 
 /** The friendliest message for what keeps a draft from publishing, before the schema's own wording. */
 const incompleteDraftError = (content: ArticleDraftContent): string | null => {
@@ -97,27 +106,38 @@ export const publishableArticle = (
 
 export interface PublishDraftDeps {
   getDraft: (user: string, id: string) => Promise<ArticleDraftRecord | null>
+  /** Atomically remove the draft and return it; null when it is already gone. */
+  claimDraft: (user: string, id: string) => Promise<ArticleDraftRecord | null>
+  /** Put a claimed draft back unchanged. */
+  restoreDraft: (user: string, draft: ArticleDraftRecord) => Promise<void>
   createPost: (user: string, input: ArticlePostInput) => Promise<FeedPostRecord>
-  deleteDraft: (user: string, id: string) => Promise<boolean>
   logError: (message: string, error: unknown) => void
+  /** The published article's tags; defaults to the owner's default tags (or the draft's) plus typed ones. */
+  postTags?: (user: string, content: ArticleDraftContent) => Promise<string[]>
 }
 
+const draftPostTags = (user: string, content: ArticleDraftContent): Promise<string[]> =>
+  resolvePostTags(user, { explicit: content.tags, texts: articleTexts(content) })
+
 const defaultDeps: PublishDraftDeps = {
+  claimDraft: (user, id) => claimArticleDraft(user, id),
   createPost: (user, input) => createArticlePost(user, input),
-  deleteDraft: (user, id) => deleteArticleDraft(user, id),
   getDraft: (user, id) => getArticleDraft(user, id),
   logError: (message, error) => console.error(message, error),
+  restoreDraft: (user, draft) => restoreArticleDraft(user, draft),
 }
 
 export type PublishDraftResult =
   | { ok: true; post: FeedPostRecord }
   | { ok: false; status: 400 | 404; error: string }
 
+const DRAFT_NOT_FOUND = { error: 'Draft not found', ok: false, status: 404 } as const
+
 /**
- * Publish a draft: validate, create the article post, then delete the draft.
- * An invalid draft is kept untouched. A failed delete after the post exists is
- * logged, not rolled back — the article is already out, and a leftover draft is
- * harmless. The caller federates the returned post.
+ * Publish a draft: validate it, claim it (removing it atomically, so of two
+ * concurrent publishes only one creates a post), then create the article post.
+ * An invalid draft is never claimed; a failure after the claim puts the draft
+ * back as it was. The caller federates the returned post.
  */
 export const publishArticleDraft = async (
   user: string,
@@ -126,14 +146,29 @@ export const publishArticleDraft = async (
   deps: PublishDraftDeps = defaultDeps,
 ): Promise<PublishDraftResult> => {
   const draft = await deps.getDraft(user, id)
-  if (!draft) return { error: 'Draft not found', ok: false, status: 404 }
-  const publishable = publishableArticle(draft.article, body.visibility ?? draft.visibility)
-  if (!publishable.ok) return { error: publishable.error, ok: false, status: 400 }
-  const post = await deps.createPost(user, publishable.input)
+  if (!draft) return DRAFT_NOT_FOUND
+  const checked = publishableArticle(draft.article, body.visibility ?? draft.visibility)
+  if (!checked.ok) return { error: checked.error, ok: false, status: 400 }
+
+  const claimed = await deps.claimDraft(user, id)
+  if (!claimed) return DRAFT_NOT_FOUND
+  const restore = () =>
+    deps
+      .restoreDraft(user, claimed)
+      .catch((error: unknown) =>
+        deps.logError(`⚠️ Could not restore draft ${id} for ${user} after a failed publish:`, error),
+      )
   try {
-    await deps.deleteDraft(user, id)
+    // Validated again: the draft may have been saved between the check and the claim.
+    const publishable = publishableArticle(claimed.article, body.visibility ?? claimed.visibility)
+    if (!publishable.ok) {
+      await restore()
+      return { error: publishable.error, ok: false, status: 400 }
+    }
+    const tags = await (deps.postTags ?? draftPostTags)(user, claimed.article)
+    return { ok: true, post: await deps.createPost(user, { ...publishable.input, tags }) }
   } catch (error) {
-    deps.logError(`⚠️ Published draft ${id} for ${user} but could not delete it:`, error)
+    await restore()
+    throw error
   }
-  return { ok: true, post }
 }

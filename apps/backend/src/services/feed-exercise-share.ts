@@ -8,8 +8,10 @@ import type { ExerciseShare, FeedStructuredExerciseShare, ShareExerciseBody } fr
 
 import { findSharedExercise } from '../db/index.ts'
 import { renderExerciseShareHtml } from './activitypub/exercise-object.ts'
+import { hashtagLinks, linkifyHashtags } from './activitypub/hashtag-html.ts'
 import { resolveStructuredExercise } from './feed-structured-exercise.ts'
 import { normalizeFeedMessage } from './feed.ts'
+import { exerciseKindTag, resolvePostTags } from './post-tags.ts'
 import { queryActivitySessions } from './queries/activity-sessions.ts'
 import { getUserTimezone } from './settings.ts'
 import { buildShareUrl } from './share-urls.ts'
@@ -70,21 +72,33 @@ export const resolveExerciseShare = async (
   }
 }
 
+/** The tags an exercise post gets: the explicit ones, else the defaults and the exercise's name; plus typed ones. */
+export const exerciseShareTags = (
+  user: string,
+  exercise: ExerciseShare,
+  body: Pick<ShareExerciseBody, 'message' | 'tags'>,
+): Promise<string[]> =>
+  resolvePostTags(user, {
+    explicit: body.tags,
+    kindTag: exerciseKindTag(exercise),
+    texts: [normalizeFeedMessage(body.message)],
+  })
+
 export type ExerciseSharePreview =
-  | { ok: true; content: string; structured?: FeedStructuredExerciseShare }
+  | { ok: true; content: string; structured?: FeedStructuredExerciseShare; tags: string[] }
   | { ok: false; error: string; status: 400 | 404 }
 
 /** What sharing the exercise with these opt-ins WOULD federate, creating nothing. */
 export const previewExerciseShare = async (
   user: string,
-  body: ExerciseShareSource & Pick<ShareExerciseBody, 'include_chart' | 'message'>,
+  body: ExerciseShareSource & Pick<ShareExerciseBody, 'include_chart' | 'message' | 'tags'>,
   webHost: string | undefined,
   deps: ExerciseShareDeps = defaultDeps,
 ): Promise<ExerciseSharePreview> => {
   const resolved = await resolveExerciseShare(user, body, webHost, deps)
   if (!resolved.ok) return resolved
   const message = normalizeFeedMessage(body.message) ?? null
-  const [structured, timeZone] = await Promise.all([
+  const [structured, timeZone, tags] = await Promise.all([
     resolveStructuredExercise(user, {
       exercise: resolved.exercise,
       include_chart: body.include_chart,
@@ -92,8 +106,12 @@ export const previewExerciseShare = async (
       message,
     }),
     getUserTimezone(user),
+    exerciseShareTags(user, resolved.exercise, body),
   ])
   const snapshot = structured && { activity_type_name: structured.activity_type_name, data: structured.data }
-  const content = renderExerciseShareHtml(resolved.exercise, snapshot, message, timeZone)
-  return { content, ok: true, ...(structured == null ? {} : { structured }) }
+  const content = linkifyHashtags(
+    renderExerciseShareHtml(resolved.exercise, snapshot, message, timeZone),
+    webHost ? hashtagLinks(webHost, user, tags) : undefined,
+  )
+  return { content, ok: true, tags, ...(structured == null ? {} : { structured }) }
 }

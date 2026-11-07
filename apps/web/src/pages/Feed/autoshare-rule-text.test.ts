@@ -86,6 +86,7 @@ describe('ruleSummary', () => {
     max_age_hours: 24,
     name: 'Named yoga',
     series_metrics: [],
+    tags: null,
     updated_at: '2026-08-01T00:00:00Z',
     visibility: 'followers',
     ...over,

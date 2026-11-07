@@ -35,30 +35,38 @@ const draftRecord = (overrides: Partial<ArticleDraftRecord> = {}): ArticleDraftR
   ...overrides,
 })
 
-/** In-memory deps that record what publishing did. */
-const fakeDeps = (draft: ArticleDraftRecord | null, deleteFails = false) => {
+/** In-memory deps over one draft store, recording what publishing did. */
+const fakeDeps = (draft: ArticleDraftRecord | null, { createFails = false, restoreFails = false } = {}) => {
+  const drafts = new Map<string, ArticleDraftRecord>(draft ? [[draft.id, draft]] : [])
   const created: ArticlePostInput[] = []
-  const deleted: string[] = []
+  const claimed: string[] = []
   const logged: string[] = []
   const deps: PublishDraftDeps = {
+    claimDraft: async (_user, id) => {
+      const found = drafts.get(id) ?? null
+      drafts.delete(id)
+      if (found) claimed.push(id)
+      return found
+    },
     createPost: async (_user, input) => {
+      if (createFails) throw new Error('db down')
       created.push(input)
       return {
         article: input.article,
-        id: 'p1',
+        id: `p${created.length}`,
         kind: 'article',
         visibility: input.visibility,
       } as FeedPostRecord
     },
-    deleteDraft: async (_user, id) => {
-      if (deleteFails) throw new Error('db down')
-      deleted.push(id)
-      return true
-    },
-    getDraft: async (_user, id) => (draft?.id === id ? draft : null),
+    getDraft: async (_user, id) => drafts.get(id) ?? null,
     logError: (message) => logged.push(message),
+    postTags: async () => ['aurboda'],
+    restoreDraft: async (_user, record) => {
+      if (restoreFails) throw new Error('db down')
+      drafts.set(record.id, record)
+    },
   }
-  return { created, deleted, deps, logged }
+  return { claimed, created, deps, drafts, logged }
 }
 
 describe('serializeArticleDraft', () => {
@@ -140,12 +148,13 @@ describe('publishableArticle', () => {
 })
 
 describe('publishArticleDraft', () => {
-  test('creates the post with the draft visibility, then deletes the draft', async () => {
+  test('creates the post with the draft visibility, and the draft is gone', async () => {
     const fake = fakeDeps(draftRecord())
     const result = await publishArticleDraft('alice', 'd1', {}, fake.deps)
     expect(result.ok && result.post.id).toBe('p1')
-    expect(fake.created).toEqual([{ article: complete(), visibility: 'followers' }])
-    expect(fake.deleted).toEqual(['d1'])
+    expect(fake.created).toEqual([{ article: complete(), tags: ['aurboda'], visibility: 'followers' }])
+    expect(fake.claimed).toEqual(['d1'])
+    expect(fake.drafts.size).toBe(0)
   })
 
   test('the publish body overrides the draft visibility', async () => {
@@ -154,12 +163,13 @@ describe('publishArticleDraft', () => {
     expect(fake.created[0].visibility).toBe('unlisted')
   })
 
-  test('an invalid draft is a 400 and is kept', async () => {
+  test('an invalid draft is a 400 and is never claimed', async () => {
     const fake = fakeDeps(draftRecord({ article: complete({ title: '' }) }))
     const result = await publishArticleDraft('alice', 'd1', {}, fake.deps)
     expect(result).toEqual({ error: 'Give the article a title before publishing.', ok: false, status: 400 })
     expect(fake.created).toEqual([])
-    expect(fake.deleted).toEqual([])
+    expect(fake.claimed).toEqual([])
+    expect(fake.drafts.has('d1')).toBe(true)
   })
 
   test('an unknown draft is a 404', async () => {
@@ -171,10 +181,40 @@ describe('publishArticleDraft', () => {
     })
   })
 
-  test('a failed delete after publishing is logged, and the post still stands', async () => {
-    const fake = fakeDeps(draftRecord(), true)
+  test('two concurrent publishes create one post; the other finds the draft gone', async () => {
+    const fake = fakeDeps(draftRecord())
+    const results = await Promise.all([
+      publishArticleDraft('alice', 'd1', {}, fake.deps),
+      publishArticleDraft('alice', 'd1', {}, fake.deps),
+    ])
+    expect(results.filter((r) => r.ok)).toHaveLength(1)
+    expect(results.filter((r) => !r.ok)).toEqual([{ error: 'Draft not found', ok: false, status: 404 }])
+    expect(fake.created).toHaveLength(1)
+  })
+
+  test('a failed post creation puts the draft back as it was', async () => {
+    const draft = draftRecord()
+    const fake = fakeDeps(draft, { createFails: true })
+    await expect(publishArticleDraft('alice', 'd1', {}, fake.deps)).rejects.toThrow('db down')
+    expect(fake.drafts.get('d1')).toEqual(draft)
+  })
+
+  test('a draft saved invalid between the check and the claim is put back and is a 400', async () => {
+    const fake = fakeDeps(draftRecord())
+    const claim = fake.deps.claimDraft
+    fake.deps.claimDraft = async (user, id) => {
+      fake.drafts.set(id, draftRecord({ article: complete({ title: '' }) }))
+      return claim(user, id)
+    }
     const result = await publishArticleDraft('alice', 'd1', {}, fake.deps)
-    expect(result.ok).toBe(true)
+    expect(result).toMatchObject({ ok: false, status: 400 })
+    expect(fake.created).toEqual([])
+    expect(fake.drafts.get('d1')?.article.title).toBe('')
+  })
+
+  test('a failed restore is logged and the publish error still surfaces', async () => {
+    const fake = fakeDeps(draftRecord(), { createFails: true, restoreFails: true })
+    await expect(publishArticleDraft('alice', 'd1', {}, fake.deps)).rejects.toThrow('db down')
     expect(fake.logged).toHaveLength(1)
   })
 })

@@ -45,11 +45,16 @@ import { articleImageAttachments, renderArticleContentHtml } from './article-obj
 import { identityToActorUri, identityToHandle, renderChallengeShareHtml } from './challenge-object.ts'
 import { exerciseNoteContent } from './exercise-object.ts'
 import { resolveActivityScalars } from './feed-activity.ts'
+import { type HashtagLinks, hashtagLinks, hashtagObjects, linkifyHashtags } from './hashtag-html.ts'
 import { addressingFor, feedPostContent, formatActivityWindow, isPubliclyVisible } from './object.ts'
 import { quantExerciseExtension, withQuantJsonLd } from './quant-extension.ts'
 import { type ReplyContentSource, renderReplyContent, replyMentionName } from './reply-object.ts'
 import { signedFetchOptions } from './signed-lookup.ts'
 import { dateToTemporalInstant } from './temporal-interop.ts'
+
+/** A Note's hashtag links: each tag points at the author's profile on this instance, filtered by it. */
+const noteHashtags = (ctx: Context<void>, user: string, tags: readonly string[] | undefined): HashtagLinks =>
+  hashtagLinks(ctx.canonicalOrigin, user, tags)
 
 /**
  * AS2 `to`/`cc` addressing (as URLs) for a post's visibility — the same table
@@ -90,6 +95,7 @@ export interface DeliverablePost {
   include_exercises: boolean
   /** Capability token appended to `followers`-only image URLs (see `imageAttachments`). */
   image_token: string
+  tags?: readonly string[]
 }
 
 /**
@@ -219,17 +225,19 @@ const buildFeedNoteParts = async (
   const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
   const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
   const available = await imageAvailability(user, post, activity, dbImageLookups)
+  const hashtags = noteHashtags(ctx, user, post.tags)
   const note = new Note({
     attachments: imageAttachments(apiBaseUrl, user, post, available),
     attribution: actorUri,
     ccs: cc,
-    content,
+    content: linkifyHashtags(content, hashtags),
     // The AS2 activity window — the workout time; `published` stays the share time.
     endTime: activity.end_time === undefined ? null : dateToTemporalInstant(activity.end_time),
     id: noteId,
     name,
     published: dateToTemporalInstant(post.created_at),
     startTime: dateToTemporalInstant(activity.start_time),
+    tags: hashtagObjects(hashtags),
     tos: to,
     // Mastodon applies an Update's content and attachments only when the object
     // says it was edited after the stored copy; without `updated` it re-reads polls only.
@@ -407,6 +415,7 @@ export interface DeliverableArticle {
   updated_at: Date
   image_token: string
   article: ArticleContent
+  tags?: readonly string[]
 }
 
 export const toDeliverableArticle = (post: FeedPostRecord): DeliverableArticle | null =>
@@ -416,6 +425,7 @@ export const toDeliverableArticle = (post: FeedPostRecord): DeliverableArticle |
         created_at: post.created_at,
         id: post.id,
         image_token: post.image_token,
+        tags: post.tags,
         updated_at: post.updated_at,
         visibility: post.visibility,
       }
@@ -435,6 +445,7 @@ export const buildArticleNote = (
 ): Note => {
   const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
   const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
+  const hashtags = noteHashtags(ctx, user, post.tags)
   return new Note({
     attachments: articleImageAttachments(
       apiBaseUrl,
@@ -447,10 +458,11 @@ export const buildArticleNote = (
     ),
     attribution: ctx.getActorUri(user),
     ccs: cc,
-    content: renderArticleContentHtml(post.article),
+    content: linkifyHashtags(renderArticleContentHtml(post.article), hashtags),
     id: noteId,
     name: post.article.title,
     published: dateToTemporalInstant(post.created_at),
+    tags: hashtagObjects(hashtags),
     tos: to,
     updated: dateToTemporalInstant(post.updated_at),
     url: noteId,
@@ -539,6 +551,7 @@ export interface DeliverableChallenge {
   include_chart: boolean
   /** Capability token appended to a `followers`-only post's image URL. */
   image_token: string
+  tags?: readonly string[]
 }
 
 export const toDeliverableChallenge = (post: FeedPostRecord): DeliverableChallenge | null =>
@@ -550,6 +563,7 @@ export const toDeliverableChallenge = (post: FeedPostRecord): DeliverableChallen
         image_token: post.image_token,
         include_chart: post.include_chart,
         message: post.message,
+        tags: post.tags,
         updated_at: post.updated_at,
         visibility: post.visibility,
       }
@@ -672,15 +686,19 @@ export const buildChallengeNote = (
 ): Note => {
   const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
   const { cc, mentions, to } = challengeAddressing(ctx, user, post)
+  const hashtags = noteHashtags(ctx, user, post.tags)
   return new Note({
     attachments,
     attribution: ctx.getActorUri(user),
     ccs: cc,
-    content: renderChallengeShareHtml(post.challenge, post.message),
+    content: linkifyHashtags(renderChallengeShareHtml(post.challenge, post.message), hashtags),
     id: noteId,
     name: post.challenge.name,
     published: dateToTemporalInstant(post.created_at),
-    tags: mentions.map((m) => new Mention({ href: m.actorUri, name: m.handle })),
+    tags: [
+      ...mentions.map((m) => new Mention({ href: m.actorUri, name: m.handle })),
+      ...hashtagObjects(hashtags),
+    ],
     tos: to,
     updated: dateToTemporalInstant(post.updated_at),
     url: noteId,
@@ -852,6 +870,7 @@ export interface DeliverableExercise {
   include_chart: boolean
   /** Capability token appended to a `followers`-only post's image URL. */
   image_token: string
+  tags?: readonly string[]
 }
 
 export const toDeliverableExercise = (post: FeedPostRecord): DeliverableExercise | null =>
@@ -863,6 +882,7 @@ export const toDeliverableExercise = (post: FeedPostRecord): DeliverableExercise
         image_token: post.image_token,
         include_chart: post.include_chart,
         message: post.message,
+        tags: post.tags,
         updated_at: post.updated_at,
         visibility: post.visibility,
       }
@@ -914,14 +934,16 @@ export const buildExerciseNote = (
 ): Note => {
   const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
   const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
+  const hashtags = noteHashtags(ctx, user, post.tags)
   return new Note({
     attachments,
     attribution: ctx.getActorUri(user),
     ccs: cc,
-    content,
+    content: linkifyHashtags(content, hashtags),
     id: noteId,
     name: post.exercise.name,
     published: dateToTemporalInstant(post.created_at),
+    tags: hashtagObjects(hashtags),
     tos: to,
     updated: dateToTemporalInstant(post.updated_at),
     url: noteId,
@@ -1037,6 +1059,7 @@ export interface DeliverableReply {
   in_reply_to_uri: string
   in_reply_to_actor_uri: string
   in_reply_to_handle: string | null
+  tags?: readonly string[]
 }
 
 export const toDeliverableReply = (post: FeedPostRecord): DeliverableReply | null =>
@@ -1048,6 +1071,7 @@ export const toDeliverableReply = (post: FeedPostRecord): DeliverableReply | nul
         in_reply_to_handle: post.in_reply_to_handle,
         in_reply_to_uri: post.in_reply_to_uri,
         message: post.message,
+        tags: post.tags,
         updated_at: post.updated_at,
         visibility: post.visibility,
       }
@@ -1096,14 +1120,18 @@ const replyAddressing = (
 export const buildReplyNote = (ctx: Context<void>, user: string, post: DeliverableReply): Note => {
   const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
   const { cc, mentions, to } = replyAddressing(ctx, user, post)
+  const hashtags = noteHashtags(ctx, user, post.tags)
   return new Note({
     attribution: ctx.getActorUri(user),
     ccs: cc,
-    content: renderReplyContent(post),
+    content: linkifyHashtags(renderReplyContent(post), hashtags),
     id: noteId,
     published: dateToTemporalInstant(post.created_at),
     replyTarget: new URL(post.in_reply_to_uri),
-    tags: mentions.map((m) => new Mention({ href: m.actorUri, name: m.handle })),
+    tags: [
+      ...mentions.map((m) => new Mention({ href: m.actorUri, name: m.handle })),
+      ...hashtagObjects(hashtags),
+    ],
     tos: to,
     updated: dateToTemporalInstant(post.updated_at),
     url: noteId,

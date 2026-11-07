@@ -113,7 +113,8 @@
   margin-top: 1rem;
 }
 
-.share-dialog-message {
+.share-dialog-message,
+.share-dialog-tags {
   width: 100%;
   box-sizing: border-box;
   resize: vertical;
@@ -130,7 +131,8 @@
     background: #1f2937;
   }
 
-  .share-dialog-message {
+  .share-dialog-message,
+  .share-dialog-tags {
     border-color: #374151;
   }
 

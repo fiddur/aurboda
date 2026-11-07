@@ -168,19 +168,67 @@ outbox, federation delivery, the public profile, the blog view, the Atom feed, t
 A draft may be **incomplete** (`ArticleDraftContent`): the title may be empty, a chart
 block's `metric` and a correlation block's `trigger`/`outcome` may be unset, and windows are
 not checked. **Publishing** validates it exactly like `POST /feed/articles` — the
-`CreateArticleBody` schema, then the same window checks — and on success creates the
-article post (its `created_at` is the publish time), federates it, and deletes the draft; an
-invalid draft gets a 400 with the reason and is kept. A published article is edited in place
+`CreateArticleBody` schema, then the same window checks — and on success **claims** the draft
+(deletes it and takes the deleted row in one statement, so of two concurrent publishes only
+one gets it and the other answers 404), creates the article post (its `created_at` is the
+publish time) and federates it. An invalid draft gets a 400 with the reason and is never
+claimed; if anything fails after the claim — the draft saved invalid in between, or the post
+insert — the draft is put back with the same id, content and timestamps. A draft's own `tags`
+(see [Hashtags](#hashtags)) are kept in its content and become the post's explicit tags. A published article is edited in place
 as before (`PATCH /feed/articles/:postId`); there is no unpublish-to-draft.
 
-| REST                                    | MCP                     | Purpose                                                                                                                                                         |
-| --------------------------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /feed/article-drafts`              | `list_article_drafts`   | My drafts, most recently saved first                                                                                                                            |
-| `POST /feed/article-drafts`             | `create_article_draft`  | Start a draft (`{ article?, visibility? }`; no `article` = empty and untitled)                                                                                  |
-| `GET /feed/article-drafts/:id`          | `get_article_draft`     | One draft                                                                                                                                                       |
-| `PATCH /feed/article-drafts/:id`        | `update_article_draft`  | Save changes; provided `title` / `blocks` / default window / `visibility` replace the stored ones; over REST a `null` `default_start` / `default_end` clears it |
-| `DELETE /feed/article-drafts/:id`       | `delete_article_draft`  | Delete a draft (nothing to retract)                                                                                                                             |
-| `POST /feed/article-drafts/:id/publish` | `publish_article_draft` | Validate and publish; `{ visibility? }` overrides the draft's                                                                                                   |
+| REST                                    | MCP                     | Purpose                                                                                                                                                                           |
+| --------------------------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /feed/article-drafts`              | `list_article_drafts`   | My drafts, most recently saved first                                                                                                                                              |
+| `POST /feed/article-drafts`             | `create_article_draft`  | Start a draft (`{ article?, visibility? }`; no `article` = empty and untitled)                                                                                                    |
+| `GET /feed/article-drafts/:id`          | `get_article_draft`     | One draft                                                                                                                                                                         |
+| `PATCH /feed/article-drafts/:id`        | `update_article_draft`  | Save changes; provided `title` / `blocks` / default window / `tags` / `visibility` replace the stored ones; over REST a `null` `default_start` / `default_end` / `tags` clears it |
+| `DELETE /feed/article-drafts/:id`       | `delete_article_draft`  | Delete a draft (nothing to retract)                                                                                                                                               |
+| `POST /feed/article-drafts/:id/publish` | `publish_article_draft` | Validate and publish; `{ visibility? }` overrides the draft's                                                                                                                     |
+
+### Hashtags
+
+Every post carries **tags**, Mastodon-style hashtags (#1466), stored lowercase without the
+`#` in `feed_posts.tags` and returned as `tags` on every `FeedPost`. A tag is letters,
+digits and `_` (any script, NFC-normalised), with at least one non-digit and at most 64
+characters; a post has at most 10. The rules live in `@aurboda/api-spec` (`hashtags.ts`),
+shared by the backend and the web.
+
+A post's tags are its **automatic** tags — or the explicit `tags` list the share body gives
+instead — plus every `#tag` typed in its own text (the message, an article's title and prose
+blocks; code spans, fences and URL fragments do not count):
+
+- the owner's **default tags** (`feed_default_tags` in the settings, `["aurboda"]` until
+  changed; `[]` turns them off), and
+- a **kind tag** unless `feed_type_tag` is off: an activity's type (`running`; a custom type's
+  key with only letters and digits kept, `strength_training` → `strengthtraining`), an
+  exercise's name, else its value (`Dumbbell Bench Press` → `dumbbellbenchpress`), or
+  `challenge`. An article has no kind tag.
+
+The list is cut at 10 in that order (automatic or explicit first, then typed), so a typed tag
+past the cap stays plain text.
+
+A **reply** gets only the tags typed in it. An [auto-share rule](auto-share-rules.md) with
+its own `tags` uses them in place of the default tags; the kind tag still follows the setting.
+Editing a post with an explicit `tags` list replaces its tags (plus those typed in the text);
+editing only the message keeps the stored tags and swaps the tags typed in the old text for
+those typed in the new one, so a choice made at share time survives an edit. The previews
+(`preview_activity_share`, `preview_exercise_share`) return the tags the post would get.
+
+**Federation.** Each Note carries one AS2 `Hashtag` per tag (`name` `#tag`, `href` the
+owner's profile filtered by it, `https://<web host>/u/<user>?tag=<tag>`), next to any
+`Mention`. In the `content` HTML a typed tag becomes a Mastodon-style link
+(`<a href="…" class="mention hashtag" rel="tag">#<span>Tag</span></a>`, keeping the written
+casing); text inside links, `code` and `pre` is left alone, and the tags the text does not
+show follow in one trailing paragraph. Only the post's own tags are linked.
+
+**Web.** The activity, exercise and challenge share dialogs and the article editor have a
+**Tags** field, prefilled with the automatic tags (or the post's, when editing) and sent only
+once changed; the auto-share rule form can replace the default tags; Settings → **Sharing**
+holds the default tags and the type-tag switch. A post card lists its tags (unless its body is
+the `content` HTML, which already links them), each linking to the public profile filtered by
+it: `/u/<user>?tag=<tag>` shows "Posts tagged #tag · clear", backed by
+`GET /public/:username/posts?tag=`.
 
 ## ActivityPub federation
 
@@ -1150,7 +1198,8 @@ personal message (plain text; NULL when none was shared). `activity_id` is a
 **soft reference** (no foreign key): activities are soft-deleted and the series lookup
 re-checks `deleted_at` at query time, so a removed activity simply stops resolving rather
 than cascading a delete. A GIN index over `series_metrics` backs the public series
-endpoint's authorization check. Each post also holds an unguessable `image_token`
+endpoint's authorization check, and another over `tags` (`TEXT[]`, the post's
+[hashtags](#hashtags)) the profile's `?tag=` filter. Each post also holds an unguessable `image_token`
 (defaulted at insert) that gates its `followers`-only image URLs. Deleting a
 `public`/`unlisted` post hard-deletes its row
 and, in the same statement, records its id in `feed_tombstone` so the object id can still

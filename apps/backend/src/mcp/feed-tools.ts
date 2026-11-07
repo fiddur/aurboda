@@ -8,6 +8,7 @@ import {
   followActorBodySchema,
   followersQuerySchema,
   iso8601DateTimeSchema,
+  postTagsInputSchema,
   publishArticleDraftBodySchema,
   replyToPostBodySchema,
   shareActivityBodySchema,
@@ -50,13 +51,18 @@ import { REPLIES_TIMEOUT_MS } from '../services/activitypub/remote-replies.ts'
 import {
   articleDraftPatch,
   emptyArticleDraftContent,
+  normalizeArticleDraftContent,
   publishArticleDraft,
   serializeArticleDraft,
 } from '../services/article-drafts.ts'
 import { buildArticleMarkdown, renderableArticleBlocks } from '../services/article-export.ts'
 import { buildArticleContent, mergeArticleContent } from '../services/article.ts'
 import { resolveChallengeShare } from '../services/challenge-share.ts'
-import { previewExerciseShare, resolveExerciseShare } from '../services/feed-exercise-share.ts'
+import {
+  exerciseShareTags,
+  previewExerciseShare,
+  resolveExerciseShare,
+} from '../services/feed-exercise-share.ts'
 import { MAX_POST_REACTIONS, serializeFeedPostReaction } from '../services/feed-reactions.ts'
 import {
   getFeedPage,
@@ -66,6 +72,14 @@ import {
 } from '../services/feed.ts'
 import { serializeFollower } from '../services/followers.ts'
 import { serializeFollowing } from '../services/following.ts'
+import {
+  activityKindTag,
+  articleTexts,
+  CHALLENGE_KIND_TAG,
+  loadEditedPostTags,
+  resolvePostTags,
+  retagPost,
+} from '../services/post-tags.ts'
 import { getSettings } from '../services/settings.ts'
 import { getThreadSnapshot, listOwnPostReplies, MAX_POST_REPLIES } from '../services/timeline-replies.ts'
 import { getTimelinePage, reactionTarget } from '../services/timeline.ts'
@@ -120,56 +134,72 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
 
   server.tool(
     'share_activity',
-    'Publish an activity to your feed. `included_metrics` are the scalar summaries shared; `series_metrics` is a SEPARATE, explicit opt-in that also exposes those metrics on the public read-only series endpoint. Both default to empty (privacy-conservative) — a high-resolution series is far more revealing than an average, so only opt in deliberately.',
+    'Publish an activity to your feed. `included_metrics` are the scalar summaries shared; `series_metrics` is a SEPARATE, explicit opt-in that also exposes those metrics on the public read-only series endpoint. Both default to empty (privacy-conservative) — a high-resolution series is far more revealing than an average, so only opt in deliberately. The post gets hashtags (federated, clickable on Mastodon): your default tags plus the activity type (e.g. `#aurboda #running`) unless `tags` replaces them; `#tags` typed in the message are always added.',
     { activity_id: z.string().uuid().describe('The activity to share'), ...shareActivityBodySchema.shape },
     async ({ activity_id, ...body }) => {
       const activity = await getActivityById(user, activity_id)
       if (!activity) return errorResponse('Activity not found')
+      const message = normalizeFeedMessage(body.message) ?? null
       const record = await createFeedPost(user, {
         activity_id: activity.id ?? activity_id,
         include_chart: body.include_chart,
         include_exercises: body.include_exercises,
         include_map: body.include_map,
         included_metrics: body.included_metrics,
-        message: normalizeFeedMessage(body.message) ?? null,
+        message,
         series_metrics: body.series_metrics,
+        tags: await resolvePostTags(user, {
+          explicit: body.tags,
+          kindTag: activityKindTag(activity.activity_type),
+          texts: [message],
+        }),
         visibility: body.visibility,
       })
       // Fan out to followers (best-effort), same as the REST share route.
       deliver?.created(user, record, activity)
-      return jsonResponse(await serializeFeedPost(user, record))
+      return jsonResponse(await serializeFeedPost(user, record, { webHost }))
     },
   )
 
   server.tool(
     'preview_activity_share',
-    'Preview what sharing an activity WOULD federate — the exact post text (HTML) and resolved metric values for a given selection — without creating a post. Use before share_activity to show the user what leaves the instance.',
+    'Preview what sharing an activity WOULD federate — the exact post text (HTML), its hashtags and resolved metric values for a given selection — without creating a post. Use before share_activity to show the user what leaves the instance.',
     { activity_id: z.string().uuid().describe('The activity to preview'), ...shareActivityBodySchema.shape },
     async ({ activity_id, ...body }) => {
       const activity = await getActivityById(user, activity_id)
       if (!activity) return errorResponse('Activity not found')
       return jsonResponse(
-        await previewActivityShare(user, activity, {
-          include_exercises: body.include_exercises,
-          included_metrics: body.included_metrics,
-          ...(body.message === undefined ? {} : { message: body.message }),
-        }),
+        await previewActivityShare(
+          user,
+          activity,
+          {
+            include_exercises: body.include_exercises,
+            included_metrics: body.included_metrics,
+            ...(body.message === undefined ? {} : { message: body.message }),
+            ...(body.tags === undefined ? {} : { tags: body.tags }),
+          },
+          webHost,
+        ),
       )
     },
   )
 
   server.tool(
     'update_feed_post',
-    'Update a feed post (scalar metric selection, series opt-in, visibility, attachments). Only provided fields change.',
+    'Update a feed post (scalar metric selection, series opt-in, visibility, attachments, message, hashtags). Only provided fields change.',
     { id: z.string().uuid().describe('Feed post ID'), ...updateFeedPostBodySchema.shape },
     async ({ id, ...body }) => {
+      const message = normalizeFeedMessage(body.message)
+      const retag = await loadEditedPostTags(user, id, { message, tags: body.tags })
+      if (!retag.found) return errorResponse('Feed post not found')
       const record = await updateFeedPost(user, id, {
         include_chart: body.include_chart,
         include_exercises: body.include_exercises,
         include_map: body.include_map,
         included_metrics: body.included_metrics,
-        message: normalizeFeedMessage(body.message),
+        message,
         series_metrics: body.series_metrics,
+        tags: retag.tags,
         visibility: body.visibility,
       })
       if (!record) return errorResponse('Feed post not found')
@@ -181,7 +211,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
       else if (record.kind === 'exercise') deliver?.updatedExercise(user, record)
       else if (record.kind === 'reply') deliver?.updatedReply(user, record)
       else deliver?.updated(user, record)
-      return jsonResponse(await serializeFeedPost(user, record))
+      return jsonResponse(await serializeFeedPost(user, record, { webHost }))
     },
   )
 
@@ -189,17 +219,19 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
     'share_challenge',
     "Publish a challenge INVITATION to your feed: your personal note (markdown) plus the challenge's canonical join-by-URL link. Pass exactly one of `challenge_id` (one of your own challenges) or `participation_id` (a challenge you joined, possibly hosted elsewhere) — the server resolves the linked name/URL itself.",
     { ...shareChallengeBodySchema.shape },
-    async ({ challenge_id, include_chart, message, participation_id, visibility }) => {
+    async ({ challenge_id, include_chart, message, participation_id, tags, visibility }) => {
       const resolved = await resolveChallengeShare(user, { challenge_id, participation_id }, webHost)
       if (!resolved.ok) return errorResponse(resolved.error)
+      const note = normalizeFeedMessage(message) ?? null
       const record = await createChallengePost(user, {
         challenge: resolved.challenge,
         include_chart,
-        message: normalizeFeedMessage(message) ?? null,
+        message: note,
+        tags: await resolvePostTags(user, { explicit: tags, kindTag: CHALLENGE_KIND_TAG, texts: [note] }),
         visibility,
       })
       deliver?.createdChallenge(user, record)
-      return jsonResponse(await serializeFeedPost(user, record))
+      return jsonResponse(await serializeFeedPost(user, record, { webHost }))
     },
   )
 
@@ -214,10 +246,11 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
         exercise: resolved.exercise,
         include_chart: body.include_chart,
         message: normalizeFeedMessage(body.message) ?? null,
+        tags: await exerciseShareTags(user, resolved.exercise, body),
         visibility: body.visibility,
       })
       deliver?.createdExercise(user, record)
-      return jsonResponse(await serializeFeedPost(user, record))
+      return jsonResponse(await serializeFeedPost(user, record, { webHost }))
     },
   )
 
@@ -228,7 +261,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
     async (body) => {
       const preview = await previewExerciseShare(user, body, webHost)
       if (!preview.ok) return errorResponse(preview.error)
-      return jsonResponse({ content: preview.content, structured: preview.structured })
+      return jsonResponse({ content: preview.content, structured: preview.structured, tags: preview.tags })
     },
   )
 
@@ -244,9 +277,13 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
         title: body.title,
       })
       if (!built.ok) return errorResponse(built.error)
-      const record = await createArticlePost(user, { article: built.article, visibility: body.visibility })
+      const record = await createArticlePost(user, {
+        article: built.article,
+        tags: await resolvePostTags(user, { explicit: body.tags, texts: articleTexts(built.article) }),
+        visibility: body.visibility,
+      })
       deliver?.createdArticle(user, record)
-      return jsonResponse(await serializeFeedPost(user, record))
+      return jsonResponse(await serializeFeedPost(user, record, { webHost }))
     },
   )
 
@@ -261,10 +298,19 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
       }
       const built = buildArticleContent(mergeArticleContent(existing.article, body))
       if (!built.ok) return errorResponse(built.error)
-      const record = await updateFeedPost(user, id, { article: built.article, visibility: body.visibility })
+      const record = await updateFeedPost(user, id, {
+        article: built.article,
+        tags: retagPost({
+          after: articleTexts(built.article),
+          before: articleTexts(existing.article),
+          explicit: body.tags,
+          stored: existing.tags,
+        }),
+        visibility: body.visibility,
+      })
       if (!record) return errorResponse('Article not found')
       deliver?.updatedArticle(user, record)
-      return jsonResponse(await serializeFeedPost(user, record))
+      return jsonResponse(await serializeFeedPost(user, record, { webHost }))
     },
   )
 
@@ -274,7 +320,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
     { ...createArticleDraftBodySchema.shape },
     async ({ article, visibility }) => {
       const record = await createArticleDraft(user, {
-        article: article ?? emptyArticleDraftContent(),
+        article: article ? normalizeArticleDraftContent(article) : emptyArticleDraftContent(),
         visibility,
       })
       return jsonResponse(serializeArticleDraft(record))
@@ -291,6 +337,11 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
       ...updateArticleDraftBodySchema.shape,
       default_end: iso8601DateTimeSchema.optional().describe('Default window end (ISO 8601)'),
       default_start: iso8601DateTimeSchema.optional().describe('Default window start (ISO 8601)'),
+      tags: postTagsInputSchema
+        .optional()
+        .describe(
+          "Hashtags the article gets when published, replacing your default tags; omitted keeps the draft's. A draft given tags here cannot be set back to the default tags over MCP (the REST PATCH can, with `tags: null`)",
+        ),
     },
     async ({ id, ...body }) => {
       const existing = await getArticleDraft(user, id)
@@ -336,7 +387,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
       const result = await publishArticleDraft(user, id, body)
       if (!result.ok) return errorResponse(result.error)
       deliver?.createdArticle(user, result.post)
-      return jsonResponse(await serializeFeedPost(user, result.post))
+      return jsonResponse(await serializeFeedPost(user, result.post, { webHost }))
     },
   )
 

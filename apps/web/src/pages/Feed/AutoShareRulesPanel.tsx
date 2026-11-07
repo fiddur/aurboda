@@ -21,8 +21,10 @@ import { useState } from 'preact/hooks'
 
 import { ActivityTypePicker } from '../../components/ActivityTypePicker'
 import { DEFAULT_SUMMARY, SERIES_METRICS, SUMMARY_METRICS } from '../../components/feed-metrics'
+import { formatTagsInput, parseTagsInput } from '../../components/hashtags'
 import { KnownValuesInput } from '../../components/KnownValuesInput'
 import { fieldLabel, scalarFields } from '../../components/sessions/sessionView'
+import { TagsInput } from '../../components/TagsInput'
 import { FEED_VISIBILITY_OPTIONS, VisibilitySelector } from '../../components/VisibilitySelector'
 import {
   type ActivityTypeDefinition,
@@ -183,6 +185,7 @@ function RuleRow({ rule, postCount }: { rule: AutoshareRule; postCount: number }
         <span class="autoshare-rule-name">{rule.name}</span>
         <span class="autoshare-rule-meta">
           {ruleSummary(rule, labelFor)}
+          {rule.tags && ` · ${rule.tags.length > 0 ? formatTagsInput(rule.tags) : 'no tags'}`}
           {postCount > 0 && ` · ${postCount} post${postCount === 1 ? '' : 's'} auto-shared`}
         </span>
       </div>
@@ -225,6 +228,8 @@ function CreateRuleForm({ onDone }: { onDone: () => void }) {
   const [includeExercises, setIncludeExercises] = useState(false)
   const [visibility, setVisibility] = useState<FeedVisibility>('followers')
   const [message, setMessage] = useState('')
+  const [ownTags, setOwnTags] = useState(false)
+  const [tagsText, setTagsText] = useState('')
   const [conditions, setConditions] = useState<DataFilterRow[]>([])
   const [preview, setPreview] = useState<{ would_match: number; sample_days: number } | null>(null)
   const [previewError, setPreviewError] = useState<string | null>(null)
@@ -244,6 +249,7 @@ function CreateRuleForm({ onDone }: { onDone: () => void }) {
     included_metrics: SUMMARY_METRICS.map((m) => m.key).filter((k) => summary.has(k)),
     max_age_hours: maxAgeHours.trim() === '' ? DEFAULT_MAX_AGE_HOURS : Number(maxAgeHours),
     ...(message.trim() === '' ? {} : { message: message.trim() }),
+    ...(ownTags ? { tags: parseTagsInput(tagsText) } : {}),
     ...(minKm.trim() === '' ? {} : { min_distance_meters: Number(minKm) * 1000 }),
     ...(minMinutes.trim() === '' ? {} : { min_duration_seconds: Number(minMinutes) * 60 }),
     series_metrics: SERIES_METRICS.map((m) => m.key).filter((k) => series.has(k)),
@@ -402,6 +408,26 @@ function CreateRuleForm({ onDone }: { onDone: () => void }) {
           onInput={(e) => setMessage((e.target as HTMLInputElement).value)}
         />
       </label>
+
+      <fieldset class="share-dialog-group">
+        <legend>Tags</legend>
+        <label class="share-dialog-checkbox">
+          <input
+            type="checkbox"
+            checked={!ownTags}
+            onChange={(e) => setOwnTags(!(e.target as HTMLInputElement).checked)}
+          />
+          Use my default tags (set in Settings)
+        </label>
+        {ownTags && (
+          <TagsInput
+            legend="This rule's tags"
+            value={tagsText}
+            onInput={setTagsText}
+            note="These replace your default tags on this rule's posts. The activity type tag still follows your setting."
+          />
+        )}
+      </fieldset>
 
       <VisibilitySelector
         name="autoshare-visibility"

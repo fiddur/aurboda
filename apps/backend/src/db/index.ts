@@ -417,10 +417,12 @@ export {
   type ArticleDraftInput,
   type ArticleDraftPatch,
   type ArticleDraftRecord,
+  claimArticleDraft,
   createArticleDraft,
   deleteArticleDraft,
   getArticleDraft,
   listArticleDrafts,
+  restoreArticleDraft,
   updateArticleDraft,
 } from './article-drafts.ts'
 

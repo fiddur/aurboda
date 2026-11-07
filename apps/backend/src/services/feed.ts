@@ -36,6 +36,7 @@ import {
 } from '../db/index.ts'
 import { renderExerciseShareHtml } from './activitypub/exercise-object.ts'
 import { resolveActivityScalars } from './activitypub/feed-activity.ts'
+import { type HashtagLinks, hashtagLinks, linkifyHashtags } from './activitypub/hashtag-html.ts'
 import { feedPostContent, formatActivityWindow } from './activitypub/object.ts'
 import {
   formatExerciseLine,
@@ -50,6 +51,7 @@ import {
 } from './feed-structured-activity.ts'
 import { resolveStructuredExercise } from './feed-structured-exercise.ts'
 import { decodeKeysetCursor, encodeKeysetCursor } from './keyset-cursor.ts'
+import { activityKindTag, autoPostTags, computePostTags } from './post-tags.ts'
 import { resolveActivityWindow } from './queries/index.ts'
 import { getSettings, getUserTimezone } from './settings.ts'
 import { withReplyCounts } from './timeline-replies.ts'
@@ -71,6 +73,11 @@ export interface SerializeFeedPostOpts {
    * Left `undefined`, the post resolves them itself.
    */
   settings?: { device_timezone?: string } | null
+  /**
+   * Web origin. Given, `content` links the post's hashtags exactly as its
+   * federated Note does; absent, `content` shows them as plain text.
+   */
+  webHost?: string
 }
 
 /**
@@ -140,6 +147,12 @@ export const resolveFeedActivity = async (
   return expandFeedActivityWindow(user, activity)
 }
 
+const postHashtags = (
+  user: string,
+  record: FeedPostRecord,
+  opts: SerializeFeedPostOpts,
+): HashtagLinks | undefined => (opts.webHost ? hashtagLinks(opts.webHost, user, record.tags) : undefined)
+
 /**
  * The presentation pieces derived from a post's resolved activity: the
  * federated `content` HTML, the typed scalar `metrics`, and (per
@@ -154,11 +167,14 @@ const resolveActivityPresentation = async (
   const scalars = await resolveActivityScalars(user, activity, record.included_metrics)
   const exercises = await resolvePostExercises(user, record, activity.activity_type)
   const settings = opts.settings !== undefined ? opts.settings : await getSettings(user).catch(() => null)
-  const content = feedPostContent(activity.title, activity.activity_type, scalars, {
-    exerciseLines: exercises.map(formatExerciseLine),
-    message: record.message ?? undefined,
-    windowLabel: formatActivityWindow(activity.start_time, activity.end_time, settings?.device_timezone),
-  }).content
+  const content = linkifyHashtags(
+    feedPostContent(activity.title, activity.activity_type, scalars, {
+      exerciseLines: exercises.map(formatExerciseLine),
+      message: record.message ?? undefined,
+      windowLabel: formatActivityWindow(activity.start_time, activity.end_time, settings?.device_timezone),
+    }).content,
+    postHashtags(user, record, opts),
+  )
   let structured: FeedPost['structured']
   if ((opts.includeStructured ?? false) && record.kind === 'activity') {
     const series = activity.end_time
@@ -213,7 +229,10 @@ const resolveExercisePresentation = async (
   ])
   const snapshot = structured && { activity_type_name: structured.activity_type_name, data: structured.data }
   return {
-    content: renderExerciseShareHtml(record.exercise, snapshot, record.message, timeZone),
+    content: linkifyHashtags(
+      renderExerciseShareHtml(record.exercise, snapshot, record.message, timeZone),
+      postHashtags(user, record, opts),
+    ),
     ...((opts.includeStructured ?? false) && structured != null ? { structured } : {}),
   }
 }
@@ -282,6 +301,7 @@ export const serializeFeedPost = async (
     metrics,
     series_metrics: record.series_metrics,
     structured,
+    tags: record.tags,
     updated_at: record.updated_at.toISOString(),
     visibility: record.visibility,
   }
@@ -355,7 +375,9 @@ export const getFeedPage = async (
   const hasMore = rows.length > limit
   const page = hasMore ? rows.slice(0, limit) : rows
   const last = page[page.length - 1]
-  const posts = await Promise.all(page.map((record) => serializeFeedPost(user, record, opts)))
+  const posts = await Promise.all(
+    page.map((record) => serializeFeedPost(user, record, { ...opts, webHost: opts.webHost ?? opts.origin })),
+  )
   const counted = await withReactionCounts(user, posts, fetchReactionCounts)
   return {
     next_cursor: hasMore && last ? encodeKeysetCursor(last.cursor_ts, last.id) : null,
@@ -376,20 +398,28 @@ export const getFeedPage = async (
 export const previewActivityShare = async (
   user: string,
   activity: Activity,
-  selection: { included_metrics: string[]; message?: string; include_exercises?: boolean },
-): Promise<{ content: string; metrics: FeedPost['metrics']; has_exercises: boolean }> => {
+  selection: { included_metrics: string[]; message?: string; include_exercises?: boolean; tags?: string[] },
+  webHost?: string,
+): Promise<{ content: string; metrics: FeedPost['metrics']; has_exercises: boolean; tags: string[] }> => {
   const window = await expandFeedActivityWindow(user, activity)
   const scalars = await resolveActivityScalars(user, window, selection.included_metrics)
   const exercises = activity.id ? await resolveSharedExercises(user, activity.id, activity.activity_type) : []
   const settings = await getSettings(user).catch(() => null)
+  const message = normalizeFeedMessage(selection.message) ?? undefined
+  const tags = computePostTags({
+    auto: autoPostTags(settings, activityKindTag(activity.activity_type)),
+    explicit: selection.tags,
+    texts: [message],
+  })
   const content = feedPostContent(window.title, window.activity_type, scalars, {
     exerciseLines: selection.include_exercises ? exercises.map(formatExerciseLine) : [],
-    message: normalizeFeedMessage(selection.message) ?? undefined,
+    message,
     windowLabel: formatActivityWindow(window.start_time, window.end_time, settings?.device_timezone),
   }).content
   return {
-    content,
+    content: linkifyHashtags(content, webHost ? hashtagLinks(webHost, user, tags) : undefined),
     has_exercises: exercises.length > 0,
     metrics: scalars.map(({ key, unit, value }) => ({ key, value, ...(unit === undefined ? {} : { unit }) })),
+    tags,
   }
 }
