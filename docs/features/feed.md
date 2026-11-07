@@ -31,9 +31,11 @@ A feed post has a **`kind`**:
   its public URL (`challenge_url`, plus an optional `caption`): one hosted here (your own or
   another local user's) or on another instance. It has no window; it shows the challenge's
   live standings (race chart and leaderboard) and a **Join** link to the challenge page,
-  where the join flow is. Saving checks that a URL hosted here names an existing challenge
-  ("Block N: challenge not found"); a remote URL is not fetched at save time and resolves
-  best-effort when the article renders. Modelled as a post kind on the same
+  where the join flow is. The URL is stored canonically (no query string or fragment, scheme
+  and host lowercased). Saving checks that a URL hosted here names an existing challenge
+  ("Block N: challenge not found"); an edit checks only the challenge URLs the stored article
+  does not already link, so a challenge deleted since does not block later edits. A remote URL
+  is not fetched at save time and resolves best-effort when the article renders. Modelled as a post kind on the same
   storage, so an article reuses the whole feed (visibility, federation, timeline,
   permalinks). The ordered blocks live in an `article` JSONB column. Authored via
   `POST /feed/articles` / `PATCH /feed/articles/:postId` (and the `create_article` /
@@ -177,12 +179,13 @@ outbox, federation delivery, the public profile, the blog view, the Atom feed, t
 A draft may be **incomplete** (`ArticleDraftContent`): the title may be empty, a chart
 block's `metric` and a correlation block's `trigger`/`outcome` may be unset, and windows are
 not checked. **Publishing** validates it exactly like `POST /feed/articles` — the
-`CreateArticleBody` schema, then the same window checks — and on success **claims** the draft
-(deletes it and takes the deleted row in one statement, so of two concurrent publishes only
-one gets it and the other answers 404), creates the article post (its `created_at` is the
-publish time) and federates it. An invalid draft gets a 400 with the reason and is never
-claimed; if anything fails after the claim — the draft saved invalid in between, or the post
-insert — the draft is put back with the same id, content and timestamps. A draft's own `tags`
+`CreateArticleBody` schema, then the same window and challenge checks — and on success, in
+one transaction, **claims** the draft (deletes it and takes the deleted row in one statement,
+so of two concurrent publishes only one gets it and the other answers 404), validates the
+claimed row again and creates the article post (its `created_at` is the publish time); it
+federates the post after the commit. An invalid draft gets a 400 with the reason; if anything
+fails before the commit — the draft saved invalid in between, or the post insert — the
+transaction rolls back and the draft stays as it was. A draft's own `tags`
 (see [Hashtags](#hashtags)) are kept in its content and become the post's explicit tags. A published article is edited in place
 as before (`PATCH /feed/articles/:postId`); there is no unpublish-to-draft.
 

@@ -90,10 +90,8 @@ export interface FeedImageDeps {
 }
 
 /**
- * One article chart/correlation/challenge block resolved to its render inputs:
- * the block's kind and its effective `[start, end]` window (its own override,
- * else the article default), or a challenge block's URL. Prose blocks and
- * out-of-range indices don't resolve.
+ * One non-prose article block resolved to its render inputs; a windowed block's
+ * window is its own override, else the article default.
  */
 export type ResolvedArticleBlock =
   | { type: 'chart'; metric: MetricType; bucket?: string; start: Date; end: Date; updatedAt: Date }
@@ -201,12 +199,11 @@ const loadArticleForImage = async (
 }
 
 /**
- * Resolve one article chart/correlation/challenge block to its render inputs, or
- * `null` when the request isn't eligible: invalid username / non-UUID id / bad
- * index, missing DB, missing post, a non-article post, a `followers`-only post
- * without a matching capability `token`, an out-of-range or prose block, or a
- * windowed block whose effective window is unbounded / non-increasing. Pure of
- * Express — unit-testable.
+ * Resolve one article block to its render inputs, or `null` when the request
+ * isn't eligible: invalid username / non-UUID id / bad index, missing DB,
+ * missing post, a non-article post, a `followers`-only post without a matching
+ * capability `token`, an out-of-range or prose block, or a windowed block whose
+ * effective window is unbounded / non-increasing. Pure of Express.
  *
  * Unlike a shared activity's chart, an article block has NO `include_chart`
  * opt-in flag: a chart/correlation block can embed any metric over any window, so
