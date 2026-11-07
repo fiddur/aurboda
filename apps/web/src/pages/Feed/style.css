@@ -517,7 +517,10 @@
   }
 
   .feed-draft-row,
-  .feed-tabs,
+  .feed-tabs {
+    border-color: #374151;
+  }
+
   .feed-drafts-title {
     color: #d1d5db;
   }
