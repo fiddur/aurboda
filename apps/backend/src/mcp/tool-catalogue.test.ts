@@ -102,7 +102,7 @@ describe('terseInputSchema', () => {
     expect(result.properties?.tz).toEqual({ type: 'string' })
   })
 
-  test('a nullable referenced object becomes object|null with no nested properties', () => {
+  test('a nullable referenced object becomes [object, null] with no nested properties', () => {
     const result = terseInputSchema(
       withDefinitions(
         { location: { anyOf: [{ $ref: '#/definitions/Point' }, { type: 'null' }], description: 'Where' } },
@@ -115,7 +115,7 @@ describe('terseInputSchema', () => {
         },
       ),
     )
-    expect(result.properties?.location).toEqual({ description: 'Where', type: 'object|null' })
+    expect(result.properties?.location).toEqual({ description: 'Where', type: ['object', 'null'] })
     expect(JSON.stringify(result)).not.toContain('lat')
   })
 
@@ -123,7 +123,7 @@ describe('terseInputSchema', () => {
     const result = terseInputSchema(
       withDefinitions({ mode: { anyOf: [{ enum: ['a', 'b'], type: 'string' }, { type: 'null' }] } }),
     )
-    expect(result.properties?.mode).toEqual({ enum: ['a', 'b'], type: 'string|null' })
+    expect(result.properties?.mode).toEqual({ enum: ['a', 'b'], type: ['string', 'null'] })
   })
 
   test('an array of objects shows only the item type', () => {
@@ -163,7 +163,7 @@ describe('terseInputSchema', () => {
     expect(result.properties?.n).toEqual({ enum: [1, 2], type: 'number' })
   })
 
-  test('joins an array type and keeps required, dropping everything else', () => {
+  test('keeps an array type and required, dropping everything else', () => {
     const result = terseInputSchema({
       ...withDefinitions({
         limit: { default: 10, examples: [5], maximum: 100, minimum: 1, type: ['integer', 'null'] },
@@ -172,7 +172,7 @@ describe('terseInputSchema', () => {
       required: ['name'],
     })
     expect(result).toEqual({
-      properties: { limit: { type: 'integer|null' }, name: { type: 'string' } },
+      properties: { limit: { type: ['integer', 'null'] }, name: { type: 'string' } },
       required: ['name'],
       type: 'object',
     })
@@ -182,7 +182,7 @@ describe('terseInputSchema', () => {
     expect(terseInputSchema({ $schema: 'x', type: 'object' })).toEqual({ type: 'object' })
   })
 
-  test('odd property shapes fall back to any', () => {
+  test('odd property shapes fall back to any (no type)', () => {
     const result = terseInputSchema(
       withDefinitions({
         empty: {},
@@ -192,10 +192,10 @@ describe('terseInputSchema', () => {
       }),
     )
     expect(result.properties).toEqual({
-      empty: { type: 'any' },
-      missing: { type: 'any' },
-      weird: { type: 'any' },
-      wide: { type: 'any' },
+      empty: {},
+      missing: {},
+      weird: {},
+      wide: {},
     })
   })
 
@@ -203,7 +203,7 @@ describe('terseInputSchema', () => {
     const result = terseInputSchema(
       withDefinitions({ node: { $ref: '#/definitions/Loop' } }, { Loop: { $ref: '#/definitions/Loop' } }),
     )
-    expect(result.properties?.node).toEqual({ type: 'any' })
+    expect(result.properties?.node).toEqual({})
   })
 
   test('mutually recursive definitions stop at the ref already on the path', () => {
@@ -216,7 +216,7 @@ describe('terseInputSchema', () => {
         },
       ),
     )
-    expect(result.properties?.node).toEqual({ type: 'number|string' })
+    expect(result.properties?.node).toEqual({ type: ['number', 'string'] })
   })
 
   test('cuts a field description at the first sentence and 120 characters', () => {
