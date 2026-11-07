@@ -46,6 +46,7 @@ import { createAccountRouter } from '../routes/account-router.ts'
 import { createActivitiesRouter } from '../routes/activities-router.ts'
 import { createActivityTypesRouter } from '../routes/activity-types-router.ts'
 import { createAdminRouter } from '../routes/admin-router.ts'
+import { createAgentsRouter } from '../routes/agents-router.ts'
 import { createAuditLogRouter } from '../routes/audit-log-router.ts'
 import { createAutoshareRulesRouter } from '../routes/autoshare-rules-router.ts'
 import { createChallengeDataRouter } from '../routes/challenge-data-router.ts'
@@ -196,6 +197,7 @@ export const mountRestRouters = ({
   userDb,
 }: RestRoutesDeps): void => {
   httpd.use(createMetricsRouter(authMiddleware, syncProvider))
+  httpd.use(createAgentsRouter(apiBaseUrl))
   httpd.use('/icons', createIconsRouter(authMiddleware))
   httpd.use('/notes', createNotesRouter(authMiddleware))
   httpd.use('/media', createMediaRouter(authMiddleware))

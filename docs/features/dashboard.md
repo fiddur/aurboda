@@ -2,6 +2,27 @@
 
 The Dashboard is the home page for logged-in users. It presents your key health metrics, trends, and navigation links as a customizable grid of widgets organized into sections. Every user starts with a sensible default layout, but can rearrange, add, or remove widgets to surface what matters most to them.
 
+## Get started guide
+
+Above the widgets, a new account sees a **Get started** checklist of five steps, each ticked off as
+soon as Aurboda sees it happen:
+
+| Step                                | Done when                                                             |
+| ----------------------------------- | --------------------------------------------------------------------- |
+| Install the Android app             | Health Connect records arrived in the last 30 days                    |
+| Connect your watch or ring          | Garmin, Oura or Strava is connected                                   |
+| Track time at your computer         | ActivityWatch desktop screen time arrived in the last 7 days          |
+| Follow a friend or join a challenge | You follow someone or take part in a challenge                        |
+| Ask your data questions             | You press **Mark as done** (Aurboda cannot see your AI assistant ask) |
+
+The computer step carries the [one-line ActivityWatch installer](../activitywatch.md#quick-install)
+inline. The guide disappears once all five are done, or for good with **Hide this guide**. The
+dismissal and the steps marked done by hand are user settings, so REST
+(`PATCH /api/user/settings`) and MCP (`update_user_settings`) read and set them too:
+`onboarding_dismissed_at` (an ISO date-time; `null` shows the guide again) and
+`onboarding_manual_done` (step ids: `android_app`, `wearable`, `computer_time`, `social`,
+`ask_ai`). While the guide shows, it makes a few small requests; once it is hidden, none.
+
 ## Default Layout
 
 New users see four sections out of the box:
