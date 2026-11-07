@@ -128,6 +128,7 @@ export const cleanTestDb = async (): Promise<void> => {
     'autoshare_rules',
     'autoshare_suppressions',
     'feed_posts',
+    'article_drafts',
     'feed_actor',
     'feed_follower',
     'feed_following',

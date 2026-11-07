@@ -240,6 +240,18 @@ export const socialTables: Record<string, string> = {
   feed_posts_exercise_column: `
     ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS exercise JSONB;
   `,
+  // Unpublished article drafts: private work in progress, kept out of feed_posts
+  // so no feed, outbox, timeline or public listing can ever see one. Publishing
+  // creates a feed_posts row and deletes the draft.
+  article_drafts: `
+    CREATE TABLE IF NOT EXISTS article_drafts (
+      id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      article     JSONB NOT NULL,
+      visibility  VARCHAR(12) NOT NULL DEFAULT 'public',
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
   // The owner's own replies to one target, for the thread-snapshot merge.
   feed_posts_reply_indexes: `
     CREATE INDEX IF NOT EXISTS idx_feed_posts_in_reply_to

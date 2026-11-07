@@ -454,7 +454,7 @@ ignored and `feed_following.avatar_url` is frozen at follow time (#1057).
   window."; a null window → "This correlation has no time window."
 - Render DOM: `svg.article-scatter` with one `circle` per aligned day, a regression `line` stroke
   `#e0457b`, `.article-scatter-annot`, two `.article-scatter-axis` labels.
-- **Composer** (#948): `/feed` → **New article** → **+ Correlation**. Trigger input is
+- **Composer** (#948): `/feed` → **Write an article** → **+ Correlation**. Trigger input is
   `input[list="selector-pattern-options-activity"]` (the id is kind-suffixed), outcome metric
   input `input[list="selector-metric-options"]`, lag
   `input[placeholder="0 — days the outcome lags the trigger"]`, and the block window is the

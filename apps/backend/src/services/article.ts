@@ -9,7 +9,7 @@
  * article is rejected at the write boundary rather than failing later at render
  * time. Pure and synchronous — unit-testable without a DB.
  */
-import type { ArticleBlock, ArticleContent, FeedVisibility, UpdateArticleBody } from '@aurboda/api-spec'
+import type { ArticleBlock, ArticleContent, FeedVisibility } from '@aurboda/api-spec'
 
 import { describeSelectorAxis, getMetricDisplayName } from '@aurboda/api-spec'
 
@@ -102,14 +102,24 @@ export const buildArticleContent = (content: ArticleContent): BuildArticleResult
   return { article: content, ok: true }
 }
 
+interface ArticleFields<B> {
+  blocks: B[]
+  title: string
+  default_start?: string
+  default_end?: string
+}
+
 /**
- * Apply an update patch onto the stored article, replacing only the provided
- * fields (title / blocks / default window); an omitted field keeps its stored
- * value. `visibility` is a separate post column, handled by the caller. The
- * merged content still goes through `buildArticleContent` for validation.
+ * Apply an update patch onto the stored article (or draft), replacing only the
+ * provided fields (title / blocks / default window); an omitted field keeps its
+ * stored value. `visibility` is a separate column, handled by the caller. A
+ * published article's merged content still goes through `buildArticleContent`.
  */
-export const mergeArticleContent = (existing: ArticleContent, patch: UpdateArticleBody): ArticleContent => {
-  const merged: ArticleContent = {
+export const mergeArticleContent = <B>(
+  existing: ArticleFields<B>,
+  patch: Partial<ArticleFields<B>>,
+): ArticleFields<B> => {
+  const merged: ArticleFields<B> = {
     blocks: patch.blocks ?? existing.blocks,
     title: patch.title ?? existing.title,
   }
