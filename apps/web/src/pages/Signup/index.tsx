@@ -6,11 +6,27 @@ import {
   ensureStatusLoaded,
   serverBilling,
   signup,
+  type SignupMode,
   signupMode,
   signupWithPasskey,
+  statusFailed,
 } from '../../state/auth'
 import { signupBillingLine } from '../../utils/plan'
 import './style.css'
+
+/** Why this visitor cannot sign up here, or null when the form applies (also while the status loads). */
+const signupUnavailableReason = (
+  mode: SignupMode | undefined,
+  failed: boolean,
+  invitation: string | undefined,
+): string | null => {
+  if (mode === undefined) return failed ? "Couldn't reach the server, try again." : null
+  if (mode === 'closed') return 'Signup is currently closed on this server.'
+  if (mode === 'invite_only' && !invitation) {
+    return 'This server requires an invitation to sign up. Please ask an administrator for an invitation link.'
+  }
+  return null
+}
 
 export function Signup() {
   const { route, query } = useLocation()
@@ -36,25 +52,12 @@ export function Signup() {
 
   const billingLine = signupBillingLine(serverBilling.value)
 
-  if (signupMode.value === 'closed') {
+  const unavailable = signupUnavailableReason(signupMode.value, statusFailed.value, invitation)
+  if (unavailable) {
     return (
       <div class="signup-page">
         <h1>Sign Up</h1>
-        <p class="not-available">Signup is currently closed on this server.</p>
-        <p class="login-link">
-          Already have an account? <a href="/login">Login</a>
-        </p>
-      </div>
-    )
-  }
-
-  if (signupMode.value === 'invite_only' && !invitation) {
-    return (
-      <div class="signup-page">
-        <h1>Sign Up</h1>
-        <p class="not-available">
-          This server requires an invitation to sign up. Please ask an administrator for an invitation link.
-        </p>
+        <p class="not-available">{unavailable}</p>
         <p class="login-link">
           Already have an account? <a href="/login">Login</a>
         </p>
