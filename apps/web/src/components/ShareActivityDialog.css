@@ -94,7 +94,7 @@
 }
 
 .share-dialog-checkbox input[type='checkbox'] {
-  accent-color: #673ab8;
+  accent-color: var(--color-accent);
 }
 
 .share-dialog-error {

@@ -86,8 +86,8 @@
 }
 
 .widget-template:hover {
-  border-color: #673ab8;
-  background: #faf5ff;
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
 }
 
 .template-label {
@@ -114,7 +114,7 @@
   background: none;
   border: none;
   cursor: pointer;
-  color: #673ab8;
+  color: var(--color-accent);
   font-size: 0.875rem;
   padding: 0;
   margin-bottom: 0.5rem;
@@ -155,8 +155,8 @@
 .form-group input:focus,
 .form-group select:focus {
   outline: none;
-  border-color: #673ab8;
-  box-shadow: 0 0 0 3px rgba(103, 58, 184, 0.1);
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 10%, transparent);
 }
 
 .form-group input[type='color'] {
@@ -166,7 +166,7 @@
 }
 
 .btn-primary {
-  background: #673ab8;
+  background: var(--color-primary);
   color: white;
   border: none;
   padding: 0.625rem 1.25rem;
@@ -177,7 +177,7 @@
 }
 
 .btn-primary:hover {
-  background: #5b32a3;
+  background: var(--color-primary-hover);
 }
 
 .btn-secondary {
@@ -227,21 +227,12 @@
     border-color: #374151;
   }
 
-  .widget-template:hover {
-    border-color: #8b5cf6;
-    background: #1e1b4b;
-  }
-
   .template-label {
     color: #f9fafb;
   }
 
   .template-description {
     color: #9ca3af;
-  }
-
-  .back-btn {
-    color: #a855f7;
   }
 
   .form-group label {
@@ -257,8 +248,7 @@
 
   .form-group input:focus,
   .form-group select:focus {
-    border-color: #8b5cf6;
-    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.2);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 20%, transparent);
   }
 
   .btn-secondary {

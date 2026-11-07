@@ -9,6 +9,7 @@ import { ConfirmButton } from '../../components/ConfirmButton'
 import { ReferenceRangeBar } from '../../components/ReferenceRangeBar'
 import { SparklineChart } from '../../components/SparklineChart'
 import { deleteReport, fetchReport, fetchReports, type Report } from '../../state/api'
+import { CHART_PRIMARY } from '../../theme'
 import { NotesSection } from '../EntityDetail/NotesSection'
 import './ReportDetail.css'
 
@@ -128,7 +129,7 @@ function EntryRow({
       </div>
       <div class="report-entry-sparkline">
         {sparklineData && sparklineData.length >= 2 && (
-          <SparklineChart data={sparklineData} color="#673ab8" width={80} height={24} />
+          <SparklineChart data={sparklineData} color={CHART_PRIMARY} width={80} height={24} />
         )}
       </div>
       <div class="report-entry-range">
@@ -177,7 +178,7 @@ function EntryCard({
       </div>
       {sparklineData && sparklineData.length >= 2 && (
         <div class="report-entry-card-sparkline">
-          <SparklineChart data={sparklineData} color="#673ab8" width={120} height={28} />
+          <SparklineChart data={sparklineData} color={CHART_PRIMARY} width={120} height={28} />
         </div>
       )}
       <ReferenceRangeBar

@@ -164,7 +164,7 @@ const avatarBadge = (dataUri: string): El => ({
   type: 'img',
 })
 
-const DEFAULT_GRADIENT: ChallengeTheme['gradient'] = ['#4c1d95', '#673ab8', '#8b5cf6']
+const DEFAULT_GRADIENT: ChallengeTheme['gradient'] = ['#0b1a30', '#0f2a4f', '#17707a']
 
 const MAX_STANDINGS_ROWS = 3
 // Name column (260) + bar + gap (20) + total label must fit the 1040px content width.

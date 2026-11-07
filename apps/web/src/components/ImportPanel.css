@@ -29,7 +29,7 @@
 }
 
 .import-panel-attribution a {
-  color: #673ab8;
+  color: var(--color-accent);
 }
 
 .import-job {

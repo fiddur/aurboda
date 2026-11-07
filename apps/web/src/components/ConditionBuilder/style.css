@@ -41,7 +41,7 @@
 
 .condition-kind-select:focus {
   outline: none;
-  border-color: #673ab8;
+  border-color: var(--color-accent);
 }
 
 .condition-remove-btn {
@@ -78,8 +78,8 @@
 
 .condition-field-select:focus {
   outline: none;
-  border-color: #673ab8;
-  box-shadow: 0 0 0 2px rgba(103, 58, 184, 0.2);
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
 }
 
 .condition-field-input {
@@ -95,8 +95,8 @@
 
 .condition-field-input:focus {
   outline: none;
-  border-color: #673ab8;
-  box-shadow: 0 0 0 2px rgba(103, 58, 184, 0.2);
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
 }
 
 .condition-data-fields {
@@ -153,15 +153,11 @@
 @media (prefers-color-scheme: dark) {
   .condition-card {
     border-color: #333;
-    background: #1a1a2e;
+    background: var(--color-surface);
   }
 
   .condition-kind-select {
     border-color: #4b5563;
-  }
-
-  .condition-kind-select:focus {
-    border-color: #8b5cf6;
   }
 
   .condition-field-select {
@@ -169,8 +165,7 @@
   }
 
   .condition-field-select:focus {
-    border-color: #8b5cf6;
-    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.3);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 30%, transparent);
   }
 
   .condition-field-input {
@@ -178,8 +173,7 @@
   }
 
   .condition-field-input:focus {
-    border-color: #8b5cf6;
-    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.3);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 30%, transparent);
   }
 
   .condition-and {

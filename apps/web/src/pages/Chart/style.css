@@ -64,8 +64,8 @@
 .chart-controls select:focus,
 .chart-controls input:focus {
   outline: none;
-  border-color: #8b5cf6;
-  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 10%, transparent);
 }
 
 .chart-type-toggle {
@@ -93,7 +93,7 @@
 }
 
 .chart-type-btn.active {
-  background: #8b5cf6;
+  background: var(--color-primary);
   color: #fff;
 }
 
@@ -213,7 +213,7 @@
 .chart-login-prompt a {
   display: inline-block;
   padding: 0.625rem 1.5rem;
-  background: #8b5cf6;
+  background: var(--color-primary);
   color: #fff;
   border-radius: 6px;
   text-decoration: none;
@@ -221,7 +221,7 @@
 }
 
 .chart-login-prompt a:hover {
-  background: #7c3aed;
+  background: var(--color-primary);
 }
 
 .add-to-dashboard-row {
@@ -236,7 +236,7 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.625rem 1.25rem;
-  background: #673ab8;
+  background: var(--color-primary);
   color: #fff;
   border: none;
   border-radius: 6px;
@@ -247,7 +247,7 @@
 }
 
 .btn-add-to-dashboard:hover {
-  background: #5b32a3;
+  background: var(--color-primary-hover);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -392,7 +392,7 @@
 
 .goal-form-actions .btn-save {
   padding: 0.5rem 1rem;
-  background: #673ab8;
+  background: var(--color-primary);
   border: none;
   border-radius: 4px;
   color: #fff;

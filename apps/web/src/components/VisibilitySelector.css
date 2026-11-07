@@ -41,7 +41,7 @@
 }
 
 .visibility-selector .visibility-option input[type='radio'] {
-  accent-color: #673ab8;
+  accent-color: var(--color-accent);
   margin-top: 0.15rem;
 }
 

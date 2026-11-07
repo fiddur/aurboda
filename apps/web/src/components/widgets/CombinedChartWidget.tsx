@@ -4,6 +4,7 @@ import { useQueries, type UseQueryResult } from '@tanstack/react-query'
 import { useCallback, useMemo } from 'preact/hooks'
 
 import { fetchChartData, fetchTrend } from '../../state/api'
+import { CHART_PRIMARY } from '../../theme'
 import { BarChart } from '../charts/BarChart'
 import { barsFetchParams, trendFetchParams } from './chartFetchParams'
 import { measureChartTitle } from './chartTitle'
@@ -39,7 +40,7 @@ export function CombinedChartView({ config, data }: CombinedChartViewProps) {
       <h4>{combinedChartTitle(config)}</h4>
       <BarChart
         data={bars?.buckets ?? NO_BUCKETS}
-        color="#8b5cf6"
+        color={CHART_PRIMARY}
         height={200}
         bucketSize={bars?.bucketSize}
         rangeStart={range.start}

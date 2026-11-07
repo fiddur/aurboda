@@ -133,8 +133,8 @@
 
 .activity-type-meta-text-input:focus {
   outline: none;
-  border-color: #673ab8;
-  box-shadow: 0 0 0 2px rgba(103, 58, 184, 0.2);
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
 }
 
 .activity-type-meta-icon-row {
@@ -172,7 +172,7 @@
 .activity-type-meta-timeline-toggle input[type='checkbox'] {
   width: 1rem;
   height: 1rem;
-  accent-color: #673ab8;
+  accent-color: var(--color-accent);
   cursor: pointer;
 }
 
@@ -268,7 +268,7 @@
 .activity-type-meta-page .btn-primary {
   padding: 0.5rem 1rem;
   font-size: 0.85rem;
-  background: #673ab8;
+  background: var(--color-primary);
   color: white;
   border: none;
   border-radius: 4px;
@@ -276,7 +276,7 @@
 }
 
 .activity-type-meta-page .btn-primary:hover:not(:disabled) {
-  background: #5a32a3;
+  background: var(--color-primary-hover);
 }
 
 .activity-type-meta-page .btn-primary:disabled {
@@ -465,8 +465,7 @@
   }
 
   .activity-type-meta-text-input:focus {
-    border-color: #8b5cf6;
-    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.3);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 30%, transparent);
   }
 
   .activity-type-meta-field-label {

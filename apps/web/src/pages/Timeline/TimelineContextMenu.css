@@ -33,7 +33,7 @@
 }
 
 .timeline-context-menu-item:hover {
-  background: rgba(103, 58, 184, 0.12);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
 }
 
 @media (prefers-color-scheme: dark) {

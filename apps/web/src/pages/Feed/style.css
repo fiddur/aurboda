@@ -17,7 +17,7 @@
 }
 
 .feed-intro code {
-  background: rgba(103, 58, 184, 0.1);
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
   padding: 0.05rem 0.3rem;
   border-radius: 4px;
 }
@@ -232,16 +232,16 @@
   padding: 0.4rem 1rem;
   border: none;
   border-radius: 999px;
-  background: #673ab8;
+  background: var(--color-primary);
   color: #fff;
   font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 1px 4px rgba(103, 58, 184, 0.3);
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--color-accent) 30%, transparent);
 }
 
 .timeline-new-pill:hover {
-  background: #5a2fa0;
+  background: var(--color-primary-hover);
 }
 
 @media (prefers-color-scheme: dark) {

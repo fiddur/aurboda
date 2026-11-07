@@ -20,7 +20,7 @@
 .btn-restore {
   padding: 0.375rem 0.75rem;
   font-size: 0.8rem;
-  background: #673ab8;
+  background: var(--color-primary);
   color: white;
   border: none;
   border-radius: 4px;
@@ -29,7 +29,7 @@
 }
 
 .btn-restore:hover:not(:disabled) {
-  background: #5e35b1;
+  background: var(--color-primary-hover);
 }
 
 .btn-restore:disabled {
@@ -51,7 +51,7 @@
 .entity-type-badge {
   display: inline-block;
   padding: 0.2rem 0.6rem;
-  background: #673ab8;
+  background: var(--color-primary);
   color: white;
   border-radius: 12px;
   font-size: 0.75rem;
@@ -62,7 +62,7 @@
 }
 
 a.entity-type-badge:hover {
-  background: #7c4dcd;
+  background: var(--color-primary-hover);
 }
 
 .entity-source {
@@ -106,7 +106,7 @@ a.entity-type-badge:hover {
 }
 
 .entity-meta-link:hover {
-  border-bottom-color: #673ab8;
+  border-bottom-color: var(--color-accent);
 }
 
 .entity-title-link {
@@ -115,11 +115,11 @@ a.entity-type-badge:hover {
 }
 
 .entity-title-link:hover {
-  color: #673ab8;
+  color: var(--color-accent);
 }
 
 .category-link {
-  color: #673ab8;
+  color: var(--color-accent);
   text-decoration: none;
 }
 
@@ -177,7 +177,7 @@ a.entity-type-badge:hover {
   background: none;
   padding: 0;
   font: inherit;
-  color: #673ab8;
+  color: var(--color-accent);
   text-decoration: underline;
   cursor: pointer;
 }
@@ -350,8 +350,8 @@ details.list-field-detail:not([open]) > summary h3 {
   display: inline-block;
   padding: 0.25rem 0.75rem;
   margin-bottom: 1rem;
-  background: #ede9fe;
-  color: #5b21b6;
+  background: var(--color-accent-soft);
+  color: var(--color-accent-hover);
   border-radius: 999px;
   font-size: 0.8rem;
   font-weight: 500;
@@ -716,7 +716,7 @@ details.list-field-detail:not([open]) > summary h3 {
 .btn-primary {
   padding: 0.5rem 1rem;
   font-size: 0.85rem;
-  background: #673ab8;
+  background: var(--color-primary);
   color: white;
   border: none;
   border-radius: 4px;
@@ -725,7 +725,7 @@ details.list-field-detail:not([open]) > summary h3 {
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #5e35b1;
+  background: var(--color-primary-hover);
 }
 
 .btn-primary:disabled {
@@ -767,8 +767,8 @@ a.btn-secondary {
 }
 
 .btn-edit:hover:not(:disabled) {
-  background: #673ab8;
-  border-color: #673ab8;
+  background: var(--color-primary);
+  border-color: var(--color-primary);
   color: white;
 }
 
@@ -793,8 +793,8 @@ a.btn-secondary {
 
 .edit-title-input:focus {
   outline: none;
-  border-color: #673ab8;
-  box-shadow: 0 0 0 2px rgba(103, 58, 184, 0.2);
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
 }
 
 .edit-datetime-input {
@@ -808,8 +808,8 @@ a.btn-secondary {
 
 .edit-datetime-input:focus {
   outline: none;
-  border-color: #673ab8;
-  box-shadow: 0 0 0 2px rgba(103, 58, 184, 0.2);
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
 }
 
 .edit-value-input {
@@ -825,8 +825,8 @@ a.btn-secondary {
 
 .edit-value-input:focus {
   outline: none;
-  border-color: #673ab8;
-  box-shadow: 0 0 0 2px rgba(103, 58, 184, 0.2);
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
 }
 
 .edit-value-unit {
@@ -877,7 +877,7 @@ a.btn-secondary {
 }
 
 .location-link:hover {
-  border-bottom-color: #673ab8;
+  border-bottom-color: var(--color-accent);
 }
 
 .location-list {
@@ -897,7 +897,7 @@ a.btn-secondary {
 }
 
 .location-entry:hover {
-  color: #673ab8;
+  color: var(--color-accent);
 }
 
 .location-name {
@@ -931,10 +931,6 @@ a.btn-secondary {
 
   .entity-info h2 {
     color: #f3f4f6;
-  }
-
-  .entity-meta-link:hover {
-    border-bottom-color: #8b5cf6;
   }
 
   .entity-subtitle {
@@ -974,24 +970,12 @@ a.btn-secondary {
     color: #fde68a;
   }
 
-  .link-button {
-    color: #a78bfa;
-  }
-
   .location-link {
     color: #d1d5db;
   }
 
-  .location-link:hover {
-    border-bottom-color: #8b5cf6;
-  }
-
   .location-entry {
     color: #d1d5db;
-  }
-
-  .location-entry:hover {
-    color: #8b5cf6;
   }
 
   .location-duration {
@@ -1063,11 +1047,6 @@ a.btn-secondary {
     border-color: #374151;
   }
 
-  .merged-indicator {
-    background: #2e1065;
-    color: #c4b5fd;
-  }
-
   .source-records {
     border-color: #374151;
   }
@@ -1099,8 +1078,6 @@ a.btn-secondary {
   }
 
   .btn-edit:hover:not(:disabled) {
-    background: #8b5cf6;
-    border-color: #8b5cf6;
     color: white;
   }
 
@@ -1109,8 +1086,7 @@ a.btn-secondary {
   }
 
   .edit-title-input:focus {
-    border-color: #8b5cf6;
-    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.3);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 30%, transparent);
   }
 
   .edit-datetime-input {
@@ -1118,8 +1094,7 @@ a.btn-secondary {
   }
 
   .edit-datetime-input:focus {
-    border-color: #8b5cf6;
-    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.3);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 30%, transparent);
   }
 
   .edit-value-input {
@@ -1127,8 +1102,7 @@ a.btn-secondary {
   }
 
   .edit-value-input:focus {
-    border-color: #8b5cf6;
-    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.3);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 30%, transparent);
   }
 
   .edit-value-unit {
@@ -1289,8 +1263,8 @@ a.btn-secondary {
   gap: 0.25rem;
   padding: 0.125rem 0.5rem;
   border-radius: 999px;
-  background: #ede9fe;
-  color: #5b21b6;
+  background: var(--color-accent-soft);
+  color: var(--color-accent-hover);
 }
 
 .run-category-chip.manual {
@@ -1343,11 +1317,6 @@ a.btn-secondary {
 }
 
 @media (prefers-color-scheme: dark) {
-  .run-category-chip {
-    background: #3b0764;
-    color: #ddd6fe;
-  }
-
   .run-category-chip.manual {
     background: #0c4a6e;
     color: #bae6fd;

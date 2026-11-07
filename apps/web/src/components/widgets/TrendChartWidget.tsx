@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'preact/hooks'
 
 import { fetchTrend } from '../../state/api'
+import { CHART_PRIMARY } from '../../theme'
 import { buildChartUrl, type ChartOrigin } from '../../utils/chart-url'
 import { BreakdownLegend, SERIES_COLORS } from '../charts/breakdown'
 import { TrendLineChart } from '../charts/TrendLineChart'
@@ -61,10 +62,16 @@ export function TrendChartView({ config, data, href }: TrendChartViewProps) {
       {breakdownSeries && multiSeries ? (
         <>
           <BreakdownLegend series={breakdownSeries} />
-          <TrendLineChart data={NO_POINTS} color="#673ab8" height={150} compact multiSeries={multiSeries} />
+          <TrendLineChart
+            data={NO_POINTS}
+            color={CHART_PRIMARY}
+            height={150}
+            compact
+            multiSeries={multiSeries}
+          />
         </>
       ) : (
-        <TrendLineChart data={data?.history ?? NO_POINTS} color="#673ab8" height={150} compact />
+        <TrendLineChart data={data?.history ?? NO_POINTS} color={CHART_PRIMARY} height={150} compact />
       )}
     </>
   )

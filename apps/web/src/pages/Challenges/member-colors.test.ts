@@ -10,7 +10,7 @@ describe('memberColor', () => {
   })
 
   test('members nine to sixteen get the same hues lightened, distinct from the first round', () => {
-    expect(memberColor(8)).toBe('#b495f9')
+    expect(memberColor(8)).toBe('#75c0c6')
     expect(memberColor(9)).toBe('#64d2ad')
     expect(memberColor(15)).toBe('#afde68')
     const sixteen = Array.from({ length: 16 }, (_, i) => memberColor(i))

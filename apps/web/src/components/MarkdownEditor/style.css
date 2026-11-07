@@ -27,8 +27,8 @@
 }
 
 .md-editor-tab.active {
-  color: #673ab8;
-  border-bottom-color: #673ab8;
+  color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
   background: #fff;
 }
 
@@ -101,7 +101,7 @@
 }
 
 .md-editor-preview a {
-  color: #673ab8;
+  color: var(--color-accent);
 }
 
 .md-editor-preview blockquote {
@@ -130,8 +130,6 @@
   }
 
   .md-editor-tab.active {
-    color: #a78bfa;
-    border-bottom-color: #a78bfa;
     background: #111827;
   }
 

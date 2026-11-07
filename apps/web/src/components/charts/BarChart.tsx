@@ -5,6 +5,7 @@
 import * as d3 from 'd3'
 import { useEffect, useRef } from 'preact/hooks'
 
+import { CHART_PRIMARY } from '../../theme'
 import {
   type BarChartLine,
   type BarLinePoint,
@@ -274,7 +275,7 @@ function renderMultiSeriesBars(
 
 export function BarChart({
   data,
-  color = '#8b5cf6',
+  color = CHART_PRIMARY,
   height = 300,
   bucketSize = '1d',
   rangeStart,

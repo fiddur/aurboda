@@ -18,12 +18,13 @@ import type { FeedStructuredArticle, FeedStructuredArticleBlock } from '@aurboda
 import { useMemo } from 'preact/hooks'
 
 import { TrendLineChart } from '../../components/charts/TrendLineChart'
+import { CHART_PRIMARY } from '../../theme'
 import { renderRemoteMarkdown } from '../../utils/markdown'
 import { getMetricDisplayName } from '../../utils/metricLabels'
 import { CorrelationScatterSvg } from './ArticleCorrelationBlock'
 import './FeedPostCard.css' // `.article-prose` / `.article-chart*` / `.article-scatter*`
 
-const CHART_COLOR = '#673ab8'
+const CHART_COLOR = CHART_PRIMARY
 
 type ChartBlock = Extract<FeedStructuredArticleBlock, { type: 'chart' }>
 

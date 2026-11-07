@@ -6,12 +6,13 @@ import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 import { useCallback, useEffect, useRef } from 'preact/hooks'
 
+import { CHART_PRIMARY } from '../../theme'
 import { interpolatePosition } from './chart-utils'
 import { useInView } from './useInView'
 import './RouteMap.css'
 
 const MIN_POINTS_FOR_PATH = 2
-const PATH_COLOR = '#673ab8'
+const PATH_COLOR = CHART_PRIMARY
 const PATH_WEIGHT = 3
 const PATH_OPACITY = 0.8
 const FIT_BOUNDS_PADDING = 20

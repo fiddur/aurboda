@@ -41,7 +41,7 @@
 }
 
 .route-row:hover .route-name {
-  color: #673ab8;
+  color: var(--color-accent);
 }
 
 .route-name {
@@ -135,10 +135,6 @@
   .route-efforts th,
   .route-efforts td {
     border-color: #374151;
-  }
-
-  .route-row:hover .route-name {
-    color: #a78bfa;
   }
 }
 

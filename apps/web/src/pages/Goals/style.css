@@ -18,7 +18,7 @@
 }
 
 .goals-page .no-goals a {
-  color: #673ab8;
+  color: var(--color-accent);
 }
 
 .goals-list {
@@ -141,7 +141,7 @@
 }
 
 .goals-footer a {
-  color: #673ab8;
+  color: var(--color-accent);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -187,18 +187,18 @@
 }
 
 .goal-card:hover .goal-progress {
-  box-shadow: 0 0 0 1px #c4b5fd;
+  box-shadow: 0 0 0 1px var(--color-accent);
 }
 
 .goal-card:focus-visible {
-  outline: 2px solid #673ab8;
+  outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
 
 .goal-card[aria-expanded='true'] .goal-progress {
   border-bottom-left-radius: 0;
   border-bottom-right-radius: 0;
-  box-shadow: 0 0 0 1px #673ab8;
+  box-shadow: 0 0 0 1px var(--color-accent);
 }
 
 .goal-history-panel {
@@ -232,7 +232,7 @@
 }
 
 .range-toggle button[aria-pressed='true'] {
-  background: #673ab8;
+  background: var(--color-primary);
   color: white;
 }
 
