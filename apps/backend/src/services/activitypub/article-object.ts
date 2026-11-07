@@ -151,9 +151,8 @@ export const renderArticleContentHtml = (article: ArticleContent): string => {
 }
 
 /**
- * Image attachments for an article's chart/correlation/challenge blocks: one PNG
- * per block (a challenge block's is its standings race chart), pointing at the
- * gated on-demand endpoint (`/feed/<id>/blocks/<index>/image.png`).
+ * Image attachments for an article's non-prose blocks, pointing at the gated
+ * on-demand endpoint (`/feed/<id>/blocks/<index>/image.png`).
  * `public`/`unlisted` are served unauthenticated; a `followers`-only article's URLs
  * carry the post's unguessable capability `?token=` (the fediverse fetches media
  * unsigned), embedded only in the object delivered to followers.

@@ -17,6 +17,7 @@ import type {
  * resolving rather than cascading a delete.
  */
 import type { AutoshareCandidate } from './autoshare-rules.ts'
+import type { Queryable } from './pool.ts'
 
 import { query } from './connection.ts'
 
@@ -189,9 +190,12 @@ export const createFeedPost = async (user: string, input: FeedPostInput): Promis
  * article payload (title + default window + blocks) in the `article` JSONB. The
  * `kind`/`activity_id`/metric columns fall to their table defaults where not set.
  */
-export const createArticlePost = async (user: string, input: ArticlePostInput): Promise<FeedPostRecord> => {
+export const createArticlePost = async (
+  db: Queryable | string,
+  input: ArticlePostInput,
+): Promise<FeedPostRecord> => {
   const result = await query<FeedPostRow>(
-    user,
+    db,
     `INSERT INTO feed_posts (kind, visibility, article, tags)
      VALUES ('article', $1, $2, $3)
      RETURNING ${FEED_POST_COLUMNS}`,

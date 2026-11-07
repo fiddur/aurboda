@@ -296,7 +296,9 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
       if (!existing || existing.kind !== 'article' || existing.article == null) {
         return errorResponse('Article not found')
       }
-      const built = await validateArticleContent(mergeArticleContent(existing.article, body))
+      const built = await validateArticleContent(mergeArticleContent(existing.article, body), {
+        stored: existing.article,
+      })
       if (!built.ok) return errorResponse(built.error)
       const record = await updateFeedPost(user, id, {
         article: built.article,
