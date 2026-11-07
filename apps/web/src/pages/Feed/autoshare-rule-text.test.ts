@@ -8,6 +8,7 @@ import {
   newDataFilterRow,
   rowToDataFilter,
   ruleSummary,
+  ruleTagsText,
 } from './autoshare-rule-text'
 
 describe('rowToDataFilter', () => {
@@ -114,5 +115,13 @@ describe('ruleSummary', () => {
 
   it('states the max age', () => {
     expect(ruleSummary(rule({ max_age_hours: 72 }))).toBe('yoga, ended within 72 h → followers')
+  })
+})
+
+describe('ruleTagsText', () => {
+  it('names own tags, none, or the defaults', () => {
+    expect(ruleTagsText(['running', 'outdoors'])).toBe('#running #outdoors')
+    expect(ruleTagsText([])).toBe('no tags')
+    expect(ruleTagsText(null)).toBe('your default tags')
   })
 })

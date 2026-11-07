@@ -81,6 +81,16 @@ stays light: it is built against a day/night-themed context
 app's `prefers-color-scheme` resolves to dark when the system is dark and its own
 dark CSS applies (the page declares `color-scheme: light dark`).
 
+### JS dialogs and file inputs
+
+A WebView without a `WebChromeClient` suppresses every JavaScript dialog —
+`confirm()` returns `false`, `prompt()` returns `null`, `alert()` shows nothing —
+and every `<input type="file">`. `EmbeddedWebScreen` installs one
+(`ui/screens/EmbeddedWebChrome.kt`) that shows `alert`/`confirm`/`prompt` as
+native dialogs (back or an outside tap counts as Cancel) and backs file inputs,
+including `multiple`, with the system picker. Embedded pages can therefore keep
+using the browser's own dialogs and file inputs.
+
 ### Page height and `vh` units
 
 The WebView can resolve CSS viewport units (`100vh`, `40vh`) and the `%` height

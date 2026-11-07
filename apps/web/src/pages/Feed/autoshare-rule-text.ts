@@ -1,5 +1,7 @@
 import type { AutoshareDataFilter, AutoshareRule } from '@aurboda/api-spec'
 
+import { formatTagsInput } from '../../components/hashtags'
+
 export type DataFilterOperator = AutoshareDataFilter['operator']
 
 export interface DataFilterRow {
@@ -62,4 +64,10 @@ export const ruleSummary = (
   for (const filter of rule.data_filters) predicate.push(dataFilterSummary(filter, labelFor(filter.field)))
   predicate.push(`ended within ${rule.max_age_hours} h`)
   return `${predicate.join(', ')} → ${rule.visibility}`
+}
+
+/** The tags a rule's posts get: its own, none, or the owner's defaults. */
+export const ruleTagsText = (tags: AutoshareRule['tags']): string => {
+  if (tags === null) return 'your default tags'
+  return tags.length > 0 ? formatTagsInput(tags) : 'no tags'
 }
