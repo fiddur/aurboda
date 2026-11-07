@@ -183,6 +183,17 @@ describe('Feed federation actor + WebFinger', () => {
     expect(doc.manuallyApprovesFollowers).toBe(true)
   })
 
+  test('names the actor by the display name, and leaves the name out without one', async () => {
+    const user = getTestUser()
+    const without = (await (await fetchAs2(`/users/${user}`)).json()) as Record<string, unknown>
+    expect(without.name).toBeUndefined()
+
+    await upsertUserSettings(user, { display_name: 'Ada Lovelace' })
+    const named = (await (await fetchAs2(`/users/${user}`)).json()) as Record<string, unknown>
+    expect(named.name).toBe('Ada Lovelace')
+    expect(named.preferredUsername).toBe(user)
+  })
+
   test('builds https URLs from the canonical origin even when the request arrives over http', async () => {
     // Simulates a request reaching the backend over loopback http behind a
     // TLS-terminating proxy; the pinned origin must still yield https URLs

@@ -27,7 +27,7 @@ import type { InvitationAuth } from '../services/invitation.ts'
 import type { NamedLocationsChanged } from '../services/locations.ts'
 import type { OuraWebhookManager } from '../services/oura-webhook-manager.ts'
 import type { SyncProvider } from '../services/queries/index.ts'
-import type { HrSettingsChanged } from '../services/settings.ts'
+import type { HrSettingsChanged, ProfileChanged } from '../services/settings.ts'
 import type { TimelineHub } from '../services/timeline-hub.ts'
 import type { RetroEnrichTrigger } from '../services/timeline-retro-enrich.ts'
 import type { WebAuthnService } from '../services/webauthn.ts'
@@ -150,8 +150,8 @@ interface RestRoutesDeps {
   reactionActions: ReactionActions
   timelineHub: TimelineHub
   retroEnrichTimeline: RetroEnrichTrigger
-  /** Fire-and-forget: federate an `Update{Person}` after an avatar change. */
-  onAvatarChanged: (user: string) => void
+  /** Fire-and-forget: federate an `Update{Person}` after an avatar or display-name change. */
+  onProfileChanged: ProfileChanged
   /** Merge-group/window resolution behind the auto-share rule preview (#903). */
   autosharePreviewDeps: AutosharePreviewDeps
   /** Fire-and-forget: recompute activity features after HR zones, birth date or maf_hr change. */
@@ -186,7 +186,7 @@ export const mountRestRouters = ({
   followActions,
   followerActions,
   reactionActions,
-  onAvatarChanged,
+  onProfileChanged,
   onHrSettingsChanged,
   onNamedLocationsChanged,
   retroEnrichTimeline,
@@ -235,15 +235,15 @@ export const mountRestRouters = ({
   )
   httpd.use('/autoshare-rules', createAutoshareRulesRouter(authMiddleware, autosharePreviewDeps))
   httpd.use('/locations', createLocationsRouter(authMiddleware, onNamedLocationsChanged))
-  httpd.use(createSettingsRouter(authMiddleware, onHrSettingsChanged))
+  httpd.use(createSettingsRouter(authMiddleware, onHrSettingsChanged, onProfileChanged))
   httpd.use(createAuditLogRouter(authMiddleware))
   httpd.use('/export', createExportRouter({ authMiddleware, ...dataExport }))
-  httpd.use('/account', createAccountRouter(authMiddleware, accountDeleter, accountPlans))
+  httpd.use('/account', createAccountRouter(authMiddleware, accountDeleter, accountPlans, centralDb))
   httpd.use(createRawRecordsRouter(authMiddleware))
   httpd.use('/dashboard', createDashboardRouter(authMiddleware))
   httpd.use('/shared-dashboards', createSharedDashboardsRouter(authMiddleware, webHost))
   httpd.use('/shared-exercises', createSharedExercisesRouter(authMiddleware, webHost))
-  httpd.use('/profile', createProfileRouter(authMiddleware, webHost, onAvatarChanged))
+  httpd.use('/profile', createProfileRouter(authMiddleware, webHost, onProfileChanged))
   // Mount the following + followers routers before `/feed` so `/feed/following/*`
   // and `/feed/followers/*` (two path segments) resolve here and never touch the
   // feed router's `/:postId`.

@@ -21,6 +21,7 @@ const idle = { active_days_30d: 0, last_at: null, reads_30d: 0, writes_30d: 0 }
 
 const user = (username: string, overrides: Partial<AdminUserOverview> = {}): AdminUserOverview => ({
   created_at: null,
+  email: null,
   ends_at: null,
   paid_until: null,
   plan: null,

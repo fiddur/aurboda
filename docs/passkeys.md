@@ -21,8 +21,8 @@ There are two paths:
 
 ### Passkey-only signup (recommended)
 
-From the **Sign Up** page, enter a username and click **Sign up with
-passkey**. The authenticator (Touch ID, Windows Hello, 1Password, etc.)
+From the **Sign Up** page, enter a username (and, optionally, a display
+name and an email address) and click **Sign up with passkey**. The authenticator (Touch ID, Windows Hello, 1Password, etc.)
 prompts you to create a credential, and on success you're logged in.
 No password is involved at any point.
 
@@ -35,6 +35,14 @@ these users.
 If a user prefers a password, the **Use a password instead** link on
 the signup page reveals the existing password+confirm fields. They can
 later add a passkey from **Settings → Passkeys**.
+
+Both paths take the same two optional fields under the username: a
+**display name**, shown in the feed and to followers on other servers, and
+an **email** address, private to the user and the server's admins (see
+[admin.md](admin.md#user-accounts)). Both can be changed later in
+**Settings → Profile**. A malformed email is refused before the account is
+created; failing to store either field afterwards is logged and never
+fails the signup.
 
 ## Adding more passkeys to an existing account
 

@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { baseResponseSchema, dateOnlySchema, iso8601DateTimeSchema } from './common.ts'
 import { officialFeedSettingSchema } from './feed.ts'
 import { adminUserPlanShape } from './plans.ts'
+import { signupProfileShape } from './profile.ts'
 
 export const signupModeSchema = z.enum(['open', 'invite_only', 'closed']).meta({
   description: 'Server signup mode',
@@ -52,6 +53,7 @@ export type ServerStatusResponse = z.infer<typeof serverStatusResponseSchema>
 
 export const signupBodySchema = z
   .object({
+    ...signupProfileShape,
     invitation: z
       .string()
       .optional()
@@ -275,6 +277,10 @@ const adminUserAccountShape = {
   created_at: iso8601DateTimeSchema
     .nullable()
     .meta({ description: 'Signup time; null for an account that existed before signup dates were tracked' }),
+  email: z
+    .string()
+    .nullable()
+    .meta({ description: "The user's private email address; null when none is set. Admins only read it." }),
   is_admin: z.boolean().meta({ description: 'Whether the user is an admin' }),
   pre_existing: z
     .boolean()

@@ -823,6 +823,7 @@ export const buildActorPerson = async (
     id: ctx.getActorUri(identifier),
     inbox: ctx.getInboxUri(identifier),
     manuallyApprovesFollowers: settings?.manually_approve_followers === true,
+    name: settings?.display_name || undefined,
     outbox: ctx.getOutboxUri(identifier),
     preferredUsername: identifier,
     publicKey: keys[0].cryptographicKey,
@@ -835,7 +836,7 @@ export const buildActorPerson = async (
 
 /**
  * Deliver an `Update{Person}` to the user's accepted followers after a profile
- * change (avatar upload/removal). Without it, a follower's server never
+ * change (avatar upload/removal, display name). Without it, a follower's server never
  * refreshes its cached copy of the actor: Mastodon re-downloads an avatar only
  * on an incoming actor Update or a changed icon URL, and until now Aurboda
  * produced neither signal. Fire-and-forget at the call site — a delivery

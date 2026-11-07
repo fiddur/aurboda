@@ -1227,6 +1227,13 @@ upload/removal delivers an `Update{Person}` to accepted followers — remote ser
 et al.) cache a copied avatar and re-download it only on one of those two signals, so without
 them a changed avatar never propagates.
 
+The actor's `name` is the user's display name (the `display_name` user setting, set at signup or
+in Settings → **Profile**, via `PATCH /user/settings` or MCP `update_user_settings`), left out when
+none is set so other servers show the username. Changing it delivers an `Update{Person}` the same
+way an avatar change does. The public profile page (`/u/:username`, from
+`GET /public/:username/dashboards`'s `display_name`) shows it above `@username`. The account's
+email is never part of the actor or any public response.
+
 The owner-facing capability is also available over MCP as `list_feed`, `share_activity`,
 `preview_activity_share`, `share_challenge`, `share_exercise`, `preview_exercise_share`, `create_article`, `update_article`, the [article draft](#article-drafts) tools, `export_article_markdown`, `update_feed_post`,
 `delete_feed_post`, `list_following`, `follow_actor`, `unfollow_actor`, `list_followers`,

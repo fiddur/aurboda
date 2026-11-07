@@ -5,6 +5,7 @@ import { baseResponseSchema, hrZoneSourceSchema, iso8601DateTimeSchema } from '.
 import { dashboardConfigSchema } from './dashboard.ts'
 import { hashtagInputSchema } from './feed.ts'
 import { goalsSchema } from './goals.ts'
+import { displayNameInputSchema } from './profile.ts'
 import { garminDataTypeSchema } from './sync.ts'
 import { trainingLoadSettingsSchema } from './training-load.ts'
 
@@ -172,6 +173,10 @@ export const updateSettingsInputSchema = z
     dashboard: dashboardConfigSchema.nullable().optional().meta({
       description: 'Dashboard configuration (set to null to reset to defaults)',
     }),
+    display_name: displayNameInputSchema.nullable().optional().meta({
+      description:
+        'Name shown on your profile and posts, in the feed and to followers on other servers (at most 100 characters; null or an empty string for none, which shows your username)',
+    }),
     goals: goalsSchema.nullable().optional().meta({
       description: 'Goals (set to null to reset to defaults, empty array to clear all)',
     }),
@@ -261,6 +266,10 @@ export const userSettingsResponseSchema = baseResponseSchema
       .nullable()
       .default(null)
       .meta({ description: 'Custom dashboard configuration (null = use default)' }),
+    display_name: z.string().nullable().default(null).meta({
+      description:
+        'Name shown on your profile and posts, in the feed and to followers on other servers; null for none (your username is shown)',
+    }),
     feed_default_tags: z
       .array(z.string())
       .default([...defaultFeedTags])

@@ -29,11 +29,12 @@ import type { FollowerActions } from './services/followers.ts'
 import type { FollowActions } from './services/following.ts'
 import type { NamedLocationsChanged } from './services/locations.ts'
 import type { SyncProvider } from './services/queries/index.ts'
-import type { HrSettingsChanged } from './services/settings.ts'
+import type { HrSettingsChanged, ProfileChanged } from './services/settings.ts'
 import type { StravaQueue } from './services/strava-queue.ts'
 import type { RetroEnrichTrigger } from './services/timeline-retro-enrich.ts'
 
 import { registerAccountDeletionTools } from './mcp/account-deletion-tools.ts'
+import { registerAccountEmailTools } from './mcp/account-email-tools.ts'
 import { registerAccountPlanTools } from './mcp/account-plan-tools.ts'
 import { registerActivityTools } from './mcp/activity-tools.ts'
 import { registerActivityTypeTools } from './mcp/activity-type-tools.ts'
@@ -132,6 +133,8 @@ interface McpDeps {
   onNamedLocationsChanged?: NamedLocationsChanged
   /** Fire-and-forget: recompute activity features after HR zones, birth date or maf_hr change. */
   onHrSettingsChanged?: HrSettingsChanged
+  /** Fire-and-forget: federate an `Update{Person}` after a display-name change. */
+  onProfileChanged?: ProfileChanged
   onActivityDetailSynced?: DetailSyncedCallback
   onTrackWritten?: TrackWrittenCallback
   oura?: OuraClientType
@@ -171,7 +174,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     deps.onActivityDetailSynced,
     deps.onTrackWritten,
   )
-  registerSettingsTools(server, user, deps.onHrSettingsChanged)
+  registerSettingsTools(server, user, deps.onHrSettingsChanged, deps.onProfileChanged)
   registerLocationTools(server, user, deps.onNamedLocationsChanged)
   registerCorrelationTools(server, user, deps.sync)
   registerTrainingLoadTools(server, user)
@@ -187,6 +190,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     if (deps.adminUsers) registerAdminUserTools(server, user, deps.centralDb, deps.adminUsers)
     if (deps.accountDeleter) registerAccountDeletionTools(server, user, deps.centralDb, deps.accountDeleter)
     if (deps.accountPlans) registerAccountPlanTools(server, user, deps.centralDb, deps.accountPlans)
+    registerAccountEmailTools(server, user, deps.centralDb)
   }
   registerReportTools(server, user)
   registerRouteTools(server, user)

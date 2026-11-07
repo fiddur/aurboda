@@ -40,6 +40,7 @@ import { RESERVED_USERNAMES } from '../api/auth-routes.ts'
 import { dropUserDb, makeNewUserDb, query } from '../db/index.ts'
 import { insertWebAuthnCredential } from '../db/webauthn.ts'
 import { recordNewAccount } from '../services/account-plan.ts'
+import { defaultSignupProfileDeps, saveSignupProfile } from '../services/signup-profile.ts'
 import { typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
 
@@ -124,7 +125,7 @@ export const createWebAuthnRouter = ({
     '/signup/verify',
     validateBody(webauthnSignupVerifyBodySchema),
     async (req, res) => {
-      const { username, nickname } = req.body
+      const { username, nickname, display_name, email } = req.body
 
       let response: RegistrationResponseJSON
       try {
@@ -234,6 +235,8 @@ export const createWebAuthnRouter = ({
         res.status(500).json({ error: 'Signup failed', success: false, verified: true })
         return
       }
+
+      await saveSignupProfile(defaultSignupProfileDeps(centralDb), username, { display_name, email })
 
       // Step 4: first-user-becomes-admin (mirrors auth-routes.ts /signup).
       const adminCount = await centralDb.getAdminCount()

@@ -18,6 +18,7 @@ const day = (offset: number) => new Date(NOW.getTime() + offset * 86_400_000)
 
 const account = (username: string, trialEndsAt: Date): UserAccount => ({
   created_at: day(-200),
+  email: null,
   inserted_at: day(-200),
   paid_until: null,
   plan: 'trial',
@@ -140,6 +141,8 @@ describe('isAllowedWhenReadOnly', () => {
     ['GET', '/account/plan'],
     ['POST', '/export/dump-link'],
     ['DELETE', '/account'],
+    ['GET', '/account/email'],
+    ['PUT', '/account/email'],
     ['POST', '/webauthn/register/options'],
     ['POST', '/webauthn/register/verify'],
     ['PATCH', '/webauthn/credentials/abc'],
@@ -162,6 +165,7 @@ describe('isAllowedWhenReadOnly', () => {
     ['POST', '/account'],
     ['POST', '/exporter'],
     ['DELETE', '/account/plan'],
+    ['POST', '/account/email'],
     ['POST', '/autoshare-rules'],
     ['PUT', '/autoshare-rules/preview'],
     ['POST', '/feed/activities/abc/share'],

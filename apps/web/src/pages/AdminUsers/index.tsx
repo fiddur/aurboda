@@ -55,6 +55,7 @@ function UserRow({ user, now }: { user: AdminUserOverview; now: Date }) {
           {user.username}
         </a>
         {user.is_admin && <span class="au-badge">admin</span>}
+        {user.email && <div class="au-sub">{user.email}</div>}
       </td>
       <td>
         {user.created_at ? (
