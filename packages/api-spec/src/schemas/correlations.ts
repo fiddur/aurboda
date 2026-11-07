@@ -402,7 +402,7 @@ export type ProductivityOutcome = z.infer<typeof productivityOutcomeSchema>
 
 /**
  * Event outcome schema — treats outcome entries as discrete onsets rather than
- * averaging them. Designed for presence-only metrics (e.g. back_pain) where a
+ * averaging them. Designed for presence-only metrics (e.g. headache) where a
  * row only exists on "bad" days. See issue #792.
  */
 export const eventOutcomeSchema = z
@@ -412,8 +412,8 @@ export const eventOutcomeSchema = z
       example: 3,
     }),
     metric: z.string().optional().meta({
-      description: 'Metric name when source is "metric" (e.g. back_pain)',
-      example: 'back_pain',
+      description: 'Metric name when source is "metric" (e.g. headache)',
+      example: 'headache',
     }),
     pattern: z.string().optional().meta({
       description: 'Regex for the outcome tag when source is "tag"',

@@ -37,7 +37,13 @@
   color: var(--color-accent-hover);
 }
 
+.data-time-filter span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .data-time-filter button {
+  flex-shrink: 0;
   background: none;
   border: none;
   cursor: pointer;
@@ -175,6 +181,7 @@
     width: 100%;
     min-width: unset;
     flex: 0 0 auto;
+    box-sizing: border-box;
   }
 
   .data-type-filters {

@@ -12,6 +12,7 @@ import { fetchTrend } from '../../state/api'
 import { CHART_PRIMARY } from '../../theme'
 import { buildChartUrl, type ChartOrigin } from '../../utils/chart-url'
 import { BreakdownLegend, SERIES_COLORS } from '../charts/breakdown'
+import { trendPlot, trendPlotSeries } from '../charts/trendGaps'
 import { TrendLineChart } from '../charts/TrendLineChart'
 import { trendFetchParams } from './chartFetchParams'
 import { HEAVY_QUERY_OPTIONS } from './heavyQuery'
@@ -38,14 +39,17 @@ export function TrendChartView({ config, data, href }: TrendChartViewProps) {
   const multiSeries = useMemo(
     () =>
       breakdownSeries && breakdownSeries.length > 0 && breakdownHistories
-        ? breakdownSeries.map((name, i) => ({
-            color: SERIES_COLORS[i % SERIES_COLORS.length],
-            data: breakdownHistories[name] ?? [],
-            name,
-          }))
+        ? trendPlotSeries(
+            breakdownSeries.map((name, i) => ({
+              color: SERIES_COLORS[i % SERIES_COLORS.length],
+              data: breakdownHistories[name] ?? [],
+              name,
+            })),
+          )
         : null,
     [breakdownSeries, breakdownHistories],
   )
+  const single = useMemo(() => trendPlot(data?.history ?? NO_POINTS), [data?.history])
 
   const body = (
     <>
@@ -67,11 +71,18 @@ export function TrendChartView({ config, data, href }: TrendChartViewProps) {
             color={CHART_PRIMARY}
             height={150}
             compact
-            multiSeries={multiSeries}
+            multiSeries={multiSeries.series}
+            xDomain={multiSeries.xDomain}
           />
         </>
       ) : (
-        <TrendLineChart data={data?.history ?? NO_POINTS} color={CHART_PRIMARY} height={150} compact />
+        <TrendLineChart
+          data={single.data}
+          xDomain={single.xDomain}
+          color={CHART_PRIMARY}
+          height={150}
+          compact
+        />
       )}
     </>
   )

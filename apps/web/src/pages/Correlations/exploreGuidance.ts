@@ -11,8 +11,8 @@ export type ExploreMode = 'event' | 'continuous'
  * Event-onset mode is for presence-only outcomes (logged only on "bad" days).
  * Picking a value-every-day metric there collapses every day into ~1 onset and
  * returns nonsense. Built-in device/biometric metrics (sleep_score, hrv_rmssd,
- * weight, …) are continuous; presence-only symptom metrics (back_pain,
- * fissure_pain) are custom and therefore NOT built-in — so a built-in metric in
+ * weight, …) are continuous; presence-only symptom metrics (headache,
+ * migraine) are custom and therefore NOT built-in — so a built-in metric in
  * event mode is almost certainly a mode mismatch worth warning about. Custom
  * metrics (the ones that genuinely belong in event mode) are left un-warned.
  */
@@ -24,7 +24,7 @@ export const eventOutcomeLooksContinuous = (
 
 export const MODE_HELP =
   'Pick mode by your OUTCOME. Presence-only metrics that are logged only on bad ' +
-  'days (back_pain, fissure_pain) → Event onset. Value-every-day metrics ' +
+  'days (headache, migraine) → Event onset. Value-every-day metrics ' +
   '(sleep_score, hrv_rmssd, weight) → Continuous.'
 
 /**

@@ -3,7 +3,7 @@
 Aurboda's correlation engine answers two kinds of question:
 
 1. **Does trigger X precede flare/event Y?** — for presence-only outcomes such
-   as `back_pain` or `fissure_pain` (rows only exist on "bad" days). This is the
+   as a `headache` or `migraine` metric (rows only exist on "bad" days). This is the
    **event-outcome** mode.
 2. **How does a daily quantity relate to another?** — e.g. "how does carb intake
    affect my sleep score?". This is the **continuous** mode.
@@ -39,16 +39,16 @@ Surfaced through `get_generic_correlation` / `POST /correlations/generic` with a
 
 ```jsonc
 {
-  "triggers": [{ "type": "tag", "pattern": "ejaculation" }],
+  "triggers": [{ "type": "activity", "pattern": "alcohol" }],
   "outcome": {
     "type": "event",
     "source": "metric",
-    "metric": "back_pain",
+    "metric": "headache",
     "threshold": { "op": "gt", "value": 0 },
     "collapse_gap_days": 3,
   },
   "lag_windows": ["24h", "48h", "7d"],
-  "period_start": "2019-09-28", // regime scoping (optional)
+  "period_start": "2026-01-01", // regime scoping (optional)
   "denominator": "all", // see below
 }
 ```
@@ -63,8 +63,8 @@ How it works:
 - **Effect.** Over the known-day denominator, the engine builds a 2×2 table of
   {onset, non-onset} × {exposed, unexposed} and reports, per lag window:
   - **`reverse_conditional`** — P(recent trigger | onset). _This is the headline_
-    — the user's actual question ("when my back flares, how often had I recently
-    leaked?").
+    — the user's actual question ("when I get a headache, how often had I
+    recently had a drink?").
   - **`base_rate`** — P(a known day is exposed), for comparison.
   - **`relative_risk`** with a 95% CI, **`risk_difference`**, and a **p-value**
     from Pearson's chi-squared (or Fisher's exact test when any expected cell < 5).
@@ -77,7 +77,7 @@ The denominator is the set of days the analysis trusts as "outcome status known"
   for metrics that log explicit zeros (e.g. a daily Hälsa log), where a silent
   day genuinely is unknown.
 - **`all`** — every day in the regime. Correct for **presence-only** metrics
-  (`back_pain`), where you trust that within the scoped period a missing day
+  (`headache`), where you trust that within the scoped period a missing day
   means "no flare". Pair this with `period_start`/`period_end` to bound the
   regime to a behavioural era.
 

@@ -133,9 +133,9 @@ describe('computeEventOutcome', () => {
     expect(result.per_lag[0].known_days).toBe(10)
   })
 
-  test('reproduces a weak ejaculation<->back_pain-style signal (~1.5x, n.s.)', () => {
-    // Synthetic 2-year known window. back_pain flares roughly monthly; trigger
-    // ("leak") is common, so the base rate of exposure is high. Only half the
+  test('reproduces a weak common-trigger -> symptom-flare signal (~1.5x, n.s.)', () => {
+    // Synthetic 2-year known window. The symptom flares roughly monthly; trigger
+    // is common, so the base rate of exposure is high. Only half the
     // flares have a day-before trigger beyond chance. With a proper known-day
     // denominator this should look like a modest ~1.5x and NOT be significant,
     // matching the issue's full-log finding.
