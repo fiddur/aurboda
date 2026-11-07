@@ -7,8 +7,9 @@ import {
   insertActivities,
   insertActivity,
   materializeSuperseded,
+  rematerializeSupersededOnce,
 } from './activities/index.ts'
-import { query } from './connection.ts'
+import { ensureSchemaMigrationsTable, getDbForUser, query } from './connection.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 
@@ -237,6 +238,43 @@ describe('superseded_by materialization', () => {
 
     // After backfill: duplicates are marked.
     expect(await countActive(user, 'running')).toBe(1)
+  })
+
+  test('rematerializeSupersededOnce clears a stale mark on touching whole-session rows, once (#1491)', async () => {
+    const user = getTestUser()
+    await ensureSchemaMigrationsTable(await getDbForUser(user))
+    await query(user, `DELETE FROM schema_migrations WHERE name = 'rematerialize_superseded_v1'`)
+    const inserted = await query(
+      user,
+      `INSERT INTO activities (source, activity_type, start_time, end_time)
+       VALUES ('aurboda', 'yoga', '2026-11-06T21:00:00Z', '2026-11-06T21:30:00Z'),
+              ('aurboda', 'yoga', '2026-11-06T21:30:00Z', '2026-11-06T22:00:00Z')
+       RETURNING id`,
+    )
+    const [first, second] = inserted.rows.map((r) => r.id as string)
+    const markStale = () =>
+      query(user, `UPDATE activities SET superseded_by = $1 WHERE id = $2`, [first, second])
+    const marks = async () =>
+      (
+        await query(
+          user,
+          `SELECT superseded_by FROM activities WHERE id = ANY($1::uuid[]) ORDER BY start_time`,
+          [[first, second]],
+        )
+      ).rows.map((r) => r.superseded_by as string | null)
+    await markStale()
+
+    expect(await rematerializeSupersededOnce(user)).toEqual({ days: 1, skipped: false })
+    expect(await marks()).toEqual([null, null])
+    const marker = await query(
+      user,
+      `SELECT 1 FROM schema_migrations WHERE name = 'rematerialize_superseded_v1'`,
+    )
+    expect(marker.rowCount).toBe(1)
+
+    await markStale()
+    expect(await rematerializeSupersededOnce(user)).toEqual({ days: 0, skipped: true })
+    expect(await marks()).toEqual([null, first])
   })
 
   test('insertActivities (batch) materializes all affected days', async () => {

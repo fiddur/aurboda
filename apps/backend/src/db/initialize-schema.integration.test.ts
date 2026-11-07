@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { Client } from 'pg'
-import { afterAll, beforeAll, describe, expect, test } from 'vitest'
+import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest'
 
 import { schemaFingerprint } from '../schema.ts'
 import {
@@ -24,6 +24,10 @@ const FRESH = `fresh_${suffix}`
 const LEGACY = `legacy_${suffix}`
 const STRENGTH = `strength_${suffix}`
 const NULL_NOTES = `null_notes_${suffix}`
+const LEGACY_TAGS = `legacy_tags_${suffix}`
+const FAILING_TAGS = `failing_tags_${suffix}`
+const UNKNOWN_EXERCISE = `unknown_exercise_${suffix}`
+const YOGA_DEFINITION = `yoga_definition_${suffix}`
 
 /** A new database prepared the way `makeNewUserDb` prepares one, routed to `user`. */
 const freshUserDb = async (user: string, database = `init_${user}`): Promise<UserDb> => {
@@ -141,6 +145,135 @@ describe('initializeSchema', () => {
 
       const left = (await db.query(`SELECT id FROM notes`)).rows.map((r) => r.id as string)
       expect(left.sort()).toEqual([real, typed, answered, reply].sort())
+    },
+    SCHEMA_TIMEOUT,
+  )
+
+  /** A database whose last sweep predates this build, holding legacy `tags` rows still to migrate. */
+  const legacyTagsDb = async (user: string): Promise<UserDb> => {
+    const db = await freshUserDb(user, `aurboda_${user}`)
+    await initializeSchema(user)
+    await db.query(`DELETE FROM schema_migrations WHERE name LIKE 'schema@%'`)
+    return db
+  }
+
+  const insertTag = async (db: UserDb, tag: string, deleted = false): Promise<string> =>
+    (
+      await db.query(
+        `INSERT INTO tags (source, external_id, tag, start_time, end_time, deleted_at)
+         VALUES ('oura', $1, $2, '2023-05-01T20:00:00Z', '2023-05-01T21:00:00Z', $3) RETURNING id`,
+        [randomUUID(), tag, deleted ? new Date() : null],
+      )
+    ).rows[0].id as string
+
+  test(
+    'migration gives a legacy tag that names no activity type a type of its own (#1489)',
+    async () => {
+      const db = await legacyTagsDb(LEGACY_TAGS)
+      const sauna = await insertTag(db, 'Sauna (hot)')
+      const deleted = await insertTag(db, 'Cold plunge', true)
+      const nameless = await insertTag(db, '!!!')
+
+      expect(await migrateSchema(LEGACY_TAGS)).toBe(true)
+
+      expect(await schemaUpToDate(db, schemaFingerprint())).toBe(true)
+      const activities = await db.query(
+        `SELECT id, activity_type FROM activities WHERE id = ANY($1::uuid[])`,
+        [[sauna, deleted, nameless]],
+      )
+      expect(activities.rows.map((r) => [r.id, r.activity_type]).toSorted()).toEqual(
+        [
+          [sauna, 'sauna_hot'],
+          [deleted, 'cold_plunge'],
+        ].toSorted(),
+      )
+      const types = await db.query(
+        `SELECT name, display_name, display_category FROM activity_type_definitions
+          WHERE name IN ('sauna_hot', 'cold_plunge', '') ORDER BY name`,
+      )
+      expect(types.rows).toEqual([
+        { display_category: 'other', display_name: 'Cold plunge', name: 'cold_plunge' },
+        { display_category: 'other', display_name: 'Sauna (hot)', name: 'sauna_hot' },
+      ])
+    },
+    SCHEMA_TIMEOUT,
+  )
+
+  test(
+    'migration keeps a generic exercise whose Health Connect type name is no activity type, and still migrates the tags (#1489)',
+    async () => {
+      const db = await legacyTagsDb(UNKNOWN_EXERCISE)
+      const tag = await insertTag(db, 'Sauna')
+      const exercise = (
+        await db.query(
+          `INSERT INTO activities (source, activity_type, start_time, end_time, data)
+           VALUES ('health_connect', 'exercise', '2023-05-01T08:00:00Z', '2023-05-01T09:00:00Z',
+                   '{"exerciseTypeName": "unknown"}') RETURNING id`,
+        )
+      ).rows[0].id as string
+
+      expect(await migrateSchema(UNKNOWN_EXERCISE)).toBe(true)
+
+      expect(await schemaUpToDate(db, schemaFingerprint())).toBe(true)
+      const rows = await db.query(`SELECT id, activity_type FROM activities WHERE id = ANY($1::uuid[])`, [
+        [tag, exercise],
+      ])
+      expect(rows.rows.map((r) => [r.id, r.activity_type]).toSorted()).toEqual(
+        [
+          [tag, 'sauna'],
+          [exercise, 'exercise'],
+        ].toSorted(),
+      )
+    },
+    SCHEMA_TIMEOUT,
+  )
+
+  test(
+    'migration merges an alias-less tag definition into an alias-less type it names (#1489)',
+    async () => {
+      const db = await legacyTagsDb(YOGA_DEFINITION)
+      const definition = (await db.query(`INSERT INTO tag_definitions (name) VALUES ('Yoga') RETURNING id`))
+        .rows[0].id as string
+      const tag = (
+        await db.query(
+          `INSERT INTO tags (source, external_id, tag, tag_definition_id, start_time, end_time)
+           VALUES ('aurboda', $1, 'Yoga', $2, '2023-05-01T07:00:00Z', '2023-05-01T08:00:00Z') RETURNING id`,
+          [randomUUID(), definition],
+        )
+      ).rows[0].id as string
+
+      expect(await migrateSchema(YOGA_DEFINITION)).toBe(true)
+
+      expect(await schemaUpToDate(db, schemaFingerprint())).toBe(true)
+      const activity = await db.query(`SELECT activity_type FROM activities WHERE id = $1`, [tag])
+      expect(activity.rows).toEqual([{ activity_type: 'yoga' }])
+      const yoga = await db.query(`SELECT aliases FROM activity_type_definitions WHERE name = 'yoga'`)
+      expect(yoga.rows).toEqual([{ aliases: [] }])
+    },
+    SCHEMA_TIMEOUT,
+  )
+
+  test(
+    'a failing legacy tags step is logged, and the sweep still records its fingerprint (#1489)',
+    async () => {
+      const db = await legacyTagsDb(FAILING_TAGS)
+      const tag = await insertTag(db, 'Sauna')
+      // Only this step reads the column, so the rest of the sweep runs without it.
+      await db.query(`ALTER TABLE tag_definitions DROP COLUMN show_on_timeline`)
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      try {
+        expect(await migrateSchema(FAILING_TAGS)).toBe(true)
+        expect(warn).toHaveBeenCalledWith(
+          expect.stringContaining(`legacy tags into activities failed for ${FAILING_TAGS}`),
+          expect.objectContaining({ code: '42703' }),
+        )
+      } finally {
+        warn.mockRestore()
+      }
+
+      expect(await schemaUpToDate(db, schemaFingerprint())).toBe(true)
+      expect((await db.query(`SELECT 1 FROM activities WHERE id = $1`, [tag])).rowCount).toBe(0)
     },
     SCHEMA_TIMEOUT,
   )

@@ -46,6 +46,7 @@ import {
   openTimelineChannel,
   pruneDeductionRuleRuns,
   pruneSyncedOutboundSync,
+  rematerializeSupersededOnce,
   resolveOrCreateActivityType,
   markTimelineEntryReplyChecked,
   setTimelineEntryReplyInfo,
@@ -483,8 +484,17 @@ const main = async () => {
       `🗃️ Schema sweep done: ${migrated} migrated, ${skipped} already current, ${failed} failed ` +
         `(${process.uptime().toFixed(1)} s after process start)`,
     )
+    const users = await listUserNames(userDb)
     if (trackBackfillQueue) {
-      for (const user of await listUserNames(userDb)) await trackBackfillQueue.enqueue(user, 120)
+      for (const user of users) await trackBackfillQueue.enqueue(user, 120)
+    }
+    for (const user of users) {
+      try {
+        const { days, skipped: alreadyDone } = await rematerializeSupersededOnce(user)
+        if (!alreadyDone) console.info(`🔁 Re-materialized supersession for ${user} over ${days} day(s)`)
+      } catch (error) {
+        console.error(`⚠️ Supersession re-materialization failed for ${user}:`, error)
+      }
     }
   })
 

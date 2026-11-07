@@ -5,7 +5,7 @@
  */
 import type { Activity, MergedActivity } from '../types.ts'
 
-import { query } from '../connection.ts'
+import { ensureSchemaMigrationsTable, getDbForUser, query } from '../connection.ts'
 import { mapActivityRow } from '../row-mappers.ts'
 import { mergeOverlappingActivities } from './merge.ts'
 import { activityColumns } from './queries.ts'
@@ -133,4 +133,27 @@ export const backfillSuperseded = async (user: string): Promise<{ days: number }
     days++
   }
   return { days }
+}
+
+const REMATERIALIZE_MARKER = 'rematerialize_superseded_v1'
+
+/**
+ * #1490 changed which touching same-type sessions merge, and marks materialized under the old rule
+ * stay until a write in their window re-materializes it. Runs `backfillSuperseded` once per user,
+ * recorded in `schema_migrations`. Not part of `migrateSchema`, whose fingerprint gate would skip it
+ * on databases already current; the marker is written only after a full backfill, so a failed run is
+ * retried by the next caller.
+ */
+export const rematerializeSupersededOnce = async (
+  user: string,
+): Promise<{ days: number; skipped: boolean }> => {
+  await ensureSchemaMigrationsTable(await getDbForUser(user))
+  const applied = await query(user, `SELECT 1 FROM schema_migrations WHERE name = $1`, [REMATERIALIZE_MARKER])
+  if (applied.rows.length > 0) return { days: 0, skipped: true }
+
+  const { days } = await backfillSuperseded(user)
+  await query(user, `INSERT INTO schema_migrations (name) VALUES ($1) ON CONFLICT DO NOTHING`, [
+    REMATERIALIZE_MARKER,
+  ])
+  return { days, skipped: false }
 }

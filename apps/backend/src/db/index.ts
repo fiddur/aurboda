@@ -172,6 +172,7 @@ export {
   insertOverride,
   markActivityDetailSynced,
   materializeSuperseded,
+  rematerializeSupersededOnce,
   mergeOverlappingActivities,
   pickOverrideWinner,
   restoreActivity,
