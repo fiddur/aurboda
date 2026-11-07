@@ -7,6 +7,7 @@ import {
   isSharingActive,
   NAV_LINKS_PRIMARY,
   NAV_LINKS_SECONDARY,
+  pageTitleForPath,
   SHARING_LINKS,
 } from './nav-links'
 
@@ -61,9 +62,10 @@ export function Header() {
         >
           ☰
         </button>
-        <a href="/" class={`nav-mobile-home${url === '/' ? ' active' : ''}`}>
-          Home
+        <a href="/" class="nav-mobile-brand" aria-label="Aurboda home">
+          <img src="/logo.svg" alt="" width={28} height={28} />
         </a>
+        <span class="nav-mobile-title">{pageTitleForPath(url)}</span>
         <span class="spacer" />
         {!isLoggedIn && canSignup && (
           <a href="/signup" class={`nav-mobile-home${url === '/signup' ? ' active' : ''}`}>

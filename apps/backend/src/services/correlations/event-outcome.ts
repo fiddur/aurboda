@@ -1,6 +1,6 @@
 /**
  * Answers "does trigger X precede flare/event Y?" for presence-only outcomes
- * (e.g. back_pain, fissure_pain) where the outcome metric only has entries on
+ * (e.g. headache, migraine) where the outcome metric only has entries on
  * "bad" days. The naive approach — averaging the metric — is meaningless there.
  *
  * The model works at UTC-day granularity:

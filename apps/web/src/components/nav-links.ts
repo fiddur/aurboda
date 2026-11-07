@@ -47,3 +47,33 @@ export const DATA_SOURCE_LINKS = [
   { label: 'OwnTracks', path: '/data-sources/owntracks' },
   { label: 'Calendars', path: '/data-sources/calendars' },
 ]
+
+const OTHER_PAGE_TITLES = [
+  { href: '/data-sources', label: 'Data Sources' },
+  { href: '/settings', label: 'Settings' },
+  { href: '/admin', label: 'Admin' },
+  { href: '/login', label: 'Login' },
+  { href: '/signup', label: 'Sign up' },
+]
+
+const PAGE_TITLES: { href: string; title: string }[] = [
+  ...NAV_LINKS_PRIMARY,
+  ...SHARING_LINKS,
+  ...NAV_LINKS_SECONDARY,
+  ...DATA_SOURCE_LINKS.filter((l) => l.path !== '/data-sources').map((l) => ({
+    href: l.path,
+    label: l.label,
+  })),
+  ...OTHER_PAGE_TITLES,
+].map((l) => ({ href: l.href, title: l.label.replace(/^\+\s*/, '') }))
+
+/** The current page's name for the narrow top bar: the nav label of the route or its parent section. */
+export const pageTitleForPath = (url: string): string => {
+  const path = url.split(/[?#]/)[0].replace(/(.)\/+$/, '$1') || '/'
+  const exact = PAGE_TITLES.find((p) => p.href === path)
+  if (exact) return exact.title
+  const section = PAGE_TITLES.filter((p) => p.href !== '/' && path.startsWith(`${p.href}/`)).sort(
+    (a, b) => b.href.length - a.href.length,
+  )[0]
+  return section?.title ?? 'Aurboda'
+}

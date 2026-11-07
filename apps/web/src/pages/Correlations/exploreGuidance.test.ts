@@ -15,8 +15,8 @@ describe('eventOutcomeLooksContinuous', () => {
   })
 
   it('does not flag presence-only custom metrics (the ones event mode is for)', () => {
-    expect(eventOutcomeLooksContinuous('event', 'metric', 'back_pain')).toBe(false)
-    expect(eventOutcomeLooksContinuous('event', 'metric', 'fissure_pain')).toBe(false)
+    expect(eventOutcomeLooksContinuous('event', 'metric', 'headache')).toBe(false)
+    expect(eventOutcomeLooksContinuous('event', 'metric', 'migraine')).toBe(false)
   })
 
   it('ignores surrounding whitespace on the metric name', () => {

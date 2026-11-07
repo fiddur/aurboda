@@ -33,6 +33,7 @@ import { drawTrainingLoadTrack } from './drawTrainingLoadTrack'
 import { drawColumnItems, drawHorizontalNowLine, drawNowLine } from './drawVerticalHelpers'
 import { fetchWindowFromRange } from './fetchRange'
 import { findOverlappingScrobbles } from './findOverlappingScrobbles'
+import { formatTimelineTick } from './formatting'
 import { TimelineContextMenu } from './TimelineContextMenu'
 import { TimelineControls } from './TimelineControls'
 import { TimelineLegend } from './TimelineLegend'
@@ -1044,7 +1045,12 @@ export const Timeline = () => {
 
         drawHorizontalNowLine(chartGroup, chartHeight, currentXScale)
 
-        ag.call(d3.axisBottom(currentXScale).ticks(8) as never)
+        ag.call(
+          d3
+            .axisBottom(currentXScale)
+            .ticks(8)
+            .tickFormat((d) => formatTimelineTick(d as Date)) as never,
+        )
           .selectAll('text')
           .style('fill', 'currentColor')
       }
