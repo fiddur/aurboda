@@ -14,12 +14,13 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi 
  * generic `PATCH /:postId`); the actual AS2 delivery is unit-tested in `deliver`.
  */
 import { insertActivity } from '../db/activities/index.ts'
-import { createChallenge, createChallengeParticipation } from '../db/challenges.ts'
+import { createChallenge, createChallengeParticipation, deleteChallenge } from '../db/challenges.ts'
 import { upsertFeedPostReaction } from '../db/feed-reactions.ts'
 import { createFeedPost } from '../db/feed.ts'
 import { createSharedExercise } from '../db/shared-exercises.ts'
 import { insertTimeSeries } from '../db/time-series.ts'
 import { upsertTimelineEntry } from '../db/timeline.ts'
+import { configureStructuredChallenge } from '../services/feed-structured-challenge.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { type FeedDeliver, createFeedRouter } from './feed-router.ts'
 
@@ -1057,5 +1058,97 @@ describe('Hashtags on feed posts', () => {
     })
     const res = await app.request.post('/feed/challenges').send({ participation_id: participation.id })
     expect(res.body.post.tags).toEqual(['aurboda', 'challenge'])
+  })
+})
+
+describe('Article challenge blocks (#1484)', () => {
+  const WEB = 'https://aurboda.example'
+  let app: ReturnType<typeof startApp>
+
+  beforeAll(async () => {
+    await startTestDb()
+    configureStructuredChallenge({ apiBaseUrl: `${WEB}/api`, webHost: WEB })
+    app = startApp(undefined, undefined, WEB)
+  }, CONTAINER_TIMEOUT)
+
+  afterAll(async () => {
+    await app.close()
+    await stopTestDb()
+  })
+
+  beforeEach(async () => {
+    await cleanTestDb()
+  })
+
+  const ownChallenge = async () => {
+    const user = getTestUser()
+    const challenge = await createChallenge(user, {
+      announce_winner: true,
+      end_ts: new Date('2026-08-31T00:00:00Z'),
+      is_public: true,
+      name: 'August 10k',
+      spec: {
+        activity_type_id: null,
+        aggregation: 'sum',
+        bucket_size: '1d',
+        filter_field: null,
+        filter_value: null,
+        measure: null,
+        pattern: 'steps',
+        source_type: 'metric',
+        unit: 'steps',
+      },
+      start_ts: new Date('2026-08-01T00:00:00Z'),
+      timezone: 'UTC',
+    })
+    return { challenge, url: `${WEB}/u/${user}/${challenge.slug}` }
+  }
+
+  const challengeArticle = (challenge_url: string) => ({
+    blocks: [{ challenge_url, type: 'challenge' }],
+    title: 'Join me',
+    visibility: 'public',
+  })
+
+  test('stores the challenge URL canonically, on articles and drafts', async () => {
+    const { url } = await ownChallenge()
+
+    const created = await app.request.post('/feed/articles').send(challengeArticle(`${url}?ref=x#frag`))
+    expect(created.status).toBe(200)
+    expect(created.body.post.article.blocks).toEqual([{ challenge_url: url, type: 'challenge' }])
+
+    const draft = await app.request
+      .post('/feed/article-drafts')
+      .send({ article: { blocks: [{ challenge_url: `${url}/?ref=x`, type: 'challenge' }], title: '' } })
+    expect(draft.body.draft.article.blocks).toEqual([{ challenge_url: url, type: 'challenge' }])
+  })
+
+  test('an article whose challenge was deleted can still be edited', async () => {
+    const user = getTestUser()
+    const { challenge, url } = await ownChallenge()
+    const created = await app.request.post('/feed/articles').send(challengeArticle(url))
+    expect(created.status).toBe(200)
+    expect(await deleteChallenge(user, challenge.id)).toBe(true)
+
+    const res = await app.request
+      .patch(`/feed/articles/${created.body.post.id}`)
+      .send({ title: 'Typo fixed' })
+    expect(res.status).toBe(200)
+    expect(res.body.post.article.title).toBe('Typo fixed')
+  })
+
+  test('adding a block with an unknown local challenge still fails', async () => {
+    const user = getTestUser()
+    const { url } = await ownChallenge()
+    const created = await app.request.post('/feed/articles').send(challengeArticle(url))
+
+    const res = await app.request.patch(`/feed/articles/${created.body.post.id}`).send({
+      blocks: [
+        { challenge_url: url, type: 'challenge' },
+        { challenge_url: `${WEB}/u/${user}/no-such-challenge`, type: 'challenge' },
+      ],
+    })
+    expect(res.status).toBe(400)
+    expect(res.body.error).toBe('Block 2: challenge not found.')
   })
 })

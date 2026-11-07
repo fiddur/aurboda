@@ -172,6 +172,7 @@ export {
   insertOverride,
   markActivityDetailSynced,
   materializeSuperseded,
+  rematerializeSupersededOnce,
   mergeOverlappingActivities,
   pickOverrideWinner,
   restoreActivity,
@@ -417,12 +418,13 @@ export {
   type ArticleDraftInput,
   type ArticleDraftPatch,
   type ArticleDraftRecord,
-  claimArticleDraft,
   createArticleDraft,
   deleteArticleDraft,
+  type DraftPostPreparation,
+  type DraftPublishOutcome,
   getArticleDraft,
   listArticleDrafts,
-  restoreArticleDraft,
+  publishArticleDraftPost,
   updateArticleDraft,
 } from './article-drafts.ts'
 

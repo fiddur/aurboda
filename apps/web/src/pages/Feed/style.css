@@ -128,9 +128,12 @@
   gap: 0.25rem;
   margin-bottom: 0.75rem;
   border-bottom: 1px solid #e5e7eb;
+  overflow-x: auto;
 }
 
 .feed-tab {
+  flex-shrink: 0;
+  white-space: nowrap;
   padding: 0.5rem 0.9rem;
   margin-bottom: -1px;
   border: none;
@@ -148,18 +151,6 @@
 }
 
 .feed-manage {
-  margin-top: 2rem;
-  border-top: 1px solid #e5e7eb;
-  padding-top: 0.75rem;
-}
-
-.feed-manage-summary {
-  cursor: pointer;
-  font-weight: 600;
-  color: #4b5563;
-}
-
-.feed-manage-body {
   margin-top: 1rem;
 }
 
@@ -526,13 +517,11 @@
   }
 
   .feed-draft-row,
-  .feed-tabs,
-  .feed-manage {
+  .feed-tabs {
     border-color: #374151;
   }
 
-  .feed-drafts-title,
-  .feed-manage-summary {
+  .feed-drafts-title {
     color: #d1d5db;
   }
 

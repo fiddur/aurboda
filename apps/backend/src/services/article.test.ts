@@ -10,6 +10,8 @@ import {
   checkArticleChallenges,
   isZeroDurationBucket,
   mergeArticleContent,
+  validateArticleContent,
+  withCanonicalChallengeUrls,
 } from './article.ts'
 
 const WEEK_START = '2026-07-01T00:00:00.000Z'
@@ -253,6 +255,57 @@ describe('challenge blocks', () => {
       null,
     )
     expect(result.ok).toBe(true)
+  })
+
+  test('stores a challenge URL in its canonical spelling', () => {
+    const result = buildArticleContent(
+      content({ blocks: [challenge('HTTPS://QS.Example:443/u/olle/nov/?ref=x#frag')] }),
+    )
+    expect(result).toEqual({
+      article: content({ blocks: [challenge('https://qs.example/u/olle/nov')] }),
+      ok: true,
+    })
+  })
+
+  test('canonicalises only challenge blocks that carry a URL', () => {
+    const blocks = [{ markdown: 'Hi', type: 'prose' as const }, { type: 'challenge' as const }]
+    expect(withCanonicalChallengeUrls(blocks)).toEqual(blocks)
+  })
+
+  test('an edit keeps a block whose challenge was deleted since', async () => {
+    const stored = content({ blocks: [challenge('https://qs.example/u/olle/nov?ref=x')], title: 'Old' })
+    const deps = lookup(false)
+    const result = await validateArticleContent(mergeArticleContent(stored, { title: 'Fixed typo' }), {
+      lookup: deps,
+      stored,
+    })
+    expect(result).toEqual({
+      article: content({ blocks: [challenge('https://qs.example/u/olle/nov')], title: 'Fixed typo' }),
+      ok: true,
+    })
+    expect(deps.getChallengeBySlug).not.toHaveBeenCalled()
+  })
+
+  test('an edit that adds an unknown local challenge still fails', async () => {
+    const stored = content({ blocks: [challenge('https://qs.example/u/olle/nov')] })
+    const deps = lookup(false)
+    const result = await validateArticleContent(
+      mergeArticleContent(stored, {
+        blocks: [...stored.blocks, challenge('https://qs.example/u/olle/dec')],
+      }),
+      { lookup: deps, stored },
+    )
+    expect(result).toEqual({ error: 'Block 2: challenge not found.', ok: false })
+    expect(deps.getChallengeBySlug).toHaveBeenCalledTimes(1)
+    expect(deps.getChallengeBySlug).toHaveBeenCalledWith('olle', 'dec')
+  })
+
+  test('without a stored article every block is checked', async () => {
+    const result = await validateArticleContent(
+      content({ blocks: [challenge('https://qs.example/u/olle/nov')] }),
+      { lookup: lookup(false) },
+    )
+    expect(result).toEqual({ error: 'Block 1: challenge not found.', ok: false })
   })
 })
 

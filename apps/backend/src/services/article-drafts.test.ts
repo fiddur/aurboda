@@ -6,6 +6,7 @@ import type { ArticleDraftRecord, ArticlePostInput, FeedPostRecord } from '../db
 
 import {
   articleDraftPatch,
+  normalizeArticleDraftContent,
   type PublishDraftDeps,
   publishableArticle,
   publishArticleDraft,
@@ -35,38 +36,44 @@ const draftRecord = (overrides: Partial<ArticleDraftRecord> = {}): ArticleDraftR
   ...overrides,
 })
 
-/** In-memory deps over one draft store, recording what publishing did. */
-const fakeDeps = (draft: ArticleDraftRecord | null, { createFails = false, restoreFails = false } = {}) => {
+/**
+ * In-memory deps over one draft store, recording what publishing did. `publishDraft`
+ * models the transaction: the draft is back whenever no post was created.
+ */
+const fakeDeps = (draft: ArticleDraftRecord | null, { createFails = false } = {}) => {
   const drafts = new Map<string, ArticleDraftRecord>(draft ? [[draft.id, draft]] : [])
   const created: ArticlePostInput[] = []
   const claimed: string[] = []
-  const logged: string[] = []
   const deps: PublishDraftDeps = {
-    claimDraft: async (_user, id) => {
-      const found = drafts.get(id) ?? null
-      drafts.delete(id)
-      if (found) claimed.push(id)
-      return found
-    },
-    createPost: async (_user, input) => {
-      if (createFails) throw new Error('db down')
-      created.push(input)
-      return {
-        article: input.article,
-        id: `p${created.length}`,
-        kind: 'article',
-        visibility: input.visibility,
-      } as FeedPostRecord
-    },
     getDraft: async (_user, id) => drafts.get(id) ?? null,
-    logError: (message) => logged.push(message),
     postTags: async () => ['aurboda'],
-    restoreDraft: async (_user, record) => {
-      if (restoreFails) throw new Error('db down')
-      drafts.set(record.id, record)
+    publishDraft: async (_user, id, prepare) => {
+      const found = drafts.get(id)
+      if (!found) return { status: 'missing' }
+      drafts.delete(id)
+      claimed.push(id)
+      try {
+        const prepared = await prepare(found)
+        if (!prepared.ok) {
+          drafts.set(id, found)
+          return { error: prepared.error, status: 'rejected' }
+        }
+        if (createFails) throw new Error('db down')
+        created.push(prepared.input)
+        const post = {
+          article: prepared.input.article,
+          id: `p${created.length}`,
+          kind: 'article',
+          visibility: prepared.input.visibility,
+        } as FeedPostRecord
+        return { post, status: 'published' }
+      } catch (error) {
+        drafts.set(id, found)
+        throw error
+      }
     },
   }
-  return { claimed, created, deps, drafts, logged }
+  return { claimed, created, deps, drafts }
 }
 
 describe('serializeArticleDraft', () => {
@@ -108,6 +115,32 @@ describe('articleDraftPatch', () => {
 
   test('an empty title is a valid replacement in a draft', () => {
     expect(articleDraftPatch(complete(), { title: '' }).article?.title).toBe('')
+  })
+
+  test('stores a challenge URL in its canonical spelling', () => {
+    const patch = articleDraftPatch(complete(), {
+      blocks: [
+        { challenge_url: 'https://qs.example/u/olle/nov?ref=x#frag', type: 'challenge' },
+        { type: 'challenge' },
+      ],
+    })
+    expect(patch.article?.blocks).toEqual([
+      { challenge_url: 'https://qs.example/u/olle/nov', type: 'challenge' },
+      { type: 'challenge' },
+    ])
+  })
+})
+
+describe('normalizeArticleDraftContent', () => {
+  test('canonicalises challenge URLs and normalises tags', () => {
+    const normalized = normalizeArticleDraftContent(
+      complete({
+        blocks: [{ challenge_url: 'https://QS.example/u/olle/nov/#frag', type: 'challenge' }],
+        tags: ['#QS'],
+      }),
+    )
+    expect(normalized.blocks).toEqual([{ challenge_url: 'https://qs.example/u/olle/nov', type: 'challenge' }])
+    expect(normalized.tags).toEqual(['qs'])
   })
 })
 
@@ -214,29 +247,24 @@ describe('publishArticleDraft', () => {
     expect(fake.created).toHaveLength(1)
   })
 
-  test('a failed post creation puts the draft back as it was', async () => {
+  test('a failed post creation leaves the draft as it was', async () => {
     const draft = draftRecord()
     const fake = fakeDeps(draft, { createFails: true })
     await expect(publishArticleDraft('alice', 'd1', {}, fake.deps)).rejects.toThrow('db down')
     expect(fake.drafts.get('d1')).toEqual(draft)
   })
 
-  test('a draft saved invalid between the check and the claim is put back and is a 400', async () => {
+  test('a draft saved invalid between the check and the claim stays and is a 400', async () => {
     const fake = fakeDeps(draftRecord())
-    const claim = fake.deps.claimDraft
-    fake.deps.claimDraft = async (user, id) => {
+    const get = fake.deps.getDraft
+    fake.deps.getDraft = async (user, id) => {
+      const found = await get(user, id)
       fake.drafts.set(id, draftRecord({ article: complete({ title: '' }) }))
-      return claim(user, id)
+      return found
     }
     const result = await publishArticleDraft('alice', 'd1', {}, fake.deps)
-    expect(result).toMatchObject({ ok: false, status: 400 })
+    expect(result).toEqual({ error: 'Give the article a title before publishing.', ok: false, status: 400 })
     expect(fake.created).toEqual([])
     expect(fake.drafts.get('d1')?.article.title).toBe('')
-  })
-
-  test('a failed restore is logged and the publish error still surfaces', async () => {
-    const fake = fakeDeps(draftRecord(), { createFails: true, restoreFails: true })
-    await expect(publishArticleDraft('alice', 'd1', {}, fake.deps)).rejects.toThrow('db down')
-    expect(fake.logged).toHaveLength(1)
   })
 })

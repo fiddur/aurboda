@@ -1,6 +1,9 @@
 import type { ArticleDraftContent, FeedVisibility } from '@aurboda/api-spec'
 
-import { query } from './connection.ts'
+import type { ArticlePostInput, FeedPostRecord } from './feed.ts'
+
+import { query, withUserTransaction } from './connection.ts'
+import { createArticlePost } from './feed.ts'
 
 export interface ArticleDraftRecord {
   id: string
@@ -75,23 +78,47 @@ export const deleteArticleDraft = async (user: string, id: string): Promise<bool
   return (result.rowCount ?? 0) > 0
 }
 
-/** Remove a draft and return it, so of concurrent publishes exactly one gets it; null when it is gone. */
-export const claimArticleDraft = async (user: string, id: string): Promise<ArticleDraftRecord | null> => {
-  const result = await query<ArticleDraftRecord>(
-    user,
-    `DELETE FROM article_drafts WHERE id = $1 RETURNING ${COLUMNS}`,
-    [id],
-  )
-  return result.rows[0] ?? null
-}
+export type DraftPostPreparation = { ok: true; input: ArticlePostInput } | { ok: false; error: string }
 
-/** Put a claimed draft back as it was, same id and timestamps, after its publish failed. */
-export const restoreArticleDraft = async (user: string, draft: ArticleDraftRecord): Promise<void> => {
-  await query(
-    user,
-    `INSERT INTO article_drafts (id, article, visibility, created_at, updated_at)
-     VALUES ($1, $2, $3, $4, $5)
-     ON CONFLICT (id) DO NOTHING`,
-    [draft.id, JSON.stringify(draft.article), draft.visibility, draft.created_at, draft.updated_at],
-  )
+export type DraftPublishOutcome =
+  | { status: 'published'; post: FeedPostRecord }
+  | { status: 'missing' }
+  | { status: 'rejected'; error: string }
+
+const ROLLBACK = new Error('article draft publish rejected')
+
+/**
+ * Turn a draft into an article post in one transaction: the draft is removed
+ * (`DELETE … RETURNING`, so of concurrent publishes exactly one gets it),
+ * `prepare` derives the post from the removed row, and the post is inserted.
+ * A rejection from `prepare`, or any failure before commit, rolls back and
+ * leaves the draft as it was. `prepare` runs while the transaction is open, so
+ * it must not wait on the network.
+ */
+export const publishArticleDraftPost = async (
+  user: string,
+  id: string,
+  prepare: (draft: ArticleDraftRecord) => Promise<DraftPostPreparation>,
+): Promise<DraftPublishOutcome> => {
+  let rejection: string | undefined
+  try {
+    return await withUserTransaction(user, async (tx): Promise<DraftPublishOutcome> => {
+      const claimed = await query<ArticleDraftRecord>(
+        tx,
+        `DELETE FROM article_drafts WHERE id = $1 RETURNING ${COLUMNS}`,
+        [id],
+      )
+      const draft = claimed.rows[0]
+      if (!draft) return { status: 'missing' }
+      const prepared = await prepare(draft)
+      if (!prepared.ok) {
+        rejection = prepared.error
+        throw ROLLBACK
+      }
+      return { post: await createArticlePost(tx, prepared.input), status: 'published' }
+    })
+  } catch (error) {
+    if (error === ROLLBACK && rejection !== undefined) return { error: rejection, status: 'rejected' }
+    throw error
+  }
 }

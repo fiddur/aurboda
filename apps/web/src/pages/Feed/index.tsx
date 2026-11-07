@@ -140,9 +140,24 @@ function OwnPosts({ author }: { author: PostAuthor }) {
 const TABS: { id: FeedTab; label: string }[] = [
   { id: 'following', label: 'Following' },
   { id: 'mine', label: 'Your posts' },
+  { id: 'manage', label: 'People & sharing' },
 ]
 
-/** Write first, then what the people you follow posted, with follower management tucked away below. */
+const FeedTabPanel = ({ author, tab }: { author: PostAuthor; tab: FeedTab }) => {
+  if (tab === 'mine') return <OwnPosts author={author} />
+  if (tab === 'manage') {
+    return (
+      <div class="feed-manage">
+        <FollowingPanel />
+        <FollowersPanel />
+        <AutoShareRulesPanel />
+      </div>
+    )
+  }
+  return <HomeTimeline />
+}
+
+/** Write first, then tabs: what the people you follow posted, your own posts, and who you follow and auto-share. */
 export function Feed() {
   const { path, query, route } = useLocation()
   const tab = feedTabFromQuery(query)
@@ -182,7 +197,7 @@ export function Feed() {
         />
       )}
 
-      <div class="feed-tabs" role="tablist" aria-label="Posts">
+      <div class="feed-tabs" role="tablist" aria-label="Feed">
         {TABS.map(({ id, label }) => (
           <button
             key={id}
@@ -196,16 +211,9 @@ export function Feed() {
           </button>
         ))}
       </div>
-      <div role="tabpanel">{tab === 'mine' ? <OwnPosts author={author} /> : <HomeTimeline />}</div>
-
-      <details class="feed-manage">
-        <summary class="feed-manage-summary">Manage following, followers and auto-sharing</summary>
-        <div class="feed-manage-body">
-          <FollowingPanel />
-          <FollowersPanel />
-          <AutoShareRulesPanel />
-        </div>
-      </details>
+      <div role="tabpanel">
+        <FeedTabPanel author={author} tab={tab} />
+      </div>
     </div>
   )
 }

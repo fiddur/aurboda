@@ -24,9 +24,8 @@ import { configuredStructuredChallengeDeps } from './feed-structured-challenge.t
 export type BuildArticleResult = { ok: true; article: ArticleContent } | { ok: false; error: string }
 
 /**
- * A human label for a chart/correlation/challenge block: its caption, else a
- * label from its data (the metric display name, `trigger vs outcome`, or
- * "Challenge standings"). Shared single source for the AS2 image attachment name
+ * A human label for a non-prose block: its caption, else a label from its data.
+ * Shared single source for the AS2 image attachment name
  * (`articleImageAttachments`) and the markdown export (`article-export.ts`) so
  * the two can't diverge. A blank caption falls back to the data label.
  */
@@ -85,11 +84,23 @@ const blockLabel = (block: Extract<ArticleBlock, { type: 'chart' | 'correlation'
   block.type === 'chart' ? `Chart block ${index + 1} (${block.metric})` : `Correlation block ${index + 1}`
 
 /**
+ * Blocks with each challenge block's URL in its canonical spelling, the one
+ * `getParticipationByUrl` looks up by; a URL with no canonical form is kept as
+ * typed for validation to reject.
+ */
+export const withCanonicalChallengeUrls = <B extends { type: string }>(blocks: B[]): B[] =>
+  blocks.map((block) => {
+    const url = block.type === 'challenge' ? (block as { challenge_url?: unknown }).challenge_url : undefined
+    const canonical = typeof url === 'string' ? canonicalChallengeUrl(url) : null
+    return canonical == null || canonical === url ? block : { ...block, challenge_url: canonical }
+  })
+
+/**
  * Validate a fully-formed article's content: every chart and correlation block
  * must resolve to a bounded window (its own override or the article default)
  * with start < end, and every challenge block must link an http(s) challenge
- * URL (`<base>/u/<username>/<slug>`). Returns the content to persist, or an error
- * message for a 400.
+ * URL (`<base>/u/<username>/<slug>`). Returns the content to persist, challenge
+ * URLs canonical, or an error message for a 400.
  */
 export const buildArticleContent = (content: ArticleContent): BuildArticleResult => {
   for (const [i, block] of content.blocks.entries()) {
@@ -115,7 +126,7 @@ export const buildArticleContent = (content: ArticleContent): BuildArticleResult
       return { error: `${label} has start on or after end.`, ok: false }
     }
   }
-  return { article: content, ok: true }
+  return { article: { ...content, blocks: withCanonicalChallengeUrls(content.blocks) }, ok: true }
 }
 
 /** What the challenge-existence check needs: this instance's web host and a challenge lookup. */
@@ -151,16 +162,18 @@ const localChallengeExists = async (
  * name one that exists (an unknown user counts as missing). A remote URL is
  * not fetched here — saving never touches the network; it resolves
  * best-effort at render. Without a lookup (resolver unconfigured) nothing is
- * checked.
+ * checked, and neither is a block whose canonical URL is in `unchanged`.
  */
 export const checkArticleChallenges = async (
   content: ArticleContent,
   lookup: ArticleChallengeLookup | null,
+  unchanged: ReadonlySet<string> = new Set(),
 ): Promise<BuildArticleResult> => {
   const webHost = lookup?.webHost?.replace(/\/+$/, '')
   if (lookup == null || !webHost) return { article: content, ok: true }
   for (const [i, block] of content.blocks.entries()) {
     if (block.type !== 'challenge') continue
+    if (unchanged.has(canonicalChallengeUrl(block.challenge_url) ?? block.challenge_url)) continue
     const parsed = parseChallengeUrl(block.challenge_url)
     if (parsed == null || parsed.base !== webHost) continue
     if (!(await localChallengeExists(lookup, safeDecode(parsed.username), safeDecode(parsed.slug)))) {
@@ -170,17 +183,29 @@ export const checkArticleChallenges = async (
   return { article: content, ok: true }
 }
 
+const challengeUrls = (content: ArticleContent): Set<string> =>
+  new Set(
+    content.blocks.flatMap((block) =>
+      block.type === 'challenge' ? [canonicalChallengeUrl(block.challenge_url) ?? block.challenge_url] : [],
+    ),
+  )
+
 /**
  * `buildArticleContent` plus `checkArticleChallenges`: the full validation every
- * article write (create, update, draft publish) goes through.
+ * article write (create, update, draft publish) goes through. On an update,
+ * `stored` is the article as saved: a challenge it already links is not looked
+ * up again, so a challenge deleted since does not block every later edit.
  */
 export const validateArticleContent = async (
   content: ArticleContent,
-  lookup: ArticleChallengeLookup | null = configuredStructuredChallengeDeps(),
+  {
+    lookup = configuredStructuredChallengeDeps(),
+    stored,
+  }: { lookup?: ArticleChallengeLookup | null; stored?: ArticleContent } = {},
 ): Promise<BuildArticleResult> => {
   const built = buildArticleContent(content)
   if (!built.ok) return built
-  return checkArticleChallenges(built.article, lookup)
+  return checkArticleChallenges(built.article, lookup, stored ? challengeUrls(stored) : undefined)
 }
 
 interface ArticleFields<B> {
