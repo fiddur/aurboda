@@ -137,6 +137,42 @@ describe('buildArticleMarkdown', () => {
   })
 })
 
+describe('buildArticleMarkdown — challenge blocks', () => {
+  const CHALLENGE = {
+    caption: 'Join *us*',
+    challenge_url: 'https://qs.example/u/olle/nov',
+    type: 'challenge',
+  } as const
+
+  test('renders the standings image, the caption and a join link', () => {
+    const md = render([CHALLENGE])
+    expect(md).toContain(`![Join \\*us\\*](${base}/blocks/0/image.png?v=${V})`)
+    expect(md).toContain('*Join \\*us\\**')
+    expect(md).toContain('[Join the challenge](https://qs.example/u/olle/nov)')
+  })
+
+  test('without drawable standings, keeps the caption and the join link but no image', () => {
+    const md = buildArticleMarkdown(
+      'https://aurboda.example/api',
+      'fiddur',
+      'POST',
+      'public',
+      'secret-token',
+      UPDATED,
+      article([{ challenge_url: 'https://qs.example/u/olle/nov', type: 'challenge' }]),
+      new Set(),
+    )
+    expect(md).not.toContain('![')
+    expect(md).not.toContain('not enough data')
+    expect(md).toContain('[Join the challenge](https://qs.example/u/olle/nov)')
+  })
+
+  test('escapes characters that would break the link target', () => {
+    const md = render([{ challenge_url: 'https://qs.example/u/olle/nov?x=(1) 2', type: 'challenge' }])
+    expect(md).toContain('[Join the challenge](https://qs.example/u/olle/nov?x=%281%29%202)')
+  })
+})
+
 describe('renderableArticleBlocks', () => {
   const CHART = { end: WINDOW.end, metric: 'heart_rate', start: WINDOW.start, type: 'chart' } as const
   const CORR = {
@@ -149,7 +185,26 @@ describe('renderableArticleBlocks', () => {
 
   const POST_ID = '11111111-1111-4111-8111-111111111111'
 
-  const deps = (points: number, scatter: boolean, misses = createNegativeCache()): BlockImageDataDeps => ({
+  const race = (lines: number) => ({
+    asOf: UPDATED,
+    endTime: UPDATED,
+    lines: Array.from({ length: lines }, () => ({
+      color: '#2b9ea7',
+      name: 'olle',
+      points: [[UPDATED, 0] as [Date, number]],
+    })),
+    startTime: UPDATED,
+    timezone: 'UTC',
+    title: 'Steps',
+  })
+
+  const deps = (
+    points: number,
+    scatter: boolean,
+    misses = createNegativeCache(),
+    raceLines: number | null = null,
+  ): BlockImageDataDeps => ({
+    challengeRace: async () => (raceLines == null ? null : race(raceLines)),
     chartSeries: async () => Array.from({ length: points }, (_, i) => i),
     misses,
     correlationScatter: async () =>
@@ -173,6 +228,18 @@ describe('renderableArticleBlocks', () => {
       new Set([1, 2]),
     )
     expect(await renderableArticleBlocks('u', POST_ID, article(blocks), deps(1, false))).toEqual(new Set())
+  })
+
+  test('keeps a challenge block only when its race has a line to draw', async () => {
+    const CHALLENGE = { challenge_url: 'https://qs.example/u/olle/nov', type: 'challenge' } as const
+    const blocks: ArticleContent['blocks'] = [CHALLENGE]
+    expect(
+      await renderableArticleBlocks('u', POST_ID, article(blocks), deps(0, false, undefined, 1)),
+    ).toEqual(new Set([0]))
+    expect(
+      await renderableArticleBlocks('u', POST_ID, article(blocks), deps(0, false, undefined, 0)),
+    ).toEqual(new Set())
+    expect(await renderableArticleBlocks('u', POST_ID, article(blocks), deps(0, false))).toEqual(new Set())
   })
 
   test('forgets the remembered 404s of every block it finds drawable, and only those', async () => {
@@ -203,6 +270,7 @@ describe('renderableArticleBlocks', () => {
   test('drops a block with an unbounded window without fetching any data', async () => {
     let fetched = false
     const spying: BlockImageDataDeps = {
+      challengeRace: async () => null,
       chartSeries: async () => {
         fetched = true
         return [1, 2, 3]

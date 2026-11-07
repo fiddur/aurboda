@@ -1,11 +1,11 @@
-import { useQuery } from '@tanstack/react-query'
-import { useRoute } from 'preact-iso'
-
 /**
  * PublicPost - one public/unlisted feed post at /u/:username/posts/:postId, the
  * page a federated Note's id URL redirects a browser to. Unauthenticated;
  * rendered without app chrome.
  */
+import { useQuery } from '@tanstack/react-query'
+import { useRoute } from 'preact-iso'
+
 import { avatarUrl, fetchPublicPost } from '../../state/api'
 import { FeedPostCard } from '../Feed/FeedPostCard'
 import { publicAuthor } from '../PublicProfile/public-author'

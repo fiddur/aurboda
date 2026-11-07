@@ -4,7 +4,7 @@
  * - Admin user list
  */
 
-import { NUTRIENT_FIELD_NAMES } from '@aurboda/api-spec'
+import { NUTRIENT_FIELD_NAMES, type OfficialFeedSetting } from '@aurboda/api-spec'
 import pg from 'pg'
 
 import { createRolePool, type Queryable, type UserDb, withTransaction } from '../db/pool.ts'
@@ -49,6 +49,7 @@ export type SignupMode = 'open' | 'invite_only' | 'closed'
 export interface ServerSettings {
   audit_log_retention_days: number
   billing_enabled: boolean
+  /** Legacy single-user blog, read as an official feed of that user until `official_feed` is written. */
   blog_username: string
   grace_days: number
   gravl_client_id: string
@@ -58,6 +59,7 @@ export interface ServerSettings {
   oura_client_secret: string
   oura_webhook_enabled: boolean
   oura_webhook_verification_token: string
+  official_feed: OfficialFeedSetting
   payment_url: string
   price_text: string
   sentry_dsn: string

@@ -35,6 +35,7 @@ const post = (id: string, over: Partial<FeedPostRecord> = {}): FeedPostRecord =>
   kind: 'activity',
   message: null,
   series_metrics: [],
+  tags: [],
   updated_at: T0,
   visibility: 'followers',
   ...over,

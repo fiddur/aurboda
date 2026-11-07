@@ -24,6 +24,7 @@ import type {
   ArticleContent,
   FeedStructuredArticle,
   FeedStructuredArticleBlock,
+  FeedStructuredArticleChallengeBlock,
   FeedStructuredArticleChartBlock,
   FeedStructuredArticleCorrelationBlock,
   FeedStructuredPost,
@@ -46,7 +47,12 @@ import {
   resolveStructuredRoute,
   resolveStructuredSeries,
 } from './feed-structured-activity.ts'
-import { configuredStructuredChallengeDeps, resolveStructuredChallenge } from './feed-structured-challenge.ts'
+import {
+  configuredStructuredChallengeDeps,
+  resolveChallengeByUrl,
+  resolveStructuredChallenge,
+  type StructuredChallengeDeps,
+} from './feed-structured-challenge.ts'
 import { resolveStructuredExercise } from './feed-structured-exercise.ts'
 import { resolveFeedActivity } from './feed.ts'
 import { queryMetricsBucketed } from './queries/index.ts'
@@ -140,12 +146,40 @@ const resolveStructuredCorrelationBlock = async (
 }
 
 /**
+ * Resolve one article `challenge` block to the challenge document and a
+ * standings snapshot (`resolveChallengeByUrl`), or to its bare URL and caption
+ * when the resolver is unconfigured or the challenge can't be read — the
+ * receiver then shows a link card.
+ */
+export const resolveStructuredChallengeBlock = async (
+  user: string,
+  block: Extract<ArticleBlock, { type: 'challenge' }>,
+  deps: StructuredChallengeDeps | null,
+): Promise<FeedStructuredArticleChallengeBlock> => {
+  const resolved: FeedStructuredArticleChallengeBlock = { type: 'challenge', url: block.challenge_url }
+  if (block.caption !== undefined) resolved.caption = block.caption
+  if (deps == null) return resolved
+  try {
+    const challenge = await resolveChallengeByUrl(user, block.challenge_url, deps)
+    if (challenge == null) return resolved
+    resolved.challenge = challenge.challenge
+    if (challenge.standings != null) resolved.standings = challenge.standings
+  } catch (error) {
+    console.warn(
+      `Could not resolve article challenge ${block.challenge_url}: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
+  return resolved
+}
+
+/**
  * Build the structured payload for an article post: its title and every block,
  * resolved in order. A prose block passes its raw markdown through unchanged
  * (rendered by the receiver's own sanitising renderer — #910); a chart or
  * correlation block resolves live over its locked window and is omitted only
  * when that window itself is invalid (unbounded or non-increasing) — the same
- * condition `resolveArticleBlock` treats as ineligible for an image.
+ * condition `resolveArticleBlock` treats as ineligible for an image. A challenge
+ * block always appears, with its challenge and standings when they resolve.
  *
  * Chart buckets in the author's own device timezone (`device_timezone`),
  * matching the block-image renderer, so a `1d` bucket splits on the author's
@@ -167,6 +201,10 @@ const resolveStructuredArticle = async (
     if (block.type === 'chart') {
       const resolved = await resolveStructuredChartBlock(user, block, article, tz)
       if (resolved) blocks.push(resolved)
+      continue
+    }
+    if (block.type === 'challenge') {
+      blocks.push(await resolveStructuredChallengeBlock(user, block, configuredStructuredChallengeDeps()))
       continue
     }
     const resolved = await resolveStructuredCorrelationBlock(user, block, article)

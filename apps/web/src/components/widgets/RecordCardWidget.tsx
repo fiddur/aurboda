@@ -1,8 +1,3 @@
-/**
- * Split into a presentational `RecordCardView` and a fetching container. The public renderer passes
- * server-resolved data without a session id, so its date is not a link.
- */
-
 import { activityMeasureLabels, type RecordCardConfig, type RecordCardData } from '@aurboda/api-spec'
 import { useQuery } from '@tanstack/react-query'
 

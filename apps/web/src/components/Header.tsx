@@ -1,12 +1,13 @@
 import { useLocation } from 'preact-iso'
 import { useCallback, useEffect, useState } from 'preact/hooks'
 
-import { auth, logout } from '../state/auth'
+import { auth, ensureStatusLoaded, logout, signupMode } from '../state/auth'
 import {
   DATA_SOURCE_LINKS,
   isSharingActive,
   NAV_LINKS_PRIMARY,
   NAV_LINKS_SECONDARY,
+  pageTitleForPath,
   SHARING_LINKS,
 } from './nav-links'
 
@@ -15,6 +16,7 @@ export function Header() {
   const { url } = useLocation()
   const isLoggedIn = auth.value.token
   const isAdmin = auth.value.is_admin
+  const canSignup = signupMode.value === 'open'
 
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [dsExpandedInDrawer, setDsExpandedInDrawer] = useState(false)
@@ -44,13 +46,13 @@ export function Header() {
     setDrawerOpen(false)
   }, [url])
 
+  useEffect(() => {
+    if (!isLoggedIn) ensureStatusLoaded()
+  }, [isLoggedIn])
+
   return (
     <header class="app-header">
       <nav class="nav-mobile">
-        <a href="/" class={`nav-mobile-home${url === '/' ? ' active' : ''}`}>
-          Home
-        </a>
-        <span class="spacer" />
         <button
           class="hamburger-btn"
           onClick={toggleDrawer}
@@ -60,6 +62,16 @@ export function Header() {
         >
           ☰
         </button>
+        <a href="/" class="nav-mobile-brand" aria-label="Aurboda home">
+          <img src="/logo.svg" alt="" width={28} height={28} />
+        </a>
+        <span class="nav-mobile-title">{pageTitleForPath(url)}</span>
+        <span class="spacer" />
+        {!isLoggedIn && canSignup && (
+          <a href="/signup" class={`nav-mobile-home${url === '/signup' ? ' active' : ''}`}>
+            Sign up
+          </a>
+        )}
       </nav>
 
       {drawerOpen && <div class="drawer-backdrop" onClick={closeDrawer} />}
@@ -150,9 +162,16 @@ export function Header() {
             </a>
           </>
         ) : (
-          <a href="/login" class={url === '/login' ? 'active' : undefined} onClick={closeDrawer}>
-            Login
-          </a>
+          <>
+            <a href="/login" class={url === '/login' ? 'active' : undefined} onClick={closeDrawer}>
+              Login
+            </a>
+            {canSignup && (
+              <a href="/signup" class={url === '/signup' ? 'active' : undefined} onClick={closeDrawer}>
+                Sign up
+              </a>
+            )}
+          </>
         )}
       </nav>
     </header>

@@ -2,7 +2,12 @@ import { signal } from '@preact/signals'
 import { addDays, differenceInCalendarDays, endOfDay, format, formatISO, subDays } from 'date-fns'
 import { useCallback, useMemo } from 'preact/hooks'
 
-import { collapseDepthForPixelsPerHour, computePixelsPerHour, mergeGapForZoom } from './collapseTier'
+import {
+  collapseDepthForPixelsPerHour,
+  computePixelsPerHour,
+  mergeGapForZoom,
+  splitsAbuttingForZoom,
+} from './collapseTier'
 import { fetchWindowFromRange, nextFetchRange } from './fetchRange'
 import { getDefaultViewEnd, getDefaultViewStart, parseViewHash } from './viewHash'
 
@@ -43,6 +48,8 @@ export interface TimelineNavigation {
   barBucketSize: '1h' | '1d' | '1w'
   /** Gap (ms) below which adjacent same-key activities merge in the timeline. */
   mergeGapMs: number
+  /** Whether the Activity lane keeps exactly abutting activities apart — see `splitsAbuttingForZoom`. */
+  splitAbutting: boolean
   /**
    * How many parent_type hops to walk during hierarchy collapse. 0 = no
    * walk (max-zoom). 1 = one hop (moderate zoom-out).
@@ -98,10 +105,9 @@ export const useTimelineNavigation = (options: TimelineNavigationOptions = {}): 
     [timeAxisPixels, effectiveViewStart, effectiveViewEnd],
   )
 
-  const mergeGapMs = useMemo(
-    () => mergeGapForZoom(differenceInCalendarDays(effectiveViewEnd, effectiveViewStart), pixelsPerHour),
-    [effectiveViewStart, effectiveViewEnd, pixelsPerHour],
-  )
+  const viewDays = differenceInCalendarDays(effectiveViewEnd, effectiveViewStart)
+  const mergeGapMs = useMemo(() => mergeGapForZoom(viewDays, pixelsPerHour), [viewDays, pixelsPerHour])
+  const splitAbutting = splitsAbuttingForZoom(viewDays)
 
   // Multi-tier collapse depth (#656/#658): at max zoom (high pixels-per-hour)
   // the user wants to see (and click to edit) sibling sub-types like
@@ -166,6 +172,7 @@ export const useTimelineNavigation = (options: TimelineNavigationOptions = {}): 
     handleResetToToday,
     handleZoom,
     mergeGapMs,
+    splitAbutting,
     toDate,
     viewEnd,
     viewLabel,

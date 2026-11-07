@@ -21,7 +21,7 @@
 .reports-header .btn-primary {
   padding: 0.5rem 1.25rem;
   font-size: 0.9rem;
-  background: #673ab8;
+  background: var(--color-primary);
   color: white;
   border: none;
   border-radius: 6px;
@@ -31,7 +31,7 @@
 }
 
 .reports-header .btn-primary:hover {
-  background: #5e35b1;
+  background: var(--color-primary-hover);
 }
 
 .reports-filter {
@@ -54,7 +54,7 @@
 }
 
 .reports-empty a {
-  color: #673ab8;
+  color: var(--color-accent);
 }
 
 .reports-list {

@@ -33,13 +33,13 @@
 }
 
 .dashboard .btn-edit:hover {
-  background: #673ab8;
-  border-color: #673ab8;
+  background: var(--color-primary);
+  border-color: var(--color-primary);
   color: white;
 }
 
 .dashboard .btn-primary {
-  background: #673ab8;
+  background: var(--color-primary);
   color: white;
   border: none;
   padding: 0.5rem 1rem;
@@ -50,7 +50,7 @@
 }
 
 .dashboard .btn-primary:hover {
-  background: #5b32a3;
+  background: var(--color-primary-hover);
 }
 
 .dashboard .btn-secondary {
@@ -84,7 +84,7 @@
   font-size: 1.25rem;
   margin: 0 0 1rem 0;
   color: #555;
-  border-bottom: 2px solid #673ab8;
+  border-bottom: 2px solid var(--color-accent);
   padding-bottom: 0.5rem;
 }
 
@@ -299,18 +299,18 @@
 }
 
 .dashboard .quick-link:hover {
-  border-color: #673ab8;
-  background: #faf5ff;
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(103, 58, 184, 0.15);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--color-accent) 15%, transparent);
 }
 
 .dashboard .link-icon {
   width: 48px;
   height: 48px;
   border-radius: 12px;
-  background: #f3e8ff;
-  color: #673ab8;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -318,7 +318,7 @@
 }
 
 .dashboard .quick-link:hover .link-icon {
-  background: #673ab8;
+  background: var(--color-primary);
   color: white;
 }
 
@@ -334,7 +334,6 @@
 
   .dashboard h2 {
     color: #d1d5db;
-    border-color: #8b5cf6;
   }
 
   .dashboard h3 {
@@ -398,18 +397,7 @@
     color: #d1d5db;
   }
 
-  .dashboard .quick-link:hover {
-    border-color: #8b5cf6;
-    background: #1e1b4b;
-  }
-
-  .dashboard .link-icon {
-    background: #3b0764;
-    color: #a855f7;
-  }
-
   .dashboard .quick-link:hover .link-icon {
-    background: #8b5cf6;
     color: white;
   }
 
@@ -465,7 +453,7 @@
 }
 
 .dashboard .widget-editing-wrapper:hover {
-  border-color: #673ab8;
+  border-color: var(--color-accent);
 }
 
 .dashboard .widget-edit-controls {
@@ -489,8 +477,8 @@
 }
 
 .dashboard .widget-move-btn:hover {
-  background: #673ab8;
-  border-color: #673ab8;
+  background: var(--color-primary);
+  border-color: var(--color-primary);
   color: white;
 }
 
@@ -521,7 +509,7 @@
 }
 
 .dashboard .add-widget-btn:hover {
-  color: #673ab8;
+  color: var(--color-accent);
 }
 
 .dashboard .hr-zones-widget {
@@ -620,7 +608,7 @@
 }
 
 .dashboard .goal-progress-widget-link {
-  color: #673ab8;
+  color: var(--color-accent);
   text-decoration: underline;
 }
 
@@ -722,9 +710,9 @@
 }
 
 .dashboard .add-section-btn:hover {
-  border-color: #673ab8;
-  color: #673ab8;
-  background: #faf5ff;
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
 }
 
 .dashboard .section-edit-controls {
@@ -759,8 +747,8 @@
 }
 
 .dashboard .section-rename-btn:hover {
-  color: #673ab8;
-  background: #faf5ff;
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
 }
 
 .dashboard .section-title-input {
@@ -768,7 +756,7 @@
   font-weight: 700;
   color: #555;
   border: none;
-  border-bottom: 2px solid #673ab8;
+  border-bottom: 2px solid var(--color-accent);
   background: transparent;
   padding: 0 0 0.5rem 0;
   margin: 0 0 1rem 0;
@@ -799,7 +787,7 @@
   font: inherit;
   color: #555;
   background: transparent;
-  border: 1px solid #673ab8;
+  border: 1px solid var(--color-accent);
   border-radius: 6px;
   padding: 0.5rem;
   margin: 0 0 1rem 0;
@@ -828,8 +816,6 @@
   }
 
   .dashboard .btn-edit:hover {
-    background: #8b5cf6;
-    border-color: #8b5cf6;
     color: white;
   }
 
@@ -837,20 +823,11 @@
     border-color: #4b5563;
   }
 
-  .dashboard .widget-editing-wrapper:hover {
-    border-color: #8b5cf6;
-  }
-
   .dashboard .widget-move-btn,
   .dashboard .widget-remove-btn {
     background: #374151;
     border-color: #4b5563;
     color: #9ca3af;
-  }
-
-  .dashboard .widget-move-btn:hover {
-    background: #8b5cf6;
-    border-color: #8b5cf6;
   }
 
   .dashboard .widget-remove-btn:hover {
@@ -865,10 +842,6 @@
 
   .dashboard .add-widget-btn {
     color: #9ca3af;
-  }
-
-  .dashboard .add-widget-btn:hover {
-    color: #a855f7;
   }
 
   .dashboard .hr-zones-widget {
@@ -892,10 +865,6 @@
 
   .dashboard .goal-progress-widget h4 {
     color: #d1d5db;
-  }
-
-  .dashboard .goal-progress-widget-link {
-    color: #a855f7;
   }
 
   .dashboard .chart-widget,
@@ -927,20 +896,9 @@
     color: #9ca3af;
   }
 
-  .dashboard .add-section-btn:hover {
-    border-color: #8b5cf6;
-    color: #a855f7;
-    background: #1e1b4b;
-  }
-
   .dashboard .section-delete-btn:hover {
     color: #f87171;
     background: #7f1d1d;
-  }
-
-  .dashboard .section-rename-btn:hover {
-    color: #a855f7;
-    background: #1e1b4b;
   }
 
   .dashboard .section-title-input {

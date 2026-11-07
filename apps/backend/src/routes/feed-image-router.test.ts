@@ -54,6 +54,7 @@ const makePost = (overrides: Partial<FeedPostRecord> = {}): FeedPostRecord => ({
   kind: 'activity',
   message: null,
   series_metrics: [],
+  tags: [],
   updated_at: new Date('2026-07-01T08:00:00Z'),
   visibility: 'public',
   ...overrides,
@@ -228,6 +229,13 @@ describe('resolveArticleBlock', () => {
     expect(await resolveArticleBlock(deps(makePost()), 'fiddur', POST_ID, 0)).toBeNull()
   })
 
+  test('resolves a challenge block to its URL, with no window needed', async () => {
+    const updated_at = new Date('2026-07-05T00:00:00Z')
+    const content = article([{ challenge_url: 'https://qs.example/u/olle/nov', type: 'challenge' }])
+    const block = await resolveArticleBlock(deps(articlePost(content, { updated_at })), 'fiddur', POST_ID, 0)
+    expect(block).toEqual({ type: 'challenge', updatedAt: updated_at, url: 'https://qs.example/u/olle/nov' })
+  })
+
   test('gated on visibility only — no include_chart flag needed for an article', async () => {
     // A public article block resolves even with include_chart off (articles have
     // no opt-in flag; visibility is the whole boundary, #943).
@@ -298,6 +306,7 @@ describe('renderArticleBlockImage', () => {
     getRoute: async () => [],
     getSeries: async () => [],
     getExerciseTrend: async () => null,
+    getChallengeRaceByUrl: vi.fn(async () => null),
     getStandingsChart: async () => null,
     renderChart: vi.fn(async () => Buffer.from('chart-png')),
     renderChartSvg: vi.fn(() => '<svg>chart</svg>'),
@@ -309,12 +318,56 @@ describe('renderArticleBlockImage', () => {
     ...over,
   })
 
+  const race: RaceChartSvgData = {
+    asOf: END,
+    endTime: END,
+    lines: [
+      {
+        color: '#2b9ea7',
+        name: 'olle',
+        points: [
+          [START, 0],
+          [END, 10],
+        ],
+      },
+    ],
+    startTime: START,
+    timezone: 'UTC',
+    title: 'Steps',
+  }
+  const challengeBlock: ResolvedArticleBlock = {
+    type: 'challenge',
+    updatedAt: UPDATED,
+    url: 'https://qs.example/u/olle/nov',
+  }
+
+  test('renders a challenge block as the standings race chart', async () => {
+    const renderRaceChart = vi.fn(async () => Buffer.from('race-png'))
+    const d = mkDeps({ getChallengeRaceByUrl: vi.fn(async () => race), renderRaceChart })
+    expect(await renderArticleBlockImage(d, 'fiddur', challengeBlock, 'png')).toEqual(Buffer.from('race-png'))
+    expect(d.getChallengeRaceByUrl).toHaveBeenCalledWith('fiddur', 'https://qs.example/u/olle/nov')
+    expect(renderRaceChart).toHaveBeenCalledWith(race)
+    const svg = await renderArticleBlockImage(
+      mkDeps({ getChallengeRaceByUrl: async () => race, renderRaceChartSvg: () => '<svg>race</svg>' }),
+      'fiddur',
+      challengeBlock,
+      'svg',
+    )
+    expect(svg?.toString('utf8')).toBe('<svg>race</svg>')
+  })
+
+  test('null for a challenge block without standings or a drawable line', async () => {
+    expect(await renderArticleBlockImage(mkDeps(), 'fiddur', challengeBlock, 'png')).toBeNull()
+    const empty = mkDeps({ getChallengeRaceByUrl: async () => ({ ...race, lines: [] }) })
+    expect(await renderArticleBlockImage(empty, 'fiddur', challengeBlock, 'png')).toBeNull()
+  })
+
   test('renders a chart block as PNG (labelled with the metric display name)', async () => {
     const d = mkDeps()
     const png = await renderArticleBlockImage(d, 'fiddur', chartBlock, 'png')
     expect(png).toEqual(Buffer.from('chart-png'))
     expect(d.getArticleChartSeries).toHaveBeenCalledWith('fiddur', 'heart_rate', START, END, '1d')
-    expect(d.renderChart).toHaveBeenCalledWith(series, { color: '#673ab8', label: 'Heart Rate' })
+    expect(d.renderChart).toHaveBeenCalledWith(series, { color: '#2b9ea7', label: 'Heart Rate' })
   })
 
   test('renders a chart block as SVG bytes', async () => {
@@ -430,6 +483,7 @@ describe('article block image misses', () => {
         getRoute: async () => [],
         getSeries: async () => [],
         getExerciseTrend: async () => null,
+        getChallengeRaceByUrl: async () => null,
         getStandingsChart: async () => null,
         renderChart: async () => Buffer.from('chart-png'),
         renderChartSvg: () => '<svg>chart</svg>',
@@ -461,6 +515,74 @@ describe('article block image misses', () => {
     const res = await supertest(app).get(path)
     expect(res.status).toBe(200)
     expect(res.headers['content-type']).toMatch(/image\/png/)
+  })
+})
+
+describe('article challenge block images', () => {
+  const post = articlePost(article([{ challenge_url: 'https://qs.example/u/olle/nov', type: 'challenge' }]))
+  const race: RaceChartSvgData = {
+    asOf: new Date('2026-11-03T12:00:00Z'),
+    endTime: new Date('2026-11-30T23:00:00Z'),
+    lines: [
+      {
+        color: '#2b9ea7',
+        name: 'olle',
+        points: [
+          [new Date('2026-10-31T23:00:00Z'), 0],
+          [new Date('2026-11-01T23:00:00Z'), 900],
+        ],
+      },
+    ],
+    startTime: new Date('2026-10-31T23:00:00Z'),
+    timezone: 'UTC',
+    title: 'November steps',
+  }
+  const appWith = (data: RaceChartSvgData | null, target: FeedPostRecord = post) => {
+    const getChallengeRaceByUrl = vi.fn(async () => data)
+    const app = express()
+    app.use(
+      createFeedImageRouter({
+        getActivity: async () => null,
+        getArticleChartSeries: async () => [],
+        getChallengeRaceByUrl,
+        getCorrelationScatter: async () => null,
+        getExerciseTrend: async () => null,
+        getPost: async () => target,
+        getRoute: async () => [],
+        getSeries: async () => [],
+        getStandingsChart: async () => null,
+        renderChart: async () => Buffer.from(''),
+        renderChartSvg: () => '',
+        renderRaceChart: async () => Buffer.from('race-png'),
+        renderRaceChartSvg: () => '<svg>race</svg>',
+        renderRoute: async () => Buffer.from(''),
+        renderScatter: async () => Buffer.from(''),
+        renderScatterSvg: () => '',
+      }),
+    )
+    return { app, getChallengeRaceByUrl }
+  }
+  const png = `/public/fiddur/feed/${POST_ID}/blocks/0/image.png`
+
+  test('serves the standings race of the linked challenge', async () => {
+    const { app, getChallengeRaceByUrl } = appWith(race)
+    const res = await supertest(app).get(png)
+    expect(res.status).toBe(200)
+    expect(res.headers['content-type']).toMatch(/image\/png/)
+    expect(getChallengeRaceByUrl).toHaveBeenCalledWith('fiddur', 'https://qs.example/u/olle/nov')
+    const svg = await supertest(app).get(`/public/fiddur/feed/${POST_ID}/blocks/0/image.svg`)
+    expect(svg.status).toBe(200)
+    expect(svg.headers['content-type']).toMatch(/image\/svg\+xml/)
+  })
+
+  test('404 when the challenge has no standings', async () => {
+    expect((await supertest(appWith(null).app).get(png)).status).toBe(404)
+  })
+
+  test('a followers-only article needs its token', async () => {
+    const { app } = appWith(race, { ...post, visibility: 'followers' })
+    expect((await supertest(app).get(png)).status).toBe(404)
+    expect((await supertest(app).get(`${png}?token=secret-token`)).status).toBe(200)
   })
 })
 
@@ -503,6 +625,7 @@ describe('standings images', () => {
         getRoute: async () => [],
         getSeries: async () => [],
         getExerciseTrend: async () => null,
+        getChallengeRaceByUrl: async () => null,
         getStandingsChart,
         renderChart: async () => Buffer.from(''),
         renderChartSvg: () => '',
@@ -621,6 +744,7 @@ describe('exercise trend images (#1398)', () => {
         getPost: async () => post,
         getRoute: async () => [],
         getSeries: async () => [],
+        getChallengeRaceByUrl: async () => null,
         getStandingsChart: async () => null,
         renderChart,
         renderChartSvg,
@@ -678,7 +802,7 @@ describe('exercise trend images (#1398)', () => {
     expect((await supertest(app).get(png)).status).toBe(200)
     expect(getExerciseTrend).toHaveBeenCalledTimes(1)
     expect(renderChart).toHaveBeenCalledExactlyOnceWith(trend.series, {
-      color: '#8b5cf6',
+      color: '#2b9ea7',
       label: 'Best e1RM · Bench Press',
     })
   })

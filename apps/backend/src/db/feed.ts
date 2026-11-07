@@ -47,6 +47,7 @@ export interface FeedPostRecord {
   in_reply_to_handle: string | null
   /** The auto-share rule that created this post (#903), or null for manual posts. */
   autoshare_rule_id: string | null
+  tags: string[]
   /** Unguessable capability token for `followers`-only image URLs (see schema). */
   image_token: string
   created_at: Date
@@ -66,12 +67,15 @@ export interface FeedPostInput {
   message?: string | null
   /** The auto-share rule creating this post (#903); omitted for manual shares. */
   autoshare_rule_id?: string | null
+  /** Normalised hashtags; omitted stores none. */
+  tags?: string[]
 }
 
 /** Input for creating an `article` post (no activity anchor / shared metrics). */
 export interface ArticlePostInput {
   visibility: FeedVisibility
   article: ArticleContent
+  tags?: string[]
 }
 
 export interface ChallengePostInput {
@@ -81,6 +85,7 @@ export interface ChallengePostInput {
   message?: string | null
   /** Attach the rendered standings race chart (`standings.png`); omitted stores false. */
   include_chart?: boolean
+  tags?: string[]
 }
 
 export interface ExercisePostInput {
@@ -90,6 +95,7 @@ export interface ExercisePostInput {
   message?: string | null
   /** Attach the rendered trend image (`trend.png`); omitted stores false. */
   include_chart?: boolean
+  tags?: string[]
 }
 
 /**
@@ -107,6 +113,7 @@ export interface ReplyPostInput {
   in_reply_to_actor_uri: string
   /** The replied-to author's `@user@host` at reply time (the `Mention` name), if known. */
   in_reply_to_handle?: string | null
+  tags?: string[]
 }
 
 export interface FeedPostPatch {
@@ -120,10 +127,11 @@ export interface FeedPostPatch {
   article?: ArticleContent
   /** Replacement personal message; `null` clears it, `undefined` leaves it unchanged. */
   message?: string | null
+  tags?: string[]
 }
 
 const FEED_POST_COLUMNS =
-  'id, kind, activity_id, included_metrics, series_metrics, visibility, include_map, include_chart, include_exercises, article, challenge, exercise, message, in_reply_to_uri, in_reply_to_actor_uri, in_reply_to_handle, autoshare_rule_id, image_token, created_at, updated_at'
+  'id, kind, activity_id, included_metrics, series_metrics, visibility, include_map, include_chart, include_exercises, article, challenge, exercise, message, in_reply_to_uri, in_reply_to_actor_uri, in_reply_to_handle, autoshare_rule_id, tags, image_token, created_at, updated_at'
 
 interface FeedPostRow {
   id: string
@@ -144,6 +152,7 @@ interface FeedPostRow {
   in_reply_to_actor_uri: string | null
   in_reply_to_handle: string | null
   autoshare_rule_id: string | null
+  tags: string[]
   image_token: string
   created_at: Date
   updated_at: Date
@@ -156,8 +165,8 @@ export const createFeedPost = async (user: string, input: FeedPostInput): Promis
     user,
     `INSERT INTO feed_posts
        (activity_id, included_metrics, series_metrics, visibility, include_map, include_chart, include_exercises,
-        message, autoshare_rule_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        message, autoshare_rule_id, tags)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      RETURNING ${FEED_POST_COLUMNS}`,
     [
       input.activity_id,
@@ -169,6 +178,7 @@ export const createFeedPost = async (user: string, input: FeedPostInput): Promis
       input.include_exercises ?? false,
       input.message ?? null,
       input.autoshare_rule_id ?? null,
+      input.tags ?? [],
     ],
   )
   return mapFeedPost(result.rows[0])
@@ -182,10 +192,10 @@ export const createFeedPost = async (user: string, input: FeedPostInput): Promis
 export const createArticlePost = async (user: string, input: ArticlePostInput): Promise<FeedPostRecord> => {
   const result = await query<FeedPostRow>(
     user,
-    `INSERT INTO feed_posts (kind, visibility, article)
-     VALUES ('article', $1, $2)
+    `INSERT INTO feed_posts (kind, visibility, article, tags)
+     VALUES ('article', $1, $2, $3)
      RETURNING ${FEED_POST_COLUMNS}`,
-    [input.visibility, JSON.stringify(input.article)],
+    [input.visibility, JSON.stringify(input.article), input.tags ?? []],
   )
   return mapFeedPost(result.rows[0])
 }
@@ -201,10 +211,16 @@ export const createChallengePost = async (
 ): Promise<FeedPostRecord> => {
   const result = await query<FeedPostRow>(
     user,
-    `INSERT INTO feed_posts (kind, visibility, challenge, message, include_chart)
-     VALUES ('challenge', $1, $2, $3, $4)
+    `INSERT INTO feed_posts (kind, visibility, challenge, message, include_chart, tags)
+     VALUES ('challenge', $1, $2, $3, $4, $5)
      RETURNING ${FEED_POST_COLUMNS}`,
-    [input.visibility, JSON.stringify(input.challenge), input.message ?? null, input.include_chart ?? false],
+    [
+      input.visibility,
+      JSON.stringify(input.challenge),
+      input.message ?? null,
+      input.include_chart ?? false,
+      input.tags ?? [],
+    ],
   )
   return mapFeedPost(result.rows[0])
 }
@@ -216,10 +232,16 @@ export const createChallengePost = async (
 export const createExercisePost = async (user: string, input: ExercisePostInput): Promise<FeedPostRecord> => {
   const result = await query<FeedPostRow>(
     user,
-    `INSERT INTO feed_posts (kind, visibility, exercise, message, include_chart)
-     VALUES ('exercise', $1, $2, $3, $4)
+    `INSERT INTO feed_posts (kind, visibility, exercise, message, include_chart, tags)
+     VALUES ('exercise', $1, $2, $3, $4, $5)
      RETURNING ${FEED_POST_COLUMNS}`,
-    [input.visibility, JSON.stringify(input.exercise), input.message ?? null, input.include_chart ?? false],
+    [
+      input.visibility,
+      JSON.stringify(input.exercise),
+      input.message ?? null,
+      input.include_chart ?? false,
+      input.tags ?? [],
+    ],
   )
   return mapFeedPost(result.rows[0])
 }
@@ -232,8 +254,8 @@ export const createExercisePost = async (user: string, input: ExercisePostInput)
 export const createReplyPost = async (user: string, input: ReplyPostInput): Promise<FeedPostRecord> => {
   const result = await query<FeedPostRow>(
     user,
-    `INSERT INTO feed_posts (kind, visibility, message, in_reply_to_uri, in_reply_to_actor_uri, in_reply_to_handle)
-     VALUES ('reply', $1, $2, $3, $4, $5)
+    `INSERT INTO feed_posts (kind, visibility, message, in_reply_to_uri, in_reply_to_actor_uri, in_reply_to_handle, tags)
+     VALUES ('reply', $1, $2, $3, $4, $5, $6)
      RETURNING ${FEED_POST_COLUMNS}`,
     [
       input.visibility,
@@ -241,6 +263,7 @@ export const createReplyPost = async (user: string, input: ReplyPostInput): Prom
       input.in_reply_to_uri,
       input.in_reply_to_actor_uri,
       input.in_reply_to_handle ?? null,
+      input.tags ?? [],
     ],
   )
   return mapFeedPost(result.rows[0])
@@ -330,6 +353,15 @@ export interface PublicFeedPageOpts {
   includeReplies?: boolean
   /** Only posts of this kind — `article` for a profile's blog view. */
   kind?: FeedPostKind
+  /** Only posts carrying this (normalised) hashtag. */
+  tag?: string
+  /** Only posts carrying at least one of these (normalised) hashtags; empty or absent filters nothing. */
+  anyTags?: readonly string[]
+  /**
+   * Only `public` posts, leaving `unlisted` out: a syndication feed lists what it
+   * carries, which an unlisted post must not be.
+   */
+  publicOnly?: boolean
 }
 
 /**
@@ -372,10 +404,22 @@ export const listPublicFeedPostsKeyset = async (
       WHERE visibility IN ('public', 'unlisted')
         AND ($4::boolean OR kind <> 'reply')
         AND ($5::text IS NULL OR kind = $5)
+        AND (NOT $6::boolean OR visibility = 'public')
+        AND ($7::text IS NULL OR tags @> ARRAY[$7::text])
+        AND ($8::text[] IS NULL OR tags && $8::text[])
         AND ($1::timestamptz IS NULL OR (created_at, id) < ($1::timestamptz, $2::uuid))
       ORDER BY created_at DESC, id DESC
       LIMIT $3`,
-    [before?.created_at ?? null, before?.id ?? null, limit, opts.includeReplies ?? true, opts.kind ?? null],
+    [
+      before?.created_at ?? null,
+      before?.id ?? null,
+      limit,
+      opts.includeReplies ?? true,
+      opts.kind ?? null,
+      opts.publicOnly ?? false,
+      opts.tag ?? null,
+      opts.anyTags?.length ? opts.anyTags : null,
+    ],
   )
   return result.rows.map(mapFeedPostPageRow)
 }
@@ -418,6 +462,7 @@ export const updateFeedPost = async (
   if (patch.include_exercises !== undefined) set('include_exercises', patch.include_exercises)
   if (patch.article !== undefined) set('article', JSON.stringify(patch.article))
   if (patch.message !== undefined) set('message', patch.message)
+  if (patch.tags !== undefined) set('tags', patch.tags)
 
   if (sets.length === 0) return getFeedPostById(user, id)
 

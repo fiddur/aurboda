@@ -109,6 +109,21 @@ describe('Feed posts integration', () => {
     expect(await getFeedPostById(user, '00000000-0000-0000-0000-000000000000')).toBeNull()
   })
 
+  test('stores, patches and keeps hashtags', async () => {
+    const user = getTestUser()
+    expect((await createFeedPost(user, postInput())).tags).toEqual([])
+    const created = await createFeedPost(user, postInput({ tags: ['aurboda', 'running'] }))
+    expect(created.tags).toEqual(['aurboda', 'running'])
+    expect((await getFeedPostById(user, created.id))?.tags).toEqual(['aurboda', 'running'])
+    expect((await updateFeedPost(user, created.id, { visibility: 'unlisted' }))?.tags).toEqual([
+      'aurboda',
+      'running',
+    ])
+    expect((await updateFeedPost(user, created.id, { tags: ['löpning'] }))?.tags).toEqual(['löpning'])
+    const article = await createArticlePost(user, articleInput({ tags: ['qs'] }))
+    expect(article.tags).toEqual(['qs'])
+  })
+
   test('assigns an unguessable image_token that round-trips (#893)', async () => {
     const user = getTestUser()
     const created = await createFeedPost(user, postInput())
@@ -308,6 +323,40 @@ describe('Feed posts integration', () => {
       ).toEqual([share.id])
     })
 
+    test('listPublicFeedPostsKeyset filters by hashtag', async () => {
+      const user = getTestUser()
+      const running = await createFeedPost(user, postInput({ tags: ['aurboda', 'running'] }))
+      const article = await createArticlePost(user, articleInput({ tags: ['running'] }))
+      await createFeedPost(user, postInput({ tags: ['aurboda'] }))
+      await createFeedPost(user, postInput({ tags: ['running'], visibility: 'followers' }))
+
+      expect(
+        (await listPublicFeedPostsKeyset(user, 10, undefined, { tag: 'running' })).map((p) => p.id),
+      ).toEqual([article.id, running.id])
+      expect(
+        (await listPublicFeedPostsKeyset(user, 10, undefined, { kind: 'article', tag: 'running' })).map(
+          (p) => p.id,
+        ),
+      ).toEqual([article.id])
+      expect(await listPublicFeedPostsKeyset(user, 10, undefined, { tag: 'nope' })).toEqual([])
+    })
+
+    test('listPublicFeedPostsKeyset filters by any of several hashtags, public posts only', async () => {
+      const user = getTestUser()
+      const running = await createFeedPost(user, postInput({ tags: ['aurboda', 'running'] }))
+      const qs = await createArticlePost(user, articleInput({ tags: ['qs'] }))
+      await createFeedPost(user, postInput({ tags: ['other'] }))
+      await createFeedPost(user, postInput({ tags: ['aurboda'], visibility: 'unlisted' }))
+      await createFeedPost(user, postInput({ tags: ['qs'], visibility: 'followers' }))
+
+      const ids = async (anyTags: string[]) =>
+        (await listPublicFeedPostsKeyset(user, 10, undefined, { anyTags, publicOnly: true })).map((p) => p.id)
+      expect(await ids(['aurboda', 'qs'])).toEqual([qs.id, running.id])
+      expect(await ids(['running'])).toEqual([running.id])
+      expect(await ids(['nope'])).toEqual([])
+      expect(await ids([])).toHaveLength(3)
+    })
+
     test('listPublicFeedPostsKeyset and countPublicFeedPosts filter by kind for the blog view', async () => {
       const user = getTestUser()
       await createFeedPost(user, postInput())
@@ -328,6 +377,19 @@ describe('Feed posts integration', () => {
       ).toEqual([unlistedArticle.id, pubArticle.id])
       expect(await countPublicFeedPosts(user, 'article')).toBe(2)
       expect(await countPublicFeedPosts(user)).toBe(4)
+    })
+
+    test('listPublicFeedPostsKeyset leaves unlisted posts out when asked for public only, as the Atom feed does', async () => {
+      const user = getTestUser()
+      const pubArticle = await createArticlePost(user, articleInput({ visibility: 'public' }))
+      await createArticlePost(user, articleInput({ visibility: 'unlisted' }))
+      await createArticlePost(user, articleInput({ visibility: 'followers' }))
+
+      expect(
+        (await listPublicFeedPostsKeyset(user, 10, undefined, { kind: 'article', publicOnly: true })).map(
+          (p) => p.id,
+        ),
+      ).toEqual([pubArticle.id])
     })
 
     test('countPublicFeedPosts by kind is 0 when the only articles are followers-only', async () => {

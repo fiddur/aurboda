@@ -235,3 +235,95 @@ describe('mergeOverlappingActivities — Health Connect mindfulness session over
     expect(merged.every((m) => m.source_ids === undefined)).toBe(true)
   })
 })
+
+describe('mergeOverlappingActivities — same-type rows that only touch (#981, #1488)', () => {
+  const yoga = (overrides: Partial<Activity>): Activity => ({
+    activity_type: 'yoga',
+    end_time: new Date('2026-11-06T21:30:00Z'),
+    id: 'first',
+    source: 'manual',
+    start_time: new Date('2026-11-06T21:00:00Z'),
+    ...overrides,
+  })
+  const second = (overrides: Partial<Activity> = {}): Activity =>
+    yoga({
+      end_time: new Date('2026-11-06T22:00:00Z'),
+      id: 'second',
+      start_time: new Date('2026-11-06T21:30:00Z'),
+      ...overrides,
+    })
+
+  test('two back-to-back manual sessions stay two activities', () => {
+    const merged = mergeOverlappingActivities([yoga({}), second()])
+    expect(merged.map((m) => m.id)).toEqual(['first', 'second'])
+    expect(merged.every((m) => m.source_ids === undefined)).toBe(true)
+  })
+
+  test('stay apart with a category map too, across discrete sources', () => {
+    const merged = mergeOverlappingActivities(
+      [yoga({ source: 'aurboda' }), second({ source: 'garmin' })],
+      new Map([['yoga', 'exercise']]),
+    )
+    expect(merged).toHaveLength(2)
+  })
+
+  test('a real overlap still merges', () => {
+    const merged = mergeOverlappingActivities([
+      yoga({}),
+      second({ start_time: new Date('2026-11-06T21:29:00Z') }),
+    ])
+    expect(merged).toHaveLength(1)
+    expect(merged[0].end_time).toEqual(new Date('2026-11-06T22:00:00Z'))
+    expect(merged[0].source_ids).toEqual(['first', 'second'])
+  })
+
+  test('touching spans from a fragmenting source still join', () => {
+    const merged = mergeOverlappingActivities([
+      yoga({ activity_type: 'screentime', source: 'activitywatch' }),
+      second({ activity_type: 'screentime', source: 'activitywatch' }),
+    ])
+    expect(merged).toHaveLength(1)
+    expect(merged[0].start_time).toEqual(new Date('2026-11-06T21:00:00Z'))
+    expect(merged[0].end_time).toEqual(new Date('2026-11-06T22:00:00Z'))
+  })
+
+  test('a fragmenting row on either side of the touch bridges it', () => {
+    expect(mergeOverlappingActivities([yoga({ source: 'deduction-rule' }), second()])).toHaveLength(1)
+    expect(mergeOverlappingActivities([yoga({}), second({ source: 'health_connect' })])).toHaveLength(1)
+  })
+
+  test('any source outside the discrete list bridges a touch, as before', () => {
+    expect(mergeOverlappingActivities([yoga({ source: 'owntracks' }), second()])).toHaveLength(1)
+  })
+
+  test('the row ending the run decides, not the run’s first row', () => {
+    // A manual session overlapped by a Health Connect fragment that ends it, then a manual
+    // session touching that end: the fragment bridges the touch.
+    const fragment = yoga({
+      end_time: new Date('2026-11-06T21:30:00Z'),
+      id: 'fragment',
+      source: 'health_connect',
+      start_time: new Date('2026-11-06T21:10:00Z'),
+    })
+    const shortManual = yoga({ end_time: new Date('2026-11-06T21:20:00Z') })
+    expect(mergeOverlappingActivities([shortManual, fragment, second()])).toHaveLength(1)
+
+    // The other way round: a fragment inside a manual session that ends the run, then a manual
+    // session touching it — two discrete rows meet at the touch, so they stay apart.
+    const inner = yoga({
+      end_time: new Date('2026-11-06T21:20:00Z'),
+      id: 'inner',
+      source: 'health_connect',
+      start_time: new Date('2026-11-06T21:05:00Z'),
+    })
+    const merged = mergeOverlappingActivities([yoga({}), inner, second()])
+    expect(merged).toHaveLength(2)
+    expect(merged[0].source_ids).toEqual(['first', 'inner'])
+    expect(merged[1].id).toBe('second')
+  })
+
+  test('two point-in-time rows at the same instant still merge', () => {
+    const point = yoga({ end_time: undefined })
+    expect(mergeOverlappingActivities([point, { ...point, id: 'again' }])).toHaveLength(1)
+  })
+})

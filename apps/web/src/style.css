@@ -1,10 +1,29 @@
 :root {
+  --color-bg: #ffffff;
+  --color-surface: #ffffff;
+  --color-border: #dde3ea;
+  --color-text: #1b2430;
+  --color-text-muted: #5b6675;
+  --color-chrome: #0f2a4f;
+  --color-chrome-hover: #173a66;
+  --color-chrome-active: #1d4270;
+  --color-chrome-text: #d6e2f0;
+  --color-accent: #17707a;
+  --color-accent-hover: #0f5a62;
+  --color-accent-soft: #e7f4f5;
+  --color-accent-border: #a8d8dc;
+  --color-primary: #17707a;
+  --color-primary-hover: #0f5a62;
+  --color-cta: #f9ab33;
+  --color-cta-text: #1b1406;
+  --color-cta-hover: #e8981c;
+
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
 
-  color: #222;
-  background-color: #ffffff;
+  color: var(--color-text);
+  background-color: var(--color-bg);
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -44,7 +63,7 @@ body {
 }
 
 header.app-header {
-  background-color: #673ab8;
+  background-color: var(--color-chrome);
   display: none;
 }
 
@@ -71,7 +90,23 @@ header.app-header {
 }
 
 .nav-mobile-home.active {
-  background-color: #0005;
+  background-color: var(--color-chrome-active);
+}
+
+.nav-mobile-brand {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem 0.25rem;
+}
+
+.nav-mobile-title {
+  color: #fff;
+  font-weight: 600;
+  padding: 0.75rem 0.5rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .hamburger-btn {
@@ -85,7 +120,7 @@ header.app-header {
 }
 
 .hamburger-btn:hover {
-  background-color: #0008;
+  background-color: var(--color-chrome-hover);
 }
 
 .drawer-backdrop {
@@ -101,7 +136,7 @@ header.app-header {
   left: 0;
   bottom: 0;
   width: 280px;
-  background: #673ab8;
+  background: var(--color-chrome);
   z-index: 300;
   display: flex;
   flex-direction: column;
@@ -139,29 +174,30 @@ header.app-header {
 }
 
 .drawer-close-btn:hover {
-  background-color: #0008;
+  background-color: var(--color-chrome-hover);
   border-radius: 4px;
 }
 
 .nav-drawer a {
-  color: #fff;
+  color: var(--color-chrome-text);
   padding: 0.75rem 1rem;
   text-decoration: none;
   display: block;
 }
 
 .nav-drawer a.active {
-  background-color: #0005;
+  background-color: var(--color-chrome-active);
+  color: #fff;
 }
 
 .nav-drawer a:hover {
-  background-color: #0008;
+  background-color: var(--color-chrome-hover);
 }
 
 .drawer-section-toggle {
   background: transparent;
   border: none;
-  color: #fff;
+  color: var(--color-chrome-text);
   padding: 0.75rem 1rem;
   text-align: left;
   width: 100%;
@@ -174,11 +210,12 @@ header.app-header {
 }
 
 .drawer-section-toggle:hover {
-  background-color: #0008;
+  background-color: var(--color-chrome-hover);
 }
 
 .drawer-section-toggle.active {
-  background-color: #0005;
+  background-color: var(--color-chrome-active);
+  color: #fff;
 }
 
 .dropdown-arrow {
@@ -228,13 +265,29 @@ main > div {
 }
 
 .site-footer a:hover {
-  color: #673ab8;
+  color: var(--color-accent);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    color: #ccc;
-    background-color: #1a1a1a;
+    --color-bg: #12161c;
+    --color-surface: #1b222b;
+    --color-border: #2a333f;
+    --color-text: #e6e9ee;
+    --color-text-muted: #9aa6b4;
+    --color-chrome: #0b1a30;
+    --color-chrome-hover: #14294a;
+    --color-chrome-active: #173357;
+    --color-chrome-text: #c3cfdd;
+    --color-accent: #4cc3cc;
+    --color-accent-hover: #8fe3e9;
+    --color-accent-soft: #11262b;
+    --color-accent-border: #1f5a60;
+    --color-primary: #17707a;
+    --color-primary-hover: #1f8a94;
+    --color-cta: #f9ab33;
+    --color-cta-text: #1b1406;
+    --color-cta-hover: #ffbb55;
   }
 
   .site-footer {
@@ -243,9 +296,5 @@ main > div {
 
   .site-footer a {
     color: #666;
-  }
-
-  .site-footer a:hover {
-    color: #8b5cf6;
   }
 }

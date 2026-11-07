@@ -11,6 +11,7 @@ import { MiniTrendChart } from '../../components/MiniTrendChart'
 import { SaveStatusIndicator, useSaveStatus } from '../../components/SaveStatusIndicator'
 import { deleteRoute, fetchRoute, fetchRoutes, mergeRoutes, updateRoute } from '../../state/api'
 import { auth } from '../../state/auth'
+import { CHART_PRIMARY } from '../../theme'
 import { formatDistance, formatPace } from '../EntityDetail/format-utils'
 import { ActivityTypeName } from './ActivityTypeName'
 import { effortSeries, effortsWithCategory, formatElapsed } from './format'
@@ -102,7 +103,7 @@ function Trends({ efforts }: { efforts: RouteEffort[] }) {
       {pace.length >= MIN_TREND_POINTS && (
         <>
           <h3>Pace (min/km)</h3>
-          <MiniTrendChart data={pace} color="#673ab8" />
+          <MiniTrendChart data={pace} color={CHART_PRIMARY} />
         </>
       )}
       {hr.length >= MIN_TREND_POINTS && (

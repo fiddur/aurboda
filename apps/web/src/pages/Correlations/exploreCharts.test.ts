@@ -37,7 +37,7 @@ describe('describeSelectorAxis', () => {
   })
 
   it('labels a custom metric without a unit', () => {
-    expect(describeSelectorAxis({ kind: 'metric', metric: 'back_pain' })).toBe('back_pain')
+    expect(describeSelectorAxis({ kind: 'metric', metric: 'headache' })).toBe('headache')
   })
 
   it('uses kcal for calories and g for other nutrients', () => {

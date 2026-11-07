@@ -9,9 +9,11 @@ import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'preact/hooks'
 
 import { fetchChartData } from '../../state/api'
+import { CHART_PRIMARY } from '../../theme'
 import { buildChartUrl, type ChartOrigin } from '../../utils/chart-url'
 import { BarChart } from '../charts/BarChart'
 import { BreakdownLegend, SERIES_COLORS } from '../charts/breakdown'
+import { barsFetchParams } from './chartFetchParams'
 import { measureChartTitle } from './chartTitle'
 import { HEAVY_QUERY_OPTIONS } from './heavyQuery'
 
@@ -62,7 +64,7 @@ export function BarChartView({ config, data, href }: BarChartViewProps) {
           <BarChart data={NO_BUCKETS} height={200} multiSeries={multiSeries} />
         </>
       ) : (
-        <BarChart data={data?.buckets ?? NO_BUCKETS} color="#8b5cf6" height={200} />
+        <BarChart data={data?.buckets ?? NO_BUCKETS} color={CHART_PRIMARY} height={200} />
       )}
     </>
   )
@@ -90,33 +92,17 @@ export function BarChartWidget({ config, origin }: BarChartWidgetProps) {
     title,
     bucket_size,
     lookback_days,
-    aggregation = 'count',
     breakdown_fields,
     measure,
     filter_field,
     filter_value,
   } = config
-  const measureConfig = {
-    ...(measure ? { measure } : {}),
-    ...(measure && filter_field && filter_value ? { filter_field, filter_value } : {}),
-  }
-
-  const { start, end } = lookbackToRange(lookback_days)
+  const params = barsFetchParams(config, lookbackToRange(lookback_days))
+  const { aggregation } = params
 
   const chartQuery = useQuery({
     enabled: Boolean(pattern ?? activity_type_id),
-    queryFn: () =>
-      fetchChartData({
-        aggregation,
-        bucket_size,
-        end,
-        pattern: pattern ?? undefined,
-        source_type,
-        start,
-        ...(activity_type_id ? { activity_type_id } : {}),
-        ...(breakdown_fields?.length ? { breakdown_fields } : {}),
-        ...measureConfig,
-      }),
+    queryFn: () => fetchChartData({ ...params, ...(breakdown_fields?.length ? { breakdown_fields } : {}) }),
     queryKey: [
       'chart-data',
       source_type,
@@ -161,7 +147,9 @@ export function BarChartWidget({ config, origin }: BarChartWidgetProps) {
     pattern: pattern ?? undefined,
     source_type,
     activity_type_id,
-    ...measureConfig,
+    measure: params.measure,
+    filter_field: params.filter_field,
+    filter_value: params.filter_value,
     origin,
   })
 

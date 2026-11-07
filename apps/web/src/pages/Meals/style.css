@@ -118,7 +118,7 @@
 }
 
 .completion-label input[type='checkbox'] {
-  accent-color: #673ab8;
+  accent-color: var(--color-accent);
   width: 1.1rem;
   height: 1.1rem;
 }
@@ -130,7 +130,7 @@
 }
 
 .config-hint a {
-  color: #673ab8;
+  color: var(--color-accent);
 }
 
 .meal-slots {
@@ -147,8 +147,8 @@
 }
 
 .meal-slot-row.has-meal {
-  border-color: #c4b5fd;
-  background: #faf5ff;
+  border-color: var(--color-accent-border);
+  background: var(--color-accent-soft);
 }
 
 .slot-top {
@@ -170,7 +170,7 @@
   width: 14px;
   height: 14px;
   border: 2px solid #d1d5db;
-  border-top-color: #673ab8;
+  border-top-color: var(--color-accent);
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
   flex-shrink: 0;
@@ -217,7 +217,7 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #673ab8;
+  background: var(--color-primary);
   border: 2px solid #fff;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
   cursor: grab;
@@ -227,7 +227,7 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #673ab8;
+  background: var(--color-primary);
   border: 2px solid #fff;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
   cursor: grab;
@@ -257,9 +257,9 @@
 }
 
 .btn-add-meal:hover {
-  border-color: #673ab8;
-  color: #673ab8;
-  background: #faf5ff;
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
 }
 
 .incomplete-indicator {
@@ -295,7 +295,7 @@
 }
 
 .sensitivity-label input[type='checkbox'] {
-  accent-color: #673ab8;
+  accent-color: var(--color-accent);
 }
 
 .sensitivity-label.derived {
@@ -319,7 +319,7 @@
 }
 
 a.meal-name:hover {
-  color: #673ab8;
+  color: var(--color-accent);
 }
 
 .slot-actions {
@@ -350,7 +350,7 @@ a.meal-name:hover {
 
 .meal-edit-link:hover {
   background: #f3f4f6;
-  color: #673ab8;
+  color: var(--color-accent);
 }
 
 /* Frequent-meals quick-log strip — shown above every slot. When a meal is
@@ -402,9 +402,9 @@ a.meal-name:hover {
 }
 
 .frequent-chip:hover {
-  background: #ede9fe;
-  border-color: #673ab8;
-  color: #673ab8;
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
 }
 
 .frequent-icon {
@@ -459,8 +459,8 @@ a.meal-name:hover {
 }
 
 .frequent-picker-item:hover {
-  background: #ede9fe;
-  color: #673ab8;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
 }
 
 .food-items {
@@ -500,7 +500,7 @@ a.meal-name:hover {
   display: inline-block;
   width: 6px;
   height: 6px;
-  background: #673ab8;
+  background: var(--color-primary);
   border-radius: 50%;
   margin-left: 0.25rem;
   vertical-align: middle;
@@ -528,7 +528,7 @@ a.meal-name:hover {
 }
 
 .popover-title-link {
-  color: #673ab8;
+  color: var(--color-accent);
   text-decoration: none;
 }
 
@@ -547,7 +547,7 @@ a.meal-name:hover {
 }
 
 .popover-option input[type='checkbox'] {
-  accent-color: #673ab8;
+  accent-color: var(--color-accent);
 }
 
 .meal-sensitivities {
@@ -561,8 +561,8 @@ a.meal-name:hover {
   display: inline-block;
   padding: 0.125rem 0.5rem;
   font-size: 0.75rem;
-  background: #ede9f0;
-  color: #673ab8;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
   border-radius: 12px;
   font-weight: 500;
 }
@@ -711,11 +711,6 @@ a.meal-name:hover {
     border-color: #374151;
   }
 
-  .meal-slot-row.has-meal {
-    background: #1e1b4b;
-    border-color: #6d28d9;
-  }
-
   .time-label {
     color: #d1d5db;
   }
@@ -735,12 +730,6 @@ a.meal-name:hover {
   .btn-add-meal {
     border-color: #4b5563;
     color: #9ca3af;
-  }
-
-  .btn-add-meal:hover {
-    border-color: #7c3aed;
-    color: #c4b5fd;
-    background: #1e1b4b;
   }
 
   .incomplete-indicator {
@@ -790,11 +779,6 @@ a.meal-name:hover {
 
   .popover-option {
     color: #d1d5db;
-  }
-
-  .sensitivity-chip {
-    background: #312e81;
-    color: #c4b5fd;
   }
 
   .meal-time {
@@ -1055,10 +1039,6 @@ a.meal-name:hover {
   color: #b45309;
   margin-left: 0.25rem;
   font-size: 0.7rem;
-}
-
-.overview-table .range-col {
-  /* width comes from <col class="col-range"> */
 }
 
 .overview-table .nutrient-unit {

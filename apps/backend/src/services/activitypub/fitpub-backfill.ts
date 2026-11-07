@@ -11,6 +11,8 @@ import type { Note } from '@fedify/fedify/vocab'
 
 import { PUBLIC_COLLECTION } from '@fedify/fedify/vocab'
 
+import { UUID_RE } from '../../utils.ts'
+
 export interface FitpubBackfillDeps {
   /** SSRF-guarded GET + JSON decode. */
   fetchJson: (url: string) => Promise<unknown>
@@ -20,7 +22,6 @@ export interface FitpubBackfillDeps {
 
 const NODEINFO_REL_PREFIX = 'http://nodeinfo.diaspora.software/ns/schema/2.'
 const USERNAME_RE = /^[A-Za-z0-9_.-]+$/
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)

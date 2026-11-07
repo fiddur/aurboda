@@ -240,6 +240,24 @@ export const socialTables: Record<string, string> = {
   feed_posts_exercise_column: `
     ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS exercise JSONB;
   `,
+  // The post's hashtags, lowercase without `#`, computed at create and every edit.
+  // The GIN index backs the profile's `?tag=` filter (`tags @> ARRAY[$tag]`).
+  feed_posts_tags_column: `
+    ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}';
+    CREATE INDEX IF NOT EXISTS idx_feed_posts_tags ON feed_posts USING GIN (tags);
+  `,
+  // Unpublished article drafts: private work in progress, kept out of feed_posts
+  // so no feed, outbox, timeline or public listing can ever see one. Publishing
+  // creates a feed_posts row and deletes the draft.
+  article_drafts: `
+    CREATE TABLE IF NOT EXISTS article_drafts (
+      id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      article     JSONB NOT NULL,
+      visibility  VARCHAR(12) NOT NULL DEFAULT 'public',
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
   // The owner's own replies to one target, for the thread-snapshot merge.
   feed_posts_reply_indexes: `
     CREATE INDEX IF NOT EXISTS idx_feed_posts_in_reply_to
@@ -295,6 +313,10 @@ export const socialTables: Record<string, string> = {
   `,
   autoshare_rules_include_exercises: `
     ALTER TABLE autoshare_rules ADD COLUMN IF NOT EXISTS include_exercises BOOLEAN NOT NULL DEFAULT false
+  `,
+  // NULL uses the owner's default feed tags; an array replaces them.
+  autoshare_rules_tags: `
+    ALTER TABLE autoshare_rules ADD COLUMN IF NOT EXISTS tags TEXT[]
   `,
   // `idx_feed_posts_series` is a GIN index over the shared-series set — the hot
   // path for the public series endpoint's `metric = ANY(series_metrics)` check.

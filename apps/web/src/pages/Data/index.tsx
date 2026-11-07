@@ -458,6 +458,10 @@ export const Data = () => {
     multiDay,
   )
 
+  const dataFilterLabel = deductionRuleId
+    ? `Rule: ${deductionRuleId.slice(0, 8)}…`
+    : [typesFilter?.split(',').join(', '), dataFilter && `(${dataFilter})`].filter(Boolean).join(' ')
+
   return (
     <div class="data-page">
       <div class="data-sidebar">
@@ -474,11 +478,7 @@ export const Data = () => {
         )}
         {hasDataFilter && (
           <div class="data-time-filter">
-            <span>
-              {deductionRuleId
-                ? `Rule: ${deductionRuleId.slice(0, 8)}…`
-                : `${typesFilter ?? ''} ${dataFilter ? `(${dataFilter})` : ''}`}
-            </span>
+            <span title={dataFilterLabel}>{dataFilterLabel}</span>
             <button type="button" onClick={clearDataFilter} title="Clear data filter">
               &times;
             </button>

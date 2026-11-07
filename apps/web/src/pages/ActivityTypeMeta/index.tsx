@@ -20,6 +20,7 @@ import {
   type ActivityTypeDefinition,
   type FetchTrendParams,
 } from '../../state/api'
+import { CHART_PRIMARY } from '../../theme'
 import { toDisplayName } from '../../utils/displayName'
 import { suggestEmoji } from '../../utils/emojiLookup'
 import { ItemGroupsSection } from './ItemGroupsSection'
@@ -91,7 +92,7 @@ function ActivityTypeTrendSection({
         <span class="activity-type-meta-trend-unit">{trendQuery.data.display_unit}</span>
       </div>
       <a href={chartUrl} style={{ display: 'block' }}>
-        <MiniTrendChart data={trendQuery.data.history} color={isDuration ? '#f97316' : '#8b5cf6'} />
+        <MiniTrendChart data={trendQuery.data.history} color={isDuration ? '#f97316' : CHART_PRIMARY} />
       </a>
     </>
   )
@@ -749,7 +750,7 @@ function ActivityTypeHeader({
 
 export function ActivityTypeMeta() {
   const { params } = useRoute()
-  const name = decodeURIComponent(params.name as string)
+  const name = params.name as string
   const [lookback, setLookback] = useState(90)
 
   const { data: definitions } = useQuery({

@@ -10,7 +10,7 @@
 
 .report-detail-nav a {
   font-size: 0.85rem;
-  color: #673ab8;
+  color: var(--color-accent);
   text-decoration: none;
 }
 
@@ -101,7 +101,7 @@
 }
 
 .report-entry-metric a {
-  color: #673ab8;
+  color: var(--color-accent);
   text-decoration: none;
   font-weight: 500;
 }
@@ -176,7 +176,7 @@
 }
 
 .report-entry-card-metric {
-  color: #673ab8;
+  color: var(--color-accent);
   text-decoration: none;
   font-weight: 500;
   font-size: 0.95rem;
@@ -322,10 +322,6 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  .report-detail-nav a {
-    color: #a78bfa;
-  }
-
   .report-detail-header h1 {
     color: #f9fafb;
   }
@@ -360,10 +356,6 @@
     background: #111827;
   }
 
-  .report-entry-metric a {
-    color: #a78bfa;
-  }
-
   .report-entry-value {
     color: #f9fafb;
   }
@@ -387,10 +379,6 @@
   .report-entry-card {
     background: #1f2937;
     border-color: #374151;
-  }
-
-  .report-entry-card-metric {
-    color: #a78bfa;
   }
 
   .report-entry-card-value {

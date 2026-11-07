@@ -7,7 +7,7 @@
  * dedupe record). Delivery is injected from `api.ts` (the same `FeedDeliver.
  * created` fan-out a manual share fires).
  */
-import type { Activity, AutoshareCandidate, FeedPostRecord } from '../db/index.ts'
+import type { Activity, AutoshareCandidate, AutoshareRuleRecord, FeedPostRecord } from '../db/index.ts'
 import type { AutoshareDeps } from './autoshare.ts'
 
 import {
@@ -21,7 +21,9 @@ import {
   listFeedPostIdsByActivityIds,
 } from '../db/index.ts'
 import { expandFeedActivityWindow } from './feed.ts'
+import { activityKindTag, autoPostTags, computePostTags, type FeedTagSettings } from './post-tags.ts'
 import { queryMetricsBucketed } from './queries/index.ts'
+import { getSettings } from './settings.ts'
 
 /** A merge-group member: the evaluator's candidate shape plus the full row it was read from. */
 export interface AutoshareGroupMember extends AutoshareCandidate {
@@ -77,11 +79,22 @@ const windowDistanceMeters = async (user: string, start: Date, end: Date): Promi
   return any ? sum : undefined
 }
 
+/** An auto-created post's tags: the rule's tags (or the owner's defaults), the type tag per settings, typed ones. */
+export const autoshareTags = (
+  settings: FeedTagSettings | null,
+  activityType: string,
+  rule: Pick<AutoshareRuleRecord, 'message' | 'tags'>,
+): string[] =>
+  computePostTags({
+    auto: autoPostTags(settings, activityKindTag(activityType), rule.tags),
+    texts: [rule.message],
+  })
+
 /** Build the production `AutoshareDeps`; `deliverCreated` is `FeedDeliver.created` from `api.ts`. */
 export const createAutoshareDeps = (
   deliverCreated: (user: string, post: FeedPostRecord, activity: Activity) => void,
 ): AutoshareDeps<AutoshareGroupMember> => ({
-  createPost: (user, anchor, rule) =>
+  createPost: async (user, anchor, rule) =>
     createFeedPost(user, {
       activity_id: anchor.id,
       autoshare_rule_id: rule.id,
@@ -91,6 +104,7 @@ export const createAutoshareDeps = (
       included_metrics: rule.included_metrics,
       message: rule.message,
       series_metrics: rule.series_metrics,
+      tags: autoshareTags(await getSettings(user).catch(() => null), anchor.activity_type, rule),
       visibility: rule.visibility,
     }),
   distanceMeters: windowDistanceMeters,

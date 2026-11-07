@@ -159,6 +159,16 @@ describe('Auto-share rules integration', () => {
     expect(legacy?.max_age_hours).toBe(24)
   })
 
+  test('tags default to null (use the owner defaults), round-trip and clear with null', async () => {
+    const user = getTestUser()
+    expect((await insertAutoshareRule(user, ruleInput())).tags).toBeNull()
+    const created = await insertAutoshareRule(user, ruleInput({ tags: ['yoga', 'calm'] }))
+    expect(created.tags).toEqual(['yoga', 'calm'])
+    expect((await updateAutoshareRule(user, created.id, { name: 'Renamed' }))?.tags).toEqual(['yoga', 'calm'])
+    expect((await updateAutoshareRule(user, created.id, { tags: [] }))?.tags).toEqual([])
+    expect((await updateAutoshareRule(user, created.id, { tags: null }))?.tags).toBeNull()
+  })
+
   test('max_age_hours round-trips through insert, list and patch', async () => {
     const user = getTestUser()
     const created = await insertAutoshareRule(user, ruleInput({ max_age_hours: 72 }))

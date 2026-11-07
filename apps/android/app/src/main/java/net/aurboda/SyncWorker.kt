@@ -257,10 +257,14 @@ class SyncWorker(
           reporter.updateStage(SyncStage.PendingData) { it.copy(sentRecords = sent) }
         }
         is DataResult.Error -> {
-          markPendingEntryFailed(applicationContext, entry.id, result.message)
-          Log.w(TAG, "Pending entry ${entry.id} failed: ${result.message}")
-          failed++
           val stop = syncStopOf(result.statusCode, result.message)
+          if (countsAsEntryFailure(stop)) {
+            markPendingEntryFailed(applicationContext, entry.id, result.message)
+            failed++
+            Log.w(TAG, "Pending entry ${entry.id} failed: ${result.message}")
+          } else {
+            Log.i(TAG, "Pending entry ${entry.id} kept (read-only): ${result.message}")
+          }
           if (stop != null) {
             reporter.updateStage(SyncStage.PendingData) {
               it.copy(

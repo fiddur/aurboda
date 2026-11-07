@@ -2,6 +2,27 @@
 
 The Dashboard is the home page for logged-in users. It presents your key health metrics, trends, and navigation links as a customizable grid of widgets organized into sections. Every user starts with a sensible default layout, but can rearrange, add, or remove widgets to surface what matters most to them.
 
+## Get started guide
+
+Above the widgets, a new account sees a **Get started** checklist of five steps, each ticked off as
+soon as Aurboda sees it happen:
+
+| Step                                | Done when                                                             |
+| ----------------------------------- | --------------------------------------------------------------------- |
+| Install the Android app             | Health Connect records arrived in the last 30 days                    |
+| Connect your watch or ring          | Garmin, Oura or Strava is connected                                   |
+| Track time at your computer         | ActivityWatch desktop screen time arrived in the last 7 days          |
+| Follow a friend or join a challenge | You follow someone or take part in a challenge                        |
+| Ask your data questions             | You press **Mark as done** (Aurboda cannot see your AI assistant ask) |
+
+The computer step carries the [one-line ActivityWatch installer](../activitywatch.md#quick-install)
+inline. The guide disappears once all five are done, or for good with **Hide this guide**. The
+dismissal and the steps marked done by hand are user settings, so REST
+(`PATCH /api/user/settings`) and MCP (`update_user_settings`) read and set them too:
+`onboarding_dismissed_at` (an ISO date-time; `null` shows the guide again) and
+`onboarding_manual_done` (step ids: `android_app`, `wearable`, `computer_time`, `social`,
+`ask_ai`). While the guide shows, it makes a few small requests; once it is hidden, none.
+
 ## Default Layout
 
 New users see four sections out of the box:
@@ -68,8 +89,9 @@ A full-width bar chart of bucketed values (`GET /chart-data`) for an activity ty
 
 Bars and one or more trend lines drawn over one time axis and one y scale, like an exercise's
 weekly best e1RM with its decaying best over it. Add one from an exercise page's chart menu
-(**Add to dashboard** when the line is drawn), or through the API or MCP; the add-widget dialog does not
-offer it yet.
+(**Add to dashboard** when the line is drawn), from a charts section's add-widget dialog, or through the
+API or MCP. The dialog adds a starter chart (weekly `coffee` counts with their weekly trend over 90
+days); it has no form for the layers.
 
 **Configuration:** optional `title` (default "Combined chart"), `lookback_days` shared by every
 layer, and `layers`, a list of typed layers drawn in order:
@@ -121,7 +143,8 @@ while the others still show.
 The best value of one activity measure with the date it was first reached and, for e1RM and max
 weight, the set behind it, e.g. "Bench Press · Best e1RM: 39.5 kg, 21 Dec 2025 · 7×32 kg". On your
 own dashboard the date links to that session. Add one from the ⋮ menu on an exercise page's record
-card, or through the API or MCP; it is placed in a metrics section.
+card, from a metrics section's add-widget dialog (activity type, record measure and an optional
+exercise), or through the API or MCP; it is placed in a metrics section.
 
 **Configuration:** `source_type` (`activity_type`), `pattern` (the activity type), `measure` (one of
 the record measures `e1rm`, `max_weight`, `max_time`, `max_reps`), optional `filter_field` +

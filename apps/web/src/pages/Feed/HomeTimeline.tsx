@@ -250,7 +250,6 @@ export function HomeTimeline() {
 
   return (
     <section class="timeline-section">
-      <h2 class="feed-section-title">Home timeline</h2>
       <ShowRepliesToggle />
       {pending.length > 0 && (
         <button type="button" class="timeline-new-pill" onClick={reveal}>
@@ -261,7 +260,7 @@ export function HomeTimeline() {
       {error && <p class="feed-error">Couldn't load your timeline. Please try again.</p>}
       {!isLoading && !error && displayed.length === 0 && (
         <p class="feed-empty">
-          No posts yet. Follow some fediverse accounts above and their posts will appear here.
+          No posts yet. Follow some fediverse accounts (under Manage, below) and their posts will appear here.
         </p>
       )}
       {displayed.map((entry) => (

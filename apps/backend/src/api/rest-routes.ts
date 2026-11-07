@@ -46,6 +46,7 @@ import { createAccountRouter } from '../routes/account-router.ts'
 import { createActivitiesRouter } from '../routes/activities-router.ts'
 import { createActivityTypesRouter } from '../routes/activity-types-router.ts'
 import { createAdminRouter } from '../routes/admin-router.ts'
+import { createAgentsRouter } from '../routes/agents-router.ts'
 import { createAuditLogRouter } from '../routes/audit-log-router.ts'
 import { createAutoshareRulesRouter } from '../routes/autoshare-rules-router.ts'
 import { createChallengeDataRouter } from '../routes/challenge-data-router.ts'
@@ -105,9 +106,10 @@ import { buildChartSvg } from '../services/charts/chart-svg.ts'
 import { buildRaceChartSvg } from '../services/charts/race-chart-svg.ts'
 import { buildScatterSvg } from '../services/charts/scatter-svg.ts'
 import { latestExerciseSession } from '../services/exercise-card.ts'
-import { resolveStandingsChart } from '../services/feed-structured-challenge.ts'
+import { resolveChallengeRaceByUrl, resolveStandingsChart } from '../services/feed-structured-challenge.ts'
 import { resolveExerciseTrendSeries } from '../services/feed-structured-exercise.ts'
 import { resolveFeedActivity } from '../services/feed.ts'
+import { readOfficialFeedSetting } from '../services/official-feed.ts'
 import { createOgImageRenderer } from '../services/og-image.ts'
 import { getUserTimezone } from '../services/settings.ts'
 import { resolveSharedExerciseData } from '../services/shared-exercise-data.ts'
@@ -196,6 +198,7 @@ export const mountRestRouters = ({
   userDb,
 }: RestRoutesDeps): void => {
   httpd.use(createMetricsRouter(authMiddleware, syncProvider))
+  httpd.use(createAgentsRouter(apiBaseUrl))
   httpd.use('/icons', createIconsRouter(authMiddleware))
   httpd.use('/notes', createNotesRouter(authMiddleware))
   httpd.use('/media', createMediaRouter(authMiddleware))
@@ -262,7 +265,13 @@ export const mountRestRouters = ({
   httpd.use(createChallengeDataRouter())
   // Public feed series must be mounted before the generic /public/:username/:slug
   // resolver so `series` is not matched as a share slug.
-  httpd.use(createFeedPublicRouter({ apiBaseUrl, webHost }))
+  httpd.use(
+    createFeedPublicRouter({
+      apiBaseUrl,
+      readOfficialFeed: () => readOfficialFeedSetting(centralDb),
+      webHost,
+    }),
+  )
   // Public feed-post images (chart / route map), rendered on demand for opted-in
   // public/unlisted posts. Mounted alongside the series router (same guard).
   httpd.use(
@@ -280,6 +289,7 @@ export const mountRestRouters = ({
         (await getLocations(user, start, end)).locations.map((l) => l.coordinates),
       getSeries: getTimeSeries,
       getExerciseTrend: (user, post) => resolveExerciseTrendSeries(user, post),
+      getChallengeRaceByUrl: resolveChallengeRaceByUrl,
       getStandingsChart: resolveStandingsChart,
       renderChart: renderChartPng,
       renderChartSvg: buildChartSvg,
@@ -323,6 +333,7 @@ export const mountRestRouters = ({
     createShareHtmlRouter({
       apiBaseUrl,
       loadTemplate: createTemplateLoader(webIndexPath),
+      readOfficialFeed: () => readOfficialFeedSetting(centralDb),
       webHost,
       ...createShareResolvers(),
     }),

@@ -241,11 +241,33 @@ export type FeedStructuredArticleCorrelationBlock = z.infer<
   typeof feedStructuredArticleCorrelationBlockSchema
 >
 
+/**
+ * A resolved challenge block: the embedded challenge's URL (where to join) and,
+ * when the origin could read it, the challenge document and a standings
+ * snapshot taken at resolve time — the same pair a challenge-share post carries.
+ */
+export const feedStructuredArticleChallengeBlockSchema = z
+  .object({
+    caption: z.string().optional().meta({ description: 'Optional caption' }),
+    challenge: quantChallengeDocumentSchema.optional().meta({
+      description: 'The challenge (QuantPub Challenges §3 document); absent when it could not be resolved',
+    }),
+    standings: quantStandingsSchema.optional().meta({
+      description: 'Standings snapshot at resolve time (QuantPub Challenges §6); absent when not readable',
+    }),
+    type: z.literal('challenge'),
+    url: z.string().meta({ description: 'Public challenge URL (where to view and join it)' }),
+  })
+  .meta({ description: 'A resolved challenge block', id: 'FeedStructuredArticleChallengeBlock' })
+
+export type FeedStructuredArticleChallengeBlock = z.infer<typeof feedStructuredArticleChallengeBlockSchema>
+
 export const feedStructuredArticleBlockSchema = z
   .discriminatedUnion('type', [
     feedStructuredArticleProseBlockSchema,
     feedStructuredArticleChartBlockSchema,
     feedStructuredArticleCorrelationBlockSchema,
+    feedStructuredArticleChallengeBlockSchema,
   ])
   .meta({ description: 'A resolved article content block', id: 'FeedStructuredArticleBlock' })
 

@@ -21,6 +21,7 @@ import { isInvalidPasswordError, loginToUserDb, makeNewUserDb, query } from '../
 import { httpError } from '../http-error.ts'
 import { readBillingSettings, recordNewAccount } from '../services/account-plan.ts'
 import { pruneAuditLog } from '../services/audit-log.ts'
+import { readOfficialFeedSetting } from '../services/official-feed.ts'
 
 interface AuthRoutesDeps {
   httpd: Express
@@ -30,6 +31,7 @@ interface AuthRoutesDeps {
   invitationAuth: InvitationAuth
   userDb: Client
   unauthorized: Error
+  userExists: (username: string) => Promise<boolean>
 }
 
 export const RESERVED_USERNAMES = [
@@ -65,6 +67,7 @@ export const registerAuthRoutes = ({
   invitationAuth,
   userDb,
   unauthorized,
+  userExists,
 }: AuthRoutesDeps): void => {
   httpd.get<Record<string, never>, VersionResponse>('/version', (_req, res) => {
     res.json({
@@ -74,15 +77,16 @@ export const registerAuthRoutes = ({
   })
 
   httpd.get<Record<string, never>, ServerStatusResponse>('/status', async (_req, res) => {
-    const [signupMode, blogUsername, billing] = await Promise.all([
+    const [signupMode, officialFeed, billing] = await Promise.all([
       centralDb.getSignupMode(),
-      centralDb.getServerSetting('blog_username'),
+      readOfficialFeedSetting(centralDb),
       readBillingSettings(centralDb),
     ])
+    const officialFeedLive = (await Promise.all(officialFeed.users.map(userExists))).some(Boolean)
     res.json({
       billing_enabled: billing.enabled,
-      blog_username: blogUsername || null,
       federation: true,
+      official_feed: officialFeedLive,
       product: 'aurboda',
       signup_allowed: signupMode === 'open',
       signup_mode: signupMode,

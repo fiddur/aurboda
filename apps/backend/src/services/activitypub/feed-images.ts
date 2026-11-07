@@ -106,7 +106,7 @@ const routeOverlaySvg = (
   const line =
     pts.length >= 2
       ? `${overBasemap ? `<polyline points="${polyline}" fill="none" stroke="#ffffff" stroke-opacity="0.7" stroke-width="9" stroke-linejoin="round" stroke-linecap="round"/>` : ''}
-  <polyline points="${polyline}" fill="none" stroke="#673ab8" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/>`
+  <polyline points="${polyline}" fill="none" stroke="#2b9ea7" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/>`
       : ''
   const markerStroke = overBasemap ? ' stroke="#ffffff" stroke-width="2.5"' : ''
   const start = first

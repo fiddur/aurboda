@@ -7,6 +7,8 @@ import { useEffect, useState } from 'preact/hooks'
 import { ExerciseShareContent } from '../pages/Feed/ExerciseShareContent'
 import { apiErrorMessage, previewExerciseShare, shareExercise } from '../state/api'
 import { buildExerciseShareBody, exerciseSharePreviewKey } from './exercise-share-body'
+import { formatTagsInput, parseTagsInput } from './hashtags'
+import { TagsInput } from './TagsInput'
 import { FEED_VISIBILITY_OPTIONS, VisibilitySelector } from './VisibilitySelector'
 import './ShareActivityDialog.css'
 
@@ -46,6 +48,8 @@ export function ShareExerciseDialog({ activityType, field, value, publishedUrl, 
   const [includeChart, setIncludeChart] = useState(true)
   const [includeSessions, setIncludeSessions] = useState(false)
   const [includeLink, setIncludeLink] = useState(true)
+  const [tagsText, setTagsText] = useState('')
+  const [tagsEdited, setTagsEdited] = useState(false)
 
   const body = buildExerciseShareBody({
     activityType,
@@ -56,6 +60,7 @@ export function ShareExerciseDialog({ activityType, field, value, publishedUrl, 
     includeSessions,
     message,
     published: publishedUrl !== undefined,
+    tags: tagsEdited ? parseTagsInput(tagsText) : undefined,
     value,
     visibility,
   })
@@ -74,6 +79,10 @@ export function ShareExerciseDialog({ activityType, field, value, publishedUrl, 
     staleTime: 60_000,
   })
   const preview = previewQuery.data
+  const previewTags = preview?.tags
+  useEffect(() => {
+    if (!tagsEdited && previewTags) setTagsText(formatTagsInput(previewTags))
+  }, [previewTags?.join(' ')])
 
   const mutation = useMutation({
     mutationFn: () => shareExercise(body),
@@ -157,6 +166,14 @@ export function ShareExerciseDialog({ activityType, field, value, publishedUrl, 
             </details>
           )}
         </fieldset>
+
+        <TagsInput
+          value={tagsText}
+          onInput={(text) => {
+            setTagsText(text)
+            setTagsEdited(true)
+          }}
+        />
 
         <VisibilitySelector
           name="exercise-share-visibility"

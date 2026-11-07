@@ -1,13 +1,19 @@
-import type { ArticleBlock, FeedPost } from '@aurboda/api-spec'
+import type { ArticleBlock, ArticleDraft, FeedPost } from '@aurboda/api-spec'
 
 import { describe, expect, it } from 'vitest'
 
 import {
   type ArticleEditorState,
   buildArticleBody,
+  buildDraftContent,
+  challengePickerOptions,
   deriveSubmitError,
+  draftSnapshot,
   draftsFromPost,
+  draftUpdateBody,
+  emptyChallengeDraft,
   emptyCorrelationDraft,
+  initialArticleEditorState,
   toInputValue,
   toIso,
 } from './article-editor-body'
@@ -215,5 +221,230 @@ describe('draftsFromPost', () => {
       start: '',
       type: 'chart',
     })
+  })
+})
+
+describe('buildDraftContent', () => {
+  it('keeps an incomplete article: no title, no chart metric, empty selectors', () => {
+    const content = buildDraftContent(
+      state({
+        blocks: [
+          { markdown: 'half a thought', type: 'prose' },
+          { bucket: '', caption: '  ', end: '', metric: '', start: '', type: 'chart' },
+          emptyCorrelationDraft(),
+        ],
+        title: '  ',
+      }),
+    )
+    expect(content).toEqual({
+      blocks: [
+        { markdown: 'half a thought', type: 'prose' },
+        { type: 'chart' },
+        {
+          outcome: { kind: 'metric', metric: '' },
+          trigger: { kind: 'activity', pattern: '' },
+          type: 'correlation',
+        },
+      ],
+      title: '',
+    })
+  })
+
+  it('carries windows, bucket, caption and a whole-number lag', () => {
+    const iso = '2026-07-01T00:00:00.000Z'
+    const local = toInputValue(iso)
+    const content = buildDraftContent(
+      state({
+        blocks: [
+          {
+            bucket: '1h',
+            caption: ' Resting HR ',
+            end: local,
+            metric: 'heart_rate',
+            start: local,
+            type: 'chart',
+          },
+          { ...emptyCorrelationDraft(), lagDays: '2' },
+          { ...emptyCorrelationDraft(), lagDays: '1.5' },
+        ],
+        defaultEnd: local,
+        defaultStart: local,
+      }),
+    )
+    expect(content.default_start).toBe(iso)
+    expect(content.default_end).toBe(iso)
+    expect(content.blocks[0]).toEqual({
+      bucket: '1h',
+      caption: 'Resting HR',
+      end: iso,
+      metric: 'heart_rate',
+      start: iso,
+      type: 'chart',
+    })
+    expect(content.blocks[1]).toMatchObject({ lag_days: 2 })
+    expect(content.blocks[2]).not.toHaveProperty('lag_days')
+  })
+
+  it('drops a metric that cannot be charted', () => {
+    const content = buildDraftContent(
+      state({
+        blocks: [{ bucket: '', caption: '', end: '', metric: 'my_custom', start: '', type: 'chart' }],
+      }),
+    )
+    expect(content.blocks[0]).toEqual({ type: 'chart' })
+  })
+})
+
+describe('challenge blocks', () => {
+  const URL_ = 'https://aurboda.example/u/olle/nov'
+
+  it('a draft keeps an unchosen challenge, and carries a chosen one with its caption', () => {
+    const content = buildDraftContent(
+      state({
+        blocks: [emptyChallengeDraft(), { caption: ' Join! ', type: 'challenge', url: ` ${URL_} ` }],
+      }),
+    )
+    expect(content.blocks).toEqual([
+      { type: 'challenge' },
+      { caption: 'Join!', challenge_url: URL_, type: 'challenge' },
+    ])
+  })
+
+  it('seeds the editor from a stored challenge block, and from a draft without a URL', () => {
+    const drafts = draftsFromPost({
+      article: {
+        blocks: [{ caption: 'Race', challenge_url: URL_, type: 'challenge' }, { type: 'challenge' }],
+        title: 'T',
+      },
+    })
+    expect(drafts).toEqual([
+      { caption: 'Race', type: 'challenge', url: URL_ },
+      { caption: '', type: 'challenge', url: '' },
+    ])
+  })
+
+  it('publishing needs a challenge', () => {
+    expect(buildArticleBody(state({ blocks: [emptyChallengeDraft()] }))).toEqual({
+      error: 'Pick a challenge or paste its link for challenge block 1.',
+      ok: false,
+    })
+  })
+
+  it('offers own challenges by share URL and active joined ones by challenge URL, each once', () => {
+    const options = challengePickerOptions(
+      [{ name: 'Mine', share_url: URL_ }],
+      [
+        { challenge_url: 'https://other.example/u/eva/oct', name: 'Eva’s', status: 'active' },
+        { challenge_url: 'https://other.example/u/eva/left', name: 'Left', status: 'withdrawn' },
+        { challenge_url: URL_, name: 'Mine again', status: 'active' },
+      ],
+    )
+    expect(options).toEqual({
+      joined: [{ label: 'Eva’s', url: 'https://other.example/u/eva/oct' }],
+      own: [{ label: 'Mine', url: URL_ }],
+    })
+  })
+
+  it('publishes a chosen challenge', () => {
+    const result = buildArticleBody(state({ blocks: [{ caption: '', type: 'challenge', url: URL_ }] }))
+    expect(result.ok && result.body.blocks).toEqual([{ challenge_url: URL_, type: 'challenge' }])
+  })
+})
+
+describe('initialArticleEditorState', () => {
+  it('starts empty and public with nothing to open', () => {
+    expect(initialArticleEditorState()).toEqual(state({ title: '' }))
+  })
+
+  it('opens a draft, filling unset chart metrics and selectors with empty editor values', () => {
+    const draft: ArticleDraft = {
+      article: {
+        blocks: [{ type: 'chart' }, { outcome: { kind: 'metric', metric: 'hrv' }, type: 'correlation' }],
+        default_start: '2026-07-01T00:00:00.000Z',
+        title: '',
+      },
+      created_at: '2026-07-08T10:00:00.000Z',
+      id: 'd1',
+      updated_at: '2026-07-08T11:00:00.000Z',
+      visibility: 'followers',
+    }
+    const initial = initialArticleEditorState(draft)
+    expect(initial.title).toBe('')
+    expect(initial.visibility).toBe('followers')
+    expect(initial.defaultStart).toBe(toInputValue('2026-07-01T00:00:00.000Z'))
+    expect(initial.blocks).toEqual([
+      { bucket: '', caption: '', end: '', metric: '', start: '', type: 'chart' },
+      { ...emptyCorrelationDraft(), outcome: { kind: 'metric', metric: 'hrv' } },
+    ])
+  })
+
+  it('round-trips a saved draft without registering a change', () => {
+    const edited = state({
+      blocks: [
+        { markdown: 'intro', type: 'prose' },
+        { bucket: '', caption: '', end: '', metric: 'heart_rate', start: '', type: 'chart' },
+      ],
+      visibility: 'unlisted',
+    })
+    const reopened = initialArticleEditorState({ article: buildDraftContent(edited), visibility: 'unlisted' })
+    expect(draftSnapshot(reopened)).toBe(draftSnapshot(edited))
+  })
+
+  it("keeps a draft's explicit tags, and none when it has none", () => {
+    const tagged = initialArticleEditorState({
+      article: { blocks: [], tags: ['hrv'], title: 'T' },
+      visibility: 'public',
+    })
+    expect(tagged.tags).toEqual(['hrv'])
+    expect(buildDraftContent(tagged).tags).toEqual(['hrv'])
+    expect(
+      initialArticleEditorState({ article: { blocks: [], title: 'T' }, visibility: 'public' }),
+    ).not.toHaveProperty('tags')
+  })
+})
+
+describe('draftSnapshot', () => {
+  it('changes when the content or the audience does', () => {
+    const base = draftSnapshot(state())
+    expect(draftSnapshot(state({ title: 'Other' }))).not.toBe(base)
+    expect(draftSnapshot(state({ tags: ['hrv'] }))).not.toBe(base)
+    expect(draftSnapshot(state({ visibility: 'followers' }))).not.toBe(base)
+    expect(draftSnapshot(state())).toBe(base)
+  })
+})
+
+describe('draftUpdateBody', () => {
+  it('sends null for an emptied default window so the server clears it', () => {
+    const body = draftUpdateBody(state({ defaultEnd: '', defaultStart: '', visibility: 'unlisted' }))
+    expect(body).toEqual({
+      blocks: [],
+      default_end: null,
+      default_start: null,
+      tags: null,
+      title: 'A week of HRV',
+      visibility: 'unlisted',
+    })
+  })
+
+  it('sends explicit tags, and null for the automatic ones', () => {
+    expect(draftUpdateBody(state({ tags: ['hrv'] })).tags).toEqual(['hrv'])
+    expect(draftUpdateBody(state({ tags: [] })).tags).toEqual([])
+  })
+
+  it('sends a set default window as ISO', () => {
+    const iso = '2026-07-01T00:00:00.000Z'
+    const local = toInputValue(iso)
+    const body = draftUpdateBody(state({ defaultEnd: local, defaultStart: local }))
+    expect(body.default_start).toBe(iso)
+    expect(body.default_end).toBe(iso)
+  })
+})
+
+describe('article tags', () => {
+  it('publishes explicit tags only', () => {
+    const tagged = buildArticleBody(state({ tags: ['hrv', 'sleep'] }))
+    expect(tagged.ok && tagged.body.tags).toEqual(['hrv', 'sleep'])
+    const automatic = buildArticleBody(state())
+    expect(automatic.ok && automatic.body).not.toHaveProperty('tags')
   })
 })

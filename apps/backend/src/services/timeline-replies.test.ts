@@ -44,6 +44,7 @@ const replyPost = (id: string, createdAt: string, over: Partial<FeedPostRecord> 
   kind: 'reply',
   message: 'my reply',
   series_metrics: [],
+  tags: [],
   updated_at: new Date(createdAt),
   visibility: 'unlisted',
   ...over,

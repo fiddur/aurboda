@@ -9,13 +9,15 @@ import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
 type JsonSchema = Record<string, unknown>
 
+type JsonType = string | string[]
+
 interface TerseProperty {
   const?: unknown
   description?: string
   enum?: unknown[]
   format?: string
-  items?: { type: string }
-  type: string
+  items?: { type?: JsonType }
+  type?: JsonType
 }
 
 export interface TerseInputSchema {
@@ -67,22 +69,25 @@ const alternativesOf = (schema: JsonSchema): unknown[] | undefined =>
 
 const typeOfValue = (value: unknown): string => (value === null ? 'null' : typeof value)
 
-const deriveType = (schema: unknown, definitions: JsonSchema, seen?: ReadonlySet<string>): string => {
+/** The JSON Schema types a schema admits; empty means any. */
+const deriveTypes = (schema: unknown, definitions: JsonSchema, seen?: ReadonlySet<string>): string[] => {
   const resolved = resolveSchema(schema, definitions, seen)
-  if (!resolved) return 'any'
+  if (!resolved) return []
   const { schema: target, seen: path } = resolved
-  if (typeof target.type === 'string') return target.type
-  if (Array.isArray(target.type)) return target.type.map(String).join('|')
+  if (typeof target.type === 'string') return [target.type]
+  if (Array.isArray(target.type)) return target.type.map(String)
   const alternatives = alternativesOf(target)
   if (alternatives) {
-    const types = [...new Set(alternatives.flatMap((alt) => deriveType(alt, definitions, path).split('|')))]
-    const known = types.filter((type) => type !== 'any')
-    return (known.length > 0 ? known : types).join('|')
+    return [...new Set(alternatives.flatMap((alt) => deriveTypes(alt, definitions, path)))]
   }
-  if ('const' in target) return typeOfValue(target.const)
-  if (Array.isArray(target.enum) && target.enum.length > 0) return typeOfValue(target.enum[0])
-  return 'any'
+  if ('const' in target) return [typeOfValue(target.const)]
+  if (Array.isArray(target.enum) && target.enum.length > 0) return [typeOfValue(target.enum[0])]
+  return []
 }
+
+/** `type` as JSON Schema writes it: one name, a list for several, and absent for any. */
+const typeField = (types: string[]): { type?: JsonType } =>
+  types.length === 0 ? {} : { type: types.length === 1 ? types[0] : types }
 
 const deriveEnum = (schema: JsonSchema, definitions: JsonSchema): unknown[] | undefined => {
   if (Array.isArray(schema.enum)) return schema.enum
@@ -95,17 +100,17 @@ const deriveEnum = (schema: JsonSchema, definitions: JsonSchema): unknown[] | un
 
 const terseProperty = (property: unknown, definitions: JsonSchema): TerseProperty => {
   const resolved = resolveSchema(property, definitions)
-  if (!resolved) return { type: 'any' }
+  if (!resolved) return {}
   const { schema: target, seen } = resolved
   const enumValues = deriveEnum(target, definitions)
   const ownDescription = isRecord(property) ? property.description : undefined
   const description = typeof ownDescription === 'string' ? ownDescription : target.description
   return {
-    type: deriveType(target, definitions, seen),
+    ...typeField(deriveTypes(target, definitions, seen)),
     ...(enumValues ? { enum: enumValues } : {}),
     ...('const' in target ? { const: target.const } : {}),
     ...(typeof target.format === 'string' ? { format: target.format } : {}),
-    ...(isRecord(target.items) ? { items: { type: deriveType(target.items, definitions, seen) } } : {}),
+    ...(isRecord(target.items) ? { items: typeField(deriveTypes(target.items, definitions, seen)) } : {}),
     ...(typeof description === 'string' ? { description: terseDescription(description, 120) } : {}),
   }
 }
@@ -118,7 +123,7 @@ export const terseInputSchema = (schema: JsonSchema): TerseInputSchema => {
       try {
         return [name, terseProperty(property, definitions)]
       } catch {
-        return [name, { type: 'any' }]
+        return [name, {}]
       }
     }),
   )

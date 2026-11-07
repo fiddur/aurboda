@@ -11,6 +11,8 @@ import type {
 } from '../db/index.ts'
 
 import {
+  resolveChallengeByUrl,
+  resolveChallengeRaceByUrl,
   resolveStandingsChart,
   resolveStructuredChallenge,
   type StructuredChallengeDeps,
@@ -328,5 +330,107 @@ describe('resolveStandingsChart', () => {
       })),
     })
     expect(await resolveStandingsChart('freja', joinedPost, deps)).toBeNull()
+  })
+})
+
+describe('resolveChallengeByUrl', () => {
+  test("the author's own challenge resolves from the database with standings", async () => {
+    const deps = makeDeps()
+    const out = await resolveChallengeByUrl('freja', 'https://qs.example/u/freja/nov', deps)
+    expect(deps.getChallengeBySlug).toHaveBeenCalledWith('freja', 'nov')
+    expect(out?.challenge.name).toBe('November steps')
+    expect(out?.standings?.members[0]).toMatchObject({ name: 'freja', total: 1200 })
+  })
+
+  test("another local user's challenge resolves against that user's database", async () => {
+    const deps = makeDeps()
+    const out = await resolveChallengeByUrl('freja', 'https://qs.example/u/olle/nov', deps)
+    expect(deps.getChallengeBySlug).toHaveBeenCalledWith('olle', 'nov')
+    expect(deps.getChallengeStandings).toHaveBeenCalledWith('olle', record)
+    expect(deps.listChallengeMembers).toHaveBeenCalledWith('olle', 'c1')
+    expect(deps.getParticipationByUrl).not.toHaveBeenCalled()
+    expect(out?.challenge.host.name).toBe('olle')
+    expect(out?.standings).toBeDefined()
+  })
+
+  test('a local user without a database has no challenge', async () => {
+    const missing = Object.assign(new Error('database "aurboda_nobody" does not exist'), { code: '3D000' })
+    const deps = makeDeps({ getChallengeBySlug: vi.fn(async () => Promise.reject(missing)) })
+    expect(await resolveChallengeByUrl('freja', 'https://qs.example/u/nobody/nov', deps)).toBeNull()
+  })
+
+  test('an invalid local username resolves to null without a lookup', async () => {
+    const deps = makeDeps()
+    expect(await resolveChallengeByUrl('freja', 'https://qs.example/u/..%2F/nov', deps)).toBeNull()
+    expect(deps.getChallengeBySlug).not.toHaveBeenCalled()
+  })
+
+  test('a joined remote challenge takes the participation path', async () => {
+    const deps = makeDeps()
+    const out = await resolveChallengeByUrl('freja', 'https://other.example/u/olle/oct', deps)
+    expect(out?.challenge.aurboda).toBeDefined()
+    expect(out?.standings).toEqual(remoteStandings)
+  })
+
+  test('an unjoined remote challenge is fetched from its QuantPub host', async () => {
+    const deps = makeDeps({
+      fetchChallengeDocument: vi.fn(async () => ({ ...remoteDoc, joinToken: 'secret', members: [] })),
+      getParticipationByUrl: vi.fn(async () => null),
+    })
+    const out = await resolveChallengeByUrl('freja', 'https://other.example/u/olle/oct', deps)
+    expect(deps.fetchChallengeDocument).toHaveBeenCalledWith('https://other.example/api', 'olle', 'oct')
+    expect(out?.challenge).toMatchObject({ name: 'Olle’s steps', url: 'https://other.example/u/olle/oct' })
+    expect(out?.challenge.joinToken).toBeUndefined()
+    expect(out?.challenge.members).toBeUndefined()
+    expect(out?.standings).toEqual(remoteStandings)
+  })
+
+  test('an unjoined remote challenge on an aurboda-kind host resolves to null', async () => {
+    const deps = makeDeps({
+      discoverInstance: vi.fn(async () => ({
+        apiBase: 'https://other.example/api',
+        kind: 'aurboda' as const,
+      })),
+      getParticipationByUrl: vi.fn(async () => null),
+    })
+    expect(await resolveChallengeByUrl('freja', 'https://other.example/u/olle/oct', deps)).toBeNull()
+  })
+
+  test('an unreachable unjoined remote challenge resolves to null', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const deps = makeDeps({
+      discoverInstance: vi.fn(async () => Promise.reject(new Error('down'))),
+      getParticipationByUrl: vi.fn(async () => null),
+    })
+    expect(await resolveChallengeByUrl('freja', 'https://other.example/u/olle/oct', deps)).toBeNull()
+    expect(warn).toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  test('an unjoined remote challenge keeps its document when standings are malformed', async () => {
+    const deps = makeDeps({
+      fetchStandings: vi.fn(async () => ({ kind: 'nope' })),
+      getParticipationByUrl: vi.fn(async () => null),
+    })
+    const out = await resolveChallengeByUrl('freja', 'https://other.example/u/olle/oct', deps)
+    expect(out?.challenge.name).toBe('Olle’s steps')
+    expect(out?.standings).toBeUndefined()
+  })
+})
+
+describe('resolveChallengeRaceByUrl', () => {
+  test('null while the resolver is unconfigured', async () => {
+    expect(await resolveChallengeRaceByUrl('freja', 'https://qs.example/u/freja/nov', null)).toBeNull()
+  })
+
+  test("the race of another local user's challenge", async () => {
+    const chart = await resolveChallengeRaceByUrl('freja', 'https://qs.example/u/olle/nov', makeDeps())
+    expect(chart?.title).toBe('November steps')
+    expect(chart?.lines).toHaveLength(1)
+  })
+
+  test('null when the challenge cannot be resolved', async () => {
+    const deps = makeDeps({ getChallengeBySlug: vi.fn(async () => null) })
+    expect(await resolveChallengeRaceByUrl('freja', 'https://qs.example/u/olle/nov', deps)).toBeNull()
   })
 })

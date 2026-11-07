@@ -5,6 +5,7 @@ import {
   type HrZoneSecs,
   type HrZoneSource,
   type HrZoneThresholds,
+  normalizeTags,
   type UpdateSettingsInput,
   updateSettingsInputSchema,
   userSettingsResponseSchema,
@@ -183,6 +184,8 @@ const settingsWithDefaultsSchema = userSettingsResponseSchema.pick({
   birth_date: true,
   calendars: true,
   dashboard: true,
+  feed_default_tags: true,
+  feed_type_tag: true,
   food_sensitivity_map: true,
   garmin_disabled_data_types: true,
   item_icons: true,
@@ -190,6 +193,8 @@ const settingsWithDefaultsSchema = userSettingsResponseSchema.pick({
   maf_hr: true,
   manually_approve_followers: true,
   meal_slots: true,
+  onboarding_dismissed_at: true,
+  onboarding_manual_done: true,
   rescue_time_key: true,
   sensitivity_areas: true,
   sex: true,
@@ -341,6 +346,8 @@ export const validateAndUpdateSettings = async (
     if (value === null) clear.push(field)
     else if (value !== undefined) (updates as Record<string, unknown>)[field] = value
   }
+
+  if (updates.feed_default_tags) updates.feed_default_tags = normalizeTags(updates.feed_default_tags)
 
   // Shallow-merge dict fields so partial updates don't wipe existing entries.
   // e.g. updating one exercise icon shouldn't delete all tag icons.

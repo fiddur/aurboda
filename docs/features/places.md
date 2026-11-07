@@ -40,6 +40,10 @@ Clicking an unnamed place (detected or unknown) opens a naming dialog. Enter a n
 
 For detected locations, the auto-geocoded address is pre-filled as a suggestion.
 
+### Named Places
+
+Below the day's visits, a **Named places** section lists every named location, sorted by name, whatever date is selected, with its radius and whether visits there create activities. Clicking one opens the same dialog as clicking a named visit, where you can rename it or toggle activity creation; its **Delete** button removes it after a confirmation. This is how to reach a place that was created through the API, MCP or the Android app before any visit to it was recorded.
+
 ## How Location Detection Works
 
 The detection pipeline runs automatically in the background:

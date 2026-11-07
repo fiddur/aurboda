@@ -1,7 +1,7 @@
 import { useLocation } from 'preact-iso'
-import { useState } from 'preact/hooks'
+import { useEffect, useState } from 'preact/hooks'
 
-import { auth, logout } from '../state/auth'
+import { auth, ensureStatusLoaded, logout, signupMode } from '../state/auth'
 import {
   DATA_SOURCE_LINKS,
   isSharingActive,
@@ -18,6 +18,11 @@ export function Sidebar() {
   const { url } = useLocation()
   const isLoggedIn = auth.value.token
   const isAdmin = auth.value.is_admin
+  const canSignup = signupMode.value === 'open'
+
+  useEffect(() => {
+    if (!isLoggedIn) ensureStatusLoaded()
+  }, [isLoggedIn])
 
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSED_KEY) === '1')
   const [dsExpanded, setDsExpanded] = useState(() => url.startsWith('/data-sources'))
@@ -169,14 +174,26 @@ export function Sidebar() {
             )}
           </>
         ) : (
-          <a
-            href="/login"
-            class={`sidebar-link${url === '/login' ? ' active' : ''}`}
-            title={collapsed ? 'Login' : undefined}
-          >
-            <span class="sidebar-icon">🔑</span>
-            <span class="sidebar-label">Login</span>
-          </a>
+          <>
+            <a
+              href="/login"
+              class={`sidebar-link${url === '/login' ? ' active' : ''}`}
+              title={collapsed ? 'Login' : undefined}
+            >
+              <span class="sidebar-icon">🔑</span>
+              <span class="sidebar-label">Login</span>
+            </a>
+            {canSignup && (
+              <a
+                href="/signup"
+                class={`sidebar-link${url === '/signup' ? ' active' : ''}`}
+                title={collapsed ? 'Sign up' : undefined}
+              >
+                <span class="sidebar-icon">✨</span>
+                <span class="sidebar-label">Sign up</span>
+              </a>
+            )}
+          </>
         )}
       </nav>
 

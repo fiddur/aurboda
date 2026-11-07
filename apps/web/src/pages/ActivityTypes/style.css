@@ -9,7 +9,7 @@
   padding: 0.5rem 1rem;
   font-size: 0.85rem;
   font-weight: 500;
-  background: #673ab8;
+  background: var(--color-primary);
   color: #fff;
   border: none;
   border-radius: 6px;
@@ -18,7 +18,7 @@
 }
 
 .at-add-btn:hover {
-  background: #5a32a3;
+  background: var(--color-primary-hover);
 }
 
 .at-add-form {
@@ -61,8 +61,8 @@
 
 .at-add-input:focus {
   outline: none;
-  border-color: #673ab8;
-  box-shadow: 0 0 0 2px rgba(103, 58, 184, 0.2);
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
 }
 
 .at-add-actions {
@@ -73,7 +73,7 @@
 .at-add-save {
   padding: 0.5rem 1rem;
   font-size: 0.85rem;
-  background: #673ab8;
+  background: var(--color-primary);
   color: #fff;
   border: none;
   border-radius: 6px;
@@ -81,7 +81,7 @@
 }
 
 .at-add-save:hover:not(:disabled) {
-  background: #5a32a3;
+  background: var(--color-primary-hover);
 }
 
 .at-add-save:disabled {
@@ -122,8 +122,8 @@
 
 .at-search-input:focus {
   outline: none;
-  border-color: #673ab8;
-  box-shadow: 0 0 0 2px rgba(103, 58, 184, 0.2);
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
 }
 
 .at-container {
@@ -237,7 +237,7 @@
 }
 
 .at-toggle input {
-  accent-color: #673ab8;
+  accent-color: var(--color-accent);
   width: 16px;
   height: 16px;
   cursor: pointer;
@@ -251,16 +251,8 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  .at-add-btn {
-    background: #7c3aed;
-  }
-
-  .at-add-btn:hover {
-    background: #6d28d9;
-  }
-
   .at-add-form {
-    background: #1a1a2e;
+    background: var(--color-surface);
     border-color: #333;
   }
 
@@ -271,16 +263,7 @@
   }
 
   .at-add-input:focus {
-    border-color: #8b5cf6;
-    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.3);
-  }
-
-  .at-add-save {
-    background: #7c3aed;
-  }
-
-  .at-add-save:hover:not(:disabled) {
-    background: #6d28d9;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 30%, transparent);
   }
 
   .at-add-cancel {
@@ -297,8 +280,7 @@
   }
 
   .at-search-input:focus {
-    border-color: #8b5cf6;
-    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.3);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 30%, transparent);
   }
 
   .at-group {
@@ -306,7 +288,7 @@
   }
 
   .at-group-header {
-    background: #1a1a2e;
+    background: var(--color-surface);
     color: #d1d5db;
   }
 
@@ -333,10 +315,6 @@
 
   .at-toggle {
     color: #9ca3af;
-  }
-
-  .at-toggle input {
-    accent-color: #8b5cf6;
   }
 }
 

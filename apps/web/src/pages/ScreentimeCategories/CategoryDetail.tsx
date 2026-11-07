@@ -27,6 +27,7 @@ import {
   upsertScreentimeCategory,
 } from '../../state/api'
 import { auth } from '../../state/auth'
+import { CHART_PRIMARY } from '../../theme'
 import { isEmoji, suggestEmoji } from '../../utils/emojiLookup'
 import './style.css'
 
@@ -1113,7 +1114,10 @@ function ExistingCategoryPage({
         onIconSaved={onIconSaved}
         onMoved={onFieldSaved}
       />
-      <CategoryTrendSection categoryPath={category.name.join(' > ')} color={category.color ?? '#673ab8'} />
+      <CategoryTrendSection
+        categoryPath={category.name.join(' > ')}
+        color={category.color ?? CHART_PRIMARY}
+      />
       <RecentEntries categoryPath={category.name} />
       <ChildCategoriesList children={children} distinctApps={distinctApps} icons={icons} />
       <MatchedAppList apps={matchedApps} category={category} onAppRemoved={onFieldSaved} />

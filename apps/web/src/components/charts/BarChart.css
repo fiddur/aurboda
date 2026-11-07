@@ -8,7 +8,7 @@
 }
 
 .bar-chart-line {
-  stroke: #5b21b6;
+  stroke: var(--color-accent-hover);
 }
 
 .bar-chart-tooltip {
@@ -35,10 +35,6 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  .bar-chart-line {
-    stroke: #ddd6fe;
-  }
-
   .bar-chart-tooltip {
     background: rgba(17, 24, 39, 0.95);
   }

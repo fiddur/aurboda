@@ -32,6 +32,10 @@ A per-user set of rules, each combining a **predicate** and a **share template**
   `series_metrics`, `include_chart`/`include_map`, `include_exercises` (off by default; a
   strength-training rule can share each exercise's sets, e1RM, volume and records),
   `visibility`, and an optional fixed `message` for the created posts.
+- **Tags** (`tags`, nullable): `null` (the default) gives the created posts the owner's
+  default tags; a list replaces them for this rule's posts (`[]` for none). The activity
+  type tag still follows the owner's `feed_type_tag` setting, and `#tags` in the fixed
+  message are added too — see [Hashtags](feed.md#hashtags).
 - Rules are **created disabled**. Enabling is a separate, deliberate act — the UI states
   plainly that matching data will leave the instance without further confirmation — and
   stamps `enabled_at`. Only a real off→on transition stamps it: re-sending
@@ -104,7 +108,7 @@ A per-user set of rules, each combining a **predicate** and a **share template**
 
 ## Surface
 
-- **Web**: the "Auto-share rules" panel on the Feed page — list with enable toggles
+- **Web**: the "Auto-share rules" panel in the Feed page's **Manage** section — list with enable toggles
   (with an explicit confirmation of what will be published), post counts per rule,
   and a create form (with a **Data conditions** list: field, "has a value" / "is" /
   "is not" / "has no value", and a value suggested from the type's known values) and a

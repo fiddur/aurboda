@@ -21,7 +21,7 @@
   font-size: 1.25rem;
   margin: 0 0 1rem 0;
   color: #374151;
-  border-bottom: 2px solid #673ab8;
+  border-bottom: 2px solid var(--color-accent);
   padding-bottom: 0.5rem;
 }
 
@@ -48,7 +48,7 @@
 }
 
 .correlations-page .period-select:hover {
-  border-color: #673ab8;
+  border-color: var(--color-accent);
 }
 
 .correlations-page .hrv-controls {
@@ -206,7 +206,7 @@
 }
 
 .correlations-page .correlations-table tbody tr.selected {
-  background: #ede9fe;
+  background: var(--color-accent-soft);
 }
 
 .correlations-page .name-cell {
@@ -276,7 +276,6 @@
 
   .correlations-page h2 {
     color: #d1d5db;
-    border-color: #8b5cf6;
   }
 
   .correlations-page .intro-text {
@@ -287,10 +286,6 @@
     background: #1f2937;
     border-color: #374151;
     color: #d1d5db;
-  }
-
-  .correlations-page .period-select:hover {
-    border-color: #8b5cf6;
   }
 
   .correlations-page .baseline-card,
@@ -316,10 +311,6 @@
 
   .correlations-page .correlations-table tbody tr:hover {
     background: #1f2937;
-  }
-
-  .correlations-page .correlations-table tbody tr.selected {
-    background: #312e81;
   }
 
   .correlations-page .type-cell,
@@ -385,8 +376,8 @@
   border-bottom: 2px solid transparent;
 }
 .analyze-tabs button.active {
-  color: #673ab8;
-  border-bottom-color: #673ab8;
+  color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
   font-weight: 600;
 }
 
@@ -407,31 +398,33 @@
   width: 130px;
   flex-shrink: 0;
   font-weight: 600;
-  color: #374151;
+  color: var(--color-text);
 }
 /* `.selector-picker` styling lives with the shared SelectorPicker component. */
 .explore-regime input,
 .explore-row > input {
   padding: 6px 8px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
   border-radius: 6px;
   font-size: 0.9rem;
 }
 .explore-toggle {
   display: inline-flex;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--color-border);
   border-radius: 6px;
   overflow: hidden;
 }
 .explore-toggle button {
-  background: #fff;
+  background: var(--color-surface);
   border: none;
   padding: 6px 14px;
   cursor: pointer;
-  color: #6b7280;
+  color: var(--color-text-muted);
 }
 .explore-toggle button.active {
-  background: #673ab8;
+  background: var(--color-primary);
   color: #fff;
 }
 .explore-regime {
@@ -441,7 +434,7 @@
   flex-wrap: wrap;
 }
 .regime-hint {
-  color: #6b7280;
+  color: var(--color-text-muted);
   font-size: 0.85rem;
   display: inline-flex;
   align-items: center;
@@ -456,19 +449,19 @@
   gap: 8px;
 }
 .explore-preset {
-  background: #f3f0fa;
-  color: #5a32a3;
-  border: 1px solid #d6ccec;
+  background: var(--color-accent-soft);
+  color: var(--color-accent-hover);
+  border: 1px solid var(--color-accent-border);
   border-radius: 999px;
   padding: 5px 12px;
   font-size: 0.85rem;
   cursor: pointer;
 }
 .explore-preset:hover {
-  background: #e9e2f7;
+  background: var(--color-accent-soft);
 }
 .explore-help {
-  color: #6b7280;
+  color: var(--color-text-muted);
   font-size: 0.85rem;
   margin: -4px 0 4px;
 }
@@ -482,24 +475,29 @@
   margin: 0 0 4px;
 }
 .group-comparison {
-  background: #f6f5fb;
-  border: 1px solid #e3def2;
+  background: var(--color-accent-soft);
+  border: 1px solid var(--color-accent-border);
   border-radius: 6px;
   padding: 10px 12px;
   margin: 6px 0;
 }
 .explore-verdict {
-  color: #374151;
+  color: var(--color-text);
   font-size: 0.92rem;
   margin: 4px 0;
 }
 .explore-verdict-sub {
-  color: #6b7280;
+  color: var(--color-text-muted);
   font-size: 0.85rem;
   margin: 4px 0 0;
 }
 .explore-caution {
   color: #9a3412;
+}
+@media (prefers-color-scheme: dark) {
+  .explore-caution {
+    color: #fdba74;
+  }
 }
 .axis-label {
   fill: #6b7280;
@@ -515,7 +513,7 @@
   margin-top: 6px;
 }
 .explore-run {
-  background: #673ab8;
+  background: var(--color-primary);
   color: #fff;
   border: none;
   padding: 10px 20px;
@@ -524,10 +522,10 @@
   cursor: pointer;
 }
 .explore-run:hover {
-  background: #5a32a3;
+  background: var(--color-primary-hover);
 }
 .explore-summary {
-  color: #4b5563;
+  color: var(--color-text-muted);
   font-size: 0.9rem;
   margin: 8px 0;
 }

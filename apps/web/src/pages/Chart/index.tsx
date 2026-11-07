@@ -27,6 +27,7 @@ import { BreakdownMaskPicker } from '../../components/AddToDashboardModal'
 import { BarChart, type BarClickInfo } from '../../components/charts/BarChart'
 import { BreakdownLegend, SERIES_COLORS } from '../../components/charts/breakdown'
 import { ChartMenu } from '../../components/charts/ChartMenu'
+import { trendPlot, trendPlotSeries } from '../../components/charts/trendGaps'
 import { TrendLineChart } from '../../components/charts/TrendLineChart'
 import { goalsHref } from '../../components/goalPrefill'
 import { MetricPicker } from '../../components/MetricPicker'
@@ -47,6 +48,7 @@ import {
   updateSharedDashboard,
 } from '../../state/api'
 import { auth } from '../../state/auth'
+import { CHART_PRIMARY } from '../../theme'
 import { measureFilter } from '../../utils/measures'
 import { newWidgetId } from '../../utils/widget-id'
 import {
@@ -517,25 +519,34 @@ function TrendDisplay({ params, menu }: { params: FetchTrendParams; menu: Compon
     const names = trendData?.breakdown_series
     const histories = trendData?.breakdown_histories
     if (!names?.length || !histories) return null
-    return names.map((name, i) => ({
-      color: SERIES_COLORS[i % SERIES_COLORS.length],
-      data: (histories[name] ?? []).map((p) => ({ date: p.date, value: p.value })),
-      name,
-    }))
+    return trendPlotSeries(
+      names.map((name, i) => ({
+        color: SERIES_COLORS[i % SERIES_COLORS.length],
+        data: (histories[name] ?? []).map((p) => ({ date: p.date, value: p.value })),
+        name,
+      })),
+    )
   }, [trendData])
+  const single = useMemo(() => trendPlot(trendData?.history ?? NO_TREND_POINTS), [trendData])
 
   if (!params.pattern) return <div class="chart-empty">Select a source to view trend data.</div>
   if (trendQuery.isLoading) return <div class="chart-loading">Loading trend data...</div>
   if (trendQuery.isError || !trendQuery.data) return <div class="chart-error">Failed to load trend data.</div>
 
-  const { breakdown_series, current_value, display_unit, history } = trendQuery.data
+  const { breakdown_series, current_value, display_unit } = trendQuery.data
 
   if (breakdown_series && multiSeries) {
     return (
       <div class="chart-display">
         <div class="chart-display-header">{menu}</div>
         <BreakdownLegend series={breakdown_series} />
-        <TrendLineChart data={NO_TREND_POINTS} color="#8b5cf6" height={350} multiSeries={multiSeries} />
+        <TrendLineChart
+          data={NO_TREND_POINTS}
+          color={CHART_PRIMARY}
+          height={350}
+          multiSeries={multiSeries.series}
+          xDomain={multiSeries.xDomain}
+        />
       </div>
     )
   }
@@ -549,7 +560,7 @@ function TrendDisplay({ params, menu }: { params: FetchTrendParams; menu: Compon
         </div>
         {menu}
       </div>
-      <TrendLineChart data={history} color="#8b5cf6" height={350} />
+      <TrendLineChart data={single.data} xDomain={single.xDomain} color={CHART_PRIMARY} height={350} />
       {params.measure && (
         <p class="chart-caption">
           {activityMeasureLabels[params.measure]}, decaying with a {params.half_life_days}-day half-life
@@ -681,7 +692,7 @@ function BarDisplay({ params, menu }: { params: FetchChartDataParams; menu: Comp
       <div class="chart-display-header">{menu}</div>
       <BarChart
         data={buckets}
-        color="#8b5cf6"
+        color={CHART_PRIMARY}
         height={350}
         bucketSize={params.bucket_size}
         rangeStart={params.start}

@@ -13,6 +13,7 @@ import {
   fetchChartData,
   fetchTrend,
 } from '../../state/api'
+import { CHART_PRIMARY } from '../../theme'
 import { buildChartUrl } from '../../utils/chart-url'
 import { toDisplayName } from '../../utils/displayName'
 import { MEASURE_HALF_LIFE_DEFAULT } from '../../utils/half-life'
@@ -135,7 +136,7 @@ const MeasureChartBody = ({
         <>
           <BarChart
             data={query.data.buckets}
-            color="#8b5cf6"
+            color={CHART_PRIMARY}
             height={220}
             bucketSize="1w"
             rangeStart={range.start}

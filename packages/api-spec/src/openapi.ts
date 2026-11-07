@@ -5,6 +5,7 @@ import * as yaml from 'yaml'
 import { z } from 'zod'
 import { createDocument } from 'zod-openapi'
 
+import { isAllowedWhenReadOnly } from './read-only.ts'
 import { activitiesResponseSchema } from './schemas/activities.ts'
 import { deleteAccountBodySchema, loginBodySchema, loginResponseSchema } from './schemas/admin.ts'
 import {
@@ -15,8 +16,8 @@ import {
   wellKnownAurbodaSchema,
   wellKnownQuantpubSchema,
 } from './schemas/challenges.ts'
-import { dateOnlySchema, iso8601DateTimeSchema, metricTypeSchema } from './schemas/common.ts'
-import { dailySummaryResponseSchema } from './schemas/daily-summary.ts'
+import { iso8601DateTimeSchema, metricTypeSchema } from './schemas/common.ts'
+import { dailySummaryQuerySchema, dailySummaryResponseSchema } from './schemas/daily-summary.ts'
 import { exportDumpLinkResponseSchema, exportDumpQuerySchema } from './schemas/export.ts'
 import {
   goalHistoryQuerySchema,
@@ -415,13 +416,7 @@ const openApiDocument = createDocument({
       get: {
         description:
           'Get a comprehensive summary of health data for a specific day including heart rate, steps, sleep, exercise, tags, productivity, and visited places.',
-        requestParams: {
-          query: z.object({
-            date: dateOnlySchema.meta({
-              description: 'Date in YYYY-MM-DD format',
-            }),
-          }),
-        },
+        requestParams: { query: dailySummaryQuerySchema },
         responses: {
           200: {
             content: {
@@ -1497,15 +1492,10 @@ const openApiDocument = createDocument({
   ],
 })
 
-// Mirrors `isAllowedWhenReadOnly` in the backend's account gate: every authenticated write
-// except exporting, passkeys and deleting the account can be refused for a read-only account.
-// Admin routes are left out because admins are always exempt.
+// Admin routes are left out: an admin is never read-only, so the gate never refuses one.
 const WRITE_METHODS = ['post', 'put', 'patch', 'delete'] as const
 const mayBeRefusedWhenReadOnly = (path: string, method: string) =>
-  !path.startsWith('/export') &&
-  !path.startsWith('/webauthn/') &&
-  !path.startsWith('/admin/') &&
-  !(method === 'delete' && path === '/account')
+  !isAllowedWhenReadOnly(method, path) && !path.startsWith('/admin/')
 
 interface GeneratedOperation {
   responses?: Record<string, unknown>

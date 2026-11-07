@@ -1,5 +1,11 @@
 import type { CentralDb } from './central-db.ts'
 
+import {
+  readOfficialFeedSetting,
+  withoutOfficialFeedUser,
+  writeOfficialFeedSetting,
+} from './official-feed.ts'
+
 export type AccountDeletionError = 'confirmation_mismatch' | 'drop_failed' | 'last_admin' | 'not_found'
 
 export type AccountDeletionResult = { ok: true } | { ok: false; error: AccountDeletionError; message: string }
@@ -16,8 +22,10 @@ export interface AccountDeletionDeps {
     | 'deleteOuraUserMappingsByUsername'
     | 'deleteStravaAthleteMappingByUsername'
     | 'getAdmins'
+    | 'getServerSetting'
     | 'isUsernameDeleted'
     | 'reserveDeletedUsername'
+    | 'setServerSetting'
   >
   /** Every user with a per-user database. */
   listUsers: () => Promise<string[]>
@@ -107,14 +115,21 @@ export const createAccountDeleter = (deps: AccountDeletionDeps): AccountDeleter 
     return live <= 1
   }
 
+  const removeCentralData = async (username: string) => {
+    const { centralDb } = deps
+    await bestEffort('central data removal', username, () => centralDb.deleteAllCentralUserData(username))
+    await bestEffort('official feed removal', username, async () => {
+      const remaining = withoutOfficialFeedUser(await readOfficialFeedSetting(centralDb), username)
+      if (remaining) await writeOfficialFeedSetting(centralDb, remaining)
+    })
+  }
+
   const deletedBy = (username: string, actor: string) => (actor === username ? 'self' : `admin ${actor}`)
 
   const finishPartialDeletion = async (username: string, actor: string): Promise<AccountDeletionResult> => {
     deps.onDeleted(username)
     if (!(await drop(username))) return fail('drop_failed')
-    await bestEffort('central data removal', username, () =>
-      deps.centralDb.deleteAllCentralUserData(username),
-    )
+    await removeCentralData(username)
     log.info(`🗑️ Account ${username}: unfinished deletion completed by ${deletedBy(username, actor)}`)
     return { ok: true }
   }
@@ -147,7 +162,7 @@ export const createAccountDeleter = (deps: AccountDeletionDeps): AccountDeleter 
 
     if (!(await drop(username))) return fail('drop_failed')
 
-    await bestEffort('central data removal', username, () => centralDb.deleteAllCentralUserData(username))
+    await removeCentralData(username)
 
     log.info(`🗑️ Account ${username} deleted by ${deletedBy(username, actor)}`)
     return { ok: true }

@@ -9,6 +9,7 @@ import {
   collapseToParentType,
   EXCLUDED_ACTIVITY_PREFIXES,
   EXCLUDED_ACTIVITY_SOURCES,
+  formatCollapsedTypesLine,
   isDurationActivityLike,
   mergeAdjacentByKey,
   mergeScreentimeActivities,
@@ -606,6 +607,46 @@ describe('collapseToParentType', () => {
     expect(collapseToParentType(activities, typeDefs, 30_000, 0)).toHaveLength(2)
   })
 
+  describe('splitAbutting (Activity lane, fine zoom)', () => {
+    const fineGap = 2 * 60_000
+    const yoga = (id: string, start: Date, end: Date): Activity => ({
+      activity_type: 'yoga',
+      end_time: end,
+      id,
+      start_time: start,
+    })
+
+    it('keeps two exactly abutting sessions as separate bars', () => {
+      const activities = [yoga('a', d(21), d(21, 30)), yoga('b', d(21, 30), d(22))]
+
+      const bars = collapseToParentType(activities, typeDefs, fineGap, 0, { splitAbutting: true })
+
+      expect(bars.map((b) => b.id)).toEqual(['a', 'b'])
+    })
+
+    it('still merges overlapping sessions', () => {
+      const activities = [yoga('a', d(21), d(21, 35)), yoga('b', d(21, 30), d(22))]
+
+      const bars = collapseToParentType(activities, typeDefs, fineGap, 0, { splitAbutting: true })
+
+      expect(bars).toHaveLength(1)
+      expect(bars[0].end_time).toEqual(d(22))
+    })
+
+    it('still merges a positive gap within the threshold', () => {
+      const activities = [yoga('a', d(21), d(21, 30)), yoga('b', d(21, 31), d(22))]
+
+      expect(collapseToParentType(activities, typeDefs, fineGap, 0, { splitAbutting: true })).toHaveLength(1)
+    })
+
+    it('merges abutting sessions when off (coarse zoom, and the Screen Time lane)', () => {
+      const activities = [yoga('a', d(21), d(21, 30)), yoga('b', d(21, 30), d(22))]
+
+      expect(collapseToParentType(activities, typeDefs, 60 * 60_000, 0)).toHaveLength(1)
+      expect(collapseToParentType(activities, typeDefs, 0, 1)).toHaveLength(1)
+    })
+  })
+
   it('collapses one hop at depth=1 (parity with prior behaviour)', () => {
     const deepDefs = new Map([
       ['running', { parent_type: 'exercise' }],
@@ -655,6 +696,29 @@ describe('collapseToParentType', () => {
     ]
     const result = collapseToParentType(activities, deepDefs, undefined, 99)
     expect(result[0].activity_type).toBe('exercise')
+  })
+})
+
+describe('formatCollapsedTypesLine', () => {
+  const provenance = [
+    { count: 47, type: 'programming' },
+    { count: 1, type: 'communications' },
+  ]
+
+  it('lists members with counts by default', () => {
+    expect(formatCollapsedTypesLine([{ count: 2, type: 'yoga' }])).toBe('Merged: Yoga ×2')
+    expect(formatCollapsedTypesLine(provenance)).toBe('Merged: Programming ×47, Communications')
+  })
+
+  it('drops the counts but keeps the names with withCounts: false', () => {
+    expect(formatCollapsedTypesLine(provenance, { withCounts: false })).toBe(
+      'Merged: Programming, Communications',
+    )
+  })
+
+  it('returns undefined for an empty or missing provenance', () => {
+    expect(formatCollapsedTypesLine(undefined)).toBeUndefined()
+    expect(formatCollapsedTypesLine([], { withCounts: false })).toBeUndefined()
   })
 })
 

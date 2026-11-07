@@ -4,7 +4,7 @@
  */
 import { integrateFederation } from '@fedify/express'
 import { getDefaultActivityTransformers } from '@fedify/fedify'
-import { type Activity, Create, Follow, Mention, Note, Person, Update } from '@fedify/fedify/vocab'
+import { type Activity, Create, Follow, Hashtag, Mention, Note, Person, Update } from '@fedify/fedify/vocab'
 import express from 'express'
 import supertest from 'supertest'
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
@@ -22,7 +22,6 @@ import {
   createReplyPost,
   deleteFeedPost,
   type FeedPostInput,
-  getFeedPostById,
   getFeedTombstone,
   listPublicFeedPostsPage,
 } from '../../db/feed.ts'
@@ -41,7 +40,6 @@ import {
   handleInboundFollow,
   handleInboundUpdate,
 } from './federation.ts'
-import { isPubliclyVisible } from './object.ts'
 import { dateToTemporalInstant } from './temporal-interop.ts'
 
 const CONTAINER_TIMEOUT = 120_000
@@ -384,6 +382,33 @@ describe('Feed federation actor + WebFinger', () => {
     expect(doc.object?.['quant:series']).toBeUndefined()
   })
 
+  test("an activity Note carries the post's Hashtags and links them in its content", async () => {
+    const user = getTestUser()
+    const activityId = await insertExercise(user)
+    const post = await sharePost(user, activityId, { message: 'Easy #Zone2 run', tags: ['aurboda', 'zone2'] })
+    const ctx = await fed.createContext(new URL(ORIGIN))
+    const activity = {
+      activity_type: 'exercise',
+      end_time: new Date('2026-07-01T07:11:00Z'),
+      start_time: new Date('2026-07-01T06:30:00Z'),
+      title: 'Morning run',
+    }
+    const create = await buildFeedCreate(ctx, user, post, activity, `${ORIGIN}/api`)
+    const note = await create.getObject()
+    expect(note).toBeInstanceOf(Note)
+    if (!(note instanceof Note)) return
+    const names: (string | undefined)[] = []
+    for await (const tag of note.getTags()) {
+      names.push(tag instanceof Hashtag ? tag.name?.toString() : undefined)
+    }
+    expect(names).toEqual(['#aurboda', '#zone2'])
+    const content = note.content?.toString() ?? ''
+    const link = (tag: string, text: string) =>
+      `<a href="${ORIGIN}/u/${user}?tag=${tag}" class="mention hashtag" rel="tag">#<span>${text}</span></a>`
+    expect(content).toContain(`Easy ${link('zone2', 'Zone2')} run`)
+    expect(content).toContain(`<p>${link('aurboda', 'aurboda')}</p>`)
+  })
+
   test('the quant extension survives the transformers Fedify applies before sending (#1040)', async () => {
     const user = getTestUser()
     const activityId = await insertExercise(user)
@@ -628,12 +653,9 @@ describe('Feed federation actor + WebFinger', () => {
     app.set('trust proxy', 'loopback')
     app.use(createActorAcceptNormalizer())
     app.use(integrateFederation(fed, () => undefined))
+    app.use(createFeedTombstoneRouter({ getTombstone: getFeedTombstone, origin: ORIGIN }))
     app.use(
       createActorHtmlRouter({
-        isPublicPost: async (username, postId) => {
-          const post = await getFeedPostById(username, postId)
-          return post != null && isPubliclyVisible(post.visibility)
-        },
         origin: ORIGIN,
         userExists: async (username) => users.includes(username),
       }),
@@ -712,11 +734,33 @@ describe('Feed federation actor + WebFinger', () => {
     expect(note.type).toContain('Note')
   })
 
-  test('a browser opening a followers-only post id is not redirected', async () => {
+  test('a browser opening a followers-only post id is redirected; a machine client still gets 404 (#1418)', async () => {
     const user = getTestUser()
     const post = await sharePost(user, await insertExercise(user), { visibility: 'followers' })
-    const res = await supertest(buildActorApp([user]))
-      .get(`/users/${user}/feed/${post.id}`)
+    const app = buildActorApp([user])
+    const html = await supertest(app).get(`/users/${user}/feed/${post.id}`).set('Accept', 'text/html')
+    expect(html.status).toBe(302)
+    expect(html.headers.location).toBe(`${ORIGIN}/u/${user}/posts/${post.id}`)
+    expect(html.headers.vary).toMatch(/Accept/)
+    expect((await getObject(app, `/users/${user}/feed/${post.id}`)).status).toBe(404)
+  })
+
+  test('a browser opening a deleted post id is redirected; a machine client still gets the 410 (#1418)', async () => {
+    const user = getTestUser()
+    const post = await sharePost(user, await insertExercise(user))
+    await deleteFeedPost(user, post.id)
+    const app = buildActorApp([user])
+    const html = await supertest(app).get(`/users/${user}/feed/${post.id}`).set('Accept', 'text/html')
+    expect(html.status).toBe(302)
+    expect(html.headers.location).toBe(`${ORIGIN}/u/${user}/posts/${post.id}`)
+    const gone = await getObject(app, `/users/${user}/feed/${post.id}`)
+    expect(gone.status).toBe(410)
+    expect(gone.body.type).toBe('Tombstone')
+  })
+
+  test('a browser opening a post id of an UNKNOWN actor is not redirected', async () => {
+    const res = await supertest(buildActorApp([getTestUser()]))
+      .get('/users/nosuchuser/feed/11111111-1111-4111-8111-111111111111')
       .set('Accept', 'text/html')
     expect(res.status).toBe(404)
   })

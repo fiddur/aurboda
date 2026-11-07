@@ -414,6 +414,19 @@ export {
 export { emitTimelineNotify, openTimelineChannel } from './timeline-notify.ts'
 
 export {
+  type ArticleDraftInput,
+  type ArticleDraftPatch,
+  type ArticleDraftRecord,
+  claimArticleDraft,
+  createArticleDraft,
+  deleteArticleDraft,
+  getArticleDraft,
+  listArticleDrafts,
+  restoreArticleDraft,
+  updateArticleDraft,
+} from './article-drafts.ts'
+
+export {
   type ArticlePostInput,
   countPublicFeedPosts,
   type ChallengePostInput,

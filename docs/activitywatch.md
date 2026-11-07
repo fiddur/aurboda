@@ -46,11 +46,74 @@ No server-side configuration is needed. Each user sets up their own push agent w
 
 ## User Setup
 
-### 1. Install ActivityWatch
+### Quick install
+
+1. Install [ActivityWatch](https://activitywatch.net/) and start it.
+2. In Aurboda, open **Data Sources → ActivityWatch (Desktop)** (new accounts also find it in the
+   dashboard's **Get started** guide), pick your operating system and press **Show my command**.
+   That creates your API key and shows a one-line command; **Copy** copies it with the key.
+3. Paste it into a terminal (Linux, macOS) or PowerShell (Windows) on the computer to track.
+
+Linux and macOS:
+
+```bash
+curl -fsSL https://aurboda.net/api/agents/activitywatch.sh | bash -s -- --token '<TOKEN>'
+```
+
+Windows (PowerShell 5.1 or later):
+
+```powershell
+$env:AURBODA_TOKEN='<TOKEN>'; irm https://aurboda.net/api/agents/activitywatch.ps1 | iex
+```
+
+The command contains your personal key: don't share it. Running it again replaces the installed
+files and keeps a single schedule.
+
+**Linux and macOS** (`activitywatch.sh`, bash, no `sudo`):
+
+- checks for `curl` and `python3` (on macOS without it, it tells you to run
+  `xcode-select --install`) and warns, without failing, when ActivityWatch is not answering at
+  `http://localhost:5600` yet;
+- installs the [push agent](#create-the-script) as `~/.local/bin/aw-to-aurboda.sh` and its
+  settings (`AURBODA_URL`, `AURBODA_TOKEN`, `DEVICE_NAME`) in `~/.config/aw-aurboda/env`, mode 600 —
+  the key is never written into a unit file or crontab;
+- runs it every 5 minutes: on Linux a systemd user timer (`aw-aurboda.timer`), or a crontab
+  entry marked `# aw-aurboda` where `systemctl --user` is unavailable; on macOS a launch agent,
+  `~/Library/LaunchAgents/net.aurboda.aw-push.plist` (`StartInterval` 300, logging to
+  `~/.local/state/aw-aurboda/push.log`);
+- runs the agent once and prints the result.
+
+Options after `bash -s --`: `--device <name>` (default: the hostname), `--url <api url>` (another
+Aurboda server), and `--uninstall`, which removes the agent, its schedule and its settings:
+
+```bash
+curl -fsSL https://aurboda.net/api/agents/activitywatch.sh | bash -s -- --uninstall
+```
+
+**Windows** (`activitywatch.ps1`, no administrator rights): installs a PowerShell port of the
+agent (same bucket discovery, AFK filtering, state file and payload) as
+`%LOCALAPPDATA%\aw-aurboda\aw-to-aurboda.ps1` with its settings in `config.json` beside it, and
+registers the scheduled task **Aurboda ActivityWatch push** for the current user, every 5 minutes
+in a hidden window. Set `$env:AURBODA_DEVICE` to name the computer (default: its computer name)
+or `$env:AURBODA_URL` for another server before running it. To uninstall:
+
+```powershell
+$env:AURBODA_UNINSTALL='1'; irm https://aurboda.net/api/agents/activitywatch.ps1 | iex
+```
+
+The scripts are served without authentication by `GET /api/agents/activitywatch.sh` and
+`GET /api/agents/activitywatch.ps1`, with the server's `API_BASE_URL` filled in. They have no MCP
+twin: they are scripts for a shell, like the OpenAPI document.
+
+### Manual setup
+
+To set the agent up by hand instead:
+
+#### 1. Install ActivityWatch
 
 Download and install ActivityWatch from [activitywatch.net](https://activitywatch.net/). Start the daemon — it runs on `http://localhost:5600` by default.
 
-### 2. Get your Aurboda API token
+#### 2. Get your Aurboda API token
 
 1. Log into Aurboda and go to **Settings > Data Sources**
 2. Find the **ActivityWatch** section
@@ -58,11 +121,11 @@ Download and install ActivityWatch from [activitywatch.net](https://activitywatc
 
 > Keep this token secure — it grants full access to your Aurboda account.
 
-### 3. Set up the push agent
+#### 3. Set up the push agent
 
 The push agent is a shell script that reads from ActivityWatch's local API and sends events to Aurboda.
 
-#### Create the script
+##### Create the script
 
 Save the following as `~/.local/bin/aw-to-aurboda.sh`:
 
@@ -72,6 +135,15 @@ Save the following as `~/.local/bin/aw-to-aurboda.sh`:
 # Run periodically (e.g. every 5 minutes) via cron or systemd timer.
 
 set -euo pipefail
+
+# Settings written by the installer; variables already in the environment win.
+AW_AURBODA_ENV="${AW_AURBODA_ENV:-$HOME/.config/aw-aurboda/env}"
+if [[ -z "${AURBODA_TOKEN:-}" && -r "$AW_AURBODA_ENV" ]]; then
+  set -a
+  # shellcheck source=/dev/null
+  . "$AW_AURBODA_ENV"
+  set +a
+fi
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 AURBODA_URL="${AURBODA_URL:-https://aurboda.net/api}"
@@ -110,7 +182,7 @@ for bid, b in buckets.items():
     if b.get('type') == 'currentwindow':
         print(bid)
         break
-" || true)
+" 2>/dev/null || true)
 
 AFK_BUCKET_ID=$(echo "$BUCKETS_JSON" | python3 -c "
 import sys, json
@@ -119,7 +191,7 @@ for bid, b in buckets.items():
     if b.get('type') == 'afkstatus':
         print(bid)
         break
-" || true)
+" 2>/dev/null || true)
 
 if [[ -z "$BUCKET_ID" ]]; then
   echo "No aw-watcher-window bucket found — is ActivityWatch running?" >&2
@@ -161,6 +233,10 @@ def parse_ts(ts):
     ts = ts.replace('Z', '+00:00')
     return datetime.fromisoformat(ts)
 
+def utc_iso(dt):
+    # Aurboda accepts UTC timestamps with a 'Z' suffix only
+    return dt.astimezone(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z')
+
 # Build list of AFK periods
 afk_periods = []
 for ae in afk_events:
@@ -188,7 +264,7 @@ for e in events:
         filtered_count += 1
         continue
     transformed.append({
-        'timestamp': e['timestamp'],
+        'timestamp': utc_iso(evt_start),
         'duration': e['duration'],
         'app': app,
         'title': e.get('data', {}).get('title', ''),
@@ -231,7 +307,7 @@ Make it executable:
 chmod +x ~/.local/bin/aw-to-aurboda.sh
 ```
 
-#### Configure the script
+##### Configure the script
 
 Set the required environment variables. Add these to `~/.profile` or `~/.zshenv`:
 
@@ -241,7 +317,7 @@ export AURBODA_TOKEN="your-token-here"          # from Settings
 export DEVICE_NAME="laptop"                     # friendly name for this device
 ```
 
-#### Test it manually
+##### Test it manually
 
 ```bash
 AURBODA_URL=https://aurboda.net/api \
@@ -250,9 +326,9 @@ DEVICE_NAME=laptop \
 ~/.local/bin/aw-to-aurboda.sh
 ```
 
-### 4. Schedule the push agent
+#### 4. Schedule the push agent
 
-#### Option A: cron
+##### Option A: cron
 
 ```bash
 crontab -e
@@ -264,7 +340,7 @@ Add:
 */5 * * * * AURBODA_URL=https://aurboda.net/api AURBODA_TOKEN=your-token DEVICE_NAME=laptop ~/.local/bin/aw-to-aurboda.sh >> ~/.local/state/aw-aurboda/push.log 2>&1
 ```
 
-#### Option B: systemd user timer (Linux, recommended)
+##### Option B: systemd user timer (Linux, recommended)
 
 Create `~/.config/systemd/user/aw-aurboda.service`:
 

@@ -17,6 +17,7 @@ import {
   type ProductivityCorrelation,
 } from '../../state/api'
 import { ExploreTab } from './Explore'
+import { describeOccurrences } from './occurrences'
 import './style.css'
 
 const periodDays = signal(30)
@@ -479,7 +480,7 @@ export function Correlations() {
                               'activity_type',
                             )}
                             type="activity"
-                            extra={`${a.occurrences}× (avg ${a.avg_duration_min} min)`}
+                            extra={describeOccurrences(a.occurrences, a.avg_duration_min)}
                           />
                         ))}
                       </tbody>

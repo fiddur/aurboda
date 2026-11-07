@@ -12,6 +12,8 @@
  * by every page and become unreachable (#1025).
  */
 
+import { UUID_RE } from '../utils.ts'
+
 export interface KeysetCursor {
   /** The boundary row's timestamp as Postgres text (µs precision), for `$::timestamptz`. */
   ts: string
@@ -21,9 +23,6 @@ export interface KeysetCursor {
 /** Encode a `(timestamp, id)` keyset position as an opaque base64url cursor. */
 export const encodeKeysetCursor = (ts: string, id: string): string =>
   Buffer.from(`${ts}:${id}`).toString('base64url')
-
-/** A canonical UUID, to validate a decoded cursor's id before it hits a `$::uuid` cast. */
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /**
  * A Postgres `timestamptz::text` rendering (`2026-08-20 09:00:00.5007+00`) or the
@@ -87,4 +86,21 @@ export const decodeKeysetCursor = (cursor: string | undefined): KeysetCursor | u
   if (isValidTs(raw)) return { id, ts: raw }
   const ts = legacyMsToTs(raw)
   return ts === undefined ? undefined : { id, ts }
+}
+
+/**
+ * A keyset timestamp (Postgres `timestamptz::text` or ISO) as epoch
+ * microseconds, so rows from different databases merge in the order their page
+ * predicates compare — a `Date` would drop the microseconds (#1025). NaN when
+ * the value is not a timestamp.
+ */
+export const keysetTsMicros = (ts: string): number => {
+  const m = TS_RE.exec(ts)
+  if (m == null) return Number.NaN
+  const [year, month, day, hour, minute, second] = m.slice(1, 7).map(Number)
+  const micros = Number((m[7] ?? '.').slice(1).padEnd(6, '0'))
+  const sign = m[8] === 'Z' || m[8].startsWith('+') ? 1 : -1
+  const offsetMinutes = m[8] === 'Z' ? 0 : sign * (Number(m[9]) * 60 + Number(m[11] ?? 0))
+  const ms = Date.UTC(year, month - 1, day, hour, minute, second) - offsetMinutes * 60_000
+  return ms * 1000 + micros
 }

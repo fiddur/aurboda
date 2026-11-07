@@ -3,7 +3,7 @@
  * Its two representations are the ActivityPub actor document and, for a human,
  * the public profile page the SPA serves at `/u/:username` (a 302). A post's id
  * `/users/:username/feed/:postId` negotiates the same way between its Note and
- * the permalink page `/u/:username/posts/:postId`, for public/unlisted posts.
+ * the permalink page `/u/:username/posts/:postId`.
  *
  * Fedify serves the actor only to a request that NAMES an ActivityPub type and
  * `next()`s everything else, so a wildcard or absent `Accept` — which by the
@@ -13,21 +13,21 @@
  * Fedify answers it. `createActorHtmlRouter`, mounted AFTER it, redirects a
  * request whose best match is HTML and answers `406` when an existing actor has
  * no acceptable representation. An unknown actor falls through to its 404 in
- * every case; a post id that isn't a public post falls through to its 404
- * (never a 406).
+ * every case. A post id of an existing account redirects a browser whatever
+ * the post's visibility or existence — the permalink page says when it isn't
+ * public — so the answer leaks nothing; it never answers 406.
  */
 import { Router, type RequestHandler } from 'express'
 
 import { isValidUsername } from '../api/auth-routes.ts'
 import { buildPostUrl, buildProfileUrl } from '../services/share-urls.ts'
+import { UUID_RE } from '../utils.ts'
 
 export interface ActorHtmlDeps {
   /** Canonical web origin, e.g. `https://aurboda.net` — the profile URL base. */
   origin: string
   /** Whether the account exists on this instance (unknown users must not redirect). */
   userExists: (username: string) => Promise<boolean>
-  /** Whether the post exists and is `public`/`unlisted` (anything else must not redirect). */
-  isPublicPost: (username: string, postId: string) => Promise<boolean>
 }
 
 /** What Fedify serves the actor document for, so both negotiations agree. */
@@ -36,9 +36,6 @@ const HTML_TYPES = ['text/html', 'application/xhtml+xml']
 const ACTOR_TYPE = 'application/activity+json'
 const ACTOR_PATH = /^\/users\/([^/]+)$/
 const NOTE_PATH = /^\/users\/([^/]+)\/feed\/([^/]+)$/
-
-/** RFC 4122 canonical form — mirrors the object dispatcher's guard. */
-export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /** One `Accept` entry: its media type (lowercased) and quality weight. */
 const parseAcceptEntry = (raw: string): { type: string; q: number } => {
@@ -116,9 +113,9 @@ export const createActorHtmlRouter = (deps: ActorHtmlDeps): Router => {
     if (!isValidUsername(username) || !UUID_RE.test(postId)) return next()
     if (negotiateActor(req.headers.accept) !== 'html') return next()
     void deps
-      .isPublicPost(username, postId)
-      .then((isPublic) => {
-        if (!isPublic) return next()
+      .userExists(username)
+      .then((exists) => {
+        if (!exists) return next()
         res.setHeader('Vary', 'Accept')
         res.redirect(302, buildPostUrl(deps.origin, username, postId))
       })

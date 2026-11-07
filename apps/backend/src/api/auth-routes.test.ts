@@ -32,7 +32,13 @@ const buildApp = ({
   blogUsername = null,
   signupMode = 'closed',
   settings = {},
-}: { blogUsername?: string | null; signupMode?: string; settings?: Record<string, unknown> } = {}) => {
+  users = ['fiddur'],
+}: {
+  blogUsername?: string | null
+  signupMode?: string
+  settings?: Record<string, unknown>
+  users?: string[]
+} = {}) => {
   const httpd = express()
   httpd.use(express.json())
 
@@ -55,6 +61,7 @@ const buildApp = ({
     invitationAuth: {} as never,
     unauthorized: httpError(401, 'Unauthorized'),
     userDb: {} as never,
+    userExists: async (username) => users.includes(username),
   })
 
   httpd.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
@@ -78,15 +85,31 @@ beforeEach(() => {
 })
 
 describe('GET /status', () => {
-  test('names the instance blog user when the admin set one', async () => {
-    const response = await supertest(buildApp({ blogUsername: 'fiddur' })).get('/status')
+  test('says the official feed is on when it lists a user', async () => {
+    const response = await supertest(
+      buildApp({ settings: { official_feed: { tags: ['aurboda'], users: ['ghost', 'fiddur'] } } }),
+    ).get('/status')
     expect(response.status).toBe(200)
-    expect(response.body.blog_username).toBe('fiddur')
+    expect(response.body.official_feed).toBe(true)
+    expect(response.body).not.toHaveProperty('blog_username')
   })
 
-  test('says null when no blog is configured', async () => {
+  test('reads a legacy blog user as an official feed', async () => {
+    const response = await supertest(buildApp({ blogUsername: 'fiddur' })).get('/status')
+    expect(response.body.official_feed).toBe(true)
+  })
+
+  test('says off when no official feed is configured', async () => {
     const response = await supertest(buildApp()).get('/status')
-    expect(response.body.blog_username).toBeNull()
+    expect(response.body.official_feed).toBe(false)
+  })
+
+  test('says off when every listed user has been deleted since', async () => {
+    const response = await supertest(
+      buildApp({ settings: { official_feed: { tags: [], users: ['fiddur'] } }, users: [] }),
+    ).get('/status')
+    expect(response.status).toBe(200)
+    expect(response.body.official_feed).toBe(false)
   })
 })
 

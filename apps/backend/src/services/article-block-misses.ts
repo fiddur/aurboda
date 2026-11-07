@@ -27,11 +27,14 @@ export type NegativeCache = ReturnType<typeof createNegativeCache>
 
 export type BlockImageKind = 'blockpng' | 'blocksvg'
 
+const HOUR_MS = 3_600_000
+
 /**
  * The render-cache key of one article block image. It includes the post's
- * `updated_at` (an edit re-renders) and an hourly bucket (a window that later
- * gains data re-renders within the hour); the index is the normalised number,
- * so equivalent spellings in the URL share one entry.
+ * `updated_at` (an edit re-renders) and a time bucket, hourly unless given (a
+ * window that later gains data re-renders within the hour; a challenge block's
+ * standings use a finer one); the index is the normalised number, so
+ * equivalent spellings in the URL share one entry.
  */
 export const articleBlockCacheKey = (
   kind: BlockImageKind,
@@ -39,8 +42,9 @@ export const articleBlockCacheKey = (
   postId: string,
   index: number,
   updatedAt: Date,
+  bucketMs: number = HOUR_MS,
 ): string =>
-  `${kind}:${username}:${postId}:${index}:${updatedAt.getTime()}:${Math.floor(Date.now() / 3_600_000)}`
+  `${kind}:${username}:${postId}:${index}:${updatedAt.getTime()}:${Math.floor(Date.now() / bucketMs)}`
 
 /** Forget every remembered miss of one block, in both image formats. */
 export const forgetArticleBlockMisses = (

@@ -17,6 +17,7 @@ import {
   fetchCorrelationSelectors,
   fetchGenericCorrelation,
 } from '../../state/api'
+import { CHART_PRIMARY } from '../../theme'
 import { describeSelectorAxis, fiveNumberSummary, linearRegression } from './exploreCharts'
 import {
   describeCorrelationStrength,
@@ -99,36 +100,46 @@ const fmtP = (value: number | null | undefined): string =>
 const outcomeLooksContinuous = (): boolean =>
   eventOutcomeLooksContinuous(mode.value, eventOutcomeSource.value, eventOutcomeValue.value)
 
-/** Apply a back-pain-onset event preset for the given trigger activity/tag. */
-const applyEventPreset = (pattern: string) => {
-  setMode('event')
-  triggerSelector.value = { kind: 'activity', pattern }
-  setEventOutcomeSource('metric')
-  eventOutcomeValue.value = 'back_pain'
-  lagWindowsInput.value = '24h,48h,72h,7d'
-  collapseGapDays.value = 3
-  // Scope to the behavioural regime the #792 worked example uses (the date the
-  // relevant protocol/era began); a leak is rare and meaningful only from here.
-  periodStart.value = '2019-09-28'
+const resetPeriodToLastYear = () => {
+  periodStart.value = ''
   periodEnd.value = ''
+  periodDays.value = 365
+}
+
+const applyContinuousPreset = (trigger: CorrelationSelector, metric: string, lagDays: number) => {
+  setMode('continuous')
+  triggerSelector.value = trigger
+  outcomeSelector.value = { kind: 'metric', metric }
+  lagDaysInput.value = lagDays
+  resetPeriodToLastYear()
 }
 
 /** Worked examples that teach the modes by populating the whole form. */
 const PRESETS: { label: string; apply: () => void }[] = [
   {
-    apply: () => {
-      setMode('continuous')
-      triggerSelector.value = { kind: 'nutrition', nutrient: 'carbs' }
-      outcomeSelector.value = { kind: 'metric', metric: 'sleep_score' }
-      lagDaysInput.value = 1
-      periodStart.value = ''
-      periodEnd.value = ''
-      periodDays.value = 365
-    },
-    label: 'Carbs → sleep (Continuous)',
+    apply: () => applyContinuousPreset({ kind: 'nutrition', nutrient: 'carbs' }, 'sleep_score', 1),
+    label: 'Carbs → sleep score (Continuous)',
   },
-  { apply: () => applyEventPreset('ejaculation'), label: 'Ejaculation → back-pain onset (Event)' },
-  { apply: () => applyEventPreset('sauna'), label: 'Sauna → back-pain onset (Event)' },
+  {
+    apply: () => applyContinuousPreset({ kind: 'activity', pattern: 'alcohol' }, 'sleep_score', 1),
+    label: 'Alcohol → sleep score (Continuous)',
+  },
+  {
+    apply: () => applyContinuousPreset({ kind: 'activity', pattern: 'run' }, 'hrv_rmssd', 1),
+    label: 'Running → next-day HRV (Continuous)',
+  },
+  {
+    apply: () => {
+      setMode('event')
+      triggerSelector.value = { kind: 'activity', pattern: 'alcohol' }
+      setEventOutcomeSource('tag')
+      eventOutcomeValue.value = 'headache'
+      lagWindowsInput.value = '24h,48h'
+      collapseGapDays.value = 3
+      resetPeriodToLastYear()
+    },
+    label: 'Alcohol → headache onset (Event)',
+  },
 ]
 
 const buildRequest = () => {
@@ -180,7 +191,7 @@ function RrBars({ perLag }: { perLag: LagExposureResultData[] }) {
             {l.ci_low !== null && l.ci_high !== null && (
               <line x1={cx} y1={sy(l.ci_low)} x2={cx} y2={sy(l.ci_high)} stroke="#555" />
             )}
-            <circle cx={cx} cy={sy(l.relative_risk!)} r={4} fill={sig ? '#2e7d32' : '#673ab8'} />
+            <circle cx={cx} cy={sy(l.relative_risk!)} r={4} fill={sig ? '#2e7d32' : CHART_PRIMARY} />
             <text x={cx} y={h - 10} text-anchor="middle" class="axis-label">
               {l.lag}
             </text>
@@ -324,7 +335,7 @@ function ScatterPlot({ data }: { data: ContinuousCorrelationData }) {
         stroke="#ccc"
       />
       {points.map((p) => (
-        <circle cx={sx(p.trigger)} cy={sy(p.outcome)} r={3} fill="#673ab8" opacity={0.45} />
+        <circle cx={sx(p.trigger)} cy={sy(p.outcome)} r={3} fill={CHART_PRIMARY} opacity={0.45} />
       ))}
       {reg && (
         <line
@@ -366,7 +377,7 @@ function BoxPlot({ data }: { data: ContinuousCorrelationData }) {
       x: CHART_W * 0.34,
     },
     {
-      color: '#673ab8',
+      color: CHART_PRIMARY,
       label: `Present (n=${gc?.n_with ?? withVals.length})`,
       s: present,
       x: CHART_W * 0.68,
@@ -505,7 +516,7 @@ export function ExploreTab() {
     <div class="explore-tab">
       <p class="intro-text">
         Explore how any trigger relates to any outcome. <strong>Event onset</strong> mode is for presence-only
-        outcomes (e.g. back_pain) — it collapses multi-day flares into onsets and corrects for how often a
+        outcomes (e.g. headache) — it collapses multi-day flares into onsets and corrects for how often a
         trigger occurs, reporting P(recent trigger | onset) beside the base rate. <strong>Continuous</strong>{' '}
         mode correlates two daily series (e.g. carb intake vs sleep score).
       </p>
@@ -561,7 +572,7 @@ export function ExploreTab() {
               <input
                 list={eventOutcomeSource.value === 'metric' ? 'metric-options' : 'activity-type-options'}
                 placeholder={
-                  eventOutcomeSource.value === 'metric' ? 'metric (e.g. back_pain)' : 'activity_type regex'
+                  eventOutcomeSource.value === 'metric' ? 'metric (e.g. headache)' : 'activity_type regex'
                 }
                 value={eventOutcomeValue.value}
                 onInput={(e) => (eventOutcomeValue.value = (e.target as HTMLInputElement).value)}
@@ -632,7 +643,7 @@ export function ExploreTab() {
                 </button>
               </div>
               <span class="regime-hint">
-                Use <strong>All days</strong> for presence-only metrics (e.g. back_pain) that only log on bad
+                Use <strong>All days</strong> for presence-only metrics (e.g. headache) that only log on bad
                 days; <strong>Known days</strong> for metrics that log explicit zeros.
               </span>
             </div>

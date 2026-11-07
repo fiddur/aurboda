@@ -44,7 +44,7 @@
 }
 
 .sc-row-link:hover .sc-name {
-  color: #673ab8;
+  color: var(--color-accent);
 }
 
 .sc-color-dot {
@@ -159,10 +159,6 @@
 
   .sc-row {
     border-bottom-color: #333;
-  }
-
-  .sc-row-link:hover .sc-name {
-    color: #8b5cf6;
   }
 
   .sc-regex {

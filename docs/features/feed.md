@@ -27,7 +27,13 @@ A feed post has a **`kind`**:
   against the locked window — no data snapshot. A **chart block** draws one metric; a
   **correlation block** pairs a `trigger` and an `outcome` selector (the exploratory
   correlation engine's dimensions, with an optional `lag_days`) and renders as a scatter
-  with the Pearson/Spearman coefficients and n. Modelled as a post kind on the same
+  with the Pearson/Spearman coefficients and n. A **challenge block** embeds a challenge by
+  its public URL (`challenge_url`, plus an optional `caption`): one hosted here (your own or
+  another local user's) or on another instance. It has no window; it shows the challenge's
+  live standings (race chart and leaderboard) and a **Join** link to the challenge page,
+  where the join flow is. Saving checks that a URL hosted here names an existing challenge
+  ("Block N: challenge not found"); a remote URL is not fetched at save time and resolves
+  best-effort when the article renders. Modelled as a post kind on the same
   storage, so an article reuses the whole feed (visibility, federation, timeline,
   permalinks). The ordered blocks live in an `article` JSONB column. Authored via
   `POST /feed/articles` / `PATCH /feed/articles/:postId` (and the `create_article` /
@@ -37,7 +43,9 @@ A feed post has a **`kind`**:
   (#1028) — and each windowed block resolves its data live
   over the locked window. An article **federates as a `Note`** (title in `name`, prose
   HTML in `content`, and a rendered PNG per chart/correlation block attached) so followers
-  on Mastodon see the prose and images inline. (A `Note`, not an AS2 `Article`: Mastodon
+  on Mastodon see the prose and images inline. A challenge block federates as its standings
+  race chart (attached like a chart block's PNG) and, in `content`, its caption and a
+  **Join the challenge** link to the challenge page. (A `Note`, not an AS2 `Article`: Mastodon
   treats `Article` as a converted type and discards its `content`, rendering only a title
   and link.) The prose is sanitised through an allowlist wide enough for a QS write-up
   (GFM tables, images, `hr`, headings); note that **Mastodon's own inbound sanitiser then
@@ -55,8 +63,9 @@ A feed post has a **`kind`**:
   scatters — instead of just the flattened prose and attached PNGs a Mastodon follower
   sees. **Export** — `GET /feed/articles/:postId/export` (and the `export_article_markdown`
   MCP tool) renders an article as paste-ready markdown — the title, the prose blocks
-  verbatim, and one image link per chart/correlation block (the block-image endpoint
-  below) — for pasting into a text-only destination like r/QuantifiedSelf, where the
+  verbatim, one image link per chart/correlation block (the block-image endpoint
+  below), and for a challenge block its standings image (when it would draw), caption and a
+  `[Join the challenge](…)` link — for pasting into a text-only destination like r/QuantifiedSelf, where the
   author adds their own write-up around the linked charts. A block whose image would 404
   (a chart window with no samples, a correlation with n < 3) gets an italic "not enough
   data in this window" note instead of a dead image link (#974). A **`followers`-only** article
@@ -155,6 +164,80 @@ explicit metric selection that bounds what is shared:
 
 Defaults are privacy-conservative: sharing an activity with no explicit selection
 shares no scalars and, crucially, **no series**.
+
+### Article drafts
+
+An article can be saved as a **draft** and worked on over time — in the web editor, or
+started by Claude over MCP and finished in the editor (#1465). Drafts live in their own
+`article_drafts` table (`id`, `article` JSONB, `visibility`, `created_at`, `updated_at`),
+**not** as a status on `feed_posts`, so no query that reads posts — the feed listing, the
+outbox, federation delivery, the public profile, the blog view, the Atom feed, timelines,
+`list_feed` — can ever see one. A draft is never federated.
+
+A draft may be **incomplete** (`ArticleDraftContent`): the title may be empty, a chart
+block's `metric` and a correlation block's `trigger`/`outcome` may be unset, and windows are
+not checked. **Publishing** validates it exactly like `POST /feed/articles` — the
+`CreateArticleBody` schema, then the same window checks — and on success **claims** the draft
+(deletes it and takes the deleted row in one statement, so of two concurrent publishes only
+one gets it and the other answers 404), creates the article post (its `created_at` is the
+publish time) and federates it. An invalid draft gets a 400 with the reason and is never
+claimed; if anything fails after the claim — the draft saved invalid in between, or the post
+insert — the draft is put back with the same id, content and timestamps. A draft's own `tags`
+(see [Hashtags](#hashtags)) are kept in its content and become the post's explicit tags. A published article is edited in place
+as before (`PATCH /feed/articles/:postId`); there is no unpublish-to-draft.
+
+| REST                                    | MCP                     | Purpose                                                                                                                                                                           |
+| --------------------------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /feed/article-drafts`              | `list_article_drafts`   | My drafts, most recently saved first                                                                                                                                              |
+| `POST /feed/article-drafts`             | `create_article_draft`  | Start a draft (`{ article?, visibility? }`; no `article` = empty and untitled)                                                                                                    |
+| `GET /feed/article-drafts/:id`          | `get_article_draft`     | One draft                                                                                                                                                                         |
+| `PATCH /feed/article-drafts/:id`        | `update_article_draft`  | Save changes; provided `title` / `blocks` / default window / `tags` / `visibility` replace the stored ones; over REST a `null` `default_start` / `default_end` / `tags` clears it |
+| `DELETE /feed/article-drafts/:id`       | `delete_article_draft`  | Delete a draft (nothing to retract)                                                                                                                                               |
+| `POST /feed/article-drafts/:id/publish` | `publish_article_draft` | Validate and publish; `{ visibility? }` overrides the draft's                                                                                                                     |
+
+### Hashtags
+
+Every post carries **tags**, Mastodon-style hashtags (#1466), stored lowercase without the
+`#` in `feed_posts.tags` and returned as `tags` on every `FeedPost`. A tag is letters,
+digits and `_` (any script, NFC-normalised), with at least one non-digit and at most 64
+characters; a post has at most 10. The rules live in `@aurboda/api-spec` (`hashtags.ts`),
+shared by the backend and the web.
+
+A post's tags are its **automatic** tags — or the explicit `tags` list the share body gives
+instead — plus every `#tag` typed in its own text (the message, an article's title and prose
+blocks; code spans, fences and URL fragments do not count):
+
+- the owner's **default tags** (`feed_default_tags` in the settings, `["aurboda"]` until
+  changed; `[]` turns them off), and
+- a **kind tag** unless `feed_type_tag` is off: an activity's type (`running`; a custom type's
+  key with only letters and digits kept, `strength_training` → `strengthtraining`), an
+  exercise's name, else its value (`Dumbbell Bench Press` → `dumbbellbenchpress`), or
+  `challenge`. An article has no kind tag.
+
+The list is cut at 10 in that order (automatic or explicit first, then typed), so a typed tag
+past the cap stays plain text.
+
+A **reply** gets only the tags typed in it. An [auto-share rule](auto-share-rules.md) with
+its own `tags` uses them in place of the default tags; the kind tag still follows the setting.
+Editing a post with an explicit `tags` list replaces its tags (plus those typed in the text);
+editing only the message keeps the stored tags and swaps the tags typed in the old text for
+those typed in the new one, so a choice made at share time survives an edit. The previews
+(`preview_activity_share`, `preview_exercise_share`) return the tags the post would get.
+
+**Federation.** Each Note carries one AS2 `Hashtag` per tag (`name` `#tag`, `href` the
+owner's profile filtered by it, `https://<web host>/u/<user>?tag=<tag>`), next to any
+`Mention`. In the `content` HTML a typed tag becomes a Mastodon-style link
+(`<a href="…" class="mention hashtag" rel="tag">#<span>Tag</span></a>`, keeping the written
+casing); text inside links, `code` and `pre` is left alone, and the tags the text does not
+show follow in one trailing paragraph. Only the post's own tags are linked.
+
+**Web.** The activity, exercise and challenge share dialogs and the article editor have a
+**Tags** field, prefilled with the automatic tags (or the post's, when editing) and sent only
+once changed; the auto-share rule form can replace the default tags; Settings → **Sharing**
+holds the default tags and the type-tag switch. A post card lists its tags (unless its body is
+the `content` HTML, which already links them), each linking to the public profile filtered by
+it: `/u/<user>?tag=<tag>` shows "Posts tagged #tag · clear", backed by
+`GET /public/:username/posts?tag=`.
 
 ## ActivityPub federation
 
@@ -299,9 +382,12 @@ window is then the override's own.
   page" opens it in a browser. The id is content-negotiated like the actor URL: an
   ActivityPub type, a wildcard or no `Accept` gets the Note, while a request that prefers
   HTML gets a `302` (`Vary: Accept`) to the post's web page `/u/:username/posts/:postId`,
-  which renders the post through `GET /api/public/:username/posts/:postId`. Only
-  `public`/`unlisted` posts redirect; a `followers`-only, unknown or deleted id gives a
-  browser the normal 404 (the `410` Tombstone is for machine clients only).
+  which renders the post through `GET /api/public/:username/posts/:postId`. Any post id
+  of an existing account redirects — `public`, `unlisted`, `followers`-only, deleted or
+  never-existing alike — so the redirect leaks nothing about the post; the page itself
+  shows "Post not found" for anything that isn't public. An unknown account's id is a 404.
+  Machine clients are unaffected: a `followers`-only or unknown id is still a 404 and a
+  deleted one the `410` Tombstone.
 
 The `Note` carries `published` = the post's share time (its `created_at`), so remote
 servers order and timestamp it correctly instead of stamping it at receipt.
@@ -660,7 +746,15 @@ id-convention path — reliable even when a typed consumer drops the in-band ext
    article: a prose block's raw markdown verbatim; a chart block's bucketed samples over its
    locked window, bucketed the same way as its block image; a correlation block's computed
    Pearson/Spearman/n, the present-vs-absent group comparison, and the aligned scatter points —
-   the same `getContinuousCorrelation` call the block image uses). A **challenge** post
+   the same `getContinuousCorrelation` call the block image uses; a challenge block's `url` and
+   caption, plus — when the challenge resolves — its QuantPub document and a standings
+   snapshot, resolved like a challenge post's below, and also for another local user's
+   challenge (from that user's database) or a remote one the author has not joined (the
+   host's QuantPub document and standings, fetched within the same timeout; any failure
+   leaves the block with only its URL and caption, which renders as a link card). An older
+   Aurboda peer that predates challenge blocks fails the strict parse of such a payload and
+   falls back to the article's `Note` HTML — prose, captions, the join link and the attached
+   images). A **challenge** post
    resolves to `FeedStructuredChallenge`: the author's note, the frozen `result` on a
    completion post, the challenge as its QuantPub Challenges §3 document (as publicly listed,
    without `joinToken`/`members`) and a §6 `standings` snapshot. An own challenge is found by
@@ -814,8 +908,8 @@ render cache keys on the post's `updated_at` plus a 1-hour bucket. The delivered
 attaches it as `Trend` (1000×420) only when it would draw; the `Note` served by the object
 dispatcher and the outbox does not carry it.
 
-An **article** renders one image per chart/correlation block for the same reason (so
-Mastodon and export tools attach a raster of each block), at its own endpoints:
+An **article** renders one image per chart/correlation/challenge block for the same reason
+(so Mastodon and export tools attach a raster of each block), at its own endpoints:
 
 ```
 GET /api/public/:username/feed/:postId/blocks/:index/image.png
@@ -827,7 +921,9 @@ correlation block can embed any metric over any window, so the post's **visibili
 the whole authorization boundary (public/unlisted open; `followers`-only via the
 `?token=` capability). The chart block renders the metric bucketed over the locked
 window; the correlation block renders the scatter with its OLS line and coefficient
-headline. It buckets in the author's **device timezone** (`device_timezone`, set by the
+headline; the challenge block renders the linked challenge's standings race chart (the same
+chart as a challenge post's `standings.png`), cached in five-minute buckets like that image
+rather than hourly, and 404s while the challenge has no standings to draw. It buckets in the author's **device timezone** (`device_timezone`, set by the
 Android app) so a `1d` bucket splits on the author's calendar days like the web render;
 for an author whose device timezone is unknown it falls back to UTC (the web render uses
 the live browser timezone, so the two can differ by a day only in that case). Because an
@@ -951,31 +1047,37 @@ resolving.
   owner's feed, the public profile and a peer's timeline render the post natively — records,
   the one chart (weekly bars with the decaying-best line, or the trend alone), the last
   sessions — and show the `Trend` image only where the card has no chart to draw.
-- **New article** — the **Feed** page has a **New article** button that opens the article
-  composer: a title, an optional default time window, and an ordered list of **prose**
-  (markdown), **chart** (a metric + optional per-block window + caption), and **correlation**
-  (a trigger + outcome selector + optional lag/window/caption) blocks, plus the audience.
-  Each chart draws its metric live over the locked window; each correlation draws a live
-  scatter (with the coefficients) over its window.
-- **Manage** — the **Feed** page (`/feed`, the 📣 item under the **Sharing** section in
-  the sidebar) lists everything
-  you've shared, with each post's audience and metrics. From there you can **Edit** a
-  post — an activity share re-opens the share dialog (saving federates an `Update`); an
-  article re-opens the article composer — or **Unshare** it (federates a `Delete`). An
-  article also has an **Export markdown** button that fetches its paste-ready markdown
-  export and offers a **Copy to clipboard** button for pasting into r/QuantifiedSelf or a
-  similar text-only destination.
-- **Follow** — the Feed page's **Following** panel lets you follow a fediverse actor by
+- **Feed page layout** — the **Feed** page (`/feed`, the 📣 item under the **Sharing** section
+  in the sidebar) puts writing first: a **Write an article** button with your **Drafts** listed
+  under it, then the posts in two tabs — **Following** (your home timeline, the default) and
+  **Your posts** — kept in the URL as `?tab=mine` so a reload or the Android embed stays on it.
+  Following, followers and auto-share rules sit in a collapsed **Manage** section at the bottom.
+- **Write an article** — opens the article composer: a title, an optional default time
+  window, and an ordered list of **prose** (markdown), **chart** (a metric + optional
+  per-block window + caption), **correlation** (a trigger + outcome selector + optional
+  lag/window/caption) and **challenge** (one of your challenges or a joined one, or a pasted
+  challenge URL, + caption) blocks, plus the audience. Each chart draws its metric live over the
+  locked window; each correlation draws a live scatter (with the coefficients) over its
+  window. **Save draft** saves without publishing (and shows "Saved hh:mm"); **Publish**
+  validates and publishes. Closing with unsaved changes asks whether to save them as a
+  draft. Each listed draft has **Continue** (reopens it in the composer) and **Delete**.
+- **Your posts** — lists everything you've shared, with each post's audience and metrics.
+  From there you can **Edit** a post — an activity share re-opens the share dialog (saving
+  federates an `Update`); an article re-opens the article composer — or **Unshare** it
+  (federates a `Delete`). An article also has an **Export markdown** button that fetches its
+  paste-ready markdown export and offers a **Copy to clipboard** button for pasting into
+  r/QuantifiedSelf or a similar text-only destination.
+- **Follow** — the **Following** panel (under **Manage**) lets you follow a fediverse actor by
   handle (`@user@host`) and see who you follow, with a **Pending** badge until the remote
   server accepts and an **Unfollow** button.
-- **Followers** — the Feed page's **Followers** panel lists who follows you. If you've turned
-  on **Manually approve new followers** (Settings → _Feed & Followers_), incoming follows show
-  up here as **follow requests** with **Approve** / **Reject** buttons; accepted followers can
-  be **Removed**. With approval off (the default), anyone can follow you automatically.
-- **Home timeline** — below the Following panel, the Feed page shows your **Home timeline**:
-  posts from the actors you follow, newest-first, as native cards with a **Load more** button
-  to page further back. New posts arrive **live** (or via polling fallback) as a **"N new
-  posts"** pill at the top; click it to reveal them.
+- **Followers** — the **Followers** panel (under **Manage**) lists who follows you. If you've
+  turned on **Manually approve new followers** (Settings → _Feed & Followers_), incoming follows
+  show up here as **follow requests** with **Approve** / **Reject** buttons; accepted followers
+  can be **Removed**. With approval off (the default), anyone can follow you automatically.
+- **Home timeline** — the **Following** tab shows posts from the actors you follow,
+  newest-first, as native cards with a **Load more** button to page further back. New posts
+  arrive **live** (or via polling fallback) as a **"N new posts"** pill at the top; click it to
+  reveal them.
 - **Public profile** — a user's `/u/<username>` page shows their public feed (their
   `public`/`unlisted` posts, newest-first, as the same post card) alongside their shared
   dashboards and challenges. It's unauthenticated, so anyone — including a follower who saw
@@ -986,28 +1088,69 @@ resolving.
 
 ### Blog view and Atom feed
 
-An instance's blog is a user's **articles** — there is no separate blog storage.
+A user's blog is their **articles** — there is no separate blog storage. The instance's own
+blog is the [official feed](#official-feed).
 
 - **Blog view** — `/u/<username>/articles` lists only that user's `public`/`unlisted`
   articles, newest-first, with **Load more**, via `GET /public/:username/posts?kind=article`
   (the profile listing's `kind` filter; replies and `followers`-only posts never appear).
 - **Atom feed** — `GET /public/:username/articles.atom` (under `/api` behind nginx) serves
-  the 20 newest of those articles as Atom 1.0 for readers without a fediverse account. Each
+  the 20 newest **`public`** articles as Atom 1.0 for readers without a fediverse account —
+  `unlisted` ones stay out, since syndicating to feed readers is listing them. Each
   entry's id and link are the post's permalink (`/u/:username/posts/:postId`), and its HTML
   content is the article's markdown export (prose plus each chart block as an inline image of
   its public PNG, a "not enough data" line where the block would not render) through the same
   sanitiser as federated prose. Unlike the JSON listing (`no-store`), the feed is cached for
   five minutes (`public, max-age=300`) because feed readers poll; an un-shared article drops
-  out within that window. It has **no MCP twin**: it is a syndication format, like the
-  OpenAPI document.
+  out within that window. The server also memoizes the rendered XML in-process (100 feeds),
+  keyed on the listed articles' ids and `updated_at` plus the hour, so a poll with nothing
+  changed costs the listing query rather than a chart query per block. It has **no MCP
+  twin**: it is a syndication format, like the OpenAPI document.
 - **Link previews** — the share-HTML router gives `/u/:username/articles` blog meta with an
   Atom discovery `<link rel="alternate" type="application/atom+xml">`, and a **`public`**
   article's permalink `/u/:username/posts/:postId` its title and an excerpt of its first prose
   block (`og:type` `article`). Unlisted articles and other post kinds keep the generic meta.
-- **Instance blog** — the admin setting `blog_username` (Admin Settings → Instance Blog,
-  `PATCH /admin/settings`; an unknown user is a 400, `null` clears it) names whose articles
-  are the instance's blog. `GET /status` returns it as `blog_username`, and the web app links
-  **Blog** from the logged-out front page and the site footer when it is set.
+- **Instance blog** — see the [official feed](#official-feed) below; it replaced the single
+  `blog_username` setting.
+
+### Official feed
+
+The instance's front page links an **official feed** at `/blog`: the `public` posts of
+admin-chosen local users that carry one of admin-chosen hashtags — a curated instance blog,
+e.g. everyone's `#aurboda` posts.
+
+- **Setting** — `official_feed: { users, tags }` in the server settings (Admin Settings →
+  Official Feed, `PATCH /admin/settings`). `users` is 0–20 existing usernames (an unknown one
+  is a 400 naming it), `tags` 0–20 hashtags stored like post tags (lowercase, without `#`,
+  deduplicated). Empty `users` turns the feed off; empty `tags` lists every public post of the
+  users. `GET /status` says `official_feed: true` while it lists a user who still exists, and
+  the web app then links **Blog** from the logged-out front page and the site footer. Deleting
+  an account takes that user off the list.
+- **Migration** — until `official_feed` is first written, a legacy `blog_username` reads as
+  `{ users: [blog_username], tags: [] }`. Writing `official_feed` clears `blog_username`. The
+  admin `PATCH` still accepts the deprecated `blog_username` for one release (as
+  `official_feed.users = [it]`, `null` turning it off); the responses no longer carry it.
+- **Which posts** — from each listed user, `public` posts only (an instance-wide listing is a
+  public timeline, so `unlisted` stays off it, as on Mastodon), any kind but `reply`, and with
+  tags set, only posts carrying at least one of them (`tags && $tags`, backed by the GIN index).
+- **Paging** — every user has their own database, so `GET /public/official-feed?cursor=` asks
+  each listed user for 21 rows after the cursor and merges them newest-first on
+  `(created_at, id)` at microsecond precision; 20 make the page and the last one the
+  `next_cursor`. Post ids are UUIDs, so the key is unique across users. A listed user whose
+  database is missing is skipped (logged once). Each post serialises as on the author's
+  profile listing (structured payload included, through the same cache), plus
+  `author_username`; the response also carries the feed's `users` and `tags`. Unauthenticated,
+  `no-store`, a 404 while the feed is off. No MCP twin: it is a public read of what the
+  profiles already serve.
+- **Atom** — `GET /public/official-feed.atom` serves the 20 newest entries, cached for five
+  minutes like the articles feed. Each entry names its author; an article's body is its
+  markdown export as above, any other post's the HTML it federates with (an activity or
+  exercise summary, a challenge invitation, else its message), titled by the article,
+  activity, exercise or challenge name, else the first ~80 characters of its text.
+- **Web** — `/blog` (public, like the `/u/` pages) shows "Posts from … tagged …", the Atom
+  link and the posts as cards with each post's own author. The share-HTML router gives `/blog`
+  meta titled "<host> blog" with the Atom discovery link (nginx proxies `/blog` to the backend
+  as it does `/u/`).
 
 ## API
 
@@ -1017,13 +1160,14 @@ Owner-facing (authenticated, scoped to the caller):
 | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `GET /feed`                                       | My feed posts, newest-first, keyset-paginated (`?cursor=` from the previous page's `next_cursor`); each post enriched with the shared activity's title/type, merged-span window, and full structured payload |
 | `POST /feed/activities/:id/share`                 | Publish an activity with a chosen metric selection                                                                                                                                                           |
-| `POST /feed/articles`                             | Publish a long-form **article** (title + prose + inline chart/correlation blocks)                                                                                                                            |
+| `POST /feed/articles`                             | Publish a long-form **article** (title + prose + inline chart/correlation/challenge blocks)                                                                                                                  |
 | `POST /feed/activities/:id/preview`               | Live share **preview** (#902): the exact federated content + resolved metrics for a selection; creates nothing                                                                                               |
 | `POST /feed/challenges`                           | Share a **challenge invitation** (personal note + canonical link); exactly one of `challenge_id`/`participation_id`                                                                                          |
 | `POST /feed/exercises`                            | Share an **exercise's progress** (records, trend, recent sessions per the opt-ins; a link only when the exercise is published)                                                                               |
 | `POST /feed/exercises/preview`                    | Exercise share **preview**: the exact `Note` HTML and structured payload for the opt-ins; creates nothing                                                                                                    |
 | `GET/POST /autoshare-rules` (+`/:id`, `/preview`) | [Auto-share rules](auto-share-rules.md): automatically publish matching settled activities (#903)                                                                                                            |
 | `PATCH /feed/articles/:postId`                    | Edit an article (title / blocks / default window / visibility)                                                                                                                                               |
+| `/feed/article-drafts` (+`/:id`, `/:id/publish`)  | Private [article drafts](#article-drafts): list, save, edit, delete, publish (validated like `POST /feed/articles`)                                                                                          |
 | `GET /feed/articles/:postId/export`               | Export an article as paste-ready markdown (title + prose + one image link per block) for Reddit/text-only destinations                                                                                       |
 | `PATCH /feed/:postId`                             | Edit an activity post's selection / visibility / attachments                                                                                                                                                 |
 | `DELETE /feed/:postId`                            | Unpublish any post (an activity post's public series stops resolving)                                                                                                                                        |
@@ -1055,10 +1199,12 @@ Public / federation (unauthenticated):
 | `GET /public/:username/feed/:postId/standings.svg`           | Same standings race as crisp `image/svg+xml`                                                                                                                                                                                                                            |
 | `GET /public/:username/feed/:postId/trend.png`               | Rendered exercise trend (PNG) for an opted-in exercise post (`?token=` for followers-only)                                                                                                                                                                              |
 | `GET /public/:username/feed/:postId/trend.svg`               | Same exercise trend as crisp `image/svg+xml`                                                                                                                                                                                                                            |
-| `GET /public/:username/feed/:postId/blocks/:index/image.png` | Rendered PNG of an article's chart/correlation block (visibility-gated; `?token=` for followers-only)                                                                                                                                                                   |
+| `GET /public/:username/feed/:postId/blocks/:index/image.png` | Rendered PNG of an article's chart/correlation/challenge block (visibility-gated; `?token=` for followers-only)                                                                                                                                                         |
 | `GET /public/:username/feed/:postId/blocks/:index/image.svg` | Same article block as crisp `image/svg+xml`                                                                                                                                                                                                                             |
 | `GET /public/:username/posts`                                | A user's public/unlisted posts (newest-first, keyset page of 20 + `next_cursor`) for their profile feed; `?kind=article` for the blog view                                                                                                                              |
-| `GET /public/:username/articles.atom`                        | Atom 1.0 feed of the user's 20 newest public/unlisted articles ([Blog view and Atom feed](#blog-view-and-atom-feed))                                                                                                                                                    |
+| `GET /public/:username/articles.atom`                        | Atom 1.0 feed of the user's 20 newest public articles ([Blog view and Atom feed](#blog-view-and-atom-feed))                                                                                                                                                             |
+| `GET /public/official-feed`                                  | The instance's [official feed](#official-feed): public posts of the chosen users with one of the chosen tags, newest-first, keyset page of 20 + `next_cursor`                                                                                                           |
+| `GET /public/official-feed.atom`                             | Atom 1.0 feed of the official feed's 20 newest entries                                                                                                                                                                                                                  |
 | `GET /public/:username/posts/:postId`                        | One public/unlisted post, serialized like the listing (`FeedPostResponse`), for its permalink page `/u/:username/posts/:postId`                                                                                                                                         |
 | `GET /.well-known/webfinger`                                 | Resolve `acct:<username>@<host>` → the actor                                                                                                                                                                                                                            |
 | `GET /.well-known/quantpub`                                  | QuantPub discovery document (FEP §4): product, versions, `apiBase`                                                                                                                                                                                                      |
@@ -1069,7 +1215,7 @@ Public / federation (unauthenticated):
 | `GET /users/:username/outbox`                                | Public + unlisted posts as `Create` activities                                                                                                                                                                                                                          |
 | `GET /users/:username/followers`                             | The actor's followers collection                                                                                                                                                                                                                                        |
 | `GET /users/:username/following`                             | The actor's following collection (accepted follows only)                                                                                                                                                                                                                |
-| `GET /users/:username/feed/:postId`                          | Content-negotiated like the actor: a single post's `Note` — an activity share or an article (or `410` Tombstone once deleted); a 302 to `/u/:username/posts/:postId` for a browser on a public/unlisted post                                                            |
+| `GET /users/:username/feed/:postId`                          | Content-negotiated like the actor: a single post's `Note` — an activity share or an article (or `410` Tombstone once deleted); a 302 to `/u/:username/posts/:postId` for a browser on any post id of an existing user                                                   |
 | `POST /users/:username/inbox` (+ `/inbox`)                   | Inbound `Follow` / `Undo{Follow}` / `Accept` / `Reject` (HTTP-Signature verified)                                                                                                                                                                                       |
 
 The actor's `icon` URL carries the avatar's upload time as a `?v=` version, and an avatar
@@ -1078,7 +1224,7 @@ et al.) cache a copied avatar and re-download it only on one of those two signal
 them a changed avatar never propagates.
 
 The owner-facing capability is also available over MCP as `list_feed`, `share_activity`,
-`preview_activity_share`, `share_challenge`, `share_exercise`, `preview_exercise_share`, `create_article`, `update_article`, `export_article_markdown`, `update_feed_post`,
+`preview_activity_share`, `share_challenge`, `share_exercise`, `preview_exercise_share`, `create_article`, `update_article`, the [article draft](#article-drafts) tools, `export_article_markdown`, `update_feed_post`,
 `delete_feed_post`, `list_following`, `follow_actor`, `unfollow_actor`, `list_followers`,
 `approve_follower`, `reject_follower`, `list_timeline`, `like_timeline_post`,
 `unlike_timeline_post`, `boost_timeline_post`, `unboost_timeline_post`,
@@ -1086,13 +1232,15 @@ The owner-facing capability is also available over MCP as `list_feed`, `share_ac
 `list_feed_post_reactions` — all backed by the same services as
 the REST routes (`create_article` / `update_article` ↔ `POST /feed/articles` / `PATCH
 /feed/articles/:postId`; `export_article_markdown` ↔ `GET /feed/articles/:postId/export`), so an
-article can be drafted conversationally by Claude via the same tools. Manual follower approval is
+article can be drafted conversationally by Claude via the same tools — as a private draft
+(`create_article_draft`) the user finishes in the web editor, or published directly. Manual follower approval is
 toggled with the `manually_approve_followers` user setting (`get_user_settings` /
 `update_user_settings`).
 
 ## Storage
 
-Feed posts live in the user's own database in the `feed_posts` table. A `kind` column
+Feed posts live in the user's own database in the `feed_posts` table (unpublished
+[article drafts](#article-drafts) live apart, in `article_drafts`). A `kind` column
 discriminates an `activity` post from an `article`, `challenge`, `exercise` or `reply` post; an
 article's content (title + default window + ordered blocks) lives in a nullable `article` JSONB
 column, a challenge share's link payload (name + canonical URL + optional host identity)
@@ -1109,7 +1257,8 @@ personal message (plain text; NULL when none was shared). `activity_id` is a
 **soft reference** (no foreign key): activities are soft-deleted and the series lookup
 re-checks `deleted_at` at query time, so a removed activity simply stops resolving rather
 than cascading a delete. A GIN index over `series_metrics` backs the public series
-endpoint's authorization check. Each post also holds an unguessable `image_token`
+endpoint's authorization check, and another over `tags` (`TEXT[]`, the post's
+[hashtags](#hashtags)) the profile's `?tag=` filter. Each post also holds an unguessable `image_token`
 (defaulted at insert) that gates its `followers`-only image URLs. Deleting a
 `public`/`unlisted` post hard-deletes its row
 and, in the same statement, records its id in `feed_tombstone` so the object id can still

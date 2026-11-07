@@ -2,7 +2,14 @@ import { describe, expect, it } from 'vitest'
 
 import type { Activity } from '../../state/api'
 
-import { escapeHtml, formatDuration, formatExerciseType, formatTime, getExerciseTypeName } from './formatting'
+import {
+  escapeHtml,
+  formatDuration,
+  formatExerciseType,
+  formatTime,
+  formatTimelineTick,
+  getExerciseTypeName,
+} from './formatting'
 
 describe('formatTime', () => {
   it('formats date as HH:mm', () => {
@@ -11,6 +18,26 @@ describe('formatTime', () => {
 
   it('formats midnight', () => {
     expect(formatTime(new Date('2026-01-01T00:00:00'))).toBe('00:00')
+  })
+})
+
+describe('formatTimelineTick', () => {
+  it('uses a 24-hour clock for times of day', () => {
+    expect(formatTimelineTick(new Date('2026-01-05T09:00:00'))).toBe('09:00')
+    expect(formatTimelineTick(new Date('2026-01-05T21:30:00'))).toBe('21:30')
+  })
+
+  it('shows seconds only when the tick has them', () => {
+    expect(formatTimelineTick(new Date('2026-01-05T09:00:30'))).toBe('09:00:30')
+  })
+
+  it('labels midnight with day and month', () => {
+    expect(formatTimelineTick(new Date('2026-01-05T00:00:00'))).toBe('5 Jan')
+  })
+
+  it('labels month and year starts', () => {
+    expect(formatTimelineTick(new Date('2026-03-01T00:00:00'))).toBe('Mar')
+    expect(formatTimelineTick(new Date('2026-01-01T00:00:00'))).toBe('2026')
   })
 })
 

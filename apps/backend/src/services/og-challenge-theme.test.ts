@@ -16,10 +16,10 @@ describe('challengeTheme', () => {
     expect(challengeTheme({ pattern, source_type }).key).toBe(key)
   })
 
-  test('the default theme is the purple trophy', () => {
+  test('the default theme is the navy and teal trophy', () => {
     expect(challengeTheme({ pattern: 'unknown', source_type: 'metric' })).toEqual({
       emoji: '🏆',
-      gradient: ['#4c1d95', '#673ab8', '#8b5cf6'],
+      gradient: ['#0b1a30', '#0f2a4f', '#17707a'],
       key: 'default',
     })
   })

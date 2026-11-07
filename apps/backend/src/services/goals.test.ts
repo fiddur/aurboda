@@ -238,7 +238,7 @@ describe('getGoalsProgress', () => {
         half_life_days: 30,
         id: 'goal-trend-1',
         max: 0.7,
-        pattern: 'ejaculation',
+        pattern: 'alcohol',
         source_type: 'activity_type',
       },
     ])
@@ -251,7 +251,7 @@ describe('getGoalsProgress', () => {
       half_life_days: 30,
       history: [],
       lookback_days: 90,
-      pattern: 'ejaculation',
+      pattern: 'alcohol',
       source_type: 'activity_type',
     })
 
@@ -261,7 +261,7 @@ describe('getGoalsProgress', () => {
     expect(result[0].goal_type).toBe('trend')
     expect(result[0].current).toBe(0.85)
     expect(result[0].max).toBe(0.7)
-    expect((result[0] as { pattern: string }).pattern).toBe('ejaculation')
+    expect((result[0] as { pattern: string }).pattern).toBe('alcohol')
     expect((result[0] as { display_unit: string }).display_unit).toBe('per month')
 
     expect(trends.getTrend).toHaveBeenCalledWith('testuser', {
@@ -270,7 +270,7 @@ describe('getGoalsProgress', () => {
       display_period: 'monthly',
       half_life_days: 30,
       lookback_days: 90,
-      pattern: 'ejaculation',
+      pattern: 'alcohol',
       source_type: 'activity_type',
       tz: 'UTC',
     })
@@ -452,7 +452,7 @@ describe('getWidgetGoalsProgress', () => {
         half_life_days: 30,
         id: 'goal-trend-1',
         max: 0.7,
-        pattern: 'ejaculation',
+        pattern: 'alcohol',
         source_type: 'activity_type' as const,
       },
     ])
@@ -464,14 +464,14 @@ describe('getWidgetGoalsProgress', () => {
       half_life_days: 30,
       history: [],
       lookback_days: 90,
-      pattern: 'ejaculation',
+      pattern: 'alcohol',
       source_type: 'activity_type',
     })
 
     const result = await getWidgetGoalsProgress('testuser')
 
     expect(result).toHaveLength(1)
-    expect(result[0].title).toBe('ejaculation')
+    expect(result[0].title).toBe('alcohol')
     expect(result[0].current).toBe(0.5)
     expect(result[0].max).toBe(0.7)
     expect(result[0].unit).toBe('per month')

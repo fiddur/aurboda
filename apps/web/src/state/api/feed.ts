@@ -1,5 +1,9 @@
 import type {
+  ArticleDraft,
+  ArticleDraftResponse,
+  ArticleDraftsResponse,
   ArticleExportResponse,
+  CreateArticleDraftBody,
   CreateArticleBody,
   ExerciseSharePreviewResponse,
   FeedPost,
@@ -8,6 +12,7 @@ import type {
   FeedPostRepliesResponse,
   FeedPostResponse,
   FeedPostsResponse,
+  FeedVisibility,
   FollowActorResponse,
   FollowerActor,
   FollowerResponse,
@@ -25,6 +30,7 @@ import type {
   TimelineRepliesResponse,
   TimelineResponse,
   UpdateArticleBody,
+  UpdateArticleDraftBody,
   UpdateFeedPostBody,
 } from '@aurboda/api-spec'
 
@@ -64,7 +70,7 @@ export const fetchFeed = async (cursor?: string): Promise<FeedPostsResponse> => 
  */
 export const previewShare = async (
   activityId: string,
-  body: Pick<ShareActivityBody, 'include_exercises' | 'included_metrics' | 'message'>,
+  body: Pick<ShareActivityBody, 'include_exercises' | 'included_metrics' | 'message' | 'tags'>,
 ): Promise<SharePreviewResponse> => {
   const response = await axios.post<SharePreviewResponse>(
     `${API_URL}/feed/activities/${activityId}/preview`,
@@ -131,6 +137,62 @@ export const updateArticle = async (postId: string, body: UpdateArticleBody): Pr
     throw new Error(apiErrorMessage(error, 'Couldn’t save the article. Please try again.'))
   }
   if (!response.data.post) throw new Error('Update failed: no post returned')
+  return response.data.post
+}
+
+export const fetchArticleDrafts = async (): Promise<ArticleDraft[]> => {
+  const response = await axios.get<ArticleDraftsResponse>(`${API_URL}/feed/article-drafts`, {
+    headers: authHeaders(),
+  })
+  return response.data.drafts
+}
+
+const draftOrThrow = (response: ArticleDraftResponse): ArticleDraft => {
+  if (!response.draft) throw new Error('Save failed: no draft returned')
+  return response.draft
+}
+
+export const createArticleDraft = async (body: Partial<CreateArticleDraftBody>): Promise<ArticleDraft> => {
+  let response
+  try {
+    response = await axios.post<ArticleDraftResponse>(`${API_URL}/feed/article-drafts`, body, {
+      headers: authHeaders(),
+    })
+  } catch (error) {
+    throw new Error(apiErrorMessage(error, 'Couldn’t save the draft. Please try again.'))
+  }
+  return draftOrThrow(response.data)
+}
+
+export const updateArticleDraft = async (id: string, body: UpdateArticleDraftBody): Promise<ArticleDraft> => {
+  let response
+  try {
+    response = await axios.patch<ArticleDraftResponse>(`${API_URL}/feed/article-drafts/${id}`, body, {
+      headers: authHeaders(),
+    })
+  } catch (error) {
+    throw new Error(apiErrorMessage(error, 'Couldn’t save the draft. Please try again.'))
+  }
+  return draftOrThrow(response.data)
+}
+
+export const deleteArticleDraft = async (id: string): Promise<void> => {
+  await axios.delete(`${API_URL}/feed/article-drafts/${id}`, { headers: authHeaders() })
+}
+
+/** Publish a draft as an article post; the server validates it and deletes the draft on success. */
+export const publishArticleDraft = async (id: string, visibility?: FeedVisibility): Promise<FeedPost> => {
+  let response
+  try {
+    response = await axios.post<FeedPostResponse>(
+      `${API_URL}/feed/article-drafts/${id}/publish`,
+      visibility ? { visibility } : {},
+      { headers: authHeaders() },
+    )
+  } catch (error) {
+    throw new Error(apiErrorMessage(error, 'Couldn’t publish the article. Please try again.'))
+  }
+  if (!response.data.post) throw new Error('Publish failed: no post returned')
   return response.data.post
 }
 

@@ -68,13 +68,13 @@
 }
 
 .signup-form button.primary {
-  background: #673ab8;
+  background: var(--color-primary);
   color: white;
   border: none;
 }
 
 .signup-form button.primary:hover:not(:disabled) {
-  background: #5e35b1;
+  background: var(--color-primary-hover);
 }
 
 .signup-form button:disabled {
@@ -88,7 +88,7 @@
 }
 
 .login-link a {
-  color: #673ab8;
+  color: var(--color-accent);
 }
 
 .login-link a:hover {
@@ -109,10 +109,6 @@
     background: #333;
     border-color: #555;
     color: #fff;
-  }
-
-  .login-link a {
-    color: #b39ddb;
   }
 }
 

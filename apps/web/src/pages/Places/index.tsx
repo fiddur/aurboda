@@ -1,5 +1,7 @@
 import 'leaflet/dist/leaflet.css'
 import './style.css'
+import type { NamedLocation, UpdateNamedLocationBody } from '@aurboda/api-spec'
+
 import { signal } from '@preact/signals'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { endOfDay, format, formatISO, startOfDay, subDays } from 'date-fns'
@@ -11,12 +13,16 @@ import type { PlaceVisit, StoredDetectedLocation } from '../../state/api'
 
 import {
   addNamedLocation,
+  apiErrorMessage,
+  deleteNamedLocation,
   fetchNamedLocations,
   fetchPlaceVisits,
   fetchStoredDetectedLocations,
   promoteDetectedLocation,
   updateNamedLocation,
 } from '../../state/api'
+import { namedPlaceUpdateBody } from './namedPlaces'
+import { NamedPlacesSection } from './NamedPlacesSection'
 
 // Fix Leaflet default marker icon path issue with bundlers
 // @ts-expect-error - Leaflet marker icon fix
@@ -54,9 +60,11 @@ export const Places = () => {
     address?: string
     /** When set, the modal is in edit mode for an existing named location. */
     editingId?: string
+    originalName?: string
   } | null>(null)
   const [nameInput, setNameInput] = useState('')
   const [autoCreateActivity, setAutoCreateActivity] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   const mapRef = useRef<HTMLDivElement>(null)
   const leafletMapRef = useRef<L.Map | null>(null)
@@ -80,7 +88,10 @@ export const Places = () => {
     staleTime: 5 * 60 * 1000,
   })
 
+  const showError = (fallback: string) => (err: unknown) => setActionError(apiErrorMessage(err, fallback))
+
   const invalidateAfterMutation = () => {
+    setActionError(null)
     queryClient.invalidateQueries({ queryKey: ['namedLocations'] })
     queryClient.invalidateQueries({ queryKey: ['placeVisits'] })
     queryClient.invalidateQueries({ queryKey: ['storedDetectedLocations'] })
@@ -91,17 +102,26 @@ export const Places = () => {
 
   const promoteMutation = useMutation({
     mutationFn: promoteDetectedLocation,
+    onError: showError('Could not name this place'),
     onSuccess: invalidateAfterMutation,
   })
 
   const addNamedMutation = useMutation({
     mutationFn: addNamedLocation,
+    onError: showError('Could not name this place'),
     onSuccess: invalidateAfterMutation,
   })
 
   const updateNamedMutation = useMutation({
-    mutationFn: ({ id, body }: { id: string; body: { auto_create_activity?: boolean } }) =>
+    mutationFn: ({ id, body }: { id: string; body: UpdateNamedLocationBody }) =>
       updateNamedLocation(id, body),
+    onError: showError('Could not save the named place'),
+    onSuccess: invalidateAfterMutation,
+  })
+
+  const deleteNamedMutation = useMutation({
+    mutationFn: deleteNamedLocation,
+    onError: showError('Could not delete the named place'),
     onSuccess: invalidateAfterMutation,
   })
 
@@ -194,18 +214,28 @@ export const Places = () => {
     updateDate(formatISO(next, { representation: 'date' }))
   }
 
+  const openEditModal = (named: NamedLocation) => {
+    setActionError(null)
+    setNamingLocation({ editingId: named.id, lat: named.lat, lon: named.lon, originalName: named.name })
+    setNameInput(named.name)
+    setAutoCreateActivity(named.auto_create_activity ?? false)
+  }
+
+  const handleDeleteNamed = (named: NamedLocation) => {
+    if (!confirm(`Delete the named place "${named.name}"?`)) return
+    setActionError(null)
+    deleteNamedMutation.mutate(named.id)
+  }
+
   const handlePlaceClick = (place: PlaceVisit) => {
     setSelectedPlace(place)
     if (place.source === 'named') {
       const named = namedQuery.data?.find((nl) => nl.name === place.name)
-      if (named?.id && place.lat && place.lon) {
-        setNamingLocation({ editingId: named.id, lat: place.lat, lon: place.lon })
-        setNameInput(named.name)
-        setAutoCreateActivity(named.auto_create_activity ?? false)
-      }
+      if (named) openEditModal(named)
       return
     }
     if ((place.source === 'detected' || place.source === 'unknown') && place.lat && place.lon) {
+      setActionError(null)
       setNamingLocation({ address: place.address, lat: place.lat, lon: place.lon })
       setNameInput(place.address || '')
       setAutoCreateActivity(false)
@@ -217,7 +247,10 @@ export const Places = () => {
 
     if (namingLocation.editingId) {
       updateNamedMutation.mutate({
-        body: { auto_create_activity: autoCreateActivity },
+        body: namedPlaceUpdateBody(namingLocation.originalName ?? '', {
+          auto_create_activity: autoCreateActivity,
+          name: nameInput,
+        }),
         id: namingLocation.editingId,
       })
       return
@@ -255,6 +288,7 @@ export const Places = () => {
   }
 
   const closeModal = () => {
+    setActionError(null)
     setNamingLocation(null)
     setNameInput('')
     setAutoCreateActivity(false)
@@ -324,6 +358,11 @@ export const Places = () => {
 
       {isLoading && <div class="loading">Loading...</div>}
       {hasError && <div class="error">Error loading data</div>}
+      {actionError && !namingLocation && (
+        <div class="error" role="alert">
+          {actionError}
+        </div>
+      )}
 
       <div class="places-content">
         <div class="places-list">
@@ -368,6 +407,15 @@ export const Places = () => {
                 </div>
               )
             })}
+
+            {namedQuery.data && (
+              <NamedPlacesSection
+                locations={namedQuery.data}
+                deleting={deleteNamedMutation.isPending}
+                onEdit={openEditModal}
+                onDelete={handleDeleteNamed}
+              />
+            )}
           </div>
 
           <div class="places-list-footer">
@@ -398,7 +446,6 @@ export const Places = () => {
                 onInput={(e) => setNameInput((e.target as HTMLInputElement).value)}
                 placeholder="e.g., Home, Office, Gym"
                 autofocus
-                disabled={!!namingLocation.editingId}
               />
             </div>
 
@@ -416,6 +463,12 @@ export const Places = () => {
                 shows up in your timeline and correlations.
               </div>
             </div>
+
+            {actionError && (
+              <div class="error" role="alert">
+                {actionError}
+              </div>
+            )}
 
             <div class="modal-actions">
               <button onClick={closeModal}>Cancel</button>

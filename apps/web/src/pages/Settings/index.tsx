@@ -11,6 +11,7 @@ import { PasskeySettings } from '../../components/PasskeySettings'
 import { PlanSettings } from '../../components/PlanSettings'
 import { type SaveStatus, SaveStatusIndicator } from '../../components/SaveStatusIndicator'
 import { SettingsSection } from '../../components/SettingsSection'
+import { SharingSettings } from '../../components/SharingSettings'
 import { fetchUserSettings, updateUserSettings } from '../../state/api'
 import { auth } from '../../state/auth'
 import { defaultHrZoneThresholds } from '../../utils/hrZones'
@@ -296,6 +297,8 @@ export function Settings() {
           </p>
         </div>
       </SettingsSection>
+
+      <SharingSettings />
 
       <MealPreferencesSettings />
 

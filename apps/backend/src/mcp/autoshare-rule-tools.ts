@@ -20,7 +20,11 @@ import {
   insertAutoshareRule,
   updateAutoshareRule,
 } from '../db/index.ts'
-import { autoshareRuleInputFromBody, serializeAutoshareRule } from '../routes/autoshare-rules-router.ts'
+import {
+  autoshareRuleInputFromBody,
+  autoshareRulePatchFromBody,
+  serializeAutoshareRule,
+} from '../routes/autoshare-rules-router.ts'
 import { PREVIEW_SAMPLE_DAYS, previewAutoshareRule } from '../services/autoshare.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
@@ -56,7 +60,7 @@ export const registerAutoshareRuleTools = (
     "Update an auto-share rule. `enabled: true` activates it — from then on, NEWLY-ingested matching activities that ended within the rule's max_age_hours are automatically published to the feed (never retroactively).",
     { id: z.string().uuid().describe('Rule ID'), ...updateAutoshareRuleBodySchema.shape },
     async ({ id, ...body }) => {
-      const record = await updateAutoshareRule(user, id, body)
+      const record = await updateAutoshareRule(user, id, autoshareRulePatchFromBody(body))
       if (!record) return errorResponse('Rule not found')
       return jsonResponse(serializeAutoshareRule(record))
     },

@@ -16,11 +16,17 @@ import {
   type FeedPostsResponse,
   type FeedPostStructuredResponse,
   type FeedStructuredPost,
+  type OfficialFeedPost,
+  type OfficialFeedQuery,
+  officialFeedQuerySchema,
+  type OfficialFeedResponse,
+  type OfficialFeedSetting,
   type PublicPostsQuery,
   publicPostsQuerySchema,
   type PublicSeriesQuery,
   publicSeriesQuerySchema,
   type PublicSeriesResponse,
+  normalizeTag,
 } from '@aurboda/api-spec'
 
 import { isValidUsername } from '../api/auth-routes.ts'
@@ -39,19 +45,22 @@ import {
   ATOM_ENTRY_LIMIT,
   articleEntryHtml,
   buildArticlesAtom,
+  buildOfficialFeedAtom,
+  postEntryHtml,
+  postEntryTitle,
 } from '../services/article-atom.ts'
 import { renderableArticleBlocks } from '../services/article-export.ts'
 import { resolvePublicSeries } from '../services/feed-series.ts'
 import { loadAuthorizedStructuredPost, resolveStructuredContent } from '../services/feed-structured.ts'
 import { serializeFeedPost } from '../services/feed.ts'
-import { decodeKeysetCursor, encodeKeysetCursor } from '../services/keyset-cursor.ts'
+import { decodeKeysetCursor, encodeKeysetCursor, type KeysetCursor } from '../services/keyset-cursor.ts'
+import { mergeOfficialFeedPage, OFFICIAL_FEED_PAGE_SIZE } from '../services/official-feed.ts'
 import { queryMetricsBucketed } from '../services/queries/index.ts'
 import { getSettings, type UserSettings } from '../services/settings.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
+import { UUID_RE } from '../utils.ts'
 import { validateQuery } from '../validation.ts'
 import { createRenderCache } from './feed-image-router.ts'
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /**
  * Page size of a profile's public feed listing (newest-first). Matches the authed
@@ -66,9 +75,27 @@ export interface FeedPublicRouterDeps {
   apiBaseUrl: string
   /** Public base URL of the web app, for the Atom feed's blog and permalink URLs. */
   webHost: string
+  /** Which of an article's chart blocks would render; injectable so the Atom memo is observable in tests. */
+  renderableBlocks?: (user: string, postId: string, article: ArticleContent) => Promise<ReadonlySet<number>>
+  /** The instance's official feed setting; absent, the official feed is off. */
+  readOfficialFeed?: () => Promise<OfficialFeedSetting>
 }
 
-export const createFeedPublicRouter = ({ apiBaseUrl, webHost }: FeedPublicRouterDeps): TypedRouter => {
+/**
+ * The Atom memo's key: every listed entry's id and `updated_at`, so an edit, a
+ * new article or one dropping out (deleted, or flipped away from `public`)
+ * misses it, plus the hourly bucket the structured cache uses, since a chart
+ * block's data can arrive without touching the post.
+ */
+const atomMemoKey = (scope: string, rows: { id: string; updated_at: Date }[], now: number): string =>
+  `atom:${scope}:${Math.floor(now / 3_600_000)}:${rows.map((r) => `${r.id}@${r.updated_at.getTime()}`).join(',')}`
+
+export const createFeedPublicRouter = ({
+  apiBaseUrl,
+  readOfficialFeed,
+  renderableBlocks = renderableArticleBlocks,
+  webHost,
+}: FeedPublicRouterDeps): TypedRouter => {
   const router = typedRouter()
   // Caches the resolved structured payload OBJECT, shared (one key shape) by the
   // unauthenticated `/feed/:postId` endpoint and the `/posts` profile listing, so
@@ -83,15 +110,14 @@ export const createFeedPublicRouter = ({ apiBaseUrl, webHost }: FeedPublicRouter
   // to PROFILE_FEED_LIMIT entries per profile without a handful of concurrently
   // browsed profiles thrashing it. Producing `null` (no content) isn't cached.
   const structuredCache = createRenderCache<FeedStructuredPost>(200)
+  const atomCache = createRenderCache<string>(100)
 
-  // One post as a visitor sees it, shared by the profile listing and the single-post
-  // permalink so the two never drift.
   const serializePublicPost = async (
     username: string,
     record: FeedPostRecord,
     settings: UserSettings | null,
   ): Promise<FeedPost> => {
-    const post = await serializeFeedPost(username, record, { settings })
+    const post = await serializeFeedPost(username, record, { settings, webHost })
     if (
       record.kind === 'activity' ||
       record.kind === 'article' ||
@@ -104,6 +130,127 @@ export const createFeedPublicRouter = ({ apiBaseUrl, webHost }: FeedPublicRouter
     }
     return post
   }
+
+  // A listed user whose database is gone (deleted mid-way, or never created) is
+  // left out of the official feed; warn once per user rather than per request.
+  const missingOfficialUsers = new Set<string>()
+  const onMissingOfficialUser = (username: string) => {
+    if (missingOfficialUsers.has(username)) return
+    missingOfficialUsers.add(username)
+    console.warn(`⚠️ Official feed: no database for listed user ${username}, leaving them out`)
+  }
+
+  const officialFeedPage = async (setting: OfficialFeedSetting, limit: number, before?: KeysetCursor) =>
+    mergeOfficialFeedPage({
+      fetchUser: (username, userLimit) =>
+        listPublicFeedPostsKeyset(username, userLimit, before && { created_at: before.ts, id: before.id }, {
+          anyTags: setting.tags,
+          includeReplies: false,
+          publicOnly: true,
+        }),
+      limit,
+      onMissingUser: onMissingOfficialUser,
+      users: setting.users,
+    })
+
+  const settingsOf = async (usernames: string[]): Promise<Map<string, UserSettings | null>> =>
+    new Map(
+      await Promise.all(
+        [...new Set(usernames)].map(
+          async (username) => [username, await getSettings(username).catch(() => null)] as const,
+        ),
+      ),
+    )
+
+  const enabledOfficialFeed = async (): Promise<OfficialFeedSetting | null> => {
+    const setting = readOfficialFeed ? await readOfficialFeed() : null
+    return setting && setting.users.length > 0 ? setting : null
+  }
+
+  // The instance's official feed (its blog): `public` posts — never `unlisted`,
+  // which an instance-wide listing would list — by the admin-chosen users that
+  // carry one of the chosen tags, newest first across their databases. Posts
+  // serialise as on the author's profile listing, sharing its structured cache.
+  // `no-store` for the profile listing's revocability reason. No MCP twin: a
+  // public read of what the profiles already serve.
+  router.get<Record<string, never>, OfficialFeedResponse, unknown, OfficialFeedQuery>(
+    '/public/official-feed',
+    validateQuery(officialFeedQuerySchema),
+    async (req, res) => {
+      const setting = await enabledOfficialFeed()
+      if (!setting) {
+        return res.status(404).json({ error: 'Not found', posts: [], success: false })
+      }
+      const page = await officialFeedPage(
+        setting,
+        OFFICIAL_FEED_PAGE_SIZE,
+        decodeKeysetCursor(req.query.cursor),
+      )
+      const settingsByUser = await settingsOf(page.rows.map((r) => r.username))
+      const posts = await Promise.all(
+        page.rows.map(
+          async ({ row, username }): Promise<OfficialFeedPost> => ({
+            ...(await serializePublicPost(username, row, settingsByUser.get(username) ?? null)),
+            author_username: username,
+          }),
+        ),
+      )
+      res.setHeader('Cache-Control', 'no-store')
+      res.json({
+        next_cursor: page.next ? encodeKeysetCursor(page.next.cursor_ts, page.next.id) : null,
+        posts,
+        success: true,
+        tags: setting.tags,
+        users: setting.users,
+      })
+    },
+  )
+
+  // The official feed's Atom document: its newest entries, every post kind, an
+  // article's body as on the per-user articles feed and any other post's as it
+  // federates. Cached briefly like the articles feed; feed readers poll.
+  router.get<Record<string, never>, string>('/public/official-feed.atom', async (_req, res) => {
+    const setting = await enabledOfficialFeed()
+    if (!setting) {
+      return res.status(404).type('text/plain').send('Not found')
+    }
+    const { rows } = await officialFeedPage(setting, ATOM_ENTRY_LIMIT)
+    const memoRows = rows.map(({ row, username }) => ({
+      id: `${username}/${row.id}`,
+      updated_at: row.updated_at,
+    }))
+    // `#` is never in a username, so this scope can't meet a user's articles memo.
+    const xml = await atomCache(atomMemoKey('#official', memoRows, Date.now()), async () => {
+      const settingsByUser = await settingsOf(rows.map((r) => r.username))
+      const entries = await Promise.all(
+        rows.map(async ({ row, username }) => {
+          const post = await serializeFeedPost(username, row, {
+            settings: settingsByUser.get(username) ?? null,
+            webHost,
+          })
+          const html = row.article
+            ? articleEntryHtml(
+                apiBaseUrl,
+                username,
+                { ...row, article: row.article },
+                await renderableBlocks(username, row.id, row.article),
+              )
+            : postEntryHtml(post)
+          return {
+            created_at: row.created_at,
+            html,
+            id: row.id,
+            title: postEntryTitle(post),
+            updated_at: row.updated_at,
+            username,
+          }
+        }),
+      )
+      return buildOfficialFeedAtom({ apiBaseUrl, entries, now: new Date(), webHost })
+    })
+    res.setHeader('Cache-Control', 'public, max-age=300')
+    res.type(ATOM_CONTENT_TYPE).send(xml ?? '')
+  })
 
   router.get<{ username: string }, PublicSeriesResponse, unknown, PublicSeriesQuery>(
     '/public/:username/series',
@@ -180,7 +327,11 @@ export const createFeedPublicRouter = ({ apiBaseUrl, webHost }: FeedPublicRouter
           username,
           PROFILE_FEED_LIMIT + 1,
           decoded && { created_at: decoded.ts, id: decoded.id },
-          { includeReplies: false, kind: req.query.kind },
+          {
+            includeReplies: false,
+            kind: req.query.kind,
+            ...(req.query.tag === undefined ? {} : { tag: normalizeTag(req.query.tag) ?? undefined }),
+          },
         )
         const hasMore = rows.length > PROFILE_FEED_LIMIT
         const records = hasMore ? rows.slice(0, PROFILE_FEED_LIMIT) : rows
@@ -204,10 +355,11 @@ export const createFeedPublicRouter = ({ apiBaseUrl, webHost }: FeedPublicRouter
     },
   )
 
-  // The Atom feed of a profile's public/unlisted articles — the instance blog for
-  // readers without a fediverse account. No MCP twin: a syndication format, like
-  // the OpenAPI document. Feed readers poll, so unlike the JSON listing it may be
-  // cached briefly; an un-shared article drops out within `max-age`.
+  // The Atom feed of a profile's public articles — the instance blog for readers
+  // without a fediverse account. Unlisted articles stay out: syndicating to feed
+  // readers is listing. No MCP twin: a syndication format, like the OpenAPI
+  // document. Feed readers poll, so unlike the JSON listing it may be cached
+  // briefly; an un-shared article drops out within `max-age`.
   router.get<{ username: string }, string>('/public/:username/articles.atom', async (req, res) => {
     const { username } = req.params
     if (!isValidUsername(username)) {
@@ -217,28 +369,30 @@ export const createFeedPublicRouter = ({ apiBaseUrl, webHost }: FeedPublicRouter
       const rows = await listPublicFeedPostsKeyset(username, ATOM_ENTRY_LIMIT, undefined, {
         includeReplies: false,
         kind: 'article',
+        publicOnly: true,
       })
       const articles = rows.filter(
         (record): record is FeedPostPageRow & { article: ArticleContent } => record.article != null,
       )
-      const entries = await Promise.all(
-        articles.map(async (record) => ({
-          created_at: record.created_at,
-          html: articleEntryHtml(
-            apiBaseUrl,
-            username,
-            record,
-            await renderableArticleBlocks(username, record.id, record.article),
-          ),
-          id: record.id,
-          title: record.article.title,
-          updated_at: record.updated_at,
-        })),
-      )
+      const xml = await atomCache(atomMemoKey(username, articles, Date.now()), async () => {
+        const entries = await Promise.all(
+          articles.map(async (record) => ({
+            created_at: record.created_at,
+            html: articleEntryHtml(
+              apiBaseUrl,
+              username,
+              record,
+              await renderableBlocks(username, record.id, record.article),
+            ),
+            id: record.id,
+            title: record.article.title,
+            updated_at: record.updated_at,
+          })),
+        )
+        return buildArticlesAtom({ apiBaseUrl, entries, now: new Date(), username, webHost })
+      })
       res.setHeader('Cache-Control', 'public, max-age=300')
-      res
-        .type(ATOM_CONTENT_TYPE)
-        .send(buildArticlesAtom({ apiBaseUrl, entries, now: new Date(), username, webHost }))
+      res.type(ATOM_CONTENT_TYPE).send(xml ?? '')
     } catch (error) {
       if (isMissingDatabase(error)) {
         return res.status(404).type('text/plain').send('Not found')

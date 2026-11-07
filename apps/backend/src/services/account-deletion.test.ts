@@ -13,6 +13,8 @@ const setup = (
     drop?: () => Promise<void>
     central?: () => Promise<void>
     stravaDisconnect?: () => Promise<void>
+    blogUsername?: string
+    officialFeed?: { tags: string[]; users: string[] }
   } = {},
 ) => {
   const calls: string[] = []
@@ -41,10 +43,16 @@ const setup = (
         return true
       },
       getAdmins: async () => admins,
+      getServerSetting: (async (key: string) =>
+        (key === 'official_feed' ? overrides.officialFeed : overrides.blogUsername) ??
+        null) as AccountDeletionDeps['centralDb']['getServerSetting'],
       isUsernameDeleted: async (username) => (overrides.reserved ?? []).includes(username),
       reserveDeletedUsername: async (username, by) => {
         calls.push(`reserve(${username},${by})`)
         return true
+      },
+      setServerSetting: async (key, value) => {
+        calls.push(`setting(${key},${typeof value === 'string' ? value : JSON.stringify(value)})`)
       },
     },
     dropUserDb: step('drop', overrides.drop),
@@ -74,6 +82,46 @@ describe('createAccountDeleter', () => {
       'deleted(alice)',
       'drop(alice)',
       'central(alice)',
+    ])
+  })
+
+  test('takes the deleted user off the official feed, keeping the rest of it', async () => {
+    const { calls, deleteAccount } = setup({ officialFeed: { tags: ['qs'], users: ['alice', 'root1'] } })
+    expect(await deleteAccount('alice', { actor: 'root1', confirmUsername: 'alice' })).toEqual({ ok: true })
+    expect(calls.slice(-3)).toEqual([
+      'central(alice)',
+      'setting(official_feed,{"tags":["qs"],"users":["root1"]})',
+      'setting(blog_username,)',
+    ])
+  })
+
+  test('takes a legacy blog user off, turning the feed off', async () => {
+    const { calls, deleteAccount } = setup({ blogUsername: 'alice' })
+    expect(await deleteAccount('alice', { actor: 'root1', confirmUsername: 'alice' })).toEqual({ ok: true })
+    expect(calls.slice(-2)).toEqual([
+      'setting(official_feed,{"tags":[],"users":[]})',
+      'setting(blog_username,)',
+    ])
+  })
+
+  test('leaves the official feed alone when it does not list the user', async () => {
+    const { calls, deleteAccount } = setup({ blogUsername: 'root1' })
+    expect(await deleteAccount('alice', { actor: 'alice', confirmUsername: 'alice' })).toEqual({ ok: true })
+    expect(calls.some((call) => call.startsWith('setting('))).toBe(false)
+  })
+
+  test('takes the user off the official feed when finishing an unfinished deletion', async () => {
+    const { calls, deleteAccount } = setup({
+      officialFeed: { tags: [], users: ['ghost'] },
+      reserved: ['ghost'],
+    })
+    expect(await deleteAccount('ghost', { actor: 'root1', confirmUsername: 'ghost' })).toEqual({ ok: true })
+    expect(calls).toEqual([
+      'deleted(ghost)',
+      'drop(ghost)',
+      'central(ghost)',
+      'setting(official_feed,{"tags":[],"users":[]})',
+      'setting(blog_username,)',
     ])
   })
 

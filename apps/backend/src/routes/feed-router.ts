@@ -3,10 +3,14 @@
  * owner-facing routers; the public read surface lives in `feed-public-router.ts`.
  */
 import {
+  type ArticleDraftResponse,
+  type ArticleDraftsResponse,
   type ArticleExportResponse,
   type BaseResponse,
   type CreateArticleBody,
   createArticleBodySchema,
+  type CreateArticleDraftBody,
+  createArticleDraftBodySchema,
   type FeedPostReactionsResponse,
   type FeedPostRepliesResponse,
   type FeedPostResponse,
@@ -23,6 +27,8 @@ import {
   type ShareExerciseBody,
   shareExerciseBodySchema,
   type ExerciseSharePreviewResponse,
+  type PublishArticleDraftBody,
+  publishArticleDraftBodySchema,
   type TimelineEntryResponse,
   type TimelineQuery,
   timelineQuerySchema,
@@ -30,6 +36,8 @@ import {
   type TimelineResponse,
   type UpdateArticleBody,
   updateArticleBodySchema,
+  type UpdateArticleDraftBody,
+  updateArticleDraftBodySchema,
   type UpdateFeedPostBody,
   updateFeedPostBodySchema,
 } from '@aurboda/api-spec'
@@ -41,23 +49,39 @@ import type { TimelineHub } from '../services/timeline-hub.ts'
 import type { RetroEnrichTrigger } from '../services/timeline-retro-enrich.ts'
 
 import {
+  createArticleDraft,
   createArticlePost,
   createChallengePost,
   createExercisePost,
   createFeedPost,
+  deleteArticleDraft,
   deleteFeedPost,
   getActivityById,
+  getArticleDraft,
   getFeedPostById,
   getTimelineEntryById,
+  listArticleDrafts,
   listFeedPostReactions,
+  updateArticleDraft,
   updateFeedPost,
 } from '../db/index.ts'
 import { isPubliclyVisible } from '../services/activitypub/object.ts'
 import { REPLIES_TIMEOUT_MS } from '../services/activitypub/remote-replies.ts'
+import {
+  articleDraftPatch,
+  emptyArticleDraftContent,
+  normalizeArticleDraftContent,
+  publishArticleDraft,
+  serializeArticleDraft,
+} from '../services/article-drafts.ts'
 import { buildArticleMarkdown, renderableArticleBlocks } from '../services/article-export.ts'
-import { buildArticleContent, mergeArticleContent } from '../services/article.ts'
+import { mergeArticleContent, validateArticleContent } from '../services/article.ts'
 import { resolveChallengeShare } from '../services/challenge-share.ts'
-import { previewExerciseShare, resolveExerciseShare } from '../services/feed-exercise-share.ts'
+import {
+  exerciseShareTags,
+  previewExerciseShare,
+  resolveExerciseShare,
+} from '../services/feed-exercise-share.ts'
 import { MAX_POST_REACTIONS, serializeFeedPostReaction } from '../services/feed-reactions.ts'
 import {
   getFeedPage,
@@ -65,11 +89,20 @@ import {
   previewActivityShare,
   serializeFeedPost,
 } from '../services/feed.ts'
+import {
+  activityKindTag,
+  articleTexts,
+  CHALLENGE_KIND_TAG,
+  loadEditedPostTags,
+  resolvePostTags,
+  retagPost,
+} from '../services/post-tags.ts'
 import { getSettings } from '../services/settings.ts'
 import { getThreadSnapshot, listOwnPostReplies, MAX_POST_REPLIES } from '../services/timeline-replies.ts'
 import { getTimelinePage, reactionTarget } from '../services/timeline.ts'
 import { withTimeout } from '../services/with-timeout.ts'
 import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
+import { UUID_RE } from '../utils.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
 /**
@@ -103,9 +136,6 @@ export interface FeedDeliver {
   /** Federate a reply edit as an `Update`, to the same recipients. */
   updatedReply: (user: string, post: FeedPostRecord) => void
 }
-
-/** RFC 4122 canonical form — timeline entry ids are UUIDs. */
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /**
  * Map a reaction toggle's outcome to its HTTP status + body. Pure, so the four
@@ -302,6 +332,82 @@ export const createFeedRouter = (
     },
   )
 
+  // Article drafts: private, never federated (a separate table, so no feed or
+  // public listing can see one). Registered before the generic `/:postId` routes.
+  router.get<Record<string, never>, ArticleDraftsResponse>(
+    '/article-drafts',
+    authMiddleware,
+    async (req, res) => {
+      const drafts = await listArticleDrafts(req.user!)
+      res.json({ drafts: drafts.map(serializeArticleDraft), success: true })
+    },
+  )
+
+  router.post<Record<string, never>, ArticleDraftResponse, CreateArticleDraftBody>(
+    '/article-drafts',
+    authMiddleware,
+    validateBody(createArticleDraftBodySchema),
+    async (req, res) => {
+      const record = await createArticleDraft(req.user!, {
+        article: req.body.article
+          ? normalizeArticleDraftContent(req.body.article)
+          : emptyArticleDraftContent(),
+        visibility: req.body.visibility,
+      })
+      res.json({ draft: serializeArticleDraft(record), success: true })
+    },
+  )
+
+  router.get<{ id: string }, ArticleDraftResponse>(
+    '/article-drafts/:id',
+    authMiddleware,
+    async (req, res) => {
+      const record = UUID_RE.test(req.params.id) ? await getArticleDraft(req.user!, req.params.id) : null
+      if (!record) return res.status(404).json({ error: 'Draft not found', success: false })
+      res.json({ draft: serializeArticleDraft(record), success: true })
+    },
+  )
+
+  router.patch<{ id: string }, ArticleDraftResponse, UpdateArticleDraftBody>(
+    '/article-drafts/:id',
+    authMiddleware,
+    validateBody(updateArticleDraftBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      const existing = UUID_RE.test(req.params.id) ? await getArticleDraft(user, req.params.id) : null
+      if (!existing) return res.status(404).json({ error: 'Draft not found', success: false })
+      const record = await updateArticleDraft(
+        user,
+        existing.id,
+        articleDraftPatch(existing.article, req.body),
+      )
+      if (!record) return res.status(404).json({ error: 'Draft not found', success: false })
+      res.json({ draft: serializeArticleDraft(record), success: true })
+    },
+  )
+
+  router.delete<{ id: string }, BaseResponse>('/article-drafts/:id', authMiddleware, async (req, res) => {
+    const deleted = UUID_RE.test(req.params.id) && (await deleteArticleDraft(req.user!, req.params.id))
+    if (!deleted) return res.status(404).json({ error: 'Draft not found', success: false })
+    res.json({ success: true })
+  })
+
+  router.post<{ id: string }, FeedPostResponse, PublishArticleDraftBody>(
+    '/article-drafts/:id/publish',
+    authMiddleware,
+    validateBody(publishArticleDraftBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      if (!UUID_RE.test(req.params.id)) {
+        return res.status(404).json({ error: 'Draft not found', success: false })
+      }
+      const result = await publishArticleDraft(user, req.params.id, req.body)
+      if (!result.ok) return res.status(result.status).json({ error: result.error, success: false })
+      deliver?.createdArticle(user, result.post)
+      res.json({ post: await serializeFeedPost(user, result.post, { webHost }), success: true })
+    },
+  )
+
   // Who liked / boosted one of the owner's OWN posts (newest first). Registered
   // before the generic `/:postId` routes so `reactions` is never read as a verb
   // on a post id.
@@ -353,19 +459,28 @@ export const createFeedRouter = (
       if (!activity) {
         return res.status(404).json({ error: 'Activity not found', success: false })
       }
+      const message = normalizeFeedMessage(req.body.message) ?? null
       const record = await createFeedPost(user, {
         activity_id: activity.id ?? req.params.id,
         include_chart: req.body.include_chart,
         include_exercises: req.body.include_exercises,
         include_map: req.body.include_map,
         included_metrics: req.body.included_metrics,
-        message: normalizeFeedMessage(req.body.message) ?? null,
+        message,
         series_metrics: req.body.series_metrics,
+        tags: await resolvePostTags(user, {
+          explicit: req.body.tags,
+          kindTag: activityKindTag(activity.activity_type),
+          texts: [message],
+        }),
         visibility: req.body.visibility,
       })
       // Fan the post out to followers (best-effort; never blocks the response).
       deliver?.created(user, record, activity)
-      res.json({ post: await serializeFeedPost(user, record, { includeStructured: true }), success: true })
+      res.json({
+        post: await serializeFeedPost(user, record, { includeStructured: true, webHost }),
+        success: true,
+      })
     },
   )
 
@@ -381,11 +496,17 @@ export const createFeedRouter = (
       if (!activity) {
         return res.status(404).json({ error: 'Activity not found', success: false })
       }
-      const preview = await previewActivityShare(user, activity, {
-        include_exercises: req.body.include_exercises,
-        included_metrics: req.body.included_metrics,
-        ...(req.body.message === undefined ? {} : { message: req.body.message }),
-      })
+      const preview = await previewActivityShare(
+        user,
+        activity,
+        {
+          include_exercises: req.body.include_exercises,
+          included_metrics: req.body.included_metrics,
+          ...(req.body.message === undefined ? {} : { message: req.body.message }),
+          ...(req.body.tags === undefined ? {} : { tags: req.body.tags }),
+        },
+        webHost,
+      )
       res.json({ ...preview, success: true })
     },
   )
@@ -402,14 +523,20 @@ export const createFeedRouter = (
       const user = req.user!
       const resolved = await resolveChallengeShare(user, req.body, webHost)
       if (!resolved.ok) return res.status(resolved.status).json({ error: resolved.error, success: false })
+      const message = normalizeFeedMessage(req.body.message) ?? null
       const record = await createChallengePost(user, {
         challenge: resolved.challenge,
         include_chart: req.body.include_chart,
-        message: normalizeFeedMessage(req.body.message) ?? null,
+        message,
+        tags: await resolvePostTags(user, {
+          explicit: req.body.tags,
+          kindTag: CHALLENGE_KIND_TAG,
+          texts: [message],
+        }),
         visibility: req.body.visibility,
       })
       deliver?.createdChallenge(user, record)
-      res.json({ post: await serializeFeedPost(user, record), success: true })
+      res.json({ post: await serializeFeedPost(user, record, { webHost }), success: true })
     },
   )
 
@@ -427,10 +554,14 @@ export const createFeedRouter = (
         exercise: resolved.exercise,
         include_chart: req.body.include_chart,
         message: normalizeFeedMessage(req.body.message) ?? null,
+        tags: await exerciseShareTags(user, resolved.exercise, req.body),
         visibility: req.body.visibility,
       })
       deliver?.createdExercise(user, record)
-      res.json({ post: await serializeFeedPost(user, record, { includeStructured: true }), success: true })
+      res.json({
+        post: await serializeFeedPost(user, record, { includeStructured: true, webHost }),
+        success: true,
+      })
     },
   )
 
@@ -441,7 +572,12 @@ export const createFeedRouter = (
     async (req, res) => {
       const preview = await previewExerciseShare(req.user!, req.body, webHost)
       if (!preview.ok) return res.status(preview.status).json({ error: preview.error, success: false })
-      res.json({ content: preview.content, structured: preview.structured, success: true })
+      res.json({
+        content: preview.content,
+        structured: preview.structured,
+        success: true,
+        tags: preview.tags,
+      })
     },
   )
 
@@ -455,7 +591,7 @@ export const createFeedRouter = (
     validateBody(createArticleBodySchema),
     async (req, res) => {
       const user = req.user!
-      const built = buildArticleContent({
+      const built = await validateArticleContent({
         blocks: req.body.blocks,
         default_end: req.body.default_end,
         default_start: req.body.default_start,
@@ -464,10 +600,11 @@ export const createFeedRouter = (
       if (!built.ok) return res.status(400).json({ error: built.error, success: false })
       const record = await createArticlePost(user, {
         article: built.article,
+        tags: await resolvePostTags(user, { explicit: req.body.tags, texts: articleTexts(built.article) }),
         visibility: req.body.visibility,
       })
       deliver?.createdArticle(user, record)
-      res.json({ post: await serializeFeedPost(user, record), success: true })
+      res.json({ post: await serializeFeedPost(user, record, { webHost }), success: true })
     },
   )
 
@@ -481,15 +618,21 @@ export const createFeedRouter = (
       if (!existing || existing.kind !== 'article' || existing.article == null) {
         return res.status(404).json({ error: 'Article not found', success: false })
       }
-      const built = buildArticleContent(mergeArticleContent(existing.article, req.body))
+      const built = await validateArticleContent(mergeArticleContent(existing.article, req.body))
       if (!built.ok) return res.status(400).json({ error: built.error, success: false })
       const record = await updateFeedPost(user, req.params.postId, {
         article: built.article,
+        tags: retagPost({
+          after: articleTexts(built.article),
+          before: articleTexts(existing.article),
+          explicit: req.body.tags,
+          stored: existing.tags,
+        }),
         visibility: req.body.visibility,
       })
       if (!record) return res.status(404).json({ error: 'Article not found', success: false })
       deliver?.updatedArticle(user, record)
-      res.json({ post: await serializeFeedPost(user, record), success: true })
+      res.json({ post: await serializeFeedPost(user, record, { webHost }), success: true })
     },
   )
 
@@ -540,13 +683,17 @@ export const createFeedRouter = (
     validateBody(updateFeedPostBodySchema),
     async (req, res) => {
       const user = req.user!
+      const message = normalizeFeedMessage(req.body.message)
+      const retag = await loadEditedPostTags(user, req.params.postId, { message, tags: req.body.tags })
+      if (!retag.found) return res.status(404).json({ error: 'Feed post not found', success: false })
       const record = await updateFeedPost(user, req.params.postId, {
         include_chart: req.body.include_chart,
         include_exercises: req.body.include_exercises,
         include_map: req.body.include_map,
         included_metrics: req.body.included_metrics,
-        message: normalizeFeedMessage(req.body.message),
+        message,
         series_metrics: req.body.series_metrics,
+        tags: retag.tags,
         visibility: req.body.visibility,
       })
       if (!record) {
@@ -561,7 +708,10 @@ export const createFeedRouter = (
       else if (record.kind === 'exercise') deliver?.updatedExercise(user, record)
       else if (record.kind === 'reply') deliver?.updatedReply(user, record)
       else deliver?.updated(user, record)
-      res.json({ post: await serializeFeedPost(user, record, { includeStructured: true }), success: true })
+      res.json({
+        post: await serializeFeedPost(user, record, { includeStructured: true, webHost }),
+        success: true,
+      })
     },
   )
 

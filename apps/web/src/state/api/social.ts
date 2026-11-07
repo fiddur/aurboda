@@ -4,6 +4,8 @@ import type {
   FeedPostKind,
   FeedPostResponse,
   FeedPostsResponse,
+  OfficialFeedQuery,
+  OfficialFeedResponse,
   PublicPostsQuery,
   PublicProfileResponse,
   SharedDashboard,
@@ -20,7 +22,7 @@ import axios from 'axios'
 
 import { API_URL } from '../../config'
 import { auth } from '../auth'
-import { buildArticlesAtomUrl } from './blogUrls'
+import { buildArticlesAtomUrl, buildOfficialFeedAtomUrl } from './blogUrls'
 
 const authHeaders = () => ({ Authorization: `Bearer ${auth.value.token}` })
 
@@ -100,10 +102,12 @@ export const fetchPublicPosts = async (
   username: string,
   cursor?: string,
   kind?: FeedPostKind,
+  tag?: string,
 ): Promise<FeedPostsResponse> => {
   const params: PublicPostsQuery = {}
   if (cursor != null) params.cursor = cursor
   if (kind != null) params.kind = kind
+  if (tag != null) params.tag = tag
   const response = await axios.get<FeedPostsResponse>(
     `${API_URL}/public/${encodeURIComponent(username)}/posts`,
     { params },
@@ -114,6 +118,17 @@ export const fetchPublicPosts = async (
 /** Absolute URL of the Atom feed of a user's public articles. */
 export const articlesAtomUrl = (username: string): string =>
   buildArticlesAtomUrl(username, API_URL, window.location.origin)
+
+/** One keyset page of the instance's official feed, newest first across its users. */
+export const fetchOfficialFeed = async (cursor?: string): Promise<OfficialFeedResponse> => {
+  const params: OfficialFeedQuery = {}
+  if (cursor != null) params.cursor = cursor
+  const response = await axios.get<OfficialFeedResponse>(`${API_URL}/public/official-feed`, { params })
+  return response.data
+}
+
+/** Absolute URL of the official feed's Atom document. */
+export const officialFeedAtomUrl = (): string => buildOfficialFeedAtomUrl(API_URL, window.location.origin)
 
 /** One public/unlisted feed post, for its permalink page `/u/:username/posts/:postId`. */
 export const fetchPublicPost = async (username: string, postId: string): Promise<FeedPostResponse> => {

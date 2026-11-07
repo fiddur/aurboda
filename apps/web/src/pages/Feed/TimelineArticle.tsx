@@ -1,7 +1,7 @@
 /**
  * Native rendering of a federated ARTICLE post's structured enrichment (C3): the
  * title followed by its resolved blocks — prose, a chart per windowed metric,
- * and a correlation scatter — all built from data embedded in the structured
+ * a correlation scatter, and a challenge's race card — all built from data embedded in the structured
  * payload fetched on ingest (`GET /public/:username/feed/:postId`). Unlike the
  * author's own `ArticleContent`/`ArticleChartBlock`/`ArticleCorrelationBlock`
  * (which fetch live from the author's authenticated endpoints), this renders
@@ -18,12 +18,14 @@ import type { FeedStructuredArticle, FeedStructuredArticleBlock } from '@aurboda
 import { useMemo } from 'preact/hooks'
 
 import { TrendLineChart } from '../../components/charts/TrendLineChart'
+import { CHART_PRIMARY } from '../../theme'
 import { renderRemoteMarkdown } from '../../utils/markdown'
 import { getMetricDisplayName } from '../../utils/metricLabels'
+import { ResolvedArticleChallenge } from './ArticleChallengeBlock'
 import { CorrelationScatterSvg } from './ArticleCorrelationBlock'
 import './FeedPostCard.css' // `.article-prose` / `.article-chart*` / `.article-scatter*`
 
-const CHART_COLOR = '#673ab8'
+const CHART_COLOR = CHART_PRIMARY
 
 type ChartBlock = Extract<FeedStructuredArticleBlock, { type: 'chart' }>
 
@@ -60,6 +62,8 @@ const TimelineArticleBlock = ({ block }: { block: FeedStructuredArticleBlock }) 
   }
 
   if (block.type === 'chart') return <TimelineArticleChart block={block} />
+
+  if (block.type === 'challenge') return <ResolvedArticleChallenge block={block} />
 
   return (
     <figure class="article-chart">

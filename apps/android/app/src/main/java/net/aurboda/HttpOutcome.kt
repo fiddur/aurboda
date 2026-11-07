@@ -37,6 +37,12 @@ fun syncStopOf(status: Int?, serverMessage: String? = null): SyncStop? =
     else -> null
   }
 
+/**
+ * Whether a queued entry's failed upload counts against it. A read-only refusal says nothing
+ * about the entry, and every run until the plan is renewed would add another failure.
+ */
+fun countsAsEntryFailure(stop: SyncStop?): Boolean = stop?.outcome != HttpOutcome.ReadOnly
+
 /** The `error` of a 402 body (`{ success: false, error, payment_url }`), or a fallback when it has none. */
 fun readOnlyMessage(body: String?): String =
   body

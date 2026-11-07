@@ -18,6 +18,7 @@
 
 import { z } from 'zod'
 
+import { maxPostTags, normalizeTag } from '../hashtags.ts'
 import { challengeResultSchema } from './challenges.ts'
 import {
   activityTypeSchema,
@@ -58,6 +59,28 @@ const scalarMetricKeySchema = z.string().min(1).max(64)
  */
 export const feedPostMessageMaxLength = 2000
 
+/** One hashtag as a client sends it: a leading `#` and any casing are accepted, and stored lowercase without `#`. */
+export const hashtagInputSchema = z
+  .string()
+  .max(80)
+  .refine((value) => normalizeTag(value) != null, {
+    message: 'A tag is letters, digits and _ (at least one not a digit), at most 64 characters',
+  })
+  .meta({ description: 'A hashtag, e.g. `running` or `#Running` (stored lowercase without `#`)' })
+
+const postTagsDescription =
+  'Hashtags for the post, replacing the automatic ones (your default tags and the kind tag, e.g. `#aurboda #running`); `#tags` typed in the text are always added. Omit to use the automatic tags.'
+
+/** Explicit tags on a share/create/update body; omitted means the automatic ones. */
+export const postTagsInputSchema = z
+  .array(hashtagInputSchema)
+  .max(maxPostTags)
+  .meta({ description: postTagsDescription })
+
+const postTagsSchema = z
+  .array(z.string())
+  .meta({ description: "The post's hashtags, lowercase without `#` (federated as AS2 `Hashtag`s)" })
+
 /**
  * Defaults are privacy-conservative: nothing is shared unless listed, and
  * high-resolution `series_metrics` default to empty (opt-in only).
@@ -89,6 +112,7 @@ export const shareActivityBodySchema = z
       description:
         'Metrics whose full high-resolution series are explicitly shared. Separate opt-in from the scalar summary; empty by default.',
     }),
+    tags: postTagsInputSchema.optional(),
     visibility: feedVisibilitySchema.default('public'),
   })
   .meta({ id: 'ShareActivityBody' })
@@ -116,6 +140,10 @@ export const updateFeedPostBodySchema = z
       .max(64)
       .optional()
       .meta({ description: 'Replacement set of explicitly-shared series metrics' }),
+    tags: postTagsInputSchema.optional().meta({
+      description:
+        "Replacement hashtags; `#tags` typed in the message are always added. Omit to keep the post's tags (adjusted for a changed message).",
+    }),
     visibility: feedVisibilitySchema.optional(),
   })
   .meta({ id: 'UpdateFeedPostBody' })
@@ -223,6 +251,7 @@ export const shareChallengeBodySchema = z
       .uuid()
       .optional()
       .meta({ description: 'A challenge you joined to share (exclusive with `challenge_id`)' }),
+    tags: postTagsInputSchema.optional(),
     visibility: feedVisibilitySchema.default('public'),
   })
   .meta({ id: 'ShareChallengeBody' })
@@ -284,6 +313,7 @@ export const shareExerciseBodySchema = z
       description:
         'Personal note shown above the progress (markdown, rendered through the shared sanitiser). Empty/absent shares no text.',
     }),
+    tags: postTagsInputSchema.optional(),
     value: z.string().min(1).max(200).meta({ description: 'The item value to share, e.g. `Bench Press`' }),
     visibility: feedVisibilitySchema.default('public'),
   })
@@ -366,13 +396,37 @@ export const articleCorrelationBlockSchema = z
   })
   .meta({ description: 'A correlation scatter over a locked window', id: 'ArticleCorrelationBlock' })
 
+/**
+ * A challenge block: a challenge embedded by its public URL (one hosted here or
+ * on another instance), rendered with its live standings and a link to join.
+ * It has no time window — the challenge's own window applies.
+ */
+export const articleChallengeBlockSchema = z
+  .object({
+    caption: z
+      .string()
+      .max(280)
+      .optional()
+      .meta({ description: 'Optional caption shown with the challenge' }),
+    challenge_url: z.string().url().max(2000).meta({
+      description:
+        "Public challenge URL (`<base>/u/<username>/<slug>`): an own challenge's `share_url` or a joined challenge's URL",
+    }),
+    type: z.literal('challenge'),
+  })
+  .meta({ description: 'A challenge with its live standings and a join link', id: 'ArticleChallengeBlock' })
+
 export const articleBlockSchema = z
   .discriminatedUnion('type', [
     articleProseBlockSchema,
     articleChartBlockSchema,
     articleCorrelationBlockSchema,
+    articleChallengeBlockSchema,
   ])
-  .meta({ description: 'An article content block (prose, chart, or correlation)', id: 'ArticleBlock' })
+  .meta({
+    description: 'An article content block (prose, chart, correlation, or challenge)',
+    id: 'ArticleBlock',
+  })
 
 export type ArticleBlock = z.infer<typeof articleBlockSchema>
 
@@ -494,6 +548,7 @@ export const feedPostSchema = z
       description:
         "The post's native structured payload (an activity's typed metrics + inline series; on the public profile listing also an article's resolved blocks or a challenge's document + standings snapshot), identical to what a subscribing peer receives — drives the native card render",
     }),
+    tags: postTagsSchema,
     updated_at: z.string().meta({ description: 'Last update timestamp (ISO 8601)' }),
     visibility: feedVisibilitySchema,
   })
@@ -532,6 +587,9 @@ export const publicPostsQuerySchema = z
     kind: feedPostKindSchema
       .optional()
       .meta({ description: 'Only posts of this kind, e.g. `article` for a blog view' }),
+    tag: hashtagInputSchema
+      .optional()
+      .meta({ description: 'Only posts carrying this hashtag, e.g. `running`' }),
   })
   .meta({ id: 'PublicPostsQuery' })
 
@@ -549,6 +607,69 @@ export const feedPostsResponseSchema = baseResponseSchema
   .meta({ id: 'FeedPostsResponse' })
 
 export type FeedPostsResponse = z.infer<typeof feedPostsResponseSchema>
+
+/** At most this many users, and this many tags, in the official feed setting. */
+export const officialFeedMaxEntries = 20
+
+export const officialFeedSettingSchema = z
+  .object({
+    tags: z.array(hashtagInputSchema).max(officialFeedMaxEntries).meta({
+      description:
+        'Only posts carrying at least one of these hashtags (lowercase, without `#`); empty lists every public post of the users',
+    }),
+    users: z.array(z.string().min(1)).max(officialFeedMaxEntries).meta({
+      description: 'Local usernames whose public posts make up the feed; empty turns the official feed off',
+    }),
+  })
+  .meta({
+    description:
+      "The instance's official feed, linked from the front page as its blog: public posts by these users that carry one of these tags",
+    id: 'OfficialFeedSetting',
+  })
+
+export type OfficialFeedSetting = z.infer<typeof officialFeedSettingSchema>
+
+export const officialFeedQuerySchema = z
+  .object({
+    cursor: z.string().optional().meta({ description: "Opaque cursor from a previous page's `next_cursor`" }),
+  })
+  .meta({ description: 'Query of the official feed listing', id: 'OfficialFeedQuery' })
+
+export type OfficialFeedQuery = z.infer<typeof officialFeedQuerySchema>
+
+/** A post on the instance's official feed: as on its author's public profile, plus who wrote it. */
+export const officialFeedPostSchema = feedPostSchema
+  .extend({
+    author_username: z.string().meta({ description: "The post author's local username" }),
+  })
+  .meta({ description: 'A post in the official feed, with its author', id: 'OfficialFeedPost' })
+
+export type OfficialFeedPost = z.infer<typeof officialFeedPostSchema>
+
+export const officialFeedResponseSchema = baseResponseSchema
+  .extend({
+    next_cursor: z
+      .string()
+      .nullable()
+      .optional()
+      .meta({ description: 'Cursor for the next page; null on the last page' }),
+    posts: z.array(officialFeedPostSchema),
+    tags: z
+      .array(z.string())
+      .optional()
+      .meta({ description: 'The hashtags a post needs one of to be listed (empty: any); absent on errors' }),
+    users: z
+      .array(z.string())
+      .optional()
+      .meta({ description: 'The usernames whose posts are listed; absent on errors' }),
+  })
+  .meta({
+    description:
+      "A page of the instance's official feed: public posts by the chosen users with one of the chosen tags",
+    id: 'OfficialFeedResponse',
+  })
+
+export type OfficialFeedResponse = z.infer<typeof officialFeedResponseSchema>
 
 /**
  * The share PREVIEW returns the exact federated `content` HTML a
@@ -569,6 +690,10 @@ export const sharePreviewResponseSchema = baseResponseSchema
       .array(feedStructuredMetricSchema)
       .optional()
       .meta({ description: 'The resolved typed scalar values for the selection' }),
+    tags: z.array(z.string()).optional().meta({
+      description:
+        'The hashtags the post would carry (lowercase, without `#`): the automatic or given ones plus typed ones',
+    }),
   })
   .meta({ id: 'SharePreviewResponse' })
 
@@ -584,6 +709,10 @@ export const exerciseSharePreviewResponseSchema = baseResponseSchema
     structured: feedStructuredExerciseShareSchema
       .optional()
       .meta({ description: 'The structured payload an Aurboda peer would receive' }),
+    tags: z.array(z.string()).optional().meta({
+      description:
+        'The hashtags the post would carry (lowercase, without `#`): the automatic or given ones plus typed ones',
+    }),
   })
   .meta({ id: 'ExerciseSharePreviewResponse' })
 
@@ -602,6 +731,10 @@ export const createArticleBodySchema = z
     default_start: iso8601DateTimeSchema
       .optional()
       .meta({ description: 'Default window start inherited by chart and correlation blocks (ISO 8601)' }),
+    tags: postTagsInputSchema.optional().meta({
+      description:
+        'Hashtags for the article, replacing your default tags; `#tags` typed in the title and prose are always added. Omit to use your default tags.',
+    }),
     title: z.string().min(1).max(200).meta({ description: 'Article title' }),
     visibility: feedVisibilitySchema.default('public'),
   })
@@ -618,12 +751,160 @@ export const updateArticleBodySchema = z
       .meta({ description: 'Replacement ordered content blocks' }),
     default_end: iso8601DateTimeSchema.optional().meta({ description: 'Default window end (ISO 8601)' }),
     default_start: iso8601DateTimeSchema.optional().meta({ description: 'Default window start (ISO 8601)' }),
+    tags: postTagsInputSchema.optional().meta({
+      description:
+        "Replacement hashtags; `#tags` typed in the title and prose are always added. Omit to keep the article's tags (adjusted for changed text).",
+    }),
     title: z.string().min(1).max(200).optional().meta({ description: 'Article title' }),
     visibility: feedVisibilitySchema.optional(),
   })
   .meta({ id: 'UpdateArticleBody' })
 
 export type UpdateArticleBody = z.infer<typeof updateArticleBodySchema>
+
+/**
+ * Article drafts are private work in progress: stored apart from feed posts, so
+ * they never federate or appear on any feed, and lenient, so an unfinished
+ * article can be saved. The block schemas below loosen only what a draft may
+ * leave unset; publishing re-validates against `createArticleBodySchema`.
+ */
+export const articleDraftChartBlockSchema = articleChartBlockSchema
+  .extend({ metric: metricTypeSchema.optional().meta({ description: 'The metric to chart, once chosen' }) })
+  .meta({ description: 'A chart block in a draft; the metric may be unset', id: 'ArticleDraftChartBlock' })
+
+export const articleDraftCorrelationBlockSchema = articleCorrelationBlockSchema
+  .extend({
+    outcome: selectorSchema.optional().meta({ description: 'Outcome dimension, once chosen' }),
+    trigger: selectorSchema.optional().meta({ description: 'Trigger / predictor dimension, once chosen' }),
+  })
+  .meta({
+    description: 'A correlation block in a draft; trigger and outcome may be unset',
+    id: 'ArticleDraftCorrelationBlock',
+  })
+
+export const articleDraftChallengeBlockSchema = articleChallengeBlockSchema
+  .extend({
+    challenge_url: z
+      .string()
+      .url()
+      .max(2000)
+      .optional()
+      .meta({ description: 'Public challenge URL, once chosen' }),
+  })
+  .meta({
+    description: 'A challenge block in a draft; the URL may be unset',
+    id: 'ArticleDraftChallengeBlock',
+  })
+
+export const articleDraftBlockSchema = z
+  .discriminatedUnion('type', [
+    articleProseBlockSchema,
+    articleDraftChartBlockSchema,
+    articleDraftCorrelationBlockSchema,
+    articleDraftChallengeBlockSchema,
+  ])
+  .meta({
+    description: 'A draft article block (prose, chart, correlation, or challenge)',
+    id: 'ArticleDraftBlock',
+  })
+
+export type ArticleDraftBlock = z.infer<typeof articleDraftBlockSchema>
+
+export const articleDraftContentSchema = z
+  .object({
+    blocks: z.array(articleDraftBlockSchema).max(100).meta({ description: 'Ordered content blocks' }),
+    default_end: iso8601DateTimeSchema
+      .optional()
+      .meta({ description: 'Default window end inherited by chart and correlation blocks (ISO 8601)' }),
+    default_start: iso8601DateTimeSchema
+      .optional()
+      .meta({ description: 'Default window start inherited by chart and correlation blocks (ISO 8601)' }),
+    tags: postTagsInputSchema.optional().meta({
+      description:
+        'Hashtags the article gets when published, replacing your default tags; absent uses the defaults. `#tags` typed in the text are always added.',
+    }),
+    title: z.string().max(200).meta({ description: 'Article title (may be empty in a draft)' }),
+  })
+  .meta({ description: 'Draft article content, possibly incomplete', id: 'ArticleDraftContent' })
+
+export type ArticleDraftContent = z.infer<typeof articleDraftContentSchema>
+
+export const articleDraftSchema = z
+  .object({
+    article: articleDraftContentSchema,
+    created_at: z.string().meta({ description: 'Creation timestamp (ISO 8601)' }),
+    id: z.string().uuid().meta({ description: 'Draft ID' }),
+    updated_at: z.string().meta({ description: 'Last save timestamp (ISO 8601)' }),
+    visibility: feedVisibilitySchema.meta({ description: 'Audience the article gets when published' }),
+  })
+  .meta({
+    description: 'A private, unpublished article draft. Never federated or shown on any feed.',
+    id: 'ArticleDraft',
+  })
+
+export type ArticleDraft = z.infer<typeof articleDraftSchema>
+
+export const articleDraftResponseSchema = baseResponseSchema
+  .extend({ draft: articleDraftSchema.optional() })
+  .meta({ id: 'ArticleDraftResponse' })
+
+export type ArticleDraftResponse = z.infer<typeof articleDraftResponseSchema>
+
+export const articleDraftsResponseSchema = baseResponseSchema
+  .extend({ drafts: z.array(articleDraftSchema).meta({ description: 'Drafts, most recently saved first' }) })
+  .meta({ id: 'ArticleDraftsResponse' })
+
+export type ArticleDraftsResponse = z.infer<typeof articleDraftsResponseSchema>
+
+export const createArticleDraftBodySchema = z
+  .object({
+    article: articleDraftContentSchema
+      .optional()
+      .meta({ description: 'Initial content (may be incomplete); omitted starts an empty, untitled draft' }),
+    visibility: feedVisibilitySchema.default('public'),
+  })
+  .meta({ description: 'Start a new article draft', id: 'CreateArticleDraftBody' })
+
+export type CreateArticleDraftBody = z.infer<typeof createArticleDraftBodySchema>
+
+export const updateArticleDraftBodySchema = z
+  .object({
+    blocks: z
+      .array(articleDraftBlockSchema)
+      .max(100)
+      .optional()
+      .meta({ description: 'Replacement ordered content blocks' }),
+    default_end: iso8601DateTimeSchema
+      .nullable()
+      .optional()
+      .meta({ description: 'Default window end (ISO 8601); `null` clears it, omitted keeps it' }),
+    default_start: iso8601DateTimeSchema
+      .nullable()
+      .optional()
+      .meta({ description: 'Default window start (ISO 8601); `null` clears it, omitted keeps it' }),
+    tags: postTagsInputSchema.nullable().optional().meta({
+      description:
+        'Hashtags the article gets when published, replacing your default tags; `null` returns to the defaults, omitted keeps them',
+    }),
+    title: z.string().max(200).optional().meta({ description: 'Article title' }),
+    visibility: feedVisibilitySchema.optional(),
+  })
+  .meta({
+    description: 'Save changes to a draft; provided fields replace stored ones',
+    id: 'UpdateArticleDraftBody',
+  })
+
+export type UpdateArticleDraftBody = z.infer<typeof updateArticleDraftBodySchema>
+
+export const publishArticleDraftBodySchema = z
+  .object({
+    visibility: feedVisibilitySchema
+      .optional()
+      .meta({ description: "Audience for the published article; defaults to the draft's visibility" }),
+  })
+  .meta({ description: 'Publish a draft as an article post', id: 'PublishArticleDraftBody' })
+
+export type PublishArticleDraftBody = z.infer<typeof publishArticleDraftBodySchema>
 
 export const followActorBodySchema = z
   .object({

@@ -458,7 +458,7 @@ function MetricTypeInfo({
 
 export function MetricMeta() {
   const { params } = useRoute()
-  const metricName = decodeURIComponent(params.metricName as string)
+  const metricName = params.metricName as string
 
   const [lookback, setLookback] = useState(90)
 

@@ -74,7 +74,7 @@
 }
 
 .session-sort:hover {
-  color: #673ab8;
+  color: var(--color-accent);
 }
 
 .session-num {
@@ -101,7 +101,7 @@
 }
 
 .session-current td {
-  background: #f5f3ff;
+  background: var(--color-accent-soft);
   font-weight: 600;
 }
 
@@ -283,16 +283,8 @@
     color: #6b7280;
   }
 
-  .session-current td {
-    background: #2e1065;
-  }
-
   .session-group-detail > td {
     background: #111827;
-  }
-
-  .session-sort:hover {
-    color: #a78bfa;
   }
 
   .hr-box-whisker {

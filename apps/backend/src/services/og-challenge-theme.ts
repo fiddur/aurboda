@@ -57,7 +57,7 @@ const THEME_RULES: ThemeRule[] = [
 
 export const DEFAULT_CHALLENGE_THEME: ChallengeTheme = {
   emoji: '🏆',
-  gradient: ['#4c1d95', '#673ab8', '#8b5cf6'],
+  gradient: ['#0b1a30', '#0f2a4f', '#17707a'],
   key: 'default',
 }
 

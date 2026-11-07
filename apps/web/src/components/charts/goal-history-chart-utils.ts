@@ -1,12 +1,14 @@
 import type { GoalDayStatus, GoalHistoryDay, GoalHistoryMonth } from '@aurboda/api-spec'
 
+import { CHART_PRIMARY } from '../../theme'
+
 export const statusColor: Record<GoalDayStatus, string> = {
   below: '#757575',
   met: '#4caf50',
   over: '#f44336',
 }
 
-export const trendLineColor = '#8b5cf6'
+export const trendLineColor = CHART_PRIMARY
 export const targetBandColor = 'rgba(76,175,80,0.15)'
 
 const statusLabels: Record<GoalDayStatus, string> = {

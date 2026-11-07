@@ -11,7 +11,7 @@
   width: 14px;
   height: 14px;
   border: 2px solid #e0e0e0;
-  border-top-color: #8b5cf6;
+  border-top-color: var(--color-accent);
   border-radius: 50%;
   animation: save-status-spin 0.6s linear infinite;
 }
@@ -54,7 +54,6 @@
 @media (prefers-color-scheme: dark) {
   .save-status-indicator .status-spinner {
     border-color: #555;
-    border-top-color: #a78bfa;
   }
 
   .save-status-indicator .status-checkmark {

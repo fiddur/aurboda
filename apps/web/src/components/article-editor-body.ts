@@ -5,10 +5,14 @@
  */
 import type {
   ArticleBlock,
+  ArticleDraftBlock,
+  Challenge,
+  ChallengeParticipation,
+  ArticleDraftContent,
   CorrelationSelector,
   CreateArticleBody,
-  FeedPost,
   FeedVisibility,
+  UpdateArticleDraftBody,
 } from '@aurboda/api-spec'
 
 import { isValidMetric } from '@aurboda/api-spec'
@@ -38,7 +42,38 @@ export interface CorrelationDraft {
   lagDays: string
   caption: string
 }
-export type BlockDraft = ChartDraft | CorrelationDraft | ProseDraft
+/** A challenge block: a challenge picked from the user's own or joined ones, or a pasted URL. */
+export interface ChallengeDraft {
+  type: 'challenge'
+  /** The challenge's public URL ('' = not chosen yet). */
+  url: string
+  caption: string
+}
+export type BlockDraft = ChallengeDraft | ChartDraft | CorrelationDraft | ProseDraft
+
+export const emptyChallengeDraft = (): ChallengeDraft => ({ caption: '', type: 'challenge', url: '' })
+
+export interface ChallengeOption {
+  url: string
+  label: string
+}
+
+/**
+ * What a challenge block's picker offers: the user's own challenges (by their
+ * public `share_url`) and the ones they have joined and not left (by the
+ * challenge's URL), each URL once.
+ */
+export const challengePickerOptions = (
+  own: Pick<Challenge, 'name' | 'share_url'>[],
+  joined: Pick<ChallengeParticipation, 'challenge_url' | 'name' | 'status'>[],
+): { own: ChallengeOption[]; joined: ChallengeOption[] } => {
+  const ownOptions = own.map((c) => ({ label: c.name, url: c.share_url }))
+  const seen = new Set(ownOptions.map((o) => o.url))
+  const joinedOptions = joined
+    .filter((p) => p.status === 'active' && !seen.has(p.challenge_url))
+    .map((p) => ({ label: p.name, url: p.challenge_url }))
+  return { joined: joinedOptions, own: ownOptions }
+}
 
 export const emptyCorrelationDraft = (): CorrelationDraft => ({
   caption: '',
@@ -59,6 +94,8 @@ export interface ArticleEditorState {
   defaultEnd: string
   blocks: BlockDraft[]
   visibility: FeedVisibility
+  /** Explicit tags; undefined leaves the post's automatic (or, when editing, stored) ones. */
+  tags?: string[]
 }
 
 export type BuildResult = { ok: true; body: CreateArticleBody } | { ok: false; error: string }
@@ -76,18 +113,28 @@ export const toInputValue = (iso?: string): string => {
 export const toIso = (local: string): string | undefined =>
   local ? new Date(local).toISOString() : undefined
 
-export const draftsFromPost = (post?: FeedPost): BlockDraft[] => {
-  if (!post?.article) return []
-  return post.article.blocks.map((b): BlockDraft => {
+/** What the editor opens: a published article post, a saved draft, or nothing for a new one. */
+export interface ArticleEditorSource {
+  article?: ArticleDraftContent
+  visibility: FeedVisibility
+}
+
+export const draftsFromPost = (source?: { article?: ArticleDraftContent }): BlockDraft[] => {
+  if (!source?.article) return []
+  return source.article.blocks.map((b): BlockDraft => {
     if (b.type === 'prose') return { markdown: b.markdown, type: 'prose' }
+    if (b.type === 'challenge') {
+      return { caption: b.caption ?? '', type: 'challenge', url: b.challenge_url ?? '' }
+    }
     if (b.type === 'correlation') {
+      const empty = emptyCorrelationDraft()
       return {
         caption: b.caption ?? '',
         end: toInputValue(b.end),
         lagDays: b.lag_days != null ? String(b.lag_days) : '',
-        outcome: b.outcome,
+        outcome: b.outcome ?? empty.outcome,
         start: toInputValue(b.start),
-        trigger: b.trigger,
+        trigger: b.trigger ?? empty.trigger,
         type: 'correlation',
       }
     }
@@ -95,20 +142,87 @@ export const draftsFromPost = (post?: FeedPost): BlockDraft[] => {
       bucket: b.bucket ?? '',
       caption: b.caption ?? '',
       end: toInputValue(b.end),
-      metric: b.metric,
+      metric: b.metric ?? '',
       start: toInputValue(b.start),
       type: 'chart',
     }
   })
 }
 
-export const initialArticleEditorState = (post?: FeedPost): ArticleEditorState => ({
-  blocks: draftsFromPost(post),
-  defaultEnd: toInputValue(post?.article?.default_end),
-  defaultStart: toInputValue(post?.article?.default_start),
-  title: post?.article?.title ?? '',
-  visibility: post?.visibility ?? 'public',
+export const initialArticleEditorState = (source?: ArticleEditorSource): ArticleEditorState => ({
+  blocks: draftsFromPost(source),
+  defaultEnd: toInputValue(source?.article?.default_end),
+  defaultStart: toInputValue(source?.article?.default_start),
+  title: source?.article?.title ?? '',
+  visibility: source?.visibility ?? 'public',
+  ...(source?.article?.tags ? { tags: source.article.tags } : {}),
 })
+
+const windowFields = (b: { start: string; end: string }) => ({
+  ...(toIso(b.start) ? { start: toIso(b.start) } : {}),
+  ...(toIso(b.end) ? { end: toIso(b.end) } : {}),
+})
+
+const draftBlock = (b: BlockDraft): ArticleDraftBlock => {
+  if (b.type === 'prose') return { markdown: b.markdown, type: 'prose' }
+  if (b.type === 'challenge') {
+    return {
+      type: 'challenge',
+      ...(b.url.trim() ? { challenge_url: b.url.trim() } : {}),
+      ...(b.caption.trim() ? { caption: b.caption.trim() } : {}),
+    }
+  }
+  if (b.type === 'chart') {
+    return {
+      type: 'chart',
+      ...(isValidMetric(b.metric) ? { metric: b.metric } : {}),
+      ...windowFields(b),
+      ...(b.bucket ? { bucket: b.bucket } : {}),
+      ...(b.caption.trim() ? { caption: b.caption.trim() } : {}),
+    }
+  }
+  const lag = Number(b.lagDays)
+  return {
+    outcome: b.outcome,
+    trigger: b.trigger,
+    type: 'correlation',
+    ...windowFields(b),
+    ...(b.lagDays.trim() && Number.isInteger(lag) && lag !== 0 ? { lag_days: lag } : {}),
+    ...(b.caption.trim() ? { caption: b.caption.trim() } : {}),
+  }
+}
+
+/**
+ * Editor state → draft content, with no completeness checks: a draft may lack a
+ * title, a chart metric or a correlation selector. Publishing validates.
+ */
+export const buildDraftContent = (state: ArticleEditorState): ArticleDraftContent => ({
+  blocks: state.blocks.map(draftBlock),
+  title: state.title.trim(),
+  ...(toIso(state.defaultStart) ? { default_start: toIso(state.defaultStart) } : {}),
+  ...(toIso(state.defaultEnd) ? { default_end: toIso(state.defaultEnd) } : {}),
+  ...(state.tags ? { tags: state.tags } : {}),
+})
+
+/**
+ * The PATCH body that saves the editor's content over an existing draft. An
+ * empty default window bound, or no explicit tags, is sent as `null`, so clearing
+ * it in the editor clears it on the server (an omitted field would keep the stored value).
+ */
+export const draftUpdateBody = (state: ArticleEditorState): UpdateArticleDraftBody => {
+  const content = buildDraftContent(state)
+  return {
+    ...content,
+    default_end: content.default_end ?? null,
+    default_start: content.default_start ?? null,
+    tags: content.tags ?? null,
+    visibility: state.visibility,
+  }
+}
+
+/** A comparable fingerprint of what saving a draft would store, to tell whether there are unsaved changes. */
+export const draftSnapshot = (state: ArticleEditorState): string =>
+  JSON.stringify({ article: buildDraftContent(state), visibility: state.visibility })
 
 /**
  * The message to show under the editor: a form-validation error takes precedence,
@@ -165,9 +279,25 @@ const buildCorrelationBlock = (b: CorrelationDraft, i: number): BlockResult => {
   }
 }
 
+const buildChallengeBlock = (b: ChallengeDraft, i: number): BlockResult => {
+  if (!b.url.trim()) return { error: `Pick a challenge or paste its link for challenge block ${i + 1}.` }
+  return {
+    block: {
+      challenge_url: b.url.trim(),
+      type: 'challenge',
+      ...(b.caption.trim() ? { caption: b.caption.trim() } : {}),
+    },
+  }
+}
+
+const buildBlock = (b: Exclude<BlockDraft, ProseDraft>, i: number): BlockResult => {
+  if (b.type === 'challenge') return buildChallengeBlock(b, i)
+  return b.type === 'correlation' ? buildCorrelationBlock(b, i) : buildChartBlock(b, i)
+}
+
 /**
- * The server re-validates windows (`buildArticleContent`), so this only guards
- * what the form can catch early.
+ * The server re-validates windows and challenge links (`buildArticleContent`),
+ * so this only guards what the form can catch early.
  */
 export const buildArticleBody = (state: ArticleEditorState): BuildResult => {
   if (!state.title.trim()) return { error: 'Give your article a title.', ok: false }
@@ -178,7 +308,7 @@ export const buildArticleBody = (state: ArticleEditorState): BuildResult => {
       blocks.push({ markdown: b.markdown, type: 'prose' })
       continue
     }
-    const built = b.type === 'correlation' ? buildCorrelationBlock(b, i) : buildChartBlock(b, i)
+    const built = buildBlock(b, i)
     if ('error' in built) return { error: built.error, ok: false }
     blocks.push(built.block)
   }
@@ -190,6 +320,7 @@ export const buildArticleBody = (state: ArticleEditorState): BuildResult => {
       visibility: state.visibility,
       ...(toIso(state.defaultStart) ? { default_start: toIso(state.defaultStart) } : {}),
       ...(toIso(state.defaultEnd) ? { default_end: toIso(state.defaultEnd) } : {}),
+      ...(state.tags ? { tags: state.tags } : {}),
     },
     ok: true,
   }

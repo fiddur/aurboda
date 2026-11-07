@@ -9,10 +9,12 @@ import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'preact/hooks'
 
 import { fetchTrend } from '../../state/api'
+import { CHART_PRIMARY } from '../../theme'
 import { buildChartUrl, type ChartOrigin } from '../../utils/chart-url'
-import { EMA_HALF_LIFE_DEFAULT, MEASURE_HALF_LIFE_DEFAULT } from '../../utils/half-life'
 import { BreakdownLegend, SERIES_COLORS } from '../charts/breakdown'
+import { trendPlot, trendPlotSeries } from '../charts/trendGaps'
 import { TrendLineChart } from '../charts/TrendLineChart'
+import { trendFetchParams } from './chartFetchParams'
 import { HEAVY_QUERY_OPTIONS } from './heavyQuery'
 
 const NO_POINTS: TrendChartData['history'] = []
@@ -37,14 +39,17 @@ export function TrendChartView({ config, data, href }: TrendChartViewProps) {
   const multiSeries = useMemo(
     () =>
       breakdownSeries && breakdownSeries.length > 0 && breakdownHistories
-        ? breakdownSeries.map((name, i) => ({
-            color: SERIES_COLORS[i % SERIES_COLORS.length],
-            data: breakdownHistories[name] ?? [],
-            name,
-          }))
+        ? trendPlotSeries(
+            breakdownSeries.map((name, i) => ({
+              color: SERIES_COLORS[i % SERIES_COLORS.length],
+              data: breakdownHistories[name] ?? [],
+              name,
+            })),
+          )
         : null,
     [breakdownSeries, breakdownHistories],
   )
+  const single = useMemo(() => trendPlot(data?.history ?? NO_POINTS), [data?.history])
 
   const body = (
     <>
@@ -61,10 +66,23 @@ export function TrendChartView({ config, data, href }: TrendChartViewProps) {
       {breakdownSeries && multiSeries ? (
         <>
           <BreakdownLegend series={breakdownSeries} />
-          <TrendLineChart data={NO_POINTS} color="#673ab8" height={150} compact multiSeries={multiSeries} />
+          <TrendLineChart
+            data={NO_POINTS}
+            color={CHART_PRIMARY}
+            height={150}
+            compact
+            multiSeries={multiSeries.series}
+            xDomain={multiSeries.xDomain}
+          />
         </>
       ) : (
-        <TrendLineChart data={data?.history ?? NO_POINTS} color="#673ab8" height={150} compact />
+        <TrendLineChart
+          data={single.data}
+          xDomain={single.xDomain}
+          color={CHART_PRIMARY}
+          height={150}
+          compact
+        />
       )}
     </>
   )
@@ -91,25 +109,15 @@ export function TrendChartWidget({ config, origin }: TrendChartWidgetProps) {
     measure,
     filter_field,
     filter_value,
-    half_life_days = measure ? MEASURE_HALF_LIFE_DEFAULT : EMA_HALF_LIFE_DEFAULT,
     lookback_days = 90,
-    display_period = 'monthly',
-    aggregation = source_type === 'metric' ? 'mean' : 'count',
     breakdown_fields,
     missing_days,
   } = config
+  const params = trendFetchParams(config, lookback_days)
+  const { aggregation, display_period, half_life_days } = params
 
   const trendQuery = useQuery({
-    queryFn: () =>
-      fetchTrend({
-        ...(measure ? { filter_field, filter_value, measure } : { aggregation, display_period }),
-        half_life_days,
-        lookback_days,
-        pattern,
-        source_type,
-        ...(breakdown_fields?.length ? { breakdown_fields } : {}),
-        ...(missing_days ? { missing_days } : {}),
-      }),
+    queryFn: () => fetchTrend({ ...params, ...(breakdown_fields?.length ? { breakdown_fields } : {}) }),
     queryKey: [
       'trend',
       source_type,
