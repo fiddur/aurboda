@@ -1,3 +1,4 @@
+import { Ajv2020 } from 'ajv/dist/2020.js'
 import express from 'express'
 import request from 'supertest'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
@@ -1985,6 +1986,15 @@ describe('MCP Server', () => {
       })
       expect(property('add_note', 'entity_type')?.enum).toContain('time')
       expect(property('query_metrics', 'tz')?.type).toBe('string')
+    })
+
+    test('every listed input schema is valid JSON Schema (2020-12)', async () => {
+      const ajv = new Ajv2020({ strict: false })
+      const tools = await listTools(createTestApp(), auth.createToken('testuser'))
+      const invalid = tools.flatMap((tool) =>
+        ajv.validateSchema(tool.inputSchema) ? [] : [`${tool.name}: ${ajv.errorsText(ajv.errors)}`],
+      )
+      expect(invalid).toEqual([])
     })
 
     test('describe_tools returns the full description and schema, listing unknown names', async () => {
