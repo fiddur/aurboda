@@ -210,6 +210,7 @@ describe('POST /feed/timeline/:id/reply', () => {
     kind: 'reply',
     message: 'Nice run!',
     series_metrics: [],
+    tags: [],
     updated_at: '2026-09-01T00:00:00.000Z',
     visibility: 'unlisted',
   })

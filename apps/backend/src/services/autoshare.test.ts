@@ -37,6 +37,7 @@ const rule = (over: Partial<AutoshareRuleRecord> = {}): AutoshareRuleRecord => (
   min_duration_seconds: 15 * 60,
   name: 'Runs > 15 min',
   series_metrics: [],
+  tags: null,
   source: null,
   updated_at: T0,
   visibility: 'followers',
@@ -62,6 +63,7 @@ const fakePost = (id: string, activityId: string, ruleId: string): FeedPostRecor
   kind: 'activity',
   message: null,
   series_metrics: [],
+  tags: [],
   updated_at: T0,
   visibility: 'followers',
 })

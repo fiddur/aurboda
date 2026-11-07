@@ -18,6 +18,7 @@
 
 import { z } from 'zod'
 
+import { maxPostTags, normalizeTag } from '../hashtags.ts'
 import { challengeResultSchema } from './challenges.ts'
 import {
   activityTypeSchema,
@@ -58,6 +59,28 @@ const scalarMetricKeySchema = z.string().min(1).max(64)
  */
 export const feedPostMessageMaxLength = 2000
 
+/** One hashtag as a client sends it: a leading `#` and any casing are accepted, and stored lowercase without `#`. */
+export const hashtagInputSchema = z
+  .string()
+  .max(80)
+  .refine((value) => normalizeTag(value) != null, {
+    message: 'A tag is letters, digits and _ (at least one not a digit), at most 64 characters',
+  })
+  .meta({ description: 'A hashtag, e.g. `running` or `#Running` (stored lowercase without `#`)' })
+
+const postTagsDescription =
+  'Hashtags for the post, replacing the automatic ones (your default tags and the kind tag, e.g. `#aurboda #running`); `#tags` typed in the text are always added. Omit to use the automatic tags.'
+
+/** Explicit tags on a share/create/update body; omitted means the automatic ones. */
+export const postTagsInputSchema = z
+  .array(hashtagInputSchema)
+  .max(maxPostTags)
+  .meta({ description: postTagsDescription })
+
+const postTagsSchema = z
+  .array(z.string())
+  .meta({ description: "The post's hashtags, lowercase without `#` (federated as AS2 `Hashtag`s)" })
+
 /**
  * Defaults are privacy-conservative: nothing is shared unless listed, and
  * high-resolution `series_metrics` default to empty (opt-in only).
@@ -89,6 +112,7 @@ export const shareActivityBodySchema = z
       description:
         'Metrics whose full high-resolution series are explicitly shared. Separate opt-in from the scalar summary; empty by default.',
     }),
+    tags: postTagsInputSchema.optional(),
     visibility: feedVisibilitySchema.default('public'),
   })
   .meta({ id: 'ShareActivityBody' })
@@ -116,6 +140,10 @@ export const updateFeedPostBodySchema = z
       .max(64)
       .optional()
       .meta({ description: 'Replacement set of explicitly-shared series metrics' }),
+    tags: postTagsInputSchema.optional().meta({
+      description:
+        "Replacement hashtags; `#tags` typed in the message are always added. Omit to keep the post's tags (adjusted for a changed message).",
+    }),
     visibility: feedVisibilitySchema.optional(),
   })
   .meta({ id: 'UpdateFeedPostBody' })
@@ -223,6 +251,7 @@ export const shareChallengeBodySchema = z
       .uuid()
       .optional()
       .meta({ description: 'A challenge you joined to share (exclusive with `challenge_id`)' }),
+    tags: postTagsInputSchema.optional(),
     visibility: feedVisibilitySchema.default('public'),
   })
   .meta({ id: 'ShareChallengeBody' })
@@ -284,6 +313,7 @@ export const shareExerciseBodySchema = z
       description:
         'Personal note shown above the progress (markdown, rendered through the shared sanitiser). Empty/absent shares no text.',
     }),
+    tags: postTagsInputSchema.optional(),
     value: z.string().min(1).max(200).meta({ description: 'The item value to share, e.g. `Bench Press`' }),
     visibility: feedVisibilitySchema.default('public'),
   })
@@ -494,6 +524,7 @@ export const feedPostSchema = z
       description:
         "The post's native structured payload (an activity's typed metrics + inline series; on the public profile listing also an article's resolved blocks or a challenge's document + standings snapshot), identical to what a subscribing peer receives — drives the native card render",
     }),
+    tags: postTagsSchema,
     updated_at: z.string().meta({ description: 'Last update timestamp (ISO 8601)' }),
     visibility: feedVisibilitySchema,
   })
@@ -532,6 +563,9 @@ export const publicPostsQuerySchema = z
     kind: feedPostKindSchema
       .optional()
       .meta({ description: 'Only posts of this kind, e.g. `article` for a blog view' }),
+    tag: hashtagInputSchema
+      .optional()
+      .meta({ description: 'Only posts carrying this hashtag, e.g. `running`' }),
   })
   .meta({ id: 'PublicPostsQuery' })
 
@@ -569,6 +603,10 @@ export const sharePreviewResponseSchema = baseResponseSchema
       .array(feedStructuredMetricSchema)
       .optional()
       .meta({ description: 'The resolved typed scalar values for the selection' }),
+    tags: z.array(z.string()).optional().meta({
+      description:
+        'The hashtags the post would carry (lowercase, without `#`): the automatic or given ones plus typed ones',
+    }),
   })
   .meta({ id: 'SharePreviewResponse' })
 
@@ -584,6 +622,10 @@ export const exerciseSharePreviewResponseSchema = baseResponseSchema
     structured: feedStructuredExerciseShareSchema
       .optional()
       .meta({ description: 'The structured payload an Aurboda peer would receive' }),
+    tags: z.array(z.string()).optional().meta({
+      description:
+        'The hashtags the post would carry (lowercase, without `#`): the automatic or given ones plus typed ones',
+    }),
   })
   .meta({ id: 'ExerciseSharePreviewResponse' })
 
@@ -602,6 +644,10 @@ export const createArticleBodySchema = z
     default_start: iso8601DateTimeSchema
       .optional()
       .meta({ description: 'Default window start inherited by chart and correlation blocks (ISO 8601)' }),
+    tags: postTagsInputSchema.optional().meta({
+      description:
+        'Hashtags for the article, replacing your default tags; `#tags` typed in the title and prose are always added. Omit to use your default tags.',
+    }),
     title: z.string().min(1).max(200).meta({ description: 'Article title' }),
     visibility: feedVisibilitySchema.default('public'),
   })
@@ -618,6 +664,10 @@ export const updateArticleBodySchema = z
       .meta({ description: 'Replacement ordered content blocks' }),
     default_end: iso8601DateTimeSchema.optional().meta({ description: 'Default window end (ISO 8601)' }),
     default_start: iso8601DateTimeSchema.optional().meta({ description: 'Default window start (ISO 8601)' }),
+    tags: postTagsInputSchema.optional().meta({
+      description:
+        "Replacement hashtags; `#tags` typed in the title and prose are always added. Omit to keep the article's tags (adjusted for changed text).",
+    }),
     title: z.string().min(1).max(200).optional().meta({ description: 'Article title' }),
     visibility: feedVisibilitySchema.optional(),
   })
@@ -664,6 +714,10 @@ export const articleDraftContentSchema = z
     default_start: iso8601DateTimeSchema
       .optional()
       .meta({ description: 'Default window start inherited by chart and correlation blocks (ISO 8601)' }),
+    tags: postTagsInputSchema.optional().meta({
+      description:
+        'Hashtags the article gets when published, replacing your default tags; absent uses the defaults. `#tags` typed in the text are always added.',
+    }),
     title: z.string().max(200).meta({ description: 'Article title (may be empty in a draft)' }),
   })
   .meta({ description: 'Draft article content, possibly incomplete', id: 'ArticleDraftContent' })
@@ -723,6 +777,10 @@ export const updateArticleDraftBodySchema = z
       .nullable()
       .optional()
       .meta({ description: 'Default window start (ISO 8601); `null` clears it, omitted keeps it' }),
+    tags: postTagsInputSchema.nullable().optional().meta({
+      description:
+        'Hashtags the article gets when published, replacing your default tags; `null` returns to the defaults, omitted keeps them',
+    }),
     title: z.string().max(200).optional().meta({ description: 'Article title' }),
     visibility: feedVisibilitySchema.optional(),
   })

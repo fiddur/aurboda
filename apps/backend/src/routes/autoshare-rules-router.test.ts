@@ -42,6 +42,7 @@ const record = (over: Partial<AutoshareRuleRecord> = {}): AutoshareRuleRecord =>
   min_distance_meters: null,
   min_duration_seconds: null,
   name: 'Named yoga',
+  tags: null,
   series_metrics: [],
   source: null,
   updated_at: T0,
@@ -86,6 +87,44 @@ const buildApp = () => {
 }
 
 const named = [{ field: 'session_name', operator: 'exists' }]
+
+describe('autoshare rule tags', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(db.insertAutoshareRule).mockImplementation(async (_user, input) => record(input))
+    vi.mocked(db.updateAutoshareRule).mockImplementation(async (_user, _id, patch) => record(patch))
+  })
+
+  test('stores given tags normalised, absent ones as null (use the defaults)', async () => {
+    const res = await supertest(buildApp())
+      .post('/')
+      .send({ name: 'Yoga', tags: ['#Yoga', 'yoga', 'Calm'] })
+    expect(res.status).toBe(200)
+    expect(vi.mocked(db.insertAutoshareRule).mock.calls[0]?.[1].tags).toEqual(['yoga', 'calm'])
+    expect(res.body.rule.tags).toEqual(['yoga', 'calm'])
+    await supertest(buildApp()).post('/').send({ name: 'Plain' })
+    expect(vi.mocked(db.insertAutoshareRule).mock.calls[1]?.[1].tags).toBeNull()
+  })
+
+  test('an update normalises tags, null returns to the defaults, absent leaves them', async () => {
+    await supertest(buildApp())
+      .patch(`/${RULE_ID}`)
+      .send({ tags: ['#Run'] })
+    await supertest(buildApp()).patch(`/${RULE_ID}`).send({ tags: null })
+    await supertest(buildApp()).patch(`/${RULE_ID}`).send({ name: 'x' })
+    const patches = vi.mocked(db.updateAutoshareRule).mock.calls.map((call) => call[2])
+    expect(patches[0]?.tags).toEqual(['run'])
+    expect(patches[1]?.tags).toBeNull()
+    expect(patches[2]).not.toHaveProperty('tags')
+  })
+
+  test('rejects an invalid tag', async () => {
+    const res = await supertest(buildApp())
+      .post('/')
+      .send({ name: 'Bad', tags: ['two words'] })
+    expect(res.status).toBe(400)
+  })
+})
 
 describe('POST /autoshare-rules data_filters', () => {
   beforeEach(() => {

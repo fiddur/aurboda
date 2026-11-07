@@ -1,6 +1,16 @@
 import type { ArticleContent } from '@aurboda/api-spec'
 
-import { Create, Delete, Image, Mention, Note, Person, Tombstone, Update } from '@fedify/fedify/vocab'
+import {
+  Create,
+  Delete,
+  Hashtag,
+  Image,
+  Mention,
+  Note,
+  Person,
+  Tombstone,
+  Update,
+} from '@fedify/fedify/vocab'
 import { describe, expect, test, vi } from 'vitest'
 
 import {
@@ -723,6 +733,7 @@ describe('buildReplyNote / buildReplyNoteCreate', () => {
       in_reply_to_uri: TARGET,
       message: 'hi',
       series_metrics: [],
+      tags: [],
       updated_at: new Date(),
       visibility: 'unlisted' as const,
     }
@@ -845,6 +856,7 @@ describe('exercise shares (#1398)', () => {
       kind: 'exercise' as const,
       message: 'PR!',
       series_metrics: [],
+      tags: [],
       updated_at: new Date(),
       visibility: 'public' as const,
     }
@@ -958,5 +970,140 @@ describe('exercise shares (#1398)', () => {
     })
     expect(hasTrend).not.toHaveBeenCalled()
     expect(await attachedNames(optedOut.sendActivity.mock.calls[0][2])).toEqual([])
+  })
+})
+
+describe('hashtags on every Note kind', () => {
+  const ORIGIN = 'https://aurboda.example'
+  const contextFor = () => createFeedFederation(ORIGIN, `${ORIGIN}/api`).createContext(new URL(ORIGIN))
+  const base = {
+    created_at: new Date('2026-11-01T00:00:00Z'),
+    id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+    image_token: 'tok',
+    tags: ['aurboda', 'running'],
+    updated_at: new Date('2026-11-01T00:00:00Z'),
+    visibility: 'public' as const,
+  }
+  const tagsOf = async (note: Note) => {
+    const out: { kind: string; href: string | undefined; name: string | undefined }[] = []
+    for await (const tag of note.getTags()) {
+      if (tag instanceof Hashtag) {
+        out.push({ href: tag.href?.href, kind: 'hashtag', name: tag.name?.toString() })
+      }
+      if (tag instanceof Mention) {
+        out.push({ href: tag.href?.href, kind: 'mention', name: tag.name?.toString() })
+      }
+    }
+    return out
+  }
+  const hashtags = [
+    { href: `${ORIGIN}/u/fiddur?tag=aurboda`, kind: 'hashtag', name: '#aurboda' },
+    { href: `${ORIGIN}/u/fiddur?tag=running`, kind: 'hashtag', name: '#running' },
+  ]
+  const tagLink = (tag: string, text = tag) =>
+    `<a href="${ORIGIN}/u/fiddur?tag=${tag}" class="mention hashtag" rel="tag">#<span>${text}</span></a>`
+
+  test('an article Note links typed tags in its prose and lists the rest', async () => {
+    const ctx = await contextFor()
+    const note = buildArticleNote(
+      ctx,
+      'fiddur',
+      { ...base, article: { blocks: [{ markdown: 'A #Running log', type: 'prose' }], title: 'Log' } },
+      `${ORIGIN}/api`,
+    )
+    expect(await tagsOf(note)).toEqual(hashtags)
+    const content = note.content?.toString() ?? ''
+    expect(content).toContain(`A ${tagLink('running', 'Running')} log`)
+    expect(content).toContain(`<p>${tagLink('aurboda')}</p>`)
+  })
+
+  test('a challenge Note keeps its winner Mentions beside the Hashtags', async () => {
+    const ctx = await contextFor()
+    const note = buildChallengeNote(ctx, 'fiddur', {
+      ...base,
+      challenge: {
+        name: 'August 10k',
+        result: {
+          member_count: 1,
+          podium: [{ display_name: 'bob', identity_base_url: `${ORIGIN}/u/bob`, rank: 1, total: 3 }],
+          unit: 'steps',
+        },
+        url: `${ORIGIN}/u/fiddur/august-10k`,
+      },
+      include_chart: false,
+      message: null,
+    })
+    expect(await tagsOf(note)).toEqual([
+      { href: `${ORIGIN}/users/bob`, kind: 'mention', name: '@bob@aurboda.example' },
+      ...hashtags,
+    ])
+    expect(note.content?.toString()).toContain(`<p>${tagLink('aurboda')} ${tagLink('running')}</p>`)
+  })
+
+  test('an exercise Note links the tags in its pre-rendered content', async () => {
+    const ctx = await contextFor()
+    const note = buildExerciseNote(
+      ctx,
+      'fiddur',
+      {
+        ...base,
+        exercise: {
+          activity_type: 'strength_training',
+          field: 'sets.exercise',
+          include_records: true,
+          include_sessions: false,
+          name: 'Bench Press',
+          value: 'Bench Press',
+        },
+        include_chart: false,
+        message: null,
+      },
+      '<p>Bench #running</p>',
+    )
+    expect(await tagsOf(note)).toEqual(hashtags)
+    expect(note.content?.toString()).toBe(`<p>Bench ${tagLink('running')}</p><p>${tagLink('aurboda')}</p>`)
+  })
+
+  test('a reply Note keeps its Mention and adds only its own (typed) tags', async () => {
+    const ctx = await contextFor()
+    const note = buildReplyNote(ctx, 'fiddur', {
+      ...base,
+      in_reply_to_actor_uri: 'https://mastodon.example/users/alice',
+      in_reply_to_handle: '@alice@mastodon.example',
+      in_reply_to_uri: 'https://mastodon.example/users/alice/statuses/9',
+      message: 'Nice #running',
+      tags: ['running'],
+    })
+    expect(await tagsOf(note)).toEqual([
+      { href: 'https://mastodon.example/users/alice', kind: 'mention', name: '@alice@mastodon.example' },
+      hashtags[1],
+    ])
+    expect(note.content?.toString()).toContain(`Nice ${tagLink('running')}`)
+    expect(note.content?.toString()).not.toContain('tag=aurboda')
+  })
+
+  test('a post without tags carries no Hashtag and no trailing line', async () => {
+    const ctx = await contextFor()
+    const note = buildExerciseNote(
+      ctx,
+      'fiddur',
+      {
+        ...base,
+        exercise: {
+          activity_type: 'strength_training',
+          field: 'sets.exercise',
+          include_records: true,
+          include_sessions: false,
+          name: 'Bench Press',
+          value: 'Bench Press',
+        },
+        include_chart: false,
+        message: null,
+        tags: [],
+      },
+      '<p>Bench</p>',
+    )
+    expect(await tagsOf(note)).toEqual([])
+    expect(note.content?.toString()).toBe('<p>Bench</p>')
   })
 })

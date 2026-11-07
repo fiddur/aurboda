@@ -36,6 +36,7 @@ const post = (overrides: Partial<FeedPost>): FeedPost => ({
   included_metrics: [],
   kind: 'article',
   series_metrics: [],
+  tags: [],
   updated_at: '2026-07-02T00:00:00.000Z',
   visibility: 'public',
   ...overrides,

@@ -4,10 +4,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestDbClient, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import {
+  claimArticleDraft,
   createArticleDraft,
   deleteArticleDraft,
   getArticleDraft,
   listArticleDrafts,
+  restoreArticleDraft,
   updateArticleDraft,
 } from './article-drafts.ts'
 import { listFeedPosts } from './feed.ts'
@@ -102,6 +104,26 @@ describe('Article drafts integration', () => {
     expect(await deleteArticleDraft(user, created.id)).toBe(true)
     expect(await getArticleDraft(user, created.id)).toBeNull()
     expect(await deleteArticleDraft(user, created.id)).toBe(false)
+  })
+
+  test('claims a draft once, and restores it unchanged', async () => {
+    const user = getTestUser()
+    const created = await createArticleDraft(user, {
+      article: content({ title: 'Mine' }),
+      visibility: 'unlisted',
+    })
+
+    const [first, second] = await Promise.all([
+      claimArticleDraft(user, created.id),
+      claimArticleDraft(user, created.id),
+    ])
+    expect([first, second].filter((claimed) => claimed !== null)).toEqual([created])
+    expect(await getArticleDraft(user, created.id)).toBeNull()
+
+    await restoreArticleDraft(user, created)
+    expect(await getArticleDraft(user, created.id)).toEqual(created)
+    await restoreArticleDraft(user, created)
+    expect(await listArticleDrafts(user)).toEqual([created])
   })
 
   test('a draft is not a feed post', async () => {

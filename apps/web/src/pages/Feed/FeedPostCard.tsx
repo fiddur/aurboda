@@ -12,6 +12,7 @@ import type { ComponentChildren } from 'preact'
 
 import { formatDistanceToNow } from 'date-fns'
 
+import { profileTagPath } from '../../components/hashtags'
 import { API_URL } from '../../config'
 import { renderMarkdown } from '../../utils/markdown'
 import { formatEntryWindow } from './activity-stats'
@@ -20,6 +21,7 @@ import { articleRenderSource } from './article-render-source'
 import { ArticleContent } from './ArticleContent'
 import { ChallengeShareContent } from './ChallengeShareContent'
 import { ExerciseShareContent, ExerciseShareFallback } from './ExerciseShareContent'
+import { postTagLine } from './post-tag-line'
 import {
   structuredHasNativeExerciseChart,
   structuredHasNativeHrChart,
@@ -197,6 +199,7 @@ export const FeedPostCard = ({
   const vis = VISIBILITY[post.visibility]
   const when = formatDistanceToNow(new Date(post.created_at), { addSuffix: true })
   const { chart, route, standings, trend } = mediaUrls(post, author.username)
+  const tags = postTagLine(post, visitor)
 
   return (
     <article class="feed-post">
@@ -214,6 +217,16 @@ export const FeedPostCard = ({
       </header>
 
       <FeedPostBody post={post} visitor={visitor} />
+
+      {tags.length > 0 && (
+        <p class="feed-post-tags">
+          {tags.map((tag) => (
+            <a key={tag} href={profileTagPath(author.username, tag)}>
+              #{tag}
+            </a>
+          ))}
+        </p>
+      )}
 
       {(chart || route || standings || trend) && (
         <div class="feed-post-media">

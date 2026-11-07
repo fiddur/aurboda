@@ -305,6 +305,29 @@ describe('GET /public/:username/posts', () => {
     }
   })
 
+  test('?tag= lists only posts carrying the hashtag, each with its tags', async () => {
+    const user = getTestUser()
+    await seedPost(user, 'public')
+    const tagged = await createArticlePost(user, {
+      article: { blocks: [{ markdown: 'Hello', type: 'prose' }], title: 'Runs' },
+      tags: ['aurboda', 'running'],
+      visibility: 'public',
+    })
+    const { request, close } = startApp()
+    try {
+      for (const tag of ['running', '#Running']) {
+        const res = await request.get(`/public/${user}/posts`).query({ tag })
+        expect(res.status).toBe(200)
+        expect(res.body.posts.map((p: { id: string }) => p.id)).toEqual([tagged.id])
+        expect(res.body.posts[0].tags).toEqual(['aurboda', 'running'])
+      }
+      expect((await request.get(`/public/${user}/posts`).query({ tag: 'nope' })).body.posts).toEqual([])
+      expect((await request.get(`/public/${user}/posts`).query({ tag: 'not a tag' })).status).toBe(400)
+    } finally {
+      await close()
+    }
+  })
+
   test('returns an empty list for a user with no public posts', async () => {
     const user = getTestUser()
     await seedPost(user, 'followers') // only a followers-only post exists

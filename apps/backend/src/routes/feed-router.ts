@@ -70,13 +70,18 @@ import { REPLIES_TIMEOUT_MS } from '../services/activitypub/remote-replies.ts'
 import {
   articleDraftPatch,
   emptyArticleDraftContent,
+  normalizeArticleDraftContent,
   publishArticleDraft,
   serializeArticleDraft,
 } from '../services/article-drafts.ts'
 import { buildArticleMarkdown, renderableArticleBlocks } from '../services/article-export.ts'
 import { buildArticleContent, mergeArticleContent } from '../services/article.ts'
 import { resolveChallengeShare } from '../services/challenge-share.ts'
-import { previewExerciseShare, resolveExerciseShare } from '../services/feed-exercise-share.ts'
+import {
+  exerciseShareTags,
+  previewExerciseShare,
+  resolveExerciseShare,
+} from '../services/feed-exercise-share.ts'
 import { MAX_POST_REACTIONS, serializeFeedPostReaction } from '../services/feed-reactions.ts'
 import {
   getFeedPage,
@@ -84,6 +89,14 @@ import {
   previewActivityShare,
   serializeFeedPost,
 } from '../services/feed.ts'
+import {
+  activityKindTag,
+  articleTexts,
+  CHALLENGE_KIND_TAG,
+  loadEditedPostTags,
+  resolvePostTags,
+  retagPost,
+} from '../services/post-tags.ts'
 import { getSettings } from '../services/settings.ts'
 import { getThreadSnapshot, listOwnPostReplies, MAX_POST_REPLIES } from '../services/timeline-replies.ts'
 import { getTimelinePage, reactionTarget } from '../services/timeline.ts'
@@ -336,7 +349,9 @@ export const createFeedRouter = (
     validateBody(createArticleDraftBodySchema),
     async (req, res) => {
       const record = await createArticleDraft(req.user!, {
-        article: req.body.article ?? emptyArticleDraftContent(),
+        article: req.body.article
+          ? normalizeArticleDraftContent(req.body.article)
+          : emptyArticleDraftContent(),
         visibility: req.body.visibility,
       })
       res.json({ draft: serializeArticleDraft(record), success: true })
@@ -389,7 +404,7 @@ export const createFeedRouter = (
       const result = await publishArticleDraft(user, req.params.id, req.body)
       if (!result.ok) return res.status(result.status).json({ error: result.error, success: false })
       deliver?.createdArticle(user, result.post)
-      res.json({ post: await serializeFeedPost(user, result.post), success: true })
+      res.json({ post: await serializeFeedPost(user, result.post, { webHost }), success: true })
     },
   )
 
@@ -444,19 +459,28 @@ export const createFeedRouter = (
       if (!activity) {
         return res.status(404).json({ error: 'Activity not found', success: false })
       }
+      const message = normalizeFeedMessage(req.body.message) ?? null
       const record = await createFeedPost(user, {
         activity_id: activity.id ?? req.params.id,
         include_chart: req.body.include_chart,
         include_exercises: req.body.include_exercises,
         include_map: req.body.include_map,
         included_metrics: req.body.included_metrics,
-        message: normalizeFeedMessage(req.body.message) ?? null,
+        message,
         series_metrics: req.body.series_metrics,
+        tags: await resolvePostTags(user, {
+          explicit: req.body.tags,
+          kindTag: activityKindTag(activity.activity_type),
+          texts: [message],
+        }),
         visibility: req.body.visibility,
       })
       // Fan the post out to followers (best-effort; never blocks the response).
       deliver?.created(user, record, activity)
-      res.json({ post: await serializeFeedPost(user, record, { includeStructured: true }), success: true })
+      res.json({
+        post: await serializeFeedPost(user, record, { includeStructured: true, webHost }),
+        success: true,
+      })
     },
   )
 
@@ -472,11 +496,17 @@ export const createFeedRouter = (
       if (!activity) {
         return res.status(404).json({ error: 'Activity not found', success: false })
       }
-      const preview = await previewActivityShare(user, activity, {
-        include_exercises: req.body.include_exercises,
-        included_metrics: req.body.included_metrics,
-        ...(req.body.message === undefined ? {} : { message: req.body.message }),
-      })
+      const preview = await previewActivityShare(
+        user,
+        activity,
+        {
+          include_exercises: req.body.include_exercises,
+          included_metrics: req.body.included_metrics,
+          ...(req.body.message === undefined ? {} : { message: req.body.message }),
+          ...(req.body.tags === undefined ? {} : { tags: req.body.tags }),
+        },
+        webHost,
+      )
       res.json({ ...preview, success: true })
     },
   )
@@ -493,14 +523,20 @@ export const createFeedRouter = (
       const user = req.user!
       const resolved = await resolveChallengeShare(user, req.body, webHost)
       if (!resolved.ok) return res.status(resolved.status).json({ error: resolved.error, success: false })
+      const message = normalizeFeedMessage(req.body.message) ?? null
       const record = await createChallengePost(user, {
         challenge: resolved.challenge,
         include_chart: req.body.include_chart,
-        message: normalizeFeedMessage(req.body.message) ?? null,
+        message,
+        tags: await resolvePostTags(user, {
+          explicit: req.body.tags,
+          kindTag: CHALLENGE_KIND_TAG,
+          texts: [message],
+        }),
         visibility: req.body.visibility,
       })
       deliver?.createdChallenge(user, record)
-      res.json({ post: await serializeFeedPost(user, record), success: true })
+      res.json({ post: await serializeFeedPost(user, record, { webHost }), success: true })
     },
   )
 
@@ -518,10 +554,14 @@ export const createFeedRouter = (
         exercise: resolved.exercise,
         include_chart: req.body.include_chart,
         message: normalizeFeedMessage(req.body.message) ?? null,
+        tags: await exerciseShareTags(user, resolved.exercise, req.body),
         visibility: req.body.visibility,
       })
       deliver?.createdExercise(user, record)
-      res.json({ post: await serializeFeedPost(user, record, { includeStructured: true }), success: true })
+      res.json({
+        post: await serializeFeedPost(user, record, { includeStructured: true, webHost }),
+        success: true,
+      })
     },
   )
 
@@ -532,7 +572,12 @@ export const createFeedRouter = (
     async (req, res) => {
       const preview = await previewExerciseShare(req.user!, req.body, webHost)
       if (!preview.ok) return res.status(preview.status).json({ error: preview.error, success: false })
-      res.json({ content: preview.content, structured: preview.structured, success: true })
+      res.json({
+        content: preview.content,
+        structured: preview.structured,
+        success: true,
+        tags: preview.tags,
+      })
     },
   )
 
@@ -555,10 +600,11 @@ export const createFeedRouter = (
       if (!built.ok) return res.status(400).json({ error: built.error, success: false })
       const record = await createArticlePost(user, {
         article: built.article,
+        tags: await resolvePostTags(user, { explicit: req.body.tags, texts: articleTexts(built.article) }),
         visibility: req.body.visibility,
       })
       deliver?.createdArticle(user, record)
-      res.json({ post: await serializeFeedPost(user, record), success: true })
+      res.json({ post: await serializeFeedPost(user, record, { webHost }), success: true })
     },
   )
 
@@ -576,11 +622,17 @@ export const createFeedRouter = (
       if (!built.ok) return res.status(400).json({ error: built.error, success: false })
       const record = await updateFeedPost(user, req.params.postId, {
         article: built.article,
+        tags: retagPost({
+          after: articleTexts(built.article),
+          before: articleTexts(existing.article),
+          explicit: req.body.tags,
+          stored: existing.tags,
+        }),
         visibility: req.body.visibility,
       })
       if (!record) return res.status(404).json({ error: 'Article not found', success: false })
       deliver?.updatedArticle(user, record)
-      res.json({ post: await serializeFeedPost(user, record), success: true })
+      res.json({ post: await serializeFeedPost(user, record, { webHost }), success: true })
     },
   )
 
@@ -631,13 +683,17 @@ export const createFeedRouter = (
     validateBody(updateFeedPostBodySchema),
     async (req, res) => {
       const user = req.user!
+      const message = normalizeFeedMessage(req.body.message)
+      const retag = await loadEditedPostTags(user, req.params.postId, { message, tags: req.body.tags })
+      if (!retag.found) return res.status(404).json({ error: 'Feed post not found', success: false })
       const record = await updateFeedPost(user, req.params.postId, {
         include_chart: req.body.include_chart,
         include_exercises: req.body.include_exercises,
         include_map: req.body.include_map,
         included_metrics: req.body.included_metrics,
-        message: normalizeFeedMessage(req.body.message),
+        message,
         series_metrics: req.body.series_metrics,
+        tags: retag.tags,
         visibility: req.body.visibility,
       })
       if (!record) {
@@ -652,7 +708,10 @@ export const createFeedRouter = (
       else if (record.kind === 'exercise') deliver?.updatedExercise(user, record)
       else if (record.kind === 'reply') deliver?.updatedReply(user, record)
       else deliver?.updated(user, record)
-      res.json({ post: await serializeFeedPost(user, record, { includeStructured: true }), success: true })
+      res.json({
+        post: await serializeFeedPost(user, record, { includeStructured: true, webHost }),
+        success: true,
+      })
     },
   )
 

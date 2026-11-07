@@ -45,6 +45,12 @@ describe('buildExerciseShareBody', () => {
     expect(buildExerciseShareBody({ ...form, published: false }).include_link).toBe(false)
   })
 
+  test('sends tags only when given', () => {
+    expect(buildExerciseShareBody(form)).not.toHaveProperty('tags')
+    expect(buildExerciseShareBody({ ...form, tags: [] }).tags).toEqual([])
+    expect(buildExerciseShareBody({ ...form, tags: ['pr'] }).tags).toEqual(['pr'])
+  })
+
   test('includes no link when it is unchecked', () => {
     expect(buildExerciseShareBody({ ...form, includeLink: false }).include_link).toBe(false)
   })

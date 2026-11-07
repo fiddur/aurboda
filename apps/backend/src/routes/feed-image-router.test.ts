@@ -54,6 +54,7 @@ const makePost = (overrides: Partial<FeedPostRecord> = {}): FeedPostRecord => ({
   kind: 'activity',
   message: null,
   series_metrics: [],
+  tags: [],
   updated_at: new Date('2026-07-01T08:00:00Z'),
   visibility: 'public',
   ...overrides,

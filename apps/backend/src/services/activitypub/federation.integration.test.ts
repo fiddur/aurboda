@@ -4,7 +4,7 @@
  */
 import { integrateFederation } from '@fedify/express'
 import { getDefaultActivityTransformers } from '@fedify/fedify'
-import { type Activity, Create, Follow, Mention, Note, Person, Update } from '@fedify/fedify/vocab'
+import { type Activity, Create, Follow, Hashtag, Mention, Note, Person, Update } from '@fedify/fedify/vocab'
 import express from 'express'
 import supertest from 'supertest'
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
@@ -380,6 +380,33 @@ describe('Feed federation actor + WebFinger', () => {
     )
     // The public /series endpoint would 404 a followers-only post, so no links.
     expect(doc.object?.['quant:series']).toBeUndefined()
+  })
+
+  test("an activity Note carries the post's Hashtags and links them in its content", async () => {
+    const user = getTestUser()
+    const activityId = await insertExercise(user)
+    const post = await sharePost(user, activityId, { message: 'Easy #Zone2 run', tags: ['aurboda', 'zone2'] })
+    const ctx = await fed.createContext(new URL(ORIGIN))
+    const activity = {
+      activity_type: 'exercise',
+      end_time: new Date('2026-07-01T07:11:00Z'),
+      start_time: new Date('2026-07-01T06:30:00Z'),
+      title: 'Morning run',
+    }
+    const create = await buildFeedCreate(ctx, user, post, activity, `${ORIGIN}/api`)
+    const note = await create.getObject()
+    expect(note).toBeInstanceOf(Note)
+    if (!(note instanceof Note)) return
+    const names: (string | undefined)[] = []
+    for await (const tag of note.getTags()) {
+      names.push(tag instanceof Hashtag ? tag.name?.toString() : undefined)
+    }
+    expect(names).toEqual(['#aurboda', '#zone2'])
+    const content = note.content?.toString() ?? ''
+    const link = (tag: string, text: string) =>
+      `<a href="${ORIGIN}/u/${user}?tag=${tag}" class="mention hashtag" rel="tag">#<span>${text}</span></a>`
+    expect(content).toContain(`Easy ${link('zone2', 'Zone2')} run`)
+    expect(content).toContain(`<p>${link('aurboda', 'aurboda')}</p>`)
   })
 
   test('the quant extension survives the transformers Fedify applies before sending (#1040)', async () => {

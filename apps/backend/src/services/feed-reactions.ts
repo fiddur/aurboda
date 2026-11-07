@@ -55,6 +55,7 @@ import { actorUriToHandle } from './activitypub/reply-object.ts'
 import { signedFetchOptions } from './activitypub/signed-lookup.ts'
 import { dateToTemporalInstant } from './activitypub/temporal-interop.ts'
 import { serializeFeedPost } from './feed.ts'
+import { resolvePostTags } from './post-tags.ts'
 import { loadReactionsForRows, ownObjectPrefix, reactionTarget, serializeTimelineEntry } from './timeline.ts'
 import { withTimeout } from './with-timeout.ts'
 
@@ -408,10 +409,11 @@ const reply = async (
     in_reply_to_handle: entry.handle ?? actorUriToHandle(entry.actor_uri),
     in_reply_to_uri: reactionTarget(entry),
     message,
+    tags: await resolvePostTags(user, { reply: true, texts: [message] }),
     visibility: body.visibility,
   })
   deliver?.createdReply(user, record, authorInbox)
-  return { ok: true, post: await serializeFeedPost(user, record) }
+  return { ok: true, post: await serializeFeedPost(user, record, { webHost: deps.origin }) }
 }
 
 /**

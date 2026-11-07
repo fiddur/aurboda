@@ -1,7 +1,9 @@
 import { z } from 'zod'
 
+import { defaultFeedTags, maxPostTags } from '../hashtags.ts'
 import { baseResponseSchema, hrZoneSourceSchema } from './common.ts'
 import { dashboardConfigSchema } from './dashboard.ts'
+import { hashtagInputSchema } from './feed.ts'
 import { goalsSchema } from './goals.ts'
 import { garminDataTypeSchema } from './sync.ts'
 import { trainingLoadSettingsSchema } from './training-load.ts'
@@ -171,6 +173,14 @@ export const updateSettingsInputSchema = z
       description:
         'Unified icon mappings for all timeline items — tags, activities, exercise types (set to null to clear all)',
     }),
+    feed_default_tags: z.array(hashtagInputSchema).max(maxPostTags).nullable().optional().meta({
+      description:
+        'Hashtags every feed post gets automatically, e.g. `["aurboda"]` (stored lowercase without `#`; empty for none; set to null to reset to `["aurboda"]`)',
+    }),
+    feed_type_tag: z.boolean().nullable().optional().meta({
+      description:
+        "Whether a shared activity also gets its type as a hashtag (e.g. `#running`), an exercise share the exercise's name and a challenge share `#challenge` (set to null to reset to the default, true)",
+    }),
     food_sensitivity_map: foodSensitivityMapSchema.nullable().optional().meta({
       description: 'Food-to-sensitivity mapping (set to null to clear)',
     }),
@@ -234,6 +244,14 @@ export const userSettingsResponseSchema = baseResponseSchema
       .nullable()
       .default(null)
       .meta({ description: 'Custom dashboard configuration (null = use default)' }),
+    feed_default_tags: z
+      .array(z.string())
+      .default([...defaultFeedTags])
+      .meta({ description: 'Hashtags every feed post gets automatically (lowercase, without `#`)' }),
+    feed_type_tag: z.boolean().default(true).meta({
+      description:
+        "Whether a shared activity also gets its type as a hashtag (an exercise share the exercise's name, a challenge share `#challenge`)",
+    }),
     food_sensitivity_map: foodSensitivityMapSchema
       .default({})
       .meta({ description: 'Food-to-sensitivity mapping' }),
