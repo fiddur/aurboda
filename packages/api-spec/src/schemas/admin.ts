@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { baseResponseSchema, dateOnlySchema, iso8601DateTimeSchema } from './common.ts'
+import { officialFeedSettingSchema } from './feed.ts'
 import { adminUserPlanShape } from './plans.ts'
 
 export const signupModeSchema = z.enum(['open', 'invite_only', 'closed']).meta({
@@ -13,11 +14,6 @@ export type SignupMode = z.infer<typeof signupModeSchema>
 
 export const serverStatusResponseSchema = baseResponseSchema
   .extend({
-    blog_username: z
-      .string()
-      .nullable()
-      .optional()
-      .meta({ description: "Username whose public articles are this instance's blog (null when unset)" }),
     federation: z
       .boolean()
       .optional()
@@ -26,6 +22,10 @@ export const serverStatusResponseSchema = baseResponseSchema
       .literal('aurboda')
       .optional()
       .meta({ description: 'Product identifier for federation discovery' }),
+    official_feed: z
+      .boolean()
+      .optional()
+      .meta({ description: 'Whether this instance has an official feed (its blog, at `/blog`)' }),
     signup_allowed: z
       .boolean()
       .meta({ description: 'Whether signup is allowed (deprecated, use signupMode)' }),
@@ -117,10 +117,6 @@ export const adminSettingsResponseSchema = baseResponseSchema
       description:
         'Whether accounts are billed: new accounts get a free trial, then become read-only unless paid',
     }),
-    blog_username: z
-      .string()
-      .nullable()
-      .meta({ description: "Username whose public articles are this instance's blog (null when unset)" }),
     grace_days: z
       .number()
       .int()
@@ -139,6 +135,7 @@ export const adminSettingsResponseSchema = baseResponseSchema
       description: 'Whether Oura webhook push can be enabled (requires HTTPS and Oura credentials)',
     }),
     oura_webhook_enabled: z.boolean().meta({ description: 'Whether Oura webhook push sync is enabled' }),
+    official_feed: officialFeedSettingSchema,
     payment_url: z
       .string()
       .meta({ description: 'Where users pay, e.g. a Patreon page (empty when not set)' }),
@@ -175,7 +172,7 @@ export const updateAdminSettingsBodySchema = z
     }),
     blog_username: z.string().min(1).nullable().optional().meta({
       description:
-        "Username whose public articles are this instance's blog, linked from the front page and footer (set to null to clear)",
+        'Deprecated, use `official_feed`: sets the official feed to this one user with no tag filter (null turns it off). Ignored when `official_feed` is given.',
     }),
     grace_days: z
       .number()
@@ -213,6 +210,9 @@ export const updateAdminSettingsBodySchema = z
       .boolean()
       .optional()
       .meta({ description: 'Enable or disable Oura webhook push sync' }),
+    official_feed: officialFeedSettingSchema
+      .optional()
+      .meta({ description: 'Replace the official feed setting; empty `users` turns it off' }),
     payment_url: z
       .union([z.literal(''), z.url({ protocol: /^https$/ })])
       .optional()

@@ -10,6 +10,11 @@ const tokens = (text: string): string[] => text.split(/[\s,]+/).filter(Boolean)
 
 export const parseTagsInput = (text: string): string[] => normalizeTags(tokens(text))
 
+/** Like {@link parseTagsInput} without the per-post cap: a filter may list more tags than a post carries. */
+export const parseTagFilterInput = (text: string): string[] => [
+  ...new Set(tokens(text).flatMap((token) => normalizeTag(token) ?? [])),
+]
+
 export const formatTagsInput = (tags: readonly string[]): string => tags.map((tag) => `#${tag}`).join(' ')
 
 /** The words of the input that are not tags (shown as a warning; they are dropped). */

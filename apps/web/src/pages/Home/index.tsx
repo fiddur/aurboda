@@ -1,11 +1,11 @@
 import { dataSources } from '@aurboda/api-spec'
 import { useEffect } from 'preact/hooks'
 
-import { blogPath } from '../../state/api/blogUrls'
+import { officialFeedPath } from '../../state/api/blogUrls'
 import {
   auth,
-  blogUsername,
   ensureStatusLoaded,
+  officialFeedEnabled,
   serverBilling,
   type SignupMode,
   signupMode,
@@ -86,7 +86,7 @@ function SignupCallout({ mode }: { mode: SignupMode | undefined }) {
   )
 }
 
-function GuestHome({ blogUser }: { blogUser: string | null }) {
+function GuestHome({ hasBlog }: { hasBlog: boolean }) {
   return (
     <>
       <section class="intro">
@@ -205,10 +205,10 @@ function GuestHome({ blogUser }: { blogUser: string | null }) {
           <a href="https://github.com/fiddur/aurboda" target="_blank" rel="noopener noreferrer">
             View on GitHub
           </a>
-          {blogUser && (
+          {hasBlog && (
             <>
               {' · '}
-              <a href={blogPath(blogUser)}>Read the blog</a>
+              <a href={officialFeedPath}>Read the blog</a>
             </>
           )}
         </p>
@@ -363,7 +363,7 @@ export function Home() {
 
       <SignupCallout mode={signupMode.value} />
 
-      <GuestHome blogUser={blogUsername.value} />
+      <GuestHome hasBlog={officialFeedEnabled.value} />
     </div>
   )
 }

@@ -1,3 +1,6 @@
+/** Path of the instance's official feed, its blog. */
+export const officialFeedPath = '/blog'
+
 /** Path of a user's blog view: their public articles. */
 export const blogPath = (username: string): string => `/u/${encodeURIComponent(username)}/articles`
 
@@ -8,6 +11,16 @@ export const blogPath = (username: string): string => `/u/${encodeURIComponent(u
  */
 export const buildArticlesAtomUrl = (username: string, apiUrl: string, pageOrigin: string): string => {
   const path = `${apiUrl.replace(/\/+$/, '')}/public/${encodeURIComponent(username)}/articles.atom`
+  try {
+    return new URL(path, pageOrigin).toString()
+  } catch {
+    return path
+  }
+}
+
+/** Absolute URL of the official feed's Atom document, resolved like {@link buildArticlesAtomUrl}. */
+export const buildOfficialFeedAtomUrl = (apiUrl: string, pageOrigin: string): string => {
+  const path = `${apiUrl.replace(/\/+$/, '')}/public/official-feed.atom`
   try {
     return new URL(path, pageOrigin).toString()
   } catch {

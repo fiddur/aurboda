@@ -341,6 +341,22 @@ describe('Feed posts integration', () => {
       expect(await listPublicFeedPostsKeyset(user, 10, undefined, { tag: 'nope' })).toEqual([])
     })
 
+    test('listPublicFeedPostsKeyset filters by any of several hashtags, public posts only', async () => {
+      const user = getTestUser()
+      const running = await createFeedPost(user, postInput({ tags: ['aurboda', 'running'] }))
+      const qs = await createArticlePost(user, articleInput({ tags: ['qs'] }))
+      await createFeedPost(user, postInput({ tags: ['other'] }))
+      await createFeedPost(user, postInput({ tags: ['aurboda'], visibility: 'unlisted' }))
+      await createFeedPost(user, postInput({ tags: ['qs'], visibility: 'followers' }))
+
+      const ids = async (anyTags: string[]) =>
+        (await listPublicFeedPostsKeyset(user, 10, undefined, { anyTags, publicOnly: true })).map((p) => p.id)
+      expect(await ids(['aurboda', 'qs'])).toEqual([qs.id, running.id])
+      expect(await ids(['running'])).toEqual([running.id])
+      expect(await ids(['nope'])).toEqual([])
+      expect(await ids([])).toHaveLength(3)
+    })
+
     test('listPublicFeedPostsKeyset and countPublicFeedPosts filter by kind for the blog view', async () => {
       const user = getTestUser()
       await createFeedPost(user, postInput())

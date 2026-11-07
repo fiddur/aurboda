@@ -9,7 +9,7 @@
  * callers must resolve visibility first and never pass a private resource in.
  */
 
-import type { ChallengeTimeStatus } from '@aurboda/api-spec'
+import type { ChallengeTimeStatus, OfficialFeedSetting } from '@aurboda/api-spec'
 
 export const SITE_NAME = 'Aurboda'
 
@@ -267,6 +267,50 @@ export const buildBlogShareMeta = ({ feedUrl, profileUrl, url, username }: BlogM
     url,
   },
   title: `${username}'s blog — ${SITE_NAME}`,
+  type: 'website',
+  url,
+})
+
+const listWords = (items: string[], conjunction: string): string =>
+  items.length <= 1 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} ${conjunction} ${items.at(-1)}`
+
+/** What the official feed lists, e.g. `Posts from fiddur and alice tagged #aurboda.` */
+export const describeOfficialFeed = ({ tags, users }: OfficialFeedSetting): string =>
+  `Posts from ${listWords(users, 'and')}${
+    tags.length > 0
+      ? ` tagged ${listWords(
+          tags.map((tag) => `#${tag}`),
+          'or',
+        )}`
+      : ''
+  }.`
+
+interface OfficialFeedMetaInput {
+  webHost: string
+  title: string
+  setting: OfficialFeedSetting
+  url: string
+  feedUrl: string
+}
+
+export const buildOfficialFeedShareMeta = ({
+  feedUrl,
+  setting,
+  title,
+  url,
+  webHost,
+}: OfficialFeedMetaInput): ShareMeta => ({
+  description: clampDescription(describeOfficialFeed(setting)),
+  feedUrl,
+  image: defaultOgImage(webHost),
+  imageAlt: title,
+  jsonLd: {
+    '@context': 'https://schema.org',
+    '@type': 'Blog',
+    name: title,
+    url,
+  },
+  title,
   type: 'website',
   url,
 })

@@ -356,6 +356,8 @@ export interface PublicFeedPageOpts {
   kind?: FeedPostKind
   /** Only posts carrying this (normalised) hashtag. */
   tag?: string
+  /** Only posts carrying at least one of these (normalised) hashtags; empty or absent filters nothing. */
+  anyTags?: readonly string[]
   /**
    * Only `public` posts, leaving `unlisted` out: a syndication feed lists what it
    * carries, which an unlisted post must not be.
@@ -405,6 +407,7 @@ export const listPublicFeedPostsKeyset = async (
         AND ($5::text IS NULL OR kind = $5)
         AND (NOT $6::boolean OR visibility = 'public')
         AND ($7::text IS NULL OR tags @> ARRAY[$7::text])
+        AND ($8::text[] IS NULL OR tags && $8::text[])
         AND ($1::timestamptz IS NULL OR (created_at, id) < ($1::timestamptz, $2::uuid))
       ORDER BY created_at DESC, id DESC
       LIMIT $3`,
@@ -416,6 +419,7 @@ export const listPublicFeedPostsKeyset = async (
       opts.kind ?? null,
       opts.publicOnly ?? false,
       opts.tag ?? null,
+      opts.anyTags?.length ? opts.anyTags : null,
     ],
   )
   return result.rows.map(mapFeedPostPageRow)

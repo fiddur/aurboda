@@ -1,5 +1,11 @@
 import type { CentralDb } from './central-db.ts'
 
+import {
+  readOfficialFeedSetting,
+  withoutOfficialFeedUser,
+  writeOfficialFeedSetting,
+} from './official-feed.ts'
+
 export type AccountDeletionError = 'confirmation_mismatch' | 'drop_failed' | 'last_admin' | 'not_found'
 
 export type AccountDeletionResult = { ok: true } | { ok: false; error: AccountDeletionError; message: string }
@@ -112,10 +118,9 @@ export const createAccountDeleter = (deps: AccountDeletionDeps): AccountDeleter 
   const removeCentralData = async (username: string) => {
     const { centralDb } = deps
     await bestEffort('central data removal', username, () => centralDb.deleteAllCentralUserData(username))
-    await bestEffort('blog setting removal', username, async () => {
-      if ((await centralDb.getServerSetting('blog_username')) === username) {
-        await centralDb.setServerSetting('blog_username', '')
-      }
+    await bestEffort('official feed removal', username, async () => {
+      const remaining = withoutOfficialFeedUser(await readOfficialFeedSetting(centralDb), username)
+      if (remaining) await writeOfficialFeedSetting(centralDb, remaining)
     })
   }
 

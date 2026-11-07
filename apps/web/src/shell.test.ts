@@ -12,6 +12,7 @@ describe('shouldShowNav', () => {
   test('hides nav on public share pages for anonymous visitors', () => {
     expect(shouldShowNav('/u/fiddur', false)).toBe(false)
     expect(shouldShowNav('/u/fiddur/a3GVcs14D', false)).toBe(false)
+    expect(shouldShowNav('/blog', false)).toBe(false)
   })
 
   test('keeps nav on public share pages for logged-in users', () => {
@@ -28,7 +29,15 @@ describe('shouldShowPlanBanner', () => {
   })
 
   test('hides on public share pages and the login and legal pages', () => {
-    for (const path of ['/u/fiddur', '/u/fiddur/a3GVcs14D', '/login', '/signup', '/privacy', '/terms']) {
+    for (const path of [
+      '/u/fiddur',
+      '/u/fiddur/a3GVcs14D',
+      '/blog',
+      '/login',
+      '/signup',
+      '/privacy',
+      '/terms',
+    ]) {
       expect(shouldShowPlanBanner(path, true)).toBe(false)
     }
   })

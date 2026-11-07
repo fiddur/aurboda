@@ -13,17 +13,33 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import { insertActivity } from '../db/activities/index.ts'
 import { createArticleDraft } from '../db/article-drafts.ts'
 import { createChallenge } from '../db/challenges.ts'
-import { createArticlePost, createChallengePost, createFeedPost, updateFeedPost } from '../db/feed.ts'
+import {
+  createArticlePost,
+  createChallengePost,
+  createFeedPost,
+  createReplyPost,
+  type FeedPostInput,
+  updateFeedPost,
+} from '../db/feed.ts'
+import { _setDbForUser } from '../db/index.ts'
+import { createRolePool, type UserDb } from '../db/pool.ts'
 import { insertTimeSeries } from '../db/time-series.ts'
 import { configureStructuredChallenge } from '../services/feed-structured-challenge.ts'
-import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
+import {
+  cleanTestDb,
+  createTestDatabase,
+  getTestUser,
+  startTestDb,
+  stopTestDb,
+  type TestDatabase,
+} from '../test/db-test-helper.ts'
 import { createFeedPublicRouter, type FeedPublicRouterDeps } from './feed-public-router.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 const START = new Date('2026-07-01T08:00:00Z')
 const END = new Date('2026-07-01T08:40:00Z')
 
-const startApp = (deps: Pick<FeedPublicRouterDeps, 'renderableBlocks'> = {}) => {
+const startApp = (deps: Pick<FeedPublicRouterDeps, 'readOfficialFeed' | 'renderableBlocks'> = {}) => {
   const app = express()
   app.use(
     createFeedPublicRouter({ apiBaseUrl: 'https://qs.example/api', webHost: 'https://qs.example', ...deps }),
@@ -565,6 +581,158 @@ describe('GET /public/:username/series (QuantPub 0.2)', () => {
       const res = await request.get(`/public/${user}/series`).query({ ...window, metric: 'heartRateAvg' })
       expect(res.status).toBe(404)
       expect(res.body).toEqual({ error: 'Not found', success: false })
+    } finally {
+      await close()
+    }
+  })
+})
+
+describe('GET /public/official-feed', () => {
+  const second = 'seconduser'
+  let secondDb: TestDatabase
+  let secondPool: UserDb
+
+  beforeAll(async () => {
+    await startTestDb()
+    secondDb = await createTestDatabase()
+    secondPool = createRolePool({ connectionString: secondDb.uri, max: 2 })
+    _setDbForUser(second, secondPool)
+  }, CONTAINER_TIMEOUT)
+
+  afterAll(async () => {
+    await secondPool.end()
+    await secondDb.drop()
+    await stopTestDb()
+  })
+
+  beforeEach(async () => {
+    await cleanTestDb()
+    await secondPool.query('TRUNCATE feed_posts CASCADE')
+  })
+
+  const note = (overrides: Partial<FeedPostInput> = {}): FeedPostInput => ({
+    activity_id: null,
+    include_chart: false,
+    include_map: false,
+    included_metrics: [],
+    message: 'A note',
+    series_metrics: [],
+    visibility: 'public',
+    ...overrides,
+  })
+
+  const feedOf = (users: string[], tags: string[] = []) => ({
+    readOfficialFeed: async () => ({ tags, users }),
+  })
+
+  test('404s when the official feed is off', async () => {
+    for (const deps of [{}, feedOf([])]) {
+      const { request, close } = startApp(deps)
+      try {
+        const res = await request.get('/public/official-feed')
+        expect(res.status).toBe(404)
+        expect((await request.get('/public/official-feed.atom')).status).toBe(404)
+      } finally {
+        await close()
+      }
+    }
+  })
+
+  test('merges the users’ public tagged posts newest first, each with its author', async () => {
+    const first = getTestUser()
+    const a1 = await createFeedPost(first, note({ tags: ['aurboda'] }))
+    const b1 = await createFeedPost(second, note({ tags: ['qs', 'running'] }))
+    await createFeedPost(second, note({ tags: ['other'] }))
+    await createFeedPost(first, note({ tags: ['aurboda'], visibility: 'unlisted' }))
+    await createFeedPost(first, note({ tags: ['aurboda'], visibility: 'followers' }))
+    await createReplyPost(first, {
+      in_reply_to_actor_uri: 'https://mastodon.example/users/alice',
+      in_reply_to_uri: 'https://mastodon.example/statuses/1',
+      message: 'Nice! #aurboda',
+      tags: ['aurboda'],
+      visibility: 'public',
+    })
+    const activityPost = await seedPost(first, 'public')
+    await updateFeedPost(first, activityPost, { tags: ['qs'] })
+
+    const { request, close } = startApp(feedOf([first, second], ['aurboda', 'qs']))
+    try {
+      const res = await request.get('/public/official-feed')
+      expect(res.status).toBe(200)
+      expect(res.headers['cache-control']).toBe('no-store')
+      expect(
+        res.body.posts.map((p: { id: string; author_username: string }) => [p.id, p.author_username]),
+      ).toEqual([
+        [activityPost, first],
+        [b1.id, second],
+        [a1.id, first],
+      ])
+      expect(res.body.next_cursor).toBeNull()
+      expect(res.body.users).toEqual([first, second])
+      expect(res.body.tags).toEqual(['aurboda', 'qs'])
+      expect(res.body.posts[0].structured).toMatchObject({ kind: 'activity', name: 'Morning run' })
+    } finally {
+      await close()
+    }
+  })
+
+  test('lists every public post of the users when no tags are set', async () => {
+    const first = getTestUser()
+    await createFeedPost(first, note())
+    await createFeedPost(second, note({ tags: ['anything'] }))
+    const { request, close } = startApp(feedOf([first, second]))
+    try {
+      const res = await request.get('/public/official-feed')
+      expect(res.body.posts).toHaveLength(2)
+    } finally {
+      await close()
+    }
+  })
+
+  test('pages across users with the cursor, never repeating or skipping a post', async () => {
+    const first = getTestUser()
+    const created: string[] = []
+    for (let i = 0; i < 23; i += 1) {
+      created.push((await createFeedPost(i % 3 === 0 ? second : first, note({ message: `post ${i}` }))).id)
+    }
+    const { request, close } = startApp(feedOf([first, second]))
+    try {
+      const page1 = await request.get('/public/official-feed')
+      expect(page1.body.posts).toHaveLength(20)
+      expect(page1.body.next_cursor).toEqual(expect.any(String))
+      const page2 = await request.get('/public/official-feed').query({ cursor: page1.body.next_cursor })
+      expect(page2.body.posts).toHaveLength(3)
+      expect(page2.body.next_cursor).toBeNull()
+      const ids = [...page1.body.posts, ...page2.body.posts].map((p: { id: string }) => p.id)
+      expect(ids).toEqual(created.toReversed())
+    } finally {
+      await close()
+    }
+  })
+
+  test('serves the newest posts as Atom, each entry with its author and a title', async () => {
+    const first = getTestUser()
+    const article = await createArticlePost(first, {
+      article: { blocks: [{ markdown: 'Hello **world**', type: 'prose' }], title: 'An <article>' },
+      tags: ['aurboda'],
+      visibility: 'public',
+    })
+    await createFeedPost(second, note({ message: 'Ran far today #aurboda', tags: ['aurboda'] }))
+    await createFeedPost(second, note({ message: 'Hidden', tags: ['aurboda'], visibility: 'unlisted' }))
+
+    const { request, close } = startApp(feedOf([first, second], ['aurboda']))
+    try {
+      const res = await request.get('/public/official-feed.atom')
+      expect(res.status).toBe(200)
+      expect(res.headers['content-type']).toBe('application/atom+xml; charset=utf-8')
+      expect(res.headers['cache-control']).toBe('public, max-age=300')
+      expect(res.text).toContain('<id>https://qs.example/blog</id>')
+      expect(res.text).toContain(`<id>https://qs.example/u/${first}/posts/${article.id}</id>`)
+      expect(res.text).toContain('<title type="text">An &lt;article&gt;</title>')
+      expect(res.text).toContain('&lt;strong&gt;world&lt;/strong&gt;')
+      expect(res.text).toContain(`<author><name>${second}</name>`)
+      expect(res.text).toContain('<title type="text">Ran far today #aurboda</title>')
+      expect(res.text).not.toContain('Hidden')
     } finally {
       await close()
     }

@@ -108,6 +108,7 @@ import { latestExerciseSession } from '../services/exercise-card.ts'
 import { resolveStandingsChart } from '../services/feed-structured-challenge.ts'
 import { resolveExerciseTrendSeries } from '../services/feed-structured-exercise.ts'
 import { resolveFeedActivity } from '../services/feed.ts'
+import { readOfficialFeedSetting } from '../services/official-feed.ts'
 import { createOgImageRenderer } from '../services/og-image.ts'
 import { getUserTimezone } from '../services/settings.ts'
 import { resolveSharedExerciseData } from '../services/shared-exercise-data.ts'
@@ -262,7 +263,13 @@ export const mountRestRouters = ({
   httpd.use(createChallengeDataRouter())
   // Public feed series must be mounted before the generic /public/:username/:slug
   // resolver so `series` is not matched as a share slug.
-  httpd.use(createFeedPublicRouter({ apiBaseUrl, webHost }))
+  httpd.use(
+    createFeedPublicRouter({
+      apiBaseUrl,
+      readOfficialFeed: () => readOfficialFeedSetting(centralDb),
+      webHost,
+    }),
+  )
   // Public feed-post images (chart / route map), rendered on demand for opted-in
   // public/unlisted posts. Mounted alongside the series router (same guard).
   httpd.use(
@@ -323,6 +330,7 @@ export const mountRestRouters = ({
     createShareHtmlRouter({
       apiBaseUrl,
       loadTemplate: createTemplateLoader(webIndexPath),
+      readOfficialFeed: () => readOfficialFeedSetting(centralDb),
       webHost,
       ...createShareResolvers(),
     }),
