@@ -45,7 +45,7 @@ import {
 } from '../services/challenge-spec.ts'
 import { getChallengeStandings } from '../services/challenge-standings.ts'
 import { buildProfileUrl, buildShareUrl } from '../services/share-urls.ts'
-import { resolveDashboardData } from '../services/shared-dashboard-data.ts'
+import { resolveDashboardView } from '../services/shared-dashboard-data.ts'
 import { resolveSharedExerciseData } from '../services/shared-exercise-data.ts'
 import { isPublicToVisibility } from '../services/visibility.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
@@ -59,6 +59,7 @@ export const sanitizeConfig = (config: DashboardConfig): DashboardConfig => ({
   // Author prose is meant for public viewers — preserve it (section descriptions
   // survive via the section spread below).
   description: config.description,
+  ...(config.period ? { period: config.period } : {}),
   sections: config.sections.map((section) => ({
     ...section,
     widgets: section.widgets.map((widget) =>
@@ -217,7 +218,7 @@ export const createPublicSharesRouter = (webHost: string): TypedRouter => {
     try {
       const dashboard = await getSharedDashboardBySlug(username, slug)
       if (dashboard) {
-        const widgetData = await resolveDashboardData(username, dashboard.config)
+        const view = await resolveDashboardView(username, dashboard.config)
         res.setHeader('Cache-Control', 'public, max-age=60')
         return res.json({
           config: sanitizeConfig(dashboard.config),
@@ -226,7 +227,8 @@ export const createPublicSharesRouter = (webHost: string): TypedRouter => {
           share_url: buildShareUrl(webHost, username, dashboard.slug),
           success: true,
           type: 'dashboard',
-          widget_data: widgetData,
+          widget_data: view.widget_data,
+          ...(view.period ? { period: view.period, window: view.window } : {}),
         })
       }
 

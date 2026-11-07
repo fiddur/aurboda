@@ -419,12 +419,42 @@ export const dashboardSectionSchema = z
 
 export type DashboardSection = z.infer<typeof dashboardSectionSchema>
 
+export const periodGranularitySchema = z.enum(['week', 'month', 'year']).meta({
+  description: 'Calendar period kind: ISO week (Monday start), calendar month or calendar year',
+  id: 'PeriodGranularity',
+})
+
+export type PeriodGranularity = z.infer<typeof periodGranularitySchema>
+
+export const periodKeyPattern = /^\d{4}(-(0[1-9]|1[0-2])|-W(0[1-9]|[1-4]\d|5[0-3]))?$/
+
+export const periodKeySchema = z.string().regex(periodKeyPattern).meta({
+  description: 'A calendar period: 2026-10 (month), 2026-W44 (ISO week) or 2026 (year)',
+  example: '2026-10',
+  id: 'PeriodKey',
+})
+
+export type PeriodKey = z.infer<typeof periodKeySchema>
+
+export const dashboardPeriodSchema = z
+  .object({
+    granularity: periodGranularitySchema,
+  })
+  .meta({
+    description:
+      'Makes the dashboard a calendar-period dashboard: every widget shows one finished period, and widget lookbacks are ignored',
+    id: 'DashboardPeriod',
+  })
+
+export type DashboardPeriod = z.infer<typeof dashboardPeriodSchema>
+
 export const dashboardConfigSchema = z
   .object({
     description: z.string().optional().meta({
       description:
         'Optional author-provided description (plain text). Feeds the shared-page meta description / link preview.',
     }),
+    period: dashboardPeriodSchema.optional(),
     sections: z.array(dashboardSectionSchema).meta({ description: 'Dashboard sections' }),
     version: z.literal(1).meta({ description: 'Config version for future migrations' }),
   })
@@ -439,6 +469,17 @@ export const dashboardResponseSchema = baseResponseSchema
   .meta({ id: 'DashboardResponse' })
 
 export type DashboardResponse = z.infer<typeof dashboardResponseSchema>
+
+export const dashboardDataQuerySchema = z
+  .object({
+    period: periodKeySchema.optional().meta({
+      description:
+        'The finished period to show on a period dashboard (2026-10, 2026-W44 or 2026); the latest finished one when absent. Ignored by a rolling dashboard',
+    }),
+  })
+  .meta({ id: 'DashboardDataQuery' })
+
+export type DashboardDataQuery = z.infer<typeof dashboardDataQuerySchema>
 
 export const updateDashboardInputSchema = dashboardConfigSchema.meta({ id: 'UpdateDashboardInput' })
 

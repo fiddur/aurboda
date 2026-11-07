@@ -6,7 +6,9 @@ import { useState } from 'preact/hooks'
 
 import { EditableDashboard } from '../../components/EditableDashboard'
 import { GetStartedGuide } from '../../components/GetStartedGuide'
-import { fetchDashboard, resetDashboard, saveDashboard } from '../../state/api'
+import { PeriodDashboardBar } from '../../components/PeriodSwitcher'
+import { usePeriodDashboard } from '../../components/usePeriodDashboard'
+import { fetchDashboard, fetchDashboardData, resetDashboard, saveDashboard } from '../../state/api'
 import { auth } from '../../state/auth'
 import { readCachedDashboard, writeCachedDashboard } from '../../state/dashboardCache'
 import './style.css'
@@ -35,6 +37,7 @@ export function Dashboard() {
     onSuccess: (data) => {
       writeCachedDashboard(browserStorage, user, data)
       queryClient.setQueryData(['dashboard'], data)
+      void queryClient.invalidateQueries({ queryKey: ['dashboardData', 'home'] })
     },
   })
 
@@ -43,11 +46,13 @@ export function Dashboard() {
     onSuccess: (data) => {
       writeCachedDashboard(browserStorage, user, data)
       queryClient.setQueryData(['dashboard'], data)
+      void queryClient.invalidateQueries({ queryKey: ['dashboardData', 'home'] })
     },
   })
 
   const dashboard: DashboardConfig = dashboardQuery.data ?? defaultDashboardConfig
   const isLoading = dashboardQuery.isLoading
+  const period = usePeriodDashboard('home', dashboard, fetchDashboardData)
 
   const handleReset = () => {
     if (confirm('Reset dashboard to default configuration? Your customizations will be lost.')) {
@@ -90,6 +95,8 @@ export function Dashboard() {
 
       {!isEditing && <GetStartedGuide />}
 
+      {!isLoading && period && <PeriodDashboardBar state={period} />}
+
       {isLoading && <div class="loading">Loading your dashboard...</div>}
 
       {!isLoading && (
@@ -98,6 +105,8 @@ export function Dashboard() {
           isEditing={isEditing}
           boardId="home"
           onChange={(next) => saveMutation.mutate(next)}
+          widgetData={period?.widgetData}
+          periodLabel={period?.periodLabel}
         />
       )}
     </div>

@@ -8,6 +8,9 @@ import type { RequestHandler } from 'express'
 import {
   type CreateSharedDashboardBody,
   createSharedDashboardBodySchema,
+  type DashboardDataQuery,
+  dashboardDataQuerySchema,
+  type DashboardDataResponse,
   type SharedDashboard,
   type SharedDashboardResponse,
   type SharedDashboardsResponse,
@@ -24,10 +27,12 @@ import {
   listSharedDashboards,
   updateSharedDashboard,
 } from '../db/index.ts'
+import { PeriodError } from '../services/periods.ts'
 import { buildShareUrl } from '../services/share-urls.ts'
+import { resolveDashboardView } from '../services/shared-dashboard-data.ts'
 import { isPublicToVisibility, visibilityToIsPublic } from '../services/visibility.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
-import { validateBody } from '../validation.ts'
+import { validateBody, validateQuery } from '../validation.ts'
 
 const serialize = (record: SharedDashboardRecord, webHost: string, username: string): SharedDashboard => ({
   config: record.config,
@@ -75,6 +80,27 @@ export const createSharedDashboardsRouter = (
     }
     res.json({ dashboard: serialize(record, webHost, user), success: true })
   })
+
+  router.get<{ id: string }, DashboardDataResponse, unknown, DashboardDataQuery>(
+    '/:id/data',
+    authMiddleware,
+    validateQuery(dashboardDataQuerySchema),
+    async (req, res) => {
+      const user = req.user!
+      const record = await getSharedDashboardById(user, req.params.id)
+      if (!record) {
+        return res.status(404).json({ error: 'Shared dashboard not found', success: false })
+      }
+      try {
+        res.json({ ...(await resolveDashboardView(user, record.config, req.query.period)), success: true })
+      } catch (error) {
+        if (error instanceof PeriodError) {
+          return res.status(400).json({ error: error.message, success: false })
+        }
+        throw error
+      }
+    },
+  )
 
   router.put<{ id: string }, SharedDashboardResponse, UpdateSharedDashboardBody>(
     '/:id',

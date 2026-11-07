@@ -1,3 +1,4 @@
+import { defaultDashboardConfig } from '@aurboda/api-spec'
 import { Ajv2020 } from 'ajv/dist/2020.js'
 import express from 'express'
 import request from 'supertest'
@@ -13,7 +14,9 @@ import { createMcpRouter, trimToolCallArguments } from './mcp.ts'
 import * as activityRecords from './services/activity-records.ts'
 import * as latestSleep from './services/latest-sleep.ts'
 import * as mutations from './services/mutations.ts'
+import { PeriodError } from './services/periods.ts'
 import * as queries from './services/queries/index.ts'
+import * as dashboardData from './services/shared-dashboard-data.ts'
 import { createUsageRecorder, installUsageRecorder, type UsageRow } from './services/usage-recorder.ts'
 
 vi.mock('./services/queries/index', async () => ({
@@ -129,6 +132,10 @@ vi.mock('./services/activity-records', async (importOriginal) => ({
 
 vi.mock('./services/latest-sleep', () => ({
   getLatestSleep: vi.fn(),
+}))
+
+vi.mock('./services/shared-dashboard-data', () => ({
+  resolveDashboardView: vi.fn(),
 }))
 
 vi.mock('./oura-sync', () => ({
@@ -1067,6 +1074,37 @@ describe('MCP Server', () => {
         filter_field: 'sets.exercise',
         filter_value: 'Bench Press',
       })
+    })
+
+    test('get_dashboard_data resolves the home dashboard over the asked period', async () => {
+      vi.mocked(dashboardData.resolveDashboardView).mockResolvedValueOnce({
+        period: '2026-10',
+        widget_data: {},
+        window: { end: '2026-10-31T23:00:00.000Z', start: '2026-09-30T22:00:00.000Z' },
+      })
+
+      const response = await callTool(createTestApp(), auth.createToken('testuser'), 'get_dashboard_data', {
+        period: '2026-10',
+        tz: 'UTC',
+      })
+
+      expect(JSON.parse(response.text)).toMatchObject({ period: '2026-10', widget_data: {} })
+      expect(dashboardData.resolveDashboardView).toHaveBeenCalledWith(
+        'testuser',
+        defaultDashboardConfig,
+        '2026-10',
+      )
+    })
+
+    test('get_dashboard_data answers an unfinished period with an error', async () => {
+      vi.mocked(dashboardData.resolveDashboardView).mockRejectedValueOnce(new PeriodError('not_finished'))
+
+      const response = await callTool(createTestApp(), auth.createToken('testuser'), 'get_dashboard_data', {
+        period: '2026-11',
+        tz: 'UTC',
+      })
+
+      expect(response.text).toBe('Period has not finished yet')
     })
 
     test('get_activity_records rejects a filter field without a value', async () => {

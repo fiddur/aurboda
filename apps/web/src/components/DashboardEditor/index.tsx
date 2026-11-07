@@ -8,6 +8,7 @@ import { useState } from 'preact/hooks'
 
 import { getMetricDisplayName } from '../../utils/metricLabels'
 import { MetricPicker } from '../MetricPicker'
+import { offeredWidgetTypes } from './periodWidgets'
 import { blankRequiredFields } from './requiredConfig'
 import './style.css'
 
@@ -16,6 +17,8 @@ interface DashboardEditorProps {
   sectionType: SectionType
   onAddWidget: (widget: DashboardWidget) => void
   onClose: () => void
+  /** A period dashboard: hide the widgets that have no meaning for a past period. */
+  periodMode?: boolean
 }
 
 const metricCardUnits: Record<string, string> = {
@@ -179,11 +182,19 @@ const linkOptions = [
   { icon: 'settings', label: 'Settings', value: '/settings' },
 ]
 
-export function DashboardEditor({ sectionType, onAddWidget, onClose }: DashboardEditorProps) {
+export function DashboardEditor({
+  sectionType,
+  onAddWidget,
+  onClose,
+  periodMode = false,
+}: DashboardEditorProps) {
   const [selectedTemplate, setSelectedTemplate] = useState<WidgetTemplate | null>(null)
   const [configValues, setConfigValues] = useState<Record<string, unknown>>({})
 
-  const availableTemplates = widgetTemplates.filter((t) => t.allowedSections.includes(sectionType))
+  const availableTemplates = offeredWidgetTypes(
+    widgetTemplates.filter((t) => t.allowedSections.includes(sectionType)),
+    periodMode,
+  )
 
   const handleSelectTemplate = (template: WidgetTemplate) => {
     setSelectedTemplate(template)

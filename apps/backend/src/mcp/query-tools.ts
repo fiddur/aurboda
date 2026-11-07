@@ -239,7 +239,7 @@ category filters to runs carrying that run category (low_hr, intervals, long, te
 
   server.tool(
     'get_activity_records',
-    'The best value of each record measure (e1rm, max_weight, max_time, max_reps) for one activity type, optionally one item value such as sets.exercise = Bench Press, with the date and set that reached it and the session it was reached in. filter_field + filter_value narrow to one value ("(none)" for sessions without one); start limits it to sessions from then on, all time when omitted.',
+    'The best value of each record measure (e1rm, max_weight, max_time, max_reps) for one activity type, optionally one item value such as sets.exercise = Bench Press, with the date and set that reached it and the session it was reached in. filter_field + filter_value narrow to one value ("(none)" for sessions without one); start and end limit it to sessions in that range, all time when omitted.',
     { activity_type: activityTypeSchema, ...activityRecordsQuerySchema.shape, tz: tzSchema },
     async ({ activity_type, tz, ...query }) => {
       if ((query.filter_field === undefined) !== (query.filter_value === undefined)) {

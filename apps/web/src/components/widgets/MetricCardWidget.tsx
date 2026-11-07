@@ -83,6 +83,13 @@ const computeDisplay = (
   }
 }
 
+/** `Previous: <value>` in the headline's format, on a period dashboard. */
+const previousSubtitle = (metric: string, data: MetricCardData | null, unit: string | undefined) => {
+  if (typeof data?.previous_value !== 'number') return undefined
+  const { display } = computeDisplay(metric, { ...data, value: data.previous_value })
+  return display === null ? undefined : `Previous: ${display}${unit ? ` ${unit}` : ''}`
+}
+
 interface MetricCardViewProps {
   config: MetricCardConfig
   data: MetricCardData | null
@@ -93,6 +100,7 @@ export function MetricCardView({ config, data, loading = false }: MetricCardView
   const { metric, title, unit, subtitle: configSubtitle, trend_inverse } = config
   const trend = data?.trend_percent ?? null
   const { display, dynamicSubtitle } = computeDisplay(metric, data)
+  const subtitle = configSubtitle ?? previousSubtitle(metric, data, unit) ?? dynamicSubtitle
 
   return (
     <div class="metric-card">
@@ -112,9 +120,7 @@ export function MetricCardView({ config, data, loading = false }: MetricCardView
           <span class="no-data">No data</span>
         )}
       </div>
-      {(configSubtitle || dynamicSubtitle) && (
-        <div class="metric-subtitle">{configSubtitle ?? dynamicSubtitle}</div>
-      )}
+      {subtitle && <div class="metric-subtitle">{subtitle}</div>}
     </div>
   )
 }
