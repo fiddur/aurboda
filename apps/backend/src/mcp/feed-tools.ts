@@ -340,7 +340,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
       tags: postTagsInputSchema
         .optional()
         .describe(
-          "Hashtags the article gets when published, replacing your default tags; omitted keeps the draft's",
+          "Hashtags the article gets when published, replacing your default tags; omitted keeps the draft's. A draft given tags here cannot be set back to the default tags over MCP (the REST PATCH can, with `tags: null`)",
         ),
     },
     async ({ id, ...body }) => {
