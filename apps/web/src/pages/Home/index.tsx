@@ -1,341 +1,456 @@
 import { dataSources } from '@aurboda/api-spec'
-import { useEffect } from 'preact/hooks'
+import { useEffect, useRef } from 'preact/hooks'
 
+import { guestSignup, type GuestSignup, heroBillingLine } from '../../components/guest-signup'
 import { blogPath } from '../../state/api/blogUrls'
-import {
-  auth,
-  blogUsername,
-  ensureStatusLoaded,
-  serverBilling,
-  type SignupMode,
-  signupMode,
-} from '../../state/auth'
-import { signupBillingLine } from '../../utils/plan'
+import { auth, blogUsername, ensureStatusLoaded, serverBilling, signupMode } from '../../state/auth'
 import { Dashboard } from '../Dashboard'
 import './style.css'
 
-/** Every screenshot has a `.webp` sibling in `public/screenshots/`; the original is the fallback. */
-function Screenshot({
-  src,
-  alt,
-  caption,
-  className,
-  width,
-  height,
-  eager = false,
-}: {
-  src: string
-  alt: string
-  caption: string
-  className?: string
+const SHOTS = '/screenshots/welcome'
+const PHONE = '(max-width: 640px)'
+const DARK = '(prefers-color-scheme: dark)'
+const GITHUB = 'https://github.com/fiddur/aurboda'
+const APK_URL = 'https://github.com/fiddur/aurboda/releases/latest/download/aurboda.apk'
+
+interface ShotFile {
+  name: string
   width: number
   height: number
+}
+
+const DASHBOARD: ShotFile = { height: 992, name: 'dashboard', width: 1600 }
+const TIMELINE_DAY: ShotFile = { height: 1101, name: 'timeline-day', width: 1600 }
+const CORRELATIONS: ShotFile = { height: 858, name: 'correlations', width: 1600 }
+const CHALLENGE: ShotFile = { height: 1107, name: 'challenge', width: 1600 }
+const FEED_POST: ShotFile = { height: 789, name: 'feed-post', width: 1000 }
+const PLACES: ShotFile = { height: 1047, name: 'places', width: 1600 }
+const TIMELINE_MOBILE: ShotFile = { height: 895, name: 'timeline-mobile', width: 600 }
+
+const shotUrl = (name: string, theme: 'light' | 'dark') => `${SHOTS}/${name}-${theme}.webp`
+
+const prefersDark = (): boolean => {
+  try {
+    return window.matchMedia(DARK).matches
+  } catch {
+    return false
+  }
+}
+
+/** A light/dark screenshot that opens the full image; `phone` swaps in another shot on narrow screens. */
+function Shot({
+  shot,
+  alt,
+  className,
+  eager = false,
+  phone,
+}: {
+  shot: ShotFile
+  alt: string
+  className?: string
   eager?: boolean
+  phone?: ShotFile
 }) {
   return (
-    <figure class={className}>
-      <a href={src} target="_blank" rel="noopener noreferrer">
-        <picture>
-          <source type="image/webp" srcset={src.replace(/\.(jpg|png)$/, '.webp')} />
-          <img
-            src={src}
-            alt={alt}
-            width={width}
-            height={height}
-            loading={eager ? 'eager' : 'lazy'}
-            decoding="async"
+    <a
+      href={shotUrl(shot.name, prefersDark() ? 'dark' : 'light')}
+      target="_blank"
+      rel="noopener noreferrer"
+      class={`welcome-shot${className ? ` ${className}` : ''}`}
+    >
+      <picture>
+        {phone && (
+          <source
+            media={`${PHONE} and ${DARK}`}
+            srcset={shotUrl(phone.name, 'dark')}
+            width={phone.width}
+            height={phone.height}
           />
-        </picture>
-      </a>
-      <figcaption>{caption}</figcaption>
-    </figure>
+        )}
+        {phone && (
+          <source
+            media={PHONE}
+            srcset={shotUrl(phone.name, 'light')}
+            width={phone.width}
+            height={phone.height}
+          />
+        )}
+        <source media={DARK} srcset={shotUrl(shot.name, 'dark')} width={shot.width} height={shot.height} />
+        <img
+          src={shotUrl(shot.name, 'light')}
+          alt={alt}
+          width={shot.width}
+          height={shot.height}
+          loading={eager ? 'eager' : 'lazy'}
+          decoding="async"
+        />
+      </picture>
+    </a>
   )
 }
 
-const contactLink = (
-  <a href="https://www.reddit.com/user/fiddur/" target="_blank" rel="noopener noreferrer">
-    reddit
-  </a>
-)
+const SOURCE_CHIPS = [
+  'Garmin',
+  'Oura',
+  'Strava',
+  'Android Health Connect',
+  'ActivityWatch',
+  'Last.fm',
+  'Calendars',
+  'OwnTracks',
+  'RescueTime',
+]
 
-function SignupCallout({ mode }: { mode: SignupMode | undefined }) {
-  if (mode === undefined) return null
-  if (mode === 'open') {
-    const billing = signupBillingLine(serverBilling.value)
+const LOG_CHIPS = [
+  'Coffee after 3 pm',
+  'Painkiller',
+  'Headache',
+  'Alcohol',
+  'Sauna',
+  'Meditation',
+  'Sex',
+  'Period',
+]
+
+function HeroSignup({ signup }: { signup: GuestSignup }) {
+  const howItWorks = (
+    <a href="#how" class="welcome-button welcome-button-outline">
+      How it works
+    </a>
+  )
+
+  if (signup.mode === 'open') {
+    const billing = heroBillingLine(signup.billingLine)
     return (
-      <p class="signup-callout">
-        <a href="/signup" class="signup-callout-button">
-          Create an account
-        </a>
-        <span>
-          {billing ?? 'Open for new accounts.'} Already have one? <a href="/login">Log in</a>.
-        </span>
-      </p>
+      <>
+        <div class="welcome-cta-row">
+          <a href="/signup" class="welcome-button welcome-button-cta">
+            Start free
+          </a>
+          {howItWorks}
+        </div>
+        {billing && <p class="welcome-hero-note">{billing}</p>}
+      </>
     )
   }
+
   return (
-    <p class="signup-callout">
-      <span>
-        {mode === 'invite_only'
-          ? 'Signing up on this server needs an invitation link'
-          : 'This server is not taking new accounts'}{' '}
-        — ask for one through {contactLink}, or self-host your own instance (see below). Already have an
-        account? <a href="/login">Log in</a>.
-      </span>
-    </p>
+    <>
+      {signup.mode === 'invite_only' && (
+        <p class="welcome-hero-state">
+          Joining this server needs an invitation link from someone who is already on it. You can also{' '}
+          <a href="#own">run your own</a>.
+        </p>
+      )}
+      {signup.mode === 'closed' && (
+        <p class="welcome-hero-state">
+          This server is not taking new accounts. You can <a href="#own">run your own</a>.
+        </p>
+      )}
+      <div class="welcome-cta-row">{howItWorks}</div>
+    </>
   )
 }
 
-function GuestHome({ blogUser }: { blogUser: string | null }) {
+function DataSourcesTable() {
   return (
-    <>
-      <section class="intro">
-        <p>
-          <strong>A self-hosted personal data warehouse for quantified self.</strong> Aurboda unifies your
-          health, fitness, productivity, location, and nutrition data — from Oura, Garmin, Strava, Android
-          Health Connect, screen-time trackers, calendars, and more — into a single timeline and database that
-          lives on your own server.
-        </p>
-        <p>
-          Think of it as{' '}
-          <strong>Home Assistant, but for your personal data instead of your smart home.</strong> Once
-          everything is in one place, you can explore it visually, analyze it for trends and correlations, and
-          query your whole life in plain language by connecting Claude or any{' '}
-          <a href="https://modelcontextprotocol.io/" target="_blank" rel="noopener noreferrer">
-            MCP
-          </a>{' '}
-          client.
-        </p>
-        <p>
-          Instead of “my data is scattered across ten apps,” you can finally ask{' '}
-          <em>“is there a link between my coffee, HRV, sleep, and headaches?”</em> — and get an answer.
-        </p>
+    <table class="welcome-sources-table">
+      <thead>
+        <tr>
+          <th>Source</th>
+          <th>What it provides</th>
+          <th>How</th>
+        </tr>
+      </thead>
+      <tbody>
+        {dataSources.map((source) => (
+          <tr key={source.name}>
+            <td>
+              {source.homepage ? (
+                <a href={source.homepage} target="_blank" rel="noopener noreferrer">
+                  <strong>{source.name}</strong>
+                </a>
+              ) : (
+                <strong>{source.name}</strong>
+              )}
+            </td>
+            <td>{source.provides}</td>
+            <td>{source.how}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
 
-        <div class="screenshots">
-          <Screenshot
-            src="/screenshots/timeline-detail.jpg"
-            width={1899}
-            height={867}
-            eager
-            alt="Timeline with strength training details, heart rate, and location"
-            caption="Timeline: activity details, HR, location"
-          />
-          <Screenshot
-            src="/screenshots/timeline-sleep.jpg"
-            width={1861}
-            height={653}
-            eager
-            alt="Timeline showing sleep details with Oura scores"
-            caption="Timeline: sleep details and scores"
-          />
-          <Screenshot
-            src="/screenshots/timeline-mobile.jpg"
-            width={1080}
-            height={2404}
-            eager
-            alt="Timeline on mobile"
-            caption="Mobile timeline"
-            className="narrow"
-          />
+function Welcome({ signup, blogUser }: { signup: GuestSignup; blogUser: string | null }) {
+  const sourcesRef = useRef<HTMLDetailsElement>(null)
+
+  // A link from another page (the guest bar's "Run your own" → /#own) lands here by client-side routing,
+  // which does not scroll to the fragment by itself.
+  useEffect(() => {
+    const id = decodeURIComponent(window.location.hash.slice(1))
+    if (id) document.getElementById(id)?.scrollIntoView()
+  }, [])
+
+  const openSources = () => {
+    if (sourcesRef.current) sourcesRef.current.open = true
+  }
+
+  return (
+    <div class="welcome">
+      <section class="welcome-hero">
+        <div class="welcome-wrap welcome-hero-inner">
+          <div class="welcome-hero-text">
+            <p class="welcome-eyebrow">Health, training and habits in one place</p>
+            <h1>See how your sleep, training and everyday life fit together.</h1>
+            <p class="welcome-lead">
+              Aurboda collects what your watch, ring, phone and apps already know about you, puts it on one
+              timeline, and shows what actually makes a difference. Share workouts and challenges with friends
+              along the way.
+            </p>
+            <HeroSignup signup={signup} />
+          </div>
+          <div class="welcome-hero-shot">
+            <Shot
+              shot={DASHBOARD}
+              phone={TIMELINE_MOBILE}
+              eager
+              alt="A dashboard with HRV and resting heart rate baselines, last night's sleep stages, sleep and readiness scores and daily steps"
+            />
+          </div>
         </div>
-
-        <div class="screenshots">
-          <Screenshot
-            src="/screenshots/hr-zones.jpg"
-            width={1080}
-            height={1338}
-            alt="HR zone minutes breakdown"
-            caption="HR zone tracking"
-            className="narrow"
-          />
-          <Screenshot
-            src="/screenshots/trends.jpg"
-            width={1850}
-            height={489}
-            alt="Trend cards showing metrics over time"
-            caption="Trends with EMA smoothing"
-          />
-        </div>
-
-        <div class="screenshots">
-          <Screenshot
-            src="/screenshots/places.jpg"
-            width={1919}
-            height={778}
-            alt="Places view with location timeline and map"
-            caption="Places and location history"
-          />
-          <Screenshot
-            src="/screenshots/ai-chat.png"
-            width={1080}
-            height={1697}
-            alt="AI analyzing health data"
-            caption="AI health insights via MCP"
-          />
-        </div>
-
-        <div class="screenshots">
-          <Screenshot
-            src="/screenshots/app.jpg"
-            width={1080}
-            height={1338}
-            alt="Aurboda Android app showing HR zone minutes"
-            caption="Android app: HR zones"
-            className="narrow"
-          />
-          <Screenshot
-            src="/screenshots/app-live.png"
-            width={1080}
-            height={761}
-            alt="Live BLE sensor data"
-            caption="Live BLE sensors"
-            className="narrow"
-          />
-          <Screenshot
-            src="/screenshots/widget.jpg"
-            width={532}
-            height={325}
-            alt="Aurboda home screen widget"
-            caption="Home screen widget"
-            className="narrow"
-          />
-        </div>
-
-        <p>
-          <a href="https://github.com/fiddur/aurboda" target="_blank" rel="noopener noreferrer">
-            View on GitHub
-          </a>
-          {blogUser && (
-            <>
-              {' · '}
-              <a href={blogPath(blogUser)}>Read the blog</a>
-            </>
-          )}
-        </p>
       </section>
 
-      <section class="features">
-        <h2>Data Sources</h2>
-        <table class="data-sources-table">
-          <thead>
-            <tr>
-              <th>Source</th>
-              <th>What it provides</th>
-              <th>How</th>
-            </tr>
-          </thead>
-          <tbody>
-            {dataSources.map((source) => (
-              <tr key={source.name}>
-                <td>
-                  {source.homepage ? (
-                    <a href={source.homepage} target="_blank" rel="noopener noreferrer">
-                      <strong>{source.name}</strong>
-                    </a>
-                  ) : (
-                    <strong>{source.name}</strong>
-                  )}
-                </td>
-                <td>{source.provides}</td>
-                <td>{source.how}</td>
-              </tr>
+      <section class="welcome-wrap welcome-works-with" aria-label="Works with">
+        <p class="welcome-works-with-title">Works with the things you already use</p>
+        <div class="welcome-chips">
+          {SOURCE_CHIPS.map((name) => (
+            <span key={name} class="welcome-chip">
+              {name}
+            </span>
+          ))}
+          <a href="#sources" class="welcome-chip-link" onClick={openSources}>
+            All sources
+          </a>
+        </div>
+      </section>
+
+      <section id="how" class="welcome-wrap welcome-section welcome-stack">
+        <h2>Your whole day on one timeline</h2>
+        <p class="welcome-body welcome-measure">
+          Sleep, workouts with heart rate, where you were, what you ate, what you listened to and how long you
+          sat at the computer. Tap anything to see the details.
+        </p>
+        <Shot
+          shot={TIMELINE_DAY}
+          className="welcome-shot-framed"
+          alt="The timeline for one day: sleep, coffee, meals and an evening run above the heart rate curve, with home and work below"
+        />
+      </section>
+
+      <section id="log" class="welcome-wrap welcome-section">
+        <div class="welcome-card welcome-log">
+          <div class="welcome-log-text">
+            <h2>Log what no tracker sees</h2>
+            <p class="welcome-body">
+              Your watch knows your pulse, but not that you took a painkiller, had coffee at four, or had sex
+              last night. What you log is up to you: make your own list and log anything with one tap.
+            </p>
+            <p class="welcome-muted">
+              Private unless you choose to share it. Everything you log can be compared with your sleep, heart
+              rate and training.
+            </p>
+          </div>
+          <div class="welcome-chips">
+            {LOG_CHIPS.map((name) => (
+              <span key={name} class="welcome-chip welcome-chip-soft">
+                {name}
+              </span>
             ))}
-          </tbody>
-        </table>
+            <span class="welcome-chip welcome-chip-dashed">+ your own</span>
+          </div>
+        </div>
       </section>
 
-      <section class="features">
-        <h2>What you can do</h2>
-        <p>Everything above feeds a common data model, so every feature works across every source:</p>
-        <ul>
-          <li>
-            <strong>Explore</strong> — a unified timeline, customizable dashboards, and maps of where you've
-            been
-          </li>
-          <li>
-            <strong>Analyze</strong> — trends with EMA smoothing, correlations (Pearson, chi-squared, relative
-            risk), and rolling-window goals
-          </li>
-          <li>
-            <strong>Track health</strong> — sleep, HR zones (Huberman/Galpin targets), training load (Banister
-            model), lab results, and active-calorie computation
-          </li>
-          <li>
-            <strong>Organize life</strong> — activities, meals &amp; nutrition, places, and screen time
-          </li>
-          <li>
-            <strong>Automate</strong> — deduction rules that create activities from your data, plus custom
-            activity types
-          </li>
-          <li>
-            <strong>Share</strong> — read-only public dashboards and federated challenges across Aurboda
-            instances
-          </li>
-          <li>
-            <strong>AI access</strong> — full query access from Claude or any MCP client (60+ tools)
-          </li>
-        </ul>
+      <section class="welcome-wrap welcome-section welcome-split">
+        <div class="welcome-split-text">
+          <h2>Find out what actually helps</h2>
+          <p class="welcome-body">
+            Does the evening run improve your sleep? Is coffee after three costing you recovery? Aurboda
+            compares the days with and without it, tells you how big the difference is, and whether it is more
+            than chance.
+          </p>
+          <p class="welcome-body">
+            You can also ask in plain language: connect Claude or another AI assistant and it can read your
+            data and answer.
+          </p>
+        </div>
+        <Shot
+          shot={CORRELATIONS}
+          className="welcome-split-shot welcome-shot-framed"
+          alt="Sleep score on the night after alcohol compared with nights without: 66 with, 83 without, a large difference"
+        />
       </section>
 
-      <section class="downloads">
-        <h2>Downloads &amp; Deployment</h2>
-        <h3>Android app</h3>
-        <p>
+      <section id="together" class="welcome-band">
+        <div class="welcome-wrap welcome-split">
+          <Shot
+            shot={CHALLENGE}
+            className="welcome-split-shot"
+            alt="A step challenge between seven friends with a race chart and a leaderboard"
+          />
+          <div class="welcome-split-text">
+            <p class="welcome-eyebrow">Train together</p>
+            <h2>Share workouts, start a challenge, give kudos</h2>
+            <ul class="welcome-body">
+              <li>Post a run, ride or gym session with just the numbers you want to show</li>
+              <li>Step, distance and time challenges with a live race chart</li>
+              <li>Kudos and comments from friends</li>
+              <li>Follow people on any Aurboda server, or from Mastodon</li>
+            </ul>
+            <p class="welcome-body-small">
+              Like the training apps you know, without the ads and without selling your data.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="welcome-wrap welcome-figures">
+        <figure>
+          <Shot
+            shot={FEED_POST}
+            className="welcome-figure-shot"
+            alt="A shared evening run with distance, heart rate, heart rate zones and the heart rate curve"
+          />
+          <figcaption>
+            <strong>Share a workout.</strong> Your run with its heart rate, the way friends see it in their
+            feed.
+          </figcaption>
+        </figure>
+        <figure>
+          <Shot
+            shot={PLACES}
+            className="welcome-figure-shot"
+            alt="The places of one day, with time spent at each, next to a map"
+          />
+          <figcaption>
+            <strong>Places.</strong> Where you spend your time, and how it shows in your sleep and mood.
+          </figcaption>
+        </figure>
+        <figure>
+          <Shot
+            shot={TIMELINE_MOBILE}
+            className="welcome-figure-shot welcome-figure-phone"
+            alt="The timeline on a phone"
+          />
+          <figcaption>
+            <strong>On your phone.</strong> The Android app syncs Health Connect and live heart rate.
+          </figcaption>
+        </figure>
+      </section>
+
+      <section id="android" class="welcome-wrap welcome-section">
+        <div class="welcome-card welcome-app">
+          <div class="welcome-app-text">
+            <h2>Get the Android app</h2>
+            <p class="welcome-body-small">
+              Syncs Health Connect in the background and shows live heart rate from Bluetooth sensors.
+            </p>
+            <p class="welcome-muted-small">
+              Not in Google Play or F-Droid yet: open the downloaded file on your phone and allow installing
+              from your browser. The app updates itself after that.
+            </p>
+          </div>
           <a
-            href="https://github.com/fiddur/aurboda/releases/latest/download/aurboda.apk"
+            href={APK_URL}
+            class="welcome-button welcome-button-primary"
             target="_blank"
             rel="noopener noreferrer"
           >
-            Download the Aurboda Android app (APK)
+            Download the Android app (APK)
           </a>
-        </p>
-        <p class="note">
-          Not in Google Play or F-Droid yet: open the downloaded file on your phone and allow installing from
-          your browser. The app updates itself after that.
-        </p>
-        <h3>Self-hosting with Docker</h3>
-        <p>
-          Run your own Aurboda instance using Docker Compose. See the{' '}
-          <a
-            href="https://github.com/fiddur/aurboda/blob/develop/docker-compose.yml"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
+        </div>
+      </section>
+
+      <section id="own" class="welcome-wrap welcome-section welcome-stack">
+        <h2>Your data, your rules</h2>
+        <div class="welcome-cards">
+          <div class="welcome-card">
+            <h3>Nothing is shared unless you share it</h3>
+            <p>Every post, dashboard and challenge entry is opt-in, and you pick the fields.</p>
+          </div>
+          <div class="welcome-card">
+            <h3>Take it all with you</h3>
+            <p>Export everything in one file, or delete your account and every row with it.</p>
+          </div>
+          <div class="welcome-card">
+            <h3>Open source</h3>
+            <p>
+              Free software (AGPL). Run your own server with Docker if you prefer; it still talks to everyone
+              else's.
+            </p>
+          </div>
+          <div class="welcome-card">
+            <h3>For tinkerers</h3>
+            <p>
+              A full REST API, an MCP server for AI assistants, and rules that turn raw data into activities.
+            </p>
+          </div>
+        </div>
+        <p class="welcome-selfhost">
+          <strong>Self-hosting.</strong> Run your own server with Docker Compose, starting from the{' '}
+          <a href={`${GITHUB}/blob/develop/docker-compose.yml`} target="_blank" rel="noopener noreferrer">
             docker-compose.yml example
-          </a>{' '}
-          on GitHub.
-        </p>
-        <p>
-          Docker image:{' '}
+          </a>
+          . The image is{' '}
           <a href="https://hub.docker.com/r/fiddur/aurboda" target="_blank" rel="noopener noreferrer">
             fiddur/aurboda
           </a>{' '}
-          on Docker Hub — <code>:latest</code> is the released version (from <code>main</code>),{' '}
-          <code>:develop</code> is the beta (every merged PR).
+          on Docker Hub: <code>:latest</code> is the released version (from <code>main</code>),{' '}
+          <code>:develop</code> the beta (every merged PR). The code is on{' '}
+          <a href={GITHUB} target="_blank" rel="noopener noreferrer">
+            GitHub
+          </a>
+          .
         </p>
       </section>
 
-      <section class="name">
-        <h2>About the Name</h2>
-        <p>
-          In Norse mythology, Aurbo&eth;a (really pronounced "owr-BO-tha", but using a hard D in aurboda now)
-          is a mountain j&ouml;tunn (giantess) associated with strength and vitality. Her name, meaning
-          "gravel-offerer" or "gold-offerer", reflects her role as a gatherer and provider. As mother of
-          Ger&eth;r, whose name relates to growth and gardens, Aurbo&eth;a represents the foundation from
-          which health and flourishing emerge.
-        </p>
-        <p>
-          This project embodies that spirit: gathering scattered health data from multiple sources into a
-          unified foundation for understanding your wellbeing.
-        </p>
+      <section class="welcome-wrap welcome-section welcome-sources-section">
+        <details id="sources" ref={sourcesRef} class="welcome-sources">
+          <summary>All data sources</summary>
+          <DataSourcesTable />
+        </details>
       </section>
 
-      <section class="legal">
-        <p>
-          <a href="/privacy">Privacy Policy</a> · <a href="/terms">Terms of Service</a>
-        </p>
-      </section>
-    </>
+      {signup.mode === 'open' && (
+        <section class="welcome-closing">
+          <div class="welcome-wrap welcome-closing-inner">
+            <div class="welcome-closing-text">
+              <h2>Start with what you already track</h2>
+              <p>
+                Connect one source and the timeline fills in by itself.
+                {signup.billingLine && ` ${signup.billingLine}`}
+              </p>
+            </div>
+            <a href="/signup" class="welcome-button welcome-button-cta">
+              Create your account
+            </a>
+          </div>
+        </section>
+      )}
+
+      <footer class="welcome-wrap welcome-footer">
+        <span>Aurboda: in Norse myth, the giantess who gathers and provides.</span>
+        <span class="welcome-footer-spacer" />
+        {blogUser && <a href={blogPath(blogUser)}>Blog</a>}
+        <a href={GITHUB} target="_blank" rel="noopener noreferrer">
+          GitHub
+        </a>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+      </footer>
+    </div>
   )
 }
 
@@ -346,24 +461,9 @@ export function Home() {
     ensureStatusLoaded()
   }, [])
 
-  // When logged in, show Dashboard without the .home wrapper (which has max-width: 800px)
   if (isLoggedIn) {
     return <Dashboard />
   }
 
-  return (
-    <div class="home">
-      <div class="hero">
-        <img src="/logo.svg" alt="Aurboda logo" class="hero-logo" />
-        <div class="hero-text">
-          <h1>Aurboda</h1>
-          <p class="subtitle">Self Quantification Aggregator</p>
-        </div>
-      </div>
-
-      <SignupCallout mode={signupMode.value} />
-
-      <GuestHome blogUser={blogUsername.value} />
-    </div>
-  )
+  return <Welcome signup={guestSignup(signupMode.value, serverBilling.value)} blogUser={blogUsername.value} />
 }

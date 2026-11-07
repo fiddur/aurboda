@@ -28,6 +28,8 @@ export const serverBilling = signal<
 >({})
 /** Username whose public articles are this instance's blog; null when the admin set none. */
 export const blogUsername = signal<string | null>(null)
+/** The last /status request failed: the signup mode is unknown, so say nothing about signing up. */
+export const statusFailed = signal(false)
 
 let statusFetchPromise: Promise<void> | null = null
 
@@ -44,10 +46,12 @@ export const fetchStatus = async () => {
       signupMode.value = signup_mode
       blogUsername.value = blog_username ?? null
       serverBilling.value = { billing_enabled, price_text, trial_days }
+      statusFailed.value = false
     } catch (error) {
       console.error('Status fetch error:', error)
       signupAllowed.value = false
-      signupMode.value = 'closed'
+      statusFailed.value = true
+      statusFetchPromise = null
     }
   })()
 
