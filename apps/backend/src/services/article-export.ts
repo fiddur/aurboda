@@ -1,6 +1,7 @@
 /**
  * Reddit/markdown export: a paste-ready markdown rendering of an article —
- * title, prose, and one image link per chart/correlation block (via the
+ * title, prose, one image link per chart/correlation block, and a challenge
+ * block's standings image plus a join link (images via the
  * `blocks/:index/image.png` endpoint) — for pasting into a text-only
  * destination like r/QuantifiedSelf, where the author adds their own write-up
  * around the linked charts. Reuses the exact same block-image URL the AS2
@@ -17,11 +18,13 @@ import { defaultArticleChartBucket } from '@aurboda/api-spec'
 
 import type { CorrelationBlockParams } from './article-block-data.ts'
 import type { NegativeCache } from './article-block-misses.ts'
+import type { RaceChartSvgData } from './charts/race-chart-svg.ts'
 import type { ScatterSvgData } from './charts/scatter-svg.ts'
 
 import { getArticleChartSeriesData, getArticleCorrelationScatter } from './article-block-data.ts'
 import { articleBlockMisses, forgetArticleBlockMisses } from './article-block-misses.ts'
 import { articleBlockImageUrl, articleBlockLabel, blockWindow, isZeroDurationBucket } from './article.ts'
+import { resolveChallengeRaceByUrl } from './feed-structured-challenge.ts'
 
 /**
  * Collapse newlines (markdown alt/caption text is a single line) and escape
@@ -45,21 +48,24 @@ export interface BlockImageDataDeps {
     bucket: string,
   ) => Promise<unknown[]>
   correlationScatter: (user: string, params: CorrelationBlockParams) => Promise<ScatterSvgData | null>
+  challengeRace: (user: string, url: string) => Promise<RaceChartSvgData | null>
   misses: NegativeCache
 }
 
 const realDeps: BlockImageDataDeps = {
   chartSeries: getArticleChartSeriesData,
+  challengeRace: (user, url) => resolveChallengeRaceByUrl(user, url),
   correlationScatter: getArticleCorrelationScatter,
   misses: articleBlockMisses,
 }
 
 /**
- * The indices of the chart/correlation blocks whose image endpoint would
- * actually render — the same static window checks as `resolveArticleBlock` and
- * the same data checks as `renderArticleBlockImage` (chart: ≥ 2 points over a
- * non-zero bucket; correlation: n ≥ 3), via the same shared data fetchers, so
- * the export can't link an image that will 404.
+ * The indices of the chart/correlation/challenge blocks whose image endpoint
+ * would actually render — the same static window checks as
+ * `resolveArticleBlock` and the same data checks as `renderArticleBlockImage`
+ * (chart: ≥ 2 points over a non-zero bucket; correlation: n ≥ 3; challenge: a
+ * race line), via the same shared data fetchers, so the export can't link an
+ * image that will 404.
  */
 export const renderableArticleBlocks = async (
   user: string,
@@ -81,10 +87,14 @@ export const renderableArticleBlocks = async (
 
 const blockImageRenders = async (
   user: string,
-  block: Extract<ArticleBlock, { type: 'chart' | 'correlation' }>,
+  block: Exclude<ArticleBlock, { type: 'prose' }>,
   article: ArticleContent,
   deps: BlockImageDataDeps,
 ): Promise<boolean> => {
+  if (block.type === 'challenge') {
+    const race = await deps.challengeRace(user, block.challenge_url)
+    return race != null && race.lines.length > 0
+  }
   const { end, start } = blockWindow(block, article)
   if (start == null || end == null) return false
   const startDate = new Date(start)
@@ -105,18 +115,24 @@ const blockImageRenders = async (
   return scatter != null
 }
 
+/** A URL usable as a plain markdown link target: the characters that would end or break `(url)` escaped. */
+const linkTarget = (url: string): string =>
+  url.replaceAll(/[\s()<>]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0')}`)
+
 /**
  * Render an article as paste-ready markdown: an H1 title, each prose block's
  * markdown verbatim, and each chart/correlation block as a markdown image link
  * to its rendered PNG (the C1 endpoint), with its caption (else a data label)
  * as both the image's alt text and an italic line underneath it — the markdown
- * equivalent of the web/federated render's `<figcaption>`.
+ * equivalent of the web/federated render's `<figcaption>`. A challenge block is
+ * its standings image the same way, then a "Join the challenge" link.
  *
  * `renderableBlocks` (from {@link renderableArticleBlocks}) marks the blocks
  * whose image would actually render; any other chart/correlation block gets an
  * italic "not enough data" line instead of a dead image link, so the pasted
- * markdown never shows a broken image (#974). Omit it to link every block
- * unconditionally (tests / callers that already know).
+ * markdown never shows a broken image (#974), and a challenge block keeps only
+ * its caption and link. Omit it to link every block unconditionally (tests /
+ * callers that already know).
  */
 export const buildArticleMarkdown = (
   apiBaseUrl: string,
@@ -135,7 +151,20 @@ export const buildArticleMarkdown = (
       return
     }
     const label = inlineText(articleBlockLabel(block))
-    if (renderableBlocks !== undefined && !renderableBlocks.has(index)) {
+    const drawable = renderableBlocks === undefined || renderableBlocks.has(index)
+    if (block.type === 'challenge') {
+      const lines: string[] = []
+      if (drawable) {
+        lines.push(
+          `![${label}](${articleBlockImageUrl(apiBaseUrl, user, postId, visibility, imageToken, updatedAt, index)})`,
+        )
+      }
+      if (block.caption) lines.push(`*${inlineText(block.caption)}*`)
+      lines.push(`[Join the challenge](${linkTarget(block.challenge_url)})`)
+      sections.push(lines.join('\n'))
+      return
+    }
+    if (!drawable) {
       // Same message the web's inline render shows for a sparse block.
       sections.push(`*${label} — not enough data in this window.*`)
       return

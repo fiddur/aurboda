@@ -132,14 +132,18 @@ export const proseToPlainText = (markdown: string): string =>
  * A caption is emitted as plain escaped text — NOT markdown — to match the web,
  * which shows it as text in a `<figcaption>`; the chart images themselves ride as
  * attachments (`articleImageAttachments`), which a fediverse client lays out after
- * the content.
+ * the content. A challenge block adds a "Join the challenge" link to its page,
+ * so Mastodon shows something to follow.
  */
 export const renderArticleContentHtml = (article: ArticleContent): string => {
   const heading = `<p><strong>${escapeXml(article.title)}</strong></p>`
   const body = article.blocks
     .map((block) => {
       if (block.type === 'prose') return renderProse(block.markdown)
-      return block.caption ? `<p>${escapeXml(block.caption)}</p>` : ''
+      const caption = block.caption ? `<p>${escapeXml(block.caption)}</p>` : ''
+      if (block.type !== 'challenge') return caption
+      const join = `<p><a href="${escapeXml(block.challenge_url)}">Join the challenge</a></p>`
+      return caption ? `${caption}\n${join}` : join
     })
     .filter((html) => html.length > 0)
     .join('\n')
@@ -147,8 +151,9 @@ export const renderArticleContentHtml = (article: ArticleContent): string => {
 }
 
 /**
- * Image attachments for an article's chart/correlation blocks: one PNG per block,
- * pointing at the gated on-demand endpoint (`/feed/<id>/blocks/<index>/image.png`).
+ * Image attachments for an article's chart/correlation/challenge blocks: one PNG
+ * per block (a challenge block's is its standings race chart), pointing at the
+ * gated on-demand endpoint (`/feed/<id>/blocks/<index>/image.png`).
  * `public`/`unlisted` are served unauthenticated; a `followers`-only article's URLs
  * carry the post's unguessable capability `?token=` (the fediverse fetches media
  * unsigned), embedded only in the object delivered to followers.
@@ -164,9 +169,9 @@ export const articleImageAttachments = (
 ): Image[] => {
   const images: Image[] = []
   article.blocks.forEach((block, index) => {
-    if (block.type !== 'chart' && block.type !== 'correlation') return
+    if (block.type === 'prose') return
     const [width, height] =
-      block.type === 'chart' ? [CHART_WIDTH, CHART_HEIGHT] : [SCATTER_WIDTH, SCATTER_HEIGHT]
+      block.type === 'correlation' ? [SCATTER_WIDTH, SCATTER_HEIGHT] : [CHART_WIDTH, CHART_HEIGHT]
     images.push(
       new Image({
         height,

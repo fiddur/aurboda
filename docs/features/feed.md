@@ -27,7 +27,13 @@ A feed post has a **`kind`**:
   against the locked window — no data snapshot. A **chart block** draws one metric; a
   **correlation block** pairs a `trigger` and an `outcome` selector (the exploratory
   correlation engine's dimensions, with an optional `lag_days`) and renders as a scatter
-  with the Pearson/Spearman coefficients and n. Modelled as a post kind on the same
+  with the Pearson/Spearman coefficients and n. A **challenge block** embeds a challenge by
+  its public URL (`challenge_url`, plus an optional `caption`): one hosted here (your own or
+  another local user's) or on another instance. It has no window; it shows the challenge's
+  live standings (race chart and leaderboard) and a **Join** link to the challenge page,
+  where the join flow is. Saving checks that a URL hosted here names an existing challenge
+  ("Block N: challenge not found"); a remote URL is not fetched at save time and resolves
+  best-effort when the article renders. Modelled as a post kind on the same
   storage, so an article reuses the whole feed (visibility, federation, timeline,
   permalinks). The ordered blocks live in an `article` JSONB column. Authored via
   `POST /feed/articles` / `PATCH /feed/articles/:postId` (and the `create_article` /
@@ -37,7 +43,9 @@ A feed post has a **`kind`**:
   (#1028) — and each windowed block resolves its data live
   over the locked window. An article **federates as a `Note`** (title in `name`, prose
   HTML in `content`, and a rendered PNG per chart/correlation block attached) so followers
-  on Mastodon see the prose and images inline. (A `Note`, not an AS2 `Article`: Mastodon
+  on Mastodon see the prose and images inline. A challenge block federates as its standings
+  race chart (attached like a chart block's PNG) and, in `content`, its caption and a
+  **Join the challenge** link to the challenge page. (A `Note`, not an AS2 `Article`: Mastodon
   treats `Article` as a converted type and discards its `content`, rendering only a title
   and link.) The prose is sanitised through an allowlist wide enough for a QS write-up
   (GFM tables, images, `hr`, headings); note that **Mastodon's own inbound sanitiser then
@@ -55,8 +63,9 @@ A feed post has a **`kind`**:
   scatters — instead of just the flattened prose and attached PNGs a Mastodon follower
   sees. **Export** — `GET /feed/articles/:postId/export` (and the `export_article_markdown`
   MCP tool) renders an article as paste-ready markdown — the title, the prose blocks
-  verbatim, and one image link per chart/correlation block (the block-image endpoint
-  below) — for pasting into a text-only destination like r/QuantifiedSelf, where the
+  verbatim, one image link per chart/correlation block (the block-image endpoint
+  below), and for a challenge block its standings image (when it would draw), caption and a
+  `[Join the challenge](…)` link — for pasting into a text-only destination like r/QuantifiedSelf, where the
   author adds their own write-up around the linked charts. A block whose image would 404
   (a chart window with no samples, a correlation with n < 3) gets an italic "not enough
   data in this window" note instead of a dead image link (#974). A **`followers`-only** article
@@ -737,7 +746,15 @@ id-convention path — reliable even when a typed consumer drops the in-band ext
    article: a prose block's raw markdown verbatim; a chart block's bucketed samples over its
    locked window, bucketed the same way as its block image; a correlation block's computed
    Pearson/Spearman/n, the present-vs-absent group comparison, and the aligned scatter points —
-   the same `getContinuousCorrelation` call the block image uses). A **challenge** post
+   the same `getContinuousCorrelation` call the block image uses; a challenge block's `url` and
+   caption, plus — when the challenge resolves — its QuantPub document and a standings
+   snapshot, resolved like a challenge post's below, and also for another local user's
+   challenge (from that user's database) or a remote one the author has not joined (the
+   host's QuantPub document and standings, fetched within the same timeout; any failure
+   leaves the block with only its URL and caption, which renders as a link card). An older
+   Aurboda peer that predates challenge blocks fails the strict parse of such a payload and
+   falls back to the article's `Note` HTML — prose, captions, the join link and the attached
+   images). A **challenge** post
    resolves to `FeedStructuredChallenge`: the author's note, the frozen `result` on a
    completion post, the challenge as its QuantPub Challenges §3 document (as publicly listed,
    without `joinToken`/`members`) and a §6 `standings` snapshot. An own challenge is found by
@@ -891,8 +908,8 @@ render cache keys on the post's `updated_at` plus a 1-hour bucket. The delivered
 attaches it as `Trend` (1000×420) only when it would draw; the `Note` served by the object
 dispatcher and the outbox does not carry it.
 
-An **article** renders one image per chart/correlation block for the same reason (so
-Mastodon and export tools attach a raster of each block), at its own endpoints:
+An **article** renders one image per chart/correlation/challenge block for the same reason
+(so Mastodon and export tools attach a raster of each block), at its own endpoints:
 
 ```
 GET /api/public/:username/feed/:postId/blocks/:index/image.png
@@ -904,7 +921,9 @@ correlation block can embed any metric over any window, so the post's **visibili
 the whole authorization boundary (public/unlisted open; `followers`-only via the
 `?token=` capability). The chart block renders the metric bucketed over the locked
 window; the correlation block renders the scatter with its OLS line and coefficient
-headline. It buckets in the author's **device timezone** (`device_timezone`, set by the
+headline; the challenge block renders the linked challenge's standings race chart (the same
+chart as a challenge post's `standings.png`), cached in five-minute buckets like that image
+rather than hourly, and 404s while the challenge has no standings to draw. It buckets in the author's **device timezone** (`device_timezone`, set by the
 Android app) so a `1d` bucket splits on the author's calendar days like the web render;
 for an author whose device timezone is unknown it falls back to UTC (the web render uses
 the live browser timezone, so the two can differ by a day only in that case). Because an
@@ -1035,8 +1054,9 @@ resolving.
   Following, followers and auto-share rules sit in a collapsed **Manage** section at the bottom.
 - **Write an article** — opens the article composer: a title, an optional default time
   window, and an ordered list of **prose** (markdown), **chart** (a metric + optional
-  per-block window + caption), and **correlation** (a trigger + outcome selector + optional
-  lag/window/caption) blocks, plus the audience. Each chart draws its metric live over the
+  per-block window + caption), **correlation** (a trigger + outcome selector + optional
+  lag/window/caption) and **challenge** (one of your challenges or a joined one, or a pasted
+  challenge URL, + caption) blocks, plus the audience. Each chart draws its metric live over the
   locked window; each correlation draws a live scatter (with the coefficients) over its
   window. **Save draft** saves without publishing (and shows "Saved hh:mm"); **Publish**
   validates and publishes. Closing with unsaved changes asks whether to save them as a
@@ -1140,7 +1160,7 @@ Owner-facing (authenticated, scoped to the caller):
 | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `GET /feed`                                       | My feed posts, newest-first, keyset-paginated (`?cursor=` from the previous page's `next_cursor`); each post enriched with the shared activity's title/type, merged-span window, and full structured payload |
 | `POST /feed/activities/:id/share`                 | Publish an activity with a chosen metric selection                                                                                                                                                           |
-| `POST /feed/articles`                             | Publish a long-form **article** (title + prose + inline chart/correlation blocks)                                                                                                                            |
+| `POST /feed/articles`                             | Publish a long-form **article** (title + prose + inline chart/correlation/challenge blocks)                                                                                                                  |
 | `POST /feed/activities/:id/preview`               | Live share **preview** (#902): the exact federated content + resolved metrics for a selection; creates nothing                                                                                               |
 | `POST /feed/challenges`                           | Share a **challenge invitation** (personal note + canonical link); exactly one of `challenge_id`/`participation_id`                                                                                          |
 | `POST /feed/exercises`                            | Share an **exercise's progress** (records, trend, recent sessions per the opt-ins; a link only when the exercise is published)                                                                               |
@@ -1179,7 +1199,7 @@ Public / federation (unauthenticated):
 | `GET /public/:username/feed/:postId/standings.svg`           | Same standings race as crisp `image/svg+xml`                                                                                                                                                                                                                            |
 | `GET /public/:username/feed/:postId/trend.png`               | Rendered exercise trend (PNG) for an opted-in exercise post (`?token=` for followers-only)                                                                                                                                                                              |
 | `GET /public/:username/feed/:postId/trend.svg`               | Same exercise trend as crisp `image/svg+xml`                                                                                                                                                                                                                            |
-| `GET /public/:username/feed/:postId/blocks/:index/image.png` | Rendered PNG of an article's chart/correlation block (visibility-gated; `?token=` for followers-only)                                                                                                                                                                   |
+| `GET /public/:username/feed/:postId/blocks/:index/image.png` | Rendered PNG of an article's chart/correlation/challenge block (visibility-gated; `?token=` for followers-only)                                                                                                                                                         |
 | `GET /public/:username/feed/:postId/blocks/:index/image.svg` | Same article block as crisp `image/svg+xml`                                                                                                                                                                                                                             |
 | `GET /public/:username/posts`                                | A user's public/unlisted posts (newest-first, keyset page of 20 + `next_cursor`) for their profile feed; `?kind=article` for the blog view                                                                                                                              |
 | `GET /public/:username/articles.atom`                        | Atom 1.0 feed of the user's 20 newest public articles ([Blog view and Atom feed](#blog-view-and-atom-feed))                                                                                                                                                             |

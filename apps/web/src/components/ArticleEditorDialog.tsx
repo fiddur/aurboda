@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 import type {
   ArticleEditorState,
   BlockDraft,
+  ChallengeDraft,
   ChartDraft,
   CorrelationDraft,
   ProseDraft,
@@ -17,6 +18,8 @@ import {
   createArticleDraft,
   fetchCorrelationSelectors,
   fetchUserSettings,
+  listChallenges,
+  listMyChallengeParticipations,
   publishArticleDraft,
   updateArticle,
   updateArticleDraft,
@@ -24,9 +27,11 @@ import {
 import {
   buildArticleBody,
   buildDraftContent,
+  challengePickerOptions,
   deriveSubmitError,
   draftSnapshot,
   draftUpdateBody,
+  emptyChallengeDraft,
   emptyCorrelationDraft,
   initialArticleEditorState,
 } from './article-editor-body'
@@ -39,7 +44,10 @@ import { FEED_VISIBILITY_OPTIONS, VisibilitySelector } from './VisibilitySelecto
 import './ShareActivityDialog.css'
 import './ArticleEditorDialog.css'
 
-type BlockPatch = Partial<ChartDraft> & Partial<CorrelationDraft> & Partial<ProseDraft>
+type BlockPatch = Partial<ChallengeDraft> &
+  Partial<ChartDraft> &
+  Partial<CorrelationDraft> &
+  Partial<ProseDraft>
 
 /**
  * A draft block plus a stable identity, used only as the React `key`. Blocks are
@@ -120,6 +128,104 @@ const CorrelationBlockFields = ({
   </div>
 )
 
+const PASTE_URL = 'paste'
+
+const ChallengeBlockFields = ({
+  block,
+  onPatch,
+}: {
+  block: ChallengeDraft
+  onPatch: (patch: BlockPatch) => void
+}) => {
+  const own = useQuery({ queryFn: listChallenges, queryKey: ['challenges'], staleTime: 60_000 })
+  const joined = useQuery({
+    queryFn: listMyChallengeParticipations,
+    queryKey: ['challengeParticipations'],
+    staleTime: 60_000,
+  })
+  const options = challengePickerOptions(own.data ?? [], joined.data ?? [])
+  const known = [...options.own, ...options.joined].some((o) => o.url === block.url)
+  const [pasting, setPasting] = useState(false)
+  const selected = pasting || (block.url !== '' && !known) ? PASTE_URL : block.url
+
+  const onSelect = (value: string) => {
+    if (value === PASTE_URL) {
+      setPasting(true)
+      return
+    }
+    setPasting(false)
+    onPatch({ url: value })
+  }
+
+  return (
+    <div class="article-chart-fields">
+      <label class="article-field">
+        <span class="article-field-label">Challenge</span>
+        <select
+          class="article-input"
+          value={selected}
+          onChange={(e) => onSelect((e.target as HTMLSelectElement).value)}
+        >
+          <option value="">Choose a challenge…</option>
+          {options.own.length > 0 && (
+            <optgroup label="Your challenges">
+              {options.own.map((o) => (
+                <option key={o.url} value={o.url}>
+                  {o.label}
+                </option>
+              ))}
+            </optgroup>
+          )}
+          {options.joined.length > 0 && (
+            <optgroup label="Joined">
+              {options.joined.map((o) => (
+                <option key={o.url} value={o.url}>
+                  {o.label}
+                </option>
+              ))}
+            </optgroup>
+          )}
+          <option value={PASTE_URL}>Paste a URL…</option>
+        </select>
+      </label>
+      {selected === PASTE_URL && (
+        <label class="article-field">
+          <span class="article-field-label">Challenge URL</span>
+          <input
+            type="url"
+            class="article-input"
+            value={block.url}
+            placeholder="https://…/u/username/challenge"
+            onInput={(e) => onPatch({ url: (e.target as HTMLInputElement).value })}
+          />
+        </label>
+      )}
+      <label class="article-field">
+        <span class="article-field-label">Caption (optional)</span>
+        <input
+          type="text"
+          class="article-input"
+          value={block.caption}
+          onInput={(e) => onPatch({ caption: (e.target as HTMLInputElement).value })}
+        />
+      </label>
+    </div>
+  )
+}
+
+const blockKindLabel = (block: BlockDraft): string => {
+  switch (block.type) {
+    case 'prose':
+      return '¶ Prose'
+    case 'correlation':
+      return '🔗 Correlation'
+    case 'challenge':
+      return '🏁 Challenge'
+    default:
+      return '📈 Chart'
+  }
+}
+
 const ArticleBlockEditor = ({
   block,
   index,
@@ -139,9 +245,7 @@ const ArticleBlockEditor = ({
 }) => (
   <div class="article-block">
     <div class="article-block-head">
-      <span class="article-block-kind">
-        {block.type === 'prose' ? '¶ Prose' : block.type === 'correlation' ? '🔗 Correlation' : '📈 Chart'}
-      </span>
+      <span class="article-block-kind">{blockKindLabel(block)}</span>
       <div class="article-block-controls">
         <button
           type="button"
@@ -175,6 +279,8 @@ const ArticleBlockEditor = ({
       />
     ) : block.type === 'correlation' ? (
       <CorrelationBlockFields block={block} selectors={selectors} onPatch={onPatch} />
+    ) : block.type === 'challenge' ? (
+      <ChallengeBlockFields block={block} onPatch={onPatch} />
     ) : (
       <div class="article-chart-fields">
         <label class="article-field">
@@ -384,6 +490,7 @@ export const ArticleEditorDialog = ({
       keyed({ bucket: '', caption: '', end: '', metric: '', start: '', type: 'chart' }),
     ])
   const addCorrelation = () => setBlocks((bs) => [...bs, keyed(emptyCorrelationDraft())])
+  const addChallenge = () => setBlocks((bs) => [...bs, keyed(emptyChallengeDraft())])
 
   /** Create the draft on first save, PATCH it after; returns its id. */
   const persistDraft = async (): Promise<string> => {
@@ -522,6 +629,9 @@ export const ArticleEditorDialog = ({
           </button>
           <button type="button" class="btn-secondary" onClick={addCorrelation}>
             + Correlation
+          </button>
+          <button type="button" class="btn-secondary" onClick={addChallenge}>
+            + Challenge
           </button>
         </div>
 

@@ -2,6 +2,7 @@ import type { ArticleContent } from '@aurboda/api-spec'
 
 import { describe, expect, test } from 'vitest'
 
+import { CHART_WIDTH } from '../charts/chart-svg.ts'
 import { articleImageAttachments, proseToPlainText, renderArticleContentHtml } from './article-object.ts'
 
 const WINDOW = { end: '2026-07-02T00:00:00Z', start: '2026-07-01T00:00:00Z' }
@@ -76,6 +77,24 @@ describe('renderArticleContentHtml', () => {
     expect(html).toContain('HR trend')
     expect(html).not.toContain('img') // images ride as attachments, not inline
   })
+
+  test('a challenge block federates its caption and an escaped join link', () => {
+    const html = renderArticleContentHtml(
+      article([
+        {
+          caption: 'Steps <race>',
+          challenge_url: 'https://qs.example/u/olle/nov?a=1&b="2"',
+          type: 'challenge',
+        },
+        { challenge_url: 'https://other.example/u/eva/oct', type: 'challenge' },
+      ]),
+    )
+    expect(html).toContain('<p>Steps &lt;race&gt;</p>')
+    expect(html).toContain(
+      '<p><a href="https://qs.example/u/olle/nov?a=1&amp;b=&quot;2&quot;">Join the challenge</a></p>',
+    )
+    expect(html).toContain('<p><a href="https://other.example/u/eva/oct">Join the challenge</a></p>')
+  })
 })
 
 describe('articleImageAttachments', () => {
@@ -133,6 +152,28 @@ describe('articleImageAttachments', () => {
     )
     expect(atts[0].name?.toString()).toBe('Overnight HR')
     expect(atts[1].name?.toString()).toContain('steps') // correlation label from selectors
+  })
+
+  test('a challenge block attaches its standings race chart, named from its caption or as standings', () => {
+    const atts = articleImageAttachments(
+      'https://aurboda.example/api',
+      'fiddur',
+      'POST',
+      'public',
+      'secret-token',
+      UPDATED,
+      withBlocks([
+        { markdown: 'Intro', type: 'prose' },
+        { challenge_url: 'https://qs.example/u/olle/nov', type: 'challenge' },
+        { caption: 'Our race', challenge_url: 'https://qs.example/u/olle/nov', type: 'challenge' },
+      ]),
+    )
+    expect(atts.map((a) => a.url?.href)).toEqual([
+      `${base}/blocks/1/image.png?v=${V}`,
+      `${base}/blocks/2/image.png?v=${V}`,
+    ])
+    expect(atts.map((a) => a.name?.toString())).toEqual(['Challenge standings', 'Our race'])
+    expect(atts[0].width).toBe(CHART_WIDTH)
   })
 
   test('no attachments for a prose-only article', () => {

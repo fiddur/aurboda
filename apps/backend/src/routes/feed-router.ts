@@ -75,7 +75,7 @@ import {
   serializeArticleDraft,
 } from '../services/article-drafts.ts'
 import { buildArticleMarkdown, renderableArticleBlocks } from '../services/article-export.ts'
-import { buildArticleContent, mergeArticleContent } from '../services/article.ts'
+import { mergeArticleContent, validateArticleContent } from '../services/article.ts'
 import { resolveChallengeShare } from '../services/challenge-share.ts'
 import {
   exerciseShareTags,
@@ -591,7 +591,7 @@ export const createFeedRouter = (
     validateBody(createArticleBodySchema),
     async (req, res) => {
       const user = req.user!
-      const built = buildArticleContent({
+      const built = await validateArticleContent({
         blocks: req.body.blocks,
         default_end: req.body.default_end,
         default_start: req.body.default_start,
@@ -618,7 +618,7 @@ export const createFeedRouter = (
       if (!existing || existing.kind !== 'article' || existing.article == null) {
         return res.status(404).json({ error: 'Article not found', success: false })
       }
-      const built = buildArticleContent(mergeArticleContent(existing.article, req.body))
+      const built = await validateArticleContent(mergeArticleContent(existing.article, req.body))
       if (!built.ok) return res.status(400).json({ error: built.error, success: false })
       const record = await updateFeedPost(user, req.params.postId, {
         article: built.article,

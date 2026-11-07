@@ -56,7 +56,7 @@ import {
   serializeArticleDraft,
 } from '../services/article-drafts.ts'
 import { buildArticleMarkdown, renderableArticleBlocks } from '../services/article-export.ts'
-import { buildArticleContent, mergeArticleContent } from '../services/article.ts'
+import { mergeArticleContent, validateArticleContent } from '../services/article.ts'
 import { resolveChallengeShare } from '../services/challenge-share.ts'
 import {
   exerciseShareTags,
@@ -267,10 +267,10 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
 
   server.tool(
     'create_article',
-    'Publish a long-form ARTICLE to your feed: a title, markdown prose, and inline chart blocks over locked time windows. `blocks` is an ordered list of `{type:"prose", markdown}` or `{type:"chart", metric, start?, end?, bucket?, caption?}`. A chart block over `[start, end]` re-resolves live against that window; omit its start/end to inherit `default_start`/`default_end`. Use this (not `share_activity`) for a written analysis spanning multiple charts. It publishes (and federates) immediately; to let the user review first, use `create_article_draft` instead.',
+    'Publish a long-form ARTICLE to your feed: a title, markdown prose, and inline chart blocks over locked time windows. `blocks` is an ordered list of `{type:"prose", markdown}` or `{type:"chart", metric, start?, end?, bucket?, caption?}`. A chart block over `[start, end]` re-resolves live against that window; omit its start/end to inherit `default_start`/`default_end`. A `{type:"challenge", challenge_url, caption?}` block embeds a challenge\'s live standings and a join link; take `challenge_url` from `list_challenges` (`share_url`) or from a joined challenge\'s URL. Use this (not `share_activity`) for a written analysis spanning multiple charts. It publishes (and federates) immediately; to let the user review first, use `create_article_draft` instead.',
     { ...createArticleBodySchema.shape },
     async (body) => {
-      const built = buildArticleContent({
+      const built = await validateArticleContent({
         blocks: body.blocks,
         default_end: body.default_end,
         default_start: body.default_start,
@@ -296,7 +296,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
       if (!existing || existing.kind !== 'article' || existing.article == null) {
         return errorResponse('Article not found')
       }
-      const built = buildArticleContent(mergeArticleContent(existing.article, body))
+      const built = await validateArticleContent(mergeArticleContent(existing.article, body))
       if (!built.ok) return errorResponse(built.error)
       const record = await updateFeedPost(user, id, {
         article: built.article,

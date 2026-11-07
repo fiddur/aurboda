@@ -138,6 +138,19 @@ describe('publishableArticle', () => {
     expect(!result.ok && result.error).toContain('Correlation block 1 needs both a trigger and an outcome')
   })
 
+  test('rejects a challenge block without a URL', () => {
+    const result = publishableArticle(complete({ blocks: [{ type: 'challenge' }] }), 'public')
+    expect(!result.ok && result.error).toContain('Challenge block 1 has no challenge')
+  })
+
+  test('rejects a challenge block whose URL is not a challenge link', () => {
+    const result = publishableArticle(
+      complete({ blocks: [{ challenge_url: 'https://qs.example/about', type: 'challenge' }] }),
+      'public',
+    )
+    expect(!result.ok && result.error).toContain('Block 1: not a challenge URL')
+  })
+
   test('applies the same window validation as publishing directly', () => {
     const result = publishableArticle(
       complete({ default_end: undefined, default_start: undefined }),
@@ -170,6 +183,15 @@ describe('publishArticleDraft', () => {
     expect(fake.created).toEqual([])
     expect(fake.claimed).toEqual([])
     expect(fake.drafts.has('d1')).toBe(true)
+  })
+
+  test('a draft failing the lookup checks is a 400 and is never claimed', async () => {
+    const fake = fakeDeps(draftRecord())
+    fake.deps.checkContent = async () => ({ error: 'Block 2: challenge not found.', ok: false })
+    const result = await publishArticleDraft('alice', 'd1', {}, fake.deps)
+    expect(result).toEqual({ error: 'Block 2: challenge not found.', ok: false, status: 400 })
+    expect(fake.claimed).toEqual([])
+    expect(fake.created).toEqual([])
   })
 
   test('an unknown draft is a 404', async () => {

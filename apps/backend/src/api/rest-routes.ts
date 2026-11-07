@@ -106,7 +106,7 @@ import { buildChartSvg } from '../services/charts/chart-svg.ts'
 import { buildRaceChartSvg } from '../services/charts/race-chart-svg.ts'
 import { buildScatterSvg } from '../services/charts/scatter-svg.ts'
 import { latestExerciseSession } from '../services/exercise-card.ts'
-import { resolveStandingsChart } from '../services/feed-structured-challenge.ts'
+import { resolveChallengeRaceByUrl, resolveStandingsChart } from '../services/feed-structured-challenge.ts'
 import { resolveExerciseTrendSeries } from '../services/feed-structured-exercise.ts'
 import { resolveFeedActivity } from '../services/feed.ts'
 import { readOfficialFeedSetting } from '../services/official-feed.ts'
@@ -289,6 +289,7 @@ export const mountRestRouters = ({
         (await getLocations(user, start, end)).locations.map((l) => l.coordinates),
       getSeries: getTimeSeries,
       getExerciseTrend: (user, post) => resolveExerciseTrendSeries(user, post),
+      getChallengeRaceByUrl: resolveChallengeRaceByUrl,
       getStandingsChart: resolveStandingsChart,
       renderChart: renderChartPng,
       renderChartSvg: buildChartSvg,

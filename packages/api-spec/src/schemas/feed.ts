@@ -396,13 +396,37 @@ export const articleCorrelationBlockSchema = z
   })
   .meta({ description: 'A correlation scatter over a locked window', id: 'ArticleCorrelationBlock' })
 
+/**
+ * A challenge block: a challenge embedded by its public URL (one hosted here or
+ * on another instance), rendered with its live standings and a link to join.
+ * It has no time window — the challenge's own window applies.
+ */
+export const articleChallengeBlockSchema = z
+  .object({
+    caption: z
+      .string()
+      .max(280)
+      .optional()
+      .meta({ description: 'Optional caption shown with the challenge' }),
+    challenge_url: z.string().url().max(2000).meta({
+      description:
+        "Public challenge URL (`<base>/u/<username>/<slug>`): an own challenge's `share_url` or a joined challenge's URL",
+    }),
+    type: z.literal('challenge'),
+  })
+  .meta({ description: 'A challenge with its live standings and a join link', id: 'ArticleChallengeBlock' })
+
 export const articleBlockSchema = z
   .discriminatedUnion('type', [
     articleProseBlockSchema,
     articleChartBlockSchema,
     articleCorrelationBlockSchema,
+    articleChallengeBlockSchema,
   ])
-  .meta({ description: 'An article content block (prose, chart, or correlation)', id: 'ArticleBlock' })
+  .meta({
+    description: 'An article content block (prose, chart, correlation, or challenge)',
+    id: 'ArticleBlock',
+  })
 
 export type ArticleBlock = z.infer<typeof articleBlockSchema>
 
@@ -754,13 +778,31 @@ export const articleDraftCorrelationBlockSchema = articleCorrelationBlockSchema
     id: 'ArticleDraftCorrelationBlock',
   })
 
+export const articleDraftChallengeBlockSchema = articleChallengeBlockSchema
+  .extend({
+    challenge_url: z
+      .string()
+      .url()
+      .max(2000)
+      .optional()
+      .meta({ description: 'Public challenge URL, once chosen' }),
+  })
+  .meta({
+    description: 'A challenge block in a draft; the URL may be unset',
+    id: 'ArticleDraftChallengeBlock',
+  })
+
 export const articleDraftBlockSchema = z
   .discriminatedUnion('type', [
     articleProseBlockSchema,
     articleDraftChartBlockSchema,
     articleDraftCorrelationBlockSchema,
+    articleDraftChallengeBlockSchema,
   ])
-  .meta({ description: 'A draft article block (prose, chart, or correlation)', id: 'ArticleDraftBlock' })
+  .meta({
+    description: 'A draft article block (prose, chart, correlation, or challenge)',
+    id: 'ArticleDraftBlock',
+  })
 
 export type ArticleDraftBlock = z.infer<typeof articleDraftBlockSchema>
 
