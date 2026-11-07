@@ -249,7 +249,7 @@ export const createShareHtmlRouter = (deps: ShareHtmlDeps): Router => {
 
   router.get('/blog', async (_req, res) => {
     const url = buildOfficialFeedUrl(webHost)
-    const setting = readOfficialFeed ? await readOfficialFeed() : null
+    const setting = readOfficialFeed ? await readOfficialFeed().catch(() => null) : null
     if (setting && setting.users.length > 0) {
       const meta = buildOfficialFeedShareMeta({
         feedUrl: buildOfficialFeedAtomUrl(apiBaseUrl),

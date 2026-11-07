@@ -633,7 +633,7 @@ export const officialFeedQuerySchema = z
   .object({
     cursor: z.string().optional().meta({ description: "Opaque cursor from a previous page's `next_cursor`" }),
   })
-  .meta({ id: 'OfficialFeedQuery' })
+  .meta({ description: 'Query of the official feed listing', id: 'OfficialFeedQuery' })
 
 export type OfficialFeedQuery = z.infer<typeof officialFeedQuerySchema>
 
@@ -642,7 +642,7 @@ export const officialFeedPostSchema = feedPostSchema
   .extend({
     author_username: z.string().meta({ description: "The post author's local username" }),
   })
-  .meta({ id: 'OfficialFeedPost' })
+  .meta({ description: 'A post in the official feed, with its author', id: 'OfficialFeedPost' })
 
 export type OfficialFeedPost = z.infer<typeof officialFeedPostSchema>
 
@@ -663,7 +663,11 @@ export const officialFeedResponseSchema = baseResponseSchema
       .optional()
       .meta({ description: 'The usernames whose posts are listed; absent on errors' }),
   })
-  .meta({ id: 'OfficialFeedResponse' })
+  .meta({
+    description:
+      "A page of the instance's official feed: public posts by the chosen users with one of the chosen tags",
+    id: 'OfficialFeedResponse',
+  })
 
 export type OfficialFeedResponse = z.infer<typeof officialFeedResponseSchema>
 
