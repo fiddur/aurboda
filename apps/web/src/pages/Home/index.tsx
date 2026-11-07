@@ -2,8 +2,8 @@ import { dataSources } from '@aurboda/api-spec'
 import { useEffect, useRef } from 'preact/hooks'
 
 import { guestSignup, type GuestSignup, heroBillingLine } from '../../components/guest-signup'
-import { blogPath } from '../../state/api/blogUrls'
-import { auth, blogUsername, ensureStatusLoaded, serverBilling, signupMode } from '../../state/auth'
+import { officialFeedPath } from '../../state/api/blogUrls'
+import { auth, ensureStatusLoaded, officialFeedEnabled, serverBilling, signupMode } from '../../state/auth'
 import { Dashboard } from '../Dashboard'
 import './style.css'
 
@@ -183,7 +183,7 @@ function DataSourcesTable() {
   )
 }
 
-function Welcome({ signup, blogUser }: { signup: GuestSignup; blogUser: string | null }) {
+function Welcome({ signup, hasBlog }: { signup: GuestSignup; hasBlog: boolean }) {
   const sourcesRef = useRef<HTMLDetailsElement>(null)
 
   // A link from another page (the guest bar's "Run your own" → /#own) lands here by client-side routing,
@@ -443,7 +443,7 @@ function Welcome({ signup, blogUser }: { signup: GuestSignup; blogUser: string |
       <footer class="welcome-wrap welcome-footer">
         <span>Aurboda: in Norse myth, the giantess who gathers and provides.</span>
         <span class="welcome-footer-spacer" />
-        {blogUser && <a href={blogPath(blogUser)}>Blog</a>}
+        {hasBlog && <a href={officialFeedPath}>Blog</a>}
         <a href={GITHUB} target="_blank" rel="noopener noreferrer">
           GitHub
         </a>
@@ -465,5 +465,10 @@ export function Home() {
     return <Dashboard />
   }
 
-  return <Welcome signup={guestSignup(signupMode.value, serverBilling.value)} blogUser={blogUsername.value} />
+  return (
+    <Welcome
+      signup={guestSignup(signupMode.value, serverBilling.value)}
+      hasBlog={officialFeedEnabled.value}
+    />
+  )
 }

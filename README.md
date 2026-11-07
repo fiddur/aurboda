@@ -244,7 +244,7 @@ Navigate to http://localhost:8080 and create your account through the web interf
 
 After creating your user, switch signup to `invite_only` or `closed` from the in-app admin settings (or set `ALLOW_SIGNUP=false` in docker-compose.yml as a legacy fallback) to disallow other signups.
 
-To give your instance a blog, write articles on a user's feed and name that user under **Instance Blog** in the admin settings: their public articles get a "Blog" link from the front page and footer, at `/u/<username>/articles` with an Atom feed. See [Blog view and Atom feed](docs/features/feed.md#blog-view-and-atom-feed).
+To give your instance a blog, choose its users and hashtags under **Official Feed** in the admin settings: their public posts with one of those tags (all their public posts when no tags are set) are listed at `/blog`, linked from the front page and footer, with an Atom feed. See [Official feed](docs/features/feed.md#official-feed).
 
 ### Environment Variables
 

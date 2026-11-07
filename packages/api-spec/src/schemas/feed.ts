@@ -584,6 +584,65 @@ export const feedPostsResponseSchema = baseResponseSchema
 
 export type FeedPostsResponse = z.infer<typeof feedPostsResponseSchema>
 
+/** At most this many users, and this many tags, in the official feed setting. */
+export const officialFeedMaxEntries = 20
+
+export const officialFeedSettingSchema = z
+  .object({
+    tags: z.array(hashtagInputSchema).max(officialFeedMaxEntries).meta({
+      description:
+        'Only posts carrying at least one of these hashtags (lowercase, without `#`); empty lists every public post of the users',
+    }),
+    users: z.array(z.string().min(1)).max(officialFeedMaxEntries).meta({
+      description: 'Local usernames whose public posts make up the feed; empty turns the official feed off',
+    }),
+  })
+  .meta({
+    description:
+      "The instance's official feed, linked from the front page as its blog: public posts by these users that carry one of these tags",
+    id: 'OfficialFeedSetting',
+  })
+
+export type OfficialFeedSetting = z.infer<typeof officialFeedSettingSchema>
+
+export const officialFeedQuerySchema = z
+  .object({
+    cursor: z.string().optional().meta({ description: "Opaque cursor from a previous page's `next_cursor`" }),
+  })
+  .meta({ id: 'OfficialFeedQuery' })
+
+export type OfficialFeedQuery = z.infer<typeof officialFeedQuerySchema>
+
+/** A post on the instance's official feed: as on its author's public profile, plus who wrote it. */
+export const officialFeedPostSchema = feedPostSchema
+  .extend({
+    author_username: z.string().meta({ description: "The post author's local username" }),
+  })
+  .meta({ id: 'OfficialFeedPost' })
+
+export type OfficialFeedPost = z.infer<typeof officialFeedPostSchema>
+
+export const officialFeedResponseSchema = baseResponseSchema
+  .extend({
+    next_cursor: z
+      .string()
+      .nullable()
+      .optional()
+      .meta({ description: 'Cursor for the next page; null on the last page' }),
+    posts: z.array(officialFeedPostSchema),
+    tags: z
+      .array(z.string())
+      .optional()
+      .meta({ description: 'The hashtags a post needs one of to be listed (empty: any); absent on errors' }),
+    users: z
+      .array(z.string())
+      .optional()
+      .meta({ description: 'The usernames whose posts are listed; absent on errors' }),
+  })
+  .meta({ id: 'OfficialFeedResponse' })
+
+export type OfficialFeedResponse = z.infer<typeof officialFeedResponseSchema>
+
 /**
  * The share PREVIEW returns the exact federated `content` HTML a
  * Mastodon follower would see and the typed scalars behind the native stat

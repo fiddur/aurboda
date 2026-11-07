@@ -9,6 +9,8 @@
  * site meta so a private resource's title/description is never handed to a
  * crawler.
  */
+import type { OfficialFeedSetting } from '@aurboda/api-spec'
+
 import { type Response, Router } from 'express'
 
 import { isValidUsername } from '../api/auth-routes.ts'
@@ -22,6 +24,7 @@ import {
   listPublicSharedDashboards,
 } from '../db/index.ts'
 import { proseToPlainText } from '../services/activitypub/article-object.ts'
+import { officialFeedTitle } from '../services/article-atom.ts'
 import { cardMembers, describeChallenge, type ResolvedChallenge } from '../services/challenge-card.ts'
 import {
   buildArticleShareMeta,
@@ -30,6 +33,7 @@ import {
   buildDashboardShareMeta,
   buildDefaultShareMeta,
   buildExerciseShareMeta,
+  buildOfficialFeedShareMeta,
   buildProfileShareMeta,
   injectShareMeta,
   oembedDiscoveryUrl,
@@ -39,6 +43,8 @@ import {
 import {
   buildArticlesAtomUrl,
   buildBlogUrl,
+  buildOfficialFeedAtomUrl,
+  buildOfficialFeedUrl,
   buildPostUrl,
   buildProfileUrl,
   buildShareUrl,
@@ -86,6 +92,8 @@ export interface ShareHtmlDeps {
   resolveArticle: (username: string, postId: string) => Promise<ResolvedArticle | null>
   /** True if the user's public profile exists (db reachable). */
   profileExists: (username: string) => Promise<boolean>
+  /** The instance's official feed setting; absent, `/blog` gets generic meta. */
+  readOfficialFeed?: () => Promise<OfficialFeedSetting>
   now?: () => Date
 }
 
@@ -223,6 +231,7 @@ export const createShareHtmlRouter = (deps: ShareHtmlDeps): Router => {
     apiBaseUrl,
     loadTemplate,
     profileExists,
+    readOfficialFeed,
     resolveArticle,
     resolveChallenge,
     resolveDashboard,
@@ -236,6 +245,22 @@ export const createShareHtmlRouter = (deps: ShareHtmlDeps): Router => {
   const withOembed = (meta: ShareMeta, resourceUrl: string): ShareMeta => ({
     ...meta,
     oembedUrl: oembedDiscoveryUrl(webHost, resourceUrl),
+  })
+
+  router.get('/blog', async (_req, res) => {
+    const url = buildOfficialFeedUrl(webHost)
+    const setting = readOfficialFeed ? await readOfficialFeed() : null
+    if (setting && setting.users.length > 0) {
+      const meta = buildOfficialFeedShareMeta({
+        feedUrl: buildOfficialFeedAtomUrl(apiBaseUrl),
+        setting,
+        title: officialFeedTitle(webHost),
+        url,
+        webHost,
+      })
+      return sendHtml(loadTemplate, meta, true, res)
+    }
+    return sendHtml(loadTemplate, buildDefaultShareMeta(webHost, url), false, res)
   })
 
   router.get('/u/:username/articles', async (req, res) => {

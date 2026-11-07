@@ -1,8 +1,8 @@
 import { useLocation } from 'preact-iso'
 import { useEffect, useState } from 'preact/hooks'
 
-import { blogPath } from '../state/api/blogUrls'
-import { blogUsername, ensureStatusLoaded, serverBilling, signupMode } from '../state/auth'
+import { officialFeedPath } from '../state/api/blogUrls'
+import { ensureStatusLoaded, officialFeedEnabled, serverBilling, signupMode } from '../state/auth'
 import './GuestBar.css'
 import { guestBarSignupLabel, guestSignup } from './guest-signup'
 
@@ -61,7 +61,6 @@ export function GuestBar() {
   const { path, url } = useLocation()
   const page = path === '/' ? 'welcome' : 'public'
   const [menuOpen, setMenuOpen] = useState(false)
-  const blogUser = blogUsername.value
 
   useEffect(() => {
     ensureStatusLoaded()
@@ -80,8 +79,8 @@ export function GuestBar() {
     return () => document.removeEventListener('keydown', handleKey)
   }, [menuOpen])
 
-  const sectionLinks = blogUser
-    ? [...SECTION_LINKS, { href: blogPath(blogUser), label: 'Blog' }]
+  const sectionLinks = officialFeedEnabled.value
+    ? [...SECTION_LINKS, { href: officialFeedPath, label: 'Blog' }]
     : SECTION_LINKS
   const loginHref = page === 'welcome' ? '/login' : `/login?next=${encodeURIComponent(url)}`
 

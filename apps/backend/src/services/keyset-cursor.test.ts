@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { decodeKeysetCursor, encodeKeysetCursor } from './keyset-cursor.ts'
+import { decodeKeysetCursor, encodeKeysetCursor, keysetTsMicros } from './keyset-cursor.ts'
 
 const UUID = '11111111-2222-4333-8444-555555555555'
 
@@ -76,5 +76,26 @@ describe('keyset cursor', () => {
     // node-postgres would render as an unparsable timestamp and 500 on.
     const crafted = Buffer.from(`9007199254740991:${UUID}`).toString('base64url')
     expect(decodeKeysetCursor(crafted)).toBeUndefined()
+  })
+})
+
+describe('keysetTsMicros', () => {
+  test('reads Postgres text and ISO forms of one instant alike, at µs precision', () => {
+    const micros = Date.UTC(2026, 7, 20, 9, 0, 0) * 1000 + 500_700
+    expect(keysetTsMicros('2026-08-20 09:00:00.5007+00')).toBe(micros)
+    expect(keysetTsMicros('2026-08-20T09:00:00.5007Z')).toBe(micros)
+    expect(keysetTsMicros('2026-08-20 11:00:00.5007+02')).toBe(micros)
+    expect(keysetTsMicros('2026-08-20 03:30:00.5007-05:30')).toBe(micros)
+  })
+
+  test('orders rows sharing a millisecond by their microseconds', () => {
+    expect(keysetTsMicros('2026-08-20 09:00:00.500701+00')).toBeGreaterThan(
+      keysetTsMicros('2026-08-20 09:00:00.5007+00'),
+    )
+    expect(keysetTsMicros('2026-08-20 09:00:00+00')).toBe(Date.UTC(2026, 7, 20, 9) * 1000)
+  })
+
+  test('is NaN for anything that is not a timestamp', () => {
+    expect(keysetTsMicros('yesterday')).toBeNaN()
   })
 })

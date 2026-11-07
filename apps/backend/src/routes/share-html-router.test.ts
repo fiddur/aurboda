@@ -219,6 +219,31 @@ describe('GET /u/:username', () => {
   })
 })
 
+describe('GET /blog', () => {
+  test('renders the official feed meta with Atom discovery when it is on', async () => {
+    const app = buildApp({
+      readOfficialFeed: async () => ({ tags: ['aurboda', 'qs'], users: ['fiddur', 'alice'] }),
+    })
+    const res = await supertest(app).get('/blog')
+    expect(res.text).toContain('<title>aurboda.net blog</title>')
+    expect(res.text).toContain('<link rel="canonical" href="https://aurboda.net/blog">')
+    expect(res.text).toContain('content="Posts from fiddur and alice tagged #aurboda or #qs."')
+    expect(res.text).toContain(
+      'type="application/atom+xml" title="aurboda.net blog" href="https://aurboda.net/api/public/official-feed.atom">',
+    )
+    expect(res.headers['cache-control']).toBe('public, max-age=300')
+  })
+
+  test('renders default meta when the official feed is off', async () => {
+    for (const app of [buildApp(), buildApp({ readOfficialFeed: async () => ({ tags: [], users: [] }) })]) {
+      const res = await supertest(app).get('/blog')
+      expect(res.text).toContain('<title>Aurboda</title>')
+      expect(res.text).not.toContain('application/atom+xml')
+      expect(res.headers['cache-control']).toBe('public, max-age=60')
+    }
+  })
+})
+
 describe('GET /u/:username/articles', () => {
   test('renders blog meta with Atom discovery when the profile exists', async () => {
     const app = buildApp({ profileExists: async () => true, resolveDashboard: async () => null })

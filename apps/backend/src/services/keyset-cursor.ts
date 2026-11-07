@@ -87,3 +87,20 @@ export const decodeKeysetCursor = (cursor: string | undefined): KeysetCursor | u
   const ts = legacyMsToTs(raw)
   return ts === undefined ? undefined : { id, ts }
 }
+
+/**
+ * A keyset timestamp (Postgres `timestamptz::text` or ISO) as epoch
+ * microseconds, so rows from different databases merge in the order their page
+ * predicates compare — a `Date` would drop the microseconds (#1025). NaN when
+ * the value is not a timestamp.
+ */
+export const keysetTsMicros = (ts: string): number => {
+  const m = TS_RE.exec(ts)
+  if (m == null) return Number.NaN
+  const [year, month, day, hour, minute, second] = m.slice(1, 7).map(Number)
+  const micros = Number((m[7] ?? '.').slice(1).padEnd(6, '0'))
+  const sign = m[8] === 'Z' || m[8].startsWith('+') ? 1 : -1
+  const offsetMinutes = m[8] === 'Z' ? 0 : sign * (Number(m[9]) * 60 + Number(m[11] ?? 0))
+  const ms = Date.UTC(year, month - 1, day, hour, minute, second) - offsetMinutes * 60_000
+  return ms * 1000 + micros
+}
