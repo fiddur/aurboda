@@ -123,7 +123,55 @@ describe('terseInputSchema', () => {
     const result = terseInputSchema(
       withDefinitions({ mode: { anyOf: [{ enum: ['a', 'b'], type: 'string' }, { type: 'null' }] } }),
     )
-    expect(result.properties?.mode).toEqual({ enum: ['a', 'b'], type: ['string', 'null'] })
+    expect(result.properties?.mode).toEqual({ enum: ['a', 'b', null], type: ['string', 'null'] })
+  })
+
+  test('a nullable enum that already lists null does not repeat it', () => {
+    const result = terseInputSchema(
+      withDefinitions({ mode: { anyOf: [{ enum: ['a', null] }, { enum: ['b'] }, { type: 'null' }] } }),
+    )
+    expect(result.properties?.mode).toEqual({ enum: ['a', null, 'b'], type: ['string', 'null'] })
+  })
+
+  test('an enum union without a null alternative does not gain null', () => {
+    const result = terseInputSchema(
+      withDefinitions({
+        mode: {
+          anyOf: [
+            { enum: ['a'], type: 'string' },
+            { enum: ['b'], type: 'string' },
+          ],
+        },
+      }),
+    )
+    expect(result.properties?.mode).toEqual({ enum: ['a', 'b'], type: 'string' })
+  })
+
+  test('a plain enum is unchanged', () => {
+    const result = terseInputSchema(withDefinitions({ mode: { enum: ['a', 'b'], type: 'string' } }))
+    expect(result.properties?.mode).toEqual({ enum: ['a', 'b'], type: 'string' })
+  })
+
+  test('a union with an unconstrained alternative has no type', () => {
+    const result = terseInputSchema(
+      withDefinitions(
+        {
+          described: { anyOf: [{ description: 'Anything' }, { type: 'number' }] },
+          nested: { anyOf: [{ anyOf: [{}, { type: 'string' }] }, { type: 'number' }] },
+          never: { anyOf: [{ not: {} }, { type: 'string' }] },
+          open: { anyOf: [{}, { type: 'string' }] },
+          opened: { oneOf: [{ type: 'string' }, { $ref: '#/definitions/Any' }] },
+        },
+        { Any: {} },
+      ),
+    )
+    expect(result.properties).toEqual({
+      described: {},
+      nested: {},
+      never: { type: 'string' },
+      open: {},
+      opened: {},
+    })
   })
 
   test('an array of objects shows only the item type', () => {
