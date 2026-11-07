@@ -163,6 +163,7 @@ fun EmbeddedWebScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var canGoBack by remember { mutableStateOf(false) }
     var webView by remember { mutableStateOf<WebView?>(null) }
+    val showFileChooser = rememberWebFileChooser()
 
     val authJson = remember(username, authToken) {
         JSONObject().put("user", username).put("token", authToken).toString()
@@ -208,6 +209,7 @@ fun EmbeddedWebScreen(
                         WebSettingsCompat.setAlgorithmicDarkeningAllowed(settings, true)
                     }
                     if (trusted) installAuthBridge(this, authJson, baseOrigin)
+                    webChromeClient = embeddedWebChromeClient(context, showFileChooser)
                     webViewClient = object : WebViewClient() {
                         override fun shouldOverrideUrlLoading(
                             view: WebView,

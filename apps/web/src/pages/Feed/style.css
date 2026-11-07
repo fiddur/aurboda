@@ -396,13 +396,16 @@
   padding: 0;
 }
 
+.autoshare-rule-item {
+  border-bottom: 1px solid #e5e7eb;
+}
+
 .autoshare-rule-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.5rem 0;
-  border-bottom: 1px solid #e5e7eb;
 }
 
 .autoshare-rule-main {
@@ -495,6 +498,12 @@
   color: #991b1b;
 }
 
+.autoshare-edit-note {
+  font-size: 0.85rem;
+  color: #6b7280;
+  margin: 0;
+}
+
 /* "auto-shared" marker on posts created by a rule. */
 .feed-post-via-rule {
   font-size: 0.8rem;
@@ -504,7 +513,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  .autoshare-rule-row,
+  .autoshare-rule-item,
   .autoshare-create {
     border-color: #374151;
   }
