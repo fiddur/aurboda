@@ -35,6 +35,7 @@ import {
   validatePeriodLock,
 } from '../services/period-lock.ts'
 import { PeriodError } from '../services/periods.ts'
+import { getUserTimezone } from '../services/settings.ts'
 import { buildShareUrl } from '../services/share-urls.ts'
 import { resolveDashboardView } from '../services/shared-dashboard-data.ts'
 import { dashboardVisibilityOf, dashboardVisibilityToFlags } from '../services/visibility.ts'
@@ -78,7 +79,7 @@ export const createSharedDashboardsRouter = (
         return res.status(400).json({ error: 'Give exactly one of config or preset', success: false })
       }
       const lock = requestedPeriodLock(req.body) ?? defaultPeriodLock
-      const lockError = validatePeriodLock(config, lock)
+      const lockError = validatePeriodLock(config, lock, new Date(), await getUserTimezone(user))
       if (lockError !== null) return res.status(400).json({ error: lockError, success: false })
       const record = await createSharedDashboard(user, {
         config,
@@ -130,7 +131,7 @@ export const createSharedDashboardsRouter = (
       if (!stored) {
         return res.status(404).json({ error: 'Shared dashboard not found', success: false })
       }
-      const lockUpdate = resolveLockUpdate(stored, req.body)
+      const lockUpdate = resolveLockUpdate(stored, req.body, new Date(), await getUserTimezone(user))
       if ('error' in lockUpdate) return res.status(400).json({ error: lockUpdate.error, success: false })
       const record = await updateSharedDashboard(user, req.params.id, {
         config: req.body.config,

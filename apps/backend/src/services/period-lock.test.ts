@@ -50,37 +50,118 @@ describe('requestedPeriodLock', () => {
 
 describe('validatePeriodLock', () => {
   it('accepts latest on any dashboard', () => {
-    expect(validatePeriodLock(rolling, defaultPeriodLock)).toBeNull()
-    expect(validatePeriodLock(monthly, defaultPeriodLock)).toBeNull()
+    expect(validatePeriodLock(rolling, defaultPeriodLock, NOW, TZ)).toBeNull()
+    expect(validatePeriodLock(monthly, defaultPeriodLock, NOW, TZ)).toBeNull()
   })
 
   it('rejects any other lock on a rolling dashboard', () => {
     expect(
-      validatePeriodLock(rolling, { period_fixed: '2026-09', period_from: null, period_lock: 'fixed' }),
+      validatePeriodLock(
+        rolling,
+        { period_fixed: '2026-09', period_from: null, period_lock: 'fixed' },
+        NOW,
+        TZ,
+      ),
     ).toMatch(/period dashboard/)
   })
 
   it('needs the key of the mode', () => {
     expect(
-      validatePeriodLock(monthly, { period_fixed: null, period_from: null, period_lock: 'fixed' }),
+      validatePeriodLock(monthly, { period_fixed: null, period_from: null, period_lock: 'fixed' }, NOW, TZ),
     ).toMatch(/period_fixed/)
     expect(
-      validatePeriodLock(monthly, { period_fixed: '2026-09', period_from: null, period_lock: 'browsable' }),
+      validatePeriodLock(
+        monthly,
+        { period_fixed: '2026-09', period_from: null, period_lock: 'browsable' },
+        NOW,
+        TZ,
+      ),
     ).toMatch(/period_from/)
   })
 
   it('needs the key to parse and match the granularity', () => {
     expect(
-      validatePeriodLock(monthly, { period_fixed: '2026-W60', period_from: null, period_lock: 'fixed' }),
+      validatePeriodLock(
+        monthly,
+        { period_fixed: '2026-W60', period_from: null, period_lock: 'fixed' },
+        NOW,
+        TZ,
+      ),
     ).toMatch(/not a valid period/)
     expect(
-      validatePeriodLock(monthly, { period_fixed: '2026-W40', period_from: null, period_lock: 'fixed' }),
+      validatePeriodLock(
+        monthly,
+        { period_fixed: '2026-W40', period_from: null, period_lock: 'fixed' },
+        NOW,
+        TZ,
+      ),
     ).toMatch(/week/)
     expect(
-      validatePeriodLock(monthly, { period_fixed: '2026-09', period_from: null, period_lock: 'fixed' }),
+      validatePeriodLock(
+        monthly,
+        { period_fixed: '2026-09', period_from: null, period_lock: 'fixed' },
+        NOW,
+        TZ,
+      ),
     ).toBeNull()
     expect(
-      validatePeriodLock(weekly, { period_fixed: null, period_from: '2026-W01', period_lock: 'browsable' }),
+      validatePeriodLock(
+        weekly,
+        { period_fixed: null, period_from: '2026-W01', period_lock: 'browsable' },
+        NOW,
+        TZ,
+      ),
+    ).toBeNull()
+  })
+
+  it('rejects a key that has not finished in the owner timezone', () => {
+    expect(
+      validatePeriodLock(
+        monthly,
+        { period_fixed: '2026-11', period_from: null, period_lock: 'fixed' },
+        NOW,
+        TZ,
+      ),
+    ).toMatch(/period_fixed has not finished/)
+    expect(
+      validatePeriodLock(
+        monthly,
+        { period_fixed: '2030-01', period_from: null, period_lock: 'fixed' },
+        NOW,
+        TZ,
+      ),
+    ).toMatch(/period_fixed has not finished/)
+    expect(
+      validatePeriodLock(
+        monthly,
+        { period_fixed: null, period_from: '2026-11', period_lock: 'browsable' },
+        NOW,
+        TZ,
+      ),
+    ).toMatch(/period_from has not finished/)
+    expect(
+      validatePeriodLock(
+        weekly,
+        { period_fixed: null, period_from: '2026-W46', period_lock: 'browsable' },
+        NOW,
+        TZ,
+      ),
+    ).toMatch(/period_from has not finished/)
+    expect(
+      validatePeriodLock(
+        weekly,
+        { period_fixed: '2026-W45', period_from: null, period_lock: 'fixed' },
+        NOW,
+        TZ,
+      ),
+    ).toMatch(/period_fixed has not finished/)
+    expect(
+      validatePeriodLock(
+        monthly,
+        { period_fixed: '2026-10', period_from: null, period_lock: 'fixed' },
+        NOW,
+        TZ,
+      ),
     ).toBeNull()
   })
 })
@@ -94,24 +175,29 @@ describe('resolveLockUpdate', () => {
   }
 
   it('leaves the stored lock when none is sent', () => {
-    expect(resolveLockUpdate(stored, { config: monthly })).toEqual({ lock: undefined })
+    expect(resolveLockUpdate(stored, { config: monthly }, NOW, TZ)).toEqual({ lock: undefined })
   })
 
   it('rejects a granularity change that would strand the stored key', () => {
-    expect(resolveLockUpdate(stored, { config: weekly })).toHaveProperty('error')
+    expect(resolveLockUpdate(stored, { config: weekly }, NOW, TZ)).toHaveProperty('error')
   })
 
   it('accepts a granularity change together with a matching lock', () => {
     expect(
-      resolveLockUpdate(stored, { config: weekly, period_from: '2026-W01', period_lock: 'browsable' }),
+      resolveLockUpdate(
+        stored,
+        { config: weekly, period_from: '2026-W01', period_lock: 'browsable' },
+        NOW,
+        TZ,
+      ),
     ).toEqual({
       lock: { period_fixed: null, period_from: '2026-W01', period_lock: 'browsable' },
     })
   })
 
   it('rejects dropping the period while a lock remains', () => {
-    expect(resolveLockUpdate(stored, { config: rolling })).toHaveProperty('error')
-    expect(resolveLockUpdate(stored, { config: rolling, period_lock: 'latest' })).toEqual({
+    expect(resolveLockUpdate(stored, { config: rolling }, NOW, TZ)).toHaveProperty('error')
+    expect(resolveLockUpdate(stored, { config: rolling, period_lock: 'latest' }, NOW, TZ)).toEqual({
       lock: defaultPeriodLock,
     })
   })

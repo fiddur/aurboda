@@ -31,7 +31,7 @@ import {
   validatePeriodLock,
 } from '../services/period-lock.ts'
 import { PeriodError } from '../services/periods.ts'
-import { getSettings } from '../services/settings.ts'
+import { getSettings, getUserTimezone } from '../services/settings.ts'
 import { resolveDashboardView } from '../services/shared-dashboard-data.ts'
 import { dashboardVisibilityOf, dashboardVisibilityToFlags } from '../services/visibility.ts'
 import { errorResponse, jsonResponse, type McpServer, tzJsonResponse } from './helpers.ts'
@@ -71,7 +71,7 @@ export const registerSharedDashboardTools = (server: McpServer, user: string) =>
       const config = await resolvePresetConfig(user, params)
       if (!config) return errorResponse('Give exactly one of config or preset')
       const lock = requestedPeriodLock(params) ?? defaultPeriodLock
-      const lockError = validatePeriodLock(config, lock)
+      const lockError = validatePeriodLock(config, lock, new Date(), await getUserTimezone(user))
       if (lockError !== null) return errorResponse(lockError)
       const record = await createSharedDashboard(user, {
         config,
@@ -90,7 +90,12 @@ export const registerSharedDashboardTools = (server: McpServer, user: string) =>
     async ({ config, id, name, period_fixed, period_from, period_lock, visibility }) => {
       const stored = await getSharedDashboardById(user, id)
       if (!stored) return errorResponse('Shared dashboard not found')
-      const lockUpdate = resolveLockUpdate(stored, { config, period_fixed, period_from, period_lock })
+      const lockUpdate = resolveLockUpdate(
+        stored,
+        { config, period_fixed, period_from, period_lock },
+        new Date(),
+        await getUserTimezone(user),
+      )
       if ('error' in lockUpdate) return errorResponse(lockUpdate.error)
       const record = await updateSharedDashboard(user, id, {
         config,

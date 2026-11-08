@@ -90,8 +90,9 @@ period dashboard never exposes the owner's whole history by default:
 The lock is stored on the dashboard (`period_lock`, `period_fixed`, `period_from`) and
 validated by `services/period-lock.ts` on create and update, for REST and MCP alike
 (400 otherwise): `fixed` needs `period_fixed`, `browsable` needs `period_from`, and the
-key must be a valid period of the dashboard's granularity; a rolling dashboard keeps
-`latest`. A request without `period_lock` leaves the stored lock as it is (its
+key must be a valid, finished period of the dashboard's granularity (in the owner's
+timezone; a pinned or earliest period that has not ended would leave the public page
+answering 400 until it does); a rolling dashboard keeps `latest`. A request without `period_lock` leaves the stored lock as it is (its
 `period_fixed`/`period_from` count only with it), but the lock and config that would
 result are validated together, so changing the granularity while a `fixed` or
 `browsable` lock names a key of another granularity is rejected until the lock changes

@@ -37,8 +37,17 @@ export const requestedPeriodLock = (request: PeriodLockRequest): PeriodLockState
         period_lock: request.period_lock,
       }
 
-/** Why `lock` cannot go with `config`, or null when it can. */
-export const validatePeriodLock = (config: DashboardConfig, lock: PeriodLockState): string | null => {
+/**
+ * Why `lock` cannot go with `config`, or null when it can. The key must be a finished period in the
+ * owner's timezone: a pinned or earliest period that has not ended yet would leave the public page
+ * answering 400 to every visitor until it does.
+ */
+export const validatePeriodLock = (
+  config: DashboardConfig,
+  lock: PeriodLockState,
+  now: Date,
+  tz: string,
+): string | null => {
   if (lock.period_lock === 'latest') return null
   const granularity = config.period?.granularity
   if (!granularity) return `A ${lock.period_lock} period lock needs a period dashboard`
@@ -50,6 +59,7 @@ export const validatePeriodLock = (config: DashboardConfig, lock: PeriodLockStat
   if (keyGranularity !== granularity) {
     return `${field} is a ${keyGranularity}, but the dashboard shows ${granularity}s`
   }
+  if (!isFinishedPeriod(key, now, tz)) return `${field} has not finished yet`
   return null
 }
 
@@ -60,9 +70,11 @@ export const validatePeriodLock = (config: DashboardConfig, lock: PeriodLockStat
 export const resolveLockUpdate = (
   stored: { config: DashboardConfig } & PeriodLockState,
   request: PeriodLockRequest & { config?: DashboardConfig },
+  now: Date,
+  tz: string,
 ): { error: string } | { lock: PeriodLockState | undefined } => {
   const lock = requestedPeriodLock(request)
-  const error = validatePeriodLock(request.config ?? stored.config, lock ?? stored)
+  const error = validatePeriodLock(request.config ?? stored.config, lock ?? stored, now, tz)
   return error === null ? { lock } : { error }
 }
 
