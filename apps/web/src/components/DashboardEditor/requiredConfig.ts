@@ -3,6 +3,7 @@ import type { DashboardWidget } from '@aurboda/api-spec'
 type WidgetType = DashboardWidget['type']
 
 const requiredText: Partial<Record<WidgetType, readonly string[]>> = {
+  activity_type_card: ['pattern'],
   correlation: ['activity'],
   metric_card: ['metric', 'title'],
   quick_link: ['href', 'label'],

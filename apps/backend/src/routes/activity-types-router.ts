@@ -12,6 +12,9 @@ import {
   type ActivitySessionsQuery,
   activitySessionsQuerySchema,
   type ActivitySessionsResponse,
+  type ActivityTypeSummaryQuery,
+  activityTypeSummaryQuerySchema,
+  type ActivityTypeSummaryResponse,
   type AddActivityTypeDefinitionBody,
   addActivityTypeDefinitionBodySchema,
   type BaseResponse,
@@ -42,6 +45,7 @@ import {
 } from '../services/activity-type-definitions.ts'
 import { deleteAlias, listAliases, mergeItemValues } from '../services/item-value-aliases.ts'
 import {
+  getActivityTypeSummary,
   queryActivityFieldValues,
   queryActivitySessions,
   sessionsOptionsFromQuery,
@@ -83,6 +87,16 @@ export const createActivityTypesRouter = (authMiddleware: RequestHandler): Typed
     async (req, res) => {
       const records = await getActivityRecords(req.user!, req.params.name, req.query)
       res.json({ data: records, success: true })
+    },
+  )
+
+  router.get<{ name: string }, ActivityTypeSummaryResponse, unknown, ActivityTypeSummaryQuery>(
+    '/:name/summary',
+    authMiddleware,
+    validateQuery(activityTypeSummaryQuerySchema),
+    async (req, res) => {
+      const summary = await getActivityTypeSummary(req.user!, req.params.name, req.query)
+      res.json({ data: summary, success: true })
     },
   )
 

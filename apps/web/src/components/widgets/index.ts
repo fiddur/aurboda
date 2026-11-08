@@ -1,4 +1,5 @@
 export { ActivitySummaryView, ActivitySummaryWidget } from './ActivitySummaryWidget'
+export { ActivityTypeCardView, ActivityTypeCardWidget } from './ActivityTypeCardWidget'
 export { BarChartView, BarChartWidget } from './BarChartWidget'
 export { CombinedChartView, CombinedChartWidget } from './CombinedChartWidget'
 export { CorrelationView, CorrelationWidget } from './CorrelationWidget'

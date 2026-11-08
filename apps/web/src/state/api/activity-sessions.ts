@@ -12,6 +12,9 @@ import type {
   ActivitySessions,
   ActivitySessionsQuery,
   ActivitySessionsResponse,
+  ActivityTypeSummary,
+  ActivityTypeSummaryQuery,
+  ActivityTypeSummaryResponse,
 } from '@aurboda/api-spec'
 
 import axios from 'axios'
@@ -40,6 +43,17 @@ export const fetchActivityRecords = async (
     { headers: { Authorization: `Bearer ${auth.value.token}` }, params: query },
   )
   return response.data.data ?? { activity_type: activityType, records: [] }
+}
+
+export const fetchActivityTypeSummary = async (
+  activityType: string,
+  query: ActivityTypeSummaryQuery,
+): Promise<ActivityTypeSummary | null> => {
+  const response = await axios.get<ActivityTypeSummaryResponse>(
+    `${API_URL}/activity-types/${encodeURIComponent(activityType)}/summary`,
+    { headers: { Authorization: `Bearer ${auth.value.token}` }, params: query },
+  )
+  return response.data.data ?? null
 }
 
 export const fetchActivityNeighbors = async (

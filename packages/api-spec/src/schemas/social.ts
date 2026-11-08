@@ -15,7 +15,7 @@
 
 import { z } from 'zod'
 
-import { activityRecordSchema } from './activity-sessions.ts'
+import { activityRecordSchema, activityTypeSummarySchema } from './activity-sessions.ts'
 import { challengeSpecSchema } from './challenges.ts'
 import { chartDataBreakdownBucketSchema, chartDataBucketSchema } from './chart-data.ts'
 import { baseResponseSchema } from './common.ts'
@@ -229,6 +229,15 @@ export const recordCardDataSchema = z
   })
   .meta({ id: 'RecordCardData' })
 
+export const activityTypeCardDataSchema = activityTypeSummarySchema
+  .extend({
+    previous_count: previousFigure('the number of sessions'),
+    previous_distance_km: previousFigure('the total distance (km)'),
+    previous_sleep_avg_minutes: previousFigure('the average night (minutes)'),
+    previous_total_minutes: previousFigure('the total duration (minutes)'),
+  })
+  .meta({ id: 'ActivityTypeCardData' })
+
 export const correlationDataSchema = z
   .object({
     hrv_after30: z.number().nullable().meta({ description: 'Mean HRV 30 min after the activity' }),
@@ -328,6 +337,7 @@ export const widgetDataSchema = z
     z.object({ data: latestSleepSchema.nullable(), type: z.literal('last_sleep') }),
     z.object({ data: combinedChartDataSchema.nullable(), type: z.literal('combined_chart') }),
     z.object({ data: recordCardDataSchema.nullable(), type: z.literal('record_card') }),
+    z.object({ data: activityTypeCardDataSchema.nullable(), type: z.literal('activity_type_card') }),
   ])
   .meta({ id: 'WidgetData' })
 
@@ -345,6 +355,7 @@ export type LastSleepData = z.infer<typeof latestSleepSchema>
 export type CombinedChartLayerData = z.infer<typeof combinedChartLayerDataSchema>
 export type CombinedChartData = z.infer<typeof combinedChartDataSchema>
 export type RecordCardData = z.infer<typeof recordCardDataSchema>
+export type ActivityTypeCardData = z.infer<typeof activityTypeCardDataSchema>
 
 export const widgetDataMapSchema = z.record(z.string(), widgetDataSchema).meta({ id: 'WidgetDataMap' })
 

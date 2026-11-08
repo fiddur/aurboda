@@ -154,6 +154,25 @@ the record measures `e1rm`, `max_weight`, `max_time`, `max_reps`), optional `fil
 (all time when absent) and optional `title` (default "<value or type> · <measure>"). Data comes
 from `GET /activity-types/:name/records` (MCP: `get_activity_records`).
 
+### Activity Card
+
+One activity type (its subtypes included) rolled up over the card's window: the number of sessions as
+the headline, then the total time and, where the sessions carry a distance, the total distance and
+either the best pace (min/km) or the average speed (km/h). For `sleep` it also shows the average
+night, the best night and the average minutes of REM, deep and light sleep over the nights that have
+stages. On a period dashboard the sessions, time, distance and average night carry a change against
+the previous period. Add one from a metrics section's add-widget dialog (activity type, title, an
+optional exercise and pace or speed), from the ⋮ menu on an exercise page's record card ("Add
+activity card"), or through the API or MCP. Activity types other than the built-in `exercise` and
+`sleep` are your own, so add a card per type you want to follow -- running, cycling, a gym visit type.
+
+**Configuration:** `pattern` (the activity type), optional `filter_field` + `filter_value` (both or
+neither: a data field, or an item path such as `sets.exercise`), optional `lookback_days` (default 30;
+a period dashboard uses its period), optional `speed_display` (`pace` or `speed`; default `pace` for
+types whose name contains `run`, `walk` or `hik`, else `speed`) and optional `title` (default the
+type's display name). Data comes from `GET /activity-types/:name/summary?start&end` (MCP:
+`get_activity_type_summary`).
+
 ### Correlation Impact
 
 Shows how a specific activity, tag, or location affects your HRV. Displays three bars: "before" (baseline), "during" (the activity), and "after" (recovery), showing the average HRV in each phase. Includes an occurrence count so you can judge the statistical weight.
@@ -170,11 +189,11 @@ A clickable navigation tile with a colored icon and label. Links to any page in 
 
 Widgets are organized into sections, each with a title and a layout type:
 
-| Section type | Layout                                                        | Best for                                                   |
-| ------------ | ------------------------------------------------------------- | ---------------------------------------------------------- |
-| **Metrics**  | Responsive card grid (auto-fills columns, minimum 200px wide) | Metric cards, sparklines, activity summaries, record cards |
-| **Charts**   | Single column, full width                                     | Trend charts, combined charts, correlation charts          |
-| **Links**    | Responsive grid of smaller tiles (minimum 140px wide)         | Quick-link navigation                                      |
+| Section type | Layout                                                        | Best for                                                                   |
+| ------------ | ------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| **Metrics**  | Responsive card grid (auto-fills columns, minimum 200px wide) | Metric cards, sparklines, activity summaries, record cards, activity cards |
+| **Charts**   | Single column, full width                                     | Trend charts, combined charts, correlation charts                          |
+| **Links**    | Responsive grid of smaller tiles (minimum 140px wide)         | Quick-link navigation                                                      |
 
 Sections are collapsible -- click the section header to toggle between expanded and collapsed. On wide screens, multiple sections can appear side by side.
 
@@ -207,8 +226,9 @@ widget renders against that one window, ignoring the lookbacks in its configurat
 - **Previous-period deltas.** Figures compare with the previous calendar period of the same kind
   (September for October, the previous ISO week, the previous year) -- not an equal-length rolling
   window. Metric and sparkline cards carry `previous_value` and a `trend_percent` against it; the
-  activity summary carries `previous_count`, `previous_total_minutes` and `previous_avg_hours`; HR
-  zones carry `previous_avg_seconds`.
+  activity summary carries `previous_count`, `previous_total_minutes` and `previous_avg_hours`; an
+  activity card carries `previous_count`, `previous_total_minutes`, `previous_distance_km` and
+  `previous_sleep_avg_minutes`; HR zones carry `previous_avg_seconds`.
 - **Baselines.** The 7- and 30-day HRV and resting HR baseline cards become the period average of
   `hrv_rmssd` and `resting_heart_rate`.
 - **Widgets that do not apply.** **Last night** and **Goal progress** have no meaning for a past
@@ -302,10 +322,13 @@ your own) and is **private**:
 - **Blank** — no sections.
 - **Copy of home** — your home dashboard's current layout.
 - **Month in data** — a monthly [period dashboard](#period-dashboards): one finished
-  month, compared with the month before. **Body**: a sleep score sparkline and cards
-  for steps per day, HRV, resting HR, weight and body fat. **Training**: the activity
-  summary, HR zones (without targets) and workouts per week (a count of `exercise`
-  activities in weekly bars).
+  month, compared with the month before. **Body**: a sleep score sparkline, a Sleep
+  activity card (average and best night, stages) and cards for steps per day, HRV,
+  resting HR, weight and body fat. **Training**: the activity summary, HR zones
+  (without targets), a Workouts activity card (`exercise`: sessions, time, distance)
+  and workouts per week (a count of `exercise` activities in weekly bars). The preset
+  has no per-sport card, since sport types are your own: add an activity card per
+  type (running, cycling, a gym visit type) from the editor.
 
 The presets are defined once in `@aurboda/api-spec` (`dashboardPresetConfigs`; `home`
 is resolved from your settings on the server), and `POST /shared-dashboards` and the

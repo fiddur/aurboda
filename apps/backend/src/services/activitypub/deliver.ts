@@ -1050,10 +1050,8 @@ export const deliverFeedExerciseUpdate = async (
   )
 }
 
-// Dashboard-period shares (#1505). One finished period of a dashboard federates as a `Note` whose
-// content is resolved from the stored config snapshot when the Note is built, so the builders take
-// the pre-rendered `content` (`dashboardNoteContent`) and stay synchronous. Delivered to followers
-// only (no mentions), with no image attachment.
+// A dashboard Note's content is resolved from the stored config snapshot before the Note is built,
+// so these builders take the pre-rendered `content` (`dashboardNoteContent`) and stay synchronous.
 
 /** The delivery-facing view of a dashboard post (its `dashboard` guaranteed present). */
 export interface DeliverableDashboard {

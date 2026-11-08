@@ -592,8 +592,7 @@ export const createFeedRouter = (
     },
   )
 
-  // Dashboard-period shares (#1505): one finished period of a period dashboard, resolved from the
-  // config snapshot taken at share time. Registered before the generic `/:postId` routes.
+  // Registered before the generic `/:postId` routes.
   router.post<Record<string, never>, FeedPostResponse, ShareDashboardPeriodBody>(
     '/dashboards',
     authMiddleware,

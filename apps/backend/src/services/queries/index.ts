@@ -52,6 +52,7 @@ export {
 } from './activity-sessions.ts'
 
 export { queryActivityFieldValues } from './activity-field-values.ts'
+export { type ActivityTypeSummaryDeps, getActivityTypeSummary } from './activity-type-summary.ts'
 export { getActivityNeighbors } from './activity-neighbors.ts'
 export { queryActivityItemHistory } from './activity-item-history.ts'
 

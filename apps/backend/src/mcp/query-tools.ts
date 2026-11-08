@@ -6,6 +6,7 @@ import {
   activityRecordsQuerySchema,
   activitySessionsQuerySchema,
   activityTypeSchema,
+  activityTypeSummaryQuerySchema,
   bucketSizeSchema,
   dateOnlySchema,
   locationsQuerySchema,
@@ -34,6 +35,7 @@ import {
   computeActivityDetailMetrics,
   getActivityFullDetail,
   getActivityNeighbors,
+  getActivityTypeSummary,
   getDailySummary,
   getLocationSummary,
   getPeriodSummary,
@@ -247,6 +249,19 @@ category filters to runs carrying that run category (low_hr, intervals, long, te
       }
       const records = await getActivityRecords(user, activity_type, query)
       return tzJsonResponse({ data: records, success: true }, tz)
+    },
+  )
+
+  server.tool(
+    'get_activity_type_summary',
+    'Roll-up of one activity type (descendants included) over a time range: session count, total duration, total distance, best pace and average speed where the sessions carry distance, and for sleep the average night, the best night and the average minutes per stage. filter_field + filter_value narrow to sessions whose field (or an item path such as sets.exercise) has that value.',
+    { activity_type: activityTypeSchema, ...activityTypeSummaryQuerySchema.shape, tz: tzSchema },
+    async ({ activity_type, tz, ...query }) => {
+      if ((query.filter_field === undefined) !== (query.filter_value === undefined)) {
+        return errorResponse('filter_field and filter_value must be given together')
+      }
+      const summary = await getActivityTypeSummary(user, activity_type, query)
+      return tzJsonResponse({ data: summary, success: true }, tz)
     },
   )
 

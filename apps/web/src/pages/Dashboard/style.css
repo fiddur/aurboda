@@ -178,6 +178,32 @@
   color: #9ca3af;
 }
 
+.dashboard .activity-type-card-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.dashboard .activity-type-card-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.dashboard .activity-type-card-label {
+  color: #6b7280;
+}
+
+.dashboard .activity-type-card-value {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: #111827;
+  font-weight: 500;
+}
+
 .dashboard .metric-sparkline {
   margin-top: 0.75rem;
   display: flex;
@@ -366,6 +392,14 @@
 
   .dashboard .metric-value .unit {
     color: #9ca3af;
+  }
+
+  .dashboard .activity-type-card-label {
+    color: #9ca3af;
+  }
+
+  .dashboard .activity-type-card-value {
+    color: #f3f4f6;
   }
 
   .dashboard .activity-summary,

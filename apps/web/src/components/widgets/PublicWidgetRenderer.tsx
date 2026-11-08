@@ -8,6 +8,7 @@
 import type { DashboardWidget, WidgetData } from '@aurboda/api-spec'
 
 import { ActivitySummaryView } from './ActivitySummaryWidget'
+import { ActivityTypeCardView } from './ActivityTypeCardWidget'
 import { BarChartView } from './BarChartWidget'
 import { CombinedChartView } from './CombinedChartWidget'
 import { CorrelationView } from './CorrelationWidget'
@@ -77,6 +78,13 @@ export function PublicWidgetRenderer({ widget, data, periodLabel }: PublicWidget
       )
     case 'record_card':
       return <RecordCardView config={widget.config} data={data?.type === 'record_card' ? data.data : null} />
+    case 'activity_type_card':
+      return (
+        <ActivityTypeCardView
+          config={widget.config}
+          data={data?.type === 'activity_type_card' ? data.data : null}
+        />
+      )
     default:
       return <div class="widget-unknown">Unknown widget type</div>
   }
