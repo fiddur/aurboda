@@ -32,19 +32,21 @@ them.
 
 Each shared dashboard has a url-safe random **slug** and a `visibility`:
 
-- **`public`** — listed on your public profile (`/u/<username>`) and reachable by slug.
+- **`private`** — yours only. Every public path (the profile listing,
+  `GET /public/:username/:slug`, the link-preview HTML, the preview image and oEmbed)
+  answers exactly as for a slug that does not exist; you open and edit it at
+  `/u/<you>/<slug>` while logged in. New dashboards are private by default.
 - **`unlisted`** — not listed anywhere; reachable only by its unguessable slug. Share
   the link with whoever you want; anyone without it cannot discover it.
+- **`public`** — listed on your public profile (`/u/<username>`) and reachable by slug.
 
-Visibility only governs the profile listing. Both public and unlisted shares are
-served by their slug.
-
-`visibility` is the shared **`ShareVisibility`** vocabulary (`public`/`unlisted`)
-used across the API, MCP tools, and web UI — the same words hosted
-[challenges](./challenges.md) use, and the base the [feed](./feed.md) extends with
-a `followers` audience. It is stored as an `is_public` boolean column and mapped
-to/from the vocabulary at the API boundary (backend `services/visibility.ts`), so
-storage stays a boolean while the surface is consistent.
+`visibility` is the **`DashboardVisibility`** vocabulary (`private`/`unlisted`/`public`):
+the shared **`ShareVisibility`** words (`public`/`unlisted`) that hosted
+[challenges](./challenges.md) use and the [feed](./feed.md) extends with `followers`,
+plus `private`. It is stored as two boolean columns, `is_public` and `is_private`
+(`is_private` wins), and mapped to/from the vocabulary at the API boundary (backend
+`services/visibility.ts`). Rows from before `is_private` existed keep `false`, so they
+keep their old visibility.
 
 ## What a viewer can see (hard backend security)
 
@@ -118,7 +120,7 @@ the three data opt-ins (records and session count, the trend chart, the last 5 s
 sets), a **Link the public page** checkbox only when the exercise is published, the
 audience, and a live preview of the exact card a follower sees and of the plain text
 Mastodon gets. See [feed.md](./feed.md#feed-posts) for what the post carries.
-`/shared-dashboards` lists the published exercises under **Exercises** too (rename,
+`/dashboards` lists the published exercises under **Exercises** too (rename,
 visibility, copy link, unpublish). The public page's header has **Copy link** (and the
 system share sheet where the browser offers one); the owner viewing their own published
 exercise sees the same read-only page as everyone else, plus a **Manage** link back to
@@ -137,10 +139,14 @@ static default image and has no oEmbed.
 
 ## Using it in the web app
 
-- **Manage** your shared dashboards at `/shared-dashboards` ("Dashboards" under the
-  **Sharing** section in the sidebar, alongside Feed and Challenges): create a copy
-  from your current home dashboard (or a blank one), rename it, set its visibility,
-  copy its link, or delete it.
+- **Manage** your dashboards at `/dashboards` ("Dashboards" under the **Sharing**
+  section in the sidebar, alongside Feed and Challenges, and the **All dashboards**
+  link next to the home dashboard's title; `/shared-dashboards` still opens it). The
+  home dashboard comes first, then every other one: rename it, set its visibility,
+  open it, copy its link (not for a private one), or delete it. Create one from a
+  preset — Blank, Copy of home or Month in data (see
+  [Dashboard → Dashboards page and presets](./dashboard.md#dashboards-page-and-presets))
+  — and it opens at `/u/<you>/<slug>`, private.
 - **View** a shared dashboard at `/u/<username>/<slug>` and a profile at
   `/u/<username>`. For anonymous visitors these public pages render without the
   app header/sidebar (but keep the standard site footer) — a clean, standalone
@@ -210,7 +216,7 @@ get the full SPA and hydrate normally — only the head is enriched.
   Non-public / unknown resources fall back to the branded static default
   (`/og-default.png`).
 - **Visibility is respected**: rich meta and rendered images are emitted only for
-  **public** resources. Unlisted (slug-only) dashboards and unknown URLs get generic
+  **public** resources. Private and unlisted (slug-only) dashboards and unknown URLs get generic
   site meta and the static default image, so an unlisted resource's title/image never
   lands in a crawler's cache or a search index.
 - Rich meta is cached `public, max-age=300`; generic fallbacks `max-age=60`.
@@ -260,7 +266,7 @@ Owner-facing CRUD (authenticated, scoped to the caller):
 | Method & path                     | Purpose                                                     |
 | --------------------------------- | ----------------------------------------------------------- |
 | `GET /shared-dashboards`          | List my shared dashboards                                   |
-| `POST /shared-dashboards`         | Create one from a dashboard config                          |
+| `POST /shared-dashboards`         | Create one from a dashboard config or a preset              |
 | `GET /shared-dashboards/:id`      | Fetch one (with config)                                     |
 | `GET /shared-dashboards/:id/data` | Its resolved widget data (`?period=` on a period dashboard) |
 | `PUT /shared-dashboards/:id`      | Update name / config / visibility                           |
@@ -270,6 +276,11 @@ Owner-facing CRUD (authenticated, scoped to the caller):
 | `GET /shared-exercises/:id`       | Fetch one                                                   |
 | `PUT /shared-exercises/:id`       | Update name / visibility                                    |
 | `DELETE /shared-exercises/:id`    | Stop sharing (its slug stops)                               |
+
+`POST /shared-dashboards` takes `name`, exactly one of `config` and `preset`
+(`blank`, `home` — a copy of the home dashboard — or `month_in_data`), and
+optionally `visibility` (`private` by default). `PUT` takes any of `name`, `config`
+and `visibility`.
 
 `POST /shared-exercises` takes `activity_type`, `field` (a categorical list-item path
 of the type, e.g. `sets.exercise`; a session-level field or any other path answers 400),
@@ -282,8 +293,8 @@ Public (unauthenticated):
 | `GET /public/:username/dashboards` | List a user's **public** shared dashboards, challenges, exercises |
 | `GET /public/:username/:slug`      | View one shared dashboard, challenge or exercise                  |
 
-`GET /public/:username/:slug` resolves a slug as a dashboard, then a challenge, then
-a shared exercise; an exercise answers `type: 'exercise'` with `name`,
+`GET /public/:username/:slug` resolves a slug as a dashboard (never a private one),
+then a challenge, then a shared exercise; an exercise answers `type: 'exercise'` with `name`,
 `activity_type`, `activity_type_name`, `value`, `profile_url`, `share_url` and `data`
 (the projection above). A dashboard answers `type: 'dashboard'` with `name`, the
 sanitized `config`, `profile_url`, `share_url` and `widget_data`; a period dashboard
@@ -291,7 +302,7 @@ also carries `period` (the key, e.g. `2026-10`) and `window` (`start` and exclus
 `end`, ISO) of the period it shows.
 
 The same CRUD capability is available over MCP as `list_shared_dashboards`,
-`create_shared_dashboard`, `update_shared_dashboard`, and `delete_shared_dashboard`
+`create_shared_dashboard` (with `config` or `preset`), `update_shared_dashboard`, and `delete_shared_dashboard`
 (and `get_dashboard_data` for the resolved widget data),
 and for exercises `list_shared_exercises`, `get_shared_exercise`,
 `create_shared_exercise`, `update_shared_exercise` and `delete_shared_exercise`. Public viewing is web-only.
@@ -299,7 +310,10 @@ and for exercises `list_shared_exercises`, `get_shared_exercise`,
 ## Storage
 
 Shared dashboards live in the user's own database (the config is the user's data) in
-the `shared_dashboards` table. The `slug` is unique per database; the `username` in
+the `shared_dashboards` table, with `is_public` and `is_private` booleans for the
+visibility (`is_private` was added later, `NOT NULL DEFAULT false`). Every public
+read goes through `getPublicSharedDashboardBySlug` / `listPublicSharedDashboards`,
+which leave private rows out. The `slug` is unique per database; the `username` in
 the URL disambiguates globally, so no central slug index is needed. Deleting a
 shared dashboard immediately makes its slug return 404. Shared exercises are in
 `shared_exercises` (`activity_type`, `field`, `value`, unique together). A new

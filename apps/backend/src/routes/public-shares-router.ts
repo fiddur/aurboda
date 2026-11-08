@@ -25,7 +25,7 @@ import {
   getActivityTypeDefinition,
   getChallengeBySlug,
   getChallengeMemberByIdentity,
-  getSharedDashboardBySlug,
+  getPublicSharedDashboardBySlug,
   getSharedExerciseBySlug,
   isMissingDatabase,
   listChallengeMembers,
@@ -216,7 +216,7 @@ export const createPublicSharesRouter = (webHost: string): TypedRouter => {
       return res.status(404).json({ error: 'Not found', success: false })
     }
     try {
-      const dashboard = await getSharedDashboardBySlug(username, slug)
+      const dashboard = await getPublicSharedDashboardBySlug(username, slug)
       if (dashboard) {
         const view = await resolveDashboardView(username, dashboard.config)
         res.setHeader('Cache-Control', 'public, max-age=60')

@@ -20,6 +20,11 @@ export const socialTables: Record<string, string> = {
     CREATE INDEX IF NOT EXISTS idx_shared_dashboards_public
       ON shared_dashboards (is_public, created_at DESC)
   `,
+  // A private dashboard is its owner's only: every public path answers as for a
+  // missing slug. Additive for pre-existing tables (idempotent).
+  shared_dashboards_private_column: `
+    ALTER TABLE shared_dashboards ADD COLUMN IF NOT EXISTS is_private BOOLEAN NOT NULL DEFAULT false;
+  `,
 
   // One item value of one activity type (an exercise) published by this user.
   shared_exercises: `

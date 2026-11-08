@@ -595,7 +595,7 @@ exercises both sides without seeding. Read the PNG back with the Read tool, or p
 - Route `/detail/activity/<uuid>` (from `/detail/:type/:id`).
 - `ActivityChart`'s toggle legend is `button.chart-toggle` (gaining `.active`); the Share dialog
   opens from a `button` reading **"Share to feed"** — _not_ the sidebar "🔆Share" link, which
-  routes to `/shared-dashboards` — and renders `.share-dialog` with `fieldset.share-dialog-group`
+  routes to `/dashboards` — and renders `.share-dialog` with `fieldset.share-dialog-group`
   (legends "Summary metrics", "Share full time-series", "Images") each holding
   `label.share-dialog-checkbox` > `input[type=checkbox]`; the fusion note is `p.share-dialog-note`.
 - **`ActivityChart` EXCLUDED_METRICS** drops `calories_active`, `calories_total`, `distance`,
@@ -1265,20 +1265,22 @@ owner's **Manage** link (`a.public-exercise-manage`) ends inside the viewport.
 
 ### Visibility (#923)
 
-The public field on challenges and shared dashboards is `visibility` (`ShareVisibility` =
-`public`/`unlisted`), **not** `is_public`; it is stored as an `is_public` boolean and mapped at the
-boundary in `services/visibility.ts`. The default when omitted is `unlisted`, a legacy `is_public`
-in the body is ignored, and `visibility:"followers"` is rejected 400 for challenges and dashboards
-(that value is feed-only). Shared dashboards: `POST`/`GET /api/shared-dashboards`, **PUT**
-`/api/shared-dashboards/:id`; the public dashboard view does not expose visibility, only the
-challenge one does.
+The public field on challenges and shared dashboards is `visibility`, **not** `is_public`.
+Challenges use `ShareVisibility` (`public`/`unlisted`, default `unlisted`); dashboards use
+`DashboardVisibility` (`private`/`unlisted`/`public`, default `private` since #1503). Both are
+stored as booleans (`is_public`, and `is_private` for dashboards) and mapped at the boundary in
+`services/visibility.ts`. A legacy `is_public` in the body is ignored, and `visibility:"followers"`
+is rejected 400 for challenges and dashboards (that value is feed-only). Shared dashboards:
+`POST`/`GET /api/shared-dashboards`, **PUT** `/api/shared-dashboards/:id`; a private dashboard
+answers 404 on every public path and is absent from `/api/public/<user>/dashboards`; the public
+dashboard view does not expose visibility, only the challenge one does.
 
 `<VisibilitySelector>` renders `fieldset.visibility-selector` with `.visibility-option` rows (radio
 
 - `strong` + `.visibility-hint`) in three places: the `/challenges` "New challenge" form (full, 2
-  options, radio-group `challenge-visibility`), `/shared-dashboards` per-row (compact, no hints,
-  `dashboard-visibility-<id>`), and the activity-detail Share dialog (full 3-option feed variant,
-  `feed-visibility`).
+  options, radio-group `challenge-visibility`), `/dashboards` per-row (compact, no hints, 3 options
+  Only me / Anyone with the link / On my profile, `dashboard-visibility-<id>`), and the
+  activity-detail Share dialog (full 3-option feed variant, `feed-visibility`).
 
 ### Avatars (#1053)
 

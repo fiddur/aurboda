@@ -5,11 +5,11 @@
  * `followers`) instead of a mix of checkboxes and bespoke lists.
  *
  * Presentational and generic: the caller passes the option set (labels + hints
- * live in the exported `SHARE_VISIBILITY_OPTIONS` / `FEED_VISIBILITY_OPTIONS`
- * constants — the single source of truth) plus a unique `name` so multiple
+ * live in the exported `SHARE_VISIBILITY_OPTIONS` / `DASHBOARD_VISIBILITY_OPTIONS` /
+ * `FEED_VISIBILITY_OPTIONS` constants — the single source of truth) plus a unique `name` so multiple
  * selectors on one page (e.g. a card per dashboard) don't share a radio group.
  */
-import type { FeedVisibility, ShareVisibility } from '@aurboda/api-spec'
+import type { DashboardVisibility, FeedVisibility, ShareVisibility } from '@aurboda/api-spec'
 
 import './VisibilitySelector.css'
 
@@ -22,6 +22,16 @@ export interface VisibilityOption<T extends string> {
 export const SHARE_VISIBILITY_OPTIONS: VisibilityOption<ShareVisibility>[] = [
   { hint: 'Listed on your public profile; anyone can find it.', label: 'Public', value: 'public' },
   { hint: 'Reachable only by its link; kept off your public profile.', label: 'Unlisted', value: 'unlisted' },
+]
+
+export const DASHBOARD_VISIBILITY_OPTIONS: VisibilityOption<DashboardVisibility>[] = [
+  { hint: 'Only you can see it.', label: 'Only me', value: 'private' },
+  {
+    hint: 'Reachable only by its link; kept off your public profile.',
+    label: 'Anyone with the link',
+    value: 'unlisted',
+  },
+  { hint: 'Listed on your public profile; anyone can find it.', label: 'On my profile', value: 'public' },
 ]
 
 export const FEED_VISIBILITY_OPTIONS: VisibilityOption<FeedVisibility>[] = [

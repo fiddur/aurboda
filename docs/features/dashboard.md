@@ -275,9 +275,32 @@ The dashboard works with whatever data sources you have connected. Widgets grace
 | Trend charts                 | Depends on what you're trending (tags, metrics) |
 | Correlation impact           | HRV data + the activity/tag you're analyzing    |
 
+## Dashboards page and presets
+
+Besides the home dashboard you can have any number of others, each with its own
+config. **Dashboards** (`/dashboards`, in the sidebar's Sharing section, and the
+**All dashboards** link next to the home dashboard's title) lists the home dashboard
+first and then every other one, with its visibility, a View link and, unless it is
+private, Copy link. Each one opens and is edited at `/u/<you>/<slug>`.
+
+A new dashboard starts from a preset (the name is prefilled from it until you type
+your own) and is **private**:
+
+- **Blank** — no sections.
+- **Copy of home** — your home dashboard's current layout.
+- **Month in data** — a monthly [period dashboard](#period-dashboards): one finished
+  month, compared with the month before. **Body**: a sleep score sparkline and cards
+  for steps per day, HRV, resting HR, weight and body fat. **Training**: the activity
+  summary, HR zones (without targets) and workouts per week (a count of `exercise`
+  activities in weekly bars).
+
+The presets are defined once in `@aurboda/api-spec` (`dashboardPresetConfigs`; `home`
+is resolved from your settings on the server), and `POST /shared-dashboards` and the
+MCP `create_shared_dashboard` tool take one as `preset` instead of a `config`.
+
 ## Sharing
 
-You can publish read-only copies of a dashboard under your public namespace
+A dashboard other than home can also be shared under your public namespace
 (`/u/<username>/<slug>`), either publicly listed or unlisted-by-link. See
 [Sharing & Public Pages](./sharing.md) for the visibility model, URLs, and the
 backend security guarantee that limits a viewer to exactly the data the dashboard's

@@ -191,6 +191,7 @@ describe('Shared exercises integration', () => {
     const user = getTestUser()
     const dashboard = await createSharedDashboard(user, {
       config: { sections: [], version: 1 },
+      is_private: false,
       is_public: false,
       name: 'D',
     })

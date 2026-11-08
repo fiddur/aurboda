@@ -16,6 +16,13 @@
   margin-bottom: 1.5rem;
 }
 
+.shared-dashboards-create select {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
 .shared-dashboards-create input {
   flex: 1 1 220px;
   padding: 0.5rem 0.75rem;
@@ -94,7 +101,8 @@
     color: #9ca3af;
   }
 
-  .shared-dashboards-create input {
+  .shared-dashboards-create input,
+  .shared-dashboards-create select {
     background: #111827;
     border-color: #374151;
     color: #f3f4f6;
@@ -143,6 +151,22 @@
 
 @media (prefers-color-scheme: dark) {
   .shared-exercise-item {
+    color: #9ca3af;
+  }
+}
+
+.home-dashboard-name {
+  flex: 0 1 auto;
+}
+
+.home-dashboard-hint {
+  flex: 1 1 auto;
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+@media (prefers-color-scheme: dark) {
+  .home-dashboard-hint {
     color: #9ca3af;
   }
 }

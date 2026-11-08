@@ -607,3 +607,82 @@ export const defaultDashboardConfig: DashboardConfig = {
   ],
   version: 1,
 }
+
+export const dashboardPresetSchema = z.enum(['blank', 'home', 'month_in_data']).meta({
+  description:
+    'A starting point for a new dashboard: blank (no sections), home (a copy of your home dashboard) or month_in_data (a monthly period dashboard)',
+  id: 'DashboardPreset',
+})
+
+export type DashboardPreset = z.infer<typeof dashboardPresetSchema>
+
+const monthInDataConfig: DashboardConfig = {
+  description: 'One finished month at a glance, compared with the month before.',
+  period: { granularity: 'month' },
+  sections: [
+    {
+      id: 'month-body',
+      title: 'Body',
+      type: 'metrics',
+      widgets: [
+        {
+          config: { metric: 'sleep_score', title: 'Sleep score' },
+          id: 'month-sleep-score',
+          type: 'sparkline_card',
+        },
+        { config: { metric: 'steps', title: 'Steps per day' }, id: 'month-steps', type: 'metric_card' },
+        { config: { metric: 'hrv_rmssd', title: 'HRV', unit: 'ms' }, id: 'month-hrv', type: 'metric_card' },
+        {
+          config: { metric: 'resting_heart_rate', title: 'Resting HR', trend_inverse: true, unit: 'bpm' },
+          id: 'month-resting-hr',
+          type: 'metric_card',
+        },
+        {
+          config: { metric: 'weight', title: 'Weight', unit: 'kg' },
+          id: 'month-weight',
+          type: 'metric_card',
+        },
+        {
+          config: { metric: 'body_fat', title: 'Body fat', unit: '%' },
+          id: 'month-body-fat',
+          type: 'metric_card',
+        },
+      ],
+    },
+    {
+      id: 'month-training',
+      title: 'Training',
+      type: 'charts',
+      widgets: [
+        {
+          config: { show_meditation: true, show_sleep: true, show_workouts: true },
+          id: 'month-activity-summary',
+          type: 'activity_summary',
+        },
+        { config: { show_targets: false }, id: 'month-hr-zones', type: 'hr_zones' },
+        {
+          config: {
+            aggregation: 'count',
+            bucket_size: '1w',
+            lookback_days: 31,
+            pattern: 'exercise',
+            source_type: 'activity_type',
+            title: 'Workouts per week',
+          },
+          id: 'month-workouts-per-week',
+          type: 'bar_chart',
+        },
+      ],
+    },
+  ],
+  version: 1,
+}
+
+/** The presets a client can build without the user's own settings; `home` is resolved server-side. */
+export const dashboardPresetConfigs: Record<
+  Exclude<DashboardPreset, 'home'>,
+  { config: DashboardConfig; name: string }
+> = {
+  blank: { config: { sections: [], version: 1 }, name: 'New dashboard' },
+  month_in_data: { config: monthInDataConfig, name: 'Month in data' },
+}
