@@ -124,17 +124,26 @@ interface DashboardMetaInput {
   url: string
   /** Optional author-provided description. */
   description?: string
+  /** On a period dashboard, the label of the period a visitor sees. */
+  periodLabel?: string
 }
+
+/** A dashboard's name, with the period a visitor sees on a period dashboard. */
+export const dashboardTitle = (name: string, periodLabel?: string): string =>
+  periodLabel ? `${name} — ${periodLabel}` : name
 
 export const buildDashboardShareMeta = ({
   username,
   name,
   url,
   description,
+  periodLabel,
 }: DashboardMetaInput): ShareMeta => ({
   description: clampDescription(
     // A stored empty/whitespace description (possible via the API) falls back.
-    description?.trim() ? description : `${name} — a public dashboard shared by ${username} on ${SITE_NAME}.`,
+    description?.trim()
+      ? description
+      : `${dashboardTitle(name, periodLabel)} — a public dashboard shared by ${username} on ${SITE_NAME}.`,
   ),
   image: resourceOgImage(url),
   imageAlt: `${SITE_NAME} dashboard: ${name}`,
@@ -144,7 +153,7 @@ export const buildDashboardShareMeta = ({
     name,
     url,
   },
-  title: `${name} — ${SITE_NAME}`,
+  title: `${dashboardTitle(name, periodLabel)} — ${SITE_NAME}`,
   type: 'website',
   url,
 })

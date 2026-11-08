@@ -50,7 +50,7 @@ export interface AtomPostEntry extends AtomArticleEntry {
 
 export type AtomPostSource = Pick<
   FeedPost,
-  'activity_title' | 'article' | 'challenge' | 'content' | 'exercise' | 'kind' | 'message'
+  'activity_title' | 'article' | 'challenge' | 'content' | 'dashboard' | 'exercise' | 'kind' | 'message'
 >
 
 const ENTRY_TITLE_MAX = 80
@@ -72,11 +72,16 @@ const truncate = (text: string): string => {
 
 /**
  * A feed entry's title: what the post is called (an article's title, the
- * shared activity's title, the exercise or challenge name), else the start of
+ * shared activity's title, the exercise, dashboard or challenge name), else the start of
  * its text.
  */
 export const postEntryTitle = (post: AtomPostSource): string => {
-  const named = post.article?.title ?? post.activity_title ?? post.exercise?.name ?? post.challenge?.name
+  const named =
+    post.article?.title ??
+    post.activity_title ??
+    post.exercise?.name ??
+    post.dashboard?.name ??
+    post.challenge?.name
   if (named) return named
   const text = truncate(post.message ?? textOf(post.content ?? ''))
   return text || 'Post'

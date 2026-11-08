@@ -7,6 +7,9 @@ import type {
   LocationsResponse,
   NamedLocation,
   NamedLocationsResponse,
+  PlacesSummary,
+  PlacesSummaryQuery,
+  PlacesSummaryResponse,
   PromoteDetectedLocationBody,
   RawLocationsQuery,
   RawLocationsResponse,
@@ -150,4 +153,12 @@ export const deleteNamedLocation = async (id: string): Promise<void> => {
   await axios.delete<BaseResponse>(`${API_URL}/locations/named/${id}`, {
     headers: { Authorization: `Bearer ${token}` },
   })
+}
+
+export const fetchPlacesSummary = async (query: PlacesSummaryQuery): Promise<PlacesSummary | null> => {
+  const response = await axios.get<PlacesSummaryResponse>(`${API_URL}/locations/places-summary`, {
+    headers: { Authorization: `Bearer ${auth.value.token}` },
+    params: query,
+  })
+  return response.data.data ?? null
 }

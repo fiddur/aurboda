@@ -9,17 +9,32 @@
  * - Challenge: the race-chart + leaderboard view.
  * - Exercise: one exercise's records, trend and history, the same for everyone.
  */
-import type { DashboardConfig, SectionType, WidgetDataMap } from '@aurboda/api-spec'
+import type {
+  DashboardConfig,
+  PublicSharedDashboardResponse,
+  SectionType,
+  SharedDashboard,
+  WidgetDataMap,
+} from '@aurboda/api-spec'
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { periodLabel } from '@aurboda/api-spec'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRoute } from 'preact-iso'
 import { useState } from 'preact/hooks'
 
 import { AttributionLink } from '../../components/AttributionLink'
 import { EditableDashboard } from '../../components/EditableDashboard'
+import { PeriodDashboardBar, PeriodSwitcher } from '../../components/PeriodSwitcher'
 import { CopyLinkButton, NativeShareButton } from '../../components/ShareControls'
+import { ShareDashboardPeriodDialog } from '../../components/ShareDashboardPeriodDialog'
+import { usePeriodDashboard } from '../../components/usePeriodDashboard'
 import { PublicWidgetRenderer } from '../../components/widgets'
-import { fetchPublicResource, listSharedDashboards, updateSharedDashboard } from '../../state/api'
+import {
+  fetchPublicResource,
+  fetchSharedDashboardData,
+  listSharedDashboards,
+  updateSharedDashboard,
+} from '../../state/api'
 import { auth } from '../../state/auth'
 import { PublicChallenge } from '../Challenges/PublicChallenge'
 import { PublicExercise } from '../PublicExercise'
@@ -47,6 +62,7 @@ function OwnerSharedDashboard({ username, slug }: { username: string; slug: stri
       queryClient.setQueryData(['sharedDashboards'], (old: typeof listQuery.data) =>
         old?.map((d) => (d.id === updated.id ? updated : d)),
       )
+      void queryClient.invalidateQueries({ queryKey: ['dashboardData', updated.id] })
     },
   })
 
@@ -96,14 +112,56 @@ function OwnerSharedDashboard({ username, slug }: { username: string; slug: stri
         </div>
       </div>
 
-      <EditableDashboard
-        config={share.config}
+      <OwnerSharedDashboardBody
+        share={share}
         isEditing={isEditing}
-        boardId={share.id}
         onChange={(next) => saveMutation.mutate({ config: next, id: share.id })}
       />
     </div>
   )
+}
+
+function OwnerSharedDashboardBody({
+  share,
+  isEditing,
+  onChange,
+}: {
+  share: SharedDashboard
+  isEditing: boolean
+  onChange: (next: DashboardConfig) => void
+}) {
+  const period = usePeriodDashboard(share.id, share.config, (key) => fetchSharedDashboardData(share.id, key))
+  const [sharingPeriod, setSharingPeriod] = useState<string | null>(null)
+  return (
+    <>
+      {period && <PeriodDashboardBar state={period} onShare={setSharingPeriod} />}
+      {sharingPeriod !== null && (
+        <ShareDashboardPeriodDialog
+          dashboardId={share.id}
+          name={share.name}
+          period={sharingPeriod}
+          publishedUrl={share.visibility === 'private' ? undefined : share.share_url}
+          onClose={() => setSharingPeriod(null)}
+        />
+      )}
+      <EditableDashboard
+        config={share.config}
+        isEditing={isEditing}
+        boardId={share.id}
+        onChange={onChange}
+        widgetData={period?.widgetData}
+        periodLabel={period?.periodLabel}
+      />
+    </>
+  )
+}
+
+/** A browsable period dashboard's steps: from `earliest` up to the latest finished period. */
+interface PeriodBrowsing {
+  earliest: string | undefined
+  latest: string
+  isError: boolean
+  select: (key: string) => void
 }
 
 function ReadOnlyDashboard({
@@ -111,12 +169,17 @@ function ReadOnlyDashboard({
   name,
   config,
   widgetData,
+  period,
+  browsing,
 }: {
   username: string
   name: string
   config: DashboardConfig
   widgetData: WidgetDataMap | undefined
+  period: string | null | undefined
+  browsing: PeriodBrowsing | null
 }) {
+  const shownPeriod = period ? periodLabel(period) : undefined
   return (
     <div class="dashboard public-dashboard">
       <div class="dashboard-header">
@@ -127,6 +190,18 @@ function ReadOnlyDashboard({
           <NativeShareButton url={window.location.href} title={`${name} — Aurboda`} />
         </div>
       </div>
+
+      {period && browsing ? (
+        <PeriodSwitcher
+          value={period}
+          latest={browsing.latest}
+          earliest={browsing.earliest}
+          onChange={browsing.select}
+        />
+      ) : shownPeriod ? (
+        <p class="dashboard-period-label">{shownPeriod}</p>
+      ) : null}
+      {browsing?.isError ? <div class="error">Could not load this period.</div> : null}
 
       {config.description ? <p class="dashboard-intro">{config.description}</p> : null}
 
@@ -139,13 +214,68 @@ function ReadOnlyDashboard({
             {section.description ? <p class="section-intro">{section.description}</p> : null}
             <div class={gridClass(section.type)}>
               {section.widgets.map((widget) => (
-                <PublicWidgetRenderer key={widget.id} widget={widget} data={widgetData?.[widget.id]} />
+                <PublicWidgetRenderer
+                  key={widget.id}
+                  widget={widget}
+                  data={widgetData?.[widget.id]}
+                  periodLabel={shownPeriod}
+                />
               ))}
             </div>
           </section>
         ))}
       </div>
     </div>
+  )
+}
+
+/**
+ * A dashboard as a visitor sees it: the period the server answered without `period`, and on a browsable
+ * period dashboard any other finished period from `period_from` up to that one.
+ */
+function VisitorDashboard({
+  username,
+  slug,
+  data,
+  config,
+}: {
+  username: string
+  slug: string
+  data: PublicSharedDashboardResponse
+  config: DashboardConfig
+}) {
+  const [selectedPeriod, setSelectedPeriod] = useState<string | null>(null)
+  const latest = data.period_lock === 'browsable' ? data.period : null
+
+  const periodQuery = useQuery({
+    enabled: Boolean(latest) && selectedPeriod !== null,
+    placeholderData: keepPreviousData,
+    queryFn: () => fetchPublicResource(username, slug, selectedPeriod ?? undefined),
+    queryKey: ['publicResource', username, slug, selectedPeriod],
+    retry: false,
+    staleTime: 60 * 1000,
+  })
+
+  const browsing: PeriodBrowsing | null = latest
+    ? {
+        earliest: data.period_from,
+        isError: periodQuery.isError,
+        latest,
+        select: (key) => setSelectedPeriod(key === latest ? null : key),
+      }
+    : null
+  const answered = periodQuery.data
+  const shown = browsing && selectedPeriod !== null && answered && 'config' in answered ? answered : data
+
+  return (
+    <ReadOnlyDashboard
+      username={username}
+      name={data.name ?? 'Dashboard'}
+      config={config}
+      widgetData={shown.widget_data}
+      period={shown.period}
+      browsing={browsing}
+    />
   )
 }
 
@@ -202,14 +332,7 @@ export function PublicResource() {
 
   // Non-owner dashboard. `'config' in data` narrows the union (no cast).
   if ('config' in data && data.config) {
-    return (
-      <ReadOnlyDashboard
-        username={username}
-        name={data.name ?? 'Dashboard'}
-        config={data.config}
-        widgetData={data.widget_data}
-      />
-    )
+    return <VisitorDashboard username={username} slug={slug} data={data} config={data.config} />
   }
   return <NotFound />
 }

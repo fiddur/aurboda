@@ -11,6 +11,7 @@
  */
 import type { OfficialFeedSetting } from '@aurboda/api-spec'
 
+import { periodLabel } from '@aurboda/api-spec'
 import { type Response, Router } from 'express'
 
 import { isValidUsername } from '../api/auth-routes.ts'
@@ -18,7 +19,7 @@ import {
   getActivityTypeDefinition,
   getChallengeBySlug,
   getFeedPostById,
-  getSharedDashboardBySlug,
+  getPublicSharedDashboardBySlug,
   getSharedExerciseBySlug,
   listChallengeMembers,
   listPublicSharedDashboards,
@@ -26,6 +27,9 @@ import {
 import { proseToPlainText } from '../services/activitypub/article-object.ts'
 import { officialFeedTitle } from '../services/article-atom.ts'
 import { cardMembers, describeChallenge, type ResolvedChallenge } from '../services/challenge-card.ts'
+import { publicPeriodFor } from '../services/period-lock.ts'
+import { PeriodError } from '../services/periods.ts'
+import { getUserTimezone } from '../services/settings.ts'
 import {
   buildArticleShareMeta,
   buildBlogShareMeta,
@@ -57,6 +61,8 @@ interface ResolvedResource {
   is_public: boolean
   /** Author-provided description (dashboards only), for the meta description. */
   description?: string
+  /** On a period dashboard, the label of the period a visitor sees. */
+  period_label?: string
 }
 
 export interface ResolvedExercise {
@@ -100,6 +106,19 @@ export interface ShareHtmlDeps {
 /** Connecting to a non-existent user database fails with invalid_catalog_name. */
 const isMissingDatabase = (error: unknown): boolean =>
   error instanceof Error && (error as Error & { code?: string }).code === '3D000'
+
+const visiblePeriodLabel = async (
+  dashboard: Parameters<typeof publicPeriodFor>[0],
+  tz: string,
+): Promise<string | undefined> => {
+  try {
+    const period = publicPeriodFor(dashboard, undefined, new Date(), tz)
+    return period === undefined ? undefined : periodLabel(period)
+  } catch (error) {
+    if (error instanceof PeriodError) return undefined
+    throw error
+  }
+}
 
 /**
  * Concrete, missing-database-safe resolvers backed by the user databases.
@@ -183,14 +202,17 @@ export const createShareResolvers = (): Pick<
   },
   resolveDashboard: async (username, slug) => {
     try {
-      const dashboard = await getSharedDashboardBySlug(username, slug)
-      return dashboard
-        ? {
-            description: dashboard.config.description,
-            is_public: dashboard.is_public,
-            name: dashboard.name,
-          }
-        : null
+      const dashboard = await getPublicSharedDashboardBySlug(username, slug)
+      if (!dashboard) return null
+      const period_label = dashboard.config.period
+        ? await visiblePeriodLabel(dashboard, await getUserTimezone(username))
+        : undefined
+      return {
+        description: dashboard.config.description,
+        is_public: dashboard.is_public,
+        name: dashboard.name,
+        ...(period_label ? { period_label } : {}),
+      }
     } catch (error) {
       if (isMissingDatabase(error)) return null
       throw error
@@ -312,6 +334,7 @@ export const createShareHtmlRouter = (deps: ShareHtmlDeps): Router => {
           buildDashboardShareMeta({
             description: dashboard.description,
             name: dashboard.name,
+            periodLabel: dashboard.period_label,
             url,
             username,
           }),

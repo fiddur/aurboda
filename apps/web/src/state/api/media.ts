@@ -3,6 +3,9 @@ import type {
   MediaPlayResponse,
   MediaPlaysQuery,
   MediaPlaysResponse,
+  TopMedia,
+  TopMediaQuery,
+  TopMediaResponse,
 } from '@aurboda/api-spec'
 
 import axios from 'axios'
@@ -40,4 +43,12 @@ export const fetchMediaPlay = async (id: string): Promise<MediaPlay | null> => {
     if (axios.isAxiosError(error) && error.response?.status === 404) return null
     throw error
   }
+}
+
+export const fetchTopMedia = async (query: TopMediaQuery): Promise<TopMedia | null> => {
+  const response = await axios.get<TopMediaResponse>(`${API_URL}/media/plays/top`, {
+    headers: { Authorization: `Bearer ${auth.value.token}` },
+    params: query,
+  })
+  return response.data.data ?? null
 }

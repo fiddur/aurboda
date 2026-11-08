@@ -28,7 +28,9 @@ import {
   metricTypeSchema,
 } from './common.ts'
 import { selectorSchema } from './correlations.ts'
+import { dashboardConfigSchema, periodKeySchema } from './dashboard.ts'
 import {
+  feedStructuredDashboardShareSchema,
   feedStructuredExerciseShareSchema,
   feedStructuredMetricSchema,
   feedStructuredPostSchema,
@@ -156,16 +158,18 @@ export type UpdateFeedPostBody = z.infer<typeof updateFeedPostBodySchema>
  * chart blocks over locked time windows; `challenge` invites people to a
  * challenge (a personal note plus the challenge's canonical join-by-URL link);
  * `exercise` shares one exercise's progress (records, trend, recent sessions);
- * `reply` is a Mastodon-style comment on another post (`inReplyTo` + a `Mention`
- * of its author). Modelled as a post *kind* rather than a separate entity so
+ * `dashboard` shares one finished period of a period dashboard; `reply` is a
+ * Mastodon-style comment on another post (`inReplyTo` + a `Mention` of its author). Modelled as a post *kind* rather than a separate entity so
  * every kind reuses the whole feed (visibility, federation, home timeline, the
  * public-profile feed, permalinks).
  */
-export const feedPostKindSchema = z.enum(['activity', 'article', 'challenge', 'exercise', 'reply']).meta({
-  description:
-    "Feed post kind: an activity share, a long-form article, a challenge invitation, an exercise's progress, or a reply to another post",
-  id: 'FeedPostKind',
-})
+export const feedPostKindSchema = z
+  .enum(['activity', 'article', 'challenge', 'exercise', 'dashboard', 'reply'])
+  .meta({
+    description:
+      "Feed post kind: an activity share, a long-form article, a challenge invitation, an exercise's progress, one period of a dashboard, or a reply to another post",
+    id: 'FeedPostKind',
+  })
 
 export type FeedPostKind = z.infer<typeof feedPostKindSchema>
 
@@ -320,6 +324,68 @@ export const shareExerciseBodySchema = z
   .meta({ id: 'ShareExerciseBody' })
 
 export type ShareExerciseBody = z.infer<typeof shareExerciseBodySchema>
+
+/**
+ * The stored payload of a `dashboard` post (#1505): one finished period of a period dashboard and a
+ * snapshot of the dashboard's config at share time, so a later edit of the dashboard never changes
+ * what was shared. The figures are not stored: they are resolved from the snapshot for the period
+ * whenever the post is read.
+ */
+export const dashboardShareSchema = z
+  .object({
+    config: dashboardConfigSchema.meta({
+      description:
+        'The dashboard config at share time (quick links neutered); the post draws its widgets from it',
+    }),
+    dashboard_id: z
+      .string()
+      .uuid()
+      .optional()
+      .meta({ description: 'The shared dashboard; absent for the home dashboard' }),
+    include_link: z.boolean().meta({ description: "Whether the author asked to link the dashboard's page" }),
+    name: z
+      .string()
+      .min(1)
+      .max(200)
+      .meta({ description: 'Dashboard name at share time (`Home` for the home dashboard)' }),
+    period: periodKeySchema.meta({ description: 'The shared finished period' }),
+    url: z.string().url().max(500).optional().meta({
+      description:
+        "The dashboard's public page, present only when it was published (unlisted or public) and linked at share time",
+    }),
+  })
+  .meta({ id: 'DashboardShare' })
+
+export type DashboardShare = z.infer<typeof dashboardShareSchema>
+
+/**
+ * Body for sharing one finished period of a period dashboard to the feed. The server snapshots the
+ * dashboard's config and resolves the name and link itself; the link is only included when the
+ * dashboard is published.
+ */
+export const shareDashboardPeriodBodySchema = z
+  .object({
+    dashboard_id: z.string().uuid().optional().meta({
+      description:
+        'One of your shared dashboards (see `list_shared_dashboards`); omit for the home dashboard',
+    }),
+    include_link: z.boolean().default(true).meta({
+      description: "Link the dashboard's public page; only has an effect when the dashboard is published",
+    }),
+    message: z.string().max(feedPostMessageMaxLength).optional().meta({
+      description:
+        'Personal note shown above the figures (markdown, rendered through the shared sanitiser). Empty/absent shares no text.',
+    }),
+    period: periodKeySchema.meta({
+      description:
+        "The finished period to share, of the dashboard's granularity: 2026-10 (month), 2026-W44 (ISO week) or 2026 (year)",
+    }),
+    tags: postTagsInputSchema.optional(),
+    visibility: feedVisibilitySchema.default('public'),
+  })
+  .meta({ id: 'ShareDashboardPeriodBody' })
+
+export type ShareDashboardPeriodBody = z.infer<typeof shareDashboardPeriodBodySchema>
 
 /** A run of markdown, rendered through the shared sanitiser. */
 export const articleProseBlockSchema = z
@@ -488,6 +554,9 @@ export const feedPostSchema = z
     challenge: challengeShareSchema
       .optional()
       .meta({ description: 'Challenge link payload, present only for `challenge` posts' }),
+    dashboard: dashboardShareSchema
+      .optional()
+      .meta({ description: 'Dashboard period and config snapshot, present only for `dashboard` posts' }),
     exercise: exerciseShareSchema
       .optional()
       .meta({ description: 'Exercise share pointer and opt-ins, present only for `exercise` posts' }),
@@ -521,7 +590,7 @@ export const feedPostSchema = z
       .optional()
       .meta({ description: 'The replied-to object id, present only for `reply` posts' }),
     kind: feedPostKindSchema.meta({
-      description: 'Post kind: `activity`, `article`, `challenge`, `exercise` or `reply`',
+      description: 'Post kind: `activity`, `article`, `challenge`, `exercise`, `dashboard` or `reply`',
     }),
     like_count: z.number().int().optional().meta({
       description: 'How many remote actors favourited (`Like`d) this post; absent on single-post responses',
@@ -717,6 +786,25 @@ export const exerciseSharePreviewResponseSchema = baseResponseSchema
   .meta({ id: 'ExerciseSharePreviewResponse' })
 
 export type ExerciseSharePreviewResponse = z.infer<typeof exerciseSharePreviewResponseSchema>
+
+/** The dashboard-period share PREVIEW: the exact Note HTML and structured payload, creating nothing. */
+export const dashboardSharePreviewResponseSchema = baseResponseSchema
+  .extend({
+    content: z
+      .string()
+      .optional()
+      .meta({ description: 'The AS2 `content` HTML the post would federate with' }),
+    structured: feedStructuredDashboardShareSchema
+      .optional()
+      .meta({ description: 'The structured payload an Aurboda peer would receive' }),
+    tags: z.array(z.string()).optional().meta({
+      description:
+        'The hashtags the post would carry (lowercase, without `#`): the automatic or given ones plus typed ones',
+    }),
+  })
+  .meta({ id: 'DashboardSharePreviewResponse' })
+
+export type DashboardSharePreviewResponse = z.infer<typeof dashboardSharePreviewResponseSchema>
 
 export const createArticleBodySchema = z
   .object({

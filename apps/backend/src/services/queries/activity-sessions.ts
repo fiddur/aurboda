@@ -111,7 +111,7 @@ export const toValueDistribution = (row: ValueDistributionRow): ValueDistributio
  * Whether the merged session's field matches: the filter has to see the merged `data`, since a
  * value enriched onto one source's row must select the whole session, not just that row.
  */
-export const matchesFilter = (a: MergedActivity, filter: DataFilter): boolean => {
+export const matchesFilter = (a: Pick<MergedActivity, 'data'>, filter: DataFilter): boolean => {
   const v = fieldValue(a.data?.[filter.field])
   return filter.value === null ? v === undefined : v !== undefined && String(v) === filter.value
 }
@@ -128,7 +128,11 @@ const nonEmpty = (m: ActivityMeasures): ActivityMeasures | undefined =>
   Object.keys(m).length > 0 ? m : undefined
 
 /** An item filter: sessions with an item of the value, or with `null` those with no item having a value. */
-export const matchesItemFilter = (a: MergedActivity, path: ItemPath, value: string | null): boolean => {
+export const matchesItemFilter = (
+  a: Pick<MergedActivity, 'data'>,
+  path: ItemPath,
+  value: string | null,
+): boolean => {
   const items = listItems(a.data, path.field)
   if (value === null) return items.every((item) => normalizeItemValue(item[path.key]) === undefined)
   const normalized = normalizeItemValue(value)

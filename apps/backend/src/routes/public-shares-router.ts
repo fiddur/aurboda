@@ -11,13 +11,16 @@ import {
   type BaseResponse,
   type ChallengeDataResponse,
   type ChallengeStandingsResponse,
-  type DashboardConfig,
   type PublicChallengeResponse,
+  type PublicDashboardQuery,
+  publicDashboardQuerySchema,
   type PublicProfileResponse,
   type PublicSharedDashboardResponse,
   type PublicSharedExerciseResponse,
   registerChallengeMemberBodySchema,
 } from '@aurboda/api-spec'
+
+import type { SharedDashboardRecord } from '../db/index.ts'
 
 import { isValidUsername } from '../api/auth-routes.ts'
 import {
@@ -25,7 +28,7 @@ import {
   getActivityTypeDefinition,
   getChallengeBySlug,
   getChallengeMemberByIdentity,
-  getSharedDashboardBySlug,
+  getPublicSharedDashboardBySlug,
   getSharedExerciseBySlug,
   isMissingDatabase,
   listChallengeMembers,
@@ -44,29 +47,27 @@ import {
   specToApi,
 } from '../services/challenge-spec.ts'
 import { getChallengeStandings } from '../services/challenge-standings.ts'
+import { sanitizeConfig } from '../services/dashboard-config.ts'
+import { publicPeriodFor } from '../services/period-lock.ts'
+import { PeriodError } from '../services/periods.ts'
+import { getUserTimezone } from '../services/settings.ts'
 import { buildProfileUrl, buildShareUrl } from '../services/share-urls.ts'
-import { resolveDashboardData } from '../services/shared-dashboard-data.ts'
+import { resolveDashboardView } from '../services/shared-dashboard-data.ts'
 import { resolveSharedExerciseData } from '../services/shared-exercise-data.ts'
 import { isPublicToVisibility } from '../services/visibility.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
-import { validateBody } from '../validation.ts'
+import { validateBody, validateQuery } from '../validation.ts'
 
-/**
- * Strip viewer-useless / internal fields from a config before exposing it.
- * Quick links point into the owner's private app, so neutralize their hrefs.
- */
-export const sanitizeConfig = (config: DashboardConfig): DashboardConfig => ({
-  // Author prose is meant for public viewers — preserve it (section descriptions
-  // survive via the section spread below).
-  description: config.description,
-  sections: config.sections.map((section) => ({
-    ...section,
-    widgets: section.widgets.map((widget) =>
-      widget.type === 'quick_link' ? { ...widget, config: { ...widget.config, href: '#' } } : widget,
-    ),
-  })),
-  version: config.version,
-})
+/** What a visitor needs to know to step between periods; nothing on a rolling dashboard. */
+const publicLockFields = (
+  dashboard: Pick<SharedDashboardRecord, 'config' | 'period_from' | 'period_lock'>,
+): Pick<PublicSharedDashboardResponse, 'period_from' | 'period_lock'> => {
+  if (!dashboard.config.period) return {}
+  if (dashboard.period_lock !== 'browsable' || dashboard.period_from === null) {
+    return { period_lock: dashboard.period_lock }
+  }
+  return { period_from: dashboard.period_from, period_lock: dashboard.period_lock }
+}
 
 export const createPublicSharesRouter = (webHost: string): TypedRouter => {
   const router = typedRouter()
@@ -208,25 +209,32 @@ export const createPublicSharesRouter = (webHost: string): TypedRouter => {
   // One slug namespace: a shared dashboard, then a challenge, then a shared exercise.
   router.get<
     { username: string; slug: string },
-    PublicSharedDashboardResponse | PublicChallengeResponse | PublicSharedExerciseResponse
-  >('/public/:username/:slug', async (req, res) => {
+    PublicSharedDashboardResponse | PublicChallengeResponse | PublicSharedExerciseResponse,
+    unknown,
+    PublicDashboardQuery
+  >('/public/:username/:slug', validateQuery(publicDashboardQuerySchema), async (req, res) => {
     const { slug, username } = req.params
     if (!isValidUsername(username)) {
       return res.status(404).json({ error: 'Not found', success: false })
     }
     try {
-      const dashboard = await getSharedDashboardBySlug(username, slug)
+      const dashboard = await getPublicSharedDashboardBySlug(username, slug)
       if (dashboard) {
-        const widgetData = await resolveDashboardData(username, dashboard.config)
+        const period = dashboard.config.period
+          ? publicPeriodFor(dashboard, req.query.period, new Date(), await getUserTimezone(username))
+          : undefined
+        const view = await resolveDashboardView(username, dashboard.config, period)
         res.setHeader('Cache-Control', 'public, max-age=60')
         return res.json({
           config: sanitizeConfig(dashboard.config),
           name: dashboard.name,
+          ...publicLockFields(dashboard),
           profile_url: buildProfileUrl(webHost, username),
           share_url: buildShareUrl(webHost, username, dashboard.slug),
           success: true,
           type: 'dashboard',
-          widget_data: widgetData,
+          widget_data: view.widget_data,
+          ...(view.period ? { period: view.period, window: view.window } : {}),
         })
       }
 
@@ -287,6 +295,7 @@ export const createPublicSharesRouter = (webHost: string): TypedRouter => {
       if (isMissingDatabase(error)) {
         return res.status(404).json({ error: 'Not found', success: false })
       }
+      if (error instanceof PeriodError) return res.status(400).json({ error: error.message, success: false })
       throw error
     }
   })

@@ -1,4 +1,4 @@
-import type { DashboardConfig, DashboardResponse } from '@aurboda/api-spec'
+import type { DashboardConfig, DashboardDataResponse, DashboardResponse } from '@aurboda/api-spec'
 
 import axios from 'axios'
 
@@ -30,4 +30,29 @@ export const resetDashboard = async (): Promise<DashboardConfig> => {
   })
 
   return response.data.dashboard
+}
+
+const periodParams = (period: string | undefined) => (period ? { period } : undefined)
+
+export const fetchDashboardData = async (period?: string): Promise<DashboardDataResponse> => {
+  const { token } = auth.value
+  const response = await axios.get<DashboardDataResponse>(`${API_URL}/dashboard/data`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params: periodParams(period),
+  })
+
+  return response.data
+}
+
+export const fetchSharedDashboardData = async (
+  id: string,
+  period?: string,
+): Promise<DashboardDataResponse> => {
+  const { token } = auth.value
+  const response = await axios.get<DashboardDataResponse>(
+    `${API_URL}/shared-dashboards/${encodeURIComponent(id)}/data`,
+    { headers: { Authorization: `Bearer ${token}` }, params: periodParams(period) },
+  )
+
+  return response.data
 }

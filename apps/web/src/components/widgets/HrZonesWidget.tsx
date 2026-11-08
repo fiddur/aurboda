@@ -50,15 +50,18 @@ interface HrZonesViewProps {
   config: HrZonesConfig
   data: HrZonesData | null
   loading?: boolean
+  /** The period shown, in place of "Last N Days". */
+  periodLabel?: string
 }
 
-export function HrZonesView({ config, data, loading = false }: HrZonesViewProps) {
+export function HrZonesView({ config, data, loading = false, periodLabel }: HrZonesViewProps) {
   const { lookback_days = 7, show_targets = true } = config
+  const heading = `HR Zones (${periodLabel ?? `Last ${lookback_days} Days`})`
 
   if (loading) {
     return (
       <div class="hr-zones-widget">
-        <h3>HR Zones (Last {lookback_days} Days)</h3>
+        <h3>{heading}</h3>
         <div class="hr-zones-widget-loading">Loading...</div>
       </div>
     )
@@ -69,7 +72,7 @@ export function HrZonesView({ config, data, loading = false }: HrZonesViewProps)
 
   return (
     <div class="hr-zones-widget">
-      <h3>HR Zones (Last {lookback_days} Days)</h3>
+      <h3>{heading}</h3>
       <div class="hr-zones-widget-list">
         {zoneIndices.map((zoneIndex) => {
           const timeSeconds = secondsByMetric.get(`hr_zone_${zoneIndex}_sec`) ?? 0

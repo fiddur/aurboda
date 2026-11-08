@@ -6,25 +6,38 @@
 
 import type { ActivitySummaryConfig, ActivitySummaryData } from '@aurboda/api-spec'
 
+import { percentChange } from '@aurboda/api-spec'
 import { useQuery } from '@tanstack/react-query'
 import { endOfDay, formatISO, startOfDay, subDays } from 'date-fns'
 
 import { fetchActivities } from '../../state/api'
 import { summarizeActivities } from './activitySummary'
+import { TrendIndicator } from './TrendIndicator'
 
 interface ActivitySummaryViewProps {
   config: ActivitySummaryConfig
   data: ActivitySummaryData | null
   loading?: boolean
+  /** The period shown, in place of "Last N Days". */
+  periodLabel?: string
 }
 
-export function ActivitySummaryView({ config, data, loading = false }: ActivitySummaryViewProps) {
+const Change = ({ current, previous }: { current: number | null; previous: number | null | undefined }) =>
+  previous === undefined ? null : <TrendIndicator value={percentChange(current, previous)} />
+
+export function ActivitySummaryView({
+  config,
+  data,
+  loading = false,
+  periodLabel,
+}: ActivitySummaryViewProps) {
   const { lookback_days = 7 } = config
+  const heading = periodLabel ?? `Last ${lookback_days} Days`
 
   if (loading) {
     return (
       <div class="activity-summary">
-        <h3>Last {lookback_days} Days</h3>
+        <h3>{heading}</h3>
         <div class="activity-grid">
           <div class="activity-item">Loading...</div>
         </div>
@@ -34,7 +47,7 @@ export function ActivitySummaryView({ config, data, loading = false }: ActivityS
 
   return (
     <div class="activity-summary">
-      <h3>Last {lookback_days} Days</h3>
+      <h3>{heading}</h3>
       <div class="activity-grid">
         {data?.exercise && (
           <div class="activity-item">
@@ -54,6 +67,7 @@ export function ActivitySummaryView({ config, data, loading = false }: ActivityS
             <div class="activity-details">
               <span class="activity-value">{data.exercise.count}</span>
               <span class="activity-label">Workouts</span>
+              <Change current={data.exercise.count} previous={data.exercise.previous_count} />
             </div>
             <div class="activity-sub">{Math.round(data.exercise.total_minutes)} min total</div>
           </div>
@@ -78,6 +92,7 @@ export function ActivitySummaryView({ config, data, loading = false }: ActivityS
                 {data.sleep.avg_hours !== null ? data.sleep.avg_hours.toFixed(1) : '--'}
               </span>
               <span class="activity-label">Avg Sleep (hrs)</span>
+              <Change current={data.sleep.avg_hours} previous={data.sleep.previous_avg_hours} />
             </div>
             <div class="activity-sub">{data.sleep.count} nights tracked</div>
           </div>
@@ -101,6 +116,7 @@ export function ActivitySummaryView({ config, data, loading = false }: ActivityS
             <div class="activity-details">
               <span class="activity-value">{data.meditation.count}</span>
               <span class="activity-label">Meditations</span>
+              <Change current={data.meditation.count} previous={data.meditation.previous_count} />
             </div>
             <div class="activity-sub">{Math.round(data.meditation.total_minutes)} min total</div>
           </div>

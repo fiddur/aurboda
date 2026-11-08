@@ -236,6 +236,81 @@ export const recordCardConfigSchema = z
 
 export type RecordCardConfig = z.infer<typeof recordCardConfigSchema>
 
+export const activityTypeCardConfigSchema = z
+  .object({
+    filter_field: dataFieldPathSchema.optional().meta({
+      description: 'With filter_value: data field or item path (sets.exercise) the sessions must match',
+    }),
+    filter_value: z.string().optional().meta({ description: 'With filter_field: the value to keep' }),
+    lookback_days: z.number().int().positive().optional().meta({
+      description: 'Days rolled up on a rolling dashboard (default: 30); a period dashboard uses its period',
+    }),
+    pattern: z.string().min(1).meta({ description: 'Activity type name; its subtypes are included' }),
+    speed_display: z.enum(['pace', 'speed']).optional().meta({
+      description:
+        'With distance: pace (min/km) or speed (km/h); default pace for running, walking and hiking types, else speed',
+    }),
+    title: z.string().optional().meta({ description: 'Card title (default: the activity type name)' }),
+  })
+  .refine((c) => (c.filter_field === undefined) === (c.filter_value === undefined), {
+    message: 'filter_field and filter_value must be given together',
+    path: ['filter_value'],
+  })
+  .meta({
+    description:
+      'Roll-up of one activity type: sessions, time, distance and pace or speed; for sleep the average and best night and the stages',
+    id: 'ActivityTypeCardConfig',
+  })
+
+export type ActivityTypeCardConfig = z.infer<typeof activityTypeCardConfigSchema>
+
+export const topListSourceSchema = z
+  .enum(['media_artist', 'media_album', 'media_track', 'screentime_app', 'place'])
+  .meta({
+    description:
+      'What a top list ranks: music plays by artist, album or track, screen time by app, or visits by place',
+    id: 'TopListSource',
+  })
+
+export type TopListSource = z.infer<typeof topListSourceSchema>
+
+export const topListCardConfigSchema = z
+  .object({
+    limit: z.number().int().min(1).max(10).default(3).meta({ description: 'Entries listed (default 3)' }),
+    lookback_days: z.number().int().positive().optional().meta({
+      description: 'Days covered on a rolling dashboard (default: 30); a period dashboard uses its period',
+    }),
+    source: topListSourceSchema,
+    title: z
+      .string()
+      .optional()
+      .meta({ description: 'Card title (default: "Top artists", "Top apps", ...)' }),
+  })
+  .meta({
+    description:
+      "One source's total over the window with the change against the previous period, then its top entries",
+    id: 'TopListCardConfig',
+  })
+
+export type TopListCardConfig = z.infer<typeof topListCardConfigSchema>
+
+export const placesCardConfigSchema = z
+  .object({
+    home_location: z.string().min(1).optional().meta({
+      description: 'The place that counts as home, matched case-insensitively (default "Home")',
+    }),
+    lookback_days: z.number().int().positive().optional().meta({
+      description: 'Days covered on a rolling dashboard (default: 30); a period dashboard uses its period',
+    }),
+    title: z.string().optional().meta({ description: 'Card title (default: "Places")' }),
+  })
+  .meta({
+    description: 'Nights at home and away, distinct places and the most visited places',
+    id: 'PlacesCardConfig',
+  })
+
+export type PlacesCardConfig = z.infer<typeof placesCardConfigSchema>
+
 export const correlationConfigSchema = z
   .object({
     activity: z.string().min(1).meta({ description: 'Activity or tag to analyze' }),
@@ -330,6 +405,9 @@ export const widgetTypeSchema = z.enum([
   'last_sleep',
   'combined_chart',
   'record_card',
+  'activity_type_card',
+  'top_list_card',
+  'places_card',
 ])
 
 export type WidgetType = z.infer<typeof widgetTypeSchema>
@@ -395,6 +473,21 @@ export const dashboardWidgetSchema = z.discriminatedUnion('type', [
     id: z.string().min(1).meta({ description: 'Unique widget ID' }),
     type: z.literal('record_card'),
   }),
+  z.object({
+    config: activityTypeCardConfigSchema,
+    id: z.string().min(1).meta({ description: 'Unique widget ID' }),
+    type: z.literal('activity_type_card'),
+  }),
+  z.object({
+    config: topListCardConfigSchema,
+    id: z.string().min(1).meta({ description: 'Unique widget ID' }),
+    type: z.literal('top_list_card'),
+  }),
+  z.object({
+    config: placesCardConfigSchema,
+    id: z.string().min(1).meta({ description: 'Unique widget ID' }),
+    type: z.literal('places_card'),
+  }),
 ])
 
 export type DashboardWidget = z.infer<typeof dashboardWidgetSchema>
@@ -419,12 +512,42 @@ export const dashboardSectionSchema = z
 
 export type DashboardSection = z.infer<typeof dashboardSectionSchema>
 
+export const periodGranularitySchema = z.enum(['week', 'month', 'year']).meta({
+  description: 'Calendar period kind: ISO week (Monday start), calendar month or calendar year',
+  id: 'PeriodGranularity',
+})
+
+export type PeriodGranularity = z.infer<typeof periodGranularitySchema>
+
+export const periodKeyPattern = /^\d{4}(-(0[1-9]|1[0-2])|-W(0[1-9]|[1-4]\d|5[0-3]))?$/
+
+export const periodKeySchema = z.string().regex(periodKeyPattern).meta({
+  description: 'A calendar period: 2026-10 (month), 2026-W44 (ISO week) or 2026 (year)',
+  example: '2026-10',
+  id: 'PeriodKey',
+})
+
+export type PeriodKey = z.infer<typeof periodKeySchema>
+
+export const dashboardPeriodSchema = z
+  .object({
+    granularity: periodGranularitySchema,
+  })
+  .meta({
+    description:
+      'Makes the dashboard a calendar-period dashboard: every widget shows one finished period, and widget lookbacks are ignored',
+    id: 'DashboardPeriod',
+  })
+
+export type DashboardPeriod = z.infer<typeof dashboardPeriodSchema>
+
 export const dashboardConfigSchema = z
   .object({
     description: z.string().optional().meta({
       description:
         'Optional author-provided description (plain text). Feeds the shared-page meta description / link preview.',
     }),
+    period: dashboardPeriodSchema.optional(),
     sections: z.array(dashboardSectionSchema).meta({ description: 'Dashboard sections' }),
     version: z.literal(1).meta({ description: 'Config version for future migrations' }),
   })
@@ -439,6 +562,17 @@ export const dashboardResponseSchema = baseResponseSchema
   .meta({ id: 'DashboardResponse' })
 
 export type DashboardResponse = z.infer<typeof dashboardResponseSchema>
+
+export const dashboardDataQuerySchema = z
+  .object({
+    period: periodKeySchema.optional().meta({
+      description:
+        'The finished period to show on a period dashboard (2026-10, 2026-W44 or 2026); the latest finished one when absent. Ignored by a rolling dashboard',
+    }),
+  })
+  .meta({ id: 'DashboardDataQuery' })
+
+export type DashboardDataQuery = z.infer<typeof dashboardDataQuerySchema>
 
 export const updateDashboardInputSchema = dashboardConfigSchema.meta({ id: 'UpdateDashboardInput' })
 
@@ -565,4 +699,111 @@ export const defaultDashboardConfig: DashboardConfig = {
     },
   ],
   version: 1,
+}
+
+export const dashboardPresetSchema = z.enum(['blank', 'home', 'month_in_data']).meta({
+  description:
+    'A starting point for a new dashboard: blank (no sections), home (a copy of your home dashboard) or month_in_data (a monthly period dashboard)',
+  id: 'DashboardPreset',
+})
+
+export type DashboardPreset = z.infer<typeof dashboardPresetSchema>
+
+const monthInDataConfig: DashboardConfig = {
+  description: 'One finished month at a glance, compared with the month before.',
+  period: { granularity: 'month' },
+  sections: [
+    {
+      id: 'month-body',
+      title: 'Body',
+      type: 'metrics',
+      widgets: [
+        {
+          config: { metric: 'sleep_score', title: 'Sleep score' },
+          id: 'month-sleep-score',
+          type: 'sparkline_card',
+        },
+        {
+          config: { pattern: 'sleep', title: 'Sleep' },
+          id: 'month-sleep',
+          type: 'activity_type_card',
+        },
+        { config: { metric: 'steps', title: 'Steps per day' }, id: 'month-steps', type: 'metric_card' },
+        { config: { metric: 'hrv_rmssd', title: 'HRV', unit: 'ms' }, id: 'month-hrv', type: 'metric_card' },
+        {
+          config: { metric: 'resting_heart_rate', title: 'Resting HR', trend_inverse: true, unit: 'bpm' },
+          id: 'month-resting-hr',
+          type: 'metric_card',
+        },
+        {
+          config: { metric: 'weight', title: 'Weight', unit: 'kg' },
+          id: 'month-weight',
+          type: 'metric_card',
+        },
+        {
+          config: { metric: 'body_fat', title: 'Body fat', unit: '%' },
+          id: 'month-body-fat',
+          type: 'metric_card',
+        },
+      ],
+    },
+    {
+      id: 'month-training',
+      title: 'Training',
+      type: 'charts',
+      widgets: [
+        {
+          config: { show_meditation: true, show_sleep: true, show_workouts: true },
+          id: 'month-activity-summary',
+          type: 'activity_summary',
+        },
+        { config: { show_targets: false }, id: 'month-hr-zones', type: 'hr_zones' },
+        {
+          config: { pattern: 'exercise', title: 'Workouts' },
+          id: 'month-workouts',
+          type: 'activity_type_card',
+        },
+        {
+          config: {
+            aggregation: 'count',
+            bucket_size: '1w',
+            lookback_days: 31,
+            pattern: 'exercise',
+            source_type: 'activity_type',
+            title: 'Workouts per week',
+          },
+          id: 'month-workouts-per-week',
+          type: 'bar_chart',
+        },
+      ],
+    },
+    {
+      id: 'month-life',
+      title: 'Life',
+      type: 'metrics',
+      widgets: [
+        {
+          config: { limit: 3, source: 'media_artist', title: 'Music' },
+          id: 'month-music',
+          type: 'top_list_card',
+        },
+        {
+          config: { limit: 3, source: 'screentime_app', title: 'Screen time' },
+          id: 'month-screen-time',
+          type: 'top_list_card',
+        },
+        { config: { title: 'Places' }, id: 'month-places', type: 'places_card' },
+      ],
+    },
+  ],
+  version: 1,
+}
+
+/** The presets a client can build without the user's own settings; `home` is resolved server-side. */
+export const dashboardPresetConfigs: Record<
+  Exclude<DashboardPreset, 'home'>,
+  { config: DashboardConfig; name: string }
+> = {
+  blank: { config: { sections: [], version: 1 }, name: 'New dashboard' },
+  month_in_data: { config: monthInDataConfig, name: 'Month in data' },
 }

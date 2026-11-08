@@ -3,6 +3,7 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 const PREVIEW_POSTS = new Set([
   '/autoshare-rules/preview',
   '/deduction-rules/preview',
+  '/feed/dashboards/preview',
   '/feed/exercises/preview',
 ])
 const ACTIVITY_SHARE_PREVIEW = /^\/feed\/activities\/[^/]+\/preview$/

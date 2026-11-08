@@ -1,32 +1,60 @@
 /**
- * SharedDashboards - manage the current user's published dashboards.
- *
- * Create a shareable copy (seeded from the home dashboard or blank), toggle
- * public/unlisted, copy the share link, rename (auto-saves on blur), delete.
- * Per-widget editing of a shared dashboard is a follow-up; today a share is
- * seeded from the home dashboard's current layout. Below them, the exercises
- * shared from their exercise pages.
+ * Dashboards - every dashboard the user has: the home dashboard first, then
+ * each further one (private, unlisted or public), each opened and edited at
+ * `/u/<me>/<slug>`. Create one from a preset, rename (auto-saves on blur),
+ * change who sees it (and, for a published period dashboard, which periods), copy its link, delete. Below them, the exercises shared
+ * from their exercise pages.
  */
-import type { DashboardConfig, ShareVisibility, SharedDashboard, SharedExercise } from '@aurboda/api-spec'
+import type {
+  DashboardPreset,
+  DashboardVisibility,
+  ShareVisibility,
+  SharedDashboard,
+  SharedExercise,
+} from '@aurboda/api-spec'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useLocation } from 'preact-iso'
 import { useState } from 'preact/hooks'
 
 import { itemPageHref } from '../../components/sessions/sessionView'
 import { useCopyLink } from '../../components/ShareControls'
-import { SHARE_VISIBILITY_OPTIONS, VisibilitySelector } from '../../components/VisibilitySelector'
+import {
+  DASHBOARD_VISIBILITY_OPTIONS,
+  SHARE_VISIBILITY_OPTIONS,
+  VisibilitySelector,
+} from '../../components/VisibilitySelector'
 import {
   createSharedDashboard,
   deleteSharedDashboard,
   deleteSharedExercise,
-  fetchDashboard,
   listSharedDashboards,
   listSharedExercises,
   updateSharedDashboard,
   updateSharedExercise,
 } from '../../state/api'
+import { auth } from '../../state/auth'
 import { toDisplayName } from '../../utils/displayName'
+import { hasPeriodLock } from './periodLock'
+import { PeriodLockEditor } from './PeriodLockEditor'
+import { nameAfterPresetChange, PRESET_OPTIONS, presetName } from './presets'
 import './style.css'
+
+const dashboardPath = (slug: string) => `/u/${auth.value.user ?? ''}/${slug}`
+
+function HomeDashboardRow() {
+  return (
+    <li class="shared-dashboard-row">
+      <span class="shared-dashboard-name home-dashboard-name">Home</span>
+      <span class="home-dashboard-hint">Your start page</span>
+      <div class="shared-dashboard-actions">
+        <a class="btn-secondary" href="/">
+          View
+        </a>
+      </div>
+    </li>
+  )
+}
 
 function SharedDashboardRow({ dashboard }: { dashboard: SharedDashboard }) {
   const queryClient = useQueryClient()
@@ -35,15 +63,15 @@ function SharedDashboardRow({ dashboard }: { dashboard: SharedDashboard }) {
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['sharedDashboards'] })
 
   const updateMutation = useMutation({
-    mutationFn: (body: { name?: string; visibility?: ShareVisibility }) =>
+    mutationFn: (body: { name?: string; visibility?: DashboardVisibility }) =>
       updateSharedDashboard(dashboard.id, body),
-    onError: () => alert('Failed to update the shared dashboard. Please try again.'),
+    onError: () => alert('Failed to update the dashboard. Please try again.'),
     onSuccess: invalidate,
   })
 
   const deleteMutation = useMutation({
     mutationFn: () => deleteSharedDashboard(dashboard.id),
-    onError: () => alert('Failed to delete the shared dashboard. Please try again.'),
+    onError: () => alert('Failed to delete the dashboard. Please try again.'),
     onSuccess: invalidate,
   })
 
@@ -53,7 +81,7 @@ function SharedDashboardRow({ dashboard }: { dashboard: SharedDashboard }) {
   }
 
   const handleDelete = () => {
-    if (confirm(`Delete shared dashboard "${dashboard.name}"? Its link will stop working.`)) {
+    if (confirm(`Delete dashboard "${dashboard.name}"? Its link will stop working.`)) {
       deleteMutation.mutate()
     }
   }
@@ -70,21 +98,24 @@ function SharedDashboardRow({ dashboard }: { dashboard: SharedDashboard }) {
       <VisibilitySelector
         compact
         name={`dashboard-visibility-${dashboard.id}`}
-        options={SHARE_VISIBILITY_OPTIONS}
+        options={DASHBOARD_VISIBILITY_OPTIONS}
         value={dashboard.visibility}
         onChange={(visibility) => updateMutation.mutate({ visibility })}
       />
       <div class="shared-dashboard-actions">
-        <a class="btn-secondary" href={dashboard.share_url} target="_blank" rel="noopener noreferrer">
+        <a class="btn-secondary" href={dashboardPath(dashboard.slug)}>
           View
         </a>
-        <button class="btn-secondary" onClick={handleCopy}>
-          {copied ? 'Copied!' : 'Copy link'}
-        </button>
+        {dashboard.visibility !== 'private' && (
+          <button class="btn-secondary" onClick={handleCopy}>
+            {copied ? 'Copied!' : 'Copy link'}
+          </button>
+        )}
         <button class="btn-danger" onClick={handleDelete}>
           Delete
         </button>
       </div>
+      {hasPeriodLock(dashboard) && <PeriodLockEditor dashboard={dashboard} />}
     </li>
   )
 }
@@ -183,9 +214,11 @@ function SharedExercises() {
   )
 }
 
-export function SharedDashboards() {
+export function Dashboards() {
   const queryClient = useQueryClient()
-  const [name, setName] = useState('')
+  const { route } = useLocation()
+  const [preset, setPreset] = useState<DashboardPreset>('blank')
+  const [name, setName] = useState(presetName('blank'))
 
   const query = useQuery({
     queryFn: listSharedDashboards,
@@ -194,33 +227,36 @@ export function SharedDashboards() {
   })
 
   const createMutation = useMutation({
-    mutationFn: async (seedFromHome: boolean) => {
-      const emptyConfig: DashboardConfig = { sections: [], version: 1 }
-      const config = seedFromHome ? await fetchDashboard() : emptyConfig
-      return createSharedDashboard({
-        config,
-        name: name.trim() || 'Shared dashboard',
-        visibility: 'unlisted',
-      })
-    },
-    onError: () => alert('Failed to create the shared dashboard. Please try again.'),
-    onSuccess: () => {
-      setName('')
-      queryClient.invalidateQueries({ queryKey: ['sharedDashboards'] })
+    mutationFn: () =>
+      createSharedDashboard({
+        name: name.trim() || presetName(preset),
+        period_lock: 'latest',
+        preset,
+        visibility: 'private',
+      }),
+    onError: () => alert('Failed to create the dashboard. Please try again.'),
+    onSuccess: (created) => {
+      void queryClient.invalidateQueries({ queryKey: ['sharedDashboards'] })
+      route(dashboardPath(created.slug))
     },
   })
+
+  const handlePresetChange = (next: DashboardPreset) => {
+    setName((current) => nameAfterPresetChange(current, preset, next))
+    setPreset(next)
+  }
 
   const dashboards = query.data ?? []
 
   return (
     <div class="shared-dashboards">
       <div class="shared-dashboards-header">
-        <h1>Shared dashboards</h1>
+        <h1>Dashboards</h1>
       </div>
 
       <p class="shared-dashboards-intro">
-        Publish read-only copies of a dashboard under your public page. Public ones are listed on your
-        profile; unlisted ones are reachable only via their link.
+        Your home dashboard and any others you make. A dashboard is only yours until you choose otherwise:
+        anyone with the link can open an unlisted one, and public ones are listed on your profile.
       </p>
 
       <div class="shared-dashboards-create">
@@ -228,36 +264,39 @@ export function SharedDashboards() {
           type="text"
           value={name}
           placeholder="New dashboard name"
+          aria-label="New dashboard name"
           onInput={(e) => setName((e.target as HTMLInputElement).value)}
         />
+        <select
+          value={preset}
+          aria-label="Start from"
+          onChange={(e) => {
+            const next = PRESET_OPTIONS.find((o) => o.value === (e.target as HTMLSelectElement).value)
+            if (next) handlePresetChange(next.value)
+          }}
+        >
+          {PRESET_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
         <button
           class="btn-primary"
           disabled={createMutation.isPending}
-          onClick={() => createMutation.mutate(true)}
+          onClick={() => createMutation.mutate()}
         >
-          Create from my dashboard
-        </button>
-        <button
-          class="btn-secondary"
-          disabled={createMutation.isPending}
-          onClick={() => createMutation.mutate(false)}
-        >
-          Create blank
+          Create
         </button>
       </div>
 
-      {query.isLoading && <div class="loading">Loading…</div>}
-
-      {!query.isLoading &&
-        (dashboards.length === 0 ? (
-          <p class="shared-dashboards-empty">You haven’t shared any dashboards yet.</p>
-        ) : (
-          <ul class="shared-dashboards-list">
-            {dashboards.map((d) => (
-              <SharedDashboardRow key={d.id} dashboard={d} />
-            ))}
-          </ul>
+      <ul class="shared-dashboards-list">
+        <HomeDashboardRow />
+        {dashboards.map((d) => (
+          <SharedDashboardRow key={d.id} dashboard={d} />
         ))}
+      </ul>
+      {query.isLoading && <div class="loading">Loading…</div>}
 
       <SharedExercises />
     </div>

@@ -1,4 +1,10 @@
-import type { ArticleContent, ChallengeShare, ExerciseShare, FeedVisibility } from '@aurboda/api-spec'
+import type {
+  ArticleContent,
+  ChallengeShare,
+  DashboardShare,
+  ExerciseShare,
+  FeedVisibility,
+} from '@aurboda/api-spec'
 /**
  * The Mastodon-compatible representation is a Fedify `Create{Note}` — an HTML
  * `content` summary + `name`/`url`, addressed per the post's visibility. The
@@ -43,6 +49,7 @@ import { resolveExerciseTrendSeries } from '../feed-structured-exercise.ts'
 import { getSettings } from '../settings.ts'
 import { articleImageAttachments, renderArticleContentHtml } from './article-object.ts'
 import { identityToActorUri, identityToHandle, renderChallengeShareHtml } from './challenge-object.ts'
+import { dashboardNoteContent } from './dashboard-object.ts'
 import { exerciseNoteContent } from './exercise-object.ts'
 import { resolveActivityScalars } from './feed-activity.ts'
 import { type HashtagLinks, hashtagLinks, hashtagObjects, linkifyHashtags } from './hashtag-html.ts'
@@ -1041,6 +1048,118 @@ export const deliverFeedExerciseUpdate = async (
     'followers',
     buildExerciseNoteUpdate(ctx, user, post, content, attachments),
   )
+}
+
+// A dashboard Note's content is resolved from the stored config snapshot before the Note is built,
+// so these builders take the pre-rendered `content` (`dashboardNoteContent`) and stay synchronous.
+
+/** The delivery-facing view of a dashboard post (its `dashboard` guaranteed present). */
+export interface DeliverableDashboard {
+  id: string
+  visibility: FeedVisibility
+  created_at: Date
+  updated_at: Date
+  dashboard: DashboardShare
+  message: string | null
+  tags?: readonly string[]
+}
+
+export const toDeliverableDashboard = (post: FeedPostRecord): DeliverableDashboard | null =>
+  post.kind === 'dashboard' && post.dashboard != null
+    ? {
+        created_at: post.created_at,
+        dashboard: post.dashboard,
+        id: post.id,
+        message: post.message,
+        tags: post.tags,
+        updated_at: post.updated_at,
+        visibility: post.visibility,
+      }
+    : null
+
+/** Build the Fedify `Note` for a dashboard-period share from its pre-rendered `content`. */
+export const buildDashboardNote = (
+  ctx: Context<void>,
+  user: string,
+  post: DeliverableDashboard,
+  content: string,
+): Note => {
+  const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
+  const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
+  const hashtags = noteHashtags(ctx, user, post.tags)
+  return new Note({
+    attribution: ctx.getActorUri(user),
+    ccs: cc,
+    content: linkifyHashtags(content, hashtags),
+    id: noteId,
+    name: post.dashboard.name,
+    published: dateToTemporalInstant(post.created_at),
+    tags: hashtagObjects(hashtags),
+    tos: to,
+    updated: dateToTemporalInstant(post.updated_at),
+    url: noteId,
+  })
+}
+
+/** Wrap the dashboard Note in the `Create` delivered to followers and listed in the outbox. */
+export const buildDashboardNoteCreate = (
+  ctx: Context<void>,
+  user: string,
+  post: DeliverableDashboard,
+  content: string,
+): Create => {
+  const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
+  const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
+  return new Create({
+    actor: ctx.getActorUri(user),
+    ccs: cc,
+    id: new URL(`${noteId.href}#create`),
+    object: buildDashboardNote(ctx, user, post, content),
+    published: dateToTemporalInstant(post.created_at),
+    tos: to,
+  })
+}
+
+/** Wrap the dashboard Note in an `Update`; id carries `updated_at` so each edit is distinct. */
+export const buildDashboardNoteUpdate = (
+  ctx: Context<void>,
+  user: string,
+  post: DeliverableDashboard,
+  content: string,
+): Update => {
+  const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
+  const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
+  return new Update({
+    actor: ctx.getActorUri(user),
+    ccs: cc,
+    id: new URL(`${noteId.href}#update-${post.updated_at.getTime()}`),
+    object: buildDashboardNote(ctx, user, post, content),
+    tos: to,
+  })
+}
+
+export type DashboardNoteContent = (user: string, post: DeliverableDashboard) => Promise<string>
+
+export const deliverFeedDashboardPost = async (
+  deps: FeedDeliveryDeps,
+  user: string,
+  post: DeliverableDashboard,
+  content: DashboardNoteContent = dashboardNoteContent,
+): Promise<void> => {
+  const html = await content(user, post)
+  const ctx = await deps.federation.createContext(new URL(deps.origin))
+  await ctx.sendActivity({ identifier: user }, 'followers', buildDashboardNoteCreate(ctx, user, post, html))
+}
+
+export const deliverFeedDashboardUpdate = async (
+  deps: FeedDeliveryDeps,
+  user: string,
+  post: DeliverableDashboard,
+  content: DashboardNoteContent = dashboardNoteContent,
+): Promise<void> => {
+  const html = await content(user, post)
+  const ctx = await deps.federation.createContext(new URL(deps.origin))
+  await ctx.sendActivity({ identifier: user }, 'followers', buildDashboardNoteUpdate(ctx, user, post, html))
 }
 
 // Replies (comments). A reply federates as a `Note` with `inReplyTo` pointing at

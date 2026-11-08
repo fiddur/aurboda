@@ -102,6 +102,7 @@ describe('Challenges integration', () => {
     const user = getTestUser()
     const dash = await createSharedDashboard(user, {
       config: { sections: [], version: 1 },
+      is_private: false,
       is_public: false,
       name: 'D',
     })

@@ -65,7 +65,7 @@ val moreGroups: List<MoreGroup> = listOf(
     MoreGroup(
         "Sharing",
         listOf(
-            MoreItem("Shared dashboards", MoreDestination.Web("/shared-dashboards")),
+            MoreItem("Dashboards", MoreDestination.Web("/dashboards")),
             MoreItem("Challenges", MoreDestination.Web("/challenges")),
         ),
     ),

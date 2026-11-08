@@ -15,6 +15,9 @@ import {
   type OvernightStaysQuery,
   overnightStaysQuerySchema,
   type OvernightStaysResponse,
+  type PlacesSummaryQuery,
+  placesSummaryQuerySchema,
+  type PlacesSummaryResponse,
   type RawLocationsQuery,
   rawLocationsQuerySchema,
   type RawLocationsResponse,
@@ -34,7 +37,12 @@ import {
   type NamedLocationsChanged,
   updateNamedLocation,
 } from '../services/locations.ts'
-import { getLocationSummary, queryLocations, queryOvernightStays } from '../services/queries/index.ts'
+import {
+  getLocationSummary,
+  getPlacesSummary,
+  queryLocations,
+  queryOvernightStays,
+} from '../services/queries/index.ts'
 import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
@@ -87,6 +95,22 @@ export const createLocationsRouter = (
         end: new Date(end),
         groupBy: group_by,
         locationName: location_name,
+        start: new Date(start),
+        tz,
+      })
+      res.json({ data: summary, success: true })
+    },
+  )
+
+  router.get<Record<string, never>, PlacesSummaryResponse, unknown, PlacesSummaryQuery>(
+    '/places-summary',
+    authMiddleware,
+    validateQuery(placesSummaryQuerySchema),
+    async (req, res) => {
+      const { end, home_location, start, tz } = req.query
+      const summary = await getPlacesSummary(req.user!, {
+        end: new Date(end),
+        homeName: home_location,
         start: new Date(start),
         tz,
       })

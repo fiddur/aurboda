@@ -35,9 +35,9 @@ export function BreakdownMaskPicker({
   )
 }
 
-/** The section kind a widget is added to: a record card sits with the metric cards, the rest with the charts. */
+/** The section kind a widget is added to: record and activity cards sit with the metric cards, the rest with the charts. */
 const sectionTypeFor = (type: DashboardWidget['type']): Exclude<SectionType, 'links'> =>
-  type === 'record_card' ? 'metrics' : 'charts'
+  type === 'record_card' || type === 'activity_type_card' ? 'metrics' : 'charts'
 
 const newSectionText = {
   charts: { example: 'e.g., My Charts', title: 'Charts' },

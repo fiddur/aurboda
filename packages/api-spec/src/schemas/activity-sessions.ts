@@ -7,9 +7,10 @@ import {
   createDataResponseSchema,
   dataFieldNameSchema,
   dataFieldPathSchema,
+  hrZoneSecsSchema,
   iso8601DateTimeSchema,
 } from './common.ts'
-import { hrZoneSecsSchema } from './settings.ts'
+import { sleepStageSummarySchema } from './daily-summary.ts'
 import { sharedExerciseSetSchema } from './shared-exercises.ts'
 
 const listItemSchema = z.record(z.string(), z.unknown())
@@ -160,6 +161,9 @@ export type ActivitySessionsResponse = z.infer<typeof activitySessionsResponseSc
 
 export const activityRecordsQuerySchema = z
   .object({
+    end: iso8601DateTimeSchema
+      .optional()
+      .meta({ description: 'Only sessions before this date/time (defaults to now)' }),
     filter_field: dataFieldPathSchema.optional().meta({
       description:
         'Only sessions whose data field equals filter_value (both must be given). An item path (sets.exercise) measures only the items of that value',
@@ -213,6 +217,72 @@ export const activityRecordsResponseSchema = createDataResponseSchema(activityRe
 })
 
 export type ActivityRecordsResponse = z.infer<typeof activityRecordsResponseSchema>
+
+export const activityTypeSummaryQuerySchema = z
+  .object({
+    end: iso8601DateTimeSchema.meta({ description: 'Only sessions starting at or before this date/time' }),
+    filter_field: dataFieldPathSchema.optional().meta({
+      description:
+        'Only sessions whose data field equals filter_value (both must be given). An item path (sets.exercise) keeps the sessions with an item of that value',
+    }),
+    filter_value: z.string().optional().meta({
+      description: 'Value filter_field must equal; "(none)" matches sessions without a value',
+    }),
+    start: iso8601DateTimeSchema.meta({ description: 'Only sessions starting at or after this date/time' }),
+  })
+  .refine((q) => (q.filter_field === undefined) === (q.filter_value === undefined), {
+    message: 'filter_field and filter_value must be given together',
+    path: ['filter_value'],
+  })
+  .meta({ id: 'ActivityTypeSummaryQuery' })
+
+export type ActivityTypeSummaryQuery = z.infer<typeof activityTypeSummaryQuerySchema>
+
+export const activityTypeSleepSummarySchema = z
+  .object({
+    avg_minutes: z.number().meta({ description: 'Average night (minutes from start to end)' }),
+    avg_stages: sleepStageSummarySchema.nullable().meta({
+      description: 'Average whole minutes per stage over the nights with stages; null when none has',
+    }),
+    best_night_minutes: z.number().meta({ description: 'The longest night (minutes)' }),
+  })
+  .meta({ description: 'Sleep figures of an activity type roll-up', id: 'ActivityTypeSleepSummary' })
+
+export type ActivityTypeSleepSummary = z.infer<typeof activityTypeSleepSummarySchema>
+
+export const activityTypeSummarySchema = z
+  .object({
+    activity_type_name: z.string().meta({ description: "The activity type's display name, else its name" }),
+    avg_speed_kmh: z.number().nullable().meta({
+      description: 'Total distance over the total hours of the sessions with a distance; null when none has',
+    }),
+    best_pace_sec_per_km: z.number().nullable().meta({
+      description: 'Fastest pace (seconds per km) of a session with a distance; null when none has',
+    }),
+    count: z.number().int().meta({ description: 'Number of sessions' }),
+    distance_km: z
+      .number()
+      .nullable()
+      .meta({ description: 'Total distance (km) of the sessions with a distance; null when none has' }),
+    sleep: activityTypeSleepSummarySchema.nullable().meta({
+      description:
+        'Sleep figures, when the type is sleep or has sleep among its subtypes and there are nights',
+    }),
+    total_minutes: z.number().meta({ description: 'Total duration of the sessions (minutes)' }),
+  })
+  .meta({
+    description:
+      'Roll-up of one activity type (descendants included) over a time range: sessions, time, distance, pace, and sleep figures for sleep',
+    id: 'ActivityTypeSummary',
+  })
+
+export type ActivityTypeSummary = z.infer<typeof activityTypeSummarySchema>
+
+export const activityTypeSummaryResponseSchema = createDataResponseSchema(activityTypeSummarySchema).meta({
+  id: 'ActivityTypeSummaryResponse',
+})
+
+export type ActivityTypeSummaryResponse = z.infer<typeof activityTypeSummaryResponseSchema>
 
 export const activityNeighborSchema = z
   .object({
