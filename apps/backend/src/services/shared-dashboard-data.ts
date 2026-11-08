@@ -112,16 +112,22 @@ const summaryFigures = async (user: string, apiMetric: string, range: Range) => 
   }
 }
 
+type SummaryFigures = Awaited<ReturnType<typeof summaryFigures>>
+
 const previousFigures = async (
   user: string,
   apiMetric: string,
-  value: number | null,
   previous: ResolveWindow | undefined,
-): Promise<{ previous_value: number | null; trend_percent: number | null } | undefined> => {
-  if (!previous) return undefined
-  const prev = await summaryFigures(user, apiMetric, inclusiveRange(previous))
-  return { previous_value: prev.value, trend_percent: percentChange(value, prev.value) }
-}
+): Promise<SummaryFigures | undefined> =>
+  previous ? summaryFigures(user, apiMetric, inclusiveRange(previous)) : undefined
+
+const compareWithPrevious = (
+  value: number | null,
+  previous: SummaryFigures | undefined,
+): { previous_value: number | null; trend_percent: number | null } | undefined =>
+  previous
+    ? { previous_value: previous.value, trend_percent: percentChange(value, previous.value) }
+    : undefined
 
 const resolveMetricCard = async (
   user: string,
@@ -131,8 +137,11 @@ const resolveMetricCard = async (
   const { metric } = config
   if (options.window) {
     const apiMetric = baselineWindowMetric[metric] ?? metricToApiMetric[metric] ?? metric
-    const current = await summaryFigures(user, apiMetric, inclusiveRange(options.window))
-    const comparison = await previousFigures(user, apiMetric, current.value, options.previous)
+    const [current, previous] = await Promise.all([
+      summaryFigures(user, apiMetric, inclusiveRange(options.window)),
+      previousFigures(user, apiMetric, options.previous),
+    ])
+    const comparison = compareWithPrevious(current.value, previous)
     return {
       data: {
         count: current.count,
@@ -176,11 +185,12 @@ const resolveSparklineCard = async (
   const apiMetric = metricToApiMetric[config.metric] ?? config.metric
   const range = windowOf(options, config.lookback_days ?? 30)
   const customMetrics = await getCustomMetrics(user)
-  const [series, current] = await Promise.all([
+  const [series, current, previous] = await Promise.all([
     queryMetrics(user, apiMetric, range.start, range.end, customMetrics),
     summaryFigures(user, apiMetric, range),
+    previousFigures(user, apiMetric, options.previous),
   ])
-  const comparison = await previousFigures(user, apiMetric, current.value, options.previous)
+  const comparison = compareWithPrevious(current.value, previous)
   return {
     data: {
       count: current.count,
@@ -365,6 +375,7 @@ const resolveCorrelation = async (
     options.window ? periodDays(options.window) : (config.period_days ?? 90),
     undefined,
     options.window?.end,
+    options.window?.start,
   )
   return {
     data: {

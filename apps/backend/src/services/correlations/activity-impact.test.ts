@@ -64,6 +64,37 @@ describe('getActivityImpact', () => {
     expect(result.avg_duration_min).toBe(0)
   })
 
+  test('an explicit since starts the range exactly there', async () => {
+    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([])
+    const since = new Date('2026-03-01T00:00:00+01:00')
+    const until = new Date('2026-04-01T00:00:00+02:00')
+
+    await getActivityImpact('testuser', 'coffee', 'tag', 30, 31, undefined, until, since)
+
+    expect(db.getTimeSeries).toHaveBeenCalledWith(
+      'testuser',
+      'hrv_rmssd',
+      since,
+      new Date(until.getTime() - 1),
+    )
+  })
+
+  test('without since, the range reaches periodDays back from until', async () => {
+    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([])
+    const until = new Date('2026-04-01T00:00:00Z')
+
+    await getActivityImpact('testuser', 'coffee', 'tag', 30, 31, undefined, until)
+
+    expect(db.getTimeSeries).toHaveBeenCalledWith(
+      'testuser',
+      'hrv_rmssd',
+      new Date('2026-03-01T00:00:00Z'),
+      new Date(until.getTime() - 1),
+    )
+  })
+
   test('handles productivity category activity type', async () => {
     const baseTime = new Date('2024-01-15T12:00:00Z')
 

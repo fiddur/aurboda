@@ -2,7 +2,7 @@
  * Dashboards - every dashboard the user has: the home dashboard first, then
  * each further one (private, unlisted or public), each opened and edited at
  * `/u/<me>/<slug>`. Create one from a preset, rename (auto-saves on blur),
- * change who sees it, copy its link, delete. Below them, the exercises shared
+ * change who sees it (and, for a published period dashboard, which periods), copy its link, delete. Below them, the exercises shared
  * from their exercise pages.
  */
 import type {
@@ -35,6 +35,8 @@ import {
 } from '../../state/api'
 import { auth } from '../../state/auth'
 import { toDisplayName } from '../../utils/displayName'
+import { hasPeriodLock } from './periodLock'
+import { PeriodLockEditor } from './PeriodLockEditor'
 import { nameAfterPresetChange, PRESET_OPTIONS, presetName } from './presets'
 import './style.css'
 
@@ -113,6 +115,7 @@ function SharedDashboardRow({ dashboard }: { dashboard: SharedDashboard }) {
           Delete
         </button>
       </div>
+      {hasPeriodLock(dashboard) && <PeriodLockEditor dashboard={dashboard} />}
     </li>
   )
 }
@@ -227,6 +230,7 @@ export function Dashboards() {
     mutationFn: () =>
       createSharedDashboard({
         name: name.trim() || presetName(preset),
+        period_lock: 'latest',
         preset,
         visibility: 'private',
       }),

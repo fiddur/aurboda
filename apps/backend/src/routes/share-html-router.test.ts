@@ -39,6 +39,19 @@ describe('GET /u/:username/:slug', () => {
     expect(res.headers['cache-control']).toBe('public, max-age=300')
   })
 
+  test('names the period a visitor sees on a period dashboard', async () => {
+    const app = buildApp({
+      resolveDashboard: async () => ({
+        is_public: true,
+        name: 'Month in data',
+        period_label: 'October 2026',
+      }),
+    })
+    const res = await supertest(app).get('/u/fiddur/abc123')
+    expect(res.text).toContain('<title>Month in data — October 2026 — Aurboda</title>')
+    expect(res.text).toContain('content="Month in data — October 2026 — a public dashboard shared by fiddur')
+  })
+
   test("uses the dashboard's author description in the meta when present", async () => {
     const app = buildApp({
       resolveDashboard: async () => ({

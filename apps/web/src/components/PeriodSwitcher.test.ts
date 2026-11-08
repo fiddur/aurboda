@@ -14,6 +14,15 @@ describe('periodSteps', () => {
     expect(periodSteps('2024', '2025')).toEqual({ next: '2025', previous: '2023' })
   })
 
+  it('stops stepping back at the earliest period', () => {
+    expect(periodSteps('2026-03', '2026-10', '2026-03')).toEqual({ next: '2026-04', previous: null })
+    expect(periodSteps('2026-04', '2026-10', '2026-03')).toEqual({ next: '2026-05', previous: '2026-03' })
+    expect(periodSteps('2026-W01', '2026-W44', '2025-W52')).toEqual({
+      next: '2026-W02',
+      previous: '2025-W52',
+    })
+  })
+
   it('labels the periods it steps between', () => {
     expect(periodLabel('2026-10')).toBe('October 2026')
     expect(periodLabel('2026-W44')).toBe('Week 44, 2026')

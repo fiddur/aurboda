@@ -35,11 +35,13 @@ export const usePeriodDashboard = (
     setLatest(null)
   }, [granularity])
 
+  const current = selected !== null && periodGranularityOf(selected) === granularity ? selected : null
+
   const query = useQuery({
     enabled: granularity !== null,
     placeholderData: keepPreviousData,
-    queryFn: () => fetchData(selected ?? undefined),
-    queryKey: ['dashboardData', boardId, granularity, selected],
+    queryFn: () => fetchData(current ?? undefined),
+    queryKey: ['dashboardData', boardId, granularity, current],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -47,8 +49,8 @@ export const usePeriodDashboard = (
   const period = answered !== null && periodGranularityOf(answered) === granularity ? answered : null
 
   useEffect(() => {
-    if (selected === null && period !== null) setLatest(period)
-  }, [selected, period])
+    if (current === null && period !== null) setLatest(period)
+  }, [current, period])
 
   if (granularity === null) return null
   return {

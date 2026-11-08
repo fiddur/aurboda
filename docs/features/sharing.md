@@ -53,7 +53,9 @@ keep their old visibility.
 A public viewer can only ever receive the exact data the dashboard's own widgets
 render — never the owner's broader data API. This is enforced server-side:
 
-1. The public endpoints take **no** data-shaping parameters from the request.
+1. The public endpoints take **no** data-shaping parameters from the request, except
+   `period` on a browsable period dashboard (see below), which only picks one of the
+   periods the owner opened to visitors.
 2. For each stored widget, the backend calls the same user-scoped service the
    authenticated dashboard uses, with parameters taken **only** from the saved
    widget config.
@@ -71,12 +73,42 @@ Bar-chart buckets (days, weeks, months, hours) follow the **owner's** stored tim
 Without a stored timezone, or with one that is not a valid IANA name, they fall back
 to UTC.
 
-A published [period dashboard](./dashboard.md#period-dashboards) shows its **latest
-finished period** (last month, last ISO week, last year), bounded in the owner's
-timezone, with each figure compared against the period before it. The public page
-names the period under the title and has no switcher: the public endpoint takes no
-period parameter, so a viewer cannot pick another period. Lock modes (pinning a share
-to one period, or letting viewers browse) are planned.
+### Period locks
+
+A published [period dashboard](./dashboard.md#period-dashboards) shows one finished
+period, bounded in the owner's timezone, with each figure compared against the period
+before it. Which one a visitor sees is the dashboard's **period lock**, so publishing a
+period dashboard never exposes the owner's whole history by default:
+
+- **`latest`** (the default) — the most recently finished period (last month, last ISO
+  week, last year), moving on as each period ends. Visitors cannot step.
+- **`fixed`** — the one period in `period_fixed` (a key of the dashboard's granularity,
+  e.g. `2026-09`), for good.
+- **`browsable`** — visitors may step between periods, from `period_from` (a key of the
+  dashboard's granularity) up to the latest finished one, never into an unfinished one.
+
+The lock is stored on the dashboard (`period_lock`, `period_fixed`, `period_from`) and
+validated by `services/period-lock.ts` on create and update, for REST and MCP alike
+(400 otherwise): `fixed` needs `period_fixed`, `browsable` needs `period_from`, and the
+key must be a valid, finished period of the dashboard's granularity (in the owner's
+timezone; a pinned or earliest period that has not ended would leave the public page
+answering 400 until it does); a rolling dashboard keeps `latest`. A request without `period_lock` leaves the stored lock as it is (its
+`period_fixed`/`period_from` count only with it), but the lock and config that would
+result are validated together, so changing the granularity while a `fixed` or
+`browsable` lock names a key of another granularity is rejected until the lock changes
+with it. Setting a lock keeps only the key its mode uses. Making a dashboard private
+leaves the lock as stored; it only matters while published.
+
+`GET /public/:username/:slug` takes one query parameter, `period` (a period key, else
+400), honoured only when the lock is `browsable`: it must match the granularity, be
+finished and not come before `period_from`, or the answer is a 400. With any other lock
+it is ignored — `fixed` always answers `period_fixed` and `latest` the latest finished
+period. Without it, a browsable dashboard answers its latest finished period.
+
+The public page names the period under the title. On a browsable dashboard it shows the
+period switcher instead, whose previous button stops at `period_from` and whose next
+button stops at the latest finished period (learnt from the first answer, which carries
+no `period`); stepping refetches with `?period=`.
 
 ## Shared exercises
 
@@ -143,7 +175,12 @@ static default image and has no oEmbed.
   section in the sidebar, alongside Feed and Challenges, and the **All dashboards**
   link next to the home dashboard's title; `/shared-dashboards` still opens it). The
   home dashboard comes first, then every other one: rename it, set its visibility,
-  open it, copy its link (not for a private one), or delete it. Create one from a
+  open it, copy its link (not for a private one), or delete it. An unlisted or public
+  period dashboard also gets a **Visitors see** select for its [period
+  lock](#period-locks): Latest finished period, Fixed period (with a period picker up to
+  the latest finished one) or Browsable (with a picker for the earliest period and a
+  "Visitors can see every finished period from … on" box that must be ticked before
+  Save is enabled; moving the earliest period asks for it again). Create one from a
   preset — Blank, Copy of home or Month in data (see
   [Dashboard → Dashboards page and presets](./dashboard.md#dashboards-page-and-presets))
   — and it opens at `/u/<you>/<slug>`, private.
@@ -178,7 +215,9 @@ get the full SPA and hydrate normally — only the head is enriched.
   description, and a canonical URL; profiles get a `profile`-typed card with `ProfilePage` JSON-LD.
   A dashboard's description uses the author-provided text when set (see
   [Dashboard → Descriptive text](./dashboard.md#descriptive-text)), else a generated
-  fallback. A challenge's description says what it measures, its dates and where it
+  fallback. A period dashboard's title (and the generated description) names the period
+  a visitor would see — "Month in data — October 2026": the latest finished period for
+  `latest` and `browsable`, the pinned one for `fixed`. The oEmbed title does the same. A challenge's description says what it measures, its dates and where it
   stands, and how many have joined besides the host, who is a member from creation
   ("Steps challenge, 1 Oct – 31 Oct 2026 · Starts in 3 days · Be the first to join.
   Hosted by … on Aurboda — join from any instance."). Once the challenge has ended it
@@ -269,7 +308,7 @@ Owner-facing CRUD (authenticated, scoped to the caller):
 | `POST /shared-dashboards`         | Create one from a dashboard config or a preset              |
 | `GET /shared-dashboards/:id`      | Fetch one (with config)                                     |
 | `GET /shared-dashboards/:id/data` | Its resolved widget data (`?period=` on a period dashboard) |
-| `PUT /shared-dashboards/:id`      | Update name / config / visibility                           |
+| `PUT /shared-dashboards/:id`      | Update name / config / visibility / period lock             |
 | `DELETE /shared-dashboards/:id`   | Delete (its slug stops resolving)                           |
 | `GET /shared-exercises`           | List my shared exercises                                    |
 | `POST /shared-exercises`          | Share an exercise (409 if shared)                           |
@@ -279,8 +318,10 @@ Owner-facing CRUD (authenticated, scoped to the caller):
 
 `POST /shared-dashboards` takes `name`, exactly one of `config` and `preset`
 (`blank`, `home` — a copy of the home dashboard — or `month_in_data`), and
-optionally `visibility` (`private` by default). `PUT` takes any of `name`, `config`
-and `visibility`.
+optionally `visibility` (`private` by default) and the [period lock](#period-locks)
+(`period_lock`, `latest` by default, with `period_fixed` or `period_from`). `PUT` takes
+any of `name`, `config`, `visibility` and the period lock. Every dashboard in a response
+carries `period_lock`, `period_fixed` and `period_from` (null when unused).
 
 `POST /shared-exercises` takes `activity_type`, `field` (a categorical list-item path
 of the type, e.g. `sets.exercise`; a session-level field or any other path answers 400),
@@ -299,7 +340,9 @@ then a challenge, then a shared exercise; an exercise answers `type: 'exercise'`
 (the projection above). A dashboard answers `type: 'dashboard'` with `name`, the
 sanitized `config`, `profile_url`, `share_url` and `widget_data`; a period dashboard
 also carries `period` (the key, e.g. `2026-10`) and `window` (`start` and exclusive
-`end`, ISO) of the period it shows.
+`end`, ISO) of the period it shows, and `period_lock`; a browsable one also
+`period_from`. `?period=` picks the period of a browsable dashboard (see
+[Period locks](#period-locks)).
 
 The same CRUD capability is available over MCP as `list_shared_dashboards`,
 `create_shared_dashboard` (with `config` or `preset`), `update_shared_dashboard`, and `delete_shared_dashboard`
@@ -311,7 +354,9 @@ and for exercises `list_shared_exercises`, `get_shared_exercise`,
 
 Shared dashboards live in the user's own database (the config is the user's data) in
 the `shared_dashboards` table, with `is_public` and `is_private` booleans for the
-visibility (`is_private` was added later, `NOT NULL DEFAULT false`). Every public
+visibility (`is_private` was added later, `NOT NULL DEFAULT false`) and the period lock
+in `period_lock` (`NOT NULL DEFAULT 'latest'`), `period_fixed` and `period_from` (both
+nullable text), added the same expand-only way. Every public
 read goes through `getPublicSharedDashboardBySlug` / `listPublicSharedDashboards`,
 which leave private rows out. The `slug` is unique per database; the `username` in
 the URL disambiguates globally, so no central slug index is needed. Deleting a

@@ -155,6 +155,7 @@ export const tableCreationOrder = [
   'shared_dashboards',
   'shared_dashboards_indexes',
   'shared_dashboards_private_column',
+  'shared_dashboards_period_lock_columns',
   'shared_exercises',
   'shared_exercises_indexes',
   'challenges',
