@@ -93,6 +93,20 @@ const widgetTemplates: WidgetTemplate[] = [
     type: 'activity_type_card',
   },
   {
+    allowedSections: ['metrics'],
+    defaultConfig: () => ({ limit: 3, source: 'media_artist' }),
+    description: 'Total music plays, screen time or place visits, with the top entries',
+    label: 'Top list',
+    type: 'top_list_card',
+  },
+  {
+    allowedSections: ['metrics'],
+    defaultConfig: () => ({}),
+    description: 'Nights at home and away, distinct places and the most visited',
+    label: 'Places card',
+    type: 'places_card',
+  },
+  {
     allowedSections: ['metrics', 'charts'],
     defaultConfig: () => ({
       lookback_days: 7,
@@ -191,6 +205,44 @@ const linkOptions = [
   { icon: 'trends', label: 'Chart', value: '/chart' },
   { icon: 'settings', label: 'Settings', value: '/settings' },
 ]
+
+const topListSourceOptions = [
+  { label: 'Music: artists', value: 'media_artist' },
+  { label: 'Music: albums', value: 'media_album' },
+  { label: 'Music: tracks', value: 'media_track' },
+  { label: 'Screen time: apps', value: 'screentime_app' },
+  { label: 'Places: visits', value: 'place' },
+] as const
+
+/** A text field whose key is dropped from the config while blank, so an optional `min(1)` field stays valid. */
+const OptionalTextField = ({
+  configKey,
+  configValues,
+  label,
+  placeholder,
+  setConfigValues,
+}: {
+  configKey: string
+  configValues: Record<string, unknown>
+  label: string
+  placeholder: string
+  setConfigValues: (update: (prev: Record<string, unknown>) => Record<string, unknown>) => void
+}) => (
+  <div class="form-group">
+    <label>{label}</label>
+    <input
+      type="text"
+      value={(configValues[configKey] as string) ?? ''}
+      onChange={(e) => {
+        const value = (e.target as HTMLInputElement).value
+        setConfigValues(({ [configKey]: _dropped, ...rest }) =>
+          value.trim() ? { ...rest, [configKey]: value } : rest,
+        )
+      }}
+      placeholder={placeholder}
+    />
+  </div>
+)
 
 export function DashboardEditor({
   sectionType,
@@ -461,6 +513,62 @@ export function DashboardEditor({
                 <option value="speed">Speed (km/h)</option>
               </select>
             </div>
+          </div>
+        )
+
+      case 'top_list_card':
+        return (
+          <div class="config-form">
+            <div class="form-group">
+              <label>Source</label>
+              <select
+                value={(configValues.source as string) ?? 'media_artist'}
+                onChange={(e) => updateConfig('source', (e.target as HTMLSelectElement).value)}
+              >
+                {topListSourceOptions.map(({ label, value }) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Limit</label>
+              <input
+                type="number"
+                value={(configValues.limit as number) ?? 3}
+                onChange={(e) => updateConfig('limit', parseInt((e.target as HTMLInputElement).value, 10))}
+                min={1}
+                max={10}
+              />
+            </div>
+            <OptionalTextField
+              configKey="title"
+              configValues={configValues}
+              label="Title"
+              placeholder="Defaults to Top artists, Top apps, ..."
+              setConfigValues={setConfigValues}
+            />
+          </div>
+        )
+
+      case 'places_card':
+        return (
+          <div class="config-form">
+            <OptionalTextField
+              configKey="home_location"
+              configValues={configValues}
+              label="Home location"
+              placeholder="Home"
+              setConfigValues={setConfigValues}
+            />
+            <OptionalTextField
+              configKey="title"
+              configValues={configValues}
+              label="Title"
+              placeholder="Places"
+              setConfigValues={setConfigValues}
+            />
           </div>
         )
 

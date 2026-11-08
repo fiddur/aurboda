@@ -1,4 +1,4 @@
-import type { MediaPlay } from '@aurboda/api-spec'
+import type { MediaPlay, TopMedia } from '@aurboda/api-spec'
 
 import express from 'express'
 import supertest from 'supertest'
@@ -14,9 +14,15 @@ const auth = (req: express.Request, _res: express.Response, next: express.NextFu
 const buildApp = (
   getPlays: (user: string, window: { start: Date; end: Date }) => Promise<MediaPlay[]>,
   getPlay: (user: string, id: string) => Promise<MediaPlay | null> = vi.fn(),
+  getTop: (
+    user: string,
+    window: { start: Date; end: Date },
+    by: 'artist' | 'album' | 'track',
+    limit: number,
+  ) => Promise<TopMedia> = vi.fn(),
 ) => {
   const app = express()
-  app.use(createMediaRouter(auth, getPlays, getPlay) as unknown as express.RequestHandler)
+  app.use(createMediaRouter(auth, getPlays, getPlay, getTop) as unknown as express.RequestHandler)
   return app
 }
 
@@ -90,5 +96,54 @@ describe('GET /play', () => {
 
     expect(res.status).toBe(404)
     expect(res.body).toEqual({ error: 'Media play not found', success: false })
+  })
+})
+
+describe('GET /plays/top', () => {
+  const window = { end: '2026-11-01T00:00:00Z', start: '2026-10-01T00:00:00Z' }
+
+  test('ranks the plays in the window, ten by default', async () => {
+    const top: TopMedia = { distinct: 1, items: [{ name: 'Bach', plays: 3 }], total_plays: 3 }
+    const getTop = vi.fn().mockResolvedValue(top)
+    const res = await supertest(buildApp(vi.fn(), vi.fn(), getTop))
+      .get('/plays/top')
+      .query({ ...window, by: 'artist' })
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ data: top, success: true })
+    expect(getTop).toHaveBeenCalledWith(
+      'tester',
+      { end: new Date(window.end), start: new Date(window.start) },
+      'artist',
+      10,
+    )
+  })
+
+  test('rejects an unknown grouping and a limit out of bounds', async () => {
+    const getTop = vi.fn()
+    const app = buildApp(vi.fn(), vi.fn(), getTop)
+
+    expect(
+      (
+        await supertest(app)
+          .get('/plays/top')
+          .query({ ...window, by: 'genre' })
+      ).status,
+    ).toBe(400)
+    expect(
+      (
+        await supertest(app)
+          .get('/plays/top')
+          .query({ ...window, by: 'track', limit: 0 })
+      ).status,
+    ).toBe(400)
+    expect(
+      (
+        await supertest(app)
+          .get('/plays/top')
+          .query({ ...window, by: 'track', limit: 51 })
+      ).status,
+    ).toBe(400)
+    expect(getTop).not.toHaveBeenCalled()
   })
 })

@@ -89,7 +89,13 @@ Computed at read time, never sent or stored:
 - REST: `GET /api/media/play?id=<id>` — one play by id (an MPRIS play id, else a Last.fm scrobble external id); 404
   when there is none. The id is a query parameter, not a path segment, because Last.fm ids (`<timestamp>-<track>-<artist>`)
   can contain `/` (e.g. `AC/DC`), which nginx decodes before proxying.
-- MCP: `query_media_plays` (`start`, `end`, `tz`) and `get_media_play` (`id`, `tz`).
+- REST: `GET /api/media/plays/top?by=artist|album|track&start=<iso>&end=<iso>&limit=<1-50, default 10>` — the
+  plays in the window grouped by artist, album (`artist — album`) or track (`artist — title`): `total_plays`,
+  `distinct` (artists, albums or tracks) and `items` (`name`, `plays`), most played first. Plays without the
+  grouping key (an MPRIS play with no album, say) count towards `total_plays` only. Behind the dashboard's
+  [top list card](features/dashboard.md#top-list-card).
+- MCP: `query_media_plays` (`start`, `end`, `tz`) `query_top_media` (`by`, `start`, `end`, `limit`, `tz`) and `get_media_play`
+  (`id`, `tz`).
 - Web: the Data page's **Media** rows list the same plays, with played time, ratio and player for MPRIS plays.
   Clicking a row opens the play's detail page (`/detail/media/:id`): its fields, the source URL as an external
   link, the activities that overlap it (e.g. the yoga activity a rule enriched), and the places visited meanwhile.

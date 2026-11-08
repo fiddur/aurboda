@@ -24,6 +24,9 @@ vi.mock('./latest-sleep.ts', () => ({ getLatestSleep: vi.fn() }))
 vi.mock('./queries/index.ts', () => ({
   getActivityTypeSummary: vi.fn(),
   getPeriodSummary: vi.fn(),
+  getPlacesSummary: vi.fn(),
+  getTopApps: vi.fn(),
+  getTopMedia: vi.fn(),
   queryActivities: vi.fn(),
   queryMetrics: vi.fn(),
 }))
@@ -31,7 +34,14 @@ vi.mock('./queries/index.ts', () => ({
 const { getChartData } = await import('./chart-data.ts')
 const { getTrend } = await import('./trends.ts')
 const { getActivityRecords } = await import('./activity-records.ts')
-const { getActivityTypeSummary, getPeriodSummary, queryActivities } = await import('./queries/index.ts')
+const {
+  getActivityTypeSummary,
+  getPeriodSummary,
+  getPlacesSummary,
+  getTopApps,
+  getTopMedia,
+  queryActivities,
+} = await import('./queries/index.ts')
 const { getBaseline } = await import('./correlations/baseline.ts')
 const { getLatestSleep } = await import('./latest-sleep.ts')
 const { getAllActivityTypeNames } = await import('../db/index.ts')
@@ -479,5 +489,132 @@ describe('resolveDashboardData: activity_type_card', () => {
     expect(query).not.toHaveProperty('filter_field')
     const span = new Date(query?.end ?? '').getTime() - new Date(query?.start ?? '').getTime()
     expect(Math.round(span / DAY_MS)).toBe(30)
+  })
+})
+
+describe('resolveDashboardData: top_list_card and places_card', () => {
+  test('a music top list reports both windows', async () => {
+    vi.mocked(getTopMedia).mockReset()
+    vi.mocked(getTopMedia).mockImplementation(async (_user, range) =>
+      range.start.getTime() === october.start.getTime()
+        ? { distinct: 506, items: [{ name: 'Bach', plays: 120 }], total_plays: 1760 }
+        : { distinct: 400, items: [], total_plays: 1500 },
+    )
+    const card: DashboardWidget = {
+      config: { limit: 3, source: 'media_album' },
+      id: 'music',
+      type: 'top_list_card',
+    }
+
+    const data = await resolveDashboardData('alice', board(card), { previous: september, window: october })
+
+    expect(data['music']).toEqual({
+      data: {
+        distinct: 506,
+        items: [{ count: 120, name: 'Bach' }],
+        per_day: null,
+        previous_total: 1500,
+        total: 1760,
+        unit: 'plays',
+      },
+      type: 'top_list_card',
+    })
+    expect(vi.mocked(getTopMedia).mock.calls).toEqual([
+      ['alice', { end: lastMs(october.end), start: october.start }, 'album', 3],
+      ['alice', { end: lastMs(september.end), start: september.start }, 'album', 3],
+    ])
+  })
+
+  test('a screen-time top list reports hours per day over the 31-day window', async () => {
+    vi.mocked(getTopApps).mockReset()
+    vi.mocked(getTopApps).mockImplementation(async (_user, range) =>
+      range.start.getTime() === october.start.getTime()
+        ? { distinct_apps: 42, items: [{ hours: 60.5, name: 'Firefox' }], total_hours: 151 }
+        : { distinct_apps: 40, items: [], total_hours: 120 },
+    )
+    const card: DashboardWidget = {
+      config: { limit: 3, source: 'screentime_app' },
+      id: 'apps',
+      type: 'top_list_card',
+    }
+
+    const data = await resolveDashboardData('alice', board(card), { previous: september, window: october })
+
+    expect(data['apps']).toEqual({
+      data: {
+        distinct: 42,
+        items: [{ count: 60.5, name: 'Firefox' }],
+        per_day: 4.9,
+        previous_total: 120,
+        total: 151,
+        unit: 'hours',
+      },
+      type: 'top_list_card',
+    })
+  })
+
+  test('a places top list counts visits over the lookback, without previous figures', async () => {
+    vi.mocked(getPlacesSummary).mockReset()
+    vi.mocked(getPlacesSummary).mockResolvedValue({
+      distinct_places: 12,
+      nights_away: 2,
+      nights_home: 28,
+      places: [
+        { hours: 600, name: 'Home', visits: 30 },
+        { hours: 80, name: 'Office', visits: 10 },
+      ],
+      visits: 55,
+    })
+    const card: DashboardWidget = {
+      config: { limit: 1, source: 'place' },
+      id: 'places',
+      type: 'top_list_card',
+    }
+
+    const data = await resolveDashboardData('alice', board(card))
+
+    expect(data['places']).toEqual({
+      data: { distinct: 12, items: [{ count: 30, name: 'Home' }], per_day: null, total: 55, unit: 'visits' },
+      type: 'top_list_card',
+    })
+    const params = vi.mocked(getPlacesSummary).mock.calls[0]?.[1]
+    expect(params?.tz).toBe('Europe/Stockholm')
+    const span = (params?.end.getTime() ?? 0) - (params?.start.getTime() ?? 0)
+    expect(Math.round(span / DAY_MS)).toBe(30)
+  })
+
+  test('a places card reports both windows with its home', async () => {
+    const summaryFor = (nights_away: number, distinct_places: number, visits: number) => ({
+      distinct_places,
+      nights_away,
+      nights_home: 31 - nights_away,
+      places: [{ hours: 600, name: 'Home', visits: 30 }],
+      visits,
+    })
+    vi.mocked(getPlacesSummary).mockReset()
+    vi.mocked(getPlacesSummary).mockImplementation(async (_user, params) =>
+      params.start.getTime() === october.start.getTime() ? summaryFor(3, 12, 55) : summaryFor(5, 9, 40),
+    )
+    const card: DashboardWidget = {
+      config: { home_location: 'Flat', title: 'Places' },
+      id: 'where',
+      type: 'places_card',
+    }
+
+    const data = await resolveDashboardData('alice', board(card), { previous: september, window: october })
+
+    expect(data['where']).toEqual({
+      data: {
+        ...summaryFor(3, 12, 55),
+        previous_distinct_places: 9,
+        previous_nights_away: 5,
+        previous_visits: 40,
+      },
+      type: 'places_card',
+    })
+    expect(vi.mocked(getPlacesSummary).mock.calls[0]).toEqual([
+      'alice',
+      { end: lastMs(october.end), homeName: 'Flat', start: october.start, tz: 'Europe/Stockholm' },
+    ])
   })
 })

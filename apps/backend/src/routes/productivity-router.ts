@@ -11,12 +11,16 @@ import {
   type ScreentimeBucketedQuery,
   screentimeBucketedQuerySchema,
   type ScreentimeBucketedResponse,
+  type TopAppsQuery,
+  topAppsQuerySchema,
+  type TopAppsResponse,
 } from '@aurboda/api-spec'
 
 import { getDistinctApps, getProductivityBucketed, getProductivityById } from '../db/index.ts'
 import { deleteProductivity, restoreProductivity } from '../services/mutations.ts'
 import {
   assembleScreentimeBuckets,
+  getTopApps,
   parseBucketSize,
   queryProductivity,
   type SyncProvider,
@@ -49,6 +53,17 @@ export const createProductivityRouter = (
         start,
         success: true,
       })
+    },
+  )
+
+  router.get<Record<string, never>, TopAppsResponse, unknown, TopAppsQuery>(
+    '/top-apps',
+    authMiddleware,
+    validateQuery(topAppsQuerySchema),
+    async (req, res) => {
+      const { end, limit, start } = req.query
+      const top = await getTopApps(req.user!, { end: new Date(end), start: new Date(start) }, limit)
+      res.json({ data: top, success: true })
     },
   )
 

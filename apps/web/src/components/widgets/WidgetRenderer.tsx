@@ -9,9 +9,11 @@ import { GoalProgressWidget } from './GoalProgressWidget'
 import { HrZonesWidget } from './HrZonesWidget'
 import { LastSleepWidget } from './LastSleepWidget'
 import { MetricCardWidget } from './MetricCardWidget'
+import { PlacesCardWidget } from './PlacesCardWidget'
 import { QuickLinkWidget } from './QuickLinkWidget'
 import { RecordCardWidget } from './RecordCardWidget'
 import { SparklineCardWidget } from './SparklineCardWidget'
+import { TopListCardWidget } from './TopListCardWidget'
 import { TrendChartWidget } from './TrendChartWidget'
 
 interface WidgetRendererProps {
@@ -27,6 +29,7 @@ export function WidgetRenderer({ widget, isEditing, onRemove, boardId, sectionId
   const origin =
     boardId && sectionId ? { board_id: boardId, section_id: sectionId, widget_id: widget.id } : undefined
 
+  // eslint-disable-next-line complexity -- one arm per widget type
   const renderWidget = () => {
     switch (widget.type) {
       case 'metric_card':
@@ -55,6 +58,10 @@ export function WidgetRenderer({ widget, isEditing, onRemove, boardId, sectionId
         return <RecordCardWidget config={widget.config} />
       case 'activity_type_card':
         return <ActivityTypeCardWidget config={widget.config} />
+      case 'top_list_card':
+        return <TopListCardWidget config={widget.config} />
+      case 'places_card':
+        return <PlacesCardWidget config={widget.config} />
       default:
         return <div class="widget-unknown">Unknown widget type</div>
     }
