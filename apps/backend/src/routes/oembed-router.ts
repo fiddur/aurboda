@@ -8,7 +8,7 @@ import { Router } from 'express'
 
 import { isValidUsername } from '../api/auth-routes.ts'
 import { buildOEmbedLink, parseShareUrl } from '../services/oembed.ts'
-import { resourceOgImage } from '../services/share-meta.ts'
+import { dashboardTitle, resourceOgImage } from '../services/share-meta.ts'
 import { buildProfileUrl, buildShareUrl } from '../services/share-urls.ts'
 
 interface ResolvedResource {
@@ -18,7 +18,10 @@ interface ResolvedResource {
 
 export interface OEmbedDeps {
   webHost: string
-  resolveDashboard: (username: string, slug: string) => Promise<ResolvedResource | null>
+  resolveDashboard: (
+    username: string,
+    slug: string,
+  ) => Promise<(ResolvedResource & { period_label?: string }) | null>
   resolveChallenge: (username: string, slug: string) => Promise<ResolvedResource | null>
   resolveExercise: (username: string, slug: string) => Promise<ResolvedResource | null>
   profileExists: (username: string) => Promise<boolean>
@@ -31,7 +34,7 @@ export const createOEmbedRouter = (deps: OEmbedDeps): Router => {
   /** The name of the public resource at a slug: the first resource found holds it, public or not. */
   const publicNameAt = async (username: string, slug: string): Promise<string | null> => {
     const dashboard = await resolveDashboard(username, slug)
-    if (dashboard) return dashboard.is_public ? dashboard.name : null
+    if (dashboard) return dashboard.is_public ? dashboardTitle(dashboard.name, dashboard.period_label) : null
     const challenge = await resolveChallenge(username, slug)
     if (challenge) return challenge.is_public ? challenge.name : null
     const exercise = await resolveExercise(username, slug)

@@ -1,5 +1,6 @@
-import type { DashboardConfig } from '@aurboda/api-spec'
+import type { DashboardConfig, PeriodLock } from '@aurboda/api-spec'
 
+import { periodLockSchema } from '@aurboda/api-spec'
 import { randomBytes } from 'node:crypto'
 
 /**
@@ -20,6 +21,9 @@ export interface SharedDashboardRecord {
   config: DashboardConfig
   is_public: boolean
   is_private: boolean
+  period_lock: PeriodLock
+  period_fixed: string | null
+  period_from: string | null
   created_at: Date
   updated_at: Date
 }
@@ -29,6 +33,9 @@ export interface SharedDashboardInput {
   config: DashboardConfig
   is_public: boolean
   is_private: boolean
+  period_lock?: PeriodLock
+  period_fixed?: string | null
+  period_from?: string | null
 }
 
 export interface SharedDashboardPatch {
@@ -36,9 +43,13 @@ export interface SharedDashboardPatch {
   config?: DashboardConfig
   is_public?: boolean
   is_private?: boolean
+  period_lock?: PeriodLock
+  period_fixed?: string | null
+  period_from?: string | null
 }
 
-const COLUMNS = 'id, slug, name, config, is_public, is_private, created_at, updated_at'
+const COLUMNS =
+  'id, slug, name, config, is_public, is_private, period_lock, period_fixed, period_from, created_at, updated_at'
 
 interface SharedDashboardRow {
   id: string
@@ -47,6 +58,9 @@ interface SharedDashboardRow {
   config: DashboardConfig
   is_public: boolean
   is_private: boolean
+  period_lock: string
+  period_fixed: string | null
+  period_from: string | null
   created_at: Date
   updated_at: Date
 }
@@ -58,6 +72,9 @@ const mapRow = (row: SharedDashboardRow): SharedDashboardRecord => ({
   is_private: row.is_private,
   is_public: row.is_public,
   name: row.name,
+  period_fixed: row.period_fixed,
+  period_from: row.period_from,
+  period_lock: periodLockSchema.catch('latest').parse(row.period_lock),
   slug: row.slug,
   updated_at: row.updated_at,
 })
@@ -97,19 +114,6 @@ export const getSharedDashboardById = async (
   return mapRow(result.rows[0])
 }
 
-export const getSharedDashboardBySlug = async (
-  user: string,
-  slug: string,
-): Promise<SharedDashboardRecord | null> => {
-  const result = await query<SharedDashboardRow>(
-    user,
-    `SELECT ${COLUMNS} FROM shared_dashboards WHERE slug = $1`,
-    [slug],
-  )
-  if (result.rows.length === 0) return null
-  return mapRow(result.rows[0])
-}
-
 export const getPublicSharedDashboardBySlug = async (
   user: string,
   slug: string,
@@ -134,10 +138,19 @@ export const createSharedDashboard = async (
     try {
       const result = await query<SharedDashboardRow>(
         user,
-        `INSERT INTO shared_dashboards (slug, name, config, is_public, is_private)
-         VALUES ($1, $2, $3::jsonb, $4, $5)
+        `INSERT INTO shared_dashboards (slug, name, config, is_public, is_private, period_lock, period_fixed, period_from)
+         VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7, $8)
          RETURNING ${COLUMNS}`,
-        [slug, input.name, JSON.stringify(input.config), input.is_public, input.is_private],
+        [
+          slug,
+          input.name,
+          JSON.stringify(input.config),
+          input.is_public,
+          input.is_private,
+          input.period_lock ?? 'latest',
+          input.period_fixed ?? null,
+          input.period_from ?? null,
+        ],
       )
       return mapRow(result.rows[0])
     } catch (error) {
@@ -172,6 +185,18 @@ export const updateSharedDashboard = async (
   if (patch.is_private !== undefined) {
     sets.push(`is_private = $${idx++}`)
     params.push(patch.is_private)
+  }
+  if (patch.period_lock !== undefined) {
+    sets.push(`period_lock = $${idx++}`)
+    params.push(patch.period_lock)
+  }
+  if (patch.period_fixed !== undefined) {
+    sets.push(`period_fixed = $${idx++}`)
+    params.push(patch.period_fixed)
+  }
+  if (patch.period_from !== undefined) {
+    sets.push(`period_from = $${idx++}`)
+    params.push(patch.period_from)
   }
 
   if (sets.length === 0) return getSharedDashboardById(user, id)

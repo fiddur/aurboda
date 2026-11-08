@@ -170,3 +170,53 @@
     color: #9ca3af;
   }
 }
+
+.period-lock-editor {
+  flex: 1 1 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid #f3f4f6;
+  font-size: 0.9rem;
+}
+
+.period-lock-mode {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.period-lock-mode select {
+  padding: 0.35rem 0.6rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
+.period-lock-hint {
+  color: #6b7280;
+}
+
+.period-lock-confirm {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  .period-lock-editor {
+    border-top-color: #374151;
+  }
+
+  .period-lock-mode select {
+    background: #111827;
+    border-color: #374151;
+    color: #f3f4f6;
+  }
+
+  .period-lock-hint {
+    color: #9ca3af;
+  }
+}

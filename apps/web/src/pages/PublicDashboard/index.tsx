@@ -9,16 +9,22 @@
  * - Challenge: the race-chart + leaderboard view.
  * - Exercise: one exercise's records, trend and history, the same for everyone.
  */
-import type { DashboardConfig, SectionType, SharedDashboard, WidgetDataMap } from '@aurboda/api-spec'
+import type {
+  DashboardConfig,
+  PublicSharedDashboardResponse,
+  SectionType,
+  SharedDashboard,
+  WidgetDataMap,
+} from '@aurboda/api-spec'
 
 import { periodLabel } from '@aurboda/api-spec'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRoute } from 'preact-iso'
 import { useState } from 'preact/hooks'
 
 import { AttributionLink } from '../../components/AttributionLink'
 import { EditableDashboard } from '../../components/EditableDashboard'
-import { PeriodDashboardBar } from '../../components/PeriodSwitcher'
+import { PeriodDashboardBar, PeriodSwitcher } from '../../components/PeriodSwitcher'
 import { CopyLinkButton, NativeShareButton } from '../../components/ShareControls'
 import { usePeriodDashboard } from '../../components/usePeriodDashboard'
 import { PublicWidgetRenderer } from '../../components/widgets'
@@ -139,18 +145,28 @@ function OwnerSharedDashboardBody({
   )
 }
 
+/** A browsable period dashboard's steps: from `earliest` up to the latest finished period. */
+interface PeriodBrowsing {
+  earliest: string | undefined
+  latest: string
+  isError: boolean
+  select: (key: string) => void
+}
+
 function ReadOnlyDashboard({
   username,
   name,
   config,
   widgetData,
   period,
+  browsing,
 }: {
   username: string
   name: string
   config: DashboardConfig
   widgetData: WidgetDataMap | undefined
   period: string | null | undefined
+  browsing: PeriodBrowsing | null
 }) {
   const shownPeriod = period ? periodLabel(period) : undefined
   return (
@@ -164,7 +180,17 @@ function ReadOnlyDashboard({
         </div>
       </div>
 
-      {shownPeriod ? <p class="dashboard-period-label">{shownPeriod}</p> : null}
+      {period && browsing ? (
+        <PeriodSwitcher
+          value={period}
+          latest={browsing.latest}
+          earliest={browsing.earliest}
+          onChange={browsing.select}
+        />
+      ) : shownPeriod ? (
+        <p class="dashboard-period-label">{shownPeriod}</p>
+      ) : null}
+      {browsing?.isError ? <div class="error">Could not load this period.</div> : null}
 
       {config.description ? <p class="dashboard-intro">{config.description}</p> : null}
 
@@ -189,6 +215,56 @@ function ReadOnlyDashboard({
         ))}
       </div>
     </div>
+  )
+}
+
+/**
+ * A dashboard as a visitor sees it: the period the server answered without `period`, and on a browsable
+ * period dashboard any other finished period from `period_from` up to that one.
+ */
+function VisitorDashboard({
+  username,
+  slug,
+  data,
+  config,
+}: {
+  username: string
+  slug: string
+  data: PublicSharedDashboardResponse
+  config: DashboardConfig
+}) {
+  const [selectedPeriod, setSelectedPeriod] = useState<string | null>(null)
+  const latest = data.period_lock === 'browsable' ? data.period : null
+
+  const periodQuery = useQuery({
+    enabled: Boolean(latest) && selectedPeriod !== null,
+    placeholderData: keepPreviousData,
+    queryFn: () => fetchPublicResource(username, slug, selectedPeriod ?? undefined),
+    queryKey: ['publicResource', username, slug, selectedPeriod],
+    retry: false,
+    staleTime: 60 * 1000,
+  })
+
+  const browsing: PeriodBrowsing | null = latest
+    ? {
+        earliest: data.period_from,
+        isError: periodQuery.isError,
+        latest,
+        select: (key) => setSelectedPeriod(key === latest ? null : key),
+      }
+    : null
+  const answered = periodQuery.data
+  const shown = browsing && selectedPeriod !== null && answered && 'config' in answered ? answered : data
+
+  return (
+    <ReadOnlyDashboard
+      username={username}
+      name={data.name ?? 'Dashboard'}
+      config={config}
+      widgetData={shown.widget_data}
+      period={shown.period}
+      browsing={browsing}
+    />
   )
 }
 
@@ -245,15 +321,7 @@ export function PublicResource() {
 
   // Non-owner dashboard. `'config' in data` narrows the union (no cast).
   if ('config' in data && data.config) {
-    return (
-      <ReadOnlyDashboard
-        username={username}
-        name={data.name ?? 'Dashboard'}
-        config={data.config}
-        widgetData={data.widget_data}
-        period={data.period}
-      />
-    )
+    return <VisitorDashboard username={username} slug={slug} data={data} config={data.config} />
   }
   return <NotFound />
 }

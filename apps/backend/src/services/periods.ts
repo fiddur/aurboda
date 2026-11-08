@@ -5,9 +5,10 @@ export interface PeriodWindowBounds {
   start: Date
 }
 
-export type PeriodErrorCode = 'granularity_mismatch' | 'invalid' | 'not_finished'
+export type PeriodErrorCode = 'before_period_from' | 'granularity_mismatch' | 'invalid' | 'not_finished'
 
 const periodErrorMessages: Record<PeriodErrorCode, string> = {
+  before_period_from: 'Period is before the earliest period this dashboard shows',
   granularity_mismatch: "Period does not match the dashboard's granularity",
   invalid: 'Invalid period',
   not_finished: 'Period has not finished yet',

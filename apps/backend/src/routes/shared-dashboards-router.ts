@@ -28,6 +28,12 @@ import {
   updateSharedDashboard,
 } from '../db/index.ts'
 import { resolvePresetConfig } from '../services/dashboard-presets.ts'
+import {
+  defaultPeriodLock,
+  requestedPeriodLock,
+  resolveLockUpdate,
+  validatePeriodLock,
+} from '../services/period-lock.ts'
 import { PeriodError } from '../services/periods.ts'
 import { buildShareUrl } from '../services/share-urls.ts'
 import { resolveDashboardView } from '../services/shared-dashboard-data.ts'
@@ -40,6 +46,9 @@ const serialize = (record: SharedDashboardRecord, webHost: string, username: str
   created_at: record.created_at.toISOString(),
   id: record.id,
   name: record.name,
+  period_fixed: record.period_fixed,
+  period_from: record.period_from,
+  period_lock: record.period_lock,
   share_url: buildShareUrl(webHost, username, record.slug),
   slug: record.slug,
   updated_at: record.updated_at.toISOString(),
@@ -68,9 +77,13 @@ export const createSharedDashboardsRouter = (
       if (!config) {
         return res.status(400).json({ error: 'Give exactly one of config or preset', success: false })
       }
+      const lock = requestedPeriodLock(req.body) ?? defaultPeriodLock
+      const lockError = validatePeriodLock(config, lock)
+      if (lockError !== null) return res.status(400).json({ error: lockError, success: false })
       const record = await createSharedDashboard(user, {
         config,
         ...dashboardVisibilityToFlags(req.body.visibility),
+        ...lock,
         name: req.body.name,
       })
       res.json({ dashboard: serialize(record, webHost, user), success: true })
@@ -113,9 +126,16 @@ export const createSharedDashboardsRouter = (
     validateBody(updateSharedDashboardBodySchema),
     async (req, res) => {
       const user = req.user!
+      const stored = await getSharedDashboardById(user, req.params.id)
+      if (!stored) {
+        return res.status(404).json({ error: 'Shared dashboard not found', success: false })
+      }
+      const lockUpdate = resolveLockUpdate(stored, req.body)
+      if ('error' in lockUpdate) return res.status(400).json({ error: lockUpdate.error, success: false })
       const record = await updateSharedDashboard(user, req.params.id, {
         config: req.body.config,
         ...(req.body.visibility === undefined ? {} : dashboardVisibilityToFlags(req.body.visibility)),
+        ...lockUpdate.lock,
         name: req.body.name,
       })
       if (!record) {

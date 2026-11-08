@@ -9,20 +9,27 @@ interface PeriodSwitcherProps {
   value: string
   /** The latest finished period; the switcher does not step past it. */
   latest: string
+  /** The earliest period it may step back to; unbounded when absent. */
+  earliest?: string
   onChange: (key: string) => void
 }
 
-/** The keys the previous and next buttons step to; `next` is null at the latest finished period. */
+/**
+ * The keys the previous and next buttons step to; `next` is null at the latest finished period and
+ * `previous` at `earliest`.
+ */
 export const periodSteps = (
   value: string,
   latest: string,
+  earliest?: string,
 ): { next: string | null; previous: string | null } => ({
   next: comparePeriodKeys(value, latest) >= 0 ? null : shiftPeriodKey(value, 1),
-  previous: shiftPeriodKey(value, -1),
+  previous:
+    earliest !== undefined && comparePeriodKeys(value, earliest) <= 0 ? null : shiftPeriodKey(value, -1),
 })
 
-export function PeriodSwitcher({ value, latest, onChange }: PeriodSwitcherProps) {
-  const { next, previous } = periodSteps(value, latest)
+export function PeriodSwitcher({ value, latest, earliest, onChange }: PeriodSwitcherProps) {
+  const { next, previous } = periodSteps(value, latest, earliest)
   return (
     <div class="period-switcher" role="group" aria-label="Period">
       <button

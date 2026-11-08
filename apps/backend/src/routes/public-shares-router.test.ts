@@ -11,7 +11,12 @@ import supertest from 'supertest'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import type * as DbModule from '../db/index.ts'
-import type { ChallengeRecord, ChallengeSpecFields, SharedExerciseRecord } from '../db/index.ts'
+import type {
+  ChallengeRecord,
+  ChallengeSpecFields,
+  SharedDashboardRecord,
+  SharedExerciseRecord,
+} from '../db/index.ts'
 import type * as FederationModule from '../services/challenge-federation.ts'
 
 import { isValidUsername } from '../api/auth-routes.ts'
@@ -23,7 +28,6 @@ vi.mock('../db/index.ts', async (importOriginal) => ({
   getChallengeBySlug: vi.fn(),
   getChallengeMemberByIdentity: vi.fn(),
   getPublicSharedDashboardBySlug: vi.fn(),
-  getSharedDashboardBySlug: vi.fn(),
   getSharedExerciseBySlug: vi.fn(),
   listChallengeMembers: vi.fn(),
   listPublicChallenges: vi.fn(),
@@ -34,6 +38,7 @@ vi.mock('../db/index.ts', async (importOriginal) => ({
 
 vi.mock('../services/shared-exercise-data.ts', () => ({ resolveSharedExerciseData: vi.fn() }))
 vi.mock('../services/shared-dashboard-data.ts', () => ({ resolveDashboardView: vi.fn() }))
+vi.mock('../services/settings.ts', () => ({ getUserTimezone: vi.fn(async () => 'Europe/Stockholm') }))
 
 vi.mock('../services/challenge-federation.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof FederationModule>()),
@@ -131,10 +136,16 @@ describe('GET /public/:username/:slug (dashboard)', () => {
     a.use(createPublicSharesRouter('https://aurboda.net') as unknown as express.RequestHandler)
     return supertest(a)
   }
-  const record = (config: DashboardConfig) =>
-    ({ config, name: 'Board', slug: 'board' }) as Awaited<
-      ReturnType<typeof db.getPublicSharedDashboardBySlug>
-    >
+  const record = (config: DashboardConfig, lock: Partial<SharedDashboardRecord> = {}) =>
+    ({
+      config,
+      name: 'Board',
+      period_fixed: null,
+      period_from: null,
+      period_lock: 'latest',
+      slug: 'board',
+      ...lock,
+    }) as SharedDashboardRecord
   const widget_data = { link: { data: null, type: 'quick_link' as const } }
 
   beforeEach(() => {
@@ -154,13 +165,101 @@ describe('GET /public/:username/:slug (dashboard)', () => {
     const res = await app().get('/public/alice/board')
 
     expect(res.status).toBe(200)
-    expect(res.body).toMatchObject({ config, period: '2026-10', widget_data, window })
-    expect(dashboardData.resolveDashboardView).toHaveBeenCalledWith('alice', config)
+    expect(res.body).toMatchObject({ config, period: '2026-10', period_lock: 'latest', widget_data, window })
+    expect('period_from' in res.body).toBe(false)
+    expect(dashboardData.resolveDashboardView).toHaveBeenCalledWith('alice', config, expect.any(String))
+  })
+
+  describe('period locks', () => {
+    const monthly: DashboardConfig = { period: { granularity: 'month' }, sections: [], version: 1 }
+    const view = (period: string) => ({
+      period,
+      widget_data,
+      window: { end: '2020-02-01T00:00:00.000Z', start: '2020-01-01T00:00:00.000Z' },
+    })
+
+    beforeEach(() => {
+      vi.mocked(dashboardData.resolveDashboardView).mockImplementation(async (_user, _config, period) =>
+        view(period ?? 'none'),
+      )
+    })
+
+    test('latest ignores a requested period', async () => {
+      vi.mocked(db.getPublicSharedDashboardBySlug).mockResolvedValue(record(monthly))
+
+      const res = await app().get('/public/alice/board?period=2020-01')
+
+      expect(res.status).toBe(200)
+      const [, , resolved] = vi.mocked(dashboardData.resolveDashboardView).mock.calls[0]
+      expect(resolved).not.toBe('2020-01')
+      expect(res.body.period_lock).toBe('latest')
+    })
+
+    test('fixed resolves the pinned period whatever is asked', async () => {
+      vi.mocked(db.getPublicSharedDashboardBySlug).mockResolvedValue(
+        record(monthly, { period_fixed: '2020-03', period_lock: 'fixed' }),
+      )
+
+      const res = await app().get('/public/alice/board?period=2020-05')
+
+      expect(res.status).toBe(200)
+      expect(dashboardData.resolveDashboardView).toHaveBeenCalledWith('alice', monthly, '2020-03')
+      expect(res.body).toMatchObject({ period: '2020-03', period_lock: 'fixed' })
+      expect('period_from' in res.body).toBe(false)
+    })
+
+    describe('browsable', () => {
+      beforeEach(() => {
+        vi.mocked(db.getPublicSharedDashboardBySlug).mockResolvedValue(
+          record(monthly, { period_from: '2020-01', period_lock: 'browsable' }),
+        )
+      })
+
+      test('honours a finished period from period_from on and says where browsing starts', async () => {
+        const res = await app().get('/public/alice/board?period=2020-04')
+
+        expect(res.status).toBe(200)
+        expect(dashboardData.resolveDashboardView).toHaveBeenCalledWith('alice', monthly, '2020-04')
+        expect(res.body).toMatchObject({
+          period: '2020-04',
+          period_from: '2020-01',
+          period_lock: 'browsable',
+        })
+      })
+
+      test('answers 400 for a period before period_from', async () => {
+        const res = await app().get('/public/alice/board?period=2019-12')
+
+        expect(res.status).toBe(400)
+        expect(dashboardData.resolveDashboardView).not.toHaveBeenCalled()
+      })
+
+      test('answers 400 for an unfinished period', async () => {
+        const res = await app().get('/public/alice/board?period=2999-01')
+
+        expect(res.status).toBe(400)
+        expect(res.body.error).toBe('Period has not finished yet')
+      })
+
+      test('answers 400 for a period of another granularity', async () => {
+        const res = await app().get('/public/alice/board?period=2020-W10')
+
+        expect(res.status).toBe(400)
+        expect(dashboardData.resolveDashboardView).not.toHaveBeenCalled()
+      })
+    })
+
+    test('answers 400 for a period that is not a period key', async () => {
+      vi.mocked(db.getPublicSharedDashboardBySlug).mockResolvedValue(record(monthly))
+
+      const res = await app().get('/public/alice/board?period=last-month')
+
+      expect(res.status).toBe(400)
+    })
   })
 
   test('a private dashboard answers 404, as a missing slug does', async () => {
     vi.mocked(db.getPublicSharedDashboardBySlug).mockResolvedValue(null)
-    vi.mocked(db.getSharedDashboardBySlug).mockResolvedValue(record({ sections: [], version: 1 }))
     vi.mocked(db.getChallengeBySlug).mockResolvedValue(null)
     vi.mocked(db.getSharedExerciseBySlug).mockResolvedValue(null)
 
@@ -168,7 +267,6 @@ describe('GET /public/:username/:slug (dashboard)', () => {
 
     expect(res.status).toBe(404)
     expect(db.getPublicSharedDashboardBySlug).toHaveBeenCalledWith('alice', 'board')
-    expect(db.getSharedDashboardBySlug).not.toHaveBeenCalled()
     expect(dashboardData.resolveDashboardView).not.toHaveBeenCalled()
   })
 
@@ -202,6 +300,8 @@ describe('GET /public/:username/:slug (dashboard)', () => {
     expect(res.body.widget_data).toEqual(widget_data)
     expect('period' in res.body).toBe(false)
     expect('window' in res.body).toBe(false)
+    expect('period_lock' in res.body).toBe(false)
+    expect(dashboardData.resolveDashboardView).toHaveBeenCalledWith('alice', config, undefined)
   })
 })
 

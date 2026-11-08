@@ -259,7 +259,6 @@ export {
   deleteSharedDashboard,
   getSharedDashboardById,
   getPublicSharedDashboardBySlug,
-  getSharedDashboardBySlug,
   listPublicSharedDashboards,
   listSharedDashboards,
   type SharedDashboardInput,

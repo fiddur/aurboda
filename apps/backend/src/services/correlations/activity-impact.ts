@@ -16,10 +16,10 @@ const rangeEndingToday = (periodDays: number): { end: Date; start: Date } => {
   return { end, start }
 }
 
-/** `periodDays` days ending just before `until` (exclusive). */
-const explicitRange = (until: Date, periodDays: number): { end: Date; start: Date } => ({
+/** From `since` (or `periodDays` days back) to just before `until` (exclusive). */
+const explicitRange = (until: Date, periodDays: number, since?: Date): { end: Date; start: Date } => ({
   end: new Date(until.getTime() - 1),
-  start: new Date(until.getTime() - periodDays * 86_400_000),
+  start: since ?? new Date(until.getTime() - periodDays * 86_400_000),
 })
 
 // eslint-disable-next-line complexity -- TODO: refactor
@@ -31,8 +31,9 @@ export async function getActivityImpact(
   periodDays: number = 90,
   sync?: SyncProvider,
   until?: Date,
+  since?: Date,
 ): Promise<ActivityImpactResult> {
-  const { end, start } = until ? explicitRange(until, periodDays) : rangeEndingToday(periodDays)
+  const { end, start } = until ? explicitRange(until, periodDays, since) : rangeEndingToday(periodDays)
 
   // Freshness syncs run in the background — never block this retrospective
   // analysis on a slow external sync (see background-sync.ts).

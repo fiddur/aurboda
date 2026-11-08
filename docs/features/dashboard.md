@@ -217,6 +217,10 @@ widget renders against that one window, ignoring the lookbacks in its configurat
   `GET /shared-dashboards/:id/data?period=2026-10` (a shared one) return `period`, `window`
   (`start`/`end`, ISO) and `widget_data`; without `period` they answer the latest finished one, and
   for a rolling dashboard `period` and `window` are null. MCP: `get_dashboard_data`.
+- **Published.** What visitors of an unlisted or public period dashboard see is its period lock —
+  the latest finished period (the default), one fixed period, or every finished period from a chosen
+  one on — set on the Dashboards page; see
+  [Sharing → Period locks](./sharing.md#period-locks).
 
 ## Editing the Dashboard
 

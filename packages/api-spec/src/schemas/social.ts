@@ -33,6 +33,29 @@ export const dashboardVisibilitySchema = z.enum(['private', 'unlisted', 'public'
 
 export type DashboardVisibility = z.infer<typeof dashboardVisibilitySchema>
 
+export const periodLockSchema = z.enum(['latest', 'fixed', 'browsable']).meta({
+  description:
+    'What visitors of a published period dashboard may see: `latest` (the most recently finished period, no stepping), `fixed` (the one period in period_fixed) or `browsable` (every finished period from period_from on). Ignored by a rolling dashboard, which must keep `latest`.',
+  id: 'PeriodLock',
+})
+
+export type PeriodLock = z.infer<typeof periodLockSchema>
+
+const periodFixedSchema = periodKeySchema.nullable().meta({
+  description: 'With period_lock fixed: the one period visitors see (a key of the dashboard granularity)',
+})
+
+const periodFromSchema = periodKeySchema.nullable().meta({
+  description:
+    'With period_lock browsable: the earliest period visitors may step back to (a key of the dashboard granularity)',
+})
+
+export const periodLockFieldsShape = {
+  period_fixed: periodFixedSchema.optional(),
+  period_from: periodFromSchema.optional(),
+  period_lock: periodLockSchema.optional(),
+}
+
 export const sharedDashboardNameSchema = z
   .string()
   .min(1)
@@ -45,6 +68,9 @@ export const sharedDashboardSchema = z
     created_at: z.string().meta({ description: 'Creation timestamp (ISO 8601)' }),
     id: z.string().uuid().meta({ description: 'Shared dashboard ID' }),
     name: sharedDashboardNameSchema,
+    period_fixed: periodFixedSchema,
+    period_from: periodFromSchema,
+    period_lock: periodLockSchema,
     share_url: z.string().meta({ description: 'Absolute URL of the shared dashboard' }),
     slug: z.string().meta({ description: 'URL-safe public slug' }),
     updated_at: z.string().meta({ description: 'Last update timestamp (ISO 8601)' }),
@@ -63,6 +89,9 @@ export const createSharedDashboardBodySchema = z
       .optional()
       .meta({ description: 'The dashboard configuration; give either this or preset' }),
     name: sharedDashboardNameSchema,
+    period_fixed: periodFixedSchema.optional(),
+    period_from: periodFromSchema.optional(),
+    period_lock: periodLockSchema.default('latest'),
     preset: dashboardPresetSchema
       .optional()
       .meta({ description: 'Start from a preset instead of an explicit config; give either this or config' }),
@@ -82,11 +111,10 @@ export const updateSharedDashboardBodySchema = z
   .object({
     config: dashboardConfigSchema.optional().meta({ description: 'Replacement dashboard configuration' }),
     name: sharedDashboardNameSchema.optional(),
-    visibility: dashboardVisibilitySchema
-      .optional()
-      .meta({
-        description: 'private → only the owner; unlisted → link-only; public → listed on the public profile',
-      }),
+    ...periodLockFieldsShape,
+    visibility: dashboardVisibilitySchema.optional().meta({
+      description: 'private → only the owner; unlisted → link-only; public → listed on the public profile',
+    }),
   })
   .meta({ id: 'UpdateSharedDashboardBody' })
 
@@ -416,6 +444,12 @@ export const publicSharedDashboardResponseSchema = baseResponseSchema
     config: dashboardConfigSchema.optional().meta({ description: 'Sanitized dashboard configuration' }),
     name: sharedDashboardNameSchema.optional(),
     ...periodFields,
+    period_from: periodKeySchema
+      .optional()
+      .meta({ description: 'With period_lock browsable: the earliest period a visitor may ask for' }),
+    period_lock: periodLockSchema
+      .optional()
+      .meta({ description: 'On a period dashboard: whether a visitor may step between periods (browsable)' }),
     profile_url: z.string().optional().meta({ description: 'Absolute URL of the owner public profile' }),
     share_url: z.string().optional().meta({ description: 'Absolute URL of this shared dashboard' }),
     type: z.literal('dashboard').optional().meta({ description: 'Resource type discriminator' }),
@@ -424,3 +458,14 @@ export const publicSharedDashboardResponseSchema = baseResponseSchema
   .meta({ id: 'PublicSharedDashboardResponse' })
 
 export type PublicSharedDashboardResponse = z.infer<typeof publicSharedDashboardResponseSchema>
+
+export const publicDashboardQuerySchema = z
+  .object({
+    period: periodKeySchema.optional().meta({
+      description:
+        'The finished period to show; honoured only when the dashboard is browsable, from its period_from on',
+    }),
+  })
+  .meta({ id: 'PublicDashboardQuery' })
+
+export type PublicDashboardQuery = z.infer<typeof publicDashboardQuerySchema>
