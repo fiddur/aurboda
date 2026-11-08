@@ -184,6 +184,11 @@ static default image and has no oEmbed.
   preset — Blank, Copy of home or Month in data (see
   [Dashboard → Dashboards page and presets](./dashboard.md#dashboards-page-and-presets))
   — and it opens at `/u/<you>/<slug>`, private.
+- **Share one period to the feed**: a period dashboard (home or your own) has a **Share to
+  feed** button right of its period switcher that posts the period shown, from a snapshot of
+  the config, with a link to its page only when it is unlisted or public; see
+  [Dashboard → Period dashboards](./dashboard.md#period-dashboards) and
+  [feed.md](./feed.md#feed-posts).
 - **View** a shared dashboard at `/u/<username>/<slug>` and a profile at
   `/u/<username>`. For anonymous visitors these public pages render without the
   app header/sidebar (but keep the standard site footer) — a clean, standalone
