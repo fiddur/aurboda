@@ -299,3 +299,49 @@ export const promoteDetectedLocationBodySchema = z
   .meta({ id: 'PromoteDetectedLocationBody' })
 
 export type PromoteDetectedLocationBody = z.infer<typeof promoteDetectedLocationBodySchema>
+
+export const placesSummaryQuerySchema = timeRangeQuerySchema
+  .extend({
+    home_location: z.string().min(1).optional().meta({
+      description: 'Name of the place that counts as home, matched case-insensitively (default "Home")',
+      example: 'Home',
+    }),
+    tz: tzSchema,
+  })
+  .meta({ id: 'PlacesSummaryQuery' })
+
+export type PlacesSummaryQuery = z.infer<typeof placesSummaryQuerySchema>
+
+export const placesSummaryPlaceSchema = z
+  .object({
+    hours: z.number().meta({ description: 'Hours spent there in the window, one decimal' }),
+    name: z.string().meta({ description: 'Place name' }),
+    visits: z.number().int().meta({ description: 'Visits in the window' }),
+  })
+  .meta({ id: 'PlacesSummaryPlace' })
+
+export type PlacesSummaryPlace = z.infer<typeof placesSummaryPlaceSchema>
+
+export const placesSummarySchema = z
+  .object({
+    distinct_places: z.number().int().meta({ description: 'Distinct places visited' }),
+    nights_away: z.number().int().meta({
+      description: 'Nights with an overnight stay at a named or detected place other than home',
+    }),
+    nights_home: z.number().int().meta({ description: 'Nights with an overnight stay at home' }),
+    places: z.array(placesSummaryPlaceSchema).meta({ description: 'The five most visited places' }),
+    visits: z.number().int().meta({ description: 'All visits to named and detected places' }),
+  })
+  .meta({
+    description:
+      'Visits to named and detected places in a window: nights at home and away, distinct places, visits and the most visited places. A night without a detectable stay counts as neither home nor away',
+    id: 'PlacesSummary',
+  })
+
+export type PlacesSummary = z.infer<typeof placesSummarySchema>
+
+export const placesSummaryResponseSchema = createDataResponseSchema(placesSummarySchema).meta({
+  id: 'PlacesSummaryResponse',
+})
+
+export type PlacesSummaryResponse = z.infer<typeof placesSummaryResponseSchema>

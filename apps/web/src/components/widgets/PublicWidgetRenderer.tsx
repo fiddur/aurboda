@@ -16,9 +16,11 @@ import { GoalProgressView } from './GoalProgressWidget'
 import { HrZonesView } from './HrZonesWidget'
 import { LastSleepView } from './LastSleepWidget'
 import { MetricCardView } from './MetricCardWidget'
+import { PlacesCardView } from './PlacesCardWidget'
 import { QuickLinkView } from './QuickLinkWidget'
 import { RecordCardView } from './RecordCardWidget'
 import { SparklineCardView } from './SparklineCardWidget'
+import { TopListCardView } from './TopListCardWidget'
 import { TrendChartView } from './TrendChartWidget'
 
 interface PublicWidgetRendererProps {
@@ -85,6 +87,12 @@ export function PublicWidgetRenderer({ widget, data, periodLabel }: PublicWidget
           data={data?.type === 'activity_type_card' ? data.data : null}
         />
       )
+    case 'top_list_card':
+      return (
+        <TopListCardView config={widget.config} data={data?.type === 'top_list_card' ? data.data : null} />
+      )
+    case 'places_card':
+      return <PlacesCardView config={widget.config} data={data?.type === 'places_card' ? data.data : null} />
     default:
       return <div class="widget-unknown">Unknown widget type</div>
   }

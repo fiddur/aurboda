@@ -46,6 +46,16 @@ See [Dashboard](features/dashboard.md#period-dashboards).
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `get_dashboard_data` | The data each widget renders, keyed by widget id, for the home dashboard or a shared one (`dashboard_id`), the same as `GET /dashboard/data` and `GET /shared-dashboards/:id/data`. A period dashboard answers its latest finished period unless `period` (`2026-10`, `2026-W44`, `2026`) is given, with each figure compared against the previous period |
 
+### Top list and places tools
+
+See [Media](media.md#querying), [Screentime categories](features/screentime-categories.md#top-apps) and [Places](features/places.md#places-summary).
+
+| Tool                 | What it does                                                                                                                                                                                                         |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `query_top_media`    | Plays over `start`..`end` grouped by artist, album or track (`by`): total plays, the distinct count and the `limit` most played                                                                                      |
+| `query_top_apps`     | Screen time over `start`..`end` per app: total hours, distinct apps and the `limit` most used, leaving out categories excluded from screen time                                                                      |
+| `get_places_summary` | Nights at home (`home_location`, default `Home`) and away, distinct places, visits and the five most visited places over `start`..`end`, the nights detected as overnight stays in `tz` like `query_overnight_stays` |
+
 ### Activity session tools
 
 See [Activity types -- sessions overview](features/activity-types.md#sessions-overview).

@@ -24,6 +24,9 @@ vi.mock('./services/queries/index', async () => ({
   getActivityTypeSummary: vi.fn(),
   getDailySummary: vi.fn(),
   getPeriodSummary: vi.fn(),
+  getPlacesSummary: vi.fn(),
+  getTopApps: vi.fn(),
+  getTopMedia: vi.fn(),
   parseActivityId: (raw: string) => ({
     id: raw.replace(/^merged:/, ''),
     isMerged: raw.startsWith('merged:'),
@@ -1147,6 +1150,41 @@ describe('MCP Server', () => {
       expect(queries.getActivityTypeSummary).toHaveBeenCalledWith('testuser', 'running', {
         end: '2026-10-31T23:59:59Z',
         start: '2026-10-01T00:00:00Z',
+      })
+    })
+
+    test('query_top_media, query_top_apps and get_places_summary map their arguments onto the services', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      const window = { end: '2026-11-01T00:00:00Z', start: '2026-10-01T00:00:00Z' }
+      const dates = { end: new Date(window.end), start: new Date(window.start) }
+      vi.mocked(queries.getTopMedia).mockResolvedValue({ distinct: 1, items: [], total_plays: 4 })
+      vi.mocked(queries.getTopApps).mockResolvedValue({ distinct_apps: 2, items: [], total_hours: 9.5 })
+      vi.mocked(queries.getPlacesSummary).mockResolvedValue({
+        distinct_places: 3,
+        nights_away: 1,
+        nights_home: 30,
+        places: [],
+        visits: 12,
+      })
+
+      const media = await callTool(app, token, 'query_top_media', { ...window, by: 'album', tz: 'UTC' })
+      const apps = await callTool(app, token, 'query_top_apps', { ...window, limit: 5, tz: 'UTC' })
+      const places = await callTool(app, token, 'get_places_summary', {
+        ...window,
+        home_location: 'Flat',
+        tz: 'Europe/Stockholm',
+      })
+
+      expect(JSON.parse(media.text).data).toMatchObject({ total_plays: 4 })
+      expect(JSON.parse(apps.text).data).toMatchObject({ total_hours: 9.5 })
+      expect(JSON.parse(places.text).data).toMatchObject({ nights_home: 30 })
+      expect(queries.getTopMedia).toHaveBeenCalledWith('testuser', dates, 'album', 10)
+      expect(queries.getTopApps).toHaveBeenCalledWith('testuser', dates, 5)
+      expect(queries.getPlacesSummary).toHaveBeenCalledWith('testuser', {
+        ...dates,
+        homeName: 'Flat',
+        tz: 'Europe/Stockholm',
       })
     })
 

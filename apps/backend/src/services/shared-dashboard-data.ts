@@ -16,6 +16,7 @@ import type {
   DashboardConfig,
   DashboardWidget,
   PeriodWindow,
+  TopListFigures,
   TrendHistoryPoint,
   WidgetData,
   WidgetDataMap,
@@ -27,6 +28,10 @@ import {
   metricCardLookbackDays,
   percentChange,
   periodGranularityOf,
+  topListFromApps,
+  topListFromMedia,
+  topListFromPlaces,
+  windowDays,
 } from '@aurboda/api-spec'
 
 import { getAllActivityTypeNames } from '../db/index.ts'
@@ -46,7 +51,15 @@ import {
   periodWindow,
   previousWindow,
 } from './periods.ts'
-import { getActivityTypeSummary, getPeriodSummary, queryActivities, queryMetrics } from './queries/index.ts'
+import {
+  getActivityTypeSummary,
+  getPeriodSummary,
+  getPlacesSummary,
+  getTopApps,
+  getTopMedia,
+  queryActivities,
+  queryMetrics,
+} from './queries/index.ts'
 import { getEffectiveHrZones, getUserTimezone } from './settings.ts'
 import { getTrend } from './trends.ts'
 
@@ -392,6 +405,71 @@ const resolveActivityTypeCard = async (
   }
 }
 
+const mediaGrouping = { media_album: 'album', media_artist: 'artist', media_track: 'track' } as const
+
+const topListFigures = async (
+  user: string,
+  config: Extract<DashboardWidget, { type: 'top_list_card' }>['config'],
+  range: Range,
+  tz: string,
+): Promise<TopListFigures> => {
+  const { limit, source } = config
+  switch (source) {
+    case 'media_artist':
+    case 'media_album':
+    case 'media_track':
+      return topListFromMedia(await getTopMedia(user, range, mediaGrouping[source], limit))
+    case 'screentime_app':
+      return topListFromApps(await getTopApps(user, range, limit), windowDays(range.start, range.end))
+    case 'place':
+      return topListFromPlaces(
+        await getPlacesSummary(user, { end: range.end, start: range.start, tz }),
+        limit,
+      )
+  }
+}
+
+const resolveTopListCard = async (
+  user: string,
+  config: Extract<DashboardWidget, { type: 'top_list_card' }>['config'],
+  tz: string,
+  options: ResolveOptions,
+): Promise<WidgetData> => {
+  const [current, previous] = await Promise.all([
+    topListFigures(user, config, windowOf(options, config.lookback_days ?? 30), tz),
+    options.previous ? topListFigures(user, config, inclusiveRange(options.previous), tz) : undefined,
+  ])
+  return {
+    data: previous ? { ...current, previous_total: previous.total } : current,
+    type: 'top_list_card',
+  }
+}
+
+const resolvePlacesCard = async (
+  user: string,
+  config: Extract<DashboardWidget, { type: 'places_card' }>['config'],
+  tz: string,
+  options: ResolveOptions,
+): Promise<WidgetData> => {
+  const summarize = (range: Range) =>
+    getPlacesSummary(user, { end: range.end, homeName: config.home_location, start: range.start, tz })
+  const [current, previous] = await Promise.all([
+    summarize(windowOf(options, config.lookback_days ?? 30)),
+    options.previous ? summarize(inclusiveRange(options.previous)) : undefined,
+  ])
+  return {
+    data: previous
+      ? {
+          ...current,
+          previous_distinct_places: previous.distinct_places,
+          previous_nights_away: previous.nights_away,
+          previous_visits: previous.visits,
+        }
+      : current,
+    type: 'places_card',
+  }
+}
+
 const resolveCorrelation = async (
   user: string,
   config: Extract<DashboardWidget, { type: 'correlation' }>['config'],
@@ -580,12 +658,17 @@ const resolveWidget = async (
       return resolveRecordCard(user, widget.config, options)
     case 'activity_type_card':
       return resolveActivityTypeCard(user, widget.config, options)
+    case 'top_list_card':
+      return resolveTopListCard(user, widget.config, tz, options)
+    case 'places_card':
+      return resolvePlacesCard(user, widget.config, tz, options)
     case 'quick_link':
       return { data: null, type: 'quick_link' }
   }
 }
 
 /** Null-data fallback for a widget whose resolver threw. */
+// eslint-disable-next-line complexity -- one arm per widget type
 const nullData = (type: DashboardWidget['type']): WidgetData => {
   switch (type) {
     case 'metric_card':
@@ -611,6 +694,10 @@ const nullData = (type: DashboardWidget['type']): WidgetData => {
     case 'record_card':
       return { data: null, type }
     case 'activity_type_card':
+      return { data: null, type }
+    case 'top_list_card':
+      return { data: null, type }
+    case 'places_card':
       return { data: null, type }
     case 'quick_link':
       return { data: null, type }

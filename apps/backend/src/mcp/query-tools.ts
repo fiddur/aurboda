@@ -14,7 +14,10 @@ import {
   mediaPlaysQuerySchema,
   type MetricType,
   overnightStaysQuerySchema,
+  placesSummaryQuerySchema,
   timeRangeQuerySchema,
+  topAppsQuerySchema,
+  topMediaQuerySchema,
   tzSchema,
   validMetrics,
 } from '@aurboda/api-spec'
@@ -39,6 +42,9 @@ import {
   getDailySummary,
   getLocationSummary,
   getPeriodSummary,
+  getPlacesSummary,
+  getTopApps,
+  getTopMedia,
   parseActivityId,
   parseDataFilter,
   parseMetricsParam,
@@ -398,6 +404,26 @@ Each play has url, title, artist, album, player, device, started_at/ended_at, pl
   )
 
   server.tool(
+    'query_top_media',
+    'Music and other media plays in a time range grouped by artist, album ("artist — album") or track ("artist — title"): the total plays, the number of distinct artists/albums/tracks and the most played with their play counts. Plays without the grouping key (no album, say) count towards the total only.',
+    { ...topMediaQuerySchema.shape, tz: tzSchema },
+    async ({ by, end, limit, start, tz }) => {
+      const top = await getTopMedia(user, { end: new Date(end), start: new Date(start) }, by, limit)
+      return tzJsonResponse({ data: top, success: true }, tz)
+    },
+  )
+
+  server.tool(
+    'query_top_apps',
+    'Screen time in a time range grouped by app: total hours, the number of distinct apps and the most used apps with their hours. Records in screen-time categories marked as excluded from screen time (and their subcategories) are left out.',
+    { ...topAppsQuerySchema.shape, tz: tzSchema },
+    async ({ end, limit, start, tz }) => {
+      const top = await getTopApps(user, { end: new Date(end), start: new Date(start) }, limit)
+      return tzJsonResponse({ data: top, success: true }, tz)
+    },
+  )
+
+  server.tool(
     'get_media_play',
     'Get one media play by id (an MPRIS play id, or a Last.fm scrobble external id), with the same fields as query_media_plays.',
     { id: z.string().describe('Play id from query_media_plays'), tz: tzSchema },
@@ -464,6 +490,25 @@ timestamps but with distinct overnight_date values.`,
         tz,
       })
       return tzJsonResponse({ data: result.data, success: true, total_nights: result.total_nights }, tz)
+    },
+  )
+
+  server.tool(
+    'get_places_summary',
+    `Visits to all named and detected places in a time range: nights at home and nights away
+(overnight stays, as query_overnight_stays detects them, at home_location — default "Home",
+case-insensitive — or anywhere else; a night without a detectable stay counts as neither),
+the number of distinct places, the number of visits and the five most visited places with
+their visits and hours.`,
+    { ...placesSummaryQuerySchema.shape },
+    async ({ end, home_location, start, tz }) => {
+      const summary = await getPlacesSummary(user, {
+        end: new Date(end),
+        homeName: home_location,
+        start: new Date(start),
+        tz,
+      })
+      return tzJsonResponse({ data: summary, success: true }, tz)
     },
   )
 

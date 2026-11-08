@@ -2,6 +2,9 @@ import type {
   ProductivityRecord as ApiProductivityRecord,
   ProductivityQuery,
   ProductivityResponse,
+  TopApps,
+  TopAppsQuery,
+  TopAppsResponse,
 } from '@aurboda/api-spec'
 
 import axios from 'axios'
@@ -141,4 +144,12 @@ export const restoreProductivity = async (id: string): Promise<void> => {
       headers: { Authorization: `Bearer ${token}` },
     },
   )
+}
+
+export const fetchTopApps = async (query: TopAppsQuery): Promise<TopApps | null> => {
+  const response = await axios.get<TopAppsResponse>(`${API_URL}/productivity/top-apps`, {
+    headers: { Authorization: `Bearer ${auth.value.token}` },
+    params: query,
+  })
+  return response.data.data ?? null
 }

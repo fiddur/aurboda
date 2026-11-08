@@ -173,6 +173,33 @@ types whose name contains `run`, `walk` or `hik`, else `speed`) and optional `ti
 type's display name). Data comes from `GET /activity-types/:name/summary?start&end` (MCP:
 `get_activity_type_summary`).
 
+### Top List Card
+
+One source's total over the card's window as the headline, with its change against the previous
+period on a period dashboard, then its top entries: music plays by artist, album or track
+(`1,760 plays`, `506 artists`), screen time by app (`151 h`, `4.9 h/day`, `38 apps`; categories
+excluded from screen time are left out) or visits by place (`55 visits`, `12 places`). Add one from a
+metrics section's add-widget dialog (source, limit, title) or through the API or MCP.
+
+**Configuration:** `source` (`media_artist`, `media_album`, `media_track`, `screentime_app` or
+`place`), `limit` (1--10, default 3; a place list shows at most 5), optional `lookback_days` (default
+30; a period dashboard uses its period) and optional `title` (default "Top artists", "Top albums",
+"Top tracks", "Top apps" or "Top places"). Data comes from `GET /media/plays/top` (MCP:
+`query_top_media`), `GET /productivity/top-apps` (`query_top_apps`) and
+`GET /locations/places-summary` (`get_places_summary`).
+
+### Places Card
+
+Nights at home, nights away, distinct places and visits over the card's window, with changes against
+the previous period for the last three on a period dashboard, then the five most visited places. A
+night counts as away when there was an overnight stay at a named or detected place other than home; a
+night without a detectable stay counts as neither (see [Places summary](places.md#places-summary)).
+
+**Configuration:** optional `home_location` (the place that counts as home, default `Home`, matched
+case-insensitively), optional `lookback_days` (default 30; a period dashboard uses its period) and
+optional `title` (default "Places"). Data comes from `GET /locations/places-summary` (MCP:
+`get_places_summary`).
+
 ### Correlation Impact
 
 Shows how a specific activity, tag, or location affects your HRV. Displays three bars: "before" (baseline), "during" (the activity), and "after" (recovery), showing the average HRV in each phase. Includes an occurrence count so you can judge the statistical weight.
@@ -189,11 +216,11 @@ A clickable navigation tile with a colored icon and label. Links to any page in 
 
 Widgets are organized into sections, each with a title and a layout type:
 
-| Section type | Layout                                                        | Best for                                                                   |
-| ------------ | ------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| **Metrics**  | Responsive card grid (auto-fills columns, minimum 200px wide) | Metric cards, sparklines, activity summaries, record cards, activity cards |
-| **Charts**   | Single column, full width                                     | Trend charts, combined charts, correlation charts                          |
-| **Links**    | Responsive grid of smaller tiles (minimum 140px wide)         | Quick-link navigation                                                      |
+| Section type | Layout                                                        | Best for                                                                                            |
+| ------------ | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| **Metrics**  | Responsive card grid (auto-fills columns, minimum 200px wide) | Metric cards, sparklines, activity summaries, record cards, activity cards, top lists, places cards |
+| **Charts**   | Single column, full width                                     | Trend charts, combined charts, correlation charts                                                   |
+| **Links**    | Responsive grid of smaller tiles (minimum 140px wide)         | Quick-link navigation                                                                               |
 
 Sections are collapsible -- click the section header to toggle between expanded and collapsed. On wide screens, multiple sections can appear side by side.
 
@@ -228,7 +255,9 @@ widget renders against that one window, ignoring the lookbacks in its configurat
   window. Metric and sparkline cards carry `previous_value` and a `trend_percent` against it; the
   activity summary carries `previous_count`, `previous_total_minutes` and `previous_avg_hours`; an
   activity card carries `previous_count`, `previous_total_minutes`, `previous_distance_km` and
-  `previous_sleep_avg_minutes`; HR zones carry `previous_avg_seconds`.
+  `previous_sleep_avg_minutes`; a top list carries `previous_total`; a places card carries
+  `previous_nights_away`, `previous_distinct_places` and `previous_visits`; HR zones carry
+  `previous_avg_seconds`.
 - **Baselines.** The 7- and 30-day HRV and resting HR baseline cards become the period average of
   `hrv_rmssd` and `resting_heart_rate`.
 - **Widgets that do not apply.** **Last night** and **Goal progress** have no meaning for a past
@@ -326,9 +355,11 @@ your own) and is **private**:
   activity card (average and best night, stages) and cards for steps per day, HRV,
   resting HR, weight and body fat. **Training**: the activity summary, HR zones
   (without targets), a Workouts activity card (`exercise`: sessions, time, distance)
-  and workouts per week (a count of `exercise` activities in weekly bars). The preset
-  has no per-sport card, since sport types are your own: add an activity card per
-  type (running, cycling, a gym visit type) from the editor.
+  and workouts per week (a count of `exercise` activities in weekly bars). **Life**:
+  Music (a top list of artists), Screen time (a top list of apps) and Places (nights
+  home and away, distinct places, the most visited). The preset has no per-sport
+  card, since sport types are your own: add an activity card per type (running,
+  cycling, a gym visit type) from the editor.
 
 The presets are defined once in `@aurboda/api-spec` (`dashboardPresetConfigs`; `home`
 is resolved from your settings on the server), and `POST /shared-dashboards` and the

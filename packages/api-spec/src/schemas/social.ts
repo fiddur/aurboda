@@ -21,6 +21,7 @@ import { chartDataBreakdownBucketSchema, chartDataBucketSchema } from './chart-d
 import { baseResponseSchema } from './common.ts'
 import { dashboardConfigSchema, dashboardPresetSchema, periodKeySchema } from './dashboard.ts'
 import { goalProgressSchema } from './goals.ts'
+import { placesSummarySchema } from './locations.ts'
 import { publicExerciseListItemSchema } from './shared-exercises.ts'
 import { latestSleepSchema } from './sleep.ts'
 import { trendHistoryPointSchema } from './trends.ts'
@@ -238,6 +239,36 @@ export const activityTypeCardDataSchema = activityTypeSummarySchema
   })
   .meta({ id: 'ActivityTypeCardData' })
 
+export const topListCardItemSchema = z
+  .object({
+    count: z.number().meta({ description: 'In the card unit: plays, hours (one decimal) or visits' }),
+    name: z.string(),
+  })
+  .meta({ id: 'TopListCardItem' })
+
+export const topListCardDataSchema = z
+  .object({
+    distinct: z.number().int().nullable().meta({
+      description: 'Distinct artists, albums, tracks, apps or places in the window',
+    }),
+    items: z.array(topListCardItemSchema).meta({ description: 'The top entries, highest count first' }),
+    per_day: z.number().nullable().meta({
+      description: 'Hours per day over the window for screen time; null for the other sources',
+    }),
+    previous_total: previousFigure('the total'),
+    total: z.number().meta({ description: 'Plays, hours or visits over the window' }),
+    unit: z.enum(['plays', 'hours', 'visits']).meta({ description: 'Unit of total and the item counts' }),
+  })
+  .meta({ id: 'TopListCardData' })
+
+export const placesCardDataSchema = placesSummarySchema
+  .extend({
+    previous_distinct_places: previousFigure('the number of distinct places'),
+    previous_nights_away: previousFigure('the nights away'),
+    previous_visits: previousFigure('the number of visits'),
+  })
+  .meta({ id: 'PlacesCardData' })
+
 export const correlationDataSchema = z
   .object({
     hrv_after30: z.number().nullable().meta({ description: 'Mean HRV 30 min after the activity' }),
@@ -338,6 +369,8 @@ export const widgetDataSchema = z
     z.object({ data: combinedChartDataSchema.nullable(), type: z.literal('combined_chart') }),
     z.object({ data: recordCardDataSchema.nullable(), type: z.literal('record_card') }),
     z.object({ data: activityTypeCardDataSchema.nullable(), type: z.literal('activity_type_card') }),
+    z.object({ data: topListCardDataSchema.nullable(), type: z.literal('top_list_card') }),
+    z.object({ data: placesCardDataSchema.nullable(), type: z.literal('places_card') }),
   ])
   .meta({ id: 'WidgetData' })
 
@@ -356,6 +389,8 @@ export type CombinedChartLayerData = z.infer<typeof combinedChartLayerDataSchema
 export type CombinedChartData = z.infer<typeof combinedChartDataSchema>
 export type RecordCardData = z.infer<typeof recordCardDataSchema>
 export type ActivityTypeCardData = z.infer<typeof activityTypeCardDataSchema>
+export type TopListCardData = z.infer<typeof topListCardDataSchema>
+export type PlacesCardData = z.infer<typeof placesCardDataSchema>
 
 export const widgetDataMapSchema = z.record(z.string(), widgetDataSchema).meta({ id: 'WidgetDataMap' })
 

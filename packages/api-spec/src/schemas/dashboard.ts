@@ -264,6 +264,53 @@ export const activityTypeCardConfigSchema = z
 
 export type ActivityTypeCardConfig = z.infer<typeof activityTypeCardConfigSchema>
 
+export const topListSourceSchema = z
+  .enum(['media_artist', 'media_album', 'media_track', 'screentime_app', 'place'])
+  .meta({
+    description:
+      'What a top list ranks: music plays by artist, album or track, screen time by app, or visits by place',
+    id: 'TopListSource',
+  })
+
+export type TopListSource = z.infer<typeof topListSourceSchema>
+
+export const topListCardConfigSchema = z
+  .object({
+    limit: z.number().int().min(1).max(10).default(3).meta({ description: 'Entries listed (default 3)' }),
+    lookback_days: z.number().int().positive().optional().meta({
+      description: 'Days covered on a rolling dashboard (default: 30); a period dashboard uses its period',
+    }),
+    source: topListSourceSchema,
+    title: z
+      .string()
+      .optional()
+      .meta({ description: 'Card title (default: "Top artists", "Top apps", ...)' }),
+  })
+  .meta({
+    description:
+      "One source's total over the window with the change against the previous period, then its top entries",
+    id: 'TopListCardConfig',
+  })
+
+export type TopListCardConfig = z.infer<typeof topListCardConfigSchema>
+
+export const placesCardConfigSchema = z
+  .object({
+    home_location: z.string().min(1).optional().meta({
+      description: 'The place that counts as home, matched case-insensitively (default "Home")',
+    }),
+    lookback_days: z.number().int().positive().optional().meta({
+      description: 'Days covered on a rolling dashboard (default: 30); a period dashboard uses its period',
+    }),
+    title: z.string().optional().meta({ description: 'Card title (default: "Places")' }),
+  })
+  .meta({
+    description: 'Nights at home and away, distinct places and the most visited places',
+    id: 'PlacesCardConfig',
+  })
+
+export type PlacesCardConfig = z.infer<typeof placesCardConfigSchema>
+
 export const correlationConfigSchema = z
   .object({
     activity: z.string().min(1).meta({ description: 'Activity or tag to analyze' }),
@@ -359,6 +406,8 @@ export const widgetTypeSchema = z.enum([
   'combined_chart',
   'record_card',
   'activity_type_card',
+  'top_list_card',
+  'places_card',
 ])
 
 export type WidgetType = z.infer<typeof widgetTypeSchema>
@@ -428,6 +477,16 @@ export const dashboardWidgetSchema = z.discriminatedUnion('type', [
     config: activityTypeCardConfigSchema,
     id: z.string().min(1).meta({ description: 'Unique widget ID' }),
     type: z.literal('activity_type_card'),
+  }),
+  z.object({
+    config: topListCardConfigSchema,
+    id: z.string().min(1).meta({ description: 'Unique widget ID' }),
+    type: z.literal('top_list_card'),
+  }),
+  z.object({
+    config: placesCardConfigSchema,
+    id: z.string().min(1).meta({ description: 'Unique widget ID' }),
+    type: z.literal('places_card'),
   }),
 ])
 
@@ -716,6 +775,24 @@ const monthInDataConfig: DashboardConfig = {
           id: 'month-workouts-per-week',
           type: 'bar_chart',
         },
+      ],
+    },
+    {
+      id: 'month-life',
+      title: 'Life',
+      type: 'metrics',
+      widgets: [
+        {
+          config: { limit: 3, source: 'media_artist', title: 'Music' },
+          id: 'month-music',
+          type: 'top_list_card',
+        },
+        {
+          config: { limit: 3, source: 'screentime_app', title: 'Screen time' },
+          id: 'month-screen-time',
+          type: 'top_list_card',
+        },
+        { config: { title: 'Places' }, id: 'month-places', type: 'places_card' },
       ],
     },
   ],

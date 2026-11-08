@@ -76,3 +76,60 @@ export const mediaPlayResponseSchema = createDataResponseSchema(mediaPlaySchema)
 })
 
 export type MediaPlayResponse = z.infer<typeof mediaPlayResponseSchema>
+
+export const topMediaBySchema = z
+  .enum(['artist', 'album', 'track'])
+  .meta({ id: 'TopMediaBy', description: 'What plays are grouped by' })
+
+export type TopMediaBy = z.infer<typeof topMediaBySchema>
+
+export const topMediaQuerySchema = z
+  .object({
+    by: topMediaBySchema,
+    end: iso8601DateTimeSchema.meta({ description: 'End of the window (exclusive)' }),
+    limit: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(50)
+      .default(10)
+      .meta({ description: 'Maximum number of entries to return (default 10)' }),
+    start: iso8601DateTimeSchema.meta({ description: 'Start of the window (inclusive)' }),
+  })
+  .meta({ id: 'TopMediaQuery' })
+
+export type TopMediaQuery = z.infer<typeof topMediaQuerySchema>
+
+export const topMediaItemSchema = z
+  .object({
+    name: z.string().meta({
+      description: 'The artist; "artist — album" for albums; "artist — title" for tracks',
+    }),
+    plays: z.number().int().meta({ description: 'Plays in the window' }),
+  })
+  .meta({ id: 'TopMediaItem' })
+
+export type TopMediaItem = z.infer<typeof topMediaItemSchema>
+
+export const topMediaSchema = z
+  .object({
+    distinct: z
+      .number()
+      .int()
+      .meta({ description: 'Distinct artists, albums or tracks played in the window' }),
+    items: z.array(topMediaItemSchema).meta({ description: 'The most played, most plays first' }),
+    total_plays: z.number().int().meta({ description: 'All plays in the window' }),
+  })
+  .meta({
+    description:
+      'Plays in a window grouped by artist, album or track: the total, the distinct count and the most played. Plays without the grouping key count towards the total only',
+    id: 'TopMedia',
+  })
+
+export type TopMedia = z.infer<typeof topMediaSchema>
+
+export const topMediaResponseSchema = createDataResponseSchema(topMediaSchema).meta({
+  id: 'TopMediaResponse',
+})
+
+export type TopMediaResponse = z.infer<typeof topMediaResponseSchema>

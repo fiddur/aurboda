@@ -70,6 +70,14 @@ Changing a rule recategorizes the raw records **and rebuilds the screen time act
 
 The Chart Explorer (`/chart`) reaches a category through its activity type: pick it under **Activity Type**, with **Sum (hours)** aggregation for time spent. Old links using `source_type=productivity_category&pattern=<path>` open on the matching activity type. The API and MCP `query_chart_data` / trends still accept `source_type=productivity_category` with a category path, which counts that category's screen time spans including sub-categories.
 
+### Top apps
+
+`GET /api/productivity/top-apps?start=<iso>&end=<iso>&limit=<1-50, default 10>` (MCP: `query_top_apps`)
+sums the screen time per app over the range: `total_hours`, `distinct_apps` and `items` (`name`,
+`hours`), most used first. Records in a category marked as excluded from screen time, or in one of its
+sub-categories, are left out; uncategorized records count. It is behind the dashboard's
+[top list card](dashboard.md#top-list-card).
+
 ### Timeline
 
 Screen time blocks on the Timeline are colored by their category color. Excluded categories are filtered out entirely. In horizontal mode, screen time appears as stacked bar charts bucketed by top-level category.

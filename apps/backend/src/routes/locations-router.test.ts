@@ -17,6 +17,7 @@ vi.mock('../services/locations.ts', () => ({
 
 vi.mock('../services/queries/index.ts', () => ({
   getLocationSummary: vi.fn(),
+  getPlacesSummary: vi.fn(),
   queryLocations: vi.fn(),
   queryOvernightStays: vi.fn(),
 }))
@@ -24,6 +25,7 @@ vi.mock('../services/queries/index.ts', () => ({
 vi.mock('../db/index.ts', () => ({ getDetectedLocations: vi.fn() }))
 
 const service = await import('../services/locations.ts')
+const queries = await import('../services/queries/index.ts')
 
 const home = { id: 'loc-1', lat: 59.33, lon: 18.07, name: 'Home', radius: 100 } as unknown as NamedLocation
 
@@ -120,5 +122,38 @@ describe('locations router named-location change notification', () => {
 
     expect(res.status).toBe(200)
     expect(res.body.data).toEqual(home)
+  })
+})
+
+describe('GET /locations/places-summary', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const query = { end: '2026-10-31T23:59:59Z', start: '2026-10-01T00:00:00Z', tz: 'Europe/Stockholm' }
+
+  test('summarizes the places in the range with the home place', async () => {
+    const summary = { distinct_places: 3, nights_away: 2, nights_home: 28, places: [], visits: 40 }
+    vi.mocked(queries.getPlacesSummary).mockResolvedValue(summary)
+
+    const res = await supertest(buildApp())
+      .get('/locations/places-summary')
+      .query({ ...query, home_location: 'Flat' })
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ data: summary, success: true })
+    expect(queries.getPlacesSummary).toHaveBeenCalledWith('tester', {
+      end: new Date(query.end),
+      homeName: 'Flat',
+      start: new Date(query.start),
+      tz: 'Europe/Stockholm',
+    })
+  })
+
+  test('400s without a timezone', async () => {
+    const res = await supertest(buildApp())
+      .get('/locations/places-summary')
+      .query({ end: query.end, start: query.start })
+
+    expect(res.status).toBe(400)
+    expect(queries.getPlacesSummary).not.toHaveBeenCalled()
   })
 })

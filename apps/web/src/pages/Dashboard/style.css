@@ -204,6 +204,23 @@
   font-weight: 500;
 }
 
+.dashboard .top-list-card-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8rem;
+}
+
+.dashboard .top-list-card-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .dashboard .metric-sparkline {
   margin-top: 0.75rem;
   display: flex;

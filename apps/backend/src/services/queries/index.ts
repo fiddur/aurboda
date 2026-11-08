@@ -80,3 +80,7 @@ export {
   queryOvernightStays,
   summarizeVisits,
 } from './location-stays.ts'
+
+export { getPlacesSummary, type PlacesSummaryDeps } from './places-summary.ts'
+export { getTopApps, type TopAppsDeps } from './top-apps.ts'
+export { getTopMedia, type TopMediaDeps } from './top-media.ts'
