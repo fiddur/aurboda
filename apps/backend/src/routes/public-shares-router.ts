@@ -11,7 +11,6 @@ import {
   type BaseResponse,
   type ChallengeDataResponse,
   type ChallengeStandingsResponse,
-  type DashboardConfig,
   type PublicChallengeResponse,
   type PublicDashboardQuery,
   publicDashboardQuerySchema,
@@ -48,6 +47,7 @@ import {
   specToApi,
 } from '../services/challenge-spec.ts'
 import { getChallengeStandings } from '../services/challenge-standings.ts'
+import { sanitizeConfig } from '../services/dashboard-config.ts'
 import { publicPeriodFor } from '../services/period-lock.ts'
 import { PeriodError } from '../services/periods.ts'
 import { getUserTimezone } from '../services/settings.ts'
@@ -57,24 +57,6 @@ import { resolveSharedExerciseData } from '../services/shared-exercise-data.ts'
 import { isPublicToVisibility } from '../services/visibility.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
-
-/**
- * Strip viewer-useless / internal fields from a config before exposing it.
- * Quick links point into the owner's private app, so neutralize their hrefs.
- */
-export const sanitizeConfig = (config: DashboardConfig): DashboardConfig => ({
-  // Author prose is meant for public viewers — preserve it (section descriptions
-  // survive via the section spread below).
-  description: config.description,
-  ...(config.period ? { period: config.period } : {}),
-  sections: config.sections.map((section) => ({
-    ...section,
-    widgets: section.widgets.map((widget) =>
-      widget.type === 'quick_link' ? { ...widget, config: { ...widget.config, href: '#' } } : widget,
-    ),
-  })),
-  version: config.version,
-})
 
 /** What a visitor needs to know to step between periods; nothing on a rolling dashboard. */
 const publicLockFields = (

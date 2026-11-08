@@ -72,6 +72,9 @@ export const activityKindTag = (activityType: string): string | null => toTag(ac
 export const exerciseKindTag = (exercise: { name?: string; value: string }): string | null =>
   (exercise.name ? toTag(exercise.name) : null) ?? toTag(exercise.value)
 
+/** A dashboard share's kind tag: its name (`Month in data` → `monthindata`). */
+export const dashboardKindTag = (dashboard: { name: string }): string | null => toTag(dashboard.name)
+
 /** The text of an article a reader sees: its title and prose blocks. */
 export const articleTexts = (article: { title: string; blocks: readonly object[] }): string[] => [
   article.title,

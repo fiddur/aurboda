@@ -4,6 +4,7 @@ import {
   createArticleDraftBodySchema,
   feedPostsQuerySchema,
   shareChallengeBodySchema,
+  shareDashboardPeriodBodySchema,
   shareExerciseBodySchema,
   followActorBodySchema,
   followersQuerySchema,
@@ -30,6 +31,7 @@ import {
   createArticleDraft,
   createArticlePost,
   createChallengePost,
+  createDashboardPost,
   createExercisePost,
   createFeedPost,
   deleteArticleDraft,
@@ -58,6 +60,11 @@ import {
 import { buildArticleMarkdown, renderableArticleBlocks } from '../services/article-export.ts'
 import { mergeArticleContent, validateArticleContent } from '../services/article.ts'
 import { resolveChallengeShare } from '../services/challenge-share.ts'
+import {
+  dashboardShareTags,
+  previewDashboardShare,
+  resolveDashboardShare,
+} from '../services/feed-dashboard-share.ts'
 import {
   exerciseShareTags,
   previewExerciseShare,
@@ -209,6 +216,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
       if (record.kind === 'article') deliver?.updatedArticle(user, record)
       else if (record.kind === 'challenge') deliver?.updatedChallenge(user, record)
       else if (record.kind === 'exercise') deliver?.updatedExercise(user, record)
+      else if (record.kind === 'dashboard') deliver?.updatedDashboard(user, record)
       else if (record.kind === 'reply') deliver?.updatedReply(user, record)
       else deliver?.updated(user, record)
       return jsonResponse(await serializeFeedPost(user, record, { webHost }))
@@ -260,6 +268,35 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
     { ...shareExerciseBodySchema.shape },
     async (body) => {
       const preview = await previewExerciseShare(user, body, webHost)
+      if (!preview.ok) return errorResponse(preview.error)
+      return jsonResponse({ content: preview.content, structured: preview.structured, tags: preview.tags })
+    },
+  )
+
+  server.tool(
+    'share_dashboard_period',
+    "Publish one FINISHED period of a period dashboard to your feed: the dashboard's widgets resolved for that period, with the change against the period before. Pass `dashboard_id` (one of your dashboards, from `list_shared_dashboards`) or omit it for the home dashboard; the dashboard must be a period dashboard, and `period` a finished period of its granularity: `2026-10` (month), `2026-W44` (ISO week) or `2026` (year). The post stores a snapshot of the dashboard's config at share time, so a later edit of the dashboard never changes it. A link to the dashboard's public page is included only when the dashboard is published (unlisted or public) and `include_link` is true; the home dashboard is never linked. Use preview_dashboard_period_share first to show what leaves the instance.",
+    { ...shareDashboardPeriodBodySchema.shape },
+    async (body) => {
+      const resolved = await resolveDashboardShare(user, body, webHost)
+      if (!resolved.ok) return errorResponse(resolved.error)
+      const record = await createDashboardPost(user, {
+        dashboard: resolved.dashboard,
+        message: normalizeFeedMessage(body.message) ?? null,
+        tags: await dashboardShareTags(user, resolved.dashboard, body),
+        visibility: body.visibility,
+      })
+      deliver?.createdDashboard(user, record)
+      return jsonResponse(await serializeFeedPost(user, record, { webHost }))
+    },
+  )
+
+  server.tool(
+    'preview_dashboard_period_share',
+    "Preview what sharing a finished period of a period dashboard WOULD federate — the exact post text (HTML), the structured payload (the config snapshot and each widget's data for the period) and the hashtags — without creating a post. `dashboard_id` from `list_shared_dashboards`, or omitted for the home dashboard; `period` like `2026-10`, `2026-W44` or `2026`. The link is included only when the dashboard is published.",
+    { ...shareDashboardPeriodBodySchema.shape },
+    async (body) => {
+      const preview = await previewDashboardShare(user, body, webHost)
       if (!preview.ok) return errorResponse(preview.error)
       return jsonResponse({ content: preview.content, structured: preview.structured, tags: preview.tags })
     },

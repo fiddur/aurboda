@@ -1,6 +1,7 @@
 import type {
   ArticleContent,
   ChallengeShare,
+  DashboardShare,
   ExerciseShare,
   FeedPostKind,
   FeedVisibility,
@@ -38,6 +39,8 @@ export interface FeedPostRecord {
   challenge: ChallengeShare | null
   /** Stored exercise share pointer (type, item path, value, opt-ins); null unless kind = 'exercise'. */
   exercise: ExerciseShare | null
+  /** Stored dashboard period and config snapshot; null unless kind = 'dashboard'. */
+  dashboard: DashboardShare | null
   /** The author's personal message (plain text), or null when none was shared. */
   message: string | null
   /** The replied-to object id; null unless kind = 'reply'. */
@@ -99,6 +102,14 @@ export interface ExercisePostInput {
   tags?: string[]
 }
 
+export interface DashboardPostInput {
+  visibility: FeedVisibility
+  dashboard: DashboardShare
+  /** The author's personal note (markdown); omitted/undefined stores NULL. */
+  message?: string | null
+  tags?: string[]
+}
+
 /**
  * Input for a `reply` post: the reply text plus what it answers. Every target
  * field is resolved server-side from the timeline entry being replied to, so a
@@ -132,7 +143,7 @@ export interface FeedPostPatch {
 }
 
 const FEED_POST_COLUMNS =
-  'id, kind, activity_id, included_metrics, series_metrics, visibility, include_map, include_chart, include_exercises, article, challenge, exercise, message, in_reply_to_uri, in_reply_to_actor_uri, in_reply_to_handle, autoshare_rule_id, tags, image_token, created_at, updated_at'
+  'id, kind, activity_id, included_metrics, series_metrics, visibility, include_map, include_chart, include_exercises, article, challenge, exercise, dashboard, message, in_reply_to_uri, in_reply_to_actor_uri, in_reply_to_handle, autoshare_rule_id, tags, image_token, created_at, updated_at'
 
 interface FeedPostRow {
   id: string
@@ -148,6 +159,7 @@ interface FeedPostRow {
   article: ArticleContent | null
   challenge: ChallengeShare | null
   exercise: ExerciseShare | null
+  dashboard: DashboardShare | null
   message: string | null
   in_reply_to_uri: string | null
   in_reply_to_actor_uri: string | null
@@ -246,6 +258,24 @@ export const createExercisePost = async (user: string, input: ExercisePostInput)
       input.include_chart ?? false,
       input.tags ?? [],
     ],
+  )
+  return mapFeedPost(result.rows[0])
+}
+
+/**
+ * Create a `dashboard` post (#1505): one finished period of a period dashboard and the dashboard's
+ * config snapshot in the `dashboard` JSONB. The figures are resolved from the snapshot at read time.
+ */
+export const createDashboardPost = async (
+  user: string,
+  input: DashboardPostInput,
+): Promise<FeedPostRecord> => {
+  const result = await query<FeedPostRow>(
+    user,
+    `INSERT INTO feed_posts (kind, visibility, dashboard, message, include_chart, tags)
+     VALUES ('dashboard', $1, $2, $3, false, $4)
+     RETURNING ${FEED_POST_COLUMNS}`,
+    [input.visibility, JSON.stringify(input.dashboard), input.message ?? null, input.tags ?? []],
   )
   return mapFeedPost(result.rows[0])
 }

@@ -221,6 +221,15 @@ widget renders against that one window, ignoring the lookbacks in its configurat
   the latest finished period (the default), one fixed period, or every finished period from a chosen
   one on — set on the Dashboards page; see
   [Sharing → Period locks](./sharing.md#period-locks).
+- **Sharing a period to the feed.** The **Share to feed** button right of the period switcher
+  (on the home dashboard and on your own dashboards) posts the period shown to your
+  [feed](feed.md#feed-posts). The post keeps a snapshot of the dashboard's config as it was at
+  share time, so editing the dashboard later never changes it, and its figures are resolved from
+  that snapshot for that period whenever the post is read. It links the dashboard's public page
+  only when the dashboard is unlisted or public and you leave **Link** checked; the home
+  dashboard is never linked. Only a finished period can be shared. REST:
+  `POST /feed/dashboards` (`/preview` for the preview); MCP: `share_dashboard_period`,
+  `preview_dashboard_period_share`.
 
 ## Editing the Dashboard
 

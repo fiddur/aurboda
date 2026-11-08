@@ -2,6 +2,7 @@ import { comparePeriodKeys, periodLabel, shiftPeriodKey } from '@aurboda/api-spe
 
 import type { PeriodDashboardState } from './usePeriodDashboard'
 
+import { ShareArrowIcon } from './ShareControls'
 import './PeriodSwitcher.css'
 
 interface PeriodSwitcherProps {
@@ -57,9 +58,34 @@ export function PeriodSwitcher({ value, latest, earliest, onChange }: PeriodSwit
   )
 }
 
-/** The switcher of a period dashboard, or what stands in for it while the period is unknown. */
-export function PeriodDashboardBar({ state }: { state: PeriodDashboardState }) {
+/**
+ * The switcher of a period dashboard, or what stands in for it while the period is unknown; with
+ * `onShare`, a "Share to feed" button for the shown period right of it.
+ */
+export function PeriodDashboardBar({
+  state,
+  onShare,
+}: {
+  state: PeriodDashboardState
+  onShare?: (period: string) => void
+}) {
   if (state.isError && state.period === null) return <div class="error">Could not load this period.</div>
   if (state.period === null || state.latest === null) return <div class="loading">Loading period…</div>
-  return <PeriodSwitcher value={state.period} latest={state.latest} onChange={state.select} />
+  const { period } = state
+  const switcher = <PeriodSwitcher value={period} latest={state.latest} onChange={state.select} />
+  if (!onShare) return switcher
+  return (
+    <div class="period-dashboard-bar">
+      {switcher}
+      <button
+        type="button"
+        class="icon-button"
+        aria-label="Share to feed"
+        title="Share this period to your feed"
+        onClick={() => onShare(period)}
+      >
+        <ShareArrowIcon />
+      </button>
+    </div>
+  )
 }

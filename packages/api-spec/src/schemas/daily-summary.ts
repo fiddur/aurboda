@@ -6,13 +6,13 @@ import {
   dateOnlySchema,
   detectedLocationIdSchema,
   durationMinutesSchema,
+  hrZoneSecsSchema,
   iso8601DateTimeSchema,
   latSchema,
   lonSchema,
   placeSourceSchema,
 } from './common.ts'
 import { commentSchema, noteSchema } from './notes.ts'
-import { hrZoneSecsSchema } from './settings.ts'
 import { ianaTimezoneSchema } from './timezone.ts'
 
 export const heartRateStatsSchema = z

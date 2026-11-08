@@ -77,6 +77,8 @@ import {
   deliverFeedArticleUpdate,
   deliverFeedChallengePost,
   deliverFeedChallengeUpdate,
+  deliverFeedDashboardPost,
+  deliverFeedDashboardUpdate,
   deliverFeedDelete,
   deliverFeedExercisePost,
   deliverFeedExerciseUpdate,
@@ -86,6 +88,7 @@ import {
   deliverFeedUpdate,
   toDeliverableArticle,
   toDeliverableChallenge,
+  toDeliverableDashboard,
   toDeliverableExercise,
   toDeliverableReply,
 } from './services/activitypub/deliver.ts'
@@ -670,6 +673,23 @@ const main = async () => {
       const exercise = toDeliverableExercise(post)
       if (exercise) {
         void deliverFeedExerciseUpdate(feedDeps, user, exercise).catch(
+          onDeliverError('update', user, post.id),
+        )
+      }
+    },
+    // A dashboard-period share federates as a Note resolved from its config snapshot (#1505).
+    createdDashboard: (user, post) => {
+      const dashboard = toDeliverableDashboard(post)
+      if (dashboard) {
+        void deliverFeedDashboardPost(feedDeps, user, dashboard).catch(
+          onDeliverError('create', user, post.id),
+        )
+      }
+    },
+    updatedDashboard: (user, post) => {
+      const dashboard = toDeliverableDashboard(post)
+      if (dashboard) {
+        void deliverFeedDashboardUpdate(feedDeps, user, dashboard).catch(
           onDeliverError('update', user, post.id),
         )
       }

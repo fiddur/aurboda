@@ -14,7 +14,8 @@
  * web's inline render use — so a peer's native render matches byte-for-byte
  * what the author sees. A `challenge` post resolves to its challenge document
  * and a standings snapshot (`feed-structured-challenge.ts`); an `exercise` post to the
- * exercise's progress filtered by its opt-ins (`feed-structured-exercise.ts`). Only
+ * exercise's progress filtered by its opt-ins (`feed-structured-exercise.ts`); a `dashboard` post
+ * to its config snapshot resolved for the shared period (`feed-structured-dashboard.ts`). Only
  * `public`/`unlisted` posts resolve unconditionally; a `followers`-only post
  * resolves only with a matching capability `token` (the same gate as the
  * object dispatcher, the outbox, and the block images).
@@ -53,6 +54,7 @@ import {
   resolveStructuredChallenge,
   type StructuredChallengeDeps,
 } from './feed-structured-challenge.ts'
+import { resolveStructuredDashboard } from './feed-structured-dashboard.ts'
 import { resolveStructuredExercise } from './feed-structured-exercise.ts'
 import { resolveFeedActivity } from './feed.ts'
 import { queryMetricsBucketed } from './queries/index.ts'
@@ -260,6 +262,8 @@ export const resolveStructuredContent = async (
   }
 
   if (post.kind === 'exercise') return resolveStructuredExercise(user, post)
+
+  if (post.kind === 'dashboard') return resolveStructuredDashboard(user, post)
 
   if (post.activity_id == null) return null
 

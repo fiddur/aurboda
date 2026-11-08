@@ -7,9 +7,9 @@ import {
   createDataResponseSchema,
   dataFieldNameSchema,
   dataFieldPathSchema,
+  hrZoneSecsSchema,
   iso8601DateTimeSchema,
 } from './common.ts'
-import { hrZoneSecsSchema } from './settings.ts'
 import { sharedExerciseSetSchema } from './shared-exercises.ts'
 
 const listItemSchema = z.record(z.string(), z.unknown())

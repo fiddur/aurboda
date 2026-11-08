@@ -40,6 +40,7 @@ const makePost = (overrides: Partial<FeedPostRecord> = {}): FeedPostRecord => ({
   article: null,
   autoshare_rule_id: null,
   challenge: null,
+  dashboard: null,
   exercise: null,
   created_at: new Date('2026-07-01T08:00:00Z'),
   id: POST_ID,
