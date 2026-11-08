@@ -70,6 +70,21 @@ const Records = ({ item, sessions }: { item: ItemRef; sessions: ActivitySession[
                 id: newWidgetId(),
                 type: 'record_card',
               })}
+              extraWidgets={[
+                {
+                  label: 'Add activity card',
+                  widget: (title) => ({
+                    config: {
+                      filter_field: item.field,
+                      filter_value: item.value,
+                      pattern: item.name,
+                      ...(title ? { title } : {}),
+                    },
+                    id: newWidgetId(),
+                    type: 'activity_type_card',
+                  }),
+                },
+              ]}
             />
           }
         />

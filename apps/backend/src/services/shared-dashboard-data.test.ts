@@ -22,6 +22,7 @@ vi.mock('./correlations/baseline.ts', () => ({ getBaseline: vi.fn() }))
 vi.mock('./goals.ts', () => ({ getGoalsProgress: vi.fn() }))
 vi.mock('./latest-sleep.ts', () => ({ getLatestSleep: vi.fn() }))
 vi.mock('./queries/index.ts', () => ({
+  getActivityTypeSummary: vi.fn(),
   getPeriodSummary: vi.fn(),
   queryActivities: vi.fn(),
   queryMetrics: vi.fn(),
@@ -30,7 +31,7 @@ vi.mock('./queries/index.ts', () => ({
 const { getChartData } = await import('./chart-data.ts')
 const { getTrend } = await import('./trends.ts')
 const { getActivityRecords } = await import('./activity-records.ts')
-const { getPeriodSummary, queryActivities } = await import('./queries/index.ts')
+const { getActivityTypeSummary, getPeriodSummary, queryActivities } = await import('./queries/index.ts')
 const { getBaseline } = await import('./correlations/baseline.ts')
 const { getLatestSleep } = await import('./latest-sleep.ts')
 const { getAllActivityTypeNames } = await import('../db/index.ts')
@@ -310,6 +311,62 @@ describe('resolveDashboardData in a window', () => {
     expect(vi.mocked(queryActivities).mock.calls[0]?.slice(2)).toEqual([october.start, lastMs(october.end)])
   })
 
+  test('an activity type card rolls up both windows', async () => {
+    const summaryFor = (count: number, sleepAvg: number) => ({
+      activity_type_name: 'Sleep',
+      avg_speed_kmh: null,
+      best_pace_sec_per_km: null,
+      count,
+      distance_km: null,
+      sleep: { avg_minutes: sleepAvg, avg_stages: null, best_night_minutes: sleepAvg + 30 },
+      total_minutes: count * sleepAvg,
+    })
+    vi.mocked(getActivityTypeSummary).mockReset()
+    vi.mocked(getActivityTypeSummary).mockImplementation(async (_user, _type, query) =>
+      query.start === october.start.toISOString() ? summaryFor(31, 450) : summaryFor(30, 420),
+    )
+    const card: DashboardWidget = {
+      config: { filter_field: 'location', filter_value: 'home', lookback_days: 7, pattern: 'sleep' },
+      id: 'sleep',
+      type: 'activity_type_card',
+    }
+
+    const data = await resolveDashboardData('alice', board(card), { previous: september, window: october })
+
+    expect(data['sleep']).toEqual({
+      data: {
+        ...summaryFor(31, 450),
+        previous_count: 30,
+        previous_distance_km: null,
+        previous_sleep_avg_minutes: 420,
+        previous_total_minutes: 12600,
+      },
+      type: 'activity_type_card',
+    })
+    expect(vi.mocked(getActivityTypeSummary).mock.calls).toEqual([
+      [
+        'alice',
+        'sleep',
+        {
+          end: lastMs(october.end).toISOString(),
+          filter_field: 'location',
+          filter_value: 'home',
+          start: october.start.toISOString(),
+        },
+      ],
+      [
+        'alice',
+        'sleep',
+        {
+          end: lastMs(september.end).toISOString(),
+          filter_field: 'location',
+          filter_value: 'home',
+          start: september.start.toISOString(),
+        },
+      ],
+    ])
+  })
+
   test('charts and trends resolve over the window', async () => {
     vi.mocked(getChartData).mockResolvedValue({ buckets: [] } as Awaited<ReturnType<typeof getChartData>>)
     vi.mocked(getTrend).mockResolvedValue({ current_value: 1, history: [] } as unknown as Awaited<
@@ -395,5 +452,32 @@ describe('resolvePeriodDashboard', () => {
       code: 'invalid',
       status: 400,
     })
+  })
+})
+
+describe('resolveDashboardData: activity_type_card', () => {
+  test('rolls up the lookback on a rolling dashboard, without previous figures', async () => {
+    const summary = {
+      activity_type_name: 'Running',
+      avg_speed_kmh: 10,
+      best_pace_sec_per_km: 330,
+      count: 4,
+      distance_km: 32,
+      sleep: null,
+      total_minutes: 192,
+    }
+    vi.mocked(getActivityTypeSummary).mockReset()
+    vi.mocked(getActivityTypeSummary).mockResolvedValue(summary)
+
+    const data = await resolveDashboardData(
+      'alice',
+      board({ config: { pattern: 'running' }, id: 'run', type: 'activity_type_card' }),
+    )
+
+    expect(data['run']).toEqual({ data: summary, type: 'activity_type_card' })
+    const query = vi.mocked(getActivityTypeSummary).mock.calls[0]?.[2]
+    expect(query).not.toHaveProperty('filter_field')
+    const span = new Date(query?.end ?? '').getTime() - new Date(query?.start ?? '').getTime()
+    expect(Math.round(span / DAY_MS)).toBe(30)
   })
 })

@@ -46,7 +46,7 @@ import {
   periodWindow,
   previousWindow,
 } from './periods.ts'
-import { getPeriodSummary, queryActivities, queryMetrics } from './queries/index.ts'
+import { getActivityTypeSummary, getPeriodSummary, queryActivities, queryMetrics } from './queries/index.ts'
 import { getEffectiveHrZones, getUserTimezone } from './settings.ts'
 import { getTrend } from './trends.ts'
 
@@ -362,6 +362,36 @@ const resolveRecordCard = async (
   return { data: { record: record ? publicRecord(record) : null }, type: 'record_card' }
 }
 
+const resolveActivityTypeCard = async (
+  user: string,
+  config: Extract<DashboardWidget, { type: 'activity_type_card' }>['config'],
+  options: ResolveOptions,
+): Promise<WidgetData> => {
+  const { filter_field, filter_value } = config
+  const summarize = (range: Range) =>
+    getActivityTypeSummary(user, config.pattern, {
+      end: range.end.toISOString(),
+      start: range.start.toISOString(),
+      ...(filter_field !== undefined && filter_value !== undefined ? { filter_field, filter_value } : {}),
+    })
+  const [current, previous] = await Promise.all([
+    summarize(windowOf(options, config.lookback_days ?? 30)),
+    options.previous ? summarize(inclusiveRange(options.previous)) : undefined,
+  ])
+  return {
+    data: previous
+      ? {
+          ...current,
+          previous_count: previous.count,
+          previous_distance_km: previous.distance_km,
+          previous_sleep_avg_minutes: previous.sleep?.avg_minutes ?? null,
+          previous_total_minutes: previous.total_minutes,
+        }
+      : current,
+    type: 'activity_type_card',
+  }
+}
+
 const resolveCorrelation = async (
   user: string,
   config: Extract<DashboardWidget, { type: 'correlation' }>['config'],
@@ -518,6 +548,7 @@ const resolveGoalProgress = async (user: string): Promise<WidgetData> => {
 }
 
 /** Resolve one widget to its minimal data payload. */
+// eslint-disable-next-line complexity -- one arm per widget type
 const resolveWidget = async (
   user: string,
   widget: DashboardWidget,
@@ -547,6 +578,8 @@ const resolveWidget = async (
       return resolveCombinedChart(user, widget.config, tz, options)
     case 'record_card':
       return resolveRecordCard(user, widget.config, options)
+    case 'activity_type_card':
+      return resolveActivityTypeCard(user, widget.config, options)
     case 'quick_link':
       return { data: null, type: 'quick_link' }
   }
@@ -576,6 +609,8 @@ const nullData = (type: DashboardWidget['type']): WidgetData => {
     case 'combined_chart':
       return { data: null, type }
     case 'record_card':
+      return { data: null, type }
+    case 'activity_type_card':
       return { data: null, type }
     case 'quick_link':
       return { data: null, type }

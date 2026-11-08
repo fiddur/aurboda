@@ -85,6 +85,16 @@ const widgetTemplates: WidgetTemplate[] = [
   {
     allowedSections: ['metrics', 'charts'],
     defaultConfig: () => ({
+      lookback_days: 30,
+      pattern: 'exercise',
+    }),
+    description: 'Sessions, time, distance and pace of one activity type; sleep stages for sleep',
+    label: 'Activity card',
+    type: 'activity_type_card',
+  },
+  {
+    allowedSections: ['metrics', 'charts'],
+    defaultConfig: () => ({
       lookback_days: 7,
     }),
     description: 'Workout, sleep, and meditation stats',
@@ -391,6 +401,65 @@ export function DashboardEditor({
                 }}
                 placeholder="e.g., Bench Press"
               />
+            </div>
+          </div>
+        )
+
+      case 'activity_type_card':
+        return (
+          <div class="config-form">
+            <div class="form-group">
+              <label>Activity Type</label>
+              <input
+                type="text"
+                value={(configValues.pattern as string) ?? ''}
+                onChange={(e) => updateConfig('pattern', (e.target as HTMLInputElement).value)}
+                placeholder="e.g., running, sleep"
+              />
+            </div>
+            <div class="form-group">
+              <label>Title</label>
+              <input
+                type="text"
+                value={(configValues.title as string) ?? ''}
+                onChange={(e) => {
+                  const value = (e.target as HTMLInputElement).value
+                  setConfigValues(({ title: _title, ...rest }) =>
+                    value.trim() ? { ...rest, title: value } : rest,
+                  )
+                }}
+                placeholder="Defaults to the activity type name"
+              />
+            </div>
+            <div class="form-group">
+              <label>Exercise (optional)</label>
+              <input
+                type="text"
+                value={(configValues.filter_value as string) ?? ''}
+                onChange={(e) => {
+                  const value = (e.target as HTMLInputElement).value.trim()
+                  setConfigValues(({ filter_field: _field, filter_value: _value, ...rest }) =>
+                    value ? { ...rest, filter_field: 'sets.exercise', filter_value: value } : rest,
+                  )
+                }}
+                placeholder="e.g., Bench Press"
+              />
+            </div>
+            <div class="form-group">
+              <label>Show</label>
+              <select
+                value={(configValues.speed_display as string) ?? ''}
+                onChange={(e) => {
+                  const value = (e.target as HTMLSelectElement).value
+                  setConfigValues(({ speed_display: _display, ...rest }) =>
+                    value ? { ...rest, speed_display: value } : rest,
+                  )
+                }}
+              >
+                <option value="">Default for the type</option>
+                <option value="pace">Pace (min/km)</option>
+                <option value="speed">Speed (km/h)</option>
+              </select>
             </div>
           </div>
         )

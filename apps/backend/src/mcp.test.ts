@@ -21,6 +21,7 @@ import { createUsageRecorder, installUsageRecorder, type UsageRow } from './serv
 
 vi.mock('./services/queries/index', async () => ({
   getActivityNeighbors: vi.fn(),
+  getActivityTypeSummary: vi.fn(),
   getDailySummary: vi.fn(),
   getPeriodSummary: vi.fn(),
   parseActivityId: (raw: string) => ({
@@ -1117,6 +1118,55 @@ describe('MCP Server', () => {
 
       expect(response.text).toBe('filter_field and filter_value must be given together')
       expect(activityRecords.getActivityRecords).not.toHaveBeenCalled()
+    })
+
+    test('get_activity_type_summary maps its arguments onto the service', async () => {
+      vi.mocked(queries.getActivityTypeSummary).mockResolvedValue({
+        activity_type_name: 'Running',
+        avg_speed_kmh: 10,
+        best_pace_sec_per_km: 330,
+        count: 4,
+        distance_km: 32,
+        sleep: null,
+        total_minutes: 192,
+      })
+
+      const response = await callTool(
+        createTestApp(),
+        auth.createToken('testuser'),
+        'get_activity_type_summary',
+        {
+          activity_type: 'running',
+          end: '2026-10-31T23:59:59Z',
+          start: '2026-10-01T00:00:00Z',
+          tz: 'UTC',
+        },
+      )
+
+      expect(JSON.parse(response.text).data).toMatchObject({ count: 4, distance_km: 32 })
+      expect(queries.getActivityTypeSummary).toHaveBeenCalledWith('testuser', 'running', {
+        end: '2026-10-31T23:59:59Z',
+        start: '2026-10-01T00:00:00Z',
+      })
+    })
+
+    test('get_activity_type_summary rejects a filter field without a value', async () => {
+      vi.mocked(queries.getActivityTypeSummary).mockClear()
+      const response = await callTool(
+        createTestApp(),
+        auth.createToken('testuser'),
+        'get_activity_type_summary',
+        {
+          activity_type: 'running',
+          end: '2026-10-31T23:59:59Z',
+          filter_field: 'run_kind',
+          start: '2026-10-01T00:00:00Z',
+          tz: 'UTC',
+        },
+      )
+
+      expect(response.text).toBe('filter_field and filter_value must be given together')
+      expect(queries.getActivityTypeSummary).not.toHaveBeenCalled()
     })
 
     test('get_activity_item_history returns the history, or an error for a missing activity', async () => {

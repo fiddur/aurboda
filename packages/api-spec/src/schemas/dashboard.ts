@@ -236,6 +236,34 @@ export const recordCardConfigSchema = z
 
 export type RecordCardConfig = z.infer<typeof recordCardConfigSchema>
 
+export const activityTypeCardConfigSchema = z
+  .object({
+    filter_field: dataFieldPathSchema.optional().meta({
+      description: 'With filter_value: data field or item path (sets.exercise) the sessions must match',
+    }),
+    filter_value: z.string().optional().meta({ description: 'With filter_field: the value to keep' }),
+    lookback_days: z.number().int().positive().optional().meta({
+      description: 'Days rolled up on a rolling dashboard (default: 30); a period dashboard uses its period',
+    }),
+    pattern: z.string().min(1).meta({ description: 'Activity type name; its subtypes are included' }),
+    speed_display: z.enum(['pace', 'speed']).optional().meta({
+      description:
+        'With distance: pace (min/km) or speed (km/h); default pace for running, walking and hiking types, else speed',
+    }),
+    title: z.string().optional().meta({ description: 'Card title (default: the activity type name)' }),
+  })
+  .refine((c) => (c.filter_field === undefined) === (c.filter_value === undefined), {
+    message: 'filter_field and filter_value must be given together',
+    path: ['filter_value'],
+  })
+  .meta({
+    description:
+      'Roll-up of one activity type: sessions, time, distance and pace or speed; for sleep the average and best night and the stages',
+    id: 'ActivityTypeCardConfig',
+  })
+
+export type ActivityTypeCardConfig = z.infer<typeof activityTypeCardConfigSchema>
+
 export const correlationConfigSchema = z
   .object({
     activity: z.string().min(1).meta({ description: 'Activity or tag to analyze' }),
@@ -330,6 +358,7 @@ export const widgetTypeSchema = z.enum([
   'last_sleep',
   'combined_chart',
   'record_card',
+  'activity_type_card',
 ])
 
 export type WidgetType = z.infer<typeof widgetTypeSchema>
@@ -394,6 +423,11 @@ export const dashboardWidgetSchema = z.discriminatedUnion('type', [
     config: recordCardConfigSchema,
     id: z.string().min(1).meta({ description: 'Unique widget ID' }),
     type: z.literal('record_card'),
+  }),
+  z.object({
+    config: activityTypeCardConfigSchema,
+    id: z.string().min(1).meta({ description: 'Unique widget ID' }),
+    type: z.literal('activity_type_card'),
   }),
 ])
 
@@ -630,6 +664,11 @@ const monthInDataConfig: DashboardConfig = {
           id: 'month-sleep-score',
           type: 'sparkline_card',
         },
+        {
+          config: { pattern: 'sleep', title: 'Sleep' },
+          id: 'month-sleep',
+          type: 'activity_type_card',
+        },
         { config: { metric: 'steps', title: 'Steps per day' }, id: 'month-steps', type: 'metric_card' },
         { config: { metric: 'hrv_rmssd', title: 'HRV', unit: 'ms' }, id: 'month-hrv', type: 'metric_card' },
         {
@@ -660,6 +699,11 @@ const monthInDataConfig: DashboardConfig = {
           type: 'activity_summary',
         },
         { config: { show_targets: false }, id: 'month-hr-zones', type: 'hr_zones' },
+        {
+          config: { pattern: 'exercise', title: 'Workouts' },
+          id: 'month-workouts',
+          type: 'activity_type_card',
+        },
         {
           config: {
             aggregation: 'count',

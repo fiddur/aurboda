@@ -1,6 +1,7 @@
 import type { DashboardWidget } from '@aurboda/api-spec'
 
 import { ActivitySummaryWidget } from './ActivitySummaryWidget'
+import { ActivityTypeCardWidget } from './ActivityTypeCardWidget'
 import { BarChartWidget } from './BarChartWidget'
 import { CombinedChartWidget } from './CombinedChartWidget'
 import { CorrelationWidget } from './CorrelationWidget'
@@ -52,6 +53,8 @@ export function WidgetRenderer({ widget, isEditing, onRemove, boardId, sectionId
         return <CombinedChartWidget config={widget.config} />
       case 'record_card':
         return <RecordCardWidget config={widget.config} />
+      case 'activity_type_card':
+        return <ActivityTypeCardWidget config={widget.config} />
       default:
         return <div class="widget-unknown">Unknown widget type</div>
     }

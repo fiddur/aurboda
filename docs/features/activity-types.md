@@ -259,6 +259,10 @@ types in the `exercise` display category.
 - `GET /activity-types/:name/records` -- The best value of each record measure with the first
   session that reached it and its set; `filter_field` + `filter_value` for one value (also an
   item path such as `sets.exercise`), `start` (default all time)
+- `GET /activity-types/:name/summary?start=&end=` -- The type (subtypes included) rolled up over
+  the range: session count, total minutes, total distance, best pace and average speed where the
+  sessions carry a distance, and for sleep the average and best night and the average minutes per
+  stage; `filter_field` + `filter_value` as for records. Behind the dashboard's activity card
 - `GET /activity-types/:name/field-values?field=<field>` -- The values a data field (or an item
   path) has taken across the type and its subtypes, most recently used first, with counts
 - `GET /activities/:id/neighbors` -- Previous and next activity of the same type; `same_field`
@@ -271,7 +275,7 @@ types in the `exercise` display category.
   path
 - `DELETE /activity-types/:name/item-values/aliases/:id` -- Delete an alias
 
-MCP tools: `list_activity_types`, `add_activity_type`, `update_activity_type`, `delete_activity_type`, `query_activity_sessions`, `get_activity_records`, `list_activity_field_values`, `get_activity_neighbors`, `get_activity_item_history`, `merge_item_values`, `list_item_value_aliases`, `delete_item_value_alias`.
+MCP tools: `list_activity_types`, `add_activity_type`, `update_activity_type`, `delete_activity_type`, `query_activity_sessions`, `get_activity_records`, `get_activity_type_summary`, `list_activity_field_values`, `get_activity_neighbors`, `get_activity_item_history`, `merge_item_values`, `list_item_value_aliases`, `delete_item_value_alias`.
 
 ## Garmin Meditation Recognition
 
