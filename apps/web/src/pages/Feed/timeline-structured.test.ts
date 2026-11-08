@@ -142,6 +142,25 @@ describe('exercise payload', () => {
   })
 })
 
+const dashboard: FeedStructuredPost = {
+  config: { period: { granularity: 'month' }, sections: [], version: 1 },
+  kind: 'dashboard',
+  name: 'Month in data',
+  period: '2026-10',
+  widget_data: {},
+  window: { end: '2026-11-01T00:00:00.000Z', start: '2026-10-01T00:00:00.000Z' },
+}
+
+describe('dashboard payload', () => {
+  test('has no activity series, route or exercise chart', () => {
+    expect(structuredCombinedSeries(dashboard)).toEqual([])
+    expect(structuredRoutePoints(dashboard)).toEqual([])
+    expect(structuredHasNativeHrChart(dashboard)).toBe(false)
+    expect(structuredHasNativeMap(dashboard)).toBe(false)
+    expect(structuredHasNativeExerciseChart(dashboard)).toBe(false)
+  })
+})
+
 describe('native-render predicates', () => {
   test('HR chart: only a drawable heart-rate series counts — not another metric (#1001)', () => {
     expect(structuredHasNativeHrChart(structured({ series: [hrSeries] }))).toBe(true)
@@ -176,6 +195,10 @@ describe('timelineImageVisible', () => {
   test('hides every image for an article or a challenge (rendered fully natively)', () => {
     expect(timelineImageVisible(article, 'anything')).toBe(false)
     expect(timelineImageVisible(challenge, 'Standings')).toBe(false)
+  })
+
+  test('hides every image for a dashboard (rendered fully natively)', () => {
+    expect(timelineImageVisible(dashboard, 'anything')).toBe(false)
   })
 
   test('hides exactly the image whose native counterpart draws', () => {

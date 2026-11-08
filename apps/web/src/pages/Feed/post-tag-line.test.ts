@@ -33,6 +33,14 @@ describe('postTagLine', () => {
     ).toBe(false)
   })
 
+  test('a dashboard post without structure or payload falls back to content', () => {
+    const dashboard = { ...base, kind: 'dashboard' } as FeedPost
+    expect(bodyShowsContentHtml(dashboard, false)).toBe(true)
+    expect(
+      bodyShowsContentHtml({ ...dashboard, dashboard: { name: 'Home' } } as unknown as FeedPost, false),
+    ).toBe(false)
+  })
+
   test('an article renders its own blocks', () => {
     const article = {
       ...base,

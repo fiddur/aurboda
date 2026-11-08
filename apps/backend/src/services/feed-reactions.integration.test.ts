@@ -226,7 +226,9 @@ describe('Outbound replies 🗨 (integration)', () => {
       updated: noop,
       updatedArticle: noop,
       updatedChallenge: noop,
+      createdDashboard: noop,
       createdExercise: noop,
+      updatedDashboard: noop,
       updatedExercise: noop,
       updatedReply: noop,
     }

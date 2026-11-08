@@ -122,7 +122,8 @@ export const createFeedPublicRouter = ({
       record.kind === 'activity' ||
       record.kind === 'article' ||
       record.kind === 'challenge' ||
-      record.kind === 'exercise'
+      record.kind === 'exercise' ||
+      record.kind === 'dashboard'
     ) {
       const key = `structured:${username}:${record.id}:${record.updated_at.getTime()}:${Math.floor(Date.now() / 3_600_000)}`
       post.structured =
@@ -291,7 +292,7 @@ export const createFeedPublicRouter = ({
   // A user's public feed for their profile page: the most recent `public`/
   // `unlisted` posts, newest-first (the ActivityPub outbox's set), serialized
   // like the authenticated `/feed` with the structured payload attached per
-  // activity, article, challenge and exercise post — `structured` carries only the author's per-post
+  // activity, article, challenge, exercise and dashboard post — `structured` carries only the author's per-post
   // opt-ins, the same payload `/public/:username/feed/:postId` serves. An
   // article's live blocks fetch the owner-authenticated metric endpoints, which
   // a visitor can't reach, so the page renders its server-resolved blocks

@@ -1,0 +1,27 @@
+.timeline-dashboard-share-period {
+  color: #6b7280;
+  font-size: 0.85rem;
+}
+
+.timeline-dashboard-share-heading {
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.dashboard.timeline-dashboard-share-board {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 0;
+}
+
+.dashboard.timeline-dashboard-share-board .metrics-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
+  gap: 0.75rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  .timeline-dashboard-share-period {
+    color: #9ca3af;
+  }
+}

@@ -72,11 +72,14 @@ import { buildProfileUrl } from '../share-urls.ts'
 import { ownActorUri, ownObjectPrefix } from '../timeline.ts'
 import { withTimeout } from '../with-timeout.ts'
 import { type ActorPresentation, extractActorPresentation } from './actor-presentation.ts'
+import { dashboardNoteContent } from './dashboard-object.ts'
 import {
   buildArticleNote,
   buildArticleNoteCreate,
   buildChallengeNote,
   buildChallengeNoteCreate,
+  buildDashboardNote,
+  buildDashboardNoteCreate,
   buildExerciseNote,
   buildExerciseNoteCreate,
   buildFeedCreate,
@@ -85,6 +88,7 @@ import {
   buildReplyNoteCreate,
   toDeliverableArticle,
   toDeliverableChallenge,
+  toDeliverableDashboard,
   toDeliverableExercise,
   toDeliverableReply,
 } from './deliver.ts'
@@ -1054,6 +1058,15 @@ export const createFeedFederation = (
       if (exercise != null) {
         return buildExerciseNote(ctx, identifier, exercise, await exerciseNoteContent(identifier, exercise))
       }
+      const dashboard = toDeliverableDashboard(post)
+      if (dashboard != null) {
+        return buildDashboardNote(
+          ctx,
+          identifier,
+          dashboard,
+          await dashboardNoteContent(identifier, dashboard),
+        )
+      }
       const reply = toDeliverableReply(post)
       if (reply != null) return buildReplyNote(ctx, identifier, reply)
       if (post.activity_id == null) return null
@@ -1100,6 +1113,11 @@ export const createFeedFederation = (
             if (exercise != null) {
               const content = await exerciseNoteContent(identifier, exercise)
               return buildExerciseNoteCreate(ctx, identifier, exercise, content)
+            }
+            const dashboard = toDeliverableDashboard(post)
+            if (dashboard != null) {
+              const content = await dashboardNoteContent(identifier, dashboard)
+              return buildDashboardNoteCreate(ctx, identifier, dashboard, content)
             }
             const reply = toDeliverableReply(post)
             if (reply != null) return buildReplyNoteCreate(ctx, identifier, reply)

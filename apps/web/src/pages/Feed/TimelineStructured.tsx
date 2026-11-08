@@ -7,7 +7,8 @@
  * the position at the hovered chart time. An `article` post renders the full
  * inline article (title + resolved blocks — see `TimelineArticle`); a
  * `challenge` post its race chart and leaderboard (`TimelineChallenge`); an
- * `exercise` post its records, chart and last sessions (`ExerciseShareContent`). Only
+ * `exercise` post its records, chart and last sessions (`ExerciseShareContent`); a `dashboard`
+ * post the shared period's widgets (`DashboardShareContent`). Only
  * rendered for posts from Aurboda instances (which carry `structured`);
  * Mastodon posts have none.
  */
@@ -19,6 +20,7 @@ import { CombinedMetricChart } from '../../components/charts/CombinedMetricChart
 import { RouteMap } from '../../components/charts/RouteMap'
 import { formatEntryWindow } from './activity-stats'
 import { ActivityStatGrid } from './ActivityStatGrid'
+import { DashboardShareContent } from './DashboardShareContent'
 import { ExerciseShareContent } from './ExerciseShareContent'
 import {
   structuredCombinedSeries,
@@ -73,5 +75,6 @@ export function TimelineStructured({ structured }: { structured: FeedStructuredP
   if (structured.kind === 'article') return <TimelineArticle article={structured} />
   if (structured.kind === 'challenge') return <TimelineChallenge structured={structured} />
   if (structured.kind === 'exercise') return <ExerciseShareContent structured={structured} />
+  if (structured.kind === 'dashboard') return <DashboardShareContent structured={structured} />
   return <ActivityStructured structured={structured} />
 }

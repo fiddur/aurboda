@@ -4,11 +4,10 @@
  * they can render a native chart + typed stats instead of just the
  * Mastodon-style HTML.
  *
- * Imports only `common`, `correlations`, `shared-exercises` and the two challenge schema files
- * (never `feed.ts`), so both the public-series endpoint and the timeline entry
- * can reuse `publicSeriesSampleSchema` without a circular import back through
- * `feed.ts`; none of those import `feed.ts` or this file, so no cycle is
- * introduced.
+ * Imports only `common`, `correlations`, `dashboard`, `shared-exercises`, `social` and the two
+ * challenge schema files (never `feed.ts`), so both the public-series endpoint and the timeline
+ * entry can reuse `publicSeriesSampleSchema` without a circular import back through `feed.ts`;
+ * none of those import `feed.ts` or this file, so no cycle is introduced.
  *
  * The origin instance serves this at `GET /public/:username/feed/:postId`
  * (see the backend feed-public router); a following instance fetches it on
@@ -27,7 +26,9 @@ import { quantChallengeDocumentSchema, quantStandingsSchema } from './challenges
 import { challengeResultSchema } from './challenges.ts'
 import { iso8601DateTimeSchema } from './common.ts'
 import { alignedPointSchema, groupComparisonSchema, selectorSchema } from './correlations.ts'
+import { dashboardConfigSchema, periodKeySchema } from './dashboard.ts'
 import { sharedExerciseDataSchema } from './shared-exercises.ts'
+import { periodWindowSchema, widgetDataMapSchema } from './social.ts'
 
 /**
  * One bucketed sample. Individual-measurement timestamps are deliberately
@@ -352,10 +353,44 @@ export const feedStructuredExerciseShareSchema = z
 export type FeedStructuredExerciseShare = z.infer<typeof feedStructuredExerciseShareSchema>
 
 /**
+ * The native structured representation of a *dashboard* share post (#1505): one finished period of
+ * a period dashboard, drawn from the config snapshot stored at share time and resolved for that
+ * period when the origin serves the payload. Aurboda's own kind, so snake_case.
+ */
+export const feedStructuredDashboardShareSchema = z
+  .object({
+    config: dashboardConfigSchema.meta({
+      description:
+        'The dashboard config as it was shared (quick links neutered), which the widgets are drawn from',
+    }),
+    kind: z.literal('dashboard').meta({ description: 'Discriminator: a dashboard-period share post' }),
+    message: z.string().optional().meta({
+      description: "The author's note, raw markdown (rendered by the receiver's sanitiser)",
+    }),
+    name: z.string().meta({ description: 'Dashboard name at share time' }),
+    period: periodKeySchema.meta({ description: 'The shared finished period' }),
+    url: z
+      .url({ protocol: /^https?$/ })
+      .optional()
+      .meta({
+        description:
+          "The dashboard's public page (http or https), present only when it was published and linked at share time",
+      }),
+    widget_data: widgetDataMapSchema.meta({
+      description: "Each widget's data for the period, keyed by widget id",
+    }),
+    window: periodWindowSchema.meta({ description: "The period's bounds in the author's timezone" }),
+  })
+  .meta({ id: 'FeedStructuredDashboardShare' })
+
+export type FeedStructuredDashboardShare = z.infer<typeof feedStructuredDashboardShareSchema>
+
+/**
  * Discriminated union of everything the structured-enrichment endpoint may
  * return: an activity share's typed scalars/series, an article's title +
- * resolved blocks, a challenge's document + standings snapshot, or an exercise's progress. `kind` tells a consuming peer (and the web timeline card)
- * which native render to use.
+ * resolved blocks, a challenge's document + standings snapshot, an exercise's
+ * progress, or one period of a dashboard. `kind` tells a consuming peer (and the
+ * web timeline card) which native render to use.
  *
  * A payload with NO `kind` is treated as an `activity` before discriminating, so
  * enrichment fetched from a peer running the *previous* release (which emitted
@@ -370,6 +405,7 @@ export const feedStructuredPostSchema = z
       feedStructuredArticleSchema,
       feedStructuredChallengeSchema,
       feedStructuredExerciseShareSchema,
+      feedStructuredDashboardShareSchema,
     ]),
   )
   .meta({ id: 'FeedStructuredPost' })

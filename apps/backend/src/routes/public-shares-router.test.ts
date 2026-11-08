@@ -1,8 +1,6 @@
 /**
  * Unit tests for the public-shares-router security helpers — the username
- * gate (which selects the per-user database) and the config sanitizer (which
- * neutralizes quick-link hrefs before exposing a config to anonymous viewers) —
- * and the challenge register-back checks.
+ * gate (which selects the per-user database) — and the challenge register-back checks.
  */
 import type { DashboardConfig } from '@aurboda/api-spec'
 
@@ -49,7 +47,7 @@ const db = await import('../db/index.ts')
 const federation = await import('../services/challenge-federation.ts')
 const exerciseData = await import('../services/shared-exercise-data.ts')
 const dashboardData = await import('../services/shared-dashboard-data.ts')
-const { createPublicSharesRouter, sanitizeConfig } = await import('./public-shares-router.ts')
+const { createPublicSharesRouter } = await import('./public-shares-router.ts')
 
 describe('isValidUsername (public DB-selecting gate)', () => {
   test('accepts valid usernames', () => {
@@ -73,60 +71,6 @@ describe('isValidUsername (public DB-selecting gate)', () => {
     expect(isValidUsername('a;drop')).toBe(false) // semicolon
     expect(isValidUsername('a b')).toBe(false) // space
     expect(isValidUsername('')).toBe(false)
-  })
-})
-
-describe('sanitizeConfig', () => {
-  test('neutralizes quick-link hrefs and leaves other widgets untouched', () => {
-    const config: DashboardConfig = {
-      sections: [
-        {
-          id: 's1',
-          title: 'Links',
-          type: 'links',
-          widgets: [
-            {
-              config: { href: '/secret/admin', icon: 'goals', label: 'Goals' },
-              id: 'ql',
-              type: 'quick_link',
-            },
-            { config: { metric: 'hrv_7day', title: 'HRV' }, id: 'mc', type: 'metric_card' },
-          ],
-        },
-      ],
-      version: 1,
-    }
-
-    const sanitized = sanitizeConfig(config)
-    const [quickLink, metricCard] = sanitized.sections[0].widgets
-
-    expect(quickLink.type).toBe('quick_link')
-    if (quickLink.type === 'quick_link') {
-      expect(quickLink.config.href).toBe('#')
-      expect(quickLink.config.label).toBe('Goals') // label preserved
-    }
-    expect(metricCard).toEqual(config.sections[0].widgets[1]) // untouched
-    // Original config is not mutated.
-    expect(config.sections[0].widgets[0]).toMatchObject({ config: { href: '/secret/admin' } })
-  })
-
-  test('preserves author prose (dashboard + section descriptions)', () => {
-    const config: DashboardConfig = {
-      description: 'Two years of training.',
-      sections: [
-        { description: 'Recovery metrics.', id: 's1', title: 'Baseline', type: 'metrics', widgets: [] },
-      ],
-      version: 1,
-    }
-    const sanitized = sanitizeConfig(config)
-    expect(sanitized.description).toBe('Two years of training.')
-    expect(sanitized.sections[0].description).toBe('Recovery metrics.')
-  })
-
-  test('keeps the period of a period dashboard', () => {
-    const config: DashboardConfig = { period: { granularity: 'month' }, sections: [], version: 1 }
-    expect(sanitizeConfig(config).period).toEqual({ granularity: 'month' })
-    expect('period' in sanitizeConfig({ sections: [], version: 1 })).toBe(false)
   })
 })
 

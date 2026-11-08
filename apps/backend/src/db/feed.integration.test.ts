@@ -7,6 +7,7 @@ import {
   countPublicFeedPosts,
   createArticlePost,
   createChallengePost,
+  createDashboardPost,
   createExercisePost,
   createFeedPost,
   createReplyPost,
@@ -610,6 +611,65 @@ describe('Feed posts integration', () => {
       expect(post.include_chart).toBe(false)
       expect(post.message).toBeNull()
       expect((await listPublicFeedPosts(user)).map((p) => p.id)).not.toContain(post.id)
+    })
+  })
+
+  describe('dashboard posts (#1505)', () => {
+    const dashboard = {
+      config: {
+        period: { granularity: 'month' as const },
+        sections: [
+          {
+            id: 's1',
+            title: 'Month',
+            type: 'metrics' as const,
+            widgets: [
+              { config: { metric: 'steps', title: 'Steps' }, id: 'w1', type: 'metric_card' as const },
+            ],
+          },
+        ],
+        version: 1 as const,
+      },
+      dashboard_id: '00000000-0000-4000-8000-000000000001',
+      include_link: true,
+      name: 'Month in data',
+      period: '2026-10',
+      url: 'https://aurboda.example/u/me/abc',
+    }
+
+    test('createDashboardPost stores the period, the config snapshot and the note', async () => {
+      const user = getTestUser()
+      const post = await createDashboardPost(user, {
+        dashboard,
+        message: 'October',
+        tags: ['monthindata'],
+        visibility: 'public',
+      })
+      expect(post.kind).toBe('dashboard')
+      expect(post.dashboard).toEqual(dashboard)
+      expect(post.message).toBe('October')
+      expect(post.include_chart).toBe(false)
+      expect(post.tags).toEqual(['monthindata'])
+      expect(post.activity_id).toBeNull()
+      expect(post.exercise).toBeNull()
+
+      expect((await getFeedPostById(user, post.id))?.dashboard).toEqual(dashboard)
+      expect((await listFeedPosts(user, 10)).map((p) => p.id)).toContain(post.id)
+      expect((await listPublicFeedPosts(user)).map((p) => p.id)).toContain(post.id)
+    })
+
+    test('createDashboardPost defaults the note, and other kinds carry no dashboard', async () => {
+      const user = getTestUser()
+      const post = await createDashboardPost(user, { dashboard, visibility: 'followers' })
+      expect(post.message).toBeNull()
+      expect((await listPublicFeedPosts(user)).map((p) => p.id)).not.toContain(post.id)
+      const reply = await createReplyPost(user, {
+        in_reply_to_actor_uri: 'https://mastodon.example/users/alice',
+        in_reply_to_uri: 'https://mastodon.example/users/alice/statuses/1',
+        message: 'Hi',
+        visibility: 'unlisted',
+      })
+      expect(reply.dashboard).toBeNull()
     })
   })
 

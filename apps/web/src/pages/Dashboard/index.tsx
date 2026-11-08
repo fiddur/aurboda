@@ -7,6 +7,7 @@ import { useState } from 'preact/hooks'
 import { EditableDashboard } from '../../components/EditableDashboard'
 import { GetStartedGuide } from '../../components/GetStartedGuide'
 import { PeriodDashboardBar } from '../../components/PeriodSwitcher'
+import { ShareDashboardPeriodDialog } from '../../components/ShareDashboardPeriodDialog'
 import { usePeriodDashboard } from '../../components/usePeriodDashboard'
 import { fetchDashboard, fetchDashboardData, resetDashboard, saveDashboard } from '../../state/api'
 import { auth } from '../../state/auth'
@@ -18,6 +19,7 @@ const browserStorage = () => window.localStorage
 export function Dashboard() {
   const queryClient = useQueryClient()
   const [isEditing, setIsEditing] = useState(false)
+  const [sharingPeriod, setSharingPeriod] = useState<string | null>(null)
   const user = auth.value.user
 
   const dashboardQuery = useQuery({
@@ -100,7 +102,15 @@ export function Dashboard() {
 
       {!isEditing && <GetStartedGuide />}
 
-      {!isLoading && period && <PeriodDashboardBar state={period} />}
+      {!isLoading && period && <PeriodDashboardBar state={period} onShare={setSharingPeriod} />}
+
+      {sharingPeriod !== null && (
+        <ShareDashboardPeriodDialog
+          name="Home"
+          period={sharingPeriod}
+          onClose={() => setSharingPeriod(null)}
+        />
+      )}
 
       {isLoading && <div class="loading">Loading your dashboard...</div>}
 

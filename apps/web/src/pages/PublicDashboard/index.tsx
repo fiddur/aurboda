@@ -26,6 +26,7 @@ import { AttributionLink } from '../../components/AttributionLink'
 import { EditableDashboard } from '../../components/EditableDashboard'
 import { PeriodDashboardBar, PeriodSwitcher } from '../../components/PeriodSwitcher'
 import { CopyLinkButton, NativeShareButton } from '../../components/ShareControls'
+import { ShareDashboardPeriodDialog } from '../../components/ShareDashboardPeriodDialog'
 import { usePeriodDashboard } from '../../components/usePeriodDashboard'
 import { PublicWidgetRenderer } from '../../components/widgets'
 import {
@@ -130,9 +131,19 @@ function OwnerSharedDashboardBody({
   onChange: (next: DashboardConfig) => void
 }) {
   const period = usePeriodDashboard(share.id, share.config, (key) => fetchSharedDashboardData(share.id, key))
+  const [sharingPeriod, setSharingPeriod] = useState<string | null>(null)
   return (
     <>
-      {period && <PeriodDashboardBar state={period} />}
+      {period && <PeriodDashboardBar state={period} onShare={setSharingPeriod} />}
+      {sharingPeriod !== null && (
+        <ShareDashboardPeriodDialog
+          dashboardId={share.id}
+          name={share.name}
+          period={sharingPeriod}
+          publishedUrl={share.visibility === 'private' ? undefined : share.share_url}
+          onClose={() => setSharingPeriod(null)}
+        />
+      )}
       <EditableDashboard
         config={share.config}
         isEditing={isEditing}

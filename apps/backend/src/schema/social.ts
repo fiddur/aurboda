@@ -205,6 +205,8 @@ export const socialTables: Record<string, string> = {
       challenge         JSONB,
       -- Exercise share pointer (type, item path, value, opt-ins) for kind = 'exercise' (#1398).
       exercise          JSONB,
+      -- Shared period and config snapshot for kind = 'dashboard' (#1505).
+      dashboard         JSONB,
       message           TEXT,
       image_token       TEXT NOT NULL DEFAULT gen_random_uuid()::text,
       created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -247,6 +249,10 @@ export const socialTables: Record<string, string> = {
   // Exercise share posts (#1398). Additive for pre-existing tables (idempotent).
   feed_posts_exercise_column: `
     ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS exercise JSONB;
+  `,
+  // Dashboard-period share posts (#1505): the shared period and the config snapshot.
+  feed_posts_dashboard_column: `
+    ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS dashboard JSONB;
   `,
   // The post's hashtags, lowercase without `#`, computed at create and every edit.
   // The GIN index backs the profile's `?tag=` filter (`tags @> ARRAY[$tag]`).
