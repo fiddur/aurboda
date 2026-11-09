@@ -358,12 +358,32 @@ export const buildArticleShareMeta = ({
   url,
 })
 
+const DEFAULT_OG_IMAGE_ALT = `${SITE_NAME}: a dashboard and a day's timeline of sleep, heart rate and activities`
+
 /** Generic meta for the site when no specific public resource is resolved. */
 export const buildDefaultShareMeta = (webHost: string, url: string): ShareMeta => ({
-  description: `${SITE_NAME} — a self-hosted self-quantification aggregator.`,
+  description: `${SITE_NAME} puts your sleep, training and everyday life on one private timeline. Open source.`,
   image: defaultOgImage(webHost),
-  imageAlt: SITE_NAME,
+  imageAlt: DEFAULT_OG_IMAGE_ALT,
   title: SITE_NAME,
   type: 'website',
   url,
+})
+
+/** The welcome page at the site root. */
+export const buildHomeShareMeta = (webHost: string): ShareMeta => ({
+  description:
+    `${SITE_NAME} collects what your watch, ring, phone and apps already know about you, puts it on one ` +
+    'timeline, and shows what actually makes a difference. Open source, and private unless you share it.',
+  image: defaultOgImage(webHost),
+  imageAlt: DEFAULT_OG_IMAGE_ALT,
+  jsonLd: {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: SITE_NAME,
+    url: `${webHost.replace(/\/+$/, '')}/`,
+  },
+  title: `${SITE_NAME}: see how your sleep, training and everyday life fit together`,
+  type: 'website',
+  url: `${webHost.replace(/\/+$/, '')}/`,
 })
