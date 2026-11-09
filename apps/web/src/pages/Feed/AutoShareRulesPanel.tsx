@@ -270,8 +270,7 @@ function RuleForm({ rule, onDone }: { rule?: AutoshareRule; onDone: () => void }
     onSuccess: onDone,
   })
 
-  const canSubmit =
-    state.name.trim() !== '' && summary.size > 0 && conditionsComplete && !saveMutation.isPending
+  const canSubmit = state.name.trim() !== '' && conditionsComplete && !saveMutation.isPending
   // A prefilled value set through the API need not sit on the input's step.
   const step = (createStep: string) => (rule ? 'any' : createStep)
 
