@@ -1,10 +1,10 @@
 import type { NextFunction, Request, Response } from 'express'
 
-import { addActivityBodySchema } from '@aurboda/api-spec'
+import { addActivityBodySchema, createSharedDashboardBodySchema } from '@aurboda/api-spec'
 import { describe, expect, test, vi } from 'vitest'
 import { z } from 'zod'
 
-import { validateBody, validateQuery } from './validation.ts'
+import { validateBody, validateQuery, validationErrors } from './validation.ts'
 
 vi.mock('./services/audit-log.ts', () => ({
   auditWarn: vi.fn(),
@@ -30,6 +30,19 @@ const createMockRes = () => {
   }
   return res as unknown as Response
 }
+
+const exactlyOneSchema = z
+  .object({ a: z.string().optional(), b: z.string().optional() })
+  .refine((v) => (v.a === undefined) !== (v.b === undefined), { message: 'Give exactly one of a or b' })
+
+describe('validationErrors', () => {
+  test('carries the message of a path-less refine under _errors', () => {
+    const result = createSharedDashboardBodySchema.safeParse({ name: 'x' })
+    if (result.success) throw new Error('expected the schema to reject a body without config or preset')
+
+    expect(validationErrors(result.error)).toEqual({ _errors: ['Give exactly one of config or preset'] })
+  })
+})
 
 describe('validateBody', () => {
   const schema = z.object({ name: z.string() })
@@ -83,6 +96,31 @@ describe('validateBody', () => {
     expect(res.status).toHaveBeenCalledWith(400)
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: false }))
     expect(next).not.toHaveBeenCalled()
+  })
+
+  test('returns the message of a path-less refine under _errors', () => {
+    const req = createMockReq({ body: { a: 'x', b: 'y' } })
+    const res = createMockRes()
+    const next = vi.fn() as unknown as NextFunction
+
+    validateBody(exactlyOneSchema)(req, res, next)
+
+    expect(res.status).toHaveBeenCalledWith(400)
+    expect(res.json).toHaveBeenCalledWith({
+      error: { _errors: ['Give exactly one of a or b'] },
+      success: false,
+    })
+    expect(next).not.toHaveBeenCalled()
+  })
+
+  test('returns field errors without an _errors key', () => {
+    const req = createMockReq({ body: { name: 123 } })
+    const res = createMockRes()
+    const next = vi.fn() as unknown as NextFunction
+
+    validateBody(schema)(req, res, next)
+
+    expect(res.json).toHaveBeenCalledWith({ error: { name: [expect.any(String)] }, success: false })
   })
 
   test('logs to audit log for authenticated user on validation failure', () => {
@@ -146,6 +184,31 @@ describe('validateQuery', () => {
 
     expect(res.status).toHaveBeenCalledWith(400)
     expect(next).not.toHaveBeenCalled()
+  })
+
+  test('returns the message of a path-less refine under _errors', () => {
+    const req = createMockReq({ query: {} as unknown as Request['query'] })
+    const res = createMockRes()
+    const next = vi.fn() as unknown as NextFunction
+
+    validateQuery(exactlyOneSchema)(req, res, next)
+
+    expect(res.status).toHaveBeenCalledWith(400)
+    expect(res.json).toHaveBeenCalledWith({
+      error: { _errors: ['Give exactly one of a or b'] },
+      success: false,
+    })
+    expect(next).not.toHaveBeenCalled()
+  })
+
+  test('returns field errors without an _errors key', () => {
+    const req = createMockReq({ query: { page: 'abc' } as unknown as Request['query'] })
+    const res = createMockRes()
+    const next = vi.fn() as unknown as NextFunction
+
+    validateQuery(schema)(req, res, next)
+
+    expect(res.json).toHaveBeenCalledWith({ error: { page: [expect.any(String)] }, success: false })
   })
 
   test('logs to audit log for authenticated user on validation failure', () => {
