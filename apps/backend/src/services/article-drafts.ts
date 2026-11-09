@@ -169,12 +169,14 @@ const checkedPublishable = async (
 const DRAFT_NOT_FOUND = { error: 'Draft not found', ok: false, status: 404 } as const
 
 /**
- * Publish a draft: validate it, then in one transaction remove it, validate the
- * removed row again (it may have been saved since) and create the article post.
- * Of two concurrent publishes only one creates a post; an invalid draft, or any
- * failure before commit, leaves the draft as it was. The challenge check reads
- * this instance's databases only, never the network. The caller federates the
- * returned post.
+ * Publish a draft: validate it and resolve its tags, then in one transaction
+ * remove it and create the article post. The lookups run before the transaction
+ * so it holds no connection while they take others from the pool; only when the
+ * draft was saved between the read and the claim are they run again on the
+ * claimed row. Of two concurrent publishes only one creates a post; an invalid
+ * draft, or any failure before commit, leaves the draft as it was. The challenge
+ * check reads this instance's databases only, never the network. The caller
+ * federates the returned post.
  */
 export const publishArticleDraft = async (
   user: string,
@@ -185,18 +187,20 @@ export const publishArticleDraft = async (
   const draft = await deps.getDraft(user, id)
   if (!draft) return DRAFT_NOT_FOUND
   const checkContent = deps.checkContent ?? checkDraftChallenges
-  const checked = await checkedPublishable(draft.article, body.visibility ?? draft.visibility, checkContent)
+  const postTags = deps.postTags ?? draftPostTags
+  const visibilityOf = (row: ArticleDraftRecord) => body.visibility ?? row.visibility
+  const checked = await checkedPublishable(draft.article, visibilityOf(draft), checkContent)
   if (!checked.ok) return { error: checked.error, ok: false, status: 400 }
+  const tags = await postTags(user, draft.article)
 
   const outcome = await deps.publishDraft(user, id, async (claimed) => {
-    const publishable = await checkedPublishable(
-      claimed.article,
-      body.visibility ?? claimed.visibility,
-      checkContent,
-    )
+    const unchanged = claimed.updated_at.getTime() === draft.updated_at.getTime()
+    const publishable = unchanged
+      ? checked
+      : await checkedPublishable(claimed.article, visibilityOf(claimed), checkContent)
     if (!publishable.ok) return publishable
-    const tags = await (deps.postTags ?? draftPostTags)(user, claimed.article)
-    return { input: { ...publishable.input, tags }, ok: true }
+    const claimedTags = unchanged ? tags : await postTags(user, claimed.article)
+    return { input: { ...publishable.input, tags: claimedTags }, ok: true }
   })
   if (outcome.status === 'missing') return DRAFT_NOT_FOUND
   if (outcome.status === 'rejected') return { error: outcome.error, ok: false, status: 400 }

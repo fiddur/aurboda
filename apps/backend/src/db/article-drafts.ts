@@ -92,8 +92,9 @@ const ROLLBACK = new Error('article draft publish rejected')
  * (`DELETE … RETURNING`, so of concurrent publishes exactly one gets it),
  * `prepare` derives the post from the removed row, and the post is inserted.
  * A rejection from `prepare`, or any failure before commit, rolls back and
- * leaves the draft as it was. `prepare` runs while the transaction is open, so
- * it must not wait on the network.
+ * leaves the draft as it was. `prepare` runs while the transaction holds a
+ * connection, so it must not wait on the network and should not take further
+ * connections from the pool.
  */
 export const publishArticleDraftPost = async (
   user: string,

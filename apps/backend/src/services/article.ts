@@ -83,6 +83,9 @@ export const blockWindow = (
 const blockLabel = (block: Extract<ArticleBlock, { type: 'chart' | 'correlation' }>, index: number): string =>
   block.type === 'chart' ? `Chart block ${index + 1} (${block.metric})` : `Correlation block ${index + 1}`
 
+const hasChallengeUrl = <B extends { type: string }>(block: B): block is B & { challenge_url?: unknown } =>
+  block.type === 'challenge' && 'challenge_url' in block
+
 /**
  * Blocks with each challenge block's URL in its canonical spelling, the one
  * `getParticipationByUrl` looks up by; a URL with no canonical form is kept as
@@ -90,7 +93,7 @@ const blockLabel = (block: Extract<ArticleBlock, { type: 'chart' | 'correlation'
  */
 export const withCanonicalChallengeUrls = <B extends { type: string }>(blocks: B[]): B[] =>
   blocks.map((block) => {
-    const url = block.type === 'challenge' ? (block as { challenge_url?: unknown }).challenge_url : undefined
+    const url = hasChallengeUrl(block) ? block.challenge_url : undefined
     const canonical = typeof url === 'string' ? canonicalChallengeUrl(url) : null
     return canonical == null || canonical === url ? block : { ...block, challenge_url: canonical }
   })

@@ -15,6 +15,7 @@ import {
 
 const WEEK_START = '2026-07-01T00:00:00.000Z'
 const WEEK_END = '2026-07-07T00:00:00.000Z'
+const SAVED_LATER = new Date('2026-07-08T11:05:00Z')
 
 const complete = (overrides: Partial<ArticleDraftContent> = {}): ArticleDraftContent => ({
   blocks: [
@@ -259,12 +260,49 @@ describe('publishArticleDraft', () => {
     const get = fake.deps.getDraft
     fake.deps.getDraft = async (user, id) => {
       const found = await get(user, id)
-      fake.drafts.set(id, draftRecord({ article: complete({ title: '' }) }))
+      fake.drafts.set(id, draftRecord({ article: complete({ title: '' }), updated_at: SAVED_LATER }))
       return found
     }
     const result = await publishArticleDraft('alice', 'd1', {}, fake.deps)
     expect(result).toEqual({ error: 'Give the article a title before publishing.', ok: false, status: 400 })
     expect(fake.created).toEqual([])
     expect(fake.drafts.get('d1')?.article.title).toBe('')
+  })
+
+  test('an unchanged claimed draft reuses the checks and tags from before the transaction', async () => {
+    const fake = fakeDeps(draftRecord())
+    const calls = { checkContent: 0, postTags: 0 }
+    fake.deps.checkContent = async (article) => {
+      calls.checkContent += 1
+      return { article, ok: true }
+    }
+    fake.deps.postTags = async () => {
+      calls.postTags += 1
+      return ['aurboda']
+    }
+    const result = await publishArticleDraft('alice', 'd1', {}, fake.deps)
+    expect(result.ok).toBe(true)
+    expect(calls).toEqual({ checkContent: 1, postTags: 1 })
+  })
+
+  test('a draft saved between the read and the claim is checked and tagged again', async () => {
+    const fake = fakeDeps(draftRecord())
+    const resaved = complete({ title: 'A month of HRV' })
+    const get = fake.deps.getDraft
+    fake.deps.getDraft = async (user, id) => {
+      const found = await get(user, id)
+      fake.drafts.set(id, draftRecord({ article: resaved, updated_at: SAVED_LATER }))
+      return found
+    }
+    const checked: string[] = []
+    fake.deps.checkContent = async (article) => {
+      checked.push(article.title)
+      return { article, ok: true }
+    }
+    fake.deps.postTags = async (_user, article) => [article.title === resaved.title ? 'month' : 'week']
+    const result = await publishArticleDraft('alice', 'd1', {}, fake.deps)
+    expect(result.ok).toBe(true)
+    expect(checked).toEqual(['A week of HRV', 'A month of HRV'])
+    expect(fake.created).toEqual([{ article: resaved, tags: ['month'], visibility: 'followers' }])
   })
 })
