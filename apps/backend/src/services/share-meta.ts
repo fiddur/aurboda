@@ -371,19 +371,22 @@ export const buildDefaultShareMeta = (webHost: string, url: string): ShareMeta =
 })
 
 /** The welcome page at the site root. */
-export const buildHomeShareMeta = (webHost: string): ShareMeta => ({
-  description:
-    `${SITE_NAME} collects what your watch, ring, phone and apps already know about you, puts it on one ` +
-    'timeline, and shows what actually makes a difference. Open source, and private unless you share it.',
-  image: defaultOgImage(webHost),
-  imageAlt: DEFAULT_OG_IMAGE_ALT,
-  jsonLd: {
-    '@context': 'https://schema.org',
-    '@type': 'WebSite',
-    name: SITE_NAME,
-    url: `${webHost.replace(/\/+$/, '')}/`,
-  },
-  title: `${SITE_NAME}: see how your sleep, training and everyday life fit together`,
-  type: 'website',
-  url: `${webHost.replace(/\/+$/, '')}/`,
-})
+export const buildHomeShareMeta = (webHost: string): ShareMeta => {
+  const url = `${webHost.replace(/\/+$/, '')}/`
+  return {
+    description:
+      `${SITE_NAME} collects what your watch, ring, phone and apps already know about you, puts it on one ` +
+      'timeline, and shows what actually makes a difference. Open source, and private unless you share it.',
+    image: defaultOgImage(webHost),
+    imageAlt: DEFAULT_OG_IMAGE_ALT,
+    jsonLd: {
+      '@context': 'https://schema.org',
+      '@type': 'WebSite',
+      name: SITE_NAME,
+      url,
+    },
+    title: `${SITE_NAME}: see how your sleep, training and everyday life fit together`,
+    type: 'website',
+    url,
+  }
+}
