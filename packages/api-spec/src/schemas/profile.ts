@@ -5,14 +5,22 @@ import { baseResponseSchema } from './common.ts'
 export const DISPLAY_NAME_MAX_LENGTH = 100
 export const EMAIL_MAX_LENGTH = 254
 
+/** C0/C1 controls (tab and newline included), bidi embeddings and overrides, and bidi isolates. */
+const CONTROL_OR_BIDI_CHARACTERS = /[\p{Cc}\u202A-\u202E\u2066-\u2069]/u
+
+export const hasControlOrBidiCharacters = (value: string): boolean => CONTROL_OR_BIDI_CHARACTERS.test(value)
+
 /** Trimmed; an empty string means none, as null does. */
 export const displayNameInputSchema = z
   .string()
   .trim()
   .max(DISPLAY_NAME_MAX_LENGTH, `Display name must be at most ${DISPLAY_NAME_MAX_LENGTH} characters`)
+  .refine((value) => !hasControlOrBidiCharacters(value), {
+    message: 'Display name must not contain control or bidirectional formatting characters',
+  })
   .meta({
     description:
-      'Name shown on your profile and posts, in the feed and to followers on other servers (at most 100 characters; empty for none)',
+      'Name shown on your profile and posts, in the feed and to followers on other servers (at most 100 characters, no control or bidirectional formatting characters; empty for none)',
     example: 'Fredrik Liljegren',
   })
 

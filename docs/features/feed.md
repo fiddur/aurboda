@@ -1284,7 +1284,9 @@ them a changed avatar never propagates.
 The actor's `name` is the user's display name (the `display_name` user setting, set at signup or
 in Settings → **Profile**, via `PATCH /user/settings` or MCP `update_user_settings`), left out when
 none is set so other servers show the username. Changing it delivers an `Update{Person}` the same
-way an avatar change does. The public profile page (`/u/:username`, from
+way an avatar change does. A display name with control characters (tab and newline included) or
+bidirectional embedding, override or isolate characters is refused with `400` wherever it is set.
+The public profile page (`/u/:username`, from
 `GET /public/:username/dashboards`'s `display_name`) shows it above `@username`. The account's
 email is never part of the actor or any public response.
 
