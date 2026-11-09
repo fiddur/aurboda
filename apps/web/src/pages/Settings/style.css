@@ -105,6 +105,7 @@
 }
 
 .form-field input[type='date'],
+.form-field input[type='email'],
 .form-field input[type='password'],
 .form-field input[type='text'],
 .form-field select {
@@ -472,6 +473,7 @@
   }
 
   .form-field input[type='date'],
+  .form-field input[type='email'],
   .form-field input[type='password'],
   .form-field input[type='text'],
   .form-field select,

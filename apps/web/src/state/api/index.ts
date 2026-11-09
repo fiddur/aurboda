@@ -1,3 +1,4 @@
+export * from './account-email'
 export * from './activities'
 export * from './activity-sessions'
 export * from './activity-types'

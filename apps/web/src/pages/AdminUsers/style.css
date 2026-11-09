@@ -123,6 +123,7 @@
 .au-facts dd {
   margin: 0;
   font-size: 1.1rem;
+  overflow-wrap: anywhere;
 }
 
 .au-section {

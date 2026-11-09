@@ -65,6 +65,7 @@ import {
   topAppsQuerySchema,
   topAppsResponseSchema,
 } from './schemas/productivity.ts'
+import { accountEmailResponseSchema, updateAccountEmailBodySchema } from './schemas/profile.ts'
 import {
   mergeRoutesBodySchema,
   mergeRoutesResponseSchema,
@@ -1419,6 +1420,44 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'Delete my account',
+        tags: ['Settings'],
+      },
+    },
+    '/account/email': {
+      get: {
+        description:
+          "The authenticated user's email address. It is private: only the user and the server's admins see it, and it is never public or federated.",
+        responses: {
+          200: {
+            content: { 'application/json': { schema: accountEmailResponseSchema } },
+            description: 'The email address, or null',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get my email',
+        tags: ['Settings'],
+      },
+      put: {
+        description:
+          "Set or clear the authenticated user's email address (null or an empty string clears it). Private: only the user and the server's admins see it. Nothing sends email to it yet. Allowed for a read-only account.",
+        requestBody: { content: { 'application/json': { schema: updateAccountEmailBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: accountEmailResponseSchema } },
+            description: 'The email address as stored',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Not a valid email address',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description:
+              'The account has no account record yet (rare: one is created at the next server start)',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Set my email',
         tags: ['Settings'],
       },
     },

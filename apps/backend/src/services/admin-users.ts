@@ -109,6 +109,7 @@ const buildOverview = (
   return {
     ...planOf(account ?? null, context),
     created_at: iso(account?.created_at),
+    email: account?.email ?? null,
     ingest: {
       items_30d: ingest.reduce((n, r) => n + r.items, 0),
       last_at: iso(latest(allTime.filter((r) => r.kind === 'ingest').map((r) => r.last_at))),
@@ -174,6 +175,7 @@ export const createAdminUsers = ({
       return {
         ...planOf(account, { billing, isAdmin, now: current }),
         created_at: iso(account?.created_at),
+        email: account?.email ?? null,
         daily: daily.map(({ channel, count, day, items, kind }) => ({ channel, count, day, items, kind })),
         is_admin: isAdmin,
         largest_tables: tables,

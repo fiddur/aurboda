@@ -1,4 +1,5 @@
 import {
+  blankToNull,
   defaultGoals,
   type Goal,
   isKnownTimezone,
@@ -184,6 +185,7 @@ const settingsWithDefaultsSchema = userSettingsResponseSchema.pick({
   birth_date: true,
   calendars: true,
   dashboard: true,
+  display_name: true,
   feed_default_tags: true,
   feed_type_tag: true,
   food_sensitivity_map: true,
@@ -299,6 +301,11 @@ const HR_SETTINGS_KEYS = ['hr_zone_start', 'birth_date', 'maf_hr'] as const
 
 export type HrSettingsChanged = (user: string) => void
 
+/** Fires when what the user's federated actor shows changed, so followers' servers get an `Update{Person}`. */
+export type ProfileChanged = (user: string) => void
+
+const displayNameOf = (settings: UserSettings): string | null => settings.display_name ?? null
+
 /** What the activity features read from the settings: the effective zones and the low-HR ceiling. */
 const featureInputs = (settings: UserSettings): string => {
   const { zones } = hrZonesFromSettings(settings)
@@ -316,13 +323,55 @@ const applyUpdate = (
 }
 
 /**
+ * The stored keys an update writes and the ones it clears. A `null` (or an empty display name)
+ * clears the stored key so the field falls back to its default — `undefined` would be dropped by
+ * the merge in `upsertUserSettings` and silently keep the old value. The field list is derived
+ * from the schema so it stays in sync with api-spec.
+ */
+const storedUpdates = (
+  data: UpdateSettingsInput,
+): { updates: Partial<UserSettings>; clear: (keyof UserSettings)[] } => {
+  const updates: Partial<UserSettings> = {}
+  const clear: (keyof UserSettings)[] = []
+  const input: UpdateSettingsInput = { ...data, display_name: blankToNull(data.display_name) }
+  for (const field of Object.keys(updateSettingsInputSchema.shape)) {
+    if (!isStoredSettingsKey(field)) continue
+    const value = input[field]
+    if (value === null) clear.push(field)
+    else if (value !== undefined) (updates as Record<string, unknown>)[field] = value
+  }
+  if (updates.feed_default_tags) updates.feed_default_tags = normalizeTags(updates.feed_default_tags)
+  return { clear, updates }
+}
+
+interface SettingsHooks {
+  onHrSettingsChanged?: HrSettingsChanged
+  onProfileChanged?: ProfileChanged
+}
+
+/** Which hooks an update may fire: only those given whose inputs the update touches. */
+const touchedHooks = (data: UpdateSettingsInput, hooks: SettingsHooks): SettingsHooks => ({
+  onHrSettingsChanged: HR_SETTINGS_KEYS.some((key) => data[key] !== undefined)
+    ? hooks.onHrSettingsChanged
+    : undefined,
+  onProfileChanged: data.display_name !== undefined ? hooks.onProfileChanged : undefined,
+})
+
+const fireChangedHooks = (user: string, before: UserSettings, after: UserSettings, hooks: SettingsHooks) => {
+  if (featureInputs(before) !== featureInputs(after)) hooks.onHrSettingsChanged?.(user)
+  if (displayNameOf(before) !== displayNameOf(after)) hooks.onProfileChanged?.(user)
+}
+
+/**
  * `onHrSettingsChanged` fires when the update changes what the activity features depend on: the
  * effective HR zones (custom, or from the birth date) or the low-HR ceiling (`maf_hr`).
+ * `onProfileChanged` fires when the update changes the display name.
  */
 export const validateAndUpdateSettings = async (
   user: string,
   input: unknown,
   onHrSettingsChanged?: HrSettingsChanged,
+  onProfileChanged?: ProfileChanged,
 ): Promise<SettingsResponse> => {
   const parsed = updateSettingsInputSchema.safeParse(input)
   if (!parsed.success) {
@@ -334,20 +383,7 @@ export const validateAndUpdateSettings = async (
     await replaceGoals(user, newGoals)
   }
 
-  // A `null` clears the stored key so the field falls back to its default —
-  // `undefined` would be dropped by the merge in `upsertUserSettings` and
-  // silently keep the old value. The field list is derived from the schema so
-  // it stays in sync with api-spec.
-  const updates: Partial<UserSettings> = {}
-  const clear: (keyof UserSettings)[] = []
-  for (const field of Object.keys(updateSettingsInputSchema.shape)) {
-    if (!isStoredSettingsKey(field)) continue
-    const value = parsed.data[field]
-    if (value === null) clear.push(field)
-    else if (value !== undefined) (updates as Record<string, unknown>)[field] = value
-  }
-
-  if (updates.feed_default_tags) updates.feed_default_tags = normalizeTags(updates.feed_default_tags)
+  const { updates, clear } = storedUpdates(parsed.data)
 
   // Shallow-merge dict fields so partial updates don't wipe existing entries.
   // e.g. updating one exercise icon shouldn't delete all tag icons.
@@ -356,14 +392,12 @@ export const validateAndUpdateSettings = async (
     updates.item_icons = { ...current.item_icons, ...updates.item_icons }
   }
 
-  const touchesHr = onHrSettingsChanged && HR_SETTINGS_KEYS.some((key) => parsed.data[key] !== undefined)
-  const before = touchesHr ? await getSettings(user) : undefined
+  const hooks = touchedHooks(parsed.data, { onHrSettingsChanged, onProfileChanged })
+  const before = hooks.onHrSettingsChanged || hooks.onProfileChanged ? await getSettings(user) : undefined
 
   await updateSettingsInternal(user, updates, clear)
 
-  if (before && featureInputs(before) !== featureInputs(applyUpdate(before, updates, clear))) {
-    onHrSettingsChanged?.(user)
-  }
+  if (before) fireChangedHooks(user, before, applyUpdate(before, updates, clear), hooks)
 
   return getSettingsResponse(user)
 }

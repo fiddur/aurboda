@@ -11,6 +11,17 @@ Every account has a row in the central `user_accounts` table, written at signup 
 passkey) with the signup time. Accounts that existed before the table did get a row at the next
 server start with no signup date and `pre_existing` set, since their signup date is unknown.
 
+The row also holds the account's optional **email** address, given at signup or later in Settings
+(**Profile**), over REST (`GET`/`PUT /account/email`, body `{ "email": "…" }`, `null` or an empty
+string clears it) or over MCP (`get_my_email`, `set_my_email`). It is private: only the user and
+the server's admins see it, it is never shown publicly and never federated. Nothing sends email to
+it yet; it is meant for account recovery and plan reminders (#1510). Setting it never creates the
+row: for an account without one (its signup could not write it; the next server start does) the
+`PUT` answers `409` and `set_my_email` a tool error, and a signup's email is dropped with a logged
+error, so a missing row still gets its trial from the backfill. The optional **display name**
+given at signup is not on this row but a user setting (`display_name`), since it is part of the
+public profile.
+
 ## Usage counters
 
 So an admin can see who uses the server and how, the backend counts, per user and per UTC day:
@@ -44,7 +55,7 @@ Click a column header to sort by it; the default is last UI use, most recent fir
 
 | Column           | Meaning                                                                                                                                                                                                                               |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| User             | The username, marked _admin_ for admins.                                                                                                                                                                                              |
+| User             | The username, marked _admin_ for admins, and the user's email when set.                                                                                                                                                               |
 | Signed up        | The signup date, or _before tracking_ for an account that existed before signup dates were recorded.                                                                                                                                  |
 | Plan             | The plan and its end (see [Plans and billing](#plans-and-billing)); grace and read-only are highlighted.                                                                                                                              |
 | Storage          | Size of the user's database (`pg_database_size`), refreshed at most every five minutes.                                                                                                                                               |
@@ -53,7 +64,7 @@ Click a column header to sort by it; the default is last UI use, most recent fir
 | Last MCP/API use | The latest use over MCP or the plain API (anything that is neither the web app nor the Android app), and how many reads those channels made in the last 30 days.                                                                      |
 
 "Last" times look back over the whole usage retention (400 days); _never_ means no use in that time.
-Clicking a row opens the user's page (`/admin/users/<username>`): signup date and storage, a 90-day
+Clicking a row opens the user's page (`/admin/users/<username>`): signup date, email and storage, a 90-day
 daily chart of ingest events by source, another of reads and writes by channel (`web`, `android`,
 `mcp`, `api`), and the user database's ten largest tables (indexes included; tables an extension
 owns, such as PostGIS's `spatial_ref_sys`, are left out).
@@ -162,12 +173,12 @@ their account. No new data is stored until the plan is renewed:
 - Authenticated REST writes (`POST`, `PUT`, `PATCH`, `DELETE`) answer `402` with
   `{ "success": false, "error": "This account is read-only until the plan is renewed", "payment_url": … }`
   (the `AccountReadOnlyResponse` schema in the OpenAPI document).
-  Allowed anyway: `/export/*`, `DELETE /account`, passkey management (`/webauthn/*`) and the
+  Allowed anyway: `/export/*`, `DELETE /account`, `PUT /account/email`, passkey management (`/webauthn/*`) and the
   previews that store nothing (`POST /autoshare-rules/preview`, `/deduction-rules/preview`,
   `/feed/activities/:id/preview` and `/feed/exercises/preview`).
 - MCP tools that change data (the same verbs the usage counters treat as writes) return a tool error
-  with the same message and the payment link, without running; `export_data_dump` and
-  `delete_my_account` still work.
+  with the same message and the payment link, without running; `export_data_dump`,
+  `delete_my_account` and `set_my_email` still work.
 - OwnTracks posts answer `402` with the same body.
 - Oura and Strava webhooks are acknowledged but not processed, and the background and on-demand
   pulls (Oura, Garmin, Gravl, RescueTime, Last.fm, calendars) skip the user. Strava jobs queued

@@ -22,6 +22,11 @@ import { httpError } from '../http-error.ts'
 import { readBillingSettings, recordNewAccount } from '../services/account-plan.ts'
 import { pruneAuditLog } from '../services/audit-log.ts'
 import { readOfficialFeedSetting } from '../services/official-feed.ts'
+import {
+  defaultSignupProfileDeps,
+  parseSignupProfile,
+  saveSignupProfile,
+} from '../services/signup-profile.ts'
 
 interface AuthRoutesDeps {
   httpd: Express
@@ -147,6 +152,12 @@ export const registerAuthRoutes = ({
       return
     }
 
+    const profile = parseSignupProfile(req.body)
+    if (!profile.ok) {
+      res.status(400).json({ error: profile.error, success: false })
+      return
+    }
+
     const existingUser = await query(userDb, 'SELECT usename FROM pg_user WHERE usename=$1', [user])
     if ((existingUser.rowCount && existingUser.rowCount > 0) || (await centralDb.isUsernameDeleted(user))) {
       res.status(409).json({ error: 'Username already exists', success: false })
@@ -158,6 +169,7 @@ export const registerAuthRoutes = ({
       await recordNewAccount(centralDb, user).catch((e) =>
         console.error(`⚠️ Failed to record account row for ${user}:`, e),
       )
+      await saveSignupProfile(defaultSignupProfileDeps(centralDb), user, profile.profile)
       const token = auth.createToken(user)
 
       const adminCount = await centralDb.getAdminCount()

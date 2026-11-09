@@ -27,6 +27,7 @@ vi.mock('../db/index.ts', async (importOriginal) => ({
   getChallengeMemberByIdentity: vi.fn(),
   getPublicSharedDashboardBySlug: vi.fn(),
   getSharedExerciseBySlug: vi.fn(),
+  getUserSettings: vi.fn(async () => null),
   listChallengeMembers: vi.fn(),
   listPublicChallenges: vi.fn(),
   listPublicSharedDashboards: vi.fn(),
@@ -427,6 +428,18 @@ describe('shared exercises on the public surface', () => {
       { name: 'Bench', share_url: 'https://aurboda.net/u/alice/ex1', slug: 'ex1' },
     ])
     expect(res.body.has_articles).toBe(false)
+  })
+
+  test('the profile carries the display name, or null without one', async () => {
+    vi.mocked(db.listPublicSharedDashboards).mockResolvedValue([])
+    vi.mocked(db.listPublicChallenges).mockResolvedValue([])
+    vi.mocked(db.listPublicSharedExercises).mockResolvedValue([])
+    vi.mocked(db.countPublicFeedPosts).mockResolvedValue(0)
+    vi.mocked(db.getUserSettings).mockResolvedValueOnce({ display_name: 'Alice Liddell' })
+    expect((await app().get('/public/alice/dashboards')).body.display_name).toBe('Alice Liddell')
+
+    vi.mocked(db.getUserSettings).mockResolvedValueOnce(null)
+    expect((await app().get('/public/alice/dashboards')).body.display_name).toBeNull()
   })
 
   test('the profile says whether the user has public articles, for the Blog link', async () => {

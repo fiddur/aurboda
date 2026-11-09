@@ -750,6 +750,13 @@ const main = async () => {
   if (!trackBackfillQueue) {
     console.warn('⚠️ Activity track backfill disabled (no job queue) - run it on demand')
   }
+  // Tell followers' servers the profile changed — they cache the avatar and name
+  // and refresh them only on an Update{Person} or a changed icon URL.
+  const onProfileChanged = (user: string): void => {
+    deliverActorUpdate(feedDeps, user).catch((error) =>
+      console.warn(`⚠️ actor Update delivery failed for ${user}:`, error),
+    )
+  }
   const onHrSettingsChanged = (user: string): void => {
     void trackBackfillQueue?.enqueue(user, 0, { recomputeFeatures: true })
   }
@@ -898,6 +905,7 @@ const main = async () => {
       onActivityMutated: activityNotifier,
       onHrSettingsChanged,
       onNamedLocationsChanged,
+      onProfileChanged,
       onTrackWritten,
       oura,
       reactionActions,
@@ -1069,13 +1077,7 @@ const main = async () => {
     onHrSettingsChanged,
     onNamedLocationsChanged,
     onTrackWritten,
-    // Tell followers' servers the profile changed — they cache the avatar and
-    // re-download only on an Update{Person} or a changed icon URL.
-    onAvatarChanged: (user) => {
-      deliverActorUpdate(feedDeps, user).catch((error) =>
-        console.warn(`⚠️ actor Update delivery failed for ${user}:`, error),
-      )
-    },
+    onProfileChanged,
     ouraWebhookManager,
     reactionActions,
     retroEnrichTimeline,

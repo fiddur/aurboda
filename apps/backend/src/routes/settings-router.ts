@@ -15,6 +15,7 @@ import { getGoalsProgress, getWidgetGoalsProgress } from '../services/goals.ts'
 import {
   getSettingsResponse,
   type HrSettingsChanged,
+  type ProfileChanged,
   validateAndUpdateSettings,
 } from '../services/settings.ts'
 import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
@@ -23,6 +24,7 @@ import { validateBody, validateQuery } from '../validation.ts'
 export const createSettingsRouter = (
   authMiddleware: AnyMiddleware,
   onHrSettingsChanged?: HrSettingsChanged,
+  onProfileChanged?: ProfileChanged,
 ): TypedRouter => {
   const router = typedRouter()
   router.get<Record<string, never>, UserSettingsResponse>(
@@ -39,7 +41,12 @@ export const createSettingsRouter = (
     authMiddleware,
     validateBody(updateSettingsInputSchema),
     async (req, res) => {
-      const result = await validateAndUpdateSettings(req.user!, req.body, onHrSettingsChanged)
+      const result = await validateAndUpdateSettings(
+        req.user!,
+        req.body,
+        onHrSettingsChanged,
+        onProfileChanged,
+      )
       if (!result.success) {
         return res.status(400).json(result)
       }

@@ -64,6 +64,10 @@ export function AdminUserDetail() {
               </dd>
             </div>
             <div>
+              <dt>Email</dt>
+              <dd>{usage.email ?? <span class="au-muted">none</span>}</dd>
+            </div>
+            <div>
               <dt>Storage</dt>
               <dd>{formatBytes(usage.storage_bytes)}</dd>
             </div>

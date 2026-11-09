@@ -33,6 +33,7 @@ import {
 } from './central-nutrient-recommendations.ts'
 import {
   ALTER_USER_ACCOUNTS_PLAN_COLUMNS,
+  ALTER_USER_ACCOUNTS_PROFILE_COLUMNS,
   createUserAccountsApi,
   CREATE_USER_ACCOUNTS_TABLE,
   type UserAccountsApi,
@@ -469,6 +470,7 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
 
       await client.query(CREATE_USER_ACCOUNTS_TABLE)
       for (const stmt of ALTER_USER_ACCOUNTS_PLAN_COLUMNS) await client.query(stmt)
+      for (const stmt of ALTER_USER_ACCOUNTS_PROFILE_COLUMNS) await client.query(stmt)
       await client.query(CREATE_DELETED_USERNAMES_TABLE)
       await client.query(CREATE_USER_USAGE_DAILY_TABLE)
       for (const stmt of CREATE_USER_USAGE_DAILY_INDEXES) await client.query(stmt)

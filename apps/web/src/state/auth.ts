@@ -1,4 +1,4 @@
-import type { ServerStatusResponse } from '@aurboda/api-spec'
+import type { ServerStatusResponse, SignupProfile } from '@aurboda/api-spec'
 import type { AxiosError } from 'axios'
 
 import { signal } from '@preact/signals'
@@ -6,6 +6,7 @@ import axios from 'axios'
 
 import { API_URL } from '../config'
 import { readNativeAuth } from '../embed'
+import { apiErrorText } from '../utils/profile'
 import { clearCachedDashboards } from './dashboardCache'
 
 export type SignupMode = 'open' | 'invite_only' | 'closed'
@@ -84,9 +85,11 @@ export const signup = async (
   user: string,
   pass: string,
   invitation?: string,
+  profile: SignupProfile = {},
 ): Promise<{ success: boolean; error?: string }> => {
   try {
     const response = await axios.post<{ token: string; is_admin?: boolean }>(`${API_URL}/signup`, {
+      ...profile,
       invitation,
       password: pass,
       username: user,
@@ -98,8 +101,8 @@ export const signup = async (
     }
     return { error: 'No token received', success: false }
   } catch (error) {
-    const axiosError = error as AxiosError<{ error?: string }>
-    const message = axiosError.response?.data?.error ?? 'Signup failed'
+    const axiosError = error as AxiosError<{ error?: unknown }>
+    const message = apiErrorText(axiosError.response?.data?.error, 'Signup failed')
     console.error('Signup error:', error)
     return { error: message, success: false }
   }
@@ -138,6 +141,7 @@ const friendlyWebAuthnError = (error: unknown, fallback: string): string => {
 export const signupWithPasskey = async (
   user: string,
   invitation?: string,
+  profile: SignupProfile = {},
 ): Promise<{ success: boolean; error?: string }> => {
   try {
     const { startRegistration } = await import('@simplewebauthn/browser')
@@ -158,6 +162,7 @@ export const signupWithPasskey = async (
       verified: boolean
       error?: string
     }>(`${API_URL}/webauthn/signup/verify`, {
+      ...profile,
       response_json: JSON.stringify(attestation),
       username: user,
     })
@@ -172,9 +177,11 @@ export const signupWithPasskey = async (
     }
     return { error: verifyResp.data.error ?? 'Signup failed', success: false }
   } catch (error) {
-    const axiosError = error as AxiosError<{ error?: string }>
-    const apiError = axiosError.response?.data?.error
-    const message = apiError ?? friendlyWebAuthnError(error, 'Passkey signup failed')
+    const axiosError = error as AxiosError<{ error?: unknown }>
+    const message = apiErrorText(
+      axiosError.response?.data?.error,
+      friendlyWebAuthnError(error, 'Passkey signup failed'),
+    )
     console.error('Passkey signup error:', error)
     return { error: message, success: false }
   }

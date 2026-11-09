@@ -42,6 +42,7 @@ const noPlan = {
 const overview = {
   ...noPlan,
   created_at: null,
+  email: 'alice@example.com',
   ingest: { items_30d: 0, last_at: null, per_day_30d: 0, per_day_7d: 0, sources: [] },
   is_admin: true,
   last_api_at: null,
@@ -64,6 +65,7 @@ const adminUsers: AdminUsers = {
           ...noPlan,
           created_at: null,
           daily: [],
+          email: 'alice@example.com',
           is_admin: true,
           largest_tables: [{ bytes: 512, table: 'time_series' }],
           pre_existing: true,

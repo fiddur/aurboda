@@ -10,6 +10,7 @@ import { useRoute } from 'preact-iso'
 
 import { tagFilterFromQuery } from '../../components/hashtags'
 import { avatarUrl, blogPath, fetchPublicPosts, fetchPublicProfile } from '../../state/api'
+import { profileHeading } from '../../utils/profile'
 import { FeedPostCard } from '../Feed/FeedPostCard'
 import { publicAuthor } from './public-author'
 import './style.css'
@@ -38,6 +39,40 @@ function PublicList({
         </ul>
       )}
     </section>
+  )
+}
+
+function PublicProfileHeader({
+  displayName,
+  hasArticles,
+  username,
+}: {
+  displayName: string | null | undefined
+  hasArticles: boolean
+  username: string
+}) {
+  const heading = profileHeading(username, displayName)
+  return (
+    // A <div>, not <header>: the global `header` rule paints the chrome bar (mobile nav style)
+    // behind the content, so avoid the semantic element here (#883).
+    <div class="public-profile-header">
+      <img
+        class="public-avatar"
+        src={avatarUrl(username)}
+        alt={`${username}'s avatar`}
+        width={80}
+        height={80}
+      />
+      <div class="public-profile-names">
+        <h1>{heading.title}</h1>
+        {heading.handle && <p class="public-handle">{heading.handle}</p>}
+      </div>
+      {hasArticles && (
+        <a class="public-blog-link" href={blogPath(username)}>
+          Blog
+        </a>
+      )}
+    </div>
   )
 }
 
@@ -90,28 +125,15 @@ export function PublicProfile() {
 
   const posts = postsQuery.data?.pages.flatMap((page) => page.posts) ?? []
 
-  const author = publicAuthor(username)
+  const author = publicAuthor(username, query.data.display_name)
 
   return (
     <div class="public-profile">
-      {/* A <div>, not <header>: the global `header` rule paints the chrome bar
-          (mobile nav style) behind the content, so avoid the semantic element
-          here (#883). */}
-      <div class="public-profile-header">
-        <img
-          class="public-avatar"
-          src={avatarUrl(username)}
-          alt={`${username}'s avatar`}
-          width={80}
-          height={80}
-        />
-        <h1>@{username}</h1>
-        {query.data.has_articles && (
-          <a class="public-blog-link" href={blogPath(username)}>
-            Blog
-          </a>
-        )}
-      </div>
+      <PublicProfileHeader
+        username={username}
+        displayName={query.data.display_name}
+        hasArticles={!!query.data.has_articles}
+      />
 
       <section class="public-section">
         <h2>Posts</h2>

@@ -8,6 +8,7 @@ import {
   getSettingsResponse,
   getTagMappings,
   type HrSettingsChanged,
+  type ProfileChanged,
   setTagMapping,
   validateAndUpdateSettings,
 } from '../services/settings.ts'
@@ -17,6 +18,7 @@ export const registerSettingsTools = (
   server: McpServer,
   user: string,
   onHrSettingsChanged?: HrSettingsChanged,
+  onProfileChanged?: ProfileChanged,
 ) => {
   server.tool(
     'get_user_settings',
@@ -33,7 +35,7 @@ export const registerSettingsTools = (
     'Update user settings. Can set birth date (for age-based HR zones) and/or custom HR zone thresholds.',
     { ...updateSettingsInputSchema.shape },
     async (params) => {
-      const result = await validateAndUpdateSettings(user, params, onHrSettingsChanged)
+      const result = await validateAndUpdateSettings(user, params, onHrSettingsChanged, onProfileChanged)
       return jsonResponse(result)
     },
   )

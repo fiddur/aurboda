@@ -445,6 +445,7 @@ export interface UserSettings {
   calendars?: CalendarConfig[] // Calendar ICS URL configurations
   dashboard?: DashboardConfig
   device_timezone?: string // IANA timezone from the Android device (e.g. "Europe/Stockholm")
+  display_name?: string // Name shown on the profile, posts and federated actor
   feed_default_tags?: string[] // Hashtags every feed post gets automatically (lowercase, no `#`)
   feed_type_tag?: boolean // Whether a share also gets its activity type / exercise / `challenge` as a hashtag
   hr_zone_start?: { 1: number; 2: number; 3: number; 4: number; 5: number }
