@@ -160,7 +160,7 @@ export const updateSettingsInputSchema = z
     }),
     display_name: displayNameInputSchema.nullable().optional().meta({
       description:
-        'Name shown on your profile and posts, in the feed and to followers on other servers (at most 100 characters; null or an empty string for none, which shows your username)',
+        'Name shown on your profile and posts, in the feed and to followers on other servers (at most 100 characters, no control or bidirectional formatting characters; null or an empty string for none, which shows your username)',
     }),
     goals: goalsSchema.nullable().optional().meta({
       description: 'Goals (set to null to reset to defaults, empty array to clear all)',

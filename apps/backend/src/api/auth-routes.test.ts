@@ -334,7 +334,34 @@ describe('POST /signup', () => {
       .send({ email: 'not-an-email', password: 'secret', username: 'ada' })
 
     expect(response.status).toBe(400)
-    expect(response.body.error).toBe('Not a valid email address')
+    expect(response.body.error).toEqual({ email: ['Not a valid email address'] })
+    expect(db.makeNewUserDb).not.toHaveBeenCalled()
+  })
+
+  test.each([
+    ['a bidi override', 'Ada\u202Eevil'],
+    ['a tab', 'Ada\tLovelace'],
+  ])('refuses a display name with %s before creating the account', async (_label, display_name) => {
+    vi.mocked(db.query).mockResolvedValue({ rowCount: 0, rows: [] } as never)
+
+    const response = await supertest(buildApp({ signupMode: 'open' }))
+      .post('/signup')
+      .send({ display_name, password: 'secret', username: 'ada' })
+
+    expect(response.status).toBe(400)
+    expect(response.body.error).toEqual({
+      display_name: ['Display name must not contain control or bidirectional formatting characters'],
+    })
+    expect(db.makeNewUserDb).not.toHaveBeenCalled()
+  })
+
+  test('answers 400 without a password', async () => {
+    const response = await supertest(buildApp({ signupMode: 'open' }))
+      .post('/signup')
+      .send({ username: 'ada' })
+
+    expect(response.status).toBe(400)
+    expect(response.body.error).toHaveProperty('password')
     expect(db.makeNewUserDb).not.toHaveBeenCalled()
   })
 
