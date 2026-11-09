@@ -1,4 +1,4 @@
-import { blankToNull, type SignupProfile, signupProfileSchema } from '@aurboda/api-spec'
+import { blankToNull, type SignupProfile } from '@aurboda/api-spec'
 
 import type { CentralDb } from './central-db.ts'
 
@@ -18,18 +18,6 @@ export const defaultSignupProfileDeps = (centralDb: Pick<CentralDb, 'setUserEmai
     }
   },
 })
-
-/** Parses a signup's optional profile fields; resolves to the error message when one is invalid. */
-export const parseSignupProfile = (
-  body: unknown,
-): { ok: true; profile: SignupProfile } | { ok: false; error: string } => {
-  const source = typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {}
-  const parsed = signupProfileSchema.safeParse({ display_name: source.display_name, email: source.email })
-  if (!parsed.success) {
-    return { error: parsed.error.issues.map((issue) => issue.message).join('; '), ok: false }
-  }
-  return { ok: true, profile: parsed.data }
-}
 
 /**
  * Stores the optional display name and email a just-created account signed up with. A failure is

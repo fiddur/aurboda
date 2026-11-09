@@ -4,7 +4,7 @@ import { describe, expect, test } from 'vitest'
 
 import type { ResolvedChallenge } from '../services/challenge-card.ts'
 
-import { createShareHtmlRouter, type ShareHtmlDeps } from './share-html-router.ts'
+import { createShareHtmlRouter, HOME_PAGE_PATH, type ShareHtmlDeps } from './share-html-router.ts'
 
 const template = `<!doctype html>
 <html lang="en"><head><title>Aurboda</title></head><body><div id="app"></div></body></html>`
@@ -229,6 +229,22 @@ describe('GET /u/:username', () => {
     expect(res.text).toContain('<title>Aurboda</title>')
     expect(res.text).not.toContain('ghost — Aurboda')
     expect(res.headers['cache-control']).toBe('public, max-age=60')
+  })
+})
+
+describe('GET the welcome page', () => {
+  test('renders the site meta with an image, uncached so a deploy shows at once', async () => {
+    const res = await supertest(buildApp()).get(HOME_PAGE_PATH)
+    expect(res.status).toBe(200)
+    expect(res.type).toBe('text/html')
+    expect(res.text).toContain(
+      '<title>Aurboda: see how your sleep, training and everyday life fit together</title>',
+    )
+    expect(res.text).toContain('<link rel="canonical" href="https://aurboda.net/">')
+    expect(res.text).toContain('property="og:image" content="https://aurboda.net/og-default.png"')
+    expect(res.text).toContain('name="twitter:card" content="summary_large_image"')
+    expect(res.text).toContain('<div id="app"></div>')
+    expect(res.headers['cache-control']).toBe('no-cache')
   })
 })
 
