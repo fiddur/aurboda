@@ -69,7 +69,20 @@ const alternativesOf = (schema: JsonSchema): unknown[] | undefined =>
 
 const typeOfValue = (value: unknown): string => (value === null ? 'null' : typeof value)
 
-const constraintKeys = ['$ref', 'allOf', 'anyOf', 'const', 'enum', 'not', 'oneOf', 'type']
+const constraintKeys = [
+  '$ref',
+  'additionalProperties',
+  'allOf',
+  'anyOf',
+  'const',
+  'enum',
+  'format',
+  'items',
+  'not',
+  'oneOf',
+  'properties',
+  'type',
+]
 
 const admitsAnything = (schema: unknown, definitions: JsonSchema, seen?: ReadonlySet<string>): boolean => {
   const resolved = resolveSchema(schema, definitions, seen)
