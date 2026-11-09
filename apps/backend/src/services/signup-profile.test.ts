@@ -1,11 +1,7 @@
+import { signupProfileSchema, updateSettingsInputSchema } from '@aurboda/api-spec'
 import { describe, expect, test } from 'vitest'
 
-import {
-  defaultSignupProfileDeps,
-  parseSignupProfile,
-  saveSignupProfile,
-  type SignupProfileDeps,
-} from './signup-profile.ts'
+import { defaultSignupProfileDeps, saveSignupProfile, type SignupProfileDeps } from './signup-profile.ts'
 
 const recorder = (failing: { displayName?: boolean; email?: boolean } = {}) => {
   const calls: string[] = []
@@ -24,34 +20,27 @@ const recorder = (failing: { displayName?: boolean; email?: boolean } = {}) => {
   return { calls, deps, errors }
 }
 
-describe('parseSignupProfile', () => {
-  test('trims both fields and keeps the email case as typed', () => {
-    expect(
-      parseSignupProfile({ display_name: '  Ada  ', email: ' Ada@Example.com ', username: 'ada' }),
-    ).toEqual({
-      ok: true,
-      profile: { display_name: 'Ada', email: 'Ada@Example.com' },
-    })
-  })
-
-  test('absent fields stay absent', () => {
-    expect(parseSignupProfile({ username: 'ada' })).toEqual({ ok: true, profile: {} })
-    expect(parseSignupProfile(undefined)).toEqual({ ok: true, profile: {} })
-  })
-
-  test('empty fields pass (they mean none)', () => {
-    expect(parseSignupProfile({ display_name: '', email: '  ' })).toEqual({
-      ok: true,
-      profile: { display_name: '', email: '' },
-    })
-  })
-
+describe('display name validation', () => {
   test.each([
-    [{ email: 'not-an-email' }, 'Not a valid email address'],
-    [{ email: `${'a'.repeat(250)}@example.com` }, 'Email must be at most 254 characters'],
-    [{ display_name: 'x'.repeat(101) }, 'Display name must be at most 100 characters'],
-  ])('rejects %j', (body, error) => {
-    expect(parseSignupProfile(body)).toEqual({ error, ok: false })
+    ['a bidi override', 'Ada\u202Eevil'],
+    ['a bidi isolate', 'Ada\u2066evil'],
+    ['a tab', 'Ada\tLovelace'],
+    ['a newline', 'Ada\nLovelace'],
+    ['a C1 control', 'Ada\u0085Lovelace'],
+  ])('refuses %s, in signup and in settings', (_label, display_name) => {
+    const message = 'Display name must not contain control or bidirectional formatting characters'
+    for (const schema of [signupProfileSchema, updateSettingsInputSchema]) {
+      const parsed = schema.safeParse({ display_name })
+      expect(parsed.success).toBe(false)
+      expect(parsed.error?.issues.map((issue) => issue.message)).toEqual([message])
+    }
+  })
+
+  test('accepts an ordinary name, accents and right-to-left script included', () => {
+    for (const display_name of ['Ada Lovelace', 'Åsa Ödmark', 'שלום']) {
+      expect(signupProfileSchema.safeParse({ display_name }).success).toBe(true)
+      expect(updateSettingsInputSchema.safeParse({ display_name }).success).toBe(true)
+    }
   })
 })
 
