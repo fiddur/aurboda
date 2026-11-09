@@ -254,10 +254,11 @@ describe('initializeSchema', () => {
   )
 
   test(
-    'a failing legacy tags step is logged, and the sweep still records its fingerprint (#1489)',
+    'a failing legacy tags step is logged, the rest of the sweep lands, and the fingerprint is withheld (#1496)',
     async () => {
       const db = await legacyTagsDb(FAILING_TAGS)
       const tag = await insertTag(db, 'Sauna')
+      await db.query(`DELETE FROM schema_migrations WHERE name = 'gravl_sets_note_v1'`)
       // Only this step reads the column, so the rest of the sweep runs without it.
       await db.query(`ALTER TABLE tag_definitions DROP COLUMN show_on_timeline`)
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -268,11 +269,14 @@ describe('initializeSchema', () => {
           expect.stringContaining(`legacy tags into activities failed for ${FAILING_TAGS}`),
           expect.objectContaining({ code: '42703' }),
         )
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining(`fingerprint withheld for ${FAILING_TAGS}`))
       } finally {
         warn.mockRestore()
       }
 
-      expect(await schemaUpToDate(db, schemaFingerprint())).toBe(true)
+      expect(await schemaUpToDate(db, schemaFingerprint())).toBe(false)
+      const lastStep = await db.query(`SELECT 1 FROM schema_migrations WHERE name = 'gravl_sets_note_v1'`)
+      expect(lastStep.rowCount).toBe(1)
       expect((await db.query(`SELECT 1 FROM activities WHERE id = $1`, [tag])).rowCount).toBe(0)
     },
     SCHEMA_TIMEOUT,

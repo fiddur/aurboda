@@ -174,6 +174,21 @@ describe('terseInputSchema', () => {
     })
   })
 
+  test('a union alternative constrained without a type keeps the other types', () => {
+    const result = terseInputSchema(
+      withDefinitions({
+        formatted: { anyOf: [{ format: 'date-time' }, { type: 'string' }] },
+        itemised: { anyOf: [{ items: { type: 'number' } }, { type: 'string' }] },
+        shaped: { anyOf: [{ properties: { a: { type: 'string' } } }, { type: 'string' }] },
+      }),
+    )
+    expect(result.properties).toEqual({
+      formatted: { type: 'string' },
+      itemised: { type: 'string' },
+      shaped: { type: 'string' },
+    })
+  })
+
   test('an array of objects shows only the item type', () => {
     const result = terseInputSchema(
       withDefinitions({

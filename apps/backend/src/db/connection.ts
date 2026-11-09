@@ -1487,10 +1487,13 @@ export const migrateSchema = async (user: string, opts?: { force?: boolean }): P
 
   await backfillTagDefinitions(db, existingTableNames)
 
-  // A legacy one-off: its failure must not keep the rest of the sweep, and the fingerprint, from landing.
+  // A legacy one-off: its failure must not keep the rest of the sweep from landing, but it withholds
+  // the fingerprint (see the end) so the next boot retries the tags.
+  let legacyTagsFailed = false
   try {
     await migrateTagsToActivities(db, existingTableNames)
   } catch (error) {
+    legacyTagsFailed = true
     console.warn(`⚠️ Migrating legacy tags into activities failed for ${user}, continuing:`, error)
   }
 
@@ -1752,7 +1755,12 @@ export const migrateSchema = async (user: string, opts?: { force?: boolean }): P
     })
   }
 
-  // Last, and only on success: a sweep that threw must run again next time.
+  // Last, and only on success: a sweep that threw must run again next time. A failed legacy tags step
+  // withholds the fingerprint without failing the sweep, so the next boot retries the tags.
+  if (legacyTagsFailed) {
+    console.warn(`⚠️ Schema fingerprint withheld for ${user}: the next boot retries the legacy tags`)
+    return true
+  }
   await recordSchemaFingerprint(db, fingerprint)
   return true
 }
