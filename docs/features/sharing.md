@@ -227,6 +227,13 @@ proxies the public share routes (`/u/*`) to the backend, which returns the same
 `description` meta plus schema.org JSON-LD for the resolved resource. Browsers still
 get the full SPA and hydrate normally — only the head is enriched.
 
+The welcome page at the site root is enriched the same way: nginx proxies exactly `/` to
+the backend's `/welcome-page`, which adds the site's title, description and the default
+preview image (`/og-default.png`, a dashboard and phone timeline on the Fjord background).
+It is sent `no-cache`, like the `index.html` nginx serves, so a deploy's new chunks load
+at once. If the backend is down or answers with an error, nginx serves the static
+`index.html` instead, so the page still loads, without the preview meta.
+
 - **Dashboards**, **challenges** and **shared exercises** get a title (resource name), a
   description, and a canonical URL; profiles get a `profile`-typed card with `ProfilePage` JSON-LD.
   A dashboard's description uses the author-provided text when set (see

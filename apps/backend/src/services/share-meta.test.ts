@@ -7,6 +7,7 @@ import {
   buildDashboardShareMeta,
   buildExerciseShareMeta,
   buildDefaultShareMeta,
+  buildHomeShareMeta,
   buildProfileShareMeta,
   defaultOgImage,
   injectShareMeta,
@@ -220,6 +221,15 @@ describe('builders', () => {
     expect(m.title).toBe('Aurboda')
     expect(m.jsonLd).toBeUndefined()
     expect(m.image).toBe('https://aurboda.net/og-default.png')
+  })
+
+  test('home meta describes the site at its root URL', () => {
+    const m = buildHomeShareMeta('https://aurboda.net/')
+    expect(m.url).toBe('https://aurboda.net/')
+    expect(m.title).toBe('Aurboda: see how your sleep, training and everyday life fit together')
+    expect(m.description).toMatch(/^Aurboda collects what your watch/)
+    expect(m.image).toBe('https://aurboda.net/og-default.png')
+    expect(m.jsonLd).toMatchObject({ '@type': 'WebSite', url: 'https://aurboda.net/' })
   })
 })
 
