@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import {
   dataFilterToRow,
   emptyRuleFormState,
+  formStateTagsText,
   formStateToAddBody,
   formStateToUpdateBody,
   ruleToFormState,
@@ -229,5 +230,24 @@ describe('formStateToAddBody', () => {
       max_duration_seconds: 7200,
       source: 'garmin',
     })
+  })
+})
+
+describe('formStateTagsText', () => {
+  it('adds the message hashtags to the default tags', () => {
+    expect(formStateTagsText({ ...emptyRuleFormState(), message: '#aurboda #strengthtraining' })).toBe(
+      'your default tags + #aurboda #strengthtraining',
+    )
+  })
+
+  it('counts the message hashtags when own tags are empty', () => {
+    expect(
+      formStateTagsText({
+        ...emptyRuleFormState(),
+        message: '#aurboda #strengthtraining',
+        ownTags: true,
+        tagsText: '',
+      }),
+    ).toBe('#aurboda #strengthtraining')
   })
 })
