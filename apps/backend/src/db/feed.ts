@@ -528,8 +528,9 @@ export const touchFeedPost = async (user: string, id: string): Promise<FeedPostR
  * — their id never resolved publicly, so a 410 would leak that a post existed.
  * Idempotent via `ON CONFLICT` (re-deleting a since-recreated id is a no-op).
  *
- * The post's inbound like/boost records go with it: `feed_post_reaction.post_id`
- * is a soft reference (like `activity_id`), so nothing cascades on its own.
+ * The post's inbound like/boost records and quote approvals go with it:
+ * `feed_post_reaction.post_id` and `feed_quote_authorization.post_id` are soft
+ * references (like `activity_id`), so nothing cascades on its own.
  */
 export const deleteFeedPost = async (user: string, id: string): Promise<boolean> => {
   const result = await query<{ id: string }>(
@@ -539,6 +540,8 @@ export const deleteFeedPost = async (user: string, id: string): Promise<boolean>
        RETURNING id, visibility, activity_id
      ), reactions AS (
        DELETE FROM feed_post_reaction WHERE post_id IN (SELECT id FROM deleted)
+     ), quotes AS (
+       DELETE FROM feed_quote_authorization WHERE post_id IN (SELECT id FROM deleted)
      ), tomb AS (
        INSERT INTO feed_tombstone (post_id)
        SELECT id FROM deleted WHERE visibility IN ('public', 'unlisted')

@@ -601,6 +601,24 @@ export const socialTables: Record<string, string> = {
       ON feed_post_reaction (post_id, created_at DESC)
   `,
 
+  // `post_id` is a soft reference to feed_posts, dropped with the post like
+  // `feed_post_reaction`.
+  feed_quote_authorization: `
+    CREATE TABLE IF NOT EXISTS feed_quote_authorization (
+      id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      post_id      UUID NOT NULL,
+      quote_uri    TEXT NOT NULL,
+      actor_uri    TEXT NOT NULL,
+      request_uri  TEXT,
+      created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (post_id, quote_uri)
+    )
+  `,
+  feed_quote_authorization_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_feed_quote_authorization_post
+      ON feed_quote_authorization (post_id)
+  `,
+
   // The user's public profile avatar. One per user (the profile owner), so a
   // `singleton` PK + CHECK pins it to a single row. Surfaced on the public
   // profile, shared-page OG cards, and the ActivityPub actor `icon`.

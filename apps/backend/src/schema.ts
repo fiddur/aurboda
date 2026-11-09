@@ -214,6 +214,8 @@ export const tableCreationOrder = [
   'feed_reaction',
   'feed_post_reaction',
   'feed_post_reaction_indexes',
+  'feed_quote_authorization',
+  'feed_quote_authorization_indexes',
   'profile_avatar',
   'mcp_sessions',
   'mcp_sessions_indexes',

@@ -31,9 +31,12 @@ import {
   Create,
   Delete,
   Image,
+  InteractionPolicy,
+  InteractionRule,
   isActor,
   Mention,
   Note,
+  PUBLIC_COLLECTION,
   Tombstone,
   Update,
 } from '@fedify/fedify/vocab'
@@ -72,6 +75,18 @@ export const recipients = (visibility: FeedVisibility, followers: URL): { to: UR
   const { cc, to } = addressingFor(visibility, followers.href)
   return { cc: cc.map((u) => new URL(u)), to: to.map((u) => new URL(u)) }
 }
+
+/**
+ * FEP-044f quote policy for a Note. Mastodon reads a missing policy as "nobody
+ * may quote", so every Note declares one: anyone for public/unlisted posts, only
+ * the author (Mastodon's own form of "just me") for followers-only ones.
+ */
+export const quoteInteractionPolicy = (visibility: FeedVisibility, actorUri: URL): InteractionPolicy =>
+  new InteractionPolicy({
+    canQuote: new InteractionRule({
+      automaticApprovals: [isPubliclyVisible(visibility) ? PUBLIC_COLLECTION : actorUri],
+    }),
+  })
 
 export interface FeedDeliveryDeps {
   federation: Federation<void>
@@ -241,6 +256,7 @@ const buildFeedNoteParts = async (
     // The AS2 activity window — the workout time; `published` stays the share time.
     endTime: activity.end_time === undefined ? null : dateToTemporalInstant(activity.end_time),
     id: noteId,
+    interactionPolicy: quoteInteractionPolicy(post.visibility, actorUri),
     name,
     published: dateToTemporalInstant(post.created_at),
     startTime: dateToTemporalInstant(activity.start_time),
@@ -467,6 +483,7 @@ export const buildArticleNote = (
     ccs: cc,
     content: linkifyHashtags(renderArticleContentHtml(post.article), hashtags),
     id: noteId,
+    interactionPolicy: quoteInteractionPolicy(post.visibility, ctx.getActorUri(user)),
     name: post.article.title,
     published: dateToTemporalInstant(post.created_at),
     tags: hashtagObjects(hashtags),
@@ -700,6 +717,7 @@ export const buildChallengeNote = (
     ccs: cc,
     content: linkifyHashtags(renderChallengeShareHtml(post.challenge, post.message), hashtags),
     id: noteId,
+    interactionPolicy: quoteInteractionPolicy(post.visibility, ctx.getActorUri(user)),
     name: post.challenge.name,
     published: dateToTemporalInstant(post.created_at),
     tags: [
@@ -948,6 +966,7 @@ export const buildExerciseNote = (
     ccs: cc,
     content: linkifyHashtags(content, hashtags),
     id: noteId,
+    interactionPolicy: quoteInteractionPolicy(post.visibility, ctx.getActorUri(user)),
     name: post.exercise.name,
     published: dateToTemporalInstant(post.created_at),
     tags: hashtagObjects(hashtags),
@@ -1092,6 +1111,7 @@ export const buildDashboardNote = (
     ccs: cc,
     content: linkifyHashtags(content, hashtags),
     id: noteId,
+    interactionPolicy: quoteInteractionPolicy(post.visibility, ctx.getActorUri(user)),
     name: post.dashboard.name,
     published: dateToTemporalInstant(post.created_at),
     tags: hashtagObjects(hashtags),
@@ -1245,6 +1265,7 @@ export const buildReplyNote = (ctx: Context<void>, user: string, post: Deliverab
     ccs: cc,
     content: linkifyHashtags(renderReplyContent(post), hashtags),
     id: noteId,
+    interactionPolicy: quoteInteractionPolicy(post.visibility, ctx.getActorUri(user)),
     published: dateToTemporalInstant(post.created_at),
     replyTarget: new URL(post.in_reply_to_uri),
     tags: [
