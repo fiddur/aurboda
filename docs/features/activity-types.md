@@ -1,10 +1,17 @@
 # Custom Activity Types
 
+Your watch and ring record sleep and workouts, but not the coffee at four, the painkiller, the
+headache or the sauna. In Aurboda you log those yourself, as activities of types you make up: add a
+type once (**Types** in the sidebar, then **+ Add Type**), then log it from **+ Add** in the sidebar
+or by right-clicking (or long-pressing) a moment on the [timeline](./timeline.md). What you log is
+private unless you share it, shows on the timeline next to everything else, and can be compared
+with your sleep, heart rate and training on the [Analyze page](./correlations.md).
+
 Aurboda comes with five built-in activity types: **sleep**, **exercise**, **meditation**, **nap**, and **rest**. You can define additional custom types to represent any activity you track -- sauna, driving, yoga, coding, vocal training, etc.
 
 ## Creating Custom Types
 
-Custom activity types can be created via the REST API, MCP tools, or deduction rules. Each type has:
+Custom activity types can be created on the **Activity Types** page (`/activity-types`, **+ Add Type**), via the REST API, MCP tools, or deduction rules. Each type has:
 
 | Field              | Description                                                                                                              |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------ |

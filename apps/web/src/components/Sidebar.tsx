@@ -48,7 +48,9 @@ export function Sidebar() {
   return (
     <aside class={`sidebar${collapsed ? ' collapsed' : ''}`}>
       <div class="sidebar-header">
-        <span class="sidebar-brand">Aurboda</span>
+        <a href="/" class="sidebar-brand">
+          Aurboda
+        </a>
         <button
           class="sidebar-toggle"
           onClick={toggleCollapsed}

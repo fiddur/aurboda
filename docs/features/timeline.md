@@ -1,6 +1,6 @@
 # Timeline
 
-The Timeline is Aurboda's flagship visualization: a full-screen, interactive view that overlays your entire day -- activities, tags, heart rate, screen time, music, location, and more -- on a single scrollable chart. It answers the question "what was I doing, and how was my body responding?" at any point in time.
+The Timeline is Aurboda's flagship visualization: a full-screen, interactive view that overlays your entire day -- activities, tags, heart rate, screen time, music, location, and more -- on a single scrollable chart. It answers the question "what was I doing, and how was my body responding?" at any point in time. Open it from **Timeline** in the sidebar; it fills in from whatever sources you have connected (see [What Data It Needs](#what-data-it-needs)).
 
 ## Two Orientations
 
@@ -33,7 +33,9 @@ Tags that overlap significantly with an activity (e.g., an "Holosync" tag during
 
 When items overlap in time, the Timeline automatically packs them into parallel lanes so everything remains visible.
 
-**Data sources:** Oura, Garmin, Health Connect, manual entry, promoted tags.
+Meals you log appear in the Activity track as icons at the meal's time: the icons of its food items, or 🍽️. Clicking one opens the meal.
+
+**Data sources:** Oura, Garmin, Strava, Gravl, Health Connect, calendars, manual entry, promoted tags, meals.
 
 ### Location
 
@@ -163,11 +165,11 @@ A legend bar below the controls lets you toggle individual data tracks on and of
 
 ### Activity sub-toggles
 
-Sleep / Nap / Rest, Meditation, Exercise, Tags, Calendar, Screen Time (vertical mode only).
+Sleep / Nap / Rest, Meditation, Exercise, Other, Calendar, Screen Time, and one toggle per top-level screen-time category.
 
 ### Metrics sub-toggles
 
-HR, HRV, Steps (horizontal only), Calories (horizontal only), Training Load (horizontal only), Screen Time (horizontal only).
+HR, HRV, Stress, Steps (horizontal only), Calories (horizontal only), Training Load (horizontal only), Screen Time (horizontal only).
 
 Hiding a track prevents its data from being fetched (saving bandwidth and load time). Hidden items appear with strikethrough text in the legend. The legend auto-collapses to a single line on narrow screens, showing "Legend (N hidden)" when tracks are filtered.
 
@@ -213,21 +215,22 @@ This includes the visible time window, hidden tracks, and orientation override. 
 
 ## Click-Through
 
-Clicking an item navigates to its detail page where you can view full details, edit, add notes, or delete. Activity blocks go to the Activity Detail page; tags go to Tag Detail; productivity records go to Productivity Detail. Location blocks link to the Places page for that date.
+Clicking an item navigates to its detail page where you can view full details, edit, add notes, or delete. Activity blocks, including what you logged yourself, go to the Activity Detail page; meals go to the meal; productivity records go to Productivity Detail. Location blocks link to the Places page for that date.
 
 ## What Data It Needs
 
-The Timeline is most useful when multiple data sources are connected. At minimum, you need at least one source of activities (Oura, Garmin, or Health Connect). Each additional source adds a layer:
+The Timeline is most useful when multiple data sources are connected. At minimum, you need at least one source of activities (Oura, Garmin, Strava or Health Connect), or the things you log yourself. Each additional source adds a layer:
 
-| To see...       | Connect...                          |
-| --------------- | ----------------------------------- |
-| Sleep & HRV     | Oura, Garmin, or Health Connect     |
-| Exercise & HR   | Oura, Garmin, or Health Connect     |
-| Location        | OwnTracks                           |
-| Screen time     | RescueTime or ActivityWatch         |
-| Music           | Last.fm                             |
-| Calendar events | Any ICS calendar URL                |
-| Training load   | Automatic (computed from exercises) |
+| To see...       | Connect...                             |
+| --------------- | -------------------------------------- |
+| Sleep & HRV     | Oura, Garmin, or Health Connect        |
+| Exercise & HR   | Oura, Garmin, Strava or Health Connect |
+| Location        | OwnTracks                              |
+| Screen time     | RescueTime or ActivityWatch            |
+| Music           | Last.fm                                |
+| Calendar events | Any ICS calendar URL                   |
+| Meals           | Log them, or import from Cronometer    |
+| Training load   | Automatic (computed from exercises)    |
 
 ## Known Limitations
 

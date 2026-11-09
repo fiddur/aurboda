@@ -1,12 +1,17 @@
 /**
- * Pages a logged-out visitor can land on from outside: the welcome page and the public
- * sharing pages (`/u/...`: a profile, post, article, shared dashboard or challenge,
+ * Pages a logged-out visitor can land on from outside: the welcome page, login and signup, and
+ * the public sharing pages (`/u/...`: a profile, post, article, shared dashboard or challenge,
  * `/challenges/join`, and the instance blog at `/blog`). They get the guest bar instead of the app navigation.
  */
 const isGuestPage = (path: string): boolean =>
-  path === '/' || path.startsWith('/u/') || path === '/challenges/join' || path === '/blog'
+  path === '/' ||
+  path === '/login' ||
+  path === '/signup' ||
+  path.startsWith('/u/') ||
+  path === '/challenges/join' ||
+  path === '/blog'
 
-/** Whether to render the guest bar: a logged-out visitor on the welcome page or a public page. */
+/** Whether to render the guest bar: a logged-out visitor on the welcome page, login, signup or a public page. */
 export function shouldShowGuestBar(path: string, isLoggedIn: boolean): boolean {
   return !isLoggedIn && isGuestPage(path)
 }
@@ -20,7 +25,7 @@ export function shouldShowNav(path: string, isLoggedIn: boolean): boolean {
   return isLoggedIn || !isGuestPage(path)
 }
 
-/** The site footer; the logged-out welcome page has its own. */
+/** The site footer. The logged-out welcome page scrolls as one block, so it renders the footer at the end of its own content. */
 export function shouldShowSiteFooter(path: string, isLoggedIn: boolean): boolean {
   return isLoggedIn || path !== '/'
 }

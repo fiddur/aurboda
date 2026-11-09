@@ -105,6 +105,21 @@
   background: var(--color-chrome-hover);
 }
 
+.guest-bar-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  color: var(--color-chrome-text);
+}
+
+.guest-bar-icon:hover {
+  background: var(--color-chrome-hover);
+  color: #fff;
+}
+
 .guest-bar-link-soft {
   color: var(--color-chrome-text);
 }

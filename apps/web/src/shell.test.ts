@@ -4,6 +4,8 @@ import { shouldShowGuestBar, shouldShowNav, shouldShowPlanBanner, shouldShowSite
 
 const GUEST_PAGES = [
   '/',
+  '/login',
+  '/signup',
   '/u/fiddur',
   '/u/fiddur/a3GVcs14D',
   '/u/fiddur/posts/abc',
@@ -12,8 +14,8 @@ const GUEST_PAGES = [
 ]
 
 describe('shouldShowNav', () => {
-  test('shows nav on app, login and legal routes regardless of auth', () => {
-    for (const path of ['/dashboard', '/login', '/privacy', '/challenges']) {
+  test('shows nav on app and legal routes regardless of auth', () => {
+    for (const path of ['/dashboard', '/privacy', '/terms', '/challenges']) {
       expect(shouldShowNav(path, false)).toBe(true)
       expect(shouldShowNav(path, true)).toBe(true)
     }
@@ -37,14 +39,14 @@ describe('shouldShowGuestBar', () => {
     for (const path of GUEST_PAGES) expect(shouldShowGuestBar(path, true)).toBe(false)
   })
 
-  test('does not show on app, login and legal pages', () => {
-    for (const path of ['/login', '/signup', '/privacy', '/terms', '/challenges', '/timeline']) {
+  test('does not show on app and legal pages', () => {
+    for (const path of ['/privacy', '/terms', '/challenges', '/timeline', '/settings']) {
       expect(shouldShowGuestBar(path, false)).toBe(false)
     }
   })
 
   test('is shown exactly where the nav is not', () => {
-    for (const path of [...GUEST_PAGES, '/login', '/timeline']) {
+    for (const path of [...GUEST_PAGES, '/privacy', '/timeline']) {
       for (const loggedIn of [false, true]) {
         expect(shouldShowGuestBar(path, loggedIn)).toBe(!shouldShowNav(path, loggedIn))
       }
@@ -53,11 +55,15 @@ describe('shouldShowGuestBar', () => {
 })
 
 describe('shouldShowSiteFooter', () => {
-  test('hides on the logged-out welcome page only', () => {
+  test('leaves the logged-out welcome page to render it in its own content', () => {
     expect(shouldShowSiteFooter('/', false)).toBe(false)
     expect(shouldShowSiteFooter('/', true)).toBe(true)
-    expect(shouldShowSiteFooter('/u/fiddur', false)).toBe(true)
-    expect(shouldShowSiteFooter('/login', false)).toBe(true)
+  })
+
+  test('shows on login, signup and the public pages', () => {
+    for (const path of ['/login', '/signup', '/u/fiddur', '/blog', '/privacy']) {
+      expect(shouldShowSiteFooter(path, false)).toBe(true)
+    }
   })
 })
 
