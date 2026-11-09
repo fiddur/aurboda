@@ -1,5 +1,12 @@
 # Exporting all your data
 
+Your data is yours to take with you. One click in Settings downloads everything Aurboda holds about
+you in a single file, and that file restores into another Aurboda server, including one you run
+yourself ([Docker setup](docker.md)). It works on every plan, also after a free trial has ended and
+the account has turned read-only ([plans and billing](admin.md#plans-and-billing)). To leave for good,
+**Settings → Delete account** deletes the account and drops your whole database with it
+([deleting accounts](admin.md#deleting-accounts)); export first if you want to keep a copy.
+
 Every Aurboda user has their own PostgreSQL database (`aurboda_<username>`). **Settings → Export all
 data → Download export** gives you a complete copy of it as a gzipped plain SQL dump,
 `aurboda-<username>-<YYYY-MM-DD>.sql.gz`, made with `pg_dump`. It is the full-fidelity export: every

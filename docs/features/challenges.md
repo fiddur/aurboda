@@ -1,5 +1,12 @@
 # Challenges (federated competitions)
 
+Start a challenge to compete with friends: most steps this week, most kilometres this month, most
+hours of strength training, or most push-ups in one set. Everyone who joins, on this server or on
+another Aurboda server, shows up on a live race chart and leaderboard, and the only thing a member
+shares is that one measure over the challenge's dates. Create, join and share challenges from
+**Challenges** in the sidebar; [Using it in the web app](#using-it-in-the-web-app) has the details,
+and the rest of this page describes how it works.
+
 A **challenge** is hosted by one user and measures a single built-in metric or
 activity type — as a cumulative total — over a date span. Other users **join**,
 including from a **different Aurboda instance**, and the challenge page shows a race

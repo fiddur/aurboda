@@ -1,15 +1,23 @@
 # Docker Setup
 
-This guide covers running Aurboda using Docker and Docker Compose.
+Aurboda is free software (AGPL-3.0), so you can run your own server instead of using a hosted one
+such as aurboda.net. Once it has a public address it still federates: people on it can follow and
+share with people on any other Aurboda server and on Mastodon, and join challenges hosted on other
+Aurboda servers. To bring your data along from another server, export it there and restore it into
+yours ([Exporting all your data](data-export.md)). All it needs is a machine with Docker; this guide
+covers running Aurboda with Docker Compose.
 
 ## Quick Start
 
 ### Using Docker Compose (Recommended)
 
-1. Create a `.env` file with your session salt:
+1. Download the compose file and fill in its two secrets:
 
 ```bash
-echo "SESSION_SECRET=$(openssl rand -base64 24)" > .env
+curl -o docker-compose.yml https://raw.githubusercontent.com/fiddur/aurboda/main/docker-compose.yml
+sed -i.bak "s/REPLACE_DB_PASSWORD/$(openssl rand -hex 16)/" docker-compose.yml
+sed -i.bak "s/REPLACE_SESSION_SECRET/$(openssl rand -hex 16)/" docker-compose.yml
+rm docker-compose.yml.bak
 ```
 
 2. Start the services:
@@ -21,9 +29,11 @@ docker compose up -d
 This starts:
 
 - **aurboda** (web frontend + API) on port 8080
-- **postgres** (PostGIS) on port 5432
+- **postgres** (PostGIS), reachable only from the `aurboda` container
 
-3. Open the web frontend at `http://localhost:8080` and register your first user.
+3. Open the web frontend at `http://localhost:8080` and create your account. The first account on a
+   fresh server is its admin. To serve it under its own domain, set `WEB_HOST` in the compose file
+   to the public URL (see [Production Deployment](#production-deployment)).
 
 ### Development Mode
 

@@ -26,7 +26,7 @@ export const TagsInput = ({
         type="text"
         class="share-dialog-tags"
         value={value}
-        placeholder="#aurboda #running"
+        placeholder="#aurboda #morningworkout"
         onInput={(e) => onInput((e.target as HTMLInputElement).value)}
       />
       {invalid.length > 0 && (

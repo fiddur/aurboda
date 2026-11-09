@@ -264,6 +264,17 @@ main > div {
   color: #888;
 }
 
+.site-footer-with-tagline {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 24px;
+}
+
+.site-footer-with-tagline p {
+  margin: 0;
+}
+
 .site-footer a:hover {
   color: var(--color-accent);
 }
@@ -297,4 +308,46 @@ main > div {
   .site-footer a {
     color: #666;
   }
+}
+
+/*
+ * Shared button classes used across pages and dialogs. Several page stylesheets restyle them, but
+ * those load only with their page; this base keeps a button styled on pages that load none of them.
+ */
+.btn-primary {
+  background: var(--color-primary);
+  color: white;
+  border: none;
+  padding: 0.625rem 1.25rem;
+  border-radius: 6px;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+
+.btn-primary:disabled,
+.btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  padding: 0.625rem 1.25rem;
+  border-radius: 6px;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  border-color: var(--color-text-muted);
 }

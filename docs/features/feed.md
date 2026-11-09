@@ -1,5 +1,13 @@
 # Federated Activity Feed
 
+The feed is how you share with friends. Share a run, a ride or a gym session from its page and
+pick exactly which numbers to show, with a preview of what will leave your server; write a longer
+article with live charts; invite people to a challenge; or post your progress on one exercise or a
+month of your dashboard. Follow people on any Aurboda server, or on Mastodon and the rest of the
+fediverse, and their posts appear in your home timeline, where you can like, boost and reply.
+People on Mastodon can follow you in turn. This page describes how it works in detail;
+[Using it in the web app](#using-it-in-the-web-app) is the user-facing part.
+
 The activity feed lets a user publish an **activity** (a run, a night's sleep, a
 meditation, …) to their public feed, choosing **per post exactly which data leaves the
 instance**, and have it delivered over **ActivityPub** to followers on Mastodon and the
@@ -19,8 +27,7 @@ The feed is built on [Fedify](https://fedify.dev). It has three layers:
 A feed post has a **`kind`**:
 
 - **`activity`** (the default) — references one of the user's activities and shares a
-  bounded metric selection (below). This is the original and, so far, only end-to-end
-  kind.
+  bounded metric selection (below). This is the original kind.
 - **`article`** — a long-form post: a `title`, markdown prose, and inline **chart** and
   **correlation** blocks, each over a locked `[start, end]` window (blocks inherit an
   article-level default window unless they override it). Data re-resolves **live**

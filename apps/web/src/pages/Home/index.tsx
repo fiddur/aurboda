@@ -1,9 +1,12 @@
 import { dataSources } from '@aurboda/api-spec'
+import { Fragment } from 'preact'
 import { useEffect, useRef } from 'preact/hooks'
 
+import { Footer } from '../../components/Footer'
 import { guestSignup, type GuestSignup, heroBillingLine } from '../../components/guest-signup'
-import { officialFeedPath } from '../../state/api/blogUrls'
-import { auth, ensureStatusLoaded, officialFeedEnabled, serverBilling, signupMode } from '../../state/auth'
+import { ImageViewerLink } from '../../components/ImageViewer'
+import { auth, ensureStatusLoaded, serverBilling, signupMode } from '../../state/auth'
+import { docsUrl } from '../../utils/docs-url'
 import { Dashboard } from '../Dashboard'
 import './style.css'
 
@@ -11,6 +14,7 @@ const SHOTS = '/screenshots/welcome'
 const PHONE = '(max-width: 640px)'
 const DARK = '(prefers-color-scheme: dark)'
 const GITHUB = 'https://github.com/fiddur/aurboda'
+const DISCUSSIONS = `${GITHUB}/discussions`
 const APK_URL = 'https://github.com/fiddur/aurboda/releases/latest/download/aurboda.apk'
 
 interface ShotFile {
@@ -37,7 +41,7 @@ const prefersDark = (): boolean => {
   }
 }
 
-/** A light/dark screenshot that opens the full image; `phone` swaps in another shot on narrow screens. */
+/** A light/dark screenshot that opens the full image in a viewer; `phone` swaps in another shot on narrow screens. */
 function Shot({
   shot,
   alt,
@@ -52,11 +56,10 @@ function Shot({
   phone?: ShotFile
 }) {
   return (
-    <a
+    <ImageViewerLink
       href={shotUrl(shot.name, prefersDark() ? 'dark' : 'light')}
-      target="_blank"
-      rel="noopener noreferrer"
-      class={`welcome-shot${className ? ` ${className}` : ''}`}
+      caption={alt}
+      className={`welcome-shot${className ? ` ${className}` : ''}`}
     >
       <picture>
         {phone && (
@@ -85,7 +88,28 @@ function Shot({
           decoding="async"
         />
       </picture>
-    </a>
+    </ImageViewerLink>
+  )
+}
+
+interface DocLink {
+  href: string
+  label: string
+}
+
+/** Quiet links from a section to the documentation that explains it further, opening in a new tab. */
+function ReadMore({ links }: { links: DocLink[] }) {
+  return (
+    <p class="welcome-read-more">
+      {links.map((link, i) => (
+        <Fragment key={link.href}>
+          {i > 0 && ' · '}
+          <a href={link.href} target="_blank" rel="noopener noreferrer">
+            {link.label}
+          </a>
+        </Fragment>
+      ))}
+    </p>
   )
 }
 
@@ -130,6 +154,17 @@ function HeroSignup({ signup }: { signup: GuestSignup }) {
           {howItWorks}
         </div>
         {billing && <p class="welcome-hero-note">{billing}</p>}
+        {billing ? (
+          <p class="welcome-hero-state welcome-hero-own">
+            No lock-in: Aurboda is open source, so during the trial or after it you can export everything and
+            import it into <a href="#own">your own server</a>.
+          </p>
+        ) : (
+          <p class="welcome-hero-state welcome-hero-own">
+            Prefer your own server? Aurboda is open source: <a href="#own">run your own</a>, and move your
+            data there whenever you like.
+          </p>
+        )}
       </>
     )
   }
@@ -183,7 +218,7 @@ function DataSourcesTable() {
   )
 }
 
-function Welcome({ signup, hasBlog }: { signup: GuestSignup; hasBlog: boolean }) {
+function Welcome({ signup }: { signup: GuestSignup }) {
   const sourcesRef = useRef<HTMLDetailsElement>(null)
 
   // A link from another page (the guest bar's "Run your own" → /#own) lands here by client-side routing,
@@ -247,6 +282,9 @@ function Welcome({ signup, hasBlog }: { signup: GuestSignup; hasBlog: boolean })
           className="welcome-shot-framed"
           alt="The timeline for one day: sleep, coffee, meals and an evening run above the heart rate curve, with home and work below"
         />
+        <ReadMore
+          links={[{ href: docsUrl('features/timeline.md'), label: 'Read more about the timeline' }]}
+        />
       </section>
 
       <section id="log" class="welcome-wrap welcome-section">
@@ -261,6 +299,14 @@ function Welcome({ signup, hasBlog }: { signup: GuestSignup; hasBlog: boolean })
               Private unless you choose to share it. Everything you log can be compared with your sleep, heart
               rate and training.
             </p>
+            <ReadMore
+              links={[
+                {
+                  href: docsUrl('features/activity-types.md'),
+                  label: 'Read more about your own activity types',
+                },
+              ]}
+            />
           </div>
           <div class="welcome-chips">
             {LOG_CHIPS.map((name) => (
@@ -285,6 +331,9 @@ function Welcome({ signup, hasBlog }: { signup: GuestSignup; hasBlog: boolean })
             You can also ask in plain language: connect Claude or another AI assistant and it can read your
             data and answer.
           </p>
+          <ReadMore
+            links={[{ href: docsUrl('features/correlations.md'), label: 'Read more about correlations' }]}
+          />
         </div>
         <Shot
           shot={CORRELATIONS}
@@ -312,6 +361,12 @@ function Welcome({ signup, hasBlog }: { signup: GuestSignup; hasBlog: boolean })
             <p class="welcome-body-small">
               Like the training apps you know, without the ads and without selling your data.
             </p>
+            <ReadMore
+              links={[
+                { href: docsUrl('features/challenges.md'), label: 'Read more about challenges' },
+                { href: docsUrl('features/feed.md'), label: 'the feed' },
+              ]}
+            />
           </div>
         </div>
       </section>
@@ -379,10 +434,15 @@ function Welcome({ signup, hasBlog }: { signup: GuestSignup; hasBlog: boolean })
           <div class="welcome-card">
             <h3>Nothing is shared unless you share it</h3>
             <p>Every post, dashboard and challenge entry is opt-in, and you pick the fields.</p>
+            <ReadMore links={[{ href: docsUrl('features/sharing.md'), label: 'Read more about sharing' }]} />
           </div>
           <div class="welcome-card">
             <h3>Take it all with you</h3>
-            <p>Export everything in one file, or delete your account and every row with it.</p>
+            <p>
+              Export everything in one file and restore it on your own server, or delete your account and
+              every row with it.
+            </p>
+            <ReadMore links={[{ href: docsUrl('data-export.md'), label: 'Read more about export' }]} />
           </div>
           <div class="welcome-card">
             <h3>Open source</h3>
@@ -390,12 +450,24 @@ function Welcome({ signup, hasBlog }: { signup: GuestSignup; hasBlog: boolean })
               Free software (AGPL). Run your own server with Docker if you prefer; it still talks to everyone
               else's.
             </p>
+            <ReadMore
+              links={[
+                { href: docsUrl('docker.md'), label: 'Running your own' },
+                { href: GITHUB, label: 'Source code' },
+              ]}
+            />
           </div>
           <div class="welcome-card">
             <h3>For tinkerers</h3>
             <p>
               A full REST API, an MCP server for AI assistants, and rules that turn raw data into activities.
             </p>
+            <ReadMore
+              links={[
+                { href: docsUrl('mcp-server.md'), label: 'MCP server' },
+                { href: '/apispec/', label: 'REST API' },
+              ]}
+            />
           </div>
         </div>
         <p class="welcome-selfhost">
@@ -420,6 +492,13 @@ function Welcome({ signup, hasBlog }: { signup: GuestSignup; hasBlog: boolean })
         <details id="sources" ref={sourcesRef} class="welcome-sources">
           <summary>All data sources</summary>
           <DataSourcesTable />
+          <div class="welcome-sources-more">
+            <ReadMore
+              links={[
+                { href: docsUrl('data-sources.md'), label: 'Read more about each source and how it syncs' },
+              ]}
+            />
+          </div>
         </details>
       </section>
 
@@ -440,16 +519,19 @@ function Welcome({ signup, hasBlog }: { signup: GuestSignup; hasBlog: boolean })
         </section>
       )}
 
-      <footer class="welcome-wrap welcome-footer">
-        <span>Aurboda: in Norse myth, the giantess who gathers and provides.</span>
-        <span class="welcome-footer-spacer" />
-        {hasBlog && <a href={officialFeedPath}>Blog</a>}
-        <a href={GITHUB} target="_blank" rel="noopener noreferrer">
-          GitHub
-        </a>
-        <a href="/privacy">Privacy</a>
-        <a href="/terms">Terms</a>
-      </footer>
+      <section class="welcome-wrap welcome-outro">
+        <p class="welcome-body-small">
+          Have a question or an idea?{' '}
+          <a href={DISCUSSIONS} target="_blank" rel="noopener noreferrer">
+            Ask in GitHub Discussions
+          </a>
+          .
+        </p>
+      </section>
+
+      <div class="welcome-wrap welcome-footer">
+        <Footer tagline="Aurboda: in Norse myth, the giantess who gathers and provides." />
+      </div>
     </div>
   )
 }
@@ -465,10 +547,5 @@ export function Home() {
     return <Dashboard />
   }
 
-  return (
-    <Welcome
-      signup={guestSignup(signupMode.value, serverBilling.value)}
-      hasBlog={officialFeedEnabled.value}
-    />
-  )
+  return <Welcome signup={guestSignup(signupMode.value, serverBilling.value)} />
 }
