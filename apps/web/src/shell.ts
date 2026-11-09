@@ -30,7 +30,7 @@ export function shouldShowSiteFooter(path: string, isLoggedIn: boolean): boolean
   return isLoggedIn || path !== '/'
 }
 
-const PUBLIC_PAGES = ['/login', '/signup', '/privacy', '/terms']
+const PUBLIC_PAGES = ['/login', '/signup', '/privacy', '/terms', '/help']
 
 /** The plan banner is for the signed-in app, not public share pages or the login and legal pages. */
 export function shouldShowPlanBanner(path: string, isLoggedIn: boolean): boolean {

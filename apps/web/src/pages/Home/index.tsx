@@ -525,7 +525,7 @@ function Welcome({ signup }: { signup: GuestSignup }) {
           <a href={DISCUSSIONS} target="_blank" rel="noopener noreferrer">
             Ask in GitHub Discussions
           </a>
-          .
+          , or see <a href="/help">Help &amp; support</a>.
         </p>
       </section>
 

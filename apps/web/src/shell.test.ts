@@ -15,7 +15,7 @@ const GUEST_PAGES = [
 
 describe('shouldShowNav', () => {
   test('shows nav on app and legal routes regardless of auth', () => {
-    for (const path of ['/dashboard', '/privacy', '/terms', '/challenges']) {
+    for (const path of ['/dashboard', '/privacy', '/terms', '/help', '/challenges']) {
       expect(shouldShowNav(path, false)).toBe(true)
       expect(shouldShowNav(path, true)).toBe(true)
     }
@@ -83,6 +83,7 @@ describe('shouldShowPlanBanner', () => {
       '/signup',
       '/privacy',
       '/terms',
+      '/help',
     ]) {
       expect(shouldShowPlanBanner(path, true)).toBe(false)
     }

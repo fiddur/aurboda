@@ -85,6 +85,7 @@ val moreGroups: List<MoreGroup> = listOf(
         listOf(
             MoreItem("Live sensors", MoreDestination.Live),
             MoreItem("Account & server", MoreDestination.Account),
+            MoreItem("Help & support", MoreDestination.Web("/help")),
         ),
     ),
 )
