@@ -1,15 +1,18 @@
 /**
  * The AS2 `content` for a dashboard-period share post (#1505): the dashboard name and the period
  * as a heading, the author's note through the same outbound sanitiser as article prose, one line
- * per figure widget (metric and sparkline cards, the activity summary, record cards) with its
- * change against the previous period, then the dashboard's public page as a plain link when it
- * was published and linked. Charts have no one-line form and are left to the structured payload.
+ * per figure widget (metric and sparkline cards, the activity summary, record cards, activity
+ * type cards, top lists and the places card) with its change against the previous period, then
+ * the dashboard's public page as a plain link when it was published and linked. Charts have no
+ * one-line form and are left to the structured payload.
  */
 import type {
   ActivitySummaryData,
   DashboardShare,
   DashboardWidget,
   FeedStructuredDashboardShare,
+  TopListCardData,
+  TopListSource,
   WidgetData,
 } from '@aurboda/api-spec'
 
@@ -75,7 +78,74 @@ const recordLines = (title: string | undefined, data: WidgetData | undefined): s
   ]
 }
 
-/** The one-line forms of a widget's figures; none for a chart, a quick link or a widget without data. */
+/** `2h 10m`, `45m`, `7h`. */
+export const formatHoursMinutes = (minutes: number): string => {
+  const total = Math.round(minutes)
+  const hours = Math.floor(total / 60)
+  const rest = total % 60
+  if (hours === 0) return `${rest}m`
+  return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`
+}
+
+export const activityTypeLines = (
+  title: string | undefined,
+  widgetData: WidgetData | undefined,
+): string[] => {
+  const data = widgetData?.type === 'activity_type_card' ? widgetData.data : null
+  if (data === null || data.count === 0) return []
+  const name = title ?? data.activity_type_name
+  if (data.sleep) {
+    const { avg_minutes } = data.sleep
+    return [
+      `${name} ${data.count} nights · avg ${formatHoursMinutes(avg_minutes)}${figureChange(avg_minutes, data.previous_sleep_avg_minutes)}`,
+    ]
+  }
+  const distance = data.distance_km !== null ? ` · ${data.distance_km.toFixed(1)} km` : ''
+  return [
+    `${name} ${data.count} · ${formatHoursMinutes(data.total_minutes)}${distance}${figureChange(data.count, data.previous_count)}`,
+  ]
+}
+
+const topListTitles: Record<TopListSource, string> = {
+  media_album: 'Top albums',
+  media_artist: 'Top artists',
+  media_track: 'Top tracks',
+  place: 'Top places',
+  screentime_app: 'Top apps',
+}
+
+const topListUnits: Record<TopListCardData['unit'], string> = {
+  hours: ' h',
+  plays: ' plays',
+  visits: ' visits',
+}
+
+export const topListLines = (
+  config: { source: TopListSource; title?: string },
+  widgetData: WidgetData | undefined,
+): string[] => {
+  const data = widgetData?.type === 'top_list_card' ? widgetData.data : null
+  if (data === null || (data.total === 0 && data.items.length === 0)) return []
+  const items = data.items.length > 0 ? ` — ${data.items.map((item) => item.name).join(', ')}` : ''
+  return [
+    `${config.title ?? topListTitles[config.source]} ${formatFigure(data.total)}${topListUnits[data.unit]}${items}${figureChange(data.total, data.previous_total)}`,
+  ]
+}
+
+export const placesLines = (title: string | undefined, widgetData: WidgetData | undefined): string[] => {
+  const data = widgetData?.type === 'places_card' ? widgetData.data : null
+  if (data === null || (data.visits === 0 && data.nights_home === 0 && data.nights_away === 0)) return []
+  const distinct =
+    data.distinct_places > 0
+      ? ` · ${data.distinct_places} places${figureChange(data.distinct_places, data.previous_distinct_places)}`
+      : ''
+  return [`${title ?? 'Places'} ${data.nights_home} nights home, ${data.nights_away} away${distinct}`]
+}
+
+/**
+ * The one-line forms of a widget's figures (metric, sparkline, record, activity type, top list and
+ * places cards and the activity summary); none for a chart, a quick link or a widget without data.
+ */
 export const widgetLines = (widget: DashboardWidget, data: WidgetData | undefined): string[] => {
   switch (widget.type) {
     case 'metric_card':
@@ -86,6 +156,12 @@ export const widgetLines = (widget: DashboardWidget, data: WidgetData | undefine
       return data?.type === 'activity_summary' ? activitySummaryLines(data.data) : []
     case 'record_card':
       return recordLines(widget.config.title, data)
+    case 'activity_type_card':
+      return activityTypeLines(widget.config.title, data)
+    case 'top_list_card':
+      return topListLines(widget.config, data)
+    case 'places_card':
+      return placesLines(widget.config.title, data)
     default:
       return []
   }
