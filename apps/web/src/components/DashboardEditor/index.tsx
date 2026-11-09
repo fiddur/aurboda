@@ -8,6 +8,7 @@ import { useState } from 'preact/hooks'
 
 import { getMetricDisplayName } from '../../utils/metricLabels'
 import { MetricPicker } from '../MetricPicker'
+import { offeredWidgetTypes } from './periodWidgets'
 import { blankRequiredFields } from './requiredConfig'
 import './style.css'
 
@@ -16,6 +17,8 @@ interface DashboardEditorProps {
   sectionType: SectionType
   onAddWidget: (widget: DashboardWidget) => void
   onClose: () => void
+  /** A period dashboard: hide the widgets that have no meaning for a past period. */
+  periodMode?: boolean
 }
 
 const metricCardUnits: Record<string, string> = {
@@ -78,6 +81,30 @@ const widgetTemplates: WidgetTemplate[] = [
     description: 'Best value of an activity measure, with the date it was reached',
     label: 'Record Card',
     type: 'record_card',
+  },
+  {
+    allowedSections: ['metrics', 'charts'],
+    defaultConfig: () => ({
+      lookback_days: 30,
+      pattern: 'exercise',
+    }),
+    description: 'Sessions, time, distance and pace of one activity type; sleep stages for sleep',
+    label: 'Activity card',
+    type: 'activity_type_card',
+  },
+  {
+    allowedSections: ['metrics'],
+    defaultConfig: () => ({ limit: 3, source: 'media_artist' }),
+    description: 'Total music plays, screen time or place visits, with the top entries',
+    label: 'Top list',
+    type: 'top_list_card',
+  },
+  {
+    allowedSections: ['metrics'],
+    defaultConfig: () => ({}),
+    description: 'Nights at home and away, distinct places and the most visited',
+    label: 'Places card',
+    type: 'places_card',
   },
   {
     allowedSections: ['metrics', 'charts'],
@@ -179,11 +206,57 @@ const linkOptions = [
   { icon: 'settings', label: 'Settings', value: '/settings' },
 ]
 
-export function DashboardEditor({ sectionType, onAddWidget, onClose }: DashboardEditorProps) {
+const topListSourceOptions = [
+  { label: 'Music: artists', value: 'media_artist' },
+  { label: 'Music: albums', value: 'media_album' },
+  { label: 'Music: tracks', value: 'media_track' },
+  { label: 'Screen time: apps', value: 'screentime_app' },
+  { label: 'Places: visits', value: 'place' },
+] as const
+
+/** A text field whose key is dropped from the config while blank, so an optional `min(1)` field stays valid. */
+const OptionalTextField = ({
+  configKey,
+  configValues,
+  label,
+  placeholder,
+  setConfigValues,
+}: {
+  configKey: string
+  configValues: Record<string, unknown>
+  label: string
+  placeholder: string
+  setConfigValues: (update: (prev: Record<string, unknown>) => Record<string, unknown>) => void
+}) => (
+  <div class="form-group">
+    <label>{label}</label>
+    <input
+      type="text"
+      value={(configValues[configKey] as string) ?? ''}
+      onChange={(e) => {
+        const value = (e.target as HTMLInputElement).value
+        setConfigValues(({ [configKey]: _dropped, ...rest }) =>
+          value.trim() ? { ...rest, [configKey]: value } : rest,
+        )
+      }}
+      placeholder={placeholder}
+    />
+  </div>
+)
+
+export function DashboardEditor({
+  sectionType,
+  onAddWidget,
+  onClose,
+  periodMode = false,
+}: DashboardEditorProps) {
   const [selectedTemplate, setSelectedTemplate] = useState<WidgetTemplate | null>(null)
   const [configValues, setConfigValues] = useState<Record<string, unknown>>({})
 
-  const availableTemplates = widgetTemplates.filter((t) => t.allowedSections.includes(sectionType))
+  const availableTemplates = offeredWidgetTypes(
+    widgetTemplates.filter((t) => t.allowedSections.includes(sectionType)),
+    periodMode,
+  )
 
   const handleSelectTemplate = (template: WidgetTemplate) => {
     setSelectedTemplate(template)
@@ -381,6 +454,121 @@ export function DashboardEditor({ sectionType, onAddWidget, onClose }: Dashboard
                 placeholder="e.g., Bench Press"
               />
             </div>
+          </div>
+        )
+
+      case 'activity_type_card':
+        return (
+          <div class="config-form">
+            <div class="form-group">
+              <label>Activity Type</label>
+              <input
+                type="text"
+                value={(configValues.pattern as string) ?? ''}
+                onChange={(e) => updateConfig('pattern', (e.target as HTMLInputElement).value)}
+                placeholder="e.g., running, sleep"
+              />
+            </div>
+            <div class="form-group">
+              <label>Title</label>
+              <input
+                type="text"
+                value={(configValues.title as string) ?? ''}
+                onChange={(e) => {
+                  const value = (e.target as HTMLInputElement).value
+                  setConfigValues(({ title: _title, ...rest }) =>
+                    value.trim() ? { ...rest, title: value } : rest,
+                  )
+                }}
+                placeholder="Defaults to the activity type name"
+              />
+            </div>
+            <div class="form-group">
+              <label>Exercise (optional)</label>
+              <input
+                type="text"
+                value={(configValues.filter_value as string) ?? ''}
+                onChange={(e) => {
+                  const value = (e.target as HTMLInputElement).value.trim()
+                  setConfigValues(({ filter_field: _field, filter_value: _value, ...rest }) =>
+                    value ? { ...rest, filter_field: 'sets.exercise', filter_value: value } : rest,
+                  )
+                }}
+                placeholder="e.g., Bench Press"
+              />
+            </div>
+            <div class="form-group">
+              <label>Show</label>
+              <select
+                value={(configValues.speed_display as string) ?? ''}
+                onChange={(e) => {
+                  const value = (e.target as HTMLSelectElement).value
+                  setConfigValues(({ speed_display: _display, ...rest }) =>
+                    value ? { ...rest, speed_display: value } : rest,
+                  )
+                }}
+              >
+                <option value="">Default for the type</option>
+                <option value="pace">Pace (min/km)</option>
+                <option value="speed">Speed (km/h)</option>
+              </select>
+            </div>
+          </div>
+        )
+
+      case 'top_list_card':
+        return (
+          <div class="config-form">
+            <div class="form-group">
+              <label>Source</label>
+              <select
+                value={(configValues.source as string) ?? 'media_artist'}
+                onChange={(e) => updateConfig('source', (e.target as HTMLSelectElement).value)}
+              >
+                {topListSourceOptions.map(({ label, value }) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Limit</label>
+              <input
+                type="number"
+                value={(configValues.limit as number) ?? 3}
+                onChange={(e) => updateConfig('limit', parseInt((e.target as HTMLInputElement).value, 10))}
+                min={1}
+                max={10}
+              />
+            </div>
+            <OptionalTextField
+              configKey="title"
+              configValues={configValues}
+              label="Title"
+              placeholder="Defaults to Top artists, Top apps, ..."
+              setConfigValues={setConfigValues}
+            />
+          </div>
+        )
+
+      case 'places_card':
+        return (
+          <div class="config-form">
+            <OptionalTextField
+              configKey="home_location"
+              configValues={configValues}
+              label="Home location"
+              placeholder="Home"
+              setConfigValues={setConfigValues}
+            />
+            <OptionalTextField
+              configKey="title"
+              configValues={configValues}
+              label="Title"
+              placeholder="Places"
+              setConfigValues={setConfigValues}
+            />
           </div>
         )
 

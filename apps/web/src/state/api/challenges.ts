@@ -97,13 +97,18 @@ type PublicResourceResponse =
   | PublicChallengeResponse
   | PublicSharedExerciseResponse
 
-/** Resolve a `/u/:username/:slug` resource — a shared dashboard, a challenge or a shared exercise. */
+/**
+ * Resolve a `/u/:username/:slug` resource — a shared dashboard, a challenge or a shared exercise. `period`
+ * asks a browsable period dashboard for one finished period; the server ignores it otherwise.
+ */
 export const fetchPublicResource = async (
   username: string,
   slug: string,
+  period?: string,
 ): Promise<PublicResourceResponse> => {
   const res = await axios.get<PublicResourceResponse>(
     `${API_URL}/public/${encodeURIComponent(username)}/${encodeURIComponent(slug)}`,
+    period === undefined ? undefined : { params: { period } },
   )
   return res.data
 }

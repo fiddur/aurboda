@@ -29,6 +29,7 @@ const Challenges = lazyPage(() => import('./pages/Challenges/index.jsx'), 'Chall
 const ChallengeJoin = lazyPage(() => import('./pages/Challenges/Join.jsx'), 'ChallengeJoin')
 const Chart = lazyPage(() => import('./pages/Chart/index.jsx'), 'Chart')
 const Correlations = lazyPage(() => import('./pages/Correlations/index.jsx'), 'Correlations')
+const Dashboards = lazyPage(() => import('./pages/Dashboards/index.jsx'), 'Dashboards')
 const Data = lazyPage(() => import('./pages/Data/index.jsx'), 'Data')
 const ActivityWatchAndroidSource = lazyPage(
   () => import('./pages/DataSources/ActivityWatchAndroidSource.jsx'),
@@ -92,7 +93,6 @@ const ScreentimeCategories = lazyPage(
   'ScreentimeCategories',
 )
 const Settings = lazyPage(() => import('./pages/Settings/index.jsx'), 'Settings')
-const SharedDashboards = lazyPage(() => import('./pages/SharedDashboards/index.jsx'), 'SharedDashboards')
 const Signup = lazyPage(() => import('./pages/Signup/index.jsx'), 'Signup')
 const Sleep = lazyPage(() => import('./pages/Sleep/index.jsx'), 'Sleep')
 const Terms = lazyPage(() => import('./pages/Terms/index.jsx'), 'Terms')
@@ -122,7 +122,8 @@ function AppShell() {
             <Route path="/u/:username/articles" component={PublicArticles} />
             <Route path="/u/:username/:slug" component={PublicResource} />
             <Route path="/u/:username" component={PublicProfile} />
-            <Route path="/shared-dashboards" component={SharedDashboards} />
+            <Route path="/dashboards" component={Dashboards} />
+            <Route path="/shared-dashboards" component={Dashboards} />
             <Route path="/challenges/join" component={ChallengeJoin} />
             <Route path="/challenges" component={Challenges} />
             <Route path="/" component={Home} />

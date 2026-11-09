@@ -11,6 +11,7 @@ import {
   createArticleBodySchema,
   type CreateArticleDraftBody,
   createArticleDraftBodySchema,
+  type DashboardSharePreviewResponse,
   type FeedPostReactionsResponse,
   type FeedPostRepliesResponse,
   type FeedPostResponse,
@@ -24,6 +25,8 @@ import {
   type SharePreviewResponse,
   type ShareChallengeBody,
   shareChallengeBodySchema,
+  type ShareDashboardPeriodBody,
+  shareDashboardPeriodBodySchema,
   type ShareExerciseBody,
   shareExerciseBodySchema,
   type ExerciseSharePreviewResponse,
@@ -52,6 +55,7 @@ import {
   createArticleDraft,
   createArticlePost,
   createChallengePost,
+  createDashboardPost,
   createExercisePost,
   createFeedPost,
   deleteArticleDraft,
@@ -77,6 +81,11 @@ import {
 import { buildArticleMarkdown, renderableArticleBlocks } from '../services/article-export.ts'
 import { mergeArticleContent, validateArticleContent } from '../services/article.ts'
 import { resolveChallengeShare } from '../services/challenge-share.ts'
+import {
+  dashboardShareTags,
+  previewDashboardShare,
+  resolveDashboardShare,
+} from '../services/feed-dashboard-share.ts'
 import {
   exerciseShareTags,
   previewExerciseShare,
@@ -128,6 +137,8 @@ export interface FeedDeliver {
   updatedChallenge: (user: string, post: FeedPostRecord) => void
   createdExercise: (user: string, post: FeedPostRecord) => void
   updatedExercise: (user: string, post: FeedPostRecord) => void
+  createdDashboard: (user: string, post: FeedPostRecord) => void
+  updatedDashboard: (user: string, post: FeedPostRecord) => void
   /**
    * Fan a fresh reply out to followers AND the inbox of the author it answers —
    * `authorInbox` being the one the reply handler already resolved (#1108).
@@ -581,6 +592,45 @@ export const createFeedRouter = (
     },
   )
 
+  // Registered before the generic `/:postId` routes.
+  router.post<Record<string, never>, FeedPostResponse, ShareDashboardPeriodBody>(
+    '/dashboards',
+    authMiddleware,
+    validateBody(shareDashboardPeriodBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      const resolved = await resolveDashboardShare(user, req.body, webHost)
+      if (!resolved.ok) return res.status(resolved.status).json({ error: resolved.error, success: false })
+      const record = await createDashboardPost(user, {
+        dashboard: resolved.dashboard,
+        message: normalizeFeedMessage(req.body.message) ?? null,
+        tags: await dashboardShareTags(user, resolved.dashboard, req.body),
+        visibility: req.body.visibility,
+      })
+      deliver?.createdDashboard(user, record)
+      res.json({
+        post: await serializeFeedPost(user, record, { includeStructured: true, webHost }),
+        success: true,
+      })
+    },
+  )
+
+  router.post<Record<string, never>, DashboardSharePreviewResponse, ShareDashboardPeriodBody>(
+    '/dashboards/preview',
+    authMiddleware,
+    validateBody(shareDashboardPeriodBodySchema),
+    async (req, res) => {
+      const preview = await previewDashboardShare(req.user!, req.body, webHost)
+      if (!preview.ok) return res.status(preview.status).json({ error: preview.error, success: false })
+      res.json({
+        content: preview.content,
+        structured: preview.structured,
+        success: true,
+        tags: preview.tags,
+      })
+    },
+  )
+
   // Article posts (long-form: title + prose + inline chart/correlation blocks).
   // Create/edit have their own body shape; delete reuses `DELETE /:postId`.
   // Registered before the generic `/:postId` routes. Federated as a `Note`
@@ -708,6 +758,7 @@ export const createFeedRouter = (
       if (record.kind === 'article') deliver?.updatedArticle(user, record)
       else if (record.kind === 'challenge') deliver?.updatedChallenge(user, record)
       else if (record.kind === 'exercise') deliver?.updatedExercise(user, record)
+      else if (record.kind === 'dashboard') deliver?.updatedDashboard(user, record)
       else if (record.kind === 'reply') deliver?.updatedReply(user, record)
       else deliver?.updated(user, record)
       res.json({

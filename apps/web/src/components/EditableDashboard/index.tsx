@@ -3,19 +3,41 @@
  * edit (add/remove/move widget, add/delete section). The parent owns
  * persistence (home dashboard vs. a shared dashboard) and the edit toggle.
  */
-import type { DashboardConfig, DashboardSection, DashboardWidget, SectionType } from '@aurboda/api-spec'
+import type {
+  DashboardConfig,
+  DashboardSection,
+  DashboardWidget,
+  PeriodGranularity,
+  SectionType,
+  WidgetDataMap,
+} from '@aurboda/api-spec'
 
 import { useEffect, useState } from 'preact/hooks'
 
 import { DashboardEditor } from '../DashboardEditor'
-import { WidgetRenderer } from '../widgets'
+import { PublicWidgetRenderer, WidgetRenderer } from '../widgets'
 
 const generateSectionId = () => `section-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+
+const periodOptions: { label: string; value: '' | PeriodGranularity }[] = [
+  { label: 'Rolling', value: '' },
+  { label: 'Weekly', value: 'week' },
+  { label: 'Monthly', value: 'month' },
+  { label: 'Yearly', value: 'year' },
+]
+
+/** The config with its period set to `granularity`, or without one for a rolling dashboard. */
+export const withPeriod = (config: DashboardConfig, granularity: '' | PeriodGranularity): DashboardConfig => {
+  const { period: _period, ...rest } = config
+  return granularity ? { ...rest, period: { granularity } } : rest
+}
 
 function DashboardSectionComponent({
   section,
   isEditing,
   boardId,
+  widgetData,
+  periodLabel,
   onRemoveWidget,
   onMoveWidget,
   onAddWidgetClick,
@@ -26,6 +48,8 @@ function DashboardSectionComponent({
   section: DashboardSection
   isEditing: boolean
   boardId?: string
+  widgetData?: WidgetDataMap
+  periodLabel?: string
   onRemoveWidget?: (widgetId: string) => void
   onMoveWidget?: (widgetId: string, direction: 'up' | 'down') => void
   onAddWidgetClick?: () => void
@@ -192,7 +216,15 @@ function DashboardSectionComponent({
                   </button>
                 </div>
               )}
-              <WidgetRenderer widget={widget} boardId={boardId} sectionId={section.id} />
+              {widgetData ? (
+                <PublicWidgetRenderer
+                  widget={widget}
+                  data={widgetData[widget.id]}
+                  periodLabel={periodLabel}
+                />
+              ) : (
+                <WidgetRenderer widget={widget} boardId={boardId} sectionId={section.id} />
+              )}
             </div>
           ))}
           {isEditing && (
@@ -288,9 +320,20 @@ interface EditableDashboardProps {
   onChange: (next: DashboardConfig) => void
   /** Identifies this board ('home' or a shared-dashboard id) so chart widgets can link back for update-in-place. */
   boardId: string
+  /** Server-resolved data per widget id (a period dashboard); widgets fetch their own when absent. */
+  widgetData?: WidgetDataMap
+  /** The shown period's label, for widgets that name their window. */
+  periodLabel?: string
 }
 
-export function EditableDashboard({ config, isEditing, onChange, boardId }: EditableDashboardProps) {
+export function EditableDashboard({
+  config,
+  isEditing,
+  onChange,
+  boardId,
+  widgetData,
+  periodLabel,
+}: EditableDashboardProps) {
   const [showWidgetPicker, setShowWidgetPicker] = useState<string | null>(null) // section id or null
   const [showAddSection, setShowAddSection] = useState(false)
   const [descDraft, setDescDraft] = useState(config.description ?? '')
@@ -384,6 +427,23 @@ export function EditableDashboard({ config, isEditing, onChange, boardId }: Edit
 
   return (
     <div class="sections-grid">
+      {isEditing && (
+        <label class="dashboard-period-setting">
+          Period
+          <select
+            value={config.period?.granularity ?? ''}
+            onChange={(e) =>
+              onChange(withPeriod(config, (e.target as HTMLSelectElement).value as '' | PeriodGranularity))
+            }
+          >
+            {periodOptions.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       {isEditing ? (
         <textarea
           class="dashboard-intro-input"
@@ -403,6 +463,8 @@ export function EditableDashboard({ config, isEditing, onChange, boardId }: Edit
           section={section}
           isEditing={isEditing}
           boardId={boardId}
+          widgetData={widgetData}
+          periodLabel={periodLabel}
           onRemoveWidget={(widgetId) => handleRemoveWidget(section.id, widgetId)}
           onMoveWidget={(widgetId, direction) => handleMoveWidget(section.id, widgetId, direction)}
           onAddWidgetClick={() => setShowWidgetPicker(section.id)}
@@ -437,6 +499,7 @@ export function EditableDashboard({ config, isEditing, onChange, boardId }: Edit
         <DashboardEditor
           sectionId={showWidgetPicker}
           sectionType={config.sections.find((s) => s.id === showWidgetPicker)?.type ?? 'metrics'}
+          periodMode={Boolean(config.period)}
           onAddWidget={(widget) => handleAddWidget(showWidgetPicker, widget)}
           onClose={() => setShowWidgetPicker(null)}
         />

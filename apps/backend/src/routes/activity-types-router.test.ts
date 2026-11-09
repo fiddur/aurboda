@@ -15,7 +15,12 @@ vi.mock('../services/activity-type-definitions.ts', () => ({
 
 vi.mock('../services/queries/index.ts', async () => {
   const { sessionsOptionsFromQuery } = await import('../services/queries/activity-sessions.ts')
-  return { queryActivityFieldValues: vi.fn(), queryActivitySessions: vi.fn(), sessionsOptionsFromQuery }
+  return {
+    getActivityTypeSummary: vi.fn(),
+    queryActivityFieldValues: vi.fn(),
+    queryActivitySessions: vi.fn(),
+    sessionsOptionsFromQuery,
+  }
 })
 
 vi.mock('../services/item-value-aliases.ts', () => ({
@@ -115,6 +120,50 @@ describe('GET /activity-types/:name/records', () => {
 
     expect(res.status).toBe(400)
     expect(records.getActivityRecords).not.toHaveBeenCalled()
+  })
+})
+
+describe('GET /activity-types/:name/summary', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  test('returns the summary for the range and filter', async () => {
+    const data = {
+      activity_type_name: 'Running',
+      avg_speed_kmh: 10,
+      best_pace_sec_per_km: 330,
+      count: 4,
+      distance_km: 32,
+      sleep: null,
+      total_minutes: 192,
+    }
+    vi.mocked(queries.getActivityTypeSummary).mockResolvedValue(data)
+    const query = {
+      end: '2026-10-31T23:59:59Z',
+      filter_field: 'run_kind',
+      filter_value: 'intervals',
+      start: '2026-10-01T00:00:00Z',
+    }
+
+    const res = await supertest(buildApp()).get('/activity-types/running/summary').query(query)
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ data, success: true })
+    expect(queries.getActivityTypeSummary).toHaveBeenCalledWith('tester', 'running', query)
+  })
+
+  test('400s without a range or on a filter field without a value', async () => {
+    const app = buildApp()
+    expect((await supertest(app).get('/activity-types/running/summary')).status).toBe(400)
+    expect(
+      (
+        await supertest(app).get('/activity-types/running/summary').query({
+          end: '2026-10-31T23:59:59Z',
+          filter_field: 'run_kind',
+          start: '2026-10-01T00:00:00Z',
+        })
+      ).status,
+    ).toBe(400)
+    expect(queries.getActivityTypeSummary).not.toHaveBeenCalled()
   })
 })
 

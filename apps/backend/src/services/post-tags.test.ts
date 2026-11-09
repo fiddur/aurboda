@@ -6,6 +6,7 @@ import {
   articleTexts,
   autoPostTags,
   computePostTags,
+  dashboardKindTag,
   editedPostTags,
   exerciseKindTag,
   loadEditedPostTags,
@@ -153,6 +154,11 @@ describe('kind tags', () => {
     expect(activityKindTag('strength_training')).toBe('strengthtraining')
     expect(exerciseKindTag({ name: 'Dumbbell Bench Press', value: 'db_bench' })).toBe('dumbbellbenchpress')
     expect(exerciseKindTag({ name: '—', value: 'Squat' })).toBe('squat')
+  })
+
+  test('dashboard: its name', () => {
+    expect(dashboardKindTag({ name: 'Month in data' })).toBe('monthindata')
+    expect(dashboardKindTag({ name: '—' })).toBeNull()
   })
 })
 

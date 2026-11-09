@@ -471,6 +471,21 @@ export const hrZoneSourceSchema = z.enum(['custom', 'age_based', 'default']).met
 
 export type HrZoneSource = z.infer<typeof hrZoneSourceSchema>
 
+const hrZoneSecsValueSchema = z.number()
+
+export const hrZoneSecsSchema = z
+  .object({
+    0: hrZoneSecsValueSchema.meta({ description: 'Seconds below zone 1' }),
+    1: hrZoneSecsValueSchema.meta({ description: 'Seconds in zone 1' }),
+    2: hrZoneSecsValueSchema.meta({ description: 'Seconds in zone 2' }),
+    3: hrZoneSecsValueSchema.meta({ description: 'Seconds in zone 3' }),
+    4: hrZoneSecsValueSchema.meta({ description: 'Seconds in zone 4' }),
+    5: hrZoneSecsValueSchema.meta({ description: 'Seconds in zone 5' }),
+  })
+  .meta({ id: 'HrZoneSecs' })
+
+export type HrZoneSecs = z.infer<typeof hrZoneSecsSchema>
+
 export const syncStatusSchema = z.enum(['idle', 'syncing', 'error', 'rate_limited']).meta({
   description: 'Status of sync operation',
   example: 'idle',

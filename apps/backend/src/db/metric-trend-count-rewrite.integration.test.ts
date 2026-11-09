@@ -85,7 +85,12 @@ describe('rewriteMetricTrendCountToMean', () => {
       source_type: 'activity_type',
     })
     await upsertUserSettings(user, { dashboard })
-    const shared = await createSharedDashboard(user, { config: dashboard, is_public: false, name: 'Board' })
+    const shared = await createSharedDashboard(user, {
+      config: dashboard,
+      is_private: false,
+      is_public: false,
+      name: 'Board',
+    })
 
     const db = await getDbForUser(user)
     expect(await rewriteMetricTrendCountToMean(db)).toBe(3)

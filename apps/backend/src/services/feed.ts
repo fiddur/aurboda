@@ -34,6 +34,7 @@ import {
   getActivityById,
   listFeedPosts,
 } from '../db/index.ts'
+import { renderDashboardShareHtml } from './activitypub/dashboard-object.ts'
 import { renderExerciseShareHtml } from './activitypub/exercise-object.ts'
 import { resolveActivityScalars } from './activitypub/feed-activity.ts'
 import { type HashtagLinks, hashtagLinks, linkifyHashtags } from './activitypub/hashtag-html.ts'
@@ -49,6 +50,7 @@ import {
   resolveStructuredRoute,
   resolveStructuredSeries,
 } from './feed-structured-activity.ts'
+import { resolveStructuredDashboard } from './feed-structured-dashboard.ts'
 import { resolveStructuredExercise } from './feed-structured-exercise.ts'
 import { decodeKeysetCursor, encodeKeysetCursor } from './keyset-cursor.ts'
 import { activityKindTag, autoPostTags, computePostTags } from './post-tags.ts'
@@ -238,6 +240,41 @@ const resolveExercisePresentation = async (
 }
 
 /**
+ * A dashboard post's Note `content` and (per `SerializeFeedPostOpts`) its structured payload, both
+ * from one resolve of the shared period.
+ */
+const resolveDashboardPresentation = async (
+  user: string,
+  record: FeedPostRecord,
+  opts: SerializeFeedPostOpts,
+): Promise<Pick<FeedPost, 'content' | 'structured'>> => {
+  if (record.dashboard == null) return {}
+  const structured = await resolveStructuredDashboard(user, record).catch((error) => {
+    console.warn(`⚠️ Dashboard post ${record.id} could not be resolved:`, error)
+    return null
+  })
+  return {
+    content: linkifyHashtags(
+      renderDashboardShareHtml(record.dashboard, structured, record.message),
+      postHashtags(user, record, opts),
+    ),
+    ...((opts.includeStructured ?? false) && structured != null ? { structured } : {}),
+  }
+}
+
+/** The `content` and `structured` of a post kind that shares no activity; none for the rest. */
+const resolveSharePresentation = (
+  user: string,
+  record: FeedPostRecord,
+  opts: SerializeFeedPostOpts,
+): Promise<Pick<FeedPost, 'content' | 'structured'>> =>
+  record.kind === 'exercise'
+    ? resolveExercisePresentation(user, record, opts)
+    : record.kind === 'dashboard'
+      ? resolveDashboardPresentation(user, record, opts)
+      : Promise.resolve({})
+
+/**
  * What a `reply` post answers — the target object, its author, and the handle
  * snapshot naming the federated `Mention`. Every other kind exposes none of it.
  */
@@ -272,9 +309,7 @@ export const serializeFeedPost = async (
   const activity = record.activity_id ? await resolveFeedActivity(user, record.activity_id) : null
   const { content, metrics, structured } = activity
     ? await resolveActivityPresentation(user, record, activity, opts)
-    : record.kind === 'exercise'
-      ? { ...(await resolveExercisePresentation(user, record, opts)), metrics: undefined }
-      : { content: undefined, metrics: undefined, structured: undefined }
+    : { ...(await resolveSharePresentation(user, record, opts)), metrics: undefined }
   return {
     activity_end_time: activity?.end_time?.toISOString(),
     activity_id: record.activity_id,
@@ -289,6 +324,7 @@ export const serializeFeedPost = async (
     challenge: record.challenge ?? undefined,
     content,
     exercise: record.exercise ?? undefined,
+    dashboard: record.dashboard ?? undefined,
     created_at: record.created_at.toISOString(),
     id: record.id,
     include_chart: record.include_chart,

@@ -18,6 +18,8 @@ import {
   buildArticleNoteCreate,
   buildChallengeNote,
   buildChallengeNoteCreate,
+  buildDashboardNote,
+  buildDashboardNoteCreate,
   buildExerciseNote,
   buildExerciseNoteCreate,
   buildFeedDelete,
@@ -27,11 +29,14 @@ import {
   challengeMentions,
   type DeliverableArticle,
   type DeliverableChallenge,
+  type DeliverableDashboard,
   type DeliverableExercise,
   type DeliverablePost,
   type DeliverableReply,
   deliverFeedChallengePost,
   deliverFeedChallengeUpdate,
+  deliverFeedDashboardPost,
+  deliverFeedDashboardUpdate,
   deliverFeedDelete,
   deliverFeedExercisePost,
   deliverFeedExerciseUpdate,
@@ -43,6 +48,7 @@ import {
   imageAttachments,
   imageAvailability,
   recipients,
+  toDeliverableDashboard,
   toDeliverableExercise,
   toDeliverableReply,
 } from './deliver.ts'
@@ -720,6 +726,7 @@ describe('buildReplyNote / buildReplyNoteCreate', () => {
       article: null,
       autoshare_rule_id: null,
       challenge: null,
+      dashboard: null,
       exercise: null,
       created_at: new Date(),
       id: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
@@ -843,6 +850,7 @@ describe('exercise shares (#1398)', () => {
       autoshare_rule_id: null,
       challenge: null,
       created_at: new Date(),
+      dashboard: null,
       exercise: deliverableExercise().exercise,
       id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
       image_token: 'tok',
@@ -970,6 +978,119 @@ describe('exercise shares (#1398)', () => {
     })
     expect(hasTrend).not.toHaveBeenCalled()
     expect(await attachedNames(optedOut.sendActivity.mock.calls[0][2])).toEqual([])
+  })
+})
+
+describe('dashboard-period shares (#1505)', () => {
+  const ORIGIN = 'https://aurboda.example'
+  const contextFor = () => createFeedFederation(ORIGIN, `${ORIGIN}/api`).createContext(new URL(ORIGIN))
+  const CONTENT = '<p><strong>Month in data</strong> · October 2026</p>'
+
+  const deliverableDashboard = (over: Partial<DeliverableDashboard> = {}): DeliverableDashboard => ({
+    created_at: new Date('2026-11-01T00:00:00Z'),
+    dashboard: {
+      config: { period: { granularity: 'month' }, sections: [], version: 1 },
+      include_link: false,
+      name: 'Month in data',
+      period: '2026-10',
+    },
+    id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+    message: null,
+    updated_at: new Date('2026-11-01T00:00:00Z'),
+    visibility: 'public',
+    ...over,
+  })
+
+  test('toDeliverableDashboard narrows only a dashboard post with its payload', () => {
+    const record = {
+      activity_id: null,
+      article: null,
+      autoshare_rule_id: null,
+      challenge: null,
+      created_at: new Date(),
+      dashboard: deliverableDashboard().dashboard,
+      exercise: null,
+      id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+      image_token: 'tok',
+      in_reply_to_actor_uri: null,
+      in_reply_to_handle: null,
+      in_reply_to_uri: null,
+      include_chart: false,
+      include_exercises: false,
+      include_map: false,
+      included_metrics: [],
+      kind: 'dashboard' as const,
+      message: 'October',
+      series_metrics: [],
+      tags: ['monthindata'],
+      updated_at: new Date(),
+      visibility: 'public' as const,
+    }
+    expect(toDeliverableDashboard(record)).toMatchObject({
+      dashboard: record.dashboard,
+      message: 'October',
+      tags: ['monthindata'],
+    })
+    expect(toDeliverableDashboard({ ...record, dashboard: null })).toBeNull()
+    expect(toDeliverableDashboard({ ...record, kind: 'exercise' })).toBeNull()
+    expect(toDeliverableExercise(record)).toBeNull()
+  })
+
+  test('the Note is at the canonical post id, named by the dashboard, addressed by visibility', async () => {
+    const ctx = await contextFor()
+    const post = deliverableDashboard()
+    const note = buildDashboardNote(ctx, 'fiddur', post, CONTENT)
+    expect(note).toBeInstanceOf(Note)
+    expect(note.id?.href).toBe(`${ORIGIN}/users/fiddur/feed/${post.id}`)
+    expect(note.name?.toString()).toBe('Month in data')
+    expect(note.content?.toString()).toBe(CONTENT)
+    expect(hrefs([...note.toIds])).toEqual([PUBLIC])
+    expect(note.attachmentIds).toEqual([])
+  })
+
+  test('the Create wraps the Note with a #create id; followers-only never addresses Public', async () => {
+    const ctx = await contextFor()
+    const post = deliverableDashboard({ visibility: 'followers' })
+    const create = buildDashboardNoteCreate(ctx, 'fiddur', post, CONTENT)
+    expect(create.id?.href).toBe(`${ORIGIN}/users/fiddur/feed/${post.id}#create`)
+    expect(hrefs([...create.toIds])).toEqual([`${ORIGIN}/users/fiddur/followers`])
+    expect([...create.ccIds]).toEqual([])
+    expect(await create.getObject()).toBeInstanceOf(Note)
+  })
+
+  test('the Note links its hashtags', async () => {
+    const ctx = await contextFor()
+    const note = buildDashboardNote(ctx, 'fiddur', deliverableDashboard({ tags: ['monthindata'] }), CONTENT)
+    const tags: string[] = []
+    for await (const tag of note.getTags()) if (tag instanceof Hashtag) tags.push(tag.name?.toString() ?? '')
+    expect(tags).toEqual(['#monthindata'])
+    expect(note.content?.toString()).toContain('monthindata')
+  })
+
+  const fakeDeps = async () => {
+    const ctx = await contextFor()
+    const sendActivity = vi.fn().mockResolvedValue(undefined)
+    Object.assign(ctx, { sendActivity })
+    const deps: FeedDeliveryDeps = {
+      apiBaseUrl: `${ORIGIN}/api`,
+      federation: { createContext: async () => ctx } as unknown as FeedDeliveryDeps['federation'],
+      origin: ORIGIN,
+    }
+    return { deps, sendActivity }
+  }
+
+  test('a Create and an Update go to followers only, with the resolved content', async () => {
+    const { deps, sendActivity } = await fakeDeps()
+    const post = deliverableDashboard()
+    const content = vi.fn(async () => CONTENT)
+    await deliverFeedDashboardPost(deps, 'fiddur', post, content)
+    await deliverFeedDashboardUpdate(deps, 'fiddur', post, content)
+    expect(content).toHaveBeenCalledWith('fiddur', post)
+    const [[, toCreate, create], [, toUpdate, update]] = sendActivity.mock.calls
+    expect([toCreate, toUpdate]).toEqual(['followers', 'followers'])
+    expect(create).toBeInstanceOf(Create)
+    expect(update).toBeInstanceOf(Update)
+    expect((await create.getObject()).content?.toString()).toBe(CONTENT)
   })
 })
 

@@ -5,6 +5,7 @@ import type {
   ArticleExportResponse,
   CreateArticleDraftBody,
   CreateArticleBody,
+  DashboardSharePreviewResponse,
   ExerciseSharePreviewResponse,
   FeedPost,
   FeedPostReaction,
@@ -23,6 +24,7 @@ import type {
   ReplyToPostBody,
   ShareActivityBody,
   ShareChallengeBody,
+  ShareDashboardPeriodBody,
   ShareExerciseBody,
   SharePreviewResponse,
   TimelineEntry,
@@ -103,6 +105,28 @@ export const previewExerciseShare = async (
   const response = await axios.post<ExerciseSharePreviewResponse>(`${API_URL}/feed/exercises/preview`, body, {
     headers: authHeaders(),
   })
+  return response.data
+}
+
+export const shareDashboardPeriod = async (body: ShareDashboardPeriodBody): Promise<FeedPost> => {
+  const response = await axios.post<FeedPostResponse>(`${API_URL}/feed/dashboards`, body, {
+    headers: authHeaders(),
+  })
+  if (!response.data.post) throw new Error('Share failed: no post returned')
+  return response.data.post
+}
+
+/** What sharing this dashboard period would post: the Note HTML and the native payload. Creates nothing. */
+export const previewDashboardPeriodShare = async (
+  body: Omit<ShareDashboardPeriodBody, 'visibility'>,
+): Promise<DashboardSharePreviewResponse> => {
+  const response = await axios.post<DashboardSharePreviewResponse>(
+    `${API_URL}/feed/dashboards/preview`,
+    body,
+    {
+      headers: authHeaders(),
+    },
+  )
   return response.data
 }
 

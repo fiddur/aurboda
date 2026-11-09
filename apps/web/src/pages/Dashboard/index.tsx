@@ -6,7 +6,10 @@ import { useState } from 'preact/hooks'
 
 import { EditableDashboard } from '../../components/EditableDashboard'
 import { GetStartedGuide } from '../../components/GetStartedGuide'
-import { fetchDashboard, resetDashboard, saveDashboard } from '../../state/api'
+import { PeriodDashboardBar } from '../../components/PeriodSwitcher'
+import { ShareDashboardPeriodDialog } from '../../components/ShareDashboardPeriodDialog'
+import { usePeriodDashboard } from '../../components/usePeriodDashboard'
+import { fetchDashboard, fetchDashboardData, resetDashboard, saveDashboard } from '../../state/api'
 import { auth } from '../../state/auth'
 import { readCachedDashboard, writeCachedDashboard } from '../../state/dashboardCache'
 import './style.css'
@@ -16,6 +19,7 @@ const browserStorage = () => window.localStorage
 export function Dashboard() {
   const queryClient = useQueryClient()
   const [isEditing, setIsEditing] = useState(false)
+  const [sharingPeriod, setSharingPeriod] = useState<string | null>(null)
   const user = auth.value.user
 
   const dashboardQuery = useQuery({
@@ -35,6 +39,7 @@ export function Dashboard() {
     onSuccess: (data) => {
       writeCachedDashboard(browserStorage, user, data)
       queryClient.setQueryData(['dashboard'], data)
+      void queryClient.invalidateQueries({ queryKey: ['dashboardData', 'home'] })
     },
   })
 
@@ -43,11 +48,13 @@ export function Dashboard() {
     onSuccess: (data) => {
       writeCachedDashboard(browserStorage, user, data)
       queryClient.setQueryData(['dashboard'], data)
+      void queryClient.invalidateQueries({ queryKey: ['dashboardData', 'home'] })
     },
   })
 
   const dashboard: DashboardConfig = dashboardQuery.data ?? defaultDashboardConfig
   const isLoading = dashboardQuery.isLoading
+  const period = usePeriodDashboard('home', dashboard, fetchDashboardData)
 
   const handleReset = () => {
     if (confirm('Reset dashboard to default configuration? Your customizations will be lost.')) {
@@ -71,24 +78,39 @@ export function Dashboard() {
               </button>
             </>
           ) : (
-            <button class="btn-edit" onClick={() => setIsEditing(true)} title="Edit Dashboard">
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
-                <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
-              </svg>
-            </button>
+            <>
+              <a class="dashboard-all-link" href="/dashboards">
+                All dashboards
+              </a>
+              <button class="btn-edit" onClick={() => setIsEditing(true)} title="Edit Dashboard">
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                  <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+                </svg>
+              </button>
+            </>
           )}
         </div>
       </div>
 
       {!isEditing && <GetStartedGuide />}
+
+      {!isLoading && period && <PeriodDashboardBar state={period} onShare={setSharingPeriod} />}
+
+      {sharingPeriod !== null && (
+        <ShareDashboardPeriodDialog
+          name="Home"
+          period={sharingPeriod}
+          onClose={() => setSharingPeriod(null)}
+        />
+      )}
 
       {isLoading && <div class="loading">Loading your dashboard...</div>}
 
@@ -98,6 +120,8 @@ export function Dashboard() {
           isEditing={isEditing}
           boardId="home"
           onChange={(next) => saveMutation.mutate(next)}
+          widgetData={period?.widgetData}
+          periodLabel={period?.periodLabel}
         />
       )}
     </div>

@@ -7,8 +7,8 @@
  * the same card renders both the viewer's own posts and (later) remote actors'.
  * `footer` carries per-post controls (Edit / Unshare) for the viewer's own posts.
  */
-import type { FeedPost, FeedVisibility } from '@aurboda/api-spec'
-import type { ComponentChildren } from 'preact'
+import type { FeedPost, FeedPostKind, FeedVisibility } from '@aurboda/api-spec'
+import type { ComponentChildren, FunctionComponent } from 'preact'
 
 import { formatDistanceToNow } from 'date-fns'
 
@@ -20,6 +20,7 @@ import { ActivityStatGrid } from './ActivityStatGrid'
 import { articleRenderSource } from './article-render-source'
 import { ArticleContent } from './ArticleContent'
 import { ChallengeShareContent } from './ChallengeShareContent'
+import { DashboardShareContent, DashboardShareFallback } from './DashboardShareContent'
 import { ExerciseShareContent, ExerciseShareFallback } from './ExerciseShareContent'
 import { postTagLine } from './post-tag-line'
 import {
@@ -77,6 +78,7 @@ const mediaUrls = (
   chart:
     post.kind !== 'challenge' &&
     post.kind !== 'exercise' &&
+    post.kind !== 'dashboard' &&
     post.include_chart &&
     !structuredHasNativeHrChart(post.structured)
       ? imageUrl(username, post, 'chart')
@@ -149,6 +151,26 @@ const ExercisePostBody = ({ post }: { post: FeedPost }) =>
   ) : null
 
 /**
+ * A dashboard-period post renders the same card a peer's timeline does; without a structured payload
+ * (the period could not be resolved) only its name, period, note and link.
+ */
+const DashboardPostBody = ({ post }: { post: FeedPost }) =>
+  post.structured?.kind === 'dashboard' ? (
+    <DashboardShareContent structured={post.structured} />
+  ) : post.dashboard ? (
+    <DashboardShareFallback dashboard={post.dashboard} message={post.message} />
+  ) : post.content ? (
+    <div class="feed-post-content" dangerouslySetInnerHTML={{ __html: post.content }} />
+  ) : null
+
+/** The kinds whose card body is their own component. */
+const kindBodies: Partial<Record<FeedPostKind, FunctionComponent<{ post: FeedPost }>>> = {
+  dashboard: DashboardPostBody,
+  exercise: ExercisePostBody,
+  reply: ReplyPostBody,
+}
+
+/**
  * The card body. An article renders its own title + prose/chart blocks (prose sanitised
  * via the shared sanitiser) — live for the owner, server-resolved for a
  * visitor. An activity post with the full structured
@@ -161,6 +183,7 @@ const ExercisePostBody = ({ post }: { post: FeedPost }) =>
  */
 const FeedPostBody = ({ post, visitor }: { post: FeedPost; visitor: boolean }) => {
   const articleSource = articleRenderSource(post, visitor)
+  const KindBody = kindBodies[post.kind]
   return articleSource?.kind === 'resolved' ? (
     <TimelineArticle article={articleSource.article} />
   ) : articleSource?.kind === 'live' ? (
@@ -169,10 +192,8 @@ const FeedPostBody = ({ post, visitor }: { post: FeedPost; visitor: boolean }) =
     <TimelineStructured structured={post.structured} />
   ) : post.kind === 'challenge' && post.challenge ? (
     <ChallengeShareContent challenge={post.challenge} message={post.message} />
-  ) : post.kind === 'reply' ? (
-    <ReplyPostBody post={post} />
-  ) : post.kind === 'exercise' ? (
-    <ExercisePostBody post={post} />
+  ) : KindBody ? (
+    <KindBody post={post} />
   ) : post.structured ? (
     <TimelineStructured structured={post.structured} />
   ) : post.metrics ? (

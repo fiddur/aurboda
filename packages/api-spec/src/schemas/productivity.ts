@@ -152,3 +152,44 @@ export const screentimeBucketedResponseSchema = baseResponseSchema
   .meta({ id: 'ScreentimeBucketedResponse' })
 
 export type ScreentimeBucketedResponse = z.infer<typeof screentimeBucketedResponseSchema>
+
+export const topAppsQuerySchema = timeRangeQuerySchema
+  .extend({
+    limit: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(50)
+      .default(10)
+      .meta({ description: 'Maximum number of apps to return (default 10)' }),
+  })
+  .meta({ id: 'TopAppsQuery' })
+
+export type TopAppsQuery = z.infer<typeof topAppsQuerySchema>
+
+export const topAppSchema = z
+  .object({
+    hours: z.number().meta({ description: 'Hours in the window, one decimal' }),
+    name: z.string().meta({ description: 'Application or site name' }),
+  })
+  .meta({ id: 'TopApp' })
+
+export type TopApp = z.infer<typeof topAppSchema>
+
+export const topAppsSchema = z
+  .object({
+    distinct_apps: z.number().int().meta({ description: 'Distinct apps used in the window' }),
+    items: z.array(topAppSchema).meta({ description: 'The most used apps, most hours first' }),
+    total_hours: z.number().meta({ description: 'Screen time in the window (hours, one decimal)' }),
+  })
+  .meta({
+    description:
+      'Screen time in a window grouped by app, leaving out records in categories excluded from screen time',
+    id: 'TopApps',
+  })
+
+export type TopApps = z.infer<typeof topAppsSchema>
+
+export const topAppsResponseSchema = createDataResponseSchema(topAppsSchema).meta({ id: 'TopAppsResponse' })
+
+export type TopAppsResponse = z.infer<typeof topAppsResponseSchema>

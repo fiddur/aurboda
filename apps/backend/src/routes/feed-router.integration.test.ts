@@ -17,6 +17,7 @@ import { insertActivity } from '../db/activities/index.ts'
 import { createChallenge, createChallengeParticipation, deleteChallenge } from '../db/challenges.ts'
 import { upsertFeedPostReaction } from '../db/feed-reactions.ts'
 import { createFeedPost } from '../db/feed.ts'
+import { createSharedDashboard } from '../db/shared-dashboards.ts'
 import { createSharedExercise } from '../db/shared-exercises.ts'
 import { insertTimeSeries } from '../db/time-series.ts'
 import { upsertTimelineEntry } from '../db/timeline.ts'
@@ -150,7 +151,9 @@ describe('Article feed routes (integration)', () => {
       createdChallenge: vi.fn(),
       updatedArticle: vi.fn(),
       updatedChallenge: vi.fn(),
+      createdDashboard: vi.fn(),
       createdExercise: vi.fn(),
+      updatedDashboard: vi.fn(),
       updatedExercise: vi.fn(),
     }
     const spied = startApp(deliver)
@@ -319,7 +322,9 @@ describe('POST /feed/challenges (share a challenge — #994)', () => {
       updated: vi.fn(),
       updatedArticle: vi.fn(),
       updatedChallenge: vi.fn(),
+      createdDashboard: vi.fn(),
       createdExercise: vi.fn(),
+      updatedDashboard: vi.fn(),
       updatedExercise: vi.fn(),
       updatedReply: vi.fn(),
     }
@@ -448,12 +453,14 @@ describe('POST /feed/exercises (share an exercise — #1398)', () => {
       created: vi.fn(),
       createdArticle: vi.fn(),
       createdChallenge: vi.fn(),
+      createdDashboard: vi.fn(),
       createdExercise: vi.fn(),
       createdReply: vi.fn(),
       deleted: vi.fn(),
       updated: vi.fn(),
       updatedArticle: vi.fn(),
       updatedChallenge: vi.fn(),
+      updatedDashboard: vi.fn(),
       updatedExercise: vi.fn(),
       updatedReply: vi.fn(),
     }
@@ -585,6 +592,169 @@ describe('POST /feed/exercises (share an exercise — #1398)', () => {
     expect(patched.status).toBe(200)
     expect(patched.body.post.visibility).toBe('unlisted')
     expect(deliver.updatedExercise).toHaveBeenCalledTimes(1)
+    expect(deliver.updated).not.toHaveBeenCalled()
+  })
+})
+
+describe('POST /feed/dashboards (share a dashboard period — #1505)', () => {
+  let app: ReturnType<typeof startApp>
+  let deliver: FeedDeliver
+
+  beforeAll(async () => {
+    await startTestDb()
+    deliver = {
+      created: vi.fn(),
+      createdArticle: vi.fn(),
+      createdChallenge: vi.fn(),
+      createdDashboard: vi.fn(),
+      createdExercise: vi.fn(),
+      createdReply: vi.fn(),
+      deleted: vi.fn(),
+      updated: vi.fn(),
+      updatedArticle: vi.fn(),
+      updatedChallenge: vi.fn(),
+      updatedDashboard: vi.fn(),
+      updatedExercise: vi.fn(),
+      updatedReply: vi.fn(),
+    }
+    app = startApp(deliver, undefined, 'https://aurboda.example')
+  }, CONTAINER_TIMEOUT)
+
+  afterAll(async () => {
+    await app.close()
+    await stopTestDb()
+  })
+
+  beforeEach(async () => {
+    await cleanTestDb()
+    vi.clearAllMocks()
+  })
+
+  const periodConfig = {
+    period: { granularity: 'month' as const },
+    sections: [
+      {
+        id: 's1',
+        title: 'Month',
+        type: 'metrics' as const,
+        widgets: [
+          { config: { metric: 'steps', title: 'Steps' }, id: 'w1', type: 'metric_card' as const },
+          { config: { href: '/settings', label: 'Settings' }, id: 'w2', type: 'quick_link' as const },
+        ],
+      },
+    ],
+    version: 1 as const,
+  }
+
+  const share = (isPrivate = false) =>
+    createSharedDashboard(getTestUser(), {
+      config: periodConfig,
+      is_private: isPrivate,
+      is_public: false,
+      name: 'Month in data',
+    })
+
+  test('shares a finished period: the config snapshot, the link, and the period resolved at read time', async () => {
+    const user = getTestUser()
+    const dashboard = await share()
+    const res = await app.request
+      .post('/feed/dashboards')
+      .send({ dashboard_id: dashboard.id, message: 'A **good** month', period: '2026-10' })
+    expect(res.status).toBe(200)
+    expect(res.body.post.kind).toBe('dashboard')
+    expect(res.body.post.dashboard).toMatchObject({
+      dashboard_id: dashboard.id,
+      include_link: true,
+      name: 'Month in data',
+      period: '2026-10',
+      url: `https://aurboda.example/u/${user}/${dashboard.slug}`,
+    })
+    expect(res.body.post.dashboard.config.sections[0].widgets[1].config.href).toBe('#')
+    expect(res.body.post.include_chart).toBe(false)
+    expect(res.body.post.tags).toEqual(['aurboda', 'monthindata'])
+    expect(res.body.post.content).toContain('<strong>Month in data</strong> · October 2026')
+    expect(res.body.post.content).toContain('<strong>good</strong>')
+    expect(res.body.post.content).toContain(`https://aurboda.example/u/${user}/${dashboard.slug}`)
+    expect(res.body.post.structured).toMatchObject({
+      kind: 'dashboard',
+      message: 'A **good** month',
+      name: 'Month in data',
+      period: '2026-10',
+      window: { end: '2026-11-01T00:00:00.000Z', start: '2026-10-01T00:00:00.000Z' },
+    })
+    expect(Object.keys(res.body.post.structured.widget_data).sort()).toEqual(['w1', 'w2'])
+    expect(deliver.createdDashboard).toHaveBeenCalledTimes(1)
+  })
+
+  test('a private dashboard or a declined link carries no url', async () => {
+    const privateDashboard = await share(true)
+    const unpublished = await app.request
+      .post('/feed/dashboards')
+      .send({ dashboard_id: privateDashboard.id, period: '2026-10' })
+    expect(unpublished.status).toBe(200)
+    expect(unpublished.body.post.dashboard).not.toHaveProperty('url')
+
+    const published = await share()
+    const declined = await app.request
+      .post('/feed/dashboards')
+      .send({ dashboard_id: published.id, include_link: false, period: '2026-10' })
+    expect(declined.body.post.dashboard).not.toHaveProperty('url')
+  })
+
+  test('404 for an unknown dashboard; 400 for a rolling home dashboard, another granularity or an unfinished period', async () => {
+    const missing = await app.request
+      .post('/feed/dashboards')
+      .send({ dashboard_id: '00000000-0000-4000-8000-000000000000', period: '2026-10' })
+    expect(missing.status).toBe(404)
+    expect(missing.body.error).toBe('Dashboard not found')
+
+    const home = await app.request.post('/feed/dashboards').send({ period: '2026-10' })
+    expect(home.status).toBe(400)
+    expect(home.body.error).toBe('Not a period dashboard')
+
+    const dashboard = await share()
+    const week = await app.request
+      .post('/feed/dashboards')
+      .send({ dashboard_id: dashboard.id, period: '2026-W44' })
+    expect(week.status).toBe(400)
+    const future = await app.request
+      .post('/feed/dashboards')
+      .send({ dashboard_id: dashboard.id, period: '2099-01' })
+    expect(future.status).toBe(400)
+    expect(future.body.error).toBe('The period is not finished yet')
+
+    expect((await app.request.post('/feed/dashboards').send({ period: 'October' })).status).toBe(400)
+    expect(deliver.createdDashboard).not.toHaveBeenCalled()
+  })
+
+  test('the preview returns the Note HTML, structured payload and tags and creates nothing', async () => {
+    const dashboard = await share()
+    const res = await app.request
+      .post('/feed/dashboards/preview')
+      .send({ dashboard_id: dashboard.id, message: 'Hi', period: '2026-10' })
+    expect(res.status).toBe(200)
+    expect(res.body.content).toContain('<p>Hi</p>')
+    expect(res.body.structured).toMatchObject({ kind: 'dashboard', message: 'Hi', period: '2026-10' })
+    expect(res.body.tags).toEqual(['aurboda', 'monthindata'])
+    expect((await app.request.get('/feed')).body.posts).toEqual([])
+    expect(
+      (
+        await app.request
+          .post('/feed/dashboards/preview')
+          .send({ dashboard_id: dashboard.id, period: '2099-01' })
+      ).status,
+    ).toBe(400)
+  })
+
+  test('a visibility flip via the generic PATCH federates through the dashboard path', async () => {
+    const dashboard = await share()
+    const created = await app.request
+      .post('/feed/dashboards')
+      .send({ dashboard_id: dashboard.id, period: '2026-10' })
+    const patched = await app.request.patch(`/feed/${created.body.post.id}`).send({ visibility: 'unlisted' })
+    expect(patched.status).toBe(200)
+    expect(patched.body.post.visibility).toBe('unlisted')
+    expect(deliver.updatedDashboard).toHaveBeenCalledTimes(1)
     expect(deliver.updated).not.toHaveBeenCalled()
   })
 })
@@ -769,12 +939,14 @@ describe('Article drafts (/feed/article-drafts)', () => {
     created: vi.fn(),
     createdArticle: vi.fn(),
     createdChallenge: vi.fn(),
+    createdDashboard: vi.fn(),
     createdExercise: vi.fn(),
     createdReply: vi.fn(),
     deleted: vi.fn(),
     updated: vi.fn(),
     updatedArticle: vi.fn(),
     updatedChallenge: vi.fn(),
+    updatedDashboard: vi.fn(),
     updatedExercise: vi.fn(),
     updatedReply: vi.fn(),
   })

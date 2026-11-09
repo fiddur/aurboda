@@ -1,8 +1,6 @@
 /**
  * Unit tests for the public-shares-router security helpers — the username
- * gate (which selects the per-user database) and the config sanitizer (which
- * neutralizes quick-link hrefs before exposing a config to anonymous viewers) —
- * and the challenge register-back checks.
+ * gate (which selects the per-user database) — and the challenge register-back checks.
  */
 import type { DashboardConfig } from '@aurboda/api-spec'
 
@@ -11,7 +9,12 @@ import supertest from 'supertest'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import type * as DbModule from '../db/index.ts'
-import type { ChallengeRecord, ChallengeSpecFields, SharedExerciseRecord } from '../db/index.ts'
+import type {
+  ChallengeRecord,
+  ChallengeSpecFields,
+  SharedDashboardRecord,
+  SharedExerciseRecord,
+} from '../db/index.ts'
 import type * as FederationModule from '../services/challenge-federation.ts'
 
 import { isValidUsername } from '../api/auth-routes.ts'
@@ -22,7 +25,7 @@ vi.mock('../db/index.ts', async (importOriginal) => ({
   getActivityTypeDefinition: vi.fn(),
   getChallengeBySlug: vi.fn(),
   getChallengeMemberByIdentity: vi.fn(),
-  getSharedDashboardBySlug: vi.fn(),
+  getPublicSharedDashboardBySlug: vi.fn(),
   getSharedExerciseBySlug: vi.fn(),
   getUserSettings: vi.fn(async () => null),
   listChallengeMembers: vi.fn(),
@@ -33,6 +36,8 @@ vi.mock('../db/index.ts', async (importOriginal) => ({
 }))
 
 vi.mock('../services/shared-exercise-data.ts', () => ({ resolveSharedExerciseData: vi.fn() }))
+vi.mock('../services/shared-dashboard-data.ts', () => ({ resolveDashboardView: vi.fn() }))
+vi.mock('../services/settings.ts', () => ({ getUserTimezone: vi.fn(async () => 'Europe/Stockholm') }))
 
 vi.mock('../services/challenge-federation.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof FederationModule>()),
@@ -42,7 +47,8 @@ vi.mock('../services/challenge-federation.ts', async (importOriginal) => ({
 const db = await import('../db/index.ts')
 const federation = await import('../services/challenge-federation.ts')
 const exerciseData = await import('../services/shared-exercise-data.ts')
-const { createPublicSharesRouter, sanitizeConfig } = await import('./public-shares-router.ts')
+const dashboardData = await import('../services/shared-dashboard-data.ts')
+const { createPublicSharesRouter } = await import('./public-shares-router.ts')
 
 describe('isValidUsername (public DB-selecting gate)', () => {
   test('accepts valid usernames', () => {
@@ -69,51 +75,178 @@ describe('isValidUsername (public DB-selecting gate)', () => {
   })
 })
 
-describe('sanitizeConfig', () => {
-  test('neutralizes quick-link hrefs and leaves other widgets untouched', () => {
-    const config: DashboardConfig = {
-      sections: [
-        {
-          id: 's1',
-          title: 'Links',
-          type: 'links',
-          widgets: [
-            {
-              config: { href: '/secret/admin', icon: 'goals', label: 'Goals' },
-              id: 'ql',
-              type: 'quick_link',
-            },
-            { config: { metric: 'hrv_7day', title: 'HRV' }, id: 'mc', type: 'metric_card' },
-          ],
-        },
-      ],
-      version: 1,
-    }
+describe('GET /public/:username/:slug (dashboard)', () => {
+  const app = () => {
+    const a = express()
+    a.use(createPublicSharesRouter('https://aurboda.net') as unknown as express.RequestHandler)
+    return supertest(a)
+  }
+  const record = (config: DashboardConfig, lock: Partial<SharedDashboardRecord> = {}) =>
+    ({
+      config,
+      name: 'Board',
+      period_fixed: null,
+      period_from: null,
+      period_lock: 'latest',
+      slug: 'board',
+      ...lock,
+    }) as SharedDashboardRecord
+  const widget_data = { link: { data: null, type: 'quick_link' as const } }
 
-    const sanitized = sanitizeConfig(config)
-    const [quickLink, metricCard] = sanitized.sections[0].widgets
-
-    expect(quickLink.type).toBe('quick_link')
-    if (quickLink.type === 'quick_link') {
-      expect(quickLink.config.href).toBe('#')
-      expect(quickLink.config.label).toBe('Goals') // label preserved
-    }
-    expect(metricCard).toEqual(config.sections[0].widgets[1]) // untouched
-    // Original config is not mutated.
-    expect(config.sections[0].widgets[0]).toMatchObject({ config: { href: '/secret/admin' } })
+  beforeEach(() => {
+    vi.clearAllMocks()
   })
 
-  test('preserves author prose (dashboard + section descriptions)', () => {
-    const config: DashboardConfig = {
-      description: 'Two years of training.',
-      sections: [
-        { description: 'Recovery metrics.', id: 's1', title: 'Baseline', type: 'metrics', widgets: [] },
-      ],
-      version: 1,
-    }
-    const sanitized = sanitizeConfig(config)
-    expect(sanitized.description).toBe('Two years of training.')
-    expect(sanitized.sections[0].description).toBe('Recovery metrics.')
+  test('a period dashboard says which finished period it shows', async () => {
+    const config: DashboardConfig = { period: { granularity: 'month' }, sections: [], version: 1 }
+    vi.mocked(db.getPublicSharedDashboardBySlug).mockResolvedValue(record(config))
+    const window = { end: '2026-10-31T23:00:00.000Z', start: '2026-09-30T22:00:00.000Z' }
+    vi.mocked(dashboardData.resolveDashboardView).mockResolvedValue({
+      period: '2026-10',
+      widget_data,
+      window,
+    })
+
+    const res = await app().get('/public/alice/board')
+
+    expect(res.status).toBe(200)
+    expect(res.body).toMatchObject({ config, period: '2026-10', period_lock: 'latest', widget_data, window })
+    expect('period_from' in res.body).toBe(false)
+    expect(dashboardData.resolveDashboardView).toHaveBeenCalledWith('alice', config, expect.any(String))
+  })
+
+  describe('period locks', () => {
+    const monthly: DashboardConfig = { period: { granularity: 'month' }, sections: [], version: 1 }
+    const view = (period: string) => ({
+      period,
+      widget_data,
+      window: { end: '2020-02-01T00:00:00.000Z', start: '2020-01-01T00:00:00.000Z' },
+    })
+
+    beforeEach(() => {
+      vi.mocked(dashboardData.resolveDashboardView).mockImplementation(async (_user, _config, period) =>
+        view(period ?? 'none'),
+      )
+    })
+
+    test('latest ignores a requested period', async () => {
+      vi.mocked(db.getPublicSharedDashboardBySlug).mockResolvedValue(record(monthly))
+
+      const res = await app().get('/public/alice/board?period=2020-01')
+
+      expect(res.status).toBe(200)
+      const [, , resolved] = vi.mocked(dashboardData.resolveDashboardView).mock.calls[0]
+      expect(resolved).not.toBe('2020-01')
+      expect(res.body.period_lock).toBe('latest')
+    })
+
+    test('fixed resolves the pinned period whatever is asked', async () => {
+      vi.mocked(db.getPublicSharedDashboardBySlug).mockResolvedValue(
+        record(monthly, { period_fixed: '2020-03', period_lock: 'fixed' }),
+      )
+
+      const res = await app().get('/public/alice/board?period=2020-05')
+
+      expect(res.status).toBe(200)
+      expect(dashboardData.resolveDashboardView).toHaveBeenCalledWith('alice', monthly, '2020-03')
+      expect(res.body).toMatchObject({ period: '2020-03', period_lock: 'fixed' })
+      expect('period_from' in res.body).toBe(false)
+    })
+
+    describe('browsable', () => {
+      beforeEach(() => {
+        vi.mocked(db.getPublicSharedDashboardBySlug).mockResolvedValue(
+          record(monthly, { period_from: '2020-01', period_lock: 'browsable' }),
+        )
+      })
+
+      test('honours a finished period from period_from on and says where browsing starts', async () => {
+        const res = await app().get('/public/alice/board?period=2020-04')
+
+        expect(res.status).toBe(200)
+        expect(dashboardData.resolveDashboardView).toHaveBeenCalledWith('alice', monthly, '2020-04')
+        expect(res.body).toMatchObject({
+          period: '2020-04',
+          period_from: '2020-01',
+          period_lock: 'browsable',
+        })
+      })
+
+      test('answers 400 for a period before period_from', async () => {
+        const res = await app().get('/public/alice/board?period=2019-12')
+
+        expect(res.status).toBe(400)
+        expect(dashboardData.resolveDashboardView).not.toHaveBeenCalled()
+      })
+
+      test('answers 400 for an unfinished period', async () => {
+        const res = await app().get('/public/alice/board?period=2999-01')
+
+        expect(res.status).toBe(400)
+        expect(res.body.error).toBe('Period has not finished yet')
+      })
+
+      test('answers 400 for a period of another granularity', async () => {
+        const res = await app().get('/public/alice/board?period=2020-W10')
+
+        expect(res.status).toBe(400)
+        expect(dashboardData.resolveDashboardView).not.toHaveBeenCalled()
+      })
+    })
+
+    test('answers 400 for a period that is not a period key', async () => {
+      vi.mocked(db.getPublicSharedDashboardBySlug).mockResolvedValue(record(monthly))
+
+      const res = await app().get('/public/alice/board?period=last-month')
+
+      expect(res.status).toBe(400)
+    })
+  })
+
+  test('a private dashboard answers 404, as a missing slug does', async () => {
+    vi.mocked(db.getPublicSharedDashboardBySlug).mockResolvedValue(null)
+    vi.mocked(db.getChallengeBySlug).mockResolvedValue(null)
+    vi.mocked(db.getSharedExerciseBySlug).mockResolvedValue(null)
+
+    const res = await app().get('/public/alice/board')
+
+    expect(res.status).toBe(404)
+    expect(db.getPublicSharedDashboardBySlug).toHaveBeenCalledWith('alice', 'board')
+    expect(dashboardData.resolveDashboardView).not.toHaveBeenCalled()
+  })
+
+  test('the profile lists only what the public listing returns, so a private dashboard is absent', async () => {
+    vi.mocked(db.listPublicSharedDashboards).mockResolvedValue([
+      { name: 'Listed', slug: 'listed' } as Awaited<ReturnType<typeof db.listPublicSharedDashboards>>[number],
+    ])
+    vi.mocked(db.listPublicChallenges).mockResolvedValue([])
+    vi.mocked(db.listPublicSharedExercises).mockResolvedValue([])
+    vi.mocked(db.countPublicFeedPosts).mockResolvedValue(0)
+
+    const res = await app().get('/public/alice/dashboards')
+
+    expect(res.body.dashboards).toEqual([
+      { name: 'Listed', share_url: 'https://aurboda.net/u/alice/listed', slug: 'listed' },
+    ])
+    expect(db.listPublicSharedDashboards).toHaveBeenCalledWith('alice')
+  })
+
+  test('a rolling dashboard has no period', async () => {
+    const config: DashboardConfig = { sections: [], version: 1 }
+    vi.mocked(db.getPublicSharedDashboardBySlug).mockResolvedValue(record(config))
+    vi.mocked(dashboardData.resolveDashboardView).mockResolvedValue({
+      period: null,
+      widget_data,
+      window: null,
+    })
+
+    const res = await app().get('/public/alice/board')
+
+    expect(res.body.widget_data).toEqual(widget_data)
+    expect('period' in res.body).toBe(false)
+    expect('window' in res.body).toBe(false)
+    expect('period_lock' in res.body).toBe(false)
+    expect(dashboardData.resolveDashboardView).toHaveBeenCalledWith('alice', config, undefined)
   })
 })
 
@@ -246,7 +379,7 @@ describe('shared exercises on the public surface', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(db.getSharedDashboardBySlug).mockResolvedValue(null)
+    vi.mocked(db.getPublicSharedDashboardBySlug).mockResolvedValue(null)
     vi.mocked(db.getChallengeBySlug).mockResolvedValue(null)
     vi.mocked(db.getSharedExerciseBySlug).mockResolvedValue(exercise)
     vi.mocked(exerciseData.resolveSharedExerciseData).mockResolvedValue(data)

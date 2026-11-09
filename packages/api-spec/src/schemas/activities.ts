@@ -7,6 +7,7 @@ import {
   createDataArrayResponseSchema,
   createDataResponseSchema,
   durationMinutesSchema,
+  hrZoneSecsSchema,
   iso8601DateTimeSchema,
   latSchema,
   lonSchema,
@@ -16,7 +17,6 @@ import {
 } from './common.ts'
 import { commentSchema } from './notes.ts'
 import { activityRouteSummarySchema } from './routes.ts'
-import { hrZoneSecsSchema } from './settings.ts'
 
 /**
  * Health Connect exercise types mapping.

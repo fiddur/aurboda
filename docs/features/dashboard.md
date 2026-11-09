@@ -51,6 +51,8 @@ Displays a single metric value with an optional unit, trend indicator, and subti
 
 Values are sourced from either the HRV/HR baseline endpoint (for 7-day and 30-day averages) or the period summary (for everything else). The period summary compares the current 30-day window against the previous 30 days to calculate the trend percentage.
 
+On a [period dashboard](#period-dashboards) the card shows the period's value and, unless the card has its own subtitle, `Previous: <value>` for the previous period (`previous_value` in the widget data); the trend arrow is the change against it.
+
 **Configuration:** Metric name, title, optional unit, optional subtitle, optional inverse trend.
 
 ### Sparkline Card
@@ -152,6 +154,52 @@ the record measures `e1rm`, `max_weight`, `max_time`, `max_reps`), optional `fil
 (all time when absent) and optional `title` (default "<value or type> · <measure>"). Data comes
 from `GET /activity-types/:name/records` (MCP: `get_activity_records`).
 
+### Activity Card
+
+One activity type (its subtypes included) rolled up over the card's window: the number of sessions as
+the headline, then the total time and, where the sessions carry a distance, the total distance and
+either the best pace (min/km) or the average speed (km/h). For `sleep` it also shows the average
+night, the best night and the average minutes of REM, deep and light sleep over the nights that have
+stages. On a period dashboard the sessions, time, distance and average night carry a change against
+the previous period. Add one from a metrics section's add-widget dialog (activity type, title, an
+optional exercise and pace or speed), from the ⋮ menu on an exercise page's record card ("Add
+activity card"), or through the API or MCP. Activity types other than the built-in `exercise` and
+`sleep` are your own, so add a card per type you want to follow -- running, cycling, a gym visit type.
+
+**Configuration:** `pattern` (the activity type), optional `filter_field` + `filter_value` (both or
+neither: a data field, or an item path such as `sets.exercise`), optional `lookback_days` (default 30;
+a period dashboard uses its period), optional `speed_display` (`pace` or `speed`; default `pace` for
+types whose name contains `run`, `walk` or `hik`, else `speed`) and optional `title` (default the
+type's display name). Data comes from `GET /activity-types/:name/summary?start&end` (MCP:
+`get_activity_type_summary`).
+
+### Top List Card
+
+One source's total over the card's window as the headline, with its change against the previous
+period on a period dashboard, then its top entries: music plays by artist, album or track
+(`1,760 plays`, `506 artists`), screen time by app (`151 h`, `4.9 h/day`, `38 apps`; categories
+excluded from screen time are left out) or visits by place (`55 visits`, `12 places`). Add one from a
+metrics section's add-widget dialog (source, limit, title) or through the API or MCP.
+
+**Configuration:** `source` (`media_artist`, `media_album`, `media_track`, `screentime_app` or
+`place`), `limit` (1--10, default 3; a place list shows at most 5), optional `lookback_days` (default
+30; a period dashboard uses its period) and optional `title` (default "Top artists", "Top albums",
+"Top tracks", "Top apps" or "Top places"). Data comes from `GET /media/plays/top` (MCP:
+`query_top_media`), `GET /productivity/top-apps` (`query_top_apps`) and
+`GET /locations/places-summary` (`get_places_summary`).
+
+### Places Card
+
+Nights at home, nights away, distinct places and visits over the card's window, with changes against
+the previous period for the last three on a period dashboard, then the five most visited places. A
+night counts as away when there was an overnight stay at a named or detected place other than home; a
+night without a detectable stay counts as neither (see [Places summary](places.md#places-summary)).
+
+**Configuration:** optional `home_location` (the place that counts as home, default `Home`, matched
+case-insensitively), optional `lookback_days` (default 30; a period dashboard uses its period) and
+optional `title` (default "Places"). Data comes from `GET /locations/places-summary` (MCP:
+`get_places_summary`).
+
 ### Correlation Impact
 
 Shows how a specific activity, tag, or location affects your HRV. Displays three bars: "before" (baseline), "during" (the activity), and "after" (recovery), showing the average HRV in each phase. Includes an occurrence count so you can judge the statistical weight.
@@ -168,11 +216,11 @@ A clickable navigation tile with a colored icon and label. Links to any page in 
 
 Widgets are organized into sections, each with a title and a layout type:
 
-| Section type | Layout                                                        | Best for                                                   |
-| ------------ | ------------------------------------------------------------- | ---------------------------------------------------------- |
-| **Metrics**  | Responsive card grid (auto-fills columns, minimum 200px wide) | Metric cards, sparklines, activity summaries, record cards |
-| **Charts**   | Single column, full width                                     | Trend charts, combined charts, correlation charts          |
-| **Links**    | Responsive grid of smaller tiles (minimum 140px wide)         | Quick-link navigation                                      |
+| Section type | Layout                                                        | Best for                                                                                            |
+| ------------ | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| **Metrics**  | Responsive card grid (auto-fills columns, minimum 200px wide) | Metric cards, sparklines, activity summaries, record cards, activity cards, top lists, places cards |
+| **Charts**   | Single column, full width                                     | Trend charts, combined charts, correlation charts                                                   |
+| **Links**    | Responsive grid of smaller tiles (minimum 140px wide)         | Quick-link navigation                                                                               |
 
 Sections are collapsible -- click the section header to toggle between expanded and collapsed. On wide screens, multiple sections can appear side by side.
 
@@ -185,6 +233,52 @@ and optional, so existing dashboards are unaffected):
   this also feeds the link-preview / `og:description`, so a pasted link reads well.
 - A **per-section intro** rendered above that section's widgets, so the page reads
   as a narrative rather than just a wall of charts.
+
+## Period dashboards
+
+A dashboard is either **rolling** (the default: every widget has its own lookback ending now) or a
+**calendar-period** dashboard with a granularity of **week**, **month** or **year**. A period
+dashboard shows one finished period -- October 2026, ISO week 44 of 2026, the year 2025 -- and every
+widget renders against that one window, ignoring the lookbacks in its configuration.
+
+- **The setting.** In edit mode, the **Period** select above the description switches the dashboard
+  between Rolling, Weekly, Monthly and Yearly. It is stored in the config as
+  `period: { granularity: 'week' | 'month' | 'year' }`; absent means rolling.
+- **Period keys.** A period is named by a key: `2026-10` (month), `2026-W44` (ISO week, Monday
+  start, in the ISO week-year) or `2026` (year). Its bounds are calendar days in your timezone
+  (the device timezone in your settings; UTC when unset), the end exclusive.
+- **Finished periods only.** The dashboard opens on the latest finished period. A switcher above the
+  widgets steps back and forth between finished periods; the next button stops at the latest one.
+  Asking for a period that has not ended (or a malformed one) is a 400.
+- **Previous-period deltas.** Figures compare with the previous calendar period of the same kind
+  (September for October, the previous ISO week, the previous year) -- not an equal-length rolling
+  window. Metric and sparkline cards carry `previous_value` and a `trend_percent` against it; the
+  activity summary carries `previous_count`, `previous_total_minutes` and `previous_avg_hours`; an
+  activity card carries `previous_count`, `previous_total_minutes`, `previous_distance_km` and
+  `previous_sleep_avg_minutes`; a top list carries `previous_total`; a places card carries
+  `previous_nights_away`, `previous_distinct_places` and `previous_visits`; HR zones carry
+  `previous_avg_seconds`.
+- **Baselines.** The 7- and 30-day HRV and resting HR baseline cards become the period average of
+  `hrv_rmssd` and `resting_heart_rate`.
+- **Widgets that do not apply.** **Last night** and **Goal progress** have no meaning for a past
+  period: the widget palette hides them, and existing ones show "Not available for a period".
+- **API.** `GET /dashboard/data?period=2026-10` (the home dashboard) and
+  `GET /shared-dashboards/:id/data?period=2026-10` (a shared one) return `period`, `window`
+  (`start`/`end`, ISO) and `widget_data`; without `period` they answer the latest finished one, and
+  for a rolling dashboard `period` and `window` are null. MCP: `get_dashboard_data`.
+- **Published.** What visitors of an unlisted or public period dashboard see is its period lock —
+  the latest finished period (the default), one fixed period, or every finished period from a chosen
+  one on — set on the Dashboards page; see
+  [Sharing → Period locks](./sharing.md#period-locks).
+- **Sharing a period to the feed.** The **Share to feed** button right of the period switcher
+  (on the home dashboard and on your own dashboards) posts the period shown to your
+  [feed](feed.md#feed-posts). The post keeps a snapshot of the dashboard's config as it was at
+  share time, so editing the dashboard later never changes it, and its figures are resolved from
+  that snapshot for that period whenever the post is read. It links the dashboard's public page
+  only when the dashboard is unlisted or public and you leave **Link** checked; the home
+  dashboard is never linked. Only a finished period can be shared. REST:
+  `POST /feed/dashboards` (`/preview` for the preview); MCP: `share_dashboard_period`,
+  `preview_dashboard_period_share`.
 
 ## Editing the Dashboard
 
@@ -243,9 +337,37 @@ The dashboard works with whatever data sources you have connected. Widgets grace
 | Trend charts                 | Depends on what you're trending (tags, metrics) |
 | Correlation impact           | HRV data + the activity/tag you're analyzing    |
 
+## Dashboards page and presets
+
+Besides the home dashboard you can have any number of others, each with its own
+config. **Dashboards** (`/dashboards`, in the sidebar's Sharing section, and the
+**All dashboards** link next to the home dashboard's title) lists the home dashboard
+first and then every other one, with its visibility, a View link and, unless it is
+private, Copy link. Each one opens and is edited at `/u/<you>/<slug>`.
+
+A new dashboard starts from a preset (the name is prefilled from it until you type
+your own) and is **private**:
+
+- **Blank** — no sections.
+- **Copy of home** — your home dashboard's current layout.
+- **Month in data** — a monthly [period dashboard](#period-dashboards): one finished
+  month, compared with the month before. **Body**: a sleep score sparkline, a Sleep
+  activity card (average and best night, stages) and cards for steps per day, HRV,
+  resting HR, weight and body fat. **Training**: the activity summary, HR zones
+  (without targets), a Workouts activity card (`exercise`: sessions, time, distance)
+  and workouts per week (a count of `exercise` activities in weekly bars). **Life**:
+  Music (a top list of artists), Screen time (a top list of apps) and Places (nights
+  home and away, distinct places, the most visited). The preset has no per-sport
+  card, since sport types are your own: add an activity card per type (running,
+  cycling, a gym visit type) from the editor.
+
+The presets are defined once in `@aurboda/api-spec` (`dashboardPresetConfigs`; `home`
+is resolved from your settings on the server), and `POST /shared-dashboards` and the
+MCP `create_shared_dashboard` tool take one as `preset` instead of a `config`.
+
 ## Sharing
 
-You can publish read-only copies of a dashboard under your public namespace
+A dashboard other than home can also be shared under your public namespace
 (`/u/<username>/<slug>`), either publicly listed or unlisted-by-link. See
 [Sharing & Public Pages](./sharing.md) for the visibility model, URLs, and the
 backend security guarantee that limits a viewer to exactly the data the dashboard's
@@ -255,5 +377,6 @@ widgets render.
 
 - Widgets cannot be moved between sections -- only reordered within a section.
 - There is no drag-and-drop; reordering uses up/down arrow buttons.
-- The dashboard is not available via MCP tools -- it is managed through the web UI only.
+- The dashboard layout is managed through the web UI only; MCP can read its data
+  (`get_dashboard_data`) but not edit the home dashboard.
 - Sparkline cards fetch up to 365 days of time-series data, which may be slow for very high-frequency metrics like heart rate. Use metric cards for those.

@@ -26,21 +26,6 @@ export const hrZoneThresholdsSchema = z
 
 export type HrZoneThresholds = z.infer<typeof hrZoneThresholdsSchema>
 
-const hrZoneSecsValueSchema = z.number()
-
-export const hrZoneSecsSchema = z
-  .object({
-    0: hrZoneSecsValueSchema.meta({ description: 'Seconds below zone 1' }),
-    1: hrZoneSecsValueSchema.meta({ description: 'Seconds in zone 1' }),
-    2: hrZoneSecsValueSchema.meta({ description: 'Seconds in zone 2' }),
-    3: hrZoneSecsValueSchema.meta({ description: 'Seconds in zone 3' }),
-    4: hrZoneSecsValueSchema.meta({ description: 'Seconds in zone 4' }),
-    5: hrZoneSecsValueSchema.meta({ description: 'Seconds in zone 5' }),
-  })
-  .meta({ id: 'HrZoneSecs' })
-
-export type HrZoneSecs = z.infer<typeof hrZoneSecsSchema>
-
 export const biologicalSexSchema = z.enum(['male', 'female']).meta({
   description: 'Biological sex (used for calorie calculation formulas)',
   example: 'male',

@@ -64,7 +64,12 @@ export function SparklineCardView({ config, data, loading = false }: SparklineCa
 
   const value = data?.value ?? null
   const trend = data?.trend_percent ?? null
-  const subtitle = data?.count ? `${data.count} days` : undefined
+  const subtitle =
+    typeof data?.previous_value === 'number'
+      ? `Previous: ${data.previous_value.toFixed(1)}`
+      : data?.count
+        ? `${data.count} days`
+        : undefined
   const series = data?.series
   const sparklineData = useMemo<[Date, number][]>(
     () => (series ?? []).map((p) => [new Date(p.time), p.value]),

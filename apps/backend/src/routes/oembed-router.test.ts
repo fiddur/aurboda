@@ -52,6 +52,18 @@ describe('GET /oembed', () => {
     expect(res.headers['cache-control']).toBe('public, max-age=300')
   })
 
+  test('titles a period dashboard with the period a visitor sees', async () => {
+    const app = buildApp({
+      resolveDashboard: async () => ({
+        is_public: true,
+        name: 'Month in data',
+        period_label: 'October 2026',
+      }),
+    })
+    const res = await get(app, 'https://aurboda.net/u/fiddur/abc')
+    expect(res.body.title).toBe('Month in data — October 2026')
+  })
+
   test('falls through to a public challenge', async () => {
     const app = buildApp({ resolveChallenge: async () => ({ is_public: true, name: 'Step count' }) })
     const res = await get(app, 'https://aurboda.net/u/fiddur/xyz')

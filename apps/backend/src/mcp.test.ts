@@ -1,3 +1,4 @@
+import { defaultDashboardConfig } from '@aurboda/api-spec'
 import { Ajv2020 } from 'ajv/dist/2020.js'
 import express from 'express'
 import request from 'supertest'
@@ -13,13 +14,19 @@ import { createMcpRouter, trimToolCallArguments } from './mcp.ts'
 import * as activityRecords from './services/activity-records.ts'
 import * as latestSleep from './services/latest-sleep.ts'
 import * as mutations from './services/mutations.ts'
+import { PeriodError } from './services/periods.ts'
 import * as queries from './services/queries/index.ts'
+import * as dashboardData from './services/shared-dashboard-data.ts'
 import { createUsageRecorder, installUsageRecorder, type UsageRow } from './services/usage-recorder.ts'
 
 vi.mock('./services/queries/index', async () => ({
   getActivityNeighbors: vi.fn(),
+  getActivityTypeSummary: vi.fn(),
   getDailySummary: vi.fn(),
   getPeriodSummary: vi.fn(),
+  getPlacesSummary: vi.fn(),
+  getTopApps: vi.fn(),
+  getTopMedia: vi.fn(),
   parseActivityId: (raw: string) => ({
     id: raw.replace(/^merged:/, ''),
     isMerged: raw.startsWith('merged:'),
@@ -129,6 +136,10 @@ vi.mock('./services/activity-records', async (importOriginal) => ({
 
 vi.mock('./services/latest-sleep', () => ({
   getLatestSleep: vi.fn(),
+}))
+
+vi.mock('./services/shared-dashboard-data', () => ({
+  resolveDashboardView: vi.fn(),
 }))
 
 vi.mock('./oura-sync', () => ({
@@ -1069,6 +1080,37 @@ describe('MCP Server', () => {
       })
     })
 
+    test('get_dashboard_data resolves the home dashboard over the asked period', async () => {
+      vi.mocked(dashboardData.resolveDashboardView).mockResolvedValueOnce({
+        period: '2026-10',
+        widget_data: {},
+        window: { end: '2026-10-31T23:00:00.000Z', start: '2026-09-30T22:00:00.000Z' },
+      })
+
+      const response = await callTool(createTestApp(), auth.createToken('testuser'), 'get_dashboard_data', {
+        period: '2026-10',
+        tz: 'UTC',
+      })
+
+      expect(JSON.parse(response.text)).toMatchObject({ period: '2026-10', widget_data: {} })
+      expect(dashboardData.resolveDashboardView).toHaveBeenCalledWith(
+        'testuser',
+        defaultDashboardConfig,
+        '2026-10',
+      )
+    })
+
+    test('get_dashboard_data answers an unfinished period with an error', async () => {
+      vi.mocked(dashboardData.resolveDashboardView).mockRejectedValueOnce(new PeriodError('not_finished'))
+
+      const response = await callTool(createTestApp(), auth.createToken('testuser'), 'get_dashboard_data', {
+        period: '2026-11',
+        tz: 'UTC',
+      })
+
+      expect(response.text).toBe('Period has not finished yet')
+    })
+
     test('get_activity_records rejects a filter field without a value', async () => {
       vi.mocked(activityRecords.getActivityRecords).mockClear()
       const response = await callTool(createTestApp(), auth.createToken('testuser'), 'get_activity_records', {
@@ -1079,6 +1121,90 @@ describe('MCP Server', () => {
 
       expect(response.text).toBe('filter_field and filter_value must be given together')
       expect(activityRecords.getActivityRecords).not.toHaveBeenCalled()
+    })
+
+    test('get_activity_type_summary maps its arguments onto the service', async () => {
+      vi.mocked(queries.getActivityTypeSummary).mockResolvedValue({
+        activity_type_name: 'Running',
+        avg_speed_kmh: 10,
+        best_pace_sec_per_km: 330,
+        count: 4,
+        distance_km: 32,
+        sleep: null,
+        total_minutes: 192,
+      })
+
+      const response = await callTool(
+        createTestApp(),
+        auth.createToken('testuser'),
+        'get_activity_type_summary',
+        {
+          activity_type: 'running',
+          end: '2026-10-31T23:59:59Z',
+          start: '2026-10-01T00:00:00Z',
+          tz: 'UTC',
+        },
+      )
+
+      expect(JSON.parse(response.text).data).toMatchObject({ count: 4, distance_km: 32 })
+      expect(queries.getActivityTypeSummary).toHaveBeenCalledWith('testuser', 'running', {
+        end: '2026-10-31T23:59:59Z',
+        start: '2026-10-01T00:00:00Z',
+      })
+    })
+
+    test('query_top_media, query_top_apps and get_places_summary map their arguments onto the services', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      const window = { end: '2026-11-01T00:00:00Z', start: '2026-10-01T00:00:00Z' }
+      const dates = { end: new Date(window.end), start: new Date(window.start) }
+      vi.mocked(queries.getTopMedia).mockResolvedValue({ distinct: 1, items: [], total_plays: 4 })
+      vi.mocked(queries.getTopApps).mockResolvedValue({ distinct_apps: 2, items: [], total_hours: 9.5 })
+      vi.mocked(queries.getPlacesSummary).mockResolvedValue({
+        distinct_places: 3,
+        nights_away: 1,
+        nights_home: 30,
+        places: [],
+        visits: 12,
+      })
+
+      const media = await callTool(app, token, 'query_top_media', { ...window, by: 'album', tz: 'UTC' })
+      const apps = await callTool(app, token, 'query_top_apps', { ...window, limit: 5, tz: 'UTC' })
+      const places = await callTool(app, token, 'get_places_summary', {
+        ...window,
+        home_location: 'Flat',
+        tz: 'Europe/Stockholm',
+      })
+
+      expect(JSON.parse(media.text).data).toMatchObject({ total_plays: 4 })
+      expect(JSON.parse(apps.text).data).toMatchObject({ total_hours: 9.5 })
+      expect(JSON.parse(places.text).data).toMatchObject({ nights_home: 30 })
+      expect(queries.getTopMedia).toHaveBeenCalledWith('testuser', dates, 'album', 10)
+      expect(queries.getTopApps).toHaveBeenCalledWith('testuser', dates, 5)
+      expect(queries.getPlacesSummary).toHaveBeenCalledWith('testuser', {
+        ...dates,
+        homeName: 'Flat',
+        tz: 'Europe/Stockholm',
+      })
+    })
+
+    test('get_activity_type_summary rejects a filter field without a value', async () => {
+      vi.mocked(queries.getActivityTypeSummary).mockClear()
+      const response = await callTool(
+        createTestApp(),
+        auth.createToken('testuser'),
+        'get_activity_type_summary',
+        {
+          activity_type: 'running',
+          end: '2026-10-31T23:59:59Z',
+          filter_field: 'run_kind',
+          start: '2026-10-01T00:00:00Z',
+          tz: 'UTC',
+        },
+      )
+
+      expect(response.text).toBe('filter_field and filter_value must be given together')
+      expect(queries.getActivityTypeSummary).not.toHaveBeenCalled()
     })
 
     test('get_activity_item_history returns the history, or an error for a missing activity', async () => {

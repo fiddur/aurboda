@@ -7,6 +7,21 @@ import { getPlaceVisits } from '../locations.ts'
 import { triggerCorrelationSyncs } from './background-sync.ts'
 import { getDataInRange, mean, stddev } from './utils.ts'
 
+const rangeEndingToday = (periodDays: number): { end: Date; start: Date } => {
+  const end = new Date()
+  end.setHours(23, 59, 59, 999)
+  const start = new Date()
+  start.setDate(start.getDate() - periodDays)
+  start.setHours(0, 0, 0, 0)
+  return { end, start }
+}
+
+/** From `since` (or `periodDays` days back) to just before `until` (exclusive). */
+const explicitRange = (until: Date, periodDays: number, since?: Date): { end: Date; start: Date } => ({
+  end: new Date(until.getTime() - 1),
+  start: since ?? new Date(until.getTime() - periodDays * 86_400_000),
+})
+
 // eslint-disable-next-line complexity -- TODO: refactor
 export async function getActivityImpact(
   user: string,
@@ -15,12 +30,10 @@ export async function getActivityImpact(
   windowMinutes: number = 30,
   periodDays: number = 90,
   sync?: SyncProvider,
+  until?: Date,
+  since?: Date,
 ): Promise<ActivityImpactResult> {
-  const end = new Date()
-  end.setHours(23, 59, 59, 999)
-  const start = new Date()
-  start.setDate(start.getDate() - periodDays)
-  start.setHours(0, 0, 0, 0)
+  const { end, start } = until ? explicitRange(until, periodDays, since) : rangeEndingToday(periodDays)
 
   // Freshness syncs run in the background — never block this retrospective
   // analysis on a slow external sync (see background-sync.ts).

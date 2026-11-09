@@ -123,6 +123,33 @@ A feed post has a **`kind`**:
   MCP tool); `POST /feed/exercises/preview` (`preview_exercise_share`) returns the exact
   `Note` HTML and structured payload without creating a post.
 
+- **`dashboard`** — **one finished period of a period dashboard** (#1505): the home dashboard
+  or one of the user's [shared dashboards](dashboard.md#period-dashboards), for one finished
+  period of its granularity (`2026-10`, `2026-W44`, `2026`). The post stores, in a nullable
+  `dashboard` JSONB column, the period, the dashboard's name at share time (`Home` for the
+  home dashboard), its id (absent for the home dashboard), `include_link`, the `url` and a
+  **snapshot of the dashboard's config** taken at share time and sanitized like a public
+  dashboard's (quick-link hrefs neutered), so a later edit of the dashboard never changes
+  what was shared. The figures are **not stored**: whenever the post is read they are
+  resolved from the stored snapshot for the stored period (`resolveDashboardData` over the
+  period's window, with the previous period for the deltas), so nothing beyond the shared
+  widgets leaves the instance. Only a **period dashboard** can be shared (a rolling one is a
+  400), the period must match its granularity (400) and be **finished** in the owner's
+  timezone (400); an unknown dashboard is a 404. The post links the dashboard's public page
+  only when it is a published (unlisted or public) shared dashboard and `include_link`
+  (default on) is set; a private dashboard and the home dashboard are never linked.
+  Federates as a `Note`, with no image, whose content is the name and period (`Month in
+data · October 2026`), the note, then **one line per figure widget** in config order —
+  metric and sparkline cards as `Steps 9375 (↑ 4%)` (the arrow and whole percent against the
+  previous period, `→` within half a percent), the activity summary as `Workouts 12 · 600 min`,
+  `Sleep 7.3 h` and `Meditation 3`, a record card as `Best e1RM 101.3 kg` — and the link;
+  charts have no one-line form and are left to the structured payload, and quick links are
+  never rendered. An Aurboda peer fetches the
+  [structured payload](#native-charts-from-aurboda-peers-structured-enrichment) and draws
+  the widgets natively. Shared via `POST /feed/dashboards` (and the `share_dashboard_period`
+  MCP tool); `POST /feed/dashboards/preview` (`preview_dashboard_period_share`) returns the
+  exact `Note` HTML, structured payload and tags without creating a post.
+
 An **`activity`** feed post references one of the user's activities and records the
 explicit metric selection that bounds what is shared:
 
@@ -214,8 +241,9 @@ blocks; code spans, fences and URL fragments do not count):
   changed; `[]` turns them off), and
 - a **kind tag** unless `feed_type_tag` is off: an activity's type (`running`; a custom type's
   key with only letters and digits kept, `strength_training` → `strengthtraining`), an
-  exercise's name, else its value (`Dumbbell Bench Press` → `dumbbellbenchpress`), or
-  `challenge`. An article has no kind tag.
+  exercise's name, else its value (`Dumbbell Bench Press` → `dumbbellbenchpress`), a
+  dashboard's name (`Month in data` → `monthindata`), or `challenge`. An article has no kind
+  tag.
 
 The list is cut at 10 in that order (automatic or explicit first, then typed), so a typed tag
 past the cap stays plain text.
@@ -225,7 +253,8 @@ its own `tags` uses them in place of the default tags; the kind tag still follow
 Editing a post with an explicit `tags` list replaces its tags (plus those typed in the text);
 editing only the message keeps the stored tags and swaps the tags typed in the old text for
 those typed in the new one, so a choice made at share time survives an edit. The previews
-(`preview_activity_share`, `preview_exercise_share`) return the tags the post would get.
+(`preview_activity_share`, `preview_exercise_share`, `preview_dashboard_period_share`) return
+the tags the post would get.
 
 **Federation.** Each Note carries one AS2 `Hashtag` per tag (`name` `#tag`, `href` the
 owner's profile filtered by it, `https://<web host>/u/<user>?tag=<tag>`), next to any
@@ -234,8 +263,8 @@ owner's profile filtered by it, `https://<web host>/u/<user>?tag=<tag>`), next t
 casing); text inside links, `code` and `pre` is left alone, and the tags the text does not
 show follow in one trailing paragraph. Only the post's own tags are linked.
 
-**Web.** The activity, exercise and challenge share dialogs and the article editor have a
-**Tags** field, prefilled with the automatic tags (or the post's, when editing) and sent only
+**Web.** The activity, exercise, dashboard-period and challenge share dialogs and the article
+editor have a **Tags** field, prefilled with the automatic tags (or the post's, when editing) and sent only
 once changed; the auto-share rule form can replace the default tags; Settings → **Sharing**
 holds the default tags and the type-tag switch. A post card lists its tags (unless its body is
 the `content` HTML, which already links them), each linking to the public profile filtered by
@@ -771,7 +800,11 @@ id-convention path — reliable even when a typed consumer drops the in-band ext
    exercise was published, and `data` — the public exercise page's `SharedExerciseData`
    with the records and session count emptied unless shared, the trend and per-week series nulled unless the
    chart was, and the history cut to the newest 5 sessions when sessions were shared (else
-   empty); an exercise left with no sessions (its value merged away) 404s. Either way a peer can never
+   empty); an exercise left with no sessions (its value merged away) 404s. A **dashboard** post
+   resolves to `FeedStructuredDashboardShare`: the name, the period and its `window`, the
+   stored `config` snapshot, the author's note, the link when the dashboard was published and
+   linked, and `widget_data` — each widget's data for the period, resolved from the snapshot
+   when the payload is served. Either way a peer can never
    read more than the author shared/published. `public`/`unlisted` posts resolve
    unconditionally; a `followers`-only post resolves only with a matching `?token=<image_token>`
    — the **same capability token** that authorizes its followers-only images (below), so the
@@ -1050,6 +1083,15 @@ resolving.
   owner's feed, the public profile and a peer's timeline render the post natively — records,
   the one chart (weekly bars with the decaying-best line, or the trend alone), the last
   sessions — and show the `Trend` image only where the card has no chart to draw.
+- **Share a dashboard period** — a period dashboard (the home dashboard, or one of your
+  dashboards opened at `/u/<you>/<slug>`) has a **Share to feed** arrow button right of the
+  period switcher, which shares the period shown. Its dialog takes an optional message
+  (markdown), **Link the dashboard's public page** (offered only when the dashboard is
+  unlisted or public), the tags and the audience, with a debounced **live preview** of the
+  native card and, folded under it, the plain text Mastodon sees. The owner's feed, the
+  public profile and a peer's timeline render the post as the dashboard's widgets for that
+  period (quick links left out); a post whose period could not be resolved shows its name,
+  period, note and link.
 - **Feed page layout** — the **Feed** page (`/feed`, the 📣 item under the **Sharing** section
   in the sidebar) puts writing first: a **Write an article** button with your **Drafts** listed
   under it, then tabs — **Following** (your home timeline, the default) and
@@ -1150,7 +1192,7 @@ e.g. everyone's `#aurboda` posts.
   minutes like the articles feed. Each entry names its author; an article's body is its
   markdown export as above, any other post's the HTML it federates with (an activity or
   exercise summary, a challenge invitation, else its message), titled by the article,
-  activity, exercise or challenge name, else the first ~80 characters of its text.
+  activity, exercise, dashboard or challenge name, else the first ~80 characters of its text.
 - **Web** — `/blog` (public, like the `/u/` pages) shows "Posts from … tagged …", the Atom
   link and the posts as cards with each post's own author. The share-HTML router gives `/blog`
   meta titled "<host> blog" with the Atom discovery link (nginx proxies `/blog` to the backend
@@ -1169,6 +1211,8 @@ Owner-facing (authenticated, scoped to the caller):
 | `POST /feed/challenges`                           | Share a **challenge invitation** (personal note + canonical link); exactly one of `challenge_id`/`participation_id`                                                                                          |
 | `POST /feed/exercises`                            | Share an **exercise's progress** (records, trend, recent sessions per the opt-ins; a link only when the exercise is published)                                                                               |
 | `POST /feed/exercises/preview`                    | Exercise share **preview**: the exact `Note` HTML and structured payload for the opt-ins; creates nothing                                                                                                    |
+| `POST /feed/dashboards`                           | Share **one finished period of a period dashboard** (a config snapshot; a link only when the dashboard is published)                                                                                         |
+| `POST /feed/dashboards/preview`                   | Dashboard-period share **preview**: the exact `Note` HTML, structured payload and tags; creates nothing                                                                                                      |
 | `GET/POST /autoshare-rules` (+`/:id`, `/preview`) | [Auto-share rules](auto-share-rules.md): automatically publish matching settled activities (#903)                                                                                                            |
 | `PATCH /feed/articles/:postId`                    | Edit an article (title / blocks / default window / visibility)                                                                                                                                               |
 | `/feed/article-drafts` (+`/:id`, `/:id/publish`)  | Private [article drafts](#article-drafts): list, save, edit, delete, publish (validated like `POST /feed/articles`)                                                                                          |
@@ -1192,35 +1236,35 @@ Owner-facing (authenticated, scoped to the caller):
 
 Public / federation (unauthenticated):
 
-| Method & path                                                | Purpose                                                                                                                                                                                                                                                                 |
-| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /public/:username/series`                               | Bucketed samples for a **shared** series within its window                                                                                                                                                                                                              |
-| `GET /public/:username/feed/:postId`                         | Native structured post (`FeedStructuredPost`: an activity's typed metrics + inline series, an article's title + resolved blocks, a challenge's document + standings snapshot, or an exercise's progress) for Aurboda-to-Aurboda enrichment                              |
-| `GET /public/:username/feed/:postId/chart.png`               | Rendered HR chart (PNG) for an opted-in post (`?token=` for followers-only)                                                                                                                                                                                             |
-| `GET /public/:username/feed/:postId/chart.svg`               | Same HR chart as crisp `image/svg+xml` for Aurboda-native rendering (`?token=` for followers-only)                                                                                                                                                                      |
-| `GET /public/:username/feed/:postId/route.png`               | Rendered GPS route map for an opted-in post (`?token=` for followers-only)                                                                                                                                                                                              |
-| `GET /public/:username/feed/:postId/standings.png`           | Rendered standings race chart (PNG) for an opted-in challenge post (`?token=` for followers-only)                                                                                                                                                                       |
-| `GET /public/:username/feed/:postId/standings.svg`           | Same standings race as crisp `image/svg+xml`                                                                                                                                                                                                                            |
-| `GET /public/:username/feed/:postId/trend.png`               | Rendered exercise trend (PNG) for an opted-in exercise post (`?token=` for followers-only)                                                                                                                                                                              |
-| `GET /public/:username/feed/:postId/trend.svg`               | Same exercise trend as crisp `image/svg+xml`                                                                                                                                                                                                                            |
-| `GET /public/:username/feed/:postId/blocks/:index/image.png` | Rendered PNG of an article's chart/correlation/challenge block (visibility-gated; `?token=` for followers-only)                                                                                                                                                         |
-| `GET /public/:username/feed/:postId/blocks/:index/image.svg` | Same article block as crisp `image/svg+xml`                                                                                                                                                                                                                             |
-| `GET /public/:username/posts`                                | A user's public/unlisted posts (newest-first, keyset page of 20 + `next_cursor`) for their profile feed; `?kind=article` for the blog view                                                                                                                              |
-| `GET /public/:username/articles.atom`                        | Atom 1.0 feed of the user's 20 newest public articles ([Blog view and Atom feed](#blog-view-and-atom-feed))                                                                                                                                                             |
-| `GET /public/official-feed`                                  | The instance's [official feed](#official-feed): public posts of the chosen users with one of the chosen tags, newest-first, keyset page of 20 + `next_cursor`                                                                                                           |
-| `GET /public/official-feed.atom`                             | Atom 1.0 feed of the official feed's 20 newest entries                                                                                                                                                                                                                  |
-| `GET /public/:username/posts/:postId`                        | One public/unlisted post, serialized like the listing (`FeedPostResponse`), for its permalink page `/u/:username/posts/:postId`                                                                                                                                         |
-| `GET /.well-known/webfinger`                                 | Resolve `acct:<username>@<host>` → the actor                                                                                                                                                                                                                            |
-| `GET /.well-known/quantpub`                                  | QuantPub discovery document (FEP §4): product, versions, `apiBase`                                                                                                                                                                                                      |
-| `GET /ns/quantpub`                                           | The published QuantPub JSON-LD `@context` document (`application/ld+json`)                                                                                                                                                                                              |
-| `GET /.well-known/nodeinfo`                                  | NodeInfo JRD pointing at the 2.1 document (#1047)                                                                                                                                                                                                                       |
-| `GET /nodeinfo/2.1`                                          | NodeInfo 2.1: software `aurboda` + version, `activitypub` protocol (no usage stats — per-user DBs)                                                                                                                                                                      |
-| `GET /users/:username`                                       | Content-negotiated (RFC 9110, `Vary: Accept`): the actor document (`Person`) for an ActivityPub type, a wildcard or no `Accept`; a 302 to `/u/:username` when HTML is the best match (a browser, `text/*`); `406` when neither is acceptable; `404` for an unknown user |
-| `GET /users/:username/outbox`                                | Public + unlisted posts as `Create` activities                                                                                                                                                                                                                          |
-| `GET /users/:username/followers`                             | The actor's followers collection                                                                                                                                                                                                                                        |
-| `GET /users/:username/following`                             | The actor's following collection (accepted follows only)                                                                                                                                                                                                                |
-| `GET /users/:username/feed/:postId`                          | Content-negotiated like the actor: a single post's `Note` — an activity share or an article (or `410` Tombstone once deleted); a 302 to `/u/:username/posts/:postId` for a browser on any post id of an existing user                                                   |
-| `POST /users/:username/inbox` (+ `/inbox`)                   | Inbound `Follow` / `Undo{Follow}` / `Accept` / `Reject` (HTTP-Signature verified)                                                                                                                                                                                       |
+| Method & path                                                | Purpose                                                                                                                                                                                                                                                                  |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /public/:username/series`                               | Bucketed samples for a **shared** series within its window                                                                                                                                                                                                               |
+| `GET /public/:username/feed/:postId`                         | Native structured post (`FeedStructuredPost`: an activity's typed metrics + inline series, an article's title + resolved blocks, a challenge's document + standings snapshot, an exercise's progress, or a dashboard period's widgets) for Aurboda-to-Aurboda enrichment |
+| `GET /public/:username/feed/:postId/chart.png`               | Rendered HR chart (PNG) for an opted-in post (`?token=` for followers-only)                                                                                                                                                                                              |
+| `GET /public/:username/feed/:postId/chart.svg`               | Same HR chart as crisp `image/svg+xml` for Aurboda-native rendering (`?token=` for followers-only)                                                                                                                                                                       |
+| `GET /public/:username/feed/:postId/route.png`               | Rendered GPS route map for an opted-in post (`?token=` for followers-only)                                                                                                                                                                                               |
+| `GET /public/:username/feed/:postId/standings.png`           | Rendered standings race chart (PNG) for an opted-in challenge post (`?token=` for followers-only)                                                                                                                                                                        |
+| `GET /public/:username/feed/:postId/standings.svg`           | Same standings race as crisp `image/svg+xml`                                                                                                                                                                                                                             |
+| `GET /public/:username/feed/:postId/trend.png`               | Rendered exercise trend (PNG) for an opted-in exercise post (`?token=` for followers-only)                                                                                                                                                                               |
+| `GET /public/:username/feed/:postId/trend.svg`               | Same exercise trend as crisp `image/svg+xml`                                                                                                                                                                                                                             |
+| `GET /public/:username/feed/:postId/blocks/:index/image.png` | Rendered PNG of an article's chart/correlation/challenge block (visibility-gated; `?token=` for followers-only)                                                                                                                                                          |
+| `GET /public/:username/feed/:postId/blocks/:index/image.svg` | Same article block as crisp `image/svg+xml`                                                                                                                                                                                                                              |
+| `GET /public/:username/posts`                                | A user's public/unlisted posts (newest-first, keyset page of 20 + `next_cursor`) for their profile feed; `?kind=article` for the blog view                                                                                                                               |
+| `GET /public/:username/articles.atom`                        | Atom 1.0 feed of the user's 20 newest public articles ([Blog view and Atom feed](#blog-view-and-atom-feed))                                                                                                                                                              |
+| `GET /public/official-feed`                                  | The instance's [official feed](#official-feed): public posts of the chosen users with one of the chosen tags, newest-first, keyset page of 20 + `next_cursor`                                                                                                            |
+| `GET /public/official-feed.atom`                             | Atom 1.0 feed of the official feed's 20 newest entries                                                                                                                                                                                                                   |
+| `GET /public/:username/posts/:postId`                        | One public/unlisted post, serialized like the listing (`FeedPostResponse`), for its permalink page `/u/:username/posts/:postId`                                                                                                                                          |
+| `GET /.well-known/webfinger`                                 | Resolve `acct:<username>@<host>` → the actor                                                                                                                                                                                                                             |
+| `GET /.well-known/quantpub`                                  | QuantPub discovery document (FEP §4): product, versions, `apiBase`                                                                                                                                                                                                       |
+| `GET /ns/quantpub`                                           | The published QuantPub JSON-LD `@context` document (`application/ld+json`)                                                                                                                                                                                               |
+| `GET /.well-known/nodeinfo`                                  | NodeInfo JRD pointing at the 2.1 document (#1047)                                                                                                                                                                                                                        |
+| `GET /nodeinfo/2.1`                                          | NodeInfo 2.1: software `aurboda` + version, `activitypub` protocol (no usage stats — per-user DBs)                                                                                                                                                                       |
+| `GET /users/:username`                                       | Content-negotiated (RFC 9110, `Vary: Accept`): the actor document (`Person`) for an ActivityPub type, a wildcard or no `Accept`; a 302 to `/u/:username` when HTML is the best match (a browser, `text/*`); `406` when neither is acceptable; `404` for an unknown user  |
+| `GET /users/:username/outbox`                                | Public + unlisted posts as `Create` activities                                                                                                                                                                                                                           |
+| `GET /users/:username/followers`                             | The actor's followers collection                                                                                                                                                                                                                                         |
+| `GET /users/:username/following`                             | The actor's following collection (accepted follows only)                                                                                                                                                                                                                 |
+| `GET /users/:username/feed/:postId`                          | Content-negotiated like the actor: a single post's `Note` — an activity share or an article (or `410` Tombstone once deleted); a 302 to `/u/:username/posts/:postId` for a browser on any post id of an existing user                                                    |
+| `POST /users/:username/inbox` (+ `/inbox`)                   | Inbound `Follow` / `Undo{Follow}` / `Accept` / `Reject` (HTTP-Signature verified)                                                                                                                                                                                        |
 
 The actor's `icon` URL carries the avatar's upload time as a `?v=` version, and an avatar
 upload/removal delivers an `Update{Person}` to accepted followers — remote servers (Mastodon
@@ -1235,7 +1279,7 @@ way an avatar change does. The public profile page (`/u/:username`, from
 email is never part of the actor or any public response.
 
 The owner-facing capability is also available over MCP as `list_feed`, `share_activity`,
-`preview_activity_share`, `share_challenge`, `share_exercise`, `preview_exercise_share`, `create_article`, `update_article`, the [article draft](#article-drafts) tools, `export_article_markdown`, `update_feed_post`,
+`preview_activity_share`, `share_challenge`, `share_exercise`, `preview_exercise_share`, `share_dashboard_period`, `preview_dashboard_period_share`, `create_article`, `update_article`, the [article draft](#article-drafts) tools, `export_article_markdown`, `update_feed_post`,
 `delete_feed_post`, `list_following`, `follow_actor`, `unfollow_actor`, `list_followers`,
 `approve_follower`, `reject_follower`, `list_timeline`, `like_timeline_post`,
 `unlike_timeline_post`, `boost_timeline_post`, `unboost_timeline_post`,
@@ -1252,12 +1296,14 @@ toggled with the `manually_approve_followers` user setting (`get_user_settings` 
 
 Feed posts live in the user's own database in the `feed_posts` table (unpublished
 [article drafts](#article-drafts) live apart, in `article_drafts`). A `kind` column
-discriminates an `activity` post from an `article`, `challenge`, `exercise` or `reply` post; an
+discriminates an `activity` post from an `article`, `challenge`, `exercise`, `dashboard` or `reply` post; an
 article's content (title + default window + ordered blocks) lives in a nullable `article` JSONB
 column, a challenge share's link payload (name + canonical URL + optional host identity)
 in a nullable `challenge` JSONB column, an exercise share's pointer and opt-ins (type, item
 path, value, name, `include_records`, `include_sessions`, optional `url`) in a nullable
-`exercise` JSONB column, and in all three cases the `activity_id`/metric columns stay empty. A **reply** post likewise carries no activity or metrics: three nullable
+`exercise` JSONB column, a dashboard share's period and config snapshot (name, optional
+`dashboard_id`, `period`, `config`, `include_link`, optional `url`) in a nullable `dashboard`
+JSONB column, and in all four cases the `activity_id`/metric columns stay empty. A **reply** post likewise carries no activity or metrics: three nullable
 columns hold what it answers — `in_reply_to_uri` (the AS2 object id), `in_reply_to_actor_uri`
 (the `Mention` href) and `in_reply_to_handle` (the `@user@host` snapshot naming that mention,
 taken at reply time like `timeline_entry.handle`) — with the reply text in `message`. All

@@ -67,6 +67,19 @@ range at all it spans the whole range, otherwise it ends where the next fix plac
 elsewhere. It is off by default, and a query that asks for it never creates `location_visit` activities:
 its first visit starts at the queried range rather than at a fix. Detail pages ask for 6 hours and show such a place as "last seen 11:16".
 
+## Places summary
+
+`GET /locations/places-summary?start=<iso>&end=<iso>&tz=<IANA>&home_location=<name>` (MCP:
+`get_places_summary`) rolls up the visits to named and detected places over a range: `nights_home`
+and `nights_away` (overnight stays, detected per place as `GET /locations/overnight-stays` does, at
+`home_location` -- default `Home`, matched case-insensitively -- or anywhere else; a night without a
+detectable stay counts as neither), `distinct_places`, `visits` and `places`, the five most visited
+with their visits and hours. Visits whose place is unknown are left out. The range is widened by a day
+each side for the overnight detection, and a night belongs to the range when its evening date does, so a
+stay running past the end of a month still counts its nights inside that month. It is behind the dashboard's [places card](dashboard.md#places-card) and the place
+[top list](dashboard.md#top-list-card). `GET /locations/summary` (MCP: `get_location_summary`) is the
+same kind of roll-up for one named place.
+
 ## Integration with Other Features
 
 ### Timeline

@@ -51,6 +51,29 @@ describe('getTrend metric integration', () => {
     expect(result.current_value).toBeCloseTo(1200)
   })
 
+  test('a trend anchored to a past day ends on that day', async () => {
+    const user = getTestUser()
+    await insertTimeSeries(user, [
+      { metric: 'steps', source: 'aurboda', time: new Date('2026-03-10T12:00:00Z'), value: 4000 },
+      { metric: 'steps', source: 'aurboda', time: new Date('2026-03-20T12:00:00Z'), value: 9000 },
+    ])
+
+    const result = await getTrend(user, {
+      aggregation: 'sum',
+      display_period: 'daily',
+      end: new Date('2026-03-15T12:00:00Z'),
+      lookback_days: 7,
+      missing_days: 'skip',
+      pattern: 'steps',
+      source_type: 'metric',
+      tz: 'UTC',
+    })
+
+    expect(result.history.at(-1)?.date).toBe('2026-03-15')
+    expect(result.history[0]?.date).toBe('2026-03-10')
+    expect(result.current_value).toBeCloseTo(4000)
+  })
+
   describe('missing days', () => {
     const daysAgo = (days: number) => {
       const d = new Date()

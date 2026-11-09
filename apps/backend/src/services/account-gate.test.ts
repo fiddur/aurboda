@@ -152,6 +152,7 @@ describe('isAllowedWhenReadOnly', () => {
     ['POST', '/feed/activities/0b6c1f0e-3f7e-4a43-9a51-3c1d7d1f2a10/preview'],
     ['POST', '/feed/activities/{id}/preview'],
     ['POST', '/feed/exercises/preview'],
+    ['POST', '/feed/dashboards/preview'],
   ])('allows %s %s', (method, path) => {
     expect(isAllowedWhenReadOnly(method, path)).toBe(true)
   })

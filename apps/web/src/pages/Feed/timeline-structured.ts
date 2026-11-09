@@ -4,7 +4,7 @@
  * Node (the web test runner has no jsdom).
  *
  * Only meaningful for an `activity` post's typed series/route; an `article`,
- * `challenge` or `exercise` post renders via its own card instead, so everything here is
+ * `challenge`, `exercise` or `dashboard` post renders via its own card instead, so everything here is
  * empty/false for one. A legacy entry stored before the `kind` tag existed has
  * the activity shape, so gates name the non-activity kinds (not
  * `!== 'activity'`) to avoid dropping the native render on pre-existing
@@ -22,7 +22,8 @@ const activityPayload = (structured: FeedStructuredPost | undefined): FeedStruct
   structured == null ||
   structured.kind === 'article' ||
   structured.kind === 'challenge' ||
-  structured.kind === 'exercise'
+  structured.kind === 'exercise' ||
+  structured.kind === 'dashboard'
     ? null
     : structured
 
@@ -84,7 +85,7 @@ export const structuredHasNativeExerciseChart = (structured: FeedStructuredPost 
 /**
  * Whether a delivered attachment image is still wanted next to the native
  * render, by its Aurboda attachment `name` (stable — we set it on delivery).
- * An article's or a challenge's card renders everything natively (a challenge's
+ * An article's, a challenge's or a dashboard's card renders everything natively (a challenge's
  * `Standings` race chart included); an exercise keeps its `Trend` image only where
  * the card cannot draw the chart; an activity
  * keeps each image unless its native counterpart actually draws (chart.png ↔
@@ -96,7 +97,9 @@ export const timelineImageVisible = (
   name: string | undefined,
 ): boolean => {
   if (structured == null) return true
-  if (structured.kind === 'article' || structured.kind === 'challenge') return false
+  if (structured.kind === 'article' || structured.kind === 'challenge' || structured.kind === 'dashboard') {
+    return false
+  }
   if (structured.kind === 'exercise') return name !== 'Trend' || !structuredHasNativeExerciseChart(structured)
   if (name === 'Heart rate') return !structuredHasNativeHrChart(structured)
   if (name === 'Route') return !structuredHasNativeMap(structured)

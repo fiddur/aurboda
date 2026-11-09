@@ -30,6 +30,8 @@ import {
   detectedLocationsResponseSchema,
   locationsResponseSchema,
   namedLocationsResponseSchema,
+  placesSummaryQuerySchema,
+  placesSummaryResponseSchema,
   promoteDetectedLocationBodySchema,
   updateNamedLocationBodySchema,
 } from './schemas/locations.ts'
@@ -38,6 +40,8 @@ import {
   mediaPlayResponseSchema,
   mediaPlaysQuerySchema,
   mediaPlaysResponseSchema,
+  topMediaQuerySchema,
+  topMediaResponseSchema,
 } from './schemas/media.ts'
 import {
   addMetricBodySchema,
@@ -56,7 +60,11 @@ import {
   adminUserPlanResponseSchema,
   updateUserPlanBodySchema,
 } from './schemas/plans.ts'
-import { productivityResponseSchema } from './schemas/productivity.ts'
+import {
+  productivityResponseSchema,
+  topAppsQuerySchema,
+  topAppsResponseSchema,
+} from './schemas/productivity.ts'
 import { accountEmailResponseSchema, updateAccountEmailBodySchema } from './schemas/profile.ts'
 import {
   mergeRoutesBodySchema,
@@ -520,6 +528,26 @@ const openApiDocument = createDocument({
         tags: ['Locations'],
       },
     },
+    '/locations/places-summary': {
+      get: {
+        description:
+          'Visits to named and detected places in a time window: nights at home and away (overnight stays), distinct places, visits and the five most visited places.',
+        requestParams: { query: placesSummaryQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: placesSummaryResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Bad request',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Places summary',
+        tags: ['Locations'],
+      },
+    },
     '/locations/detected': {
       get: {
         description:
@@ -814,6 +842,26 @@ const openApiDocument = createDocument({
         tags: ['Productivity'],
       },
     },
+    '/productivity/top-apps': {
+      get: {
+        description:
+          'Screen time in a time window grouped by app, leaving out categories excluded from screen time: total hours, distinct apps and the most used apps.',
+        requestParams: { query: topAppsQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: topAppsResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Bad request',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Top apps by screen time',
+        tags: ['Productivity'],
+      },
+    },
     '/sync/{recordType}': {
       post: {
         description:
@@ -1015,6 +1063,26 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'Query media plays',
+        tags: ['Media'],
+      },
+    },
+    '/media/plays/top': {
+      get: {
+        description:
+          'Plays in a time window grouped by artist, album ("artist — album") or track ("artist — title"): the total plays, the distinct count and the most played.',
+        requestParams: { query: topMediaQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: topMediaResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Bad request',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Top artists, albums or tracks',
         tags: ['Media'],
       },
     },
