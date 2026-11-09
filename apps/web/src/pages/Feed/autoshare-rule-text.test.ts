@@ -120,8 +120,37 @@ describe('ruleSummary', () => {
 
 describe('ruleTagsText', () => {
   it('names own tags, none, or the defaults', () => {
-    expect(ruleTagsText(['running', 'outdoors'])).toBe('#running #outdoors')
-    expect(ruleTagsText([])).toBe('no tags')
-    expect(ruleTagsText(null)).toBe('your default tags')
+    expect(ruleTagsText({ tags: ['running', 'outdoors'] })).toBe('#running #outdoors')
+    expect(ruleTagsText({ tags: [] })).toBe('no tags')
+    expect(ruleTagsText({ tags: null })).toBe('your default tags')
+  })
+
+  it('adds the hashtags typed in the message to the defaults', () => {
+    expect(ruleTagsText({ message: '#aurboda #strengthtraining', tags: null })).toBe(
+      'your default tags + #aurboda #strengthtraining',
+    )
+  })
+
+  it('counts the message hashtags when the rule has no own tags', () => {
+    expect(ruleTagsText({ message: '#aurboda #strengthtraining', tags: [] })).toBe(
+      '#aurboda #strengthtraining',
+    )
+  })
+
+  it('merges the message hashtags with own tags without duplicates', () => {
+    expect(ruleTagsText({ message: '#aurboda #strengthtraining', tags: ['aurboda'] })).toBe(
+      '#aurboda #strengthtraining',
+    )
+  })
+
+  it('normalises casing and skips invalid or URL hashtags, as the backend does', () => {
+    expect(ruleTagsText({ message: '#Aurboda #123 https://a.b/#frag', tags: ['aurboda'] })).toBe('#aurboda')
+    expect(ruleTagsText({ message: undefined, tags: [] })).toBe('no tags')
+  })
+
+  it('ignores a message without hashtags', () => {
+    expect(ruleTagsText({ message: 'Morning session', tags: [] })).toBe('no tags')
+    expect(ruleTagsText({ message: 'Morning session', tags: null })).toBe('your default tags')
+    expect(ruleTagsText({ message: 'Morning session', tags: ['running'] })).toBe('#running')
   })
 })
