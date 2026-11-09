@@ -434,6 +434,74 @@ describe('validateAndUpdateSettings', () => {
     expect(onHrSettingsChanged).not.toHaveBeenCalled()
   })
 
+  test('stores a trimmed display name and clears it with null or an empty string', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue({})
+    vi.mocked(db.upsertUserSettings).mockResolvedValue({})
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+
+    await validateAndUpdateSettings('testuser', { display_name: '  Ada Lovelace ' })
+    expect(db.upsertUserSettings).toHaveBeenLastCalledWith('testuser', { display_name: 'Ada Lovelace' }, [])
+
+    await validateAndUpdateSettings('testuser', { display_name: null })
+    expect(db.upsertUserSettings).toHaveBeenLastCalledWith('testuser', {}, ['display_name'])
+
+    await validateAndUpdateSettings('testuser', { display_name: '   ' })
+    expect(db.upsertUserSettings).toHaveBeenLastCalledWith('testuser', {}, ['display_name'])
+  })
+
+  test('rejects a display name over 100 characters', async () => {
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+
+    const result = await validateAndUpdateSettings('testuser', { display_name: 'x'.repeat(101) })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('at most 100 characters')
+    expect(db.upsertUserSettings).not.toHaveBeenCalled()
+  })
+
+  test('returns the display name, null when unset', async () => {
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+    vi.mocked(db.getUserSettings).mockResolvedValue({ display_name: 'Ada' })
+    expect((await getSettingsResponse('testuser')).display_name).toBe('Ada')
+
+    vi.mocked(db.getUserSettings).mockResolvedValue(null)
+    expect((await getSettingsResponse('testuser')).display_name).toBeNull()
+  })
+
+  test.each<[string, Record<string, unknown>, Record<string, unknown>]>([
+    ['set', {}, { display_name: 'Ada' }],
+    ['changed', { display_name: 'Ada' }, { display_name: 'Ada Lovelace' }],
+    ['cleared', { display_name: 'Ada' }, { display_name: null }],
+    ['emptied', { display_name: 'Ada' }, { display_name: '' }],
+  ])('calls the profile hook when the display name is %s', async (_name, stored, input) => {
+    vi.mocked(db.getUserSettings).mockResolvedValue(stored)
+    vi.mocked(db.upsertUserSettings).mockResolvedValue({})
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+    const onHrSettingsChanged = vi.fn()
+    const onProfileChanged = vi.fn()
+
+    await validateAndUpdateSettings('testuser', input, onHrSettingsChanged, onProfileChanged)
+
+    expect(onProfileChanged).toHaveBeenCalledWith('testuser')
+    expect(onHrSettingsChanged).not.toHaveBeenCalled()
+  })
+
+  test.each<[string, Record<string, unknown>, Record<string, unknown>]>([
+    ['another key', { display_name: 'Ada' }, { lastfm_username: 'bob' }],
+    ['the same name again', { display_name: 'Ada' }, { display_name: ' Ada ' }],
+    ['clearing an unset name', {}, { display_name: null }],
+    ['a rejected update', {}, { display_name: 'x'.repeat(101) }],
+  ])('does not call the profile hook for %s', async (_name, stored, input) => {
+    vi.mocked(db.getUserSettings).mockResolvedValue(stored)
+    vi.mocked(db.upsertUserSettings).mockResolvedValue({})
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+    const onProfileChanged = vi.fn()
+
+    await validateAndUpdateSettings('testuser', input, undefined, onProfileChanged)
+
+    expect(onProfileChanged).not.toHaveBeenCalled()
+  })
+
   test('rejects a maf_hr out of range', async () => {
     vi.mocked(db.getOAuthToken).mockResolvedValue(null)
 

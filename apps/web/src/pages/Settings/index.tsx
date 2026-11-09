@@ -9,6 +9,7 @@ import { DeleteAccountSettings } from '../../components/DeleteAccountSettings'
 import { MealPreferencesSettings } from '../../components/MealPreferencesSettings'
 import { PasskeySettings } from '../../components/PasskeySettings'
 import { PlanSettings } from '../../components/PlanSettings'
+import { ProfileSettings } from '../../components/ProfileSettings'
 import { type SaveStatus, SaveStatusIndicator } from '../../components/SaveStatusIndicator'
 import { SettingsSection } from '../../components/SettingsSection'
 import { SharingSettings } from '../../components/SharingSettings'
@@ -180,6 +181,8 @@ export function Settings() {
       <PlanSettings />
 
       <AvatarSettings />
+
+      <ProfileSettings />
 
       <SettingsSection
         title="Personal Information"

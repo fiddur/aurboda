@@ -30,6 +30,7 @@ import {
   getChallengeMemberByIdentity,
   getPublicSharedDashboardBySlug,
   getSharedExerciseBySlug,
+  getUserSettings,
   isMissingDatabase,
   listChallengeMembers,
   listPublicChallenges,
@@ -80,11 +81,12 @@ export const createPublicSharesRouter = (webHost: string): TypedRouter => {
         return res.status(404).json({ error: 'Profile not found', success: false })
       }
       try {
-        const [dashboards, challenges, exercises, articleCount] = await Promise.all([
+        const [dashboards, challenges, exercises, articleCount, settings] = await Promise.all([
           listPublicSharedDashboards(username),
           listPublicChallenges(username),
           listPublicSharedExercises(username),
           countPublicFeedPosts(username, 'article'),
+          getUserSettings(username),
         ])
         const listItem = (r: { name: string; slug: string }) => ({
           name: r.name,
@@ -95,6 +97,7 @@ export const createPublicSharesRouter = (webHost: string): TypedRouter => {
         res.json({
           challenges: challenges.map((c) => toPublicChallengeListItem(c, webHost, username)),
           dashboards: dashboards.map(listItem),
+          display_name: settings?.display_name || null,
           exercises: exercises.map(listItem),
           has_articles: articleCount > 0,
           profile_url: buildProfileUrl(webHost, username),

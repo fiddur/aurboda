@@ -94,6 +94,7 @@ describe('listUsersOverview', () => {
     expect(users.map((u) => u.username)).toEqual(['alice', 'bob'])
     expect(users[1]).toEqual({
       created_at: null,
+      email: null,
       ends_at: null,
       paid_until: null,
       plan: null,
@@ -123,6 +124,7 @@ describe('listUsersOverview', () => {
       accounts: [
         {
           created_at: signup,
+          email: 'alice@example.com',
           inserted_at: signup,
           paid_until: null,
           plan: null,
@@ -133,6 +135,7 @@ describe('listUsersOverview', () => {
         },
         {
           created_at: null,
+          email: null,
           inserted_at: signup,
           paid_until: null,
           plan: null,
@@ -153,11 +156,18 @@ describe('listUsersOverview', () => {
 
     expect(alice).toMatchObject({
       created_at: signup.toISOString(),
+      email: 'alice@example.com',
       is_admin: false,
       pre_existing: false,
       storage_bytes: 1234,
     })
-    expect(bob).toMatchObject({ created_at: null, is_admin: true, pre_existing: true, storage_bytes: 5678 })
+    expect(bob).toMatchObject({
+      created_at: null,
+      email: null,
+      is_admin: true,
+      pre_existing: true,
+      storage_bytes: 5678,
+    })
   })
 
   test("each user's plan and state, admins never restricted", async () => {
@@ -167,6 +177,7 @@ describe('listUsersOverview', () => {
       accounts: [
         {
           created_at: signup,
+          email: null,
           inserted_at: signup,
           paid_until: null,
           plan: 'trial',
@@ -177,6 +188,7 @@ describe('listUsersOverview', () => {
         },
         {
           created_at: signup,
+          email: null,
           inserted_at: signup,
           paid_until: null,
           plan: 'trial',
@@ -316,6 +328,7 @@ describe('getUserUsage', () => {
       accounts: [
         {
           created_at: signup,
+          email: 'alice@example.com',
           inserted_at: signup,
           paid_until: null,
           plan: null,
@@ -350,6 +363,7 @@ describe('getUserUsage', () => {
         { channel: 'oura', count: 3, day: '2026-11-05', items: 30, kind: 'ingest' },
         { channel: 'web', count: 2, day: '2026-11-06', items: 0, kind: 'read' },
       ],
+      email: 'alice@example.com',
       is_admin: true,
       largest_tables: [
         { bytes: 2048, table: 'time_series' },

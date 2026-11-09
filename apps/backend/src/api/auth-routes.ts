@@ -6,11 +6,14 @@ import type {
   AuthTokenResponse,
   LoginResponse,
   ServerStatusResponse,
+  SignupBody,
   SignupResponse,
   VersionResponse,
 } from '@aurboda/api-spec'
 import type { Express } from 'express'
 import type { Client } from 'pg'
+
+import { signupBodySchema } from '@aurboda/api-spec'
 
 import type { Auth } from '../auth.ts'
 import type { CentralDb } from '../services/central-db.ts'
@@ -22,6 +25,8 @@ import { httpError } from '../http-error.ts'
 import { readBillingSettings, recordNewAccount } from '../services/account-plan.ts'
 import { pruneAuditLog } from '../services/audit-log.ts'
 import { readOfficialFeedSetting } from '../services/official-feed.ts'
+import { defaultSignupProfileDeps, saveSignupProfile } from '../services/signup-profile.ts'
+import { validateBody } from '../validation.ts'
 
 interface AuthRoutesDeps {
   httpd: Express
@@ -96,88 +101,85 @@ export const registerAuthRoutes = ({
     })
   })
 
-  // eslint-disable-next-line complexity -- signup validation logic
-  httpd.post<Record<string, never>, SignupResponse>('/signup', async (req, res, next) => {
-    const signupMode = await centralDb.getSignupMode()
+  httpd.post<Record<string, never>, SignupResponse, SignupBody>(
+    '/signup',
+    validateBody(signupBodySchema),
+    async (req, res, next) => {
+      const signupMode = await centralDb.getSignupMode()
 
-    if (signupMode === 'closed') {
-      res.status(403).json({ error: 'Signup is currently closed', success: false })
-      return
-    }
+      if (signupMode === 'closed') {
+        res.status(403).json({ error: 'Signup is currently closed', success: false })
+        return
+      }
 
-    const { username, password, invitation } = req.body
-    const user = typeof username === 'string' ? username.trim() : username
-    const invite = typeof invitation === 'string' ? invitation.trim() : invitation
+      const { username: user, password, invitation: invite } = req.body
 
-    if (signupMode === 'invite_only') {
-      if (!invite || typeof invite !== 'string') {
-        res.status(403).json({
-          error: 'An invitation is required to sign up',
+      if (signupMode === 'invite_only') {
+        if (!invite) {
+          res.status(403).json({
+            error: 'An invitation is required to sign up',
+            success: false,
+          })
+          return
+        }
+        const validation = invitationAuth.validateInvitationToken(invite)
+        if (!validation.valid) {
+          const errorMsg = validation.expired ? 'Invitation has expired' : 'Invalid invitation'
+          res.status(403).json({ error: errorMsg, success: false })
+          return
+        }
+      }
+
+      if (!USERNAME_REGEX.test(user)) {
+        res.status(400).json({
+          error:
+            'Username must be 3-31 characters, start with a letter, and contain only lowercase letters, numbers, and underscores',
           success: false,
         })
         return
       }
-      const validation = invitationAuth.validateInvitationToken(invite)
-      if (!validation.valid) {
-        const errorMsg = validation.expired ? 'Invitation has expired' : 'Invalid invitation'
-        res.status(403).json({ error: errorMsg, success: false })
+
+      if (RESERVED_USERNAMES.includes(user)) {
+        res.status(400).json({ error: 'This username is reserved', success: false })
         return
       }
-    }
 
-    if (!user || typeof user !== 'string' || !password || typeof password !== 'string') {
-      res.status(400).json({
-        error: 'Username and password are required',
-        success: false,
-      })
-      return
-    }
-
-    if (!USERNAME_REGEX.test(user)) {
-      res.status(400).json({
-        error:
-          'Username must be 3-31 characters, start with a letter, and contain only lowercase letters, numbers, and underscores',
-        success: false,
-      })
-      return
-    }
-
-    if (RESERVED_USERNAMES.includes(user)) {
-      res.status(400).json({ error: 'This username is reserved', success: false })
-      return
-    }
-
-    const existingUser = await query(userDb, 'SELECT usename FROM pg_user WHERE usename=$1', [user])
-    if ((existingUser.rowCount && existingUser.rowCount > 0) || (await centralDb.isUsernameDeleted(user))) {
-      res.status(409).json({ error: 'Username already exists', success: false })
-      return
-    }
-
-    try {
-      await makeNewUserDb(userDb, user, password)
-      await recordNewAccount(centralDb, user).catch((e) =>
-        console.error(`⚠️ Failed to record account row for ${user}:`, e),
-      )
-      const token = auth.createToken(user)
-
-      const adminCount = await centralDb.getAdminCount()
-      let isAdmin = false
-      if (adminCount === 0) {
-        await centralDb.addAdmin(user)
-        isAdmin = true
-        console.info(`First user ${user} automatically made admin`)
-      }
-
-      res.json({ is_admin: isAdmin, success: true, token })
-    } catch (err) {
-      if ((err as { code?: string }).code === '42710') {
+      const existingUser = await query(userDb, 'SELECT usename FROM pg_user WHERE usename=$1', [user])
+      if ((existingUser.rowCount && existingUser.rowCount > 0) || (await centralDb.isUsernameDeleted(user))) {
         res.status(409).json({ error: 'Username already exists', success: false })
         return
       }
-      console.error('Signup error:', err)
-      next(err)
-    }
-  })
+
+      try {
+        await makeNewUserDb(userDb, user, password)
+        await recordNewAccount(centralDb, user).catch((e) =>
+          console.error(`⚠️ Failed to record account row for ${user}:`, e),
+        )
+        await saveSignupProfile(defaultSignupProfileDeps(centralDb), user, {
+          display_name: req.body.display_name,
+          email: req.body.email,
+        })
+        const token = auth.createToken(user)
+
+        const adminCount = await centralDb.getAdminCount()
+        let isAdmin = false
+        if (adminCount === 0) {
+          await centralDb.addAdmin(user)
+          isAdmin = true
+          console.info(`First user ${user} automatically made admin`)
+        }
+
+        res.json({ is_admin: isAdmin, success: true, token })
+      } catch (err) {
+        if ((err as { code?: string }).code === '42710') {
+          res.status(409).json({ error: 'Username already exists', success: false })
+          return
+        }
+        console.error('Signup error:', err)
+        next(err)
+      }
+    },
+  )
 
   httpd.post<Record<string, never>, LoginResponse>('/login', async (req, res, next) => {
     const { username, password } = req.body

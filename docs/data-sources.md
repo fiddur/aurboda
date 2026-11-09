@@ -2,6 +2,8 @@
 
 Aurboda aggregates health, productivity, and location data from multiple sources. Each data source has its own setup requirements and sync mechanisms.
 
+You connect sources from **Data Sources** in the web app's sidebar, one page per source with its own setup steps; the Android app adds Health Connect and Bluetooth heart rate sensors. Connect whatever you already use, one is enough to start. The table below links each source's own page, which covers what is synced, the setup and how the sync works.
+
 ## Overview
 
 <!-- BEGIN:data-sources -->
@@ -56,9 +58,8 @@ Garmin and Oura report no states while the source is not connected (no Garmin se
 All sources feed into a common data model:
 
 - **`time_series`** -- Timestamped metric values (HR, weight, steps, etc.)
-- **`activities`** -- Duration-based events (sleep, exercise, meditation, nap)
-- **`tags`** -- Labeled time points or spans (from Oura tags, Last.fm rules, calendar events)
-- **`productivity`** -- App/website usage records (from RescueTime)
+- **`activities`** -- Duration-based or point-in-time events: sleep, exercise, meditation, nap, and anything of a custom type, including what you log yourself, Oura tags, Last.fm rule tags and calendar events (these were once a separate `tags` table, which is now migrated into activities)
+- **`productivity`** -- App/website usage records (from RescueTime and ActivityWatch)
 - **`locations`** -- GPS coordinates (from OwnTracks, plus activity tracks from Garmin and Strava)
 - **`raw_records`** -- Original data preserved in full JSON form
 

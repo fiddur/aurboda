@@ -11,6 +11,7 @@
 import { z } from 'zod'
 
 import { baseResponseSchema, iso8601DateTimeSchema } from './common.ts'
+import { signupProfileShape } from './profile.ts'
 
 export const webauthnRegistrationOptionsResponseSchema = baseResponseSchema
   .extend({
@@ -71,6 +72,7 @@ export type WebAuthnSignupOptionsResponse = z.infer<typeof webauthnSignupOptions
 
 export const webauthnSignupVerifyBodySchema = z
   .object({
+    ...signupProfileShape,
     nickname: z
       .string()
       .max(64)

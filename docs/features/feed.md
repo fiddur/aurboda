@@ -1,5 +1,13 @@
 # Federated Activity Feed
 
+The feed is how you share with friends. Share a run, a ride or a gym session from its page and
+pick exactly which numbers to show, with a preview of what will leave your server; write a longer
+article with live charts; invite people to a challenge; or post your progress on one exercise or a
+month of your dashboard. Follow people on any Aurboda server, or on Mastodon and the rest of the
+fediverse, and their posts appear in your home timeline, where you can like, boost and reply.
+People on Mastodon can follow you in turn. This page describes how it works in detail;
+[Using it in the web app](#using-it-in-the-web-app) is the user-facing part.
+
 The activity feed lets a user publish an **activity** (a run, a night's sleep, a
 meditation, …) to their public feed, choosing **per post exactly which data leaves the
 instance**, and have it delivered over **ActivityPub** to followers on Mastodon and the
@@ -19,8 +27,7 @@ The feed is built on [Fedify](https://fedify.dev). It has three layers:
 A feed post has a **`kind`**:
 
 - **`activity`** (the default) — references one of the user's activities and shares a
-  bounded metric selection (below). This is the original and, so far, only end-to-end
-  kind.
+  bounded metric selection (below). This is the original kind.
 - **`article`** — a long-form post: a `title`, markdown prose, and inline **chart** and
   **correlation** blocks, each over a locked `[start, end]` window (blocks inherit an
   article-level default window unless they override it). Data re-resolves **live**
@@ -142,7 +149,10 @@ A feed post has a **`kind`**:
 data · October 2026`), the note, then **one line per figure widget** in config order —
   metric and sparkline cards as `Steps 9375 (↑ 4%)` (the arrow and whole percent against the
   previous period, `→` within half a percent), the activity summary as `Workouts 12 · 600 min`,
-  `Sleep 7.3 h` and `Meditation 3`, a record card as `Best e1RM 101.3 kg` — and the link;
+  `Sleep 7.3 h` and `Meditation 3`, a record card as `Best e1RM 101.3 kg`, an activity type
+  card as `Workouts 3 · 2h 10m · 15.0 km` (sleep as `Sleep 30 nights · avg 7h 30m`), a top
+  list as `Music 3 plays — Artist A, Artist B`, the places card as
+  `Places 2 nights home, 1 away · 3 places` — and the link;
   charts have no one-line form and are left to the structured payload, and quick links are
   never rendered. An Aurboda peer fetches the
   [structured payload](#native-charts-from-aurboda-peers-structured-enrichment) and draws
@@ -1270,6 +1280,15 @@ The actor's `icon` URL carries the avatar's upload time as a `?v=` version, and 
 upload/removal delivers an `Update{Person}` to accepted followers — remote servers (Mastodon
 et al.) cache a copied avatar and re-download it only on one of those two signals, so without
 them a changed avatar never propagates.
+
+The actor's `name` is the user's display name (the `display_name` user setting, set at signup or
+in Settings → **Profile**, via `PATCH /user/settings` or MCP `update_user_settings`), left out when
+none is set so other servers show the username. Changing it delivers an `Update{Person}` the same
+way an avatar change does. A display name with control characters (tab and newline included) or
+bidirectional embedding, override or isolate characters is refused with `400` wherever it is set.
+The public profile page (`/u/:username`, from
+`GET /public/:username/dashboards`'s `display_name`) shows it above `@username`. The account's
+email is never part of the actor or any public response.
 
 The owner-facing capability is also available over MCP as `list_feed`, `share_activity`,
 `preview_activity_share`, `share_challenge`, `share_exercise`, `preview_exercise_share`, `share_dashboard_period`, `preview_dashboard_period_share`, `create_article`, `update_article`, the [article draft](#article-drafts) tools, `export_article_markdown`, `update_feed_post`,

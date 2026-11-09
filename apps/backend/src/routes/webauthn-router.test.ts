@@ -24,6 +24,7 @@ vi.mock('../db/index.ts', async (importOriginal) => {
     dropUserDb: vi.fn().mockResolvedValue(undefined),
     makeNewUserDb: vi.fn().mockResolvedValue(undefined),
     query: vi.fn().mockResolvedValue({ rowCount: 0, rows: [] }),
+    upsertUserSettings: vi.fn().mockResolvedValue({}),
   }
 })
 
@@ -458,6 +459,40 @@ describe('POST /webauthn/signup/verify', () => {
       preExisting: false,
       trialEndsAt: null,
     })
+  })
+
+  test('stores the optional display name and email once the account exists', async () => {
+    const setUserEmail = vi.fn(async () => ({}) as never)
+    const app = buildApp(verifiedSignup(), {
+      centralDb: {
+        addAdmin: vi.fn(async () => {}),
+        getAdminCount: vi.fn(async () => 1),
+        insertWebAuthnUserHandle: vi.fn(async () => {}),
+        setUserEmail,
+      },
+    })
+    const res = await supertest(app).post('/webauthn/signup/verify').send({
+      display_name: ' Ada ',
+      email: 'Ada@Example.com',
+      response_json: '{}',
+      username: 'ada',
+    })
+
+    expect(res.status).toBe(200)
+    expect(dbIndex.upsertUserSettings).toHaveBeenCalledWith('ada', { display_name: 'Ada' })
+    expect(setUserEmail).toHaveBeenCalledWith('ada', 'Ada@Example.com')
+  })
+
+  test('400 on a malformed email, before verifying anything', async () => {
+    const webAuthn = verifiedSignup()
+    const res = await supertest(buildApp(webAuthn))
+      .post('/webauthn/signup/verify')
+      .send({ email: 'not-an-email', response_json: '{}', username: 'ada' })
+
+    expect(res.status).toBe(400)
+    expect(res.body.error).toEqual({ email: ['Not a valid email address'] })
+    expect(webAuthn.verifySignup).not.toHaveBeenCalled()
+    expect(dbIndex.makeNewUserDb).not.toHaveBeenCalled()
   })
 
   test('rolls back when credential persistence fails', async () => {

@@ -1,10 +1,21 @@
 # Sharing & Public Pages
 
-Aurboda lets a user publish read-only **shared dashboards** under their own public
-namespace, so other people — anonymous visitors, or users on a different Aurboda
-instance — can view a curated set of charts without signing in. This is the first
-of the planned social features; the identity foundation it establishes is reused by
-later features (e.g. challenges).
+Nothing you record is shown to anyone else until you share it. Your data stays in your own
+database, and other people see only what you publish, piece by piece:
+
+- a **post** of one activity in the [feed](./feed.md), with exactly the fields you pick (or
+  posted for you by an [auto-share rule](./auto-share-rules.md) you set up yourself);
+- a **shared dashboard** (this page), private when created until you make it unlisted or public,
+  or a **shared exercise**, unlisted (only people with the link) unless you make it public;
+- your score in a [challenge](./challenges.md) you join.
+
+Your public profile at `/u/<username>` shows your username and avatar, and lists only what you
+have made public.
+
+The rest of this page covers shared dashboards and exercises. A shared dashboard is published
+read-only under your own public namespace, so other people — anonymous visitors, or users on a
+different Aurboda instance — can view a curated set of charts without signing in. Its identity
+foundation is the one challenges and the feed build on.
 
 ## Identity & URLs
 
@@ -215,6 +226,13 @@ proxies the public share routes (`/u/*`) to the backend, which returns the same
 `index.html` with a **server-rendered `<head>`**: Open Graph, Twitter Card, and
 `description` meta plus schema.org JSON-LD for the resolved resource. Browsers still
 get the full SPA and hydrate normally — only the head is enriched.
+
+The welcome page at the site root is enriched the same way: nginx proxies exactly `/` to
+the backend's `/welcome-page`, which adds the site's title, description and the default
+preview image (`/og-default.png`, a dashboard and phone timeline on the Fjord background).
+It is sent `no-cache`, like the `index.html` nginx serves, so a deploy's new chunks load
+at once. If the backend is down or answers with an error, nginx serves the static
+`index.html` instead, so the page still loads, without the preview meta.
 
 - **Dashboards**, **challenges** and **shared exercises** get a title (resource name), a
   description, and a canonical URL; profiles get a `profile`-typed card with `ProfilePage` JSON-LD.

@@ -16,6 +16,7 @@ vi.mock('../db/index.ts', () => ({
   migrateSchema: vi.fn(async () => {}),
   query: vi.fn(async () => ({ rowCount: 1, rows: [{ usename: 'alice' }] })),
   schemaInitialized: vi.fn(async () => true),
+  upsertUserSettings: vi.fn(async () => ({})),
 }))
 
 vi.mock('../services/audit-log.ts', () => ({ pruneAuditLog: vi.fn(async () => {}) }))
@@ -27,6 +28,7 @@ const pgError = (code: string, message = 'pg failure') => Object.assign(new Erro
 
 const ensureUserAccount = vi.fn(async () => true)
 const isUsernameDeleted = vi.fn(async (_username: string) => false)
+const setUserEmail = vi.fn(async (): Promise<object | null> => ({}))
 
 const buildApp = ({
   blogUsername = null,
@@ -56,6 +58,7 @@ const buildApp = ({
       getSignupMode: vi.fn(async () => signupMode),
       isAdmin: vi.fn(async () => false),
       isUsernameDeleted,
+      setUserEmail,
     } as never,
     httpd,
     invitationAuth: {} as never,
@@ -268,6 +271,98 @@ describe('POST /signup', () => {
     expect(response.status).toBe(409)
     expect(response.body.error).toBe('Username already exists')
     expect(ensureUserAccount).not.toHaveBeenCalled()
+  })
+
+  test('stores the optional display name and email it was given', async () => {
+    vi.mocked(db.query).mockResolvedValue({ rowCount: 0, rows: [] } as never)
+
+    const response = await supertest(buildApp({ signupMode: 'open' }))
+      .post('/signup')
+      .send({ display_name: ' Ada ', email: ' Ada@Example.com ', password: 'secret', username: 'ada' })
+
+    expect(response.status).toBe(200)
+    expect(db.upsertUserSettings).toHaveBeenCalledWith('ada', { display_name: 'Ada' })
+    expect(setUserEmail).toHaveBeenCalledWith('ada', 'Ada@Example.com')
+  })
+
+  test('stores neither without them', async () => {
+    vi.mocked(db.query).mockResolvedValue({ rowCount: 0, rows: [] } as never)
+
+    const response = await supertest(buildApp({ signupMode: 'open' }))
+      .post('/signup')
+      .send({ display_name: '', email: '', password: 'secret', username: 'ada' })
+
+    expect(response.status).toBe(200)
+    expect(db.upsertUserSettings).not.toHaveBeenCalled()
+    expect(setUserEmail).not.toHaveBeenCalled()
+  })
+
+  test('still signs up when storing the profile fails', async () => {
+    vi.mocked(db.query).mockResolvedValue({ rowCount: 0, rows: [] } as never)
+    setUserEmail.mockRejectedValueOnce(new Error('central down'))
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const response = await supertest(buildApp({ signupMode: 'open' }))
+      .post('/signup')
+      .send({ email: 'ada@example.com', password: 'secret', username: 'ada' })
+
+    expect(response.status).toBe(200)
+    expect(response.body.token).toBe('signed-token')
+    expect(errorLog).toHaveBeenCalled()
+    errorLog.mockRestore()
+  })
+
+  test('signs up without the email, and logs it, when the account row is missing', async () => {
+    vi.mocked(db.query).mockResolvedValue({ rowCount: 0, rows: [] } as never)
+    setUserEmail.mockResolvedValueOnce(null)
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const response = await supertest(buildApp({ signupMode: 'open' }))
+      .post('/signup')
+      .send({ email: 'ada@example.com', password: 'secret', username: 'ada' })
+
+    expect(response.status).toBe(200)
+    expect(errorLog).toHaveBeenCalledWith('⚠️ Failed to save the signup email for ada:', expect.any(Error))
+    errorLog.mockRestore()
+  })
+
+  test('refuses a malformed email before creating the account', async () => {
+    vi.mocked(db.query).mockResolvedValue({ rowCount: 0, rows: [] } as never)
+
+    const response = await supertest(buildApp({ signupMode: 'open' }))
+      .post('/signup')
+      .send({ email: 'not-an-email', password: 'secret', username: 'ada' })
+
+    expect(response.status).toBe(400)
+    expect(response.body.error).toEqual({ email: ['Not a valid email address'] })
+    expect(db.makeNewUserDb).not.toHaveBeenCalled()
+  })
+
+  test.each([
+    ['a bidi override', 'Ada\u202Eevil'],
+    ['a tab', 'Ada\tLovelace'],
+  ])('refuses a display name with %s before creating the account', async (_label, display_name) => {
+    vi.mocked(db.query).mockResolvedValue({ rowCount: 0, rows: [] } as never)
+
+    const response = await supertest(buildApp({ signupMode: 'open' }))
+      .post('/signup')
+      .send({ display_name, password: 'secret', username: 'ada' })
+
+    expect(response.status).toBe(400)
+    expect(response.body.error).toEqual({
+      display_name: ['Display name must not contain control or bidirectional formatting characters'],
+    })
+    expect(db.makeNewUserDb).not.toHaveBeenCalled()
+  })
+
+  test('answers 400 without a password', async () => {
+    const response = await supertest(buildApp({ signupMode: 'open' }))
+      .post('/signup')
+      .send({ username: 'ada' })
+
+    expect(response.status).toBe(400)
+    expect(response.body.error).toHaveProperty('password')
+    expect(db.makeNewUserDb).not.toHaveBeenCalled()
   })
 
   test('refuses the name of a deleted account as taken', async () => {

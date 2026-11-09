@@ -37,6 +37,7 @@ import {
   buildDashboardShareMeta,
   buildDefaultShareMeta,
   buildExerciseShareMeta,
+  buildHomeShareMeta,
   buildOfficialFeedShareMeta,
   buildProfileShareMeta,
   injectShareMeta,
@@ -54,6 +55,12 @@ import {
   buildShareUrl,
 } from '../services/share-urls.ts'
 import { UUID_RE } from '../utils.ts'
+
+/**
+ * Where nginx proxies the site root (`location = /`). Not `/` itself: nginx also maps
+ * `/api/` onto the backend's root.
+ */
+export const HOME_PAGE_PATH = '/welcome-page'
 
 /** A public resource resolved just far enough to build meta from. */
 interface ResolvedResource {
@@ -240,11 +247,11 @@ const sendHtml = async (
   meta: ShareMeta,
   isRich: boolean,
   res: Response,
+  cacheControl = isRich ? 'public, max-age=300' : 'public, max-age=60',
 ): Promise<void> => {
   const template = await loadTemplate()
   const html = template ? injectShareMeta(template, meta) : fallbackHtml(meta)
-  // Rich (public) meta is safe to cache aggressively; generic fallbacks briefly.
-  res.setHeader('Cache-Control', isRich ? 'public, max-age=300' : 'public, max-age=60')
+  res.setHeader('Cache-Control', cacheControl)
   res.type('html').send(html)
 }
 
@@ -268,6 +275,12 @@ export const createShareHtmlRouter = (deps: ShareHtmlDeps): Router => {
     ...meta,
     oembedUrl: oembedDiscoveryUrl(webHost, resourceUrl),
   })
+
+  // nginx sends the site root here: the page every visitor lands on must pick up a new
+  // deploy's hashed chunks at once, like the index.html nginx serves itself.
+  router.get(HOME_PAGE_PATH, (_req, res) =>
+    sendHtml(loadTemplate, buildHomeShareMeta(webHost), true, res, 'no-cache'),
+  )
 
   router.get('/blog', async (_req, res) => {
     const url = buildOfficialFeedUrl(webHost)

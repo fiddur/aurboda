@@ -2,9 +2,11 @@
 
 Aurboda includes an MCP (Model Context Protocol) server that enables AI assistants like Claude to access all capabilities of the platform -- querying data, creating activities, managing rules, and more.
 
+In practice: connect Claude (or another assistant that speaks MCP) to your account and ask about your data in plain language -- "did the evening runs help my sleep this month?", "log that I just had a coffee". On Claude.ai, add a custom connector with the URL `https://aurboda.net/mcp` (or `/mcp` on your own server) and sign in with your Aurboda account; see [Connecting Claude.ai](#oauth-21-for-claudeai-custom-connectors). Everything the MCP tools do is also in the REST API, documented interactively at [aurboda.net/apispec](https://aurboda.net/apispec) (`/apispec` on your own server).
+
 ## Overview
 
-The MCP server exposes 180+ tools covering all of Aurboda's functionality. Tool descriptions, parameters, and schemas are self-documented via the MCP protocol itself -- AI assistants discover available tools automatically.
+The MCP server exposes 200+ tools covering all of Aurboda's functionality. Tool descriptions, parameters, and schemas are self-documented via the MCP protocol itself -- AI assistants discover available tools automatically.
 
 Key areas covered by MCP tools:
 
@@ -13,7 +15,7 @@ Key areas covered by MCP tools:
 - **Activity types** -- manage custom activity type definitions
 - **Deduction rules** -- create rules that auto-generate activities from data conditions
 - **Screentime** -- manage category rules and recategorize
-- **Sync** -- trigger data syncs from Garmin, Oura, Last.fm, RescueTime, calendars
+- **Sync** -- trigger data syncs from Garmin, Oura, Strava, Gravl, Last.fm, RescueTime, calendars
 - **Settings** -- user preferences, HR zones, training load configuration
 - **Export** -- `export_data_dump` links a download of your whole database as SQL ([data export](data-export.md))
 - **Account** -- `delete_my_account` deletes your account for good; admins can `delete_user` ([deleting accounts](admin.md#deleting-accounts))

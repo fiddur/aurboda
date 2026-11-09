@@ -6,6 +6,15 @@ import { auditWarn } from './services/audit-log.ts'
 import { trimStrings } from './trim-input.ts'
 
 /**
+ * Field errors keyed by field, plus object-level messages (a `.refine` without a `path`) under
+ * `_errors`, which `flatten().fieldErrors` alone would drop.
+ */
+export const validationErrors = (error: z.ZodError): Record<string, string[]> => {
+  const { fieldErrors, formErrors } = error.flatten()
+  return formErrors.length > 0 ? { ...fieldErrors, _errors: formErrors } : { ...fieldErrors }
+}
+
+/**
  * Returns 400 with detailed validation errors on failure.
  * Logs to audit log for authenticated users.
  *
@@ -18,16 +27,11 @@ export const validateBody =
     (req, res, next) => {
       const result = schema.safeParse(trimStrings(req.body))
       if (!result.success) {
-        const fieldErrors = result.error.flatten().fieldErrors
+        const errors = validationErrors(result.error)
         if (req.user) {
-          auditWarn(req.user, 'data', `Validation error: ${req.method} ${req.path}`, {
-            errors: fieldErrors,
-          })
+          auditWarn(req.user, 'data', `Validation error: ${req.method} ${req.path}`, { errors })
         }
-        res.status(400).json({
-          error: fieldErrors,
-          success: false,
-        })
+        res.status(400).json({ error: errors, success: false })
         return
       }
       req.body = result.data
@@ -47,16 +51,11 @@ export const validateQuery =
     (req, res, next) => {
       const result = schema.safeParse(trimStrings(req.query))
       if (!result.success) {
-        const fieldErrors = result.error.flatten().fieldErrors
+        const errors = validationErrors(result.error)
         if (req.user) {
-          auditWarn(req.user, 'data', `Validation error: ${req.method} ${req.path}`, {
-            errors: fieldErrors,
-          })
+          auditWarn(req.user, 'data', `Validation error: ${req.method} ${req.path}`, { errors })
         }
-        res.status(400).json({
-          error: fieldErrors,
-          success: false,
-        })
+        res.status(400).json({ error: errors, success: false })
         return
       }
       // Use Object.defineProperty since req.query may be a getter-only property

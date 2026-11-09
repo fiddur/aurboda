@@ -2,10 +2,13 @@ import type { PostAuthor } from '../Feed/FeedPostCard'
 
 import { avatarUrl } from '../../state/api'
 
-/** A public page's author identity: the same one the owner's own feed builds (`@user@host`, avatar on this host). */
-export const publicAuthor = (username: string): PostAuthor => ({
+/**
+ * A public page's author identity: the same one the owner's own feed builds (`@user@host`, avatar on
+ * this host), named by the display name when the page knows it.
+ */
+export const publicAuthor = (username: string, displayName?: string | null): PostAuthor => ({
   avatarUrl: avatarUrl(username),
-  displayName: username,
+  displayName: displayName?.trim() || username,
   handle: `@${username}@${window.location.host}`,
   profileUrl: `/u/${encodeURIComponent(username)}`,
   username,

@@ -28,6 +28,12 @@
   font-size: 1.1rem;
   white-space: nowrap;
   overflow: hidden;
+  text-decoration: none;
+}
+
+.sidebar-brand:hover {
+  color: #fff;
+  text-decoration: underline;
 }
 
 .sidebar-toggle {

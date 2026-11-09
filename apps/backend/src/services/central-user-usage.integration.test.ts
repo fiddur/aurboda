@@ -5,6 +5,7 @@ import type { UsageRow } from './usage-recorder.ts'
 import { getTestDbClient, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import {
   ALTER_USER_ACCOUNTS_PLAN_COLUMNS,
+  ALTER_USER_ACCOUNTS_PROFILE_COLUMNS,
   createUserAccountsApi,
   CREATE_USER_ACCOUNTS_TABLE,
 } from './central-user-accounts.ts'
@@ -32,7 +33,8 @@ beforeAll(async () => {
   const client = getTestDbClient()
   await client.query(CREATE_USER_ACCOUNTS_TABLE)
   // Twice, as every start runs them: the columns are added once and kept.
-  for (const stmt of [...ALTER_USER_ACCOUNTS_PLAN_COLUMNS, ...ALTER_USER_ACCOUNTS_PLAN_COLUMNS]) {
+  const alters = [...ALTER_USER_ACCOUNTS_PLAN_COLUMNS, ...ALTER_USER_ACCOUNTS_PROFILE_COLUMNS]
+  for (const stmt of [...alters, ...alters]) {
     await client.query(stmt)
   }
   await client.query(CREATE_USER_USAGE_DAILY_TABLE)
@@ -169,6 +171,30 @@ describe('central user_accounts', () => {
 
     expect(account).toMatchObject({ created_at: null, plan: 'exempt', pre_existing: true, username: 'dave' })
     expect(await a.updateUserPlan('dave', {})).toMatchObject({ plan: 'exempt', username: 'dave' })
+  })
+
+  test('setUserEmail sets and clears the email and keeps the rest of the row', async () => {
+    const a = api()
+    await a.ensureUserAccount('alice', { createdAt: null, plan: 'trial', preExisting: false })
+    expect(await a.getUserAccount('alice')).toMatchObject({ email: null })
+
+    const set = await a.setUserEmail('alice', 'Alice@Example.com')
+    expect(set).toMatchObject({ email: 'Alice@Example.com', plan: 'trial', pre_existing: false })
+    expect(await a.getUserAccount('alice')).toEqual(set)
+    expect((await a.listUserAccounts()).map(({ email, username }) => [username, email])).toEqual([
+      ['alice', 'Alice@Example.com'],
+    ])
+
+    expect(await a.setUserEmail('alice', null)).toMatchObject({ email: null, plan: 'trial' })
+    expect(await a.getUserAccount('alice')).toMatchObject({ email: null })
+  })
+
+  test('setUserEmail resolves to null and inserts nothing for an account without a row', async () => {
+    const a = api()
+
+    expect(await a.setUserEmail('dave', 'dave@example.com')).toBeNull()
+    expect(await a.getUserAccount('dave')).toBeNull()
+    expect(await a.listUserAccounts()).toEqual([])
   })
 
   test('deleteUserAccount removes the row', async () => {

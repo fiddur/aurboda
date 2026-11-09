@@ -466,6 +466,11 @@ export const publicProfileResponseSchema = baseResponseSchema
       .array(publicDashboardListItemSchema)
       .optional()
       .meta({ description: 'Public shared dashboards' }),
+    display_name: z
+      .string()
+      .nullable()
+      .optional()
+      .meta({ description: 'The name the user shows on their profile and posts; null when none is set' }),
     exercises: z
       .array(publicExerciseListItemSchema)
       .optional()

@@ -102,6 +102,19 @@
   color: var(--color-accent);
 }
 
+/* Links to the documentation */
+
+.welcome-read-more {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.welcome-card .welcome-read-more {
+  margin-top: 10px;
+  font-size: 0.9375rem;
+}
+
 /* Buttons */
 
 .welcome .welcome-button {
@@ -231,6 +244,10 @@
 
 .welcome-hero .welcome-hero-state a {
   color: #fff;
+}
+
+.welcome-hero-own {
+  font-size: 0.9375rem;
 }
 
 .welcome-hero-shot {
@@ -521,6 +538,11 @@
   font-weight: 600;
 }
 
+.welcome-sources-more {
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--color-border);
+}
+
 /* Closing call to action */
 
 .welcome-closing {
@@ -553,20 +575,26 @@
   color: var(--color-chrome-text);
 }
 
-/* Footer */
+/* Closing line and footer */
 
-.welcome-footer {
-  padding-top: 24px;
-  padding-bottom: 24px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 20px;
+.welcome-outro {
+  padding-top: 32px;
+  padding-bottom: 8px;
+}
+
+.welcome-footer .site-footer {
+  padding: 16px 0 24px;
   font-size: 0.875rem;
+  text-align: left;
+}
+
+.welcome .welcome-footer .site-footer,
+.welcome .welcome-footer .site-footer a {
   color: var(--color-text-muted);
 }
 
-.welcome-footer-spacer {
-  flex: 1 1 auto;
+.welcome .welcome-footer .site-footer a:hover {
+  color: var(--color-accent-hover);
 }
 
 @media (max-width: 640px) {

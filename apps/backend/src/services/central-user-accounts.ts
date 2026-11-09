@@ -13,6 +13,8 @@ export interface UserAccount {
   trial_ends_at: Date | null
   paid_until: Date | null
   plan_note: string | null
+  /** Private: only the user and the server's admins see it. */
+  email: string | null
 }
 
 export interface UserPlanFields {
@@ -38,7 +40,12 @@ export const ALTER_USER_ACCOUNTS_PLAN_COLUMNS = [
   'ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS plan_note TEXT',
 ]
 
-const COLUMNS = 'username, created_at, pre_existing, inserted_at, plan, trial_ends_at, paid_until, plan_note'
+export const ALTER_USER_ACCOUNTS_PROFILE_COLUMNS = [
+  'ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS email TEXT',
+]
+
+const COLUMNS =
+  'username, created_at, pre_existing, inserted_at, plan, trial_ends_at, paid_until, plan_note, email'
 
 const PLAN_COLUMNS = ['plan', 'trial_ends_at', 'paid_until', 'plan_note'] as const
 
@@ -46,6 +53,7 @@ const toDate = (value: unknown): Date | null => (value ? new Date(value as strin
 
 const mapRow = (row: Record<string, unknown>): UserAccount => ({
   created_at: toDate(row.created_at),
+  email: (row.email as string | null) ?? null,
   inserted_at: new Date(row.inserted_at as string),
   paid_until: toDate(row.paid_until),
   plan: (row.plan as AccountPlan | null) ?? null,
@@ -84,6 +92,12 @@ export interface UserAccountsApi {
    * pre-existing row when the account has none. Resolves to the row as stored.
    */
   updateUserPlan: (username: string, fields: UserPlanFields) => Promise<UserAccount>
+  /**
+   * Sets the account's email (null clears it). Resolves to the row as stored, or null when the
+   * account has no row: inserting one here would make it a plan-less pre-existing account and keep
+   * the startup backfill from starting its trial.
+   */
+  setUserEmail: (username: string, email: string | null) => Promise<UserAccount | null>
 }
 
 export const createUserAccountsApi = (getClient: () => Promise<Queryable>): UserAccountsApi => ({
@@ -132,6 +146,15 @@ export const createUserAccountsApi = (getClient: () => Promise<Queryable>): User
     const client = await getClient()
     const result = await client.query(`UPDATE user_accounts SET plan = 'exempt' WHERE plan IS NULL`)
     return result.rowCount ?? 0
+  },
+
+  setUserEmail: async (username, email) => {
+    const client = await getClient()
+    const result = await client.query(
+      `UPDATE user_accounts SET email = $2 WHERE username = $1 RETURNING ${COLUMNS}`,
+      [username, email],
+    )
+    return result.rows.length > 0 ? mapRow(result.rows[0]) : null
   },
 
   updateUserPlan: async (username, fields) => {

@@ -2,7 +2,12 @@
 
 Aurboda goes beyond simple charts by computing statistical correlations between your health metrics and everything you do -- activities, locations, screen time, tags, and more. The goal is to answer questions like "Does evening exercise affect my sleep?" or "What's the probability of a headache after a bad night?"
 
-The feature has three layers: a visual Correlations page for browsing, an API for programmatic access, and MCP tools that let AI assistants run sophisticated analyses on your data.
+In the web app it is the **Analyze** page (`/correlations`), with two tabs:
+
+- **Explore** answers "does X make a difference to Y?": pick anything you log or measure (a drink, a late coffee, an evening run, carbs) and an outcome (sleep score, HRV, a headache). It compares the days with and without it, says how big the difference is, and whether it is more than chance. How it works is described in [Correlations & exploratory analysis](../correlations.md).
+- **Context** (HRV, heart rate or stress) shows how your body looks during and around each activity, place and screen-time category, compared with your baseline. It is described below.
+
+Everything is also available over the REST API and as MCP tools, so an AI assistant such as Claude can run the same analyses when you ask it in plain language.
 
 ## Your Baseline
 
@@ -14,9 +19,9 @@ The foundation of correlation analysis is your personal baseline -- rolling aver
 
 HRV baseline uses sleep-context HRV (measurements taken during sleep), which is the most consistent and comparable across days. All correlation deltas are measured against this baseline.
 
-## The Correlations Page
+## The Context tab
 
-The web page at `/correlations` shows four correlation tables with a configurable analysis period (14, 30, 60, or 90 days).
+The first tab of the Analyze page shows three tables over a configurable analysis period (14, 30, 60, or 90 days). A **Context** dropdown picks the metric they are measured against: HRV (the default), heart rate or stress.
 
 ### Correlation Tables
 
@@ -27,8 +32,6 @@ Each table covers a different category of data:
 **Locations** -- Named places you've visited. Shows visit count.
 
 **Productivity Categories** -- Screen time categories (e.g., "Software Development", "Social Media"). Shows the Pearson correlation coefficient (r) between the productivity score and your HRV.
-
-**Tags** -- Manual tags, Oura tags, calendar events, auto-tags. Shows occurrence count.
 
 Every row displays:
 
@@ -106,9 +109,8 @@ Correlation analysis requires **HRV and heart rate data** as the baseline metric
 | Activities              | Exercise/sleep/meditation data from Oura, Garmin, or Health Connect |
 | Locations               | Place visits from OwnTracks                                         |
 | Productivity            | Screen time data from RescueTime or ActivityWatch                   |
-| Tags                    | Any tags -- manual, Oura, calendar imports, Last.fm auto-tags       |
 
-Minimum data requirements vary by category: activities need at least 1 occurrence, tags need at least 2, locations need 30+ minutes of overlap, and productivity categories need 10+ minutes.
+Minimum data requirements vary by category: activities need at least 1 occurrence, locations need 30+ minutes of overlap, and productivity categories need 10+ minutes.
 
 ## How HRV Is Collected Per Category
 
@@ -117,7 +119,6 @@ Different categories sample HRV from different time windows:
 - **Activities**: HRV/HR data during the activity (start to end time).
 - **Locations**: HRV/HR data during the visit duration.
 - **Productivity**: HRV/HR data during screen time record windows.
-- **Tags**: HRV/HR from 30 minutes before the tag start through the tag end. For point-in-time tags (no end time), the window extends 30 minutes after the start. This captures the physiological context around the event, not just during it.
 
 ## Statistical Methods
 
@@ -133,5 +134,4 @@ Different categories sample HRV from different time windows:
 - Event probability and generic correlation are **API/MCP-only** -- they have no web UI. They are designed for AI-driven analysis (e.g., asking Claude "what's the probability of a headache after poor sleep?").
 - The Pearson correlation coefficient requires at least 3 data points and only measures linear relationships. Non-linear associations won't be captured.
 - Correlation does not imply causation. A strong correlation between two events might be caused by a third, unmeasured factor.
-- Tag correlations look at a 30-minute window before the tag, which means the HRV/HR values reflect your state leading into the tagged event, not necessarily caused by it.
 - Auto-sync is triggered in the background (fire-and-forget) — it never blocks correlation computation, so the analysis returns from existing data immediately. Newly synced data lands on the next request, so the first load after a stale period may reflect slightly out-of-date data.
