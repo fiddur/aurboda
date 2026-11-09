@@ -116,8 +116,10 @@ A per-user set of rules, each combining a **predicate** and a **share template**
   30 days" — regardless of shared status, `enabled_at` and the max age, so the number
   shows the predicate's true reach). The form's "Only activities that ended within …
   hours" field sets the max age (default 24), and the rule list states it ("ended
-  within 24 h") along with the rule's tags (its own, "no tags", or "your default
-  tags"). Each rule's **Edit** button opens the same form prefilled under the rule, to
+  within 24 h") along with the tags the rule's posts get: its own list or "your
+  default tags", plus any `#tags` typed in the fixed message ("no tags" when that is
+  empty). The form shows the same line, live, under **Tags**. Each rule's **Edit**
+  button opens the same form prefilled under the rule, to
   see its full settings and change them; **Save** sends an update (a cleared field
   goes back to unset, cleared own tags back to the default tags). An edit applies to
   activities shared from then on; posts the rule already published are not changed,
