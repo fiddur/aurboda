@@ -3,7 +3,7 @@ import { useEffect } from 'preact/hooks'
 import { officialFeedPath } from '../state/api/blogUrls'
 import { ensureStatusLoaded, officialFeedEnabled } from '../state/auth'
 
-/** The licence, legal and community links; the welcome page adds a tagline beside them. */
+/** The licence, legal and help links; the welcome page adds a tagline beside them. */
 export function Footer({ tagline }: { tagline?: string }) {
   useEffect(() => {
     ensureStatusLoaded()
@@ -15,8 +15,7 @@ export function Footer({ tagline }: { tagline?: string }) {
       <p>
         <a href="https://github.com/fiddur/aurboda">Aurboda</a> ©Fredrik Liljegren {new Date().getFullYear()}{' '}
         <a href="http://www.gnu.org/licenses/agpl-3.0.html">GNU AGPL-3.0</a> · <a href="/privacy">Privacy</a>{' '}
-        · <a href="/terms">Terms</a> ·{' '}
-        <a href="https://github.com/fiddur/aurboda/discussions">Feedback &amp; questions</a>
+        · <a href="/terms">Terms</a> · <a href="/help">Help &amp; support</a>
         {officialFeedEnabled.value && (
           <>
             {' · '}

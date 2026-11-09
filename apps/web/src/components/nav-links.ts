@@ -48,10 +48,13 @@ export const DATA_SOURCE_LINKS = [
   { label: 'Calendars', path: '/data-sources/calendars' },
 ]
 
+export const HELP_LINK = { href: '/help', label: 'Help & support', icon: '❓' }
+
 const OTHER_PAGE_TITLES = [
   { href: '/shared-dashboards', label: 'Dashboards' },
   { href: '/data-sources', label: 'Data Sources' },
   { href: '/settings', label: 'Settings' },
+  HELP_LINK,
   { href: '/admin', label: 'Admin' },
   { href: '/login', label: 'Login' },
   { href: '/signup', label: 'Sign up' },

@@ -66,6 +66,7 @@ const Feed = lazyPage(() => import('./pages/Feed/index.jsx'), 'Feed')
 const FoodItemDetail = lazyPage(() => import('./pages/FoodItems/FoodItemDetail.jsx'), 'FoodItemDetail')
 const FoodItems = lazyPage(() => import('./pages/FoodItems/index.jsx'), 'FoodItems')
 const Goals = lazyPage(() => import('./pages/Goals/index.jsx'), 'Goals')
+const Help = lazyPage(() => import('./pages/Help/index.jsx'), 'Help')
 const Home = lazyPage(() => import('./pages/Home/index.jsx'), 'Home')
 const Login = lazyPage(() => import('./pages/Login/index.jsx'), 'Login')
 const Meals = lazyPage(() => import('./pages/Meals/index.jsx'), 'Meals')
@@ -178,7 +179,7 @@ function AppShell() {
             <Route path="/admin" component={AdminSettings} />
             <Route path="/admin/users" component={AdminUsers} />
             <Route path="/admin/users/:username" component={AdminUserDetail} />
-            <Route path="/help" component={DataSources} />
+            <Route path="/help" component={Help} />
             <Route default component={NotFound} />
           </Router>
         </main>

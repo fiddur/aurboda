@@ -319,7 +319,7 @@ This project embodies that spirit: gathering scattered health data into a unifie
 
 ## Community
 
-Questions, ideas and feedback go in [GitHub Discussions](https://github.com/fiddur/aurboda/discussions); bugs go in [Issues](https://github.com/fiddur/aurboda/issues).
+Questions, ideas and feedback go in [GitHub Discussions](https://github.com/fiddur/aurboda/discussions); bugs go in [Issues](https://github.com/fiddur/aurboda/issues); the app's **Help & support** page (`/help`) collects these pointers for users.
 
 ## Contact
 
