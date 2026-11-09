@@ -1,8 +1,23 @@
-import type { DashboardShare, WidgetDataMap } from '@aurboda/api-spec'
+import type {
+  ActivityTypeCardData,
+  DashboardShare,
+  PlacesCardData,
+  TopListCardData,
+  WidgetData,
+  WidgetDataMap,
+} from '@aurboda/api-spec'
 
 import { describe, expect, test, vi } from 'vitest'
 
-import { changeSuffix, dashboardNoteContent, renderDashboardShareHtml } from './dashboard-object.ts'
+import {
+  activityTypeLines,
+  changeSuffix,
+  dashboardNoteContent,
+  formatHoursMinutes,
+  placesLines,
+  renderDashboardShareHtml,
+  topListLines,
+} from './dashboard-object.ts'
 
 const dashboard: DashboardShare = {
   config: {
@@ -34,6 +49,22 @@ const dashboard: DashboardShare = {
           { config: { href: '#', label: 'Goals' }, id: 'link', type: 'quick_link' },
         ],
       },
+      {
+        id: 'month',
+        title: 'Month',
+        type: 'metrics',
+        widgets: [
+          { config: { pattern: 'sleep', title: 'Sleep' }, id: 'sleep', type: 'activity_type_card' },
+          { config: { pattern: 'running', title: 'Workouts' }, id: 'workouts', type: 'activity_type_card' },
+          {
+            config: { limit: 3, source: 'media_artist', title: 'Music' },
+            id: 'music',
+            type: 'top_list_card',
+          },
+          { config: { limit: 3, source: 'screentime_app' }, id: 'apps', type: 'top_list_card' },
+          { config: {}, id: 'places', type: 'places_card' },
+        ],
+      },
     ],
     version: 1,
   },
@@ -43,7 +74,31 @@ const dashboard: DashboardShare = {
   url: 'https://aurboda.example/u/fiddur/abc',
 }
 
+const workouts: ActivityTypeCardData = {
+  activity_type_name: 'Running',
+  avg_speed_kmh: 10,
+  best_pace_sec_per_km: 330,
+  count: 3,
+  distance_km: 15,
+  previous_count: 1,
+  sleep: null,
+  total_minutes: 130,
+}
+
 const widgetData: WidgetDataMap = {
+  apps: {
+    data: {
+      distinct: 12,
+      items: [
+        { count: 2, name: 'firefox' },
+        { count: 1, name: 'code' },
+      ],
+      per_day: 0.1,
+      total: 3,
+      unit: 'hours',
+    },
+    type: 'top_list_card',
+  },
   bench: {
     data: { record: { measure: 'e1rm', start_time: '2026-10-12T08:00:00.000Z', value: 101.266 } },
     type: 'record_card',
@@ -53,9 +108,48 @@ const widgetData: WidgetDataMap = {
     type: 'metric_card',
   },
   link: { data: null, type: 'quick_link' },
+  music: {
+    data: {
+      distinct: 2,
+      items: [
+        { count: 2, name: 'Artist A' },
+        { count: 1, name: 'Artist B' },
+      ],
+      per_day: null,
+      previous_total: 1,
+      total: 3,
+      unit: 'plays',
+    },
+    type: 'top_list_card',
+  },
+  places: {
+    data: {
+      distinct_places: 3,
+      nights_away: 1,
+      nights_home: 2,
+      places: [{ hours: 40, name: 'Home', visits: 3 }],
+      previous_distinct_places: 3,
+      visits: 5,
+    },
+    type: 'places_card',
+  },
   rhr: {
     data: { count: 31, previous_value: 52, series: [], trend_percent: 0.4, value: 52.2 },
     type: 'sparkline_card',
+  },
+  sleep: {
+    data: {
+      activity_type_name: 'Sleep',
+      avg_speed_kmh: null,
+      best_pace_sec_per_km: null,
+      count: 30,
+      distance_km: null,
+      previous_count: 31,
+      previous_sleep_avg_minutes: 360,
+      sleep: { avg_minutes: 450, avg_stages: null, best_night_minutes: 540 },
+      total_minutes: 13_500,
+    },
+    type: 'activity_type_card',
   },
   steps: {
     data: { count: 31, max: null, previous_value: 9000, trend_percent: 4.2, value: 9375 },
@@ -74,6 +168,7 @@ const widgetData: WidgetDataMap = {
     data: { count: 4, max: null, previous_value: null, trend_percent: null, value: 80.25 },
     type: 'metric_card',
   },
+  workouts: { data: workouts, type: 'activity_type_card' },
 }
 
 const structured = { config: dashboard.config, widget_data: widgetData }
@@ -88,6 +183,71 @@ describe('changeSuffix', () => {
     expect(changeSuffix(0.5)).toBe(' (→)')
     expect(changeSuffix(-0.5)).toBe(' (→)')
     expect(changeSuffix(null)).toBe('')
+  })
+})
+
+describe('formatHoursMinutes', () => {
+  test('hours and minutes, hours alone, minutes alone', () => {
+    expect(formatHoursMinutes(130)).toBe('2h 10m')
+    expect(formatHoursMinutes(420)).toBe('7h')
+    expect(formatHoursMinutes(45)).toBe('45m')
+    expect(formatHoursMinutes(59.6)).toBe('1h')
+    expect(formatHoursMinutes(0)).toBe('0m')
+  })
+})
+
+describe('activityTypeLines', () => {
+  const card = (figures: ActivityTypeCardData | null): WidgetData => ({
+    data: figures,
+    type: 'activity_type_card',
+  })
+
+  test('the type name without a title, no distance without one, no change without a previous count', () => {
+    expect(
+      activityTypeLines(
+        undefined,
+        card({ ...workouts, distance_km: null, previous_count: undefined, total_minutes: 45 }),
+      ),
+    ).toEqual(['Running 3 · 45m'])
+  })
+
+  test('nothing without data or sessions', () => {
+    expect(activityTypeLines('Workouts', undefined)).toEqual([])
+    expect(activityTypeLines('Workouts', card(null))).toEqual([])
+    expect(activityTypeLines('Workouts', card({ ...workouts, count: 0 }))).toEqual([])
+  })
+})
+
+describe('topListLines', () => {
+  const data: TopListCardData = { distinct: 0, items: [], per_day: null, total: 0, unit: 'visits' }
+  const card = (figures: TopListCardData | null): WidgetData => ({ data: figures, type: 'top_list_card' })
+
+  test('a fractional hour total and no items', () => {
+    expect(topListLines({ source: 'screentime_app' }, card({ ...data, total: 2.5, unit: 'hours' }))).toEqual([
+      'Top apps 2.5 h',
+    ])
+    expect(topListLines({ source: 'place' }, card({ ...data, previous_total: 4, total: 2 }))).toEqual([
+      'Top places 2 visits (↓ 50%)',
+    ])
+  })
+
+  test('nothing without data or with an empty window', () => {
+    expect(topListLines({ source: 'media_track' }, card(null))).toEqual([])
+    expect(topListLines({ source: 'media_track' }, card(data))).toEqual([])
+  })
+})
+
+describe('placesLines', () => {
+  const empty: PlacesCardData = { distinct_places: 0, nights_away: 0, nights_home: 0, places: [], visits: 0 }
+  const card = (figures: PlacesCardData | null): WidgetData => ({ data: figures, type: 'places_card' })
+
+  test('no distinct places part without places', () => {
+    expect(placesLines('Trips', card({ ...empty, nights_home: 3 }))).toEqual(['Trips 3 nights home, 0 away'])
+  })
+
+  test('nothing without data or with an empty window', () => {
+    expect(placesLines(undefined, card(null))).toEqual([])
+    expect(placesLines(undefined, card(empty))).toEqual([])
   })
 })
 
@@ -107,6 +267,11 @@ describe('renderDashboardShareHtml', () => {
             'Sleep 7.3 h (↓ 3%)',
             'Meditation 3 (→)',
             'Best e1RM 101.3 kg',
+            'Sleep 30 nights · avg 7h 30m (↑ 25%)',
+            'Workouts 3 · 2h 10m · 15.0 km (↑ 200%)',
+            'Music 3 plays — Artist A, Artist B (↑ 200%)',
+            'Top apps 3 h — firefox, code',
+            'Places 2 nights home, 1 away · 3 places (→)',
           ].join('<br>') +
           '</p>',
         link,
