@@ -1367,6 +1367,13 @@ an unfollow, or an `Undo{Announce}` of the post's last boost card), while a dire
 another boost of it keeps the row. `feed_post_reaction` is kept unbounded by design: it is the
 record of who reacted to the user's own posts, and goes only with the post or an `Undo`.
 
+`feed_quote_authorization` records each FEP-044f quote approval: one row per remote Note
+(`quote_uri`, its author `actor_uri`, the `QuoteRequest` id) allowed to quote one of the user's
+public/unlisted posts, `UNIQUE (post_id, quote_uri)` so a redelivered request keeps its row.
+The row's `id` mints the `QuoteAuthorization` stamp URL (`/users/<username>/stamps/<id>`) sent
+in the `Accept`. `post_id` is a soft reference, so `deleteFeedPost` drops the post's approvals
+in the same statement.
+
 ## Caveats & limitations
 
 These are known and intentional for the current implementation:

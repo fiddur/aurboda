@@ -8,6 +8,7 @@ import {
   Mention,
   Note,
   Person,
+  PUBLIC_COLLECTION,
   Tombstone,
   Update,
 } from '@fedify/fedify/vocab'
@@ -47,6 +48,7 @@ import {
   type FeedDeliveryDeps,
   imageAttachments,
   imageAvailability,
+  quoteInteractionPolicy,
   recipients,
   toDeliverableDashboard,
   toDeliverableExercise,
@@ -1226,5 +1228,110 @@ describe('hashtags on every Note kind', () => {
     )
     expect(await tagsOf(note)).toEqual([])
     expect(note.content?.toString()).toBe('<p>Bench</p>')
+  })
+})
+
+describe('quote policy on every Note kind (FEP-044f)', () => {
+  const ORIGIN = 'https://aurboda.example'
+  const ACTOR = `${ORIGIN}/users/fiddur`
+  const contextFor = () => createFeedFederation(ORIGIN, `${ORIGIN}/api`).createContext(new URL(ORIGIN))
+  const base = {
+    created_at: new Date('2026-11-01T00:00:00Z'),
+    id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+    image_token: 'tok',
+    updated_at: new Date('2026-11-01T00:00:00Z'),
+  }
+  type Visibility = DeliverablePost['visibility']
+  const exercise = {
+    activity_type: 'strength_training',
+    field: 'sets.exercise',
+    include_records: true,
+    include_sessions: false,
+    name: 'Bench Press',
+    value: 'Bench Press',
+  }
+  const builders: Record<
+    string,
+    (ctx: Awaited<ReturnType<typeof contextFor>>, visibility: Visibility) => Note
+  > = {
+    article: (ctx, visibility) =>
+      buildArticleNote(
+        ctx,
+        'fiddur',
+        { ...base, article: { blocks: [{ markdown: 'Hi', type: 'prose' }], title: 'Log' }, visibility },
+        `${ORIGIN}/api`,
+      ),
+    challenge: (ctx, visibility) =>
+      buildChallengeNote(ctx, 'fiddur', {
+        ...base,
+        challenge: { name: 'August 10k', url: `${ORIGIN}/u/fiddur/august-10k` },
+        include_chart: false,
+        message: null,
+        visibility,
+      }),
+    dashboard: (ctx, visibility) =>
+      buildDashboardNote(
+        ctx,
+        'fiddur',
+        {
+          ...base,
+          dashboard: {
+            config: { period: { granularity: 'month' }, sections: [], version: 1 },
+            include_link: false,
+            name: 'Month in data',
+            period: '2026-10',
+          },
+          message: null,
+          visibility,
+        },
+        '<p>Month</p>',
+      ),
+    exercise: (ctx, visibility) =>
+      buildExerciseNote(
+        ctx,
+        'fiddur',
+        { ...base, exercise, include_chart: false, message: null, visibility },
+        '<p>Bench</p>',
+      ),
+    reply: (ctx, visibility) =>
+      buildReplyNote(ctx, 'fiddur', {
+        ...base,
+        in_reply_to_actor_uri: 'https://mastodon.example/users/alice',
+        in_reply_to_handle: '@alice@mastodon.example',
+        in_reply_to_uri: 'https://mastodon.example/users/alice/statuses/9',
+        message: 'Nice',
+        visibility,
+      }),
+  }
+  const approvals = (note: Note) => hrefs(note.interactionPolicy?.canQuote?.automaticApprovals ?? [])
+
+  test.each(Object.keys(builders))('a %s Note lets anyone quote a public or unlisted post', async (kind) => {
+    const ctx = await contextFor()
+    expect(approvals(builders[kind](ctx, 'public'))).toEqual([PUBLIC_COLLECTION.href])
+    expect(approvals(builders[kind](ctx, 'unlisted'))).toEqual([PUBLIC_COLLECTION.href])
+  })
+
+  test.each(Object.keys(builders))(
+    'a %s Note lets only its author quote a followers-only post',
+    async (kind) => {
+      const ctx = await contextFor()
+      expect(approvals(builders[kind](ctx, 'followers'))).toEqual([ACTOR])
+    },
+  )
+
+  test('serializes as the compact canQuote.automaticApproval Mastodon reads', async () => {
+    const ctx = await contextFor()
+    const json = (await builders.exercise(ctx, 'public').toJsonLd({ format: 'compact' })) as {
+      interactionPolicy?: { canQuote?: { automaticApproval?: unknown } }
+    }
+    expect(json.interactionPolicy?.canQuote?.automaticApproval).toBe('as:Public')
+  })
+
+  test('the policy builder maps visibility to Public or the author', () => {
+    const actor = new URL(ACTOR)
+    const of = (v: Visibility) => hrefs(quoteInteractionPolicy(v, actor).canQuote?.automaticApprovals ?? [])
+    expect(of('public')).toEqual([PUBLIC_COLLECTION.href])
+    expect(of('unlisted')).toEqual([PUBLIC_COLLECTION.href])
+    expect(of('followers')).toEqual([ACTOR])
   })
 })

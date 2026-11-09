@@ -381,6 +381,14 @@ export {
 } from './feed-reactions.ts'
 
 export {
+  type FeedQuoteAuthorizationInput,
+  type FeedQuoteAuthorizationRecord,
+  getFeedQuoteAuthorization,
+  listFeedQuoteAuthorizations,
+  upsertFeedQuoteAuthorization,
+} from './feed-quotes.ts'
+
+export {
   countTimelineRepliesTo,
   deleteBoostCardsOf,
   getBoostCardAuthor,

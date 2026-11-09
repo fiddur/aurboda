@@ -19,6 +19,8 @@ import {
   isActor,
   Note,
   Person,
+  QuoteAuthorization,
+  QuoteRequest,
   Reject,
   Tombstone,
   Undo,
@@ -33,6 +35,7 @@ import {
 import { isValidUsername } from '../../api/auth-routes.ts'
 import {
   countAcceptedFeedFollowing,
+  type FeedQuoteAuthorizationRecord,
   countFeedFollowers,
   countPublicFeedPosts,
   deleteBoostEntry,
@@ -43,6 +46,7 @@ import {
   updateBoostCardsOf,
   getFeedFollowingByActor,
   getFeedPostById,
+  getFeedQuoteAuthorization,
   getOrCreateActorKeyPair,
   getProfileAvatarVersion,
   getTimelineEntryByObjectUri,
@@ -64,6 +68,7 @@ import {
   updateTimelineActorPresentation,
   upsertFeedFollower,
   upsertFeedPostReaction,
+  upsertFeedQuoteAuthorization,
   upsertTimelineEntry,
 } from '../../db/index.ts'
 import { UUID_RE } from '../../utils.ts'
@@ -535,6 +540,93 @@ export const handleInboundFollow = async (ctx: InboxContext<void>, follow: Follo
  */
 export const handleInboundLike = (ctx: InboxContext<void>, like: Like): Promise<void> =>
   recordOwnPostReaction(ctx, like, 'like')
+
+/**
+ * Inbound FEP-044f `QuoteRequest` — a remote server asks to quote one of our
+ * posts. A public/unlisted post is approved: the approval is recorded and the
+ * `Accept` carries a `QuoteAuthorization` stamp URL as its `result`, which the
+ * quoting server keeps and other servers fetch to verify the quote. Anything
+ * else (followers-only, gone) is answered with a `Reject`. A request whose object
+ * is not one of the recipient's own Notes is ignored, as with reactions.
+ */
+export const handleInboundQuoteRequest = async (
+  ctx: InboxContext<void>,
+  request: QuoteRequest,
+): Promise<void> => {
+  const target = quoteRequestTarget(ctx, request)
+  if (target == null) return
+  const sender = await request.getActor(ctx)
+  if (sender?.id == null || sender.inboxId == null) return
+  try {
+    await ctx.sendActivity({ identifier: target.me }, sender, await answerQuoteRequest(ctx, request, target))
+  } catch (error) {
+    if (isMissingDatabase(error)) return
+    throw error
+  }
+}
+
+interface QuoteRequestTarget {
+  me: string
+  postId: string
+  requester: URL
+  quoteUri: URL
+}
+
+/** The recipient's own post a `QuoteRequest` targets, or null when it is not ours or the quote is cross-host. */
+const quoteRequestTarget = (ctx: InboxContext<void>, request: QuoteRequest): QuoteRequestTarget | null => {
+  const me = ctx.recipient
+  const requester = request.actorId
+  if (me == null || !isValidUsername(me) || requester == null) return null
+  const postId = ownTargetPostId(ctx, request.objectId, me)
+  const quoteUri = request.instrumentId
+  if (postId == null || quoteUri == null || quoteUri.host !== requester.host) return null
+  if (request.id != null && request.id.host !== requester.host) return null
+  return { me, postId, quoteUri, requester }
+}
+
+const answerQuoteRequest = async (
+  ctx: InboxContext<void>,
+  request: QuoteRequest,
+  { me, postId, quoteUri, requester }: QuoteRequestTarget,
+): Promise<Accept | Reject> => {
+  const actorUri = ctx.getActorUri(me)
+  const post = await getFeedPostById(me, postId)
+  if (post == null || !isPubliclyVisible(post.visibility)) {
+    return new Reject({
+      actor: actorUri,
+      id: new URL(`${actorUri.href}#rejects/quote_requests/${crypto.randomUUID()}`),
+      object: request,
+    })
+  }
+  const row = await upsertFeedQuoteAuthorization(me, {
+    actor_uri: requester.href,
+    post_id: postId,
+    quote_uri: quoteUri.href,
+    request_uri: request.id?.href ?? null,
+  })
+  return new Accept({
+    actor: actorUri,
+    id: new URL(`${actorUri.href}#accepts/quote_requests/${row.id}`),
+    object: request,
+    result: ctx.getObjectUri(QuoteAuthorization, { identifier: me, stampId: row.id }),
+  })
+}
+
+/** A stamp's approval row, or null when it is unknown or its post is gone or no longer public/unlisted. */
+const loadValidStamp = async (
+  identifier: string,
+  stampId: string,
+): Promise<FeedQuoteAuthorizationRecord | null> => {
+  try {
+    const row = await getFeedQuoteAuthorization(identifier, stampId)
+    if (row == null) return null
+    const post = await getFeedPostById(identifier, row.post_id)
+    return post != null && isPubliclyVisible(post.visibility) ? row : null
+  } catch (error) {
+    if (isMissingDatabase(error)) return null
+    throw error
+  }
+}
 
 /**
  * Inbound `Announce`. Two distinct meanings share the type: a boost of one of
@@ -1011,6 +1103,7 @@ export const createFeedFederation = (
       await handleInboundUpdate(ctx, update, origin, onNewTimelineEntry, enrich)
     })
     .on(Like, handleInboundLike)
+    .on(QuoteRequest, handleInboundQuoteRequest)
     .on(Announce, async (ctx, announce) => {
       if (await dropsForReadOnly(ctx, announce, isReadOnly)) return
       await handleInboundAnnounce(ctx, announce, origin, onNewTimelineEntry, enrich)
@@ -1076,6 +1169,25 @@ export const createFeedFederation = (
       const activity = await resolveFeedActivity(identifier, post.activity_id)
       if (activity == null) return null
       return buildFeedNote(ctx, identifier, post, activity, apiBaseUrl)
+    },
+  )
+
+  // FEP-044f quote stamp: the proof, minted when we accepted a QuoteRequest, that
+  // the quoting Note may quote our post. Resolves only while the post is still
+  // public/unlisted, so unsharing or deleting the post revokes every stamp on it.
+  federation.setObjectDispatcher(
+    QuoteAuthorization,
+    '/users/{identifier}/stamps/{stampId}',
+    async (ctx, { identifier, stampId }) => {
+      if (!isValidUsername(identifier) || !UUID_RE.test(stampId)) return null
+      const row = await loadValidStamp(identifier, stampId)
+      if (row == null) return null
+      return new QuoteAuthorization({
+        attribution: ctx.getActorUri(identifier),
+        id: ctx.getObjectUri(QuoteAuthorization, { identifier, stampId }),
+        interactingObject: new URL(row.quote_uri),
+        interactionTarget: ctx.getObjectUri(Note, { identifier, postId: row.post_id }),
+      })
     },
   )
 
