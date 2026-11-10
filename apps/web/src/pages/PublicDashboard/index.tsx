@@ -296,12 +296,16 @@ function VisitorDashboard({
   )
 }
 
-/** A published period dashboard shows a finished period, whose figures do not change while it is open. */
-const unlessPeriodDashboard = ({
+/**
+ * Refetch on focus only what can change while open: not a finished period, and not a failed fetch
+ * (an owner's private dashboard 404s here), whose refetch flips the query back to loading and
+ * remounts the owner's board, scrolling it to the top.
+ */
+const refetchWhileOpen = ({
   state,
 }: {
   state: { data?: Awaited<ReturnType<typeof fetchPublicResource>> }
-}): boolean => !(state.data && 'config' in state.data && state.data.period)
+}): boolean => state.data !== undefined && !('config' in state.data && state.data.period)
 
 /**
  * A challenge, or an exercise (whose owner edits it on the private exercise page), renders the same for
@@ -331,8 +335,8 @@ export function PublicResource() {
   const query = useQuery({
     queryFn: () => fetchPublicResource(username, slug),
     queryKey: ['publicResource', username, slug],
-    refetchOnReconnect: unlessPeriodDashboard,
-    refetchOnWindowFocus: unlessPeriodDashboard,
+    refetchOnReconnect: refetchWhileOpen,
+    refetchOnWindowFocus: refetchWhileOpen,
     retry: false,
     staleTime: 60 * 1000,
   })
