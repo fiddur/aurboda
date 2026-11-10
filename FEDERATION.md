@@ -42,7 +42,7 @@ Actor collections are advertised at `…/inbox`, `…/outbox`, and `…/follower
 ## Planned (tracked in #831)
 
 - **Inbound:** verify HTTP Signatures; handle `Follow` → `Accept`; store
-  `Like`/`Announce`/`Create` (reply); answer `QuoteRequest` → `Accept`/`Reject`.
+  `Like`/`Announce`/`Create` (reply).
 - **Outbound delivery:** a retrying delivery queue that signs and posts
   `Create` / `Update` / `Delete` activities to followers' inboxes when a user
   shares, edits, or unshares an activity.

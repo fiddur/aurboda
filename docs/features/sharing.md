@@ -231,8 +231,9 @@ The welcome page at the site root is enriched the same way: nginx proxies exactl
 the backend's `/welcome-page`, which adds the site's title, description and the default
 preview image (`/og-default.png`, a dashboard and phone timeline on the Fjord background).
 It is sent `no-cache`, like the `index.html` nginx serves, so a deploy's new chunks load
-at once. If the backend is down or answers with an error, nginx serves the static
-`index.html` instead, so the page still loads, without the preview meta.
+at once. If the backend is down, slow (3 s to connect, 5 s to answer) or answers with an
+error — including the 503 it sends when it cannot read the SPA's `index.html` template — nginx
+serves the static `index.html` instead, so the page still loads, without the preview meta.
 
 - **Dashboards**, **challenges** and **shared exercises** get a title (resource name), a
   description, and a canonical URL; profiles get a `profile`-typed card with `ProfilePage` JSON-LD.

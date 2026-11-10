@@ -108,6 +108,8 @@ describe('Feed posts integration', () => {
     const fetched = await getFeedPostById(user, created.id)
     expect(fetched?.id).toBe(created.id)
     expect(await getFeedPostById(user, '00000000-0000-0000-0000-000000000000')).toBeNull()
+    expect(await getFeedPostById(user, 'null')).toBeNull()
+    expect(await updateFeedPost(user, 'null', { message: 'x' })).toBeNull()
   })
 
   test('stores, patches and keeps hashtags', async () => {
@@ -234,6 +236,7 @@ describe('Feed posts integration', () => {
     expect(await deleteFeedPost(user, created.id)).toBe(true)
     expect(await deleteFeedPost(user, created.id)).toBe(false)
     expect(await getFeedPostById(user, created.id)).toBeNull()
+    expect(await deleteFeedPost(user, 'null')).toBe(false)
   })
 
   describe('tombstones on delete', () => {

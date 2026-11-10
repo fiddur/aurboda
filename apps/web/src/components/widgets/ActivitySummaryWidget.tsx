@@ -94,7 +94,9 @@ export function ActivitySummaryView({
               <span class="activity-label">Avg Sleep (hrs)</span>
               <Change current={data.sleep.avg_hours} previous={data.sleep.previous_avg_hours} />
             </div>
-            <div class="activity-sub">{data.sleep.count} nights tracked</div>
+            <div class="activity-sub">
+              {data.sleep.count} {data.sleep.count === 1 ? 'night' : 'nights'} tracked
+            </div>
           </div>
         )}
 

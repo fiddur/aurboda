@@ -299,6 +299,15 @@ describe('POST /feed/activities/:id/preview (live share preview — #902)', () =
     expect(shared.body.post.content).toBe(preview.body.content)
   })
 
+  test('answers 404 for an activity id that is not a uuid (#1536)', async () => {
+    const selection = { included_metrics: ['duration'], visibility: 'public' }
+    for (const path of ['/feed/activities/null/share', '/feed/activities/null/preview']) {
+      const res = await app.request.post(path).send(selection)
+      expect(res.status).toBe(404)
+      expect(res.body).toEqual({ error: 'Activity not found', success: false })
+    }
+  })
+
   test('404s for an unknown activity', async () => {
     const res = await app.request
       .post('/feed/activities/11111111-2222-4333-8444-555555555555/preview')

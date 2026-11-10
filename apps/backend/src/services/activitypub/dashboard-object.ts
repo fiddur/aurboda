@@ -29,6 +29,9 @@ import { renderProse } from './article-object.ts'
 
 const formatFigure = (value: number): string => String(Number(value.toFixed(1)))
 
+const plural = (count: number, singular: string, pluralForm: string): string =>
+  count === 1 ? singular : pluralForm
+
 /** ` (↑ 4%)`, ` (↓ 2%)` or ` (→)`; empty without a change to show. */
 export const changeSuffix = (percent: number | null): string => {
   if (percent === null) return ''
@@ -97,7 +100,7 @@ export const activityTypeLines = (
   if (data.sleep) {
     const { avg_minutes } = data.sleep
     return [
-      `${name} ${data.count} nights · avg ${formatHoursMinutes(avg_minutes)}${figureChange(avg_minutes, data.previous_sleep_avg_minutes)}`,
+      `${name} ${data.count} ${plural(data.count, 'night', 'nights')} · avg ${formatHoursMinutes(avg_minutes)}${figureChange(avg_minutes, data.previous_sleep_avg_minutes)}`,
     ]
   }
   const distance = data.distance_km !== null ? ` · ${data.distance_km.toFixed(1)} km` : ''
@@ -114,10 +117,10 @@ const topListTitles: Record<TopListSource, string> = {
   screentime_app: 'Top apps',
 }
 
-const topListUnits: Record<TopListCardData['unit'], string> = {
-  hours: ' h',
-  plays: ' plays',
-  visits: ' visits',
+const topListUnits: Record<TopListCardData['unit'], [singular: string, plural: string]> = {
+  hours: [' h', ' h'],
+  plays: [' play', ' plays'],
+  visits: [' visit', ' visits'],
 }
 
 export const topListLines = (
@@ -128,7 +131,7 @@ export const topListLines = (
   if (data === null || (data.total === 0 && data.items.length === 0)) return []
   const items = data.items.length > 0 ? ` — ${data.items.map((item) => item.name).join(', ')}` : ''
   return [
-    `${config.title ?? topListTitles[config.source]} ${formatFigure(data.total)}${topListUnits[data.unit]}${items}${figureChange(data.total, data.previous_total)}`,
+    `${config.title ?? topListTitles[config.source]} ${formatFigure(data.total)}${plural(data.total, ...topListUnits[data.unit])}${items}${figureChange(data.total, data.previous_total)}`,
   ]
 }
 
@@ -137,9 +140,11 @@ export const placesLines = (title: string | undefined, widgetData: WidgetData | 
   if (data === null || (data.visits === 0 && data.nights_home === 0 && data.nights_away === 0)) return []
   const distinct =
     data.distinct_places > 0
-      ? ` · ${data.distinct_places} places${figureChange(data.distinct_places, data.previous_distinct_places)}`
+      ? ` · ${data.distinct_places} ${plural(data.distinct_places, 'place', 'places')}${figureChange(data.distinct_places, data.previous_distinct_places)}`
       : ''
-  return [`${title ?? 'Places'} ${data.nights_home} nights home, ${data.nights_away} away${distinct}`]
+  return [
+    `${title ?? 'Places'} ${data.nights_home} ${plural(data.nights_home, 'night', 'nights')} home, ${data.nights_away} away${distinct}`,
+  ]
 }
 
 /**

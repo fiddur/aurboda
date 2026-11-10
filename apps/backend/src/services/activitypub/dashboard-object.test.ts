@@ -211,6 +211,18 @@ describe('activityTypeLines', () => {
     ).toEqual(['Running 3 · 45m'])
   })
 
+  test('one night in the singular (#1535)', () => {
+    const sleep: ActivityTypeCardData = {
+      ...workouts,
+      activity_type_name: 'Sleep',
+      count: 1,
+      distance_km: null,
+      previous_count: undefined,
+      sleep: { avg_minutes: 450, avg_stages: null, best_night_minutes: 450 },
+    }
+    expect(activityTypeLines(undefined, card(sleep))).toEqual(['Sleep 1 night · avg 7h 30m'])
+  })
+
   test('nothing without data or sessions', () => {
     expect(activityTypeLines('Workouts', undefined)).toEqual([])
     expect(activityTypeLines('Workouts', card(null))).toEqual([])
@@ -231,6 +243,16 @@ describe('topListLines', () => {
     ])
   })
 
+  test('a total of one play or visit in the singular (#1535)', () => {
+    expect(topListLines({ source: 'media_artist' }, card({ ...data, total: 1, unit: 'plays' }))).toEqual([
+      'Top artists 1 play',
+    ])
+    expect(topListLines({ source: 'place' }, card({ ...data, total: 1 }))).toEqual(['Top places 1 visit'])
+    expect(topListLines({ source: 'screentime_app' }, card({ ...data, total: 1, unit: 'hours' }))).toEqual([
+      'Top apps 1 h',
+    ])
+  })
+
   test('nothing without data or with an empty window', () => {
     expect(topListLines({ source: 'media_track' }, card(null))).toEqual([])
     expect(topListLines({ source: 'media_track' }, card(data))).toEqual([])
@@ -243,6 +265,12 @@ describe('placesLines', () => {
 
   test('no distinct places part without places', () => {
     expect(placesLines('Trips', card({ ...empty, nights_home: 3 }))).toEqual(['Trips 3 nights home, 0 away'])
+  })
+
+  test('one night home and one place in the singular (#1535)', () => {
+    expect(
+      placesLines(undefined, card({ ...empty, distinct_places: 1, nights_away: 1, nights_home: 1 })),
+    ).toEqual(['Places 1 night home, 1 away · 1 place'])
   })
 
   test('nothing without data or with an empty window', () => {

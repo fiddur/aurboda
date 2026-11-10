@@ -247,11 +247,10 @@ const sendHtml = async (
   meta: ShareMeta,
   isRich: boolean,
   res: Response,
-  cacheControl = isRich ? 'public, max-age=300' : 'public, max-age=60',
 ): Promise<void> => {
   const template = await loadTemplate()
   const html = template ? injectShareMeta(template, meta) : fallbackHtml(meta)
-  res.setHeader('Cache-Control', cacheControl)
+  res.setHeader('Cache-Control', isRich ? 'public, max-age=300' : 'public, max-age=60')
   res.type('html').send(html)
 }
 
@@ -276,11 +275,17 @@ export const createShareHtmlRouter = (deps: ShareHtmlDeps): Router => {
     oembedUrl: oembedDiscoveryUrl(webHost, resourceUrl),
   })
 
-  // nginx sends the site root here: the page every visitor lands on must pick up a new
-  // deploy's hashed chunks at once, like the index.html nginx serves itself.
-  router.get(HOME_PAGE_PATH, (_req, res) =>
-    sendHtml(loadTemplate, buildHomeShareMeta(webHost), true, res, 'no-cache'),
-  )
+  // `no-cache`: the landing page must pick up a new deploy's hashed chunks at once. Without the
+  // template a 503 lets nginx serve its static index.html rather than the bare fallback page.
+  router.get(HOME_PAGE_PATH, async (_req, res) => {
+    const template = await loadTemplate()
+    if (!template) {
+      res.status(503).end()
+      return
+    }
+    res.setHeader('Cache-Control', 'no-cache')
+    res.type('html').send(injectShareMeta(template, buildHomeShareMeta(webHost)))
+  })
 
   router.get('/blog', async (_req, res) => {
     const url = buildOfficialFeedUrl(webHost)
