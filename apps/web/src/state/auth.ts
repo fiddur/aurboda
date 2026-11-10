@@ -29,6 +29,8 @@ export const serverBilling = signal<
 >({})
 /** Whether the instance has an official feed, its blog at `/blog`. */
 export const officialFeedEnabled = signal(false)
+/** The hashtags with a public page at `/tags/<tag>`. */
+export const publicTagPages = signal<string[]>([])
 /** The last /status request failed: the signup mode is unknown, so say nothing about signing up. */
 export const statusFailed = signal(false)
 
@@ -41,11 +43,19 @@ export const fetchStatus = async () => {
   statusFetchPromise = (async () => {
     try {
       const response = await axios.get<ServerStatusResponse>(`${API_URL}/status`)
-      const { billing_enabled, official_feed, price_text, signup_allowed, signup_mode, trial_days } =
-        response.data
+      const {
+        billing_enabled,
+        official_feed,
+        price_text,
+        public_tag_pages,
+        signup_allowed,
+        signup_mode,
+        trial_days,
+      } = response.data
       signupAllowed.value = signup_allowed
       signupMode.value = signup_mode
       officialFeedEnabled.value = official_feed === true
+      publicTagPages.value = public_tag_pages ?? []
       serverBilling.value = { billing_enabled, price_text, trial_days }
       statusFailed.value = false
     } catch (error) {

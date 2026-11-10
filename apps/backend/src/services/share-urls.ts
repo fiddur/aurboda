@@ -27,6 +27,14 @@ export const buildOfficialFeedUrl = (webHost: string): string => joinUrl(webHost
 export const buildOfficialFeedAtomUrl = (apiBaseUrl: string): string =>
   joinUrl(apiBaseUrl, 'public/official-feed.atom')
 
+/** Absolute URL of a public tag page. */
+export const buildPublicTagUrl = (webHost: string, tag: string): string =>
+  joinUrl(webHost, `tags/${encodeURIComponent(tag)}`)
+
+/** Absolute URL of a public tag page's Atom document (an API endpoint). */
+export const buildPublicTagAtomUrl = (apiBaseUrl: string, tag: string): string =>
+  joinUrl(apiBaseUrl, `public/tags/${encodeURIComponent(tag)}.atom`)
+
 /** Absolute URL of a single feed post's permalink page. */
 export const buildPostUrl = (webHost: string, username: string, postId: string): string =>
   joinUrl(webHost, `u/${encodeURIComponent(username)}/posts/${encodeURIComponent(postId)}`)

@@ -96,6 +96,14 @@ export interface FeedDeliveryDeps {
   /** Public API base, e.g. `https://aurboda.net/api` — image attachment URLs hang off this. */
   apiBaseUrl: string
   listRelayRecipients?: () => Promise<RelayRecipient[]>
+  /** Records this server's public posts on the public tag pages (`services/public-tags.ts`). */
+  publicTagPosts?: LocalPublicTagPosts
+}
+
+/** This server's own public posts on the public tag pages: recorded on delivery, dropped on Delete. */
+export interface LocalPublicTagPosts {
+  record: (user: string, note: Note, ctx: Context<void>) => Promise<void>
+  remove: (user: string, objectUri: string) => Promise<void>
 }
 
 export interface RelayRecipient {
@@ -872,6 +880,32 @@ export const deliverToRelays = async (
 }
 
 /**
+ * Mirror what the relays get onto the public tag pages: a public Create/Update of
+ * a top-level Note is recorded (when it carries a configured tag), a Delete —
+ * including the one that retracts a post narrowed from public — removes it.
+ */
+const recordPublicTagPost = async (
+  deps: Pick<FeedDeliveryDeps, 'publicTagPosts'>,
+  ctx: Context<void>,
+  user: string,
+  activity: Activity,
+): Promise<void> => {
+  const tagPosts = deps.publicTagPosts
+  if (tagPosts == null) return
+  try {
+    if (activity instanceof Delete) {
+      if (activity.objectId != null) await tagPosts.remove(user, activity.objectId.href)
+      return
+    }
+    if (!(activity instanceof Create) && !(activity instanceof Update)) return
+    const note = await activity.getObject()
+    if (note instanceof Note && note.replyTargetIds.length === 0) await tagPosts.record(user, note, ctx)
+  } catch (error) {
+    console.warn('⚠️ Public tag page record failed:', error)
+  }
+}
+
+/**
  * Fan an activity out to followers, to each tagged actor and (`relayActivity`,
  * when set) to the accepted relays — as independent deliveries. Without an outbox queue
  * Fedify awaits every follower inbox and one dead instance rejects the whole
@@ -890,6 +924,7 @@ const fanOut = async (
     ctx.sendActivity({ identifier: user }, 'followers', activity),
     mentions.length > 0 ? deliverToMentioned(ctx, user, mentions, activity) : Promise.resolve(),
     relayActivity == null ? Promise.resolve() : deliverToRelays(deps, ctx, user, relayActivity),
+    relayActivity == null ? Promise.resolve() : recordPublicTagPost(deps, ctx, user, relayActivity),
   ])
   if (followers.status === 'rejected') throw followers.reason
 }

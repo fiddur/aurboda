@@ -30,10 +30,11 @@ import {
   fetchRelays,
   generateInvitation,
   officialFeedPath,
+  publicTagPath,
   removeRelay,
   updateAdminSettings,
 } from '../../state/api'
-import { auth, officialFeedEnabled } from '../../state/auth'
+import { auth, officialFeedEnabled, publicTagPages } from '../../state/auth'
 import './style.css'
 
 const signupModeDescriptions: Record<SignupMode, string> = {
@@ -744,6 +745,92 @@ function OfficialFeedSection() {
   )
 }
 
+function PublicTagPagesSection() {
+  const queryClient = useQueryClient()
+  const { data: settings } = useQuery({
+    queryFn: fetchAdminSettings,
+    queryKey: ['adminSettings'],
+  })
+
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>({ status: 'idle' })
+  const [tagsText, setTagsText] = useState<string | null>(null)
+  const [daysText, setDaysText] = useState<string | null>(null)
+
+  const configured = settings?.public_tag_pages ?? []
+  const tagsValue = tagsText ?? formatTagsInput(configured)
+  const daysValue = daysText ?? String(settings?.public_tag_retention_days ?? 30)
+  const host = settings?.tag_actor_host ?? 'tags.pub'
+
+  const save = useCallback(
+    async (tags: string[], days: number) => {
+      setSaveStatus({ status: 'saving' })
+      try {
+        const result = await updateAdminSettings({ public_tag_pages: tags, public_tag_retention_days: days })
+        queryClient.setQueryData(['adminSettings'], result)
+        publicTagPages.value = result.public_tag_pages
+        setTagsText(null)
+        setDaysText(null)
+        setSaveStatus({ status: 'saved', time: new Date() })
+      } catch (err) {
+        setSaveStatus({ error: apiErrorMessage(err, getErrorMessage(err)), status: 'error' })
+      }
+    },
+    [queryClient],
+  )
+
+  return (
+    <section class="settings-section">
+      <h2>Public tag pages</h2>
+      <div class="form-field">
+        <div class="section-header-row">
+          <span>Tags</span>
+          <SaveStatusIndicator state={saveStatus} />
+        </div>
+        {configured.length > 0 && (
+          <p class="connected-status">
+            {configured.map((tag, i) => (
+              <span key={tag}>
+                {i > 0 && ', '}
+                <a href={publicTagPath(tag)}>#{tag}</a>
+              </span>
+            ))}
+          </p>
+        )}
+        <TagsInput
+          id="public-tag-pages"
+          legend="Tags"
+          note={`Each tag gets a public page at /tags/<tag> with posts from every server that ${host} sees. The server follows <tag>@${host} for each.`}
+          value={tagsValue}
+          onInput={setTagsText}
+        />
+        <label for="public-tag-retention">Keep posts for (days)</label>
+        <input
+          id="public-tag-retention"
+          type="number"
+          min="1"
+          max="365"
+          value={daysValue}
+          onInput={(e) => setDaysText((e.target as HTMLInputElement).value)}
+        />
+        <div class="api-key-input-row">
+          <button
+            type="button"
+            class="generate-button"
+            onClick={() => save(parseTagFilterInput(tagsValue), Number(daysValue))}
+          >
+            Save
+          </button>
+          {configured.length > 0 && (
+            <button type="button" class="clear-button" onClick={() => save([], Number(daysValue))}>
+              Clear
+            </button>
+          )}
+        </div>
+      </div>
+    </section>
+  )
+}
+
 function FederationSection() {
   const queryClient = useQueryClient()
   const { data: settings } = useQuery({
@@ -1044,6 +1131,8 @@ export function AdminSettings() {
       <SentrySection />
 
       <OfficialFeedSection />
+
+      <PublicTagPagesSection />
 
       <FederationSection />
 

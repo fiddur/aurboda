@@ -6,9 +6,12 @@ import { actorDocument, inboxContext } from '../../test/inbox-context.ts'
 import { createFeedFederation, handleInboundFollow } from './federation.ts'
 import {
   handleRelayResponse,
+  handleTagFollowResponse,
   INSTANCE_ACTOR_ID,
   instanceActorFollowId,
+  instanceTagFollowId,
   type RelayInboxHooks,
+  type TagFollowInboxHooks,
 } from './instance-actor.ts'
 
 const ORIGIN = 'https://aurboda.example'
@@ -183,5 +186,33 @@ describe('a Follow of the instance actor', () => {
     await handleInboundFollow(ctx, followOf(stranger), relays)
     await handleInboundFollow(ctx, followOf(RELAY_ACTOR), undefined)
     expect(sendActivity).not.toHaveBeenCalled()
+  })
+})
+
+describe('tag follow responses', () => {
+  const followId = instanceTagFollowId(ORIGIN, 'aurboda')
+  const TAG_ACTOR = 'https://tags.example/user/aurboda'
+  const tagHooks = (): TagFollowInboxHooks => ({
+    onAccept: vi.fn(async () => true),
+    onReject: vi.fn(async () => true),
+  })
+
+  test('the tag follow id never collides with a relay follow id', () => {
+    expect(followId.href).toBe(`${ORIGIN}/actor/follows/tags/aurboda`)
+  })
+
+  test('an Accept or Reject is handed to the tag follow hooks by the Follow id', async () => {
+    const tagFollows = tagHooks()
+    expect(
+      await handleTagFollowResponse(new Accept({ actor: new URL(TAG_ACTOR), object: followId }), tagFollows),
+    ).toBe(true)
+    expect(tagFollows.onAccept).toHaveBeenCalledWith(followId.href, TAG_ACTOR)
+    expect(
+      await handleTagFollowResponse(new Reject({ actor: new URL(TAG_ACTOR), object: followId }), tagFollows),
+    ).toBe(true)
+    expect(tagFollows.onReject).toHaveBeenCalledWith(followId.href, TAG_ACTOR)
+    expect(
+      await handleTagFollowResponse(new Accept({ actor: new URL(TAG_ACTOR), object: followId }), undefined),
+    ).toBe(false)
   })
 })

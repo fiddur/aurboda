@@ -32,6 +32,13 @@ import {
   type SharedNutrientRecommendationsApi,
 } from './central-nutrient-recommendations.ts'
 import {
+  createPublicTagsApi,
+  CREATE_INSTANCE_TAG_FOLLOWS_TABLE,
+  CREATE_PUBLIC_TAG_POSTS_INDEXES,
+  CREATE_PUBLIC_TAG_POSTS_TABLE,
+  type PublicTagsApi,
+} from './central-public-tags.ts'
+import {
   createRelaysApi,
   CREATE_INSTANCE_ACTOR_TABLE,
   CREATE_RELAYS_TABLE,
@@ -69,6 +76,8 @@ export interface ServerSettings {
   official_feed: OfficialFeedSetting
   payment_url: string
   price_text: string
+  public_tag_pages: string[]
+  public_tag_retention_days: number
   sentry_dsn: string
   signup_mode: SignupMode
   strava_client_id: string
@@ -141,6 +150,7 @@ export interface CentralDb
     SharedFoodItemsApi,
     CentralImportJobsApi,
     DeletedUsernamesApi,
+    PublicTagsApi,
     RelaysApi,
     SharedNutrientRecommendationsApi,
     UserAccountsApi,
@@ -485,6 +495,9 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
 
       await client.query(CREATE_INSTANCE_ACTOR_TABLE)
       await client.query(CREATE_RELAYS_TABLE)
+      await client.query(CREATE_INSTANCE_TAG_FOLLOWS_TABLE)
+      await client.query(CREATE_PUBLIC_TAG_POSTS_TABLE)
+      for (const stmt of CREATE_PUBLIC_TAG_POSTS_INDEXES) await client.query(stmt)
 
       await client.query(CREATE_SHARED_NUTRIENT_RECOMMENDATIONS_TABLE)
       await deps.withTransaction((tx) => seedSharedNutrientRecommendations(tx))
@@ -499,6 +512,7 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
     ...createSharedFoodItemsApi(getClient),
     ...createCentralImportJobsApi(getClient),
     ...createDeletedUsernamesApi(getClient, deps.withTransaction),
+    ...createPublicTagsApi(getClient),
     ...createRelaysApi(getClient),
     ...createSharedNutrientRecommendationsApi(getClient),
     ...createUserAccountsApi(getClient),

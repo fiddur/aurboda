@@ -27,3 +27,16 @@ export const buildOfficialFeedAtomUrl = (apiUrl: string, pageOrigin: string): st
     return path
   }
 }
+
+/** Path of a public tag page. */
+export const publicTagPath = (tag: string): string => `/tags/${encodeURIComponent(tag)}`
+
+/** Absolute URL of a public tag page's Atom document, resolved like {@link buildArticlesAtomUrl}. */
+export const buildPublicTagAtomUrl = (tag: string, apiUrl: string, pageOrigin: string): string => {
+  const path = `${apiUrl.replace(/\/+$/, '')}/public/tags/${encodeURIComponent(tag)}.atom`
+  try {
+    return new URL(path, pageOrigin).toString()
+  } catch {
+    return path
+  }
+}

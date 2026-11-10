@@ -19,6 +19,8 @@ import {
   buildOfficialFeedUrl,
   buildPostUrl,
   buildProfileUrl,
+  buildPublicTagAtomUrl,
+  buildPublicTagUrl,
 } from './share-urls.ts'
 
 export const ATOM_CONTENT_TYPE = 'application/atom+xml; charset=utf-8'
@@ -232,4 +234,61 @@ export const buildOfficialFeedAtom = ({ apiBaseUrl, entries, now, webHost }: Off
     pageUrl: buildOfficialFeedUrl(webHost),
     selfUrl: buildOfficialFeedAtomUrl(apiBaseUrl),
     title: officialFeedTitle(webHost),
+  })
+
+/** A post on a public tag page: from any server, its HTML already sanitised. */
+export interface AtomTagEntry {
+  note_uri: string
+  url: string | null
+  actor_uri: string
+  handle: string | null
+  display_name: string | null
+  content: string
+  images: { url: string; name?: string }[]
+  published_at: Date
+  updated_at: Date
+}
+
+interface TagFeedAtomInput {
+  webHost: string
+  apiBaseUrl: string
+  tag: string
+  entries: AtomTagEntry[]
+  now: Date
+}
+
+export const publicTagFeedTitle = (webHost: string, tag: string): string => {
+  try {
+    return `#${tag} on ${new URL(webHost).host}`
+  } catch {
+    return `#${tag}`
+  }
+}
+
+const tagEntryHtml = (entry: AtomTagEntry): string =>
+  [
+    entry.content,
+    ...entry.images.map(
+      (image) => `<p><img src="${escapeXml(image.url)}" alt="${escapeXml(image.name ?? '')}"/></p>`,
+    ),
+  ].join('')
+
+export const buildTagFeedAtom = ({ apiBaseUrl, entries, now, tag, webHost }: TagFeedAtomInput): string =>
+  buildAtom({
+    entries: entries.map((entry) => {
+      const name = entry.display_name ?? entry.handle ?? entry.actor_uri
+      return {
+        author: { name, uri: entry.actor_uri },
+        created_at: entry.published_at,
+        html: tagEntryHtml(entry),
+        id: entry.note_uri,
+        title: name,
+        updated_at: entry.updated_at,
+        url: entry.url ?? entry.note_uri,
+      }
+    }),
+    now,
+    pageUrl: buildPublicTagUrl(webHost, tag),
+    selfUrl: buildPublicTagAtomUrl(apiBaseUrl, tag),
+    title: publicTagFeedTitle(webHost, tag),
   })

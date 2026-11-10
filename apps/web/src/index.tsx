@@ -74,6 +74,7 @@ const MealDetail = lazyPage(() => import('./pages/Meals/MealDetail.jsx'), 'MealD
 const MealTypeMeta = lazyPage(() => import('./pages/MealTypeMeta/index.jsx'), 'MealTypeMeta')
 const MetricMeta = lazyPage(() => import('./pages/MetricMeta/index.jsx'), 'MetricMeta')
 const OfficialFeed = lazyPage(() => import('./pages/OfficialFeed/index.jsx'), 'OfficialFeed')
+const PublicTag = lazyPage(() => import('./pages/PublicTag/index.jsx'), 'PublicTag')
 const Places = lazyPage(() => import('./pages/Places/index.jsx'), 'Places')
 const RoutesPage = lazyPage(() => import('./pages/Routes/index.jsx'), 'Routes')
 const RouteDetailPage = lazyPage(() => import('./pages/Routes/RouteDetail.jsx'), 'RouteDetail')
@@ -129,6 +130,7 @@ function AppShell() {
             <Route path="/challenges" component={Challenges} />
             <Route path="/" component={Home} />
             <Route path="/blog" component={OfficialFeed} />
+            <Route path="/tags/:tag" component={PublicTag} />
             <Route path="/login" component={Login} />
             <Route path="/signup" component={Signup} />
             <Route path="/privacy" component={Privacy} />

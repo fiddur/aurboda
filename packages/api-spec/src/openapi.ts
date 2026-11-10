@@ -26,6 +26,7 @@ import {
 import { iso8601DateTimeSchema, metricTypeSchema } from './schemas/common.ts'
 import { dailySummaryQuerySchema, dailySummaryResponseSchema } from './schemas/daily-summary.ts'
 import { exportDumpLinkResponseSchema, exportDumpQuerySchema } from './schemas/export.ts'
+import { publicTagPostsQuerySchema, publicTagPostsResponseSchema } from './schemas/feed.ts'
 import {
   goalHistoryQuerySchema,
   goalHistoryResponseSchema,
@@ -205,6 +206,46 @@ const openApiDocument = createDocument({
         security: [{ bearerAuth: [] }],
         summary: 'List my challenge participations',
         tags: ['Challenges'],
+      },
+    },
+    '/public/tags/{tag}/posts': {
+      get: {
+        description:
+          "A public tag page: public posts carrying `#{tag}`, from this server and others, newest first. Fed by the instance actor following the tag's actor on the tag actor host, plus this server's own public posts with the tag; posts older than the retention are dropped. Only tags the admin configured have a page. No authentication.",
+        requestParams: {
+          path: z.object({ tag: z.string().meta({ description: 'The hashtag, without `#`' }) }),
+          query: publicTagPostsQuerySchema,
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: publicTagPostsResponseSchema } },
+            description: 'Successful response',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The tag has no public page',
+          },
+        },
+        summary: 'List a public tag page',
+        tags: ['Feed'],
+      },
+    },
+    '/public/tags/{tag}.atom': {
+      get: {
+        description:
+          'The Atom feed of a public tag page: its newest posts, each linking to the original. No authentication.',
+        requestParams: {
+          path: z.object({ tag: z.string().meta({ description: 'The hashtag, without `#`' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/atom+xml': { schema: z.string() } },
+            description: 'Atom feed',
+          },
+          404: { description: 'The tag has no public page' },
+        },
+        summary: 'Atom feed of a public tag page',
+        tags: ['Feed'],
       },
     },
     '/public/{username}/{slug}/standings': {
@@ -1659,6 +1700,7 @@ const openApiDocument = createDocument({
     { description: 'Sleep, exercise, meditation sessions', name: 'Activities' },
     { description: 'Media plays (videos, music, podcasts)', name: 'Media' },
     { description: 'Federated challenges: hosted, joined, and public standings', name: 'Challenges' },
+    { description: 'Social feed: posts, timeline and public tag pages', name: 'Feed' },
     { description: 'Named and detected locations', name: 'Locations' },
     { description: 'RescueTime productivity data', name: 'Productivity' },
     { description: 'User settings and preferences', name: 'Settings' },

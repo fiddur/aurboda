@@ -26,8 +26,14 @@ import {
   type PublicSeriesQuery,
   publicSeriesQuerySchema,
   type PublicSeriesResponse,
+  type PublicTagPostsQuery,
+  publicTagPostsQuerySchema,
+  type PublicTagPostsResponse,
+  type BaseResponse,
   normalizeTag,
 } from '@aurboda/api-spec'
+
+import type { PublicTagActions } from '../services/public-tags.ts'
 
 import { isValidUsername } from '../api/auth-routes.ts'
 import {
@@ -46,6 +52,7 @@ import {
   articleEntryHtml,
   buildArticlesAtom,
   buildOfficialFeedAtom,
+  buildTagFeedAtom,
   postEntryHtml,
   postEntryTitle,
 } from '../services/article-atom.ts'
@@ -79,6 +86,8 @@ export interface FeedPublicRouterDeps {
   renderableBlocks?: (user: string, postId: string, article: ArticleContent) => Promise<ReadonlySet<number>>
   /** The instance's official feed setting; absent, the official feed is off. */
   readOfficialFeed?: () => Promise<OfficialFeedSetting>
+  /** The public tag pages; absent, every tag 404s. */
+  publicTags?: Pick<PublicTagActions, 'latest' | 'page'>
 }
 
 /**
@@ -92,6 +101,7 @@ const atomMemoKey = (scope: string, rows: { id: string; updated_at: Date }[], no
 
 export const createFeedPublicRouter = ({
   apiBaseUrl,
+  publicTags,
   readOfficialFeed,
   renderableBlocks = renderableArticleBlocks,
   webHost,
@@ -251,6 +261,41 @@ export const createFeedPublicRouter = ({
     })
     res.setHeader('Cache-Control', 'public, max-age=300')
     res.type(ATOM_CONTENT_TYPE).send(xml ?? '')
+  })
+
+  // A public tag page: what the instance actor received from the tag's actor plus
+  // this server's own public posts with the tag. Only configured tags have a page.
+  // `no-store` like the official feed: a removed tag or a deleted post must drop
+  // out at once.
+  router.get<{ tag: string }, PublicTagPostsResponse | BaseResponse, unknown, PublicTagPostsQuery>(
+    '/public/tags/:tag/posts',
+    validateQuery(publicTagPostsQuerySchema),
+    async (req, res) => {
+      const result = publicTags
+        ? await publicTags.page(req.params.tag, req.query.cursor)
+        : { ok: false as const }
+      if (!result.ok) {
+        return res.status(404).json({ error: 'Not found', success: false })
+      }
+      res.setHeader('Cache-Control', 'no-store')
+      res.json(result.page)
+    },
+  )
+
+  router.get<{ tag: string }, string>('/public/tags/:tag.atom', async (req, res) => {
+    const latest = publicTags ? await publicTags.latest(req.params.tag, ATOM_ENTRY_LIMIT) : null
+    if (!latest) {
+      return res.status(404).type('text/plain').send('Not found')
+    }
+    const xml = buildTagFeedAtom({
+      apiBaseUrl,
+      entries: latest.posts,
+      now: new Date(),
+      tag: latest.tag,
+      webHost,
+    })
+    res.setHeader('Cache-Control', 'public, max-age=300')
+    res.type(ATOM_CONTENT_TYPE).send(xml)
   })
 
   router.get<{ username: string }, PublicSeriesResponse, unknown, PublicSeriesQuery>(

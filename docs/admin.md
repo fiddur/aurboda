@@ -242,3 +242,18 @@ When a post stops being public, or is deleted, the relays get a `Delete` of it; 
 account sends its actor `Delete` to the relays as well as to its followers. A one-way relay like
 tags.pub is cheap; a full (two-way) relay forwards its whole firehose to `/inbox`, where each
 activity is signature-verified and dropped.
+
+**Public tag pages** (`public_tag_pages`, `public_tag_retention_days`, Admin Settings → **Public
+tag pages**, `PATCH /admin/settings`): up to 20 hashtags, each with a public page at
+`/tags/<tag>` listing the public posts carrying it from every server the tag actor host sees, plus
+this server's own. Saving the list makes the instance actor follow `<tag>@<tag actor host>` (e.g.
+`aurboda@tags.pub`) for every added tag, as it follows a relay, and unfollow (`Undo{Follow}`) every
+removed one; the follow is pending until the tag actor accepts, and only an accepted tag actor's
+`Announce`s are kept. A tag whose actor cannot be resolved still stays in the setting, with no
+follow, and is tried again on the next save that lists it. Posts are kept for
+`public_tag_retention_days` (1–365, default 30) by publication time; a nightly job (`23 3 * * *`)
+drops older ones and the ones that carry no configured tag any more. This server's own public
+posts are added as they are published from then on: posts published before a tag was configured
+are not backfilled. `GET /status` lists the tags (`public_tag_pages`) so the front page, `/blog`
+and the logged-out web can link the pages. See
+[Public tag pages](features/feed.md#public-tag-pages).

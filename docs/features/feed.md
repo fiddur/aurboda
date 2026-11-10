@@ -1249,6 +1249,42 @@ e.g. everyone's `#aurboda` posts.
   meta titled "<host> blog" with the Atom discovery link (nginx proxies `/blog` to the backend
   as it does `/u/`).
 
+### Public tag pages
+
+`/tags/<tag>` lists the public posts, from this server and others, that carry `#<tag>`, for the
+tags an admin configured (`public_tag_pages`, see [admin](../admin.md#federation)). It is fed two
+ways, into one central `public_tag_posts` table:
+
+- **From the fediverse** — the instance actor follows the tag's actor on the tag actor host
+  (`<tag>@tags.pub`), which `Announce`s every public post it sees with the tag. These arrive on the
+  instance actor's inbox or the shared `/inbox` and are kept only when: the sender is a followed
+  tag actor whose follow it **accepted** (a stranger's `Announce`, or a stranger's `Accept` of our
+  follow, changes nothing); the `Announce` id is on the sender's host; the Note is **fetched from
+  its own id**, signed as the instance actor (a Note embedded in the `Announce` is ignored), and
+  is on the same host as the announced id and as its author; it is addressed to the **Public
+  collection** (a followers-only or unlisted-to-followers post never lands on a public page); it
+  is **not a reply**; and its author's actor document answers at the attributed id. The content
+  is sanitised like a timeline post's, the images captured the same way, and the tags are the
+  Note's own plus the followed tag. One row per Note, keyed on its id: a second tag actor's
+  `Announce` of the same post adds its Announce id to the row. A tag actor's `Undo{Announce}`
+  removes its Announce id, and the row goes once no Announce keeps it; the author's own `Delete`
+  removes the row (scoped to the sender, like the timeline's).
+- **From this server** — every `public` top-level post (not a reply) whose tags include a
+  configured one is recorded as it is delivered, as the same leg of the fan-out that pushes it
+  to relays, never failing the delivery. An edit re-records it; an edit making it non-public, or
+  its deletion, removes it. Posts published before the tag was configured are not backfilled.
+
+Rows older than the retention (`public_tag_retention_days`, default 30, by publication time) and
+rows with no configured tag left are pruned nightly. The listing is
+`GET /public/tags/:tag/posts?cursor=` (unauthenticated, `no-store`; 404 for a tag without a
+page): 20 entries newest-first by `(published_at, id)` with `next_cursor`, each in the home
+timeline's entry shape (no structured payload, reactions or replies), plus the `tag` and
+`retention_days`. `GET /public/tags/:tag.atom` is its Atom feed (20 newest, each entry titled by
+its author and linking to the original). The MCP tool `list_public_tag_posts` (`tag`, `cursor`)
+returns the same page. The web page (public, like `/blog`) renders each post as a read-only card
+with its `#tag` line, linking the tags that have a page of their own; the logged-out front page
+and `/blog` link every configured tag ("See what people share with #aurboda").
+
 ## API
 
 Owner-facing (authenticated, scoped to the caller):
@@ -1311,6 +1347,8 @@ Public / federation (unauthenticated):
 | `GET /public/:username/articles.atom`                        | Atom 1.0 feed of the user's 20 newest public articles ([Blog view and Atom feed](#blog-view-and-atom-feed))                                                                                                                                                              |
 | `GET /public/official-feed`                                  | The instance's [official feed](#official-feed): public posts of the chosen users with one of the chosen tags, newest-first, keyset page of 20 + `next_cursor`                                                                                                            |
 | `GET /public/official-feed.atom`                             | Atom 1.0 feed of the official feed's 20 newest entries                                                                                                                                                                                                                   |
+| `GET /public/tags/:tag/posts`                                | A [public tag page](#public-tag-pages): public posts with the tag from this server and others, newest-first, keyset page of 20 + `next_cursor` (MCP `list_public_tag_posts`)                                                                                             |
+| `GET /public/tags/:tag.atom`                                 | Atom 1.0 feed of a public tag page's 20 newest posts                                                                                                                                                                                                                     |
 | `GET /public/:username/posts/:postId`                        | One public/unlisted post, serialized like the listing (`FeedPostResponse`), for its permalink page `/u/:username/posts/:postId`                                                                                                                                          |
 | `GET /.well-known/webfinger`                                 | Resolve `acct:<username>@<host>` → the actor                                                                                                                                                                                                                             |
 | `GET /.well-known/quantpub`                                  | QuantPub discovery document (FEP §4): product, versions, `apiBase`                                                                                                                                                                                                       |

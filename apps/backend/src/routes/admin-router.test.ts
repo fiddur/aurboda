@@ -126,6 +126,8 @@ const relayActions: RelayActions = {
   remove: vi.fn(async (id: string) => id === relayRecord.id),
 }
 
+const publicTagActions = { apply: vi.fn(async () => ({ followed: [], unresolved: [] })) }
+
 const buildApp = (adminMiddleware: RequestHandler = pass) => {
   const app = express()
   app.use(express.json())
@@ -144,6 +146,7 @@ const buildApp = (adminMiddleware: RequestHandler = pass) => {
       deleteAccount,
       accountPlans,
       relayActions,
+      publicTagActions,
     ),
   )
   return app
@@ -478,5 +481,54 @@ describe('admin relays', () => {
     expect((await supertest(app).post('/admin/relays').send({ url: relayRecord.url })).status).toBe(403)
     expect((await supertest(app).delete(`/admin/relays/${relayRecord.id}`)).status).toBe(403)
     expect(relayActions.add).not.toHaveBeenCalled()
+  })
+})
+
+describe('public tag pages setting', () => {
+  test('GET returns none and the default retention when nothing is set', async () => {
+    const res = await supertest(buildApp()).get('/admin/settings')
+    expect(res.body.public_tag_pages).toEqual([])
+    expect(res.body.public_tag_retention_days).toBe(30)
+  })
+
+  test('PATCH stores normalised tags, then follows their tag actors', async () => {
+    vi.mocked(centralDb.setServerSetting).mockClear()
+    publicTagActions.apply.mockClear()
+    const res = await supertest(buildApp())
+      .patch('/admin/settings')
+      .send({ public_tag_pages: ['#Aurboda', 'aurboda', 'Running'], public_tag_retention_days: 14 })
+    expect(res.status).toBe(200)
+    expect(centralDb.setServerSetting).toHaveBeenCalledWith('public_tag_pages', ['aurboda', 'running'])
+    expect(centralDb.setServerSetting).toHaveBeenCalledWith('public_tag_retention_days', 14)
+    expect(publicTagActions.apply).toHaveBeenCalledWith(['aurboda', 'running'])
+  })
+
+  test('a failure to follow the tag actors does not fail the save', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    publicTagActions.apply.mockRejectedValueOnce(new Error('federation down'))
+    const res = await supertest(buildApp())
+      .patch('/admin/settings')
+      .send({ public_tag_pages: ['aurboda'] })
+    expect(res.status).toBe(200)
+    error.mockRestore()
+  })
+
+  test('PATCH rejects an invalid tag, more than 20 tags and an out-of-range retention', async () => {
+    const app = buildApp()
+    expect(
+      (
+        await supertest(app)
+          .patch('/admin/settings')
+          .send({ public_tag_pages: ['not a tag'] })
+      ).status,
+    ).toBe(400)
+    const many = Array.from({ length: 21 }, (_, i) => `t${i}`)
+    expect((await supertest(app).patch('/admin/settings').send({ public_tag_pages: many })).status).toBe(400)
+    expect(
+      (await supertest(app).patch('/admin/settings').send({ public_tag_retention_days: 0 })).status,
+    ).toBe(400)
+    expect(
+      (await supertest(app).patch('/admin/settings').send({ public_tag_retention_days: 366 })).status,
+    ).toBe(400)
   })
 })
