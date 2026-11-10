@@ -15,6 +15,7 @@ import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-te
 import { resolveStructuredContent } from './feed-structured.ts'
 import {
   expandFeedActivityWindow,
+  feedActivityHeadline,
   getFeedPage,
   previewActivityShare,
   resolveFeedActivity,
@@ -116,6 +117,36 @@ describe('feed service', () => {
       await deleteActivity(user, anchorId)
       expect(await resolveFeedActivity(user, anchorId)).toBeNull()
       expect(await resolveFeedActivity(user, '00000000-0000-0000-0000-000000000000')).toBeNull()
+    })
+  })
+
+  describe('feedActivityHeadline', () => {
+    test("is the title, the override's title for a replaced row, else the activity type", async () => {
+      const user = getTestUser()
+      expect(await feedActivityHeadline(user, await insertAnchor(user))).toBe('Merged run')
+
+      const syncedId = await insertActivity(user, {
+        activity_type: 'yoga',
+        end_time: ANCHOR_END,
+        external_id: 'garmin-yoga-2',
+        source: 'garmin',
+        start_time: ANCHOR_START,
+        title: 'Yoga',
+      })
+      expect((await updateActivity(user, syncedId, { title: 'Yin Yoga' })).success).toBe(true)
+      expect(await feedActivityHeadline(user, syncedId)).toBe('Yin Yoga')
+
+      const untitledId = await insertActivity(user, {
+        activity_type: 'running',
+        end_time: new Date('2026-07-02T08:30:00Z'),
+        source: 'strava',
+        start_time: new Date('2026-07-02T08:00:00Z'),
+      })
+      expect(await feedActivityHeadline(user, untitledId)).toBe('Running activity')
+    })
+
+    test('is null for a missing activity', async () => {
+      expect(await feedActivityHeadline(getTestUser(), '00000000-0000-0000-0000-000000000000')).toBeNull()
     })
   })
 

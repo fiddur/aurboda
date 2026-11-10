@@ -115,6 +115,10 @@ export interface FeedPostContentExtras {
   windowLabel?: string
 }
 
+/** A shared activity's headline: its title, else its prettified type (`Running activity`). */
+export const activityHeadline = (title: string | undefined, activityType: string): string =>
+  title ?? `${prettifyKey(activityType)} activity`
+
 /**
  * The human-readable status a plain fediverse client (Mastodon) renders: a bold
  * title headline, the author's personal message (if any), the activity-date
@@ -128,7 +132,7 @@ export const feedPostContent = (
   scalars: ScalarMetric[],
   extras: FeedPostContentExtras = {},
 ): { name: string; content: string } => {
-  const heading = title ?? `${prettifyKey(activityType)} activity`
+  const heading = activityHeadline(title, activityType)
   const parts = [`<p><strong>${escapeHtml(heading)}</strong></p>`]
   const message = extras.message?.trim()
   if (message) parts.push(`<p>${escapeHtml(message).replaceAll('\n', '<br>')}</p>`)

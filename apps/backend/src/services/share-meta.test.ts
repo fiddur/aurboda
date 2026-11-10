@@ -8,6 +8,7 @@ import {
   buildExerciseShareMeta,
   buildDefaultShareMeta,
   buildHomeShareMeta,
+  buildPostShareMeta,
   buildProfileShareMeta,
   defaultOgImage,
   injectShareMeta,
@@ -253,7 +254,6 @@ describe('blog and article meta', () => {
     const article = buildArticleShareMeta({
       excerpt: 'word '.repeat(80),
       feedUrl: 'https://x.test/api/public/fiddur/articles.atom',
-      profileUrl: 'https://x.test/u/fiddur',
       title: 'Sleep vs HRV',
       url: 'https://x.test/u/fiddur/posts/abc',
       username: 'fiddur',
@@ -263,18 +263,56 @@ describe('blog and article meta', () => {
     expect(article.description.length).toBeLessThanOrEqual(201)
     expect(article.description.endsWith('…')).toBe(true)
     expect(article.jsonLd).toMatchObject({ '@type': 'Article', headline: 'Sleep vs HRV' })
+    expect(article.image).toBe('https://x.test/u/fiddur/posts/abc/opengraph-image.png')
   })
 
   test('article meta falls back to a generic line when there is no prose', () => {
     const article = buildArticleShareMeta({
       excerpt: '  ',
       feedUrl: 'https://x.test/api/public/fiddur/articles.atom',
-      profileUrl: 'https://x.test/u/fiddur',
       title: 'Charts only',
       url: 'https://x.test/u/fiddur/posts/abc',
       username: 'fiddur',
     })
     expect(article.description).toBe('An article by fiddur on Aurboda.')
+  })
+})
+
+describe('buildPostShareMeta', () => {
+  const input = {
+    createdAt: '2026-11-01T07:30:00.000Z',
+    description: 'Felt great today',
+    title: 'Morning run',
+    url: 'https://x.test/u/fiddur/posts/abc',
+    username: 'fiddur',
+  }
+
+  test('describes the post as a social-media posting with its own card', () => {
+    const post = buildPostShareMeta(input)
+    expect(post.title).toBe('Morning run — Aurboda')
+    expect(post.description).toBe('Felt great today')
+    expect(post.type).toBe('article')
+    expect(post.url).toBe('https://x.test/u/fiddur/posts/abc')
+    expect(post.image).toBe('https://x.test/u/fiddur/posts/abc/opengraph-image.png')
+    expect(post.imageAlt).toBe('Aurboda post: Morning run')
+    expect(post.feedUrl).toBeUndefined()
+    expect(post.jsonLd).toEqual({
+      '@context': 'https://schema.org',
+      '@type': 'SocialMediaPosting',
+      author: { '@type': 'Person', name: 'fiddur' },
+      datePublished: '2026-11-01T07:30:00.000Z',
+      headline: 'Morning run',
+      url: 'https://x.test/u/fiddur/posts/abc',
+    })
+  })
+
+  test('falls back to a generic line without a description, and clamps a long one', () => {
+    expect(buildPostShareMeta({ ...input, description: ' ' }).description).toBe(
+      'A post by fiddur on Aurboda.',
+    )
+    const long = buildPostShareMeta({ ...input, description: 'word '.repeat(80) }).description
+    expect(long.length).toBeLessThanOrEqual(201)
+    expect(long.endsWith('…')).toBe(true)
   })
 })
 
