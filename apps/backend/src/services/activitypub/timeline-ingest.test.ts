@@ -1,4 +1,4 @@
-import { Document, Image, Link, Mention, Note } from '@fedify/fedify/vocab'
+import { Document, Hashtag, Image, Link, Mention, Note } from '@fedify/fedify/vocab'
 import { describe, expect, test } from 'vitest'
 
 import type { FeedFollowingRecord } from '../../db/index.ts'
@@ -6,6 +6,7 @@ import type { FeedFollowingRecord } from '../../db/index.ts'
 import { dateToTemporalInstant } from './temporal-interop.ts'
 import {
   extractNoteImages,
+  noteHashtags,
   noteMentionsActor,
   noteToTimelineInput,
   sanitizeRemoteHtml,
@@ -66,6 +67,7 @@ describe('noteToTimelineInput', () => {
     inbox_uri: 'https://mastodon.example/users/alice/inbox',
     notify_on_post: true,
     shared_inbox_uri: null,
+    tag: null,
   }
 
   test('maps a Note to a timeline input, sanitising content and using the cached author', () => {
@@ -192,6 +194,7 @@ describe('noteToTimelineInput', () => {
       display_name: 'Bob',
       handle: '@bob@remote.example',
       published_at: new Date('2026-07-02T10:00:00Z'),
+      tag: null,
     }
 
     test('keys the row on the Announce id and keeps the original post in boost_of_uri', () => {
@@ -342,5 +345,27 @@ describe('noteMentionsActor', () => {
 
   test('false for a Note with no tags at all', async () => {
     expect(await noteMentionsActor(noteWithTags([]), ME)).toBe(false)
+  })
+})
+
+describe('noteHashtags', () => {
+  const noteWithTags = (tags: Link[]) =>
+    new Note({ id: new URL('https://mastodon.example/statuses/2'), tags })
+  const hashtag = (name: string) => new Hashtag({ href: new URL('https://mastodon.example/tags/x'), name })
+
+  test('keeps Hashtag names normalised, skipping mentions and invalid tags', async () => {
+    const note = noteWithTags([
+      hashtag('#Running'),
+      new Mention({ href: new URL('https://mastodon.example/users/bob'), name: '@bob@mastodon.example' }),
+      hashtag('#running'),
+      hashtag('2026'),
+      hashtag('#not valid'),
+      hashtag('Löpning'),
+    ])
+    expect(await noteHashtags(note)).toEqual(['running', 'löpning'])
+  })
+
+  test('empty for a Note without tags', async () => {
+    expect(await noteHashtags(noteWithTags([]))).toEqual([])
   })
 })

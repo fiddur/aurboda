@@ -732,6 +732,64 @@ function OfficialFeedSection() {
   )
 }
 
+function FederationSection() {
+  const queryClient = useQueryClient()
+  const { data: settings } = useQuery({
+    queryFn: fetchAdminSettings,
+    queryKey: ['adminSettings'],
+  })
+
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>({ status: 'idle' })
+  const [hostText, setHostText] = useState<string | null>(null)
+  const configured = settings?.tag_actor_host ?? 'tags.pub'
+  const value = hostText ?? configured
+
+  const save = useCallback(
+    async (host: string) => {
+      setSaveStatus({ status: 'saving' })
+      try {
+        const result = await updateAdminSettings({ tag_actor_host: host })
+        queryClient.setQueryData(['adminSettings'], result)
+        setHostText(null)
+        setSaveStatus({ status: 'saved', time: new Date() })
+      } catch (err) {
+        setSaveStatus({ error: apiErrorMessage(err, getErrorMessage(err)), status: 'error' })
+      }
+    },
+    [queryClient],
+  )
+
+  return (
+    <section class="settings-section">
+      <h2>Federation</h2>
+      <div class="form-field">
+        <div class="section-header-row">
+          <label for="tag-actor-host">Tag actor host</label>
+          <SaveStatusIndicator state={saveStatus} />
+        </div>
+        <div class="api-key-input-row">
+          <input
+            id="tag-actor-host"
+            type="text"
+            value={value}
+            onInput={(e) => setHostText((e.target as HTMLInputElement).value)}
+            placeholder="tags.pub"
+            autocapitalize="off"
+            spellcheck={false}
+          />
+        </div>
+        <button type="button" class="generate-button" onClick={() => save(value)}>
+          Save
+        </button>
+        <p class="field-description">
+          Users who follow a hashtag follow <code>&lt;tag&gt;@{configured}</code>; tags.pub is the public tag
+          relay run by the Social Web Foundation. Empty resets it to tags.pub.
+        </p>
+      </div>
+    </section>
+  )
+}
+
 function InvitationsSection() {
   const [invitation, setInvitation] = useState<InvitationResult | null>(null)
   const [invitationLoading, setInvitationLoading] = useState(false)
@@ -880,6 +938,8 @@ export function AdminSettings() {
       <SentrySection />
 
       <OfficialFeedSection />
+
+      <FederationSection />
 
       <section class="settings-section">
         <h2>Shared Food Library</h2>

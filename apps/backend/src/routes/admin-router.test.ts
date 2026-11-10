@@ -211,6 +211,35 @@ describe('official feed setting', () => {
   })
 })
 
+describe('tag actor host setting', () => {
+  test('GET defaults to tags.pub', async () => {
+    const res = await supertest(buildApp()).get('/admin/settings')
+    expect(res.body.tag_actor_host).toBe('tags.pub')
+  })
+
+  test('PATCH stores a trimmed lowercase hostname; empty resets to the default', async () => {
+    vi.mocked(centralDb.setServerSetting).mockClear()
+    const res = await supertest(buildApp())
+      .patch('/admin/settings')
+      .send({ tag_actor_host: ' Tags.Example ' })
+    expect(res.status).toBe(200)
+    expect(centralDb.setServerSetting).toHaveBeenCalledWith('tag_actor_host', 'tags.example')
+    vi.mocked(centralDb.setServerSetting).mockClear()
+    await supertest(buildApp()).patch('/admin/settings').send({ tag_actor_host: '' })
+    expect(centralDb.setServerSetting).toHaveBeenCalledWith('tag_actor_host', '')
+  })
+
+  test.each(['https://tags.pub', 'tags.pub/user', 'tags.pub:443', 'a b', 'running@tags.pub'])(
+    'PATCH rejects %j',
+    async (tag_actor_host) => {
+      vi.mocked(centralDb.setServerSetting).mockClear()
+      const res = await supertest(buildApp()).patch('/admin/settings').send({ tag_actor_host })
+      expect(res.status).toBe(400)
+      expect(centralDb.setServerSetting).not.toHaveBeenCalled()
+    },
+  )
+})
+
 describe('admin billing settings', () => {
   test('GET reports billing off with the default trial and grace days', async () => {
     const res = await supertest(buildApp()).get('/admin/settings')

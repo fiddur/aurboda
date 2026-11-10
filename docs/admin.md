@@ -1,7 +1,7 @@
 # Server administration
 
 The first user to sign up becomes an admin. Admins manage server-wide settings (signup mode,
-integration credentials, Sentry, plans and billing) from the web app's Admin Settings page. Those
+integration credentials, Sentry, plans and billing, federation) from the web app's Admin Settings page. Those
 settings, the admin list and the records below live in the central database (`CENTRAL_DB`, default
 `aurboda`), not in any user's own database.
 
@@ -201,3 +201,13 @@ end, or leave a note. The Users table has a **Plan** column (exempt, trial until
 grace, read-only) to sort by end date. REST: `PATCH /admin/users/:username/plan` with any of `plan`,
 `paid_until`, `trial_ends_at` and `plan_note` (`null` clears a date or the note); MCP: the admin-only
 `set_user_plan`.
+
+## Federation
+
+**Tag actor host** (`tag_actor_host`, Admin Settings → **Federation**, `PATCH /admin/settings`):
+the host whose actors users follow to follow a hashtag. Following `#running` follows
+`running@<host>`; the default, used when it is unset or empty, is `tags.pub`, the public tag relay
+run by the Social Web Foundation. The value is a bare hostname (trimmed and lowercased; a scheme,
+path, port, `@` or whitespace is refused with `400`). Changing it affects new tag follows only:
+existing ones keep following the actor they followed. See
+[Following a hashtag](features/feed.md#hashtags).

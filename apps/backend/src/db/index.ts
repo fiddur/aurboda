@@ -347,11 +347,15 @@ export {
 
 export {
   countAcceptedFeedFollowing,
+  type FeedFollowedTagActor,
   type FeedFollowingInput,
   type FeedFollowingRecord,
   getFeedFollowing,
   getFeedFollowingByActor,
+  getFeedFollowingByTag,
   listAcceptedFeedFollowing,
+  listFeedFollowedTagActors,
+  listFeedFollowedTags,
   listFeedFollowing,
   markFeedFollowingAccepted,
   removeFeedFollowing,

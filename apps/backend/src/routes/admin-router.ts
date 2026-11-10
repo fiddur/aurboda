@@ -31,6 +31,7 @@ import {
   readOfficialFeedSetting,
   writeOfficialFeedSetting,
 } from '../services/official-feed.ts'
+import { readTagActorHost } from '../services/tag-actor-host.ts'
 import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
@@ -65,6 +66,7 @@ export const createAdminRouter = (
       gravlClientSecret,
       officialFeed,
       billing,
+      tagActorHost,
     ] = await Promise.all([
       centralDb.getSignupMode(),
       centralDb.getAdminCount(),
@@ -81,6 +83,7 @@ export const createAdminRouter = (
       centralDb.getServerSetting('gravl_client_secret'),
       readOfficialFeedSetting(centralDb),
       readBillingSettings(centralDb),
+      readTagActorHost(centralDb),
     ])
     return {
       admin_count: adminCount,
@@ -105,6 +108,7 @@ export const createAdminRouter = (
       strava_client_id_set: !!stravaClientId,
       strava_client_secret_set: !!stravaClientSecret,
       success: true,
+      tag_actor_host: tagActorHost,
       trial_days: billing.trial_days,
     }
   }
@@ -143,6 +147,7 @@ export const createAdminRouter = (
         signup_mode,
         strava_client_id,
         strava_client_secret,
+        tag_actor_host,
         trial_days,
       } = req.body
       const legacyFeed =
@@ -199,6 +204,9 @@ export const createAdminRouter = (
       }
       if (gravl_client_secret !== undefined) {
         await centralDb.setServerSetting('gravl_client_secret', gravl_client_secret ?? '')
+      }
+      if (tag_actor_host !== undefined) {
+        await centralDb.setServerSetting('tag_actor_host', tag_actor_host)
       }
       const billingChanged = [billing_enabled, trial_days, grace_days, price_text, payment_url].some(
         (value) => value !== undefined,

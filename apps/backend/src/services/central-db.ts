@@ -67,6 +67,7 @@ export interface ServerSettings {
   signup_mode: SignupMode
   strava_client_id: string
   strava_client_secret: string
+  tag_actor_host: string
   trial_days: number
 }
 

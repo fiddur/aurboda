@@ -281,6 +281,27 @@ the `content` HTML, which already links them), each linking to the public profil
 it: `/u/<user>?tag=<tag>` shows "Posts tagged #tag · clear", backed by
 `GET /public/:username/posts?tag=`.
 
+**Following a hashtag** (#1540). A user can follow a hashtag, not only a person. Every
+hashtag is an ActivityPub actor on a **tag actor host**: on [tags.pub](https://tags.pub), the
+public tag relay run by the Social Web Foundation, `#running` is `running@tags.pub`, which
+`Announce`s every public post it sees carrying `#running` to its followers (and sends
+`Undo{Announce}` when one is deleted or untagged). Following a tag is therefore an ordinary
+follow of `<tag>@<host>`: the same pending → accepted lifecycle, the same `Undo{Follow}` on
+unfollow, and its posts arrive as boost cards through the normal inbox. The `feed_following`
+row is marked with the tag, so followed tags are listed apart from followed people
+(`GET /feed/following` and `list_following` return people only) through
+`GET/POST /feed/followed-tags` and `DELETE /feed/followed-tags/:tag` (a tag is addressed by its
+name, unique per user), and over MCP `list_followed_tags`, `follow_tag` and `unfollow_tag`.
+The row's follow `id` still toggles notifications through `PATCH /feed/following/:id` /
+`set_following_notify`. A card boosted by a followed tag actor carries `boosted_by.tag` and
+shows a `#running` chip in place of the "🔄 X boosted" line. The host is a server setting,
+`tag_actor_host` (Admin → **Federation**, default `tags.pub`). Only posts from servers that
+push to tags.pub arrive this way; pushing Aurboda's own posts there is #1541.
+
+**Web.** Feed → **People & sharing** has a **Followed tags** block (follow `#tag`, the Pending
+badge, 🔔 and Unfollow), and the **Following** timeline shows a chip row (`All` plus one
+`#tag` per followed tag) that filters the timeline with `?tag=`.
+
 ## ActivityPub federation
 
 Each user is a single ActivityPub **actor** (a `Person`) at:
@@ -566,7 +587,11 @@ When a `Create` or `Update` for a `Note` is delivered, the inbox:
 3. captures the note's **image attachments** (rendered chart / route map, or a Mastodon
    photo) — only inline `http(s)` images survive, then
 4. upserts a `timeline_entry` (keyed by the note's `object_uri`, so an `Update` or a
-   redelivery replaces in place rather than duplicating).
+   redelivery replaces in place rather than duplicating), with the note's AS2 `Hashtag`s
+   stored as `tags` (lowercase, no `#`, at most 10; on a card boosted by a
+   [followed tag actor](#hashtags) the followed tag is added). `GET /feed/timeline?tag=running`
+   and `list_timeline`'s `tag` list only the entries carrying that tag; an invalid tag is a
+   `400`.
 
 A card with **no** native structured payload (a Mastodon post) renders the sanitised HTML
 plus the delivered **image attachment(s)**, the way Mastodon shows them. A card **with** one
@@ -1232,10 +1257,13 @@ Owner-facing (authenticated, scoped to the caller):
 | `GET /feed/following`                             | List the actors I follow (accepted + pending)                                                                                                                                                                |
 | `POST /feed/following`                            | Follow an actor by handle (`@user@host` or actor URL)                                                                                                                                                        |
 | `DELETE /feed/following/:id`                      | Unfollow (sends `Undo{Follow}`)                                                                                                                                                                              |
+| `GET /feed/followed-tags`                         | List the [hashtags I follow](#hashtags) (accepted + pending), by tag                                                                                                                                         |
+| `POST /feed/followed-tags`                        | Follow a hashtag (`{ tag }`): follows its tag actor `<tag>@<tag_actor_host>`                                                                                                                                 |
+| `DELETE /feed/followed-tags/:tag`                 | Unfollow a hashtag (sends `Undo{Follow}` to its tag actor)                                                                                                                                                   |
 | `GET /feed/followers`                             | List my followers; `?status=pending\|accepted\|all` (default `all`)                                                                                                                                          |
 | `POST /feed/followers/:id/approve`                | Approve a pending follow request (sends the deferred `Accept`)                                                                                                                                               |
 | `DELETE /feed/followers/:id`                      | Reject a request / remove a follower (sends `Reject`)                                                                                                                                                        |
-| `GET /feed/timeline`                              | My home timeline (posts from followees), newest-first, `?cursor=` to page                                                                                                                                    |
+| `GET /feed/timeline`                              | My home timeline (posts from followees), newest-first, `?cursor=` to page, `?tag=` to filter by a hashtag                                                                                                    |
 | `GET /feed/timeline/stream`                       | Server-Sent Events stream of live "new posts" pings (falls back to polling)                                                                                                                                  |
 | `POST/DELETE /feed/timeline/:id/like`             | Favourite ⭐ / un-favourite a timeline post (`Like` / `Undo{Like}`); idempotent, returns the updated entry                                                                                                   |
 | `POST/DELETE /feed/timeline/:id/boost`            | Boost 🔄 / un-boost a timeline post (`Announce` / `Undo{Announce}`); idempotent, returns the updated entry                                                                                                   |
@@ -1292,7 +1320,8 @@ email is never part of the actor or any public response.
 
 The owner-facing capability is also available over MCP as `list_feed`, `share_activity`,
 `preview_activity_share`, `share_challenge`, `share_exercise`, `preview_exercise_share`, `share_dashboard_period`, `preview_dashboard_period_share`, `create_article`, `update_article`, the [article draft](#article-drafts) tools, `export_article_markdown`, `update_feed_post`,
-`delete_feed_post`, `list_following`, `follow_actor`, `unfollow_actor`, `list_followers`,
+`delete_feed_post`, `list_following`, `follow_actor`, `unfollow_actor`, `list_followed_tags`,
+`follow_tag`, `unfollow_tag`, `list_followers`,
 `approve_follower`, `reject_follower`, `list_timeline`, `like_timeline_post`,
 `unlike_timeline_post`, `boost_timeline_post`, `unboost_timeline_post`,
 `get_timeline_replies`, `reply_to_timeline_post`, `get_feed_post_replies`, and
@@ -1336,7 +1365,9 @@ with a local `id` for the approve/reject API, the cached inbox + handle / displa
 avatar, the id of the `Follow` they sent — echoed in a deferred `Accept`/`Reject` — and an
 `accepted` flag that is false while a request is pending); the actors this user **follows**
 live in `feed_following` (keyed by a local `id`, with the followee's cached inbox + handle /
-display name / avatar and an `accepted` flag); the actor's RSA keypair in `feed_actor`.
+display name / avatar, an `accepted` flag, and a nullable `tag` marking the follow of a
+[hashtag's tag actor](#hashtags), unique per tag through a partial index); the actor's RSA
+keypair in `feed_actor`.
 Posts received from followees are stored in `timeline_entry` (keyed by the remote note's
 `object_uri` so an `Update`/redelivery replaces in place), holding the **already-sanitised**
 content plus the author's cached handle / display name / avatar, indexed on
@@ -1351,6 +1382,7 @@ image attachments (`TimelineImage[]`: url + optional media type / alt / size), r
 the fallback when a post has no native structured chart. Four nullable columns
 (`boost_of_uri`, `boosted_by_actor_uri`, `boosted_by_handle`, `boosted_by_display_name`) turn
 a row into a **boost card** — see "Likes and boosts" above; they are NULL on a direct entry.
+A `tags` `TEXT[]` column (GIN-indexed) holds the post's hashtags for the `?tag=` filter.
 A partial index on `(in_reply_to_uri, published_at, id)` backs the **own-post comments**
 listing and the batched per-page `reply_count`, so reading a feed page never scans the whole
 timeline.

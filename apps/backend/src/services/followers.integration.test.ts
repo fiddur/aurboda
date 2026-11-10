@@ -16,7 +16,11 @@ import { approveFollower, rejectFollower } from './followers.ts'
 const CONTAINER_TIMEOUT = 120_000
 const ORIGIN = 'https://aurboda.example'
 
-const deps: FollowDeps = { federation: createFeedFederation(ORIGIN, `${ORIGIN}/api`), origin: ORIGIN }
+const deps: FollowDeps = {
+  federation: createFeedFederation(ORIGIN, `${ORIGIN}/api`),
+  origin: ORIGIN,
+  tagActorHost: async () => 'tags.pub',
+}
 
 const pending = {
   actor_uri: 'https://mastodon.example/users/alice',

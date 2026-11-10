@@ -434,6 +434,12 @@ export const socialTables: Record<string, string> = {
   feed_following_notify: `
     ALTER TABLE feed_following ADD COLUMN IF NOT EXISTS notify_on_post BOOLEAN NOT NULL DEFAULT true
   `,
+  // A followed hashtag (#1540) is the follow of its tag actor, marked with the
+  // normalised tag; NULL on the follow of a person.
+  feed_following_tag: `
+    ALTER TABLE feed_following ADD COLUMN IF NOT EXISTS tag TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_feed_following_tag ON feed_following (tag) WHERE tag IS NOT NULL;
+  `,
 
   // The user's home timeline: posts received from actors they follow (inbound
   // `Create`/`Update`/`Delete` on the feed). Keyed by a local `id`; `object_uri`
@@ -474,6 +480,10 @@ export const socialTables: Record<string, string> = {
   `,
   timeline_entry_images: `
     ALTER TABLE timeline_entry ADD COLUMN IF NOT EXISTS images JSONB
+  `,
+  timeline_entry_tags: `
+    ALTER TABLE timeline_entry ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}';
+    CREATE INDEX IF NOT EXISTS idx_timeline_entry_tags ON timeline_entry USING GIN (tags);
   `,
   timeline_entry_enrich_attempted: `
     ALTER TABLE timeline_entry ADD COLUMN IF NOT EXISTS enrich_attempted_at TIMESTAMPTZ
