@@ -33,8 +33,13 @@ import {
 } from '../../state/api'
 import { patchTimelineEntry, type TimelinePages, withReaction } from './timeline-actions'
 
-/** The infinite-query key every timeline page (and every optimistic patch) lives under. */
-export const TIMELINE_KEY = ['feed', 'timeline'] as const
+const TIMELINE_KEY = ['feed', 'timeline'] as const
+
+/** The prefix every timeline page query lives under, one query per tag filter (reply threads live beside it). */
+export const TIMELINE_PAGES_KEY = [...TIMELINE_KEY, 'pages'] as const
+
+/** The infinite-query key of the timeline filtered to `tag` (null: all posts). */
+export const timelineKey = (tag: string | null) => [...TIMELINE_PAGES_KEY, tag ?? ''] as const
 
 /**
  * The inline reply box. Visibility defaults to `unlisted` — Mastodon's
@@ -119,7 +124,7 @@ export function TimelineActions({
 
   const patch = (next: TimelineEntry) => {
     setShown(next)
-    queryClient.setQueryData<TimelinePages>(TIMELINE_KEY, (data) =>
+    queryClient.setQueriesData<TimelinePages>({ queryKey: TIMELINE_PAGES_KEY }, (data) =>
       patchTimelineEntry(data, entry.id, () => next),
     )
   }
@@ -136,7 +141,7 @@ export function TimelineActions({
         // Roll THIS entry back, never a whole-cache snapshot: pages fetched (and
         // other cards toggled) while the request was in flight must survive the
         // failure, and restoring an `undefined` snapshot would be ignored anyway.
-        queryClient.setQueryData<TimelinePages>(TIMELINE_KEY, (data) =>
+        queryClient.setQueriesData<TimelinePages>({ queryKey: TIMELINE_PAGES_KEY }, (data) =>
           patchTimelineEntry(data, entry.id, () => before),
         )
         setError(cause.message)

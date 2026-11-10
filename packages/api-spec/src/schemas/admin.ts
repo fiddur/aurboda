@@ -153,6 +153,10 @@ export const adminSettingsResponseSchema = baseResponseSchema
     strava_client_secret_set: z
       .boolean()
       .meta({ description: 'Whether a Strava client secret is configured' }),
+    tag_actor_host: z.string().meta({
+      description:
+        'Host of the hashtag actors users follow to follow a tag: following `#running` follows `running@<host>` (default `tags.pub`)',
+    }),
     trial_days: z.number().int().meta({ description: 'Length of the free trial for new accounts, in days' }),
   })
   .meta({ id: 'AdminSettingsResponse' })
@@ -239,6 +243,18 @@ export const updateAdminSettingsBodySchema = z
       .nullable()
       .optional()
       .meta({ description: 'Strava API client secret (set to null to clear)' }),
+    tag_actor_host: z
+      .string()
+      .max(253)
+      .transform((value) => value.trim().toLowerCase())
+      .refine((value) => value === '' || /^[a-z0-9-]+(\.[a-z0-9-]+)*$/.test(value), {
+        message: 'A bare hostname, e.g. tags.pub',
+      })
+      .optional()
+      .meta({
+        description:
+          'Host of the hashtag actors (a bare hostname, e.g. `tags.pub`); empty resets to the default `tags.pub`',
+      }),
     trial_days: z
       .number()
       .int()

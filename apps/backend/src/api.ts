@@ -140,7 +140,13 @@ import {
   rejectFollower,
   serializeFollower,
 } from './services/followers.ts'
-import { type FollowActions, followActor, unfollowActor } from './services/following.ts'
+import {
+  type FollowActions,
+  followActor,
+  followTag,
+  unfollowActor,
+  unfollowTag,
+} from './services/following.ts'
 import { createGeocodeQueue } from './services/geocode-queue.ts'
 import { createInvitationAuth } from './services/invitation.ts'
 import { getPlaceVisits, type NamedLocationsChanged } from './services/locations.ts'
@@ -159,6 +165,7 @@ import { garminActivityExternalId } from './services/source-identity.ts'
 import { createStravaQueue, type StravaQueue } from './services/strava-queue.ts'
 import { createSyncProvider } from './services/sync-provider.ts'
 import { createSyncScheduler } from './services/sync-scheduler.ts'
+import { readTagActorHost } from './services/tag-actor-host.ts'
 import { createTimelineHub } from './services/timeline-hub.ts'
 import {
   backfillReplyLinks,
@@ -544,7 +551,12 @@ const main = async () => {
     isReadOnly,
   )
   const backfill = createTimelineBackfiller(feedFederation, webHost)
-  const feedDeps = { apiBaseUrl, federation: feedFederation, origin: webHost }
+  const feedDeps = {
+    apiBaseUrl,
+    federation: feedFederation,
+    origin: webHost,
+    tagActorHost: () => readTagActorHost(centralDb),
+  }
 
   const accountDeleter = createAccountDeleter({
     announceDeletion: (user) => deliverActorDelete(feedDeps, user),
@@ -861,7 +873,9 @@ const main = async () => {
   // origin, shared by the REST following router and the MCP follow tools.
   const followActions: FollowActions = {
     follow: (user, handle) => followActor(feedDeps, user, handle),
+    followTag: (user, tag) => followTag(feedDeps, user, tag),
     unfollow: (user, id) => unfollowActor(feedDeps, user, id),
+    unfollowTag: (user, tag) => unfollowTag(feedDeps, user, tag),
   }
   const reactionActions = createReactionActions(feedDeps, feedDeliver)
   // The follower-management operations (approve/reject a follow request), sharing

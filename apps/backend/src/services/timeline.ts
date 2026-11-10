@@ -10,6 +10,7 @@
 import type { TimelineEntry } from '@aurboda/api-spec'
 
 import type {
+  FeedFollowedTagActor,
   FeedReactionState,
   TimelineCursor,
   TimelineEntryRecord,
@@ -17,7 +18,7 @@ import type {
   TimelineReplyFilter,
 } from '../db/index.ts'
 
-import { listFeedReactionsForObjects, listTimelineEntries } from '../db/index.ts'
+import { listFeedFollowedTagActors, listFeedReactionsForObjects, listTimelineEntries } from '../db/index.ts'
 import { decodeKeysetCursor, encodeKeysetCursor } from './keyset-cursor.ts'
 import { getSettings } from './settings.ts'
 
@@ -48,6 +49,8 @@ export const serializeTimelineEntry = (
   ownObjectPrefix?: string,
   /** `${kind}:${object_uri}` keys the reader has reacted to (see `toReactionSet`). */
   reactions?: ReadonlySet<string>,
+  /** The reader's followed tag actors, `actor_uri → tag`, to mark their boosts with the tag. */
+  tagByBooster?: ReadonlyMap<string, string>,
 ): TimelineEntry => ({
   actor_uri: record.actor_uri,
   avatar_url: record.avatar_url,
@@ -61,6 +64,7 @@ export const serializeTimelineEntry = (
           actor_uri: record.boosted_by_actor_uri,
           display_name: record.boosted_by_display_name,
           handle: record.boosted_by_handle,
+          ...withTag(tagByBooster?.get(record.boosted_by_actor_uri)),
         },
       }),
   // Present only when true, like `mentions_me` — an absent flag is "not reacted".
@@ -82,8 +86,11 @@ export const serializeTimelineEntry = (
   published_at: record.published_at.toISOString(),
   received_at: record.received_at.toISOString(),
   ...(record.structured == null ? {} : { structured: record.structured }),
+  tags: record.tags,
   url: record.url,
 })
+
+const withTag = (tag: string | undefined): { tag?: string } => (tag == null ? {} : { tag })
 
 /** Fetch a keyset page of raw timeline rows — the one DB dependency of `getTimelinePage`. */
 export type TimelineFetcher = (
@@ -91,6 +98,7 @@ export type TimelineFetcher = (
   limit: number,
   cursor?: TimelineCursor,
   replies?: TimelineReplyFilter,
+  tag?: string | null,
 ) => Promise<TimelinePageRow[]>
 
 /** The URI prefix of a user's own post objects on this instance. */
@@ -120,6 +128,21 @@ export interface TimelinePageOpts {
   loadSettings?: (user: string) => Promise<{ timeline_show_replies?: boolean } | null>
   /** Injected reaction-state lookup (defaults to the real one) for offline tests. */
   fetchReactions?: ReactionsFetcher
+  /** Only entries carrying this (normalised) hashtag. */
+  tag?: string
+  /** Injected followed-tag-actor lookup (defaults to the real one) for offline tests. */
+  fetchTagFollows?: (user: string) => Promise<FeedFollowedTagActor[]>
+}
+
+/** `actor_uri → tag` of the reader's followed tag actors, best-effort like the reactions. */
+export const loadTagByBooster = async (
+  user: string,
+  rows: Pick<TimelineEntryRecord, 'boosted_by_actor_uri'>[],
+  fetchTagFollows: (user: string) => Promise<FeedFollowedTagActor[]> = listFeedFollowedTagActors,
+): Promise<Map<string, string>> => {
+  if (!rows.some((row) => row.boosted_by_actor_uri != null)) return new Map()
+  const follows = await fetchTagFollows(user).catch(() => [])
+  return new Map(follows.map((follow) => [follow.actor_uri, follow.tag]))
 }
 
 /**
@@ -157,13 +180,16 @@ export const getTimelinePage = async (
     prefix = ownObjectPrefix(opts.origin, user)
     replies = { own_object_prefix: prefix, show_replies: settings?.timeline_show_replies === true }
   }
-  const rows = await fetchEntries(user, limit + 1, decodeCursor(cursor), replies)
+  const rows = await fetchEntries(user, limit + 1, decodeCursor(cursor), replies, opts.tag)
   const hasMore = rows.length > limit
   const page = hasMore ? rows.slice(0, limit) : rows
   const last = page[page.length - 1]
-  const reactions = await loadReactionsForRows(user, page, opts.fetchReactions)
+  const [reactions, tagByBooster] = await Promise.all([
+    loadReactionsForRows(user, page, opts.fetchReactions),
+    loadTagByBooster(user, page, opts.fetchTagFollows),
+  ])
   return {
-    entries: page.map((row) => serializeTimelineEntry(row, prefix, reactions)),
+    entries: page.map((row) => serializeTimelineEntry(row, prefix, reactions, tagByBooster)),
     next_cursor: hasMore && last ? encodeKeysetCursor(last.cursor_ts, last.id) : null,
   }
 }

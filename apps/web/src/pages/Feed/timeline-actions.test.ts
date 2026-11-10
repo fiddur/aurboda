@@ -14,6 +14,7 @@ const entry = (id: string, over: Partial<TimelineEntry> = {}): TimelineEntry => 
   object_uri: `https://mastodon.example/notes/${id}`,
   published_at: '2026-07-01T08:00:00.000Z',
   received_at: '2026-07-01T08:00:05.000Z',
+  tags: [],
   url: null,
   ...over,
 })

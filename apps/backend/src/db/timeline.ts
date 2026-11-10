@@ -43,6 +43,8 @@ export interface TimelineEntryRecord {
   boosted_by_actor_uri: string | null
   boosted_by_handle: string | null
   boosted_by_display_name: string | null
+  /** The post's hashtags, lowercase without `#`. */
+  tags: string[]
 }
 
 export interface TimelineEntryInput {
@@ -67,6 +69,7 @@ export interface TimelineEntryInput {
   boosted_by_actor_uri?: string | null
   boosted_by_handle?: string | null
   boosted_by_display_name?: string | null
+  tags?: string[]
 }
 
 /** Opaque keyset cursor: the last row's `(published_at, id)`. */
@@ -97,7 +100,7 @@ const KEEP_STRUCTURED_SQL = (incoming: string, current: string): string =>
         ELSE ${current} END`
 
 const TIMELINE_COLUMNS =
-  'id, object_uri, actor_uri, handle, display_name, avatar_url, content, url, published_at, received_at, in_reply_to_uri, mentions_me, structured, images, boost_of_uri, boosted_by_actor_uri, boosted_by_handle, boosted_by_display_name'
+  'id, object_uri, actor_uri, handle, display_name, avatar_url, content, url, published_at, received_at, in_reply_to_uri, mentions_me, structured, images, boost_of_uri, boosted_by_actor_uri, boosted_by_handle, boosted_by_display_name, tags'
 
 /**
  * Insert or update a received post by `object_uri`. A re-delivered or edited post
@@ -117,8 +120,8 @@ export const upsertTimelineEntry = async (
     user,
     `INSERT INTO timeline_entry
        (object_uri, actor_uri, handle, display_name, avatar_url, content, url, published_at, in_reply_to_uri, mentions_me, reply_checked_at, structured, images,
-        boost_of_uri, boosted_by_actor_uri, boosted_by_handle, boosted_by_display_name)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), $11, $12, $13, $14, $15, $16)
+        boost_of_uri, boosted_by_actor_uri, boosted_by_handle, boosted_by_display_name, tags)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), $11, $12, $13, $14, $15, $16, $17)
      ON CONFLICT (object_uri)
      DO UPDATE SET actor_uri = EXCLUDED.actor_uri,
                    handle = EXCLUDED.handle,
@@ -146,7 +149,8 @@ export const upsertTimelineEntry = async (
                    boost_of_uri = EXCLUDED.boost_of_uri,
                    boosted_by_actor_uri = EXCLUDED.boosted_by_actor_uri,
                    boosted_by_handle = EXCLUDED.boosted_by_handle,
-                   boosted_by_display_name = EXCLUDED.boosted_by_display_name
+                   boosted_by_display_name = EXCLUDED.boosted_by_display_name,
+                   tags = EXCLUDED.tags
      RETURNING ${TIMELINE_COLUMNS}, (xmax = 0) AS inserted`,
     [
       input.object_uri,
@@ -165,6 +169,7 @@ export const upsertTimelineEntry = async (
       input.boosted_by_actor_uri ?? null,
       input.boosted_by_handle ?? null,
       input.boosted_by_display_name ?? null,
+      input.tags ?? [],
     ],
   )
   return result.rows[0]
@@ -339,12 +344,14 @@ export const listTimelineEntries = async (
   limit: number,
   before?: TimelineCursor,
   replies?: TimelineReplyFilter,
+  tag?: string | null,
 ): Promise<TimelinePageRow[]> => {
   const result = await query<TimelinePageRow>(
     user,
     `SELECT ${TIMELINE_COLUMNS}, published_at::text AS cursor_ts FROM timeline_entry
      WHERE ($1::timestamptz IS NULL OR (published_at, id) < ($1::timestamptz, $2::uuid))
        AND ${timelineReplyFilterSql('$4', '$5')}
+       AND ($6::text IS NULL OR tags @> ARRAY[$6::text])
      ORDER BY published_at DESC, id DESC
      LIMIT $3`,
     [
@@ -353,6 +360,7 @@ export const listTimelineEntries = async (
       limit,
       replies?.show_replies ?? true,
       ownObjectPattern(replies),
+      tag ?? null,
     ],
   )
   return result.rows

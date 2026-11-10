@@ -1,6 +1,6 @@
-import type { FeedReactionKind, FeedStructuredPost } from '@aurboda/api-spec'
 import type { Actor } from '@fedify/fedify/vocab'
 
+import { type FeedReactionKind, type FeedStructuredPost, normalizeTags } from '@aurboda/api-spec'
 import {
   type Context,
   createFederation,
@@ -105,6 +105,7 @@ import { temporalInstantToDate } from './temporal-interop.ts'
 import { capabilityTokenFrom, createAurbodaEnricher } from './timeline-enrich.ts'
 import {
   extractNoteImages,
+  noteHashtags,
   noteMentionsActor,
   noteToTimelineInput,
   type TimelineAuthor,
@@ -266,11 +267,14 @@ export const ingestNoteForRecipient = async (
   // the web can render a native chart in place of the image. Keyed on the NOTE's
   // id — on a boost card `object_uri` is the Announce id, which no peer serves.
   const structured = await enrich(input.boost_of_uri ?? input.object_uri, capabilityTokenFrom(images))
+  const declaredTags = await noteHashtags(note)
+  const tags = boost?.tag == null ? declaredTags : normalizeTags([boost.tag, ...declaredTags])
   const { id, inserted } = await upsertTimelineEntry(user, {
     ...input,
     images,
     mentions_me: mentionsMe,
     structured,
+    tags,
   })
   if (input.boost_of_uri == null) await deleteBoostCardsOf(user, input.object_uri)
   if (inserted && onNewEntry != null && (await isVisibleToReader(user, id, origin))) onNewEntry(user)
@@ -459,6 +463,7 @@ const ingestBoostedNote = async (
       announce_uri: valid.announceUri,
       display_name: booster.display_name,
       handle: booster.handle,
+      tag: booster.tag,
       published_at: announce.published == null ? new Date() : temporalInstantToDate(announce.published),
     })
   } catch (error) {

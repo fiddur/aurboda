@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 import type { TimelineCursor, TimelinePageRow } from '../db/index.ts'
 
@@ -24,6 +24,7 @@ const record = (over: Partial<TimelinePageRow> = {}): TimelinePageRow => ({
   published_at: new Date('2026-07-01T08:00:00.000Z'),
   received_at: new Date('2026-07-01T08:00:05.000Z'),
   structured: null,
+  tags: [],
   url: 'https://remote.example/@alice/1',
   ...over,
 })
@@ -41,6 +42,7 @@ describe('serializeTimelineEntry', () => {
       object_uri: 'https://remote.example/notes/1',
       published_at: '2026-07-01T08:00:00.000Z',
       received_at: '2026-07-01T08:00:05.000Z',
+      tags: [],
       url: 'https://remote.example/@alice/1',
     })
     // A top-level post carries no reply fields at all.
@@ -96,6 +98,29 @@ describe('serializeTimelineEntry', () => {
   })
 })
 
+describe('serializeTimelineEntry hashtags', () => {
+  const boost = record({
+    boost_of_uri: 'https://remote.example/notes/1',
+    boosted_by_actor_uri: 'https://tags.pub/user/running',
+    boosted_by_display_name: '#running',
+    boosted_by_handle: '@running@tags.pub',
+    object_uri: 'https://tags.pub/activities/1',
+    tags: ['running', 'aurboda'],
+  })
+
+  test('passes the stored tags through', () => {
+    expect(serializeTimelineEntry(boost).tags).toEqual(['running', 'aurboda'])
+  })
+
+  test('sets boosted_by.tag when the booster is a followed tag actor', () => {
+    const tagByBooster = new Map([['https://tags.pub/user/running', 'running']])
+    expect(serializeTimelineEntry(boost, undefined, undefined, tagByBooster).boosted_by?.tag).toBe('running')
+    expect(serializeTimelineEntry(boost, undefined, undefined, new Map()).boosted_by).not.toHaveProperty(
+      'tag',
+    )
+  })
+})
+
 describe('getTimelinePage', () => {
   const rows = (n: number): TimelinePageRow[] =>
     Array.from({ length: n }, (_, i) =>
@@ -123,6 +148,7 @@ describe('getTimelinePage', () => {
         calls.push(uris)
         return [{ kind: 'announce', object_uri: 'https://remote.example/notes/2' }]
       },
+      fetchTagFollows: async () => [],
     })
     // ONE query for the whole page, and the boost card is looked up by the
     // original Note's id, not its Announce id.
@@ -233,5 +259,37 @@ describe('getTimelinePage', () => {
       fetchReactions: async () => [],
     })
     expect(received).toBeUndefined()
+  })
+
+  test('forwards the tag filter to the fetcher and marks tag-actor boosts', async () => {
+    let seenTag: unknown
+    const page = await getTimelinePage('user', 20, undefined, {
+      fetchEntries: async (_u, _l, _c, _r, tag) => {
+        seenTag = tag
+        return [
+          record({
+            boost_of_uri: 'https://remote.example/notes/1',
+            boosted_by_actor_uri: 'https://tags.pub/user/running',
+            object_uri: 'https://tags.pub/activities/1',
+            tags: ['running'],
+          }),
+        ]
+      },
+      fetchReactions: async () => [],
+      fetchTagFollows: async () => [{ actor_uri: 'https://tags.pub/user/running', tag: 'running' }],
+      tag: 'running',
+    })
+    expect(seenTag).toBe('running')
+    expect(page.entries[0].boosted_by?.tag).toBe('running')
+  })
+
+  test('skips the tag-follow lookup when the page has no boost cards', async () => {
+    const fetchTagFollows = vi.fn(async () => [])
+    await getTimelinePage('user', 20, undefined, {
+      fetchEntries: async () => rows(2),
+      fetchReactions: async () => [],
+      fetchTagFollows,
+    })
+    expect(fetchTagFollows).not.toHaveBeenCalled()
   })
 })

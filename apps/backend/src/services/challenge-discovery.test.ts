@@ -48,6 +48,7 @@ const followee = (actorUri: string, overrides: Partial<FeedFollowingRecord> = {}
   inbox_uri: `${actorUri}/inbox`,
   notify_on_post: true,
   shared_inbox_uri: null,
+  tag: null,
   ...overrides,
 })
 
