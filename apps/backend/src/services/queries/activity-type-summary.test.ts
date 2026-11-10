@@ -2,7 +2,7 @@ import type { ActivityTypeDefinition } from '@aurboda/api-spec'
 
 import { describe, expect, test, vi } from 'vitest'
 
-import type { ActivityResult } from './types.ts'
+import type { MergedActivity } from '../../db/types.ts'
 
 import { type ActivityTypeSummaryDeps, getActivityTypeSummary } from './activity-type-summary.ts'
 
@@ -11,27 +11,29 @@ const activity = (
   minutes: number,
   data: Record<string, unknown> = {},
   activity_type = 'running',
-): ActivityResult => ({
+): MergedActivity => ({
   activity_type,
-  comments: [],
   data,
-  end_time: new Date(new Date(start).getTime() + minutes * 60000).toISOString(),
+  end_time: new Date(new Date(start).getTime() + minutes * 60000),
   source: 'garmin',
-  start_time: start,
+  start_time: new Date(start),
 })
 
+const categoryMap = new Map([['running', 'exercise']])
+
 const deps = (
-  activities: ActivityResult[],
+  activities: MergedActivity[],
   types: string[] = ['running'],
   displayName?: string,
 ): ActivityTypeSummaryDeps => ({
+  buildCategoryMap: vi.fn().mockResolvedValue(categoryMap),
   expandActivityTypes: vi.fn().mockResolvedValue(types),
+  getActivities: vi.fn().mockResolvedValue(activities),
   getActivityTypeDefinition: vi
     .fn()
     .mockResolvedValue(
       displayName === undefined ? null : ({ display_name: displayName } as ActivityTypeDefinition),
     ),
-  queryActivities: vi.fn().mockResolvedValue(activities),
 })
 
 const range = { end: '2026-10-31T23:59:59.999Z', start: '2026-10-01T00:00:00.000Z' }
@@ -43,12 +45,43 @@ describe('getActivityTypeSummary', () => {
     const summary = await getActivityTypeSummary('u', 'running', range, d)
 
     expect(summary).toMatchObject({ count: 2, total_minutes: 75 })
-    expect(d.queryActivities).toHaveBeenCalledWith(
+    expect(d.getActivities).toHaveBeenCalledWith(
       'u',
       ['running'],
       new Date(range.start),
       new Date(range.end),
+      undefined,
+      undefined,
+      categoryMap,
     )
+  })
+
+  test('expands the type once and queries the expanded types as they are', async () => {
+    const d = deps([], ['exercise', 'running', 'yoga'])
+
+    await getActivityTypeSummary('u', 'exercise', range, d)
+
+    expect(d.expandActivityTypes).toHaveBeenCalledTimes(1)
+    expect(d.expandActivityTypes).toHaveBeenCalledWith('u', ['exercise'])
+    expect(d.getActivities).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(d.getActivities).mock.calls[0]?.[1]).toEqual(['exercise', 'running', 'yoga'])
+  })
+
+  test('counts an open-ended session with zero minutes', async () => {
+    const open: MergedActivity = {
+      activity_type: 'running',
+      source: 'garmin',
+      start_time: new Date('2026-10-02T07:00:00Z'),
+    }
+
+    const summary = await getActivityTypeSummary(
+      'u',
+      'running',
+      range,
+      deps([open, activity('2026-10-05T07:00:00Z', 45)]),
+    )
+
+    expect(summary).toMatchObject({ count: 2, total_minutes: 45 })
   })
 
   test('sums distance and finds the best pace and the average speed', async () => {

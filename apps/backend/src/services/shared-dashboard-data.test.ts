@@ -3,9 +3,10 @@ import type { DashboardConfig, DashboardWidget } from '@aurboda/api-spec'
 import { percentChange } from '@aurboda/api-spec'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
+import type { MergedActivity } from '../db/types.ts'
 import type * as ActivityRecords from './activity-records.ts'
 
-vi.mock('../db/index.ts', () => ({ getAllActivityTypeNames: vi.fn() }))
+vi.mock('../db/index.ts', () => ({ getActivities: vi.fn(), getAllActivityTypeNames: vi.fn() }))
 vi.mock('./chart-data.ts', () => ({ getChartData: vi.fn() }))
 vi.mock('./trends.ts', () => ({ getTrend: vi.fn() }))
 vi.mock('./custom-metrics.ts', () => ({ getCustomMetrics: vi.fn().mockResolvedValue([]) }))
@@ -22,12 +23,12 @@ vi.mock('./correlations/baseline.ts', () => ({ getBaseline: vi.fn() }))
 vi.mock('./goals.ts', () => ({ getGoalsProgress: vi.fn() }))
 vi.mock('./latest-sleep.ts', () => ({ getLatestSleep: vi.fn() }))
 vi.mock('./queries/index.ts', () => ({
+  buildCategoryMap: vi.fn(),
   getActivityTypeSummary: vi.fn(),
   getPeriodSummary: vi.fn(),
   getPlacesSummary: vi.fn(),
   getTopApps: vi.fn(),
   getTopMedia: vi.fn(),
-  queryActivities: vi.fn(),
   queryMetrics: vi.fn(),
 }))
 
@@ -35,16 +36,16 @@ const { getChartData } = await import('./chart-data.ts')
 const { getTrend } = await import('./trends.ts')
 const { getActivityRecords } = await import('./activity-records.ts')
 const {
+  buildCategoryMap,
   getActivityTypeSummary,
   getPeriodSummary,
   getPlacesSummary,
   getTopApps,
   getTopMedia,
-  queryActivities,
 } = await import('./queries/index.ts')
 const { getBaseline } = await import('./correlations/baseline.ts')
 const { getLatestSleep } = await import('./latest-sleep.ts')
-const { getAllActivityTypeNames } = await import('../db/index.ts')
+const { getActivities, getAllActivityTypeNames } = await import('../db/index.ts')
 const { resolveDashboardData, resolvePeriodDashboard } = await import('./shared-dashboard-data.ts')
 
 const board = (widget: DashboardWidget): DashboardConfig => ({
@@ -254,10 +255,11 @@ describe('resolveDashboardData in a window', () => {
     vi.mocked(getChartData).mockReset()
     vi.mocked(getTrend).mockReset()
     vi.mocked(getPeriodSummary).mockReset()
-    vi.mocked(queryActivities).mockReset()
+    vi.mocked(getActivities).mockReset()
     vi.mocked(getBaseline).mockReset()
     vi.mocked(getLatestSleep).mockReset()
     vi.mocked(getAllActivityTypeNames).mockResolvedValue(['running', 'sleep'])
+    vi.mocked(buildCategoryMap).mockReset().mockResolvedValue(new Map())
   })
 
   test('a metric card reports the window and its change from the previous window', async () => {
@@ -291,16 +293,16 @@ describe('resolveDashboardData in a window', () => {
   })
 
   test('an activity summary counts both windows', async () => {
-    const run = (start: string, minutes: number) => ({
+    const run = (start: string, minutes: number): MergedActivity => ({
       activity_type: 'running',
-      end_time: new Date(new Date(start).getTime() + minutes * 60_000).toISOString(),
-      start_time: start,
+      end_time: new Date(new Date(start).getTime() + minutes * 60_000),
+      source: 'garmin',
+      start_time: new Date(start),
     })
-    vi.mocked(queryActivities).mockImplementation(
-      async (_user, _types, start) =>
-        (start.getTime() === october.start.getTime()
-          ? [run('2026-10-02T07:00:00Z', 30), run('2026-10-05T07:00:00Z', 60)]
-          : [run('2026-09-02T07:00:00Z', 45)]) as unknown as Awaited<ReturnType<typeof queryActivities>>,
+    vi.mocked(getActivities).mockImplementation(async (_user, _types, start) =>
+      start.getTime() === october.start.getTime()
+        ? [run('2026-10-02T07:00:00Z', 30), run('2026-10-05T07:00:00Z', 60)]
+        : [run('2026-09-02T07:00:00Z', 45)],
     )
     const summary: DashboardWidget = {
       config: { show_meditation: false, show_sleep: false },
@@ -318,7 +320,80 @@ describe('resolveDashboardData in a window', () => {
       },
       type: 'activity_summary',
     })
-    expect(vi.mocked(queryActivities).mock.calls[0]?.slice(2)).toEqual([october.start, lastMs(october.end)])
+    expect(vi.mocked(getActivities).mock.calls.map((c) => c.slice(2, 4))).toEqual([
+      [october.start, lastMs(october.end)],
+      [september.start, lastMs(september.end)],
+    ])
+  })
+
+  test('an activity summary counts sleep and meditation in both windows', async () => {
+    const session = (activity_type: string, start: string, minutes: number): MergedActivity => ({
+      activity_type,
+      end_time: new Date(new Date(start).getTime() + minutes * 60_000),
+      source: 'oura',
+      start_time: new Date(start),
+    })
+    vi.mocked(getActivities).mockImplementation(async (_user, _types, start) =>
+      start.getTime() === october.start.getTime()
+        ? [
+            session('sleep', '2026-10-01T23:00:00Z', 420),
+            session('sleep', '2026-10-02T23:00:00Z', 480),
+            session('meditation', '2026-10-03T07:00:00Z', 20),
+            session('screentime', '2026-10-03T09:00:00Z', 60),
+          ]
+        : [session('sleep', '2026-09-01T23:00:00Z', 360)],
+    )
+    const summary: DashboardWidget = { config: {}, id: 'summary', type: 'activity_summary' }
+
+    const data = await resolveDashboardData('alice', board(summary), { previous: september, window: october })
+
+    expect(data['summary']).toEqual({
+      data: {
+        exercise: { count: 0, previous_count: 0, previous_total_minutes: 0, total_minutes: 0 },
+        meditation: { count: 1, previous_count: 0, previous_total_minutes: 0, total_minutes: 20 },
+        sleep: { avg_hours: 7.5, count: 2, previous_avg_hours: 6, previous_count: 1 },
+      },
+      type: 'activity_summary',
+    })
+  })
+
+  test('an activity summary leaves out the bulk non-session types', async () => {
+    vi.mocked(getAllActivityTypeNames).mockResolvedValue([
+      'running',
+      'sleep',
+      'meditation',
+      'screentime',
+      'music_scrobble',
+      'location_visit',
+      'calendar_event',
+      'climbing_gym',
+      'breathwork',
+      'nap',
+      'sex',
+      'work_dev',
+    ])
+    const categoryMap = new Map([
+      ['calendar_event', 'other'],
+      ['breathwork', 'wellness'],
+      ['climbing_gym', 'exercise'],
+      ['nap', 'sleep_rest'],
+      ['screentime', 'productivity'],
+      ['sex', 'other'],
+      ['work_dev', 'productivity'],
+    ])
+    vi.mocked(buildCategoryMap).mockResolvedValue(categoryMap)
+    vi.mocked(getActivities).mockResolvedValue([])
+    const summary: DashboardWidget = { config: {}, id: 'summary', type: 'activity_summary' }
+
+    await resolveDashboardData('alice', board(summary), { window: october })
+
+    expect(buildCategoryMap).toHaveBeenCalledTimes(1)
+    expect(getActivities).toHaveBeenCalledTimes(1)
+    const [, types, , , , , map] = vi.mocked(getActivities).mock.calls[0]!
+    expect(map).toBe(categoryMap)
+    expect([...(types as string[])].sort()).toEqual(
+      ['breathwork', 'climbing_gym', 'meditation', 'nap', 'running', 'sex', 'sleep'].sort(),
+    )
   })
 
   test('an activity type card rolls up both windows', async () => {
