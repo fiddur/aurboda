@@ -29,8 +29,8 @@ export const createMediaRouter = (
     authMiddleware,
     validateQuery(topMediaQuerySchema),
     async (req, res) => {
-      const { by, end, limit, start } = req.query
-      const top = await getTop(req.user!, { end: new Date(end), start: new Date(start) }, by, limit)
+      const { by, end, limit, source, start } = req.query
+      const top = await getTop(req.user!, { end: new Date(end), start: new Date(start) }, by, limit, source)
       res.json({ data: top, success: true })
     },
   )

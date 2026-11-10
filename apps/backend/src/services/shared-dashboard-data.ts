@@ -413,12 +413,12 @@ const topListFigures = async (
   range: Range,
   tz: string,
 ): Promise<TopListFigures> => {
-  const { limit, source } = config
+  const { limit, media_source, source } = config
   switch (source) {
     case 'media_artist':
     case 'media_album':
     case 'media_track':
-      return topListFromMedia(await getTopMedia(user, range, mediaGrouping[source], limit))
+      return topListFromMedia(await getTopMedia(user, range, mediaGrouping[source], limit, media_source))
     case 'screentime_app':
       return topListFromApps(await getTopApps(user, range, limit), windowDays(range.start, range.end))
     case 'place':

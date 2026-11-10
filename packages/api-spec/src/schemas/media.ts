@@ -94,6 +94,10 @@ export const topMediaQuerySchema = z
       .max(50)
       .default(10)
       .meta({ description: 'Maximum number of entries to return (default 10)' }),
+    source: mediaPlaySourceSchema.optional().meta({
+      description:
+        'Only plays from this source: lastfm counts every Last.fm scrobble, mpris only the MPRIS logger; both when absent (an MPRIS play wins over its duplicate scrobble)',
+    }),
     start: iso8601DateTimeSchema.meta({ description: 'Start of the window (inclusive)' }),
   })
   .meta({ id: 'TopMediaQuery' })
