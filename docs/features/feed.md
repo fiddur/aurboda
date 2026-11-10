@@ -152,7 +152,8 @@ data · October 2026`), the note, then **one line per figure widget** in config 
   `Sleep 7.3 h` and `Meditation 3`, a record card as `Best e1RM 101.3 kg`, an activity type
   card as `Workouts 3 · 2h 10m · 15.0 km` (sleep as `Sleep 30 nights · avg 7h 30m`), a top
   list as `Music 3 plays — Artist A, Artist B`, the places card as
-  `Places 2 nights home, 1 away · 3 places` — and the link;
+  `Places 13 nights Hökås, 3 Lönnåsen, 2 elsewhere · 4 places` (the top three named places by
+  nights, then the nights elsewhere) — and the link;
   charts have no one-line form and are left to the structured payload, and quick links are
   never rendered. An Aurboda peer fetches the
   [structured payload](#native-charts-from-aurboda-peers-structured-enrichment) and draws

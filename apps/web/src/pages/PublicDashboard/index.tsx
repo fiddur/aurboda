@@ -29,6 +29,7 @@ import { CopyLinkButton, NativeShareButton } from '../../components/ShareControl
 import { ShareDashboardPeriodDialog } from '../../components/ShareDashboardPeriodDialog'
 import { useDashboardDraft } from '../../components/useDashboardDraft'
 import { usePeriodDashboard } from '../../components/usePeriodDashboard'
+import { useScrollRestore } from '../../components/useScrollRestore'
 import { PublicWidgetRenderer } from '../../components/widgets'
 import {
   fetchPublicResource,
@@ -52,7 +53,7 @@ function OwnerSharedDashboard({ username, slug }: { username: string; slug: stri
   const listQuery = useQuery({
     queryFn: listSharedDashboards,
     queryKey: ['sharedDashboards'],
-    refetchOnWindowFocus: !isEditing,
+    refetchOnWindowFocus: false,
     staleTime: 60 * 1000,
   })
 
@@ -143,6 +144,7 @@ function OwnerSharedDashboardBody({
 }) {
   const period = usePeriodDashboard(share.id, config, (key) => fetchSharedDashboardData(share.id, key))
   const [sharingPeriod, setSharingPeriod] = useState<string | null>(null)
+  useScrollRestore(share.id, period?.period)
   return (
     <>
       {period && <PeriodDashboardBar state={period} onShare={setSharingPeriod} />}
@@ -264,8 +266,10 @@ function VisitorDashboard({
     placeholderData: keepPreviousData,
     queryFn: () => fetchPublicResource(username, slug, selectedPeriod ?? undefined),
     queryKey: ['publicResource', username, slug, selectedPeriod],
+    refetchOnReconnect: false,
+    refetchOnWindowFocus: false,
     retry: false,
-    staleTime: 60 * 1000,
+    staleTime: Infinity,
   })
 
   const browsing: PeriodBrowsing | null = latest
@@ -278,6 +282,7 @@ function VisitorDashboard({
     : null
   const answered = periodQuery.data
   const shown = browsing && selectedPeriod !== null && answered && 'config' in answered ? answered : data
+  useScrollRestore(`${username}/${slug}`, shown.period)
 
   return (
     <ReadOnlyDashboard
@@ -290,6 +295,13 @@ function VisitorDashboard({
     />
   )
 }
+
+/** A published period dashboard shows a finished period, whose figures do not change while it is open. */
+const unlessPeriodDashboard = ({
+  state,
+}: {
+  state: { data?: Awaited<ReturnType<typeof fetchPublicResource>> }
+}): boolean => !(state.data && 'config' in state.data && state.data.period)
 
 /**
  * A challenge, or an exercise (whose owner edits it on the private exercise page), renders the same for
@@ -319,6 +331,8 @@ export function PublicResource() {
   const query = useQuery({
     queryFn: () => fetchPublicResource(username, slug),
     queryKey: ['publicResource', username, slug],
+    refetchOnReconnect: unlessPeriodDashboard,
+    refetchOnWindowFocus: unlessPeriodDashboard,
     retry: false,
     staleTime: 60 * 1000,
   })

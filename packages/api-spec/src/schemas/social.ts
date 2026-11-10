@@ -21,7 +21,7 @@ import { chartDataBreakdownBucketSchema, chartDataBucketSchema } from './chart-d
 import { baseResponseSchema } from './common.ts'
 import { dashboardConfigSchema, dashboardPresetSchema, periodKeySchema } from './dashboard.ts'
 import { goalProgressSchema } from './goals.ts'
-import { placesSummarySchema } from './locations.ts'
+import { placesSummaryNightsSchema, placesSummarySchema } from './locations.ts'
 import { publicExerciseListItemSchema } from './shared-exercises.ts'
 import { latestSleepSchema } from './sleep.ts'
 import { trendHistoryPointSchema } from './trends.ts'
@@ -265,6 +265,10 @@ export const placesCardDataSchema = placesSummarySchema
   .extend({
     previous_distinct_places: previousFigure('the number of distinct places'),
     previous_nights_away: previousFigure('the nights away'),
+    previous_nights_by_place: z.array(placesSummaryNightsSchema).optional().meta({
+      description: 'On a period dashboard: the nights per named place in the previous calendar period',
+    }),
+    previous_nights_elsewhere: previousFigure('the nights elsewhere'),
     previous_visits: previousFigure('the number of visits'),
   })
   .meta({ id: 'PlacesCardData' })

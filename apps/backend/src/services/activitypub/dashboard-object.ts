@@ -135,16 +135,24 @@ export const topListLines = (
   ]
 }
 
+const NIGHT_PLACES = 3
+
 export const placesLines = (title: string | undefined, widgetData: WidgetData | undefined): string[] => {
   const data = widgetData?.type === 'places_card' ? widgetData.data : null
-  if (data === null || (data.visits === 0 && data.nights_home === 0 && data.nights_away === 0)) return []
+  if (data === null) return []
+  const nights = [
+    ...data.nights_by_place.slice(0, NIGHT_PLACES),
+    ...(data.nights_elsewhere > 0 ? [{ name: 'elsewhere', nights: data.nights_elsewhere }] : []),
+  ].map(
+    ({ name, nights: count }, i) =>
+      `${count}${i === 0 ? ` ${plural(count, 'night', 'nights')}` : ''} ${name}`,
+  )
+  if (nights.length === 0 && data.visits === 0) return []
   const distinct =
     data.distinct_places > 0
-      ? ` · ${data.distinct_places} ${plural(data.distinct_places, 'place', 'places')}${figureChange(data.distinct_places, data.previous_distinct_places)}`
+      ? `${data.distinct_places} ${plural(data.distinct_places, 'place', 'places')}${figureChange(data.distinct_places, data.previous_distinct_places)}`
       : ''
-  return [
-    `${title ?? 'Places'} ${data.nights_home} ${plural(data.nights_home, 'night', 'nights')} home, ${data.nights_away} away${distinct}`,
-  ]
+  return [`${title ?? 'Places'} ${[nights.join(', '), distinct].filter((part) => part !== '').join(' · ')}`]
 }
 
 /**

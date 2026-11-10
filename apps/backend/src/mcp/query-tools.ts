@@ -495,11 +495,12 @@ timestamps but with distinct overnight_date values.`,
 
   server.tool(
     'get_places_summary',
-    `Visits to all named and detected places in a time range: nights at home and nights away
-(overnight stays, as query_overnight_stays detects them, at home_location — default "Home",
-case-insensitive — or anywhere else; a night without a detectable stay counts as neither),
-the number of distinct places, the number of visits and the five most visited places with
-their visits and hours.`,
+    `Where the nights of a time range were spent and the named places visited. Each night (by its
+evening date in tz) goes to the place the user was at 03:00 the next morning, a phone at rest
+included: nights per named place, nights elsewhere (not a named location), nights without location
+data, and nights at home (home_location, default "Home", case-insensitive) and away. Also the
+number of distinct named places, the visits to them (fragments of one stay count once) and the five
+named places with the most nights, with their nights, visits and hours.`,
     { ...placesSummaryQuerySchema.shape },
     async ({ end, home_location, start, tz }) => {
       const summary = await getPlacesSummary(user, {

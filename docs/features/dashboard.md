@@ -69,7 +69,7 @@ A summary of the most recent sleep that ended within the last 36 hours, for a qu
 
 ### Activity Summary
 
-Shows workout, sleep, and meditation statistics for a configurable recent period. Each category displays as a colored sub-card with an icon, a primary value (count or average), and a secondary detail line (total minutes or nights tracked). Individual categories can be toggled off.
+Shows workout, sleep, and meditation statistics for a configurable recent period. Each category displays as a colored sub-card with an icon, a primary value (count or average), and a secondary detail line (total minutes or nights tracked). Individual categories can be toggled off. Each category is the roll-up of the `exercise`, `meditation` or `sleep` activity type with its subtypes (so naps count as sleep), the same figures an [activity card](#activity-card) of that type shows for the same window; a hidden category is not queried.
 
 **Configuration:** Lookback period (1-30 days, default 7), toggle for each category (workouts, sleep, meditation).
 
@@ -192,15 +192,16 @@ metrics section's add-widget dialog (source, plays from, limit, title) or throug
 
 ### Places Card
 
-Nights at home, nights away, distinct places and visits over the card's window, with changes against
-the previous period for the last three on a period dashboard, then the five most visited places. A
-night counts as away when there was an overnight stay at a named or detected place other than home; a
-night without a detectable stay counts as neither (see [Places summary](places.md#places-summary)).
+Where the nights of the card's window were spent: one row per named place with its nights, then the
+nights elsewhere (at a place that is not a named location) and the nights without location data, then
+the number of distinct named places, with changes against the previous period on a period dashboard
+(the nights per place, the nights elsewhere and the distinct places). Below them, the five named places
+with the most nights and the hours spent at each. A night goes to the place the user was at 03:00 the
+next morning, a phone at rest included (see [Places summary](places.md#places-summary)).
 
-**Configuration:** optional `home_location` (the place that counts as home, default `Home`, matched
-case-insensitively), optional `lookback_days` (default 30; a period dashboard uses its period) and
-optional `title` (default "Places"). Data comes from `GET /locations/places-summary` (MCP:
-`get_places_summary`).
+**Configuration:** optional `lookback_days` (default 30; a period dashboard uses its period) and
+optional `title` (default "Places"). The schema still accepts `home_location`, which the editor no
+longer offers. Data comes from `GET /locations/places-summary` (MCP: `get_places_summary`).
 
 ### Correlation Impact
 
@@ -258,8 +259,15 @@ widget renders against that one window, ignoring the lookbacks in its configurat
   activity summary carries `previous_count`, `previous_total_minutes` and `previous_avg_hours`; an
   activity card carries `previous_count`, `previous_total_minutes`, `previous_distance_km` and
   `previous_sleep_avg_minutes`; a top list carries `previous_total`; a places card carries
-  `previous_nights_away`, `previous_distinct_places` and `previous_visits`; HR zones carry
+  `previous_nights_by_place`, `previous_nights_elsewhere`, `previous_nights_away`,
+  `previous_distinct_places` and `previous_visits`; HR zones carry
   `previous_avg_seconds`.
+- **Loaded once.** A finished period's figures only change when the dashboard's config does (saving
+  it reloads them), so the web app does not refetch a period dashboard when its tab regains focus
+  or the network comes back. The last few answers are kept in the tab's `sessionStorage`, so a tab
+  the browser discarded in the background reopens without waiting for the server — an answer for
+  "the latest period" only on the day it was fetched — and the scroll position per dashboard and
+  period is restored with it. Logging out clears them.
 - **Baselines.** The 7- and 30-day HRV and resting HR baseline cards become the period average of
   `hrv_rmssd` and `resting_heart_rate`.
 - **Widgets that do not apply.** **Last night** and **Goal progress** have no meaning for a past
@@ -290,7 +298,12 @@ Click the pencil icon next to the "Dashboard" title to enter edit mode.
 
 - **Add a widget**: Click the "+ Add Widget" placeholder in any section. A dialog opens showing the widget types compatible with that section. Select a type, configure it (e.g., pick a metric, set a lookback period), and confirm.
 - **Remove a widget**: Click the X button on any widget.
-- **Reorder widgets**: Use the up/down arrows on each widget to move it within its section.
+- **Move widgets**: On a desktop (a mouse or trackpad), grab a widget by its grip handle and drop it
+  where it should go: an accent bar shows whether it lands before or after the card under the pointer
+  (beside it in a multi-column grid, above or below it in a single column), and a dashed outline marks
+  a section it would be added to the end of. Widgets can be dropped into another section, including an
+  empty one, but not into a collapsed one. The up/down arrows on each widget move it one step within
+  its section, and are the way to reorder on touch devices, where the grip is hidden.
 - **Add a section**: Click "Add Section" at the bottom. Give it a title and choose a type (Metrics, Charts, or Links).
 - **Rename a section**: Click the pencil icon next to a section title, edit the title inline, and press Enter (or click away) to save. Press Escape to cancel.
 - **Delete a section**: Click the trash icon next to a section title. Confirms before deleting the section and all its widgets.
@@ -377,8 +390,9 @@ widgets render.
 
 ## Known Limitations
 
-- Widgets cannot be moved between sections -- only reordered within a section.
-- There is no drag-and-drop; reordering uses up/down arrow buttons.
+- On touch devices widgets can only be reordered within a section, with the arrow buttons;
+  moving one to another section needs a mouse or trackpad.
+- Sections themselves cannot be reordered.
 - The dashboard layout is managed through the web UI only; MCP can read its data
   (`get_dashboard_data`) but not edit the home dashboard.
 - Sparkline cards fetch up to 365 days of time-series data, which may be slow for very high-frequency metrics like heart rate. Use metric cards for those.

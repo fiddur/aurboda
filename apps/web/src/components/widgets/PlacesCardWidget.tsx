@@ -50,20 +50,36 @@ const Body = ({ data, loading }: { data: PlacesCardData | null; loading: boolean
       </div>
     )
   }
+  const nightsByPlace = data.nights_by_place ?? []
+  const previousNights = (name: string): number | undefined =>
+    data.previous_nights_by_place && (data.previous_nights_by_place.find((p) => p.name === name)?.nights ?? 0)
   return (
     <>
       <div class="activity-type-card-rows">
-        <Figure label="Nights home" current={data.nights_home} />
-        <Figure label="Nights away" current={data.nights_away} previous={data.previous_nights_away} />
+        {nightsByPlace.map((place) => (
+          <Figure
+            key={place.name}
+            label={`Nights ${place.name}`}
+            current={place.nights}
+            previous={previousNights(place.name)}
+          />
+        ))}
+        {(data.nights_elsewhere > 0 || (data.previous_nights_elsewhere ?? 0) > 0) && (
+          <Figure
+            label="Nights elsewhere"
+            current={data.nights_elsewhere}
+            previous={data.previous_nights_elsewhere}
+          />
+        )}
+        {data.nights_no_data > 0 && <Figure label="No location data" current={data.nights_no_data} />}
         <Figure label="Places" current={data.distinct_places} previous={data.previous_distinct_places} />
-        <Figure label="Visits" current={data.visits} previous={data.previous_visits} />
       </div>
       {data.places.length > 0 && (
         <ol class="top-list-card-items">
           {data.places.map((place) => (
             <li key={place.name} class="activity-type-card-row">
               <span class="activity-type-card-label top-list-card-name">{place.name}</span>
-              <span class="activity-type-card-value">{formatNumber(place.visits)}</span>
+              <span class="activity-type-card-value">{formatNumber(place.hours)} h</span>
             </li>
           ))}
         </ol>

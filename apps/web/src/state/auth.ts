@@ -8,6 +8,7 @@ import { API_URL } from '../config'
 import { readNativeAuth } from '../embed'
 import { apiErrorText } from '../utils/profile'
 import { clearCachedDashboards } from './dashboardCache'
+import { clearPeriodData } from './periodDataCache'
 
 export type SignupMode = 'open' | 'invite_only' | 'closed'
 
@@ -120,6 +121,7 @@ export const signup = async (
 
 export const logout = () => {
   clearCachedDashboards(() => localStorage)
+  clearPeriodData(() => sessionStorage)
   auth.value = {}
 }
 

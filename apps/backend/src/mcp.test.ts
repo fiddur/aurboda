@@ -1163,7 +1163,10 @@ describe('MCP Server', () => {
       vi.mocked(queries.getPlacesSummary).mockResolvedValue({
         distinct_places: 3,
         nights_away: 1,
+        nights_by_place: [{ name: 'Home', nights: 30 }],
+        nights_elsewhere: 1,
         nights_home: 30,
+        nights_no_data: 0,
         places: [],
         visits: 12,
       })

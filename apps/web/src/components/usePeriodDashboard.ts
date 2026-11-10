@@ -2,7 +2,16 @@ import type { DashboardConfig, DashboardDataResponse, WidgetDataMap } from '@aur
 
 import { periodGranularityOf, periodLabel } from '@aurboda/api-spec'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { useEffect, useState } from 'preact/hooks'
+import { useEffect, useMemo, useState } from 'preact/hooks'
+
+import { auth } from '../state/auth'
+import {
+  type CachedPeriodData,
+  configVersion,
+  type PeriodDataSlot,
+  readPeriodData,
+  writePeriodData,
+} from '../state/periodDataCache'
 
 export interface PeriodDashboardState {
   /** The shown period key, once the data says which. */
@@ -17,9 +26,41 @@ export interface PeriodDashboardState {
   select: (key: string) => void
 }
 
+const sessionStore = () => window.sessionStorage
+
+const periodSlot = (
+  boardId: string,
+  granularity: string,
+  period: string | null,
+  version: string,
+): PeriodDataSlot => ({ boardId, granularity, period, version, viewer: auth.value.user ?? '' })
+
+/** Seeds a slot's query from sessionStorage, read at most once per query, and stores what it fetches. */
+const sessionCached = (slot: PeriodDataSlot | null, fetch: () => Promise<DashboardDataResponse>) => {
+  let read: { value: CachedPeriodData | undefined } | undefined
+  const stored = () => {
+    read ??= { value: slot ? readPeriodData(sessionStore, slot, Date.now()) : undefined }
+    return read.value
+  }
+  return {
+    initialData: () => stored()?.data,
+    initialDataUpdatedAt: () => stored()?.savedAt,
+    queryFn: async () => {
+      const data = await fetch()
+      if (slot) writePeriodData(sessionStore, slot, data, Date.now())
+      return data
+    },
+  }
+}
+
 /**
  * The server-resolved data of a period dashboard, with the selected period (null = the latest finished
  * one). Inactive (null) for a rolling dashboard, whose widgets fetch their own data.
+ *
+ * A finished period's figures only change with the config, whose saves invalidate this query, so it
+ * never goes stale by itself and does not refetch on focus or reconnect: the resolve takes seconds and
+ * would blank the board. The last answers are kept in sessionStorage so a discarded, reloaded tab
+ * renders at once.
  */
 export const usePeriodDashboard = (
   boardId: string,
@@ -37,12 +78,17 @@ export const usePeriodDashboard = (
 
   const current = selected !== null && periodGranularityOf(selected) === granularity ? selected : null
 
+  const version = useMemo(() => configVersion(config), [config])
+  const slot = granularity === null ? null : periodSlot(boardId, granularity, current, version)
+
   const query = useQuery({
-    enabled: granularity !== null,
+    enabled: slot !== null,
+    ...sessionCached(slot, () => fetchData(current ?? undefined)),
     placeholderData: keepPreviousData,
-    queryFn: () => fetchData(current ?? undefined),
     queryKey: ['dashboardData', boardId, granularity, current],
-    staleTime: 5 * 60 * 1000,
+    refetchOnReconnect: false,
+    refetchOnWindowFocus: false,
+    staleTime: Infinity,
   })
 
   const answered = query.data?.period ?? null
