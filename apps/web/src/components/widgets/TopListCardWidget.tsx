@@ -77,7 +77,12 @@ const fetchTopList = async (config: TopListCardConfig, start: Date, end: Date) =
     case 'media_artist':
     case 'media_album':
     case 'media_track': {
-      const top = await fetchTopMedia({ ...range, by: mediaGrouping[config.source], limit: config.limit })
+      const top = await fetchTopMedia({
+        ...range,
+        by: mediaGrouping[config.source],
+        limit: config.limit,
+        source: config.media_source,
+      })
       return top && topListFromMedia(top)
     }
     case 'screentime_app': {
@@ -92,14 +97,14 @@ const fetchTopList = async (config: TopListCardConfig, start: Date, end: Date) =
 }
 
 export function TopListCardWidget({ config }: { config: TopListCardConfig }) {
-  const { limit, lookback_days = 30, source } = config
+  const { limit, lookback_days = 30, media_source, source } = config
 
   const query = useQuery({
     queryFn: () => {
       const end = new Date()
       return fetchTopList(config, new Date(end.getTime() - lookback_days * DAY_MS), end)
     },
-    queryKey: ['top-list-card', source, limit, lookback_days],
+    queryKey: ['top-list-card', source, media_source, limit, lookback_days],
     ...HEAVY_QUERY_OPTIONS,
     staleTime: 5 * 60 * 1000,
   })

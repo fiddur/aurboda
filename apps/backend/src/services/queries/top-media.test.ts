@@ -40,7 +40,7 @@ describe('getTopMedia', () => {
   test('ranks artists by plays, counting the plays without an artist in the total only', async () => {
     const d = deps(plays)
 
-    const top = await getTopMedia('u', window, 'artist', 2, d)
+    const top = await getTopMedia('u', window, 'artist', 2, undefined, d)
 
     expect(top).toEqual({
       distinct: 3,
@@ -50,11 +50,19 @@ describe('getTopMedia', () => {
       ],
       total_plays: 6,
     })
-    expect(d.getMediaPlays).toHaveBeenCalledWith('u', window)
+    expect(d.getMediaPlays).toHaveBeenCalledWith('u', window, { source: undefined })
+  })
+
+  test('passes the source filter to the play query', async () => {
+    const d = deps(plays)
+
+    await getTopMedia('u', window, 'artist', 3, 'lastfm', d)
+
+    expect(d.getMediaPlays).toHaveBeenCalledWith('u', window, { source: 'lastfm' })
   })
 
   test('groups albums under their artist and skips plays without an album', async () => {
-    const top = await getTopMedia('u', window, 'album', 10, deps(plays))
+    const top = await getTopMedia('u', window, 'album', 10, undefined, deps(plays))
 
     expect(top).toEqual({
       distinct: 2,
@@ -67,14 +75,14 @@ describe('getTopMedia', () => {
   })
 
   test('groups tracks under their artist', async () => {
-    const top = await getTopMedia('u', window, 'track', 1, deps(plays))
+    const top = await getTopMedia('u', window, 'track', 1, undefined, deps(plays))
 
     expect(top.items).toEqual([{ name: 'Bach — Toccata', plays: 2 }])
     expect(top.distinct).toBe(5)
   })
 
   test('is empty without plays', async () => {
-    expect(await getTopMedia('u', window, 'artist', 3, deps([]))).toEqual({
+    expect(await getTopMedia('u', window, 'artist', 3, undefined, deps([]))).toEqual({
       distinct: 0,
       items: [],
       total_plays: 0,
