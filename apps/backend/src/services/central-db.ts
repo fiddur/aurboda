@@ -32,6 +32,12 @@ import {
   type SharedNutrientRecommendationsApi,
 } from './central-nutrient-recommendations.ts'
 import {
+  createRelaysApi,
+  CREATE_INSTANCE_ACTOR_TABLE,
+  CREATE_RELAYS_TABLE,
+  type RelaysApi,
+} from './central-relays.ts'
+import {
   ALTER_USER_ACCOUNTS_PLAN_COLUMNS,
   ALTER_USER_ACCOUNTS_PROFILE_COLUMNS,
   createUserAccountsApi,
@@ -135,6 +141,7 @@ export interface CentralDb
     SharedFoodItemsApi,
     CentralImportJobsApi,
     DeletedUsernamesApi,
+    RelaysApi,
     SharedNutrientRecommendationsApi,
     UserAccountsApi,
     UserUsageApi {
@@ -476,6 +483,9 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       await client.query(CREATE_USER_USAGE_DAILY_TABLE)
       for (const stmt of CREATE_USER_USAGE_DAILY_INDEXES) await client.query(stmt)
 
+      await client.query(CREATE_INSTANCE_ACTOR_TABLE)
+      await client.query(CREATE_RELAYS_TABLE)
+
       await client.query(CREATE_SHARED_NUTRIENT_RECOMMENDATIONS_TABLE)
       await deps.withTransaction((tx) => seedSharedNutrientRecommendations(tx))
 
@@ -489,6 +499,7 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
     ...createSharedFoodItemsApi(getClient),
     ...createCentralImportJobsApi(getClient),
     ...createDeletedUsernamesApi(getClient, deps.withTransaction),
+    ...createRelaysApi(getClient),
     ...createSharedNutrientRecommendationsApi(getClient),
     ...createUserAccountsApi(getClient),
     ...createUserUsageApi(getClient),

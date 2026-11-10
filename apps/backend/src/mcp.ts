@@ -29,6 +29,7 @@ import type { FollowerActions } from './services/followers.ts'
 import type { FollowActions } from './services/following.ts'
 import type { NamedLocationsChanged } from './services/locations.ts'
 import type { SyncProvider } from './services/queries/index.ts'
+import type { RelayActions } from './services/relays.ts'
 import type { HrSettingsChanged, ProfileChanged } from './services/settings.ts'
 import type { StravaQueue } from './services/strava-queue.ts'
 import type { RetroEnrichTrigger } from './services/timeline-retro-enrich.ts'
@@ -38,6 +39,7 @@ import { registerAccountEmailTools } from './mcp/account-email-tools.ts'
 import { registerAccountPlanTools } from './mcp/account-plan-tools.ts'
 import { registerActivityTools } from './mcp/activity-tools.ts'
 import { registerActivityTypeTools } from './mcp/activity-type-tools.ts'
+import { registerAdminRelayTools } from './mcp/admin-relay-tools.ts'
 import { registerAdminUserTools } from './mcp/admin-user-tools.ts'
 import { registerAutoshareRuleTools } from './mcp/autoshare-rule-tools.ts'
 import { registerChallengeTools } from './mcp/challenge-tools.ts'
@@ -139,6 +141,8 @@ interface McpDeps {
   onTrackWritten?: TrackWrittenCallback
   oura?: OuraClientType
   reactionActions?: ReactionActions
+  /** Relay subscriptions (`list_relays`, `add_relay`, `remove_relay`). */
+  relayActions?: RelayActions
   retroEnrichTimeline?: RetroEnrichTrigger
   requestDumpLink?: DumpLinkIssuer
   stravaQueue?: StravaQueue
@@ -188,6 +192,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     registerSensitivityTools(server, user, deps.centralDb)
     registerImportTools(server, user, deps.centralDb)
     if (deps.adminUsers) registerAdminUserTools(server, user, deps.centralDb, deps.adminUsers)
+    if (deps.relayActions) registerAdminRelayTools(server, user, deps.centralDb, deps.relayActions)
     if (deps.accountDeleter) registerAccountDeletionTools(server, user, deps.centralDb, deps.accountDeleter)
     if (deps.accountPlans) registerAccountPlanTools(server, user, deps.centralDb, deps.accountPlans)
     registerAccountEmailTools(server, user, deps.centralDb)

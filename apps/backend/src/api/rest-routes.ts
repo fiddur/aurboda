@@ -27,6 +27,7 @@ import type { InvitationAuth } from '../services/invitation.ts'
 import type { NamedLocationsChanged } from '../services/locations.ts'
 import type { OuraWebhookManager } from '../services/oura-webhook-manager.ts'
 import type { SyncProvider } from '../services/queries/index.ts'
+import type { RelayActions } from '../services/relays.ts'
 import type { HrSettingsChanged, ProfileChanged } from '../services/settings.ts'
 import type { TimelineHub } from '../services/timeline-hub.ts'
 import type { RetroEnrichTrigger } from '../services/timeline-retro-enrich.ts'
@@ -147,6 +148,7 @@ interface RestRoutesDeps {
   feedDeliver: FeedDeliver
   followActions: FollowActions
   followerActions: FollowerActions
+  relayActions: RelayActions
   /** Outbound like ⭐ / boost 🔄 toggles for the home timeline. */
   reactionActions: ReactionActions
   timelineHub: TimelineHub
@@ -186,6 +188,7 @@ export const mountRestRouters = ({
   feedDeliver,
   followActions,
   followerActions,
+  relayActions,
   reactionActions,
   onProfileChanged,
   onHrSettingsChanged,
@@ -361,6 +364,7 @@ export const mountRestRouters = ({
       ouraWebhookManager,
       accountDeleter,
       accountPlans,
+      relayActions,
     ),
   )
   httpd.use(

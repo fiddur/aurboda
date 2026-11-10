@@ -332,6 +332,17 @@ Canonical absolute URLs (actor id, inbox/outbox, object ids, WebFinger self-link
 always built from the configured public base (`WEB_HOST`) as **https**, so they stay
 correct behind the TLS-terminating proxy (which forwards over loopback http).
 
+**Instance actor and relays.** Besides the per-user actors, the server itself is an
+`Application` actor at `<public-base>/actor` (WebFinger `acct:<host>@<host>`, inbox at
+`/users/~actor/inbox`, shared inbox `/inbox`), whose key pair lives in the central database. It
+exists to subscribe to [relays](../admin.md#federation), which admins add in Admin Settings. Once
+a relay accepts, every `public` post's `Create`, `Update` and `Delete` is delivered to the relay's
+inbox too, signed by the author, as a separate best-effort leg of the fan-out (a dead relay never
+fails the followers delivery). Unlisted and followers-only posts, replies, likes, boosts and
+`Update{Person}` are not pushed. The instance actor answers only `Accept`/`Reject` of its own relay
+follows and a LitePub relay's follow-back; everything else delivered to it, including whatever a
+relay forwards, is dropped.
+
 ### Publishing & lifecycle delivery
 
 Sharing, editing, or unsharing a post federates the matching activity to the user's
@@ -546,7 +557,8 @@ you` whenever it also carries a Mention of you. (A reply to your own post alread
 mention, so that pair collapses to one marker.)
 
 The actor advertises a **following collection** (`/users/<username>/following`) listing only
-_accepted_ follows (a pending follow isn't a confirmed relationship yet). The followee's
+_accepted_ follows of people (a pending follow isn't a confirmed relationship yet; followed
+hashtags are left out, matching the people list the owner sees, and so is the count). The followee's
 inbox URIs are internal delivery details and are never exposed on the owner-facing API.
 
 ### Follower approval (inbound)
@@ -1272,6 +1284,10 @@ Owner-facing (authenticated, scoped to the caller):
 | `GET /feed/:postId/reactions`                     | Who favourited or boosted one of MY posts (newest first, max 100)                                                                                                                                            |
 | `GET /feed/:postId/replies`                       | The comments received under one of MY posts (the latest 100, oldest first), as full timeline entries — no network fetch                                                                                      |
 
+Admin-only: `GET /admin/relays`, `POST /admin/relays` (`{ url, style }`) and
+`DELETE /admin/relays/:id` manage the [relays](../admin.md#federation) public posts are pushed to
+(MCP `list_relays`, `add_relay`, `remove_relay`).
+
 Public / federation (unauthenticated):
 
 | Method & path                                                | Purpose                                                                                                                                                                                                                                                                  |
@@ -1300,9 +1316,10 @@ Public / federation (unauthenticated):
 | `GET /users/:username`                                       | Content-negotiated (RFC 9110, `Vary: Accept`): the actor document (`Person`) for an ActivityPub type, a wildcard or no `Accept`; a 302 to `/u/:username` when HTML is the best match (a browser, `text/*`); `406` when neither is acceptable; `404` for an unknown user  |
 | `GET /users/:username/outbox`                                | Public + unlisted posts as `Create` activities                                                                                                                                                                                                                           |
 | `GET /users/:username/followers`                             | The actor's followers collection                                                                                                                                                                                                                                         |
-| `GET /users/:username/following`                             | The actor's following collection (accepted follows only)                                                                                                                                                                                                                 |
+| `GET /users/:username/following`                             | The actor's following collection (accepted follows of people only; followed hashtags are left out)                                                                                                                                                                       |
 | `GET /users/:username/feed/:postId`                          | Content-negotiated like the actor: a single post's `Note` — an activity share or an article (or `410` Tombstone once deleted); a 302 to `/u/:username/posts/:postId` for a browser on any post id of an existing user                                                    |
 | `POST /users/:username/inbox` (+ `/inbox`)                   | Inbound `Follow` / `Undo{Follow}` / `Accept` / `Reject` (HTTP-Signature verified)                                                                                                                                                                                        |
+| `GET /actor`                                                 | The instance actor (`Application`) that subscribes to [relays](../admin.md#federation)                                                                                                                                                                                   |
 
 The actor's `icon` URL carries the avatar's upload time as a `?v=` version, and an avatar
 upload/removal delivers an `Update{Person}` to accepted followers — remote servers (Mastodon

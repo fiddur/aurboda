@@ -1,3 +1,5 @@
+import type { RelayStyle } from '@aurboda/api-spec'
+
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation } from 'preact-iso'
 import { useCallback, useState } from 'preact/hooks'
@@ -11,14 +13,24 @@ import {
   officialFeedSummary,
   parseUsernamesInput,
 } from '../../components/official-feed'
+import {
+  hasTagsPubRelay,
+  relayStateLabel,
+  relayStateTitle,
+  relayStyleLabel,
+  TAGS_PUB_RELAY,
+} from '../../components/relays'
 import { type SaveStatus, SaveStatusIndicator } from '../../components/SaveStatusIndicator'
 import { TagsInput } from '../../components/TagsInput'
 import '../../components/ShareActivityDialog.css'
 import {
+  addRelay,
   apiErrorMessage,
   fetchAdminSettings,
+  fetchRelays,
   generateInvitation,
   officialFeedPath,
+  removeRelay,
   updateAdminSettings,
 } from '../../state/api'
 import { auth, officialFeedEnabled } from '../../state/auth'
@@ -786,7 +798,101 @@ function FederationSection() {
           relay run by the Social Web Foundation. Empty resets it to tags.pub.
         </p>
       </div>
+      <RelaysField />
     </section>
+  )
+}
+
+function RelaysField() {
+  const queryClient = useQueryClient()
+  const { data: relays = [] } = useQuery({ queryFn: fetchRelays, queryKey: ['adminRelays'] })
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>({ status: 'idle' })
+  const [url, setUrl] = useState('')
+  const [style, setStyle] = useState<RelayStyle>('mastodon')
+
+  const run = useCallback(
+    async (action: () => Promise<unknown>, after?: () => void) => {
+      setSaveStatus({ status: 'saving' })
+      try {
+        await action()
+        await queryClient.invalidateQueries({ queryKey: ['adminRelays'] })
+        after?.()
+        setSaveStatus({ status: 'saved', time: new Date() })
+      } catch (err) {
+        setSaveStatus({ error: apiErrorMessage(err, getErrorMessage(err)), status: 'error' })
+      }
+    },
+    [queryClient],
+  )
+
+  const add = (body: { url: string; style: RelayStyle }) =>
+    run(
+      () => addRelay(body),
+      () => setUrl(''),
+    )
+
+  return (
+    <div class="form-field">
+      <div class="section-header-row">
+        <label for="relay-url">Relays</label>
+        <SaveStatusIndicator state={saveStatus} />
+      </div>
+      {relays.length > 0 && (
+        <ul class="relay-list">
+          {relays.map((relay) => (
+            <li key={relay.id} class="relay-row">
+              <span class="relay-url">{relay.url}</span>
+              <span class="relay-style">{relayStyleLabel(relay.style)}</span>
+              <span class={`relay-state relay-state-${relay.state}`} title={relayStateTitle(relay)}>
+                {relayStateLabel(relay.state)}
+                {relay.last_error != null && ' ⚠'}
+              </span>
+              <button type="button" class="clear-button" onClick={() => run(() => removeRelay(relay.id))}>
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div class="api-key-input-row">
+        <input
+          id="relay-url"
+          type="url"
+          value={url}
+          onInput={(e) => setUrl((e.target as HTMLInputElement).value)}
+          placeholder="https://relay.example/inbox"
+          autocapitalize="off"
+          spellcheck={false}
+        />
+        <select
+          aria-label="Relay style"
+          value={style}
+          onChange={(e) => setStyle((e.target as HTMLSelectElement).value as RelayStyle)}
+        >
+          <option value="mastodon">Mastodon</option>
+          <option value="litepub">LitePub</option>
+        </select>
+      </div>
+      <div class="relay-actions">
+        <button
+          type="button"
+          class="generate-button"
+          disabled={url.trim() === ''}
+          onClick={() => add({ style, url: url.trim() })}
+        >
+          Add relay
+        </button>
+        {!hasTagsPubRelay(relays) && (
+          <button type="button" class="generate-button" onClick={() => add(TAGS_PUB_RELAY)}>
+            Add the tags.pub relay
+          </button>
+        )}
+      </div>
+      <p class="field-description">
+        Public posts of every user on this server are pushed to accepted relays. A Mastodon-style relay takes
+        its inbox URL, a LitePub relay its actor URL. tags.pub is one-way: it takes posts and sends none back.
+      </p>
+    </div>
   )
 }
 

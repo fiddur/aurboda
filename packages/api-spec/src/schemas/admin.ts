@@ -453,3 +453,77 @@ export const deleteAccountBodySchema = z
   })
 
 export type DeleteAccountBody = z.infer<typeof deleteAccountBodySchema>
+
+export const relayStyles = ['mastodon', 'litepub'] as const
+
+export const relayStyleSchema = z.enum(relayStyles).meta({
+  description:
+    'How the relay is subscribed: mastodon (the URL is the relay inbox; a Follow of the Public collection) or litepub (the URL is the relay actor; a Follow of that actor, which follows back)',
+  id: 'RelayStyle',
+})
+
+export type RelayStyle = z.infer<typeof relayStyleSchema>
+
+export const relayStates = ['pending', 'accepted', 'rejected'] as const
+
+export const relayStateSchema = z.enum(relayStates).meta({
+  description: 'pending until the relay answers the Follow; only accepted relays receive posts',
+  id: 'RelayState',
+})
+
+export type RelayState = z.infer<typeof relayStateSchema>
+
+export const relaySchema = z
+  .object({
+    actor_uri: z
+      .string()
+      .nullable()
+      .meta({ description: "The relay's actor id; null for a mastodon relay until its Accept names it" }),
+    created_at: iso8601DateTimeSchema.meta({ description: 'When the relay was added' }),
+    id: z.string().uuid().meta({ description: 'Relay subscription id' }),
+    inbox_uri: z.string().meta({ description: 'The inbox public posts are delivered to' }),
+    last_error: z
+      .string()
+      .nullable()
+      .meta({ description: 'Why the last Follow could not be delivered; null when it was' }),
+    state: relayStateSchema,
+    style: relayStyleSchema,
+    updated_at: iso8601DateTimeSchema.meta({ description: 'Last state change' }),
+    url: z
+      .string()
+      .meta({ description: 'The URL the admin entered (inbox for mastodon, actor for litepub)' }),
+  })
+  .meta({
+    description: 'A fediverse relay this server pushes the public posts of every local user to',
+    id: 'Relay',
+  })
+
+export type Relay = z.infer<typeof relaySchema>
+
+export const addRelayBodySchema = z
+  .object({
+    style: relayStyleSchema.default('mastodon'),
+    url: z.string().url().meta({
+      description: 'https URL: the relay inbox (mastodon) or the relay actor (litepub)',
+      example: 'https://tags.pub/user/_____relay_____/inbox',
+    }),
+  })
+  .meta({ id: 'AddRelayBody' })
+
+export type AddRelayBody = z.infer<typeof addRelayBodySchema>
+
+export const relaysResponseSchema = baseResponseSchema
+  .extend({
+    relays: z.array(relaySchema).optional().meta({ description: 'Every relay, oldest first' }),
+  })
+  .meta({ id: 'RelaysResponse' })
+
+export type RelaysResponse = z.infer<typeof relaysResponseSchema>
+
+export const relayResponseSchema = baseResponseSchema
+  .extend({
+    relay: relaySchema.optional().meta({ description: 'The relay; absent on error' }),
+  })
+  .meta({ id: 'RelayResponse' })
+
+export type RelayResponse = z.infer<typeof relayResponseSchema>

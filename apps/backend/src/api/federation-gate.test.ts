@@ -8,6 +8,8 @@ import { gateFederation, isFederationRequest } from './federation-gate.ts'
 describe('isFederationRequest', () => {
   test.each([
     '/inbox',
+    '/actor',
+    '/users/~actor/inbox',
     '/users/alice',
     '/users/alice/inbox',
     '/users/alice/outbox',
@@ -31,6 +33,7 @@ describe('isFederationRequest', () => {
     '/u/alice', // SPA profile page — must NOT be captured (federation uses /users/)
     '/.well-known/assetlinks.json',
     '/.well-known/aurboda',
+    '/actors',
   ])('skips %s', (path) => {
     expect(isFederationRequest(path)).toBe(false)
   })

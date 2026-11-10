@@ -94,6 +94,13 @@ export interface FeedDeliveryDeps {
   origin: string
   /** Public API base, e.g. `https://aurboda.net/api` — image attachment URLs hang off this. */
   apiBaseUrl: string
+  /** The accepted relays, which also receive every public post. */
+  listRelayRecipients?: () => Promise<RelayRecipient[]>
+}
+
+export interface RelayRecipient {
+  id: URL
+  inboxId: URL
 }
 
 export interface DeliverablePost {
@@ -379,7 +386,7 @@ export const deliverFeedPost = async (
 ): Promise<void> => {
   const ctx = await deps.federation.createContext(new URL(deps.origin))
   const create = await buildFeedCreate(ctx, user, post, activity, deps.apiBaseUrl)
-  await ctx.sendActivity({ identifier: user }, 'followers', create)
+  await fanOut(deps, ctx, user, create, { toRelays: toRelays(post) })
 }
 
 export const deliverFeedUpdate = async (
@@ -390,7 +397,7 @@ export const deliverFeedUpdate = async (
 ): Promise<void> => {
   const ctx = await deps.federation.createContext(new URL(deps.origin))
   const update = await buildFeedUpdate(ctx, user, post, activity, deps.apiBaseUrl)
-  await ctx.sendActivity({ identifier: user }, 'followers', update)
+  await fanOut(deps, ctx, user, update, { toRelays: toRelays(post) })
 }
 
 export const deliverFeedDelete = async (
@@ -408,18 +415,16 @@ export const deliverFeedDelete = async (
   // reply to the inbox of the author it answered (neither need follow us), so
   // the Delete goes there too (#1074) — and, like Create/Update, independently
   // of the followers fan-out (#1079).
-  await sendToFollowersAndMentioned(
-    ctx,
-    user,
-    [
+  await fanOut(deps, ctx, user, del, {
+    mentions: [
       ...(post.challenge == null ? [] : challengeMentions(post.challenge)),
       ...replyMentions({
         in_reply_to_actor_uri: post.in_reply_to_actor_uri ?? null,
         in_reply_to_handle: post.in_reply_to_handle ?? null,
       }),
     ],
-    del,
-  )
+    toRelays: toRelays(post) && post.in_reply_to_actor_uri == null,
+  })
 }
 
 // Articles (long-form posts). An article federates as a `Note` — Mastodon
@@ -536,11 +541,9 @@ export const deliverFeedArticlePost = async (
   post: DeliverableArticle,
 ): Promise<void> => {
   const ctx = await deps.federation.createContext(new URL(deps.origin))
-  await ctx.sendActivity(
-    { identifier: user },
-    'followers',
-    buildArticleNoteCreate(ctx, user, post, deps.apiBaseUrl),
-  )
+  await fanOut(deps, ctx, user, buildArticleNoteCreate(ctx, user, post, deps.apiBaseUrl), {
+    toRelays: toRelays(post),
+  })
 }
 
 export const deliverFeedArticleUpdate = async (
@@ -549,11 +552,9 @@ export const deliverFeedArticleUpdate = async (
   post: DeliverableArticle,
 ): Promise<void> => {
   const ctx = await deps.federation.createContext(new URL(deps.origin))
-  await ctx.sendActivity(
-    { identifier: user },
-    'followers',
-    buildArticleNoteUpdate(ctx, user, post, deps.apiBaseUrl),
-  )
+  await fanOut(deps, ctx, user, buildArticleNoteUpdate(ctx, user, post, deps.apiBaseUrl), {
+    toRelays: toRelays(post),
+  })
 }
 
 // Challenge shares (#994). A challenge invitation federates as a `Note` (like
@@ -819,23 +820,55 @@ const deliverToMentioned = async (
   }
 }
 
+/** Mastodon pushes public posts only to relays: not unlisted, not followers-only. */
+const toRelays = (post: { visibility: FeedVisibility }): boolean => post.visibility === 'public'
+
 /**
- * Fan an activity out to followers and to each tagged actor — as two
- * independent deliveries. Without an outbox queue Fedify awaits every follower
- * inbox and one dead instance rejects the whole send, which used to cancel the
- * mention delivery that exists precisely for people who don't follow us
- * (#1079). Both run concurrently; a followers failure still surfaces to the
- * caller after both have settled.
+ * Deliver to each accepted relay's inbox, signed by the post's author. Each relay
+ * is its own best-effort send, so a dead relay costs no other relay its copy.
  */
-const sendToFollowersAndMentioned = async (
+const deliverToRelays = async (
+  deps: FeedDeliveryDeps,
   ctx: Context<void>,
   user: string,
-  mentions: MentionRecipient[],
   activity: Activity,
+): Promise<void> => {
+  if (deps.listRelayRecipients == null) return
+  let relays: RelayRecipient[]
+  try {
+    relays = await deps.listRelayRecipients()
+  } catch (error) {
+    console.warn('⚠️ Relay list unavailable, posts not pushed to relays:', error)
+    return
+  }
+  await Promise.all(
+    relays.map((relay) =>
+      ctx.sendActivity({ identifier: user }, relay, activity).catch((error: unknown) => {
+        console.warn(`⚠️ Relay delivery to ${relay.inboxId.href} failed:`, error)
+      }),
+    ),
+  )
+}
+
+/**
+ * Fan an activity out to followers, to each tagged actor and (for a public post)
+ * to the accepted relays — as independent deliveries. Without an outbox queue
+ * Fedify awaits every follower inbox and one dead instance rejects the whole
+ * send, which used to cancel the mention delivery that exists precisely for
+ * people who don't follow us (#1079). All run concurrently; a followers failure
+ * still surfaces to the caller after the others have settled.
+ */
+const fanOut = async (
+  deps: FeedDeliveryDeps,
+  ctx: Context<void>,
+  user: string,
+  activity: Activity,
+  { mentions = [], toRelays: pushToRelays }: { mentions?: MentionRecipient[]; toRelays: boolean },
 ): Promise<void> => {
   const [followers] = await Promise.allSettled([
     ctx.sendActivity({ identifier: user }, 'followers', activity),
     mentions.length > 0 ? deliverToMentioned(ctx, user, mentions, activity) : Promise.resolve(),
+    pushToRelays ? deliverToRelays(deps, ctx, user, activity) : Promise.resolve(),
   ])
   if (followers.status === 'rejected') throw followers.reason
 }
@@ -862,7 +895,10 @@ export const deliverFeedChallengePost = async (
   const attachments = await deliveredChallengeAttachments(deps, user, post, hasStandings)
   const ctx = await deps.federation.createContext(new URL(deps.origin))
   const create = buildChallengeNoteCreate(ctx, user, post, attachments)
-  await sendToFollowersAndMentioned(ctx, user, challengeMentions(post.challenge), create)
+  await fanOut(deps, ctx, user, create, {
+    mentions: challengeMentions(post.challenge),
+    toRelays: toRelays(post),
+  })
 }
 
 /** An edit re-sends the attachment under the new `v`, so Mastodon fetches the chart afresh. */
@@ -875,7 +911,10 @@ export const deliverFeedChallengeUpdate = async (
   const attachments = await deliveredChallengeAttachments(deps, user, post, hasStandings)
   const ctx = await deps.federation.createContext(new URL(deps.origin))
   const update = buildChallengeNoteUpdate(ctx, user, post, attachments)
-  await sendToFollowersAndMentioned(ctx, user, challengeMentions(post.challenge), update)
+  await fanOut(deps, ctx, user, update, {
+    mentions: challengeMentions(post.challenge),
+    toRelays: toRelays(post),
+  })
 }
 
 // Exercise shares (#1398). An exercise's progress federates as a `Note` (like a challenge
@@ -1046,11 +1085,9 @@ export const deliverFeedExercisePost = async (
 ): Promise<void> => {
   const { attachments, content } = await preparedExerciseNote(deps, user, post, hooks)
   const ctx = await deps.federation.createContext(new URL(deps.origin))
-  await ctx.sendActivity(
-    { identifier: user },
-    'followers',
-    buildExerciseNoteCreate(ctx, user, post, content, attachments),
-  )
+  await fanOut(deps, ctx, user, buildExerciseNoteCreate(ctx, user, post, content, attachments), {
+    toRelays: toRelays(post),
+  })
 }
 
 /** An edit re-sends the attachment under the new `v`, so Mastodon fetches the trend afresh. */
@@ -1062,11 +1099,9 @@ export const deliverFeedExerciseUpdate = async (
 ): Promise<void> => {
   const { attachments, content } = await preparedExerciseNote(deps, user, post, hooks)
   const ctx = await deps.federation.createContext(new URL(deps.origin))
-  await ctx.sendActivity(
-    { identifier: user },
-    'followers',
-    buildExerciseNoteUpdate(ctx, user, post, content, attachments),
-  )
+  await fanOut(deps, ctx, user, buildExerciseNoteUpdate(ctx, user, post, content, attachments), {
+    toRelays: toRelays(post),
+  })
 }
 
 // A dashboard Note's content is resolved from the stored config snapshot before the Note is built,
@@ -1168,7 +1203,7 @@ export const deliverFeedDashboardPost = async (
 ): Promise<void> => {
   const html = await content(user, post)
   const ctx = await deps.federation.createContext(new URL(deps.origin))
-  await ctx.sendActivity({ identifier: user }, 'followers', buildDashboardNoteCreate(ctx, user, post, html))
+  await fanOut(deps, ctx, user, buildDashboardNoteCreate(ctx, user, post, html), { toRelays: toRelays(post) })
 }
 
 export const deliverFeedDashboardUpdate = async (
@@ -1179,7 +1214,7 @@ export const deliverFeedDashboardUpdate = async (
 ): Promise<void> => {
   const html = await content(user, post)
   const ctx = await deps.federation.createContext(new URL(deps.origin))
-  await ctx.sendActivity({ identifier: user }, 'followers', buildDashboardNoteUpdate(ctx, user, post, html))
+  await fanOut(deps, ctx, user, buildDashboardNoteUpdate(ctx, user, post, html), { toRelays: toRelays(post) })
 }
 
 // Replies (comments). A reply federates as a `Note` with `inReplyTo` pointing at
@@ -1319,7 +1354,7 @@ export const deliverFeedReplyPost = async (
 ): Promise<void> => {
   const ctx = await deps.federation.createContext(new URL(deps.origin))
   const create = buildReplyNoteCreate(ctx, user, post)
-  await sendToFollowersAndMentioned(ctx, user, replyMentions(post, authorInbox), create)
+  await fanOut(deps, ctx, user, create, { mentions: replyMentions(post, authorInbox), toRelays: false })
 }
 
 export const deliverFeedReplyUpdate = async (
@@ -1329,5 +1364,5 @@ export const deliverFeedReplyUpdate = async (
 ): Promise<void> => {
   const ctx = await deps.federation.createContext(new URL(deps.origin))
   const update = buildReplyNoteUpdate(ctx, user, post)
-  await sendToFollowersAndMentioned(ctx, user, replyMentions(post), update)
+  await fanOut(deps, ctx, user, update, { mentions: replyMentions(post), toRelays: false })
 }

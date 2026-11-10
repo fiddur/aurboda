@@ -211,3 +211,30 @@ run by the Social Web Foundation. The value is a bare hostname (trimmed and lowe
 path, port, `@` or whitespace is refused with `400`). Changing it affects new tag follows only:
 existing ones keep following the actor they followed. See
 [Following a hashtag](features/feed.md#hashtags).
+
+**Relays** (Admin Settings → **Federation** → Relays; REST `GET/POST /admin/relays`,
+`DELETE /admin/relays/:id`; MCP `list_relays`, `add_relay`, `remove_relay`, all admin-only). A
+relay is a fediverse service that redistributes the public posts it receives, so servers whose
+users never followed anyone here still see them. The server subscribes through its **instance
+actor**, an `Application` at `<origin>/actor` (WebFinger `acct:<host>@<host>`), with its own key
+pair in the central `instance_actor` table. Two styles:
+
+- **Mastodon** (tags.pub, FediBuzz, pub-relay, Activity-Relay): enter the relay's **inbox URL**.
+  The instance actor sends it a `Follow` of the Public collection.
+- **LitePub** (Pleroma/Akkoma relays): enter the relay's **actor URL**. It is resolved for its
+  inbox and followed directly; the relay follows the instance actor back, which is accepted only
+  for an added relay's actor.
+
+A relay starts **Pending** and becomes **Accepted** (or **Rejected**) when it answers. A Follow that
+could not be delivered keeps the relay pending with the error shown on its badge; remove it and
+add it again to retry. Removing a relay sends it an `Undo` of the Follow. Only https URLs that
+resolve to public addresses are taken (`400`); an already added relay is `409`; a LitePub actor
+that cannot be resolved is `422`.
+
+Once a relay is accepted, every **public** post of every user on this server (its `Create`,
+`Update` and `Delete`) is also delivered to the relay's inbox, signed by the post's author.
+Unlisted and followers-only posts, replies, likes and boosts are never pushed. Whatever a relay
+sends back (LitePub relays forward other servers' posts as `Announce`s) is dropped: nothing reaches
+anyone's timeline through a relay. The tags.pub relay is
+`https://tags.pub/user/_____relay_____/inbox` (Mastodon style); it is one-way, taking posts and
+sending none, and lets [hashtag](features/feed.md#hashtags) followers anywhere see posts from here.

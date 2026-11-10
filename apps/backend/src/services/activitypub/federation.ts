@@ -98,6 +98,17 @@ import {
   toDeliverableReply,
 } from './deliver.ts'
 import { exerciseNoteContent } from './exercise-object.ts'
+import {
+  buildInstanceActor,
+  handleInstanceActorFollow,
+  handleRelayResponse,
+  INSTANCE_ACTOR_ID,
+  INSTANCE_ACTOR_PATH,
+  type InstanceActorDeps,
+  instanceActorUsername,
+  isInstanceActor,
+  type RelayInboxHooks,
+} from './instance-actor.ts'
 import { toCryptoKeyPair } from './keys.ts'
 import { AS_PUBLIC, isPubliclyVisible } from './object.ts'
 import { signedFetchOptions } from './signed-lookup.ts'
@@ -517,9 +528,16 @@ const undoReactionByActivityId = async (ctx: InboxContext<void>, undo: Undo): Pr
  * inbox we send the `Accept` to, and the inbox we cache); the follower's
  * PRESENTATION is fetched from their id inside `recordInboundFollow`.
  */
-export const handleInboundFollow = async (ctx: InboxContext<void>, follow: Follow): Promise<void> => {
+export const handleInboundFollow = async (
+  ctx: InboxContext<void>,
+  follow: Follow,
+  relays?: RelayInboxHooks,
+): Promise<void> => {
   if (follow.objectId == null) return
   const target = ctx.parseUri(follow.objectId)
+  if (target?.type === 'actor' && isInstanceActor(target.identifier)) {
+    return await handleInstanceActorFollow(ctx, follow, relays)
+  }
   if (target?.type !== 'actor' || !isValidUsername(target.identifier)) return
 
   const sender = await follow.getActor(ctx)
@@ -1002,6 +1020,8 @@ export const createFeedFederation = (
   isDeletedUser: (username: string) => boolean = () => false,
   /** A read-only account (plan expired past the grace period) stores no new inbound posts. */
   isReadOnly: (username: string) => Promise<boolean> = async () => false,
+  /** The instance actor and its relay subscriptions; without it the instance actor does not exist. */
+  instance?: InstanceActorDeps,
 ): Federation<void> => {
   const federation = createFederation<void>({
     kv: new MemoryKvStore(),
@@ -1038,13 +1058,25 @@ export const createFeedFederation = (
     usage: { localComments: 0, localPosts: 0, users: {} },
   }))
 
+  const instanceUsername = instanceActorUsername(origin)
   federation
-    .setActorDispatcher('/users/{identifier}', (ctx, identifier) =>
-      isDeletedUser(identifier)
+    .setActorDispatcher('/users/{identifier}', async (ctx, identifier) => {
+      if (isInstanceActor(identifier)) {
+        return instance == null
+          ? null
+          : buildInstanceActor(ctx, origin, await ctx.getActorKeyPairs(identifier))
+      }
+      return isDeletedUser(identifier)
         ? new Tombstone({ id: ctx.getActorUri(identifier) })
-        : buildActorPerson(ctx, identifier, origin),
-    )
+        : buildActorPerson(ctx, identifier, origin)
+    })
+    .mapActorAlias(INSTANCE_ACTOR_PATH, INSTANCE_ACTOR_ID)
     .setKeyPairsDispatcher(async (_ctx, identifier) => {
+      if (isInstanceActor(identifier)) {
+        if (instance == null) return []
+        const kp = await instance.instanceKeys()
+        return [await toCryptoKeyPair(kp.private_key_pem, kp.public_key_pem)]
+      }
       if (!isValidUsername(identifier) || isDeletedUser(identifier)) return []
       try {
         const kp = await getOrCreateActorKeyPair(identifier)
@@ -1054,16 +1086,22 @@ export const createFeedFederation = (
         throw error
       }
     })
-    .mapHandle((_ctx, username) => (isValidUsername(username) ? username : null))
+    .mapHandle((_ctx, username) => {
+      if (instance != null && username === instanceUsername) return INSTANCE_ACTOR_ID
+      return isValidUsername(username) ? username : null
+    })
 
   // Inbound inbox. Fedify verifies the HTTP Signature before invoking these
   // handlers, so a request that reaches `.on(...)` is authenticated as the
   // sending actor. Unregistered activity types are silently ignored.
-  federation
-    .setInboxListeners('/users/{identifier}/inbox', '/inbox')
-    .on(Follow, handleInboundFollow)
+  const inbox = federation.setInboxListeners('/users/{identifier}/inbox', '/inbox')
+  // Fetches made on the shared inbox's behalf are signed as the instance actor.
+  if (instance != null) inbox.setSharedKeyDispatcher(() => ({ identifier: INSTANCE_ACTOR_ID }))
+  inbox
+    .on(Follow, (ctx, follow) => handleInboundFollow(ctx, follow, instance?.relays))
     .on(Undo, handleInboundUndo)
     .on(Accept, async (ctx, accept) => {
+      if (await handleRelayResponse(accept, instance?.relays)) return
       // Accept of a Follow WE sent — the followee's server confirms the follow.
       // `accept.actorId` is the followee we followed, matching the `actor_uri` of
       // our pending row.
@@ -1083,6 +1121,7 @@ export const createFeedFederation = (
       onFollowAccepted?.(me, accept.actorId.href)
     })
     .on(Reject, async (ctx, reject) => {
+      if (await handleRelayResponse(reject, instance?.relays)) return
       // Reject of a Follow we sent — the followee declined; drop our pending row.
       const me = await localFollowerIdentifier(ctx, reject)
       if (me == null || reject.actorId == null) return
@@ -1205,6 +1244,7 @@ export const createFeedFederation = (
   // the divergence self-heals when the stale post is removed.
   federation
     .setOutboxDispatcher('/users/{identifier}/outbox', async (ctx, identifier, cursor) => {
+      if (isInstanceActor(identifier)) return instance == null ? null : { items: [] }
       if (!isValidUsername(identifier)) return null
       const offset = cursor == null ? 0 : Number.parseInt(cursor, 10)
       // `isSafeInteger` also rejects absurd offsets (e.g. a crafted `1e20`) that
