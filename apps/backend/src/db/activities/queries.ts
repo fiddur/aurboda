@@ -5,6 +5,7 @@
 import type { ActivityType } from '../../schema.ts'
 import type { Activity, MergedActivity } from '../types.ts'
 
+import { UUID_RE } from '../../utils.ts'
 import { buildBucketExpr } from '../bucket-expr.ts'
 import { query } from '../connection.ts'
 import { effectiveData } from '../effective-type.ts'
@@ -63,6 +64,7 @@ export const getActivityById = async (
   id: string,
   includeDeleted = false,
 ): Promise<Activity | null> => {
+  if (!UUID_RE.test(id)) return null
   const deletedClause = includeDeleted ? '' : ' AND deleted_at IS NULL'
   const result = await query(
     user,

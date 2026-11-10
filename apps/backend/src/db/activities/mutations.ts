@@ -4,6 +4,7 @@ import format from 'pg-format'
 import type { Activity, ActivityUpdate, LegacyMatch } from '../types.ts'
 
 import { normalizeItemValue } from '../../services/activity-measures.ts'
+import { UUID_RE } from '../../utils.ts'
 import { query, withUserTransaction } from '../connection.ts'
 import { buildDynamicUpdate, type UpdateEntry } from '../dynamic-update.ts'
 import { reanchorNotes } from '../notes.ts'
@@ -406,6 +407,7 @@ export const insertActivities = async (
 }
 
 export const deleteActivity = async (user: string, id: string): Promise<boolean> => {
+  if (!UUID_RE.test(id)) return false
   const result = await query(
     user,
     `UPDATE activities SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL`,
@@ -477,6 +479,7 @@ export const restoreSetlessTombstone = async (
 }
 
 export const restoreActivity = async (user: string, id: string): Promise<boolean> => {
+  if (!UUID_RE.test(id)) return false
   const result = await query(
     user,
     `UPDATE activities SET deleted_at = NULL WHERE id = $1 AND deleted_at IS NOT NULL`,

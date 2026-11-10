@@ -24,7 +24,11 @@ export interface FeedQuoteAuthorizationInput {
 
 const FEED_QUOTE_AUTHORIZATION_COLUMNS = 'id, post_id, quote_uri, actor_uri, request_uri, created_at'
 
-/** A redelivered request for the same quote returns the same row, so the same stamp id. */
+/**
+ * A redelivered request for the same quote returns the same row, so the same stamp id. The
+ * first request's actor and request id stay: a later one cannot re-attribute the approval.
+ * The no-op `DO UPDATE` (not `DO NOTHING`) is what makes `RETURNING` yield the existing row.
+ */
 export const upsertFeedQuoteAuthorization = async (
   user: string,
   input: FeedQuoteAuthorizationInput,
@@ -33,7 +37,7 @@ export const upsertFeedQuoteAuthorization = async (
     user,
     `INSERT INTO feed_quote_authorization (post_id, quote_uri, actor_uri, request_uri)
      VALUES ($1, $2, $3, $4)
-     ON CONFLICT (post_id, quote_uri) DO UPDATE SET actor_uri = EXCLUDED.actor_uri, request_uri = EXCLUDED.request_uri
+     ON CONFLICT (post_id, quote_uri) DO UPDATE SET post_id = feed_quote_authorization.post_id
      RETURNING ${FEED_QUOTE_AUTHORIZATION_COLUMNS}`,
     [input.post_id, input.quote_uri, input.actor_uri, input.request_uri],
   )

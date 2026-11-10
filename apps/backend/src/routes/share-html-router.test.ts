@@ -246,6 +246,12 @@ describe('GET the welcome page', () => {
     expect(res.text).toContain('<div id="app"></div>')
     expect(res.headers['cache-control']).toBe('no-cache')
   })
+
+  test('answers 503 without the template, so nginx serves the static SPA instead (#1533)', async () => {
+    const res = await supertest(buildApp({ loadTemplate: async () => null })).get(HOME_PAGE_PATH)
+    expect(res.status).toBe(503)
+    expect(res.text).not.toContain('<html')
+  })
 })
 
 describe('GET /blog', () => {

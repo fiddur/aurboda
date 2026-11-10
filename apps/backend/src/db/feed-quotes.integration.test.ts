@@ -54,26 +54,29 @@ describe('Feed quote authorization store integration', () => {
     expect(await getFeedQuoteAuthorization(getTestUser(), crypto.randomUUID())).toBeNull()
   })
 
-  test('a redelivered request for the same quote keeps the same id and refreshes request_uri', async () => {
+  test('a redelivered request for the same quote returns the same row, keeping the first request_uri', async () => {
     const user = getTestUser()
     const created = await post(user)
     const input = { actor_uri: ALICE, post_id: created.id, quote_uri: QUOTE, request_uri: REQUEST }
     const first = await upsertFeedQuoteAuthorization(user, input)
     const second = await upsertFeedQuoteAuthorization(user, { ...input, request_uri: `${REQUEST}-2` })
-    expect(second.id).toBe(first.id)
-    expect(second.request_uri).toBe(`${REQUEST}-2`)
+    expect(second).toEqual(first)
     expect(await listFeedQuoteAuthorizations(user, created.id)).toHaveLength(1)
   })
 
-  test('a re-request of the same quote by another actor refreshes actor_uri', async () => {
+  test('a re-request of the same quote by another actor cannot re-attribute the approval', async () => {
     const user = getTestUser()
     const created = await post(user)
     const input = { actor_uri: ALICE, post_id: created.id, quote_uri: QUOTE, request_uri: REQUEST }
     const first = await upsertFeedQuoteAuthorization(user, input)
     const other = 'https://mastodon.example/users/bob'
-    const second = await upsertFeedQuoteAuthorization(user, { ...input, actor_uri: other })
-    expect(second.id).toBe(first.id)
-    expect((await getFeedQuoteAuthorization(user, first.id))?.actor_uri).toBe(other)
+    const second = await upsertFeedQuoteAuthorization(user, {
+      ...input,
+      actor_uri: other,
+      request_uri: `${other}/quote_requests/x`,
+    })
+    expect(second).toEqual(first)
+    expect(await getFeedQuoteAuthorization(user, first.id)).toEqual(first)
   })
 
   test('lists only the given post’s approvals', async () => {

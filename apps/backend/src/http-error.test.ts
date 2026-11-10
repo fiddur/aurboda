@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { httpError, isHttpError } from './http-error.ts'
+import { errorResponseBody, httpError, isDatabaseError, isHttpError } from './http-error.ts'
 
 describe('httpError', () => {
   it('creates an Error with the given status and message', () => {
@@ -37,5 +37,43 @@ describe('isHttpError', () => {
   it('returns false for null/undefined', () => {
     expect(isHttpError(null)).toBe(false)
     expect(isHttpError(undefined)).toBe(false)
+  })
+})
+
+const pgError = (message: string) =>
+  Object.assign(new Error(message), { code: '22P02', routine: 'string_to_uuid', severity: 'ERROR' })
+
+describe('isDatabaseError', () => {
+  it('returns true for a pg-shaped error', () => {
+    expect(isDatabaseError(pgError('invalid input syntax for type uuid: "null"'))).toBe(true)
+  })
+
+  it('returns false for a Node system error, which has a code but no severity', () => {
+    expect(isDatabaseError(Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' }))).toBe(
+      false,
+    )
+  })
+
+  it('returns false for plain errors and non-errors', () => {
+    expect(isDatabaseError(new Error('plain'))).toBe(false)
+    expect(isDatabaseError({ code: '22P02', severity: 'ERROR' })).toBe(false)
+  })
+})
+
+describe('errorResponseBody', () => {
+  it('hides a database message behind a generic one', () => {
+    expect(errorResponseBody(pgError('invalid input syntax for type uuid: "null"'), 500)).toEqual({
+      error: 'Internal server error',
+      success: false,
+    })
+  })
+
+  it('keeps an HttpError message', () => {
+    const err = httpError(404, 'Activity not found')
+    expect(errorResponseBody(err, err.status)).toEqual({ error: 'Activity not found', success: false })
+  })
+
+  it('keeps a plain Error message', () => {
+    expect(errorResponseBody(new Error('boom'), 500)).toEqual({ error: 'boom', success: false })
   })
 })

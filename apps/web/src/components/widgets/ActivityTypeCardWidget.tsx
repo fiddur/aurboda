@@ -105,7 +105,9 @@ const Headline = ({ data, loading }: { data: ActivityTypeCardData | null; loadin
   return (
     <>
       <span class="value">{data.count}</span>
-      <span class="unit">{data.sleep ? 'nights' : 'sessions'}</span>
+      <span class="unit">
+        {data.sleep ? (data.count === 1 ? 'night' : 'nights') : data.count === 1 ? 'session' : 'sessions'}
+      </span>
     </>
   )
 }

@@ -25,6 +25,7 @@ import {
   insertActivity,
   insertOverride,
   markActivityDetailSynced,
+  restoreActivity,
   restoreEmptyImportTombstone,
   restoreSetlessTombstone,
   softDeleteActivityByExternalId,
@@ -744,6 +745,10 @@ describe('Activities Integration Tests', () => {
 
       expect(activity).toBeNull()
     })
+
+    test('returns null for an id that is not a uuid, without reaching Postgres (#1536)', async () => {
+      expect(await getActivityById(getTestUser(), 'null')).toBeNull()
+    })
   })
 
   describe('deleteActivity', () => {
@@ -772,6 +777,32 @@ describe('Activities Integration Tests', () => {
 
       const result = await deleteActivity(user, nonExistentId)
       expect(result).toBe(false)
+    })
+
+    test('returns false for an id that is not a uuid', async () => {
+      expect(await deleteActivity(getTestUser(), 'null')).toBe(false)
+    })
+  })
+
+  describe('restoreActivity', () => {
+    test('restores a deleted activity once', async () => {
+      const user = getTestUser()
+      const activityId = randomUUID()
+      await insertActivity(user, {
+        activity_type: 'exercise',
+        id: activityId,
+        source: 'aurboda',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      })
+      await deleteActivity(user, activityId)
+
+      expect(await restoreActivity(user, activityId)).toBe(true)
+      expect(await restoreActivity(user, activityId)).toBe(false)
+      expect(await getActivityById(user, activityId)).not.toBeNull()
+    })
+
+    test('returns false for an id that is not a uuid', async () => {
+      expect(await restoreActivity(getTestUser(), 'null')).toBe(false)
     })
   })
 
