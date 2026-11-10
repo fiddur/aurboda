@@ -37,6 +37,7 @@ function DashboardSectionComponent({
   isEditing,
   boardId,
   widgetData,
+  widgetDataLoading,
   periodLabel,
   onRemoveWidget,
   onMoveWidget,
@@ -49,6 +50,7 @@ function DashboardSectionComponent({
   isEditing: boolean
   boardId?: string
   widgetData?: WidgetDataMap
+  widgetDataLoading?: boolean
   periodLabel?: string
   onRemoveWidget?: (widgetId: string) => void
   onMoveWidget?: (widgetId: string, direction: 'up' | 'down') => void
@@ -216,7 +218,12 @@ function DashboardSectionComponent({
                   </button>
                 </div>
               )}
-              {widgetData ? (
+              {widgetData &&
+              widgetDataLoading &&
+              widget.type !== 'quick_link' &&
+              widgetData[widget.id] === undefined ? (
+                <div class="widget-note">Loading…</div>
+              ) : widgetData ? (
                 <PublicWidgetRenderer
                   widget={widget}
                   data={widgetData[widget.id]}
@@ -322,6 +329,8 @@ interface EditableDashboardProps {
   boardId: string
   /** Server-resolved data per widget id (a period dashboard); widgets fetch their own when absent. */
   widgetData?: WidgetDataMap
+  /** Whether `widgetData` is being fetched or about to be, so a widget without an entry yet shows as loading. */
+  widgetDataLoading?: boolean
   /** The shown period's label, for widgets that name their window. */
   periodLabel?: string
 }
@@ -332,6 +341,7 @@ export function EditableDashboard({
   onChange,
   boardId,
   widgetData,
+  widgetDataLoading,
   periodLabel,
 }: EditableDashboardProps) {
   const [showWidgetPicker, setShowWidgetPicker] = useState<string | null>(null) // section id or null
@@ -464,6 +474,7 @@ export function EditableDashboard({
           isEditing={isEditing}
           boardId={boardId}
           widgetData={widgetData}
+          widgetDataLoading={widgetDataLoading}
           periodLabel={periodLabel}
           onRemoveWidget={(widgetId) => handleRemoveWidget(section.id, widgetId)}
           onMoveWidget={(widgetId, direction) => handleMoveWidget(section.id, widgetId, direction)}
