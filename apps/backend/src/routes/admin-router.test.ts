@@ -7,6 +7,7 @@ import type { AccountPlans } from '../services/account-plan.ts'
 import type { AdminUsers } from '../services/admin-users.ts'
 import type { CentralDb } from '../services/central-db.ts'
 import type { InvitationAuth } from '../services/invitation.ts'
+import type { RelayActions } from '../services/relays.ts'
 
 import { gravlRedirectUri } from '../integrations/gravl/client.ts'
 import { createAdminRouter } from './admin-router.ts'
@@ -102,6 +103,29 @@ const accountPlans: AccountPlans = {
   ),
 }
 
+const relayRecord = {
+  actor_uri: null,
+  created_at: new Date('2026-11-10T00:00:00Z'),
+  follow_activity_id: 'https://web.example.test/actor/follows/11111111-1111-4111-8111-111111111111',
+  id: '11111111-1111-4111-8111-111111111111',
+  inbox_uri: 'https://tags.pub/user/_____relay_____/inbox',
+  last_error: null,
+  state: 'pending' as const,
+  style: 'mastodon' as const,
+  updated_at: new Date('2026-11-10T00:00:00Z'),
+  url: 'https://tags.pub/user/_____relay_____/inbox',
+}
+
+const relayActions: RelayActions = {
+  add: vi.fn(async ({ url }) =>
+    url === relayRecord.url
+      ? { ok: true as const, record: relayRecord }
+      : { error: 'That relay is already added.', ok: false as const, status: 409 },
+  ),
+  list: vi.fn(async () => []),
+  remove: vi.fn(async (id: string) => id === relayRecord.id),
+}
+
 const buildApp = (adminMiddleware: RequestHandler = pass) => {
   const app = express()
   app.use(express.json())
@@ -119,6 +143,7 @@ const buildApp = (adminMiddleware: RequestHandler = pass) => {
       null,
       deleteAccount,
       accountPlans,
+      relayActions,
     ),
   )
   return app
@@ -410,5 +435,48 @@ describe('DELETE /admin/users/:username', () => {
       .send({ confirm_username: 'alice' })
     expect(res.status).toBe(403)
     expect(deleteAccount).not.toHaveBeenCalled()
+  })
+})
+
+describe('admin relays', () => {
+  test('GET /relays lists them', async () => {
+    const res = await supertest(buildApp()).get('/admin/relays')
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ relays: [], success: true })
+  })
+
+  test('POST /relays adds one, mastodon by default, and serialises it', async () => {
+    const res = await supertest(buildApp()).post('/admin/relays').send({ url: relayRecord.url })
+    expect(res.status).toBe(201)
+    expect(relayActions.add).toHaveBeenLastCalledWith({ style: 'mastodon', url: relayRecord.url })
+    expect(res.body.relay).toMatchObject({ created_at: '2026-11-10T00:00:00.000Z', state: 'pending' })
+    expect(res.body.relay.follow_activity_id).toBeUndefined()
+  })
+
+  test('POST /relays passes the service status through and validates the body', async () => {
+    const conflict = await supertest(buildApp())
+      .post('/admin/relays')
+      .send({ url: 'https://other.example/inbox' })
+    expect(conflict.status).toBe(409)
+    expect(conflict.body).toEqual({ error: 'That relay is already added.', success: false })
+
+    const invalid = await supertest(buildApp())
+      .post('/admin/relays')
+      .send({ style: 'diaspora', url: relayRecord.url })
+    expect(invalid.status).toBe(400)
+  })
+
+  test('DELETE /relays/:id removes it, 404 when unknown', async () => {
+    expect((await supertest(buildApp()).delete(`/admin/relays/${relayRecord.id}`)).status).toBe(200)
+    expect((await supertest(buildApp()).delete('/admin/relays/nope')).status).toBe(404)
+  })
+
+  test('non-admins are refused', async () => {
+    vi.mocked(relayActions.add).mockClear()
+    const app = buildApp(forbid)
+    expect((await supertest(app).get('/admin/relays')).status).toBe(403)
+    expect((await supertest(app).post('/admin/relays').send({ url: relayRecord.url })).status).toBe(403)
+    expect((await supertest(app).delete(`/admin/relays/${relayRecord.id}`)).status).toBe(403)
+    expect(relayActions.add).not.toHaveBeenCalled()
   })
 })

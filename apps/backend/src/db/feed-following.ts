@@ -143,20 +143,20 @@ export const getFeedFollowingByTag = async (
   return result.rows[0] ?? null
 }
 
-/** Only accepted followees, oldest first — backs the public `following` collection. */
+/** Accepted followed people, oldest first — backs the public `following` collection; tag follows are left out. */
 export const listAcceptedFeedFollowing = async (user: string): Promise<FeedFollowingRecord[]> => {
   const result = await query<FeedFollowingRecord>(
     user,
-    `SELECT ${FEED_FOLLOWING_COLUMNS} FROM feed_following WHERE accepted = true ORDER BY created_at ASC`,
+    `SELECT ${FEED_FOLLOWING_COLUMNS} FROM feed_following WHERE accepted = true AND tag IS NULL ORDER BY created_at ASC`,
   )
   return result.rows
 }
 
-/** Count accepted followees (for the following-collection counter). */
+/** Count accepted followed people (for the following-collection counter). */
 export const countAcceptedFeedFollowing = async (user: string): Promise<number> => {
   const result = await query<{ count: string }>(
     user,
-    `SELECT COUNT(*)::text AS count FROM feed_following WHERE accepted = true`,
+    `SELECT COUNT(*)::text AS count FROM feed_following WHERE accepted = true AND tag IS NULL`,
   )
   return Number(result.rows[0].count)
 }

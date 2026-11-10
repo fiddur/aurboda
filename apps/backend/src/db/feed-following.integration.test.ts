@@ -216,10 +216,11 @@ describe('Feed following integration', () => {
       )
       expect((await getFeedFollowingByTag(user, 'running'))?.actor_uri).toBe(running.actor_uri)
       expect(await getFeedFollowingByTag(user, 'swimming')).toBeNull()
-      // The public following collection still counts every accepted follow, tags included.
+      // The public following collection lists people only, like the owner's list.
       await markFeedFollowingAccepted(user, running.actor_uri)
       await markFeedFollowingAccepted(user, alice.actor_uri)
-      expect(await countAcceptedFeedFollowing(user)).toBe(2)
+      expect((await listAcceptedFeedFollowing(user)).map((r) => r.actor_uri)).toEqual([alice.actor_uri])
+      expect(await countAcceptedFeedFollowing(user)).toBe(1)
     })
 
     test('a plain re-follow keeps the tag; a tag follow marks a hand-followed actor', async () => {

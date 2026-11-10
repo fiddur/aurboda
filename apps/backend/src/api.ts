@@ -152,6 +152,7 @@ import { createInvitationAuth } from './services/invitation.ts'
 import { getPlaceVisits, type NamedLocationsChanged } from './services/locations.ts'
 import { createPgBoss } from './services/pg-boss.ts'
 import { installProcessGuards } from './services/process-guards.ts'
+import { createRelayActions, createRelayInboxHooks, relayRecipients } from './services/relays.ts'
 import { safeFetchGet } from './services/safe-fetch.ts'
 import { initSentry, Sentry } from './services/sentry.ts'
 import {
@@ -549,14 +550,20 @@ const main = async () => {
     async () => (await centralDb.getSignupMode()) === 'open',
     isDeletedUser,
     isReadOnly,
+    {
+      instanceKeys: () => centralDb.getOrCreateInstanceActorKeyPair(),
+      relays: createRelayInboxHooks(centralDb),
+    },
   )
   const backfill = createTimelineBackfiller(feedFederation, webHost)
   const feedDeps = {
     apiBaseUrl,
     federation: feedFederation,
+    listRelayRecipients: () => relayRecipients(centralDb),
     origin: webHost,
     tagActorHost: () => readTagActorHost(centralDb),
   }
+  const relayActions = createRelayActions({ federation: feedFederation, origin: webHost, store: centralDb })
 
   const accountDeleter = createAccountDeleter({
     announceDeletion: (user) => deliverActorDelete(feedDeps, user),
@@ -904,6 +911,7 @@ const main = async () => {
       adminUsers,
       apiBaseUrl,
       autosharePreviewDeps: autoshareDeps,
+      relayActions,
       centralDb,
       requestDumpLink: dataExport.requestDumpLink,
       deductionQueue: deductionQueue ?? undefined,
@@ -1091,6 +1099,7 @@ const main = async () => {
     onHrSettingsChanged,
     onNamedLocationsChanged,
     onTrackWritten,
+    relayActions,
     onProfileChanged,
     ouraWebhookManager,
     reactionActions,
