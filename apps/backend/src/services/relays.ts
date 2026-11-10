@@ -230,7 +230,6 @@ export const removeRelay = async (deps: RelayDeps, id: string): Promise<boolean>
  * Whether `actorUri` may answer for `relay`: its stored actor once known, else
  * (a mastodon relay before its first Accept) any actor on the inbox's host.
  * Without this, anyone who learned a Follow id could flip a relay's state.
- * Before the first Accept any actor on the inbox host passes: the issue's accepted trade-off.
  */
 export const isRelaySender = (
   relay: Pick<RelayRecord, 'actor_uri' | 'inbox_uri'>,

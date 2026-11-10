@@ -434,7 +434,7 @@ export const socialTables: Record<string, string> = {
   feed_following_notify: `
     ALTER TABLE feed_following ADD COLUMN IF NOT EXISTS notify_on_post BOOLEAN NOT NULL DEFAULT true
   `,
-  // A followed hashtag is the follow of its tag actor, marked with the
+  // A followed hashtag (#1540) is the follow of its tag actor, marked with the
   // normalised tag; NULL on the follow of a person.
   feed_following_tag: `
     ALTER TABLE feed_following ADD COLUMN IF NOT EXISTS tag TEXT;
