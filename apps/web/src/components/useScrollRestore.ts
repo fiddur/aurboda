@@ -23,6 +23,9 @@ export const readScroll = (storage: () => ScrollStorage, key: string): number | 
 
 const sessionStore = () => window.sessionStorage
 
+/** The app shell scrolls `main`, not the window; a page without the shell scrolls the document. */
+const scroller = (): Element | null => document.querySelector('main') ?? document.scrollingElement
+
 /**
  * Keeps a period dashboard's scroll position across a reload of its tab (a mobile browser discards
  * background tabs): saved per `scope` and shown period when the tab is hidden or left, and restored
@@ -34,7 +37,7 @@ export const useScrollRestore = (scope: string, period: string | null | undefine
 
   useEffect(() => {
     if (key === null) return
-    const save = () => saveScroll(sessionStore, key, window.scrollY)
+    const save = () => saveScroll(sessionStore, key, scroller()?.scrollTop ?? 0)
     const onVisibilityChange = () => {
       if (document.visibilityState === 'hidden') save()
     }
@@ -51,6 +54,10 @@ export const useScrollRestore = (scope: string, period: string | null | undefine
     if (restored.current || key === null) return
     restored.current = true
     const y = readScroll(sessionStore, key)
-    if (y !== undefined) requestAnimationFrame(() => window.scrollTo(0, y))
+    if (y === undefined) return
+    requestAnimationFrame(() => {
+      const el = scroller()
+      if (el) el.scrollTop = y
+    })
   }, [key])
 }
