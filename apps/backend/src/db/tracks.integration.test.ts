@@ -85,6 +85,10 @@ describe('Activity tracks integration', () => {
       expect(await hasActivityTrack(user, id, 'strava')).toBe(false)
     })
 
+    test('returns null for an id that is not a uuid', async () => {
+      expect(await getActivityTrack(getTestUser(), 'null')).toBeNull()
+    })
+
     test('upsert replaces the existing track for the same source', async () => {
       const user = getTestUser()
       const id = await addActivity('garmin', 'garmin-1', {})

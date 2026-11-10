@@ -20,6 +20,7 @@ import type {
 import type { AutoshareCandidate } from './autoshare-rules.ts'
 import type { Queryable } from './pool.ts'
 
+import { UUID_RE } from '../utils.ts'
 import { query } from './connection.ts'
 
 export interface FeedPostRecord {
@@ -469,6 +470,7 @@ export const countPublicFeedPosts = async (user: string, kind?: FeedPostKind): P
 }
 
 export const getFeedPostById = async (user: string, id: string): Promise<FeedPostRecord | null> => {
+  if (!UUID_RE.test(id)) return null
   const result = await query<FeedPostRow>(user, `SELECT ${FEED_POST_COLUMNS} FROM feed_posts WHERE id = $1`, [
     id,
   ])
@@ -480,6 +482,7 @@ export const updateFeedPost = async (
   id: string,
   patch: FeedPostPatch,
 ): Promise<FeedPostRecord | null> => {
+  if (!UUID_RE.test(id)) return null
   const sets: string[] = []
   const params: unknown[] = []
   let idx = 1
@@ -533,6 +536,7 @@ export const touchFeedPost = async (user: string, id: string): Promise<FeedPostR
  * references (like `activity_id`), so nothing cascades on its own.
  */
 export const deleteFeedPost = async (user: string, id: string): Promise<boolean> => {
+  if (!UUID_RE.test(id)) return false
   const result = await query<{ id: string }>(
     user,
     `WITH deleted AS (

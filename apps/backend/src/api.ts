@@ -56,7 +56,7 @@ import {
   upsertActivityTrack,
   upsertSyncState,
 } from './db/index.ts'
-import { httpError, isHttpError } from './http-error.ts'
+import { errorResponseBody, httpError, isHttpError } from './http-error.ts'
 import { garminClient } from './integrations/garmin/client.ts'
 import { garminDataTypes } from './integrations/garmin/process.ts'
 import { syncActivityDetails, syncGarminDataType } from './integrations/garmin/sync.ts'
@@ -1119,7 +1119,7 @@ const main = async () => {
       })
     }
 
-    res.status(status).json({ success: false, error: err.message })
+    res.status(status).json(errorResponseBody(err, status))
   })
 
   const port = Number(process.env.PORT ?? 80)

@@ -547,12 +547,9 @@ export const handleInboundLike = (ctx: InboxContext<void>, like: Like): Promise<
   recordOwnPostReaction(ctx, like, 'like')
 
 /**
- * Inbound FEP-044f `QuoteRequest` — a remote server asks to quote one of our
- * posts. A public/unlisted post is approved: the approval is recorded and the
- * `Accept` carries a `QuoteAuthorization` stamp URL as its `result`, which the
- * quoting server keeps and other servers fetch to verify the quote. Anything
- * else (followers-only, gone) is answered with a `Reject`. A request whose object
- * is not one of the recipient's own Notes is ignored, as with reactions.
+ * FEP-044f: the `Accept`'s `result` is a stamp URL that the quoting server keeps and other
+ * servers fetch to verify the quote. A request for anything but the recipient's own Note is
+ * ignored rather than rejected, as with reactions.
  */
 export const handleInboundQuoteRequest = async (
   ctx: InboxContext<void>,
@@ -1177,9 +1174,8 @@ export const createFeedFederation = (
     },
   )
 
-  // FEP-044f quote stamp: the proof, minted when we accepted a QuoteRequest, that
-  // the quoting Note may quote our post. Resolves only while the post is still
-  // public/unlisted, so unsharing or deleting the post revokes every stamp on it.
+  // A stamp resolves only while its post is public/unlisted, so unsharing or deleting
+  // the post revokes every stamp on it.
   federation.setObjectDispatcher(
     QuoteAuthorization,
     '/users/{identifier}/stamps/{stampId}',

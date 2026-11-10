@@ -1,5 +1,6 @@
 import type { GarminActivityDetailResponse } from '../integrations/garmin/client.ts'
 
+import { UUID_RE } from '../utils.ts'
 import { query } from './connection.ts'
 
 export interface ActivityTrackInput {
@@ -55,6 +56,7 @@ export const getActivityTrack = async (
   user: string,
   activityId: string,
 ): Promise<ActivityTrackRecord | null> => {
+  if (!UUID_RE.test(activityId)) return null
   const result = await query(
     user,
     `SELECT t.activity_id, a.start_time, t.source, t.length_m, t.point_count, t.full_resolution,
