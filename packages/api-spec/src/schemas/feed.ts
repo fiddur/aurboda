@@ -1243,6 +1243,57 @@ export const timelineEntryResponseSchema = baseResponseSchema
 
 export type TimelineEntryResponse = z.infer<typeof timelineEntryResponseSchema>
 
+export const publicTagPostsQuerySchema = z
+  .object({
+    cursor: z.string().optional().meta({ description: "Opaque cursor from a previous page's `next_cursor`" }),
+  })
+  .meta({ description: 'Query of a public tag page listing', id: 'PublicTagPostsQuery' })
+
+export type PublicTagPostsQuery = z.infer<typeof publicTagPostsQuerySchema>
+
+export const publicTagPostSchema = timelineEntrySchema
+  .pick({
+    actor_uri: true,
+    avatar_url: true,
+    content: true,
+    display_name: true,
+    handle: true,
+    id: true,
+    images: true,
+    object_uri: true,
+    published_at: true,
+    received_at: true,
+    tags: true,
+    url: true,
+  })
+  .meta({
+    description: 'A post on a public tag page, shown as the home timeline shows a remote post',
+    id: 'PublicTagPost',
+  })
+
+export type PublicTagPost = z.infer<typeof publicTagPostSchema>
+
+export const publicTagPostsResponseSchema = baseResponseSchema
+  .extend({
+    next_cursor: z
+      .string()
+      .nullable()
+      .meta({ description: 'Cursor for the next page; null on the last page' }),
+    posts: z.array(publicTagPostSchema).meta({
+      description:
+        'Public posts carrying the tag, from this server and others, newest first (content sanitised server-side)',
+    }),
+    retention_days: z.number().int().meta({ description: 'How many days a post stays listed' }),
+    tag: z.string().meta({ description: 'The tag, lowercase without `#`' }),
+  })
+  .meta({
+    description:
+      "A page of a public tag page: public posts carrying the hashtag that this server's instance actor received from the tag's actor, plus this server's own",
+    id: 'PublicTagPostsResponse',
+  })
+
+export type PublicTagPostsResponse = z.infer<typeof publicTagPostsResponseSchema>
+
 export const timelineQuerySchema = z
   .object({
     cursor: z.string().optional().meta({ description: "Opaque cursor from a previous page's `next_cursor`" }),

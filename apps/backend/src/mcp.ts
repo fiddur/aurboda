@@ -28,6 +28,7 @@ import type { ReactionActions } from './services/feed-reactions.ts'
 import type { FollowerActions } from './services/followers.ts'
 import type { FollowActions } from './services/following.ts'
 import type { NamedLocationsChanged } from './services/locations.ts'
+import type { PublicTagActions } from './services/public-tags.ts'
 import type { SyncProvider } from './services/queries/index.ts'
 import type { RelayActions } from './services/relays.ts'
 import type { HrSettingsChanged, ProfileChanged } from './services/settings.ts'
@@ -142,6 +143,7 @@ interface McpDeps {
   oura?: OuraClientType
   reactionActions?: ReactionActions
   relayActions?: RelayActions
+  publicTagActions?: PublicTagActions
   retroEnrichTimeline?: RetroEnrichTrigger
   requestDumpLink?: DumpLinkIssuer
   stravaQueue?: StravaQueue
@@ -205,6 +207,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     deliver: deps.feedDeliver,
     followActions: deps.followActions,
     followerActions: deps.followerActions,
+    publicTagActions: deps.publicTagActions,
     reactionActions: deps.reactionActions,
     retroEnrichTimeline: deps.retroEnrichTimeline,
     webHost: deps.webHost,

@@ -27,6 +27,7 @@ import type { AdminUsers } from '../services/admin-users.ts'
 import type { CentralDb } from '../services/central-db.ts'
 import type { InvitationAuth } from '../services/invitation.ts'
 import type { OuraWebhookManager } from '../services/oura-webhook-manager.ts'
+import type { PublicTagActions } from '../services/public-tags.ts'
 import type { RelayActions } from '../services/relays.ts'
 
 import { accountDeletionStatus } from '../services/account-deletion.ts'
@@ -36,6 +37,12 @@ import {
   readOfficialFeedSetting,
   writeOfficialFeedSetting,
 } from '../services/official-feed.ts'
+import {
+  normalizePublicTagPages,
+  readPublicTagFollows,
+  readPublicTagPages,
+  readPublicTagRetentionDays,
+} from '../services/public-tags.ts'
 import { serializeRelay } from '../services/relays.ts'
 import { readTagActorHost } from '../services/tag-actor-host.ts'
 import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
@@ -54,6 +61,7 @@ export const createAdminRouter = (
   deleteAccount?: AccountDeleter,
   accountPlans?: AccountPlans,
   relays?: RelayActions,
+  publicTags?: Pick<PublicTagActions, 'apply'>,
 ): TypedRouter => {
   const router = typedRouter()
   const readSettings = async (): Promise<AdminSettingsResponse> => {
@@ -74,6 +82,9 @@ export const createAdminRouter = (
       officialFeed,
       billing,
       tagActorHost,
+      publicTagPages,
+      publicTagRetentionDays,
+      publicTagFollows,
     ] = await Promise.all([
       centralDb.getSignupMode(),
       centralDb.getAdminCount(),
@@ -91,6 +102,9 @@ export const createAdminRouter = (
       readOfficialFeedSetting(centralDb),
       readBillingSettings(centralDb),
       readTagActorHost(centralDb),
+      readPublicTagPages(centralDb),
+      readPublicTagRetentionDays(centralDb),
+      readPublicTagFollows(centralDb),
     ])
     return {
       admin_count: adminCount,
@@ -108,6 +122,9 @@ export const createAdminRouter = (
       official_feed: officialFeed,
       payment_url: billing.payment_url,
       price_text: billing.price_text,
+      public_tag_follows: publicTagFollows,
+      public_tag_pages: publicTagPages,
+      public_tag_retention_days: publicTagRetentionDays,
       // DSN is returned in full (not `_set` boolean like other secrets):
       // Sentry DSNs are public values designed to be embedded in clients.
       sentry_dsn: sentryDsn || null,
@@ -150,6 +167,8 @@ export const createAdminRouter = (
         official_feed,
         payment_url,
         price_text,
+        public_tag_pages,
+        public_tag_retention_days,
         sentry_dsn,
         signup_mode,
         strava_client_id,
@@ -214,6 +233,17 @@ export const createAdminRouter = (
       }
       if (tag_actor_host !== undefined) {
         await centralDb.setServerSetting('tag_actor_host', tag_actor_host)
+      }
+      if (public_tag_retention_days !== undefined) {
+        await centralDb.setServerSetting('public_tag_retention_days', public_tag_retention_days)
+      }
+      if (public_tag_pages !== undefined) {
+        await centralDb.setServerSetting('public_tag_pages', normalizePublicTagPages(public_tag_pages))
+      }
+      if (public_tag_pages !== undefined || tag_actor_host !== undefined) {
+        await publicTags?.apply(await readPublicTagPages(centralDb)).catch((error: unknown) => {
+          console.error('⚠️ Public tag page follows failed:', error)
+        })
       }
       const billingChanged = [billing_enabled, trial_days, grace_days, price_text, payment_url].some(
         (value) => value !== undefined,

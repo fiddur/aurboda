@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'vitest'
 
-import { blogPath, buildArticlesAtomUrl, buildOfficialFeedAtomUrl } from './blogUrls'
+import {
+  blogPath,
+  buildArticlesAtomUrl,
+  buildOfficialFeedAtomUrl,
+  buildPublicTagAtomUrl,
+  publicTagPath,
+} from './blogUrls'
 
 describe('blogPath', () => {
   test('is the profile path plus /articles, username encoded', () => {
@@ -30,6 +36,19 @@ describe('buildOfficialFeedAtomUrl', () => {
     )
     expect(buildOfficialFeedAtomUrl('http://localhost:3000/api/', 'http://localhost:5173')).toBe(
       'http://localhost:3000/api/public/official-feed.atom',
+    )
+  })
+})
+
+describe('public tag page urls', () => {
+  test('the page path and the Atom URL, tag encoded', () => {
+    expect(publicTagPath('aurboda')).toBe('/tags/aurboda')
+    expect(publicTagPath('löpning')).toBe('/tags/l%C3%B6pning')
+    expect(buildPublicTagAtomUrl('aurboda', '/api', 'https://aurboda.net')).toBe(
+      'https://aurboda.net/api/public/tags/aurboda.atom',
+    )
+    expect(buildPublicTagAtomUrl('aurboda', 'http://localhost:3000/api/', 'http://localhost:5173')).toBe(
+      'http://localhost:3000/api/public/tags/aurboda.atom',
     )
   })
 })

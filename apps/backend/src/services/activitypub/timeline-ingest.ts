@@ -118,6 +118,15 @@ export const noteHashtags = async (note: Note): Promise<string[]> => {
   return normalizeTags(names)
 }
 
+/**
+ * The link to the original post: the Note's `url` when it is http(s), else its id.
+ * It is rendered as an `href`, so a `javascript:` (or any other scheme) url must never pass.
+ */
+export const noteLinkUrl = (note: Note, noteId: URL): string =>
+  note.url instanceof URL && (note.url.protocol === 'https:' || note.url.protocol === 'http:')
+    ? note.url.href
+    : noteId.href
+
 export const noteToTimelineInput = (
   note: Note,
   author: TimelineAuthor,
@@ -153,7 +162,7 @@ export const noteToTimelineInput = (
     in_reply_to_uri: note.replyTargetIds[0]?.href ?? null,
     object_uri: boost ? boost.announce_uri : note.id.href,
     published_at: new Date(Math.min(publishedAt.getTime(), now)),
-    url: note.url instanceof URL ? note.url.href : note.id.href,
+    url: noteLinkUrl(note, note.id),
   }
 }
 

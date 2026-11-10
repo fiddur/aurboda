@@ -8,6 +8,8 @@ import type { ActorKeyPair, Context, InboxContext } from '@fedify/fedify'
 
 import { Accept, Application, Endpoints, type Follow, type Reject } from '@fedify/fedify/vocab'
 
+import type { PublicTagPostInput } from '../central-public-tags.ts'
+
 export const INSTANCE_ACTOR_ID = '~actor'
 export const INSTANCE_ACTOR_PATH = '/actor'
 
@@ -30,9 +32,29 @@ export interface RelayInboxHooks {
   isRelayActor: (actorUri: string) => Promise<boolean>
 }
 
+/** What the inbox needs to know about the instance actor's follows of tag actors (public tag pages). */
+export interface TagFollowInboxHooks {
+  /** True when `followActivityId` is one of our tag follows (whatever the outcome). */
+  onAccept: (followActivityId: string, actorUri: string | null) => Promise<boolean>
+  onReject: (followActivityId: string, actorUri: string | null) => Promise<boolean>
+}
+
+/** A Note announced by a followed tag actor, as kept for its public tag page. */
+export interface PublicTagIngest {
+  /** The accepted follow whose tag actor is `actorUri`, else null. */
+  followedTagActor: (actorUri: string) => Promise<{ tag: string; actor_uri: string } | null>
+  upsertPublicTagPost: (input: PublicTagPostInput) => Promise<unknown>
+  removePublicTagAnnounce: (announceUri: string) => Promise<void>
+  deletePublicTagPost: (noteUri: string, actorUri: string) => Promise<unknown>
+  /** A remote actor deleting themselves: every post of theirs goes. */
+  deletePublicTagPostsByActor: (actorUri: string) => Promise<unknown>
+}
+
 export interface InstanceActorDeps {
   instanceKeys: () => Promise<InstanceActorKeys>
   relays: RelayInboxHooks
+  tagFollows?: TagFollowInboxHooks
+  publicTagPosts?: PublicTagIngest
 }
 
 export const buildInstanceActor = (
@@ -59,6 +81,16 @@ export const instanceActorFollowId = (origin: string, relayId: string): URL =>
   new URL(`${origin.replace(/\/+$/, '')}${INSTANCE_ACTOR_PATH}/follows/${relayId}`)
 
 /**
+ * The id of one Follow the instance actor sends a tag actor: fresh per attempt, since
+ * Fedify drops an activity id it has seen within a day, so a fixed id would break a
+ * tag removed and added again. Relay follow ids are bare UUIDs, so never `tags/…`.
+ */
+export const instanceTagFollowId = (origin: string, tag: string, attemptId: string): URL =>
+  new URL(
+    `${origin.replace(/\/+$/, '')}${INSTANCE_ACTOR_PATH}/follows/tags/${encodeURIComponent(tag)}/${attemptId}`,
+  )
+
+/**
  * An `Accept`/`Reject` answering one of our relay follows, matched on the Follow's
  * id (`objectId` is that id whether the Follow is embedded or referenced).
  * Returns whether it was one, so the caller skips the per-user follow handling.
@@ -71,6 +103,17 @@ export const handleRelayResponse = async (
   if (relays == null || followId == null) return false
   const actor = response.actorId?.href ?? null
   return response instanceof Accept ? relays.onAccept(followId, actor) : relays.onReject(followId, actor)
+}
+
+/** {@link handleRelayResponse} for the instance actor's follows of tag actors. */
+export const handleTagFollowResponse = async (
+  response: Accept | Reject,
+  hooks: TagFollowInboxHooks | undefined,
+): Promise<boolean> => {
+  const followId = response.objectId?.href
+  if (hooks == null || followId == null) return false
+  const actor = response.actorId?.href ?? null
+  return response instanceof Accept ? hooks.onAccept(followId, actor) : hooks.onReject(followId, actor)
 }
 
 /**

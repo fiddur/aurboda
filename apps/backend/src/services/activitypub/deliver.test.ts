@@ -1609,6 +1609,64 @@ describe('relay push of public posts (#1541)', () => {
     expect(sentTo(sendActivity)).toHaveLength(3)
   })
 
+  const tagPostsFake = () => ({
+    record: vi.fn(async () => {}),
+    remove: vi.fn(async () => {}),
+  })
+
+  test('a public post is recorded for the public tag pages, its Delete removes it', async () => {
+    const publicTagPosts = tagPostsFake()
+    const { deps } = await fakeDeps()
+    const withTags = { ...deps, publicTagPosts }
+    await deliverFeedArticlePost(withTags, 'fiddur', article('public'))
+    expect(publicTagPosts.record).toHaveBeenCalledTimes(1)
+    const [user, note] = publicTagPosts.record.mock.calls[0] as unknown as [string, Note]
+    expect(user).toBe('fiddur')
+    expect(note.id?.href).toBe(`${ORIGIN}/users/fiddur/feed/${article('public').id}`)
+    await deliverFeedDelete(withTags, 'fiddur', plainPost('public'))
+    expect(publicTagPosts.remove).toHaveBeenCalledWith(
+      'fiddur',
+      `${ORIGIN}/users/fiddur/feed/${plainPost('public').id}`,
+    )
+  })
+
+  test.each(['unlisted', 'followers'] as const)(
+    'a %s post is not recorded for the tag pages',
+    async (visibility) => {
+      const publicTagPosts = tagPostsFake()
+      const { deps } = await fakeDeps()
+      await deliverFeedArticlePost({ ...deps, publicTagPosts }, 'fiddur', article(visibility))
+      expect(publicTagPosts.record).not.toHaveBeenCalled()
+    },
+  )
+
+  test('an edit narrowing a post off public removes it from the tag pages', async () => {
+    const publicTagPosts = tagPostsFake()
+    const { deps } = await fakeDeps()
+    await deliverFeedArticleUpdate({ ...deps, publicTagPosts }, 'fiddur', article('followers'))
+    expect(publicTagPosts.record).not.toHaveBeenCalled()
+    expect(publicTagPosts.remove).toHaveBeenCalledWith(
+      'fiddur',
+      `${ORIGIN}/users/fiddur/feed/${article('followers').id}`,
+    )
+  })
+
+  test('a failing tag page record does not fail the delivery', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const publicTagPosts = {
+      record: vi.fn(async () => {
+        throw new Error('db down')
+      }),
+      remove: vi.fn(async () => {}),
+    }
+    const { deps, sendActivity } = await fakeDeps()
+    await expect(
+      deliverFeedArticlePost({ ...deps, publicTagPosts }, 'fiddur', article('public')),
+    ).resolves.toBeUndefined()
+    expect(sentTo(sendActivity)).toHaveLength(3)
+    warn.mockRestore()
+  })
+
   test('without the relay dependency, delivery is followers only', async () => {
     const { deps, sendActivity } = await fakeDeps({ listRelayRecipients: null })
     await deliverFeedArticlePost(deps, 'fiddur', article('public'))

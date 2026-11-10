@@ -126,6 +126,23 @@ describe('account deletion', () => {
       await centralDb.upsertStravaAthleteMapping(4242, user)
       const job = await centralDb.insertImportJob('livsmedelsverket', user)
       await centralDb.setServerSetting('official_feed', { tags: ['qs'], users: [user, keeper] })
+      const tagPost = (n: number, localUser: string | null) => ({
+        actor_uri: `https://aurboda.test/users/${localUser ?? 'remote'}`,
+        announce_uris: localUser == null ? ['https://tags.test/announce/1'] : [],
+        avatar_url: null,
+        content: '<p>#aurboda</p>',
+        display_name: null,
+        handle: null,
+        images: [],
+        local_user: localUser,
+        note_uri: `https://aurboda.test/notes/${suffix}/${n}`,
+        published_at: new Date(),
+        tags: ['aurboda'],
+        url: null,
+      })
+      await centralDb.upsertPublicTagPost(tagPost(1, user))
+      await centralDb.upsertPublicTagPost(tagPost(2, keeper))
+      await centralDb.upsertPublicTagPost(tagPost(3, null))
 
       const deleted: string[] = []
       const deleteAccount = makeDeleter(deleted)
@@ -152,6 +169,11 @@ describe('account deletion', () => {
         const rows = await client.query(`SELECT 1 FROM ${table} WHERE username = $1`, [user])
         expect({ count: rows.rowCount, table }).toEqual({ count: 0, table })
       }
+      const tagPosts = await client.query<{ local_user: string | null }>(
+        'SELECT local_user FROM public_tag_posts WHERE note_uri LIKE $1 ORDER BY note_uri',
+        [`https://aurboda.test/notes/${suffix}/%`],
+      )
+      expect(tagPosts.rows.map((r) => r.local_user)).toEqual([keeper, null])
       expect((await centralDb.getImportJobById(job.id))?.started_by).toBeUndefined()
       expect(await centralDb.isAdmin(keeper)).toBe(true)
       expect(await centralDb.getServerSetting('official_feed')).toEqual({ tags: ['qs'], users: [keeper] })

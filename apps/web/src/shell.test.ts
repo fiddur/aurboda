@@ -11,6 +11,7 @@ const GUEST_PAGES = [
   '/u/fiddur/posts/abc',
   '/challenges/join',
   '/blog',
+  '/tags/aurboda',
 ]
 
 describe('shouldShowNav', () => {
@@ -79,6 +80,7 @@ describe('shouldShowPlanBanner', () => {
       '/u/fiddur',
       '/u/fiddur/a3GVcs14D',
       '/blog',
+      '/tags/aurboda',
       '/login',
       '/signup',
       '/privacy',

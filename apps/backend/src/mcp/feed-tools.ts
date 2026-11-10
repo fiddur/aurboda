@@ -9,6 +9,8 @@ import {
   followActorBodySchema,
   followTagBodySchema,
   followersQuerySchema,
+  hashtagInputSchema,
+  publicTagPostsQuerySchema,
   iso8601DateTimeSchema,
   postTagsInputSchema,
   publishArticleDraftBodySchema,
@@ -26,6 +28,7 @@ import type { FeedDeliver } from '../routes/feed-router.ts'
 import type { ReactionActions, ReactionResult, ReplyResult } from '../services/feed-reactions.ts'
 import type { FollowerActions } from '../services/followers.ts'
 import type { FollowActions } from '../services/following.ts'
+import type { PublicTagActions } from '../services/public-tags.ts'
 import type { RetroEnrichTrigger } from '../services/timeline-retro-enrich.ts'
 
 import {
@@ -112,6 +115,8 @@ export interface FeedToolsOptions {
   retroEnrichTimeline?: RetroEnrichTrigger
   /** Canonical web origin, to build a shared challenge's public URL (#994). */
   webHost?: string
+  /** The public tag pages (`list_public_tag_posts`); absent, the tool reports none. */
+  publicTagActions?: Pick<PublicTagActions, 'page'>
 }
 
 export const registerFeedTools = (server: McpServer, user: string, options: FeedToolsOptions = {}) => {
@@ -120,6 +125,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
     deliver,
     followActions,
     followerActions,
+    publicTagActions,
     reactionActions,
     retroEnrichTimeline,
     webHost,
@@ -494,6 +500,16 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
       const page = await getTimelinePage(user, limit, cursor, { origin: webHost, tag })
       retroEnrichTimeline?.(user)
       return jsonResponse(page)
+    },
+  )
+
+  server.tool(
+    'list_public_tag_posts',
+    "List a public tag page (`/tags/<tag>`): the public posts carrying the hashtag, from this server and others, newest first — what this server's instance actor receives from the tag's actor on the tag actor host, plus this server's own public posts with the tag. Only tags the admin configured have a page. Pass `cursor` (from a previous call) to page.",
+    { tag: hashtagInputSchema, ...publicTagPostsQuerySchema.shape },
+    async ({ cursor, tag }) => {
+      const result = publicTagActions ? await publicTagActions.page(tag, cursor) : { ok: false as const }
+      return result.ok ? jsonResponse(result.page) : errorResponse(`No public page for #${tag}`)
     },
   )
 

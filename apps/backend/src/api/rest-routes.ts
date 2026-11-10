@@ -26,6 +26,7 @@ import type { FollowActions } from '../services/following.ts'
 import type { InvitationAuth } from '../services/invitation.ts'
 import type { NamedLocationsChanged } from '../services/locations.ts'
 import type { OuraWebhookManager } from '../services/oura-webhook-manager.ts'
+import type { PublicTagActions } from '../services/public-tags.ts'
 import type { SyncProvider } from '../services/queries/index.ts'
 import type { RelayActions } from '../services/relays.ts'
 import type { HrSettingsChanged, ProfileChanged } from '../services/settings.ts'
@@ -149,6 +150,7 @@ interface RestRoutesDeps {
   followActions: FollowActions
   followerActions: FollowerActions
   relayActions: RelayActions
+  publicTagActions: PublicTagActions
   /** Outbound like ⭐ / boost 🔄 toggles for the home timeline. */
   reactionActions: ReactionActions
   timelineHub: TimelineHub
@@ -189,6 +191,7 @@ export const mountRestRouters = ({
   followActions,
   followerActions,
   relayActions,
+  publicTagActions,
   reactionActions,
   onProfileChanged,
   onHrSettingsChanged,
@@ -273,6 +276,7 @@ export const mountRestRouters = ({
   httpd.use(
     createFeedPublicRouter({
       apiBaseUrl,
+      publicTags: publicTagActions,
       readOfficialFeed: () => readOfficialFeedSetting(centralDb),
       webHost,
     }),
@@ -365,6 +369,7 @@ export const mountRestRouters = ({
       accountDeleter,
       accountPlans,
       relayActions,
+      publicTagActions,
     ),
   )
   httpd.use(

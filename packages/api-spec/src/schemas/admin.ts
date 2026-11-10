@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import { baseResponseSchema, dateOnlySchema, iso8601DateTimeSchema } from './common.ts'
-import { officialFeedSettingSchema } from './feed.ts'
+import { hashtagInputSchema, officialFeedSettingSchema } from './feed.ts'
 import { adminUserPlanShape } from './plans.ts'
 import { signupProfileShape } from './profile.ts'
 
@@ -23,6 +23,10 @@ export const serverStatusResponseSchema = baseResponseSchema
       .literal('aurboda')
       .optional()
       .meta({ description: 'Product identifier for federation discovery' }),
+    public_tag_pages: z.array(z.string()).optional().meta({
+      description:
+        'Hashtags (lowercase, without `#`) that have a public page at `/tags/<tag>` listing posts from every server',
+    }),
     official_feed: z
       .boolean()
       .optional()
@@ -108,6 +112,21 @@ export const authTokenResponseSchema = baseResponseSchema
 
 export type AuthTokenResponse = z.infer<typeof authTokenResponseSchema>
 
+export const publicTagFollowSchema = z
+  .object({
+    state: z.enum(['pending', 'accepted', 'unresolved']).meta({
+      description:
+        "`accepted`: the tag actor accepted the instance actor's follow and its posts are kept; `pending`: sent, not yet accepted (sent again on the next save); `unresolved`: the tag actor could not be found (tried again on the next save)",
+    }),
+    tag: z.string().meta({ description: 'The hashtag, lowercase without `#`' }),
+  })
+  .meta({
+    description: "A public tag page's follow of its tag actor on the tag actor host",
+    id: 'PublicTagFollow',
+  })
+
+export type PublicTagFollow = z.infer<typeof publicTagFollowSchema>
+
 export const adminSettingsResponseSchema = baseResponseSchema
   .extend({
     admin_count: z.number().int().meta({ description: 'Number of admin users' }),
@@ -144,6 +163,17 @@ export const adminSettingsResponseSchema = baseResponseSchema
     price_text: z
       .string()
       .meta({ description: 'The price shown to users, e.g. "3 € / month" (empty when not set)' }),
+    public_tag_pages: z.array(z.string()).meta({
+      description:
+        "Hashtags (lowercase, without `#`) with a public page at `/tags/<tag>`: the server follows each tag's actor on the tag actor host and lists the public posts it announces",
+    }),
+    public_tag_follows: z.array(publicTagFollowSchema).meta({
+      description: "Each configured public tag page's follow of its tag actor, in `public_tag_pages` order",
+    }),
+    public_tag_retention_days: z
+      .number()
+      .int()
+      .meta({ description: 'Days a post stays on the public tag pages (default 30)' }),
     sentry_dsn: z
       .string()
       .nullable()
@@ -162,6 +192,12 @@ export const adminSettingsResponseSchema = baseResponseSchema
   .meta({ id: 'AdminSettingsResponse' })
 
 export type AdminSettingsResponse = z.infer<typeof adminSettingsResponseSchema>
+
+/** At most this many hashtags have a public page. */
+export const publicTagPagesMax = 20
+
+/** Days a post stays on the public tag pages unless the admin sets otherwise. */
+export const defaultPublicTagRetentionDays = 30
 
 export const updateAdminSettingsBodySchema = z
   .object({
@@ -228,6 +264,17 @@ export const updateAdminSettingsBodySchema = z
       .max(200)
       .optional()
       .meta({ description: 'The price shown to users, e.g. "3 € / month"; empty to clear' }),
+    public_tag_pages: z.array(hashtagInputSchema).max(publicTagPagesMax).optional().meta({
+      description:
+        'Replace the hashtags with a public page at `/tags/<tag>` (at most 20). The server follows `<tag>@<tag actor host>` for each added tag and unfollows each removed one; empty turns the pages off',
+    }),
+    public_tag_retention_days: z
+      .number()
+      .int()
+      .min(1)
+      .max(365)
+      .optional()
+      .meta({ description: 'Days a post stays on the public tag pages (1-365, default 30)' }),
     sentry_dsn: z.string().url().nullable().optional().meta({
       description:
         'Sentry DSN for backend error reporting (set to null to clear). Takes effect after the next backend restart.',

@@ -99,6 +99,17 @@ describe('noteToTimelineInput', () => {
     expect(noteToTimelineInput(note, author)?.url).toBe('https://mastodon.example/notes/2')
   })
 
+  test('falls back to the object id when the url is not http(s)', () => {
+    const note = new Note({
+      attribution: new URL(author.actor_uri),
+      content: '<p>x</p>',
+      id: new URL('https://mastodon.example/notes/3'),
+      published: published('2026-07-02T09:00:00Z'),
+      url: new URL('javascript:alert(1)'),
+    })
+    expect(noteToTimelineInput(note, author)?.url).toBe('https://mastodon.example/notes/3')
+  })
+
   test('returns null when the Note lacks an id or published time', () => {
     const noId = new Note({
       attribution: new URL(author.actor_uri),

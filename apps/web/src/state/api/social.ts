@@ -6,6 +6,8 @@ import type {
   FeedPostsResponse,
   OfficialFeedQuery,
   OfficialFeedResponse,
+  PublicTagPostsQuery,
+  PublicTagPostsResponse,
   PublicPostsQuery,
   PublicProfileResponse,
   SharedDashboard,
@@ -22,7 +24,7 @@ import axios from 'axios'
 
 import { API_URL } from '../../config'
 import { auth } from '../auth'
-import { buildArticlesAtomUrl, buildOfficialFeedAtomUrl } from './blogUrls'
+import { buildArticlesAtomUrl, buildOfficialFeedAtomUrl, buildPublicTagAtomUrl } from './blogUrls'
 
 const authHeaders = () => ({ Authorization: `Bearer ${auth.value.token}` })
 
@@ -129,6 +131,21 @@ export const fetchOfficialFeed = async (cursor?: string): Promise<OfficialFeedRe
 
 /** Absolute URL of the official feed's Atom document. */
 export const officialFeedAtomUrl = (): string => buildOfficialFeedAtomUrl(API_URL, window.location.origin)
+
+/** One keyset page of a public tag page, newest first. */
+export const fetchPublicTagPosts = async (tag: string, cursor?: string): Promise<PublicTagPostsResponse> => {
+  const params: PublicTagPostsQuery = {}
+  if (cursor != null) params.cursor = cursor
+  const response = await axios.get<PublicTagPostsResponse>(
+    `${API_URL}/public/tags/${encodeURIComponent(tag)}/posts`,
+    { params },
+  )
+  return response.data
+}
+
+/** Absolute URL of a public tag page's Atom document. */
+export const publicTagAtomUrl = (tag: string): string =>
+  buildPublicTagAtomUrl(tag, API_URL, window.location.origin)
 
 /** One public/unlisted feed post, for its permalink page `/u/:username/posts/:postId`. */
 export const fetchPublicPost = async (username: string, postId: string): Promise<FeedPostResponse> => {
