@@ -253,6 +253,15 @@ main > div {
   width: 100%;
 }
 
+/*
+ * A route root is capped at main's height, so a child with overflow set (a sideways-scrolling
+ * tab row) would otherwise shrink to nothing under long content. An inner scroll container that
+ * should shrink sets `flex: 1` (or `flex-shrink: 1`) in its own rule, which outranks this one.
+ */
+main > div > * {
+  flex-shrink: 0;
+}
+
 .site-footer {
   text-align: right;
   font-size: 0.75rem;

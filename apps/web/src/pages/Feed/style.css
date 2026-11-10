@@ -6,14 +6,6 @@
   padding: 1rem;
 }
 
-/*
- * The app's route container makes every page a height-capped flex column, so a child with
- * overflow (the tab row scrolls sideways) may shrink to nothing once the feed below is long.
- */
-.feed-page > * {
-  flex-shrink: 0;
-}
-
 .feed-page h1 {
   margin: 0 0 0.25rem;
 }
