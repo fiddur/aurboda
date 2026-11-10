@@ -70,13 +70,28 @@ its first visit starts at the queried range rather than at a fix. Detail pages a
 ## Places summary
 
 `GET /locations/places-summary?start=<iso>&end=<iso>&tz=<IANA>&home_location=<name>` (MCP:
-`get_places_summary`) rolls up the visits to named and detected places over a range: `nights_home`
-and `nights_away` (overnight stays, detected per place as `GET /locations/overnight-stays` does, at
-`home_location` -- default `Home`, matched case-insensitively -- or anywhere else; a night without a
-detectable stay counts as neither), `distinct_places`, `visits` and `places`, the five most visited
-with their visits and hours. Visits whose place is unknown are left out. The range is widened by a day
-each side for the overnight detection, and a night belongs to the range when its evening date does, so a
-stay running past the end of a month still counts its nights inside that month. It is behind the dashboard's [places card](dashboard.md#places-card) and the place
+`get_places_summary`) says where the nights of a range were spent and which named places were visited.
+
+- **Place of a visit.** A visit to a named location is that place. An OwnTracks region carrying the
+  name of a named location (matched case-insensitively) is that named location too: such regions often
+  reach past the named radius, so a fix just outside it would otherwise split the stay. Anything else
+  (detected places, other regions, unknown places) is _elsewhere_. Consecutive visits to the same place
+  at most 36 hours apart are joined into one, so the fragments of a stay count as one visit.
+- **Nights.** Every evening date in the range (in `tz`) is a night, so a month has as many nights as
+  days and a stay running past its end still counts its nights inside it. A night goes to the place the
+  user was at 03:00 the next morning: the visit covering that moment; else, when the last visit before
+  it and the next one after it are to the same place at most 36 hours apart, that place; else the place
+  of the last visit when it ended at most 18 hours before (a phone at rest reports nothing); otherwise
+  the night has no data. The range is widened by two days each side so the nights at its edges have
+  visits around them.
+- **Figures.** `nights_by_place` (every named place with a night, most nights first),
+  `nights_elsewhere`, `nights_no_data`, `nights_home` (the nights at `home_location`, default `Home`,
+  matched case-insensitively) and `nights_away` (every other night with a place); `distinct_places`
+  and `visits` count the named places and the visits to them; `places` lists the five named places
+  with the most nights, then the most hours, with their nights, visits and hours. Together the nights
+  per place, elsewhere and without data add up to the nights of the range.
+
+It is behind the dashboard's [places card](dashboard.md#places-card) and the place
 [top list](dashboard.md#top-list-card). `GET /locations/summary` (MCP: `get_location_summary`) is the
 same kind of roll-up for one named place.
 

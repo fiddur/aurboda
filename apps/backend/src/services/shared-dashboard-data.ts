@@ -24,7 +24,6 @@ import type {
 
 import {
   hrZoneMetrics,
-  isExerciseActivityType,
   metricCardLookbackDays,
   percentChange,
   periodGranularityOf,
@@ -34,7 +33,6 @@ import {
   windowDays,
 } from '@aurboda/api-spec'
 
-import { getActivities, getAllActivityTypeNames } from '../db/index.ts'
 import { getActivityRecords, publicRecord } from './activity-records.ts'
 import { maskBreakdownNames } from './breakdown-mask.ts'
 import { getChartData } from './chart-data.ts'
@@ -52,7 +50,6 @@ import {
   previousWindow,
 } from './periods.ts'
 import {
-  buildCategoryMap,
   getActivityTypeSummary,
   getPeriodSummary,
   getPlacesSummary,
@@ -463,6 +460,8 @@ const resolvePlacesCard = async (
           ...current,
           previous_distinct_places: previous.distinct_places,
           previous_nights_away: previous.nights_away,
+          previous_nights_by_place: previous.nights_by_place,
+          previous_nights_elsewhere: previous.nights_elsewhere,
           previous_visits: previous.visits,
         }
       : current,
@@ -502,62 +501,28 @@ interface SummaryVisibility {
   showWorkouts: boolean
 }
 
-const durationMinutes = (a: { start_time: Date; end_time?: Date }): number =>
-  a.end_time ? (a.end_time.getTime() - a.start_time.getTime()) / 60000 : 0
-
-const bulkTypes = new Set(['calendar_event', 'computer_active', 'location_visit', 'music_scrobble', 'screentime'])
-
-/**
- * Every type except the bulk-ingested, non-session ones (screen time, scrobbles, visits, calendar), which
- * are most of the rows. Narrower than that would change merging: an override retyping a synced workout to,
- * say, a custom `other` type must still be queried for the workout to merge into it and drop out.
- */
-const summaryTypes = (names: string[], categoryMap: Map<string, string>): string[] =>
-  names.filter((name) => !bulkTypes.has(name) && categoryMap.get(name) !== 'productivity')
-
-/** Aggregates to exactly the figures the widget renders — never the raw list. */
+/** The same roll-up as an activity type card over the window, so the two always agree. */
 const summarizeActivities = async (
   user: string,
-  types: string[],
-  categoryMap: Map<string, string>,
   range: Range,
   visibility: SummaryVisibility,
 ): Promise<ActivitySummaryData> => {
-  const activities = await getActivities(
-    user,
-    types,
-    range.start,
-    range.end,
-    undefined,
-    undefined,
-    categoryMap,
-  )
-  const exercise = activities.filter((a) => isExerciseActivityType(a.activity_type))
-  const sleep = activities.filter((a) => a.activity_type === 'sleep')
-  const meditation = activities.filter((a) => a.activity_type === 'meditation')
-
+  const rollUp = (type: string, visible: boolean) =>
+    visible
+      ? getActivityTypeSummary(user, type, { end: range.end.toISOString(), start: range.start.toISOString() })
+      : null
+  const [exercise, meditation, sleep] = await Promise.all([
+    rollUp('exercise', visibility.showWorkouts),
+    rollUp('meditation', visibility.showMeditation),
+    rollUp('sleep', visibility.showSleep),
+  ])
   return {
-    exercise: visibility.showWorkouts
-      ? {
-          count: exercise.length,
-          total_minutes: exercise.reduce((sum, a) => sum + durationMinutes(a), 0),
-        }
-      : null,
-    meditation: visibility.showMeditation
-      ? {
-          count: meditation.length,
-          total_minutes: meditation.reduce((sum, a) => sum + durationMinutes(a), 0),
-        }
-      : null,
-    sleep: visibility.showSleep
-      ? {
-          avg_hours:
-            sleep.length > 0
-              ? sleep.reduce((sum, a) => sum + durationMinutes(a) / 60, 0) / sleep.length
-              : null,
-          count: sleep.length,
-        }
-      : null,
+    exercise: exercise && { count: exercise.count, total_minutes: exercise.total_minutes },
+    meditation: meditation && { count: meditation.count, total_minutes: meditation.total_minutes },
+    sleep: sleep && {
+      avg_hours: sleep.sleep ? sleep.sleep.avg_minutes / 60 : null,
+      count: sleep.count,
+    },
   }
 }
 
@@ -600,9 +565,7 @@ const resolveActivitySummary = async (
     return { data: { exercise: null, meditation: null, sleep: null }, type: 'activity_summary' }
   }
 
-  const [names, categoryMap] = await Promise.all([getAllActivityTypeNames(user), buildCategoryMap(user)])
-  const types = summaryTypes(names, categoryMap)
-  const summarize = (range: Range) => summarizeActivities(user, types, categoryMap, range, visibility)
+  const summarize = (range: Range) => summarizeActivities(user, range, visibility)
   const [current, previous] = await Promise.all([
     summarize(windowOf(options, config.lookback_days ?? 7)),
     options.previous ? summarize(inclusiveRange(options.previous)) : undefined,

@@ -581,13 +581,6 @@ export function DashboardEditor({
         return (
           <div class="config-form">
             <OptionalTextField
-              configKey="home_location"
-              configValues={configValues}
-              label="Home location"
-              placeholder="Home"
-              setConfigValues={setConfigValues}
-            />
-            <OptionalTextField
               configKey="title"
               configValues={configValues}
               label="Title"
