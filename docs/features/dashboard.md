@@ -290,7 +290,12 @@ Click the pencil icon next to the "Dashboard" title to enter edit mode.
 
 - **Add a widget**: Click the "+ Add Widget" placeholder in any section. A dialog opens showing the widget types compatible with that section. Select a type, configure it (e.g., pick a metric, set a lookback period), and confirm.
 - **Remove a widget**: Click the X button on any widget.
-- **Reorder widgets**: Use the up/down arrows on each widget to move it within its section.
+- **Move widgets**: On a desktop (a mouse or trackpad), grab a widget by its grip handle and drop it
+  where it should go: an accent bar shows whether it lands before or after the card under the pointer
+  (beside it in a multi-column grid, above or below it in a single column), and a dashed outline marks
+  a section it would be added to the end of. Widgets can be dropped into another section, including an
+  empty one, but not into a collapsed one. The up/down arrows on each widget move it one step within
+  its section, and are the way to reorder on touch devices, where the grip is hidden.
 - **Add a section**: Click "Add Section" at the bottom. Give it a title and choose a type (Metrics, Charts, or Links).
 - **Rename a section**: Click the pencil icon next to a section title, edit the title inline, and press Enter (or click away) to save. Press Escape to cancel.
 - **Delete a section**: Click the trash icon next to a section title. Confirms before deleting the section and all its widgets.
@@ -377,8 +382,9 @@ widgets render.
 
 ## Known Limitations
 
-- Widgets cannot be moved between sections -- only reordered within a section.
-- There is no drag-and-drop; reordering uses up/down arrow buttons.
+- On touch devices widgets can only be reordered within a section, with the arrow buttons;
+  moving one to another section needs a mouse or trackpad.
+- Sections themselves cannot be reordered.
 - The dashboard layout is managed through the web UI only; MCP can read its data
   (`get_dashboard_data`) but not edit the home dashboard.
 - Sparkline cards fetch up to 365 days of time-series data, which may be slow for very high-frequency metrics like heart rate. Use metric cards for those.
