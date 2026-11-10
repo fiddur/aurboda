@@ -34,6 +34,8 @@ import {
   type DeliverableExercise,
   type DeliverablePost,
   type DeliverableReply,
+  deliverFeedArticlePost,
+  deliverFeedArticleUpdate,
   deliverFeedChallengePost,
   deliverFeedChallengeUpdate,
   deliverFeedDashboardPost,
@@ -1333,5 +1335,283 @@ describe('quote policy on every Note kind (FEP-044f)', () => {
     expect(of('public')).toEqual([PUBLIC_COLLECTION.href])
     expect(of('unlisted')).toEqual([PUBLIC_COLLECTION.href])
     expect(of('followers')).toEqual([ACTOR])
+  })
+})
+
+describe('relay push of public posts (#1541)', () => {
+  const ORIGIN = 'https://aurboda.example'
+  const RELAY = {
+    id: new URL('https://relay.example/actor'),
+    inboxId: new URL('https://relay.example/inbox'),
+  }
+  const OTHER_RELAY = {
+    id: new URL('https://tags.example/user/_____relay_____/inbox'),
+    inboxId: new URL('https://tags.example/user/_____relay_____/inbox'),
+  }
+
+  const fakeDeps = async (
+    overrides: {
+      sendActivity?: unknown
+      listRelayRecipients?: FeedDeliveryDeps['listRelayRecipients'] | null
+    } = {},
+  ) => {
+    const ctx = await createFeedFederation(ORIGIN, `${ORIGIN}/api`).createContext(new URL(ORIGIN))
+    const sendActivity =
+      (overrides.sendActivity as ReturnType<typeof vi.fn>) ?? vi.fn().mockResolvedValue(undefined)
+    Object.assign(ctx, { sendActivity })
+    const deps: FeedDeliveryDeps = {
+      apiBaseUrl: `${ORIGIN}/api`,
+      federation: { createContext: async () => ctx } as unknown as FeedDeliveryDeps['federation'],
+      origin: ORIGIN,
+      ...(overrides.listRelayRecipients === null
+        ? {}
+        : { listRelayRecipients: overrides.listRelayRecipients ?? (async () => [RELAY, OTHER_RELAY]) }),
+    }
+    return { deps, sendActivity }
+  }
+
+  const sentTo = (sendActivity: ReturnType<typeof vi.fn>) =>
+    sendActivity.mock.calls.map(([, recipient]) =>
+      typeof recipient === 'string' ? recipient : recipient.inboxId?.href,
+    )
+
+  const article = (visibility: DeliverableArticle['visibility']): DeliverableArticle => ({
+    article: { blocks: [{ markdown: 'Hello', type: 'prose' }], title: 'Hi' },
+    created_at: new Date('2026-07-03T00:00:00Z'),
+    id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    image_token: 'tok',
+    updated_at: new Date('2026-07-04T00:00:00Z'),
+    visibility,
+  })
+
+  const plainPost = (
+    visibility: DeliverablePost['visibility'],
+    extra: { in_reply_to_actor_uri?: string; kind?: 'activity' | 'reply' } = {},
+  ): Parameters<typeof deliverFeedDelete>[2] => ({
+    created_at: new Date(),
+    id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+    image_token: 'tok',
+    include_chart: false,
+    include_exercises: false,
+    include_map: false,
+    included_metrics: [],
+    series_metrics: [],
+    updated_at: new Date(),
+    visibility,
+    ...extra,
+  })
+
+  test('a public post goes to followers and to every accepted relay, signed by its author', async () => {
+    const { deps, sendActivity } = await fakeDeps()
+    await deliverFeedArticlePost(deps, 'fiddur', article('public'))
+    expect(sentTo(sendActivity).sort()).toEqual(
+      ['followers', RELAY.inboxId.href, OTHER_RELAY.inboxId.href].sort(),
+    )
+    for (const [sender, , activity] of sendActivity.mock.calls) {
+      expect(sender).toEqual({ identifier: 'fiddur' })
+      expect(activity).toBeInstanceOf(Create)
+    }
+  })
+
+  test('the Delete of a public post reaches the relays too', async () => {
+    const { deps, sendActivity } = await fakeDeps()
+    await deliverFeedDelete(deps, 'fiddur', plainPost('public'))
+    expect(sentTo(sendActivity)).toHaveLength(3)
+  })
+
+  test.each(['unlisted', 'followers'] as const)('a %s post is not pushed to relays', async (visibility) => {
+    const listRelayRecipients = vi.fn(async () => [RELAY])
+    const { deps, sendActivity } = await fakeDeps({ listRelayRecipients })
+    await deliverFeedArticlePost(deps, 'fiddur', article(visibility))
+    expect(sentTo(sendActivity)).toEqual(['followers'])
+    expect(listRelayRecipients).not.toHaveBeenCalled()
+  })
+
+  test.each(['unlisted', 'followers'] as const)(
+    'the Delete of a %s post still reaches the relays (it may have been public once)',
+    async (visibility) => {
+      const { deps, sendActivity } = await fakeDeps()
+      await deliverFeedDelete(deps, 'fiddur', plainPost(visibility, { kind: 'activity' }))
+      expect(sentTo(sendActivity).sort()).toEqual(
+        ['followers', RELAY.inboxId.href, OTHER_RELAY.inboxId.href].sort(),
+      )
+      for (const [, , activity] of sendActivity.mock.calls) expect(activity).toBeInstanceOf(Delete)
+    },
+  )
+
+  const relayCalls = (sendActivity: ReturnType<typeof vi.fn>) =>
+    sendActivity.mock.calls.filter(([, recipient]) => recipient === RELAY)
+
+  const expectRelayRetraction = async (sendActivity: ReturnType<typeof vi.fn>, postId: string) => {
+    const followersActivity = sendActivity.mock.calls.find(([, recipient]) => recipient === 'followers')?.[2]
+    expect(followersActivity).toBeInstanceOf(Update)
+    const [[, , relayActivity]] = relayCalls(sendActivity)
+    expect(relayActivity).toBeInstanceOf(Delete)
+    const del = relayActivity as Delete
+    expect(del.objectId?.href).toBe(`${ORIGIN}/users/fiddur/feed/${postId}`)
+    expect(del.toIds.map((u) => u.href)).toEqual([PUBLIC])
+  }
+
+  const narrowedEdits: [
+    string,
+    (deps: FeedDeliveryDeps, visibility: 'public' | 'unlisted' | 'followers') => Promise<string>,
+  ][] = [
+    [
+      'article',
+      async (deps, visibility) => {
+        await deliverFeedArticleUpdate(deps, 'fiddur', article(visibility))
+        return article(visibility).id
+      },
+    ],
+    [
+      'challenge',
+      async (deps, visibility) => {
+        const post: DeliverableChallenge = {
+          challenge: { name: 'August 10k', url: `${ORIGIN}/u/fiddur/august-10k` },
+          created_at: new Date('2026-08-01T00:00:00Z'),
+          id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+          image_token: 'tok',
+          include_chart: false,
+          message: null,
+          updated_at: new Date('2026-08-02T00:00:00Z'),
+          visibility,
+        }
+        await deliverFeedChallengeUpdate(deps, 'fiddur', post, async () => false)
+        return post.id
+      },
+    ],
+    [
+      'exercise',
+      async (deps, visibility) => {
+        const post: DeliverableExercise = {
+          created_at: new Date('2026-11-01T00:00:00Z'),
+          exercise: {
+            activity_type: 'strength_training',
+            field: 'sets.exercise',
+            include_records: true,
+            include_sessions: false,
+            name: 'Bench Press',
+            value: 'Bench Press',
+          },
+          id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+          image_token: 'tok',
+          include_chart: false,
+          message: null,
+          updated_at: new Date('2026-11-02T00:00:00Z'),
+          visibility,
+        }
+        await deliverFeedExerciseUpdate(deps, 'fiddur', post, {
+          content: async () => '<p>Bench</p>',
+          hasTrend: async () => false,
+        })
+        return post.id
+      },
+    ],
+    [
+      'dashboard',
+      async (deps, visibility) => {
+        const post: DeliverableDashboard = {
+          created_at: new Date('2026-11-01T00:00:00Z'),
+          dashboard: {
+            config: { period: { granularity: 'month' }, sections: [], version: 1 },
+            include_link: false,
+            name: 'Month in data',
+            period: '2026-10',
+          },
+          id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+          message: null,
+          updated_at: new Date('2026-11-02T00:00:00Z'),
+          visibility,
+        }
+        await deliverFeedDashboardUpdate(deps, 'fiddur', post, async () => '<p>Month</p>')
+        return post.id
+      },
+    ],
+  ]
+
+  test.each(narrowedEdits)(
+    'an edit narrowing a %s post retracts it from relays with a public Delete',
+    async (_kind, edit) => {
+      for (const visibility of ['unlisted', 'followers'] as const) {
+        const { deps, sendActivity } = await fakeDeps()
+        const postId = await edit(deps, visibility)
+        await expectRelayRetraction(sendActivity, postId)
+      }
+    },
+  )
+
+  test.each(narrowedEdits)('an edit of a public %s post sends relays the Update', async (_kind, edit) => {
+    const { deps, sendActivity } = await fakeDeps()
+    await edit(deps, 'public')
+    const [[, , relayActivity]] = relayCalls(sendActivity)
+    expect(relayActivity).toBeInstanceOf(Update)
+  })
+
+  test('a reply and its Delete are not pushed to relays', async () => {
+    const { deps, sendActivity } = await fakeDeps()
+    const target = 'https://peer.example/users/bob'
+    await deliverFeedReplyPost(
+      deps,
+      'fiddur',
+      {
+        created_at: new Date(),
+        id: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+        in_reply_to_actor_uri: target,
+        in_reply_to_handle: '@bob@peer.example',
+        in_reply_to_uri: 'https://peer.example/users/bob/statuses/1',
+        message: 'Nice',
+        updated_at: new Date(),
+        visibility: 'public',
+      },
+      { inbox_uri: `${target}/inbox`, shared_inbox_uri: null },
+    )
+    await deliverFeedDelete(
+      deps,
+      'fiddur',
+      plainPost('public', { in_reply_to_actor_uri: target, kind: 'reply' }),
+    )
+    expect(sentTo(sendActivity).filter((to) => to?.startsWith('https://relay.example'))).toEqual([])
+    expect(sentTo(sendActivity).filter((to) => to?.startsWith('https://tags.example'))).toEqual([])
+  })
+
+  test('a failing relay costs neither the followers nor the other relay their copy', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const sendActivity = vi.fn(async (_sender: unknown, recipient: unknown) => {
+      if (recipient === RELAY) throw new Error('relay down')
+    })
+    const { deps } = await fakeDeps({ sendActivity })
+    await expect(deliverFeedArticlePost(deps, 'fiddur', article('public'))).resolves.toBeUndefined()
+    expect(sentTo(sendActivity).sort()).toEqual(
+      ['followers', RELAY.inboxId.href, OTHER_RELAY.inboxId.href].sort(),
+    )
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('relay.example'), expect.any(Error))
+    warn.mockRestore()
+  })
+
+  test('an unreadable relay list does not fail the followers delivery', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { deps, sendActivity } = await fakeDeps({
+      listRelayRecipients: async () => {
+        throw new Error('db down')
+      },
+    })
+    await deliverFeedArticlePost(deps, 'fiddur', article('public'))
+    expect(sentTo(sendActivity)).toEqual(['followers'])
+    warn.mockRestore()
+  })
+
+  test('a followers failure still surfaces after the relays got their copy', async () => {
+    const sendActivity = vi.fn(async (_sender: unknown, recipient: unknown) => {
+      if (recipient === 'followers') throw new Error('connect ECONNREFUSED')
+    })
+    const { deps } = await fakeDeps({ sendActivity })
+    await expect(deliverFeedArticlePost(deps, 'fiddur', article('public'))).rejects.toThrow('ECONNREFUSED')
+    expect(sentTo(sendActivity)).toHaveLength(3)
+  })
+
+  test('without the relay dependency, delivery is followers only', async () => {
+    const { deps, sendActivity } = await fakeDeps({ listRelayRecipients: null })
+    await deliverFeedArticlePost(deps, 'fiddur', article('public'))
+    expect(sentTo(sendActivity)).toEqual(['followers'])
   })
 })

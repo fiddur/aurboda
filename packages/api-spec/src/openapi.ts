@@ -7,7 +7,14 @@ import { createDocument } from 'zod-openapi'
 
 import { isAllowedWhenReadOnly } from './read-only.ts'
 import { activitiesResponseSchema } from './schemas/activities.ts'
-import { deleteAccountBodySchema, loginBodySchema, loginResponseSchema } from './schemas/admin.ts'
+import {
+  addRelayBodySchema,
+  deleteAccountBodySchema,
+  loginBodySchema,
+  loginResponseSchema,
+  relayResponseSchema,
+  relaysResponseSchema,
+} from './schemas/admin.ts'
 import {
   challengeParticipationsResponseSchema,
   challengesResponseSchema,
@@ -1474,6 +1481,69 @@ const openApiDocument = createDocument({
         security: [{ bearerAuth: [] }],
         summary: 'Get my plan',
         tags: ['Settings'],
+      },
+    },
+    '/admin/relays': {
+      get: {
+        description:
+          'The fediverse relays this server subscribes to, with their state. Accepted relays receive the public posts of every user on this server. Admin-only.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: relaysResponseSchema } },
+            description: 'Every relay, oldest first',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List relays',
+        tags: ['Auth'],
+      },
+      post: {
+        description:
+          'Subscribe to a relay: the instance actor sends it a Follow and the relay stays pending until it answers. Style mastodon takes the relay inbox URL, litepub the relay actor URL. Admin-only.',
+        requestBody: { content: { 'application/json': { schema: addRelayBodySchema } } },
+        responses: {
+          201: {
+            content: { 'application/json': { schema: relayResponseSchema } },
+            description: 'The added relay',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Not an https URL, or one that resolves to a private address',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The relay is already added',
+          },
+          422: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'No relay actor could be resolved at the litepub URL',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Add a relay',
+        tags: ['Auth'],
+      },
+    },
+    '/admin/relays/{id}': {
+      delete: {
+        description:
+          'Unsubscribe from a relay: sends it an Undo of the Follow and stops pushing posts to it. Admin-only.',
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Relay id' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: deleteResponseSchema } },
+            description: 'Relay removed',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Relay not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Remove a relay',
+        tags: ['Auth'],
       },
     },
     '/admin/users/{username}/plan': {

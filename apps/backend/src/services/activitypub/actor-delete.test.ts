@@ -30,6 +30,49 @@ describe('deliverActorDelete', () => {
   })
 })
 
+describe('deliverActorDelete to relays', () => {
+  const RELAY = {
+    id: new URL('https://relay.example/actor'),
+    inboxId: new URL('https://relay.example/inbox'),
+  }
+
+  const setup = async (sendActivity: ReturnType<typeof vi.fn>) => {
+    const federation = createFeedFederation(ORIGIN, `${ORIGIN}/api`)
+    const ctx = await federation.createContext(new URL(ORIGIN))
+    Object.assign(ctx, { sendActivity })
+    return {
+      federation: { createContext: async () => ctx } as unknown as typeof federation,
+      listRelayRecipients: async () => [RELAY],
+      origin: ORIGIN,
+    }
+  }
+
+  test('also sends the actor Delete to every accepted relay', async () => {
+    const sendActivity = vi.fn().mockResolvedValue(undefined)
+    await deliverActorDelete(await setup(sendActivity), 'gone')
+    expect(sendActivity.mock.calls.map(([, to]) => to)).toEqual(['followers', RELAY])
+    for (const [sender, , activity] of sendActivity.mock.calls) {
+      expect(sender).toEqual({ identifier: 'gone' })
+      expect(activity).toBeInstanceOf(Delete)
+    }
+  })
+
+  test('a failing relay does not fail the deletion; a followers failure still surfaces', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const relayDown = vi.fn(async (_s: unknown, to: unknown) => {
+      if (to === RELAY) throw new Error('relay down')
+    })
+    await expect(deliverActorDelete(await setup(relayDown), 'gone')).resolves.toBeUndefined()
+
+    const followersDown = vi.fn(async (_s: unknown, to: unknown) => {
+      if (to === 'followers') throw new Error('ECONNREFUSED')
+    })
+    await expect(deliverActorDelete(await setup(followersDown), 'gone')).rejects.toThrow('ECONNREFUSED')
+    expect(followersDown).toHaveBeenCalledTimes(2)
+    warn.mockRestore()
+  })
+})
+
 describe('a deleted account', () => {
   const fed = createFeedFederation(
     ORIGIN,

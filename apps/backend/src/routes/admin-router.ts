@@ -1,4 +1,6 @@
 import {
+  type AddRelayBody,
+  addRelayBodySchema,
   type AdminSettingsResponse,
   type AdminUserUsageQuery,
   adminUserUsageQuerySchema,
@@ -11,6 +13,8 @@ import {
   type DeleteAccountBody,
   deleteAccountBodySchema,
   type InvitationResponse,
+  type RelayResponse,
+  type RelaysResponse,
   type UpdateAdminSettingsBody,
   updateAdminSettingsBodySchema,
   type UpdateUserPlanBody,
@@ -23,6 +27,7 @@ import type { AdminUsers } from '../services/admin-users.ts'
 import type { CentralDb } from '../services/central-db.ts'
 import type { InvitationAuth } from '../services/invitation.ts'
 import type { OuraWebhookManager } from '../services/oura-webhook-manager.ts'
+import type { RelayActions } from '../services/relays.ts'
 
 import { accountDeletionStatus } from '../services/account-deletion.ts'
 import { readBillingSettings } from '../services/account-plan.ts'
@@ -31,6 +36,7 @@ import {
   readOfficialFeedSetting,
   writeOfficialFeedSetting,
 } from '../services/official-feed.ts'
+import { serializeRelay } from '../services/relays.ts'
 import { readTagActorHost } from '../services/tag-actor-host.ts'
 import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
@@ -47,6 +53,7 @@ export const createAdminRouter = (
   ouraWebhookManager?: OuraWebhookManager | null,
   deleteAccount?: AccountDeleter,
   accountPlans?: AccountPlans,
+  relays?: RelayActions,
 ): TypedRouter => {
   const router = typedRouter()
   const readSettings = async (): Promise<AdminSettingsResponse> => {
@@ -299,6 +306,45 @@ export const createAdminRouter = (
         })
         if (!result.ok) {
           res.status(accountDeletionStatus[result.error]).json({ error: result.message, success: false })
+          return
+        }
+        res.json({ success: true })
+      },
+    )
+  }
+
+  if (relays) {
+    router.get<Record<string, never>, RelaysResponse>(
+      '/relays',
+      authMiddleware,
+      adminMiddleware,
+      async (_req, res) => {
+        res.json({ relays: await relays.list(), success: true })
+      },
+    )
+
+    router.post<Record<string, never>, RelayResponse, AddRelayBody>(
+      '/relays',
+      authMiddleware,
+      adminMiddleware,
+      validateBody(addRelayBodySchema),
+      async (req, res) => {
+        const result = await relays.add(req.body)
+        if (!result.ok) {
+          res.status(result.status).json({ error: result.error, success: false })
+          return
+        }
+        res.status(201).json({ relay: serializeRelay(result.record), success: true })
+      },
+    )
+
+    router.delete<{ id: string }, BaseResponse>(
+      '/relays/:id',
+      authMiddleware,
+      adminMiddleware,
+      async (req, res) => {
+        if (!(await relays.remove(req.params.id))) {
+          res.status(404).json({ error: 'Relay not found', success: false })
           return
         }
         res.json({ success: true })
