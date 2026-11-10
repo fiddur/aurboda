@@ -595,8 +595,25 @@ describe('resolveDashboardData: top_list_card and places_card', () => {
       type: 'top_list_card',
     })
     expect(vi.mocked(getTopMedia).mock.calls).toEqual([
-      ['alice', { end: lastMs(october.end), start: october.start }, 'album', 3],
-      ['alice', { end: lastMs(september.end), start: september.start }, 'album', 3],
+      ['alice', { end: lastMs(october.end), start: october.start }, 'album', 3, undefined],
+      ['alice', { end: lastMs(september.end), start: september.start }, 'album', 3, undefined],
+    ])
+  })
+
+  test('a music top list passes its media source on for both windows', async () => {
+    vi.mocked(getTopMedia).mockReset()
+    vi.mocked(getTopMedia).mockResolvedValue({ distinct: 0, items: [], total_plays: 0 })
+    const card: DashboardWidget = {
+      config: { limit: 5, media_source: 'lastfm', source: 'media_track' },
+      id: 'scrobbles',
+      type: 'top_list_card',
+    }
+
+    await resolveDashboardData('alice', board(card), { previous: september, window: october })
+
+    expect(vi.mocked(getTopMedia).mock.calls).toEqual([
+      ['alice', { end: lastMs(october.end), start: october.start }, 'track', 5, 'lastfm'],
+      ['alice', { end: lastMs(september.end), start: september.start }, 'track', 5, 'lastfm'],
     ])
   })
 

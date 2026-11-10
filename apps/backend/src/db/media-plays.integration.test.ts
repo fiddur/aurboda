@@ -100,6 +100,62 @@ describe('media plays (integration)', () => {
     expect(plays[2]).toMatchObject({ ended_at: null, kind: 'music', source: 'lastfm', title: 'Teardrop' })
   })
 
+  test('getMediaPlays with a source reads only that source and keeps duplicate scrobbles', async () => {
+    const user = getTestUser()
+    await storeMediaPlays(
+      user,
+      [
+        play({
+          artist: 'Portishead',
+          ended_at: '2026-01-10T12:04:00.000Z',
+          id: 'song',
+          started_at: '2026-01-10T12:00:00.000Z',
+          title: 'Roads',
+          track_secs: null,
+          url: '',
+        }),
+      ],
+      undefined,
+    )
+    await insertRawRecord(user, {
+      data: { album: 'Dummy', artist: 'Portishead', track: 'Roads' },
+      external_id: 'dup',
+      record_type: 'scrobble',
+      recorded_at: new Date('2026-01-10T12:02:00Z'),
+      source: 'lastfm',
+    })
+
+    const all = await getMediaPlays(user, window)
+    expect(all.map((p) => [p.id, p.source])).toEqual([['song', 'mpris']])
+
+    const lastfm = await getMediaPlays(user, window, { source: 'lastfm' })
+    expect(lastfm.map((p) => [p.id, p.source])).toEqual([['dup', 'lastfm']])
+
+    const mpris = await getMediaPlays(user, window, { source: 'mpris' })
+    expect(mpris.map((p) => [p.id, p.source])).toEqual([['song', 'mpris']])
+  })
+
+  test('getMediaPlays with source lastfm keeps the scrobble window rule', async () => {
+    const user = getTestUser()
+    await insertRawRecord(user, {
+      data: { album: 'Mezzanine', artist: 'Massive Attack', track: 'Teardrop' },
+      external_id: 'before',
+      record_type: 'scrobble',
+      recorded_at: new Date('2026-01-09T23:58:00Z'),
+      source: 'lastfm',
+    })
+    await insertRawRecord(user, {
+      data: { album: 'Mezzanine', artist: 'Massive Attack', track: 'Angel' },
+      external_id: 'inside',
+      record_type: 'scrobble',
+      recorded_at: new Date('2026-01-10T00:00:00Z'),
+      source: 'lastfm',
+    })
+
+    const plays = await getMediaPlays(user, window, { source: 'lastfm' })
+    expect(plays.map((p) => p.id)).toEqual(['inside'])
+  })
+
   test('getMediaPlayById finds an MPRIS play, then a Last.fm scrobble, else null', async () => {
     const user = getTestUser()
     await storeMediaPlays(user, [play()], 'laptop')

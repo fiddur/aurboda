@@ -405,10 +405,10 @@ Each play has url, title, artist, album, player, device, started_at/ended_at, pl
 
   server.tool(
     'query_top_media',
-    'Music and other media plays in a time range grouped by artist, album ("artist — album") or track ("artist — title"): the total plays, the number of distinct artists/albums/tracks and the most played with their play counts. Plays without the grouping key (no album, say) count towards the total only.',
+    'Music and other media plays in a time range grouped by artist, album ("artist — album") or track ("artist — title"): the total plays, the number of distinct artists/albums/tracks and the most played with their play counts. Plays without the grouping key (no album, say) count towards the total only. Pass source lastfm to count only Last.fm scrobbles (or mpris for only the MPRIS logger).',
     { ...topMediaQuerySchema.shape, tz: tzSchema },
-    async ({ by, end, limit, start, tz }) => {
-      const top = await getTopMedia(user, { end: new Date(end), start: new Date(start) }, by, limit)
+    async ({ by, end, limit, source, start, tz }) => {
+      const top = await getTopMedia(user, { end: new Date(end), start: new Date(start) }, by, limit, source)
       return tzJsonResponse({ data: top, success: true }, tz)
     },
   )
