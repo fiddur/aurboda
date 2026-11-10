@@ -8,6 +8,7 @@ import { EditableDashboard } from '../../components/EditableDashboard'
 import { GetStartedGuide } from '../../components/GetStartedGuide'
 import { PeriodDashboardBar } from '../../components/PeriodSwitcher'
 import { ShareDashboardPeriodDialog } from '../../components/ShareDashboardPeriodDialog'
+import { useDashboardDraft } from '../../components/useDashboardDraft'
 import { usePeriodDashboard } from '../../components/usePeriodDashboard'
 import { fetchDashboard, fetchDashboardData, resetDashboard, saveDashboard } from '../../state/api'
 import { auth } from '../../state/auth'
@@ -31,12 +32,17 @@ export function Dashboard() {
       return config
     },
     queryKey: ['dashboard'],
+    refetchOnWindowFocus: !isEditing,
     staleTime: 5 * 60 * 1000,
   })
 
-  const saveMutation = useMutation({
-    mutationFn: saveDashboard,
-    onSuccess: (data) => {
+  const draft = useDashboardDraft('home', (_key, config) => saveDashboard(config), {
+    onError: () => {
+      void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      alert('Failed to save the dashboard. Please try again.')
+    },
+    onSaved: async (_key, data) => {
+      await queryClient.cancelQueries({ queryKey: ['dashboard'] })
       writeCachedDashboard(browserStorage, user, data)
       queryClient.setQueryData(['dashboard'], data)
       void queryClient.invalidateQueries({ queryKey: ['dashboardData', 'home'] })
@@ -52,12 +58,13 @@ export function Dashboard() {
     },
   })
 
-  const dashboard: DashboardConfig = dashboardQuery.data ?? defaultDashboardConfig
+  const dashboard: DashboardConfig = draft.config ?? dashboardQuery.data ?? defaultDashboardConfig
   const isLoading = dashboardQuery.isLoading
   const period = usePeriodDashboard('home', dashboard, fetchDashboardData)
 
   const handleReset = () => {
     if (confirm('Reset dashboard to default configuration? Your customizations will be lost.')) {
+      draft.clear()
       resetMutation.mutate()
       setIsEditing(false)
     }
@@ -119,8 +126,9 @@ export function Dashboard() {
           config={dashboard}
           isEditing={isEditing}
           boardId="home"
-          onChange={(next) => saveMutation.mutate(next)}
+          onChange={draft.submit}
           widgetData={period?.widgetData}
+          widgetDataLoading={period ? period.isFetching || draft.config !== null : undefined}
           periodLabel={period?.periodLabel}
         />
       )}
