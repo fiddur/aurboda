@@ -1,4 +1,9 @@
-import type { AutoshareDataFilter, AutoshareRule } from '@aurboda/api-spec'
+import {
+  type AutoshareDataFilter,
+  type AutoshareRule,
+  extractHashtags,
+  normalizeTags,
+} from '@aurboda/api-spec'
 
 import { formatTagsInput } from '../../components/hashtags'
 
@@ -66,8 +71,11 @@ export const ruleSummary = (
   return `${predicate.join(', ')} → ${rule.visibility}`
 }
 
-/** The tags a rule's posts get: its own, none, or the owner's defaults. */
-export const ruleTagsText = (tags: AutoshareRule['tags']): string => {
-  if (tags === null) return 'your default tags'
-  return tags.length > 0 ? formatTagsInput(tags) : 'no tags'
+/** The tags a rule's posts get: its own or the owner's defaults, plus the `#tags` typed in its message. */
+export const ruleTagsText = ({ message, tags }: Pick<AutoshareRule, 'message' | 'tags'>): string => {
+  const typed = extractHashtags(message ?? '')
+  const all = tags === null ? typed : normalizeTags([...tags, ...typed])
+  const listed = all.length > 0 ? formatTagsInput(all) : null
+  if (tags === null) return listed ? `your default tags + ${listed}` : 'your default tags'
+  return listed ?? 'no tags'
 }

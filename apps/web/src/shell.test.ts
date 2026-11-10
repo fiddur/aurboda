@@ -11,11 +11,12 @@ const GUEST_PAGES = [
   '/u/fiddur/posts/abc',
   '/challenges/join',
   '/blog',
+  '/tags/aurboda',
 ]
 
 describe('shouldShowNav', () => {
   test('shows nav on app and legal routes regardless of auth', () => {
-    for (const path of ['/dashboard', '/privacy', '/terms', '/challenges']) {
+    for (const path of ['/dashboard', '/privacy', '/terms', '/help', '/challenges']) {
       expect(shouldShowNav(path, false)).toBe(true)
       expect(shouldShowNav(path, true)).toBe(true)
     }
@@ -79,10 +80,12 @@ describe('shouldShowPlanBanner', () => {
       '/u/fiddur',
       '/u/fiddur/a3GVcs14D',
       '/blog',
+      '/tags/aurboda',
       '/login',
       '/signup',
       '/privacy',
       '/terms',
+      '/help',
     ]) {
       expect(shouldShowPlanBanner(path, true)).toBe(false)
     }

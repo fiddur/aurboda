@@ -250,3 +250,135 @@
     flex-direction: column;
   }
 }
+
+.relay-list {
+  list-style: none;
+  margin: 0 0 0.75rem;
+  padding: 0;
+}
+
+.relay-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid #eee;
+}
+
+.relay-url {
+  flex: 1 1 16rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: monospace;
+  font-size: 0.85rem;
+}
+
+.relay-style {
+  color: #666;
+  font-size: 0.85rem;
+}
+
+.relay-state {
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  background: #eee;
+  color: #555;
+}
+
+.relay-state-accepted {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.relay-state-rejected {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.api-key-input-row select {
+  padding: 0.5rem;
+  font-size: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.relay-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  .relay-row {
+    border-bottom-color: #444;
+  }
+
+  .relay-style {
+    color: #aaa;
+  }
+
+  .relay-state {
+    background: #444;
+    color: #ddd;
+  }
+
+  .relay-state-accepted {
+    background: #1b3a1e;
+    color: #a5d6a7;
+  }
+
+  .relay-state-rejected {
+    background: #4a1c1c;
+    color: #ef9a9a;
+  }
+
+  .api-key-input-row select {
+    background: #333;
+    border-color: #555;
+    color: #fff;
+  }
+}
+
+.tag-follow-badge {
+  display: inline-block;
+  margin-left: 0.3rem;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  vertical-align: middle;
+}
+
+.tag-follow-accepted {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.tag-follow-pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.tag-follow-unresolved {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+@media (prefers-color-scheme: dark) {
+  .tag-follow-accepted {
+    background: #064e3b;
+    color: #a7f3d0;
+  }
+
+  .tag-follow-pending {
+    background: #78350f;
+    color: #fde68a;
+  }
+
+  .tag-follow-unresolved {
+    background: #7f1d1d;
+    color: #fecaca;
+  }
+}

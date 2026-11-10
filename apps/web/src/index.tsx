@@ -66,6 +66,7 @@ const Feed = lazyPage(() => import('./pages/Feed/index.jsx'), 'Feed')
 const FoodItemDetail = lazyPage(() => import('./pages/FoodItems/FoodItemDetail.jsx'), 'FoodItemDetail')
 const FoodItems = lazyPage(() => import('./pages/FoodItems/index.jsx'), 'FoodItems')
 const Goals = lazyPage(() => import('./pages/Goals/index.jsx'), 'Goals')
+const Help = lazyPage(() => import('./pages/Help/index.jsx'), 'Help')
 const Home = lazyPage(() => import('./pages/Home/index.jsx'), 'Home')
 const Login = lazyPage(() => import('./pages/Login/index.jsx'), 'Login')
 const Meals = lazyPage(() => import('./pages/Meals/index.jsx'), 'Meals')
@@ -73,6 +74,7 @@ const MealDetail = lazyPage(() => import('./pages/Meals/MealDetail.jsx'), 'MealD
 const MealTypeMeta = lazyPage(() => import('./pages/MealTypeMeta/index.jsx'), 'MealTypeMeta')
 const MetricMeta = lazyPage(() => import('./pages/MetricMeta/index.jsx'), 'MetricMeta')
 const OfficialFeed = lazyPage(() => import('./pages/OfficialFeed/index.jsx'), 'OfficialFeed')
+const PublicTag = lazyPage(() => import('./pages/PublicTag/index.jsx'), 'PublicTag')
 const Places = lazyPage(() => import('./pages/Places/index.jsx'), 'Places')
 const RoutesPage = lazyPage(() => import('./pages/Routes/index.jsx'), 'Routes')
 const RouteDetailPage = lazyPage(() => import('./pages/Routes/RouteDetail.jsx'), 'RouteDetail')
@@ -128,6 +130,7 @@ function AppShell() {
             <Route path="/challenges" component={Challenges} />
             <Route path="/" component={Home} />
             <Route path="/blog" component={OfficialFeed} />
+            <Route path="/tags/:tag" component={PublicTag} />
             <Route path="/login" component={Login} />
             <Route path="/signup" component={Signup} />
             <Route path="/privacy" component={Privacy} />
@@ -178,7 +181,7 @@ function AppShell() {
             <Route path="/admin" component={AdminSettings} />
             <Route path="/admin/users" component={AdminUsers} />
             <Route path="/admin/users/:username" component={AdminUserDetail} />
-            <Route path="/help" component={DataSources} />
+            <Route path="/help" component={Help} />
             <Route default component={NotFound} />
           </Router>
         </main>

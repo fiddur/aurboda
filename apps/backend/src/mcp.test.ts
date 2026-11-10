@@ -1163,12 +1163,20 @@ describe('MCP Server', () => {
       vi.mocked(queries.getPlacesSummary).mockResolvedValue({
         distinct_places: 3,
         nights_away: 1,
+        nights_by_place: [{ name: 'Home', nights: 30 }],
+        nights_elsewhere: 1,
         nights_home: 30,
+        nights_no_data: 0,
         places: [],
         visits: 12,
       })
 
-      const media = await callTool(app, token, 'query_top_media', { ...window, by: 'album', tz: 'UTC' })
+      const media = await callTool(app, token, 'query_top_media', {
+        ...window,
+        by: 'album',
+        source: 'lastfm',
+        tz: 'UTC',
+      })
       const apps = await callTool(app, token, 'query_top_apps', { ...window, limit: 5, tz: 'UTC' })
       const places = await callTool(app, token, 'get_places_summary', {
         ...window,
@@ -1179,7 +1187,7 @@ describe('MCP Server', () => {
       expect(JSON.parse(media.text).data).toMatchObject({ total_plays: 4 })
       expect(JSON.parse(apps.text).data).toMatchObject({ total_hours: 9.5 })
       expect(JSON.parse(places.text).data).toMatchObject({ nights_home: 30 })
-      expect(queries.getTopMedia).toHaveBeenCalledWith('testuser', dates, 'album', 10)
+      expect(queries.getTopMedia).toHaveBeenCalledWith('testuser', dates, 'album', 10, 'lastfm')
       expect(queries.getTopApps).toHaveBeenCalledWith('testuser', dates, 5)
       expect(queries.getPlacesSummary).toHaveBeenCalledWith('testuser', {
         ...dates,

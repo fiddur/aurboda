@@ -20,6 +20,7 @@ const followee = (accepted: boolean): FeedFollowingRecord => ({
   inbox_uri: `${ACTOR}/inbox`,
   notify_on_post: true,
   shared_inbox_uri: null,
+  tag: null,
 })
 
 const note = (n: number): Note => new Note({ id: new URL(`https://mastodon.example/notes/${n}`) })

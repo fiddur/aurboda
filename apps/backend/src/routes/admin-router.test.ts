@@ -7,6 +7,7 @@ import type { AccountPlans } from '../services/account-plan.ts'
 import type { AdminUsers } from '../services/admin-users.ts'
 import type { CentralDb } from '../services/central-db.ts'
 import type { InvitationAuth } from '../services/invitation.ts'
+import type { RelayActions } from '../services/relays.ts'
 
 import { gravlRedirectUri } from '../integrations/gravl/client.ts'
 import { createAdminRouter } from './admin-router.ts'
@@ -18,6 +19,7 @@ const centralDb = {
   getOuraWebhookEnabled: vi.fn().mockResolvedValue(false),
   getServerSetting: vi.fn().mockResolvedValue(null),
   getSignupMode: vi.fn().mockResolvedValue('closed'),
+  listInstanceTagFollows: vi.fn().mockResolvedValue([]),
   setServerSetting: vi.fn().mockResolvedValue(undefined),
 } as unknown as CentralDb
 
@@ -102,6 +104,31 @@ const accountPlans: AccountPlans = {
   ),
 }
 
+const relayRecord = {
+  actor_uri: null,
+  created_at: new Date('2026-11-10T00:00:00Z'),
+  follow_activity_id: 'https://web.example.test/actor/follows/11111111-1111-4111-8111-111111111111',
+  id: '11111111-1111-4111-8111-111111111111',
+  inbox_uri: 'https://tags.pub/user/_____relay_____/inbox',
+  last_error: null,
+  state: 'pending' as const,
+  style: 'mastodon' as const,
+  updated_at: new Date('2026-11-10T00:00:00Z'),
+  url: 'https://tags.pub/user/_____relay_____/inbox',
+}
+
+const relayActions: RelayActions = {
+  add: vi.fn(async ({ url }) =>
+    url === relayRecord.url
+      ? { ok: true as const, record: relayRecord }
+      : { error: 'That relay is already added.', ok: false as const, status: 409 },
+  ),
+  list: vi.fn(async () => []),
+  remove: vi.fn(async (id: string) => id === relayRecord.id),
+}
+
+const publicTagActions = { apply: vi.fn(async () => ({ followed: [], unresolved: [] })) }
+
 const buildApp = (adminMiddleware: RequestHandler = pass) => {
   const app = express()
   app.use(express.json())
@@ -119,6 +146,8 @@ const buildApp = (adminMiddleware: RequestHandler = pass) => {
       null,
       deleteAccount,
       accountPlans,
+      relayActions,
+      publicTagActions,
     ),
   )
   return app
@@ -207,6 +236,41 @@ describe('official feed setting', () => {
     const res = await supertest(buildApp()).patch('/admin/settings').send({ blog_username: 'ghost' })
     expect(res.status).toBe(400)
     expect(res.body.error).toContain('ghost')
+    expect(centralDb.setServerSetting).not.toHaveBeenCalled()
+  })
+})
+
+describe('tag actor host setting', () => {
+  test('GET defaults to tags.pub', async () => {
+    const res = await supertest(buildApp()).get('/admin/settings')
+    expect(res.body.tag_actor_host).toBe('tags.pub')
+  })
+
+  test('PATCH stores a trimmed lowercase hostname; empty resets to the default', async () => {
+    vi.mocked(centralDb.setServerSetting).mockClear()
+    const res = await supertest(buildApp())
+      .patch('/admin/settings')
+      .send({ tag_actor_host: ' Tags.Example ' })
+    expect(res.status).toBe(200)
+    expect(centralDb.setServerSetting).toHaveBeenCalledWith('tag_actor_host', 'tags.example')
+    vi.mocked(centralDb.setServerSetting).mockClear()
+    await supertest(buildApp()).patch('/admin/settings').send({ tag_actor_host: '' })
+    expect(centralDb.setServerSetting).toHaveBeenCalledWith('tag_actor_host', '')
+  })
+
+  test.each([
+    'https://tags.pub',
+    'tags.pub/user',
+    'tags.pub:443',
+    'a b',
+    'running@tags.pub',
+    'tags.pub?x',
+    'a#b',
+    'tags.pub.',
+  ])('PATCH rejects %j', async (tag_actor_host) => {
+    vi.mocked(centralDb.setServerSetting).mockClear()
+    const res = await supertest(buildApp()).patch('/admin/settings').send({ tag_actor_host })
+    expect(res.status).toBe(400)
     expect(centralDb.setServerSetting).not.toHaveBeenCalled()
   })
 })
@@ -375,5 +439,140 @@ describe('DELETE /admin/users/:username', () => {
       .send({ confirm_username: 'alice' })
     expect(res.status).toBe(403)
     expect(deleteAccount).not.toHaveBeenCalled()
+  })
+})
+
+describe('admin relays', () => {
+  test('GET /relays lists them', async () => {
+    const res = await supertest(buildApp()).get('/admin/relays')
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ relays: [], success: true })
+  })
+
+  test('POST /relays adds one, mastodon by default, and serialises it', async () => {
+    const res = await supertest(buildApp()).post('/admin/relays').send({ url: relayRecord.url })
+    expect(res.status).toBe(201)
+    expect(relayActions.add).toHaveBeenLastCalledWith({ style: 'mastodon', url: relayRecord.url })
+    expect(res.body.relay).toMatchObject({ created_at: '2026-11-10T00:00:00.000Z', state: 'pending' })
+    expect(res.body.relay.follow_activity_id).toBeUndefined()
+  })
+
+  test('POST /relays passes the service status through and validates the body', async () => {
+    const conflict = await supertest(buildApp())
+      .post('/admin/relays')
+      .send({ url: 'https://other.example/inbox' })
+    expect(conflict.status).toBe(409)
+    expect(conflict.body).toEqual({ error: 'That relay is already added.', success: false })
+
+    const invalid = await supertest(buildApp())
+      .post('/admin/relays')
+      .send({ style: 'diaspora', url: relayRecord.url })
+    expect(invalid.status).toBe(400)
+  })
+
+  test('DELETE /relays/:id removes it, 404 when unknown', async () => {
+    expect((await supertest(buildApp()).delete(`/admin/relays/${relayRecord.id}`)).status).toBe(200)
+    expect((await supertest(buildApp()).delete('/admin/relays/nope')).status).toBe(404)
+  })
+
+  test('non-admins are refused', async () => {
+    vi.mocked(relayActions.add).mockClear()
+    const app = buildApp(forbid)
+    expect((await supertest(app).get('/admin/relays')).status).toBe(403)
+    expect((await supertest(app).post('/admin/relays').send({ url: relayRecord.url })).status).toBe(403)
+    expect((await supertest(app).delete(`/admin/relays/${relayRecord.id}`)).status).toBe(403)
+    expect(relayActions.add).not.toHaveBeenCalled()
+  })
+})
+
+describe('public tag pages setting', () => {
+  test('GET returns none and the default retention when nothing is set', async () => {
+    const res = await supertest(buildApp()).get('/admin/settings')
+    expect(res.body.public_tag_pages).toEqual([])
+    expect(res.body.public_tag_retention_days).toBe(30)
+    expect(res.body.public_tag_follows).toEqual([])
+  })
+
+  test('GET reports each configured tag’s follow state', async () => {
+    vi.mocked(centralDb.getServerSetting).mockImplementation(async (key) =>
+      key === 'public_tag_pages' ? ['aurboda', 'running', 'cycling'] : null,
+    )
+    vi.mocked(centralDb.listInstanceTagFollows).mockResolvedValueOnce([
+      { accepted: true, tag: 'aurboda' },
+      { accepted: false, tag: 'running' },
+    ] as Awaited<ReturnType<CentralDb['listInstanceTagFollows']>>)
+    try {
+      const res = await supertest(buildApp()).get('/admin/settings')
+      expect(res.body.public_tag_follows).toEqual([
+        { state: 'accepted', tag: 'aurboda' },
+        { state: 'pending', tag: 'running' },
+        { state: 'unresolved', tag: 'cycling' },
+      ])
+    } finally {
+      vi.mocked(centralDb.getServerSetting).mockReset().mockResolvedValue(null)
+    }
+  })
+
+  test('PATCH stores normalised tags, then applies the stored tags', async () => {
+    vi.mocked(centralDb.setServerSetting).mockClear()
+    publicTagActions.apply.mockClear()
+    vi.mocked(centralDb.getServerSetting).mockImplementation(async (key) =>
+      key === 'public_tag_pages' ? ['aurboda', 'running'] : null,
+    )
+    try {
+      const res = await supertest(buildApp())
+        .patch('/admin/settings')
+        .send({ public_tag_pages: ['#Aurboda', 'aurboda', 'Running'], public_tag_retention_days: 14 })
+      expect(res.status).toBe(200)
+      expect(centralDb.setServerSetting).toHaveBeenCalledWith('public_tag_pages', ['aurboda', 'running'])
+      expect(centralDb.setServerSetting).toHaveBeenCalledWith('public_tag_retention_days', 14)
+      expect(publicTagActions.apply).toHaveBeenCalledWith(['aurboda', 'running'])
+    } finally {
+      vi.mocked(centralDb.getServerSetting).mockReset().mockResolvedValue(null)
+    }
+  })
+
+  test('PATCH of the tag actor host alone re-applies the stored tags; retention alone does not', async () => {
+    publicTagActions.apply.mockClear()
+    vi.mocked(centralDb.getServerSetting).mockImplementation(async (key) =>
+      key === 'public_tag_pages' ? ['aurboda'] : null,
+    )
+    try {
+      await supertest(buildApp()).patch('/admin/settings').send({ public_tag_retention_days: 10 })
+      expect(publicTagActions.apply).not.toHaveBeenCalled()
+      await supertest(buildApp()).patch('/admin/settings').send({ tag_actor_host: 'tags.other' })
+      expect(publicTagActions.apply).toHaveBeenCalledWith(['aurboda'])
+    } finally {
+      vi.mocked(centralDb.getServerSetting).mockReset().mockResolvedValue(null)
+    }
+  })
+
+  test('a failure to follow the tag actors does not fail the save', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    publicTagActions.apply.mockRejectedValueOnce(new Error('federation down'))
+    const res = await supertest(buildApp())
+      .patch('/admin/settings')
+      .send({ public_tag_pages: ['aurboda'] })
+    expect(res.status).toBe(200)
+    error.mockRestore()
+  })
+
+  test('PATCH rejects an invalid tag, more than 20 tags and an out-of-range retention', async () => {
+    const app = buildApp()
+    expect(
+      (
+        await supertest(app)
+          .patch('/admin/settings')
+          .send({ public_tag_pages: ['not a tag'] })
+      ).status,
+    ).toBe(400)
+    const many = Array.from({ length: 21 }, (_, i) => `t${i}`)
+    expect((await supertest(app).patch('/admin/settings').send({ public_tag_pages: many })).status).toBe(400)
+    expect(
+      (await supertest(app).patch('/admin/settings').send({ public_tag_retention_days: 0 })).status,
+    ).toBe(400)
+    expect(
+      (await supertest(app).patch('/admin/settings').send({ public_tag_retention_days: 366 })).status,
+    ).toBe(400)
   })
 })

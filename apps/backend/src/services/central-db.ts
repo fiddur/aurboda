@@ -32,6 +32,19 @@ import {
   type SharedNutrientRecommendationsApi,
 } from './central-nutrient-recommendations.ts'
 import {
+  createPublicTagsApi,
+  CREATE_INSTANCE_TAG_FOLLOWS_TABLE,
+  CREATE_PUBLIC_TAG_POSTS_INDEXES,
+  CREATE_PUBLIC_TAG_POSTS_TABLE,
+  type PublicTagsApi,
+} from './central-public-tags.ts'
+import {
+  createRelaysApi,
+  CREATE_INSTANCE_ACTOR_TABLE,
+  CREATE_RELAYS_TABLE,
+  type RelaysApi,
+} from './central-relays.ts'
+import {
   ALTER_USER_ACCOUNTS_PLAN_COLUMNS,
   ALTER_USER_ACCOUNTS_PROFILE_COLUMNS,
   createUserAccountsApi,
@@ -63,10 +76,13 @@ export interface ServerSettings {
   official_feed: OfficialFeedSetting
   payment_url: string
   price_text: string
+  public_tag_pages: string[]
+  public_tag_retention_days: number
   sentry_dsn: string
   signup_mode: SignupMode
   strava_client_id: string
   strava_client_secret: string
+  tag_actor_host: string
   trial_days: number
 }
 
@@ -134,6 +150,8 @@ export interface CentralDb
     SharedFoodItemsApi,
     CentralImportJobsApi,
     DeletedUsernamesApi,
+    PublicTagsApi,
+    RelaysApi,
     SharedNutrientRecommendationsApi,
     UserAccountsApi,
     UserUsageApi {
@@ -475,6 +493,12 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       await client.query(CREATE_USER_USAGE_DAILY_TABLE)
       for (const stmt of CREATE_USER_USAGE_DAILY_INDEXES) await client.query(stmt)
 
+      await client.query(CREATE_INSTANCE_ACTOR_TABLE)
+      await client.query(CREATE_RELAYS_TABLE)
+      await client.query(CREATE_INSTANCE_TAG_FOLLOWS_TABLE)
+      await client.query(CREATE_PUBLIC_TAG_POSTS_TABLE)
+      for (const stmt of CREATE_PUBLIC_TAG_POSTS_INDEXES) await client.query(stmt)
+
       await client.query(CREATE_SHARED_NUTRIENT_RECOMMENDATIONS_TABLE)
       await deps.withTransaction((tx) => seedSharedNutrientRecommendations(tx))
 
@@ -488,6 +512,8 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
     ...createSharedFoodItemsApi(getClient),
     ...createCentralImportJobsApi(getClient),
     ...createDeletedUsernamesApi(getClient, deps.withTransaction),
+    ...createPublicTagsApi(getClient),
+    ...createRelaysApi(getClient),
     ...createSharedNutrientRecommendationsApi(getClient),
     ...createUserAccountsApi(getClient),
     ...createUserUsageApi(getClient),

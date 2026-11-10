@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import type * as ActivityRecords from './activity-records.ts'
 
-vi.mock('../db/index.ts', () => ({ getAllActivityTypeNames: vi.fn() }))
+vi.mock('../db/index.ts', () => ({}))
 vi.mock('./chart-data.ts', () => ({ getChartData: vi.fn() }))
 vi.mock('./trends.ts', () => ({ getTrend: vi.fn() }))
 vi.mock('./custom-metrics.ts', () => ({ getCustomMetrics: vi.fn().mockResolvedValue([]) }))
@@ -27,24 +27,16 @@ vi.mock('./queries/index.ts', () => ({
   getPlacesSummary: vi.fn(),
   getTopApps: vi.fn(),
   getTopMedia: vi.fn(),
-  queryActivities: vi.fn(),
   queryMetrics: vi.fn(),
 }))
 
 const { getChartData } = await import('./chart-data.ts')
 const { getTrend } = await import('./trends.ts')
 const { getActivityRecords } = await import('./activity-records.ts')
-const {
-  getActivityTypeSummary,
-  getPeriodSummary,
-  getPlacesSummary,
-  getTopApps,
-  getTopMedia,
-  queryActivities,
-} = await import('./queries/index.ts')
+const { getActivityTypeSummary, getPeriodSummary, getPlacesSummary, getTopApps, getTopMedia } =
+  await import('./queries/index.ts')
 const { getBaseline } = await import('./correlations/baseline.ts')
 const { getLatestSleep } = await import('./latest-sleep.ts')
-const { getAllActivityTypeNames } = await import('../db/index.ts')
 const { resolveDashboardData, resolvePeriodDashboard } = await import('./shared-dashboard-data.ts')
 
 const board = (widget: DashboardWidget): DashboardConfig => ({
@@ -254,10 +246,9 @@ describe('resolveDashboardData in a window', () => {
     vi.mocked(getChartData).mockReset()
     vi.mocked(getTrend).mockReset()
     vi.mocked(getPeriodSummary).mockReset()
-    vi.mocked(queryActivities).mockReset()
+    vi.mocked(getActivityTypeSummary).mockReset()
     vi.mocked(getBaseline).mockReset()
     vi.mocked(getLatestSleep).mockReset()
-    vi.mocked(getAllActivityTypeNames).mockResolvedValue(['running', 'sleep'])
   })
 
   test('a metric card reports the window and its change from the previous window', async () => {
@@ -290,17 +281,19 @@ describe('resolveDashboardData in a window', () => {
     expect(data['card']).toMatchObject({ data: { value: 50 } })
   })
 
-  test('an activity summary counts both windows', async () => {
-    const run = (start: string, minutes: number) => ({
-      activity_type: 'running',
-      end_time: new Date(new Date(start).getTime() + minutes * 60_000).toISOString(),
-      start_time: start,
-    })
-    vi.mocked(queryActivities).mockImplementation(
-      async (_user, _types, start) =>
-        (start.getTime() === october.start.getTime()
-          ? [run('2026-10-02T07:00:00Z', 30), run('2026-10-05T07:00:00Z', 60)]
-          : [run('2026-09-02T07:00:00Z', 45)]) as unknown as Awaited<ReturnType<typeof queryActivities>>,
+  const rollUp = (count: number, total_minutes: number, sleepAvg?: number) => ({
+    activity_type_name: 'x',
+    avg_speed_kmh: null,
+    best_pace_sec_per_km: null,
+    count,
+    distance_km: null,
+    sleep: sleepAvg === undefined ? null : { avg_minutes: sleepAvg, avg_stages: null, best_night_minutes: 0 },
+    total_minutes,
+  })
+
+  test('an activity summary rolls up the workout type tree over both windows', async () => {
+    vi.mocked(getActivityTypeSummary).mockImplementation(async (_user, _type, query) =>
+      query.start === october.start.toISOString() ? rollUp(2, 90) : rollUp(1, 45),
     )
     const summary: DashboardWidget = {
       config: { show_meditation: false, show_sleep: false },
@@ -318,7 +311,78 @@ describe('resolveDashboardData in a window', () => {
       },
       type: 'activity_summary',
     })
-    expect(vi.mocked(queryActivities).mock.calls[0]?.slice(2)).toEqual([october.start, lastMs(october.end)])
+    expect(vi.mocked(getActivityTypeSummary).mock.calls).toEqual([
+      ['alice', 'exercise', { end: lastMs(october.end).toISOString(), start: october.start.toISOString() }],
+      [
+        'alice',
+        'exercise',
+        { end: lastMs(september.end).toISOString(), start: september.start.toISOString() },
+      ],
+    ])
+  })
+
+  test('an activity summary counts sleep and meditation in both windows', async () => {
+    vi.mocked(getActivityTypeSummary).mockImplementation(async (_user, type, query) => {
+      const current = query.start === october.start.toISOString()
+      if (type === 'sleep') return current ? rollUp(2, 900, 450) : rollUp(1, 360, 360)
+      if (type === 'meditation') return current ? rollUp(1, 20) : rollUp(0, 0)
+      return rollUp(0, 0)
+    })
+    const summary: DashboardWidget = { config: {}, id: 'summary', type: 'activity_summary' }
+
+    const data = await resolveDashboardData('alice', board(summary), { previous: september, window: october })
+
+    expect(data['summary']).toEqual({
+      data: {
+        exercise: { count: 0, previous_count: 0, previous_total_minutes: 0, total_minutes: 0 },
+        meditation: { count: 1, previous_count: 0, previous_total_minutes: 0, total_minutes: 20 },
+        sleep: { avg_hours: 7.5, count: 2, previous_avg_hours: 6, previous_count: 1 },
+      },
+      type: 'activity_summary',
+    })
+  })
+
+  test('an activity summary agrees with the activity type card over the same window (#1560)', async () => {
+    vi.mocked(getActivityTypeSummary).mockImplementation(async (_user, type) =>
+      type === 'meditation' ? rollUp(83, 1071) : rollUp(0, 0),
+    )
+    const config: DashboardConfig = {
+      sections: [
+        {
+          id: 's',
+          title: 'x',
+          type: 'metrics',
+          widgets: [
+            { config: { show_sleep: false, show_workouts: false }, id: 'summary', type: 'activity_summary' },
+            { config: { pattern: 'meditation' }, id: 'card', type: 'activity_type_card' },
+          ],
+        },
+      ],
+      version: 1,
+    }
+
+    const data = await resolveDashboardData('alice', config, { window: october })
+
+    const meditationCalls = vi
+      .mocked(getActivityTypeSummary)
+      .mock.calls.filter(([, type]) => type === 'meditation')
+    expect(meditationCalls).toHaveLength(2)
+    expect(meditationCalls[0]).toEqual(meditationCalls[1])
+    expect(data['summary']).toMatchObject({ data: { meditation: { count: 83, total_minutes: 1071 } } })
+    expect(data['card']).toMatchObject({ data: { count: 83, total_minutes: 1071 } })
+  })
+
+  test('an activity summary queries only the visible parts', async () => {
+    vi.mocked(getActivityTypeSummary).mockResolvedValue(rollUp(0, 0))
+    const summary: DashboardWidget = {
+      config: { show_meditation: true, show_sleep: false, show_workouts: false },
+      id: 'summary',
+      type: 'activity_summary',
+    }
+
+    await resolveDashboardData('alice', board(summary), { window: october })
+
+    expect(vi.mocked(getActivityTypeSummary).mock.calls.map(([, type]) => type)).toEqual(['meditation'])
   })
 
   test('an activity type card rolls up both windows', async () => {
@@ -520,8 +584,25 @@ describe('resolveDashboardData: top_list_card and places_card', () => {
       type: 'top_list_card',
     })
     expect(vi.mocked(getTopMedia).mock.calls).toEqual([
-      ['alice', { end: lastMs(october.end), start: october.start }, 'album', 3],
-      ['alice', { end: lastMs(september.end), start: september.start }, 'album', 3],
+      ['alice', { end: lastMs(october.end), start: october.start }, 'album', 3, undefined],
+      ['alice', { end: lastMs(september.end), start: september.start }, 'album', 3, undefined],
+    ])
+  })
+
+  test('a music top list passes its media source on for both windows', async () => {
+    vi.mocked(getTopMedia).mockReset()
+    vi.mocked(getTopMedia).mockResolvedValue({ distinct: 0, items: [], total_plays: 0 })
+    const card: DashboardWidget = {
+      config: { limit: 5, media_source: 'lastfm', source: 'media_track' },
+      id: 'scrobbles',
+      type: 'top_list_card',
+    }
+
+    await resolveDashboardData('alice', board(card), { previous: september, window: october })
+
+    expect(vi.mocked(getTopMedia).mock.calls).toEqual([
+      ['alice', { end: lastMs(october.end), start: october.start }, 'track', 5, 'lastfm'],
+      ['alice', { end: lastMs(september.end), start: september.start }, 'track', 5, 'lastfm'],
     ])
   })
 
@@ -558,10 +639,16 @@ describe('resolveDashboardData: top_list_card and places_card', () => {
     vi.mocked(getPlacesSummary).mockResolvedValue({
       distinct_places: 12,
       nights_away: 2,
+      nights_by_place: [
+        { name: 'Home', nights: 28 },
+        { name: 'Cabin', nights: 2 },
+      ],
+      nights_elsewhere: 0,
       nights_home: 28,
+      nights_no_data: 0,
       places: [
-        { hours: 600, name: 'Home', visits: 30 },
-        { hours: 80, name: 'Office', visits: 10 },
+        { hours: 600, name: 'Home', nights: 28, visits: 30 },
+        { hours: 80, name: 'Office', nights: 0, visits: 10 },
       ],
       visits: 55,
     })
@@ -587,8 +674,14 @@ describe('resolveDashboardData: top_list_card and places_card', () => {
     const summaryFor = (nights_away: number, distinct_places: number, visits: number) => ({
       distinct_places,
       nights_away,
+      nights_by_place: [
+        { name: 'Home', nights: 31 - nights_away },
+        { name: 'Cabin', nights: nights_away - 1 },
+      ],
+      nights_elsewhere: 1,
       nights_home: 31 - nights_away,
-      places: [{ hours: 600, name: 'Home', visits: 30 }],
+      nights_no_data: 0,
+      places: [{ hours: 600, name: 'Home', nights: 31 - nights_away, visits: 30 }],
       visits,
     })
     vi.mocked(getPlacesSummary).mockReset()
@@ -608,6 +701,8 @@ describe('resolveDashboardData: top_list_card and places_card', () => {
         ...summaryFor(3, 12, 55),
         previous_distinct_places: 9,
         previous_nights_away: 5,
+        previous_nights_by_place: summaryFor(5, 9, 40).nights_by_place,
+        previous_nights_elsewhere: 1,
         previous_visits: 40,
       },
       type: 'places_card',

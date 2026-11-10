@@ -11,11 +11,13 @@ import type {
   SectionType,
   WidgetDataMap,
 } from '@aurboda/api-spec'
+import type { TargetedDragEvent } from 'preact'
 
-import { useEffect, useState } from 'preact/hooks'
+import { useEffect, useRef, useState } from 'preact/hooks'
 
 import { DashboardEditor } from '../DashboardEditor'
 import { PublicWidgetRenderer, WidgetRenderer } from '../widgets'
+import { dropWidget, type DropTarget, moveWidget } from './moveWidget'
 
 const generateSectionId = () => `section-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
 
@@ -25,6 +27,119 @@ const periodOptions: { label: string; value: '' | PeriodGranularity }[] = [
   { label: 'Monthly', value: 'month' },
   { label: 'Yearly', value: 'year' },
 ]
+
+const WIDGET_MIME = 'application/x-aurboda-widget'
+
+type LayoutAxis = 'column' | 'row'
+
+interface ShownDropTarget extends DropTarget {
+  axis?: LayoutAxis
+}
+
+interface WidgetDrag {
+  draggingId: string | null
+  target: ShownDropTarget | null
+  start: (widgetId: string) => void
+  over: (target: ShownDropTarget | null) => void
+  drop: () => void
+  end: () => void
+}
+
+const isWidgetDrag = (e: DragEvent) => e.dataTransfer?.types.includes(WIDGET_MIME) ?? false
+
+/** Siblings share a top edge in a multi-column grid; in a single column they stack. */
+const layoutAxis = (el: HTMLElement): LayoutAxis =>
+  [el.previousElementSibling, el.nextElementSibling].some(
+    (sibling) => sibling instanceof HTMLElement && sibling.offsetTop === el.offsetTop,
+  )
+    ? 'row'
+    : 'column'
+
+const sameTarget = (a: ShownDropTarget | null, b: ShownDropTarget | null) =>
+  a === b ||
+  (a !== null &&
+    b !== null &&
+    a.sectionId === b.sectionId &&
+    a.widgetId === b.widgetId &&
+    a.side === b.side &&
+    a.axis === b.axis)
+
+const gridDropProps = (sectionId: string, gridClass: string, drag: WidgetDrag) => ({
+  class:
+    drag.target?.sectionId === sectionId && drag.target.widgetId === undefined
+      ? `${gridClass} drop-into`
+      : gridClass,
+  onDragLeave: (e: TargetedDragEvent<HTMLDivElement>) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) drag.over(null)
+  },
+  onDragOver: (e: TargetedDragEvent<HTMLDivElement>) => {
+    if (!isWidgetDrag(e)) return
+    e.preventDefault()
+    if (drag.target?.sectionId !== sectionId) drag.over({ sectionId })
+  },
+  onDrop: (e: TargetedDragEvent<HTMLDivElement>) => {
+    if (!isWidgetDrag(e)) return
+    e.preventDefault()
+    drag.drop()
+  },
+})
+
+const editingWrapperClass = (widgetId: string, drag?: WidgetDrag) =>
+  [
+    'widget-editing-wrapper',
+    drag?.draggingId === widgetId && 'widget-dragging',
+    drag?.target?.widgetId === widgetId && `drop-${drag.target.side} drop-${drag.target.axis}`,
+  ]
+    .filter(Boolean)
+    .join(' ')
+
+const widgetDragOver =
+  (sectionId: string, widgetId: string, drag: WidgetDrag) => (e: TargetedDragEvent<HTMLDivElement>) => {
+    if (!isWidgetDrag(e)) return
+    e.preventDefault()
+    e.stopPropagation()
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+    const el = e.currentTarget
+    const axis = layoutAxis(el)
+    const rect = el.getBoundingClientRect()
+    const before =
+      axis === 'row' ? e.clientX < rect.left + rect.width / 2 : e.clientY < rect.top + rect.height / 2
+    drag.over({ axis, sectionId, side: before ? 'before' : 'after', widgetId })
+  }
+
+function DragHandle({ widgetId, drag }: { widgetId: string; drag: WidgetDrag }) {
+  return (
+    <span
+      class="widget-drag-handle"
+      draggable
+      role="img"
+      title="Drag to move"
+      aria-label="Drag to move"
+      onDragStart={(e) => {
+        if (e.dataTransfer) {
+          e.dataTransfer.effectAllowed = 'move'
+          e.dataTransfer.setData(WIDGET_MIME, widgetId)
+          const wrapper = e.currentTarget.closest<HTMLElement>('.widget-editing-wrapper')
+          if (wrapper) {
+            const rect = wrapper.getBoundingClientRect()
+            e.dataTransfer.setDragImage(wrapper, e.clientX - rect.left, e.clientY - rect.top)
+          }
+        }
+        drag.start(widgetId)
+      }}
+      onDragEnd={drag.end}
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+        <circle cx="9" cy="5" r="1.75" />
+        <circle cx="15" cy="5" r="1.75" />
+        <circle cx="9" cy="12" r="1.75" />
+        <circle cx="15" cy="12" r="1.75" />
+        <circle cx="9" cy="19" r="1.75" />
+        <circle cx="15" cy="19" r="1.75" />
+      </svg>
+    </span>
+  )
+}
 
 /** The config with its period set to `granularity`, or without one for a rolling dashboard. */
 export const withPeriod = (config: DashboardConfig, granularity: '' | PeriodGranularity): DashboardConfig => {
@@ -37,6 +152,7 @@ function DashboardSectionComponent({
   isEditing,
   boardId,
   widgetData,
+  widgetDataLoading,
   periodLabel,
   onRemoveWidget,
   onMoveWidget,
@@ -44,11 +160,13 @@ function DashboardSectionComponent({
   onDeleteSection,
   onRenameSection,
   onDescriptionChange,
+  drag,
 }: {
   section: DashboardSection
   isEditing: boolean
   boardId?: string
   widgetData?: WidgetDataMap
+  widgetDataLoading?: boolean
   periodLabel?: string
   onRemoveWidget?: (widgetId: string) => void
   onMoveWidget?: (widgetId: string, direction: 'up' | 'down') => void
@@ -56,6 +174,7 @@ function DashboardSectionComponent({
   onDeleteSection?: () => void
   onRenameSection?: (title: string) => void
   onDescriptionChange?: (description: string | undefined) => void
+  drag?: WidgetDrag
 }) {
   const [collapsed, setCollapsed] = useState(section.collapsed ?? false)
   const [editingTitle, setEditingTitle] = useState(false)
@@ -157,11 +276,16 @@ function DashboardSectionComponent({
         <p class="section-intro">{section.description}</p>
       ) : null}
       {!collapsed && (
-        <div class={gridClass}>
+        <div class={gridClass} {...(drag && gridDropProps(section.id, gridClass, drag))}>
           {section.widgets.map((widget, index) => (
-            <div key={widget.id} class={isEditing ? 'widget-editing-wrapper' : ''}>
+            <div
+              key={widget.id}
+              class={isEditing ? editingWrapperClass(widget.id, drag) : ''}
+              onDragOver={drag && widgetDragOver(section.id, widget.id, drag)}
+            >
               {isEditing && (
                 <div class="widget-edit-controls">
+                  {drag && <DragHandle widgetId={widget.id} drag={drag} />}
                   {index > 0 && (
                     <button
                       class="widget-move-btn"
@@ -216,7 +340,12 @@ function DashboardSectionComponent({
                   </button>
                 </div>
               )}
-              {widgetData ? (
+              {widgetData &&
+              widgetDataLoading &&
+              widget.type !== 'quick_link' &&
+              widgetData[widget.id] === undefined ? (
+                <div class="widget-note">Loading…</div>
+              ) : widgetData ? (
                 <PublicWidgetRenderer
                   widget={widget}
                   data={widgetData[widget.id]}
@@ -228,7 +357,15 @@ function DashboardSectionComponent({
             </div>
           ))}
           {isEditing && (
-            <div class="add-widget-placeholder">
+            <div
+              class="add-widget-placeholder"
+              onDragOver={(e) => {
+                if (!drag || !isWidgetDrag(e)) return
+                e.preventDefault()
+                e.stopPropagation()
+                drag.over({ sectionId: section.id })
+              }}
+            >
               <button class="add-widget-btn" onClick={onAddWidgetClick}>
                 + Add Widget
               </button>
@@ -322,6 +459,8 @@ interface EditableDashboardProps {
   boardId: string
   /** Server-resolved data per widget id (a period dashboard); widgets fetch their own when absent. */
   widgetData?: WidgetDataMap
+  /** Whether `widgetData` is being fetched or about to be, so a widget without an entry yet shows as loading. */
+  widgetDataLoading?: boolean
   /** The shown period's label, for widgets that name their window. */
   periodLabel?: string
 }
@@ -332,6 +471,7 @@ export function EditableDashboard({
   onChange,
   boardId,
   widgetData,
+  widgetDataLoading,
   periodLabel,
 }: EditableDashboardProps) {
   const [showWidgetPicker, setShowWidgetPicker] = useState<string | null>(null) // section id or null
@@ -375,14 +515,47 @@ export function EditableDashboard({
     const newIndex = direction === 'up' ? widgetIndex - 1 : widgetIndex + 1
     if (newIndex < 0 || newIndex >= section.widgets.length) return
 
-    const newWidgets = [...section.widgets]
-    const [widget] = newWidgets.splice(widgetIndex, 1)
-    newWidgets.splice(newIndex, 0, widget)
+    onChange(moveWidget(config, widgetId, sectionId, newIndex))
+  }
 
-    onChange({
-      ...config,
-      sections: config.sections.map((s) => (s.id === sectionId ? { ...s, widgets: newWidgets } : s)),
-    })
+  const [draggingId, setDraggingId] = useState<string | null>(null)
+  const [dropTarget, setDropTarget] = useState<ShownDropTarget | null>(null)
+  const draggingRef = useRef<string | null>(null)
+  const dropTargetRef = useRef<ShownDropTarget | null>(null)
+
+  const showDropTarget = (target: ShownDropTarget | null) => {
+    const dragged = draggingRef.current
+    const shown = target && dragged && dropWidget(config, dragged, target) !== config ? target : null
+    if (sameTarget(shown, dropTargetRef.current)) return
+    dropTargetRef.current = shown
+    setDropTarget(shown)
+  }
+
+  const endDrag = () => {
+    draggingRef.current = null
+    setDraggingId(null)
+    showDropTarget(null)
+  }
+
+  const drag: WidgetDrag = {
+    draggingId,
+    drop: () => {
+      const dragged = draggingRef.current
+      const target = dropTargetRef.current
+      if (dragged && target) {
+        const next = dropWidget(config, dragged, target)
+        if (next !== config) onChange(next)
+      }
+      endDrag()
+    },
+    end: endDrag,
+    over: showDropTarget,
+    start: (widgetId) => {
+      draggingRef.current = widgetId
+      // Deferred so the browser snapshots the drag image before the card fades.
+      setTimeout(() => setDraggingId(draggingRef.current), 0)
+    },
+    target: dropTarget,
   }
 
   const handleAddWidget = (sectionId: string, widget: DashboardWidget) => {
@@ -464,6 +637,7 @@ export function EditableDashboard({
           isEditing={isEditing}
           boardId={boardId}
           widgetData={widgetData}
+          widgetDataLoading={widgetDataLoading}
           periodLabel={periodLabel}
           onRemoveWidget={(widgetId) => handleRemoveWidget(section.id, widgetId)}
           onMoveWidget={(widgetId, direction) => handleMoveWidget(section.id, widgetId, direction)}
@@ -471,6 +645,7 @@ export function EditableDashboard({
           onDeleteSection={() => handleDeleteSection(section.id)}
           onRenameSection={(title) => handleRenameSection(section.id, title)}
           onDescriptionChange={(description) => handleSectionDescription(section.id, description)}
+          drag={isEditing ? drag : undefined}
         />
       ))}
 

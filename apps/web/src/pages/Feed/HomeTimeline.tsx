@@ -11,13 +11,21 @@ import type { InfiniteData } from '@tanstack/react-query'
 
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
+import { useLocation } from 'preact-iso'
 import { useState } from 'preact/hooks'
 
-import { fetchTimeline, fetchTimelineReplies, fetchUserSettings, updateUserSettings } from '../../state/api'
+import {
+  fetchFollowedTags,
+  fetchTimeline,
+  fetchTimelineReplies,
+  fetchUserSettings,
+  updateUserSettings,
+} from '../../state/api'
 import { ActorName } from './ActorName'
 import { originHost } from './entry-markers'
+import { feedTagFromQuery, feedTagUrl } from './feed-tab'
 import { timelineImageVisible } from './timeline-structured'
-import { TimelineActions, TIMELINE_KEY } from './TimelineActions'
+import { TimelineActions, timelineKey, TIMELINE_PAGES_KEY } from './TimelineActions'
 import { TimelineEntryHead } from './TimelineEntryHead'
 import { TimelineStructured } from './TimelineStructured'
 import { useTimelineLive } from './useTimelineLive'
@@ -39,11 +47,24 @@ const dedupByUri = (list: TimelineEntry[]): TimelineEntry[] => {
 
 function TimelineCard({ entry }: { entry: TimelineEntry }) {
   const queryClient = useQueryClient()
+  const { path, query } = useLocation()
   const booster = entry.boosted_by
   return (
     <article class="feed-post">
+      {/* A followed tag actor's boost shows the tag, not a "boosted" line. */}
+      {booster?.tag != null && (
+        <p class="feed-post-boost-marker">
+          <a
+            class="timeline-tag-chip"
+            href={feedTagUrl(path, query, booster.tag)}
+            title={`Boosted by the #${booster.tag} tag feed`}
+          >
+            #{booster.tag}
+          </a>
+        </p>
+      )}
       {/* Mastodon's "🔄 X boosted" line: the card below is the ORIGINAL post. */}
-      {booster && (
+      {booster && booster.tag == null && (
         <p class="feed-post-boost-marker">
           🔄{' '}
           <ActorName
@@ -69,6 +90,16 @@ function TimelineCard({ entry }: { entry: TimelineEntry }) {
           way Mastodon shows them. `timelineImageVisible` keeps each image
           unless its native counterpart actually renders. */}
       {entry.structured && <TimelineStructured structured={entry.structured} />}
+      {/* The content HTML links its own hashtags; a native render does not. */}
+      {entry.structured && entry.tags.length > 0 && (
+        <p class="feed-post-tags">
+          {entry.tags.map((tag) => (
+            <a key={tag} href={feedTagUrl(path, query, tag)}>
+              #{tag}
+            </a>
+          ))}
+        </p>
+      )}
       {entry.images
         ?.filter((img) => timelineImageVisible(entry.structured, img.name))
         .map((img) => (
@@ -182,10 +213,9 @@ function ShowRepliesToggle() {
     mutationFn: (show: boolean) => updateUserSettings({ timeline_show_replies: show }),
     onSuccess: (result) => {
       queryClient.setQueryData(['userSettings'], result)
-      // `exact`: the timeline pages themselves must refetch, but the expanded
-      // reply threads under TIMELINE_KEY must not — each is a live fetch of a
-      // remote origin's `replies` collection (#1062).
-      void queryClient.invalidateQueries({ exact: true, queryKey: TIMELINE_KEY })
+      // Only the timeline pages refetch, not the expanded reply threads beside
+      // them — each is a live fetch of a remote origin's `replies` (#1062).
+      void queryClient.invalidateQueries({ queryKey: TIMELINE_PAGES_KEY })
     },
   })
   const show = mutation.isPending
@@ -204,7 +234,39 @@ function ShowRepliesToggle() {
   )
 }
 
+/** `All` plus one chip per followed tag; each a link to the timeline filtered to it. */
+function TagFilterChips({ active }: { active: string | null }) {
+  const { path, query } = useLocation()
+  const { data: followed } = useQuery({ queryFn: fetchFollowedTags, queryKey: ['followed-tags'] })
+  const tags = (followed ?? []).map((row) => row.tag)
+  if (active != null && !tags.includes(active)) tags.unshift(active)
+  if (tags.length === 0) return null
+  const chip = (tag: string | null) => (
+    <a
+      key={tag ?? ''}
+      href={feedTagUrl(path, query, tag)}
+      class={tag === active ? 'timeline-tag-chip timeline-tag-chip--active' : 'timeline-tag-chip'}
+      aria-current={tag === active ? 'page' : undefined}
+    >
+      {tag == null ? 'All' : `#${tag}`}
+    </a>
+  )
+  return (
+    <nav class="timeline-tag-chips" aria-label="Filter by followed tag">
+      {chip(null)}
+      {tags.map(chip)}
+    </nav>
+  )
+}
+
 export function HomeTimeline() {
+  const { query } = useLocation()
+  const tag = feedTagFromQuery(query)
+  // Keyed, so the live "new posts" buffer starts afresh for each filter.
+  return <FilteredTimeline key={tag ?? ''} tag={tag} />
+}
+
+function FilteredTimeline({ tag }: { tag: string | null }) {
   const { data, isLoading, error, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery<
     TimelineResponse,
     Error,
@@ -214,8 +276,8 @@ export function HomeTimeline() {
   >({
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
     initialPageParam: undefined,
-    queryFn: ({ pageParam }) => fetchTimeline(pageParam),
-    queryKey: TIMELINE_KEY,
+    queryFn: ({ pageParam }) => fetchTimeline(pageParam, tag),
+    queryKey: timelineKey(tag),
   })
 
   const entries = data?.pages.flatMap((page) => page.entries) ?? []
@@ -230,7 +292,7 @@ export function HomeTimeline() {
   // aren't already showing. Cheap: one page, and only when the server says so.
   const checkForNew = async () => {
     try {
-      const { entries: latest } = await fetchTimeline()
+      const { entries: latest } = await fetchTimeline(undefined, tag)
       const known = new Set([...revealed, ...pending, ...entries].map((entry) => entry.object_uri))
       const fresh = latest.filter((entry) => !known.has(entry.object_uri))
       if (fresh.length > 0) setPending((prev) => dedupByUri([...fresh, ...prev]))
@@ -251,6 +313,7 @@ export function HomeTimeline() {
   return (
     <section class="timeline-section">
       <ShowRepliesToggle />
+      <TagFilterChips active={tag} />
       {pending.length > 0 && (
         <button type="button" class="timeline-new-pill" onClick={reveal}>
           {pending.length} new post{pending.length === 1 ? '' : 's'}

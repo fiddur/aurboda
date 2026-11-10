@@ -370,7 +370,6 @@ export const buildDefaultShareMeta = (webHost: string, url: string): ShareMeta =
   url,
 })
 
-/** The welcome page at the site root. */
 export const buildHomeShareMeta = (webHost: string): ShareMeta => {
   const url = `${webHost.replace(/\/+$/, '')}/`
   return {

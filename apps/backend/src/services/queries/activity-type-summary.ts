@@ -5,17 +5,18 @@ import type {
   SleepStageSummary,
 } from '@aurboda/api-spec'
 
-import type { ActivityResult } from './types.ts'
+import type { MergedActivity } from '../../db/types.ts'
 
-import { expandActivityTypes, getActivityTypeDefinition } from '../../db/index.ts'
-import { queryActivities } from './activities.ts'
+import { expandActivityTypes, getActivities, getActivityTypeDefinition } from '../../db/index.ts'
 import { itemPath, matchesFilter, matchesItemFilter } from './activity-sessions.ts'
 import { computeSleepStageSummary } from './daily-summary.ts'
+import { buildCategoryMap } from './types.ts'
 
 export interface ActivityTypeSummaryDeps {
+  buildCategoryMap: typeof buildCategoryMap
   expandActivityTypes: typeof expandActivityTypes
+  getActivities: typeof getActivities
   getActivityTypeDefinition: typeof getActivityTypeDefinition
-  queryActivities: typeof queryActivities
 }
 
 const stageKeys = ['awake_min', 'deep_min', 'light_min', 'rem_min'] as const
@@ -25,17 +26,17 @@ const round = (v: number, digits: number): number => {
   return Math.round(v * f) / f
 }
 
-const durationMinutes = (a: ActivityResult): number =>
-  a.end_time ? (new Date(a.end_time).getTime() - new Date(a.start_time).getTime()) / 60000 : 0
+const durationMinutes = (a: MergedActivity): number =>
+  a.end_time ? (a.end_time.getTime() - a.start_time.getTime()) / 60000 : 0
 
-const distanceMetres = (a: ActivityResult): number | undefined => {
+const distanceMetres = (a: MergedActivity): number | undefined => {
   const v = a.data?.distance
   return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined
 }
 
 const sum = (values: number[]): number => values.reduce((total, v) => total + v, 0)
 
-const matching = (activities: ActivityResult[], query: ActivityTypeSummaryQuery): ActivityResult[] => {
+const matching = (activities: MergedActivity[], query: ActivityTypeSummaryQuery): MergedActivity[] => {
   const { filter_field, filter_value } = query
   if (filter_field === undefined || filter_value === undefined) return activities
   const value = filter_value === '(none)' ? null : filter_value
@@ -45,7 +46,7 @@ const matching = (activities: ActivityResult[], query: ActivityTypeSummaryQuery)
   )
 }
 
-const distanceFigures = (activities: ActivityResult[]) => {
+const distanceFigures = (activities: MergedActivity[]) => {
   const withDistance = activities.flatMap((a) => {
     const metres = distanceMetres(a)
     return metres === undefined ? [] : [{ metres, minutes: durationMinutes(a) }]
@@ -63,7 +64,7 @@ const distanceFigures = (activities: ActivityResult[]) => {
   }
 }
 
-const averageStages = (nights: ActivityResult[]): SleepStageSummary | null => {
+const averageStages = (nights: MergedActivity[]): SleepStageSummary | null => {
   const summaries = nights.flatMap((a) => computeSleepStageSummary(a.data) ?? [])
   if (summaries.length === 0) return null
   const averaged: SleepStageSummary = {}
@@ -74,7 +75,7 @@ const averageStages = (nights: ActivityResult[]): SleepStageSummary | null => {
   return averaged
 }
 
-const sleepFigures = (nights: ActivityResult[]): ActivityTypeSleepSummary | null => {
+const sleepFigures = (nights: MergedActivity[]): ActivityTypeSleepSummary | null => {
   if (nights.length === 0) return null
   const minutes = nights.map(durationMinutes)
   return {
@@ -89,14 +90,28 @@ export const getActivityTypeSummary = async (
   user: string,
   activityType: string,
   query: ActivityTypeSummaryQuery,
-  deps: ActivityTypeSummaryDeps = { expandActivityTypes, getActivityTypeDefinition, queryActivities },
+  deps: ActivityTypeSummaryDeps = {
+    buildCategoryMap,
+    expandActivityTypes,
+    getActivities,
+    getActivityTypeDefinition,
+  },
 ): Promise<ActivityTypeSummary> => {
-  const [types, definition] = await Promise.all([
+  const [types, definition, categoryMap] = await Promise.all([
     deps.expandActivityTypes(user, [activityType]),
     deps.getActivityTypeDefinition(user, activityType),
+    deps.buildCategoryMap(user),
   ])
   const activities = matching(
-    await deps.queryActivities(user, types, new Date(query.start), new Date(query.end)),
+    await deps.getActivities(
+      user,
+      types,
+      new Date(query.start),
+      new Date(query.end),
+      undefined,
+      undefined,
+      categoryMap,
+    ),
     query,
   )
   return {

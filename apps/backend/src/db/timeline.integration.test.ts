@@ -806,4 +806,31 @@ describe('Timeline store integration', () => {
       expect(await countTimelineRepliesTo(getTestUser(), [])).toEqual([])
     })
   })
+
+  describe('hashtags', () => {
+    test('stores tags (empty by default) and refreshes them on re-delivery', async () => {
+      const user = getTestUser()
+      expect((await upsertTimelineEntry(user, entry(1))).tags).toEqual([])
+      const tagged = await upsertTimelineEntry(user, entry(2, { tags: ['running', 'aurboda'] }))
+      expect(tagged.tags).toEqual(['running', 'aurboda'])
+      expect((await getTimelineEntryById(user, tagged.id))?.tags).toEqual(['running', 'aurboda'])
+      expect((await upsertTimelineEntry(user, entry(2, { tags: ['cycling'] }))).tags).toEqual(['cycling'])
+    })
+
+    test('filters the page by one tag', async () => {
+      const user = getTestUser()
+      await upsertTimelineEntry(user, entry(1, { tags: ['running'] }))
+      await upsertTimelineEntry(user, entry(2, { tags: ['cycling', 'running'] }))
+      await upsertTimelineEntry(user, entry(3, { tags: ['cycling'] }))
+      await upsertTimelineEntry(user, entry(4))
+
+      const running = await listTimelineEntries(user, 10, undefined, undefined, 'running')
+      expect(running.map((e) => e.object_uri)).toEqual([
+        'https://mastodon.example/notes/2',
+        'https://mastodon.example/notes/1',
+      ])
+      expect(await listTimelineEntries(user, 10, undefined, undefined, 'swimming')).toEqual([])
+      expect(await listTimelineEntries(user, 10, undefined, undefined, null)).toHaveLength(4)
+    })
+  })
 })

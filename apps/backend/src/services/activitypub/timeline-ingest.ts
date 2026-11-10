@@ -3,10 +3,10 @@
  * `dangerouslySetInnerHTML` on the web, so it MUST be sanitised before it is
  * stored.
  */
-import type { TimelineImage } from '@aurboda/api-spec'
 import type { Note } from '@fedify/fedify/vocab'
 
-import { Document, Image, Link, Mention } from '@fedify/fedify/vocab'
+import { normalizeTags, type TimelineImage } from '@aurboda/api-spec'
+import { Document, Hashtag, Image, Link, Mention } from '@fedify/fedify/vocab'
 import sanitizeHtml from 'sanitize-html'
 
 import type { TimelineAuthor, TimelineEntryInput } from '../../db/index.ts'
@@ -91,6 +91,8 @@ export interface TimelineBoostSource {
   display_name: string | null
   /** The `Announce`'s `published` (or now, when it declares none). */
   published_at: Date
+  /** The followed hashtag when the booster is a tag actor, else null. */
+  tag: string | null
 }
 
 export const noteMentionsActor = async (note: Note, actorUri: string): Promise<boolean> => {
@@ -99,6 +101,31 @@ export const noteMentionsActor = async (note: Note, actorUri: string): Promise<b
   }
   return false
 }
+
+/** Bounds the tags walked per Note, as `MAX_ATTACHMENTS_SCANNED` does for attachments. */
+const MAX_TAGS_SCANNED = 50
+
+/** The Note's AS2 `Hashtag` names, normalised (lowercase, no `#`, deduped, capped). */
+export const noteHashtags = async (note: Note): Promise<string[]> => {
+  const names: string[] = []
+  let scanned = 0
+  for await (const tag of note.getTags({ suppressError: true })) {
+    if (++scanned > MAX_TAGS_SCANNED) break
+    if (!(tag instanceof Hashtag)) continue
+    const name = tag.name?.toString()
+    if (name != null) names.push(name)
+  }
+  return normalizeTags(names)
+}
+
+/**
+ * The link to the original post: the Note's `url` when it is http(s), else its id.
+ * It is rendered as an `href`, so a `javascript:` (or any other scheme) url must never pass.
+ */
+export const noteLinkUrl = (note: Note, noteId: URL): string =>
+  note.url instanceof URL && (note.url.protocol === 'https:' || note.url.protocol === 'http:')
+    ? note.url.href
+    : noteId.href
 
 export const noteToTimelineInput = (
   note: Note,
@@ -135,7 +162,7 @@ export const noteToTimelineInput = (
     in_reply_to_uri: note.replyTargetIds[0]?.href ?? null,
     object_uri: boost ? boost.announce_uri : note.id.href,
     published_at: new Date(Math.min(publishedAt.getTime(), now)),
-    url: note.url instanceof URL ? note.url.href : note.id.href,
+    url: noteLinkUrl(note, note.id),
   }
 }
 

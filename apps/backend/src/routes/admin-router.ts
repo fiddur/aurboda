@@ -1,4 +1,6 @@
 import {
+  type AddRelayBody,
+  addRelayBodySchema,
   type AdminSettingsResponse,
   type AdminUserUsageQuery,
   adminUserUsageQuerySchema,
@@ -11,6 +13,8 @@ import {
   type DeleteAccountBody,
   deleteAccountBodySchema,
   type InvitationResponse,
+  type RelayResponse,
+  type RelaysResponse,
   type UpdateAdminSettingsBody,
   updateAdminSettingsBodySchema,
   type UpdateUserPlanBody,
@@ -23,6 +27,8 @@ import type { AdminUsers } from '../services/admin-users.ts'
 import type { CentralDb } from '../services/central-db.ts'
 import type { InvitationAuth } from '../services/invitation.ts'
 import type { OuraWebhookManager } from '../services/oura-webhook-manager.ts'
+import type { PublicTagActions } from '../services/public-tags.ts'
+import type { RelayActions } from '../services/relays.ts'
 
 import { accountDeletionStatus } from '../services/account-deletion.ts'
 import { readBillingSettings } from '../services/account-plan.ts'
@@ -31,6 +37,14 @@ import {
   readOfficialFeedSetting,
   writeOfficialFeedSetting,
 } from '../services/official-feed.ts'
+import {
+  normalizePublicTagPages,
+  readPublicTagFollows,
+  readPublicTagPages,
+  readPublicTagRetentionDays,
+} from '../services/public-tags.ts'
+import { serializeRelay } from '../services/relays.ts'
+import { readTagActorHost } from '../services/tag-actor-host.ts'
 import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
@@ -46,6 +60,8 @@ export const createAdminRouter = (
   ouraWebhookManager?: OuraWebhookManager | null,
   deleteAccount?: AccountDeleter,
   accountPlans?: AccountPlans,
+  relays?: RelayActions,
+  publicTags?: Pick<PublicTagActions, 'apply'>,
 ): TypedRouter => {
   const router = typedRouter()
   const readSettings = async (): Promise<AdminSettingsResponse> => {
@@ -65,6 +81,10 @@ export const createAdminRouter = (
       gravlClientSecret,
       officialFeed,
       billing,
+      tagActorHost,
+      publicTagPages,
+      publicTagRetentionDays,
+      publicTagFollows,
     ] = await Promise.all([
       centralDb.getSignupMode(),
       centralDb.getAdminCount(),
@@ -81,6 +101,10 @@ export const createAdminRouter = (
       centralDb.getServerSetting('gravl_client_secret'),
       readOfficialFeedSetting(centralDb),
       readBillingSettings(centralDb),
+      readTagActorHost(centralDb),
+      readPublicTagPages(centralDb),
+      readPublicTagRetentionDays(centralDb),
+      readPublicTagFollows(centralDb),
     ])
     return {
       admin_count: adminCount,
@@ -98,6 +122,9 @@ export const createAdminRouter = (
       official_feed: officialFeed,
       payment_url: billing.payment_url,
       price_text: billing.price_text,
+      public_tag_follows: publicTagFollows,
+      public_tag_pages: publicTagPages,
+      public_tag_retention_days: publicTagRetentionDays,
       // DSN is returned in full (not `_set` boolean like other secrets):
       // Sentry DSNs are public values designed to be embedded in clients.
       sentry_dsn: sentryDsn || null,
@@ -105,6 +132,7 @@ export const createAdminRouter = (
       strava_client_id_set: !!stravaClientId,
       strava_client_secret_set: !!stravaClientSecret,
       success: true,
+      tag_actor_host: tagActorHost,
       trial_days: billing.trial_days,
     }
   }
@@ -139,10 +167,13 @@ export const createAdminRouter = (
         official_feed,
         payment_url,
         price_text,
+        public_tag_pages,
+        public_tag_retention_days,
         sentry_dsn,
         signup_mode,
         strava_client_id,
         strava_client_secret,
+        tag_actor_host,
         trial_days,
       } = req.body
       const legacyFeed =
@@ -199,6 +230,20 @@ export const createAdminRouter = (
       }
       if (gravl_client_secret !== undefined) {
         await centralDb.setServerSetting('gravl_client_secret', gravl_client_secret ?? '')
+      }
+      if (tag_actor_host !== undefined) {
+        await centralDb.setServerSetting('tag_actor_host', tag_actor_host)
+      }
+      if (public_tag_retention_days !== undefined) {
+        await centralDb.setServerSetting('public_tag_retention_days', public_tag_retention_days)
+      }
+      if (public_tag_pages !== undefined) {
+        await centralDb.setServerSetting('public_tag_pages', normalizePublicTagPages(public_tag_pages))
+      }
+      if (public_tag_pages !== undefined || tag_actor_host !== undefined) {
+        await publicTags?.apply(await readPublicTagPages(centralDb)).catch((error: unknown) => {
+          console.error('⚠️ Public tag page follows failed:', error)
+        })
       }
       const billingChanged = [billing_enabled, trial_days, grace_days, price_text, payment_url].some(
         (value) => value !== undefined,
@@ -291,6 +336,45 @@ export const createAdminRouter = (
         })
         if (!result.ok) {
           res.status(accountDeletionStatus[result.error]).json({ error: result.message, success: false })
+          return
+        }
+        res.json({ success: true })
+      },
+    )
+  }
+
+  if (relays) {
+    router.get<Record<string, never>, RelaysResponse>(
+      '/relays',
+      authMiddleware,
+      adminMiddleware,
+      async (_req, res) => {
+        res.json({ relays: await relays.list(), success: true })
+      },
+    )
+
+    router.post<Record<string, never>, RelayResponse, AddRelayBody>(
+      '/relays',
+      authMiddleware,
+      adminMiddleware,
+      validateBody(addRelayBodySchema),
+      async (req, res) => {
+        const result = await relays.add(req.body)
+        if (!result.ok) {
+          res.status(result.status).json({ error: result.error, success: false })
+          return
+        }
+        res.status(201).json({ relay: serializeRelay(result.record), success: true })
+      },
+    )
+
+    router.delete<{ id: string }, BaseResponse>(
+      '/relays/:id',
+      authMiddleware,
+      adminMiddleware,
+      async (req, res) => {
+        if (!(await relays.remove(req.params.id))) {
+          res.status(404).json({ error: 'Relay not found', success: false })
           return
         }
         res.json({ success: true })

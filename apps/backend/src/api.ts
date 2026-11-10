@@ -56,7 +56,7 @@ import {
   upsertActivityTrack,
   upsertSyncState,
 } from './db/index.ts'
-import { httpError, isHttpError } from './http-error.ts'
+import { errorResponseBody, httpError, isHttpError } from './http-error.ts'
 import { garminClient } from './integrations/garmin/client.ts'
 import { garminDataTypes } from './integrations/garmin/process.ts'
 import { syncActivityDetails, syncGarminDataType } from './integrations/garmin/sync.ts'
@@ -93,6 +93,7 @@ import {
   toDeliverableReply,
 } from './services/activitypub/deliver.ts'
 import {
+  buildActorPerson,
   createFeedFederation,
   deliverActorDelete,
   deliverActorUpdate,
@@ -140,12 +141,28 @@ import {
   rejectFollower,
   serializeFollower,
 } from './services/followers.ts'
-import { type FollowActions, followActor, unfollowActor } from './services/following.ts'
+import {
+  type FollowActions,
+  followActor,
+  followTag,
+  unfollowActor,
+  unfollowTag,
+} from './services/following.ts'
 import { createGeocodeQueue } from './services/geocode-queue.ts'
 import { createInvitationAuth } from './services/invitation.ts'
 import { getPlaceVisits, type NamedLocationsChanged } from './services/locations.ts'
 import { createPgBoss } from './services/pg-boss.ts'
 import { installProcessGuards } from './services/process-guards.ts'
+import { createPublicTagPruneQueue } from './services/public-tag-prune-queue.ts'
+import {
+  createLocalPublicTagPosts,
+  createPublicTagActions,
+  createPublicTagInboxHooks,
+  createPublicTagIngest,
+  readPublicTagPages,
+  readPublicTagRetentionDays,
+} from './services/public-tags.ts'
+import { createRelayActions, createRelayInboxHooks, relayRecipients } from './services/relays.ts'
 import { safeFetchGet } from './services/safe-fetch.ts'
 import { initSentry, Sentry } from './services/sentry.ts'
 import {
@@ -159,6 +176,7 @@ import { garminActivityExternalId } from './services/source-identity.ts'
 import { createStravaQueue, type StravaQueue } from './services/strava-queue.ts'
 import { createSyncProvider } from './services/sync-provider.ts'
 import { createSyncScheduler } from './services/sync-scheduler.ts'
+import { readTagActorHost } from './services/tag-actor-host.ts'
 import { createTimelineHub } from './services/timeline-hub.ts'
 import {
   backfillReplyLinks,
@@ -542,9 +560,33 @@ const main = async () => {
     async () => (await centralDb.getSignupMode()) === 'open',
     isDeletedUser,
     isReadOnly,
+    {
+      instanceKeys: () => centralDb.getOrCreateInstanceActorKeyPair(),
+      publicTagPosts: createPublicTagIngest(centralDb),
+      relays: createRelayInboxHooks(centralDb),
+      tagFollows: createPublicTagInboxHooks(centralDb),
+    },
   )
   const backfill = createTimelineBackfiller(feedFederation, webHost)
-  const feedDeps = { apiBaseUrl, federation: feedFederation, origin: webHost }
+  const feedDeps = {
+    apiBaseUrl,
+    federation: feedFederation,
+    listRelayRecipients: () => relayRecipients(centralDb),
+    origin: webHost,
+    publicTagPosts: createLocalPublicTagPosts({
+      localActor: (ctx, user) => buildActorPerson(ctx, user, webHost),
+      publicTagPages: () => readPublicTagPages(centralDb),
+      store: centralDb,
+    }),
+    tagActorHost: () => readTagActorHost(centralDb),
+  }
+  const relayActions = createRelayActions({ federation: feedFederation, origin: webHost, store: centralDb })
+  const publicTagActions = createPublicTagActions({
+    federation: feedFederation,
+    origin: webHost,
+    store: centralDb,
+    tagActorHost: () => readTagActorHost(centralDb),
+  })
 
   const accountDeleter = createAccountDeleter({
     announceDeletion: (user) => deliverActorDelete(feedDeps, user),
@@ -857,11 +899,26 @@ const main = async () => {
     console.warn('⚠️ Scheduled audit log pruning disabled (no job queue)')
   }
 
+  if (boss) {
+    try {
+      await createPublicTagPruneQueue(boss, {
+        prune: (olderThan) => centralDb.prunePublicTagPosts(olderThan),
+        pruneNotTagged: (tags) => centralDb.prunePublicTagPostsNotTagged(tags),
+        publicTagPages: () => readPublicTagPages(centralDb),
+        retentionDays: () => readPublicTagRetentionDays(centralDb),
+      })
+    } catch (error) {
+      console.error('Failed to initialize public tag page prune:', error)
+    }
+  }
+
   // The network-requiring follow operations, bound to the same federation +
   // origin, shared by the REST following router and the MCP follow tools.
   const followActions: FollowActions = {
     follow: (user, handle) => followActor(feedDeps, user, handle),
+    followTag: (user, tag) => followTag(feedDeps, user, tag),
     unfollow: (user, id) => unfollowActor(feedDeps, user, id),
+    unfollowTag: (user, tag) => unfollowTag(feedDeps, user, tag),
   }
   const reactionActions = createReactionActions(feedDeps, feedDeliver)
   // The follower-management operations (approve/reject a follow request), sharing
@@ -890,7 +947,9 @@ const main = async () => {
       adminUsers,
       apiBaseUrl,
       autosharePreviewDeps: autoshareDeps,
+      relayActions,
       centralDb,
+      publicTagActions,
       requestDumpLink: dataExport.requestDumpLink,
       deductionQueue: deductionQueue ?? undefined,
       discoverChallenges,
@@ -1077,8 +1136,10 @@ const main = async () => {
     onHrSettingsChanged,
     onNamedLocationsChanged,
     onTrackWritten,
+    relayActions,
     onProfileChanged,
     ouraWebhookManager,
+    publicTagActions,
     reactionActions,
     retroEnrichTimeline,
     syncProvider,
@@ -1105,7 +1166,7 @@ const main = async () => {
       })
     }
 
-    res.status(status).json({ success: false, error: err.message })
+    res.status(status).json(errorResponseBody(err, status))
   })
 
   const port = Number(process.env.PORT ?? 80)

@@ -126,8 +126,11 @@ const widgetData: WidgetDataMap = {
     data: {
       distinct_places: 3,
       nights_away: 1,
+      nights_by_place: [{ name: 'Home', nights: 2 }],
+      nights_elsewhere: 1,
       nights_home: 2,
-      places: [{ hours: 40, name: 'Home', visits: 3 }],
+      nights_no_data: 28,
+      places: [{ hours: 40, name: 'Home', nights: 2, visits: 3 }],
       previous_distinct_places: 3,
       visits: 5,
     },
@@ -211,6 +214,18 @@ describe('activityTypeLines', () => {
     ).toEqual(['Running 3 · 45m'])
   })
 
+  test('one night in the singular (#1535)', () => {
+    const sleep: ActivityTypeCardData = {
+      ...workouts,
+      activity_type_name: 'Sleep',
+      count: 1,
+      distance_km: null,
+      previous_count: undefined,
+      sleep: { avg_minutes: 450, avg_stages: null, best_night_minutes: 450 },
+    }
+    expect(activityTypeLines(undefined, card(sleep))).toEqual(['Sleep 1 night · avg 7h 30m'])
+  })
+
   test('nothing without data or sessions', () => {
     expect(activityTypeLines('Workouts', undefined)).toEqual([])
     expect(activityTypeLines('Workouts', card(null))).toEqual([])
@@ -231,6 +246,16 @@ describe('topListLines', () => {
     ])
   })
 
+  test('a total of one play or visit in the singular (#1535)', () => {
+    expect(topListLines({ source: 'media_artist' }, card({ ...data, total: 1, unit: 'plays' }))).toEqual([
+      'Top artists 1 play',
+    ])
+    expect(topListLines({ source: 'place' }, card({ ...data, total: 1 }))).toEqual(['Top places 1 visit'])
+    expect(topListLines({ source: 'screentime_app' }, card({ ...data, total: 1, unit: 'hours' }))).toEqual([
+      'Top apps 1 h',
+    ])
+  })
+
   test('nothing without data or with an empty window', () => {
     expect(topListLines({ source: 'media_track' }, card(null))).toEqual([])
     expect(topListLines({ source: 'media_track' }, card(data))).toEqual([])
@@ -238,16 +263,62 @@ describe('topListLines', () => {
 })
 
 describe('placesLines', () => {
-  const empty: PlacesCardData = { distinct_places: 0, nights_away: 0, nights_home: 0, places: [], visits: 0 }
+  const empty: PlacesCardData = {
+    distinct_places: 0,
+    nights_away: 0,
+    nights_by_place: [],
+    nights_elsewhere: 0,
+    nights_home: 0,
+    nights_no_data: 0,
+    places: [],
+    visits: 0,
+  }
   const card = (figures: PlacesCardData | null): WidgetData => ({ data: figures, type: 'places_card' })
 
+  test('the nights of the top three named places, then elsewhere, then the distinct places', () => {
+    expect(
+      placesLines(
+        undefined,
+        card({
+          ...empty,
+          distinct_places: 4,
+          nights_by_place: [
+            { name: 'Hökås', nights: 13 },
+            { name: 'Lönnåsen', nights: 3 },
+            { name: 'Cabin', nights: 2 },
+            { name: 'Hotel', nights: 1 },
+          ],
+          nights_elsewhere: 2,
+          previous_distinct_places: 2,
+        }),
+      ),
+    ).toEqual(['Places 13 nights Hökås, 3 Lönnåsen, 2 Cabin, 2 elsewhere · 4 places (↑ 100%)'])
+  })
+
   test('no distinct places part without places', () => {
-    expect(placesLines('Trips', card({ ...empty, nights_home: 3 }))).toEqual(['Trips 3 nights home, 0 away'])
+    expect(placesLines('Trips', card({ ...empty, nights_elsewhere: 3 }))).toEqual([
+      'Trips 3 nights elsewhere',
+    ])
+  })
+
+  test('one night and one place in the singular (#1535)', () => {
+    expect(
+      placesLines(
+        undefined,
+        card({ ...empty, distinct_places: 1, nights_by_place: [{ name: 'Home', nights: 1 }], visits: 1 }),
+      ),
+    ).toEqual(['Places 1 night Home · 1 place'])
+  })
+
+  test('only the distinct places when no night has a place', () => {
+    expect(
+      placesLines(undefined, card({ ...empty, distinct_places: 2, nights_no_data: 7, visits: 3 })),
+    ).toEqual(['Places 2 places'])
   })
 
   test('nothing without data or with an empty window', () => {
     expect(placesLines(undefined, card(null))).toEqual([])
-    expect(placesLines(undefined, card(empty))).toEqual([])
+    expect(placesLines(undefined, card({ ...empty, nights_no_data: 7 }))).toEqual([])
   })
 })
 
@@ -271,7 +342,7 @@ describe('renderDashboardShareHtml', () => {
             'Workouts 3 · 2h 10m · 15.0 km (↑ 200%)',
             'Music 3 plays — Artist A, Artist B (↑ 200%)',
             'Top apps 3 h — firefox, code',
-            'Places 2 nights home, 1 away · 3 places (→)',
+            'Places 2 nights Home, 1 elsewhere · 3 places (→)',
           ].join('<br>') +
           '</p>',
         link,

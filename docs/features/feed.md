@@ -152,7 +152,8 @@ data · October 2026`), the note, then **one line per figure widget** in config 
   `Sleep 7.3 h` and `Meditation 3`, a record card as `Best e1RM 101.3 kg`, an activity type
   card as `Workouts 3 · 2h 10m · 15.0 km` (sleep as `Sleep 30 nights · avg 7h 30m`), a top
   list as `Music 3 plays — Artist A, Artist B`, the places card as
-  `Places 2 nights home, 1 away · 3 places` — and the link;
+  `Places 13 nights Hökås, 3 Lönnåsen, 2 elsewhere · 4 places` (the top three named places by
+  nights, then the nights elsewhere) — and the link;
   charts have no one-line form and are left to the structured payload, and quick links are
   never rendered. An Aurboda peer fetches the
   [structured payload](#native-charts-from-aurboda-peers-structured-enrichment) and draws
@@ -281,6 +282,27 @@ the `content` HTML, which already links them), each linking to the public profil
 it: `/u/<user>?tag=<tag>` shows "Posts tagged #tag · clear", backed by
 `GET /public/:username/posts?tag=`.
 
+**Following a hashtag** (#1540). A user can follow a hashtag, not only a person. Every
+hashtag is an ActivityPub actor on a **tag actor host**: on [tags.pub](https://tags.pub), the
+public tag relay run by the Social Web Foundation, `#running` is `running@tags.pub`, which
+`Announce`s every public post it sees carrying `#running` to its followers (and sends
+`Undo{Announce}` when one is deleted or untagged). Following a tag is therefore an ordinary
+follow of `<tag>@<host>`: the same pending → accepted lifecycle, the same `Undo{Follow}` on
+unfollow, and its posts arrive as boost cards through the normal inbox. The `feed_following`
+row is marked with the tag, so followed tags are listed apart from followed people
+(`GET /feed/following` and `list_following` return people only) through
+`GET/POST /feed/followed-tags` and `DELETE /feed/followed-tags/:tag` (a tag is addressed by its
+name, unique per user), and over MCP `list_followed_tags`, `follow_tag` and `unfollow_tag`.
+A tag follow never raises a post notification: the Android notifier reads only the people
+list. A card boosted by a followed tag actor carries `boosted_by.tag` and
+shows a `#running` chip in place of the "🔄 X boosted" line. The host is a server setting,
+`tag_actor_host` (Admin → **Federation**, default `tags.pub`). Only posts from servers that
+push to tags.pub arrive this way; pushing Aurboda's own posts there is #1541.
+
+**Web.** Feed → **People & sharing** has a **Followed tags** block (follow `#tag`, the Pending
+badge and Unfollow), and the **Following** timeline shows a chip row (`All` plus one
+`#tag` per followed tag) that filters the timeline with `?tag=`.
+
 ## ActivityPub federation
 
 Each user is a single ActivityPub **actor** (a `Person`) at:
@@ -310,6 +332,21 @@ removes the follower.
 Canonical absolute URLs (actor id, inbox/outbox, object ids, WebFinger self-link) are
 always built from the configured public base (`WEB_HOST`) as **https**, so they stay
 correct behind the TLS-terminating proxy (which forwards over loopback http).
+
+**Instance actor and relays.** Besides the per-user actors, the server itself is an
+`Application` actor at `<public-base>/actor` (WebFinger `acct:<host>@<host>`, inbox at
+`/users/~actor/inbox`, shared inbox `/inbox`), whose key pair lives in the central database. It
+exists to subscribe to [relays](../admin.md#federation), which admins add in Admin Settings. Once
+a relay accepts, every `public` post's `Create`, `Update` and `Delete` is delivered to the relay's
+inbox too, signed by the author, as a separate best-effort leg of the fan-out (a dead relay never
+fails the followers delivery). Unlisted and followers-only posts, replies, likes, boosts and
+`Update{Person}` are not pushed. Relays get a `Delete` whenever a post stops being public (an edit
+to unlisted or followers-only sends them a `Delete` instead of the `Update`) and whenever a
+non-reply post is deleted, whatever its visibility; a post made public by an edit reaches them
+only as an `Update`, which a relay may ignore. Deleting an account sends the actor `Delete` to the
+relays too. The instance actor answers only `Accept`/`Reject` of its own relay
+follows and a LitePub relay's follow-back; everything else delivered to it, including whatever a
+relay forwards, is dropped.
 
 ### Publishing & lifecycle delivery
 
@@ -525,7 +562,8 @@ you` whenever it also carries a Mention of you. (A reply to your own post alread
 mention, so that pair collapses to one marker.)
 
 The actor advertises a **following collection** (`/users/<username>/following`) listing only
-_accepted_ follows (a pending follow isn't a confirmed relationship yet). The followee's
+_accepted_ follows of people (a pending follow isn't a confirmed relationship yet; followed
+hashtags are left out, matching the people list the owner sees, and so is the count). The followee's
 inbox URIs are internal delivery details and are never exposed on the owner-facing API.
 
 ### Follower approval (inbound)
@@ -566,7 +604,11 @@ When a `Create` or `Update` for a `Note` is delivered, the inbox:
 3. captures the note's **image attachments** (rendered chart / route map, or a Mastodon
    photo) — only inline `http(s)` images survive, then
 4. upserts a `timeline_entry` (keyed by the note's `object_uri`, so an `Update` or a
-   redelivery replaces in place rather than duplicating).
+   redelivery replaces in place rather than duplicating), with the note's AS2 `Hashtag`s
+   stored as `tags` (lowercase, no `#`, at most 10; on a card boosted by a
+   [followed tag actor](#hashtags) the followed tag is added). `GET /feed/timeline?tag=running`
+   and `list_timeline`'s `tag` list only the entries carrying that tag; an invalid tag is a
+   `400`.
 
 A card with **no** native structured payload (a Mastodon post) renders the sanitised HTML
 plus the delivered **image attachment(s)**, the way Mastodon shows them. A card **with** one
@@ -1208,6 +1250,59 @@ e.g. everyone's `#aurboda` posts.
   meta titled "<host> blog" with the Atom discovery link (nginx proxies `/blog` to the backend
   as it does `/u/`).
 
+### Public tag pages
+
+`/tags/<tag>` lists the public posts, from this server and others, that carry `#<tag>`, for the
+tags an admin configured (`public_tag_pages`, see [admin](../admin.md#federation)). It is fed two
+ways, into one central `public_tag_posts` table, the first through the instance actor's follows:
+
+- **From the fediverse** — the instance actor follows the tag's actor on the tag actor host
+  (`<tag>@tags.pub`), which `Announce`s every public post it sees with the tag. These arrive on the
+  instance actor's inbox or the shared `/inbox` and are kept only when: the sender is a followed
+  tag actor whose follow it **accepted** (a stranger's `Announce`, or a stranger's `Accept` of our
+  follow, changes nothing); the `Announce` id is on the sender's host; the Note is **fetched from
+  its own id**, signed as the instance actor (a Note embedded in the `Announce` is ignored), and
+  is on the same host as the announced id and as its author; it names the **Public collection**
+  in `to` (an unlisted post, Public only in `cc`, or a followers-only one never lands on a public
+  page); it **carries the followed tag itself**; it is **not a reply**; it is not behind a content
+  warning (`sensitive`, or a non-empty `summary`); and its author's actor document answers at the
+  attributed id. The content is sanitised like a timeline post's, the images captured the same
+  way, the tags are the Note's own, and the link is the Note's `url` only when it is `http(s)`
+  (else its id). One row per Note, keyed on its id: a second tag actor's `Announce` of the same
+  post adds its Announce id to the row. A tag actor's `Undo{Announce}` removes its Announce id,
+  and the row goes once no Announce keeps it. An author's `Delete` of a post removes its row
+  (scoped to the sender, like the timeline's), and an actor's `Delete` of itself removes all of
+  theirs; but a remote author's own `Delete` rarely reaches this server (it goes to their
+  followers), so a deleted remote post usually leaves the page on the tag actor's
+  `Undo{Announce}`, or at the latest when retention prunes it. Remote edits are not followed: a
+  row keeps the Note as it was first fetched.
+- **The follows** — each follow attempt has its own id, `<origin>/actor/follows/tags/<tag>/<uuid>`,
+  stored on the row, and the `Undo{Follow}` is built from that stored id (`<id>#undo`). Saving
+  the tag list (or the tag actor host) re-sends the `Follow`, with a fresh id, for every tag not
+  yet accepted; when the tag actor host changes, the follows on the old host are undone and
+  dropped and the tags followed anew on the new one. New tags are resolved and followed
+  concurrently. The admin settings report each tag's state (`public_tag_follows`: `accepted`,
+  `pending`, or `unresolved` when no follow exists).
+- **From this server** — every `public` top-level post (not a reply) whose tags include a
+  configured one is recorded as it is delivered, as the same leg of the fan-out that pushes it
+  to relays, never failing the delivery. An edit re-records it; an edit making it non-public, or
+  its deletion, removes it. Posts published before the tag was configured are not backfilled.
+
+Rows older than the retention (`public_tag_retention_days`, default 30, by publication time) and
+rows with no configured tag left are pruned nightly, and the listing and the Atom feed apply the
+retention when read, so a shortened retention takes effect at once. There is no moderation of tag
+pages yet beyond removing the tag; a follow-up issue tracks hiding posts and blocking actors and
+domains. The listing is
+`GET /public/tags/:tag/posts?cursor=` (unauthenticated, `no-store`; 404 for a tag without a
+page): 20 entries newest-first by `(published_at, id)` with `next_cursor`, each in the home
+timeline's entry shape (no structured payload, reactions or replies), plus the `tag` and
+`retention_days`. `GET /public/tags/:tag.atom` is its Atom feed (20 newest, each entry titled by
+its author, identified by the Note's id and linking to the original; a tag without a page falls
+through to the next handler). The MCP tool `list_public_tag_posts` (`tag`, `cursor`)
+returns the same page. The web page (public, like `/blog`) renders each post as a read-only card
+with its `#tag` line, linking the tags that have a page of their own; the logged-out front page
+and `/blog` link every configured tag ("See what people share with #aurboda").
+
 ## API
 
 Owner-facing (authenticated, scoped to the caller):
@@ -1232,10 +1327,13 @@ Owner-facing (authenticated, scoped to the caller):
 | `GET /feed/following`                             | List the actors I follow (accepted + pending)                                                                                                                                                                |
 | `POST /feed/following`                            | Follow an actor by handle (`@user@host` or actor URL)                                                                                                                                                        |
 | `DELETE /feed/following/:id`                      | Unfollow (sends `Undo{Follow}`)                                                                                                                                                                              |
+| `GET /feed/followed-tags`                         | List the [hashtags I follow](#hashtags) (accepted + pending), by tag                                                                                                                                         |
+| `POST /feed/followed-tags`                        | Follow a hashtag (`{ tag }`): follows its tag actor `<tag>@<tag_actor_host>`                                                                                                                                 |
+| `DELETE /feed/followed-tags/:tag`                 | Unfollow a hashtag (sends `Undo{Follow}` to its tag actor)                                                                                                                                                   |
 | `GET /feed/followers`                             | List my followers; `?status=pending\|accepted\|all` (default `all`)                                                                                                                                          |
 | `POST /feed/followers/:id/approve`                | Approve a pending follow request (sends the deferred `Accept`)                                                                                                                                               |
 | `DELETE /feed/followers/:id`                      | Reject a request / remove a follower (sends `Reject`)                                                                                                                                                        |
-| `GET /feed/timeline`                              | My home timeline (posts from followees), newest-first, `?cursor=` to page                                                                                                                                    |
+| `GET /feed/timeline`                              | My home timeline (posts from followees), newest-first, `?cursor=` to page, `?tag=` to filter by a hashtag                                                                                                    |
 | `GET /feed/timeline/stream`                       | Server-Sent Events stream of live "new posts" pings (falls back to polling)                                                                                                                                  |
 | `POST/DELETE /feed/timeline/:id/like`             | Favourite ⭐ / un-favourite a timeline post (`Like` / `Undo{Like}`); idempotent, returns the updated entry                                                                                                   |
 | `POST/DELETE /feed/timeline/:id/boost`            | Boost 🔄 / un-boost a timeline post (`Announce` / `Undo{Announce}`); idempotent, returns the updated entry                                                                                                   |
@@ -1243,6 +1341,10 @@ Owner-facing (authenticated, scoped to the caller):
 | `POST /feed/timeline/:id/reply`                   | Reply 🗨 to a timeline post — publishes a `reply` post (`Create{Note inReplyTo}` + `Mention`); `visibility` defaults to `unlisted`                                                                           |
 | `GET /feed/:postId/reactions`                     | Who favourited or boosted one of MY posts (newest first, max 100)                                                                                                                                            |
 | `GET /feed/:postId/replies`                       | The comments received under one of MY posts (the latest 100, oldest first), as full timeline entries — no network fetch                                                                                      |
+
+Admin-only: `GET /admin/relays`, `POST /admin/relays` (`{ url, style }`) and
+`DELETE /admin/relays/:id` manage the [relays](../admin.md#federation) public posts are pushed to
+(MCP `list_relays`, `add_relay`, `remove_relay`).
 
 Public / federation (unauthenticated):
 
@@ -1263,6 +1365,8 @@ Public / federation (unauthenticated):
 | `GET /public/:username/articles.atom`                        | Atom 1.0 feed of the user's 20 newest public articles ([Blog view and Atom feed](#blog-view-and-atom-feed))                                                                                                                                                              |
 | `GET /public/official-feed`                                  | The instance's [official feed](#official-feed): public posts of the chosen users with one of the chosen tags, newest-first, keyset page of 20 + `next_cursor`                                                                                                            |
 | `GET /public/official-feed.atom`                             | Atom 1.0 feed of the official feed's 20 newest entries                                                                                                                                                                                                                   |
+| `GET /public/tags/:tag/posts`                                | A [public tag page](#public-tag-pages): public posts with the tag from this server and others, newest-first, keyset page of 20 + `next_cursor` (MCP `list_public_tag_posts`)                                                                                             |
+| `GET /public/tags/:tag.atom`                                 | Atom 1.0 feed of a public tag page's 20 newest posts                                                                                                                                                                                                                     |
 | `GET /public/:username/posts/:postId`                        | One public/unlisted post, serialized like the listing (`FeedPostResponse`), for its permalink page `/u/:username/posts/:postId`                                                                                                                                          |
 | `GET /.well-known/webfinger`                                 | Resolve `acct:<username>@<host>` → the actor                                                                                                                                                                                                                             |
 | `GET /.well-known/quantpub`                                  | QuantPub discovery document (FEP §4): product, versions, `apiBase`                                                                                                                                                                                                       |
@@ -1272,9 +1376,10 @@ Public / federation (unauthenticated):
 | `GET /users/:username`                                       | Content-negotiated (RFC 9110, `Vary: Accept`): the actor document (`Person`) for an ActivityPub type, a wildcard or no `Accept`; a 302 to `/u/:username` when HTML is the best match (a browser, `text/*`); `406` when neither is acceptable; `404` for an unknown user  |
 | `GET /users/:username/outbox`                                | Public + unlisted posts as `Create` activities                                                                                                                                                                                                                           |
 | `GET /users/:username/followers`                             | The actor's followers collection                                                                                                                                                                                                                                         |
-| `GET /users/:username/following`                             | The actor's following collection (accepted follows only)                                                                                                                                                                                                                 |
+| `GET /users/:username/following`                             | The actor's following collection (accepted follows of people only; followed hashtags are left out)                                                                                                                                                                       |
 | `GET /users/:username/feed/:postId`                          | Content-negotiated like the actor: a single post's `Note` — an activity share or an article (or `410` Tombstone once deleted); a 302 to `/u/:username/posts/:postId` for a browser on any post id of an existing user                                                    |
 | `POST /users/:username/inbox` (+ `/inbox`)                   | Inbound `Follow` / `Undo{Follow}` / `Accept` / `Reject` (HTTP-Signature verified)                                                                                                                                                                                        |
+| `GET /actor`                                                 | The instance actor (`Application`) that subscribes to [relays](../admin.md#federation)                                                                                                                                                                                   |
 
 The actor's `icon` URL carries the avatar's upload time as a `?v=` version, and an avatar
 upload/removal delivers an `Update{Person}` to accepted followers — remote servers (Mastodon
@@ -1292,7 +1397,8 @@ email is never part of the actor or any public response.
 
 The owner-facing capability is also available over MCP as `list_feed`, `share_activity`,
 `preview_activity_share`, `share_challenge`, `share_exercise`, `preview_exercise_share`, `share_dashboard_period`, `preview_dashboard_period_share`, `create_article`, `update_article`, the [article draft](#article-drafts) tools, `export_article_markdown`, `update_feed_post`,
-`delete_feed_post`, `list_following`, `follow_actor`, `unfollow_actor`, `list_followers`,
+`delete_feed_post`, `list_following`, `follow_actor`, `unfollow_actor`, `list_followed_tags`,
+`follow_tag`, `unfollow_tag`, `list_followers`,
 `approve_follower`, `reject_follower`, `list_timeline`, `like_timeline_post`,
 `unlike_timeline_post`, `boost_timeline_post`, `unboost_timeline_post`,
 `get_timeline_replies`, `reply_to_timeline_post`, `get_feed_post_replies`, and
@@ -1336,7 +1442,9 @@ with a local `id` for the approve/reject API, the cached inbox + handle / displa
 avatar, the id of the `Follow` they sent — echoed in a deferred `Accept`/`Reject` — and an
 `accepted` flag that is false while a request is pending); the actors this user **follows**
 live in `feed_following` (keyed by a local `id`, with the followee's cached inbox + handle /
-display name / avatar and an `accepted` flag); the actor's RSA keypair in `feed_actor`.
+display name / avatar, an `accepted` flag, and a nullable `tag` marking the follow of a
+[hashtag's tag actor](#hashtags), unique per tag through a partial index); the actor's RSA
+keypair in `feed_actor`.
 Posts received from followees are stored in `timeline_entry` (keyed by the remote note's
 `object_uri` so an `Update`/redelivery replaces in place), holding the **already-sanitised**
 content plus the author's cached handle / display name / avatar, indexed on
@@ -1351,6 +1459,7 @@ image attachments (`TimelineImage[]`: url + optional media type / alt / size), r
 the fallback when a post has no native structured chart. Four nullable columns
 (`boost_of_uri`, `boosted_by_actor_uri`, `boosted_by_handle`, `boosted_by_display_name`) turn
 a row into a **boost card** — see "Likes and boosts" above; they are NULL on a direct entry.
+A `tags` `TEXT[]` column (GIN-indexed) holds the post's hashtags for the `?tag=` filter.
 A partial index on `(in_reply_to_uri, published_at, id)` backs the **own-post comments**
 listing and the batched per-page `reply_count`, so reading a feed page never scans the whole
 timeline.
@@ -1368,6 +1477,14 @@ A `feed_reaction` row goes when its post leaves the timeline altogether (the aut
 an unfollow, or an `Undo{Announce}` of the post's last boost card), while a direct entry or
 another boost of it keeps the row. `feed_post_reaction` is kept unbounded by design: it is the
 record of who reacted to the user's own posts, and goes only with the post or an `Undo`.
+
+`feed_quote_authorization` records each FEP-044f quote approval: one row per remote Note
+(`quote_uri`, its author `actor_uri`, the `QuoteRequest` id) allowed to quote one of the user's
+public/unlisted posts, `UNIQUE (post_id, quote_uri)` so a redelivered request keeps its row,
+and its first actor and request id: a later request for the same quote cannot re-attribute it.
+The row's `id` mints the `QuoteAuthorization` stamp URL (`/users/<username>/stamps/<id>`) sent
+in the `Accept`. `post_id` is a soft reference, so `deleteFeedPost` drops the post's approvals
+in the same statement.
 
 ## Caveats & limitations
 

@@ -62,14 +62,17 @@ describe('mapping the endpoints onto the card', () => {
     })
   })
 
-  test('maps places to their visits, to the limit', () => {
+  test('maps places to their visits, most visits first, to the limit', () => {
     const summary = {
       distinct_places: 2,
       nights_away: 0,
+      nights_by_place: [{ name: 'Gym', nights: 1 }],
+      nights_elsewhere: 0,
       nights_home: 0,
+      nights_no_data: 6,
       places: [
-        { hours: 10, name: 'Home', visits: 5 },
-        { hours: 2, name: 'Gym', visits: 3 },
+        { hours: 2, name: 'Gym', nights: 1, visits: 3 },
+        { hours: 10, name: 'Home', nights: 0, visits: 5 },
       ],
       visits: 8,
     }

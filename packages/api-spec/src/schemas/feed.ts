@@ -1052,6 +1052,36 @@ export const followingResponseSchema = baseResponseSchema
 
 export type FollowingResponse = z.infer<typeof followingResponseSchema>
 
+export const followTagBodySchema = z
+  .object({
+    tag: z.string().trim().min(1).max(80).meta({
+      description: 'The hashtag to follow, with or without `#`',
+      example: '#running',
+    }),
+  })
+  .meta({ id: 'FollowTagBody' })
+
+export type FollowTagBody = z.infer<typeof followTagBodySchema>
+
+/** A followed hashtag: the follow of its tag actor (`<tag>@<tag actor host>`), plus the tag. */
+export const followedTagSchema = followingActorSchema
+  .extend({ tag: z.string().meta({ description: 'The followed hashtag, lowercase without `#`' }) })
+  .meta({ id: 'FollowedTag' })
+
+export type FollowedTag = z.infer<typeof followedTagSchema>
+
+export const followTagResponseSchema = baseResponseSchema
+  .extend({ followed_tag: followedTagSchema.optional() })
+  .meta({ id: 'FollowTagResponse' })
+
+export type FollowTagResponse = z.infer<typeof followTagResponseSchema>
+
+export const followedTagsResponseSchema = baseResponseSchema
+  .extend({ followed_tags: z.array(followedTagSchema) })
+  .meta({ id: 'FollowedTagsResponse' })
+
+export type FollowedTagsResponse = z.infer<typeof followedTagsResponseSchema>
+
 export const followerStatusValues = ['pending', 'accepted', 'all'] as const
 
 export const followerStatusSchema = z.enum(followerStatusValues).meta({
@@ -1135,6 +1165,10 @@ export const timelineBoostedBySchema = z
     actor_uri: z.string().meta({ description: "The booster's ActivityPub actor URI" }),
     display_name: z.string().nullable().meta({ description: "The booster's display name, if known" }),
     handle: z.string().nullable().meta({ description: "The booster's `@user@host` handle, if known" }),
+    tag: z.string().optional().meta({
+      description:
+        'Set when the booster is a followed tag actor: the tag (lowercase, no `#`), so the card can show `#tag` instead of a boost line',
+    }),
   })
   .meta({ id: 'TimelineBoostedBy' })
 
@@ -1188,6 +1222,10 @@ export const timelineEntrySchema = z
       description:
         'Native structured data (an activity share’s typed metrics/series, an article’s title + resolved blocks, or a challenge’s document + standings snapshot), present only for posts from Aurboda instances — drives a native render instead of the HTML.',
     }),
+    tags: z.array(z.string()).meta({
+      description:
+        "The post's hashtags, lowercase without `#`, as the origin declared them (plus the followed tag on a card boosted by a tag actor)",
+    }),
     url: z.string().nullable().meta({ description: 'Link to the original post' }),
   })
   .meta({ id: 'TimelineEntry' })
@@ -1205,6 +1243,57 @@ export const timelineEntryResponseSchema = baseResponseSchema
 
 export type TimelineEntryResponse = z.infer<typeof timelineEntryResponseSchema>
 
+export const publicTagPostsQuerySchema = z
+  .object({
+    cursor: z.string().optional().meta({ description: "Opaque cursor from a previous page's `next_cursor`" }),
+  })
+  .meta({ description: 'Query of a public tag page listing', id: 'PublicTagPostsQuery' })
+
+export type PublicTagPostsQuery = z.infer<typeof publicTagPostsQuerySchema>
+
+export const publicTagPostSchema = timelineEntrySchema
+  .pick({
+    actor_uri: true,
+    avatar_url: true,
+    content: true,
+    display_name: true,
+    handle: true,
+    id: true,
+    images: true,
+    object_uri: true,
+    published_at: true,
+    received_at: true,
+    tags: true,
+    url: true,
+  })
+  .meta({
+    description: 'A post on a public tag page, shown as the home timeline shows a remote post',
+    id: 'PublicTagPost',
+  })
+
+export type PublicTagPost = z.infer<typeof publicTagPostSchema>
+
+export const publicTagPostsResponseSchema = baseResponseSchema
+  .extend({
+    next_cursor: z
+      .string()
+      .nullable()
+      .meta({ description: 'Cursor for the next page; null on the last page' }),
+    posts: z.array(publicTagPostSchema).meta({
+      description:
+        'Public posts carrying the tag, from this server and others, newest first (content sanitised server-side)',
+    }),
+    retention_days: z.number().int().meta({ description: 'How many days a post stays listed' }),
+    tag: z.string().meta({ description: 'The tag, lowercase without `#`' }),
+  })
+  .meta({
+    description:
+      "A page of a public tag page: public posts carrying the hashtag that this server's instance actor received from the tag's actor, plus this server's own",
+    id: 'PublicTagPostsResponse',
+  })
+
+export type PublicTagPostsResponse = z.infer<typeof publicTagPostsResponseSchema>
+
 export const timelineQuerySchema = z
   .object({
     cursor: z.string().optional().meta({ description: "Opaque cursor from a previous page's `next_cursor`" }),
@@ -1215,6 +1304,13 @@ export const timelineQuerySchema = z
       .max(50)
       .default(20)
       .meta({ description: 'Max entries to return (1–50, default 20)' }),
+    tag: z
+      .string()
+      .max(80)
+      .transform((value) => normalizeTag(value))
+      .refine((value): value is string => value != null, { message: 'Not a valid hashtag' })
+      .optional()
+      .meta({ description: 'Only entries carrying this hashtag, e.g. `running` or `#running`' }),
   })
   .meta({ id: 'TimelineQuery' })
 

@@ -19,6 +19,7 @@ describe('pageTitleForPath', () => {
   test('names pages that are not in the nav', () => {
     expect(pageTitleForPath('/data-sources')).toBe('Data Sources')
     expect(pageTitleForPath('/settings')).toBe('Settings')
+    expect(pageTitleForPath('/help')).toBe('Help & support')
   })
 
   test('ignores the query string, hash and a trailing slash', () => {

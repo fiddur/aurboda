@@ -5,7 +5,14 @@ import { describe, expect, test, vi } from 'vitest'
 
 import type { FeedFollowingRecord } from '../db/index.ts'
 
-import { actorToFollowingInput, followActor, serializeFollowing, withTimeout } from './following.ts'
+import {
+  actorToFollowingInput,
+  followActor,
+  followTag,
+  serializeFollowedTag,
+  serializeFollowing,
+  withTimeout,
+} from './following.ts'
 
 describe('actorToFollowingInput', () => {
   test('extracts uri, inbox, shared inbox, handle, name, and avatar from a full actor', async () => {
@@ -64,6 +71,7 @@ describe('serializeFollowing', () => {
       inbox_uri: 'https://mastodon.example/users/alice/inbox',
       notify_on_post: false,
       shared_inbox_uri: 'https://mastodon.example/inbox',
+      tag: null,
     }
 
     const dto = serializeFollowing(record)
@@ -104,7 +112,7 @@ describe('followActor', () => {
     } as unknown as Federation<void>
 
     const result = await followActor(
-      { federation, origin: 'https://aurboda.example' },
+      { federation, origin: 'https://aurboda.example', tagActorHost: async () => 'tags.pub' },
       'bob',
       '@Gargron@mastodon.social',
     )
@@ -112,5 +120,73 @@ describe('followActor', () => {
     expect(result.ok).toBe(false)
     expect(getDocumentLoader).toHaveBeenCalledWith({ identifier: 'bob' })
     expect(lookupObject).toHaveBeenCalledWith('@Gargron@mastodon.social', { documentLoader: signedLoader })
+  })
+})
+
+describe('actorToFollowingInput with a tag', () => {
+  test('carries the followed tag', async () => {
+    const actor = new Person({
+      id: new URL('https://tags.pub/user/running'),
+      inbox: new URL('https://tags.pub/user/running/inbox'),
+    })
+    expect((await actorToFollowingInput(actor, 'running'))?.tag).toBe('running')
+    expect(await actorToFollowingInput(actor)).not.toHaveProperty('tag')
+  })
+})
+
+describe('followTag', () => {
+  const fakeFederation = () => {
+    const signedLoader = async () => ({ contextUrl: null, document: {}, documentUrl: '' })
+    const lookupObject = vi.fn(async () => null)
+    const federation = {
+      createContext: () => ({ getDocumentLoader: async () => signedLoader, lookupObject }),
+    } as unknown as Federation<void>
+    return { federation, lookupObject }
+  }
+
+  test('follows the tag actor <tag>@<host>, normalising the tag', async () => {
+    const { federation, lookupObject } = fakeFederation()
+    const result = await followTag(
+      { federation, origin: 'https://aurboda.example', tagActorHost: async () => 'tags.example' },
+      'bob',
+      '#Running',
+    )
+    expect(lookupObject).toHaveBeenCalledWith('running@tags.example', expect.anything())
+    expect(result).toMatchObject({ ok: false, status: 404 })
+  })
+
+  test('rejects an invalid hashtag without resolving anything', async () => {
+    const { federation, lookupObject } = fakeFederation()
+    const result = await followTag(
+      { federation, origin: 'https://aurboda.example', tagActorHost: async () => 'tags.pub' },
+      'bob',
+      '#not valid',
+    )
+    expect(result).toEqual({ error: 'Not a valid hashtag.', ok: false, status: 400 })
+    expect(lookupObject).not.toHaveBeenCalled()
+  })
+})
+
+describe('serializeFollowedTag', () => {
+  const record: FeedFollowingRecord = {
+    accepted: true,
+    actor_uri: 'https://tags.pub/user/running',
+    avatar_url: null,
+    created_at: new Date('2026-07-03T10:00:00Z'),
+    display_name: '#running',
+    handle: '@running@tags.pub',
+    id: '22222222-2222-2222-2222-222222222222',
+    inbox_uri: 'https://tags.pub/user/running/inbox',
+    notify_on_post: false,
+    shared_inbox_uri: null,
+    tag: 'running',
+  }
+
+  test('is the following DTO plus the tag', () => {
+    expect(serializeFollowedTag(record)).toEqual({ ...serializeFollowing(record), tag: 'running' })
+  })
+
+  test('null for a follow of a person', () => {
+    expect(serializeFollowedTag({ ...record, tag: null })).toBeNull()
   })
 })

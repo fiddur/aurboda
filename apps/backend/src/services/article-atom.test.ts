@@ -5,6 +5,7 @@ import {
   articleEntryHtml,
   buildArticlesAtom,
   buildOfficialFeedAtom,
+  buildTagFeedAtom,
   officialFeedTitle,
   postEntryHtml,
   postEntryTitle,
@@ -192,5 +193,36 @@ describe('buildOfficialFeedAtom', () => {
 
   test('falls back to a plain title when the web host is not a URL', () => {
     expect(officialFeedTitle('not a url')).toBe('Blog')
+  })
+})
+
+describe('buildTagFeedAtom', () => {
+  test('escapes a hostile remote author and url, and ids each entry by its note id', () => {
+    const xml = buildTagFeedAtom({
+      apiBaseUrl: 'https://aurboda.example/api',
+      entries: [
+        {
+          actor_uri: 'https://peer.example/users/eve',
+          content: '<p>a & b</p></content><script>x</script>',
+          display_name: '</name></author><entry><id>forged</id>',
+          handle: '@eve@peer.example',
+          images: [],
+          note_uri: 'https://peer.example/notes/1',
+          published_at: new Date('2026-11-01T10:00:00Z'),
+          updated_at: new Date('2026-11-01T10:00:00Z'),
+          url: 'https://peer.example/@eve/1?a=1&b="2"',
+        },
+      ],
+      now: new Date('2026-11-10T00:00:00Z'),
+      tag: 'aurboda',
+      webHost: 'https://aurboda.example',
+    })
+    expect(xml).toContain('<id>https://peer.example/notes/1</id>')
+    expect(xml).not.toContain('<id>forged</id>')
+    expect(xml).not.toContain('<script>')
+    expect(xml).toContain('&lt;/name&gt;&lt;/author&gt;&lt;entry&gt;&lt;id&gt;forged&lt;/id&gt;')
+    expect(xml).toContain('&lt;p&gt;a &amp; b&lt;/p&gt;&lt;/content&gt;&lt;script&gt;')
+    expect(xml).toContain('href="https://peer.example/@eve/1?a=1&amp;b=&quot;2&quot;"')
+    expect(xml.match(/<entry>/g)).toHaveLength(1)
   })
 })

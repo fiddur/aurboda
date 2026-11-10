@@ -131,7 +131,16 @@ describe('GET /locations/places-summary', () => {
   const query = { end: '2026-10-31T23:59:59Z', start: '2026-10-01T00:00:00Z', tz: 'Europe/Stockholm' }
 
   test('summarizes the places in the range with the home place', async () => {
-    const summary = { distinct_places: 3, nights_away: 2, nights_home: 28, places: [], visits: 40 }
+    const summary = {
+      distinct_places: 3,
+      nights_away: 2,
+      nights_by_place: [{ name: 'Flat', nights: 28 }],
+      nights_elsewhere: 2,
+      nights_home: 28,
+      nights_no_data: 1,
+      places: [],
+      visits: 40,
+    }
     vi.mocked(queries.getPlacesSummary).mockResolvedValue(summary)
 
     const res = await supertest(buildApp())

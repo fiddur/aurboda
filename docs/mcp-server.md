@@ -52,11 +52,11 @@ See [Dashboard](features/dashboard.md#period-dashboards).
 
 See [Media](media.md#querying), [Screentime categories](features/screentime-categories.md#top-apps) and [Places](features/places.md#places-summary).
 
-| Tool                 | What it does                                                                                                                                                                                                         |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `query_top_media`    | Plays over `start`..`end` grouped by artist, album or track (`by`): total plays, the distinct count and the `limit` most played                                                                                      |
-| `query_top_apps`     | Screen time over `start`..`end` per app: total hours, distinct apps and the `limit` most used, leaving out categories excluded from screen time                                                                      |
-| `get_places_summary` | Nights at home (`home_location`, default `Home`) and away, distinct places, visits and the five most visited places over `start`..`end`, the nights detected as overnight stays in `tz` like `query_overnight_stays` |
+| Tool                 | What it does                                                                                                                                                                                                                                                                         |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `query_top_media`    | Plays over `start`..`end` grouped by artist, album or track (`by`): total plays, the distinct count and the `limit` most played; `source` (`lastfm` or `mpris`) counts one source only                                                                                               |
+| `query_top_apps`     | Screen time over `start`..`end` per app: total hours, distinct apps and the `limit` most used, leaving out categories excluded from screen time                                                                                                                                      |
+| `get_places_summary` | Where each night of `start`..`end` was spent (the place at 03:00 in `tz`, a phone at rest included): nights per named place, elsewhere and without data, at home (`home_location`, default `Home`) and away; distinct named places, visits to them and the five with the most nights |
 
 ### Activity session tools
 

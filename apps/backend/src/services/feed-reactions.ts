@@ -56,7 +56,13 @@ import { signedFetchOptions } from './activitypub/signed-lookup.ts'
 import { dateToTemporalInstant } from './activitypub/temporal-interop.ts'
 import { serializeFeedPost } from './feed.ts'
 import { resolvePostTags } from './post-tags.ts'
-import { loadReactionsForRows, ownObjectPrefix, reactionTarget, serializeTimelineEntry } from './timeline.ts'
+import {
+  loadReactionsForRows,
+  loadTagByBooster,
+  ownObjectPrefix,
+  reactionTarget,
+  serializeTimelineEntry,
+} from './timeline.ts'
 import { withTimeout } from './with-timeout.ts'
 
 /** How long to wait for an unfollowed author's actor document before giving up. */
@@ -224,8 +230,13 @@ const entryWithReactions = async (
   user: string,
   origin: string,
   record: TimelineEntryRecord,
-): Promise<TimelineEntry> =>
-  serializeTimelineEntry(record, ownObjectPrefix(origin, user), await loadReactionsForRows(user, [record]))
+): Promise<TimelineEntry> => {
+  const [reactions, tagByBooster] = await Promise.all([
+    loadReactionsForRows(user, [record]),
+    loadTagByBooster(user, [record]),
+  ])
+  return serializeTimelineEntry(record, ownObjectPrefix(origin, user), reactions, tagByBooster)
+}
 
 /**
  * Fan an `Announce`/`Undo{Announce}` out to followers AND the post's author as

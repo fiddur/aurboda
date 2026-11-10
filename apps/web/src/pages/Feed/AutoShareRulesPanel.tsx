@@ -34,6 +34,7 @@ import {
 } from '../../state/api'
 import {
   emptyRuleFormState,
+  formStateTagsText,
   formStateToAddBody,
   formStateToUpdateBody,
   ruleHasManyActivityTypes,
@@ -191,7 +192,7 @@ function RuleRow({ rule, postCount }: { rule: AutoshareRule; postCount: number }
         <div class="autoshare-rule-main">
           <span class="autoshare-rule-name">{rule.name}</span>
           <span class="autoshare-rule-meta">
-            {ruleSummary(rule, labelFor)} · {ruleTagsText(rule.tags)}
+            {ruleSummary(rule, labelFor)} · {ruleTagsText(rule)}
             {postCount > 0 && ` · ${postCount} post${postCount === 1 ? '' : 's'} auto-shared`}
           </span>
         </div>
@@ -416,7 +417,7 @@ function RuleForm({ rule, onDone }: { rule?: AutoshareRule; onDone: () => void }
       </fieldset>
 
       <label>
-        Fixed message on auto-created posts (optional)
+        Fixed message on auto-created posts (optional; any #hashtags in it are added to the post's tags)
         <input
           type="text"
           maxLength={feedPostMessageMaxLength}
@@ -440,9 +441,13 @@ function RuleForm({ rule, onDone }: { rule?: AutoshareRule; onDone: () => void }
             legend="This rule's tags"
             value={state.tagsText}
             onInput={(tagsText) => set({ tagsText })}
-            note="These replace your default tags on this rule's posts. The activity type tag still follows your setting."
+            note="These replace your default tags on this rule's posts."
           />
         )}
+        <p class="share-dialog-note">
+          This rule's posts get: {formStateTagsText(state)}, plus the activity type tag when that is on in
+          Settings.
+        </p>
       </fieldset>
 
       <VisibilitySelector

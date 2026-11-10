@@ -46,6 +46,16 @@ const startApp = (hub?: TimelineHub) => {
   return { close, url: `http://127.0.0.1:${port}` }
 }
 
+describe('GET /feed/timeline', () => {
+  test('400 on a tag filter that is not a hashtag', async () => {
+    const app = express()
+    app.use('/feed', createFeedRouter(auth, undefined, undefined))
+    const res = await supertest(app).get('/feed/timeline').query({ tag: 'not valid' })
+    expect(res.status).toBe(400)
+    expect(res.body.success).toBe(false)
+  })
+})
+
 describe('GET /feed/timeline/stream', () => {
   test('returns 503 when live updates are unavailable (no hub wired)', async () => {
     const app = express()
@@ -114,6 +124,7 @@ const entry = (over: Partial<TimelineEntry> = {}): TimelineEntry => ({
   object_uri: 'https://mastodon.example/notes/1',
   published_at: '2026-07-01T08:00:00.000Z',
   received_at: '2026-07-01T08:00:05.000Z',
+  tags: [],
   url: 'https://mastodon.example/@alice/1',
   ...over,
 })

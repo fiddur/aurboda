@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 import { activityMeasureSchema, recordMeasures } from './activity-measures.ts'
 import { baseResponseSchema, dataFieldPathSchema } from './common.ts'
+import { mediaPlaySourceSchema } from './media.ts'
 import { trendMeasureShape, trendMissingDaysSchema } from './trends.ts'
 
 export const builtinDashboardMetrics = [
@@ -280,6 +281,9 @@ export const topListCardConfigSchema = z
     lookback_days: z.number().int().positive().optional().meta({
       description: 'Days covered on a rolling dashboard (default: 30); a period dashboard uses its period',
     }),
+    media_source: mediaPlaySourceSchema
+      .optional()
+      .meta({ description: 'With a media_* source: only plays from lastfm or mpris; all plays when absent' }),
     source: topListSourceSchema,
     title: z
       .string()

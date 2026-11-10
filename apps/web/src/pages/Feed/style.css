@@ -6,14 +6,6 @@
   padding: 1rem;
 }
 
-/*
- * The app's route container makes every page a height-capped flex column, so a child with
- * overflow (the tab row scrolls sideways) may shrink to nothing once the feed below is long.
- */
-.feed-page > * {
-  flex-shrink: 0;
-}
-
 .feed-page h1 {
   margin: 0 0 0.25rem;
 }
@@ -551,4 +543,42 @@
   .feed-tab--active {
     color: inherit;
   }
+}
+
+.timeline-tag-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.5rem 0 0.75rem;
+}
+
+.timeline-tag-chip {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  border: 1px solid var(--color-accent-border);
+  border-radius: 999px;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.timeline-tag-chip:hover {
+  color: var(--color-accent-hover);
+}
+
+.timeline-tag-chip--active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+}
+
+.timeline-tag-chip--active:hover {
+  background: var(--color-primary-hover);
+  color: #fff;
+}
+
+.feed-post-boost-marker .timeline-tag-chip {
+  color: var(--color-accent);
 }

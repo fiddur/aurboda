@@ -24,6 +24,7 @@ export interface FeedFollowingRecord {
   avatar_url: string | null
   accepted: boolean
   notify_on_post: boolean
+  tag: string | null
   created_at: Date
 }
 
@@ -34,17 +35,19 @@ export interface FeedFollowingInput {
   handle?: string | null
   display_name?: string | null
   avatar_url?: string | null
+  tag?: string | null
 }
 
 const FEED_FOLLOWING_COLUMNS =
-  'id, actor_uri, inbox_uri, shared_inbox_uri, handle, display_name, avatar_url, accepted, notify_on_post, created_at'
+  'id, actor_uri, inbox_uri, shared_inbox_uri, handle, display_name, avatar_url, accepted, notify_on_post, tag, created_at'
 
 /**
  * Insert or update a followee by actor URI. Re-following refreshes the cached
  * inboxes + presentation (handle/name/avatar) without duplicating, and — since a
  * re-follow re-sends the Follow — deliberately does NOT touch `accepted`: an
  * already-established follow stays accepted, a pending one stays pending until
- * its Accept lands.
+ * its Accept lands. A `tag` marks the row as a followed hashtag and is never
+ * cleared by a later plain re-follow of the same actor.
  */
 export const upsertFeedFollowing = async (
   user: string,
@@ -52,14 +55,15 @@ export const upsertFeedFollowing = async (
 ): Promise<FeedFollowingRecord> => {
   const result = await query<FeedFollowingRecord>(
     user,
-    `INSERT INTO feed_following (actor_uri, inbox_uri, shared_inbox_uri, handle, display_name, avatar_url)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO feed_following (actor_uri, inbox_uri, shared_inbox_uri, handle, display_name, avatar_url, tag)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      ON CONFLICT (actor_uri)
      DO UPDATE SET inbox_uri = EXCLUDED.inbox_uri,
                    shared_inbox_uri = EXCLUDED.shared_inbox_uri,
                    handle = EXCLUDED.handle,
                    display_name = EXCLUDED.display_name,
-                   avatar_url = EXCLUDED.avatar_url
+                   avatar_url = EXCLUDED.avatar_url,
+                   tag = COALESCE(EXCLUDED.tag, feed_following.tag)
      RETURNING ${FEED_FOLLOWING_COLUMNS}`,
     [
       input.actor_uri,
@@ -68,6 +72,7 @@ export const upsertFeedFollowing = async (
       input.handle ?? null,
       input.display_name ?? null,
       input.avatar_url ?? null,
+      input.tag ?? null,
     ],
   )
   return result.rows[0]
@@ -94,29 +99,64 @@ export const updateFeedFollowingPresentation = async (
   return (result.rowCount ?? 0) > 0
 }
 
-/** All followees (accepted + pending), newest first, for the owner-facing list. */
+/** Followed people (accepted + pending), newest first, for the owner-facing list; tag follows are listed apart. */
 export const listFeedFollowing = async (user: string): Promise<FeedFollowingRecord[]> => {
   const result = await query<FeedFollowingRecord>(
     user,
-    `SELECT ${FEED_FOLLOWING_COLUMNS} FROM feed_following ORDER BY created_at DESC`,
+    `SELECT ${FEED_FOLLOWING_COLUMNS} FROM feed_following WHERE tag IS NULL ORDER BY created_at DESC`,
   )
   return result.rows
 }
 
-/** Only accepted followees, oldest first — backs the public `following` collection. */
+/** Followed hashtags (accepted + pending), by tag. */
+export const listFeedFollowedTags = async (user: string): Promise<FeedFollowingRecord[]> => {
+  const result = await query<FeedFollowingRecord>(
+    user,
+    `SELECT ${FEED_FOLLOWING_COLUMNS} FROM feed_following WHERE tag IS NOT NULL ORDER BY tag`,
+  )
+  return result.rows
+}
+
+export interface FeedFollowedTagActor {
+  actor_uri: string
+  tag: string
+}
+
+/** The tag actors this user follows, for marking their boosts with the tag. */
+export const listFeedFollowedTagActors = async (user: string): Promise<FeedFollowedTagActor[]> => {
+  const result = await query<FeedFollowedTagActor>(
+    user,
+    `SELECT actor_uri, tag FROM feed_following WHERE tag IS NOT NULL`,
+  )
+  return result.rows
+}
+
+export const getFeedFollowingByTag = async (
+  user: string,
+  tag: string,
+): Promise<FeedFollowingRecord | null> => {
+  const result = await query<FeedFollowingRecord>(
+    user,
+    `SELECT ${FEED_FOLLOWING_COLUMNS} FROM feed_following WHERE tag = $1`,
+    [tag],
+  )
+  return result.rows[0] ?? null
+}
+
+/** Accepted followed people, oldest first — backs the public `following` collection; tag follows are left out. */
 export const listAcceptedFeedFollowing = async (user: string): Promise<FeedFollowingRecord[]> => {
   const result = await query<FeedFollowingRecord>(
     user,
-    `SELECT ${FEED_FOLLOWING_COLUMNS} FROM feed_following WHERE accepted = true ORDER BY created_at ASC`,
+    `SELECT ${FEED_FOLLOWING_COLUMNS} FROM feed_following WHERE accepted = true AND tag IS NULL ORDER BY created_at ASC`,
   )
   return result.rows
 }
 
-/** Count accepted followees (for the following-collection counter). */
+/** Count accepted followed people (for the following-collection counter). */
 export const countAcceptedFeedFollowing = async (user: string): Promise<number> => {
   const result = await query<{ count: string }>(
     user,
-    `SELECT COUNT(*)::text AS count FROM feed_following WHERE accepted = true`,
+    `SELECT COUNT(*)::text AS count FROM feed_following WHERE accepted = true AND tag IS NULL`,
   )
   return Number(result.rows[0].count)
 }

@@ -7,7 +7,10 @@ import {
   shareDashboardPeriodBodySchema,
   shareExerciseBodySchema,
   followActorBodySchema,
+  followTagBodySchema,
   followersQuerySchema,
+  hashtagInputSchema,
+  publicTagPostsQuerySchema,
   iso8601DateTimeSchema,
   postTagsInputSchema,
   publishArticleDraftBodySchema,
@@ -25,6 +28,7 @@ import type { FeedDeliver } from '../routes/feed-router.ts'
 import type { ReactionActions, ReactionResult, ReplyResult } from '../services/feed-reactions.ts'
 import type { FollowerActions } from '../services/followers.ts'
 import type { FollowActions } from '../services/following.ts'
+import type { PublicTagActions } from '../services/public-tags.ts'
 import type { RetroEnrichTrigger } from '../services/timeline-retro-enrich.ts'
 
 import {
@@ -41,6 +45,7 @@ import {
   getFeedPostById,
   getTimelineEntryById,
   listArticleDrafts,
+  listFeedFollowedTags,
   listFeedFollowers,
   listFeedFollowing,
   listFeedPostReactions,
@@ -78,7 +83,7 @@ import {
   serializeFeedPost,
 } from '../services/feed.ts'
 import { serializeFollower } from '../services/followers.ts'
-import { serializeFollowing } from '../services/following.ts'
+import { serializeFollowedTag, serializeFollowing } from '../services/following.ts'
 import {
   activityKindTag,
   articleTexts,
@@ -110,6 +115,8 @@ export interface FeedToolsOptions {
   retroEnrichTimeline?: RetroEnrichTrigger
   /** Canonical web origin, to build a shared challenge's public URL (#994). */
   webHost?: string
+  /** The public tag pages (`list_public_tag_posts`); absent, the tool reports none. */
+  publicTagActions?: Pick<PublicTagActions, 'page'>
 }
 
 export const registerFeedTools = (server: McpServer, user: string, options: FeedToolsOptions = {}) => {
@@ -118,6 +125,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
     deliver,
     followActions,
     followerActions,
+    publicTagActions,
     reactionActions,
     retroEnrichTimeline,
     webHost,
@@ -476,7 +484,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
 
   server.tool(
     'list_following',
-    'List the actors you follow (accepted and pending), with their handle, display name, and acceptance state.',
+    'List the people you follow (accepted and pending), with their handle, display name, and acceptance state. Followed hashtags are listed by `list_followed_tags`.',
     {},
     async () => {
       const records = await listFeedFollowing(user)
@@ -486,12 +494,22 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
 
   server.tool(
     'list_timeline',
-    'List your home timeline: posts received from the actors you follow, newest first. Pass `cursor` (from a previous call) to page.',
+    'List your home timeline: posts received from the actors and hashtags you follow, newest first. Pass `cursor` (from a previous call) to page, and `tag` to list only posts carrying that hashtag. Each entry has its `tags`; a card boosted by a followed tag actor has `boosted_by.tag`.',
     { ...timelineQuerySchema.shape },
-    async ({ cursor, limit }) => {
-      const page = await getTimelinePage(user, limit, cursor, { origin: webHost })
+    async ({ cursor, limit, tag }) => {
+      const page = await getTimelinePage(user, limit, cursor, { origin: webHost, tag })
       retroEnrichTimeline?.(user)
       return jsonResponse(page)
+    },
+  )
+
+  server.tool(
+    'list_public_tag_posts',
+    "List a public tag page (`/tags/<tag>`): the public posts carrying the hashtag, from this server and others, newest first — what this server's instance actor receives from the tag's actor on the tag actor host, plus this server's own public posts with the tag. Only tags the admin configured have a page. Pass `cursor` (from a previous call) to page.",
+    { tag: hashtagInputSchema, ...publicTagPostsQuerySchema.shape },
+    async ({ cursor, tag }) => {
+      const result = publicTagActions ? await publicTagActions.page(tag, cursor) : { ok: false as const }
+      return result.ok ? jsonResponse(result.page) : errorResponse(`No public page for #${tag}`)
     },
   )
 
@@ -609,6 +627,40 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
       const removed = await followActions.unfollow(user, id)
       if (!removed) return errorResponse('Not following that actor')
       return jsonResponse({ id, unfollowed: true })
+    },
+  )
+
+  server.tool(
+    'list_followed_tags',
+    'List the hashtags you follow (accepted and pending). Each is the follow of its tag actor (e.g. `running@tags.pub`). Tag follows never raise post notifications.',
+    {},
+    async () => {
+      const records = await listFeedFollowedTags(user)
+      return jsonResponse(records.flatMap((record) => serializeFollowedTag(record) ?? []))
+    },
+  )
+
+  server.tool(
+    'follow_tag',
+    "Follow a hashtag, e.g. `#running`: follows the tag actor `<tag>@<tag actor host>` (default `running@tags.pub`), which boosts every public post it sees carrying that hashtag into your home timeline. Pending until the tag actor accepts. Filter the timeline to it with `list_timeline`'s `tag`.",
+    { ...followTagBodySchema.shape },
+    async ({ tag }) => {
+      if (!followActions) return errorResponse('Following is not available')
+      const result = await followActions.followTag(user, tag)
+      if (!result.ok) return errorResponse(result.error)
+      return jsonResponse(serializeFollowedTag(result.record))
+    },
+  )
+
+  server.tool(
+    'unfollow_tag',
+    'Unfollow a hashtag (by the tag, with or without `#`). Sends an Undo{Follow} to its tag actor and removes the posts it boosted from your timeline.',
+    { ...followTagBodySchema.shape },
+    async ({ tag }) => {
+      if (!followActions) return errorResponse('Following is not available')
+      const removed = await followActions.unfollowTag(user, tag)
+      if (!removed) return errorResponse('Not following that tag')
+      return jsonResponse({ tag, unfollowed: true })
     },
   )
 

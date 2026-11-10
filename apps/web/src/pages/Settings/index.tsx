@@ -318,6 +318,14 @@ export function Settings() {
       <DataExportSettings />
 
       <section class="settings-section">
+        <h2>Help &amp; support</h2>
+        <p class="section-description">
+          How to get started, where the documentation is, and how to ask a question or report a bug.{' '}
+          <a href="/help">Help &amp; support</a>
+        </p>
+      </section>
+
+      <section class="settings-section">
         <h2>Audit Log</h2>
         <p class="section-description">
           View recent system events, sync operations, and errors. <a href="/audit-log">View audit log</a>

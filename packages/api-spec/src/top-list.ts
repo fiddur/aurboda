@@ -29,7 +29,10 @@ export const topListFromApps = (top: TopApps, days: number): TopListFigures => (
 
 export const topListFromPlaces = (summary: PlacesSummary, limit: number): TopListFigures => ({
   distinct: summary.distinct_places,
-  items: summary.places.slice(0, limit).map((p) => ({ count: p.visits, name: p.name })),
+  items: summary.places
+    .toSorted((a, b) => b.visits - a.visits || a.name.localeCompare(b.name))
+    .slice(0, limit)
+    .map((p) => ({ count: p.visits, name: p.name })),
   per_day: null,
   total: summary.visits,
   unit: 'visits',

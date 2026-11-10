@@ -527,6 +527,7 @@
   z-index: 10;
 }
 
+.dashboard .widget-drag-handle,
 .dashboard .widget-move-btn,
 .dashboard .widget-remove-btn {
   background: white;
@@ -548,6 +549,71 @@
   background: #dc2626;
   border-color: #dc2626;
   color: white;
+}
+
+.dashboard .widget-drag-handle {
+  display: none;
+  cursor: grab;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .dashboard .widget-drag-handle {
+    display: inline-flex;
+  }
+}
+
+.dashboard .widget-drag-handle:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.dashboard .widget-dragging {
+  opacity: 0.4;
+}
+
+.dashboard .widget-editing-wrapper.drop-before::before,
+.dashboard .widget-editing-wrapper.drop-after::after {
+  content: '';
+  position: absolute;
+  background: var(--color-accent);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.dashboard .widget-editing-wrapper.drop-row::before,
+.dashboard .widget-editing-wrapper.drop-row::after {
+  top: 0;
+  bottom: 0;
+  width: 3px;
+}
+
+.dashboard .widget-editing-wrapper.drop-row.drop-before::before {
+  left: calc(-0.5rem - 3.5px);
+}
+
+.dashboard .widget-editing-wrapper.drop-row.drop-after::after {
+  right: calc(-0.5rem - 3.5px);
+}
+
+.dashboard .widget-editing-wrapper.drop-column::before,
+.dashboard .widget-editing-wrapper.drop-column::after {
+  left: 0;
+  right: 0;
+  height: 3px;
+}
+
+.dashboard .widget-editing-wrapper.drop-column.drop-before::before {
+  top: calc(-0.5rem - 3.5px);
+}
+
+.dashboard .widget-editing-wrapper.drop-column.drop-after::after {
+  bottom: calc(-0.5rem - 3.5px);
+}
+
+.dashboard .drop-into {
+  outline: 2px dashed var(--color-accent);
+  outline-offset: 4px;
+  border-radius: 8px;
 }
 
 .dashboard .add-widget-placeholder {
@@ -885,6 +951,7 @@
     border-color: #4b5563;
   }
 
+  .dashboard .widget-drag-handle,
   .dashboard .widget-move-btn,
   .dashboard .widget-remove-btn {
     background: #374151;

@@ -5,7 +5,10 @@ import {
   countAcceptedFeedFollowing,
   getFeedFollowing,
   getFeedFollowingByActor,
+  getFeedFollowingByTag,
   listAcceptedFeedFollowing,
+  listFeedFollowedTagActors,
+  listFeedFollowedTags,
   listFeedFollowing,
   markFeedFollowingAccepted,
   removeFeedFollowing,
@@ -182,5 +185,64 @@ describe('Feed following integration', () => {
         handle: '@bob@remote.example',
       }),
     ).toBe(false)
+  })
+
+  describe('followed tags', () => {
+    const running = {
+      actor_uri: 'https://tags.pub/user/running',
+      handle: '@running@tags.pub',
+      inbox_uri: 'https://tags.pub/user/running/inbox',
+      tag: 'running',
+    }
+    const cycling = {
+      actor_uri: 'https://tags.pub/user/cycling',
+      inbox_uri: 'https://tags.pub/user/cycling/inbox',
+      tag: 'cycling',
+    }
+
+    test('stores the tag, and lists tag follows apart from people', async () => {
+      const user = getTestUser()
+      expect((await upsertFeedFollowing(user, alice)).tag).toBeNull()
+      expect((await upsertFeedFollowing(user, running)).tag).toBe('running')
+      await upsertFeedFollowing(user, cycling)
+
+      expect((await listFeedFollowing(user)).map((r) => r.actor_uri)).toEqual([alice.actor_uri])
+      expect((await listFeedFollowedTags(user)).map((r) => r.tag)).toEqual(['cycling', 'running'])
+      expect(await listFeedFollowedTagActors(user)).toEqual(
+        expect.arrayContaining([
+          { actor_uri: running.actor_uri, tag: 'running' },
+          { actor_uri: cycling.actor_uri, tag: 'cycling' },
+        ]),
+      )
+      expect((await getFeedFollowingByTag(user, 'running'))?.actor_uri).toBe(running.actor_uri)
+      expect(await getFeedFollowingByTag(user, 'swimming')).toBeNull()
+      // The public following collection lists people only, like the owner's list.
+      await markFeedFollowingAccepted(user, running.actor_uri)
+      await markFeedFollowingAccepted(user, alice.actor_uri)
+      expect((await listAcceptedFeedFollowing(user)).map((r) => r.actor_uri)).toEqual([alice.actor_uri])
+      expect(await countAcceptedFeedFollowing(user)).toBe(1)
+    })
+
+    test('a plain re-follow keeps the tag; a tag follow marks a hand-followed actor', async () => {
+      const user = getTestUser()
+      await upsertFeedFollowing(user, running)
+      const { tag: _tag, ...plain } = running
+      expect((await upsertFeedFollowing(user, plain)).tag).toBe('running')
+
+      const handFollowed = { actor_uri: 'https://tags.pub/user/hiking', inbox_uri: 'https://tags.pub/inbox' }
+      expect((await upsertFeedFollowing(user, handFollowed)).tag).toBeNull()
+      expect((await upsertFeedFollowing(user, { ...handFollowed, tag: 'hiking' })).tag).toBe('hiking')
+    })
+
+    test('one row per tag; untagged rows are not constrained', async () => {
+      const user = getTestUser()
+      await upsertFeedFollowing(user, running)
+      await expect(
+        upsertFeedFollowing(user, { ...running, actor_uri: 'https://other.example/tags/running' }),
+      ).rejects.toThrow()
+      await upsertFeedFollowing(user, alice)
+      await upsertFeedFollowing(user, bob)
+      expect(await listFeedFollowing(user)).toHaveLength(2)
+    })
   })
 })

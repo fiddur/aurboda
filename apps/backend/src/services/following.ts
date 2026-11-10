@@ -16,10 +16,10 @@
  * `actorToFollowingInput` / `serializeFollowing` mappers are unit-tested; the
  * network orchestration is thin.
  */
-import type { FollowingActor } from '@aurboda/api-spec'
 import type { Federation } from '@fedify/fedify'
 import type { Actor } from '@fedify/fedify/vocab'
 
+import { type FollowedTag, type FollowingActor, normalizeTag } from '@aurboda/api-spec'
 import { Follow, isActor, Undo } from '@fedify/fedify/vocab'
 
 import type { FeedFollowingInput, FeedFollowingRecord } from '../db/index.ts'
@@ -27,9 +27,12 @@ import type { FeedFollowingInput, FeedFollowingRecord } from '../db/index.ts'
 import {
   deleteTimelineEntriesByActor,
   getFeedFollowing,
+  getFeedFollowingByActor,
+  getFeedFollowingByTag,
   removeFeedFollowing,
   upsertFeedFollowing,
 } from '../db/index.ts'
+import { isUniqueViolation } from '../db/pg-errors.ts'
 import { extractActorPresentation } from './activitypub/actor-presentation.ts'
 import { signedFetchOptions } from './activitypub/signed-lookup.ts'
 import { withTimeout } from './with-timeout.ts'
@@ -42,6 +45,8 @@ export interface FollowDeps {
   federation: Federation<void>
   /** Canonical web origin, e.g. `https://aurboda.net`. */
   origin: string
+  /** Host of the hashtag actors (`<tag>@<host>`), from the server settings. */
+  tagActorHost: () => Promise<string>
 }
 
 /**
@@ -53,6 +58,8 @@ export interface FollowDeps {
 export interface FollowActions {
   follow: (user: string, handle: string) => Promise<FollowResult>
   unfollow: (user: string, id: string) => Promise<boolean>
+  followTag: (user: string, tag: string) => Promise<FollowResult>
+  unfollowTag: (user: string, tag: string) => Promise<boolean>
 }
 
 /**
@@ -71,7 +78,10 @@ export type FollowResult =
  * `extractActorPresentation` (offline handle; timeout-bounded icon deref).
  * Unit-tested with a constructed `Person`.
  */
-export const actorToFollowingInput = async (actor: Actor): Promise<FeedFollowingInput | null> => {
+export const actorToFollowingInput = async (
+  actor: Actor,
+  tag?: string,
+): Promise<FeedFollowingInput | null> => {
   if (actor.id == null || actor.inboxId == null) return null
   const presentation = await extractActorPresentation(actor)
   return {
@@ -81,6 +91,7 @@ export const actorToFollowingInput = async (actor: Actor): Promise<FeedFollowing
     handle: presentation.handle,
     inbox_uri: actor.inboxId.href,
     shared_inbox_uri: actor.endpoints?.sharedInbox?.href ?? null,
+    ...(tag == null ? {} : { tag }),
   }
 }
 
@@ -96,6 +107,13 @@ export const serializeFollowing = (record: FeedFollowingRecord): FollowingActor 
   notify_on_post: record.notify_on_post,
 })
 
+/** Serialise a followed-tag row; null for a row that is not a tag follow. */
+export const serializeFollowedTag = (record: FeedFollowingRecord): FollowedTag | null =>
+  record.tag == null ? null : { ...serializeFollowing(record), tag: record.tag }
+
+/** The handle of a hashtag's actor on the tag actor host, e.g. `running@tags.pub`. */
+export const tagActorHandle = (tag: string, host: string): string => `${tag}@${host}`
+
 /** The AS2 id we mint for our outbound Follow of a followee (stable per row). */
 const followActivityId = (origin: string, user: string, followingId: string): URL =>
   new URL(`${origin.replace(/\/+$/, '')}/users/${encodeURIComponent(user)}/follows/${followingId}`)
@@ -106,7 +124,15 @@ const followActivityId = (origin: string, user: string, followingId: string): UR
  * accepted. The Follow POST is best-effort (a failure is logged, not fatal — the
  * pending row lets the user retry).
  */
-export const followActor = async (deps: FollowDeps, user: string, handle: string): Promise<FollowResult> => {
+export const followActor = (deps: FollowDeps, user: string, handle: string): Promise<FollowResult> =>
+  follow(deps, user, handle)
+
+const follow = async (
+  deps: FollowDeps,
+  user: string,
+  handle: string,
+  tag?: string,
+): Promise<FollowResult> => {
   const ctx = await deps.federation.createContext(new URL(deps.origin))
 
   let actor: Actor | null
@@ -126,12 +152,25 @@ export const followActor = async (deps: FollowDeps, user: string, handle: string
     return { error: 'You can’t follow yourself.', ok: false, status: 422 }
   }
 
-  const input = await actorToFollowingInput(actor)
+  const input = await actorToFollowingInput(actor, tag)
   if (input == null) {
     return { error: 'Resolved object is not a followable actor (no inbox).', ok: false, status: 422 }
   }
+  if (tag != null) {
+    const conflict = await tagFollowConflict(user, tag, input.actor_uri)
+    if (conflict != null) return conflict
+  }
 
-  const record = await upsertFeedFollowing(user, input)
+  let record: FeedFollowingRecord
+  try {
+    record = await upsertFeedFollowing(user, input)
+  } catch (error) {
+    // The one-row-per-tag index caught a concurrent follow of the same tag.
+    if (tag != null && isUniqueViolation(error)) {
+      return (await tagFollowConflict(user, tag, input.actor_uri)) ?? alreadyFollowed(tag, null)
+    }
+    throw error
+  }
 
   // Best-effort delivery: a failed POST leaves the pending row for a retry.
   try {
@@ -149,6 +188,30 @@ export const followActor = async (deps: FollowDeps, user: string, handle: string
   }
 
   return { ok: true, record }
+}
+
+const alreadyFollowed = (tag: string, through: FeedFollowingRecord | null): FollowResult => ({
+  error: `You already follow #${tag}${through == null ? '' : ` through ${through.handle ?? through.actor_uri}`}; unfollow it first.`,
+  ok: false,
+  status: 409,
+})
+
+/**
+ * Why following `tag` through `actorUri` cannot proceed: the tag is already
+ * followed through another actor (the host changed since), or that actor is
+ * already followed as another tag (the host aliases the two) — a plain upsert
+ * would silently relabel the row. Null when it can.
+ */
+const tagFollowConflict = async (
+  user: string,
+  tag: string,
+  actorUri: string,
+): Promise<FollowResult | null> => {
+  const byTag = await getFeedFollowingByTag(user, tag)
+  if (byTag != null && byTag.actor_uri !== actorUri) return alreadyFollowed(tag, byTag)
+  const byActor = await getFeedFollowingByActor(user, actorUri)
+  if (byActor?.tag != null && byActor.tag !== tag) return alreadyFollowed(byActor.tag, byActor)
+  return null
 }
 
 /**
@@ -189,4 +252,23 @@ export const unfollowActor = async (deps: FollowDeps, user: string, id: string):
   // you no longer follow).
   await deleteTimelineEntriesByActor(user, existing.actor_uri)
   return true
+}
+
+/**
+ * Follow a hashtag: follow its tag actor `<tag>@<tag actor host>`, which boosts
+ * every public post it sees carrying the tag to its followers. The row is an
+ * ordinary follow, marked with the tag.
+ */
+export const followTag = async (deps: FollowDeps, user: string, rawTag: string): Promise<FollowResult> => {
+  const tag = normalizeTag(rawTag)
+  if (tag == null) return { error: 'Not a valid hashtag.', ok: false, status: 400 }
+  return follow(deps, user, tagActorHandle(tag, await deps.tagActorHost()), tag)
+}
+
+/** Unfollow a hashtag by name; false when it is not followed. */
+export const unfollowTag = async (deps: FollowDeps, user: string, rawTag: string): Promise<boolean> => {
+  const tag = normalizeTag(rawTag)
+  if (tag == null) return false
+  const existing = await getFeedFollowingByTag(user, tag)
+  return existing == null ? false : unfollowActor(deps, user, existing.id)
 }

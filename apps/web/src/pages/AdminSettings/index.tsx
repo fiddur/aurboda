@@ -1,3 +1,5 @@
+import type { PublicTagFollow, RelayStyle } from '@aurboda/api-spec'
+
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation } from 'preact-iso'
 import { useCallback, useState } from 'preact/hooks'
@@ -11,17 +13,28 @@ import {
   officialFeedSummary,
   parseUsernamesInput,
 } from '../../components/official-feed'
+import {
+  hasTagsPubRelay,
+  relayStateLabel,
+  relayStateTitle,
+  relayStyleLabel,
+  TAGS_PUB_RELAY,
+} from '../../components/relays'
 import { type SaveStatus, SaveStatusIndicator } from '../../components/SaveStatusIndicator'
 import { TagsInput } from '../../components/TagsInput'
 import '../../components/ShareActivityDialog.css'
 import {
+  addRelay,
   apiErrorMessage,
   fetchAdminSettings,
+  fetchRelays,
   generateInvitation,
   officialFeedPath,
+  publicTagPath,
+  removeRelay,
   updateAdminSettings,
 } from '../../state/api'
-import { auth, officialFeedEnabled } from '../../state/auth'
+import { auth, officialFeedEnabled, publicTagPages } from '../../state/auth'
 import './style.css'
 
 const signupModeDescriptions: Record<SignupMode, string> = {
@@ -732,6 +745,259 @@ function OfficialFeedSection() {
   )
 }
 
+const tagFollowTitle: Record<PublicTagFollow['state'], string> = {
+  accepted: 'The tag actor accepted the follow; its posts are arriving.',
+  pending: 'Followed, not yet accepted. Saving again re-sends the follow.',
+  unresolved: 'The tag actor could not be found on the tag actor host.',
+}
+
+function PublicTagPagesSection() {
+  const queryClient = useQueryClient()
+  const { data: settings } = useQuery({
+    queryFn: fetchAdminSettings,
+    queryKey: ['adminSettings'],
+  })
+
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>({ status: 'idle' })
+  const [tagsText, setTagsText] = useState<string | null>(null)
+  const [daysText, setDaysText] = useState<string | null>(null)
+
+  const configured = settings?.public_tag_pages ?? []
+  const followStates = new Map((settings?.public_tag_follows ?? []).map((f) => [f.tag, f.state]))
+  const tagsValue = tagsText ?? formatTagsInput(configured)
+  const daysValue = daysText ?? String(settings?.public_tag_retention_days ?? 30)
+  const host = settings?.tag_actor_host ?? 'tags.pub'
+
+  const save = useCallback(
+    async (tags: string[], days: number) => {
+      setSaveStatus({ status: 'saving' })
+      try {
+        const result = await updateAdminSettings({ public_tag_pages: tags, public_tag_retention_days: days })
+        queryClient.setQueryData(['adminSettings'], result)
+        publicTagPages.value = result.public_tag_pages
+        setTagsText(null)
+        setDaysText(null)
+        setSaveStatus({ status: 'saved', time: new Date() })
+      } catch (err) {
+        setSaveStatus({ error: apiErrorMessage(err, getErrorMessage(err)), status: 'error' })
+      }
+    },
+    [queryClient],
+  )
+
+  return (
+    <section class="settings-section">
+      <h2>Public tag pages</h2>
+      <div class="form-field">
+        <div class="section-header-row">
+          <span>Tags</span>
+          <SaveStatusIndicator state={saveStatus} />
+        </div>
+        {configured.length > 0 && (
+          <p class="connected-status">
+            {configured.map((tag, i) => (
+              <span key={tag}>
+                {i > 0 && ', '}
+                <a href={publicTagPath(tag)}>#{tag}</a>
+                {followStates.has(tag) && (
+                  <span
+                    class={`tag-follow-badge tag-follow-${followStates.get(tag)}`}
+                    title={tagFollowTitle[followStates.get(tag) ?? 'unresolved']}
+                  >
+                    {followStates.get(tag)}
+                  </span>
+                )}
+              </span>
+            ))}
+          </p>
+        )}
+        <TagsInput
+          id="public-tag-pages"
+          legend="Tags"
+          note={`Each tag gets a public page at /tags/<tag> with posts from every server that ${host} sees. The server follows <tag>@${host} for each.`}
+          value={tagsValue}
+          onInput={setTagsText}
+        />
+        <label for="public-tag-retention">Keep posts for (days)</label>
+        <input
+          id="public-tag-retention"
+          type="number"
+          min="1"
+          max="365"
+          value={daysValue}
+          onInput={(e) => setDaysText((e.target as HTMLInputElement).value)}
+        />
+        <div class="api-key-input-row">
+          <button
+            type="button"
+            class="generate-button"
+            onClick={() => save(parseTagFilterInput(tagsValue), Number(daysValue))}
+          >
+            Save
+          </button>
+          {configured.length > 0 && (
+            <button type="button" class="clear-button" onClick={() => save([], Number(daysValue))}>
+              Clear
+            </button>
+          )}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function FederationSection() {
+  const queryClient = useQueryClient()
+  const { data: settings } = useQuery({
+    queryFn: fetchAdminSettings,
+    queryKey: ['adminSettings'],
+  })
+
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>({ status: 'idle' })
+  const [hostText, setHostText] = useState<string | null>(null)
+  const configured = settings?.tag_actor_host ?? 'tags.pub'
+  const value = hostText ?? configured
+
+  const save = useCallback(
+    async (host: string) => {
+      setSaveStatus({ status: 'saving' })
+      try {
+        const result = await updateAdminSettings({ tag_actor_host: host })
+        queryClient.setQueryData(['adminSettings'], result)
+        setHostText(null)
+        setSaveStatus({ status: 'saved', time: new Date() })
+      } catch (err) {
+        setSaveStatus({ error: apiErrorMessage(err, getErrorMessage(err)), status: 'error' })
+      }
+    },
+    [queryClient],
+  )
+
+  return (
+    <section class="settings-section">
+      <h2>Federation</h2>
+      <div class="form-field">
+        <div class="section-header-row">
+          <label for="tag-actor-host">Tag actor host</label>
+          <SaveStatusIndicator state={saveStatus} />
+        </div>
+        <div class="api-key-input-row">
+          <input
+            id="tag-actor-host"
+            type="text"
+            value={value}
+            onInput={(e) => setHostText((e.target as HTMLInputElement).value)}
+            placeholder="tags.pub"
+            autocapitalize="off"
+            spellcheck={false}
+          />
+        </div>
+        <button type="button" class="generate-button" onClick={() => save(value)}>
+          Save
+        </button>
+        <p class="field-description">
+          Users who follow a hashtag follow <code>&lt;tag&gt;@{configured}</code>; tags.pub is the public tag
+          relay run by the Social Web Foundation. Empty resets it to tags.pub.
+        </p>
+      </div>
+      <RelaysField />
+    </section>
+  )
+}
+
+function RelaysField() {
+  const queryClient = useQueryClient()
+  const { data: relays = [] } = useQuery({ queryFn: fetchRelays, queryKey: ['adminRelays'] })
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>({ status: 'idle' })
+  const [url, setUrl] = useState('')
+  const [style, setStyle] = useState<RelayStyle>('mastodon')
+
+  const run = useCallback(
+    async (action: () => Promise<unknown>, after?: () => void) => {
+      setSaveStatus({ status: 'saving' })
+      try {
+        await action()
+        await queryClient.invalidateQueries({ queryKey: ['adminRelays'] })
+        after?.()
+        setSaveStatus({ status: 'saved', time: new Date() })
+      } catch (err) {
+        setSaveStatus({ error: apiErrorMessage(err, getErrorMessage(err)), status: 'error' })
+      }
+    },
+    [queryClient],
+  )
+
+  const add = (body: { url: string; style: RelayStyle }) =>
+    run(
+      () => addRelay(body),
+      () => setUrl(''),
+    )
+
+  return (
+    <div class="form-field">
+      <div class="section-header-row">
+        <label for="relay-url">Relays</label>
+        <SaveStatusIndicator state={saveStatus} />
+      </div>
+      {relays.length > 0 && (
+        <ul class="relay-list">
+          {relays.map((relay) => (
+            <li key={relay.id} class="relay-row">
+              <span class="relay-url">{relay.url}</span>
+              <span class="relay-style">{relayStyleLabel(relay.style)}</span>
+              <span class={`relay-state relay-state-${relay.state}`} title={relayStateTitle(relay)}>
+                {relayStateLabel(relay.state)}
+                {relay.last_error != null && ' ⚠'}
+              </span>
+              <button type="button" class="clear-button" onClick={() => run(() => removeRelay(relay.id))}>
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div class="api-key-input-row">
+        <input
+          id="relay-url"
+          type="url"
+          value={url}
+          onInput={(e) => setUrl((e.target as HTMLInputElement).value)}
+          placeholder="https://relay.example/inbox"
+          autocapitalize="off"
+          spellcheck={false}
+        />
+        <select
+          aria-label="Relay style"
+          value={style}
+          onChange={(e) => setStyle((e.target as HTMLSelectElement).value as RelayStyle)}
+        >
+          <option value="mastodon">Mastodon</option>
+          <option value="litepub">LitePub</option>
+        </select>
+      </div>
+      <div class="relay-actions">
+        <button
+          type="button"
+          class="generate-button"
+          disabled={url.trim() === ''}
+          onClick={() => add({ style, url: url.trim() })}
+        >
+          Add relay
+        </button>
+        {!hasTagsPubRelay(relays) && (
+          <button type="button" class="generate-button" onClick={() => add(TAGS_PUB_RELAY)}>
+            Add the tags.pub relay
+          </button>
+        )}
+      </div>
+      <p class="field-description">
+        Public posts of every user on this server are pushed to accepted relays. A Mastodon-style relay takes
+        its inbox URL, a LitePub relay its actor URL. tags.pub is one-way: it takes posts and sends none back.
+      </p>
+    </div>
+  )
+}
+
 function InvitationsSection() {
   const [invitation, setInvitation] = useState<InvitationResult | null>(null)
   const [invitationLoading, setInvitationLoading] = useState(false)
@@ -880,6 +1146,10 @@ export function AdminSettings() {
       <SentrySection />
 
       <OfficialFeedSection />
+
+      <PublicTagPagesSection />
+
+      <FederationSection />
 
       <section class="settings-section">
         <h2>Shared Food Library</h2>

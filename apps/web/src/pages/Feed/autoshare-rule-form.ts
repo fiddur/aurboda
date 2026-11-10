@@ -11,7 +11,7 @@ import { validMetrics } from '@aurboda/api-spec'
 
 import { DEFAULT_SUMMARY, SERIES_METRICS, SUMMARY_METRICS } from '../../components/feed-metrics'
 import { formatTagsInput, parseTagsInput } from '../../components/hashtags'
-import { type DataFilterRow, rowToDataFilter } from './autoshare-rule-text'
+import { type DataFilterRow, rowToDataFilter, ruleTagsText } from './autoshare-rule-text'
 
 export const DEFAULT_MAX_AGE_HOURS = 24
 
@@ -156,3 +156,6 @@ export const formStateToUpdateBody = (state: RuleFormState, rule: AutoshareRule)
     tags: state.ownTags ? parseTagsInput(state.tagsText) : null,
   }
 }
+
+export const formStateTagsText = (state: RuleFormState): string =>
+  ruleTagsText({ message: state.message, tags: state.ownTags ? parseTagsInput(state.tagsText) : null })

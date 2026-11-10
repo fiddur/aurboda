@@ -33,12 +33,17 @@ export const deleteUserUsageRows = deleteWhereUsername('user_usage_daily')
 export const forgetImportJobStarter: CentralUserDelete = async (tx, username) =>
   (await tx.query('UPDATE import_jobs SET started_by = NULL WHERE started_by = $1', [username])).rowCount ?? 0
 
+/** The user's own posts on the public tag pages; remote posts carry no local user. */
+export const deleteLocalPublicTagPosts: CentralUserDelete = async (tx, username) =>
+  (await tx.query('DELETE FROM public_tag_posts WHERE local_user = $1', [username])).rowCount ?? 0
+
 export const CENTRAL_USER_DELETES: Record<string, CentralUserDelete> = {
   admins: deleteAdminRow,
   import_jobs: forgetImportJobStarter,
   oauth_authorization_codes: deleteOAuthAuthorizationCodes,
   oauth_tokens: deleteOAuthTokens,
   oura_user_mappings: deleteOuraUserMappingRows,
+  public_tag_posts: deleteLocalPublicTagPosts,
   strava_athlete_mappings: deleteStravaAthleteMappingRows,
   user_accounts: deleteUserAccountRow,
   user_usage_daily: deleteUserUsageRows,

@@ -21,13 +21,15 @@ import type { RequestHandler } from 'express'
  * Whether `path` is served by the Fedify federation surface (see
  * `services/activitypub/federation.ts`): the per-user actor and everything
  * mounted under it (inbox, outbox, followers, following, feed objects), the
- * shared inbox, and WebFinger / NodeInfo discovery.
+ * instance actor's `/actor` alias, the shared inbox, and WebFinger / NodeInfo
+ * discovery.
  *
  * Must stay a superset of every dispatcher/listener path registered on the
  * federation object — a missed path would silently stop reaching Fedify.
  */
 export const isFederationRequest = (path: string): boolean =>
   path === '/inbox' ||
+  path === '/actor' ||
   path.startsWith('/users/') ||
   path.startsWith('/.well-known/webfinger') ||
   path.startsWith('/.well-known/nodeinfo') ||

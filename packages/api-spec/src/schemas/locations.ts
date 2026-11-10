@@ -315,26 +315,49 @@ export type PlacesSummaryQuery = z.infer<typeof placesSummaryQuerySchema>
 export const placesSummaryPlaceSchema = z
   .object({
     hours: z.number().meta({ description: 'Hours spent there in the window, one decimal' }),
-    name: z.string().meta({ description: 'Place name' }),
-    visits: z.number().int().meta({ description: 'Visits in the window' }),
+    name: z.string().meta({ description: 'Named place' }),
+    nights: z.number().int().meta({ description: 'Nights attributed to this place' }),
+    visits: z.number().int().meta({
+      description: 'Visits in the window, consecutive fragments of one stay counted as one visit',
+    }),
   })
   .meta({ id: 'PlacesSummaryPlace' })
 
 export type PlacesSummaryPlace = z.infer<typeof placesSummaryPlaceSchema>
 
+export const placesSummaryNightsSchema = z
+  .object({
+    name: z.string().meta({ description: 'Named place' }),
+    nights: z.number().int().meta({ description: 'Nights attributed to this place' }),
+  })
+  .meta({ id: 'PlacesSummaryNights' })
+
+export type PlacesSummaryNights = z.infer<typeof placesSummaryNightsSchema>
+
 export const placesSummarySchema = z
   .object({
-    distinct_places: z.number().int().meta({ description: 'Distinct places visited' }),
+    distinct_places: z.number().int().meta({ description: 'Distinct named places visited' }),
     nights_away: z.number().int().meta({
-      description: 'Nights with an overnight stay at a named or detected place other than home',
+      description: 'Nights attributed to a place other than home, named or not',
     }),
-    nights_home: z.number().int().meta({ description: 'Nights with an overnight stay at home' }),
-    places: z.array(placesSummaryPlaceSchema).meta({ description: 'The five most visited places' }),
-    visits: z.number().int().meta({ description: 'All visits to named and detected places' }),
+    nights_by_place: z.array(placesSummaryNightsSchema).meta({
+      description: 'Every named place with at least one night, most nights first',
+    }),
+    nights_elsewhere: z.number().int().meta({
+      description: 'Nights attributed to a place that is not a named location',
+    }),
+    nights_home: z.number().int().meta({ description: 'Nights attributed to the home place' }),
+    nights_no_data: z.number().int().meta({
+      description: 'Nights without location data to attribute them to a place',
+    }),
+    places: z.array(placesSummaryPlaceSchema).meta({
+      description: 'The five named places with the most nights, then the most hours',
+    }),
+    visits: z.number().int().meta({ description: 'Visits to named places' }),
   })
   .meta({
     description:
-      'Visits to named and detected places in a window: nights at home and away, distinct places, visits and the most visited places. A night without a detectable stay counts as neither home nor away',
+      'Where the nights of a window were spent and the named places visited. Each night (by its evening date in tz) goes to the place the user was at 03:00 the next morning: the place covering that moment, else the place of the last visit when the next visit is to the same place within 36 hours, else the place of the last visit when it ended at most 18 hours before; otherwise the night has no data. OwnTracks regions with the name of a named location count as that named location, and consecutive fragments of a stay at one place count as one visit',
     id: 'PlacesSummary',
   })
 

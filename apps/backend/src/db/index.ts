@@ -347,11 +347,15 @@ export {
 
 export {
   countAcceptedFeedFollowing,
+  type FeedFollowedTagActor,
   type FeedFollowingInput,
   type FeedFollowingRecord,
   getFeedFollowing,
   getFeedFollowingByActor,
+  getFeedFollowingByTag,
   listAcceptedFeedFollowing,
+  listFeedFollowedTagActors,
+  listFeedFollowedTags,
   listFeedFollowing,
   markFeedFollowingAccepted,
   removeFeedFollowing,
@@ -379,6 +383,14 @@ export {
   updateFeedPostReactionPresentation,
   upsertFeedPostReaction,
 } from './feed-reactions.ts'
+
+export {
+  type FeedQuoteAuthorizationInput,
+  type FeedQuoteAuthorizationRecord,
+  getFeedQuoteAuthorization,
+  listFeedQuoteAuthorizations,
+  upsertFeedQuoteAuthorization,
+} from './feed-quotes.ts'
 
 export {
   countTimelineRepliesTo,

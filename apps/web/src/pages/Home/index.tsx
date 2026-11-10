@@ -5,6 +5,7 @@ import { useEffect, useRef } from 'preact/hooks'
 import { Footer } from '../../components/Footer'
 import { guestSignup, type GuestSignup, heroBillingLine } from '../../components/guest-signup'
 import { ImageViewerLink } from '../../components/ImageViewer'
+import { PublicTagLinks } from '../../components/PublicTagLinks'
 import { auth, ensureStatusLoaded, serverBilling, signupMode } from '../../state/auth'
 import { docsUrl } from '../../utils/docs-url'
 import { Dashboard } from '../Dashboard'
@@ -361,6 +362,7 @@ function Welcome({ signup }: { signup: GuestSignup }) {
             <p class="welcome-body-small">
               Like the training apps you know, without the ads and without selling your data.
             </p>
+            <PublicTagLinks class="welcome-body-small" />
             <ReadMore
               links={[
                 { href: docsUrl('features/challenges.md'), label: 'Read more about challenges' },
@@ -525,7 +527,7 @@ function Welcome({ signup }: { signup: GuestSignup }) {
           <a href={DISCUSSIONS} target="_blank" rel="noopener noreferrer">
             Ask in GitHub Discussions
           </a>
-          .
+          , or see <a href="/help">Help &amp; support</a>.
         </p>
       </section>
 

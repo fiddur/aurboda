@@ -7,6 +7,7 @@ import {
 import { useState } from 'preact/hooks'
 
 import { getMetricDisplayName } from '../../utils/metricLabels'
+import { ActivityTypePicker } from '../ActivityTypePicker'
 import { MetricPicker } from '../MetricPicker'
 import { offeredWidgetTypes } from './periodWidgets'
 import { blankRequiredFields } from './requiredConfig'
@@ -214,6 +215,8 @@ const topListSourceOptions = [
   { label: 'Places: visits', value: 'place' },
 ] as const
 
+const isMediaTopListSource = (source: string) => source.startsWith('media_')
+
 /** A text field whose key is dropped from the config while blank, so an optional `min(1)` field stays valid. */
 const OptionalTextField = ({
   configKey,
@@ -393,10 +396,9 @@ export function DashboardEditor({
                   placeholder="Search metrics..."
                 />
               ) : (
-                <input
-                  type="text"
+                <ActivityTypePicker
                   value={(configValues.pattern as string) ?? ''}
-                  onChange={(e) => updateConfig('pattern', (e.target as HTMLInputElement).value)}
+                  onChange={(activityType) => updateConfig('pattern', activityType)}
                   placeholder="e.g., coffee, exercise"
                 />
               )}
@@ -420,10 +422,9 @@ export function DashboardEditor({
           <div class="config-form">
             <div class="form-group">
               <label>Activity Type</label>
-              <input
-                type="text"
+              <ActivityTypePicker
                 value={(configValues.pattern as string) ?? ''}
-                onChange={(e) => updateConfig('pattern', (e.target as HTMLInputElement).value)}
+                onChange={(activityType) => updateConfig('pattern', activityType)}
                 placeholder="e.g., strength_training"
               />
             </div>
@@ -462,10 +463,9 @@ export function DashboardEditor({
           <div class="config-form">
             <div class="form-group">
               <label>Activity Type</label>
-              <input
-                type="text"
+              <ActivityTypePicker
                 value={(configValues.pattern as string) ?? ''}
-                onChange={(e) => updateConfig('pattern', (e.target as HTMLInputElement).value)}
+                onChange={(activityType) => updateConfig('pattern', activityType)}
                 placeholder="e.g., running, sleep"
               />
             </div>
@@ -523,7 +523,14 @@ export function DashboardEditor({
               <label>Source</label>
               <select
                 value={(configValues.source as string) ?? 'media_artist'}
-                onChange={(e) => updateConfig('source', (e.target as HTMLSelectElement).value)}
+                onChange={(e) => {
+                  const value = (e.target as HTMLSelectElement).value
+                  setConfigValues((prev) => {
+                    if (isMediaTopListSource(value)) return { ...prev, source: value }
+                    const { media_source: _mediaSource, ...rest } = prev
+                    return { ...rest, source: value }
+                  })
+                }}
               >
                 {topListSourceOptions.map(({ label, value }) => (
                   <option key={value} value={value}>
@@ -532,6 +539,24 @@ export function DashboardEditor({
                 ))}
               </select>
             </div>
+            {isMediaTopListSource((configValues.source as string) ?? 'media_artist') && (
+              <div class="form-group">
+                <label>Plays from</label>
+                <select
+                  value={(configValues.media_source as string) ?? ''}
+                  onChange={(e) => {
+                    const value = (e.target as HTMLSelectElement).value
+                    setConfigValues(({ media_source: _mediaSource, ...rest }) =>
+                      value ? { ...rest, media_source: value } : rest,
+                    )
+                  }}
+                >
+                  <option value="">All plays</option>
+                  <option value="lastfm">Last.fm</option>
+                  <option value="mpris">MPRIS player</option>
+                </select>
+              </div>
+            )}
             <div class="form-group">
               <label>Limit</label>
               <input
@@ -555,13 +580,6 @@ export function DashboardEditor({
       case 'places_card':
         return (
           <div class="config-form">
-            <OptionalTextField
-              configKey="home_location"
-              configValues={configValues}
-              label="Home location"
-              placeholder="Home"
-              setConfigValues={setConfigValues}
-            />
             <OptionalTextField
               configKey="title"
               configValues={configValues}

@@ -19,6 +19,7 @@ import { ArticleDrafts } from './ArticleDrafts'
 import { AutoShareRulesPanel } from './AutoShareRulesPanel'
 import { type FeedTab, feedTabFromQuery, feedTabUrl } from './feed-tab'
 import { FeedPostCard, type PostAuthor } from './FeedPostCard'
+import { FollowedTagsPanel } from './FollowedTagsPanel'
 import { FollowersPanel } from './FollowersPanel'
 import { FollowingPanel } from './FollowingPanel'
 import { HomeTimeline } from './HomeTimeline'
@@ -149,6 +150,7 @@ const FeedTabPanel = ({ author, tab }: { author: PostAuthor; tab: FeedTab }) => 
     return (
       <div class="feed-manage">
         <FollowingPanel />
+        <FollowedTagsPanel />
         <FollowersPanel />
         <AutoShareRulesPanel />
       </div>

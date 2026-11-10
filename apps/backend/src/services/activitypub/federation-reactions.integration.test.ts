@@ -221,6 +221,31 @@ describe('Inbound likes and boosts', () => {
     expect(entries[0].published_at.toISOString()).toBe('2026-07-01T11:00:00.000Z')
   })
 
+  test('a boost card stores the Note’s hashtags, plus the followed tag when the booster is a tag actor', async () => {
+    const user = getTestUser()
+    await upsertFeedFollowing(user, {
+      actor_uri: ALICE,
+      handle: '@alice@mastodon.example',
+      inbox_uri: `${ALICE}/inbox`,
+      tag: 'running',
+    })
+    await markFeedFollowingAccepted(user, ALICE)
+    // Mastodon maps `Hashtag` in its @context; the bare AS2 context does not define it.
+    const docs = fediverse({
+      '@context': ['https://www.w3.org/ns/activitystreams', { Hashtag: 'as:Hashtag' }],
+      tag: [
+        { href: 'https://third.example/tags/cycling', name: '#Cycling', type: 'Hashtag' },
+        { href: 'https://third.example/tags/running', name: '#RUNNING', type: 'Hashtag' },
+      ],
+    })
+
+    await handleInboundAnnounce(inboxCtx(user, docs), boostOfCarol(`${ALICE}/statuses/9/activity`), ORIGIN)
+
+    const entries = await listTimelineEntries(user, 10)
+    expect(entries.map((e) => e.tags)).toEqual([['running', 'cycling']])
+    expect(await listTimelineEntries(user, 10, undefined, undefined, 'cycling')).toHaveLength(1)
+  })
+
   test('Undo{Announce} retracts the boost card, scoped to the booster', async () => {
     const user = getTestUser()
     await acceptFollow(user, ALICE, '@alice@mastodon.example')

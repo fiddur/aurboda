@@ -1,6 +1,6 @@
-import type { FeedReactionKind, FeedStructuredPost } from '@aurboda/api-spec'
 import type { Actor } from '@fedify/fedify/vocab'
 
+import { type FeedReactionKind, type FeedStructuredPost, normalizeTags } from '@aurboda/api-spec'
 import {
   type Context,
   createFederation,
@@ -16,14 +16,17 @@ import {
   Follow,
   Image,
   Like,
-  isActor,
   Note,
   Person,
+  QuoteAuthorization,
+  QuoteRequest,
   Reject,
   Tombstone,
   Undo,
   Update,
 } from '@fedify/fedify/vocab'
+
+import type { ActorPresentation } from './actor-presentation.ts'
 
 /**
  * Single actor per user: the actor identifier IS the username, and the actor
@@ -33,6 +36,7 @@ import {
 import { isValidUsername } from '../../api/auth-routes.ts'
 import {
   countAcceptedFeedFollowing,
+  type FeedQuoteAuthorizationRecord,
   countFeedFollowers,
   countPublicFeedPosts,
   deleteBoostEntry,
@@ -43,6 +47,7 @@ import {
   updateBoostCardsOf,
   getFeedFollowingByActor,
   getFeedPostById,
+  getFeedQuoteAuthorization,
   getOrCreateActorKeyPair,
   getProfileAvatarVersion,
   getTimelineEntryByObjectUri,
@@ -64,14 +69,13 @@ import {
   updateTimelineActorPresentation,
   upsertFeedFollower,
   upsertFeedPostReaction,
+  upsertFeedQuoteAuthorization,
   upsertTimelineEntry,
 } from '../../db/index.ts'
 import { UUID_RE } from '../../utils.ts'
 import { resolveFeedActivity } from '../feed.ts'
 import { buildProfileUrl } from '../share-urls.ts'
 import { ownActorUri, ownObjectPrefix } from '../timeline.ts'
-import { withTimeout } from '../with-timeout.ts'
-import { type ActorPresentation, extractActorPresentation } from './actor-presentation.ts'
 import { dashboardNoteContent } from './dashboard-object.ts'
 import {
   buildArticleNote,
@@ -86,6 +90,8 @@ import {
   buildFeedNote,
   buildReplyNote,
   buildReplyNoteCreate,
+  deliverToRelays,
+  type FeedDeliveryDeps,
   toDeliverableArticle,
   toDeliverableChallenge,
   toDeliverableDashboard,
@@ -93,13 +99,33 @@ import {
   toDeliverableReply,
 } from './deliver.ts'
 import { exerciseNoteContent } from './exercise-object.ts'
+import {
+  buildInstanceActor,
+  handleInstanceActorFollow,
+  handleRelayResponse,
+  handleTagFollowResponse,
+  INSTANCE_ACTOR_ID,
+  INSTANCE_ACTOR_PATH,
+  type InstanceActorDeps,
+  instanceActorUsername,
+  isInstanceActor,
+  type PublicTagIngest,
+  type RelayInboxHooks,
+} from './instance-actor.ts'
 import { toCryptoKeyPair } from './keys.ts'
 import { AS_PUBLIC, isPubliclyVisible } from './object.ts'
-import { signedFetchOptions } from './signed-lookup.ts'
+import {
+  handleInstanceActorAnnounce,
+  handleInstanceActorDelete,
+  handleInstanceActorUndo,
+  isInstanceDelivery,
+} from './public-tag-ingest.ts'
+import { fetchActorPresentation, resolveAnnouncedNote, validateAnnounce } from './remote-lookup.ts'
 import { temporalInstantToDate } from './temporal-interop.ts'
 import { capabilityTokenFrom, createAurbodaEnricher } from './timeline-enrich.ts'
 import {
   extractNoteImages,
+  noteHashtags,
   noteMentionsActor,
   noteToTimelineInput,
   type TimelineAuthor,
@@ -130,36 +156,7 @@ const localFollowerIdentifier = async (
   return recipient != null && isValidUsername(recipient) ? recipient : null
 }
 
-const ACTOR_LOOKUP_TIMEOUT_MS = 5_000
-
 const NO_PRESENTATION: ActorPresentation = { avatar_url: null, display_name: null, handle: null }
-
-/**
- * A sending actor's presentation snapshot (handle / display name / avatar),
- * **fetched from their id** — null when that id doesn't answer with that very
- * actor.
- *
- * Never read off an actor inlined in the delivered activity. An embedded actor
- * is attacker-controlled: any `preferredUsername`/`name` can ride along under a
- * valid id, and every snapshot we store becomes a byline someone reads. Fetching
- * by id makes the claimed actor's own server the only thing that can describe
- * them, and the returned document must still carry exactly that id
- * (`lookupObject` also refuses a cross-origin `@id`). Each caller decides what a
- * null means: a countable-but-anonymous reaction, a follow with no display
- * fields, or dropping the activity outright.
- */
-const fetchActorPresentation = async (
-  ctx: InboxContext<void>,
-  user: string,
-  actorId: URL,
-): Promise<ActorPresentation | null> => {
-  const actor = await withTimeout(
-    signedFetchOptions(ctx, user).then((options) => ctx.lookupObject(actorId, options)),
-    ACTOR_LOOKUP_TIMEOUT_MS,
-  ).catch(() => null)
-  if (!isActor(actor) || actor.id?.href !== actorId.href) return null
-  return await extractActorPresentation(actor)
-}
 
 /**
  * Persist an inbound follower and decide whether to accept it now. Auto-accepts
@@ -261,19 +258,19 @@ export const ingestNoteForRecipient = async (
   // the web can render a native chart in place of the image. Keyed on the NOTE's
   // id — on a boost card `object_uri` is the Announce id, which no peer serves.
   const structured = await enrich(input.boost_of_uri ?? input.object_uri, capabilityTokenFrom(images))
+  const declaredTags = await noteHashtags(note)
+  const tags = boost?.tag == null ? declaredTags : normalizeTags([boost.tag, ...declaredTags])
   const { id, inserted } = await upsertTimelineEntry(user, {
     ...input,
     images,
     mentions_me: mentionsMe,
     structured,
+    tags,
   })
   if (input.boost_of_uri == null) await deleteBoostCardsOf(user, input.object_uri)
   if (inserted && onNewEntry != null && (await isVisibleToReader(user, id, origin))) onNewEntry(user)
   return true
 }
-
-/** How long to wait for a boosted Note (usually a bare id Mastodon expects us to fetch). */
-const BOOST_OBJECT_TIMEOUT_MS = 10_000
 
 /**
  * The local feed-post id an inbound `Like`/`Announce` targets, or null when its
@@ -353,70 +350,6 @@ const resolveBoostAuthor = async (
   return presentation == null ? null : { ...presentation, actor_uri: attributionId.href }
 }
 
-interface AnnouncedNote {
-  note: Note
-  /** The announced Note's own id — the boost card's `boost_of_uri`. */
-  uri: string
-  attributionId: URL
-}
-
-/**
- * The Note an `Announce` points at, **always fetched from `announce.objectId`**
- * — an object embedded in the activity body is ignored outright.
- *
- * That is the whole security of a boost card. `announce.getObject()` hands back
- * an inlined object without any fetch, so a followee could deliver an `Announce`
- * carrying a `Note` with any `id` and `attributedTo` they chose, and every
- * downstream check (id host, attribution host, author id) would be satisfied by
- * data they wrote — storing forged content under a real person's handle.
- * Dereferencing by id makes the claimed origin server the only source of the
- * post's content and byline. Mastodon sends a bare id anyway, so this is also
- * the normal path.
- *
- * Two further rejections: the fetched object must be a `Note` whose id is on the
- * **same host as the announced id** (a redirect can't swap in a document from
- * somewhere else — `lookupObject` refuses a cross-origin `@id` too), and it must
- * declare `attributedTo` (there is no other honest source for the author).
- */
-const resolveAnnouncedNote = async (
-  ctx: InboxContext<void>,
-  me: string,
-  objectId: URL,
-): Promise<AnnouncedNote | null> => {
-  const note = await withTimeout(
-    signedFetchOptions(ctx, me).then((options) => ctx.lookupObject(objectId, options)),
-    BOOST_OBJECT_TIMEOUT_MS,
-  ).catch(() => null)
-  if (!(note instanceof Note) || note.id == null || note.id.host !== objectId.host) return null
-  const attributionId = note.attributionIds[0]
-  return attributionId == null ? null : { attributionId, note, uri: note.id.href }
-}
-
-interface ValidatedAnnounce {
-  actorId: URL
-  /** The `Announce`'s own id — the boost card's `object_uri`. */
-  announceUri: string
-  objectId: URL
-}
-
-/**
- * The `Announce`'s own identity, or null when it can't back a boost card.
- *
- * Beyond the ids simply being present, the activity id must be **on the
- * booster's host**: it becomes the card's `object_uri`, which is the GLOBAL
- * upsert key, so it needs the same origin check `noteToTimelineInput` applies
- * to a direct Note's id. Without it an accepted followee could announce a real
- * third-party post under an id equal to another followee's existing entry and
- * overwrite that entry with a boost card of their choosing (then evict it with
- * an `Undo{Announce}`, since the row would name them as the booster). Mastodon
- * mints `…/statuses/<n>/activity` on the actor's own host.
- */
-const validateAnnounce = (announce: Announce): ValidatedAnnounce | null => {
-  const { actorId, id, objectId } = announce
-  if (actorId == null || id == null || objectId == null) return null
-  return id.host === actorId.host ? { actorId, announceUri: id.href, objectId } : null
-}
-
 /**
  * A followee boosted somebody else's post → a **boost card** in our timeline
  * (Mastodon's "🔄 X boosted"). The card is its own row keyed on the `Announce`
@@ -454,6 +387,7 @@ const ingestBoostedNote = async (
       announce_uri: valid.announceUri,
       display_name: booster.display_name,
       handle: booster.handle,
+      tag: booster.tag,
       published_at: announce.published == null ? new Date() : temporalInstantToDate(announce.published),
     })
   } catch (error) {
@@ -507,9 +441,16 @@ const undoReactionByActivityId = async (ctx: InboxContext<void>, undo: Undo): Pr
  * inbox we send the `Accept` to, and the inbox we cache); the follower's
  * PRESENTATION is fetched from their id inside `recordInboundFollow`.
  */
-export const handleInboundFollow = async (ctx: InboxContext<void>, follow: Follow): Promise<void> => {
+export const handleInboundFollow = async (
+  ctx: InboxContext<void>,
+  follow: Follow,
+  relays?: RelayInboxHooks,
+): Promise<void> => {
   if (follow.objectId == null) return
   const target = ctx.parseUri(follow.objectId)
+  if (target?.type === 'actor' && isInstanceActor(target.identifier)) {
+    return await handleInstanceActorFollow(ctx, follow, relays)
+  }
   if (target?.type !== 'actor' || !isValidUsername(target.identifier)) return
 
   const sender = await follow.getActor(ctx)
@@ -537,6 +478,90 @@ export const handleInboundLike = (ctx: InboxContext<void>, like: Like): Promise<
   recordOwnPostReaction(ctx, like, 'like')
 
 /**
+ * FEP-044f: the `Accept`'s `result` is a stamp URL that the quoting server keeps and other
+ * servers fetch to verify the quote. A request for anything but the recipient's own Note is
+ * ignored rather than rejected, as with reactions.
+ */
+export const handleInboundQuoteRequest = async (
+  ctx: InboxContext<void>,
+  request: QuoteRequest,
+): Promise<void> => {
+  const target = quoteRequestTarget(ctx, request)
+  if (target == null) return
+  const sender = await request.getActor(ctx)
+  if (sender?.id == null || sender.inboxId == null) return
+  try {
+    await ctx.sendActivity({ identifier: target.me }, sender, await answerQuoteRequest(ctx, request, target))
+  } catch (error) {
+    if (isMissingDatabase(error)) return
+    throw error
+  }
+}
+
+interface QuoteRequestTarget {
+  me: string
+  postId: string
+  requester: URL
+  quoteUri: URL
+}
+
+/** The recipient's own post a `QuoteRequest` targets, or null when it is not ours or the quote is cross-host. */
+const quoteRequestTarget = (ctx: InboxContext<void>, request: QuoteRequest): QuoteRequestTarget | null => {
+  const me = ctx.recipient
+  const requester = request.actorId
+  if (me == null || !isValidUsername(me) || requester == null) return null
+  const postId = ownTargetPostId(ctx, request.objectId, me)
+  const quoteUri = request.instrumentId
+  if (postId == null || quoteUri == null || quoteUri.host !== requester.host) return null
+  if (request.id != null && request.id.host !== requester.host) return null
+  return { me, postId, quoteUri, requester }
+}
+
+const answerQuoteRequest = async (
+  ctx: InboxContext<void>,
+  request: QuoteRequest,
+  { me, postId, quoteUri, requester }: QuoteRequestTarget,
+): Promise<Accept | Reject> => {
+  const actorUri = ctx.getActorUri(me)
+  const post = await getFeedPostById(me, postId)
+  if (post == null || !isPubliclyVisible(post.visibility)) {
+    return new Reject({
+      actor: actorUri,
+      id: new URL(`${actorUri.href}#rejects/quote_requests/${crypto.randomUUID()}`),
+      object: request,
+    })
+  }
+  const row = await upsertFeedQuoteAuthorization(me, {
+    actor_uri: requester.href,
+    post_id: postId,
+    quote_uri: quoteUri.href,
+    request_uri: request.id?.href ?? null,
+  })
+  return new Accept({
+    actor: actorUri,
+    id: new URL(`${actorUri.href}#accepts/quote_requests/${row.id}`),
+    object: request,
+    result: ctx.getObjectUri(QuoteAuthorization, { identifier: me, stampId: row.id }),
+  })
+}
+
+/** A stamp's approval row, or null when it is unknown or its post is gone or no longer public/unlisted. */
+const loadValidStamp = async (
+  identifier: string,
+  stampId: string,
+): Promise<FeedQuoteAuthorizationRecord | null> => {
+  try {
+    const row = await getFeedQuoteAuthorization(identifier, stampId)
+    if (row == null) return null
+    const post = await getFeedPostById(identifier, row.post_id)
+    return post != null && isPubliclyVisible(post.visibility) ? row : null
+  } catch (error) {
+    if (isMissingDatabase(error)) return null
+    throw error
+  }
+}
+
+/**
  * Inbound `Announce`. Two distinct meanings share the type: a boost of one of
  * OUR posts is a reaction to record (from anyone — a boost needs no follow); a
  * boost of a THIRD-PARTY post by an accepted followee is a boost card for our
@@ -556,6 +581,29 @@ export const handleInboundAnnounce = async (
   }
   await ingestBoostedNote(ctx, announce, origin, onNewEntry, enrich)
 }
+
+/**
+ * The inbox's `Announce` listener: a delivery to the instance actor (or the
+ * shared inbox) goes to the public tag pages; one to a user is a boost or a
+ * reaction, even from the same tag actor.
+ */
+export const createAnnounceListener =
+  ({
+    isReadOnly,
+    onUserAnnounce,
+    publicTagPosts,
+  }: {
+    isReadOnly: (user: string) => Promise<boolean>
+    onUserAnnounce: (ctx: InboxContext<void>, announce: Announce) => Promise<void>
+    publicTagPosts?: PublicTagIngest
+  }) =>
+  async (ctx: InboxContext<void>, announce: Announce): Promise<void> => {
+    if (publicTagPosts != null && isInstanceDelivery(ctx)) {
+      return await handleInstanceActorAnnounce(ctx, announce, publicTagPosts)
+    }
+    if (await dropsForReadOnly(ctx, announce, isReadOnly)) return
+    await onUserAnnounce(ctx, announce)
+  }
 
 /**
  * Inbound `Undo` of a Follow (drop the follower), a Like or an Announce (retract
@@ -872,7 +920,7 @@ export const deliverActorUpdate = async (
  * (no message queue), so nothing reads that database after this resolves.
  */
 export const deliverActorDelete = async (
-  deps: { federation: Federation<void>; origin: string },
+  deps: Pick<FeedDeliveryDeps, 'federation' | 'listRelayRecipients' | 'origin'>,
   user: string,
 ): Promise<void> => {
   const ctx = await deps.federation.createContext(new URL(deps.origin))
@@ -884,7 +932,12 @@ export const deliverActorDelete = async (
     object: new Tombstone({ id: actorId }),
     to: new URL(AS_PUBLIC),
   })
-  await ctx.sendActivity({ identifier: user }, 'followers', del)
+  // Relays received the user's public posts, so they hear of the account's end too.
+  const [followers] = await Promise.allSettled([
+    ctx.sendActivity({ identifier: user }, 'followers', del),
+    deliverToRelays(deps, ctx, user, del),
+  ])
+  if (followers.status === 'rejected') throw followers.reason
 }
 
 export const createFeedFederation = (
@@ -905,6 +958,8 @@ export const createFeedFederation = (
   isDeletedUser: (username: string) => boolean = () => false,
   /** A read-only account (plan expired past the grace period) stores no new inbound posts. */
   isReadOnly: (username: string) => Promise<boolean> = async () => false,
+  /** The instance actor and its relay subscriptions; without it the instance actor does not exist. */
+  instance?: InstanceActorDeps,
 ): Federation<void> => {
   const federation = createFederation<void>({
     kv: new MemoryKvStore(),
@@ -941,13 +996,37 @@ export const createFeedFederation = (
     usage: { localComments: 0, localPosts: 0, users: {} },
   }))
 
+  const instanceUsername = instanceActorUsername(origin)
+  // The stored pair never changes, so it is read and imported once; a failure is retried next time.
+  let instanceKeyPairPromise: Promise<CryptoKeyPair> | null = null
+  const instanceKeyPair = (): Promise<CryptoKeyPair> => {
+    if (instance == null) throw new Error('No instance actor')
+    instanceKeyPairPromise ??= instance
+      .instanceKeys()
+      .then((kp) => toCryptoKeyPair(kp.private_key_pem, kp.public_key_pem))
+      .catch((error: unknown) => {
+        instanceKeyPairPromise = null
+        throw error
+      })
+    return instanceKeyPairPromise
+  }
   federation
-    .setActorDispatcher('/users/{identifier}', (ctx, identifier) =>
-      isDeletedUser(identifier)
+    .setActorDispatcher('/users/{identifier}', async (ctx, identifier) => {
+      if (isInstanceActor(identifier)) {
+        return instance == null
+          ? null
+          : buildInstanceActor(ctx, origin, await ctx.getActorKeyPairs(identifier))
+      }
+      return isDeletedUser(identifier)
         ? new Tombstone({ id: ctx.getActorUri(identifier) })
-        : buildActorPerson(ctx, identifier, origin),
-    )
+        : buildActorPerson(ctx, identifier, origin)
+    })
+    .mapActorAlias(INSTANCE_ACTOR_PATH, INSTANCE_ACTOR_ID)
     .setKeyPairsDispatcher(async (_ctx, identifier) => {
+      if (isInstanceActor(identifier)) {
+        if (instance == null) return []
+        return [await instanceKeyPair()]
+      }
       if (!isValidUsername(identifier) || isDeletedUser(identifier)) return []
       try {
         const kp = await getOrCreateActorKeyPair(identifier)
@@ -957,16 +1036,28 @@ export const createFeedFederation = (
         throw error
       }
     })
-    .mapHandle((_ctx, username) => (isValidUsername(username) ? username : null))
+    .mapHandle((_ctx, username) => {
+      if (instance != null && username === instanceUsername) return INSTANCE_ACTOR_ID
+      return isValidUsername(username) ? username : null
+    })
 
   // Inbound inbox. Fedify verifies the HTTP Signature before invoking these
   // handlers, so a request that reaches `.on(...)` is authenticated as the
   // sending actor. Unregistered activity types are silently ignored.
-  federation
-    .setInboxListeners('/users/{identifier}/inbox', '/inbox')
-    .on(Follow, handleInboundFollow)
-    .on(Undo, handleInboundUndo)
+  const inbox = federation.setInboxListeners('/users/{identifier}/inbox', '/inbox')
+  // Fetches made on the shared inbox's behalf are signed as the instance actor.
+  if (instance != null) inbox.setSharedKeyDispatcher(() => ({ identifier: INSTANCE_ACTOR_ID }))
+  inbox
+    .on(Follow, (ctx, follow) => handleInboundFollow(ctx, follow, instance?.relays))
+    .on(Undo, async (ctx, undo) => {
+      if (instance?.publicTagPosts != null && isInstanceDelivery(ctx)) {
+        await handleInstanceActorUndo(ctx, undo, instance.publicTagPosts)
+      }
+      await handleInboundUndo(ctx, undo)
+    })
     .on(Accept, async (ctx, accept) => {
+      if (await handleRelayResponse(accept, instance?.relays)) return
+      if (await handleTagFollowResponse(accept, instance?.tagFollows)) return
       // Accept of a Follow WE sent — the followee's server confirms the follow.
       // `accept.actorId` is the followee we followed, matching the `actor_uri` of
       // our pending row.
@@ -986,6 +1077,8 @@ export const createFeedFederation = (
       onFollowAccepted?.(me, accept.actorId.href)
     })
     .on(Reject, async (ctx, reject) => {
+      if (await handleRelayResponse(reject, instance?.relays)) return
+      if (await handleTagFollowResponse(reject, instance?.tagFollows)) return
       // Reject of a Follow we sent — the followee declined; drop our pending row.
       const me = await localFollowerIdentifier(ctx, reject)
       if (me == null || reject.actorId == null) return
@@ -1011,11 +1104,20 @@ export const createFeedFederation = (
       await handleInboundUpdate(ctx, update, origin, onNewTimelineEntry, enrich)
     })
     .on(Like, handleInboundLike)
-    .on(Announce, async (ctx, announce) => {
-      if (await dropsForReadOnly(ctx, announce, isReadOnly)) return
-      await handleInboundAnnounce(ctx, announce, origin, onNewTimelineEntry, enrich)
-    })
+    .on(QuoteRequest, handleInboundQuoteRequest)
+    .on(
+      Announce,
+      createAnnounceListener({
+        isReadOnly,
+        onUserAnnounce: (ctx, announce) =>
+          handleInboundAnnounce(ctx, announce, origin, onNewTimelineEntry, enrich),
+        publicTagPosts: instance?.publicTagPosts,
+      }),
+    )
     .on(Delete, async (ctx, del) => {
+      if (instance?.publicTagPosts != null && isInstanceDelivery(ctx)) {
+        return await handleInstanceActorDelete(ctx, del, instance.publicTagPosts)
+      }
       // Delete of a post we received → drop it from the timeline. `del.objectId`
       // is the removed object's id (a Tombstone or bare id); we key on it, but
       // scope the delete to the sender (`del.actorId`) so a signed `Delete` from
@@ -1079,6 +1181,24 @@ export const createFeedFederation = (
     },
   )
 
+  // A stamp resolves only while its post is public/unlisted, so unsharing or deleting
+  // the post revokes every stamp on it.
+  federation.setObjectDispatcher(
+    QuoteAuthorization,
+    '/users/{identifier}/stamps/{stampId}',
+    async (ctx, { identifier, stampId }) => {
+      if (!isValidUsername(identifier) || !UUID_RE.test(stampId)) return null
+      const row = await loadValidStamp(identifier, stampId)
+      if (row == null) return null
+      return new QuoteAuthorization({
+        attribution: ctx.getActorUri(identifier),
+        id: ctx.getObjectUri(QuoteAuthorization, { identifier, stampId }),
+        interactingObject: new URL(row.quote_uri),
+        interactionTarget: ctx.getObjectUri(Note, { identifier, postId: row.post_id }),
+      })
+    },
+  )
+
   // Outbox: the user's public + unlisted posts as `Create` activities, so a
   // Mastodon profile shows them. Cursor-paginated (`OUTBOX_PAGE_SIZE` per page)
   // so an unauthenticated fetch never resolves every post's scalars at once; the
@@ -1088,6 +1208,7 @@ export const createFeedFederation = (
   // the divergence self-heals when the stale post is removed.
   federation
     .setOutboxDispatcher('/users/{identifier}/outbox', async (ctx, identifier, cursor) => {
+      if (isInstanceActor(identifier)) return instance == null ? null : { items: [] }
       if (!isValidUsername(identifier)) return null
       const offset = cursor == null ? 0 : Number.parseInt(cursor, 10)
       // `isSafeInteger` also rejects absurd offsets (e.g. a crafted `1e20`) that

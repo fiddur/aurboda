@@ -25,6 +25,7 @@ import { httpError } from '../http-error.ts'
 import { readBillingSettings, recordNewAccount } from '../services/account-plan.ts'
 import { pruneAuditLog } from '../services/audit-log.ts'
 import { readOfficialFeedSetting } from '../services/official-feed.ts'
+import { readPublicTagPages } from '../services/public-tags.ts'
 import { defaultSignupProfileDeps, saveSignupProfile } from '../services/signup-profile.ts'
 import { validateBody } from '../validation.ts'
 
@@ -50,6 +51,7 @@ export const RESERVED_USERNAMES = [
   'guest',
   'test',
   'aurboda',
+  'tags',
 ]
 
 /**
@@ -82,10 +84,11 @@ export const registerAuthRoutes = ({
   })
 
   httpd.get<Record<string, never>, ServerStatusResponse>('/status', async (_req, res) => {
-    const [signupMode, officialFeed, billing] = await Promise.all([
+    const [signupMode, officialFeed, billing, publicTagPages] = await Promise.all([
       centralDb.getSignupMode(),
       readOfficialFeedSetting(centralDb),
       readBillingSettings(centralDb),
+      readPublicTagPages(centralDb),
     ])
     const officialFeedLive = (await Promise.all(officialFeed.users.map(userExists))).some(Boolean)
     res.json({
@@ -93,6 +96,7 @@ export const registerAuthRoutes = ({
       federation: true,
       official_feed: officialFeedLive,
       product: 'aurboda',
+      public_tag_pages: publicTagPages,
       signup_allowed: signupMode === 'open',
       signup_mode: signupMode,
       success: true,

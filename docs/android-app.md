@@ -21,7 +21,7 @@ A bottom navigation bar (`ui/screens/MainScreen.kt`, tabs in `AppState.kt`'s
 There are far more web pages than fit on a bottom bar, so the **More** tab is a
 hub (`MoreScreen.kt`, `moreGroups`): a grouped list where each entry opens the
 corresponding web page in an embedded WebView (Timeline, Data, Chart, Meals,
-Reports, Settings, Data sources, …). The two native-only screens — **Live**
+Reports, Settings, Data sources, Help & support, …). The two native-only screens — **Live**
 sensors (BLE) and **Account** (server URL, logout) — also live in the hub.
 Selecting an entry pushes it in place; the system back gesture returns to the
 hub (after any embedded page has exhausted its own WebView history), and so does

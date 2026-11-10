@@ -7,7 +7,14 @@ import { createDocument } from 'zod-openapi'
 
 import { isAllowedWhenReadOnly } from './read-only.ts'
 import { activitiesResponseSchema } from './schemas/activities.ts'
-import { deleteAccountBodySchema, loginBodySchema, loginResponseSchema } from './schemas/admin.ts'
+import {
+  addRelayBodySchema,
+  deleteAccountBodySchema,
+  loginBodySchema,
+  loginResponseSchema,
+  relayResponseSchema,
+  relaysResponseSchema,
+} from './schemas/admin.ts'
 import {
   challengeParticipationsResponseSchema,
   challengesResponseSchema,
@@ -19,6 +26,7 @@ import {
 import { iso8601DateTimeSchema, metricTypeSchema } from './schemas/common.ts'
 import { dailySummaryQuerySchema, dailySummaryResponseSchema } from './schemas/daily-summary.ts'
 import { exportDumpLinkResponseSchema, exportDumpQuerySchema } from './schemas/export.ts'
+import { publicTagPostsQuerySchema, publicTagPostsResponseSchema } from './schemas/feed.ts'
 import {
   goalHistoryQuerySchema,
   goalHistoryResponseSchema,
@@ -198,6 +206,46 @@ const openApiDocument = createDocument({
         security: [{ bearerAuth: [] }],
         summary: 'List my challenge participations',
         tags: ['Challenges'],
+      },
+    },
+    '/public/tags/{tag}/posts': {
+      get: {
+        description:
+          "A public tag page: public posts carrying `#{tag}`, from this server and others, newest first. Fed by the instance actor following the tag's actor on the tag actor host, plus this server's own public posts with the tag; posts older than the retention are dropped. Only tags the admin configured have a page. No authentication.",
+        requestParams: {
+          path: z.object({ tag: z.string().meta({ description: 'The hashtag, without `#`' }) }),
+          query: publicTagPostsQuerySchema,
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: publicTagPostsResponseSchema } },
+            description: 'Successful response',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The tag has no public page',
+          },
+        },
+        summary: 'List a public tag page',
+        tags: ['Feed'],
+      },
+    },
+    '/public/tags/{tag}.atom': {
+      get: {
+        description:
+          'The Atom feed of a public tag page: its newest posts, each linking to the original. No authentication.',
+        requestParams: {
+          path: z.object({ tag: z.string().meta({ description: 'The hashtag, without `#`' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/atom+xml': { schema: z.string() } },
+            description: 'Atom feed',
+          },
+          404: { description: 'The tag has no public page' },
+        },
+        summary: 'Atom feed of a public tag page',
+        tags: ['Feed'],
       },
     },
     '/public/{username}/{slug}/standings': {
@@ -1476,6 +1524,69 @@ const openApiDocument = createDocument({
         tags: ['Settings'],
       },
     },
+    '/admin/relays': {
+      get: {
+        description:
+          'The fediverse relays this server subscribes to, with their state. Accepted relays receive the public posts of every user on this server. Admin-only.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: relaysResponseSchema } },
+            description: 'Every relay, oldest first',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List relays',
+        tags: ['Auth'],
+      },
+      post: {
+        description:
+          'Subscribe to a relay: the instance actor sends it a Follow and the relay stays pending until it answers. Style mastodon takes the relay inbox URL, litepub the relay actor URL. Admin-only.',
+        requestBody: { content: { 'application/json': { schema: addRelayBodySchema } } },
+        responses: {
+          201: {
+            content: { 'application/json': { schema: relayResponseSchema } },
+            description: 'The added relay',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Not an https URL, or one that resolves to a private address',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The relay is already added',
+          },
+          422: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'No relay actor could be resolved at the litepub URL',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Add a relay',
+        tags: ['Auth'],
+      },
+    },
+    '/admin/relays/{id}': {
+      delete: {
+        description:
+          'Unsubscribe from a relay: sends it an Undo of the Follow and stops pushing posts to it. Admin-only.',
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Relay id' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: deleteResponseSchema } },
+            description: 'Relay removed',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Relay not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Remove a relay',
+        tags: ['Auth'],
+      },
+    },
     '/admin/users/{username}/plan': {
       patch: {
         description:
@@ -1589,6 +1700,7 @@ const openApiDocument = createDocument({
     { description: 'Sleep, exercise, meditation sessions', name: 'Activities' },
     { description: 'Media plays (videos, music, podcasts)', name: 'Media' },
     { description: 'Federated challenges: hosted, joined, and public standings', name: 'Challenges' },
+    { description: 'Social feed: posts, timeline and public tag pages', name: 'Feed' },
     { description: 'Named and detected locations', name: 'Locations' },
     { description: 'RescueTime productivity data', name: 'Productivity' },
     { description: 'User settings and preferences', name: 'Settings' },

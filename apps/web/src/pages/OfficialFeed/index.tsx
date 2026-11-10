@@ -4,6 +4,7 @@ import type { InfiniteData } from '@tanstack/react-query'
 import { useInfiniteQuery } from '@tanstack/react-query'
 
 import { officialFeedSummary } from '../../components/official-feed'
+import { PublicTagLinks } from '../../components/PublicTagLinks'
 import { fetchOfficialFeed, officialFeedAtomUrl } from '../../state/api'
 import { FeedPostCard } from '../Feed/FeedPostCard'
 import { publicAuthor } from '../PublicProfile/public-author'
@@ -65,6 +66,7 @@ export function OfficialFeed() {
             Atom feed
           </a>
         </p>
+        <PublicTagLinks class="official-feed-links" />
       </div>
 
       <section class="public-section">

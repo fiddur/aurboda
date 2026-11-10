@@ -60,6 +60,23 @@ the delivery slice). Only the metrics a user explicitly shared are ever emitted;
 high-resolution series are referenced as links to the public, data-scoped
 `/series` endpoint rather than inlined.
 
+## Quote posts (FEP-044f)
+
+Mastodon (4.4+) only offers "Quote" on a remote post that declares a quote
+policy, and treats a missing one as "nobody may quote". Every Note Aurboda
+delivers or serves therefore carries `interactionPolicy.canQuote`, and quote
+requests are answered per [FEP-044f](https://w3id.org/fep/044f):
+
+- `public`/`unlisted` posts declare `canQuote.automaticApproval: Public`;
+  `followers`-only posts allow only the author.
+- An inbound `QuoteRequest` for a public/unlisted post is answered with an
+  `Accept` whose `result` is a `QuoteAuthorization` stamp served at
+  `https://<host>/users/<username>/stamps/<id>`; anything else gets a `Reject`.
+- A stamp stops resolving (404) once its post is unshared or deleted.
+
+Posts federated before quote policies were added keep Mastodon's cached "nobody"
+policy until an `Update` of them reaches it; editing the post sends one.
+
 ## Challenges (HTTP, outside ActivityPub)
 
 Federated challenges use the HTTP half of the

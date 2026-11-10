@@ -1,4 +1,5 @@
 import type {
+  AddRelayBody,
   AdminSettingsResponse,
   AdminUserOverview,
   AdminUserPlan,
@@ -8,6 +9,9 @@ import type {
   AdminUsersResponse,
   BaseResponse,
   DeleteAccountBody,
+  Relay,
+  RelayResponse,
+  RelaysResponse,
   UpdateAdminSettingsBody,
   UpdateUserPlanBody,
 } from '@aurboda/api-spec'
@@ -105,4 +109,28 @@ export const updateAdminUserPlan = async (
   )
   if (!response.data.status) throw new Error(response.data.error ?? 'User not found')
   return response.data.status
+}
+
+export const fetchRelays = async (): Promise<Relay[]> => {
+  const { token } = auth.value
+  const response = await axios.get<RelaysResponse>(`${API_URL}/admin/relays`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return response.data.relays ?? []
+}
+
+export const addRelay = async (body: AddRelayBody): Promise<Relay> => {
+  const { token } = auth.value
+  const response = await axios.post<RelayResponse>(`${API_URL}/admin/relays`, body, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!response.data.relay) throw new Error(response.data.error ?? 'Could not add the relay')
+  return response.data.relay
+}
+
+export const removeRelay = async (id: string): Promise<void> => {
+  const { token } = auth.value
+  await axios.delete<BaseResponse>(`${API_URL}/admin/relays/${encodeURIComponent(id)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
 }
