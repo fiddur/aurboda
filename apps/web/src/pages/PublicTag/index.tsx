@@ -1,4 +1,4 @@
-import type { PublicTagPostsResponse, TimelineEntry } from '@aurboda/api-spec'
+import type { PublicTagPost as PublicTagPostData, PublicTagPostsResponse } from '@aurboda/api-spec'
 import type { InfiniteData } from '@tanstack/react-query'
 
 import { useInfiniteQuery } from '@tanstack/react-query'
@@ -13,7 +13,7 @@ import { TimelineEntryHead } from '../Feed/TimelineEntryHead'
 import '../OfficialFeed/style.css'
 import '../PublicProfile/style.css'
 
-function PublicTagPost({ entry, pages }: { entry: TimelineEntry; pages: readonly string[] }) {
+function PublicTagPost({ entry, pages }: { entry: PublicTagPostData; pages: readonly string[] }) {
   return (
     <article class="feed-post">
       <TimelineEntryHead entry={entry} />

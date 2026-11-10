@@ -13,7 +13,7 @@ import {
   normalizeTag,
   publicTagPagesMax,
   type PublicTagPostsResponse,
-  type TimelineEntry,
+  type PublicTagPost,
 } from '@aurboda/api-spec'
 import { type Actor, Follow, isActor, Undo } from '@fedify/fedify/vocab'
 
@@ -69,7 +69,7 @@ export const readPublicTagPages = async (centralDb: SettingsStore): Promise<stri
 export const readPublicTagRetentionDays = async (centralDb: SettingsStore): Promise<number> =>
   (await centralDb.getServerSetting('public_tag_retention_days')) ?? defaultPublicTagRetentionDays
 
-export const serializePublicTagPost = (record: PublicTagPostRecord): TimelineEntry => ({
+export const serializePublicTagPost = (record: PublicTagPostRecord): PublicTagPost => ({
   actor_uri: record.actor_uri,
   avatar_url: record.avatar_url,
   content: record.content,

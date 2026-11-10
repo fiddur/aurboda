@@ -1251,13 +1251,35 @@ export const publicTagPostsQuerySchema = z
 
 export type PublicTagPostsQuery = z.infer<typeof publicTagPostsQuerySchema>
 
+export const publicTagPostSchema = timelineEntrySchema
+  .pick({
+    actor_uri: true,
+    avatar_url: true,
+    content: true,
+    display_name: true,
+    handle: true,
+    id: true,
+    images: true,
+    object_uri: true,
+    published_at: true,
+    received_at: true,
+    tags: true,
+    url: true,
+  })
+  .meta({
+    description: 'A post on a public tag page, shown as the home timeline shows a remote post',
+    id: 'PublicTagPost',
+  })
+
+export type PublicTagPost = z.infer<typeof publicTagPostSchema>
+
 export const publicTagPostsResponseSchema = baseResponseSchema
   .extend({
     next_cursor: z
       .string()
       .nullable()
       .meta({ description: 'Cursor for the next page; null on the last page' }),
-    posts: z.array(timelineEntrySchema).meta({
+    posts: z.array(publicTagPostSchema).meta({
       description:
         'Public posts carrying the tag, from this server and others, newest first (content sanitised server-side)',
     }),
