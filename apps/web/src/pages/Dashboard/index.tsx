@@ -10,6 +10,7 @@ import { PeriodDashboardBar } from '../../components/PeriodSwitcher'
 import { ShareDashboardPeriodDialog } from '../../components/ShareDashboardPeriodDialog'
 import { useDashboardDraft } from '../../components/useDashboardDraft'
 import { usePeriodDashboard } from '../../components/usePeriodDashboard'
+import { useScrollRestore } from '../../components/useScrollRestore'
 import { fetchDashboard, fetchDashboardData, resetDashboard, saveDashboard } from '../../state/api'
 import { auth } from '../../state/auth'
 import { readCachedDashboard, writeCachedDashboard } from '../../state/dashboardCache'
@@ -61,6 +62,7 @@ export function Dashboard() {
   const dashboard: DashboardConfig = draft.config ?? dashboardQuery.data ?? defaultDashboardConfig
   const isLoading = dashboardQuery.isLoading
   const period = usePeriodDashboard('home', dashboard, fetchDashboardData)
+  useScrollRestore('home', period?.period)
 
   const handleReset = () => {
     if (confirm('Reset dashboard to default configuration? Your customizations will be lost.')) {

@@ -260,6 +260,12 @@ widget renders against that one window, ignoring the lookbacks in its configurat
   `previous_sleep_avg_minutes`; a top list carries `previous_total`; a places card carries
   `previous_nights_away`, `previous_distinct_places` and `previous_visits`; HR zones carry
   `previous_avg_seconds`.
+- **Loaded once.** A finished period's figures only change when the dashboard's config does (saving
+  it reloads them), so the web app does not refetch a period dashboard when its tab regains focus
+  or the network comes back. The last few answers are kept in the tab's `sessionStorage`, so a tab
+  the browser discarded in the background reopens without waiting for the server — an answer for
+  "the latest period" only on the day it was fetched — and the scroll position per dashboard and
+  period is restored with it. Logging out clears them.
 - **Baselines.** The 7- and 30-day HRV and resting HR baseline cards become the period average of
   `hrv_rmssd` and `resting_heart_rate`.
 - **Widgets that do not apply.** **Last night** and **Goal progress** have no meaning for a past
