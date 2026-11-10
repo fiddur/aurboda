@@ -91,6 +91,8 @@ import {
   buildFeedNote,
   buildReplyNote,
   buildReplyNoteCreate,
+  deliverToRelays,
+  type FeedDeliveryDeps,
   toDeliverableArticle,
   toDeliverableChallenge,
   toDeliverableDashboard,
@@ -987,7 +989,7 @@ export const deliverActorUpdate = async (
  * (no message queue), so nothing reads that database after this resolves.
  */
 export const deliverActorDelete = async (
-  deps: { federation: Federation<void>; origin: string },
+  deps: Pick<FeedDeliveryDeps, 'federation' | 'listRelayRecipients' | 'origin'>,
   user: string,
 ): Promise<void> => {
   const ctx = await deps.federation.createContext(new URL(deps.origin))
@@ -999,7 +1001,12 @@ export const deliverActorDelete = async (
     object: new Tombstone({ id: actorId }),
     to: new URL(AS_PUBLIC),
   })
-  await ctx.sendActivity({ identifier: user }, 'followers', del)
+  // Relays received the user's public posts, so they hear of the account's end too.
+  const [followers] = await Promise.allSettled([
+    ctx.sendActivity({ identifier: user }, 'followers', del),
+    deliverToRelays(deps, ctx, user, del),
+  ])
+  if (followers.status === 'rejected') throw followers.reason
 }
 
 export const createFeedFederation = (
@@ -1059,6 +1066,19 @@ export const createFeedFederation = (
   }))
 
   const instanceUsername = instanceActorUsername(origin)
+  // The stored pair never changes, so it is read and imported once; a failure is retried next time.
+  let instanceKeyPairPromise: Promise<CryptoKeyPair> | null = null
+  const instanceKeyPair = (): Promise<CryptoKeyPair> => {
+    if (instance == null) throw new Error('No instance actor')
+    instanceKeyPairPromise ??= instance
+      .instanceKeys()
+      .then((kp) => toCryptoKeyPair(kp.private_key_pem, kp.public_key_pem))
+      .catch((error: unknown) => {
+        instanceKeyPairPromise = null
+        throw error
+      })
+    return instanceKeyPairPromise
+  }
   federation
     .setActorDispatcher('/users/{identifier}', async (ctx, identifier) => {
       if (isInstanceActor(identifier)) {
@@ -1074,8 +1094,7 @@ export const createFeedFederation = (
     .setKeyPairsDispatcher(async (_ctx, identifier) => {
       if (isInstanceActor(identifier)) {
         if (instance == null) return []
-        const kp = await instance.instanceKeys()
-        return [await toCryptoKeyPair(kp.private_key_pem, kp.public_key_pem)]
+        return [await instanceKeyPair()]
       }
       if (!isValidUsername(identifier) || isDeletedUser(identifier)) return []
       try {

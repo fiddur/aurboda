@@ -69,13 +69,14 @@ export interface RelaysApi {
   getRelayByUrl: (url: string) => Promise<RelayRecord | null>
   getRelayByFollowActivityId: (followActivityId: string) => Promise<RelayRecord | null>
   getRelayByActorUri: (actorUri: string) => Promise<RelayRecord | null>
-  /** Inserts a pending relay. */
   insertRelay: (input: RelayInput) => Promise<RelayRecord>
   setRelayState: (
     id: string,
     state: RelayState,
     fields?: { actor_uri?: string | null; last_error?: string | null },
   ) => Promise<RelayRecord | null>
+  /** Records a delivery error without touching the state, which an Accept may have moved meanwhile. */
+  setRelayError: (id: string, lastError: string) => Promise<RelayRecord | null>
   deleteRelay: (id: string) => Promise<boolean>
 }
 
@@ -155,6 +156,15 @@ export const createRelaysApi = (getClient: () => Promise<Queryable>): RelaysApi 
     const client = await getClient()
     const result = await client.query<RelayRecord>(`SELECT ${RELAY_COLUMNS} FROM relays ORDER BY created_at`)
     return result.rows
+  },
+
+  setRelayError: async (id, lastError) => {
+    const client = await getClient()
+    const result = await client.query<RelayRecord>(
+      `UPDATE relays SET last_error = $2, updated_at = NOW() WHERE id = $1 RETURNING ${RELAY_COLUMNS}`,
+      [id, lastError],
+    )
+    return result.rows[0] ?? null
   },
 
   setRelayState: async (id, state, fields = {}) => {

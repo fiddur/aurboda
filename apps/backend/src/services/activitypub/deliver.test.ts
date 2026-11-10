@@ -35,6 +35,7 @@ import {
   type DeliverablePost,
   type DeliverableReply,
   deliverFeedArticlePost,
+  deliverFeedArticleUpdate,
   deliverFeedChallengePost,
   deliverFeedChallengeUpdate,
   deliverFeedDashboardPost,
@@ -1385,7 +1386,7 @@ describe('relay push of public posts (#1541)', () => {
 
   const plainPost = (
     visibility: DeliverablePost['visibility'],
-    extra: { in_reply_to_actor_uri?: string } = {},
+    extra: { in_reply_to_actor_uri?: string; kind?: 'activity' | 'reply' } = {},
   ): Parameters<typeof deliverFeedDelete>[2] => ({
     created_at: new Date(),
     id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
@@ -1422,9 +1423,128 @@ describe('relay push of public posts (#1541)', () => {
     const listRelayRecipients = vi.fn(async () => [RELAY])
     const { deps, sendActivity } = await fakeDeps({ listRelayRecipients })
     await deliverFeedArticlePost(deps, 'fiddur', article(visibility))
-    await deliverFeedDelete(deps, 'fiddur', plainPost(visibility))
-    expect(sentTo(sendActivity)).toEqual(['followers', 'followers'])
+    expect(sentTo(sendActivity)).toEqual(['followers'])
     expect(listRelayRecipients).not.toHaveBeenCalled()
+  })
+
+  test.each(['unlisted', 'followers'] as const)(
+    'the Delete of a %s post still reaches the relays (it may have been public once)',
+    async (visibility) => {
+      const { deps, sendActivity } = await fakeDeps()
+      await deliverFeedDelete(deps, 'fiddur', plainPost(visibility, { kind: 'activity' }))
+      expect(sentTo(sendActivity).sort()).toEqual(
+        ['followers', RELAY.inboxId.href, OTHER_RELAY.inboxId.href].sort(),
+      )
+      for (const [, , activity] of sendActivity.mock.calls) expect(activity).toBeInstanceOf(Delete)
+    },
+  )
+
+  const relayCalls = (sendActivity: ReturnType<typeof vi.fn>) =>
+    sendActivity.mock.calls.filter(([, recipient]) => recipient === RELAY)
+
+  const expectRelayRetraction = async (sendActivity: ReturnType<typeof vi.fn>, postId: string) => {
+    const followersActivity = sendActivity.mock.calls.find(([, recipient]) => recipient === 'followers')?.[2]
+    expect(followersActivity).toBeInstanceOf(Update)
+    const [[, , relayActivity]] = relayCalls(sendActivity)
+    expect(relayActivity).toBeInstanceOf(Delete)
+    const del = relayActivity as Delete
+    expect(del.objectId?.href).toBe(`${ORIGIN}/users/fiddur/feed/${postId}`)
+    expect(del.toIds.map((u) => u.href)).toEqual([PUBLIC])
+  }
+
+  const narrowedEdits: [
+    string,
+    (deps: FeedDeliveryDeps, visibility: 'public' | 'unlisted' | 'followers') => Promise<string>,
+  ][] = [
+    [
+      'article',
+      async (deps, visibility) => {
+        await deliverFeedArticleUpdate(deps, 'fiddur', article(visibility))
+        return article(visibility).id
+      },
+    ],
+    [
+      'challenge',
+      async (deps, visibility) => {
+        const post: DeliverableChallenge = {
+          challenge: { name: 'August 10k', url: `${ORIGIN}/u/fiddur/august-10k` },
+          created_at: new Date('2026-08-01T00:00:00Z'),
+          id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+          image_token: 'tok',
+          include_chart: false,
+          message: null,
+          updated_at: new Date('2026-08-02T00:00:00Z'),
+          visibility,
+        }
+        await deliverFeedChallengeUpdate(deps, 'fiddur', post, async () => false)
+        return post.id
+      },
+    ],
+    [
+      'exercise',
+      async (deps, visibility) => {
+        const post: DeliverableExercise = {
+          created_at: new Date('2026-11-01T00:00:00Z'),
+          exercise: {
+            activity_type: 'strength_training',
+            field: 'sets.exercise',
+            include_records: true,
+            include_sessions: false,
+            name: 'Bench Press',
+            value: 'Bench Press',
+          },
+          id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+          image_token: 'tok',
+          include_chart: false,
+          message: null,
+          updated_at: new Date('2026-11-02T00:00:00Z'),
+          visibility,
+        }
+        await deliverFeedExerciseUpdate(deps, 'fiddur', post, {
+          content: async () => '<p>Bench</p>',
+          hasTrend: async () => false,
+        })
+        return post.id
+      },
+    ],
+    [
+      'dashboard',
+      async (deps, visibility) => {
+        const post: DeliverableDashboard = {
+          created_at: new Date('2026-11-01T00:00:00Z'),
+          dashboard: {
+            config: { period: { granularity: 'month' }, sections: [], version: 1 },
+            include_link: false,
+            name: 'Month in data',
+            period: '2026-10',
+          },
+          id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+          message: null,
+          updated_at: new Date('2026-11-02T00:00:00Z'),
+          visibility,
+        }
+        await deliverFeedDashboardUpdate(deps, 'fiddur', post, async () => '<p>Month</p>')
+        return post.id
+      },
+    ],
+  ]
+
+  test.each(narrowedEdits)(
+    'an edit narrowing a %s post retracts it from relays with a public Delete',
+    async (_kind, edit) => {
+      for (const visibility of ['unlisted', 'followers'] as const) {
+        const { deps, sendActivity } = await fakeDeps()
+        const postId = await edit(deps, visibility)
+        await expectRelayRetraction(sendActivity, postId)
+      }
+    },
+  )
+
+  test.each(narrowedEdits)('an edit of a public %s post sends relays the Update', async (_kind, edit) => {
+    const { deps, sendActivity } = await fakeDeps()
+    await edit(deps, 'public')
+    const [[, , relayActivity]] = relayCalls(sendActivity)
+    expect(relayActivity).toBeInstanceOf(Update)
   })
 
   test('a reply and its Delete are not pushed to relays', async () => {
@@ -1445,7 +1565,11 @@ describe('relay push of public posts (#1541)', () => {
       },
       { inbox_uri: `${target}/inbox`, shared_inbox_uri: null },
     )
-    await deliverFeedDelete(deps, 'fiddur', plainPost('public', { in_reply_to_actor_uri: target }))
+    await deliverFeedDelete(
+      deps,
+      'fiddur',
+      plainPost('public', { in_reply_to_actor_uri: target, kind: 'reply' }),
+    )
     expect(sentTo(sendActivity).filter((to) => to?.startsWith('https://relay.example'))).toEqual([])
     expect(sentTo(sendActivity).filter((to) => to?.startsWith('https://tags.example'))).toEqual([])
   })

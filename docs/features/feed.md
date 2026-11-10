@@ -339,7 +339,11 @@ exists to subscribe to [relays](../admin.md#federation), which admins add in Adm
 a relay accepts, every `public` post's `Create`, `Update` and `Delete` is delivered to the relay's
 inbox too, signed by the author, as a separate best-effort leg of the fan-out (a dead relay never
 fails the followers delivery). Unlisted and followers-only posts, replies, likes, boosts and
-`Update{Person}` are not pushed. The instance actor answers only `Accept`/`Reject` of its own relay
+`Update{Person}` are not pushed. Relays get a `Delete` whenever a post stops being public (an edit
+to unlisted or followers-only sends them a `Delete` instead of the `Update`) and whenever a
+non-reply post is deleted, whatever its visibility; a post made public by an edit reaches them
+only as an `Update`, which a relay may ignore. Deleting an account sends the actor `Delete` to the
+relays too. The instance actor answers only `Accept`/`Reject` of its own relay
 follows and a LitePub relay's follow-back; everything else delivered to it, including whatever a
 relay forwards, is dropped.
 

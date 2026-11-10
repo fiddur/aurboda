@@ -119,7 +119,6 @@ export const fetchRelays = async (): Promise<Relay[]> => {
   return response.data.relays ?? []
 }
 
-/** Subscribes the server to a relay; it starts pending until the relay accepts. Admin-only. */
 export const addRelay = async (body: AddRelayBody): Promise<Relay> => {
   const { token } = auth.value
   const response = await axios.post<RelayResponse>(`${API_URL}/admin/relays`, body, {

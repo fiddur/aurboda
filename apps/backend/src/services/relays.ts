@@ -1,3 +1,4 @@
+import type { Relay, RelayStyle } from '@aurboda/api-spec'
 /**
  * Relay subscriptions: the instance actor follows a fediverse relay, and once the
  * relay accepts, every local user's public posts are also delivered to it (see
@@ -9,7 +10,6 @@
  */
 import type { Federation } from '@fedify/fedify'
 
-import type { Relay, RelayStyle } from '@aurboda/api-spec'
 import { Follow, isActor, Undo } from '@fedify/fedify/vocab'
 import { randomUUID } from 'node:crypto'
 
@@ -36,21 +36,19 @@ export type RelayStore = Pick<
   | 'insertRelay'
   | 'listAcceptedRelays'
   | 'listRelays'
+  | 'setRelayError'
   | 'setRelayState'
 >
 
 export interface RelayDeps {
   federation: Federation<void>
-  /** Canonical web origin, e.g. `https://aurboda.net`. */
   origin: string
   store: RelayStore
-  /** SSRF guard on the entered URL; `assertPublicUrl` in production. */
   assertPublic?: (url: string) => Promise<void>
 }
 
 export type AddRelayResult = { ok: true; record: RelayRecord } | { ok: false; status: number; error: string }
 
-/** The admin surface, injected into the REST router and MCP tools. */
 export interface RelayActions {
   list: () => Promise<Relay[]>
   add: (input: { url: string; style: RelayStyle }) => Promise<AddRelayResult>
@@ -85,8 +83,9 @@ export const parseRelayUrl = (raw: string): { ok: true; url: string } | { ok: fa
     return { error: 'Not a valid URL.', ok: false }
   }
   if (url.protocol !== 'https:') return { error: 'A relay URL must be https.', ok: false }
-  if (url.username !== '' || url.password !== '')
-    {return { error: 'A relay URL must not carry credentials.', ok: false }}
+  if (url.username !== '' || url.password !== '') {
+    return { error: 'A relay URL must not carry credentials.', ok: false }
+  }
   url.hash = ''
   return { ok: true, url: url.href }
 }
@@ -122,7 +121,6 @@ export const relayRecipient = (relay: Pick<RelayRecord, 'actor_uri' | 'inbox_uri
   inboxId: new URL(relay.inbox_uri),
 })
 
-/** The accepted relays, as delivery recipients for public posts. */
 export const relayRecipients = async (
   store: Pick<RelayStore, 'listAcceptedRelays'>,
 ): Promise<RelayRecipient[]> => (await store.listAcceptedRelays()).map(relayRecipient)
@@ -153,9 +151,7 @@ const sendFollow = async (deps: RelayDeps, record: RelayRecord): Promise<RelayRe
     return record
   } catch (error) {
     console.error(`⚠️ Relay Follow delivery failed → ${record.inbox_uri}:`, error)
-    return (
-      (await deps.store.setRelayState(record.id, record.state, { last_error: errorMessage(error) })) ?? record
-    )
+    return (await deps.store.setRelayError(record.id, errorMessage(error))) ?? record
   }
 }
 
@@ -184,6 +180,16 @@ export const addRelay = async (
     const resolved = await resolveLitepubRelay(deps, url)
     if (resolved == null) {
       return { error: `Could not resolve a relay actor at ${url}.`, ok: false, status: 422 }
+    }
+    const inbox = parseRelayUrl(resolved.inbox_uri)
+    const inboxPublic =
+      inbox.ok &&
+      (await (deps.assertPublic ?? assertPublicUrl)(inbox.url).then(
+        () => true,
+        () => false,
+      ))
+    if (!inbox.ok || !inboxPublic) {
+      return { error: "The relay actor's inbox is not a public https URL.", ok: false, status: 422 }
     }
     if (resolved.actor_uri !== url && (await deps.store.getRelayByActorUri(resolved.actor_uri)) != null) {
       return { error: 'That relay is already added.', ok: false, status: 409 }
@@ -224,6 +230,7 @@ export const removeRelay = async (deps: RelayDeps, id: string): Promise<boolean>
  * Whether `actorUri` may answer for `relay`: its stored actor once known, else
  * (a mastodon relay before its first Accept) any actor on the inbox's host.
  * Without this, anyone who learned a Follow id could flip a relay's state.
+ * Before the first Accept any actor on the inbox host passes: the issue's accepted trade-off.
  */
 export const isRelaySender = (
   relay: Pick<RelayRecord, 'actor_uri' | 'inbox_uri'>,
@@ -251,7 +258,10 @@ export const createRelayInboxHooks = (store: RelayStore): RelayInboxHooks => {
     return true
   }
   return {
-    isRelayActor: async (actorUri) => (await store.getRelayByActorUri(actorUri)) != null,
+    isRelayActor: async (actorUri) => {
+      const relay = await store.getRelayByActorUri(actorUri)
+      return relay != null && relay.state !== 'rejected'
+    },
     onAccept: (followActivityId, actorUri) => answer(followActivityId, actorUri, true),
     onReject: (followActivityId, actorUri) => answer(followActivityId, actorUri, false),
   }

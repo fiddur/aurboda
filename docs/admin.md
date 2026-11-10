@@ -238,3 +238,7 @@ sends back (LitePub relays forward other servers' posts as `Announce`s) is dropp
 anyone's timeline through a relay. The tags.pub relay is
 `https://tags.pub/user/_____relay_____/inbox` (Mastodon style); it is one-way, taking posts and
 sending none, and lets [hashtag](features/feed.md#hashtags) followers anywhere see posts from here.
+When a post stops being public, or is deleted, the relays get a `Delete` of it; deleting an
+account sends its actor `Delete` to the relays as well as to its followers. A one-way relay like
+tags.pub is cheap; a full (two-way) relay forwards its whole firehose to `/inbox`, where each
+activity is signature-verified and dropped.

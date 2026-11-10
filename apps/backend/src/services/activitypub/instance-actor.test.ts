@@ -83,6 +83,29 @@ describe('instance actor document', () => {
     expect(jrd.links.find((l) => l.rel === 'self')?.href).toBe(`${ORIGIN}/actor`)
   })
 
+  test('reads the stored key pair once, and again after a failed read', async () => {
+    const instanceKeys = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('db down'))
+      .mockResolvedValue({ private_key_pem: privateKey, public_key_pem: publicKey })
+    const federation = createFeedFederation(
+      ORIGIN,
+      `${ORIGIN}/api`,
+      undefined,
+      undefined,
+      'dev',
+      undefined,
+      undefined,
+      undefined,
+      { instanceKeys, relays: hooks() },
+    )
+    const ctx = federation.createContext(new URL(ORIGIN))
+    expect(await ctx.getActorKeyPairs(INSTANCE_ACTOR_ID).catch(() => [])).toEqual([])
+    expect(await ctx.getActorKeyPairs(INSTANCE_ACTOR_ID)).toHaveLength(1)
+    expect(await ctx.getActorKeyPairs(INSTANCE_ACTOR_ID)).toHaveLength(1)
+    expect(instanceKeys).toHaveBeenCalledTimes(2)
+  })
+
   test('does not exist without the instance dependencies', async () => {
     const res = await fetchActor(createFeedFederation(ORIGIN, `${ORIGIN}/api`))
     expect(res.status).toBe(404)

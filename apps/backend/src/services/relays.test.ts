@@ -47,6 +47,13 @@ const memoryStore = (): RelayStore & { rows: Map<string, RelayRecord> } => {
     listAcceptedRelays: async () => [...rows.values()].filter((r) => r.state === 'accepted'),
     listRelays: async () => [...rows.values()],
     rows,
+    setRelayError: async (id, lastError) => {
+      const row = rows.get(id)
+      if (row == null) return null
+      const next = { ...row, last_error: lastError }
+      rows.set(id, next)
+      return next
+    },
     setRelayState: async (id, state, fields = {}) => {
       const row = rows.get(id)
       if (row == null) return null
@@ -206,12 +213,45 @@ describe('addRelay', () => {
     expect(await addRelay(deps, { style: 'mastodon', url: TAGS_RELAY })).toMatchObject({ status: 409 })
   })
 
-  test('a failed Follow delivery keeps the relay pending with the error', async () => {
+  test('a failed Follow delivery records the error without rewriting the state', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
-    const { deps } = fakeDeps({ sendActivity: vi.fn().mockRejectedValue(new Error('connection refused')) })
+    const { deps, store } = fakeDeps({
+      sendActivity: vi.fn().mockRejectedValue(new Error('connection refused')),
+    })
+    const setRelayState = vi.spyOn(store, 'setRelayState')
     const result = await addRelay(deps, { style: 'mastodon', url: TAGS_RELAY })
     expect(result).toMatchObject({ ok: true, record: { last_error: 'connection refused', state: 'pending' } })
+    expect(setRelayState).not.toHaveBeenCalled()
     error.mockRestore()
+  })
+
+  test.each(['http://127.0.0.1/inbox', 'https://user:pw@lite.example/inbox'])(
+    'a litepub actor whose inbox is %s is a 422 and stores nothing',
+    async (inbox) => {
+      const { deps, store } = fakeDeps({
+        lookupObject: vi
+          .fn()
+          .mockResolvedValue(new Application({ id: new URL(LITE_ACTOR), inbox: new URL(inbox) })),
+      })
+      expect(await addRelay(deps, { style: 'litepub', url: LITE_ACTOR })).toEqual({
+        error: "The relay actor's inbox is not a public https URL.",
+        ok: false,
+        status: 422,
+      })
+      expect(store.rows.size).toBe(0)
+    },
+  )
+
+  test('a litepub actor whose https inbox resolves privately is a 422', async () => {
+    const { deps, store } = fakeDeps()
+    const guarded: RelayDeps = {
+      ...deps,
+      assertPublic: async (url) => {
+        if (url.startsWith(`${LITE_ACTOR}/inbox`)) throw new Error('private address')
+      },
+    }
+    expect(await addRelay(guarded, { style: 'litepub', url: LITE_ACTOR })).toMatchObject({ status: 422 })
+    expect(store.rows.size).toBe(0)
   })
 })
 
@@ -255,6 +295,8 @@ describe('relay inbox hooks', () => {
     })
     expect(await hooks.isRelayActor('https://tags.pub/user/_____relay_____')).toBe(true)
     expect(await hooks.isRelayActor('https://other.example/actor')).toBe(false)
+    await store.setRelayState('a', 'rejected')
+    expect(await hooks.isRelayActor('https://tags.pub/user/_____relay_____')).toBe(false)
   })
 
   test('an Accept from another host is consumed but changes nothing', async () => {

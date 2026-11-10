@@ -141,7 +141,6 @@ interface McpDeps {
   onTrackWritten?: TrackWrittenCallback
   oura?: OuraClientType
   reactionActions?: ReactionActions
-  /** Relay subscriptions (`list_relays`, `add_relay`, `remove_relay`). */
   relayActions?: RelayActions
   retroEnrichTimeline?: RetroEnrichTrigger
   requestDumpLink?: DumpLinkIssuer

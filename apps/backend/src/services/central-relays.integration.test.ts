@@ -100,6 +100,19 @@ describe('central relays', () => {
     expect(await a.setRelayState(randomUUID(), 'accepted')).toBeNull()
   })
 
+  test('setRelayError records the error and leaves an Accept that landed meanwhile alone', async () => {
+    const a = api()
+    const relay = await a.insertRelay(relayInput('https://relay.example/inbox'))
+    await a.setRelayState(relay.id, 'accepted', { actor_uri: 'https://relay.example/actor' })
+
+    const errored = await a.setRelayError(relay.id, 'connection reset')
+    expect(errored?.last_error).toBe('connection reset')
+    expect(errored?.state).toBe('accepted')
+    expect(errored?.actor_uri).toBe('https://relay.example/actor')
+    expect(errored?.updated_at.getTime() ?? 0).toBeGreaterThanOrEqual(relay.updated_at.getTime())
+    expect(await a.setRelayError(randomUUID(), 'nope')).toBeNull()
+  })
+
   test('deleteRelay removes the row once', async () => {
     const a = api()
     const relay = await a.insertRelay(relayInput('https://relay.example/inbox'))

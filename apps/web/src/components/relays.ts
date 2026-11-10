@@ -16,7 +16,6 @@ export const relayStateLabel = (state: RelayState): string => STATE_LABELS[state
 
 export const relayStyleLabel = (style: RelayStyle): string => (style === 'litepub' ? 'LitePub' : 'Mastodon')
 
-/** The badge tooltip: the last delivery error when there is one. */
 export const relayStateTitle = (relay: Pick<Relay, 'last_error' | 'state'>): string =>
   relay.last_error ?? relayStateLabel(relay.state)
 
