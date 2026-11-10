@@ -3,6 +3,7 @@ export {
   type ActivitySummary,
   type BucketMetricStats,
   type BucketSize,
+  buildCategoryMap,
   type CategoryInfo,
   type CommentSummary,
   type DailySummaryResult,

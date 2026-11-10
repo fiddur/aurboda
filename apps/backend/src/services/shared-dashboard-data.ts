@@ -34,7 +34,7 @@ import {
   windowDays,
 } from '@aurboda/api-spec'
 
-import { getAllActivityTypeNames } from '../db/index.ts'
+import { getActivities, getAllActivityTypeNames } from '../db/index.ts'
 import { getActivityRecords, publicRecord } from './activity-records.ts'
 import { maskBreakdownNames } from './breakdown-mask.ts'
 import { getChartData } from './chart-data.ts'
@@ -52,12 +52,12 @@ import {
   previousWindow,
 } from './periods.ts'
 import {
+  buildCategoryMap,
   getActivityTypeSummary,
   getPeriodSummary,
   getPlacesSummary,
   getTopApps,
   getTopMedia,
-  queryActivities,
   queryMetrics,
 } from './queries/index.ts'
 import { getEffectiveHrZones, getUserTimezone } from './settings.ts'
@@ -502,17 +502,36 @@ interface SummaryVisibility {
   showWorkouts: boolean
 }
 
-const durationMinutes = (a: { start_time: string; end_time?: string }): number =>
-  a.end_time ? (new Date(a.end_time).getTime() - new Date(a.start_time).getTime()) / 60000 : 0
+const durationMinutes = (a: { start_time: Date; end_time?: Date }): number =>
+  a.end_time ? (a.end_time.getTime() - a.start_time.getTime()) / 60000 : 0
+
+const bulkTypes = new Set(['calendar_event', 'computer_active', 'location_visit', 'music_scrobble', 'screentime'])
+
+/**
+ * Every type except the bulk-ingested, non-session ones (screen time, scrobbles, visits, calendar), which
+ * are most of the rows. Narrower than that would change merging: an override retyping a synced workout to,
+ * say, a custom `other` type must still be queried for the workout to merge into it and drop out.
+ */
+const summaryTypes = (names: string[], categoryMap: Map<string, string>): string[] =>
+  names.filter((name) => !bulkTypes.has(name) && categoryMap.get(name) !== 'productivity')
 
 /** Aggregates to exactly the figures the widget renders — never the raw list. */
 const summarizeActivities = async (
   user: string,
   types: string[],
+  categoryMap: Map<string, string>,
   range: Range,
   visibility: SummaryVisibility,
 ): Promise<ActivitySummaryData> => {
-  const activities = await queryActivities(user, types, range.start, range.end)
+  const activities = await getActivities(
+    user,
+    types,
+    range.start,
+    range.end,
+    undefined,
+    undefined,
+    categoryMap,
+  )
   const exercise = activities.filter((a) => isExerciseActivityType(a.activity_type))
   const sleep = activities.filter((a) => a.activity_type === 'sleep')
   const meditation = activities.filter((a) => a.activity_type === 'meditation')
@@ -581,16 +600,14 @@ const resolveActivitySummary = async (
     return { data: { exercise: null, meditation: null, sleep: null }, type: 'activity_summary' }
   }
 
-  const types = await getAllActivityTypeNames(user)
-  const current = await summarizeActivities(
-    user,
-    types,
-    windowOf(options, config.lookback_days ?? 7),
-    visibility,
-  )
-  if (!options.previous) return { data: current, type: 'activity_summary' }
-  const previous = await summarizeActivities(user, types, inclusiveRange(options.previous), visibility)
-  return { data: withPrevious(current, previous), type: 'activity_summary' }
+  const [names, categoryMap] = await Promise.all([getAllActivityTypeNames(user), buildCategoryMap(user)])
+  const types = summaryTypes(names, categoryMap)
+  const summarize = (range: Range) => summarizeActivities(user, types, categoryMap, range, visibility)
+  const [current, previous] = await Promise.all([
+    summarize(windowOf(options, config.lookback_days ?? 7)),
+    options.previous ? summarize(inclusiveRange(options.previous)) : undefined,
+  ])
+  return { data: previous ? withPrevious(current, previous) : current, type: 'activity_summary' }
 }
 
 const resolveHrZones = async (
