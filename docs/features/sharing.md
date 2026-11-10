@@ -246,10 +246,20 @@ serves the static `index.html` instead, so the page still loads, without the pre
   ("Steps challenge, 1 Oct – 31 Oct 2026 · Starts in 3 days · Be the first to join.
   Hosted by … on Aurboda — join from any instance."). Once the challenge has ended it
   stops inviting: "… · Ended 31 Oct 2026 · 3 took part. Hosted by … on Aurboda."
+- A **public feed post's permalink** (`/u/<user>/posts/<id>`) is described by the post itself:
+  an article by its title and first prose block (with `Article` JSON-LD and its Atom feed), any
+  other post by its shared name (the activity's headline as it federates, e.g. "Running activity"
+  for an untitled one; the exercise's, dashboard's or challenge's name; a reply's first line) and
+  its personal message (`SocialMediaPosting` JSON-LD). It is built from the stored post and, for
+  an activity post, the activity's title alone, so a crawler hit stays cheap. Its preview image is
+  a post card at `<permalink>/opengraph-image.png`: the post's kind as the eyebrow (ACTIVITY,
+  ARTICLE, EXERCISE, DASHBOARD, CHALLENGE; POST for a reply), its title, and a short excerpt of its
+  description. An unlisted or followers-only post gets the generic meta. In the web feed, a
+  public or unlisted post's timestamp links to its permalink, which is the page to share.
 - Every public resource has a **dynamically rendered 1200×630 preview image** at
   `<resource-url>/opengraph-image.png`. Satori renders a branded card (title +
-  DASHBOARD/CHALLENGE/EXERCISE/PROFILE eyebrow + the owner's avatar + Aurboda wordmark +
-  `@owner`, except on the profile card whose title already is the name) to SVG and
+  DASHBOARD/CHALLENGE/EXERCISE/PROFILE eyebrow, or a post's kind — ACTIVITY/ARTICLE/EXERCISE/
+  DASHBOARD/CHALLENGE/POST — + the owner's avatar + Aurboda wordmark + `@owner`, except on the profile card whose title already is the name) to SVG and
   sharp rasterizes it to PNG; fonts are bundled (no system fonts in the image), and
   emoji in titles are drawn from bundled Twemoji SVGs (`@twemoji/svg`), so no system
   emoji font is needed. Renders are memoised in-process and cached

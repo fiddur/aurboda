@@ -22,6 +22,7 @@ import { ArticleContent } from './ArticleContent'
 import { ChallengeShareContent } from './ChallengeShareContent'
 import { DashboardShareContent, DashboardShareFallback } from './DashboardShareContent'
 import { ExerciseShareContent, ExerciseShareFallback } from './ExerciseShareContent'
+import { postPermalinkPath } from './post-permalink'
 import { postTagLine } from './post-tag-line'
 import {
   structuredHasNativeExerciseChart,
@@ -221,6 +222,8 @@ export const FeedPostCard = ({
   const when = formatDistanceToNow(new Date(post.created_at), { addSuffix: true })
   const { chart, route, standings, trend } = mediaUrls(post, author.username)
   const tags = postTagLine(post, visitor)
+  const permalink = postPermalinkPath(author.username, post)
+  const time = <time title={new Date(post.created_at).toLocaleString()}>{when}</time>
 
   return (
     <article class="feed-post">
@@ -229,7 +232,7 @@ export const FeedPostCard = ({
         <div class="feed-post-ident">
           <span class="feed-post-name">{author.displayName}</span>
           <span class="feed-post-handle">
-            {author.handle} · <time title={new Date(post.created_at).toLocaleString()}>{when}</time> ·{' '}
+            {author.handle} · {permalink ? <a href={permalink}>{time}</a> : time} ·{' '}
             <span title={vis.label} aria-label={vis.label}>
               {vis.icon}
             </span>

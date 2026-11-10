@@ -7,6 +7,7 @@ import {
   challengeCallToAction,
   clampTitle,
   createOgImageRenderer,
+  eyebrowOf,
   OG_HEIGHT,
   OG_WIDTH,
   type OgCard,
@@ -155,6 +156,14 @@ describe('twemojiFileCandidates', () => {
   })
 })
 
+describe('eyebrowOf', () => {
+  test('labels a card by its kind, or by the eyebrow it carries', () => {
+    expect(eyebrowOf({ kind: 'dashboard', title: 'x' })).toBe('Dashboard')
+    expect(eyebrowOf({ kind: 'post', title: 'x' })).toBe('Post')
+    expect(eyebrowOf({ eyebrow: 'Activity', kind: 'post', title: 'x' })).toBe('Activity')
+  })
+})
+
 describe('renderOgImage', () => {
   test('renders a 1200x630 PNG for a dashboard card', async () => {
     const png = await renderOgImage({ kind: 'dashboard', title: 'Training & effect' })
@@ -162,6 +171,19 @@ describe('renderOgImage', () => {
     expect(png.subarray(0, 4).toString('hex')).toBe('89504e47')
     const meta = await sharp(png).metadata()
     expect(meta.format).toBe('png')
+    expect(meta.width).toBe(OG_WIDTH)
+    expect(meta.height).toBe(OG_HEIGHT)
+  })
+
+  test('renders a post card with an eyebrow and a subtitle at 1200x630', async () => {
+    const png = await renderOgImage({
+      eyebrow: 'Activity',
+      kind: 'post',
+      subtitle: 'Morning run Distance: 5.2 km Duration: 30m Average heart rate: 142 bpm …',
+      title: 'A fairly long morning run along the river and back',
+      username: 'fiddur',
+    })
+    const meta = await sharp(png).metadata()
     expect(meta.width).toBe(OG_WIDTH)
     expect(meta.height).toBe(OG_HEIGHT)
   })

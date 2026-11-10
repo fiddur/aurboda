@@ -3,6 +3,7 @@ import supertest from 'supertest'
 import { describe, expect, test } from 'vitest'
 
 import type { ResolvedChallenge } from '../services/challenge-card.ts'
+import type { ResolvedPost } from '../services/post-card.ts'
 
 import { createShareHtmlRouter, HOME_PAGE_PATH, type ShareHtmlDeps } from './share-html-router.ts'
 
@@ -14,10 +15,10 @@ const buildApp = (overrides: Partial<ShareHtmlDeps> = {}) => {
     apiBaseUrl: 'https://aurboda.net/api',
     loadTemplate: async () => template,
     profileExists: async () => false,
-    resolveArticle: async () => null,
     resolveChallenge: async () => null,
     resolveDashboard: async () => null,
     resolveExercise: async () => null,
+    resolvePost: async () => null,
     webHost: 'https://aurboda.net',
     ...overrides,
   }
@@ -314,38 +315,70 @@ describe('GET /u/:username/articles', () => {
 
 describe('GET /u/:username/posts/:postId', () => {
   const postId = '11111111-2222-4333-8444-555555555555'
+  const publicPost = (overrides: Partial<Extract<ResolvedPost, { is_public: true }>> = {}): ResolvedPost => ({
+    created_at: '2026-11-01T07:30:00.000Z',
+    description: 'Felt great today',
+    is_public: true,
+    kind: 'activity',
+    title: 'Morning run',
+    updated_at: '2026-11-01T08:00:00.000Z',
+    ...overrides,
+  })
 
-  test('renders article meta for a public article', async () => {
+  test('renders article meta for a public article, with the post card as its image', async () => {
     const app = buildApp({
-      resolveArticle: async () => ({
-        excerpt: 'Two weeks of sleep data.',
-        is_public: true,
-        title: 'Sleep & HRV',
-      }),
+      resolvePost: async () =>
+        publicPost({ description: 'Two weeks of sleep data.', kind: 'article', title: 'Sleep & HRV' }),
     })
     const res = await supertest(app).get(`/u/fiddur/posts/${postId}`)
     expect(res.text).toContain('<title>Sleep &amp; HRV — Aurboda</title>')
     expect(res.text).toContain('property="og:type" content="article"')
     expect(res.text).toContain('property="og:description" content="Two weeks of sleep data."')
     expect(res.text).toContain(`property="og:url" content="https://aurboda.net/u/fiddur/posts/${postId}"`)
+    expect(res.text).toContain(
+      `property="og:image" content="https://aurboda.net/u/fiddur/posts/${postId}/opengraph-image.png"`,
+    )
     expect(res.text).toContain('href="https://aurboda.net/api/public/fiddur/articles.atom"')
+    expect(res.text).toContain('"@type":"Article"')
     expect(res.headers['cache-control']).toBe('public, max-age=300')
   })
 
-  test('does not describe an unlisted article', async () => {
-    const app = buildApp({
-      resolveArticle: async () => ({ excerpt: 'Secret words', is_public: false, title: 'Hidden title' }),
-    })
+  test('renders post meta for a public activity post', async () => {
+    const app = buildApp({ resolvePost: async () => publicPost() })
     const res = await supertest(app).get(`/u/fiddur/posts/${postId}`)
-    expect(res.text).not.toContain('Hidden title')
-    expect(res.text).not.toContain('Secret words')
-    expect(res.text).toContain('<title>Aurboda</title>')
+    expect(res.text).toContain('<title>Morning run — Aurboda</title>')
+    expect(res.text).toContain('property="og:title" content="Morning run — Aurboda"')
+    expect(res.text).toContain('property="og:type" content="article"')
+    expect(res.text).toContain('property="og:description" content="Felt great today"')
+    expect(res.text).toContain(
+      `property="og:image" content="https://aurboda.net/u/fiddur/posts/${postId}/opengraph-image.png"`,
+    )
+    expect(res.text).toContain('"@type":"SocialMediaPosting"')
+    expect(res.text).toContain('"datePublished":"2026-11-01T07:30:00.000Z"')
+    expect(res.text).not.toContain('application/atom+xml')
+    expect(res.headers['cache-control']).toBe('public, max-age=300')
   })
 
-  test('falls back to default meta for a non-article post or a malformed id without resolving it', async () => {
+  test('falls back to a generic description for a post with nothing to say', async () => {
+    const app = buildApp({
+      resolvePost: async () => publicPost({ description: '', kind: 'reply', title: 'Hi' }),
+    })
+    const res = await supertest(app).get(`/u/fiddur/posts/${postId}`)
+    expect(res.text).toContain('property="og:description" content="A post by fiddur on Aurboda."')
+  })
+
+  test('does not describe an unlisted or followers-only post', async () => {
+    const app = buildApp({ resolvePost: async () => ({ is_public: false }) })
+    const res = await supertest(app).get(`/u/fiddur/posts/${postId}`)
+    expect(res.text).toContain('<title>Aurboda</title>')
+    expect(res.text).toContain('content="https://aurboda.net/og-default.png"')
+    expect(res.headers['cache-control']).toBe('public, max-age=60')
+  })
+
+  test('falls back to default meta for an unknown post or a malformed id without resolving it', async () => {
     let calls = 0
     const app = buildApp({
-      resolveArticle: async () => {
+      resolvePost: async () => {
         calls++
         return null
       },
