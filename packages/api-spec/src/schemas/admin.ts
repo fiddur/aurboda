@@ -247,7 +247,9 @@ export const updateAdminSettingsBodySchema = z
       .string()
       .max(253)
       .transform((value) => value.trim().toLowerCase())
-      .refine((value) => !/[\s/:@]/.test(value), { message: 'A bare hostname, e.g. tags.pub' })
+      .refine((value) => value === '' || /^[a-z0-9-]+(\.[a-z0-9-]+)*$/.test(value), {
+        message: 'A bare hostname, e.g. tags.pub',
+      })
       .optional()
       .meta({
         description:

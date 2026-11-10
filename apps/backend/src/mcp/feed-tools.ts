@@ -616,7 +616,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
 
   server.tool(
     'list_followed_tags',
-    'List the hashtags you follow (accepted and pending). Each is the follow of its tag actor (e.g. `running@tags.pub`), so the row also carries the follow `id` for `set_following_notify`.',
+    'List the hashtags you follow (accepted and pending). Each is the follow of its tag actor (e.g. `running@tags.pub`). Tag follows never raise post notifications.',
     {},
     async () => {
       const records = await listFeedFollowedTags(user)

@@ -8,17 +8,20 @@ import type { FollowedTag } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
-import { fetchFollowedTags, followTag, unfollowTag, updateFollowingNotify } from '../../state/api'
+import { fetchFollowedTags, followTag, unfollowTag } from '../../state/api'
+import { TIMELINE_PAGES_KEY } from './TimelineActions'
 
 const FOLLOWED_TAGS_KEY = ['followed-tags']
 
 const FollowedTagRow = ({ row }: { row: FollowedTag }) => {
   const queryClient = useQueryClient()
   const invalidate = () => queryClient.invalidateQueries({ queryKey: FOLLOWED_TAGS_KEY })
-  const unfollow = useMutation({ mutationFn: () => unfollowTag(row.tag), onSuccess: invalidate })
-  const notify = useMutation({
-    mutationFn: () => updateFollowingNotify(row.id, !row.notify_on_post),
-    onSuccess: invalidate,
+  const unfollow = useMutation({
+    mutationFn: () => unfollowTag(row.tag),
+    onSuccess: () => {
+      invalidate()
+      queryClient.invalidateQueries({ queryKey: TIMELINE_PAGES_KEY })
+    },
   })
 
   return (
@@ -32,16 +35,6 @@ const FollowedTagRow = ({ row }: { row: FollowedTag }) => {
           Pending
         </span>
       )}
-      <button
-        type="button"
-        class="following-notify"
-        aria-pressed={row.notify_on_post}
-        onClick={() => notify.mutate()}
-        disabled={notify.isPending}
-        title={row.notify_on_post ? 'Notifications on — tap to mute' : 'Muted — tap to notify on new posts'}
-      >
-        {row.notify_on_post ? '🔔' : '🔕'}
-      </button>
       <button
         type="button"
         class="btn-secondary following-unfollow"

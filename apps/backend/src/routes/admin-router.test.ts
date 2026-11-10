@@ -229,15 +229,21 @@ describe('tag actor host setting', () => {
     expect(centralDb.setServerSetting).toHaveBeenCalledWith('tag_actor_host', '')
   })
 
-  test.each(['https://tags.pub', 'tags.pub/user', 'tags.pub:443', 'a b', 'running@tags.pub'])(
-    'PATCH rejects %j',
-    async (tag_actor_host) => {
-      vi.mocked(centralDb.setServerSetting).mockClear()
-      const res = await supertest(buildApp()).patch('/admin/settings').send({ tag_actor_host })
-      expect(res.status).toBe(400)
-      expect(centralDb.setServerSetting).not.toHaveBeenCalled()
-    },
-  )
+  test.each([
+    'https://tags.pub',
+    'tags.pub/user',
+    'tags.pub:443',
+    'a b',
+    'running@tags.pub',
+    'tags.pub?x',
+    'a#b',
+    'tags.pub.',
+  ])('PATCH rejects %j', async (tag_actor_host) => {
+    vi.mocked(centralDb.setServerSetting).mockClear()
+    const res = await supertest(buildApp()).patch('/admin/settings').send({ tag_actor_host })
+    expect(res.status).toBe(400)
+    expect(centralDb.setServerSetting).not.toHaveBeenCalled()
+  })
 })
 
 describe('admin billing settings', () => {

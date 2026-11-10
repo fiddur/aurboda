@@ -292,14 +292,14 @@ row is marked with the tag, so followed tags are listed apart from followed peop
 (`GET /feed/following` and `list_following` return people only) through
 `GET/POST /feed/followed-tags` and `DELETE /feed/followed-tags/:tag` (a tag is addressed by its
 name, unique per user), and over MCP `list_followed_tags`, `follow_tag` and `unfollow_tag`.
-The row's follow `id` still toggles notifications through `PATCH /feed/following/:id` /
-`set_following_notify`. A card boosted by a followed tag actor carries `boosted_by.tag` and
+A tag follow never raises a post notification: the Android notifier reads only the people
+list. A card boosted by a followed tag actor carries `boosted_by.tag` and
 shows a `#running` chip in place of the "🔄 X boosted" line. The host is a server setting,
 `tag_actor_host` (Admin → **Federation**, default `tags.pub`). Only posts from servers that
 push to tags.pub arrive this way; pushing Aurboda's own posts there is #1541.
 
 **Web.** Feed → **People & sharing** has a **Followed tags** block (follow `#tag`, the Pending
-badge, 🔔 and Unfollow), and the **Following** timeline shows a chip row (`All` plus one
+badge and Unfollow), and the **Following** timeline shows a chip row (`All` plus one
 `#tag` per followed tag) that filters the timeline with `?tag=`.
 
 ## ActivityPub federation

@@ -27,10 +27,12 @@ import type { FeedFollowingInput, FeedFollowingRecord } from '../db/index.ts'
 import {
   deleteTimelineEntriesByActor,
   getFeedFollowing,
+  getFeedFollowingByActor,
   getFeedFollowingByTag,
   removeFeedFollowing,
   upsertFeedFollowing,
 } from '../db/index.ts'
+import { isUniqueViolation } from '../db/pg-errors.ts'
 import { extractActorPresentation } from './activitypub/actor-presentation.ts'
 import { signedFetchOptions } from './activitypub/signed-lookup.ts'
 import { withTimeout } from './with-timeout.ts'
@@ -155,17 +157,20 @@ const follow = async (
     return { error: 'Resolved object is not a followable actor (no inbox).', ok: false, status: 422 }
   }
   if (tag != null) {
-    const existing = await getFeedFollowingByTag(user, tag)
-    if (existing != null && existing.actor_uri !== input.actor_uri) {
-      return {
-        error: `You already follow #${tag} through ${existing.handle ?? existing.actor_uri}; unfollow it first.`,
-        ok: false,
-        status: 409,
-      }
-    }
+    const conflict = await tagFollowConflict(user, tag, input.actor_uri)
+    if (conflict != null) return conflict
   }
 
-  const record = await upsertFeedFollowing(user, input)
+  let record: FeedFollowingRecord
+  try {
+    record = await upsertFeedFollowing(user, input)
+  } catch (error) {
+    // The one-row-per-tag index caught a concurrent follow of the same tag.
+    if (tag != null && isUniqueViolation(error)) {
+      return (await tagFollowConflict(user, tag, input.actor_uri)) ?? alreadyFollowed(tag, null)
+    }
+    throw error
+  }
 
   // Best-effort delivery: a failed POST leaves the pending row for a retry.
   try {
@@ -183,6 +188,30 @@ const follow = async (
   }
 
   return { ok: true, record }
+}
+
+const alreadyFollowed = (tag: string, through: FeedFollowingRecord | null): FollowResult => ({
+  error: `You already follow #${tag}${through == null ? '' : ` through ${through.handle ?? through.actor_uri}`}; unfollow it first.`,
+  ok: false,
+  status: 409,
+})
+
+/**
+ * Why following `tag` through `actorUri` cannot proceed: the tag is already
+ * followed through another actor (the host changed since), or that actor is
+ * already followed as another tag (the host aliases the two) — a plain upsert
+ * would silently relabel the row. Null when it can.
+ */
+const tagFollowConflict = async (
+  user: string,
+  tag: string,
+  actorUri: string,
+): Promise<FollowResult | null> => {
+  const byTag = await getFeedFollowingByTag(user, tag)
+  if (byTag != null && byTag.actor_uri !== actorUri) return alreadyFollowed(tag, byTag)
+  const byActor = await getFeedFollowingByActor(user, actorUri)
+  if (byActor?.tag != null && byActor.tag !== tag) return alreadyFollowed(byActor.tag, byActor)
+  return null
 }
 
 /**
