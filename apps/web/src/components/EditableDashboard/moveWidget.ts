@@ -62,3 +62,18 @@ export const dropWidget = (
   if (section.widgets.findIndex((w) => w.id === draggedId) === index) return config
   return moveWidget(config, draggedId, target.sectionId, index)
 }
+
+/** The config with section `sectionId` moved one step up or down; unchanged at either end. */
+export const moveSection = (
+  config: DashboardConfig,
+  sectionId: string,
+  direction: 'down' | 'up',
+): DashboardConfig => {
+  const from = config.sections.findIndex((s) => s.id === sectionId)
+  const to = direction === 'up' ? from - 1 : from + 1
+  if (from === -1 || to < 0 || to >= config.sections.length) return config
+  const sections = [...config.sections]
+  const [section] = sections.splice(from, 1)
+  sections.splice(to, 0, section)
+  return { ...config, sections }
+}

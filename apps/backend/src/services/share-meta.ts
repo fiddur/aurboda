@@ -330,26 +330,58 @@ interface ArticleMetaInput {
   /** Plain-text excerpt of the article; empty falls back to a generic line. */
   excerpt: string
   url: string
-  profileUrl: string
   feedUrl: string
 }
 
 export const buildArticleShareMeta = ({
   excerpt,
   feedUrl,
-  profileUrl,
   title,
   url,
   username,
 }: ArticleMetaInput): ShareMeta => ({
   description: clampDescription(excerpt.trim() ? excerpt : `An article by ${username} on ${SITE_NAME}.`),
   feedUrl,
-  image: resourceOgImage(profileUrl),
+  image: resourceOgImage(url),
   imageAlt: `${SITE_NAME} article: ${title}`,
   jsonLd: {
     '@context': 'https://schema.org',
     '@type': 'Article',
     author: { '@type': 'Person', name: username },
+    headline: title,
+    url,
+  },
+  title: `${title} — ${SITE_NAME}`,
+  type: 'article',
+  url,
+})
+
+interface PostMetaInput {
+  username: string
+  title: string
+  /** Plain text; empty falls back to a generic line. */
+  description: string
+  url: string
+  /** When the post was published (ISO 8601). */
+  createdAt: string
+}
+
+/** A non-article post's permalink: a social-media posting by its author. */
+export const buildPostShareMeta = ({
+  createdAt,
+  description,
+  title,
+  url,
+  username,
+}: PostMetaInput): ShareMeta => ({
+  description: clampDescription(description.trim() ? description : `A post by ${username} on ${SITE_NAME}.`),
+  image: resourceOgImage(url),
+  imageAlt: `${SITE_NAME} post: ${title}`,
+  jsonLd: {
+    '@context': 'https://schema.org',
+    '@type': 'SocialMediaPosting',
+    author: { '@type': 'Person', name: username },
+    datePublished: createdAt,
     headline: title,
     url,
   },

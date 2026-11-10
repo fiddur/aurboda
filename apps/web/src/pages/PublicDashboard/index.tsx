@@ -24,6 +24,7 @@ import { useState } from 'preact/hooks'
 
 import { AttributionLink } from '../../components/AttributionLink'
 import { EditableDashboard } from '../../components/EditableDashboard'
+import { readPeriodParam, writePeriodParam } from '../../components/periodParam'
 import { PeriodDashboardBar, PeriodSwitcher } from '../../components/PeriodSwitcher'
 import { CopyLinkButton, NativeShareButton } from '../../components/ShareControls'
 import { ShareDashboardPeriodDialog } from '../../components/ShareDashboardPeriodDialog'
@@ -258,8 +259,11 @@ function VisitorDashboard({
   data: PublicSharedDashboardResponse
   config: DashboardConfig
 }) {
-  const [selectedPeriod, setSelectedPeriod] = useState<string | null>(null)
   const latest = data.period_lock === 'browsable' ? data.period : null
+  const [selectedPeriod, setSelectedPeriod] = useState<string | null>(() => {
+    const fromUrl = readPeriodParam()
+    return fromUrl === latest ? null : fromUrl
+  })
 
   const periodQuery = useQuery({
     enabled: Boolean(latest) && selectedPeriod !== null,
@@ -277,7 +281,11 @@ function VisitorDashboard({
         earliest: data.period_from,
         isError: periodQuery.isError,
         latest,
-        select: (key) => setSelectedPeriod(key === latest ? null : key),
+        select: (key) => {
+          const next = key === latest ? null : key
+          setSelectedPeriod(next)
+          writePeriodParam(next)
+        },
       }
     : null
   const answered = periodQuery.data
@@ -296,12 +304,16 @@ function VisitorDashboard({
   )
 }
 
-/** A published period dashboard shows a finished period, whose figures do not change while it is open. */
-const unlessPeriodDashboard = ({
+/**
+ * Refetch on focus only what can change while open: not a finished period, and not a failed fetch
+ * (an owner's private dashboard 404s here), whose refetch flips the query back to loading and
+ * remounts the owner's board, scrolling it to the top.
+ */
+const refetchWhileOpen = ({
   state,
 }: {
   state: { data?: Awaited<ReturnType<typeof fetchPublicResource>> }
-}): boolean => !(state.data && 'config' in state.data && state.data.period)
+}): boolean => state.data !== undefined && !('config' in state.data && state.data.period)
 
 /**
  * A challenge, or an exercise (whose owner edits it on the private exercise page), renders the same for
@@ -331,8 +343,8 @@ export function PublicResource() {
   const query = useQuery({
     queryFn: () => fetchPublicResource(username, slug),
     queryKey: ['publicResource', username, slug],
-    refetchOnReconnect: unlessPeriodDashboard,
-    refetchOnWindowFocus: unlessPeriodDashboard,
+    refetchOnReconnect: refetchWhileOpen,
+    refetchOnWindowFocus: refetchWhileOpen,
     retry: false,
     staleTime: 60 * 1000,
   })

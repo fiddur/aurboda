@@ -46,7 +46,9 @@ export interface OgChallengeDetails {
 
 /** What the card should say. `kind` drives the small uppercase eyebrow label. */
 export interface OgCard {
-  kind: 'dashboard' | 'challenge' | 'exercise' | 'profile'
+  kind: 'dashboard' | 'challenge' | 'exercise' | 'profile' | 'post'
+  /** Replaces the eyebrow computed from `kind`, e.g. a post's own kind (`Activity`, `Article`). */
+  eyebrow?: string
   title: string
   subtitle?: string
   /** Optional `data:` URI for the owner's avatar, shown next to the wordmark. */
@@ -120,6 +122,7 @@ const KIND_LABEL: Record<OgCard['kind'], string> = {
   challenge: 'Challenge',
   dashboard: 'Dashboard',
   exercise: 'Exercise',
+  post: 'Post',
   profile: 'Profile',
 }
 
@@ -294,7 +297,10 @@ const exerciseMiddle = ({ headline, sessions, sparkline: values }: OgExerciseDet
   ]
 }
 
-/** A challenge or exercise card carries a middle block, so a long name steps down rather than wrapping onto it. */
+/**
+ * A challenge or exercise card carries a middle block, and a post card a one-line excerpt, so a
+ * long title steps down rather than wrapping onto it.
+ */
 const steppedTitleSize = (title: string): number => {
   const length = graphemesOf(title).length
   if (length <= 20) return 82
@@ -330,7 +336,8 @@ const bannerBackground = (dataUri: string): El[] => [
   }),
 ]
 
-const eyebrowOf = ({ challenge, exercise, kind }: OgCard): string => {
+export const eyebrowOf = ({ challenge, eyebrow, exercise, kind }: OgCard): string => {
+  if (eyebrow) return eyebrow
   const qualifier = challenge?.measure ?? exercise?.activityTypeName
   return qualifier ? `${KIND_LABEL[kind]} · ${clampTitle(qualifier, 24)}` : KIND_LABEL[kind]
 }
@@ -401,7 +408,7 @@ const cardTree = (card: OgCard): El => {
           'div',
           {
             display: 'flex',
-            fontSize: challenge || exercise ? steppedTitleSize(card.title) : 82,
+            fontSize: challenge || exercise || card.kind === 'post' ? steppedTitleSize(card.title) : 82,
             fontWeight: 700,
             lineHeight: 1.1,
             marginTop: 24,

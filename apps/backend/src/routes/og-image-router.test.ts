@@ -5,6 +5,7 @@ import supertest from 'supertest'
 import { describe, expect, test, vi } from 'vitest'
 
 import type { ResolvedChallenge } from '../services/challenge-card.ts'
+import type { ResolvedPost } from '../services/post-card.ts'
 import type { ResolvedExercise } from './share-html-router.ts'
 
 import { createOgImageRouter, type OgImageDeps } from './og-image-router.ts'
@@ -55,6 +56,7 @@ const buildApp = (overrides: Partial<OgImageDeps> = {}) => {
     resolveChallenge: async () => null,
     resolveDashboard: async () => null,
     resolveExercise: async () => null,
+    resolvePost: async () => null,
     webHost: 'https://aurboda.net',
     ...overrides,
   }
@@ -325,6 +327,100 @@ describe('GET /u/:username/opengraph-image.png', () => {
     const { app, deps } = buildApp({ profileExists: async () => true })
     const res = await supertest(app).get('/u/Invalid..Name/opengraph-image.png')
     expect(res.status).toBe(302)
+    expect(deps.renderImage).not.toHaveBeenCalled()
+  })
+})
+
+describe('GET /u/:username/posts/:postId/opengraph-image.png', () => {
+  const postId = '11111111-2222-4333-8444-555555555555'
+  const path = `/u/fiddur/posts/${postId}/opengraph-image.png`
+  const publicPost = (overrides: Partial<Extract<ResolvedPost, { is_public: true }>> = {}): ResolvedPost => ({
+    created_at: '2026-11-01T07:30:00.000Z',
+    description: 'Felt great today',
+    is_public: true,
+    kind: 'activity',
+    title: 'Morning run',
+    updated_at: '2026-11-01T08:00:00.000Z',
+    ...overrides,
+  })
+
+  test('renders a post card for a public post', async () => {
+    const { app, deps } = buildApp({ resolvePost: async () => publicPost() })
+    const res = await supertest(app).get(path)
+    expect(res.status).toBe(200)
+    expect(res.type).toBe('image/png')
+    expect(res.headers['cache-control']).toBe('public, max-age=3600')
+    expect(deps.renderImage).toHaveBeenCalledWith({
+      avatarDataUri: 'data:image/png;base64,AAAA',
+      eyebrow: 'Activity',
+      kind: 'post',
+      subtitle: 'Felt great today',
+      title: 'Morning run',
+      username: 'fiddur',
+    })
+  })
+
+  test('names a reply a post, clamps the subtitle to one line and leaves an empty one out', async () => {
+    const long = 'word '.repeat(30)
+    const { app, deps } = buildApp({
+      resolvePost: async (_username, id) =>
+        id === postId
+          ? publicPost({ description: long, kind: 'reply', title: 'Nice run!' })
+          : publicPost({ description: '', kind: 'article', title: 'Sleep' }),
+    })
+    await supertest(app).get(path)
+    const card = vi.mocked(deps.renderImage).mock.calls[0][0]
+    expect(card.eyebrow).toBe('Post')
+    expect(card.subtitle?.endsWith('…')).toBe(true)
+    expect(Array.from(card.subtitle ?? '').length).toBeLessThanOrEqual(70)
+
+    await supertest(app).get('/u/fiddur/posts/22222222-2222-4333-8444-555555555555/opengraph-image.png')
+    const article = vi.mocked(deps.renderImage).mock.calls[1][0]
+    expect(article.eyebrow).toBe('Article')
+    expect(article).not.toHaveProperty('subtitle')
+  })
+
+  test('re-renders the memoised card when the post is edited', async () => {
+    let updated_at = '2026-11-01T08:00:00.000Z'
+    const { app, deps } = buildApp({ resolvePost: async () => publicPost({ updated_at }) })
+    await supertest(app).get(path)
+    await supertest(app).get(path)
+    expect(deps.renderImage).toHaveBeenCalledTimes(1)
+    updated_at = '2026-11-02T08:00:00.000Z'
+    await supertest(app).get(path)
+    expect(deps.renderImage).toHaveBeenCalledTimes(2)
+  })
+
+  test('is not shadowed by the slug route', async () => {
+    const resolveDashboard = vi.fn(async () => ({ is_public: true, name: 'Posts' }))
+    const { app, deps } = buildApp({ resolveDashboard, resolvePost: async () => publicPost() })
+    await supertest(app).get(path)
+    expect(resolveDashboard).not.toHaveBeenCalled()
+    expect(deps.renderImage).toHaveBeenCalledWith(expect.objectContaining({ kind: 'post' }))
+  })
+
+  test('redirects a non-public or unknown post to the default image', async () => {
+    for (const resolved of [{ is_public: false } as const, null]) {
+      const { app, deps } = buildApp({ resolvePost: async () => resolved })
+      const res = await supertest(app).get(path)
+      expect(res.status).toBe(302)
+      expect(res.headers.location).toBe('https://aurboda.net/og-default.png')
+      expect(deps.renderImage).not.toHaveBeenCalled()
+    }
+  })
+
+  test('redirects an invalid username or post id without resolving it', async () => {
+    const resolvePost = vi.fn(async () => publicPost())
+    const { app, deps } = buildApp({ resolvePost })
+    for (const bad of [
+      '/u/fiddur/posts/not-a-uuid/opengraph-image.png',
+      `/u/Invalid..Name/posts/${postId}/opengraph-image.png`,
+    ]) {
+      const res = await supertest(app).get(bad)
+      expect(res.status).toBe(302)
+      expect(res.headers.location).toBe('https://aurboda.net/og-default.png')
+    }
+    expect(resolvePost).not.toHaveBeenCalled()
     expect(deps.renderImage).not.toHaveBeenCalled()
   })
 })

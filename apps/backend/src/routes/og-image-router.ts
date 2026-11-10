@@ -1,5 +1,6 @@
 /**
- * Serves `/u/:username[/:slug]/opengraph-image.png` — a 1200×630 branded card
+ * Serves `/u/:username[/:slug]/opengraph-image.png` and
+ * `/u/:username/posts/:postId/opengraph-image.png` — a 1200×630 branded card
  * rendered per resource. Mounted BEFORE the share-html router so these specific
  * routes win over the generic `/u/:username/:slug` HTML route.
  *
@@ -13,12 +14,16 @@ import type { SharedExerciseData } from '@aurboda/api-spec'
 import { type Response, Router } from 'express'
 
 import type { OgCard } from '../services/og-image.ts'
+import type { ResolvedPost } from '../services/post-card.ts'
 import type { ResolvedExercise } from './share-html-router.ts'
 
 import { isValidUsername } from '../api/auth-routes.ts'
 import { describeChallenge, type ResolvedChallenge } from '../services/challenge-card.ts'
 import { describeExercise } from '../services/exercise-card.ts'
+import { clampTitle } from '../services/og-image.ts'
+import { postEyebrow } from '../services/post-card.ts'
 import { defaultOgImage } from '../services/share-meta.ts'
+import { UUID_RE } from '../utils.ts'
 
 interface ResolvedResource {
   name: string
@@ -30,6 +35,7 @@ export interface OgImageDeps {
   resolveDashboard: (username: string, slug: string) => Promise<ResolvedResource | null>
   resolveChallenge: (username: string, slug: string) => Promise<ResolvedChallenge | null>
   resolveExercise: (username: string, slug: string) => Promise<ResolvedExercise | null>
+  resolvePost: (username: string, postId: string) => Promise<ResolvedPost | null>
   /** The public page's data for a shared exercise, with the owner's timezone. */
   loadExerciseCard: (
     username: string,
@@ -62,6 +68,7 @@ export const createOgImageRouter = (deps: OgImageDeps): Router => {
     resolveChallenge,
     resolveDashboard,
     resolveExercise,
+    resolvePost,
     webHost,
   } = deps
   const now = deps.now ?? (() => new Date())
@@ -139,6 +146,27 @@ export const createOgImageRouter = (deps: OgImageDeps): Router => {
     res.setHeader('Cache-Control', 'public, max-age=3600')
     res.type('png').send(png)
   }
+
+  router.get('/u/:username/posts/:postId/opengraph-image.png', async (req, res) => {
+    const { postId, username } = req.params
+    if (!isValidUsername(username) || !UUID_RE.test(postId)) return redirectToDefault(res)
+    const post = await resolvePost(username, postId)
+    if (!post?.is_public) return redirectToDefault(res)
+    const description = post.description.trim()
+    const subtitle = description ? clampTitle(description, 70) : undefined
+    return sendImage(
+      res,
+      `post:${username}/${postId}:${post.updated_at}:${post.title}:${subtitle ?? ''}`,
+      async () => ({
+        avatarDataUri: await avatarOrUndefined(username),
+        eyebrow: postEyebrow(post.kind),
+        kind: 'post',
+        title: post.title,
+        username,
+        ...(subtitle ? { subtitle } : {}),
+      }),
+    )
+  })
 
   router.get('/u/:username/:slug/opengraph-image.png', async (req, res) => {
     const { slug, username } = req.params

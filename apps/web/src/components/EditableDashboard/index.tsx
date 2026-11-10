@@ -17,7 +17,7 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 
 import { DashboardEditor } from '../DashboardEditor'
 import { PublicWidgetRenderer, WidgetRenderer } from '../widgets'
-import { dropWidget, type DropTarget, moveWidget } from './moveWidget'
+import { dropWidget, type DropTarget, moveSection, moveWidget } from './moveWidget'
 
 const generateSectionId = () => `section-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
 
@@ -141,6 +141,27 @@ function DragHandle({ widgetId, drag }: { widgetId: string; drag: WidgetDrag }) 
   )
 }
 
+function SectionMoveButtons({ onMove }: { onMove: { down?: () => void; up?: () => void } }) {
+  return (
+    <>
+      {onMove.up && (
+        <button class="section-rename-btn" onClick={onMove.up} title="Move section up">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 19V5M5 12l7-7 7 7" />
+          </svg>
+        </button>
+      )}
+      {onMove.down && (
+        <button class="section-rename-btn" onClick={onMove.down} title="Move section down">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 5v14M5 12l7 7 7-7" />
+          </svg>
+        </button>
+      )}
+    </>
+  )
+}
+
 /** The config with its period set to `granularity`, or without one for a rolling dashboard. */
 export const withPeriod = (config: DashboardConfig, granularity: '' | PeriodGranularity): DashboardConfig => {
   const { period: _period, ...rest } = config
@@ -160,6 +181,7 @@ function DashboardSectionComponent({
   onDeleteSection,
   onRenameSection,
   onDescriptionChange,
+  onMoveSection,
   drag,
 }: {
   section: DashboardSection
@@ -174,6 +196,7 @@ function DashboardSectionComponent({
   onDeleteSection?: () => void
   onRenameSection?: (title: string) => void
   onDescriptionChange?: (description: string | undefined) => void
+  onMoveSection: { down?: () => void; up?: () => void }
   drag?: WidgetDrag
 }) {
   const [collapsed, setCollapsed] = useState(section.collapsed ?? false)
@@ -228,6 +251,7 @@ function DashboardSectionComponent({
         )}
         {isEditing && !editingTitle && (
           <div class="section-edit-controls">
+            <SectionMoveButtons onMove={onMoveSection} />
             <button
               class="section-rename-btn"
               onClick={() => {
@@ -630,7 +654,7 @@ export function EditableDashboard({
         <p class="dashboard-intro">{config.description}</p>
       ) : null}
 
-      {config.sections.map((section) => (
+      {config.sections.map((section, index) => (
         <DashboardSectionComponent
           key={section.id}
           section={section}
@@ -645,6 +669,13 @@ export function EditableDashboard({
           onDeleteSection={() => handleDeleteSection(section.id)}
           onRenameSection={(title) => handleRenameSection(section.id, title)}
           onDescriptionChange={(description) => handleSectionDescription(section.id, description)}
+          onMoveSection={{
+            down:
+              index < config.sections.length - 1
+                ? () => onChange(moveSection(config, section.id, 'down'))
+                : undefined,
+            up: index > 0 ? () => onChange(moveSection(config, section.id, 'up')) : undefined,
+          }}
           drag={isEditing ? drag : undefined}
         />
       ))}
