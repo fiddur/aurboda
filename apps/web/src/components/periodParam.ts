@@ -30,3 +30,11 @@ export const writePeriodParam = (period: string | null): void => {
     // Without history access the period still switches; it just is not in the URL.
   }
 }
+
+/**
+ * Whether the board switched from one period granularity to another, which drops the selected period.
+ * Coming from null is the config arriving (the home board starts from a default without a period), not
+ * a switch, so a period named in the URL survives it.
+ */
+export const isGranularitySwitch = (previous: string | null, next: string | null): boolean =>
+  previous !== null && previous !== next

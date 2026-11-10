@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { periodParamOf, withPeriodParam } from './periodParam'
+import { isGranularitySwitch, periodParamOf, withPeriodParam } from './periodParam'
 
 describe('period URL parameter', () => {
   it('sets, replaces and removes the period, keeping the rest of the URL', () => {
@@ -18,5 +18,18 @@ describe('period URL parameter', () => {
   it('reads the period from a query string', () => {
     expect(periodParamOf('?embed=1&period=2026-W44')).toBe('2026-W44')
     expect(periodParamOf('')).toBeNull()
+  })
+})
+
+describe('isGranularitySwitch', () => {
+  it('is a switch between two granularities, or to a rolling board', () => {
+    expect(isGranularitySwitch('month', 'week')).toBe(true)
+    expect(isGranularitySwitch('month', null)).toBe(true)
+  })
+
+  it('is not a switch when the config arrives or nothing changed', () => {
+    expect(isGranularitySwitch(null, 'month')).toBe(false)
+    expect(isGranularitySwitch('month', 'month')).toBe(false)
+    expect(isGranularitySwitch(null, null)).toBe(false)
   })
 })

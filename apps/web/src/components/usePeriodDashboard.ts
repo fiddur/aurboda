@@ -12,7 +12,7 @@ import {
   readPeriodData,
   writePeriodData,
 } from '../state/periodDataCache'
-import { readPeriodParam, writePeriodParam } from './periodParam'
+import { isGranularitySwitch, readPeriodParam, writePeriodParam } from './periodParam'
 
 export interface PeriodDashboardState {
   /** The shown period key, once the data says which. */
@@ -100,8 +100,9 @@ export const usePeriodDashboard = (
   const shownGranularity = useRef(granularity)
 
   useEffect(() => {
-    if (shownGranularity.current === granularity) return
+    const previous = shownGranularity.current
     shownGranularity.current = granularity
+    if (!isGranularitySwitch(previous, granularity)) return
     setSelected(null)
     setLatest(null)
     writePeriodParam(null)
