@@ -24,6 +24,7 @@ import { useState } from 'preact/hooks'
 
 import { AttributionLink } from '../../components/AttributionLink'
 import { EditableDashboard } from '../../components/EditableDashboard'
+import { readPeriodParam, writePeriodParam } from '../../components/periodParam'
 import { PeriodDashboardBar, PeriodSwitcher } from '../../components/PeriodSwitcher'
 import { CopyLinkButton, NativeShareButton } from '../../components/ShareControls'
 import { ShareDashboardPeriodDialog } from '../../components/ShareDashboardPeriodDialog'
@@ -258,8 +259,11 @@ function VisitorDashboard({
   data: PublicSharedDashboardResponse
   config: DashboardConfig
 }) {
-  const [selectedPeriod, setSelectedPeriod] = useState<string | null>(null)
   const latest = data.period_lock === 'browsable' ? data.period : null
+  const [selectedPeriod, setSelectedPeriod] = useState<string | null>(() => {
+    const fromUrl = readPeriodParam()
+    return fromUrl === latest ? null : fromUrl
+  })
 
   const periodQuery = useQuery({
     enabled: Boolean(latest) && selectedPeriod !== null,
@@ -277,7 +281,11 @@ function VisitorDashboard({
         earliest: data.period_from,
         isError: periodQuery.isError,
         latest,
-        select: (key) => setSelectedPeriod(key === latest ? null : key),
+        select: (key) => {
+          const next = key === latest ? null : key
+          setSelectedPeriod(next)
+          writePeriodParam(next)
+        },
       }
     : null
   const answered = periodQuery.data

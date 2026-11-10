@@ -2,7 +2,7 @@ import type { DashboardConfig, DashboardDataResponse, WidgetDataMap } from '@aur
 
 import { periodGranularityOf, periodLabel } from '@aurboda/api-spec'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { useEffect, useMemo, useState } from 'preact/hooks'
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 
 import { auth } from '../state/auth'
 import {
@@ -12,6 +12,7 @@ import {
   readPeriodData,
   writePeriodData,
 } from '../state/periodDataCache'
+import { readPeriodParam, writePeriodParam } from './periodParam'
 
 export interface PeriodDashboardState {
   /** The shown period key, once the data says which. */
@@ -54,6 +55,32 @@ const sessionCached = (slot: PeriodDataSlot | null, fetch: () => Promise<Dashboa
 }
 
 /**
+ * The latest finished period, which only the server knows (it depends on its clock and the user's tz):
+ * the shown one when nothing is selected, otherwise asked for separately, as when the URL names a period.
+ */
+const useLatestPeriod = (
+  boardId: string,
+  granularity: string | null,
+  selected: string | null,
+  version: string,
+  fetchData: (period?: string) => Promise<DashboardDataResponse>,
+) => {
+  const slot = granularity === null ? null : periodSlot(boardId, granularity, null, version)
+  const query = useQuery({
+    enabled: slot !== null && selected !== null,
+    ...sessionCached(slot, () => fetchData()),
+    queryKey: ['dashboardData', boardId, granularity, null],
+    refetchOnReconnect: false,
+    refetchOnWindowFocus: false,
+    staleTime: Infinity,
+  })
+  const answered = query.data?.period ?? null
+  return answered !== null && granularity !== null && periodGranularityOf(answered) === granularity
+    ? answered
+    : null
+}
+
+/**
  * The server-resolved data of a period dashboard, with the selected period (null = the latest finished
  * one). Inactive (null) for a rolling dashboard, whose widgets fetch their own data.
  *
@@ -68,12 +95,16 @@ export const usePeriodDashboard = (
   fetchData: (period?: string) => Promise<DashboardDataResponse>,
 ): PeriodDashboardState | null => {
   const granularity = config.period?.granularity ?? null
-  const [selected, setSelected] = useState<string | null>(null)
+  const [selected, setSelected] = useState<string | null>(readPeriodParam)
   const [latest, setLatest] = useState<string | null>(null)
+  const shownGranularity = useRef(granularity)
 
   useEffect(() => {
+    if (shownGranularity.current === granularity) return
+    shownGranularity.current = granularity
     setSelected(null)
     setLatest(null)
+    writePeriodParam(null)
   }, [granularity])
 
   const current = selected !== null && periodGranularityOf(selected) === granularity ? selected : null
@@ -94,9 +125,11 @@ export const usePeriodDashboard = (
   const answered = query.data?.period ?? null
   const period = answered !== null && periodGranularityOf(answered) === granularity ? answered : null
 
+  const knownLatest = useLatestPeriod(boardId, granularity, current, version, fetchData)
   useEffect(() => {
     if (current === null && period !== null) setLatest(period)
-  }, [current, period])
+    else if (knownLatest !== null) setLatest(knownLatest)
+  }, [current, period, knownLatest])
 
   if (granularity === null) return null
   return {
@@ -105,7 +138,11 @@ export const usePeriodDashboard = (
     latest,
     period,
     periodLabel: period === null ? undefined : periodLabel(period),
-    select: setSelected,
+    select: (key) => {
+      const next = key === latest ? null : key
+      setSelected(next)
+      writePeriodParam(next)
+    },
     widgetData: period === null ? {} : (query.data?.widget_data ?? {}),
   }
 }

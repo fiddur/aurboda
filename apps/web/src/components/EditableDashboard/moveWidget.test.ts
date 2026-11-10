@@ -2,7 +2,7 @@ import type { DashboardConfig, DashboardWidget } from '@aurboda/api-spec'
 
 import { describe, expect, it } from 'vitest'
 
-import { dropWidget, moveWidget } from './moveWidget'
+import { dropWidget, moveSection, moveWidget } from './moveWidget'
 
 const widget = (id: string): DashboardWidget => ({
   config: { href: `/${id}`, label: id },
@@ -120,5 +120,29 @@ describe('dropWidget', () => {
     expect(dropWidget(c, 'a2', { sectionId: 'a', side: 'before', widgetId: 'a3' })).toBe(c)
     expect(dropWidget(c, 'a4', { sectionId: 'a' })).toBe(c)
     expect(dropWidget(c, 'a1', { sectionId: 'nope' })).toBe(c)
+  })
+})
+
+describe('moveSection', () => {
+  const sectionsConfig: DashboardConfig = {
+    sections: ['a', 'b', 'c'].map((id) => ({ id, title: id, type: 'links' as const, widgets: [] })),
+    version: 1,
+  }
+  const sectionIds = (c: DashboardConfig) => c.sections.map((s) => s.id)
+
+  it('moves a section one step up or down', () => {
+    expect(sectionIds(moveSection(sectionsConfig, 'b', 'up'))).toEqual(['b', 'a', 'c'])
+    expect(sectionIds(moveSection(sectionsConfig, 'b', 'down'))).toEqual(['a', 'c', 'b'])
+  })
+
+  it('leaves the config as it is at either end or for an unknown section', () => {
+    expect(moveSection(sectionsConfig, 'a', 'up')).toBe(sectionsConfig)
+    expect(moveSection(sectionsConfig, 'c', 'down')).toBe(sectionsConfig)
+    expect(moveSection(sectionsConfig, 'x', 'up')).toBe(sectionsConfig)
+  })
+
+  it('does not mutate the input', () => {
+    moveSection(sectionsConfig, 'b', 'up')
+    expect(sectionIds(sectionsConfig)).toEqual(['a', 'b', 'c'])
   })
 })

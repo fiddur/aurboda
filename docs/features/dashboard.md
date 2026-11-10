@@ -225,7 +225,7 @@ Widgets are organized into sections, each with a title and a layout type:
 | **Charts**   | Single column, full width                                     | Trend charts, combined charts, correlation charts                                                   |
 | **Links**    | Responsive grid of smaller tiles (minimum 140px wide)         | Quick-link navigation                                                                               |
 
-Sections are collapsible -- click the section header to toggle between expanded and collapsed. On wide screens, multiple sections can appear side by side.
+Sections are collapsible -- click the section header to toggle between expanded and collapsed. On wide screens, multiple sections can appear side by side. In edit mode each section header has up and down arrows to reorder the sections.
 
 ## Descriptive text
 
@@ -252,6 +252,8 @@ widget renders against that one window, ignoring the lookbacks in its configurat
   (the device timezone in your settings; UTC when unset), the end exclusive.
 - **Finished periods only.** The dashboard opens on the latest finished period. A switcher above the
   widgets steps back and forth between finished periods; the next button stops at the latest one.
+  A chosen period is kept in the URL as `?period=2026-09`, so it survives a reload and can be linked;
+  the latest period has no parameter.
   Asking for a period that has not ended (or a malformed one) is a 400.
 - **Previous-period deltas.** Figures compare with the previous calendar period of the same kind
   (September for October, the previous ISO week, the previous year) -- not an equal-length rolling
@@ -392,7 +394,6 @@ widgets render.
 
 - On touch devices widgets can only be reordered within a section, with the arrow buttons;
   moving one to another section needs a mouse or trackpad.
-- Sections themselves cannot be reordered.
 - The dashboard layout is managed through the web UI only; MCP can read its data
   (`get_dashboard_data`) but not edit the home dashboard.
 - Sparkline cards fetch up to 365 days of time-series data, which may be slow for very high-frequency metrics like heart rate. Use metric cards for those.
