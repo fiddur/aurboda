@@ -179,10 +179,12 @@ One source's total over the card's window as the headline, with its change again
 period on a period dashboard, then its top entries: music plays by artist, album or track
 (`1,760 plays`, `506 artists`), screen time by app (`151 h`, `4.9 h/day`, `38 apps`; categories
 excluded from screen time are left out) or visits by place (`55 visits`, `12 places`). Add one from a
-metrics section's add-widget dialog (source, limit, title) or through the API or MCP.
+metrics section's add-widget dialog (source, plays from, limit, title) or through the API or MCP.
 
 **Configuration:** `source` (`media_artist`, `media_album`, `media_track`, `screentime_app` or
-`place`), `limit` (1--10, default 3; a place list shows at most 5), optional `lookback_days` (default
+`place`), optional `media_source` for a `media_*` source (`lastfm` for Last.fm scrobbles only,
+`mpris` for the MPRIS logger only; all plays when absent, see
+[Querying media](../media.md#querying)), `limit` (1--10, default 3; a place list shows at most 5), optional `lookback_days` (default
 30; a period dashboard uses its period) and optional `title` (default "Top artists", "Top albums",
 "Top tracks", "Top apps" or "Top places"). Data comes from `GET /media/plays/top` (MCP:
 `query_top_media`), `GET /productivity/top-apps` (`query_top_apps`) and

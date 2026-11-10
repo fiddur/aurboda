@@ -92,9 +92,12 @@ Computed at read time, never sent or stored:
 - REST: `GET /api/media/plays/top?by=artist|album|track&start=<iso>&end=<iso>&limit=<1-50, default 10>` — the
   plays in the window grouped by artist, album (`artist — album`) or track (`artist — title`): `total_plays`,
   `distinct` (artists, albums or tracks) and `items` (`name`, `plays`), most played first. Plays without the
-  grouping key (an MPRIS play with no album, say) count towards `total_plays` only. Behind the dashboard's
+  grouping key (an MPRIS play with no album, say) count towards `total_plays` only. Optional
+  `source=lastfm|mpris` counts only that source's plays: `lastfm` counts every Last.fm scrobble, including the
+  ones an MPRIS play would otherwise hide as duplicates, and `mpris` only the logger's plays; without it both
+  are counted as in `GET /api/media/plays`. Behind the dashboard's
   [top list card](features/dashboard.md#top-list-card).
-- MCP: `query_media_plays` (`start`, `end`, `tz`) `query_top_media` (`by`, `start`, `end`, `limit`, `tz`) and `get_media_play`
+- MCP: `query_media_plays` (`start`, `end`, `tz`) `query_top_media` (`by`, `start`, `end`, `limit`, `source`, `tz`) and `get_media_play`
   (`id`, `tz`).
 - Web: the Data page's **Media** rows list the same plays, with played time, ratio and player for MPRIS plays.
   Clicking a row opens the play's detail page (`/detail/media/:id`): its fields, the source URL as an external

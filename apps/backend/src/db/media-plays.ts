@@ -1,4 +1,4 @@
-import type { MediaPlay, MediaPlayInput, MediaSyncResult } from '@aurboda/api-spec'
+import type { MediaPlay, MediaPlayInput, MediaPlaySource, MediaSyncResult } from '@aurboda/api-spec'
 
 import {
   dedupeAgainstLastfm,
@@ -31,12 +31,8 @@ export const storeMediaPlays = async (
   return { plays_received: plays.length, plays_stored: new Set(plays.map((p) => p.id)).size }
 }
 
-/** Plays overlapping [start, end): MPRIS plays plus the Last.fm scrobbles they do not duplicate. */
-export const getMediaPlays = async (
-  user: string,
-  window: { start: Date; end: Date },
-): Promise<MediaPlay[]> => {
-  const mprisResult = await query(
+const queryMprisPlays = async (user: string, window: { start: Date; end: Date }): Promise<MediaPlay[]> => {
+  const result = await query(
     user,
     `SELECT external_id, data FROM raw_records
      WHERE source = 'mpris' AND record_type = 'media_play'
@@ -44,7 +40,11 @@ export const getMediaPlays = async (
      ORDER BY recorded_at`,
     [new Date(window.start.getTime() - DAY_MS), new Date(window.end.getTime() + DEDUP_MARGIN_MS)],
   )
-  const scrobbleResult = await query(
+  return result.rows.map((r) => mprisRecordToPlay(r.external_id as string, r.data ?? {}))
+}
+
+const queryScrobbles = async (user: string, window: { start: Date; end: Date }): Promise<MediaPlay[]> => {
+  const result = await query(
     user,
     `SELECT external_id, recorded_at, data FROM raw_records
      WHERE source = 'lastfm' AND record_type = 'scrobble'
@@ -52,11 +52,23 @@ export const getMediaPlays = async (
      ORDER BY recorded_at`,
     [new Date(window.start.getTime() - DEDUP_MARGIN_MS), new Date(window.end.getTime() + DEDUP_MARGIN_MS)],
   )
-
-  const mpris = mprisResult.rows.map((r) => mprisRecordToPlay(r.external_id as string, r.data ?? {}))
-  const lastfm = scrobbleResult.rows.map((r) =>
+  return result.rows.map((r) =>
     scrobbleRecordToPlay(r.external_id as string, r.recorded_at as Date, r.data ?? {}),
   )
+}
+
+/**
+ * Plays in [start, end): MPRIS plays overlapping it plus the Last.fm scrobbles starting in it.
+ * Without a source an MPRIS play hides its duplicate scrobble; with one, only that source is read and
+ * nothing is deduplicated, so `lastfm` keeps every scrobble.
+ */
+export const getMediaPlays = async (
+  user: string,
+  window: { start: Date; end: Date },
+  options: { source?: MediaPlaySource } = {},
+): Promise<MediaPlay[]> => {
+  const mpris = options.source === 'lastfm' ? [] : await queryMprisPlays(user, window)
+  const lastfm = options.source === 'mpris' ? [] : await queryScrobbles(user, window)
 
   return dedupeAgainstLastfm(mpris, lastfm).filter((play) => {
     const range = playRange(play)

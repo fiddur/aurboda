@@ -116,10 +116,27 @@ describe('GET /plays/top', () => {
       { end: new Date(window.end), start: new Date(window.start) },
       'artist',
       10,
+      undefined,
     )
   })
 
-  test('rejects an unknown grouping and a limit out of bounds', async () => {
+  test('passes the play source on', async () => {
+    const getTop = vi.fn().mockResolvedValue({ distinct: 0, items: [], total_plays: 0 })
+    const res = await supertest(buildApp(vi.fn(), vi.fn(), getTop))
+      .get('/plays/top')
+      .query({ ...window, by: 'track', limit: 5, source: 'lastfm' })
+
+    expect(res.status).toBe(200)
+    expect(getTop).toHaveBeenCalledWith(
+      'tester',
+      { end: new Date(window.end), start: new Date(window.start) },
+      'track',
+      5,
+      'lastfm',
+    )
+  })
+
+  test('rejects an unknown grouping, a limit out of bounds and an unknown source', async () => {
     const getTop = vi.fn()
     const app = buildApp(vi.fn(), vi.fn(), getTop)
 
@@ -142,6 +159,13 @@ describe('GET /plays/top', () => {
         await supertest(app)
           .get('/plays/top')
           .query({ ...window, by: 'track', limit: 51 })
+      ).status,
+    ).toBe(400)
+    expect(
+      (
+        await supertest(app)
+          .get('/plays/top')
+          .query({ ...window, by: 'track', source: 'spotify' })
       ).status,
     ).toBe(400)
     expect(getTop).not.toHaveBeenCalled()

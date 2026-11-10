@@ -1,4 +1,4 @@
-import type { MediaPlay, TopMedia, TopMediaBy, TopMediaItem } from '@aurboda/api-spec'
+import type { MediaPlay, MediaPlaySource, TopMedia, TopMediaBy, TopMediaItem } from '@aurboda/api-spec'
 
 import { getMediaPlays } from '../../db/index.ts'
 
@@ -41,5 +41,6 @@ export const getTopMedia = async (
   window: { start: Date; end: Date },
   by: TopMediaBy,
   limit: number,
+  source?: MediaPlaySource,
   deps: TopMediaDeps = { getMediaPlays },
-): Promise<TopMedia> => rankPlays(await deps.getMediaPlays(user, window), by, limit)
+): Promise<TopMedia> => rankPlays(await deps.getMediaPlays(user, window, { source }), by, limit)
