@@ -19,6 +19,7 @@ const centralDb = {
   getOuraWebhookEnabled: vi.fn().mockResolvedValue(false),
   getServerSetting: vi.fn().mockResolvedValue(null),
   getSignupMode: vi.fn().mockResolvedValue('closed'),
+  listInstanceTagFollows: vi.fn().mockResolvedValue([]),
   setServerSetting: vi.fn().mockResolvedValue(undefined),
 } as unknown as CentralDb
 
@@ -489,18 +490,61 @@ describe('public tag pages setting', () => {
     const res = await supertest(buildApp()).get('/admin/settings')
     expect(res.body.public_tag_pages).toEqual([])
     expect(res.body.public_tag_retention_days).toBe(30)
+    expect(res.body.public_tag_follows).toEqual([])
   })
 
-  test('PATCH stores normalised tags, then follows their tag actors', async () => {
+  test('GET reports each configured tag’s follow state', async () => {
+    vi.mocked(centralDb.getServerSetting).mockImplementation(async (key) =>
+      key === 'public_tag_pages' ? ['aurboda', 'running', 'cycling'] : null,
+    )
+    vi.mocked(centralDb.listInstanceTagFollows).mockResolvedValueOnce([
+      { accepted: true, tag: 'aurboda' },
+      { accepted: false, tag: 'running' },
+    ] as Awaited<ReturnType<CentralDb['listInstanceTagFollows']>>)
+    try {
+      const res = await supertest(buildApp()).get('/admin/settings')
+      expect(res.body.public_tag_follows).toEqual([
+        { state: 'accepted', tag: 'aurboda' },
+        { state: 'pending', tag: 'running' },
+        { state: 'unresolved', tag: 'cycling' },
+      ])
+    } finally {
+      vi.mocked(centralDb.getServerSetting).mockReset().mockResolvedValue(null)
+    }
+  })
+
+  test('PATCH stores normalised tags, then applies the stored tags', async () => {
     vi.mocked(centralDb.setServerSetting).mockClear()
     publicTagActions.apply.mockClear()
-    const res = await supertest(buildApp())
-      .patch('/admin/settings')
-      .send({ public_tag_pages: ['#Aurboda', 'aurboda', 'Running'], public_tag_retention_days: 14 })
-    expect(res.status).toBe(200)
-    expect(centralDb.setServerSetting).toHaveBeenCalledWith('public_tag_pages', ['aurboda', 'running'])
-    expect(centralDb.setServerSetting).toHaveBeenCalledWith('public_tag_retention_days', 14)
-    expect(publicTagActions.apply).toHaveBeenCalledWith(['aurboda', 'running'])
+    vi.mocked(centralDb.getServerSetting).mockImplementation(async (key) =>
+      key === 'public_tag_pages' ? ['aurboda', 'running'] : null,
+    )
+    try {
+      const res = await supertest(buildApp())
+        .patch('/admin/settings')
+        .send({ public_tag_pages: ['#Aurboda', 'aurboda', 'Running'], public_tag_retention_days: 14 })
+      expect(res.status).toBe(200)
+      expect(centralDb.setServerSetting).toHaveBeenCalledWith('public_tag_pages', ['aurboda', 'running'])
+      expect(centralDb.setServerSetting).toHaveBeenCalledWith('public_tag_retention_days', 14)
+      expect(publicTagActions.apply).toHaveBeenCalledWith(['aurboda', 'running'])
+    } finally {
+      vi.mocked(centralDb.getServerSetting).mockReset().mockResolvedValue(null)
+    }
+  })
+
+  test('PATCH of the tag actor host alone re-applies the stored tags; retention alone does not', async () => {
+    publicTagActions.apply.mockClear()
+    vi.mocked(centralDb.getServerSetting).mockImplementation(async (key) =>
+      key === 'public_tag_pages' ? ['aurboda'] : null,
+    )
+    try {
+      await supertest(buildApp()).patch('/admin/settings').send({ public_tag_retention_days: 10 })
+      expect(publicTagActions.apply).not.toHaveBeenCalled()
+      await supertest(buildApp()).patch('/admin/settings').send({ tag_actor_host: 'tags.other' })
+      expect(publicTagActions.apply).toHaveBeenCalledWith(['aurboda'])
+    } finally {
+      vi.mocked(centralDb.getServerSetting).mockReset().mockResolvedValue(null)
+    }
   })
 
   test('a failure to follow the tag actors does not fail the save', async () => {

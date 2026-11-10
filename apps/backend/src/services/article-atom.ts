@@ -134,6 +134,8 @@ interface AtomAuthor {
 }
 
 interface AtomEntryXml extends AtomArticleEntry {
+  /** The entry's Atom `<id>`: a permalink for our own posts, the note's id for a tag page's. */
+  entry_id: string
   url: string
   author?: AtomAuthor
 }
@@ -160,7 +162,7 @@ const buildAtom = ({ author, entries, now, pageUrl, selfUrl, title }: AtomDocume
   const entryXml = entries.map((entry) =>
     [
       '  <entry>',
-      `    <id>${escapeXml(entry.url)}</id>`,
+      `    <id>${escapeXml(entry.entry_id)}</id>`,
       `    <title type="text">${escapeXml(entry.title)}</title>`,
       `    ${link('alternate', 'text/html', entry.url)}`,
       ...(entry.author ? [`    ${authorXml(entry.author)}`] : []),
@@ -200,7 +202,10 @@ export const blogTitle = (username: string): string => `${username}'s blog — A
 export const buildArticlesAtom = ({ apiBaseUrl, entries, now, username, webHost }: AtomFeedInput): string =>
   buildAtom({
     author: { name: username, uri: buildProfileUrl(webHost, username) },
-    entries: entries.map((entry) => ({ ...entry, url: buildPostUrl(webHost, username, entry.id) })),
+    entries: entries.map((entry) => {
+      const url = buildPostUrl(webHost, username, entry.id)
+      return { ...entry, entry_id: url, url }
+    }),
     now,
     pageUrl: buildBlogUrl(webHost, username),
     selfUrl: buildArticlesAtomUrl(apiBaseUrl, username),
@@ -225,11 +230,15 @@ interface OfficialFeedAtomInput {
 
 export const buildOfficialFeedAtom = ({ apiBaseUrl, entries, now, webHost }: OfficialFeedAtomInput): string =>
   buildAtom({
-    entries: entries.map((entry) => ({
-      ...entry,
-      author: { name: entry.username, uri: buildProfileUrl(webHost, entry.username) },
-      url: buildPostUrl(webHost, entry.username, entry.id),
-    })),
+    entries: entries.map((entry) => {
+      const url = buildPostUrl(webHost, entry.username, entry.id)
+      return {
+        ...entry,
+        author: { name: entry.username, uri: buildProfileUrl(webHost, entry.username) },
+        entry_id: url,
+        url,
+      }
+    }),
     now,
     pageUrl: buildOfficialFeedUrl(webHost),
     selfUrl: buildOfficialFeedAtomUrl(apiBaseUrl),
@@ -280,6 +289,7 @@ export const buildTagFeedAtom = ({ apiBaseUrl, entries, now, tag, webHost }: Tag
       return {
         author: { name, uri: entry.actor_uri },
         created_at: entry.published_at,
+        entry_id: entry.note_uri,
         html: tagEntryHtml(entry),
         id: entry.note_uri,
         title: name,

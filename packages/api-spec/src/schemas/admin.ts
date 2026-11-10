@@ -112,6 +112,21 @@ export const authTokenResponseSchema = baseResponseSchema
 
 export type AuthTokenResponse = z.infer<typeof authTokenResponseSchema>
 
+export const publicTagFollowSchema = z
+  .object({
+    state: z.enum(['pending', 'accepted', 'unresolved']).meta({
+      description:
+        "`accepted`: the tag actor accepted the instance actor's follow and its posts are kept; `pending`: sent, not yet accepted (sent again on the next save); `unresolved`: the tag actor could not be found (tried again on the next save)",
+    }),
+    tag: z.string().meta({ description: 'The hashtag, lowercase without `#`' }),
+  })
+  .meta({
+    description: "A public tag page's follow of its tag actor on the tag actor host",
+    id: 'PublicTagFollow',
+  })
+
+export type PublicTagFollow = z.infer<typeof publicTagFollowSchema>
+
 export const adminSettingsResponseSchema = baseResponseSchema
   .extend({
     admin_count: z.number().int().meta({ description: 'Number of admin users' }),
@@ -151,6 +166,9 @@ export const adminSettingsResponseSchema = baseResponseSchema
     public_tag_pages: z.array(z.string()).meta({
       description:
         "Hashtags (lowercase, without `#`) with a public page at `/tags/<tag>`: the server follows each tag's actor on the tag actor host and lists the public posts it announces",
+    }),
+    public_tag_follows: z.array(publicTagFollowSchema).meta({
+      description: "Each configured public tag page's follow of its tag actor, in `public_tag_pages` order",
     }),
     public_tag_retention_days: z
       .number()

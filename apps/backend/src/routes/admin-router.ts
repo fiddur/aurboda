@@ -39,6 +39,7 @@ import {
 } from '../services/official-feed.ts'
 import {
   normalizePublicTagPages,
+  readPublicTagFollows,
   readPublicTagPages,
   readPublicTagRetentionDays,
 } from '../services/public-tags.ts'
@@ -83,6 +84,7 @@ export const createAdminRouter = (
       tagActorHost,
       publicTagPages,
       publicTagRetentionDays,
+      publicTagFollows,
     ] = await Promise.all([
       centralDb.getSignupMode(),
       centralDb.getAdminCount(),
@@ -102,6 +104,7 @@ export const createAdminRouter = (
       readTagActorHost(centralDb),
       readPublicTagPages(centralDb),
       readPublicTagRetentionDays(centralDb),
+      readPublicTagFollows(centralDb),
     ])
     return {
       admin_count: adminCount,
@@ -119,6 +122,7 @@ export const createAdminRouter = (
       official_feed: officialFeed,
       payment_url: billing.payment_url,
       price_text: billing.price_text,
+      public_tag_follows: publicTagFollows,
       public_tag_pages: publicTagPages,
       public_tag_retention_days: publicTagRetentionDays,
       // DSN is returned in full (not `_set` boolean like other secrets):
@@ -234,9 +238,10 @@ export const createAdminRouter = (
         await centralDb.setServerSetting('public_tag_retention_days', public_tag_retention_days)
       }
       if (public_tag_pages !== undefined) {
-        const tags = normalizePublicTagPages(public_tag_pages)
-        await centralDb.setServerSetting('public_tag_pages', tags)
-        await publicTags?.apply(tags).catch((error: unknown) => {
+        await centralDb.setServerSetting('public_tag_pages', normalizePublicTagPages(public_tag_pages))
+      }
+      if (public_tag_pages !== undefined || tag_actor_host !== undefined) {
+        await publicTags?.apply(await readPublicTagPages(centralDb)).catch((error: unknown) => {
           console.error('⚠️ Public tag page follows failed:', error)
         })
       }

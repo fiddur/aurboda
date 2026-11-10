@@ -250,7 +250,11 @@ this server's own. Saving the list makes the instance actor follow `<tag>@<tag a
 `aurboda@tags.pub`) for every added tag, as it follows a relay, and unfollow (`Undo{Follow}`) every
 removed one; the follow is pending until the tag actor accepts, and only an accepted tag actor's
 `Announce`s are kept. A tag whose actor cannot be resolved still stays in the setting, with no
-follow, and is tried again on the next save that lists it. Posts are kept for
+follow, and is tried again on the next save that lists it; a pending follow is re-sent on every
+save, and changing the tag actor host moves every follow to the new host. The section shows a
+badge per tag (`public_tag_follows`): **accepted**, **pending**, or **unresolved**. There is no
+moderation of tag pages yet beyond removing the tag; a follow-up issue tracks hiding posts and
+blocking actors and domains. Posts are kept for
 `public_tag_retention_days` (1–365, default 30) by publication time; a nightly job (`23 3 * * *`)
 drops older ones and the ones that carry no configured tag any more. This server's own public
 posts are added as they are published from then on: posts published before a tag was configured

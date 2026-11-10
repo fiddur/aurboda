@@ -11,6 +11,9 @@ import {
 
 const CONTAINER_TIMEOUT = 120_000
 
+const BASE = new Date(Date.now() - 24 * 60 * 60 * 1000)
+const KEEP = { retentionDays: 30 }
+
 const post = (n: number, overrides: Partial<PublicTagPostInput> = {}): PublicTagPostInput => ({
   actor_uri: 'https://peer.example/users/bob',
   announce_uris: [`https://tags.example/announce/${n}`],
@@ -21,7 +24,7 @@ const post = (n: number, overrides: Partial<PublicTagPostInput> = {}): PublicTag
   images: [],
   local_user: null,
   note_uri: `https://peer.example/notes/${n}`,
-  published_at: new Date(Date.UTC(2026, 10, 1, 12, n)),
+  published_at: new Date(BASE.getTime() + n * 60_000),
   tags: ['aurboda'],
   url: `https://peer.example/@bob/${n}`,
   ...overrides,
@@ -74,7 +77,7 @@ describe('central public tag pages', () => {
     const a = api()
     const first = await a.upsertPublicTagPost(post(1, { images: [{ url: 'https://peer.example/a.png' }] }))
     expect(first.images).toEqual([{ url: 'https://peer.example/a.png' }])
-    expect(first.cursor_ts).toMatch(/^2026-11-01 12:01:00/)
+    expect(new Date(first.cursor_ts).getTime()).toBe(BASE.getTime() + 60_000)
     const again = await a.upsertPublicTagPost(
       post(1, {
         announce_uris: ['https://tags.example/announce/other'],
@@ -101,12 +104,12 @@ describe('central public tag pages', () => {
     await a.upsertPublicTagPost(post(2, { local_user: 'alice' }))
 
     await a.removePublicTagAnnounce('https://tags.example/announce/1')
-    expect((await a.listPublicTagPosts('aurboda', 10)).map((p) => p.note_uri)).toContain(
+    expect((await a.listPublicTagPosts('aurboda', 10, KEEP)).map((p) => p.note_uri)).toContain(
       'https://peer.example/notes/1',
     )
     await a.removePublicTagAnnounce('https://tags.example/announce/1b')
     await a.removePublicTagAnnounce('https://tags.example/announce/2')
-    expect((await a.listPublicTagPosts('aurboda', 10)).map((p) => p.note_uri)).toEqual([
+    expect((await a.listPublicTagPosts('aurboda', 10, KEEP)).map((p) => p.note_uri)).toEqual([
       'https://peer.example/notes/2',
     ])
   })
@@ -123,26 +126,54 @@ describe('central public tag pages', () => {
     ).toBe(true)
     expect(await a.deleteLocalPublicTagPost('https://peer.example/notes/2', 'mallory')).toBe(false)
     expect(await a.deleteLocalPublicTagPost('https://peer.example/notes/2', 'alice')).toBe(true)
-    expect(await a.listPublicTagPosts('aurboda', 10)).toEqual([])
+    expect(await a.listPublicTagPosts('aurboda', 10, KEEP)).toEqual([])
   })
 
   test('lists one tag newest first and pages on (published_at, id)', async () => {
     const a = api()
     for (const n of [1, 2, 3, 4]) await a.upsertPublicTagPost(post(n))
     await a.upsertPublicTagPost(post(5, { tags: ['running'] }))
-    const page1 = await a.listPublicTagPosts('aurboda', 2)
+    const page1 = await a.listPublicTagPosts('aurboda', 2, KEEP)
     expect(page1.map((p) => p.note_uri)).toEqual([
       'https://peer.example/notes/4',
       'https://peer.example/notes/3',
     ])
     const last = page1[1]
-    const page2 = await a.listPublicTagPosts('aurboda', 10, { id: last.id, ts: last.cursor_ts })
+    const page2 = await a.listPublicTagPosts('aurboda', 10, {
+      ...KEEP,
+      before: { id: last.id, ts: last.cursor_ts },
+    })
     expect(page2.map((p) => p.note_uri)).toEqual([
       'https://peer.example/notes/2',
       'https://peer.example/notes/1',
     ])
-    expect((await a.listPublicTagPosts('running', 10)).map((p) => p.note_uri)).toEqual([
+    expect((await a.listPublicTagPosts('running', 10, KEEP)).map((p) => p.note_uri)).toEqual([
       'https://peer.example/notes/5',
+    ])
+  })
+
+  test('lists only posts within the retention, so lowering it takes effect at once', async () => {
+    const a = api()
+    await a.upsertPublicTagPost(post(1, { published_at: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000) }))
+    await a.upsertPublicTagPost(post(2))
+    expect((await a.listPublicTagPosts('aurboda', 10, { retentionDays: 30 })).map((p) => p.note_uri)).toEqual(
+      ['https://peer.example/notes/2', 'https://peer.example/notes/1'],
+    )
+    expect((await a.listPublicTagPosts('aurboda', 10, { retentionDays: 7 })).map((p) => p.note_uri)).toEqual([
+      'https://peer.example/notes/2',
+    ])
+  })
+
+  test("an actor's own Delete drops every remote post of theirs, never a local one", async () => {
+    const a = api()
+    await a.upsertPublicTagPost(post(1))
+    await a.upsertPublicTagPost(post(2))
+    await a.upsertPublicTagPost(post(3, { actor_uri: 'https://peer.example/users/carol' }))
+    await a.upsertPublicTagPost(post(4, { announce_uris: [], local_user: 'bob' }))
+    expect(await a.deletePublicTagPostsByActor('https://peer.example/users/bob')).toBe(2)
+    expect((await a.listPublicTagPosts('aurboda', 10, KEEP)).map((p) => p.note_uri)).toEqual([
+      'https://peer.example/notes/4',
+      'https://peer.example/notes/3',
     ])
   })
 

@@ -47,6 +47,9 @@ const app = (deps: { publicTags?: typeof publicTags } = { publicTags }) => {
       ...deps,
     }),
   )
+  httpd.use((_req, res) => {
+    res.status(418).send('next handler')
+  })
   return supertest(httpd)
 }
 
@@ -73,13 +76,17 @@ describe('GET /public/tags/:tag.atom', () => {
     expect(res.text).toContain('<title type="text">#aurboda on aurboda.example</title>')
     expect(res.text).toContain('href="https://aurboda.example/tags/aurboda"')
     expect(res.text).toContain('href="https://aurboda.example/api/public/tags/aurboda.atom"')
-    expect(res.text).toContain('<id>https://peer.example/@bob/1</id>')
+    expect(res.text).toContain('<id>https://peer.example/notes/1</id>')
+    expect(res.text).toContain('href="https://peer.example/@bob/1"')
     expect(res.text).toContain('<name>Bob</name>')
     expect(res.text).toContain('&lt;img src=&quot;https://peer.example/a.png&quot;')
     expect(res.text).not.toContain('<chart>')
   })
 
-  test('404s a tag without a page', async () => {
-    expect((await app().get('/public/tags/running.atom')).status).toBe(404)
+  test('passes a tag without a page on to the next handler', async () => {
+    const res = await app().get('/public/tags/running.atom')
+    expect(res.status).toBe(418)
+    expect(res.text).toBe('next handler')
+    expect((await app({}).get('/public/tags/aurboda.atom')).status).toBe(418)
   })
 })

@@ -340,3 +340,45 @@
     color: #fff;
   }
 }
+
+.tag-follow-badge {
+  display: inline-block;
+  margin-left: 0.3rem;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  vertical-align: middle;
+}
+
+.tag-follow-accepted {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.tag-follow-pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.tag-follow-unresolved {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+@media (prefers-color-scheme: dark) {
+  .tag-follow-accepted {
+    background: #064e3b;
+    color: #a7f3d0;
+  }
+
+  .tag-follow-pending {
+    background: #78350f;
+    color: #fde68a;
+  }
+
+  .tag-follow-unresolved {
+    background: #7f1d1d;
+    color: #fecaca;
+  }
+}

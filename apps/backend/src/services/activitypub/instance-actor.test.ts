@@ -190,7 +190,7 @@ describe('a Follow of the instance actor', () => {
 })
 
 describe('tag follow responses', () => {
-  const followId = instanceTagFollowId(ORIGIN, 'aurboda')
+  const followId = instanceTagFollowId(ORIGIN, 'aurboda', '22222222-2222-4222-8222-222222222222')
   const TAG_ACTOR = 'https://tags.example/user/aurboda'
   const tagHooks = (): TagFollowInboxHooks => ({
     onAccept: vi.fn(async () => true),
@@ -198,7 +198,7 @@ describe('tag follow responses', () => {
   })
 
   test('the tag follow id never collides with a relay follow id', () => {
-    expect(followId.href).toBe(`${ORIGIN}/actor/follows/tags/aurboda`)
+    expect(followId.href).toBe(`${ORIGIN}/actor/follows/tags/aurboda/22222222-2222-4222-8222-222222222222`)
   })
 
   test('an Accept or Reject is handed to the tag follow hooks by the Follow id', async () => {

@@ -12,10 +12,12 @@ import {
   defaultPublicTagRetentionDays,
   normalizeTag,
   publicTagPagesMax,
+  type PublicTagFollow,
   type PublicTagPostsResponse,
   type PublicTagPost,
 } from '@aurboda/api-spec'
 import { type Actor, Follow, isActor, Undo } from '@fedify/fedify/vocab'
+import { randomUUID } from 'node:crypto'
 
 import type { LocalPublicTagPosts } from './activitypub/deliver.ts'
 import type { CentralDb } from './central-db.ts'
@@ -30,7 +32,12 @@ import {
 } from './activitypub/instance-actor.ts'
 import { signedFetchOptions } from './activitypub/signed-lookup.ts'
 import { temporalInstantToDate } from './activitypub/temporal-interop.ts'
-import { extractNoteImages, noteHashtags, sanitizeRemoteHtml } from './activitypub/timeline-ingest.ts'
+import {
+  extractNoteImages,
+  noteHashtags,
+  noteLinkUrl,
+  sanitizeRemoteHtml,
+} from './activitypub/timeline-ingest.ts'
 import { tagActorHandle } from './following.ts'
 import { decodeKeysetCursor, encodeKeysetCursor } from './keyset-cursor.ts'
 import { withTimeout } from './with-timeout.ts'
@@ -44,6 +51,7 @@ export type PublicTagStore = Pick<
   | 'deleteInstanceTagFollow'
   | 'deleteLocalPublicTagPost'
   | 'deletePublicTagPost'
+  | 'deletePublicTagPostsByActor'
   | 'getInstanceTagFollowByActor'
   | 'getInstanceTagFollowByFollowId'
   | 'listInstanceTagFollows'
@@ -107,81 +115,128 @@ export interface PublicTagActions {
   latest: (rawTag: string, limit: number) => Promise<{ tag: string; posts: PublicTagPostRecord[] } | null>
 }
 
-const tagFollow = (actorUri: URL, origin: string, tag: string, object: URL) =>
-  new Follow({ actor: actorUri, id: instanceTagFollowId(origin, tag), object })
+const resolveTagActor = async (
+  ctx: Context<void>,
+  tag: string,
+  host: string,
+): Promise<{ actor_uri: string; inbox_uri: string } | null> => {
+  const actor = await withTimeout(
+    signedFetchOptions(ctx, INSTANCE_ACTOR_ID).then((options) =>
+      ctx.lookupObject(tagActorHandle(tag, host), options),
+    ),
+    LOOKUP_TIMEOUT_MS,
+  ).catch(() => null)
+  if (!isActor(actor) || actor.id == null || actor.inboxId == null) return null
+  return { actor_uri: actor.id.href, inbox_uri: actor.inboxId.href }
+}
 
-const followTagActor = async (
+const recipientOf = (target: { actor_uri: string; inbox_uri: string }) => ({
+  id: new URL(target.actor_uri),
+  inboxId: new URL(target.inbox_uri),
+})
+
+/** Store the follow under a fresh id (pending again) and send it, best-effort. */
+const sendTagFollow = async (
   deps: PublicTagActionsDeps,
   ctx: Context<void>,
   tag: string,
-): Promise<boolean> => {
-  const handle = tagActorHandle(tag, await deps.tagActorHost())
-  const actor = await withTimeout(
-    signedFetchOptions(ctx, INSTANCE_ACTOR_ID).then((options) => ctx.lookupObject(handle, options)),
-    LOOKUP_TIMEOUT_MS,
-  ).catch(() => null)
-  if (!isActor(actor) || actor.id == null || actor.inboxId == null) return false
-  await deps.store.upsertInstanceTagFollow({
-    actor_uri: actor.id.href,
-    follow_activity_id: instanceTagFollowId(deps.origin, tag).href,
-    inbox_uri: actor.inboxId.href,
-    tag,
+  target: { actor_uri: string; inbox_uri: string },
+): Promise<void> => {
+  const id = instanceTagFollowId(deps.origin, tag, randomUUID())
+  await deps.store.upsertInstanceTagFollow({ ...target, follow_activity_id: id.href, tag })
+  try {
+    await ctx.sendActivity(
+      { identifier: INSTANCE_ACTOR_ID },
+      recipientOf(target),
+      new Follow({ actor: ctx.getActorUri(INSTANCE_ACTOR_ID), id, object: new URL(target.actor_uri) }),
+    )
+  } catch (error) {
+    console.error(`⚠️ Tag actor Follow delivery failed → ${target.inbox_uri}:`, error)
+  }
+}
+
+/** Send `Undo` of the stored Follow (best-effort) and drop the row. */
+const unfollowTagActor = async (ctx: Context<void>, store: PublicTagStore, row: InstanceTagFollowRecord) => {
+  const actorUri = ctx.getActorUri(INSTANCE_ACTOR_ID)
+  const follow = new Follow({
+    actor: actorUri,
+    id: new URL(row.follow_activity_id),
+    object: new URL(row.actor_uri),
   })
   try {
     await ctx.sendActivity(
       { identifier: INSTANCE_ACTOR_ID },
-      actor,
-      tagFollow(ctx.getActorUri(INSTANCE_ACTOR_ID), deps.origin, tag, actor.id),
-    )
-  } catch (error) {
-    console.error(`⚠️ Tag actor Follow delivery failed → ${actor.inboxId.href}:`, error)
-  }
-  return true
-}
-
-const unfollowTagActor = async (
-  deps: PublicTagActionsDeps,
-  ctx: Context<void>,
-  row: InstanceTagFollowRecord,
-): Promise<void> => {
-  const actorUri = ctx.getActorUri(INSTANCE_ACTOR_ID)
-  const follow = tagFollow(actorUri, deps.origin, row.tag, new URL(row.actor_uri))
-  try {
-    await ctx.sendActivity(
-      { identifier: INSTANCE_ACTOR_ID },
-      { id: new URL(row.actor_uri), inboxId: new URL(row.inbox_uri) },
-      new Undo({
-        actor: actorUri,
-        id: new URL(`${instanceTagFollowId(deps.origin, row.tag).href}#undo`),
-        object: follow,
-      }),
+      recipientOf(row),
+      new Undo({ actor: actorUri, id: new URL(`${row.follow_activity_id}#undo`), object: follow }),
     )
   } catch (error) {
     console.error(`⚠️ Tag actor Undo{Follow} delivery failed → ${row.inbox_uri}:`, error)
   }
-  await deps.store.deleteInstanceTagFollow(row.tag)
+  await store.deleteInstanceTagFollow(row.tag)
+}
+
+const isOnHost = (actorUri: string, host: string): boolean => {
+  try {
+    return new URL(actorUri).host === host
+  } catch {
+    return false
+  }
 }
 
 /**
- * Diff the configured tags against the instance actor's tag follows. A tag
- * already followed is left alone; a tag whose actor cannot be resolved gets no
- * row and is reported, so the next save that lists it tries again.
+ * Bring the instance actor's tag follows in line with the configured tags:
+ * - a removed tag, or one followed on a tag actor host no longer configured, is unfollowed;
+ * - a new (or re-hosted) tag's actor is resolved and followed; one that cannot be resolved
+ *   gets no row and is reported, so the next save tries again;
+ * - a follow still pending is sent again under a fresh id;
+ * - an accepted follow is left alone.
  */
 export const applyPublicTagPages = async (
   deps: PublicTagActionsDeps,
   tags: string[],
 ): Promise<ApplyPublicTagPagesResult> => {
   const wanted = normalizePublicTagPages(tags)
+  const host = await deps.tagActorHost()
   const existing = await deps.store.listInstanceTagFollows()
-  const followedTags = new Set(existing.map((row) => row.tag))
   const ctx = deps.federation.createContext(new URL(deps.origin))
-  const result: ApplyPublicTagPagesResult = { followed: [], unresolved: [] }
-  for (const tag of wanted.filter((t) => !followedTags.has(t))) {
-    if (await followTagActor(deps, ctx, tag)) result.followed.push(tag)
-    else result.unresolved.push(tag)
+  const current = existing.filter((row) => wanted.includes(row.tag) && isOnHost(row.actor_uri, host))
+  const dropped = existing.filter((row) => !current.includes(row))
+  await Promise.all(dropped.map((row) => unfollowTagActor(ctx, deps.store, row)))
+
+  const currentTags = new Set(current.map((row) => row.tag))
+  const pending = current.filter((row) => !row.accepted)
+  const fresh = wanted.filter((tag) => !currentTags.has(tag))
+  const resolved = await Promise.all(
+    fresh.map(async (tag) => ({ tag, target: await resolveTagActor(ctx, tag, host) })),
+  )
+  await Promise.all([
+    ...pending.map((row) => sendTagFollow(deps, ctx, row.tag, row)),
+    ...resolved.flatMap(({ tag, target }) => (target == null ? [] : [sendTagFollow(deps, ctx, tag, target)])),
+  ])
+  return {
+    followed: [
+      ...pending.map((row) => row.tag),
+      ...resolved.filter(({ target }) => target != null).map(({ tag }) => tag),
+    ],
+    unresolved: resolved.filter(({ target }) => target == null).map(({ tag }) => tag),
   }
-  for (const row of existing.filter((r) => !wanted.includes(r.tag))) await unfollowTagActor(deps, ctx, row)
-  return result
+}
+
+/** Each configured tag's follow: accepted, pending, or unresolved (no follow row). */
+export const publicTagFollowStates = (
+  tags: readonly string[],
+  rows: readonly Pick<InstanceTagFollowRecord, 'accepted' | 'tag'>[],
+): PublicTagFollow[] =>
+  tags.map((tag) => {
+    const row = rows.find((r) => r.tag === tag)
+    return { state: row == null ? 'unresolved' : row.accepted ? 'accepted' : 'pending', tag }
+  })
+
+export const readPublicTagFollows = async (
+  store: SettingsStore & Pick<PublicTagStore, 'listInstanceTagFollows'>,
+): Promise<PublicTagFollow[]> => {
+  const [tags, rows] = await Promise.all([readPublicTagPages(store), store.listInstanceTagFollows()])
+  return publicTagFollowStates(tags, rows)
 }
 
 const configuredTag = async (deps: PublicTagActionsDeps, rawTag: string): Promise<string | null> => {
@@ -195,16 +250,19 @@ export const createPublicTagActions = (deps: PublicTagActionsDeps): PublicTagAct
 
   latest: async (rawTag, limit) => {
     const tag = await configuredTag(deps, rawTag)
-    return tag == null ? null : { posts: await deps.store.listPublicTagPosts(tag, limit), tag }
+    if (tag == null) return null
+    const retentionDays = await readPublicTagRetentionDays(deps.store)
+    return { posts: await deps.store.listPublicTagPosts(tag, limit, { retentionDays }), tag }
   },
 
   page: async (rawTag, cursor) => {
     const tag = await configuredTag(deps, rawTag)
     if (tag == null) return { ok: false }
-    const [rows, retentionDays] = await Promise.all([
-      deps.store.listPublicTagPosts(tag, PUBLIC_TAG_PAGE_SIZE + 1, decodeKeysetCursor(cursor)),
-      readPublicTagRetentionDays(deps.store),
-    ])
+    const retentionDays = await readPublicTagRetentionDays(deps.store)
+    const rows = await deps.store.listPublicTagPosts(tag, PUBLIC_TAG_PAGE_SIZE + 1, {
+      before: decodeKeysetCursor(cursor),
+      retentionDays,
+    })
     const records = rows.slice(0, PUBLIC_TAG_PAGE_SIZE)
     const last = records[records.length - 1]
     return {
@@ -248,10 +306,15 @@ export const createPublicTagInboxHooks = (
 export const createPublicTagIngest = (
   store: Pick<
     PublicTagStore,
-    'deletePublicTagPost' | 'getInstanceTagFollowByActor' | 'removePublicTagAnnounce' | 'upsertPublicTagPost'
+    | 'deletePublicTagPost'
+    | 'deletePublicTagPostsByActor'
+    | 'getInstanceTagFollowByActor'
+    | 'removePublicTagAnnounce'
+    | 'upsertPublicTagPost'
   >,
 ): PublicTagIngest => ({
   deletePublicTagPost: (noteUri, actorUri) => store.deletePublicTagPost(noteUri, actorUri),
+  deletePublicTagPostsByActor: (actorUri) => store.deletePublicTagPostsByActor(actorUri),
   followedTagActor: async (actorUri) => {
     const row = await store.getInstanceTagFollowByActor(actorUri)
     return row != null && row.accepted ? { actor_uri: row.actor_uri, tag: row.tag } : null
@@ -271,7 +334,10 @@ export const createLocalPublicTagPosts = (deps: {
     if (note.id == null) return
     const tags = await noteHashtags(note)
     const pages = await deps.publicTagPages()
-    if (!tags.some((tag) => pages.includes(tag))) return
+    if (!tags.some((tag) => pages.includes(tag))) {
+      await deps.store.deleteLocalPublicTagPost(note.id.href, user)
+      return
+    }
     const actor = await deps.localActor(ctx, user)
     const presentation =
       actor == null
@@ -289,7 +355,7 @@ export const createLocalPublicTagPosts = (deps: {
       note_uri: note.id.href,
       published_at: published,
       tags,
-      url: note.url instanceof URL ? note.url.href : note.id.href,
+      url: noteLinkUrl(note, note.id),
     })
   },
   remove: async (user, objectUri) => {

@@ -1,4 +1,4 @@
-import type { RelayStyle } from '@aurboda/api-spec'
+import type { PublicTagFollow, RelayStyle } from '@aurboda/api-spec'
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation } from 'preact-iso'
@@ -745,6 +745,12 @@ function OfficialFeedSection() {
   )
 }
 
+const tagFollowTitle: Record<PublicTagFollow['state'], string> = {
+  accepted: 'The tag actor accepted the follow; its posts are arriving.',
+  pending: 'Followed, not yet accepted. Saving again re-sends the follow.',
+  unresolved: 'The tag actor could not be found on the tag actor host.',
+}
+
 function PublicTagPagesSection() {
   const queryClient = useQueryClient()
   const { data: settings } = useQuery({
@@ -757,6 +763,7 @@ function PublicTagPagesSection() {
   const [daysText, setDaysText] = useState<string | null>(null)
 
   const configured = settings?.public_tag_pages ?? []
+  const followStates = new Map((settings?.public_tag_follows ?? []).map((f) => [f.tag, f.state]))
   const tagsValue = tagsText ?? formatTagsInput(configured)
   const daysValue = daysText ?? String(settings?.public_tag_retention_days ?? 30)
   const host = settings?.tag_actor_host ?? 'tags.pub'
@@ -792,6 +799,14 @@ function PublicTagPagesSection() {
               <span key={tag}>
                 {i > 0 && ', '}
                 <a href={publicTagPath(tag)}>#{tag}</a>
+                {followStates.has(tag) && (
+                  <span
+                    class={`tag-follow-badge tag-follow-${followStates.get(tag)}`}
+                    title={tagFollowTitle[followStates.get(tag) ?? 'unresolved']}
+                  >
+                    {followStates.get(tag)}
+                  </span>
+                )}
               </span>
             ))}
           </p>

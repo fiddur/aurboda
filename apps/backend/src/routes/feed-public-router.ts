@@ -263,10 +263,7 @@ export const createFeedPublicRouter = ({
     res.type(ATOM_CONTENT_TYPE).send(xml ?? '')
   })
 
-  // A public tag page: what the instance actor received from the tag's actor plus
-  // this server's own public posts with the tag. Only configured tags have a page.
-  // `no-store` like the official feed: a removed tag or a deleted post must drop
-  // out at once.
+  // `no-store`: a removed tag or a deleted post must drop out at once.
   router.get<{ tag: string }, PublicTagPostsResponse | BaseResponse, unknown, PublicTagPostsQuery>(
     '/public/tags/:tag/posts',
     validateQuery(publicTagPostsQuerySchema),
@@ -282,11 +279,9 @@ export const createFeedPublicRouter = ({
     },
   )
 
-  router.get<{ tag: string }, string>('/public/tags/:tag.atom', async (req, res) => {
+  router.get<{ tag: string }, string>('/public/tags/:tag.atom', async (req, res, next) => {
     const latest = publicTags ? await publicTags.latest(req.params.tag, ATOM_ENTRY_LIMIT) : null
-    if (!latest) {
-      return res.status(404).type('text/plain').send('Not found')
-    }
+    if (!latest) return next()
     const xml = buildTagFeedAtom({
       apiBaseUrl,
       entries: latest.posts,

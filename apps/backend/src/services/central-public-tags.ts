@@ -102,8 +102,17 @@ export interface PublicTagsApi {
   /** The author's own Delete: scoped to the sender like the timeline's. */
   deletePublicTagPost: (noteUri: string, actorUri: string) => Promise<boolean>
   deleteLocalPublicTagPost: (noteUri: string, localUser: string) => Promise<boolean>
-  /** Newest first by `(published_at, id)`, after `before` when given. */
-  listPublicTagPosts: (tag: string, limit: number, before?: KeysetCursor) => Promise<PublicTagPostRecord[]>
+  /** A remote actor deleting themselves: every remote post of theirs. */
+  deletePublicTagPostsByActor: (actorUri: string) => Promise<number>
+  /**
+   * Newest first by `(published_at, id)`, after `before` when given, published within the last
+   * `retentionDays` (so a lowered retention takes effect before the nightly prune).
+   */
+  listPublicTagPosts: (
+    tag: string,
+    limit: number,
+    options: { retentionDays: number; before?: KeysetCursor },
+  ) => Promise<PublicTagPostRecord[]>
   prunePublicTagPosts: (olderThan: Date) => Promise<number>
   /** Drops the posts that carry none of `tags` (all of them when `tags` is empty). */
   prunePublicTagPostsNotTagged: (tags: string[]) => Promise<number>
@@ -150,6 +159,15 @@ export const createPublicTagsApi = (getClient: () => Promise<Queryable>): Public
     return (result.rowCount ?? 0) > 0
   },
 
+  deletePublicTagPostsByActor: async (actorUri) => {
+    const client = await getClient()
+    const result = await client.query(
+      'DELETE FROM public_tag_posts WHERE actor_uri = $1 AND local_user IS NULL',
+      [actorUri],
+    )
+    return result.rowCount ?? 0
+  },
+
   getInstanceTagFollow: followWhere(getClient, 'tag'),
   getInstanceTagFollowByActor: followWhere(getClient, 'actor_uri'),
   getInstanceTagFollowByFollowId: followWhere(getClient, 'follow_activity_id'),
@@ -162,15 +180,16 @@ export const createPublicTagsApi = (getClient: () => Promise<Queryable>): Public
     return result.rows
   },
 
-  listPublicTagPosts: async (tag, limit, before) => {
+  listPublicTagPosts: async (tag, limit, { before, retentionDays }) => {
     const client = await getClient()
     const result = await client.query<PublicTagPostRecord>(
       `SELECT ${POST_COLUMNS} FROM public_tag_posts
        WHERE tags @> ARRAY[$1]::text[]
+         AND published_at >= NOW() - make_interval(days => $5::int)
          AND ($3::timestamptz IS NULL OR (published_at, id) < ($3::timestamptz, $4::uuid))
        ORDER BY published_at DESC, id DESC
        LIMIT $2`,
-      [tag, limit, before?.ts ?? null, before?.id ?? null],
+      [tag, limit, before?.ts ?? null, before?.id ?? null, retentionDays],
     )
     return result.rows
   },

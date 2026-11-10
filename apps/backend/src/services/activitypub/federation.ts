@@ -109,6 +109,7 @@ import {
   type InstanceActorDeps,
   instanceActorUsername,
   isInstanceActor,
+  type PublicTagIngest,
   type RelayInboxHooks,
 } from './instance-actor.ts'
 import { toCryptoKeyPair } from './keys.ts'
@@ -583,6 +584,29 @@ export const handleInboundAnnounce = async (
   }
   await ingestBoostedNote(ctx, announce, origin, onNewEntry, enrich)
 }
+
+/**
+ * The inbox's `Announce` listener: a delivery to the instance actor (or the
+ * shared inbox) goes to the public tag pages; one to a user is a boost or a
+ * reaction, even from the same tag actor.
+ */
+export const createAnnounceListener =
+  ({
+    isReadOnly,
+    onUserAnnounce,
+    publicTagPosts,
+  }: {
+    isReadOnly: (user: string) => Promise<boolean>
+    onUserAnnounce: (ctx: InboxContext<void>, announce: Announce) => Promise<void>
+    publicTagPosts?: PublicTagIngest
+  }) =>
+  async (ctx: InboxContext<void>, announce: Announce): Promise<void> => {
+    if (publicTagPosts != null && isInstanceDelivery(ctx)) {
+      return await handleInstanceActorAnnounce(ctx, announce, publicTagPosts)
+    }
+    if (await dropsForReadOnly(ctx, announce, isReadOnly)) return
+    await onUserAnnounce(ctx, announce)
+  }
 
 /**
  * Inbound `Undo` of a Follow (drop the follower), a Like or an Announce (retract
@@ -1084,13 +1108,15 @@ export const createFeedFederation = (
     })
     .on(Like, handleInboundLike)
     .on(QuoteRequest, handleInboundQuoteRequest)
-    .on(Announce, async (ctx, announce) => {
-      if (instance?.publicTagPosts != null && isInstanceDelivery(ctx)) {
-        return await handleInstanceActorAnnounce(ctx, announce, instance.publicTagPosts)
-      }
-      if (await dropsForReadOnly(ctx, announce, isReadOnly)) return
-      await handleInboundAnnounce(ctx, announce, origin, onNewTimelineEntry, enrich)
-    })
+    .on(
+      Announce,
+      createAnnounceListener({
+        isReadOnly,
+        onUserAnnounce: (ctx, announce) =>
+          handleInboundAnnounce(ctx, announce, origin, onNewTimelineEntry, enrich),
+        publicTagPosts: instance?.publicTagPosts,
+      }),
+    )
     .on(Delete, async (ctx, del) => {
       if (instance?.publicTagPosts != null && isInstanceDelivery(ctx)) {
         return await handleInstanceActorDelete(ctx, del, instance.publicTagPosts)

@@ -46,6 +46,8 @@ export interface PublicTagIngest {
   upsertPublicTagPost: (input: PublicTagPostInput) => Promise<unknown>
   removePublicTagAnnounce: (announceUri: string) => Promise<void>
   deletePublicTagPost: (noteUri: string, actorUri: string) => Promise<unknown>
+  /** A remote actor deleting themselves: every post of theirs goes. */
+  deletePublicTagPostsByActor: (actorUri: string) => Promise<unknown>
 }
 
 export interface InstanceActorDeps {
@@ -78,9 +80,15 @@ export const buildInstanceActor = (
 export const instanceActorFollowId = (origin: string, relayId: string): URL =>
   new URL(`${origin.replace(/\/+$/, '')}${INSTANCE_ACTOR_PATH}/follows/${relayId}`)
 
-/** The id of the Follow the instance actor sends a tag actor; relay follow ids are UUIDs, so never `tags/…`. */
-export const instanceTagFollowId = (origin: string, tag: string): URL =>
-  new URL(`${origin.replace(/\/+$/, '')}${INSTANCE_ACTOR_PATH}/follows/tags/${encodeURIComponent(tag)}`)
+/**
+ * The id of one Follow the instance actor sends a tag actor: fresh per attempt, since
+ * Fedify drops an activity id it has seen within a day, so a fixed id would break a
+ * tag removed and added again. Relay follow ids are bare UUIDs, so never `tags/…`.
+ */
+export const instanceTagFollowId = (origin: string, tag: string, attemptId: string): URL =>
+  new URL(
+    `${origin.replace(/\/+$/, '')}${INSTANCE_ACTOR_PATH}/follows/tags/${encodeURIComponent(tag)}/${attemptId}`,
+  )
 
 /**
  * An `Accept`/`Reject` answering one of our relay follows, matched on the Follow's

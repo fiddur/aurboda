@@ -1253,7 +1253,7 @@ e.g. everyone's `#aurboda` posts.
 
 `/tags/<tag>` lists the public posts, from this server and others, that carry `#<tag>`, for the
 tags an admin configured (`public_tag_pages`, see [admin](../admin.md#federation)). It is fed two
-ways, into one central `public_tag_posts` table:
+ways, into one central `public_tag_posts` table, the first through the instance actor's follows:
 
 - **From the fediverse** — the instance actor follows the tag's actor on the tag actor host
   (`<tag>@tags.pub`), which `Announce`s every public post it sees with the tag. These arrive on the
@@ -1261,26 +1261,43 @@ ways, into one central `public_tag_posts` table:
   tag actor whose follow it **accepted** (a stranger's `Announce`, or a stranger's `Accept` of our
   follow, changes nothing); the `Announce` id is on the sender's host; the Note is **fetched from
   its own id**, signed as the instance actor (a Note embedded in the `Announce` is ignored), and
-  is on the same host as the announced id and as its author; it is addressed to the **Public
-  collection** (a followers-only or unlisted-to-followers post never lands on a public page); it
-  is **not a reply**; and its author's actor document answers at the attributed id. The content
-  is sanitised like a timeline post's, the images captured the same way, and the tags are the
-  Note's own plus the followed tag. One row per Note, keyed on its id: a second tag actor's
-  `Announce` of the same post adds its Announce id to the row. A tag actor's `Undo{Announce}`
-  removes its Announce id, and the row goes once no Announce keeps it; the author's own `Delete`
-  removes the row (scoped to the sender, like the timeline's).
+  is on the same host as the announced id and as its author; it names the **Public collection**
+  in `to` (an unlisted post, Public only in `cc`, or a followers-only one never lands on a public
+  page); it **carries the followed tag itself**; it is **not a reply**; it is not behind a content
+  warning (`sensitive`, or a non-empty `summary`); and its author's actor document answers at the
+  attributed id. The content is sanitised like a timeline post's, the images captured the same
+  way, the tags are the Note's own, and the link is the Note's `url` only when it is `http(s)`
+  (else its id). One row per Note, keyed on its id: a second tag actor's `Announce` of the same
+  post adds its Announce id to the row. A tag actor's `Undo{Announce}` removes its Announce id,
+  and the row goes once no Announce keeps it. An author's `Delete` of a post removes its row
+  (scoped to the sender, like the timeline's), and an actor's `Delete` of itself removes all of
+  theirs; but a remote author's own `Delete` rarely reaches this server (it goes to their
+  followers), so a deleted remote post usually leaves the page on the tag actor's
+  `Undo{Announce}`, or at the latest when retention prunes it. Remote edits are not followed: a
+  row keeps the Note as it was first fetched.
+- **The follows** — each follow attempt has its own id, `<origin>/actor/follows/tags/<tag>/<uuid>`,
+  stored on the row, and the `Undo{Follow}` is built from that stored id (`<id>#undo`). Saving
+  the tag list (or the tag actor host) re-sends the `Follow`, with a fresh id, for every tag not
+  yet accepted; when the tag actor host changes, the follows on the old host are undone and
+  dropped and the tags followed anew on the new one. New tags are resolved and followed
+  concurrently. The admin settings report each tag's state (`public_tag_follows`: `accepted`,
+  `pending`, or `unresolved` when no follow exists).
 - **From this server** — every `public` top-level post (not a reply) whose tags include a
   configured one is recorded as it is delivered, as the same leg of the fan-out that pushes it
   to relays, never failing the delivery. An edit re-records it; an edit making it non-public, or
   its deletion, removes it. Posts published before the tag was configured are not backfilled.
 
 Rows older than the retention (`public_tag_retention_days`, default 30, by publication time) and
-rows with no configured tag left are pruned nightly. The listing is
+rows with no configured tag left are pruned nightly, and the listing and the Atom feed apply the
+retention when read, so a shortened retention takes effect at once. There is no moderation of tag
+pages yet beyond removing the tag; a follow-up issue tracks hiding posts and blocking actors and
+domains. The listing is
 `GET /public/tags/:tag/posts?cursor=` (unauthenticated, `no-store`; 404 for a tag without a
 page): 20 entries newest-first by `(published_at, id)` with `next_cursor`, each in the home
 timeline's entry shape (no structured payload, reactions or replies), plus the `tag` and
 `retention_days`. `GET /public/tags/:tag.atom` is its Atom feed (20 newest, each entry titled by
-its author and linking to the original). The MCP tool `list_public_tag_posts` (`tag`, `cursor`)
+its author, identified by the Note's id and linking to the original; a tag without a page falls
+through to the next handler). The MCP tool `list_public_tag_posts` (`tag`, `cursor`)
 returns the same page. The web page (public, like `/blog`) renders each post as a read-only card
 with its `#tag` line, linking the tags that have a page of their own; the logged-out front page
 and `/blog` link every configured tag ("See what people share with #aurboda").

@@ -18,6 +18,7 @@ import {
   createPublicTagInboxHooks,
   createPublicTagIngest,
   normalizePublicTagPages,
+  publicTagFollowStates,
   PUBLIC_TAG_PAGE_SIZE,
   type PublicTagActionsDeps,
   serializePublicTagPost,
@@ -37,7 +38,7 @@ const followRow = (tag: string, accepted = false): InstanceTagFollowRecord => ({
   accepted,
   actor_uri: `https://${TAG_HOST}/user/${tag}`,
   created_at: new Date(),
-  follow_activity_id: `${ORIGIN}/actor/follows/tags/${tag}`,
+  follow_activity_id: `${ORIGIN}/actor/follows/tags/${tag}/stored`,
   inbox_uri: `https://${TAG_HOST}/user/${tag}/inbox`,
   tag,
   updated_at: new Date(),
@@ -70,6 +71,7 @@ const fakeDeps = (
     pages?: string[]
     posts?: PublicTagPostRecord[]
     sendActivity?: ReturnType<typeof vi.fn>
+    host?: string
   } = {},
 ) => {
   const follows = new Map((overrides.follows ?? []).map((row) => [row.tag, row]))
@@ -90,6 +92,7 @@ const fakeDeps = (
       deleteInstanceTagFollow: vi.fn(async (tag: string) => follows.delete(tag)),
       deleteLocalPublicTagPost: vi.fn(async () => true),
       deletePublicTagPost: vi.fn(async () => true),
+      deletePublicTagPostsByActor: vi.fn(async () => 0),
       getInstanceTagFollowByActor: vi.fn(async () => null),
       getInstanceTagFollowByFollowId: vi.fn(async () => null),
       getServerSetting: vi.fn(async (key: string) => {
@@ -108,7 +111,7 @@ const fakeDeps = (
       }),
       upsertPublicTagPost: vi.fn(async () => record(1)),
     },
-    tagActorHost: async () => TAG_HOST,
+    tagActorHost: async () => overrides.host ?? TAG_HOST,
   }
   return { ctx, deps, follows, listPublicTagPosts, lookupObject, sendActivity }
 }
@@ -144,44 +147,118 @@ describe('serializePublicTagPost', () => {
   })
 })
 
+const FOLLOW_ID_RE = (tag: string) =>
+  new RegExp(
+    `^${ORIGIN}/actor/follows/tags/${tag}/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`,
+  )
+
+const sentOf = (sendActivity: ReturnType<typeof vi.fn>) =>
+  sendActivity.mock.calls.map(([, recipient, activity]) => ({
+    activity: activity as Follow | Undo,
+    inbox: (recipient as { inboxId: URL }).inboxId.href,
+  }))
+
 describe('applyPublicTagPages', () => {
-  test('follows the tag actor of each new tag as the instance actor, pending', async () => {
+  test('follows the tag actor of each new tag as the instance actor, pending, under a fresh id', async () => {
     const { deps, follows, lookupObject, sendActivity } = fakeDeps({
       lookup: (handle) => (handle === `aurboda@${TAG_HOST}` ? tagActor('aurboda') : null),
     })
     const result = await applyPublicTagPages(deps, ['#Aurboda', 'missing'])
     expect(result).toEqual({ followed: ['aurboda'], unresolved: ['missing'] })
     expect(lookupObject).toHaveBeenCalledWith(`aurboda@${TAG_HOST}`, expect.anything())
-    expect(follows.get('aurboda')).toMatchObject({
+    const row = follows.get('aurboda')
+    expect(row).toMatchObject({
       accepted: false,
       actor_uri: `https://${TAG_HOST}/user/aurboda`,
-      follow_activity_id: `${ORIGIN}/actor/follows/tags/aurboda`,
       inbox_uri: `https://${TAG_HOST}/user/aurboda/inbox`,
     })
+    expect(row?.follow_activity_id).toMatch(FOLLOW_ID_RE('aurboda'))
     expect(follows.has('missing')).toBe(false)
     expect(sendActivity).toHaveBeenCalledTimes(1)
     const [sender, recipient, follow] = sendActivity.mock.calls[0]
     expect(sender).toEqual({ identifier: INSTANCE_ACTOR_ID })
     expect(recipient.id.href).toBe(`https://${TAG_HOST}/user/aurboda`)
     expect(follow).toBeInstanceOf(Follow)
-    expect(follow.id.href).toBe(`${ORIGIN}/actor/follows/tags/aurboda`)
+    expect(follow.id.href).toBe(row?.follow_activity_id)
     expect(follow.actorId.href).toBe(`${ORIGIN}/actor`)
     expect(follow.objectId.href).toBe(`https://${TAG_HOST}/user/aurboda`)
   })
 
-  test('leaves followed tags alone and unfollows removed ones', async () => {
+  test('each attempt mints a new follow id, so a tag removed and added again is followed afresh', async () => {
+    const { deps, follows } = fakeDeps({ lookup: () => tagActor('aurboda') })
+    await applyPublicTagPages(deps, ['aurboda'])
+    const first = follows.get('aurboda')?.follow_activity_id
+    await applyPublicTagPages(deps, [])
+    await applyPublicTagPages(deps, ['aurboda'])
+    const second = follows.get('aurboda')?.follow_activity_id
+    expect(second).toMatch(FOLLOW_ID_RE('aurboda'))
+    expect(second).not.toBe(first)
+  })
+
+  test('leaves accepted follows alone and unfollows removed ones by their stored follow id', async () => {
     const { deps, follows, lookupObject, sendActivity } = fakeDeps({
       follows: [followRow('aurboda', true), followRow('running', true)],
     })
     expect(await applyPublicTagPages(deps, ['aurboda'])).toEqual({ followed: [], unresolved: [] })
     expect(lookupObject).not.toHaveBeenCalled()
     expect([...follows.keys()]).toEqual(['aurboda'])
-    const [, recipient, undo] = sendActivity.mock.calls[0]
-    expect(recipient.inboxId.href).toBe(`https://${TAG_HOST}/user/running/inbox`)
+    const [{ activity: undo, inbox }] = sentOf(sendActivity)
+    expect(inbox).toBe(`https://${TAG_HOST}/user/running/inbox`)
     expect(undo).toBeInstanceOf(Undo)
+    expect(undo.id?.href).toBe(`${ORIGIN}/actor/follows/tags/running/stored#undo`)
     const inner = await (undo as Undo).getObject()
     expect(inner).toBeInstanceOf(Follow)
-    expect((inner as Follow).id?.href).toBe(`${ORIGIN}/actor/follows/tags/running`)
+    expect((inner as Follow).id?.href).toBe(`${ORIGIN}/actor/follows/tags/running/stored`)
+  })
+
+  test('a pending follow is sent again under a fresh id, without resolving the actor again', async () => {
+    const { deps, follows, lookupObject, sendActivity } = fakeDeps({ follows: [followRow('aurboda')] })
+    expect(await applyPublicTagPages(deps, ['aurboda'])).toEqual({ followed: ['aurboda'], unresolved: [] })
+    expect(lookupObject).not.toHaveBeenCalled()
+    const row = follows.get('aurboda')
+    expect(row?.follow_activity_id).toMatch(FOLLOW_ID_RE('aurboda'))
+    const [{ activity }] = sentOf(sendActivity)
+    expect(activity).toBeInstanceOf(Follow)
+    expect(activity.id?.href).toBe(row?.follow_activity_id)
+  })
+
+  test('a follow on another tag actor host is undone and the tag followed anew on the current one', async () => {
+    const newActor = new Person({
+      id: new URL('https://tags.other/user/aurboda'),
+      inbox: new URL('https://tags.other/user/aurboda/inbox'),
+    })
+    const { deps, follows, lookupObject, sendActivity } = fakeDeps({
+      follows: [followRow('aurboda', true)],
+      host: 'tags.other',
+      lookup: (handle) => (handle === 'aurboda@tags.other' ? newActor : null),
+    })
+    expect(await applyPublicTagPages(deps, ['aurboda'])).toEqual({ followed: ['aurboda'], unresolved: [] })
+    expect(lookupObject).toHaveBeenCalledWith('aurboda@tags.other', expect.anything())
+    expect(follows.get('aurboda')).toMatchObject({
+      accepted: false,
+      actor_uri: 'https://tags.other/user/aurboda',
+    })
+    const sent = sentOf(sendActivity)
+    expect(sent.map(({ activity, inbox }) => [activity.constructor.name, inbox])).toEqual([
+      ['Undo', `https://${TAG_HOST}/user/aurboda/inbox`],
+      ['Follow', 'https://tags.other/user/aurboda/inbox'],
+    ])
+  })
+
+  test('new tags are resolved concurrently', async () => {
+    let inFlight = 0
+    let peak = 0
+    const { deps } = fakeDeps({
+      lookup: async () => {
+        inFlight++
+        peak = Math.max(peak, inFlight)
+        await new Promise((resolve) => setTimeout(resolve, 5))
+        inFlight--
+        return null
+      },
+    })
+    expect((await applyPublicTagPages(deps, ['a1', 'b2', 'c3'])).unresolved).toEqual(['a1', 'b2', 'c3'])
+    expect(peak).toBe(3)
   })
 
   test('a failed delivery keeps the follow row, and a failed Undo still drops it', async () => {
@@ -200,6 +277,18 @@ describe('applyPublicTagPages', () => {
   })
 })
 
+describe('publicTagFollowStates', () => {
+  test('accepted, pending, or unresolved when the tag has no follow row', () => {
+    expect(
+      publicTagFollowStates(['aurboda', 'running', 'qs'], [followRow('aurboda', true), followRow('running')]),
+    ).toEqual([
+      { state: 'accepted', tag: 'aurboda' },
+      { state: 'pending', tag: 'running' },
+      { state: 'unresolved', tag: 'qs' },
+    ])
+  })
+})
+
 describe('public tag page listing', () => {
   test('a tag without a page is not found', async () => {
     const { deps } = fakeDeps({ pages: ['aurboda'] })
@@ -209,7 +298,7 @@ describe('public tag page listing', () => {
     expect(await actions.latest('running', 5)).toBeNull()
   })
 
-  test('pages newest first with a keyset cursor and the retention', async () => {
+  test('pages newest first with a keyset cursor, within the retention', async () => {
     const rows = Array.from({ length: PUBLIC_TAG_PAGE_SIZE + 1 }, (_, i) => record((i % 9) + 1))
     const { deps, listPublicTagPosts } = fakeDeps({ pages: ['aurboda'], posts: rows })
     const result = await createPublicTagActions(deps).page('#Aurboda')
@@ -219,14 +308,19 @@ describe('public tag page listing', () => {
     expect(result.page.retention_days).toBe(14)
     expect(result.page.posts).toHaveLength(PUBLIC_TAG_PAGE_SIZE)
     expect(result.page.next_cursor).not.toBeNull()
-    expect(listPublicTagPosts).toHaveBeenCalledWith('aurboda', PUBLIC_TAG_PAGE_SIZE + 1, undefined)
+    expect(listPublicTagPosts).toHaveBeenCalledWith('aurboda', PUBLIC_TAG_PAGE_SIZE + 1, {
+      before: undefined,
+      retentionDays: 14,
+    })
 
     await createPublicTagActions(deps).page('aurboda', result.page.next_cursor ?? undefined)
     const last = rows[PUBLIC_TAG_PAGE_SIZE - 1]
     expect(listPublicTagPosts).toHaveBeenLastCalledWith('aurboda', PUBLIC_TAG_PAGE_SIZE + 1, {
-      id: last.id,
-      ts: last.cursor_ts,
+      before: { id: last.id, ts: last.cursor_ts },
+      retentionDays: 14,
     })
+    await createPublicTagActions(deps).latest('aurboda', 5)
+    expect(listPublicTagPosts).toHaveBeenLastCalledWith('aurboda', 5, { retentionDays: 14 })
   })
 
   test('the last page has no cursor', async () => {
@@ -237,7 +331,7 @@ describe('public tag page listing', () => {
 })
 
 describe('createPublicTagInboxHooks', () => {
-  const FOLLOW_ID = `${ORIGIN}/actor/follows/tags/aurboda`
+  const FOLLOW_ID = `${ORIGIN}/actor/follows/tags/aurboda/stored`
   const ACTOR = `https://${TAG_HOST}/user/aurboda`
   const store = () => ({
     deleteInstanceTagFollow: vi.fn(async () => true),
@@ -279,6 +373,7 @@ describe('createPublicTagIngest', () => {
     ])
     const ingest = createPublicTagIngest({
       deletePublicTagPost: vi.fn(async () => true),
+      deletePublicTagPostsByActor: vi.fn(async () => 0),
       getInstanceTagFollowByActor: async (uri) => rows.get(uri) ?? null,
       removePublicTagAnnounce: vi.fn(async () => {}),
       upsertPublicTagPost: vi.fn(async () => record(1)),
@@ -336,10 +431,14 @@ describe('createLocalPublicTagPosts', () => {
     })
   })
 
-  test('ignores a post without a configured tag, and removes by author', async () => {
+  test('removes a post whose edit dropped the configured tag, and removes by author', async () => {
     const { ctx, deleteLocalPublicTagPost, posts, upsertPublicTagPost } = setup()
     await posts.record('alice', note(['running']), ctx)
     expect(upsertPublicTagPost).not.toHaveBeenCalled()
+    expect(deleteLocalPublicTagPost).toHaveBeenCalledWith(
+      `${ORIGIN}/users/alice/feed/11111111-1111-4111-8111-111111111111`,
+      'alice',
+    )
     await posts.remove('alice', 'https://aurboda.example/users/alice/feed/x')
     expect(deleteLocalPublicTagPost).toHaveBeenCalledWith(
       'https://aurboda.example/users/alice/feed/x',

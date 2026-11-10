@@ -5,7 +5,7 @@ import type { PublicTagPostInput } from '../central-public-tags.ts'
 import type { PublicTagIngest } from './instance-actor.ts'
 
 import { actorDocument, inboxContext, type StubDocuments } from '../../test/inbox-context.ts'
-import { createFeedFederation, dropsForReadOnly } from './federation.ts'
+import { createAnnounceListener, createFeedFederation, dropsForReadOnly } from './federation.ts'
 import { INSTANCE_ACTOR_ID } from './instance-actor.ts'
 import {
   handleInstanceActorAnnounce,
@@ -23,12 +23,23 @@ const ANNOUNCE_ID = 'https://tags.example/announce/1'
 const NOW = new Date('2026-11-10T00:00:00Z')
 
 const noteDoc = (overrides: Record<string, unknown> = {}) => ({
-  '@context': ['https://www.w3.org/ns/activitystreams', { Hashtag: 'as:Hashtag' }],
+  '@context': ['https://www.w3.org/ns/activitystreams', { Hashtag: 'as:Hashtag', sensitive: 'as:sensitive' }],
   attributedTo: AUTHOR,
   content: '<p>Hello <script>alert(1)</script>#Aurboda</p>',
   id: NOTE_ID,
   published: '2026-11-01T10:00:00Z',
-  tag: [{ href: 'https://peer.example/tags/running', name: '#Running', type: 'Hashtag' }],
+  tag: [
+    {
+      href: 'https://peer.example/tags/aurboda',
+      name: '#Aurboda',
+      type: 'Hashtag',
+    },
+    {
+      href: 'https://peer.example/tags/running',
+      name: '#Running',
+      type: 'Hashtag',
+    },
+  ],
   to: [PUBLIC],
   type: 'Note',
   url: 'https://peer.example/@bob/1',
@@ -44,6 +55,7 @@ const deps = (followed: Record<string, string> = { [TAG_ACTOR]: 'aurboda' }) => 
   const upserts: PublicTagPostInput[] = []
   const ingest: PublicTagIngest = {
     deletePublicTagPost: vi.fn(async () => true),
+    deletePublicTagPostsByActor: vi.fn(async () => 0),
     followedTagActor: async (uri) => (followed[uri] ? { actor_uri: uri, tag: followed[uri] } : null),
     removePublicTagAnnounce: vi.fn(async () => {}),
     upsertPublicTagPost: vi.fn(async (input: PublicTagPostInput) => {
@@ -97,7 +109,7 @@ describe('handleInstanceActorAnnounce', () => {
 
   test('also on the instance actor’s own inbox; a future publish time is clamped to now', async () => {
     const { ingest, upserts } = deps()
-    const docs = baseDocs(noteDoc({ cc: [PUBLIC], published: '2030-01-01T00:00:00Z', to: [] }))
+    const docs = baseDocs(noteDoc({ published: '2030-01-01T00:00:00Z' }))
     await handleInstanceActorAnnounce(ctxFor(docs, INSTANCE_ACTOR_ID), announce(), ingest, () => NOW)
     expect(upserts[0]?.published_at).toEqual(NOW)
   })
@@ -147,6 +159,59 @@ describe('handleInstanceActorAnnounce', () => {
     expect(upserts).toEqual([])
   })
 
+  test('an unlisted Note, naming the Public collection only in cc, is dropped', async () => {
+    const { ingest, upserts } = deps()
+    const docs = baseDocs(
+      noteDoc({
+        cc: [PUBLIC],
+        to: ['https://peer.example/users/bob/followers'],
+      }),
+    )
+    await handleInstanceActorAnnounce(ctxFor(docs), announce(), ingest, () => NOW)
+    expect(upserts).toEqual([])
+  })
+
+  test('a Note behind a content warning, or marked sensitive, is skipped', async () => {
+    const { ingest, upserts } = deps()
+    await handleInstanceActorAnnounce(
+      ctxFor(baseDocs(noteDoc({ summary: 'spoilers' }))),
+      announce(),
+      ingest,
+      () => NOW,
+    )
+    await handleInstanceActorAnnounce(
+      ctxFor(baseDocs(noteDoc({ sensitive: true }))),
+      announce(),
+      ingest,
+      () => NOW,
+    )
+    expect(upserts).toEqual([])
+  })
+
+  test('a Note that does not itself carry the followed tag is dropped', async () => {
+    const { ingest, upserts } = deps()
+    const docs = baseDocs(
+      noteDoc({
+        tag: [
+          {
+            href: 'https://peer.example/tags/running',
+            name: '#Running',
+            type: 'Hashtag',
+          },
+        ],
+      }),
+    )
+    await handleInstanceActorAnnounce(ctxFor(docs), announce(), ingest, () => NOW)
+    expect(upserts).toEqual([])
+  })
+
+  test('a url that is not http(s) falls back to the note id', async () => {
+    const { ingest, upserts } = deps()
+    const docs = baseDocs(noteDoc({ url: 'javascript:alert(1)' }))
+    await handleInstanceActorAnnounce(ctxFor(docs), announce(), ingest, () => NOW)
+    expect(upserts[0]?.url).toBe(NOTE_ID)
+  })
+
   test('a reply is skipped', async () => {
     const { ingest, upserts } = deps()
     const docs = baseDocs(noteDoc({ inReplyTo: 'https://peer.example/notes/0' }))
@@ -178,7 +243,10 @@ describe('handleInstanceActorUndo', () => {
     await handleInstanceActorUndo(ctx, new Undo({ actor: new URL(TAG_ACTOR), object: announce() }), ingest)
     await handleInstanceActorUndo(
       ctx,
-      new Undo({ actor: new URL(TAG_ACTOR), object: new URL('https://tags.example/announce/2') }),
+      new Undo({
+        actor: new URL(TAG_ACTOR),
+        object: new URL('https://tags.example/announce/2'),
+      }),
       ingest,
     )
     expect(ingest.removePublicTagAnnounce).toHaveBeenNthCalledWith(1, ANNOUNCE_ID)
@@ -192,20 +260,29 @@ describe('handleInstanceActorUndo', () => {
     await handleInstanceActorUndo(ctx, new Undo({ actor: new URL(stranger), object: announce() }), ingest)
     await handleInstanceActorUndo(
       ctx,
-      new Undo({ actor: new URL(TAG_ACTOR), object: announce({ actor: 'https://tags.example/user/x' }) }),
+      new Undo({
+        actor: new URL(TAG_ACTOR),
+        object: announce({ actor: 'https://tags.example/user/x' }),
+      }),
       ingest,
     )
     await handleInstanceActorUndo(
       ctx,
       new Undo({
         actor: new URL(TAG_ACTOR),
-        object: new Create({ actor: new URL(TAG_ACTOR), id: new URL('https://tags.example/c/1') }),
+        object: new Create({
+          actor: new URL(TAG_ACTOR),
+          id: new URL('https://tags.example/c/1'),
+        }),
       }),
       ingest,
     )
     await handleInstanceActorUndo(
       ctx,
-      new Undo({ actor: new URL(TAG_ACTOR), object: new URL('https://evil.example/announce/1') }),
+      new Undo({
+        actor: new URL(TAG_ACTOR),
+        object: new URL('https://evil.example/announce/1'),
+      }),
       ingest,
     )
     expect(ingest.removePublicTagAnnounce).not.toHaveBeenCalled()
@@ -221,6 +298,50 @@ describe('handleInstanceActorDelete', () => {
       ingest,
     )
     expect(ingest.deletePublicTagPost).toHaveBeenCalledWith(NOTE_ID, AUTHOR)
+    expect(ingest.deletePublicTagPostsByActor).not.toHaveBeenCalled()
+  })
+
+  test('an actor deleting itself takes every post of theirs', async () => {
+    const { ingest } = deps()
+    await handleInstanceActorDelete(
+      ctxFor({}),
+      new Delete({ actor: new URL(AUTHOR), object: new URL(AUTHOR) }),
+      ingest,
+    )
+    expect(ingest.deletePublicTagPostsByActor).toHaveBeenCalledWith(AUTHOR)
+    expect(ingest.deletePublicTagPost).not.toHaveBeenCalled()
+  })
+})
+
+describe('createAnnounceListener', () => {
+  test('a shared-inbox Announce from an accepted tag actor reaches the tag ingest, a per-user one the timeline', async () => {
+    const { ingest, upserts } = deps()
+    const onUserAnnounce = vi.fn(async () => {})
+    const listener = createAnnounceListener({
+      isReadOnly: async () => false,
+      onUserAnnounce,
+      publicTagPosts: ingest,
+    })
+
+    await listener(ctxFor(baseDocs()), announce())
+    expect(upserts.map((u) => u.note_uri)).toEqual([NOTE_ID])
+    expect(onUserAnnounce).not.toHaveBeenCalled()
+
+    const perUser = ctxFor(baseDocs(), 'alice')
+    const sameActor = announce({ id: 'https://tags.example/announce/2' })
+    await listener(perUser, sameActor)
+    expect(onUserAnnounce).toHaveBeenCalledWith(perUser, sameActor)
+    expect(upserts).toHaveLength(1)
+  })
+
+  test('without the tag pages, even a shared-inbox Announce goes the user way', async () => {
+    const onUserAnnounce = vi.fn(async () => {})
+    const listener = createAnnounceListener({
+      isReadOnly: async () => false,
+      onUserAnnounce,
+    })
+    await listener(ctxFor(baseDocs()), announce())
+    expect(onUserAnnounce).toHaveBeenCalledTimes(1)
   })
 })
 
