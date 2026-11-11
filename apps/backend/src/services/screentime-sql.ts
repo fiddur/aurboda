@@ -7,3 +7,10 @@
  */
 export const categoryPathMatchSql = (paramIndex: number): string =>
   `(data->>'category_path' = $${paramIndex} OR starts_with(data->>'category_path', $${paramIndex} || ' > '))`
+
+/**
+ * The LIKE pattern for the sub-categories of a category path, its LIKE metacharacters escaped. Unlike
+ * `starts_with`, a LIKE prefix can use the `(data->>'category_path') text_pattern_ops` index.
+ */
+export const subcategoryLikePattern = (categoryPath: string): string =>
+  `${categoryPath.replaceAll(/[\\%_]/g, '\\$&')} > %`

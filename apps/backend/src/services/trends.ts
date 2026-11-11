@@ -26,7 +26,7 @@ import {
   measureFilter,
   queryMeasuredActivities,
 } from './queries/activity-measure-series.ts'
-import { categoryPathMatchSql } from './screentime-sql.ts'
+import { categoryPathMatchSql, subcategoryLikePattern } from './screentime-sql.ts'
 
 /**
  * Natural log of 2, used for EMA decay calculation.
@@ -73,6 +73,52 @@ const metricDailyValueSql: Record<'count' | 'mean' | 'sum', string> = {
 }
 
 /**
+ * The summed EMA weight of a display period's days. A zero-filled series divides by at least this, so until it is
+ * one period old the days before its first sample are counted as zeros: a lone first session then reads as itself per
+ * period, not as that day's amount scaled up to a period. Beyond the first period the floor has no effect.
+ */
+export const firstPeriodWeight = (halfLifeDays: number, periodDays: number): number =>
+  Array.from({ length: Math.max(1, periodDays) }, (_, k) => Math.exp((-LN2 * k) / halfLifeDays)).reduce(
+    (a, b) => a + b,
+    0,
+  )
+
+/**
+ * Days of warm-up before the lookback: three half-lives, and at least a display period less a day so the oldest
+ * displayed point of a series older than the window weighs a full period and `firstPeriodWeight` only ever bites at a
+ * series' real start.
+ */
+const warmupLength = (halfLifeDays: number, periodDays: number): number =>
+  Math.max(3 * halfLifeDays, periodDays - 1)
+
+/**
+ * The `series_start` and `date_range` CTEs: the days from the warm-up start (`$6` days back) to today, but
+ * none before the series' first sample, which `firstSampleSql` selects as `first_day`. A series without samples has no
+ * days at all. Without `firstSampleSql`, every day of the window.
+ */
+const seriesDateRangeSql = (today: string, firstSampleSql: string | undefined): string =>
+  firstSampleSql === undefined
+    ? `
+    date_range AS (
+      SELECT generate_series(
+        ${today} - INTERVAL '1 day' * $6::integer,
+        ${today},
+        '1 day'
+      )::date AS day
+    )`
+    : `
+    series_start AS (${firstSampleSql}),
+    date_range AS (
+      SELECT d::date AS day
+      FROM generate_series(
+        ${today} - INTERVAL '1 day' * $6::integer,
+        ${today},
+        '1 day'
+      ) AS d, series_start
+      WHERE d >= series_start.first_day
+    )`
+
+/**
  * With 'zero', a day without samples enters the EMA as 0 and keeps its weight in the denominator;
  * with 'skip', it is left out of both, so the EMA is the weighted mean over sampled days only.
  */
@@ -88,17 +134,9 @@ const calculateMetricTrend = async (
   anchorDay?: string,
 ): Promise<{ currentValue: number; history: TrendHistoryPoint[] }> => {
   const multiplier = aggregation === 'mean' ? 1 : displayPeriodMultipliers[displayPeriod]
-  const warmupDays = lookbackDays + 3 * halfLifeDays
+  const warmupDays = lookbackDays + warmupLength(halfLifeDays, multiplier)
   const sources = getSourceFilter(metric)
   const weight = 'EXP(-$3::float * (dv.day - dv2.day)::float / $5::float)'
-  const emaSql =
-    missingDays === 'zero'
-      ? `$4::float * SUM(COALESCE(dv2.daily_value, 0) * ${weight}) /
-        NULLIF(SUM(${weight}), 0)`
-      : `$4::float * SUM(dv2.daily_value * ${weight}) /
-        NULLIF(SUM(CASE WHEN dv2.daily_value IS NOT NULL THEN ${weight} ELSE 0 END), 0)`
-  const emaValueSql = missingDays === 'zero' ? 'COALESCE(ema_value, 0) AS ema_value' : 'ema_value'
-
   const params: unknown[] = [
     metric,
     lookbackDays,
@@ -110,17 +148,27 @@ const calculateMetricTrend = async (
     ...(sources ? [sources] : []),
   ]
   const today = anchorDaySql(params, 7, anchorDay)
+  const emaSql =
+    missingDays === 'zero'
+      ? `$4::float * SUM(COALESCE(dv2.daily_value, 0) * ${weight}) /
+        GREATEST(SUM(${weight}), $${params.push(firstPeriodWeight(halfLifeDays, multiplier))}::float)`
+      : `$4::float * SUM(dv2.daily_value * ${weight}) /
+        NULLIF(SUM(CASE WHEN dv2.daily_value IS NOT NULL THEN ${weight} ELSE 0 END), 0)`
+  const emaValueSql = missingDays === 'zero' ? 'COALESCE(ema_value, 0) AS ema_value' : 'ema_value'
+  const sourceFilterSql = sources ? '\n          AND source = ANY($8)' : ''
 
   const result = await query(
     user,
     `
-    WITH date_range AS (
-      SELECT generate_series(
-        ${today} - INTERVAL '1 day' * $6::integer,
-        ${today},
-        '1 day'
-      )::date AS day
-    ),
+    WITH ${seriesDateRangeSql(
+      today,
+      missingDays === 'zero'
+        ? `SELECT (MIN(time) AT TIME ZONE $7::text)::date AS first_day
+        FROM time_series
+        WHERE metric = $1
+          AND deleted_at IS NULL${sourceFilterSql}`
+        : undefined,
+    )},
     daily_values AS (
       SELECT
         d.day,
@@ -133,7 +181,7 @@ const calculateMetricTrend = async (
         FROM time_series
         WHERE metric = $1
           AND time > ${today} - INTERVAL '1 day' * ($6::integer + 1)
-          AND deleted_at IS NULL${sources ? '\n          AND source = ANY($8)' : ''}
+          AND deleted_at IS NULL${sourceFilterSql}
         GROUP BY 1
       ) t ON d.day = t.day
     ),
@@ -169,6 +217,46 @@ const calculateMetricTrend = async (
   return { currentValue, history }
 }
 
+const screentimeSpanFilterSql = `deleted_at IS NULL
+            AND superseded_by IS NULL
+            AND end_time IS NOT NULL`
+
+/**
+ * The first day of a category's spans (`$1`) and its sub-categories' (`subcategoryPattern`). A plain MIN over the
+ * LIKE match is planned as a walk of the time index, which reads the whole table for a young or unknown category, and
+ * forcing the path index instead reads every matching span. So this skips through the distinct sub-category paths in
+ * `idx_activities_category_path_start` order and takes each path's earliest span from the same index.
+ */
+const categoryFirstSpanSql = (subcategoryPattern: string): string => `
+      WITH RECURSIVE sub_paths AS (
+        (SELECT data->>'category_path' AS path
+           FROM activities
+          WHERE ${screentimeSpanFilterSql}
+            AND data->>'category_path' LIKE ${subcategoryPattern}
+          ORDER BY data->>'category_path' USING ~<~
+          LIMIT 1)
+        UNION ALL
+        SELECT (SELECT data->>'category_path'
+                  FROM activities
+                 WHERE ${screentimeSpanFilterSql}
+                   AND data->>'category_path' LIKE ${subcategoryPattern}
+                   AND data->>'category_path' ~>~ sub_paths.path
+                 ORDER BY data->>'category_path' USING ~<~
+                 LIMIT 1)
+          FROM sub_paths
+         WHERE sub_paths.path IS NOT NULL
+      ),
+      paths AS (
+        SELECT $1::text AS path
+        UNION ALL
+        SELECT path FROM sub_paths WHERE path IS NOT NULL
+      )
+      SELECT (MIN((SELECT MIN(start_time)
+                     FROM activities
+                    WHERE ${screentimeSpanFilterSql}
+                      AND data->>'category_path' = paths.path)) AT TIME ZONE $7::text)::date AS first_day
+        FROM paths`
+
 /**
  * Aggregates daily screentime span hours from `activities` whose category path
  * is the given path or one of its sub-categories, then applies EMA.
@@ -184,21 +272,17 @@ const calculateProductivityCategoryTrend = async (
   anchorDay?: string,
 ): Promise<{ currentValue: number; history: TrendHistoryPoint[] }> => {
   const multiplier = displayPeriodMultipliers[displayPeriod]
-  const warmupDays = lookbackDays + 3 * halfLifeDays
+  const warmupDays = lookbackDays + warmupLength(halfLifeDays, multiplier)
 
   const params: unknown[] = [categoryPath, lookbackDays, LN2, multiplier, halfLifeDays, warmupDays, tz]
   const today = anchorDaySql(params, 7, anchorDay)
+  const floor = `$${params.push(firstPeriodWeight(halfLifeDays, multiplier))}::float`
+  const subcategoryPattern = `$${params.push(subcategoryLikePattern(categoryPath))}`
 
   const result = await query(
     user,
     `
-    WITH date_range AS (
-      SELECT generate_series(
-        ${today} - INTERVAL '1 day' * $6::integer,
-        ${today},
-        '1 day'
-      )::date AS day
-    ),
+    WITH ${seriesDateRangeSql(today, categoryFirstSpanSql(subcategoryPattern))},
     daily_values AS (
       SELECT
         d.day,
@@ -221,7 +305,7 @@ const calculateProductivityCategoryTrend = async (
       SELECT
         dv.day,
         $4::float * SUM(COALESCE(dv2.daily_hours, 0) * EXP(-$3::float * (dv.day - dv2.day)::float / $5::float)) /
-        NULLIF(SUM(EXP(-$3::float * (dv.day - dv2.day)::float / $5::float)), 0) as ema_value
+        GREATEST(SUM(EXP(-$3::float * (dv.day - dv2.day)::float / $5::float)), ${floor}) as ema_value
       FROM daily_values dv
       CROSS JOIN LATERAL (
         SELECT day, daily_hours
@@ -248,6 +332,12 @@ const calculateProductivityCategoryTrend = async (
   return { currentValue, history }
 }
 
+const activityTypeFirstSampleSql = `SELECT (MIN(start_time) AT TIME ZONE $7::text)::date AS first_day
+        FROM activities
+        WHERE activity_type = $1
+          AND deleted_at IS NULL
+          AND superseded_by IS NULL`
+
 /**
  * Sums duration in hours per day, then applies EMA weighting.
  * Pattern is the activity type name (e.g. "yoga", "running", "coffee").
@@ -262,21 +352,16 @@ const calculateActivityTypeTrend = async (
   anchorDay?: string,
 ): Promise<{ currentValue: number; history: TrendHistoryPoint[] }> => {
   const multiplier = displayPeriodMultipliers[displayPeriod]
-  const warmupDays = lookbackDays + 3 * halfLifeDays
+  const warmupDays = lookbackDays + warmupLength(halfLifeDays, multiplier)
 
   const params: unknown[] = [pattern, lookbackDays, LN2, multiplier, halfLifeDays, warmupDays, tz]
   const today = anchorDaySql(params, 7, anchorDay)
+  const floor = `$${params.push(firstPeriodWeight(halfLifeDays, multiplier))}::float`
 
   const result = await query(
     user,
     `
-    WITH date_range AS (
-      SELECT generate_series(
-        ${today} - INTERVAL '1 day' * $6::integer,
-        ${today},
-        '1 day'
-      )::date AS day
-    ),
+    WITH ${seriesDateRangeSql(today, activityTypeFirstSampleSql)},
     daily_values AS (
       SELECT
         d.day,
@@ -298,7 +383,7 @@ const calculateActivityTypeTrend = async (
       SELECT
         dv.day,
         $4::float * SUM(COALESCE(dv2.daily_hours, 0) * EXP(-$3::float * (dv.day - dv2.day)::float / $5::float)) /
-        NULLIF(SUM(EXP(-$3::float * (dv.day - dv2.day)::float / $5::float)), 0) as ema_value
+        GREATEST(SUM(EXP(-$3::float * (dv.day - dv2.day)::float / $5::float)), ${floor}) as ema_value
       FROM daily_values dv
       CROSS JOIN LATERAL (
         SELECT day, daily_hours
@@ -338,21 +423,16 @@ const calculateActivityTypeCountTrend = async (
   anchorDay?: string,
 ): Promise<{ currentValue: number; history: TrendHistoryPoint[] }> => {
   const multiplier = displayPeriodMultipliers[displayPeriod]
-  const warmupDays = lookbackDays + 3 * halfLifeDays
+  const warmupDays = lookbackDays + warmupLength(halfLifeDays, multiplier)
 
   const params: unknown[] = [pattern, lookbackDays, LN2, multiplier, halfLifeDays, warmupDays, tz]
   const today = anchorDaySql(params, 7, anchorDay)
+  const floor = `$${params.push(firstPeriodWeight(halfLifeDays, multiplier))}::float`
 
   const result = await query(
     user,
     `
-    WITH date_range AS (
-      SELECT generate_series(
-        ${today} - INTERVAL '1 day' * $6::integer,
-        ${today},
-        '1 day'
-      )::date AS day
-    ),
+    WITH ${seriesDateRangeSql(today, activityTypeFirstSampleSql)},
     daily_counts AS (
       SELECT
         d.day,
@@ -374,7 +454,7 @@ const calculateActivityTypeCountTrend = async (
       SELECT
         dc.day,
         $4::float * SUM(dc2.cnt::float * EXP(-$3::float * (dc.day - dc2.day)::float / $5::float)) /
-        NULLIF(SUM(EXP(-$3::float * (dc.day - dc2.day)::float / $5::float)), 0) as ema_value
+        GREATEST(SUM(EXP(-$3::float * (dc.day - dc2.day)::float / $5::float)), ${floor}) as ema_value
       FROM daily_counts dc
       CROSS JOIN LATERAL (
         SELECT day, cnt
@@ -401,48 +481,45 @@ const calculateActivityTypeCountTrend = async (
   return { currentValue, history }
 }
 
+const DAY_MS = 86_400_000
+
 /**
- * Compute EMA over daily values using the same formula as the SQL-based functions.
- * For each day, ema = multiplier * sum(value_i * weight_i) / sum(weight_i)
- * where weight_i = exp(-LN2 * daysAgo / halfLife) and the lookback window is
- * min(lookbackDays, 90).
+ * The zero-filled EMA over `days`, by the same formula as the SQL trends: for each day,
+ * multiplier * sum(value_i * weight_i) / max(sum(weight_i), firstPeriodWeight), with
+ * weight_i = exp(-LN2 * daysAgo / halfLife) over at most the 90 days ending that day. Days before `firstDay` are
+ * not part of the series: they have no weight and no point. Only points from `displayStartIdx` on are returned.
  */
-/**
- * @param displayStartIdx Index in `days` where the display range starts. EMA is computed
- *   from index 0 (warmup period) but only points from displayStartIdx onward are returned.
- */
-const computeEma = (
+export const computeEma = (
   dailyValues: Map<string, number>,
   days: string[],
   halfLifeDays: number,
   multiplier: number,
-  displayStartIdx = 0,
+  { displayStartIdx = 0, firstDay = days[0] }: { displayStartIdx?: number; firstDay?: string } = {},
 ): TrendHistoryPoint[] => {
+  const firstIdx = days.findIndex((day) => day >= firstDay)
+  if (firstIdx === -1) return []
+  const floor = firstPeriodWeight(halfLifeDays, multiplier)
   const history: TrendHistoryPoint[] = []
 
-  for (let i = 0; i < days.length; i++) {
+  for (let i = firstIdx; i < days.length; i++) {
     let weightedSum = 0
     let weightSum = 0
-    const currentDay = new Date(days[i]).getTime()
+    const currentDay = Date.parse(days[i])
 
-    for (let j = i; j >= 0 && i - j <= 90; j--) {
-      const pastDay = new Date(days[j]).getTime()
-      const daysAgo = (currentDay - pastDay) / (1000 * 60 * 60 * 24)
+    for (let j = i; j >= firstIdx && i - j < 90; j--) {
+      const daysAgo = (currentDay - Date.parse(days[j])) / DAY_MS
       const weight = Math.exp((-LN2 * daysAgo) / halfLifeDays)
-      const value = dailyValues.get(days[j]) ?? 0
-      weightedSum += value * weight
+      weightedSum += (dailyValues.get(days[j]) ?? 0) * weight
       weightSum += weight
     }
 
-    if (weightSum > 0 && i >= displayStartIdx) {
-      history.push({ date: days[i], value: (multiplier * weightedSum) / weightSum })
+    if (i >= displayStartIdx) {
+      history.push({ date: days[i], value: (multiplier * weightedSum) / Math.max(weightSum, floor) })
     }
   }
 
   return history
 }
-
-const DAY_MS = 86_400_000
 
 const oneDecimal = (value: number): number => Math.round(value * 10) / 10
 
@@ -528,7 +605,8 @@ const calculateMeasureBestTrend = async (
 }
 
 /**
- * Groups daily values by breakdown field, then computes EMA independently per series.
+ * Groups daily values by breakdown field, then computes EMA independently per series. The series share one x-axis
+ * from the activity type's first sample: a series' days after that are real zeros, not days before it existed.
  */
 const calculateActivityTypeBreakdownTrend = async (
   user: string,
@@ -553,14 +631,20 @@ const calculateActivityTypeBreakdownTrend = async (
       ? 'count(*)'
       : "SUM(EXTRACT(EPOCH FROM (COALESCE(end_time, start_time + interval '1 hour') - start_time))) / 3600.0"
 
-  const warmupDays = lookbackDays + 3 * halfLifeDays
+  const warmupCount = warmupLength(halfLifeDays, multiplier)
+  const warmupDays = lookbackDays + warmupCount
   const params: unknown[] = [pattern, warmupDays, tz]
   const today = anchorDaySql(params, 3, anchorDay)
   const result = await query(
     user,
     `SELECT date_trunc('day', start_time AT TIME ZONE $3::text)::date AS day,
             ${fieldSelects.join(', ')},
-            ${valueExpr} AS value
+            ${valueExpr} AS value,
+            (SELECT (MIN(start_time) AT TIME ZONE $3::text)::date::text
+               FROM activities
+              WHERE activity_type = $1
+                AND deleted_at IS NULL
+                AND superseded_by IS NULL) AS first_day
        FROM activities
       WHERE activity_type = $1
         AND deleted_at IS NULL
@@ -581,18 +665,20 @@ const calculateActivityTypeBreakdownTrend = async (
     seriesDaily.getOrInsertComputed(seriesKey, () => new Map()).set(day, value)
   }
 
-  const warmupCount = 3 * halfLifeDays
   const days = dayKeysEndingAt(
     anchorDay === undefined ? new Date() : dayStartInTz(anchorDay, tz),
     warmupDays + 1,
     tz,
   )
 
-  const displayStartIdx = warmupCount
+  const firstDay: string | undefined = result.rows[0]?.first_day
   const series = [...seriesDaily.keys()].sort()
   const histories: Record<string, TrendHistoryPoint[]> = {}
   for (const s of series) {
-    histories[s] = computeEma(seriesDaily.get(s)!, days, halfLifeDays, multiplier, displayStartIdx)
+    histories[s] = computeEma(seriesDaily.get(s)!, days, halfLifeDays, multiplier, {
+      displayStartIdx: warmupCount,
+      firstDay,
+    })
   }
 
   return { histories, series }

@@ -5,7 +5,7 @@ import type { MergedActivity } from '../db/types.ts'
 
 import * as db from '../db/index.ts'
 import * as measureSeries from './queries/activity-measure-series.ts'
-import { decayedBestAt, decayingBestHistory, getTrend } from './trends.ts'
+import { computeEma, decayedBestAt, decayingBestHistory, firstPeriodWeight, getTrend } from './trends.ts'
 
 vi.mock('../db', async () => ({
   getSourceFilter: (await vi.importActual<typeof TimeSeries>('../db/time-series.ts')).getSourceFilter,
@@ -210,6 +210,7 @@ describe('getTrend', () => {
 
       expect(metricSql()).not.toContain('COALESCE(dv2.daily_value, 0)')
       expect(metricSql()).toContain('CASE WHEN dv2.daily_value IS NOT NULL')
+      expect(metricSql()).not.toContain('MIN(time)')
       expect(result.missing_days).toBe('skip')
     })
 
@@ -273,6 +274,21 @@ describe('getTrend', () => {
       expect(skip.missing_days).toBe('skip')
     })
 
+    test('a zero-filled metric trend starts at its first sample and divides by at least one period', async () => {
+      await getTrend('testuser', {
+        aggregation: 'sum',
+        display_period: 'weekly',
+        pattern: 'steps',
+        source_type: 'metric',
+      })
+
+      const [, sql, params] = vi.mocked(db.query).mock.calls[0]
+      expect(sql).toContain('MIN(time)')
+      expect(sql).toContain('WHERE d >= series_start.first_day')
+      expect(sql).toMatch(/GREATEST\(SUM\(.*\), \$9::float\)/s)
+      expect(params?.[8]).toBeCloseTo(firstPeriodWeight(15, 7))
+    })
+
     test('count counts samples per day, always zero-filled', async () => {
       const result = await getTrend('testuser', {
         aggregation: 'count',
@@ -324,13 +340,12 @@ describe('getTrend', () => {
     })
   })
 
-  test('returns breakdown trend with per-series EMA histories', async () => {
-    // Mock the breakdown query — returns daily values grouped by field
+  test('returns breakdown trend with per-series EMA histories on one x-axis from the first sample', async () => {
     vi.mocked(db.query).mockResolvedValue({
       rows: [
-        { day: new Date('2026-01-30'), field_0: 'alice', value: 1 },
-        { day: new Date('2026-01-30'), field_0: 'bob', value: 2 },
-        { day: new Date('2026-02-01'), field_0: 'alice', value: 1 },
+        { day: new Date('2026-01-30'), field_0: 'alice', first_day: '2026-01-30', value: 1 },
+        { day: new Date('2026-02-01'), field_0: 'bob', first_day: '2026-01-30', value: 2 },
+        { day: new Date('2026-02-01'), field_0: 'alice', first_day: '2026-01-30', value: 1 },
       ],
     } as never)
 
@@ -340,12 +355,39 @@ describe('getTrend', () => {
       source_type: 'activity_type',
     })
 
+    const dates = ['2026-01-30', '2026-01-31', '2026-02-01', '2026-02-02']
     expect(result.breakdown_series).toEqual(['alice', 'bob'])
-    expect(result.breakdown_histories).toBeDefined()
-    expect(result.breakdown_histories!['alice'].length).toBeGreaterThan(0)
-    expect(result.breakdown_histories!['bob'].length).toBeGreaterThan(0)
+    expect(result.breakdown_histories!['alice'].map((p) => p.date)).toEqual(dates)
+    expect(result.breakdown_histories!['bob'].map((p) => p.date)).toEqual(dates)
+    expect(result.breakdown_histories!['bob'][0].value).toBe(0)
+    expect(result.breakdown_histories!['bob'][2].value).toBeGreaterThan(0)
     expect(result.history).toHaveLength(0)
     expect(result.current_value).toBe(0)
+    expect(vi.mocked(db.query).mock.calls[0][1]).toContain('MIN(start_time)')
+  })
+
+  test('a breakdown series older than the window weighs a full period from its oldest displayed point', async () => {
+    const daily = Array.from({ length: 60 }, (_, i) => ({
+      day: new Date(Date.UTC(2026, 1, 2 - i)),
+      field_0: 'alice',
+      first_day: '2025-01-01',
+      value: 1,
+    }))
+    vi.mocked(db.query).mockResolvedValue({ rows: daily } as never)
+
+    const result = await getTrend('testuser', {
+      aggregation: 'count',
+      breakdown_fields: ['partner'],
+      display_period: 'monthly',
+      half_life_days: 1,
+      lookback_days: 5,
+      pattern: 'running',
+      source_type: 'activity_type',
+    })
+
+    const alice = result.breakdown_histories!['alice']
+    expect(alice).toHaveLength(6)
+    for (const point of alice) expect(point.value).toBeCloseTo(30, 10)
   })
 
   test('returns empty breakdown for invalid field names', async () => {
@@ -399,7 +441,7 @@ describe('getTrend', () => {
 
     test('a breakdown trend lists its days in tz', async () => {
       vi.mocked(db.query).mockResolvedValue({
-        rows: [{ day: new Date('2026-02-03'), field_0: 'alice', value: 1 }],
+        rows: [{ day: new Date('2026-02-03'), field_0: 'alice', first_day: '2026-01-01', value: 1 }],
       } as never)
 
       const result = await getTrend('testuser', {
@@ -655,5 +697,67 @@ describe('getTrend measure trend', () => {
       undefined,
     )
     expect(result.history).toEqual([{ date: '2026-02-03', value: 100 }])
+  })
+})
+
+describe('firstPeriodWeight', () => {
+  test('is the summed EMA weight of a display period of days', () => {
+    expect(firstPeriodWeight(15, 1)).toBe(1)
+    expect(firstPeriodWeight(1, 3)).toBeCloseTo(1.75, 4)
+    expect(firstPeriodWeight(15, 7)).toBeCloseTo(6.12, 2)
+  })
+})
+
+describe('computeEma', () => {
+  const days = Array.from({ length: 40 }, (_, i) =>
+    new Date(Date.UTC(2026, 0, 1 + i)).toISOString().slice(0, 10),
+  )
+  const constantFrom = (first: number, value: number) =>
+    new Map(days.slice(first).map((day) => [day, value] as const))
+
+  test('a series starts at its first sample: no points before it', () => {
+    const history = computeEma(new Map([[days[20], 1]]), days, 15, 7, { firstDay: days[20] })
+
+    expect(history[0].date).toBe(days[20])
+    expect(history).toHaveLength(20)
+  })
+
+  test('a lone one-hour session reads about an hour per week on its first day, not seven', () => {
+    const [first] = computeEma(new Map([[days[20], 1]]), days, 15, 7, { firstDay: days[20] })
+
+    expect(first.value).toBeCloseTo(7 / firstPeriodWeight(15, 7), 10)
+    expect(first.value).toBeGreaterThan(1)
+    expect(first.value).toBeLessThan(1.2)
+  })
+
+  test('a constant daily value from day one is flat from day one per day', () => {
+    const history = computeEma(constantFrom(20, 2), days, 15, 1, { firstDay: days[20] })
+
+    expect(history.map((p) => p.value)).toEqual(Array(20).fill(2))
+  })
+
+  test('a constant daily value per week reaches the full week after one period and stays there', () => {
+    const history = computeEma(constantFrom(20, 1), days, 15, 7, { firstDay: days[20] })
+
+    expect(history[0].value).toBeCloseTo(7 / firstPeriodWeight(15, 7), 10)
+    for (const point of history.slice(6)) expect(point.value).toBeCloseTo(7, 10)
+  })
+
+  test('a series older than the window counts the days in it as zeros, as before', () => {
+    const history = computeEma(new Map([[days[39], 1]]), days, 15, 1, { firstDay: '2025-01-01' })
+
+    expect(history).toHaveLength(40)
+    expect(history[0].value).toBe(0)
+    expect(history.at(-1)!.value).toBeCloseTo(1 / firstPeriodWeight(15, 40), 10)
+  })
+
+  test('a series whose first sample is after the last day has no points', () => {
+    expect(computeEma(new Map(), days, 15, 7, { firstDay: '2026-03-01' })).toEqual([])
+  })
+
+  test('only points from the display start are returned', () => {
+    const history = computeEma(constantFrom(0, 1), days, 15, 1, { displayStartIdx: 30 })
+
+    expect(history.map((p) => p.date)).toEqual(days.slice(30))
   })
 })
