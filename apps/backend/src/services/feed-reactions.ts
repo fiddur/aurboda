@@ -39,7 +39,12 @@ import type { Actor } from '@fedify/fedify/vocab'
 
 import { Announce, isActor, Like, Undo } from '@fedify/fedify/vocab'
 
-import type { FeedPostReactionRecord, FeedReactionRecord, TimelineEntryRecord } from '../db/index.ts'
+import type {
+  FeedPostQuoteRecord,
+  FeedPostReactionRecord,
+  FeedReactionRecord,
+  TimelineEntryRecord,
+} from '../db/index.ts'
 import type { FeedDeliver } from '../routes/feed-router.ts'
 
 import {
@@ -48,6 +53,8 @@ import {
   getFeedReaction,
   getTimelineEntryById,
   insertFeedReaction,
+  listFeedPostQuotes,
+  listFeedPostReactions,
   removeFeedReaction,
 } from '../db/index.ts'
 import { AS_PUBLIC } from './activitypub/object.ts'
@@ -68,7 +75,7 @@ import { withTimeout } from './with-timeout.ts'
 /** How long to wait for an unfollowed author's actor document before giving up. */
 const AUTHOR_LOOKUP_TIMEOUT_MS = 5000
 
-/** Newest-first cap on the "who liked / boosted this" list, shared by REST + MCP. */
+/** Newest-first cap on the "who liked / boosted / quoted this" list, shared by REST + MCP. */
 export const MAX_POST_REACTIONS = 100
 
 export interface ReactionDeps {
@@ -382,6 +389,41 @@ export const serializeFeedPostReaction = (record: FeedPostReactionRecord): FeedP
   handle: record.handle,
   kind: record.kind,
 })
+
+/** Serialise a quote we approved (FEP-044f) as a `quote` reaction carrying the quoting post's id. */
+export const serializeFeedPostQuote = (record: FeedPostQuoteRecord): FeedPostReaction => ({
+  actor_uri: record.actor_uri,
+  avatar_url: record.avatar_url,
+  created_at: record.created_at.toISOString(),
+  display_name: record.display_name,
+  handle: record.handle,
+  kind: 'quote',
+  url: record.quote_uri,
+})
+
+export interface PostReactionSources {
+  listReactions: (user: string, postId: string, limit: number) => Promise<FeedPostReactionRecord[]>
+  listQuotes: (user: string, postId: string, limit: number) => Promise<FeedPostQuoteRecord[]>
+}
+
+/**
+ * Who liked, boosted or quoted one of the owner's posts, newest first, capped at
+ * `MAX_POST_REACTIONS` across all kinds. Shared by the REST route and the MCP
+ * tool so both list the same reactions.
+ */
+export const listPostReactions = async (
+  user: string,
+  postId: string,
+  sources: PostReactionSources = { listQuotes: listFeedPostQuotes, listReactions: listFeedPostReactions },
+): Promise<FeedPostReaction[]> => {
+  const [reactions, quotes] = await Promise.all([
+    sources.listReactions(user, postId, MAX_POST_REACTIONS),
+    sources.listQuotes(user, postId, MAX_POST_REACTIONS),
+  ])
+  return [...reactions.map(serializeFeedPostReaction), ...quotes.map(serializeFeedPostQuote)]
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+    .slice(0, MAX_POST_REACTIONS)
+}
 
 /**
  * Reply to the post a home-timeline card shows: store a `reply` feed post whose

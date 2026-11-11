@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
+import { upsertFeedQuoteAuthorization } from './feed-quotes.ts'
 import {
   countFeedPostReactions,
   getFeedReaction,
@@ -273,7 +274,7 @@ describe('Feed reaction stores integration', () => {
       expect(await listFeedPostReactions(user, created.id, 100)).toHaveLength(0)
     })
 
-    test('countFeedPostReactions tallies a whole page by post + kind in one query', async () => {
+    test('countFeedPostReactions tallies a whole page by post + kind, quotes included, in one query', async () => {
       const user = getTestUser()
       const first = await post(user)
       const second = await post(user)
@@ -281,9 +282,23 @@ describe('Feed reaction stores integration', () => {
       await upsertFeedPostReaction(user, { actor_uri: BOB, kind: 'like', post_id: first.id })
       await upsertFeedPostReaction(user, { actor_uri: BOB, kind: 'announce', post_id: first.id })
 
+      await upsertFeedQuoteAuthorization(user, {
+        actor_uri: ALICE,
+        post_id: first.id,
+        quote_uri: `${ALICE}/statuses/1`,
+        request_uri: null,
+      })
+      await upsertFeedQuoteAuthorization(user, {
+        actor_uri: BOB,
+        post_id: first.id,
+        quote_uri: `${BOB}/statuses/2`,
+        request_uri: null,
+      })
+
       const counts = await countFeedPostReactions(user, [first.id, second.id])
       expect(counts).toContainEqual({ count: 2, kind: 'like', post_id: first.id })
       expect(counts).toContainEqual({ count: 1, kind: 'announce', post_id: first.id })
+      expect(counts).toContainEqual({ count: 2, kind: 'quote', post_id: first.id })
       // A post nobody reacted to is simply absent.
       expect(counts.filter((c) => c.post_id === second.id)).toEqual([])
       expect(await countFeedPostReactions(user, [])).toEqual([])

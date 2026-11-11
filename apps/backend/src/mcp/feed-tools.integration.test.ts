@@ -4,6 +4,7 @@ import type { FeedDeliver } from '../routes/feed-router.ts'
 import type { McpServer } from './helpers.ts'
 
 import { listFeedQuoteAuthorizations, upsertFeedQuoteAuthorization } from '../db/feed-quotes.ts'
+import { upsertFeedPostReaction } from '../db/feed-reactions.ts'
 import { createFeedPost } from '../db/feed.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { registerFeedTools } from './feed-tools.ts'
@@ -22,9 +23,16 @@ const setup = (user: string) => {
   } as unknown as McpServer
   const deliver = { deleted: vi.fn() } as unknown as FeedDeliver
   registerFeedTools(server, user, { deliver })
-  const handler = tools.get('delete_feed_post')
-  if (handler == null) throw new Error('no delete_feed_post')
-  return { deleteFeedPost: handler, deliver }
+  const tool = (name: string) => {
+    const handler = tools.get(name)
+    if (handler == null) throw new Error(`no ${name}`)
+    return handler
+  }
+  return {
+    deleteFeedPost: tool('delete_feed_post'),
+    deliver,
+    listFeedPostReactions: tool('list_feed_post_reactions'),
+  }
 }
 
 describe('delete_feed_post', () => {
@@ -63,5 +71,46 @@ describe('delete_feed_post', () => {
     expect(JSON.parse(result.content[0].text)).toEqual({ deleted: true, id: post.id })
     expect(deliver.deleted).toHaveBeenCalledWith(user, expect.objectContaining({ id: post.id }), [stamp])
     expect(await listFeedQuoteAuthorizations(user, post.id)).toEqual([])
+  })
+})
+
+describe('list_feed_post_reactions', () => {
+  beforeAll(async () => {
+    await startTestDb()
+  }, CONTAINER_TIMEOUT)
+
+  afterAll(async () => {
+    await stopTestDb()
+  })
+
+  beforeEach(async () => {
+    await cleanTestDb()
+  })
+
+  test('lists an approved quote as kind `quote` alongside likes, like the REST route', async () => {
+    const user = getTestUser()
+    const post = await createFeedPost(user, {
+      activity_id: null,
+      include_chart: false,
+      include_map: false,
+      included_metrics: [],
+      series_metrics: [],
+      visibility: 'public',
+    })
+    await upsertFeedPostReaction(user, { actor_uri: ALICE, kind: 'like', post_id: post.id })
+    await upsertFeedQuoteAuthorization(user, {
+      actor_uri: ALICE,
+      post_id: post.id,
+      quote_uri: `${ALICE}/statuses/1`,
+      request_uri: null,
+    })
+    const { listFeedPostReactions } = setup(user)
+
+    const reactions = JSON.parse((await listFeedPostReactions({ id: post.id })).content[0].text)
+
+    expect(reactions.map((r: { kind: string; url?: string }) => [r.kind, r.url])).toEqual([
+      ['quote', `${ALICE}/statuses/1`],
+      ['like', undefined],
+    ])
   })
 })

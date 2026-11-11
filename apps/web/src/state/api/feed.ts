@@ -442,7 +442,7 @@ export const fetchFeedPostReplies = async (postId: string): Promise<TimelineEntr
   return response.data.replies
 }
 
-/** Who favourited or boosted one of YOUR feed posts, newest first. */
+/** Who favourited, boosted or quoted one of YOUR feed posts, newest first. */
 export const fetchFeedPostReactions = async (postId: string): Promise<FeedPostReaction[]> => {
   const response = await axios.get<FeedPostReactionsResponse>(
     `${API_URL}/feed/${encodeURIComponent(postId)}/reactions`,

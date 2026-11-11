@@ -213,6 +213,7 @@ export const tableCreationOrder = [
   'timeline_entry_reply_target_indexes',
   'timeline_entry_reply_unchecked_indexes',
   'timeline_entry_boost_indexes',
+  'timeline_entry_actor_indexes',
   'feed_reaction',
   'feed_post_reaction',
   'feed_post_reaction_indexes',

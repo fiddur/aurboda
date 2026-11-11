@@ -565,6 +565,13 @@ export const socialTables: Record<string, string> = {
       ON timeline_entry (boost_of_uri)
       WHERE boost_of_uri IS NOT NULL
   `,
+  // Every cached copy of a remote actor is looked up by actor URI: the
+  // `Update{Person}` refresh, its "is this actor cached" gate, and a quoting
+  // actor's byline on the owner's post.
+  timeline_entry_actor_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_timeline_entry_actor
+      ON timeline_entry (actor_uri)
+  `,
 
   // The user's OWN outbound reactions: a `Like` (favourite) or `Announce`
   // (boost) they sent for a post — remote or local. `id` mints the AS2 activity

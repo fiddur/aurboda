@@ -48,7 +48,6 @@ import {
   listFeedFollowedTags,
   listFeedFollowers,
   listFeedFollowing,
-  listFeedPostReactions,
   updateArticleDraft,
   updateFeedFollowingNotify,
   updateFeedPost,
@@ -75,7 +74,7 @@ import {
   previewExerciseShare,
   resolveExerciseShare,
 } from '../services/feed-exercise-share.ts'
-import { MAX_POST_REACTIONS, serializeFeedPostReaction } from '../services/feed-reactions.ts'
+import { listPostReactions } from '../services/feed-reactions.ts'
 import {
   getFeedPage,
   normalizeFeedMessage,
@@ -597,12 +596,11 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
 
   server.tool(
     'list_feed_post_reactions',
-    'List who favourited or boosted one of YOUR feed posts (by feed post id), newest first. Remote servers push these as `Like`/`Announce`; a reaction with no resolvable actor still counts.',
+    'List who favourited, boosted or quoted one of YOUR feed posts (by feed post id), newest first. Likes and boosts are the `Like`/`Announce` remote servers push; a quote (kind `quote`, with the quoting post in `url`) is one whose FEP-044f quote request we approved. A reaction with no resolvable actor still counts.',
     { id: z.string().uuid().describe('Feed post ID') },
     async ({ id }) => {
       if ((await getFeedPostById(user, id)) == null) return errorResponse('Feed post not found')
-      const rows = await listFeedPostReactions(user, id, MAX_POST_REACTIONS)
-      return jsonResponse(rows.map(serializeFeedPostReaction))
+      return jsonResponse(await listPostReactions(user, id))
     },
   )
 
