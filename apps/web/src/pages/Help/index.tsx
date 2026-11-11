@@ -1,5 +1,7 @@
 import { useEffect } from 'preact/hooks'
 
+import { ViewportReadout } from '../../components/ViewportReadout'
+import { isEmbedded } from '../../embed'
 import { auth, ensureStatusLoaded, signupMode } from '../../state/auth'
 import '../Home/style.css'
 import { BUG_REPORT_LINK, DISCUSSION_LINKS, DOCS_LINKS, type HelpLink } from './help-links'
@@ -130,6 +132,8 @@ export function Help() {
           person is also a good contact for questions about your account.
         </p>
       </section>
+
+      {isEmbedded() && <ViewportReadout />}
     </div>
   )
 }
