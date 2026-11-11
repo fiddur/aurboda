@@ -59,7 +59,7 @@ export interface OgCard {
   username?: string
   challenge?: OgChallengeDetails
   exercise?: OgExerciseDetails
-  /** A post's chart, drawn under its title in place of the excerpt. */
+  /** A post's or a dashboard's chart, drawn under its title in place of the excerpt. */
   chart?: PostChart
 }
 

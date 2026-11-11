@@ -380,4 +380,41 @@ describe('renderOgImage', () => {
       }
     })
   })
+
+  describe('a dashboard card with a chart', () => {
+    const start = Date.parse('2026-10-01T00:00:00Z')
+    const series: [Date, number][] = Array.from({ length: 30 }, (_, i) => [
+      new Date(start + i * 86_400_000),
+      8000 + 2000 * Math.sin(i / 3),
+    ])
+    const dashboardCard = (over: Partial<OgCard> = {}): OgCard => ({
+      kind: 'dashboard',
+      title: 'Training',
+      username: 'fiddur',
+      ...over,
+    })
+    const tealPixels = async (png: Buffer): Promise<number> => {
+      const { data, info } = await sharp(png)
+        .extract({ height: 200, left: 80, top: 280, width: 1040 })
+        .raw()
+        .toBuffer({ resolveWithObject: true })
+      let count = 0
+      for (let i = 0; i < data.length; i += info.channels) {
+        if (data[i] < 90 && data[i + 1] > 130 && data[i + 2] > 140 && data[i + 1] - data[i] > 80) count++
+      }
+      return count
+    }
+
+    test('draws the widget’s line under the title, and only the title card without one', async () => {
+      const plain = await renderOgImage(dashboardCard())
+      const charted = await renderOgImage(
+        dashboardCard({ chart: { opts: { color: '#2b9ea7', label: 'Steps' }, series, type: 'line' } }),
+      )
+      expect(await tealPixels(plain)).toBe(0)
+      expect(await tealPixels(charted)).toBeGreaterThan(500)
+      const meta = await sharp(charted).metadata()
+      expect(meta.width).toBe(OG_WIDTH)
+      expect(meta.height).toBe(OG_HEIGHT)
+    })
+  })
 })

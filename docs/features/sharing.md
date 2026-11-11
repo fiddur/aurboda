@@ -298,7 +298,19 @@ serves the static `index.html` instead, so the page still loads, without the pre
   2026"), in the owner's timezone, with the trend drawn as a sparkline beside them.
   Without records the session count stands alone. The memo key includes the newest
   session's start, so a new session re-renders the card.
-  Non-public / unknown resources fall back to the branded static default
+- A **dashboard card** shows the dashboard's first trend chart or sparkline card whose data draws
+  a line (at least two points), of its first three such widgets, under the title: a trend chart's
+  history in the web's teal, a sparkline card's series in its own colour (a hex colour; else the
+  card's blue), captioned with the title the widget shows on the page. The data comes from the
+  same resolver as the public page (`shared-dashboard-data.ts`), over the widget's lookback, or on
+  a period dashboard over the period its lock shows a visitor (the latest finished period, or the
+  pinned one). A broken-down trend chart (its lines are per series), bar and combined charts and
+  every other widget are not drawn; a dashboard with none that draws keeps the title card. As on a
+  post card, the chart is drawn without text and its caption set by Satori. The data is loaded
+  only when the memoised card misses; the memo key carries the dashboard's `updated_at` plus an
+  hourly time bucket, so an edit redraws the card at once and new data within the hour, and a
+  card rendered while the chart failed to load is served but not kept.
+- Non-public / unknown resources fall back to the branded static default
   (`/og-default.png`).
 - **Visibility is respected**: rich meta and rendered images are emitted only for
   **public** resources. Private and unlisted (slug-only) dashboards and unknown URLs get generic

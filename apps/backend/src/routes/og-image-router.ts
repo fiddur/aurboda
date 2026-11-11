@@ -23,23 +23,27 @@ import { describeChallenge, type ResolvedChallenge } from '../services/challenge
 import { describeExercise } from '../services/exercise-card.ts'
 import { clampTitle } from '../services/og-image.ts'
 import { postEyebrow } from '../services/post-card.ts'
-import { timeBucket } from '../services/post-chart.ts'
+import { timeBucket, TREND_BUCKET_MS } from '../services/post-chart.ts'
 import { defaultOgImage } from '../services/share-meta.ts'
 import { UUID_RE } from '../utils.ts'
 
-interface ResolvedResource {
+interface ResolvedDashboard {
   name: string
   is_public: boolean
+  /** ISO timestamp of the board's last edit, which keys its card. */
+  updated_at: string
 }
 
 export interface OgImageDeps {
   webHost: string
-  resolveDashboard: (username: string, slug: string) => Promise<ResolvedResource | null>
+  resolveDashboard: (username: string, slug: string) => Promise<ResolvedDashboard | null>
   resolveChallenge: (username: string, slug: string) => Promise<ResolvedChallenge | null>
   resolveExercise: (username: string, slug: string) => Promise<ResolvedExercise | null>
   resolvePost: (username: string, postId: string) => Promise<ResolvedPost | null>
   /** The chart a public post's feed attachment draws (`postCardChart`), or null when it has none. */
   loadPostChart: (username: string, postId: string) => Promise<PostChart | null>
+  /** The chart a public dashboard's card draws (`loadPublicDashboardChartWith`), or null when it has none. */
+  loadDashboardChart: (username: string, slug: string) => Promise<PostChart | null>
   /** The public page's data for a shared exercise, with the owner's timezone. */
   loadExerciseCard: (
     username: string,
@@ -66,6 +70,7 @@ export const createOgImageRouter = (deps: OgImageDeps): Router => {
     latestExerciseSession,
     loadAvatarDataUri,
     loadBannerDataUri,
+    loadDashboardChart,
     loadExerciseCard,
     loadPostChart,
     profileExists,
@@ -97,6 +102,23 @@ export const createOgImageRouter = (deps: OgImageDeps): Router => {
     } catch (error) {
       console.error('OG banner load failed, rendering the themed card:', error)
       return undefined
+    }
+  }
+  // A card without its chart still says what it is, so a failed chart load renders that; `failed`
+  // tells `sendImage` not to keep it.
+  const guardedChart = (load: () => Promise<PostChart | null>) => {
+    let failed = false
+    return {
+      failed: () => failed,
+      load: async (): Promise<PostChart | null> => {
+        try {
+          return await load()
+        } catch (error) {
+          console.error('OG chart load failed, rendering the card without it:', error)
+          failed = true
+          return null
+        }
+      },
     }
   }
   const cache = new Map<string, Buffer>()
@@ -175,22 +197,12 @@ export const createOgImageRouter = (deps: OgImageDeps): Router => {
     // the post changing; the time bucket redraws it as often as its feed image, and it is loaded
     // only on a miss.
     const bucket = post.chart_bucket_ms ? `:${timeBucket(now().getTime(), post.chart_bucket_ms)}` : ''
-    // A card without its chart still says what the post is, so a failed chart load renders that.
-    let chartFailed = false
-    const loadChart = async (): Promise<PostChart | null> => {
-      try {
-        return await loadPostChart(username, postId)
-      } catch (error) {
-        console.error('OG post chart load failed, rendering the card without it:', error)
-        chartFailed = true
-        return null
-      }
-    }
+    const chart = guardedChart(() => loadPostChart(username, postId))
     return sendImage(
       res,
       `post:${username}/${postId}:${post.updated_at}:${post.title}:${subtitle ?? ''}${bucket}`,
       async () => {
-        const chart = await loadChart()
+        const drawn = await chart.load()
         return {
           avatarDataUri: await avatarOrUndefined(username),
           eyebrow: postEyebrow(post.kind),
@@ -198,10 +210,10 @@ export const createOgImageRouter = (deps: OgImageDeps): Router => {
           title: post.title,
           username,
           ...(subtitle ? { subtitle } : {}),
-          ...(chart ? { chart } : {}),
+          ...(drawn ? { chart: drawn } : {}),
         }
       },
-      () => !chartFailed,
+      () => !chart.failed(),
     )
   })
 
@@ -211,12 +223,25 @@ export const createOgImageRouter = (deps: OgImageDeps): Router => {
 
     const dashboard = await resolveDashboard(username, slug)
     if (dashboard?.is_public) {
-      return sendImage(res, `d:${username}/${slug}:${dashboard.name}`, async () => ({
-        avatarDataUri: await avatarOrUndefined(username),
-        kind: 'dashboard',
-        title: dashboard.name,
-        username,
-      }))
+      // An edit bumps the version; the data under the chart moves on with the time bucket, and is
+      // loaded only on a miss.
+      const bucket = timeBucket(now().getTime(), TREND_BUCKET_MS)
+      const chart = guardedChart(() => loadDashboardChart(username, slug))
+      return sendImage(
+        res,
+        `d:${username}/${slug}:${dashboard.name}:${dashboard.updated_at}:${bucket}`,
+        async () => {
+          const drawn = await chart.load()
+          return {
+            avatarDataUri: await avatarOrUndefined(username),
+            kind: 'dashboard',
+            title: dashboard.name,
+            username,
+            ...(drawn ? { chart: drawn } : {}),
+          }
+        },
+        () => !chart.failed(),
+      )
     }
 
     const challenge = dashboard ? null : await resolveChallenge(username, slug)

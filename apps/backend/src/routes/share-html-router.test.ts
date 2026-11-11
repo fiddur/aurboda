@@ -30,7 +30,11 @@ const buildApp = (overrides: Partial<ShareHtmlDeps> = {}) => {
 describe('GET /u/:username/:slug', () => {
   test('renders rich meta for a public dashboard', async () => {
     const app = buildApp({
-      resolveDashboard: async () => ({ is_public: true, name: 'My Training' }),
+      resolveDashboard: async () => ({
+        is_public: true,
+        name: 'My Training',
+        updated_at: '2026-10-01T08:00:00.000Z',
+      }),
     })
     const res = await supertest(app).get('/u/fiddur/abc123')
     expect(res.status).toBe(200)
@@ -46,6 +50,7 @@ describe('GET /u/:username/:slug', () => {
         is_public: true,
         name: 'Month in data',
         period_label: 'October 2026',
+        updated_at: '2026-10-01T08:00:00.000Z',
       }),
     })
     const res = await supertest(app).get('/u/fiddur/abc123')
@@ -59,6 +64,7 @@ describe('GET /u/:username/:slug', () => {
         description: 'Two years of training and its effect on sleep.',
         is_public: true,
         name: 'My Training',
+        updated_at: '2026-10-01T08:00:00.000Z',
       }),
     })
     const res = await supertest(app).get('/u/fiddur/abc123')
@@ -69,7 +75,11 @@ describe('GET /u/:username/:slug', () => {
 
   test('does not leak an unlisted (non-public) dashboard name', async () => {
     const app = buildApp({
-      resolveDashboard: async () => ({ is_public: false, name: 'Secret Dashboard' }),
+      resolveDashboard: async () => ({
+        is_public: false,
+        name: 'Secret Dashboard',
+        updated_at: '2026-10-01T08:00:00.000Z',
+      }),
     })
     const res = await supertest(app).get('/u/fiddur/abc123')
     expect(res.status).toBe(200)
@@ -160,7 +170,11 @@ describe('GET /u/:username/:slug', () => {
   test('does not look up an exercise when a dashboard holds the slug', async () => {
     let asked = false
     const app = buildApp({
-      resolveDashboard: async () => ({ is_public: false, name: 'Hidden' }),
+      resolveDashboard: async () => ({
+        is_public: false,
+        name: 'Hidden',
+        updated_at: '2026-10-01T08:00:00.000Z',
+      }),
       resolveExercise: async () => {
         asked = true
         return exercise
@@ -182,7 +196,7 @@ describe('GET /u/:username/:slug', () => {
     const app = buildApp({
       resolveDashboard: async () => {
         called = true
-        return { is_public: true, name: 'x' }
+        return { is_public: true, name: 'x', updated_at: '2026-10-01T08:00:00.000Z' }
       },
     })
     const res = await supertest(app).get('/u/Invalid..Name/abc')
@@ -193,7 +207,11 @@ describe('GET /u/:username/:slug', () => {
   test('serves a minimal document when the template is unavailable', async () => {
     const app = buildApp({
       loadTemplate: async () => null,
-      resolveDashboard: async () => ({ is_public: true, name: 'My Training' }),
+      resolveDashboard: async () => ({
+        is_public: true,
+        name: 'My Training',
+        updated_at: '2026-10-01T08:00:00.000Z',
+      }),
     })
     const res = await supertest(app).get('/u/fiddur/abc')
     expect(res.text).toContain('property="og:title" content="My Training — Aurboda"')
