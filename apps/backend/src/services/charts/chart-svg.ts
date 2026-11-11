@@ -1,10 +1,10 @@
 /**
  * This is deliberately sharp-free — it builds only the SVG markup, so it is a
  * pure, synchronous function that unit tests can assert on directly (the string),
- * not just on an opaque rasterized PNG. Two very different consumers need the same
- * chart from the same data, and this is the single implementation both share:
+ * not just on an opaque rasterized PNG. Very different consumers need the same
+ * chart from the same data, and this is the single implementation they share:
  *
- *   - **PNG** for the ActivityPub feed attachment / OG snapshot / Reddit export —
+ *   - **PNG** for the ActivityPub feed attachment / Reddit export —
  *     `sharp(Buffer.from(svg)).png()` (Mastodon and other non-Aurboda consumers
  *     that can't re-resolve the live series get this raster). librsvg (via sharp)
  *     needs the bundled Liberation fonts registered in the Docker image to render
@@ -12,6 +12,8 @@
  *   - **`image/svg+xml`** served directly for crisp Aurboda-native rendering
  *     (`aurboda:charts`, #901); browsers fall back through the `font-family` list
  *     to their own sans-serif, so no bundled font is required for that path.
+ *   - **`bare`**, text-free, embedded in a post's Open Graph card, where Satori sets the
+ *     labels in its bundled fonts (`og-image.ts`).
  *
  * The chart draws only from shared metric types (the same data as the series
  * endpoint), so the window `[start, end]` a caller resolves the series over is
@@ -28,7 +30,9 @@ const PAD = 40
 const CHART_BG = '#0b0f19'
 /** Default line colour (heart-rate red) — kept as the default for feed parity. */
 const DEFAULT_COLOR = '#ef4444'
-const DEFAULT_LABEL = 'Heart rate'
+export const DEFAULT_CHART_LABEL = 'Heart rate'
+/** A bare chart only needs room for the stroke itself. */
+const BARE_PAD = 6
 
 export interface ChartSvgOptions {
   /** Line stroke colour. */
@@ -39,6 +43,11 @@ export interface ChartSvgOptions {
   width?: number
   /** Overall SVG height in px. */
   height?: number
+  /**
+   * Only the line, on a transparent background: no `<text>`, which librsvg draws as tofu without
+   * system fonts (#887). For embedding in a Satori card that sets its labels in its own fonts.
+   */
+  bare?: boolean
 }
 
 /** Escape text for safe inclusion in SVG/XML. */
@@ -60,6 +69,7 @@ export const buildChartSvg = (series: [Date, number][], opts: ChartSvgOptions = 
   const color = opts.color ?? DEFAULT_COLOR
   const width = opts.width ?? CHART_WIDTH
   const height = opts.height ?? CHART_HEIGHT
+  const pad = opts.bare ? BARE_PAD : PAD
   const pts = series.filter(([, v]) => Number.isFinite(v))
   const times = pts.map(([t]) => t.getTime())
   const vals = pts.map(([, v]) => v)
@@ -71,14 +81,23 @@ export const buildChartSvg = (series: [Date, number][], opts: ChartSvgOptions = 
   // The fallbacks only keep these total: both are used solely for the polyline,
   // which is rendered only when there are ≥2 finite points — and then the
   // extremes are defined. Value labels below stay blank when they are not.
-  const x = (t: number) => scale(t, tMin ?? 0, tMax ?? 0, PAD, width - PAD)
-  const y = (v: number) => scale(v, vMin ?? 0, vMax ?? 0, height - PAD, PAD)
+  const x = (t: number) => scale(t, tMin ?? 0, tMax ?? 0, pad, width - pad)
+  const y = (v: number) => scale(v, vMin ?? 0, vMax ?? 0, height - pad, pad)
   const polyline = pts.map(([t, v]) => `${x(t.getTime()).toFixed(1)},${y(v).toFixed(1)}`).join(' ')
+  const line =
+    pts.length >= 2
+      ? `<polyline points="${polyline}" fill="none" stroke="${color}" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>`
+      : ''
 
+  if (opts.bare) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+  ${line}
+</svg>`
+  }
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
   <rect width="${width}" height="${height}" fill="${CHART_BG}" rx="16"/>
-  ${pts.length >= 2 ? `<polyline points="${polyline}" fill="none" stroke="${color}" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>` : ''}
-  <text x="${PAD}" y="${PAD - 12}" fill="#e5e7eb" font-family="Liberation Sans, sans-serif" font-size="26" font-weight="700">${escapeXml(opts.label ?? DEFAULT_LABEL)}</text>
+  ${line}
+  <text x="${PAD}" y="${PAD - 12}" fill="#e5e7eb" font-family="Liberation Sans, sans-serif" font-size="26" font-weight="700">${escapeXml(opts.label ?? DEFAULT_CHART_LABEL)}</text>
   <text x="${width - PAD}" y="${PAD}" fill="#9ca3af" font-family="Liberation Sans, sans-serif" font-size="22" text-anchor="end">${vMax === undefined ? '' : Math.round(vMax)}</text>
   <text x="${width - PAD}" y="${height - PAD}" fill="#9ca3af" font-family="Liberation Sans, sans-serif" font-size="22" text-anchor="end">${vMin === undefined ? '' : Math.round(vMin)}</text>
 </svg>`

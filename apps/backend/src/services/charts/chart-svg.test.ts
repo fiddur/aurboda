@@ -83,4 +83,15 @@ describe('buildChartSvg', () => {
     expect(svg).toContain('HR &lt;b&gt;&amp;&quot;peak&quot;')
     expect(svg).not.toContain('<b>')
   })
+
+  test('bare draws only the line, inset by its stroke, with no text or background', () => {
+    const svg = buildChartSvg(series, { bare: true, height: 100, width: 200, label: 'Heart rate' })
+    expect(svg).toContain('viewBox="0 0 200 100"')
+    expect(svg).not.toContain('<text')
+    expect(svg).not.toContain('<rect')
+    const coords = (/<polyline points="([^"]+)"/.exec(svg)?.[1] ?? '').split(' ')
+    expect(coords).toHaveLength(series.length)
+    expect(coords[1]).toBe('68.7,6.0') // the peak touches the top inset
+    expect(coords[3]).toBe('194.0,94.0') // the last, lowest point the bottom-right inset
+  })
 })

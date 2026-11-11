@@ -26,6 +26,8 @@ const REG_COLOR = '#f472b6'
 const TEXT_COLOR = '#e5e7eb'
 const MUTED_COLOR = '#9ca3af'
 const FONT = 'Liberation Sans, sans-serif'
+/** Room for a point's radius on every side, and nothing for labels. */
+const BARE_PAD = { bottom: 8, left: 8, right: 8, top: 8 }
 
 /** The subset of a continuous-correlation result this renderer draws. */
 export interface ScatterSvgData {
@@ -47,6 +49,8 @@ export interface ScatterSvgData {
 export interface ScatterSvgOptions {
   width?: number
   height?: number
+  /** Only the points, regression line and axes, on a transparent background: no `<text>` (see `ChartSvgOptions.bare`). */
+  bare?: boolean
 }
 
 const fmt = (value: number | null | undefined, digits = 2): string =>
@@ -76,6 +80,7 @@ const headlineOf = (data: ScatterSvgData): string => {
 export const buildScatterSvg = (data: ScatterSvgData, opts: ScatterSvgOptions = {}): string => {
   const width = opts.width ?? SCATTER_WIDTH
   const height = opts.height ?? SCATTER_HEIGHT
+  const pad = opts.bare ? BARE_PAD : PAD
   // Drop any non-finite pair (a single NaN would make Math.min/Math.max NaN and
   // yield an SVG sharp can't rasterise). Not reachable from the current engine —
   // cheap insurance, matching buildChartSvg's own finite-filter.
@@ -87,8 +92,8 @@ export const buildScatterSvg = (data: ScatterSvgData, opts: ScatterSvgOptions = 
   const yMin = minOf(ys) ?? 0
   const yMax = maxOf(ys) ?? 0
 
-  const sx = (x: number) => scale(x, xMin, xMax, PAD.left, width - PAD.right)
-  const sy = (y: number) => scale(y, yMin, yMax, height - PAD.bottom, PAD.top)
+  const sx = (x: number) => scale(x, xMin, xMax, pad.left, width - pad.right)
+  const sy = (y: number) => scale(y, yMin, yMax, height - pad.bottom, pad.top)
 
   const reg = linearRegression(xs, ys)
   const regLine = reg
@@ -104,16 +109,22 @@ export const buildScatterSvg = (data: ScatterSvgData, opts: ScatterSvgOptions = 
   const xAxis = describeSelectorAxis(data.trigger)
   const yAxis = describeSelectorAxis(data.outcome)
   const yLabelX = 24
-  const yLabelY = (PAD.top + (height - PAD.bottom)) / 2
+  const yLabelY = (pad.top + (height - pad.bottom)) / 2
+  const plot = `<line x1="${pad.left}" y1="${height - pad.bottom}" x2="${width - pad.right}" y2="${height - pad.bottom}" stroke="${AXIS_COLOR}" stroke-width="2"/>
+  <line x1="${pad.left}" y1="${pad.top}" x2="${pad.left}" y2="${height - pad.bottom}" stroke="${AXIS_COLOR}" stroke-width="2"/>
+  ${circles}
+  ${regLine}`
 
+  if (opts.bare) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+  ${plot}
+</svg>`
+  }
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
   <rect width="${width}" height="${height}" fill="${SCATTER_BG}" rx="16"/>
-  <line x1="${PAD.left}" y1="${height - PAD.bottom}" x2="${width - PAD.right}" y2="${height - PAD.bottom}" stroke="${AXIS_COLOR}" stroke-width="2"/>
-  <line x1="${PAD.left}" y1="${PAD.top}" x2="${PAD.left}" y2="${height - PAD.bottom}" stroke="${AXIS_COLOR}" stroke-width="2"/>
-  ${circles}
-  ${regLine}
-  <text x="${PAD.left + 8}" y="${PAD.top - 16}" fill="${TEXT_COLOR}" font-family="${FONT}" font-size="24" font-weight="700">${escapeXml(headlineOf(data))}</text>
-  <text x="${(PAD.left + (width - PAD.right)) / 2}" y="${height - 20}" fill="${MUTED_COLOR}" font-family="${FONT}" font-size="22" text-anchor="middle">${escapeXml(xAxis)}</text>
+  ${plot}
+  <text x="${pad.left + 8}" y="${pad.top - 16}" fill="${TEXT_COLOR}" font-family="${FONT}" font-size="24" font-weight="700">${escapeXml(headlineOf(data))}</text>
+  <text x="${(pad.left + (width - pad.right)) / 2}" y="${height - 20}" fill="${MUTED_COLOR}" font-family="${FONT}" font-size="22" text-anchor="middle">${escapeXml(xAxis)}</text>
   <text x="${yLabelX}" y="${yLabelY}" fill="${MUTED_COLOR}" font-family="${FONT}" font-size="22" text-anchor="middle" transform="rotate(-90 ${yLabelX} ${yLabelY})">${escapeXml(yAxis)}</text>
 </svg>`
 }

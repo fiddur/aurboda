@@ -115,6 +115,7 @@ import { resolveExerciseTrendSeries } from '../services/feed-structured-exercise
 import { resolveFeedActivity } from '../services/feed.ts'
 import { readOfficialFeedSetting } from '../services/official-feed.ts'
 import { createOgImageRenderer } from '../services/og-image.ts'
+import { loadPublicPostChartWith, type PostChartDeps } from '../services/post-chart.ts'
 import { getUserTimezone } from '../services/settings.ts'
 import { resolveSharedExerciseData } from '../services/shared-exercise-data.ts'
 import { createTemplateLoader } from '../services/web-template.ts'
@@ -165,6 +166,21 @@ interface RestRoutesDeps {
   onHrSettingsChanged: HrSettingsChanged
   onNamedLocationsChanged: NamedLocationsChanged
   dataExport: { exporter: DumpExporter; requestDumpLink: DumpLinkIssuer; tokens: ExportTokens }
+}
+
+/** Where a post's chart data comes from, for its feed images and its link-preview card alike. */
+const postChartDeps: PostChartDeps = {
+  // Merged-span window so the rendered chart covers what the user shared,
+  // matching the Note's duration/metrics (#881).
+  getActivity: resolveFeedActivity,
+  // Shared with the markdown export's eligibility check (#974), so "would
+  // this block's image render?" can never drift from the endpoint.
+  getArticleChartSeries: getArticleChartSeriesData,
+  getChallengeRaceByUrl: resolveChallengeRaceByUrl,
+  getCorrelationScatter: getArticleCorrelationScatter,
+  getExerciseTrend: (user, post) => resolveExerciseTrendSeries(user, post),
+  getSeries: getTimeSeries,
+  getStandingsChart: resolveStandingsChart,
 }
 
 export const mountRestRouters = ({
@@ -288,21 +304,11 @@ export const mountRestRouters = ({
   // public/unlisted posts. Mounted alongside the series router (same guard).
   httpd.use(
     createFeedImageRouter({
+      ...postChartDeps,
       articleBlockMisses,
-      // Merged-span window so the rendered chart/route cover what the user
-      // shared, matching the Note's duration/metrics (#881).
-      getActivity: resolveFeedActivity,
-      // Shared with the markdown export's eligibility check (#974), so "would
-      // this block's image render?" can never drift from the endpoint.
-      getArticleChartSeries: getArticleChartSeriesData,
-      getCorrelationScatter: getArticleCorrelationScatter,
       getPost: getFeedPostById,
       getRoute: async (user, start, end) =>
         (await getLocations(user, start, end)).locations.map((l) => l.coordinates),
-      getSeries: getTimeSeries,
-      getExerciseTrend: (user, post) => resolveExerciseTrendSeries(user, post),
-      getChallengeRaceByUrl: resolveChallengeRaceByUrl,
-      getStandingsChart: resolveStandingsChart,
       renderChart: renderChartPng,
       renderChartSvg: buildChartSvg,
       renderRaceChart: renderRaceChartPng,
@@ -329,6 +335,7 @@ export const mountRestRouters = ({
       latestExerciseSession: (username, exercise) => latestExerciseSession(username, exercise),
       loadAvatarDataUri,
       loadBannerDataUri: loadChallengeBannerDataUri,
+      loadPostChart: loadPublicPostChartWith({ ...postChartDeps, getPost: getFeedPostById }),
       loadExerciseCard: async (username, exercise) => {
         const [data, timeZone] = await Promise.all([
           resolveSharedExerciseData(username, exercise),

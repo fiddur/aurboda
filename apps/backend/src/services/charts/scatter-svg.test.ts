@@ -77,4 +77,14 @@ describe('buildScatterSvg', () => {
     expect(svg).toContain('r=—')
     expect(svg).toContain('p=—')
   })
+
+  test('bare keeps the points, regression line and axes but no text or background', () => {
+    const svg = buildScatterSvg(base, { bare: true, height: 200, width: 400 })
+    expect(svg).toContain('viewBox="0 0 400 200"')
+    expect(svg).not.toContain('<text')
+    expect(svg).not.toContain('<rect')
+    expect(svg.match(/<circle /g)).toHaveLength(base.series.length)
+    expect(svg).toContain('stroke="#f472b6"')
+    expect(svg).toContain('<line x1="8" y1="192" x2="392" y2="192"') // x axis at the bare inset
+  })
 })

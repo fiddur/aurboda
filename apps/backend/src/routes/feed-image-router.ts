@@ -12,16 +12,15 @@
  * effect immediately — the untoken'd public URL then 404s). Mounted before the
  * generic `/public/:username/:slug` resolver.
  */
-import type { ArticleContent, CorrelationSelector, MetricType } from '@aurboda/api-spec'
+import type { ArticleContent } from '@aurboda/api-spec'
 
-import { activityMeasureLabels, defaultArticleChartBucket, getMetricDisplayName } from '@aurboda/api-spec'
 import { type Response, Router } from 'express'
 
 import type { FeedPostRecord } from '../db/index.ts'
 import type { CorrelationBlockParams } from '../services/article-block-data.ts'
+import type { ChartRenderOpts, PostChart } from '../services/charts/post-chart-svg.ts'
 import type { RaceChartSvgData } from '../services/charts/race-chart-svg.ts'
 import type { ScatterSvgData } from '../services/charts/scatter-svg.ts'
-import type { ExerciseTrendSeries } from '../services/feed-structured-exercise.ts'
 
 import { isValidUsername } from '../api/auth-routes.ts'
 import { isMissingDatabase } from '../db/index.ts'
@@ -30,11 +29,24 @@ import {
   createNegativeCache,
   type NegativeCache,
 } from '../services/article-block-misses.ts'
-import { blockWindow, isZeroDurationBucket } from '../services/article.ts'
 import { isCapabilityAuthorized } from '../services/feed-capability.ts'
+import {
+  activityHeartRateChart,
+  articleBlockAt,
+  articleBlockChart,
+  bucketedCacheKey,
+  exerciseTrendChart,
+  imageCacheKey,
+  type PostChartDeps,
+  type ResolvedArticleBlock,
+  STANDINGS_BUCKET_MS,
+  standingsChart,
+  TREND_BUCKET_MS,
+} from '../services/post-chart.ts'
 import { UUID_RE } from '../utils.ts'
 
-export type { CorrelationBlockParams }
+export type { ChartRenderOpts, CorrelationBlockParams, ResolvedArticleBlock }
+export { imageCacheKey }
 
 /** The window an image renders over. */
 export interface ImageActivity {
@@ -50,61 +62,21 @@ export interface ImageWindow {
   updated_at: Date
 }
 
-/** Optional chart styling — an article block labels its chart with the metric. */
-export interface ChartRenderOpts {
-  label?: string
-  color?: string
-}
-
-export interface FeedImageDeps {
+export interface FeedImageDeps extends PostChartDeps {
   getPost: (user: string, postId: string) => Promise<FeedPostRecord | null>
   getActivity: (user: string, activityId: string) => Promise<ImageActivity | null>
-  getSeries: (user: string, metric: string, start: Date, end: Date) => Promise<[Date, number][]>
   getRoute: (user: string, start: Date, end: Date) => Promise<[number, number][]>
   renderChart: (series: [Date, number][], opts?: ChartRenderOpts) => Promise<Buffer>
   /** Build the crisp `image/svg+xml` chart (same data as `renderChart`, no raster). */
   renderChartSvg: (series: [Date, number][], opts?: ChartRenderOpts) => string
   renderRoute: (coords: [number, number][]) => Promise<Buffer>
-  /** A bucketed metric series for an article chart block over its locked window. */
-  getArticleChartSeries: (
-    user: string,
-    metric: MetricType,
-    start: Date,
-    end: Date,
-    bucket: string,
-  ) => Promise<[Date, number][]>
-  /** The continuous correlation for an article correlation block, or null when too sparse (n < 3). */
-  getCorrelationScatter: (user: string, params: CorrelationBlockParams) => Promise<ScatterSvgData | null>
   renderScatter: (data: ScatterSvgData) => Promise<Buffer>
   renderScatterSvg: (data: ScatterSvgData) => string
-  /** A challenge post's standings race, or null when it has no standings to draw. */
-  getStandingsChart: (user: string, post: FeedPostRecord) => Promise<RaceChartSvgData | null>
-  /** The standings race of the challenge at a URL (an article's challenge block), or null. */
-  getChallengeRaceByUrl: (user: string, url: string) => Promise<RaceChartSvgData | null>
   renderRaceChart: (data: RaceChartSvgData) => Promise<Buffer>
   renderRaceChartSvg: (data: RaceChartSvgData) => string
-  /** An exercise post's trend line, or null when it has fewer than 2 points. */
-  getExerciseTrend: (user: string, post: FeedPostRecord) => Promise<ExerciseTrendSeries | null>
   /** Remembered block-image misses, shared with the markdown export (a fresh one when omitted). */
   articleBlockMisses?: NegativeCache
 }
-
-/**
- * One non-prose article block resolved to its render inputs; a windowed block's
- * window is its own override, else the article default.
- */
-export type ResolvedArticleBlock =
-  | { type: 'chart'; metric: MetricType; bucket?: string; start: Date; end: Date; updatedAt: Date }
-  | {
-      type: 'correlation'
-      trigger: CorrelationSelector
-      outcome: CorrelationSelector
-      lagDays?: number
-      periodStart: string
-      periodEnd: string
-      updatedAt: Date
-    }
-  | { type: 'challenge'; url: string; updatedAt: Date }
 
 /**
  * A tiny memoising cache with in-flight de-duplication (mirrors og-image-router):
@@ -219,81 +191,45 @@ export const resolveArticleBlock = async (
 ): Promise<ResolvedArticleBlock | null> => {
   if (!Number.isInteger(index) || index < 0) return null
   const loaded = await loadArticleForImage(deps, username, postId, token)
-  if (loaded == null) return null
-  const block = loaded.article.blocks[index]
-  if (block == null || block.type === 'prose') return null
-  if (block.type === 'challenge') {
-    return { type: 'challenge', updatedAt: loaded.updatedAt, url: block.challenge_url }
-  }
-  const { end, start } = blockWindow(block, loaded.article)
-  if (start == null || end == null) return null
-  const startDate = new Date(start)
-  const endDate = new Date(end)
-  if (startDate.getTime() >= endDate.getTime()) return null
-  const updatedAt = loaded.updatedAt
-  if (block.type === 'chart') {
-    return {
-      bucket: block.bucket,
-      end: endDate,
-      metric: block.metric,
-      start: startDate,
-      type: 'chart',
-      updatedAt,
-    }
-  }
-  return {
-    // Slice the day off the RAW ISO (author's wall-clock day), like the web
-    // scatter — not the UTC day a Date round-trip would give.
-    lagDays: block.lag_days,
-    outcome: block.outcome,
-    periodEnd: end.slice(0, 10),
-    periodStart: start.slice(0, 10),
-    trigger: block.trigger,
-    type: 'correlation',
-    updatedAt,
+  return loaded == null ? null : articleBlockAt(loaded.article, loaded.updatedAt, index)
+}
+
+/** A chart's image bytes: the PNG every consumer understands, or the crisp SVG. */
+export const renderPostChartImage = async (
+  deps: Pick<
+    FeedImageDeps,
+    | 'renderChart'
+    | 'renderChartSvg'
+    | 'renderRaceChart'
+    | 'renderRaceChartSvg'
+    | 'renderScatter'
+    | 'renderScatterSvg'
+  >,
+  chart: PostChart,
+  format: 'png' | 'svg',
+): Promise<Buffer> => {
+  const svg = (markup: string): Buffer => Buffer.from(markup, 'utf8')
+  switch (chart.type) {
+    case 'line':
+      return format === 'png'
+        ? deps.renderChart(chart.series, chart.opts)
+        : svg(deps.renderChartSvg(chart.series, chart.opts))
+    case 'race':
+      return format === 'png' ? deps.renderRaceChart(chart.data) : svg(deps.renderRaceChartSvg(chart.data))
+    case 'scatter':
+      return format === 'png' ? deps.renderScatter(chart.data) : svg(deps.renderScatterSvg(chart.data))
   }
 }
 
-/** Article-chart line colour, matching the web inline render (`ArticleChartBlock`). */
-const ARTICLE_CHART_COLOR = '#2b9ea7'
-
-/**
- * Render one resolved article block to its image bytes (PNG or the crisp SVG),
- * or `null` when the block has too little data to draw (a chart needs ≥ 2 points;
- * a correlation needs n ≥ 3, surfaced by `getCorrelationScatter` returning null;
- * a challenge needs a race line) or its bucket is a zero duration. Pure of
- * Express so the routes stay thin.
- */
+/** One resolved article block's image bytes, or `null` when the block has too little data to draw. */
 export const renderArticleBlockImage = async (
   deps: FeedImageDeps,
   user: string,
   block: ResolvedArticleBlock,
   format: 'png' | 'svg',
 ): Promise<Buffer | null> => {
-  if (block.type === 'challenge') {
-    const race = await deps.getChallengeRaceByUrl(user, block.url)
-    if (race == null || race.lines.length === 0) return null
-    return format === 'png' ? deps.renderRaceChart(race) : Buffer.from(deps.renderRaceChartSvg(race), 'utf8')
-  }
-  if (block.type === 'chart') {
-    const bucket = block.bucket ?? defaultArticleChartBucket(block.start, block.end)
-    if (isZeroDurationBucket(bucket)) return null
-    const series = await deps.getArticleChartSeries(user, block.metric, block.start, block.end, bucket)
-    if (series.length < 2) return null
-    const opts: ChartRenderOpts = { color: ARTICLE_CHART_COLOR, label: getMetricDisplayName(block.metric) }
-    return format === 'png'
-      ? deps.renderChart(series, opts)
-      : Buffer.from(deps.renderChartSvg(series, opts), 'utf8')
-  }
-  const data = await deps.getCorrelationScatter(user, {
-    lagDays: block.lagDays,
-    outcome: block.outcome,
-    periodEnd: block.periodEnd,
-    periodStart: block.periodStart,
-    trigger: block.trigger,
-  })
-  if (data == null) return null
-  return format === 'png' ? deps.renderScatter(data) : Buffer.from(deps.renderScatterSvg(data), 'utf8')
+  const chart = await articleBlockChart(deps, user, block)
+  return chart == null ? null : renderPostChartImage(deps, chart, format)
 }
 
 const notFound = (res: Response) => res.status(404).json({ error: 'Not found', success: false })
@@ -309,34 +245,6 @@ const sendSvg = (res: Response, svg: Buffer) => {
   res.setHeader('Cache-Control', 'no-store') // revocable, same as the PNG
   res.type('image/svg+xml').send(svg)
 }
-
-/**
- * Keyed on the post's stored version, not the URL's `v`: a detail sync or an
- * edit bumps `updated_at` and re-renders, while a guessed `v` cannot bust the cache.
- */
-export const imageCacheKey = (
-  kind: string,
-  username: string,
-  postId: string,
-  window: Pick<ImageWindow, 'updated_at'>,
-): string => `${kind}:${username}:${postId}:${window.updated_at.getTime()}`
-
-/** The post's version plus a time bucket: an edit busts it, and so does the data moving on. */
-export const bucketedCacheKey = (
-  kind: string,
-  username: string,
-  postId: string,
-  updatedAt: Date,
-  now: number,
-  bucketMs: number,
-): string =>
-  `${imageCacheKey(kind, username, postId, { updated_at: updatedAt })}:${Math.floor(now / bucketMs)}`
-
-/** Remote members' standings are cached for this long, so a finer render key buys nothing. */
-const STANDINGS_BUCKET_MS = 300_000
-
-/** New sessions move an exercise's trend, at most a few times a day. */
-const TREND_BUCKET_MS = 3_600_000
 
 export const standingsCacheKey = (
   kind: string,
@@ -397,8 +305,6 @@ export const resolveExercisePost = (
   token?: string,
 ): Promise<FeedPostRecord | null> => resolveChartPost(deps, 'exercise', username, postId, token)
 
-const TREND_COLOR = '#2b9ea7'
-
 /** A challenge block's standings move like a challenge post's (`standings.png`); a windowed block's data, hourly. */
 const blockBucketMs = (block: ResolvedArticleBlock): number | undefined =>
   block.type === 'challenge' ? STANDINGS_BUCKET_MS : undefined
@@ -412,10 +318,9 @@ export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
     const token = typeof req.query.token === 'string' ? req.query.token : undefined
     const window = await resolveImageWindow(deps, username, postId, 'include_chart', token)
     if (!window) return notFound(res)
-    const { end_time, start_time } = window
     const png = await cached(imageCacheKey('chart', username, postId, window), async () => {
-      const series = await deps.getSeries(username, 'heart_rate', start_time, end_time)
-      return series.length === 0 ? null : deps.renderChart(series)
+      const chart = await activityHeartRateChart(deps, username, window)
+      return chart == null ? null : renderPostChartImage(deps, chart, 'png')
     })
     if (!png) return notFound(res)
     sendPng(res, png)
@@ -426,13 +331,12 @@ export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
     const token = typeof req.query.token === 'string' ? req.query.token : undefined
     const window = await resolveImageWindow(deps, username, postId, 'include_chart', token)
     if (!window) return notFound(res)
-    const { end_time, start_time } = window
     // Cached under a distinct key from the PNG; the built SVG string is stored as
     // its UTF-8 bytes so it shares the same buffer LRU (the DB series fetch is the
     // cost worth caching, not the string build).
     const svg = await cached(imageCacheKey('chartsvg', username, postId, window), async () => {
-      const series = await deps.getSeries(username, 'heart_rate', start_time, end_time)
-      return series.length === 0 ? null : Buffer.from(deps.renderChartSvg(series), 'utf8')
+      const chart = await activityHeartRateChart(deps, username, window)
+      return chart == null ? null : renderPostChartImage(deps, chart, 'svg')
     })
     if (!svg) return notFound(res)
     sendSvg(res, svg)
@@ -459,11 +363,8 @@ export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
   ): Promise<Buffer | null> => {
     const key = standingsCacheKey(`standings${format}`, username, post.id, post.updated_at, Date.now())
     return cached(key, async () => {
-      const data = await deps.getStandingsChart(username, post)
-      if (data == null || data.lines.length === 0) return null
-      return format === 'png'
-        ? deps.renderRaceChart(data)
-        : Buffer.from(deps.renderRaceChartSvg(data), 'utf8')
+      const chart = await standingsChart(deps, username, post)
+      return chart == null ? null : renderPostChartImage(deps, chart, format)
     })
   }
 
@@ -494,13 +395,8 @@ export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
   ): Promise<Buffer | null> => {
     const key = trendCacheKey(`trend${format}`, username, post.id, post.updated_at, Date.now())
     return cached(key, async () => {
-      const trend = await deps.getExerciseTrend(username, post)
-      if (trend == null || trend.series.length < 2) return null
-      const label = [activityMeasureLabels[trend.measure], post.exercise?.name].filter(Boolean).join(' · ')
-      const opts: ChartRenderOpts = { color: TREND_COLOR, label }
-      return format === 'png'
-        ? deps.renderChart(trend.series, opts)
-        : Buffer.from(deps.renderChartSvg(trend.series, opts), 'utf8')
+      const chart = await exerciseTrendChart(deps, username, post)
+      return chart == null ? null : renderPostChartImage(deps, chart, format)
     })
   }
 

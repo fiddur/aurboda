@@ -5,6 +5,7 @@ import supertest from 'supertest'
 import { describe, expect, test, vi } from 'vitest'
 
 import type { ResolvedChallenge } from '../services/challenge-card.ts'
+import type { PostChart } from '../services/charts/post-chart-svg.ts'
 import type { ResolvedPost } from '../services/post-card.ts'
 import type { ResolvedExercise } from './share-html-router.ts'
 
@@ -50,6 +51,7 @@ const buildApp = (overrides: Partial<OgImageDeps> = {}) => {
     latestExerciseSession: vi.fn(async () => '2026-11-04T08:00:00.000Z'),
     loadBannerDataUri: vi.fn(async () => 'data:image/jpeg;base64,BBBB'),
     loadExerciseCard: vi.fn(async () => ({ data: exerciseData, timeZone: 'Europe/Stockholm' })),
+    loadPostChart: vi.fn(async () => null),
     now: () => new Date('2026-10-01T12:00:00Z'),
     profileExists: async () => false,
     renderImage: vi.fn(async () => fakePng),
@@ -391,6 +393,79 @@ describe('GET /u/:username/posts/:postId/opengraph-image.png', () => {
     expect(deps.renderImage).toHaveBeenCalledTimes(2)
   })
 
+  const heartRate = (peak: number): PostChart => ({
+    series: [
+      [new Date('2026-11-01T07:30:00.000Z'), 120],
+      [new Date('2026-11-01T07:40:00.000Z'), peak],
+    ],
+    type: 'line',
+  })
+
+  test('passes a post’s chart to the card', async () => {
+    const loadPostChart = vi.fn(async () => heartRate(150))
+    const { app, deps } = buildApp({ loadPostChart, resolvePost: async () => publicPost() })
+    const res = await supertest(app).get(path)
+    expect(res.status).toBe(200)
+    expect(loadPostChart).toHaveBeenCalledWith('fiddur', postId)
+    expect(deps.renderImage).toHaveBeenCalledWith(
+      expect.objectContaining({ chart: heartRate(150), kind: 'post' }),
+    )
+  })
+
+  test('serves a memoised card without loading the chart again', async () => {
+    const loadPostChart = vi.fn(async () => heartRate(150))
+    const { app, deps } = buildApp({ loadPostChart, resolvePost: async () => publicPost() })
+    await supertest(app).get(path)
+    await supertest(app).get(path)
+    expect(loadPostChart).toHaveBeenCalledTimes(1)
+    expect(deps.renderImage).toHaveBeenCalledTimes(1)
+  })
+
+  test('redraws the chart in a new time bucket, though the post did not change', async () => {
+    let clock = new Date('2026-11-01T08:00:00.000Z')
+    let peak = 150
+    const loadPostChart = vi.fn(async () => heartRate(peak))
+    const { app, deps } = buildApp({
+      loadPostChart,
+      now: () => clock,
+      resolvePost: async () => publicPost({ chart_bucket_ms: 300_000, kind: 'challenge' }),
+    })
+    await supertest(app).get(path)
+    peak = 160
+    clock = new Date('2026-11-01T08:04:59.000Z')
+    await supertest(app).get(path)
+    expect(deps.renderImage).toHaveBeenCalledTimes(1)
+    clock = new Date('2026-11-01T08:05:00.000Z')
+    await supertest(app).get(path)
+    expect(loadPostChart).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(deps.renderImage).mock.calls[1][0].chart).toEqual(heartRate(160))
+  })
+
+  test('keeps a post without a bucket until it is edited, whatever the time', async () => {
+    let clock = new Date('2026-11-01T08:00:00.000Z')
+    const { app, deps } = buildApp({ now: () => clock, resolvePost: async () => publicPost() })
+    await supertest(app).get(path)
+    clock = new Date('2026-11-09T08:00:00.000Z')
+    await supertest(app).get(path)
+    expect(deps.renderImage).toHaveBeenCalledTimes(1)
+  })
+
+  test('renders the card without a chart when loading it fails, and tries again next time', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const loadPostChart = vi
+      .fn<OgImageDeps['loadPostChart']>()
+      .mockRejectedValueOnce(new Error('db down'))
+      .mockResolvedValue(heartRate(150))
+    const { app, deps } = buildApp({ loadPostChart, resolvePost: async () => publicPost() })
+    const res = await supertest(app).get(path)
+    expect(res.status).toBe(200)
+    expect(vi.mocked(deps.renderImage).mock.calls[0][0]).not.toHaveProperty('chart')
+    await supertest(app).get(path)
+    expect(loadPostChart).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(deps.renderImage).mock.calls[1][0].chart).toEqual(heartRate(150))
+    error.mockRestore()
+  })
+
   test('is not shadowed by the slug route', async () => {
     const resolveDashboard = vi.fn(async () => ({ is_public: true, name: 'Posts' }))
     const { app, deps } = buildApp({ resolveDashboard, resolvePost: async () => publicPost() })
@@ -406,6 +481,7 @@ describe('GET /u/:username/posts/:postId/opengraph-image.png', () => {
       expect(res.status).toBe(302)
       expect(res.headers.location).toBe('https://aurboda.net/og-default.png')
       expect(deps.renderImage).not.toHaveBeenCalled()
+      expect(deps.loadPostChart).not.toHaveBeenCalled()
     }
   })
 
