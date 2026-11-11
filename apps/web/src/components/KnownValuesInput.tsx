@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useEffect, useId, useMemo, useRef, useState } from 'preact/hooks'
 
 import { fetchActivityFieldValues } from '../state/api'
-import { filterKnownValues, stepActiveIndex } from './knownValueSuggestions'
+import { exactMatchIndex, filterKnownValues, stepActiveIndex } from './knownValueSuggestions'
 import './KnownValuesInput.css'
 
 export const KnownValuesInput = ({
@@ -39,7 +39,7 @@ export const KnownValuesInput = ({
   const expanded = open && suggestions.length > 0
 
   useEffect(() => {
-    setActiveIndex(-1)
+    setActiveIndex(exactMatchIndex(suggestions, value))
   }, [suggestions])
 
   useEffect(() => {
@@ -86,7 +86,6 @@ export const KnownValuesInput = ({
         aria-controls={listId}
         aria-activedescendant={expanded && activeIndex >= 0 ? `${listId}-${activeIndex}` : undefined}
         value={value}
-        onFocus={() => setOpen(true)}
         onClick={() => setOpen(true)}
         onBlur={() => setOpen(false)}
         onInput={(e) => {
