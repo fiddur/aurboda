@@ -129,6 +129,42 @@ describe('POST /notes', () => {
     expect(mutations.addNote).not.toHaveBeenCalled()
   })
 
+  test('400s on a time comment whose end precedes its start', async () => {
+    const res = await supertest(buildApp()).post('/').send({
+      content: 'Backwards',
+      end_time: '2024-01-15T11:00:00Z',
+      entity_type: 'time',
+      start_time: '2024-01-15T12:00:00Z',
+    })
+
+    expect(res.status).toBe(400)
+    expect(mutations.addNote).not.toHaveBeenCalled()
+  })
+
+  test.each(['activity', 'productivity', 'report', 'meal', 'note'])(
+    '400s on a non-UUID entity_id for entity_type %s',
+    async (entityType) => {
+      const res = await supertest(buildApp())
+        .post('/')
+        .send({ content: 'Hm', entity_id: 'not-a-uuid', entity_type: entityType })
+
+      expect(res.status).toBe(400)
+      expect(mutations.addNote).not.toHaveBeenCalled()
+    },
+  )
+
+  test('accepts a composite metric entity_id', async () => {
+    vi.mocked(mutations.addNote).mockResolvedValue({ data: noteData, success: true })
+
+    const res = await supertest(buildApp()).post('/').send({
+      content: 'Spike',
+      entity_id: '2024-01-15T10:30:00.000Z|heart_rate|oura',
+      entity_type: 'metric',
+    })
+
+    expect(res.status).toBe(200)
+  })
+
   test('400s when the service rejects the shape', async () => {
     vi.mocked(mutations.addNote).mockResolvedValue({
       error: 'Comment to reply to not found',
@@ -170,16 +206,42 @@ describe('PATCH /notes/:id', () => {
   })
 
   test('404s when the note does not exist', async () => {
-    vi.mocked(mutations.updateNote).mockResolvedValue({ error: 'Note not found', success: false })
+    vi.mocked(mutations.updateNote).mockResolvedValue({
+      error: 'Note not found',
+      errorCode: 'not_found',
+      success: false,
+    })
 
     const res = await supertest(buildApp()).patch(`/${NOTE_ID}`).send({ content: 'Reworded' })
 
     expect(res.status).toBe(404)
   })
 
+  test('400s on an invalid errorCode, whatever the message says', async () => {
+    vi.mocked(mutations.updateNote).mockResolvedValue({
+      error: 'Note not found',
+      errorCode: 'invalid',
+      success: false,
+    })
+
+    const res = await supertest(buildApp()).patch(`/${NOTE_ID}`).send({ content: 'Reworded' })
+
+    expect(res.status).toBe(400)
+  })
+
+  test('400s when the end is moved before the start', async () => {
+    const res = await supertest(buildApp())
+      .patch(`/${NOTE_ID}`)
+      .send({ end_time: '2024-01-15T11:00:00Z', start_time: '2024-01-15T12:00:00Z' })
+
+    expect(res.status).toBe(400)
+    expect(mutations.updateNote).not.toHaveBeenCalled()
+  })
+
   test('400s when times are set on a comment anchored to an entity', async () => {
     vi.mocked(mutations.updateNote).mockResolvedValue({
       error: 'Times can only be set on a time-anchored comment',
+      errorCode: 'invalid',
       success: false,
     })
 

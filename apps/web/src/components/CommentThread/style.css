@@ -143,6 +143,13 @@
   color: inherit;
 }
 
+.comment-times-error {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.75rem;
+  color: #ef4444;
+}
+
 .comment-edit-form,
 .comment-reply-form,
 .comment-add-form {

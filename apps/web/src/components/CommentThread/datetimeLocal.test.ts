@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { fromDatetimeLocal, toDatetimeLocal } from './datetimeLocal'
+import { endBeforeStart, fromDatetimeLocal, toDatetimeLocal } from './datetimeLocal'
 
 describe('toDatetimeLocal', () => {
   it('formats a Date as local wall-clock time', () => {
@@ -30,5 +30,19 @@ describe('fromDatetimeLocal', () => {
   it('returns undefined for blank or unparseable input', () => {
     expect(fromDatetimeLocal('')).toBeUndefined()
     expect(fromDatetimeLocal('tomorrow-ish')).toBeUndefined()
+  })
+})
+
+describe('endBeforeStart', () => {
+  it('is true only when the end precedes the start', () => {
+    expect(endBeforeStart('2026-09-13T08:00', '2026-09-13T07:59')).toBe(true)
+    expect(endBeforeStart('2026-09-13T08:00', '2026-09-13T08:00')).toBe(false)
+    expect(endBeforeStart('2026-09-13T08:00', '2026-09-13T09:00')).toBe(false)
+  })
+
+  it('is false when either side is blank or unparseable', () => {
+    expect(endBeforeStart('2026-09-13T08:00', '')).toBe(false)
+    expect(endBeforeStart('', '2026-09-13T07:00')).toBe(false)
+    expect(endBeforeStart('nonsense', '2026-09-13T07:00')).toBe(false)
   })
 })

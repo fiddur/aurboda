@@ -5,6 +5,7 @@ import {
   createDataArrayResponseSchema,
   createDataResponseSchema,
   iso8601DateTimeSchema,
+  UUID_RE,
 } from './common.ts'
 
 /**
@@ -25,6 +26,19 @@ export const entityTypeSchema = z.enum(entityTypes).meta({
 })
 
 export type EntityType = z.infer<typeof entityTypeSchema>
+
+/** Entity types whose `entity_id` is a UUID. A metric's is a composite key and a `time` note has none. */
+export const uuidEntityTypes: readonly EntityType[] = ['activity', 'productivity', 'report', 'meal', 'note']
+
+export const isValidEntityId = (entityType: EntityType, entityId: string): boolean =>
+  !uuidEntityTypes.includes(entityType) || UUID_RE.test(entityId)
+
+/** An end before the start would draw as a negative-width block. */
+export const endPrecedesStart = (
+  startTime: string | undefined,
+  endTime: string | null | undefined,
+): boolean =>
+  startTime !== undefined && endTime != null && new Date(endTime).getTime() < new Date(startTime).getTime()
 
 /**
  * A reply inside a comment thread. Threads are exactly one level deep, so a
@@ -150,6 +164,14 @@ export const addNoteBodySchema = z
           path: ['start_time'],
         })
       }
+      if (endPrecedesStart(body.start_time, body.end_time)) {
+        ctx.issues.push({
+          code: 'custom',
+          input: body.end_time,
+          message: 'end_time must not precede start_time',
+          path: ['end_time'],
+        })
+      }
       return
     }
     if (body.entity_id === undefined || body.entity_id === null) {
@@ -157,6 +179,13 @@ export const addNoteBodySchema = z
         code: 'custom',
         input: body.entity_id,
         message: "entity_id is required unless entity_type is 'time'",
+        path: ['entity_id'],
+      })
+    } else if (!isValidEntityId(body.entity_type, body.entity_id)) {
+      ctx.issues.push({
+        code: 'custom',
+        input: body.entity_id,
+        message: `entity_id must be a UUID when entity_type is '${body.entity_type}'`,
         path: ['entity_id'],
       })
     }
@@ -204,6 +233,14 @@ export const updateNoteBodySchema = z
         input: body,
         message: 'At least one of content, start_time or end_time must be provided',
         path: ['content'],
+      })
+    }
+    if (endPrecedesStart(body.start_time, body.end_time)) {
+      ctx.issues.push({
+        code: 'custom',
+        input: body.end_time,
+        message: 'end_time must not precede start_time',
+        path: ['end_time'],
       })
     }
   })

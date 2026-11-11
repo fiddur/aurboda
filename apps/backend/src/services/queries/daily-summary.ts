@@ -35,6 +35,7 @@ import {
 import { getScreentimeCategories } from '../../db/screentime-categories.ts'
 import { getPlaceVisits, type PlaceVisit } from '../locations.ts'
 import { toMetricEntityId } from '../metric-entity-id.ts'
+import { toNoteReplyData } from '../notes.ts'
 import { maxOf, minOf } from '../numeric-extremes.ts'
 import {
   categoryPathToString,
@@ -563,7 +564,6 @@ export async function getDailySummary(
       !(n.entity_type === 'meal' && n.entity_id && mealIdSet.has(n.entity_id)),
   )
 
-  // Nest each day-level comment's thread under it (one batched lookup).
   const orphanedReplies = await getRepliesForRootIds(
     user,
     orphanedNotes.map((n) => n.id),
@@ -600,15 +600,7 @@ export async function getDailySummary(
       entity_id: n.entity_id,
       entity_type: n.entity_type,
       id: n.id,
-      replies: (orphanedReplies.get(n.id) ?? []).map((r) => ({
-        content: r.content,
-        created_at: r.created_at.toISOString(),
-        end_time: r.end_time?.toISOString(),
-        id: r.id,
-        source: r.source,
-        start_time: r.start_time?.toISOString(),
-        updated_at: r.updated_at.toISOString(),
-      })),
+      replies: (orphanedReplies.get(n.id) ?? []).map(toNoteReplyData),
       source: n.source,
       start_time: n.start_time?.toISOString(),
       updated_at: n.updated_at.toISOString(),

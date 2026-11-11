@@ -2,11 +2,13 @@ import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
-import { withUserTransaction } from './connection.ts'
+import { deleteActivity, insertActivity, restoreActivity } from './activities/index.ts'
+import { query, withUserTransaction } from './connection.ts'
+import { insertMeal } from './meals.ts'
 import {
   deleteNote,
   deleteNotesForEntitiesIn,
-  deleteNotesForEntity,
+  deleteNotesForEntityIn,
   getNoteById,
   getNoteRoot,
   getNotesByEntityIds,
@@ -20,8 +22,15 @@ import {
   updateNoteTimesForEntity,
   upsertSyncedNote,
 } from './notes.ts'
+import { deleteProductivityRecord, insertProductivity, restoreProductivityRecord } from './productivity.ts'
+import { insertReport } from './reports.ts'
 
 const CONTAINER_TIMEOUT = 120_000
+
+const DAY = { end: new Date('2024-01-15T23:59:59Z'), start: new Date('2024-01-15T00:00:00Z') }
+
+const contentInDay = async (user: string): Promise<string[]> =>
+  (await getNotesForTimeRange(user, DAY.start, DAY.end)).map((n) => n.content)
 
 describe('Notes Integration Tests', () => {
   beforeAll(async () => {
@@ -262,11 +271,10 @@ describe('Notes Integration Tests', () => {
   describe('getNotesForTimeRange', () => {
     test('returns notes with time ranges overlapping the query window', async () => {
       const user = getTestUser()
-      const entityId = randomUUID()
       const start = new Date('2024-01-15T08:15:00Z')
       const end = new Date('2024-01-15T08:45:00Z')
 
-      await insertNote(user, 'activity', entityId, 'In range', start, end)
+      await insertNote(user, 'time', null, 'In range', start, end)
 
       const results = await getNotesForTimeRange(
         user,
@@ -280,12 +288,11 @@ describe('Notes Integration Tests', () => {
 
     test('returns note spanning multiple days when querying any overlapping day', async () => {
       const user = getTestUser()
-      const entityId = randomUUID()
       // Long-spanning tag (e.g. a month)
       const monthStart = new Date('2024-01-01T00:00:00Z')
       const monthEnd = new Date('2024-01-31T23:59:59Z')
 
-      await insertNote(user, 'activity', entityId, 'Long tag note', monthStart, monthEnd)
+      await insertNote(user, 'time', null, 'Long tag note', monthStart, monthEnd)
 
       // Query a day in the middle of the month
       const results = await getNotesForTimeRange(
@@ -300,12 +307,11 @@ describe('Notes Integration Tests', () => {
 
     test('excludes notes outside the query window', async () => {
       const user = getTestUser()
-      const entityId = randomUUID()
       // Note is the day before
       await insertNote(
         user,
-        'activity',
-        entityId,
+        'time',
+        null,
         'Yesterday',
         new Date('2024-01-14T10:00:00Z'),
         new Date('2024-01-14T11:00:00Z'),
@@ -322,10 +328,9 @@ describe('Notes Integration Tests', () => {
 
     test('includes point-in-time notes (no end_time) within the window', async () => {
       const user = getTestUser()
-      const entityId = randomUUID()
       const pointInTime = new Date('2024-01-15T12:00:00Z')
 
-      await insertNote(user, 'activity', entityId, 'Point-in-time note', pointInTime)
+      await insertNote(user, 'time', null, 'Point-in-time note', pointInTime)
 
       const results = await getNotesForTimeRange(
         user,
@@ -339,10 +344,9 @@ describe('Notes Integration Tests', () => {
 
     test('excludes point-in-time notes outside the window', async () => {
       const user = getTestUser()
-      const entityId = randomUUID()
       const outsideTime = new Date('2024-01-16T12:00:00Z')
 
-      await insertNote(user, 'activity', entityId, 'Outside', outsideTime)
+      await insertNote(user, 'time', null, 'Outside', outsideTime)
 
       const results = await getNotesForTimeRange(
         user,
@@ -374,8 +378,8 @@ describe('Notes Integration Tests', () => {
       const laterStart = new Date('2024-01-15T14:00:00Z')
       const earlierStart = new Date('2024-01-15T08:00:00Z')
 
-      await insertNote(user, 'activity', randomUUID(), 'Later note', laterStart)
-      await insertNote(user, 'activity', randomUUID(), 'Earlier note', earlierStart)
+      await insertNote(user, 'time', null, 'Later note', laterStart)
+      await insertNote(user, 'time', null, 'Earlier note', earlierStart)
 
       const results = await getNotesForTimeRange(
         user,
@@ -386,6 +390,77 @@ describe('Notes Integration Tests', () => {
       expect(results).toHaveLength(2)
       expect(results[0].content).toBe('Earlier note')
       expect(results[1].content).toBe('Later note')
+    })
+  })
+
+  describe('getNotesForTimeRange — parents', () => {
+    const at = new Date('2024-01-15T10:00:00Z')
+
+    test('hides a comment while its activity is soft-deleted, and shows it again on restore', async () => {
+      const user = getTestUser()
+      const activityId = await insertActivity(user, {
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        source: 'manual',
+        start_time: at,
+      })
+      await insertNote(user, 'activity', activityId, 'On the run', at)
+
+      expect(await contentInDay(user)).toEqual(['On the run'])
+
+      await deleteActivity(user, activityId)
+      expect(await contentInDay(user)).toEqual([])
+
+      await restoreActivity(user, activityId)
+      expect(await contentInDay(user)).toEqual(['On the run'])
+    })
+
+    test('hides a comment while its productivity record is soft-deleted, and shows it again on restore', async () => {
+      const user = getTestUser()
+      await insertProductivity(user, [
+        {
+          activity: 'editor',
+          category: 'Software Development',
+          duration_sec: 600,
+          end_time: new Date('2024-01-15T10:10:00Z'),
+          productivity: 2,
+          source: 'rescuetime',
+          start_time: at,
+        },
+      ])
+      const { rows } = await query<{ id: string }>(user, `SELECT id FROM productivity`)
+      const recordId = rows[0].id
+      await insertNote(user, 'productivity', recordId, 'Deep work', at)
+
+      expect(await contentInDay(user)).toEqual(['Deep work'])
+
+      await deleteProductivityRecord(user, recordId)
+      expect(await contentInDay(user)).toEqual([])
+
+      await restoreProductivityRecord(user, recordId)
+      expect(await contentInDay(user)).toEqual(['Deep work'])
+    })
+
+    test('keeps comments on a meal and a report that exist', async () => {
+      const user = getTestUser()
+      const meal = await insertMeal(user, { name: 'Lunch', time: at })
+      const report = await insertReport(user, { entries: [], report_date: at, report_type: 'inbody' })
+      await insertNote(user, 'meal', meal.id, 'Salty', at)
+      await insertNote(user, 'report', report.id, 'Odd value', at)
+
+      expect((await contentInDay(user)).sort()).toEqual(['Odd value', 'Salty'])
+    })
+
+    test('hides a comment whose parent does not exist at all', async () => {
+      const user = getTestUser()
+      await insertNote(user, 'activity', randomUUID(), 'Lost activity', at)
+      await insertNote(user, 'productivity', randomUUID(), 'Lost record', at)
+      await insertNote(user, 'meal', randomUUID(), 'Lost meal', at)
+      await insertNote(user, 'report', randomUUID(), 'Lost report', at)
+      await insertNote(user, 'meal', 'not-a-uuid', 'Malformed id', at)
+      await insertNote(user, 'time', null, 'A moment', at)
+
+      expect(await contentInDay(user)).toEqual(['A moment'])
     })
   })
 
@@ -671,9 +746,43 @@ describe('Notes Integration Tests', () => {
       const remaining = await getNotesForEntity(user, 'activity', entityId)
       expect(remaining.map((n) => n.content).sort()).toEqual(['HC note', 'User comment'])
     })
+
+    test('clearing removes the replies of the synced note too', async () => {
+      const user = getTestUser()
+      const entityId = randomUUID()
+      const start = new Date('2024-01-15T08:00:00Z')
+
+      await upsertSyncedNote(user, 'activity', entityId, 'oura', 'Tag comment', start)
+      const [synced] = await getNotesForEntity(user, 'activity', entityId)
+      const reply = await insertNote(user, 'note', synced.id, 'My reply', start)
+
+      await upsertSyncedNote(user, 'activity', entityId, 'oura', undefined)
+
+      expect(await getNoteById(user, synced.id)).toBeNull()
+      expect(await getNoteById(user, reply.id)).toBeNull()
+    })
+
+    test('moving the synced note in time moves its replies with it', async () => {
+      const user = getTestUser()
+      const entityId = randomUUID()
+      const start = new Date('2024-01-15T08:00:00Z')
+      const movedStart = new Date('2024-01-15T09:00:00Z')
+      const movedEnd = new Date('2024-01-15T09:30:00Z')
+
+      await upsertSyncedNote(user, 'activity', entityId, 'oura', 'Tag comment', start)
+      const [synced] = await getNotesForEntity(user, 'activity', entityId)
+      const reply = await insertNote(user, 'note', synced.id, 'My reply', start)
+
+      await upsertSyncedNote(user, 'activity', entityId, 'oura', 'Tag comment', movedStart, movedEnd)
+
+      const movedReply = await getNoteById(user, reply.id)
+      expect(movedReply!.start_time).toEqual(movedStart)
+      expect(movedReply!.end_time).toEqual(movedEnd)
+      expect(movedReply!.content).toBe('My reply')
+    })
   })
 
-  describe('deleteNotesForEntity', () => {
+  describe('deleteNotesForEntityIn', () => {
     test('removes every comment on the entity and their replies', async () => {
       const user = getTestUser()
       const mealId = randomUUID()
@@ -686,7 +795,7 @@ describe('Notes Integration Tests', () => {
       const otherRoot = await insertNote(user, 'meal', otherMealId, 'Different meal', start)
       const otherReply = await insertNote(user, 'note', otherRoot.id, 'Untouched', start)
 
-      expect(await deleteNotesForEntity(user, 'meal', mealId)).toBe(2)
+      expect(await withUserTransaction(user, (tx) => deleteNotesForEntityIn(tx, 'meal', mealId))).toBe(2)
 
       expect(await getNoteById(user, root1.id)).toBeNull()
       expect(await getNoteById(user, root2.id)).toBeNull()
@@ -698,7 +807,9 @@ describe('Notes Integration Tests', () => {
     test('returns 0 when the entity has no comments', async () => {
       const user = getTestUser()
 
-      expect(await deleteNotesForEntity(user, 'meal', randomUUID())).toBe(0)
+      expect(await withUserTransaction(user, (tx) => deleteNotesForEntityIn(tx, 'meal', randomUUID()))).toBe(
+        0,
+      )
     })
   })
 

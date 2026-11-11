@@ -30,7 +30,8 @@ the composite `entity_id`, `<iso_time>|<metric>|<source>`.)
 Sometimes the thing worth recording is not attached to anything. A comment with
 `entity_type: "time"` has no entity at all -- just a `start_time` (required) and
 an optional `end_time` for a span rather than an instant. Those times are yours:
-you type them, and you can move the comment later.
+you type them, and you can move the comment later. An `end_time` before the
+`start_time` is refused with a `400`.
 
 ### A reply
 
@@ -70,7 +71,8 @@ Comments that arrived from a data source carry a `source` (`health_connect`,
 `oura`, …). They are ordinary thread roots -- you can reply to them -- but their
 content stays owned by the source and is not editable through the notes API.
 Replacing an activity's user-typed notes leaves synced comments, and their
-replies, untouched.
+replies, untouched. When the source moves the comment in time, its replies move
+with it; when the source clears it, the comment and its replies are deleted.
 
 ## Deleting
 
@@ -78,11 +80,18 @@ Deleting a thread root deletes the replies hanging off it. Deleting a reply
 removes only that reply.
 
 Deleting the **thing** a comment is about depends on whether that thing can come
-back. An activity or productivity record is soft-deleted and restorable, so its
-comments are kept and reappear with it. A **meal** is removed for good, so
-deleting one deletes its comments and their replies too — otherwise they would
-keep drawing a Timeline bubble linking to a meal page that no longer exists, and
-list forever as loose day-level notes in the daily summary.
+back:
+
+- An **activity** or **productivity** record is soft-deleted and restorable, so
+  its comments are kept, but hidden from the time-range read (the Timeline, the
+  daily summary's day-level `notes`, `GET /notes?from=&to=` and `query_notes`)
+  while it is deleted. Restoring it brings them back; nothing about the comments
+  changes in between.
+- A **meal** or a **report** is removed for good, so deleting one deletes its
+  comments and their replies in the same transaction.
+- A comment whose parent does not exist at all is left out of the time-range read
+  too, so no bubble ever links to something that 404s. Nothing is re-anchored.
+  Metric comments carry no times and are never in that read.
 
 ## REST API
 
@@ -94,7 +103,9 @@ list forever as loose day-level notes in the daily summary.
 | `DELETE` | `/notes/:id` | Delete a comment (and, for a root, its replies)                                                     |
 
 Both `GET` shapes return thread roots with `replies` nested. Setting times on a
-comment that is anchored to an entity is a `400`.
+comment that is anchored to an entity is a `400`, and so is an `entity_id` that is
+not a UUID for an entity type keyed by one (everything but `metric`, whose key is
+composite). `PATCH` on a comment that does not exist is a `404`.
 
 ## MCP tools
 

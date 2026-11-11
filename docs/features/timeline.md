@@ -107,7 +107,8 @@ Every [comment](./comments.md) anchored in the visible window gets a 💬 bubble
 the Timeline, so a remark sits next to the data it is about. A comment on a run
 shows at the run's time, right beside the run; a comment on a bare moment shows
 wherever you put it. Replies never get a bubble of their own -- they ride along
-inside their thread.
+inside their thread. A comment on a deleted activity or productivity record has
+no bubble until the record is restored.
 
 In **vertical mode** the comments are a column of their own, rightmost. In
 **horizontal mode** they get a thin lane at the very top, above Music: one 💬

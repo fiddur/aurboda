@@ -14,11 +14,7 @@ interface TimelineContextMenuProps {
   onClose: () => void
 }
 
-/**
- * Right-click / long-press menu on the chart. Everything it offers is about the
- * moment the pointer was over — the Timeline is the place you notice a gap in
- * the record, so this is the shortest path from noticing to filling it.
- */
+/** Right-click / long-press menu on the chart. */
 export const TimelineContextMenu = ({ x, y, at, onAddComment, onClose }: TimelineContextMenuProps) => {
   const { route } = useLocation()
   const menuRef = useRef<HTMLDivElement>(null)
