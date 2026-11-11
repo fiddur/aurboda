@@ -194,7 +194,7 @@ export const buildSessions = (
         hr: hr ? toValueDistribution(hr) : undefined,
         hr_zone_secs: zoneSecs.get(a),
         id,
-        max_hr: numberFromData(a.data, 'max_hr') ?? hr?.max,
+        max_hr: numberFromData(a.data, 'max_hr') ?? (hr ? Math.round(hr.max) : undefined),
         start_time: a.start_time.toISOString(),
         // Rows map a NULL title to null, which the optional-string schema doesn't allow
         title: a.title ?? undefined,

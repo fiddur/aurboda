@@ -781,6 +781,8 @@ export const getValueHistogramsForWindows = async (
   const params: unknown[] = [windows.map((w) => w.start), windows.map((w) => w.end), metric]
   if (sources) params.push(sources)
 
+  // Rounding heart rate to whole bpm is deliberate: fractional sources shift min, max and mean
+  // by up to ±0.5 bpm.
   const result = await queryWindowSamples(
     user,
     `SELECT w.i::int AS i, round(ts.value)::int AS v, COUNT(*)::int AS n

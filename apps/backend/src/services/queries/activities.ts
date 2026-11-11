@@ -188,8 +188,6 @@ export async function queryActivities(
   const siblingIds = activities.flatMap((a) => a.source_ids ?? [])
   const commentLookupIds = [...new Set([...activityIds, ...siblingIds])]
 
-  // Zones come from SQL per activity window, so exercise subtypes (yoga, running, …) get them
-  // without pulling their whole span's time-series into memory.
   const zoneActivities = activities.filter((a) => a.end_time && isExerciseLike(a.activity_type, categoryMap))
   const hrZoneSecsForZoneActivities = async (): Promise<(HrZoneSecs | undefined)[]> => {
     if (zoneActivities.length === 0) return []

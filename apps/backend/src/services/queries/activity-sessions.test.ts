@@ -152,6 +152,16 @@ describe('buildSessions', () => {
     expect(sessions[0]!.hr_zone_secs).toBeUndefined()
   })
 
+  test('HR from samples rounds both the average and the maximum to whole bpm', () => {
+    const [session] = buildSessions(
+      [activity('a', '2026-09-01T07:00:00Z', 26)],
+      [],
+      new Map(),
+      new Map([['a', dist(60, 70, 75, 80, 151.6, 98.4)]]),
+    )
+    expect(session).toMatchObject({ avg_hr: 98, max_hr: 152 })
+  })
+
   test('an open-ended session has no duration and no HR, and a NULL title is omitted', () => {
     const [session] = buildSessions(
       [
