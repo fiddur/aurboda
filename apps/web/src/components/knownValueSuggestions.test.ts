@@ -2,7 +2,7 @@ import type { ActivityFieldValue } from '@aurboda/api-spec'
 
 import { describe, expect, it } from 'vitest'
 
-import { filterKnownValues, stepActiveIndex } from './knownValueSuggestions'
+import { exactMatchIndex, filterKnownValues, stepActiveIndex } from './knownValueSuggestions'
 
 const values: ActivityFieldValue[] = [
   { count: 3, last_used: '2026-11-04T10:00:00Z', value: 'Leg day' },
@@ -34,6 +34,26 @@ describe('filterKnownValues', () => {
 
   it('keeps the given order instead of sorting by count', () => {
     expect(filterKnownValues(values, 'a').map((v) => v.value)).toEqual(['Leg day', 'Easy run'])
+  })
+})
+
+describe('exactMatchIndex', () => {
+  it('points at the row the text exactly matches, ignoring case and surrounding whitespace', () => {
+    expect(exactMatchIndex(values, 'Easy run')).toBe(1)
+    expect(exactMatchIndex(values, '  long RUN ')).toBe(2)
+  })
+
+  it('returns -1 for a partial match', () => {
+    expect(exactMatchIndex(values, 'run')).toBe(-1)
+  })
+
+  it('returns -1 for empty text', () => {
+    expect(exactMatchIndex(values, '')).toBe(-1)
+    expect(exactMatchIndex(values, '   ')).toBe(-1)
+  })
+
+  it('returns -1 when there are no rows', () => {
+    expect(exactMatchIndex([], 'Leg day')).toBe(-1)
   })
 })
 

@@ -7,8 +7,6 @@ import type {
   UpdateAutoshareRuleBody,
 } from '@aurboda/api-spec'
 
-import { validMetrics } from '@aurboda/api-spec'
-
 import { DEFAULT_SUMMARY, SERIES_METRICS, SUMMARY_METRICS } from '../../components/feed-metrics'
 import { formatTagsInput, parseTagsInput } from '../../components/hashtags'
 import { type DataFilterRow, rowToDataFilter, ruleTagsText } from './autoshare-rule-text'
@@ -26,7 +24,7 @@ export interface RuleFormState {
   minMinutes: string
   name: string
   ownTags: boolean
-  series: Set<MetricType>
+  series: Set<string>
   summary: Set<string>
   tagsText: string
   visibility: FeedVisibility
@@ -49,8 +47,6 @@ export const emptyRuleFormState = (): RuleFormState => ({
   visibility: 'followers',
 })
 
-const isMetricType = (key: string): key is MetricType => (validMetrics as readonly string[]).includes(key)
-
 const formatDecimal = (value: number, digits: number): string => String(Number(value.toFixed(digits)))
 
 export const dataFilterToRow = (filter: AutoshareDataFilter): DataFilterRow => ({
@@ -63,7 +59,7 @@ export const dataFilterToRow = (filter: AutoshareDataFilter): DataFilterRow => (
 export const ruleHasManyActivityTypes = (rule: AutoshareRule): boolean => rule.activity_types.length > 1
 
 export const ruleToFormState = (rule: AutoshareRule): RuleFormState => {
-  const series = new Set(rule.series_metrics.filter(isMetricType))
+  const series = new Set(rule.series_metrics)
   if (rule.include_chart) series.add('heart_rate')
   return {
     activityType: rule.activity_types.length === 1 ? (rule.activity_types[0] ?? '') : '',
@@ -88,8 +84,11 @@ const orderedPick = <T extends string>(known: readonly T[], picked: ReadonlySet<
   ...[...picked].filter((key) => !known.includes(key)),
 ]
 
-const minutesToSeconds = (text: string): number | null =>
-  text.trim() === '' ? null : Math.round(Number(text) * 60)
+const minutesToSeconds = (text: string): number | null => {
+  if (text.trim() === '') return null
+  const seconds = Math.round(Number(text) * 60)
+  return seconds === 0 && Number(text) > 0 ? 1 : seconds
+}
 
 const kmToMeters = (text: string): number | null =>
   text.trim() === '' ? null : Math.round(Number(text) * 1_000_000) / 1000
@@ -105,10 +104,11 @@ const templateFields = (state: RuleFormState) => ({
   ),
   max_age_hours: state.maxAgeHours.trim() === '' ? DEFAULT_MAX_AGE_HOURS : Number(state.maxAgeHours),
   name: state.name.trim() || 'Unnamed rule',
-  series_metrics: orderedPick(
+  // Stored keys outside the metric-type enum are sent back as they are, so an edit never drops one.
+  series_metrics: orderedPick<string>(
     SERIES_METRICS.map((m) => m.key),
     state.series,
-  ),
+  ) as MetricType[],
   visibility: state.visibility,
 })
 
