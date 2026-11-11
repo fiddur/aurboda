@@ -11,7 +11,7 @@
  *   or boosted it), keyed `(post_id, kind, actor_uri)` so a redelivery refreshes
  *   the presentation snapshot instead of duplicating.
  */
-import type { FeedReactionKind } from '@aurboda/api-spec'
+import type { FeedPostReactionKind, FeedReactionKind } from '@aurboda/api-spec'
 
 import type { CachedActorPresentation } from './types.ts'
 
@@ -249,14 +249,15 @@ export const listFeedPostReactions = async (
 
 export interface FeedPostReactionCount {
   post_id: string
-  kind: FeedReactionKind
+  kind: FeedPostReactionKind
   count: number
 }
 
 /**
- * Like/boost tallies for a whole page of the owner's posts — ONE grouped query,
- * so the feed listing never pays a count per post. Posts with no reactions are
- * simply absent from the result.
+ * Like/boost/quote tallies for a whole page of the owner's posts — ONE grouped
+ * query, so the feed listing never pays a count per post. Quotes are the
+ * approvals in `feed_quote_authorization`, tallied as kind `quote`. Posts with
+ * no reactions are simply absent from the result.
  */
 export const countFeedPostReactions = async (
   user: string,
@@ -267,7 +268,11 @@ export const countFeedPostReactions = async (
     user,
     `SELECT post_id, kind, count(*)::int AS count FROM feed_post_reaction
      WHERE post_id = ANY($1::uuid[])
-     GROUP BY post_id, kind`,
+     GROUP BY post_id, kind
+     UNION ALL
+     SELECT post_id, 'quote', count(*)::int FROM feed_quote_authorization
+     WHERE post_id = ANY($1::uuid[])
+     GROUP BY post_id`,
     [postIds],
   )
   return result.rows

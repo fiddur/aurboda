@@ -386,12 +386,14 @@ export {
 } from './feed-reactions.ts'
 
 export {
+  type FeedPostQuoteRecord,
   type FeedQuoteAuthorizationInput,
   type FeedQuoteAuthorizationRecord,
   deleteFeedQuoteAuthorizationsByActor,
   deleteFeedQuoteAuthorizationsByQuote,
   deleteFeedQuoteAuthorizationsForPost,
   getFeedQuoteAuthorization,
+  listFeedPostQuotes,
   listFeedQuoteAuthorizations,
   upsertFeedQuoteAuthorization,
 } from './feed-quotes.ts'

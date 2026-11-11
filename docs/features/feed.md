@@ -692,6 +692,16 @@ anonymous reaction rather than an unverified byline. An `Undo` retracts it, scop
 undoing actor; when the `Undo`'s inner object doesn't resolve, the remote activity's own id is
 matched instead.
 
+**Quotes.** A quote of one of our own posts that we approved (FEP-044f, see the
+`feed_quote_authorization` table under [Storage](#storage)) is listed with the post's likes and
+boosts as a reaction of kind `quote`, whose `url` is the quoting Note's id, and counted in the
+listing's `quote_count`; the web shows it as "❝ Quoted by …" with a link to the quoting post
+(only an http(s) URL becomes a link). Nothing is ingested for it: the approval row is the
+record, and the quoting actor's handle / name / avatar are read at query time from whatever
+local row already caches that actor (follower, followee, reactor, timeline author), so an actor
+we hold nothing for lists with no byline. Revoking the stamp (the quoting Note deleted, the post
+deleted or narrowed to followers-only) drops the row, and the quote with it.
+
 An `Announce` **by an accepted followee of a third party's post** becomes a **boost card** in
 the home timeline. A boost is its own row: `object_uri` is the _`Announce` activity id_ (so two
 followees boosting one post give two cards, and a boost never collides with the original's own
@@ -1339,7 +1349,7 @@ Owner-facing (authenticated, scoped to the caller):
 | `POST/DELETE /feed/timeline/:id/boost`            | Boost 🔄 / un-boost a timeline post (`Announce` / `Undo{Announce}`); idempotent, returns the updated entry                                                                                                   |
 | `GET /feed/timeline/:id/replies`                  | Bounded snapshot of a timeline post's thread (origin's `replies` + my own replies merged); `fetched`/`partial`                                                                                               |
 | `POST /feed/timeline/:id/reply`                   | Reply 🗨 to a timeline post — publishes a `reply` post (`Create{Note inReplyTo}` + `Mention`); `visibility` defaults to `unlisted`                                                                           |
-| `GET /feed/:postId/reactions`                     | Who favourited or boosted one of MY posts (newest first, max 100)                                                                                                                                            |
+| `GET /feed/:postId/reactions`                     | Who favourited, boosted or quoted one of MY posts (newest first, max 100); a quote has kind `quote` and the quoting post in `url`                                                                            |
 | `GET /feed/:postId/replies`                       | The comments received under one of MY posts (the latest 100, oldest first), as full timeline entries — no network fetch                                                                                      |
 
 Admin-only: `GET /admin/relays`, `POST /admin/relays` (`{ url, style }`) and
@@ -1462,7 +1472,8 @@ a row into a **boost card** — see "Likes and boosts" above; they are NULL on a
 A `tags` `TEXT[]` column (GIN-indexed) holds the post's hashtags for the `?tag=` filter.
 A partial index on `(in_reply_to_uri, published_at, id)` backs the **own-post comments**
 listing and the batched per-page `reply_count`, so reading a feed page never scans the whole
-timeline.
+timeline. An index on `actor_uri` backs every lookup of a remote actor's cached copy (the
+`Update{Person}` refresh and a quoting actor's byline).
 
 Reactions live in two tables, one per direction. `feed_reaction` holds the user's **own**
 outbound likes/boosts: a `UNIQUE (kind, object_uri)` row per reacted-to post whose `id` mints
@@ -1508,9 +1519,11 @@ These are known and intentional for the current implementation:
   shared series those links can 404 until series authorization expands across a merge
   group (which needs the merge algorithm at query time — a planned follow-up); QuantPub
   consumers treat a failed series fetch as best-effort, so the post still renders.
-- **Reactions are `Like`/`Announce` only.** There is no `EmojiReact` (Misskey/Akkoma's
-  custom-emoji reactions), and likes/boosts are not listed in the actor's `outbox` or on the
-  public profile — they are a private-to-the-owner record plus the delivered activity.
+- **Reactions are `Like`/`Announce`, plus approved quotes.** Approved quotes are listed beside them
+  (see **Quotes** under [Likes and boosts](#likes-and-boosts)). There is no `EmojiReact`
+  (Misskey/Akkoma's custom-emoji reactions), and likes/boosts are not listed in the actor's
+  `outbox` or on the public profile — they are a private-to-the-owner record plus the delivered
+  activity.
 - **Remote cards carry no like/boost counts.** Mastodon does not push a post's totals to
   subscribers, so a home-timeline card shows only _your own_ reaction state. Counts appear on
   the owner's own posts, from what was delivered to us.

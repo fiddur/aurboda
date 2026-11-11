@@ -1,5 +1,5 @@
 /**
- * Who favourited ⭐ or boosted 🔄 one of the owner's own posts.
+ * Who favourited ⭐, boosted 🔄 or quoted ❝ one of the owner's own posts.
  *
  * The counts ride along on the feed listing (one batched query per page); the
  * names are fetched only when the reader expands a chip, since a post with many
@@ -11,12 +11,13 @@ import { useQuery } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
 import { fetchFeedPostReactions } from '../../state/api'
+import { httpLink } from '../../utils/http-link'
 import { ActorName } from './ActorName'
 
-const LABEL: Record<FeedPostReaction['kind'], string> = { announce: '🔄', like: '⭐' }
+const LABEL: Record<FeedPostReaction['kind'], string> = { announce: '🔄', like: '⭐', quote: '❝' }
 
 /**
- * The owner's own post footer: "⭐ 3 🔄 1" chips (from the counts the listing
+ * The owner's own post footer: "⭐ 3 🔄 1 ❝ 2" chips (from the counts the listing
  * already carries) that expand into the list of who reacted. Rendered as a
  * fragment inside `.feed-post-footer`, which wraps so the list gets its own row.
  * Absent entirely for a post nobody has reacted to.
@@ -25,7 +26,8 @@ export function PostReactionSummary({ post }: { post: FeedPost }) {
   const [expanded, setExpanded] = useState(false)
   const likes = post.like_count ?? 0
   const boosts = post.boost_count ?? 0
-  if (likes === 0 && boosts === 0) return null
+  const quotes = post.quote_count ?? 0
+  if (likes === 0 && boosts === 0 && quotes === 0) return null
   return (
     <>
       <button
@@ -37,6 +39,7 @@ export function PostReactionSummary({ post }: { post: FeedPost }) {
       >
         {likes > 0 && <span>⭐ {likes}</span>}
         {boosts > 0 && <span>🔄 {boosts}</span>}
+        {quotes > 0 && <span>❝ {quotes}</span>}
       </button>
       {expanded && <PostReactions postId={post.id} />}
     </>
@@ -58,17 +61,33 @@ export function PostReactions({ postId }: { postId: string }) {
   return (
     <ul class="feed-post-reactions">
       {reactions.map((reaction) => (
-        <li key={`${reaction.kind}:${reaction.actor_uri}`} class="feed-post-reaction">
-          <span aria-hidden="true">{LABEL[reaction.kind]}</span>
-          <ActorName
-            name={reaction.display_name ?? reaction.handle ?? reaction.actor_uri}
-            actorUri={reaction.actor_uri}
-          />
-          {reaction.display_name && reaction.handle && (
-            <span class="feed-post-reaction-handle">{reaction.handle}</span>
-          )}
-        </li>
+        <PostReactionRow
+          key={`${reaction.kind}:${reaction.actor_uri}:${reaction.url ?? ''}`}
+          reaction={reaction}
+        />
       ))}
     </ul>
+  )
+}
+
+function PostReactionRow({ reaction }: { reaction: FeedPostReaction }) {
+  const quoteHref = reaction.kind === 'quote' ? httpLink(reaction.url) : undefined
+  return (
+    <li class="feed-post-reaction">
+      <span aria-hidden="true">{LABEL[reaction.kind]}</span>
+      {reaction.kind === 'quote' && <span class="feed-post-reaction-handle">Quoted by</span>}
+      <ActorName
+        name={reaction.display_name ?? reaction.handle ?? reaction.actor_uri}
+        actorUri={reaction.actor_uri}
+      />
+      {reaction.display_name && reaction.handle && (
+        <span class="feed-post-reaction-handle">{reaction.handle}</span>
+      )}
+      {quoteHref && (
+        <a class="feed-post-reaction-handle" href={quoteHref} target="_blank" rel="noopener noreferrer">
+          view quote
+        </a>
+      )}
+    </li>
   )
 }

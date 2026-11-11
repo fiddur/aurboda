@@ -65,7 +65,6 @@ import {
   getFeedPostById,
   getTimelineEntryById,
   listArticleDrafts,
-  listFeedPostReactions,
   updateArticleDraft,
   updateFeedPost,
 } from '../db/index.ts'
@@ -91,7 +90,7 @@ import {
   previewExerciseShare,
   resolveExerciseShare,
 } from '../services/feed-exercise-share.ts'
-import { MAX_POST_REACTIONS, serializeFeedPostReaction } from '../services/feed-reactions.ts'
+import { listPostReactions } from '../services/feed-reactions.ts'
 import {
   getFeedPage,
   normalizeFeedMessage,
@@ -421,7 +420,7 @@ export const createFeedRouter = (
     },
   )
 
-  // Who liked / boosted one of the owner's OWN posts (newest first). Registered
+  // Who liked, boosted or quoted one of the owner's OWN posts (newest first). Registered
   // before the generic `/:postId` routes so `reactions` is never read as a verb
   // on a post id.
   router.get<{ postId: string }, FeedPostReactionsResponse>(
@@ -435,8 +434,7 @@ export const createFeedRouter = (
       if ((await getFeedPostById(user, req.params.postId)) == null) {
         return res.status(404).json({ error: 'Feed post not found', reactions: [], success: false })
       }
-      const rows = await listFeedPostReactions(user, req.params.postId, MAX_POST_REACTIONS)
-      res.json({ reactions: rows.map(serializeFeedPostReaction), success: true })
+      res.json({ reactions: await listPostReactions(user, req.params.postId), success: true })
     },
   )
 

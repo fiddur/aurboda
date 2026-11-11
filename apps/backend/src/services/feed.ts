@@ -375,7 +375,7 @@ export interface FeedPageOpts extends SerializeFeedPostOpts {
 }
 
 /**
- * Attach `like_count` / `boost_count` to a page of serialised posts from ONE
+ * Attach `like_count` / `boost_count` / `quote_count` to a page of serialised posts from ONE
  * grouped count query. Best-effort: the counts are decoration, so a failed
  * lookup leaves the page uncounted rather than failing the listing.
  */
@@ -395,6 +395,7 @@ const withReactionCounts = async (
     ...post,
     boost_count: tally.get(`announce:${post.id}`) ?? 0,
     like_count: tally.get(`like:${post.id}`) ?? 0,
+    quote_count: tally.get(`quote:${post.id}`) ?? 0,
   }))
 }
 
