@@ -68,6 +68,15 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 10%, transparent);
 }
 
+.chart-controls .chart-since-invalid input {
+  border-color: #dc2626;
+}
+
+.chart-since-error {
+  color: #dc2626;
+  font-weight: 400;
+}
+
 .chart-type-toggle {
   display: flex;
   gap: 0;

@@ -10,20 +10,13 @@ import { useMemo } from 'preact/hooks'
 
 import { fetchChartData } from '../../state/api'
 import { CHART_PRIMARY } from '../../theme'
+import { widgetRange } from '../../utils/chart-range'
 import { buildChartUrl, type ChartOrigin } from '../../utils/chart-url'
 import { BarChart } from '../charts/BarChart'
 import { BreakdownLegend, SERIES_COLORS } from '../charts/breakdown'
 import { barsFetchParams } from './chartFetchParams'
 import { measureChartTitle } from './chartTitle'
 import { HEAVY_QUERY_OPTIONS } from './heavyQuery'
-
-/** Compute start/end ISO strings from lookback_days. */
-function lookbackToRange(lookbackDays: number): { start: string; end: string } {
-  const end = new Date()
-  const start = new Date()
-  start.setDate(start.getDate() - lookbackDays)
-  return { end: end.toISOString(), start: start.toISOString() }
-}
 
 const NO_BUCKETS: BarChartData['buckets'] = []
 
@@ -96,8 +89,9 @@ export function BarChartWidget({ config, origin }: BarChartWidgetProps) {
     measure,
     filter_field,
     filter_value,
+    since,
   } = config
-  const params = barsFetchParams(config, lookbackToRange(lookback_days))
+  const params = barsFetchParams(config, widgetRange(lookback_days, since, new Date()))
   const { aggregation } = params
 
   const chartQuery = useQuery({
@@ -110,6 +104,7 @@ export function BarChartWidget({ config, origin }: BarChartWidgetProps) {
       activity_type_id,
       bucket_size,
       lookback_days,
+      since,
       aggregation,
       breakdown_fields,
       measure,
@@ -145,6 +140,7 @@ export function BarChartWidget({ config, origin }: BarChartWidgetProps) {
     chart_type: 'bar',
     lookback_days,
     pattern: pattern ?? undefined,
+    since,
     source_type,
     activity_type_id,
     measure: params.measure,

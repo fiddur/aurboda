@@ -10,6 +10,7 @@ import { useMemo } from 'preact/hooks'
 
 import { fetchTrend } from '../../state/api'
 import { CHART_PRIMARY } from '../../theme'
+import { widgetLookbackDays } from '../../utils/chart-range'
 import { buildChartUrl, type ChartOrigin } from '../../utils/chart-url'
 import { BreakdownLegend, SERIES_COLORS } from '../charts/breakdown'
 import { trendPlot, trendPlotSeries } from '../charts/trendGaps'
@@ -112,8 +113,9 @@ export function TrendChartWidget({ config, origin }: TrendChartWidgetProps) {
     lookback_days = 90,
     breakdown_fields,
     missing_days,
+    since,
   } = config
-  const params = trendFetchParams(config, lookback_days)
+  const params = trendFetchParams(config, widgetLookbackDays(lookback_days, since, new Date()))
   const { aggregation, display_period, half_life_days } = params
 
   const trendQuery = useQuery({
@@ -123,7 +125,7 @@ export function TrendChartWidget({ config, origin }: TrendChartWidgetProps) {
       source_type,
       pattern,
       half_life_days,
-      lookback_days,
+      params.lookback_days,
       display_period,
       aggregation,
       breakdown_fields,
@@ -163,6 +165,7 @@ export function TrendChartWidget({ config, origin }: TrendChartWidgetProps) {
     lookback_days,
     missing_days,
     pattern,
+    since,
     source_type,
     activity_type_id: config.tag_definition_id,
     origin,

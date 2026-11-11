@@ -24,6 +24,26 @@ describe('buildChartUrl', () => {
     expect(p.get('half_life_days')).toBe('30')
   })
 
+  test('carries a fixed since date alongside the lookback', () => {
+    const p = params(
+      buildChartUrl({
+        bucket_size: '1w',
+        chart_type: 'bar',
+        lookback_days: 255,
+        pattern: 'coffee',
+        since: '2026-03-01',
+        source_type: 'activity_type',
+      }),
+    )
+    expect(p.get('since')).toBe('2026-03-01')
+    expect(p.get('lookback_days')).toBe('255')
+  })
+
+  test('omits since when the chart has none', () => {
+    const p = params(buildChartUrl({ chart_type: 'trend', pattern: 'coffee', source_type: 'activity_type' }))
+    expect(p.has('since')).toBe(false)
+  })
+
   test('omits origin params when no origin is given', () => {
     const p = params(buildChartUrl({ chart_type: 'trend', pattern: 'coffee', source_type: 'activity_type' }))
     expect(p.has('board_id')).toBe(false)
