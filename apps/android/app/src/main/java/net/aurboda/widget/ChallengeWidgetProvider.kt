@@ -31,6 +31,7 @@ import net.aurboda.api.models.ChallengeStanding
 import net.aurboda.api.models.DiscoveredChallenge
 import net.aurboda.parseChallengeUrl
 import net.aurboda.syncHttpClient
+import net.aurboda.urlEncode
 
 private const val TAG = "ChallengeWidget"
 
@@ -182,7 +183,7 @@ suspend fun renderChallengeWidget(
             is WidgetTarget.Suggest -> {
                 val suggestion = fetchWidgetSuggestion(httpClient, credentials)
                 when {
-                    suggestion != null -> suggestionViews(context, appWidgetId, suggestion, credentials.serverUrl, nowMillis)
+                    suggestion != null -> suggestionViews(context, appWidgetId, suggestion, nowMillis)
                     target.fallback != null ->
                         standingsViews(context, appWidgetManager, appWidgetId, httpClient, credentials, target.fallback)
                     else -> unconfiguredViews(context, appWidgetId, "No open challenges — tap to pick one")
@@ -224,8 +225,9 @@ private fun openChallengeIntent(
     appWidgetId: Int,
     config: ChallengeWidgetConfig,
     serverUrl: String?,
-): PendingIntent {
-    val path = challengeDeepLinkPath(serverUrl, config.url)
+): PendingIntent = openMorePathIntent(context, appWidgetId, challengeDeepLinkPath(serverUrl, config.url))
+
+private fun openMorePathIntent(context: Context, appWidgetId: Int, path: String): PendingIntent {
     val intent =
         Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
@@ -267,6 +269,14 @@ fun challengeDeepLinkPath(serverUrl: String?, challengeUrl: String): String {
     return challengeUrl
 }
 
+/**
+ * Where a tap on a suggested challenge goes: the join page on the user's own
+ * instance, which shows the challenge and joins it on a Join click. The host's
+ * own page would only offer "Join from another instance" there, since the user
+ * is not logged in on the host.
+ */
+fun challengeJoinConfirmPath(shareUrl: String): String = "/challenges/join?challenge=${urlEncode(shareUrl)}&confirm=1"
+
 /** Nothing to show: [message] explains why, and a tap opens the picker. */
 private fun unconfiguredViews(context: Context, appWidgetId: Int, message: String): RemoteViews =
     RemoteViews(context.packageName, R.layout.widget_challenge).apply {
@@ -280,13 +290,12 @@ private fun unconfiguredViews(context: Context, appWidgetId: Int, message: Strin
 
 /**
  * A challenge to join instead of one to follow: hosted by someone the user
- * follows, open, not yet joined. A tap opens its page, where the Join button is.
+ * follows, open, not yet joined. A tap opens [challengeJoinConfirmPath].
  */
 private fun suggestionViews(
     context: Context,
     appWidgetId: Int,
     suggestion: DiscoveredChallenge,
-    serverUrl: String,
     nowMillis: Long,
 ): RemoteViews =
     RemoteViews(context.packageName, R.layout.widget_challenge).apply {
@@ -303,8 +312,10 @@ private fun suggestionViews(
         setViewVisibility(R.id.challenge_body, View.GONE)
         setViewVisibility(R.id.challenge_status, View.VISIBLE)
         setTextViewText(R.id.challenge_status, challengeSuggestionText(suggestion.name, discoveredHostLabel(suggestion)))
-        val target = ChallengeWidgetConfig(url = suggestion.shareUrl, name = suggestion.name)
-        setOnClickPendingIntent(R.id.widget_root, openChallengeIntent(context, appWidgetId, target, serverUrl))
+        setOnClickPendingIntent(
+            R.id.widget_root,
+            openMorePathIntent(context, appWidgetId, challengeJoinConfirmPath(suggestion.shareUrl)),
+        )
     }
 
 private fun statusViews(

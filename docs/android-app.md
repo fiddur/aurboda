@@ -246,10 +246,13 @@ Two `AppWidgetProvider`s live in `widget/`:
   advances to the running pick ending soonest, else the soonest upcoming, and
   rewrites its stored config; with nothing open it asks
   `GET /challenges/discover` and renders the first result as a **suggestion**
-  ("Join a challenge?" + name, host, window; tap opens the challenge page, whose
-  Join button does the join), falling back to the finished challenge's final
-  standings when there is none, or to "No open challenges — tap to pick one"
-  (opens the picker) when there isn't even that.
+  ("Join a challenge?" + name, host, window; tap opens the user's own
+  `/challenges/join?challenge=<share url>&confirm=1` — `challengeJoinConfirmPath` —
+  which shows the challenge and joins it on a Join click; the host's page would only
+  offer "Join from another instance", the user not being logged in there),
+  falling back to the finished challenge's final standings when there is none,
+  or to "No open challenges — tap to pick one" (opens the picker) when there
+  isn't even that.
 
 Widget taps and notification taps reach `MainActivity` as `EXTRA_OPEN_TAB` /
 `EXTRA_MORE_PATH` extras (`deepLinkFrom` in `AppState.kt`). On a cold start they

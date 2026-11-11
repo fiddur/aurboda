@@ -51,6 +51,7 @@ describe('isMutatingMcpTool', () => {
     'describe_tools',
     'preview_deduction_rule',
     'discover_challenges',
+    'preview_challenge',
     'match_routes',
     'export_article_markdown',
   ])('%s reads', (name) => {

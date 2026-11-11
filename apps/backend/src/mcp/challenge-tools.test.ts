@@ -6,6 +6,7 @@ import type { McpServer } from './helpers.ts'
 const db = vi.hoisted(() => ({
   deleteChallengeBanner: vi.fn(async () => true),
   getChallengeById: vi.fn<(user: string, id: string) => Promise<ChallengeRecord | null>>(),
+  getChallengeBySlug: vi.fn<(user: string, slug: string) => Promise<ChallengeRecord | null>>(),
   hasRemoteChallengeMember: vi.fn<(user: string, id: string) => Promise<boolean>>(),
   updateChallenge:
     vi.fn<(user: string, id: string, patch: ChallengePatch) => Promise<ChallengeRecord | null>>(),
@@ -109,5 +110,33 @@ describe('update_challenge', () => {
     const { call } = setup()
     const body = JSON.parse(await call('update_challenge', { id: challenge.id, spec: changedSpec }))
     expect(body.spec.pattern).toBe('distance')
+  })
+})
+
+describe('preview_challenge', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('reads the challenge behind a link without joining it', async () => {
+    db.getChallengeBySlug.mockResolvedValue(challenge)
+    const { call } = setup()
+    const body = JSON.parse(
+      await call('preview_challenge', { challenge_url: 'https://aurboda.test/u/bob/abc' }),
+    )
+    expect(db.getChallengeBySlug).toHaveBeenCalledWith('bob', 'abc')
+    expect(body).toMatchObject({
+      host_handle: '@bob@aurboda.test',
+      name: 'Push-ups',
+      share_url: 'https://aurboda.test/u/bob/abc',
+    })
+  })
+
+  test('says why a link cannot be previewed', async () => {
+    db.getChallengeBySlug.mockResolvedValue(null)
+    const { call } = setup()
+    expect(await call('preview_challenge', { challenge_url: 'https://aurboda.test/u/bob/abc' })).toContain(
+      'Challenge not found',
+    )
   })
 })

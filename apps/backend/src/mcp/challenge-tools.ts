@@ -1,5 +1,6 @@
 /** Mirrors the REST `/challenges` capability. */
 import {
+  challengePreviewQuerySchema,
   createChallengeBodySchema,
   joinChallengeBodySchema,
   updateChallengeBodySchema,
@@ -18,7 +19,7 @@ import {
   upsertChallengeMember,
 } from '../db/index.ts'
 import { bannerUrlFor } from '../services/challenge-banner.ts'
-import { joinChallenge } from '../services/challenge-federation.ts'
+import { joinChallenge, previewChallenge } from '../services/challenge-federation.ts'
 import { announcementPending } from '../services/challenge-results.ts'
 import { specToApi, toSpecFields } from '../services/challenge-spec.ts'
 import { SPEC_LOCKED_MESSAGE, updateHostedChallenge } from '../services/challenge-update.ts'
@@ -147,6 +148,20 @@ export const registerChallengeTools = (
         return jsonResponse({ joined: true, name: participation.name })
       } catch (error) {
         return errorResponse(error instanceof Error ? error.message : 'Failed to join challenge')
+      }
+    },
+  )
+
+  server.tool(
+    'preview_challenge',
+    'Read a challenge by its URL without joining it: name, host, window and what it counts (as join_challenge would join it). Works for challenges on this or another Aurboda instance.',
+    { ...challengePreviewQuerySchema.shape },
+    async ({ challenge_url }) => {
+      if (!deps.webHost) return errorResponse('Federation is not configured on this server')
+      try {
+        return jsonResponse(await previewChallenge({ challengeUrl: challenge_url, webHost: deps.webHost }))
+      } catch (error) {
+        return errorResponse(error instanceof Error ? error.message : 'Failed to read the challenge')
       }
     },
   )

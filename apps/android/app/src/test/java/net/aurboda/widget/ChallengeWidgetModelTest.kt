@@ -111,6 +111,19 @@ class ChallengeWidgetModelTest {
     }
 
     @Test
+    fun `challengeJoinConfirmPath is the own instance's join page, asking for a click first`() {
+        assertEquals(
+            "/challenges/join?challenge=https%3A%2F%2Fother.example%2Fu%2Fanna%2Fwalk&confirm=1",
+            challengeJoinConfirmPath("https://other.example/u/anna/walk"),
+        )
+        // The whole share URL is one query value, its own query and spaces included.
+        assertEquals(
+            "/challenges/join?challenge=https%3A%2F%2Fother.example%2Fu%2Fanna%2Fa%20b%3Fx%3D1%26y%3D2&confirm=1",
+            challengeJoinConfirmPath("https://other.example/u/anna/a b?x=1&y=2"),
+        )
+    }
+
+    @Test
     fun `challengePicks lists hosted first, then active joined only`() {
         val picks =
             challengePicks(

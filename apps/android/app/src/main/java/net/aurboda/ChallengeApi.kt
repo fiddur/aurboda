@@ -106,7 +106,7 @@ suspend fun fetchDiscoverChallenges(
 ): DataResult<List<DiscoveredChallenge>> =
     getJson<DiscoverChallengesResponse>(httpClient, "$apiUrl/challenges/discover", authToken).map { it.challenges }
 
-private fun urlEncode(s: String): String = URLEncoder.encode(s, "UTF-8").replace("+", "%20")
+internal fun urlEncode(s: String): String = URLEncoder.encode(s, "UTF-8").replace("+", "%20")
 
 private inline fun <T, R> DataResult<T>.map(f: (T) -> R): DataResult<R> =
     when (this) {

@@ -45,6 +45,7 @@ const {
   leaveChallenge,
   parseChallengeUrl,
   parsePublicChallenge,
+  previewChallenge,
   specFromChallengeDocument,
 } = await import('./challenge-federation.ts')
 
@@ -460,6 +461,126 @@ describe('joinChallenge on this instance', () => {
       expect.objectContaining({ protocol: 'aurboda' }),
     )
     expect(safeFetch.safeFetchPost).not.toHaveBeenCalled()
+  })
+})
+
+describe('previewChallenge', () => {
+  const webHost = 'https://home.example'
+  const stepsApiSpec = {
+    aggregation: 'sum',
+    bucket_size: 'auto',
+    pattern: 'steps',
+    source_type: 'metric',
+    unit: '1',
+  }
+
+  test('reads a QuantPub host without joining', async () => {
+    routeGets({ '/.well-known/quantpub': quantWellKnown, '/public/freja/challenges/nov': quantDocument() })
+    expect(
+      await previewChallenge({ challengeUrl: 'https://qs.example/u/freja/nov?embed=1', webHost }),
+    ).toEqual({
+      end_ts: '2026-11-30T23:00:00.000Z',
+      host_handle: '@freja@qs.example',
+      host_identity: 'https://qs.example/u/freja',
+      name: 'November steps',
+      share_url: 'https://qs.example/u/freja/nov',
+      spec: stepsApiSpec,
+      start_ts: '2026-10-31T23:00:00.000Z',
+      timezone: 'Europe/Stockholm',
+    })
+    expect(safeFetch.safeFetchPost).not.toHaveBeenCalled()
+    expect(db.createChallengeParticipation).not.toHaveBeenCalled()
+  })
+
+  test('reads an Aurboda-protocol host from its public resolver', async () => {
+    const spec = {
+      aggregation: 'sum',
+      bucket_size: 'auto',
+      pattern: 'steps',
+      source_type: 'metric',
+      unit: 'steps',
+    }
+    routeGets({
+      '/.well-known/aurboda': aurbodaWellKnown,
+      '/public/freja/nov': {
+        challenge: {
+          end_ts: '2026-11-30T23:00:00.000Z',
+          host_identity: 'https://qs.example/u/freja',
+          join_token: 'jt',
+          members: [],
+          name: 'November steps',
+          profile_url: 'https://qs.example/u/freja',
+          share_url: 'https://qs.example/u/freja/nov',
+          spec,
+          start_ts: '2026-10-31T23:00:00.000Z',
+          timezone: 'Europe/Stockholm',
+          visibility: 'public',
+        },
+        success: true,
+        type: 'challenge',
+      },
+    })
+    const preview = await previewChallenge({ challengeUrl: 'https://qs.example/u/freja/nov', webHost })
+    expect(preview).toMatchObject({
+      host_identity: 'https://qs.example/u/freja',
+      name: 'November steps',
+      spec,
+    })
+    expect(preview).not.toHaveProperty('join_token')
+  })
+
+  test('reads a challenge on this instance in-process', async () => {
+    vi.mocked(db.getChallengeBySlug).mockResolvedValue({
+      end_ts: new Date('2026-11-30T23:00:00Z'),
+      id: 'c1',
+      name: 'November steps',
+      spec: stepsSpec,
+      start_ts: new Date('2026-10-31T23:00:00Z'),
+      timezone: 'Europe/Stockholm',
+    } as ChallengeRecord)
+    expect(await previewChallenge({ challengeUrl: 'https://home.example/u/freja/nov', webHost })).toEqual({
+      end_ts: '2026-11-30T23:00:00.000Z',
+      host_handle: '@freja@home.example',
+      host_identity: 'https://home.example/u/freja',
+      name: 'November steps',
+      share_url: 'https://home.example/u/freja/nov',
+      spec: stepsApiSpec,
+      start_ts: '2026-10-31T23:00:00.000Z',
+      timezone: 'Europe/Stockholm',
+    })
+    expect(db.getChallengeBySlug).toHaveBeenCalledWith('freja', 'nov')
+    expect(safeFetch.safeFetchGet).not.toHaveBeenCalled()
+    expect(db.upsertChallengeMember).not.toHaveBeenCalled()
+  })
+
+  test('fails like a join would', async () => {
+    await expect(
+      previewChallenge({ challengeUrl: 'https://qs.example/nope', webHost }),
+    ).rejects.toMatchObject({
+      kind: 'invalid_url',
+    })
+    await expect(
+      previewChallenge({ challengeUrl: 'https://home.example/u/freja/gone', webHost }),
+    ).rejects.toMatchObject({ kind: 'not_found' })
+    routeGets({
+      '/.well-known/quantpub': quantWellKnown,
+      '/public/freja/challenges/nov': quantDocument({ metric: 'tracker:pushups', unit: '1' }),
+    })
+    await expect(
+      previewChallenge({ challengeUrl: 'https://qs.example/u/freja/nov', webHost }),
+    ).rejects.toMatchObject({ kind: 'federation', message: 'This instance cannot score tracker:pushups' })
+  })
+
+  test('refuses a host whose window is not a date', async () => {
+    for (const overrides of [{ startTime: 'soon' }, { endTime: '' }]) {
+      routeGets({
+        '/.well-known/quantpub': quantWellKnown,
+        '/public/freja/challenges/nov': quantDocument(overrides),
+      })
+      await expect(
+        previewChallenge({ challengeUrl: 'https://qs.example/u/freja/nov', webHost }),
+      ).rejects.toMatchObject({ kind: 'federation', message: 'The host sent an unreadable challenge window' })
+    }
   })
 })
 
