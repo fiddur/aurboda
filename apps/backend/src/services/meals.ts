@@ -2,7 +2,6 @@ import { type FrequentFoodItem, type FrequentMeal, NUTRIENT_FIELD_NAMES } from '
 
 import {
   deleteMeal as dbDeleteMeal,
-  deleteNotesForEntity as dbDeleteNotesForEntity,
   findMealsContainingFoodItem,
   type FoodItemPortionRow,
   getFoodItemPortionById,
@@ -820,13 +819,5 @@ export async function deleteMealById(
   id: string,
 ): Promise<{ success: boolean; error?: string }> {
   const deleted = await dbDeleteMeal(user, id)
-  if (!deleted) {
-    return { error: 'Meal not found', success: false }
-  }
-  // A meal row is removed for good — unlike a soft-deleted activity, it cannot
-  // be restored — so its comments have nothing left to hang off. Left behind
-  // they would keep drawing a Timeline bubble whose "On this meal" link 404s,
-  // and list forever as loose day-level notes in the daily summary.
-  await dbDeleteNotesForEntity(user, 'meal', id)
-  return { success: true }
+  return deleted ? { success: true } : { error: 'Meal not found', success: false }
 }

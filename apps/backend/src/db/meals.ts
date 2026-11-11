@@ -1,6 +1,7 @@
 import type { Meal, MealFoodItem, Micros } from './types.ts'
 
-import { query } from './connection.ts'
+import { query, withUserTransaction } from './connection.ts'
+import { deleteNotesForEntityIn } from './notes.ts'
 import { mapMealRow } from './row-mappers.ts'
 
 const MEAL_COLUMNS =
@@ -383,10 +384,18 @@ export const getFrequentFoodItems = async (
   }))
 }
 
-export const deleteMeal = async (user: string, id: string): Promise<boolean> => {
-  const result = await query(user, `DELETE FROM meals WHERE id = $1`, [id])
-  return (result.rowCount ?? 0) > 0
-}
+/**
+ * A meal is removed for good, unlike a soft-deleted activity, so its comment threads go
+ * with it in the same transaction: a failure between the two must not leave comments
+ * pointing at a meal that 404s.
+ */
+export const deleteMeal = async (user: string, id: string): Promise<boolean> =>
+  withUserTransaction(user, async (tx) => {
+    const result = await query(tx, `DELETE FROM meals WHERE id = $1`, [id])
+    if ((result.rowCount ?? 0) === 0) return false
+    await deleteNotesForEntityIn(tx, 'meal', id)
+    return true
+  })
 
 /**
  * Formats the date in SQL with TO_CHAR — a DATE column comes back as a JS

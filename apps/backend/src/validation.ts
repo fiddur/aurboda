@@ -1,4 +1,4 @@
-import type { RequestHandler } from 'express'
+import type { Request, RequestHandler } from 'express'
 import type { ParamsDictionary } from 'express-serve-static-core'
 import type { z } from 'zod'
 
@@ -39,30 +39,42 @@ export const validateBody =
     }
 
 /**
+ * `validateQuery` for a route whose query comes in more than one shape: `select` picks the
+ * schema from the raw query (e.g. by which params are present), and that schema alone
+ * validates it, so its errors are the ones reported. The handler sees the union of the outputs.
+ */
+export const validateQueryOneOf =
+  <T extends z.ZodTypeAny>(
+    select: (query: Request['query']) => T,
+    // oxlint-disable-next-line typescript/no-explicit-any -- params/body unconstrained
+  ): RequestHandler<ParamsDictionary, any, any, z.infer<T>> =>
+  (req, res, next) => {
+    const result = select(req.query as Request['query']).safeParse(trimStrings(req.query))
+    if (!result.success) {
+      const errors = validationErrors(result.error)
+      if (req.user) {
+        auditWarn(req.user, 'data', `Validation error: ${req.method} ${req.path}`, { errors })
+      }
+      res.status(400).json({ error: errors, success: false })
+      return
+    }
+    // Use Object.defineProperty since req.query may be a getter-only property
+    Object.defineProperty(req, 'query', {
+      configurable: true,
+      value: result.data,
+      writable: true,
+    })
+    next()
+  }
+
+/**
  * Returns 400 with detailed validation errors on failure.
  * Logs to audit log for authenticated users.
  *
  * Returns a handler typed with the schema's output as ReqQuery so downstream
  * handlers in the chain see the coerced type (not the raw `ParsedQs`).
  */
-export const validateQuery =
+export const validateQuery = <T extends z.ZodTypeAny>(
+  schema: T,
   // oxlint-disable-next-line typescript/no-explicit-any -- params/body unconstrained
-  <T extends z.ZodTypeAny>(schema: T): RequestHandler<ParamsDictionary, any, any, z.infer<T>> =>
-    (req, res, next) => {
-      const result = schema.safeParse(trimStrings(req.query))
-      if (!result.success) {
-        const errors = validationErrors(result.error)
-        if (req.user) {
-          auditWarn(req.user, 'data', `Validation error: ${req.method} ${req.path}`, { errors })
-        }
-        res.status(400).json({ error: errors, success: false })
-        return
-      }
-      // Use Object.defineProperty since req.query may be a getter-only property
-      Object.defineProperty(req, 'query', {
-        configurable: true,
-        value: result.data,
-        writable: true,
-      })
-      next()
-    }
+): RequestHandler<ParamsDictionary, any, any, z.infer<T>> => validateQueryOneOf(() => schema)

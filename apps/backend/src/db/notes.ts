@@ -3,6 +3,7 @@ import type { DataSource } from '@aurboda/api-spec'
 import type { Queryable } from './pool.ts'
 import type { EntityType, Note } from './types.ts'
 
+import { UUID_RE } from '../utils.ts'
 import { query, withUserTransaction } from './connection.ts'
 import { buildDynamicUpdate } from './dynamic-update.ts'
 import { mapNoteRow } from './row-mappers.ts'
@@ -147,17 +148,31 @@ export const getRepliesForRootIds = async (user: string, rootIds: string[]): Pro
 /**
  * Notes with no start_time (e.g. metric notes using composite entity_id) are excluded from this query.
  * Replies (`entity_type = 'note'`) are excluded too — they only ever surface nested under their root.
+ *
+ * So is a comment whose parent is soft-deleted (it reappears on restore) or gone altogether: it
+ * would draw a Timeline bubble linking to something that 404s. The parent lookup is a primary-key
+ * probe per row; the CASE guards the uuid cast, since Postgres does not short-circuit a WHERE.
  */
 export const getNotesForTimeRange = async (user: string, start: Date, end: Date): Promise<Note[]> => {
   const result = await query(
     user,
-    `SELECT ${NOTE_COLUMNS} FROM notes
-     WHERE start_time IS NOT NULL
-       AND entity_type <> 'note'
-       AND ((end_time IS NOT NULL AND start_time <= $2 AND end_time >= $1)
-            OR (end_time IS NULL AND start_time >= $1 AND start_time <= $2))
-     ORDER BY start_time ASC, created_at ASC`,
-    [start, end],
+    `SELECT ${NOTE_COLUMNS} FROM (
+       SELECT n.*, CASE WHEN n.entity_id ~* $3 THEN n.entity_id::uuid END AS parent_id
+       FROM notes n
+       WHERE n.start_time IS NOT NULL
+         AND n.entity_type <> 'note'
+         AND ((n.end_time IS NOT NULL AND n.start_time <= $2 AND n.end_time >= $1)
+              OR (n.end_time IS NULL AND n.start_time >= $1 AND n.start_time <= $2))
+     ) n
+     WHERE CASE n.entity_type
+       WHEN 'activity' THEN EXISTS (SELECT 1 FROM activities a WHERE a.id = n.parent_id AND a.deleted_at IS NULL)
+       WHEN 'productivity' THEN EXISTS (SELECT 1 FROM productivity p WHERE p.id = n.parent_id AND p.deleted_at IS NULL)
+       WHEN 'meal' THEN EXISTS (SELECT 1 FROM meals m WHERE m.id = n.parent_id)
+       WHEN 'report' THEN EXISTS (SELECT 1 FROM reports r WHERE r.id = n.parent_id)
+       ELSE TRUE
+     END
+     ORDER BY n.start_time ASC, n.created_at ASC`,
+    [start, end, UUID_RE.source],
   )
 
   return result.rows.map(mapNoteRow)
@@ -174,6 +189,12 @@ export const deleteNote = async (user: string, id: string): Promise<boolean> => 
     [id],
   )
   return (result.rowCount ?? 0) > 0
+}
+
+/** There is no FK between a reply and its root, so removing roots must remove their replies by hand. */
+const deleteRepliesIn = async (tx: Queryable, rootIds: string[]): Promise<void> => {
+  if (rootIds.length === 0) return
+  await query(tx, `DELETE FROM notes WHERE entity_type = 'note' AND entity_id = ANY($1)`, [rootIds])
 }
 
 /**
@@ -195,9 +216,7 @@ export const deleteNotesForEntitiesIn = async (
     [entityType, entityIds],
   )
   const deletedIds = deleted.rows.map((r) => r.id)
-  if (deletedIds.length > 0) {
-    await query(tx, `DELETE FROM notes WHERE entity_type = 'note' AND entity_id = ANY($1)`, [deletedIds])
-  }
+  await deleteRepliesIn(tx, deletedIds)
   return deletedIds.length
 }
 
@@ -206,13 +225,6 @@ export const deleteNotesForEntityIn = async (
   entityType: EntityType,
   entityId: string,
 ): Promise<number> => deleteNotesForEntitiesIn(tx, entityType, [entityId])
-
-/** `deleteNotesForEntityIn` in a transaction of its own. */
-export const deleteNotesForEntity = async (
-  user: string,
-  entityType: EntityType,
-  entityId: string,
-): Promise<number> => withUserTransaction(user, (tx) => deleteNotesForEntityIn(tx, entityType, entityId))
 
 /**
  * Replace all user-authored notes (`source IS NULL`) for an entity with a
@@ -236,12 +248,10 @@ export const replaceUserNotes = async (
       `DELETE FROM notes WHERE entity_type = $1 AND entity_id = $2 AND source IS NULL RETURNING id`,
       [entityType, entityId],
     )
-    // Replies hang off the notes we just removed; drop them too rather than
-    // leaving them orphaned (there is no FK to cascade for us).
-    const deletedIds = deleted.rows.map((r) => r.id)
-    if (deletedIds.length > 0) {
-      await query(tx, `DELETE FROM notes WHERE entity_type = 'note' AND entity_id = ANY($1)`, [deletedIds])
-    }
+    await deleteRepliesIn(
+      tx,
+      deleted.rows.map((r) => r.id),
+    )
     if (content.length > 0) {
       await query(
         tx,
@@ -296,7 +306,10 @@ export const reanchorNotes = async (
   )
 }
 
-/** An empty/null content deletes the synced note (the comment was removed upstream). */
+/**
+ * An empty/null content deletes the synced note (the comment was removed upstream) and its
+ * replies. Otherwise the note's times move with the upstream ones, and its replies with it.
+ */
 export const upsertSyncedNote = async (
   user: string,
   entityType: EntityType,
@@ -305,29 +318,44 @@ export const upsertSyncedNote = async (
   content: string | undefined,
   startTime?: Date,
   endTime?: Date,
-): Promise<void> => {
-  if (!content) {
-    await query(user, `DELETE FROM notes WHERE entity_type = $1 AND entity_id = $2 AND source = $3`, [
-      entityType,
-      entityId,
-      source,
-    ])
-    return
-  }
+): Promise<void> =>
+  withUserTransaction(user, async (tx) => {
+    if (!content) {
+      const deleted = await query<{ id: string }>(
+        tx,
+        `DELETE FROM notes WHERE entity_type = $1 AND entity_id = $2 AND source = $3 RETURNING id`,
+        [entityType, entityId, source],
+      )
+      await deleteRepliesIn(
+        tx,
+        deleted.rows.map((r) => r.id),
+      )
+      return
+    }
 
-  const result = await query(
-    user,
-    `UPDATE notes SET content = $1, start_time = $5, end_time = $6, updated_at = NOW()
-     WHERE entity_type = $2 AND entity_id = $3 AND source = $4`,
-    [content, entityType, entityId, source, startTime ?? null, endTime ?? null],
-  )
-
-  if ((result.rowCount ?? 0) === 0) {
-    await query(
-      user,
-      `INSERT INTO notes (entity_type, entity_id, content, source, start_time, end_time)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [entityType, entityId, content, source, startTime ?? null, endTime ?? null],
+    const updated = await query<{ id: string }>(
+      tx,
+      `UPDATE notes SET content = $1, start_time = $5, end_time = $6, updated_at = NOW()
+       WHERE entity_type = $2 AND entity_id = $3 AND source = $4
+       RETURNING id`,
+      [content, entityType, entityId, source, startTime ?? null, endTime ?? null],
     )
-  }
-}
+
+    if (updated.rows.length === 0) {
+      await query(
+        tx,
+        `INSERT INTO notes (entity_type, entity_id, content, source, start_time, end_time)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [entityType, entityId, content, source, startTime ?? null, endTime ?? null],
+      )
+      return
+    }
+
+    await query(
+      tx,
+      `UPDATE notes SET start_time = $1, end_time = $2, updated_at = NOW()
+       WHERE entity_type = 'note' AND entity_id = ANY($3)
+         AND (start_time IS DISTINCT FROM $1 OR end_time IS DISTINCT FROM $2)`,
+      [startTime ?? null, endTime ?? null, updated.rows.map((r) => r.id)],
+    )
+  })

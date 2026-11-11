@@ -8,7 +8,7 @@ import { renderMarkdown } from '../../utils/markdown'
 import { ConfirmButton } from '../ConfirmButton'
 import { MarkdownEditor } from '../MarkdownEditor'
 import { SaveCancelRow } from '../SaveCancelRow'
-import { fromDatetimeLocal, toDatetimeLocal } from './datetimeLocal'
+import { endBeforeStart, fromDatetimeLocal, toDatetimeLocal } from './datetimeLocal'
 import './style.css'
 
 export interface CommentThreadProps {
@@ -128,6 +128,7 @@ const CommentTimes = ({
   const [end, setEnd] = useState(savedEnd)
 
   const dirty = start !== savedStart || end !== savedEnd
+  const backwards = endBeforeStart(start, end)
 
   const save = useCallback(() => {
     const parsedStart = fromDatetimeLocal(start)
@@ -154,10 +155,16 @@ const CommentTimes = ({
         />
       </label>
       {dirty && (
-        <button class="comment-action-btn" type="button" onClick={save} disabled={pending || !start}>
+        <button
+          class="comment-action-btn"
+          type="button"
+          onClick={save}
+          disabled={pending || !start || backwards}
+        >
           Save times
         </button>
       )}
+      {backwards && <p class="comment-times-error">The end is before the start.</p>}
     </div>
   )
 }

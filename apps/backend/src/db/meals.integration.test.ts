@@ -16,6 +16,7 @@ import {
   setMealLogCompleted,
   updateMeal,
 } from './meals.ts'
+import { getNoteById, insertNote } from './notes.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 
@@ -218,6 +219,31 @@ describe('Meals Integration Tests', () => {
       const user = getTestUser()
       const deleted = await deleteMeal(user, '00000000-0000-0000-0000-000000000000')
       expect(deleted).toBe(false)
+    })
+
+    test("deletes the meal's comments and their replies with it", async () => {
+      const user = getTestUser()
+      const time = new Date('2025-06-15T19:00:00Z')
+      const meal = await insertMeal(user, { meal_type: 'dinner', time })
+      const other = await insertMeal(user, { meal_type: 'lunch', time })
+      const root = await insertNote(user, 'meal', meal.id, 'Too salty', time)
+      const reply = await insertNote(user, 'note', root.id, 'Still salty', time)
+      const otherRoot = await insertNote(user, 'meal', other.id, 'Fine', time)
+
+      expect(await deleteMeal(user, meal.id)).toBe(true)
+
+      expect(await getNoteById(user, root.id)).toBeNull()
+      expect(await getNoteById(user, reply.id)).toBeNull()
+      expect(await getNoteById(user, otherRoot.id)).not.toBeNull()
+    })
+
+    test('leaves comments alone when there is no meal to delete', async () => {
+      const user = getTestUser()
+      const mealId = '00000000-0000-0000-0000-000000000001'
+      const root = await insertNote(user, 'meal', mealId, 'Orphan', new Date('2025-06-15T19:00:00Z'))
+
+      expect(await deleteMeal(user, mealId)).toBe(false)
+      expect(await getNoteById(user, root.id)).not.toBeNull()
     })
   })
 

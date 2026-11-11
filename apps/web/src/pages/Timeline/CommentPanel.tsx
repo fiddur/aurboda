@@ -4,7 +4,11 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useState } from 'preact/hooks'
 
 import { CommentThread } from '../../components/CommentThread'
-import { fromDatetimeLocal, toDatetimeLocal } from '../../components/CommentThread/datetimeLocal'
+import {
+  endBeforeStart,
+  fromDatetimeLocal,
+  toDatetimeLocal,
+} from '../../components/CommentThread/datetimeLocal'
 import { MarkdownEditor } from '../../components/MarkdownEditor'
 import { SaveCancelRow } from '../../components/SaveCancelRow'
 import { addReply, addTimeComment, deleteComment, updateComment } from '../../state/api'
@@ -48,6 +52,7 @@ const NewCommentForm = ({ at, onDone }: { at: Date; onDone: () => void }) => {
   const [content, setContent] = useState('')
   const [start, setStart] = useState(toDatetimeLocal(at))
   const [end, setEnd] = useState('')
+  const backwards = endBeforeStart(start, end)
 
   const mutation = useMutation({
     mutationFn: () => {
@@ -87,11 +92,13 @@ const NewCommentForm = ({ at, onDone }: { at: Date; onDone: () => void }) => {
           />
         </label>
       </div>
+      {backwards && <p class="comment-panel-error">The end is before the start.</p>}
       {mutation.isError && <p class="comment-panel-error">{mutation.error.message}</p>}
       <SaveCancelRow
-        onSave={() => content.trim() && start && mutation.mutate()}
+        onSave={() => content.trim() && start && !backwards && mutation.mutate()}
         onCancel={onDone}
         isPending={mutation.isPending}
+        saveDisabled={backwards}
         saveLabel="Add comment"
         savingLabel="Adding…"
       />
@@ -177,6 +184,9 @@ export const CommentPanel = ({ state, roots, onClose }: CommentPanelProps) => {
         {threadRoots.map((root) => (
           <div class="comment-panel-thread" key={root.id}>
             <AnchorLine root={root} />
+            {timesMutation.isError && timesMutation.variables?.id === root.id && (
+              <p class="comment-panel-error">{timesMutation.error.message}</p>
+            )}
             <CommentThread
               comments={[root]}
               onAddReply={(rootId, content) => replyMutation.mutate({ content, rootId })}

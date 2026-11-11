@@ -383,6 +383,11 @@ Replies are never top-level -- `getNotesForTimeRange` and the Health Connect
 notes join both filter `entity_type <> 'note'`. Deleting a thread root deletes
 its replies (done explicitly; there is no FK).
 
+`getNotesForTimeRange` also leaves out a comment whose parent is soft-deleted
+(`activities`/`productivity` with `deleted_at` set) or missing (no row in
+`activities`, `productivity`, `meals` or `reports`), by a primary-key lookup per
+comment. Deleting a meal deletes its comments in the same transaction.
+
 #### `oauth_tokens` - API Credentials
 
 Secure storage for third-party API tokens.

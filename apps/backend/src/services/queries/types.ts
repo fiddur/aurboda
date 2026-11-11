@@ -1,10 +1,10 @@
 import type { ActivityComputedMetrics, DataSource, EntityType } from '@aurboda/api-spec'
 
-import type { Note } from '../../db/index.ts'
 import type { MetricType } from '../../schema.ts'
 import type { HrZoneSecs } from '../settings.ts'
 
 import { getActivityTypeDefinitions, getNotesByEntityIds, getRepliesForRootIds } from '../../db/index.ts'
+import { type NoteReplyData, toNoteReplyData } from '../notes.ts'
 
 /** Build a map of activity_type -> display_category from type definitions. */
 export const buildCategoryMap = async (user: string): Promise<Map<string, string>> => {
@@ -12,27 +12,10 @@ export const buildCategoryMap = async (user: string): Promise<Map<string, string
   return new Map(defs.map((d) => [d.name, d.display_category]))
 }
 
-export interface CommentSummary {
-  id: string
-  content: string
-  source?: string
-  start_time?: string
-  end_time?: string
-  created_at: string
-  updated_at: string
+export interface CommentSummary extends NoteReplyData {
   /** Replies in this comment's thread, oldest first. Threads are one level deep. */
-  replies?: CommentSummary[]
+  replies?: NoteReplyData[]
 }
-
-const toCommentSummary = (n: Note): CommentSummary => ({
-  content: n.content,
-  created_at: n.created_at.toISOString(),
-  end_time: n.end_time?.toISOString(),
-  id: n.id,
-  source: n.source ?? undefined,
-  start_time: n.start_time?.toISOString(),
-  updated_at: n.updated_at.toISOString(),
-})
 
 /**
  * Nest each root comment's replies under it. One batched lookup for every
@@ -45,7 +28,7 @@ export const nestRepliesForComments = async (user: string, comments: CommentSumm
     comments.map((c) => c.id),
   )
   for (const comment of comments) {
-    comment.replies = (repliesByRoot.get(comment.id) ?? []).map(toCommentSummary)
+    comment.replies = (repliesByRoot.get(comment.id) ?? []).map(toNoteReplyData)
   }
 }
 
@@ -57,7 +40,7 @@ export const getCommentsMap = async (
   const notesMap = await getNotesByEntityIds(user, entityType, ids)
   const result = new Map<string, CommentSummary[]>()
   for (const [entityId, notes] of notesMap) {
-    result.set(entityId, notes.map(toCommentSummary))
+    result.set(entityId, notes.map(toNoteReplyData))
   }
   await nestRepliesForComments(user, [...result.values()].flat())
   return result
@@ -245,16 +228,6 @@ export interface MealSummary {
   id?: string
 }
 
-export interface NoteReplySummary {
-  id: string
-  content: string
-  source?: string
-  start_time?: string
-  end_time?: string
-  created_at: string
-  updated_at: string
-}
-
 export interface NoteSummary {
   id: string
   entity_type: EntityType
@@ -267,7 +240,7 @@ export interface NoteSummary {
   created_at: string
   updated_at: string
   /** Replies in this comment's thread, oldest first. */
-  replies?: NoteReplySummary[]
+  replies?: NoteReplyData[]
 }
 
 export interface DailySummaryMetricEntry {

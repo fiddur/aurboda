@@ -12,6 +12,8 @@
  * Threads are exactly one level deep: replying to a reply re-anchors to its root.
  */
 
+import { endPrecedesStart, isValidEntityId } from '@aurboda/api-spec'
+
 import {
   deleteNote as dbDeleteNote,
   getNoteById as dbGetNoteById,
@@ -29,6 +31,7 @@ import {
   type EntityType,
   type Note as DbNote,
 } from '../db/index.ts'
+import { UUID_RE } from '../utils.ts'
 
 export interface AddNoteInput {
   entity_type: EntityType
@@ -71,17 +74,21 @@ export interface NoteData {
   replies?: NoteReplyData[]
 }
 
+export type NoteResultErrorCode = 'not_found' | 'invalid'
+
 export interface NoteResult {
   success: boolean
   data?: NoteData
   error?: string
+  errorCode?: NoteResultErrorCode
 }
 
 const TIMES_ON_ANCHORED_NOTE = 'Times can only be set on a time-anchored comment'
+const END_BEFORE_START = 'end_time must not precede start_time'
 const SYNCED_NOTE_NOT_EDITABLE =
   'This comment came from a synced source and cannot be edited — the next sync would overwrite it'
 
-const toReplyData = (note: DbNote): NoteReplyData => ({
+export const toNoteReplyData = (note: DbNote): NoteReplyData => ({
   content: note.content,
   created_at: note.created_at.toISOString(),
   end_time: note.end_time?.toISOString(),
@@ -91,6 +98,9 @@ const toReplyData = (note: DbNote): NoteReplyData => ({
   updated_at: note.updated_at.toISOString(),
 })
 
+const invalid = (error: string): NoteResult => ({ error, errorCode: 'invalid', success: false })
+const notFound = (): NoteResult => ({ error: 'Note not found', errorCode: 'not_found', success: false })
+
 const toNoteData = (note: DbNote, replies?: DbNote[]): NoteData => ({
   content: note.content,
   created_at: note.created_at.toISOString(),
@@ -98,7 +108,7 @@ const toNoteData = (note: DbNote, replies?: DbNote[]): NoteData => ({
   entity_id: note.entity_id,
   entity_type: note.entity_type,
   id: note.id,
-  replies: replies?.map(toReplyData),
+  replies: replies?.map(toNoteReplyData),
   source: note.source,
   start_time: note.start_time?.toISOString(),
   updated_at: note.updated_at.toISOString(),
@@ -121,7 +131,7 @@ const withReplies = async (user: string, roots: DbNote[]): Promise<NoteData[]> =
  */
 async function getEntityTimes(
   user: string,
-  entityType: EntityType,
+  entityType: Exclude<EntityType, 'note'>,
   entityId: string,
 ): Promise<{ start_time: Date; end_time?: Date } | undefined> {
   switch (entityType) {
@@ -149,12 +159,6 @@ async function getEntityTimes(
       if (!meal) return undefined
       return { start_time: meal.time }
     }
-    case 'note': {
-      // A reply sits at the same point in time as the comment it hangs off.
-      const parent = await dbGetNoteById(user, entityId)
-      if (!parent?.start_time) return undefined
-      return { end_time: parent.end_time, start_time: parent.start_time }
-    }
     case 'time':
       // Times are supplied by the caller, not inherited.
       return undefined
@@ -164,10 +168,13 @@ async function getEntityTimes(
 export async function addNote(user: string, input: AddNoteInput): Promise<NoteResult> {
   if (input.entity_type === 'time') {
     if (input.entity_id) {
-      return { error: "entity_id must be omitted when entity_type is 'time'", success: false }
+      return invalid("entity_id must be omitted when entity_type is 'time'")
     }
     if (!input.start_time) {
-      return { error: "start_time is required when entity_type is 'time'", success: false }
+      return invalid("start_time is required when entity_type is 'time'")
+    }
+    if (endPrecedesStart(input.start_time, input.end_time)) {
+      return invalid(END_BEFORE_START)
     }
     const note = await dbInsertNote(
       user,
@@ -181,17 +188,20 @@ export async function addNote(user: string, input: AddNoteInput): Promise<NoteRe
   }
 
   if (!input.entity_id) {
-    return { error: "entity_id is required unless entity_type is 'time'", success: false }
+    return invalid("entity_id is required unless entity_type is 'time'")
+  }
+  if (!isValidEntityId(input.entity_type, input.entity_id)) {
+    return invalid(`entity_id must be a UUID when entity_type is '${input.entity_type}'`)
   }
   if (input.start_time !== undefined || input.end_time !== undefined) {
-    return { error: TIMES_ON_ANCHORED_NOTE, success: false }
+    return invalid(TIMES_ON_ANCHORED_NOTE)
   }
 
   if (input.entity_type === 'note') {
     // Threads are one level deep: replying to a reply re-anchors to its root.
     const root = await dbGetNoteRoot(user, input.entity_id)
     if (!root) {
-      return { error: 'Comment to reply to not found', success: false }
+      return { error: 'Comment to reply to not found', errorCode: 'not_found', success: false }
     }
     const reply = await dbInsertNote(user, 'note', root.id, input.content, root.start_time, root.end_time)
     return { data: toNoteData(reply), success: true }
@@ -209,27 +219,35 @@ export async function addNote(user: string, input: AddNoteInput): Promise<NoteRe
   return { data: toNoteData(note), success: true }
 }
 
+/** Why moving `existing` to the times in `fields` is refused, if it is: the result is checked whole. */
+const checkMove = (existing: DbNote, fields: UpdateNoteInput): string | undefined => {
+  if (existing.entity_type !== 'time') return TIMES_ON_ANCHORED_NOTE
+  const startTime = fields.start_time ?? existing.start_time?.toISOString()
+  const endTime = fields.end_time === undefined ? existing.end_time?.toISOString() : fields.end_time
+  return endPrecedesStart(startTime, endTime) ? END_BEFORE_START : undefined
+}
+
 /**
  * Update a comment's content and — for a `time` comment only — its time anchor.
  * Moving a `time` comment moves its whole thread with it.
  */
 export async function updateNote(user: string, id: string, fields: UpdateNoteInput): Promise<NoteResult> {
+  if (!UUID_RE.test(id)) return notFound()
   const existing = await dbGetNoteById(user, id)
   if (!existing) {
-    return { error: 'Note not found', success: false }
+    return notFound()
   }
 
   // A synced comment (Oura, Health Connect, …) is owned by its source: the next
   // sync rewrites it through upsertSyncedNote, so an edit here would silently
   // vanish. The web UI hides Edit; REST and MCP need the same answer.
   if (existing.source) {
-    return { error: SYNCED_NOTE_NOT_EDITABLE, success: false }
+    return invalid(SYNCED_NOTE_NOT_EDITABLE)
   }
 
   const movesInTime = fields.start_time !== undefined || fields.end_time !== undefined
-  if (movesInTime && existing.entity_type !== 'time') {
-    return { error: TIMES_ON_ANCHORED_NOTE, success: false }
-  }
+  const moveError = movesInTime ? checkMove(existing, fields) : undefined
+  if (moveError) return invalid(moveError)
 
   const note = await dbUpdateNoteFields(user, id, {
     content: fields.content,
@@ -238,7 +256,7 @@ export async function updateNote(user: string, id: string, fields: UpdateNoteInp
     start_time: fields.start_time === undefined ? undefined : new Date(fields.start_time),
   })
   if (!note) {
-    return { error: 'Note not found', success: false }
+    return notFound()
   }
 
   if (movesInTime && note.start_time) {
@@ -252,6 +270,7 @@ export async function deleteNoteById(
   user: string,
   id: string,
 ): Promise<{ success: boolean; deleted: boolean }> {
+  if (!UUID_RE.test(id)) return { deleted: false, success: false }
   const deleted = await dbDeleteNote(user, id)
   return { deleted, success: deleted }
 }

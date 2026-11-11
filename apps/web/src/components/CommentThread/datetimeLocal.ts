@@ -21,3 +21,10 @@ export const fromDatetimeLocal = (value: string): Date | undefined => {
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? undefined : date
 }
+
+/** Two datetime-local values whose end is before their start, which the API refuses. A blank end is a moment. */
+export const endBeforeStart = (start: string, end: string): boolean => {
+  const startAt = fromDatetimeLocal(start)
+  const endAt = fromDatetimeLocal(end)
+  return startAt !== undefined && endAt !== undefined && endAt < startAt
+}
