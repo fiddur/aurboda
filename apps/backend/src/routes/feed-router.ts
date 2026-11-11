@@ -45,7 +45,7 @@ import {
   updateFeedPostBodySchema,
 } from '@aurboda/api-spec'
 
-import type { Activity, FeedPostRecord } from '../db/index.ts'
+import type { Activity, FeedPostRecord, FeedQuoteAuthorizationRecord } from '../db/index.ts'
 import type { ResolvedInbox } from '../services/activitypub/deliver.ts'
 import type { ReactionActions, ReactionResult } from '../services/feed-reactions.ts'
 import type { TimelineHub } from '../services/timeline-hub.ts'
@@ -59,7 +59,7 @@ import {
   createExercisePost,
   createFeedPost,
   deleteArticleDraft,
-  deleteFeedPost,
+  deleteFeedPostWithQuotes,
   getActivityById,
   getArticleDraft,
   getFeedPostById,
@@ -130,7 +130,8 @@ import { validateBody, validateQuery } from '../validation.ts'
 export interface FeedDeliver {
   created: (user: string, post: FeedPostRecord, activity: Activity) => void
   updated: (user: string, post: FeedPostRecord) => void
-  deleted: (user: string, post: FeedPostRecord) => void
+  /** `stamps` are the post's FEP-044f quote approvals, read before the delete dropped them. */
+  deleted: (user: string, post: FeedPostRecord, stamps: FeedQuoteAuthorizationRecord[]) => void
   createdArticle: (user: string, post: FeedPostRecord) => void
   updatedArticle: (user: string, post: FeedPostRecord) => void
   createdChallenge: (user: string, post: FeedPostRecord) => void
@@ -774,11 +775,11 @@ export const createFeedRouter = (
     // Capture the post before deleting so its Delete can be addressed by the
     // same visibility and reference the right object id.
     const existing = await getFeedPostById(user, req.params.postId)
-    const deleted = await deleteFeedPost(user, req.params.postId)
-    if (!deleted || !existing) {
+    const stamps = await deleteFeedPostWithQuotes(user, req.params.postId)
+    if (stamps == null || !existing) {
       return res.status(404).json({ error: 'Feed post not found', success: false })
     }
-    deliver?.deleted(user, existing)
+    deliver?.deleted(user, existing, stamps)
     res.json({ success: true })
   })
 

@@ -388,6 +388,9 @@ export {
 export {
   type FeedQuoteAuthorizationInput,
   type FeedQuoteAuthorizationRecord,
+  deleteFeedQuoteAuthorizationsByActor,
+  deleteFeedQuoteAuthorizationsByQuote,
+  deleteFeedQuoteAuthorizationsForPost,
   getFeedQuoteAuthorization,
   listFeedQuoteAuthorizations,
   upsertFeedQuoteAuthorization,
@@ -453,6 +456,7 @@ export {
   createReplyPost,
   type DashboardPostInput,
   deleteFeedPost,
+  deleteFeedPostWithQuotes,
   type ExercisePostInput,
   type FeedPostCursor,
   type FeedPostInput,

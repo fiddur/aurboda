@@ -3,6 +3,7 @@ import cors from 'cors'
 import express, { json, type NextFunction, type Request, type Response } from 'express'
 import { Client } from 'pg'
 
+import type { FeedPostRecord } from './db/index.ts'
 import type { FeedDeliver } from './routes/feed-router.ts'
 
 import { registerAuthRoutes } from './api/auth-routes.ts'
@@ -35,6 +36,7 @@ import {
   insertRawRecord,
   insertTimeSeries,
   listChallengesAwaitingResult,
+  listPublicFeedPosts,
   listReplyUncheckedEntries,
   listUnenrichedAurbodaEntries,
   getOAuthToken,
@@ -86,6 +88,8 @@ import {
   deliverFeedReplyPost,
   deliverFeedReplyUpdate,
   deliverFeedUpdate,
+  deliverQuoteStampDeletes,
+  revokeQuoteStamps,
   toDeliverableArticle,
   toDeliverableChallenge,
   toDeliverableDashboard,
@@ -99,6 +103,7 @@ import {
   deliverActorUpdate,
 } from './services/activitypub/federation.ts'
 import { configureFederationLogging } from './services/activitypub/logging.ts'
+import { createPostUpdateResender, deliverPostUpdate } from './services/activitypub/post-update-resend.ts'
 import { createTimelineBackfiller } from './services/activitypub/timeline-backfill.ts'
 import { createAurbodaEnrichAttempt } from './services/activitypub/timeline-enrich.ts'
 import { createAdminUsers } from './services/admin-users.ts'
@@ -650,6 +655,11 @@ const main = async () => {
   }
   const onDeliverError = (op: string, user: string, postId: string) => (err: unknown) =>
     console.error(`⚠️ feed ${op} delivery failed for ${user}/${postId}:`, err)
+  // Every edit path ends in one of the `updated*` hooks, so this is where a post narrowed to
+  // followers-only loses its quote stamps (FEP-044f).
+  const revokeUnsharedStamps = (user: string, post: FeedPostRecord): void => {
+    void revokeQuoteStamps(feedDeps, user, post).catch(onDeliverError('quote stamp revoke', user, post.id))
+  }
   const feedDeliver: FeedDeliver = {
     // Expand the already-resolved activity to its merged span so the delivered
     // Note reports what the user shared, not just the anchor sub-activity (#881).
@@ -661,12 +671,16 @@ const main = async () => {
     },
     // Articles and activities share the Note object id, so a deleted post of
     // either kind tombstones there — one path.
-    deleted: (user, post) => {
+    deleted: (user, post, stamps) => {
       void deliverFeedDelete(feedDeps, user, post).catch(onDeliverError('delete', user, post.id))
+      void deliverQuoteStampDeletes(feedDeps, user, stamps).catch(
+        onDeliverError('quote stamp delete', user, post.id),
+      )
     },
     // Resolve the (merged-span) activity inside the fire-and-forget boundary so a
     // lookup failure never bubbles into the (already-committed) edit's response.
     updated: (user, post) => {
+      revokeUnsharedStamps(user, post)
       void (async () => {
         if (!post.activity_id) return
         const activity = await resolveFeedActivity(user, post.activity_id)
@@ -682,6 +696,7 @@ const main = async () => {
       }
     },
     updatedArticle: (user, post) => {
+      revokeUnsharedStamps(user, post)
       const article = toDeliverableArticle(post)
       if (article) {
         void deliverFeedArticleUpdate(feedDeps, user, article).catch(onDeliverError('update', user, post.id))
@@ -697,6 +712,7 @@ const main = async () => {
       }
     },
     updatedChallenge: (user, post) => {
+      revokeUnsharedStamps(user, post)
       const challenge = toDeliverableChallenge(post)
       if (challenge) {
         void deliverFeedChallengeUpdate(feedDeps, user, challenge).catch(
@@ -712,6 +728,7 @@ const main = async () => {
       }
     },
     updatedExercise: (user, post) => {
+      revokeUnsharedStamps(user, post)
       const exercise = toDeliverableExercise(post)
       if (exercise) {
         void deliverFeedExerciseUpdate(feedDeps, user, exercise).catch(
@@ -729,6 +746,7 @@ const main = async () => {
       }
     },
     updatedDashboard: (user, post) => {
+      revokeUnsharedStamps(user, post)
       const dashboard = toDeliverableDashboard(post)
       if (dashboard) {
         void deliverFeedDashboardUpdate(feedDeps, user, dashboard).catch(
@@ -747,6 +765,7 @@ const main = async () => {
       }
     },
     updatedReply: (user, post) => {
+      revokeUnsharedStamps(user, post)
       const reply = toDeliverableReply(post)
       if (reply) {
         void deliverFeedReplyUpdate(feedDeps, user, reply).catch(onDeliverError('update', user, post.id))
@@ -921,6 +940,11 @@ const main = async () => {
     unfollowTag: (user, tag) => unfollowTag(feedDeps, user, tag),
   }
   const reactionActions = createReactionActions(feedDeps, feedDeliver)
+  const postUpdateResender = createPostUpdateResender({
+    deliver: (user, post) => deliverPostUpdate(feedDeps, user, post),
+    listPosts: listPublicFeedPosts,
+    listUsers: () => listUserNames(userDb),
+  })
   // The follower-management operations (approve/reject a follow request), sharing
   // the same federation + origin. Approve returns the serialised follower.
   const followerActions: FollowerActions = {
@@ -948,6 +972,7 @@ const main = async () => {
       apiBaseUrl,
       autosharePreviewDeps: autoshareDeps,
       relayActions,
+      postUpdateResender,
       centralDb,
       publicTagActions,
       requestDumpLink: dataExport.requestDumpLink,
@@ -1131,6 +1156,7 @@ const main = async () => {
     followerActions,
     garmin,
     httpd,
+    postUpdateResender,
     invitationAuth,
     onActivityDetailSynced,
     onHrSettingsChanged,

@@ -39,7 +39,7 @@ import {
   createExercisePost,
   createFeedPost,
   deleteArticleDraft,
-  deleteFeedPost,
+  deleteFeedPostWithQuotes,
   getActivityById,
   getArticleDraft,
   getFeedPostById,
@@ -475,9 +475,9 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
     async ({ id }) => {
       const existing = await getFeedPostById(user, id)
       if (!existing) return errorResponse('Feed post not found')
-      await deleteFeedPost(user, id)
+      const stamps = await deleteFeedPostWithQuotes(user, id)
       // Retract from followers with a Delete{Tombstone}, same as the REST route.
-      deliver?.deleted(user, existing)
+      deliver?.deleted(user, existing, stamps ?? [])
       return jsonResponse({ deleted: true, id })
     },
   )

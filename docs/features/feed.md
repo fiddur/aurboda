@@ -1483,8 +1483,14 @@ record of who reacted to the user's own posts, and goes only with the post or an
 public/unlisted posts, `UNIQUE (post_id, quote_uri)` so a redelivered request keeps its row,
 and its first actor and request id: a later request for the same quote cannot re-attribute it.
 The row's `id` mints the `QuoteAuthorization` stamp URL (`/users/<username>/stamps/<id>`) sent
-in the `Accept`. `post_id` is a soft reference, so `deleteFeedPost` drops the post's approvals
-in the same statement.
+in the `Accept`; a request for an already approved quote from a different actor is rejected. A stamp
+is revoked by dropping its row, after which its URL answers `404`: when the quoting Note's own actor
+sends a `Delete` of it, when that actor itself is deleted (every approval it held goes), and when the
+post is deleted or narrowed to followers-only. In the last two cases a `Delete` of the stamp is also
+sent to the quoting actor and to the author's followers, as Mastodon revokes its own, so other
+servers that verified the quote drop it too. `post_id` is a soft reference, so `deleteFeedPost`
+drops the post's approvals in the same statement and returns them, and those rows are what the
+`Delete`s are sent for.
 
 ## Caveats & limitations
 
