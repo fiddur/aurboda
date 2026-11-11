@@ -118,6 +118,11 @@ gets `WRAP_CONTENT`, which makes Chromium force a zero layout height.
 `EmbeddedWebScreen` therefore gives the WebView `MATCH_PARENT` layout params
 (what Accompanist's WebView does). Until that is confirmed on a device, the
 injected viewport fix and the `vh` allowlist stay; #1356 tracks dropping them.
+To confirm it, open **More → Help & support** in the app: in embed mode the
+bottom of that page shows `Viewport: 100vh = … · innerHeight = … · html = …` in
+px. If `100vh` equals `innerHeight`, the `MATCH_PARENT` fix works and `vh`
+resolves in the WebView; `0` means it still does not (`html` always matches
+`innerHeight`, since the viewport fix pins it).
 
 ### Soft keyboard
 
