@@ -17,6 +17,7 @@ interface ChartUrlParams {
   half_life_days?: number
   lookback_days?: number
   pattern?: string
+  since?: string
   source_type: string
   activity_type_id?: string
   breakdown_fields?: string[]
@@ -44,6 +45,7 @@ export function buildChartUrl(params: ChartUrlParams): string {
   if (params.activity_type_id) qs.set('activity_type_id', params.activity_type_id)
   if (params.breakdown_fields?.length) qs.set('breakdown_fields', params.breakdown_fields.join(','))
   if (params.lookback_days) qs.set('lookback_days', String(params.lookback_days))
+  if (params.since) qs.set('since', params.since)
   qs.set('chart_type', params.chart_type)
 
   setModeParams(qs, params)
