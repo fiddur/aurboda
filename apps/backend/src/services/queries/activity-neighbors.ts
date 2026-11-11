@@ -50,6 +50,8 @@ export const getActivityNeighbors = async (
   }
 
   const excludeIds = group.map((a) => a.id!)
+  // Each row must carry the type and the value itself, so a merge group of mixed types where only
+  // a row of another type holds the value is skipped; the sessions endpoint filters after merging.
   const [previous, next] = await Promise.all(
     (['previous', 'next'] as const).map((direction) =>
       findAdjacentActivity(user, activity.activity_type, direction, start, excludeIds, filters),
