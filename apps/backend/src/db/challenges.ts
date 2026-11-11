@@ -432,6 +432,23 @@ export const getChallengeMemberByIdentity = async (
   return result.rows.length ? mapMember(result.rows[0]) : null
 }
 
+/**
+ * Whether an active member registered back from another instance. Their participation keeps a
+ * copy of the spec they joined with, which is why the host may not change it under them;
+ * local members are scored by the host from the current spec.
+ */
+export const hasRemoteChallengeMember = async (user: string, challengeId: string): Promise<boolean> => {
+  const result = await query<{ exists: boolean }>(
+    user,
+    `SELECT EXISTS (
+       SELECT 1 FROM challenge_members
+        WHERE challenge_id = $1 AND kind = 'remote' AND status = 'active'
+     ) AS exists`,
+    [challengeId],
+  )
+  return result.rows[0]?.exists ?? false
+}
+
 /** Insert or update a member by (challenge, identity). */
 export const upsertChallengeMember = async (
   user: string,

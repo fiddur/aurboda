@@ -36,7 +36,6 @@ import {
   listChallengeParticipations,
   listChallenges,
   removeChallengeMember,
-  updateChallenge,
   upsertChallengeBanner,
   upsertChallengeMember,
 } from '../db/index.ts'
@@ -46,6 +45,7 @@ import { JoinChallengeError, joinChallenge, leaveChallenge } from '../services/c
 import { announcementPending } from '../services/challenge-results.ts'
 import { effectiveBucketSize, specToApi, toSpecFields } from '../services/challenge-spec.ts'
 import { getChallengeStandings } from '../services/challenge-standings.ts'
+import { SPEC_LOCKED_MESSAGE, updateHostedChallenge } from '../services/challenge-update.ts'
 import { buildProfileUrl, buildShareUrl } from '../services/share-urls.ts'
 import { isPublicToVisibility, visibilityToIsPublic } from '../services/visibility.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
@@ -151,7 +151,7 @@ export const createChallengesRouter = (
     async (req, res) => {
       const user = req.user!
       const b = req.body
-      const record = await updateChallenge(user, req.params.id, {
+      const result = await updateHostedChallenge(user, req.params.id, {
         announce_winner: b.announce_winner,
         end_ts: b.end_ts ? new Date(b.end_ts) : undefined,
         is_public: b.visibility === undefined ? undefined : visibilityToIsPublic(b.visibility),
@@ -160,8 +160,13 @@ export const createChallengesRouter = (
         start_ts: b.start_ts ? new Date(b.start_ts) : undefined,
         timezone: b.timezone,
       })
-      if (!record) return res.status(404).json({ error: 'Challenge not found', success: false })
-      res.json({ challenge: serialize(record, webHost, user), success: true })
+      if (result.status === 'not_found') {
+        return res.status(404).json({ error: 'Challenge not found', success: false })
+      }
+      if (result.status === 'spec_locked') {
+        return res.status(409).json({ error: SPEC_LOCKED_MESSAGE, success: false })
+      }
+      res.json({ challenge: serialize(result.record, webHost, user), success: true })
     },
   )
 

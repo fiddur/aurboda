@@ -1,11 +1,14 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
-import type { ChallengeRecord } from '../db/index.ts'
+import type { ChallengePatch, ChallengeRecord } from '../db/index.ts'
 import type { McpServer } from './helpers.ts'
 
 const db = vi.hoisted(() => ({
   deleteChallengeBanner: vi.fn(async () => true),
   getChallengeById: vi.fn<(user: string, id: string) => Promise<ChallengeRecord | null>>(),
+  hasRemoteChallengeMember: vi.fn<(user: string, id: string) => Promise<boolean>>(),
+  updateChallenge:
+    vi.fn<(user: string, id: string, patch: ChallengePatch) => Promise<ChallengeRecord | null>>(),
 }))
 
 vi.mock('../db/index.ts', () => db)
@@ -72,5 +75,39 @@ describe('remove_challenge_banner', () => {
     const { call } = setup()
     expect(await call('remove_challenge_banner', { id: challenge.id })).toContain('Challenge not found')
     expect(db.deleteChallengeBanner).not.toHaveBeenCalled()
+  })
+})
+
+describe('update_challenge', () => {
+  const changedSpec = {
+    aggregation: 'sum',
+    bucket_size: 'auto',
+    pattern: 'distance',
+    source_type: 'metric',
+    unit: 'km',
+  }
+
+  beforeEach(() => {
+    db.getChallengeById.mockReset().mockResolvedValue(challenge)
+    db.hasRemoteChallengeMember.mockReset()
+    db.updateChallenge
+      .mockReset()
+      .mockImplementation(async (_user, _id, patch) => ({ ...challenge, spec: patch.spec ?? challenge.spec }))
+  })
+
+  test('refuses a spec change once a remote member has joined', async () => {
+    db.hasRemoteChallengeMember.mockResolvedValue(true)
+    const { call } = setup()
+    expect(await call('update_challenge', { id: challenge.id, spec: changedSpec })).toContain(
+      "The scoring can't change once someone from another instance has joined",
+    )
+    expect(db.updateChallenge).not.toHaveBeenCalled()
+  })
+
+  test('changes the spec while no remote member has joined', async () => {
+    db.hasRemoteChallengeMember.mockResolvedValue(false)
+    const { call } = setup()
+    const body = JSON.parse(await call('update_challenge', { id: challenge.id, spec: changedSpec }))
+    expect(body.spec.pattern).toBe('distance')
   })
 })

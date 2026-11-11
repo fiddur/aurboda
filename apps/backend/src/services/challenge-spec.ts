@@ -72,6 +72,22 @@ export const toSpecFields = (spec: ChallengeSpec): ChallengeSpecFields => ({
   unit: spec.unit,
 })
 
+const SPEC_KEYS = [
+  'source_type',
+  'pattern',
+  'activity_type_id',
+  'aggregation',
+  'unit',
+  'bucket_size',
+  'measure',
+  'filter_field',
+  'filter_value',
+] as const satisfies readonly (keyof ChallengeSpecFields)[]
+
+/** Whether two specs score the same thing; an omitted optional equals a null one. */
+export const sameSpec = (a: Partial<ChallengeSpecFields>, b: Partial<ChallengeSpecFields>): boolean =>
+  SPEC_KEYS.every((key) => (a[key] ?? null) === (b[key] ?? null))
+
 /** A member's score from their buckets: the best bucket for `max` (0 with none), else their sum. */
 export const scoreBuckets = (buckets: { value: number }[], aggregation: ChallengeAggregation): number =>
   aggregation === 'max'

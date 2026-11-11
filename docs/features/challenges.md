@@ -35,6 +35,13 @@ base-URL federation identity, and the bucketed-data engine behind dashboards.
   sum, so the race chart plots the running best instead of a running total. A session
   without the filtered exercise is not data: it adds nothing and does not move
   `last_updated`.
+- **Spec frozen once a remote member joins:** a member from another instance keeps the
+  spec it joined with in its participation, so a host may not change the spec under it
+  (#1324). Once the challenge has an active remote member, `PUT /challenges/:id` and the
+  `update_challenge` MCP tool refuse a `spec` that differs from the stored one (REST
+  `409`); an unchanged `spec` in the body passes. Name, dates, timezone, visibility and
+  `announce_winner` stay editable. Members on the host's own instance are scored from the
+  current spec, so they do not freeze it.
 - **Members** are identified by their full public base URL
   (`https://host/u/user`). The host is always a member. A member contributes data
   through a capability **data endpoint** on their own instance.
@@ -500,7 +507,9 @@ See `docs/android-app.md` → _Home-screen widgets_.
 `GET /challenges/participations/mine`, `GET /challenges/discover`, `POST /challenges/join`,
 `DELETE /challenges/participations/:id`. The same CRUD + join is available over MCP
 (`create/list/update/delete_challenge`, `join_challenge`). A hosted challenge carries
-`announce_winner` (create/update/read; see _Completion & winner announcement_).
+`announce_winner` (create/update/read; see _Completion & winner announcement_). An update
+that changes the spec of a challenge with a remote member is refused (`409` over REST; see
+_Spec frozen once a remote member joins_ under _Model_).
 
 Banner: `POST /challenges/:id/banner` (multipart, field `banner`; 400 for a missing,
 unsupported or undecodable file, 404 for a challenge that isn't yours) and
