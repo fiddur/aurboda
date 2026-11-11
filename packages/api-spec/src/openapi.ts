@@ -14,6 +14,7 @@ import {
   loginResponseSchema,
   relayResponseSchema,
   relaysResponseSchema,
+  resendPostUpdatesResponseSchema,
 } from './schemas/admin.ts'
 import {
   challengeParticipationsResponseSchema,
@@ -1552,6 +1553,25 @@ const openApiDocument = createDocument({
         security: [{ bearerAuth: [] }],
         summary: 'Get my plan',
         tags: ['Settings'],
+      },
+    },
+    '/admin/federation/resend-post-updates': {
+      post: {
+        description:
+          "Re-send the Update of every public and unlisted post of every user on this server, so remote servers refresh their copy (such as the quote policy Mastodon cached as 'nobody' for posts federated before it was declared). Only Updates are sent, so repeating it is harmless. The posts are listed at once and delivered one after another in the background. Admin-only.",
+        responses: {
+          202: {
+            content: { 'application/json': { schema: resendPostUpdatesResponseSchema } },
+            description: 'The number of posts whose Update is being re-sent',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'A re-send is already running on this server',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Re-send post Updates',
+        tags: ['Auth'],
       },
     },
     '/admin/relays': {

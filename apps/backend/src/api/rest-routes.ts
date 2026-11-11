@@ -13,6 +13,7 @@ import type { DetailSyncedCallback, TrackWrittenCallback } from '../integrations
 import type { AutosharePreviewDeps } from '../mcp/autoshare-rule-tools.ts'
 import type { AccountDeleter } from '../services/account-deletion.ts'
 import type { AccountPlans } from '../services/account-plan.ts'
+import type { PostUpdateResender } from '../services/activitypub/post-update-resend.ts'
 import type { AdminUsers } from '../services/admin-users.ts'
 import type { CentralDb } from '../services/central-db.ts'
 import type { DiscoverChallenges } from '../services/challenge-discovery.ts'
@@ -151,6 +152,7 @@ interface RestRoutesDeps {
   followerActions: FollowerActions
   relayActions: RelayActions
   publicTagActions: PublicTagActions
+  postUpdateResender: PostUpdateResender
   /** Outbound like ⭐ / boost 🔄 toggles for the home timeline. */
   reactionActions: ReactionActions
   timelineHub: TimelineHub
@@ -192,6 +194,7 @@ export const mountRestRouters = ({
   followerActions,
   relayActions,
   publicTagActions,
+  postUpdateResender,
   reactionActions,
   onProfileChanged,
   onHrSettingsChanged,
@@ -370,6 +373,7 @@ export const mountRestRouters = ({
       accountPlans,
       relayActions,
       publicTagActions,
+      postUpdateResender,
     ),
   )
   httpd.use(

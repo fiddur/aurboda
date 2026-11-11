@@ -40,6 +40,7 @@ describe('isMutatingMcpTool', () => {
     'unfollow_actor',
     'resnapshot_meals_for_food_item',
     'publish_article_draft',
+    'resend_post_updates',
   ])('%s mutates', (name) => {
     expect(isMutatingMcpTool(name)).toBe(true)
   })

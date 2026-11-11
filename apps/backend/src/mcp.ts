@@ -18,6 +18,7 @@ import type { AutosharePreviewDeps } from './mcp/autoshare-rule-tools.ts'
 import type { FeedDeliver } from './routes/feed-router.ts'
 import type { AccountDeleter } from './services/account-deletion.ts'
 import type { AccountPlans } from './services/account-plan.ts'
+import type { PostUpdateResender } from './services/activitypub/post-update-resend.ts'
 import type { AdminUsers } from './services/admin-users.ts'
 import type { CentralDb } from './services/central-db.ts'
 import type { DiscoverChallenges } from './services/challenge-discovery.ts'
@@ -40,6 +41,7 @@ import { registerAccountEmailTools } from './mcp/account-email-tools.ts'
 import { registerAccountPlanTools } from './mcp/account-plan-tools.ts'
 import { registerActivityTools } from './mcp/activity-tools.ts'
 import { registerActivityTypeTools } from './mcp/activity-type-tools.ts'
+import { registerAdminFederationTools } from './mcp/admin-federation-tools.ts'
 import { registerAdminRelayTools } from './mcp/admin-relay-tools.ts'
 import { registerAdminUserTools } from './mcp/admin-user-tools.ts'
 import { registerAutoshareRuleTools } from './mcp/autoshare-rule-tools.ts'
@@ -144,6 +146,8 @@ interface McpDeps {
   reactionActions?: ReactionActions
   relayActions?: RelayActions
   publicTagActions?: PublicTagActions
+  /** Admin re-send of every public post's Update (`resend_post_updates`). */
+  postUpdateResender?: PostUpdateResender
   retroEnrichTimeline?: RetroEnrichTrigger
   requestDumpLink?: DumpLinkIssuer
   stravaQueue?: StravaQueue
@@ -194,6 +198,9 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     registerImportTools(server, user, deps.centralDb)
     if (deps.adminUsers) registerAdminUserTools(server, user, deps.centralDb, deps.adminUsers)
     if (deps.relayActions) registerAdminRelayTools(server, user, deps.centralDb, deps.relayActions)
+    if (deps.postUpdateResender) {
+      registerAdminFederationTools(server, user, deps.centralDb, deps.postUpdateResender)
+    }
     if (deps.accountDeleter) registerAccountDeletionTools(server, user, deps.centralDb, deps.accountDeleter)
     if (deps.accountPlans) registerAccountPlanTools(server, user, deps.centralDb, deps.accountPlans)
     registerAccountEmailTools(server, user, deps.centralDb)

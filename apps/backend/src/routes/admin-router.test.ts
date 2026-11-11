@@ -129,6 +129,15 @@ const relayActions: RelayActions = {
 
 const publicTagActions = { apply: vi.fn(async () => ({ followed: [], unresolved: [] })) }
 
+const postUpdates = {
+  start: vi.fn(
+    async (): Promise<{ done: Promise<void>; posts: number } | null> => ({
+      done: Promise.resolve(),
+      posts: 7,
+    }),
+  ),
+}
+
 const buildApp = (adminMiddleware: RequestHandler = pass) => {
   const app = express()
   app.use(express.json())
@@ -148,6 +157,7 @@ const buildApp = (adminMiddleware: RequestHandler = pass) => {
       accountPlans,
       relayActions,
       publicTagActions,
+      postUpdates,
     ),
   )
   return app
@@ -482,6 +492,27 @@ describe('admin relays', () => {
     expect((await supertest(app).post('/admin/relays').send({ url: relayRecord.url })).status).toBe(403)
     expect((await supertest(app).delete(`/admin/relays/${relayRecord.id}`)).status).toBe(403)
     expect(relayActions.add).not.toHaveBeenCalled()
+  })
+})
+
+describe('re-sending post Updates', () => {
+  test('POST /federation/resend-post-updates starts a re-send and answers how many posts', async () => {
+    const res = await supertest(buildApp()).post('/admin/federation/resend-post-updates')
+    expect(res.status).toBe(202)
+    expect(res.body).toEqual({ posts: 7, success: true })
+  })
+
+  test('409 while a re-send is still running', async () => {
+    postUpdates.start.mockResolvedValueOnce(null)
+    const res = await supertest(buildApp()).post('/admin/federation/resend-post-updates')
+    expect(res.status).toBe(409)
+    expect(res.body.success).toBe(false)
+  })
+
+  test('non-admins are refused', async () => {
+    postUpdates.start.mockClear()
+    expect((await supertest(buildApp(forbid)).post('/admin/federation/resend-post-updates')).status).toBe(403)
+    expect(postUpdates.start).not.toHaveBeenCalled()
   })
 })
 

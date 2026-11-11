@@ -184,8 +184,9 @@ their account. No new data is stored until the plan is renewed:
   pulls (Oura, Garmin, Gravl, RescueTime, Last.fm, calendars) skip the user. Strava jobs queued
   before the account turned read-only are checked again when they run and complete without fetching.
 - Inbound ActivityPub posts and replies (`Create`/`Update` of a Note, boosts of other people's
-  posts) are acknowledged but not stored. Follows, unfollows, accepts, deletes, profile updates and
-  likes or boosts of the user's own posts are still processed.
+  posts) are acknowledged but not stored. Follows, unfollows, accepts, deletes, profile updates,
+  likes or boosts of the user's own posts and quote requests (`QuoteRequest`) for them are still
+  processed.
 - The Android app's sync stops its run at the first `402` without retrying, keeps the queued data
   for when the plan is renewed, and shows the server's message in its sync status. A `402` never
   logs the app out (a `401` does).
@@ -242,6 +243,19 @@ When a post stops being public, or is deleted, the relays get a `Delete` of it; 
 account sends its actor `Delete` to the relays as well as to its followers. A one-way relay like
 tags.pub is cheap; a full (two-way) relay forwards its whole firehose to `/inbox`, where each
 activity is signature-verified and dropped.
+
+**Re-send post Updates** (REST `POST /admin/federation/resend-post-updates`; MCP
+`resend_post_updates`, both admin-only) re-sends the `Update` of every public and unlisted post of
+every user on this server to the same audience an edit reaches, so remote servers refresh their
+copy. Run it once after upgrading to a release with quote posts: Mastodon cached "nobody may quote"
+for posts federated before their Notes declared a quote policy, and the `Update` carries the policy.
+Like an edit, the `Update` reaches only the servers of the author's followers (and the relays, for
+a public post): a server that cached a post without anyone there following its author, say through a
+boost or a search, keeps the old policy.
+Only `Update`s are sent, so running it again is harmless. It answers `202` with the number of posts
+(`posts`) at once and delivers them one after another in the background; a post whose delivery takes
+over a minute counts as failed and the run moves on. The server log has a line when the run starts
+(posts) and when it ends (posts, failed). A second request while one is still delivering is `409`.
 
 **Public tag pages** (`public_tag_pages`, `public_tag_retention_days`, Admin Settings → **Public
 tag pages**, `PATCH /admin/settings`): up to 20 hashtags, each with a public page at

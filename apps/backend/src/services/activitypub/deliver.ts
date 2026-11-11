@@ -38,13 +38,14 @@ import {
   Mention,
   Note,
   PUBLIC_COLLECTION,
+  QuoteAuthorization,
   Tombstone,
   Update,
 } from '@fedify/fedify/vocab'
 
-import type { FeedPostRecord } from '../../db/index.ts'
+import type { FeedPostRecord, FeedQuoteAuthorizationRecord } from '../../db/index.ts'
 
-import { hasLocations, hasTimeSeries } from '../../db/index.ts'
+import { deleteFeedQuoteAuthorizationsForPost, hasLocations, hasTimeSeries } from '../../db/index.ts'
 import { challengeWinners } from '../challenge-results.ts'
 import { CHART_HEIGHT, CHART_WIDTH } from '../charts/chart-svg.ts'
 import { formatExerciseLine, resolvePostExercises, toStructuredExercise } from '../feed-exercises.ts'
@@ -440,6 +441,63 @@ export const deliverFeedDelete = async (
     // ignores the Delete of an id it never saw.
     relayActivity: post.kind === 'reply' ? null : del,
   })
+}
+
+/**
+ * FEP-044f revocation of one of our stamps: a `Delete` of the `QuoteAuthorization` id, addressed to
+ * the actor whose quote it approved and to our followers, as Mastodon's own revocation is, so every
+ * server that verified the quote drops the approval, not only the quoting one.
+ */
+export const buildQuoteStampDelete = (
+  ctx: Context<void>,
+  user: string,
+  stamp: Pick<FeedQuoteAuthorizationRecord, 'actor_uri' | 'id'>,
+): Delete => {
+  const stampUri = ctx.getObjectUri(QuoteAuthorization, { identifier: user, stampId: stamp.id })
+  return new Delete({
+    actor: ctx.getActorUri(user),
+    ccs: [ctx.getFollowersUri(user)],
+    id: new URL(`${stampUri.href}#delete`),
+    object: stampUri,
+    tos: [new URL(stamp.actor_uri)],
+  })
+}
+
+/**
+ * Sends each stamp's `Delete` to its quoting actor and to our followers; best-effort, so it never
+ * throws for a failed send.
+ */
+export const deliverQuoteStampDeletes = async (
+  deps: Pick<FeedDeliveryDeps, 'federation' | 'origin'>,
+  user: string,
+  stamps: readonly Pick<FeedQuoteAuthorizationRecord, 'actor_uri' | 'id'>[],
+): Promise<void> => {
+  if (stamps.length === 0) return
+  const ctx = await deps.federation.createContext(new URL(deps.origin))
+  await Promise.all(
+    stamps.map(async (stamp) => {
+      const del = buildQuoteStampDelete(ctx, user, stamp)
+      await Promise.all([
+        deliverToMentioned(ctx, user, [{ actorUri: new URL(stamp.actor_uri), handle: stamp.actor_uri }], del),
+        ctx.sendActivity({ identifier: user }, 'followers', del).catch((error: unknown) => {
+          console.warn(`⚠️ Quote stamp Delete to ${user}'s followers failed:`, error)
+        }),
+      ])
+    }),
+  )
+}
+
+/**
+ * A post that is no longer public or unlisted loses its stamps: the approvals are dropped and each
+ * quoting actor gets the stamp's `Delete`. A public or unlisted post is left alone.
+ */
+export const revokeQuoteStamps = async (
+  deps: Pick<FeedDeliveryDeps, 'federation' | 'origin'>,
+  user: string,
+  post: Pick<FeedPostRecord, 'id' | 'visibility'>,
+): Promise<void> => {
+  if (isPubliclyVisible(post.visibility)) return
+  await deliverQuoteStampDeletes(deps, user, await deleteFeedQuoteAuthorizationsForPost(user, post.id))
 }
 
 // Articles (long-form posts). An article federates as a `Note` — Mastodon

@@ -15,6 +15,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi 
  */
 import { insertActivity } from '../db/activities/index.ts'
 import { createChallenge, createChallengeParticipation, deleteChallenge } from '../db/challenges.ts'
+import { listFeedQuoteAuthorizations, upsertFeedQuoteAuthorization } from '../db/feed-quotes.ts'
 import { upsertFeedPostReaction } from '../db/feed-reactions.ts'
 import { createFeedPost } from '../db/feed.ts'
 import { createSharedDashboard } from '../db/shared-dashboards.ts'
@@ -138,6 +139,41 @@ describe('Article feed routes (integration)', () => {
     expect(del.status).toBe(200)
     const list = await app.request.get('/feed')
     expect(list.body.posts.map((p: { id: string }) => p.id)).not.toContain(created.body.post.id)
+  })
+
+  test('DELETE /feed/:postId hands the post’s quote stamps to the Delete fan-out', async () => {
+    const deliver: FeedDeliver = {
+      created: vi.fn(),
+      createdArticle: vi.fn(),
+      createdChallenge: vi.fn(),
+      createdDashboard: vi.fn(),
+      createdExercise: vi.fn(),
+      createdReply: vi.fn(),
+      deleted: vi.fn(),
+      updated: vi.fn(),
+      updatedArticle: vi.fn(),
+      updatedChallenge: vi.fn(),
+      updatedDashboard: vi.fn(),
+      updatedExercise: vi.fn(),
+      updatedReply: vi.fn(),
+    }
+    const spied = startApp(deliver)
+    try {
+      const user = getTestUser()
+      const created = await spied.request.post('/feed/articles').send(articleBody())
+      const postId = created.body.post.id as string
+      const stamp = await upsertFeedQuoteAuthorization(user, {
+        actor_uri: 'https://mastodon.example/users/alice',
+        post_id: postId,
+        quote_uri: 'https://mastodon.example/users/alice/statuses/1',
+        request_uri: null,
+      })
+      expect((await spied.request.delete(`/feed/${postId}`)).status).toBe(200)
+      expect(deliver.deleted).toHaveBeenCalledWith(user, expect.objectContaining({ id: postId }), [stamp])
+      expect(await listFeedQuoteAuthorizations(user, postId)).toEqual([])
+    } finally {
+      await spied.close()
+    }
   })
 
   test('article fan-out: create → createdArticle; generic PATCH /:postId → updatedArticle (not updated)', async () => {

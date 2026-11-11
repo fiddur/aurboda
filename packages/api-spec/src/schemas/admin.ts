@@ -574,3 +574,15 @@ export const relayResponseSchema = baseResponseSchema
   .meta({ id: 'RelayResponse' })
 
 export type RelayResponse = z.infer<typeof relayResponseSchema>
+
+export const resendPostUpdatesResponseSchema = baseResponseSchema
+  .extend({
+    posts: z
+      .number()
+      .int()
+      .optional()
+      .meta({ description: 'Public and unlisted posts whose Update is being re-sent; absent on error' }),
+  })
+  .meta({ id: 'ResendPostUpdatesResponse' })
+
+export type ResendPostUpdatesResponse = z.infer<typeof resendPostUpdatesResponseSchema>
