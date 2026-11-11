@@ -16,6 +16,7 @@ import {
   getParticipationById,
   getParticipationByToken,
   getParticipationByUrl,
+  hasRemoteChallengeMember,
   listChallengeMembers,
   listChallengeParticipations,
   listChallenges,
@@ -253,6 +254,31 @@ describe('Challenges integration', () => {
     const found = await getChallengeMemberByIdentity(user, c.id, 'https://aurboda.net/u/alice')
     expect(found?.kind).toBe('local')
     expect(await getChallengeMemberByIdentity(user, c.id, 'https://other/u/x')).toBeNull()
+  })
+
+  test('reports whether an active remote member has joined', async () => {
+    const user = getTestUser()
+    const c = await createChallenge(user, sampleInput('remote'))
+    const other = await createChallenge(user, sampleInput('other'))
+    await upsertChallengeMember(user, c.id, {
+      display_name: 'host',
+      identity_base_url: 'https://aurboda.net/u/host',
+      kind: 'local',
+      local_user: 'host',
+    })
+    expect(await hasRemoteChallengeMember(user, c.id)).toBe(false)
+
+    const remote = await upsertChallengeMember(user, c.id, {
+      data_endpoint_url: 'https://foo.bar/challenge-data/tok',
+      display_name: 'bob',
+      identity_base_url: 'https://foo.bar/u/bob',
+      kind: 'remote',
+    })
+    expect(await hasRemoteChallengeMember(user, c.id)).toBe(true)
+    expect(await hasRemoteChallengeMember(user, other.id)).toBe(false)
+
+    await query(user, `UPDATE challenge_members SET status = 'withdrawn' WHERE id = $1`, [remote.id])
+    expect(await hasRemoteChallengeMember(user, c.id)).toBe(false)
   })
 
   test('looks up + deletes a participation by url (join idempotency support)', async () => {
