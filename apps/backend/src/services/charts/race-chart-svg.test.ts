@@ -235,6 +235,19 @@ describe('buildRaceChartSvg', () => {
   })
 })
 
+describe('buildRaceChartSvg bare', () => {
+  test('draws the lines across the whole frame with no text, legend or background', () => {
+    const svg = buildRaceChartSvg(data(), { bare: true, height: 100, width: 400 })
+    expect(svg).toContain('viewBox="0 0 400 100"')
+    expect(svg).not.toContain('<text')
+    expect(svg).not.toContain('<rect')
+    expect([...svg.matchAll(/<polyline /g)]).toHaveLength(data().lines.length)
+    expect(svg).toContain('<line x1="6" y1="94" x2="394" y2="94"') // baseline at the bare inset
+    const first = /<polyline points="([^"]+)"/.exec(svg)?.[1].split(' ')[0]
+    expect(first).toBe('6.0,94.0') // the start line at 0, bottom-left
+  })
+})
+
 describe('formatChartDate', () => {
   test('formats in the challenge timezone', () => {
     expect(formatChartDate(new Date('2026-10-31T23:30:00Z'), 'Europe/Stockholm')).toBe('Nov 1, 2026')

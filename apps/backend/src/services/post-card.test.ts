@@ -164,6 +164,14 @@ describe('resolvePostWith', () => {
     expect(getActivityHeadline).toHaveBeenCalledWith('fiddur', ACTIVITY_ID)
   })
 
+  test('carries how long a chart card may stand, for a post that can have a moving chart', async () => {
+    const challenge = record({ include_chart: true, kind: 'challenge' })
+    const { resolve } = setup(challenge, async () => null)
+    expect(await resolve('fiddur', POST_ID)).toMatchObject({ chart_bucket_ms: 300_000, is_public: true })
+    const reply = setup(record(), async () => null)
+    expect(await reply.resolve('fiddur', POST_ID)).not.toHaveProperty('chart_bucket_ms')
+  })
+
   test.each(['unlisted', 'followers'] as const)(
     'an %s post is not public, and its activity is never loaded',
     async (visibility) => {

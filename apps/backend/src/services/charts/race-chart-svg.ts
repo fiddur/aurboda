@@ -34,6 +34,8 @@ export interface RaceChartSvgData {
 export interface RaceChartSvgOptions {
   width?: number
   height?: number
+  /** Only the lines and baseline, on a transparent background: no `<text>`, no legend (see `ChartSvgOptions.bare`). */
+  bare?: boolean
 }
 
 const PAD = 40
@@ -48,6 +50,7 @@ const TEXT_COLOR = '#e5e7eb'
 const MUTED_COLOR = '#9ca3af'
 const FONT = 'Liberation Sans, sans-serif'
 const MIN_DRAWABLE_POINTS = 2
+const BARE_PAD = 6
 
 /**
  * The web's `MEMBER_COLORS` order and lighten rule
@@ -172,9 +175,10 @@ const legendSvg = (lines: RaceLine[], x: number): string => {
 export const buildRaceChartSvg = (data: RaceChartSvgData, opts: RaceChartSvgOptions = {}): string => {
   const width = opts.width ?? CHART_WIDTH
   const height = opts.height ?? CHART_HEIGHT
-  const plotLeft = PAD + 56
-  const plotRight = width - PAD - LEGEND_W
-  const plotBottom = height - PAD - 20
+  const plotLeft = opts.bare ? BARE_PAD : PAD + 56
+  const plotRight = opts.bare ? width - BARE_PAD : width - PAD - LEGEND_W
+  const plotTop = opts.bare ? BARE_PAD : PLOT_TOP
+  const plotBottom = opts.bare ? height - BARE_PAD : height - PAD - 20
   const tStart = data.startTime.getTime()
   const tEnd = data.endTime.getTime()
   const lines = data.lines
@@ -187,7 +191,7 @@ export const buildRaceChartSvg = (data: RaceChartSvgData, opts: RaceChartSvgOpti
   const top = Math.max(vMax, 0)
 
   const x = (t: number) => scale(Math.min(Math.max(t, tStart), tEnd), tStart, tEnd, plotLeft, plotRight)
-  const y = (v: number) => scale(v, 0, top, plotBottom, PLOT_TOP)
+  const y = (v: number) => scale(v, 0, top, plotBottom, plotTop)
   const polylines = lines
     .map((line) => {
       const points = line.points.map(([t, v]) => `${x(t.getTime()).toFixed(1)},${y(v).toFixed(1)}`).join(' ')
@@ -195,12 +199,20 @@ export const buildRaceChartSvg = (data: RaceChartSvgData, opts: RaceChartSvgOpti
     })
     .join('\n  ')
 
+  const baseline = `<line x1="${plotLeft}" y1="${plotBottom}" x2="${plotRight}" y2="${plotBottom}" stroke="${AXIS_COLOR}" stroke-width="1"/>`
+
+  if (opts.bare) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+  ${baseline}
+  ${polylines}
+</svg>`
+  }
   const asOf = formatChartDateTime(data.asOf, data.timezone)
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
   <rect width="${width}" height="${height}" fill="${BG}" rx="16"/>
   ${text(PAD, PAD + 4, 26, TEXT_COLOR, data.title, ' font-weight="700"')}
   ${asOf ? text(PAD, PAD + 30, 18, MUTED_COLOR, `as of ${asOf}`) : ''}
-  <line x1="${plotLeft}" y1="${plotBottom}" x2="${plotRight}" y2="${plotBottom}" stroke="${AXIS_COLOR}" stroke-width="1"/>
+  ${baseline}
   ${text(plotLeft - 10, plotBottom + 6, 18, MUTED_COLOR, '0', ' text-anchor="end"')}
   ${top > 0 ? text(plotLeft - 10, PLOT_TOP + 6, 18, MUTED_COLOR, Math.round(top).toLocaleString('en-US'), ' text-anchor="end"') : ''}
   ${text(plotLeft, height - PAD + 10, 18, MUTED_COLOR, formatChartDate(data.startTime, data.timezone))}
