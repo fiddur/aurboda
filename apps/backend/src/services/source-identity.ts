@@ -103,6 +103,18 @@ const garminExerciseIdentity = (
   }
 }
 
+/**
+ * Offset of a Health Connect sleep session's local time: the record's own
+ * `startZoneOffset` when the app sent one, else the offset in `startTime`
+ * (`Z` from the Android app, so 0). Rounding in `localCalendarDate` covers
+ * the latter only within ±12h; the zone offset also covers +13/+14.
+ */
+export const hcSleepOffsetMs = (data: Record<string, unknown>): number | null => {
+  const zoneOffset = typeof data.startZoneOffset === 'string' ? isoOffsetMs(data.startZoneOffset) : null
+  if (zoneOffset !== null) return zoneOffset
+  return typeof data.startTime === 'string' ? isoOffsetMs(data.startTime) : null
+}
+
 const garminSleepIdentity = (
   data: Record<string, unknown>,
   clientRecordId: string,
@@ -110,7 +122,7 @@ const garminSleepIdentity = (
   if (!/^\d+$/.test(clientRecordId)) return null
   if (typeof data.startTime !== 'string') return null
   const startTime = data.startTime
-  const offset = isoOffsetMs(startTime)
+  const offset = hcSleepOffsetMs(data)
   if (offset === null) return null
   const calendarDate = localCalendarDate(Number(clientRecordId), offset)
   return {

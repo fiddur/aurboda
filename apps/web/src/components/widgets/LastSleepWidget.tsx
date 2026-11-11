@@ -81,9 +81,9 @@ function SleepBody({ data }: { data: LatestSleep }) {
 
       {segments.length > 0 && (
         <div class="last-sleep-strip" role="img" aria-label="Sleep stages">
-          {segments.map((s) => (
+          {segments.map((s, i) => (
             <span
-              key={`${s.left}-${s.width}`}
+              key={i}
               class="last-sleep-segment"
               style={{ background: s.color, left: `${s.left}%`, width: `${s.width}%` }}
               title={s.title}
