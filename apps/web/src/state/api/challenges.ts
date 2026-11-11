@@ -3,6 +3,8 @@ import type {
   ChallengeParticipation,
   ChallengeParticipationResponse,
   ChallengeParticipationsResponse,
+  ChallengePreview,
+  ChallengePreviewResponse,
   ChallengeResponse,
   ChallengesResponse,
   ChallengeStanding,
@@ -78,6 +80,16 @@ export const joinChallengeByUrl = async (challengeUrl: string): Promise<Challeng
   )
   if (!res.data.participation) throw new Error(res.data.error ?? 'Failed to join challenge')
   return res.data.participation
+}
+
+/** What joining `challengeUrl` would join, read from its host without joining. */
+export const previewChallenge = async (challengeUrl: string): Promise<ChallengePreview> => {
+  const res = await axios.get<ChallengePreviewResponse>(`${API_URL}/challenges/preview`, {
+    headers: authHeaders(),
+    params: { challenge_url: challengeUrl },
+  })
+  if (!res.data.challenge) throw new Error(res.data.error ?? 'Failed to read the challenge')
+  return res.data.challenge
 }
 
 export const leaveChallenge = async (participationId: string): Promise<void> => {

@@ -402,6 +402,41 @@ export const joinChallengeBodySchema = z
 
 export type JoinChallengeBody = z.infer<typeof joinChallengeBodySchema>
 
+export const challengePreviewQuerySchema = z
+  .object({
+    challenge_url: z.string().url().meta({ description: 'Absolute URL of the challenge to preview' }),
+  })
+  .meta({ id: 'ChallengePreviewQuery' })
+
+export type ChallengePreviewQuery = z.infer<typeof challengePreviewQuerySchema>
+
+export const challengePreviewSchema = z
+  .object({
+    end_ts: z.string().meta({ description: 'End instant, exclusive (ISO 8601)' }),
+    host_handle: z.string().meta({ description: 'The host handle, e.g. `@alice@aurboda.net`' }),
+    host_identity: z.string().meta({
+      description:
+        "The host's identity URL (`<instance>/u/<username>`), as in `ChallengeParticipation.host_identity`",
+    }),
+    name: challengeNameSchema,
+    share_url: z.string().meta({ description: "The challenge's public URL — the join-by-URL target" }),
+    spec: challengeSpecSchema,
+    start_ts: z.string().meta({ description: 'Start instant, inclusive (ISO 8601)' }),
+    timezone: z.string().meta({ description: 'IANA timezone the date range was chosen in' }),
+  })
+  .meta({
+    description: 'What joining a challenge by its URL would join, read from its host without joining',
+    id: 'ChallengePreview',
+  })
+
+export type ChallengePreview = z.infer<typeof challengePreviewSchema>
+
+export const challengePreviewResponseSchema = baseResponseSchema
+  .extend({ challenge: challengePreviewSchema.optional() })
+  .meta({ id: 'ChallengePreviewResponse' })
+
+export type ChallengePreviewResponse = z.infer<typeof challengePreviewResponseSchema>
+
 export const discoveredChallengeSchema = z
   .object({
     end_ts: z.string().meta({ description: 'End instant, exclusive (ISO 8601)' }),

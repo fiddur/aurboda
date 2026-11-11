@@ -2,7 +2,13 @@ import type { ChallengeStanding } from '@aurboda/api-spec'
 
 import { describe, expect, test } from 'vitest'
 
-import { bucketEnd, formatDateInZone, formatUpdated, toCumulativeSeries } from './race-series'
+import {
+  bucketEnd,
+  formatChallengeWindow,
+  formatDateInZone,
+  formatUpdated,
+  toCumulativeSeries,
+} from './race-series'
 
 const standing = (buckets: { bucket_start: string; value: number }[]): ChallengeStanding => ({
   buckets,
@@ -29,6 +35,20 @@ describe('formatDateInZone', () => {
     const iso = '2026-07-01T12:00:00.000Z'
     expect(() => formatDateInZone(iso, 'Not/AZone')).not.toThrow()
     expect(formatDateInZone(iso, 'Not/AZone')).toBe(new Date(iso).toLocaleDateString())
+  })
+})
+
+describe('formatChallengeWindow', () => {
+  test('shows the exclusive end as the inclusive last day, in the challenge timezone', () => {
+    expect(
+      formatChallengeWindow('2026-10-31T23:00:00.000Z', '2026-11-30T23:00:00.000Z', 'Europe/Stockholm'),
+    ).toBe(
+      `${formatDateInZone('2026-11-01T12:00:00.000Z', 'Europe/Stockholm')} – ${formatDateInZone('2026-11-30T12:00:00.000Z', 'Europe/Stockholm')}`,
+    )
+  })
+
+  test('an unreadable instant renders as ? instead of throwing', () => {
+    expect(formatChallengeWindow('not a date', 'nope', 'UTC')).toBe('? – ?')
   })
 })
 

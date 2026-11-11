@@ -13,8 +13,9 @@ import { TrendLineChart } from '../../components/charts/TrendLineChart'
 import { fetchPublicChallengeStandings, joinChallengeByUrl } from '../../state/api'
 import { auth } from '../../state/auth'
 import { competitionRanks, podiumMedal } from '../../utils/podium'
+import { joinPagePath } from './join-query'
 import { memberColor } from './member-colors'
-import { formatDateInZone, formatUpdated, toCumulativeSeries } from './race-series'
+import { formatChallengeWindow, formatUpdated, toCumulativeSeries } from './race-series'
 import { describeSpec, formatTotal, totalHeader } from './spec-label'
 import './style.css'
 
@@ -63,7 +64,7 @@ export function PublicChallenge({
     const host = window.prompt('Enter your Aurboda host (e.g. https://aurboda.net):')?.trim()
     if (!host) return
     const base = host.startsWith('http') ? host : `https://${host}`
-    window.location.href = `${base.replace(/\/+$/, '')}/challenges/join?challenge=${encodeURIComponent(challenge.share_url)}`
+    window.location.href = `${base.replace(/\/+$/, '')}${joinPagePath(challenge.share_url, false)}`
   }
 
   const standings = (standingsQuery.data ?? []).filter((s) => s.status === 'active')
@@ -100,15 +101,7 @@ export function PublicChallenge({
 
       <p class="challenge-view-meta">
         {describeSpec(spec)} ({spec.unit}) ·{' '}
-        {/* Render both dates in the timezone the range was chosen in, so they read
-            exactly as entered regardless of the viewer's browser locale/timezone. */}
-        {formatDateInZone(challenge.start_ts, challenge.timezone)} –{' '}
-        {/* end_ts is the exclusive window end (midnight after the last day); step back
-            one ms to render the inclusive last competing day. */}
-        {formatDateInZone(
-          new Date(new Date(challenge.end_ts).getTime() - 1).toISOString(),
-          challenge.timezone,
-        )}
+        {formatChallengeWindow(challenge.start_ts, challenge.end_ts, challenge.timezone)}
       </p>
 
       <div class="challenge-view-actions">

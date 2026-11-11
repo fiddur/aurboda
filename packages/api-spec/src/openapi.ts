@@ -17,6 +17,8 @@ import {
 } from './schemas/admin.ts'
 import {
   challengeParticipationsResponseSchema,
+  challengePreviewQuerySchema,
+  challengePreviewResponseSchema,
   challengesResponseSchema,
   discoverChallengesResponseSchema,
   challengeStandingsResponseSchema,
@@ -191,6 +193,34 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'Discover challenges from people I follow',
+        tags: ['Challenges'],
+      },
+    },
+    '/challenges/preview': {
+      get: {
+        description:
+          'What joining a challenge by its URL would join (name, host, window, what it counts), read from its host — this or another instance — without joining.',
+        requestParams: { query: challengePreviewQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: challengePreviewResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Not a challenge URL',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'No such challenge on this instance',
+          },
+          502: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The host could not be read, or this instance cannot score its challenge',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Preview a challenge by URL',
         tags: ['Challenges'],
       },
     },

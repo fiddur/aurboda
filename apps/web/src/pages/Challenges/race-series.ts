@@ -18,6 +18,17 @@ export const formatDateInZone = (iso: string, timeZone: string): string => {
   }
 }
 
+/**
+ * A challenge window `[start_ts, end_ts)` as inclusive dates in its timezone, so they read
+ * exactly as entered whatever the viewer's timezone. `end_ts` is the midnight after the
+ * last day, hence the step back of one ms; an unreadable instant renders as `?`.
+ */
+export const formatChallengeWindow = (startIso: string, endIso: string, timeZone: string): string => {
+  const date = (ms: number) =>
+    Number.isNaN(ms) ? '?' : formatDateInZone(new Date(ms).toISOString(), timeZone)
+  return `${date(new Date(startIso).getTime())} – ${date(new Date(endIso).getTime() - 1)}`
+}
+
 export const formatUpdated = (iso: string): string =>
   new Date(iso).toLocaleString(undefined, {
     day: 'numeric',
