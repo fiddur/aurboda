@@ -4,6 +4,7 @@ import {
   GARMIN_HC_ORIGIN,
   GRAVL_HC_ORIGIN,
   gravlWorkoutIdFromClientRecord,
+  hcSleepOffsetMs,
   isoOffsetMs,
   localCalendarDate,
   resolveHealthConnectIdentity,
@@ -104,6 +105,39 @@ describe('resolveHealthConnectIdentity', () => {
     expect(identity).toMatchObject({ external_id: 'garmin-sleep-2026-09-03', key: '2026-09-03' })
   })
 
+  it('prefers the record’s startZoneOffset, so a +13:00 night keeps its own date', () => {
+    // Local midnight of 2026-01-10 in Pacific/Auckland summer (+13:00) = 2026-01-09T11:00:00Z
+    const data = hc(GARMIN_HC_ORIGIN, String(Date.parse('2026-01-09T11:00:00Z')), {
+      startTime: '2026-01-09T09:40:00Z',
+    })
+    expect(resolveHealthConnectIdentity('SleepSessionRecord', data)?.external_id).toBe(
+      'garmin-sleep-2026-01-09',
+    )
+    expect(
+      resolveHealthConnectIdentity('SleepSessionRecord', { ...data, startZoneOffset: '+13:00' }),
+    ).toMatchObject({ external_id: 'garmin-sleep-2026-01-10', key: '2026-01-10' })
+  })
+
+  it('prefers the record’s startZoneOffset at +14:00 (Kiritimati)', () => {
+    // Local midnight of 2026-09-25 in +14:00 = 2026-09-24T10:00:00Z
+    const identity = resolveHealthConnectIdentity(
+      'SleepSessionRecord',
+      hc(GARMIN_HC_ORIGIN, String(Date.parse('2026-09-24T10:00:00Z')), {
+        startTime: '2026-09-24T08:30:00Z',
+        startZoneOffset: '+14:00',
+      }),
+    )
+    expect(identity).toMatchObject({ external_id: 'garmin-sleep-2026-09-25', key: '2026-09-25' })
+  })
+
+  it('falls back to the startTime offset when startZoneOffset is absent or unreadable', () => {
+    const identity = resolveHealthConnectIdentity(
+      'SleepSessionRecord',
+      hc(GARMIN_HC_ORIGIN, '1790287200000', { startTime: '2026-09-24T21:20:26Z', startZoneOffset: 'soon' }),
+    )
+    expect(identity).toMatchObject({ external_id: 'garmin-sleep-2026-09-25', key: '2026-09-25' })
+  })
+
   it('returns null for unknown origins, unparsable keys and non-session records', () => {
     expect(resolveHealthConnectIdentity('ExerciseSessionRecord', hc('com.polar.polarflow', '123'))).toBeNull()
     expect(resolveHealthConnectIdentity('ExerciseSessionRecord', hc(GARMIN_HC_ORIGIN, 'abc'))).toBeNull()
@@ -133,6 +167,15 @@ describe('helpers', () => {
     expect(isoOffsetMs('2026-09-03T00:49:43-05:30')).toBe(-19_800_000)
     expect(isoOffsetMs('2026-09-03T00:49:43Z')).toBe(0)
     expect(isoOffsetMs('2026-09-03T00:49:43')).toBeNull()
+    expect(isoOffsetMs('+13:00')).toBe(46_800_000)
+  })
+
+  it('reads a sleep record’s offset from startZoneOffset before startTime', () => {
+    expect(hcSleepOffsetMs({ startTime: '2026-09-03T00:49:43Z', startZoneOffset: '+14:00' })).toBe(50_400_000)
+    expect(hcSleepOffsetMs({ startTime: '2026-09-03T00:49:43Z', startZoneOffset: 'Z' })).toBe(0)
+    expect(hcSleepOffsetMs({ startTime: '2026-09-03T00:49:43+02:00' })).toBe(7_200_000)
+    expect(hcSleepOffsetMs({ startTime: '2026-09-03T00:49:43' })).toBeNull()
+    expect(hcSleepOffsetMs({})).toBeNull()
   })
 
   it('formats the local calendar date', () => {

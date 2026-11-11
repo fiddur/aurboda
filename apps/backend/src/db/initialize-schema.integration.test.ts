@@ -2,7 +2,13 @@ import { randomUUID } from 'node:crypto'
 import { Client } from 'pg'
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest'
 
-import { schemaFingerprint } from '../schema.ts'
+import {
+  _hashSchema,
+  createTableStatements,
+  MIGRATION_REVISION,
+  schemaFingerprint,
+  tableCreationOrder,
+} from '../schema.ts'
 import {
   previousStrengthTrainingDataSchemas,
   strengthTrainingDataSchema,
@@ -28,6 +34,7 @@ const LEGACY_TAGS = `legacy_tags_${suffix}`
 const FAILING_TAGS = `failing_tags_${suffix}`
 const UNKNOWN_EXERCISE = `unknown_exercise_${suffix}`
 const YOGA_DEFINITION = `yoga_definition_${suffix}`
+const SLEEP_TIMES = `sleep_times_${suffix}`
 
 /** A new database prepared the way `makeNewUserDb` prepares one, routed to `user`. */
 const freshUserDb = async (user: string, database = `init_${user}`): Promise<UserDb> => {
@@ -145,6 +152,54 @@ describe('initializeSchema', () => {
 
       const left = (await db.query(`SELECT id FROM notes`)).rows.map((r) => r.id as string)
       expect(left.sort()).toEqual([real, typed, answered, reply].sort())
+    },
+    SCHEMA_TIMEOUT,
+  )
+
+  test(
+    'an unforced migration from the previous revision runs the Garmin sleep time repair (#1173)',
+    async () => {
+      const db = await freshUserDb(SLEEP_TIMES, `aurboda_${SLEEP_TIMES}`)
+      await initializeSchema(SLEEP_TIMES)
+      const previous = _hashSchema(
+        MIGRATION_REVISION - 1,
+        tableCreationOrder.map((key) => [key, createTableStatements[key]]),
+      )
+      await db.query(
+        `DELETE FROM schema_migrations WHERE name LIKE 'schema@%' OR name LIKE 'repair_garmin_sleep_%'`,
+      )
+      await db.query(`INSERT INTO schema_migrations (name) VALUES ($1)`, [`schema@${previous}`])
+      const sleep = (
+        await db.query(
+          `INSERT INTO activities (source, external_id, activity_type, start_time, end_time, data)
+           VALUES ('garmin', 'garmin-sleep-2026-09-22', 'sleep', '2026-09-22T21:00:00Z', '2026-09-23T05:00:00Z', '{}')
+           RETURNING id`,
+        )
+      ).rows[0].id as string
+      await db.query(
+        `INSERT INTO raw_records (source, record_type, external_id, recorded_at, data)
+         VALUES ('garmin', 'garmin_sleep', 'garmin-sleep-2026-09-22', '2026-09-22T00:00:00Z', $1)`,
+        [
+          JSON.stringify({
+            dailySleepDTO: {
+              sleepEndTimestampGMT: Date.parse('2026-09-22T05:00:00Z'),
+              sleepStartTimestampGMT: Date.parse('2026-09-21T21:00:00Z'),
+            },
+          }),
+        ],
+      )
+
+      expect(await migrateSchema(SLEEP_TIMES)).toBe(true)
+
+      const applied = await db.query(
+        `SELECT 1 FROM schema_migrations WHERE name = 'repair_garmin_sleep_times_v1'`,
+      )
+      expect(applied.rowCount).toBe(1)
+      const span = await db.query(`SELECT start_time, end_time FROM activities WHERE id = $1`, [sleep])
+      expect(span.rows).toEqual([
+        { end_time: new Date('2026-09-22T05:00:00Z'), start_time: new Date('2026-09-21T21:00:00Z') },
+      ])
+      expect(await schemaUpToDate(db, schemaFingerprint())).toBe(true)
     },
     SCHEMA_TIMEOUT,
   )

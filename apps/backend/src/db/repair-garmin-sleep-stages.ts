@@ -6,12 +6,20 @@ import { garminSleepLevelsToStages } from '../integrations/garmin/sleep-stages.t
 import {
   GARMIN_HC_ORIGIN,
   garminSleepExternalId,
-  isoOffsetMs,
+  hcSleepOffsetMs,
   localCalendarDate,
 } from '../services/source-identity.ts'
 
 /** Keys a Health Connect `SleepSessionRecord` upload merges into the shared Garmin sleep row. */
-const HC_SLEEP_KEYS = ['stages', 'startTime', 'endTime', 'metadata', 'title', 'notes'] as const
+const HC_SLEEP_KEYS = [
+  'stages',
+  'startTime',
+  'endTime',
+  'startZoneOffset',
+  'metadata',
+  'title',
+  'notes',
+] as const
 
 interface SleepRow {
   id: string
@@ -23,11 +31,11 @@ interface SleepRow {
  * The row a Garmin-written HC sleep payload belongs to, by the same rule
  * `resolveHealthConnectIdentity` now applies; null when it carries no usable key.
  */
-const correctExternalId = (data: Record<string, unknown>): string | null => {
+export const correctExternalId = (data: Record<string, unknown>): string | null => {
   const metadata = data.metadata as Record<string, unknown> | undefined
   const clientRecordId = metadata?.clientRecordId
   if (typeof clientRecordId !== 'string' || !/^\d+$/.test(clientRecordId)) return null
-  const offset = typeof data.startTime === 'string' ? (isoOffsetMs(data.startTime) ?? 0) : 0
+  const offset = hcSleepOffsetMs(data) ?? 0
   return garminSleepExternalId(localCalendarDate(Number(clientRecordId), offset))
 }
 

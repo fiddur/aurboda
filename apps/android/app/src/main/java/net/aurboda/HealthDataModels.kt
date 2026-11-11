@@ -490,6 +490,7 @@ data class SleepStageSerializable(
 data class SleepSessionRecordSerializable(
   val startTime: String,
   val endTime: String,
+  val startZoneOffset: String? = null,
   val stages: List<SleepStageSerializable>,
   val title: String? = null,
   val notes: String? = null,
@@ -501,6 +502,7 @@ data class SleepSessionRecordSerializable(
         SleepSessionRecordSerializable(
           startTime = record.startTime.toIsoString(),
           endTime = record.endTime.toIsoString(),
+          startZoneOffset = record.startZoneOffset?.id,
           stages =
             record.stages.map {
               SleepStageSerializable(
