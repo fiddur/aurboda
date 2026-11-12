@@ -16,7 +16,6 @@ import type {
   GenericCorrelationResponse,
   HrvActivitiesData,
   HrvActivitiesResponse,
-  HrvContextMetric,
 } from '@aurboda/api-spec'
 
 import axios from 'axios'
@@ -38,13 +37,11 @@ export const fetchBaseline = async (referenceDate?: string): Promise<BaselineDat
 
 export const fetchHrvActivitiesCorrelation = async (
   periodDays?: number,
-  contextMetric?: HrvContextMetric,
   windowMinutes?: number,
 ): Promise<HrvActivitiesData> => {
   const { token } = auth.value
   const params: Record<string, string> = {}
   if (periodDays) params.period_days = String(periodDays)
-  if (contextMetric) params.context_metric = contextMetric
   if (windowMinutes) params.window_minutes = String(windowMinutes)
   const response = await axios.get<HrvActivitiesResponse>(`${API_URL}/correlations/hrv-activities`, {
     headers: { Authorization: `Bearer ${token}` },

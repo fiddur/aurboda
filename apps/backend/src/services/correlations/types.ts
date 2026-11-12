@@ -3,6 +3,7 @@ import type {
   HrvActivitiesData,
   HrvStats as ApiHrvStats,
   HrvStatsWithDelta as ApiHrvStatsWithDelta,
+  ProductivityCorrelationCoefficients,
   TimeWindowStats as ApiTimeWindowStats,
 } from '@aurboda/api-spec'
 
@@ -36,8 +37,9 @@ export interface BaselineResult {
 
 export interface ProductivityCorrelation extends HrvStatsWithDelta {
   category: string
-  /** Pearson correlation between productivity score and HRV (-1 to 1) */
+  /** Pearson correlation with the context metric; the same value as its entry in correlation_coefficients */
   correlation_coefficient: number | null
+  correlation_coefficients: ProductivityCorrelationCoefficients
 }
 
 export interface LocationCorrelation extends HrvStatsWithDelta {

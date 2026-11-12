@@ -153,14 +153,17 @@ known-vs-all days for presence-only _outcomes_).
 `get_hrv_activities_correlation` / `GET /correlations/hrv-activities` summarises
 the autonomic context (mean HRV, heart rate and stress, with baseline deltas)
 around each activity, location and productivity category, and correlates the
-productivity score against an autonomic metric.
+productivity score against HRV, heart rate and stress.
 
-That metric is selectable via `context_metric` — `hrv_rmssd` (default),
-`heart_rate` or `stress_level`. Not everyone records continuous HRV throughout
-the day, so heart rate or stress (which are denser) keep the productivity
-`correlation_coefficient` meaningful. The chosen metric is echoed back as
-`context_metric`; all three means stay in the response regardless. The web
-"HRV context" tab exposes this as a **Context** dropdown.
+Productivity categories carry `correlation_coefficients`: the Pearson r of the
+productivity score with each of `hrv_rmssd`, `heart_rate` and `stress_level`
+(null when fewer than 3 paired values or no variation). Not everyone records
+continuous HRV throughout the day, so heart rate or stress (which are denser)
+often give the meaningful one. The older single `correlation_coefficient` is
+still returned, for the metric named by `context_metric` (request parameter,
+default `hrv_rmssd`, echoed back in the response). The web Context tab does not
+send `context_metric`: it shows r for each metric whose checkbox is on (HRV,
+Heart rate, Stress).
 
 ## Context analysis (Analyze → context tab)
 
@@ -234,9 +237,11 @@ is no time-of-day correction.
 
 API:
 
-- `GET /correlations/hrv-activities?period_days=30&context_metric=hrv_rmssd&window_minutes=30`
+- `GET /correlations/hrv-activities?period_days=30&window_minutes=30`
   and MCP `get_hrv_activities_correlation` (`window_minutes`, 10–1440, default
-  30). The response echoes `window_minutes`.
+  30). The response echoes `window_minutes`. Productivity rows carry
+  `correlation_coefficients` (r per metric); the optional `context_metric`
+  only picks which of them fills the legacy `correlation_coefficient`.
 - `GET /correlations/activity-impact/:activity?activity_type=activity_type&period_days=30&window_minutes=30&match=exact`
   and MCP `get_activity_impact` (`window_minutes`, `match`). `match` is
   `contains` (default: every name containing `activity`, case-insensitive) or

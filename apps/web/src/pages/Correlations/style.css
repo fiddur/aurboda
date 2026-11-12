@@ -64,6 +64,40 @@
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  align-items: center;
+}
+
+.correlations-page .metric-toggles {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.correlations-page .metric-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.9rem;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: white;
+  color: #374151;
+  cursor: pointer;
+  user-select: none;
+}
+
+.correlations-page .metric-toggle:hover {
+  border-color: var(--color-accent);
+}
+
+.correlations-page .metric-toggle:has(input:disabled) {
+  cursor: default;
+}
+
+.correlations-page .metric-toggle input {
+  margin: 0;
+  accent-color: var(--color-accent);
 }
 
 .correlations-page .loading {
@@ -128,11 +162,16 @@
   margin-bottom: 0.5rem;
 }
 
+.correlations-page .impact-section h2 a {
+  color: var(--color-primary);
+}
+
 .correlations-page .impact-meta {
+  display: block;
+  margin-top: 0.25rem;
   font-size: 0.85rem;
   font-weight: 400;
   color: #6b7280;
-  margin-left: 0.75rem;
 }
 
 .correlations-page .table-section {
@@ -276,7 +315,8 @@
     color: #fcd34d;
   }
 
-  .correlations-page .period-select {
+  .correlations-page .period-select,
+  .correlations-page .metric-toggle {
     background: #1f2937;
     border-color: #374151;
     color: #d1d5db;

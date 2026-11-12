@@ -5,7 +5,7 @@ Aurboda goes beyond simple charts by computing statistical correlations between 
 In the web app it is the **Analyze** page (`/correlations`), with two tabs:
 
 - **Explore** answers "does X make a difference to Y?": pick anything you log or measure (a drink, a late coffee, an evening run, carbs) and an outcome (sleep score, HRV, a headache). It compares the days with and without it, says how big the difference is, and whether it is more than chance. How it works is described in [Correlations & exploratory analysis](../correlations.md).
-- **Context** (HRV, heart rate or stress) shows how your body looks during and around each activity, place and screen-time category, compared with your baseline. It is described below.
+- **Context** shows how your HRV, heart rate and stress look during and around each activity, place and screen-time category, compared with your baseline. It is described below.
 
 Everything is also available over the REST API and as MCP tools, so an AI assistant such as Claude can run the same analyses when you ask it in plain language.
 
@@ -21,7 +21,7 @@ HRV baseline uses sleep-context HRV (measurements taken during sleep), which is 
 
 ## The Context tab
 
-The first tab of the Analyze page shows three tables over a configurable analysis period (14, 30, 60, or 90 days). A **Context** dropdown picks the metric they are measured against: HRV (the default), heart rate or stress.
+The first tab of the Analyze page shows three tables over a configurable analysis period (14, 30, 60, or 90 days). Checkboxes for **HRV**, **Heart rate** and **Stress** (all on by default, at least one stays on) choose which metrics the baseline cards, the tables and the impact chart show.
 
 ### Correlation Tables
 
@@ -31,7 +31,7 @@ Each table covers a different category of data:
 
 **Locations** -- Named places you've visited. Shows visit count.
 
-**Productivity Categories** -- Screen time categories (e.g., "Software Development", "Social Media"). Shows the Pearson correlation coefficient (r) between the productivity score and your HRV.
+**Productivity Categories** -- Screen time categories (e.g., "Software Development", "Social Media"). Shows the Pearson correlation coefficient (r) between the productivity score and each shown metric.
 
 Every row displays:
 
@@ -56,6 +56,27 @@ Click any row to see a **before/during/after timeline** chart. This shows how yo
 The chart plots HRV (green line, left axis) and heart rate (red line, right axis) with your 30-day HRV baseline shown as a dashed reference line. This lets you see, for example, whether meditation raises your HRV during the session and whether the effect persists afterward.
 
 The impact analysis always uses a 90-day lookback for statistical reliability, regardless of the period selector on the main page.
+
+The chart's heading names the activity type by its display name and links to its page.
+
+### Sharing a view
+
+The page keeps its tab and every selection in the URL, so a view can be bookmarked or shared; whoever opens the link sees the same settings over their own data. A parameter is left out while it holds its default, so plain `/correlations` is the default view, and other parameters (such as the Android app's `embed=1`) are kept.
+
+| Parameter                         | Meaning                                                                                             |
+| --------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `tab`                             | `context` (default) or `explore`                                                                    |
+| `days`, `window`                  | Context period (14, 30, 60, 90; default 30) and before/after window in minutes (default 30)         |
+| `metrics`                         | Shown metrics, a comma list of `hrv`, `hr`, `stress` (default all three)                            |
+| `item`, `item_type`               | The selected row: its name and kind (`activity_type`, `location`, `productivity_category`, ...)     |
+| `mode`                            | Explore mode: `event` (default) or `continuous`                                                     |
+| `trigger`, `outcome`              | Explore selectors as `kind:value`, e.g. `activity:alcohol`, `nutrition:carbs`, `metric:sleep_score` |
+| `outcome_source`, `outcome_value` | Event-mode outcome: `metric` or `tag`, and its name or pattern                                      |
+| `lags`, `gap`, `denominator`      | Event-mode lag windows (default `24h,48h,7d`), collapse gap in days (default 3), `known` or `all`   |
+| `lag_days`, `nutrition`           | Continuous-mode outcome lag in days (default 0) and `all` or `complete_only` nutrition days         |
+| `start`, `end`, `explore_days`    | Explore regime: dates (YYYY-MM-DD), or the last N days (default 365)                                |
+
+An Explore link whose trigger and outcome are filled in runs the analysis once when it opens; changing the form afterwards only updates the URL until **Run analysis** is pressed.
 
 ## Event Probability (API / MCP only)
 
@@ -122,12 +143,12 @@ Different categories sample HRV from different time windows:
 
 ## Statistical Methods
 
-| Method                      | Used for                               | Description                                                                     |
-| --------------------------- | -------------------------------------- | ------------------------------------------------------------------------------- |
-| **Pearson correlation (r)** | Productivity categories                | Measures linear correlation between productivity score and HRV. Range: -1 to 1. |
-| **Delta from baseline**     | All categories                         | Simple difference between the activity's mean HRV/HR and your overall baseline. |
-| **Relative risk**           | Event probability, generic correlation | Ratio of P(outcome given trigger) to P(outcome without trigger).                |
-| **Chi-squared test**        | Event probability, generic correlation | Tests whether the trigger-outcome association is statistically significant.     |
+| Method                      | Used for                               | Description                                                                                  |
+| --------------------------- | -------------------------------------- | -------------------------------------------------------------------------------------------- |
+| **Pearson correlation (r)** | Productivity categories                | Linear correlation between productivity score and HRV, heart rate or stress. Range: -1 to 1. |
+| **Delta from baseline**     | All categories                         | Simple difference between the activity's mean HRV/HR and your overall baseline.              |
+| **Relative risk**           | Event probability, generic correlation | Ratio of P(outcome given trigger) to P(outcome without trigger).                             |
+| **Chi-squared test**        | Event probability, generic correlation | Tests whether the trigger-outcome association is statistically significant.                  |
 
 ## Known Limitations
 

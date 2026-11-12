@@ -6,6 +6,7 @@ import { useEffect, useRef } from 'preact/hooks'
 
 import type { BaselineData } from '../../state/api'
 
+import { IMPACT_METRICS, type ImpactMetric } from './impactMetrics'
 import './ImpactFigure.css'
 
 type ChartGroup = d3.Selection<SVGGElement, unknown, null, undefined>
@@ -83,9 +84,11 @@ const drawSeries = (
 export function ImpactTimelineChart({
   timeline,
   baseline,
+  metrics = IMPACT_METRICS,
 }: {
   timeline: ImpactBucket[]
   baseline?: BaselineData | null
+  metrics?: readonly ImpactMetric[]
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
@@ -121,9 +124,9 @@ export function ImpactTimelineChart({
       .domain(timeline.map((_, i) => i))
       .range([0, innerWidth])
 
-    const hasHrv = hrvData.some((d) => d !== null)
-    const hasHr = hrData.some((d) => d !== null)
-    const hasStress = stressData.some((d) => d !== null)
+    const hasHrv = metrics.includes('hrv') && hrvData.some((d) => d !== null)
+    const hasHr = metrics.includes('hr') && hrData.some((d) => d !== null)
+    const hasStress = metrics.includes('stress') && stressData.some((d) => d !== null)
 
     const yHrv = d3.scaleLinear().domain(paddedDomain(hrvData)).range([innerHeight, 0])
     const yHr = d3.scaleLinear().domain(paddedDomain(hrData)).range([innerHeight, 0])
@@ -142,8 +145,8 @@ export function ImpactTimelineChart({
         .attr('opacity', 0.5)
     }
 
-    drawSeries(g, hrvData, x, yHrv, '#10b981')
-    drawSeries(g, hrData, x, yHr, '#ef4444')
+    if (hasHrv) drawSeries(g, hrvData, x, yHrv, '#10b981')
+    if (hasHr) drawSeries(g, hrData, x, yHr, '#ef4444')
     if (hasStress) drawSeries(g, stressData, x, yStress, '#f59e0b')
 
     if (duringIndex >= 0) {
@@ -165,7 +168,7 @@ export function ImpactTimelineChart({
 
     if (hasHrv) drawHrvAxis(g, yHrv)
     if (hasHr) drawHrAxis(g, yHr, innerWidth)
-  }, [timeline, baseline])
+  }, [timeline, baseline, metrics])
 
   return (
     <div ref={containerRef} class="impact-chart-container">

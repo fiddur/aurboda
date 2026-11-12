@@ -61,52 +61,70 @@ const groupStats = (sessions: Interval[], ctx: GroupContext, sampleMinutes: numb
 const sessionMinutes = (sessions: Interval[]): number =>
   sessions.reduce((sum, { end, start }) => sum + (end - start) / 60_000, 0)
 
+type RawSeries = [Date, number][]
+
+interface ProductivitySeries {
+  heart_rate: RawSeries
+  hrv_rmssd: RawSeries
+  stress_level: RawSeries
+}
+
+const roundR = (r: number | null): number | null => (r !== null ? Math.round(r * 100) / 100 : null)
+
+/** Pearson r of the productivity score with a metric, pairing each in-window metric value with its record's score. */
+const productivityR = (records: ProductivityRecord[], series: RawSeries): number | null => {
+  const scores: number[] = []
+  const values: number[] = []
+  for (const record of records) {
+    const score = record.productivity
+    if (score === undefined || score === null) continue
+    const inWindow = getDataInRange(series, record.start_time, record.end_time)
+    pushAll(values, inWindow)
+    pushAll(
+      scores,
+      inWindow.map(() => score),
+    )
+  }
+  return roundR(pearsonCorrelation(scores, values))
+}
+
 const productivityCorrelations = (
   productivity: ProductivityRecord[],
-  contextData: [Date, number][],
+  raw: ProductivitySeries,
+  contextMetric: HrvContextMetric,
   ctx: GroupContext,
 ): ProductivityCorrelation[] => {
   const byCategory = new Map<
     string,
-    { intervals: Interval[]; contextValues: number[]; minutes: number; scores: number[] }
+    { intervals: Interval[]; minutes: number; records: ProductivityRecord[] }
   >()
 
   for (const record of productivity) {
     const cat = byCategory.getOrInsertComputed(productivityCategoryKey(record), () => ({
-      contextValues: [],
       intervals: [],
       minutes: 0,
-      scores: [],
+      records: [],
     }))
     cat.minutes += record.duration_sec / 60
     cat.intervals.push({ end: record.end_time.getTime(), start: record.start_time.getTime() })
-
-    const contextInWindow = getDataInRange(contextData, record.start_time, record.end_time)
-    pushAll(cat.contextValues, contextInWindow)
-
-    if (record.productivity !== undefined && record.productivity !== null) {
-      // One productivity score per context-metric value, for the correlation.
-      pushAll(
-        cat.scores,
-        contextInWindow.map(() => record.productivity!),
-      )
-    }
+    cat.records.push(record)
   }
 
   const correlations: ProductivityCorrelation[] = []
   for (const [category, data] of byCategory) {
     if (data.minutes < 10) continue // Skip categories with < 10 min data
 
-    // Correlation between productivity score and the chosen context metric.
-    const correlation =
-      data.scores.length >= 3 && data.contextValues.length === data.scores.length
-        ? pearsonCorrelation(data.scores, data.contextValues)
-        : null
+    const coefficients = {
+      heart_rate: productivityR(data.records, raw.heart_rate),
+      hrv_rmssd: productivityR(data.records, raw.hrv_rmssd),
+      stress_level: productivityR(data.records, raw.stress_level),
+    }
 
     correlations.push({
       ...groupStats(mergeIntoSessions(data.intervals), ctx, data.minutes),
       category,
-      correlation_coefficient: correlation !== null ? Math.round(correlation * 100) / 100 : null,
+      correlation_coefficient: coefficients[contextMetric],
+      correlation_coefficients: coefficients,
     })
   }
 
@@ -199,11 +217,6 @@ export async function getHrvActivitiesCorrelation(
     getEffectiveActivitiesInRange(user, start, end),
   ])
 
-  // The series the productivity correlation is computed against. HRV is the
-  // default, but heart rate / stress are denser when continuous HRV is sparse.
-  const contextData =
-    contextMetric === 'heart_rate' ? hrData : contextMetric === 'stress_level' ? stressData : hrvData
-
   const series = binMetricSeries(hrvData, hrData, stressData)
   const totalMinutes = periodDays * 24 * 60
   const inPeriod = (metric: MetricKey) => valuesBetween(series[metric], start.getTime(), end.getTime() + 1)
@@ -216,7 +229,12 @@ export async function getHrvActivitiesCorrelation(
     correlations: {
       activities: activityCorrelations(activities, ctx),
       locations: locationCorrelations(locations, ctx),
-      productivity: productivityCorrelations(productivity, contextData, ctx),
+      productivity: productivityCorrelations(
+        productivity,
+        { heart_rate: hrData, hrv_rmssd: hrvData, stress_level: stressData },
+        contextMetric,
+        ctx,
+      ),
     },
     period: {
       days: periodDays,
