@@ -216,6 +216,39 @@ describe('summarizeImpact', () => {
 const offsets = (window: number) =>
   timelineBuckets(window).map((b) => [b.phase, b.start_offset_minutes, b.end_offset_minutes])
 
+describe('bins straddling a session boundary', () => {
+  test('the bin a session starts in is not part of the window before it', () => {
+    const sessions = [{ end: min(33), start: min(3) }]
+    const stress = bins([
+      [-5, 30],
+      [0, 90],
+      [5, 80],
+      [35, 20],
+    ])
+    const { effects, timeline } = summarizeImpact(sessions, only(stress), 30)
+
+    expect(effects.stress.before_mean).toBe(30)
+    expect(timeline.stress.before15min.mean).toBe(30)
+    expect(effects.stress.after_mean).toBe(20)
+  })
+
+  test('the bin the next session starts in is not part of the window after', () => {
+    const sessions = mergeIntoSessions([
+      { end: min(30), start: min(0) },
+      { end: min(80), start: min(52) },
+    ])
+    const stress = bins([
+      [-10, 30],
+      [40, 20],
+      [50, 90],
+    ])
+    const { timeline } = summarizeImpact(sessions, only(stress), 30)
+
+    expect(timeline.stress.after15min).toMatchObject({ mean: 20, occurrences: 1 })
+    expect(timeline.stress.after30min.occurrences).toBe(0)
+  })
+})
+
 describe('timelineBuckets', () => {
   test('two buckets per side below an hour, four from an hour', () => {
     expect(bucketsPerSide(30)).toBe(2)

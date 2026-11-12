@@ -195,7 +195,10 @@ const clipBucket = ({ after, before, session }: ClippedSession, bucket: BucketOf
   const startMs = bucket.start_offset_minutes * MINUTE_MS
   const endMs = bucket.end_offset_minutes * MINUTE_MS
   if (bucket.phase === 'before') {
-    return { end: session.start + endMs, start: Math.max(session.start + startMs, before.start) }
+    return {
+      end: Math.min(session.start + endMs, before.end),
+      start: Math.max(session.start + startMs, before.start),
+    }
   }
   if (bucket.phase === 'after') {
     return { end: Math.min(session.end + endMs, after.end), start: session.end + startMs }
@@ -208,8 +211,17 @@ const sessionWindows = (sessions: Interval[], windowMinutes: number): SessionWin
   const legacy = Object.entries(legacyBuckets(windowMinutes)) as [TimelineBucket, BucketOffsets][]
   return sessions.map((session, i) => {
     const { end, start } = session
-    const before = { end: start, start: Math.max(start - windowMs, sessions[i - 1]?.end ?? -Infinity) }
-    const after = { end: Math.min(end + windowMs, sessions[i + 1]?.start ?? Infinity), start: end }
+    // A bin is picked by its start time, so a window that ends where a session begins stops one
+    // bin early: the bin straddling the session's start holds the session's own samples.
+    const next = sessions[i + 1]
+    const before = {
+      end: start - BIN_MINUTES * MINUTE_MS + 1,
+      start: Math.max(start - windowMs, sessions[i - 1]?.end ?? -Infinity),
+    }
+    const after = {
+      end: Math.min(end + windowMs, next ? next.start - BIN_MINUTES * MINUTE_MS + 1 : Infinity),
+      start: end,
+    }
     const clipped = { after, before, session }
     return {
       after,

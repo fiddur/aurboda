@@ -201,7 +201,9 @@ How the numbers are made:
   5-minute interval.
 - **Clipped windows.** Before is `[start − W, start)`, after is
   `[end, end + W)`, each clipped to the neighbouring sessions of the same group,
-  so one session's "after" never reaches into the next session.
+  so one session's "after" never reaches into the next session. A window that
+  ends where a session begins leaves out the 5-minute bin that session starts
+  in, since that bin holds samples from the session itself.
 - **Timeline buckets.** The chart's `timeline` splits each side of the window
   into 2 buckets when `W` is under an hour and 4 otherwise (30 min → 15-minute
   buckets, 4 h → 1-hour buckets, 24 h → 6-hour buckets), clipped to the
