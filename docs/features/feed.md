@@ -258,6 +258,39 @@ as before (`PATCH /feed/articles/:postId`); there is no unpublish-to-draft.
 | `DELETE /feed/article-drafts/:id`       | `delete_article_draft`  | Delete a draft (nothing to retract)                                                                                                                                               |
 | `POST /feed/article-drafts/:id/publish` | `publish_article_draft` | Validate and publish; `{ visibility? }` overrides the draft's                                                                                                                     |
 
+#### Preview
+
+`POST /feed/articles/preview` (MCP `preview_article`, #1605) shows what an article — a draft
+or an unsaved editor state, `{ article, visibility?, include_images? }` in the
+`ArticleDraftContent` shape — would federate as, and creates nothing. Only its **complete**
+blocks are previewed (a chart with a metric, a correlation with trigger and outcome, a
+challenge with a challenge URL, an impact block with an activity, and for a windowed block a
+bounded, increasing window); a blank title previews as `Untitled`. The answer
+(`ArticlePreviewResponse`) has the Note `content` and `name` exactly as `renderArticleNote`
+and the hashtag linking build them, the `tags`, the numbered figure `attachments` (alt text,
+`block_index` back into the draft's blocks, `shown_in_mastodon`), `publish_error` — what
+still keeps it from publishing, the same checks as publishing, or `null` — and `notes` on
+what Mastodon changes for this post (figures past the fourth, figures with no data yet, the
+cropped grid, followers-only image tokens). With `include_images` each block figure Mastodon
+shows comes back as SVG markup (`image_svg`, the same titled image `figure.png` rasterises;
+`null` when the block has nothing to draw yet), drawn one at a time and cached for the hour
+so retyping prose does not draw the charts again. A block figure has no URL before the post
+exists, so a figure past the fourth is linked as `#figure-N` in the preview.
+
+`mastodon` is an **emulation of Mastodon's web UI**, not Mastodon itself: `content` after a
+port of Mastodon's `MASTODON_STRICT` sanitiser (`mastodon-sanitize.ts`: its elements and
+attributes, headings as bold paragraphs, forced `rel="nofollow noopener" target="_blank"`, a
+link with an unsupported or relative scheme replaced by its text) without the trailing
+paragraph of hashtag links, and the `hashtag_bar` Mastodon shows under the media instead.
+The web's article editor shows it as a **Mastodon** tab beside the **Aurboda** tab (the real
+feed card), side by side with the form on a wide screen: the first four images in Mastodon's
+cropped grid with their alt text, the hashtag bar, and the "Read more" fold a status taller
+than 706 px gets in Mastodon timelines.
+
+| REST                          | MCP               | Purpose                                                                   |
+| ----------------------------- | ----------------- | ------------------------------------------------------------------------- |
+| `POST /feed/articles/preview` | `preview_article` | Preview the federated article and its Mastodon rendering; creates nothing |
+
 ### Hashtags
 
 Every post carries **tags**, Mastodon-style hashtags (#1466), stored lowercase without the
@@ -1402,6 +1435,7 @@ Owner-facing (authenticated, scoped to the caller):
 | `GET/POST /autoshare-rules` (+`/:id`, `/preview`) | [Auto-share rules](auto-share-rules.md): automatically publish matching settled activities (#903)                                                                                                            |
 | `PATCH /feed/articles/:postId`                    | Edit an article (title / blocks / default window / visibility)                                                                                                                                               |
 | `/feed/article-drafts` (+`/:id`, `/:id/publish`)  | Private [article drafts](#article-drafts): list, save, edit, delete, publish (validated like `POST /feed/articles`)                                                                                          |
+| `POST /feed/articles/preview`                     | Article **[preview](#preview)** (#1605): the Note content, figures, publish error and a Mastodon web UI emulation; creates nothing                                                                           |
 | `GET /feed/articles/:postId/export`               | Export an article as paste-ready markdown (title + prose + one image link per block) for Reddit/text-only destinations                                                                                       |
 | `PATCH /feed/:postId`                             | Edit an activity post's selection / visibility / attachments                                                                                                                                                 |
 | `DELETE /feed/:postId`                            | Unpublish any post (an activity post's public series stops resolving)                                                                                                                                        |
@@ -1478,7 +1512,7 @@ The public profile page (`/u/:username`, from
 email is never part of the actor or any public response.
 
 The owner-facing capability is also available over MCP as `list_feed`, `share_activity`,
-`preview_activity_share`, `share_challenge`, `share_exercise`, `preview_exercise_share`, `share_dashboard_period`, `preview_dashboard_period_share`, `create_article`, `update_article`, the [article draft](#article-drafts) tools, `export_article_markdown`, `update_feed_post`,
+`preview_activity_share`, `share_challenge`, `share_exercise`, `preview_exercise_share`, `share_dashboard_period`, `preview_dashboard_period_share`, `create_article`, `update_article`, `preview_article`, the [article draft](#article-drafts) tools, `export_article_markdown`, `update_feed_post`,
 `delete_feed_post`, `list_following`, `follow_actor`, `unfollow_actor`, `list_followed_tags`,
 `follow_tag`, `unfollow_tag`, `list_followers`,
 `approve_follower`, `reject_follower`, `list_timeline`, `like_timeline_post`,

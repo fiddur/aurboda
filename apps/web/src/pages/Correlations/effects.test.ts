@@ -1,16 +1,9 @@
+import { impactEffectSummary } from '@aurboda/api-spec'
 import { describe, expect, test } from 'vitest'
 
 import type { WindowEffect } from '../../state/api'
 
-import {
-  changeClass,
-  changeTitle,
-  columnTitles,
-  effectSummary,
-  formatDelta,
-  getDeltaClass,
-  roundTo,
-} from './effects'
+import { changeClass, changeTitle, columnTitles, formatDelta, getDeltaClass, roundTo } from './effects'
 
 const effect = (overrides: Partial<WindowEffect> = {}): WindowEffect => ({
   after_mean: 35.4,
@@ -62,16 +55,18 @@ describe('changeTitle', () => {
   })
 })
 
-describe('effectSummary', () => {
+describe('impactEffectSummary', () => {
   test('matches the change cell numbers', () => {
-    expect(effectSummary('Stress', effect(), 48)).toBe('Stress 47.0 → 35.4 (−11.6) · 41 of 48 occurrences')
-    expect(effectSummary('HRV', effect({ after_mean: 50, before_mean: 45, change: 5 }), 48)).toBe(
+    expect(impactEffectSummary('Stress', effect(), 48)).toBe(
+      'Stress 47.0 → 35.4 (−11.6) · 41 of 48 occurrences',
+    )
+    expect(impactEffectSummary('HRV', effect({ after_mean: 50, before_mean: 45, change: 5 }), 48)).toBe(
       'HRV 45.0 → 50.0 (+5.0) · 41 of 48 occurrences',
     )
   })
 
   test('is null without paired occurrences', () => {
-    expect(effectSummary('HRV', effect({ change: null, paired_occurrences: 0 }), 5)).toBeNull()
+    expect(impactEffectSummary('HRV', effect({ change: null, paired_occurrences: 0 }), 5)).toBeNull()
   })
 })
 
