@@ -323,6 +323,12 @@ describe('placesLines', () => {
 })
 
 describe('renderDashboardShareHtml', () => {
+  test('a table in the note comes out as lines, not a table', () => {
+    const html = renderDashboardShareHtml(dashboard, null, '| Metric | Value |\n|---|---|\n| HRV | 42 |')
+    expect(html).toContain('<p><em>Metric</em><br /><strong>HRV</strong>: Value 42</p>')
+    expect(html).not.toContain('<table')
+  })
+
   test('heading, note, one line per figure widget in config order, and the link', () => {
     expect(renderDashboardShareHtml(dashboard, structured, 'A **good** month')).toBe(
       [

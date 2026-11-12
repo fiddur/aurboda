@@ -38,6 +38,16 @@ describe('replyMentionName', () => {
 })
 
 describe('renderReplyContent', () => {
+  test('a table in the message comes out as lines, not a table', () => {
+    const html = renderReplyContent({
+      in_reply_to_actor_uri: null,
+      in_reply_to_handle: null,
+      message: '| Metric | Value |\n|---|---|\n| HRV | 42 |',
+    })
+    expect(html).toContain('<p><em>Metric</em><br /><strong>HRV</strong>: Value 42</p>')
+    expect(html).not.toContain('<table')
+  })
+
   const post = {
     in_reply_to_actor_uri: 'https://mastodon.example/users/alice',
     in_reply_to_handle: '@alice@mastodon.example',

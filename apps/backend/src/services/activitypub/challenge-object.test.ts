@@ -10,6 +10,12 @@ import {
 const challenge = { name: 'August 10k steps', url: 'https://aurboda.net/u/fiddur/august-10k' }
 
 describe('renderChallengeShareHtml', () => {
+  test('a table in the note comes out as lines, not a table', () => {
+    const html = renderChallengeShareHtml(challenge, '| Metric | Value |\n|---|---|\n| HRV | 42 |')
+    expect(html).toContain('<p><em>Metric</em><br /><strong>HRV</strong>: Value 42</p>')
+    expect(html).not.toContain('<table')
+  })
+
   test('renders name heading, sanitised markdown note, and the canonical link', () => {
     const html = renderChallengeShareHtml(challenge, 'Join me — **every step counts**!')
     expect(html).toContain('<p><strong>August 10k steps</strong></p>')

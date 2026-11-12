@@ -1,6 +1,6 @@
 /**
  * The AS2 `content` for a dashboard-period share post (#1505): the dashboard name and the period
- * as a heading, the author's note through the same outbound sanitiser as article prose, one line
+ * as a heading, the author's note shaped for Mastodon like article prose (`renderNoteProse`), one line
  * per figure widget (metric and sparkline cards, the activity summary, record cards, activity
  * type cards, top lists and the places card) with its change against the previous period, then
  * the dashboard's public page as a plain link when it was published and linked. Charts have no
@@ -25,7 +25,7 @@ import {
   type StructuredDashboardDeps,
   type StructuredDashboardPost,
 } from '../feed-structured-dashboard.ts'
-import { renderProse } from './article-object.ts'
+import { renderNoteProse } from './note-prose.ts'
 
 const formatFigure = (value: number): string => String(Number(value.toFixed(1)))
 
@@ -199,7 +199,7 @@ export const renderDashboardShareHtml = (
   const parts = [
     `<p><strong>${escapeXml(dashboard.name)}</strong> · ${escapeXml(periodLabel(dashboard.period))}</p>`,
   ]
-  if (message) parts.push(renderProse(message))
+  if (message) parts.push(renderNoteProse(message))
   if (structured) {
     const lines = figureLines(structured)
     if (lines.length > 0) parts.push(`<p>${lines.map(escapeXml).join('<br>')}</p>`)

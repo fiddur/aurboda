@@ -50,7 +50,7 @@ const mapWithConcurrency = async <T, R>(
   return results
 }
 
-const svgToPng = (svg: string): Promise<Buffer> => sharp(Buffer.from(svg)).png().toBuffer()
+export const svgToPng = (svg: string): Promise<Buffer> => sharp(Buffer.from(svg)).png().toBuffer()
 
 export const renderChartPng = (
   series: [Date, number][],
