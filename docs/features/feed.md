@@ -403,7 +403,8 @@ A tag follow never raises a post notification: the Android notifier reads only t
 list. A card boosted by a followed tag actor carries `boosted_by.tag` and
 shows a `#running` chip in place of the "🔄 X boosted" line. The host is a server setting,
 `tag_actor_host` (Admin → **Federation**, default `tags.pub`). Only posts from servers that
-push to tags.pub arrive this way; pushing Aurboda's own posts there is #1541.
+push to tags.pub arrive this way; every Aurboda server pushes its own public posts there
+through the tags.pub relay it subscribes to by default (see [Relays](../admin.md#federation)).
 
 **Web.** Feed → **People & sharing** has a **Followed tags** block (follow `#tag`, the Pending
 badge and Unfollow), and the **Following** timeline shows a chip row (`All` plus one
@@ -442,7 +443,8 @@ correct behind the TLS-terminating proxy (which forwards over loopback http).
 **Instance actor and relays.** Besides the per-user actors, the server itself is an
 `Application` actor at `<public-base>/actor` (WebFinger `acct:<host>@<host>`, inbox at
 `/users/~actor/inbox`, shared inbox `/inbox`), whose key pair lives in the central database. It
-exists to subscribe to [relays](../admin.md#federation), which admins add in Admin Settings. Once
+exists to subscribe to [relays](../admin.md#federation), which admins add in Admin Settings; the
+tags.pub relay is subscribed to once by default, on a public https origin. Once
 a relay accepts, every `public` post's `Create`, `Update` and `Delete` is delivered to the relay's
 inbox too, signed by the author, as a separate best-effort leg of the fan-out (a dead relay never
 fails the followers delivery). Unlisted and followers-only posts, replies, likes, boosts and

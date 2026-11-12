@@ -177,7 +177,12 @@ import {
   readPublicTagPages,
   readPublicTagRetentionDays,
 } from './services/public-tags.ts'
-import { createRelayActions, createRelayInboxHooks, relayRecipients } from './services/relays.ts'
+import {
+  createRelayActions,
+  createRelayInboxHooks,
+  ensureDefaultRelays,
+  relayRecipients,
+} from './services/relays.ts'
 import { safeFetchGet } from './services/safe-fetch.ts'
 import { initSentry, Sentry } from './services/sentry.ts'
 import {
@@ -628,6 +633,11 @@ const main = async () => {
       readTags: () => readInstanceFollowedTags(centralDb),
     }),
   )
+  postListenCallbacks.push(async () => {
+    if ((await ensureDefaultRelays({ add: relayActions.add, centralDb, origin: webHost })) === 'seeded') {
+      console.info('🛰️ Subscribed to the tags.pub relay by default')
+    }
+  })
 
   const accountDeleter = createAccountDeleter({
     announceDeletion: (user) => deliverActorDelete(feedDeps, user),
