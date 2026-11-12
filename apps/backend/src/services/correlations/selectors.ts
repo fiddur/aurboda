@@ -11,7 +11,7 @@
 import type { NutrientKey } from '../../db/index.ts'
 
 import {
-  getAllActivitiesInRange,
+  getEffectiveActivitiesInRange,
   getDailyNutrientTotals,
   getMealLogCompletedInRange,
   getNutritionCompleteDaysInRange,
@@ -143,7 +143,7 @@ const resolveActivity = async (
   start: Date,
   end: Date,
 ): Promise<ResolvedSeries> => {
-  const activities = await getAllActivitiesInRange(user, start, end)
+  const activities = await getEffectiveActivitiesInRange(user, start, end)
   const measure = selector.kind === 'activity' ? (selector.measure ?? 'count') : 'count'
   const daily = new Map<string, number>()
 

@@ -12,7 +12,7 @@ import type {
   ProductivityCorrelation,
 } from './types.ts'
 
-import { getAllActivitiesInRange, getProductivity, getTimeSeries } from '../../db/index.ts'
+import { getEffectiveActivitiesInRange, getProductivity, getTimeSeries } from '../../db/index.ts'
 import { pushAll } from '../../utils.ts'
 import { getPlaceVisits } from '../locations.ts'
 import { triggerCorrelationSyncs } from './background-sync.ts'
@@ -196,7 +196,7 @@ export async function getHrvActivitiesCorrelation(
     getTimeSeries(user, 'stress_level', seriesStart, seriesEnd),
     getProductivity(user, start, end),
     getPlaceVisits(user, start, end),
-    getAllActivitiesInRange(user, start, end),
+    getEffectiveActivitiesInRange(user, start, end),
   ])
 
   // The series the productivity correlation is computed against. HRV is the

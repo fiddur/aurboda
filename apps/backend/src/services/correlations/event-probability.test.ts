@@ -4,7 +4,7 @@ import * as db from '../../db/index.ts'
 import { getEventProbability } from './event-probability.ts'
 
 vi.mock('../../db', () => ({
-  getAllActivitiesInRange: vi.fn(),
+  getEffectiveActivitiesInRange: vi.fn(),
 }))
 
 describe('getEventProbability', () => {
@@ -17,7 +17,7 @@ describe('getEventProbability', () => {
     const day1Later = new Date('2024-01-01T18:00:00Z')
     const day2 = new Date('2024-01-02T10:00:00Z')
 
-    vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
+    vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
       // Trigger events (gym)
       { external_id: 't1', source: 'manual' as const, start_time: day1, activity_type: 'gym' },
       { external_id: 't2', source: 'manual' as const, start_time: day2, activity_type: 'gym' },
@@ -48,7 +48,7 @@ describe('getEventProbability', () => {
     const day1End = new Date('2024-01-01T11:00:00Z')
     const day1Later = new Date('2024-01-01T18:00:00Z')
 
-    vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
+    vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
       {
         activity_type: 'exercise',
         end_time: day1End,
@@ -74,7 +74,7 @@ describe('getEventProbability', () => {
   test('returns zero probability when no outcomes', async () => {
     const day1 = new Date('2024-01-01T10:00:00Z')
 
-    vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
+    vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
       { external_id: 't1', source: 'manual' as const, start_time: day1, activity_type: 'gym' },
     ])
 
