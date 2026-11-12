@@ -10,7 +10,9 @@ import type { AnyMiddleware } from '../typed-router.ts'
 import { migrateSchemaIfNeeded } from '../db/index.ts'
 import { safeRefusal } from '../services/account-gate.ts'
 import { auditError, auditInfo, auditWarn } from '../services/audit-log.ts'
+import { backfillMealFoodItemNames } from '../services/backfill-meal-food-item-names.ts'
 import { backfillScreentimeActivities } from '../services/backfill-screentime-activities.ts'
+import { reconcileExportedSharedFoodItems } from '../services/exported-shared-food.ts'
 import { redactGarminLoginAudit } from '../services/redact-garmin-login-audit.ts'
 import { retypeLegacyScreentime } from '../services/retype-legacy-screentime.ts'
 import { summarizeAuditBody } from './audit-body.ts'
@@ -78,8 +80,9 @@ export const createAuditLogMiddleware =
  * after a deploy the background sweep in `api.ts` has usually done that
  * already. The first request still awaits it, so no request runs against
  * stale schema; subsequent requests wait if it is still in flight. Also kicks
- * off a one-shot background backfill of historical screentime activities,
- * gated via sync_state.
+ * off, in the background, the reconcile of a restored dump's shared food
+ * items (independent of the fingerprint, since a same-version restore
+ * migrates nothing) and one-shot backfills gated via sync_state.
  *
  * With an account gate, a write by a read-only account (its plan expired past the
  * grace period) is answered 402 unless `isAllowedWhenReadOnly` lets it through.
@@ -105,6 +108,9 @@ export const createAuthMiddleware = (
           const migrationPromise = migrateSchemaIfNeeded(user)
             .then(() => {
               void (async () => {
+                await reconcileExportedSharedFoodItems(user)
+                  .then(() => backfillMealFoodItemNames(user))
+                  .catch((err) => console.error(`⚠️ Food item reference upkeep failed for ${user}:`, err))
                 await backfillScreentimeActivities(user).catch((err) =>
                   console.error(`⚠️ Screentime backfill failed for ${user}:`, err),
                 )
