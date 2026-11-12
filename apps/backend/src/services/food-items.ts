@@ -381,7 +381,7 @@ export interface FoodItemDisplay {
  */
 export const resolveFoodItemDisplay = async (
   user: string,
-  centralDb: CentralDb,
+  centralDb: Pick<CentralDb, 'getSharedFoodItemsByIds'>,
   ids: string[],
 ): Promise<Map<string, FoodItemDisplay>> => {
   const map = new Map<string, FoodItemDisplay>()
