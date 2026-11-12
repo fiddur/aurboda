@@ -27,6 +27,7 @@ import { pruneAuditLog } from '../services/audit-log.ts'
 import { readOfficialFeedSetting } from '../services/official-feed.ts'
 import { readPublicTagPages } from '../services/public-tags.ts'
 import { defaultSignupProfileDeps, saveSignupProfile } from '../services/signup-profile.ts'
+import { readSupportContacts } from '../services/support-contacts.ts'
 import { validateBody } from '../validation.ts'
 
 interface AuthRoutesDeps {
@@ -84,15 +85,18 @@ export const registerAuthRoutes = ({
   })
 
   httpd.get<Record<string, never>, ServerStatusResponse>('/status', async (_req, res) => {
-    const [signupMode, officialFeed, billing, publicTagPages] = await Promise.all([
+    const [signupMode, officialFeed, billing, publicTagPages, contacts] = await Promise.all([
       centralDb.getSignupMode(),
       readOfficialFeedSetting(centralDb),
       readBillingSettings(centralDb),
       readPublicTagPages(centralDb),
+      readSupportContacts(centralDb),
     ])
     const officialFeedLive = (await Promise.all(officialFeed.users.map(userExists))).some(Boolean)
     res.json({
       billing_enabled: billing.enabled,
+      contact_fediverse: contacts.contact_fediverse || null,
+      contact_reddit: contacts.contact_reddit || null,
       federation: true,
       official_feed: officialFeedLive,
       product: 'aurboda',
