@@ -15,6 +15,7 @@ import type { AccountDeleter } from '../services/account-deletion.ts'
 import type { AccountPlans } from '../services/account-plan.ts'
 import type { PostUpdateResender } from '../services/activitypub/post-update-resend.ts'
 import type { AdminUsers } from '../services/admin-users.ts'
+import type { ArticlePreviewer } from '../services/article-preview.ts'
 import type { CentralDb } from '../services/central-db.ts'
 import type { DiscoverChallenges } from '../services/challenge-discovery.ts'
 import type { DeductionEngineDeps } from '../services/deduction-engine.ts'
@@ -176,10 +177,12 @@ interface RestRoutesDeps {
   onHrSettingsChanged: HrSettingsChanged
   onNamedLocationsChanged: NamedLocationsChanged
   dataExport: { exporter: DumpExporter; requestDumpLink: DumpLinkIssuer; tokens: ExportTokens }
+  /** The article preview, shared with MCP's `preview_article`. */
+  previewArticle: ArticlePreviewer
 }
 
 /** Where a post's chart data comes from, for its feed images and its link-preview card alike. */
-const postChartDeps: PostChartDeps = {
+export const postChartDeps: PostChartDeps = {
   // Merged-span window so the rendered chart covers what the user shared,
   // matching the Note's duration/metrics (#881).
   getActivity: resolveFeedActivity,
@@ -222,6 +225,7 @@ export const mountRestRouters = ({
   relayActions,
   publicTagActions,
   postUpdateResender,
+  previewArticle,
   reactionActions,
   onProfileChanged,
   onHrSettingsChanged,
@@ -297,6 +301,7 @@ export const mountRestRouters = ({
       retroEnrichTimeline,
       webHost,
       reactionActions,
+      previewArticle,
     ),
   )
   httpd.use('/challenges', createChallengesRouter(authMiddleware, webHost, apiBaseUrl, discoverChallenges))

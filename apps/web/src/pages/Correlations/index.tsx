@@ -1,3 +1,4 @@
+import { DEFAULT_IMPACT_WINDOW_MINUTES, formatImpactWindow, IMPACT_WINDOW_OPTIONS } from '@aurboda/api-spec'
 import { signal } from '@preact/signals'
 import { useQuery } from '@tanstack/react-query'
 
@@ -13,7 +14,7 @@ import {
 import { ContextTable } from './ContextTable'
 import { ExploreTab } from './Explore'
 import { describeOccurrences } from './occurrences'
-import { DEFAULT_WINDOW_MINUTES, formatWindow, isLongWindow, WINDOW_OPTIONS } from './window'
+import { isLongWindow } from './window'
 import './style.css'
 
 const periodDays = signal(30)
@@ -35,7 +36,7 @@ const CONTEXT_METRIC_PHRASES: Record<HrvContextMetric, string> = {
   stress_level: 'stress level',
 }
 
-const windowMinutes = signal(DEFAULT_WINDOW_MINUTES)
+const windowMinutes = signal(DEFAULT_IMPACT_WINDOW_MINUTES)
 
 const activeTab = signal<'hrv' | 'explore'>('hrv')
 
@@ -134,9 +135,9 @@ export function Correlations() {
               class="period-select"
               title="How long before and after each occurrence to compare"
             >
-              {WINDOW_OPTIONS.map((minutes) => (
+              {IMPACT_WINDOW_OPTIONS.map((minutes) => (
                 <option key={minutes} value={minutes}>
-                  ±{formatWindow(minutes)}
+                  ±{formatImpactWindow(minutes)}
                 </option>
               ))}
             </select>
@@ -167,8 +168,8 @@ export function Correlations() {
 
           {isLongWindow(windowMinutes.value) && (
             <p class="window-note">
-              A window of {formatWindow(windowMinutes.value)} also picks up your daily rhythm: a few hours
-              after an evening session is mostly sleep. So Change is not the activity's effect alone.
+              A window of {formatImpactWindow(windowMinutes.value)} also picks up your daily rhythm: a few
+              hours after an evening session is mostly sleep. So Change is not the activity's effect alone.
             </p>
           )}
 
@@ -277,10 +278,10 @@ export function Correlations() {
               </li>
               <li>
                 <strong>Change:</strong> the{' '}
-                {formatWindow(correlations?.window_minutes ?? windowMinutes.value)} after minus the{' '}
-                {formatWindow(correlations?.window_minutes ?? windowMinutes.value)} before, for occurrences
-                with data on both sides. It is coloured only when it is statistically clear; hover it for the
-                before and after values.
+                {formatImpactWindow(correlations?.window_minutes ?? windowMinutes.value)} after minus the{' '}
+                {formatImpactWindow(correlations?.window_minutes ?? windowMinutes.value)} before, for
+                occurrences with data on both sides. It is coloured only when it is statistically clear; hover
+                it for the before and after values.
               </li>
               <li>
                 Back-to-back or duplicate entries count as one occurrence, and values are resampled to

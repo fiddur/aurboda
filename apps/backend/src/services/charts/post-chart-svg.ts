@@ -2,7 +2,7 @@
  * A feed post's chart as data, whichever kind it is, so the feed image routes and the post's
  * Open Graph card draw it from the same inputs with the same renderer per kind.
  */
-import { describeSelectorAxis } from '@aurboda/api-spec'
+import { articleImpactLabel, describeSelectorAxis } from '@aurboda/api-spec'
 
 import { buildChartSvg, DEFAULT_CHART_LABEL } from './chart-svg.ts'
 import { buildImpactSvg, type ImpactSvgData } from './impact-svg.ts'
@@ -50,7 +50,7 @@ export const postChartCaption = (chart: PostChart): string => {
     case 'scatter':
       return `${describeSelectorAxis(chart.data.trigger)} vs ${describeSelectorAxis(chart.data.outcome)}`
     case 'impact':
-      return `Impact of ${chart.data.activity}`
+      return articleImpactLabel(chart.data)
   }
 }
 

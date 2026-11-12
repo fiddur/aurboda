@@ -31,7 +31,7 @@ import {
   createNegativeCache,
   type NegativeCache,
 } from '../services/article-block-misses.ts'
-import { articleBlockFigureSize, withFigureTitle } from '../services/charts/figure-svg.ts'
+import { articleBlockFigureSvg } from '../services/article-figure.ts'
 import { isCapabilityAuthorized } from '../services/feed-capability.ts'
 import {
   activityHeartRateChart,
@@ -46,10 +46,11 @@ import {
   standingsChart,
   TREND_BUCKET_MS,
 } from '../services/post-chart.ts'
+import { createRenderCache } from '../services/render-cache.ts'
 import { UUID_RE } from '../utils.ts'
 
 export type { ChartRenderOpts, CorrelationBlockParams, ResolvedArticleBlock }
-export { imageCacheKey }
+export { createRenderCache, imageCacheKey }
 
 /** The window an image renders over. */
 export interface ImageActivity {
@@ -83,43 +84,6 @@ export interface FeedImageDeps extends PostChartDeps {
   rasterizeSvg: (svg: string) => Promise<Buffer>
   /** Remembered block-image misses, shared with the markdown export (a fresh one when omitted). */
   articleBlockMisses?: NegativeCache
-}
-
-/**
- * A tiny memoising cache with in-flight de-duplication (mirrors og-image-router):
- * repeated fetches for the same key serve the cached value, and concurrent misses
- * collapse to a single `produce`. Producing is expensive (a rasterised image, or
- * a many-block structured payload) and the source is effectively immutable per
- * key, so a bounded LRU + process-restart eviction is enough. `produce` returning
- * `null` (no data / unauthorized) is NOT cached. The caller checks eligibility
- * BEFORE consulting this, so an unshared/visibility-changed post 404s and never
- * reaches the cache. Generic over the cached value (defaults to `Buffer` for the
- * image endpoints; the structured endpoint caches its payload object).
- */
-export const createRenderCache = <T = Buffer>(maxEntries = 200) => {
-  const cache = new Map<string, T>()
-  const inFlight = new Map<string, Promise<T | null>>()
-  return async (key: string, produce: () => Promise<T | null>): Promise<T | null> => {
-    const cached = cache.get(key)
-    if (cached) return cached
-    const pending = inFlight.get(key)
-    if (pending) return pending
-    const promise = produce()
-    inFlight.set(key, promise)
-    try {
-      const value = await promise
-      if (value) {
-        if (cache.size >= maxEntries) {
-          const oldest = cache.keys().next().value
-          if (oldest !== undefined) cache.delete(oldest)
-        }
-        cache.set(key, value)
-      }
-      return value
-    } finally {
-      inFlight.delete(key)
-    }
-  }
 }
 
 /**
@@ -268,14 +232,12 @@ export const renderArticleBlockFigure = async (
   index: number,
   block: ResolvedArticleBlock,
 ): Promise<Buffer | null> => {
-  const chart = await articleBlockChart(deps, user, block)
-  if (chart == null) return null
   const figure = renderArticleNote(article, () => '').figures.find((f) => f.block_index === index)
   if (figure == null) return null
-  const svg = (await renderPostChartImage(deps, chart, 'svg')).toString('utf8')
-  const size = articleBlockFigureSize(block.type)
-  const title = { caption: figure.label, heading: `Figure ${figure.number}` }
-  return deps.rasterizeSvg(withFigureTitle(svg, size, title))
+  const svg = await articleBlockFigureSvg(deps, user, block, figure, async (chart) =>
+    (await renderPostChartImage(deps, chart, 'svg')).toString('utf8'),
+  )
+  return svg == null ? null : deps.rasterizeSvg(svg)
 }
 
 const notFound = (res: Response) => res.status(404).json({ error: 'Not found', success: false })

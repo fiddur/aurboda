@@ -211,18 +211,21 @@ export const FeedPostCard = ({
   author,
   footer,
   visitor = false,
+  permalink: linked = true,
 }: {
   post: FeedPost
   author: PostAuthor
   footer?: ComponentChildren
   /** Rendered for an unauthenticated visitor (the public profile), who can't fetch the owner's live data. */
   visitor?: boolean
+  /** False for a post that does not exist yet (a preview): the timestamp links nowhere. */
+  permalink?: boolean
 }) => {
   const vis = VISIBILITY[post.visibility]
   const when = formatDistanceToNow(new Date(post.created_at), { addSuffix: true })
   const { chart, route, standings, trend } = mediaUrls(post, author.username)
   const tags = postTagLine(post, visitor)
-  const permalink = postPermalinkPath(author.username, post)
+  const permalink = linked ? postPermalinkPath(author.username, post) : null
   const time = <time title={new Date(post.created_at).toLocaleString()}>{when}</time>
 
   return (
