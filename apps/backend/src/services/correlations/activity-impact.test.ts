@@ -262,4 +262,47 @@ describe('getActivityImpact', () => {
     ])
     expect(long.timeline.map((b) => b.stress.mean)).toEqual([null, 40, null, null, 30, null, 20, null, null])
   })
+
+  test('extra metrics get an effect and bucket stats; without them nothing new appears', async () => {
+    const base = new Date('2024-01-15T12:00:00Z')
+    vi.mocked(db.getTimeSeries).mockImplementation(async (_u: string, metric: string) =>
+      metric === 'respiratory_rate'
+        ? ([
+            [at(base, -20), 16],
+            [at(base, 10), 12],
+            [at(base, 40), 14],
+          ] as [Date, number][])
+        : [],
+    )
+    vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
+      { activity_type: 'yoga', end_time: at(base, 30), source: 'manual' as const, start_time: base },
+    ])
+
+    const result = await getActivityImpact(
+      'testuser',
+      'yoga',
+      'activity_type',
+      30,
+      90,
+      undefined,
+      undefined,
+      undefined,
+      'contains',
+      ['respiratory_rate', 'body_battery'],
+    )
+
+    expect(result.metric_effects?.respiratory_rate).toMatchObject({
+      after_mean: 14,
+      before_mean: 16,
+      change: -2,
+      paired_occurrences: 1,
+    })
+    expect(result.metric_effects?.body_battery.paired_occurrences).toBe(0)
+    expect(result.timeline.map((b) => b.metrics?.respiratory_rate.mean)).toEqual([16, null, 12, 14, null])
+    expect(result.stress_effect.paired_occurrences).toBe(0)
+
+    const plain = await getActivityImpact('testuser', 'yoga', 'activity_type', 30, 90)
+    expect(plain).not.toHaveProperty('metric_effects')
+    expect(plain.timeline.every((b) => !('metrics' in b))).toBe(true)
+  })
 })

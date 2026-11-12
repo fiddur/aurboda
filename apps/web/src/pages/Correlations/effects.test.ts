@@ -17,18 +17,23 @@ const effect = (overrides: Partial<WindowEffect> = {}): WindowEffect => ({
 
 describe('changeClass', () => {
   test('colours a clear change by direction', () => {
-    expect(changeClass(effect(), true)).toBe('positive')
-    expect(changeClass(effect(), false)).toBe('negative')
-    expect(changeClass(effect({ change: 3 }), false)).toBe('positive')
+    expect(changeClass(effect(), 'down')).toBe('positive')
+    expect(changeClass(effect(), 'up')).toBe('negative')
+    expect(changeClass(effect({ change: 3 }), 'up')).toBe('positive')
   })
 
   test('mutes a change that is not statistically clear', () => {
-    expect(changeClass(effect({ p_value: 0.2 }), true)).toBe('muted')
-    expect(changeClass(effect({ p_value: null }), true)).toBe('muted')
+    expect(changeClass(effect({ p_value: 0.2 }), 'down')).toBe('muted')
+    expect(changeClass(effect({ p_value: null }), 'down')).toBe('muted')
+    expect(changeClass(effect({ p_value: 0.2 }), 'neutral')).toBe('muted')
+  })
+
+  test('shows a clear change plainly when the good direction is unknown', () => {
+    expect(changeClass(effect(), 'neutral')).toBe('')
   })
 
   test('is empty without a change', () => {
-    expect(changeClass(effect({ change: null }), true)).toBe('')
+    expect(changeClass(effect({ change: null }), 'down')).toBe('')
   })
 })
 
@@ -74,8 +79,10 @@ describe('deltas', () => {
   test('format and colour', () => {
     expect(formatDelta(7, 0)).toBe('+7')
     expect(formatDelta(null, 1)).toBe('--')
-    expect(getDeltaClass(7, true)).toBe('negative')
-    expect(getDeltaClass(0, true)).toBe('')
+    expect(getDeltaClass(7, 'down')).toBe('negative')
+    expect(getDeltaClass(7, 'up')).toBe('positive')
+    expect(getDeltaClass(7, 'neutral')).toBe('')
+    expect(getDeltaClass(0, 'down')).toBe('')
   })
 })
 
@@ -96,6 +103,6 @@ describe('roundTo', () => {
   test('a delta that displays as zero is unsigned and uncoloured', () => {
     const rounded = roundTo(-0.4, 0)
     expect(formatDelta(rounded, 0)).toBe('0')
-    expect(getDeltaClass(rounded, true)).toBe('')
+    expect(getDeltaClass(rounded, 'down')).toBe('')
   })
 })

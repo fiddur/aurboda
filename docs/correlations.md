@@ -163,7 +163,44 @@ often give the meaningful one. The older single `correlation_coefficient` is
 still returned, for the metric named by `context_metric` (request parameter,
 default `hrv_rmssd`, echoed back in the response). The web Context tab does not
 send `context_metric`: it shows r for each metric whose checkbox is on (HRV,
-Heart rate, Stress).
+Heart rate, Stress, and any extra metric below).
+
+## Other metrics (extras)
+
+Besides HRV, heart rate and stress, the same before/during/after analysis runs
+on up to 4 other metrics, named in `metrics` (REST: a comma list,
+`metrics=body_battery,respiratory_rate`; MCP: an array). Each is fetched, binned
+to 5 minutes and summarised exactly like the three. The three keep their own
+fields; the extras come back in maps keyed by metric name, and only when
+`metrics` is given, so a request without it gets the same response as before:
+
+- `hrv-activities`: every row has `metrics.<name>` with `mean`, `stddev`
+  (during), `delta_from_baseline` and `effect`; productivity rows also
+  `correlation_coefficient` (r of the productivity score with that metric). The
+  top-level `metric_baselines.<name>` is the period average.
+- `activity-impact`: `metric_effects.<name>` and, on each `timeline` bucket,
+  `metrics.<name>`.
+
+More than 4 names, a name that is not a metric name (`[a-z][a-z0-9_]*`, at most
+50 characters), or a cumulative metric (`steps`, `distance`, `floors_climbed`,
+`calories_active`, `calories_total`: a 5-minute mean of a running total means
+nothing) is a 400 (an error from the MCP tools). An unknown or sparse metric is
+accepted and comes back with nulls.
+
+`GET /correlations/impact-metrics?period_days=30` (MCP `get_impact_metrics`)
+lists the candidates: every metric, built-in or custom, that is not cumulative
+and not one of the three, and that is recorded around the clock, so there is
+data before and after a session. The rule is coverage, not sample count: data on
+at least 3 days of the period, and on the days that have data a median of at
+least 48 covered quarter hours (15-minute slots, epoch-aligned, with at least
+one sample; 48 is half of the day), counted per UTC day over all sources. A
+metric recorded only during workouts or sleep (often respiration rate) can have
+thousands of samples a day yet leave every before/after window empty, so it
+does not qualify; nor do daily values (resting heart rate, sleep scores, most
+manual logs). Each is `{ metric, label, unit, coverage_hours_per_day,
+samples_per_day }` (medians over the days with data; coverage is the quarter
+hours divided by 4), sorted by coverage, then samples. A custom metric's label
+is its name in words, never its description.
 
 ## Context analysis (Analyze → context tab)
 
@@ -239,11 +276,12 @@ API:
 
 - `GET /correlations/hrv-activities?period_days=30&window_minutes=30`
   and MCP `get_hrv_activities_correlation` (`window_minutes`, 10–1440, default
-  30). The response echoes `window_minutes`. Productivity rows carry
+  30; `metrics`, see [Other metrics](#other-metrics-extras)). The response
+  echoes `window_minutes`. Productivity rows carry
   `correlation_coefficients` (r per metric); the optional `context_metric`
   only picks which of them fills the legacy `correlation_coefficient`.
 - `GET /correlations/activity-impact/:activity?activity_type=activity_type&period_days=30&window_minutes=30&match=exact`
-  and MCP `get_activity_impact` (`window_minutes`, `match`). `match` is
+  and MCP `get_activity_impact` (`window_minutes`, `match`, `metrics`). `match` is
   `contains` (default: every name containing `activity`, case-insensitive) or
   `exact` (the grouping key the context table uses). `timeline` is an ordered
   array of buckets, `{ phase, start_offset_minutes, end_offset_minutes, hrv, hr,
@@ -260,6 +298,8 @@ stress }`: the before buckets oldest first, then `during`, then the after
   days: `start` inclusive, `end` exclusive. One without the other, or a `start`
   not before `end`, is a 400 (an error from the MCP tool). An article's impact
   block uses this with `match=exact` and its own window.
+- `GET /correlations/impact-metrics?period_days=30` and MCP
+  `get_impact_metrics`: the metrics dense enough to pass as `metrics`.
 
 ## Statistics notes
 

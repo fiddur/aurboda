@@ -5,6 +5,8 @@ import {
   eventProbabilityInputSchema,
   genericCorrelationBodySchema,
   hrvCorrelationInputSchema,
+  impactExtraMetricsError,
+  impactMetricsInputSchema,
   tzSchema,
 } from '@aurboda/api-spec'
 
@@ -16,6 +18,7 @@ import {
   getEventProbability,
   getGenericCorrelation,
   getHrvActivitiesCorrelation,
+  getImpactMetrics,
   type OutcomeConfig,
   parseImpactPeriod,
   type Selector,
@@ -42,9 +45,12 @@ export const registerCorrelationTools = (server: McpServer, user: string, sync?:
 
   server.tool(
     'get_hrv_activities_correlation',
-    'Get autonomic-context correlations with activities, locations and productivity. Per item: mean HRV, heart rate and stress during it (resampled to 5-minute averages, averaged per occurrence; back-to-back or duplicate entries count as one occurrence), the *_delta_from_baseline (during minus the average over the whole period), and hrv_effect / hr_effect / stress_effect: the paired change from the window_minutes before to the window_minutes after (before_mean, after_mean, change, paired_occurrences, p_value from a paired t-test). Productivity categories also get correlation_coefficients: the Pearson r of the productivity score with each of hrv_rmssd, heart_rate and stress_level (null when not computable); correlation_coefficient is the one for context_metric (default hrv_rmssd).',
+    'Get autonomic-context correlations with activities, locations and productivity. Per item: mean HRV, heart rate and stress during it (resampled to 5-minute averages, averaged per occurrence; back-to-back or duplicate entries count as one occurrence), the *_delta_from_baseline (during minus the average over the whole period), and hrv_effect / hr_effect / stress_effect: the paired change from the window_minutes before to the window_minutes after (before_mean, after_mean, change, paired_occurrences, p_value from a paired t-test). Productivity categories also get correlation_coefficients: the Pearson r of the productivity score with each of hrv_rmssd, heart_rate and stress_level (null when not computable); correlation_coefficient is the one for context_metric (default hrv_rmssd). metrics (at most 4, e.g. ["body_battery", "respiratory_rate"]; list candidates with get_impact_metrics) adds other dense metrics analysed the same way: each item then has metrics.<name> with mean, stddev, delta_from_baseline and effect (productivity rows also correlation_coefficient), and metric_baselines holds their period averages.',
     { ...hrvCorrelationInputSchema.shape, tz: tzSchema },
-    async ({ context_metric, period_days, window_minutes, tz }) => {
+    async ({ context_metric, metrics, period_days, window_minutes, tz }) => {
+      const extraMetrics = metrics ?? []
+      const metricsError = impactExtraMetricsError(extraMetrics)
+      if (metricsError) return errorResponse(metricsError)
       const periodDays = period_days ?? 30
       const correlations = await getHrvActivitiesCorrelation(
         user,
@@ -52,6 +58,7 @@ export const registerCorrelationTools = (server: McpServer, user: string, sync?:
         sync,
         context_metric,
         window_minutes ?? 30,
+        extraMetrics,
       )
       return tzJsonResponse({ data: correlations, success: true }, tz)
     },
@@ -59,11 +66,14 @@ export const registerCorrelationTools = (server: McpServer, user: string, sync?:
 
   server.tool(
     'get_activity_impact',
-    'Get the impact of an activity on HRV, heart rate and stress. window_minutes (10-1440, default 30) is how long before and after each occurrence to compare. Returns timeline: buckets in time order with phase (before/during/after), start_offset_minutes, end_offset_minutes and hrv/hr/stress stats (each the mean of per-occurrence means over 5-minute averages); each side has 2 buckets when window_minutes is under 60 and 4 otherwise. The legacy *_timeline objects hold the outer and inner halves of the window. Also returns hrv_effect / hr_effect / stress_effect: the paired change from the window before to the window after (before_mean, after_mean, change, paired_occurrences, p_value from a paired t-test). Matching entries that overlap or are at most 10 minutes apart count as one occurrence. match: "contains" (default) matches every name containing activity; match: "exact" analyzes one exact type, as the context table on the Analyze page groups it. start and end (ISO 8601, given together) fix the analysed period instead of the last period_days days: start inclusive, end exclusive.',
+    'Get the impact of an activity on HRV, heart rate and stress. window_minutes (10-1440, default 30) is how long before and after each occurrence to compare. Returns timeline: buckets in time order with phase (before/during/after), start_offset_minutes, end_offset_minutes and hrv/hr/stress stats (each the mean of per-occurrence means over 5-minute averages); each side has 2 buckets when window_minutes is under 60 and 4 otherwise. The legacy *_timeline objects hold the outer and inner halves of the window. Also returns hrv_effect / hr_effect / stress_effect: the paired change from the window before to the window after (before_mean, after_mean, change, paired_occurrences, p_value from a paired t-test). Matching entries that overlap or are at most 10 minutes apart count as one occurrence. match: "contains" (default) matches every name containing activity; match: "exact" analyzes one exact type, as the context table on the Analyze page groups it. start and end (ISO 8601, given together) fix the analysed period instead of the last period_days days: start inclusive, end exclusive. metrics (at most 4, e.g. ["body_battery"]; list candidates with get_impact_metrics) adds other dense metrics: metric_effects.<name> and timeline[].metrics.<name>.',
     { ...activityImpactInputSchema.shape, tz: tzSchema },
-    async ({ activity, activity_type, end, match, period_days, start, window_minutes, tz }) => {
+    async ({ activity, activity_type, end, match, metrics, period_days, start, window_minutes, tz }) => {
       const period = parseImpactPeriod(start, end)
       if (!period.ok) return errorResponse(period.error)
+      const extraMetrics = metrics ?? []
+      const metricsError = impactExtraMetricsError(extraMetrics)
+      if (metricsError) return errorResponse(metricsError)
       const periodDays = period_days ?? 90
       const windowMinutes = window_minutes ?? 30
 
@@ -77,8 +87,19 @@ export const registerCorrelationTools = (server: McpServer, user: string, sync?:
         period.until,
         period.since,
         match,
+        extraMetrics,
       )
       return tzJsonResponse({ data: impact, success: true }, tz)
+    },
+  )
+
+  server.tool(
+    'get_impact_metrics',
+    'List the metrics usable in the activity-impact analysis, to pass as metrics to get_activity_impact and get_hrv_activities_correlation: every non-cumulative metric besides HRV, heart rate and stress that is recorded around the clock, so there is data before and after a session. That is data on at least 3 days of the period, with a sample in a median of at least 48 of the 96 15-minute slots of a day (half of the day) on the days that have data. Metrics recorded only during workouts or sleep (often respiration rate) and daily values do not qualify. Returns metric, label, unit, coverage_hours_per_day and samples_per_day, best covered first.',
+    { ...impactMetricsInputSchema.shape, tz: tzSchema },
+    async ({ period_days, tz }) => {
+      const metrics = await getImpactMetrics(user, period_days ?? 30)
+      return tzJsonResponse({ data: { metrics }, success: true }, tz)
     },
   )
 

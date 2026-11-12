@@ -2,8 +2,10 @@ import type { ActivityImpactType, CorrelationSelector } from '@aurboda/api-spec'
 
 import {
   activityImpactTypeSchema,
+  cumulativeMetrics,
   DEFAULT_IMPACT_WINDOW_MINUTES,
   IMPACT_WINDOW_OPTIONS,
+  MAX_IMPACT_EXTRA_METRICS,
   selectorSchema,
 } from '@aurboda/api-spec'
 
@@ -41,6 +43,7 @@ export interface AnalyzeState {
   days: number
   window: number
   metrics: ImpactMetric[]
+  extras: string[]
   item: SelectedItem | null
   explore: ExploreState
 }
@@ -70,6 +73,7 @@ export const DEFAULT_EXPLORE_STATE: ExploreState = {
 export const DEFAULT_ANALYZE_STATE: AnalyzeState = {
   days: 30,
   explore: DEFAULT_EXPLORE_STATE,
+  extras: [],
   item: null,
   metrics: [...IMPACT_METRICS],
   tab: 'context',
@@ -133,10 +137,25 @@ const parseOneOf = <T extends string | number>(raw: string | null, options: read
   return options.find((option) => String(option) === raw) ?? fallback
 }
 
-const parseMetrics = (raw: string | null): ImpactMetric[] => {
+const EXTRA_METRIC_NAME = /^[a-z][a-z0-9_]*$/
+/** The full names of the three fixed metrics, which the short keys already stand for. */
+const FIXED_METRIC_NAMES = ['hrv_rmssd', 'heart_rate', 'stress_level']
+
+const isExtraMetricName = (token: string): boolean =>
+  EXTRA_METRIC_NAME.test(token) &&
+  token.length <= 50 &&
+  !(IMPACT_METRICS as readonly string[]).includes(token) &&
+  !FIXED_METRIC_NAMES.includes(token) &&
+  !(cumulativeMetrics as string[]).includes(token)
+
+/** The short keys go to the three fixed metrics and other metric names to the extras; none at all means the three. */
+const parseMetrics = (raw: string | null): Pick<AnalyzeState, 'extras' | 'metrics'> => {
   const given = (raw ?? '').split(',')
   const metrics = IMPACT_METRICS.filter((m) => given.includes(m))
-  return metrics.length > 0 ? metrics : [...IMPACT_METRICS]
+  const extras = [...new Set(given.filter(isExtraMetricName))].slice(0, MAX_IMPACT_EXTRA_METRICS)
+  return metrics.length > 0 || extras.length > 0
+    ? { extras, metrics }
+    : { extras, metrics: [...IMPACT_METRICS] }
 }
 
 const parseItem = (name: string | null, type: string | null): SelectedItem | null => {
@@ -177,7 +196,7 @@ export const parseAnalyzeState = (search: string): AnalyzeState => {
     days: parseOneOf(params.get('days'), PERIOD_DAY_OPTIONS, d.days),
     explore: parseExplore(params),
     item: parseItem(params.get('item'), params.get('item_type')),
-    metrics: parseMetrics(params.get('metrics')),
+    ...parseMetrics(params.get('metrics')),
     tab: parseOneOf(params.get('tab'), ['context', 'explore'] as const, d.tab),
     window: parseOneOf(params.get('window'), IMPACT_WINDOW_OPTIONS, d.window),
   }
@@ -192,7 +211,7 @@ const paramValues = (state: AnalyzeState): [string, string, string][] => {
     ['tab', state.tab, d.tab],
     ['days', String(state.days), String(d.days)],
     ['window', String(state.window), String(d.window)],
-    ['metrics', state.metrics.join(','), d.metrics.join(',')],
+    ['metrics', [...state.metrics, ...state.extras].join(','), [...d.metrics, ...d.extras].join(',')],
     ['item', state.item?.name ?? '', ''],
     ['item_type', state.item?.type ?? '', ''],
     ['mode', e.mode, de.mode],
