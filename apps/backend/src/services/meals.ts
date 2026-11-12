@@ -311,9 +311,9 @@ const round2 = (n: number): number => Math.round(n * 100) / 100
 
 /**
  * Build a junction row by snapshotting the canonical food item's nutrient
- * values scaled by quantity. Name, icon, and sensitivity flags are NOT
- * snapshotted — they're resolved at read time so user edits propagate to
- * past meals.
+ * values scaled by quantity. Name, icon, and sensitivity flags are resolved
+ * at read time so user edits propagate to past meals; the name and icon
+ * written here are only the fallback for an id that later resolves nowhere.
  *
  * `effectiveValues` carries the per-default-quantity nutrients to snapshot.
  * Callers should compute it via `getEffectiveNutrients(detail)` so composite
@@ -338,6 +338,8 @@ export const buildScaledJunctionItem = (
   const usingPortion = isUsingPortion(fi, portion)
   const junctionItem: Record<string, unknown> = {
     food_item_id: canonical.id,
+    food_item_name: canonical.name,
+    food_item_icon: canonical.icon as string | undefined,
     quantity: usingPortion ? fi.portion_count! : fi.quantity,
     sort_order: sortOrder,
     unit: usingPortion ? portion.label_unit : fi.unit,
@@ -641,6 +643,8 @@ export async function resnapshotMealsForFoodItem(
   const passThroughLink = (link: MealFoodItemLink): Record<string, unknown> => {
     const out: Record<string, unknown> = {
       food_item_id: link.food_item_id,
+      food_item_name: link.legacy_food_item_name,
+      food_item_icon: link.legacy_food_item_icon,
       quantity: link.quantity,
       sort_order: link.sort_order,
       unit: link.unit,

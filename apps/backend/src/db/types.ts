@@ -388,9 +388,9 @@ export interface MealFoodItemLink {
   meal_id: string
   food_item_id: string
   /**
-   * Last-known name from the row's pre-PR snapshot column. Read-only
-   * fallback for rows whose canonical food_item has been hard-deleted —
-   * live resolution wins when the canonical row is still around.
+   * The name as of writing the row. Fallback for rows whose food item
+   * resolves nowhere — live resolution wins when the canonical row is
+   * still around.
    */
   legacy_food_item_name?: string
   /** Last-known icon from the snapshot column. See `legacy_food_item_name`. */

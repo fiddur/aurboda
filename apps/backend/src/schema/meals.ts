@@ -212,9 +212,10 @@ export const mealsTables: Record<string, string> = {
   // Junction: meals <-> food items (snapshot of nutrients at insertion
   // time). food_item_id is a soft pointer — the row may be in the per-user
   // food_items table or in the central shared_food_items table, so there's
-  // no FK. Name and icon are NOT snapshotted; they're resolved live so
-  // user edits propagate to past meals. The food_item_name + food_item_icon
-  // columns are kept around for legacy data and are unused by current code.
+  // no FK. Name and icon are resolved live so user edits propagate to past
+  // meals; food_item_name + food_item_icon hold them as of writing, read only
+  // when the id resolves nowhere (a deleted item, or a restore on a server
+  // whose library lacks it).
   meal_food_items: `
     CREATE TABLE IF NOT EXISTS meal_food_items (
       id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),

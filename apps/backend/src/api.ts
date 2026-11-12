@@ -112,6 +112,7 @@ import { auditError, auditInfo, pruneAuditLog } from './services/audit-log.ts'
 import { createAutoshareDeps } from './services/autoshare-deps.ts'
 import { type AutoshareQueue, createAutoshareQueue } from './services/autoshare-queue.ts'
 import { evaluateAutoshareWindow } from './services/autoshare.ts'
+import { backfillMealFoodItemNames } from './services/backfill-meal-food-item-names.ts'
 import { triggerCalorieComputation } from './services/calorie-computation.ts'
 import { createCalorieQueue, type CalorieQueue } from './services/calorie-queue.ts'
 import { closeCentralDb, getCentralDb, initializeCentralDb } from './services/central-db.ts'
@@ -131,6 +132,7 @@ import { createDetectionTrigger, type DetectionTrigger } from './services/detect
 import { runDetectionForUser } from './services/detection-worker.ts'
 import { createDumpExporter, createDumpLinkIssuer } from './services/export-dump.ts'
 import { createExportTokens } from './services/export-token.ts'
+import { reconcileExportedSharedFoodItems } from './services/exported-shared-food.ts'
 import { createReactionActions } from './services/feed-reactions.ts'
 import {
   createFeedRefreshDeps,
@@ -513,6 +515,14 @@ const main = async () => {
     const users = await listUserNames(userDb)
     if (trackBackfillQueue) {
       for (const user of users) await trackBackfillQueue.enqueue(user, 120)
+    }
+    for (const user of users) {
+      try {
+        await reconcileExportedSharedFoodItems(user)
+        await backfillMealFoodItemNames(user)
+      } catch (error) {
+        console.error(`⚠️ Food item reference upkeep failed for ${user}:`, error)
+      }
     }
     for (const user of users) {
       try {
