@@ -6,7 +6,7 @@
  */
 import type { FeedVisibility } from '@aurboda/api-spec'
 
-import { Accept, Note, Person, QuoteRequest, Reject } from '@fedify/fedify/vocab'
+import { Accept, Delete, Note, Person, QuoteRequest, Reject, Tombstone } from '@fedify/fedify/vocab'
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { insertActivity } from '../../db/activities/index.ts'
@@ -14,14 +14,15 @@ import { listFeedQuoteAuthorizations } from '../../db/feed-quotes.ts'
 import { createFeedPost, deleteFeedPost, updateFeedPost } from '../../db/feed.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../../test/db-test-helper.ts'
 import { actorDocument, inboxContext } from '../../test/inbox-context.ts'
-import { buildFeedCreate } from './deliver.ts'
-import { createFeedFederation, handleInboundQuoteRequest } from './federation.ts'
+import { buildFeedCreate, type FeedDeliveryDeps, revokeQuoteStamps } from './deliver.ts'
+import { createFeedFederation, handleInboundDelete, handleInboundQuoteRequest } from './federation.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 const ORIGIN = 'https://aurboda.example'
 const ALICE = 'https://mastodon.example/users/alice'
 const QUOTE = `${ALICE}/statuses/42`
 const REQUEST = `${ALICE}/quote_requests/0f0e`
+const BOB = 'https://mastodon.example/users/bob'
 
 const fed = createFeedFederation(ORIGIN, `${ORIGIN}/api`)
 
@@ -35,22 +36,25 @@ const fetchAs2 = (url: string) =>
 
 /** An inbox context whose outbound sends are recorded instead of POSTed. */
 const inboxCtx = (user: string) => {
-  const ctx = inboxContext(fed, ORIGIN, user, { [ALICE]: actorDocument(ALICE, 'alice', 'Alice') })
+  const ctx = inboxContext(fed, ORIGIN, user, {
+    [ALICE]: actorDocument(ALICE, 'alice', 'Alice'),
+    [BOB]: actorDocument(BOB, 'bob', 'Bob'),
+  })
   const sendActivity = vi.fn().mockResolvedValue(undefined)
   Object.assign(ctx, { sendActivity })
   return { ctx, sendActivity }
 }
 
-const alicePerson = () =>
-  new Person({ id: new URL(ALICE), inbox: new URL(`${ALICE}/inbox`), preferredUsername: 'alice' })
+const person = (id: string, username: string) =>
+  new Person({ id: new URL(id), inbox: new URL(`${id}/inbox`), preferredUsername: username })
 
 /** A `QuoteRequest` as Mastodon sends it: the quoting Note inlined as the instrument. */
-const quoteRequest = (object: string, overrides: { quote?: string; id?: string } = {}) =>
+const quoteRequest = (object: string, overrides: { quote?: string; id?: string; actor?: string } = {}) =>
   new QuoteRequest({
-    actor: alicePerson(),
+    actor: overrides.actor === BOB ? person(BOB, 'bob') : person(ALICE, 'alice'),
     id: new URL(overrides.id ?? REQUEST),
     instrument: new Note({
-      attribution: new URL(ALICE),
+      attribution: new URL(overrides.actor ?? ALICE),
       content: '<p>Look at this</p>',
       id: new URL(overrides.quote ?? QUOTE),
       quoteUrl: new URL(object),
@@ -214,6 +218,149 @@ describe('Quote posts (FEP-044f)', () => {
       const [first, second] = sendActivity.mock.calls.map((call) => (call[2] as Accept).resultId?.href)
       expect(first).toBeDefined()
       expect(second).toBe(first)
+    })
+  })
+
+  describe('one quote, one actor', () => {
+    test('a request for an approved quote by another actor on its host is rejected', async () => {
+      const user = getTestUser()
+      const post = await ownPost(user)
+      const { ctx, sendActivity } = inboxCtx(user)
+      await handleInboundQuoteRequest(ctx, quoteRequest(noteUrl(user, post.id)))
+      await handleInboundQuoteRequest(
+        ctx,
+        quoteRequest(noteUrl(user, post.id), { actor: BOB, id: `${BOB}/quote_requests/1` }),
+      )
+      expect(sendActivity.mock.calls[0][2]).toBeInstanceOf(Accept)
+      const reject = sendActivity.mock.calls[1][2] as Reject
+      expect(reject).toBeInstanceOf(Reject)
+      expect(reject.objectId?.href).toBe(`${BOB}/quote_requests/1`)
+      const rows = await listFeedQuoteAuthorizations(user, post.id)
+      expect(rows).toHaveLength(1)
+      expect(rows[0].actor_uri).toBe(ALICE)
+    })
+  })
+
+  describe('inbound Delete of a quoting Note', () => {
+    const del = (actor: string, object: string) =>
+      new Delete({
+        actor: new URL(actor),
+        id: new URL(`${object}#delete`),
+        object: new Tombstone({ id: new URL(object) }),
+      })
+
+    test('by its own actor drops the approval, so the stamp stops resolving', async () => {
+      const user = getTestUser()
+      const post = await ownPost(user)
+      const { ctx, sendActivity } = inboxCtx(user)
+      await handleInboundQuoteRequest(ctx, quoteRequest(noteUrl(user, post.id)))
+      const stamp = (sendActivity.mock.calls[0][2] as Accept).resultId?.href ?? ''
+      await handleInboundDelete(ctx, del(ALICE, QUOTE))
+      expect(await listFeedQuoteAuthorizations(user, post.id)).toHaveLength(0)
+      expect((await fetchAs2(stamp)).status).toBe(404)
+    })
+
+    test('of the quoting actor itself drops every approval it held', async () => {
+      const user = getTestUser()
+      const post = await ownPost(user)
+      const { ctx } = inboxCtx(user)
+      await handleInboundQuoteRequest(ctx, quoteRequest(noteUrl(user, post.id)))
+      await handleInboundQuoteRequest(
+        ctx,
+        quoteRequest(noteUrl(user, post.id), {
+          id: `${ALICE}/quote_requests/2`,
+          quote: `${ALICE}/statuses/43`,
+        }),
+      )
+      expect(await listFeedQuoteAuthorizations(user, post.id)).toHaveLength(2)
+      await handleInboundDelete(ctx, del(ALICE, ALICE))
+      expect(await listFeedQuoteAuthorizations(user, post.id)).toHaveLength(0)
+    })
+
+    test('of another actor leaves an actor’s approvals alone', async () => {
+      const user = getTestUser()
+      const post = await ownPost(user)
+      const { ctx } = inboxCtx(user)
+      await handleInboundQuoteRequest(ctx, quoteRequest(noteUrl(user, post.id)))
+      await handleInboundDelete(ctx, del(BOB, BOB))
+      expect(await listFeedQuoteAuthorizations(user, post.id)).toHaveLength(1)
+    })
+
+    test('by another actor leaves the approval alone', async () => {
+      const user = getTestUser()
+      const post = await ownPost(user)
+      const { ctx } = inboxCtx(user)
+      await handleInboundQuoteRequest(ctx, quoteRequest(noteUrl(user, post.id)))
+      await handleInboundDelete(ctx, del(BOB, QUOTE))
+      expect(await listFeedQuoteAuthorizations(user, post.id)).toHaveLength(1)
+    })
+  })
+
+  describe('revoking stamps when a post is unshared', () => {
+    const fakeDeps = async () => {
+      const ctx = await fed.createContext(new URL(ORIGIN))
+      const sendActivity = vi.fn().mockResolvedValue(undefined)
+      const lookupObject = vi.fn(async (id: URL) => person(id.href, 'someone'))
+      const getDocumentLoader = vi.fn().mockRejectedValue(new Error('unsigned'))
+      Object.assign(ctx, { getDocumentLoader, lookupObject, sendActivity })
+      const deps: Pick<FeedDeliveryDeps, 'federation' | 'origin'> = {
+        federation: { createContext: async () => ctx } as unknown as FeedDeliveryDeps['federation'],
+        origin: ORIGIN,
+      }
+      return { deps, sendActivity }
+    }
+
+    const approveAs = async (user: string, postId: string): Promise<string> => {
+      const { ctx, sendActivity } = inboxCtx(user)
+      await handleInboundQuoteRequest(ctx, quoteRequest(noteUrl(user, postId)))
+      return (sendActivity.mock.calls[0][2] as Accept).resultId?.href ?? ''
+    }
+
+    test('a post narrowed to followers sends the Delete of each stamp to its quoting actor and our followers', async () => {
+      const user = getTestUser()
+      const post = await ownPost(user)
+      const stamp = await approveAs(user, post.id)
+      const narrowed = await updateFeedPost(user, post.id, { visibility: 'followers' })
+      const { deps, sendActivity } = await fakeDeps()
+
+      await revokeQuoteStamps(deps, user, narrowed!)
+
+      expect(sendActivity).toHaveBeenCalledTimes(2)
+      const recipients = sendActivity.mock.calls.map(([, recipient]) =>
+        typeof recipient === 'string' ? recipient : (recipient as Person).id?.href,
+      )
+      expect(recipients.sort()).toEqual([ALICE, 'followers'].sort())
+      for (const [sender, , activity] of sendActivity.mock.calls) {
+        expect(sender).toEqual({ identifier: user })
+        expect(activity).toBeInstanceOf(Delete)
+        const sent = activity as Delete
+        expect(sent.actorId?.href).toBe(`${ORIGIN}/users/${user}`)
+        expect(sent.objectId?.href).toBe(stamp)
+        expect(sent.toIds.map((u) => u.href)).toEqual([ALICE])
+        expect(sent.ccIds.map((u) => u.href)).toEqual([`${ORIGIN}/users/${user}/followers`])
+      }
+      expect(await listFeedQuoteAuthorizations(user, post.id)).toHaveLength(0)
+    })
+
+    test('a public post keeps its stamps and sends nothing', async () => {
+      const user = getTestUser()
+      const post = await ownPost(user)
+      await approveAs(user, post.id)
+      const { deps, sendActivity } = await fakeDeps()
+      await revokeQuoteStamps(deps, user, post)
+      expect(sendActivity).not.toHaveBeenCalled()
+      expect(await listFeedQuoteAuthorizations(user, post.id)).toHaveLength(1)
+    })
+
+    test('a failed send still drops the approval and does not throw', async () => {
+      const user = getTestUser()
+      const post = await ownPost(user)
+      await approveAs(user, post.id)
+      const narrowed = await updateFeedPost(user, post.id, { visibility: 'followers' })
+      const { deps, sendActivity } = await fakeDeps()
+      sendActivity.mockRejectedValue(new Error('connect ECONNREFUSED'))
+      await expect(revokeQuoteStamps(deps, user, narrowed!)).resolves.toBeUndefined()
+      expect(await listFeedQuoteAuthorizations(user, post.id)).toHaveLength(0)
     })
   })
 

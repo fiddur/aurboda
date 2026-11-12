@@ -305,4 +305,116 @@ describe('renderOgImage', () => {
     expect(b).toBeLessThan(40)
     expect(info.width).toBe(OG_WIDTH)
   })
+
+  describe('a post card with a chart', () => {
+    const start = Date.parse('2026-11-01T06:30:00Z')
+    const series: [Date, number][] = Array.from({ length: 40 }, (_, i) => [
+      new Date(start + i * 60_000),
+      120 + 30 * Math.sin(i / 4),
+    ])
+    const postCard = (over: Partial<OgCard> = {}): OgCard => ({
+      eyebrow: 'Activity',
+      kind: 'post',
+      subtitle: 'Felt great today',
+      title: 'Morning run',
+      username: 'fiddur',
+      ...over,
+    })
+    const redPixels = async (png: Buffer): Promise<number> => {
+      const { data, info } = await sharp(png)
+        .extract({ height: 200, left: 80, top: 280, width: 1040 })
+        .raw()
+        .toBuffer({ resolveWithObject: true })
+      let count = 0
+      for (let i = 0; i < data.length; i += info.channels) {
+        if (data[i] > 200 && data[i + 1] < 110 && data[i + 2] < 110) count++
+      }
+      return count
+    }
+
+    test('draws the line in the heart-rate red under the title, and nothing like it without one', async () => {
+      expect(await redPixels(await renderOgImage(postCard()))).toBe(0)
+      expect(
+        await redPixels(await renderOgImage(postCard({ chart: { series, type: 'line' } }))),
+      ).toBeGreaterThan(500)
+    })
+
+    test('renders every chart kind at 1200x630, with a short or a wrapping title', async () => {
+      const race: OgCard['chart'] = {
+        data: {
+          asOf: new Date(start + 86_400_000),
+          endTime: new Date(start + 7 * 86_400_000),
+          lines: [
+            { color: '#2b9ea7', name: 'Fredrik', points: [series[0], series[39]] },
+            { color: '#10b981', name: 'Anna', points: [series[0], series[20]] },
+          ],
+          startTime: new Date(start),
+          timezone: 'UTC',
+          title: 'November steps',
+        },
+        type: 'race',
+      }
+      const scatter: OgCard['chart'] = {
+        data: {
+          group_comparison: null,
+          n: 3,
+          outcome: { kind: 'metric', metric: 'sleep_score' },
+          pearson: 0.5,
+          pearson_p: 0.1,
+          series: [
+            { outcome: 70, trigger: 1 },
+            { outcome: 80, trigger: 2 },
+            { outcome: 75, trigger: 3 },
+          ],
+          spearman: 0.5,
+          trigger: { kind: 'metric', metric: 'steps' },
+        },
+        type: 'scatter',
+      }
+      for (const chart of [{ series, type: 'line' } as const, race, scatter]) {
+        for (const title of ['Morning run', 'A fairly long morning run along the river and back again']) {
+          const meta = await sharp(await renderOgImage(postCard({ chart, title }))).metadata()
+          expect(meta.width).toBe(OG_WIDTH)
+          expect(meta.height).toBe(OG_HEIGHT)
+        }
+      }
+    })
+  })
+
+  describe('a dashboard card with a chart', () => {
+    const start = Date.parse('2026-10-01T00:00:00Z')
+    const series: [Date, number][] = Array.from({ length: 30 }, (_, i) => [
+      new Date(start + i * 86_400_000),
+      8000 + 2000 * Math.sin(i / 3),
+    ])
+    const dashboardCard = (over: Partial<OgCard> = {}): OgCard => ({
+      kind: 'dashboard',
+      title: 'Training',
+      username: 'fiddur',
+      ...over,
+    })
+    const tealPixels = async (png: Buffer): Promise<number> => {
+      const { data, info } = await sharp(png)
+        .extract({ height: 200, left: 80, top: 280, width: 1040 })
+        .raw()
+        .toBuffer({ resolveWithObject: true })
+      let count = 0
+      for (let i = 0; i < data.length; i += info.channels) {
+        if (data[i] < 90 && data[i + 1] > 130 && data[i + 2] > 140 && data[i + 1] - data[i] > 80) count++
+      }
+      return count
+    }
+
+    test('draws the widget’s line under the title, and only the title card without one', async () => {
+      const plain = await renderOgImage(dashboardCard())
+      const charted = await renderOgImage(
+        dashboardCard({ chart: { opts: { color: '#2b9ea7', label: 'Steps' }, series, type: 'line' } }),
+      )
+      expect(await tealPixels(plain)).toBe(0)
+      expect(await tealPixels(charted)).toBeGreaterThan(500)
+      const meta = await sharp(charted).metadata()
+      expect(meta.width).toBe(OG_WIDTH)
+      expect(meta.height).toBe(OG_HEIGHT)
+    })
+  })
 })

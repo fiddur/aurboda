@@ -213,6 +213,7 @@ export const tableCreationOrder = [
   'timeline_entry_reply_target_indexes',
   'timeline_entry_reply_unchecked_indexes',
   'timeline_entry_boost_indexes',
+  'timeline_entry_actor_indexes',
   'feed_reaction',
   'feed_post_reaction',
   'feed_post_reaction_indexes',
@@ -247,7 +248,7 @@ export {
  * data fixes that are not expressed in `createTableStatements`. DDL changes are
  * picked up automatically by the fingerprint below.
  */
-export const MIGRATION_REVISION = 7
+export const MIGRATION_REVISION = 8
 
 /**
  * Hash the inputs a migration is derived from. Split out from

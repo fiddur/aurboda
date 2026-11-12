@@ -6,6 +6,7 @@ import { createTableStatements, schemaFingerprint, tableCreationOrder } from '..
 import { normalizeStructuredActivity } from '../services/activitypub/quant-wire.ts'
 import { createRolePool, type Queryable, type UserDb, withTransaction } from './pool.ts'
 import { repairGarminSleepStages } from './repair-garmin-sleep-stages.ts'
+import { repairGarminSleepTimes } from './repair-garmin-sleep-times.ts'
 
 const dbByUser = new Map<string, Promise<UserDb>>()
 
@@ -1167,6 +1168,25 @@ export const migrateSchema = async (user: string, opts?: { force?: boolean }): P
           `INSERT INTO schema_migrations (name) VALUES ('repair_garmin_sleep_stages_v1') ON CONFLICT DO NOTHING`,
         )
       })
+    }
+    if (existingTableNames.has('notes')) {
+      const sleepTimesRepairApplied = await query(
+        db,
+        `SELECT 1 FROM schema_migrations WHERE name = 'repair_garmin_sleep_times_v1'`,
+      )
+      if (sleepTimesRepairApplied.rows.length === 0) {
+        const changed = await withTransaction(db, async (tx) => {
+          const result = await repairGarminSleepTimes(tx)
+          await query(
+            tx,
+            `INSERT INTO schema_migrations (name) VALUES ('repair_garmin_sleep_times_v1') ON CONFLICT DO NOTHING`,
+          )
+          return result
+        })
+        console.info(
+          `  🛏️ Garmin sleep time repair for ${user}: ${changed.rows} rows, ${changed.notes} notes changed`,
+        )
+      }
     }
   }
   if (existingTableNames.has('notes')) {

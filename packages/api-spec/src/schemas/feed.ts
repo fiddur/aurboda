@@ -595,6 +595,10 @@ export const feedPostSchema = z
     like_count: z.number().int().optional().meta({
       description: 'How many remote actors favourited (`Like`d) this post; absent on single-post responses',
     }),
+    quote_count: z.number().int().optional().meta({
+      description:
+        'How many remote posts quote this post under an approval we granted (FEP-044f); absent on single-post responses',
+    }),
     message: z
       .string()
       .optional()
@@ -1396,26 +1400,40 @@ export const feedReactionKindSchema = z.enum(['like', 'announce']).meta({
 
 export type FeedReactionKind = z.infer<typeof feedReactionKindSchema>
 
+export const feedPostReactionKindSchema = z.enum(['like', 'announce', 'quote']).meta({
+  description:
+    'Kind of reaction on one of your posts: `like` (a favourite), `announce` (a boost) or `quote` (a remote post quoting it under an approval we granted, FEP-044f)',
+  id: 'FeedPostReactionKind',
+})
+
+export type FeedPostReactionKind = z.infer<typeof feedPostReactionKindSchema>
+
 /**
- * One remote actor's reaction to one of the owner's own feed posts, recorded
- * from an inbound `Like`/`Announce`. The presentation fields are a best-effort
- * snapshot taken when the reaction arrived (a remote server need not be
- * reachable later).
+ * One remote actor's reaction to one of the owner's own feed posts: an inbound
+ * `Like`/`Announce`, or a quote we approved. A like's or boost's presentation
+ * fields are a best-effort snapshot taken when it arrived; a quote's are
+ * resolved from whatever this instance has cached for the actor.
  */
 export const feedPostReactionSchema = z
   .object({
     actor_uri: z.string().meta({ description: "The reacting actor's ActivityPub actor URI" }),
     avatar_url: z.string().nullable().meta({ description: "The actor's avatar URL, if known" }),
-    created_at: iso8601DateTimeSchema.meta({ description: 'When the reaction was received (ISO 8601)' }),
+    created_at: iso8601DateTimeSchema.meta({
+      description: 'When the reaction was received, or the quote approved (ISO 8601)',
+    }),
     display_name: z.string().nullable().meta({ description: "The actor's display name, if known" }),
     handle: z.string().nullable().meta({ description: "The actor's `@user@host` handle, if known" }),
-    kind: feedReactionKindSchema,
+    kind: feedPostReactionKindSchema,
+    url: z
+      .string()
+      .optional()
+      .meta({ description: "The quoting post's id (URL), present only for `quote` reactions" }),
   })
   .meta({ id: 'FeedPostReaction' })
 
 export type FeedPostReaction = z.infer<typeof feedPostReactionSchema>
 
-/** Who liked / boosted one of the owner's posts, newest first. */
+/** Who liked, boosted or quoted one of the owner's posts, newest first. */
 export const feedPostReactionsResponseSchema = baseResponseSchema
   .extend({ reactions: z.array(feedPostReactionSchema) })
   .meta({ id: 'FeedPostReactionsResponse' })

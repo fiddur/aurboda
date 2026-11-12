@@ -118,6 +118,11 @@ gets `WRAP_CONTENT`, which makes Chromium force a zero layout height.
 `EmbeddedWebScreen` therefore gives the WebView `MATCH_PARENT` layout params
 (what Accompanist's WebView does). Until that is confirmed on a device, the
 injected viewport fix and the `vh` allowlist stay; #1356 tracks dropping them.
+To confirm it, open **More → Help & support** in the app: in embed mode the
+bottom of that page shows `Viewport: 100vh = … · innerHeight = … · html = …` in
+px. If `100vh` equals `innerHeight`, the `MATCH_PARENT` fix works and `vh`
+resolves in the WebView; `0` means it still does not (`html` always matches
+`innerHeight`, since the viewport fix pins it).
 
 ### Soft keyboard
 
@@ -241,10 +246,13 @@ Two `AppWidgetProvider`s live in `widget/`:
   advances to the running pick ending soonest, else the soonest upcoming, and
   rewrites its stored config; with nothing open it asks
   `GET /challenges/discover` and renders the first result as a **suggestion**
-  ("Join a challenge?" + name, host, window; tap opens the challenge page, whose
-  Join button does the join), falling back to the finished challenge's final
-  standings when there is none, or to "No open challenges — tap to pick one"
-  (opens the picker) when there isn't even that.
+  ("Join a challenge?" + name, host, window; tap opens the user's own
+  `/challenges/join?challenge=<share url>&confirm=1` — `challengeJoinConfirmPath` —
+  which shows the challenge and joins it on a Join click; the host's page would only
+  offer "Join from another instance", the user not being logged in there),
+  falling back to the finished challenge's final standings when there is none,
+  or to "No open challenges — tap to pick one" (opens the picker) when there
+  isn't even that.
 
 Widget taps and notification taps reach `MainActivity` as `EXTRA_OPEN_TAB` /
 `EXTRA_MORE_PATH` extras (`deepLinkFrom` in `AppState.kt`). On a cold start they

@@ -197,6 +197,25 @@ describe('formStateToUpdateBody', () => {
       'pace_avg',
     ])
   })
+
+  it('keeps stored series keys it does not recognise, after the known ones', () => {
+    const original = rule({ series_metrics: ['future_series', 'speed', 'heart_rate'] })
+    expect(formStateToUpdateBody(ruleToFormState(original), original).series_metrics).toEqual([
+      'heart_rate',
+      'speed',
+      'future_series',
+    ])
+  })
+
+  it('rounds a tiny positive minimum duration up to one second', () => {
+    const original = rule()
+    const body = (minMinutes: string) =>
+      formStateToUpdateBody({ ...ruleToFormState(original), minMinutes }, original).min_duration_seconds
+    expect(body('0.001')).toBe(1)
+    expect(body('0.5')).toBe(30)
+    expect(body('0')).toBe(0)
+    expect(body('')).toBeNull()
+  })
 })
 
 describe('formStateToAddBody', () => {

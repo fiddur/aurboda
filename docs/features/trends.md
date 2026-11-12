@@ -16,6 +16,14 @@ EMA is a weighted average where recent data counts more than old data. The **hal
 
 After one half-life, old data has 50% weight. After two half-lives, 25%. After three, 12.5%. So a 15-day half-life means data from 45 days ago has essentially no influence.
 
+### Where a trend starts
+
+A trend that counts a day without data as zero (tags, activity types, screentime categories and amount metrics) starts at its own first sample, ever: the days before it get no point on the chart and no weight in the average, so a new series does not climb from zero over several half-lives. A breakdown chart (one line per value of a field) starts all its lines at the activity type's first sample, so they share one x-axis; a line's days after that and before its own first sample are real zeros. "All time" therefore means "since the first sample".
+
+Until a series is one display period old (7 days per week, 30 per month, 1 per day), its average is divided by at least a full period's weight, as if that period had been zero-filled. So a single one-hour run reads about 1 hour per week on its first day, not 7 (one day's hour scaled up to a week), and a steady daily habit charted per week climbs to its full weekly value over that first week and then stays there. Per day, a steady value is flat from day one. Once the series is a period old the floor has no effect.
+
+A level metric (skipped missing days) already starts at its first sample, and a measure trend's decaying best starts at the first session.
+
 Trend days are calendar days in the user's device timezone (`device_timezone`, UTC when unset): a sample or activity counts for the local day it falls on, and the last point is the local today. `GET /trends` and the `get_trend` MCP tool accept an optional `tz` (an IANA name such as `Europe/Stockholm`) to compute the trend in another timezone.
 
 ## Three Source Types
@@ -39,7 +47,7 @@ Tracks the smoothed value of any numeric metric (weight, HRV, sleep score, steps
 Every metric is either a **level** or an **amount**:
 
 - A **level** (weight, waist, resting HR) is a state you measure now and then. A day without a sample means "not measured", so it is left out of the EMA and does not drag the line toward zero.
-- An **amount** (steps, calories, a dose) is something that adds up. A day without a sample means zero, so it enters the EMA as 0 and the line falls toward zero when nothing is logged. That includes the days before the metric's first-ever sample, so a newly started amount metric reads low for a few half-lives (activity-type trends behave the same).
+- An **amount** (steps, calories, a dose) is something that adds up. A day without a sample means zero, so it enters the EMA as 0 and the line falls toward zero when nothing is logged. The days before the metric's first-ever sample are not zeros, though: the trend starts at that sample (see [Where a trend starts](#where-a-trend-starts)).
 
 Built-in amount metrics are steps, distance, floors climbed, calories (active, basal, total), the HR-zone seconds and TRIMP (training and activity impulse); every other built-in metric is a level. Custom metrics choose their kind in their definition (**Kind**: Level -- average, or Amount -- sum; `aggregation: 'avg' | 'sum'` in the API and the `add_custom_metric` / `update_custom_metric` MCP tools). Custom metrics default to Level. The kind also decides whether bucketed bar charts total a custom metric per bucket.
 
@@ -130,6 +138,8 @@ Trend charts can be added as widgets on the Dashboard. Configure the source type
 
 The Chart Explorer (`/chart`) charts any activity type or metric as a trend or as bars. For an activity type with list items (a strength session's sets), a **measure** such as an exercise's e1RM charts as bars or, with **Trend (best)**, as its decaying best: a running best of the measure that decays with a half-life between sessions and is lifted by any session that beats it. Its half-life choices are 30, 60, 120 (the default), 240 days and 1 year; display period and aggregation do not apply. The URL carries it as `chart_type=trend&measure=e1rm&half_life_days=120`, with `filter_field` and `filter_value` for one exercise.
 
+Its **Lookback** is a fixed window (1 day to 2 years, or All time) or **Since…**, which shows a date picker and charts from that date up to today. The URL carries a fixed window as `lookback_days=90` and a date as `since=2026-03-01`, so a link keeps that start; when both are present `since` wins. A date in the future is refused with an inline message and the chart keeps its previous range. Bars start at the date's local midnight; a trend asks for the number of whole days from the date to today. Adding or updating a dashboard widget keeps the date as the widget's `since` (with that day count as its `lookback_days`), so on a board the chart keeps its fixed start, and opening it in the Chart Explorer carries the date back.
+
 ### Chart menu
 
 Charts in the Chart Explorer and on an exercise's page have a ⋮ menu with **Open in Chart Explorer** (not shown in the explorer itself), **Add to dashboard** and **Set a goal**. Set a goal opens the Goals page with a new goal prefilled from the chart (a trend goal for a trend, a measure goal for a measure's bars), so only the target is left to type.
@@ -149,6 +159,6 @@ The more historical data you have, the more useful long lookback periods become.
 ## Known Limitations
 
 - Saved trends are stored in **browser local storage**, not on the server. Switching browsers or devices gives you the defaults.
-- For tags and screentime categories, days with no matching data count as zero, which pulls the trend line down. For metrics it depends on the [metric kind](#metric-kind): amounts count missing days as zero, levels leave them out, and the Missing days option overrides either.
+- For tags and screentime categories, days with no matching data since the first sample count as zero, which pulls the trend line down. For metrics it depends on the [metric kind](#metric-kind): amounts count missing days as zero, levels leave them out, and the Missing days option overrides either.
 - The EMA computation window is capped at 90 days for performance, even with longer lookback periods. This means each point on the chart looks at most 90 days into the past, though the chart itself can display years of history.
 - Dashboard trend widgets currently only support tags and metrics, not screentime categories.

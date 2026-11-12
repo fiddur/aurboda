@@ -254,8 +254,20 @@ serves the static `index.html` instead, so the page still loads, without the pre
   an activity post, the activity's title alone, so a crawler hit stays cheap. Its preview image is
   a post card at `<permalink>/opengraph-image.png`: the post's kind as the eyebrow (ACTIVITY,
   ARTICLE, EXERCISE, DASHBOARD, CHALLENGE; POST for a reply), its title, and a short excerpt of its
-  description. An unlisted or followers-only post gets the generic meta. In the web feed, a
-  public or unlisted post's timestamp links to its permalink, which is the page to share.
+  description. A post with a chart shows that chart instead of the excerpt, drawn from the same
+  data as its feed image: an activity post's heart rate (`chart.png`), an exercise post's trend
+  (`trend.png`) and a challenge post's standings race (`standings.png`, with its first four
+  members as a legend), each only when the post opted into the chart, and an article's first chart,
+  correlation or challenge block that has data (of its first three). A route map is not drawn (it
+  needs basemap tiles), and dashboard and reply posts keep the excerpt. The chart is drawn without
+  text, since librsvg has no fonts to set it in (#887); its caption is set by Satori above it. The
+  chart is loaded only when the memoised card misses, and the memo key carries the post's version
+  plus the same time bucket as its feed image: none for an activity's heart rate, an hour for an
+  exercise trend or an article, five minutes for standings (a challenge post, or an article
+  whose tried blocks include a challenge block). New standings or sessions thus show within that
+  bucket, and a card rendered while its chart failed to load is served but not kept. An unlisted or followers-only post gets the generic meta. In the
+  web feed, a public or unlisted post's timestamp links to its permalink, which is the page to
+  share.
 - Every public resource has a **dynamically rendered 1200×630 preview image** at
   `<resource-url>/opengraph-image.png`. Satori renders a branded card (title +
   DASHBOARD/CHALLENGE/EXERCISE/PROFILE eyebrow, or a post's kind — ACTIVITY/ARTICLE/EXERCISE/
@@ -286,7 +298,19 @@ serves the static `index.html` instead, so the page still loads, without the pre
   2026"), in the owner's timezone, with the trend drawn as a sparkline beside them.
   Without records the session count stands alone. The memo key includes the newest
   session's start, so a new session re-renders the card.
-  Non-public / unknown resources fall back to the branded static default
+- A **dashboard card** shows the dashboard's first trend chart or sparkline card whose data draws
+  a line (at least two points), of its first three such widgets, under the title: a trend chart's
+  history in the web's teal, a sparkline card's series in its own colour (a hex colour; else the
+  card's blue), captioned with the title the widget shows on the page. The data comes from the
+  same resolver as the public page (`shared-dashboard-data.ts`), over the widget's lookback, or on
+  a period dashboard over the period its lock shows a visitor (the latest finished period, or the
+  pinned one). A broken-down trend chart (its lines are per series), bar and combined charts and
+  every other widget are not drawn; a dashboard with none that draws keeps the title card. As on a
+  post card, the chart is drawn without text and its caption set by Satori. The data is loaded
+  only when the memoised card misses; the memo key carries the dashboard's `updated_at` plus an
+  hourly time bucket, so an edit redraws the card at once and new data within the hour, and a
+  card rendered while the chart failed to load is served but not kept.
+- Non-public / unknown resources fall back to the branded static default
   (`/og-default.png`).
 - **Visibility is respected**: rich meta and rendered images are emitted only for
   **public** resources. Private and unlisted (slug-only) dashboards and unknown URLs get generic

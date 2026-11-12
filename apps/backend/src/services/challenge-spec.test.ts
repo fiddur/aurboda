@@ -8,6 +8,7 @@ import {
   effectiveBucketSize,
   echoMismatchMessage,
   memberEchoMatches,
+  sameSpec,
   scoreBuckets,
   specToApi,
   toSpecFields,
@@ -159,5 +160,50 @@ describe('echoMismatchMessage', () => {
       'Your instance scored this challenge differently (aggregation/filter); update Aurboda and rejoin'
     expect(echoMismatchMessage(bestSetSpec, { ...echo, aggregation: 'sum' })).toBe(differently)
     expect(echoMismatchMessage(bestSetSpec, { ...echo, filter_value: 'Pull-ups' })).toBe(differently)
+  })
+})
+
+describe('sameSpec', () => {
+  const base: ChallengeSpecFields = {
+    activity_type_id: null,
+    aggregation: 'sum',
+    bucket_size: 'auto',
+    filter_field: null,
+    filter_value: null,
+    measure: null,
+    pattern: 'steps',
+    source_type: 'metric',
+    unit: 'steps',
+  }
+
+  it('matches an identical spec', () => {
+    expect(sameSpec(base, { ...base })).toBe(true)
+  })
+
+  it.each([
+    ['source_type', 'activity_type'],
+    ['pattern', 'exercise'],
+    ['activity_type_id', '00000000-0000-4000-8000-000000000001'],
+    ['aggregation', 'count'],
+    ['unit', 'km'],
+    ['bucket_size', '1d'],
+    ['measure', 'total_reps'],
+    ['filter_field', 'sets.exercise'],
+    ['filter_value', 'Push-ups'],
+  ] as const)('differs when %s changes', (key, value) => {
+    expect(sameSpec(base, { ...base, [key]: value })).toBe(false)
+  })
+
+  it('treats an omitted optional as null', () => {
+    const required = {
+      aggregation: 'sum',
+      bucket_size: 'auto',
+      pattern: 'steps',
+      source_type: 'metric',
+      unit: 'steps',
+    } as const
+    expect(sameSpec(base, required)).toBe(true)
+    expect(sameSpec(required, base)).toBe(true)
+    expect(sameSpec({ ...required, measure: undefined }, base)).toBe(true)
   })
 })

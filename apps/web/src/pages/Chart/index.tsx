@@ -5,6 +5,7 @@ import type { ComponentChild } from 'preact'
  *   /chart?source_type=activity_type&pattern=coffee&lookback_days=90&display_period=monthly&half_life_days=15
  *   /chart?source_type=metric&pattern=weight&lookback_days=180&aggregation=sum&missing_days=zero
  *   /chart?source_type=activity_type&pattern=coffee&chart_type=bar&bucket_size=1d&lookback_days=30
+ *   /chart?source_type=metric&pattern=weight&chart_type=bar&bucket_size=1w&since=2026-03-01
  *   /chart?source_type=activity_type&pattern=strength_training&chart_type=bar&bucket_size=1w&measure=e1rm&aggregation=max&filter_field=sets.exercise&filter_value=Squat
  *   /chart?source_type=activity_type&pattern=strength_training&chart_type=trend&half_life_days=120&measure=e1rm&filter_field=sets.exercise&filter_value=Squat
  */
@@ -49,6 +50,7 @@ import {
 } from '../../state/api'
 import { auth } from '../../state/auth'
 import { CHART_PRIMARY } from '../../theme'
+import { chartRange, localDateKey, sinceForLookback, validateSince } from '../../utils/chart-range'
 import { measureFilter } from '../../utils/measures'
 import { newWidgetId } from '../../utils/widget-id'
 import {
@@ -89,6 +91,8 @@ const LOOKBACK_OPTIONS = [
   { label: 'All time', value: 3650 },
 ]
 
+const SINCE_OPTION = 'since'
+
 const BUCKET_SIZE_OPTIONS: { label: string; value: BucketSize }[] = [
   { label: '1 min', value: '1m' },
   { label: '5 min', value: '5m' },
@@ -114,6 +118,7 @@ interface ChartState {
   measure: MeasureChoice
   missing_days: MissingDaysChoice
   pattern: string
+  since: string
   source_type: SourceType
   activity_type_id: string
 }
@@ -129,6 +134,11 @@ const trendAggregation = (aggregation: ChartDataAggregation): TrendAggregation |
 /** A measure charted as its decaying best: no display period or aggregation applies. */
 const isMeasureTrend = (state: ChartState): boolean => state.chart_type === 'trend' && Boolean(state.measure)
 
+const parseSinceQuery = (value: string | undefined): string => {
+  const result = validateSince(value ?? '', new Date())
+  return 'since' in result ? result.since : ''
+}
+
 function parseQuery(query: Record<string, string>): ChartState {
   const source_type: SourceType = query.source_type === 'metric' ? 'metric' : 'activity_type'
   const measureState = parseMeasureQuery(query, source_type)
@@ -143,6 +153,7 @@ function parseQuery(query: Record<string, string>): ChartState {
     lookback_days: Number(query.lookback_days) || 90,
     missing_days: query.missing_days === 'zero' || query.missing_days === 'skip' ? query.missing_days : '',
     pattern: query.source_type === LEGACY_CATEGORY_SOURCE ? '' : (query.pattern ?? ''),
+    since: parseSinceQuery(query.since),
     source_type,
     activity_type_id: query.activity_type_id ?? '',
   }
@@ -154,7 +165,8 @@ function syncUrl(state: ChartState, origin: ChartOrigin | null) {
   params.set('source_type', state.source_type)
   if (state.pattern) params.set('pattern', state.pattern)
   if (state.activity_type_id) params.set('activity_type_id', state.activity_type_id)
-  params.set('lookback_days', String(state.lookback_days))
+  if (state.since) params.set('since', state.since)
+  else params.set('lookback_days', String(state.lookback_days))
   params.set('chart_type', state.chart_type)
   const measureTrend = isMeasureTrend(state)
   if (state.chart_type === 'trend') {
@@ -177,16 +189,6 @@ function syncUrl(state: ChartState, origin: ChartOrigin | null) {
     params.set('widget_id', origin.widget_id)
   }
   history.replaceState(null, '', `${window.location.pathname}?${params}`)
-}
-
-/** Compute start/end ISO strings from lookback_days, rounded to day boundaries for stable query keys. */
-function lookbackToRange(lookbackDays: number): { start: string; end: string } {
-  const now = new Date()
-  const end = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59))
-  const start = new Date(end)
-  start.setUTCDate(start.getUTCDate() - lookbackDays)
-  start.setUTCHours(0, 0, 0, 0)
-  return { end: end.toISOString(), start: start.toISOString() }
 }
 
 /** For a type with list items: chart a measure of them, optionally for one item value (exercise). */
@@ -360,6 +362,72 @@ function SourcePicker({
   )
 }
 
+/** A fixed lookback, or "Since…" with a date that is applied only once it leaves a range up to today. */
+function RangeControl({
+  state,
+  onUpdate,
+}: {
+  state: ChartState
+  onUpdate: (patch: Partial<ChartState>) => void
+}) {
+  const [draft, setDraft] = useState(state.since)
+  const [error, setError] = useState('')
+  const sinceMode = Boolean(state.since)
+
+  const applyDraft = (value: string) => {
+    setDraft(value)
+    const result = validateSince(value, new Date())
+    if ('error' in result) {
+      setError(result.error)
+      return
+    }
+    setError('')
+    onUpdate({ since: result.since })
+  }
+
+  return (
+    <>
+      <label>
+        Lookback
+        <select
+          value={sinceMode ? SINCE_OPTION : state.lookback_days}
+          onChange={(e) => {
+            const { value } = e.target as HTMLSelectElement
+            setError('')
+            if (value === SINCE_OPTION) {
+              const since = sinceForLookback(state.lookback_days, new Date())
+              setDraft(since)
+              onUpdate({ since })
+            } else {
+              onUpdate({ lookback_days: Number(value), since: '' })
+            }
+          }}
+        >
+          {LOOKBACK_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+          <option value={SINCE_OPTION}>Since…</option>
+        </select>
+      </label>
+      {sinceMode && (
+        <label class={error ? 'chart-since chart-since-invalid' : 'chart-since'}>
+          Since
+          <input
+            type="date"
+            value={draft}
+            max={localDateKey(new Date())}
+            aria-invalid={Boolean(error)}
+            onChange={(e) => applyDraft((e.target as HTMLInputElement).value)}
+          />
+          {error && <span class="chart-since-error">{error}</span>}
+        </label>
+      )}
+    </>
+  )
+}
+
 function ChartControls({
   state,
   onUpdate,
@@ -403,19 +471,7 @@ function ChartControls({
       <SourcePicker state={state} onUpdate={onUpdate} />
 
       <div class="chart-controls-row">
-        <label>
-          Lookback
-          <select
-            value={state.lookback_days}
-            onChange={(e) => onUpdate({ lookback_days: Number((e.target as HTMLSelectElement).value) })}
-          >
-            {LOOKBACK_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <RangeControl state={state} onUpdate={onUpdate} />
 
         {state.chart_type === 'trend' ? (
           <>
@@ -715,6 +771,10 @@ function buildWidgetFromState(
 ): DashboardWidget {
   // Only mask fields that are actually part of the breakdown.
   const masked = maskedBreakdownFields.filter((f) => state.breakdown_fields.includes(f))
+  const range = {
+    lookback_days: chartRange(state, new Date()).lookback_days,
+    ...(state.since ? { since: state.since } : {}),
+  }
   const breakdownConfig = {
     ...(state.breakdown_fields.length ? { breakdown_fields: state.breakdown_fields } : {}),
     ...(masked.length ? { masked_breakdown_fields: masked } : {}),
@@ -727,7 +787,7 @@ function buildWidgetFromState(
         ...breakdownConfig,
         bucket_size: state.bucket_size,
         ...measureParams(state),
-        lookback_days: state.lookback_days,
+        ...range,
         ...(state.pattern ? { pattern: state.pattern } : {}),
         source_type: state.source_type,
         ...(state.activity_type_id ? { tag_definition_id: state.activity_type_id } : {}),
@@ -745,7 +805,7 @@ function buildWidgetFromState(
         : { aggregation: trendAggregation(state.aggregation), display_period: state.display_period }),
       ...breakdownConfig,
       half_life_days: state.half_life_days,
-      lookback_days: state.lookback_days,
+      ...range,
       ...(state.source_type === 'metric' && state.missing_days ? { missing_days: state.missing_days } : {}),
       pattern: state.pattern,
       source_type: state.source_type,
@@ -945,7 +1005,10 @@ export function Chart() {
     )
   }
 
-  const { start, end } = useMemo(() => lookbackToRange(state.lookback_days), [state.lookback_days])
+  const { end, lookback_days, start } = useMemo(
+    () => chartRange({ lookback_days: state.lookback_days, since: state.since }, new Date()),
+    [state.lookback_days, state.since],
+  )
   const menu =
     state.pattern || state.activity_type_id ? (
       <ChartMenu
@@ -975,7 +1038,7 @@ export function Chart() {
               : { aggregation: trendAggregation(state.aggregation), display_period: state.display_period }),
             breakdown_fields: state.breakdown_fields.length > 0 ? state.breakdown_fields : undefined,
             half_life_days: state.half_life_days,
-            lookback_days: state.lookback_days,
+            lookback_days,
             ...(state.source_type === 'metric' && state.missing_days
               ? { missing_days: state.missing_days }
               : {}),

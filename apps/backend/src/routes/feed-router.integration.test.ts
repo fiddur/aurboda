@@ -15,6 +15,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi 
  */
 import { insertActivity } from '../db/activities/index.ts'
 import { createChallenge, createChallengeParticipation, deleteChallenge } from '../db/challenges.ts'
+import { listFeedQuoteAuthorizations, upsertFeedQuoteAuthorization } from '../db/feed-quotes.ts'
 import { upsertFeedPostReaction } from '../db/feed-reactions.ts'
 import { createFeedPost } from '../db/feed.ts'
 import { createSharedDashboard } from '../db/shared-dashboards.ts'
@@ -138,6 +139,41 @@ describe('Article feed routes (integration)', () => {
     expect(del.status).toBe(200)
     const list = await app.request.get('/feed')
     expect(list.body.posts.map((p: { id: string }) => p.id)).not.toContain(created.body.post.id)
+  })
+
+  test('DELETE /feed/:postId hands the post’s quote stamps to the Delete fan-out', async () => {
+    const deliver: FeedDeliver = {
+      created: vi.fn(),
+      createdArticle: vi.fn(),
+      createdChallenge: vi.fn(),
+      createdDashboard: vi.fn(),
+      createdExercise: vi.fn(),
+      createdReply: vi.fn(),
+      deleted: vi.fn(),
+      updated: vi.fn(),
+      updatedArticle: vi.fn(),
+      updatedChallenge: vi.fn(),
+      updatedDashboard: vi.fn(),
+      updatedExercise: vi.fn(),
+      updatedReply: vi.fn(),
+    }
+    const spied = startApp(deliver)
+    try {
+      const user = getTestUser()
+      const created = await spied.request.post('/feed/articles').send(articleBody())
+      const postId = created.body.post.id as string
+      const stamp = await upsertFeedQuoteAuthorization(user, {
+        actor_uri: 'https://mastodon.example/users/alice',
+        post_id: postId,
+        quote_uri: 'https://mastodon.example/users/alice/statuses/1',
+        request_uri: null,
+      })
+      expect((await spied.request.delete(`/feed/${postId}`)).status).toBe(200)
+      expect(deliver.deleted).toHaveBeenCalledWith(user, expect.objectContaining({ id: postId }), [stamp])
+      expect(await listFeedQuoteAuthorizations(user, postId)).toEqual([])
+    } finally {
+      await spied.close()
+    }
   })
 
   test('article fan-out: create → createdArticle; generic PATCH /:postId → updatedArticle (not updated)', async () => {
@@ -821,12 +857,40 @@ describe('Feed post reactions (integration)', () => {
     expect(res.body.reactions[0]).not.toHaveProperty('post_id')
   })
 
+  test('GET /feed/:postId/reactions lists an approved quote as kind `quote` with the quoting post url', async () => {
+    const user = getTestUser()
+    const created = await post()
+    await upsertFeedPostReaction(user, {
+      actor_uri: 'https://mastodon.example/users/alice',
+      handle: '@alice@mastodon.example',
+      kind: 'like',
+      post_id: created.id,
+    })
+    await upsertFeedQuoteAuthorization(user, {
+      actor_uri: 'https://mastodon.example/users/alice',
+      post_id: created.id,
+      quote_uri: 'https://mastodon.example/users/alice/statuses/7',
+      request_uri: null,
+    })
+
+    const res = await app.request.get(`/feed/${created.id}/reactions`)
+    expect(res.status).toBe(200)
+    expect(res.body.reactions[0]).toMatchObject({
+      actor_uri: 'https://mastodon.example/users/alice',
+      handle: '@alice@mastodon.example',
+      kind: 'quote',
+      url: 'https://mastodon.example/users/alice/statuses/7',
+    })
+    expect(res.body.reactions[1]).toMatchObject({ kind: 'like' })
+    expect(res.body.reactions[1]).not.toHaveProperty('url')
+  })
+
   test('GET /feed/:postId/reactions 404s an unknown or non-UUID post id', async () => {
     expect((await app.request.get('/feed/00000000-0000-0000-0000-000000000000/reactions')).status).toBe(404)
     expect((await app.request.get('/feed/not-a-uuid/reactions')).status).toBe(404)
   })
 
-  test('GET /feed attaches like_count / boost_count to the listing', async () => {
+  test('GET /feed attaches like_count / boost_count / quote_count to the listing', async () => {
     const user = getTestUser()
     const counted = await post()
     const uncounted = await post()
@@ -840,16 +904,24 @@ describe('Feed post reactions (integration)', () => {
       kind: 'like',
       post_id: counted.id,
     })
+    await upsertFeedQuoteAuthorization(user, {
+      actor_uri: 'https://remote.example/users/bob',
+      post_id: counted.id,
+      quote_uri: 'https://remote.example/users/bob/statuses/1',
+      request_uri: null,
+    })
 
     const res = await app.request.get('/feed')
     const byId = Object.fromEntries(
-      res.body.posts.map((p: { id: string; like_count: number; boost_count: number }) => [
-        p.id,
-        { boost: p.boost_count, like: p.like_count },
-      ]),
+      res.body.posts.map(
+        (p: { id: string; like_count: number; boost_count: number; quote_count: number }) => [
+          p.id,
+          { boost: p.boost_count, like: p.like_count, quote: p.quote_count },
+        ],
+      ),
     )
-    expect(byId[counted.id]).toEqual({ boost: 0, like: 2 })
-    expect(byId[uncounted.id]).toEqual({ boost: 0, like: 0 })
+    expect(byId[counted.id]).toEqual({ boost: 0, like: 2, quote: 1 })
+    expect(byId[uncounted.id]).toEqual({ boost: 0, like: 0, quote: 0 })
   })
 })
 

@@ -39,6 +39,7 @@ import { getChartData } from './chart-data.ts'
 import { getActivityImpact } from './correlations/activity-impact.ts'
 import { getBaseline } from './correlations/baseline.ts'
 import { getCustomMetrics } from './custom-metrics.ts'
+import { dayKey, dayStartInTz } from './day-keys.ts'
 import { getGoalsProgress } from './goals.ts'
 import { getLatestSleep } from './latest-sleep.ts'
 import {
@@ -109,6 +110,41 @@ const inclusiveRange = (window: ResolveWindow): Range => ({
 
 const windowOf = (options: ResolveOptions, lookbackDays: number): Range =>
   options.window ? inclusiveRange(options.window) : lookbackRange(lookbackDays)
+
+/** A stored `since` can be later than today (saved through the API); it then starts today. */
+const clampSince = (since: string, tz: string, now: Date): string => {
+  const today = dayKey(now, tz)
+  return since > today ? today : since
+}
+
+/** Whole calendar days in `tz` from a chart's fixed `since` date to today, at least one: a trend's lookback. */
+export const sinceLookbackDays = (since: string, tz: string, now: Date = new Date()): number =>
+  Math.max(
+    1,
+    Temporal.PlainDate.from(clampSince(since, tz, now)).until(Temporal.PlainDate.from(dayKey(now, tz))).days,
+  )
+
+/** A bar chart's range from its fixed `since` date's midnight in `tz` to now. */
+export const sinceRange = (since: string, tz: string, now: Date = new Date()): Range => ({
+  end: now,
+  start: dayStartInTz(clampSince(since, tz, now), tz),
+})
+
+const chartWindowOf = (
+  options: ResolveOptions,
+  config: { lookback_days: number; since?: string },
+  tz: string,
+) =>
+  !options.window && config.since ? sinceRange(config.since, tz) : windowOf(options, config.lookback_days)
+
+const trendLookbackDays = (
+  options: ResolveOptions,
+  config: { lookback_days?: number; since?: string },
+  tz: string,
+): number => {
+  if (options.window) return periodDays(options.window) - 1
+  return config.since ? sinceLookbackDays(config.since, tz) : (config.lookback_days ?? 90)
+}
 
 const summaryFigures = async (user: string, apiMetric: string, range: Range) => {
   const summary = await getPeriodSummary(user, [apiMetric], range.start, range.end)
@@ -227,7 +263,7 @@ const resolveTrendChart = async (
     filter_field: config.filter_field,
     filter_value: config.filter_value,
     half_life_days: config.half_life_days ?? 15,
-    lookback_days: options.window ? periodDays(options.window) - 1 : (config.lookback_days ?? 90),
+    lookback_days: trendLookbackDays(options, config, tz),
     measure: config.measure,
     missing_days: config.missing_days,
     pattern: config.pattern,
@@ -270,7 +306,7 @@ const resolveBarChart = async (
   tz: string,
   options: ResolveOptions,
 ): Promise<WidgetData> => {
-  const { end, start } = windowOf(options, config.lookback_days)
+  const { end, start } = chartWindowOf(options, config, tz)
   const result = await getChartData(user, {
     activity_type_id: config.tag_definition_id,
     aggregation: config.aggregation ?? 'count',

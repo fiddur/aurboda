@@ -40,6 +40,8 @@ import {
   countFeedFollowers,
   countPublicFeedPosts,
   deleteBoostEntry,
+  deleteFeedQuoteAuthorizationsByActor,
+  deleteFeedQuoteAuthorizationsByQuote,
   deleteTimelineEntryByUri,
   getFeedFollowerByActor,
   deleteBoostCardsOf,
@@ -478,6 +480,28 @@ export const handleInboundLike = (ctx: InboxContext<void>, like: Like): Promise<
   recordOwnPostReaction(ctx, like, 'like')
 
 /**
+ * Inbound `Delete` on a user's own inbox. `del.objectId` is the removed object's id (a Tombstone or
+ * bare id), and every effect is scoped to the sender (`del.actorId`) so a signed `Delete` from some
+ * other actor can't evict a post it didn't author — mirroring how `Undo{Follow}` is scoped to its own
+ * actor. A post we received leaves the timeline; a deleted quoting Note loses its stamp (FEP-044f),
+ * and a deleted actor every stamp it held.
+ */
+export const handleInboundDelete = async (ctx: InboxContext<void>, del: Delete): Promise<void> => {
+  const me = ctx.recipient
+  if (me == null || !isValidUsername(me) || del.objectId == null || del.actorId == null) return
+  try {
+    await deleteTimelineEntryByUri(me, del.objectId.href, del.actorId.href)
+    await deleteFeedQuoteAuthorizationsByQuote(me, del.objectId.href, del.actorId.href)
+    if (del.objectId.href === del.actorId.href) {
+      await deleteFeedQuoteAuthorizationsByActor(me, del.actorId.href)
+    }
+  } catch (error) {
+    if (isMissingDatabase(error)) return
+    throw error
+  }
+}
+
+/**
  * FEP-044f: the `Accept`'s `result` is a stamp URL that the quoting server keeps and other
  * servers fetch to verify the quote. A request for anything but the recipient's own Note is
  * ignored rather than rejected, as with reactions.
@@ -523,20 +547,22 @@ const answerQuoteRequest = async (
   { me, postId, quoteUri, requester }: QuoteRequestTarget,
 ): Promise<Accept | Reject> => {
   const actorUri = ctx.getActorUri(me)
-  const post = await getFeedPostById(me, postId)
-  if (post == null || !isPubliclyVisible(post.visibility)) {
-    return new Reject({
+  const reject = () =>
+    new Reject({
       actor: actorUri,
       id: new URL(`${actorUri.href}#rejects/quote_requests/${crypto.randomUUID()}`),
       object: request,
     })
-  }
+  const post = await getFeedPostById(me, postId)
+  if (post == null || !isPubliclyVisible(post.visibility)) return reject()
   const row = await upsertFeedQuoteAuthorization(me, {
     actor_uri: requester.href,
     post_id: postId,
     quote_uri: quoteUri.href,
     request_uri: request.id?.href ?? null,
   })
+  // The quote is already approved for its first requester: another actor gets no stamp of theirs.
+  if (row.actor_uri !== requester.href) return reject()
   return new Accept({
     actor: actorUri,
     id: new URL(`${actorUri.href}#accepts/quote_requests/${row.id}`),
@@ -1118,19 +1144,7 @@ export const createFeedFederation = (
       if (instance?.publicTagPosts != null && isInstanceDelivery(ctx)) {
         return await handleInstanceActorDelete(ctx, del, instance.publicTagPosts)
       }
-      // Delete of a post we received → drop it from the timeline. `del.objectId`
-      // is the removed object's id (a Tombstone or bare id); we key on it, but
-      // scope the delete to the sender (`del.actorId`) so a signed `Delete` from
-      // some other actor can't evict a post it didn't author — mirroring how
-      // `Undo{Follow}` is scoped to its own actor.
-      const me = ctx.recipient
-      if (me == null || !isValidUsername(me) || del.objectId == null || del.actorId == null) return
-      try {
-        await deleteTimelineEntryByUri(me, del.objectId.href, del.actorId.href)
-      } catch (error) {
-        if (isMissingDatabase(error)) return
-        throw error
-      }
+      await handleInboundDelete(ctx, del)
     })
 
   // Individual post object. Serves the same `Note` that was delivered, at its

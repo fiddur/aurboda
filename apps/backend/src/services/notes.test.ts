@@ -285,6 +285,35 @@ describe('addNote — time comments and replies', () => {
     expect(db.insertNote).not.toHaveBeenCalled()
   })
 
+  test('rejects a time comment whose end precedes its start', async () => {
+    const result = await addNote('user', {
+      content: 'Backwards',
+      end_time: '2024-01-15T11:00:00.000Z',
+      entity_type: 'time',
+      start_time: '2024-01-15T12:00:00.000Z',
+    })
+
+    expect(result).toMatchObject({ errorCode: 'invalid', success: false })
+    expect(result.error).toBe('end_time must not precede start_time')
+    expect(db.insertNote).not.toHaveBeenCalled()
+  })
+
+  test.each(['activity', 'productivity', 'report', 'meal', 'note'] as const)(
+    'rejects a non-UUID entity_id for entity_type %s',
+    async (entityType) => {
+      const result = await addNote('user', {
+        content: 'Hm',
+        entity_id: 'not-a-uuid',
+        entity_type: entityType,
+      })
+
+      expect(result).toMatchObject({ errorCode: 'invalid', success: false })
+      expect(result.error).toBe(`entity_id must be a UUID when entity_type is '${entityType}'`)
+      expect(db.insertNote).not.toHaveBeenCalled()
+      expect(db.getNoteRoot).not.toHaveBeenCalled()
+    },
+  )
+
   test('rejects a comment with no entity_id on an anchored type', async () => {
     const result = await addNote('user', { content: 'Nope', entity_type: 'activity' })
 
@@ -299,7 +328,6 @@ describe('addNote — time comments and replies', () => {
     const rootStart = new Date('2024-01-15T12:00:00Z')
     const rootEnd = new Date('2024-01-15T12:30:00Z')
 
-    // getNoteRoot resolves the reply to its root for us.
     vi.mocked(db.getNoteRoot).mockResolvedValue(
       makeNote({
         end_time: rootEnd,
@@ -497,6 +525,60 @@ describe('updateNote', () => {
     expect(db.updateNoteFields).not.toHaveBeenCalled()
   })
 
+  test('treats a non-UUID id as not found without querying', async () => {
+    const result = await updateNote('user', 'not-a-uuid', { content: 'Content' })
+
+    expect(result).toMatchObject({ errorCode: 'not_found', success: false })
+    expect(db.getNoteById).not.toHaveBeenCalled()
+  })
+
+  test('returns errorCode not_found when the note does not exist', async () => {
+    vi.mocked(db.getNoteById).mockResolvedValue(null)
+
+    const result = await updateNote('user', randomUUID(), { content: 'Content' })
+
+    expect(result.errorCode).toBe('not_found')
+  })
+
+  test('rejects moving the end of a time comment before its start', async () => {
+    const noteId = randomUUID()
+    vi.mocked(db.getNoteById).mockResolvedValue(
+      makeNote({
+        entity_id: null,
+        entity_type: 'time',
+        id: noteId,
+        start_time: new Date('2024-01-15T12:00:00Z'),
+      }),
+    )
+
+    const result = await updateNote('user', noteId, { end_time: '2024-01-15T11:00:00.000Z' })
+
+    expect(result).toMatchObject({
+      error: 'end_time must not precede start_time',
+      errorCode: 'invalid',
+      success: false,
+    })
+    expect(db.updateNoteFields).not.toHaveBeenCalled()
+  })
+
+  test('rejects moving the start of a time comment past its end', async () => {
+    const noteId = randomUUID()
+    vi.mocked(db.getNoteById).mockResolvedValue(
+      makeNote({
+        end_time: new Date('2024-01-15T13:00:00Z'),
+        entity_id: null,
+        entity_type: 'time',
+        id: noteId,
+        start_time: new Date('2024-01-15T12:00:00Z'),
+      }),
+    )
+
+    const result = await updateNote('user', noteId, { start_time: '2024-01-15T14:00:00.000Z' })
+
+    expect(result.errorCode).toBe('invalid')
+    expect(db.updateNoteFields).not.toHaveBeenCalled()
+  })
+
   test('moves a time note and cascades the new times to its replies', async () => {
     const noteId = randomUUID()
     const newStart = new Date('2024-01-15T11:00:00Z')
@@ -534,6 +616,12 @@ describe('deleteNoteById', () => {
     vi.mocked(db.deleteNote).mockResolvedValue(false)
     const result = await deleteNoteById('user', randomUUID())
     expect(result).toEqual({ deleted: false, success: false })
+  })
+
+  test('treats a non-UUID id as not found without querying', async () => {
+    const result = await deleteNoteById('user', 'not-a-uuid')
+    expect(result).toEqual({ deleted: false, success: false })
+    expect(db.deleteNote).not.toHaveBeenCalled()
   })
 })
 

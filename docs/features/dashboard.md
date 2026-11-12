@@ -77,7 +77,7 @@ Shows workout, sleep, and meditation statistics for a configurable recent period
 
 A full-width EMA (Exponential Moving Average) trend chart for any tag or metric. Shows a smoothed trend line over time with the current rate displayed. Useful for tracking things like supplement intake frequency, weight changes, or exercise patterns over weeks or months.
 
-**Configuration:** Source type (tag or metric), pattern (tag regex or metric name), half-life (default 15 days), lookback period (default 90 days), display period (daily/weekly/monthly), aggregation method (count/sum/mean).
+**Configuration:** Source type (tag or metric), pattern (tag regex or metric name), half-life (default 15 days), lookback period (default 90 days) or a fixed start date (`since`, see below), display period (daily/weekly/monthly), aggregation method (count/sum/mean).
 
 A trend chart can instead show a **measure's decaying best** (an activity type's `measure`, with `filter_field` and `filter_value` for one exercise): the running best that decays with the half-life (default 120 days) between sessions. Display period and aggregation do not apply, and the title defaults to the exercise and measure, e.g. "Squat · Best e1RM". Add one from an exercise's Trend chart menu or from the Chart Explorer's **Trend (best)**.
 
@@ -86,6 +86,8 @@ A trend chart can instead show a **measure's decaying best** (an activity type's
 A full-width bar chart of bucketed values (`GET /chart-data`) for an activity type, metric or screentime category, optionally broken down into one stacked series per value of a categorical field.
 
 **Configuration:** Source type, pattern, bucket size, lookback period, aggregation (count/sum/mean/max), optional breakdown fields. For an activity type with list items (strength sets), `measure` charts that measure of each session instead of its duration or count, `filter_field`/`filter_value` (e.g. `sets.exercise` = `Bench Press`) take it over one exercise's items, and a `sets.exercise` breakdown gives one series per exercise (see [Activity Types: Exercises and measures](activity-types.md#exercises-and-measures)).
+
+A trend or bar chart can have a fixed start instead of a rolling lookback: `since` (`YYYY-MM-DD`) charts from that date up to today and wins over `lookback_days`. Bars start at the date's midnight and a trend looks back the whole days from the date to today, in the viewer's timezone on your own board and in the owner's timezone on a shared one. The Chart Explorer's **Since…** range saves it this way. A period dashboard's window still overrides it, as it does every lookback.
 
 ### Combined Chart
 

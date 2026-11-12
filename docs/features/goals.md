@@ -38,7 +38,7 @@ A measure goal's progress is 0 when no session in the window has the measure. Th
 
 ### Trend Goals
 
-A trend goal sets a minimum and/or maximum on a [trend](trends.md) value instead of a windowed sum: an EMA of a tag, activity type, metric or screentime category (`source_type`, `pattern`, `half_life_days`, `display_period`, `aggregation`), e.g. "keep painkillers below 0.7 per month".
+A trend goal sets a minimum and/or maximum on a [trend](trends.md) value instead of a windowed sum: an EMA of a tag, activity type, metric or screentime category (`source_type`, `pattern`, `half_life_days`, `display_period`, `aggregation`), e.g. "keep painkillers below 0.7 per month". The trend starts at its own first sample ([Where a trend starts](trends.md#where-a-trend-starts)), so a young series is scored on what it has, not on a climb from zero, and its history has no days before that sample.
 
 A trend goal on an activity type can instead be on a **measure** (`measure`, with `filter_field` / `filter_value` for one exercise): it is scored on the [decaying best](trends.md#measure-trends-decaying-best) of that measure, e.g. "Squat e1RM trend ≥ 100 kg" with a 120-day half-life. Its progress carries the measure fields, and the widget titles it like a measure goal ("Squat · Best e1RM").
 

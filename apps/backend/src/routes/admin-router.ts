@@ -15,6 +15,7 @@ import {
   type InvitationResponse,
   type RelayResponse,
   type RelaysResponse,
+  type ResendPostUpdatesResponse,
   type UpdateAdminSettingsBody,
   updateAdminSettingsBodySchema,
   type UpdateUserPlanBody,
@@ -23,6 +24,7 @@ import {
 
 import type { AccountDeleter } from '../services/account-deletion.ts'
 import type { AccountPlans } from '../services/account-plan.ts'
+import type { PostUpdateResender } from '../services/activitypub/post-update-resend.ts'
 import type { AdminUsers } from '../services/admin-users.ts'
 import type { CentralDb } from '../services/central-db.ts'
 import type { InvitationAuth } from '../services/invitation.ts'
@@ -62,6 +64,7 @@ export const createAdminRouter = (
   accountPlans?: AccountPlans,
   relays?: RelayActions,
   publicTags?: Pick<PublicTagActions, 'apply'>,
+  postUpdates?: PostUpdateResender,
 ): TypedRouter => {
   const router = typedRouter()
   const readSettings = async (): Promise<AdminSettingsResponse> => {
@@ -378,6 +381,22 @@ export const createAdminRouter = (
           return
         }
         res.json({ success: true })
+      },
+    )
+  }
+
+  if (postUpdates) {
+    router.post<Record<string, never>, ResendPostUpdatesResponse>(
+      '/federation/resend-post-updates',
+      authMiddleware,
+      adminMiddleware,
+      async (_req, res) => {
+        const run = await postUpdates.start()
+        if (run == null) {
+          res.status(409).json({ error: 'A re-send is already running', success: false })
+          return
+        }
+        res.status(202).json({ posts: run.posts, success: true })
       },
     )
   }

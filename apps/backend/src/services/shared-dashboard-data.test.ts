@@ -1,6 +1,6 @@
 import type { DashboardConfig, DashboardWidget } from '@aurboda/api-spec'
 
-import { percentChange } from '@aurboda/api-spec'
+import { barChartConfigSchema, percentChange, trendChartConfigSchema } from '@aurboda/api-spec'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import type * as ActivityRecords from './activity-records.ts'
@@ -37,7 +37,8 @@ const { getActivityTypeSummary, getPeriodSummary, getPlacesSummary, getTopApps, 
   await import('./queries/index.ts')
 const { getBaseline } = await import('./correlations/baseline.ts')
 const { getLatestSleep } = await import('./latest-sleep.ts')
-const { resolveDashboardData, resolvePeriodDashboard } = await import('./shared-dashboard-data.ts')
+const { resolveDashboardData, resolvePeriodDashboard, sinceLookbackDays, sinceRange } =
+  await import('./shared-dashboard-data.ts')
 
 const board = (widget: DashboardWidget): DashboardConfig => ({
   sections: [{ id: 's', title: 'x', type: 'charts', widgets: [widget] }],
@@ -142,6 +143,125 @@ describe('resolveDashboardData: combined_chart', () => {
       },
       type: 'combined_chart',
     })
+  })
+})
+
+describe('sinceLookbackDays', () => {
+  test('counts whole calendar days in the owner timezone, at least one', () => {
+    const now = new Date('2026-11-11T12:00:00Z')
+    expect(sinceLookbackDays('2026-11-01', 'Europe/Stockholm', now)).toBe(10)
+    expect(sinceLookbackDays('2026-11-11', 'Europe/Stockholm', now)).toBe(1)
+    expect(sinceLookbackDays('2026-10-20', 'Europe/Stockholm', now)).toBe(22)
+  })
+
+  test('takes today from the timezone, not UTC', () => {
+    const lateEvening = new Date('2026-11-11T23:30:00Z')
+    expect(sinceLookbackDays('2026-11-01', 'UTC', lateEvening)).toBe(10)
+    expect(sinceLookbackDays('2026-11-01', 'Europe/Stockholm', lateEvening)).toBe(11)
+  })
+
+  test('a since date later than today counts as today', () => {
+    const now = new Date('2026-11-11T12:00:00Z')
+    expect(sinceLookbackDays('2027-06-01', 'Europe/Stockholm', now)).toBe(1)
+  })
+})
+
+describe('sinceRange', () => {
+  const now = new Date('2026-11-11T12:00:00Z')
+
+  test("runs from the date's midnight in the timezone to now", () => {
+    expect(sinceRange('2026-03-01', 'Europe/Stockholm', now)).toEqual({
+      end: now,
+      start: new Date('2026-02-28T23:00:00.000Z'),
+    })
+  })
+
+  test("a since date later than today starts at today's midnight, never after the end", () => {
+    expect(sinceRange('2027-06-01', 'Europe/Stockholm', now)).toEqual({
+      end: now,
+      start: new Date('2026-11-10T23:00:00.000Z'),
+    })
+  })
+})
+
+describe('chart widget since', () => {
+  const trend = { pattern: 'coffee', source_type: 'activity_type' } as const
+  const bars = { ...trend, bucket_size: '1w', lookback_days: 30 } as const
+
+  test('accepts a date from 1970-01-01 on', () => {
+    expect(trendChartConfigSchema.safeParse({ ...trend, since: '1970-01-01' }).success).toBe(true)
+    expect(barChartConfigSchema.safeParse({ ...bars, since: '2026-03-01' }).success).toBe(true)
+  })
+
+  test('refuses an earlier date with a clear message', () => {
+    for (const since of ['1969-12-31', '0099-01-01', '0000-01-01']) {
+      const trendResult = trendChartConfigSchema.safeParse({ ...trend, since })
+      expect(trendResult.success).toBe(false)
+      expect(trendResult.error?.issues[0]?.message).toBe('since must be 1970-01-01 or later')
+      expect(barChartConfigSchema.safeParse({ ...bars, since }).success).toBe(false)
+    }
+  })
+})
+
+describe('resolveDashboardData: a chart with a since date', () => {
+  beforeEach(() => {
+    vi.mocked(getChartData).mockReset()
+    vi.mocked(getChartData).mockResolvedValue({ buckets: [] } as unknown as Awaited<
+      ReturnType<typeof getChartData>
+    >)
+    vi.mocked(getTrend).mockReset()
+    vi.mocked(getTrend).mockResolvedValue({ current_value: 1, history: [] } as unknown as Awaited<
+      ReturnType<typeof getTrend>
+    >)
+  })
+
+  test("bars start at the date's midnight in the owner timezone, whatever lookback_days says", async () => {
+    await resolveDashboardData(
+      'alice',
+      board({
+        config: {
+          bucket_size: '1w',
+          lookback_days: 30,
+          pattern: 'coffee',
+          since: '2026-03-01',
+          source_type: 'activity_type',
+        },
+        id: 'bars',
+        type: 'bar_chart',
+      }),
+    )
+
+    const query = vi.mocked(getChartData).mock.calls[0]?.[1]
+    expect(query?.start).toBe('2026-02-28T23:00:00.000Z')
+    expect(Math.abs(new Date(query?.end ?? '').getTime() - Date.now())).toBeLessThan(60_000)
+  })
+
+  test('a trend looks back the days from the date to today', async () => {
+    await resolveDashboardData(
+      'alice',
+      board({
+        config: { lookback_days: 30, pattern: 'coffee', since: '2026-03-01', source_type: 'activity_type' },
+        id: 'trend',
+        type: 'trend_chart',
+      }),
+    )
+
+    expect(vi.mocked(getTrend).mock.calls[0]?.[1]).toMatchObject({
+      lookback_days: sinceLookbackDays('2026-03-01', 'Europe/Stockholm'),
+    })
+  })
+
+  test('without a since date the lookback is unchanged', async () => {
+    await resolveDashboardData(
+      'alice',
+      board({
+        config: { lookback_days: 30, pattern: 'coffee', source_type: 'activity_type' },
+        id: 'trend',
+        type: 'trend_chart',
+      }),
+    )
+
+    expect(vi.mocked(getTrend).mock.calls[0]?.[1]).toMatchObject({ lookback_days: 30 })
   })
 })
 

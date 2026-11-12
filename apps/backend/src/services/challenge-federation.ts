@@ -11,6 +11,7 @@ import {
   activityMeasures,
   type ChallengeDataResponse,
   challengeDataResponseSchema,
+  type ChallengePreview,
   type PublicChallenge,
   publicChallengeResponseSchema,
   type QuantChallengeDocument,
@@ -39,7 +40,7 @@ import {
 } from '../db/index.ts'
 import { normalizeWellKnownQuantpub, wireMetricToMetricType } from './activitypub/quant-wire.ts'
 import { entryToMemberData, quantMetricForSpec } from './challenge-quantpub.ts'
-import { toSpecFields, unsupportedMeasureMessage } from './challenge-spec.ts'
+import { specToApi, toSpecFields, unsupportedMeasureMessage } from './challenge-spec.ts'
 import { isTransientFetchError, safeFetchDelete, safeFetchGet, safeFetchPost } from './safe-fetch.ts'
 import { buildActorUrl, buildProfileUrl } from './share-urls.ts'
 
@@ -538,6 +539,96 @@ export const joinChallenge = async ({
   } catch (error) {
     throw new JoinChallengeError(
       error instanceof Error ? error.message : 'Failed to join challenge',
+      'federation',
+    )
+  }
+}
+
+const hostHandle = (parsed: ParsedChallengeUrl): string => {
+  try {
+    return `@${parsed.username}@${new URL(parsed.base).host}`
+  } catch {
+    return `@${parsed.username}`
+  }
+}
+
+const hostInstant = (value: string): string => {
+  const ms = Date.parse(value)
+  if (Number.isNaN(ms)) throw new Error('The host sent an unreadable challenge window')
+  return new Date(ms).toISOString()
+}
+
+const fetchRemotePreview = async (
+  parsed: ParsedChallengeUrl,
+): Promise<Omit<ChallengePreview, 'host_handle' | 'share_url'>> => {
+  const host = await discoverInstance(parsed.base)
+  if (host.kind === 'quantpub') {
+    const doc = await fetchChallengeDocument(host.apiBase, parsed.username, parsed.slug)
+    return {
+      end_ts: doc.endTime,
+      host_identity: doc.host.url,
+      name: doc.name,
+      spec: specToApi(specFromChallengeDocument(doc)),
+      start_ts: doc.startTime,
+      timezone: doc.timezone,
+    }
+  }
+  const challenge = await fetchChallengeSpec(host.apiBase, parsed.username, parsed.slug)
+  return {
+    end_ts: challenge.end_ts,
+    host_identity: challenge.host_identity,
+    name: challenge.name,
+    spec: challenge.spec,
+    start_ts: challenge.start_ts,
+    timezone: challenge.timezone,
+  }
+}
+
+const previewRemote = async (
+  parsed: ParsedChallengeUrl,
+): Promise<Omit<ChallengePreview, 'host_handle' | 'share_url'>> => {
+  const preview = await fetchRemotePreview(parsed)
+  return { ...preview, end_ts: hostInstant(preview.end_ts), start_ts: hostInstant(preview.start_ts) }
+}
+
+/**
+ * What `joinChallenge` would join, read the same way (in-process for this
+ * instance, else from the host) but without joining: the confirm step before a
+ * join the user did not click on the host's page. Fails like a join would.
+ */
+export const previewChallenge = async ({
+  challengeUrl,
+  webHost,
+}: {
+  challengeUrl: string
+  webHost: string
+}): Promise<ChallengePreview> => {
+  const normalizedUrl = canonicalChallengeUrl(challengeUrl)
+  const parsed = normalizedUrl === null ? null : parseChallengeUrl(normalizedUrl)
+  if (normalizedUrl === null || !parsed || !isValidUsername(parsed.username)) {
+    throw new JoinChallengeError('Not a valid challenge URL', 'invalid_url')
+  }
+  const identity = { host_handle: hostHandle(parsed), share_url: normalizedUrl }
+
+  if (parsed.base === trimSlashes(webHost)) {
+    const challenge = await getChallengeBySlug(parsed.username, parsed.slug).catch(() => null)
+    if (!challenge) throw new JoinChallengeError('Challenge not found', 'not_found')
+    return {
+      ...identity,
+      end_ts: challenge.end_ts.toISOString(),
+      host_identity: buildProfileUrl(webHost, parsed.username),
+      name: challenge.name,
+      spec: specToApi(challenge.spec),
+      start_ts: challenge.start_ts.toISOString(),
+      timezone: challenge.timezone,
+    }
+  }
+
+  try {
+    return { ...identity, ...(await previewRemote(parsed)) }
+  } catch (error) {
+    throw new JoinChallengeError(
+      error instanceof Error ? error.message : 'Failed to read the challenge',
       'federation',
     )
   }

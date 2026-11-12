@@ -191,7 +191,7 @@ export interface ChallengeDiscoveryDeps {
   listFollowing: (user: string) => Promise<FeedFollowingRecord[]>
   listHosted: (user: string) => Promise<ChallengeRecord[]>
   listParticipations: (user: string) => Promise<ChallengeParticipationRecord[]>
-  /** Canonical URLs of challenges the user left (the leave tombstones). */
+  /** URLs of challenges the user left (the leave tombstones). */
   listLeft: (user: string) => Promise<string[]>
   /** Public challenges of a user on THIS instance — no HTTP round trip. */
   listLocalPublic: (username: string) => Promise<ChallengeRecord[]>
@@ -307,8 +307,7 @@ export const createChallengeDiscovery =
     ])
     // Everything the user already has a row for — hosted, joined, or left
     // (leaving was a choice; the widget/page shouldn't nag) — is never
-    // suggested. Compared canonically, so a challenge joined by a link with a
-    // query string still matches what its host lists.
+    // suggested.
     const mine = new Set([
       ...hosted.map((c) => canonical(buildShareUrl(deps.webHost, user, c.slug))),
       ...participations.map((p) => canonical(p.challenge_url)),
@@ -341,8 +340,6 @@ export const createChallengeDiscovery =
       },
     )
 
-    // Counted per instance, not per followee: three followees on one dead host
-    // is one instance the user couldn't be shown (#1092).
     const unreachableBases = new Set<string>()
     const found: DiscoveredChallenge[] = []
     for (const { followee, items, parsed } of listings) {

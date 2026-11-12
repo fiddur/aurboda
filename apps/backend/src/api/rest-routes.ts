@@ -13,6 +13,7 @@ import type { DetailSyncedCallback, TrackWrittenCallback } from '../integrations
 import type { AutosharePreviewDeps } from '../mcp/autoshare-rule-tools.ts'
 import type { AccountDeleter } from '../services/account-deletion.ts'
 import type { AccountPlans } from '../services/account-plan.ts'
+import type { PostUpdateResender } from '../services/activitypub/post-update-resend.ts'
 import type { AdminUsers } from '../services/admin-users.ts'
 import type { CentralDb } from '../services/central-db.ts'
 import type { DiscoverChallenges } from '../services/challenge-discovery.ts'
@@ -38,6 +39,7 @@ import type { AnyMiddleware } from '../typed-router.ts'
 import {
   getFeedPostById,
   getLocations,
+  getPublicSharedDashboardBySlug,
   getTimeSeries,
   listUserNames,
   markActivityDetailSynced,
@@ -108,13 +110,16 @@ import { loadAvatarDataUri, loadChallengeBannerDataUri } from '../services/avata
 import { buildChartSvg } from '../services/charts/chart-svg.ts'
 import { buildRaceChartSvg } from '../services/charts/race-chart-svg.ts'
 import { buildScatterSvg } from '../services/charts/scatter-svg.ts'
+import { loadPublicDashboardChartWith } from '../services/dashboard-chart.ts'
 import { latestExerciseSession } from '../services/exercise-card.ts'
 import { resolveChallengeRaceByUrl, resolveStandingsChart } from '../services/feed-structured-challenge.ts'
 import { resolveExerciseTrendSeries } from '../services/feed-structured-exercise.ts'
 import { resolveFeedActivity } from '../services/feed.ts'
 import { readOfficialFeedSetting } from '../services/official-feed.ts'
 import { createOgImageRenderer } from '../services/og-image.ts'
+import { loadPublicPostChartWith, type PostChartDeps } from '../services/post-chart.ts'
 import { getUserTimezone } from '../services/settings.ts'
+import { resolveDashboardView } from '../services/shared-dashboard-data.ts'
 import { resolveSharedExerciseData } from '../services/shared-exercise-data.ts'
 import { createTemplateLoader } from '../services/web-template.ts'
 
@@ -151,6 +156,7 @@ interface RestRoutesDeps {
   followerActions: FollowerActions
   relayActions: RelayActions
   publicTagActions: PublicTagActions
+  postUpdateResender: PostUpdateResender
   /** Outbound like ⭐ / boost 🔄 toggles for the home timeline. */
   reactionActions: ReactionActions
   timelineHub: TimelineHub
@@ -163,6 +169,21 @@ interface RestRoutesDeps {
   onHrSettingsChanged: HrSettingsChanged
   onNamedLocationsChanged: NamedLocationsChanged
   dataExport: { exporter: DumpExporter; requestDumpLink: DumpLinkIssuer; tokens: ExportTokens }
+}
+
+/** Where a post's chart data comes from, for its feed images and its link-preview card alike. */
+const postChartDeps: PostChartDeps = {
+  // Merged-span window so the rendered chart covers what the user shared,
+  // matching the Note's duration/metrics (#881).
+  getActivity: resolveFeedActivity,
+  // Shared with the markdown export's eligibility check (#974), so "would
+  // this block's image render?" can never drift from the endpoint.
+  getArticleChartSeries: getArticleChartSeriesData,
+  getChallengeRaceByUrl: resolveChallengeRaceByUrl,
+  getCorrelationScatter: getArticleCorrelationScatter,
+  getExerciseTrend: (user, post) => resolveExerciseTrendSeries(user, post),
+  getSeries: getTimeSeries,
+  getStandingsChart: resolveStandingsChart,
 }
 
 export const mountRestRouters = ({
@@ -192,6 +213,7 @@ export const mountRestRouters = ({
   followerActions,
   relayActions,
   publicTagActions,
+  postUpdateResender,
   reactionActions,
   onProfileChanged,
   onHrSettingsChanged,
@@ -285,21 +307,11 @@ export const mountRestRouters = ({
   // public/unlisted posts. Mounted alongside the series router (same guard).
   httpd.use(
     createFeedImageRouter({
+      ...postChartDeps,
       articleBlockMisses,
-      // Merged-span window so the rendered chart/route cover what the user
-      // shared, matching the Note's duration/metrics (#881).
-      getActivity: resolveFeedActivity,
-      // Shared with the markdown export's eligibility check (#974), so "would
-      // this block's image render?" can never drift from the endpoint.
-      getArticleChartSeries: getArticleChartSeriesData,
-      getCorrelationScatter: getArticleCorrelationScatter,
       getPost: getFeedPostById,
       getRoute: async (user, start, end) =>
         (await getLocations(user, start, end)).locations.map((l) => l.coordinates),
-      getSeries: getTimeSeries,
-      getExerciseTrend: (user, post) => resolveExerciseTrendSeries(user, post),
-      getChallengeRaceByUrl: resolveChallengeRaceByUrl,
-      getStandingsChart: resolveStandingsChart,
       renderChart: renderChartPng,
       renderChartSvg: buildChartSvg,
       renderRaceChart: renderRaceChartPng,
@@ -326,6 +338,12 @@ export const mountRestRouters = ({
       latestExerciseSession: (username, exercise) => latestExerciseSession(username, exercise),
       loadAvatarDataUri,
       loadBannerDataUri: loadChallengeBannerDataUri,
+      loadDashboardChart: loadPublicDashboardChartWith({
+        getDashboard: getPublicSharedDashboardBySlug,
+        getTimezone: getUserTimezone,
+        resolveView: resolveDashboardView,
+      }),
+      loadPostChart: loadPublicPostChartWith({ ...postChartDeps, getPost: getFeedPostById }),
       loadExerciseCard: async (username, exercise) => {
         const [data, timeZone] = await Promise.all([
           resolveSharedExerciseData(username, exercise),
@@ -370,6 +388,7 @@ export const mountRestRouters = ({
       accountPlans,
       relayActions,
       publicTagActions,
+      postUpdateResender,
     ),
   )
   httpd.use(

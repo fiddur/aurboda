@@ -4,7 +4,7 @@ import { insertCustomMetricDefinition } from '../db/custom-metrics.ts'
 import { insertActivity } from '../db/index.ts'
 import { deleteTimeSeriesPoint, insertTimeSeries } from '../db/time-series.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
-import { getTrend } from './trends.ts'
+import { firstPeriodWeight, getTrend } from './trends.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 
@@ -204,11 +204,180 @@ describe('getTrend metric integration', () => {
       const nextDay = utcDayKey(at(2, 12, 0))
 
       const local = await strengthTrend('Pacific/Kiritimati')
-      expect(valueOn(local.history, utcDay)).toBe(0)
+      expect(valueOn(local.history, utcDay)).toBeUndefined()
+      expect(local.history[0]?.date).toBe(nextDay)
       expect(valueOn(local.history, nextDay)).toBeGreaterThan(0)
 
       const utc = await strengthTrend()
       expect(valueOn(utc.history, utcDay)).toBeGreaterThan(0)
+    })
+  })
+
+  describe('zero-filled trends start at their own first sample', () => {
+    const daysAgo = (days: number) => {
+      const d = new Date()
+      d.setUTCDate(d.getUTCDate() - days)
+      d.setUTCHours(12, 0, 0, 0)
+      return d
+    }
+    const dayKey = (d: Date) => d.toISOString().slice(0, 10)
+    const run = (start: Date, data?: Record<string, unknown>) =>
+      insertActivity(getTestUser(), {
+        activity_type: 'running',
+        ...(data ? { data } : {}),
+        end_time: new Date(start.getTime() + 3_600_000),
+        source: 'aurboda',
+        start_time: start,
+      })
+    const runningTrend = (extra: Record<string, unknown> = {}) =>
+      getTrend(getTestUser(), {
+        aggregation: 'sum',
+        display_period: 'weekly',
+        lookback_days: 30,
+        pattern: 'running',
+        source_type: 'activity_type',
+        tz: 'UTC',
+        ...extra,
+      })
+
+    test('a lone one-hour run reads about an hour per week from its own day on, with no points before it', async () => {
+      await run(daysAgo(10))
+
+      const result = await runningTrend()
+
+      expect(result.history).toHaveLength(11)
+      expect(result.history[0].date).toBe(dayKey(daysAgo(10)))
+      expect(result.history[0].value).toBeCloseTo(7 / firstPeriodWeight(15, 7), 6)
+    })
+
+    test('a run count trend starts at the first run too', async () => {
+      await run(daysAgo(3))
+
+      const result = await runningTrend({ aggregation: 'count', display_period: 'daily' })
+
+      expect(result.history.map((p) => p.date)).toEqual([3, 2, 1, 0].map((n) => dayKey(daysAgo(n))))
+      expect(result.history[0].value).toBeCloseTo(1, 6)
+    })
+
+    test('no samples, no points', async () => {
+      const result = await runningTrend()
+
+      expect(result.history).toEqual([])
+      expect(result.current_value).toBe(0)
+    })
+
+    test('a first sample before the window still counts the empty days in it as zeros', async () => {
+      await run(daysAgo(200))
+      await run(daysAgo(5))
+
+      const result = await runningTrend()
+
+      expect(result.history).toHaveLength(31)
+      expect(result.history[0]).toEqual({ date: dayKey(daysAgo(30)), value: 0 })
+    })
+
+    test('a steady daily amount is flat from its first day', async () => {
+      const user = getTestUser()
+      await insertTimeSeries(
+        user,
+        [9, 8, 7, 6, 5, 4, 3, 2, 1, 0].map((n) => ({
+          metric: 'steps' as const,
+          source: 'aurboda',
+          time: daysAgo(n),
+          value: 1000,
+        })),
+      )
+
+      const result = await getTrend(user, {
+        aggregation: 'sum',
+        display_period: 'daily',
+        lookback_days: 30,
+        pattern: 'steps',
+        source_type: 'metric',
+        tz: 'UTC',
+      })
+
+      expect(result.missing_days).toBe('zero')
+      expect(result.history).toHaveLength(10)
+      for (const point of result.history) expect(point.value).toBeCloseTo(1000, 6)
+    })
+
+    test('a screentime category trend starts at its first span', async () => {
+      await insertActivity(getTestUser(), {
+        activity_type: 'screentime',
+        data: { category_path: 'Work > Programming' },
+        end_time: new Date(daysAgo(4).getTime() + 7_200_000),
+        source: 'aurboda',
+        start_time: daysAgo(4),
+      })
+
+      const result = await getTrend(getTestUser(), {
+        display_period: 'daily',
+        lookback_days: 30,
+        pattern: 'Work',
+        source_type: 'productivity_category',
+        tz: 'UTC',
+      })
+
+      expect(result.history[0]).toEqual({ date: dayKey(daysAgo(4)), value: 2 })
+      expect(result.history).toHaveLength(5)
+    })
+
+    test('a series older than the window reads a full period from its oldest displayed point', async () => {
+      for (let n = 0; n < 60; n++) await run(daysAgo(n))
+
+      const result = await runningTrend({
+        aggregation: 'count',
+        display_period: 'monthly',
+        half_life_days: 1,
+        lookback_days: 5,
+      })
+
+      expect(result.history).toHaveLength(6)
+      for (const point of result.history) expect(point.value).toBeCloseTo(30, 6)
+    })
+
+    test("a category's sub-category match escapes LIKE metacharacters in the path", async () => {
+      const span = (path: string, start: Date) =>
+        insertActivity(getTestUser(), {
+          activity_type: 'screentime',
+          data: { category_path: path },
+          end_time: new Date(start.getTime() + 3_600_000),
+          source: 'aurboda',
+          start_time: start,
+        })
+      await span('AxB > C', daysAgo(6))
+      await span('A_B%', daysAgo(5))
+      await span('A_B > C', daysAgo(2))
+
+      const trend = () =>
+        getTrend(getTestUser(), {
+          display_period: 'daily',
+          lookback_days: 30,
+          pattern: 'A_B',
+          source_type: 'productivity_category',
+          tz: 'UTC',
+        })
+
+      expect((await trend()).history[0]).toEqual({ date: dayKey(daysAgo(2)), value: 1 })
+
+      await span('A_B', daysAgo(3))
+      expect((await trend()).history[0]).toEqual({ date: dayKey(daysAgo(3)), value: 1 })
+    })
+
+    test('breakdown series share one x-axis from the earliest first sample', async () => {
+      await run(daysAgo(10), { partner: 'alice' })
+      await run(daysAgo(5), { partner: 'bob' })
+
+      const result = await runningTrend({ breakdown_fields: ['partner'] })
+      const alice = result.breakdown_histories!['alice']
+      const bob = result.breakdown_histories!['bob']
+
+      expect(alice[0].date).toBe(dayKey(daysAgo(10)))
+      expect(bob.map((p) => p.date)).toEqual(alice.map((p) => p.date))
+      expect(bob).toHaveLength(11)
+      expect(bob.slice(0, 5).every((p) => p.value === 0)).toBe(true)
+      expect(alice[0].value).toBeCloseTo(7 / firstPeriodWeight(15, 7), 6)
     })
   })
 

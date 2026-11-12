@@ -35,6 +35,13 @@ base-URL federation identity, and the bucketed-data engine behind dashboards.
   sum, so the race chart plots the running best instead of a running total. A session
   without the filtered exercise is not data: it adds nothing and does not move
   `last_updated`.
+- **Spec frozen once a remote member joins:** a member from another instance keeps the
+  spec it joined with in its participation, so a host may not change the spec under it
+  (#1324). Once the challenge has an active remote member, `PUT /challenges/:id` and the
+  `update_challenge` MCP tool refuse a `spec` that differs from the stored one (REST
+  `409`); an unchanged `spec` in the body passes. Name, dates, timezone, visibility and
+  `announce_winner` stay editable. Members on the host's own instance are scored from the
+  current spec, so they do not freeze it.
 - **Members** are identified by their full public base URL
   (`https://host/u/user`). The host is always a member. A member contributes data
   through a capability **data endpoint** on their own instance.
@@ -458,6 +465,14 @@ the backend directly need no extra config.
 - **Join buttons:** logged-in users on the host instance get a one-click **Join**;
   anyone can **Join from another instance** (enter your Aurboda host → you're sent
   to your own instance's `/challenges/join`, which does the federated join).
+- **Join page** `/challenges/join?challenge=<url>`: joins on load (the user already
+  clicked Join on the host's page), then redirects to the challenge. With `&confirm=1`
+  (the Android widget's suggestion, where nothing was clicked yet) it first shows the
+  challenge — name, host, what it counts and its window, read with
+  `GET /challenges/preview` — and joins only on its **Join** button, then stays on your
+  instance (the challenge's page when hosted here, else `/challenges`): the app's WebView
+  would hand another instance's page to the browser, where you are not logged in. Logged
+  out, it links to login and comes back to the same page, `confirm` included.
 - **Share to feed** (#994): every row on `/challenges` — hosted **and** joined — has a
   **Share to feed** button that publishes an invitation to the federated feed: an
   optional personal note (markdown, previewed in the dialog) plus the challenge's
@@ -489,18 +504,27 @@ ends the widget **moves on by itself**: to the running challenge of yours that e
 soonest, else the upcoming one that starts soonest (a challenge that vanished from
 your lists — left, or deleted by its host — is replaced right away). With nothing
 of your own open it **suggests** the first discovered challenge (see _Discovery_)
-— "Join a challenge?" with its name, host and window; a tap opens its page with
-the Join button. Without a suggestion the finished challenge's result stays up.
+— "Join a challenge?" with its name, host and window; a tap opens your own
+instance's join page with `confirm=1`, which shows the challenge with a Join
+button. Without a suggestion the finished challenge's result stays up.
 See `docs/android-app.md` → _Home-screen widgets_.
 
 ## API surface (authed, owner/joiner)
 
 `/challenges` — `GET` (list hosted), `POST` (create), `GET/PUT/DELETE /:id`,
 `GET /:id/standings`, `GET /:id/members`, `DELETE /:id/members/:memberId`,
-`GET /challenges/participations/mine`, `GET /challenges/discover`, `POST /challenges/join`,
+`GET /challenges/participations/mine`, `GET /challenges/discover`,
+`GET /challenges/preview?challenge_url=<url>`, `POST /challenges/join`,
 `DELETE /challenges/participations/:id`. The same CRUD + join is available over MCP
-(`create/list/update/delete_challenge`, `join_challenge`). A hosted challenge carries
-`announce_winner` (create/update/read; see _Completion & winner announcement_).
+(`create/list/update/delete_challenge`, `join_challenge`, `discover_challenges`,
+`preview_challenge`). A preview reads the challenge the way a join would — in-process for
+this instance, else from the host's QuantPub document or Aurboda public resolver — and
+answers its name, host (`host_identity`, `host_handle`), window, timezone and spec without
+joining; it fails with the join's statuses (400 not a challenge link, 404 no such challenge
+here, 502 host unreadable or not scorable here). A hosted challenge carries
+`announce_winner` (create/update/read; see _Completion & winner announcement_). An update
+that changes the spec of a challenge with a remote member is refused (`409` over REST; see
+_Spec frozen once a remote member joins_ under _Model_).
 
 Banner: `POST /challenges/:id/banner` (multipart, field `banner`; 400 for a missing,
 unsupported or undecodable file, 404 for a challenge that isn't yours) and

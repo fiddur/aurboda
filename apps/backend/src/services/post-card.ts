@@ -11,6 +11,7 @@ import type { FeedPostRecord } from '../db/feed.ts'
 import { isMissingDatabase } from '../db/pg-errors.ts'
 import { proseToPlainText } from './activitypub/article-object.ts'
 import { clampTitle } from './og-image.ts'
+import { postChartBucketMs } from './post-chart.ts'
 
 export interface PostSummary {
   title: string
@@ -33,6 +34,8 @@ export type ResolvedPost =
       created_at: string
       /** Busts the rendered card's memo on an edit. */
       updated_at: string
+      /** How long the card's chart may stand before it is drawn afresh (`postChartBucketMs`); absent, until an edit. */
+      chart_bucket_ms?: number
     }
 
 type PostFields = Pick<
@@ -122,7 +125,9 @@ export const resolvePostWith =
         record.kind === 'activity' && record.activity_id
           ? await getActivityHeadline(username, record.activity_id)
           : null
+      const chart_bucket_ms = postChartBucketMs(record)
       return {
+        ...(chart_bucket_ms === undefined ? {} : { chart_bucket_ms }),
         created_at: record.created_at.toISOString(),
         is_public: true,
         kind: record.kind,

@@ -236,7 +236,6 @@ export {
 
 export {
   deleteNote,
-  deleteNotesForEntity,
   deleteNotesForEntityIn,
   getNoteById,
   getNoteRoot,
@@ -307,6 +306,7 @@ export {
   getParticipationById,
   getParticipationByToken,
   getParticipationByUrl,
+  hasRemoteChallengeMember,
   listChallengeMembers,
   listChallengeParticipations,
   listChallenges,
@@ -385,9 +385,14 @@ export {
 } from './feed-reactions.ts'
 
 export {
+  type FeedPostQuoteRecord,
   type FeedQuoteAuthorizationInput,
   type FeedQuoteAuthorizationRecord,
+  deleteFeedQuoteAuthorizationsByActor,
+  deleteFeedQuoteAuthorizationsByQuote,
+  deleteFeedQuoteAuthorizationsForPost,
   getFeedQuoteAuthorization,
+  listFeedPostQuotes,
   listFeedQuoteAuthorizations,
   upsertFeedQuoteAuthorization,
 } from './feed-quotes.ts'
@@ -452,6 +457,7 @@ export {
   createReplyPost,
   type DashboardPostInput,
   deleteFeedPost,
+  deleteFeedPostWithQuotes,
   type ExercisePostInput,
   type FeedPostCursor,
   type FeedPostInput,

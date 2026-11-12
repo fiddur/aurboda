@@ -40,6 +40,7 @@ describe('isMutatingMcpTool', () => {
     'unfollow_actor',
     'resnapshot_meals_for_food_item',
     'publish_article_draft',
+    'resend_post_updates',
   ])('%s mutates', (name) => {
     expect(isMutatingMcpTool(name)).toBe(true)
   })
@@ -51,6 +52,7 @@ describe('isMutatingMcpTool', () => {
     'describe_tools',
     'preview_deduction_rule',
     'discover_challenges',
+    'preview_challenge',
     'match_routes',
     'export_article_markdown',
   ])('%s reads', (name) => {

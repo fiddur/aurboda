@@ -72,6 +72,8 @@ interface ResolvedResource {
   description?: string
   /** On a period dashboard, the label of the period a visitor sees. */
   period_label?: string
+  /** ISO timestamp of the dashboard's last edit. */
+  updated_at: string
 }
 
 export interface ResolvedExercise {
@@ -197,6 +199,7 @@ export const createShareResolvers = (): Pick<
         description: dashboard.config.description,
         is_public: dashboard.is_public,
         name: dashboard.name,
+        updated_at: dashboard.updated_at.toISOString(),
         ...(period_label ? { period_label } : {}),
       }
     } catch (error) {

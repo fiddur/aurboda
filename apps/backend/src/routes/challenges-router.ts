@@ -10,6 +10,9 @@ import {
   type ChallengeMembersResponse,
   type ChallengeParticipationResponse,
   type ChallengeParticipationsResponse,
+  type ChallengePreviewQuery,
+  challengePreviewQuerySchema,
+  type ChallengePreviewResponse,
   type ChallengeResponse,
   type ChallengesResponse,
   type ChallengeStandingsResponse,
@@ -36,20 +39,25 @@ import {
   listChallengeParticipations,
   listChallenges,
   removeChallengeMember,
-  updateChallenge,
   upsertChallengeBanner,
   upsertChallengeMember,
 } from '../db/index.ts'
 import { isAllowedImageType, processBanner } from '../services/avatar.ts'
 import { bannerUrlFor } from '../services/challenge-banner.ts'
-import { JoinChallengeError, joinChallenge, leaveChallenge } from '../services/challenge-federation.ts'
+import {
+  JoinChallengeError,
+  joinChallenge,
+  leaveChallenge,
+  previewChallenge,
+} from '../services/challenge-federation.ts'
 import { announcementPending } from '../services/challenge-results.ts'
 import { effectiveBucketSize, specToApi, toSpecFields } from '../services/challenge-spec.ts'
 import { getChallengeStandings } from '../services/challenge-standings.ts'
+import { SPEC_LOCKED_MESSAGE, updateHostedChallenge } from '../services/challenge-update.ts'
 import { buildProfileUrl, buildShareUrl } from '../services/share-urls.ts'
 import { isPublicToVisibility, visibilityToIsPublic } from '../services/visibility.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
-import { validateBody } from '../validation.ts'
+import { validateBody, validateQuery } from '../validation.ts'
 
 const bannerUpload = multer({
   limits: { fileSize: 10 * 1024 * 1024 },
@@ -68,6 +76,9 @@ const serializeParticipation = (p: ChallengeParticipationRecord) => ({
   status: p.status,
   timezone: p.timezone,
 })
+
+const joinErrorStatus = (error: JoinChallengeError): 400 | 404 | 502 =>
+  error.kind === 'invalid_url' ? 400 : error.kind === 'not_found' ? 404 : 502
 
 const serialize = (record: ChallengeRecord, webHost: string, username: string): Challenge => ({
   announce_winner: record.announce_winner,
@@ -127,13 +138,30 @@ export const createChallengesRouter = (
     },
   )
 
-  // Before `/:id`, or "discover" would be looked up as a challenge id.
+  // These two before `/:id`, or "discover" and "preview" would be looked up as challenge ids.
   router.get<Record<string, never>, DiscoverChallengesResponse>(
     '/discover',
     authMiddleware,
     async (req, res) => {
       const result = await discoverChallenges(req.user!)
       res.json({ ...result, success: true })
+    },
+  )
+
+  router.get<Record<string, never>, ChallengePreviewResponse, unknown, ChallengePreviewQuery>(
+    '/preview',
+    authMiddleware,
+    validateQuery(challengePreviewQuerySchema),
+    async (req, res) => {
+      try {
+        const challenge = await previewChallenge({ challengeUrl: req.query.challenge_url, webHost })
+        res.json({ challenge, success: true })
+      } catch (error) {
+        if (error instanceof JoinChallengeError) {
+          return res.status(joinErrorStatus(error)).json({ error: error.message, success: false })
+        }
+        throw error
+      }
     },
   )
 
@@ -151,7 +179,7 @@ export const createChallengesRouter = (
     async (req, res) => {
       const user = req.user!
       const b = req.body
-      const record = await updateChallenge(user, req.params.id, {
+      const result = await updateHostedChallenge(user, req.params.id, {
         announce_winner: b.announce_winner,
         end_ts: b.end_ts ? new Date(b.end_ts) : undefined,
         is_public: b.visibility === undefined ? undefined : visibilityToIsPublic(b.visibility),
@@ -160,8 +188,13 @@ export const createChallengesRouter = (
         start_ts: b.start_ts ? new Date(b.start_ts) : undefined,
         timezone: b.timezone,
       })
-      if (!record) return res.status(404).json({ error: 'Challenge not found', success: false })
-      res.json({ challenge: serialize(record, webHost, user), success: true })
+      if (result.status === 'not_found') {
+        return res.status(404).json({ error: 'Challenge not found', success: false })
+      }
+      if (result.status === 'spec_locked') {
+        return res.status(409).json({ error: SPEC_LOCKED_MESSAGE, success: false })
+      }
+      res.json({ challenge: serialize(result.record, webHost, user), success: true })
     },
   )
 
@@ -284,8 +317,7 @@ export const createChallengesRouter = (
         res.json({ participation: serializeParticipation(participation), success: true })
       } catch (error) {
         if (error instanceof JoinChallengeError) {
-          const status = error.kind === 'invalid_url' ? 400 : error.kind === 'not_found' ? 404 : 502
-          return res.status(status).json({ error: error.message, success: false })
+          return res.status(joinErrorStatus(error)).json({ error: error.message, success: false })
         }
         throw error
       }

@@ -80,6 +80,18 @@ export const sparklineCardConfigSchema = z
 
 export type SparklineCardConfig = z.infer<typeof sparklineCardConfigSchema>
 
+/** The earliest `since` a chart accepts: older dates only make the trend query walk decades of empty days. */
+export const chartSinceMin = '1970-01-01'
+
+const chartSinceSchema = z.iso
+  .date()
+  .refine((since) => since >= chartSinceMin, { message: `since must be ${chartSinceMin} or later` })
+  .optional()
+  .meta({
+    description:
+      "Fixed start date (YYYY-MM-DD, the owner's calendar day, 1970-01-01 or later): the chart covers this date up to today; a later date than today starts today. When set it wins over lookback_days",
+  })
+
 export const trendChartConfigSchema = z
   .object({
     aggregation: z.enum(['count', 'sum', 'mean']).optional().meta({ description: 'Aggregation method' }),
@@ -99,6 +111,7 @@ export const trendChartConfigSchema = z
     lookback_days: z.number().int().positive().optional().meta({ description: 'Days of data to analyze' }),
     missing_days: trendMissingDaysSchema.optional(),
     pattern: z.string().min(1).meta({ description: 'Tag pattern (regex) or metric name' }),
+    since: chartSinceSchema,
     source_type: z.enum(['tag', 'metric', 'activity_type']).meta({ description: 'Data source type' }),
     tag_definition_id: z
       .string()
@@ -136,6 +149,7 @@ export const barChartConfigSchema = z
       .meta({ description: 'Time bucket size' }),
     lookback_days: z.number().int().positive().meta({ description: 'Days of data to display' }),
     pattern: z.string().min(1).optional().meta({ description: 'Tag pattern (regex) or metric name' }),
+    since: chartSinceSchema,
     source_type: z
       .enum(['tag', 'metric', 'productivity_category', 'activity_type'])
       .meta({ description: 'Data source type' }),
@@ -156,6 +170,7 @@ const widgetOnlyFields = {
   breakdown_fields: true,
   lookback_days: true,
   masked_breakdown_fields: true,
+  since: true,
   title: true,
 } as const
 

@@ -1,13 +1,16 @@
 import { Announce, Like, Undo } from '@fedify/fedify/vocab'
 import { describe, expect, test } from 'vitest'
 
-import type { FeedPostReactionRecord, FeedReactionRecord } from '../db/index.ts'
+import type { FeedPostQuoteRecord, FeedPostReactionRecord, FeedReactionRecord } from '../db/index.ts'
 
 import {
   buildReactionActivity,
   buildUndoReactionActivity,
+  listPostReactions,
+  MAX_POST_REACTIONS,
   type ReactionActorContext,
   reactionActivityId,
+  serializeFeedPostQuote,
   serializeFeedPostReaction,
 } from './feed-reactions.ts'
 
@@ -126,5 +129,76 @@ describe('serializeFeedPostReaction', () => {
     // Internal bookkeeping (which post, which remote activity) stays server-side.
     expect(dto).not.toHaveProperty('post_id')
     expect(dto).not.toHaveProperty('activity_uri')
+  })
+})
+
+const inbound = (over: Partial<FeedPostReactionRecord> = {}): FeedPostReactionRecord => ({
+  activity_uri: null,
+  actor_uri: 'https://mastodon.example/users/bob',
+  avatar_url: null,
+  created_at: new Date('2026-07-03T09:00:00Z'),
+  display_name: null,
+  handle: null,
+  kind: 'like',
+  post_id: '22222222-2222-2222-2222-222222222222',
+  ...over,
+})
+
+const quote = (over: Partial<FeedPostQuoteRecord> = {}): FeedPostQuoteRecord => ({
+  actor_uri: 'https://remote.example/users/carol',
+  avatar_url: 'https://remote.example/carol.png',
+  created_at: new Date('2026-07-04T09:00:00Z'),
+  display_name: 'Carol',
+  handle: '@carol@remote.example',
+  quote_uri: 'https://remote.example/users/carol/statuses/5',
+  ...over,
+})
+
+describe('serializeFeedPostQuote', () => {
+  test('maps an approved quote to a `quote` reaction carrying the quoting post as `url`', () => {
+    expect(serializeFeedPostQuote(quote())).toEqual({
+      actor_uri: 'https://remote.example/users/carol',
+      avatar_url: 'https://remote.example/carol.png',
+      created_at: '2026-07-04T09:00:00.000Z',
+      display_name: 'Carol',
+      handle: '@carol@remote.example',
+      kind: 'quote',
+      url: 'https://remote.example/users/carol/statuses/5',
+    })
+  })
+})
+
+describe('listPostReactions', () => {
+  test('merges likes, boosts and quotes newest first', async () => {
+    const result = await listPostReactions('freja', 'post-1', {
+      listQuotes: async () => [quote({ created_at: new Date('2026-07-03T12:00:00Z') })],
+      listReactions: async () => [
+        inbound({ created_at: new Date('2026-07-04T00:00:00Z'), kind: 'announce' }),
+        inbound({ created_at: new Date('2026-07-03T00:00:00Z') }),
+      ],
+    })
+    expect(result.map((r) => [r.kind, r.created_at])).toEqual([
+      ['announce', '2026-07-04T00:00:00.000Z'],
+      ['quote', '2026-07-03T12:00:00.000Z'],
+      ['like', '2026-07-03T00:00:00.000Z'],
+    ])
+  })
+
+  test('asks each source for the cap and keeps only the newest across both', async () => {
+    const limits: number[] = []
+    const at = (i: number) => new Date(Date.UTC(2026, 0, 1, 0, 0, i))
+    const result = await listPostReactions('freja', 'post-1', {
+      listQuotes: async (_user, _post, limit) => {
+        limits.push(limit)
+        return Array.from({ length: limit }, (_, i) => quote({ created_at: at(2 * i) }))
+      },
+      listReactions: async (_user, _post, limit) => {
+        limits.push(limit)
+        return Array.from({ length: limit }, (_, i) => inbound({ created_at: at(2 * i + 1) }))
+      },
+    })
+    expect(limits).toEqual([MAX_POST_REACTIONS, MAX_POST_REACTIONS])
+    expect(result).toHaveLength(MAX_POST_REACTIONS)
+    expect(result[0].created_at).toBe(at(2 * MAX_POST_REACTIONS - 1).toISOString())
   })
 })

@@ -20,6 +20,8 @@ import sharp from 'sharp'
 import type { OgExerciseDetails } from './exercise-card.ts'
 import type { ChallengeTheme } from './og-challenge-theme.ts'
 
+import { type PostChart, postChartCaption, postChartSvg } from './charts/post-chart-svg.ts'
+
 export const OG_WIDTH = 1200
 export const OG_HEIGHT = 630
 
@@ -57,6 +59,8 @@ export interface OgCard {
   username?: string
   challenge?: OgChallengeDetails
   exercise?: OgExerciseDetails
+  /** A post's or a dashboard's chart, drawn under its title in place of the excerpt. */
+  chart?: PostChart
 }
 
 const FONT_FAMILY = 'Liberation Sans'
@@ -297,6 +301,60 @@ const exerciseMiddle = ({ headline, sessions, sparkline: values }: OgExerciseDet
   ]
 }
 
+const CHART_PANEL_PADDING = 16
+const CHART_WIDTH = OG_WIDTH - 2 * 80 - 2 * CHART_PANEL_PADDING
+const MAX_LEGEND_ENTRIES = 4
+
+const chartImage = (chart: PostChart, height: number): El => ({
+  props: {
+    height,
+    src: `data:image/svg+xml;base64,${Buffer.from(postChartSvg(chart, { bare: true, height, width: CHART_WIDTH })).toString('base64')}`,
+    style: { flexShrink: 0 },
+    width: CHART_WIDTH,
+  },
+  type: 'img',
+})
+
+const legendEntry = (name: string, color: string): El =>
+  el('div', { alignItems: 'center', display: 'flex', marginLeft: 24 }, [
+    el('div', { backgroundColor: color, borderRadius: 4, display: 'flex', height: 16, width: 16 }),
+    el('div', { display: 'flex', marginLeft: 8 }, clampTitle(name, 14)),
+  ])
+
+/**
+ * The caption, and a race's leading members in their line colours, are Satori text: inside the
+ * chart SVG librsvg would draw them as tofu.
+ */
+const chartCaption = (chart: PostChart): El =>
+  el('div', { color: 'rgba(255,255,255,0.8)', display: 'flex', fontSize: 24, marginBottom: 6 }, [
+    el('div', { display: 'flex', fontWeight: 700 }, clampTitle(postChartCaption(chart), 40)),
+    ...(chart.type === 'race'
+      ? chart.data.lines.slice(0, MAX_LEGEND_ENTRIES).map((line) => legendEntry(line.name, line.color))
+      : []),
+  ])
+
+/** Up to here a title fits one line at the larger size, and the chart gets the room a second line would take. */
+const ONE_LINE_CHART_TITLE = 30
+
+const chartTitleSize = (title: string): number =>
+  graphemesOf(title).length <= ONE_LINE_CHART_TITLE ? 64 : 52
+
+const chartHeight = (title: string): number => (graphemesOf(title).length <= ONE_LINE_CHART_TITLE ? 150 : 104)
+
+const chartMiddle = (chart: PostChart, title: string): El[] => [
+  el(
+    'div',
+    {
+      backgroundColor: 'rgba(5,10,20,0.45)',
+      borderRadius: 20,
+      display: 'flex',
+      flexDirection: 'column',
+      padding: CHART_PANEL_PADDING,
+    },
+    [chartCaption(chart), chartImage(chart, chartHeight(title))],
+  ),
+]
+
 /**
  * A challenge or exercise card carries a middle block, and a post card a one-line excerpt, so a
  * long title steps down rather than wrapping onto it.
@@ -342,34 +400,45 @@ export const eyebrowOf = ({ challenge, eyebrow, exercise, kind }: OgCard): strin
   return qualifier ? `${KIND_LABEL[kind]} · ${clampTitle(qualifier, 24)}` : KIND_LABEL[kind]
 }
 
-const middleOf = ({ challenge, exercise }: OgCard): El[] => {
+const middleOf = ({ challenge, chart, exercise, title }: OgCard): El[] => {
   if (challenge) return challengeMiddle(challenge)
+  if (chart) return chartMiddle(chart, title)
   return exercise ? exerciseMiddle(exercise) : []
+}
+
+const titleSizeOf = ({ challenge, chart, exercise, kind, title }: OgCard): number => {
+  if (chart) return chartTitleSize(title)
+  return challenge || exercise || kind === 'post' ? steppedTitleSize(title) : 82
+}
+
+/** A challenge's dates and status, else the subtitle unless a chart takes its place. */
+const underTitleOf = ({ challenge, chart, subtitle }: OgCard): El | null => {
+  if (challenge) {
+    return el(
+      'div',
+      { color: 'rgba(255,255,255,0.85)', display: 'flex', fontSize: 36, marginTop: 16 },
+      `${challenge.range} · ${challenge.phrase}`,
+    )
+  }
+  if (chart || !subtitle) return null
+  return el(
+    'div',
+    {
+      color: 'rgba(255,255,255,0.85)',
+      display: 'flex',
+      fontSize: 38,
+      marginTop: 28,
+    },
+    subtitle,
+  )
 }
 
 /** Build the Satori element tree for a card. */
 const cardTree = (card: OgCard): El => {
-  const { challenge, exercise } = card
+  const { challenge } = card
   const [dark, mid, light] = challenge?.theme.gradient ?? DEFAULT_GRADIENT
   const eyebrow = eyebrowOf(card)
-  const underTitle = challenge
-    ? el(
-        'div',
-        { color: 'rgba(255,255,255,0.85)', display: 'flex', fontSize: 36, marginTop: 16 },
-        `${challenge.range} · ${challenge.phrase}`,
-      )
-    : card.subtitle
-      ? el(
-          'div',
-          {
-            color: 'rgba(255,255,255,0.85)',
-            display: 'flex',
-            fontSize: 38,
-            marginTop: 28,
-          },
-          card.subtitle,
-        )
-      : null
+  const underTitle = underTitleOf(card)
 
   return el(
     'div',
@@ -408,7 +477,7 @@ const cardTree = (card: OgCard): El => {
           'div',
           {
             display: 'flex',
-            fontSize: challenge || exercise || card.kind === 'post' ? steppedTitleSize(card.title) : 82,
+            fontSize: titleSizeOf(card),
             fontWeight: 700,
             lineHeight: 1.1,
             marginTop: 24,

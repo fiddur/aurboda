@@ -1,5 +1,6 @@
 /** Mirrors the REST `/challenges` capability. */
 import {
+  challengePreviewQuerySchema,
   createChallengeBodySchema,
   joinChallengeBodySchema,
   updateChallengeBodySchema,
@@ -15,13 +16,13 @@ import {
   deleteChallengeBanner,
   getChallengeById,
   listChallenges,
-  updateChallenge,
   upsertChallengeMember,
 } from '../db/index.ts'
 import { bannerUrlFor } from '../services/challenge-banner.ts'
-import { joinChallenge } from '../services/challenge-federation.ts'
+import { joinChallenge, previewChallenge } from '../services/challenge-federation.ts'
 import { announcementPending } from '../services/challenge-results.ts'
 import { specToApi, toSpecFields } from '../services/challenge-spec.ts'
+import { SPEC_LOCKED_MESSAGE, updateHostedChallenge } from '../services/challenge-update.ts'
 import { buildProfileUrl, buildShareUrl } from '../services/share-urls.ts'
 import { isPublicToVisibility, visibilityToIsPublic } from '../services/visibility.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
@@ -86,10 +87,10 @@ export const registerChallengeTools = (
 
   server.tool(
     'update_challenge',
-    'Update a hosted challenge (name, spec, date range, visibility, announce_winner). Only provided fields change.',
+    'Update a hosted challenge (name, spec, date range, visibility, announce_winner). Only provided fields change. The spec is frozen once someone from another instance has joined: a different spec is refused then, an unchanged one passes.',
     { id: z.string().uuid().describe('Challenge ID'), ...updateChallengeBodySchema.shape },
     async ({ id, ...body }) => {
-      const record = await updateChallenge(user, id, {
+      const result = await updateHostedChallenge(user, id, {
         announce_winner: body.announce_winner,
         end_ts: body.end_ts ? new Date(body.end_ts) : undefined,
         is_public: body.visibility === undefined ? undefined : visibilityToIsPublic(body.visibility),
@@ -98,8 +99,9 @@ export const registerChallengeTools = (
         start_ts: body.start_ts ? new Date(body.start_ts) : undefined,
         timezone: body.timezone,
       })
-      if (!record) return errorResponse('Challenge not found')
-      return jsonResponse(serialize(record, deps.webHost, user))
+      if (result.status === 'not_found') return errorResponse('Challenge not found')
+      if (result.status === 'spec_locked') return errorResponse(SPEC_LOCKED_MESSAGE)
+      return jsonResponse(serialize(result.record, deps.webHost, user))
     },
   )
 
@@ -146,6 +148,20 @@ export const registerChallengeTools = (
         return jsonResponse({ joined: true, name: participation.name })
       } catch (error) {
         return errorResponse(error instanceof Error ? error.message : 'Failed to join challenge')
+      }
+    },
+  )
+
+  server.tool(
+    'preview_challenge',
+    'Read a challenge by its URL without joining it: name, host, window and what it counts (as join_challenge would join it). Works for challenges on this or another Aurboda instance.',
+    { ...challengePreviewQuerySchema.shape },
+    async ({ challenge_url }) => {
+      if (!deps.webHost) return errorResponse('Federation is not configured on this server')
+      try {
+        return jsonResponse(await previewChallenge({ challengeUrl: challenge_url, webHost: deps.webHost }))
+      } catch (error) {
+        return errorResponse(error instanceof Error ? error.message : 'Failed to read the challenge')
       }
     },
   )

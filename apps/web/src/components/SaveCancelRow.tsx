@@ -9,6 +9,7 @@ interface SaveCancelRowProps {
   onSave: () => void
   onCancel: () => void
   isPending?: boolean
+  saveDisabled?: boolean
   saveLabel?: string
   savingLabel?: string
   saveStatus?: SaveStatus
@@ -20,6 +21,7 @@ export function SaveCancelRow({
   onSave,
   onCancel,
   isPending,
+  saveDisabled,
   saveLabel = 'Save',
   savingLabel = 'Saving...',
   saveStatus,
@@ -28,7 +30,7 @@ export function SaveCancelRow({
 }: SaveCancelRowProps) {
   return (
     <div class="save-cancel-row">
-      <button class="btn-primary" disabled={isPending} onClick={onSave}>
+      <button class="btn-primary" disabled={isPending || saveDisabled} onClick={onSave}>
         {isPending ? savingLabel : saveLabel}
       </button>
       <button class="btn-secondary" onClick={onCancel}>
