@@ -2,17 +2,20 @@
  * Render an article post inline: its title followed by the ordered content
  * blocks. Prose blocks go through the shared markdown sanitiser (#910 — the XSS
  * boundary; article prose may be authored by AI or, later, a different user).
- * Chart and correlation blocks resolve their effective window (own override else
+ * Chart, correlation and impact blocks resolve their effective window (own override else
  * the article default) and render live via `ArticleChartBlock` /
- * `ArticleCorrelationBlock`; a challenge block renders live via
- * `LiveArticleChallenge`.
+ * `ArticleCorrelationBlock`, and an impact block via `ArticleImpactBlock`; a
+ * challenge block renders live via `LiveArticleChallenge`.
  */
 import type { ArticleContent as ArticleContentType } from '@aurboda/api-spec'
+
+import { DEFAULT_IMPACT_WINDOW_MINUTES } from '@aurboda/api-spec'
 
 import { renderMarkdown } from '../../utils/markdown'
 import { LiveArticleChallenge } from './ArticleChallengeBlock'
 import { ArticleChartBlock } from './ArticleChartBlock'
 import { ArticleCorrelationBlock } from './ArticleCorrelationBlock'
+import { ArticleImpactBlock } from './ArticleImpactBlock'
 
 export const ArticleContent = ({ article }: { article: ArticleContentType }) => (
   <div class="article-content">
@@ -34,6 +37,26 @@ export const ArticleContent = ({ article }: { article: ArticleContentType }) => 
       }
       const start = block.start ?? article.default_start
       const end = block.end ?? article.default_end
+      if (block.type === 'impact') {
+        if (start == null || end == null) {
+          return (
+            <p key={`impact-${i}`} class="article-chart-note">
+              This impact chart has no time window.
+            </p>
+          )
+        }
+        return (
+          <ArticleImpactBlock
+            key={`impact-${i}`}
+            activity={block.activity}
+            activityType={block.activity_type}
+            caption={block.caption}
+            end={end}
+            start={start}
+            windowMinutes={block.window_minutes ?? DEFAULT_IMPACT_WINDOW_MINUTES}
+          />
+        )
+      }
       if (block.type === 'correlation') {
         if (start == null || end == null) {
           return (

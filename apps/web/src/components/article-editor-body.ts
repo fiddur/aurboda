@@ -4,6 +4,7 @@
  * `buildShareBody`).
  */
 import type {
+  ActivityImpactType,
   ArticleBlock,
   ArticleDraftBlock,
   Challenge,
@@ -12,10 +13,11 @@ import type {
   CorrelationSelector,
   CreateArticleBody,
   FeedVisibility,
+  HrvActivitiesData,
   UpdateArticleDraftBody,
 } from '@aurboda/api-spec'
 
-import { isValidMetric } from '@aurboda/api-spec'
+import { DEFAULT_IMPACT_WINDOW_MINUTES, isValidMetric } from '@aurboda/api-spec'
 
 export interface ProseDraft {
   type: 'prose'
@@ -49,7 +51,94 @@ export interface ChallengeDraft {
   url: string
   caption: string
 }
-export type BlockDraft = ChallengeDraft | ChartDraft | CorrelationDraft | ProseDraft
+/** An impact block: HRV, heart rate and stress around the sessions of one exact activity. */
+export interface ImpactDraft {
+  type: 'impact'
+  /** The grouping key ('' = not chosen yet). */
+  activity: string
+  activityType: ActivityImpactType
+  windowMinutes: number
+  /** `datetime-local` value ('' = inherit the article default window). */
+  start: string
+  end: string
+  caption: string
+}
+export type BlockDraft = ChallengeDraft | ChartDraft | CorrelationDraft | ImpactDraft | ProseDraft
+
+export const emptyImpactDraft = (): ImpactDraft => ({
+  activity: '',
+  activityType: 'activity_type',
+  caption: '',
+  end: '',
+  start: '',
+  type: 'impact',
+  windowMinutes: DEFAULT_IMPACT_WINDOW_MINUTES,
+})
+
+export interface ImpactOption {
+  /** Encodes both the type and the name, so one `<select>` value picks the pair. */
+  value: string
+  activity: string
+  activityType: ActivityImpactType
+}
+
+export interface ImpactOptionGroup {
+  label: string
+  options: ImpactOption[]
+}
+
+const impactOption = (activityType: ActivityImpactType, activity: string): ImpactOption => ({
+  activity,
+  activityType,
+  value: `${activityType}\u0000${activity}`,
+})
+
+/** A picked option's value back to its pair, or null for the empty pick. */
+export const parseImpactOptionValue = (
+  value: string,
+): { activity: string; activityType: ActivityImpactType } | null => {
+  const at = value.indexOf('\u0000')
+  if (at < 0) return null
+  return { activity: value.slice(at + 1), activityType: value.slice(0, at) as ActivityImpactType }
+}
+
+/**
+ * What an impact block's activity picker offers, grouped as the Analyze context
+ * table lists them; a stored pair the list lacks (another period, or a `tag` or
+ * `productivity_app` set through the API) comes back as `extra`, so it stays
+ * selectable.
+ */
+export const impactPickerOptions = (
+  correlations:
+    | {
+        activities: Pick<HrvActivitiesData['correlations']['activities'][number], 'activity_type'>[]
+        locations: Pick<HrvActivitiesData['correlations']['locations'][number], 'location_name'>[]
+        productivity: Pick<HrvActivitiesData['correlations']['productivity'][number], 'category'>[]
+      }
+    | undefined,
+  selected: { activity: string; activityType: ActivityImpactType },
+): { groups: ImpactOptionGroup[]; extra: ImpactOption | null } => {
+  const groups: ImpactOptionGroup[] = [
+    {
+      label: 'Activities',
+      options: (correlations?.activities ?? []).map((a) => impactOption('activity_type', a.activity_type)),
+    },
+    {
+      label: 'Locations',
+      options: (correlations?.locations ?? []).map((l) => impactOption('location', l.location_name)),
+    },
+    {
+      label: 'Screen time',
+      options: (correlations?.productivity ?? []).map((p) =>
+        impactOption('productivity_category', p.category),
+      ),
+    },
+  ].filter((group) => group.options.length > 0)
+  if (!selected.activity) return { extra: null, groups }
+  const wanted = impactOption(selected.activityType, selected.activity)
+  const listed = groups.some((group) => group.options.some((o) => o.value === wanted.value))
+  return { extra: listed ? null : wanted, groups }
+}
 
 export const emptyChallengeDraft = (): ChallengeDraft => ({ caption: '', type: 'challenge', url: '' })
 
@@ -119,6 +208,16 @@ export interface ArticleEditorSource {
   visibility: FeedVisibility
 }
 
+const impactDraftOf = (b: Extract<ArticleDraftBlock, { type: 'impact' }>): ImpactDraft => ({
+  activity: b.activity ?? '',
+  activityType: b.activity_type,
+  caption: b.caption ?? '',
+  end: toInputValue(b.end),
+  start: toInputValue(b.start),
+  type: 'impact',
+  windowMinutes: b.window_minutes ?? DEFAULT_IMPACT_WINDOW_MINUTES,
+})
+
 export const draftsFromPost = (source?: { article?: ArticleDraftContent }): BlockDraft[] => {
   if (!source?.article) return []
   return source.article.blocks.map((b): BlockDraft => {
@@ -126,6 +225,7 @@ export const draftsFromPost = (source?: { article?: ArticleDraftContent }): Bloc
     if (b.type === 'challenge') {
       return { caption: b.caption ?? '', type: 'challenge', url: b.challenge_url ?? '' }
     }
+    if (b.type === 'impact') return impactDraftOf(b)
     if (b.type === 'correlation') {
       const empty = emptyCorrelationDraft()
       return {
@@ -163,6 +263,15 @@ const windowFields = (b: { start: string; end: string }) => ({
   ...(toIso(b.end) ? { end: toIso(b.end) } : {}),
 })
 
+const impactBlockFields = (b: ImpactDraft) => ({
+  activity_type: b.activityType,
+  type: 'impact' as const,
+  ...(b.activity ? { activity: b.activity } : {}),
+  window_minutes: b.windowMinutes,
+  ...windowFields(b),
+  ...(b.caption.trim() ? { caption: b.caption.trim() } : {}),
+})
+
 const draftBlock = (b: BlockDraft): ArticleDraftBlock => {
   if (b.type === 'prose') return { markdown: b.markdown, type: 'prose' }
   if (b.type === 'challenge') {
@@ -172,6 +281,7 @@ const draftBlock = (b: BlockDraft): ArticleDraftBlock => {
       ...(b.caption.trim() ? { caption: b.caption.trim() } : {}),
     }
   }
+  if (b.type === 'impact') return impactBlockFields(b)
   if (b.type === 'chart') {
     return {
       type: 'chart',
@@ -194,7 +304,7 @@ const draftBlock = (b: BlockDraft): ArticleDraftBlock => {
 
 /**
  * Editor state → draft content, with no completeness checks: a draft may lack a
- * title, a chart metric or a correlation selector. Publishing validates.
+ * title, a chart metric, a correlation selector or an impact activity. Publishing validates.
  */
 export const buildDraftContent = (state: ArticleEditorState): ArticleDraftContent => ({
   blocks: state.blocks.map(draftBlock),
@@ -290,8 +400,14 @@ const buildChallengeBlock = (b: ChallengeDraft, i: number): BlockResult => {
   }
 }
 
+const buildImpactBlock = (b: ImpactDraft, i: number): BlockResult => {
+  if (!b.activity) return { error: `Pick an activity for impact block ${i + 1}.` }
+  return { block: { ...impactBlockFields(b), activity: b.activity } }
+}
+
 const buildBlock = (b: Exclude<BlockDraft, ProseDraft>, i: number): BlockResult => {
   if (b.type === 'challenge') return buildChallengeBlock(b, i)
+  if (b.type === 'impact') return buildImpactBlock(b, i)
   return b.type === 'correlation' ? buildCorrelationBlock(b, i) : buildChartBlock(b, i)
 }
 

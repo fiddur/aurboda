@@ -219,6 +219,12 @@
   margin-bottom: 0.2rem;
 }
 
+.article-chart-meta {
+  font-weight: 400;
+  color: #6b7280;
+  margin-left: 0.5rem;
+}
+
 .article-chart-note {
   font-size: 0.85rem;
   color: #6b7280;
@@ -269,6 +275,10 @@
 
   .article-chart-title {
     color: #d1d5db;
+  }
+
+  .article-chart-meta {
+    color: #9ca3af;
   }
 
   .article-scatter-annot {

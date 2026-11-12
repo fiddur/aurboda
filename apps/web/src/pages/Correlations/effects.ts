@@ -1,3 +1,5 @@
+import { impactEffectSummary } from '@aurboda/api-spec'
+
 import type { WindowEffect } from '../../state/api'
 
 import { formatWindow } from './window'
@@ -24,9 +26,6 @@ export const formatDelta = (value: number | null, decimals: number): string => {
   return `${value > 0 ? '+' : ''}${value.toFixed(decimals)}`
 }
 
-const formatSignedChange = (value: number): string =>
-  `${value > 0 ? '+' : value < 0 ? '−' : ''}${Math.abs(value).toFixed(1)}`
-
 const formatMean = (value: number | null): string => (value === null ? '--' : value.toFixed(1))
 
 export const isClearChange = (effect: WindowEffect): boolean =>
@@ -52,12 +51,7 @@ export const changeTitle = (effect: WindowEffect): string => {
   return effect.p_value === null ? base : `${base} (${formatPValue(effect.p_value)})`
 }
 
-export const effectSummary = (label: string, effect: WindowEffect, occurrences: number): string | null => {
-  if (effect.paired_occurrences === 0 || effect.change === null) return null
-  return `${label} ${formatMean(effect.before_mean)} → ${formatMean(effect.after_mean)} (${formatSignedChange(
-    effect.change,
-  )}) · ${effect.paired_occurrences} of ${occurrences} occurrences`
-}
+export const effectSummary = impactEffectSummary
 
 export const columnTitles = (windowMinutes: number) => ({
   change: `The ${formatWindow(windowMinutes)} after minus the ${formatWindow(windowMinutes)} before, for occurrences with data on both sides; coloured when statistically clear`,

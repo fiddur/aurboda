@@ -25,7 +25,14 @@ import { z } from 'zod'
 import { quantChallengeDocumentSchema, quantStandingsSchema } from './challenges-quantpub.ts'
 import { challengeResultSchema } from './challenges.ts'
 import { iso8601DateTimeSchema } from './common.ts'
-import { alignedPointSchema, groupComparisonSchema, selectorSchema } from './correlations.ts'
+import {
+  activityImpactTypeSchema,
+  alignedPointSchema,
+  groupComparisonSchema,
+  impactBucketSchema,
+  selectorSchema,
+  windowEffectSchema,
+} from './correlations.ts'
 import { dashboardConfigSchema, periodKeySchema } from './dashboard.ts'
 import { sharedExerciseDataSchema } from './shared-exercises.ts'
 import { periodWindowSchema, widgetDataMapSchema } from './social.ts'
@@ -263,12 +270,40 @@ export const feedStructuredArticleChallengeBlockSchema = z
 
 export type FeedStructuredArticleChallengeBlock = z.infer<typeof feedStructuredArticleChallengeBlockSchema>
 
+/**
+ * A resolved impact block: HRV, heart rate and stress around the sessions of one
+ * activity over its locked window, with the paired before -> after effects — the
+ * same numbers the impact PNG and the web impact chart draw from.
+ */
+export const feedStructuredArticleImpactBlockSchema = z
+  .object({
+    activity: z.string().meta({ description: 'The activity grouping key, matched exactly' }),
+    activity_type: activityImpactTypeSchema,
+    avg_duration_min: z.number().meta({ description: 'Average session duration in minutes' }),
+    caption: z.string().optional().meta({ description: 'Optional caption' }),
+    end: iso8601DateTimeSchema.meta({ description: "Block's locked window end (ISO 8601)" }),
+    hr_effect: windowEffectSchema.meta({ description: 'Paired before -> after change of heart rate' }),
+    hrv_effect: windowEffectSchema.meta({ description: 'Paired before -> after change of HRV' }),
+    occurrences: z.number().int().meta({ description: 'Number of sessions in the window' }),
+    start: iso8601DateTimeSchema.meta({ description: "Block's locked window start (ISO 8601)" }),
+    stress_effect: windowEffectSchema.meta({ description: 'Paired before -> after change of stress level' }),
+    timeline: z
+      .array(impactBucketSchema)
+      .meta({ description: 'All three metrics around the sessions, in time order' }),
+    type: z.literal('impact'),
+    window_minutes: z.number().int().meta({ description: 'Minutes before and after each session analysed' }),
+  })
+  .meta({ description: 'A resolved impact block', id: 'FeedStructuredArticleImpactBlock' })
+
+export type FeedStructuredArticleImpactBlock = z.infer<typeof feedStructuredArticleImpactBlockSchema>
+
 export const feedStructuredArticleBlockSchema = z
   .discriminatedUnion('type', [
     feedStructuredArticleProseBlockSchema,
     feedStructuredArticleChartBlockSchema,
     feedStructuredArticleCorrelationBlockSchema,
     feedStructuredArticleChallengeBlockSchema,
+    feedStructuredArticleImpactBlockSchema,
   ])
   .meta({ description: 'A resolved article content block', id: 'FeedStructuredArticleBlock' })
 

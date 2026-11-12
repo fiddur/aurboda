@@ -1,6 +1,6 @@
 /**
  * An article federates as a `Note` (built in `deliver.ts`): the title is its
- * `name`, the prose is HTML `content`, and each chart/correlation/challenge block
+ * `name`, the prose is HTML `content`, and each chart/correlation/challenge/impact block
  * is an attached PNG figure, so a plain fediverse client (Mastodon) shows the
  * prose and the images. (A `Note`, not an AS2 `Article`: Mastodon treats
  * `Article` as a converted type and discards its `content`, rendering only name +
@@ -15,9 +15,8 @@ import { marked } from 'marked'
 import sanitizeHtml from 'sanitize-html'
 
 import { articleBlockLabel } from '../article.ts'
-import { CHART_HEIGHT, CHART_WIDTH, escapeXml } from '../charts/chart-svg.ts'
-import { FIGURE_BAND_HEIGHT } from '../charts/figure-svg.ts'
-import { SCATTER_HEIGHT, SCATTER_WIDTH } from '../charts/scatter-svg.ts'
+import { escapeXml } from '../charts/chart-svg.ts'
+import { articleBlockFigureSize, FIGURE_BAND_HEIGHT } from '../charts/figure-svg.ts'
 import { type NoteProseImage, renderNoteProse, renderProse } from './note-prose.ts'
 
 export { renderProse }
@@ -124,8 +123,7 @@ export const renderArticleNote = (
   const body = article.blocks
     .map((block, index) => {
       if (block.type === 'prose') return renderNoteProse(block.markdown, { image: proseImage })
-      const [width, height] =
-        block.type === 'correlation' ? [SCATTER_WIDTH, SCATTER_HEIGHT] : [CHART_WIDTH, CHART_HEIGHT]
+      const { height, width } = articleBlockFigureSize(block.type)
       const figure = addFigure({
         block_index: index,
         height: height + FIGURE_BAND_HEIGHT,

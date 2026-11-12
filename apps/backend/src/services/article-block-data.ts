@@ -1,15 +1,17 @@
 /**
- * Data resolution behind an article chart/correlation block's rendered image —
+ * Data resolution behind an article chart/correlation/impact block's rendered image —
  * the single source shared by the block-image routes (`createFeedImageRouter`
  * deps) and the markdown export's eligibility check, so "would this
  * block's image render?" can never drift from what the endpoint actually does.
  */
-import type { CorrelationSelector } from '@aurboda/api-spec'
+import type { ActivityImpactType, CorrelationSelector } from '@aurboda/api-spec'
 
 import type { MetricType } from '../schema.ts'
+import type { ImpactSvgData } from './charts/impact-svg.ts'
 import type { ScatterSvgData } from './charts/scatter-svg.ts'
 
 import { getUserSettings } from '../db/index.ts'
+import { getActivityImpact } from './correlations/activity-impact.ts'
 import { getContinuousCorrelation } from './correlations/explore.ts'
 import { queryMetricsBucketed } from './queries/index.ts'
 
@@ -83,3 +85,23 @@ export const getArticleCorrelationScatter = async (
     trigger,
   }
 }
+
+/** The window-resolved inputs for one article impact block. */
+export interface ImpactBlockParams {
+  activity: string
+  activityType: ActivityImpactType
+  windowMinutes: number
+  start: Date
+  end: Date
+}
+
+/**
+ * An article impact block's numbers over its locked window (`start` inclusive,
+ * `end` exclusive), matching the activity exactly. Starts no freshness sync: a
+ * public render must not trigger the author's syncs.
+ */
+export const getArticleImpact = (
+  user: string,
+  { activity, activityType, end, start, windowMinutes }: ImpactBlockParams,
+): Promise<ImpactSvgData> =>
+  getActivityImpact(user, activity, activityType, windowMinutes, 90, undefined, end, start, 'exact')

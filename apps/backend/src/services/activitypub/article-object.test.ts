@@ -4,6 +4,7 @@ import { describe, expect, test } from 'vitest'
 
 import { CHART_HEIGHT, CHART_WIDTH } from '../charts/chart-svg.ts'
 import { FIGURE_BAND_HEIGHT } from '../charts/figure-svg.ts'
+import { IMPACT_HEIGHT, IMPACT_WIDTH } from '../charts/impact-svg.ts'
 import { SCATTER_HEIGHT, SCATTER_WIDTH } from '../charts/scatter-svg.ts'
 import {
   articleFigureName,
@@ -167,6 +168,7 @@ describe('renderArticleNote figures', () => {
       chart,
       correlation,
       { challenge_url: 'https://qs.example/u/olle/nov', type: 'challenge' },
+      { ...WINDOW, activity: 'yoga', activity_type: 'activity_type', type: 'impact' },
     ])
     expect(figures).toEqual([
       {
@@ -195,6 +197,15 @@ describe('renderArticleNote figures', () => {
         number: 3,
         url: FIGURE_URL(3),
         width: CHART_WIDTH,
+      },
+      {
+        block_index: 4,
+        height: IMPACT_HEIGHT + FIGURE_BAND_HEIGHT,
+        label: 'Impact of yoga',
+        media_type: 'image/png',
+        number: 4,
+        url: FIGURE_URL(4),
+        width: IMPACT_WIDTH,
       },
     ])
   })
