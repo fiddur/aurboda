@@ -1,0 +1,212 @@
+import { describe, expect, test } from 'vitest'
+
+import {
+  activityInterval,
+  type BinnedSeries,
+  binSeries,
+  clampWindowMinutes,
+  mergeIntoSessions,
+  type MetricSeries,
+  pairedEffect,
+  summarizeImpact,
+  valuesBetween,
+  windowStats,
+} from './impact.ts'
+
+const T0 = Date.parse('2026-03-02T12:00:00Z')
+const min = (m: number) => T0 + m * 60_000
+const at = (m: number) => new Date(min(m))
+const empty: BinnedSeries = { times: [], values: [] }
+const only = (stress: BinnedSeries): MetricSeries => ({ hr: empty, hrv: empty, stress })
+const bins = (points: [number, number][]): BinnedSeries =>
+  binSeries(points.map(([m, v]) => [at(m), v] as [Date, number]))
+
+describe('clampWindowMinutes', () => {
+  test('defaults, clamps and rejects NaN', () => {
+    expect(clampWindowMinutes(undefined)).toBe(30)
+    expect(clampWindowMinutes(Number.NaN)).toBe(30)
+    expect(clampWindowMinutes(1)).toBe(10)
+    expect(clampWindowMinutes(5000)).toBe(1440)
+    expect(clampWindowMinutes(45)).toBe(45)
+  })
+})
+
+describe('binSeries', () => {
+  test('a dense bin and a sparse bin weigh the same', () => {
+    const dense: [Date, number][] = Array.from({ length: 300 }, (_, i) => [new Date(min(0) + i * 1000), 100])
+    const series = binSeries([...dense, [at(7), 50]])
+
+    expect(series.times).toEqual([min(0), min(5)])
+    expect(series.values).toEqual([100, 50])
+  })
+
+  test('bins are aligned to the epoch and sorted', () => {
+    const series = binSeries([
+      [at(12), 3],
+      [at(1), 1],
+      [at(3), 2],
+    ])
+    expect(series.times).toEqual([min(0), min(10)])
+    expect(series.values).toEqual([1.5, 3])
+  })
+})
+
+describe('valuesBetween', () => {
+  test('is half-open and empty for inverted ranges', () => {
+    const series = bins([
+      [0, 1],
+      [5, 2],
+      [10, 3],
+    ])
+    expect(valuesBetween(series, min(0), min(10))).toEqual([1, 2])
+    expect(valuesBetween(series, min(10), min(5))).toEqual([])
+  })
+})
+
+describe('mergeIntoSessions', () => {
+  test('overlapping intervals (the same session from two sources) become one', () => {
+    expect(
+      mergeIntoSessions([
+        { end: min(60), start: min(0) },
+        { end: min(61), start: min(1) },
+      ]),
+    ).toEqual([{ end: min(61), start: min(0) }])
+  })
+
+  test('a gap of at most 10 minutes merges, a longer one does not', () => {
+    expect(
+      mergeIntoSessions([
+        { end: min(30), start: min(0) },
+        { end: min(60), start: min(40) },
+      ]),
+    ).toEqual([{ end: min(60), start: min(0) }])
+    expect(
+      mergeIntoSessions([
+        { end: min(30), start: min(0) },
+        { end: min(60), start: min(41) },
+      ]),
+    ).toHaveLength(2)
+  })
+
+  test('sorts unsorted input', () => {
+    expect(
+      mergeIntoSessions([
+        { end: min(130), start: min(100) },
+        { end: min(30), start: min(0) },
+      ]),
+    ).toEqual([
+      { end: min(30), start: min(0) },
+      { end: min(130), start: min(100) },
+    ])
+  })
+})
+
+describe('activityInterval', () => {
+  test('a point activity lasts five minutes', () => {
+    expect(activityInterval({ start_time: at(0) })).toEqual({ end: min(5), start: min(0) })
+    expect(activityInterval({ end_time: at(20), start_time: at(0) })).toEqual({ end: min(20), start: min(0) })
+  })
+})
+
+describe('windowStats', () => {
+  test('averages per session, not per sample', () => {
+    const stats = windowStats([[10, 10, 10, 10, 10, 10, 10, 10], [30], []])
+    expect(stats.mean).toBe(20)
+    expect(stats.occurrences).toBe(2)
+    expect(stats.sample_count).toBe(9)
+  })
+})
+
+describe('pairedEffect', () => {
+  test('excludes sessions with data on one side only', () => {
+    const effect = pairedEffect([10, 20, null, 40], [12, null, 30, 44])
+    expect(effect.paired_occurrences).toBe(2)
+    expect(effect.before_mean).toBe(25)
+    expect(effect.after_mean).toBe(28)
+    expect(effect.change).toBe(3)
+    expect(effect.p_value).toBeNull()
+  })
+
+  test('change equals after_mean minus before_mean', () => {
+    const effect = pairedEffect([50, 47, 44, 41], [40, 36, 35, 30])
+    expect(effect.change).toBeCloseTo(effect.after_mean! - effect.before_mean!, 5)
+  })
+
+  test('a consistent drop gives a small p-value', () => {
+    const before = [50, 52, 48, 51, 49, 53, 50, 47]
+    const after = before.map((b, i) => b - 10 + (i % 2 === 0 ? 1 : -1))
+    const effect = pairedEffect(before, after)
+    expect(effect.change).toBe(-10)
+    expect(effect.p_value).not.toBeNull()
+    expect(effect.p_value!).toBeLessThan(0.001)
+  })
+
+  test('p-value is null when every difference is the same', () => {
+    expect(pairedEffect([1, 2, 3, 4], [6, 7, 8, 9]).p_value).toBeNull()
+  })
+
+  test('no pairs gives nulls', () => {
+    expect(pairedEffect([null], [5])).toEqual({
+      after_mean: null,
+      before_mean: null,
+      change: null,
+      change_stddev: null,
+      p_value: null,
+      paired_occurrences: 0,
+    })
+  })
+})
+
+describe('summarizeImpact', () => {
+  test('a neighbouring session truncates the after-window', () => {
+    const sessions = mergeIntoSessions([
+      { end: min(30), start: min(0) },
+      { end: min(80), start: min(50) },
+    ])
+    const stress = bins([
+      [-20, 40],
+      [35, 20],
+      [55, 60],
+    ])
+    const { effects, timeline } = summarizeImpact(sessions, only(stress), 30)
+
+    expect(timeline.stress.after15min.mean).toBe(20)
+    expect(timeline.stress.after30min.mean).toBeNull()
+    expect(effects.stress.paired_occurrences).toBe(1)
+    expect(effects.stress.before_mean).toBe(40)
+    expect(effects.stress.after_mean).toBe(20)
+    expect(timeline.stress.during.mean).toBe(60)
+  })
+
+  test('a densely recorded session does not outweigh a sparse one', () => {
+    const sessions = [
+      { end: min(60), start: min(0) },
+      { end: min(1060), start: min(1000) },
+    ]
+    const dense = Array.from({ length: 12 }, (_, i) => [i * 5, 100] as [number, number])
+    const stress = bins([...dense, [1000, 40]])
+    const { timeline } = summarizeImpact(sessions, only(stress), 30)
+
+    expect(timeline.stress.during.mean).toBe(70)
+    expect(timeline.stress.during.occurrences).toBe(2)
+    expect(timeline.stress.during.sample_count).toBe(13)
+  })
+
+  test('the timeline halves split the window', () => {
+    const sessions = [{ end: min(10), start: min(0) }]
+    const stress = bins([
+      [-25, 1],
+      [-10, 2],
+      [15, 3],
+      [30, 4],
+    ])
+    const { effects, timeline } = summarizeImpact(sessions, only(stress), 30)
+
+    expect(timeline.stress.before30min.mean).toBe(1)
+    expect(timeline.stress.before15min.mean).toBe(2)
+    expect(timeline.stress.after15min.mean).toBe(3)
+    expect(timeline.stress.after30min.mean).toBe(4)
+    expect(effects.stress.before_mean).toBe(1.5)
+    expect(effects.stress.after_mean).toBe(3.5)
+  })
+})

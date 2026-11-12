@@ -1048,8 +1048,10 @@ page shows a relative redirect URI (#1084).
 fire-and-forget (`triggerCorrelationSyncs`, `Promise.allSettled`) and return from the database
 immediately.
 
-- `GET /api/correlations/hrv-activities?tz=Europe/Stockholm&period_days=90&context_metric=hrv_rmssd`
-- `GET /api/correlations/activity-impact/:activity?tz=…&activity_type=activity_type&period_days=90&window_minutes=30`
+- `GET /api/correlations/hrv-activities?tz=Europe/Stockholm&period_days=90&context_metric=hrv_rmssd&window_minutes=30`
+  (`window_minutes` clamps to 10–1440 and is echoed back)
+- `GET /api/correlations/activity-impact/:activity?tz=…&activity_type=activity_type&period_days=90&window_minutes=30&match=exact`
+  (`match` is `contains` by default)
 - Also on that router: `/baseline`, `POST /generic`, `POST /continuous`, `POST /event-probability`,
   `/selectors`.
 
@@ -1058,6 +1060,14 @@ are disconnected here, so the `*IfNeeded` syncs are no-ops and the _old_ blockin
 been fast too. There is no black-box timing difference to observe; the honest verdict is "the
 changed endpoints still return correct data immediately" (16–46 ms), not a measured speedup.
 `event-probability.ts` keeps the blocking pattern on a different sync set, by design.
+
+**Table and chart agree** (#1589). The context table's row and the impact chart come from one
+computation, so the oracle is equality: for an activity type with a few sessions and heart rate
+or stress around them, the row's `stress_effect` (and `hr_effect`) from `/hrv-activities` deep-equals
+`stress_effect` from `/activity-impact/<type>?activity_type=activity_type&match=exact` with the same
+`period_days` and `window_minutes`, and the row's `occurrences` equals the impact's. Seed two
+entries of the same session from different sources and a `<type>_treadmill`-style longer name:
+the duplicate must count once, and the longer name must appear only under `match=contains`.
 
 ---
 
