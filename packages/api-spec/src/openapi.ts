@@ -29,6 +29,13 @@ import {
 import { iso8601DateTimeSchema, metricTypeSchema } from './schemas/common.ts'
 import { dailySummaryQuerySchema, dailySummaryResponseSchema } from './schemas/daily-summary.ts'
 import { exportDumpLinkResponseSchema, exportDumpQuerySchema } from './schemas/export.ts'
+import {
+  FEED_IMAGE_MAX_EDGE,
+  feedImageResponseSchema,
+  feedImagesResponseSchema,
+  MAX_FEED_IMAGE_BYTES,
+  MAX_FEED_IMAGES_PER_ACCOUNT,
+} from './schemas/feed-images.ts'
 import { publicTagPostsQuerySchema, publicTagPostsResponseSchema } from './schemas/feed.ts'
 import {
   goalHistoryQuerySchema,
@@ -276,6 +283,102 @@ const openApiDocument = createDocument({
           404: { description: 'The tag has no public page' },
         },
         summary: 'Atom feed of a public tag page',
+        tags: ['Feed'],
+      },
+    },
+    '/feed/images': {
+      get: {
+        description:
+          'List the pictures the authenticated user has added to what they write, newest first, with the cap on how many one account may store.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: feedImagesResponseSchema } },
+            description: 'Successful response',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List my pictures',
+        tags: ['Feed'],
+      },
+      post: {
+        description: `Store a picture (PNG, JPEG, WebP or GIF, at most ${MAX_FEED_IMAGE_BYTES / 1024 / 1024} MB) and get back its public URL, to embed in markdown as \`![description](url)\`. It is stored as WebP with its longest edge at most ${FEED_IMAGE_MAX_EDGE} px, turned upright, and without its metadata; an animated GIF keeps its first frame. One account may store ${MAX_FEED_IMAGES_PER_ACCOUNT} pictures.`,
+        requestBody: {
+          content: {
+            'multipart/form-data': {
+              schema: z.object({
+                image: z.string().meta({ description: 'The picture file', format: 'binary' }),
+              }),
+            },
+          },
+        },
+        responses: {
+          201: {
+            content: { 'application/json': { schema: feedImageResponseSchema } },
+            description: 'The stored picture',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'No file uploaded',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The account already stores as many pictures as it may',
+          },
+          413: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The file is too large',
+          },
+          415: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Not a picture Aurboda can use',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Add a picture',
+        tags: ['Feed'],
+      },
+    },
+    '/feed/images/{id}': {
+      delete: {
+        description:
+          'Delete a stored picture. Markdown that embeds its URL shows a broken picture afterwards.',
+        requestParams: { path: z.object({ id: z.string().uuid().meta({ description: 'Picture ID' }) }) },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: deleteResponseSchema } },
+            description: 'Deleted',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Picture not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Delete a picture',
+        tags: ['Feed'],
+      },
+    },
+    '/public/{username}/images/{id}.webp': {
+      get: {
+        description:
+          'A stored picture, as WebP. No authentication: anyone with the link can see it. Cached for a year, since a picture never changes.',
+        requestParams: {
+          path: z.object({
+            id: z.string().uuid().meta({ description: 'Picture ID' }),
+            username: z.string().meta({ description: 'Username of the writer' }),
+          }),
+        },
+        responses: {
+          200: {
+            content: { 'image/webp': { schema: z.string().meta({ format: 'binary' }) } },
+            description: 'The picture',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Picture not found',
+          },
+        },
+        summary: 'Get a picture',
         tags: ['Feed'],
       },
     },

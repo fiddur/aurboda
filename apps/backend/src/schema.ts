@@ -165,6 +165,7 @@ export const tableCreationOrder = [
   'challenge_members_indexes',
   'challenge_members_actor_column',
   'challenge_banner',
+  'feed_image',
   'challenge_participations',
   'challenge_participations_indexes',
   'challenge_participations_protocol_column',

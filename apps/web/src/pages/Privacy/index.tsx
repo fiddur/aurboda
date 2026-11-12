@@ -26,6 +26,10 @@ export function Privacy() {
           <li>Screen time and app usage if RescueTime or ActivityWatch is connected</li>
           <li>Music listening history if Last.fm is connected</li>
           <li>Calendar events if calendar feeds are connected</li>
+          <li>
+            Pictures you add to what you write (articles, comments, descriptions), stored without their
+            metadata such as camera details or GPS position; anyone who has a picture's link can see it
+          </li>
           <li>Account credentials (username, hashed password) for authentication</li>
           <li>
             Usage statistics: per day, how often you read or change data through the web app, Android app, API

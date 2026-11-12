@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   type ArticleEditorState,
+  blocksStillUploading,
   buildArticleBody,
   buildDraftContent,
   buildPreviewArticle,
@@ -600,5 +601,26 @@ describe('previewRequest', () => {
       include_images: true,
       visibility: 'followers',
     })
+  })
+})
+
+describe('blocksStillUploading', () => {
+  it('holds while any prose block has a picture placeholder', () => {
+    expect(
+      blocksStillUploading([
+        { markdown: 'Morning coffee', type: 'prose' },
+        { markdown: 'Yoga\n![Uploading mat.jpg…]()\n', type: 'prose' },
+      ]),
+    ).toBe(true)
+  })
+
+  it('does not hold once every picture is in, or with no prose at all', () => {
+    expect(
+      blocksStillUploading([
+        { markdown: '![](https://aurboda.test/api/public/alice/images/x.webp)', type: 'prose' },
+        emptyChallengeDraft(),
+      ]),
+    ).toBe(false)
+    expect(blocksStillUploading([])).toBe(false)
   })
 })
