@@ -28,13 +28,20 @@ A feed post has a **`kind`**:
 
 - **`activity`** (the default) — references one of the user's activities and shares a
   bounded metric selection (below). This is the original kind.
-- **`article`** — a long-form post: a `title`, markdown prose, and inline **chart** and
-  **correlation** blocks, each over a locked `[start, end]` window (blocks inherit an
+- **`article`** — a long-form post: a `title`, markdown prose, and inline **chart**,
+  **correlation** and **impact** blocks, each over a locked `[start, end]` window (blocks inherit an
   article-level default window unless they override it). Data re-resolves **live**
   against the locked window — no data snapshot. A **chart block** draws one metric; a
   **correlation block** pairs a `trigger` and an `outcome` selector (the exploratory
   correlation engine's dimensions, with an optional `lag_days`) and renders as a scatter
-  with the Pearson/Spearman coefficients and n. A **challenge block** embeds a challenge by
+  with the Pearson/Spearman coefficients and n. An **impact block** names one `activity`
+  exactly as the Analyze context table groups it (with its `activity_type`: an activity
+  type, a location, a screen-time category, or — set through the API — an app or a tag) and
+  an optional `window_minutes` (10–1440, default 30), and shows the Analyze page's impact
+  chart over its window: HRV, heart rate and stress in the buckets before, during and after
+  each session, each on its own scale, with the paired before → after change of each
+  (`GET /correlations/activity-impact/:activity` with `match=exact` and the block's
+  `start`/`end`). A **challenge block** embeds a challenge by
   its public URL (`challenge_url`, plus an optional `caption`): one hosted here (your own or
   another local user's) or on another instance. It has no window; it shows the challenge's
   live standings (race chart and leaderboard) and a **Join** link to the challenge page,
@@ -51,41 +58,55 @@ A feed post has a **`kind`**:
   controls, `style` and non-http(s) image sources, so the web shows what federates
   (#1028) — and each windowed block resolves its data live
   over the locked window. An article **federates as a `Note`** (title in `name`, prose
-  HTML in `content`, and a rendered PNG per chart/correlation block attached) so followers
-  on Mastodon see the prose and images inline. A challenge block federates as its standings
-  race chart (attached like a chart block's PNG) and, in `content`, its caption and a
-  **Join the challenge** link to the challenge page. (A `Note`, not an AS2 `Article`: Mastodon
-  treats `Article` as a converted type and discards its `content`, rendering only a title
-  and link.) The prose is sanitised through an allowlist wide enough for a QS write-up
-  (GFM tables, images, `hr`, headings); note that **Mastodon's own inbound sanitiser then
-  strips tables/images/`hr`** from a remote status, so a results table degrades to
-  run-together cell text there — the charts still arrive as image attachments, and
-  non-Mastodon / Aurboda-peer renderers keep the full formatting. Because an article
+  HTML in `content`, and a rendered PNG **figure** per chart/correlation/challenge/impact block
+  attached) so followers on Mastodon see the prose and the charts. (A `Note`, not an AS2
+  `Article`: Mastodon treats `Article` as a converted type and discards its `content`,
+  rendering only a title and link.) The `content` is shaped for Mastodon, whose inbound
+  sanitiser drops tables, images and `hr` and always lays attachments out after the text:
+  - every image the Note attaches is a **numbered figure**, counted in document order —
+    each non-prose block and each prose image with an http(s) `src` — and the text carries
+    `Figure N: label` where the image stood (the label is the block's caption, else its data
+    label; a prose image's alt text). A block's attachment is its
+    [`figure.png`](#images), which repeats `Figure N` and the label in a title band
+    above the chart, so an image seen out of order still says which reference it answers.
+    Mastodon shows at most 4 attachments, so from figure 5 on the words `Figure N` link to
+    the image itself; a prose image with a non-http(s) `src` is no figure and leaves only
+    its alt text;
+  - a GFM **table** becomes one paragraph of lines — the corner header in italics, then one
+    line per row, `**row**: Column value · Column value` — instead of run-together cell text;
+  - a challenge block adds a **Join the challenge** link to the challenge page after its
+    reference.
+
+  The prose still passes the outbound sanitiser (no script, style or event handler; http(s)
+  and mailto links only). The [Atom feed](#blog-view-and-atom-feed) and Aurboda peers keep
+  the full formatting (tables, inline images). Because an article
   federates as an ordinary `Note`, an Aurboda peer's existing inbound timeline ingestion
   (see [Home timeline](#home-timeline-inbound)) already stores it like any other post —
   sanitised prose + image attachments — with no article-specific ingest code. On top of
   that, a following Aurboda instance's [structured-enrichment
   fetch](#native-charts-from-aurboda-peers-structured-enrichment) resolves an article to
   its native `FeedStructuredArticle` payload (title + every block re-resolved live —
-  bucketed chart samples, or the computed correlation + scatter points), so an Aurboda
+  bucketed chart samples, the computed correlation + scatter points, or an impact block's
+  timeline and effects), so an Aurboda
   follower's timeline renders the full inline article — real interactive charts and
   scatters — instead of just the flattened prose and attached PNGs a Mastodon follower
   sees. **Export** — `GET /feed/articles/:postId/export` (and the `export_article_markdown`
   MCP tool) renders an article as paste-ready markdown — the title, the prose blocks
-  verbatim, one image link per chart/correlation block (the block-image endpoint
+  verbatim, one image link per chart/correlation/impact block (the block-image endpoint
   below), and for a challenge block its standings image (when it would draw), caption and a
   `[Join the challenge](…)` link — for pasting into a text-only destination like r/QuantifiedSelf, where the
   author adds their own write-up around the linked charts. A block whose image would 404
-  (a chart window with no samples, a correlation with n < 3) gets an italic "not enough
+  (a chart window with no samples, a correlation with n < 3, an impact window without
+  sessions) gets an italic "not enough
   data in this window" note instead of a dead image link (#974). A **`followers`-only** article
   can't be exported (400): the export targets a public paste, but its chart images require
   the post's private capability token, which must never land in publicly-pasted text —
   make the article public or unlisted first.
 
 - **`challenge`** — an **invitation to a challenge** (#994): the author's personal note
-  (markdown, rendered through the same sanitiser as article prose) plus the challenge's
-  canonical public URL — one of the user's own challenges (its share URL) or a challenge
-  they joined (the host's URL), resolved **server-side** so a post can never carry a
+  (markdown, shaped for Mastodon like article prose: tables as lines, images as links)
+  plus the challenge's canonical public URL — one of the user's own challenges (its share
+  URL) or a challenge they joined (the host's URL), resolved **server-side** so a post can never carry a
   spoofed link. The payload (name + URL, and the host identity for a joined challenge)
   lives in a nullable `challenge` JSONB column; no join token and no standings data are
   stored on the post — anyone following the link goes through the normal public page /
@@ -215,7 +236,8 @@ outbox, federation delivery, the public profile, the blog view, the Atom feed, t
 `list_feed` — can ever see one. A draft is never federated.
 
 A draft may be **incomplete** (`ArticleDraftContent`): the title may be empty, a chart
-block's `metric` and a correlation block's `trigger`/`outcome` may be unset, and windows are
+block's `metric`, a correlation block's `trigger`/`outcome` and an impact block's `activity`
+may be unset ("Impact block N has no activity — pick one before publishing."), and windows are
 not checked. **Publishing** validates it exactly like `POST /feed/articles` — the
 `CreateArticleBody` schema, then the same window and challenge checks — and on success, in
 one transaction, **claims** the draft (deletes it and takes the deleted row in one statement,
@@ -235,6 +257,90 @@ as before (`PATCH /feed/articles/:postId`); there is no unpublish-to-draft.
 | `PATCH /feed/article-drafts/:id`        | `update_article_draft`  | Save changes; provided `title` / `blocks` / default window / `tags` / `visibility` replace the stored ones; over REST a `null` `default_start` / `default_end` / `tags` clears it |
 | `DELETE /feed/article-drafts/:id`       | `delete_article_draft`  | Delete a draft (nothing to retract)                                                                                                                                               |
 | `POST /feed/article-drafts/:id/publish` | `publish_article_draft` | Validate and publish; `{ visibility? }` overrides the draft's                                                                                                                     |
+
+#### Preview
+
+`POST /feed/articles/preview` (MCP `preview_article`, #1605) shows what an article — a draft
+or an unsaved editor state, `{ article, visibility?, include_images? }` in the
+`ArticleDraftContent` shape — would federate as, and creates nothing. Only its **complete**
+blocks are previewed (a chart with a metric, a correlation with trigger and outcome, a
+challenge with a challenge URL, an impact block with an activity, and for a windowed block a
+bounded, increasing window); a blank title previews as `Untitled`. The answer
+(`ArticlePreviewResponse`) has the Note `content` and `name` exactly as `renderArticleNote`
+and the hashtag linking build them, the `tags`, the numbered figure `attachments` (alt text,
+`block_index` back into the draft's blocks, `shown_in_mastodon`), `publish_error` — what
+still keeps it from publishing, the same checks as publishing, or `null` — and `notes` on
+what Mastodon changes for this post (figures past the fourth, figures with no data yet, the
+cropped grid, followers-only image tokens). With `include_images` each block figure Mastodon
+shows comes back as SVG markup (`image_svg`, the same titled image `figure.png` rasterises;
+`null` when the block has nothing to draw yet), drawn one at a time and cached for the hour
+so retyping prose does not draw the charts again. A block figure has no URL before the post
+exists, so a figure past the fourth is linked as `#figure-N` in the preview.
+
+`mastodon` is an **emulation of Mastodon's web UI**, not Mastodon itself: `content` after a
+port of Mastodon's `MASTODON_STRICT` sanitiser (`mastodon-sanitize.ts`: its elements and
+attributes, headings as bold paragraphs, forced `rel="nofollow noopener" target="_blank"`, a
+link with an unsupported or relative scheme replaced by its text) without the trailing
+paragraph of hashtag links, and the `hashtag_bar` Mastodon shows under the media instead.
+The web's article editor shows it as a **Mastodon** tab beside the **Aurboda** tab (the real
+feed card), side by side with the form on a wide screen: the first four images in Mastodon's
+cropped grid with their alt text, the hashtag bar, and the "Read more" fold a status taller
+than 706 px gets in Mastodon timelines.
+
+| REST                          | MCP               | Purpose                                                                   |
+| ----------------------------- | ----------------- | ------------------------------------------------------------------------- |
+| `POST /feed/articles/preview` | `preview_article` | Preview the federated article and its Mastodon rendering; creates nothing |
+
+#### Pictures
+
+Anything written in the markdown editor — an article's prose blocks, a comment or reply, a
+timeline comment, an activity's description — can carry pictures from the device (#1606):
+**paste** one, **drop** it on the text, or **pick** it with the picture button at the right of
+the Write/Preview tabs (on Android the app's WebView opens the system file chooser). Each
+picture goes in at the cursor, on a line of its own, as `![Uploading name…]()` while it is
+sent, and is replaced by `![](url)` when it is stored; describe it between the square
+brackets, which becomes its alt text. A failed upload removes the placeholder and says why.
+Save, Reply, Publish and Save draft wait until every placeholder is gone, so one is never
+saved. An SVG is refused in the browser before it is sent.
+
+The server normalises every picture (`services/feed-image.ts`): the format is checked on the
+bytes sharp detects, not the claimed type (PNG, JPEG, WebP or GIF; never SVG); the EXIF
+orientation is applied and the picture turned upright; its longest edge is shrunk to at most
+1600 px (a smaller picture is not enlarged); an animated GIF keeps its first frame; and it is
+stored as WebP (quality 82) with **no metadata** — no camera, no GPS position. An upload is at
+most 10 MB.
+
+Pictures live in the writer's own database, in `feed_image` (`id`, `content_type`, `data`
+BYTEA, `width`, `height`, `byte_size`, `created_at`), so the [data export](../data-export.md)
+holds them and deleting the account removes them. One account may store **500**; an upload at
+the cap is refused (409) until some are deleted. Nothing removes a picture that no text uses any
+more: the reference lives inside markdown.
+
+A picture is public at `GET /api/public/:username/images/:id.webp` — anyone with the link can
+see it — served with `Cache-Control: public, max-age=31536000, immutable` (an id's bytes
+never change) and `X-Content-Type-Options: nosniff`.
+
+| REST                      | MCP                 | Purpose                                                                                          |
+| ------------------------- | ------------------- | ------------------------------------------------------------------------------------------------ |
+| `POST /feed/images`       | `add_feed_image`    | Store a picture (multipart field `image`; MCP: `data_base64`); answers `{ id, url, width, ... }` |
+| `GET /feed/images`        | `list_feed_images`  | My pictures, newest first, with the cap (`limit`)                                                |
+| `DELETE /feed/images/:id` | `delete_feed_image` | Delete a picture; markdown that embeds it shows a broken picture                                 |
+
+The MCP tool is `add_…` rather than `upload_…` so the read-only gate, which decides by prefix,
+refuses it for an account whose plan has ended, as REST's account gate does for `POST` and
+`DELETE`.
+
+**Who sees a picture in an article**: the author, in the article on their own feed; a visitor
+of a public or unlisted post (`/u/<user>`, `/u/<user>/posts/<id>`, signed out or not) and an
+Aurboda peer's timeline, inline where it stands in the prose, because the structured payload
+declares it (see [structured enrichment](#native-charts-from-aurboda-peers-structured-enrichment));
+and Mastodon, as a numbered figure attachment. A picture is never wider than the card or text
+that holds it.
+
+**On Mastodon**: an uploaded picture in an article's prose is an ordinary http(s) prose image,
+so `renderArticleNote` sends it as a numbered figure attachment (`media_type: image/webp`,
+its alt text as the description) within Mastodon's four, and links it past the fourth. In
+any other post's text it federates as a link.
 
 ### Hashtags
 
@@ -297,7 +403,8 @@ A tag follow never raises a post notification: the Android notifier reads only t
 list. A card boosted by a followed tag actor carries `boosted_by.tag` and
 shows a `#running` chip in place of the "🔄 X boosted" line. The host is a server setting,
 `tag_actor_host` (Admin → **Federation**, default `tags.pub`). Only posts from servers that
-push to tags.pub arrive this way; pushing Aurboda's own posts there is #1541.
+push to tags.pub arrive this way; every Aurboda server pushes its own public posts there
+through the tags.pub relay it subscribes to by default (see [Relays](../admin.md#federation)).
 
 **Web.** Feed → **People & sharing** has a **Followed tags** block (follow `#tag`, the Pending
 badge and Unfollow), and the **Following** timeline shows a chip row (`All` plus one
@@ -336,7 +443,8 @@ correct behind the TLS-terminating proxy (which forwards over loopback http).
 **Instance actor and relays.** Besides the per-user actors, the server itself is an
 `Application` actor at `<public-base>/actor` (WebFinger `acct:<host>@<host>`, inbox at
 `/users/~actor/inbox`, shared inbox `/inbox`), whose key pair lives in the central database. It
-exists to subscribe to [relays](../admin.md#federation), which admins add in Admin Settings. Once
+exists to subscribe to [relays](../admin.md#federation), which admins add in Admin Settings; the
+tags.pub relay is subscribed to once by default, on a public https origin. Once
 a relay accepts, every `public` post's `Create`, `Update` and `Delete` is delivered to the relay's
 inbox too, signed by the author, as a separate best-effort leg of the fan-out (a dead relay never
 fails the followers delivery). Unlisted and followers-only posts, replies, likes, boosts and
@@ -782,8 +890,8 @@ The federated object is a `Note` at the post's canonical id
 - `inReplyTo` — the answered object's id;
 - `content` — the author as a leading mention paragraph
   (`<span class="h-card"><a href="…" class="u-url mention">@user@host</a></span>`) followed by
-  the reply markdown rendered through the shared outbound sanitiser (the same `renderProse`
-  boundary as article prose and challenge notes);
+  the reply markdown shaped for Mastodon like article prose and challenge notes (tables as
+  lines, images as links) through the shared outbound sanitiser (`renderNoteProse`);
 - `tag` — a `Mention` of the answered author, named by the `@user@host` snapshot taken at reply
   time (derived from the actor URI when the entry never carried one);
 - `to`/`cc` — the visibility table, **plus the answered author in `cc`** so their server accepts
@@ -837,16 +945,23 @@ id-convention path — reliable even when a typed consumer drops the in-band ext
    and the same data-scoped series resolution as the [public series
    endpoint](#public-series-endpoint-the-privacy-boundary). An **article** post resolves to
    `FeedStructuredArticle` (the title and every block, resolved in the same order as the
-   article: a prose block's raw markdown verbatim; a chart block's bucketed samples over its
+   article: a prose block's raw markdown verbatim, with `images` declaring the http(s)
+   pictures its markdown embeds (alt text and URL, in document order) — a receiver draws an
+   inline picture only when its URL is declared there, so an undeclared one (a tracking pixel,
+   raw `<img>` HTML) is dropped; a chart block's bucketed samples over its
    locked window, bucketed the same way as its block image; a correlation block's computed
    Pearson/Spearman/n, the present-vs-absent group comparison, and the aligned scatter points —
-   the same `getContinuousCorrelation` call the block image uses; a challenge block's `url` and
+   the same `getContinuousCorrelation` call the block image uses; an impact block's `activity`,
+   `activity_type`, `window_minutes`, window, `occurrences`, `avg_duration_min`, `timeline`
+   buckets and `hrv_effect` / `hr_effect` / `stress_effect` — the same `getActivityImpact`
+   call (exact match, no freshness sync) the block image uses, present for any bounded window
+   even without sessions; a challenge block's `url` and
    caption, plus — when the challenge resolves — its QuantPub document and a standings
    snapshot, resolved like a challenge post's below, and also for another local user's
    challenge (from that user's database) or a remote one the author has not joined (the
    host's QuantPub document and standings, fetched within the same timeout; any failure
    leaves the block with only its URL and caption, which renders as a link card). An older
-   Aurboda peer that predates challenge blocks fails the strict parse of such a payload and
+   Aurboda peer that predates challenge or impact blocks fails the strict parse of such a payload and
    falls back to the article's `Note` HTML — prose, captions, the join link and the attached
    images). A **challenge** post
    resolves to `FeedStructuredChallenge`: the author's note, the frozen `result` on a
@@ -911,7 +1026,7 @@ id-convention path — reliable even when a typed consumer drops the in-band ext
 
 Enrichment is strictly best-effort and additive: it never blocks or fails basic ingest, an
 activity's series that weren't shared (the opt-in) simply produce no chart, and an article's
-chart/correlation block with too little data renders the same "not enough data" fallback the
+chart/correlation/impact block with too little data renders the same "not enough data" fallback the
 author's own live render shows.
 
 **Lazy retro-enrichment (#996).** Entries ingested before enrichment shipped — or whose
@@ -1006,20 +1121,30 @@ render cache keys on the post's `updated_at` plus a 1-hour bucket. The delivered
 attaches it as `Trend` (1000×420) only when it would draw; the `Note` served by the object
 dispatcher and the outbox does not carry it.
 
-An **article** renders one image per chart/correlation/challenge block for the same reason
+An **article** renders one image per chart/correlation/challenge/impact block for the same reason
 (so Mastodon and export tools attach a raster of each block), at its own endpoints:
 
 ```
 GET /api/public/:username/feed/:postId/blocks/:index/image.png
 GET /api/public/:username/feed/:postId/blocks/:index/image.svg
+GET /api/public/:username/feed/:postId/blocks/:index/figure.png
 ```
+
+`figure.png` is the article `Note`'s attachment: the block's chart under a centred title band
+(`Figure N` and the block's label, the caption cut with `…` to fit), so the image names the
+reference the `Note`'s text makes to it — centred because Mastodon's two-image grid crops to
+the middle. Its number and label come from the same walk over the article that writes the
+`Note`'s `content`, so the two cannot disagree. `image.png` and `image.svg` stay the bare
+chart, for the markdown export and the blog.
 
 Unlike an activity chart, a block has **no `include_chart` opt-in flag** — a chart or
 correlation block can embed any metric over any window, so the post's **visibility** is
 the whole authorization boundary (public/unlisted open; `followers`-only via the
 `?token=` capability). The chart block renders the metric bucketed over the locked
 window; the correlation block renders the scatter with its OLS line and coefficient
-headline; the challenge block renders the linked challenge's standings race chart (the same
+headline; the impact block renders the impact chart (1000×560: the title, the three lines
+with the during bucket shaded, the bucket labels, a legend and the before → after effect
+lines) and moves hourly like a chart block; the challenge block renders the linked challenge's standings race chart (the same
 chart as a challenge post's `standings.png`), cached in five-minute buckets like that image
 rather than hourly, and 404s while the challenge has no standings to draw. It buckets in the author's **device timezone** (`device_timezone`, set by the
 Android app) so a `1d` bucket splits on the author's calendar days like the web render;
@@ -1031,18 +1156,22 @@ bucket, so an edit or new data serves a fresh image within ≤ 1h; a `null` (no-
 is remembered under the same key so a sparse public block can't re-run the render engine
 on every hit. The markdown export clears that remembered miss for every block it finds
 drawable, so the image link it emits works at once rather than 404ing until the hour rolls
-over. The AS2 `Image` attachment URL also carries `?v=<updated_at>` so a remote
-media cache (which re-hosts the PNG at receipt) re-fetches after an edit.
+over. `figure.png` shares the eligibility, the negative cache and that clearing, under its
+own render-cache entry. The AS2 `Image` attachment URL (`figure.png`) also carries
+`?v=<updated_at>` so a remote media cache (which re-hosts the PNG at receipt) re-fetches
+after an edit.
 
 A block image endpoint **404s** when the block is too sparse to draw (a chart with < 2
-points, a correlation with n < 3) or has a zero-duration bucket. The article's `Note`
-attaches one `Image` per chart/correlation block **unconditionally** (the attachment list
-is built without a synchronous pre-render), so a sparse block ships an attachment URL
-that resolves to 404 — a plain fediverse client just shows one fewer image. Note also
-that **Mastodon caps a remote status at 4 media attachments** (`MEDIA_ATTACHMENTS_LIMIT`)
-when processing an inbound `Create`, so an article with more than four chart/correlation
-blocks shows only its first four images there (Aurboda peers, which fetch the native
-payload, aren't capped).
+points, a correlation with n < 3, an impact without sessions or with fewer than two buckets
+holding any mean) or has a zero-duration bucket. The article's `Note`
+attaches one `Image` per figure **unconditionally** (the attachment list is built without a
+synchronous pre-render), so a sparse block ships an attachment URL that resolves to 404 — a
+plain fediverse client just shows one fewer image. Each attachment is named
+`Figure N: label` and sized as the chart plus the 88px title band. **Mastodon caps a remote
+status at 4 media attachments** (`MEDIA_ATTACHMENTS_LIMIT`) when processing an inbound
+`Create`, so it shows only the first four figures; the text's reference to figure 5 and on
+is a link to the image instead (Aurboda peers, which fetch the native payload, aren't
+capped).
 
 An image is served when the matching flag was opted into. `public`/`unlisted` posts
 serve their images unauthenticated. A `followers`-only post's image URLs instead carry
@@ -1362,6 +1491,8 @@ Owner-facing (authenticated, scoped to the caller):
 | `GET/POST /autoshare-rules` (+`/:id`, `/preview`) | [Auto-share rules](auto-share-rules.md): automatically publish matching settled activities (#903)                                                                                                            |
 | `PATCH /feed/articles/:postId`                    | Edit an article (title / blocks / default window / visibility)                                                                                                                                               |
 | `/feed/article-drafts` (+`/:id`, `/:id/publish`)  | Private [article drafts](#article-drafts): list, save, edit, delete, publish (validated like `POST /feed/articles`)                                                                                          |
+| `POST /feed/articles/preview`                     | Article **[preview](#preview)** (#1605): the Note content, figures, publish error and a Mastodon web UI emulation; creates nothing                                                                           |
+| `/feed/images` (+`/:id`)                          | [Pictures](#pictures) added to what I write: upload (multipart `image`), list, delete                                                                                                                        |
 | `GET /feed/articles/:postId/export`               | Export an article as paste-ready markdown (title + prose + one image link per block) for Reddit/text-only destinations                                                                                       |
 | `PATCH /feed/:postId`                             | Edit an activity post's selection / visibility / attachments                                                                                                                                                 |
 | `DELETE /feed/:postId`                            | Unpublish any post (an activity post's public series stops resolving)                                                                                                                                        |
@@ -1389,38 +1520,39 @@ Admin-only: `GET /admin/relays`, `POST /admin/relays` (`{ url, style }`) and
 
 Public / federation (unauthenticated):
 
-| Method & path                                                | Purpose                                                                                                                                                                                                                                                                  |
-| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `GET /public/:username/series`                               | Bucketed samples for a **shared** series within its window                                                                                                                                                                                                               |
-| `GET /public/:username/feed/:postId`                         | Native structured post (`FeedStructuredPost`: an activity's typed metrics + inline series, an article's title + resolved blocks, a challenge's document + standings snapshot, an exercise's progress, or a dashboard period's widgets) for Aurboda-to-Aurboda enrichment |
-| `GET /public/:username/feed/:postId/chart.png`               | Rendered HR chart (PNG) for an opted-in post (`?token=` for followers-only)                                                                                                                                                                                              |
-| `GET /public/:username/feed/:postId/chart.svg`               | Same HR chart as crisp `image/svg+xml` for Aurboda-native rendering (`?token=` for followers-only)                                                                                                                                                                       |
-| `GET /public/:username/feed/:postId/route.png`               | Rendered GPS route map for an opted-in post (`?token=` for followers-only)                                                                                                                                                                                               |
-| `GET /public/:username/feed/:postId/standings.png`           | Rendered standings race chart (PNG) for an opted-in challenge post (`?token=` for followers-only)                                                                                                                                                                        |
-| `GET /public/:username/feed/:postId/standings.svg`           | Same standings race as crisp `image/svg+xml`                                                                                                                                                                                                                             |
-| `GET /public/:username/feed/:postId/trend.png`               | Rendered exercise trend (PNG) for an opted-in exercise post (`?token=` for followers-only)                                                                                                                                                                               |
-| `GET /public/:username/feed/:postId/trend.svg`               | Same exercise trend as crisp `image/svg+xml`                                                                                                                                                                                                                             |
-| `GET /public/:username/feed/:postId/blocks/:index/image.png` | Rendered PNG of an article's chart/correlation/challenge block (visibility-gated; `?token=` for followers-only)                                                                                                                                                          |
-| `GET /public/:username/feed/:postId/blocks/:index/image.svg` | Same article block as crisp `image/svg+xml`                                                                                                                                                                                                                              |
-| `GET /public/:username/posts`                                | A user's public/unlisted posts (newest-first, keyset page of 20 + `next_cursor`) for their profile feed; `?kind=article` for the blog view                                                                                                                               |
-| `GET /public/:username/articles.atom`                        | Atom 1.0 feed of the user's 20 newest public articles ([Blog view and Atom feed](#blog-view-and-atom-feed))                                                                                                                                                              |
-| `GET /public/official-feed`                                  | The instance's [official feed](#official-feed): public posts of the chosen users and remote authors with one of the chosen tags, newest-first, keyset page of 20 + `next_cursor`                                                                                         |
-| `GET /public/official-feed.atom`                             | Atom 1.0 feed of the official feed's 20 newest entries                                                                                                                                                                                                                   |
-| `GET /public/tags/:tag/posts`                                | A [public tag page](#public-tag-pages): public posts with the tag from this server and others, newest-first, keyset page of 20 + `next_cursor` (MCP `list_public_tag_posts`)                                                                                             |
-| `GET /public/tags/:tag.atom`                                 | Atom 1.0 feed of a public tag page's 20 newest posts                                                                                                                                                                                                                     |
-| `GET /public/:username/posts/:postId`                        | One public/unlisted post, serialized like the listing (`FeedPostResponse`), for its permalink page `/u/:username/posts/:postId`                                                                                                                                          |
-| `GET /.well-known/webfinger`                                 | Resolve `acct:<username>@<host>` → the actor                                                                                                                                                                                                                             |
-| `GET /.well-known/quantpub`                                  | QuantPub discovery document (FEP §4): product, versions, `apiBase`                                                                                                                                                                                                       |
-| `GET /ns/quantpub`                                           | The published QuantPub JSON-LD `@context` document (`application/ld+json`)                                                                                                                                                                                               |
-| `GET /.well-known/nodeinfo`                                  | NodeInfo JRD pointing at the 2.1 document (#1047)                                                                                                                                                                                                                        |
-| `GET /nodeinfo/2.1`                                          | NodeInfo 2.1: software `aurboda` + version, `activitypub` protocol (no usage stats — per-user DBs)                                                                                                                                                                       |
-| `GET /users/:username`                                       | Content-negotiated (RFC 9110, `Vary: Accept`): the actor document (`Person`) for an ActivityPub type, a wildcard or no `Accept`; a 302 to `/u/:username` when HTML is the best match (a browser, `text/*`); `406` when neither is acceptable; `404` for an unknown user  |
-| `GET /users/:username/outbox`                                | Public + unlisted posts as `Create` activities                                                                                                                                                                                                                           |
-| `GET /users/:username/followers`                             | The actor's followers collection                                                                                                                                                                                                                                         |
-| `GET /users/:username/following`                             | The actor's following collection (accepted follows of people only; followed hashtags are left out)                                                                                                                                                                       |
-| `GET /users/:username/feed/:postId`                          | Content-negotiated like the actor: a single post's `Note` — an activity share or an article (or `410` Tombstone once deleted); a 302 to `/u/:username/posts/:postId` for a browser on any post id of an existing user                                                    |
-| `POST /users/:username/inbox` (+ `/inbox`)                   | Inbound `Follow` / `Undo{Follow}` / `Accept` / `Reject` (HTTP-Signature verified)                                                                                                                                                                                        |
-| `GET /actor`                                                 | The instance actor (`Application`) that subscribes to [relays](../admin.md#federation)                                                                                                                                                                                   |
+| Method & path                                                 | Purpose                                                                                                                                                                                                                                                                  |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /public/:username/series`                                | Bucketed samples for a **shared** series within its window                                                                                                                                                                                                               |
+| `GET /public/:username/feed/:postId`                          | Native structured post (`FeedStructuredPost`: an activity's typed metrics + inline series, an article's title + resolved blocks, a challenge's document + standings snapshot, an exercise's progress, or a dashboard period's widgets) for Aurboda-to-Aurboda enrichment |
+| `GET /public/:username/feed/:postId/chart.png`                | Rendered HR chart (PNG) for an opted-in post (`?token=` for followers-only)                                                                                                                                                                                              |
+| `GET /public/:username/feed/:postId/chart.svg`                | Same HR chart as crisp `image/svg+xml` for Aurboda-native rendering (`?token=` for followers-only)                                                                                                                                                                       |
+| `GET /public/:username/feed/:postId/route.png`                | Rendered GPS route map for an opted-in post (`?token=` for followers-only)                                                                                                                                                                                               |
+| `GET /public/:username/feed/:postId/standings.png`            | Rendered standings race chart (PNG) for an opted-in challenge post (`?token=` for followers-only)                                                                                                                                                                        |
+| `GET /public/:username/feed/:postId/standings.svg`            | Same standings race as crisp `image/svg+xml`                                                                                                                                                                                                                             |
+| `GET /public/:username/feed/:postId/trend.png`                | Rendered exercise trend (PNG) for an opted-in exercise post (`?token=` for followers-only)                                                                                                                                                                               |
+| `GET /public/:username/feed/:postId/trend.svg`                | Same exercise trend as crisp `image/svg+xml`                                                                                                                                                                                                                             |
+| `GET /public/:username/feed/:postId/blocks/:index/image.png`  | Rendered PNG of an article's chart/correlation/challenge block (visibility-gated; `?token=` for followers-only)                                                                                                                                                          |
+| `GET /public/:username/feed/:postId/blocks/:index/image.svg`  | Same article block as crisp `image/svg+xml`                                                                                                                                                                                                                              |
+| `GET /public/:username/feed/:postId/blocks/:index/figure.png` | The article block's PNG under a `Figure N` title band: the article `Note`'s attachment (same gating as `image.png`)                                                                                                                                                      |
+| `GET /public/:username/posts`                                 | A user's public/unlisted posts (newest-first, keyset page of 20 + `next_cursor`) for their profile feed; `?kind=article` for the blog view                                                                                                                               |
+| `GET /public/:username/articles.atom`                         | Atom 1.0 feed of the user's 20 newest public articles ([Blog view and Atom feed](#blog-view-and-atom-feed))                                                                                                                                                              |
+| `GET /public/official-feed`                                   | The instance's [official feed](#official-feed): public posts of the chosen users and remote authors with one of the chosen tags, newest-first, keyset page of 20 + `next_cursor`                                                                                         |
+| `GET /public/official-feed.atom`                              | Atom 1.0 feed of the official feed's 20 newest entries                                                                                                                                                                                                                   |
+| `GET /public/tags/:tag/posts`                                 | A [public tag page](#public-tag-pages): public posts with the tag from this server and others, newest-first, keyset page of 20 + `next_cursor` (MCP `list_public_tag_posts`)                                                                                             |
+| `GET /public/tags/:tag.atom`                                  | Atom 1.0 feed of a public tag page's 20 newest posts                                                                                                                                                                                                                     |
+| `GET /public/:username/posts/:postId`                         | One public/unlisted post, serialized like the listing (`FeedPostResponse`), for its permalink page `/u/:username/posts/:postId`                                                                                                                                          |
+| `GET /.well-known/webfinger`                                  | Resolve `acct:<username>@<host>` → the actor                                                                                                                                                                                                                             |
+| `GET /.well-known/quantpub`                                   | QuantPub discovery document (FEP §4): product, versions, `apiBase`                                                                                                                                                                                                       |
+| `GET /ns/quantpub`                                            | The published QuantPub JSON-LD `@context` document (`application/ld+json`)                                                                                                                                                                                               |
+| `GET /.well-known/nodeinfo`                                   | NodeInfo JRD pointing at the 2.1 document (#1047)                                                                                                                                                                                                                        |
+| `GET /nodeinfo/2.1`                                           | NodeInfo 2.1: software `aurboda` + version, `activitypub` protocol (no usage stats — per-user DBs)                                                                                                                                                                       |
+| `GET /users/:username`                                        | Content-negotiated (RFC 9110, `Vary: Accept`): the actor document (`Person`) for an ActivityPub type, a wildcard or no `Accept`; a 302 to `/u/:username` when HTML is the best match (a browser, `text/*`); `406` when neither is acceptable; `404` for an unknown user  |
+| `GET /users/:username/outbox`                                 | Public + unlisted posts as `Create` activities                                                                                                                                                                                                                           |
+| `GET /users/:username/followers`                              | The actor's followers collection                                                                                                                                                                                                                                         |
+| `GET /users/:username/following`                              | The actor's following collection (accepted follows of people only; followed hashtags are left out)                                                                                                                                                                       |
+| `GET /users/:username/feed/:postId`                           | Content-negotiated like the actor: a single post's `Note` — an activity share or an article (or `410` Tombstone once deleted); a 302 to `/u/:username/posts/:postId` for a browser on any post id of an existing user                                                    |
+| `POST /users/:username/inbox` (+ `/inbox`)                    | Inbound `Follow` / `Undo{Follow}` / `Accept` / `Reject` (HTTP-Signature verified)                                                                                                                                                                                        |
+| `GET /actor`                                                  | The instance actor (`Application`) that subscribes to [relays](../admin.md#federation)                                                                                                                                                                                   |
 
 The actor's `icon` URL carries the avatar's upload time as a `?v=` version, and an avatar
 upload/removal delivers an `Update{Person}` to accepted followers — remote servers (Mastodon
@@ -1437,7 +1569,7 @@ The public profile page (`/u/:username`, from
 email is never part of the actor or any public response.
 
 The owner-facing capability is also available over MCP as `list_feed`, `share_activity`,
-`preview_activity_share`, `share_challenge`, `share_exercise`, `preview_exercise_share`, `share_dashboard_period`, `preview_dashboard_period_share`, `create_article`, `update_article`, the [article draft](#article-drafts) tools, `export_article_markdown`, `update_feed_post`,
+`preview_activity_share`, `share_challenge`, `share_exercise`, `preview_exercise_share`, `share_dashboard_period`, `preview_dashboard_period_share`, `create_article`, `update_article`, `preview_article`, the [article draft](#article-drafts) tools, `export_article_markdown`, `update_feed_post`,
 `delete_feed_post`, `list_following`, `follow_actor`, `unfollow_actor`, `list_followed_tags`,
 `follow_tag`, `unfollow_tag`, `list_followers`,
 `approve_follower`, `reject_follower`, `list_timeline`, `like_timeline_post`,
@@ -1454,7 +1586,7 @@ toggled with the `manually_approve_followers` user setting (`get_user_settings` 
 ## Storage
 
 Feed posts live in the user's own database in the `feed_posts` table (unpublished
-[article drafts](#article-drafts) live apart, in `article_drafts`). A `kind` column
+[article drafts](#article-drafts) live apart, in `article_drafts`, and [pictures](#pictures) in `feed_image`). A `kind` column
 discriminates an `activity` post from an `article`, `challenge`, `exercise`, `dashboard` or `reply` post; an
 article's content (title + default window + ordered blocks) lives in a nullable `article` JSONB
 column, a challenge share's link payload (name + canonical URL + optional host identity)

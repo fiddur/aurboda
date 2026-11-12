@@ -194,6 +194,10 @@ How the numbers are made:
   `start − W` to `end + W`, so the first and last sessions of the period get
   full windows. Activities, visits and productivity are still taken from the
   period only, and the baseline still uses only the bins inside it.
+- **Activities as shown.** Every correlation reads activities the way the
+  activity pages show them, after overrides and merges: a synced row an
+  override (a manual edit or a retyping rule) replaced counts only under the
+  override's type, and the same session from two sources is one activity.
 - **Sessions.** Entries of the same group (one activity type, one location, one
   productivity category) that overlap or are at most 10 minutes apart are merged
   into one session, so the same session from two sources, or back-to-back
@@ -246,7 +250,11 @@ stress }`: the before buckets oldest first, then `during`, then the after
   kept for compatibility: their keys name the default 30-minute window, and
   `before30min`/`after30min` are the outer half of the window and
   `before15min`/`after15min` the inner half, whatever `window_minutes` is.
-  `occurrences` counts merged sessions.
+  `occurrences` counts merged sessions. `start` and `end` (ISO 8601 datetimes,
+  given together) fix the analysed period instead of the last `period_days`
+  days: `start` inclusive, `end` exclusive. One without the other, or a `start`
+  not before `end`, is a 400 (an error from the MCP tool). An article's impact
+  block uses this with `match=exact` and its own window.
 
 ## Statistics notes
 

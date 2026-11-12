@@ -5,6 +5,8 @@ import express from 'express'
 import supertest from 'supertest'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 
+import type { ArticlePreviewer } from '../services/article-preview.ts'
+
 /**
  * Integration test for the owner-facing article routes on the feed router
  * (`POST /feed/articles`, `PATCH /feed/articles/:postId`) against a live
@@ -22,6 +24,7 @@ import { createSharedDashboard } from '../db/shared-dashboards.ts'
 import { createSharedExercise } from '../db/shared-exercises.ts'
 import { insertTimeSeries } from '../db/time-series.ts'
 import { upsertTimelineEntry } from '../db/timeline.ts'
+import { createArticlePreviewer } from '../services/article-preview.ts'
 import { configureStructuredChallenge } from '../services/feed-structured-challenge.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { type FeedDeliver, createFeedRouter } from './feed-router.ts'
@@ -33,10 +36,18 @@ const auth: RequestHandler = (req, _res, next) => {
   next()
 }
 
-const startApp = (deliver?: FeedDeliver, apiBaseUrl?: string, webHost?: string) => {
+const startApp = (
+  deliver?: FeedDeliver,
+  apiBaseUrl?: string,
+  webHost?: string,
+  previewArticle?: ArticlePreviewer,
+) => {
   const app = express()
   app.use(express.json())
-  app.use('/feed', createFeedRouter(auth, deliver, undefined, apiBaseUrl, undefined, webHost))
+  app.use(
+    '/feed',
+    createFeedRouter(auth, deliver, undefined, apiBaseUrl, undefined, webHost, undefined, previewArticle),
+  )
   const server = app.listen(0)
   const port = (server.address() as AddressInfo).port
   const close = () =>
@@ -96,6 +107,39 @@ describe('Article feed routes (integration)', () => {
     expect(res.status).toBe(400)
     expect(res.body.success).toBe(false)
     expect(res.body.error).toContain('no time window')
+  })
+
+  test('POST /feed/articles stores an impact block and reads it back', async () => {
+    const impact = {
+      activity: 'meditation',
+      activity_type: 'activity_type',
+      caption: 'Evening meditation',
+      type: 'impact',
+      window_minutes: 120,
+    }
+    const res = await app.request
+      .post('/feed/articles')
+      .send({ ...articleBody(), blocks: [...articleBody().blocks, impact] })
+    expect(res.status).toBe(200)
+    expect(res.body.post.article.blocks[2]).toEqual(impact)
+    const list = await app.request.get('/feed')
+    const stored = list.body.posts.find((p: { id: string }) => p.id === res.body.post.id)
+    expect(stored.article.blocks[2]).toEqual(impact)
+  })
+
+  test('POST /feed/articles rejects an impact block with no window or a bad window_minutes (400)', async () => {
+    const noWindow = await app.request.post('/feed/articles').send({
+      blocks: [{ activity: 'meditation', activity_type: 'activity_type', type: 'impact' }],
+      title: 'Broken',
+      visibility: 'public',
+    })
+    expect(noWindow.status).toBe(400)
+    expect(noWindow.body.error).toContain('Impact block 1 (meditation) has no time window')
+    const shortWindow = await app.request.post('/feed/articles').send({
+      ...articleBody(),
+      blocks: [{ activity: 'meditation', activity_type: 'activity_type', type: 'impact', window_minutes: 5 }],
+    })
+    expect(shortWindow.status).toBe(400)
   })
 
   test('PATCH /feed/articles/:postId replaces provided fields', async () => {
@@ -260,6 +304,40 @@ describe('GET /feed/articles/:postId/export (Reddit/markdown export, C4)', () =>
     expect(res.status).toBe(200)
     expect(res.body.markdown).not.toContain('image.png')
     expect(res.body.markdown).toContain('*Resting HR — not enough data in this window.*')
+  })
+
+  test('links an impact block whose window has a session, and notes one without (#1604)', async () => {
+    const user = getTestUser()
+    const sessionStart = new Date('2026-07-02T18:00:00Z')
+    await insertActivity(user, {
+      activity_type: 'meditation',
+      end_time: new Date(sessionStart.getTime() + 20 * 60_000),
+      source: 'manual',
+      start_time: sessionStart,
+    })
+    await insertTimeSeries(
+      user,
+      Array.from({ length: 16 }, (_, i) => ({
+        metric: 'heart_rate' as const,
+        source: 'garmin' as const,
+        time: new Date(sessionStart.getTime() + (i * 5 - 30) * 60_000),
+        value: 60 + i,
+      })),
+    )
+    const created = await withBase.request.post('/feed/articles').send({
+      ...articleBody(),
+      blocks: [
+        { activity: 'meditation', activity_type: 'activity_type', type: 'impact' },
+        { activity: 'yoga', activity_type: 'activity_type', type: 'impact' },
+      ],
+    })
+    const postId = created.body.post.id
+    const res = await withBase.request.get(`/feed/articles/${postId}/export`)
+    expect(res.status).toBe(200)
+    expect(res.body.markdown).toContain(
+      `![Impact of meditation](https://aurboda.example/api/public/${user}/feed/${postId}/blocks/0/image.png`,
+    )
+    expect(res.body.markdown).toContain('*Impact of yoga — not enough data in this window.*')
   })
 
   test('404s for a non-article post', async () => {
@@ -1175,6 +1253,16 @@ describe('Article drafts (/feed/article-drafts)', () => {
     expect(res.body.post.visibility).toBe('unlisted')
   })
 
+  test('publishing a draft whose impact block has no activity is a 400', async () => {
+    const created = await app.request.post('/feed/article-drafts').send({
+      article: { ...draftArticle(), blocks: [{ activity_type: 'activity_type', type: 'impact' }] },
+    })
+    expect(created.status).toBe(200)
+    const res = await app.request.post(`/feed/article-drafts/${created.body.draft.id}/publish`).send({})
+    expect(res.status).toBe(400)
+    expect(res.body.error).toBe('Impact block 1 has no activity — pick one before publishing.')
+  })
+
   test('publishing an incomplete draft is a 400 and keeps the draft', async () => {
     const created = await app.request
       .post('/feed/article-drafts')
@@ -1403,5 +1491,71 @@ describe('Article challenge blocks (#1484)', () => {
     })
     expect(res.status).toBe(400)
     expect(res.body.error).toBe('Block 2: challenge not found.')
+  })
+})
+
+describe('Article preview (POST /feed/articles/preview)', () => {
+  const WEB_HOST = 'https://aurboda.example'
+  const chartDeps = {
+    getArticleChartSeries: async () => [],
+    getArticleImpact: vi.fn(),
+    getChallengeRaceByUrl: async () => null,
+    getCorrelationScatter: async () => null,
+  }
+  let app: ReturnType<typeof startApp>
+
+  beforeAll(async () => {
+    await startTestDb()
+    app = startApp(undefined, undefined, WEB_HOST, createArticlePreviewer({ chartDeps, webHost: WEB_HOST }))
+  }, CONTAINER_TIMEOUT)
+
+  afterAll(async () => {
+    await app.close()
+    await stopTestDb()
+  })
+
+  beforeEach(async () => {
+    await cleanTestDb()
+  })
+
+  test('previews a simple draft and creates no post and no draft', async () => {
+    const res = await app.request.post('/feed/articles/preview').send({
+      article: {
+        blocks: [
+          { markdown: 'Morning coffee, then #yoga.', type: 'prose' },
+          { metric: 'heart_rate', type: 'chart' },
+        ],
+        title: 'Coffee and yoga',
+      },
+    })
+    expect(res.status).toBe(200)
+    expect(res.body.success).toBe(true)
+    expect(res.body.name).toBe('Coffee and yoga')
+    expect(res.body.content).toContain('<p><strong>Coffee and yoga</strong></p>')
+    expect(res.body.content).toContain('Morning coffee')
+    expect(res.body.tags).toContain('yoga')
+    expect(res.body.attachments).toEqual([])
+    expect(res.body.publish_error).toMatch(/^Chart block 2 /)
+    expect(res.body.mastodon.content).toContain('#<span>yoga</span>')
+
+    expect((await app.request.get('/feed')).body.posts).toEqual([])
+    expect((await app.request.get('/feed/article-drafts')).body.drafts).toEqual([])
+  })
+
+  test('rejects a body without an article', async () => {
+    expect((await app.request.post('/feed/articles/preview').send({})).status).toBe(400)
+  })
+
+  test('requires authentication', async () => {
+    const unauthenticated = express()
+    unauthenticated.use(express.json())
+    const deny: RequestHandler = (_req, res) => {
+      res.status(401).json({ error: 'Unauthorized', success: false })
+    }
+    unauthenticated.use('/feed', createFeedRouter(deny))
+    const res = await supertest(unauthenticated)
+      .post('/feed/articles/preview')
+      .send({ article: { blocks: [], title: 'x' } })
+    expect(res.status).toBe(401)
   })
 })

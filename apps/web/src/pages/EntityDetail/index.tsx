@@ -16,6 +16,7 @@ import {
   parseSleepStages,
 } from '../../components/charts/sleep-utils'
 import { dropBlankListRows } from '../../components/listFieldRows'
+import { stillUploading } from '../../components/MarkdownEditor/image-upload'
 import {
   categoricalFields,
   categoricalItemFields,
@@ -829,6 +830,7 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
         }}
         onSave={() => saveMutation.mutate()}
         isSaving={saveMutation.isPending}
+        saveDisabled={stillUploading(draft.notes)}
         onStartMerging={!activity.deleted_at && !isMergedActivity ? () => setIsMerging(true) : undefined}
       />
       <ResyncDetailButton

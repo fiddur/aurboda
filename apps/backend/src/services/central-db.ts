@@ -67,6 +67,7 @@ export interface ServerSettings {
   blog_username: string
   contact_fediverse: string
   contact_reddit: string
+  default_relays_seeded: boolean
   grace_days: number
   gravl_client_id: string
   gravl_client_secret: string

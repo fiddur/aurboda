@@ -3,6 +3,7 @@ import type {
   ArticleDraftResponse,
   ArticleDraftsResponse,
   ArticleExportResponse,
+  ArticlePreviewResponse,
   CreateArticleDraftBody,
   CreateArticleBody,
   DashboardSharePreviewResponse,
@@ -24,6 +25,7 @@ import type {
   FollowingActor,
   FollowingResponse,
   FollowTagResponse,
+  PreviewArticleBody,
   ReplyToPostBody,
   ShareActivityBody,
   ShareChallengeBody,
@@ -99,6 +101,14 @@ export const shareExercise = async (body: ShareExerciseBody): Promise<FeedPost> 
   })
   if (!response.data.post) throw new Error('Share failed: no post returned')
   return response.data.post
+}
+
+/** What an article (draft) would federate as, and how Mastodon would show it; creates nothing. */
+export const previewArticle = async (body: PreviewArticleBody): Promise<ArticlePreviewResponse> => {
+  const response = await axios.post<ArticlePreviewResponse>(`${API_URL}/feed/articles/preview`, body, {
+    headers: authHeaders(),
+  })
+  return response.data
 }
 
 /** What sharing this exercise with these opt-ins would post: the Note HTML and the native payload. Creates nothing. */

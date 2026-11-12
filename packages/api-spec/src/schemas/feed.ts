@@ -28,7 +28,7 @@ import {
   iso8601DateTimeSchema,
   metricTypeSchema,
 } from './common.ts'
-import { selectorSchema } from './correlations.ts'
+import { activityImpactTypeSchema, selectorSchema } from './correlations.ts'
 import { dashboardConfigSchema, periodKeySchema } from './dashboard.ts'
 import {
   feedStructuredDashboardShareSchema,
@@ -464,6 +464,41 @@ export const articleCorrelationBlockSchema = z
   .meta({ description: 'A correlation scatter over a locked window', id: 'ArticleCorrelationBlock' })
 
 /**
+ * An impact block: HRV, heart rate and stress in the window before, during and
+ * after each session of one activity over a locked `[start, end]` period — the
+ * Analyze page's impact chart. `activity` names one grouping key exactly, as the
+ * Analyze context table lists it. Like a chart block, the period is re-resolved
+ * live and inherits the article's default window when `start`/`end` are omitted.
+ */
+export const articleImpactBlockSchema = z
+  .object({
+    activity: z.string().min(1).max(200).meta({
+      description: 'The activity, location or category, exactly as the Analyze context table lists it',
+    }),
+    activity_type: activityImpactTypeSchema,
+    caption: z.string().max(280).optional().meta({ description: 'Optional caption shown under the chart' }),
+    end: iso8601DateTimeSchema
+      .optional()
+      .meta({ description: "Window end (ISO 8601); inherits the article's default window if omitted" }),
+    start: iso8601DateTimeSchema
+      .optional()
+      .meta({ description: "Window start (ISO 8601); inherits the article's default window if omitted" }),
+    type: z.literal('impact'),
+    window_minutes: z
+      .number()
+      .int()
+      .min(10)
+      .max(1440)
+      .optional()
+      .meta({ description: 'Minutes before and after each session (10-1440, default 30)' }),
+  })
+  .meta({
+    description:
+      'The impact of an activity on HRV, heart rate and stress around its sessions, over a locked window',
+    id: 'ArticleImpactBlock',
+  })
+
+/**
  * A challenge block: a challenge embedded by its public URL (one hosted here or
  * on another instance), rendered with its live standings and a link to join.
  * It has no time window — the challenge's own window applies.
@@ -489,9 +524,10 @@ export const articleBlockSchema = z
     articleChartBlockSchema,
     articleCorrelationBlockSchema,
     articleChallengeBlockSchema,
+    articleImpactBlockSchema,
   ])
   .meta({
-    description: 'An article content block (prose, chart, correlation, or challenge)',
+    description: 'An article content block (prose, chart, correlation, challenge, or impact)',
     id: 'ArticleBlock',
   })
 
@@ -500,12 +536,12 @@ export type ArticleBlock = z.infer<typeof articleBlockSchema>
 export const articleContentSchema = z
   .object({
     blocks: z.array(articleBlockSchema).max(100).meta({ description: 'Ordered content blocks' }),
-    default_end: iso8601DateTimeSchema
-      .optional()
-      .meta({ description: 'Default window end inherited by chart and correlation blocks (ISO 8601)' }),
-    default_start: iso8601DateTimeSchema
-      .optional()
-      .meta({ description: 'Default window start inherited by chart and correlation blocks (ISO 8601)' }),
+    default_end: iso8601DateTimeSchema.optional().meta({
+      description: 'Default window end inherited by chart, correlation and impact blocks (ISO 8601)',
+    }),
+    default_start: iso8601DateTimeSchema.optional().meta({
+      description: 'Default window start inherited by chart, correlation and impact blocks (ISO 8601)',
+    }),
     title: z.string().min(1).max(200).meta({ description: 'Article title' }),
   })
   .meta({ id: 'ArticleContent' })
@@ -793,17 +829,15 @@ export type DashboardSharePreviewResponse = z.infer<typeof dashboardSharePreview
 
 export const createArticleBodySchema = z
   .object({
-    blocks: z
-      .array(articleBlockSchema)
-      .max(100)
-      .default([])
-      .meta({ description: 'Ordered content blocks (prose, charts, correlations)' }),
-    default_end: iso8601DateTimeSchema
-      .optional()
-      .meta({ description: 'Default window end inherited by chart and correlation blocks (ISO 8601)' }),
-    default_start: iso8601DateTimeSchema
-      .optional()
-      .meta({ description: 'Default window start inherited by chart and correlation blocks (ISO 8601)' }),
+    blocks: z.array(articleBlockSchema).max(100).default([]).meta({
+      description: 'Ordered content blocks (prose, charts, correlations, challenges, impact charts)',
+    }),
+    default_end: iso8601DateTimeSchema.optional().meta({
+      description: 'Default window end inherited by chart, correlation and impact blocks (ISO 8601)',
+    }),
+    default_start: iso8601DateTimeSchema.optional().meta({
+      description: 'Default window start inherited by chart, correlation and impact blocks (ISO 8601)',
+    }),
     tags: postTagsInputSchema.optional().meta({
       description:
         'Hashtags for the article, replacing your default tags; `#tags` typed in the title and prose are always added. Omit to use your default tags.',
@@ -869,15 +903,25 @@ export const articleDraftChallengeBlockSchema = articleChallengeBlockSchema
     id: 'ArticleDraftChallengeBlock',
   })
 
+export const articleDraftImpactBlockSchema = articleImpactBlockSchema
+  .extend({
+    activity: z.string().min(1).max(200).optional().meta({ description: 'The activity, once chosen' }),
+  })
+  .meta({
+    description: 'An impact block in a draft; the activity may be unset',
+    id: 'ArticleDraftImpactBlock',
+  })
+
 export const articleDraftBlockSchema = z
   .discriminatedUnion('type', [
     articleProseBlockSchema,
     articleDraftChartBlockSchema,
     articleDraftCorrelationBlockSchema,
     articleDraftChallengeBlockSchema,
+    articleDraftImpactBlockSchema,
   ])
   .meta({
-    description: 'A draft article block (prose, chart, correlation, or challenge)',
+    description: 'A draft article block (prose, chart, correlation, challenge, or impact)',
     id: 'ArticleDraftBlock',
   })
 
@@ -886,12 +930,12 @@ export type ArticleDraftBlock = z.infer<typeof articleDraftBlockSchema>
 export const articleDraftContentSchema = z
   .object({
     blocks: z.array(articleDraftBlockSchema).max(100).meta({ description: 'Ordered content blocks' }),
-    default_end: iso8601DateTimeSchema
-      .optional()
-      .meta({ description: 'Default window end inherited by chart and correlation blocks (ISO 8601)' }),
-    default_start: iso8601DateTimeSchema
-      .optional()
-      .meta({ description: 'Default window start inherited by chart and correlation blocks (ISO 8601)' }),
+    default_end: iso8601DateTimeSchema.optional().meta({
+      description: 'Default window end inherited by chart, correlation and impact blocks (ISO 8601)',
+    }),
+    default_start: iso8601DateTimeSchema.optional().meta({
+      description: 'Default window start inherited by chart, correlation and impact blocks (ISO 8601)',
+    }),
     tags: postTagsInputSchema.optional().meta({
       description:
         'Hashtags the article gets when published, replacing your default tags; absent uses the defaults. `#tags` typed in the text are always added.',
@@ -978,6 +1022,93 @@ export const publishArticleDraftBodySchema = z
   .meta({ description: 'Publish a draft as an article post', id: 'PublishArticleDraftBody' })
 
 export type PublishArticleDraftBody = z.infer<typeof publishArticleDraftBodySchema>
+
+export const previewArticleBodySchema = z
+  .object({
+    article: articleDraftContentSchema.meta({
+      description:
+        'The article as written so far (may be incomplete); only its complete blocks are previewed',
+    }),
+    include_images: z.boolean().optional().meta({
+      description:
+        'Also draw each figure Mastodon shows, as SVG markup in `attachments[].image_svg` (meant for UIs)',
+    }),
+    visibility: feedVisibilitySchema.default('public'),
+  })
+  .meta({
+    description: 'Preview what an article (draft) would federate as; creates nothing',
+    id: 'PreviewArticleBody',
+  })
+
+export type PreviewArticleBody = z.infer<typeof previewArticleBodySchema>
+
+export const articlePreviewAttachmentSchema = z
+  .object({
+    block_index: z.number().int().optional().meta({
+      description: "The figure's block index in `article.blocks`; absent for an image in the prose",
+    }),
+    figure: z.number().int().meta({ description: 'The 1-based figure number, in document order' }),
+    height: z.number().int().optional().meta({ description: 'Image height in pixels, when known' }),
+    image_svg: z.string().nullable().optional().meta({
+      description:
+        'With `include_images`, for a block figure Mastodon shows: the image as SVG markup, `null` when the block has no data to draw',
+    }),
+    media_type: z.string().optional().meta({ description: 'Image media type, when known' }),
+    name: z.string().meta({ description: 'The alt text the attachment carries (`Figure N: label`)' }),
+    shown_in_mastodon: z.boolean().meta({
+      description: "Whether Mastodon shows it; false beyond Mastodon's four-attachment limit",
+    }),
+    url: z.string().optional().meta({
+      description: "A prose image's own URL; absent for a block figure, whose post does not exist yet",
+    }),
+    width: z.number().int().optional().meta({ description: 'Image width in pixels, when known' }),
+  })
+  .meta({ description: 'One image the article Note would attach', id: 'ArticlePreviewAttachment' })
+
+export type ArticlePreviewAttachment = z.infer<typeof articlePreviewAttachmentSchema>
+
+export const articlePreviewResponseSchema = baseResponseSchema
+  .extend({
+    attachments: z
+      .array(articlePreviewAttachmentSchema)
+      .optional()
+      .meta({ description: 'The images the Note would attach, numbered as in the text' }),
+    content: z
+      .string()
+      .optional()
+      .meta({ description: 'The AS2 `content` HTML the article would federate with' }),
+    mastodon: z
+      .object({
+        attachment_limit: z
+          .number()
+          .int()
+          .meta({ description: 'How many attachments Mastodon shows on one status' }),
+        content: z.string().meta({
+          description:
+            '`content` as Mastodon keeps it after its sanitiser, without the trailing paragraph of hashtags',
+        }),
+        hashtag_bar: z.array(z.string()).meta({
+          description: 'Tags Mastodon shows as a bar under the media (lowercase, without `#`)',
+        }),
+      })
+      .optional()
+      .meta({ description: "An emulation of how Mastodon's web UI shows the status" }),
+    name: z.string().optional().meta({ description: 'The Note `name` (the title)' }),
+    notes: z
+      .array(z.string())
+      .optional()
+      .meta({ description: 'What Mastodon changes for this post, in plain sentences' }),
+    publish_error: z.string().nullable().optional().meta({
+      description: 'What still keeps the article from publishing; `null` when it is publishable',
+    }),
+    tags: z.array(z.string()).optional().meta({
+      description:
+        'The hashtags the article would carry (lowercase, without `#`): the explicit or default ones plus typed ones',
+    }),
+  })
+  .meta({ id: 'ArticlePreviewResponse' })
+
+export type ArticlePreviewResponse = z.infer<typeof articlePreviewResponseSchema>
 
 export const followActorBodySchema = z
   .object({
@@ -1544,7 +1675,7 @@ export type FeedPostStructuredResponse = z.infer<typeof feedPostStructuredRespon
 
 /**
  * Response for the article markdown-export endpoint: a paste-ready rendering of
- * the article's title + prose, with each chart/correlation block as a link to
+ * the article's title + prose, with each chart/correlation/impact block as a link to
  * its rendered PNG (the C1 block-image endpoint) — meant for pasting into a
  * text-only destination like r/QuantifiedSelf. `markdown` is absent (with
  * `success: false`) for an unknown id or a non-article post.
@@ -1552,7 +1683,7 @@ export type FeedPostStructuredResponse = z.infer<typeof feedPostStructuredRespon
 export const articleExportResponseSchema = baseResponseSchema
   .extend({
     markdown: z.string().optional().meta({
-      description: 'Paste-ready markdown: title + prose + one image link per chart/correlation block',
+      description: 'Paste-ready markdown: title + prose + one image link per data block',
     }),
   })
   .meta({ id: 'ArticleExportResponse' })

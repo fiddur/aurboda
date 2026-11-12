@@ -20,6 +20,7 @@ import type { AccountDeleter } from './services/account-deletion.ts'
 import type { AccountPlans } from './services/account-plan.ts'
 import type { PostUpdateResender } from './services/activitypub/post-update-resend.ts'
 import type { AdminUsers } from './services/admin-users.ts'
+import type { ArticlePreviewer } from './services/article-preview.ts'
 import type { CentralDb } from './services/central-db.ts'
 import type { DiscoverChallenges } from './services/challenge-discovery.ts'
 import type { DeductionEngineDeps } from './services/deduction-engine.ts'
@@ -51,6 +52,7 @@ import { registerCorrelationTools } from './mcp/correlation-tools.ts'
 import { registerDebugTools } from './mcp/debug-tools.ts'
 import { registerDeductionRuleTools } from './mcp/deduction-rule-tools.ts'
 import { registerExportTools } from './mcp/export-tools.ts'
+import { registerFeedImageTools } from './mcp/feed-image-tools.ts'
 import { registerFeedTools } from './mcp/feed-tools.ts'
 import { registerFoodItemTools } from './mcp/food-item-tools.ts'
 import { registerImportTools } from './mcp/import-tools.ts'
@@ -143,6 +145,8 @@ interface McpDeps {
   onActivityDetailSynced?: DetailSyncedCallback
   onTrackWritten?: TrackWrittenCallback
   oura?: OuraClientType
+  /** The article preview (`preview_article`), shared with the REST route. */
+  previewArticle?: ArticlePreviewer
   reactionActions?: ReactionActions
   relayActions?: RelayActions
   publicTagActions?: PublicTagActions
@@ -214,11 +218,13 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     deliver: deps.feedDeliver,
     followActions: deps.followActions,
     followerActions: deps.followerActions,
+    previewArticle: deps.previewArticle,
     publicTagActions: deps.publicTagActions,
     reactionActions: deps.reactionActions,
     retroEnrichTimeline: deps.retroEnrichTimeline,
     webHost: deps.webHost,
   })
+  registerFeedImageTools(server, user, { apiBaseUrl: deps.apiBaseUrl })
   registerChallengeTools(server, user, {
     apiBaseUrl: deps.apiBaseUrl,
     discoverChallenges: deps.discoverChallenges,

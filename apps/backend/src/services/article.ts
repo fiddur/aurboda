@@ -2,7 +2,7 @@
  * Article business logic shared by the REST `/feed/articles` routes and the MCP
  * `create_article` / `update_article` tools (parity).
  *
- * An article's chart and correlation blocks each render over a locked
+ * An article's chart, correlation and impact blocks each render over a locked
  * `[start, end]` window. A block may carry its own window or inherit the
  * article-level default; this module resolves that inheritance and validates
  * that every windowed block ends up with a sane bounded window, so a malformed
@@ -13,7 +13,7 @@
  */
 import type { ArticleBlock, ArticleContent, FeedVisibility } from '@aurboda/api-spec'
 
-import { describeSelectorAxis, getMetricDisplayName } from '@aurboda/api-spec'
+import { articleImpactLabel, describeSelectorAxis, getMetricDisplayName } from '@aurboda/api-spec'
 
 import { isValidUsername } from '../api/auth-routes.ts'
 import { isMissingDatabase } from '../db/index.ts'
@@ -25,13 +25,14 @@ export type BuildArticleResult = { ok: true; article: ArticleContent } | { ok: f
 
 /**
  * A human label for a non-prose block: its caption, else a label from its data.
- * Shared single source for the AS2 image attachment name
- * (`articleImageAttachments`) and the markdown export (`article-export.ts`) so
+ * Shared single source for the article Note's figure labels
+ * (`renderArticleNote`) and the markdown export (`article-export.ts`) so
  * the two can't diverge. A blank caption falls back to the data label.
  */
 export const articleBlockLabel = (block: Exclude<ArticleBlock, { type: 'prose' }>): string => {
   if (block.caption) return block.caption
   if (block.type === 'challenge') return 'Challenge standings'
+  if (block.type === 'impact') return articleImpactLabel(block)
   return block.type === 'chart'
     ? getMetricDisplayName(block.metric)
     : `${describeSelectorAxis(block.trigger)} vs ${describeSelectorAxis(block.outcome)}`
@@ -45,13 +46,28 @@ export const articleBlockLabel = (block: Exclude<ArticleBlock, { type: 'prose' }
  */
 export const isZeroDurationBucket = (bucket: string): boolean => /^0+[smhd]$/.test(bucket)
 
+const articleBlockUrl = (
+  apiBaseUrl: string,
+  user: string,
+  postId: string,
+  visibility: FeedVisibility,
+  imageToken: string,
+  updatedAt: Date,
+  index: number,
+  file: string,
+): string => {
+  const base = `${apiBaseUrl.replace(/\/+$/, '')}/public/${encodeURIComponent(user)}/feed/${postId}`
+  const params = new URLSearchParams({ v: String(updatedAt.getTime()) })
+  // Allowlist (public/unlisted are open); any other visibility needs the token.
+  if (!isPubliclyVisible(visibility)) params.set('token', imageToken)
+  return `${base}/blocks/${index}/${file}?${params.toString()}`
+}
+
 /**
  * The public URL of one article chart/correlation block's rendered image (the
  * C1 endpoint), including the cache-busting `?v=<updated_at>` and, for a
- * `followers`-only post, the capability `?token=`. Shared by the outbound AS2
- * attachment builder (`articleImageAttachments`) and the markdown export
- * (`article-export.ts`), so the two surfaces can never point at different URLs
- * for the same block.
+ * `followers`-only post, the capability `?token=`. Used by the markdown export
+ * (`article-export.ts`), which carries the bare chart without a figure band.
  */
 export const articleBlockImageUrl = (
   apiBaseUrl: string,
@@ -62,13 +78,25 @@ export const articleBlockImageUrl = (
   updatedAt: Date,
   index: number,
   format: 'png' | 'svg' = 'png',
-): string => {
-  const base = `${apiBaseUrl.replace(/\/+$/, '')}/public/${encodeURIComponent(user)}/feed/${postId}`
-  const params = new URLSearchParams({ v: String(updatedAt.getTime()) })
-  // Allowlist (public/unlisted are open); any other visibility needs the token.
-  if (!isPubliclyVisible(visibility)) params.set('token', imageToken)
-  return `${base}/blocks/${index}/image.${format}?${params.toString()}`
-}
+): string =>
+  articleBlockUrl(apiBaseUrl, user, postId, visibility, imageToken, updatedAt, index, `image.${format}`)
+
+/**
+ * The public URL of one block's figure (`figure.png`: the block image under a
+ * `Figure N` title band), which the article Note attaches. Versioned and
+ * token-gated exactly like `articleBlockImageUrl`: the `v` changes on edit so a
+ * remote media cache (Mastodon re-hosts attachments at receipt) fetches the new
+ * figure after an `Update`.
+ */
+export const articleBlockFigureUrl = (
+  apiBaseUrl: string,
+  user: string,
+  postId: string,
+  visibility: FeedVisibility,
+  imageToken: string,
+  updatedAt: Date,
+  index: number,
+): string => articleBlockUrl(apiBaseUrl, user, postId, visibility, imageToken, updatedAt, index, 'figure.png')
 
 /** A windowed block's effective window: its own override, else the article default. */
 export const blockWindow = (
@@ -80,8 +108,14 @@ export const blockWindow = (
 })
 
 /** A human label for a windowed block in a validation error (1-based, with the block's subject). */
-const blockLabel = (block: Extract<ArticleBlock, { type: 'chart' | 'correlation' }>, index: number): string =>
-  block.type === 'chart' ? `Chart block ${index + 1} (${block.metric})` : `Correlation block ${index + 1}`
+const blockLabel = (
+  block: Extract<ArticleBlock, { type: 'chart' | 'correlation' | 'impact' }>,
+  index: number,
+): string => {
+  if (block.type === 'chart') return `Chart block ${index + 1} (${block.metric})`
+  if (block.type === 'impact') return `Impact block ${index + 1} (${block.activity})`
+  return `Correlation block ${index + 1}`
+}
 
 const hasChallengeUrl = <B extends { type: string }>(block: B): block is B & { challenge_url?: unknown } =>
   block.type === 'challenge' && 'challenge_url' in block
@@ -99,7 +133,7 @@ export const withCanonicalChallengeUrls = <B extends { type: string }>(blocks: B
   })
 
 /**
- * Validate a fully-formed article's content: every chart and correlation block
+ * Validate a fully-formed article's content: every chart, correlation and impact block
  * must resolve to a bounded window (its own override or the article default)
  * with start < end, and every challenge block must link an http(s) challenge
  * URL (`<base>/u/<username>/<slug>`). Returns the content to persist, challenge
@@ -116,7 +150,7 @@ export const buildArticleContent = (content: ArticleContent): BuildArticleResult
       }
       continue
     }
-    if (block.type !== 'chart' && block.type !== 'correlation') continue
+    if (block.type === 'prose') continue
     const { end, start } = blockWindow(block, content)
     const label = blockLabel(block, i)
     if (start == null || end == null) {

@@ -1,3 +1,4 @@
+import { feedStructuredPostSchema } from '@aurboda/api-spec'
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 /**
@@ -282,6 +283,64 @@ describe('resolveStructuredPost — article posts', () => {
     expect(block.outcome).toEqual({ kind: 'metric', metric: 'sleep_score' })
   })
 
+  test('resolves an impact block to its sessions, timeline and effects over its window', async () => {
+    const user = getTestUser()
+    const sessionStart = new Date('2026-07-01T10:00:00Z')
+    await insertActivity(user, {
+      activity_type: 'yoga',
+      end_time: new Date(sessionStart.getTime() + 30 * 60_000),
+      source: 'manual',
+      start_time: sessionStart,
+    })
+    await insertTimeSeries(
+      user,
+      Array.from({ length: 18 }, (_, i) => i * 5 - 30).flatMap((offset) => {
+        const time = new Date(sessionStart.getTime() + offset * 60_000)
+        return [
+          { metric: 'hrv_rmssd' as const, source: 'garmin' as const, time, value: 50 + offset / 10 },
+          { metric: 'heart_rate' as const, source: 'garmin' as const, time, value: 70 - offset / 10 },
+          { metric: 'stress_level' as const, source: 'garmin' as const, time, value: 30 },
+        ]
+      }),
+    )
+    const post = await createArticlePost(user, {
+      article: {
+        blocks: [
+          {
+            activity: 'yoga',
+            activity_type: 'activity_type',
+            caption: 'Morning yoga',
+            end: '2026-07-02T00:00:00.000Z',
+            start: '2026-07-01T00:00:00.000Z',
+            type: 'impact',
+          },
+          { activity: 'yoga', activity_type: 'activity_type', type: 'impact' },
+        ],
+        title: 'Yoga',
+      },
+      visibility: 'public',
+    })
+
+    const structured = await resolveStructuredPost(user, post.id)
+    if (structured?.kind !== 'article') throw new Error('expected an article payload')
+    expect(feedStructuredPostSchema.safeParse(structured).success).toBe(true)
+    expect(structured.blocks).toHaveLength(1)
+    const block = structured.blocks[0]
+    if (block.type !== 'impact') throw new Error('expected an impact block')
+    expect(block).toMatchObject({
+      activity: 'yoga',
+      activity_type: 'activity_type',
+      caption: 'Morning yoga',
+      end: '2026-07-02T00:00:00.000Z',
+      occurrences: 1,
+      start: '2026-07-01T00:00:00.000Z',
+      window_minutes: 30,
+    })
+    expect(block.avg_duration_min).toBe(30)
+    expect(block.timeline.find((b) => b.phase === 'during')?.hrv.mean).not.toBeNull()
+    expect(block.timeline.filter((b) => b.hr.mean != null).length).toBeGreaterThanOrEqual(2)
+  })
+
   test('gates a followers-only article on the capability token', async () => {
     const user = getTestUser()
     const post = await createArticlePost(user, {
@@ -292,6 +351,30 @@ describe('resolveStructuredPost — article posts', () => {
     expect(await resolveStructuredPost(user, post.id, 'wrong')).toBeNull()
     const structured = await resolveStructuredPost(user, post.id, post.image_token)
     expect(structured?.kind).toBe('article')
+  })
+
+  test('a prose block declares the pictures its markdown embeds', async () => {
+    const user = getTestUser()
+    const url = `https://example.org/api/public/${user}/images/0b8a4c5e-2f1d-4a8e-9c3b-6d7e8f9a0b1c.webp`
+    const post = await createArticlePost(user, {
+      article: {
+        blocks: [
+          { markdown: `Before\n\n![My mat](${url})\n\nAfter`, type: 'prose' },
+          { markdown: 'Yoga without a picture', type: 'prose' },
+        ],
+        title: 'Yoga',
+      },
+      visibility: 'public',
+    })
+    const structured = await resolveStructuredPost(user, post.id)
+    if (structured?.kind !== 'article') throw new Error('expected an article payload')
+    expect(feedStructuredPostSchema.parse(structured)).toEqual(structured)
+    expect(structured.blocks[0]).toEqual({
+      images: [{ alt: 'My mat', url }],
+      markdown: `Before\n\n![My mat](${url})\n\nAfter`,
+      type: 'prose',
+    })
+    expect(structured.blocks[1]).not.toHaveProperty('images')
   })
 
   test('omits a chart/correlation block whose window is invalid (start on or after end)', async () => {

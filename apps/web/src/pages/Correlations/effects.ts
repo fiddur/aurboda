@@ -1,6 +1,6 @@
-import type { WindowEffect } from '../../state/api'
+import { formatImpactWindow } from '@aurboda/api-spec'
 
-import { formatWindow } from './window'
+import type { WindowEffect } from '../../state/api'
 
 export const SIGNIFICANCE_LEVEL = 0.05
 const MIN_PAIRS_FOR_TEST = 3
@@ -23,9 +23,6 @@ export const formatDelta = (value: number | null, decimals: number): string => {
   if (value === null) return '--'
   return `${value > 0 ? '+' : ''}${value.toFixed(decimals)}`
 }
-
-const formatSignedChange = (value: number): string =>
-  `${value > 0 ? '+' : value < 0 ? '−' : ''}${Math.abs(value).toFixed(1)}`
 
 const formatMean = (value: number | null): string => (value === null ? '--' : value.toFixed(1))
 
@@ -52,15 +49,8 @@ export const changeTitle = (effect: WindowEffect): string => {
   return effect.p_value === null ? base : `${base} (${formatPValue(effect.p_value)})`
 }
 
-export const effectSummary = (label: string, effect: WindowEffect, occurrences: number): string | null => {
-  if (effect.paired_occurrences === 0 || effect.change === null) return null
-  return `${label} ${formatMean(effect.before_mean)} → ${formatMean(effect.after_mean)} (${formatSignedChange(
-    effect.change,
-  )}) · ${effect.paired_occurrences} of ${occurrences} occurrences`
-}
-
 export const columnTitles = (windowMinutes: number) => ({
-  change: `The ${formatWindow(windowMinutes)} after minus the ${formatWindow(windowMinutes)} before, for occurrences with data on both sides; coloured when statistically clear`,
+  change: `The ${formatImpactWindow(windowMinutes)} after minus the ${formatImpactWindow(windowMinutes)} before, for occurrences with data on both sides; coloured when statistically clear`,
   during: 'Average while it was going on, one value per occurrence',
   vs_avg: 'During minus your average over the whole period',
 })

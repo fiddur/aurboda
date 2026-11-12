@@ -25,7 +25,7 @@ export const createNegativeCache = (maxEntries = 500) => {
 
 export type NegativeCache = ReturnType<typeof createNegativeCache>
 
-export type BlockImageKind = 'blockpng' | 'blocksvg'
+export type BlockImageKind = 'blockfig' | 'blockpng' | 'blocksvg'
 
 const HOUR_MS = 3_600_000
 
@@ -46,14 +46,14 @@ export const articleBlockCacheKey = (
 ): string =>
   `${kind}:${username}:${postId}:${index}:${updatedAt.getTime()}:${Math.floor(Date.now() / bucketMs)}`
 
-/** Forget every remembered miss of one block, in both image formats. */
+/** Forget every remembered miss of one block, in every image kind. */
 export const forgetArticleBlockMisses = (
   misses: NegativeCache,
   username: string,
   postId: string,
   index: number,
 ): void => {
-  for (const kind of ['blockpng', 'blocksvg'] as const) {
+  for (const kind of ['blockfig', 'blockpng', 'blocksvg'] as const) {
     misses.forgetPrefix(`${kind}:${username}:${postId}:${index}:`)
   }
 }

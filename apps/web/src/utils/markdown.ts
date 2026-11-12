@@ -57,7 +57,7 @@ export const renderMarkdown = (md: string): string =>
 // `FORBID_TAGS: ['img']` denylist on DOMPurify's broad default would still let a
 // remote peer smuggle a tracking pixel via `<style background-image>`, `<video
 // poster>`, `<audio>/<source srcset>`, `<svg><image href>` or `<input type=image>`.
-// Remote images arrive only via the post's declared attachment list, never inline.
+// An inline remote image is kept only when the post's payload declares its URL.
 // Links are additionally hardened by `hardenRemoteLink` below (the backend does the
 // same via `transformTags`), so allowing `rel`/`target` here can't leave them off.
 const REMOTE_ALLOWED_TAGS = [
@@ -105,24 +105,66 @@ const hardenRemoteLink = (node: Element): void => {
   }
 }
 
+const REMOTE_IMAGE_ATTR = ['src', 'alt']
+
+export interface DeclaredImage {
+  url: string
+}
+
+const normalisedHttpUrl = (value: string): string | null => {
+  if (!URL.canParse(value)) return null
+  const url = new URL(value)
+  return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : null
+}
+
+const keepDeclaredImages =
+  (declared: ReadonlySet<string>) =>
+  (node: Element): void => {
+    if (node.nodeName !== 'IMG') return
+    const src = normalisedHttpUrl(node.getAttribute('src') ?? '')
+    if (src == null || !declared.has(src)) {
+      node.remove()
+      return
+    }
+    for (const name of node.getAttributeNames()) {
+      if (!REMOTE_IMAGE_ATTR.includes(name)) node.removeAttribute(name)
+    }
+    node.setAttribute('loading', 'lazy')
+    node.setAttribute('referrerpolicy', 'no-referrer')
+  }
+
+/**
+ * Sanitise REMOTE (or remote-shaped) HTML under the same strict allowlist and link
+ * hardening. An `<img>` survives only when its http(s) `src` is one of `images`.
+ */
+export const sanitizeRemoteHtml = (html: string, images: readonly DeclaredImage[] = []): string => {
+  const declared = new Set(images.flatMap(({ url }) => normalisedHttpUrl(url) ?? []))
+  const keepImage = declared.size > 0 ? keepDeclaredImages(declared) : null
+  const hook = (node: Element): void => {
+    hardenRemoteLink(node)
+    keepImage?.(node)
+  }
+  // The hook is scoped to this one synchronous sanitise: added, used, and removed
+  // with no `await` between, so it never leaks onto `renderMarkdown` (own content,
+  // which shouldn't be force-`nofollow`ed) or a later call without images.
+  DOMPurify.addHook('afterSanitizeAttributes', hook)
+  try {
+    return DOMPurify.sanitize(html, {
+      ALLOWED_ATTR: keepImage ? [...REMOTE_ALLOWED_ATTR, ...REMOTE_IMAGE_ATTR] : REMOTE_ALLOWED_ATTR,
+      ALLOWED_TAGS: keepImage ? [...REMOTE_ALLOWED_TAGS, 'img'] : REMOTE_ALLOWED_TAGS,
+    })
+  } finally {
+    DOMPurify.removeHook('afterSanitizeAttributes', hook)
+  }
+}
+
 /**
  * Render markdown authored by a REMOTE peer (e.g. a federated article's prose) to
  * sanitised HTML under the strict `REMOTE_ALLOWED_*` allowlist above — an
  * XSS-and-tracker boundary for untrusted federated content, mirroring the backend
  * `sanitizeRemoteHtml`. Use this (not `renderMarkdown`) for any markdown that
- * originates on another instance.
+ * originates on another instance. Only the pictures in `images` (the payload's
+ * declared ones) are drawn inline.
  */
-export const renderRemoteMarkdown = (md: string): string => {
-  // The link-hardening hook is scoped to this one synchronous sanitise: added,
-  // used, and removed with no `await` between, so it never leaks onto
-  // `renderMarkdown` (own content, which shouldn't be force-`nofollow`ed).
-  DOMPurify.addHook('afterSanitizeAttributes', hardenRemoteLink)
-  try {
-    return DOMPurify.sanitize(marked.parse(md, { async: false }), {
-      ALLOWED_ATTR: REMOTE_ALLOWED_ATTR,
-      ALLOWED_TAGS: REMOTE_ALLOWED_TAGS,
-    })
-  } finally {
-    DOMPurify.removeHook('afterSanitizeAttributes')
-  }
-}
+export const renderRemoteMarkdown = (md: string, images: readonly DeclaredImage[] = []): string =>
+  sanitizeRemoteHtml(marked.parse(md, { async: false }), images)

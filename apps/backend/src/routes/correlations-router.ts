@@ -32,6 +32,7 @@ import {
   getEventProbability,
   getGenericCorrelation,
   getHrvActivitiesCorrelation,
+  parseImpactPeriod,
 } from '../services/correlations/index.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
@@ -83,9 +84,11 @@ export const createCorrelationsRouter = (
     validateQuery(activityImpactQuerySchema),
     async (req, res) => {
       const { activity } = req.params
-      const { activity_type, match, period_days, window_minutes } = req.query
+      const { activity_type, end, match, period_days, start, window_minutes } = req.query
       const user = req.user!
 
+      const period = parseImpactPeriod(start, end)
+      if (!period.ok) return res.status(400).json({ error: period.error, success: false })
       const periodDays = period_days ? parseInt(period_days, 10) : 90
       const windowMinutes = window_minutes ? parseInt(window_minutes, 10) : 30
 
@@ -96,8 +99,8 @@ export const createCorrelationsRouter = (
         windowMinutes,
         periodDays,
         syncProvider,
-        undefined,
-        undefined,
+        period.until,
+        period.since,
         match,
       )
       res.json({ data: impact, success: true })

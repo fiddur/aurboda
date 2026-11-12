@@ -71,11 +71,11 @@ import {
 } from '../services/official-feed.ts'
 import { serializePublicTagPost } from '../services/public-tags.ts'
 import { queryMetricsBucketed } from '../services/queries/index.ts'
+import { createRenderCache } from '../services/render-cache.ts'
 import { getSettings, type UserSettings } from '../services/settings.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { UUID_RE } from '../utils.ts'
 import { validateQuery } from '../validation.ts'
-import { createRenderCache } from './feed-image-router.ts'
 
 /**
  * Page size of a profile's public feed listing (newest-first). Matches the authed

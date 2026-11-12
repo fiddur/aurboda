@@ -1,0 +1,60 @@
+.impact-chart-container {
+  width: 100%;
+  overflow: hidden;
+}
+
+.impact-legend {
+  display: flex;
+  gap: 1.5rem;
+  margin-top: 0.75rem;
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.impact-legend .impact-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 0.25rem;
+}
+
+.impact-legend .impact-dot.hrv {
+  background: #10b981;
+}
+
+.impact-legend .impact-dot.hr {
+  background: #ef4444;
+}
+
+.impact-legend .impact-dot.stress {
+  background: #f59e0b;
+}
+
+.impact-legend .impact-zone {
+  display: inline-block;
+  width: 20px;
+  height: 10px;
+  background: rgba(59, 130, 246, 0.2);
+  margin-right: 0.25rem;
+}
+
+.impact-summary {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  font-size: 0.85rem;
+  color: #374151;
+  font-variant-numeric: tabular-nums;
+}
+
+.impact-summary li {
+  margin-bottom: 0.25rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  .impact-summary {
+    color: #d1d5db;
+  }
+}

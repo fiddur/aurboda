@@ -8,7 +8,7 @@
  * delivery/the object dispatcher (`resolveActivityScalars`) and the exact same
  * data-scoped series resolution as the public `/series` endpoint
  * (`resolvePublicSeries`), so what a peer renders can never exceed what the
- * author shared. An `article` post resolves each chart/correlation block live
+ * author shared. An `article` post resolves each chart/correlation/impact block live
  * over its own locked window — the same bucketing (`queryMetricsBucketed`) and
  * correlation engine (`getContinuousCorrelation`) the block's own PNG and the
  * web's inline render use — so a peer's native render matches byte-for-byte
@@ -28,16 +28,19 @@ import type {
   FeedStructuredArticleChallengeBlock,
   FeedStructuredArticleChartBlock,
   FeedStructuredArticleCorrelationBlock,
+  FeedStructuredArticleImpactBlock,
   FeedStructuredPost,
 } from '@aurboda/api-spec'
 
-import { defaultArticleChartBucket } from '@aurboda/api-spec'
+import { DEFAULT_IMPACT_WINDOW_MINUTES, defaultArticleChartBucket } from '@aurboda/api-spec'
 
 import type { FeedPostRecord } from '../db/index.ts'
 
 import { getFeedPostById, getUserSettings } from '../db/index.ts'
 import { metricUnits } from '../schema.ts'
 import { resolveActivityScalars } from './activitypub/feed-activity.ts'
+import { declaredProseImages } from './activitypub/note-prose.ts'
+import { getArticleImpact } from './article-block-data.ts'
 import { blockWindow, isZeroDurationBucket } from './article.ts'
 import { getContinuousCorrelation } from './correlations/explore.ts'
 import { isCapabilityAuthorized } from './feed-capability.ts'
@@ -148,6 +151,49 @@ const resolveStructuredCorrelationBlock = async (
 }
 
 /**
+ * Resolve one article `impact` block to its numbers over its effective window,
+ * or `null` when the block has no bounded window — the same `getArticleImpact`
+ * the block's image draws from. A window without sessions still resolves; the
+ * receiver shows the "no sessions" note the web's live block shows.
+ */
+export const resolveStructuredImpactBlock = async (
+  user: string,
+  block: Extract<ArticleBlock, { type: 'impact' }>,
+  content: ArticleContent,
+  getImpact: typeof getArticleImpact = getArticleImpact,
+): Promise<FeedStructuredArticleImpactBlock | null> => {
+  const { end, start } = blockWindow(block, content)
+  if (start == null || end == null) return null
+  const startDate = new Date(start)
+  const endDate = new Date(end)
+  if (startDate.getTime() >= endDate.getTime()) return null
+  const windowMinutes = block.window_minutes ?? DEFAULT_IMPACT_WINDOW_MINUTES
+  const impact = await getImpact(user, {
+    activity: block.activity,
+    activityType: block.activity_type,
+    end: endDate,
+    start: startDate,
+    windowMinutes,
+  })
+  const resolved: FeedStructuredArticleImpactBlock = {
+    activity: block.activity,
+    activity_type: block.activity_type,
+    avg_duration_min: impact.avg_duration_min,
+    end,
+    hr_effect: impact.hr_effect,
+    hrv_effect: impact.hrv_effect,
+    occurrences: impact.occurrences,
+    start,
+    stress_effect: impact.stress_effect,
+    timeline: impact.timeline,
+    type: 'impact',
+    window_minutes: impact.window_minutes,
+  }
+  if (block.caption !== undefined) resolved.caption = block.caption
+  return resolved
+}
+
+/**
  * Resolve one article `challenge` block to the challenge document and a
  * standings snapshot (`resolveChallengeByUrl`), or to its bare URL and caption
  * when the resolver is unconfigured or the challenge can't be read — the
@@ -177,8 +223,9 @@ export const resolveStructuredChallengeBlock = async (
 /**
  * Build the structured payload for an article post: its title and every block,
  * resolved in order. A prose block passes its raw markdown through unchanged
- * (rendered by the receiver's own sanitising renderer — #910); a chart or
- * correlation block resolves live over its locked window and is omitted only
+ * (rendered by the receiver's own sanitising renderer — #910), declaring the
+ * http(s) pictures it embeds as `images`; a chart,
+ * correlation or impact block resolves live over its locked window and is omitted only
  * when that window itself is invalid (unbounded or non-increasing) — the same
  * condition `resolveArticleBlock` treats as ineligible for an image. A challenge
  * block always appears, with its challenge and standings when they resolve.
@@ -197,7 +244,12 @@ const resolveStructuredArticle = async (
   const blocks: FeedStructuredArticleBlock[] = []
   for (const block of article.blocks) {
     if (block.type === 'prose') {
-      blocks.push({ markdown: block.markdown, type: 'prose' })
+      const images = declaredProseImages(block.markdown)
+      blocks.push(
+        images.length > 0
+          ? { images, markdown: block.markdown, type: 'prose' }
+          : { markdown: block.markdown, type: 'prose' },
+      )
       continue
     }
     if (block.type === 'chart') {
@@ -209,7 +261,10 @@ const resolveStructuredArticle = async (
       blocks.push(await resolveStructuredChallengeBlock(user, block, configuredStructuredChallengeDeps()))
       continue
     }
-    const resolved = await resolveStructuredCorrelationBlock(user, block, article)
+    const resolved =
+      block.type === 'impact'
+        ? await resolveStructuredImpactBlock(user, block, article)
+        : await resolveStructuredCorrelationBlock(user, block, article)
     if (resolved) blocks.push(resolved)
   }
 

@@ -1,8 +1,10 @@
 import type { ArticleContent } from '@aurboda/api-spec'
 
+import { articleBlockSchema, articleDraftBlockSchema } from '@aurboda/api-spec'
 import { describe, expect, test, vi } from 'vitest'
 
 import {
+  articleBlockFigureUrl,
   articleBlockImageUrl,
   articleBlockLabel,
   blockWindow,
@@ -166,6 +168,64 @@ describe('buildArticleContent', () => {
     )
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.error).toContain('Correlation block 1')
+  })
+})
+
+describe('impact blocks', () => {
+  const impact = (over: Record<string, unknown> = {}): ArticleContent['blocks'][number] => ({
+    activity: 'yoga',
+    activity_type: 'activity_type',
+    type: 'impact',
+    ...over,
+  })
+
+  test('the schema takes one exact activity and a 10 to 1440 minute window', () => {
+    expect(articleBlockSchema.safeParse(impact({ window_minutes: 120 })).success).toBe(true)
+    expect(articleBlockSchema.safeParse(impact({ activity: '' })).success).toBe(false)
+    expect(articleBlockSchema.safeParse(impact({ activity: undefined })).success).toBe(false)
+    expect(articleBlockSchema.safeParse(impact({ window_minutes: 5 })).success).toBe(false)
+    expect(articleBlockSchema.safeParse(impact({ window_minutes: 2000 })).success).toBe(false)
+    expect(articleBlockSchema.safeParse(impact({ activity_type: 'mood' })).success).toBe(false)
+  })
+
+  test('a draft may leave the activity unset', () => {
+    expect(articleDraftBlockSchema.safeParse(impact({ activity: undefined })).success).toBe(true)
+  })
+
+  test('labels an impact block by its caption, else by its activity', () => {
+    expect(articleBlockLabel({ activity: 'yoga', activity_type: 'activity_type', type: 'impact' })).toBe(
+      'Impact of yoga',
+    )
+    expect(
+      articleBlockLabel({
+        activity: 'yoga',
+        activity_type: 'activity_type',
+        caption: 'Calm',
+        type: 'impact',
+      }),
+    ).toBe('Calm')
+  })
+
+  test('accepts an impact block that inherits the article default window', () => {
+    expect(buildArticleContent(content({ blocks: [impact()] })).ok).toBe(true)
+  })
+
+  test('rejects an impact block with no window and no article default', () => {
+    const result = buildArticleContent(
+      content({ blocks: [impact()], default_end: undefined, default_start: undefined }),
+    )
+    expect(result).toEqual({
+      error:
+        'Impact block 1 (yoga) has no time window — set its start/end or an article default_start/default_end.',
+      ok: false,
+    })
+  })
+
+  test('rejects an impact block whose start is on or after its end', () => {
+    const result = buildArticleContent(
+      content({ blocks: [impact({ end: '2026-07-01T00:00:00.000Z', start: '2026-07-02T00:00:00.000Z' })] }),
+    )
+    expect(result).toEqual({ error: 'Impact block 1 (yoga) has start on or after end.', ok: false })
   })
 })
 
@@ -361,6 +421,37 @@ describe('articleBlockImageUrl', () => {
         'svg',
       ),
     ).toBe(`${base}/blocks/1/image.svg?v=${V}`)
+  })
+})
+
+describe('articleBlockFigureUrl', () => {
+  const UPDATED = new Date('2026-07-09T00:00:00Z')
+  const V = String(UPDATED.getTime())
+  const base = 'https://aurboda.example/api/public/fiddur/feed/POST'
+
+  test('points at figure.png, versioned, with the token only when not public', () => {
+    expect(
+      articleBlockFigureUrl(
+        'https://aurboda.example/api/',
+        'fiddur',
+        'POST',
+        'unlisted',
+        'secret',
+        UPDATED,
+        3,
+      ),
+    ).toBe(`${base}/blocks/3/figure.png?v=${V}`)
+    expect(
+      articleBlockFigureUrl(
+        'https://aurboda.example/api',
+        'fiddur',
+        'POST',
+        'followers',
+        'secret',
+        UPDATED,
+        0,
+      ),
+    ).toBe(`${base}/blocks/0/figure.png?v=${V}&token=secret`)
   })
 })
 

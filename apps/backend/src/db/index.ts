@@ -150,7 +150,7 @@ export {
   getActivitiesByCategory,
   getActivitiesExcludingCategories,
   getActivitiesNeedingDetail,
-  getAllActivitiesInRange,
+  getEffectiveActivitiesInRange,
   getScreentimeActivities,
   migrateExerciseTypes,
   getNonSleepActivitiesMerged,
@@ -326,6 +326,17 @@ export {
   getChallengeBanner,
   upsertChallengeBanner,
 } from './challenge-banner.ts'
+
+export {
+  countFeedImages,
+  deleteFeedImage,
+  type FeedImageRecord,
+  getFeedImage,
+  insertFeedImage,
+  isFeedImageId,
+  listFeedImages,
+  type NewFeedImage,
+} from './feed-images.ts'
 
 export { isMissingDatabase } from './pg-errors.ts'
 

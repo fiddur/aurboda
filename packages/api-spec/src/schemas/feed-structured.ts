@@ -25,7 +25,14 @@ import { z } from 'zod'
 import { quantChallengeDocumentSchema, quantStandingsSchema } from './challenges-quantpub.ts'
 import { challengeResultSchema } from './challenges.ts'
 import { iso8601DateTimeSchema } from './common.ts'
-import { alignedPointSchema, groupComparisonSchema, selectorSchema } from './correlations.ts'
+import {
+  activityImpactTypeSchema,
+  alignedPointSchema,
+  groupComparisonSchema,
+  impactBucketSchema,
+  selectorSchema,
+  windowEffectSchema,
+} from './correlations.ts'
 import { dashboardConfigSchema, periodKeySchema } from './dashboard.ts'
 import { sharedExerciseDataSchema } from './shared-exercises.ts'
 import { periodWindowSchema, widgetDataMapSchema } from './social.ts'
@@ -175,15 +182,35 @@ export const feedStructuredActivitySchema = feedStructuredSchema
 
 export type FeedStructuredActivity = z.infer<typeof feedStructuredActivitySchema>
 
+export const feedStructuredArticleProseImageSchema = z
+  .object({
+    alt: z.string().meta({ description: "The picture's alt text, '' when the markdown gives none" }),
+    url: z.string().url().meta({ description: "The picture's http(s) URL, as the markdown gives it" }),
+  })
+  .meta({
+    description: "An http(s) picture embedded in a prose block's markdown",
+    id: 'FeedStructuredArticleProseImage',
+  })
+
+export type FeedStructuredArticleProseImage = z.infer<typeof feedStructuredArticleProseImageSchema>
+
 /**
  * A resolved prose block: the author's raw markdown, unmodified. Rendered
  * through the receiver's own sanitising markdown renderer (the same `#910`
  * boundary the owner's web app uses for its own posts) rather than pre-rendered
  * HTML, so a receiving Aurboda peer controls its own sanitisation rather than
- * trusting a remote instance's HTML.
+ * trusting a remote instance's HTML. The block declares the pictures its
+ * markdown embeds, and a receiver draws only a declared one inline.
  */
 export const feedStructuredArticleProseBlockSchema = z
-  .object({ markdown: z.string().meta({ description: 'Raw authored markdown' }), type: z.literal('prose') })
+  .object({
+    images: z.array(feedStructuredArticleProseImageSchema).optional().meta({
+      description:
+        'The http(s) pictures the markdown embeds, in document order. A receiver draws an inline picture only when its URL is declared here.',
+    }),
+    markdown: z.string().meta({ description: 'Raw authored markdown' }),
+    type: z.literal('prose'),
+  })
   .meta({ description: 'A resolved prose block', id: 'FeedStructuredArticleProseBlock' })
 
 export type FeedStructuredArticleProseBlock = z.infer<typeof feedStructuredArticleProseBlockSchema>
@@ -263,12 +290,40 @@ export const feedStructuredArticleChallengeBlockSchema = z
 
 export type FeedStructuredArticleChallengeBlock = z.infer<typeof feedStructuredArticleChallengeBlockSchema>
 
+/**
+ * A resolved impact block: HRV, heart rate and stress around the sessions of one
+ * activity over its locked window, with the paired before -> after effects — the
+ * same numbers the impact PNG and the web impact chart draw from.
+ */
+export const feedStructuredArticleImpactBlockSchema = z
+  .object({
+    activity: z.string().meta({ description: 'The activity grouping key, matched exactly' }),
+    activity_type: activityImpactTypeSchema,
+    avg_duration_min: z.number().meta({ description: 'Average session duration in minutes' }),
+    caption: z.string().optional().meta({ description: 'Optional caption' }),
+    end: iso8601DateTimeSchema.meta({ description: "Block's locked window end (ISO 8601)" }),
+    hr_effect: windowEffectSchema.meta({ description: 'Paired before -> after change of heart rate' }),
+    hrv_effect: windowEffectSchema.meta({ description: 'Paired before -> after change of HRV' }),
+    occurrences: z.number().int().meta({ description: 'Number of sessions in the window' }),
+    start: iso8601DateTimeSchema.meta({ description: "Block's locked window start (ISO 8601)" }),
+    stress_effect: windowEffectSchema.meta({ description: 'Paired before -> after change of stress level' }),
+    timeline: z
+      .array(impactBucketSchema)
+      .meta({ description: 'All three metrics around the sessions, in time order' }),
+    type: z.literal('impact'),
+    window_minutes: z.number().int().meta({ description: 'Minutes before and after each session analysed' }),
+  })
+  .meta({ description: 'A resolved impact block', id: 'FeedStructuredArticleImpactBlock' })
+
+export type FeedStructuredArticleImpactBlock = z.infer<typeof feedStructuredArticleImpactBlockSchema>
+
 export const feedStructuredArticleBlockSchema = z
   .discriminatedUnion('type', [
     feedStructuredArticleProseBlockSchema,
     feedStructuredArticleChartBlockSchema,
     feedStructuredArticleCorrelationBlockSchema,
     feedStructuredArticleChallengeBlockSchema,
+    feedStructuredArticleImpactBlockSchema,
   ])
   .meta({ description: 'A resolved article content block', id: 'FeedStructuredArticleBlock' })
 

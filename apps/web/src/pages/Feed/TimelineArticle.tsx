@@ -1,7 +1,7 @@
 /**
  * Native rendering of a federated ARTICLE post's structured enrichment (C3): the
  * title followed by its resolved blocks — prose, a chart per windowed metric,
- * a correlation scatter, and a challenge's race card — all built from data embedded in the structured
+ * a correlation scatter, a challenge's race card and an impact chart — all built from data embedded in the structured
  * payload fetched on ingest (`GET /public/:username/feed/:postId`). Unlike the
  * author's own `ArticleContent`/`ArticleChartBlock`/`ArticleCorrelationBlock`
  * (which fetch live from the author's authenticated endpoints), this renders
@@ -9,9 +9,9 @@
  * credentials to fetch more.
  *
  * Prose is the remote author's raw markdown, rendered through `renderRemoteMarkdown`
- * (the #910 XSS boundary, plus `<img>` forbidden) — a remote peer's markdown is
- * untrusted, so it can't smuggle a tracking pixel into the reader's timeline; the
- * post's images arrive only via its declared attachments.
+ * (the #910 XSS boundary, plus no `<img>` but the block's declared `images`) — a
+ * remote peer's markdown is untrusted, so it can't smuggle a tracking pixel into
+ * the reader's timeline through a picture its payload does not declare.
  */
 import type { FeedStructuredArticle, FeedStructuredArticleBlock } from '@aurboda/api-spec'
 
@@ -23,6 +23,7 @@ import { renderRemoteMarkdown } from '../../utils/markdown'
 import { getMetricDisplayName } from '../../utils/metricLabels'
 import { ResolvedArticleChallenge } from './ArticleChallengeBlock'
 import { CorrelationScatterSvg } from './ArticleCorrelationBlock'
+import { ImpactBlockFigure } from './ArticleImpactBlock'
 import './FeedPostCard.css' // `.article-prose` / `.article-chart*` / `.article-scatter*`
 
 const CHART_COLOR = CHART_PRIMARY
@@ -57,13 +58,18 @@ const TimelineArticleChart = ({ block }: { block: ChartBlock }) => {
 const TimelineArticleBlock = ({ block }: { block: FeedStructuredArticleBlock }) => {
   if (block.type === 'prose') {
     return (
-      <div class="article-prose" dangerouslySetInnerHTML={{ __html: renderRemoteMarkdown(block.markdown) }} />
+      <div
+        class="article-prose"
+        dangerouslySetInnerHTML={{ __html: renderRemoteMarkdown(block.markdown, block.images) }}
+      />
     )
   }
 
   if (block.type === 'chart') return <TimelineArticleChart block={block} />
 
   if (block.type === 'challenge') return <ResolvedArticleChallenge block={block} />
+
+  if (block.type === 'impact') return <ImpactBlockFigure data={block} caption={block.caption} />
 
   return (
     <figure class="article-chart">

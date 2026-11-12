@@ -14,6 +14,7 @@
 import sharp from 'sharp'
 
 import { buildChartSvg } from '../charts/chart-svg.ts'
+import { buildImpactSvg, type ImpactSvgData } from '../charts/impact-svg.ts'
 import { buildRaceChartSvg, type RaceChartSvgData } from '../charts/race-chart-svg.ts'
 import { type ScatterSvgData, buildScatterSvg } from '../charts/scatter-svg.ts'
 import { maxOf, minOf } from '../numeric-extremes.ts'
@@ -50,7 +51,7 @@ const mapWithConcurrency = async <T, R>(
   return results
 }
 
-const svgToPng = (svg: string): Promise<Buffer> => sharp(Buffer.from(svg)).png().toBuffer()
+export const svgToPng = (svg: string): Promise<Buffer> => sharp(Buffer.from(svg)).png().toBuffer()
 
 export const renderChartPng = (
   series: [Date, number][],
@@ -64,6 +65,9 @@ export const renderChartPng = (
  * only adds the `sharp` rasterization.
  */
 export const renderScatterPng = (data: ScatterSvgData): Promise<Buffer> => svgToPng(buildScatterSvg(data))
+
+/** An article impact block's chart rasterized for its feed attachment. */
+export const renderImpactPng = (data: ImpactSvgData): Promise<Buffer> => svgToPng(buildImpactSvg(data))
 
 /** A challenge's standings race (one line per member) rasterized for the `Standings` attachment. */
 export const renderRaceChartPng = (data: RaceChartSvgData): Promise<Buffer> =>

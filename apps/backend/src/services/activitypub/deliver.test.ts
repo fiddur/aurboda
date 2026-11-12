@@ -14,6 +14,8 @@ import {
 } from '@fedify/fedify/vocab'
 import { describe, expect, test, vi } from 'vitest'
 
+import { CHART_HEIGHT, CHART_WIDTH } from '../charts/chart-svg.ts'
+import { FIGURE_BAND_HEIGHT } from '../charts/figure-svg.ts'
 import {
   buildArticleNote,
   buildArticleNoteCreate,
@@ -291,9 +293,25 @@ describe('article delivery', () => {
     expect(object.id?.href).toBe(noteId)
     expect(object.name?.toString()).toBe('Caffeine & sleep')
     expect(object.content?.toString()).toContain('<strong>better</strong>')
-    // One attachment for the single chart block; its URL/token logic is asserted
-    // in article-object.test.ts.
+    // One attachment for the single chart block; its numbering is asserted in
+    // article-object.test.ts.
     expect(await countAttachments(object)).toBe(1)
+  })
+
+  test('an article attachment is its numbered figure.png, sized with the title band', async () => {
+    const ctx = await contextFor()
+    const object = buildArticleNote(ctx, 'fiddur', deliverableArticle('followers'), `${ORIGIN}/api`)
+    const images: Image[] = []
+    for await (const attachment of object.getAttachments()) images.push(attachment as Image)
+    expect(images).toHaveLength(1)
+    expect(images[0].name?.toString()).toBe('Figure 1: HR')
+    expect(images[0].url?.href).toBe(
+      `${ORIGIN}/api/public/fiddur/feed/${POST_ID}/blocks/1/figure.png?v=${new Date('2026-07-04T09:00:00Z').getTime()}&token=secret-token`,
+    )
+    expect(images[0].mediaType).toBe('image/png')
+    expect(images[0].width).toBe(CHART_WIDTH)
+    expect(images[0].height).toBe(CHART_HEIGHT + FIGURE_BAND_HEIGHT)
+    expect(object.content?.toString()).toContain('<p><em>Figure 1: HR</em></p>')
   })
 
   test('an article Note carries `updated`, so Mastodon applies an edit (#1226)', async () => {

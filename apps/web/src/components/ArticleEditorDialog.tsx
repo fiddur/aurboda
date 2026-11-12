@@ -1,15 +1,18 @@
 import type { ArticleDraft, CorrelationSelectorsData, FeedPost, FeedVisibility } from '@aurboda/api-spec'
 
+import { formatImpactWindow, IMPACT_WINDOW_OPTIONS } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useEffect, useRef, useState } from 'preact/hooks'
 
+import type { PostAuthor } from '../pages/Feed/FeedPostCard'
 import type {
   ArticleEditorState,
   BlockDraft,
   ChallengeDraft,
   ChartDraft,
   CorrelationDraft,
+  ImpactDraft,
   ProseDraft,
 } from './article-editor-body'
 
@@ -17,14 +20,17 @@ import {
   createArticle,
   createArticleDraft,
   fetchCorrelationSelectors,
+  fetchHrvActivitiesCorrelation,
   fetchUserSettings,
   listChallenges,
   listMyChallengeParticipations,
   publishArticleDraft,
   updateArticle,
   updateArticleDraft,
+  uploadFeedImage,
 } from '../state/api'
 import {
+  blocksStillUploading,
   buildArticleBody,
   buildDraftContent,
   challengePickerOptions,
@@ -33,13 +39,18 @@ import {
   draftUpdateBody,
   emptyChallengeDraft,
   emptyCorrelationDraft,
+  emptyImpactDraft,
+  impactPickerOptions,
   initialArticleEditorState,
+  parseImpactOptionValue,
 } from './article-editor-body'
+import { ArticleEditorPanes, WIDE_EDITOR_QUERY } from './ArticlePreview'
 import { autoTagsFor, formatTagsInput, parseTagsInput } from './hashtags'
 import { MarkdownEditor } from './MarkdownEditor'
 import { MetricPicker } from './MetricPicker'
 import { ALL_SELECTOR_KINDS, SelectorPicker } from './SelectorPicker'
 import { TagsInput } from './TagsInput'
+import { useMediaQuery } from './useMediaQuery'
 import { FEED_VISIBILITY_OPTIONS, VisibilitySelector } from './VisibilitySelector'
 import './ShareActivityDialog.css'
 import './ArticleEditorDialog.css'
@@ -47,6 +58,7 @@ import './ArticleEditorDialog.css'
 type BlockPatch = Partial<ChallengeDraft> &
   Partial<ChartDraft> &
   Partial<CorrelationDraft> &
+  Partial<ImpactDraft> &
   Partial<ProseDraft>
 
 /**
@@ -213,6 +225,107 @@ const ChallengeBlockFields = ({
   )
 }
 
+const BlockWindowFields = ({
+  block,
+  onPatch,
+}: {
+  block: { start: string; end: string }
+  onPatch: (patch: BlockPatch) => void
+}) => (
+  <div class="article-window">
+    <label class="article-field">
+      <span class="article-field-label">From (optional)</span>
+      <input
+        type="datetime-local"
+        class="article-input"
+        value={block.start}
+        onInput={(e) => onPatch({ start: (e.target as HTMLInputElement).value })}
+      />
+    </label>
+    <label class="article-field">
+      <span class="article-field-label">To (optional)</span>
+      <input
+        type="datetime-local"
+        class="article-input"
+        value={block.end}
+        onInput={(e) => onPatch({ end: (e.target as HTMLInputElement).value })}
+      />
+    </label>
+  </div>
+)
+
+const ImpactBlockFields = ({
+  block,
+  onPatch,
+}: {
+  block: ImpactDraft
+  onPatch: (patch: BlockPatch) => void
+}) => {
+  const { data } = useQuery({
+    queryFn: () => fetchHrvActivitiesCorrelation(90),
+    queryKey: ['hrvActivities', 90],
+    staleTime: 5 * 60 * 1000,
+  })
+  const { extra, groups } = impactPickerOptions(data?.correlations, block)
+  const selected = groups
+    .flatMap((g) => g.options)
+    .find((o) => o.activity === block.activity && o.activityType === block.activityType)
+
+  const onSelect = (value: string) => {
+    const pair = parseImpactOptionValue(value)
+    onPatch(pair ?? { activity: '' })
+  }
+
+  return (
+    <div class="article-chart-fields">
+      <label class="article-field">
+        <span class="article-field-label">Activity</span>
+        <select
+          class="article-input"
+          value={selected?.value ?? extra?.value ?? ''}
+          onChange={(e) => onSelect((e.target as HTMLSelectElement).value)}
+        >
+          <option value="">Choose an activity…</option>
+          {extra && <option value={extra.value}>{extra.activity}</option>}
+          {groups.map((group) => (
+            <optgroup key={group.label} label={group.label}>
+              {group.options.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.activity}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+      </label>
+      <label class="article-field">
+        <span class="article-field-label">Context window</span>
+        <select
+          class="article-input"
+          value={block.windowMinutes}
+          onChange={(e) => onPatch({ windowMinutes: parseInt((e.target as HTMLSelectElement).value, 10) })}
+        >
+          {IMPACT_WINDOW_OPTIONS.map((minutes) => (
+            <option key={minutes} value={minutes}>
+              ±{formatImpactWindow(minutes)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <BlockWindowFields block={block} onPatch={onPatch} />
+      <label class="article-field">
+        <span class="article-field-label">Caption (optional)</span>
+        <input
+          type="text"
+          class="article-input"
+          value={block.caption}
+          onInput={(e) => onPatch({ caption: (e.target as HTMLInputElement).value })}
+        />
+      </label>
+    </div>
+  )
+}
+
 const blockKindLabel = (block: BlockDraft): string => {
   switch (block.type) {
     case 'prose':
@@ -221,6 +334,8 @@ const blockKindLabel = (block: BlockDraft): string => {
       return '🔗 Correlation'
     case 'challenge':
       return '🏁 Challenge'
+    case 'impact':
+      return '⏱ Impact'
     default:
       return '📈 Chart'
   }
@@ -276,37 +391,21 @@ const ArticleBlockEditor = ({
         value={block.markdown}
         onChange={(v) => onPatch({ markdown: v })}
         placeholder="Write your analysis (markdown supported)…"
+        upload={uploadFeedImage}
       />
     ) : block.type === 'correlation' ? (
       <CorrelationBlockFields block={block} selectors={selectors} onPatch={onPatch} />
     ) : block.type === 'challenge' ? (
       <ChallengeBlockFields block={block} onPatch={onPatch} />
+    ) : block.type === 'impact' ? (
+      <ImpactBlockFields block={block} onPatch={onPatch} />
     ) : (
       <div class="article-chart-fields">
         <label class="article-field">
           <span class="article-field-label">Metric</span>
           <MetricPicker builtinOnly value={block.metric} onChange={(m) => onPatch({ metric: m })} />
         </label>
-        <div class="article-window">
-          <label class="article-field">
-            <span class="article-field-label">From (optional)</span>
-            <input
-              type="datetime-local"
-              class="article-input"
-              value={block.start}
-              onInput={(e) => onPatch({ start: (e.target as HTMLInputElement).value })}
-            />
-          </label>
-          <label class="article-field">
-            <span class="article-field-label">To (optional)</span>
-            <input
-              type="datetime-local"
-              class="article-input"
-              value={block.end}
-              onInput={(e) => onPatch({ end: (e.target as HTMLInputElement).value })}
-            />
-          </label>
-        </div>
+        <BlockWindowFields block={block} onPatch={onPatch} />
         <label class="article-field">
           <span class="article-field-label">Caption (optional)</span>
           <input
@@ -325,12 +424,14 @@ type CloseState = 'open' | 'confirming'
 
 const CloseConfirm = ({
   busy,
+  uploading,
   saving,
   onSave,
   onDiscard,
   onKeepEditing,
 }: {
   busy: boolean
+  uploading: boolean
   saving: boolean
   onSave: () => void
   onDiscard: () => void
@@ -339,7 +440,7 @@ const CloseConfirm = ({
   <div class="article-close-confirm" role="alertdialog" aria-label="Unsaved changes">
     <span>Save as draft?</span>
     <div class="article-close-confirm-actions">
-      <button type="button" class="btn-primary" disabled={busy} onClick={onSave}>
+      <button type="button" class="btn-primary" disabled={busy || uploading} onClick={onSave}>
         {saving ? 'Saving…' : 'Save'}
       </button>
       <button type="button" class="btn-danger" disabled={busy} onClick={onDiscard}>
@@ -361,6 +462,7 @@ const EditorActions = ({
   editing,
   savedAt,
   busy,
+  uploading,
   canPublish,
   savingDraft,
   publishing,
@@ -372,6 +474,7 @@ const EditorActions = ({
   /** When the draft was last saved, shown only while nothing has changed since. */
   savedAt: Date | undefined
   busy: boolean
+  uploading: boolean
   canPublish: boolean
   savingDraft: boolean
   publishing: boolean
@@ -385,11 +488,11 @@ const EditorActions = ({
       Cancel
     </button>
     {!editing && (
-      <button type="button" class="btn-secondary" disabled={busy} onClick={onSaveDraft}>
+      <button type="button" class="btn-secondary" disabled={busy || uploading} onClick={onSaveDraft}>
         {savingDraft ? 'Saving…' : 'Save draft'}
       </button>
     )}
-    <button type="button" class="btn-primary" disabled={busy || !canPublish} onClick={onPublish}>
+    <button type="button" class="btn-primary" disabled={busy || uploading || !canPublish} onClick={onPublish}>
       {publishLabel(editing, publishing)}
     </button>
   </div>
@@ -423,6 +526,13 @@ const useArticleTags = (draftTags: string[] | undefined, stored: string[] | unde
   }
 }
 
+/** An edit previews with the post's own tags until they are changed. */
+const withStoredTags = (state: ArticleEditorState, stored: string[] | undefined): ArticleEditorState =>
+  state.tags || !stored ? state : { ...state, tags: stored }
+
+const editorDialogClass = (wide: boolean): string =>
+  wide ? 'share-dialog article-editor article-editor--wide' : 'share-dialog article-editor'
+
 /**
  * The article composer. With a published `post` it edits that article (PATCH)
  * as before. Otherwise it works on a draft: `draft` reopens a saved one, and
@@ -431,10 +541,13 @@ const useArticleTags = (draftTags: string[] | undefined, stored: string[] | unde
 export const ArticleEditorDialog = ({
   post,
   draft,
+  author,
   onClose,
 }: {
   post?: FeedPost
   draft?: ArticleDraft
+  /** Who the preview shows as the post's author. */
+  author: PostAuthor
   onClose: () => void
 }) => {
   const queryClient = useQueryClient()
@@ -458,7 +571,9 @@ export const ArticleEditorDialog = ({
   const [savedAt, setSavedAt] = useState<Date | undefined>(undefined)
   const [savedSnapshot, setSavedSnapshot] = useState(() => draftSnapshot(initial))
   const [closeState, setCloseState] = useState<CloseState>('open')
-  const tags = useArticleTags(initial.tags, editing ? post?.tags : undefined)
+  const storedTags = editing ? post?.tags : undefined
+  const tags = useArticleTags(initial.tags, storedTags)
+  const wide = useMediaQuery(WIDE_EDITOR_QUERY)
 
   const editorState = (): ArticleEditorState => ({
     blocks: blocks.map((kb) => kb.block),
@@ -469,6 +584,7 @@ export const ArticleEditorDialog = ({
     ...(tags.explicit ? { tags: tags.explicit } : {}),
   })
   const dirty = !editing && draftSnapshot(editorState()) !== savedSnapshot
+  const previewState = withStoredTags(editorState(), storedTags)
 
   const patchBlock = (i: number, patch: BlockPatch) =>
     setBlocks((bs) =>
@@ -491,6 +607,7 @@ export const ArticleEditorDialog = ({
     ])
   const addCorrelation = () => setBlocks((bs) => [...bs, keyed(emptyCorrelationDraft())])
   const addChallenge = () => setBlocks((bs) => [...bs, keyed(emptyChallengeDraft())])
+  const addImpact = () => setBlocks((bs) => [...bs, keyed(emptyImpactDraft())])
 
   /** Create the draft on first save, PATCH it after; returns its id. */
   const persistDraft = async (): Promise<string> => {
@@ -551,6 +668,7 @@ export const ArticleEditorDialog = ({
   }, [])
 
   const busy = publish.isPending || saveDraft.isPending || saveAndClose.isPending
+  const uploading = blocksStillUploading(blocks.map((kb) => kb.block))
   const submitError =
     deriveSubmitError(validationError, publish.error) ??
     deriveSubmitError(null, saveDraft.error) ??
@@ -558,7 +676,7 @@ export const ArticleEditorDialog = ({
 
   return (
     <div class="share-dialog-backdrop" onClick={requestClose}>
-      <div class="share-dialog article-editor" onClick={(e) => e.stopPropagation()}>
+      <div class={editorDialogClass(wide)} onClick={(e) => e.stopPropagation()}>
         <div class="share-dialog-header">
           <h2>{editing ? 'Edit article' : draftId ? 'Edit draft' : 'New article'}</h2>
           <button type="button" class="share-dialog-close" onClick={requestClose} aria-label="Close">
@@ -566,107 +684,114 @@ export const ArticleEditorDialog = ({
           </button>
         </div>
 
-        <label class="article-field">
-          <span class="article-field-label">Title</span>
-          <input
-            type="text"
-            class="article-input"
-            value={title}
-            maxLength={200}
-            placeholder="e.g. A week of sleep and HRV"
-            onInput={(e) => setTitle((e.target as HTMLInputElement).value)}
-          />
-        </label>
-
-        <fieldset class="share-dialog-group">
-          <legend>Default chart window</legend>
-          <p class="share-dialog-note">
-            Chart blocks use this window unless they set their own. Leave blank if every chart sets its own.
-          </p>
-          <div class="article-window">
-            <label class="article-field">
-              <span class="article-field-label">From</span>
-              <input
-                type="datetime-local"
-                class="article-input"
-                value={defaultStart}
-                onInput={(e) => setDefaultStart((e.target as HTMLInputElement).value)}
-              />
-            </label>
-            <label class="article-field">
-              <span class="article-field-label">To</span>
-              <input
-                type="datetime-local"
-                class="article-input"
-                value={defaultEnd}
-                onInput={(e) => setDefaultEnd((e.target as HTMLInputElement).value)}
-              />
-            </label>
-          </div>
-        </fieldset>
-
-        <div class="article-blocks">
-          {blocks.map((kb, i) => (
-            <ArticleBlockEditor
-              key={kb.key}
-              block={kb.block}
-              index={i}
-              total={blocks.length}
-              selectors={selectors}
-              onPatch={(patch) => patchBlock(i, patch)}
-              onMove={(dir) => moveBlock(i, dir)}
-              onRemove={() => removeBlock(i)}
+        <ArticleEditorPanes wide={wide} state={previewState} author={author}>
+          <label class="article-field">
+            <span class="article-field-label">Title</span>
+            <input
+              type="text"
+              class="article-input"
+              value={title}
+              maxLength={200}
+              placeholder="e.g. A week of sleep and HRV"
+              onInput={(e) => setTitle((e.target as HTMLInputElement).value)}
             />
-          ))}
-        </div>
+          </label>
 
-        <div class="article-add-block">
-          <button type="button" class="btn-secondary" onClick={addProse}>
-            + Prose
-          </button>
-          <button type="button" class="btn-secondary" onClick={addChart}>
-            + Chart
-          </button>
-          <button type="button" class="btn-secondary" onClick={addCorrelation}>
-            + Correlation
-          </button>
-          <button type="button" class="btn-secondary" onClick={addChallenge}>
-            + Challenge
-          </button>
-        </div>
+          <fieldset class="share-dialog-group">
+            <legend>Default chart window</legend>
+            <p class="share-dialog-note">
+              Chart blocks use this window unless they set their own. Leave blank if every chart sets its own.
+            </p>
+            <div class="article-window">
+              <label class="article-field">
+                <span class="article-field-label">From</span>
+                <input
+                  type="datetime-local"
+                  class="article-input"
+                  value={defaultStart}
+                  onInput={(e) => setDefaultStart((e.target as HTMLInputElement).value)}
+                />
+              </label>
+              <label class="article-field">
+                <span class="article-field-label">To</span>
+                <input
+                  type="datetime-local"
+                  class="article-input"
+                  value={defaultEnd}
+                  onInput={(e) => setDefaultEnd((e.target as HTMLInputElement).value)}
+                />
+              </label>
+            </div>
+          </fieldset>
 
-        <TagsInput value={tags.text} onInput={tags.onInput} />
+          <div class="article-blocks">
+            {blocks.map((kb, i) => (
+              <ArticleBlockEditor
+                key={kb.key}
+                block={kb.block}
+                index={i}
+                total={blocks.length}
+                selectors={selectors}
+                onPatch={(patch) => patchBlock(i, patch)}
+                onMove={(dir) => moveBlock(i, dir)}
+                onRemove={() => removeBlock(i)}
+              />
+            ))}
+          </div>
 
-        <VisibilitySelector
-          name="article-visibility"
-          options={FEED_VISIBILITY_OPTIONS}
-          value={visibility}
-          onChange={setVisibility}
-        />
+          <div class="article-add-block">
+            <button type="button" class="btn-secondary" onClick={addProse}>
+              + Prose
+            </button>
+            <button type="button" class="btn-secondary" onClick={addChart}>
+              + Chart
+            </button>
+            <button type="button" class="btn-secondary" onClick={addCorrelation}>
+              + Correlation
+            </button>
+            <button type="button" class="btn-secondary" onClick={addChallenge}>
+              + Challenge
+            </button>
+            <button type="button" class="btn-secondary" onClick={addImpact}>
+              + Impact
+            </button>
+          </div>
 
-        {submitError && <p class="share-dialog-error">{submitError}</p>}
+          <TagsInput value={tags.text} onInput={tags.onInput} />
 
-        {closeState === 'confirming' ? (
-          <CloseConfirm
-            busy={busy}
-            saving={saveAndClose.isPending}
-            onSave={() => saveAndClose.mutate()}
-            onDiscard={onClose}
-            onKeepEditing={() => setCloseState('open')}
+          <VisibilitySelector
+            name="article-visibility"
+            options={FEED_VISIBILITY_OPTIONS}
+            value={visibility}
+            onChange={setVisibility}
           />
-        ) : (
-          <EditorActions
-            editing={editing}
-            savedAt={dirty ? undefined : savedAt}
-            busy={busy}
-            canPublish={!!title.trim()}
-            savingDraft={saveDraft.isPending}
-            publishing={publish.isPending}
-            onCancel={requestClose}
-            onSaveDraft={() => saveDraft.mutate()}
-            onPublish={() => publish.mutate()}
-          />
-        )}
+
+          {submitError && <p class="share-dialog-error">{submitError}</p>}
+
+          {closeState === 'confirming' ? (
+            <CloseConfirm
+              busy={busy}
+              uploading={uploading}
+              saving={saveAndClose.isPending}
+              onSave={() => saveAndClose.mutate()}
+              onDiscard={onClose}
+              onKeepEditing={() => setCloseState('open')}
+            />
+          ) : (
+            <EditorActions
+              editing={editing}
+              savedAt={dirty ? undefined : savedAt}
+              busy={busy}
+              uploading={uploading}
+              canPublish={!!title.trim()}
+              savingDraft={saveDraft.isPending}
+              publishing={publish.isPending}
+              onCancel={requestClose}
+              onSaveDraft={() => saveDraft.mutate()}
+              onPublish={() => publish.mutate()}
+            />
+          )}
+        </ArticleEditorPanes>
       </div>
     </div>
   )

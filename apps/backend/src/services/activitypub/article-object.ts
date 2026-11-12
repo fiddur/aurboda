@@ -1,104 +1,25 @@
 /**
  * An article federates as a `Note` (built in `deliver.ts`): the title is its
- * `name`, the prose is HTML `content`, and each chart/correlation block is an
- * attached PNG so a plain fediverse client (Mastodon) shows the prose + images
- * inline. (A `Note`, not an AS2 `Article`: Mastodon treats `Article` as a
- * converted type and discards its `content`, rendering only name + link.) Aurboda
- * peers get the richer inline render via the structured-enrichment channel (a
- * later slice); this module builds only the Mastodon-compatible surface.
- *
- * Prose markdown is rendered with `marked` and then sanitised through an outbound
- * allowlist (`sanitizeArticleHtml`) — an XSS boundary like the inbound fediverse
- * sanitiser, but with the block elements a QS write-up uses (GFM tables, images,
- * `hr`, h5/h6) that the web sink (DOMPurify via `utils/markdown.ts`) keeps, so an
- * article reads the same in-app and on renderers that support them. (Mastodon's
- * OWN inbound sanitiser strips tables/images/`hr` from a remote `content`, so a
- * results table degrades to run-together cell text there — see `docs/features/feed.md`.)
- * Either way it can never carry a script/style/`img onerror` payload (#910's
- * boundary, server side).
+ * `name`, the prose is HTML `content`, and each chart/correlation/challenge/impact block
+ * is an attached PNG figure, so a plain fediverse client (Mastodon) shows the
+ * prose and the images. (A `Note`, not an AS2 `Article`: Mastodon treats
+ * `Article` as a converted type and discards its `content`, rendering only name +
+ * link.) Aurboda peers render from the structured-enrichment payload instead; this
+ * module builds only the Mastodon-shaped surface: its prose goes through
+ * `renderNoteProse` (tables as lines, images as figure references), while the
+ * Atom feed keeps the full HTML of `renderProse`.
  */
-import type { ArticleContent, FeedVisibility } from '@aurboda/api-spec'
+import type { ArticleContent } from '@aurboda/api-spec'
 
-import { Image } from '@fedify/fedify/vocab'
 import { marked } from 'marked'
 import sanitizeHtml from 'sanitize-html'
 
-import { articleBlockImageUrl, articleBlockLabel } from '../article.ts'
-import { CHART_HEIGHT, CHART_WIDTH, escapeXml } from '../charts/chart-svg.ts'
-import { SCATTER_HEIGHT, SCATTER_WIDTH } from '../charts/scatter-svg.ts'
+import { articleBlockLabel } from '../article.ts'
+import { escapeXml } from '../charts/chart-svg.ts'
+import { articleBlockFigureSize, FIGURE_BAND_HEIGHT } from '../charts/figure-svg.ts'
+import { httpUrl, type NoteProseImage, renderNoteProse, renderProse } from './note-prose.ts'
 
-/**
- * Sanitise authored article prose for outbound federation. A superset of the
- * inbound fediverse allowlist (`sanitizeRemoteHtml`) — the same safe base, plus
- * the block elements a QS write-up uses (GFM tables, images, `hr`, h5/h6), which
- * the web DOMPurify sink keeps, so authored formatting isn't flattened on the way
- * out for renderers that support them. (Mastodon's own inbound sanitiser drops
- * tables/images/`hr`, so those degrade there; non-Mastodon consumers and the
- * future Aurboda-peer path render them.) The two configs are maintained
- * separately, not literally shared — inbound is intentionally stricter. Still a
- * hard XSS boundary: no script/style/iframe/event handlers survive, and
- * link/image URLs are http(s)/mailto only.
- */
-const sanitizeArticleHtml = (html: string): string =>
-  sanitizeHtml(html, {
-    allowedAttributes: {
-      a: ['href', 'rel', 'target', 'class', 'translate'],
-      img: ['src', 'alt', 'title'],
-      ol: ['start'],
-      span: ['class', 'translate'],
-      td: ['colspan', 'rowspan'],
-      th: ['colspan', 'rowspan', 'scope'],
-    },
-    allowedSchemes: ['http', 'https', 'mailto'],
-    allowedTags: [
-      'p',
-      'br',
-      'a',
-      'span',
-      'em',
-      'strong',
-      'b',
-      'i',
-      'del',
-      's',
-      'u',
-      'pre',
-      'code',
-      'blockquote',
-      'ul',
-      'ol',
-      'li',
-      'h1',
-      'h2',
-      'h3',
-      'h4',
-      'h5',
-      'h6',
-      'hr',
-      'img',
-      'table',
-      'thead',
-      'tbody',
-      'tfoot',
-      'tr',
-      'td',
-      'th',
-    ],
-    disallowedTagsMode: 'discard',
-    transformTags: {
-      a: sanitizeHtml.simpleTransform('a', { rel: 'nofollow noopener noreferrer', target: '_blank' }),
-    },
-  })
-
-/**
- * Render one run of authored markdown to sanitised, federation-safe HTML. Options
- * (GFM + hard line breaks) are passed per call, matching the web's `renderMarkdown`
- * (#910) without mutating `marked`'s process-wide defaults for every other importer.
- * Exported for the challenge-share Note, whose personal note is markdown through
- * the same pipeline (#994).
- */
-export const renderProse = (markdown: string): string =>
-  sanitizeArticleHtml(marked.parse(markdown, { async: false, breaks: true, gfm: true }))
+export { renderProse }
 
 const decodeTextEntities = (text: string): string =>
   text.replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&quot;', '"').replaceAll('&amp;', '&')
@@ -117,76 +38,99 @@ export const proseToPlainText = (markdown: string): string =>
     .replaceAll(/\s+/g, ' ')
     .trim()
 
+export const MASTODON_ATTACHMENT_LIMIT = 4
+
+export interface ArticleFigure {
+  /** 1-based, document order. */
+  number: number
+  /** Caption, else the block's label (`articleBlockLabel`); a prose image's alt text ('' when none). */
+  label: string
+  url: string
+  /** Index in `article.blocks` for a block figure; absent for a prose image. */
+  block_index?: number
+  width?: number
+  height?: number
+  media_type?: string
+}
+
+const IMAGE_MEDIA_TYPES: Record<string, string> = {
+  avif: 'image/avif',
+  gif: 'image/gif',
+  jpeg: 'image/jpeg',
+  jpg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+}
+
+const mediaTypeOf = (url: URL): string | undefined => {
+  const extension = /\.([a-z0-9]+)$/i.exec(url.pathname)?.[1]?.toLowerCase()
+  return extension === undefined ? undefined : IMAGE_MEDIA_TYPES[extension]
+}
+
+/** A figure's plain-text name: `Figure N: label`, or `Figure N` without a label. */
+export const articleFigureName = (figure: Pick<ArticleFigure, 'label' | 'number'>): string =>
+  figure.label ? `Figure ${figure.number}: ${figure.label}` : `Figure ${figure.number}`
+
 /**
- * The AS2 `content` HTML for an article: the **title** as a bold heading, then
- * each prose block rendered from markdown, and each chart/correlation block's
- * caption (when set) as a paragraph.
- *
- * The title leads the `content` because Mastodon's status parser ignores a Note's
- * `name` (it only falls back to `name` for *converted* object types like Article),
- * so a title left only in `name` never renders — and an all-charts article with no
- * captions would otherwise federate as an empty status with just attachments. The
- * bold heading mirrors how Mastodon renders a converted type's title; `name` is
- * still set on the Note for Aurboda peers / software that does read it.
- *
- * A caption is emitted as plain escaped text — NOT markdown — to match the web,
- * which shows it as text in a `<figcaption>`; the chart images themselves ride as
- * attachments (`articleImageAttachments`), which a fediverse client lays out after
- * the content. A challenge block adds a "Join the challenge" link to its page,
- * so Mastodon shows something to follow.
+ * The escaped reference to a figure in the Note text. Past Mastodon's attachment
+ * limit the words `Figure N` link to the image, since Mastodon will not show it.
  */
-export const renderArticleContentHtml = (article: ArticleContent): string => {
-  const heading = `<p><strong>${escapeXml(article.title)}</strong></p>`
-  const body = article.blocks
-    .map((block) => {
-      if (block.type === 'prose') return renderProse(block.markdown)
-      const caption = block.caption ? `<p>${escapeXml(block.caption)}</p>` : ''
-      if (block.type !== 'challenge') return caption
-      const join = `<p><a href="${escapeXml(block.challenge_url)}">Join the challenge</a></p>`
-      return caption ? `${caption}\n${join}` : join
-    })
-    .filter((html) => html.length > 0)
-    .join('\n')
-  return body.length > 0 ? `${heading}\n${body}` : heading
+const figureReference = (figure: ArticleFigure): string => {
+  const words = `Figure ${figure.number}`
+  const lead =
+    figure.number > MASTODON_ATTACHMENT_LIMIT ? `<a href="${escapeXml(figure.url)}">${words}</a>` : words
+  return figure.label ? `${lead}: ${escapeXml(figure.label)}` : lead
 }
 
 /**
- * Image attachments for an article's non-prose blocks, pointing at the gated
- * on-demand endpoint (`/feed/<id>/blocks/<index>/image.png`).
- * `public`/`unlisted` are served unauthenticated; a `followers`-only article's URLs
- * carry the post's unguessable capability `?token=` (the fediverse fetches media
- * unsigned), embedded only in the object delivered to followers.
+ * The article Note's `content` HTML and the figures it attaches, from one walk
+ * so the numbering in the text and on the attachments can't disagree.
+ *
+ * The **title** leads the `content` as a bold paragraph because Mastodon's status
+ * parser ignores a Note's `name` (it only falls back to `name` for *converted*
+ * object types like Article), so a title left only in `name` never renders.
+ *
+ * Every image the Note attaches is a numbered figure, counted in document order:
+ * each non-prose block (its image is `blockFigureUrl(index)`) and each prose
+ * image with an http(s) `src`. Mastodon lays attachments out after the text, so
+ * the text carries `Figure N: label` where the image stood. A caption is plain
+ * escaped text, not markdown, as on the web's `<figcaption>`. A challenge block
+ * adds a "Join the challenge" link after its reference.
  */
-export const articleImageAttachments = (
-  apiBaseUrl: string,
-  user: string,
-  postId: string,
-  visibility: FeedVisibility,
-  imageToken: string,
-  updatedAt: Date,
+export const renderArticleNote = (
   article: ArticleContent,
-): Image[] => {
-  const images: Image[] = []
-  article.blocks.forEach((block, index) => {
-    if (block.type === 'prose') return
-    const [width, height] =
-      block.type === 'correlation' ? [SCATTER_WIDTH, SCATTER_HEIGHT] : [CHART_WIDTH, CHART_HEIGHT]
-    images.push(
-      new Image({
-        height,
-        mediaType: 'image/png',
-        name: articleBlockLabel(block),
-        // `v` = the post's last-edited epoch: the render cache busts on edit, but
-        // the URL itself must change too, or a remote media cache (Mastodon
-        // re-hosts attachments at receipt) keeps the pre-edit PNG and the
-        // `Update{Article}` never shows the new chart. The image endpoint ignores
-        // `v` (it only reads `token`).
-        url: new URL(
-          articleBlockImageUrl(apiBaseUrl, user, postId, visibility, imageToken, updatedAt, index),
-        ),
+  blockFigureUrl: (blockIndex: number) => string,
+): { content: string; figures: ArticleFigure[] } => {
+  const figures: ArticleFigure[] = []
+  const addFigure = (figure: Omit<ArticleFigure, 'number'>): ArticleFigure => {
+    const numbered = { ...figure, number: figures.length + 1 }
+    figures.push(numbered)
+    return numbered
+  }
+  const proseImage = ({ alt, src }: NoteProseImage): string => {
+    const url = httpUrl(src)
+    if (url == null) return escapeXml(alt)
+    const figure = addFigure({ label: alt, media_type: mediaTypeOf(url), url: src })
+    return `<em>${figureReference(figure)}</em>`
+  }
+  const heading = `<p><strong>${escapeXml(article.title)}</strong></p>`
+  const body = article.blocks
+    .map((block, index) => {
+      if (block.type === 'prose') return renderNoteProse(block.markdown, { image: proseImage })
+      const { height, width } = articleBlockFigureSize(block.type)
+      const figure = addFigure({
+        block_index: index,
+        height: height + FIGURE_BAND_HEIGHT,
+        label: articleBlockLabel(block),
+        media_type: 'image/png',
+        url: blockFigureUrl(index),
         width,
-      }),
-    )
-  })
-  return images
+      })
+      const reference = `<p><em>${figureReference(figure)}</em></p>`
+      if (block.type !== 'challenge') return reference
+      return `${reference}\n<p><a href="${escapeXml(block.challenge_url)}">Join the challenge</a></p>`
+    })
+    .filter((html) => html.length > 0)
+    .join('\n')
+  return { content: body.length > 0 ? `${heading}\n${body}` : heading, figures }
 }

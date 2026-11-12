@@ -6,8 +6,10 @@ import type { FeedPostRecord } from '../db/index.ts'
 import type { RaceChartSvgData } from './charts/race-chart-svg.ts'
 import type { ScatterSvgData } from './charts/scatter-svg.ts'
 
+import { impactBucket, impactData } from '../test/impact-fixture.ts'
 import {
   articleBlockAt,
+  articleBlockChart,
   loadPublicPostChartWith,
   bucketedCacheKey,
   imageCacheKey,
@@ -83,6 +85,7 @@ const articlePost = (blocks: ArticleContent['blocks']): FeedPostRecord =>
 const mkDeps = (over: Partial<PostChartDeps> = {}): PostChartDeps => ({
   getActivity: vi.fn(async () => ({ end_time: END, start_time: START })),
   getArticleChartSeries: vi.fn(async () => series),
+  getArticleImpact: vi.fn(async () => impactData()),
   getChallengeRaceByUrl: vi.fn(async () => race),
   getCorrelationScatter: vi.fn(async () => scatter),
   getExerciseTrend: vi.fn(async () => ({ measure: 'e1rm' as const, series })),
@@ -106,6 +109,75 @@ describe('articleBlockAt', () => {
       updatedAt: UPDATED,
     })
     for (const index of [0, 2, -1, 0.5]) expect(articleBlockAt(content, UPDATED, index)).toBeNull()
+  })
+
+  test('resolves an impact block over the article default window, 30 minutes around by default', () => {
+    const content: ArticleContent = {
+      blocks: [
+        { activity: 'yoga', activity_type: 'activity_type', type: 'impact' },
+        { activity: 'coffee', activity_type: 'tag', type: 'impact', window_minutes: 120 },
+      ],
+      default_end: WINDOW.end,
+      default_start: WINDOW.start,
+      title: 'Yoga',
+    }
+    expect(articleBlockAt(content, UPDATED, 0)).toEqual({
+      activity: 'yoga',
+      activityType: 'activity_type',
+      end: new Date(WINDOW.end),
+      start: new Date(WINDOW.start),
+      type: 'impact',
+      updatedAt: UPDATED,
+      windowMinutes: 30,
+    })
+    expect(articleBlockAt(content, UPDATED, 1)).toMatchObject({ activity: 'coffee', windowMinutes: 120 })
+  })
+
+  test('leaves out an impact block without a window or with a reversed one', () => {
+    const block = { activity: 'yoga', activity_type: 'activity_type' as const, type: 'impact' as const }
+    expect(articleBlockAt(article([block]), UPDATED, 0)).toBeNull()
+    const reversed = article([{ ...block, end: WINDOW.start, start: WINDOW.end }])
+    expect(articleBlockAt(reversed, UPDATED, 0)).toBeNull()
+  })
+})
+
+describe('articleBlockChart for an impact block', () => {
+  const block = {
+    activity: 'yoga',
+    activityType: 'activity_type' as const,
+    end: new Date(WINDOW.end),
+    start: new Date(WINDOW.start),
+    type: 'impact' as const,
+    updatedAt: UPDATED,
+    windowMinutes: 60,
+  }
+
+  test('draws the impact over the block window', async () => {
+    const deps = mkDeps()
+    expect(await articleBlockChart(deps, 'fiddur', block)).toEqual({ data: impactData(), type: 'impact' })
+    expect(deps.getArticleImpact).toHaveBeenCalledWith('fiddur', {
+      activity: 'yoga',
+      activityType: 'activity_type',
+      end: new Date(WINDOW.end),
+      start: new Date(WINDOW.start),
+      windowMinutes: 60,
+    })
+  })
+
+  test('none without sessions, or with fewer than two buckets that have data', async () => {
+    const none = mkDeps({ getArticleImpact: async () => impactData({ occurrences: 0 }) })
+    expect(await articleBlockChart(none, 'fiddur', block)).toBeNull()
+    const sparse = mkDeps({
+      getArticleImpact: async () =>
+        impactData({
+          timeline: [
+            impactBucket('before', -30, 0, null),
+            impactBucket('during', 0, 0, 40),
+            impactBucket('after', 0, 30, null),
+          ],
+        }),
+    })
+    expect(await articleBlockChart(sparse, 'fiddur', block)).toBeNull()
   })
 })
 

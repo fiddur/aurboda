@@ -70,20 +70,24 @@ describe('GET /agents/activitywatch.ps1', () => {
     expect(await fetchScript('/agents/activitywatch.ps1')).not.toMatch(/[^\t\n\r -~]/)
   })
 
-  test.skipIf(!hasCommand('pwsh'))('renders a script PowerShell can parse', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'aw-ps1-'))
-    try {
-      const file = join(dir, 'activitywatch.ps1')
-      writeFileSync(file, await fetchScript('/agents/activitywatch.ps1'))
-      const check = `$errors = $null; [System.Management.Automation.Language.Parser]::ParseFile('${file}', [ref]$null, [ref]$errors) | Out-Null; if ($errors.Count) { $errors | ForEach-Object { $_.Message }; exit 1 }`
-      const result = spawnSync('pwsh', ['-NoProfile', '-Command', check])
+  test.skipIf(!hasCommand('pwsh'))(
+    'renders a script PowerShell can parse',
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'aw-ps1-'))
+      try {
+        const file = join(dir, 'activitywatch.ps1')
+        writeFileSync(file, await fetchScript('/agents/activitywatch.ps1'))
+        const check = `$errors = $null; [System.Management.Automation.Language.Parser]::ParseFile('${file}', [ref]$null, [ref]$errors) | Out-Null; if ($errors.Count) { $errors | ForEach-Object { $_.Message }; exit 1 }`
+        const result = spawnSync('pwsh', ['-NoProfile', '-Command', check])
 
-      expect(result.stdout.toString()).toBe('')
-      expect(result.status).toBe(0)
-    } finally {
-      rmSync(dir, { force: true, recursive: true })
-    }
-  })
+        expect(result.stdout.toString()).toBe('')
+        expect(result.status).toBe(0)
+      } finally {
+        rmSync(dir, { force: true, recursive: true })
+      }
+    },
+    60_000,
+  )
 })
 
 describe('renderAgentScript', () => {

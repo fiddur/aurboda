@@ -10,8 +10,9 @@ import {
   toDatetimeLocal,
 } from '../../components/CommentThread/datetimeLocal'
 import { MarkdownEditor } from '../../components/MarkdownEditor'
+import { stillUploading } from '../../components/MarkdownEditor/image-upload'
 import { SaveCancelRow } from '../../components/SaveCancelRow'
-import { addReply, addTimeComment, deleteComment, updateComment } from '../../state/api'
+import { addReply, addTimeComment, deleteComment, updateComment, uploadFeedImage } from '../../state/api'
 import { entityHref } from './commentItems'
 import './CommentPanel.css'
 
@@ -53,6 +54,7 @@ const NewCommentForm = ({ at, onDone }: { at: Date; onDone: () => void }) => {
   const [start, setStart] = useState(toDatetimeLocal(at))
   const [end, setEnd] = useState('')
   const backwards = endBeforeStart(start, end)
+  const uploading = stillUploading(content)
 
   const mutation = useMutation({
     mutationFn: () => {
@@ -73,6 +75,7 @@ const NewCommentForm = ({ at, onDone }: { at: Date; onDone: () => void }) => {
         onChange={setContent}
         placeholder="What happened at this moment?"
         rows={4}
+        upload={uploadFeedImage}
       />
       <div class="comment-panel-times">
         <label>
@@ -95,10 +98,10 @@ const NewCommentForm = ({ at, onDone }: { at: Date; onDone: () => void }) => {
       {backwards && <p class="comment-panel-error">The end is before the start.</p>}
       {mutation.isError && <p class="comment-panel-error">{mutation.error.message}</p>}
       <SaveCancelRow
-        onSave={() => content.trim() && start && !backwards && mutation.mutate()}
+        onSave={() => content.trim() && start && !backwards && !uploading && mutation.mutate()}
         onCancel={onDone}
         isPending={mutation.isPending}
-        saveDisabled={backwards}
+        saveDisabled={backwards || uploading}
         saveLabel="Add comment"
         savingLabel="Adding…"
       />

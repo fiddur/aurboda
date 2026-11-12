@@ -1,7 +1,7 @@
 import type { SyncProvider } from '../queries/index.ts'
 import type { EventProbabilityResult, LagWindowResult } from './types.ts'
 
-import { getAllActivitiesInRange } from '../../db/index.ts'
+import { getEffectiveActivitiesInRange } from '../../db/index.ts'
 import { chiSquaredTest } from './utils.ts'
 
 // eslint-disable-next-line complexity -- TODO: refactor
@@ -31,7 +31,7 @@ export async function getEventProbability(
 
   let triggerEvents: Date[] = []
 
-  const allActivities = await getAllActivitiesInRange(user, start, end)
+  const allActivities = await getEffectiveActivitiesInRange(user, start, end)
 
   if (trigger.type === 'tag' || trigger.type === 'activity') {
     triggerEvents = allActivities

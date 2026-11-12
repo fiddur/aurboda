@@ -18,17 +18,20 @@ import { type Response, Router } from 'express'
 
 import type { FeedPostRecord } from '../db/index.ts'
 import type { CorrelationBlockParams } from '../services/article-block-data.ts'
+import type { ImpactSvgData } from '../services/charts/impact-svg.ts'
 import type { ChartRenderOpts, PostChart } from '../services/charts/post-chart-svg.ts'
 import type { RaceChartSvgData } from '../services/charts/race-chart-svg.ts'
 import type { ScatterSvgData } from '../services/charts/scatter-svg.ts'
 
 import { isValidUsername } from '../api/auth-routes.ts'
 import { isMissingDatabase } from '../db/index.ts'
+import { renderArticleNote } from '../services/activitypub/article-object.ts'
 import {
   articleBlockCacheKey,
   createNegativeCache,
   type NegativeCache,
 } from '../services/article-block-misses.ts'
+import { articleBlockFigureSvg } from '../services/article-figure.ts'
 import { isCapabilityAuthorized } from '../services/feed-capability.ts'
 import {
   activityHeartRateChart,
@@ -43,10 +46,11 @@ import {
   standingsChart,
   TREND_BUCKET_MS,
 } from '../services/post-chart.ts'
+import { createRenderCache } from '../services/render-cache.ts'
 import { UUID_RE } from '../utils.ts'
 
 export type { ChartRenderOpts, CorrelationBlockParams, ResolvedArticleBlock }
-export { imageCacheKey }
+export { createRenderCache, imageCacheKey }
 
 /** The window an image renders over. */
 export interface ImageActivity {
@@ -74,45 +78,12 @@ export interface FeedImageDeps extends PostChartDeps {
   renderScatterSvg: (data: ScatterSvgData) => string
   renderRaceChart: (data: RaceChartSvgData) => Promise<Buffer>
   renderRaceChartSvg: (data: RaceChartSvgData) => string
+  renderImpact: (data: ImpactSvgData) => Promise<Buffer>
+  renderImpactSvg: (data: ImpactSvgData) => string
+  /** Rasterise an SVG to PNG (an article block's figure: the chart under its title band). */
+  rasterizeSvg: (svg: string) => Promise<Buffer>
   /** Remembered block-image misses, shared with the markdown export (a fresh one when omitted). */
   articleBlockMisses?: NegativeCache
-}
-
-/**
- * A tiny memoising cache with in-flight de-duplication (mirrors og-image-router):
- * repeated fetches for the same key serve the cached value, and concurrent misses
- * collapse to a single `produce`. Producing is expensive (a rasterised image, or
- * a many-block structured payload) and the source is effectively immutable per
- * key, so a bounded LRU + process-restart eviction is enough. `produce` returning
- * `null` (no data / unauthorized) is NOT cached. The caller checks eligibility
- * BEFORE consulting this, so an unshared/visibility-changed post 404s and never
- * reaches the cache. Generic over the cached value (defaults to `Buffer` for the
- * image endpoints; the structured endpoint caches its payload object).
- */
-export const createRenderCache = <T = Buffer>(maxEntries = 200) => {
-  const cache = new Map<string, T>()
-  const inFlight = new Map<string, Promise<T | null>>()
-  return async (key: string, produce: () => Promise<T | null>): Promise<T | null> => {
-    const cached = cache.get(key)
-    if (cached) return cached
-    const pending = inFlight.get(key)
-    if (pending) return pending
-    const promise = produce()
-    inFlight.set(key, promise)
-    try {
-      const value = await promise
-      if (value) {
-        if (cache.size >= maxEntries) {
-          const oldest = cache.keys().next().value
-          if (oldest !== undefined) cache.delete(oldest)
-        }
-        cache.set(key, value)
-      }
-      return value
-    } finally {
-      inFlight.delete(key)
-    }
-  }
 }
 
 /**
@@ -188,10 +159,22 @@ export const resolveArticleBlock = async (
   postId: string,
   index: number,
   token?: string,
-): Promise<ResolvedArticleBlock | null> => {
+): Promise<ResolvedArticleBlock | null> =>
+  (await resolveArticleBlockOf(deps, username, postId, index, token))?.block ?? null
+
+/** `resolveArticleBlock`, keeping the article it came from (a figure needs its number and label). */
+const resolveArticleBlockOf = async (
+  deps: Pick<FeedImageDeps, 'getPost'>,
+  username: string,
+  postId: string,
+  index: number,
+  token?: string,
+): Promise<{ article: ArticleContent; block: ResolvedArticleBlock } | null> => {
   if (!Number.isInteger(index) || index < 0) return null
   const loaded = await loadArticleForImage(deps, username, postId, token)
-  return loaded == null ? null : articleBlockAt(loaded.article, loaded.updatedAt, index)
+  if (loaded == null) return null
+  const block = articleBlockAt(loaded.article, loaded.updatedAt, index)
+  return block == null ? null : { article: loaded.article, block }
 }
 
 /** A chart's image bytes: the PNG every consumer understands, or the crisp SVG. */
@@ -200,6 +183,8 @@ export const renderPostChartImage = async (
     FeedImageDeps,
     | 'renderChart'
     | 'renderChartSvg'
+    | 'renderImpact'
+    | 'renderImpactSvg'
     | 'renderRaceChart'
     | 'renderRaceChartSvg'
     | 'renderScatter'
@@ -218,6 +203,8 @@ export const renderPostChartImage = async (
       return format === 'png' ? deps.renderRaceChart(chart.data) : svg(deps.renderRaceChartSvg(chart.data))
     case 'scatter':
       return format === 'png' ? deps.renderScatter(chart.data) : svg(deps.renderScatterSvg(chart.data))
+    case 'impact':
+      return format === 'png' ? deps.renderImpact(chart.data) : svg(deps.renderImpactSvg(chart.data))
   }
 }
 
@@ -230,6 +217,27 @@ export const renderArticleBlockImage = async (
 ): Promise<Buffer | null> => {
   const chart = await articleBlockChart(deps, user, block)
   return chart == null ? null : renderPostChartImage(deps, chart, format)
+}
+
+/**
+ * One article block's figure PNG: its chart under a title band naming the
+ * figure, numbered and labelled by the same walk that writes the Note
+ * (`renderArticleNote`), so the image and the text can't disagree. `null` when
+ * the block has too little data to draw.
+ */
+export const renderArticleBlockFigure = async (
+  deps: FeedImageDeps,
+  user: string,
+  article: ArticleContent,
+  index: number,
+  block: ResolvedArticleBlock,
+): Promise<Buffer | null> => {
+  const figure = renderArticleNote(article, () => '').figures.find((f) => f.block_index === index)
+  if (figure == null) return null
+  const svg = await articleBlockFigureSvg(deps, user, block, figure, async (chart) =>
+    (await renderPostChartImage(deps, chart, 'svg')).toString('utf8'),
+  )
+  return svg == null ? null : deps.rasterizeSvg(svg)
 }
 
 const notFound = (res: Response) => res.status(404).json({ error: 'Not found', success: false })
@@ -437,6 +445,23 @@ export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
     const key = articleBlockCacheKey('blockpng', username, postId, idx, block.updatedAt, blockBucketMs(block))
     if (negativeBlocks.has(key)) return notFound(res)
     const png = await cached(key, () => renderArticleBlockImage(deps, username, block, 'png'))
+    if (!png) {
+      negativeBlocks.add(key)
+      return notFound(res)
+    }
+    sendPng(res, png)
+  })
+
+  router.get('/public/:username/feed/:postId/blocks/:index/figure.png', async (req, res) => {
+    const { index, postId, username } = req.params
+    const token = typeof req.query.token === 'string' ? req.query.token : undefined
+    const idx = Number(index)
+    const resolved = await resolveArticleBlockOf(deps, username, postId, idx, token)
+    if (!resolved) return notFound(res)
+    const { article, block } = resolved
+    const key = articleBlockCacheKey('blockfig', username, postId, idx, block.updatedAt, blockBucketMs(block))
+    if (negativeBlocks.has(key)) return notFound(res)
+    const png = await cached(key, () => renderArticleBlockFigure(deps, username, article, idx, block))
     if (!png) {
       negativeBlocks.add(key)
       return notFound(res)

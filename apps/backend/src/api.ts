@@ -10,7 +10,7 @@ import { registerAuthRoutes } from './api/auth-routes.ts'
 import { gateFederation } from './api/federation-gate.ts'
 import { createAdminMiddleware, createAuditLogMiddleware, createAuthMiddleware } from './api/middleware.ts'
 import { registerOAuthRoutes } from './api/oauth-routes.ts'
-import { mountRestRouters } from './api/rest-routes.ts'
+import { mountRestRouters, postChartDeps } from './api/rest-routes.ts'
 import { mountSyncRouter } from './api/sync-setup.ts'
 import { createUsageMiddleware } from './api/usage-middleware.ts'
 import { setupOuraWebhook, setupStravaWebhook } from './api/webhooks-setup.ts'
@@ -107,6 +107,7 @@ import { createPostUpdateResender, deliverPostUpdate } from './services/activity
 import { createTimelineBackfiller } from './services/activitypub/timeline-backfill.ts'
 import { createAurbodaEnrichAttempt } from './services/activitypub/timeline-enrich.ts'
 import { createAdminUsers } from './services/admin-users.ts'
+import { createArticlePreviewer } from './services/article-preview.ts'
 import { createAuditLogPruneQueue } from './services/audit-log-prune-queue.ts'
 import { auditError, auditInfo, pruneAuditLog } from './services/audit-log.ts'
 import { createAutoshareDeps } from './services/autoshare-deps.ts'
@@ -176,7 +177,12 @@ import {
   readPublicTagPages,
   readPublicTagRetentionDays,
 } from './services/public-tags.ts'
-import { createRelayActions, createRelayInboxHooks, relayRecipients } from './services/relays.ts'
+import {
+  createRelayActions,
+  createRelayInboxHooks,
+  ensureDefaultRelays,
+  relayRecipients,
+} from './services/relays.ts'
 import { safeFetchGet } from './services/safe-fetch.ts'
 import { initSentry, Sentry } from './services/sentry.ts'
 import {
@@ -627,6 +633,11 @@ const main = async () => {
       readTags: () => readInstanceFollowedTags(centralDb),
     }),
   )
+  postListenCallbacks.push(async () => {
+    if ((await ensureDefaultRelays({ add: relayActions.add, centralDb, origin: webHost })) === 'seeded') {
+      console.info('🛰️ Subscribed to the tags.pub relay by default')
+    }
+  })
 
   const accountDeleter = createAccountDeleter({
     announceDeletion: (user) => deliverActorDelete(feedDeps, user),
@@ -1000,6 +1011,9 @@ const main = async () => {
   // so the per-instance well-known memo is shared too.
   const discoverChallenges = createChallengeDiscovery(defaultChallengeDiscoveryDeps(webHost))
 
+  // One preview, so REST and MCP share its cache of drawn figures.
+  const previewArticle = createArticlePreviewer({ chartDeps: postChartDeps, webHost })
+
   // Mounted before the global body parser: the MCP router parses its own body
   // so it can trim tool-call arguments and keep JSON-RPC parse errors.
   // Stateless mode — no session tracking needed (tools only, no subscriptions)
@@ -1015,6 +1029,7 @@ const main = async () => {
       relayActions,
       postUpdateResender,
       centralDb,
+      previewArticle,
       publicTagActions,
       requestDumpLink: dataExport.requestDumpLink,
       deductionQueue: deductionQueue ?? undefined,
@@ -1198,6 +1213,7 @@ const main = async () => {
     garmin,
     httpd,
     postUpdateResender,
+    previewArticle,
     invitationAuth,
     onActivityDetailSynced,
     onHrSettingsChanged,

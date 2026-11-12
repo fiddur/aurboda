@@ -1,8 +1,8 @@
 /**
  * The AS2 `content` for a reply post — a Mastodon-style comment on another
  * post: the replied-to author as a leading mention link, then the author's own
- * markdown rendered through the same outbound sanitiser as article prose
- * (`renderProse` — #910's boundary).
+ * markdown shaped for Mastodon, through the outbound sanitiser
+ * (`renderNoteProse` — #910's boundary).
  *
  * Mastodon builds a reply exactly this way: the `Mention` tag is what notifies
  * and links the author, while the visible `@handle` anchor at the head of the
@@ -14,7 +14,7 @@
  * merge shows the reader their own reply with byte-identical content.
  */
 import { escapeXml } from '../charts/chart-svg.ts'
-import { renderProse } from './article-object.ts'
+import { renderNoteProse } from './note-prose.ts'
 
 export interface ReplyContentSource {
   message: string | null
@@ -88,6 +88,6 @@ export const renderReplyContent = (post: ReplyContentSource): string => {
         `${escapeXml(replyMentionName(post))}</a></span></p>`,
     )
   }
-  if (post.message) parts.push(renderProse(post.message))
+  if (post.message) parts.push(renderNoteProse(post.message))
   return parts.join('\n')
 }

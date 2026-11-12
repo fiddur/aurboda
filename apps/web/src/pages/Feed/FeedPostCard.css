@@ -208,6 +208,12 @@
   margin-bottom: 0;
 }
 
+.article-prose img,
+.feed-post-content img {
+  max-width: 100%;
+  height: auto;
+}
+
 .article-chart {
   margin: 0.75rem 0;
 }
@@ -217,6 +223,12 @@
   font-weight: 600;
   color: #4b5563;
   margin-bottom: 0.2rem;
+}
+
+.article-chart-meta {
+  font-weight: 400;
+  color: #6b7280;
+  margin-left: 0.5rem;
 }
 
 .article-chart-note {
@@ -269,6 +281,10 @@
 
   .article-chart-title {
     color: #d1d5db;
+  }
+
+  .article-chart-meta {
+    color: #9ca3af;
   }
 
   .article-scatter-annot {

@@ -1,6 +1,7 @@
 import { ActivityTypePicker } from '../../components/ActivityTypePicker'
 import { IconPreview } from '../../components/IconPreview'
 import { MarkdownEditor } from '../../components/MarkdownEditor/index.jsx'
+import { uploadFeedImage } from '../../state/api'
 import { formatDuration } from './format-utils'
 
 export interface ActivityDraft {
@@ -56,6 +57,7 @@ export const EditableActivityFields = ({
             value={draft.notes}
             onChange={(v) => onDraftChange({ ...draft, notes: v })}
             rows={3}
+            upload={uploadFeedImage}
           />
         </div>
 
