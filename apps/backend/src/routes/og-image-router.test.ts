@@ -51,6 +51,7 @@ const buildApp = (overrides: Partial<OgImageDeps> = {}) => {
     latestExerciseSession: vi.fn(async () => '2026-11-04T08:00:00.000Z'),
     loadBannerDataUri: vi.fn(async () => 'data:image/jpeg;base64,BBBB'),
     loadExerciseCard: vi.fn(async () => ({ data: exerciseData, timeZone: 'Europe/Stockholm' })),
+    loadDashboardChart: vi.fn(async () => null),
     loadPostChart: vi.fn(async () => null),
     now: () => new Date('2026-10-01T12:00:00Z'),
     profileExists: async () => false,
@@ -70,7 +71,11 @@ const buildApp = (overrides: Partial<OgImageDeps> = {}) => {
 describe('GET /u/:username/:slug/opengraph-image.png', () => {
   test('renders a PNG for a public dashboard', async () => {
     const { app, deps } = buildApp({
-      resolveDashboard: async () => ({ is_public: true, name: 'Training' }),
+      resolveDashboard: async () => ({
+        is_public: true,
+        name: 'Training',
+        updated_at: '2026-10-01T08:00:00.000Z',
+      }),
     })
     const res = await supertest(app).get('/u/fiddur/abc/opengraph-image.png')
     expect(res.status).toBe(200)
@@ -167,13 +172,18 @@ describe('GET /u/:username/:slug/opengraph-image.png', () => {
 
   test('redirects unlisted resources to the default image', async () => {
     const { app, deps } = buildApp({
-      resolveDashboard: async () => ({ is_public: false, name: 'Secret' }),
+      resolveDashboard: async () => ({
+        is_public: false,
+        name: 'Secret',
+        updated_at: '2026-10-01T08:00:00.000Z',
+      }),
     })
     const res = await supertest(app).get('/u/fiddur/abc/opengraph-image.png')
     expect(res.status).toBe(302)
     expect(res.headers.location).toBe('https://aurboda.net/og-default.png')
     expect(res.headers['cache-control']).toBe('public, max-age=300')
     expect(deps.renderImage).not.toHaveBeenCalled()
+    expect(deps.loadDashboardChart).not.toHaveBeenCalled()
   })
 
   test('redirects unknown resources to the default image', async () => {
@@ -237,7 +247,11 @@ describe('GET /u/:username/:slug/opengraph-image.png', () => {
   test('a dashboard of the same slug wins over an exercise', async () => {
     const resolveExercise = vi.fn(async () => resolvedExercise())
     const { app, deps } = buildApp({
-      resolveDashboard: async () => ({ is_public: true, name: 'Training' }),
+      resolveDashboard: async () => ({
+        is_public: true,
+        name: 'Training',
+        updated_at: '2026-10-01T08:00:00.000Z',
+      }),
       resolveExercise,
     })
     await supertest(app).get('/u/fiddur/ex1/opengraph-image.png')
@@ -258,7 +272,11 @@ describe('GET /u/:username/:slug/opengraph-image.png', () => {
 
   test('memoises renders across identical requests', async () => {
     const { app, deps } = buildApp({
-      resolveDashboard: async () => ({ is_public: true, name: 'Training' }),
+      resolveDashboard: async () => ({
+        is_public: true,
+        name: 'Training',
+        updated_at: '2026-10-01T08:00:00.000Z',
+      }),
     })
     await supertest(app).get('/u/fiddur/abc/opengraph-image.png')
     await supertest(app).get('/u/fiddur/abc/opengraph-image.png')
@@ -270,7 +288,11 @@ describe('GET /u/:username/:slug/opengraph-image.png', () => {
       loadAvatarDataUri: vi.fn(async () => {
         throw new Error('avatar db blip')
       }),
-      resolveDashboard: async () => ({ is_public: true, name: 'Training' }),
+      resolveDashboard: async () => ({
+        is_public: true,
+        name: 'Training',
+        updated_at: '2026-10-01T08:00:00.000Z',
+      }),
     })
     const res = await supertest(app).get('/u/fiddur/abc/opengraph-image.png')
     expect(res.status).toBe(200)
@@ -285,7 +307,11 @@ describe('GET /u/:username/:slug/opengraph-image.png', () => {
       renderImage: vi.fn(async () => {
         throw new Error('satori boom')
       }),
-      resolveDashboard: async () => ({ is_public: true, name: 'Training' }),
+      resolveDashboard: async () => ({
+        is_public: true,
+        name: 'Training',
+        updated_at: '2026-10-01T08:00:00.000Z',
+      }),
     })
     const res = await supertest(app).get('/u/fiddur/abc/opengraph-image.png')
     expect(res.status).toBe(302)
@@ -296,7 +322,11 @@ describe('GET /u/:username/:slug/opengraph-image.png', () => {
     const renderImage = vi.fn(() => new Promise<Buffer>((resolve) => setTimeout(() => resolve(fakePng), 30)))
     const { app } = buildApp({
       renderImage,
-      resolveDashboard: async () => ({ is_public: true, name: 'Training' }),
+      resolveDashboard: async () => ({
+        is_public: true,
+        name: 'Training',
+        updated_at: '2026-10-01T08:00:00.000Z',
+      }),
     })
     const responses = await Promise.all([
       supertest(app).get('/u/fiddur/abc/opengraph-image.png'),
@@ -305,6 +335,94 @@ describe('GET /u/:username/:slug/opengraph-image.png', () => {
     ])
     for (const res of responses) expect(res.status).toBe(200)
     expect(renderImage).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('a dashboard card’s chart', () => {
+  const path = '/u/fiddur/abc/opengraph-image.png'
+  const trend = (last: number): PostChart => ({
+    opts: { color: '#2b9ea7', label: 'Runs' },
+    series: [
+      [new Date('2026-10-01'), 2],
+      [new Date('2026-10-02'), last],
+    ],
+    type: 'line',
+  })
+  const resolveDashboard = async () => ({
+    is_public: true,
+    name: 'Training',
+    updated_at: '2026-10-01T08:00:00.000Z',
+  })
+
+  test('draws the chart of a dashboard with a trend widget', async () => {
+    const loadDashboardChart = vi.fn(async () => trend(4))
+    const { app, deps } = buildApp({ loadDashboardChart, resolveDashboard })
+    const res = await supertest(app).get(path)
+    expect(res.status).toBe(200)
+    expect(loadDashboardChart).toHaveBeenCalledWith('fiddur', 'abc')
+    expect(deps.renderImage).toHaveBeenCalledWith(
+      expect.objectContaining({ chart: trend(4), kind: 'dashboard', title: 'Training' }),
+    )
+  })
+
+  test('keeps the title card for a dashboard without a chartable widget', async () => {
+    const { app, deps } = buildApp({ resolveDashboard })
+    const res = await supertest(app).get(path)
+    expect(res.status).toBe(200)
+    expect(deps.loadDashboardChart).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(deps.renderImage).mock.calls[0][0]).not.toHaveProperty('chart')
+    await supertest(app).get(path)
+    expect(deps.renderImage).toHaveBeenCalledTimes(1)
+  })
+
+  test('serves a memoised card without loading any data', async () => {
+    const loadDashboardChart = vi.fn(async () => trend(4))
+    const { app, deps } = buildApp({ loadDashboardChart, resolveDashboard })
+    await supertest(app).get(path)
+    await supertest(app).get(path)
+    await supertest(app).get(path)
+    expect(loadDashboardChart).toHaveBeenCalledTimes(1)
+    expect(deps.renderImage).toHaveBeenCalledTimes(1)
+  })
+
+  test('redraws in a new hour, and after an edit', async () => {
+    let clock = new Date('2026-11-01T08:00:00.000Z')
+    let last = 4
+    let updatedAt = '2026-10-01T08:00:00.000Z'
+    const loadDashboardChart = vi.fn(async () => trend(last))
+    const { app, deps } = buildApp({
+      loadDashboardChart,
+      now: () => clock,
+      resolveDashboard: async () => ({ is_public: true, name: 'Training', updated_at: updatedAt }),
+    })
+    await supertest(app).get(path)
+    last = 5
+    clock = new Date('2026-11-01T08:59:59.000Z')
+    await supertest(app).get(path)
+    expect(deps.renderImage).toHaveBeenCalledTimes(1)
+    clock = new Date('2026-11-01T09:00:00.000Z')
+    await supertest(app).get(path)
+    expect(loadDashboardChart).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(deps.renderImage).mock.calls[1][0].chart).toEqual(trend(5))
+    updatedAt = '2026-11-01T09:10:00.000Z'
+    await supertest(app).get(path)
+    expect(loadDashboardChart).toHaveBeenCalledTimes(3)
+  })
+
+  test('renders the card without a chart when loading it fails, and tries again next time', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const loadDashboardChart = vi
+      .fn<OgImageDeps['loadDashboardChart']>()
+      .mockRejectedValueOnce(new Error('db down'))
+      .mockResolvedValue(trend(4))
+    const { app, deps } = buildApp({ loadDashboardChart, resolveDashboard })
+    const res = await supertest(app).get(path)
+    expect(res.status).toBe(200)
+    expect(vi.mocked(deps.renderImage).mock.calls[0][0]).not.toHaveProperty('chart')
+    await supertest(app).get(path)
+    expect(loadDashboardChart).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(deps.renderImage).mock.calls[1][0].chart).toEqual(trend(4))
+    error.mockRestore()
   })
 })
 
@@ -467,7 +585,11 @@ describe('GET /u/:username/posts/:postId/opengraph-image.png', () => {
   })
 
   test('is not shadowed by the slug route', async () => {
-    const resolveDashboard = vi.fn(async () => ({ is_public: true, name: 'Posts' }))
+    const resolveDashboard = vi.fn(async () => ({
+      is_public: true,
+      name: 'Posts',
+      updated_at: '2026-10-01T08:00:00.000Z',
+    }))
     const { app, deps } = buildApp({ resolveDashboard, resolvePost: async () => publicPost() })
     await supertest(app).get(path)
     expect(resolveDashboard).not.toHaveBeenCalled()

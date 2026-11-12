@@ -39,6 +39,7 @@ import type { AnyMiddleware } from '../typed-router.ts'
 import {
   getFeedPostById,
   getLocations,
+  getPublicSharedDashboardBySlug,
   getTimeSeries,
   listUserNames,
   markActivityDetailSynced,
@@ -109,6 +110,7 @@ import { loadAvatarDataUri, loadChallengeBannerDataUri } from '../services/avata
 import { buildChartSvg } from '../services/charts/chart-svg.ts'
 import { buildRaceChartSvg } from '../services/charts/race-chart-svg.ts'
 import { buildScatterSvg } from '../services/charts/scatter-svg.ts'
+import { loadPublicDashboardChartWith } from '../services/dashboard-chart.ts'
 import { latestExerciseSession } from '../services/exercise-card.ts'
 import { resolveChallengeRaceByUrl, resolveStandingsChart } from '../services/feed-structured-challenge.ts'
 import { resolveExerciseTrendSeries } from '../services/feed-structured-exercise.ts'
@@ -117,6 +119,7 @@ import { readOfficialFeedSetting } from '../services/official-feed.ts'
 import { createOgImageRenderer } from '../services/og-image.ts'
 import { loadPublicPostChartWith, type PostChartDeps } from '../services/post-chart.ts'
 import { getUserTimezone } from '../services/settings.ts'
+import { resolveDashboardView } from '../services/shared-dashboard-data.ts'
 import { resolveSharedExerciseData } from '../services/shared-exercise-data.ts'
 import { createTemplateLoader } from '../services/web-template.ts'
 
@@ -335,6 +338,11 @@ export const mountRestRouters = ({
       latestExerciseSession: (username, exercise) => latestExerciseSession(username, exercise),
       loadAvatarDataUri,
       loadBannerDataUri: loadChallengeBannerDataUri,
+      loadDashboardChart: loadPublicDashboardChartWith({
+        getDashboard: getPublicSharedDashboardBySlug,
+        getTimezone: getUserTimezone,
+        resolveView: resolveDashboardView,
+      }),
       loadPostChart: loadPublicPostChartWith({ ...postChartDeps, getPost: getFeedPostById }),
       loadExerciseCard: async (username, exercise) => {
         const [data, timeZone] = await Promise.all([
