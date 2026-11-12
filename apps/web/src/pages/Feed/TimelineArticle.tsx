@@ -9,9 +9,9 @@
  * credentials to fetch more.
  *
  * Prose is the remote author's raw markdown, rendered through `renderRemoteMarkdown`
- * (the #910 XSS boundary, plus `<img>` forbidden) — a remote peer's markdown is
- * untrusted, so it can't smuggle a tracking pixel into the reader's timeline; the
- * post's images arrive only via its declared attachments.
+ * (the #910 XSS boundary, plus no `<img>` but the block's declared `images`) — a
+ * remote peer's markdown is untrusted, so it can't smuggle a tracking pixel into
+ * the reader's timeline through a picture its payload does not declare.
  */
 import type { FeedStructuredArticle, FeedStructuredArticleBlock } from '@aurboda/api-spec'
 
@@ -58,7 +58,10 @@ const TimelineArticleChart = ({ block }: { block: ChartBlock }) => {
 const TimelineArticleBlock = ({ block }: { block: FeedStructuredArticleBlock }) => {
   if (block.type === 'prose') {
     return (
-      <div class="article-prose" dangerouslySetInnerHTML={{ __html: renderRemoteMarkdown(block.markdown) }} />
+      <div
+        class="article-prose"
+        dangerouslySetInnerHTML={{ __html: renderRemoteMarkdown(block.markdown, block.images) }}
+      />
     )
   }
 

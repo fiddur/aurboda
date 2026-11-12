@@ -17,7 +17,7 @@ import sanitizeHtml from 'sanitize-html'
 import { articleBlockLabel } from '../article.ts'
 import { escapeXml } from '../charts/chart-svg.ts'
 import { articleBlockFigureSize, FIGURE_BAND_HEIGHT } from '../charts/figure-svg.ts'
-import { type NoteProseImage, renderNoteProse, renderProse } from './note-prose.ts'
+import { httpUrl, type NoteProseImage, renderNoteProse, renderProse } from './note-prose.ts'
 
 export { renderProse }
 
@@ -60,12 +60,6 @@ const IMAGE_MEDIA_TYPES: Record<string, string> = {
   jpg: 'image/jpeg',
   png: 'image/png',
   webp: 'image/webp',
-}
-
-const httpUrl = (src: string): URL | null => {
-  if (!URL.canParse(src)) return null
-  const url = new URL(src)
-  return url.protocol === 'http:' || url.protocol === 'https:' ? url : null
 }
 
 const mediaTypeOf = (url: URL): string | undefined => {

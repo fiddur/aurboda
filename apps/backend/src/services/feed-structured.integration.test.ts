@@ -353,6 +353,30 @@ describe('resolveStructuredPost — article posts', () => {
     expect(structured?.kind).toBe('article')
   })
 
+  test('a prose block declares the pictures its markdown embeds', async () => {
+    const user = getTestUser()
+    const url = `https://example.org/api/public/${user}/images/0b8a4c5e-2f1d-4a8e-9c3b-6d7e8f9a0b1c.webp`
+    const post = await createArticlePost(user, {
+      article: {
+        blocks: [
+          { markdown: `Before\n\n![My mat](${url})\n\nAfter`, type: 'prose' },
+          { markdown: 'Yoga without a picture', type: 'prose' },
+        ],
+        title: 'Yoga',
+      },
+      visibility: 'public',
+    })
+    const structured = await resolveStructuredPost(user, post.id)
+    if (structured?.kind !== 'article') throw new Error('expected an article payload')
+    expect(feedStructuredPostSchema.parse(structured)).toEqual(structured)
+    expect(structured.blocks[0]).toEqual({
+      images: [{ alt: 'My mat', url }],
+      markdown: `Before\n\n![My mat](${url})\n\nAfter`,
+      type: 'prose',
+    })
+    expect(structured.blocks[1]).not.toHaveProperty('images')
+  })
+
   test('omits a chart/correlation block whose window is invalid (start on or after end)', async () => {
     const user = getTestUser()
     const post = await createArticlePost(user, {

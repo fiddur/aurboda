@@ -98,6 +98,30 @@ const sanitizeNoteHtml = (html: string): string => sanitizeHtml(html, NOTE_SANIT
 export const renderProse = (markdown: string): string =>
   sanitizeArticleHtml(marked.parse(markdown, { async: false, breaks: true, gfm: true }))
 
+export const httpUrl = (src: string): URL | null => {
+  if (!URL.canParse(src)) return null
+  const url = new URL(src)
+  return url.protocol === 'http:' || url.protocol === 'https:' ? url : null
+}
+
+/**
+ * The http(s) pictures authored markdown embeds through image syntax, in document
+ * order, a repeated URL kept once. The same images the Note attaches as figures
+ * and the author's renderer draws, so a structured payload can declare them.
+ */
+export const declaredProseImages = (markdown: string): { alt: string; url: string }[] => {
+  const images: { alt: string; url: string }[] = []
+  const seen = new Set<string>()
+  marked.walkTokens(marked.lexer(markdown, { breaks: true, gfm: true }), (token) => {
+    if (token.type !== 'image') return
+    const { href, text } = token as Tokens.Image
+    if (httpUrl(href) == null || seen.has(href)) return
+    seen.add(href)
+    images.push({ alt: text, url: href })
+  })
+  return images
+}
+
 export interface NoteProseImage {
   src: string
   alt: string

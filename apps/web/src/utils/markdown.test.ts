@@ -44,6 +44,86 @@ describe('renderRemoteMarkdown', () => {
   })
 })
 
+describe('renderRemoteMarkdown with declared images', () => {
+  const mat = 'https://peer.example/api/public/alice/images/mat.webp'
+  const declared = [{ url: mat }]
+  const imgTags = (html: string): string[] => html.match(/<img[^>]*>/g) ?? []
+
+  it('keeps a declared picture with src, alt, lazy loading and no referrer', () => {
+    const html = renderRemoteMarkdown(`Before\n\n![My yoga mat](${mat})\n\nAfter`, declared)
+    const [img] = imgTags(html)
+    expect(imgTags(html)).toHaveLength(1)
+    expect(img).toContain(`src="${mat}"`)
+    expect(img).toContain('alt="My yoga mat"')
+    expect(img).toContain('loading="lazy"')
+    expect(img).toContain('referrerpolicy="no-referrer"')
+    expect(html).toContain('Before')
+    expect(html).toContain('After')
+  })
+
+  it('leaves no <img for an undeclared picture', () => {
+    const html = renderRemoteMarkdown(`![a](${mat}) ![b](https://tracker.example/b.gif)`, declared)
+    expect(imgTags(html)).toHaveLength(1)
+    expect(html).not.toContain('tracker.example')
+  })
+
+  it('keeps only src and alt on a raw <img> whose src is declared', () => {
+    const html = renderRemoteMarkdown(
+      `<img src="${mat}" alt="coffee" onerror="x" srcset="y" style="z" title="t" width="9" height="9" class="c">`,
+      declared,
+    )
+    const [img] = imgTags(html)
+    const attributes = [...img.matchAll(/\s([a-z-]+)=/g)].map((match) => match[1]).sort()
+    expect(attributes).toEqual(['alt', 'loading', 'referrerpolicy', 'src'])
+  })
+
+  it('does not keep a declared data: or javascript: URL', () => {
+    const data = 'data:image/png;base64,AAAA'
+    const script = 'javascript:alert(1)'
+    const html = renderRemoteMarkdown(`![a](${data}) <img src="${script}">`, [{ url: data }, { url: script }])
+    expect(html).not.toContain('<img')
+  })
+
+  it('does not keep a relative picture', () => {
+    expect(renderRemoteMarkdown('![a](/images/a.webp)', [{ url: '/images/a.webp' }])).not.toContain('<img')
+  })
+
+  it('matches a declared URL with a space or a non-ASCII character in its path', () => {
+    const spaced = 'https://peer.example/images/running shoes.webp'
+    const accented = 'https://peer.example/images/kaffe-på-morgonen.webp'
+    const html = renderRemoteMarkdown(`![a](<${spaced}>)\n\n![b](${accented})`, [
+      { url: spaced },
+      { url: accented },
+    ])
+    expect(imgTags(html)).toHaveLength(2)
+  })
+
+  it('drops every media tracker vector even with images declared', () => {
+    const html = renderRemoteMarkdown(
+      'text ![](https://tracker.example/a.gif)\n\n' +
+        '<div style="background-image:url(https://tracker.example/b.png)"></div>\n' +
+        '<video poster="https://tracker.example/c.gif"></video><svg><image href="https://tracker.example/d"/></svg>',
+      declared,
+    )
+    expect(html).not.toContain('tracker.example')
+    expect(html).not.toContain('<img')
+    expect(html).not.toContain('<video')
+    expect(html).not.toContain('poster')
+    expect(html).not.toContain('style=')
+    expect(html).not.toContain('<svg')
+    expect(html).toContain('text')
+  })
+
+  it('does not leak the image rule into a later call', () => {
+    renderRemoteMarkdown(`![a](${mat})`, declared)
+    expect(renderRemoteMarkdown(`![a](${mat})`)).not.toContain('<img')
+    const own = renderMarkdown(`![a](${mat}) [mine](https://example.com)`)
+    expect(own).not.toContain('loading=')
+    expect(own).not.toContain('nofollow')
+    expect(own).toContain('<img')
+  })
+})
+
 describe('renderMarkdown', () => {
   it('renders GFM markdown to HTML', () => {
     const html = renderMarkdown('**bold** and [a link](https://example.com)')

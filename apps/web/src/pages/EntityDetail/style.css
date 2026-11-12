@@ -847,6 +847,11 @@ a.btn-secondary {
   margin: 0.5rem 0 0.75rem;
 }
 
+.entity-description img {
+  max-width: 100%;
+  height: auto;
+}
+
 .entity-detail-page .loading,
 .entity-detail-page .error {
   text-align: center;

@@ -182,15 +182,35 @@ export const feedStructuredActivitySchema = feedStructuredSchema
 
 export type FeedStructuredActivity = z.infer<typeof feedStructuredActivitySchema>
 
+export const feedStructuredArticleProseImageSchema = z
+  .object({
+    alt: z.string().meta({ description: "The picture's alt text, '' when the markdown gives none" }),
+    url: z.string().url().meta({ description: "The picture's http(s) URL, as the markdown gives it" }),
+  })
+  .meta({
+    description: "An http(s) picture embedded in a prose block's markdown",
+    id: 'FeedStructuredArticleProseImage',
+  })
+
+export type FeedStructuredArticleProseImage = z.infer<typeof feedStructuredArticleProseImageSchema>
+
 /**
  * A resolved prose block: the author's raw markdown, unmodified. Rendered
  * through the receiver's own sanitising markdown renderer (the same `#910`
  * boundary the owner's web app uses for its own posts) rather than pre-rendered
  * HTML, so a receiving Aurboda peer controls its own sanitisation rather than
- * trusting a remote instance's HTML.
+ * trusting a remote instance's HTML. The block declares the pictures its
+ * markdown embeds, and a receiver draws only a declared one inline.
  */
 export const feedStructuredArticleProseBlockSchema = z
-  .object({ markdown: z.string().meta({ description: 'Raw authored markdown' }), type: z.literal('prose') })
+  .object({
+    images: z.array(feedStructuredArticleProseImageSchema).optional().meta({
+      description:
+        'The http(s) pictures the markdown embeds, in document order. A receiver draws an inline picture only when its URL is declared here.',
+    }),
+    markdown: z.string().meta({ description: 'Raw authored markdown' }),
+    type: z.literal('prose'),
+  })
   .meta({ description: 'A resolved prose block', id: 'FeedStructuredArticleProseBlock' })
 
 export type FeedStructuredArticleProseBlock = z.infer<typeof feedStructuredArticleProseBlockSchema>

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { renderNoteProse, renderProse } from './note-prose.ts'
+import { declaredProseImages, renderNoteProse, renderProse } from './note-prose.ts'
 
 describe('renderNoteProse tables', () => {
   test('a table becomes one paragraph of labelled lines', () => {
@@ -122,5 +122,48 @@ describe('renderNoteProse boundary', () => {
     ]) {
       expect(renderNoteProse(md)).toBe(renderProse(md))
     }
+  })
+})
+
+describe('declaredProseImages', () => {
+  const fixture = [
+    '![Yoga mat](https://example.org/a.webp) in a paragraph',
+    '',
+    '- ![Coffee cup](https://example.org/b.png) in a list',
+    '',
+    '| Run | Picture |',
+    '|---|---|',
+    '| Running | ![](http://example.org/c.jpg) |',
+    '',
+    '[![Linked](https://example.org/d.webp)](https://example.org/page)',
+    '',
+    '![Relative](/images/e.webp) ![Inline data](data:image/png;base64,AAAA)',
+    '',
+    '![Again](https://example.org/a.webp)',
+  ].join('\n')
+
+  test('collects http(s) images in document order, once each', () => {
+    expect(declaredProseImages(fixture)).toEqual([
+      { alt: 'Yoga mat', url: 'https://example.org/a.webp' },
+      { alt: 'Coffee cup', url: 'https://example.org/b.png' },
+      { alt: '', url: 'http://example.org/c.jpg' },
+      { alt: 'Linked', url: 'https://example.org/d.webp' },
+    ])
+  })
+
+  test('no image declares nothing', () => {
+    expect(declaredProseImages('Just **meditation** notes, [a link](https://example.org).')).toEqual([])
+  })
+
+  test('matches the http(s) images the Note renders', () => {
+    const rendered: { alt: string; url: string }[] = []
+    renderNoteProse(fixture, {
+      image: ({ alt, src }) => {
+        const isNew = /^https?:/.test(src) && !rendered.some((image) => image.url === src)
+        if (isNew) rendered.push({ alt, url: src })
+        return ''
+      },
+    })
+    expect(declaredProseImages(fixture)).toEqual(rendered)
   })
 })
