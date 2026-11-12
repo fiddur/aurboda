@@ -27,6 +27,7 @@ import {
 import { officialFeedTitle } from '../services/article-atom.ts'
 import { cardMembers, describeChallenge, type ResolvedChallenge } from '../services/challenge-card.ts'
 import { feedActivityHeadline } from '../services/feed.ts'
+import { isOfficialFeedOn } from '../services/official-feed.ts'
 import { publicPeriodFor } from '../services/period-lock.ts'
 import { PeriodError } from '../services/periods.ts'
 import { type ResolvedPost, resolvePostWith } from '../services/post-card.ts'
@@ -272,7 +273,7 @@ export const createShareHtmlRouter = (deps: ShareHtmlDeps): Router => {
   router.get('/blog', async (_req, res) => {
     const url = buildOfficialFeedUrl(webHost)
     const setting = readOfficialFeed ? await readOfficialFeed().catch(() => null) : null
-    if (setting && setting.users.length > 0) {
+    if (setting && isOfficialFeedOn(setting)) {
       const meta = buildOfficialFeedShareMeta({
         feedUrl: buildOfficialFeedAtomUrl(apiBaseUrl),
         setting,

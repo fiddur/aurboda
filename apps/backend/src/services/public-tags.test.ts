@@ -3,6 +3,7 @@ import type { Context, Federation } from '@fedify/fedify'
 import { Follow, Hashtag, Note, Person, Undo } from '@fedify/fedify/vocab'
 import { describe, expect, test, vi } from 'vitest'
 
+import type { ServerSettings } from './central-db.ts'
 import type {
   InstanceTagFollowRecord,
   PublicTagPostInput,
@@ -12,6 +13,7 @@ import type {
 import { INSTANCE_ACTOR_ID } from './activitypub/instance-actor.ts'
 import { dateToTemporalInstant } from './activitypub/temporal-interop.ts'
 import {
+  applyInstanceTagFollowsAtStartup,
   applyPublicTagPages,
   createLocalPublicTagPosts,
   createPublicTagActions,
@@ -19,6 +21,7 @@ import {
   createPublicTagIngest,
   normalizePublicTagPages,
   publicTagFollowStates,
+  readInstanceFollowedTags,
   PUBLIC_TAG_PAGE_SIZE,
   type PublicTagActionsDeps,
   serializePublicTagPost,
@@ -123,6 +126,74 @@ describe('normalizePublicTagPages', () => {
       'running',
     ])
     expect(normalizePublicTagPages(Array.from({ length: 30 }, (_, i) => `t${i}`))).toHaveLength(20)
+  })
+})
+
+const settingsOf = (values: Partial<ServerSettings>) => ({
+  getServerSetting: async <K extends keyof ServerSettings>(key: K) => values[key] ?? null,
+})
+
+describe('readInstanceFollowedTags', () => {
+  test('is the public tag pages’, plus the official feed’s tags when it lists remote authors', async () => {
+    const feed = { remote_authors: ['fiddur@aurboda.net'], tags: ['aurbodablog', 'running'], users: [] }
+    expect(
+      await readInstanceFollowedTags(
+        settingsOf({ official_feed: feed, public_tag_pages: ['running', 'qs'] }),
+      ),
+    ).toEqual(['running', 'qs', 'aurbodablog'])
+  })
+
+  test('leaves out the official feed’s tags when it lists only local users', async () => {
+    const feed = { remote_authors: [], tags: ['aurbodablog'], users: ['fiddur'] }
+    expect(
+      await readInstanceFollowedTags(settingsOf({ official_feed: feed, public_tag_pages: ['qs'] })),
+    ).toEqual(['qs'])
+  })
+
+  test('keeps every tag of 20 pages and a 20-tag feed', async () => {
+    const pages = Array.from({ length: 20 }, (_, i) => `page${i}`)
+    const tags = Array.from({ length: 20 }, (_, i) => `feed${i}`)
+    const feed = { remote_authors: ['bob@peer.example'], tags, users: [] }
+    expect(
+      await readInstanceFollowedTags(settingsOf({ official_feed: feed, public_tag_pages: pages })),
+    ).toEqual([...pages, ...tags])
+  })
+})
+
+describe('applyInstanceTagFollowsAtStartup', () => {
+  test('applies the followed tags and says nothing when every tag actor resolved', async () => {
+    const apply = vi.fn(async (tags: string[]) => ({ followed: tags, unresolved: [] }))
+    const log = vi.fn()
+    await applyInstanceTagFollowsAtStartup({ apply, log, readTags: async () => ['aurbodablog'] })
+    expect(apply).toHaveBeenCalledWith(['aurbodablog'])
+    expect(log).not.toHaveBeenCalled()
+  })
+
+  test('logs one line for unresolved tag actors, a failure or a timeout, and never throws', async () => {
+    const log = vi.fn()
+    await applyInstanceTagFollowsAtStartup({
+      apply: async () => ({ followed: [], unresolved: ['aurbodablog'] }),
+      log,
+      readTags: async () => ['aurbodablog'],
+    })
+    await applyInstanceTagFollowsAtStartup({
+      apply: async () => {
+        throw new Error('fetch failed')
+      },
+      log,
+      readTags: async () => ['aurbodablog'],
+    })
+    await applyInstanceTagFollowsAtStartup({
+      apply: () => new Promise(() => {}),
+      log,
+      readTags: async () => ['aurbodablog'],
+      timeoutMs: 5,
+    })
+    expect(log.mock.calls).toEqual([
+      ['⚠️ Tag follows: could not resolve the tag actor of #aurbodablog'],
+      ['⚠️ Tag follows not applied at startup: fetch failed'],
+      ['⚠️ Tag follows not applied at startup: timeout'],
+    ])
   })
 })
 

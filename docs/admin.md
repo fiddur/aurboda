@@ -288,7 +288,10 @@ badge per tag (`public_tag_follows`): **accepted**, **pending**, or **unresolved
 moderation of tag pages yet beyond removing the tag; a follow-up issue tracks hiding posts and
 blocking actors and domains. Posts are kept for
 `public_tag_retention_days` (1–365, default 30) by publication time; a nightly job (`23 3 * * *`)
-drops older ones and the ones that carry no configured tag any more. This server's own public
+re-applies the follows, then drops older ones (but the official feed's remote posts) and the ones
+that carry no followed tag any more. The instance actor also follows the
+[official feed](features/feed.md#official-feed)'s tags while it lists authors on other servers;
+those tags get no page. This server's own public
 posts are added as they are published from then on: posts published before a tag was configured
 are not backfilled. `GET /status` lists the tags (`public_tag_pages`) so the front page, `/blog`
 and the logged-out web can link the pages. See

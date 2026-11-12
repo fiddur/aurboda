@@ -41,6 +41,7 @@ import {
 } from '../services/official-feed.ts'
 import {
   normalizePublicTagPages,
+  readInstanceFollowedTags,
   readPublicTagFollows,
   readPublicTagPages,
   readPublicTagRetentionDays,
@@ -189,10 +190,17 @@ export const createAdminRouter = (
       const legacyFeed =
         blog_username === undefined
           ? undefined
-          : { tags: [], users: blog_username == null ? [] : [blog_username] }
+          : { remote_authors: [], tags: [], users: blog_username == null ? [] : [blog_username] }
       const feedInput = official_feed ?? legacyFeed
       if (feedInput) {
-        const feed = normalizeOfficialFeedSetting(feedInput)
+        const feed = normalizeOfficialFeedSetting(feedInput, webHost)
+        if (feed.remote_authors.length > 0 && feed.tags.length === 0) {
+          return res.status(400).json({
+            error:
+              'Authors on other servers need at least one tag: their posts arrive through the tag follows',
+            success: false,
+          })
+        }
         const exists = await Promise.all(feed.users.map(userExists))
         const unknown = feed.users.filter((_, i) => !exists[i])
         if (unknown.length > 0) {
@@ -256,8 +264,8 @@ export const createAdminRouter = (
       if (public_tag_pages !== undefined) {
         await centralDb.setServerSetting('public_tag_pages', normalizePublicTagPages(public_tag_pages))
       }
-      if (public_tag_pages !== undefined || tag_actor_host !== undefined) {
-        await publicTags?.apply(await readPublicTagPages(centralDb)).catch((error: unknown) => {
+      if (public_tag_pages !== undefined || tag_actor_host !== undefined || feedInput) {
+        await publicTags?.apply(await readInstanceFollowedTags(centralDb)).catch((error: unknown) => {
           console.error('⚠️ Public tag page follows failed:', error)
         })
       }

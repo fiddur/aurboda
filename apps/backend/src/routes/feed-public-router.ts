@@ -16,7 +16,7 @@ import {
   type FeedPostsResponse,
   type FeedPostStructuredResponse,
   type FeedStructuredPost,
-  type OfficialFeedPost,
+  type OfficialFeedEntry,
   type OfficialFeedQuery,
   officialFeedQuerySchema,
   type OfficialFeedResponse,
@@ -33,6 +33,7 @@ import {
   normalizeTag,
 } from '@aurboda/api-spec'
 
+import type { PublicTagPostRecord, PublicTagsApi } from '../services/central-public-tags.ts'
 import type { PublicTagActions } from '../services/public-tags.ts'
 
 import { isValidUsername } from '../api/auth-routes.ts'
@@ -53,6 +54,7 @@ import {
   buildArticlesAtom,
   buildOfficialFeedAtom,
   buildTagFeedAtom,
+  type OfficialFeedAtomEntry,
   postEntryHtml,
   postEntryTitle,
 } from '../services/article-atom.ts'
@@ -61,7 +63,13 @@ import { resolvePublicSeries } from '../services/feed-series.ts'
 import { loadAuthorizedStructuredPost, resolveStructuredContent } from '../services/feed-structured.ts'
 import { serializeFeedPost } from '../services/feed.ts'
 import { decodeKeysetCursor, encodeKeysetCursor, type KeysetCursor } from '../services/keyset-cursor.ts'
-import { mergeOfficialFeedPage, OFFICIAL_FEED_PAGE_SIZE } from '../services/official-feed.ts'
+import {
+  isOfficialFeedOn,
+  mergeOfficialFeedPage,
+  OFFICIAL_FEED_PAGE_SIZE,
+  officialRemoteHandles,
+} from '../services/official-feed.ts'
+import { serializePublicTagPost } from '../services/public-tags.ts'
 import { queryMetricsBucketed } from '../services/queries/index.ts'
 import { getSettings, type UserSettings } from '../services/settings.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
@@ -86,9 +94,14 @@ export interface FeedPublicRouterDeps {
   renderableBlocks?: (user: string, postId: string, article: ArticleContent) => Promise<ReadonlySet<number>>
   /** The instance's official feed setting; absent, the official feed is off. */
   readOfficialFeed?: () => Promise<OfficialFeedSetting>
+  /** The official feed's posts by authors on other servers; absent, only local users' are listed. */
+  listOfficialRemotePosts?: PublicTagsApi['listOfficialRemotePosts']
   /** The public tag pages; absent, every tag 404s. */
   publicTags?: Pick<PublicTagActions, 'latest' | 'page'>
 }
+
+const localUsernames = (rows: readonly ({ origin: 'local'; username: string } | { origin: 'remote' })[]) =>
+  rows.flatMap((entry) => (entry.origin === 'local' ? [entry.username] : []))
 
 /**
  * The Atom memo's key: every listed entry's id and `updated_at`, so an edit, a
@@ -101,6 +114,7 @@ const atomMemoKey = (scope: string, rows: { id: string; updated_at: Date }[], no
 
 export const createFeedPublicRouter = ({
   apiBaseUrl,
+  listOfficialRemotePosts,
   publicTags,
   readOfficialFeed,
   renderableBlocks = renderableArticleBlocks,
@@ -151,8 +165,14 @@ export const createFeedPublicRouter = ({
     console.warn(`⚠️ Official feed: no database for listed user ${username}, leaving them out`)
   }
 
-  const officialFeedPage = async (setting: OfficialFeedSetting, limit: number, before?: KeysetCursor) =>
-    mergeOfficialFeedPage({
+  const officialFeedPage = async (setting: OfficialFeedSetting, limit: number, before?: KeysetCursor) => {
+    const handles = officialRemoteHandles(setting)
+    const fetchRemote =
+      listOfficialRemotePosts && handles.length > 0 && setting.tags.length > 0
+        ? (remoteLimit: number) => listOfficialRemotePosts(handles, setting.tags, remoteLimit, before)
+        : undefined
+    return mergeOfficialFeedPage<FeedPostPageRow, PublicTagPostRecord>({
+      fetchRemote,
       fetchUser: (username, userLimit) =>
         listPublicFeedPostsKeyset(username, userLimit, before && { created_at: before.ts, id: before.id }, {
           anyTags: setting.tags,
@@ -163,6 +183,7 @@ export const createFeedPublicRouter = ({
       onMissingUser: onMissingOfficialUser,
       users: setting.users,
     })
+  }
 
   const settingsOf = async (usernames: string[]): Promise<Map<string, UserSettings | null>> =>
     new Map(
@@ -175,13 +196,15 @@ export const createFeedPublicRouter = ({
 
   const enabledOfficialFeed = async (): Promise<OfficialFeedSetting | null> => {
     const setting = readOfficialFeed ? await readOfficialFeed() : null
-    return setting && setting.users.length > 0 ? setting : null
+    return setting && isOfficialFeedOn(setting) ? setting : null
   }
 
   // The instance's official feed (its blog): `public` posts — never `unlisted`,
-  // which an instance-wide listing would list — by the admin-chosen users that
-  // carry one of the chosen tags, newest first across their databases. Posts
-  // serialise as on the author's profile listing, sharing its structured cache.
+  // which an instance-wide listing would list — by the admin-chosen users and
+  // remote authors that carry one of the chosen tags, newest first across their
+  // databases and the central tag posts. Local posts serialise as on the
+  // author's profile listing, sharing its structured cache; remote ones as on a
+  // public tag page.
   // `no-store` for the profile listing's revocability reason. No MCP twin: a
   // public read of what the profiles already serve.
   router.get<Record<string, never>, OfficialFeedResponse, unknown, OfficialFeedQuery>(
@@ -197,19 +220,23 @@ export const createFeedPublicRouter = ({
         OFFICIAL_FEED_PAGE_SIZE,
         decodeKeysetCursor(req.query.cursor),
       )
-      const settingsByUser = await settingsOf(page.rows.map((r) => r.username))
+      const settingsByUser = await settingsOf(localUsernames(page.rows))
       const posts = await Promise.all(
-        page.rows.map(
-          async ({ row, username }): Promise<OfficialFeedPost> => ({
+        page.rows.map(async (entry): Promise<OfficialFeedEntry> => {
+          if (entry.origin === 'remote') return { ...serializePublicTagPost(entry.row), origin: 'remote' }
+          const { row, username } = entry
+          return {
             ...(await serializePublicPost(username, row, settingsByUser.get(username) ?? null)),
             author_username: username,
-          }),
-        ),
+            origin: 'local',
+          }
+        }),
       )
       res.setHeader('Cache-Control', 'no-store')
       res.json({
         next_cursor: page.next ? encodeKeysetCursor(page.next.cursor_ts, page.next.id) : null,
         posts,
+        remote_authors: setting.remote_authors,
         success: true,
         tags: setting.tags,
         users: setting.users,
@@ -218,23 +245,26 @@ export const createFeedPublicRouter = ({
   )
 
   // The official feed's Atom document: its newest entries, every post kind, an
-  // article's body as on the per-user articles feed and any other post's as it
-  // federates. Cached briefly like the articles feed; feed readers poll.
+  // article's body as on the per-user articles feed, any other local post's as
+  // it federates, and a remote post's as received. Cached briefly like the
+  // articles feed; feed readers poll.
   router.get<Record<string, never>, string>('/public/official-feed.atom', async (_req, res) => {
     const setting = await enabledOfficialFeed()
     if (!setting) {
       return res.status(404).type('text/plain').send('Not found')
     }
     const { rows } = await officialFeedPage(setting, ATOM_ENTRY_LIMIT)
-    const memoRows = rows.map(({ row, username }) => ({
-      id: `${username}/${row.id}`,
-      updated_at: row.updated_at,
+    const memoRows = rows.map((entry) => ({
+      id: entry.origin === 'local' ? `${entry.username}/${entry.row.id}` : `@remote/${entry.row.id}`,
+      updated_at: entry.row.updated_at,
     }))
     // `#` is never in a username, so this scope can't meet a user's articles memo.
     const xml = await atomCache(atomMemoKey('#official', memoRows, Date.now()), async () => {
-      const settingsByUser = await settingsOf(rows.map((r) => r.username))
+      const settingsByUser = await settingsOf(localUsernames(rows))
       const entries = await Promise.all(
-        rows.map(async ({ row, username }) => {
+        rows.map(async (entry): Promise<OfficialFeedAtomEntry> => {
+          if (entry.origin === 'remote') return { origin: 'remote', ...entry.row }
+          const { row, username } = entry
           const post = await serializeFeedPost(username, row, {
             settings: settingsByUser.get(username) ?? null,
             webHost,
@@ -251,6 +281,7 @@ export const createFeedPublicRouter = ({
             created_at: row.created_at,
             html,
             id: row.id,
+            origin: 'local',
             title: postEntryTitle(post),
             updated_at: row.updated_at,
             username,

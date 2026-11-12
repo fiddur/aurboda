@@ -90,7 +90,7 @@ describe('createAccountDeleter', () => {
     expect(await deleteAccount('alice', { actor: 'root1', confirmUsername: 'alice' })).toEqual({ ok: true })
     expect(calls.slice(-3)).toEqual([
       'central(alice)',
-      'setting(official_feed,{"tags":["qs"],"users":["root1"]})',
+      'setting(official_feed,{"remote_authors":[],"tags":["qs"],"users":["root1"]})',
       'setting(blog_username,)',
     ])
   })
@@ -99,7 +99,7 @@ describe('createAccountDeleter', () => {
     const { calls, deleteAccount } = setup({ blogUsername: 'alice' })
     expect(await deleteAccount('alice', { actor: 'root1', confirmUsername: 'alice' })).toEqual({ ok: true })
     expect(calls.slice(-2)).toEqual([
-      'setting(official_feed,{"tags":[],"users":[]})',
+      'setting(official_feed,{"remote_authors":[],"tags":[],"users":[]})',
       'setting(blog_username,)',
     ])
   })
@@ -120,7 +120,7 @@ describe('createAccountDeleter', () => {
       'deleted(ghost)',
       'drop(ghost)',
       'central(ghost)',
-      'setting(official_feed,{"tags":[],"users":[]})',
+      'setting(official_feed,{"remote_authors":[],"tags":[],"users":[]})',
       'setting(blog_username,)',
     ])
   })
