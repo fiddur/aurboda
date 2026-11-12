@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import * as db from '../../db/index.ts'
 import * as locations from '../locations.ts'
+import { getActivityImpact } from './activity-impact.ts'
 import { getHrvActivitiesCorrelation } from './hrv-activities.ts'
 
 vi.mock('../../db', () => ({
@@ -173,5 +174,174 @@ describe('getHrvActivitiesCorrelation', () => {
     expect(syncProvider.syncOuraIfNeeded).toHaveBeenCalledWith('testuser', 'tags')
     expect(syncProvider.syncOuraIfNeeded).toHaveBeenCalledWith('testuser', 'sessions')
     expect(syncProvider.syncRescueTimeIfNeeded).toHaveBeenCalledWith('testuser')
+  })
+
+  const BIN_MS = 5 * 60_000
+  const alignedBase = () => new Date(Math.floor(Date.now() / BIN_MS) * BIN_MS - 2 * 86_400_000)
+  const at = (base: Date, minutes: number) => new Date(base.getTime() + minutes * 60_000)
+  const noContext = () => {
+    vi.mocked(db.getProductivity).mockResolvedValue([])
+    vi.mocked(locations.getPlaceVisits).mockResolvedValue([])
+  }
+
+  test('echoes the clamped window and returns effects on rows', async () => {
+    const base = alignedBase()
+    noContext()
+    vi.mocked(db.getTimeSeries).mockImplementation(async (_u: string, metric: string) =>
+      metric === 'stress_level'
+        ? ([
+            [at(base, -20), 50],
+            [at(base, 40), 30],
+          ] as [Date, number][])
+        : [],
+    )
+    vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
+      { activity_type: 'meditation', end_time: at(base, 20), source: 'manual' as const, start_time: base },
+    ])
+
+    const result = await getHrvActivitiesCorrelation('testuser', 7, undefined, 'hrv_rmssd', 45)
+    expect(result.window_minutes).toBe(45)
+    const row = result.correlations.activities[0]
+    expect(row.stress_effect).toMatchObject({
+      after_mean: 30,
+      before_mean: 50,
+      change: -20,
+      paired_occurrences: 1,
+    })
+    expect(row.hrv_effect.paired_occurrences).toBe(0)
+    expect(row.hr_effect.change).toBeNull()
+
+    expect((await getHrvActivitiesCorrelation('testuser', 7)).window_minutes).toBe(30)
+    expect((await getHrvActivitiesCorrelation('testuser', 7, undefined, 'hrv_rmssd', 2)).window_minutes).toBe(
+      10,
+    )
+  })
+
+  test('the baseline is time-weighted, so a dense burst does not dominate it', async () => {
+    const base = alignedBase()
+    noContext()
+    vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([])
+    const burst = Array.from(
+      { length: 600 },
+      (_, i) => [new Date(base.getTime() + i * 1000), 100] as [Date, number],
+    )
+    const sparse = Array.from({ length: 8 }, (_, i) => [at(base, 60 + i * 30), 50] as [Date, number])
+    vi.mocked(db.getTimeSeries).mockImplementation(async (_u: string, metric: string) =>
+      metric === 'heart_rate' ? [...burst, ...sparse] : [],
+    )
+
+    const result = await getHrvActivitiesCorrelation('testuser', 7)
+    expect(result.baseline.mean_hr).toBe(60)
+  })
+
+  test('a point activity covers five minutes', async () => {
+    const base = alignedBase()
+    noContext()
+    vi.mocked(db.getTimeSeries).mockImplementation(async (_u: string, metric: string) =>
+      metric === 'heart_rate'
+        ? ([
+            [at(base, 2), 70],
+            [at(base, 20), 90],
+          ] as [Date, number][])
+        : [],
+    )
+    vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
+      { activity_type: 'coffee', source: 'manual' as const, start_time: base },
+    ])
+
+    const row = (await getHrvActivitiesCorrelation('testuser', 7)).correlations.activities[0]
+    expect(row.mean_hr).toBe(70)
+    expect(row.sample_minutes).toBe(5)
+    expect(row.avg_duration_min).toBeUndefined()
+    expect(row.occurrences).toBe(1)
+  })
+
+  test('the activity row and the exact impact agree', async () => {
+    const base = alignedBase()
+    noContext()
+    const starts = [0, 180, 185, 400, 700, 1000]
+    vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
+      ...starts.map((m, i) => ({
+        activity_type: 'running',
+        end_time: at(base, m + 30),
+        source: i % 2 === 0 ? ('garmin' as const) : ('manual' as const),
+        start_time: at(base, m),
+      })),
+      {
+        activity_type: 'running_treadmill',
+        end_time: at(base, 560),
+        source: 'manual' as const,
+        start_time: at(base, 520),
+      },
+    ])
+    const points = (offset: number, scale: number) =>
+      Array.from(
+        { length: 300 },
+        (_, i) => [at(base, i * 4 - 60), offset + ((i * scale) % 17)] as [Date, number],
+      )
+    vi.mocked(db.getTimeSeries).mockImplementation(async (_u: string, metric: string) =>
+      metric === 'heart_rate' ? points(60, 7) : metric === 'stress_level' ? points(20, 5) : points(40, 3),
+    )
+
+    const row = (await getHrvActivitiesCorrelation('testuser', 30)).correlations.activities.find(
+      (a) => a.activity_type === 'running',
+    )!
+    const impact = await getActivityImpact(
+      'testuser',
+      'running',
+      'activity_type',
+      30,
+      30,
+      undefined,
+      undefined,
+      undefined,
+      'exact',
+    )
+
+    expect(row.occurrences).toBe(impact.occurrences)
+    expect(row.occurrences).toBe(5)
+    expect(row.stress_effect).toEqual(impact.stress_effect)
+    expect(row.hr_effect).toEqual(impact.hr_effect)
+    expect(row.hrv_effect).toEqual(impact.hrv_effect)
+    expect(row.mean_stress).toBe(impact.stress_timeline.during.mean)
+    expect(impact.stress_effect.paired_occurrences).toBeGreaterThan(0)
+  })
+
+  test('a sample before the period but inside the window feeds the effect, not the baseline', async () => {
+    const periodStart = new Date()
+    periodStart.setDate(periodStart.getDate() - 7)
+    periodStart.setHours(0, 0, 0, 0)
+    noContext()
+    vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
+      {
+        activity_type: 'yoga',
+        end_time: at(periodStart, 30),
+        source: 'manual' as const,
+        start_time: at(periodStart, 10),
+      },
+    ])
+    vi.mocked(db.getTimeSeries).mockImplementation(async (_u: string, metric: string) =>
+      metric === 'heart_rate'
+        ? ([
+            [at(periodStart, -15), 80],
+            [at(periodStart, 45), 60],
+          ] as [Date, number][])
+        : [],
+    )
+
+    const result = await getHrvActivitiesCorrelation('testuser', 7)
+
+    expect(db.getTimeSeries).toHaveBeenCalledWith(
+      'testuser',
+      'heart_rate',
+      at(periodStart, -30),
+      expect.any(Date),
+    )
+    expect(result.baseline.mean_hr).toBe(60)
+    expect(result.correlations.activities[0].hr_effect).toMatchObject({
+      after_mean: 60,
+      before_mean: 80,
+      paired_occurrences: 1,
+    })
   })
 })

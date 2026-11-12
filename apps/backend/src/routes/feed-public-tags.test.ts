@@ -90,3 +90,63 @@ describe('GET /public/tags/:tag.atom', () => {
     expect((await app({}).get('/public/tags/aurboda.atom')).status).toBe(418)
   })
 })
+
+describe('a remote-only official feed', () => {
+  const listOfficialRemotePosts = vi.fn(async () => [record])
+  const feedApp = (remote_authors: string[] = ['bob@peer.example']) =>
+    supertest(
+      express().use(
+        createFeedPublicRouter({
+          apiBaseUrl: 'https://aurboda.example/api',
+          listOfficialRemotePosts,
+          readOfficialFeed: async () => ({ remote_authors, tags: ['aurboda'], users: [] }),
+          webHost: 'https://aurboda.example',
+        }),
+      ),
+    )
+
+  test('is on, listing the remote authors’ posts as a public tag page shows them', async () => {
+    listOfficialRemotePosts.mockClear()
+    const res = await feedApp().get('/public/official-feed')
+    expect(res.status).toBe(200)
+    expect(res.body).toMatchObject({
+      next_cursor: null,
+      remote_authors: ['bob@peer.example'],
+      success: true,
+      tags: ['aurboda'],
+      users: [],
+    })
+    expect(res.body.posts).toEqual([
+      {
+        actor_uri: 'https://peer.example/users/bob',
+        avatar_url: null,
+        content: '<p>Hello #aurboda</p>',
+        display_name: 'Bob',
+        handle: '@bob@peer.example',
+        id: record.id,
+        images: record.images,
+        object_uri: 'https://peer.example/notes/1',
+        origin: 'remote',
+        published_at: '2026-11-01T10:00:00.000Z',
+        received_at: '2026-11-02T00:00:00.000Z',
+        tags: ['aurboda'],
+        url: 'https://peer.example/@bob/1',
+      },
+    ])
+    expect(listOfficialRemotePosts).toHaveBeenCalledWith(['@bob@peer.example'], ['aurboda'], 21, undefined)
+  })
+
+  test('serves the remote posts as Atom entries linking their originals', async () => {
+    const res = await feedApp().get('/public/official-feed.atom')
+    expect(res.status).toBe(200)
+    expect(res.text).toContain('<title type="text">aurboda.example blog</title>')
+    expect(res.text).toContain('<id>https://peer.example/notes/1</id>')
+    expect(res.text).toContain('href="https://peer.example/@bob/1"')
+    expect(res.text).toContain('<title type="text">Hello #aurboda</title>')
+    expect(res.text).toContain('<author><name>Bob</name><uri>https://peer.example/users/bob</uri></author>')
+  })
+
+  test('is off with neither users nor remote authors', async () => {
+    expect((await feedApp([]).get('/public/official-feed')).status).toBe(404)
+  })
+})

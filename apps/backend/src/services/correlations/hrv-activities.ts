@@ -1,9 +1,13 @@
 import type { HrvContextMetric } from '@aurboda/api-spec'
 
+import type { Activity, ProductivityRecord } from '../../db/types.ts'
+import type { PlaceVisit } from '../locations.ts'
 import type { SyncProvider } from '../queries/index.ts'
 import type {
   ActivityCorrelation,
   HrvActivitiesResult,
+  HrvStats,
+  HrvStatsWithDelta,
   LocationCorrelation,
   ProductivityCorrelation,
 } from './types.ts'
@@ -12,78 +16,72 @@ import { getAllActivitiesInRange, getProductivity, getTimeSeries } from '../../d
 import { pushAll } from '../../utils.ts'
 import { getPlaceVisits } from '../locations.ts'
 import { triggerCorrelationSyncs } from './background-sync.ts'
+import {
+  activityInterval,
+  binMetricSeries,
+  clampWindowMinutes,
+  extendByWindow,
+  type Interval,
+  locationKey,
+  mergeIntoSessions,
+  type MetricKey,
+  type MetricSeries,
+  productivityCategoryKey,
+  summarizeImpact,
+  valuesBetween,
+} from './impact.ts'
 import { addBaselineDelta, calculateHrvStats, getDataInRange, pearsonCorrelation } from './utils.ts'
 
-// eslint-disable-next-line complexity -- TODO: refactor
-export async function getHrvActivitiesCorrelation(
-  user: string,
-  periodDays: number = 30,
-  sync?: SyncProvider,
-  contextMetric: HrvContextMetric = 'hrv_rmssd',
-): Promise<HrvActivitiesResult> {
-  const end = new Date()
-  end.setHours(23, 59, 59, 999)
-  const start = new Date()
-  start.setDate(start.getDate() - periodDays)
-  start.setHours(0, 0, 0, 0)
+interface GroupContext {
+  series: MetricSeries
+  windowMinutes: number
+  baseline: HrvStats
+}
 
-  // Freshness syncs run in the background — never block the (retrospective)
-  // analysis on a slow external sync, which could take minutes (see
-  // background-sync.ts). Data is fresh for the next request.
-  triggerCorrelationSyncs(sync, user)
+const groupStats = (sessions: Interval[], ctx: GroupContext, sampleMinutes: number): HrvStatsWithDelta => {
+  const { effects, timeline } = summarizeImpact(sessions, ctx.series, ctx.windowMinutes)
+  const stats: HrvStats = {
+    mean_hr: timeline.hr.during.mean,
+    mean_hrv: timeline.hrv.during.mean,
+    mean_stress: timeline.stress.during.mean,
+    sample_count: timeline.hrv.during.sample_count,
+    sample_minutes: Math.round(sampleMinutes),
+    stddev_hr: timeline.hr.during.stddev,
+    stddev_hrv: timeline.hrv.during.stddev,
+    stddev_stress: timeline.stress.during.stddev,
+  }
+  return {
+    ...addBaselineDelta(stats, ctx.baseline),
+    hr_effect: effects.hr,
+    hrv_effect: effects.hrv,
+    stress_effect: effects.stress,
+  }
+}
 
-  const [hrvData, hrData, stressData, productivity, locations, activities] = await Promise.all([
-    getTimeSeries(user, 'hrv_rmssd', start, end),
-    getTimeSeries(user, 'heart_rate', start, end),
-    getTimeSeries(user, 'stress_level', start, end),
-    getProductivity(user, start, end),
-    getPlaceVisits(user, start, end),
-    getAllActivitiesInRange(user, start, end),
-  ])
+const sessionMinutes = (sessions: Interval[]): number =>
+  sessions.reduce((sum, { end, start }) => sum + (end - start) / 60_000, 0)
 
-  // The series the productivity correlation is computed against. HRV is the
-  // default, but heart rate / stress are denser when continuous HRV is sparse.
-  const contextData =
-    contextMetric === 'heart_rate' ? hrData : contextMetric === 'stress_level' ? stressData : hrvData
-
-  const baselineHrvValues = hrvData.map(([, v]) => v)
-  const baselineHrValues = hrData.map(([, v]) => v)
-  const baselineStressValues = stressData.map(([, v]) => v)
-  const totalMinutes = periodDays * 24 * 60
-  const baseline = calculateHrvStats(baselineHrvValues, baselineHrValues, totalMinutes, baselineStressValues)
-
-  const productivityByCategory = new Map<
+const productivityCorrelations = (
+  productivity: ProductivityRecord[],
+  contextData: [Date, number][],
+  ctx: GroupContext,
+): ProductivityCorrelation[] => {
+  const byCategory = new Map<
     string,
-    {
-      hrvValues: number[]
-      hrValues: number[]
-      stressValues: number[]
-      contextValues: number[]
-      minutes: number
-      scores: number[]
-    }
+    { intervals: Interval[]; contextValues: number[]; minutes: number; scores: number[] }
   >()
 
   for (const record of productivity) {
-    const category = record.resolved_category?.join(' > ') || record.category || 'Uncategorized'
-    const cat = productivityByCategory.getOrInsertComputed(category, () => ({
+    const cat = byCategory.getOrInsertComputed(productivityCategoryKey(record), () => ({
       contextValues: [],
-      hrValues: [],
-      hrvValues: [],
+      intervals: [],
       minutes: 0,
       scores: [],
-      stressValues: [],
     }))
     cat.minutes += record.duration_sec / 60
+    cat.intervals.push({ end: record.end_time.getTime(), start: record.start_time.getTime() })
 
-    // Get HRV/HR/stress during this productivity window (all shown in the table).
-    const hrvInWindow = getDataInRange(hrvData, record.start_time, record.end_time)
-    const hrInWindow = getDataInRange(hrData, record.start_time, record.end_time)
-    const stressInWindow = getDataInRange(stressData, record.start_time, record.end_time)
     const contextInWindow = getDataInRange(contextData, record.start_time, record.end_time)
-    pushAll(cat.hrvValues, hrvInWindow)
-    pushAll(cat.hrValues, hrInWindow)
-    pushAll(cat.stressValues, stressInWindow)
     pushAll(cat.contextValues, contextInWindow)
 
     if (record.productivity !== undefined && record.productivity !== null) {
@@ -95,12 +93,9 @@ export async function getHrvActivitiesCorrelation(
     }
   }
 
-  const productivityCorrelations: ProductivityCorrelation[] = []
-  for (const [category, data] of productivityByCategory) {
+  const correlations: ProductivityCorrelation[] = []
+  for (const [category, data] of byCategory) {
     if (data.minutes < 10) continue // Skip categories with < 10 min data
-
-    const stats = calculateHrvStats(data.hrvValues, data.hrValues, data.minutes, data.stressValues)
-    const statsWithDelta = addBaselineDelta(stats, baseline)
 
     // Correlation between productivity score and the chosen context metric.
     const correlation =
@@ -108,137 +103,126 @@ export async function getHrvActivitiesCorrelation(
         ? pearsonCorrelation(data.scores, data.contextValues)
         : null
 
-    productivityCorrelations.push({
-      ...statsWithDelta,
+    correlations.push({
+      ...groupStats(mergeIntoSessions(data.intervals), ctx, data.minutes),
       category,
       correlation_coefficient: correlation !== null ? Math.round(correlation * 100) / 100 : null,
     })
   }
 
-  productivityCorrelations.sort((a, b) => b.sample_minutes - a.sample_minutes)
+  return correlations.toSorted((a, b) => b.sample_minutes - a.sample_minutes)
+}
 
-  const locationByName = new Map<
-    string,
-    { hrvValues: number[]; hrValues: number[]; stressValues: number[]; minutes: number; visits: number }
-  >()
+const locationCorrelations = (visits: PlaceVisit[], ctx: GroupContext): LocationCorrelation[] => {
+  const byName = new Map<string, { intervals: Interval[]; minutes: number; visits: number }>()
 
-  for (const visit of locations) {
-    const name = visit.name || 'Unknown'
-    const loc = locationByName.getOrInsertComputed(name, () => ({
-      hrValues: [],
-      hrvValues: [],
+  for (const visit of visits) {
+    const loc = byName.getOrInsertComputed(locationKey(visit), () => ({
+      intervals: [],
       minutes: 0,
-      stressValues: [],
       visits: 0,
     }))
     loc.minutes += visit.duration_minutes
     loc.visits++
-
-    const hrvInWindow = getDataInRange(hrvData, visit.start_time, visit.end_time)
-    const hrInWindow = getDataInRange(hrData, visit.start_time, visit.end_time)
-    const stressInWindow = getDataInRange(stressData, visit.start_time, visit.end_time)
-    pushAll(loc.hrvValues, hrvInWindow)
-    pushAll(loc.hrValues, hrInWindow)
-    pushAll(loc.stressValues, stressInWindow)
+    loc.intervals.push({ end: visit.end_time.getTime(), start: visit.start_time.getTime() })
   }
 
-  const locationCorrelations: LocationCorrelation[] = []
-  for (const [name, data] of locationByName) {
+  const correlations: LocationCorrelation[] = []
+  for (const [name, data] of byName) {
     if (data.minutes < 30) continue // Skip locations with < 30 min
 
-    const stats = calculateHrvStats(data.hrvValues, data.hrValues, data.minutes, data.stressValues)
-    const statsWithDelta = addBaselineDelta(stats, baseline)
-
-    locationCorrelations.push({
-      ...statsWithDelta,
+    correlations.push({
+      ...groupStats(mergeIntoSessions(data.intervals), ctx, data.minutes),
       location_name: name,
       visit_count: data.visits,
     })
   }
 
-  locationCorrelations.sort((a, b) => b.sample_minutes - a.sample_minutes)
+  return correlations.toSorted((a, b) => b.sample_minutes - a.sample_minutes)
+}
 
-  // Activity correlations are unified: they include what used to be tags.
-  const activityByType = new Map<
-    string,
-    {
-      hrvValues: number[]
-      hrValues: number[]
-      stressValues: number[]
-      minutes: number
-      count: number
-      hasDuration: boolean
-    }
-  >()
+// Activity correlations are unified: they include what used to be tags.
+const activityCorrelations = (activities: Activity[], ctx: GroupContext): ActivityCorrelation[] => {
+  const byType = new Map<string, { intervals: Interval[]; hasDuration: boolean }>()
 
   for (const activity of activities) {
-    const type = activity.activity_type
-    const act = activityByType.getOrInsertComputed(type, () => ({
-      count: 0,
+    const act = byType.getOrInsertComputed(activity.activity_type, () => ({
       hasDuration: false,
-      hrValues: [],
-      hrvValues: [],
-      minutes: 0,
-      stressValues: [],
+      intervals: [],
     }))
-    act.count++
-
-    if (activity.end_time) {
-      // Duration activity — use actual event window
-      act.hasDuration = true
-      const durationMin = (activity.end_time.getTime() - activity.start_time.getTime()) / 1000 / 60
-      act.minutes += durationMin
-
-      const hrvInWindow = getDataInRange(hrvData, activity.start_time, activity.end_time)
-      const hrInWindow = getDataInRange(hrData, activity.start_time, activity.end_time)
-      const stressInWindow = getDataInRange(stressData, activity.start_time, activity.end_time)
-      pushAll(act.hrvValues, hrvInWindow)
-      pushAll(act.hrValues, hrInWindow)
-      pushAll(act.stressValues, stressInWindow)
-    } else {
-      // Point activity — use ±30min contextual window
-      const windowStart = new Date(activity.start_time.getTime() - 30 * 60 * 1000)
-      const windowEnd = new Date(activity.start_time.getTime() + 30 * 60 * 1000)
-      act.minutes += 60 // contextual window is ~60 min
-
-      const hrvInWindow = getDataInRange(hrvData, windowStart, windowEnd)
-      const hrInWindow = getDataInRange(hrData, windowStart, windowEnd)
-      const stressInWindow = getDataInRange(stressData, windowStart, windowEnd)
-      pushAll(act.hrvValues, hrvInWindow)
-      pushAll(act.hrValues, hrInWindow)
-      pushAll(act.stressValues, stressInWindow)
-    }
+    if (activity.end_time) act.hasDuration = true
+    act.intervals.push(activityInterval(activity))
   }
 
-  const activityCorrelations: ActivityCorrelation[] = []
-  for (const [type, data] of activityByType) {
-    if (data.count < 1) continue
+  const correlations: ActivityCorrelation[] = []
+  for (const [type, data] of byType) {
+    const sessions = mergeIntoSessions(data.intervals)
+    const minutes = sessionMinutes(sessions)
 
-    const stats = calculateHrvStats(data.hrvValues, data.hrValues, data.minutes, data.stressValues)
-    const statsWithDelta = addBaselineDelta(stats, baseline)
-
-    activityCorrelations.push({
-      ...statsWithDelta,
+    correlations.push({
+      ...groupStats(sessions, ctx, minutes),
       activity_type: type,
-      ...(data.hasDuration ? { avg_duration_min: Math.round(data.minutes / data.count) } : {}),
-      occurrences: data.count,
+      ...(data.hasDuration ? { avg_duration_min: Math.round(minutes / sessions.length) } : {}),
+      occurrences: sessions.length,
     })
   }
 
-  activityCorrelations.sort((a, b) => b.occurrences - a.occurrences)
+  return correlations.toSorted((a, b) => b.occurrences - a.occurrences)
+}
+
+export async function getHrvActivitiesCorrelation(
+  user: string,
+  periodDays: number = 30,
+  sync?: SyncProvider,
+  contextMetric: HrvContextMetric = 'hrv_rmssd',
+  windowMinutes: number = 30,
+): Promise<HrvActivitiesResult> {
+  const window = clampWindowMinutes(windowMinutes)
+  const end = new Date()
+  end.setHours(23, 59, 59, 999)
+  const start = new Date()
+  start.setDate(start.getDate() - periodDays)
+  start.setHours(0, 0, 0, 0)
+
+  // Freshness syncs run in the background — never block the (retrospective)
+  // analysis on a slow external sync, which could take minutes (see
+  // background-sync.ts). Data is fresh for the next request.
+  triggerCorrelationSyncs(sync, user)
+
+  const { seriesEnd, seriesStart } = extendByWindow(start, end, window)
+  const [hrvData, hrData, stressData, productivity, locations, activities] = await Promise.all([
+    getTimeSeries(user, 'hrv_rmssd', seriesStart, seriesEnd),
+    getTimeSeries(user, 'heart_rate', seriesStart, seriesEnd),
+    getTimeSeries(user, 'stress_level', seriesStart, seriesEnd),
+    getProductivity(user, start, end),
+    getPlaceVisits(user, start, end),
+    getAllActivitiesInRange(user, start, end),
+  ])
+
+  // The series the productivity correlation is computed against. HRV is the
+  // default, but heart rate / stress are denser when continuous HRV is sparse.
+  const contextData =
+    contextMetric === 'heart_rate' ? hrData : contextMetric === 'stress_level' ? stressData : hrvData
+
+  const series = binMetricSeries(hrvData, hrData, stressData)
+  const totalMinutes = periodDays * 24 * 60
+  const inPeriod = (metric: MetricKey) => valuesBetween(series[metric], start.getTime(), end.getTime() + 1)
+  const baseline = calculateHrvStats(inPeriod('hrv'), inPeriod('hr'), totalMinutes, inPeriod('stress'))
+  const ctx: GroupContext = { baseline, series, windowMinutes: window }
 
   return {
     baseline,
     context_metric: contextMetric,
     correlations: {
-      activities: activityCorrelations,
-      locations: locationCorrelations,
-      productivity: productivityCorrelations,
+      activities: activityCorrelations(activities, ctx),
+      locations: locationCorrelations(locations, ctx),
+      productivity: productivityCorrelations(productivity, contextData, ctx),
     },
     period: {
       days: periodDays,
       end: end.toISOString(),
       start: start.toISOString(),
     },
+    window_minutes: window,
   }
 }

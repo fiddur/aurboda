@@ -298,6 +298,8 @@ export const mountRestRouters = ({
   httpd.use(
     createFeedPublicRouter({
       apiBaseUrl,
+      listOfficialRemotePosts: (handles, tags, limit, before) =>
+        centralDb.listOfficialRemotePosts(handles, tags, limit, before),
       publicTags: publicTagActions,
       readOfficialFeed: () => readOfficialFeedSetting(centralDb),
       webHost,

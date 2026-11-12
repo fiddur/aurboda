@@ -90,11 +90,25 @@ beforeEach(() => {
 describe('GET /status', () => {
   test('says the official feed is on when it lists a user', async () => {
     const response = await supertest(
-      buildApp({ settings: { official_feed: { tags: ['aurboda'], users: ['ghost', 'fiddur'] } } }),
+      buildApp({
+        settings: { official_feed: { remote_authors: [], tags: ['aurboda'], users: ['ghost', 'fiddur'] } },
+      }),
     ).get('/status')
     expect(response.status).toBe(200)
     expect(response.body.official_feed).toBe(true)
     expect(response.body).not.toHaveProperty('blog_username')
+  })
+
+  test('says on for a feed of remote authors only, with no local user', async () => {
+    const response = await supertest(
+      buildApp({
+        settings: {
+          official_feed: { remote_authors: ['fiddur@aurboda.net'], tags: ['aurbodablog'], users: [] },
+        },
+        users: [],
+      }),
+    ).get('/status')
+    expect(response.body.official_feed).toBe(true)
   })
 
   test('reads a legacy blog user as an official feed', async () => {
@@ -109,7 +123,10 @@ describe('GET /status', () => {
 
   test('says off when every listed user has been deleted since', async () => {
     const response = await supertest(
-      buildApp({ settings: { official_feed: { tags: [], users: ['fiddur'] } }, users: [] }),
+      buildApp({
+        settings: { official_feed: { remote_authors: [], tags: [], users: ['fiddur'] } },
+        users: [],
+      }),
     ).get('/status')
     expect(response.status).toBe(200)
     expect(response.body.official_feed).toBe(false)
@@ -394,5 +411,15 @@ describe('GET /status', () => {
     ).get('/status')
 
     expect(response.body).toMatchObject({ billing_enabled: true, price_text: '3 € / month', trial_days: 60 })
+  })
+
+  test('carries the admin contacts, null when unset', async () => {
+    const unset = await supertest(buildApp()).get('/status')
+    expect(unset.body).toMatchObject({ contact_fediverse: null, contact_reddit: null })
+
+    const set = await supertest(
+      buildApp({ settings: { contact_fediverse: 'fiddur@aurboda.net', contact_reddit: 'fiddur' } }),
+    ).get('/status')
+    expect(set.body).toMatchObject({ contact_fediverse: 'fiddur@aurboda.net', contact_reddit: 'fiddur' })
   })
 })

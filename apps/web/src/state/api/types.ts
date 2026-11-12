@@ -177,6 +177,7 @@ export type BiologicalSex = 'male' | 'female'
 export type {
   ActivityCorrelation,
   ActivityImpactData,
+  ActivityImpactMatch,
   ActivityImpactType,
   BaselineData,
   CustomMetricDefinition,
@@ -189,6 +190,7 @@ export type {
   HrvStats,
   HrvStatsWithDelta,
   HrZoneThresholds,
+  ImpactBucket,
   LocationCorrelation,
   NamedLocation,
   PeriodMetricStats,
@@ -198,4 +200,5 @@ export type {
   TrendSourceType,
   UpdateSettingsInput,
   UserSettingsResponse,
+  WindowEffect,
 } from '@aurboda/api-spec'

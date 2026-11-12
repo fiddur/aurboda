@@ -41,24 +41,40 @@ export const registerCorrelationTools = (server: McpServer, user: string, sync?:
 
   server.tool(
     'get_hrv_activities_correlation',
-    'Get autonomic-context correlations with activities, locations and productivity. Returns mean HRV, heart rate and stress per item (with baseline deltas). The productivity correlation is computed against context_metric — hrv_rmssd (default), heart_rate, or stress_level — so it stays meaningful when continuous HRV is sparse.',
+    'Get autonomic-context correlations with activities, locations and productivity. Per item: mean HRV, heart rate and stress during it (resampled to 5-minute averages, averaged per occurrence; back-to-back or duplicate entries count as one occurrence), the *_delta_from_baseline (during minus the average over the whole period), and hrv_effect / hr_effect / stress_effect: the paired change from the window_minutes before to the window_minutes after (before_mean, after_mean, change, paired_occurrences, p_value from a paired t-test). The productivity correlation_coefficient is computed against context_metric — hrv_rmssd (default), heart_rate, or stress_level — so it stays meaningful when continuous HRV is sparse.',
     { ...hrvCorrelationInputSchema.shape, tz: tzSchema },
-    async ({ context_metric, period_days, tz }) => {
+    async ({ context_metric, period_days, window_minutes, tz }) => {
       const periodDays = period_days ?? 30
-      const correlations = await getHrvActivitiesCorrelation(user, periodDays, sync, context_metric)
+      const correlations = await getHrvActivitiesCorrelation(
+        user,
+        periodDays,
+        sync,
+        context_metric,
+        window_minutes ?? 30,
+      )
       return tzJsonResponse({ data: correlations, success: true }, tz)
     },
   )
 
   server.tool(
     'get_activity_impact',
-    'Get the impact of a specific activity type on HRV and heart rate. Compares metric values before, during, and after the activity using time windows.',
+    'Get the impact of an activity on HRV, heart rate and stress. window_minutes (10-1440, default 30) is how long before and after each occurrence to compare. Returns timeline: buckets in time order with phase (before/during/after), start_offset_minutes, end_offset_minutes and hrv/hr/stress stats (each the mean of per-occurrence means over 5-minute averages); each side has 2 buckets when window_minutes is under 60 and 4 otherwise. The legacy *_timeline objects hold the outer and inner halves of the window. Also returns hrv_effect / hr_effect / stress_effect: the paired change from the window before to the window after (before_mean, after_mean, change, paired_occurrences, p_value from a paired t-test). Matching entries that overlap or are at most 10 minutes apart count as one occurrence. match: "contains" (default) matches every name containing activity; match: "exact" analyzes one exact type, as the context table on the Analyze page groups it.',
     { ...activityImpactInputSchema.shape, tz: tzSchema },
-    async ({ activity, activity_type, period_days, window_minutes, tz }) => {
+    async ({ activity, activity_type, match, period_days, window_minutes, tz }) => {
       const periodDays = period_days ?? 90
       const windowMinutes = window_minutes ?? 30
 
-      const impact = await getActivityImpact(user, activity, activity_type, windowMinutes, periodDays, sync)
+      const impact = await getActivityImpact(
+        user,
+        activity,
+        activity_type,
+        windowMinutes,
+        periodDays,
+        sync,
+        undefined,
+        undefined,
+        match,
+      )
       return tzJsonResponse({ data: impact, success: true }, tz)
     },
   )

@@ -3,6 +3,7 @@ import { PassThrough, Writable } from 'node:stream'
 import { gunzipSync } from 'node:zlib'
 import { describe, expect, test } from 'vitest'
 
+import type { SharedFoodItemEntity } from './central-food-items.ts'
 import type { ExportTokens } from './export-token.ts'
 
 import {
@@ -147,6 +148,25 @@ describe('streamUserDump', () => {
     expect(out.writableFinished).toBe(true)
   })
 
+  test('appends the trailer after everything pg_dump wrote', async () => {
+    const { spawn } = fakeSpawn(({ proc }) => {
+      setImmediate(() => {
+        proc.stdout.write('CREATE TABLE t ();\n')
+        setImmediate(() => {
+          proc.stdout.write('-- dump complete\n')
+          proc.exit(0)
+        })
+      })
+    })
+    const { body, out } = collector()
+
+    const result = await streamUserDump({ conn: {}, out, spawn, trailer: 'SELECT 1;\n', user: 'alice' })
+
+    expect(gunzipSync(body()).toString()).toBe('CREATE TABLE t ();\n-- dump complete\nSELECT 1;\n')
+    expect(result.bytes).toBe(body().length)
+    expect(out.writableFinished).toBe(true)
+  })
+
   test('a non-zero exit destroys out instead of ending it', async () => {
     const { spawn } = fakeSpawn(({ proc }) => {
       setImmediate(() => {
@@ -216,6 +236,7 @@ describe('createDumpExporter', () => {
         exported.push(bytes)
       },
       serverVersionNum: async () => serverVersion,
+      sharedFoodItems: async () => [],
       spawn,
     })
 
@@ -289,6 +310,7 @@ describe('createDumpExporter', () => {
     if (!second.ok) throw new Error('expected the same link to take over')
 
     const secondRun = second.run(collector().out)
+    await nextTick()
     dumps[1].stdout.write('data')
     dumps[1].exit(0)
     await expect(secondRun).resolves.toMatchObject({ bytes: expect.any(Number) })
@@ -321,6 +343,7 @@ describe('createDumpExporter', () => {
         throw new Error('audit log unavailable')
       },
       serverVersionNum: async () => '160004',
+      sharedFoodItems: async () => [],
       spawn,
     })
 
@@ -328,6 +351,68 @@ describe('createDumpExporter', () => {
     if (!started.ok) throw new Error('expected the export to start')
     await expect(started.run(collector().out)).resolves.toMatchObject({ bytes: expect.any(Number) })
     expect(await exporter.check('alice')).toEqual({ ok: true })
+  })
+
+  const sharedItem = (overrides: Partial<SharedFoodItemEntity> = {}): SharedFoodItemEntity => ({
+    calories: 52,
+    created_at: new Date('2026-01-02T03:04:05Z'),
+    default_quantity: 100,
+    default_unit: 'g',
+    id: '11111111-1111-4111-8111-111111111111',
+    name: "Bob's apple",
+    name_lower: "bob's apple",
+    source: 'livsmedelsverket',
+    source_id: '42',
+    updated_at: new Date('2026-01-02T03:04:05Z'),
+    ...overrides,
+  })
+
+  const exportWithShared = async (load: () => Promise<SharedFoodItemEntity[]>) => {
+    const { spawn } = versionSpawn('pg_dump (PostgreSQL) 16.1\n', ({ proc }) => {
+      setImmediate(() => {
+        proc.stdout.write('-- PostgreSQL database dump complete\n')
+        proc.exit(0)
+      })
+    })
+    const exporter = createDumpExporter({
+      conn: {},
+      onExported: async () => {},
+      serverVersionNum: async () => '160004',
+      sharedFoodItems: load,
+      spawn,
+    })
+    const started = await exporter.start('alice')
+    if (!started.ok) throw new Error('expected the export to start')
+    const { body, out } = collector()
+    return { body, out, run: started.run(out) }
+  }
+
+  test('appends the referenced shared food items after the dump, quoting their values', async () => {
+    const { body, run } = await exportWithShared(async () => [sharedItem()])
+    await run
+
+    const sql = gunzipSync(body()).toString()
+    expect(sql.startsWith('-- PostgreSQL database dump complete\n')).toBe(true)
+    const trailer = sql.slice('-- PostgreSQL database dump complete\n'.length)
+    expect(trailer).toContain('CREATE TABLE IF NOT EXISTS public.exported_shared_food_items (')
+    expect(trailer).toContain('INSERT INTO public.exported_shared_food_items (id, name, name_lower, source')
+    expect(trailer).toContain("'11111111-1111-4111-8111-111111111111', 'Bob''s apple', 'bob''s apple'")
+    expect(trailer).toContain("'2026-01-02T03:04:05.000Z'")
+    expect(trailer).toContain('ON CONFLICT (id) DO NOTHING;')
+  })
+
+  test('writes no trailer when the data references no shared food items', async () => {
+    const { body, run } = await exportWithShared(async () => [])
+    await run
+    expect(gunzipSync(body()).toString()).toBe('-- PostgreSQL database dump complete\n')
+  })
+
+  test('a failed shared food lookup fails the export and destroys out', async () => {
+    const { out, run } = await exportWithShared(async () => {
+      throw new Error('central database unavailable')
+    })
+    await expect(run).rejects.toThrow(/central database unavailable/)
+    expect(out.destroyed).toBe(true)
   })
 })
 

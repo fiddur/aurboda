@@ -180,7 +180,7 @@ describe('admin settings', () => {
 describe('official feed setting', () => {
   test('GET returns it off when nothing is set', async () => {
     const res = await supertest(buildApp()).get('/admin/settings')
-    expect(res.body.official_feed).toEqual({ tags: [], users: [] })
+    expect(res.body.official_feed).toEqual({ remote_authors: [], tags: [], users: [] })
     expect(res.body).not.toHaveProperty('blog_username')
   })
 
@@ -190,7 +190,7 @@ describe('official feed setting', () => {
     )
     try {
       const res = await supertest(buildApp()).get('/admin/settings')
-      expect(res.body.official_feed).toEqual({ tags: [], users: ['fiddur'] })
+      expect(res.body.official_feed).toEqual({ remote_authors: [], tags: [], users: ['fiddur'] })
     } finally {
       vi.mocked(centralDb.getServerSetting).mockReset().mockResolvedValue(null)
     }
@@ -203,10 +203,54 @@ describe('official feed setting', () => {
       .send({ official_feed: { tags: ['#Aurboda', 'qs', 'aurboda'], users: ['fiddur', 'alice', 'fiddur'] } })
     expect(res.status).toBe(200)
     expect(centralDb.setServerSetting).toHaveBeenCalledWith('official_feed', {
+      remote_authors: [],
       tags: ['aurboda', 'qs'],
       users: ['fiddur', 'alice'],
     })
     expect(centralDb.setServerSetting).toHaveBeenCalledWith('blog_username', '')
+  })
+
+  test('PATCH stores remote authors as user@host, moving one on this server to users, and applies the tags', async () => {
+    vi.mocked(centralDb.setServerSetting).mockClear()
+    publicTagActions.apply.mockClear()
+    const stored = {
+      remote_authors: ['bob@peer.example'],
+      tags: ['aurbodablog'],
+      users: ['fiddur'],
+    }
+    vi.mocked(centralDb.getServerSetting).mockImplementation(async (key) =>
+      key === 'official_feed' ? stored : key === 'public_tag_pages' ? ['running'] : null,
+    )
+    try {
+      const res = await supertest(buildApp())
+        .patch('/admin/settings')
+        .send({
+          official_feed: {
+            remote_authors: ['@bob@Peer.Example', 'bob@peer.example', '@fiddur@web.example.test'],
+            tags: ['aurbodablog'],
+            users: [],
+          },
+        })
+      expect(res.status).toBe(200)
+      expect(centralDb.setServerSetting).toHaveBeenCalledWith('official_feed', stored)
+      expect(publicTagActions.apply).toHaveBeenCalledWith(['running', 'aurbodablog'])
+    } finally {
+      vi.mocked(centralDb.getServerSetting).mockReset().mockResolvedValue(null)
+    }
+  })
+
+  test('PATCH rejects remote authors without a tag, and an invalid handle, storing nothing', async () => {
+    vi.mocked(centralDb.setServerSetting).mockClear()
+    const noTag = await supertest(buildApp())
+      .patch('/admin/settings')
+      .send({ official_feed: { remote_authors: ['bob@peer.example'], tags: [], users: [] } })
+    expect(noTag.status).toBe(400)
+    expect(noTag.body.error).toContain('at least one tag')
+    const badHandle = await supertest(buildApp())
+      .patch('/admin/settings')
+      .send({ official_feed: { remote_authors: ['https://peer.example/@bob'], tags: ['qs'], users: [] } })
+    expect(badHandle.status).toBe(400)
+    expect(centralDb.setServerSetting).not.toHaveBeenCalled()
   })
 
   test('PATCH rejects unknown users with 400, naming each, and stores nothing', async () => {
@@ -235,10 +279,18 @@ describe('official feed setting', () => {
     vi.mocked(centralDb.setServerSetting).mockClear()
     const res = await supertest(buildApp()).patch('/admin/settings').send({ blog_username: 'fiddur' })
     expect(res.status).toBe(200)
-    expect(centralDb.setServerSetting).toHaveBeenCalledWith('official_feed', { tags: [], users: ['fiddur'] })
+    expect(centralDb.setServerSetting).toHaveBeenCalledWith('official_feed', {
+      remote_authors: [],
+      tags: [],
+      users: ['fiddur'],
+    })
     vi.mocked(centralDb.setServerSetting).mockClear()
     await supertest(buildApp()).patch('/admin/settings').send({ blog_username: null })
-    expect(centralDb.setServerSetting).toHaveBeenCalledWith('official_feed', { tags: [], users: [] })
+    expect(centralDb.setServerSetting).toHaveBeenCalledWith('official_feed', {
+      remote_authors: [],
+      tags: [],
+      users: [],
+    })
   })
 
   test('PATCH with the deprecated blog_username rejects an unknown user', async () => {
@@ -280,6 +332,64 @@ describe('tag actor host setting', () => {
   ])('PATCH rejects %j', async (tag_actor_host) => {
     vi.mocked(centralDb.setServerSetting).mockClear()
     const res = await supertest(buildApp()).patch('/admin/settings').send({ tag_actor_host })
+    expect(res.status).toBe(400)
+    expect(centralDb.setServerSetting).not.toHaveBeenCalled()
+  })
+})
+
+describe('support contact settings', () => {
+  test('GET reports both empty when unset', async () => {
+    const res = await supertest(buildApp()).get('/admin/settings')
+    expect(res.body).toMatchObject({ contact_fediverse: '', contact_reddit: '' })
+  })
+
+  test('GET reads the stored contacts', async () => {
+    vi.mocked(centralDb.getServerSetting).mockImplementation(async (key) =>
+      key === 'contact_fediverse' ? 'fiddur@aurboda.net' : key === 'contact_reddit' ? 'fiddur' : null,
+    )
+    try {
+      const res = await supertest(buildApp()).get('/admin/settings')
+      expect(res.body).toMatchObject({ contact_fediverse: 'fiddur@aurboda.net', contact_reddit: 'fiddur' })
+    } finally {
+      vi.mocked(centralDb.getServerSetting).mockReset().mockResolvedValue(null)
+    }
+  })
+
+  test('PATCH stores the normalised handle and username', async () => {
+    vi.mocked(centralDb.setServerSetting).mockClear()
+    const res = await supertest(buildApp()).patch('/admin/settings').send({
+      contact_fediverse: '@fiddur@Aurboda.net',
+      contact_reddit: 'https://www.reddit.com/user/fiddur/',
+    })
+    expect(res.status).toBe(200)
+    expect(vi.mocked(centralDb.setServerSetting).mock.calls).toEqual([
+      ['contact_fediverse', 'fiddur@aurboda.net'],
+      ['contact_reddit', 'fiddur'],
+    ])
+  })
+
+  test('PATCH with empty strings clears them', async () => {
+    vi.mocked(centralDb.setServerSetting).mockClear()
+    const res = await supertest(buildApp())
+      .patch('/admin/settings')
+      .send({ contact_fediverse: '', contact_reddit: '' })
+    expect(res.status).toBe(200)
+    expect(vi.mocked(centralDb.setServerSetting).mock.calls).toEqual([
+      ['contact_fediverse', ''],
+      ['contact_reddit', ''],
+    ])
+  })
+
+  test.each([
+    [{ contact_fediverse: 'fiddur' }],
+    [{ contact_fediverse: '@fiddur' }],
+    [{ contact_fediverse: 'https://aurboda.net/@fiddur' }],
+    [{ contact_reddit: 'ab' }],
+    [{ contact_reddit: 'u/has space' }],
+    [{ contact_reddit: 'https://example.com/user/fiddur' }],
+  ])('PATCH rejects %j', async (body) => {
+    vi.mocked(centralDb.setServerSetting).mockClear()
+    const res = await supertest(buildApp()).patch('/admin/settings').send(body)
     expect(res.status).toBe(400)
     expect(centralDb.setServerSetting).not.toHaveBeenCalled()
   })

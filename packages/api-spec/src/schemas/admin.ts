@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import { normalizeFediverseHandle, normalizeRedditUsername } from '../support-contacts.ts'
 import { baseResponseSchema, dateOnlySchema, iso8601DateTimeSchema } from './common.ts'
 import { hashtagInputSchema, officialFeedSettingSchema } from './feed.ts'
 import { adminUserPlanShape } from './plans.ts'
@@ -38,6 +39,15 @@ export const serverStatusResponseSchema = baseResponseSchema
       .boolean()
       .optional()
       .meta({ description: 'Whether this server charges for accounts after a free trial' }),
+    contact_fediverse: z.string().nullable().optional().meta({
+      description:
+        "The server admin's fediverse handle, `name@host` without a leading `@` (null when not set)",
+    }),
+    contact_reddit: z
+      .string()
+      .nullable()
+      .optional()
+      .meta({ description: "The server admin's Reddit username, without `u/` (null when not set)" }),
     price_text: z
       .string()
       .nullable()
@@ -138,6 +148,13 @@ export const adminSettingsResponseSchema = baseResponseSchema
       description:
         'Whether accounts are billed: new accounts get a free trial, then become read-only unless paid',
     }),
+    contact_fediverse: z.string().meta({
+      description:
+        'Fediverse handle users can reach the admin at, `name@host` without a leading `@` (empty when not set)',
+    }),
+    contact_reddit: z.string().meta({
+      description: 'Reddit username users can message the admin at, without `u/` (empty when not set)',
+    }),
     grace_days: z
       .number()
       .int()
@@ -199,6 +216,15 @@ export const publicTagPagesMax = 20
 /** Days a post stays on the public tag pages unless the admin sets otherwise. */
 export const defaultPublicTagRetentionDays = 30
 
+const normalizedOr =
+  (normalize: (value: string) => string | null, message: string) =>
+  (value: string, ctx: z.RefinementCtx): string => {
+    const normalized = normalize(value)
+    if (normalized != null) return normalized
+    ctx.addIssue({ code: 'custom', message })
+    return z.NEVER
+  }
+
 export const updateAdminSettingsBodySchema = z
   .object({
     audit_log_retention_days: z
@@ -216,6 +242,24 @@ export const updateAdminSettingsBodySchema = z
       description:
         'Deprecated, use `official_feed`: sets the official feed to this one user with no tag filter (null turns it off). Ignored when `official_feed` is given.',
     }),
+    contact_fediverse: z
+      .string()
+      .max(255)
+      .transform(normalizedOr(normalizeFediverseHandle, 'A fediverse handle, e.g. @name@example.social'))
+      .optional()
+      .meta({
+        description:
+          'Fediverse handle users can reach the admin at, `@name@host` or `name@host` (stored without the leading `@`); empty to clear',
+      }),
+    contact_reddit: z
+      .string()
+      .max(255)
+      .transform(normalizedOr(normalizeRedditUsername, 'A Reddit username, e.g. u/name'))
+      .optional()
+      .meta({
+        description:
+          'Reddit username users can message the admin at: `name`, `u/name` or a reddit.com profile URL (stored as the bare name); empty to clear',
+      }),
     grace_days: z
       .number()
       .int()
@@ -252,9 +296,9 @@ export const updateAdminSettingsBodySchema = z
       .boolean()
       .optional()
       .meta({ description: 'Enable or disable Oura webhook push sync' }),
-    official_feed: officialFeedSettingSchema
-      .optional()
-      .meta({ description: 'Replace the official feed setting; empty `users` turns it off' }),
+    official_feed: officialFeedSettingSchema.optional().meta({
+      description: 'Replace the official feed setting; empty `users` and `remote_authors` turn it off',
+    }),
     payment_url: z
       .union([z.literal(''), z.url({ protocol: /^https$/ })])
       .optional()

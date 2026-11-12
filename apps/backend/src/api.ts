@@ -112,6 +112,7 @@ import { auditError, auditInfo, pruneAuditLog } from './services/audit-log.ts'
 import { createAutoshareDeps } from './services/autoshare-deps.ts'
 import { type AutoshareQueue, createAutoshareQueue } from './services/autoshare-queue.ts'
 import { evaluateAutoshareWindow } from './services/autoshare.ts'
+import { backfillMealFoodItemNames } from './services/backfill-meal-food-item-names.ts'
 import { triggerCalorieComputation } from './services/calorie-computation.ts'
 import { createCalorieQueue, type CalorieQueue } from './services/calorie-queue.ts'
 import { closeCentralDb, getCentralDb, initializeCentralDb } from './services/central-db.ts'
@@ -131,6 +132,7 @@ import { createDetectionTrigger, type DetectionTrigger } from './services/detect
 import { runDetectionForUser } from './services/detection-worker.ts'
 import { createDumpExporter, createDumpLinkIssuer } from './services/export-dump.ts'
 import { createExportTokens } from './services/export-token.ts'
+import { reconcileExportedSharedFoodItems } from './services/exported-shared-food.ts'
 import { createReactionActions } from './services/feed-reactions.ts'
 import {
   createFeedRefreshDeps,
@@ -156,14 +158,21 @@ import {
 import { createGeocodeQueue } from './services/geocode-queue.ts'
 import { createInvitationAuth } from './services/invitation.ts'
 import { getPlaceVisits, type NamedLocationsChanged } from './services/locations.ts'
+import {
+  ensureDefaultOfficialFeed,
+  officialRemoteHandles,
+  readOfficialFeedSetting,
+} from './services/official-feed.ts'
 import { createPgBoss } from './services/pg-boss.ts'
 import { installProcessGuards } from './services/process-guards.ts'
 import { createPublicTagPruneQueue } from './services/public-tag-prune-queue.ts'
 import {
+  applyInstanceTagFollowsAtStartup,
   createLocalPublicTagPosts,
   createPublicTagActions,
   createPublicTagInboxHooks,
   createPublicTagIngest,
+  readInstanceFollowedTags,
   readPublicTagPages,
   readPublicTagRetentionDays,
 } from './services/public-tags.ts'
@@ -516,6 +525,14 @@ const main = async () => {
     }
     for (const user of users) {
       try {
+        await reconcileExportedSharedFoodItems(user)
+        await backfillMealFoodItemNames(user)
+      } catch (error) {
+        console.error(`⚠️ Food item reference upkeep failed for ${user}:`, error)
+      }
+    }
+    for (const user of users) {
+      try {
         const { days, skipped: alreadyDone } = await rematerializeSupersededOnce(user)
         if (!alreadyDone) console.info(`🔁 Re-materialized supersession for ${user} over ${days} day(s)`)
       } catch (error) {
@@ -592,6 +609,24 @@ const main = async () => {
     store: centralDb,
     tagActorHost: () => readTagActorHost(centralDb),
   })
+  try {
+    if (
+      await ensureDefaultOfficialFeed({
+        centralDb,
+        countUsers: async () => (await listUserNames(userDb)).length,
+      })
+    ) {
+      console.info('📰 New installation: the official feed lists the Aurboda blog by default')
+    }
+  } catch (error) {
+    console.error('⚠️ Default official feed not set:', error)
+  }
+  postListenCallbacks.push(() =>
+    applyInstanceTagFollowsAtStartup({
+      apply: (tags) => publicTagActions.apply(tags),
+      readTags: () => readInstanceFollowedTags(centralDb),
+    }),
+  )
 
   const accountDeleter = createAccountDeleter({
     announceDeletion: (user) => deliverActorDelete(feedDeps, user),
@@ -921,9 +956,15 @@ const main = async () => {
   if (boss) {
     try {
       await createPublicTagPruneQueue(boss, {
-        prune: (olderThan) => centralDb.prunePublicTagPosts(olderThan),
+        followedTags: () => readInstanceFollowedTags(centralDb),
+        officialFeedKeep: async () => {
+          const feed = await readOfficialFeedSetting(centralDb)
+          return { handles: officialRemoteHandles(feed), tags: feed.tags }
+        },
+        onRefollowError: (error) => console.error('⚠️ Nightly tag follow re-apply failed:', error),
+        prune: (olderThan, keep) => centralDb.prunePublicTagPosts(olderThan, keep),
         pruneNotTagged: (tags) => centralDb.prunePublicTagPostsNotTagged(tags),
-        publicTagPages: () => readPublicTagPages(centralDb),
+        refollow: (tags) => publicTagActions.apply(tags),
         retentionDays: () => readPublicTagRetentionDays(centralDb),
       })
     } catch (error) {

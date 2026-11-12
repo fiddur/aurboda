@@ -37,6 +37,15 @@
   font-size: 0.95rem;
 }
 
+.correlations-page .window-note {
+  margin: -0.75rem 0 1.5rem 0;
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid #f59e0b;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 0.9rem;
+}
+
 .correlations-page .period-select {
   padding: 0.5rem 1rem;
   font-size: 0.9rem;
@@ -224,11 +233,6 @@
   font-weight: 400;
 }
 
-.correlations-page .type-cell {
-  color: #6b7280;
-  font-size: 0.8rem;
-}
-
 .correlations-page .value-cell {
   font-variant-numeric: tabular-nums;
 }
@@ -249,6 +253,46 @@
 .correlations-page .samples-cell {
   color: #6b7280;
   font-size: 0.8rem;
+}
+
+.correlations-page .context-table th.group-header {
+  text-align: center;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.correlations-page .context-table th.sub-header {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: #6b7280;
+  cursor: help;
+  white-space: nowrap;
+}
+
+.correlations-page .context-table .group-start {
+  border-left: 1px solid #e5e7eb;
+}
+
+.correlations-page .delta-cell.change-cell {
+  cursor: help;
+}
+
+.correlations-page .delta-cell.muted {
+  color: #9ca3af;
+  font-weight: 400;
+}
+
+.correlations-page .impact-summary {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  font-size: 0.85rem;
+  color: #374151;
+  font-variant-numeric: tabular-nums;
+}
+
+.correlations-page .impact-summary li {
+  margin-bottom: 0.25rem;
 }
 
 .correlations-page .info-section {
@@ -282,6 +326,11 @@
     color: #9ca3af;
   }
 
+  .correlations-page .window-note {
+    background: #292524;
+    color: #fcd34d;
+  }
+
   .correlations-page .period-select {
     background: #1f2937;
     border-color: #374151;
@@ -313,7 +362,6 @@
     background: #1f2937;
   }
 
-  .correlations-page .type-cell,
   .correlations-page .samples-cell {
     color: #9ca3af;
   }
@@ -328,6 +376,20 @@
 
   .correlations-page .delta-cell.negative {
     color: #f87171;
+  }
+
+  .correlations-page .delta-cell.muted,
+  .correlations-page .context-table th.sub-header {
+    color: #9ca3af;
+  }
+
+  .correlations-page .context-table .group-start,
+  .correlations-page .context-table th.group-header {
+    border-color: #374151;
+  }
+
+  .correlations-page .impact-summary {
+    color: #d1d5db;
   }
 
   .correlations-page .info-section ul {

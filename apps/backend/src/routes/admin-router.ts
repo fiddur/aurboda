@@ -41,11 +41,13 @@ import {
 } from '../services/official-feed.ts'
 import {
   normalizePublicTagPages,
+  readInstanceFollowedTags,
   readPublicTagFollows,
   readPublicTagPages,
   readPublicTagRetentionDays,
 } from '../services/public-tags.ts'
 import { serializeRelay } from '../services/relays.ts'
+import { readSupportContacts } from '../services/support-contacts.ts'
 import { readTagActorHost } from '../services/tag-actor-host.ts'
 import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
@@ -88,6 +90,7 @@ export const createAdminRouter = (
       publicTagPages,
       publicTagRetentionDays,
       publicTagFollows,
+      contacts,
     ] = await Promise.all([
       centralDb.getSignupMode(),
       centralDb.getAdminCount(),
@@ -108,11 +111,14 @@ export const createAdminRouter = (
       readPublicTagPages(centralDb),
       readPublicTagRetentionDays(centralDb),
       readPublicTagFollows(centralDb),
+      readSupportContacts(centralDb),
     ])
     return {
       admin_count: adminCount,
       audit_log_retention_days: auditLogRetentionDays,
       billing_enabled: billing.enabled,
+      contact_fediverse: contacts.contact_fediverse,
+      contact_reddit: contacts.contact_reddit,
       grace_days: billing.grace_days,
       gravl_client_id_set: !!gravlClientId,
       gravl_client_secret_set: !!gravlClientSecret,
@@ -160,6 +166,8 @@ export const createAdminRouter = (
         audit_log_retention_days,
         billing_enabled,
         blog_username,
+        contact_fediverse,
+        contact_reddit,
         grace_days,
         gravl_client_id,
         gravl_client_secret,
@@ -182,10 +190,17 @@ export const createAdminRouter = (
       const legacyFeed =
         blog_username === undefined
           ? undefined
-          : { tags: [], users: blog_username == null ? [] : [blog_username] }
+          : { remote_authors: [], tags: [], users: blog_username == null ? [] : [blog_username] }
       const feedInput = official_feed ?? legacyFeed
       if (feedInput) {
-        const feed = normalizeOfficialFeedSetting(feedInput)
+        const feed = normalizeOfficialFeedSetting(feedInput, webHost)
+        if (feed.remote_authors.length > 0 && feed.tags.length === 0) {
+          return res.status(400).json({
+            error:
+              'Authors on other servers need at least one tag: their posts arrive through the tag follows',
+            success: false,
+          })
+        }
         const exists = await Promise.all(feed.users.map(userExists))
         const unknown = feed.users.filter((_, i) => !exists[i])
         if (unknown.length > 0) {
@@ -237,14 +252,20 @@ export const createAdminRouter = (
       if (tag_actor_host !== undefined) {
         await centralDb.setServerSetting('tag_actor_host', tag_actor_host)
       }
+      if (contact_fediverse !== undefined) {
+        await centralDb.setServerSetting('contact_fediverse', contact_fediverse)
+      }
+      if (contact_reddit !== undefined) {
+        await centralDb.setServerSetting('contact_reddit', contact_reddit)
+      }
       if (public_tag_retention_days !== undefined) {
         await centralDb.setServerSetting('public_tag_retention_days', public_tag_retention_days)
       }
       if (public_tag_pages !== undefined) {
         await centralDb.setServerSetting('public_tag_pages', normalizePublicTagPages(public_tag_pages))
       }
-      if (public_tag_pages !== undefined || tag_actor_host !== undefined) {
-        await publicTags?.apply(await readPublicTagPages(centralDb)).catch((error: unknown) => {
+      if (public_tag_pages !== undefined || tag_actor_host !== undefined || feedInput) {
+        await publicTags?.apply(await readInstanceFollowedTags(centralDb)).catch((error: unknown) => {
           console.error('⚠️ Public tag page follows failed:', error)
         })
       }

@@ -1,11 +1,22 @@
+import type { ActivityImpactMatch, ActivityImpactType } from '@aurboda/api-spec'
+
 import type { SyncProvider } from '../queries/index.ts'
-import type { ActivityImpactResult, TimeWindowStats } from './types.ts'
+import type { ActivityImpactResult } from './types.ts'
 
 import { getAllActivitiesInRange, getProductivity, getTimeSeries } from '../../db/index.ts'
-import { pushAll } from '../../utils.ts'
 import { getPlaceVisits } from '../locations.ts'
 import { triggerCorrelationSyncs } from './background-sync.ts'
-import { getDataInRange, mean, stddev } from './utils.ts'
+import {
+  activityInterval,
+  binMetricSeries,
+  clampWindowMinutes,
+  extendByWindow,
+  type Interval,
+  locationKey,
+  mergeIntoSessions,
+  productivityCategoryKey,
+  summarizeImpact,
+} from './impact.ts'
 
 const rangeEndingToday = (periodDays: number): { end: Date; start: Date } => {
   const end = new Date()
@@ -22,154 +33,94 @@ const explicitRange = (until: Date, periodDays: number, since?: Date): { end: Da
   start: since ?? new Date(until.getTime() - periodDays * 86_400_000),
 })
 
-// eslint-disable-next-line complexity -- TODO: refactor
+const containsIgnoringCase = (value: string, pattern: string): boolean =>
+  value.toLowerCase().includes(pattern.toLowerCase())
+
+const findOccurrences = async (
+  user: string,
+  activity: string,
+  activityType: ActivityImpactType,
+  match: ActivityImpactMatch,
+  start: Date,
+  end: Date,
+): Promise<Interval[]> => {
+  const exact = match === 'exact'
+  if (activityType === 'productivity_category' || activityType === 'productivity_app') {
+    const productivity = await getProductivity(user, start, end)
+    return productivity
+      .filter((record) => {
+        if (activityType === 'productivity_app') {
+          return exact ? record.activity === activity : containsIgnoringCase(record.activity, activity)
+        }
+        if (exact) return productivityCategoryKey(record) === activity
+        return (
+          record.resolved_category?.join(' > ').toLowerCase() === activity.toLowerCase() ||
+          record.category?.toLowerCase() === activity.toLowerCase()
+        )
+      })
+      .map((record) => ({ end: record.end_time.getTime(), start: record.start_time.getTime() }))
+  }
+  if (activityType === 'location') {
+    const locations = await getPlaceVisits(user, start, end)
+    return locations
+      .filter((visit) =>
+        exact ? locationKey(visit) === activity : containsIgnoringCase(visit.name, activity),
+      )
+      .map((visit) => ({ end: visit.end_time.getTime(), start: visit.start_time.getTime() }))
+  }
+  const allActivities = await getAllActivitiesInRange(user, start, end)
+  return allActivities
+    .filter((act) =>
+      exact ? act.activity_type === activity : containsIgnoringCase(act.activity_type, activity),
+    )
+    .map(activityInterval)
+}
+
 export async function getActivityImpact(
   user: string,
   activity: string,
-  activityType: 'productivity_category' | 'productivity_app' | 'location' | 'tag' | 'activity_type', // 'tag' kept for backward compat
+  activityType: ActivityImpactType,
   windowMinutes: number = 30,
   periodDays: number = 90,
   sync?: SyncProvider,
   until?: Date,
   since?: Date,
+  match: ActivityImpactMatch = 'contains',
 ): Promise<ActivityImpactResult> {
   const { end, start } = until ? explicitRange(until, periodDays, since) : rangeEndingToday(periodDays)
+  const window = clampWindowMinutes(windowMinutes)
 
   // Freshness syncs run in the background — never block this retrospective
   // analysis on a slow external sync (see background-sync.ts).
   triggerCorrelationSyncs(sync, user)
 
+  const { seriesEnd, seriesStart } = extendByWindow(start, end, window)
   const [hrvData, hrData, stressData] = await Promise.all([
-    getTimeSeries(user, 'hrv_rmssd', start, end),
-    getTimeSeries(user, 'heart_rate', start, end),
-    getTimeSeries(user, 'stress_level', start, end),
+    getTimeSeries(user, 'hrv_rmssd', seriesStart, seriesEnd),
+    getTimeSeries(user, 'heart_rate', seriesStart, seriesEnd),
+    getTimeSeries(user, 'stress_level', seriesStart, seriesEnd),
   ])
 
-  interface ActivityWindow {
-    startTime: Date
-    endTime: Date
-    durationMin: number
-  }
-  const occurrences: ActivityWindow[] = []
-
-  if (activityType === 'productivity_category' || activityType === 'productivity_app') {
-    const productivity = await getProductivity(user, start, end)
-    for (const record of productivity) {
-      const resolvedCatStr = record.resolved_category?.join(' > ')
-      const matches =
-        activityType === 'productivity_category'
-          ? resolvedCatStr?.toLowerCase() === activity.toLowerCase() ||
-            record.category?.toLowerCase() === activity.toLowerCase()
-          : record.activity.toLowerCase().includes(activity.toLowerCase())
-
-      if (matches) {
-        occurrences.push({
-          durationMin: record.duration_sec / 60,
-          endTime: record.end_time,
-          startTime: record.start_time,
-        })
-      }
-    }
-  } else if (activityType === 'location') {
-    const locations = await getPlaceVisits(user, start, end)
-    for (const visit of locations) {
-      if (visit.name.toLowerCase().includes(activity.toLowerCase())) {
-        occurrences.push({
-          durationMin: visit.duration_minutes,
-          endTime: visit.end_time,
-          startTime: visit.start_time,
-        })
-      }
-    }
-  } else if (activityType === 'activity_type' || activityType === 'tag') {
-    const allActivities = await getAllActivitiesInRange(user, start, end)
-    for (const act of allActivities) {
-      if (act.activity_type.toLowerCase().includes(activity.toLowerCase())) {
-        const endTime = act.end_time ?? new Date(act.start_time.getTime() + 5 * 60 * 1000)
-        occurrences.push({
-          durationMin: (endTime.getTime() - act.start_time.getTime()) / 1000 / 60,
-          endTime,
-          startTime: act.start_time,
-        })
-      }
-    }
-  }
-
-  const windows = {
-    after15min: { hr: [] as number[], hrv: [] as number[], stress: [] as number[] },
-    after30min: { hr: [] as number[], hrv: [] as number[], stress: [] as number[] },
-    before15min: { hr: [] as number[], hrv: [] as number[], stress: [] as number[] },
-    before30min: { hr: [] as number[], hrv: [] as number[], stress: [] as number[] },
-    during: { hr: [] as number[], hrv: [] as number[], stress: [] as number[] },
-  }
-
-  let totalDurationMin = 0
-
-  for (const occ of occurrences) {
-    totalDurationMin += occ.durationMin
-
-    // Before 30 min (from -30 to -15)
-    const before30Start = new Date(occ.startTime.getTime() - windowMinutes * 60 * 1000)
-    const before30End = new Date(occ.startTime.getTime() - (windowMinutes / 2) * 60 * 1000)
-    pushAll(windows.before30min.hrv, getDataInRange(hrvData, before30Start, before30End))
-    pushAll(windows.before30min.hr, getDataInRange(hrData, before30Start, before30End))
-    pushAll(windows.before30min.stress, getDataInRange(stressData, before30Start, before30End))
-
-    // Before 15 min (from -15 to 0)
-    const before15Start = new Date(occ.startTime.getTime() - (windowMinutes / 2) * 60 * 1000)
-    pushAll(windows.before15min.hrv, getDataInRange(hrvData, before15Start, occ.startTime))
-    pushAll(windows.before15min.hr, getDataInRange(hrData, before15Start, occ.startTime))
-    pushAll(windows.before15min.stress, getDataInRange(stressData, before15Start, occ.startTime))
-
-    // During
-    pushAll(windows.during.hrv, getDataInRange(hrvData, occ.startTime, occ.endTime))
-    pushAll(windows.during.hr, getDataInRange(hrData, occ.startTime, occ.endTime))
-    pushAll(windows.during.stress, getDataInRange(stressData, occ.startTime, occ.endTime))
-
-    // After 15 min (from end to +15)
-    const after15End = new Date(occ.endTime.getTime() + (windowMinutes / 2) * 60 * 1000)
-    pushAll(windows.after15min.hrv, getDataInRange(hrvData, occ.endTime, after15End))
-    pushAll(windows.after15min.hr, getDataInRange(hrData, occ.endTime, after15End))
-    pushAll(windows.after15min.stress, getDataInRange(stressData, occ.endTime, after15End))
-
-    // After 30 min (from +15 to +30)
-    const after30End = new Date(occ.endTime.getTime() + windowMinutes * 60 * 1000)
-    pushAll(windows.after30min.hrv, getDataInRange(hrvData, after15End, after30End))
-    pushAll(windows.after30min.hr, getDataInRange(hrData, after15End, after30End))
-    pushAll(windows.after30min.stress, getDataInRange(stressData, after15End, after30End))
-  }
-
-  const calculateWindowStats = (values: number[]): TimeWindowStats => ({
-    mean: mean(values) !== null ? Math.round(mean(values)! * 10) / 10 : null,
-    sample_count: values.length,
-    stddev: stddev(values) !== null ? Math.round(stddev(values)! * 10) / 10 : null,
-  })
+  const sessions = mergeIntoSessions(await findOccurrences(user, activity, activityType, match, start, end))
+  const { buckets, effects, timeline } = summarizeImpact(
+    sessions,
+    binMetricSeries(hrvData, hrData, stressData),
+    window,
+  )
+  const totalMinutes = sessions.reduce((sum, s) => sum + (s.end - s.start) / 60_000, 0)
 
   return {
     activity,
     activity_type: activityType,
-    avg_duration_min: occurrences.length > 0 ? Math.round(totalDurationMin / occurrences.length) : 0,
-    hr_timeline: {
-      after15min: calculateWindowStats(windows.after15min.hr),
-      after30min: calculateWindowStats(windows.after30min.hr),
-      before15min: calculateWindowStats(windows.before15min.hr),
-      before30min: calculateWindowStats(windows.before30min.hr),
-      during: calculateWindowStats(windows.during.hr),
-    },
-    hrv_timeline: {
-      after15min: calculateWindowStats(windows.after15min.hrv),
-      after30min: calculateWindowStats(windows.after30min.hrv),
-      before15min: calculateWindowStats(windows.before15min.hrv),
-      before30min: calculateWindowStats(windows.before30min.hrv),
-      during: calculateWindowStats(windows.during.hrv),
-    },
-    occurrences: occurrences.length,
-    stress_timeline: {
-      after15min: calculateWindowStats(windows.after15min.stress),
-      after30min: calculateWindowStats(windows.after30min.stress),
-      before15min: calculateWindowStats(windows.before15min.stress),
-      before30min: calculateWindowStats(windows.before30min.stress),
-      during: calculateWindowStats(windows.during.stress),
-    },
+    avg_duration_min: sessions.length > 0 ? Math.round(totalMinutes / sessions.length) : 0,
+    hr_effect: effects.hr,
+    hr_timeline: timeline.hr,
+    hrv_effect: effects.hrv,
+    hrv_timeline: timeline.hrv,
+    occurrences: sessions.length,
+    stress_effect: effects.stress,
+    stress_timeline: timeline.stress,
+    timeline: buckets,
+    window_minutes: window,
   }
 }

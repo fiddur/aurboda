@@ -1,6 +1,7 @@
 import type { PublicTagFollow, RelayStyle } from '@aurboda/api-spec'
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import axios from 'axios'
 import { useLocation } from 'preact-iso'
 import { useCallback, useState } from 'preact/hooks'
 
@@ -9,8 +10,11 @@ import type { AdminSettings, InvitationResult, SignupMode } from '../../state/ap
 import { formatTagsInput, parseTagFilterInput } from '../../components/hashtags'
 import { ImportPanel } from '../../components/ImportPanel'
 import {
+  formatHandlesInput,
   formatUsernamesInput,
+  listsAuthors,
   officialFeedSummary,
+  parseHandlesInput,
   parseUsernamesInput,
 } from '../../components/official-feed'
 import {
@@ -34,7 +38,8 @@ import {
   removeRelay,
   updateAdminSettings,
 } from '../../state/api'
-import { auth, officialFeedEnabled, publicTagPages } from '../../state/auth'
+import { auth, contactFediverse, contactReddit, officialFeedEnabled, publicTagPages } from '../../state/auth'
+import { apiErrorText } from '../../utils/profile'
 import './style.css'
 
 const signupModeDescriptions: Record<SignupMode, string> = {
@@ -660,6 +665,102 @@ function SentrySection() {
   )
 }
 
+interface SupportContactsForm {
+  fediverse: string
+  reddit: string
+}
+
+const supportContactsForm = (settings: AdminSettings): SupportContactsForm => ({
+  fediverse: settings.contact_fediverse ? `@${settings.contact_fediverse}` : '',
+  reddit: settings.contact_reddit ? `u/${settings.contact_reddit}` : '',
+})
+
+const saveErrorText = (err: unknown): string =>
+  apiErrorText(
+    axios.isAxiosError(err) ? (err.response?.data as { error?: unknown } | undefined)?.error : undefined,
+    getErrorMessage(err),
+  )
+
+function SupportContactsSection() {
+  const { data: settings } = useQuery({ queryFn: fetchAdminSettings, queryKey: ['adminSettings'] })
+  return settings ? <SupportContactsSettingsForm settings={settings} /> : null
+}
+
+function SupportContactsSettingsForm({ settings }: { settings: AdminSettings }) {
+  const queryClient = useQueryClient()
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>({ status: 'idle' })
+  const [form, setForm] = useState<SupportContactsForm>(() => supportContactsForm(settings))
+
+  const save = async (e: Event) => {
+    e.preventDefault()
+    setSaveStatus({ status: 'saving' })
+    try {
+      const result = await updateAdminSettings({
+        contact_fediverse: form.fediverse.trim(),
+        contact_reddit: form.reddit.trim(),
+      })
+      queryClient.setQueryData(['adminSettings'], result)
+      contactFediverse.value = result.contact_fediverse || null
+      contactReddit.value = result.contact_reddit || null
+      setForm(supportContactsForm(result))
+      setSaveStatus({ status: 'saved', time: new Date() })
+    } catch (err) {
+      setSaveStatus({ error: saveErrorText(err), status: 'error' })
+    }
+  }
+
+  return (
+    <section class="settings-section">
+      <div class="section-header-row">
+        <h2>Support contacts</h2>
+        <SaveStatusIndicator state={saveStatus} />
+      </div>
+      <p class="section-description">
+        Shown on the Help, Privacy and Terms pages so users can reach you outside GitHub. Leave empty to hide.
+      </p>
+      <form onSubmit={save}>
+        <div class="form-field">
+          <label for="contact-fediverse">Fediverse handle</label>
+          <input
+            id="contact-fediverse"
+            type="text"
+            maxLength={255}
+            placeholder="@name@example.social"
+            autocapitalize="off"
+            spellcheck={false}
+            value={form.fediverse}
+            onInput={(e) =>
+              setForm((current) => ({ ...current, fediverse: (e.target as HTMLInputElement).value }))
+            }
+          />
+          <p class="field-description">
+            Users can mention or message you from Mastodon or any fediverse app.
+          </p>
+        </div>
+        <div class="form-field">
+          <label for="contact-reddit">Reddit username</label>
+          <input
+            id="contact-reddit"
+            type="text"
+            maxLength={255}
+            placeholder="u/name"
+            autocapitalize="off"
+            spellcheck={false}
+            value={form.reddit}
+            onInput={(e) =>
+              setForm((current) => ({ ...current, reddit: (e.target as HTMLInputElement).value }))
+            }
+          />
+          <p class="field-description">Users are offered a private message to you on Reddit.</p>
+        </div>
+        <button type="submit" class="generate-button" disabled={saveStatus.status === 'saving'}>
+          Save contacts
+        </button>
+      </form>
+    </section>
+  )
+}
+
 function OfficialFeedSection() {
   const queryClient = useQueryClient()
   const { data: settings } = useQuery({
@@ -669,20 +770,26 @@ function OfficialFeedSection() {
 
   const [saveStatus, setSaveStatus] = useState<SaveStatus>({ status: 'idle' })
   const [usersText, setUsersText] = useState<string | null>(null)
+  const [remoteText, setRemoteText] = useState<string | null>(null)
   const [tagsText, setTagsText] = useState<string | null>(null)
 
-  const configured = settings?.official_feed ?? { tags: [], users: [] }
+  const configured = settings?.official_feed ?? { remote_authors: [], tags: [], users: [] }
+  const configuredOn = listsAuthors(configured)
   const usersValue = usersText ?? formatUsernamesInput(configured.users)
+  const remoteValue = remoteText ?? formatHandlesInput(configured.remote_authors)
   const tagsValue = tagsText ?? formatTagsInput(configured.tags)
 
   const save = useCallback(
-    async (users: string[], tags: string[]) => {
+    async (users: string[], remoteAuthors: string[], tags: string[]) => {
       setSaveStatus({ status: 'saving' })
       try {
-        const result = await updateAdminSettings({ official_feed: { tags, users } })
+        const result = await updateAdminSettings({
+          official_feed: { remote_authors: remoteAuthors, tags, users },
+        })
         queryClient.setQueryData(['adminSettings'], result)
-        officialFeedEnabled.value = result.official_feed.users.length > 0
+        officialFeedEnabled.value = listsAuthors(result.official_feed)
         setUsersText(null)
+        setRemoteText(null)
         setTagsText(null)
         setSaveStatus({ status: 'saved', time: new Date() })
       } catch (err) {
@@ -700,9 +807,9 @@ function OfficialFeedSection() {
           <label for="official-feed-users">Users</label>
           <SaveStatusIndicator state={saveStatus} />
         </div>
-        {configured.users.length > 0 && (
+        {configuredOn && (
           <p class="connected-status">
-            <a href={officialFeedPath}>{officialFeedSummary(configured.users, configured.tags)}</a>
+            <a href={officialFeedPath}>{officialFeedSummary(configured)}</a>
           </p>
         )}
         <input
@@ -715,6 +822,20 @@ function OfficialFeedSection() {
           spellcheck={false}
         />
         <p class="field-description">Usernames separated by commas or spaces.</p>
+        <label for="official-feed-remote-authors">Authors on other servers</label>
+        <input
+          id="official-feed-remote-authors"
+          type="text"
+          value={remoteValue}
+          onInput={(e) => setRemoteText((e.target as HTMLInputElement).value)}
+          placeholder="@name@example.social"
+          autocapitalize="off"
+          spellcheck={false}
+        />
+        <p class="field-description">
+          Fediverse handles, e.g. @fiddur@aurboda.net. Their public posts with one of the tags reach this
+          server through the tag actor host (Federation → tag actor host). Needs at least one tag.
+        </p>
         <TagsInput
           id="official-feed-tags"
           legend="Tags"
@@ -726,19 +847,26 @@ function OfficialFeedSection() {
           <button
             type="button"
             class="generate-button"
-            onClick={() => save(parseUsernamesInput(usersValue), parseTagFilterInput(tagsValue))}
+            onClick={() =>
+              save(
+                parseUsernamesInput(usersValue),
+                parseHandlesInput(remoteValue),
+                parseTagFilterInput(tagsValue),
+              )
+            }
           >
             Save
           </button>
-          {configured.users.length > 0 && (
-            <button type="button" class="clear-button" onClick={() => save([], [])}>
+          {configuredOn && (
+            <button type="button" class="clear-button" onClick={() => save([], [], [])}>
               Clear
             </button>
           )}
         </div>
         <p class="field-description">
-          Public posts by these users are the instance blog at <a href={officialFeedPath}>/blog</a>, with an
-          Atom feed, linked from the front page and footer. Empty users turns it off.
+          Public posts by these authors are the instance blog at <a href={officialFeedPath}>/blog</a>, with an
+          Atom feed, linked from the front page and footer. No users and no authors on other servers turns it
+          off.
         </p>
       </div>
     </section>
@@ -1144,6 +1272,8 @@ export function AdminSettings() {
       <IntegrationsSection />
 
       <SentrySection />
+
+      <SupportContactsSection />
 
       <OfficialFeedSection />
 

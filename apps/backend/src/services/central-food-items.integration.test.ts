@@ -87,6 +87,19 @@ describe('central shared_food_items', () => {
     expect(found?.name).toBe('Banana')
   })
 
+  test('getSharedFoodItemsBySourceIds finds rows by (source, source_id)', async () => {
+    const a = api()
+    const apple = await a.upsertSharedFoodItem({ name: 'Apple', source: 'livsmedelsverket', source_id: '1' })
+    await a.upsertSharedFoodItem({ name: 'Pear', source: 'livsmedelsverket', source_id: '2' })
+    await a.upsertSharedFoodItem({ name: 'Plum', source: 'usda', source_id: '1' })
+    const found = await a.getSharedFoodItemsBySourceIds([
+      { source: 'livsmedelsverket', source_id: '1' },
+      { source: 'livsmedelsverket', source_id: '99' },
+    ])
+    expect(found.map((item) => item.id)).toEqual([apple.id])
+    expect(await a.getSharedFoodItemsBySourceIds([])).toEqual([])
+  })
+
   test('listSharedFoodItems returns rows alphabetically', async () => {
     const a = api()
     await a.upsertSharedFoodItem({ name: 'Cherry', source: 'livsmedelsverket', source_id: 'c' })

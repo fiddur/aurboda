@@ -1,7 +1,7 @@
 # Server administration
 
 The first user to sign up becomes an admin. Admins manage server-wide settings (signup mode,
-integration credentials, Sentry, plans and billing, federation) from the web app's Admin Settings page. Those
+integration credentials, Sentry, plans and billing, support contacts, federation) from the web app's Admin Settings page. Those
 settings, the admin list and the records below live in the central database (`CENTRAL_DB`, default
 `aurboda`), not in any user's own database.
 
@@ -203,6 +203,24 @@ grace, read-only) to sort by end date. REST: `PATCH /admin/users/:username/plan`
 `paid_until`, `trial_ends_at` and `plan_note` (`null` clears a date or the note); MCP: the admin-only
 `set_user_plan`.
 
+## Support contacts
+
+How users reach the person who runs the server outside GitHub, set under **Support contacts** on
+the Admin Settings page (REST `GET`/`PATCH /admin/settings`). Both are empty by default; an empty
+value hides it.
+
+| Setting             | Accepted input                                                                       | Stored as                                  |
+| ------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------ |
+| `contact_fediverse` | `@name@host` or `name@host`                                                          | `name@host`                                |
+| `contact_reddit`    | `name`, `u/name`, `/u/name` or a `reddit.com/user/name` URL (`www.`, `old.` or none) | `name` (3–20 of letters, digits, `_`, `-`) |
+
+Anything else is refused with `400`. When either is set, the Help page gets a **Contact the
+server's admin** section, and the Contact sections of the Privacy Policy and Terms of Service name
+them next to the Aurboda project on GitHub (without them, those say to contact the administrator of
+the server). A fediverse handle on this server links to the local public profile at `/u/<name>`,
+one elsewhere to `https://<host>/@<name>`; the Reddit username links to a new private message. The
+public `GET /status` carries both as `contact_fediverse` and `contact_reddit` (null when unset).
+
 ## Federation
 
 **Tag actor host** (`tag_actor_host`, Admin Settings → **Federation**, `PATCH /admin/settings`):
@@ -270,7 +288,10 @@ badge per tag (`public_tag_follows`): **accepted**, **pending**, or **unresolved
 moderation of tag pages yet beyond removing the tag; a follow-up issue tracks hiding posts and
 blocking actors and domains. Posts are kept for
 `public_tag_retention_days` (1–365, default 30) by publication time; a nightly job (`23 3 * * *`)
-drops older ones and the ones that carry no configured tag any more. This server's own public
+re-applies the follows, then drops older ones (but the official feed's remote posts) and the ones
+that carry no followed tag any more. The instance actor also follows the
+[official feed](features/feed.md#official-feed)'s tags while it lists authors on other servers;
+those tags get no page. This server's own public
 posts are added as they are published from then on: posts published before a tag was configured
 are not backfilled. `GET /status` lists the tags (`public_tag_pages`) so the front page, `/blog`
 and the logged-out web can link the pages. See

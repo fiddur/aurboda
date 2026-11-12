@@ -1,6 +1,12 @@
-import type { HrvStats, HrvStatsWithDelta } from './types.ts'
+import type { HrvStats } from './types.ts'
 
 import { chiSquared2x2, chiSquaredPValue1df } from './stats.ts'
+
+export interface BaselineDeltas {
+  hr_delta_from_baseline: number | null
+  hrv_delta_from_baseline: number | null
+  stress_delta_from_baseline: number | null
+}
 
 export const mean = (values: number[]): number | null => {
   if (values.length === 0) return null
@@ -95,7 +101,7 @@ export const calculateHrvStats = (
   stddev_stress: stressValues.length > 0 ? stddev(stressValues) : null,
 })
 
-export const addBaselineDelta = (stats: HrvStats, baseline: HrvStats): HrvStatsWithDelta => ({
+export const addBaselineDelta = (stats: HrvStats, baseline: HrvStats): HrvStats & BaselineDeltas => ({
   ...stats,
   hr_delta_from_baseline:
     stats.mean_hr !== null && baseline.mean_hr !== null

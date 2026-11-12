@@ -1,23 +1,16 @@
-import type { HrvContextMetric } from '@aurboda/api-spec'
+import type {
+  ActivityImpactData,
+  HrvActivitiesData,
+  HrvStats as ApiHrvStats,
+  HrvStatsWithDelta as ApiHrvStatsWithDelta,
+  TimeWindowStats as ApiTimeWindowStats,
+} from '@aurboda/api-spec'
 
 import type { LagExposureResult } from './event-outcome.ts'
 
-export interface HrvStats {
-  mean_hrv: number | null
-  stddev_hrv: number | null
-  mean_hr: number | null
-  stddev_hr: number | null
-  mean_stress: number | null
-  stddev_stress: number | null
-  sample_minutes: number
-  sample_count: number
-}
+export type HrvStats = ApiHrvStats
 
-export interface HrvStatsWithDelta extends HrvStats {
-  hrv_delta_from_baseline: number | null
-  hr_delta_from_baseline: number | null
-  stress_delta_from_baseline: number | null
-}
+export type HrvStatsWithDelta = ApiHrvStatsWithDelta
 
 export interface BaselineResult {
   hrv: {
@@ -58,59 +51,11 @@ export interface ActivityCorrelation extends HrvStatsWithDelta {
   avg_duration_min?: number
 }
 
-export interface MovementCorrelation extends HrvStatsWithDelta {
-  state: 'sedentary' | 'walking' | 'post_exercise_30min'
-}
+export type HrvActivitiesResult = HrvActivitiesData
 
-export interface HrvActivitiesResult {
-  period: {
-    start: string
-    end: string
-    days: number
-  }
-  /** The autonomic metric the productivity correlation_coefficient is computed against. */
-  context_metric: HrvContextMetric
-  baseline: HrvStats
-  correlations: {
-    productivity: ProductivityCorrelation[]
-    locations: LocationCorrelation[]
-    activities: ActivityCorrelation[]
-  }
-}
+export type TimeWindowStats = ApiTimeWindowStats
 
-export interface TimeWindowStats {
-  mean: number | null
-  stddev: number | null
-  sample_count: number
-}
-
-export interface ActivityImpactResult {
-  activity: string
-  activity_type: 'productivity_category' | 'productivity_app' | 'location' | 'tag' | 'activity_type'
-  occurrences: number
-  avg_duration_min: number
-  hrv_timeline: {
-    before30min: TimeWindowStats
-    before15min: TimeWindowStats
-    during: TimeWindowStats
-    after15min: TimeWindowStats
-    after30min: TimeWindowStats
-  }
-  hr_timeline: {
-    before30min: TimeWindowStats
-    before15min: TimeWindowStats
-    during: TimeWindowStats
-    after15min: TimeWindowStats
-    after30min: TimeWindowStats
-  }
-  stress_timeline: {
-    before30min: TimeWindowStats
-    before15min: TimeWindowStats
-    during: TimeWindowStats
-    after15min: TimeWindowStats
-    after30min: TimeWindowStats
-  }
-}
+export type ActivityImpactResult = ActivityImpactData
 
 export interface LagWindowResult {
   probability: number
