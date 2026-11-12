@@ -10,6 +10,7 @@ import type { ScatterSvgData } from '../services/charts/scatter-svg.ts'
 import type { ExerciseTrendSeries } from '../services/feed-structured-exercise.ts'
 
 import { createNegativeCache, forgetArticleBlockMisses } from '../services/article-block-misses.ts'
+import { impactData } from '../test/impact-fixture.ts'
 import {
   createFeedImageRouter,
   createRenderCache,
@@ -302,6 +303,7 @@ describe('renderArticleBlockImage', () => {
   const mkDeps = (over: Partial<FeedImageDeps> = {}): FeedImageDeps => ({
     getActivity: async () => null,
     getArticleChartSeries: vi.fn(async () => series),
+    getArticleImpact: async () => impactData(),
     getCorrelationScatter: vi.fn(async () => scatter),
     getPost: async () => null,
     getRoute: async () => [],
@@ -312,6 +314,8 @@ describe('renderArticleBlockImage', () => {
     rasterizeSvg: async () => Buffer.from('figure-png'),
     renderChart: vi.fn(async () => Buffer.from('chart-png')),
     renderChartSvg: vi.fn(() => '<svg>chart</svg>'),
+    renderImpact: async () => Buffer.from('impact-png'),
+    renderImpactSvg: () => '<svg>impact</svg>',
     renderRoute: async () => Buffer.from(''),
     renderScatter: vi.fn(async () => Buffer.from('scatter-png')),
     renderRaceChart: async () => Buffer.from(''),
@@ -480,6 +484,7 @@ describe('article block image misses', () => {
         articleBlockMisses: misses,
         getActivity: async () => null,
         getArticleChartSeries: async () => points(),
+        getArticleImpact: async () => impactData(),
         getCorrelationScatter: async () => null,
         getPost: async () => post,
         getRoute: async () => [],
@@ -490,6 +495,8 @@ describe('article block image misses', () => {
         rasterizeSvg: async () => Buffer.from('figure-png'),
         renderChart: async () => Buffer.from('chart-png'),
         renderChartSvg: () => '<svg>chart</svg>',
+        renderImpact: async () => Buffer.from('impact-png'),
+        renderImpactSvg: () => '<svg>impact</svg>',
         renderRaceChart: async () => Buffer.from(''),
         renderRaceChartSvg: () => '',
         renderRoute: async () => Buffer.from(''),
@@ -547,6 +554,7 @@ describe('article challenge block images', () => {
       createFeedImageRouter({
         getActivity: async () => null,
         getArticleChartSeries: async () => [],
+        getArticleImpact: async () => impactData(),
         getChallengeRaceByUrl,
         getCorrelationScatter: async () => null,
         getExerciseTrend: async () => null,
@@ -557,6 +565,8 @@ describe('article challenge block images', () => {
         rasterizeSvg: async () => Buffer.from('figure-png'),
         renderChart: async () => Buffer.from(''),
         renderChartSvg: () => '',
+        renderImpact: async () => Buffer.from('impact-png'),
+        renderImpactSvg: () => '<svg>impact</svg>',
         renderRaceChart: async () => Buffer.from('race-png'),
         renderRaceChartSvg: () => '<svg>race</svg>',
         renderRoute: async () => Buffer.from(''),
@@ -624,6 +634,7 @@ describe('standings images', () => {
       createFeedImageRouter({
         getActivity: async () => null,
         getArticleChartSeries: async () => [],
+        getArticleImpact: async () => impactData(),
         getCorrelationScatter: async () => null,
         getPost: async () => post,
         getRoute: async () => [],
@@ -634,6 +645,8 @@ describe('standings images', () => {
         rasterizeSvg: async () => Buffer.from('figure-png'),
         renderChart: async () => Buffer.from(''),
         renderChartSvg: () => '',
+        renderImpact: async () => Buffer.from('impact-png'),
+        renderImpactSvg: () => '<svg>impact</svg>',
         renderRaceChart,
         renderRaceChartSvg: () => '<svg>race</svg>',
         renderRoute: async () => Buffer.from(''),
@@ -744,6 +757,7 @@ describe('exercise trend images (#1398)', () => {
       createFeedImageRouter({
         getActivity: async () => null,
         getArticleChartSeries: async () => [],
+        getArticleImpact: async () => impactData(),
         getCorrelationScatter: async () => null,
         getExerciseTrend,
         getPost: async () => post,
@@ -754,6 +768,8 @@ describe('exercise trend images (#1398)', () => {
         rasterizeSvg: async () => Buffer.from('figure-png'),
         renderChart,
         renderChartSvg,
+        renderImpact: async () => Buffer.from('impact-png'),
+        renderImpactSvg: () => '<svg>impact</svg>',
         renderRaceChart: async () => Buffer.from(''),
         renderRaceChartSvg: () => '',
         renderRoute: async () => Buffer.from(''),
@@ -850,6 +866,7 @@ describe('article block figure images', () => {
       createFeedImageRouter({
         getActivity: async () => null,
         getArticleChartSeries: async () => series,
+        getArticleImpact: async () => impactData(),
         getChallengeRaceByUrl: async () => null,
         getCorrelationScatter: async () => null,
         getExerciseTrend: async () => null,
@@ -860,6 +877,8 @@ describe('article block figure images', () => {
         rasterizeSvg,
         renderChart,
         renderChartSvg: () => chartSvg,
+        renderImpact: async () => Buffer.from('impact-png'),
+        renderImpactSvg: () => '<svg>impact</svg>',
         renderRaceChart: async () => Buffer.from(''),
         renderRaceChartSvg: () => '',
         renderRoute: async () => Buffer.from(''),
@@ -905,5 +924,82 @@ describe('article block figure images', () => {
     misses.add(`blockfig:fiddur:${POST_ID}:1:0:0`)
     forgetArticleBlockMisses(misses, 'fiddur', POST_ID, 1)
     expect(misses.has(`blockfig:fiddur:${POST_ID}:1:0:0`)).toBe(false)
+  })
+})
+
+describe('article impact block images', () => {
+  const content = article([
+    { markdown: 'Intro', type: 'prose' },
+    { ...WINDOW, activity: 'yoga', activity_type: 'activity_type', type: 'impact', window_minutes: 60 },
+  ])
+  const appWith = (sessions = 3) => {
+    const getArticleImpact = vi.fn(async () => impactData({ occurrences: sessions }))
+    const renderImpact = vi.fn(async () => Buffer.from('impact-png'))
+    const rasterizeSvg = vi.fn(async (_svg: string) => Buffer.from('figure-png'))
+    const app = express()
+    app.use(
+      createFeedImageRouter({
+        getActivity: async () => null,
+        getArticleChartSeries: async () => [],
+        getArticleImpact,
+        getChallengeRaceByUrl: async () => null,
+        getCorrelationScatter: async () => null,
+        getExerciseTrend: async () => null,
+        getPost: async () => articlePost(content),
+        getRoute: async () => [],
+        getSeries: async () => [],
+        getStandingsChart: async () => null,
+        rasterizeSvg,
+        renderChart: async () => Buffer.from(''),
+        renderChartSvg: () => '',
+        renderImpact,
+        renderImpactSvg: () =>
+          '<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="560" viewBox="0 0 1000 560"></svg>',
+        renderRaceChart: async () => Buffer.from(''),
+        renderRaceChartSvg: () => '',
+        renderRoute: async () => Buffer.from(''),
+        renderScatter: async () => Buffer.from(''),
+        renderScatterSvg: () => '',
+      }),
+    )
+    return { app, getArticleImpact, rasterizeSvg, renderImpact }
+  }
+  const block = (file: string) => `/public/fiddur/feed/${POST_ID}/blocks/1/${file}`
+
+  test('serves image.png from the impact over the block window', async () => {
+    const { app, getArticleImpact, renderImpact } = appWith()
+    const res = await supertest(app).get(block('image.png'))
+    expect(res.status).toBe(200)
+    expect(res.headers['content-type']).toMatch(/image\/png/)
+    expect(renderImpact).toHaveBeenCalledWith(impactData())
+    expect(getArticleImpact).toHaveBeenCalledWith('fiddur', {
+      activity: 'yoga',
+      activityType: 'activity_type',
+      end: new Date(WINDOW.end),
+      start: new Date(WINDOW.start),
+      windowMinutes: 60,
+    })
+  })
+
+  test('serves image.svg', async () => {
+    const res = await supertest(appWith().app).get(block('image.svg'))
+    expect(res.status).toBe(200)
+    expect(res.headers['content-type']).toMatch(/image\/svg\+xml/)
+    expect(res.body.toString()).toContain('height="560"')
+  })
+
+  test('serves figure.png at the impact size under its title band', async () => {
+    const { app, rasterizeSvg } = appWith()
+    expect((await supertest(app).get(block('figure.png'))).status).toBe(200)
+    const svg = rasterizeSvg.mock.calls[0][0]
+    expect(svg).toContain('Figure 1')
+    expect(svg).toContain('Impact of yoga')
+    expect(svg).toContain('height="648"')
+  })
+
+  test('404 when the window has no sessions', async () => {
+    const { app } = appWith(0)
+    expect((await supertest(app).get(block('image.png'))).status).toBe(404)
+    expect((await supertest(app).get(block('figure.png'))).status).toBe(404)
   })
 })

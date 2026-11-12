@@ -91,6 +91,9 @@ const incompleteDraftError = (content: ArticleDraftContent): string | null => {
     if (block.type === 'challenge' && !block.challenge_url) {
       return `Challenge block ${i + 1} has no challenge — pick one or paste its link before publishing.`
     }
+    if (block.type === 'impact' && !block.activity) {
+      return `Impact block ${i + 1} has no activity — pick one before publishing.`
+    }
   }
   return null
 }

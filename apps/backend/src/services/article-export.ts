@@ -1,6 +1,6 @@
 /**
  * Reddit/markdown export: a paste-ready markdown rendering of an article —
- * title, prose, one image link per chart/correlation block, and a challenge
+ * title, prose, one image link per chart/correlation/impact block, and a challenge
  * block's standings image plus a join link (images via the
  * `blocks/:index/image.png` endpoint) — for pasting into a text-only
  * destination like r/QuantifiedSelf, where the author adds their own write-up
@@ -14,16 +14,22 @@
  */
 import type { ArticleBlock, ArticleContent, FeedVisibility, MetricType } from '@aurboda/api-spec'
 
-import { defaultArticleChartBucket } from '@aurboda/api-spec'
+import { DEFAULT_IMPACT_WINDOW_MINUTES, defaultArticleChartBucket } from '@aurboda/api-spec'
 
-import type { CorrelationBlockParams } from './article-block-data.ts'
+import type { CorrelationBlockParams, ImpactBlockParams } from './article-block-data.ts'
 import type { NegativeCache } from './article-block-misses.ts'
+import type { ImpactSvgData } from './charts/impact-svg.ts'
 import type { RaceChartSvgData } from './charts/race-chart-svg.ts'
 import type { ScatterSvgData } from './charts/scatter-svg.ts'
 
-import { getArticleChartSeriesData, getArticleCorrelationScatter } from './article-block-data.ts'
+import {
+  getArticleChartSeriesData,
+  getArticleCorrelationScatter,
+  getArticleImpact,
+} from './article-block-data.ts'
 import { articleBlockMisses, forgetArticleBlockMisses } from './article-block-misses.ts'
 import { articleBlockImageUrl, articleBlockLabel, blockWindow, isZeroDurationBucket } from './article.ts'
+import { isDrawableImpact } from './charts/post-chart-svg.ts'
 import { resolveChallengeRaceByUrl } from './feed-structured-challenge.ts'
 
 /**
@@ -49,6 +55,7 @@ export interface BlockImageDataDeps {
   ) => Promise<unknown[]>
   correlationScatter: (user: string, params: CorrelationBlockParams) => Promise<ScatterSvgData | null>
   challengeRace: (user: string, url: string) => Promise<RaceChartSvgData | null>
+  impact: (user: string, params: ImpactBlockParams) => Promise<ImpactSvgData>
   misses: NegativeCache
 }
 
@@ -56,6 +63,7 @@ const realDeps: BlockImageDataDeps = {
   chartSeries: getArticleChartSeriesData,
   challengeRace: (user, url) => resolveChallengeRaceByUrl(user, url),
   correlationScatter: getArticleCorrelationScatter,
+  impact: getArticleImpact,
   misses: articleBlockMisses,
 }
 
@@ -103,6 +111,16 @@ const blockImageRenders = async (
     if (isZeroDurationBucket(bucket)) return false
     return (await deps.chartSeries(user, block.metric, startDate, endDate, bucket)).length >= 2
   }
+  if (block.type === 'impact') {
+    const impact = await deps.impact(user, {
+      activity: block.activity,
+      activityType: block.activity_type,
+      end: endDate,
+      start: startDate,
+      windowMinutes: block.window_minutes ?? DEFAULT_IMPACT_WINDOW_MINUTES,
+    })
+    return isDrawableImpact(impact)
+  }
   const scatter = await deps.correlationScatter(user, {
     lagDays: block.lag_days,
     outcome: block.outcome,
@@ -119,14 +137,14 @@ const linkTarget = (url: string): string =>
 
 /**
  * Render an article as paste-ready markdown: an H1 title, each prose block's
- * markdown verbatim, and each chart/correlation block as a markdown image link
+ * markdown verbatim, and each chart/correlation/impact block as a markdown image link
  * to its rendered PNG (the C1 endpoint), with its caption (else a data label)
  * as both the image's alt text and an italic line underneath it — the markdown
  * equivalent of the web/federated render's `<figcaption>`. A challenge block is
  * its standings image the same way, then a "Join the challenge" link.
  *
  * `renderableBlocks` (from {@link renderableArticleBlocks}) marks the blocks
- * whose image would actually render; any other chart/correlation block gets an
+ * whose image would actually render; any other chart/correlation/impact block gets an
  * italic "not enough data" line instead of a dead image link, so the pasted
  * markdown never shows a broken image (#974), and a challenge block keeps only
  * its caption and link. Omit it to link every block unconditionally (tests /

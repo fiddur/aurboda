@@ -18,6 +18,7 @@ import { type Response, Router } from 'express'
 
 import type { FeedPostRecord } from '../db/index.ts'
 import type { CorrelationBlockParams } from '../services/article-block-data.ts'
+import type { ImpactSvgData } from '../services/charts/impact-svg.ts'
 import type { ChartRenderOpts, PostChart } from '../services/charts/post-chart-svg.ts'
 import type { RaceChartSvgData } from '../services/charts/race-chart-svg.ts'
 import type { ScatterSvgData } from '../services/charts/scatter-svg.ts'
@@ -30,9 +31,7 @@ import {
   createNegativeCache,
   type NegativeCache,
 } from '../services/article-block-misses.ts'
-import { CHART_HEIGHT, CHART_WIDTH } from '../services/charts/chart-svg.ts'
-import { withFigureTitle } from '../services/charts/figure-svg.ts'
-import { SCATTER_HEIGHT, SCATTER_WIDTH } from '../services/charts/scatter-svg.ts'
+import { articleBlockFigureSize, withFigureTitle } from '../services/charts/figure-svg.ts'
 import { isCapabilityAuthorized } from '../services/feed-capability.ts'
 import {
   activityHeartRateChart,
@@ -78,6 +77,8 @@ export interface FeedImageDeps extends PostChartDeps {
   renderScatterSvg: (data: ScatterSvgData) => string
   renderRaceChart: (data: RaceChartSvgData) => Promise<Buffer>
   renderRaceChartSvg: (data: RaceChartSvgData) => string
+  renderImpact: (data: ImpactSvgData) => Promise<Buffer>
+  renderImpactSvg: (data: ImpactSvgData) => string
   /** Rasterise an SVG to PNG (an article block's figure: the chart under its title band). */
   rasterizeSvg: (svg: string) => Promise<Buffer>
   /** Remembered block-image misses, shared with the markdown export (a fresh one when omitted). */
@@ -218,6 +219,8 @@ export const renderPostChartImage = async (
     FeedImageDeps,
     | 'renderChart'
     | 'renderChartSvg'
+    | 'renderImpact'
+    | 'renderImpactSvg'
     | 'renderRaceChart'
     | 'renderRaceChartSvg'
     | 'renderScatter'
@@ -236,6 +239,8 @@ export const renderPostChartImage = async (
       return format === 'png' ? deps.renderRaceChart(chart.data) : svg(deps.renderRaceChartSvg(chart.data))
     case 'scatter':
       return format === 'png' ? deps.renderScatter(chart.data) : svg(deps.renderScatterSvg(chart.data))
+    case 'impact':
+      return format === 'png' ? deps.renderImpact(chart.data) : svg(deps.renderImpactSvg(chart.data))
   }
 }
 
@@ -268,10 +273,7 @@ export const renderArticleBlockFigure = async (
   const figure = renderArticleNote(article, () => '').figures.find((f) => f.block_index === index)
   if (figure == null) return null
   const svg = (await renderPostChartImage(deps, chart, 'svg')).toString('utf8')
-  const size =
-    chart.type === 'scatter'
-      ? { height: SCATTER_HEIGHT, width: SCATTER_WIDTH }
-      : { height: CHART_HEIGHT, width: CHART_WIDTH }
+  const size = articleBlockFigureSize(block.type)
   const title = { caption: figure.label, heading: `Figure ${figure.number}` }
   return deps.rasterizeSvg(withFigureTitle(svg, size, title))
 }

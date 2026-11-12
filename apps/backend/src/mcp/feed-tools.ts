@@ -311,7 +311,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
 
   server.tool(
     'create_article',
-    'Publish a long-form ARTICLE to your feed: a title, markdown prose, and inline chart blocks over locked time windows. `blocks` is an ordered list of `{type:"prose", markdown}` or `{type:"chart", metric, start?, end?, bucket?, caption?}`. A chart block over `[start, end]` re-resolves live against that window; omit its start/end to inherit `default_start`/`default_end`. A `{type:"challenge", challenge_url, caption?}` block embeds a challenge\'s live standings and a join link; take `challenge_url` from `list_challenges` (`share_url`) or from a joined challenge\'s URL. Use this (not `share_activity`) for a written analysis spanning multiple charts. It publishes (and federates) immediately; to let the user review first, use `create_article_draft` instead.',
+    'Publish a long-form ARTICLE to your feed: a title, markdown prose, and inline chart blocks over locked time windows. `blocks` is an ordered list of `{type:"prose", markdown}` or `{type:"chart", metric, start?, end?, bucket?, caption?}`. A chart block over `[start, end]` re-resolves live against that window; omit its start/end to inherit `default_start`/`default_end`. A `{type:"challenge", challenge_url, caption?}` block embeds a challenge\'s live standings and a join link; take `challenge_url` from `list_challenges` (`share_url`) or from a joined challenge\'s URL. A `{type:"impact", activity, activity_type, window_minutes?, start?, end?, caption?}` block shows HRV, heart rate and stress before, during and after each session of one activity over its window (like `get_activity_impact` with `match: "exact"`); name `activity` exactly as `get_hrv_activities_correlation` lists it. Use this (not `share_activity`) for a written analysis spanning multiple charts. It publishes (and federates) immediately; to let the user review first, use `create_article_draft` instead.',
     { ...createArticleBodySchema.shape },
     async (body) => {
       const built = await validateArticleContent({
@@ -362,7 +362,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
 
   server.tool(
     'create_article_draft',
-    'Save an ARTICLE DRAFT: a private, unpublished article the user can keep working on in the web editor (or via `update_article_draft`) and publish when ready. A draft is never federated or shown on any feed. It may be incomplete — an empty title, a chart block without `metric`, a correlation block without `trigger`/`outcome`. `article` takes the same shape as `create_article` (`title`, `blocks`, `default_start`, `default_end`); `visibility` is the audience it gets once published.',
+    'Save an ARTICLE DRAFT: a private, unpublished article the user can keep working on in the web editor (or via `update_article_draft`) and publish when ready. A draft is never federated or shown on any feed. It may be incomplete — an empty title, a chart block without `metric`, a correlation block without `trigger`/`outcome`, an impact block without `activity`. `article` takes the same shape as `create_article` (`title`, `blocks`, `default_start`, `default_end`); `visibility` is the audience it gets once published.',
     { ...createArticleDraftBodySchema.shape },
     async ({ article, visibility }) => {
       const record = await createArticleDraft(user, {
@@ -439,7 +439,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
 
   server.tool(
     'export_article_markdown',
-    'Export a published ARTICLE as paste-ready markdown for a text-only destination (e.g. r/QuantifiedSelf): the title, the prose blocks verbatim, and one image link per chart/correlation block pointing at its rendered PNG. Paste the result and add your own write-up around the linked charts.',
+    'Export a published ARTICLE as paste-ready markdown for a text-only destination (e.g. r/QuantifiedSelf): the title, the prose blocks verbatim, and one image link per chart, correlation, challenge or impact block pointing at its rendered PNG. Paste the result and add your own write-up around the linked charts.',
     { id: z.string().uuid().describe('Feed post ID (must be an article)') },
     async ({ id }) => {
       const post = await getFeedPostById(user, id)

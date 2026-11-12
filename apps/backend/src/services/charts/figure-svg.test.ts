@@ -1,6 +1,9 @@
 import { describe, expect, test } from 'vitest'
 
-import { FIGURE_BAND_HEIGHT, withFigureTitle } from './figure-svg.ts'
+import { CHART_HEIGHT, CHART_WIDTH } from './chart-svg.ts'
+import { articleBlockFigureSize, FIGURE_BAND_HEIGHT, withFigureTitle } from './figure-svg.ts'
+import { IMPACT_HEIGHT, IMPACT_WIDTH } from './impact-svg.ts'
+import { SCATTER_HEIGHT, SCATTER_WIDTH } from './scatter-svg.ts'
 
 const chart =
   '<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="420" viewBox="0 0 1000 420"><rect/></svg>'
@@ -47,5 +50,14 @@ describe('withFigureTitle', () => {
   test('throws when the chart is not an svg element', () => {
     expect(() => withFigureTitle('<div/>', size, { heading: 'Figure 1' })).toThrow()
     expect(() => withFigureTitle('<svg>chart</svg>', size, { heading: 'Figure 1' })).toThrow()
+  })
+})
+
+describe('articleBlockFigureSize', () => {
+  test('is the size each block type renders its chart at', () => {
+    expect(articleBlockFigureSize('chart')).toEqual({ height: CHART_HEIGHT, width: CHART_WIDTH })
+    expect(articleBlockFigureSize('challenge')).toEqual({ height: CHART_HEIGHT, width: CHART_WIDTH })
+    expect(articleBlockFigureSize('correlation')).toEqual({ height: SCATTER_HEIGHT, width: SCATTER_WIDTH })
+    expect(articleBlockFigureSize('impact')).toEqual({ height: IMPACT_HEIGHT, width: IMPACT_WIDTH })
   })
 })

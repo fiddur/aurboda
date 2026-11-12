@@ -80,6 +80,38 @@ export const fetchActivityImpact = async (
   return response.data.data!
 }
 
+/** The impact of one exact activity over a fixed period (`start` inclusive, `end` exclusive), as an article block draws it. */
+export const fetchActivityImpactOver = async ({
+  activity,
+  activityType,
+  end,
+  start,
+  windowMinutes,
+}: {
+  activity: string
+  activityType: ActivityImpactType
+  start: string
+  end: string
+  windowMinutes: number
+}): Promise<ActivityImpactData> => {
+  const { token } = auth.value
+  const params: ActivityImpactQuery = {
+    activity_type: activityType,
+    end,
+    match: 'exact',
+    start,
+    window_minutes: String(windowMinutes),
+  }
+  const response = await axios.get<ActivityImpactResponse>(
+    `${API_URL}/correlations/activity-impact/${encodeURIComponent(activity)}`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+      params,
+    },
+  )
+  return response.data.data!
+}
+
 // Fetch the data dimensions available to correlate (populates explore pickers)
 export const fetchCorrelationSelectors = async (): Promise<CorrelationSelectorsData> => {
   const { token } = auth.value

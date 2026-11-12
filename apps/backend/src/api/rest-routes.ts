@@ -99,16 +99,22 @@ import { createWebAuthnRouter } from '../routes/webauthn-router.ts'
 import { createWellKnownRouter, type WellKnownConfig } from '../routes/well-known-router.ts'
 import {
   renderChartPng,
+  renderImpactPng,
   renderRaceChartPng,
   renderRoutePng,
   renderScatterPng,
   svgToPng,
 } from '../services/activitypub/feed-images.ts'
 import { fetchOsmTile } from '../services/activitypub/osm-tiles.ts'
-import { getArticleChartSeriesData, getArticleCorrelationScatter } from '../services/article-block-data.ts'
+import {
+  getArticleChartSeriesData,
+  getArticleCorrelationScatter,
+  getArticleImpact,
+} from '../services/article-block-data.ts'
 import { articleBlockMisses } from '../services/article-block-misses.ts'
 import { loadAvatarDataUri, loadChallengeBannerDataUri } from '../services/avatar-resolve.ts'
 import { buildChartSvg } from '../services/charts/chart-svg.ts'
+import { buildImpactSvg } from '../services/charts/impact-svg.ts'
 import { buildRaceChartSvg } from '../services/charts/race-chart-svg.ts'
 import { buildScatterSvg } from '../services/charts/scatter-svg.ts'
 import { loadPublicDashboardChartWith } from '../services/dashboard-chart.ts'
@@ -180,6 +186,7 @@ const postChartDeps: PostChartDeps = {
   // Shared with the markdown export's eligibility check (#974), so "would
   // this block's image render?" can never drift from the endpoint.
   getArticleChartSeries: getArticleChartSeriesData,
+  getArticleImpact,
   getChallengeRaceByUrl: resolveChallengeRaceByUrl,
   getCorrelationScatter: getArticleCorrelationScatter,
   getExerciseTrend: (user, post) => resolveExerciseTrendSeries(user, post),
@@ -318,6 +325,8 @@ export const mountRestRouters = ({
       rasterizeSvg: svgToPng,
       renderChart: renderChartPng,
       renderChartSvg: buildChartSvg,
+      renderImpact: renderImpactPng,
+      renderImpactSvg: buildImpactSvg,
       renderRaceChart: renderRaceChartPng,
       renderRaceChartSvg: buildRaceChartSvg,
       // Draw the route over the OSM basemap; falls back to a bare shape if tiles

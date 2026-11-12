@@ -17,10 +17,11 @@ import {
   getGenericCorrelation,
   getHrvActivitiesCorrelation,
   type OutcomeConfig,
+  parseImpactPeriod,
   type Selector,
   type TriggerCondition,
 } from '../services/correlations/index.ts'
-import { type McpServer, type SyncProvider, tzJsonResponse } from './helpers.ts'
+import { errorResponse, type McpServer, type SyncProvider, tzJsonResponse } from './helpers.ts'
 
 export const registerCorrelationTools = (server: McpServer, user: string, sync?: SyncProvider) => {
   server.tool(
@@ -58,9 +59,11 @@ export const registerCorrelationTools = (server: McpServer, user: string, sync?:
 
   server.tool(
     'get_activity_impact',
-    'Get the impact of an activity on HRV, heart rate and stress. window_minutes (10-1440, default 30) is how long before and after each occurrence to compare. Returns timeline: buckets in time order with phase (before/during/after), start_offset_minutes, end_offset_minutes and hrv/hr/stress stats (each the mean of per-occurrence means over 5-minute averages); each side has 2 buckets when window_minutes is under 60 and 4 otherwise. The legacy *_timeline objects hold the outer and inner halves of the window. Also returns hrv_effect / hr_effect / stress_effect: the paired change from the window before to the window after (before_mean, after_mean, change, paired_occurrences, p_value from a paired t-test). Matching entries that overlap or are at most 10 minutes apart count as one occurrence. match: "contains" (default) matches every name containing activity; match: "exact" analyzes one exact type, as the context table on the Analyze page groups it.',
+    'Get the impact of an activity on HRV, heart rate and stress. window_minutes (10-1440, default 30) is how long before and after each occurrence to compare. Returns timeline: buckets in time order with phase (before/during/after), start_offset_minutes, end_offset_minutes and hrv/hr/stress stats (each the mean of per-occurrence means over 5-minute averages); each side has 2 buckets when window_minutes is under 60 and 4 otherwise. The legacy *_timeline objects hold the outer and inner halves of the window. Also returns hrv_effect / hr_effect / stress_effect: the paired change from the window before to the window after (before_mean, after_mean, change, paired_occurrences, p_value from a paired t-test). Matching entries that overlap or are at most 10 minutes apart count as one occurrence. match: "contains" (default) matches every name containing activity; match: "exact" analyzes one exact type, as the context table on the Analyze page groups it. start and end (ISO 8601, given together) fix the analysed period instead of the last period_days days: start inclusive, end exclusive.',
     { ...activityImpactInputSchema.shape, tz: tzSchema },
-    async ({ activity, activity_type, match, period_days, window_minutes, tz }) => {
+    async ({ activity, activity_type, end, match, period_days, start, window_minutes, tz }) => {
+      const period = parseImpactPeriod(start, end)
+      if (!period.ok) return errorResponse(period.error)
       const periodDays = period_days ?? 90
       const windowMinutes = window_minutes ?? 30
 
@@ -71,8 +74,8 @@ export const registerCorrelationTools = (server: McpServer, user: string, sync?:
         windowMinutes,
         periodDays,
         sync,
-        undefined,
-        undefined,
+        period.until,
+        period.since,
         match,
       )
       return tzJsonResponse({ data: impact, success: true }, tz)
