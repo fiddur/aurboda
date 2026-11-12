@@ -2,7 +2,15 @@ import { describe, expect, test } from 'vitest'
 
 import type { WindowEffect } from '../../state/api'
 
-import { changeClass, changeTitle, columnTitles, effectSummary, formatDelta, getDeltaClass } from './effects'
+import {
+  changeClass,
+  changeTitle,
+  columnTitles,
+  effectSummary,
+  formatDelta,
+  getDeltaClass,
+  roundTo,
+} from './effects'
 
 const effect = (overrides: Partial<WindowEffect> = {}): WindowEffect => ({
   after_mean: 35.4,
@@ -79,5 +87,19 @@ describe('deltas', () => {
 describe('columnTitles', () => {
   test('names the window', () => {
     expect(columnTitles(30).change).toContain('30 minutes after minus the 30 minutes before')
+  })
+})
+
+describe('roundTo', () => {
+  test('rounds to the shown decimals', () => {
+    expect(roundTo(4.26, 1)).toBe(4.3)
+    expect(roundTo(-6.5, 0)).toBe(-6)
+    expect(roundTo(null, 0)).toBeNull()
+  })
+
+  test('a delta that displays as zero is unsigned and uncoloured', () => {
+    const rounded = roundTo(-0.4, 0)
+    expect(formatDelta(rounded, 0)).toBe('0')
+    expect(getDeltaClass(rounded, true)).toBe('')
   })
 })

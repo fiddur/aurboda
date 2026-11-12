@@ -10,6 +10,14 @@ export const getDeltaClass = (value: number | null, inverted: boolean): string =
   return isGood ? 'positive' : 'negative'
 }
 
+/** Rounds to the decimals a cell shows, so a delta that displays as 0 is neither signed nor coloured. */
+export const roundTo = (value: number | null, decimals: number): number | null => {
+  if (value === null) return null
+  const factor = 10 ** decimals
+  const rounded = Math.round(value * factor) / factor
+  return rounded === 0 ? 0 : rounded
+}
+
 export const formatDelta = (value: number | null, decimals: number): string => {
   if (value === null) return '--'
   return `${value > 0 ? '+' : ''}${value.toFixed(decimals)}`

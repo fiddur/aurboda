@@ -2,7 +2,7 @@ import { Fragment } from 'preact'
 
 import type { HrvStatsWithDelta, WindowEffect } from '../../state/api'
 
-import { changeClass, changeTitle, columnTitles, formatDelta, getDeltaClass } from './effects'
+import { changeClass, changeTitle, columnTitles, formatDelta, getDeltaClass, roundTo } from './effects'
 
 export interface ContextTableRow {
   key: string
@@ -51,7 +51,7 @@ const METRICS: MetricColumns[] = [
 
 function MetricCells({ metric, stats }: { metric: MetricColumns; stats: HrvStatsWithDelta }) {
   const mean = metric.mean(stats)
-  const delta = metric.delta(stats)
+  const delta = roundTo(metric.delta(stats), metric.decimals)
   const effect = metric.effect(stats)
   return (
     <>
@@ -81,6 +81,9 @@ export function ContextTable({
   windowMinutes: number
 }) {
   const titles = columnTitles(windowMinutes)
+  const metrics = METRICS.filter((m) =>
+    rows.some((row) => m.mean(row.stats) !== null || m.effect(row.stats).change !== null),
+  )
   return (
     <section class="table-section">
       <h2>{title}</h2>
@@ -89,7 +92,7 @@ export function ContextTable({
           <thead>
             <tr>
               <th rowSpan={2}>{nameHeader}</th>
-              {METRICS.map((m) => (
+              {metrics.map((m) => (
                 <th key={m.label} colSpan={3} class="group-header group-start">
                   {m.label}
                 </th>
@@ -97,7 +100,7 @@ export function ContextTable({
               <th rowSpan={2}>Time</th>
             </tr>
             <tr>
-              {METRICS.map((m) => (
+              {metrics.map((m) => (
                 <Fragment key={m.label}>
                   <th class="sub-header group-start" title={titles.during}>
                     During
@@ -119,7 +122,7 @@ export function ContextTable({
                   <span class="name">{row.name}</span>
                   {row.extra && <span class="extra">{row.extra}</span>}
                 </td>
-                {METRICS.map((m) => (
+                {metrics.map((m) => (
                   <MetricCells key={m.label} metric={m} stats={row.stats} />
                 ))}
                 <td class="samples-cell">{row.stats.sample_minutes} min</td>
