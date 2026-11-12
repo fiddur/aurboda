@@ -33,6 +33,12 @@ vi.mock('../services/retype-legacy-screentime.ts', () => ({
 vi.mock('../services/redact-garmin-login-audit.ts', () => ({
   redactGarminLoginAudit: vi.fn(async () => ({ redacted: 0, skipped: true })),
 }))
+vi.mock('../services/exported-shared-food.ts', () => ({
+  reconcileExportedSharedFoodItems: vi.fn(async () => null),
+}))
+vi.mock('../services/backfill-meal-food-item-names.ts', () => ({
+  backfillMealFoodItemNames: vi.fn(async () => ({ skipped: true, updated: 0 })),
+}))
 
 const db = await import('../db/index.ts')
 const backfill = await import('../services/backfill-screentime-activities.ts')
