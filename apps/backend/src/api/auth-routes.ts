@@ -92,7 +92,9 @@ export const registerAuthRoutes = ({
       readPublicTagPages(centralDb),
       readSupportContacts(centralDb),
     ])
-    const officialFeedLive = (await Promise.all(officialFeed.users.map(userExists))).some(Boolean)
+    const officialFeedLive =
+      officialFeed.remote_authors.length > 0 ||
+      (await Promise.all(officialFeed.users.map(userExists))).some(Boolean)
     res.json({
       billing_enabled: billing.enabled,
       contact_fediverse: contacts.contact_fediverse || null,

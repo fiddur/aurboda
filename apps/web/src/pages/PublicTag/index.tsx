@@ -1,51 +1,16 @@
-import type { PublicTagPost as PublicTagPostData, PublicTagPostsResponse } from '@aurboda/api-spec'
+import type { PublicTagPostsResponse } from '@aurboda/api-spec'
 import type { InfiniteData } from '@tanstack/react-query'
 
 import { useInfiniteQuery } from '@tanstack/react-query'
 import { useRoute } from 'preact-iso'
 import { useEffect } from 'preact/hooks'
 
-import { publicTagSummary, tagLinks } from '../../components/public-tag-pages'
+import { publicTagSummary } from '../../components/public-tag-pages'
 import { fetchPublicTagPosts, publicTagAtomUrl } from '../../state/api'
 import { ensureStatusLoaded, publicTagPages } from '../../state/auth'
-import '../Feed/FeedPostCard.css'
-import { TimelineEntryHead } from '../Feed/TimelineEntryHead'
+import { RemotePostCard } from '../Feed/RemotePostCard'
 import '../OfficialFeed/style.css'
 import '../PublicProfile/style.css'
-
-function PublicTagPost({ entry, pages }: { entry: PublicTagPostData; pages: readonly string[] }) {
-  return (
-    <article class="feed-post">
-      <TimelineEntryHead entry={entry} />
-      {/* Sanitised server-side on ingest, as on the home timeline. */}
-      <div class="feed-post-content" dangerouslySetInnerHTML={{ __html: entry.content }} />
-      {entry.images?.map((img) => (
-        <img
-          key={img.url}
-          class="feed-post-image"
-          src={img.url}
-          alt={img.name ?? ''}
-          width={img.width}
-          height={img.height}
-          loading="lazy"
-        />
-      ))}
-      {entry.tags.length > 0 && (
-        <p class="feed-post-tags">
-          {tagLinks(entry.tags, pages).map(({ href, tag }) =>
-            href ? (
-              <a key={tag} href={href}>
-                #{tag}
-              </a>
-            ) : (
-              <span key={tag}>#{tag}</span>
-            ),
-          )}
-        </p>
-      )}
-    </article>
-  )
-}
 
 /**
  * PublicTag - a public tag page at /tags/:tag: public posts carrying the tag,
@@ -116,7 +81,7 @@ export function PublicTag() {
         {posts.length === 0 ? (
           <p class="public-muted">No posts yet.</p>
         ) : (
-          posts.map((entry) => <PublicTagPost key={entry.id} entry={entry} pages={linkedTags} />)
+          posts.map((entry) => <RemotePostCard key={entry.id} entry={entry} pages={linkedTags} />)
         )}
         {postsQuery.hasNextPage && (
           <button

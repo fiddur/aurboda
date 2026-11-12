@@ -1,7 +1,10 @@
 /**
- * Nightly pruning of the public tag pages: posts older than the retention, and
- * posts that carry none of the tags that still have a page.
+ * Nightly upkeep of the posts the instance actor's tag follows bring in: the
+ * follows are re-applied first (re-sending pending ones and retrying unresolved
+ * ones), then posts older than the retention are dropped, except the official
+ * feed's, and so are posts that carry none of the followed tags.
  */
+import type { PublicTagPruneKeep } from './central-public-tags.ts'
 import type { PgBoss } from './pg-boss.ts'
 
 const QUEUE_NAME = 'public-tag-posts-prune'
@@ -12,17 +15,28 @@ const DAY_MS = 24 * 60 * 60 * 1000
 
 export interface PublicTagPruneDeps {
   retentionDays: () => Promise<number>
-  publicTagPages: () => Promise<string[]>
-  prune: (olderThan: Date) => Promise<number>
+  /** The public tag pages' tags and the official feed's (`readInstanceFollowedTags`). */
+  followedTags: () => Promise<string[]>
+  /** The official feed's remote posts, kept regardless of the retention. */
+  officialFeedKeep: () => Promise<PublicTagPruneKeep>
+  /** Brings the instance actor's tag follows in line with `followedTags`; a failure does not stop the prune. */
+  refollow?: (tags: string[]) => Promise<unknown>
+  prune: (olderThan: Date, keep: PublicTagPruneKeep) => Promise<number>
   pruneNotTagged: (tags: string[]) => Promise<number>
   now?: () => Date
+  onRefollowError?: (error: unknown) => void
 }
 
 /** Resolves to the number of posts dropped. */
 export const prunePublicTagPages = async (deps: PublicTagPruneDeps): Promise<number> => {
   const now = deps.now?.() ?? new Date()
-  const [retentionDays, tags] = await Promise.all([deps.retentionDays(), deps.publicTagPages()])
-  const old = await deps.prune(new Date(now.getTime() - retentionDays * DAY_MS))
+  const [retentionDays, tags, keep] = await Promise.all([
+    deps.retentionDays(),
+    deps.followedTags(),
+    deps.officialFeedKeep(),
+  ])
+  await deps.refollow?.(tags).catch((error: unknown) => deps.onRefollowError?.(error))
+  const old = await deps.prune(new Date(now.getTime() - retentionDays * DAY_MS), keep)
   const untagged = await deps.pruneNotTagged(tags)
   return old + untagged
 }

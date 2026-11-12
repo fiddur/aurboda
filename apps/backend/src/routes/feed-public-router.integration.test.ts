@@ -4,6 +4,8 @@ import express from 'express'
 import supertest from 'supertest'
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
+import type { PublicTagPostRecord } from '../services/central-public-tags.ts'
+
 /**
  * Integration test for the public profile feed endpoint
  * (`GET /public/:username/posts`) against a live database. Covers the endpoint's
@@ -39,7 +41,9 @@ const CONTAINER_TIMEOUT = 120_000
 const START = new Date('2026-07-01T08:00:00Z')
 const END = new Date('2026-07-01T08:40:00Z')
 
-const startApp = (deps: Pick<FeedPublicRouterDeps, 'readOfficialFeed' | 'renderableBlocks'> = {}) => {
+const startApp = (
+  deps: Pick<FeedPublicRouterDeps, 'listOfficialRemotePosts' | 'readOfficialFeed' | 'renderableBlocks'> = {},
+) => {
   const app = express()
   app.use(
     createFeedPublicRouter({ apiBaseUrl: 'https://qs.example/api', webHost: 'https://qs.example', ...deps }),
@@ -622,7 +626,7 @@ describe('GET /public/official-feed', () => {
   })
 
   const feedOf = (users: string[], tags: string[] = []) => ({
-    readOfficialFeed: async () => ({ tags, users }),
+    readOfficialFeed: async () => ({ remote_authors: [], tags, users }),
   })
 
   test('404s when the official feed is off', async () => {
@@ -670,6 +674,7 @@ describe('GET /public/official-feed', () => {
       expect(res.body.next_cursor).toBeNull()
       expect(res.body.users).toEqual([first, second])
       expect(res.body.tags).toEqual(['aurboda', 'qs'])
+      expect(res.body.posts.map((p: { origin: string }) => p.origin)).toEqual(['local', 'local', 'local'])
       expect(res.body.posts[0].structured).toMatchObject({ kind: 'activity', name: 'Morning run' })
     } finally {
       await close()
@@ -733,6 +738,74 @@ describe('GET /public/official-feed', () => {
       expect(res.text).toContain(`<author><name>${second}</name>`)
       expect(res.text).toContain('<title type="text">Ran far today #aurboda</title>')
       expect(res.text).not.toContain('Hidden')
+    } finally {
+      await close()
+    }
+  })
+
+  test('merges remote authors’ posts with the users’ by time, paging across both', async () => {
+    const first = getTestUser()
+    const local = [
+      await createFeedPost(first, note({ message: 'local 1', tags: ['aurbodablog'] })),
+      await createFeedPost(first, note({ message: 'local 2', tags: ['aurbodablog'] })),
+    ]
+    const at = (post: { created_at: Date }, deltaMs: number) => new Date(post.created_at.getTime() + deltaMs)
+    const remoteRecord = (n: number, published_at: Date): PublicTagPostRecord => ({
+      actor_uri: 'https://aurboda.net/users/fiddur',
+      announce_uris: [],
+      avatar_url: null,
+      content: `<p>remote ${n}</p>`,
+      created_at: published_at,
+      cursor_ts: published_at.toISOString(),
+      display_name: 'Fredrik',
+      handle: '@fiddur@aurboda.net',
+      id: `00000000-0000-4000-8000-00000000000${n}`,
+      images: [],
+      local_user: null,
+      note_uri: `https://aurboda.net/notes/${n}`,
+      published_at,
+      tags: ['aurbodablog'],
+      updated_at: published_at,
+      url: `https://aurboda.net/u/fiddur/posts/${n}`,
+    })
+    const remote = [remoteRecord(2, at(local[1], 1000)), remoteRecord(1, at(local[0], -1000))]
+    const calls: unknown[] = []
+    const listOfficialRemotePosts: NonNullable<FeedPublicRouterDeps['listOfficialRemotePosts']> = async (
+      handles,
+      tags,
+      limit,
+      before,
+    ) => {
+      calls.push([handles, tags, limit])
+      const after = before ? remote.filter((r) => r.published_at < new Date(before.ts)) : remote
+      return after.slice(0, limit)
+    }
+    const { request, close } = startApp({
+      listOfficialRemotePosts,
+      readOfficialFeed: async () => ({
+        remote_authors: ['fiddur@aurboda.net'],
+        tags: ['aurbodablog'],
+        users: [first],
+      }),
+    })
+    try {
+      const res = await request.get('/public/official-feed')
+      expect(res.status).toBe(200)
+      expect(res.body.remote_authors).toEqual(['fiddur@aurboda.net'])
+      expect(res.body.posts.map((p: { origin: string; id: string }) => [p.origin, p.id])).toEqual([
+        ['remote', remote[0].id],
+        ['local', local[1].id],
+        ['local', local[0].id],
+        ['remote', remote[1].id],
+      ])
+      expect(res.body.posts[0]).toMatchObject({ handle: '@fiddur@aurboda.net', origin: 'remote' })
+      expect(res.body.posts[1]).toMatchObject({ author_username: first, origin: 'local' })
+      expect(calls[0]).toEqual([['@fiddur@aurboda.net'], ['aurbodablog'], 21])
+
+      const atom = await request.get('/public/official-feed.atom')
+      expect(atom.text).toContain('<id>https://aurboda.net/notes/2</id>')
+      expect(atom.text).toContain(`<id>https://qs.example/u/${first}/posts/${local[1].id}</id>`)
+      expect(atom.text).toContain('<title type="text">remote 2</title>')
     } finally {
       await close()
     }

@@ -11,6 +11,7 @@ import type { Context, Federation } from '@fedify/fedify'
 import {
   defaultPublicTagRetentionDays,
   normalizeTag,
+  officialFeedMaxEntries,
   publicTagPagesMax,
   type PublicTagFollow,
   type PublicTagPostsResponse,
@@ -40,6 +41,7 @@ import {
 } from './activitypub/timeline-ingest.ts'
 import { tagActorHandle } from './following.ts'
 import { decodeKeysetCursor, encodeKeysetCursor } from './keyset-cursor.ts'
+import { readOfficialFeedSetting } from './official-feed.ts'
 import { withTimeout } from './with-timeout.ts'
 
 export const PUBLIC_TAG_PAGE_SIZE = 20
@@ -64,15 +66,31 @@ export type PublicTagStore = Pick<
 
 type SettingsStore = Pick<CentralDb, 'getServerSetting'>
 
+const normalizeTags = (input: readonly string[], max: number): string[] =>
+  [...new Set(input.map(normalizeTag).filter((tag): tag is string => tag != null))].slice(0, max)
+
 /** Stored-form tags, deduplicated in first-seen order, capped. */
 export const normalizePublicTagPages = (input: readonly string[]): string[] =>
-  [...new Set(input.map(normalizeTag).filter((tag): tag is string => tag != null))].slice(
-    0,
-    publicTagPagesMax,
-  )
+  normalizeTags(input, publicTagPagesMax)
+
+/** Every tag the instance actor may follow: the public tag pages' and the official feed's. */
+export const instanceFollowedTagsMax = publicTagPagesMax + officialFeedMaxEntries
 
 export const readPublicTagPages = async (centralDb: SettingsStore): Promise<string[]> =>
   normalizePublicTagPages((await centralDb.getServerSetting('public_tag_pages')) ?? [])
+
+/**
+ * The tags the instance actor follows: every public tag page's, and the official
+ * feed's when it lists authors on other servers, whose posts only reach this
+ * server through those follows. An official-feed tag gets no public page.
+ */
+export const readInstanceFollowedTags = async (centralDb: SettingsStore): Promise<string[]> => {
+  const [pages, feed] = await Promise.all([readPublicTagPages(centralDb), readOfficialFeedSetting(centralDb)])
+  return normalizeTags(
+    [...pages, ...(feed.remote_authors.length > 0 ? feed.tags : [])],
+    instanceFollowedTagsMax,
+  )
+}
 
 export const readPublicTagRetentionDays = async (centralDb: SettingsStore): Promise<number> =>
   (await centralDb.getServerSetting('public_tag_retention_days')) ?? defaultPublicTagRetentionDays
@@ -107,7 +125,7 @@ export interface ApplyPublicTagPagesResult {
 export type PublicTagPageResult = { ok: true; page: PublicTagPostsResponse } | { ok: false }
 
 export interface PublicTagActions {
-  /** Follow the tag actor of every tag newly listed, unfollow those no longer listed. */
+  /** Follow the tag actor of every tag newly listed, unfollow those no longer listed (`readInstanceFollowedTags`). */
   apply: (tags: string[]) => Promise<ApplyPublicTagPagesResult>
   /** A page of `tag`'s public page; not ok when the tag has no page. */
   page: (rawTag: string, cursor?: string) => Promise<PublicTagPageResult>
@@ -184,7 +202,8 @@ const isOnHost = (actorUri: string, host: string): boolean => {
 }
 
 /**
- * Bring the instance actor's tag follows in line with the configured tags:
+ * Bring the instance actor's tag follows in line with `tags`, the public tag
+ * pages' and the official feed's (`readInstanceFollowedTags`):
  * - a removed tag, or one followed on a tag actor host no longer configured, is unfollowed;
  * - a new (or re-hosted) tag's actor is resolved and followed; one that cannot be resolved
  *   gets no row and is reported, so the next save tries again;
@@ -195,7 +214,7 @@ export const applyPublicTagPages = async (
   deps: PublicTagActionsDeps,
   tags: string[],
 ): Promise<ApplyPublicTagPagesResult> => {
-  const wanted = normalizePublicTagPages(tags)
+  const wanted = normalizeTags(tags, instanceFollowedTagsMax)
   const host = await deps.tagActorHost()
   const existing = await deps.store.listInstanceTagFollows()
   const ctx = deps.federation.createContext(new URL(deps.origin))
@@ -362,3 +381,31 @@ export const createLocalPublicTagPosts = (deps: {
     await deps.store.deleteLocalPublicTagPost(objectUri, user)
   },
 })
+
+const STARTUP_APPLY_TIMEOUT_MS = 60_000
+
+/**
+ * Applies the instance actor's tag follows once at startup, so a fresh
+ * installation's default official feed starts receiving posts without an admin
+ * saving anything. Never throws: a server the tag actor host cannot reach (a
+ * localhost dev server) logs one line and boots on.
+ */
+export const applyInstanceTagFollowsAtStartup = async (deps: {
+  readTags: () => Promise<string[]>
+  apply: (tags: string[]) => Promise<ApplyPublicTagPagesResult>
+  timeoutMs?: number
+  log?: (message: string) => void
+}): Promise<void> => {
+  const log = deps.log ?? ((message: string) => console.warn(message))
+  try {
+    const tags = await deps.readTags()
+    const { unresolved } = await withTimeout(deps.apply(tags), deps.timeoutMs ?? STARTUP_APPLY_TIMEOUT_MS)
+    if (unresolved.length > 0) {
+      log(
+        `⚠️ Tag follows: could not resolve the tag actor of ${unresolved.map((tag) => `#${tag}`).join(', ')}`,
+      )
+    }
+  } catch (error) {
+    log(`⚠️ Tag follows not applied at startup: ${error instanceof Error ? error.message : String(error)}`)
+  }
+}

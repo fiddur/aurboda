@@ -113,9 +113,28 @@ export interface PublicTagsApi {
     limit: number,
     options: { retentionDays: number; before?: KeysetCursor },
   ) => Promise<PublicTagPostRecord[]>
-  prunePublicTagPosts: (olderThan: Date) => Promise<number>
+  /**
+   * The official feed's remote posts: by one of `handles` (`@user@host`, compared
+   * case-insensitively), carrying one of `tags`, newest first by `(published_at, id)`
+   * after `before` when given, with no retention limit.
+   */
+  listOfficialRemotePosts: (
+    handles: string[],
+    tags: string[],
+    limit: number,
+    before?: KeysetCursor,
+  ) => Promise<PublicTagPostRecord[]>
+  /** Drops the posts published before `olderThan`, except those `keep` matches. */
+  prunePublicTagPosts: (olderThan: Date, keep?: PublicTagPruneKeep) => Promise<number>
   /** Drops the posts that carry none of `tags` (all of them when `tags` is empty). */
   prunePublicTagPostsNotTagged: (tags: string[]) => Promise<number>
+}
+
+/** Posts exempt from the retention prune: by one of `handles` and carrying one of `tags`. */
+export interface PublicTagPruneKeep {
+  /** `@user@host`, compared case-insensitively. */
+  handles: string[]
+  tags: string[]
 }
 
 const FOLLOW_COLUMNS = 'tag, actor_uri, inbox_uri, follow_activity_id, accepted, created_at, updated_at'
@@ -194,9 +213,29 @@ export const createPublicTagsApi = (getClient: () => Promise<Queryable>): Public
     return result.rows
   },
 
-  prunePublicTagPosts: async (olderThan) => {
+  listOfficialRemotePosts: async (handles, tags, limit, before) => {
     const client = await getClient()
-    const result = await client.query('DELETE FROM public_tag_posts WHERE published_at < $1', [olderThan])
+    const result = await client.query<PublicTagPostRecord>(
+      `SELECT ${POST_COLUMNS} FROM public_tag_posts
+       WHERE lower(handle) = ANY($1::text[])
+         AND tags && $2::text[]
+         AND local_user IS NULL
+         AND ($4::timestamptz IS NULL OR (published_at, id) < ($4::timestamptz, $5::uuid))
+       ORDER BY published_at DESC, id DESC
+       LIMIT $3`,
+      [handles.map((handle) => handle.toLowerCase()), tags, limit, before?.ts ?? null, before?.id ?? null],
+    )
+    return result.rows
+  },
+
+  prunePublicTagPosts: async (olderThan, keep) => {
+    const client = await getClient()
+    const result = await client.query(
+      `DELETE FROM public_tag_posts
+       WHERE published_at < $1
+         AND NOT COALESCE(lower(handle) = ANY($2::text[]) AND tags && $3::text[], false)`,
+      [olderThan, (keep?.handles ?? []).map((handle) => handle.toLowerCase()), keep?.tags ?? []],
+    )
     return result.rowCount ?? 0
   },
 

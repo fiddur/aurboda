@@ -186,4 +186,58 @@ describe('central public tag pages', () => {
     expect(await a.prunePublicTagPostsNotTagged(['aurboda'])).toBe(1)
     expect(await a.prunePublicTagPostsNotTagged([])).toBe(1)
   })
+
+  test('keeps the official feed’s posts past the retention, but only theirs with its tags', async () => {
+    const a = api()
+    const old = new Date('2026-01-01T00:00:00Z')
+    await a.upsertPublicTagPost(
+      post(1, { handle: '@Fiddur@aurboda.net', published_at: old, tags: ['aurbodablog'] }),
+    )
+    await a.upsertPublicTagPost(
+      post(2, { handle: '@fiddur@aurboda.net', published_at: old, tags: ['other'] }),
+    )
+    await a.upsertPublicTagPost(post(3, { published_at: old, tags: ['aurbodablog'] }))
+    await a.upsertPublicTagPost(post(4, { handle: null, published_at: old, tags: ['aurbodablog'] }))
+    const keep = { handles: ['@fiddur@Aurboda.net'], tags: ['aurbodablog'] }
+    expect(await a.prunePublicTagPosts(new Date('2026-06-01T00:00:00Z'), keep)).toBe(3)
+    const rest = await a.listOfficialRemotePosts(['@fiddur@aurboda.net'], ['aurbodablog'], 10)
+    expect(rest.map((p) => p.note_uri)).toEqual(['https://peer.example/notes/1'])
+  })
+
+  test('lists the official feed’s remote posts newest first by handle and tag, paging on the keyset', async () => {
+    const a = api()
+    const old = new Date('2026-01-01T00:00:00Z')
+    await a.upsertPublicTagPost(
+      post(1, { handle: '@fiddur@aurboda.net', published_at: old, tags: ['aurbodablog'] }),
+    )
+    await a.upsertPublicTagPost(post(2, { handle: '@Fiddur@Aurboda.net', tags: ['aurbodablog', 'qs'] }))
+    await a.upsertPublicTagPost(post(3, { handle: '@fiddur@aurboda.net', tags: ['other'] }))
+    await a.upsertPublicTagPost(post(4, { tags: ['aurbodablog'] }))
+    await a.upsertPublicTagPost(post(5, { handle: '@alice@peer.example', tags: ['qs'] }))
+    await a.upsertPublicTagPost(
+      post(6, {
+        announce_uris: [],
+        handle: '@fiddur@aurboda.net',
+        local_user: 'fiddur',
+        tags: ['aurbodablog'],
+      }),
+    )
+    const handles = ['@fiddur@aurboda.net', '@alice@peer.example']
+    const all = await a.listOfficialRemotePosts(handles, ['aurbodablog', 'qs'], 10)
+    expect(all.map((p) => p.note_uri)).toEqual([
+      'https://peer.example/notes/5',
+      'https://peer.example/notes/2',
+      'https://peer.example/notes/1',
+    ])
+    const first = await a.listOfficialRemotePosts(handles, ['aurbodablog', 'qs'], 1)
+    const next = await a.listOfficialRemotePosts(handles, ['aurbodablog', 'qs'], 10, {
+      id: first[0].id,
+      ts: first[0].cursor_ts,
+    })
+    expect(next.map((p) => p.note_uri)).toEqual([
+      'https://peer.example/notes/2',
+      'https://peer.example/notes/1',
+    ])
+    expect(await a.listOfficialRemotePosts([], ['aurbodablog'], 10)).toEqual([])
+  })
 })

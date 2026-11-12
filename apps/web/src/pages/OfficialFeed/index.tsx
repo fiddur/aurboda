@@ -2,21 +2,28 @@ import type { OfficialFeedResponse } from '@aurboda/api-spec'
 import type { InfiniteData } from '@tanstack/react-query'
 
 import { useInfiniteQuery } from '@tanstack/react-query'
+import { useEffect } from 'preact/hooks'
 
-import { officialFeedSummary } from '../../components/official-feed'
+import { listsAuthors, officialFeedOfPage, officialFeedSummary } from '../../components/official-feed'
 import { PublicTagLinks } from '../../components/PublicTagLinks'
 import { fetchOfficialFeed, officialFeedAtomUrl } from '../../state/api'
+import { ensureStatusLoaded, publicTagPages } from '../../state/auth'
 import { FeedPostCard } from '../Feed/FeedPostCard'
+import { RemotePostCard } from '../Feed/RemotePostCard'
 import { publicAuthor } from '../PublicProfile/public-author'
 import '../PublicProfile/style.css'
 import './style.css'
 
 /**
- * OfficialFeed - the instance's blog at /blog: public posts by the users the
- * admin chose that carry one of the chosen tags, newest first, with an Atom
- * feed. Unauthenticated.
+ * OfficialFeed - the instance's blog at /blog: public posts by the users and
+ * the authors on other servers the admin chose that carry one of the chosen
+ * tags, newest first, with an Atom feed. Unauthenticated.
  */
 export function OfficialFeed() {
+  useEffect(() => {
+    ensureStatusLoaded()
+  }, [])
+
   const postsQuery = useInfiniteQuery<
     OfficialFeedResponse,
     Error,
@@ -51,8 +58,7 @@ export function OfficialFeed() {
 
   const pages = postsQuery.data?.pages ?? []
   const posts = pages.flatMap((page) => page.posts)
-  const users = pages[0]?.users ?? []
-  const tags = pages[0]?.tags ?? []
+  const feed = officialFeedOfPage(pages[0])
 
   return (
     <div class="public-profile">
@@ -60,7 +66,7 @@ export function OfficialFeed() {
         <h1>
           Blog <span class="official-feed-host">{window.location.host}</span>
         </h1>
-        {users.length > 0 && <p class="official-feed-summary">{officialFeedSummary(users, tags)}</p>}
+        {listsAuthors(feed) && <p class="official-feed-summary">{officialFeedSummary(feed)}</p>}
         <p class="official-feed-links">
           <a href={officialFeedAtomUrl()} type="application/atom+xml">
             Atom feed
@@ -73,9 +79,13 @@ export function OfficialFeed() {
         {posts.length === 0 ? (
           <p class="public-muted">No posts yet.</p>
         ) : (
-          posts.map((post) => (
-            <FeedPostCard key={post.id} post={post} author={publicAuthor(post.author_username)} visitor />
-          ))
+          posts.map((post) =>
+            post.origin === 'remote' ? (
+              <RemotePostCard key={post.id} entry={post} pages={publicTagPages.value} />
+            ) : (
+              <FeedPostCard key={post.id} post={post} author={publicAuthor(post.author_username)} visitor />
+            ),
+          )
         )}
         {postsQuery.hasNextPage && (
           <button
