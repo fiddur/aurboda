@@ -3,6 +3,7 @@ import type { ArticleContent } from '@aurboda/api-spec'
 import { describe, expect, test, vi } from 'vitest'
 
 import {
+  articleBlockFigureUrl,
   articleBlockImageUrl,
   articleBlockLabel,
   blockWindow,
@@ -361,6 +362,37 @@ describe('articleBlockImageUrl', () => {
         'svg',
       ),
     ).toBe(`${base}/blocks/1/image.svg?v=${V}`)
+  })
+})
+
+describe('articleBlockFigureUrl', () => {
+  const UPDATED = new Date('2026-07-09T00:00:00Z')
+  const V = String(UPDATED.getTime())
+  const base = 'https://aurboda.example/api/public/fiddur/feed/POST'
+
+  test('points at figure.png, versioned, with the token only when not public', () => {
+    expect(
+      articleBlockFigureUrl(
+        'https://aurboda.example/api/',
+        'fiddur',
+        'POST',
+        'unlisted',
+        'secret',
+        UPDATED,
+        3,
+      ),
+    ).toBe(`${base}/blocks/3/figure.png?v=${V}`)
+    expect(
+      articleBlockFigureUrl(
+        'https://aurboda.example/api',
+        'fiddur',
+        'POST',
+        'followers',
+        'secret',
+        UPDATED,
+        0,
+      ),
+    ).toBe(`${base}/blocks/0/figure.png?v=${V}&token=secret`)
   })
 })
 

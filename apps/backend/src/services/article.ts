@@ -25,8 +25,8 @@ export type BuildArticleResult = { ok: true; article: ArticleContent } | { ok: f
 
 /**
  * A human label for a non-prose block: its caption, else a label from its data.
- * Shared single source for the AS2 image attachment name
- * (`articleImageAttachments`) and the markdown export (`article-export.ts`) so
+ * Shared single source for the article Note's figure labels
+ * (`renderArticleNote`) and the markdown export (`article-export.ts`) so
  * the two can't diverge. A blank caption falls back to the data label.
  */
 export const articleBlockLabel = (block: Exclude<ArticleBlock, { type: 'prose' }>): string => {
@@ -45,13 +45,28 @@ export const articleBlockLabel = (block: Exclude<ArticleBlock, { type: 'prose' }
  */
 export const isZeroDurationBucket = (bucket: string): boolean => /^0+[smhd]$/.test(bucket)
 
+const articleBlockUrl = (
+  apiBaseUrl: string,
+  user: string,
+  postId: string,
+  visibility: FeedVisibility,
+  imageToken: string,
+  updatedAt: Date,
+  index: number,
+  file: string,
+): string => {
+  const base = `${apiBaseUrl.replace(/\/+$/, '')}/public/${encodeURIComponent(user)}/feed/${postId}`
+  const params = new URLSearchParams({ v: String(updatedAt.getTime()) })
+  // Allowlist (public/unlisted are open); any other visibility needs the token.
+  if (!isPubliclyVisible(visibility)) params.set('token', imageToken)
+  return `${base}/blocks/${index}/${file}?${params.toString()}`
+}
+
 /**
  * The public URL of one article chart/correlation block's rendered image (the
  * C1 endpoint), including the cache-busting `?v=<updated_at>` and, for a
- * `followers`-only post, the capability `?token=`. Shared by the outbound AS2
- * attachment builder (`articleImageAttachments`) and the markdown export
- * (`article-export.ts`), so the two surfaces can never point at different URLs
- * for the same block.
+ * `followers`-only post, the capability `?token=`. Used by the markdown export
+ * (`article-export.ts`), which carries the bare chart without a figure band.
  */
 export const articleBlockImageUrl = (
   apiBaseUrl: string,
@@ -62,13 +77,25 @@ export const articleBlockImageUrl = (
   updatedAt: Date,
   index: number,
   format: 'png' | 'svg' = 'png',
-): string => {
-  const base = `${apiBaseUrl.replace(/\/+$/, '')}/public/${encodeURIComponent(user)}/feed/${postId}`
-  const params = new URLSearchParams({ v: String(updatedAt.getTime()) })
-  // Allowlist (public/unlisted are open); any other visibility needs the token.
-  if (!isPubliclyVisible(visibility)) params.set('token', imageToken)
-  return `${base}/blocks/${index}/image.${format}?${params.toString()}`
-}
+): string =>
+  articleBlockUrl(apiBaseUrl, user, postId, visibility, imageToken, updatedAt, index, `image.${format}`)
+
+/**
+ * The public URL of one block's figure (`figure.png`: the block image under a
+ * `Figure N` title band), which the article Note attaches. Versioned and
+ * token-gated exactly like `articleBlockImageUrl`: the `v` changes on edit so a
+ * remote media cache (Mastodon re-hosts attachments at receipt) fetches the new
+ * figure after an `Update`.
+ */
+export const articleBlockFigureUrl = (
+  apiBaseUrl: string,
+  user: string,
+  postId: string,
+  visibility: FeedVisibility,
+  imageToken: string,
+  updatedAt: Date,
+  index: number,
+): string => articleBlockUrl(apiBaseUrl, user, postId, visibility, imageToken, updatedAt, index, 'figure.png')
 
 /** A windowed block's effective window: its own override, else the article default. */
 export const blockWindow = (

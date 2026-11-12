@@ -46,13 +46,14 @@ import {
 import type { FeedPostRecord, FeedQuoteAuthorizationRecord } from '../../db/index.ts'
 
 import { deleteFeedQuoteAuthorizationsForPost, hasLocations, hasTimeSeries } from '../../db/index.ts'
+import { articleBlockFigureUrl } from '../article.ts'
 import { challengeWinners } from '../challenge-results.ts'
 import { CHART_HEIGHT, CHART_WIDTH } from '../charts/chart-svg.ts'
 import { formatExerciseLine, resolvePostExercises, toStructuredExercise } from '../feed-exercises.ts'
 import { resolveStandingsChart } from '../feed-structured-challenge.ts'
 import { resolveExerciseTrendSeries } from '../feed-structured-exercise.ts'
 import { getSettings } from '../settings.ts'
-import { articleImageAttachments, renderArticleContentHtml } from './article-object.ts'
+import { type ArticleFigure, articleFigureName, renderArticleNote } from './article-object.ts'
 import { identityToActorUri, identityToHandle, renderChallengeShareHtml } from './challenge-object.ts'
 import { dashboardNoteContent } from './dashboard-object.ts'
 import { exerciseNoteContent } from './exercise-object.ts'
@@ -533,8 +534,22 @@ export const toDeliverableArticle = (post: FeedPostRecord): DeliverableArticle |
     : null
 
 /**
+ * One article figure as an attachment. A block figure's URL carries `v` (the
+ * post's last-edited epoch): Mastodon re-hosts attachments at receipt, so the URL
+ * itself must change for an `Update` to show the new chart.
+ */
+const articleFigureImage = (figure: ArticleFigure): Image =>
+  new Image({
+    height: figure.height,
+    mediaType: figure.media_type,
+    name: articleFigureName(figure),
+    url: new URL(figure.url),
+    width: figure.width,
+  })
+
+/**
  * Build the Fedify `Note` for an article: the Mastodon-compatible object (title
- * `name` + prose HTML `content` + chart/correlation PNG attachments), at the
+ * `name` + prose HTML `content` + numbered figure attachments), at the
  * post's canonical Note id, addressed per visibility. Synchronous — an article
  * carries no activity to resolve. A deleted article tombstones at this same id.
  */
@@ -547,19 +562,22 @@ export const buildArticleNote = (
   const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
   const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
   const hashtags = noteHashtags(ctx, user, post.tags)
-  return new Note({
-    attachments: articleImageAttachments(
+  const { content, figures } = renderArticleNote(post.article, (index) =>
+    articleBlockFigureUrl(
       apiBaseUrl,
       user,
       post.id,
       post.visibility,
       post.image_token,
       post.updated_at,
-      post.article,
+      index,
     ),
+  )
+  return new Note({
+    attachments: figures.map(articleFigureImage),
     attribution: ctx.getActorUri(user),
     ccs: cc,
-    content: linkifyHashtags(renderArticleContentHtml(post.article), hashtags),
+    content: linkifyHashtags(content, hashtags),
     id: noteId,
     interactionPolicy: quoteInteractionPolicy(post.visibility, ctx.getActorUri(user)),
     name: post.article.title,

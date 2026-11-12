@@ -41,6 +41,17 @@ const data: SharedExerciseData = {
 const snapshot = { activity_type_name: 'Strength training', data }
 
 describe('renderExerciseShareHtml', () => {
+  test('a table in the note comes out as lines, not a table', () => {
+    const html = renderExerciseShareHtml(
+      exercise,
+      snapshot,
+      '| Metric | Value |\n|---|---|\n| HRV | 42 |',
+      'UTC',
+    )
+    expect(html).toContain('<p><em>Metric</em><br /><strong>HRV</strong>: Value 42</p>')
+    expect(html).not.toContain('<table')
+  })
+
   test('heading, note, records with the session count, sessions and link', () => {
     expect(renderExerciseShareHtml(exercise, snapshot, 'New **PR**', 'Europe/Stockholm')).toBe(
       [

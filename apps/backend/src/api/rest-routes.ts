@@ -102,6 +102,7 @@ import {
   renderRaceChartPng,
   renderRoutePng,
   renderScatterPng,
+  svgToPng,
 } from '../services/activitypub/feed-images.ts'
 import { fetchOsmTile } from '../services/activitypub/osm-tiles.ts'
 import { getArticleChartSeriesData, getArticleCorrelationScatter } from '../services/article-block-data.ts'
@@ -314,6 +315,7 @@ export const mountRestRouters = ({
       getPost: getFeedPostById,
       getRoute: async (user, start, end) =>
         (await getLocations(user, start, end)).locations.map((l) => l.coordinates),
+      rasterizeSvg: svgToPng,
       renderChart: renderChartPng,
       renderChartSvg: buildChartSvg,
       renderRaceChart: renderRaceChartPng,

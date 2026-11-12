@@ -1,6 +1,6 @@
 /**
  * The AS2 `content` for an exercise-share post (#1398): the exercise name and its activity type as
- * a heading, the author's note through the same outbound sanitiser as article prose, then — per
+ * a heading, the author's note shaped for Mastodon like article prose (`renderNoteProse`), then — per
  * the author's opt-ins — the records with the session count, the latest sessions' sets, and the
  * public exercise page as a plain link when it was published. Built from the data resolved when
  * the Note is built, so a delivered Note carries the values as of delivery.
@@ -18,7 +18,7 @@ import {
   type StructuredExercisePost,
 } from '../feed-structured-exercise.ts'
 import { getUserTimezone } from '../settings.ts'
-import { renderProse } from './article-object.ts'
+import { renderNoteProse } from './note-prose.ts'
 
 export interface ExerciseSnapshot {
   activity_type_name: string
@@ -79,7 +79,7 @@ export const renderExerciseShareHtml = (
     ? `<p><strong>${escapeXml(exercise.name)}</strong> · ${escapeXml(snapshot.activity_type_name)}</p>`
     : `<p><strong>${escapeXml(exercise.name)}</strong></p>`
   const parts = [heading]
-  if (message) parts.push(renderProse(message))
+  if (message) parts.push(renderNoteProse(message))
   if (snapshot) {
     if (exercise.include_records) parts.push(...linesParagraph(recordLines(snapshot.data, timeZone)))
     if (exercise.include_sessions) parts.push(...linesParagraph(sessionLines(snapshot.data, timeZone)))
