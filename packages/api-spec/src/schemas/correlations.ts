@@ -134,7 +134,8 @@ export type BaselineResponse = z.infer<typeof baselineResponseSchema>
  * correlation.
  */
 export const hrvContextMetricSchema = z.enum(['hrv_rmssd', 'heart_rate', 'stress_level']).meta({
-  description: 'Autonomic metric to correlate against (default: hrv_rmssd)',
+  description:
+    'Autonomic metric that fills the legacy productivity correlation_coefficient (default: hrv_rmssd)',
   id: 'HrvContextMetric',
 })
 
@@ -142,7 +143,10 @@ export type HrvContextMetric = z.infer<typeof hrvContextMetricSchema>
 
 export const hrvActivitiesQuerySchema = z
   .object({
-    context_metric: hrvContextMetricSchema.optional().meta({ description: 'Metric to correlate against' }),
+    context_metric: hrvContextMetricSchema.optional().meta({
+      description:
+        'Which metric fills the legacy productivity correlation_coefficient (default hrv_rmssd); correlation_coefficients always holds all three',
+    }),
     period_days: z
       .string()
       .optional()
@@ -157,10 +161,27 @@ export const hrvActivitiesQuerySchema = z
 
 export type HrvActivitiesQuery = z.infer<typeof hrvActivitiesQuerySchema>
 
+export const productivityCorrelationCoefficientsSchema = z
+  .object({
+    heart_rate: z.number().nullable(),
+    hrv_rmssd: z.number().nullable(),
+    stress_level: z.number().nullable(),
+  })
+  .meta({
+    description: 'Pearson correlation (-1 to 1) of the productivity score with each metric',
+    id: 'ProductivityCorrelationCoefficients',
+  })
+
+export type ProductivityCorrelationCoefficients = z.infer<typeof productivityCorrelationCoefficientsSchema>
+
 export const productivityCorrelationSchema = hrvStatsWithDeltaSchema
   .extend({
     category: z.string().meta({ description: 'RescueTime category name' }),
-    correlation_coefficient: z.number().nullable().meta({ description: 'Pearson correlation (-1 to 1)' }),
+    correlation_coefficient: z.number().nullable().meta({
+      description:
+        'Pearson correlation (-1 to 1) with the context_metric; the same value as its entry in correlation_coefficients',
+    }),
+    correlation_coefficients: productivityCorrelationCoefficientsSchema,
   })
   .meta({ id: 'ProductivityCorrelation' })
 
@@ -192,7 +213,8 @@ export const hrvActivitiesDataSchema = z
   .object({
     baseline: hrvStatsSchema,
     context_metric: hrvContextMetricSchema.meta({
-      description: 'The metric the correlation_coefficient was computed against',
+      description:
+        'The metric the legacy productivity correlation_coefficient was computed against; correlation_coefficients holds all three',
     }),
     correlations: z.object({
       activities: z.array(activityCorrelationSchema),

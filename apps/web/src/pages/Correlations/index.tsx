@@ -1,58 +1,93 @@
 import { DEFAULT_IMPACT_WINDOW_MINUTES, formatImpactWindow, IMPACT_WINDOW_OPTIONS } from '@aurboda/api-spec'
-import { signal } from '@preact/signals'
+import { batch, signal, useSignalEffect } from '@preact/signals'
 import { useQuery } from '@tanstack/react-query'
+import { useLocation } from 'preact-iso'
+import { useEffect, useRef, useState } from 'preact/hooks'
 
 import { ImpactFigure } from '../../components/charts/ImpactFigure'
+import { IMPACT_METRICS, type ImpactMetric } from '../../components/charts/impactMetrics'
 import {
+  type ActivityImpactType,
+  type ActivityTypeDefinition,
+  type BaselineData,
   fetchActivityImpact,
+  fetchActivityTypeDefinitions,
   fetchBaseline,
   fetchHrvActivitiesCorrelation,
-  type ActivityImpactType,
-  type BaselineData,
-  type HrvContextMetric,
 } from '../../state/api'
+import { toDisplayName } from '../../utils/displayName'
 import { ContextTable } from './ContextTable'
-import { ExploreTab } from './Explore'
-import { describeOccurrences } from './occurrences'
+import { applyExploreState, exploreState, ExploreTab } from './Explore'
+import { describeMetrics, describeProductivityR, METRIC_LABELS, toggleMetric } from './metrics'
+import { describeImpactMeta, describeOccurrences } from './occurrences'
+import {
+  type AnalyzeState,
+  type AnalyzeTab,
+  PERIOD_DAY_OPTIONS,
+  readAnalyzeState,
+  type SelectedItem,
+  writeAnalyzeState,
+} from './urlState'
 import { isLongWindow } from './window'
 import './style.css'
 
 const periodDays = signal(30)
 
-// Which autonomic metric drives the productivity correlation. Not everyone has
-// continuous HRV, so heart rate / stress can be a denser context.
-const contextMetric = signal<HrvContextMetric>('hrv_rmssd')
-
-const CONTEXT_METRIC_LABELS: Record<HrvContextMetric, string> = {
-  heart_rate: 'Heart rate',
-  hrv_rmssd: 'HRV',
-  stress_level: 'Stress',
-}
-
-// The metric phrased for the intro sentence ("…correlate with your <phrase>.").
-const CONTEXT_METRIC_PHRASES: Record<HrvContextMetric, string> = {
-  heart_rate: 'heart rate',
-  hrv_rmssd: 'heart rate variability (HRV)',
-  stress_level: 'stress level',
-}
-
 const windowMinutes = signal(DEFAULT_IMPACT_WINDOW_MINUTES)
 
-const activeTab = signal<'hrv' | 'explore'>('hrv')
+const shownMetrics = signal<ImpactMetric[]>([...IMPACT_METRICS])
 
-const selectedActivity = signal<{ name: string; type: ActivityImpactType } | null>(null)
+const activeTab = signal<AnalyzeTab>('context')
+
+const selectedActivity = signal<SelectedItem | null>(null)
+
+const applyAnalyzeState = (state: AnalyzeState) => {
+  batch(() => {
+    activeTab.value = state.tab
+    periodDays.value = state.days
+    windowMinutes.value = state.window
+    shownMetrics.value = state.metrics
+    selectedActivity.value = state.item
+    applyExploreState(state.explore)
+  })
+}
+
+const currentAnalyzeState = (): AnalyzeState => ({
+  days: periodDays.value,
+  explore: exploreState(),
+  item: selectedActivity.value,
+  metrics: shownMetrics.value,
+  tab: activeTab.value,
+  window: windowMinutes.value,
+})
+
+const activityTypeDisplayName = (definitions: ActivityTypeDefinition[] | undefined, name: string): string =>
+  definitions?.find((d) => d.name === name)?.display_name ?? toDisplayName(name)
 
 const formatValue = (value: number | null | undefined, decimals: number): string =>
   value != null ? value.toFixed(decimals) : '--'
 
-const isActivitySelected = (
-  selected: { name: string; type: ActivityImpactType } | null,
-  name: string,
-  type: ActivityImpactType,
-): boolean => selected?.name === name && selected?.type === type
+const isActivitySelected = (selected: SelectedItem | null, name: string, type: ActivityImpactType): boolean =>
+  selected?.name === name && selected?.type === type
 
-// eslint-disable-next-line complexity -- large render switching between HRV and explore tabs
+// eslint-disable-next-line complexity -- large render switching between the context and explore tabs
 export function Correlations() {
+  // Read the URL before anything renders, so a bookmarked or shared view wins over whatever the
+  // module-level signals held from an earlier visit, and the first URL write cannot clobber it.
+  useState(() => applyAnalyzeState(readAnalyzeState()))
+
+  // A navigation to this page while it is mounted (the sidebar link, back/forward) keeps the
+  // component, so re-read the URL then; our own replaceState writes do not change the router's url.
+  const { url } = useLocation()
+  const lastUrl = useRef(url)
+  useEffect(() => {
+    if (url === lastUrl.current) return
+    lastUrl.current = url
+    applyAnalyzeState(readAnalyzeState())
+  }, [url])
+
+  useSignalEffect(() => writeAnalyzeState(currentAnalyzeState()))
+
   const baselineQuery = useQuery({
     queryFn: () => fetchBaseline(),
     queryKey: ['baseline'],
@@ -60,8 +95,14 @@ export function Correlations() {
   })
 
   const correlationsQuery = useQuery({
-    queryFn: () => fetchHrvActivitiesCorrelation(periodDays.value, contextMetric.value, windowMinutes.value),
-    queryKey: ['hrvActivitiesCorrelation', periodDays.value, contextMetric.value, windowMinutes.value],
+    queryFn: () => fetchHrvActivitiesCorrelation(periodDays.value, windowMinutes.value),
+    queryKey: ['hrvActivitiesCorrelation', periodDays.value, windowMinutes.value],
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const definitionsQuery = useQuery({
+    queryFn: fetchActivityTypeDefinitions,
+    queryKey: ['activityTypeDefinitions'],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -90,6 +131,9 @@ export function Correlations() {
   const baseline: BaselineData | null = baselineQuery.data ?? null
   const correlations = correlationsQuery.data
   const activityImpact = activityImpactQuery.data
+  const definitions = definitionsQuery.data
+  const metrics = shownMetrics.value
+  const shows = (metric: ImpactMetric) => metrics.includes(metric)
 
   const isLoading = baselineQuery.isLoading || correlationsQuery.isLoading
 
@@ -109,25 +153,27 @@ export function Correlations() {
     <div class="correlations-page">
       <div class="correlations-header">
         <h1>Analyze</h1>
-        {activeTab.value === 'hrv' && (
+        {activeTab.value === 'context' && (
           <div class="hrv-controls">
-            <select
-              value={contextMetric.value}
-              onChange={(e) =>
-                (contextMetric.value = (e.target as HTMLSelectElement).value as HrvContextMetric)
-              }
-              class="period-select"
-              title="Which autonomic metric the productivity correlation is computed against"
-            >
-              <option value="hrv_rmssd">Context: HRV</option>
-              <option value="heart_rate">Context: Heart rate</option>
-              <option value="stress_level">Context: Stress</option>
-            </select>
+            <div class="metric-toggles" role="group" aria-label="Metrics shown">
+              {IMPACT_METRICS.map((metric) => (
+                <label key={metric} class="metric-toggle">
+                  <input
+                    type="checkbox"
+                    checked={shows(metric)}
+                    disabled={shows(metric) && metrics.length === 1}
+                    onChange={() => (shownMetrics.value = toggleMetric(shownMetrics.value, metric))}
+                  />
+                  {METRIC_LABELS[metric]}
+                </label>
+              ))}
+            </div>
             <select value={periodDays.value} onChange={handlePeriodChange} class="period-select">
-              <option value={14}>Last 14 days</option>
-              <option value={30}>Last 30 days</option>
-              <option value={60}>Last 60 days</option>
-              <option value={90}>Last 90 days</option>
+              {PERIOD_DAY_OPTIONS.map((days) => (
+                <option key={days} value={days}>
+                  Last {days} days
+                </option>
+              ))}
             </select>
             <select
               value={windowMinutes.value}
@@ -146,8 +192,11 @@ export function Correlations() {
       </div>
 
       <div class="analyze-tabs">
-        <button class={activeTab.value === 'hrv' ? 'active' : ''} onClick={() => (activeTab.value = 'hrv')}>
-          {CONTEXT_METRIC_LABELS[contextMetric.value]} context
+        <button
+          class={activeTab.value === 'context' ? 'active' : ''}
+          onClick={() => (activeTab.value = 'context')}
+        >
+          Context
         </button>
         <button
           class={activeTab.value === 'explore' ? 'active' : ''}
@@ -159,11 +208,11 @@ export function Correlations() {
 
       {activeTab.value === 'explore' && <ExploreTab />}
 
-      {activeTab.value === 'hrv' && (
+      {activeTab.value === 'context' && (
         <>
           <p class="intro-text">
-            Analyze how different activities correlate with your {CONTEXT_METRIC_PHRASES[contextMetric.value]}
-            . Click a row to see the detailed before/during/after timeline.
+            Analyze how activities, places and screen time relate to your {describeMetrics(metrics, 'long')}.
+            Click a row to see the detailed before/during/after timeline.
           </p>
 
           {isLongWindow(windowMinutes.value) && (
@@ -179,18 +228,24 @@ export function Correlations() {
             <section class="baseline-section">
               <h2>Your Baseline</h2>
               <div class="baseline-grid">
-                <div class="baseline-card">
-                  <span class="baseline-label">HRV (30-day avg)</span>
-                  <span class="baseline-value hrv">{formatValue(baseline.hrv.avg30day, 1)} ms</span>
-                </div>
-                <div class="baseline-card">
-                  <span class="baseline-label">Resting HR (30-day avg)</span>
-                  <span class="baseline-value hr">{formatValue(baseline.resting_hr.avg30day, 0)} bpm</span>
-                </div>
-                <div class="baseline-card">
-                  <span class="baseline-label">Stress (30-day avg)</span>
-                  <span class="baseline-value stress">{formatValue(baseline.stress.avg30day, 0)}</span>
-                </div>
+                {shows('hrv') && (
+                  <div class="baseline-card">
+                    <span class="baseline-label">HRV (30-day avg)</span>
+                    <span class="baseline-value hrv">{formatValue(baseline.hrv.avg30day, 1)} ms</span>
+                  </div>
+                )}
+                {shows('hr') && (
+                  <div class="baseline-card">
+                    <span class="baseline-label">Resting HR (30-day avg)</span>
+                    <span class="baseline-value hr">{formatValue(baseline.resting_hr.avg30day, 0)} bpm</span>
+                  </div>
+                )}
+                {shows('stress') && (
+                  <div class="baseline-card">
+                    <span class="baseline-label">Stress (30-day avg)</span>
+                    <span class="baseline-value stress">{formatValue(baseline.stress.avg30day, 0)}</span>
+                  </div>
+                )}
               </div>
             </section>
           )}
@@ -198,12 +253,20 @@ export function Correlations() {
           {activityImpact && (
             <section class="impact-section">
               <h2>
-                Impact of "{activityImpact.activity}" on HRV, heart rate and stress
+                Impact of{' '}
+                {activityImpact.activity_type === 'activity_type' ? (
+                  <a href={`/activity-type/${encodeURIComponent(activityImpact.activity)}`}>
+                    {activityTypeDisplayName(definitions, activityImpact.activity)}
+                  </a>
+                ) : (
+                  activityImpact.activity
+                )}{' '}
+                on {describeMetrics(metrics)}
                 <span class="impact-meta">
-                  {activityImpact.occurrences} occurrences, avg {activityImpact.avg_duration_min} min
+                  {describeImpactMeta(activityImpact.occurrences, activityImpact.avg_duration_min)}
                 </span>
               </h2>
-              <ImpactFigure data={activityImpact} baseline={baseline} />
+              <ImpactFigure data={activityImpact} baseline={baseline} metrics={metrics} />
             </section>
           )}
 
@@ -214,10 +277,11 @@ export function Correlations() {
                   title="Activities"
                   nameHeader="Activity"
                   windowMinutes={correlations.window_minutes}
+                  metrics={metrics}
                   rows={correlations.correlations.activities.map((a) => ({
                     extra: describeOccurrences(a.occurrences, a.avg_duration_min),
                     key: a.activity_type,
-                    name: a.activity_type,
+                    name: activityTypeDisplayName(definitions, a.activity_type),
                     onSelect: () => handleSelectActivity(a.activity_type, 'activity_type'),
                     selected: isActivitySelected(selectedActivity.value, a.activity_type, 'activity_type'),
                     stats: a,
@@ -230,6 +294,7 @@ export function Correlations() {
                   title="Locations"
                   nameHeader="Location"
                   windowMinutes={correlations.window_minutes}
+                  metrics={metrics}
                   rows={correlations.correlations.locations.map((l) => ({
                     extra: `${l.visit_count} visits`,
                     key: l.location_name,
@@ -246,11 +311,9 @@ export function Correlations() {
                   title="Productivity Categories"
                   nameHeader="Category"
                   windowMinutes={correlations.window_minutes}
+                  metrics={metrics}
                   rows={correlations.correlations.productivity.map((p) => ({
-                    extra:
-                      p.correlation_coefficient !== null
-                        ? `r=${p.correlation_coefficient.toFixed(2)}`
-                        : undefined,
+                    extra: describeProductivityR(p.correlation_coefficients, metrics),
                     key: p.category,
                     name: p.category,
                     onSelect: () => handleSelectActivity(p.category, 'productivity_category'),
@@ -288,13 +351,9 @@ export function Correlations() {
                 5-minute averages so densely recorded stretches do not dominate.
               </li>
               <li>
-                <strong>Correlation coefficient (r):</strong> For productivity, this shows how the
-                productivity score correlates with{' '}
-                {CONTEXT_METRIC_LABELS[correlations?.context_metric ?? contextMetric.value]} (-1 to 1). Pick a
-                different <em>context</em> metric above if you don't have continuous HRV. The HRV / HR /
-                Stress columns are each metric's own mean (— when that metric wasn't recorded), independent of
-                the chosen context — so a row can show a blank HRV yet still have an r from the context
-                metric.
+                <strong>Correlation coefficient (r):</strong> for each productivity category, how the
+                productivity score correlates with each shown metric (-1 to 1). A metric without enough data
+                during that screen time has no r.
               </li>
             </ul>
           </section>
