@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { createDataResponseSchema, isValidMetric, metricUnits } from './common.ts'
+import { createDataResponseSchema, isValidMetric, iso8601DateTimeSchema, metricUnits } from './common.ts'
 
 export const hrvStatsSchema = z
   .object({
@@ -240,8 +240,18 @@ export type ActivityImpactMatch = z.infer<typeof activityImpactMatchSchema>
 export const activityImpactQuerySchema = z
   .object({
     activity_type: activityImpactTypeSchema,
+    end: z.string().optional().meta({
+      description:
+        'End of a fixed period to analyse (ISO 8601 datetime, exclusive); with start, replaces period_days',
+      example: '2026-03-01T00:00:00Z',
+    }),
     match: activityImpactMatchSchema.optional(),
     period_days: z.string().optional().meta({ description: 'Days to analyze (default 90)', example: '90' }),
+    start: z.string().optional().meta({
+      description:
+        'Start of a fixed period to analyse (ISO 8601 datetime, inclusive); with end, replaces period_days',
+      example: '2026-01-01T00:00:00Z',
+    }),
     window_minutes: z
       .string()
       .optional()
@@ -747,12 +757,20 @@ export const activityImpactInputSchema = z
       .string()
       .meta({ description: 'The activity or tag name to analyze (e.g., "gym", "coffee", "meditation")' }),
     activity_type: activityImpactTypeSchema.meta({ description: 'Type of activity to search for' }),
+    end: iso8601DateTimeSchema.optional().meta({
+      description:
+        'End of a fixed period to analyse (ISO 8601, exclusive). Give with start; replaces period_days.',
+    }),
     match: activityImpactMatchSchema.optional(),
     period_days: z
       .number()
       .int()
       .optional()
       .meta({ description: 'Number of days to analyze. Defaults to 90.' }),
+    start: iso8601DateTimeSchema.optional().meta({
+      description:
+        'Start of a fixed period to analyse (ISO 8601, inclusive). Give with end; replaces period_days.',
+    }),
     window_minutes: z
       .number()
       .int()

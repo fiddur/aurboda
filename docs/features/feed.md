@@ -28,13 +28,20 @@ A feed post has a **`kind`**:
 
 - **`activity`** (the default) — references one of the user's activities and shares a
   bounded metric selection (below). This is the original kind.
-- **`article`** — a long-form post: a `title`, markdown prose, and inline **chart** and
-  **correlation** blocks, each over a locked `[start, end]` window (blocks inherit an
+- **`article`** — a long-form post: a `title`, markdown prose, and inline **chart**,
+  **correlation** and **impact** blocks, each over a locked `[start, end]` window (blocks inherit an
   article-level default window unless they override it). Data re-resolves **live**
   against the locked window — no data snapshot. A **chart block** draws one metric; a
   **correlation block** pairs a `trigger` and an `outcome` selector (the exploratory
   correlation engine's dimensions, with an optional `lag_days`) and renders as a scatter
-  with the Pearson/Spearman coefficients and n. A **challenge block** embeds a challenge by
+  with the Pearson/Spearman coefficients and n. An **impact block** names one `activity`
+  exactly as the Analyze context table groups it (with its `activity_type`: an activity
+  type, a location, a screen-time category, or — set through the API — an app or a tag) and
+  an optional `window_minutes` (10–1440, default 30), and shows the Analyze page's impact
+  chart over its window: HRV, heart rate and stress in the buckets before, during and after
+  each session, each on its own scale, with the paired before → after change of each
+  (`GET /correlations/activity-impact/:activity` with `match=exact` and the block's
+  `start`/`end`). A **challenge block** embeds a challenge by
   its public URL (`challenge_url`, plus an optional `caption`): one hosted here (your own or
   another local user's) or on another instance. It has no window; it shows the challenge's
   live standings (race chart and leaderboard) and a **Join** link to the challenge page,
@@ -51,7 +58,7 @@ A feed post has a **`kind`**:
   controls, `style` and non-http(s) image sources, so the web shows what federates
   (#1028) — and each windowed block resolves its data live
   over the locked window. An article **federates as a `Note`** (title in `name`, prose
-  HTML in `content`, and a rendered PNG **figure** per chart/correlation/challenge block
+  HTML in `content`, and a rendered PNG **figure** per chart/correlation/challenge/impact block
   attached) so followers on Mastodon see the prose and the charts. (A `Note`, not an AS2
   `Article`: Mastodon treats `Article` as a converted type and discards its `content`,
   rendering only a title and link.) The `content` is shaped for Mastodon, whose inbound
@@ -79,16 +86,18 @@ A feed post has a **`kind`**:
   that, a following Aurboda instance's [structured-enrichment
   fetch](#native-charts-from-aurboda-peers-structured-enrichment) resolves an article to
   its native `FeedStructuredArticle` payload (title + every block re-resolved live —
-  bucketed chart samples, or the computed correlation + scatter points), so an Aurboda
+  bucketed chart samples, the computed correlation + scatter points, or an impact block's
+  timeline and effects), so an Aurboda
   follower's timeline renders the full inline article — real interactive charts and
   scatters — instead of just the flattened prose and attached PNGs a Mastodon follower
   sees. **Export** — `GET /feed/articles/:postId/export` (and the `export_article_markdown`
   MCP tool) renders an article as paste-ready markdown — the title, the prose blocks
-  verbatim, one image link per chart/correlation block (the block-image endpoint
+  verbatim, one image link per chart/correlation/impact block (the block-image endpoint
   below), and for a challenge block its standings image (when it would draw), caption and a
   `[Join the challenge](…)` link — for pasting into a text-only destination like r/QuantifiedSelf, where the
   author adds their own write-up around the linked charts. A block whose image would 404
-  (a chart window with no samples, a correlation with n < 3) gets an italic "not enough
+  (a chart window with no samples, a correlation with n < 3, an impact window without
+  sessions) gets an italic "not enough
   data in this window" note instead of a dead image link (#974). A **`followers`-only** article
   can't be exported (400): the export targets a public paste, but its chart images require
   the post's private capability token, which must never land in publicly-pasted text —
@@ -227,7 +236,8 @@ outbox, federation delivery, the public profile, the blog view, the Atom feed, t
 `list_feed` — can ever see one. A draft is never federated.
 
 A draft may be **incomplete** (`ArticleDraftContent`): the title may be empty, a chart
-block's `metric` and a correlation block's `trigger`/`outcome` may be unset, and windows are
+block's `metric`, a correlation block's `trigger`/`outcome` and an impact block's `activity`
+may be unset ("Impact block N has no activity — pick one before publishing."), and windows are
 not checked. **Publishing** validates it exactly like `POST /feed/articles` — the
 `CreateArticleBody` schema, then the same window and challenge checks — and on success, in
 one transaction, **claims** the draft (deletes it and takes the deleted row in one statement,
@@ -852,13 +862,17 @@ id-convention path — reliable even when a typed consumer drops the in-band ext
    article: a prose block's raw markdown verbatim; a chart block's bucketed samples over its
    locked window, bucketed the same way as its block image; a correlation block's computed
    Pearson/Spearman/n, the present-vs-absent group comparison, and the aligned scatter points —
-   the same `getContinuousCorrelation` call the block image uses; a challenge block's `url` and
+   the same `getContinuousCorrelation` call the block image uses; an impact block's `activity`,
+   `activity_type`, `window_minutes`, window, `occurrences`, `avg_duration_min`, `timeline`
+   buckets and `hrv_effect` / `hr_effect` / `stress_effect` — the same `getActivityImpact`
+   call (exact match, no freshness sync) the block image uses, present for any bounded window
+   even without sessions; a challenge block's `url` and
    caption, plus — when the challenge resolves — its QuantPub document and a standings
    snapshot, resolved like a challenge post's below, and also for another local user's
    challenge (from that user's database) or a remote one the author has not joined (the
    host's QuantPub document and standings, fetched within the same timeout; any failure
    leaves the block with only its URL and caption, which renders as a link card). An older
-   Aurboda peer that predates challenge blocks fails the strict parse of such a payload and
+   Aurboda peer that predates challenge or impact blocks fails the strict parse of such a payload and
    falls back to the article's `Note` HTML — prose, captions, the join link and the attached
    images). A **challenge** post
    resolves to `FeedStructuredChallenge`: the author's note, the frozen `result` on a
@@ -923,7 +937,7 @@ id-convention path — reliable even when a typed consumer drops the in-band ext
 
 Enrichment is strictly best-effort and additive: it never blocks or fails basic ingest, an
 activity's series that weren't shared (the opt-in) simply produce no chart, and an article's
-chart/correlation block with too little data renders the same "not enough data" fallback the
+chart/correlation/impact block with too little data renders the same "not enough data" fallback the
 author's own live render shows.
 
 **Lazy retro-enrichment (#996).** Entries ingested before enrichment shipped — or whose
@@ -1018,7 +1032,7 @@ render cache keys on the post's `updated_at` plus a 1-hour bucket. The delivered
 attaches it as `Trend` (1000×420) only when it would draw; the `Note` served by the object
 dispatcher and the outbox does not carry it.
 
-An **article** renders one image per chart/correlation/challenge block for the same reason
+An **article** renders one image per chart/correlation/challenge/impact block for the same reason
 (so Mastodon and export tools attach a raster of each block), at its own endpoints:
 
 ```
@@ -1039,7 +1053,9 @@ correlation block can embed any metric over any window, so the post's **visibili
 the whole authorization boundary (public/unlisted open; `followers`-only via the
 `?token=` capability). The chart block renders the metric bucketed over the locked
 window; the correlation block renders the scatter with its OLS line and coefficient
-headline; the challenge block renders the linked challenge's standings race chart (the same
+headline; the impact block renders the impact chart (1000×560: the title, the three lines
+with the during bucket shaded, the bucket labels, a legend and the before → after effect
+lines) and moves hourly like a chart block; the challenge block renders the linked challenge's standings race chart (the same
 chart as a challenge post's `standings.png`), cached in five-minute buckets like that image
 rather than hourly, and 404s while the challenge has no standings to draw. It buckets in the author's **device timezone** (`device_timezone`, set by the
 Android app) so a `1d` bucket splits on the author's calendar days like the web render;
@@ -1057,7 +1073,8 @@ own render-cache entry. The AS2 `Image` attachment URL (`figure.png`) also carri
 after an edit.
 
 A block image endpoint **404s** when the block is too sparse to draw (a chart with < 2
-points, a correlation with n < 3) or has a zero-duration bucket. The article's `Note`
+points, a correlation with n < 3, an impact without sessions or with fewer than two buckets
+holding any mean) or has a zero-duration bucket. The article's `Note`
 attaches one `Image` per figure **unconditionally** (the attachment list is built without a
 synchronous pre-render), so a sparse block ships an attachment URL that resolves to 404 — a
 plain fediverse client just shows one fewer image. Each attachment is named

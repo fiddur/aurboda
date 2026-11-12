@@ -2,6 +2,7 @@ import type { ArticleContent } from '@aurboda/api-spec'
 
 import { describe, expect, test } from 'vitest'
 
+import { impactData } from '../test/impact-fixture.ts'
 import { articleBlockCacheKey, createNegativeCache } from './article-block-misses.ts'
 import { type BlockImageDataDeps, buildArticleMarkdown, renderableArticleBlocks } from './article-export.ts'
 
@@ -137,6 +138,28 @@ describe('buildArticleMarkdown', () => {
   })
 })
 
+describe('buildArticleMarkdown — impact blocks', () => {
+  const IMPACT = { ...WINDOW, activity: 'yoga', activity_type: 'activity_type', type: 'impact' } as const
+
+  test('links the impact image, labelled with the activity', () => {
+    expect(render([IMPACT])).toContain(`![Impact of yoga](${base}/blocks/0/image.png?v=${V})`)
+  })
+
+  test('says there is not enough data when the image would not draw', () => {
+    const md = buildArticleMarkdown(
+      'https://aurboda.example/api',
+      'fiddur',
+      'POST',
+      'public',
+      'secret-token',
+      UPDATED,
+      article([IMPACT]),
+      new Set(),
+    )
+    expect(md).toContain('*Impact of yoga — not enough data in this window.*')
+  })
+})
+
 describe('buildArticleMarkdown — challenge blocks', () => {
   const CHALLENGE = {
     caption: 'Join *us*',
@@ -203,9 +226,11 @@ describe('renderableArticleBlocks', () => {
     scatter: boolean,
     misses = createNegativeCache(),
     raceLines: number | null = null,
+    sessions = 0,
   ): BlockImageDataDeps => ({
     challengeRace: async () => (raceLines == null ? null : race(raceLines)),
     chartSeries: async () => Array.from({ length: points }, (_, i) => i),
+    impact: async () => impactData({ occurrences: sessions }),
     misses,
     correlationScatter: async () =>
       scatter
@@ -267,6 +292,15 @@ describe('renderableArticleBlocks', () => {
     expect(misses.has(otherPost)).toBe(true)
   })
 
+  test('keeps an impact block only when it has sessions to draw', async () => {
+    const IMPACT = { ...WINDOW, activity: 'yoga', activity_type: 'activity_type', type: 'impact' } as const
+    const blocks: ArticleContent['blocks'] = [IMPACT]
+    expect(
+      await renderableArticleBlocks('u', POST_ID, article(blocks), deps(0, false, undefined, null, 3)),
+    ).toEqual(new Set([0]))
+    expect(await renderableArticleBlocks('u', POST_ID, article(blocks), deps(0, false))).toEqual(new Set())
+  })
+
   test('drops a block with an unbounded window without fetching any data', async () => {
     let fetched = false
     const spying: BlockImageDataDeps = {
@@ -276,6 +310,10 @@ describe('renderableArticleBlocks', () => {
         return [1, 2, 3]
       },
       correlationScatter: async () => null,
+      impact: async () => {
+        fetched = true
+        return impactData()
+      },
       misses: createNegativeCache(),
     }
     // No own window and no article default → unbounded → statically ineligible.

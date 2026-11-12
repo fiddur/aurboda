@@ -246,7 +246,11 @@ stress }`: the before buckets oldest first, then `during`, then the after
   kept for compatibility: their keys name the default 30-minute window, and
   `before30min`/`after30min` are the outer half of the window and
   `before15min`/`after15min` the inner half, whatever `window_minutes` is.
-  `occurrences` counts merged sessions.
+  `occurrences` counts merged sessions. `start` and `end` (ISO 8601 datetimes,
+  given together) fix the analysed period instead of the last `period_days`
+  days: `start` inclusive, `end` exclusive. One without the other, or a `start`
+  not before `end`, is a 400 (an error from the MCP tool). An article's impact
+  block uses this with `match=exact` and its own window.
 
 ## Statistics notes
 

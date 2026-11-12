@@ -13,7 +13,10 @@ import {
   draftUpdateBody,
   emptyChallengeDraft,
   emptyCorrelationDraft,
+  emptyImpactDraft,
+  impactPickerOptions,
   initialArticleEditorState,
+  parseImpactOptionValue,
   toInputValue,
   toIso,
 } from './article-editor-body'
@@ -348,6 +351,90 @@ describe('challenge blocks', () => {
   it('publishes a chosen challenge', () => {
     const result = buildArticleBody(state({ blocks: [{ caption: '', type: 'challenge', url: URL_ }] }))
     expect(result.ok && result.body.blocks).toEqual([{ challenge_url: URL_, type: 'challenge' }])
+  })
+})
+
+describe('impact blocks', () => {
+  const WINDOW = { end: '2026-07-07T00:00:00.000Z', start: '2026-07-01T00:00:00.000Z' }
+
+  it('round-trips a stored impact block through the editor', () => {
+    const stored = {
+      activity: 'yoga',
+      activity_type: 'activity_type' as const,
+      caption: 'Morning yoga',
+      ...WINDOW,
+      type: 'impact' as const,
+      window_minutes: 120,
+    }
+    const drafts = draftsFromPost({ article: { blocks: [stored], title: 'T' } })
+    expect(drafts).toEqual([
+      {
+        activity: 'yoga',
+        activityType: 'activity_type',
+        caption: 'Morning yoga',
+        end: toInputValue(WINDOW.end),
+        start: toInputValue(WINDOW.start),
+        type: 'impact',
+        windowMinutes: 120,
+      },
+    ])
+    expect(buildDraftContent(state({ blocks: drafts })).blocks).toEqual([stored])
+    const result = buildArticleBody(state({ blocks: drafts }))
+    expect(result.ok && result.body.blocks).toEqual([stored])
+  })
+
+  it('seeds a draft block without an activity, defaulting the window to 30 minutes', () => {
+    const drafts = draftsFromPost({
+      article: { blocks: [{ activity_type: 'location', type: 'impact' }], title: 'T' },
+    })
+    expect(drafts).toEqual([{ ...emptyImpactDraft(), activityType: 'location' }])
+  })
+
+  it('a draft keeps an unchosen activity; publishing needs one', () => {
+    expect(buildDraftContent(state({ blocks: [emptyImpactDraft()] })).blocks).toEqual([
+      { activity_type: 'activity_type', type: 'impact', window_minutes: 30 },
+    ])
+    expect(buildArticleBody(state({ blocks: [emptyImpactDraft()] }))).toEqual({
+      error: 'Pick an activity for impact block 1.',
+      ok: false,
+    })
+  })
+
+  const correlations = {
+    activities: [{ activity_type: 'yoga' }, { activity_type: 'running' }],
+    locations: [{ location_name: 'Gym' }],
+    productivity: [],
+  }
+
+  it('groups the picker like the Analyze context table, leaving out empty groups', () => {
+    const { extra, groups } = impactPickerOptions(correlations, emptyImpactDraft())
+    expect(extra).toBeNull()
+    expect(groups.map((g) => g.label)).toEqual(['Activities', 'Locations'])
+    expect(groups[0].options.map((o) => [o.activityType, o.activity])).toEqual([
+      ['activity_type', 'yoga'],
+      ['activity_type', 'running'],
+    ])
+    expect(groups[1].options[0]).toMatchObject({ activity: 'Gym', activityType: 'location' })
+  })
+
+  it('an option value names both the type and the activity', () => {
+    const { groups } = impactPickerOptions(correlations, emptyImpactDraft())
+    expect(parseImpactOptionValue(groups[1].options[0].value)).toEqual({
+      activity: 'Gym',
+      activityType: 'location',
+    })
+    expect(parseImpactOptionValue('')).toBeNull()
+  })
+
+  it('keeps a stored pair the list lacks as one extra option', () => {
+    const listed = impactPickerOptions(correlations, { activity: 'yoga', activityType: 'activity_type' })
+    expect(listed.extra).toBeNull()
+    const sameNameOtherType = impactPickerOptions(correlations, { activity: 'yoga', activityType: 'tag' })
+    expect(sameNameOtherType.extra).toMatchObject({ activity: 'yoga', activityType: 'tag' })
+    expect(impactPickerOptions(undefined, { activity: 'coffee', activityType: 'tag' })).toMatchObject({
+      extra: { activity: 'coffee', activityType: 'tag' },
+      groups: [],
+    })
   })
 })
 

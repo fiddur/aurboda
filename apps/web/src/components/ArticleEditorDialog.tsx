@@ -1,5 +1,6 @@
 import type { ArticleDraft, CorrelationSelectorsData, FeedPost, FeedVisibility } from '@aurboda/api-spec'
 
+import { formatImpactWindow, IMPACT_WINDOW_OPTIONS } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useEffect, useRef, useState } from 'preact/hooks'
@@ -10,6 +11,7 @@ import type {
   ChallengeDraft,
   ChartDraft,
   CorrelationDraft,
+  ImpactDraft,
   ProseDraft,
 } from './article-editor-body'
 
@@ -17,6 +19,7 @@ import {
   createArticle,
   createArticleDraft,
   fetchCorrelationSelectors,
+  fetchHrvActivitiesCorrelation,
   fetchUserSettings,
   listChallenges,
   listMyChallengeParticipations,
@@ -33,7 +36,10 @@ import {
   draftUpdateBody,
   emptyChallengeDraft,
   emptyCorrelationDraft,
+  emptyImpactDraft,
+  impactPickerOptions,
   initialArticleEditorState,
+  parseImpactOptionValue,
 } from './article-editor-body'
 import { autoTagsFor, formatTagsInput, parseTagsInput } from './hashtags'
 import { MarkdownEditor } from './MarkdownEditor'
@@ -47,6 +53,7 @@ import './ArticleEditorDialog.css'
 type BlockPatch = Partial<ChallengeDraft> &
   Partial<ChartDraft> &
   Partial<CorrelationDraft> &
+  Partial<ImpactDraft> &
   Partial<ProseDraft>
 
 /**
@@ -213,6 +220,107 @@ const ChallengeBlockFields = ({
   )
 }
 
+const BlockWindowFields = ({
+  block,
+  onPatch,
+}: {
+  block: { start: string; end: string }
+  onPatch: (patch: BlockPatch) => void
+}) => (
+  <div class="article-window">
+    <label class="article-field">
+      <span class="article-field-label">From (optional)</span>
+      <input
+        type="datetime-local"
+        class="article-input"
+        value={block.start}
+        onInput={(e) => onPatch({ start: (e.target as HTMLInputElement).value })}
+      />
+    </label>
+    <label class="article-field">
+      <span class="article-field-label">To (optional)</span>
+      <input
+        type="datetime-local"
+        class="article-input"
+        value={block.end}
+        onInput={(e) => onPatch({ end: (e.target as HTMLInputElement).value })}
+      />
+    </label>
+  </div>
+)
+
+const ImpactBlockFields = ({
+  block,
+  onPatch,
+}: {
+  block: ImpactDraft
+  onPatch: (patch: BlockPatch) => void
+}) => {
+  const { data } = useQuery({
+    queryFn: () => fetchHrvActivitiesCorrelation(90),
+    queryKey: ['hrvActivities', 90],
+    staleTime: 5 * 60 * 1000,
+  })
+  const { extra, groups } = impactPickerOptions(data?.correlations, block)
+  const selected = groups
+    .flatMap((g) => g.options)
+    .find((o) => o.activity === block.activity && o.activityType === block.activityType)
+
+  const onSelect = (value: string) => {
+    const pair = parseImpactOptionValue(value)
+    onPatch(pair ?? { activity: '' })
+  }
+
+  return (
+    <div class="article-chart-fields">
+      <label class="article-field">
+        <span class="article-field-label">Activity</span>
+        <select
+          class="article-input"
+          value={selected?.value ?? extra?.value ?? ''}
+          onChange={(e) => onSelect((e.target as HTMLSelectElement).value)}
+        >
+          <option value="">Choose an activity…</option>
+          {extra && <option value={extra.value}>{extra.activity}</option>}
+          {groups.map((group) => (
+            <optgroup key={group.label} label={group.label}>
+              {group.options.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.activity}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+      </label>
+      <label class="article-field">
+        <span class="article-field-label">Context window</span>
+        <select
+          class="article-input"
+          value={block.windowMinutes}
+          onChange={(e) => onPatch({ windowMinutes: parseInt((e.target as HTMLSelectElement).value, 10) })}
+        >
+          {IMPACT_WINDOW_OPTIONS.map((minutes) => (
+            <option key={minutes} value={minutes}>
+              ±{formatImpactWindow(minutes)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <BlockWindowFields block={block} onPatch={onPatch} />
+      <label class="article-field">
+        <span class="article-field-label">Caption (optional)</span>
+        <input
+          type="text"
+          class="article-input"
+          value={block.caption}
+          onInput={(e) => onPatch({ caption: (e.target as HTMLInputElement).value })}
+        />
+      </label>
+    </div>
+  )
+}
+
 const blockKindLabel = (block: BlockDraft): string => {
   switch (block.type) {
     case 'prose':
@@ -221,6 +329,8 @@ const blockKindLabel = (block: BlockDraft): string => {
       return '🔗 Correlation'
     case 'challenge':
       return '🏁 Challenge'
+    case 'impact':
+      return '⏱ Impact'
     default:
       return '📈 Chart'
   }
@@ -281,32 +391,15 @@ const ArticleBlockEditor = ({
       <CorrelationBlockFields block={block} selectors={selectors} onPatch={onPatch} />
     ) : block.type === 'challenge' ? (
       <ChallengeBlockFields block={block} onPatch={onPatch} />
+    ) : block.type === 'impact' ? (
+      <ImpactBlockFields block={block} onPatch={onPatch} />
     ) : (
       <div class="article-chart-fields">
         <label class="article-field">
           <span class="article-field-label">Metric</span>
           <MetricPicker builtinOnly value={block.metric} onChange={(m) => onPatch({ metric: m })} />
         </label>
-        <div class="article-window">
-          <label class="article-field">
-            <span class="article-field-label">From (optional)</span>
-            <input
-              type="datetime-local"
-              class="article-input"
-              value={block.start}
-              onInput={(e) => onPatch({ start: (e.target as HTMLInputElement).value })}
-            />
-          </label>
-          <label class="article-field">
-            <span class="article-field-label">To (optional)</span>
-            <input
-              type="datetime-local"
-              class="article-input"
-              value={block.end}
-              onInput={(e) => onPatch({ end: (e.target as HTMLInputElement).value })}
-            />
-          </label>
-        </div>
+        <BlockWindowFields block={block} onPatch={onPatch} />
         <label class="article-field">
           <span class="article-field-label">Caption (optional)</span>
           <input
@@ -491,6 +584,7 @@ export const ArticleEditorDialog = ({
     ])
   const addCorrelation = () => setBlocks((bs) => [...bs, keyed(emptyCorrelationDraft())])
   const addChallenge = () => setBlocks((bs) => [...bs, keyed(emptyChallengeDraft())])
+  const addImpact = () => setBlocks((bs) => [...bs, keyed(emptyImpactDraft())])
 
   /** Create the draft on first save, PATCH it after; returns its id. */
   const persistDraft = async (): Promise<string> => {
@@ -632,6 +726,9 @@ export const ArticleEditorDialog = ({
           </button>
           <button type="button" class="btn-secondary" onClick={addChallenge}>
             + Challenge
+          </button>
+          <button type="button" class="btn-secondary" onClick={addImpact}>
+            + Impact
           </button>
         </div>
 

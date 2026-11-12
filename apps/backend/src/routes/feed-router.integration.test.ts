@@ -98,6 +98,39 @@ describe('Article feed routes (integration)', () => {
     expect(res.body.error).toContain('no time window')
   })
 
+  test('POST /feed/articles stores an impact block and reads it back', async () => {
+    const impact = {
+      activity: 'meditation',
+      activity_type: 'activity_type',
+      caption: 'Evening meditation',
+      type: 'impact',
+      window_minutes: 120,
+    }
+    const res = await app.request
+      .post('/feed/articles')
+      .send({ ...articleBody(), blocks: [...articleBody().blocks, impact] })
+    expect(res.status).toBe(200)
+    expect(res.body.post.article.blocks[2]).toEqual(impact)
+    const list = await app.request.get('/feed')
+    const stored = list.body.posts.find((p: { id: string }) => p.id === res.body.post.id)
+    expect(stored.article.blocks[2]).toEqual(impact)
+  })
+
+  test('POST /feed/articles rejects an impact block with no window or a bad window_minutes (400)', async () => {
+    const noWindow = await app.request.post('/feed/articles').send({
+      blocks: [{ activity: 'meditation', activity_type: 'activity_type', type: 'impact' }],
+      title: 'Broken',
+      visibility: 'public',
+    })
+    expect(noWindow.status).toBe(400)
+    expect(noWindow.body.error).toContain('Impact block 1 (meditation) has no time window')
+    const shortWindow = await app.request.post('/feed/articles').send({
+      ...articleBody(),
+      blocks: [{ activity: 'meditation', activity_type: 'activity_type', type: 'impact', window_minutes: 5 }],
+    })
+    expect(shortWindow.status).toBe(400)
+  })
+
   test('PATCH /feed/articles/:postId replaces provided fields', async () => {
     const created = await app.request.post('/feed/articles').send(articleBody())
     const id = created.body.post.id
@@ -260,6 +293,40 @@ describe('GET /feed/articles/:postId/export (Reddit/markdown export, C4)', () =>
     expect(res.status).toBe(200)
     expect(res.body.markdown).not.toContain('image.png')
     expect(res.body.markdown).toContain('*Resting HR — not enough data in this window.*')
+  })
+
+  test('links an impact block whose window has a session, and notes one without (#1604)', async () => {
+    const user = getTestUser()
+    const sessionStart = new Date('2026-07-02T18:00:00Z')
+    await insertActivity(user, {
+      activity_type: 'meditation',
+      end_time: new Date(sessionStart.getTime() + 20 * 60_000),
+      source: 'manual',
+      start_time: sessionStart,
+    })
+    await insertTimeSeries(
+      user,
+      Array.from({ length: 16 }, (_, i) => ({
+        metric: 'heart_rate' as const,
+        source: 'garmin' as const,
+        time: new Date(sessionStart.getTime() + (i * 5 - 30) * 60_000),
+        value: 60 + i,
+      })),
+    )
+    const created = await withBase.request.post('/feed/articles').send({
+      ...articleBody(),
+      blocks: [
+        { activity: 'meditation', activity_type: 'activity_type', type: 'impact' },
+        { activity: 'yoga', activity_type: 'activity_type', type: 'impact' },
+      ],
+    })
+    const postId = created.body.post.id
+    const res = await withBase.request.get(`/feed/articles/${postId}/export`)
+    expect(res.status).toBe(200)
+    expect(res.body.markdown).toContain(
+      `![Impact of meditation](https://aurboda.example/api/public/${user}/feed/${postId}/blocks/0/image.png`,
+    )
+    expect(res.body.markdown).toContain('*Impact of yoga — not enough data in this window.*')
   })
 
   test('404s for a non-article post', async () => {
@@ -1173,6 +1240,16 @@ describe('Article drafts (/feed/article-drafts)', () => {
       .post(`/feed/article-drafts/${created.body.draft.id}/publish`)
       .send({ visibility: 'unlisted' })
     expect(res.body.post.visibility).toBe('unlisted')
+  })
+
+  test('publishing a draft whose impact block has no activity is a 400', async () => {
+    const created = await app.request.post('/feed/article-drafts').send({
+      article: { ...draftArticle(), blocks: [{ activity_type: 'activity_type', type: 'impact' }] },
+    })
+    expect(created.status).toBe(200)
+    const res = await app.request.post(`/feed/article-drafts/${created.body.draft.id}/publish`).send({})
+    expect(res.status).toBe(400)
+    expect(res.body.error).toBe('Impact block 1 has no activity — pick one before publishing.')
   })
 
   test('publishing an incomplete draft is a 400 and keeps the draft', async () => {

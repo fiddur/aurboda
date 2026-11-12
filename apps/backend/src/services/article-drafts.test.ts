@@ -177,6 +177,17 @@ describe('publishableArticle', () => {
     expect(!result.ok && result.error).toContain('Challenge block 1 has no challenge')
   })
 
+  test('rejects an impact block without an activity', () => {
+    const result = publishableArticle(
+      complete({ blocks: [{ activity_type: 'activity_type', type: 'impact' }] }),
+      'public',
+    )
+    expect(result).toEqual({
+      error: 'Impact block 1 has no activity — pick one before publishing.',
+      ok: false,
+    })
+  })
+
   test('rejects a challenge block whose URL is not a challenge link', () => {
     const result = publishableArticle(
       complete({ blocks: [{ challenge_url: 'https://qs.example/about', type: 'challenge' }] }),

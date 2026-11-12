@@ -135,48 +135,6 @@
   margin-left: 0.75rem;
 }
 
-.correlations-page .impact-chart-container {
-  width: 100%;
-  overflow: hidden;
-}
-
-.correlations-page .impact-legend {
-  display: flex;
-  gap: 1.5rem;
-  margin-top: 0.75rem;
-  flex-wrap: wrap;
-  font-size: 0.85rem;
-  color: #6b7280;
-}
-
-.correlations-page .impact-legend .dot {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  margin-right: 0.25rem;
-}
-
-.correlations-page .impact-legend .dot.hrv {
-  background: #10b981;
-}
-
-.correlations-page .impact-legend .dot.hr {
-  background: #ef4444;
-}
-
-.correlations-page .impact-legend .dot.stress {
-  background: #f59e0b;
-}
-
-.correlations-page .impact-legend .zone {
-  display: inline-block;
-  width: 20px;
-  height: 10px;
-  background: rgba(59, 130, 246, 0.2);
-  margin-right: 0.25rem;
-}
-
 .correlations-page .table-section {
   margin-bottom: 2rem;
 }
@@ -282,19 +240,6 @@
   font-weight: 400;
 }
 
-.correlations-page .impact-summary {
-  list-style: none;
-  margin: 0.75rem 0 0;
-  padding: 0;
-  font-size: 0.85rem;
-  color: #374151;
-  font-variant-numeric: tabular-nums;
-}
-
-.correlations-page .impact-summary li {
-  margin-bottom: 0.25rem;
-}
-
 .correlations-page .info-section {
   background: #f9fafb;
   border-radius: 12px;
@@ -386,10 +331,6 @@
   .correlations-page .context-table .group-start,
   .correlations-page .context-table th.group-header {
     border-color: #374151;
-  }
-
-  .correlations-page .impact-summary {
-    color: #d1d5db;
   }
 
   .correlations-page .info-section ul {

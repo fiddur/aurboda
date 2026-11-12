@@ -3,18 +3,29 @@
  * by the feed image routes (`chart`, `trend`, `standings` and article block images) and the
  * post's Open Graph card, so the card shows exactly what the feed attachment does.
  */
-import type { ArticleContent, CorrelationSelector, MetricType } from '@aurboda/api-spec'
+import type { ActivityImpactType, ArticleContent, CorrelationSelector, MetricType } from '@aurboda/api-spec'
 
-import { activityMeasureLabels, defaultArticleChartBucket, getMetricDisplayName } from '@aurboda/api-spec'
+import {
+  activityMeasureLabels,
+  DEFAULT_IMPACT_WINDOW_MINUTES,
+  defaultArticleChartBucket,
+  getMetricDisplayName,
+} from '@aurboda/api-spec'
 
 import type { FeedPostRecord } from '../db/index.ts'
-import type { CorrelationBlockParams } from './article-block-data.ts'
+import type { CorrelationBlockParams, ImpactBlockParams } from './article-block-data.ts'
+import type { ImpactSvgData } from './charts/impact-svg.ts'
 import type { RaceChartSvgData } from './charts/race-chart-svg.ts'
 import type { ScatterSvgData } from './charts/scatter-svg.ts'
 import type { ExerciseTrendSeries } from './feed-structured-exercise.ts'
 
 import { blockWindow, isZeroDurationBucket } from './article.ts'
-import { type ChartRenderOpts, isDrawablePostChart, type PostChart } from './charts/post-chart-svg.ts'
+import {
+  type ChartRenderOpts,
+  isDrawableImpact,
+  isDrawablePostChart,
+  type PostChart,
+} from './charts/post-chart-svg.ts'
 
 export interface PostChartDeps {
   getActivity: (user: string, activityId: string) => Promise<{ start_time: Date; end_time?: Date } | null>
@@ -29,6 +40,8 @@ export interface PostChartDeps {
   ) => Promise<[Date, number][]>
   /** The continuous correlation for an article correlation block, or null when too sparse (n < 3). */
   getCorrelationScatter: (user: string, params: CorrelationBlockParams) => Promise<ScatterSvgData | null>
+  /** An article impact block's numbers over its locked window. */
+  getArticleImpact: (user: string, params: ImpactBlockParams) => Promise<ImpactSvgData>
   /** A challenge post's standings race, or null when it has no standings to draw. */
   getStandingsChart: (user: string, post: FeedPostRecord) => Promise<RaceChartSvgData | null>
   /** The standings race of the challenge at a URL (an article's challenge block), or null. */
@@ -53,6 +66,15 @@ export type ResolvedArticleBlock =
       updatedAt: Date
     }
   | { type: 'challenge'; url: string; updatedAt: Date }
+  | {
+      type: 'impact'
+      activity: string
+      activityType: ActivityImpactType
+      windowMinutes: number
+      start: Date
+      end: Date
+      updatedAt: Date
+    }
 
 /**
  * The block at `index` resolved to its render inputs, or null for an out-of-range or prose
@@ -80,6 +102,17 @@ export const articleBlockAt = (
       start: startDate,
       type: 'chart',
       updatedAt,
+    }
+  }
+  if (block.type === 'impact') {
+    return {
+      activity: block.activity,
+      activityType: block.activity_type,
+      end: endDate,
+      start: startDate,
+      type: 'impact',
+      updatedAt,
+      windowMinutes: block.window_minutes ?? DEFAULT_IMPACT_WINDOW_MINUTES,
     }
   }
   return {
@@ -134,13 +167,26 @@ export const standingsChart = async (
 /**
  * One article block's chart, or null when it has too little data to draw (a chart needs ≥ 2
  * points; a correlation n ≥ 3, surfaced by `getCorrelationScatter` returning null; a challenge
- * a race line) or its bucket is a zero duration.
+ * a race line; an impact a session and two buckets with data) or its bucket is a zero duration.
  */
 export const articleBlockChart = async (
-  deps: Pick<PostChartDeps, 'getArticleChartSeries' | 'getChallengeRaceByUrl' | 'getCorrelationScatter'>,
+  deps: Pick<
+    PostChartDeps,
+    'getArticleChartSeries' | 'getArticleImpact' | 'getChallengeRaceByUrl' | 'getCorrelationScatter'
+  >,
   user: string,
   block: ResolvedArticleBlock,
 ): Promise<PostChart | null> => {
+  if (block.type === 'impact') {
+    const data = await deps.getArticleImpact(user, {
+      activity: block.activity,
+      activityType: block.activityType,
+      end: block.end,
+      start: block.start,
+      windowMinutes: block.windowMinutes,
+    })
+    return isDrawableImpact(data) ? { data, type: 'impact' } : null
+  }
   if (block.type === 'challenge') {
     const data = await deps.getChallengeRaceByUrl(user, block.url)
     return data == null || data.lines.length === 0 ? null : { data, type: 'race' }

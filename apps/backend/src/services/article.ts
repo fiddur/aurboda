@@ -2,7 +2,7 @@
  * Article business logic shared by the REST `/feed/articles` routes and the MCP
  * `create_article` / `update_article` tools (parity).
  *
- * An article's chart and correlation blocks each render over a locked
+ * An article's chart, correlation and impact blocks each render over a locked
  * `[start, end]` window. A block may carry its own window or inherit the
  * article-level default; this module resolves that inheritance and validates
  * that every windowed block ends up with a sane bounded window, so a malformed
@@ -13,7 +13,7 @@
  */
 import type { ArticleBlock, ArticleContent, FeedVisibility } from '@aurboda/api-spec'
 
-import { describeSelectorAxis, getMetricDisplayName } from '@aurboda/api-spec'
+import { articleImpactLabel, describeSelectorAxis, getMetricDisplayName } from '@aurboda/api-spec'
 
 import { isValidUsername } from '../api/auth-routes.ts'
 import { isMissingDatabase } from '../db/index.ts'
@@ -32,6 +32,7 @@ export type BuildArticleResult = { ok: true; article: ArticleContent } | { ok: f
 export const articleBlockLabel = (block: Exclude<ArticleBlock, { type: 'prose' }>): string => {
   if (block.caption) return block.caption
   if (block.type === 'challenge') return 'Challenge standings'
+  if (block.type === 'impact') return articleImpactLabel(block)
   return block.type === 'chart'
     ? getMetricDisplayName(block.metric)
     : `${describeSelectorAxis(block.trigger)} vs ${describeSelectorAxis(block.outcome)}`
@@ -107,8 +108,14 @@ export const blockWindow = (
 })
 
 /** A human label for a windowed block in a validation error (1-based, with the block's subject). */
-const blockLabel = (block: Extract<ArticleBlock, { type: 'chart' | 'correlation' }>, index: number): string =>
-  block.type === 'chart' ? `Chart block ${index + 1} (${block.metric})` : `Correlation block ${index + 1}`
+const blockLabel = (
+  block: Extract<ArticleBlock, { type: 'chart' | 'correlation' | 'impact' }>,
+  index: number,
+): string => {
+  if (block.type === 'chart') return `Chart block ${index + 1} (${block.metric})`
+  if (block.type === 'impact') return `Impact block ${index + 1} (${block.activity})`
+  return `Correlation block ${index + 1}`
+}
 
 const hasChallengeUrl = <B extends { type: string }>(block: B): block is B & { challenge_url?: unknown } =>
   block.type === 'challenge' && 'challenge_url' in block
@@ -126,7 +133,7 @@ export const withCanonicalChallengeUrls = <B extends { type: string }>(blocks: B
   })
 
 /**
- * Validate a fully-formed article's content: every chart and correlation block
+ * Validate a fully-formed article's content: every chart, correlation and impact block
  * must resolve to a bounded window (its own override or the article default)
  * with start < end, and every challenge block must link an http(s) challenge
  * URL (`<base>/u/<username>/<slug>`). Returns the content to persist, challenge
@@ -143,7 +150,7 @@ export const buildArticleContent = (content: ArticleContent): BuildArticleResult
       }
       continue
     }
-    if (block.type !== 'chart' && block.type !== 'correlation') continue
+    if (block.type === 'prose') continue
     const { end, start } = blockWindow(block, content)
     const label = blockLabel(block, i)
     if (start == null || end == null) {
