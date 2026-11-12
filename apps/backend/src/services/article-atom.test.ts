@@ -9,6 +9,7 @@ import {
   officialFeedTitle,
   postEntryHtml,
   postEntryTitle,
+  remoteEntryTitle,
 } from './article-atom.ts'
 
 const source = (overrides: Partial<AtomArticleSource> = {}): AtomArticleSource => ({
@@ -173,6 +174,7 @@ describe('buildOfficialFeedAtom', () => {
           created_at: new Date('2026-07-08T10:00:00Z'),
           html: '<p>Hi</p>',
           id: 'abc',
+          origin: 'local',
           title: 'Morning run',
           updated_at: new Date('2026-07-09T10:00:00Z'),
           username: 'alice',
@@ -191,8 +193,45 @@ describe('buildOfficialFeedAtom', () => {
     expect(xml).not.toContain('\n  <author>')
   })
 
+  test('carries a remote post as received, linking its original and titled by its first line', () => {
+    const xml = buildOfficialFeedAtom({
+      apiBaseUrl: 'https://qs.example/api',
+      entries: [
+        {
+          actor_uri: 'https://aurboda.net/users/fiddur',
+          content: '<p>Release 2.0 &amp; more</p><p>Details follow.</p>',
+          display_name: 'Fredrik',
+          handle: '@fiddur@aurboda.net',
+          images: [{ url: 'https://aurboda.net/a.png' }],
+          note_uri: 'https://aurboda.net/notes/1',
+          origin: 'remote',
+          published_at: new Date('2026-07-08T10:00:00Z'),
+          updated_at: new Date('2026-07-09T10:00:00Z'),
+          url: 'https://aurboda.net/u/fiddur/posts/1',
+        },
+      ],
+      now: new Date('2030-01-01T00:00:00Z'),
+      webHost: 'https://qs.example',
+    })
+    expect(xml).toContain('<id>https://aurboda.net/notes/1</id>')
+    expect(xml).toContain('<title type="text">Release 2.0 &amp; more</title>')
+    expect(xml).toContain('href="https://aurboda.net/u/fiddur/posts/1"')
+    expect(xml).toContain('<author><name>Fredrik</name><uri>https://aurboda.net/users/fiddur</uri></author>')
+    expect(xml).toContain('<published>2026-07-08T10:00:00.000Z</published>')
+    expect(xml).toContain('&lt;p&gt;Details follow.&lt;/p&gt;')
+    expect(xml).toContain('&lt;img src=&quot;https://aurboda.net/a.png&quot;')
+  })
+
   test('falls back to a plain title when the web host is not a URL', () => {
     expect(officialFeedTitle('not a url')).toBe('Blog')
+  })
+})
+
+describe('remoteEntryTitle', () => {
+  test('is the first non-empty line of the text, else the author', () => {
+    expect(remoteEntryTitle({ content: '<p></p><p>Hello<br>world</p>' }, 'Bob')).toBe('Hello')
+    expect(remoteEntryTitle({ content: `<p>${'word '.repeat(30)}</p>` }, 'Bob')).toMatch(/…$/)
+    expect(remoteEntryTitle({ content: '<p><img src="x"></p>' }, 'Bob')).toBe('Bob')
   })
 })
 

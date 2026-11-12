@@ -276,12 +276,18 @@ describe('GET the welcome page', () => {
 describe('GET /blog', () => {
   test('renders the official feed meta with Atom discovery when it is on', async () => {
     const app = buildApp({
-      readOfficialFeed: async () => ({ tags: ['aurboda', 'qs'], users: ['fiddur', 'alice'] }),
+      readOfficialFeed: async () => ({
+        remote_authors: ['bob@peer.example'],
+        tags: ['aurboda', 'qs'],
+        users: ['fiddur', 'alice'],
+      }),
     })
     const res = await supertest(app).get('/blog')
     expect(res.text).toContain('<title>aurboda.net blog</title>')
     expect(res.text).toContain('<link rel="canonical" href="https://aurboda.net/blog">')
-    expect(res.text).toContain('content="Posts from fiddur and alice tagged #aurboda or #qs."')
+    expect(res.text).toContain(
+      'content="Posts from fiddur, alice and @bob@peer.example tagged #aurboda or #qs."',
+    )
     expect(res.text).toContain(
       'type="application/atom+xml" title="aurboda.net blog" href="https://aurboda.net/api/public/official-feed.atom">',
     )
@@ -289,7 +295,10 @@ describe('GET /blog', () => {
   })
 
   test('renders default meta when the official feed is off', async () => {
-    for (const app of [buildApp(), buildApp({ readOfficialFeed: async () => ({ tags: [], users: [] }) })]) {
+    for (const app of [
+      buildApp(),
+      buildApp({ readOfficialFeed: async () => ({ remote_authors: [], tags: [], users: [] }) }),
+    ]) {
       const res = await supertest(app).get('/blog')
       expect(res.text).toContain('<title>Aurboda</title>')
       expect(res.text).not.toContain('application/atom+xml')

@@ -19,6 +19,7 @@
 import { z } from 'zod'
 
 import { maxPostTags, normalizeTag } from '../hashtags.ts'
+import { normalizeFediverseHandle } from '../support-contacts.ts'
 import { challengeResultSchema } from './challenges.ts'
 import {
   activityTypeSchema,
@@ -681,22 +682,36 @@ export const feedPostsResponseSchema = baseResponseSchema
 
 export type FeedPostsResponse = z.infer<typeof feedPostsResponseSchema>
 
-/** At most this many users, and this many tags, in the official feed setting. */
+/** At most this many users, remote authors and tags, each, in the official feed setting. */
 export const officialFeedMaxEntries = 20
+
+/** A fediverse handle as an admin types it: `@name@host` or `name@host`, stored as `name@host`. */
+export const fediverseHandleInputSchema = z
+  .string()
+  .max(255)
+  .refine((value) => (normalizeFediverseHandle(value) ?? '') !== '', {
+    message: 'A fediverse handle, e.g. @name@example.social',
+  })
+  .meta({ description: 'A fediverse handle, e.g. `@name@example.social` (stored as `name@example.social`)' })
 
 export const officialFeedSettingSchema = z
   .object({
+    remote_authors: z.array(fediverseHandleInputSchema).max(officialFeedMaxEntries).default([]).meta({
+      description:
+        "Authors on other servers (`user@host`) whose public posts carrying one of `tags` are listed; the server follows each tag's actor on the tag actor host to receive them. Needs at least one tag.",
+    }),
     tags: z.array(hashtagInputSchema).max(officialFeedMaxEntries).meta({
       description:
         'Only posts carrying at least one of these hashtags (lowercase, without `#`); empty lists every public post of the users',
     }),
     users: z.array(z.string().min(1)).max(officialFeedMaxEntries).meta({
-      description: 'Local usernames whose public posts make up the feed; empty turns the official feed off',
+      description:
+        'Local usernames whose public posts make up the feed; the feed is off when both this and `remote_authors` are empty',
     }),
   })
   .meta({
     description:
-      "The instance's official feed, linked from the front page as its blog: public posts by these users that carry one of these tags",
+      "The instance's official feed, linked from the front page as its blog: public posts by these users and remote authors that carry one of these tags",
     id: 'OfficialFeedSetting',
   })
 
@@ -709,40 +724,6 @@ export const officialFeedQuerySchema = z
   .meta({ description: 'Query of the official feed listing', id: 'OfficialFeedQuery' })
 
 export type OfficialFeedQuery = z.infer<typeof officialFeedQuerySchema>
-
-/** A post on the instance's official feed: as on its author's public profile, plus who wrote it. */
-export const officialFeedPostSchema = feedPostSchema
-  .extend({
-    author_username: z.string().meta({ description: "The post author's local username" }),
-  })
-  .meta({ description: 'A post in the official feed, with its author', id: 'OfficialFeedPost' })
-
-export type OfficialFeedPost = z.infer<typeof officialFeedPostSchema>
-
-export const officialFeedResponseSchema = baseResponseSchema
-  .extend({
-    next_cursor: z
-      .string()
-      .nullable()
-      .optional()
-      .meta({ description: 'Cursor for the next page; null on the last page' }),
-    posts: z.array(officialFeedPostSchema),
-    tags: z
-      .array(z.string())
-      .optional()
-      .meta({ description: 'The hashtags a post needs one of to be listed (empty: any); absent on errors' }),
-    users: z
-      .array(z.string())
-      .optional()
-      .meta({ description: 'The usernames whose posts are listed; absent on errors' }),
-  })
-  .meta({
-    description:
-      "A page of the instance's official feed: public posts by the chosen users with one of the chosen tags",
-    id: 'OfficialFeedResponse',
-  })
-
-export type OfficialFeedResponse = z.infer<typeof officialFeedResponseSchema>
 
 /**
  * The share PREVIEW returns the exact federated `content` HTML a
@@ -1297,6 +1278,69 @@ export const publicTagPostsResponseSchema = baseResponseSchema
   })
 
 export type PublicTagPostsResponse = z.infer<typeof publicTagPostsResponseSchema>
+
+/** A post on the instance's official feed by a local user: as on its author's public profile, plus who wrote it. */
+export const officialFeedPostSchema = feedPostSchema
+  .extend({
+    author_username: z.string().meta({ description: "The post author's local username" }),
+    origin: z.literal('local').meta({ description: 'A post by a local user' }),
+  })
+  .meta({
+    description: 'A post in the official feed by a local user, with its author',
+    id: 'OfficialFeedPost',
+  })
+
+export type OfficialFeedPost = z.infer<typeof officialFeedPostSchema>
+
+/** A post on the instance's official feed by an author on another server, as a public tag page shows it. */
+export const officialFeedRemotePostSchema = publicTagPostSchema
+  .extend({
+    origin: z.literal('remote').meta({ description: 'A post by an author on another server' }),
+  })
+  .meta({
+    description: 'A post in the official feed by an author on another server',
+    id: 'OfficialFeedRemotePost',
+  })
+
+export type OfficialFeedRemotePost = z.infer<typeof officialFeedRemotePostSchema>
+
+export const officialFeedEntrySchema = z
+  .discriminatedUnion('origin', [officialFeedPostSchema, officialFeedRemotePostSchema])
+  .meta({
+    description:
+      "A post in the official feed: `origin` `local` for a local user's post, `remote` for one by an author on another server",
+    id: 'OfficialFeedEntry',
+  })
+
+export type OfficialFeedEntry = z.infer<typeof officialFeedEntrySchema>
+
+export const officialFeedResponseSchema = baseResponseSchema
+  .extend({
+    next_cursor: z
+      .string()
+      .nullable()
+      .optional()
+      .meta({ description: 'Cursor for the next page; null on the last page' }),
+    posts: z.array(officialFeedEntrySchema),
+    remote_authors: z.array(z.string()).optional().meta({
+      description: 'The authors on other servers (`user@host`) whose posts are listed; absent on errors',
+    }),
+    tags: z
+      .array(z.string())
+      .optional()
+      .meta({ description: 'The hashtags a post needs one of to be listed (empty: any); absent on errors' }),
+    users: z
+      .array(z.string())
+      .optional()
+      .meta({ description: 'The usernames whose posts are listed; absent on errors' }),
+  })
+  .meta({
+    description:
+      "A page of the instance's official feed: public posts by the chosen users and remote authors with one of the chosen tags",
+    id: 'OfficialFeedResponse',
+  })
+
+export type OfficialFeedResponse = z.infer<typeof officialFeedResponseSchema>
 
 export const timelineQuerySchema = z
   .object({

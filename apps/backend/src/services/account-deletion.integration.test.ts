@@ -125,7 +125,11 @@ describe('account deletion', () => {
       await centralDb.upsertOuraUserMapping(`oura_${suffix}`, user)
       await centralDb.upsertStravaAthleteMapping(4242, user)
       const job = await centralDb.insertImportJob('livsmedelsverket', user)
-      await centralDb.setServerSetting('official_feed', { tags: ['qs'], users: [user, keeper] })
+      await centralDb.setServerSetting('official_feed', {
+        remote_authors: [],
+        tags: ['qs'],
+        users: [user, keeper],
+      })
       const tagPost = (n: number, localUser: string | null) => ({
         actor_uri: `https://aurboda.test/users/${localUser ?? 'remote'}`,
         announce_uris: localUser == null ? ['https://tags.test/announce/1'] : [],
@@ -176,7 +180,11 @@ describe('account deletion', () => {
       expect(tagPosts.rows.map((r) => r.local_user)).toEqual([keeper, null])
       expect((await centralDb.getImportJobById(job.id))?.started_by).toBeUndefined()
       expect(await centralDb.isAdmin(keeper)).toBe(true)
-      expect(await centralDb.getServerSetting('official_feed')).toEqual({ tags: ['qs'], users: [keeper] })
+      expect(await centralDb.getServerSetting('official_feed')).toEqual({
+        remote_authors: [],
+        tags: ['qs'],
+        users: [keeper],
+      })
 
       expect(await centralDb.isUsernameDeleted(user)).toBe(true)
       expect(await centralDb.listDeletedUsernames()).toContain(user)

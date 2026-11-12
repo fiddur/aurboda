@@ -296,9 +296,9 @@ export const updateAdminSettingsBodySchema = z
       .boolean()
       .optional()
       .meta({ description: 'Enable or disable Oura webhook push sync' }),
-    official_feed: officialFeedSettingSchema
-      .optional()
-      .meta({ description: 'Replace the official feed setting; empty `users` turns it off' }),
+    official_feed: officialFeedSettingSchema.optional().meta({
+      description: 'Replace the official feed setting; empty `users` and `remote_authors` turn it off',
+    }),
     payment_url: z
       .union([z.literal(''), z.url({ protocol: /^https$/ })])
       .optional()
