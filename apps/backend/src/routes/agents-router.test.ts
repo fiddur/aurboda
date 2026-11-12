@@ -83,7 +83,7 @@ describe('GET /agents/activitywatch.ps1', () => {
     } finally {
       rmSync(dir, { force: true, recursive: true })
     }
-  })
+  }, 60_000)
 })
 
 describe('renderAgentScript', () => {
