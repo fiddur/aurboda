@@ -11,7 +11,7 @@ import type {
   TriggerCondition,
 } from './types.ts'
 
-import { getAllActivitiesInRange, getProductivity, getTimeSeries } from '../../db/index.ts'
+import { getEffectiveActivitiesInRange, getProductivity, getTimeSeries } from '../../db/index.ts'
 import { pushAll } from '../../utils.ts'
 import { triggerCorrelationSyncs } from './background-sync.ts'
 import { getCompoundEventOutcome } from './explore.ts'
@@ -110,7 +110,7 @@ export async function getGenericCorrelation(
   const needsMetrics = outcome.type === 'metric'
 
   const [activities, productivity, metricData] = await Promise.all([
-    needsActivities ? getAllActivitiesInRange(user, start, end) : Promise.resolve([]),
+    needsActivities ? getEffectiveActivitiesInRange(user, start, end) : Promise.resolve([]),
     needsProductivity ? getProductivity(user, start, end) : Promise.resolve([]),
     needsMetrics && outcome.type === 'metric'
       ? getTimeSeries(user, outcome.metric as MetricType, start, end)

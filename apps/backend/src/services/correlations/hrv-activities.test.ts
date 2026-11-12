@@ -6,7 +6,7 @@ import { getActivityImpact } from './activity-impact.ts'
 import { getHrvActivitiesCorrelation } from './hrv-activities.ts'
 
 vi.mock('../../db', () => ({
-  getAllActivitiesInRange: vi.fn(),
+  getEffectiveActivitiesInRange: vi.fn(),
   getProductivity: vi.fn(),
   getTimeSeries: vi.fn(),
 }))
@@ -49,7 +49,7 @@ describe('getHrvActivitiesCorrelation', () => {
         start_time: yesterday,
       },
     ])
-    vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
+    vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
       {
         activity_type: 'exercise' as const,
         end_time: new Date(yesterday.getTime() + 3600000),
@@ -58,7 +58,7 @@ describe('getHrvActivitiesCorrelation', () => {
         start_time: yesterday,
       },
     ])
-    vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
+    vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
       {
         end_time: new Date(yesterday.getTime() + 300000),
         external_id: 'tag1',
@@ -81,7 +81,7 @@ describe('getHrvActivitiesCorrelation', () => {
     vi.mocked(db.getTimeSeries).mockResolvedValue([])
     vi.mocked(db.getProductivity).mockResolvedValue([])
     vi.mocked(locations.getPlaceVisits).mockResolvedValue([])
-    vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([])
+    vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([])
 
     const def = await getHrvActivitiesCorrelation('testuser', 7)
     expect(def.context_metric).toBe('hrv_rmssd')
@@ -113,7 +113,7 @@ describe('getHrvActivitiesCorrelation', () => {
       },
     ])
     vi.mocked(locations.getPlaceVisits).mockResolvedValue([])
-    vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([])
+    vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([])
     // HRV rises with the score (positive r); HR falls with it (negative r).
     vi.mocked(db.getTimeSeries).mockImplementation(async (_u: string, metric: string) => {
       const pts: [Date, number][] =
@@ -157,8 +157,8 @@ describe('getHrvActivitiesCorrelation', () => {
     vi.mocked(db.getTimeSeries).mockResolvedValue([])
     vi.mocked(db.getProductivity).mockResolvedValue([])
     vi.mocked(locations.getPlaceVisits).mockResolvedValue([])
-    vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([])
-    vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([])
+    vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([])
+    vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([])
 
     const syncProvider = {
       syncCalendarsIfNeeded: vi.fn().mockResolvedValue(undefined),
@@ -195,7 +195,7 @@ describe('getHrvActivitiesCorrelation', () => {
           ] as [Date, number][])
         : [],
     )
-    vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
+    vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
       { activity_type: 'meditation', end_time: at(base, 20), source: 'manual' as const, start_time: base },
     ])
 
@@ -220,7 +220,7 @@ describe('getHrvActivitiesCorrelation', () => {
   test('the baseline is time-weighted, so a dense burst does not dominate it', async () => {
     const base = alignedBase()
     noContext()
-    vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([])
+    vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([])
     const burst = Array.from(
       { length: 600 },
       (_, i) => [new Date(base.getTime() + i * 1000), 100] as [Date, number],
@@ -245,7 +245,7 @@ describe('getHrvActivitiesCorrelation', () => {
           ] as [Date, number][])
         : [],
     )
-    vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
+    vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
       { activity_type: 'coffee', source: 'manual' as const, start_time: base },
     ])
 
@@ -260,7 +260,7 @@ describe('getHrvActivitiesCorrelation', () => {
     const base = alignedBase()
     noContext()
     const starts = [0, 180, 185, 400, 700, 1000]
-    vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
+    vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
       ...starts.map((m, i) => ({
         activity_type: 'running',
         end_time: at(base, m + 30),
@@ -312,7 +312,7 @@ describe('getHrvActivitiesCorrelation', () => {
     periodStart.setDate(periodStart.getDate() - 7)
     periodStart.setHours(0, 0, 0, 0)
     noContext()
-    vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
+    vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
       {
         activity_type: 'yoga',
         end_time: at(periodStart, 30),

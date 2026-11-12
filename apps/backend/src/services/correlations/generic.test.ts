@@ -4,7 +4,7 @@ import * as db from '../../db/index.ts'
 import { getGenericCorrelation } from './generic.ts'
 
 vi.mock('../../db', () => ({
-  getAllActivitiesInRange: vi.fn(),
+  getEffectiveActivitiesInRange: vi.fn(),
   getProductivity: vi.fn(),
   getTimeSeries: vi.fn(),
 }))
@@ -24,7 +24,7 @@ describe('getGenericCorrelation', () => {
       const day2 = new Date(now.getTime() - 9 * 24 * 60 * 60 * 1000) // 9 days ago
       day2.setHours(10, 0, 0, 0)
 
-      vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
+      vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
         { external_id: 't1', source: 'manual' as const, start_time: day1, activity_type: 'meditation' },
         { external_id: 't2', source: 'manual' as const, start_time: day2, activity_type: 'meditation' },
         { external_id: 'o1', source: 'manual' as const, start_time: day1Later, activity_type: 'fatcoffee' },
@@ -64,7 +64,7 @@ describe('getGenericCorrelation', () => {
       const week2WeightDay = new Date(week1Day1.getTime() + 11 * 24 * 60 * 60 * 1000)
       week2WeightDay.setHours(8, 0, 0, 0)
 
-      vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
+      vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
         {
           activity_type: 'exercise' as const,
           end_time: new Date(week1Day1.getTime() + 3600000),
@@ -87,7 +87,7 @@ describe('getGenericCorrelation', () => {
           start_time: week1Day3,
         },
       ])
-      vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([])
+      vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([])
       vi.mocked(db.getProductivity).mockResolvedValue([])
       vi.mocked(db.getTimeSeries).mockResolvedValue([
         [week1WeightDay, 80.5],
@@ -148,7 +148,7 @@ describe('getGenericCorrelation', () => {
       // Weight measurement after the week
       const weightDay = new Date(baseDate.getTime() + 10 * 24 * 60 * 60 * 1000)
 
-      vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([...exercises, ...tags])
+      vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([...exercises, ...tags])
       vi.mocked(db.getProductivity).mockResolvedValue([])
       vi.mocked(db.getTimeSeries).mockResolvedValue([[weightDay, 79.5]] as [Date, number][])
 
@@ -175,7 +175,7 @@ describe('getGenericCorrelation', () => {
       baseDate.setHours(10, 0, 0, 0)
 
       // Only 2 exercise sessions (need 3)
-      vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
+      vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
         {
           activity_type: 'exercise' as const,
           end_time: new Date(baseDate.getTime() + 3600000),
@@ -201,7 +201,7 @@ describe('getGenericCorrelation', () => {
           activity_type: 'fatcoffee',
         })
       }
-      vi.mocked(db.getAllActivitiesInRange).mockResolvedValue(tags)
+      vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue(tags)
       vi.mocked(db.getProductivity).mockResolvedValue([])
       vi.mocked(db.getTimeSeries).mockResolvedValue([])
 
@@ -227,7 +227,7 @@ describe('getGenericCorrelation', () => {
       day1.setHours(7, 0, 0, 0)
       const day1Work = new Date(day1.getTime() + 2 * 60 * 60 * 1000) // 2 hours later (9am)
 
-      vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
+      vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
         { external_id: 't1', source: 'manual' as const, start_time: day1, activity_type: 'meditation' },
       ])
       vi.mocked(db.getProductivity).mockResolvedValue([
@@ -274,7 +274,7 @@ describe('getGenericCorrelation', () => {
       const baselineWeight = new Date(exerciseDay.getTime() + 11 * 24 * 60 * 60 * 1000)
       baselineWeight.setHours(8, 0, 0, 0)
 
-      vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
+      vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
         {
           activity_type: 'exercise' as const,
           end_time: new Date(exerciseDay.getTime() + 3600000),
@@ -283,7 +283,7 @@ describe('getGenericCorrelation', () => {
           start_time: exerciseDay,
         },
       ])
-      vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([])
+      vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([])
       vi.mocked(db.getProductivity).mockResolvedValue([])
       vi.mocked(db.getTimeSeries).mockResolvedValue([
         [postExerciseWeight, 79.0], // After exercise
@@ -308,7 +308,7 @@ describe('getGenericCorrelation', () => {
 
   describe('regime scoping (averaging path)', () => {
     test('honors period_start/period_end for a tag outcome', async () => {
-      vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([])
+      vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([])
       vi.mocked(db.getProductivity).mockResolvedValue([])
       vi.mocked(db.getTimeSeries).mockResolvedValue([])
 
@@ -336,11 +336,11 @@ describe('getGenericCorrelation', () => {
       const day = (iso: string) => new Date(`${iso}T08:00:00Z`)
 
       // Tag "leak" triggers, some the day before a flare.
-      vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
+      vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
         { source: 'manual', start_time: day('2024-01-09'), activity_type: 'leak' },
         { source: 'manual', start_time: day('2024-01-19'), activity_type: 'leak' },
         { source: 'manual', start_time: day('2024-01-05'), activity_type: 'leak' },
-      ] as unknown as Awaited<ReturnType<typeof db.getAllActivitiesInRange>>)
+      ] as unknown as Awaited<ReturnType<typeof db.getEffectiveActivitiesInRange>>)
       vi.mocked(db.getProductivity).mockResolvedValue([])
       // back_pain flares: a 3-day episode from the 10th, plus a single on the 20th.
       vi.mocked(db.getTimeSeries).mockResolvedValue([

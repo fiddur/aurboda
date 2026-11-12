@@ -194,6 +194,10 @@ How the numbers are made:
   `start − W` to `end + W`, so the first and last sessions of the period get
   full windows. Activities, visits and productivity are still taken from the
   period only, and the baseline still uses only the bins inside it.
+- **Activities as shown.** Every correlation reads activities the way the
+  activity pages show them, after overrides and merges: a synced row an
+  override (a manual edit or a retyping rule) replaced counts only under the
+  override's type, and the same session from two sources is one activity.
 - **Sessions.** Entries of the same group (one activity type, one location, one
   productivity category) that overlap or are at most 10 minutes apart are merged
   into one session, so the same session from two sources, or back-to-back

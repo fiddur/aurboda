@@ -4,7 +4,7 @@ import * as db from '../../db/index.ts'
 import { resolveSelector } from './selectors.ts'
 
 vi.mock('../../db', () => ({
-  getAllActivitiesInRange: vi.fn(),
+  getEffectiveActivitiesInRange: vi.fn(),
   getDailyNutrientTotals: vi.fn(),
   getMealLogCompletedInRange: vi.fn(),
   getNutritionCompleteDaysInRange: vi.fn(),
@@ -17,7 +17,7 @@ const end = new Date('2024-01-05T23:59:59Z')
 
 beforeEach(() => {
   vi.clearAllMocks()
-  vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([])
+  vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([])
   vi.mocked(db.getDailyNutrientTotals).mockResolvedValue([])
   vi.mocked(db.getMealLogCompletedInRange).mockResolvedValue([])
   vi.mocked(db.getNutritionCompleteDaysInRange).mockResolvedValue([])
@@ -27,7 +27,7 @@ beforeEach(() => {
 
 describe('resolveSelector - tag', () => {
   test('every day is known; event days are days with a match', async () => {
-    vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
+    vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
       { source: 'manual', start_time: new Date('2024-01-02T10:00:00Z'), activity_type: 'sauna' },
       { source: 'manual', start_time: new Date('2024-01-04T18:00:00Z'), activity_type: 'sauna' },
       { source: 'manual', start_time: new Date('2024-01-04T19:00:00Z'), activity_type: 'coffee' },

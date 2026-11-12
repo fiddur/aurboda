@@ -8,16 +8,10 @@ import type { Activity, MergedActivity } from '../types.ts'
 import { ensureSchemaMigrationsTable, getDbForUser, query } from '../connection.ts'
 import { mapActivityRow } from '../row-mappers.ts'
 import { mergeOverlappingActivities } from './merge.ts'
-import { activityColumns } from './queries.ts'
+import { activityColumns, fetchCategoryMap } from './queries.ts'
 
 /** Window (half-day) used when materializing supersession around a given time. */
 const MATERIALIZE_WINDOW_MS = 12 * 60 * 60 * 1000
-
-/** Fetch a small category map (name -> display_category) for cross-source merge eligibility. */
-export const fetchCategoryMap = async (user: string): Promise<Map<string, string>> => {
-  const result = await query(user, `SELECT name, display_category FROM activity_type_definitions`)
-  return new Map(result.rows.map((r) => [r.name as string, r.display_category as string]))
-}
 
 const computeDesiredSupersession = (
   raw: Activity[],
