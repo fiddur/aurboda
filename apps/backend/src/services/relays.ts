@@ -13,6 +13,7 @@ import type { Federation } from '@fedify/fedify'
 import { Follow, isActor, Undo } from '@fedify/fedify/vocab'
 import { randomUUID } from 'node:crypto'
 
+import type { CentralDb } from './central-db.ts'
 import type { RelayRecord, RelaysApi } from './central-relays.ts'
 
 import { UUID_RE } from '../utils.ts'
@@ -61,6 +62,14 @@ export interface RelayRecipient {
 }
 
 const LOOKUP_TIMEOUT_MS = 10_000
+const DEFAULT_RELAYS_TIMEOUT_MS = 30_000
+
+export const TAGS_PUB_RELAY = {
+  style: 'mastodon',
+  url: 'https://tags.pub/user/_____relay_____/inbox',
+} as const
+
+export const DEFAULT_RELAYS: ReadonlyArray<{ url: string; style: RelayStyle }> = [TAGS_PUB_RELAY]
 
 export const serializeRelay = (record: RelayRecord): Relay => ({
   actor_uri: record.actor_uri,
@@ -271,3 +280,58 @@ export const createRelayActions = (deps: RelayDeps): RelayActions => ({
   list: async () => (await deps.store.listRelays()).map(serializeRelay),
   remove: (id) => removeRelay(deps, id),
 })
+
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
+
+/** Whether a relay could reach this origin to fetch the instance actor's key. */
+export const isPublicHttpsOrigin = (origin: string): boolean => {
+  let url: URL
+  try {
+    url = new URL(origin)
+  } catch {
+    return false
+  }
+  if (url.protocol !== 'https:') return false
+  const host = url.hostname.toLowerCase()
+  return !LOOPBACK_HOSTS.has(host) && !host.endsWith('.localhost')
+}
+
+export type DefaultRelaysOutcome = 'already' | 'failed' | 'seeded' | 'skipped'
+
+/**
+ * Subscribe to the default relays once per server, recorded in
+ * `default_relays_seeded`, so a relay the admin removes afterwards stays removed.
+ * An already added relay counts as done; any other failure leaves the server
+ * unmarked for the next startup. Never throws.
+ */
+export const ensureDefaultRelays = async (deps: {
+  add: (input: { url: string; style: RelayStyle }) => Promise<AddRelayResult>
+  centralDb: Pick<CentralDb, 'getServerSetting' | 'setServerSetting'>
+  origin: string
+  relays?: ReadonlyArray<{ url: string; style: RelayStyle }>
+  timeoutMs?: number
+  log?: (message: string) => void
+}): Promise<DefaultRelaysOutcome> => {
+  const log = deps.log ?? ((message: string) => console.warn(message))
+  try {
+    if ((await deps.centralDb.getServerSetting('default_relays_seeded')) === true) return 'already'
+    if (!isPublicHttpsOrigin(deps.origin)) return 'skipped'
+    const seed = async (): Promise<boolean> => {
+      let allDone = true
+      for (const relay of deps.relays ?? DEFAULT_RELAYS) {
+        const result = await deps.add(relay)
+        if (!result.ok && result.status !== 409) {
+          log(`⚠️ Default relay ${relay.url} not added: ${result.error}`)
+          allDone = false
+        }
+      }
+      return allDone
+    }
+    if (!(await withTimeout(seed(), deps.timeoutMs ?? DEFAULT_RELAYS_TIMEOUT_MS))) return 'failed'
+    await deps.centralDb.setServerSetting('default_relays_seeded', true)
+    return 'seeded'
+  } catch (error) {
+    log(`⚠️ Default relays not added: ${errorMessage(error)}`)
+    return 'failed'
+  }
+}

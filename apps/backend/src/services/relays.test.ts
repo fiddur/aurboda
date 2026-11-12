@@ -1,11 +1,15 @@
 import { Application, Follow, Undo } from '@fedify/fedify/vocab'
 import { describe, expect, test, vi } from 'vitest'
 
+import type { ServerSettings } from './central-db.ts'
 import type { RelayInput, RelayRecord } from './central-relays.ts'
 
 import {
   addRelay,
+  type AddRelayResult,
   createRelayInboxHooks,
+  ensureDefaultRelays,
+  isPublicHttpsOrigin,
   isRelaySender,
   parseRelayUrl,
   type RelayDeps,
@@ -15,6 +19,7 @@ import {
   type RelayStore,
   removeRelay,
   serializeRelay,
+  TAGS_PUB_RELAY,
 } from './relays.ts'
 
 const ORIGIN = 'https://aurboda.example'
@@ -322,5 +327,139 @@ describe('relay inbox hooks', () => {
       isRelaySender({ actor_uri: LITE_ACTOR, inbox_uri: `${LITE_ACTOR}/inbox` }, 'https://lite.example/x'),
     ).toBe(false)
     expect(isRelaySender({ actor_uri: null, inbox_uri: TAGS_RELAY }, null)).toBe(false)
+  })
+})
+
+describe('isPublicHttpsOrigin', () => {
+  test.each([
+    ['https://aurboda.net', true],
+    ['https://aurboda.example:8443', true],
+    ['http://aurboda.net', false],
+    ['https://localhost', false],
+    ['https://localhost:5173', false],
+    ['https://foo.localhost', false],
+    ['https://127.0.0.1', false],
+    ['http://127.0.0.1:8080', false],
+    ['https://[::1]', false],
+    ['not a url', false],
+  ])('%s → %s', (origin, expected) => {
+    expect(isPublicHttpsOrigin(origin)).toBe(expected)
+  })
+})
+
+describe('ensureDefaultRelays', () => {
+  const fakeCentralDb = (initial: Partial<ServerSettings> = {}, failRead = false) => {
+    const values: Partial<ServerSettings> = { ...initial }
+    return {
+      getServerSetting: async <K extends keyof ServerSettings>(key: K) => {
+        if (failRead) throw new Error('no db')
+        return values[key] ?? null
+      },
+      setServerSetting: async <K extends keyof ServerSettings>(key: K, value: ServerSettings[K]) => {
+        values[key] = value
+      },
+      values,
+    }
+  }
+  const okResult = (url: string): AddRelayResult => ({
+    ok: true,
+    record: {
+      actor_uri: null,
+      created_at: new Date(),
+      follow_activity_id: `${ORIGIN}/actor/follows/a`,
+      id: 'a',
+      inbox_uri: url,
+      last_error: null,
+      state: 'pending',
+      style: 'mastodon',
+      updated_at: new Date(),
+      url,
+    },
+  })
+  const run = (
+    centralDb: ReturnType<typeof fakeCentralDb>,
+    add: (input: { url: string; style: 'litepub' | 'mastodon' }) => Promise<AddRelayResult>,
+    origin = ORIGIN,
+  ) => {
+    const log = vi.fn()
+    return { log, outcome: ensureDefaultRelays({ add, centralDb, log, origin }) }
+  }
+
+  test('seeds the tags.pub relay, Mastodon style, on an https origin and marks the server', async () => {
+    const centralDb = fakeCentralDb()
+    const add = vi.fn(async (input: { url: string }) => okResult(input.url))
+    expect(await run(centralDb, add).outcome).toBe('seeded')
+    expect(add).toHaveBeenCalledWith({ style: 'mastodon', url: TAGS_RELAY })
+    expect(TAGS_PUB_RELAY.url).toBe(TAGS_RELAY)
+    expect(centralDb.values.default_relays_seeded).toBe(true)
+  })
+
+  test('an already added relay (409) counts as done', async () => {
+    const centralDb = fakeCentralDb()
+    const add = vi.fn(
+      async (): Promise<AddRelayResult> => ({
+        error: 'That relay is already added.',
+        ok: false,
+        status: 409,
+      }),
+    )
+    expect(await run(centralDb, add).outcome).toBe('seeded')
+    expect(centralDb.values.default_relays_seeded).toBe(true)
+  })
+
+  test.each([400, 422])('a %i leaves the server unmarked for the next startup', async (status) => {
+    const centralDb = fakeCentralDb()
+    const add = vi.fn(async (): Promise<AddRelayResult> => ({ error: 'nope', ok: false, status }))
+    const { log, outcome } = run(centralDb, add)
+    expect(await outcome).toBe('failed')
+    expect(centralDb.values.default_relays_seeded).toBeUndefined()
+    expect(log).toHaveBeenCalledOnce()
+  })
+
+  test('a thrown add leaves the server unmarked and does not throw', async () => {
+    const centralDb = fakeCentralDb()
+    const add = vi.fn(async (): Promise<AddRelayResult> => {
+      throw new Error('database down')
+    })
+    const { log, outcome } = run(centralDb, add)
+    expect(await outcome).toBe('failed')
+    expect(centralDb.values.default_relays_seeded).toBeUndefined()
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('database down'))
+  })
+
+  test('a failing setting read does not throw', async () => {
+    const centralDb = fakeCentralDb({}, true)
+    const add = vi.fn(async (input: { url: string }) => okResult(input.url))
+    expect(await run(centralDb, add).outcome).toBe('failed')
+    expect(add).not.toHaveBeenCalled()
+  })
+
+  test('a hung add times out and leaves the server unmarked', async () => {
+    const centralDb = fakeCentralDb()
+    const add = vi.fn(() => new Promise<AddRelayResult>(() => {}))
+    const log = vi.fn()
+    const outcome = await ensureDefaultRelays({ add, centralDb, log, origin: ORIGIN, timeoutMs: 5 })
+    expect(outcome).toBe('failed')
+    expect(centralDb.values.default_relays_seeded).toBeUndefined()
+  })
+
+  test('an already seeded server never adds', async () => {
+    const centralDb = fakeCentralDb({ default_relays_seeded: true })
+    const add = vi.fn(async (input: { url: string }) => okResult(input.url))
+    expect(await run(centralDb, add).outcome).toBe('already')
+    expect(add).not.toHaveBeenCalled()
+  })
+
+  test.each([
+    'http://aurboda.example',
+    'https://localhost',
+    'https://foo.localhost',
+    'http://127.0.0.1:8080',
+  ])('skips %s without marking it', async (origin) => {
+    const centralDb = fakeCentralDb()
+    const add = vi.fn(async (input: { url: string }) => okResult(input.url))
+    expect(await run(centralDb, add, origin).outcome).toBe('skipped')
+    expect(add).not.toHaveBeenCalled()
+    expect(centralDb.values.default_relays_seeded).toBeUndefined()
   })
 })
