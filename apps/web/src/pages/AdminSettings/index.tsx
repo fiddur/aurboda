@@ -1,6 +1,7 @@
 import type { PublicTagFollow, RelayStyle } from '@aurboda/api-spec'
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import axios from 'axios'
 import { useLocation } from 'preact-iso'
 import { useCallback, useState } from 'preact/hooks'
 
@@ -34,7 +35,8 @@ import {
   removeRelay,
   updateAdminSettings,
 } from '../../state/api'
-import { auth, officialFeedEnabled, publicTagPages } from '../../state/auth'
+import { auth, contactFediverse, contactReddit, officialFeedEnabled, publicTagPages } from '../../state/auth'
+import { apiErrorText } from '../../utils/profile'
 import './style.css'
 
 const signupModeDescriptions: Record<SignupMode, string> = {
@@ -660,6 +662,102 @@ function SentrySection() {
   )
 }
 
+interface SupportContactsForm {
+  fediverse: string
+  reddit: string
+}
+
+const supportContactsForm = (settings: AdminSettings): SupportContactsForm => ({
+  fediverse: settings.contact_fediverse ? `@${settings.contact_fediverse}` : '',
+  reddit: settings.contact_reddit ? `u/${settings.contact_reddit}` : '',
+})
+
+const saveErrorText = (err: unknown): string =>
+  apiErrorText(
+    axios.isAxiosError(err) ? (err.response?.data as { error?: unknown } | undefined)?.error : undefined,
+    getErrorMessage(err),
+  )
+
+function SupportContactsSection() {
+  const { data: settings } = useQuery({ queryFn: fetchAdminSettings, queryKey: ['adminSettings'] })
+  return settings ? <SupportContactsSettingsForm settings={settings} /> : null
+}
+
+function SupportContactsSettingsForm({ settings }: { settings: AdminSettings }) {
+  const queryClient = useQueryClient()
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>({ status: 'idle' })
+  const [form, setForm] = useState<SupportContactsForm>(() => supportContactsForm(settings))
+
+  const save = async (e: Event) => {
+    e.preventDefault()
+    setSaveStatus({ status: 'saving' })
+    try {
+      const result = await updateAdminSettings({
+        contact_fediverse: form.fediverse.trim(),
+        contact_reddit: form.reddit.trim(),
+      })
+      queryClient.setQueryData(['adminSettings'], result)
+      contactFediverse.value = result.contact_fediverse || null
+      contactReddit.value = result.contact_reddit || null
+      setForm(supportContactsForm(result))
+      setSaveStatus({ status: 'saved', time: new Date() })
+    } catch (err) {
+      setSaveStatus({ error: saveErrorText(err), status: 'error' })
+    }
+  }
+
+  return (
+    <section class="settings-section">
+      <div class="section-header-row">
+        <h2>Support contacts</h2>
+        <SaveStatusIndicator state={saveStatus} />
+      </div>
+      <p class="section-description">
+        Shown on the Help, Privacy and Terms pages so users can reach you outside GitHub. Leave empty to hide.
+      </p>
+      <form onSubmit={save}>
+        <div class="form-field">
+          <label for="contact-fediverse">Fediverse handle</label>
+          <input
+            id="contact-fediverse"
+            type="text"
+            maxLength={255}
+            placeholder="@name@example.social"
+            autocapitalize="off"
+            spellcheck={false}
+            value={form.fediverse}
+            onInput={(e) =>
+              setForm((current) => ({ ...current, fediverse: (e.target as HTMLInputElement).value }))
+            }
+          />
+          <p class="field-description">
+            Users can mention or message you from Mastodon or any fediverse app.
+          </p>
+        </div>
+        <div class="form-field">
+          <label for="contact-reddit">Reddit username</label>
+          <input
+            id="contact-reddit"
+            type="text"
+            maxLength={255}
+            placeholder="u/name"
+            autocapitalize="off"
+            spellcheck={false}
+            value={form.reddit}
+            onInput={(e) =>
+              setForm((current) => ({ ...current, reddit: (e.target as HTMLInputElement).value }))
+            }
+          />
+          <p class="field-description">Users are offered a private message to you on Reddit.</p>
+        </div>
+        <button type="submit" class="generate-button" disabled={saveStatus.status === 'saving'}>
+          Save contacts
+        </button>
+      </form>
+    </section>
+  )
+}
+
 function OfficialFeedSection() {
   const queryClient = useQueryClient()
   const { data: settings } = useQuery({
@@ -1144,6 +1242,8 @@ export function AdminSettings() {
       <IntegrationsSection />
 
       <SentrySection />
+
+      <SupportContactsSection />
 
       <OfficialFeedSection />
 

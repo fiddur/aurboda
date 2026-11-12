@@ -118,6 +118,9 @@ export interface SharedFoodItemsApi {
   searchSharedFoodItems: (q: string, limit?: number) => Promise<SharedFoodItemEntity[]>
   getSharedFoodItemById: (id: string) => Promise<SharedFoodItemEntity | null>
   getSharedFoodItemsByIds: (ids: string[]) => Promise<Map<string, SharedFoodItemEntity>>
+  getSharedFoodItemsBySourceIds: (
+    keys: { source: string; source_id: string }[],
+  ) => Promise<SharedFoodItemEntity[]>
   getSharedFoodItemByName: (name: string) => Promise<SharedFoodItemEntity | null>
   upsertSharedFoodItem: (input: InsertSharedFoodItemInput) => Promise<SharedFoodItemEntity>
   listSharedFoodItems: (limit?: number) => Promise<SharedFoodItemEntity[]>
@@ -167,6 +170,17 @@ export const createSharedFoodItemsApi = (getClient: () => Promise<Queryable>): S
       map.set(item.id, item)
     }
     return map
+  },
+
+  getSharedFoodItemsBySourceIds: async (keys) => {
+    if (keys.length === 0) return []
+    const client = await getClient()
+    const result = await client.query(
+      `SELECT ${COLUMNS} FROM shared_food_items
+       WHERE (source, source_id) IN (SELECT * FROM unnest($1::text[], $2::text[]))`,
+      [keys.map((k) => k.source), keys.map((k) => k.source_id)],
+    )
+    return result.rows.map(mapRow)
   },
 
   getSharedFoodItemByName: async (name) => {

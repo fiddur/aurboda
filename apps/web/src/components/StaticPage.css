@@ -1,0 +1,20 @@
+.static-page {
+  width: 100%;
+  max-width: 48rem;
+  padding: 2rem;
+  box-sizing: border-box;
+}
+
+.static-page h1 {
+  margin-top: 0;
+}
+
+.static-page section {
+  margin-top: 1.5rem;
+}
+
+@media (max-width: 640px) {
+  .static-page {
+    padding: 1rem;
+  }
+}

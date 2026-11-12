@@ -199,7 +199,9 @@ How the numbers are made:
   into one session, so the same session from two sources, or back-to-back
   entries, count as one occurrence. A session shorter than 5 minutes, a
   point activity (no end time) included, counts as 5 minutes, so it always
-  holds one bin.
+  holds one bin. Before #1589 the table used ±30 minutes around a point
+  activity as its "during", so "during" values for point activities are not
+  comparable with numbers from before that change.
 - **Clipped windows.** Before is `[start − W, start)`, after is
   `[end, end + W)`, each clipped to the neighbouring sessions of the same group,
   so one session's "after" never reaches into the next session. A window that

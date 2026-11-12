@@ -235,18 +235,19 @@ const offsets = (window: number) =>
   timelineBuckets(window).map((b) => [b.phase, b.start_offset_minutes, b.end_offset_minutes])
 
 describe('bins straddling a session boundary', () => {
-  test('the bin a session starts in is not part of the window before it', () => {
+  test('dense samples in the bin a session starts in stay out of the window before it', () => {
     const sessions = [{ end: min(33), start: min(3) }]
-    const stress = bins([
-      [-5, 30],
-      [0, 90],
-      [5, 80],
-      [35, 20],
+    const stress = binSeries([
+      [at(-5), 30],
+      ...Array.from({ length: 120 }, (_, s): [Date, number] => [new Date(min(3) + s * 1000), 90]),
+      [at(7), 80],
+      [at(36), 20],
     ])
     const { effects, timeline } = summarizeImpact(sessions, only(stress), 30)
 
     expect(effects.stress.before_mean).toBe(30)
     expect(timeline.stress.before15min.mean).toBe(30)
+    expect(timeline.stress.during.mean).toBe(80)
     expect(effects.stress.after_mean).toBe(20)
   })
 

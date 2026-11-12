@@ -1,9 +1,11 @@
 import { useEffect } from 'preact/hooks'
 
+import { hasAdminContact } from '../../components/admin-contact'
+import { AdminContact, useAdminContactLinks } from '../../components/AdminContact'
+import '../../components/StaticPage.css'
 import { ViewportReadout } from '../../components/ViewportReadout'
 import { isEmbedded } from '../../embed'
 import { auth, ensureStatusLoaded, signupMode } from '../../state/auth'
-import '../Home/style.css'
 import { BUG_REPORT_LINK, DISCUSSION_LINKS, DOCS_LINKS, type HelpLink } from './help-links'
 
 const ExternalLink = ({ link }: { link: HelpLink }) => (
@@ -19,9 +21,10 @@ export function Help() {
 
   const isLoggedIn = Boolean(auth.value.token)
   const canSignup = signupMode.value === 'open'
+  const hasContact = hasAdminContact(useAdminContactLinks())
 
   return (
-    <div class="home">
+    <div class="static-page">
       <h1>Help &amp; support</h1>
       <p>
         Aurboda is free software looked after by a small community. This page shows where to find answers and
@@ -118,6 +121,17 @@ export function Help() {
         </p>
       </section>
 
+      {hasContact && (
+        <section>
+          <h2>Contact the server's admin</h2>
+          <p>
+            For questions about your account, and anything you would rather not ask in public, contact the
+            person who runs this server directly.
+          </p>
+          <AdminContact />
+        </section>
+      )}
+
       <section>
         <h2>Your account and data</h2>
         {isLoggedIn && (
@@ -128,8 +142,14 @@ export function Help() {
         )}
         <p>
           Read how your data is handled in the <a href="/privacy">Privacy Policy</a> and the{' '}
-          <a href="/terms">Terms of Service</a>. If you use an Aurboda server that someone else runs, that
-          person is also a good contact for questions about your account.
+          <a href="/terms">Terms of Service</a>.
+          {!hasContact && (
+            <>
+              {' '}
+              If you use an Aurboda server that someone else runs, that person is also a good contact for
+              questions about your account.
+            </>
+          )}
         </p>
       </section>
 

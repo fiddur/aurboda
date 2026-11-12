@@ -1,7 +1,7 @@
 # Server administration
 
 The first user to sign up becomes an admin. Admins manage server-wide settings (signup mode,
-integration credentials, Sentry, plans and billing, federation) from the web app's Admin Settings page. Those
+integration credentials, Sentry, plans and billing, support contacts, federation) from the web app's Admin Settings page. Those
 settings, the admin list and the records below live in the central database (`CENTRAL_DB`, default
 `aurboda`), not in any user's own database.
 
@@ -202,6 +202,24 @@ end, or leave a note. The Users table has a **Plan** column (exempt, trial until
 grace, read-only) to sort by end date. REST: `PATCH /admin/users/:username/plan` with any of `plan`,
 `paid_until`, `trial_ends_at` and `plan_note` (`null` clears a date or the note); MCP: the admin-only
 `set_user_plan`.
+
+## Support contacts
+
+How users reach the person who runs the server outside GitHub, set under **Support contacts** on
+the Admin Settings page (REST `GET`/`PATCH /admin/settings`). Both are empty by default; an empty
+value hides it.
+
+| Setting             | Accepted input                                                                       | Stored as                                  |
+| ------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------ |
+| `contact_fediverse` | `@name@host` or `name@host`                                                          | `name@host`                                |
+| `contact_reddit`    | `name`, `u/name`, `/u/name` or a `reddit.com/user/name` URL (`www.`, `old.` or none) | `name` (3–20 of letters, digits, `_`, `-`) |
+
+Anything else is refused with `400`. When either is set, the Help page gets a **Contact the
+server's admin** section, and the Contact sections of the Privacy Policy and Terms of Service name
+them next to the Aurboda project on GitHub (without them, those say to contact the administrator of
+the server). A fediverse handle on this server links to the local public profile at `/u/<name>`,
+one elsewhere to `https://<host>/@<name>`; the Reddit username links to a new private message. The
+public `GET /status` carries both as `contact_fediverse` and `contact_reddit` (null when unset).
 
 ## Federation
 
