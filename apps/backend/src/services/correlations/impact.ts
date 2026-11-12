@@ -93,8 +93,9 @@ export const mergeIntoSessions = (
   const sessions: Interval[] = []
   for (const { start, end } of sorted) {
     const last = sessions.at(-1)
-    if (last && start <= last.end + gapMs) last.end = Math.max(last.end, end)
-    else sessions.push({ end: Math.max(start, end), start })
+    const atLeastOneBin = Math.max(end, start + POINT_ACTIVITY_MINUTES * MINUTE_MS)
+    if (last && start <= last.end + gapMs) last.end = Math.max(last.end, atLeastOneBin)
+    else sessions.push({ end: atLeastOneBin, start })
   }
   return sessions
 }
@@ -143,16 +144,25 @@ const sessionWindows = (sessions: Interval[], windowMinutes: number): SessionWin
   const windowMs = windowMinutes * MINUTE_MS
   const halfMs = windowMs / 2
   return sessions.map(({ end, start }, i) => {
-    const before = { end: start, start: Math.max(start - windowMs, sessions[i - 1]?.end ?? -Infinity) }
-    const after = { end: Math.min(end + windowMs, sessions[i + 1]?.start ?? Infinity), start: end }
+    // A bin is picked by its start time, so a window that ends where a session begins stops one
+    // bin early: the bin straddling the session's start holds the session's own samples.
+    const next = sessions[i + 1]
+    const before = {
+      end: start - BIN_MINUTES * MINUTE_MS + 1,
+      start: Math.max(start - windowMs, sessions[i - 1]?.end ?? -Infinity),
+    }
+    const after = {
+      end: Math.min(end + windowMs, next ? next.start - BIN_MINUTES * MINUTE_MS + 1 : Infinity),
+      start: end,
+    }
     return {
       after,
       before,
       buckets: {
         after15min: { end: Math.min(end + halfMs, after.end), start: end },
         after30min: { end: after.end, start: end + halfMs },
-        before15min: { end: start, start: Math.max(start - halfMs, before.start) },
-        before30min: { end: start - halfMs, start: before.start },
+        before15min: { end: before.end, start: Math.max(start - halfMs, before.start) },
+        before30min: { end: Math.min(start - halfMs, before.end), start: before.start },
         during: { end, start },
       },
     }
@@ -200,7 +210,7 @@ export const binMetricSeries = (
 
 export const activityInterval = (activity: { start_time: Date; end_time?: Date | null }): Interval => {
   const start = activity.start_time.getTime()
-  return { end: activity.end_time?.getTime() ?? start + POINT_ACTIVITY_MINUTES * MINUTE_MS, start }
+  return { end: activity.end_time?.getTime() ?? start, start }
 }
 
 export const productivityCategoryKey = (record: {

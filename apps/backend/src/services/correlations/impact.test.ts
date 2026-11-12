@@ -102,9 +102,27 @@ describe('mergeIntoSessions', () => {
 })
 
 describe('activityInterval', () => {
-  test('a point activity lasts five minutes', () => {
-    expect(activityInterval({ start_time: at(0) })).toEqual({ end: min(5), start: min(0) })
+  test('a point activity starts and ends at its time', () => {
+    expect(activityInterval({ start_time: at(0) })).toEqual({ end: min(0), start: min(0) })
     expect(activityInterval({ end_time: at(20), start_time: at(0) })).toEqual({ end: min(20), start: min(0) })
+  })
+})
+
+describe('sessions shorter than a bin', () => {
+  test('a point activity and a two-minute entry both last five minutes', () => {
+    expect(mergeIntoSessions([activityInterval({ start_time: at(3) })])).toEqual([
+      { end: min(8), start: min(3) },
+    ])
+    expect(mergeIntoSessions([{ end: min(5), start: min(3) }])).toEqual([{ end: min(8), start: min(3) }])
+  })
+
+  test('a two-minute entry gets a during value', () => {
+    const { timeline } = summarizeImpact(
+      mergeIntoSessions([{ end: min(3), start: min(1) }]),
+      only(bins([[5, 42]])),
+      30,
+    )
+    expect(timeline.stress.during.mean).toBe(42)
   })
 })
 
@@ -208,5 +226,39 @@ describe('summarizeImpact', () => {
     expect(timeline.stress.after30min.mean).toBe(4)
     expect(effects.stress.before_mean).toBe(1.5)
     expect(effects.stress.after_mean).toBe(3.5)
+  })
+})
+
+describe('bins straddling a session boundary', () => {
+  test('dense samples in the bin a session starts in stay out of the window before it', () => {
+    const sessions = [{ end: min(33), start: min(3) }]
+    const stress = binSeries([
+      [at(-5), 30],
+      ...Array.from({ length: 120 }, (_, s): [Date, number] => [new Date(min(3) + s * 1000), 90]),
+      [at(7), 80],
+      [at(36), 20],
+    ])
+    const { effects, timeline } = summarizeImpact(sessions, only(stress), 30)
+
+    expect(effects.stress.before_mean).toBe(30)
+    expect(timeline.stress.before15min.mean).toBe(30)
+    expect(timeline.stress.during.mean).toBe(80)
+    expect(effects.stress.after_mean).toBe(20)
+  })
+
+  test('the bin the next session starts in is not part of the window after', () => {
+    const sessions = mergeIntoSessions([
+      { end: min(30), start: min(0) },
+      { end: min(80), start: min(52) },
+    ])
+    const stress = bins([
+      [-10, 30],
+      [40, 20],
+      [50, 90],
+    ])
+    const { timeline } = summarizeImpact(sessions, only(stress), 30)
+
+    expect(timeline.stress.after15min).toMatchObject({ mean: 20, occurrences: 1 })
+    expect(timeline.stress.after30min.occurrences).toBe(0)
   })
 })
