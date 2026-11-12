@@ -1,5 +1,7 @@
 import type { WindowEffect } from '../../state/api'
 
+import { formatWindow } from './window'
+
 export const SIGNIFICANCE_LEVEL = 0.05
 const MIN_PAIRS_FOR_TEST = 3
 
@@ -61,7 +63,7 @@ export const effectSummary = (label: string, effect: WindowEffect, occurrences: 
 }
 
 export const columnTitles = (windowMinutes: number) => ({
-  change: `The ${windowMinutes} minutes after minus the ${windowMinutes} minutes before, for occurrences with data on both sides; coloured when statistically clear`,
+  change: `The ${formatWindow(windowMinutes)} after minus the ${formatWindow(windowMinutes)} before, for occurrences with data on both sides; coloured when statistically clear`,
   during: 'Average while it was going on, one value per occurrence',
   vs_avg: 'During minus your average over the whole period',
 })

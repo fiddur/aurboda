@@ -86,7 +86,8 @@ describe('deltas', () => {
 
 describe('columnTitles', () => {
   test('names the window', () => {
-    expect(columnTitles(30).change).toContain('30 minutes after minus the 30 minutes before')
+    expect(columnTitles(30).change).toContain('The 30 min after minus the 30 min before')
+    expect(columnTitles(240).change).toContain('The 4 h after minus the 4 h before')
   })
 })
 
