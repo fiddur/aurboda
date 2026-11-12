@@ -1,5 +1,6 @@
 import type {
   ActivityImpactData,
+  ActivityImpactMatch,
   ActivityImpactQuery,
   ActivityImpactResponse,
   ActivityImpactType,
@@ -38,11 +39,13 @@ export const fetchBaseline = async (referenceDate?: string): Promise<BaselineDat
 export const fetchHrvActivitiesCorrelation = async (
   periodDays?: number,
   contextMetric?: HrvContextMetric,
+  windowMinutes?: number,
 ): Promise<HrvActivitiesData> => {
   const { token } = auth.value
   const params: Record<string, string> = {}
   if (periodDays) params.period_days = String(periodDays)
   if (contextMetric) params.context_metric = contextMetric
+  if (windowMinutes) params.window_minutes = String(windowMinutes)
   const response = await axios.get<HrvActivitiesResponse>(`${API_URL}/correlations/hrv-activities`, {
     headers: { Authorization: `Bearer ${token}` },
     params,
@@ -57,10 +60,12 @@ export const fetchActivityImpact = async (
   activityType: ActivityImpactType,
   periodDays?: number,
   windowMinutes?: number,
+  match?: ActivityImpactMatch,
 ): Promise<ActivityImpactData> => {
   const { token } = auth.value
   const params: ActivityImpactQuery = {
     activity_type: activityType,
+    ...(match && { match }),
     ...(periodDays && { period_days: String(periodDays) }),
     ...(windowMinutes && { window_minutes: String(windowMinutes) }),
   }

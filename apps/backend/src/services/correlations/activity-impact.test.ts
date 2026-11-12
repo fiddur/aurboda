@@ -115,4 +115,85 @@ describe('getActivityImpact', () => {
     expect(result.activity_type).toBe('productivity_category')
     expect(result.occurrences).toBe(1)
   })
+
+  const at = (base: Date, minutes: number) => new Date(base.getTime() + minutes * 60_000)
+
+  test("match 'exact' excludes longer names that the default contains", async () => {
+    const base = new Date('2024-01-15T12:00:00Z')
+    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
+      { activity_type: 'running', end_time: at(base, 30), source: 'manual' as const, start_time: base },
+      {
+        activity_type: 'running_treadmill',
+        end_time: at(base, 330),
+        source: 'manual' as const,
+        start_time: at(base, 300),
+      },
+    ])
+
+    const contains = await getActivityImpact('testuser', 'running', 'activity_type', 30, 90)
+    const exact = await getActivityImpact(
+      'testuser',
+      'running',
+      'activity_type',
+      30,
+      90,
+      undefined,
+      undefined,
+      undefined,
+      'exact',
+    )
+
+    expect(contains.occurrences).toBe(2)
+    expect(exact.occurrences).toBe(1)
+  })
+
+  test('the same session from two sources is one occurrence', async () => {
+    const base = new Date('2024-01-15T12:00:00Z')
+    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
+      { activity_type: 'yoga', end_time: at(base, 60), source: 'garmin' as const, start_time: base },
+      {
+        activity_type: 'yoga',
+        end_time: at(base, 61),
+        source: 'health_connect' as const,
+        start_time: at(base, 1),
+      },
+    ])
+
+    const result = await getActivityImpact('testuser', 'yoga', 'activity_type', 30, 90)
+
+    expect(result.occurrences).toBe(1)
+    expect(result.avg_duration_min).toBe(61)
+  })
+
+  test('returns the paired effects and the clamped window', async () => {
+    const base = new Date('2024-01-15T12:00:00Z')
+    vi.mocked(db.getTimeSeries).mockImplementation(async (_u: string, metric: string) =>
+      metric === 'stress_level'
+        ? ([
+            [at(base, -20), 50],
+            [at(base, 40), 30],
+          ] as [Date, number][])
+        : [],
+    )
+    vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
+      { activity_type: 'meditation', end_time: at(base, 20), source: 'manual' as const, start_time: base },
+    ])
+
+    const result = await getActivityImpact('testuser', 'meditation', 'activity_type', 30, 90)
+    expect(result.window_minutes).toBe(30)
+    expect(result.stress_effect).toMatchObject({
+      after_mean: 30,
+      before_mean: 50,
+      change: -20,
+      paired_occurrences: 1,
+    })
+    expect(result.hrv_effect.paired_occurrences).toBe(0)
+    expect(result.hr_effect.change).toBeNull()
+
+    const clamped = await getActivityImpact('testuser', 'meditation', 'activity_type', 1, 90)
+    expect(clamped.window_minutes).toBe(10)
+    expect(clamped.stress_effect.paired_occurrences).toBe(0)
+  })
 })

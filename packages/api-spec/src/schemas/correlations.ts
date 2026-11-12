@@ -17,14 +17,68 @@ export const hrvStatsSchema = z
 
 export type HrvStats = z.infer<typeof hrvStatsSchema>
 
+export const windowEffectSchema = z
+  .object({
+    after_mean: z.number().nullable().meta({
+      description:
+        'Mean over the window after, averaged per occurrence, for occurrences with data on both sides',
+    }),
+    before_mean: z.number().nullable().meta({
+      description:
+        'Mean over the window before, averaged per occurrence, for occurrences with data on both sides',
+    }),
+    change: z.number().nullable().meta({
+      description: 'Mean per-occurrence change from before to after (after_mean minus before_mean)',
+    }),
+    change_stddev: z
+      .number()
+      .nullable()
+      .meta({ description: 'Standard deviation of the per-occurrence changes' }),
+    p_value: z.number().nullable().meta({
+      description:
+        'Two-sided paired t-test p-value for the change; null with fewer than 3 paired occurrences or no variation',
+    }),
+    paired_occurrences: z.number().int().meta({ description: 'Occurrences with data both before and after' }),
+  })
+  .meta({
+    description: 'Paired before -> after change of a metric across the occurrences of an activity',
+    id: 'WindowEffect',
+  })
+
+export type WindowEffect = z.infer<typeof windowEffectSchema>
+
 export const hrvStatsWithDeltaSchema = hrvStatsSchema
   .extend({
-    hr_delta_from_baseline: z.number().nullable().meta({ description: 'HR change from baseline' }),
-    hrv_delta_from_baseline: z.number().nullable().meta({ description: 'HRV change from baseline' }),
+    hr_delta_from_baseline: z
+      .number()
+      .nullable()
+      .meta({ description: 'Mean heart rate during, minus the period average' }),
+    hr_effect: windowEffectSchema.meta({ description: 'Paired before -> after change of heart rate' }),
+    hrv_delta_from_baseline: z
+      .number()
+      .nullable()
+      .meta({ description: 'Mean HRV during, minus the period average' }),
+    hrv_effect: windowEffectSchema.meta({ description: 'Paired before -> after change of HRV' }),
+    mean_hr: z.number().nullable().meta({ description: 'Mean heart rate during, averaged per occurrence' }),
+    mean_hrv: z.number().nullable().meta({ description: 'Mean HRV (RMSSD) during, averaged per occurrence' }),
+    mean_stress: z
+      .number()
+      .nullable()
+      .meta({ description: 'Mean stress level during, averaged per occurrence' }),
+    stddev_hr: z
+      .number()
+      .nullable()
+      .meta({ description: 'Standard deviation of heart rate across occurrences' }),
+    stddev_hrv: z.number().nullable().meta({ description: 'Standard deviation of HRV across occurrences' }),
+    stddev_stress: z
+      .number()
+      .nullable()
+      .meta({ description: 'Standard deviation of stress level across occurrences' }),
     stress_delta_from_baseline: z
       .number()
       .nullable()
-      .meta({ description: 'Stress level change from baseline' }),
+      .meta({ description: 'Mean stress level during, minus the period average' }),
+    stress_effect: windowEffectSchema.meta({ description: 'Paired before -> after change of stress level' }),
   })
   .meta({ id: 'HrvStatsWithDelta' })
 
@@ -93,6 +147,11 @@ export const hrvActivitiesQuerySchema = z
       .string()
       .optional()
       .meta({ description: 'Number of days to analyze (default 30)', example: '30' }),
+    window_minutes: z.string().optional().meta({
+      description:
+        'Minutes before and after each occurrence for the before -> after change (default 30, 10-1440)',
+      example: '30',
+    }),
   })
   .meta({ id: 'HrvActivitiesQuery' })
 
@@ -145,6 +204,10 @@ export const hrvActivitiesDataSchema = z
       end: z.string(),
       start: z.string(),
     }),
+    window_minutes: z
+      .number()
+      .int()
+      .meta({ description: 'Minutes before and after each occurrence used for the *_effect fields' }),
   })
   .meta({ id: 'HrvActivitiesData' })
 
@@ -166,14 +229,23 @@ export const activityImpactTypeSchema = z
 
 export type ActivityImpactType = z.infer<typeof activityImpactTypeSchema>
 
+export const activityImpactMatchSchema = z.enum(['contains', 'exact']).meta({
+  description:
+    'How the activity name is matched: contains (case-insensitive substring, default) or exact (the same grouping key the context table uses)',
+  id: 'ActivityImpactMatch',
+})
+
+export type ActivityImpactMatch = z.infer<typeof activityImpactMatchSchema>
+
 export const activityImpactQuerySchema = z
   .object({
     activity_type: activityImpactTypeSchema,
+    match: activityImpactMatchSchema.optional(),
     period_days: z.string().optional().meta({ description: 'Days to analyze (default 90)', example: '90' }),
     window_minutes: z
       .string()
       .optional()
-      .meta({ description: 'Minutes before/after (default 30)', example: '30' }),
+      .meta({ description: 'Minutes before/after (default 30, 10-1440)', example: '30' }),
   })
   .meta({ id: 'ActivityImpactQuery' })
 
@@ -181,41 +253,47 @@ export type ActivityImpactQuery = z.infer<typeof activityImpactQuerySchema>
 
 export const timeWindowStatsSchema = z
   .object({
-    mean: z.number().nullable(),
-    sample_count: z.number().int(),
-    stddev: z.number().nullable(),
+    mean: z.number().nullable().meta({ description: 'Mean of the per-occurrence means' }),
+    occurrences: z.number().int().meta({ description: 'Occurrences with data in this window' }),
+    sample_count: z.number().int().meta({ description: '5-minute samples used' }),
+    stddev: z.number().nullable().meta({ description: 'Standard deviation across the per-occurrence means' }),
   })
   .meta({ id: 'TimeWindowStats' })
 
 export type TimeWindowStats = z.infer<typeof timeWindowStatsSchema>
 
+export const impactTimelineSchema = z
+  .object({
+    after15min: timeWindowStatsSchema.meta({ description: 'Inner half of the window after the session' }),
+    after30min: timeWindowStatsSchema.meta({ description: 'Outer half of the window after the session' }),
+    before15min: timeWindowStatsSchema.meta({ description: 'Inner half of the window before the session' }),
+    before30min: timeWindowStatsSchema.meta({ description: 'Outer half of the window before the session' }),
+    during: timeWindowStatsSchema.meta({ description: 'While the session was going on' }),
+  })
+  .meta({
+    description:
+      'Metric around the sessions. The keys name the default 30-minute window; for any window_minutes, *30min is the outer half and *15min the inner half.',
+    id: 'ImpactTimeline',
+  })
+
+export type ImpactTimeline = z.infer<typeof impactTimelineSchema>
+
 export const activityImpactDataSchema = z
   .object({
     activity: z.string().meta({ description: 'Activity name/pattern searched' }),
     activity_type: activityImpactTypeSchema,
-    avg_duration_min: z.number().meta({ description: 'Average duration in minutes' }),
-    hr_timeline: z.object({
-      after15min: timeWindowStatsSchema,
-      after30min: timeWindowStatsSchema,
-      before15min: timeWindowStatsSchema,
-      before30min: timeWindowStatsSchema,
-      during: timeWindowStatsSchema,
+    avg_duration_min: z.number().meta({ description: 'Average session duration in minutes' }),
+    hr_effect: windowEffectSchema.meta({ description: 'Paired before -> after change of heart rate' }),
+    hr_timeline: impactTimelineSchema,
+    hrv_effect: windowEffectSchema.meta({ description: 'Paired before -> after change of HRV' }),
+    hrv_timeline: impactTimelineSchema,
+    occurrences: z.number().int().meta({
+      description:
+        'Number of sessions: matching entries that overlap or are at most 10 minutes apart count as one',
     }),
-    hrv_timeline: z.object({
-      after15min: timeWindowStatsSchema,
-      after30min: timeWindowStatsSchema,
-      before15min: timeWindowStatsSchema,
-      before30min: timeWindowStatsSchema,
-      during: timeWindowStatsSchema,
-    }),
-    occurrences: z.number().int().meta({ description: 'Number of activity occurrences found' }),
-    stress_timeline: z.object({
-      after15min: timeWindowStatsSchema,
-      after30min: timeWindowStatsSchema,
-      before15min: timeWindowStatsSchema,
-      before30min: timeWindowStatsSchema,
-      during: timeWindowStatsSchema,
-    }),
+    stress_effect: windowEffectSchema.meta({ description: 'Paired before -> after change of stress level' }),
+    stress_timeline: impactTimelineSchema,
+    window_minutes: z.number().int().meta({ description: 'Minutes before and after each session analyzed' }),
   })
   .meta({ id: 'ActivityImpactData' })
 
@@ -633,6 +711,7 @@ export const activityImpactInputSchema = z
       .string()
       .meta({ description: 'The activity or tag name to analyze (e.g., "gym", "coffee", "meditation")' }),
     activity_type: activityImpactTypeSchema.meta({ description: 'Type of activity to search for' }),
+    match: activityImpactMatchSchema.optional(),
     period_days: z
       .number()
       .int()
@@ -641,8 +720,10 @@ export const activityImpactInputSchema = z
     window_minutes: z
       .number()
       .int()
+      .min(10)
+      .max(1440)
       .optional()
-      .meta({ description: 'Minutes to analyze before/after the activity. Defaults to 30.' }),
+      .meta({ description: 'Minutes to analyze before/after the activity (10-1440). Defaults to 30.' }),
   })
   .meta({ id: 'ActivityImpactInput' })
 
@@ -682,6 +763,10 @@ export const hrvCorrelationInputSchema = z
       .int()
       .optional()
       .meta({ description: 'Number of days to analyze. Defaults to 30.' }),
+    window_minutes: z.number().int().min(10).max(1440).optional().meta({
+      description:
+        'Minutes before and after each occurrence for the *_effect fields (10-1440). Defaults to 30.',
+    }),
   })
   .meta({ id: 'HrvCorrelationInput' })
 

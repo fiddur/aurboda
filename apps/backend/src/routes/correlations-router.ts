@@ -61,11 +61,18 @@ export const createCorrelationsRouter = (
     authMiddleware,
     validateQuery(hrvActivitiesQuerySchema),
     async (req, res) => {
-      const { period_days, context_metric } = req.query
+      const { period_days, context_metric, window_minutes } = req.query
       const user = req.user!
 
       const periodDays = period_days ? parseInt(period_days, 10) : 30
-      const correlations = await getHrvActivitiesCorrelation(user, periodDays, syncProvider, context_metric)
+      const windowMinutes = window_minutes ? parseInt(window_minutes, 10) : 30
+      const correlations = await getHrvActivitiesCorrelation(
+        user,
+        periodDays,
+        syncProvider,
+        context_metric,
+        windowMinutes,
+      )
       res.json({ data: correlations, success: true })
     },
   )
@@ -76,7 +83,7 @@ export const createCorrelationsRouter = (
     validateQuery(activityImpactQuerySchema),
     async (req, res) => {
       const { activity } = req.params
-      const { activity_type, period_days, window_minutes } = req.query
+      const { activity_type, match, period_days, window_minutes } = req.query
       const user = req.user!
 
       const periodDays = period_days ? parseInt(period_days, 10) : 90
@@ -89,6 +96,9 @@ export const createCorrelationsRouter = (
         windowMinutes,
         periodDays,
         syncProvider,
+        undefined,
+        undefined,
+        match,
       )
       res.json({ data: impact, success: true })
     },

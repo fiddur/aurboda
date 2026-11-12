@@ -162,6 +162,69 @@ the day, so heart rate or stress (which are denser) keep the productivity
 `context_metric`; all three means stay in the response regardless. The web
 "HRV context" tab exposes this as a **Context** dropdown.
 
+## Context analysis (Analyze → context tab)
+
+Each row of the context tables (activities, locations, productivity categories)
+answers three questions about HRV, heart rate and stress:
+
+1. **During** (`mean_*`): what is the metric while it is going on?
+2. **vs avg** (`*_delta_from_baseline`): how does that compare with the average
+   over the whole period (`baseline`)?
+3. **Change** (`hrv_effect`, `hr_effect`, `stress_effect`): how does the metric
+   move from the `window_minutes` before to the `window_minutes` after?
+
+Clicking a row draws the before/during/after chart for the same row, and both
+come from one computation (`apps/backend/src/services/correlations/impact.ts`),
+so the summary lines under the chart show the same numbers as the row's
+**Change** cells.
+
+How the numbers are made:
+
+- **5-minute bins.** Each series (`hrv_rmssd`, `heart_rate`, `stress_level`) is
+  resampled to 5-minute bins aligned to the epoch; a bin is the mean of its
+  samples. Everything downstream reads bins, so a densely recorded stretch (1 Hz
+  heart rate during a workout) weighs the same per minute as a sparse one. The
+  period average (`baseline`) is the mean over all bins.
+- **Sessions.** Entries of the same group (one activity type, one location, one
+  productivity category) that overlap or are at most 10 minutes apart are merged
+  into one session, so the same session from two sources, or back-to-back
+  entries, count as one occurrence. A session shorter than 5 minutes, a
+  point activity (no end time) included, counts as 5 minutes, so it always
+  holds one bin. Before #1589 the table used ±30 minutes around a point
+  activity as its "during", so "during" values for point activities are not
+  comparable with numbers from before that change.
+- **Clipped windows.** Before is `[start − W, start)`, after is
+  `[end, end + W)`, each clipped to the neighbouring sessions of the same group,
+  so one session's "after" never reaches into the next session. A window that
+  ends where a session begins leaves out the 5-minute bin that session starts
+  in, since that bin holds samples from the session itself.
+- **Per-session averaging.** Every mean is the mean of per-session means, and
+  `stddev` is across sessions, so a long or densely sampled session counts once.
+- **The paired change.** Over the sessions with data both before and after
+  (`paired_occurrences`): `before_mean`, `after_mean`, `change`
+  (= `after_mean − before_mean`, the mean of per-session differences),
+  `change_stddev`, and `p_value` from a paired t-test
+  (`t = mean_d / (sd_d / √n)` on `n − 1` df). `p_value` is null with fewer than
+  3 pairs or when every difference is the same. The web page colours a change
+  only when `p_value < 0.05`.
+
+Caveats: occurrences close in time are not independent, so the p-value is
+optimistic; and a window that crosses a time of day picks up the daily rhythm
+(heart rate rising in the morning, say) as well as the activity's own effect.
+
+API:
+
+- `GET /correlations/hrv-activities?period_days=30&context_metric=hrv_rmssd&window_minutes=30`
+  and MCP `get_hrv_activities_correlation` (`window_minutes`, 10–1440, default
+  30). The response echoes `window_minutes`.
+- `GET /correlations/activity-impact/:activity?activity_type=activity_type&period_days=30&window_minutes=30&match=exact`
+  and MCP `get_activity_impact` (`window_minutes`, `match`). `match` is
+  `contains` (default: every name containing `activity`, case-insensitive) or
+  `exact` (the grouping key the context table uses). The `*_timeline` keys name
+  the default 30-minute window: `before30min`/`after30min` are the outer half of
+  the window and `before15min`/`after15min` the inner half, whatever
+  `window_minutes` is. `occurrences` counts merged sessions.
+
 ## Statistics notes
 
 - Chi-squared p-values are exact for 1 degree of freedom (`erfc(√(χ²/2))`). A
