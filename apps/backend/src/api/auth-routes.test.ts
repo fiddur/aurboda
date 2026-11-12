@@ -395,4 +395,14 @@ describe('GET /status', () => {
 
     expect(response.body).toMatchObject({ billing_enabled: true, price_text: '3 € / month', trial_days: 60 })
   })
+
+  test('carries the admin contacts, null when unset', async () => {
+    const unset = await supertest(buildApp()).get('/status')
+    expect(unset.body).toMatchObject({ contact_fediverse: null, contact_reddit: null })
+
+    const set = await supertest(
+      buildApp({ settings: { contact_fediverse: 'fiddur@aurboda.net', contact_reddit: 'fiddur' } }),
+    ).get('/status')
+    expect(set.body).toMatchObject({ contact_fediverse: 'fiddur@aurboda.net', contact_reddit: 'fiddur' })
+  })
 })

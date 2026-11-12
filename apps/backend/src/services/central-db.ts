@@ -65,6 +65,8 @@ export interface ServerSettings {
   billing_enabled: boolean
   /** Legacy single-user blog, read as an official feed of that user until `official_feed` is written. */
   blog_username: string
+  contact_fediverse: string
+  contact_reddit: string
   grace_days: number
   gravl_client_id: string
   gravl_client_secret: string
