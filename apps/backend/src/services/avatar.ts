@@ -35,7 +35,7 @@ export interface StoredImage {
  * 400) — the format is checked against what sharp actually detects, not the
  * client-claimed mimetype, so SVG can't slip through by Content-Type spoofing.
  */
-const assertAllowedFormat = async (buffer: Buffer): Promise<void> => {
+export const assertAllowedFormat = async (buffer: Buffer): Promise<void> => {
   const { format } = await sharp(buffer).metadata()
   if (!format || !ALLOWED_DETECTED_FORMATS.has(format)) {
     throw new Error(`Unsupported image format: ${format ?? 'unknown'}`)

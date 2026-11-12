@@ -6,6 +6,7 @@ import { CHART_HEIGHT, CHART_WIDTH } from '../charts/chart-svg.ts'
 import { FIGURE_BAND_HEIGHT } from '../charts/figure-svg.ts'
 import { IMPACT_HEIGHT, IMPACT_WIDTH } from '../charts/impact-svg.ts'
 import { SCATTER_HEIGHT, SCATTER_WIDTH } from '../charts/scatter-svg.ts'
+import { feedImageUrl } from '../feed-image.ts'
 import {
   articleFigureName,
   MASTODON_ATTACHMENT_LIMIT,
@@ -227,6 +228,14 @@ describe('renderArticleNote figures', () => {
       ['https://ex.example/d.gif', 'd', 'image/gif', undefined, undefined],
       ['https://ex.example/e.avif', 'e', 'image/avif', undefined, undefined],
       ['https://ex.example/f', 'f', undefined, undefined, undefined],
+    ])
+  })
+
+  test('an uploaded picture becomes a numbered WebP figure with its alt text', () => {
+    const url = feedImageUrl('https://aurboda.example/api', 'fiddur', '1b4e28ba-2fa1-41d2-883f-0016d3cca427')
+    const { figures } = note([{ markdown: `Morning coffee:\n\n![A cup of coffee](${url})`, type: 'prose' }])
+    expect(figures).toEqual([
+      expect.objectContaining({ label: 'A cup of coffee', media_type: 'image/webp', number: 1, url }),
     ])
   })
 

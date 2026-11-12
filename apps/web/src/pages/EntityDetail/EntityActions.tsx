@@ -23,6 +23,7 @@ export interface EntityActionsProps {
   onCancelEditing: () => void
   onSave: () => void
   isSaving: boolean
+  saveDisabled?: boolean
   onStartMerging?: () => void
 }
 
@@ -63,6 +64,7 @@ export const EntityActions = ({
   onCancelEditing,
   onSave,
   isSaving,
+  saveDisabled,
   onStartMerging,
 }: EntityActionsProps) => {
   const deleteMutation = useMutation({
@@ -109,7 +111,7 @@ export const EntityActions = ({
       )}
       {isEditing && (
         <>
-          <button class="btn-primary" onClick={onSave} disabled={isSaving} type="button">
+          <button class="btn-primary" onClick={onSave} disabled={isSaving || saveDisabled} type="button">
             {isSaving ? 'Saving...' : 'Save'}
           </button>
           <button class="btn-secondary" onClick={onCancelEditing} type="button">

@@ -291,6 +291,50 @@ than 706 px gets in Mastodon timelines.
 | ----------------------------- | ----------------- | ------------------------------------------------------------------------- |
 | `POST /feed/articles/preview` | `preview_article` | Preview the federated article and its Mastodon rendering; creates nothing |
 
+#### Pictures
+
+Anything written in the markdown editor — an article's prose blocks, a comment or reply, a
+timeline comment, an activity's description — can carry pictures from the device (#1606):
+**paste** one, **drop** it on the text, or **pick** it with the picture button at the right of
+the Write/Preview tabs (on Android the app's WebView opens the system file chooser). Each
+picture goes in at the cursor, on a line of its own, as `![Uploading name…]()` while it is
+sent, and is replaced by `![](url)` when it is stored; describe it between the square
+brackets, which becomes its alt text. A failed upload removes the placeholder and says why.
+Save, Reply, Publish and Save draft wait until every placeholder is gone, so one is never
+saved. An SVG is refused in the browser before it is sent.
+
+The server normalises every picture (`services/feed-image.ts`): the format is checked on the
+bytes sharp detects, not the claimed type (PNG, JPEG, WebP or GIF; never SVG); the EXIF
+orientation is applied and the picture turned upright; its longest edge is shrunk to at most
+1600 px (a smaller picture is not enlarged); an animated GIF keeps its first frame; and it is
+stored as WebP (quality 82) with **no metadata** — no camera, no GPS position. An upload is at
+most 10 MB.
+
+Pictures live in the writer's own database, in `feed_image` (`id`, `content_type`, `data`
+BYTEA, `width`, `height`, `byte_size`, `created_at`), so the [data export](../data-export.md)
+holds them and deleting the account removes them. One account may store **500**; an upload at
+the cap is refused (409) until some are deleted. Nothing removes a picture that no text uses any
+more: the reference lives inside markdown.
+
+A picture is public at `GET /api/public/:username/images/:id.webp` — anyone with the link can
+see it — served with `Cache-Control: public, max-age=31536000, immutable` (an id's bytes
+never change) and `X-Content-Type-Options: nosniff`.
+
+| REST                      | MCP                 | Purpose                                                                                          |
+| ------------------------- | ------------------- | ------------------------------------------------------------------------------------------------ |
+| `POST /feed/images`       | `add_feed_image`    | Store a picture (multipart field `image`; MCP: `data_base64`); answers `{ id, url, width, ... }` |
+| `GET /feed/images`        | `list_feed_images`  | My pictures, newest first, with the cap (`limit`)                                                |
+| `DELETE /feed/images/:id` | `delete_feed_image` | Delete a picture; markdown that embeds it shows a broken picture                                 |
+
+The MCP tool is `add_…` rather than `upload_…` so the read-only gate, which decides by prefix,
+refuses it for an account whose plan has ended, as REST's account gate does for `POST` and
+`DELETE`.
+
+**On Mastodon**: an uploaded picture in an article's prose is an ordinary http(s) prose image,
+so `renderArticleNote` sends it as a numbered figure attachment (`media_type: image/webp`,
+its alt text as the description) within Mastodon's four, and links it past the fourth. In
+any other post's text it federates as a link.
+
 ### Hashtags
 
 Every post carries **tags**, Mastodon-style hashtags (#1466), stored lowercase without the
@@ -1436,6 +1480,7 @@ Owner-facing (authenticated, scoped to the caller):
 | `PATCH /feed/articles/:postId`                    | Edit an article (title / blocks / default window / visibility)                                                                                                                                               |
 | `/feed/article-drafts` (+`/:id`, `/:id/publish`)  | Private [article drafts](#article-drafts): list, save, edit, delete, publish (validated like `POST /feed/articles`)                                                                                          |
 | `POST /feed/articles/preview`                     | Article **[preview](#preview)** (#1605): the Note content, figures, publish error and a Mastodon web UI emulation; creates nothing                                                                           |
+| `/feed/images` (+`/:id`)                          | [Pictures](#pictures) added to what I write: upload (multipart `image`), list, delete                                                                                                                        |
 | `GET /feed/articles/:postId/export`               | Export an article as paste-ready markdown (title + prose + one image link per block) for Reddit/text-only destinations                                                                                       |
 | `PATCH /feed/:postId`                             | Edit an activity post's selection / visibility / attachments                                                                                                                                                 |
 | `DELETE /feed/:postId`                            | Unpublish any post (an activity post's public series stops resolving)                                                                                                                                        |
@@ -1529,7 +1574,7 @@ toggled with the `manually_approve_followers` user setting (`get_user_settings` 
 ## Storage
 
 Feed posts live in the user's own database in the `feed_posts` table (unpublished
-[article drafts](#article-drafts) live apart, in `article_drafts`). A `kind` column
+[article drafts](#article-drafts) live apart, in `article_drafts`, and [pictures](#pictures) in `feed_image`). A `kind` column
 discriminates an `activity` post from an `article`, `challenge`, `exercise`, `dashboard` or `reply` post; an
 article's content (title + default window + ordered blocks) lives in a nullable `article` JSONB
 column, a challenge share's link payload (name + canonical URL + optional host identity)

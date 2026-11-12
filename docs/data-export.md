@@ -10,7 +10,8 @@ the account has turned read-only ([plans and billing](admin.md#plans-and-billing
 Every Aurboda user has their own PostgreSQL database (`aurboda_<username>`). **Settings → Export all
 data → Download export** gives you a complete copy of it as a gzipped plain SQL dump,
 `aurboda-<username>-<YYYY-MM-DD>.sql.gz`, made with `pg_dump`. It is the full-fidelity export: every
-metric, activity, location, meal, note, setting, rule and feed post, in a form you can restore into your
+metric, activity, location, meal, note, setting, rule and feed post — and every picture you added to what
+you wrote, which lives in your database too (`feed_image`) — in a form you can restore into your
 own Aurboda installation (to move servers) or simply read and query with standard PostgreSQL tools.
 
 The dump is plain SQL (`CREATE TABLE …`, `COPY … FROM stdin`), so `gunzip -c` shows exactly what it holds.

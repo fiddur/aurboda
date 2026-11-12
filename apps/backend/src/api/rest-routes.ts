@@ -66,6 +66,7 @@ import { createFeedFollowedTagsRouter } from '../routes/feed-followed-tags-route
 import { createFeedFollowersRouter } from '../routes/feed-followers-router.ts'
 import { createFeedFollowingRouter } from '../routes/feed-following-router.ts'
 import { createFeedImageRouter } from '../routes/feed-image-router.ts'
+import { createFeedImagesRouter } from '../routes/feed-images-router.ts'
 import { createFeedPublicRouter } from '../routes/feed-public-router.ts'
 import { createFeedRouter, type FeedDeliver } from '../routes/feed-router.ts'
 import { createFoodItemsRouter } from '../routes/food-items-router.ts'
@@ -83,6 +84,7 @@ import { createProductivityRouter } from '../routes/productivity-router.ts'
 import { createProfileRouter } from '../routes/profile-router.ts'
 import { createPublicAvatarRouter } from '../routes/public-avatar-router.ts'
 import { createPublicBannerRouter } from '../routes/public-banner-router.ts'
+import { createPublicFeedImageRouter } from '../routes/public-feed-image-router.ts'
 import { createPublicSharesRouter } from '../routes/public-shares-router.ts'
 import { createRawRecordsRouter } from '../routes/raw-records-router.ts'
 import { createReportsRouter } from '../routes/reports-router.ts'
@@ -285,12 +287,13 @@ export const mountRestRouters = ({
   httpd.use('/shared-dashboards', createSharedDashboardsRouter(authMiddleware, webHost))
   httpd.use('/shared-exercises', createSharedExercisesRouter(authMiddleware, webHost))
   httpd.use('/profile', createProfileRouter(authMiddleware, webHost, onProfileChanged))
-  // Mount the following + followers routers before `/feed` so `/feed/following/*`
-  // and `/feed/followers/*` (two path segments) resolve here and never touch the
+  // Mount the following, followers and images routers before `/feed` so `/feed/following/*`,
+  // `/feed/followers/*` and `/feed/images/*` resolve here and never touch the
   // feed router's `/:postId`.
   httpd.use('/feed/following', createFeedFollowingRouter(authMiddleware, followActions))
   httpd.use('/feed/followed-tags', createFeedFollowedTagsRouter(authMiddleware, followActions))
   httpd.use('/feed/followers', createFeedFollowersRouter(authMiddleware, followerActions))
+  httpd.use('/feed/images', createFeedImagesRouter(authMiddleware, apiBaseUrl))
   httpd.use(
     '/feed',
     createFeedRouter(
@@ -342,8 +345,9 @@ export const mountRestRouters = ({
     }),
   )
   // Before the public-shares router, whose `/public/:username/:slug` resolver
-  // would otherwise take `/public/:username/challenges`.
+  // would otherwise take `/public/:username/challenges` and `/public/:username/images/*`.
   httpd.use(createChallengeQuantpubRouter({ apiBaseUrl, webHost }))
+  httpd.use(createPublicFeedImageRouter())
   httpd.use(createPublicSharesRouter(webHost))
   // Mounted before the share-html router so `/u/.../opengraph-image.png`,
   // `/u/:username/avatar.png` and `/u/:username/:slug/banner.webp` win over the
