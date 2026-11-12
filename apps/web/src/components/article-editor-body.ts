@@ -21,6 +21,8 @@ import type {
 
 import { DEFAULT_IMPACT_WINDOW_MINUTES, isValidMetric } from '@aurboda/api-spec'
 
+import { stillUploading } from './MarkdownEditor/image-upload'
+
 export interface ProseDraft {
   type: 'prose'
   markdown: string
@@ -396,6 +398,10 @@ export const draftUpdateBody = (state: ArticleEditorState): UpdateArticleDraftBo
 }
 
 /** A comparable fingerprint of what saving a draft would store, to tell whether there are unsaved changes. */
+/** True while any prose block still holds a picture placeholder, so nothing saves it. */
+export const blocksStillUploading = (blocks: readonly BlockDraft[]): boolean =>
+  blocks.some((block) => block.type === 'prose' && stillUploading(block.markdown))
+
 export const draftSnapshot = (state: ArticleEditorState): string =>
   JSON.stringify({ article: buildDraftContent(state), visibility: state.visibility })
 

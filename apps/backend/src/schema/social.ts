@@ -123,6 +123,19 @@ export const socialTables: Record<string, string> = {
     )
   `,
 
+  // Pictures the user adds to what they write; markdown references them by URL.
+  feed_image: `
+    CREATE TABLE IF NOT EXISTS feed_image (
+      id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      content_type  TEXT NOT NULL,
+      data          BYTEA NOT NULL,
+      width         INTEGER NOT NULL,
+      height        INTEGER NOT NULL,
+      byte_size     INTEGER NOT NULL,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
+
   // Challenges this user has joined on other (or the same) instances.
   challenge_participations: `
     CREATE TABLE IF NOT EXISTS challenge_participations (

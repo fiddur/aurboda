@@ -103,7 +103,6 @@ export const shareExercise = async (body: ShareExerciseBody): Promise<FeedPost> 
   return response.data.post
 }
 
-/** What sharing this exercise with these opt-ins would post: the Note HTML and the native payload. Creates nothing. */
 /** What an article (draft) would federate as, and how Mastodon would show it; creates nothing. */
 export const previewArticle = async (body: PreviewArticleBody): Promise<ArticlePreviewResponse> => {
   const response = await axios.post<ArticlePreviewResponse>(`${API_URL}/feed/articles/preview`, body, {
@@ -112,6 +111,7 @@ export const previewArticle = async (body: PreviewArticleBody): Promise<ArticleP
   return response.data
 }
 
+/** What sharing this exercise with these opt-ins would post: the Note HTML and the native payload. Creates nothing. */
 export const previewExerciseShare = async (
   body: Omit<ShareExerciseBody, 'visibility'>,
 ): Promise<ExerciseSharePreviewResponse> => {

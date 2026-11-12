@@ -4,9 +4,11 @@ import type { ComponentChildren } from 'preact'
 import { format } from 'date-fns'
 import { useCallback, useState } from 'preact/hooks'
 
+import { uploadFeedImage } from '../../state/api'
 import { renderMarkdown } from '../../utils/markdown'
 import { ConfirmButton } from '../ConfirmButton'
 import { MarkdownEditor } from '../MarkdownEditor'
+import { stillUploading } from '../MarkdownEditor/image-upload'
 import { SaveCancelRow } from '../SaveCancelRow'
 import { endBeforeStart, fromDatetimeLocal, toDatetimeLocal } from './datetimeLocal'
 import './style.css'
@@ -64,7 +66,7 @@ const CommentEntry = ({
   }, [content])
 
   const saveEdit = useCallback(() => {
-    if (!id || !draft.trim()) return
+    if (!id || !draft.trim() || stillUploading(draft)) return
     onEdit(id, draft.trim())
     setEditing(false)
   }, [draft, id, onEdit])
@@ -72,8 +74,13 @@ const CommentEntry = ({
   if (editing) {
     return (
       <div class={`${entryClass} comment-edit-form`}>
-        <MarkdownEditor value={draft} onChange={setDraft} rows={3} />
-        <SaveCancelRow onSave={saveEdit} onCancel={() => setEditing(false)} isPending={pending} />
+        <MarkdownEditor value={draft} onChange={setDraft} rows={3} upload={uploadFeedImage} />
+        <SaveCancelRow
+          onSave={saveEdit}
+          onCancel={() => setEditing(false)}
+          isPending={pending}
+          saveDisabled={stillUploading(draft)}
+        />
       </div>
     )
   }
@@ -188,7 +195,7 @@ const ReplyBox = ({
   }, [])
 
   const send = useCallback(() => {
-    if (!draft.trim()) return
+    if (!draft.trim() || stillUploading(draft)) return
     onAddReply(rootId, draft.trim())
     close()
   }, [close, draft, onAddReply, rootId])
@@ -203,11 +210,18 @@ const ReplyBox = ({
 
   return (
     <div class="comment-reply-form">
-      <MarkdownEditor value={draft} onChange={setDraft} placeholder="Reply…" rows={2} />
+      <MarkdownEditor
+        value={draft}
+        onChange={setDraft}
+        placeholder="Reply…"
+        rows={2}
+        upload={uploadFeedImage}
+      />
       <SaveCancelRow
         onSave={send}
         onCancel={close}
         isPending={pending}
+        saveDisabled={stillUploading(draft)}
         saveLabel="Reply"
         savingLabel="Replying…"
       />
@@ -287,7 +301,7 @@ export const CommentThread = ({
   const handleAdd = useCallback(
     (e: Event) => {
       e.preventDefault()
-      if (!onAddRoot || !draft.trim()) return
+      if (!onAddRoot || !draft.trim() || stillUploading(draft)) return
       onAddRoot(draft.trim())
       setDraft('')
     },
@@ -316,8 +330,18 @@ export const CommentThread = ({
 
       {onAddRoot && (
         <form class="comment-add-form" onSubmit={handleAdd}>
-          <MarkdownEditor value={draft} onChange={setDraft} placeholder="Add a comment…" rows={3} />
-          <button type="submit" class="btn-primary" disabled={!draft.trim() || pending}>
+          <MarkdownEditor
+            value={draft}
+            onChange={setDraft}
+            placeholder="Add a comment…"
+            rows={3}
+            upload={uploadFeedImage}
+          />
+          <button
+            type="submit"
+            class="btn-primary"
+            disabled={!draft.trim() || pending || stillUploading(draft)}
+          >
             {pending ? 'Adding…' : 'Add Comment'}
           </button>
         </form>

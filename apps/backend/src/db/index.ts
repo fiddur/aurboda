@@ -327,6 +327,17 @@ export {
   upsertChallengeBanner,
 } from './challenge-banner.ts'
 
+export {
+  countFeedImages,
+  deleteFeedImage,
+  type FeedImageRecord,
+  getFeedImage,
+  insertFeedImage,
+  isFeedImageId,
+  listFeedImages,
+  type NewFeedImage,
+} from './feed-images.ts'
+
 export { isMissingDatabase } from './pg-errors.ts'
 
 export { type ActorKeyPair, getOrCreateActorKeyPair } from './feed-actor.ts'

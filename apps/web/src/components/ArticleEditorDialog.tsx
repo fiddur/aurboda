@@ -27,8 +27,10 @@ import {
   publishArticleDraft,
   updateArticle,
   updateArticleDraft,
+  uploadFeedImage,
 } from '../state/api'
 import {
+  blocksStillUploading,
   buildArticleBody,
   buildDraftContent,
   challengePickerOptions,
@@ -389,6 +391,7 @@ const ArticleBlockEditor = ({
         value={block.markdown}
         onChange={(v) => onPatch({ markdown: v })}
         placeholder="Write your analysis (markdown supported)…"
+        upload={uploadFeedImage}
       />
     ) : block.type === 'correlation' ? (
       <CorrelationBlockFields block={block} selectors={selectors} onPatch={onPatch} />
@@ -421,12 +424,14 @@ type CloseState = 'open' | 'confirming'
 
 const CloseConfirm = ({
   busy,
+  uploading,
   saving,
   onSave,
   onDiscard,
   onKeepEditing,
 }: {
   busy: boolean
+  uploading: boolean
   saving: boolean
   onSave: () => void
   onDiscard: () => void
@@ -435,7 +440,7 @@ const CloseConfirm = ({
   <div class="article-close-confirm" role="alertdialog" aria-label="Unsaved changes">
     <span>Save as draft?</span>
     <div class="article-close-confirm-actions">
-      <button type="button" class="btn-primary" disabled={busy} onClick={onSave}>
+      <button type="button" class="btn-primary" disabled={busy || uploading} onClick={onSave}>
         {saving ? 'Saving…' : 'Save'}
       </button>
       <button type="button" class="btn-danger" disabled={busy} onClick={onDiscard}>
@@ -457,6 +462,7 @@ const EditorActions = ({
   editing,
   savedAt,
   busy,
+  uploading,
   canPublish,
   savingDraft,
   publishing,
@@ -468,6 +474,7 @@ const EditorActions = ({
   /** When the draft was last saved, shown only while nothing has changed since. */
   savedAt: Date | undefined
   busy: boolean
+  uploading: boolean
   canPublish: boolean
   savingDraft: boolean
   publishing: boolean
@@ -481,11 +488,11 @@ const EditorActions = ({
       Cancel
     </button>
     {!editing && (
-      <button type="button" class="btn-secondary" disabled={busy} onClick={onSaveDraft}>
+      <button type="button" class="btn-secondary" disabled={busy || uploading} onClick={onSaveDraft}>
         {savingDraft ? 'Saving…' : 'Save draft'}
       </button>
     )}
-    <button type="button" class="btn-primary" disabled={busy || !canPublish} onClick={onPublish}>
+    <button type="button" class="btn-primary" disabled={busy || uploading || !canPublish} onClick={onPublish}>
       {publishLabel(editing, publishing)}
     </button>
   </div>
@@ -661,6 +668,7 @@ export const ArticleEditorDialog = ({
   }, [])
 
   const busy = publish.isPending || saveDraft.isPending || saveAndClose.isPending
+  const uploading = blocksStillUploading(blocks.map((kb) => kb.block))
   const submitError =
     deriveSubmitError(validationError, publish.error) ??
     deriveSubmitError(null, saveDraft.error) ??
@@ -763,6 +771,7 @@ export const ArticleEditorDialog = ({
           {closeState === 'confirming' ? (
             <CloseConfirm
               busy={busy}
+              uploading={uploading}
               saving={saveAndClose.isPending}
               onSave={() => saveAndClose.mutate()}
               onDiscard={onClose}
@@ -773,6 +782,7 @@ export const ArticleEditorDialog = ({
               editing={editing}
               savedAt={dirty ? undefined : savedAt}
               busy={busy}
+              uploading={uploading}
               canPublish={!!title.trim()}
               savingDraft={saveDraft.isPending}
               publishing={publish.isPending}
