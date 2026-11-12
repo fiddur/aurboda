@@ -104,9 +104,27 @@ describe('mergeIntoSessions', () => {
 })
 
 describe('activityInterval', () => {
-  test('a point activity lasts five minutes', () => {
-    expect(activityInterval({ start_time: at(0) })).toEqual({ end: min(5), start: min(0) })
+  test('a point activity starts and ends at its time', () => {
+    expect(activityInterval({ start_time: at(0) })).toEqual({ end: min(0), start: min(0) })
     expect(activityInterval({ end_time: at(20), start_time: at(0) })).toEqual({ end: min(20), start: min(0) })
+  })
+})
+
+describe('sessions shorter than a bin', () => {
+  test('a point activity and a two-minute entry both last five minutes', () => {
+    expect(mergeIntoSessions([activityInterval({ start_time: at(3) })])).toEqual([
+      { end: min(8), start: min(3) },
+    ])
+    expect(mergeIntoSessions([{ end: min(5), start: min(3) }])).toEqual([{ end: min(8), start: min(3) }])
+  })
+
+  test('a two-minute entry gets a during value', () => {
+    const { timeline } = summarizeImpact(
+      mergeIntoSessions([{ end: min(3), start: min(1) }]),
+      only(bins([[5, 42]])),
+      30,
+    )
+    expect(timeline.stress.during.mean).toBe(42)
   })
 })
 

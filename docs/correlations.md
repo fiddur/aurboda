@@ -197,8 +197,9 @@ How the numbers are made:
 - **Sessions.** Entries of the same group (one activity type, one location, one
   productivity category) that overlap or are at most 10 minutes apart are merged
   into one session, so the same session from two sources, or back-to-back
-  entries, count as one occurrence. A point activity (no end time) is a
-  5-minute interval.
+  entries, count as one occurrence. A session shorter than 5 minutes, a
+  point activity (no end time) included, counts as 5 minutes, so it always
+  holds one bin.
 - **Clipped windows.** Before is `[start − W, start)`, after is
   `[end, end + W)`, each clipped to the neighbouring sessions of the same group,
   so one session's "after" never reaches into the next session. A window that

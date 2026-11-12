@@ -79,7 +79,7 @@ const findOccurrences = async (
 export async function getActivityImpact(
   user: string,
   activity: string,
-  activityType: ActivityImpactType, // 'tag' kept for backward compat
+  activityType: ActivityImpactType,
   windowMinutes: number = 30,
   periodDays: number = 90,
   sync?: SyncProvider,

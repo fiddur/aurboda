@@ -109,8 +109,9 @@ export const mergeIntoSessions = (
   const sessions: Interval[] = []
   for (const { start, end } of sorted) {
     const last = sessions.at(-1)
-    if (last && start <= last.end + gapMs) last.end = Math.max(last.end, end)
-    else sessions.push({ end: Math.max(start, end), start })
+    const atLeastOneBin = Math.max(end, start + POINT_ACTIVITY_MINUTES * MINUTE_MS)
+    if (last && start <= last.end + gapMs) last.end = Math.max(last.end, atLeastOneBin)
+    else sessions.push({ end: atLeastOneBin, start })
   }
   return sessions
 }
@@ -284,7 +285,7 @@ export const binMetricSeries = (
 
 export const activityInterval = (activity: { start_time: Date; end_time?: Date | null }): Interval => {
   const start = activity.start_time.getTime()
-  return { end: activity.end_time?.getTime() ?? start + POINT_ACTIVITY_MINUTES * MINUTE_MS, start }
+  return { end: activity.end_time?.getTime() ?? start, start }
 }
 
 export const productivityCategoryKey = (record: {
