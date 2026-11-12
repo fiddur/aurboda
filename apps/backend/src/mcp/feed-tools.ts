@@ -13,6 +13,7 @@ import {
   publicTagPostsQuerySchema,
   iso8601DateTimeSchema,
   postTagsInputSchema,
+  previewArticleBodySchema,
   publishArticleDraftBodySchema,
   replyToPostBodySchema,
   shareActivityBodySchema,
@@ -25,6 +26,7 @@ import {
 import { z } from 'zod'
 
 import type { FeedDeliver } from '../routes/feed-router.ts'
+import type { ArticlePreviewer } from '../services/article-preview.ts'
 import type { ReactionActions, ReactionResult, ReplyResult } from '../services/feed-reactions.ts'
 import type { FollowerActions } from '../services/followers.ts'
 import type { FollowActions } from '../services/following.ts'
@@ -116,6 +118,8 @@ export interface FeedToolsOptions {
   webHost?: string
   /** The public tag pages (`list_public_tag_posts`); absent, the tool reports none. */
   publicTagActions?: Pick<PublicTagActions, 'page'>
+  /** The article preview (`preview_article`), with the chart data it draws from; absent, the tool reports unavailable. */
+  previewArticle?: ArticlePreviewer
 }
 
 export const registerFeedTools = (server: McpServer, user: string, options: FeedToolsOptions = {}) => {
@@ -124,6 +128,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
     deliver,
     followActions,
     followerActions,
+    previewArticle,
     publicTagActions,
     reactionActions,
     retroEnrichTimeline,
@@ -434,6 +439,16 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
       if (!result.ok) return errorResponse(result.error)
       deliver?.createdArticle(user, result.post)
       return jsonResponse(await serializeFeedPost(user, result.post, { webHost }))
+    },
+  )
+
+  server.tool(
+    'preview_article',
+    "Preview what an ARTICLE (or an unfinished draft) WOULD federate, creating nothing: the Note `content` HTML, its title `name`, tags and numbered figure `attachments` (alt text, and whether Mastodon shows each: it keeps the first 4), `publish_error` (what still keeps it from publishing, or null), and `mastodon`: an emulation of Mastodon's web UI — the content after Mastodon's sanitiser without the trailing hashtag paragraph, and the hashtag bar — plus `notes` on what Mastodon changes for this post. Only complete blocks are previewed. `include_images` also returns each shown figure as SVG markup (`image_svg`, null when the block has no data to draw); it is meant for UIs.",
+    { ...previewArticleBodySchema.shape },
+    async (body) => {
+      if (!previewArticle) return errorResponse('Article preview is not available')
+      return jsonResponse(await previewArticle(user, body))
     },
   )
 

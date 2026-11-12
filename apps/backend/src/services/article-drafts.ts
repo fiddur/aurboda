@@ -142,10 +142,10 @@ export interface PublishDraftDeps {
   checkContent?: (content: ArticlePostInput['article']) => Promise<BuildArticleResult>
 }
 
-const draftPostTags = (user: string, content: ArticleDraftContent): Promise<string[]> =>
+export const draftPostTags = (user: string, content: ArticleDraftContent): Promise<string[]> =>
   resolvePostTags(user, { explicit: content.tags, texts: articleTexts(content) })
 
-const checkDraftChallenges = (content: ArticlePostInput['article']): Promise<BuildArticleResult> =>
+export const checkDraftChallenges = (content: ArticlePostInput['article']): Promise<BuildArticleResult> =>
   checkArticleChallenges(content, configuredStructuredChallengeDeps())
 
 const defaultDeps: PublishDraftDeps = {
@@ -158,7 +158,7 @@ export type PublishDraftResult =
   | { ok: false; status: 400 | 404; error: string }
 
 /** `publishableArticle`, then the lookup-backed checks on what it would publish. */
-const checkedPublishable = async (
+export const checkedPublishable = async (
   content: ArticleDraftContent,
   visibility: FeedVisibility,
   checkContent: NonNullable<PublishDraftDeps['checkContent']>,

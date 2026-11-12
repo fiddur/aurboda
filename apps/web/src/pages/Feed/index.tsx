@@ -76,7 +76,9 @@ function OwnPostCard({ post, author }: { post: FeedPost; author: PostAuthor }) {
         }
       />
 
-      {editing && isArticle && <ArticleEditorDialog post={post} onClose={() => setEditing(false)} />}
+      {editing && isArticle && (
+        <ArticleEditorDialog post={post} author={author} onClose={() => setEditing(false)} />
+      )}
 
       {exporting && isArticle && <ArticleExportDialog postId={post.id} onClose={() => setExporting(false)} />}
 
@@ -195,6 +197,7 @@ export function Feed() {
         <ArticleEditorDialog
           key={composer.draft?.id ?? 'new'}
           draft={composer.draft}
+          author={author}
           onClose={() => setComposer(null)}
         />
       )}

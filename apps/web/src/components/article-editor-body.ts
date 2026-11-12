@@ -6,6 +6,7 @@
 import type {
   ActivityImpactType,
   ArticleBlock,
+  ArticleContent,
   ArticleDraftBlock,
   Challenge,
   ChallengeParticipation,
@@ -14,6 +15,7 @@ import type {
   CreateArticleBody,
   FeedVisibility,
   HrvActivitiesData,
+  PreviewArticleBody,
   UpdateArticleDraftBody,
 } from '@aurboda/api-spec'
 
@@ -312,6 +314,69 @@ export const buildDraftContent = (state: ArticleEditorState): ArticleDraftConten
   ...(toIso(state.defaultStart) ? { default_start: toIso(state.defaultStart) } : {}),
   ...(toIso(state.defaultEnd) ? { default_end: toIso(state.defaultEnd) } : {}),
   ...(state.tags ? { tags: state.tags } : {}),
+})
+
+const hasBoundedWindow = (block: { start?: string; end?: string }, content: ArticleDraftContent): boolean => {
+  const start = block.start ?? content.default_start
+  const end = block.end ?? content.default_end
+  return start !== undefined && end !== undefined && new Date(start).getTime() < new Date(end).getTime()
+}
+
+/** An http(s) `<base>/u/<username>/<slug>` link, as the server's challenge-URL parse requires. */
+const isChallengeUrl = (url: string | undefined): boolean => {
+  if (url === undefined || !URL.canParse(url)) return false
+  const { protocol } = new URL(url)
+  const at = url.indexOf('/u/')
+  return (
+    (protocol === 'http:' || protocol === 'https:') &&
+    at > 0 &&
+    url
+      .slice(at + 3)
+      .split('/')
+      .filter(Boolean).length >= 2
+  )
+}
+
+const isCompleteBlock = (block: ArticleDraftBlock, content: ArticleDraftContent): block is ArticleBlock => {
+  switch (block.type) {
+    case 'prose':
+      return true
+    case 'challenge':
+      return isChallengeUrl(block.challenge_url)
+    case 'chart':
+      return block.metric !== undefined && hasBoundedWindow(block, content)
+    case 'correlation':
+      return (
+        block.trigger !== undefined &&
+        block.outcome !== undefined &&
+        !selectorIncomplete(block.trigger) &&
+        !selectorIncomplete(block.outcome) &&
+        hasBoundedWindow(block, content)
+      )
+    case 'impact':
+      return Boolean(block.activity) && hasBoundedWindow(block, content)
+  }
+}
+
+/**
+ * The editor state as the article a preview card shows: its complete blocks only (the server's
+ * preview rule), windows as ISO, the title trimmed or `Untitled`.
+ */
+export const buildPreviewArticle = (state: ArticleEditorState): ArticleContent => {
+  const content = buildDraftContent(state)
+  return {
+    blocks: content.blocks.filter((block) => isCompleteBlock(block, content)),
+    title: content.title || 'Untitled',
+    ...(content.default_start ? { default_start: content.default_start } : {}),
+    ...(content.default_end ? { default_end: content.default_end } : {}),
+  }
+}
+
+/** The body asking the server what the editor's article would federate as, with its figures drawn. */
+export const previewRequest = (state: ArticleEditorState): PreviewArticleBody => ({
+  article: buildDraftContent(state),
+  include_images: true,
+  visibility: state.visibility,
 })
 
 /**

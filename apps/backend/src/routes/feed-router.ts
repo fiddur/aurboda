@@ -32,6 +32,9 @@ import {
   type ExerciseSharePreviewResponse,
   type PublishArticleDraftBody,
   publishArticleDraftBodySchema,
+  type ArticlePreviewResponse,
+  type PreviewArticleBody,
+  previewArticleBodySchema,
   type TimelineEntryResponse,
   type TimelineQuery,
   timelineQuerySchema,
@@ -47,6 +50,7 @@ import {
 
 import type { Activity, FeedPostRecord, FeedQuoteAuthorizationRecord } from '../db/index.ts'
 import type { ResolvedInbox } from '../services/activitypub/deliver.ts'
+import type { ArticlePreviewer } from '../services/article-preview.ts'
 import type { ReactionActions, ReactionResult } from '../services/feed-reactions.ts'
 import type { TimelineHub } from '../services/timeline-hub.ts'
 import type { RetroEnrichTrigger } from '../services/timeline-retro-enrich.ts'
@@ -167,6 +171,8 @@ export const createFeedRouter = (
   webHost?: string,
   /** Outbound like ⭐ / boost 🔄 / reply 🗨 actions; absent → those routes answer 503. */
   reactions?: ReactionActions,
+  /** The article preview, with the chart data it draws from; absent → that route answers 503. */
+  previewArticle?: ArticlePreviewer,
 ): TypedRouter => {
   const router = typedRouter()
 
@@ -635,6 +641,18 @@ export const createFeedRouter = (
   // Create/edit have their own body shape; delete reuses `DELETE /:postId`.
   // Registered before the generic `/:postId` routes. Federated as a `Note`
   // (fan-out is best-effort and never blocks the response).
+  router.post<Record<string, never>, ArticlePreviewResponse, PreviewArticleBody>(
+    '/articles/preview',
+    authMiddleware,
+    validateBody(previewArticleBodySchema),
+    async (req, res) => {
+      if (!previewArticle) {
+        return res.status(503).json({ error: 'Article preview is not available', success: false })
+      }
+      res.json({ ...(await previewArticle(req.user!, req.body)), success: true })
+    },
+  )
+
   router.post<Record<string, never>, FeedPostResponse, CreateArticleBody>(
     '/articles',
     authMiddleware,

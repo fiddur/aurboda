@@ -5,6 +5,8 @@ import express from 'express'
 import supertest from 'supertest'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 
+import type { ArticlePreviewer } from '../services/article-preview.ts'
+
 /**
  * Integration test for the owner-facing article routes on the feed router
  * (`POST /feed/articles`, `PATCH /feed/articles/:postId`) against a live
@@ -22,6 +24,7 @@ import { createSharedDashboard } from '../db/shared-dashboards.ts'
 import { createSharedExercise } from '../db/shared-exercises.ts'
 import { insertTimeSeries } from '../db/time-series.ts'
 import { upsertTimelineEntry } from '../db/timeline.ts'
+import { createArticlePreviewer } from '../services/article-preview.ts'
 import { configureStructuredChallenge } from '../services/feed-structured-challenge.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { type FeedDeliver, createFeedRouter } from './feed-router.ts'
@@ -33,10 +36,18 @@ const auth: RequestHandler = (req, _res, next) => {
   next()
 }
 
-const startApp = (deliver?: FeedDeliver, apiBaseUrl?: string, webHost?: string) => {
+const startApp = (
+  deliver?: FeedDeliver,
+  apiBaseUrl?: string,
+  webHost?: string,
+  previewArticle?: ArticlePreviewer,
+) => {
   const app = express()
   app.use(express.json())
-  app.use('/feed', createFeedRouter(auth, deliver, undefined, apiBaseUrl, undefined, webHost))
+  app.use(
+    '/feed',
+    createFeedRouter(auth, deliver, undefined, apiBaseUrl, undefined, webHost, undefined, previewArticle),
+  )
   const server = app.listen(0)
   const port = (server.address() as AddressInfo).port
   const close = () =>
@@ -1480,5 +1491,71 @@ describe('Article challenge blocks (#1484)', () => {
     })
     expect(res.status).toBe(400)
     expect(res.body.error).toBe('Block 2: challenge not found.')
+  })
+})
+
+describe('Article preview (POST /feed/articles/preview)', () => {
+  const WEB_HOST = 'https://aurboda.example'
+  const chartDeps = {
+    getArticleChartSeries: async () => [],
+    getArticleImpact: vi.fn(),
+    getChallengeRaceByUrl: async () => null,
+    getCorrelationScatter: async () => null,
+  }
+  let app: ReturnType<typeof startApp>
+
+  beforeAll(async () => {
+    await startTestDb()
+    app = startApp(undefined, undefined, WEB_HOST, createArticlePreviewer({ chartDeps, webHost: WEB_HOST }))
+  }, CONTAINER_TIMEOUT)
+
+  afterAll(async () => {
+    await app.close()
+    await stopTestDb()
+  })
+
+  beforeEach(async () => {
+    await cleanTestDb()
+  })
+
+  test('previews a simple draft and creates no post and no draft', async () => {
+    const res = await app.request.post('/feed/articles/preview').send({
+      article: {
+        blocks: [
+          { markdown: 'Morning coffee, then #yoga.', type: 'prose' },
+          { metric: 'heart_rate', type: 'chart' },
+        ],
+        title: 'Coffee and yoga',
+      },
+    })
+    expect(res.status).toBe(200)
+    expect(res.body.success).toBe(true)
+    expect(res.body.name).toBe('Coffee and yoga')
+    expect(res.body.content).toContain('<p><strong>Coffee and yoga</strong></p>')
+    expect(res.body.content).toContain('Morning coffee')
+    expect(res.body.tags).toContain('yoga')
+    expect(res.body.attachments).toEqual([])
+    expect(res.body.publish_error).toMatch(/^Chart block 2 /)
+    expect(res.body.mastodon.content).toContain('#<span>yoga</span>')
+
+    expect((await app.request.get('/feed')).body.posts).toEqual([])
+    expect((await app.request.get('/feed/article-drafts')).body.drafts).toEqual([])
+  })
+
+  test('rejects a body without an article', async () => {
+    expect((await app.request.post('/feed/articles/preview').send({})).status).toBe(400)
+  })
+
+  test('requires authentication', async () => {
+    const unauthenticated = express()
+    unauthenticated.use(express.json())
+    const deny: RequestHandler = (_req, res) => {
+      res.status(401).json({ error: 'Unauthorized', success: false })
+    }
+    unauthenticated.use('/feed', createFeedRouter(deny))
+    const res = await supertest(unauthenticated)
+      .post('/feed/articles/preview')
+      .send({ article: { blocks: [], title: 'x' } })
+    expect(res.status).toBe(401)
   })
 })

@@ -1,8 +1,6 @@
-import { impactEffectSummary } from '@aurboda/api-spec'
+import { formatImpactWindow } from '@aurboda/api-spec'
 
 import type { WindowEffect } from '../../state/api'
-
-import { formatWindow } from './window'
 
 export const SIGNIFICANCE_LEVEL = 0.05
 const MIN_PAIRS_FOR_TEST = 3
@@ -51,10 +49,8 @@ export const changeTitle = (effect: WindowEffect): string => {
   return effect.p_value === null ? base : `${base} (${formatPValue(effect.p_value)})`
 }
 
-export const effectSummary = impactEffectSummary
-
 export const columnTitles = (windowMinutes: number) => ({
-  change: `The ${formatWindow(windowMinutes)} after minus the ${formatWindow(windowMinutes)} before, for occurrences with data on both sides; coloured when statistically clear`,
+  change: `The ${formatImpactWindow(windowMinutes)} after minus the ${formatImpactWindow(windowMinutes)} before, for occurrences with data on both sides; coloured when statistically clear`,
   during: 'Average while it was going on, one value per occurrence',
   vs_avg: 'During minus your average over the whole period',
 })

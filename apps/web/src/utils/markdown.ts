@@ -105,20 +105,14 @@ const hardenRemoteLink = (node: Element): void => {
   }
 }
 
-/**
- * Render markdown authored by a REMOTE peer (e.g. a federated article's prose) to
- * sanitised HTML under the strict `REMOTE_ALLOWED_*` allowlist above — an
- * XSS-and-tracker boundary for untrusted federated content, mirroring the backend
- * `sanitizeRemoteHtml`. Use this (not `renderMarkdown`) for any markdown that
- * originates on another instance.
- */
-export const renderRemoteMarkdown = (md: string): string => {
+/** Sanitise REMOTE (or remote-shaped) HTML under the same strict allowlist and link hardening. */
+export const sanitizeRemoteHtml = (html: string): string => {
   // The link-hardening hook is scoped to this one synchronous sanitise: added,
   // used, and removed with no `await` between, so it never leaks onto
   // `renderMarkdown` (own content, which shouldn't be force-`nofollow`ed).
   DOMPurify.addHook('afterSanitizeAttributes', hardenRemoteLink)
   try {
-    return DOMPurify.sanitize(marked.parse(md, { async: false }), {
+    return DOMPurify.sanitize(html, {
       ALLOWED_ATTR: REMOTE_ALLOWED_ATTR,
       ALLOWED_TAGS: REMOTE_ALLOWED_TAGS,
     })
@@ -126,3 +120,13 @@ export const renderRemoteMarkdown = (md: string): string => {
     DOMPurify.removeHook('afterSanitizeAttributes')
   }
 }
+
+/**
+ * Render markdown authored by a REMOTE peer (e.g. a federated article's prose) to
+ * sanitised HTML under the strict `REMOTE_ALLOWED_*` allowlist above — an
+ * XSS-and-tracker boundary for untrusted federated content, mirroring the backend
+ * `sanitizeRemoteHtml`. Use this (not `renderMarkdown`) for any markdown that
+ * originates on another instance.
+ */
+export const renderRemoteMarkdown = (md: string): string =>
+  sanitizeRemoteHtml(marked.parse(md, { async: false }))

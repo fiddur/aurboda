@@ -6,6 +6,7 @@ import {
   type ArticleEditorState,
   buildArticleBody,
   buildDraftContent,
+  buildPreviewArticle,
   challengePickerOptions,
   deriveSubmitError,
   draftSnapshot,
@@ -17,6 +18,7 @@ import {
   impactPickerOptions,
   initialArticleEditorState,
   parseImpactOptionValue,
+  previewRequest,
   toInputValue,
   toIso,
 } from './article-editor-body'
@@ -533,5 +535,70 @@ describe('article tags', () => {
     expect(tagged.ok && tagged.body.tags).toEqual(['hrv', 'sleep'])
     const automatic = buildArticleBody(state())
     expect(automatic.ok && automatic.body).not.toHaveProperty('tags')
+  })
+})
+
+describe('buildPreviewArticle', () => {
+  const chart = {
+    bucket: '',
+    caption: 'Pulse',
+    end: '',
+    metric: 'heart_rate',
+    start: '',
+    type: 'chart',
+  } as const
+  const windowed = { defaultEnd: '2026-07-07T00:00', defaultStart: '2026-07-01T00:00' }
+
+  it('keeps only complete blocks, windows as ISO', () => {
+    const article = buildPreviewArticle(
+      state({
+        ...windowed,
+        blocks: [
+          { markdown: 'Morning coffee', type: 'prose' },
+          { ...chart, metric: '' },
+          chart,
+          emptyCorrelationDraft(),
+          {
+            ...emptyCorrelationDraft(),
+            outcome: { kind: 'metric', metric: 'hrv' },
+            trigger: { kind: 'activity', pattern: 'yoga' },
+          },
+          { ...emptyChallengeDraft(), url: 'https://ex.example/not-one' },
+          { ...emptyChallengeDraft(), url: 'https://ex.example/u/alice/running-may' },
+          emptyImpactDraft(),
+          { ...emptyImpactDraft(), activity: 'meditation' },
+          { ...chart, end: '2026-06-01T00:00' },
+        ],
+      }),
+    )
+    expect(article.blocks.map((b) => b.type)).toEqual([
+      'prose',
+      'chart',
+      'correlation',
+      'challenge',
+      'impact',
+    ])
+    expect(article.default_start).toBe(toIso(windowed.defaultStart))
+    expect(article.default_end).toBe(toIso(windowed.defaultEnd))
+  })
+
+  it('drops windowed blocks without a window and titles a blank article', () => {
+    const article = buildPreviewArticle(state({ blocks: [chart], title: '  ' }))
+    expect(article).toEqual({ blocks: [], title: 'Untitled' })
+  })
+})
+
+describe('previewRequest', () => {
+  it('sends the draft content, the visibility and asks for the images', () => {
+    const s = state({
+      blocks: [{ markdown: 'Yoga', type: 'prose' }],
+      tags: ['yoga'],
+      visibility: 'followers',
+    })
+    expect(previewRequest(s)).toEqual({
+      article: buildDraftContent(s),
+      include_images: true,
+      visibility: 'followers',
+    })
   })
 })

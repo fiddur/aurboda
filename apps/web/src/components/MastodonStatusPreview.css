@@ -1,0 +1,220 @@
+/* Mastodon's default dark look, whatever the app theme. */
+.mastodon-preview {
+  max-width: 600px;
+}
+
+.mastodon-status {
+  background: #282c37;
+  color: #fff;
+  border-radius: 8px;
+  padding: 16px;
+  font-family: Roboto, 'Segoe UI', system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 22px;
+  overflow-wrap: break-word;
+}
+
+.mastodon-status a {
+  color: #8c8dff;
+  text-decoration: none;
+}
+
+.mastodon-status a:hover {
+  text-decoration: underline;
+}
+
+.mastodon-status-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.mastodon-status-avatar {
+  width: 46px;
+  height: 46px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: #393f4f;
+}
+
+.mastodon-status-ident {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.mastodon-status-name {
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mastodon-status-handle,
+.mastodon-status-time {
+  color: #9baec8;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mastodon-status-time {
+  align-self: flex-start;
+  flex-shrink: 0;
+}
+
+.mastodon-status-content p {
+  margin: 0 0 22px;
+}
+
+.mastodon-status-content p:last-child,
+.mastodon-status-content ul:last-child,
+.mastodon-status-content ol:last-child,
+.mastodon-status-content blockquote:last-child {
+  margin-bottom: 0;
+}
+
+.mastodon-status-content ul,
+.mastodon-status-content ol {
+  margin: 0 0 22px;
+  padding-left: 2em;
+}
+
+.mastodon-status-content blockquote {
+  margin: 0 0 22px;
+  padding-left: 10px;
+  border-left: 3px solid #606984;
+  color: #c0cdd9;
+}
+
+.mastodon-status-content pre,
+.mastodon-status-content code {
+  font-family: ui-monospace, monospace;
+  font-size: 14px;
+}
+
+.mastodon-status-content .invisible {
+  display: none;
+}
+
+.mastodon-status-content .ellipsis::after {
+  content: '…';
+}
+
+.mastodon-status-content--folded {
+  max-height: 330px;
+  overflow: hidden;
+}
+
+.mastodon-status-read-more {
+  display: block;
+  margin: 8px 0 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #8c8dff;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.mastodon-media {
+  display: grid;
+  gap: 2px;
+  margin-top: 16px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #191b22;
+}
+
+.mastodon-media--two,
+.mastodon-media--three,
+.mastodon-media--four {
+  aspect-ratio: 3 / 2;
+  grid-template-columns: 1fr 1fr;
+}
+
+.mastodon-media--three,
+.mastodon-media--four {
+  grid-template-rows: 1fr 1fr;
+}
+
+.mastodon-media--three > .mastodon-media-cell:first-child {
+  grid-row: span 2;
+}
+
+.mastodon-media-cell {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.mastodon-media-cell img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mastodon-media--single .mastodon-media-cell img {
+  max-height: 560px;
+}
+
+.mastodon-media-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  min-height: 120px;
+  color: #9baec8;
+  font-size: 14px;
+  background: #313543;
+}
+
+.mastodon-media-alt {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  cursor: default;
+}
+
+.mastodon-hashtag-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 16px;
+}
+
+.mastodon-hashtag {
+  padding: 0 6px;
+  border-radius: 4px;
+  background: rgba(140, 141, 255, 0.1);
+  color: #9baec8;
+  font-size: 13px;
+  line-height: 22px;
+}
+
+.mastodon-status-footer {
+  margin-top: 12px;
+  color: #9baec8;
+  font-size: 13px;
+}
+
+.mastodon-preview-fold-note {
+  margin: 0.4rem 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}

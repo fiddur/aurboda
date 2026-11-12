@@ -1023,6 +1023,93 @@ export const publishArticleDraftBodySchema = z
 
 export type PublishArticleDraftBody = z.infer<typeof publishArticleDraftBodySchema>
 
+export const previewArticleBodySchema = z
+  .object({
+    article: articleDraftContentSchema.meta({
+      description:
+        'The article as written so far (may be incomplete); only its complete blocks are previewed',
+    }),
+    include_images: z.boolean().optional().meta({
+      description:
+        'Also draw each figure Mastodon shows, as SVG markup in `attachments[].image_svg` (meant for UIs)',
+    }),
+    visibility: feedVisibilitySchema.default('public'),
+  })
+  .meta({
+    description: 'Preview what an article (draft) would federate as; creates nothing',
+    id: 'PreviewArticleBody',
+  })
+
+export type PreviewArticleBody = z.infer<typeof previewArticleBodySchema>
+
+export const articlePreviewAttachmentSchema = z
+  .object({
+    block_index: z.number().int().optional().meta({
+      description: "The figure's block index in `article.blocks`; absent for an image in the prose",
+    }),
+    figure: z.number().int().meta({ description: 'The 1-based figure number, in document order' }),
+    height: z.number().int().optional().meta({ description: 'Image height in pixels, when known' }),
+    image_svg: z.string().nullable().optional().meta({
+      description:
+        'With `include_images`, for a block figure Mastodon shows: the image as SVG markup, `null` when the block has no data to draw',
+    }),
+    media_type: z.string().optional().meta({ description: 'Image media type, when known' }),
+    name: z.string().meta({ description: 'The alt text the attachment carries (`Figure N: label`)' }),
+    shown_in_mastodon: z.boolean().meta({
+      description: "Whether Mastodon shows it; false beyond Mastodon's four-attachment limit",
+    }),
+    url: z.string().optional().meta({
+      description: "A prose image's own URL; absent for a block figure, whose post does not exist yet",
+    }),
+    width: z.number().int().optional().meta({ description: 'Image width in pixels, when known' }),
+  })
+  .meta({ description: 'One image the article Note would attach', id: 'ArticlePreviewAttachment' })
+
+export type ArticlePreviewAttachment = z.infer<typeof articlePreviewAttachmentSchema>
+
+export const articlePreviewResponseSchema = baseResponseSchema
+  .extend({
+    attachments: z
+      .array(articlePreviewAttachmentSchema)
+      .optional()
+      .meta({ description: 'The images the Note would attach, numbered as in the text' }),
+    content: z
+      .string()
+      .optional()
+      .meta({ description: 'The AS2 `content` HTML the article would federate with' }),
+    mastodon: z
+      .object({
+        attachment_limit: z
+          .number()
+          .int()
+          .meta({ description: 'How many attachments Mastodon shows on one status' }),
+        content: z.string().meta({
+          description:
+            '`content` as Mastodon keeps it after its sanitiser, without the trailing paragraph of hashtags',
+        }),
+        hashtag_bar: z.array(z.string()).meta({
+          description: 'Tags Mastodon shows as a bar under the media (lowercase, without `#`)',
+        }),
+      })
+      .optional()
+      .meta({ description: "An emulation of how Mastodon's web UI shows the status" }),
+    name: z.string().optional().meta({ description: 'The Note `name` (the title)' }),
+    notes: z
+      .array(z.string())
+      .optional()
+      .meta({ description: 'What Mastodon changes for this post, in plain sentences' }),
+    publish_error: z.string().nullable().optional().meta({
+      description: 'What still keeps the article from publishing; `null` when it is publishable',
+    }),
+    tags: z.array(z.string()).optional().meta({
+      description:
+        'The hashtags the article would carry (lowercase, without `#`): the explicit or default ones plus typed ones',
+    }),
+  })
+  .meta({ id: 'ArticlePreviewResponse' })
+
+export type ArticlePreviewResponse = z.infer<typeof articlePreviewResponseSchema>
+
 export const followActorBodySchema = z
   .object({
     handle: z.string().trim().min(1).max(512).meta({
