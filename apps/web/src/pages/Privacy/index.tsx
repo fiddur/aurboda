@@ -1,8 +1,9 @@
-import '../Home/style.css'
+import { StaticPageContact } from '../../components/AdminContact'
+import '../../components/StaticPage.css'
 
 export function Privacy() {
   return (
-    <div class="home">
+    <div class="static-page">
       <h1>Privacy Policy</h1>
       <p>
         <em>Last updated: 2026-03-24</em>
@@ -70,20 +71,7 @@ export function Privacy() {
         </p>
       </section>
 
-      <section>
-        <h2>Contact</h2>
-        <p>
-          For questions about this policy, contact the project maintainer via{' '}
-          <a href="https://www.reddit.com/user/fiddur/" target="_blank" rel="noopener noreferrer">
-            reddit
-          </a>{' '}
-          or through{' '}
-          <a href="https://github.com/fiddur/aurboda" target="_blank" rel="noopener noreferrer">
-            GitHub
-          </a>
-          .
-        </p>
-      </section>
+      <StaticPageContact about="this policy" />
     </div>
   )
 }

@@ -32,6 +32,10 @@ export const serverBilling = signal<
 export const officialFeedEnabled = signal(false)
 /** The hashtags with a public page at `/tags/<tag>`. */
 export const publicTagPages = signal<string[]>([])
+/** The server admin's fediverse handle, `name@host`, or null when not set. */
+export const contactFediverse = signal<string | null>(null)
+/** The server admin's Reddit username, or null when not set. */
+export const contactReddit = signal<string | null>(null)
 /** The last /status request failed: the signup mode is unknown, so say nothing about signing up. */
 export const statusFailed = signal(false)
 
@@ -46,6 +50,8 @@ export const fetchStatus = async () => {
       const response = await axios.get<ServerStatusResponse>(`${API_URL}/status`)
       const {
         billing_enabled,
+        contact_fediverse,
+        contact_reddit,
         official_feed,
         price_text,
         public_tag_pages,
@@ -57,6 +63,8 @@ export const fetchStatus = async () => {
       signupMode.value = signup_mode
       officialFeedEnabled.value = official_feed === true
       publicTagPages.value = public_tag_pages ?? []
+      contactFediverse.value = contact_fediverse || null
+      contactReddit.value = contact_reddit || null
       serverBilling.value = { billing_enabled, price_text, trial_days }
       statusFailed.value = false
     } catch (error) {

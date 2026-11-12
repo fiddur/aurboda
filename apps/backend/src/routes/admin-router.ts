@@ -46,6 +46,7 @@ import {
   readPublicTagRetentionDays,
 } from '../services/public-tags.ts'
 import { serializeRelay } from '../services/relays.ts'
+import { readSupportContacts } from '../services/support-contacts.ts'
 import { readTagActorHost } from '../services/tag-actor-host.ts'
 import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
@@ -88,6 +89,7 @@ export const createAdminRouter = (
       publicTagPages,
       publicTagRetentionDays,
       publicTagFollows,
+      contacts,
     ] = await Promise.all([
       centralDb.getSignupMode(),
       centralDb.getAdminCount(),
@@ -108,11 +110,14 @@ export const createAdminRouter = (
       readPublicTagPages(centralDb),
       readPublicTagRetentionDays(centralDb),
       readPublicTagFollows(centralDb),
+      readSupportContacts(centralDb),
     ])
     return {
       admin_count: adminCount,
       audit_log_retention_days: auditLogRetentionDays,
       billing_enabled: billing.enabled,
+      contact_fediverse: contacts.contact_fediverse,
+      contact_reddit: contacts.contact_reddit,
       grace_days: billing.grace_days,
       gravl_client_id_set: !!gravlClientId,
       gravl_client_secret_set: !!gravlClientSecret,
@@ -160,6 +165,8 @@ export const createAdminRouter = (
         audit_log_retention_days,
         billing_enabled,
         blog_username,
+        contact_fediverse,
+        contact_reddit,
         grace_days,
         gravl_client_id,
         gravl_client_secret,
@@ -236,6 +243,12 @@ export const createAdminRouter = (
       }
       if (tag_actor_host !== undefined) {
         await centralDb.setServerSetting('tag_actor_host', tag_actor_host)
+      }
+      if (contact_fediverse !== undefined) {
+        await centralDb.setServerSetting('contact_fediverse', contact_fediverse)
+      }
+      if (contact_reddit !== undefined) {
+        await centralDb.setServerSetting('contact_reddit', contact_reddit)
       }
       if (public_tag_retention_days !== undefined) {
         await centralDb.setServerSetting('public_tag_retention_days', public_tag_retention_days)

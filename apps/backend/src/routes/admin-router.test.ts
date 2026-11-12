@@ -285,6 +285,66 @@ describe('tag actor host setting', () => {
   })
 })
 
+describe('support contact settings', () => {
+  test('GET reports both empty when unset', async () => {
+    const res = await supertest(buildApp()).get('/admin/settings')
+    expect(res.body).toMatchObject({ contact_fediverse: '', contact_reddit: '' })
+  })
+
+  test('GET reads the stored contacts', async () => {
+    vi.mocked(centralDb.getServerSetting).mockImplementation(async (key) =>
+      key === 'contact_fediverse' ? 'fiddur@aurboda.net' : key === 'contact_reddit' ? 'fiddur' : null,
+    )
+    try {
+      const res = await supertest(buildApp()).get('/admin/settings')
+      expect(res.body).toMatchObject({ contact_fediverse: 'fiddur@aurboda.net', contact_reddit: 'fiddur' })
+    } finally {
+      vi.mocked(centralDb.getServerSetting).mockReset().mockResolvedValue(null)
+    }
+  })
+
+  test('PATCH stores the normalised handle and username', async () => {
+    vi.mocked(centralDb.setServerSetting).mockClear()
+    const res = await supertest(buildApp())
+      .patch('/admin/settings')
+      .send({
+        contact_fediverse: '@fiddur@Aurboda.net',
+        contact_reddit: 'https://www.reddit.com/user/fiddur/',
+      })
+    expect(res.status).toBe(200)
+    expect(vi.mocked(centralDb.setServerSetting).mock.calls).toEqual([
+      ['contact_fediverse', 'fiddur@aurboda.net'],
+      ['contact_reddit', 'fiddur'],
+    ])
+  })
+
+  test('PATCH with empty strings clears them', async () => {
+    vi.mocked(centralDb.setServerSetting).mockClear()
+    const res = await supertest(buildApp())
+      .patch('/admin/settings')
+      .send({ contact_fediverse: '', contact_reddit: '' })
+    expect(res.status).toBe(200)
+    expect(vi.mocked(centralDb.setServerSetting).mock.calls).toEqual([
+      ['contact_fediverse', ''],
+      ['contact_reddit', ''],
+    ])
+  })
+
+  test.each([
+    [{ contact_fediverse: 'fiddur' }],
+    [{ contact_fediverse: '@fiddur' }],
+    [{ contact_fediverse: 'https://aurboda.net/@fiddur' }],
+    [{ contact_reddit: 'ab' }],
+    [{ contact_reddit: 'u/has space' }],
+    [{ contact_reddit: 'https://example.com/user/fiddur' }],
+  ])('PATCH rejects %j', async (body) => {
+    vi.mocked(centralDb.setServerSetting).mockClear()
+    const res = await supertest(buildApp()).patch('/admin/settings').send(body)
+    expect(res.status).toBe(400)
+    expect(centralDb.setServerSetting).not.toHaveBeenCalled()
+  })
+})
+
 describe('admin billing settings', () => {
   test('GET reports billing off with the default trial and grace days', async () => {
     const res = await supertest(buildApp()).get('/admin/settings')
