@@ -1,6 +1,12 @@
 import { z } from 'zod'
 
-import { createDataResponseSchema, isValidMetric, iso8601DateTimeSchema, metricUnits } from './common.ts'
+import {
+  createDataResponseSchema,
+  cumulativeMetrics,
+  isValidMetric,
+  iso8601DateTimeSchema,
+  metricUnits,
+} from './common.ts'
 
 export const hrvStatsSchema = z
   .object({
@@ -47,6 +53,67 @@ export const windowEffectSchema = z
 
 export type WindowEffect = z.infer<typeof windowEffectSchema>
 
+export const MAX_IMPACT_EXTRA_METRICS = 4
+
+const IMPACT_METRIC_NAME = /^[a-z][a-z0-9_]*$/
+const MAX_IMPACT_METRIC_NAME_LENGTH = 50
+
+const IMPACT_EXTRA_METRICS_DESCRIPTION =
+  'Extra metrics (beyond HRV, heart rate and stress) to analyse the same way; non-cumulative ones recorded around the clock only; see get_impact_metrics / GET /correlations/impact-metrics'
+
+export const impactMetricsParamSchema = z
+  .string()
+  .optional()
+  .meta({
+    description: `${IMPACT_EXTRA_METRICS_DESCRIPTION}. Comma-separated, at most ${MAX_IMPACT_EXTRA_METRICS}.`,
+    example: 'body_battery,respiratory_rate',
+  })
+
+export const parseImpactMetricsParam = (raw?: string): string[] => [
+  ...new Set(
+    (raw ?? '')
+      .split(',')
+      .map((name) => name.trim())
+      .filter((name) => name.length > 0),
+  ),
+]
+
+export const impactExtraMetricsError = (metrics: string[]): string | null => {
+  if (metrics.length > MAX_IMPACT_EXTRA_METRICS) {
+    return `At most ${MAX_IMPACT_EXTRA_METRICS} extra metrics can be analysed at once.`
+  }
+  const invalid = metrics.find(
+    (name) => !IMPACT_METRIC_NAME.test(name) || name.length > MAX_IMPACT_METRIC_NAME_LENGTH,
+  )
+  if (invalid !== undefined) return `Not a metric name: ${invalid}`
+  const cumulative = metrics.find((name) => (cumulativeMetrics as string[]).includes(name))
+  if (cumulative !== undefined) {
+    return `${cumulative} is a running total and cannot be analysed around a session.`
+  }
+  return null
+}
+
+export const extraMetricStatsSchema = z
+  .object({
+    correlation_coefficient: z.number().nullable().optional().meta({
+      description:
+        'Pearson correlation (-1 to 1) of the productivity score with this metric; only on productivity rows',
+    }),
+    delta_from_baseline: z
+      .number()
+      .nullable()
+      .meta({ description: 'Mean during, minus the period average (metric_baselines)' }),
+    effect: windowEffectSchema.meta({ description: 'Paired before -> after change of the metric' }),
+    mean: z.number().nullable().meta({ description: 'Mean during, averaged per occurrence' }),
+    stddev: z.number().nullable().meta({ description: 'Standard deviation across occurrences' }),
+  })
+  .meta({
+    description: 'An extra metric (see the metrics parameter) during and around the occurrences',
+    id: 'ExtraMetricStats',
+  })
+
+export type ExtraMetricStats = z.infer<typeof extraMetricStatsSchema>
+
 export const hrvStatsWithDeltaSchema = hrvStatsSchema
   .extend({
     hr_delta_from_baseline: z
@@ -78,6 +145,9 @@ export const hrvStatsWithDeltaSchema = hrvStatsSchema
       .number()
       .nullable()
       .meta({ description: 'Mean stress level during, minus the period average' }),
+    metrics: z.record(z.string(), extraMetricStatsSchema).optional().meta({
+      description: 'The requested extra metrics by name; present (possibly empty) when extras were requested',
+    }),
     stress_effect: windowEffectSchema.meta({ description: 'Paired before -> after change of stress level' }),
   })
   .meta({ id: 'HrvStatsWithDelta' })
@@ -147,6 +217,7 @@ export const hrvActivitiesQuerySchema = z
       description:
         'Which metric fills the legacy productivity correlation_coefficient (default hrv_rmssd); correlation_coefficients always holds all three',
     }),
+    metrics: impactMetricsParamSchema,
     period_days: z
       .string()
       .optional()
@@ -221,6 +292,10 @@ export const hrvActivitiesDataSchema = z
       locations: z.array(locationCorrelationSchema),
       productivity: z.array(productivityCorrelationSchema),
     }),
+    metric_baselines: z.record(z.string(), z.number().nullable()).optional().meta({
+      description:
+        'Each requested extra metric averaged over the period (5-minute bins, like baseline); present when extras were requested',
+    }),
     period: z.object({
       days: z.number().int(),
       end: z.string(),
@@ -268,6 +343,7 @@ export const activityImpactQuerySchema = z
       example: '2026-03-01T00:00:00Z',
     }),
     match: activityImpactMatchSchema.optional(),
+    metrics: impactMetricsParamSchema,
     period_days: z.string().optional().meta({ description: 'Days to analyze (default 90)', example: '90' }),
     start: z.string().optional().meta({
       description:
@@ -326,6 +402,9 @@ export const impactBucketSchema = z
     }),
     hr: timeWindowStatsSchema.meta({ description: 'Heart rate in this bucket' }),
     hrv: timeWindowStatsSchema.meta({ description: 'HRV in this bucket' }),
+    metrics: z.record(z.string(), timeWindowStatsSchema).optional().meta({
+      description: 'The requested extra metrics in this bucket, by name; present when extras were requested',
+    }),
     phase: impactBucketPhaseSchema,
     start_offset_minutes: z.number().meta({
       description:
@@ -351,6 +430,10 @@ export const activityImpactDataSchema = z
     hr_timeline: impactTimelineSchema,
     hrv_effect: windowEffectSchema.meta({ description: 'Paired before -> after change of HRV' }),
     hrv_timeline: impactTimelineSchema,
+    metric_effects: z.record(z.string(), windowEffectSchema).optional().meta({
+      description:
+        'Paired before -> after change of each requested extra metric, by name; present when extras were requested',
+    }),
     occurrences: z.number().int().meta({
       description:
         'Number of sessions: matching entries that overlap or are at most 10 minutes apart count as one',
@@ -772,6 +855,12 @@ export const genericCorrelationResponseSchema = createDataResponseSchema(generic
 
 export type GenericCorrelationResponse = z.infer<typeof genericCorrelationResponseSchema>
 
+const impactExtraMetricsInputSchema = z
+  .array(z.string())
+  .max(MAX_IMPACT_EXTRA_METRICS)
+  .optional()
+  .meta({ description: IMPACT_EXTRA_METRICS_DESCRIPTION, example: ['body_battery', 'respiratory_rate'] })
+
 /** Activity impact MCP input schema (typed numbers instead of query strings) */
 export const activityImpactInputSchema = z
   .object({
@@ -784,6 +873,7 @@ export const activityImpactInputSchema = z
         'End of a fixed period to analyse (ISO 8601, exclusive). Give with start; replaces period_days.',
     }),
     match: activityImpactMatchSchema.optional(),
+    metrics: impactExtraMetricsInputSchema,
     period_days: z
       .number()
       .int()
@@ -834,6 +924,7 @@ export const hrvCorrelationInputSchema = z
     context_metric: hrvContextMetricSchema
       .optional()
       .meta({ description: 'Autonomic metric to correlate against (default: hrv_rmssd)' }),
+    metrics: impactExtraMetricsInputSchema,
     period_days: z
       .number()
       .int()
@@ -847,6 +938,67 @@ export const hrvCorrelationInputSchema = z
   .meta({ id: 'HrvCorrelationInput' })
 
 export type HrvCorrelationInput = z.infer<typeof hrvCorrelationInputSchema>
+
+export const impactMetricSchema = z
+  .object({
+    coverage_hours_per_day: z.number().meta({
+      description:
+        'Median hours of the day covered by data (15-minute slots with at least one sample, divided by 4), over the days of the period that have data',
+      example: 23.5,
+    }),
+    label: z.string().meta({ description: 'Display name', example: 'Body Battery' }),
+    metric: z.string().meta({ description: 'Metric name, as given to the metrics parameter' }),
+    samples_per_day: z.number().int().meta({
+      description: 'Median number of samples per day, over the days of the period that have data',
+    }),
+    unit: z.string().nullable().meta({ description: 'Unit of the values, when known' }),
+  })
+  .meta({
+    description:
+      'A metric recorded around the clock (at least every 15 minutes for half of the day on most days), so there is data before and after a session for the activity-impact analysis',
+    id: 'ImpactMetricOption',
+  })
+
+export type ImpactMetricOption = z.infer<typeof impactMetricSchema>
+
+export const impactMetricsQuerySchema = z
+  .object({
+    period_days: z
+      .string()
+      .optional()
+      .meta({ description: 'Number of days to look at (default 30)', example: '30' }),
+  })
+  .meta({ id: 'ImpactMetricsQuery' })
+
+export type ImpactMetricsQuery = z.infer<typeof impactMetricsQuerySchema>
+
+export const impactMetricsDataSchema = z
+  .object({
+    metrics: z.array(impactMetricSchema).meta({
+      description: 'Sorted by coverage_hours_per_day, then samples_per_day, best covered first',
+    }),
+  })
+  .meta({ id: 'ImpactMetricsData' })
+
+export type ImpactMetricsData = z.infer<typeof impactMetricsDataSchema>
+
+export const impactMetricsResponseSchema = createDataResponseSchema(impactMetricsDataSchema).meta({
+  id: 'ImpactMetricsResponse',
+})
+
+export type ImpactMetricsResponse = z.infer<typeof impactMetricsResponseSchema>
+
+export const impactMetricsInputSchema = z
+  .object({
+    period_days: z
+      .number()
+      .int()
+      .optional()
+      .meta({ description: 'Number of days to look at. Defaults to 30.' }),
+  })
+  .meta({ id: 'ImpactMetricsInput' })
+
+export type ImpactMetricsInput = z.infer<typeof impactMetricsInputSchema>
 
 /** A data dimension that resolves to events and a daily series. */
 export const selectorSchema = z

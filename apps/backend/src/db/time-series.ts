@@ -508,6 +508,28 @@ export const getDistinctMetrics = async (user: string, start: Date, end: Date): 
   return result.rows.map((row) => row.metric as string).sort()
 }
 
+/**
+ * Live points per metric and UTC day in `[start, end]`, across all sources, with the number of
+ * distinct 15-minute slots (epoch-aligned) that hold at least one of them.
+ */
+export const getDailySampleCounts = async (
+  user: string,
+  start: Date,
+  end: Date,
+): Promise<{ metric: string; day: string; count: number; quarter_hours: number }[]> => {
+  const result = await query<{ metric: string; day: string; count: number; quarter_hours: number }>(
+    user,
+    `SELECT metric, to_char(date_trunc('day', time AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day,
+            COUNT(*)::integer AS count,
+            COUNT(DISTINCT floor(extract(epoch from time) / 900))::integer AS quarter_hours
+       FROM time_series
+      WHERE time >= $1 AND time <= $2 AND deleted_at IS NULL
+      GROUP BY metric, day`,
+    [start, end],
+  )
+  return result.rows.map(({ count, day, metric, quarter_hours }) => ({ count, day, metric, quarter_hours }))
+}
+
 /** Most recent value of `metric` in `[since, now]`, or undefined when there is none. */
 export const getLatestTimeSeriesValue = async (
   user: string,

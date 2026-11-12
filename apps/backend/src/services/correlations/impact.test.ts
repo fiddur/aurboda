@@ -370,3 +370,32 @@ describe('summarizeImpact buckets', () => {
     ])
   })
 })
+
+describe('summarizeImpact extra metrics', () => {
+  const sessions = [{ end: min(30), start: min(0) }]
+  const battery = bins([
+    [-20, 60],
+    [-5, 58],
+    [10, 50],
+    [40, 45],
+    [55, 44],
+  ])
+
+  test('an extra key gets the same effect, timeline and buckets as a fixed one', () => {
+    const extra = summarizeImpact(sessions, { ...only(empty), body_battery: battery }, 30, ['body_battery'])
+    const fixed = summarizeImpact(sessions, only(battery), 30)
+
+    expect(extra.effects.body_battery).toEqual(fixed.effects.stress)
+    expect(extra.timeline.body_battery).toEqual(fixed.timeline.stress)
+    expect(extra.buckets.map((b) => b.metrics?.body_battery)).toEqual(fixed.buckets.map((b) => b.stress))
+    expect(extra.effects.stress.paired_occurrences).toBe(0)
+  })
+
+  test('an extra key with no series is all nulls, and buckets have no metrics without extras', () => {
+    const { buckets, effects } = summarizeImpact(sessions, only(battery), 30, ['respiratory_rate'])
+    expect(effects.respiratory_rate.change).toBeNull()
+    expect(buckets.every((b) => b.metrics?.respiratory_rate.mean === null)).toBe(true)
+
+    expect(summarizeImpact(sessions, only(battery), 30).buckets.every((b) => !('metrics' in b))).toBe(true)
+  })
+})

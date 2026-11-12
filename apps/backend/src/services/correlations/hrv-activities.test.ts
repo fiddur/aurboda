@@ -366,4 +366,61 @@ describe('getHrvActivitiesCorrelation', () => {
       paired_occurrences: 1,
     })
   })
+
+  test('an extra metric gets stats, an effect and a baseline; without extras nothing new appears', async () => {
+    const base = alignedBase()
+    noContext()
+    vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
+      { activity_type: 'meditation', end_time: at(base, 20), source: 'manual' as const, start_time: base },
+    ])
+    vi.mocked(db.getTimeSeries).mockImplementation(async (_u: string, metric: string) =>
+      metric === 'body_battery'
+        ? ([
+            [at(base, -20), 50],
+            [at(base, 5), 55],
+            [at(base, 40), 60],
+          ] as [Date, number][])
+        : [],
+    )
+
+    const result = await getHrvActivitiesCorrelation('testuser', 7, undefined, 'hrv_rmssd', 30, [
+      'body_battery',
+    ])
+
+    expect(db.getTimeSeries).toHaveBeenCalledWith(
+      'testuser',
+      'body_battery',
+      expect.any(Date),
+      expect.any(Date),
+    )
+    expect(result.metric_baselines).toEqual({ body_battery: 55 })
+    expect(result.correlations.activities[0].metrics).toEqual({
+      body_battery: {
+        delta_from_baseline: 0,
+        effect: expect.objectContaining({
+          after_mean: 60,
+          before_mean: 50,
+          change: 10,
+          paired_occurrences: 1,
+        }),
+        mean: 55,
+        stddev: null,
+      },
+    })
+
+    const plain = await getHrvActivitiesCorrelation('testuser', 7)
+    expect(plain).not.toHaveProperty('metric_baselines')
+    expect(plain.correlations.activities[0]).not.toHaveProperty('metrics')
+  })
+
+  test('productivity rows get the r of an extra metric', async () => {
+    mockDevCategory()
+    const result = await getHrvActivitiesCorrelation('testuser', 7, undefined, 'hrv_rmssd', 30, [
+      'body_battery',
+    ])
+    const dev = result.correlations.productivity.find((p) => p.category === 'Dev')
+
+    expect(dev?.metrics?.body_battery.correlation_coefficient).toBeGreaterThan(0.9)
+    expect(dev?.metrics?.body_battery.correlation_coefficient).toBe(dev?.correlation_coefficients.hrv_rmssd)
+  })
 })

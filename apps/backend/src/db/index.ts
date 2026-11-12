@@ -75,6 +75,7 @@ export {
   deleteTimeSeriesMetric,
   deleteTimeSeriesPoint,
   getDailyAggregates,
+  getDailySampleCounts,
   getDistinctMetrics,
   getHrZoneSecs,
   getHrZoneSecsForWindows,

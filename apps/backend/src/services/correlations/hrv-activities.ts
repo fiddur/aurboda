@@ -1,4 +1,4 @@
-import type { HrvContextMetric } from '@aurboda/api-spec'
+import type { ExtraMetricStats, HrvContextMetric } from '@aurboda/api-spec'
 
 import type { Activity, ProductivityRecord } from '../../db/types.ts'
 import type { PlaceVisit } from '../locations.ts'
@@ -18,28 +18,36 @@ import { getPlaceVisits } from '../locations.ts'
 import { triggerCorrelationSyncs } from './background-sync.ts'
 import {
   activityInterval,
+  binExtraSeries,
   binMetricSeries,
   clampWindowMinutes,
   extendByWindow,
+  extraMetricKeys,
   type Interval,
   locationKey,
   mergeIntoSessions,
-  type MetricKey,
   type MetricSeries,
   productivityCategoryKey,
   summarizeImpact,
   valuesBetween,
 } from './impact.ts'
-import { addBaselineDelta, calculateHrvStats, getDataInRange, pearsonCorrelation } from './utils.ts'
+import { addBaselineDelta, calculateHrvStats, getDataInRange, mean, pearsonCorrelation } from './utils.ts'
 
 interface GroupContext {
   series: MetricSeries
   windowMinutes: number
   baseline: HrvStats
+  extraMetrics: string[]
+  metricBaselines: Record<string, number | null>
 }
 
+const deltaFrom = (value: number | null, baseline: number | null | undefined): number | null =>
+  value !== null && baseline !== null && baseline !== undefined
+    ? Math.round((value - baseline) * 10) / 10
+    : null
+
 const groupStats = (sessions: Interval[], ctx: GroupContext, sampleMinutes: number): HrvStatsWithDelta => {
-  const { effects, timeline } = summarizeImpact(sessions, ctx.series, ctx.windowMinutes)
+  const { effects, timeline } = summarizeImpact(sessions, ctx.series, ctx.windowMinutes, ctx.extraMetrics)
   const stats: HrvStats = {
     mean_hr: timeline.hr.during.mean,
     mean_hrv: timeline.hrv.during.mean,
@@ -50,10 +58,30 @@ const groupStats = (sessions: Interval[], ctx: GroupContext, sampleMinutes: numb
     stddev_hrv: timeline.hrv.during.stddev,
     stddev_stress: timeline.stress.during.stddev,
   }
+  const extras =
+    ctx.extraMetrics.length > 0
+      ? {
+          metrics: Object.fromEntries(
+            ctx.extraMetrics.map((metric): [string, ExtraMetricStats] => {
+              const { during } = timeline[metric]
+              return [
+                metric,
+                {
+                  delta_from_baseline: deltaFrom(during.mean, ctx.metricBaselines[metric]),
+                  effect: effects[metric],
+                  mean: during.mean,
+                  stddev: during.stddev,
+                },
+              ]
+            }),
+          ),
+        }
+      : {}
   return {
     ...addBaselineDelta(stats, ctx.baseline),
     hr_effect: effects.hr,
     hrv_effect: effects.hrv,
+    ...extras,
     stress_effect: effects.stress,
   }
 }
@@ -91,6 +119,7 @@ const productivityR = (records: ProductivityRecord[], series: RawSeries): number
 const productivityCorrelations = (
   productivity: ProductivityRecord[],
   raw: ProductivitySeries,
+  extraRaw: Record<string, RawSeries>,
   contextMetric: HrvContextMetric,
   ctx: GroupContext,
 ): ProductivityCorrelation[] => {
@@ -120,8 +149,19 @@ const productivityCorrelations = (
       stress_level: productivityR(data.records, raw.stress_level),
     }
 
+    const stats = groupStats(mergeIntoSessions(data.intervals), ctx, data.minutes)
+    const metrics = stats.metrics
+      ? Object.fromEntries(
+          Object.entries(stats.metrics).map(([metric, extra]) => [
+            metric,
+            { ...extra, correlation_coefficient: productivityR(data.records, extraRaw[metric] ?? []) },
+          ]),
+        )
+      : undefined
+
     correlations.push({
-      ...groupStats(mergeIntoSessions(data.intervals), ctx, data.minutes),
+      ...stats,
+      ...(metrics ? { metrics } : {}),
       category,
       correlation_coefficient: coefficients[contextMetric],
       correlation_coefficients: coefficients,
@@ -194,8 +234,10 @@ export async function getHrvActivitiesCorrelation(
   sync?: SyncProvider,
   contextMetric: HrvContextMetric = 'hrv_rmssd',
   windowMinutes: number = 30,
+  requestedExtras: string[] = [],
 ): Promise<HrvActivitiesResult> {
   const window = clampWindowMinutes(windowMinutes)
+  const extraMetrics = extraMetricKeys(requestedExtras)
   const end = new Date()
   end.setHours(23, 59, 59, 999)
   const start = new Date()
@@ -208,20 +250,26 @@ export async function getHrvActivitiesCorrelation(
   triggerCorrelationSyncs(sync, user)
 
   const { seriesEnd, seriesStart } = extendByWindow(start, end, window)
-  const [hrvData, hrData, stressData, productivity, locations, activities] = await Promise.all([
+  const [hrvData, hrData, stressData, productivity, locations, activities, extraData] = await Promise.all([
     getTimeSeries(user, 'hrv_rmssd', seriesStart, seriesEnd),
     getTimeSeries(user, 'heart_rate', seriesStart, seriesEnd),
     getTimeSeries(user, 'stress_level', seriesStart, seriesEnd),
     getProductivity(user, start, end),
     getPlaceVisits(user, start, end),
     getEffectiveActivitiesInRange(user, start, end),
+    Promise.all(extraMetrics.map((metric) => getTimeSeries(user, metric, seriesStart, seriesEnd))),
   ])
 
-  const series = binMetricSeries(hrvData, hrData, stressData)
+  const extraRaw = Object.fromEntries(extraMetrics.map((metric, i) => [metric, extraData[i]]))
+  const series: MetricSeries = {
+    ...binExtraSeries(extraRaw),
+    ...binMetricSeries(hrvData, hrData, stressData),
+  }
   const totalMinutes = periodDays * 24 * 60
-  const inPeriod = (metric: MetricKey) => valuesBetween(series[metric], start.getTime(), end.getTime() + 1)
+  const inPeriod = (metric: string) => valuesBetween(series[metric], start.getTime(), end.getTime() + 1)
   const baseline = calculateHrvStats(inPeriod('hrv'), inPeriod('hr'), totalMinutes, inPeriod('stress'))
-  const ctx: GroupContext = { baseline, series, windowMinutes: window }
+  const metricBaselines = Object.fromEntries(extraMetrics.map((metric) => [metric, mean(inPeriod(metric))]))
+  const ctx: GroupContext = { baseline, extraMetrics, metricBaselines, series, windowMinutes: window }
 
   return {
     baseline,
@@ -232,10 +280,12 @@ export async function getHrvActivitiesCorrelation(
       productivity: productivityCorrelations(
         productivity,
         { heart_rate: hrData, hrv_rmssd: hrvData, stress_level: stressData },
+        extraRaw,
         contextMetric,
         ctx,
       ),
     },
+    ...(extraMetrics.length > 0 ? { metric_baselines: metricBaselines } : {}),
     period: {
       days: periodDays,
       end: end.toISOString(),

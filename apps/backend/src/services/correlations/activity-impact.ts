@@ -8,9 +8,11 @@ import { getPlaceVisits } from '../locations.ts'
 import { triggerCorrelationSyncs } from './background-sync.ts'
 import {
   activityInterval,
+  binExtraSeries,
   binMetricSeries,
   clampWindowMinutes,
   extendByWindow,
+  extraMetricKeys,
   type Interval,
   locationKey,
   mergeIntoSessions,
@@ -86,26 +88,33 @@ export async function getActivityImpact(
   until?: Date,
   since?: Date,
   match: ActivityImpactMatch = 'contains',
+  requestedExtras: string[] = [],
 ): Promise<ActivityImpactResult> {
   const { end, start } = until ? explicitRange(until, periodDays, since) : rangeEndingToday(periodDays)
   const window = clampWindowMinutes(windowMinutes)
+  const extraMetrics = extraMetricKeys(requestedExtras)
 
   // Freshness syncs run in the background — never block this retrospective
   // analysis on a slow external sync (see background-sync.ts).
   triggerCorrelationSyncs(sync, user)
 
   const { seriesEnd, seriesStart } = extendByWindow(start, end, window)
-  const [hrvData, hrData, stressData] = await Promise.all([
+  const [hrvData, hrData, stressData, extraData] = await Promise.all([
     getTimeSeries(user, 'hrv_rmssd', seriesStart, seriesEnd),
     getTimeSeries(user, 'heart_rate', seriesStart, seriesEnd),
     getTimeSeries(user, 'stress_level', seriesStart, seriesEnd),
+    Promise.all(extraMetrics.map((metric) => getTimeSeries(user, metric, seriesStart, seriesEnd))),
   ])
 
   const sessions = mergeIntoSessions(await findOccurrences(user, activity, activityType, match, start, end))
+  const extraSeries = binExtraSeries(
+    Object.fromEntries(extraMetrics.map((metric, i) => [metric, extraData[i]])),
+  )
   const { buckets, effects, timeline } = summarizeImpact(
     sessions,
-    binMetricSeries(hrvData, hrData, stressData),
+    { ...extraSeries, ...binMetricSeries(hrvData, hrData, stressData) },
     window,
+    extraMetrics,
   )
   const totalMinutes = sessions.reduce((sum, s) => sum + (s.end - s.start) / 60_000, 0)
 
@@ -117,6 +126,9 @@ export async function getActivityImpact(
     hr_timeline: timeline.hr,
     hrv_effect: effects.hrv,
     hrv_timeline: timeline.hrv,
+    ...(extraMetrics.length > 0
+      ? { metric_effects: Object.fromEntries(extraMetrics.map((metric) => [metric, effects[metric]])) }
+      : {}),
     occurrences: sessions.length,
     stress_effect: effects.stress,
     stress_timeline: timeline.stress,

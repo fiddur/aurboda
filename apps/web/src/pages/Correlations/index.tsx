@@ -14,11 +14,19 @@ import {
   fetchActivityTypeDefinitions,
   fetchBaseline,
   fetchHrvActivitiesCorrelation,
+  fetchImpactMetrics,
 } from '../../state/api'
 import { toDisplayName } from '../../utils/displayName'
 import { ContextTable } from './ContextTable'
 import { applyExploreState, exploreState, ExploreTab } from './Explore'
-import { describeMetrics, describeProductivityR, METRIC_LABELS, toggleMetric } from './metrics'
+import {
+  describeMetrics,
+  describeProductivityR,
+  extraMetricColumn,
+  METRIC_LABELS,
+  toggleExtra,
+  toggleMetric,
+} from './metrics'
 import { describeImpactMeta, describeOccurrences } from './occurrences'
 import {
   type AnalyzeState,
@@ -37,6 +45,8 @@ const windowMinutes = signal(DEFAULT_IMPACT_WINDOW_MINUTES)
 
 const shownMetrics = signal<ImpactMetric[]>([...IMPACT_METRICS])
 
+const shownExtras = signal<string[]>([])
+
 const activeTab = signal<AnalyzeTab>('context')
 
 const selectedActivity = signal<SelectedItem | null>(null)
@@ -47,6 +57,7 @@ const applyAnalyzeState = (state: AnalyzeState) => {
     periodDays.value = state.days
     windowMinutes.value = state.window
     shownMetrics.value = state.metrics
+    shownExtras.value = state.extras
     selectedActivity.value = state.item
     applyExploreState(state.explore)
   })
@@ -55,6 +66,7 @@ const applyAnalyzeState = (state: AnalyzeState) => {
 const currentAnalyzeState = (): AnalyzeState => ({
   days: periodDays.value,
   explore: exploreState(),
+  extras: shownExtras.value,
   item: selectedActivity.value,
   metrics: shownMetrics.value,
   tab: activeTab.value,
@@ -66,6 +78,23 @@ const activityTypeDisplayName = (definitions: ActivityTypeDefinition[] | undefin
 
 const formatValue = (value: number | null | undefined, decimals: number): string =>
   value != null ? value.toFixed(decimals) : '--'
+
+interface ExtraOption {
+  metric: string
+  label: string
+  unit: string | null
+}
+
+/** The offered extras, then any URL-given extra the list lacks, so a shared link's metric can be seen and unticked. */
+const extraOptions = (available: ExtraOption[], shown: readonly string[]): ExtraOption[] => [
+  ...available,
+  ...shown
+    .filter((metric) => !available.some((o) => o.metric === metric))
+    .map((metric) => ({ label: toDisplayName(metric), metric, unit: null })),
+]
+
+const withUnit = (value: string, unit: string | null): string =>
+  unit && unit !== 'score' ? `${value} ${unit}` : value
 
 const isActivitySelected = (selected: SelectedItem | null, name: string, type: ActivityImpactType): boolean =>
   selected?.name === name && selected?.type === type
@@ -95,8 +124,14 @@ export function Correlations() {
   })
 
   const correlationsQuery = useQuery({
-    queryFn: () => fetchHrvActivitiesCorrelation(periodDays.value, windowMinutes.value),
-    queryKey: ['hrvActivitiesCorrelation', periodDays.value, windowMinutes.value],
+    queryFn: () => fetchHrvActivitiesCorrelation(periodDays.value, windowMinutes.value, shownExtras.value),
+    queryKey: ['hrvActivitiesCorrelation', periodDays.value, windowMinutes.value, shownExtras.value],
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const impactMetricsQuery = useQuery({
+    queryFn: () => fetchImpactMetrics(periodDays.value),
+    queryKey: ['impactMetrics', periodDays.value],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -116,6 +151,7 @@ export function Correlations() {
             periodDays.value,
             windowMinutes.value,
             'exact',
+            shownExtras.value,
           )
         : Promise.reject(),
     queryKey: [
@@ -124,6 +160,7 @@ export function Correlations() {
       selectedActivity.value?.type,
       periodDays.value,
       windowMinutes.value,
+      shownExtras.value,
     ],
     staleTime: 5 * 60 * 1000,
   })
@@ -134,6 +171,12 @@ export function Correlations() {
   const definitions = definitionsQuery.data
   const metrics = shownMetrics.value
   const shows = (metric: ImpactMetric) => metrics.includes(metric)
+  const available = impactMetricsQuery.data ?? []
+  const options = extraOptions(available, shownExtras.value)
+  const extras = shownExtras.value.flatMap((metric) => options.filter((o) => o.metric === metric))
+  const extraLabels = extras.map((e) => e.label)
+  const extraColumns = extras.map((e) => extraMetricColumn(e.metric, e.label))
+  const shownCount = metrics.length + extras.length
 
   const isLoading = baselineQuery.isLoading || correlationsQuery.isLoading
 
@@ -161,12 +204,39 @@ export function Correlations() {
                   <input
                     type="checkbox"
                     checked={shows(metric)}
-                    disabled={shows(metric) && metrics.length === 1}
-                    onChange={() => (shownMetrics.value = toggleMetric(shownMetrics.value, metric))}
+                    disabled={shows(metric) && shownCount === 1}
+                    onChange={() =>
+                      (shownMetrics.value = toggleMetric(
+                        shownMetrics.value,
+                        metric,
+                        shownExtras.value.length,
+                      ))
+                    }
                   />
                   {METRIC_LABELS[metric]}
                 </label>
               ))}
+              {options.map(({ label, metric }) => {
+                const checked = shownExtras.value.includes(metric)
+                return (
+                  <label key={metric} class="metric-toggle">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={checked && shownCount === 1}
+                      onChange={() =>
+                        (shownExtras.value = toggleExtra(
+                          shownExtras.value,
+                          metric,
+                          shownMetrics.value.length,
+                          available.map((o) => o.metric),
+                        ))
+                      }
+                    />
+                    {label}
+                  </label>
+                )
+              })}
             </div>
             <select value={periodDays.value} onChange={handlePeriodChange} class="period-select">
               {PERIOD_DAY_OPTIONS.map((days) => (
@@ -211,8 +281,9 @@ export function Correlations() {
       {activeTab.value === 'context' && (
         <>
           <p class="intro-text">
-            Analyze how activities, places and screen time relate to your {describeMetrics(metrics, 'long')}.
-            Click a row to see the detailed before/during/after timeline.
+            Analyze how activities, places and screen time relate to your{' '}
+            {describeMetrics(metrics, 'long', extraLabels)}. Click a row to see the detailed
+            before/during/after timeline.
           </p>
 
           {isLongWindow(windowMinutes.value) && (
@@ -246,6 +317,17 @@ export function Correlations() {
                     <span class="baseline-value stress">{formatValue(baseline.stress.avg30day, 0)}</span>
                   </div>
                 )}
+                {correlations &&
+                  extras.map(({ label, metric, unit }) => (
+                    <div key={metric} class="baseline-card">
+                      <span class="baseline-label">
+                        {label} ({correlations.period.days}-day avg)
+                      </span>
+                      <span class="baseline-value">
+                        {withUnit(formatValue(correlations.metric_baselines?.[metric], 1), unit)}
+                      </span>
+                    </div>
+                  ))}
               </div>
             </section>
           )}
@@ -261,12 +343,12 @@ export function Correlations() {
                 ) : (
                   activityImpact.activity
                 )}{' '}
-                on {describeMetrics(metrics)}
+                on {describeMetrics(metrics, 'short', extraLabels)}
                 <span class="impact-meta">
                   {describeImpactMeta(activityImpact.occurrences, activityImpact.avg_duration_min)}
                 </span>
               </h2>
-              <ImpactFigure data={activityImpact} baseline={baseline} metrics={metrics} />
+              <ImpactFigure data={activityImpact} baseline={baseline} metrics={metrics} extras={extras} />
             </section>
           )}
 
@@ -278,6 +360,7 @@ export function Correlations() {
                   nameHeader="Activity"
                   windowMinutes={correlations.window_minutes}
                   metrics={metrics}
+                  extraColumns={extraColumns}
                   rows={correlations.correlations.activities.map((a) => ({
                     extra: describeOccurrences(a.occurrences, a.avg_duration_min),
                     key: a.activity_type,
@@ -295,6 +378,7 @@ export function Correlations() {
                   nameHeader="Location"
                   windowMinutes={correlations.window_minutes}
                   metrics={metrics}
+                  extraColumns={extraColumns}
                   rows={correlations.correlations.locations.map((l) => ({
                     extra: `${l.visit_count} visits`,
                     key: l.location_name,
@@ -312,8 +396,16 @@ export function Correlations() {
                   nameHeader="Category"
                   windowMinutes={correlations.window_minutes}
                   metrics={metrics}
+                  extraColumns={extraColumns}
                   rows={correlations.correlations.productivity.map((p) => ({
-                    extra: describeProductivityR(p.correlation_coefficients, metrics),
+                    extra: describeProductivityR(
+                      p.correlation_coefficients,
+                      metrics,
+                      extras.map((e) => ({
+                        label: e.label,
+                        r: p.metrics?.[e.metric]?.correlation_coefficient,
+                      })),
+                    ),
                     key: p.category,
                     name: p.category,
                     onSelect: () => handleSelectActivity(p.category, 'productivity_category'),
@@ -349,6 +441,12 @@ export function Correlations() {
               <li>
                 Back-to-back or duplicate entries count as one occurrence, and values are resampled to
                 5-minute averages so densely recorded stretches do not dominate.
+              </li>
+              <li>
+                Other metrics appear as checkboxes when you record them around the clock (at least every 15
+                minutes for half of the day on most days), so there is data before and after a session.
+                Metrics recorded only during workouts or sleep (often respiration rate) and daily values
+                (resting HR, sleep scores, most manual logs) do not qualify.
               </li>
               <li>
                 <strong>Correlation coefficient (r):</strong> for each productivity category, how the

@@ -6,8 +6,12 @@ import { impactData } from '../test/impact-fixture.ts'
 import { createCorrelationsRouter } from './correlations-router.ts'
 
 vi.mock('../services/correlations/activity-impact.ts', () => ({ getActivityImpact: vi.fn() }))
+vi.mock('../services/correlations/hrv-activities.ts', () => ({ getHrvActivitiesCorrelation: vi.fn() }))
+vi.mock('../services/correlations/impact-metrics.ts', () => ({ getImpactMetrics: vi.fn() }))
 
 const { getActivityImpact } = await import('../services/correlations/activity-impact.ts')
+const { getHrvActivitiesCorrelation } = await import('../services/correlations/hrv-activities.ts')
+const { getImpactMetrics } = await import('../services/correlations/impact-metrics.ts')
 
 const buildApp = () => {
   const app = express()
@@ -40,6 +44,7 @@ describe('GET /correlations/activity-impact/:activity', () => {
       undefined,
       undefined,
       undefined,
+      [],
     )
   })
 
@@ -58,6 +63,7 @@ describe('GET /correlations/activity-impact/:activity', () => {
       new Date('2026-03-01T00:00:00Z'),
       new Date('2026-01-01T00:00:00Z'),
       'exact',
+      [],
     )
   })
 
@@ -70,5 +76,61 @@ describe('GET /correlations/activity-impact/:activity', () => {
     const reversed = await supertest(app).get(`${base}&start=2026-03-01T00:00:00Z&end=2026-01-01T00:00:00Z`)
     expect(reversed.status).toBe(400)
     expect(getActivityImpact).not.toHaveBeenCalled()
+  })
+})
+
+describe('extra metrics', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(getActivityImpact).mockResolvedValue(impactData())
+    vi.mocked(getHrvActivitiesCorrelation).mockResolvedValue({} as never)
+  })
+
+  test('the metrics param reaches both analyses, parsed', async () => {
+    const app = buildApp()
+    const impact = await supertest(app).get(
+      '/correlations/activity-impact/yoga?activity_type=activity_type&metrics=body_battery,%20respiratory_rate,body_battery',
+    )
+    expect(impact.status).toBe(200)
+    expect(vi.mocked(getActivityImpact).mock.calls[0][9]).toEqual(['body_battery', 'respiratory_rate'])
+
+    const context = await supertest(app).get('/correlations/hrv-activities?metrics=body_battery')
+    expect(context.status).toBe(200)
+    expect(getHrvActivitiesCorrelation).toHaveBeenCalledWith('tester', 30, undefined, undefined, 30, [
+      'body_battery',
+    ])
+  })
+
+  test('400 for a cumulative metric or too many', async () => {
+    const app = buildApp()
+    const cumulative = await supertest(app).get(
+      '/correlations/activity-impact/yoga?activity_type=activity_type&metrics=steps',
+    )
+    expect(cumulative.status).toBe(400)
+    expect(cumulative.body).toMatchObject({ success: false })
+    const tooMany = await supertest(app).get('/correlations/hrv-activities?metrics=a,b,c,d,e')
+    expect(tooMany.status).toBe(400)
+    expect(getActivityImpact).not.toHaveBeenCalled()
+    expect(getHrvActivitiesCorrelation).not.toHaveBeenCalled()
+  })
+})
+
+describe('GET /correlations/impact-metrics', () => {
+  test('lists the dense metrics for the period', async () => {
+    const metrics = [
+      {
+        coverage_hours_per_day: 24,
+        label: 'Body Battery',
+        metric: 'body_battery',
+        samples_per_day: 288,
+        unit: 'score',
+      },
+    ]
+    vi.mocked(getImpactMetrics).mockResolvedValue(metrics)
+
+    const res = await supertest(buildApp()).get('/correlations/impact-metrics?period_days=14')
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ data: { metrics }, success: true })
+    expect(getImpactMetrics).toHaveBeenCalledWith('tester', 14)
   })
 })

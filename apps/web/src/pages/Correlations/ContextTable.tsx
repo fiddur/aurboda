@@ -3,7 +3,15 @@ import { Fragment } from 'preact'
 import type { ImpactMetric } from '../../components/charts/impactMetrics'
 import type { HrvStatsWithDelta, WindowEffect } from '../../state/api'
 
-import { changeClass, changeTitle, columnTitles, formatDelta, getDeltaClass, roundTo } from './effects'
+import {
+  changeClass,
+  changeTitle,
+  columnTitles,
+  formatDelta,
+  getDeltaClass,
+  type MetricDirection,
+  roundTo,
+} from './effects'
 
 export interface ContextTableRow {
   key: string
@@ -14,22 +22,23 @@ export interface ContextTableRow {
   onSelect: () => void
 }
 
-interface MetricColumns {
-  key: ImpactMetric
+/** One metric's During / vs avg / Change columns; `key` is a short key for the three, else the metric name. */
+export interface MetricColumns {
+  key: string
   label: string
   mean: (s: HrvStatsWithDelta) => number | null
   delta: (s: HrvStatsWithDelta) => number | null
   effect: (s: HrvStatsWithDelta) => WindowEffect
   decimals: number
-  inverted: boolean
+  direction: MetricDirection
 }
 
-const METRICS: MetricColumns[] = [
+const METRICS: (MetricColumns & { key: ImpactMetric })[] = [
   {
     decimals: 1,
     delta: (s) => s.hrv_delta_from_baseline,
+    direction: 'up',
     effect: (s) => s.hrv_effect,
-    inverted: false,
     key: 'hrv',
     label: 'HRV',
     mean: (s) => s.mean_hrv,
@@ -37,8 +46,8 @@ const METRICS: MetricColumns[] = [
   {
     decimals: 0,
     delta: (s) => s.hr_delta_from_baseline,
+    direction: 'down',
     effect: (s) => s.hr_effect,
-    inverted: true,
     key: 'hr',
     label: 'Heart rate',
     mean: (s) => s.mean_hr,
@@ -46,8 +55,8 @@ const METRICS: MetricColumns[] = [
   {
     decimals: 0,
     delta: (s) => s.stress_delta_from_baseline,
+    direction: 'down',
     effect: (s) => s.stress_effect,
-    inverted: true,
     key: 'stress',
     label: 'Stress',
     mean: (s) => s.mean_stress,
@@ -61,11 +70,11 @@ function MetricCells({ metric, stats }: { metric: MetricColumns; stats: HrvStats
   return (
     <>
       <td class="value-cell group-start">{mean?.toFixed(metric.decimals) ?? '--'}</td>
-      <td class={`delta-cell ${getDeltaClass(delta, metric.inverted)}`}>
+      <td class={`delta-cell ${getDeltaClass(delta, metric.direction)}`}>
         {formatDelta(delta, metric.decimals)}
       </td>
       <td
-        class={`delta-cell change-cell ${changeClass(effect, metric.inverted)}`}
+        class={`delta-cell change-cell ${changeClass(effect, metric.direction)}`}
         title={changeTitle(effect)}
       >
         {formatDelta(effect.change, 1)}
@@ -80,18 +89,18 @@ export function ContextTable({
   rows,
   windowMinutes,
   metrics: shown,
+  extraColumns = [],
 }: {
   title: string
   nameHeader: string
   rows: ContextTableRow[]
   windowMinutes: number
   metrics: readonly ImpactMetric[]
+  extraColumns?: MetricColumns[]
 }) {
   const titles = columnTitles(windowMinutes)
-  const metrics = METRICS.filter(
-    (m) =>
-      shown.includes(m.key) &&
-      rows.some((row) => m.mean(row.stats) !== null || m.effect(row.stats).change !== null),
+  const metrics = [...METRICS.filter((m) => shown.includes(m.key)), ...extraColumns].filter((m) =>
+    rows.some((row) => m.mean(row.stats) !== null || m.effect(row.stats).change !== null),
   )
   return (
     <section class="table-section">

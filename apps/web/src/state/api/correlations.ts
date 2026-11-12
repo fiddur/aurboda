@@ -16,6 +16,8 @@ import type {
   GenericCorrelationResponse,
   HrvActivitiesData,
   HrvActivitiesResponse,
+  ImpactMetricOption,
+  ImpactMetricsResponse,
 } from '@aurboda/api-spec'
 
 import axios from 'axios'
@@ -38,11 +40,13 @@ export const fetchBaseline = async (referenceDate?: string): Promise<BaselineDat
 export const fetchHrvActivitiesCorrelation = async (
   periodDays?: number,
   windowMinutes?: number,
+  extraMetrics?: string[],
 ): Promise<HrvActivitiesData> => {
   const { token } = auth.value
   const params: Record<string, string> = {}
   if (periodDays) params.period_days = String(periodDays)
   if (windowMinutes) params.window_minutes = String(windowMinutes)
+  if (extraMetrics?.length) params.metrics = extraMetrics.join(',')
   const response = await axios.get<HrvActivitiesResponse>(`${API_URL}/correlations/hrv-activities`, {
     headers: { Authorization: `Bearer ${token}` },
     params,
@@ -58,11 +62,13 @@ export const fetchActivityImpact = async (
   periodDays?: number,
   windowMinutes?: number,
   match?: ActivityImpactMatch,
+  extraMetrics?: string[],
 ): Promise<ActivityImpactData> => {
   const { token } = auth.value
   const params: ActivityImpactQuery = {
     activity_type: activityType,
     ...(match && { match }),
+    ...(extraMetrics?.length && { metrics: extraMetrics.join(',') }),
     ...(periodDays && { period_days: String(periodDays) }),
     ...(windowMinutes && { window_minutes: String(windowMinutes) }),
   }
@@ -75,6 +81,16 @@ export const fetchActivityImpact = async (
   )
 
   return response.data.data!
+}
+
+/** The metrics recorded densely enough to analyse around a session, beyond HRV, heart rate and stress. */
+export const fetchImpactMetrics = async (periodDays: number): Promise<ImpactMetricOption[]> => {
+  const { token } = auth.value
+  const response = await axios.get<ImpactMetricsResponse>(`${API_URL}/correlations/impact-metrics`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params: { period_days: String(periodDays) },
+  })
+  return response.data.data?.metrics ?? []
 }
 
 /** The impact of one exact activity over a fixed period (`start` inclusive, `end` exclusive), as an article block draws it. */

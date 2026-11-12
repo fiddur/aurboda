@@ -30,6 +30,7 @@ const FULL: AnalyzeState = {
     start: '2026-01-01',
     trigger: { kind: 'nutrition', nutrient: 'carbs' },
   },
+  extras: ['body_battery'],
   item: { name: 'breathwork', type: 'activity_type' },
   metrics: ['hrv', 'stress'],
   tab: 'explore',
@@ -45,7 +46,7 @@ describe('parseAnalyzeState', () => {
 
   test('reads every param', () => {
     const search =
-      '?tab=explore&days=60&window=120&metrics=hrv,stress&item=breathwork&item_type=activity_type' +
+      '?tab=explore&days=60&window=120&metrics=hrv,stress,body_battery&item=breathwork&item_type=activity_type' +
       '&mode=continuous&trigger=nutrition:carbs&outcome=metric:sleep_score&outcome_source=tag' +
       '&outcome_value=headache&lags=12h,24h&lag_days=2&gap=5&nutrition=complete_only&denominator=all' +
       '&start=2026-01-01&end=2026-06-30&explore_days=120'
@@ -54,7 +55,7 @@ describe('parseAnalyzeState', () => {
 
   test('falls back to defaults for invalid values', () => {
     const state = parseAnalyzeState(
-      '?tab=hrv&days=45&window=7&metrics=sleep,,&item_type=activity_type&mode=x&trigger=bogus:x' +
+      '?tab=hrv&days=45&window=7&metrics=Sleep,,&item_type=activity_type&mode=x&trigger=bogus:x' +
         '&outcome=nutrition:sugar&gap=-1&lag_days=abc&nutrition=some&start=yesterday&explore_days=0',
     )
     expect(state).toEqual(DEFAULT_ANALYZE_STATE)
@@ -71,6 +72,21 @@ describe('parseAnalyzeState', () => {
 
   test('orders metrics canonically and drops unknown ones', () => {
     expect(parseAnalyzeState('?metrics=stress,steps,hr').metrics).toEqual(['hr', 'stress'])
+  })
+
+  test('other metric names are extras: at most four, valid, not cumulative or one of the three', () => {
+    const state = parseAnalyzeState(
+      '?metrics=hr,body_battery,Bad-Name,steps,heart_rate,spo2,body_battery,respiratory_rate,mood,skin_temp',
+    )
+    expect(state.metrics).toEqual(['hr'])
+    expect(state.extras).toEqual(['body_battery', 'spo2', 'respiratory_rate', 'mood'])
+  })
+
+  test('extras alone leave the three off', () => {
+    expect(parseAnalyzeState('?metrics=body_battery')).toMatchObject({
+      extras: ['body_battery'],
+      metrics: [],
+    })
   })
 
   test('defaults the denominator from the outcome source', () => {
@@ -96,6 +112,15 @@ describe('withAnalyzeState', () => {
       metrics: ['hr' as const, 'stress' as const],
     }
     expect(withAnalyzeState(BASE, state)).toBe('/correlations?metrics=hr,stress&trigger=activity:yoga')
+  })
+
+  test('writes extras after the short keys', () => {
+    const state = {
+      ...DEFAULT_ANALYZE_STATE,
+      extras: ['body_battery'],
+      metrics: ['hr' as const, 'stress' as const],
+    }
+    expect(withAnalyzeState(BASE, state)).toBe('/correlations?metrics=hr,stress,body_battery')
   })
 
   test('omits the denominator when it is the outcome source default', () => {
