@@ -189,7 +189,9 @@ How the numbers are made:
   productivity category) that overlap or are at most 10 minutes apart are merged
   into one session, so the same session from two sources, or back-to-back
   entries, count as one occurrence. A point activity (no end time) is a
-  5-minute interval.
+  5-minute interval. Before #1589 the table used ±30 minutes around a point
+  activity as its "during", so "during" values for point activities are not
+  comparable with numbers from before that change.
 - **Clipped windows.** Before is `[start − W, start)`, after is
   `[end, end + W)`, each clipped to the neighbouring sessions of the same group,
   so one session's "after" never reaches into the next session.

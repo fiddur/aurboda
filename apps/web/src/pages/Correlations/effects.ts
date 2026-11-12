@@ -3,7 +3,6 @@ import type { WindowEffect } from '../../state/api'
 export const SIGNIFICANCE_LEVEL = 0.05
 const MIN_PAIRS_FOR_TEST = 3
 
-/** Positive is good for HRV; for HR and stress (inverted) negative is good. */
 export const getDeltaClass = (value: number | null, inverted: boolean): string => {
   if (value === null || value === 0) return ''
   const isGood = inverted ? value < 0 : value > 0
@@ -31,7 +30,6 @@ const formatMean = (value: number | null): string => (value === null ? '--' : va
 export const isClearChange = (effect: WindowEffect): boolean =>
   effect.p_value !== null && effect.p_value < SIGNIFICANCE_LEVEL
 
-/** Coloured by direction only when the change is statistically clear; muted otherwise. */
 export const changeClass = (effect: WindowEffect, inverted: boolean): string => {
   if (effect.change === null) return ''
   if (!isClearChange(effect)) return 'muted'
@@ -52,7 +50,6 @@ export const changeTitle = (effect: WindowEffect): string => {
   return effect.p_value === null ? base : `${base} (${formatPValue(effect.p_value)})`
 }
 
-/** "Stress 47.0 → 35.4 (−11.6) · 41 of 48 occurrences", or null without paired data. */
 export const effectSummary = (label: string, effect: WindowEffect, occurrences: number): string | null => {
   if (effect.paired_occurrences === 0 || effect.change === null) return null
   return `${label} ${formatMean(effect.before_mean)} → ${formatMean(effect.after_mean)} (${formatSignedChange(
