@@ -14,7 +14,7 @@ import { getMealFoodItemsBatch } from '../db/meal-food-items.ts'
 import { getMealById, getMeals as dbGetMeals } from '../db/meals.ts'
 import { getNoteById, getNotesForEntity, insertNote } from '../db/notes.ts'
 import { insertSensitivityFlag, setFoodItemSensitivities } from '../db/sensitivities.ts'
-import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
+import { cleanTestDb, getTestDbClient, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import {
   addMeal,
   deleteMealById,
@@ -67,6 +67,45 @@ describe('Meals service integration tests', () => {
     expect(links[0].carbs).toBe(200)
     expect(links[0].fat).toBe(10)
     expect(links[0].fiber).toBe(25)
+  })
+
+  test('records the food item name and icon as the fallback label, and keeps it through a resnapshot', async () => {
+    const user = getTestUser()
+    const bread = await upsertFoodItem(user, {
+      calories: 200,
+      default_quantity: 100,
+      default_unit: 'g',
+      icon: '🍞',
+      name: 'Rye bread',
+    })
+    const butter = await upsertFoodItem(user, { calories: 700, default_quantity: 100, name: 'Butter' })
+    const result = await addMeal(user, {
+      food_items: [
+        { food_item_id: bread.id, name: 'Rye bread', quantity: 50, unit: 'g' },
+        { food_item_id: butter.id, name: 'Butter', quantity: 10 },
+      ],
+      time: '2025-06-15T08:00:00Z',
+    })
+    const mealId = result.data!.id
+    const labels = async () =>
+      (
+        await getTestDbClient().query(
+          'SELECT food_item_name, food_item_icon FROM meal_food_items WHERE meal_id = $1 ORDER BY sort_order',
+          [mealId],
+        )
+      ).rows
+
+    expect(await labels()).toEqual([
+      { food_item_icon: '🍞', food_item_name: 'Rye bread' },
+      { food_item_icon: null, food_item_name: 'Butter' },
+    ])
+
+    await updateFoodItem(user, bread.id, { name: 'Dark rye bread' })
+    await resnapshotMealsForFoodItem(user, bread.id)
+    expect(await labels()).toEqual([
+      { food_item_icon: '🍞', food_item_name: 'Dark rye bread' },
+      { food_item_icon: null, food_item_name: 'Butter' },
+    ])
   })
 
   test('auto-fills meal-level macros from junction sum when not provided', async () => {

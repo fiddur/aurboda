@@ -3,17 +3,16 @@
  *
  * Each junction row snapshots the canonical food item's nutrient values at
  * insertion time so historical totals stay frozen. Name, icon, and
- * sensitivity flags are NOT snapshotted — they're presentation/inheritance
- * data and are resolved live against the canonical food item (per-user
- * `food_items` or central `shared_food_items`, with per-user overrides)
- * and the `food_item_sensitivities` junction at meal read time.
+ * sensitivity flags are resolved live against the canonical food item
+ * (per-user `food_items` or central `shared_food_items`, with per-user
+ * overrides) and the `food_item_sensitivities` junction at meal read time.
  *
- * The `food_item_name` + `food_item_icon` legacy columns are still read,
- * though, so meals whose food item was hard-deleted (no merge re-pointer)
- * still render their last-known label on the timeline / detail view
- * instead of blanking out. Live resolution always wins; the snapshot is a
- * last-resort fallback. food_item_id is a soft pointer across user and
- * central DBs, so we never JOIN food_items here.
+ * `food_item_name` + `food_item_icon` still record the item's name and icon
+ * as of writing, as a fallback for when the id resolves nowhere: a food item
+ * hard-deleted without a merge re-pointer, or a central item missing from the
+ * server a dump was restored into. Live resolution always wins. food_item_id
+ * is a soft pointer across user and central DBs, so we never JOIN food_items
+ * here.
  */
 
 import { NUTRIENT_FIELD_NAMES } from '@aurboda/api-spec'
@@ -58,6 +57,9 @@ const mapJunctionRow = (row: Record<string, unknown>): MealFoodItemLink => {
 
 export interface MealFoodItemInput {
   food_item_id: string
+  /** Fallback label, see the module comment. */
+  food_item_name?: string
+  food_item_icon?: string
   quantity?: number
   unit?: string
   /** When set, ties this row to a food_item_portions entry. */
@@ -92,6 +94,8 @@ export const setMealFoodItems = async (
     const fields = [
       'meal_id',
       'food_item_id',
+      'food_item_name',
+      'food_item_icon',
       'quantity',
       'unit',
       'food_item_portion_id',
@@ -101,6 +105,8 @@ export const setMealFoodItems = async (
     const values: unknown[] = [
       mealId,
       item.food_item_id,
+      item.food_item_name ?? null,
+      item.food_item_icon ?? null,
       item.quantity ?? null,
       item.unit ?? null,
       item.food_item_portion_id ?? null,

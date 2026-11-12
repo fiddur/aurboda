@@ -2,10 +2,12 @@ import { spawn as nodeSpawn } from 'node:child_process'
 import { type Readable, Transform, type Writable } from 'node:stream'
 import { createGzip } from 'node:zlib'
 
+import type { SharedFoodItemEntity } from './central-food-items.ts'
 import type { ExportTokens } from './export-token.ts'
 
 import { query, userDbName } from '../db/index.ts'
 import { auditInfo } from './audit-log.ts'
+import { exportedSharedFoodTrailer, loadReferencedSharedFoodItems } from './exported-shared-food.ts'
 
 export interface PgConnection {
   host?: string
@@ -61,20 +63,23 @@ export const dumpFileName = (user: string, now: Date): string =>
 const MAX_STDERR = 64 * 1024
 
 /**
- * Pipe `pg_dump` of the user's database through gzip into `out`. `out` is ended only once
- * pg_dump has exited 0; any failure destroys it instead, so a broken dump never looks like a
- * complete file. A premature close of `out` (the client went away) kills pg_dump and rejects.
+ * Pipe `pg_dump` of the user's database through gzip into `out`, followed by `trailer` once
+ * pg_dump's output has ended. `out` is ended only once pg_dump has exited 0; any failure
+ * destroys it instead, so a broken dump never looks like a complete file. A premature close
+ * of `out` (the client went away) kills pg_dump and rejects.
  */
 export const streamUserDump = ({
   conn = connectionFromEnv(),
   env = process.env,
   out,
   spawn = defaultSpawn,
+  trailer = '',
   user,
 }: {
   user: string
   out: Writable
   spawn?: SpawnProcess
+  trailer?: string
   conn?: PgConnection
   env?: NodeJS.ProcessEnv
 }): Promise<{ bytes: number }> =>
@@ -129,7 +134,12 @@ export const streamUserDump = ({
     out.on('error', fail)
     out.on('close', () => fail(new Error('Client disconnected before the export finished')))
 
-    child.stdout.pipe(gzip).pipe(counter).pipe(out, { end: false })
+    child.stdout.on('end', () => {
+      if (trailer) gzip.end(trailer)
+      else gzip.end()
+    })
+    child.stdout.pipe(gzip, { end: false })
+    gzip.pipe(counter).pipe(out, { end: false })
   })
 
 export const parsePgDumpMajor = (versionOutput: string): number | null => {
@@ -166,6 +176,8 @@ export interface DumpExporterDeps {
   /** `SHOW server_version_num` as seen by the user's database. */
   serverVersionNum?: (user: string) => Promise<string>
   onExported?: (user: string, bytes: number) => Promise<void>
+  /** The server-library food items the user's data references, appended to the dump. */
+  sharedFoodItems?: (user: string) => Promise<SharedFoodItemEntity[]>
 }
 
 export interface DumpExporter {
@@ -201,6 +213,7 @@ export const createDumpExporter = ({
   conn,
   onExported = (user, bytes) => auditInfo(user, 'data', 'Exported database dump', { bytes }),
   serverVersionNum = defaultServerVersionNum,
+  sharedFoodItems = (user) => loadReferencedSharedFoodItems(user),
   spawn = defaultSpawn,
 }: DumpExporterDeps = {}): DumpExporter => {
   const running = new Map<string, RunningExport>()
@@ -265,7 +278,15 @@ export const createDumpExporter = ({
         run: async (out) => {
           cancel = () => out.destroy()
           try {
-            const result = await streamUserDump({ conn, out, spawn, user })
+            let trailer: string
+            try {
+              trailer = exportedSharedFoodTrailer(await sharedFoodItems(user))
+            } catch (error) {
+              out.destroy()
+              throw error
+            }
+            if (out.destroyed) throw new Error('Client disconnected before the export finished')
+            const result = await streamUserDump({ conn, out, spawn, trailer, user })
             // The dump reached the user: a failed audit write must not unspend the link.
             await onExported(user, result.bytes).catch((error: unknown) =>
               console.error(`⚠️ Recording the database export for ${user} failed:`, error),
