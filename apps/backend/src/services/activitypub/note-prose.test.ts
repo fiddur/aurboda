@@ -159,8 +159,8 @@ describe('declaredProseImages', () => {
     const rendered: { alt: string; url: string }[] = []
     renderNoteProse(fixture, {
       image: ({ alt, src }) => {
-        if (/^https?:/.test(src) && !rendered.some((image) => image.url === src))
-          {rendered.push({ alt, url: src })}
+        const isNew = /^https?:/.test(src) && !rendered.some((image) => image.url === src)
+        if (isNew) rendered.push({ alt, url: src })
         return ''
       },
     })
