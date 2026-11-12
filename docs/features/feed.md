@@ -1224,16 +1224,37 @@ blog is the [official feed](#official-feed).
 ### Official feed
 
 The instance's front page links an **official feed** at `/blog`: the `public` posts of
-admin-chosen local users that carry one of admin-chosen hashtags — a curated instance blog,
-e.g. everyone's `#aurboda` posts.
+admin-chosen local users, and of authors on other servers, that carry one of admin-chosen
+hashtags — a curated instance blog, e.g. everyone's `#aurboda` posts.
 
-- **Setting** — `official_feed: { users, tags }` in the server settings (Admin Settings →
-  Official Feed, `PATCH /admin/settings`). `users` is 0–20 existing usernames (an unknown one
-  is a 400 naming it), `tags` 0–20 hashtags stored like post tags (lowercase, without `#`,
-  deduplicated). Empty `users` turns the feed off; empty `tags` lists every public post of the
-  users. `GET /status` says `official_feed: true` while it lists a user who still exists, and
-  the web app then links **Blog** from the logged-out front page and the site footer. Deleting
-  an account takes that user off the list.
+- **Setting** — `official_feed: { users, remote_authors, tags }` in the server settings (Admin
+  Settings → Official Feed, `PATCH /admin/settings`). `users` is 0–20 existing usernames (an
+  unknown one is a 400 naming it), `remote_authors` 0–20 fediverse handles (`@user@host` or
+  `user@host`, stored as `user@host`, deduplicated ignoring case; a handle on this server's own
+  host is moved to `users`), `tags` 0–20 hashtags stored like post tags (lowercase, without `#`,
+  deduplicated). Remote authors need at least one tag (a 400 otherwise): their posts reach this
+  server only through the tag follows below. The feed is off while both `users` and
+  `remote_authors` are empty; empty `tags` lists every public post of the users.
+  `remote_authors` may be left out of a request and of a setting stored before it existed, and
+  reads as empty. `GET /status` says `official_feed: true` while it lists a remote author or a
+  user who still exists, and the web app then links **Blog** from the logged-out front page and
+  the site footer. Deleting an account takes that user off the list.
+- **Default for new installations** — at startup, a server with no user accounts, no stored
+  `official_feed` and no legacy `blog_username` stores
+  `{ users: [], remote_authors: ['fiddur@aurboda.net'], tags: ['aurbodablog'] }`: the Aurboda
+  project blog. Existing installations (which have users) are unchanged: their feed stays off until
+  an admin sets it, and an admin can change or clear the default like any other setting.
+- **Remote authors** — while `remote_authors` is non-empty, the instance actor follows each of
+  the feed's tags on the tag actor host (`<tag>@tags.pub` by default), alongside the
+  [public tag pages](#public-tag-pages)' tags, and stores what the tag actor announces in the same
+  central `public_tag_posts` table; a feed tag does not get a public page of its own. The follows
+  are applied when the setting is saved, once at startup (in the background, with a timeout: a
+  server the tag actor host cannot reach, such as a localhost dev server, logs one line and boots
+  on) and nightly before the prune. The author's own server must deliver their public posts to
+  the tag actor host: on aurboda.net that is the tags.pub relay (Admin Settings → Federation →
+  Relays); elsewhere the author can follow `@_followback@tags.pub`. A remote author's posts in the
+  feed are kept without the public tag pages' retention limit; the nightly prune keeps every row
+  by a listed remote author carrying one of the feed's tags.
 - **Migration** — until `official_feed` is first written, a legacy `blog_username` reads as
   `{ users: [blog_username], tags: [] }`. Writing `official_feed` clears `blog_username`. The
   admin `PATCH` still accepts the deprecated `blog_username` for one release (as
@@ -1241,22 +1262,31 @@ e.g. everyone's `#aurboda` posts.
 - **Which posts** — from each listed user, `public` posts only (an instance-wide listing is a
   public timeline, so `unlisted` stays off it, as on Mastodon), any kind but `reply`, and with
   tags set, only posts carrying at least one of them (`tags && $tags`, backed by the GIN index).
+- **Which remote posts** — rows of `public_tag_posts` whose `handle` (`@user@host`, compared
+  case-insensitively) is a listed remote author and whose tags overlap the feed's, not this
+  server's own (`local_user` set).
 - **Paging** — every user has their own database, so `GET /public/official-feed?cursor=` asks
-  each listed user for 21 rows after the cursor and merges them newest-first on
-  `(created_at, id)` at microsecond precision; 20 make the page and the last one the
-  `next_cursor`. Post ids are UUIDs, so the key is unique across users. A listed user whose
-  database is missing is skipped (logged once). Each post serialises as on the author's
-  profile listing (structured payload included, through the same cache), plus
-  `author_username`; the response also carries the feed's `users` and `tags`. Unauthenticated,
+  each listed user for 21 rows after the cursor, and the central table for 21 remote rows, and
+  merges them newest-first on `(created_at, id)` for local posts and `(published_at, id)` for
+  remote ones, at microsecond precision; 20 make the page and the last one the `next_cursor`.
+  Ids are UUIDs, so the key is unique across sources. A listed user whose database is missing is
+  skipped (logged once). Each entry carries `origin`: a `local` one serialises as on the
+  author's profile listing (structured payload included, through the same cache), plus
+  `author_username`; a `remote` one as on a public tag page (`OfficialFeedRemotePost`). The
+  response also carries the feed's `users`, `remote_authors` and `tags`. Unauthenticated,
   `no-store`, a 404 while the feed is off. No MCP twin: it is a public read of what the
-  profiles already serve.
+  profiles and the public tag pages already serve.
 - **Atom** — `GET /public/official-feed.atom` serves the 20 newest entries, cached for five
   minutes like the articles feed. Each entry names its author; an article's body is its
   markdown export as above, any other post's the HTML it federates with (an activity or
   exercise summary, a challenge invitation, else its message), titled by the article,
-  activity, exercise, dashboard or challenge name, else the first ~80 characters of its text.
-- **Web** — `/blog` (public, like the `/u/` pages) shows "Posts from … tagged …", the Atom
-  link and the posts as cards with each post's own author. The share-HTML router gives `/blog`
+  activity, exercise, dashboard or challenge name, else the first ~80 characters of its text. A
+  remote entry is identified by the Note's id, links to the original (its `url`), carries the
+  stored sanitised HTML and images, names its author (display name, else handle) and is titled
+  by the first line of its text.
+- **Web** — `/blog` (public, like the `/u/` pages) shows "Posts from … tagged …" (remote authors
+  by their full `@user@host`), the Atom link and the posts: local ones as cards with each post's
+  own author, remote ones as the public tag page shows them. The share-HTML router gives `/blog`
   meta titled "<host> blog" with the Atom discovery link (nginx proxies `/blog` to the backend
   as it does `/u/`).
 
@@ -1298,8 +1328,9 @@ ways, into one central `public_tag_posts` table, the first through the instance 
   to relays, never failing the delivery. An edit re-records it; an edit making it non-public, or
   its deletion, removes it. Posts published before the tag was configured are not backfilled.
 
-Rows older than the retention (`public_tag_retention_days`, default 30, by publication time) and
-rows with no configured tag left are pruned nightly, and the listing and the Atom feed apply the
+Rows older than the retention (`public_tag_retention_days`, default 30, by publication time),
+except the [official feed](#official-feed)'s remote posts, and rows with no followed tag left (a
+public page's, or the official feed's while it lists remote authors) are pruned nightly, and the listing and the Atom feed apply the
 retention when read, so a shortened retention takes effect at once. There is no moderation of tag
 pages yet beyond removing the tag; a follow-up issue tracks hiding posts and blocking actors and
 domains. The listing is
@@ -1373,7 +1404,7 @@ Public / federation (unauthenticated):
 | `GET /public/:username/feed/:postId/blocks/:index/image.svg` | Same article block as crisp `image/svg+xml`                                                                                                                                                                                                                              |
 | `GET /public/:username/posts`                                | A user's public/unlisted posts (newest-first, keyset page of 20 + `next_cursor`) for their profile feed; `?kind=article` for the blog view                                                                                                                               |
 | `GET /public/:username/articles.atom`                        | Atom 1.0 feed of the user's 20 newest public articles ([Blog view and Atom feed](#blog-view-and-atom-feed))                                                                                                                                                              |
-| `GET /public/official-feed`                                  | The instance's [official feed](#official-feed): public posts of the chosen users with one of the chosen tags, newest-first, keyset page of 20 + `next_cursor`                                                                                                            |
+| `GET /public/official-feed`                                  | The instance's [official feed](#official-feed): public posts of the chosen users and remote authors with one of the chosen tags, newest-first, keyset page of 20 + `next_cursor`                                                                                         |
 | `GET /public/official-feed.atom`                             | Atom 1.0 feed of the official feed's 20 newest entries                                                                                                                                                                                                                   |
 | `GET /public/tags/:tag/posts`                                | A [public tag page](#public-tag-pages): public posts with the tag from this server and others, newest-first, keyset page of 20 + `next_cursor` (MCP `list_public_tag_posts`)                                                                                             |
 | `GET /public/tags/:tag.atom`                                 | Atom 1.0 feed of a public tag page's 20 newest posts                                                                                                                                                                                                                     |

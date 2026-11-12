@@ -283,9 +283,9 @@ export const buildBlogShareMeta = ({ feedUrl, profileUrl, url, username }: BlogM
 const listWords = (items: string[], conjunction: string): string =>
   items.length <= 1 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} ${conjunction} ${items.at(-1)}`
 
-/** What the official feed lists, e.g. `Posts from fiddur and alice tagged #aurboda.` */
-export const describeOfficialFeed = ({ tags, users }: OfficialFeedSetting): string =>
-  `Posts from ${listWords(users, 'and')}${
+/** What the official feed lists, e.g. `Posts from fiddur and @bob@peer.example tagged #aurboda.` */
+export const describeOfficialFeed = ({ remote_authors, tags, users }: OfficialFeedSetting): string =>
+  `Posts from ${listWords([...users, ...remote_authors.map((author) => `@${author}`)], 'and')}${
     tags.length > 0
       ? ` tagged ${listWords(
           tags.map((tag) => `#${tag}`),
