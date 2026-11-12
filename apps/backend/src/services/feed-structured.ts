@@ -39,6 +39,7 @@ import type { FeedPostRecord } from '../db/index.ts'
 import { getFeedPostById, getUserSettings } from '../db/index.ts'
 import { metricUnits } from '../schema.ts'
 import { resolveActivityScalars } from './activitypub/feed-activity.ts'
+import { declaredProseImages } from './activitypub/note-prose.ts'
 import { getArticleImpact } from './article-block-data.ts'
 import { blockWindow, isZeroDurationBucket } from './article.ts'
 import { getContinuousCorrelation } from './correlations/explore.ts'
@@ -222,7 +223,8 @@ export const resolveStructuredChallengeBlock = async (
 /**
  * Build the structured payload for an article post: its title and every block,
  * resolved in order. A prose block passes its raw markdown through unchanged
- * (rendered by the receiver's own sanitising renderer — #910); a chart,
+ * (rendered by the receiver's own sanitising renderer — #910), declaring the
+ * http(s) pictures it embeds as `images`; a chart,
  * correlation or impact block resolves live over its locked window and is omitted only
  * when that window itself is invalid (unbounded or non-increasing) — the same
  * condition `resolveArticleBlock` treats as ineligible for an image. A challenge
@@ -242,7 +244,12 @@ const resolveStructuredArticle = async (
   const blocks: FeedStructuredArticleBlock[] = []
   for (const block of article.blocks) {
     if (block.type === 'prose') {
-      blocks.push({ markdown: block.markdown, type: 'prose' })
+      const images = declaredProseImages(block.markdown)
+      blocks.push(
+        images.length > 0
+          ? { images, markdown: block.markdown, type: 'prose' }
+          : { markdown: block.markdown, type: 'prose' },
+      )
       continue
     }
     if (block.type === 'chart') {

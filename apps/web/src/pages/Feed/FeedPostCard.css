@@ -208,6 +208,12 @@
   margin-bottom: 0;
 }
 
+.article-prose img,
+.feed-post-content img {
+  max-width: 100%;
+  height: auto;
+}
+
 .article-chart {
   margin: 0.75rem 0;
 }

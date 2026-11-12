@@ -330,6 +330,13 @@ The MCP tool is `add_…` rather than `upload_…` so the read-only gate, which 
 refuses it for an account whose plan has ended, as REST's account gate does for `POST` and
 `DELETE`.
 
+**Who sees a picture in an article**: the author, in the article on their own feed; a visitor
+of a public or unlisted post (`/u/<user>`, `/u/<user>/posts/<id>`, signed out or not) and an
+Aurboda peer's timeline, inline where it stands in the prose, because the structured payload
+declares it (see [structured enrichment](#native-charts-from-aurboda-peers-structured-enrichment));
+and Mastodon, as a numbered figure attachment. A picture is never wider than the card or text
+that holds it.
+
 **On Mastodon**: an uploaded picture in an article's prose is an ordinary http(s) prose image,
 so `renderArticleNote` sends it as a numbered figure attachment (`media_type: image/webp`,
 its alt text as the description) within Mastodon's four, and links it past the fourth. In
@@ -936,7 +943,10 @@ id-convention path — reliable even when a typed consumer drops the in-band ext
    and the same data-scoped series resolution as the [public series
    endpoint](#public-series-endpoint-the-privacy-boundary). An **article** post resolves to
    `FeedStructuredArticle` (the title and every block, resolved in the same order as the
-   article: a prose block's raw markdown verbatim; a chart block's bucketed samples over its
+   article: a prose block's raw markdown verbatim, with `images` declaring the http(s)
+   pictures its markdown embeds (alt text and URL, in document order) — a receiver draws an
+   inline picture only when its URL is declared there, so an undeclared one (a tracking pixel,
+   raw `<img>` HTML) is dropped; a chart block's bucketed samples over its
    locked window, bucketed the same way as its block image; a correlation block's computed
    Pearson/Spearman/n, the present-vs-absent group comparison, and the aligned scatter points —
    the same `getContinuousCorrelation` call the block image uses; an impact block's `activity`,
