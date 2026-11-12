@@ -272,11 +272,43 @@ export const impactTimelineSchema = z
   })
   .meta({
     description:
-      'Metric around the sessions. The keys name the default 30-minute window; for any window_minutes, *30min is the outer half and *15min the inner half.',
+      'Metric around the sessions, kept for compatibility: `timeline` is the general form. The keys name the default 30-minute window; for any window_minutes, *30min is the outer half and *15min the inner half.',
     id: 'ImpactTimeline',
   })
 
 export type ImpactTimeline = z.infer<typeof impactTimelineSchema>
+
+export const impactBucketPhaseSchema = z.enum(['before', 'during', 'after']).meta({
+  description: 'Whether the bucket lies before the session, is the session itself, or lies after it',
+  id: 'ImpactBucketPhase',
+})
+
+export type ImpactBucketPhase = z.infer<typeof impactBucketPhaseSchema>
+
+export const impactBucketSchema = z
+  .object({
+    end_offset_minutes: z.number().meta({
+      description:
+        'End of the bucket in minutes: relative to the session start for before buckets, to the session end for after buckets, 0 for during',
+      example: -180,
+    }),
+    hr: timeWindowStatsSchema.meta({ description: 'Heart rate in this bucket' }),
+    hrv: timeWindowStatsSchema.meta({ description: 'HRV in this bucket' }),
+    phase: impactBucketPhaseSchema,
+    start_offset_minutes: z.number().meta({
+      description:
+        'Start of the bucket in minutes: relative to the session start for before buckets (negative), to the session end for after buckets, 0 for during',
+      example: -240,
+    }),
+    stress: timeWindowStatsSchema.meta({ description: 'Stress level in this bucket' }),
+  })
+  .meta({
+    description:
+      'One slice of the window around the sessions, clipped to the neighbouring sessions like the before/after windows',
+    id: 'ImpactBucket',
+  })
+
+export type ImpactBucket = z.infer<typeof impactBucketSchema>
 
 export const activityImpactDataSchema = z
   .object({
@@ -293,6 +325,10 @@ export const activityImpactDataSchema = z
     }),
     stress_effect: windowEffectSchema.meta({ description: 'Paired before -> after change of stress level' }),
     stress_timeline: impactTimelineSchema,
+    timeline: z.array(impactBucketSchema).meta({
+      description:
+        'All three metrics around the sessions, in time order: the before buckets oldest first, then during, then the after buckets. Each side of the window has 2 buckets when window_minutes is under 60 and 4 otherwise, each window_minutes divided by that count long.',
+    }),
     window_minutes: z.number().int().meta({ description: 'Minutes before and after each session analyzed' }),
   })
   .meta({ id: 'ActivityImpactData' })

@@ -190,6 +190,7 @@ export type {
   HrvStats,
   HrvStatsWithDelta,
   HrZoneThresholds,
+  ImpactBucket,
   LocationCorrelation,
   NamedLocation,
   PeriodMetricStats,

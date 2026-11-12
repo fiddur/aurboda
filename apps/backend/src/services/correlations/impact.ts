@@ -1,4 +1,4 @@
-import type { TimeWindowStats, WindowEffect } from '@aurboda/api-spec'
+import type { ImpactBucket, ImpactBucketPhase, TimeWindowStats, WindowEffect } from '@aurboda/api-spec'
 
 import { studentTTwoSidedP } from './stats.ts'
 import { mean, stddev } from './utils.ts'
@@ -28,8 +28,15 @@ export type MetricSeries = Record<MetricKey, BinnedSeries>
 export type TimelineBucket = 'before30min' | 'before15min' | 'during' | 'after15min' | 'after30min'
 export type ImpactTimeline = Record<TimelineBucket, TimeWindowStats>
 
+export interface BucketOffsets {
+  phase: ImpactBucketPhase
+  start_offset_minutes: number
+  end_offset_minutes: number
+}
+
 export interface ImpactSummary {
   timeline: Record<MetricKey, ImpactTimeline>
+  buckets: ImpactBucket[]
   effects: Record<MetricKey, WindowEffect>
 }
 
@@ -54,6 +61,15 @@ export const clampWindowMinutes = (value: number | undefined): number => {
   if (value === undefined || Number.isNaN(value)) return DEFAULT_WINDOW_MINUTES
   return Math.min(MAX_WINDOW_MINUTES, Math.max(MIN_WINDOW_MINUTES, value))
 }
+
+export const extendByWindow = (
+  start: Date,
+  end: Date,
+  windowMinutes: number,
+): { seriesStart: Date; seriesEnd: Date } => ({
+  seriesEnd: new Date(end.getTime() + windowMinutes * MINUTE_MS),
+  seriesStart: new Date(start.getTime() - windowMinutes * MINUTE_MS),
+})
 
 export const binSeries = (data: [Date, number][], binMinutes: number = BIN_MINUTES): BinnedSeries => {
   const binMs = binMinutes * MINUTE_MS
@@ -138,12 +154,64 @@ interface SessionWindows {
   before: Interval
   after: Interval
   buckets: Record<TimelineBucket, Interval>
+  clip: (bucket: BucketOffsets) => Interval
+}
+
+export const bucketsPerSide = (windowMinutes: number): number => (windowMinutes < 60 ? 2 : 4)
+
+const sideBuckets = (phase: 'before' | 'after', windowMinutes: number, count: number): BucketOffsets[] => {
+  const size = windowMinutes / count
+  const origin = phase === 'before' ? -windowMinutes : 0
+  return Array.from({ length: count }, (_, i) => ({
+    end_offset_minutes: origin + (i + 1) * size,
+    phase,
+    start_offset_minutes: origin + i * size,
+  }))
+}
+
+const DURING: BucketOffsets = { end_offset_minutes: 0, phase: 'during', start_offset_minutes: 0 }
+
+export const timelineBuckets = (windowMinutes: number): BucketOffsets[] => {
+  const count = bucketsPerSide(windowMinutes)
+  return [
+    ...sideBuckets('before', windowMinutes, count),
+    DURING,
+    ...sideBuckets('after', windowMinutes, count),
+  ]
+}
+
+const legacyBuckets = (windowMinutes: number): Record<TimelineBucket, BucketOffsets> => {
+  const [before30min, before15min] = sideBuckets('before', windowMinutes, 2)
+  const [after15min, after30min] = sideBuckets('after', windowMinutes, 2)
+  return { after15min, after30min, before15min, before30min, during: DURING }
+}
+
+interface ClippedSession {
+  session: Interval
+  before: Interval
+  after: Interval
+}
+
+const clipBucket = ({ after, before, session }: ClippedSession, bucket: BucketOffsets): Interval => {
+  const startMs = bucket.start_offset_minutes * MINUTE_MS
+  const endMs = bucket.end_offset_minutes * MINUTE_MS
+  if (bucket.phase === 'before') {
+    return {
+      end: Math.min(session.start + endMs, before.end),
+      start: Math.max(session.start + startMs, before.start),
+    }
+  }
+  if (bucket.phase === 'after') {
+    return { end: Math.min(session.end + endMs, after.end), start: session.end + startMs }
+  }
+  return session
 }
 
 const sessionWindows = (sessions: Interval[], windowMinutes: number): SessionWindows[] => {
   const windowMs = windowMinutes * MINUTE_MS
-  const halfMs = windowMs / 2
-  return sessions.map(({ end, start }, i) => {
+  const legacy = Object.entries(legacyBuckets(windowMinutes)) as [TimelineBucket, BucketOffsets][]
+  return sessions.map((session, i) => {
+    const { end, start } = session
     // A bin is picked by its start time, so a window that ends where a session begins stops one
     // bin early: the bin straddling the session's start holds the session's own samples.
     const next = sessions[i + 1]
@@ -155,16 +223,14 @@ const sessionWindows = (sessions: Interval[], windowMinutes: number): SessionWin
       end: Math.min(end + windowMs, next ? next.start - BIN_MINUTES * MINUTE_MS + 1 : Infinity),
       start: end,
     }
+    const clipped = { after, before, session }
     return {
       after,
       before,
-      buckets: {
-        after15min: { end: Math.min(end + halfMs, after.end), start: end },
-        after30min: { end: after.end, start: end + halfMs },
-        before15min: { end: before.end, start: Math.max(start - halfMs, before.start) },
-        before30min: { end: Math.min(start - halfMs, before.end), start: before.start },
-        during: { end, start },
-      },
+      buckets: Object.fromEntries(
+        legacy.map(([key, offsets]) => [key, clipBucket(clipped, offsets)]),
+      ) as Record<TimelineBucket, Interval>,
+      clip: (bucket: BucketOffsets) => clipBucket(clipped, bucket),
     }
   })
 }
@@ -196,7 +262,16 @@ export const summarizeImpact = (
     MetricKey,
     ReturnType<typeof summarizeMetric>
   >
+  const bucketStats = (metric: MetricKey, bucket: BucketOffsets) =>
+    windowStats(windows.map((w) => between(metric, w.clip(bucket))))
+  const buckets = timelineBuckets(windowMinutes).map((bucket) => ({
+    ...bucket,
+    hr: bucketStats('hr', bucket),
+    hrv: bucketStats('hrv', bucket),
+    stress: bucketStats('stress', bucket),
+  }))
   return {
+    buckets,
     effects: { hr: summaries.hr.effect, hrv: summaries.hrv.effect, stress: summaries.stress.effect },
     timeline: { hr: summaries.hr.timeline, hrv: summaries.hrv.timeline, stress: summaries.stress.timeline },
   }

@@ -20,12 +20,15 @@ import {
   activityInterval,
   binMetricSeries,
   clampWindowMinutes,
+  extendByWindow,
   type Interval,
   locationKey,
   mergeIntoSessions,
+  type MetricKey,
   type MetricSeries,
   productivityCategoryKey,
   summarizeImpact,
+  valuesBetween,
 } from './impact.ts'
 import { addBaselineDelta, calculateHrvStats, getDataInRange, pearsonCorrelation } from './utils.ts'
 
@@ -186,10 +189,11 @@ export async function getHrvActivitiesCorrelation(
   // background-sync.ts). Data is fresh for the next request.
   triggerCorrelationSyncs(sync, user)
 
+  const { seriesEnd, seriesStart } = extendByWindow(start, end, window)
   const [hrvData, hrData, stressData, productivity, locations, activities] = await Promise.all([
-    getTimeSeries(user, 'hrv_rmssd', start, end),
-    getTimeSeries(user, 'heart_rate', start, end),
-    getTimeSeries(user, 'stress_level', start, end),
+    getTimeSeries(user, 'hrv_rmssd', seriesStart, seriesEnd),
+    getTimeSeries(user, 'heart_rate', seriesStart, seriesEnd),
+    getTimeSeries(user, 'stress_level', seriesStart, seriesEnd),
     getProductivity(user, start, end),
     getPlaceVisits(user, start, end),
     getAllActivitiesInRange(user, start, end),
@@ -202,7 +206,8 @@ export async function getHrvActivitiesCorrelation(
 
   const series = binMetricSeries(hrvData, hrData, stressData)
   const totalMinutes = periodDays * 24 * 60
-  const baseline = calculateHrvStats(series.hrv.values, series.hr.values, totalMinutes, series.stress.values)
+  const inPeriod = (metric: MetricKey) => valuesBetween(series[metric], start.getTime(), end.getTime() + 1)
+  const baseline = calculateHrvStats(inPeriod('hrv'), inPeriod('hr'), totalMinutes, inPeriod('stress'))
   const ctx: GroupContext = { baseline, series, windowMinutes: window }
 
   return {

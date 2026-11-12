@@ -10,6 +10,7 @@ import {
   activityInterval,
   binMetricSeries,
   clampWindowMinutes,
+  extendByWindow,
   type Interval,
   locationKey,
   mergeIntoSessions,
@@ -78,7 +79,7 @@ const findOccurrences = async (
 export async function getActivityImpact(
   user: string,
   activity: string,
-  activityType: ActivityImpactType, // 'tag' kept for backward compat
+  activityType: ActivityImpactType,
   windowMinutes: number = 30,
   periodDays: number = 90,
   sync?: SyncProvider,
@@ -93,14 +94,15 @@ export async function getActivityImpact(
   // analysis on a slow external sync (see background-sync.ts).
   triggerCorrelationSyncs(sync, user)
 
+  const { seriesEnd, seriesStart } = extendByWindow(start, end, window)
   const [hrvData, hrData, stressData] = await Promise.all([
-    getTimeSeries(user, 'hrv_rmssd', start, end),
-    getTimeSeries(user, 'heart_rate', start, end),
-    getTimeSeries(user, 'stress_level', start, end),
+    getTimeSeries(user, 'hrv_rmssd', seriesStart, seriesEnd),
+    getTimeSeries(user, 'heart_rate', seriesStart, seriesEnd),
+    getTimeSeries(user, 'stress_level', seriesStart, seriesEnd),
   ])
 
   const sessions = mergeIntoSessions(await findOccurrences(user, activity, activityType, match, start, end))
-  const { effects, timeline } = summarizeImpact(
+  const { buckets, effects, timeline } = summarizeImpact(
     sessions,
     binMetricSeries(hrvData, hrData, stressData),
     window,
@@ -118,6 +120,7 @@ export async function getActivityImpact(
     occurrences: sessions.length,
     stress_effect: effects.stress,
     stress_timeline: timeline.stress,
+    timeline: buckets,
     window_minutes: window,
   }
 }

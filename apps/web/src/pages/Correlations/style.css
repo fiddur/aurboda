@@ -37,6 +37,15 @@
   font-size: 0.95rem;
 }
 
+.correlations-page .window-note {
+  margin: -0.75rem 0 1.5rem 0;
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid #f59e0b;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 0.9rem;
+}
+
 .correlations-page .period-select {
   padding: 0.5rem 1rem;
   font-size: 0.9rem;
@@ -315,6 +324,11 @@
 
   .correlations-page .intro-text {
     color: #9ca3af;
+  }
+
+  .correlations-page .window-note {
+    background: #292524;
+    color: #fcd34d;
   }
 
   .correlations-page .period-select {

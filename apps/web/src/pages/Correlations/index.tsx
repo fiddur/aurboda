@@ -16,6 +16,7 @@ import { ContextTable } from './ContextTable'
 import { effectSummary } from './effects'
 import { ExploreTab } from './Explore'
 import { describeOccurrences } from './occurrences'
+import { bucketLabel, DEFAULT_WINDOW_MINUTES, formatWindow, isLongWindow, WINDOW_OPTIONS } from './window'
 import './style.css'
 
 const periodDays = signal(30)
@@ -37,11 +38,48 @@ const CONTEXT_METRIC_PHRASES: Record<HrvContextMetric, string> = {
   stress_level: 'stress level',
 }
 
-const WINDOW_MINUTES = 30
+const windowMinutes = signal(DEFAULT_WINDOW_MINUTES)
 
 const activeTab = signal<'hrv' | 'explore'>('hrv')
 
 const selectedActivity = signal<{ name: string; type: ActivityImpactType } | null>(null)
+
+type ChartGroup = d3.Selection<SVGGElement, unknown, null, undefined>
+
+const paddedDomain = (values: (number | null)[]): [number, number] => {
+  const present = values.filter((d): d is number => d !== null)
+  if (present.length === 0) return [0, 100]
+  const [lo, hi] = d3.extent(present) as [number, number]
+  const padding = (hi - lo) * 0.3 || 10
+  return [lo - padding, hi + padding]
+}
+
+const drawHrvAxis = (g: ChartGroup, y: d3.ScaleLinear<number, number>) => {
+  g.append('g').call(d3.axisLeft(y).ticks(4)).selectAll('text').attr('fill', '#10b981')
+
+  g.append('text')
+    .attr('x', 10)
+    .attr('y', -10)
+    .attr('fill', '#10b981')
+    .attr('font-size', '12px')
+    .text('HRV (ms)')
+}
+
+const drawHrAxis = (g: ChartGroup, y: d3.ScaleLinear<number, number>, innerWidth: number) => {
+  g.append('g')
+    .attr('transform', `translate(${innerWidth},0)`)
+    .call(d3.axisRight(y).ticks(4))
+    .selectAll('text')
+    .attr('fill', '#ef4444')
+
+  g.append('text')
+    .attr('x', innerWidth - 10)
+    .attr('y', -10)
+    .attr('text-anchor', 'end')
+    .attr('fill', '#ef4444')
+    .attr('font-size', '12px')
+    .text('HR (bpm)')
+}
 
 function ImpactTimelineChart({
   data,
@@ -66,12 +104,13 @@ function ImpactTimelineChart({
     const innerWidth = width - margin.left - margin.right
     const innerHeight = height - margin.top - margin.bottom
 
-    const windows = ['before30min', 'before15min', 'during', 'after15min', 'after30min'] as const
-    const labels = ['-30 min', '-15 min', 'During', '+15 min', '+30 min']
+    const buckets = data.timeline
+    const labels = buckets.map(bucketLabel)
+    const duringIndex = buckets.findIndex((b) => b.phase === 'during')
 
-    const hrvData = windows.map((w) => data.hrv_timeline[w].mean)
-    const hrData = windows.map((w) => data.hr_timeline[w].mean)
-    const stressData = windows.map((w) => data.stress_timeline[w].mean)
+    const hrvData = buckets.map((b) => b.hrv.mean)
+    const hrData = buckets.map((b) => b.hr.mean)
+    const stressData = buckets.map((b) => b.stress.mean)
 
     const g = svg
       .attr('width', width)
@@ -79,37 +118,20 @@ function ImpactTimelineChart({
       .append('g')
       .attr('transform', `translate(${margin.left},${margin.top})`)
 
-    const x = d3.scalePoint<number>().domain([0, 1, 2, 3, 4]).range([0, innerWidth])
+    const x = d3
+      .scalePoint<number>()
+      .domain(buckets.map((_, i) => i))
+      .range([0, innerWidth])
 
-    // HRV Y scale (left)
-    const hrvExtent = d3.extent(hrvData.filter((d): d is number => d !== null)) as [number, number]
-    const hrvPadding = (hrvExtent[1] - hrvExtent[0]) * 0.3 || 10
-    const yHrv = d3
-      .scaleLinear()
-      .domain([hrvExtent[0] - hrvPadding, hrvExtent[1] + hrvPadding])
-      .range([innerHeight, 0])
+    const hasHrv = hrvData.some((d) => d !== null)
+    const hasHr = hrData.some((d) => d !== null)
+    const hasStress = stressData.some((d) => d !== null)
 
-    // HR Y scale (right)
-    const hrExtent = d3.extent(hrData.filter((d): d is number => d !== null)) as [number, number]
-    const hrPadding = (hrExtent[1] - hrExtent[0]) * 0.3 || 10
-    const yHr = d3
-      .scaleLinear()
-      .domain([hrExtent[0] - hrPadding, hrExtent[1] + hrPadding])
-      .range([innerHeight, 0])
+    const yHrv = d3.scaleLinear().domain(paddedDomain(hrvData)).range([innerHeight, 0])
+    const yHr = d3.scaleLinear().domain(paddedDomain(hrData)).range([innerHeight, 0])
+    const yStress = d3.scaleLinear().domain(paddedDomain(stressData)).range([innerHeight, 0])
 
-    // Stress Y scale (hidden axis, own range)
-    const stressFiltered = stressData.filter((d): d is number => d !== null)
-    const stressExtent = d3.extent(stressFiltered) as [number, number]
-    const stressPadding = stressFiltered.length > 0 ? (stressExtent[1] - stressExtent[0]) * 0.3 || 10 : 10
-    const yStress = d3
-      .scaleLinear()
-      .domain([
-        stressFiltered.length > 0 ? stressExtent[0] - stressPadding : 0,
-        stressFiltered.length > 0 ? stressExtent[1] + stressPadding : 100,
-      ])
-      .range([innerHeight, 0])
-
-    if (baseline?.hrv.avg30day !== null && baseline?.hrv.avg30day !== undefined) {
+    if (hasHrv && baseline?.hrv.avg30day !== null && baseline?.hrv.avg30day !== undefined) {
       g.append('line')
         .attr('x1', 0)
         .attr('y1', yHrv(baseline.hrv.avg30day))
@@ -173,7 +195,7 @@ function ImpactTimelineChart({
       }
     })
 
-    if (stressFiltered.length > 0) {
+    if (hasStress) {
       const stressLine = d3
         .line<number | null>()
         .defined((d) => d !== null)
@@ -201,11 +223,11 @@ function ImpactTimelineChart({
       })
     }
 
-    // Activity zone highlight
+    const zoneWidth = Math.min(60, x.step())
     g.append('rect')
-      .attr('x', x(2)! - 30)
+      .attr('x', x(duringIndex)! - zoneWidth / 2)
       .attr('y', 0)
-      .attr('width', 60)
+      .attr('width', zoneWidth)
       .attr('height', innerHeight)
       .attr('fill', '#3b82f6')
       .attr('fill-opacity', 0.1)
@@ -216,28 +238,8 @@ function ImpactTimelineChart({
       .selectAll('text')
       .attr('fill', 'currentColor')
 
-    g.append('g').call(d3.axisLeft(yHrv).ticks(4)).selectAll('text').attr('fill', '#10b981')
-
-    g.append('g')
-      .attr('transform', `translate(${innerWidth},0)`)
-      .call(d3.axisRight(yHr).ticks(4))
-      .selectAll('text')
-      .attr('fill', '#ef4444')
-
-    g.append('text')
-      .attr('x', 10)
-      .attr('y', -10)
-      .attr('fill', '#10b981')
-      .attr('font-size', '12px')
-      .text('HRV (ms)')
-
-    g.append('text')
-      .attr('x', innerWidth - 10)
-      .attr('y', -10)
-      .attr('text-anchor', 'end')
-      .attr('fill', '#ef4444')
-      .attr('font-size', '12px')
-      .text('HR (bpm)')
+    if (hasHrv) drawHrvAxis(g, yHrv)
+    if (hasHr) drawHrAxis(g, yHr, innerWidth)
   }, [data, baseline])
 
   return (
@@ -265,8 +267,8 @@ export function Correlations() {
   })
 
   const correlationsQuery = useQuery({
-    queryFn: () => fetchHrvActivitiesCorrelation(periodDays.value, contextMetric.value, WINDOW_MINUTES),
-    queryKey: ['hrvActivitiesCorrelation', periodDays.value, contextMetric.value],
+    queryFn: () => fetchHrvActivitiesCorrelation(periodDays.value, contextMetric.value, windowMinutes.value),
+    queryKey: ['hrvActivitiesCorrelation', periodDays.value, contextMetric.value, windowMinutes.value],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -278,7 +280,7 @@ export function Correlations() {
             selectedActivity.value.name,
             selectedActivity.value.type,
             periodDays.value,
-            WINDOW_MINUTES,
+            windowMinutes.value,
             'exact',
           )
         : Promise.reject(),
@@ -287,6 +289,7 @@ export function Correlations() {
       selectedActivity.value?.name,
       selectedActivity.value?.type,
       periodDays.value,
+      windowMinutes.value,
     ],
     staleTime: 5 * 60 * 1000,
   })
@@ -333,6 +336,18 @@ export function Correlations() {
               <option value={60}>Last 60 days</option>
               <option value={90}>Last 90 days</option>
             </select>
+            <select
+              value={windowMinutes.value}
+              onChange={(e) => (windowMinutes.value = parseInt((e.target as HTMLSelectElement).value, 10))}
+              class="period-select"
+              title="How long before and after each occurrence to compare"
+            >
+              {WINDOW_OPTIONS.map((minutes) => (
+                <option key={minutes} value={minutes}>
+                  ±{formatWindow(minutes)}
+                </option>
+              ))}
+            </select>
           </div>
         )}
       </div>
@@ -357,6 +372,13 @@ export function Correlations() {
             Analyze how different activities correlate with your {CONTEXT_METRIC_PHRASES[contextMetric.value]}
             . Click a row to see the detailed before/during/after timeline.
           </p>
+
+          {isLongWindow(windowMinutes.value) && (
+            <p class="window-note">
+              A window of {formatWindow(windowMinutes.value)} also picks up your daily rhythm: a few hours
+              after an evening session is mostly sleep. So Change is not the activity's effect alone.
+            </p>
+          )}
 
           {isLoading && <div class="loading">Analyzing correlations...</div>}
 
@@ -488,8 +510,9 @@ export function Correlations() {
                 typically good; lower heart rate and stress are typically good.
               </li>
               <li>
-                <strong>Change:</strong> the {correlations?.window_minutes ?? WINDOW_MINUTES} minutes after
-                minus the {correlations?.window_minutes ?? WINDOW_MINUTES} minutes before, for occurrences
+                <strong>Change:</strong> the{' '}
+                {formatWindow(correlations?.window_minutes ?? windowMinutes.value)} after minus the{' '}
+                {formatWindow(correlations?.window_minutes ?? windowMinutes.value)} before, for occurrences
                 with data on both sides. It is coloured only when it is statistically clear; hover it for the
                 before and after values.
               </li>
