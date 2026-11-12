@@ -150,7 +150,7 @@ export {
   getActivitiesByCategory,
   getActivitiesExcludingCategories,
   getActivitiesNeedingDetail,
-  getAllActivitiesInRange,
+  getEffectiveActivitiesInRange,
   getScreentimeActivities,
   migrateExerciseTypes,
   getNonSleepActivitiesMerged,

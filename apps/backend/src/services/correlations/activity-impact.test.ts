@@ -4,7 +4,7 @@ import * as db from '../../db/index.ts'
 import { getActivityImpact } from './activity-impact.ts'
 
 vi.mock('../../db', () => ({
-  getAllActivitiesInRange: vi.fn(),
+  getEffectiveActivitiesInRange: vi.fn(),
   getProductivity: vi.fn(),
   getTimeSeries: vi.fn(),
 }))
@@ -28,7 +28,7 @@ describe('getActivityImpact', () => {
       [new Date(baseTime.getTime() + 20 * 60 * 1000), 50], // after15
       [new Date(baseTime.getTime() + 35 * 60 * 1000), 52], // after30
     ] as [Date, number][])
-    vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
+    vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
       {
         end_time: new Date(baseTime.getTime() + 10 * 60 * 1000),
         external_id: 'tag1',
@@ -56,7 +56,7 @@ describe('getActivityImpact', () => {
 
   test('returns zero occurrences when no matching tags', async () => {
     vi.mocked(db.getTimeSeries).mockResolvedValue([])
-    vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([])
+    vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([])
 
     const result = await getActivityImpact('testuser', 'nonexistent', 'tag', 30, 90)
 
@@ -66,7 +66,7 @@ describe('getActivityImpact', () => {
 
   test('an explicit since starts the range exactly there', async () => {
     vi.mocked(db.getTimeSeries).mockResolvedValue([])
-    vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([])
+    vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([])
     const since = new Date('2026-03-01T00:00:00+01:00')
     const until = new Date('2026-04-01T00:00:00+02:00')
 
@@ -78,12 +78,16 @@ describe('getActivityImpact', () => {
       new Date(since.getTime() - 30 * 60_000),
       new Date(until.getTime() - 1 + 30 * 60_000),
     )
-    expect(db.getAllActivitiesInRange).toHaveBeenCalledWith('testuser', since, new Date(until.getTime() - 1))
+    expect(db.getEffectiveActivitiesInRange).toHaveBeenCalledWith(
+      'testuser',
+      since,
+      new Date(until.getTime() - 1),
+    )
   })
 
   test('without since, the range reaches periodDays back from until', async () => {
     vi.mocked(db.getTimeSeries).mockResolvedValue([])
-    vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([])
+    vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([])
     const until = new Date('2026-04-01T00:00:00Z')
 
     await getActivityImpact('testuser', 'coffee', 'tag', 30, 31, undefined, until)
@@ -122,7 +126,7 @@ describe('getActivityImpact', () => {
   test("match 'exact' excludes longer names that the default contains", async () => {
     const base = new Date('2024-01-15T12:00:00Z')
     vi.mocked(db.getTimeSeries).mockResolvedValue([])
-    vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
+    vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
       { activity_type: 'running', end_time: at(base, 30), source: 'manual' as const, start_time: base },
       {
         activity_type: 'running_treadmill',
@@ -152,7 +156,7 @@ describe('getActivityImpact', () => {
   test('the same session from two sources is one occurrence', async () => {
     const base = new Date('2024-01-15T12:00:00Z')
     vi.mocked(db.getTimeSeries).mockResolvedValue([])
-    vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
+    vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
       { activity_type: 'yoga', end_time: at(base, 60), source: 'garmin' as const, start_time: base },
       {
         activity_type: 'yoga',
@@ -178,7 +182,7 @@ describe('getActivityImpact', () => {
           ] as [Date, number][])
         : [],
     )
-    vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
+    vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
       { activity_type: 'meditation', end_time: at(base, 20), source: 'manual' as const, start_time: base },
     ])
 
@@ -200,7 +204,7 @@ describe('getActivityImpact', () => {
 
   test('the series reaches one window past each end of the period', async () => {
     vi.mocked(db.getTimeSeries).mockResolvedValue([])
-    vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([])
+    vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([])
     const since = new Date('2026-03-01T00:00:00Z')
     const until = new Date('2026-04-01T00:00:00Z')
 
@@ -227,7 +231,7 @@ describe('getActivityImpact', () => {
           ] as [Date, number][])
         : [],
     )
-    vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
+    vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
       { activity_type: 'yoga', end_time: at(base, 30), source: 'manual' as const, start_time: base },
     ])
 

@@ -3,7 +3,7 @@ import type { ActivityImpactMatch, ActivityImpactType } from '@aurboda/api-spec'
 import type { SyncProvider } from '../queries/index.ts'
 import type { ActivityImpactResult } from './types.ts'
 
-import { getAllActivitiesInRange, getProductivity, getTimeSeries } from '../../db/index.ts'
+import { getEffectiveActivitiesInRange, getProductivity, getTimeSeries } from '../../db/index.ts'
 import { getPlaceVisits } from '../locations.ts'
 import { triggerCorrelationSyncs } from './background-sync.ts'
 import {
@@ -68,7 +68,7 @@ const findOccurrences = async (
       )
       .map((visit) => ({ end: visit.end_time.getTime(), start: visit.start_time.getTime() }))
   }
-  const allActivities = await getAllActivitiesInRange(user, start, end)
+  const allActivities = await getEffectiveActivitiesInRange(user, start, end)
   return allActivities
     .filter((act) =>
       exact ? act.activity_type === activity : containsIgnoringCase(act.activity_type, activity),

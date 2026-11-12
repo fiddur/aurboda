@@ -6,12 +6,7 @@ export {
   pickOverrideWinner,
 } from './merge.ts'
 
-export {
-  backfillSuperseded,
-  fetchCategoryMap,
-  materializeSuperseded,
-  rematerializeSupersededOnce,
-} from './supersession.ts'
+export { backfillSuperseded, materializeSuperseded, rematerializeSupersededOnce } from './supersession.ts'
 
 export {
   adoptLegacyActivity,
@@ -52,9 +47,10 @@ export {
   getActivitiesNeedingDetail,
   getActivityById,
   getActivitySourcesByIds,
-  getAllActivitiesInRange,
+  fetchCategoryMap,
   getAllActivityTypeNames,
   getBucketStarts,
+  getEffectiveActivitiesInRange,
   getNearbyActivities,
   getNonSleepActivitiesMerged,
   getOverlappingActivities,

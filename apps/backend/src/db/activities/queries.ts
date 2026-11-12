@@ -525,16 +525,33 @@ export const getScreentimeActivities = async (user: string, start: Date, end: Da
   return result.rows.map(mapActivityRow)
 }
 
-/** Get all activities in a date range (all types, unmerged individual records). */
-export const getAllActivitiesInRange = async (user: string, start: Date, end: Date): Promise<Activity[]> => {
-  const result = await query(
-    user,
-    `SELECT ${ACTIVITY_COLUMNS_BARE}
-     FROM activities WHERE deleted_at IS NULL AND start_time >= $1 AND start_time <= $2
-     ORDER BY start_time`,
-    [start, end],
-  )
-  return result.rows.map(mapActivityRow)
+/** Fetch a small category map (name -> display_category) for cross-source merge eligibility. */
+export const fetchCategoryMap = async (user: string): Promise<Map<string, string>> => {
+  const result = await query(user, `SELECT name, display_category FROM activity_type_definitions`)
+  return new Map(result.rows.map((r) => [r.name as string, r.display_category as string]))
+}
+
+/**
+ * Every activity starting in a date range, all types, as the activity pages show them: synced rows
+ * an override replaced, cross-source duplicates and generic exercises are folded into the activity
+ * that won the merge, so a retyped row counts under its new type only.
+ */
+export const getEffectiveActivitiesInRange = async (
+  user: string,
+  start: Date,
+  end: Date,
+): Promise<MergedActivity[]> => {
+  const [result, categoryMap] = await Promise.all([
+    query(
+      user,
+      `SELECT ${ACTIVITY_COLUMNS_BARE}
+       FROM activities WHERE deleted_at IS NULL AND start_time >= $1 AND start_time <= $2
+       ORDER BY start_time`,
+      [start, end],
+    ),
+    fetchCategoryMap(user),
+  ])
+  return mergeOverlappingActivities(result.rows.map(mapActivityRow), categoryMap)
 }
 
 /** Find a mergeable activity of the same type near a given time.
