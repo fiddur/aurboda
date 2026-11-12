@@ -29,7 +29,9 @@ describe('export tokens', () => {
     const tokens = createExportTokens(SECRET)
     const { token } = tokens.createExportToken('alice', 600, t0)
     const [encrypted, iv, tag] = token.split('.')
-    const flipped = `${encrypted.slice(0, -2)}${encrypted.endsWith('AA') ? 'AB' : 'AA'}`
+    const bytes = Buffer.from(encrypted, 'base64url')
+    bytes[0] ^= 1
+    const flipped = bytes.toString('base64url')
     expect(tokens.verifyExportToken(`${flipped}.${iv}.${tag}`, t0)).toBeNull()
     expect(tokens.verifyExportToken('not-a-token', t0)).toBeNull()
     expect(tokens.verifyExportToken('', t0)).toBeNull()
