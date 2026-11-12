@@ -32,7 +32,6 @@ export type {
   MetricBaseline,
   MetricLagResult,
   MetricOutcome,
-  MovementCorrelation,
   OutcomeConfig,
   ProductivityBaseline,
   ProductivityCorrelation,

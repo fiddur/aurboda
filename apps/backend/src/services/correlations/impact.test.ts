@@ -4,11 +4,13 @@ import {
   activityInterval,
   type BinnedSeries,
   binSeries,
+  bucketsPerSide,
   clampWindowMinutes,
   mergeIntoSessions,
   type MetricSeries,
   pairedEffect,
   summarizeImpact,
+  timelineBuckets,
   valuesBetween,
   windowStats,
 } from './impact.ts'
@@ -229,6 +231,9 @@ describe('summarizeImpact', () => {
   })
 })
 
+const offsets = (window: number) =>
+  timelineBuckets(window).map((b) => [b.phase, b.start_offset_minutes, b.end_offset_minutes])
+
 describe('bins straddling a session boundary', () => {
   test('dense samples in the bin a session starts in stay out of the window before it', () => {
     const sessions = [{ end: min(33), start: min(3) }]
@@ -260,5 +265,108 @@ describe('bins straddling a session boundary', () => {
 
     expect(timeline.stress.after15min).toMatchObject({ mean: 20, occurrences: 1 })
     expect(timeline.stress.after30min.occurrences).toBe(0)
+  })
+})
+
+describe('timelineBuckets', () => {
+  test('two buckets per side below an hour, four from an hour', () => {
+    expect(bucketsPerSide(30)).toBe(2)
+    expect(bucketsPerSide(59)).toBe(2)
+    expect(bucketsPerSide(60)).toBe(4)
+    expect(bucketsPerSide(1440)).toBe(4)
+  })
+
+  test('a 30-minute window has 15-minute buckets around the session', () => {
+    expect(offsets(30)).toEqual([
+      ['before', -30, -15],
+      ['before', -15, 0],
+      ['during', 0, 0],
+      ['after', 0, 15],
+      ['after', 15, 30],
+    ])
+  })
+
+  test('a 4-hour window has hour-long buckets', () => {
+    expect(offsets(240)).toEqual([
+      ['before', -240, -180],
+      ['before', -180, -120],
+      ['before', -120, -60],
+      ['before', -60, 0],
+      ['during', 0, 0],
+      ['after', 0, 60],
+      ['after', 60, 120],
+      ['after', 120, 180],
+      ['after', 180, 240],
+    ])
+  })
+})
+
+describe('summarizeImpact buckets', () => {
+  test('each bucket averages the samples in its slice of the window', () => {
+    const sessions = [{ end: min(30), start: min(0) }]
+    const stress = bins([
+      [-200, 1],
+      [-150, 2],
+      [-90, 3],
+      [-30, 4],
+      [10, 5],
+      [60, 6],
+      [90, 7],
+      [150, 8],
+      [235, 9],
+    ])
+    const { buckets } = summarizeImpact(sessions, only(stress), 240)
+
+    expect(buckets.map((b) => b.stress.mean)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9])
+    expect(buckets.map((b) => b.hrv.mean)).toEqual(Array.from({ length: 9 }, () => null))
+    expect(buckets[0]).toMatchObject({
+      end_offset_minutes: -180,
+      phase: 'before',
+      start_offset_minutes: -240,
+    })
+    expect(buckets[8]).toMatchObject({ end_offset_minutes: 240, phase: 'after', start_offset_minutes: 180 })
+  })
+
+  test('a neighbouring session clips an after-bucket', () => {
+    const sessions = mergeIntoSessions([
+      { end: min(30), start: min(0) },
+      { end: min(130), start: min(100) },
+    ])
+    const stress = bins([
+      [50, 20],
+      [95, 30],
+      [105, 60],
+    ])
+    const { buckets } = summarizeImpact(sessions, only(stress), 240)
+    const after = buckets.filter((b) => b.phase === 'after')
+
+    expect(after[0].stress).toMatchObject({ mean: 20, occurrences: 1 })
+    expect(after[1].stress).toMatchObject({ mean: 30, occurrences: 1 })
+    expect(after[2].stress.occurrences).toBe(0)
+    expect(buckets.find((b) => b.phase === 'during')?.stress.mean).toBe(60)
+  })
+
+  test('the 30-minute buckets match the legacy timeline', () => {
+    const sessions = mergeIntoSessions([
+      { end: min(30), start: min(0) },
+      { end: min(80), start: min(50) },
+    ])
+    const stress = bins([
+      [-25, 1],
+      [-10, 2],
+      [5, 9],
+      [35, 3],
+      [45, 4],
+      [100, 5],
+    ])
+    const { buckets, timeline } = summarizeImpact(sessions, only(stress), 30)
+
+    expect(buckets.map((b) => b.stress)).toEqual([
+      timeline.stress.before30min,
+      timeline.stress.before15min,
+      timeline.stress.during,
+      timeline.stress.after15min,
+      timeline.stress.after30min,
+    ])
   })
 })

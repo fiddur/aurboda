@@ -306,4 +306,42 @@ describe('getHrvActivitiesCorrelation', () => {
     expect(row.mean_stress).toBe(impact.stress_timeline.during.mean)
     expect(impact.stress_effect.paired_occurrences).toBeGreaterThan(0)
   })
+
+  test('a sample before the period but inside the window feeds the effect, not the baseline', async () => {
+    const periodStart = new Date()
+    periodStart.setDate(periodStart.getDate() - 7)
+    periodStart.setHours(0, 0, 0, 0)
+    noContext()
+    vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
+      {
+        activity_type: 'yoga',
+        end_time: at(periodStart, 30),
+        source: 'manual' as const,
+        start_time: at(periodStart, 10),
+      },
+    ])
+    vi.mocked(db.getTimeSeries).mockImplementation(async (_u: string, metric: string) =>
+      metric === 'heart_rate'
+        ? ([
+            [at(periodStart, -15), 80],
+            [at(periodStart, 45), 60],
+          ] as [Date, number][])
+        : [],
+    )
+
+    const result = await getHrvActivitiesCorrelation('testuser', 7)
+
+    expect(db.getTimeSeries).toHaveBeenCalledWith(
+      'testuser',
+      'heart_rate',
+      at(periodStart, -30),
+      expect.any(Date),
+    )
+    expect(result.baseline.mean_hr).toBe(60)
+    expect(result.correlations.activities[0].hr_effect).toMatchObject({
+      after_mean: 60,
+      before_mean: 80,
+      paired_occurrences: 1,
+    })
+  })
 })

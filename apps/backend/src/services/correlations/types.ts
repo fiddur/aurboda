@@ -51,10 +51,6 @@ export interface ActivityCorrelation extends HrvStatsWithDelta {
   avg_duration_min?: number
 }
 
-export interface MovementCorrelation extends HrvStatsWithDelta {
-  state: 'sedentary' | 'walking' | 'post_exercise_30min'
-}
-
 export type HrvActivitiesResult = HrvActivitiesData
 
 export type TimeWindowStats = ApiTimeWindowStats

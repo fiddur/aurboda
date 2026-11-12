@@ -173,6 +173,11 @@ answers three questions about HRV, heart rate and stress:
 3. **Change** (`hrv_effect`, `hr_effect`, `stress_effect`): how does the metric
    move from the `window_minutes` before to the `window_minutes` after?
 
+The window `W` is chosen on the page with the window selector next to the period
+selector: ±30 min (default), ±1 h, ±2 h, ±4 h, ±8 h, ±12 h or ±24 h. It drives
+both the tables' **Change** column and the chart. It is a page setting, not a
+saved one.
+
 Clicking a row draws the before/during/after chart for the same row, and both
 come from one computation (`apps/backend/src/services/correlations/impact.ts`),
 so the summary lines under the chart show the same numbers as the row's
@@ -184,7 +189,11 @@ How the numbers are made:
   resampled to 5-minute bins aligned to the epoch; a bin is the mean of its
   samples. Everything downstream reads bins, so a densely recorded stretch (1 Hz
   heart rate during a workout) weighs the same per minute as a sparse one. The
-  period average (`baseline`) is the mean over all bins.
+  period average (`baseline`) is the mean over the bins inside the period.
+- **Series reach past the period.** The three series are fetched from
+  `start − W` to `end + W`, so the first and last sessions of the period get
+  full windows. Activities, visits and productivity are still taken from the
+  period only, and the baseline still uses only the bins inside it.
 - **Sessions.** Entries of the same group (one activity type, one location, one
   productivity category) that overlap or are at most 10 minutes apart are merged
   into one session, so the same session from two sources, or back-to-back
@@ -198,6 +207,10 @@ How the numbers are made:
   so one session's "after" never reaches into the next session. A window that
   ends where a session begins leaves out the 5-minute bin that session starts
   in, since that bin holds samples from the session itself.
+- **Timeline buckets.** The chart's `timeline` splits each side of the window
+  into 2 buckets when `W` is under an hour and 4 otherwise (30 min → 15-minute
+  buckets, 4 h → 1-hour buckets, 24 h → 6-hour buckets), clipped to the
+  neighbouring sessions like the windows themselves.
 - **Per-session averaging.** Every mean is the mean of per-session means, and
   `stddev` is across sessions, so a long or densely sampled session counts once.
 - **The paired change.** Over the sessions with data both before and after
@@ -211,6 +224,9 @@ How the numbers are made:
 Caveats: occurrences close in time are not independent, so the p-value is
 optimistic; and a window that crosses a time of day picks up the daily rhythm
 (heart rate rising in the morning, say) as well as the activity's own effect.
+The longer the window, the more it does: a few hours after an evening session
+is mostly sleep. The page says so whenever the window is 2 hours or more. There
+is no time-of-day correction.
 
 API:
 
@@ -220,10 +236,17 @@ API:
 - `GET /correlations/activity-impact/:activity?activity_type=activity_type&period_days=30&window_minutes=30&match=exact`
   and MCP `get_activity_impact` (`window_minutes`, `match`). `match` is
   `contains` (default: every name containing `activity`, case-insensitive) or
-  `exact` (the grouping key the context table uses). The `*_timeline` keys name
-  the default 30-minute window: `before30min`/`after30min` are the outer half of
-  the window and `before15min`/`after15min` the inner half, whatever
-  `window_minutes` is. `occurrences` counts merged sessions.
+  `exact` (the grouping key the context table uses). `timeline` is an ordered
+  array of buckets, `{ phase, start_offset_minutes, end_offset_minutes, hrv, hr,
+stress }`: the before buckets oldest first, then `during`, then the after
+  buckets. Offsets of before buckets are relative to the session start
+  (negative, e.g. `-240 … -180`), offsets of after buckets relative to the
+  session end, and `during` has both offsets `0`. So `window_minutes=240` gives
+  9 buckets and `window_minutes=30` gives 5. The older `*_timeline` objects are
+  kept for compatibility: their keys name the default 30-minute window, and
+  `before30min`/`after30min` are the outer half of the window and
+  `before15min`/`after15min` the inner half, whatever `window_minutes` is.
+  `occurrences` counts merged sessions.
 
 ## Statistics notes
 

@@ -75,9 +75,10 @@ describe('getActivityImpact', () => {
     expect(db.getTimeSeries).toHaveBeenCalledWith(
       'testuser',
       'hrv_rmssd',
-      since,
-      new Date(until.getTime() - 1),
+      new Date(since.getTime() - 30 * 60_000),
+      new Date(until.getTime() - 1 + 30 * 60_000),
     )
+    expect(db.getAllActivitiesInRange).toHaveBeenCalledWith('testuser', since, new Date(until.getTime() - 1))
   })
 
   test('without since, the range reaches periodDays back from until', async () => {
@@ -90,8 +91,8 @@ describe('getActivityImpact', () => {
     expect(db.getTimeSeries).toHaveBeenCalledWith(
       'testuser',
       'hrv_rmssd',
-      new Date('2026-03-01T00:00:00Z'),
-      new Date(until.getTime() - 1),
+      new Date('2026-02-28T23:30:00Z'),
+      new Date(until.getTime() - 1 + 30 * 60_000),
     )
   })
 
@@ -195,5 +196,66 @@ describe('getActivityImpact', () => {
     const clamped = await getActivityImpact('testuser', 'meditation', 'activity_type', 1, 90)
     expect(clamped.window_minutes).toBe(10)
     expect(clamped.stress_effect.paired_occurrences).toBe(0)
+  })
+
+  test('the series reaches one window past each end of the period', async () => {
+    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([])
+    const since = new Date('2026-03-01T00:00:00Z')
+    const until = new Date('2026-04-01T00:00:00Z')
+
+    await getActivityImpact('testuser', 'yoga', 'activity_type', 240, 31, undefined, until, since)
+
+    for (const metric of ['hrv_rmssd', 'heart_rate', 'stress_level']) {
+      expect(db.getTimeSeries).toHaveBeenCalledWith(
+        'testuser',
+        metric,
+        new Date('2026-02-28T20:00:00Z'),
+        new Date(until.getTime() - 1 + 240 * 60_000),
+      )
+    }
+  })
+
+  test('the timeline lists the buckets in time order for the chosen window', async () => {
+    const base = new Date('2024-01-15T12:00:00Z')
+    vi.mocked(db.getTimeSeries).mockImplementation(async (_u: string, metric: string) =>
+      metric === 'stress_level'
+        ? ([
+            [at(base, -150), 40],
+            [at(base, 10), 30],
+            [at(base, 100), 20],
+          ] as [Date, number][])
+        : [],
+    )
+    vi.mocked(db.getAllActivitiesInRange).mockResolvedValue([
+      { activity_type: 'yoga', end_time: at(base, 30), source: 'manual' as const, start_time: base },
+    ])
+
+    const short = await getActivityImpact('testuser', 'yoga', 'activity_type', 30, 90)
+    expect(short.timeline.map((b) => [b.phase, b.start_offset_minutes, b.end_offset_minutes])).toEqual([
+      ['before', -30, -15],
+      ['before', -15, 0],
+      ['during', 0, 0],
+      ['after', 0, 15],
+      ['after', 15, 30],
+    ])
+
+    const long = await getActivityImpact('testuser', 'yoga', 'activity_type', 240, 90)
+    expect(long.window_minutes).toBe(240)
+    expect(long.timeline.map((b) => b.phase)).toEqual([
+      'before',
+      'before',
+      'before',
+      'before',
+      'during',
+      'after',
+      'after',
+      'after',
+      'after',
+    ])
+    expect(long.timeline.map((b) => b.start_offset_minutes)).toEqual([
+      -240, -180, -120, -60, 0, 0, 60, 120, 180,
+    ])
+    expect(long.timeline.map((b) => b.stress.mean)).toEqual([null, 40, null, null, 30, null, 20, null, null])
   })
 })
