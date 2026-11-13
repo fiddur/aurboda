@@ -84,7 +84,6 @@ const matchesFilters = (entry: StoredExerciseCatalogEntry, query: ExerciseSearch
 const byName = (a: StoredExerciseCatalogEntry, b: StoredExerciseCatalogEntry): number =>
   a.name.length - b.name.length || a.name.localeCompare(b.name, 'en')
 
-/** Exact match, then matches in the name, then matches through aliases and search terms. */
 const tier = (rank: number): number => (rank === 0 ? 0 : rank <= 2 ? 1 : 2)
 
 /** body.build's hand-picked gym exercises go before the long tail of free-exercise-db within a tier. */
