@@ -11,19 +11,11 @@ import {
   stepActiveIndex,
 } from './knownValueSuggestions'
 import './KnownValuesInput.css'
+import { useDebounced } from './useDebounced'
 
 const STALE_TIME = 5 * 60 * 1000
 const CATALOG_DEBOUNCE_MS = 200
 const VIEWPORT_MARGIN = 8
-
-const useDebounced = <T,>(value: T, ms: number): T => {
-  const [debounced, setDebounced] = useState(value)
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), ms)
-    return () => clearTimeout(timer)
-  }, [value, ms])
-  return debounced
-}
 
 const floatingStyle = (input: HTMLInputElement): Record<string, string> => {
   const rect = input.getBoundingClientRect()

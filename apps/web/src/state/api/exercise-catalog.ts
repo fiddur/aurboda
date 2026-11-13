@@ -1,5 +1,4 @@
 import type {
-  ExerciseCatalogEntry,
   ExerciseCatalogQuery,
   ExerciseCatalogSearchResponse,
   ExerciseCatalogSearchResult,
@@ -18,9 +17,4 @@ export const searchExerciseCatalog = async (
     params: query,
   })
   return response.data.data ?? { entries: [], total: 0, version: '' }
-}
-
-export const fetchExerciseByName = async (name: string): Promise<ExerciseCatalogEntry | null> => {
-  const result = await searchExerciseCatalog({ limit: 1, name })
-  return result.entries[0] ?? null
 }

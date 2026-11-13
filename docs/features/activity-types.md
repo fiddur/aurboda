@@ -295,6 +295,10 @@ merge keeps it under the new spelling.
 A field without a catalogue is a 400. The MCP twins are `get_item_value_identity`,
 `set_item_value_identity`, `clear_item_value_identity` and `list_unmapped_item_values`.
 
+In the web app, the exercise page shows a name's identity and changes it (map, change, dismiss,
+remove the mapping, undo), and the type page lists the unmapped names with suggestions to map or
+dismiss each; see [Exercise catalogue](./exercise-catalog.md#in-the-web-app).
+
 Sets, session groups, item history, measures, records, trends, goals and challenges stay keyed on
 the name: a client joins a set to its entry through the field values.
 

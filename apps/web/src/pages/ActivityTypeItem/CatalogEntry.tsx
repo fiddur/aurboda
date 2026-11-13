@@ -14,7 +14,7 @@ const Row = ({ label, items }: { label: string; items: string[] }) =>
 export const CatalogEntry = ({ entry, value }: { entry: ExerciseCatalogEntry; value: string }) => {
   const { primary, secondary } = muscleTiers(entry)
   return (
-    <section class="activity-type-item-section activity-type-item-catalog">
+    <div class="activity-type-item-catalog">
       {!isSameName(entry.name, value) && (
         <p class="activity-type-item-catalog-name">In the catalogue as {entry.name}</p>
       )}
@@ -23,6 +23,6 @@ export const CatalogEntry = ({ entry, value }: { entry: ExerciseCatalogEntry; va
         <Row label="Secondary muscles" items={secondary} />
         <Row label="Equipment" items={entry.equipment.map((e) => e.name)} />
       </dl>
-    </section>
+    </div>
   )
 }

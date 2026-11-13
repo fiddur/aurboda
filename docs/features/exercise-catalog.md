@@ -17,9 +17,20 @@ built-in `strength_training` schema sets it on `sets.exercise` (see
 - **Set editor**: typing an exercise suggests the names already logged for the type first, then
   catalogue exercises (`GET /exercise-catalog?q=…`, from two characters), each with its main muscles.
   Picking one writes its name; any other text is kept as typed.
-- **Exercise page**: when the exercise's name is a catalogue name or alias (`GET
-/exercise-catalog?name=…`), the page lists its primary muscles (weight 0.75 or more), secondary
-  muscles and equipment, and the catalogue name when it is spelled differently.
+- **Exercise page**: a section shows the name's [identity](activity-types.md#exercise-identities)
+  (`GET /activity-types/:name/item-values/identity`). Matched by name or mapped by you, it lists the
+  entry's primary muscles (weight 0.75 or more), secondary muscles and equipment, and the catalogue
+  name when it is spelled differently; "Change" opens a catalogue search to map the name to another
+  entry, and "Not this exercise" (a match by name) or "Remove mapping" (your mapping) undoes it. An
+  unmatched name opens the search directly and can be marked "Not in the catalogue"; a name so
+  marked has "Undo". Other logged names resolving to the same entry are listed with their counts,
+  as candidates for the page's merge.
+- **Type page**: under each catalogue-backed item field, "Not in the catalogue" summarises the
+  logged names that match no entry and that you have neither mapped nor dismissed
+  (`GET /activity-types/:name/item-values/unmapped`). "Review" lists them, most used first, 20 at a
+  time, each with up to three suggested entries to map it to with one click, a catalogue search, and
+  "Not in the catalogue" to dismiss it. Nothing here is required: an unmapped name keeps working
+  everywhere.
 
 ## Entries
 
