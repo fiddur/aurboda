@@ -40,21 +40,23 @@ Go to **Data Sources → Home Assistant**.
 1. **Create a dedicated Home Assistant user for Aurboda (recommended).** HA long-lived access tokens are not scoped: a token can do everything its user can. A separate, **non-admin** user limits what a leaked token could do. In HA: **Settings → People → Users → Add user**, without administrator rights.
 2. **Create a long-lived access token** as that user: profile (bottom left) → **Security** → **Long-lived access tokens** → **Create token**. Copy it; HA shows it once.
 3. **Enter the URL** of your Home Assistant as it is reachable **from the Aurboda server**, e.g. `https://ha.example.org` or a Nabu Casa remote URL. `http://homeassistant.local:8123` only works when the admin has set `HOME_ASSISTANT_ALLOW_PRIVATE_ADDRESSES`.
-4. **Paste the token.** It is write-only: Aurboda never shows it again, and the settings only say whether one is stored. Changing the URL to another host (origin) removes the stored token unless you enter a new one in the same change, so a hijacked Aurboda session cannot send your token elsewhere.
+4. **Paste the token.** It is write-only: the app and the settings API never show it again, and only say whether one is stored. (It is stored in your user database like the other integration keys, so a [full data export](./data-export.md) of your account contains it.) Changing the URL to another host (origin) removes the stored token unless you enter a new one in the same change, so a hijacked Aurboda session cannot send your token elsewhere.
 5. **Pick the entity.** The list shows the `person.*` and `device_tracker.*` entities that currently have coordinates (`GET /api/home-assistant/entities`, MCP `list_home_assistant_entities`). Loading it is also the connection test.
    - The phone's **`device_tracker.*`** (from the companion app) carries altitude and speed, and is the better choice for a single phone.
    - **`person.*`** merges several trackers (phone, router presence, …) into one position, but reports only latitude, longitude and accuracy.
 
 Then **Sync now**, or wait for the background poll.
 
+**Changing the entity or the URL later** does not fetch the new tracker's history: the next sync carries on from the last one, which is what you want when you swap `person.*` for the same phone's `device_tracker.*`. Use **Full resync** to read the new entity's last 10 days. Positions already stored from the old entity stay.
+
 Settings via the API: `PATCH /api/user/settings` with `home_assistant_url`, `home_assistant_token` and `home_assistant_entity_id` (each `null` to clear). The response carries `home_assistant_url`, `home_assistant_entity_id` and `home_assistant_token_set`, never the token.
 
 ## How Sync Works
 
-- **REST:** `POST /api/sync/home-assistant` — `{ "full_resync": true, "start_date": "YYYY-MM-DD" }` optional. The result counts `locations_fetched` (states with coordinates HA returned), `locations_inserted` (rows that were new) and `locations_superseded` (new rows soft-deleted because an activity's own GPS track covers them).
+- **REST:** `POST /api/sync/home-assistant` — `{ "full_resync": true, "start_date": "YYYY-MM-DD" }` optional; `start_date` only applies together with `full_resync`. The result counts `locations_fetched` (states with coordinates HA returned), `locations_inserted` (rows that were new) and `locations_superseded` (new rows soft-deleted because an activity's own GPS track covers them).
 - **MCP:** `sync_home_assistant()`
 - **Status:** `GET /api/sync/home-assistant/status`, `get_sync_status(provider: "home_assistant")`
-- **Reset:** `DELETE /api/sync/home-assistant/state`, `reset_sync_state(provider: "home_assistant")`
+- **Reset:** `DELETE /api/sync/home-assistant/state`, `reset_sync_state(provider: "home_assistant")`. Both forget the sync state, the last sync time included, so the next sync is a first sync. Stored positions are kept.
 
 A run reads HA's history API, one request per 24 hours of the window:
 
@@ -65,7 +67,7 @@ GET <url>/api/history/period/<start>?filter_entity_id=<entity>&end_time=<end>&si
 - `significant_changes_only=0` is needed because otherwise HA reports a `person.*` entity only when its state string changes, so a move that stays `not_home` would be lost.
 - `skip_initial_state` is needed because otherwise HA prepends the state as of `<start>` with its time rewritten to `<start>`, which would invent a position at every sync start.
 
-**Window.** The first sync (or a full resync) reaches back **10 days**, HA's default recorder retention, or to `start_date`. Later syncs start **5 minutes before the last successful sync**: HA commits states to its database with a delay, and the overlap picks up rows that were not visible yet. Rows already stored are skipped (`ON CONFLICT (source, time) DO NOTHING`). The last sync time only advances when every request of the run succeeded; on an error the next run re-covers the same window.
+**Window.** The first sync (or a full resync) reaches back **10 days**, HA's default recorder retention, or to `start_date`, at most 366 days back. Later syncs start **5 minutes before the last successful sync**: HA commits states to its database with a delay, and the overlap picks up rows that were not visible yet. They never reach further back than the same 10 days: each day is one request to your server, so after a longer gap a recorder that keeps more needs a full resync with a `start_date`. Rows already stored are skipped (`ON CONFLICT (source, time) DO NOTHING`). The last sync time only advances when every request of the run succeeded; on an error the next run re-covers the same window.
 
 **Background polling.** The background scheduler polls Home Assistant every **10 minutes** by default. Set `sync_intervals.home_assistant` (or `sync_intervals.default`) in minutes to change it, on the Data Sources page or via the settings API. See [Data Sources → Sync Behavior](./data-sources.md#sync-behavior). After a failed sync (Home Assistant down or unreachable, a rejected token) the background poll waits 15 minutes before it tries again; a manual sync runs at once.
 
@@ -73,7 +75,7 @@ GET <url>/api/history/period/<start>?filter_entity_id=<entity>&end_time=<end>&si
 
 ### GPS precedence
 
-Home Assistant positions are passive phone positions, like OwnTracks: where an activity has its own GPS track (Garmin, Strava), that track wins for the activity's span. Because a pull arrives after the fact, possibly after the activity's track was written, each sync also soft-deletes the `home_assistant` points in its window that fall inside an activity that has a track in `activity_tracks`. See [GPS Precedence](./data-sources.md#gps-precedence).
+Home Assistant positions are passive phone positions, like OwnTracks: where an activity has its own GPS track (Garmin, Strava), that track wins for the activity's span. Because a pull arrives after the fact, possibly after the activity's track was written, each sync also soft-deletes the `home_assistant` points in its window that fall inside an activity that has a track in `activity_tracks`. That late pass uses the activity's start and end exactly; the few minutes a track may run past either end are only covered when the track is written after the points. See [GPS Precedence](./data-sources.md#gps-precedence).
 
 ## Limitations
 

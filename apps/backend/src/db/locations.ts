@@ -113,7 +113,9 @@ export const softDeleteSupersededLocations = async (
  *
  * The late-arrival counterpart of `softDeleteSupersededLocations`: a pulled
  * source (Home Assistant) can deliver phone points after the activity's track
- * was written, when the track writer's soft-delete has already run.
+ * was written, when the track writer's soft-delete has already run. It matches
+ * on the activity's own span: the track's overhang past either end, which the
+ * writer's `gpsPrecedenceSpan` also covers, is not stored anywhere to match on.
  */
 export const softDeleteLocationsInTrackedActivities = async (
   user: string,

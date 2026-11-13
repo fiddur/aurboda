@@ -8,10 +8,11 @@
 import type { AxiosRequestConfig } from 'axios'
 
 import axios, { isAxiosError } from 'axios'
+import https from 'node:https'
 
 import type { HomeAssistantState } from './process.ts'
 
-import { assertPublicUrl, SafeFetchError } from '../../services/safe-fetch.ts'
+import { assertPublicUrl, createPublicOnlyLookup, SafeFetchError } from '../../services/safe-fetch.ts'
 
 export interface HomeAssistantConnection {
   baseUrl: string
@@ -58,6 +59,20 @@ export const createAssertReachable =
     await assertPublicUrl(url)
   }
 
+/**
+ * What the client needs to stay off the server's own network. Outside
+ * `allowPrivate` the agent pins every connection to an address the guard
+ * accepts: the URL is the user's and is polled for as long as it is stored, so
+ * a hostname that flips to an internal address after the check would otherwise
+ * turn the error messages into a probe of that network.
+ */
+export const homeAssistantReachability = (
+  allowPrivate: boolean,
+): { assertReachable: AssertReachable; httpsAgent?: https.Agent } => ({
+  assertReachable: createAssertReachable(allowPrivate),
+  httpsAgent: allowPrivate ? undefined : new https.Agent({ lookup: createPublicOnlyLookup() }),
+})
+
 const statusMessage = (status: number): string => {
   if (status === 401 || status === 403) return 'Home Assistant rejected the access token'
   if (status === 404) return 'Home Assistant answered 404: check the URL'
@@ -70,20 +85,22 @@ const errorCode = (error: unknown): string | undefined => {
   return typeof code === 'string' ? code : undefined
 }
 
+const privateAddressError = (): HomeAssistantApiError =>
+  new HomeAssistantApiError(
+    'The Home Assistant address is private (local network or loopback); the server admin can allow it with HOME_ASSISTANT_ALLOW_PRIVATE_ADDRESSES=true',
+  )
+
 export const toHomeAssistantError = (error: unknown): HomeAssistantApiError => {
   if (error instanceof HomeAssistantApiError) return error
   if (error instanceof SafeFetchError) {
-    if (error.code === 'private_address') {
-      return new HomeAssistantApiError(
-        'The Home Assistant address is private (local network or loopback); the server admin can allow it with HOME_ASSISTANT_ALLOW_PRIVATE_ADDRESSES=true',
-      )
-    }
+    if (error.code === 'private_address') return privateAddressError()
     if (error.code === 'dns') return new HomeAssistantApiError('Could not resolve the Home Assistant host')
     return new HomeAssistantApiError('The Home Assistant URL is not a valid http(s) URL')
   }
   if (isAxiosError(error)) {
     const status = error.response?.status
     if (status !== undefined) return new HomeAssistantApiError(statusMessage(status), status)
+    if (error.code === 'private_address') return privateAddressError()
     return new HomeAssistantApiError(`Could not reach Home Assistant (${error.code ?? 'no response'})`)
   }
   return new HomeAssistantApiError(`Could not reach Home Assistant (${errorCode(error) ?? 'unknown error'})`)
@@ -94,15 +111,12 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const toState = (item: unknown): HomeAssistantState | null => {
   if (!isRecord(item)) return null
-  const { attributes, entity_id, last_changed, last_updated, state } = item
-  if (typeof entity_id !== 'string' || typeof last_updated !== 'string' || !isRecord(attributes)) return null
-  return {
-    attributes,
-    entity_id,
-    last_changed: typeof last_changed === 'string' ? last_changed : undefined,
-    last_updated,
-    state: typeof state === 'string' ? state : '',
-  }
+  const { attributes, entity_id, state } = item
+  const last_changed = typeof item.last_changed === 'string' ? item.last_changed : undefined
+  // HA's compressed state formats leave `last_updated` out when it equals `last_changed`.
+  const last_updated = typeof item.last_updated === 'string' ? item.last_updated : last_changed
+  if (typeof entity_id !== 'string' || last_updated === undefined || !isRecord(attributes)) return null
+  return { attributes, entity_id, last_changed, last_updated, state: typeof state === 'string' ? state : '' }
 }
 
 const toStates = (items: unknown[]): HomeAssistantState[] =>
@@ -142,6 +156,7 @@ export interface HomeAssistantClient {
 export const homeAssistantClient = (deps: {
   http?: HomeAssistantHttp
   assertReachable: AssertReachable
+  httpsAgent?: https.Agent
 }): HomeAssistantClient => {
   const http: HomeAssistantHttp = deps.http ?? ((url, config) => axios.get(url, config))
 
@@ -150,6 +165,7 @@ export const homeAssistantClient = (deps: {
       await deps.assertReachable(url)
       const response = await http(url, {
         headers: { Accept: 'application/json', Authorization: `Bearer ${conn.token}` },
+        httpsAgent: deps.httpsAgent,
         maxBodyLength: MAX_RESPONSE_BYTES,
         maxContentLength: MAX_RESPONSE_BYTES,
         maxRedirects: 0,

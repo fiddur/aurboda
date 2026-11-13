@@ -9,6 +9,7 @@ import {
   HomeAssistantApiError,
   homeAssistantClient,
   type HomeAssistantHttp,
+  homeAssistantReachability,
 } from './client.ts'
 
 const TOKEN = 'secret-long-lived-token-abc123'
@@ -121,6 +122,18 @@ describe('homeAssistantClient.getHistory', () => {
     ])
   })
 
+  test('a state without last_updated is timed by last_changed', async () => {
+    const { last_updated: _omitted, ...compressed } = state('person.me', '2026-11-10T09:00:00+00:00')
+    const { http } = recordingHttp([[compressed]])
+    const states = await homeAssistantClient({ assertReachable: allow, http }).getHistory(
+      conn,
+      'person.me',
+      start,
+      end,
+    )
+    expect(states.map((s) => s.last_updated)).toEqual(['2026-11-10T09:00:00+00:00'])
+  })
+
   test('rejects a response that is not an array', async () => {
     const { http } = recordingHttp({ message: 'nope' })
     const error = await captureError(
@@ -176,10 +189,30 @@ describe('error mapping', () => {
     expect(error.message).toContain('HOME_ASSISTANT_ALLOW_PRIVATE_ADDRESSES')
   })
 
+  test('a host that resolves to a private address at connect time names the admin setting', async () => {
+    const error = await captureError(getStatesFailing(axiosError(undefined, 'private_address')))
+    expect(error.message).toContain('HOME_ASSISTANT_ALLOW_PRIVATE_ADDRESSES')
+  })
+
   test('a DNS failure outside axios → could not reach, with its code', async () => {
     const dnsError = Object.assign(new Error(`getaddrinfo ENOTFOUND ${TOKEN}`), { code: 'ENOTFOUND' })
     const error = await captureError(getStatesFailing(dnsError))
     expect(error.message).toBe('Could not reach Home Assistant (ENOTFOUND)')
+  })
+})
+
+describe('homeAssistantReachability', () => {
+  test('pins connections to checked addresses by default, and sends the agent with each request', async () => {
+    const { httpsAgent, assertReachable } = homeAssistantReachability(false)
+    expect(httpsAgent?.options.lookup).toBeTypeOf('function')
+    const { calls, http } = recordingHttp([])
+    await homeAssistantClient({ assertReachable: allow, http, httpsAgent }).getStates(conn)
+    expect(calls[0].config.httpsAgent).toBe(httpsAgent)
+    await expect(assertReachable('https://127.0.0.1/api/states')).rejects.toBeInstanceOf(SafeFetchError)
+  })
+
+  test('leaves the connection alone when private addresses are allowed', () => {
+    expect(homeAssistantReachability(true).httpsAgent).toBeUndefined()
   })
 })
 

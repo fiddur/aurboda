@@ -281,7 +281,7 @@ export const updateSettingsInputSchema = z
     }),
     home_assistant_token: homeAssistantTokenSchema.nullable().optional().meta({
       description:
-        'Home Assistant long-lived access token (set to null to clear). Write-only: never returned. Cleared when home_assistant_url moves to another origin without a new token in the same update.',
+        'Home Assistant long-lived access token (set to null to clear). Write-only: never returned by the settings API. Cleared when home_assistant_url moves to another origin without a new token in the same update.',
     }),
     home_assistant_entity_id: homeAssistantEntityIdSchema.nullable().optional().meta({
       description:
@@ -372,7 +372,8 @@ export const userSettingsResponseSchema = baseResponseSchema
       .default(null)
       .meta({ description: 'Home Assistant entity locations are pulled from' }),
     home_assistant_token_set: z.boolean().default(false).meta({
-      description: 'Whether a Home Assistant access token is stored (the token itself is never returned)',
+      description:
+        'Whether a Home Assistant access token is stored (the settings API never returns the token itself)',
     }),
     rescue_time_key: z.string().nullable().default(null).meta({ description: 'RescueTime API key' }),
     strava_connected: z

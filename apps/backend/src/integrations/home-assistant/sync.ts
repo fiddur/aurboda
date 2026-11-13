@@ -4,12 +4,15 @@
  * state that carries coordinates as a `locations` row. The first run (or a full
  * resync) reaches back 10 days, HA's default recorder retention; later runs start
  * 5 minutes before the last successful sync, because HA commits states to its
- * database with a delay. `ON CONFLICT (source, time) DO NOTHING` dedupes.
+ * database with a delay, but never further back than those 10 days: every day
+ * of the window is one request to somebody's home server, so a connection that
+ * was down for months must not turn into hundreds of them in one scheduler tick.
+ * `ON CONFLICT (source, time) DO NOTHING` dedupes.
  */
 
 import type { HomeAssistantSyncResult } from '@aurboda/api-spec'
 
-import { addMinutes, subDays, subMinutes } from 'date-fns'
+import { addMinutes, max, subDays, subMinutes } from 'date-fns'
 
 import type { Location, UserSettings } from '../../db/types.ts'
 import type { HomeAssistantClient } from './client.ts'
@@ -18,6 +21,7 @@ import {
   getAllSyncStates,
   getSyncState,
   insertLocations,
+  resetSyncState,
   softDeleteLocationsInTrackedActivities,
   upsertSyncState,
 } from '../../db/index.ts'
@@ -31,6 +35,8 @@ export const HOME_ASSISTANT_DATA_TYPE = 'locations'
 export const HOME_ASSISTANT_SOURCE = 'home_assistant'
 
 export const HOME_ASSISTANT_HISTORY_DAYS = 10
+/** How far back a full resync's `start_date` may reach, for a recorder set to keep more than the default. */
+export const HOME_ASSISTANT_MAX_HISTORY_DAYS = 366
 export const HOME_ASSISTANT_OVERLAP_MINUTES = 5
 export const HOME_ASSISTANT_DEFAULT_INTERVAL_MINUTES = 10
 /**
@@ -96,10 +102,15 @@ const syncWindowStart = (
   lastSyncTime: Date | undefined,
   now: Date,
   options: { fullResync?: boolean; startDate?: Date },
-): Date =>
-  options.fullResync || !lastSyncTime
-    ? (options.startDate ?? subDays(now, HOME_ASSISTANT_HISTORY_DAYS))
-    : subMinutes(lastSyncTime, HOME_ASSISTANT_OVERLAP_MINUTES)
+): Date => {
+  const defaultStart = subDays(now, HOME_ASSISTANT_HISTORY_DAYS)
+  if (options.fullResync || !lastSyncTime) {
+    return options.startDate
+      ? max([options.startDate, subDays(now, HOME_ASSISTANT_MAX_HISTORY_DAYS)])
+      : defaultStart
+  }
+  return max([subMinutes(lastSyncTime, HOME_ASSISTANT_OVERLAP_MINUTES), defaultStart])
+}
 
 /** Fetches and stores the window slice by slice; `counts` is filled as it goes, so a failure keeps what was stored. */
 const pullWindow = async ({ user, deps, connection, start, now, counts }: SyncRun): Promise<void> => {
@@ -205,12 +216,6 @@ export const getHomeAssistantSyncStates = async (user: string) => {
   }))
 }
 
-export const resetHomeAssistantSyncState = async (user: string): Promise<void> => {
-  await upsertSyncState(user, {
-    data_type: HOME_ASSISTANT_DATA_TYPE,
-    error_message: undefined,
-    provider: HOME_ASSISTANT_PROVIDER,
-    retry_after: undefined,
-    status: 'idle',
-  })
-}
+/** Forgets the last sync time too, so the next run is a first sync: the same as `reset_sync_state` over MCP. */
+export const resetHomeAssistantSyncState = (user: string): Promise<void> =>
+  resetSyncState(user, HOME_ASSISTANT_PROVIDER, HOME_ASSISTANT_DATA_TYPE)

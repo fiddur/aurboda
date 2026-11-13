@@ -127,6 +127,43 @@ describe('syncHomeAssistantLocations', () => {
     expect(h.historyCalls).toEqual([{ end: NOW, start: new Date('2026-11-13T11:45:00Z') }])
   })
 
+  test('a last sync months ago reaches back 10 days, not to the last sync', async () => {
+    const h = harness({
+      syncState: {
+        data_type: 'locations',
+        last_sync_time: new Date('2026-06-01T00:00:00Z'),
+        provider: 'home_assistant',
+        status: 'error',
+      },
+    })
+    await syncHomeAssistantLocations('alice', h.deps)
+    expect(h.historyCalls).toHaveLength(10)
+    expect(h.historyCalls[0].start).toEqual(new Date('2026-11-03T12:00:00Z'))
+  })
+
+  test('a start date without a full resync does not move an incremental sync', async () => {
+    const h = harness({
+      syncState: {
+        data_type: 'locations',
+        last_sync_time: new Date('2026-11-13T11:50:00Z'),
+        provider: 'home_assistant',
+        status: 'idle',
+      },
+    })
+    await syncHomeAssistantLocations('alice', h.deps, { startDate: new Date('2026-11-01T00:00:00Z') })
+    expect(h.historyCalls).toEqual([{ end: NOW, start: new Date('2026-11-13T11:45:00Z') }])
+  })
+
+  test('a full resync start date is held to a year back', async () => {
+    const h = harness()
+    await syncHomeAssistantLocations('alice', h.deps, {
+      fullResync: true,
+      startDate: new Date('2015-01-01T00:00:00Z'),
+    })
+    expect(h.historyCalls).toHaveLength(366)
+    expect(h.historyCalls[0].start).toEqual(new Date('2025-11-12T12:00:00Z'))
+  })
+
   test('full resync from a start date ignores the last sync', async () => {
     const h = harness({
       syncState: {

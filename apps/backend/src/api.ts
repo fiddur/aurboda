@@ -64,7 +64,7 @@ import { garminDataTypes } from './integrations/garmin/process.ts'
 import { syncActivityDetails, syncGarminDataType } from './integrations/garmin/sync.ts'
 import { gravlClient } from './integrations/gravl/client.ts'
 import { enrichGravlWorkout } from './integrations/gravl/sync.ts'
-import { createAssertReachable, homeAssistantClient } from './integrations/home-assistant/client.ts'
+import { homeAssistantClient, homeAssistantReachability } from './integrations/home-assistant/client.ts'
 import {
   defaultHomeAssistantSyncDeps,
   syncHomeAssistantLocations,
@@ -397,9 +397,9 @@ const main = async () => {
   // further down (it needs the geocode queue, which needs pg-boss), so the
   // post-sync hook reads it through this holder once it exists.
   let triggerDetectionForUser: ((user: string) => void) | null = null
-  const homeAssistant = homeAssistantClient({
-    assertReachable: createAssertReachable(process.env.HOME_ASSISTANT_ALLOW_PRIVATE_ADDRESSES === 'true'),
-  })
+  const homeAssistant = homeAssistantClient(
+    homeAssistantReachability(process.env.HOME_ASSISTANT_ALLOW_PRIVATE_ADDRESSES === 'true'),
+  )
   const homeAssistantSyncDeps = defaultHomeAssistantSyncDeps(homeAssistant, (user, start, end) => {
     triggerDetectionForUser?.(user)
     activityNotifier(user, '*', start, end)
