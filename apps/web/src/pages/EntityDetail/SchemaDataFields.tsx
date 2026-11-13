@@ -149,6 +149,7 @@ export const SchemaDataFields = ({
         <ListFieldEditor
           field={field}
           idPrefix={`edit-${field.name}`}
+          activityType={activityType}
           rows={asRows(data[field.name])}
           onChange={(rows) => onDataChange({ ...data, [field.name]: rows })}
         />

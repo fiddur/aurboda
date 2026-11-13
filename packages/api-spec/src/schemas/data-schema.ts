@@ -37,15 +37,36 @@ const fieldDefinitionShape = {
   unit: z.string().optional().meta({ description: 'Display unit suffix (e.g. "cm", "kg")' }),
 }
 
+export const dataFieldCatalogs = ['exercises'] as const
+
+export const dataFieldCatalogSchema = z.enum(dataFieldCatalogs).meta({
+  id: 'DataFieldCatalog',
+  description:
+    'A built-in catalogue a data field can be matched against (`exercises`: the exercise catalogue)',
+})
+
+export type DataFieldCatalog = z.infer<typeof dataFieldCatalogSchema>
+
 export const dataItemFieldDefinitionSchema = z
   .object({
     ...fieldDefinitionShape,
+    catalog: dataFieldCatalogSchema.optional().meta({
+      description:
+        'Built-in catalogue the values of this field are matched against (`exercises`: the exercise catalogue, `GET /exercise-catalog`). Clients suggest its entries; any text stays valid. Only on a string field without enum_values',
+    }),
     is_categorical: z.boolean().optional().meta({
       description:
         'Whether the items can be grouped by this field (e.g. the exercise of a set): sessions, field values and chart breakdowns then accept the path `<list>.<field>`',
     }),
     type: dataItemFieldTypeSchema.meta({ description: 'Value type for validation' }),
   })
+  .refine(
+    (field) => field.catalog === undefined || (field.type === 'string' && field.enum_values === undefined),
+    {
+      message: 'catalog is only allowed on a string field without enum_values',
+      path: ['catalog'],
+    },
+  )
   .meta({
     id: 'DataItemFieldDefinition',
     description: 'Definition of one scalar field of a list item (e.g. the exercise, weight or reps of a set)',

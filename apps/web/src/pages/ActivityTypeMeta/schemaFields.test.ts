@@ -78,6 +78,19 @@ describe('item fields', () => {
     ])
   })
 
+  test('update drops the catalogue when the field stops being a plain string', () => {
+    const withCatalog = listField([{ catalog: 'exercises', name: 'exercise', type: 'string' }])
+    expect(updateItemField(withCatalog, 0, { label: 'Exercise' }).item_fields).toEqual([
+      { catalog: 'exercises', label: 'Exercise', name: 'exercise', type: 'string' },
+    ])
+    expect(updateItemField(withCatalog, 0, { type: 'number' }).item_fields).toEqual([
+      { name: 'exercise', type: 'number' },
+    ])
+    expect(updateItemField(withCatalog, 0, { enum_values: ['a'] }).item_fields).toEqual([
+      { enum_values: ['a'], name: 'exercise', type: 'string' },
+    ])
+  })
+
   test('remove drops one item field', () => {
     expect(removeItemField(field, 0).item_fields).toEqual([{ name: 'reps', type: 'number' }])
   })

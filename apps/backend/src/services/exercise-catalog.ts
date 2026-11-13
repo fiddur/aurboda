@@ -79,6 +79,13 @@ const matchesFilters = (entry: StoredExerciseCatalogEntry, query: ExerciseSearch
 const byName = (a: StoredExerciseCatalogEntry, b: StoredExerciseCatalogEntry): number =>
   a.name.length - b.name.length || a.name.localeCompare(b.name, 'en')
 
+/** Exact match, then matches in the name, then matches through aliases and search terms. */
+const tier = (rank: number): number => (rank === 0 ? 0 : rank <= 2 ? 1 : 2)
+
+/** body.build's hand-picked gym exercises go before the long tail of free-exercise-db within a tier. */
+const curatedFirst = (entry: StoredExerciseCatalogEntry): number =>
+  entry.same_as.bodybuild === undefined ? 1 : 0
+
 const rankSearch = (catalog: StoredExerciseCatalog, q: string, candidates: StoredExerciseCatalogEntry[]) => {
   const index = indexOf(catalog)
   const normalized = normalizeExerciseName(q)
@@ -95,7 +102,13 @@ const rankSearch = (catalog: StoredExerciseCatalog, q: string, candidates: Store
   return candidates
     .map((entry) => ({ entry, rank: rank(entry) }))
     .filter(({ rank: r }) => r >= 0)
-    .sort((a, b) => a.rank - b.rank || byName(a.entry, b.entry))
+    .sort(
+      (a, b) =>
+        tier(a.rank) - tier(b.rank) ||
+        curatedFirst(a.entry) - curatedFirst(b.entry) ||
+        a.rank - b.rank ||
+        byName(a.entry, b.entry),
+    )
     .map(({ entry }) => entry)
 }
 

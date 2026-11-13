@@ -506,7 +506,7 @@ const openApiDocument = createDocument({
     '/exercise-catalog': {
       get: {
         description:
-          'Search the built-in catalogue of strength exercises by name (word prefixes of names, aliases and search terms, best matches first), equipment, muscle or category. `name` is an exact name-or-alias lookup (case and punctuation ignored) that returns that exercise or none and ignores `q`.',
+          'Search the built-in catalogue of strength, stretching and plyometric exercises by name (word prefixes of names, aliases and search terms, best matches first), equipment, muscle or category. `name` is an exact name-or-alias lookup (case and punctuation ignored) that returns that exercise or none and ignores `q`.',
         requestParams: { query: exerciseCatalogQuerySchema },
         responses: {
           200: {

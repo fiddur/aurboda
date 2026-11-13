@@ -19,6 +19,15 @@ export const visibleItemFields = (
   return itemFields.filter((f) => main.has(f) || rows.some((row) => !isBlank(row[f.name])))
 }
 
+export const withStickyItemFields = (
+  itemFields: DataItemFieldDefinition[],
+  sticky: ReadonlySet<string>,
+  visible: DataItemFieldDefinition[],
+): DataItemFieldDefinition[] => {
+  const shown = new Set(visible.map((f) => f.name))
+  return itemFields.filter((f) => shown.has(f.name) || sticky.has(f.name))
+}
+
 export const newRow = (previous: ListRow | undefined, itemFields: DataItemFieldDefinition[]): ListRow =>
   Object.fromEntries(
     mainItemFields(itemFields).flatMap((f) =>
