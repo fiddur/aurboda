@@ -1,6 +1,7 @@
 import {
   isNotificationType,
   type Notification,
+  type NotificationAction,
   type NotificationsQuery,
   type NotificationsResponse,
   type NotificationType,
@@ -13,6 +14,7 @@ import {
 
 import {
   countUnreadNotifications,
+  getNotificationById,
   getNotificationPreference,
   insertNotification,
   listNotificationPreferences,
@@ -25,7 +27,10 @@ import {
   type NotificationPreferencePatch,
   type NotificationPreferenceRecord,
   type NotificationRecord,
+  type NotificationRevisionPatch,
+  type NotificationTarget,
   pruneNotifications,
+  reviseNotification,
   upsertNotificationPreference,
 } from '../db/index.ts'
 import { decodeKeysetCursor, encodeKeysetCursor } from './keyset-cursor.ts'
@@ -41,6 +46,7 @@ export interface RaiseNotificationInput {
   link?: string
   data?: Record<string, unknown>
   dedupe_key?: string
+  actions?: NotificationAction[]
 }
 
 export interface NotifierDeps {
@@ -50,6 +56,11 @@ export interface NotifierDeps {
   ) => Promise<Pick<NotificationPreferenceRecord, 'in_app' | 'push'> | null>
   insert: (user: string, input: NotificationInsert) => Promise<NotificationRecord | null>
   prune: (user: string, readBefore: Date, anyBefore: Date) => Promise<number>
+  revise: (
+    user: string,
+    target: NotificationTarget,
+    patch: NotificationRevisionPatch,
+  ) => Promise<NotificationRecord | null>
   now?: () => Date
   logError?: (message: string, error: unknown) => void
 }
@@ -59,13 +70,30 @@ export interface Notifier {
   raise: (user: string, input: RaiseNotificationInput) => Promise<NotificationRecord | null>
   /** `raise` for hot paths: logs and swallows every error (including a missing user database). */
   raiseBestEffort: (user: string, input: RaiseNotificationInput) => Promise<void>
+  /** Updates the given fields of the notification with this dedupe key. Resolves to the row or null when there is none. */
+  revise: (
+    user: string,
+    dedupeKey: string,
+    patch: NotificationRevisionPatch,
+  ) => Promise<NotificationRecord | null>
+  /** `revise` that logs and swallows every error. */
+  reviseBestEffort: (user: string, dedupeKey: string, patch: NotificationRevisionPatch) => Promise<void>
+}
+
+const validateLink = (link: string | null | undefined): void => {
+  if (link != null && (!link.startsWith('/') || link.startsWith('//'))) {
+    throw new Error(`Notification link must be an in-app path starting with '/': ${link}`)
+  }
 }
 
 const validateInput = (input: RaiseNotificationInput): void => {
   if (input.title.trim() === '') throw new Error(`Notification ${input.type} needs a title`)
-  if (input.link !== undefined && (!input.link.startsWith('/') || input.link.startsWith('//'))) {
-    throw new Error(`Notification link must be an in-app path starting with '/': ${input.link}`)
-  }
+  validateLink(input.link)
+}
+
+export const validateRevision = (patch: NotificationRevisionPatch): void => {
+  if (patch.title !== undefined && patch.title.trim() === '') throw new Error('Notification needs a title')
+  validateLink(patch.link)
 }
 
 export const createNotifier = (deps: NotifierDeps): Notifier => {
@@ -88,6 +116,7 @@ export const createNotifier = (deps: NotifierDeps): Notifier => {
       push,
       title: input.title,
       type: input.type,
+      actions: input.actions ?? [],
     })
     if (row) {
       const at = now().getTime()
@@ -108,16 +137,39 @@ export const createNotifier = (deps: NotifierDeps): Notifier => {
     }
   }
 
-  return { raise, raiseBestEffort }
+  const revise = async (
+    user: string,
+    dedupeKey: string,
+    patch: NotificationRevisionPatch,
+  ): Promise<NotificationRecord | null> => {
+    validateRevision(patch)
+    return deps.revise(user, { dedupe_key: dedupeKey }, patch)
+  }
+
+  const reviseBestEffort = async (
+    user: string,
+    dedupeKey: string,
+    patch: NotificationRevisionPatch,
+  ): Promise<void> => {
+    try {
+      await revise(user, dedupeKey, patch)
+    } catch (error) {
+      logError(`⚠️ Failed to revise notification ${dedupeKey} for ${user}:`, error)
+    }
+  }
+
+  return { raise, raiseBestEffort, revise, reviseBestEffort }
 }
 
 export const notifier: Notifier = createNotifier({
   getPreference: (user, type) => getNotificationPreference(user, type),
   insert: (user, input) => insertNotification(user, input),
   prune: (user, readBefore, anyBefore) => pruneNotifications(user, readBefore, anyBefore),
+  revise: (user, target, patch) => reviseNotification(user, target, patch),
 })
 
 export const serializeNotification = (record: NotificationRecord): Notification => ({
+  actions: record.actions,
   body: record.body,
   created_at: record.created_at.toISOString(),
   data: record.data,
@@ -198,6 +250,8 @@ export const notifyAdminsOfSignup =
   }
 
 export interface NotificationStore {
+  get: (user: string, id: string) => Promise<NotificationRecord | null>
+  revise: (user: string, id: string, patch: NotificationRevisionPatch) => Promise<NotificationRecord | null>
   list: (user: string, options: ListNotificationsOptions) => Promise<NotificationPageRow[]>
   countUnread: (user: string) => Promise<number>
   markRead: (user: string, id: string) => Promise<NotificationRecord | null>
@@ -213,10 +267,12 @@ export interface NotificationStore {
 /** Resolved at call time, so importing this module never touches the db module's bindings. */
 export const notificationStore: NotificationStore = {
   countUnread: (user) => countUnreadNotifications(user),
+  get: (user, id) => getNotificationById(user, id),
   list: (user, options) => listNotifications(user, options),
   listPreferences: (user) => listNotificationPreferences(user),
   markAllRead: (user) => markAllNotificationsRead(user),
   markRead: (user, id) => markNotificationRead(user, id),
+  revise: (user, id, patch) => reviseNotification(user, { id }, patch),
   upsertPreference: (user, type, patch) => upsertNotificationPreference(user, type, patch),
 }
 

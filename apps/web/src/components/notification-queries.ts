@@ -2,7 +2,12 @@ import type { NotificationsResponse } from '@aurboda/api-spec'
 
 import { type InfiniteData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { fetchNotifications, markAllNotificationsRead, markNotificationRead } from '../state/api'
+import {
+  fetchNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+  runNotificationAction,
+} from '../state/api'
 import { auth } from '../state/auth'
 import { markAllReadInPage, markReadInPage } from './notifications'
 
@@ -51,6 +56,19 @@ export const useMarkAllNotificationsRead = () => {
   return useMutation({
     mutationFn: () => markAllNotificationsRead(),
     onMutate: () => applyOptimistic((page) => markAllReadInPage(page, new Date().toISOString())),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
+  })
+}
+
+export interface NotificationActionVariables {
+  id: string
+  key: string
+}
+
+export const useRunNotificationAction = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, key }: NotificationActionVariables) => runNotificationAction(id, key),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
   })
 }

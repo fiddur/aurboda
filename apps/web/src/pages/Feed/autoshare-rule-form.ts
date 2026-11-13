@@ -12,10 +12,12 @@ import { formatTagsInput, parseTagsInput } from '../../components/hashtags'
 import { type DataFilterRow, rowToDataFilter, ruleTagsText } from './autoshare-rule-text'
 
 export const DEFAULT_MAX_AGE_HOURS = 24
+export const DEFAULT_DELAY_MINUTES = 10
 
 export interface RuleFormState {
   activityType: string
   conditions: DataFilterRow[]
+  delayMinutes: string
   includeExercises: boolean
   includeMap: boolean
   maxAgeHours: string
@@ -33,6 +35,7 @@ export interface RuleFormState {
 export const emptyRuleFormState = (): RuleFormState => ({
   activityType: '',
   conditions: [],
+  delayMinutes: String(DEFAULT_DELAY_MINUTES),
   includeExercises: false,
   includeMap: false,
   maxAgeHours: String(DEFAULT_MAX_AGE_HOURS),
@@ -64,6 +67,7 @@ export const ruleToFormState = (rule: AutoshareRule): RuleFormState => {
   return {
     activityType: rule.activity_types.length === 1 ? (rule.activity_types[0] ?? '') : '',
     conditions: rule.data_filters.map(dataFilterToRow),
+    delayMinutes: String(rule.delay_minutes),
     includeExercises: rule.include_exercises,
     includeMap: rule.include_map,
     maxAgeHours: String(rule.max_age_hours),
@@ -95,6 +99,7 @@ const kmToMeters = (text: string): number | null =>
 
 const templateFields = (state: RuleFormState) => ({
   data_filters: state.conditions.map(rowToDataFilter),
+  delay_minutes: state.delayMinutes.trim() === '' ? DEFAULT_DELAY_MINUTES : Number(state.delayMinutes),
   include_chart: state.series.has('heart_rate'),
   include_exercises: state.includeExercises,
   include_map: state.includeMap,

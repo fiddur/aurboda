@@ -94,7 +94,7 @@ describe('followAcceptedNotification', () => {
   test('an accept after a wait is', () => {
     expect(followAcceptedNotification(ALICE, new Date('2026-11-13T11:00:00Z'), now)).toEqual({
       data: { actor_uri: ALICE.actor_uri },
-      dedupe_key: `feed_follow_accepted:${ALICE.actor_uri}`,
+      dedupe_key: `feed_follow_accepted:${ALICE.actor_uri}:2026-11-13T11:00:00.000Z`,
       link: '/feed',
       title: 'Alice accepted your follow request',
       type: 'feed_follow_accepted',

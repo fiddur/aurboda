@@ -77,6 +77,7 @@ describe('ruleSummary', () => {
     activity_types: ['yoga'],
     created_at: '2026-08-01T00:00:00Z',
     data_filters: [],
+    delay_minutes: 10,
     enabled: false,
     enabled_at: null,
     id: 'r1',
@@ -115,6 +116,11 @@ describe('ruleSummary', () => {
 
   it('states the max age', () => {
     expect(ruleSummary(rule({ max_age_hours: 72 }))).toBe('yoga, ended within 72 h → followers')
+  })
+
+  it('states the wait only when it is not the default 10 minutes', () => {
+    expect(ruleSummary(rule({ delay_minutes: 30 }))).toBe('yoga, ended within 24 h, waits 30 min → followers')
+    expect(ruleSummary(rule({ delay_minutes: 10 }))).toBe('yoga, ended within 24 h → followers')
   })
 })
 

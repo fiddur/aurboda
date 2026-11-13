@@ -42,7 +42,7 @@ export interface NotificationSettingGroup {
   types: NotificationTypeSetting[]
 }
 
-/** The type settings in their groups, in the order each group first appears in the registry. */
+/** The type settings in their groups, in the order the server lists them. */
 export const groupNotificationSettings = (
   types: readonly NotificationTypeSetting[],
 ): NotificationSettingGroup[] => {

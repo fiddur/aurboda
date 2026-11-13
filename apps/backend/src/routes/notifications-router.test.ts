@@ -9,6 +9,7 @@ import type {
   NotificationPageRow,
   NotificationPreferenceRecord,
 } from '../db/index.ts'
+import type { RunNotificationAction } from '../services/notification-actions.ts'
 import type { NotificationStore } from '../services/notifications.ts'
 
 import { encodeKeysetCursor } from '../services/keyset-cursor.ts'
@@ -23,6 +24,7 @@ const auth: RequestHandler = (req, _res, next) => {
 }
 
 const row = (id: string, cursorTs: string): NotificationPageRow => ({
+  actions: [],
   body: null,
   created_at: new Date('2026-11-01T10:00:00Z'),
   cursor_ts: cursorTs,
@@ -42,6 +44,7 @@ const fakeStore = (overrides: Partial<NotificationStore> = {}) => {
   const upserts: [string, unknown][] = []
   const store: NotificationStore = {
     countUnread: async () => 3,
+    get: async () => null,
     list: async (_user, options) => {
       listCalls.push(options)
       return []
@@ -49,6 +52,7 @@ const fakeStore = (overrides: Partial<NotificationStore> = {}) => {
     listPreferences: async () => [],
     markAllRead: async () => 2,
     markRead: async () => null,
+    revise: async () => null,
     upsertPreference: async (_user, type, patch) => {
       upserts.push([type, patch])
       return { in_app: patch.in_app ?? true, push: patch.push ?? true, type, updated_at: new Date() }
@@ -58,10 +62,15 @@ const fakeStore = (overrides: Partial<NotificationStore> = {}) => {
   return { listCalls, store, upserts }
 }
 
-const app = (store: NotificationStore, admin = true) => {
+const noAction: RunNotificationAction = async () => ({ status: 'not_found' })
+
+const app = (store: NotificationStore, admin = true, runAction: RunNotificationAction = noAction) => {
   const server = express()
   server.use(express.json())
-  server.use('/notifications', createNotificationsRouter(auth, { isAdmin: async () => admin, store }))
+  server.use(
+    '/notifications',
+    createNotificationsRouter(auth, { isAdmin: async () => admin, runAction, store }),
+  )
   return server
 }
 
@@ -189,5 +198,41 @@ describe('POST /notifications/:id/read', () => {
     const { store } = fakeStore()
     expect((await supertest(app(store)).post(`/notifications/${ID}/read`)).status).toBe(404)
     expect((await supertest(app(store)).post('/notifications/not-a-uuid/read')).status).toBe(404)
+  })
+})
+
+describe('POST /notifications/:id/actions/:key', () => {
+  test('runs the action and returns the revised notification', async () => {
+    const calls: [string, string, string][] = []
+    const res = await supertest(
+      app(fakeStore().store, true, async (user, id, key) => {
+        calls.push([user, id, key])
+        return {
+          notification: { ...row(id, ''), actions: [], title: 'Your run will not be shared' },
+          status: 'ok',
+        }
+      }),
+    ).post(`/notifications/${ID}/actions/skip`)
+
+    expect(res.status).toBe(200)
+    expect(res.body.notification).toMatchObject({ actions: [], id: ID, title: 'Your run will not be shared' })
+    expect(calls).toEqual([['tester', ID, 'skip']])
+  })
+
+  test('404s when there is no such action', async () => {
+    const res = await supertest(app(fakeStore().store)).post(`/notifications/${ID}/actions/skip`)
+    expect(res.status).toBe(404)
+    expect(res.body).toEqual({ error: 'Notification action not found', success: false })
+  })
+
+  test('409s with the handler message', async () => {
+    const res = await supertest(
+      app(fakeStore().store, true, async () => ({
+        message: 'This activity was already shared',
+        status: 'conflict',
+      })),
+    ).post(`/notifications/${ID}/actions/skip`)
+    expect(res.status).toBe(409)
+    expect(res.body).toEqual({ error: 'This activity was already shared', success: false })
   })
 })

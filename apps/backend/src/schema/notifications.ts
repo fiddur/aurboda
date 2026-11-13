@@ -27,6 +27,9 @@ export const notificationsTables: Record<string, string> = {
       created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `,
+  notifications_actions: `
+    ALTER TABLE notifications ADD COLUMN IF NOT EXISTS actions JSONB NOT NULL DEFAULT '[]'
+  `,
   notifications_indexes: `
     CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications (created_at DESC, id DESC);
     CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications (created_at DESC) WHERE read_at IS NULL
