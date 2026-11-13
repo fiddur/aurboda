@@ -1,4 +1,9 @@
-import { type ActivityMeasure, type ActivitySession, activityMeasureLabels } from '@aurboda/api-spec'
+import {
+  type ActivityMeasure,
+  type ActivitySession,
+  activityMeasureLabels,
+  type DataSchemaDefinition,
+} from '@aurboda/api-spec'
 import { useQuery } from '@tanstack/react-query'
 import { useRoute } from 'preact-iso'
 import { useMemo, useState } from 'preact/hooks'
@@ -11,6 +16,7 @@ import {
   fetchActivitySessions,
   fetchActivityTypeDefinitions,
   fetchChartData,
+  fetchExerciseByName,
   fetchTrend,
 } from '../../state/api'
 import { CHART_PRIMARY } from '../../theme'
@@ -19,6 +25,8 @@ import { toDisplayName } from '../../utils/displayName'
 import { MEASURE_HALF_LIFE_DEFAULT } from '../../utils/half-life'
 import { defaultAggregation } from '../../utils/measures'
 import { newWidgetId } from '../../utils/widget-id'
+import { CatalogEntry } from './CatalogEntry'
+import { itemFieldCatalog } from './catalogEntryView'
 import { DoneCard } from './ItemCards'
 import {
   availableMeasures,
@@ -267,6 +275,25 @@ const MeasureChart = ({
   )
 }
 
+const ItemCatalogEntry = ({
+  schema,
+  field,
+  value,
+}: {
+  schema: DataSchemaDefinition | undefined
+  field: string
+  value: string
+}) => {
+  const catalog = itemFieldCatalog(schema, field)
+  const { data: entry } = useQuery({
+    enabled: catalog === 'exercises',
+    queryFn: () => fetchExerciseByName(value),
+    queryKey: ['exercise-catalog', 'name', value],
+    staleTime: 5 * 60 * 1000,
+  })
+  return catalog === 'exercises' && entry ? <CatalogEntry entry={entry} value={value} /> : null
+}
+
 /** One item value of a type across its sessions: an exercise's records, trend and history. */
 export function ActivityTypeItem() {
   const { params } = useRoute()
@@ -281,7 +308,8 @@ export function ActivityTypeItem() {
     queryKey: ['activityTypeDefinitions'],
     staleTime: 5 * 60 * 1000,
   })
-  const typeName = definitions?.find((d) => d.name === name)?.display_name ?? toDisplayName(name)
+  const definition = definitions?.find((d) => d.name === name)
+  const typeName = definition?.display_name ?? toDisplayName(name)
 
   const query = useQuery({
     queryFn: () => fetchActivitySessions(name, { filter_field: field, filter_value: value }),
@@ -312,6 +340,8 @@ export function ActivityTypeItem() {
           </>
         )}
       </header>
+
+      <ItemCatalogEntry schema={definition?.data_schema ?? undefined} field={field} value={value} />
 
       {query.isLoading && <p class="loading">Loading...</p>}
       {query.isError && <p class="error">Failed to load sessions</p>}

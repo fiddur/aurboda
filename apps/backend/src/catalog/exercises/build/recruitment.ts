@@ -140,8 +140,9 @@ export const createRecruitmentResolver = ({ declarations, functions }: DartScope
     if (node.kind === 'call' && fn) return callFunction(node, fn)
     if (node.kind !== 'call' || name !== 'Tweak') throw new Error(`Unresolved tweak: ${printDart(node)}`)
     const [, defaultKey, opts] = positional(node)
-    if (defaultKey?.kind !== 'str' || !opts)
-      {throw new Error(`Malformed tweak: ${printDart(node).slice(0, 120)}`)}
+    if (defaultKey?.kind !== 'str' || !opts) {
+      throw new Error(`Malformed tweak: ${printDart(node).slice(0, 120)}`)
+    }
     return { defaultKey: defaultKey.value, options: options(opts) }
   }
 

@@ -298,6 +298,7 @@ const AddActivityForm = ({ onCreated, initialTime }: FormProps) => {
           <ListFieldEditor
             field={field}
             idPrefix={`data-${field.name}`}
+            activityType={activityType || undefined}
             rows={listData[field.name] ?? []}
             onChange={(rows) => setListData((prev) => ({ ...prev, [field.name]: rows }))}
           />
