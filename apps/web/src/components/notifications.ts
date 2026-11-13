@@ -1,4 +1,4 @@
-import type { Notification, NotificationsResponse } from '@aurboda/api-spec'
+import type { Notification, NotificationsResponse, NotificationTypeSetting } from '@aurboda/api-spec'
 
 /** The badge's text: nothing at zero, the count up to nine, then `9+`. */
 export const badgeText = (unread: number): string => (unread <= 0 ? '' : unread > 9 ? '9+' : String(unread))
@@ -35,3 +35,22 @@ export const markAllReadInPage = (page: NotificationsResponse, readAt: string): 
   notifications: page.notifications.map((n) => (n.read_at === null ? { ...n, read_at: readAt } : n)),
   unread_count: 0,
 })
+
+export interface NotificationSettingGroup {
+  group: string
+  label: string
+  types: NotificationTypeSetting[]
+}
+
+/** The type settings in their groups, in the order each group first appears in the registry. */
+export const groupNotificationSettings = (
+  types: readonly NotificationTypeSetting[],
+): NotificationSettingGroup[] => {
+  const groups = new Map<string, NotificationSettingGroup>()
+  for (const setting of types) {
+    const existing = groups.get(setting.group)
+    if (existing) existing.types.push(setting)
+    else groups.set(setting.group, { group: setting.group, label: setting.group_label, types: [setting] })
+  }
+  return [...groups.values()]
+}
