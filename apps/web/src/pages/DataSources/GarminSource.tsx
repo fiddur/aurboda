@@ -30,7 +30,7 @@ interface GarminDataTypeInfo {
   label: string
   href?: string
   hc_note?: string // Health Connect overlap note (undefined = Garmin only)
-  key_note?: string // What a Personal API key alone does not give
+  key_note?: string
 }
 
 const GARMIN_DATA_TYPES: GarminDataTypeInfo[] = [
