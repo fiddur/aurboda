@@ -10,6 +10,7 @@ import type { Client } from 'pg'
 import type { Auth } from '../auth.ts'
 import type { GarminClient } from '../integrations/garmin/client.ts'
 import type { DetailSyncedCallback, TrackWrittenCallback } from '../integrations/garmin/sync.ts'
+import type { HomeAssistantClient } from '../integrations/home-assistant/client.ts'
 import type { AutosharePreviewDeps } from '../mcp/autoshare-rule-tools.ts'
 import type { AccountDeleter } from '../services/account-deletion.ts'
 import type { AccountPlans } from '../services/account-plan.ts'
@@ -63,6 +64,7 @@ import { createChartDataRouter } from '../routes/chart-data-router.ts'
 import { createCorrelationsRouter } from '../routes/correlations-router.ts'
 import { createDashboardRouter } from '../routes/dashboard-router.ts'
 import { createDeductionRulesRouter } from '../routes/deduction-rules-router.ts'
+import { createExerciseCatalogRouter } from '../routes/exercise-catalog-router.ts'
 import { createExportRouter } from '../routes/export-router.ts'
 import { createFeedFollowedTagsRouter } from '../routes/feed-followed-tags-router.ts'
 import { createFeedFollowersRouter } from '../routes/feed-followers-router.ts'
@@ -72,6 +74,7 @@ import { createFeedImagesRouter } from '../routes/feed-images-router.ts'
 import { createFeedPublicRouter } from '../routes/feed-public-router.ts'
 import { createFeedRouter, type FeedDeliver } from '../routes/feed-router.ts'
 import { createFoodItemsRouter } from '../routes/food-items-router.ts'
+import { createHomeAssistantRouter } from '../routes/home-assistant-router.ts'
 import { createIconsRouter } from '../routes/icons-router.ts'
 import { createImportsRouter } from '../routes/imports-router.ts'
 import { createLocationsRouter } from '../routes/locations-router.ts'
@@ -131,7 +134,7 @@ import { resolveFeedActivity } from '../services/feed.ts'
 import { readOfficialFeedSetting } from '../services/official-feed.ts'
 import { createOgImageRenderer } from '../services/og-image.ts'
 import { loadPublicPostChartWith, type PostChartDeps } from '../services/post-chart.ts'
-import { getUserTimezone } from '../services/settings.ts'
+import { getSettings, getUserTimezone } from '../services/settings.ts'
 import { resolveDashboardView } from '../services/shared-dashboard-data.ts'
 import { resolveSharedExerciseData } from '../services/shared-exercise-data.ts'
 import { createTemplateLoader } from '../services/web-template.ts'
@@ -151,6 +154,8 @@ interface RestRoutesDeps {
   /** Open challenges from followed peers (`GET /challenges/discover`). */
   discoverChallenges: DiscoverChallenges
   garmin: GarminClient
+  /** Home Assistant client behind `GET /home-assistant/entities`. */
+  homeAssistant: HomeAssistantClient
   /** Fire-and-forget: re-federate the shares of an activity whose detail was (re)synced. */
   onActivityDetailSynced: DetailSyncedCallback
   /** Fire-and-forget: queue post-processing for an activity whose GPS track was written. */
@@ -220,6 +225,7 @@ export const mountRestRouters = ({
   apiBaseUrl,
   discoverChallenges,
   garmin,
+  homeAssistant,
   onActivityDetailSynced,
   onTrackWritten,
   syncProvider,
@@ -297,6 +303,10 @@ export const mountRestRouters = ({
     createAutoshareRulesRouter(authMiddleware, autosharePreviewDeps, skipAutoshare),
   )
   httpd.use('/locations', createLocationsRouter(authMiddleware, onNamedLocationsChanged))
+  httpd.use(
+    '/home-assistant',
+    createHomeAssistantRouter(authMiddleware, { client: homeAssistant, getSettings }),
+  )
   httpd.use(createSettingsRouter(authMiddleware, onHrSettingsChanged, onProfileChanged))
   httpd.use(createAuditLogRouter(authMiddleware))
   httpd.use('/export', createExportRouter({ authMiddleware, ...dataExport }))
@@ -305,6 +315,7 @@ export const mountRestRouters = ({
   httpd.use('/dashboard', createDashboardRouter(authMiddleware))
   httpd.use('/shared-dashboards', createSharedDashboardsRouter(authMiddleware, webHost))
   httpd.use('/shared-exercises', createSharedExercisesRouter(authMiddleware, webHost))
+  httpd.use('/exercise-catalog', createExerciseCatalogRouter(authMiddleware))
   httpd.use('/profile', createProfileRouter(authMiddleware, webHost, onProfileChanged))
   // Mount the following, followers and images routers before `/feed` so `/feed/following/*`,
   // `/feed/followers/*` and `/feed/images/*` resolve here and never touch the

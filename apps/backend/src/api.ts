@@ -64,6 +64,11 @@ import { garminDataTypes } from './integrations/garmin/process.ts'
 import { syncActivityDetails, syncGarminDataType } from './integrations/garmin/sync.ts'
 import { gravlClient } from './integrations/gravl/client.ts'
 import { enrichGravlWorkout } from './integrations/gravl/sync.ts'
+import { homeAssistantClient, homeAssistantReachability } from './integrations/home-assistant/client.ts'
+import {
+  defaultHomeAssistantSyncDeps,
+  syncHomeAssistantLocations,
+} from './integrations/home-assistant/sync.ts'
 import { ouraClient } from './integrations/oura/client.ts'
 import { createOwnTracksRouter } from './integrations/owntracks/router.ts'
 import { stravaClient } from './integrations/strava/client.ts'
@@ -391,6 +396,20 @@ const main = async () => {
     // stabilisation delay (the queue's startAfter). Fire-and-forget.
     void autoshareQueue?.enqueueEvaluation(user, start, end)
   }
+  // Home Assistant location pull (#1626). The detection trigger is built much
+  // further down (it needs the geocode queue, which needs pg-boss), so the
+  // post-sync hook reads it through this holder once it exists.
+  let triggerDetectionForUser: ((user: string) => void) | null = null
+  const homeAssistant = homeAssistantClient(
+    homeAssistantReachability(process.env.HOME_ASSISTANT_ALLOW_PRIVATE_ADDRESSES === 'true'),
+  )
+  const homeAssistantSyncDeps = defaultHomeAssistantSyncDeps(homeAssistant, (user, start, end) => {
+    triggerDetectionForUser?.(user)
+    activityNotifier(user, '*', start, end)
+  })
+  const syncHomeAssistant = (user: string, options?: { fullResync?: boolean; startDate?: Date }) =>
+    syncHomeAssistantLocations(user, homeAssistantSyncDeps, options)
+
   const NAMED_LOCATION_LOOKBACK_MS = 90 * 86_400_000
   const onNamedLocationsChanged: NamedLocationsChanged = (user) =>
     activityNotifier(user, '*', new Date(Date.now() - NAMED_LOCATION_LOOKBACK_MS), new Date())
@@ -426,6 +445,7 @@ const main = async () => {
     onActivityDetailSynced,
     onActivitySynced: activityNotifier,
     onTrackWritten,
+    syncHomeAssistant: (user) => syncHomeAssistant(user),
   })
   const syncProvider = gateSyncProvider(ungatedSyncProvider, isReadOnly)
 
@@ -1053,6 +1073,7 @@ const main = async () => {
       followerActions,
       garmin,
       gravl,
+      homeAssistant,
       isDeletedUser,
       onActivityDetailSynced,
       onActivityMutated: activityNotifier,
@@ -1065,6 +1086,7 @@ const main = async () => {
       retroEnrichTimeline,
       stravaQueue: stravaQueue ?? undefined,
       sync: syncProvider,
+      syncHomeAssistant,
       webHost,
     }),
   )
@@ -1127,6 +1149,7 @@ const main = async () => {
     oura,
     garmin,
     gravl,
+    syncHomeAssistant,
     stravaQueue,
     calorieQueue,
     sourceEnrichQueue,
@@ -1190,6 +1213,7 @@ const main = async () => {
     insertActivities,
     runDetectionForUser,
   })
+  triggerDetectionForUser = (user) => detectionTrigger.triggerDetectionForUser(user)
 
   httpd.use(
     '/ownTracks',
@@ -1226,6 +1250,7 @@ const main = async () => {
     followActions,
     followerActions,
     garmin,
+    homeAssistant,
     httpd,
     postUpdateResender,
     previewArticle,

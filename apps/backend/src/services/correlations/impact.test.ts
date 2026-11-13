@@ -229,6 +229,31 @@ describe('summarizeImpact', () => {
     expect(effects.stress.before_mean).toBe(1.5)
     expect(effects.stress.after_mean).toBe(3.5)
   })
+
+  test('a subset is summarized alone, its windows still clipped by the sessions left out', () => {
+    const sessions = mergeIntoSessions([
+      { end: min(30), start: min(0) },
+      { end: min(80), start: min(50) },
+      { end: min(530), start: min(500) },
+    ])
+    const stress = bins([
+      [-20, 40],
+      [35, 20],
+      [55, 60],
+      [90, 10],
+      [480, 50],
+      [540, 70],
+    ])
+    const subset = summarizeImpact(sessions, only(stress), 30, [], [0])
+    const alone = summarizeImpact([sessions[0]], only(stress), 30)
+    const everything = summarizeImpact(sessions, only(stress), 30)
+
+    expect(subset.effects.stress).toMatchObject({ after_mean: 20, before_mean: 40, paired_occurrences: 1 })
+    expect(alone.effects.stress.after_mean).toBe(40)
+    expect(everything.effects.stress.paired_occurrences).toBe(3)
+    expect(subset.effects.stress).not.toEqual(alone.effects.stress)
+    expect(subset.effects.stress).not.toEqual(everything.effects.stress)
+  })
 })
 
 const offsets = (window: number) =>

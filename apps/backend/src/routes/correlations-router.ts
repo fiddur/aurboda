@@ -1,5 +1,3 @@
-import type { RequestHandler } from 'express'
-
 import {
   type ActivityImpactQuery,
   activityImpactQuerySchema,
@@ -20,10 +18,14 @@ import {
   type HrvActivitiesQuery,
   hrvActivitiesQuerySchema,
   type HrvActivitiesResponse,
+  impactDurationBucketsError,
   impactExtraMetricsError,
   type ImpactMetricsQuery,
   impactMetricsQuerySchema,
   type ImpactMetricsResponse,
+  impactTimeBucketsError,
+  parseImpactBucketLimits,
+  parseImpactFilters,
   parseImpactMetricsParam,
 } from '@aurboda/api-spec'
 
@@ -40,11 +42,11 @@ import {
   getImpactMetrics,
   parseImpactPeriod,
 } from '../services/correlations/index.ts'
-import { type TypedRouter, typedRouter } from '../typed-router.ts'
+import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
 export const createCorrelationsRouter = (
-  authMiddleware: RequestHandler,
+  authMiddleware: AnyMiddleware,
   syncProvider?: SyncProvider,
 ): TypedRouter => {
   const router = typedRouter()
@@ -94,7 +96,21 @@ export const createCorrelationsRouter = (
     validateQuery(activityImpactQuerySchema),
     async (req, res) => {
       const { activity } = req.params
-      const { activity_type, end, match, metrics, period_days, start, window_minutes } = req.query
+      const {
+        activity_type,
+        breakdown,
+        duration_buckets,
+        end,
+        filters,
+        include_dimensions,
+        match,
+        metrics,
+        period_days,
+        start,
+        time_buckets,
+        tz,
+        window_minutes,
+      } = req.query
       const user = req.user!
 
       const period = parseImpactPeriod(start, end)
@@ -102,6 +118,14 @@ export const createCorrelationsRouter = (
       const extraMetrics = parseImpactMetricsParam(metrics)
       const metricsError = impactExtraMetricsError(extraMetrics)
       if (metricsError) return res.status(400).json({ error: metricsError, success: false })
+      const durationBuckets = parseImpactBucketLimits(duration_buckets)
+      const durationError = durationBuckets && impactDurationBucketsError(durationBuckets)
+      if (durationError) return res.status(400).json({ error: durationError, success: false })
+      const timeBuckets = parseImpactBucketLimits(time_buckets)
+      const timeError = timeBuckets && impactTimeBucketsError(timeBuckets)
+      if (timeError) return res.status(400).json({ error: timeError, success: false })
+      const parsedFilters = parseImpactFilters(filters)
+      if (!parsedFilters) return res.status(400).json({ error: 'Malformed filters', success: false })
       const periodDays = period_days ? parseInt(period_days, 10) : 90
       const windowMinutes = window_minutes ? parseInt(window_minutes, 10) : 30
 
@@ -116,6 +140,14 @@ export const createCorrelationsRouter = (
         period.since,
         match,
         extraMetrics,
+        {
+          breakdown,
+          durationBuckets: durationBuckets ?? undefined,
+          filters: parsedFilters,
+          includeDimensions: include_dimensions,
+          timeBuckets: timeBuckets ?? undefined,
+          tz,
+        },
       )
       res.json({ data: impact, success: true })
     },

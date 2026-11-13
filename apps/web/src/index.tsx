@@ -47,6 +47,10 @@ const AurbodaSource = lazyPage(() => import('./pages/DataSources/AurbodaSource.j
 const CalendarsSource = lazyPage(() => import('./pages/DataSources/CalendarsSource.jsx'), 'CalendarsSource')
 const GarminSource = lazyPage(() => import('./pages/DataSources/GarminSource.jsx'), 'GarminSource')
 const GravlSource = lazyPage(() => import('./pages/DataSources/GravlSource.jsx'), 'GravlSource')
+const HomeAssistantSource = lazyPage(
+  () => import('./pages/DataSources/HomeAssistantSource.jsx'),
+  'HomeAssistantSource',
+)
 const DataSources = lazyPage(() => import('./pages/DataSources/index.jsx'), 'DataSources')
 const LastFmSource = lazyPage(() => import('./pages/DataSources/LastFmSource.jsx'), 'LastFmSource')
 const OuraSource = lazyPage(() => import('./pages/DataSources/OuraSource.jsx'), 'OuraSource')
@@ -171,6 +175,7 @@ function AppShell() {
             <Route path="/data-sources/rescue-time" component={RescueTimeSource} />
             <Route path="/data-sources/lastfm" component={LastFmSource} />
             <Route path="/data-sources/owntracks" component={OwnTracksSource} />
+            <Route path="/data-sources/home-assistant" component={HomeAssistantSource} />
             <Route path="/data-sources/calendars" component={CalendarsSource} />
             <Route path="/activity-types" component={ActivityTypes} />
             <Route path="/deduction-rules/:id" component={DeductionRuleDetail} />

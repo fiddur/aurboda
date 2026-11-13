@@ -15,7 +15,7 @@ Key areas covered by MCP tools:
 - **Activity types** -- manage custom activity type definitions
 - **Deduction rules** -- create rules that auto-generate activities from data conditions
 - **Screentime** -- manage category rules and recategorize
-- **Sync** -- trigger data syncs from Garmin, Oura, Strava, Gravl, Last.fm, RescueTime, calendars
+- **Sync** -- trigger data syncs from Garmin, Oura, Strava, Gravl, Home Assistant, Last.fm, RescueTime, calendars
 - **Settings** -- user preferences, HR zones, training load configuration
 - **Export** -- `export_data_dump` links a download of your whole database as SQL ([data export](data-export.md))
 - **Account** -- `delete_my_account` deletes your account for good; admins can `delete_user` ([deleting accounts](admin.md#deleting-accounts))
@@ -103,6 +103,15 @@ see [run features and categories](features/routes-and-segments.md#phase-3-run-fe
 | `delete_route` | Delete a route; its runs are kept, stay attached to it and are not matched again                                                          |
 | `merge_routes` | Move every run of `source_route_id` onto the route `id` and delete the source                                                             |
 | `match_routes` | Match every tracked activity without a route (attach to a covering route, or pair two unrouted tracks into a new one); returns the counts |
+
+### Exercise catalogue tools
+
+See [Exercise catalogue](features/exercise-catalog.md). Logged exercise names on sets stay free text.
+
+| Tool                         | What it does                                                                                                                                                                                          |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `search_exercise_catalog`    | Search the built-in catalogue by `q` (word prefixes, best matches first), exact `name` or alias, `equipment`, `muscle` (a muscle or a group, weight ≥ 0.5), `category`; paged by `limit` and `offset` |
+| `get_exercise_catalog_entry` | One catalogue exercise by its stable `key`: name, aliases, category, equipment, muscles with recruitment weights, and the same exercise in other datasets                                             |
 
 ### Comment tools
 

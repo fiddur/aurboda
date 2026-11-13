@@ -16,10 +16,16 @@ import type {
   GenericCorrelationResponse,
   HrvActivitiesData,
   HrvActivitiesResponse,
+  ImpactFilter,
   ImpactMetricOption,
   ImpactMetricsResponse,
 } from '@aurboda/api-spec'
 
+import {
+  DEFAULT_IMPACT_DURATION_BUCKETS,
+  DEFAULT_IMPACT_TIME_BUCKETS,
+  formatImpactFilters,
+} from '@aurboda/api-spec'
 import axios from 'axios'
 
 import { API_URL } from '../../config'
@@ -55,6 +61,31 @@ export const fetchHrvActivitiesCorrelation = async (
   return response.data.data!
 }
 
+export interface ImpactSlicingParams {
+  breakdown?: string
+  lengths?: number[]
+  hours?: number[]
+  filters?: ImpactFilter[]
+  includeDimensions?: boolean
+  tz?: string
+}
+
+const customLimits = (limits: number[] | undefined, defaults: number[]): string | undefined =>
+  limits && limits.join(',') !== defaults.join(',') ? limits.join(',') : undefined
+
+const slicingQuery = (slicing: ImpactSlicingParams): Partial<ActivityImpactQuery> => {
+  const durationBuckets = customLimits(slicing.lengths, DEFAULT_IMPACT_DURATION_BUCKETS)
+  const timeBuckets = customLimits(slicing.hours, DEFAULT_IMPACT_TIME_BUCKETS)
+  return {
+    ...(slicing.breakdown && { breakdown: slicing.breakdown }),
+    ...(durationBuckets && { duration_buckets: durationBuckets }),
+    ...(timeBuckets && { time_buckets: timeBuckets }),
+    ...(slicing.filters?.length && { filters: formatImpactFilters(slicing.filters) }),
+    ...(slicing.includeDimensions && { include_dimensions: true }),
+    ...(slicing.tz && { tz: slicing.tz }),
+  }
+}
+
 // Fetch activity impact timeline (HRV/HR before/during/after an activity)
 export const fetchActivityImpact = async (
   activity: string,
@@ -63,6 +94,7 @@ export const fetchActivityImpact = async (
   windowMinutes?: number,
   match?: ActivityImpactMatch,
   extraMetrics?: string[],
+  slicing: ImpactSlicingParams = {},
 ): Promise<ActivityImpactData> => {
   const { token } = auth.value
   const params: ActivityImpactQuery = {
@@ -71,6 +103,7 @@ export const fetchActivityImpact = async (
     ...(extraMetrics?.length && { metrics: extraMetrics.join(',') }),
     ...(periodDays && { period_days: String(periodDays) }),
     ...(windowMinutes && { window_minutes: String(windowMinutes) }),
+    ...slicingQuery(slicing),
   }
   const response = await axios.get<ActivityImpactResponse>(
     `${API_URL}/correlations/activity-impact/${encodeURIComponent(activity)}`,

@@ -205,6 +205,7 @@ export {
   insertLocations,
   insertNamedLocation,
   insertPlace,
+  softDeleteLocationsInTrackedActivities,
   softDeleteSupersededLocations,
   updateDetectedLocation,
   updateNamedLocation,

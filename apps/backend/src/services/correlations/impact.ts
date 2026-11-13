@@ -244,14 +244,19 @@ const EMPTY_SERIES: BinnedSeries = { times: [], values: [] }
 export const extraMetricKeys = (metrics: string[]): string[] =>
   [...new Set(metrics)].filter((metric) => !(METRIC_KEYS as string[]).includes(metric))
 
-/** Summarizes the three fixed metrics and every key in `extraKeys`; buckets carry the extras under `metrics`. */
+/**
+ * Summarizes the three fixed metrics and every key in `extraKeys`; buckets carry the extras under `metrics`.
+ * With `subset`, only those sessions are summarized, but every session still clips its neighbours' windows.
+ */
 export const summarizeImpact = (
   sessions: Interval[],
   series: MetricSeries,
   windowMinutes: number,
   extraKeys: string[] = [],
+  subset?: readonly number[],
 ): ImpactSummary => {
-  const windows = sessionWindows(sessions, windowMinutes)
+  const all = sessionWindows(sessions, windowMinutes)
+  const windows = subset ? subset.map((i) => all[i]) : all
   const between = (metric: string, { end, start }: Interval) =>
     valuesBetween(series[metric] ?? EMPTY_SERIES, start, end)
   const keys: string[] = [...METRIC_KEYS, ...extraMetricKeys(extraKeys)]

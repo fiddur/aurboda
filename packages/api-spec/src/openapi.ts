@@ -29,6 +29,11 @@ import {
 } from './schemas/challenges.ts'
 import { iso8601DateTimeSchema, metricTypeSchema } from './schemas/common.ts'
 import { dailySummaryQuerySchema, dailySummaryResponseSchema } from './schemas/daily-summary.ts'
+import {
+  exerciseCatalogEntryResponseSchema,
+  exerciseCatalogQuerySchema,
+  exerciseCatalogSearchResponseSchema,
+} from './schemas/exercise-catalog.ts'
 import { exportDumpLinkResponseSchema, exportDumpQuerySchema } from './schemas/export.ts'
 import {
   FEED_IMAGE_MAX_EDGE,
@@ -43,6 +48,7 @@ import {
   goalHistoryResponseSchema,
   goalsProgressResponseSchema,
 } from './schemas/goals.ts'
+import { homeAssistantEntitiesResponseSchema } from './schemas/home-assistant.ts'
 import {
   addNamedLocationBodySchema,
   addNamedLocationResponseSchema,
@@ -112,8 +118,11 @@ import {
   healthConnectSyncBodySchema,
   syncOuraBodySchema,
   syncGravlBodySchema,
+  syncHomeAssistantBodySchema,
   gravlSyncResponseSchema,
   gravlSyncStatusResponseSchema,
+  homeAssistantSyncResponseSchema,
+  homeAssistantSyncStatusResponseSchema,
   mediaSyncResponseSchema,
   syncMediaBodySchema,
   syncRescueTimeBodySchema,
@@ -491,6 +500,50 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'Get activity track',
+        tags: ['Activities'],
+      },
+    },
+    '/exercise-catalog': {
+      get: {
+        description:
+          'Search the built-in catalogue of strength exercises by name (word prefixes of names, aliases and search terms, best matches first), equipment, muscle or category. `name` is an exact name-or-alias lookup (case and punctuation ignored) that returns that exercise or none and ignores `q`.',
+        requestParams: { query: exerciseCatalogQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: exerciseCatalogSearchResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid query, e.g. an unknown equipment, muscle or category',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Search exercise catalogue',
+        tags: ['Activities'],
+      },
+    },
+    '/exercise-catalog/{key}': {
+      get: {
+        description:
+          'One exercise of the built-in catalogue by its stable key: name, aliases, category, equipment, muscles with recruitment weights, and the same exercise in other datasets.',
+        requestParams: {
+          path: z.object({
+            key: z.string().meta({ description: 'Catalogue key, e.g. dumbbell_bench_press' }),
+          }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: exerciseCatalogEntryResponseSchema } },
+            description: 'Successful response',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Exercise not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get exercise catalogue entry',
         tags: ['Activities'],
       },
     },
@@ -1479,6 +1532,66 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'Get Gravl sync status',
+        tags: ['Sync'],
+      },
+    },
+
+    '/sync/home-assistant': {
+      post: {
+        description:
+          "Pull the phone's positions from Home Assistant's history API (the configured device_tracker.* or person.* entity) and store them as locations with source home_assistant; the zone the state names becomes the location's region. A first sync or full_resync covers the last 10 days (or from start_date); later syncs continue from the last sync with a 5-minute overlap. Points inside an activity that has its own GPS track are soft-deleted. Requires home_assistant_url, home_assistant_token and home_assistant_entity_id in user settings.",
+        requestBody: {
+          content: { 'application/json': { schema: syncHomeAssistantBodySchema } },
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: homeAssistantSyncResponseSchema } },
+            description: 'Sync result',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Home Assistant integration unavailable',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Sync Home Assistant locations',
+        tags: ['Sync'],
+      },
+    },
+    '/sync/home-assistant/status': {
+      get: {
+        description: 'Current Home Assistant sync state: last sync time, status and error.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: homeAssistantSyncStatusResponseSchema } },
+            description: 'Successful response',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get Home Assistant sync status',
+        tags: ['Sync'],
+      },
+    },
+    '/home-assistant/entities': {
+      get: {
+        description:
+          'List the person.* and device_tracker.* entities of the configured Home Assistant server that currently carry coordinates, to pick the one to pull locations from. Needs home_assistant_url and home_assistant_token in user settings; doubles as a connection test.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: homeAssistantEntitiesResponseSchema } },
+            description: 'Trackable entities, person.* first',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Home Assistant URL or token not set',
+          },
+          502: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Home Assistant could not be reached or rejected the request',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List Home Assistant tracker entities',
         tags: ['Sync'],
       },
     },

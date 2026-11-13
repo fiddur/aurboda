@@ -5,6 +5,8 @@
  *
  * Tool registrations are split into focused modules under mcp/.
  */
+import type { HomeAssistantSyncResult } from '@aurboda/api-spec'
+
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import { type ErrorRequestHandler, json, type Request, type Response, Router } from 'express'
@@ -13,6 +15,7 @@ import type { Auth } from './auth.ts'
 import type { GarminClient } from './integrations/garmin/client.ts'
 import type { DetailSyncedCallback, TrackWrittenCallback } from './integrations/garmin/sync.ts'
 import type { GravlClient } from './integrations/gravl/client.ts'
+import type { HomeAssistantClient } from './integrations/home-assistant/client.ts'
 import type { ouraClient } from './integrations/oura/client.ts'
 import type { AutosharePreviewDeps } from './mcp/autoshare-rule-tools.ts'
 import type { FeedDeliver } from './routes/feed-router.ts'
@@ -53,6 +56,7 @@ import { registerChartTools } from './mcp/chart-tools.ts'
 import { registerCorrelationTools } from './mcp/correlation-tools.ts'
 import { registerDebugTools } from './mcp/debug-tools.ts'
 import { registerDeductionRuleTools } from './mcp/deduction-rule-tools.ts'
+import { registerExerciseCatalogTools } from './mcp/exercise-catalog-tools.ts'
 import { registerExportTools } from './mcp/export-tools.ts'
 import { registerFeedImageTools } from './mcp/feed-image-tools.ts'
 import { registerFeedTools } from './mcp/feed-tools.ts'
@@ -141,6 +145,8 @@ interface McpDeps {
   followerActions?: FollowerActions
   garmin?: GarminClient
   gravl?: GravlClient
+  /** Home Assistant client behind `list_home_assistant_entities`. */
+  homeAssistant?: HomeAssistantClient
   /** Deleted accounts, whose stateless tokens still decode. */
   isDeletedUser?: (user: string) => boolean
   onActivityMutated?: ActivityNotifier
@@ -163,6 +169,11 @@ interface McpDeps {
   requestDumpLink?: DumpLinkIssuer
   stravaQueue?: StravaQueue
   sync?: SyncProvider
+  /** The Home Assistant location pull, bound to its deps (`sync_home_assistant`). */
+  syncHomeAssistant?: (
+    user: string,
+    options?: { fullResync?: boolean; startDate?: Date },
+  ) => Promise<HomeAssistantSyncResult>
   webHost?: string
 }
 
@@ -195,6 +206,8 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     deps.gravl,
     deps.onActivityDetailSynced,
     deps.onTrackWritten,
+    deps.syncHomeAssistant,
+    deps.homeAssistant,
   )
   registerSettingsTools(server, user, deps.onHrSettingsChanged, deps.onProfileChanged)
   registerLocationTools(server, user, deps.onNamedLocationsChanged)
@@ -228,6 +241,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   registerRouteTools(server, user)
   registerSharedDashboardTools(server, user)
   registerSharedExerciseTools(server, user, deps.webHost)
+  registerExerciseCatalogTools(server)
   registerFeedTools(server, user, {
     apiBaseUrl: deps.apiBaseUrl,
     deliver: deps.feedDeliver,

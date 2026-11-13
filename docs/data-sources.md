@@ -17,6 +17,7 @@ You connect sources from **Data Sources** in the web app's sidebar, one page per
 | [**Strava**](./strava.md)                         | Activities with per-second heart rate, GPS routes, cadence, and power                                                           | Pull (API) + Push (webhooks)           | OAuth credentials (admin)          | OAuth connect                                            |
 | [**Gravl**](./gravl.md)                           | Strength workouts with per-set exercise, weight, reps, RPE and set type                                                         | Pull (API) + on Health Connect arrival | Optional OAuth app (admin setting) | Personal token, or OAuth connect when configured         |
 | [**OwnTracks**](./owntracks.md)                   | GPS locations, geofences, place visits                                                                                          | Push (HTTP mode)                       | None                               | OwnTracks app config                                     |
+| [**Home Assistant**](./home-assistant.md)         | GPS locations and zones from the Home Assistant companion app, place visits                                                     | Pull (API)                             | None                               | Home Assistant URL, long-lived token, tracker entity     |
 | [**RescueTime**](./rescuetime.md)                 | App/website usage, productivity scores, categories                                                                              | Pull (API)                             | None                               | API key                                                  |
 | [**ActivityWatch**](./activitywatch.md)           | App/window usage per device (desktop and Android)                                                                               | Push (agent script)                    | None                               | Install AW + push agent or enable in Aurboda Android app |
 | [**Last.fm**](./lastfm.md)                        | Music scrobbles with auto-generated tags from configurable rules                                                                | Pull (API)                             | API key (admin setting)            | Last.fm username                                         |
@@ -30,11 +31,11 @@ You connect sources from **Data Sources** in the web app's sidebar, one page per
 
 ## Sync Behavior
 
-**Pull-based sources** (Oura, Garmin, Strava, RescueTime, Last.fm, Calendars, Gravl) support:
+**Pull-based sources** (Oura, Garmin, Strava, RescueTime, Last.fm, Calendars, Gravl, Home Assistant) support:
 
 - **Manual sync** via REST API (`POST /api/sync/{provider}`) or MCP tool (`sync_{provider}`)
-- **Background polling**: a scheduler ticks every 5 minutes and syncs whatever is older than its poll interval. The interval is a user setting, `sync_intervals`, keyed by provider (`gravl`, `garmin`, `oura`, `rescuetime`, `lastfm`, `calendar`) with `default` as the fallback; the server default is 30 minutes. Set it per source on that source's page under Data Sources, or the default on the Data Sources page. Five minutes is the smallest interval, 24 hours the largest. Sources the user has not connected are skipped without any audit entry or sync state.
-- **Auto-sync before queries** with the same interval, so a query never reads data staler than the user's setting even if the scheduler is off (no job queue)
+- **Background polling**: a scheduler ticks every 5 minutes and syncs whatever is older than its poll interval. The interval is a user setting, `sync_intervals`, keyed by provider (`gravl`, `garmin`, `oura`, `rescuetime`, `lastfm`, `calendar`, `home_assistant`) with `default` as the fallback; the server default is 30 minutes (10 for [Home Assistant](./home-assistant.md)). Set it per source on that source's page under Data Sources, or the default on the Data Sources page. Five minutes is the smallest interval, 24 hours the largest. Sources the user has not connected are skipped without any audit entry or sync state.
+- **Auto-sync before queries** with the same interval, so a query never reads data staler than the user's setting even if the scheduler is off (no job queue). Home Assistant is the exception: it is polled by the scheduler and synced by hand only.
 - **Full resync** option to re-fetch historical data
 - **Sync state tracking** per provider with rate limit handling
 
@@ -60,16 +61,18 @@ All sources feed into a common data model:
 - **`time_series`** -- Timestamped metric values (HR, weight, steps, etc.)
 - **`activities`** -- Duration-based or point-in-time events: sleep, exercise, meditation, nap, and anything of a custom type, including what you log yourself, Oura tags, Last.fm rule tags and calendar events (these were once a separate `tags` table, which is now migrated into activities)
 - **`productivity`** -- App/website usage records (from RescueTime and ActivityWatch)
-- **`locations`** -- GPS coordinates (from OwnTracks, plus activity tracks from Garmin and Strava)
+- **`locations`** -- GPS coordinates (from OwnTracks and Home Assistant, plus activity tracks from Garmin and Strava)
 - **`raw_records`** -- Original data preserved in full JSON form
 
 See [data-storage.md](./data-storage.md) for the complete data model.
 
 ## GPS Precedence
 
-Several sources write to `locations`: OwnTracks streams phone positions continuously, while [Garmin](./garmin.md) and [Strava](./strava.md) contribute a GPS track per activity. A watch or bike computer fixes position far more accurately than a phone in a pocket, and keeping both would interleave two tracks into one zig-zagging path.
+Several sources write to `locations`: OwnTracks streams phone positions continuously and [Home Assistant](./home-assistant.md) delivers them by pull, while [Garmin](./garmin.md) and [Strava](./strava.md) contribute a GPS track per activity. A watch or bike computer fixes position far more accurately than a phone in a pocket, and keeping both would interleave two tracks into one zig-zagging path.
 
 So when an activity brings its own GPS track, locations from **passive** sources are soft-deleted for the activity's **whole span** -- not merely the range the track covers, since the track's first and last fixes usually sit inside the activity. The track may overhang the span by up to 5 minutes (clock skew between the activity row and the detail response); beyond that it is clamped, so one bogus timestamp cannot widen the range. The number of points superseded is recorded in the audit log.
+
+Home Assistant positions arrive by pull, possibly after the activity's track was written, when that soft-delete has already run. So each Home Assistant sync also soft-deletes the `home_assistant` points in its window that fall inside a finished, live activity with a row in `activity_tracks` from Garmin or Strava, and reports the count in its result (`locations_superseded`) and the audit log.
 
 **Activity-track sources never supersede each other.** Garmin and Strava tracks of the same session describe the same route within GPS error, so overlaying two of them is cosmetic -- whereas letting them delete each other is not: Strava downsamples to 60-second intervals while Garmin keeps every sample, and neither integration revisits an activity once synced, so "last sync wins" would permanently demote a full-resolution track to a coarse one. Both are kept.
 
