@@ -58,6 +58,7 @@ Everything above feeds a common data model, so every feature works across every 
 - **Organize life** -- [activities](docs/features/activity-types.md), [meals & nutrition](docs/features/meals.md), places, and [screen time](docs/features/screentime-categories.md)
 - **Automate** -- [deduction rules](docs/features/deduction-rules.md) that create activities from your data, plus custom activity types
 - **Share** -- read-only [public dashboards and federated challenges](docs/features/sharing.md) across Aurboda instances, plus a [federated activity feed](docs/features/feed.md) followable from Mastodon
+- **Stay informed** -- [notifications](docs/features/notifications.md) under a 🛎 bell, with per-type in-app and push switches
 - **AI access** -- full query access from Claude or any [MCP](docs/mcp-server.md) client (60+ tools)
 
 Each links to detailed docs, and the sections below walk through the highlights with screenshots.

@@ -49,6 +49,10 @@
   margin-left: auto;
 }
 
+.notification-bell-wrapper + .sidebar-toggle {
+  margin-left: 0;
+}
+
 .sidebar-toggle:hover {
   color: #fff;
   background: rgba(255, 255, 255, 0.1);
@@ -104,6 +108,16 @@
 
 .sidebar.collapsed .sidebar-header {
   justify-content: center;
+  flex-direction: column;
+  padding: 0.5rem 0.25rem;
+}
+
+.sidebar-header .notification-bell-wrapper {
+  margin-left: auto;
+}
+
+.sidebar.collapsed .sidebar-header .notification-bell-wrapper {
+  margin-left: 0;
 }
 
 .sidebar.collapsed .sidebar-toggle {

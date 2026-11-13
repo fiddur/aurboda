@@ -57,7 +57,41 @@ describe('get_activity_impact', () => {
       new Date('2026-01-01T00:00:00Z'),
       undefined,
       [],
+      {},
     )
+  })
+
+  test('breakdown, buckets, filters and dimensions pass through with the tool timezone', async () => {
+    await impactTool()({
+      activity: 'yoga',
+      activity_type: 'activity_type',
+      breakdown: 'sleep',
+      duration_buckets: [20, 45],
+      filters: [{ dimension: 'time_of_day', keys: ['6-12'] }],
+      include_dimensions: true,
+      time_buckets: [6, 12, 22],
+      tz: 'Europe/Stockholm',
+    })
+    expect(vi.mocked(getActivityImpact).mock.calls[0][10]).toEqual({
+      breakdown: 'sleep',
+      durationBuckets: [20, 45],
+      filters: [{ dimension: 'time_of_day', keys: ['6-12'] }],
+      includeDimensions: true,
+      timeBuckets: [6, 12, 22],
+      tz: 'Europe/Stockholm',
+    })
+  })
+
+  test('bad bucket limits are an error', async () => {
+    const duration = await impactTool()({
+      activity: 'yoga',
+      activity_type: 'activity_type',
+      duration_buckets: [30, 15],
+    })
+    expect(duration.content[0].text).toMatch(/strictly ascending/)
+    const time = await impactTool()({ activity: 'yoga', activity_type: 'activity_type', time_buckets: [25] })
+    expect(time.content[0].text).toMatch(/0 to 23/)
+    expect(getActivityImpact).not.toHaveBeenCalled()
   })
 
   test('one bound alone or a reversed period is an error', async () => {

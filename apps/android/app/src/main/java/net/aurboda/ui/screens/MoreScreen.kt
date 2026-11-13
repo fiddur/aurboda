@@ -44,6 +44,7 @@ data class MoreGroup(val header: String, val items: List<MoreItem>)
  * sync with the web navigation (see apps/web/src/components/nav-links.ts).
  */
 val moreGroups: List<MoreGroup> = listOf(
+    MoreGroup("Inbox", listOf(MoreItem("Notifications", MoreDestination.Web("/notifications")))),
     MoreGroup(
         "Explore",
         listOf(

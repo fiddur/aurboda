@@ -1,0 +1,54 @@
+.notifications-page {
+  box-sizing: border-box;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.notifications-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.notifications-header h1 {
+  margin: 0;
+  font-size: 1.6rem;
+}
+
+.notifications-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.notifications-more {
+  display: block;
+  margin: 1rem auto 0;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  padding: 0.4rem 1rem;
+}
+
+.notifications-more:hover:not(:disabled) {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.notifications-settings-link {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  margin-top: 1.5rem;
+}
+
+.notifications-settings-link a {
+  color: var(--color-accent);
+}

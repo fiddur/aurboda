@@ -124,6 +124,18 @@ model.
 | `update_note` | Change a comment's content; `start_time`/`end_time` only on a `time` comment, and moving one moves its whole thread                                                                                                                                      |
 | `delete_note` | Delete a comment; deleting a thread root deletes its replies too                                                                                                                                                                                         |
 
+### Notification tools
+
+The bell's notifications and per-type switches. See [Notifications](features/notifications.md).
+
+| Tool                          | What it does                                                                                                                 |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `list_notifications`          | Newest first with `unread_count` and `next_cursor`; `unread_only`, `after` and `push_only` filter, like `GET /notifications` |
+| `mark_notification_read`      | Mark one notification read by `id`                                                                                           |
+| `mark_all_notifications_read` | Mark every unread notification read                                                                                          |
+| `list_notification_types`     | The types this user can receive with their in-app and push switches                                                          |
+| `set_notification_preference` | Turn a `type` on or off in-app and/or as a push                                                                              |
+
 ## Endpoint
 
 The MCP server is available at `/mcp` and uses the Streamable HTTP transport:
