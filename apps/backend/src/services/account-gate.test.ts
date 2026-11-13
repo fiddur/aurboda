@@ -153,6 +153,8 @@ describe('isAllowedWhenReadOnly', () => {
     ['POST', '/feed/activities/{id}/preview'],
     ['POST', '/feed/exercises/preview'],
     ['POST', '/feed/dashboards/preview'],
+    ['POST', '/notifications/read-all'],
+    ['POST', '/notifications/0b6c1f0e-3f7e-4a43-9a51-3c1d7d1f2a10/read'],
   ])('allows %s %s', (method, path) => {
     expect(isAllowedWhenReadOnly(method, path)).toBe(true)
   })
@@ -172,6 +174,8 @@ describe('isAllowedWhenReadOnly', () => {
     ['POST', '/feed/activities/abc/share'],
     ['POST', '/feed/activities/abc/def/preview'],
     ['POST', '/feed/abc/preview'],
+    ['PUT', '/notifications/types/admin_signup'],
+    ['POST', '/notifications/abc/def/read'],
   ])('refuses %s %s', (method, path) => {
     expect(isAllowedWhenReadOnly(method, path)).toBe(false)
   })

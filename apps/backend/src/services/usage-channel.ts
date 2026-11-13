@@ -32,6 +32,7 @@ export const MUTATING_MCP_TOOL_PREFIXES = [
   'import_',
   'join_',
   'like_',
+  'mark_',
   'merge_',
   'promote_',
   'publish_',

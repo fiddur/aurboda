@@ -6,9 +6,15 @@ import { registeredTools } from './tool-catalogue.ts'
 
 /**
  * Mutating tools a read-only account may still call: its data must stay exportable and deletable,
- * and its owner reachable about renewing.
+ * its owner reachable about renewing, and the notifications about its plan dismissable.
  */
-export const READ_ONLY_ALLOWED_TOOLS = new Set(['delete_my_account', 'export_data_dump', 'set_my_email'])
+export const READ_ONLY_ALLOWED_TOOLS = new Set([
+  'delete_my_account',
+  'export_data_dump',
+  'mark_all_notifications_read',
+  'mark_notification_read',
+  'set_my_email',
+])
 
 export const isToolAllowedWhenReadOnly = (name: string): boolean =>
   !isMutatingMcpTool(name) || READ_ONLY_ALLOWED_TOOLS.has(name)

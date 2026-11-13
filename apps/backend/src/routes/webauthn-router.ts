@@ -40,6 +40,7 @@ import { RESERVED_USERNAMES } from '../api/auth-routes.ts'
 import { dropUserDb, makeNewUserDb, query } from '../db/index.ts'
 import { insertWebAuthnCredential } from '../db/webauthn.ts'
 import { recordNewAccount } from '../services/account-plan.ts'
+import { notifier, notifyAdminsOfSignup } from '../services/notifications.ts'
 import { defaultSignupProfileDeps, saveSignupProfile } from '../services/signup-profile.ts'
 import { typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
@@ -246,6 +247,10 @@ export const createWebAuthnRouter = ({
         isAdmin = true
         console.info(`First user ${username} automatically made admin`)
       }
+      await notifyAdminsOfSignup({
+        getAdmins: centralDb.getAdmins,
+        raiseBestEffort: notifier.raiseBestEffort,
+      })(username)
 
       const token = auth.createToken(username)
       res.json({

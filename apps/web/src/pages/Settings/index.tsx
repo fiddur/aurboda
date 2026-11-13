@@ -7,6 +7,7 @@ import { AvatarSettings } from '../../components/AvatarSettings'
 import { DataExportSettings } from '../../components/DataExportSettings'
 import { DeleteAccountSettings } from '../../components/DeleteAccountSettings'
 import { MealPreferencesSettings } from '../../components/MealPreferencesSettings'
+import { NotificationSettings } from '../../components/NotificationSettings'
 import { PasskeySettings } from '../../components/PasskeySettings'
 import { PlanSettings } from '../../components/PlanSettings'
 import { ProfileSettings } from '../../components/ProfileSettings'
@@ -300,6 +301,8 @@ export function Settings() {
           </p>
         </div>
       </SettingsSection>
+
+      <NotificationSettings />
 
       <SharingSettings />
 
