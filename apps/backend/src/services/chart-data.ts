@@ -1,20 +1,24 @@
-import type {
-  ActivityMeasure,
-  ActivityMeasures,
-  ChartDataAggregation,
-  ChartDataBreakdownBucket,
-  ChartDataBucket,
-  ChartDataSourceType,
+import {
+  type ActivityMeasure,
+  type ActivityMeasures,
+  type ChartDataAggregation,
+  type ChartDataBreakdownBucket,
+  type ChartDataBucket,
+  type ChartDataSourceType,
+  muscleGroupBreakdownPath,
 } from '@aurboda/api-spec'
 
 import { buildBucketExpr } from '../db/bucket-expr.ts'
 import { expandActivityTypes, getBucketStarts, getHrZoneSecs, getSourceFilter, query } from '../db/index.ts'
 import { parseFieldPath } from './activity-measures.ts'
+import { loadExerciseResolver } from './item-value-identities.ts'
+import { type ExerciseEntryResolver, muscleGroupName } from './muscle-group-measures.ts'
 import {
   type MeasuredActivity,
   type MeasureFilter,
   measureFilter,
   measuresByItemValue,
+  measuresByMuscleGroupOf,
   queryMeasuredActivities,
 } from './queries/activity-measure-series.ts'
 import { categoryPathMatchSql } from './screentime-sql.ts'
@@ -339,8 +343,22 @@ const seriesValues = (
   fields: string[],
   measure: ActivityMeasure,
   filter: MeasureFilter | undefined,
+  resolvers: Map<string, ExerciseEntryResolver>,
 ): SeriesValue[] => {
   const partsPerField = fields.map((field): SeriesPart[] => {
+    const musclePath = muscleGroupBreakdownPath(field)
+    if (musclePath !== undefined) {
+      return measuresByMuscleGroupOf(
+        m.activity,
+        musclePath,
+        resolvers.get(musclePath) ?? (() => undefined),
+        filter,
+      ).map((g) => ({
+        key: `muscle:${g.muscle_group ?? 'unmapped'}`,
+        measures: g.measures,
+        name: muscleGroupName(g.muscle_group),
+      }))
+    }
     if (parseFieldPath(field).key === undefined) {
       const name = String(m.activity.data?.[field] ?? '(none)')
       return [{ key: `field:${name}`, name }]
@@ -368,7 +386,8 @@ const seriesValues = (
  * Charts a list-item measure of an activity type's sessions: each session's measure (over the
  * filtered items when filtered) aggregated per bucket, buckets bucketed by the same SQL as the other
  * sources. With breakdown fields, an item path gives one series per item value (spelled as in the
- * latest session) and a scalar field one per field value.
+ * latest session), a muscle-group path (`sets.exercise.muscle_group`) one per muscle group the
+ * exercises train, and a scalar field one per field value.
  */
 const queryMeasureChart = async (
   user: string,
@@ -385,6 +404,12 @@ const queryMeasureChart = async (
     new Date(input.end),
     filter,
   )
+  const musclePaths = [...new Set((fields ?? []).flatMap((f) => muscleGroupBreakdownPath(f) ?? []))]
+  const resolvers = new Map(
+    await Promise.all(
+      musclePaths.map(async (path) => [path, await loadExerciseResolver(user, input.pattern, path)] as const),
+    ),
+  )
   const bucketStarts = await getBucketStarts(
     user,
     measured.flatMap((m) => m.activity.id ?? []),
@@ -398,7 +423,7 @@ const queryMeasureChart = async (
     const bucketStart = m.activity.id === undefined ? undefined : bucketStarts.get(m.activity.id)
     if (!bucketStart) continue
     const contributions = fields
-      ? seriesValues(m, fields, measure, filter)
+      ? seriesValues(m, fields, measure, filter, resolvers)
       : m.measures[measure] === undefined
         ? []
         : [{ key: '', name: '', value: m.measures[measure] }]

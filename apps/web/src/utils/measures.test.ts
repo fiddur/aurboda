@@ -6,6 +6,7 @@ import {
   defaultAggregation,
   formatMeasure,
   formatSet,
+  formatSetCount,
   formatSets,
   measurableTypes,
   measureFilter,
@@ -13,6 +14,7 @@ import {
   measureGoalLabel,
   measureOptions,
   measureSet,
+  muscleGroupParts,
   recordBadge,
   topSet,
   trendParts,
@@ -272,5 +274,27 @@ describe('trendParts', () => {
       ]),
     ).toBeUndefined()
     expect(trendParts([{ after: 3, before: 2, measure: 'set_count' }])).toBeUndefined()
+  })
+})
+
+describe('formatSetCount', () => {
+  test('one decimal, a trailing .0 dropped', () => {
+    expect(formatSetCount(4)).toBe('4')
+    expect(formatSetCount(2.5)).toBe('2.5')
+    expect(formatSetCount(1.75)).toBe('1.8')
+    expect(formatSetCount(0.33)).toBe('0.3')
+  })
+})
+
+describe('muscleGroupParts', () => {
+  test('each group with its set count, groups without one left out', () => {
+    expect(
+      muscleGroupParts([
+        { measures: { set_count: 4, volume: 1200 }, muscle_group: 'chest', name: 'Chest' },
+        { measures: { set_count: 2.5 }, muscle_group: 'triceps', name: 'Triceps' },
+        { measures: { volume: 10 }, muscle_group: 'calves', name: 'Calves' },
+        { measures: { set_count: 1 }, muscle_group: null, name: 'Not in the catalogue' },
+      ]),
+    ).toEqual(['Chest 4', 'Triceps 2.5', 'Not in the catalogue 1'])
   })
 })

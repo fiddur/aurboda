@@ -12,6 +12,7 @@ import {
 } from './common.ts'
 import { sleepStageSummarySchema } from './daily-summary.ts'
 import { dataFieldCatalogSchema } from './data-schema.ts'
+import { exerciseMuscleGroupSchema } from './exercise-catalog.ts'
 import { itemValueIdentityStateSchema } from './item-value-identities.ts'
 import { sharedExerciseSetSchema } from './shared-exercises.ts'
 
@@ -445,6 +446,24 @@ export const activityItemGroupSchema = z
 
 export type ActivityItemGroup = z.infer<typeof activityItemGroupSchema>
 
+export const muscleGroupMeasuresSchema = z
+  .object({
+    measures: activityMeasuresSchema.meta({
+      description:
+        "set_count, volume and total_reps of the working sets, each set weighted by the exercise's recruitment of the group",
+    }),
+    muscle_group: exerciseMuscleGroupSchema
+      .nullable()
+      .meta({ description: 'The muscle group; null for exercises not in the catalogue' }),
+    name: z.string().meta({ description: 'Display name of the muscle group' }),
+  })
+  .meta({
+    description: 'Summed measures of working sets attributed to one muscle group by recruitment weight',
+    id: 'MuscleGroupMeasures',
+  })
+
+export type MuscleGroupMeasures = z.infer<typeof muscleGroupMeasuresSchema>
+
 export const activityItemHistorySchema = z
   .object({
     activity_id: z.string(),
@@ -452,6 +471,10 @@ export const activityItemHistorySchema = z
     groups: z
       .array(activityItemGroupSchema)
       .meta({ description: 'In order of first appearance in the list' }),
+    muscle_groups: z.array(muscleGroupMeasuresSchema).optional().meta({
+      description:
+        "With a catalogue-backed item field: the session's working sets per muscle group, most sets first",
+    }),
     totals: activityMeasuresSchema.meta({ description: "Measures over all the session's items" }),
     trend_half_life_days: z
       .number()

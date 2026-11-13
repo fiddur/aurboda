@@ -5,8 +5,11 @@ import type {
   ItemValueIdentityState,
   SetItemValueIdentityBody,
   StoredExerciseCatalog,
+  StoredExerciseCatalogEntry,
   UnmappedItemValues,
 } from '@aurboda/api-spec'
+
+import type { ExerciseEntryResolver } from './muscle-group-measures.ts'
 
 import {
   type ActivityFieldValueRow,
@@ -368,3 +371,37 @@ export const resolveFieldValueIdentities = async <V extends { value: string }>(
     values: values.map((v) => ({ ...v, ...resolveItemValueIdentity(v.value, stored, catalog) })),
   }
 }
+
+/**
+ * The catalogue entry a logged name of `field` resolves to (the user's stored identity, else an exact
+ * catalogue name or alias), memoised per normalised name; undefined when `field` is not a
+ * catalogue-backed item path of the type.
+ */
+export const loadExerciseEntryResolver = async (
+  user: string,
+  activityType: string,
+  field: string,
+): Promise<ExerciseEntryResolver | undefined> => {
+  const definition = await getActivityTypeDefinition(user, activityType)
+  const path = catalogItemPath(definition?.data_schema, field)
+  if (!path) return undefined
+  const catalog = catalogFor(path.catalog)
+  const stored = storedIdentityMap(await listItemValueIdentities(user, field))
+  const memo = new Map<string, StoredExerciseCatalogEntry | undefined>()
+  return (value) => {
+    const normalized = normalizeItemValue(value)
+    if (normalized === undefined) return undefined
+    return memo.getOrInsertComputed(normalized, () => {
+      const key = resolveItemValueIdentity(value, stored, catalog).catalog_key
+      return key === null ? undefined : getExerciseByKey(catalog, key)
+    })
+  }
+}
+
+/** `loadExerciseEntryResolver`, resolving every name to nothing when `field` is not catalogue-backed. */
+export const loadExerciseResolver = async (
+  user: string,
+  activityType: string,
+  field: string,
+): Promise<ExerciseEntryResolver> =>
+  (await loadExerciseEntryResolver(user, activityType, field)) ?? (() => undefined)
