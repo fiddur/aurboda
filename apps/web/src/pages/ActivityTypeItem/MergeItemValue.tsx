@@ -14,6 +14,8 @@ const INVALIDATED_KEYS = [
   'activity-item-history',
   'activity-field-values',
   'item-value-aliases',
+  'item-value-identity',
+  'unmapped-item-values',
 ]
 
 /** Merges this item value into another: its sets are renamed and it becomes an alias of the target. */
