@@ -61,9 +61,21 @@ export const measureSpecLabel = (
   return withSubject(filterValue ?? typeName ?? '', label.charAt(0).toLowerCase() + label.slice(1))
 }
 
+/** The measures that add up over sets, sessions and exercises; the others take the best. */
+export const summedActivityMeasures = [
+  'volume',
+  'set_count',
+  'total_reps',
+] as const satisfies readonly ActivityMeasure[]
+
+export type SummedActivityMeasure = (typeof summedActivityMeasures)[number]
+
+export const isSummedActivityMeasure = (measure: unknown): measure is SummedActivityMeasure =>
+  (summedActivityMeasures as readonly unknown[]).includes(measure)
+
 /** Whether a window of sessions is scored by its best session (max) or its total (sum). */
 export const measureDefaultAggregation = (measure: ActivityMeasure): 'max' | 'sum' =>
-  measure === 'volume' || measure === 'set_count' || measure === 'total_reps' ? 'sum' : 'max'
+  isSummedActivityMeasure(measure) ? 'sum' : 'max'
 
 /** Records are kept for the measures where a higher value means progress on one exercise. */
 export const recordMeasures = [

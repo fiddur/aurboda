@@ -1,3 +1,5 @@
+import type { DataSchemaDefinition } from '@aurboda/api-spec'
+
 import { describe, expect, test } from 'vitest'
 
 import {
@@ -5,6 +7,7 @@ import {
   EMA_HALF_LIFE_OPTIONS,
   filterPatch,
   halfLifeOptions,
+  itemBreakdownOptions,
   MEASURE_HALF_LIFE_DEFAULT,
   MEASURE_HALF_LIFE_OPTIONS,
   measureParams,
@@ -13,6 +16,7 @@ import {
   parseChartMode,
   parseMeasure,
   parseMeasureQuery,
+  toggleBreakdownField,
 } from './chartMeasures'
 
 describe('parseMeasure', () => {
@@ -90,6 +94,21 @@ describe('measurePatch', () => {
       chart_type: 'bar',
       measure: 'set_count',
     })
+  })
+
+  test('a measure that is not summed drops a muscle-group breakdown; a summed one keeps it', () => {
+    expect(measurePatch(['program', 'sets.exercise.muscle_group'], 'e1rm')).toEqual({
+      aggregation: 'max',
+      breakdown_fields: ['program'],
+      chart_type: 'bar',
+      measure: 'e1rm',
+    })
+    expect(measurePatch(['sets.exercise.muscle_group'], 'volume')).toEqual({
+      aggregation: 'sum',
+      chart_type: 'bar',
+      measure: 'volume',
+    })
+    expect(measurePatch(['sets.exercise.muscle_group'], '').breakdown_fields).toEqual([])
   })
 
   test('clearing it restores count and drops the item filter and item-path breakdowns', () => {
@@ -185,5 +204,55 @@ describe('parseChartMode', () => {
       chart_type: 'trend',
       half_life_days: 240,
     })
+  })
+})
+
+describe('itemBreakdownOptions', () => {
+  const schema = (catalog?: 'exercises'): DataSchemaDefinition => ({
+    fields: [
+      {
+        item_fields: [
+          { ...(catalog ? { catalog } : {}), is_categorical: true, name: 'exercise', type: 'string' },
+        ],
+        name: 'sets',
+        type: 'list',
+      },
+    ],
+  })
+
+  test('a summed measure on a catalogue-backed field offers the muscle group', () => {
+    expect(itemBreakdownOptions(schema('exercises'), 'set_count')).toEqual([
+      { label: 'Exercise', name: 'sets.exercise' },
+      { label: 'Muscle group', name: 'sets.exercise.muscle_group' },
+    ])
+  })
+
+  test('not for a measure that is not summed, nor without a catalogue', () => {
+    expect(itemBreakdownOptions(schema('exercises'), 'e1rm')).toEqual([
+      { label: 'Exercise', name: 'sets.exercise' },
+    ])
+    expect(itemBreakdownOptions(schema(), 'volume')).toEqual([{ label: 'Exercise', name: 'sets.exercise' }])
+  })
+
+  test('nothing without a measure', () => {
+    expect(itemBreakdownOptions(schema('exercises'), '')).toEqual([])
+  })
+})
+
+describe('toggleBreakdownField', () => {
+  test('adds and removes a field', () => {
+    expect(toggleBreakdownField(['program'], 'location')).toEqual(['program', 'location'])
+    expect(toggleBreakdownField(['program', 'location'], 'program')).toEqual(['location'])
+  })
+
+  test('the muscle group replaces the item path, and the other way round; scalar fields stay', () => {
+    expect(toggleBreakdownField(['program', 'sets.exercise'], 'sets.exercise.muscle_group')).toEqual([
+      'program',
+      'sets.exercise.muscle_group',
+    ])
+    expect(toggleBreakdownField(['sets.exercise.muscle_group', 'program'], 'sets.exercise')).toEqual([
+      'program',
+      'sets.exercise',
+    ])
   })
 })

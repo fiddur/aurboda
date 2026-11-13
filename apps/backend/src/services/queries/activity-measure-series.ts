@@ -17,6 +17,7 @@ import {
   normalizeItemValue,
   parseFieldPath,
 } from '../activity-measures.ts'
+import { type ExerciseEntryResolver, measuresByMuscleGroup } from '../muscle-group-measures.ts'
 import { itemPath, matchesFilter, sessionId } from './activity-sessions.ts'
 
 export interface MeasuredActivity {
@@ -107,4 +108,19 @@ export const measuresByItemValue = (
     normalized: g.normalized,
     value: g.value,
   }))
+}
+
+/**
+ * The activity's summed measures per muscle group of the exercises of an item path (`sets.exercise`),
+ * over the same items as `measuresByItemValue`.
+ */
+export const measuresByMuscleGroupOf = (
+  activity: MergedActivity,
+  path: string,
+  resolveEntry: ExerciseEntryResolver,
+  filter?: MeasureFilter,
+): ReturnType<typeof measuresByMuscleGroup> => {
+  const { field, key } = parseFieldPath(path)
+  if (key === undefined) return []
+  return measuresByMuscleGroup(measuredItems(activity, field, filter) ?? [], key, resolveEntry)
 }
