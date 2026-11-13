@@ -176,6 +176,8 @@ describe('isAllowedWhenReadOnly', () => {
     ['POST', '/feed/abc/preview'],
     ['PUT', '/notifications/types/admin_signup'],
     ['POST', '/notifications/abc/def/read'],
+    ['POST', '/notifications/0b6c1f0e-3f7e-4a43-9a51-3c1d7d1f2a10/actions/skip'],
+    ['POST', '/autoshare-rules/skips'],
   ])('refuses %s %s', (method, path) => {
     expect(isAllowedWhenReadOnly(method, path)).toBe(false)
   })

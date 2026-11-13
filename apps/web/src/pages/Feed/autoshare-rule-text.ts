@@ -68,6 +68,7 @@ export const ruleSummary = (
   if (rule.source) predicate.push(`from ${rule.source}`)
   for (const filter of rule.data_filters) predicate.push(dataFilterSummary(filter, labelFor(filter.field)))
   predicate.push(`ended within ${rule.max_age_hours} h`)
+  if (rule.delay_minutes !== 10) predicate.push(`waits ${rule.delay_minutes} min`)
   return `${predicate.join(', ')} → ${rule.visibility}`
 }
 

@@ -345,6 +345,9 @@ export const socialTables: Record<string, string> = {
   autoshare_rules_tags: `
     ALTER TABLE autoshare_rules ADD COLUMN IF NOT EXISTS tags TEXT[]
   `,
+  autoshare_rules_delay_minutes: `
+    ALTER TABLE autoshare_rules ADD COLUMN IF NOT EXISTS delay_minutes INTEGER NOT NULL DEFAULT 10
+  `,
   // `idx_feed_posts_series` is a GIN index over the shared-series set — the hot
   // path for the public series endpoint's `metric = ANY(series_metrics)` check.
   feed_posts_indexes: `

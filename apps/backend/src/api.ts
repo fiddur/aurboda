@@ -110,9 +110,10 @@ import { createAdminUsers } from './services/admin-users.ts'
 import { createArticlePreviewer } from './services/article-preview.ts'
 import { createAuditLogPruneQueue } from './services/audit-log-prune-queue.ts'
 import { auditError, auditInfo, pruneAuditLog } from './services/audit-log.ts'
-import { createAutoshareDeps } from './services/autoshare-deps.ts'
+import { autoshareSkipDeps, createAutoshareDeps } from './services/autoshare-deps.ts'
 import { type AutoshareQueue, createAutoshareQueue } from './services/autoshare-queue.ts'
-import { evaluateAutoshareWindow } from './services/autoshare.ts'
+import { autosharePendingSkipHandler, skipAutoshare } from './services/autoshare-skip.ts'
+import { announceAutoshareWindow, evaluateAutoshareWindow } from './services/autoshare.ts'
 import { backfillMealFoodItemNames } from './services/backfill-meal-food-item-names.ts'
 import { triggerCalorieComputation } from './services/calorie-computation.ts'
 import { createCalorieQueue, type CalorieQueue } from './services/calorie-queue.ts'
@@ -159,6 +160,8 @@ import {
 import { createGeocodeQueue } from './services/geocode-queue.ts'
 import { createInvitationAuth } from './services/invitation.ts'
 import { getPlaceVisits, type NamedLocationsChanged } from './services/locations.ts'
+import { runNotificationAction } from './services/notification-actions.ts'
+import { notificationStore, notifier } from './services/notifications.ts'
 import {
   ensureDefaultOfficialFeed,
   officialRemoteHandles,
@@ -823,11 +826,19 @@ const main = async () => {
   // after a stabilisation delay, publishing matches through the SAME
   // feedDeliver.created fan-out a manual share fires. The deps double as the
   // preview deps for the REST router and MCP tools.
-  const autoshareDeps = createAutoshareDeps(feedDeliver.created)
+  const autoshareDeps = createAutoshareDeps(feedDeliver.created, notifier)
+  const skipAutoshareActivity = skipAutoshare(autoshareSkipDeps)
+  const notificationActionRunner = runNotificationAction({
+    get: notificationStore.get,
+    handlers: { autoshare_pending: { skip: autosharePendingSkipHandler(skipAutoshareActivity) } },
+    revise: notificationStore.revise,
+  })
   const feedRefreshWindowDeps = createFeedRefreshWindowDeps(feedDeliver.updated)
   if (boss) {
     try {
       autoshareQueue = await createAutoshareQueue(boss, {
+        announceWindow: (user, start, end, nextEvaluationAt) =>
+          announceAutoshareWindow(user, start, end, autoshareDeps, nextEvaluationAt),
         evaluateWindow: (user, start, end, requeue) =>
           evaluateAutoshareWindow(user, start, end, { ...autoshareDeps, requeue }),
         refreshWindow: (user, start, end, requeue) =>
@@ -1026,6 +1037,8 @@ const main = async () => {
       adminUsers,
       apiBaseUrl,
       autosharePreviewDeps: autoshareDeps,
+      runNotificationAction: notificationActionRunner,
+      skipAutoshare: skipAutoshareActivity,
       relayActions,
       postUpdateResender,
       centralDb,
@@ -1197,6 +1210,8 @@ const main = async () => {
     accountPlans,
     activityNotifier,
     autosharePreviewDeps: autoshareDeps,
+    runNotificationAction: notificationActionRunner,
+    skipAutoshare: skipAutoshareActivity,
     adminMiddleware,
     dataExport,
     adminUsers,

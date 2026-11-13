@@ -1,9 +1,11 @@
+import type { NotificationAction } from '@aurboda/api-spec'
+
 import type { NotificationPageRow, NotificationPreferenceRecord, NotificationRecord } from './types.ts'
 
 import { query } from './connection.ts'
 
 const NOTIFICATION_COLUMNS =
-  'id, type, title, body, link, data, dedupe_key, in_app, push, read_at, created_at'
+  'id, type, title, body, link, data, actions, dedupe_key, in_app, push, read_at, created_at'
 
 export interface NotificationInsert {
   type: string
@@ -11,6 +13,7 @@ export interface NotificationInsert {
   body?: string | null
   link?: string | null
   data?: Record<string, unknown> | null
+  actions?: NotificationAction[]
   dedupe_key?: string | null
   in_app: boolean
   push: boolean
@@ -23,8 +26,8 @@ export const insertNotification = async (
 ): Promise<NotificationRecord | null> => {
   const result = await query<NotificationRecord>(
     user,
-    `INSERT INTO notifications (type, title, body, link, data, dedupe_key, in_app, push)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `INSERT INTO notifications (type, title, body, link, data, dedupe_key, in_app, push, actions)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      ON CONFLICT (dedupe_key) DO NOTHING
      RETURNING ${NOTIFICATION_COLUMNS}`,
     [
@@ -36,8 +39,60 @@ export const insertNotification = async (
       input.dedupe_key ?? null,
       input.in_app,
       input.push,
+      JSON.stringify(input.actions ?? []),
     ],
   )
+  return result.rows[0] ?? null
+}
+
+export const getNotificationById = async (user: string, id: string): Promise<NotificationRecord | null> => {
+  const result = await query<NotificationRecord>(
+    user,
+    `SELECT ${NOTIFICATION_COLUMNS} FROM notifications WHERE id = $1`,
+    [id],
+  )
+  return result.rows[0] ?? null
+}
+
+export type NotificationTarget = { id: string } | { dedupe_key: string }
+
+export interface NotificationRevisionPatch {
+  title?: string
+  body?: string | null
+  link?: string | null
+  data?: Record<string, unknown> | null
+  actions?: NotificationAction[]
+  mark_read?: boolean
+}
+
+/**
+ * Updates only the fields given. `created_at` stays, so a poller's high-water mark does not
+ * deliver the revised row again. Null when nothing matched.
+ */
+export const reviseNotification = async (
+  user: string,
+  target: NotificationTarget,
+  patch: NotificationRevisionPatch,
+): Promise<NotificationRecord | null> => {
+  const sets: string[] = []
+  const params: unknown[] = []
+  const set = (column: string, value: unknown): void => {
+    params.push(value)
+    sets.push(`${column} = $${params.length}`)
+  }
+  if (patch.title !== undefined) set('title', patch.title)
+  if (patch.body !== undefined) set('body', patch.body)
+  if (patch.link !== undefined) set('link', patch.link)
+  if (patch.data !== undefined) set('data', patch.data === null ? null : JSON.stringify(patch.data))
+  if (patch.actions !== undefined) set('actions', JSON.stringify(patch.actions))
+  if (patch.mark_read === true) sets.push('read_at = COALESCE(read_at, NOW())')
+  params.push('id' in target ? target.id : target.dedupe_key)
+  const where = `${'id' in target ? 'id' : 'dedupe_key'} = $${params.length}`
+  const sql =
+    sets.length === 0
+      ? `SELECT ${NOTIFICATION_COLUMNS} FROM notifications WHERE ${where}`
+      : `UPDATE notifications SET ${sets.join(', ')} WHERE ${where} RETURNING ${NOTIFICATION_COLUMNS}`
+  const result = await query<NotificationRecord>(user, sql, params)
   return result.rows[0] ?? null
 }
 

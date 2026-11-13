@@ -25,7 +25,10 @@ Key areas covered by MCP tools:
 The `tools/list` answer is abbreviated to keep it small: each tool shows the first sentence of its description and its top-level parameters only, each with its type, enum, format and a one-line description. Nested objects and arrays appear as `object` or `array` (with the item type), without their inner fields. `describe_tools` returns the full description and the complete JSON input schema -- nested objects, enums, formats, examples -- for up to 20 tool names, and lists any names it does not know under `unknown`. The server's `initialize` instructions tell the assistant to call it before using a tool whose parameters are objects or arrays. It is the one MCP tool without a REST twin: it is protocol plumbing, and REST's equivalent is the OpenAPI document.
 
 ```json
-{ "name": "describe_tools", "arguments": { "names": ["add_deduction_rule", "query_chart_data"] } }
+{
+  "name": "describe_tools",
+  "arguments": { "names": ["add_deduction_rule", "query_chart_data"] }
+}
 ```
 
 ### Sleep tools
@@ -119,13 +122,23 @@ model.
 
 The bell's notifications and per-type switches. See [Notifications](features/notifications.md).
 
-| Tool                          | What it does                                                                                                                 |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `list_notifications`          | Newest first with `unread_count` and `next_cursor`; `unread_only`, `after` and `push_only` filter, like `GET /notifications` |
-| `mark_notification_read`      | Mark one notification read by `id`                                                                                           |
-| `mark_all_notifications_read` | Mark every unread notification read                                                                                          |
-| `list_notification_types`     | The types this user can receive with their in-app and push switches                                                          |
-| `set_notification_preference` | Turn a `type` on or off in-app and/or as a push                                                                              |
+| Tool                          | What it does                                                                                                                          |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_notifications`          | Newest first with `unread_count` and `next_cursor`; `unread_only`, `after` and `push_only` filter, like `GET /notifications`          |
+| `mark_notification_read`      | Mark one notification read by `id`                                                                                                    |
+| `mark_all_notifications_read` | Mark every unread notification read                                                                                                   |
+| `list_notification_types`     | The types this user can receive with their in-app and push switches                                                                   |
+| `set_notification_preference` | Turn a `type` on or off in-app and/or as a push                                                                                       |
+| `run_notification_action`     | Run one of a notification's `actions` by `id` and `key` (the keys come from `list_notifications`), e.g. `skip` on `autoshare_pending` |
+
+### Auto-share tools
+
+The rules that publish new activities to the feed. See [Auto-share rules](features/auto-share-rules.md).
+
+| Tool                                                                                                                     | What it does                                                                                            |
+| ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `list_autoshare_rules`, `add_autoshare_rule`, `update_autoshare_rule`, `delete_autoshare_rule`, `preview_autoshare_rule` | Manage the rules, like `/autoshare-rules`                                                               |
+| `skip_autoshare`                                                                                                         | Keep one activity (`activity_id`) and its merge group from being auto-shared; fails when already shared |
 
 ## Endpoint
 

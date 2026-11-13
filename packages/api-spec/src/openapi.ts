@@ -16,6 +16,7 @@ import {
   relaysResponseSchema,
   resendPostUpdatesResponseSchema,
 } from './schemas/admin.ts'
+import { skipAutoshareBodySchema, skipAutoshareResponseSchema } from './schemas/autoshare-rules.ts'
 import {
   challengeParticipationsResponseSchema,
   challengePreviewQuerySchema,
@@ -292,6 +293,30 @@ const openApiDocument = createDocument({
           404: { description: 'The tag has no public page' },
         },
         summary: 'Atom feed of a public tag page',
+        tags: ['Feed'],
+      },
+    },
+    '/autoshare-rules/skips': {
+      post: {
+        description:
+          'Stop one activity (and the rest of its merge group) from being auto-shared. It can still be shared by hand.',
+        requestBody: { content: { 'application/json': { schema: skipAutoshareBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: skipAutoshareResponseSchema } },
+            description: 'The activities that will not be auto-shared',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Activity not found',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The activity is already shared',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Skip auto-sharing an activity',
         tags: ['Feed'],
       },
     },
@@ -1221,6 +1246,35 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'Set a notification preference',
+        tags: ['Notifications'],
+      },
+    },
+    '/notifications/{id}/actions/{key}': {
+      post: {
+        description:
+          'Run one of the actions a notification offers (its `actions` list). The server decides what the action does; running one marks the notification read and clears its actions, so an action runs at most once.',
+        requestParams: {
+          path: z.object({
+            id: z.string().uuid().meta({ description: 'Notification ID' }),
+            key: z.string().meta({ description: 'The action key, from the notification’s `actions`' }),
+          }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: notificationResponseSchema } },
+            description: 'The revised notification',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'No such notification, or it offers no such action (any more)',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The action could not be done (e.g. the activity was already shared)',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Run a notification action',
         tags: ['Notifications'],
       },
     },
