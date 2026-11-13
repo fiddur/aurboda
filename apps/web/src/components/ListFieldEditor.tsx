@@ -1,6 +1,16 @@
 import type { DataItemFieldDefinition } from '@aurboda/api-spec'
 
-import { addRowLabel, type ListRow, moveRow, newRow, removeRow, setCell } from './listFieldRows'
+import { useState } from 'preact/hooks'
+
+import {
+  addRowLabel,
+  type ListRow,
+  moveRow,
+  newRow,
+  removeRow,
+  setCell,
+  visibleItemFields,
+} from './listFieldRows'
 import { fieldLabel, type ListFieldDefinition } from './sessions/sessionView'
 import './ListFieldEditor.css'
 
@@ -98,7 +108,11 @@ export const ListFieldEditor = ({
   onChange: (rows: ListRow[]) => void
   idPrefix?: string
 }) => {
+  const [expanded, setExpanded] = useState(false)
   const items = field.item_fields
+  const visible = visibleItemFields(items, rows, expanded)
+  const hiddenCount = items.length - visible.length
+  const collapsible = expanded && visibleItemFields(items, rows, false).length < items.length
   return (
     <div class="list-field-editor">
       {rows.length > 0 && (
@@ -107,7 +121,7 @@ export const ListFieldEditor = ({
             <thead>
               <tr>
                 <th class="list-field-editor-index">#</th>
-                {items.map((item) => (
+                {visible.map((item) => (
                   <th key={item.name}>{columnHeader(item)}</th>
                 ))}
                 <th />
@@ -117,7 +131,7 @@ export const ListFieldEditor = ({
               {rows.map((row, i) => (
                 <tr key={i}>
                   <td class="list-field-editor-index">{i + 1}</td>
-                  {items.map((item) => (
+                  {visible.map((item) => (
                     <td key={item.name}>
                       <CellInput
                         id={`${idPrefix}-${i}-${item.name}`}
@@ -165,13 +179,25 @@ export const ListFieldEditor = ({
           </table>
         </div>
       )}
-      <button
-        type="button"
-        class="list-field-editor-add"
-        onClick={() => onChange([...rows, newRow(rows.at(-1), items)])}
-      >
-        {addRowLabel(fieldLabel(field))}
-      </button>
+      <div class="list-field-editor-footer">
+        <button
+          type="button"
+          class="list-field-editor-add"
+          onClick={() => onChange([...rows, newRow(rows.at(-1), items)])}
+        >
+          {addRowLabel(fieldLabel(field))}
+        </button>
+        {(hiddenCount > 0 || collapsible) && (
+          <button
+            type="button"
+            class="list-field-editor-more"
+            aria-expanded={expanded}
+            onClick={() => setExpanded(!expanded)}
+          >
+            {expanded ? 'Fewer fields' : `More fields (${hiddenCount})`}
+          </button>
+        )}
+      </div>
     </div>
   )
 }
