@@ -1,10 +1,6 @@
 /**
- * Fetches a calendar's ICS feed. The URL is whatever a user typed, and the
- * server fetches it on every calendar sync, so by default it may only lead to
- * public addresses: each redirect hop is checked like the first URL, and the
- * connection is pinned to the address that was checked. A server on a private
- * network, whose users are trusted with it, opts out with
- * `CALENDAR_ALLOW_PRIVATE_ADDRESSES=true`.
+ * Unless private addresses are allowed, every redirect hop is checked like the
+ * first URL and the connection is pinned to the address that was checked.
  */
 
 import type { AxiosRequestConfig } from 'axios'
@@ -28,7 +24,6 @@ export interface FetchIcsDeps {
 
 const REQUEST_TIMEOUT_MS = 20_000
 const MAX_RESPONSE_BYTES = 20 * 1024 * 1024
-/** Calendar hosts redirect to a canonical or signed URL; a handful of hops covers them. */
 const MAX_REDIRECTS = 5
 
 export const PRIVATE_CALENDAR_ADDRESS_MESSAGE =
