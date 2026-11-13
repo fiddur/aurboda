@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import type { AutoshareRuleRecord } from '../db/index.ts'
 import type { AutoshareGroupMember } from '../services/autoshare-deps.ts'
+import type { SkipAutoshare } from '../services/autoshare-skip.ts'
 import type { AutosharePreviewDeps } from '../services/autoshare.ts'
 
 import { createAutoshareRulesRouter } from './autoshare-rules-router.ts'
@@ -29,6 +30,7 @@ const record = (over: Partial<AutoshareRuleRecord> = {}): AutoshareRuleRecord =>
   activity_types: ['yoga'],
   created_at: T0,
   data_filters: [],
+  delay_minutes: 10,
   enabled: false,
   enabled_at: null,
   id: RULE_ID,
@@ -75,14 +77,19 @@ const previewDeps: AutosharePreviewDeps<AutoshareGroupMember> = {
   }),
 }
 
-const buildApp = () => {
+const skipped: SkipAutoshare = async (_user, activityId) => ({
+  activity_ids: [activityId],
+  status: 'skipped',
+})
+
+const buildApp = (skip: SkipAutoshare = skipped) => {
   const app = express()
   app.use(express.json())
   const auth = (req: express.Request, _res: express.Response, next: express.NextFunction) => {
     req.user = 'tester'
     next()
   }
-  app.use(createAutoshareRulesRouter(auth, previewDeps) as unknown as express.RequestHandler)
+  app.use(createAutoshareRulesRouter(auth, previewDeps, skip) as unknown as express.RequestHandler)
   return app
 }
 
@@ -229,5 +236,70 @@ describe('autoshare rule max_age_hours', () => {
 
     const bad = await supertest(buildApp()).patch(`/${RULE_ID}`).send({ max_age_hours: 0 })
     expect(bad.status).toBe(400)
+  })
+})
+
+describe('autoshare rule delay_minutes', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(db.insertAutoshareRule).mockImplementation(async (_user, input) => record(input))
+  })
+
+  test('defaults to 10 minutes on create and is returned', async () => {
+    const res = await supertest(buildApp()).post('/').send({ name: 'Anything' })
+    expect(res.status).toBe(200)
+    expect(vi.mocked(db.insertAutoshareRule).mock.calls[0]?.[1].delay_minutes).toBe(10)
+    expect(res.body.rule.delay_minutes).toBe(10)
+  })
+
+  test.each([9, 1441, 12.5])('rejects %s on create', async (value) => {
+    const res = await supertest(buildApp()).post('/').send({ delay_minutes: value, name: 'Bad' })
+    expect(res.status).toBe(400)
+  })
+
+  test('is optional on update, and validated when given', async () => {
+    vi.mocked(db.updateAutoshareRule).mockResolvedValue(record({ delay_minutes: 30 }))
+    const res = await supertest(buildApp()).patch(`/${RULE_ID}`).send({ delay_minutes: 30 })
+    expect(res.status).toBe(200)
+    expect(vi.mocked(db.updateAutoshareRule).mock.calls[0]?.[2]).toEqual({ delay_minutes: 30 })
+    expect((await supertest(buildApp()).patch(`/${RULE_ID}`).send({ delay_minutes: 5 })).status).toBe(400)
+  })
+})
+
+describe('POST /autoshare-rules/skips', () => {
+  const ACTIVITY_ID = '3f1c2b9e-8a4d-4c1e-9f6a-2b7d5e8c1a03'
+
+  test('skips the activity and its merge group', async () => {
+    const calls: string[] = []
+    const res = await supertest(
+      buildApp(async (_user, id) => {
+        calls.push(id)
+        return { activity_ids: [id, 'other'], status: 'skipped' }
+      }),
+    )
+      .post('/skips')
+      .send({ activity_id: ACTIVITY_ID })
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ activity_ids: [ACTIVITY_ID, 'other'], success: true })
+    expect(calls).toEqual([ACTIVITY_ID])
+  })
+
+  test('404s for a missing activity', async () => {
+    const res = await supertest(buildApp(async () => ({ status: 'not_found' })))
+      .post('/skips')
+      .send({ activity_id: ACTIVITY_ID })
+    expect(res.status).toBe(404)
+  })
+
+  test('409s when the activity is already shared', async () => {
+    const res = await supertest(buildApp(async () => ({ post_id: 'p', status: 'already_shared' })))
+      .post('/skips')
+      .send({ activity_id: ACTIVITY_ID })
+    expect(res.status).toBe(409)
+    expect(res.body).toEqual({ error: 'This activity is already shared', success: false })
+  })
+
+  test('400s without a uuid activity_id', async () => {
+    expect((await supertest(buildApp()).post('/skips').send({ activity_id: 'x' })).status).toBe(400)
   })
 })

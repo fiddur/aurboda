@@ -23,11 +23,18 @@ A per-user set of rules, each combining a **predicate** and a **share template**
   member replaced by another member — the synced row behind an edit's override — is
   left out, so a value you corrected or cleared never comes back from the original.
 - **Max age** (`max_age_hours`, default 24, 1 to 8760): a rule shares an activity only
-  when it _ended_ at most this many hours before the rule looks at it. A history update
-  that makes old activities newly match — an enrich rule run over history that adds
-  `session_name`, a re-sync, an import — therefore never publishes them. The flip side:
-  an activity whose phone sync is delayed past the max age is not shared either. Rules
-  created before the field existed have 24.
+  when it _ended_ at most this many hours before it _arrived_ (its youngest merge-group
+  member's ingest). The waits before sharing — the rule's own wait, the Garmin detail
+  wait — do not count against it, so a long wait never eats the max age. A history
+  update that makes old activities newly match — an enrich rule run over history that
+  adds `session_name`, a re-sync, an import — therefore never publishes them. The flip
+  side: an activity whose phone sync is delayed past the max age is not shared either.
+  Rules created before the field existed have 24.
+- **Wait** (`delay_minutes`, default 10, 10 to 1440): how long after the activity
+  arrived (its youngest merge-group member's ingest) the rule waits before sharing it.
+  The default equals the stabilisation delay, so it changes nothing; a longer wait gives
+  you more time to stop a share from the [pending-share
+  notification](#pending-share-notification).
 - **Share template** — exactly the fields of a manual share: `included_metrics`,
   `series_metrics`, `include_chart`/`include_map`, `include_exercises` (off by default; a
   strength-training rule can share each exercise's sets, e1RM, volume and records),
@@ -89,10 +96,14 @@ A per-user set of rules, each combining a **predicate** and a **share template**
   A delayed sync of a workout done _after_ enabling still shares, as long as it is
   within the rule's max age.
 - **Recent activities only**: on top of the two gates, the activity must have ended
-  within the rule's `max_age_hours` of the evaluation. A rule's cutoff is the later of
-  its `enabled_at` and _now − max age_; the candidate query already leaves out
-  activities that ended before the earliest cutoff over the enabled rules, so a first
-  sync's wide window costs one query rather than several per old activity.
+  within the rule's `max_age_hours` of its arrival. A rule's cutoff for a group is the
+  later of its `enabled_at` and _arrival − max age_, the same in the announce pass and
+  in the evaluation, so what was announced is also shared. An arrival further back than
+  the waits can explain — the rule's wait plus the two-hour detail wait and its last
+  re-check — is a group that only now started matching (an edit, an enrich run), and
+  that is measured from _now − that wait budget_ instead. The candidate query already
+  leaves out activities that ended before the loosest cutoff over the enabled rules, so
+  a first sync's wide window costs one query rather than several per old activity.
 - **Bounded blast radius**: at most 5 posts per evaluation run (logged when hit) —
   federated deliveries can't be recalled, so even an unexpected window can only leak a
   handful of posts, never a firehose.
@@ -102,9 +113,37 @@ A per-user set of rules, each combining a **predicate** and a **share template**
   its window. The never-retroactive gates, the dedupe and the per-run cap still apply.
 - The **first matching rule** (in creation order) wins; distance is only resolved when
   some eligible rule constrains it.
+- **The rule's wait**: a settled group is shared only once its rule's `delay_minutes`
+  have passed since its youngest member was ingested; until then the window is re-queued
+  for that time, like an unsettled group.
 - Auto-created posts are ordinary feed posts: they federate through the same delivery
   fan-out as a manual share, are editable/unshareable, and show an **auto-shared**
   marker on the owner's feed.
+
+### Pending-share notification
+
+Before an activity is auto-shared you get an `autoshare_pending`
+[notification](notifications.md) ("Your new strength training will be shared in about
+10 minutes"; "… once its Garmin details have synced" while only the detail wait is
+left), with the activity's title, the rule and the visibility, and a **Don't share**
+button.
+
+- **When**: every activity mutation also queues an **announce-only pass** over its window
+  30 seconds later (`autoshare-announce`), which walks the same guards as the evaluation
+  but never shares and never re-queues; it announces every group that matches a rule and
+  has no post or suppression. The evaluation announces too whenever it holds a matching
+  group back (still settling, or within the rule's wait). The notification is stored
+  once per activity (its `dedupe_key` is `autoshare_pending:<activity id>`), and
+  announces are capped at 5 per run like posts.
+- **Don't share** (`skip`) records the activity and the rest of its merge group in
+  `autoshare_suppressions`, so no rule ever shares it; the notification then reads
+  "will not be shared". If the share won the race, the answer is "This activity was
+  already shared" and the notification links to the post. The same is available as
+  `POST /autoshare-rules/skips` / `skip_autoshare` with an `activity_id`.
+- **Shared**: once the post is created, the notification is revised in place to "Your
+  … was shared", linking to the post, and its button is removed.
+- A skipped activity **can still be shared by hand**: the manual share does not consult
+  the suppressions.
 
 ## Surface
 
@@ -115,8 +154,9 @@ A per-user set of rules, each combining a **predicate** and a **share template**
   **Preview** ("would have matched N activities in the last
   30 days" — regardless of shared status, `enabled_at` and the max age, so the number
   shows the predicate's true reach). The form's "Only activities that ended within …
-  hours" field sets the max age (default 24), and the rule list states it ("ended
-  within 24 h") along with the tags the rule's posts get: its own list or "your
+  hours" field sets the max age (default 24), and its "Wait before sharing (minutes)"
+  field the wait (10 to 1440, default 10). The rule list states the max age ("ended
+  within 24 h"), the wait when it is not 10 ("waits 30 min"), along with the tags the rule's posts get: its own list or "your
   default tags", plus any `#tags` typed in the fixed message ("no tags" when that is
   empty). The form shows the same line, live, under **Tags**. Each rule's **Edit**
   button opens the same form prefilled under the rule, to
@@ -127,9 +167,12 @@ A per-user set of rules, each combining a **predicate** and a **share template**
   source, and more than one activity type (listed read-only) — is left as it is;
   those are edited through the REST API or MCP. The Android app embeds this page.
 - **REST**: `GET/POST /autoshare-rules`, `PATCH/DELETE /autoshare-rules/:id`,
-  `POST /autoshare-rules/preview`.
+  `POST /autoshare-rules/preview`, `POST /autoshare-rules/skips` (`{ activity_id }`:
+  200 with the merge group's `activity_ids`, 404 for an unknown activity, 409 when it is
+  already shared).
 - **MCP** (parity): `list_autoshare_rules`, `add_autoshare_rule`,
-  `update_autoshare_rule`, `delete_autoshare_rule`, `preview_autoshare_rule`.
+  `update_autoshare_rule`, `delete_autoshare_rule`, `preview_autoshare_rule`,
+  `skip_autoshare`.
 
 ## Out of scope
 

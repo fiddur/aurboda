@@ -12,6 +12,7 @@ import {
 } from './notifications'
 
 const notification = (id: string, overrides: Partial<Notification> = {}): Notification => ({
+  actions: [],
   body: null,
   created_at: '2026-11-01T10:00:00.000Z',
   data: null,

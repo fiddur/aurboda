@@ -24,6 +24,7 @@ export interface AutoshareRuleRecord {
   source: string | null
   data_filters: AutoshareDataFilter[]
   max_age_hours: number
+  delay_minutes: number
   included_metrics: string[]
   series_metrics: string[]
   include_chart: boolean
@@ -47,6 +48,7 @@ export interface AutoshareRuleInput {
   source?: string | null
   data_filters: AutoshareDataFilter[]
   max_age_hours: number
+  delay_minutes: number
   included_metrics: string[]
   series_metrics: string[]
   include_chart: boolean
@@ -67,6 +69,7 @@ export interface AutoshareRulePatch {
   source?: string | null
   data_filters?: AutoshareDataFilter[]
   max_age_hours?: number
+  delay_minutes?: number
   included_metrics?: string[]
   series_metrics?: string[]
   include_chart?: boolean
@@ -78,7 +81,7 @@ export interface AutoshareRulePatch {
 }
 
 const COLS =
-  'id, name, enabled, enabled_at, activity_types, min_duration_seconds, max_duration_seconds, min_distance_meters, source, data_filters, max_age_hours, included_metrics, series_metrics, include_chart, include_map, include_exercises, visibility, message, tags, created_at, updated_at'
+  'id, name, enabled, enabled_at, activity_types, min_duration_seconds, max_duration_seconds, min_distance_meters, source, data_filters, max_age_hours, delay_minutes, included_metrics, series_metrics, include_chart, include_map, include_exercises, visibility, message, tags, created_at, updated_at'
 
 export const getAutoshareRules = async (user: string): Promise<AutoshareRuleRecord[]> => {
   const result = await query<AutoshareRuleRecord>(
@@ -106,8 +109,8 @@ export const insertAutoshareRule = async (
     `INSERT INTO autoshare_rules
        (name, activity_types, min_duration_seconds, max_duration_seconds, min_distance_meters, source,
         data_filters, max_age_hours, included_metrics, series_metrics, include_chart, include_map, include_exercises,
-        visibility, message, tags)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+        visibility, message, tags, delay_minutes)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
      RETURNING ${COLS}`,
     [
       input.name,
@@ -126,6 +129,7 @@ export const insertAutoshareRule = async (
       input.visibility,
       input.message ?? null,
       input.tags ?? null,
+      input.delay_minutes,
     ],
   )
   return result.rows[0]
@@ -142,6 +146,7 @@ const PATCH_COLUMNS = [
   'source',
   'data_filters',
   'max_age_hours',
+  'delay_minutes',
   'included_metrics',
   'series_metrics',
   'include_chart',
@@ -286,4 +291,14 @@ export const listAutoshareSuppressedIds = async (user: string, ids: string[]): P
     [ids],
   )
   return result.rows.map((row) => row.activity_id)
+}
+
+export const insertAutoshareSuppressions = async (user: string, ids: string[]): Promise<void> => {
+  if (ids.length === 0) return
+  await query(
+    user,
+    `INSERT INTO autoshare_suppressions (activity_id) SELECT unnest($1::uuid[])
+     ON CONFLICT (activity_id) DO NOTHING`,
+    [ids],
+  )
 }

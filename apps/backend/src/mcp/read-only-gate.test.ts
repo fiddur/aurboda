@@ -23,6 +23,8 @@ describe('isToolAllowedWhenReadOnly', () => {
     'sync_oura',
     'set_tag_mapping',
     'set_notification_preference',
+    'run_notification_action',
+    'skip_autoshare',
   ])('refuses %s', (name) => expect(isToolAllowedWhenReadOnly(name)).toBe(false))
 })
 

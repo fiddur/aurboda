@@ -17,6 +17,7 @@ export const notificationTypes = [
   'feed_like',
   'feed_boost',
   'feed_post',
+  'autoshare_pending',
 ] as const
 
 export type NotificationType = (typeof notificationTypes)[number]
@@ -103,10 +104,35 @@ export const notificationTypeInfo: Record<NotificationType, NotificationTypeInfo
     group: 'feed',
     label: 'New posts',
   },
+  autoshare_pending: {
+    admin_only: false,
+    description:
+      'An auto-share rule is about to share a new activity; the notification lets you stop that one',
+    group: 'feed',
+    label: 'Pending auto-shares',
+  },
 }
+
+export const notificationActionSchema = z
+  .object({
+    key: z
+      .string()
+      .meta({ description: 'Identifies the action in `POST /notifications/{id}/actions/{key}`' }),
+    label: z.string().meta({ description: 'Button text' }),
+  })
+  .meta({
+    description: 'A button a notification offers; the server decides what it does',
+    id: 'NotificationAction',
+  })
+
+export type NotificationAction = z.infer<typeof notificationActionSchema>
 
 export const notificationSchema = z
   .object({
+    actions: z.array(notificationActionSchema).meta({
+      description:
+        'Buttons the notification offers; run one with `POST /notifications/{id}/actions/{key}`. Empty when there are none or one was already run.',
+    }),
     body: z.string().nullable().meta({ description: 'Longer text, if any' }),
     created_at: iso8601DateTimeSchema.meta({ description: 'When the notification was raised' }),
     data: z
@@ -192,7 +218,8 @@ export const notificationTypeSettingSchema = z
     admin_only: z.boolean().meta({ description: 'Only admins receive this type' }),
     description: z.string().meta({ description: 'What raises this type' }),
     group: z.string().meta({
-      description: 'The group the type is shown under in settings (`feed`, `data_sources`, `admin`)',
+      description:
+        'The group the type is shown under in settings (`feed`, `data_sources`, `admin`). Plain text, like `type`, so a client never fails to decode a group added after it was built.',
       example: 'feed',
     }),
     group_label: z.string().meta({ description: 'Human-readable name of the group', example: 'Feed' }),

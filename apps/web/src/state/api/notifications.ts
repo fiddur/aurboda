@@ -13,6 +13,7 @@ import axios from 'axios'
 
 import { API_URL } from '../../config'
 import { auth } from '../auth'
+import { apiErrorMessage } from './feed'
 
 const authHeaders = () => ({ Authorization: `Bearer ${auth.value.token}` })
 
@@ -67,4 +68,18 @@ export const setNotificationPreference = async (
     { headers: authHeaders() },
   )
   return response.data.type_setting
+}
+
+/** Runs one of a notification's actions; throws with the server's message when it cannot be done. */
+export const runNotificationAction = async (id: string, key: string): Promise<Notification | undefined> => {
+  try {
+    const response = await axios.post<NotificationResponse>(
+      `${API_URL}/notifications/${encodeURIComponent(id)}/actions/${encodeURIComponent(key)}`,
+      undefined,
+      { headers: authHeaders() },
+    )
+    return response.data.notification
+  } catch (error) {
+    throw new Error(apiErrorMessage(error, 'Couldn’t do that. Please try again.'))
+  }
 }

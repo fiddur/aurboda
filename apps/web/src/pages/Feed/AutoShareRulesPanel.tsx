@@ -341,6 +341,20 @@ function RuleForm({ rule, onDone }: { rule?: AutoshareRule; onDone: () => void }
             onInput={(e) => set({ maxAgeHours: (e.target as HTMLInputElement).value })}
           />
         </label>
+        <label>
+          Wait before sharing (minutes)
+          <input
+            type="number"
+            min="10"
+            max="1440"
+            step="1"
+            value={state.delayMinutes}
+            onInput={(e) => set({ delayMinutes: (e.target as HTMLInputElement).value })}
+          />
+          <span class="autoshare-edit-note">
+            You get a notification during the wait and can stop that share.
+          </span>
+        </label>
       </div>
 
       <fieldset class="share-dialog-group">

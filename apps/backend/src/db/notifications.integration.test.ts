@@ -4,6 +4,7 @@ import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-te
 import { query } from './connection.ts'
 import {
   countUnreadNotifications,
+  getNotificationById,
   getNotificationPreference,
   insertNotification,
   listNotificationPreferences,
@@ -12,6 +13,7 @@ import {
   markNotificationRead,
   type NotificationInsert,
   pruneNotifications,
+  reviseNotification,
   upsertNotificationPreference,
 } from './notifications.ts'
 
@@ -75,6 +77,18 @@ describe('Notifications Integration Tests', () => {
       expect(second).toBeNull()
       const rows = await listNotifications(user, { limit: 10 })
       expect(rows.map((r) => r.title)).toEqual(['first'])
+    })
+
+    test('stores actions, defaulting to none', async () => {
+      const user = getTestUser()
+      const withActions = await insertNotification(user, {
+        ...base,
+        actions: [{ key: 'skip', label: "Don't share" }],
+      })
+      const without = await insertNotification(user, base)
+
+      expect(withActions!.actions).toEqual([{ key: 'skip', label: "Don't share" }])
+      expect(without!.actions).toEqual([])
     })
 
     test('allows any number of rows without a dedupe key', async () => {
@@ -175,6 +189,78 @@ describe('Notifications Integration Tests', () => {
 
       expect(await markAllNotificationsRead(user)).toBe(2)
       expect(await countUnreadNotifications(user)).toBe(0)
+    })
+  })
+
+  describe('getNotificationById', () => {
+    test('returns the row, or null for an unknown id', async () => {
+      const user = getTestUser()
+      const row = await insertNotification(user, { ...base, title: 'Hi' })
+
+      expect(await getNotificationById(user, row!.id)).toMatchObject({ id: row!.id, title: 'Hi' })
+      expect(await getNotificationById(user, '00000000-0000-0000-0000-000000000000')).toBeNull()
+    })
+  })
+
+  describe('reviseNotification', () => {
+    test('by dedupe key: updates only the given fields and keeps created_at and read state', async () => {
+      const user = getTestUser()
+      const row = await insertNotification(user, {
+        ...base,
+        actions: [{ key: 'skip', label: 'Skip' }],
+        body: 'old body',
+        data: { a: 1 },
+        dedupe_key: 'k1',
+        link: '/old',
+        title: 'Old',
+      })
+
+      const revised = await reviseNotification(user, { dedupe_key: 'k1' }, { link: '/new', title: 'New' })
+
+      expect(revised).toMatchObject({
+        actions: [{ key: 'skip', label: 'Skip' }],
+        body: 'old body',
+        data: { a: 1 },
+        link: '/new',
+        read_at: null,
+        title: 'New',
+      })
+      expect(revised!.created_at).toEqual(row!.created_at)
+    })
+
+    test('by id: clears actions, nulls fields, marks read and keeps the first read_at', async () => {
+      const user = getTestUser()
+      const row = await insertNotification(user, {
+        ...base,
+        actions: [{ key: 'skip', label: 'Skip' }],
+        body: 'b',
+        data: { a: 1 },
+      })
+
+      const revised = await reviseNotification(
+        user,
+        { id: row!.id },
+        { actions: [], body: null, data: null, mark_read: true },
+      )
+      expect(revised).toMatchObject({ actions: [], body: null, data: null })
+      expect(revised!.read_at).toBeInstanceOf(Date)
+
+      const again = await reviseNotification(user, { id: row!.id }, { mark_read: true })
+      expect(again!.read_at).toEqual(revised!.read_at)
+    })
+
+    test('an empty patch returns the row unchanged', async () => {
+      const user = getTestUser()
+      const row = await insertNotification(user, { ...base, dedupe_key: 'k2' })
+      expect(await reviseNotification(user, { dedupe_key: 'k2' }, {})).toMatchObject({ id: row!.id })
+    })
+
+    test('returns null when nothing matched', async () => {
+      const user = getTestUser()
+      expect(await reviseNotification(user, { dedupe_key: 'missing' }, { title: 'x' })).toBeNull()
+      expect(
+        await reviseNotification(user, { id: '00000000-0000-0000-0000-000000000000' }, { title: 'x' }),
+      ).toBeNull()
     })
   })
 
