@@ -64,6 +64,15 @@ describe('canonicalPlace', () => {
     ).toBe('Hökås')
   })
 
+  test('a Home Assistant zone named like a named location is that location, in its spelling', () => {
+    expect(
+      canonicalPlace(visit('hökås', '2026-10-01T00:00:00Z', '2026-10-01T01:00:00Z', 'home_assistant'), named),
+    ).toBe('Hökås')
+    expect(
+      canonicalPlace(visit('Work', '2026-10-01T00:00:00Z', '2026-10-01T01:00:00Z', 'home_assistant'), named),
+    ).toBeNull()
+  })
+
   test('other regions, detected and unknown places are elsewhere', () => {
     const elsewhere = (name: string, source: PlaceVisit['source']) =>
       canonicalPlace(visit(name, '2026-10-01T00:00:00Z', '2026-10-01T01:00:00Z', source), named)

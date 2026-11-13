@@ -23,12 +23,13 @@ Between consecutive visits, **transit** entries appear as dashed connectors show
 
 ### Source Types
 
-| Source        | Color  | Description                                                       |
-| ------------- | ------ | ----------------------------------------------------------------- |
-| **Named**     | Green  | Locations you've named (e.g., "Home", "Gym")                      |
-| **Detected**  | Orange | Automatically detected frequent locations with geocoded addresses |
-| **OwnTracks** | Blue   | Identified by OwnTracks geofence regions                          |
-| **Unknown**   | Gray   | Unidentified locations, shown as "Somewhere"                      |
+| Source             | Color  | Description                                                       |
+| ------------------ | ------ | ----------------------------------------------------------------- |
+| **Named**          | Green  | Locations you've named (e.g., "Home", "Gym")                      |
+| **Detected**       | Orange | Automatically detected frequent locations with geocoded addresses |
+| **OwnTracks**      | Blue   | Identified by OwnTracks geofence regions                          |
+| **Home Assistant** | Purple | Identified by the Home Assistant zone the phone was in            |
+| **Unknown**        | Gray   | Unidentified locations, shown as "Somewhere"                      |
 
 ### Map
 
@@ -48,11 +49,11 @@ Below the day's visits, a **Named places** section lists every named location, s
 
 The detection pipeline runs automatically in the background:
 
-1. **GPS data arrives** from OwnTracks as continuous location updates.
+1. **GPS data arrives** from OwnTracks as continuous location updates, or is pulled from [Home Assistant](../home-assistant.md) every 10 minutes by default.
 2. **Stay detection**: Points within a 200-meter radius where you remained for 60+ minutes are grouped into a "stay."
 3. **Clustering**: Multiple stays at similar locations are merged, tracking visit count, total time, and a suggested radius.
 4. **Geocoding**: New detected locations are reverse-geocoded via OpenStreetMap's Nominatim service to get a street address. Geocoding is rate-limited (1 request per 1.1 seconds) and retried on failure.
-5. **Visit resolution**: When querying a day's visits, each GPS period is matched against named locations (highest priority), detected locations, OwnTracks regions, and finally marked as unknown.
+5. **Visit resolution**: When querying a day's visits, each GPS period is matched against named locations (highest priority), detected locations, OwnTracks regions or Home Assistant zones (by the point's source), and finally marked as unknown.
 
 Short unknown visits under 5 minutes (typically GPS jitter) are merged into adjacent visits to reduce noise.
 
@@ -72,8 +73,8 @@ its first visit starts at the queried range rather than at a fix. Detail pages a
 `GET /locations/places-summary?start=<iso>&end=<iso>&tz=<IANA>&home_location=<name>` (MCP:
 `get_places_summary`) says where the nights of a range were spent and which named places were visited.
 
-- **Place of a visit.** A visit to a named location is that place. An OwnTracks region carrying the
-  name of a named location (matched case-insensitively) is that named location too: such regions often
+- **Place of a visit.** A visit to a named location is that place. An OwnTracks region or Home
+  Assistant zone carrying the name of a named location (matched case-insensitively) is that named location too: such regions often
   reach past the named radius, so a fix just outside it would otherwise split the stay. Anything else
   (detected places, other regions, unknown places) is _elsewhere_. Consecutive visits to the same place
   at most 36 hours apart are joined into one, so the fragments of a stay count as one visit.
@@ -121,15 +122,16 @@ This opens the Places page for a specific date and auto-selects the named place.
 
 ## What Data It Needs
 
-Location tracking requires **OwnTracks** configured in HTTP mode, sending continuous GPS updates to Aurboda. See [docs/owntracks.md](../owntracks.md) for setup.
+Location tracking requires a phone position source: **OwnTracks** configured in HTTP mode, sending continuous GPS updates to Aurboda (see [docs/owntracks.md](../owntracks.md)), **or Home Assistant** with the companion app, whose position history Aurboda pulls (see [docs/home-assistant.md](../home-assistant.md)).
 
-The more frequently OwnTracks sends updates, the more accurate stay detection and visit tracking become. A 5-15 minute reporting interval works well for most users.
+The more frequently the phone reports its position, the more accurate stay detection and visit tracking become. A 5-15 minute reporting interval works well for most users.
 
 **PostGIS** is required on the database (included in the Docker setup) for geographic distance calculations.
 
 ## Known Limitations
 
-- Location tracking depends entirely on **OwnTracks GPS data**. There is no integration with Google Maps Timeline, Apple Location Services, or other providers.
+- Location tracking depends entirely on phone GPS from **OwnTracks or Home Assistant** (plus activity tracks from Garmin and Strava). There is no integration with Google Maps Timeline, Apple Location Services, or other providers.
+- Home Assistant positions arrive by polling, so they lag by up to the poll interval, and HA records few positions while the phone is at rest.
 - Detection requires **60+ minutes** at a location within 200 meters. Brief visits (e.g., a 30-minute coffee shop stop) are not auto-detected as frequent locations but still appear as visits.
 - Geocoding uses OpenStreetMap's Nominatim, which is rate-limited and may not have addresses for all locations (especially rural or newly developed areas).
 - The map defaults to Stockholm coordinates when no location data exists for the selected day.

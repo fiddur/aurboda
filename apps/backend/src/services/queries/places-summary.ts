@@ -38,13 +38,16 @@ const TOP_PLACES = 5
 
 const normalize = (name: string): string => name.trim().toLowerCase()
 
+const REGION_SOURCES = new Set<PlaceVisit['source']>(['owntracks', 'home_assistant'])
+
 /**
- * A named visit is its named location; an OwnTracks region named like a named location (it often
- * reaches past the named radius) is that named location, in its spelling; anything else is elsewhere.
+ * A named visit is its named location; a region (OwnTracks region or Home Assistant zone) named like
+ * a named location (it often reaches past the named radius) is that named location, in its spelling;
+ * anything else is elsewhere.
  */
 export const canonicalPlace = (visit: PlaceVisit, namedByKey: Map<string, string>): string | null => {
   if (visit.source === 'named') return visit.name
-  if (visit.source === 'owntracks') return namedByKey.get(normalize(visit.name)) ?? null
+  if (REGION_SOURCES.has(visit.source)) return namedByKey.get(normalize(visit.name)) ?? null
   return null
 }
 

@@ -36,14 +36,15 @@ export const insertLocation = async (user: string, location: Location) => {
   if ((result.rowCount ?? 0) > 0) recordUsage(user, 'ingest', source)
 }
 
-/** Batch-insert multiple locations in a single query. */
-export const insertLocations = async (user: string, locations: Location[]): Promise<void> => {
-  if (locations.length === 0) return
+// pg-format %L produces invalid SQL for empty JS arrays (trailing comma before paren),
+// so regions go in as a PostgreSQL array literal. Every element is quoted so a name
+// with a comma, brace, quote or backslash (free-text zone names) survives.
+const formatRegions = (regions: string[] | undefined): string =>
+  regions?.length ? `{${regions.map((r) => `"${r.replaceAll(/[\\"]/g, '\\$&')}"`).join(',')}}` : '{}'
 
-  // pg-format %L produces invalid SQL for empty JS arrays (trailing comma before paren),
-  // so convert regions to a PostgreSQL array literal string.
-  const formatRegions = (regions: string[] | undefined): string =>
-    regions?.length ? `{${regions.join(',')}}` : '{}'
+/** Batch-insert multiple locations in a single query. Returns the number of rows that were new. */
+export const insertLocations = async (user: string, locations: Location[]): Promise<number> => {
+  if (locations.length === 0) return 0
 
   const values = locations.map((loc) => [
     loc.source || 'owntracks',
@@ -72,6 +73,7 @@ export const insertLocations = async (user: string, locations: Location[]): Prom
     ),
   )
   recordIngestBySource(user, result.rows, (row) => row.source)
+  return result.rows.length
 }
 
 /**
@@ -101,6 +103,40 @@ export const softDeleteSupersededLocations = async (
     `UPDATE locations SET deleted_at = NOW()
      WHERE NOT (source = ANY($1)) AND time >= $2 AND time <= $3 AND deleted_at IS NULL`,
     [keepSources, start, end],
+  )
+  return result.rowCount ?? 0
+}
+
+/**
+ * Soft-delete `source` points in `[start, end]` that fall inside the span of a
+ * live, finished activity which has its own GPS track from one of `trackSources`.
+ *
+ * The late-arrival counterpart of `softDeleteSupersededLocations`: a pulled
+ * source (Home Assistant) can deliver phone points after the activity's track
+ * was written, when the track writer's soft-delete has already run. It matches
+ * on the activity's own span: the track's overhang past either end, which the
+ * writer's `gpsPrecedenceSpan` also covers, is not stored anywhere to match on.
+ */
+export const softDeleteLocationsInTrackedActivities = async (
+  user: string,
+  source: string,
+  trackSources: string[],
+  start: Date,
+  end: Date,
+): Promise<number> => {
+  const result = await query(
+    user,
+    `UPDATE locations l SET deleted_at = NOW()
+     WHERE l.source = $1 AND l.time >= $3 AND l.time <= $4 AND l.deleted_at IS NULL
+       AND EXISTS (
+         SELECT 1 FROM activities a
+         WHERE a.deleted_at IS NULL AND a.end_time IS NOT NULL
+           AND a.start_time <= l.time AND a.end_time >= l.time
+           AND EXISTS (
+             SELECT 1 FROM activity_tracks t WHERE t.activity_id = a.id AND t.source = ANY($2)
+           )
+       )`,
+    [source, trackSources, start, end],
   )
   return result.rowCount ?? 0
 }

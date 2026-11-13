@@ -186,6 +186,7 @@ describe('gateSyncProvider', () => {
     syncCalendarsIfNeeded: vi.fn(async () => {}),
     syncGarminIfNeeded: vi.fn(async () => {}),
     syncGravlIfNeeded: vi.fn(async () => {}),
+    syncHomeAssistantIfNeeded: vi.fn(async () => {}),
     syncLastFmIfNeeded: vi.fn(async () => {}),
     syncOuraIfNeeded: vi.fn(async () => {}),
     syncRescueTimeIfNeeded: vi.fn(async () => {}),
@@ -195,6 +196,7 @@ describe('gateSyncProvider', () => {
     await sync.syncCalendarsIfNeeded(user)
     await sync.syncGarminIfNeeded(user, 'sleep')
     await sync.syncGravlIfNeeded(user)
+    await sync.syncHomeAssistantIfNeeded(user)
     await sync.syncLastFmIfNeeded(user)
     await sync.syncOuraIfNeeded(user, 'tags')
     await sync.syncRescueTimeIfNeeded(user)
