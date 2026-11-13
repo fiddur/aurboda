@@ -17,6 +17,7 @@ import type { AccountPlans } from '../services/account-plan.ts'
 import type { PostUpdateResender } from '../services/activitypub/post-update-resend.ts'
 import type { AdminUsers } from '../services/admin-users.ts'
 import type { ArticlePreviewer } from '../services/article-preview.ts'
+import type { SkipAutoshare } from '../services/autoshare-skip.ts'
 import type { CentralDb } from '../services/central-db.ts'
 import type { DiscoverChallenges } from '../services/challenge-discovery.ts'
 import type { DeductionEngineDeps } from '../services/deduction-engine.ts'
@@ -28,6 +29,7 @@ import type { FollowerActions } from '../services/followers.ts'
 import type { FollowActions } from '../services/following.ts'
 import type { InvitationAuth } from '../services/invitation.ts'
 import type { NamedLocationsChanged } from '../services/locations.ts'
+import type { RunNotificationAction } from '../services/notification-actions.ts'
 import type { OuraWebhookManager } from '../services/oura-webhook-manager.ts'
 import type { PublicTagActions } from '../services/public-tags.ts'
 import type { SyncProvider } from '../services/queries/index.ts'
@@ -181,6 +183,10 @@ interface RestRoutesDeps {
   onProfileChanged: ProfileChanged
   /** Merge-group/window resolution behind the auto-share rule preview (#903). */
   autosharePreviewDeps: AutosharePreviewDeps
+  /** Keeps one activity from being auto-shared (the `skip` action and `/autoshare-rules/skips`). */
+  skipAutoshare: SkipAutoshare
+  /** Runs a notification's action server-side. */
+  runNotificationAction: RunNotificationAction
   /** Fire-and-forget: recompute activity features after HR zones, birth date or maf_hr change. */
   onHrSettingsChanged: HrSettingsChanged
   onNamedLocationsChanged: NamedLocationsChanged
@@ -227,6 +233,8 @@ export const mountRestRouters = ({
   engineDeps,
   deductionQueue,
   autosharePreviewDeps,
+  skipAutoshare,
+  runNotificationAction,
   dataExport,
   feedDeliver,
   followActions,
@@ -251,7 +259,13 @@ export const mountRestRouters = ({
   httpd.use(createAgentsRouter(apiBaseUrl))
   httpd.use('/icons', createIconsRouter(authMiddleware))
   httpd.use('/notes', createNotesRouter(authMiddleware))
-  httpd.use('/notifications', createNotificationsRouter(authMiddleware, { isAdmin: centralDb.isAdmin }))
+  httpd.use(
+    '/notifications',
+    createNotificationsRouter(authMiddleware, {
+      isAdmin: centralDb.isAdmin,
+      runAction: runNotificationAction,
+    }),
+  )
   httpd.use('/media', createMediaRouter(authMiddleware))
   httpd.use('/meals', createMealsRouter(authMiddleware))
   httpd.use('/food-items', createFoodItemsRouter(authMiddleware, centralDb))
@@ -284,7 +298,10 @@ export const mountRestRouters = ({
     '/deduction-rules',
     createDeductionRulesRouter(authMiddleware, engineDeps, deductionQueue ?? undefined),
   )
-  httpd.use('/autoshare-rules', createAutoshareRulesRouter(authMiddleware, autosharePreviewDeps))
+  httpd.use(
+    '/autoshare-rules',
+    createAutoshareRulesRouter(authMiddleware, autosharePreviewDeps, skipAutoshare),
+  )
   httpd.use('/locations', createLocationsRouter(authMiddleware, onNamedLocationsChanged))
   httpd.use(
     '/home-assistant',

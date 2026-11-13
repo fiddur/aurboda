@@ -6,11 +6,16 @@
  * act that lets data leave the instance, and it only affects activities that
  * arrive afterwards.
  */
-import { addAutoshareRuleBodySchema, updateAutoshareRuleBodySchema } from '@aurboda/api-spec'
+import {
+  addAutoshareRuleBodySchema,
+  skipAutoshareBodySchema,
+  updateAutoshareRuleBodySchema,
+} from '@aurboda/api-spec'
 import { z } from 'zod'
 
 import type { AutoshareRuleRecord } from '../db/index.ts'
 import type { AutoshareGroupMember } from '../services/autoshare-deps.ts'
+import type { SkipAutoshare } from '../services/autoshare-skip.ts'
 import type { AutosharePreviewDeps as PreviewDeps } from '../services/autoshare.ts'
 
 import {
@@ -34,6 +39,7 @@ export const registerAutoshareRuleTools = (
   server: McpServer,
   user: string,
   previewDeps: AutosharePreviewDeps,
+  skip?: SkipAutoshare,
 ) => {
   server.tool(
     'list_autoshare_rules',
@@ -65,6 +71,20 @@ export const registerAutoshareRuleTools = (
       return jsonResponse(serializeAutoshareRule(record))
     },
   )
+
+  if (skip) {
+    server.tool(
+      'skip_autoshare',
+      'Stop one activity (and the rest of its merge group) from ever being auto-shared, e.g. while its pending-share notification is up. It can still be shared by hand. Fails when the activity is already shared.',
+      { ...skipAutoshareBodySchema.shape },
+      async ({ activity_id }) => {
+        const outcome = await skip(user, activity_id)
+        if (outcome.status === 'not_found') return errorResponse('Activity not found')
+        if (outcome.status === 'already_shared') return errorResponse('This activity is already shared')
+        return jsonResponse({ activity_ids: outcome.activity_ids, success: true })
+      },
+    )
+  }
 
   server.tool(
     'delete_autoshare_rule',

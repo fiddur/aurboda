@@ -190,6 +190,7 @@ export const tableCreationOrder = [
   'autoshare_rules_max_age_hours',
   'autoshare_rules_include_exercises',
   'autoshare_rules_tags',
+  'autoshare_rules_delay_minutes',
   'autoshare_suppressions',
   'feed_posts_indexes',
   'feed_posts_keyset_index',
@@ -236,6 +237,7 @@ export const tableCreationOrder = [
   'webauthn_credentials',
   'webauthn_credentials_indexes',
   'notifications',
+  'notifications_actions',
   'notifications_indexes',
   'notification_preferences',
 ]

@@ -24,6 +24,7 @@ import type { AccountPlans } from './services/account-plan.ts'
 import type { PostUpdateResender } from './services/activitypub/post-update-resend.ts'
 import type { AdminUsers } from './services/admin-users.ts'
 import type { ArticlePreviewer } from './services/article-preview.ts'
+import type { SkipAutoshare } from './services/autoshare-skip.ts'
 import type { CentralDb } from './services/central-db.ts'
 import type { DiscoverChallenges } from './services/challenge-discovery.ts'
 import type { DeductionEngineDeps } from './services/deduction-engine.ts'
@@ -33,6 +34,7 @@ import type { ReactionActions } from './services/feed-reactions.ts'
 import type { FollowerActions } from './services/followers.ts'
 import type { FollowActions } from './services/following.ts'
 import type { NamedLocationsChanged } from './services/locations.ts'
+import type { RunNotificationAction } from './services/notification-actions.ts'
 import type { PublicTagActions } from './services/public-tags.ts'
 import type { SyncProvider } from './services/queries/index.ts'
 import type { RelayActions } from './services/relays.ts'
@@ -129,6 +131,10 @@ interface McpDeps {
   adminUsers?: AdminUsers
   apiBaseUrl?: string
   autosharePreviewDeps?: AutosharePreviewDeps
+  /** `skip_autoshare`, and the handler behind the pending-share notification's action. */
+  skipAutoshare?: SkipAutoshare
+  /** `run_notification_action`. */
+  runNotificationAction?: RunNotificationAction
   centralDb?: CentralDb
   deductionQueue?: DeductionQueue
   /** Open challenges from followed peers (`discover_challenges`). */
@@ -187,7 +193,9 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   registerActivityTools(server, user, deps.onActivityMutated)
   registerActivityTypeTools(server, user)
   registerDeductionRuleTools(server, user, engineDeps, deps.deductionQueue)
-  if (deps.autosharePreviewDeps) registerAutoshareRuleTools(server, user, deps.autosharePreviewDeps)
+  if (deps.autosharePreviewDeps) {
+    registerAutoshareRuleTools(server, user, deps.autosharePreviewDeps, deps.skipAutoshare)
+  }
   registerSyncTools(
     server,
     user,
@@ -208,7 +216,12 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   registerTrendTools(server, user)
   registerChartTools(server, user)
   registerNoteTools(server, user)
-  registerNotificationTools(server, user, deps.centralDb?.isAdmin ?? (async () => false))
+  registerNotificationTools(
+    server,
+    user,
+    deps.centralDb?.isAdmin ?? (async () => false),
+    deps.runNotificationAction,
+  )
   registerMealTools(server, user)
   registerNutrientRecommendationTools(server, user)
   if (deps.centralDb) {

@@ -1,6 +1,8 @@
 import { notificationsQuerySchema, setNotificationPreferenceBodySchema, UUID_RE } from '@aurboda/api-spec'
 import { z } from 'zod'
 
+import type { RunNotificationAction } from '../services/notification-actions.ts'
+
 import {
   getNotificationTypeSettings,
   listNotificationsPage,
@@ -15,6 +17,7 @@ export const registerNotificationTools = (
   server: McpServer,
   user: string,
   isAdmin: (user: string) => Promise<boolean>,
+  runAction?: RunNotificationAction,
   store: NotificationStore = notificationStore,
 ) => {
   server.tool(
@@ -34,6 +37,23 @@ export const registerNotificationTools = (
       return jsonResponse({ notification: serializeNotification(record), success: true })
     },
   )
+
+  if (runAction) {
+    server.tool(
+      'run_notification_action',
+      "Run one of a notification's actions (e.g. `skip` on an `autoshare_pending` notification stops that auto-share). The keys a notification offers are in its `actions` from list_notifications. Running one marks the notification read and clears its actions, so it runs at most once.",
+      {
+        id: z.string().uuid().describe('The notification ID'),
+        key: z.string().describe("The action key, from the notification's `actions`"),
+      },
+      async ({ id, key }) => {
+        const outcome = await runAction(user, id, key)
+        if (outcome.status === 'not_found') return errorResponse('Notification action not found')
+        if (outcome.status === 'conflict') return errorResponse(outcome.message)
+        return jsonResponse({ notification: serializeNotification(outcome.notification), success: true })
+      },
+    )
+  }
 
   server.tool('mark_all_notifications_read', 'Mark every unread notification read.', {}, async () =>
     jsonResponse({ success: true, updated: await store.markAllRead(user) }),
