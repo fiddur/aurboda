@@ -50,6 +50,13 @@ import {
 } from './schemas/goals.ts'
 import { homeAssistantEntitiesResponseSchema } from './schemas/home-assistant.ts'
 import {
+  itemValueIdentityQuerySchema,
+  itemValueIdentityResponseSchema,
+  setItemValueIdentityBodySchema,
+  unmappedItemValuesQuerySchema,
+  unmappedItemValuesResponseSchema,
+} from './schemas/item-value-identities.ts'
+import {
   addNamedLocationBodySchema,
   addNamedLocationResponseSchema,
   detectedLocationsResponseSchema,
@@ -158,6 +165,10 @@ const deleteResponseSchema = z
     success: z.boolean(),
   })
   .meta({ id: 'DeleteResponse' })
+
+const activityTypeNamePathSchema = z.object({
+  name: z.string().meta({ description: 'Activity type name, e.g. strength_training' }),
+})
 
 const openApiDocument = createDocument({
   components: {
@@ -544,6 +555,99 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'Get exercise catalogue entry',
+        tags: ['Activities'],
+      },
+    },
+    '/activity-types/{name}/item-values/identity': {
+      delete: {
+        description:
+          "Remove the user's decision for a logged name of a catalogue-backed item path, so it resolves automatically again.",
+        requestParams: { path: activityTypeNamePathSchema, query: itemValueIdentityQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: deleteResponseSchema } },
+            description: 'Decision removed',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The field is not a catalogue-backed item field of the activity type',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Unknown activity type, or no decision stored for the name',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Clear item value identity',
+        tags: ['Activities'],
+      },
+      get: {
+        description:
+          "What catalogue entry a logged name of a catalogue-backed item path (e.g. sets.exercise) stands for: the user's own mapping or dismissal, else an exact match of a catalogue name or alias, else unmapped. Also lists the user's other logged values that resolve to the same entry. The name need not be logged yet.",
+        requestParams: { path: activityTypeNamePathSchema, query: itemValueIdentityQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: itemValueIdentityResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The field is not a catalogue-backed item field of the activity type',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Unknown activity type',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get item value identity',
+        tags: ['Activities'],
+      },
+      put: {
+        description:
+          'Map a logged name of a catalogue-backed item path to a catalogue entry, or dismiss it as not in the catalogue (key null). No activity is rewritten: the identity sits on the name.',
+        requestBody: { content: { 'application/json': { schema: setItemValueIdentityBodySchema } } },
+        requestParams: { path: activityTypeNamePathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: itemValueIdentityResponseSchema } },
+            description: 'The name as it now resolves',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Not a catalogue-backed item field, or an unknown catalogue key',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Unknown activity type',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Set item value identity',
+        tags: ['Activities'],
+      },
+    },
+    '/activity-types/{name}/item-values/unmapped': {
+      get: {
+        description:
+          'The logged names of a catalogue-backed item path that match no catalogue entry and that the user has neither mapped nor dismissed, most used first, each with up to three suggested entries.',
+        requestParams: { path: activityTypeNamePathSchema, query: unmappedItemValuesQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: unmappedItemValuesResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The field is not a catalogue-backed item field of the activity type',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Unknown activity type',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List unmapped item values',
         tags: ['Activities'],
       },
     },

@@ -29,7 +29,10 @@ export const loadExerciseCatalog = (): StoredExerciseCatalog => {
 interface CatalogIndex {
   byKey: Map<string, StoredExerciseCatalogEntry>
   byName: Map<string, StoredExerciseCatalogEntry>
-  words: Map<StoredExerciseCatalogEntry, { all: string[]; name: string[] }>
+  words: Map<
+    StoredExerciseCatalogEntry,
+    { all: string[]; labels: string[][]; name: string[]; terms: string[] }
+  >
 }
 
 const indexes = new WeakMap<StoredExerciseCatalog, CatalogIndex>()
@@ -45,7 +48,9 @@ const indexOf = (catalog: StoredExerciseCatalog): CatalogIndex => {
     for (const label of [entry.name, ...entry.aliases]) index.byName.set(normalizeExerciseName(label), entry)
     index.words.set(entry, {
       all: [...new Set([entry.name, ...entry.aliases, ...entry.search_terms].flatMap(words))],
+      labels: [entry.name, ...entry.aliases].map((label) => [...new Set(words(label))]),
       name: words(entry.name),
+      terms: [...new Set(entry.search_terms.flatMap(words))],
     })
   }
   indexes.set(catalog, index)
@@ -79,7 +84,6 @@ const matchesFilters = (entry: StoredExerciseCatalogEntry, query: ExerciseSearch
 const byName = (a: StoredExerciseCatalogEntry, b: StoredExerciseCatalogEntry): number =>
   a.name.length - b.name.length || a.name.localeCompare(b.name, 'en')
 
-/** Exact match, then matches in the name, then matches through aliases and search terms. */
 const tier = (rank: number): number => (rank === 0 ? 0 : rank <= 2 ? 1 : 2)
 
 /** body.build's hand-picked gym exercises go before the long tail of free-exercise-db within a tier. */
@@ -92,7 +96,7 @@ const rankSearch = (catalog: StoredExerciseCatalog, q: string, candidates: Store
   const queryWords = words(q)
   const isPrefixOfAny = (pool: string[]) => (word: string) => pool.some((w) => w.startsWith(word))
   const rank = (entry: StoredExerciseCatalogEntry): number => {
-    const entryWords = index.words.get(entry) ?? { all: [], name: [] }
+    const entryWords = index.words.get(entry) ?? { all: [], labels: [], name: [], terms: [] }
     if (!queryWords.every(isPrefixOfAny(entryWords.all))) return -1
     if (index.byName.get(normalized) === entry) return 0
     if (normalizeExerciseName(entry.name).startsWith(normalized)) return 1
@@ -142,4 +146,52 @@ export const searchExercises = (
     total: ordered.length,
     version: catalog.version,
   }
+}
+
+const wordsMeet = (a: string, b: string): boolean => {
+  if (a === b) return true
+  const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a]
+  return shorter.length >= 3 && longer.startsWith(shorter)
+}
+
+const meetsAny = (pool: string[]) => (word: string) => pool.some((w) => wordsMeet(word, w))
+
+const SUGGESTION_THRESHOLD = 0.34
+
+/**
+ * Jaccard overlap of the name's words with the entry's best-matching name or alias, where a word
+ * also meets its prefix of three or more letters (`curl` meets `curls`), and a word found only in
+ * the search terms counts half.
+ */
+const suggestionScore = (nameWords: string[], labels: string[][], terms: string[]): number =>
+  Math.max(
+    0,
+    ...labels.map((label) => {
+      const inLabel = nameWords.filter(meetsAny(label)).length
+      const inTermsOnly = nameWords.filter((w) => !meetsAny(label)(w) && meetsAny(terms)(w)).length
+      return (inLabel + inTermsOnly / 2) / (nameWords.length + label.length - inLabel)
+    }),
+  )
+
+/** Catalogue entries a logged name may stand for, best first. */
+export const suggestExercises = (
+  catalog: StoredExerciseCatalog,
+  name: string,
+  limit = 3,
+): StoredExerciseCatalogEntry[] => {
+  const nameWords = [...new Set(words(name))]
+  if (nameWords.length === 0) return []
+  const index = indexOf(catalog)
+  return catalog.entries
+    .map((entry) => {
+      const entryWords = index.words.get(entry)
+      return {
+        entry,
+        score: entryWords ? suggestionScore(nameWords, entryWords.labels, entryWords.terms) : 0,
+      }
+    })
+    .filter(({ score }) => score >= SUGGESTION_THRESHOLD)
+    .sort((a, b) => b.score - a.score || byName(a.entry, b.entry))
+    .slice(0, limit)
+    .map(({ entry }) => entry)
 }

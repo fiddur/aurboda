@@ -29,6 +29,13 @@ vi.mock('../services/item-value-aliases.ts', () => ({
   mergeItemValues: vi.fn(),
 }))
 
+vi.mock('../services/item-value-identities.ts', () => ({
+  clearItemValueIdentity: vi.fn(),
+  getItemValueIdentity: vi.fn(),
+  listUnmappedItemValues: vi.fn(),
+  setItemValueIdentity: vi.fn(),
+}))
+
 vi.mock('../services/activity-records.ts', () => ({ getActivityRecords: vi.fn() }))
 
 vi.mock('../db/index.ts', () => ({}))
@@ -37,6 +44,7 @@ const queries = await import('../services/queries/index.ts')
 const service = await import('../services/activity-type-definitions.ts')
 const aliases = await import('../services/item-value-aliases.ts')
 const records = await import('../services/activity-records.ts')
+const identities = await import('../services/item-value-identities.ts')
 
 const buildApp = () => {
   const app = express()
@@ -353,5 +361,118 @@ describe('DELETE /activity-types/:name/item-values/aliases/:id', () => {
       `/activity-types/strength_training/item-values/aliases/${id}`,
     )
     expect(res.status).toBe(404)
+  })
+})
+
+describe('item value identity routes', () => {
+  const identity = {
+    catalog: 'exercises' as const,
+    catalog_key: 'lat_pulldown',
+    catalog_version: '2026.11.0',
+    field: 'sets.exercise',
+    other_values: [],
+    state: 'user' as const,
+    value: 'Pulldown',
+  }
+  const url = '/activity-types/strength_training/item-values'
+
+  beforeEach(() => vi.clearAllMocks())
+
+  test('GET identity resolves the value', async () => {
+    vi.mocked(identities.getItemValueIdentity).mockResolvedValue({ data: identity, success: true })
+    const res = await supertest(buildApp())
+      .get(`${url}/identity`)
+      .query({ field: 'sets.exercise', value: 'Pulldown' })
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ data: identity, success: true })
+    expect(identities.getItemValueIdentity).toHaveBeenCalledWith(
+      'tester',
+      'strength_training',
+      'sets.exercise',
+      'Pulldown',
+    )
+  })
+
+  test('GET identity 400s for a field without a catalogue and on a missing value', async () => {
+    const app = buildApp()
+    vi.mocked(identities.getItemValueIdentity).mockResolvedValueOnce({
+      error: '"sets.side" is not a catalogue-backed item field of "strength_training"',
+      success: false,
+    })
+    expect(
+      (await supertest(app).get(`${url}/identity`).query({ field: 'sets.side', value: 'L' })).status,
+    ).toBe(400)
+    expect((await supertest(app).get(`${url}/identity`).query({ field: 'sets.exercise' })).status).toBe(400)
+    expect(identities.getItemValueIdentity).toHaveBeenCalledTimes(1)
+  })
+
+  test('PUT identity maps or dismisses, 400 on an unknown key', async () => {
+    const app = buildApp()
+    vi.mocked(identities.setItemValueIdentity).mockResolvedValueOnce({ data: identity, success: true })
+    const body = { field: 'sets.exercise', key: 'lat_pulldown', value: 'Pulldown' }
+    const res = await supertest(app).put(`${url}/identity`).send(body)
+    expect(res.status).toBe(200)
+    expect(identities.setItemValueIdentity).toHaveBeenCalledWith('tester', 'strength_training', body)
+
+    vi.mocked(identities.setItemValueIdentity).mockResolvedValueOnce({
+      error: 'Unknown exercise catalogue key "nope"',
+      success: false,
+    })
+    expect(
+      (
+        await supertest(app)
+          .put(`${url}/identity`)
+          .send({ ...body, key: 'nope' })
+      ).status,
+    ).toBe(400)
+
+    vi.mocked(identities.setItemValueIdentity).mockResolvedValueOnce({
+      data: { ...identity, catalog_key: null, state: 'dismissed' },
+      success: true,
+    })
+    expect(
+      (
+        await supertest(app)
+          .put(`${url}/identity`)
+          .send({ ...body, key: null })
+      ).status,
+    ).toBe(200)
+  })
+
+  test('DELETE identity clears, 404 when none is stored', async () => {
+    const app = buildApp()
+    vi.mocked(identities.clearItemValueIdentity).mockResolvedValueOnce({ success: true })
+    const query = { field: 'sets.exercise', value: 'Pulldown' }
+    expect((await supertest(app).delete(`${url}/identity`).query(query)).body).toEqual({ success: true })
+    expect(identities.clearItemValueIdentity).toHaveBeenCalledWith(
+      'tester',
+      'strength_training',
+      'sets.exercise',
+      'Pulldown',
+    )
+
+    vi.mocked(identities.clearItemValueIdentity).mockResolvedValueOnce({
+      error: 'Identity for "Pulldown" not found',
+      success: false,
+    })
+    expect((await supertest(app).delete(`${url}/identity`).query(query)).status).toBe(404)
+  })
+
+  test('GET unmapped lists the unmapped values', async () => {
+    const data = {
+      catalog: 'exercises' as const,
+      catalog_version: '2026.11.0',
+      field: 'sets.exercise',
+      values: [],
+    }
+    vi.mocked(identities.listUnmappedItemValues).mockResolvedValue({ data, success: true })
+    const res = await supertest(buildApp()).get(`${url}/unmapped`).query({ field: 'sets.exercise' })
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ data, success: true })
+    expect(identities.listUnmappedItemValues).toHaveBeenCalledWith(
+      'tester',
+      'strength_training',
+      'sets.exercise',
+    )
   })
 })

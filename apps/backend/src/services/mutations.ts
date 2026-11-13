@@ -42,6 +42,7 @@ import { auditError } from './audit-log.ts'
 import { getCustomMetrics } from './custom-metrics.ts'
 import { validateActivityData } from './data-schema-validation.ts'
 import { aliasActivityData } from './item-value-aliases.ts'
+import { applyItemValueKeysForWrite, storeItemValueMappings } from './item-value-identities.ts'
 import { syncNoteTimesForEntity } from './notes.ts'
 import { reanalyseActivities, reanalyseOverrideTargets } from './track-analyse.ts'
 
@@ -297,6 +298,21 @@ const validateDataForType = async (
   return undefined
 }
 
+/**
+ * Aliases go first, so a catalogue key next to an aliased name maps the name that is stored; the
+ * second pass covers a name that a key alone filled in.
+ */
+const resolveItemValues = async <T extends Record<string, unknown> | undefined>(
+  user: string,
+  activityType: string,
+  data: T,
+): ReturnType<typeof applyItemValueKeysForWrite<T>> => {
+  const aliased = await aliasActivityData(user, data)
+  const keyed = await applyItemValueKeysForWrite(user, activityType, aliased)
+  if (!keyed.success || keyed.data.data === aliased) return keyed
+  return { data: { ...keyed.data, data: await aliasActivityData(user, keyed.data.data) }, success: true }
+}
+
 // eslint-disable-next-line complexity -- notification callbacks add branches
 export async function addActivity(
   user: string,
@@ -310,7 +326,9 @@ export async function addActivity(
     }
   }
 
-  const data = await aliasActivityData(user, input.data)
+  const keyed = await resolveItemValues(user, input.activity_type, input.data)
+  if (!keyed.success) return { error: `Data validation failed: ${keyed.error}`, success: false }
+  const { data, mappings } = keyed.data
   const dataError = await validateDataForType(user, input.activity_type, data)
   if (dataError) return { error: dataError, success: false }
 
@@ -334,6 +352,7 @@ export async function addActivity(
     if (existing?.id) {
       const newEndTime = input.end_time ?? input.start_time
       await dbUpdateActivity(user, existing.id, { end_time: newEndTime })
+      await storeItemValueMappings(user, mappings)
 
       onMutated?.(user, existing.activity_type, existing.start_time, newEndTime)
 
@@ -359,6 +378,7 @@ export async function addActivity(
     start_time: input.start_time,
     title: input.title,
   })
+  await storeItemValueMappings(user, mappings)
 
   // Persist user-typed notes as a row in the notes table. Source is left
   // NULL so it joins the "user-authored" set used by replaceUserNotes and
@@ -595,7 +615,9 @@ export async function updateActivity(
     }
   }
 
-  const inputData = await aliasActivityData(user, input.data)
+  const keyed = await resolveItemValues(user, finalType, input.data)
+  if (!keyed.success) return { error: `Data validation failed: ${keyed.error}`, id, success: false }
+  const inputData = keyed.data.data
   const mergedData = inputData ? { ...before.data, ...inputData } : before.data
 
   if (mergedData) {
@@ -652,6 +674,7 @@ export async function updateActivity(
       success: false,
     }
   }
+  await storeItemValueMappings(user, keyed.data.mappings)
 
   // Route a body-level `notes` update into the notes table. Replace semantics:
   // wipe existing user-authored notes (source IS NULL) on this row, then insert
