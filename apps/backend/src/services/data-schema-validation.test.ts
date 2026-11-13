@@ -2,6 +2,7 @@ import type { DataSchemaDefinition } from '@aurboda/api-spec'
 
 import { describe, expect, it } from 'vitest'
 
+import { strengthTrainingDataSchema } from '../schema/builtin-data-schemas.ts'
 import { validateActivityData } from './data-schema-validation.ts'
 
 const schema: DataSchemaDefinition = {
@@ -183,5 +184,58 @@ describe('validateActivityData with a list field', () => {
       'Field "sets[1].weight" expected type "number", got "string"',
       'Field "sets[2]" expected an object, got "string"',
     ])
+  })
+})
+
+describe('validateActivityData with the built-in strength_training schema', () => {
+  it('accepts a set exactly as Gravl writes it', () => {
+    const result = validateActivityData(
+      {
+        sets: [
+          {
+            distance: null,
+            exercise: 'Bench Press',
+            exercise_id: 12,
+            order: 2,
+            reps: 8,
+            rpe: 8,
+            set_type: 'normal',
+            superset_id: 3,
+            time: null,
+            weight: 80,
+          },
+        ],
+      },
+      strengthTrainingDataSchema,
+    )
+    expect(result).toEqual({ valid: true })
+  })
+
+  it('accepts reps in reserve and a note', () => {
+    const result = validateActivityData(
+      { sets: [{ exercise: 'Squat', note: 'slow', reps: 5, rir: 2, weight: 100 }] },
+      strengthTrainingDataSchema,
+    )
+    expect(result).toEqual({ valid: true })
+  })
+
+  it('rejects a set_type outside the declared values', () => {
+    const result = validateActivityData(
+      { sets: [{ exercise: 'Squat', set_type: 'amrap' }] },
+      strengthTrainingDataSchema,
+    )
+    expect(result.valid).toBe(false)
+    expect(result.errors).toEqual([
+      'Field "sets[0].set_type" value "amrap" is not one of: normal, warmup, drop_set, failure',
+    ])
+  })
+
+  it('rejects an rpe that is not a number', () => {
+    const result = validateActivityData(
+      { sets: [{ exercise: 'Squat', rpe: '8' }] },
+      strengthTrainingDataSchema,
+    )
+    expect(result.valid).toBe(false)
+    expect(result.errors).toEqual(['Field "sets[0].rpe" expected type "number", got "string"'])
   })
 })
