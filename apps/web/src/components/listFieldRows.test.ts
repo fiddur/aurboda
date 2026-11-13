@@ -10,6 +10,7 @@ import {
   removeRow,
   setCell,
   visibleItemFields,
+  withStickyItemFields,
 } from './listFieldRows'
 
 const itemFields = [
@@ -78,6 +79,39 @@ describe('visibleItemFields', () => {
 
   test('shows every item field when expanded', () => {
     expect(visibleItemFields(setFields, [], true)).toEqual(setFields)
+  })
+})
+
+describe('withStickyItemFields', () => {
+  const names = (fields: { name: string }[]) => fields.map((f) => f.name)
+
+  test('keeps a field shown once it was visible, after its last value is cleared', () => {
+    const visible = visibleItemFields(setFields, [{ exercise: 'Squat', note: '' }], false)
+    expect(names(withStickyItemFields(setFields, new Set(['note']), visible))).toEqual([
+      'exercise',
+      'weight',
+      'reps',
+      'time',
+      'note',
+    ])
+  })
+
+  test('shows the union in declared order', () => {
+    const visible = visibleItemFields(setFields, [{ rpe: 8 }], false)
+    expect(names(withStickyItemFields(setFields, new Set(['note', 'set_type']), visible))).toEqual([
+      'exercise',
+      'weight',
+      'reps',
+      'time',
+      'set_type',
+      'rpe',
+      'note',
+    ])
+  })
+
+  test('adds nothing with an empty sticky set', () => {
+    const visible = visibleItemFields(setFields, [], false)
+    expect(withStickyItemFields(setFields, new Set(), visible)).toEqual(visible)
   })
 })
 

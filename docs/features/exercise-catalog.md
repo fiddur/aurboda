@@ -1,12 +1,25 @@
 # Exercise catalogue
 
-Aurboda ships a built-in, versioned catalogue of strength exercises: names, aliases, the equipment
+Aurboda ships a built-in, versioned catalogue of strength, stretching and plyometric exercises: names, aliases, the equipment
 each uses and the muscles it works. It is data in the repository, the same on every server, and read
 only. Each exercise has a stable **key** such as `dumbbell_bench_press`.
 
 Logged exercise names are **not yet resolved** to the catalogue: `sets.exercise` on a strength
 session stays free text, and nothing links a logged name to a catalogue key yet
 ([#1639](https://github.com/fiddur/aurboda/issues/1639)).
+
+## In the web app
+
+A data-schema item field with `"catalog": "exercises"` is matched against this catalogue; the
+built-in `strength_training` schema sets it on `sets.exercise` (see
+[Activity types](activity-types.md#data-schema-and-categorical-fields)).
+
+- **Set editor**: typing an exercise suggests the names already logged for the type first, then
+  catalogue exercises (`GET /exercise-catalog?q=…`, from two characters), each with its main muscles.
+  Picking one writes its name; any other text is kept as typed.
+- **Exercise page**: when the exercise's name is a catalogue name or alias (`GET
+/exercise-catalog?name=…`), the page lists its primary muscles (weight 0.75 or more), secondary
+  muscles and equipment, and the catalogue name when it is spelled differently.
 
 ## Entries
 
@@ -66,8 +79,9 @@ Search parameters:
 
 - `q` -- words; each must be the start of a word of the name, an alias or a search term (search
   terms are extra, non-unique words such as `hamstring curl` or `DB`). Ranked: an exact name or alias
-  first, then names starting with `q`, then names containing every word, then the rest; ties go to the
-  shorter name.
+  first, then the entries whose name contains every word, then the rest. Among the name matches the
+  entries that come from body.build (hand-picked gym exercises) go first, then names starting with
+  `q`; ties go to the shorter name.
 - `name` -- an exact name-or-alias match after normalisation: zero or one entry. `q` is ignored.
 - `equipment`, `category` -- exact keys. `muscle` -- a muscle or a group key: exercises working that
   muscle, or a muscle of that group, at weight 0.5 or more.
