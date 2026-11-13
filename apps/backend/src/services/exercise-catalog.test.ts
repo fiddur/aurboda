@@ -8,6 +8,7 @@ import {
   loadExerciseCatalog,
   normalizeExerciseName,
   searchExercises,
+  suggestExercises,
   toExerciseCatalogEntry,
 } from './exercise-catalog.ts'
 
@@ -178,6 +179,60 @@ describe('searchExercises', () => {
       'barbell_bench_press',
     ])
     expect(search({ name: 'bench' }).total).toBe(0)
+  })
+})
+
+describe('suggestExercises', () => {
+  const suggestionCatalog: StoredExerciseCatalog = {
+    ...catalog,
+    entries: [
+      entry({ key: 'standing_dumbbell_bicep_curl', name: 'Standing Dumbbell Bicep Curl' }),
+      entry({ key: 'seated_dumbbell_bicep_curl', name: 'Seated Dumbbell Bicep Curl' }),
+      entry({ key: 'hammer_curls', name: 'Hammer Curls', search_terms: ['dumbbell'] }),
+      entry({ aliases: ['Bench Press'], key: 'barbell_bench_press', name: 'Barbell Bench Press' }),
+      entry({ key: 'dumbbell_bench_press', name: 'Dumbbell Bench Press' }),
+      entry({ key: 'wide_grip_lat_pulldown', name: 'Wide-Grip Lat Pulldown' }),
+      entry({ key: 'lat_pulldown', name: 'Lat Pulldown' }),
+      entry({ key: 'close_grip_lat_pulldown', name: 'Close-Grip Lat Pulldown' }),
+      entry({ key: 'barbell_squat', name: 'Barbell Squat' }),
+    ],
+  }
+  const suggest = (name: string, limit?: number) =>
+    suggestExercises(suggestionCatalog, name, limit).map((e) => e.key)
+
+  test('ranks by word overlap with the best name or alias, ties by shorter name', () => {
+    expect(suggest('Dumbbell Bicep Curl')).toEqual([
+      'seated_dumbbell_bicep_curl',
+      'standing_dumbbell_bicep_curl',
+      'hammer_curls',
+    ])
+  })
+
+  test('a short name meets an alias it is part of', () => {
+    expect(suggest('Bench')).toEqual(['barbell_bench_press'])
+  })
+
+  test('word order and punctuation do not matter', () => {
+    expect(suggest('Lat Pulldown (Wide Grip)')).toEqual([
+      'wide_grip_lat_pulldown',
+      'close_grip_lat_pulldown',
+      'lat_pulldown',
+    ])
+  })
+
+  test('a word meets its plural, and words only in search terms count half', () => {
+    expect(suggest('Dumbbell Hammer Curl', 1)).toEqual(['hammer_curls'])
+  })
+
+  test('a name with no relative gets no suggestions', () => {
+    expect(suggest('Zercher Carry')).toEqual([])
+    expect(suggest('  ')).toEqual([])
+  })
+
+  test('suggests from the built-in catalogue', () => {
+    expect(suggestExercises(loadExerciseCatalog(), 'Lat Pulldown (Wide Grip)')[0]?.name).toBe(
+      'Wide-Grip Lat Pulldown',
+    )
   })
 })
 

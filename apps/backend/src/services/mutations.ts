@@ -42,6 +42,7 @@ import { auditError } from './audit-log.ts'
 import { getCustomMetrics } from './custom-metrics.ts'
 import { validateActivityData } from './data-schema-validation.ts'
 import { aliasActivityData } from './item-value-aliases.ts'
+import { applyItemValueKeysForWrite, storeItemValueMappings } from './item-value-identities.ts'
 import { syncNoteTimesForEntity } from './notes.ts'
 import { reanalyseActivities, reanalyseOverrideTargets } from './track-analyse.ts'
 
@@ -310,9 +311,12 @@ export async function addActivity(
     }
   }
 
-  const data = await aliasActivityData(user, input.data)
+  const keyed = await applyItemValueKeysForWrite(user, input.activity_type, input.data)
+  if (!keyed.success) return { error: `Data validation failed: ${keyed.error}`, success: false }
+  const data = await aliasActivityData(user, keyed.data.data)
   const dataError = await validateDataForType(user, input.activity_type, data)
   if (dataError) return { error: dataError, success: false }
+  await storeItemValueMappings(user, keyed.data.mappings)
 
   // Equal times are valid — point-in-time activities have no duration.
   if (input.end_time && input.end_time < input.start_time) {
@@ -595,13 +599,16 @@ export async function updateActivity(
     }
   }
 
-  const inputData = await aliasActivityData(user, input.data)
+  const keyed = await applyItemValueKeysForWrite(user, finalType, input.data)
+  if (!keyed.success) return { error: `Data validation failed: ${keyed.error}`, id, success: false }
+  const inputData = await aliasActivityData(user, keyed.data.data)
   const mergedData = inputData ? { ...before.data, ...inputData } : before.data
 
   if (mergedData) {
     const dataError = await validateDataForType(user, finalType, mergedData)
     if (dataError) return { error: dataError, id, success: false }
   }
+  await storeItemValueMappings(user, keyed.data.mappings)
 
   let updated: Activity | null
   if (createsOverride) {

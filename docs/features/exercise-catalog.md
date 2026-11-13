@@ -4,9 +4,9 @@ Aurboda ships a built-in, versioned catalogue of strength exercises: names, alia
 each uses and the muscles it works. It is data in the repository, the same on every server, and read
 only. Each exercise has a stable **key** such as `dumbbell_bench_press`.
 
-Logged exercise names are **not yet resolved** to the catalogue: `sets.exercise` on a strength
-session stays free text, and nothing links a logged name to a catalogue key yet
-([#1639](https://github.com/fiddur/aurboda/issues/1639)).
+Logged exercise names stay free text on the sets; each name resolves to a catalogue key on read,
+automatically or by the user's own mapping. See
+[Exercise identities](./activity-types.md#exercise-identities).
 
 ## In the web app
 

@@ -142,6 +142,7 @@ export {
   softDeleteActivityByExternalId,
   findActivityByExternalId,
   findAdjacentActivity,
+  type ActivityFieldValueRow,
   getActivityFieldValues,
   type DataFilter,
   findDeletedActivityByExternalId,
@@ -777,3 +778,11 @@ export {
   repointItemValueAliases,
   upsertItemValueAlias,
 } from './item-value-aliases.ts'
+
+export {
+  deleteItemValueIdentity,
+  type ItemValueIdentityRow,
+  listItemValueIdentities,
+  moveItemValueIdentity,
+  upsertItemValueIdentity,
+} from './item-value-identities.ts'

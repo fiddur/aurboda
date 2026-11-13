@@ -239,6 +239,65 @@ Deleting an alias stops the mapping for later writes; the data the merge rewrote
 
 The MCP twins are `merge_item_values`, `list_item_value_aliases` and `delete_item_value_alias`.
 
+### Exercise identities
+
+An item field whose data schema names a `catalog` (the built-in `strength_training` sets
+`catalog: 'exercises'` on `sets.exercise`) gives every logged name an **identity**: an entry of the
+[exercise catalogue](./exercise-catalog.md), or an explicit unmapped state. The identity sits on
+the **name**, per user and per item path, and is resolved on read; no activity is rewritten.
+
+| State       | Meaning                                                               | `catalog_key` |
+| ----------- | --------------------------------------------------------------------- | ------------- |
+| `user`      | the user mapped this name to an entry                                 | the key       |
+| `catalog`   | the name equals a catalogue name or alias (case, punctuation ignored) | the key       |
+| `dismissed` | the user said this name is not in the catalogue                       | `null`        |
+| `unmapped`  | none of the above                                                     | `null`        |
+
+Resolution order: the user's stored decision for the name (compared trimmed and
+case-insensitively) wins, and a stored key the current catalogue no longer has resolves as
+`unmapped`; otherwise an exact catalogue name or alias; otherwise `unmapped`. Only the user's own
+decisions are stored (table `item_value_identities`, a null key meaning dismissed); automatic
+matches are computed, so they follow the catalogue as it grows. Source ids on a set (Gravl's
+`exercise_id`) are not used.
+
+**Writing by key.** A list item written through `add_activity` / `update_activity` or their REST
+equivalents may carry `<item>_key` for a catalogue-backed item field (`sets[n].exercise_key`):
+
+- an unknown key fails the write (`Data validation failed: sets[2].exercise_key: unknown exercise
+catalogue key "…"`);
+- a key without a name names the set: the user's own name for that key (the most recently decided
+  logged name mapped to it, else the most used logged name resolving to it), else the catalogue
+  name;
+- a key next to a name that does not already resolve to it stores the mapping name -> key
+  (state `user`);
+- a null key changes nothing, and `<item>_key` is never stored on the item.
+
+Gravl imports do not write keys.
+
+**Merging.** When a merge rewrites a source name that has a stored identity, the identity moves to
+the target unless the target has its own, in which case the source's is dropped. A spelling-only
+merge keeps it under the new spelling.
+
+- `GET /activity-types/:name/field-values?field=sets.exercise` -- each value also carries
+  `catalog_key` and `state`, and the result `catalog` and `catalog_version` (only for a
+  catalogue-backed field)
+- `GET /activity-types/:name/item-values/identity?field=&value=` -- one name: `catalog_key`,
+  `state`, the catalogue `entry` when there is a key, and `other_values`, the other logged names
+  resolving to the same entry. The name need not be logged yet
+- `PUT /activity-types/:name/item-values/identity` -- body `{ field, value, key }`, `key` a
+  catalogue key or `null` to dismiss; answers like the GET
+- `DELETE /activity-types/:name/item-values/identity?field=&value=` -- remove the decision, back to
+  automatic resolution; 404 when none is stored
+- `GET /activity-types/:name/item-values/unmapped?field=sets.exercise` -- the logged names in state
+  `unmapped`, most used first, each with up to three suggested entries (word overlap with the
+  entry's name or aliases)
+
+A field without a catalogue is a 400. The MCP twins are `get_item_value_identity`,
+`set_item_value_identity`, `clear_item_value_identity` and `list_unmapped_item_values`.
+
+Sets, session groups, item history, measures, records, trends, goals and challenges stay keyed on
+the name: a client joins a set to its entry through the field values.
+
 ## Sessions Overview
 
 The activity type page (`/activity-type/<name>`) lists the type's sessions (descendant types
@@ -314,8 +373,14 @@ types in the `exercise` display category.
 - `GET /activity-types/:name/item-values/aliases?field=<item path>` -- The aliases of an item
   path
 - `DELETE /activity-types/:name/item-values/aliases/:id` -- Delete an alias
+- `GET /activity-types/:name/item-values/identity?field=&value=` -- The catalogue identity of a
+  logged name
+- `PUT /activity-types/:name/item-values/identity` -- Map a name to a catalogue key, or dismiss it
+- `DELETE /activity-types/:name/item-values/identity?field=&value=` -- Clear the decision for a name
+- `GET /activity-types/:name/item-values/unmapped?field=<item path>` -- Logged names matching no
+  catalogue entry, with suggestions
 
-MCP tools: `list_activity_types`, `add_activity_type`, `update_activity_type`, `delete_activity_type`, `query_activity_sessions`, `get_activity_records`, `get_activity_type_summary`, `list_activity_field_values`, `get_activity_neighbors`, `get_activity_item_history`, `merge_item_values`, `list_item_value_aliases`, `delete_item_value_alias`.
+MCP tools: `list_activity_types`, `add_activity_type`, `update_activity_type`, `delete_activity_type`, `query_activity_sessions`, `get_activity_records`, `get_activity_type_summary`, `list_activity_field_values`, `get_activity_neighbors`, `get_activity_item_history`, `merge_item_values`, `list_item_value_aliases`, `delete_item_value_alias`, `get_item_value_identity`, `set_item_value_identity`, `clear_item_value_identity`, `list_unmapped_item_values`.
 
 ## Garmin Meditation Recognition
 

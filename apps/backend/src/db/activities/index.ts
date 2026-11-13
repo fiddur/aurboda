@@ -37,6 +37,7 @@ export {
   checkActivityConflict,
   type DataFilter,
   findAdjacentActivity,
+  type ActivityFieldValueRow,
   getActivityFieldValues,
   findActivityByExternalId,
   findDeletedActivityByExternalId,

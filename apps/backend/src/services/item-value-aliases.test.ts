@@ -6,6 +6,7 @@ import * as db from '../db/index.ts'
 import {
   aliasActivityData,
   applyItemValueAliases,
+  catalogItemPath,
   categoricalItemPath,
   deleteAlias,
   listAliases,
@@ -18,6 +19,7 @@ vi.mock('../db/index.ts', () => ({
   expandActivityTypes: vi.fn(),
   getActivityTypeDefinition: vi.fn(),
   listItemValueAliases: vi.fn(),
+  moveItemValueIdentity: vi.fn().mockResolvedValue('none'),
   repointItemValueAliases: vi.fn().mockResolvedValue(0),
   repointSharedExercises: vi.fn().mockResolvedValue(0),
   rewriteItemValue: vi.fn(),
@@ -31,7 +33,8 @@ const schema: DataSchemaDefinition = {
     { is_categorical: true, name: 'session_name', type: 'string' },
     {
       item_fields: [
-        { is_categorical: true, name: 'exercise', type: 'string' },
+        { catalog: 'exercises', is_categorical: true, name: 'exercise', type: 'string' },
+        { is_categorical: true, name: 'side', type: 'string' },
         { name: 'weight', type: 'number' },
       ],
       name: 'sets',
@@ -64,6 +67,24 @@ describe('categoricalItemPath', () => {
     expect(categoricalItemPath(schema, 'laps.exercise')).toBeUndefined()
     expect(categoricalItemPath(schema, 'session_name.exercise')).toBeUndefined()
     expect(categoricalItemPath(undefined, 'sets.exercise')).toBeUndefined()
+  })
+})
+
+describe('catalogItemPath', () => {
+  test('resolves an item field with a catalogue', () => {
+    expect(catalogItemPath(schema, 'sets.exercise')).toEqual({
+      catalog: 'exercises',
+      key: 'exercise',
+      list: 'sets',
+    })
+  })
+
+  test('rejects an item field without a catalogue, a scalar field, an unknown path or no schema', () => {
+    expect(catalogItemPath(schema, 'sets.side')).toBeUndefined()
+    expect(catalogItemPath(schema, 'sets.weight')).toBeUndefined()
+    expect(catalogItemPath(schema, 'session_name')).toBeUndefined()
+    expect(catalogItemPath(schema, 'laps.exercise')).toBeUndefined()
+    expect(catalogItemPath(undefined, 'sets.exercise')).toBeUndefined()
   })
 })
 
@@ -195,6 +216,12 @@ describe('mergeItemValues', () => {
       'Dumbbell Bicep Curl',
       'Dumbbell Curl',
     )
+    expect(db.moveItemValueIdentity).toHaveBeenCalledWith(
+      user,
+      'sets.exercise',
+      'Dumbbell Bicep Curl',
+      'Dumbbell Curl',
+    )
     expect(db.deleteItemValueAliasesByAlias).toHaveBeenCalledWith(user, 'sets.exercise', 'Dumbbell Curl')
     expect(db.upsertItemValueAlias).toHaveBeenCalledWith(
       user,
@@ -213,6 +240,12 @@ describe('mergeItemValues', () => {
 
     expect(result).toEqual({ data: { activities_updated: 3, alias: null }, success: true })
     expect(db.rewriteItemValue).toHaveBeenCalled()
+    expect(db.moveItemValueIdentity).toHaveBeenCalledWith(
+      user,
+      'sets.exercise',
+      'dumbbell curl',
+      'Dumbbell Curl',
+    )
     expect(db.repointSharedExercises).toHaveBeenCalledWith(
       user,
       ['strength_training', 'calisthenics'],
@@ -233,6 +266,7 @@ describe('mergeItemValues', () => {
     expect(result.success).toBe(false)
     expect(db.rewriteItemValue).not.toHaveBeenCalled()
     expect(db.repointSharedExercises).not.toHaveBeenCalled()
+    expect(db.moveItemValueIdentity).not.toHaveBeenCalled()
   })
 
   test('rejects an unknown type with a not found error', async () => {

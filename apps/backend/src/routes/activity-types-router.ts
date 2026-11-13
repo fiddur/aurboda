@@ -21,6 +21,9 @@ import {
   type ItemValueAliasesQuery,
   itemValueAliasesQuerySchema,
   type ItemValueAliasesResponse,
+  type ItemValueIdentityQuery,
+  itemValueIdentityQuerySchema,
+  type ItemValueIdentityResponse,
   type MergeActivityTypeBody,
   mergeActivityTypeBodySchema,
   type MergeActivityTypeResponse,
@@ -30,6 +33,11 @@ import {
   type RenameActivityTypeBody,
   renameActivityTypeBodySchema,
   type RenameActivityTypeResponse,
+  type SetItemValueIdentityBody,
+  setItemValueIdentityBodySchema,
+  type UnmappedItemValuesQuery,
+  unmappedItemValuesQuerySchema,
+  type UnmappedItemValuesResponse,
   type UpdateActivityTypeDefinitionBody,
   updateActivityTypeDefinitionBodySchema,
 } from '@aurboda/api-spec'
@@ -44,6 +52,12 @@ import {
   updateActivityTypeDefinition,
 } from '../services/activity-type-definitions.ts'
 import { deleteAlias, listAliases, mergeItemValues } from '../services/item-value-aliases.ts'
+import {
+  clearItemValueIdentity,
+  getItemValueIdentity,
+  listUnmappedItemValues,
+  setItemValueIdentity,
+} from '../services/item-value-identities.ts'
 import {
   getActivityTypeSummary,
   queryActivityFieldValues,
@@ -145,6 +159,67 @@ export const createActivityTypesRouter = (authMiddleware: RequestHandler): Typed
       const result = await deleteAlias(req.user!, req.params.id)
       if (!result.success) return res.status(404).json({ error: result.error, success: false })
       res.json({ success: true })
+    },
+  )
+
+  router.get<{ name: string }, ItemValueIdentityResponse, unknown, ItemValueIdentityQuery>(
+    '/:name/item-values/identity',
+    authMiddleware,
+    validateQuery(itemValueIdentityQuerySchema),
+    async (req, res) => {
+      const result = await getItemValueIdentity(req.user!, req.params.name, req.query.field, req.query.value)
+      if (!result.success) {
+        const status = result.error.includes('not found') ? 404 : 400
+        return res.status(status).json({ error: result.error, success: false })
+      }
+      res.json({ data: result.data, success: true })
+    },
+  )
+
+  router.put<{ name: string }, ItemValueIdentityResponse, SetItemValueIdentityBody>(
+    '/:name/item-values/identity',
+    authMiddleware,
+    validateBody(setItemValueIdentityBodySchema),
+    async (req, res) => {
+      const result = await setItemValueIdentity(req.user!, req.params.name, req.body)
+      if (!result.success) {
+        const status = result.error.includes('not found') ? 404 : 400
+        return res.status(status).json({ error: result.error, success: false })
+      }
+      res.json({ data: result.data, success: true })
+    },
+  )
+
+  router.delete<{ name: string }, BaseResponse, unknown, ItemValueIdentityQuery>(
+    '/:name/item-values/identity',
+    authMiddleware,
+    validateQuery(itemValueIdentityQuerySchema),
+    async (req, res) => {
+      const result = await clearItemValueIdentity(
+        req.user!,
+        req.params.name,
+        req.query.field,
+        req.query.value,
+      )
+      if (!result.success) {
+        const status = result.error?.includes('not found') ? 404 : 400
+        return res.status(status).json({ error: result.error, success: false })
+      }
+      res.json({ success: true })
+    },
+  )
+
+  router.get<{ name: string }, UnmappedItemValuesResponse, unknown, UnmappedItemValuesQuery>(
+    '/:name/item-values/unmapped',
+    authMiddleware,
+    validateQuery(unmappedItemValuesQuerySchema),
+    async (req, res) => {
+      const result = await listUnmappedItemValues(req.user!, req.params.name, req.query.field)
+      if (!result.success) {
+        const status = result.error.includes('not found') ? 404 : 400
+        return res.status(status).json({ error: result.error, success: false })
+      }
+      res.json({ data: result.data, success: true })
     },
   )
 
