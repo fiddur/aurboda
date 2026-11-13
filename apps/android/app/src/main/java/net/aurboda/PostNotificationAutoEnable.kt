@@ -19,8 +19,9 @@ import kotlinx.coroutines.withContext
  * the app's poller is on AND Android's permission is granted — without this,
  * bells silently lie to the user.
  *
- * If the user has never made an explicit on/off choice and any followed
- * account has its bell on, this enables the poller, requesting
+ * If the user has never made an explicit on/off choice and the server pushes
+ * at least one notification type (or, on a server without central
+ * notifications, any followed account has its bell on), this enables the poller, requesting
  * `POST_NOTIFICATIONS` when needed. An explicit "off" on the Account screen is
  * never overridden (the recorded choice guards it), and a denied permission
  * request records "off" so the user isn't re-prompted every launch — the
@@ -39,16 +40,21 @@ fun AutoEnablePostNotifications() {
     LaunchedEffect(Unit) {
         if (isPostNotificationsChoiceMade(context)) return@LaunchedEffect
         val credentials = CredentialsManager.getCredentials(context) ?: return@LaunchedEffect
-        val anyBellOn = withContext(Dispatchers.IO) {
+        val wantsPush = withContext(Dispatchers.IO) {
             val client = syncHttpClient()
             try {
-                fetchFollowingList(client, credentials.apiUrl, credentials.authToken)
-                    ?.following?.any { it.notifyOnPost } == true
+                val types = fetchNotificationTypes(client, credentials.apiUrl, credentials.authToken)
+                if (types != null) {
+                    types.types.any { it.push }
+                } else {
+                    fetchFollowingList(client, credentials.apiUrl, credentials.authToken)
+                        ?.following?.any { it.notifyOnPost } == true
+                }
             } finally {
                 client.close()
             }
         }
-        if (!anyBellOn) return@LaunchedEffect
+        if (!wantsPush) return@LaunchedEffect
         val needsPermission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
             PackageManager.PERMISSION_GRANTED
