@@ -9,6 +9,7 @@ packages/api-spec/generated/
 # Android/IntelliJ
 #
 build/
+!/apps/backend/src/catalog/exercises/build/
 .idea
 .gradle
 local.properties
