@@ -81,31 +81,29 @@ export interface GarminSpo2Data {
   latestSpO2ReadingTimeLocal: string | null
 }
 
-/** HRV data from /hrv-service/hrv/{date} */
+/**
+ * HRV from /hrv-service/hrv/{date}. Garmin nests the day under `hrvSummary`;
+ * the top-level fields are the shape older code assumed, still read as a fallback.
+ */
 export interface GarminHrvData {
-  calendarDate: string
-  weeklyAvg: number
-  lastNightAvg: number
-  lastNight5MinHigh: number
-  status: string // e.g. "BALANCED", "UNBALANCED", etc.
-  startTimestampGMT: number | null
-  endTimestampGMT: number | null
-  startTimestampLocal: number | null
-  endTimestampLocal: number | null
-  hrvSummaries: GarminHrvSummary[] | null
+  hrvSummary?: GarminHrvSummary | null
+  hrvReadings?: unknown[] | null
+  calendarDate?: string
+  weeklyAvg?: number
+  lastNightAvg?: number
+  lastNight5MinHigh?: number
+  status?: string
+  startTimestampGMT?: number | string | null
+  endTimestampGMT?: number | string | null
 }
 
 export interface GarminHrvSummary {
   calendarDate: string
-  weeklyAvg: number
-  lastNightAvg: number
-  lastNight5MinHigh: number
-  status: string
-  startTimestampGMT: number | null
-  endTimestampGMT: number | null
-  startTimestampLocal: number | null
-  endTimestampLocal: number | null
-  createTimeStamp: number | null
+  weeklyAvg?: number | null
+  lastNightAvg?: number | null
+  lastNight5MinHigh?: number | null
+  status?: string | null
+  createTimeStamp?: string | number | null
 }
 
 /** Activity detail from /activity-service/activity/{id}/details */
@@ -209,8 +207,9 @@ export const garminClient = (deps: GarminClientDeps = defaultDeps) => {
    */
   const restoreSession = async (user: string): Promise<InstanceType<typeof GarminConnect>> => {
     const stored = await deps.getOAuthToken(user, 'garmin')
-    if (!stored || !stored.access_token)
-      {throw new Error('User has no Garmin session. Please connect Garmin first.')}
+    if (!stored || !stored.access_token) {
+      throw new Error('User has no Garmin session. Please connect Garmin first.')
+    }
 
     const tokens: IGarminTokens = JSON.parse(stored.access_token)
     const gc = new GarminConnect({ username: '', password: '' })
@@ -417,4 +416,4 @@ export const garminClient = (deps: GarminClientDeps = defaultDeps) => {
   }
 }
 
-export type GarminClient = ReturnType<typeof garminClient>
+export type GarminSessionClient = ReturnType<typeof garminClient>

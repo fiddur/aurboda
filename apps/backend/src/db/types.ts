@@ -412,6 +412,7 @@ export interface OAuthToken {
   refresh_token?: string
   expires_at?: Date
   scopes?: string[]
+  refused_at?: Date
 }
 
 export type { SyncStatus }

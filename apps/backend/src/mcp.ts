@@ -10,7 +10,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { type ErrorRequestHandler, json, type Request, type Response, Router } from 'express'
 
 import type { Auth } from './auth.ts'
-import type { GarminClient } from './integrations/garmin/client.ts'
+import type { GarminClient } from './integrations/garmin/source.ts'
 import type { DetailSyncedCallback, TrackWrittenCallback } from './integrations/garmin/sync.ts'
 import type { GravlClient } from './integrations/gravl/client.ts'
 import type { ouraClient } from './integrations/oura/client.ts'

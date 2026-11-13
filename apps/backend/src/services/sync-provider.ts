@@ -1,7 +1,7 @@
 import { isBefore, subDays, subMinutes } from 'date-fns'
 
 import type { SyncIntervals, SyncState } from '../db/types.ts'
-import type { GarminClient } from '../integrations/garmin/client.ts'
+import type { GarminClient } from '../integrations/garmin/source.ts'
 import type { GravlClient } from '../integrations/gravl/client.ts'
 import type { ouraClient } from '../integrations/oura/client.ts'
 import type { ActivityNotifier } from './deduction-queue.ts'
@@ -12,7 +12,7 @@ import {
   type DetailSyncedCallback,
   type TrackWrittenCallback,
   type GarminDataType,
-  hasGarminSession,
+  hasGarminConnection,
   isRateLimited as isGarminRateLimited,
   syncActivityDetails,
   syncGarminDataType,
@@ -178,7 +178,8 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
         if (!config.garmin) return
 
         try {
-          if (!(await hasGarminSession(user))) return
+          if (!(await hasGarminConnection(user))) return
+          if ((await config.garmin.sourceFor(user, dataType as GarminDataType)) === null) return
 
           const settings = await getSettings(user)
           if (settings.garmin_disabled_data_types?.includes(dataType as GarminDataType)) return

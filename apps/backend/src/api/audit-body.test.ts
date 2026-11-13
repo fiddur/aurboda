@@ -22,6 +22,14 @@ describe('summarizeAuditBody', () => {
     })
   })
 
+  test('redacts a Garmin Personal API key, small body or large', () => {
+    expect(summarizeAuditBody({ api_key: 'fake-key', expires_at: '2027-01-01' })).toEqual({
+      api_key: '[REDACTED]',
+      expires_at: '2027-01-01',
+    })
+    expect(summarizeAuditBody({ api_key: 'k'.repeat(5000) })?.api_key).toBe('[REDACTED]')
+  })
+
   test('summarizes a large sync-like body', () => {
     const records = Array.from({ length: 5000 }, (_, i) => ({ time: i, value: 60 }))
     expect(summarizeAuditBody({ records, type: 'heart_rate' })).toEqual({

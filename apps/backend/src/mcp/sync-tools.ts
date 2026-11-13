@@ -13,7 +13,7 @@ import {
 import { subDays } from 'date-fns'
 import { z } from 'zod'
 
-import type { GarminClient } from '../integrations/garmin/client.ts'
+import type { GarminClient } from '../integrations/garmin/source.ts'
 import type { GravlClient } from '../integrations/gravl/client.ts'
 import type { ouraClient } from '../integrations/oura/client.ts'
 import type { ActivityNotifier } from '../services/deduction-queue.ts'
@@ -31,6 +31,7 @@ import {
   type DetailSyncedCallback,
   type TrackWrittenCallback,
   type GarminDataType,
+  hasGarminConnection,
   syncAllGarminData,
 } from '../integrations/garmin/sync.ts'
 import { syncGravlWorkouts } from '../integrations/gravl/sync.ts'
@@ -90,16 +91,15 @@ export const registerSyncTools = (
 
   server.tool(
     'sync_garmin',
-    'Sync data from Garmin Connect. Fetches daily summary, heart rate, HRV, sleep, stress, body battery, activities, SpO2, respiration, training readiness, and intensity minutes.',
+    'Sync data from Garmin, through the Garmin Connect login, a Personal API key, or both. Fetches daily summary, heart rate, HRV, sleep, stress, body battery, activities, SpO2, respiration, training readiness, and intensity minutes. Stress, training readiness, the sleep stage timeline and per-activity detail (per-second metrics, GPS) need the Garmin Connect login; with only a Personal API key, stress and training readiness are skipped.',
     { ...syncGarminBodySchema.shape },
     async ({ full_resync, start_date }) => {
       if (!garmin) {
         return errorResponse('Garmin integration is not available.')
       }
 
-      const garminToken = await getOAuthToken(user, 'garmin')
-      if (!garminToken || !garminToken.access_token) {
-        return errorResponse('Garmin Connect is not connected. Please connect Garmin in Settings first.')
+      if (!(await hasGarminConnection(user))) {
+        return errorResponse('Garmin is not connected. Please connect Garmin in Settings first.')
       }
 
       try {

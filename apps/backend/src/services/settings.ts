@@ -22,6 +22,7 @@ import {
   upsertUserSettings,
 } from '../db/index.ts'
 import { MAX_GAP_SECONDS, SINGLE_SAMPLE_SECONDS } from '../hr-zone-constants.ts'
+import { getGarminConnections, readGarminPersonalKeyEnabled } from '../integrations/garmin/source.ts'
 import { getCentralDb } from './central-db.ts'
 
 export type { HrZoneSecs, HrZoneSource, HrZoneThresholds }
@@ -220,7 +221,7 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
   const [
     settings,
     ouraToken,
-    garminToken,
+    garmin,
     stravaToken,
     gravlToken,
     lastFmApiKey,
@@ -230,11 +231,12 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
     stravaClientSecret,
     gravlClientId,
     gravlClientSecret,
+    garminPersonalKeyEnabled,
     goals,
   ] = await Promise.all([
     getSettings(user),
     getOAuthToken(user, 'oura'),
-    getOAuthToken(user, 'garmin'),
+    getGarminConnections(user),
     getOAuthToken(user, 'strava'),
     getOAuthToken(user, 'gravl'),
     centralDb.getLastFmApiKey(),
@@ -244,6 +246,7 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
     centralDb.getServerSetting('strava_client_secret'),
     centralDb.getServerSetting('gravl_client_id'),
     centralDb.getServerSetting('gravl_client_secret'),
+    readGarminPersonalKeyEnabled(centralDb),
     getEffectiveGoals(user),
   ])
   const { zones, source } = hrZonesFromSettings(settings)
@@ -257,7 +260,14 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
 
   return {
     ...withDefaults(settings),
-    garmin_connected: garminToken !== null && garminToken.access_token !== '',
+    garmin_connected: garmin.session || garmin.personal_key.connected,
+    garmin_personal_key: {
+      available: garminPersonalKeyEnabled,
+      connected: garmin.personal_key.connected,
+      expires_at: garmin.personal_key.expires_at?.toISOString().slice(0, 10) ?? null,
+      refused: garmin.personal_key.refused,
+    },
+    garmin_session_connected: garmin.session,
     goals,
     gravl_configured: !!gravlClientId && !!gravlClientSecret,
     gravl_connection: gravlConnection,
@@ -274,10 +284,11 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
 
 const buildErrorSettingsResponse = async (errorMessage: string): Promise<SettingsResponse> => {
   const centralDb = getCentralDb()
-  const [lastFmApiKey, ouraClientId, ouraClientSecret] = await Promise.all([
+  const [lastFmApiKey, ouraClientId, ouraClientSecret, garminPersonalKeyEnabled] = await Promise.all([
     centralDb.getLastFmApiKey(),
     centralDb.getServerSetting('oura_client_id'),
     centralDb.getServerSetting('oura_client_secret'),
+    readGarminPersonalKeyEnabled(centralDb),
   ])
   return {
     ...settingsWithDefaultsSchema.parse({}),
@@ -290,6 +301,13 @@ const buildErrorSettingsResponse = async (errorMessage: string): Promise<Setting
     lastfm_configured: !!lastFmApiKey,
     oura_configured: !!ouraClientId && !!ouraClientSecret,
     garmin_connected: false,
+    garmin_personal_key: {
+      available: garminPersonalKeyEnabled,
+      connected: false,
+      expires_at: null,
+      refused: false,
+    },
+    garmin_session_connected: false,
     oura_connected: false,
     strava_configured: false,
     strava_connected: false,

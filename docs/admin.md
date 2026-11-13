@@ -1,7 +1,7 @@
 # Server administration
 
 The first user to sign up becomes an admin. Admins manage server-wide settings (signup mode,
-integration credentials, Sentry, plans and billing, support contacts, federation) from the web app's Admin Settings page. Those
+integration credentials, Garmin Personal API keys, Sentry, plans and billing, support contacts, federation) from the web app's Admin Settings page. Those
 settings, the admin list and the records below live in the central database (`CENTRAL_DB`, default
 `aurboda`), not in any user's own database.
 
@@ -202,6 +202,16 @@ end, or leave a note. The Users table has a **Plan** column (exempt, trial until
 grace, read-only) to sort by end date. REST: `PATCH /admin/users/:username/plan` with any of `plan`,
 `paid_until`, `trial_ends_at` and `plan_note` (`null` clears a date or the note); MCP: the admin-only
 `set_user_plan`.
+
+## Garmin Personal API keys
+
+Users can connect Garmin with a key from Garmin's official Personal API next to, or instead of, the
+Garmin Connect login (see [Garmin](./garmin.md#two-ways-to-connect)). **Garmin Personal API keys**
+under **Integrations** on the Admin Settings page (`garmin_personal_key_enabled`, REST `GET`/`PATCH
+/admin/settings`) turns that on or off; it is on until an admin turns it off. Garmin's terms restrict
+a Personal API key to tools its owner operates for their own use, so a server run for other people
+may want it off. When off, connecting a key answers `403` and the Garmin page hides the key form;
+keys already connected keep syncing until their users disconnect them.
 
 ## Support contacts
 

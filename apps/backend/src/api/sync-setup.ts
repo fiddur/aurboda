@@ -6,7 +6,7 @@
  */
 import type { Express } from 'express'
 
-import type { GarminClient } from '../integrations/garmin/client.ts'
+import type { GarminClient } from '../integrations/garmin/source.ts'
 import type { GravlClient } from '../integrations/gravl/client.ts'
 import type { ouraClient } from '../integrations/oura/client.ts'
 import type { CalorieQueue } from '../services/calorie-queue.ts'

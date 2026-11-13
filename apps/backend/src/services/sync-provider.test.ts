@@ -26,7 +26,7 @@ vi.mock('../integrations/lastfm/sync.ts', () => ({
 }))
 
 vi.mock('../integrations/garmin/sync.ts', () => ({
-  hasGarminSession: vi.fn().mockResolvedValue(true),
+  hasGarminConnection: vi.fn().mockResolvedValue(true),
   isRateLimited: vi.fn().mockReturnValue(false),
   syncActivityDetails: vi.fn().mockResolvedValue(undefined),
   syncGarminDataType: vi.fn(),
@@ -51,7 +51,7 @@ vi.mock('../integrations/gravl/sync.ts', () => ({
 
 import type { GravlClient } from '../integrations/gravl/client.ts'
 
-import { hasGarminSession, syncGarminDataType } from '../integrations/garmin/sync.ts'
+import { hasGarminConnection, syncGarminDataType } from '../integrations/garmin/sync.ts'
 import { syncGravlWorkouts } from '../integrations/gravl/sync.ts'
 import { syncLastFmData } from '../integrations/lastfm/sync.ts'
 import { syncOuraDataType } from '../integrations/oura/sync.ts'
@@ -125,11 +125,13 @@ describe('createSyncProvider › syncLastFmIfNeeded', () => {
 
 describe('createSyncProvider › syncGarminIfNeeded', () => {
   const lastSync = new Date('2026-06-01T00:00:00Z')
-  const garmin = {} as never // only handed to the mocked syncGarminDataType
+  const sourceFor = vi.fn()
+  const garmin = { sourceFor } as never
 
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(hasGarminSession).mockResolvedValue(true)
+    vi.mocked(hasGarminConnection).mockResolvedValue(true)
+    sourceFor.mockResolvedValue('session')
     vi.mocked(getSettings).mockResolvedValue({} as never) // no disabled data types
     vi.mocked(dbIndex.getSyncState).mockResolvedValue({ last_sync_time: lastSync } as never)
   })
@@ -140,18 +142,30 @@ describe('createSyncProvider › syncGarminIfNeeded', () => {
   }
 
   test('skips a user with no Garmin session without reading sync state, syncing or auditing', async () => {
-    vi.mocked(hasGarminSession).mockResolvedValue(false)
+    vi.mocked(hasGarminConnection).mockResolvedValue(false)
     vi.mocked(dbIndex.getSyncState).mockResolvedValue(null)
     const { onActivitySynced, provider } = build()
 
     await provider.syncGarminIfNeeded('alice', 'sleep')
 
-    expect(hasGarminSession).toHaveBeenCalledWith('alice')
+    expect(hasGarminConnection).toHaveBeenCalledWith('alice')
     expect(dbIndex.getSyncState).not.toHaveBeenCalled()
     expect(syncGarminDataType).not.toHaveBeenCalled()
     expect(auditInfo).not.toHaveBeenCalled()
     expect(auditError).not.toHaveBeenCalled()
     expect(onActivitySynced).not.toHaveBeenCalled()
+  })
+
+  test('skips a type no connection serves (stress with only a key) without auditing', async () => {
+    sourceFor.mockResolvedValue(null)
+    const { provider } = build()
+
+    await provider.syncGarminIfNeeded('alice', 'stress')
+
+    expect(sourceFor).toHaveBeenCalledWith('alice', 'stress')
+    expect(dbIndex.getSyncState).not.toHaveBeenCalled()
+    expect(syncGarminDataType).not.toHaveBeenCalled()
+    expect(auditInfo).not.toHaveBeenCalled()
   })
 
   test('triggers deduction over the synced window after a successful sync with new records', async () => {

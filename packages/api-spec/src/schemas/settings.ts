@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import { defaultFeedTags, maxPostTags } from '../hashtags.ts'
-import { baseResponseSchema, hrZoneSourceSchema, iso8601DateTimeSchema } from './common.ts'
+import { baseResponseSchema, dateOnlySchema, hrZoneSourceSchema, iso8601DateTimeSchema } from './common.ts'
 import { dashboardConfigSchema } from './dashboard.ts'
 import { hashtagInputSchema } from './feed.ts'
 import { goalsSchema } from './goals.ts'
@@ -243,6 +243,21 @@ export const updateSettingsInputSchema = z
 
 export type UpdateSettingsInput = z.infer<typeof updateSettingsInputSchema>
 
+export const garminPersonalKeyStatusSchema = z
+  .object({
+    available: z.boolean().meta({
+      description: 'Whether this server lets users connect a Garmin Personal API key (admin setting)',
+    }),
+    connected: z.boolean().meta({ description: 'Whether a Garmin Personal API key is stored' }),
+    expires_at: dateOnlySchema.nullable().meta({
+      description: 'The expiry date entered with the key, or null when no key is stored',
+    }),
+    refused: z.boolean().meta({ description: 'Whether Garmin refused the stored key (it needs replacing)' }),
+  })
+  .meta({ description: 'Status of the Garmin Personal API key connection', id: 'GarminPersonalKeyStatus' })
+
+export type GarminPersonalKeyStatus = z.infer<typeof garminPersonalKeyStatusSchema>
+
 export const userSettingsResponseSchema = baseResponseSchema
   .extend({
     birth_date: z.string().nullable().default(null).meta({ description: 'Birth date in YYYY-MM-DD format' }),
@@ -269,7 +284,17 @@ export const userSettingsResponseSchema = baseResponseSchema
     garmin_connected: z
       .boolean()
       .default(false)
-      .meta({ description: 'Whether Garmin Connect is connected via stored session' }),
+      .meta({ description: 'Whether Garmin is connected, by login session or Personal API key' }),
+    garmin_session_connected: z
+      .boolean()
+      .default(false)
+      .meta({ description: 'Whether Garmin is connected by a Garmin Connect login session' }),
+    garmin_personal_key: garminPersonalKeyStatusSchema.default({
+      available: true,
+      connected: false,
+      expires_at: null,
+      refused: false,
+    }),
     garmin_disabled_data_types: z
       .array(garminDataTypeSchema)
       .default([])

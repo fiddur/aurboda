@@ -159,6 +159,10 @@ export const adminSettingsResponseSchema = baseResponseSchema
       .number()
       .int()
       .meta({ description: 'Days after a trial or paid period ends before the account becomes read-only' }),
+    garmin_personal_key_enabled: z.boolean().meta({
+      description:
+        'Whether users may connect Garmin with a Personal API key (keys already stored keep syncing when off)',
+    }),
     gravl_client_id_set: z.boolean().meta({ description: 'Whether a Gravl OAuth client ID is configured' }),
     gravl_client_secret_set: z
       .boolean()
@@ -267,6 +271,10 @@ export const updateAdminSettingsBodySchema = z
       .max(365)
       .optional()
       .meta({ description: 'Days after expiry before an account becomes read-only (0-365, default 14)' }),
+    garmin_personal_key_enabled: z.boolean().optional().meta({
+      description:
+        'Allow or stop new Garmin Personal API key connections (default on); keys already stored keep syncing',
+    }),
     gravl_client_id: z
       .string()
       .nullable()

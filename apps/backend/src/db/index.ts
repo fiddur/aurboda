@@ -606,7 +606,7 @@ export {
   updateReport,
 } from './reports.ts'
 
-export { deleteOAuthToken, getOAuthToken, upsertOAuthToken } from './oauth.ts'
+export { deleteOAuthToken, getOAuthToken, markOAuthTokenRefused, upsertOAuthToken } from './oauth.ts'
 
 export { getAllSyncStates, getSyncState, resetSyncState, upsertSyncState } from './sync-state.ts'
 

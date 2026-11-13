@@ -1,4 +1,5 @@
 import type {
+  ConnectGarminPersonalKeyBody,
   GarminSyncResponse,
   GarminSyncStatusResponse,
   OuraSyncResponse,
@@ -88,6 +89,29 @@ export const disconnectGarmin = async (): Promise<{ success: boolean }> => {
   const { token } = auth.value
   const response = await axios.post(
     `${API_URL}/auth/garmin/disconnect`,
+    {},
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  return response.data
+}
+
+export const connectGarminPersonalKey = async (
+  apiKey: string,
+  expiresAt: string,
+): Promise<{ success: boolean; error?: string }> => {
+  const { token } = auth.value
+  const body: ConnectGarminPersonalKeyBody = { api_key: apiKey, expires_at: expiresAt }
+  const response = await axios.post(`${API_URL}/auth/garmin/personal-key`, body, {
+    headers: { Authorization: `Bearer ${token}` },
+    validateStatus: () => true,
+  })
+  return response.data
+}
+
+export const disconnectGarminPersonalKey = async (): Promise<{ success: boolean }> => {
+  const { token } = auth.value
+  const response = await axios.post(
+    `${API_URL}/auth/garmin/personal-key/disconnect`,
     {},
     { headers: { Authorization: `Bearer ${token}` } },
   )
