@@ -301,6 +301,35 @@ describe('processGarminData', () => {
         await processGarminData(user, 'hrv', { calendarDate: '2025-01-15', lastNightAvg: 42 }, mockDeps),
       ).toBe(1)
     })
+
+    test("reads Garmin's nested hrvSummary, storing the whole answer and skipping the readings", async () => {
+      const data = {
+        hrvReadings: [{ hrvValue: 50, readingTimeGMT: '2025-01-15T02:00:00.0' }],
+        hrvSummary: { calendarDate: '2025-01-15', lastNightAvg: 47, status: 'BALANCED', weeklyAvg: 45 },
+      }
+
+      expect(await processGarminData(user, 'hrv', data, mockDeps)).toBe(1)
+
+      expect(mockDeps.insertRawRecord).toHaveBeenCalledWith(user, {
+        data,
+        external_id: 'garmin-hrv-2025-01-15',
+        record_type: 'garmin_hrv',
+        recorded_at: noonUTC('2025-01-15'),
+        source: 'garmin',
+      })
+      expect(mockDeps.insertTimeSeries).toHaveBeenCalledTimes(1)
+      expect(mockDeps.insertTimeSeries).toHaveBeenCalledWith(user, [
+        { metric: 'hrv_rmssd', source: 'garmin', time: noonUTC('2025-01-15'), unit: 'ms', value: 47 },
+      ])
+    })
+
+    test('a nested summary without lastNightAvg stores the raw record only', async () => {
+      const data = { hrvReadings: null, hrvSummary: { calendarDate: '2025-01-15', lastNightAvg: null } }
+
+      expect(await processGarminData(user, 'hrv', data, mockDeps)).toBe(1)
+      expect(mockDeps.insertRawRecord).toHaveBeenCalled()
+      expect(mockDeps.insertTimeSeries).not.toHaveBeenCalled()
+    })
   })
 
   describe('sleep', () => {

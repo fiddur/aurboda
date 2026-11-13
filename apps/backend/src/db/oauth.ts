@@ -12,6 +12,7 @@ export const upsertOAuthToken = async (user: string, token: OAuthToken) => {
        refresh_token = COALESCE(EXCLUDED.refresh_token, oauth_tokens.refresh_token),
        expires_at = EXCLUDED.expires_at,
        scopes = EXCLUDED.scopes,
+       refused_at = NULL,
        updated_at = NOW()`,
     [token.provider, token.access_token, token.refresh_token, token.expires_at, token.scopes],
   )
@@ -20,7 +21,7 @@ export const upsertOAuthToken = async (user: string, token: OAuthToken) => {
 export const getOAuthToken = async (user: string, provider: string): Promise<OAuthToken | null> => {
   const result = await query(
     user,
-    `SELECT provider, access_token, refresh_token, expires_at, scopes
+    `SELECT provider, access_token, refresh_token, expires_at, scopes, refused_at
      FROM oauth_tokens
      WHERE provider = $1`,
     [provider],
@@ -34,8 +35,15 @@ export const getOAuthToken = async (user: string, provider: string): Promise<OAu
     expires_at: row.expires_at ? new Date(row.expires_at) : undefined,
     provider: row.provider,
     refresh_token: row.refresh_token,
+    refused_at: row.refused_at ? new Date(row.refused_at) : undefined,
     scopes: row.scopes,
   }
+}
+
+export const markOAuthTokenRefused = async (user: string, provider: string): Promise<void> => {
+  await query(user, `UPDATE oauth_tokens SET refused_at = NOW(), updated_at = NOW() WHERE provider = $1`, [
+    provider,
+  ])
 }
 
 export const deleteOAuthToken = async (user: string, provider: string): Promise<boolean> => {

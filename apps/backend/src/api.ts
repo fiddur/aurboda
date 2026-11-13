@@ -39,7 +39,6 @@ import {
   listPublicFeedPosts,
   listReplyUncheckedEntries,
   listUnenrichedAurbodaEntries,
-  getOAuthToken,
   listUserNames,
   loginToUserDb,
   markChallengeResultPublished,
@@ -60,7 +59,13 @@ import {
 } from './db/index.ts'
 import { errorResponseBody, httpError, isHttpError } from './http-error.ts'
 import { garminClient } from './integrations/garmin/client.ts'
+import { garminPersonalClient } from './integrations/garmin/personal-client.ts'
 import { garminDataTypes } from './integrations/garmin/process.ts'
+import {
+  garminRoutedClient,
+  getGarminConnections,
+  hasGarminConnection,
+} from './integrations/garmin/source.ts'
 import { syncActivityDetails, syncGarminDataType } from './integrations/garmin/sync.ts'
 import { gravlClient } from './integrations/gravl/client.ts'
 import { enrichGravlWorkout } from './integrations/gravl/sync.ts'
@@ -353,8 +358,9 @@ const main = async () => {
     onUserAuthenticated: (ouraUserId, username) => centralDb.upsertOuraUserMapping(ouraUserId, username),
   })
 
-  // No server-side credentials: the client uses per-user session tokens.
-  const garmin = garminClient()
+  // No server-side credentials: per-user session tokens and Personal API keys.
+  const garminPersonal = garminPersonalClient()
+  const garmin = garminRoutedClient({ personal: garminPersonal, session: garminClient() })
 
   // Credentials are read from the DB on each request, not captured at startup.
   const getStravaCredentials = async () => {
@@ -907,6 +913,7 @@ const main = async () => {
       sourceEnrichQueue = await createSourceEnrichQueue(boss, {
         enrichGravl: (user, workoutId) => enrichGravlWorkout(user, gravl, workoutId),
         garminDetailPending: async (user, garminActivityId) => {
+          if (!(await getGarminConnections(user)).session) return false
           const row = await findActivityByExternalId(
             user,
             'garmin',
@@ -914,10 +921,7 @@ const main = async () => {
           )
           return row != null && row.data?.detail_synced !== true
         },
-        isGarminConnected: async (user) => {
-          const token = await getOAuthToken(user, 'garmin')
-          return token !== null && token.access_token !== ''
-        },
+        isGarminConnected: (user) => hasGarminConnection(user),
         isGravlConnected: async (user) => (await gravl.connectionKind(user)) !== null,
         onEnriched: (user) => activityNotifier(user, '*', new Date(Date.now() - 86_400_000), new Date()),
         syncGarmin: async (user, dataType) => {
@@ -1163,6 +1167,7 @@ const main = async () => {
     authMiddleware,
     centralDb,
     garmin,
+    garminPersonal,
     gravl,
     oura,
     strava,

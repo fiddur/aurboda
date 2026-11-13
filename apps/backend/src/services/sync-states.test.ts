@@ -14,19 +14,19 @@ const row = (provider: string): SyncState => ({
 const fakeDeps = ({ garmin = false, oura = false } = {}) =>
   ({
     getAllSyncStates: vi.fn(async (_user: string, provider: string) => [row(provider)]),
-    hasGarminSession: vi.fn(async () => garmin),
+    hasGarminConnection: vi.fn(async () => garmin),
     hasOuraToken: vi.fn(async () => oura),
   }) satisfies SyncStateDeps
 
 describe('getVisibleSyncStates', () => {
-  test('hides garmin rows when the user has no garmin session', async () => {
+  test('hides garmin rows when the user has no garmin connection', async () => {
     const deps = fakeDeps()
     expect(await getVisibleSyncStates('alice', 'garmin', deps)).toEqual([])
-    expect(deps.hasGarminSession).toHaveBeenCalledWith('alice')
+    expect(deps.hasGarminConnection).toHaveBeenCalledWith('alice')
     expect(deps.getAllSyncStates).not.toHaveBeenCalled()
   })
 
-  test('returns garmin rows when the user has a garmin session', async () => {
+  test('returns garmin rows when the user has a garmin connection', async () => {
     const deps = fakeDeps({ garmin: true })
     expect(await getVisibleSyncStates('alice', 'garmin', deps)).toEqual([row('garmin')])
     expect(deps.getAllSyncStates).toHaveBeenCalledWith('alice', 'garmin')
@@ -48,7 +48,7 @@ describe('getVisibleSyncStates', () => {
   test('returns other providers rows without checking a connection', async () => {
     const deps = fakeDeps()
     expect(await getVisibleSyncStates('alice', 'lastfm', deps)).toEqual([row('lastfm')])
-    expect(deps.hasGarminSession).not.toHaveBeenCalled()
+    expect(deps.hasGarminConnection).not.toHaveBeenCalled()
     expect(deps.hasOuraToken).not.toHaveBeenCalled()
   })
 })

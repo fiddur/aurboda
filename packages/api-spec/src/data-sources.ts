@@ -60,9 +60,9 @@ export const dataSources: DataSourceInfo[] = [
     doc: 'garmin.md',
     provides:
       'Daily summary, HR, HRV, sleep, stress, body battery, activities, SpO2, respiration, training readiness',
-    how: 'Pull (session-based)',
-    adminSetup: 'None',
-    userSetup: 'Garmin credentials',
+    how: 'Pull (login session and/or Personal API key)',
+    adminSetup: 'None (Personal API keys can be turned off)',
+    userSetup: 'Garmin credentials, a Personal API key, or both',
   },
   {
     name: 'Strava',
