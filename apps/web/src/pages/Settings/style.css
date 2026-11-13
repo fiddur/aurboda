@@ -585,3 +585,18 @@
   display: inline-block;
   text-decoration: none;
 }
+
+.notification-setting-label {
+  margin: 0;
+}
+
+.notification-setting-admin {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.notification-setting-switches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+}

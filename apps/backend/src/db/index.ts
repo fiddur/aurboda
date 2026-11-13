@@ -778,3 +778,21 @@ export {
   repointItemValueAliases,
   upsertItemValueAlias,
 } from './item-value-aliases.ts'
+
+export type { NotificationPageRow, NotificationPreferenceRecord, NotificationRecord } from './types.ts'
+
+export {
+  countUnreadNotifications,
+  getNotificationPreference,
+  insertNotification,
+  listNotificationPreferences,
+  listNotifications,
+  type ListNotificationsOptions,
+  markAllNotificationsRead,
+  markNotificationRead,
+  type NotificationCursor,
+  type NotificationInsert,
+  type NotificationPreferencePatch,
+  pruneNotifications,
+  upsertNotificationPreference,
+} from './notifications.ts'

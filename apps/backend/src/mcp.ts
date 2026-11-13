@@ -63,6 +63,7 @@ import { registerLocationTools } from './mcp/location-tools.ts'
 import { registerMealTools } from './mcp/meal-tools.ts'
 import { registerMetricTools } from './mcp/metric-tools.ts'
 import { registerNoteTools } from './mcp/note-tools.ts'
+import { registerNotificationTools } from './mcp/notification-tools.ts'
 import { registerNutrientRecommendationTools } from './mcp/nutrient-recommendation-tools.ts'
 import { registerQueryTools } from './mcp/query-tools.ts'
 import { refuseMutatingTools } from './mcp/read-only-gate.ts'
@@ -206,6 +207,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   registerTrendTools(server, user)
   registerChartTools(server, user)
   registerNoteTools(server, user)
+  registerNotificationTools(server, user, deps.centralDb?.isAdmin ?? (async () => false))
   registerMealTools(server, user)
   registerNutrientRecommendationTools(server, user)
   if (deps.centralDb) {

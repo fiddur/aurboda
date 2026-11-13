@@ -77,6 +77,7 @@ const Meals = lazyPage(() => import('./pages/Meals/index.jsx'), 'Meals')
 const MealDetail = lazyPage(() => import('./pages/Meals/MealDetail.jsx'), 'MealDetail')
 const MealTypeMeta = lazyPage(() => import('./pages/MealTypeMeta/index.jsx'), 'MealTypeMeta')
 const MetricMeta = lazyPage(() => import('./pages/MetricMeta/index.jsx'), 'MetricMeta')
+const Notifications = lazyPage(() => import('./pages/Notifications/index.jsx'), 'Notifications')
 const OfficialFeed = lazyPage(() => import('./pages/OfficialFeed/index.jsx'), 'OfficialFeed')
 const PublicTag = lazyPage(() => import('./pages/PublicTag/index.jsx'), 'PublicTag')
 const Places = lazyPage(() => import('./pages/Places/index.jsx'), 'Places')
@@ -182,6 +183,7 @@ function AppShell() {
             <Route path="/screentime-categories/:id" component={CategoryDetail} />
             <Route path="/screentime-categories" component={ScreentimeCategories} />
             <Route path="/settings" component={Settings} />
+            <Route path="/notifications" component={Notifications} />
             <Route path="/audit-log" component={AuditLog} />
             <Route path="/admin" component={AdminSettings} />
             <Route path="/admin/users" component={AdminUsers} />

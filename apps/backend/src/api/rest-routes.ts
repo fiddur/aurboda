@@ -79,6 +79,7 @@ import { createMealsRouter } from '../routes/meals-router.ts'
 import { createMediaRouter } from '../routes/media-router.ts'
 import { createMetricsRouter } from '../routes/metrics-router.ts'
 import { createNotesRouter } from '../routes/notes-router.ts'
+import { createNotificationsRouter } from '../routes/notifications-router.ts'
 import { createNutrientRecommendationsRouter } from '../routes/nutrient-recommendations-router.ts'
 import { createOEmbedRouter } from '../routes/oembed-router.ts'
 import { createOgImageRouter } from '../routes/og-image-router.ts'
@@ -249,6 +250,7 @@ export const mountRestRouters = ({
   httpd.use(createAgentsRouter(apiBaseUrl))
   httpd.use('/icons', createIconsRouter(authMiddleware))
   httpd.use('/notes', createNotesRouter(authMiddleware))
+  httpd.use('/notifications', createNotificationsRouter(authMiddleware, { isAdmin: centralDb.isAdmin }))
   httpd.use('/media', createMediaRouter(authMiddleware))
   httpd.use('/meals', createMealsRouter(authMiddleware))
   httpd.use('/food-items', createFoodItemsRouter(authMiddleware, centralDb))

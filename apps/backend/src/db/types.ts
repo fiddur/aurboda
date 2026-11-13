@@ -486,3 +486,29 @@ export interface McpSessionRecord {
   created_at: Date
   last_activity: Date
 }
+
+export interface NotificationRecord {
+  id: string
+  type: string
+  title: string
+  body: string | null
+  link: string | null
+  data: Record<string, unknown> | null
+  dedupe_key: string | null
+  in_app: boolean
+  push: boolean
+  read_at: Date | null
+  created_at: Date
+}
+
+/** A listing row plus its keyset position: `created_at` as Postgres text, at µs precision. */
+export interface NotificationPageRow extends NotificationRecord {
+  cursor_ts: string
+}
+
+export interface NotificationPreferenceRecord {
+  type: string
+  in_app: boolean
+  push: boolean
+  updated_at: Date
+}

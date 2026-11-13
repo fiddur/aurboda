@@ -68,6 +68,15 @@ import {
   queryMetricsResponseSchema,
 } from './schemas/metrics.ts'
 import {
+  markAllNotificationsReadResponseSchema,
+  notificationResponseSchema,
+  notificationsQuerySchema,
+  notificationsResponseSchema,
+  notificationTypesResponseSchema,
+  setNotificationPreferenceBodySchema,
+  setNotificationPreferenceResponseSchema,
+} from './schemas/notifications.ts'
+import {
   outboundSyncAckBodySchema,
   outboundSyncAckResponseSchema,
   outboundSyncResponseSchema,
@@ -1147,6 +1156,100 @@ const openApiDocument = createDocument({
       },
     },
 
+    '/notifications': {
+      get: {
+        description:
+          'The newest notifications first, keyset-paginated. By default the in-app ones (the bell); `push_only` lists those meant for push delivery instead, which a device poller reads with `unread_only` and `after` (its high-water mark). `unread_count` always counts every unread in-app notification.',
+        requestParams: { query: notificationsQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: notificationsResponseSchema } },
+            description: 'A page of notifications',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List notifications',
+        tags: ['Notifications'],
+      },
+    },
+    '/notifications/read-all': {
+      post: {
+        description: 'Mark every unread notification read.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: markAllNotificationsReadResponseSchema } },
+            description: 'How many were marked read',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Mark all notifications read',
+        tags: ['Notifications'],
+      },
+    },
+    '/notifications/types': {
+      get: {
+        description:
+          "Every notification type this user can receive, with the user's in-app and push switches (both default on). Admin-only types are listed for admins only.",
+        responses: {
+          200: {
+            content: { 'application/json': { schema: notificationTypesResponseSchema } },
+            description: 'The notification types and their switches',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List notification types',
+        tags: ['Notifications'],
+      },
+    },
+    '/notifications/types/{type}': {
+      put: {
+        description:
+          'Turn a notification type on or off in-app and/or as a push. Applies to notifications raised from now on. With both off, the type is not stored at all.',
+        requestBody: { content: { 'application/json': { schema: setNotificationPreferenceBodySchema } } },
+        requestParams: {
+          path: z.object({ type: z.string().meta({ description: 'The notification type' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: setNotificationPreferenceResponseSchema } },
+            description: 'The type and its switches after the change',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Neither switch given',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'No such notification type for this user',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Set a notification preference',
+        tags: ['Notifications'],
+      },
+    },
+    '/notifications/{id}/read': {
+      post: {
+        description: 'Mark one notification read. Marking an already read one keeps its first `read_at`.',
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Notification ID' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: notificationResponseSchema } },
+            description: 'The notification',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Notification not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Mark a notification read',
+        tags: ['Notifications'],
+      },
+    },
+
     '/sync/outbound': {
       get: {
         description:
@@ -1919,6 +2022,7 @@ const openApiDocument = createDocument({
     { description: 'Federated challenges: hosted, joined, and public standings', name: 'Challenges' },
     { description: 'Social feed: posts, timeline and public tag pages', name: 'Feed' },
     { description: 'Named and detected locations', name: 'Locations' },
+    { description: 'Notifications: the bell, read state and per-type switches', name: 'Notifications' },
     { description: 'RescueTime productivity data', name: 'Productivity' },
     { description: 'User settings and preferences', name: 'Settings' },
     {

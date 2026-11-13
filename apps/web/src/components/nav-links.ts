@@ -55,6 +55,7 @@ const OTHER_PAGE_TITLES = [
   { href: '/shared-dashboards', label: 'Dashboards' },
   { href: '/data-sources', label: 'Data Sources' },
   { href: '/settings', label: 'Settings' },
+  { href: '/notifications', label: 'Notifications' },
   HELP_LINK,
   { href: '/admin', label: 'Admin' },
   { href: '/login', label: 'Login' },
