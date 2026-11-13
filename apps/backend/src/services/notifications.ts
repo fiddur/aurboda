@@ -4,6 +4,8 @@ import {
   type NotificationsQuery,
   type NotificationsResponse,
   type NotificationType,
+  notificationGroupLabels,
+  notificationGroups,
   notificationTypeInfo,
   notificationTypes,
   type NotificationTypeSetting,
@@ -61,7 +63,7 @@ export interface Notifier {
 
 const validateInput = (input: RaiseNotificationInput): void => {
   if (input.title.trim() === '') throw new Error(`Notification ${input.type} needs a title`)
-  if (input.link !== undefined && !input.link.startsWith('/')) {
+  if (input.link !== undefined && (!input.link.startsWith('/') || input.link.startsWith('//'))) {
     throw new Error(`Notification link must be an in-app path starting with '/': ${input.link}`)
   }
 }
@@ -128,13 +130,18 @@ export const serializeNotification = (record: NotificationRecord): Notification 
   type: record.type,
 })
 
-/** The registry entries this user can receive, joined with their stored switches (both default on). */
+/** Group by group, then registry order within each. */
+const settingsOrder = notificationGroups.flatMap((group) =>
+  notificationTypes.filter((type) => notificationTypeInfo[type].group === group),
+)
+
+/** The registry entries this user can receive, joined with their stored switches (both default on), grouped. */
 export const listNotificationTypeSettings = (
   isAdmin: boolean,
   preferences: readonly Pick<NotificationPreferenceRecord, 'in_app' | 'push' | 'type'>[],
 ): NotificationTypeSetting[] => {
   const byType = new Map(preferences.map((p) => [p.type, p]))
-  return notificationTypes
+  return settingsOrder
     .filter((type) => isAdmin || !notificationTypeInfo[type].admin_only)
     .map((type) => {
       const info = notificationTypeInfo[type]
@@ -142,6 +149,8 @@ export const listNotificationTypeSettings = (
       return {
         admin_only: info.admin_only,
         description: info.description,
+        group: info.group,
+        group_label: notificationGroupLabels[info.group],
         in_app: stored?.in_app ?? true,
         label: info.label,
         push: stored?.push ?? true,

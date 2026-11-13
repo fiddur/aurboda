@@ -1,8 +1,15 @@
-import type { Notification, NotificationsResponse } from '@aurboda/api-spec'
+import type { Notification, NotificationsResponse, NotificationTypeSetting } from '@aurboda/api-spec'
 
 import { describe, expect, it } from 'vitest'
 
-import { badgeText, bellLabel, isInAppLink, markAllReadInPage, markReadInPage } from './notifications'
+import {
+  badgeText,
+  bellLabel,
+  groupNotificationSettings,
+  isInAppLink,
+  markAllReadInPage,
+  markReadInPage,
+} from './notifications'
 
 const notification = (id: string, overrides: Partial<Notification> = {}): Notification => ({
   body: null,
@@ -75,5 +82,34 @@ describe('markAllReadInPage', () => {
     const next = markAllReadInPage(page([notification('a'), read], 1), READ_AT)
     expect(next.notifications.map((n) => n.read_at)).toEqual([READ_AT, '2026-11-01T11:00:00.000Z'])
     expect(next.unread_count).toBe(0)
+  })
+})
+
+describe('groupNotificationSettings', () => {
+  const setting = (type: string, group: string, group_label: string): NotificationTypeSetting => ({
+    admin_only: group === 'admin',
+    description: '',
+    group,
+    group_label,
+    in_app: true,
+    label: type,
+    push: true,
+    type,
+  })
+
+  it('keeps registry order within a group and orders groups by first appearance', () => {
+    const groups = groupNotificationSettings([
+      setting('admin_signup', 'admin', 'Admin'),
+      setting('feed_reply', 'feed', 'Feed'),
+      setting('feed_like', 'feed', 'Feed'),
+    ])
+    expect(groups.map((g) => [g.label, g.types.map((t) => t.type)])).toEqual([
+      ['Admin', ['admin_signup']],
+      ['Feed', ['feed_reply', 'feed_like']],
+    ])
+  })
+
+  it('is empty for no types', () => {
+    expect(groupNotificationSettings([])).toEqual([])
   })
 })

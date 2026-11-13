@@ -276,13 +276,15 @@ describe('POST /signup', () => {
       .send({ password: 'secret', username: 'alice' })
 
     expect(response.status).toBe(200)
-    expect(db.insertNotification).toHaveBeenCalledWith(
-      'fiddur',
-      expect.objectContaining({
-        dedupe_key: 'admin_signup:alice',
-        link: '/admin/users/alice',
-        type: 'admin_signup',
-      }),
+    await vi.waitFor(() =>
+      expect(db.insertNotification).toHaveBeenCalledWith(
+        'fiddur',
+        expect.objectContaining({
+          dedupe_key: 'admin_signup:alice',
+          link: '/admin/users/alice',
+          type: 'admin_signup',
+        }),
+      ),
     )
   })
 
