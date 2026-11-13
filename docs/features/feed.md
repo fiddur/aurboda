@@ -399,8 +399,8 @@ row is marked with the tag, so followed tags are listed apart from followed peop
 (`GET /feed/following` and `list_following` return people only) through
 `GET/POST /feed/followed-tags` and `DELETE /feed/followed-tags/:tag` (a tag is addressed by its
 name, unique per user), and over MCP `list_followed_tags`, `follow_tag` and `unfollow_tag`.
-A tag follow never raises a post notification: the Android notifier reads only the people
-list. A card boosted by a followed tag actor carries `boosted_by.tag` and
+A tag follow never raises a post notification: neither the server's `feed_post` nor the Android
+notifier, which reads only the people list. A card boosted by a followed tag actor carries `boosted_by.tag` and
 shows a `#running` chip in place of the "🔄 X boosted" line. The host is a server setting,
 `tag_actor_host` (Admin → **Federation**, default `tags.pub`). Only posts from servers that
 push to tags.pub arrive this way; every Aurboda server pushes its own public posts there
@@ -620,8 +620,12 @@ reactions on the owner's own posts. Presentation only — the cached inbox URIs 
 
 Each follow carries a **`notify_on_post`** flag (default `true`), toggled per-actor with the
 bell in the web Following panel (or the `set_following_notify` MCP tool / `PATCH
-/feed/following/:id`). It controls whether the Android app raises a notification for that
-actor's new home-timeline posts; muting is preserved across a re-follow.
+/feed/following/:id`). It controls whether that actor's new home-timeline posts raise a
+notification; muting is preserved across a re-follow. The server raises these into the central
+🛎 bell itself (the `feed_post` type, see [Notifications](notifications.md)), alongside
+`feed_reply`, `feed_mention`, `feed_like`, `feed_boost` and the follow types, by the same rule as
+the Android notifier below. Until #1632 the Android app still polls the timeline and raises its
+own post notifications as well.
 
 **Replies and mentions** (#1060): ingest stores a received Note's `inReplyTo` id as
 `timeline_entry.in_reply_to_uri` and whether it carries a `Mention` of the timeline owner as

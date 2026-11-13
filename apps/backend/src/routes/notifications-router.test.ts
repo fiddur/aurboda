@@ -123,14 +123,16 @@ describe('GET /notifications/types', () => {
     const res = await supertest(app(store)).get('/notifications/types')
 
     expect(res.status).toBe(200)
-    expect(res.body.types).toEqual([
+    expect(res.body.types).toContainEqual(
       expect.objectContaining({ admin_only: true, in_app: true, push: false, type: 'admin_signup' }),
-    ])
+    )
   })
 
   test('hides admin-only types from a non-admin', async () => {
     const res = await supertest(app(fakeStore().store, false)).get('/notifications/types')
-    expect(res.body.types).toEqual([])
+    const types = (res.body.types as { type: string }[]).map((setting) => setting.type)
+    expect(types).not.toContain('admin_signup')
+    expect(types).toContain('feed_like')
   })
 })
 

@@ -247,7 +247,7 @@ export const createWebAuthnRouter = ({
         isAdmin = true
         console.info(`First user ${username} automatically made admin`)
       }
-      await notifyAdminsOfSignup({
+      void notifyAdminsOfSignup({
         getAdmins: centralDb.getAdmins,
         raiseBestEffort: notifier.raiseBestEffort,
       })(username)
