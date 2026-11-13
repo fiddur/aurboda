@@ -104,6 +104,7 @@ describe('createNotifier().raise', () => {
     const notifier = createNotifier(deps)
     await expect(notifier.raise('alice', { ...input, title: '  ' })).rejects.toThrow()
     await expect(notifier.raise('alice', { ...input, link: 'https://evil.example' })).rejects.toThrow()
+    await expect(notifier.raise('alice', { ...input, link: '//evil.example/x' })).rejects.toThrow()
     expect(inserts).toEqual([])
   })
 
@@ -142,16 +143,48 @@ describe('serializeNotification', () => {
 
 describe('listNotificationTypeSettings', () => {
   test('hides admin-only types from non-admins', () => {
-    expect(listNotificationTypeSettings(false, [])).toEqual([])
+    const types = listNotificationTypeSettings(false, []).map((setting) => setting.type)
+    expect(types).not.toContain('admin_signup')
+    expect(types).toContain('feed_reply')
   })
 
   test('joins stored switches and defaults the rest to on', () => {
-    expect(listNotificationTypeSettings(true, [])).toEqual([
-      expect.objectContaining({ admin_only: true, in_app: true, push: true, type: 'admin_signup' }),
-    ])
-    expect(listNotificationTypeSettings(true, [{ in_app: false, push: true, type: 'admin_signup' }])).toEqual(
-      [expect.objectContaining({ in_app: false, push: true, type: 'admin_signup' })],
+    expect(listNotificationTypeSettings(true, []).find((setting) => setting.type === 'admin_signup')).toEqual(
+      expect.objectContaining({ admin_only: true, in_app: true, push: true }),
     )
+    const settings = listNotificationTypeSettings(true, [{ in_app: false, push: true, type: 'admin_signup' }])
+    expect(settings.find((setting) => setting.type === 'admin_signup')).toEqual(
+      expect.objectContaining({ in_app: false, push: true }),
+    )
+    expect(
+      settings.filter((setting) => setting.type !== 'admin_signup').every((s) => s.in_app && s.push),
+    ).toBe(true)
+  })
+
+  test('lists the feed group before the admin group, each in registry order', () => {
+    expect(listNotificationTypeSettings(true, []).map((setting) => setting.type)).toEqual([
+      'feed_follow_request',
+      'feed_new_follower',
+      'feed_follow_accepted',
+      'feed_reply',
+      'feed_mention',
+      'feed_like',
+      'feed_boost',
+      'feed_post',
+      'admin_signup',
+    ])
+  })
+
+  test('names each type’s group', () => {
+    const settings = listNotificationTypeSettings(true, [])
+    expect(settings.find((setting) => setting.type === 'admin_signup')).toMatchObject({
+      group: 'admin',
+      group_label: 'Admin',
+    })
+    expect(settings.find((setting) => setting.type === 'feed_post')).toMatchObject({
+      group: 'feed',
+      group_label: 'Feed',
+    })
   })
 })
 

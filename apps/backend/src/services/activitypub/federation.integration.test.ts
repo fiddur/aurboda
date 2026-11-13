@@ -4,16 +4,28 @@
  */
 import { integrateFederation } from '@fedify/express'
 import { getDefaultActivityTransformers } from '@fedify/fedify'
-import { type Activity, Create, Follow, Hashtag, Mention, Note, Person, Update } from '@fedify/fedify/vocab'
+import {
+  Accept,
+  type Activity,
+  Create,
+  Follow,
+  Hashtag,
+  Mention,
+  Note,
+  Person,
+  Update,
+} from '@fedify/fedify/vocab'
 import express from 'express'
 import supertest from 'supertest'
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { insertActivity } from '../../db/activities/index.ts'
+import { query } from '../../db/connection.ts'
 import { getFeedFollowerByActor, upsertFeedFollower } from '../../db/feed-follower.ts'
 import {
   getFeedFollowingByActor,
   markFeedFollowingAccepted,
+  updateFeedFollowingNotify,
   upsertFeedFollowing,
 } from '../../db/feed-following.ts'
 import {
@@ -25,6 +37,7 @@ import {
   getFeedTombstone,
   listPublicFeedPostsPage,
 } from '../../db/feed.ts'
+import { listNotifications } from '../../db/notifications.ts'
 import { getProfileAvatarVersion, upsertProfileAvatar } from '../../db/profile-avatar.ts'
 import { upsertUserSettings } from '../../db/settings.ts'
 import { listTimelineEntries, upsertTimelineEntry } from '../../db/timeline.ts'
@@ -36,9 +49,11 @@ import { buildFeedCreate, buildFeedUpdate } from './deliver.ts'
 import {
   buildActorPerson,
   createFeedFederation,
+  handleInboundAccept,
   handleInboundCreate,
   handleInboundFollow,
   handleInboundUpdate,
+  ingestNoteForRecipient,
 } from './federation.ts'
 import { dateToTemporalInstant } from './temporal-interop.ts'
 
@@ -1047,6 +1062,173 @@ describe('Feed federation actor + WebFinger', () => {
         (recipient) => pinged.push(recipient),
       )
       expect(pinged).toEqual([user])
+    })
+
+    describe('central notifications', () => {
+      const notificationsOf = async (user: string) =>
+        (await listNotifications(user, { limit: 50 })).map(({ link, title, type }) => ({ link, title, type }))
+
+      /** An inbox context whose outgoing deliveries go nowhere (the auto-Accept of a Follow). */
+      const quietContext = (user: string) => {
+        const base = inboxContext(fed, ORIGIN, user, aliceServes())
+        return new Proxy(base, {
+          get: (target, prop) =>
+            prop === 'sendActivity' ? async () => undefined : (Reflect.get(target, prop) as unknown),
+        })
+      }
+
+      const followAlice = async (user: string) => {
+        await upsertFeedFollowing(user, {
+          actor_uri: ALICE,
+          display_name: 'Alice',
+          handle: '@alice@mastodon.example',
+          inbox_uri: `${ALICE}/inbox`,
+        })
+        await markFeedFollowingAccepted(user, ALICE)
+      }
+
+      const topLevelPost = (n: number) =>
+        new Create({
+          actor: forgedAlice(),
+          id: new URL(`${ALICE}/statuses/${n}/activity`),
+          object: new Note({
+            attribution: new URL(ALICE),
+            content: '<p>Ran a 5k</p>',
+            id: new URL(`${ALICE}/statuses/${n}`),
+            published: dateToTemporalInstant(new Date('2026-07-02T10:00:00Z')),
+          }),
+        })
+
+      test('manual approval: a Follow raises one follow request, and no new-follower', async () => {
+        const user = getTestUser()
+        await upsertUserSettings(user, { manually_approve_followers: true })
+        await handleInboundFollow(inboxContext(fed, ORIGIN, user, aliceServes()), followUs(user))
+        await handleInboundFollow(inboxContext(fed, ORIGIN, user, aliceServes()), followUs(user))
+        expect(await notificationsOf(user)).toEqual([
+          { link: '/feed', title: 'Alice wants to follow you', type: 'feed_follow_request' },
+        ])
+      })
+
+      test('an auto-accepted Follow raises one new-follower, and its redelivery nothing more', async () => {
+        const user = getTestUser()
+        await handleInboundFollow(quietContext(user), followUs(user))
+        await handleInboundFollow(quietContext(user), followUs(user))
+        expect(await notificationsOf(user)).toEqual([
+          { link: '/feed', title: 'Alice started following you', type: 'feed_new_follower' },
+        ])
+      })
+
+      const acceptOf = (user: string) =>
+        new Accept({
+          actor: new URL(ALICE),
+          object: new Follow({
+            actor: new URL(`${ORIGIN}/users/${user}`),
+            id: new URL(`${ORIGIN}/users/${user}#follows/1`),
+            object: new URL(ALICE),
+          }),
+        })
+      const pendingFollowOfAlice = (user: string) =>
+        upsertFeedFollowing(user, {
+          actor_uri: ALICE,
+          display_name: 'Alice',
+          handle: '@alice@mastodon.example',
+          inbox_uri: `${ALICE}/inbox`,
+        })
+
+      test('an instant Accept of our follow raises nothing', async () => {
+        const user = getTestUser()
+        await pendingFollowOfAlice(user)
+        await handleInboundAccept(inboxContext(fed, ORIGIN, user), acceptOf(user))
+        expect((await getFeedFollowingByActor(user, ALICE))?.accepted).toBe(true)
+        expect(await notificationsOf(user)).toEqual([])
+      })
+
+      test('an Accept of a follow that waited raises one follow-accepted', async () => {
+        const user = getTestUser()
+        await pendingFollowOfAlice(user)
+        await query(user, `UPDATE feed_following SET created_at = NOW() - INTERVAL '1 hour'`)
+        await handleInboundAccept(inboxContext(fed, ORIGIN, user), acceptOf(user))
+        await handleInboundAccept(inboxContext(fed, ORIGIN, user), acceptOf(user))
+        expect(await notificationsOf(user)).toEqual([
+          { link: '/feed', title: 'Alice accepted your follow request', type: 'feed_follow_accepted' },
+        ])
+      })
+
+      test('a stranger’s reply to my post raises one reply linking to that post', async () => {
+        const user = getTestUser()
+        const target = await ownPostUri(user)
+        const ctx = inboxContext(fed, ORIGIN, user, aliceServes())
+        await handleInboundCreate(ctx, replyToOwnPost(target), ORIGIN)
+        await handleInboundCreate(ctx, replyToOwnPost(target), ORIGIN)
+        expect(await notificationsOf(user)).toEqual([
+          {
+            link: `/u/${user}/posts/${target.split('/').pop()}`,
+            title: 'Alice replied to your post',
+            type: 'feed_reply',
+          },
+        ])
+      })
+
+      test('a stranger’s Mention raises a mention', async () => {
+        const user = getTestUser()
+        await handleInboundCreate(
+          inboxContext(fed, ORIGIN, user, aliceServes()),
+          mentioning(`${ORIGIN}/users/${user}`),
+          ORIGIN,
+        )
+        expect(await notificationsOf(user)).toEqual([
+          { link: '/feed', title: 'Alice mentioned you', type: 'feed_mention' },
+        ])
+      })
+
+      test('a followee’s top-level post raises one new-post; an Update of it nothing more', async () => {
+        const user = getTestUser()
+        await followAlice(user)
+        const ctx = inboxContext(fed, ORIGIN, user, aliceServes())
+        await handleInboundCreate(ctx, topLevelPost(9), ORIGIN)
+        const note = await topLevelPost(9).getObject()
+        await handleInboundUpdate(
+          ctx,
+          new Update({ actor: forgedAlice(), id: new URL(`${ALICE}/statuses/9#update`), object: note }),
+          ORIGIN,
+        )
+        expect(await notificationsOf(user)).toEqual([
+          { link: '/feed', title: 'Alice posted', type: 'feed_post' },
+        ])
+      })
+
+      test('with the bell off, no new-post, but a reply to my post still notifies', async () => {
+        const user = getTestUser()
+        await followAlice(user)
+        const following = await getFeedFollowingByActor(user, ALICE)
+        await updateFeedFollowingNotify(user, following!.id, false)
+        const ctx = inboxContext(fed, ORIGIN, user, aliceServes())
+        await handleInboundCreate(ctx, topLevelPost(9), ORIGIN)
+        await handleInboundCreate(ctx, replyToOwnPost(await ownPostUri(user)), ORIGIN)
+        expect((await notificationsOf(user)).map((n) => n.type)).toEqual(['feed_reply'])
+      })
+
+      test('a followee’s reply the reader has hidden raises no new-post', async () => {
+        const user = getTestUser()
+        await followAlice(user)
+        await handleInboundCreate(
+          inboxContext(fed, ORIGIN, user, aliceServes()),
+          replyToOwnPost('https://elsewhere.example/notes/999'),
+          ORIGIN,
+        )
+        expect(await notificationsOf(user)).toEqual([])
+      })
+
+      test('the on-follow backfill raises nothing', async () => {
+        const user = getTestUser()
+        await followAlice(user)
+        const followee = await getFeedFollowingByActor(user, ALICE)
+        const note = await topLevelPost(9).getObject()
+        expect(note).toBeInstanceOf(Note)
+        await ingestNoteForRecipient(user, note as Note, followee!, async () => null, ORIGIN)
+        expect(await listTimelineEntries(user, 10)).toHaveLength(1)
+        expect(await notificationsOf(user)).toEqual([])
+      })
     })
 
     /** Every cached copy of Alice: as followee, follower, post author and booster. */

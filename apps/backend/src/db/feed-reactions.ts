@@ -144,13 +144,14 @@ const FEED_POST_REACTION_COLUMNS =
 /**
  * Record an inbound reaction on one of the user's own posts. A redelivery
  * refreshes the activity id + presentation snapshot in place; `created_at` stays
- * at first receipt so the "who reacted" list keeps a stable order.
+ * at first receipt so the "who reacted" list keeps a stable order. `inserted`
+ * tells a first receipt from a redelivery (see `upsertTimelineEntry`).
  */
 export const upsertFeedPostReaction = async (
   user: string,
   input: FeedPostReactionInput,
-): Promise<FeedPostReactionRecord> => {
-  const result = await query<FeedPostReactionRecord>(
+): Promise<FeedPostReactionRecord & { inserted: boolean }> => {
+  const result = await query<FeedPostReactionRecord & { inserted: boolean }>(
     user,
     `INSERT INTO feed_post_reaction (post_id, kind, actor_uri, activity_uri, handle, display_name, avatar_url)
      VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -159,7 +160,7 @@ export const upsertFeedPostReaction = async (
                    handle = COALESCE(EXCLUDED.handle, feed_post_reaction.handle),
                    display_name = COALESCE(EXCLUDED.display_name, feed_post_reaction.display_name),
                    avatar_url = COALESCE(EXCLUDED.avatar_url, feed_post_reaction.avatar_url)
-     RETURNING ${FEED_POST_REACTION_COLUMNS}`,
+     RETURNING ${FEED_POST_REACTION_COLUMNS}, (xmax = 0) AS inserted`,
     [
       input.post_id,
       input.kind,

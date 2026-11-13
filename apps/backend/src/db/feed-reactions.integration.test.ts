@@ -229,18 +229,20 @@ describe('Feed reaction stores integration', () => {
     test('a redelivery refreshes the snapshot in place rather than duplicating', async () => {
       const user = getTestUser()
       const created = await post(user)
-      await upsertFeedPostReaction(user, {
+      const first = await upsertFeedPostReaction(user, {
         actor_uri: ALICE,
         display_name: 'Alice',
         kind: 'like',
         post_id: created.id,
       })
-      await upsertFeedPostReaction(user, {
+      const again = await upsertFeedPostReaction(user, {
         actor_uri: ALICE,
         display_name: 'Alice Cooper',
         kind: 'like',
         post_id: created.id,
       })
+      expect(first.inserted).toBe(true)
+      expect(again.inserted).toBe(false)
       const rows = await listFeedPostReactions(user, created.id, 100)
       expect(rows).toHaveLength(1)
       expect(rows[0].display_name).toBe('Alice Cooper')

@@ -7,7 +7,17 @@ import { baseResponseSchema, iso8601DateTimeSchema, queryBooleanSchema } from '.
  * here plus a `raise` call where the event happens; nothing in the database
  * changes, since a stored notification's `type` is plain text.
  */
-export const notificationTypes = ['admin_signup'] as const
+export const notificationTypes = [
+  'admin_signup',
+  'feed_follow_request',
+  'feed_new_follower',
+  'feed_follow_accepted',
+  'feed_reply',
+  'feed_mention',
+  'feed_like',
+  'feed_boost',
+  'feed_post',
+] as const
 
 export type NotificationType = (typeof notificationTypes)[number]
 
@@ -20,7 +30,18 @@ export const notificationTypeSchema = z.enum(notificationTypes).meta({
 export const isNotificationType = (value: string): value is NotificationType =>
   (notificationTypes as readonly string[]).includes(value)
 
+export const notificationGroups = ['feed', 'data_sources', 'admin'] as const
+
+export type NotificationGroup = (typeof notificationGroups)[number]
+
+export const notificationGroupLabels: Record<NotificationGroup, string> = {
+  admin: 'Admin',
+  data_sources: 'Data sources',
+  feed: 'Feed',
+}
+
 export interface NotificationTypeInfo {
+  group: NotificationGroup
   label: string
   description: string
   /** Only admins receive it, and only admins see its settings row. */
@@ -31,7 +52,56 @@ export const notificationTypeInfo: Record<NotificationType, NotificationTypeInfo
   admin_signup: {
     admin_only: true,
     description: 'Someone created an account on this server',
+    group: 'admin',
     label: 'New signups',
+  },
+  feed_follow_request: {
+    admin_only: false,
+    description: 'Someone asks to follow you and you approve followers by hand',
+    group: 'feed',
+    label: 'Follow requests',
+  },
+  feed_new_follower: {
+    admin_only: false,
+    description: 'Someone started following you',
+    group: 'feed',
+    label: 'New followers',
+  },
+  feed_follow_accepted: {
+    admin_only: false,
+    description: 'An account you asked to follow accepted, after a wait',
+    group: 'feed',
+    label: 'Accepted follow requests',
+  },
+  feed_reply: {
+    admin_only: false,
+    description: 'Someone replied to one of your posts',
+    group: 'feed',
+    label: 'Replies',
+  },
+  feed_mention: {
+    admin_only: false,
+    description: 'Someone mentioned you in a post',
+    group: 'feed',
+    label: 'Mentions',
+  },
+  feed_like: {
+    admin_only: false,
+    description: 'Someone liked one of your posts',
+    group: 'feed',
+    label: 'Likes',
+  },
+  feed_boost: {
+    admin_only: false,
+    description: 'Someone boosted one of your posts',
+    group: 'feed',
+    label: 'Boosts',
+  },
+  feed_post: {
+    admin_only: false,
+    description: 'A new post or boost from an account whose bell is on in your Following list',
+    group: 'feed',
+    label: 'New posts',
   },
 }
 
@@ -121,6 +191,11 @@ export const notificationTypeSettingSchema = z
   .object({
     admin_only: z.boolean().meta({ description: 'Only admins receive this type' }),
     description: z.string().meta({ description: 'What raises this type' }),
+    group: z.string().meta({
+      description: 'The group the type is shown under in settings (`feed`, `data_sources`, `admin`)',
+      example: 'feed',
+    }),
+    group_label: z.string().meta({ description: 'Human-readable name of the group', example: 'Feed' }),
     in_app: z.boolean().meta({ description: 'Show this type under the bell' }),
     label: z.string().meta({ description: 'Human-readable name' }),
     push: z.boolean().meta({ description: 'Deliver this type as a device push' }),
