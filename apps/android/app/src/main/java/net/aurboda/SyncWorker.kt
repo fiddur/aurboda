@@ -155,6 +155,7 @@ class SyncWorker(
       HrZoneWidgetProvider.triggerUpdate(applicationContext)
       ChallengeWidgetProvider.triggerUpdate(applicationContext)
       reporter.end()
+      NotificationWorker.checkSoon(applicationContext)
       finishAttempt(attemptAt, BackgroundSyncResult.Success)
     } catch (e: Exception) {
       Log.e(TAG, "Background sync failed", e)

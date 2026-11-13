@@ -23,4 +23,16 @@ class EmbeddedPageUrlTest {
     fun `an existing query string is extended, not doubled`() {
         assertEquals("https://aurboda.net/chart?metric=steps&embed=1", embeddedPageUrl("https://aurboda.net", "/chart?metric=steps"))
     }
+
+    @Test
+    fun `the embed flag goes before a fragment`() {
+        assertEquals(
+            "https://aurboda.net/settings?embed=1#notifications",
+            embeddedPageUrl("https://aurboda.net", "/settings#notifications"),
+        )
+        assertEquals(
+            "https://aurboda.net/chart?metric=steps&embed=1#top",
+            embeddedPageUrl("https://aurboda.net", "/chart?metric=steps#top"),
+        )
+    }
 }

@@ -55,7 +55,9 @@ import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import net.aurboda.ui.theme.AurbodaAppTheme
@@ -150,6 +152,9 @@ class MainActivity : ComponentActivity() {
 
     /** With [EXTRA_OPEN_TAB] = [TAB_MORE], the More web page to open (e.g. "/goals"). */
     const val EXTRA_MORE_PATH = "more_path"
+
+    /** The server id of the central notification whose tap opened the app; marked read on arrival. */
+    const val EXTRA_NOTIFICATION_ID = "notification_id"
   }
 
   /**
@@ -166,6 +171,7 @@ class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     val link = deepLinkFrom(intent)
+    markTappedNotificationRead(intent)
     setContent {
       AurbodaAppShell {
         AutoEnablePostNotifications()
@@ -178,6 +184,23 @@ class MainActivity : ComponentActivity() {
     super.onNewIntent(intent)
     setIntent(intent)
     deepLinkFrom(intent)?.let { runningDeepLink = DeepLinkEvent(++deepLinkSeq, it) }
+    markTappedNotificationRead(intent)
+  }
+
+  private fun markTappedNotificationRead(intent: Intent?) {
+    if (intent == null) return
+    val id = intent.getStringExtra(EXTRA_NOTIFICATION_ID) ?: return
+    intent.removeExtra(EXTRA_NOTIFICATION_ID)
+    if (!isValidNotificationId(id)) return
+    val credentials = CredentialsManager.getCredentials(this) ?: return
+    lifecycleScope.launch(Dispatchers.IO) {
+      val client = syncHttpClient()
+      try {
+        markNotificationRead(client, credentials.apiUrl, credentials.authToken, id)
+      } finally {
+        client.close()
+      }
+    }
   }
 
   private fun deepLinkFrom(intent: Intent?): DeepLink? =
@@ -250,7 +273,10 @@ fun AurbodaApp(
     DisposableEffect(lifecycleOwner) {
       val observer =
         LifecycleEventObserver { _, event ->
-          if (event == Lifecycle.Event.ON_RESUME) scope.launch { verifyStoredToken(context, ktorHttpClient) }
+          if (event == Lifecycle.Event.ON_RESUME) {
+            scope.launch { verifyStoredToken(context, ktorHttpClient) }
+            scope.launch { appState.refreshUnreadNotifications(ktorHttpClient) }
+          }
         }
       lifecycleOwner.lifecycle.addObserver(observer)
       onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -366,7 +392,11 @@ fun AurbodaApp(
       if (credentials != null) {
         net.aurboda.ui.screens.MainScreen(
           currentTab = appState.currentTab,
-          onTabSelected = { appState.selectTab(it) },
+          onTabSelected = { tab ->
+            appState.selectTab(tab)
+            if (tab == MainTab.More) scope.launch { appState.refreshUnreadNotifications(ktorHttpClient) }
+          },
+          unreadNotifications = appState.unreadNotifications,
           homeContent = { modifier ->
             key(appState.tabReselections) {
               net.aurboda.ui.screens.EmbeddedWebScreen(
@@ -408,7 +438,12 @@ fun AurbodaApp(
               credentials = credentials,
               destination = appState.moreDestination,
               onSelect = { destination -> appState.openMoreDestination(destination) },
-              onBack = { appState.closeMoreDestination() },
+              onBack = {
+                appState.closeMoreDestination()
+                scope.launch { appState.refreshUnreadNotifications(ktorHttpClient) }
+              },
+              onOpenWebPage = { path -> appState.openMoreDestination(MoreDestination.Web(path)) },
+              unreadNotifications = appState.unreadNotifications,
               onServerUrlChange = { newUrl -> appState.changeServerUrl(newUrl) },
               onLogout = { appState.logout() },
               modifier = modifier,
