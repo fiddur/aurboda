@@ -14,6 +14,8 @@ import {
 const BASE = 'https://aurboda.example/correlations'
 
 const FULL: AnalyzeState = {
+  breakdown: 'field:session_name',
+  breakdownMetric: 'body_battery',
   days: 60,
   explore: {
     days: 120,
@@ -31,7 +33,13 @@ const FULL: AnalyzeState = {
     trigger: { kind: 'nutrition', nutrient: 'carbs' },
   },
   extras: ['body_battery'],
+  filters: [
+    { dimension: 'duration', keys: ['15-30', '30-60'] },
+    { dimension: 'field:session_name', keys: ['Morning flow'] },
+  ],
+  hours: [6, 22],
   item: { name: 'breathwork', type: 'activity_type' },
+  lengths: [10, 20, 45],
   metrics: ['hrv', 'stress'],
   tab: 'explore',
   window: 120,
@@ -49,7 +57,8 @@ describe('parseAnalyzeState', () => {
       '?tab=explore&days=60&window=120&metrics=hrv,stress,body_battery&item=breathwork&item_type=activity_type' +
       '&mode=continuous&trigger=nutrition:carbs&outcome=metric:sleep_score&outcome_source=tag' +
       '&outcome_value=headache&lags=12h,24h&lag_days=2&gap=5&nutrition=complete_only&denominator=all' +
-      '&start=2026-01-01&end=2026-06-30&explore_days=120'
+      '&start=2026-01-01&end=2026-06-30&explore_days=120&breakdown=field:session_name&lengths=10,20,45' +
+      '&hours=6,22&filter=duration:15-30,30-60;field:session_name:Morning%2520flow&breakdown_metric=body_battery'
     expect(parseAnalyzeState(search)).toEqual(FULL)
   })
 
@@ -89,6 +98,25 @@ describe('parseAnalyzeState', () => {
     })
   })
 
+  test('falls back to the default limits for invalid lengths and hours', () => {
+    const state = parseAnalyzeState('?lengths=30,15&hours=0,25')
+    expect(state.lengths).toEqual(DEFAULT_ANALYZE_STATE.lengths)
+    expect(state.hours).toEqual(DEFAULT_ANALYZE_STATE.hours)
+    expect(parseAnalyzeState('?lengths=abc').lengths).toEqual(DEFAULT_ANALYZE_STATE.lengths)
+  })
+
+  test('drops an invalid breakdown and breakdown metric', () => {
+    expect(parseAnalyzeState('?breakdown=planet').breakdown).toBe('')
+    expect(parseAnalyzeState('?breakdown=field:').breakdown).toBe('')
+    expect(parseAnalyzeState('?breakdown=sleep').breakdown).toBe('sleep')
+    expect(parseAnalyzeState('?breakdown_metric=Bad-Name').breakdownMetric).toBe('')
+  })
+
+  test('a malformed filter gives no filters', () => {
+    expect(parseAnalyzeState('?filter=planet:mars').filters).toEqual([])
+    expect(parseAnalyzeState('?filter=duration:').filters).toEqual([])
+  })
+
   test('defaults the denominator from the outcome source', () => {
     expect(parseAnalyzeState('').explore.denominator).toBe('all')
     expect(parseAnalyzeState('?outcome_source=tag').explore.denominator).toBe('known')
@@ -112,6 +140,41 @@ describe('withAnalyzeState', () => {
       metrics: ['hr' as const, 'stress' as const],
     }
     expect(withAnalyzeState(BASE, state)).toBe('/correlations?metrics=hr,stress&trigger=activity:yoga')
+  })
+
+  test('leaves every slicing param out at its default', () => {
+    const next = withAnalyzeState(`${BASE}?breakdown=sleep&lengths=5&hours=6&filter=sleep:none`, {
+      ...DEFAULT_ANALYZE_STATE,
+      hours: [0, 6, 12, 18],
+      lengths: [15, 30, 60],
+    })
+    expect(next).toBe('/correlations')
+  })
+
+  test('writes filters readably', () => {
+    const state: AnalyzeState = {
+      ...DEFAULT_ANALYZE_STATE,
+      breakdown: 'duration',
+      filters: [
+        { dimension: 'duration', keys: ['15-30', '30-60'] },
+        { dimension: 'sleep', keys: ['none'] },
+      ],
+    }
+    expect(withAnalyzeState(BASE, state)).toBe(
+      '/correlations?breakdown=duration&filter=duration:15-30,30-60;sleep:none',
+    )
+  })
+
+  test('round trips a filter key holding a comma, a semicolon and a space', () => {
+    const state: AnalyzeState = {
+      ...DEFAULT_ANALYZE_STATE,
+      filters: [{ dimension: 'field:session_name', keys: ['Slow, deep; long flow', 'Evening stretch'] }],
+    }
+    const next = withAnalyzeState(BASE, state)
+    expect(next).toBe(
+      '/correlations?filter=field:session_name:Slow%252C%2520deep%253B%2520long%2520flow,Evening%2520stretch',
+    )
+    expect(parseAnalyzeState(searchOf(next)).filters).toEqual(state.filters)
   })
 
   test('writes extras after the short keys', () => {

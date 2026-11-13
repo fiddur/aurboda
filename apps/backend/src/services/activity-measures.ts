@@ -13,6 +13,16 @@ import {
 
 type Item = Record<string, unknown>
 
+export type FieldValue = string | number | boolean
+
+/** A usable field value: a non-empty (trimmed) string, a finite number or a boolean. */
+export const fieldValue = (v: unknown): FieldValue | undefined => {
+  if (typeof v === 'string') return v.trim() === '' ? undefined : v.trim()
+  if (typeof v === 'number') return Number.isFinite(v) ? v : undefined
+  if (typeof v === 'boolean') return v
+  return undefined
+}
+
 export interface ItemGroup {
   value: string
   normalized: string

@@ -90,7 +90,7 @@ const METRIC_DIRECTION: Record<string, MetricDirection> = {
 export const metricDirection = (metric: string): MetricDirection =>
   METRIC_DIRECTION[metric] ?? (metric.startsWith('hrv_') ? 'up' : 'neutral')
 
-const NO_EFFECT: WindowEffect = {
+export const NO_EFFECT: WindowEffect = {
   after_mean: null,
   before_mean: null,
   change: null,
