@@ -1,8 +1,15 @@
-import type { ActivityFieldValue } from '@aurboda/api-spec'
+import type { ActivityFieldValue, ExerciseCatalogEntry } from '@aurboda/api-spec'
 
 import { describe, expect, it } from 'vitest'
 
-import { exactMatchIndex, filterKnownValues, stepActiveIndex } from './knownValueSuggestions'
+import {
+  catalogHint,
+  exactMatchIndex,
+  filterKnownValues,
+  isSameName,
+  mergeSuggestions,
+  stepActiveIndex,
+} from './knownValueSuggestions'
 
 const values: ActivityFieldValue[] = [
   { count: 3, last_used: '2026-11-04T10:00:00Z', value: 'Leg day' },
@@ -79,5 +86,81 @@ describe('stepActiveIndex', () => {
   it('returns -1 when there are no rows', () => {
     expect(stepActiveIndex(-1, 1, 0)).toBe(-1)
     expect(stepActiveIndex(2, -1, 0)).toBe(-1)
+  })
+})
+
+const entry = (name: string, muscles: [string, number][]): ExerciseCatalogEntry => ({
+  aliases: [],
+  category: 'strength',
+  equipment: [],
+  key: name.toLowerCase().replaceAll(/[^a-z0-9]+/g, '_'),
+  muscles: muscles.map(([muscleName, weight]) => ({
+    group: 'chest',
+    key: 'chest',
+    name: muscleName,
+    weight,
+  })),
+  name,
+  same_as: {},
+})
+
+describe('catalogHint', () => {
+  it('names the fully recruited muscles, at most two', () => {
+    expect(
+      catalogHint(
+        entry('Squat', [
+          ['Quadriceps', 1],
+          ['Glutes', 1],
+          ['Adductors', 1],
+          ['Hamstrings', 0.5],
+        ]),
+      ),
+    ).toBe('Quadriceps, Glutes')
+  })
+
+  it('names the highest-weighted muscle when none is fully recruited', () => {
+    expect(
+      catalogHint(
+        entry('Chest Stretch', [
+          ['Shoulders', 0.25],
+          ['Chest', 0.5],
+        ]),
+      ),
+    ).toBe('Chest')
+  })
+
+  it('is undefined for an entry without muscles', () => {
+    expect(catalogHint(entry('Plank', []))).toBeUndefined()
+  })
+})
+
+describe('mergeSuggestions', () => {
+  const own = [
+    { count: 12, value: 'Bench press' },
+    { count: 3, value: 'Pull-up' },
+  ]
+
+  it('keeps own values first and appends catalogue entries with a hint', () => {
+    expect(mergeSuggestions(own, [entry('Deadlift', [['Glutes', 1]])])).toEqual([
+      ...own,
+      { hint: 'Glutes', value: 'Deadlift' },
+    ])
+  })
+
+  it('leaves out catalogue entries whose name is already among own values, ignoring case and punctuation', () => {
+    expect(
+      mergeSuggestions(own, [entry('Bench Press', [['Chest', 1]]), entry('Pull Up', [['Lats', 1]])]),
+    ).toEqual(own)
+  })
+
+  it('returns own values unchanged without catalogue entries', () => {
+    expect(mergeSuggestions(own, [])).toEqual(own)
+  })
+})
+
+describe('isSameName', () => {
+  it('ignores case, punctuation and surrounding whitespace', () => {
+    expect(isSameName(' pull-up ', 'Pull Up')).toBe(true)
+    expect(isSameName('Pull-up', 'Chin-up')).toBe(false)
   })
 })

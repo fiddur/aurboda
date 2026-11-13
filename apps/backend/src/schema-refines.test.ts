@@ -1,5 +1,52 @@
-import { chartDataQuerySchema, dataFieldDefinitionSchema } from '@aurboda/api-spec'
+import {
+  chartDataQuerySchema,
+  dataFieldDefinitionSchema,
+  dataItemFieldDefinitionSchema,
+} from '@aurboda/api-spec'
 import { describe, expect, test } from 'vitest'
+
+describe('dataItemFieldDefinitionSchema', () => {
+  test('a catalog is allowed on a plain string item field', () => {
+    expect(
+      dataItemFieldDefinitionSchema.safeParse({ catalog: 'exercises', name: 'exercise', type: 'string' })
+        .success,
+    ).toBe(true)
+  })
+
+  test('a catalog is rejected on a number field', () => {
+    const result = dataItemFieldDefinitionSchema.safeParse({
+      catalog: 'exercises',
+      name: 'reps',
+      type: 'number',
+    })
+    expect(result.success).toBe(false)
+    expect(result.error?.issues[0]?.message).toBe(
+      'catalog is only allowed on a string field without enum_values',
+    )
+    expect(result.error?.issues[0]?.path).toEqual(['catalog'])
+  })
+
+  test('a catalog is rejected on a string field with enum_values', () => {
+    expect(
+      dataItemFieldDefinitionSchema.safeParse({
+        catalog: 'exercises',
+        enum_values: ['a'],
+        name: 'exercise',
+        type: 'string',
+      }).success,
+    ).toBe(false)
+  })
+
+  test('a list field rejects an item field with a misplaced catalog', () => {
+    expect(
+      dataFieldDefinitionSchema.safeParse({
+        item_fields: [{ catalog: 'exercises', name: 'reps', type: 'number' }],
+        name: 'sets',
+        type: 'list',
+      }).success,
+    ).toBe(false)
+  })
+})
 
 describe('dataFieldDefinitionSchema', () => {
   const sets = {
