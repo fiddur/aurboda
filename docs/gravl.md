@@ -15,7 +15,7 @@ Every workout is also preserved as raw JSON in the `raw_records` table (`record_
 
 ### The set shape
 
-Each set is an item of the `sets` list field of the built-in `strength_training` data schema (see [Activity types → Data Schema](./features/activity-types.md#data-schema-and-categorical-fields)): `exercise`, `weight`, `reps` and `time` are its declared item fields, and Gravl's other keys (`exercise_id`, `order`, `set_type`, `distance`, `rpe`, `superset_id`) are kept as undeclared item keys.
+Each set is an item of the `sets` list field of the built-in `strength_training` data schema (see [Activity types → Data Schema](./features/activity-types.md#data-schema-and-categorical-fields)): `exercise`, `weight`, `reps`, `time`, `set_type`, `rpe` and `distance` are declared item fields, and Gravl's other keys (`exercise_id`, `order`, `superset_id`) are kept as undeclared item keys.
 
 ```json
 {

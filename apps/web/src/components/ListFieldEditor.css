@@ -96,6 +96,26 @@
   border-color: var(--color-accent);
 }
 
+.list-field-editor-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.list-field-editor-more {
+  border: none;
+  background: transparent;
+  color: #6b7280;
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0.3rem 0.375rem;
+}
+
+.list-field-editor-more:hover {
+  color: #374151;
+}
+
 @media (prefers-color-scheme: dark) {
   .list-field-editor .list-field-editor-table th {
     border-color: #374151;
@@ -118,5 +138,13 @@
 
   .list-field-editor-add {
     border-color: #4b5563;
+  }
+
+  .list-field-editor-more {
+    color: #9ca3af;
+  }
+
+  .list-field-editor-more:hover {
+    color: #f9fafb;
   }
 }
