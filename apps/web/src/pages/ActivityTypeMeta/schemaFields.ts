@@ -25,7 +25,6 @@ const withItemFields = (
 export const addItemField = (field: DataFieldDefinition): DataFieldDefinition =>
   withItemFields(field, (items) => [...items, emptyItemField()])
 
-/** The API rejects a catalogue on anything but a string field without enum values. */
 const withoutMisplacedCatalog = (item: DataItemFieldDefinition): DataItemFieldDefinition => {
   if (item.catalog === undefined || (item.type === 'string' && item.enum_values === undefined)) return item
   const { catalog: _catalog, ...rest } = item

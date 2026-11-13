@@ -11,6 +11,8 @@ import {
   iso8601DateTimeSchema,
 } from './common.ts'
 import { sleepStageSummarySchema } from './daily-summary.ts'
+import { dataFieldCatalogSchema } from './data-schema.ts'
+import { itemValueIdentityStateSchema } from './item-value-identities.ts'
 import { sharedExerciseSetSchema } from './shared-exercises.ts'
 
 const listItemSchema = z.record(z.string(), z.unknown())
@@ -339,8 +341,15 @@ export type ActivityFieldValuesQuery = z.infer<typeof activityFieldValuesQuerySc
 
 export const activityFieldValueSchema = z
   .object({
+    catalog_key: z.string().nullable().optional().meta({
+      description:
+        'For a catalogue-backed field: the catalogue entry the value stands for, null when dismissed or unmapped',
+    }),
     count: z.number().int().meta({ description: 'Number of activities with this value' }),
     last_used: iso8601DateTimeSchema.meta({ description: 'Start time of the latest activity with it' }),
+    state: itemValueIdentityStateSchema
+      .optional()
+      .meta({ description: 'For a catalogue-backed field: how the value resolves to the catalogue' }),
     value: z.string(),
   })
   .meta({ id: 'ActivityFieldValue' })
@@ -350,6 +359,13 @@ export type ActivityFieldValue = z.infer<typeof activityFieldValueSchema>
 export const activityFieldValuesSchema = z
   .object({
     activity_type: z.string(),
+    catalog: dataFieldCatalogSchema
+      .optional()
+      .meta({ description: 'The catalogue the field is matched against, when it is catalogue-backed' }),
+    catalog_version: z
+      .string()
+      .optional()
+      .meta({ description: 'Version of the catalogue the values were resolved against' }),
     field: z.string(),
     values: z.array(activityFieldValueSchema).meta({ description: 'Most recently used first' }),
   })

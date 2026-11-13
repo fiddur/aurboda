@@ -142,6 +142,7 @@ export {
   softDeleteActivityByExternalId,
   findActivityByExternalId,
   findAdjacentActivity,
+  type ActivityFieldValueRow,
   getActivityFieldValues,
   type DataFilter,
   findDeletedActivityByExternalId,
@@ -808,3 +809,11 @@ export {
   reviseNotification,
   upsertNotificationPreference,
 } from './notifications.ts'
+
+export {
+  deleteItemValueIdentity,
+  type ItemValueIdentityRow,
+  listItemValueIdentities,
+  moveItemValueIdentity,
+  upsertItemValueIdentity,
+} from './item-value-identities.ts'
