@@ -64,7 +64,13 @@ The built-in `strength_training` type carries a `sets` list field:
       "type": "list",
       "label": "Sets",
       "item_fields": [
-        { "name": "exercise", "type": "string", "required": true, "is_categorical": true },
+        {
+          "name": "exercise",
+          "type": "string",
+          "required": true,
+          "is_categorical": true,
+          "catalog": "exercises"
+        },
         { "name": "weight", "type": "number", "unit": "kg" },
         { "name": "reps", "type": "number" },
         { "name": "time", "type": "number", "unit": "s" },
@@ -83,6 +89,12 @@ The built-in `strength_training` type carries a `sets` list field:
   ]
 }
 ```
+
+An item field can name a built-in **catalogue** its values are matched against with `catalog`.
+The only one is `exercises`, the [exercise catalogue](exercise-catalog.md): the set editor then
+suggests catalogue exercises while typing, after the names already logged, and the exercise page
+shows the catalogue entry's muscles and equipment. Any text stays valid; validation ignores the flag.
+`catalog` is allowed only on a `string` item field without `enum_values`.
 
 `sets` itself is optional, since watch-only strength sessions (Garmin, Health Connect) have none;
 `time` is for holds such as planks and `distance` for carries. `set_type` tells warmup, drop and

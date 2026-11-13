@@ -1,7 +1,8 @@
 import type { DataItemFieldDefinition } from '@aurboda/api-spec'
 
-import { useState } from 'preact/hooks'
+import { useRef, useState } from 'preact/hooks'
 
+import { KnownValuesInput } from './KnownValuesInput'
 import {
   addRowLabel,
   type ListRow,
@@ -10,6 +11,7 @@ import {
   removeRow,
   setCell,
   visibleItemFields,
+  withStickyItemFields,
 } from './listFieldRows'
 import { fieldLabel, type ListFieldDefinition } from './sessions/sessionView'
 import './ListFieldEditor.css'
@@ -23,12 +25,16 @@ const CellInput = ({
   label,
   value,
   onChange,
+  activityType,
+  path,
 }: {
   id: string
   item: DataItemFieldDefinition
   label: string
   value: unknown
   onChange: (value: unknown) => void
+  activityType?: string
+  path: string
 }) => {
   if (item.type === 'boolean') {
     return (
@@ -84,6 +90,26 @@ const CellInput = ({
     )
   }
 
+  if (
+    item.type === 'string' &&
+    activityType !== undefined &&
+    (item.is_categorical === true || item.catalog !== undefined)
+  ) {
+    return (
+      <KnownValuesInput
+        id={id}
+        activityType={activityType}
+        field={path}
+        catalog={item.catalog}
+        floating
+        class="list-field-editor-input"
+        aria-label={label}
+        value={value != null ? String(value) : ''}
+        onChange={(v) => onChange(v || null)}
+      />
+    )
+  }
+
   return (
     <input
       id={id}
@@ -102,15 +128,19 @@ export const ListFieldEditor = ({
   rows,
   onChange,
   idPrefix = `list-${field.name}`,
+  activityType,
 }: {
   field: ListFieldDefinition
   rows: ListRow[]
   onChange: (rows: ListRow[]) => void
   idPrefix?: string
+  activityType?: string
 }) => {
   const [expanded, setExpanded] = useState(false)
+  const sticky = useRef<ReadonlySet<string>>(new Set())
   const items = field.item_fields
-  const visible = visibleItemFields(items, rows, expanded)
+  const visible = withStickyItemFields(items, sticky.current, visibleItemFields(items, rows, expanded))
+  sticky.current = new Set(visible.map((item) => item.name))
   const hiddenCount = items.length - visible.length
   const collapsible = expanded && visibleItemFields(items, rows, false).length < items.length
   return (
@@ -139,6 +169,8 @@ export const ListFieldEditor = ({
                         label={`${fieldLabel(item)}, row ${i + 1}`}
                         value={row[item.name]}
                         onChange={(value) => onChange(setCell(rows, i, item.name, value))}
+                        activityType={activityType}
+                        path={`${field.name}.${item.name}`}
                       />
                     </td>
                   ))}
@@ -192,7 +224,10 @@ export const ListFieldEditor = ({
             type="button"
             class="list-field-editor-more"
             aria-expanded={expanded}
-            onClick={() => setExpanded(!expanded)}
+            onClick={() => {
+              if (expanded) sticky.current = new Set()
+              setExpanded(!expanded)
+            }}
           >
             {expanded ? 'Fewer fields' : `More fields (${hiddenCount})`}
           </button>

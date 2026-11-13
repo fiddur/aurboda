@@ -106,6 +106,31 @@ describe('searchExercises', () => {
     ])
   })
 
+  test('within the name matches, body.build entries go before the rest', () => {
+    const curated = entry({
+      key: 'smith_machine_bench_press',
+      name: 'Smith Machine Bench Press',
+      same_as: { bodybuild: 'bench_press_smith' },
+    })
+    const result = searchExercises({ ...catalog, entries: [...catalog.entries, curated] }, { q: 'bench' })
+    expect(keys(result)).toEqual([
+      'smith_machine_bench_press',
+      'bench_press',
+      'barbell_bench_press',
+      'dumbbell_bench_press',
+      'incline_barbell_press',
+    ])
+    expect(
+      keys(searchExercises({ ...catalog, entries: [...catalog.entries, curated] }, { q: 'bench press' })),
+    ).toEqual([
+      'bench_press',
+      'smith_machine_bench_press',
+      'barbell_bench_press',
+      'dumbbell_bench_press',
+      'incline_barbell_press',
+    ])
+  })
+
   test('every word must prefix a word of the name, an alias or a search term', () => {
     expect(keys(search({ q: 'db ben' }))).toEqual(['dumbbell_bench_press'])
     expect(keys(search({ q: 'medium gr' }))).toEqual(['barbell_bench_press'])

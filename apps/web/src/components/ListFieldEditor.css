@@ -51,6 +51,11 @@
   box-sizing: border-box;
 }
 
+.list-field-editor .list-field-editor-table .known-values {
+  display: block;
+  width: 100%;
+}
+
 .list-field-editor .list-field-editor-table .list-field-editor-number {
   min-width: 4.5rem;
 }
