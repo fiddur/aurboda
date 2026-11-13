@@ -1,6 +1,8 @@
 const FULL_DETAIL_MAX_CHARS = 4096
 const SUMMARY_STRING_MAX_CHARS = 200
 
+const SECRET_KEYS = new Set(['api_key', 'password'])
+
 const summarizeValue = (value: unknown): unknown => {
   if (Array.isArray(value)) return { count: value.length }
   if (typeof value === 'string' && value.length > SUMMARY_STRING_MAX_CHARS) {
@@ -33,7 +35,7 @@ export const summarizeAuditBody = (body: unknown): Record<string, unknown> | und
 
   const redacted = Object.fromEntries(
     Object.entries(body as Record<string, unknown>).map(([k, v]) =>
-      k === 'password' ? [k, '[REDACTED]'] : [k, v],
+      SECRET_KEYS.has(k) ? [k, '[REDACTED]'] : [k, v],
     ),
   )
   if (

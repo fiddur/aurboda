@@ -69,6 +69,11 @@ export const systemTables: Record<string, string> = {
     )
   `,
 
+  // Set when the provider refused the stored credential (a Garmin Personal API key), cleared on the next upsert.
+  oauth_tokens_refused_at: `
+    ALTER TABLE oauth_tokens ADD COLUMN IF NOT EXISTS refused_at TIMESTAMPTZ
+  `,
+
   // Outbound sync queue - tracks changes to push to Health Connect
   outbound_sync_queue: `
     CREATE TABLE IF NOT EXISTS outbound_sync_queue (

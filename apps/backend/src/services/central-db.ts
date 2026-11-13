@@ -68,6 +68,7 @@ export interface ServerSettings {
   contact_fediverse: string
   contact_reddit: string
   default_relays_seeded: boolean
+  garmin_personal_key_enabled: boolean
   grace_days: number
   gravl_client_id: string
   gravl_client_secret: string

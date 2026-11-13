@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
-import { deleteOAuthToken, getOAuthToken, upsertOAuthToken } from './oauth.ts'
+import { deleteOAuthToken, getOAuthToken, markOAuthTokenRefused, upsertOAuthToken } from './oauth.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 
@@ -44,6 +44,71 @@ describe('OAuth token Integration Tests', () => {
 
       const strava = await getOAuthToken(user, 'strava')
       expect(strava?.access_token).toBe('strava-token')
+    })
+  })
+
+  describe('upsertOAuthToken and getOAuthToken', () => {
+    test('round-trips every field, with no refusal on a fresh row', async () => {
+      const user = getTestUser()
+      const expiresAt = new Date('2027-06-30T00:00:00Z')
+      await upsertOAuthToken(user, {
+        access_token: 'jwt',
+        expires_at: expiresAt,
+        provider: 'garmin_personal',
+        refresh_token: 'fake-key',
+      })
+
+      expect(await getOAuthToken(user, 'garmin_personal')).toEqual({
+        access_token: 'jwt',
+        expires_at: expiresAt,
+        provider: 'garmin_personal',
+        refresh_token: 'fake-key',
+        refused_at: undefined,
+        scopes: null,
+      })
+    })
+  })
+
+  describe('markOAuthTokenRefused', () => {
+    test('sets refused_at on that provider only', async () => {
+      const user = getTestUser()
+      await upsertOAuthToken(user, {
+        access_token: '',
+        provider: 'garmin_personal',
+        refresh_token: 'fake-key',
+      })
+      await upsertOAuthToken(user, { access_token: 'session', provider: 'garmin' })
+
+      await markOAuthTokenRefused(user, 'garmin_personal')
+
+      expect((await getOAuthToken(user, 'garmin_personal'))?.refused_at).toBeInstanceOf(Date)
+      expect((await getOAuthToken(user, 'garmin'))?.refused_at).toBeUndefined()
+    })
+
+    test('does nothing when there is no row', async () => {
+      const user = getTestUser()
+      await markOAuthTokenRefused(user, 'garmin_personal')
+      expect(await getOAuthToken(user, 'garmin_personal')).toBeNull()
+    })
+
+    test('a later upsert clears the refusal', async () => {
+      const user = getTestUser()
+      await upsertOAuthToken(user, {
+        access_token: '',
+        provider: 'garmin_personal',
+        refresh_token: 'fake-key',
+      })
+      await markOAuthTokenRefused(user, 'garmin_personal')
+
+      await upsertOAuthToken(user, {
+        access_token: '',
+        provider: 'garmin_personal',
+        refresh_token: 'fake-key-2',
+      })
+
+      const stored = await getOAuthToken(user, 'garmin_personal')
+      expect(stored?.refused_at).toBeUndefined()
+      expect(stored?.refresh_token).toBe('fake-key-2')
     })
   })
 })
