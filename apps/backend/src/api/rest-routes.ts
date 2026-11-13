@@ -61,6 +61,7 @@ import { createChartDataRouter } from '../routes/chart-data-router.ts'
 import { createCorrelationsRouter } from '../routes/correlations-router.ts'
 import { createDashboardRouter } from '../routes/dashboard-router.ts'
 import { createDeductionRulesRouter } from '../routes/deduction-rules-router.ts'
+import { createExerciseCatalogRouter } from '../routes/exercise-catalog-router.ts'
 import { createExportRouter } from '../routes/export-router.ts'
 import { createFeedFollowedTagsRouter } from '../routes/feed-followed-tags-router.ts'
 import { createFeedFollowersRouter } from '../routes/feed-followers-router.ts'
@@ -288,6 +289,7 @@ export const mountRestRouters = ({
   httpd.use('/dashboard', createDashboardRouter(authMiddleware))
   httpd.use('/shared-dashboards', createSharedDashboardsRouter(authMiddleware, webHost))
   httpd.use('/shared-exercises', createSharedExercisesRouter(authMiddleware, webHost))
+  httpd.use('/exercise-catalog', createExerciseCatalogRouter(authMiddleware))
   httpd.use('/profile', createProfileRouter(authMiddleware, webHost, onProfileChanged))
   // Mount the following, followers and images routers before `/feed` so `/feed/following/*`,
   // `/feed/followers/*` and `/feed/images/*` resolve here and never touch the

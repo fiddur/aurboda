@@ -9,9 +9,9 @@ import type { BaselineData } from '../../state/api'
 import { extraMetricColor, IMPACT_METRICS, type ImpactExtra, type ImpactMetric } from './impactMetrics'
 import './ImpactFigure.css'
 
-type ChartGroup = d3.Selection<SVGGElement, unknown, null, undefined>
+export type ChartGroup = d3.Selection<SVGGElement, unknown, null, undefined>
 
-const paddedDomain = (values: (number | null)[]): [number, number] => {
+export const paddedDomain = (values: (number | null)[]): [number, number] => {
   const present = values.filter((d): d is number => d !== null)
   if (present.length === 0) return [0, 100]
   const [lo, hi] = d3.extent(present) as [number, number]
@@ -46,12 +46,13 @@ const drawHrAxis = (g: ChartGroup, y: d3.ScaleLinear<number, number>, innerWidth
     .text('HR (bpm)')
 }
 
-const drawSeries = (
+export const drawSeries = (
   g: ChartGroup,
   values: (number | null)[],
   x: d3.ScalePoint<number>,
   y: d3.ScaleLinear<number, number>,
   color: string,
+  strokeWidth = 2,
 ) => {
   const line = d3
     .line<number | null>()
@@ -64,7 +65,7 @@ const drawSeries = (
     .datum(values)
     .attr('fill', 'none')
     .attr('stroke', color)
-    .attr('stroke-width', 2)
+    .attr('stroke-width', strokeWidth)
     .attr('d', line)
 
   values.forEach((d, i) => {

@@ -5,9 +5,9 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { MergedActivity } from '../../db/types.ts'
 
 import * as db from '../../db/index.ts'
+import { fieldValue } from '../activity-measures.ts'
 import {
   buildSessions,
-  fieldValue,
   groupKey,
   groupSessions,
   queryActivitySessions,
