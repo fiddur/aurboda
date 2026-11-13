@@ -18,9 +18,31 @@ Notifications live in the user's own database, in two tables:
 their labels are the registry `notificationTypes` / `notificationTypeInfo` in
 `packages/api-spec/src/schemas/notifications.ts`.
 
-| Type           | Raised when                                        | Who gets it                               |
-| -------------- | -------------------------------------------------- | ----------------------------------------- |
-| `admin_signup` | An account is created (password or passkey signup) | Every admin except the new account itself |
+Each type belongs to a **group** (`feed`, `data_sources`, `admin`), which is how Settings →
+**Notifications** lays them out: one block per group in that order, and none for a group with no
+type this user can receive.
+
+| Type                   | Group | Raised when                                                                                                                                                                       | Who gets it                               |
+| ---------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| `feed_follow_request`  | Feed  | A first `Follow` arrives while you approve followers by hand                                                                                                                      | The followed user                         |
+| `feed_new_follower`    | Feed  | A `Follow` is accepted on arrival (a redelivery from an accepted follower raises nothing; approving a request by hand raises nothing either)                                      | The followed user                         |
+| `feed_follow_accepted` | Feed  | A person you asked to follow accepts after the follow waited at least five minutes (an instant auto-accept is not news; tag follows and relays never raise it)                    | The follower                              |
+| `feed_reply`           | Feed  | A new Note replying to one of your posts arrives on the live inbox (from anyone; a reply that also mentions you is one reply)                                                     | The author of the post replied to         |
+| `feed_mention`         | Feed  | A new Note mentioning you arrives on the live inbox, from anyone                                                                                                                  | The mentioned user                        |
+| `feed_like`            | Feed  | Someone likes one of your posts for the first time (an `Undo` leaves the notification alone)                                                                                      | The post's author                         |
+| `feed_boost`           | Feed  | Someone boosts one of your posts for the first time                                                                                                                               | The post's author                         |
+| `feed_post`            | Feed  | A new top-level post, or a boost card, from a person you follow whose bell is on in your Following list, that your timeline shows (`timeline_show_replies`); tag follows never do | The reader                                |
+| `admin_signup`         | Admin | An account is created (password or passkey signup)                                                                                                                                | Every admin except the new account itself |
+
+The feed types are raised by the ActivityPub inbox (`apps/backend/src/services/activitypub/federation.ts`)
+from pure builders in `apps/backend/src/services/social-notifications.ts`, after the event is stored,
+and each carries a `dedupe_key` (the object or activity id) so a redelivery is stored once. Neither
+the on-follow backfill of a followee's older posts nor an `Update` of a stored post raises
+anything. `feed_post` is narrowed per account by the bell in the Following list (`notify_on_post`):
+the type's switches turn the whole kind on or off, the bell picks the accounts. Replies and
+mentions ignore the bell, since they are addressed to you. A read-only account stores no new
+inbound posts, so it gets no reply, mention or post notifications; follows and reactions still
+notify.
 
 ## The two switches
 
@@ -34,6 +56,8 @@ row:
 - both off: not stored at all.
 
 Changing a switch affects notifications raised from then on, not the ones already stored.
+**Mark all read** stamps every unread row, push-only ones included: a device poller asks for
+unread ones only, so it also withdraws whatever has not been pushed yet, which is intended.
 Admin-only types are listed and settable for admins only.
 
 A read-only account (see [plans and billing](../admin.md#plans-and-billing)) can still mark notifications read, since the
@@ -46,7 +70,7 @@ reminders about its plan are addressed to exactly that account; it cannot change
 | `GET /notifications`             | `list_notifications`          | Newest first, `limit` (1–100, default 20), keyset `cursor` from `next_cursor`. By default the in-app ones; `push_only=true` lists those meant for push whatever their in-app switch. `unread_only` and `after` (ISO time, strictly after) narrow it, which is what a device poller uses with its high-water mark. `unread_count` always counts every unread in-app notification |
 | `POST /notifications/:id/read`   | `mark_notification_read`      | Mark one read; an already read one keeps its first `read_at`                                                                                                                                                                                                                                                                                                                    |
 | `POST /notifications/read-all`   | `mark_all_notifications_read` | Mark every unread one read; returns how many                                                                                                                                                                                                                                                                                                                                    |
-| `GET /notifications/types`       | `list_notification_types`     | The types this user can receive, with label, description and both switches                                                                                                                                                                                                                                                                                                      |
+| `GET /notifications/types`       | `list_notification_types`     | The types this user can receive, with label, description, group and both switches                                                                                                                                                                                                                                                                                               |
 | `PUT /notifications/types/:type` | `set_notification_preference` | Body `{ in_app?, push? }` (at least one); 404 for an unknown type or an admin-only one for a non-admin                                                                                                                                                                                                                                                                          |
 
 ## The bell
@@ -66,21 +90,22 @@ deleted.
 ## Adding a notification type
 
 1. Add the type to `notificationTypes` and `notificationTypeInfo` in
-   `packages/api-spec/src/schemas/notifications.ts` (`admin_only` if only admins should get it).
+   `packages/api-spec/src/schemas/notifications.ts` with its `group` (`admin_only` if only admins
+   should get it).
 2. Rebuild and regenerate: `pnpm --filter @aurboda/api-spec build`, then
    `cd packages/api-spec && pnpm generate`.
 3. Raise it where the event happens:
 
    ```ts
-   import { notifier } from "../services/notifications.ts";
+   import { notifier } from '../services/notifications.ts'
 
    await notifier.raiseBestEffort(user, {
-     type: "my_type",
-     title: "Short headline",
-     body: "Optional details",
-     link: "/in-app/path",
-     dedupe_key: "my_type:<something unique>",
-   });
+     type: 'my_type',
+     title: 'Short headline',
+     body: 'Optional details',
+     link: '/in-app/path',
+     dedupe_key: 'my_type:<something unique>',
+   })
    ```
 
    `raiseBestEffort` logs and swallows any error, so it is safe on a hot path; `raise` throws and

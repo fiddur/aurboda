@@ -36,6 +36,7 @@ import type { ActorPresentation } from './actor-presentation.ts'
 import { isValidUsername } from '../../api/auth-routes.ts'
 import {
   countAcceptedFeedFollowing,
+  type FeedFollowingRecord,
   type FeedQuoteAuthorizationRecord,
   countFeedFollowers,
   countPublicFeedPosts,
@@ -76,7 +77,14 @@ import {
 } from '../../db/index.ts'
 import { UUID_RE } from '../../utils.ts'
 import { resolveFeedActivity } from '../feed.ts'
+import { notifier } from '../notifications.ts'
 import { buildProfileUrl } from '../share-urls.ts'
+import {
+  followAcceptedNotification,
+  inboundFollowNotification,
+  reactionNotification,
+  timelineEntryNotification,
+} from '../social-notifications.ts'
 import { ownActorUri, ownObjectPrefix } from '../timeline.ts'
 import { dashboardNoteContent } from './dashboard-object.ts'
 import {
@@ -199,6 +207,13 @@ const recordInboundFollow = async (
       inbox_uri: sender.inboxId.href,
       shared_inbox_uri: sender.endpoints?.sharedInbox?.href ?? null,
     })
+    const notification = inboundFollowNotification({
+      accepted,
+      actor: { ...presentation, actor_uri: sender.id.href },
+      existing,
+      follow_activity_uri: followActivityUri,
+    })
+    if (notification != null) await notifier.raiseBestEffort(user, notification)
     return accepted
   } catch (error) {
     if (isMissingDatabase(error)) return null
@@ -222,14 +237,25 @@ const isVisibleToReader = async (user: string, entryId: string, origin: string):
   })
 }
 
+export interface IngestNoteOptions {
+  /** Fires only for a genuinely new row the reader would see. */
+  onNewEntry?: (user: string) => void
+  /** When set, the row becomes a BOOST card of `note` (an `Announce` by a followee). */
+  boost?: TimelineBoostSource
+  /**
+   * Set on the live inbox path only: a new row raises its central notification. `source` is the
+   * accepted followee the delivery is owed to (the booster for a boost card), null for a stranger.
+   */
+  notify?: { source: Pick<FeedFollowingRecord, 'notify_on_post' | 'tag'> | null }
+}
+
 /**
  * Ingest one `Note` from an accepted followee into `user`'s home timeline: map it
  * to a timeline entry (author from the cached `feed_following` row, content
  * sanitised), capture its image attachments, best-effort fetch the native Aurboda
  * structured chart, and upsert keyed on the Note's id (so a redelivery or edit
- * replaces in place). `onNewEntry` fires only for a genuinely new row the reader
- * would see — the on-follow backfill omits it, since its historical posts aren't
- * "new".
+ * replaces in place). The on-follow backfill passes neither `onNewEntry` nor
+ * `notify`, since its historical posts aren't "new".
  *
  * Shared by inbound `Create`/`Update` delivery and the backfill, so both build a
  * timeline entry identically. Returns whether the Note was stored at all (it is
@@ -242,9 +268,7 @@ export const ingestNoteForRecipient = async (
   enrich: (objectUri: string, token?: string) => Promise<FeedStructuredPost | null>,
   /** Web origin — the recipient's own actor URI (Mention detection) and post prefix. */
   origin: string,
-  onNewEntry?: (user: string) => void,
-  /** When set, the row becomes a BOOST card of `note` (an `Announce` by a followee). */
-  boost?: TimelineBoostSource,
+  { boost, notify, onNewEntry }: IngestNoteOptions = {},
 ): Promise<boolean> => {
   const input = noteToTimelineInput(note, author, Date.now(), boost)
   if (input == null) return false
@@ -270,7 +294,19 @@ export const ingestNoteForRecipient = async (
     tags,
   })
   if (input.boost_of_uri == null) await deleteBoostCardsOf(user, input.object_uri)
-  if (inserted && onNewEntry != null && (await isVisibleToReader(user, id, origin))) onNewEntry(user)
+  if (!inserted || (onNewEntry == null && notify == null)) return true
+  const visible = await isVisibleToReader(user, id, origin)
+  if (visible) onNewEntry?.(user)
+  if (notify != null) {
+    const notification = timelineEntryNotification({
+      entry: { ...input, mentions_me: mentionsMe },
+      me: user,
+      own_object_prefix: ownObjectPrefix(origin, user),
+      source: notify.source,
+      visible,
+    })
+    if (notification != null) await notifier.raiseBestEffort(user, notification)
+  }
   return true
 }
 
@@ -312,9 +348,10 @@ const recordOwnPostReaction = async (
   const postId = ownTargetPostId(ctx, activity.objectId, me)
   if (postId == null) return
   try {
-    if ((await getFeedPostById(me, postId)) == null) return
+    const post = await getFeedPostById(me, postId)
+    if (post == null) return
     const presentation = (await fetchActorPresentation(ctx, me, activity.actorId)) ?? NO_PRESENTATION
-    await upsertFeedPostReaction(me, {
+    const { inserted } = await upsertFeedPostReaction(me, {
       activity_uri: activity.id?.href ?? null,
       actor_uri: activity.actorId.href,
       avatar_url: presentation.avatar_url,
@@ -323,6 +360,12 @@ const recordOwnPostReaction = async (
       kind,
       post_id: postId,
     })
+    if (inserted) {
+      await notifier.raiseBestEffort(
+        me,
+        reactionNotification(kind, { ...presentation, actor_uri: activity.actorId.href }, me, post),
+      )
+    }
   } catch (error) {
     if (isMissingDatabase(error)) return
     throw error
@@ -384,13 +427,17 @@ const ingestBoostedNote = async (
     if ((await getTimelineEntryByObjectUri(me, announced.uri)) != null) return
     const author = await resolveBoostAuthor(ctx, me, announced.attributionId)
     if (author == null) return
-    await ingestNoteForRecipient(me, announced.note, author, enrich, origin, onNewEntry, {
-      actor_uri: booster.actor_uri,
-      announce_uri: valid.announceUri,
-      display_name: booster.display_name,
-      handle: booster.handle,
-      tag: booster.tag,
-      published_at: announce.published == null ? new Date() : temporalInstantToDate(announce.published),
+    await ingestNoteForRecipient(me, announced.note, author, enrich, origin, {
+      boost: {
+        actor_uri: booster.actor_uri,
+        announce_uri: valid.announceUri,
+        display_name: booster.display_name,
+        handle: booster.handle,
+        tag: booster.tag,
+        published_at: announce.published == null ? new Date() : temporalInstantToDate(announce.published),
+      },
+      notify: { source: booster },
+      onNewEntry,
     })
   } catch (error) {
     if (isMissingDatabase(error)) return
@@ -469,6 +516,42 @@ export const handleInboundFollow = async (
     sender,
     new Accept({ actor: follow.objectId, object: follow }),
   )
+}
+
+/**
+ * Inbound `Accept`: a relay's or a tag actor's answer to the instance actor, or the
+ * followee's server confirming a Follow WE sent (`accept.actorId` is the followee,
+ * matching the `actor_uri` of our pending row). A follow that waited for a person to
+ * accept it raises `feed_follow_accepted`.
+ */
+export const handleInboundAccept = async (
+  ctx: InboxContext<void>,
+  accept: Accept,
+  instance?: Pick<InstanceActorDeps, 'relays' | 'tagFollows'>,
+  onFollowAccepted?: (user: string, actorUri: string) => void,
+): Promise<void> => {
+  if (await handleRelayResponse(accept, instance?.relays)) return
+  if (await handleTagFollowResponse(accept, instance?.tagFollows)) return
+  const me = await localFollowerIdentifier(ctx, accept)
+  if (me == null || accept.actorId == null) return
+  let before: FeedFollowingRecord | null
+  try {
+    before = await getFeedFollowingByActor(me, accept.actorId.href)
+    await markFeedFollowingAccepted(me, accept.actorId.href)
+  } catch (error) {
+    if (isMissingDatabase(error)) return
+    throw error
+  }
+  if (before != null && !before.accepted && before.tag == null) {
+    const notification = followAcceptedNotification(before, before.created_at, new Date())
+    if (notification != null) await notifier.raiseBestEffort(me, notification)
+  }
+  // The follow is now established → backfill the followee's recent public
+  // posts so the timeline isn't empty until they next post. Fire-and-forget
+  // (a slow/large outbox must never block inbox processing), and after the
+  // accept is durably recorded. Covers remote *and* local follows: a local
+  // followee's auto-Accept loops back through this same handler.
+  onFollowAccepted?.(me, accept.actorId.href)
 }
 
 /**
@@ -702,7 +785,7 @@ const ingestStrangerInvolvement = async (
     { ...presentation, actor_uri: activity.actorId.href },
     enrich,
     origin,
-    onNewEntry,
+    { notify: { source: null }, onNewEntry },
   )
 }
 
@@ -726,7 +809,10 @@ const ingestFeedActivity = async (
     const object = await activity.getObject({ suppressError: true })
     if (!(object instanceof Note)) return
     if (follow != null && follow.accepted) {
-      await ingestNoteForRecipient(me, object, follow, enrich, origin, onNewEntry)
+      await ingestNoteForRecipient(me, object, follow, enrich, origin, {
+        notify: { source: follow },
+        onNewEntry,
+      })
     } else {
       const admitted = await ingestStrangerInvolvement(ctx, activity, object, me, origin, enrich, onNewEntry)
       if (!admitted && activity instanceof Update) await applyEditToBoostCards(me, activity, object, enrich)
@@ -1081,27 +1167,7 @@ export const createFeedFederation = (
       }
       await handleInboundUndo(ctx, undo)
     })
-    .on(Accept, async (ctx, accept) => {
-      if (await handleRelayResponse(accept, instance?.relays)) return
-      if (await handleTagFollowResponse(accept, instance?.tagFollows)) return
-      // Accept of a Follow WE sent — the followee's server confirms the follow.
-      // `accept.actorId` is the followee we followed, matching the `actor_uri` of
-      // our pending row.
-      const me = await localFollowerIdentifier(ctx, accept)
-      if (me == null || accept.actorId == null) return
-      try {
-        await markFeedFollowingAccepted(me, accept.actorId.href)
-      } catch (error) {
-        if (isMissingDatabase(error)) return
-        throw error
-      }
-      // The follow is now established → backfill the followee's recent public
-      // posts so the timeline isn't empty until they next post. Fire-and-forget
-      // (a slow/large outbox must never block inbox processing), and after the
-      // accept is durably recorded. Covers remote *and* local follows: a local
-      // followee's auto-Accept loops back through this same handler.
-      onFollowAccepted?.(me, accept.actorId.href)
-    })
+    .on(Accept, (ctx, accept) => handleInboundAccept(ctx, accept, instance, onFollowAccepted))
     .on(Reject, async (ctx, reject) => {
       if (await handleRelayResponse(reject, instance?.relays)) return
       if (await handleTagFollowResponse(reject, instance?.tagFollows)) return

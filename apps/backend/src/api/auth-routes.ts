@@ -179,7 +179,7 @@ export const registerAuthRoutes = ({
           isAdmin = true
           console.info(`First user ${user} automatically made admin`)
         }
-        await notifyAdminsOfSignup({
+        void notifyAdminsOfSignup({
           getAdmins: centralDb.getAdmins,
           raiseBestEffort: notifier.raiseBestEffort,
         })(user)

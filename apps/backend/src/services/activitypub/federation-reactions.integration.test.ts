@@ -15,6 +15,7 @@ import { insertActivity } from '../../db/activities/index.ts'
 import { markFeedFollowingAccepted, upsertFeedFollowing } from '../../db/feed-following.ts'
 import { listFeedPostReactions } from '../../db/feed-reactions.ts'
 import { createFeedPost } from '../../db/feed.ts'
+import { listNotifications } from '../../db/notifications.ts'
 import { listTimelineEntries, upsertTimelineEntry } from '../../db/timeline.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../../test/db-test-helper.ts'
 import { actorDocument, inboxContext, type StubDocuments } from '../../test/inbox-context.ts'
@@ -244,6 +245,67 @@ describe('Inbound likes and boosts', () => {
     const entries = await listTimelineEntries(user, 10)
     expect(entries.map((e) => e.tags)).toEqual([['running', 'cycling']])
     expect(await listTimelineEntries(user, 10, undefined, undefined, 'cycling')).toHaveLength(1)
+  })
+
+  describe('central notifications', () => {
+    const notificationsOf = async (user: string) =>
+      (await listNotifications(user, { limit: 50 })).map(({ link, title, type }) => ({ link, title, type }))
+
+    test('a Like of my post raises one like linking to it; a redelivery or an Undo leaves it at one', async () => {
+      const user = getTestUser()
+      const post = await ownPost(user)
+      const like = new Like({
+        actor: alicePerson(),
+        id: new URL(`${ALICE}#likes/1`),
+        object: new URL(`${ORIGIN}/users/${user}/feed/${post.id}`),
+      })
+      await handleInboundLike(inboxCtx(user), like)
+      await handleInboundLike(inboxCtx(user), like)
+      await handleInboundUndo(inboxCtx(user), new Undo({ actor: new URL(ALICE), object: like }))
+      expect(await notificationsOf(user)).toEqual([
+        { link: `/u/${user}/posts/${post.id}`, title: 'Alice liked your post', type: 'feed_like' },
+      ])
+    })
+
+    test('an Announce of my post raises one boost', async () => {
+      const user = getTestUser()
+      const post = await ownPost(user)
+      const announce = new Announce({
+        actor: alicePerson(),
+        id: new URL(`${ALICE}/statuses/7/activity`),
+        object: new URL(`${ORIGIN}/users/${user}/feed/${post.id}`),
+      })
+      await handleInboundAnnounce(inboxCtx(user), announce, ORIGIN)
+      await handleInboundAnnounce(inboxCtx(user), announce, ORIGIN)
+      expect(await notificationsOf(user)).toEqual([
+        { link: `/u/${user}/posts/${post.id}`, title: 'Alice boosted your post', type: 'feed_boost' },
+      ])
+    })
+
+    test('a followee’s boost card raises one new-post naming booster and author', async () => {
+      const user = getTestUser()
+      await acceptFollow(user, ALICE, '@alice@mastodon.example')
+      const announce = boostOfCarol(`${ALICE}/statuses/9/activity`)
+      await handleInboundAnnounce(inboxCtx(user), announce, ORIGIN)
+      await handleInboundAnnounce(inboxCtx(user), announce, ORIGIN)
+      expect(await notificationsOf(user)).toEqual([
+        { link: '/feed', title: 'alice boosted Carol', type: 'feed_post' },
+      ])
+    })
+
+    test('a boost card from a followed tag raises nothing', async () => {
+      const user = getTestUser()
+      await upsertFeedFollowing(user, {
+        actor_uri: ALICE,
+        handle: '@alice@mastodon.example',
+        inbox_uri: `${ALICE}/inbox`,
+        tag: 'running',
+      })
+      await markFeedFollowingAccepted(user, ALICE)
+      await handleInboundAnnounce(inboxCtx(user), boostOfCarol(`${ALICE}/statuses/9/activity`), ORIGIN)
+      expect(await listTimelineEntries(user, 10)).toHaveLength(1)
+      expect(await notificationsOf(user)).toEqual([])
+    })
   })
 
   test('Undo{Announce} retracts the boost card, scoped to the booster', async () => {
