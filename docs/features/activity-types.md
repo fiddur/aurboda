@@ -67,7 +67,17 @@ The built-in `strength_training` type carries a `sets` list field:
         { "name": "exercise", "type": "string", "required": true, "is_categorical": true },
         { "name": "weight", "type": "number", "unit": "kg" },
         { "name": "reps", "type": "number" },
-        { "name": "time", "type": "number", "unit": "s" }
+        { "name": "time", "type": "number", "unit": "s" },
+        {
+          "name": "set_type",
+          "type": "string",
+          "label": "Type",
+          "enum_values": ["normal", "warmup", "drop_set", "failure"]
+        },
+        { "name": "rpe", "type": "number", "label": "RPE" },
+        { "name": "rir", "type": "number", "label": "RIR" },
+        { "name": "distance", "type": "number", "unit": "m" },
+        { "name": "note", "type": "string" }
       ]
     }
   ]
@@ -75,15 +85,23 @@ The built-in `strength_training` type carries a `sets` list field:
 ```
 
 `sets` itself is optional, since watch-only strength sessions (Garmin, Health Connect) have none;
-`time` is for holds such as planks. [Gravl](../gravl.md) writes sets in this shape. The schema is
+`time` is for holds such as planks and `distance` for carries. `set_type` tells warmup, drop and
+failure sets from normal ones, `rpe` is the rate of perceived exertion, `rir` the reps in reserve,
+and `note` a comment on the one set. [Gravl](../gravl.md) writes sets in this shape. The schema is
 seeded on new databases and filled in on existing ones when the type has no schema yet; a schema
-still exactly an earlier built-in version (before `exercise` was marked categorical) is upgraded
-in place. Any other schema counts as edited and is kept: the built-in schema can be extended (e.g. with `set_type` or `rpe` item fields) on
-the type's page or with `update_activity_type`. Clearing it entirely does not stick, though: a
+still exactly an earlier built-in version (before `exercise` was marked categorical, or before
+`set_type`, `rpe`, `rir`, `distance` and `note` were declared) is upgraded in place. Any other
+schema counts as edited and is kept: the built-in schema can be extended (e.g. with a `tempo` item
+field) on the type's page or with `update_activity_type`. Clearing it entirely does not stick, though: a
 `strength_training` type without a schema gets `sets` back on the next deploy, so to drop a field
 edit the schema rather than remove it. The Android Add tab is native and skips list fields until it
 has a row editor ([#1316](https://github.com/fiddur/aurboda/issues/1316)); sets are entered on the
 web pages.
+
+The web row editor shows a list's first four item fields, any required one and any that some row
+fills in; the rest wait behind **More fields**, which applies to every list field, not only `sets`.
+A new row carries over the previous row's values of those main fields only, so a warmup's
+`set_type` or a set's `note` does not leak into the next set.
 
 ## Exercises and measures
 
