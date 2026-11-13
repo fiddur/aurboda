@@ -199,6 +199,13 @@ describe('applyItemValueKeys', () => {
     })
   })
 
+  test('a name that is not text is left for the data validation, with the key stripped', () => {
+    expect(apply({ sets: [{ exercise: 42, exercise_key: 'lat_pulldown' }] })).toEqual({
+      data: { data: { sets: [{ exercise: 42 }] }, mappings: [] },
+      success: true,
+    })
+  })
+
   test('data without lists or keys comes back by reference', () => {
     const plain = { session_name: 'Push' }
     const unkeyed = { sets: [{ exercise: 'Lat Pulldown' }, 'not an item'] }
