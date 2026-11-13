@@ -110,6 +110,10 @@ export function DataSources() {
   const isGarminConnected = settingsQuery.data?.garmin_connected ?? false
   const isStravaConnected = settingsQuery.data?.strava_connected ?? false
   const isGravlConnected = !!settingsQuery.data?.gravl_connection
+  const isHomeAssistantConnected =
+    !!settingsQuery.data?.home_assistant_url &&
+    !!settingsQuery.data?.home_assistant_token_set &&
+    !!settingsQuery.data?.home_assistant_entity_id
   const isRescueTimeConfigured = !!settingsQuery.data?.rescue_time_key
   const hasLastfm = !!settingsQuery.data?.lastfm_username
   const hasCalendars = (settingsQuery.data?.calendars ?? []).length > 0
@@ -214,6 +218,13 @@ export function DataSources() {
       name: 'OwnTracks',
       path: '/data-sources/owntracks',
       statusText: hasLocations ? 'Location data detected' : 'Not set up',
+    },
+    {
+      dataTypes: 'GPS location and zones from the companion app, visited places',
+      isConnected: isHomeAssistantConnected,
+      name: 'Home Assistant',
+      path: '/data-sources/home-assistant',
+      statusText: isHomeAssistantConnected ? 'Connected' : 'Not connected',
     },
     {
       dataTypes: 'Calendar events imported as tags',

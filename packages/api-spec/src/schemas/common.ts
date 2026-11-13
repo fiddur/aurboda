@@ -159,6 +159,7 @@ export const dataSourceSchema = z
     'oura',
     'garmin',
     'gravl',
+    'home_assistant',
     'rescuetime',
     'owntracks',
     'strava',
@@ -450,11 +451,14 @@ export const aurbodaOnlyMetrics: MetricType[] = ['calories_active', 'calories_to
  */
 export const aurbodaOnlySources: DataSource[] = ['aurboda', 'aurboda_gap_fill']
 
-export const placeSourceSchema = z.enum(['named', 'detected', 'owntracks', 'unknown']).meta({
-  description: 'Source of place identification',
-  example: 'named',
-  id: 'PlaceSource',
-})
+export const placeSourceSchema = z
+  .enum(['named', 'detected', 'owntracks', 'home_assistant', 'unknown'])
+  .meta({
+    description:
+      'Source of place identification: a named location, a detected location, a region/zone reported by OwnTracks or Home Assistant, or unknown',
+    example: 'named',
+    id: 'PlaceSource',
+  })
 
 export type PlaceSource = z.infer<typeof placeSourceSchema>
 

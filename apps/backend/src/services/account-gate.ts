@@ -137,6 +137,7 @@ export const gateSyncProvider = (
     syncCalendarsIfNeeded: gated(sync.syncCalendarsIfNeeded),
     syncGarminIfNeeded: gated(sync.syncGarminIfNeeded),
     syncGravlIfNeeded: gated(sync.syncGravlIfNeeded),
+    syncHomeAssistantIfNeeded: gated(sync.syncHomeAssistantIfNeeded),
     syncLastFmIfNeeded: gated(sync.syncLastFmIfNeeded),
     syncOuraIfNeeded: gated(sync.syncOuraIfNeeded),
     syncRescueTimeIfNeeded: gated(sync.syncRescueTimeIfNeeded),

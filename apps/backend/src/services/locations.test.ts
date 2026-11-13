@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest'
 import {
   clusterStays,
   detectStays,
+  groupFixesIntoVisits,
   type LocationPoint,
   mergeShortUnknownVisits,
   type PlaceFix,
@@ -413,5 +414,47 @@ describe('mergeShortUnknownVisits with a carried-forward visit', () => {
       start_time: new Date(Date.UTC(2026, 0, 1, 10, 0)),
     }
     expect(mergeShortUnknownVisits([visit])).toEqual([visit])
+  })
+})
+
+describe('groupFixesIntoVisits region sources', () => {
+  const fixAt = (m: number, source: string, regions = ['Work']): PlaceFix => ({
+    lat: 59.3,
+    lon: 18.1,
+    regions,
+    source,
+    time: new Date(Date.UTC(2026, 10, 10, 9, m)),
+  })
+
+  test('a Home Assistant zone away from named and detected places is a home_assistant visit', () => {
+    const visits = groupFixesIntoVisits([fixAt(0, 'home_assistant'), fixAt(30, 'home_assistant')], [], [])
+    expect(visits).toHaveLength(1)
+    expect(visits[0]).toMatchObject({ duration_minutes: 30, name: 'Work', source: 'home_assistant' })
+  })
+
+  test('an OwnTracks region keeps the owntracks source', () => {
+    expect(groupFixesIntoVisits([fixAt(0, 'owntracks')], [], [])[0]).toMatchObject({
+      name: 'Work',
+      source: 'owntracks',
+    })
+  })
+
+  test('a named location still wins over a Home Assistant zone', () => {
+    const named = [
+      {
+        auto_create_activity: false,
+        created_at: new Date(0),
+        id: 'office',
+        lat: 59.3,
+        lon: 18.1,
+        name: 'Office',
+        radius: 100,
+        updated_at: new Date(0),
+      },
+    ]
+    expect(groupFixesIntoVisits([fixAt(0, 'home_assistant')], named, [])[0]).toMatchObject({
+      name: 'Office',
+      source: 'named',
+    })
   })
 })

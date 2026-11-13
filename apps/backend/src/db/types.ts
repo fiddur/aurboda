@@ -467,12 +467,15 @@ export interface UserSettings {
   training_load?: TrainingLoadSettings // Training load (Banister model) parameters
   garmin_disabled_data_types?: GarminDataType[] // Garmin data types to skip during sync
   gravl_api_token?: string // Gravl personal access token (used when no OAuth grant exists)
+  home_assistant_url?: string // Home Assistant base URL (origin + path, no trailing slash)
+  home_assistant_token?: string // Home Assistant long-lived access token (write-only)
+  home_assistant_entity_id?: string // device_tracker.* or person.* entity to pull locations from
   sync_intervals?: SyncIntervals // Per-provider background poll intervals in minutes, `default` as fallback
 }
 
 /**
  * Background sync poll intervals in minutes, keyed by provider
- * (`gravl`, `garmin`, `oura`, `rescuetime`, `lastfm`, `calendar`) with
+ * (`gravl`, `garmin`, `oura`, `rescuetime`, `lastfm`, `calendar`, `home_assistant`) with
  * `default` as the fallback for providers without an explicit entry.
  */
 export type SyncIntervals = Partial<Record<string, number>>
