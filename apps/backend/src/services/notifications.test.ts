@@ -1,6 +1,11 @@
 import { describe, expect, test } from 'vitest'
 
-import type { NotificationInsert, NotificationRecord } from '../db/index.ts'
+import type {
+  NotificationInsert,
+  NotificationRecord,
+  NotificationRevisionPatch,
+  NotificationTarget,
+} from '../db/index.ts'
 
 import {
   canConfigureNotificationType,
@@ -16,6 +21,7 @@ const NOW = new Date('2026-11-13T12:00:00Z')
 const DAY = 24 * 60 * 60 * 1000
 
 const record = (input: NotificationInsert): NotificationRecord => ({
+  actions: input.actions ?? [],
   body: input.body ?? null,
   created_at: NOW,
   data: input.data ?? null,
@@ -33,6 +39,7 @@ const fakeDeps = (overrides: Partial<NotifierDeps> = {}) => {
   const inserts: NotificationInsert[] = []
   const prunes: [Date, Date][] = []
   const errors: unknown[] = []
+  const revisions: [NotificationTarget, NotificationRevisionPatch][] = []
   const deps: NotifierDeps = {
     getPreference: async () => null,
     insert: async (_user, input) => {
@@ -45,9 +52,13 @@ const fakeDeps = (overrides: Partial<NotifierDeps> = {}) => {
       prunes.push([readBefore, anyBefore])
       return 0
     },
+    revise: async (_user, target, patch) => {
+      revisions.push([target, patch])
+      return { ...record({ in_app: true, push: true, title: 'x', type: 'admin_signup' }), ...patch }
+    },
     ...overrides,
   }
-  return { deps, errors, inserts, prunes }
+  return { deps, errors, inserts, prunes, revisions }
 }
 
 const input: RaiseNotificationInput = { title: 'Hello', type: 'admin_signup' }
@@ -60,6 +71,7 @@ describe('createNotifier().raise', () => {
     expect(row?.title).toBe('Hello')
     expect(inserts).toEqual([
       {
+        actions: [],
         body: 'b',
         data: null,
         dedupe_key: null,
@@ -70,6 +82,12 @@ describe('createNotifier().raise', () => {
         type: 'admin_signup',
       },
     ])
+  })
+
+  test('stores the actions', async () => {
+    const { deps, inserts } = fakeDeps()
+    await createNotifier(deps).raise('alice', { ...input, actions: [{ key: 'skip', label: 'Skip' }] })
+    expect(inserts[0]?.actions).toEqual([{ key: 'skip', label: 'Skip' }])
   })
 
   test('copies the stored switches onto the row', async () => {
@@ -130,7 +148,57 @@ describe('createNotifier().raiseBestEffort', () => {
   })
 })
 
+describe('createNotifier().revise', () => {
+  test('revises the row with the dedupe key', async () => {
+    const { deps, revisions } = fakeDeps()
+    const row = await createNotifier(deps).revise('alice', 'k', { actions: [], link: '/y', title: 'New' })
+
+    expect(row?.title).toBe('New')
+    expect(revisions).toEqual([[{ dedupe_key: 'k' }, { actions: [], link: '/y', title: 'New' }]])
+  })
+
+  test('resolves to null when no row has the key', async () => {
+    const { deps } = fakeDeps({ revise: async () => null })
+    expect(await createNotifier(deps).revise('alice', 'k', { title: 'New' })).toBeNull()
+  })
+
+  test('rejects a link that is not an in-app path and an empty title', async () => {
+    const { deps, revisions } = fakeDeps()
+    const notifier = createNotifier(deps)
+    await expect(notifier.revise('alice', 'k', { link: 'https://evil.example' })).rejects.toThrow()
+    await expect(notifier.revise('alice', 'k', { link: '//evil.example' })).rejects.toThrow()
+    await expect(notifier.revise('alice', 'k', { title: ' ' })).rejects.toThrow()
+    await expect(notifier.revise('alice', 'k', { link: null })).resolves.not.toBeNull()
+    expect(revisions).toHaveLength(1)
+  })
+})
+
+describe('createNotifier().reviseBestEffort', () => {
+  test('logs and swallows every error', async () => {
+    const { deps, errors } = fakeDeps({
+      revise: async () => {
+        throw new Error('db down')
+      },
+    })
+    const notifier = createNotifier(deps)
+    await expect(notifier.reviseBestEffort('alice', 'k', { title: 'x' })).resolves.toBeUndefined()
+    await expect(notifier.reviseBestEffort('alice', 'k', { link: 'https://x' })).resolves.toBeUndefined()
+    expect(errors).toHaveLength(2)
+  })
+})
+
 describe('serializeNotification', () => {
+  test('includes the actions', () => {
+    const row = record({
+      actions: [{ key: 'skip', label: 'Skip' }],
+      in_app: true,
+      push: true,
+      title: 't',
+      type: 'autoshare_pending',
+    })
+    expect(serializeNotification(row).actions).toEqual([{ key: 'skip', label: 'Skip' }])
+  })
+
   test('renders dates as ISO strings', () => {
     const row = { ...record({ in_app: true, push: true, title: 't', type: 'admin_signup' }), read_at: NOW }
     expect(serializeNotification(row)).toMatchObject({
@@ -171,6 +239,7 @@ describe('listNotificationTypeSettings', () => {
       'feed_like',
       'feed_boost',
       'feed_post',
+      'autoshare_pending',
       'admin_signup',
     ])
   })

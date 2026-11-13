@@ -8,7 +8,9 @@
  * created` fan-out a manual share fires).
  */
 import type { Activity, AutoshareCandidate, AutoshareRuleRecord, FeedPostRecord } from '../db/index.ts'
+import type { SkipAutoshareDeps } from './autoshare-skip.ts'
 import type { AutoshareDeps } from './autoshare.ts'
+import type { Notifier } from './notifications.ts'
 
 import {
   createFeedPost,
@@ -16,10 +18,17 @@ import {
   getActivityIngestTimes,
   getEnabledAutoshareRules,
   getOverlappingActivities,
+  insertAutoshareSuppressions,
   listAutoshareCandidates,
   listAutoshareSuppressedIds,
   listFeedPostIdsByActivityIds,
 } from '../db/index.ts'
+import {
+  activityLabel,
+  autosharePendingDedupeKey,
+  pendingAutoshareNotification,
+  sharedAutoshareRevision,
+} from './autoshare-notifications.ts'
 import { expandFeedActivityWindow } from './feed.ts'
 import { activityKindTag, autoPostTags, computePostTags, type FeedTagSettings } from './post-tags.ts'
 import { queryMetricsBucketed } from './queries/index.ts'
@@ -63,6 +72,21 @@ export const getAutoshareGroup = async (
   return members.map((member) => toMember(member, candidate, ingestTimes))
 }
 
+/** The ids of the activity's whole merge group (as `getAutoshareGroup` resolves it); empty when it does not exist. */
+export const getAutoshareGroupIds = async (user: string, activityId: string): Promise<string[]> => {
+  const activity = await getActivityById(user, activityId)
+  if (activity == null) return []
+  const group = await getOverlappingActivities(user, activity)
+  const members = group.length > 0 ? group : [activity]
+  return members.map((member) => member.id).filter((id): id is string => id != null)
+}
+
+export const autoshareSkipDeps: SkipAutoshareDeps = {
+  getGroupIds: (user, activityId) => getAutoshareGroupIds(user, activityId),
+  insertSuppressions: (user, ids) => insertAutoshareSuppressions(user, ids),
+  postIdsForActivities: (user, ids) => listFeedPostIdsByActivityIds(user, ids),
+}
+
 /** Total distance (meters) over a window from the `distance` metric, or undefined when none. */
 const windowDistanceMeters = async (user: string, start: Date, end: Date): Promise<number | undefined> => {
   const seconds = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 1000))
@@ -90,10 +114,20 @@ export const autoshareTags = (
     texts: [rule.message],
   })
 
-/** Build the production `AutoshareDeps`; `deliverCreated` is `FeedDeliver.created` from `api.ts`. */
+export type AutoshareNotifier = Pick<Notifier, 'raise' | 'reviseBestEffort'>
+
+/**
+ * Build the production `AutoshareDeps`; `deliverCreated` is `FeedDeliver.created` from `api.ts`,
+ * and the notifier raises and revises the pending-share notification (the evaluation
+ * swallows a failure of either).
+ */
 export const createAutoshareDeps = (
   deliverCreated: (user: string, post: FeedPostRecord, activity: Activity) => void,
+  notifier: AutoshareNotifier,
 ): AutoshareDeps<AutoshareGroupMember> => ({
+  announce: async (user, anchor, rule, info) =>
+    (await notifier.raise(user, pendingAutoshareNotification({ anchor, rule, ...info, now: new Date() }))) !=
+    null,
   createPost: async (user, anchor, rule) =>
     createFeedPost(user, {
       activity_id: anchor.id,
@@ -115,4 +149,18 @@ export const createAutoshareDeps = (
   onCreated: (user, post, anchor) => deliverCreated(user, post, anchor.activity),
   postIdsForActivities: listFeedPostIdsByActivityIds,
   resolveWindow: (user, anchor) => expandFeedActivityWindow(user, anchor.activity),
+  shared: async (user, post, group) => {
+    const anchor = group[0]
+    if (anchor == null) return
+    const revision = sharedAutoshareRevision({
+      activity_label: activityLabel(anchor.activity_type),
+      post_id: post.id,
+      username: user,
+    })
+    await Promise.all(
+      group.map((member) =>
+        notifier.reviseBestEffort(user, autosharePendingDedupeKey(member.id), { ...revision, actions: [] }),
+      ),
+    )
+  },
 })

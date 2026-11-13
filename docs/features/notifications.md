@@ -9,8 +9,9 @@ to the phone.
 Notifications live in the user's own database, in two tables:
 
 - `notifications`: one row per notification: `type`, `title`, optional `body`, `link` (an in-app
-  path such as `/admin/users/alice`) and `data` (type-specific JSON), an optional unique
-  `dedupe_key`, the two switches `in_app` and `push` as they were when it was raised, and `read_at`.
+  path such as `/admin/users/alice`) and `data` (type-specific JSON), `actions` (the buttons it
+  offers, see [Actions](#actions)), an optional unique `dedupe_key`, the two switches `in_app` and
+  `push` as they were when it was raised, and `read_at`.
 - `notification_preferences`: one row per type the user has changed. A type without a row has both
   switches on.
 
@@ -32,6 +33,7 @@ type this user can receive.
 | `feed_like`            | Feed  | Someone likes one of your posts for the first time (an `Undo` leaves the notification alone)                                                                                      | The post's author                         |
 | `feed_boost`           | Feed  | Someone boosts one of your posts for the first time                                                                                                                               | The post's author                         |
 | `feed_post`            | Feed  | A new top-level post, or a boost card, from a person you follow whose bell is on in your Following list, that your timeline shows (`timeline_show_replies`); tag follows never do | The reader                                |
+| `autoshare_pending`    | Feed  | An [auto-share rule](auto-share-rules.md#pending-share-notification) is about to share a new activity; revised in place to "was shared" or "will not be shared"                   | The activity's owner                      |
 | `admin_signup`         | Admin | An account is created (password or passkey signup)                                                                                                                                | Every admin except the new account itself |
 
 The feed types are raised by the ActivityPub inbox (`apps/backend/src/services/activitypub/federation.ts`)
@@ -63,15 +65,29 @@ Admin-only types are listed and settable for admins only.
 A read-only account (see [plans and billing](../admin.md#plans-and-billing)) can still mark notifications read, since the
 reminders about its plan are addressed to exactly that account; it cannot change the switches.
 
+## Actions
+
+A notification can offer buttons: `actions` is a list of `{ key, label }`, empty for most types.
+The client never interprets one: it shows a button per entry and calls `POST
+/notifications/:id/actions/:key` (MCP `run_notification_action`). The server owns the meaning: it
+maps the notification's type and the key to a handler (registered in `apps/backend/src/api.ts`),
+runs it, and revises the notification with the outcome. Running an action marks the notification
+read and clears its actions, so it runs at most once; a second call answers 404. When the handler
+cannot do it (the activity was already shared, say) the answer is 409 with the reason, and the
+notification is still revised to say what happened.
+
+The only action so far is `skip` ("Don't share") on `autoshare_pending`.
+
 ## API
 
-| Route                            | MCP tool                      | What it does                                                                                                                                                                                                                                                                                                                                                                    |
-| -------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /notifications`             | `list_notifications`          | Newest first, `limit` (1–100, default 20), keyset `cursor` from `next_cursor`. By default the in-app ones; `push_only=true` lists those meant for push whatever their in-app switch. `unread_only` and `after` (ISO time, strictly after) narrow it, which is what a device poller uses with its high-water mark. `unread_count` always counts every unread in-app notification |
-| `POST /notifications/:id/read`   | `mark_notification_read`      | Mark one read; an already read one keeps its first `read_at`                                                                                                                                                                                                                                                                                                                    |
-| `POST /notifications/read-all`   | `mark_all_notifications_read` | Mark every unread one read; returns how many                                                                                                                                                                                                                                                                                                                                    |
-| `GET /notifications/types`       | `list_notification_types`     | The types this user can receive, with label, description, group and both switches                                                                                                                                                                                                                                                                                               |
-| `PUT /notifications/types/:type` | `set_notification_preference` | Body `{ in_app?, push? }` (at least one); 404 for an unknown type or an admin-only one for a non-admin                                                                                                                                                                                                                                                                          |
+| Route                                  | MCP tool                      | What it does                                                                                                                                                                                                                                                                                                                                                                    |
+| -------------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /notifications`                   | `list_notifications`          | Newest first, `limit` (1–100, default 20), keyset `cursor` from `next_cursor`. By default the in-app ones; `push_only=true` lists those meant for push whatever their in-app switch. `unread_only` and `after` (ISO time, strictly after) narrow it, which is what a device poller uses with its high-water mark. `unread_count` always counts every unread in-app notification |
+| `POST /notifications/:id/read`         | `mark_notification_read`      | Mark one read; an already read one keeps its first `read_at`                                                                                                                                                                                                                                                                                                                    |
+| `POST /notifications/:id/actions/:key` | `run_notification_action`     | Run one of the notification's `actions`; answers the revised notification, 404 when it offers no such action (any more), 409 with the reason when it cannot be done                                                                                                                                                                                                             |
+| `POST /notifications/read-all`         | `mark_all_notifications_read` | Mark every unread one read; returns how many                                                                                                                                                                                                                                                                                                                                    |
+| `GET /notifications/types`             | `list_notification_types`     | The types this user can receive, with label, description, group and both switches                                                                                                                                                                                                                                                                                               |
+| `PUT /notifications/types/:type`       | `set_notification_preference` | Body `{ in_app?, push? }` (at least one); 404 for an unknown type or an admin-only one for a non-admin                                                                                                                                                                                                                                                                          |
 
 ## The bell
 
@@ -111,3 +127,19 @@ deleted.
    `raiseBestEffort` logs and swallows any error, so it is safe on a hot path; `raise` throws and
    returns the stored row. Give a `dedupe_key` to anything a recurring job raises, so the same
    event is stored once however often the job sees it.
+
+4. To change a notification once the event moves on, revise it by its dedupe key rather than
+   raising a second one:
+
+   ```ts
+   await notifier.reviseBestEffort(user, 'my_type:<something unique>', {
+     title: 'What happened',
+     link: '/new/path',
+     actions: [],
+   })
+   ```
+
+   Only the fields given change; `created_at` stays, so a device poller does not deliver it again.
+
+5. For buttons, give `actions: [{ key, label }]` when raising, and register a handler for
+   `(type, key)` in the `runNotificationAction` handlers in `apps/backend/src/api.ts`.

@@ -135,6 +135,26 @@ export interface AutoshareDeps<Member extends AutoshareCandidate = AutoshareCand
   onCreated: (user: string, post: FeedPostRecord, anchor: Member) => void
   /** Evaluate the window again no sooner than `notBefore` (some group in it was not settled yet). */
   requeue?: (user: string, start: Date, end: Date, notBefore: Date) => Promise<void>
+  /**
+   * Tell the user a matching group is about to be shared (the pending-share notification).
+   * Resolves to whether it was news: false for a group already announced, which then does
+   * not count toward the per-run cap.
+   */
+  announce?: (
+    user: string,
+    anchor: Member,
+    rule: AutoshareRuleRecord,
+    info: AutoshareAnnounceInfo,
+  ) => Promise<boolean>
+  /** The group was shared (revises the pending-share notification). */
+  shared?: (user: string, post: FeedPostRecord, group: Member[]) => Promise<void>
+}
+
+export interface AutoshareAnnounceInfo {
+  /** When the share is due at the earliest. */
+  share_at: Date
+  /** The only thing left is the Garmin detail wait, which has no fixed end. */
+  detail_pending: boolean
 }
 
 export type AutosharePreviewDeps<Member extends AutoshareCandidate = AutoshareCandidate> = Pick<
@@ -155,21 +175,39 @@ export const STABILISATION_SECONDS = 10 * 60
  */
 export const DETAIL_WAIT_SECONDS = 2 * 3600
 
+interface GroupSettling {
+  notBefore: Date
+  /** Settled apart from the Garmin detail wait. */
+  detailPending: boolean
+}
+
+const youngestIngest = (group: AutoshareCandidate[]): number =>
+  Math.max(...group.map((member) => member.created_at.getTime()))
+
+const groupSettling = (
+  group: AutoshareCandidate[],
+  anchor: AutoshareCandidate,
+  now: Date,
+): GroupSettling | null => {
+  const settledAt = youngestIngest(group) + STABILISATION_SECONDS * 1000
+  if (settledAt > now.getTime()) return { detailPending: false, notBefore: new Date(settledAt) }
+  const detailPending = group.some((member) => member.detail_pending)
+  if (detailPending && now.getTime() - anchor.created_at.getTime() < DETAIL_WAIT_SECONDS * 1000) {
+    return { detailPending: true, notBefore: new Date(now.getTime() + STABILISATION_SECONDS * 1000) }
+  }
+  return null
+}
+
 /** When an unsettled group should be looked at again, or null when it is ready now. */
 export const groupNotBefore = (
   group: AutoshareCandidate[],
   anchor: AutoshareCandidate,
   now: Date,
-): Date | null => {
-  const youngest = Math.max(...group.map((member) => member.created_at.getTime()))
-  const settledAt = youngest + STABILISATION_SECONDS * 1000
-  if (settledAt > now.getTime()) return new Date(settledAt)
-  const detailPending = group.some((member) => member.detail_pending)
-  if (detailPending && now.getTime() - anchor.created_at.getTime() < DETAIL_WAIT_SECONDS * 1000) {
-    return new Date(now.getTime() + STABILISATION_SECONDS * 1000)
-  }
-  return null
-}
+): Date | null => groupSettling(group, anchor, now)?.notBefore ?? null
+
+/** When the rule's own wait (`delay_minutes` after the youngest member arrived) is over. */
+export const ruleReadyAt = (group: AutoshareCandidate[], rule: AutoshareRuleRecord): Date =>
+  new Date(youngestIngest(group) + rule.delay_minutes * 60_000)
 
 /**
  * The earliest end time a rule shares: after its enable (no retroactive
@@ -186,22 +224,86 @@ export const ruleEndedAfter = (rule: AutoshareRuleRecord, now: Date): Date | nul
  * surprisingly wide window (first sync of a new source, a manual full re-sync)
  * must never turn into a firehose; the skip is logged. Groups beyond the cap
  * that STILL match on a later window share then — but the activity-time gate
- * already keeps genuinely old history out entirely.
+ * already keeps genuinely old history out entirely. Announces are capped
+ * separately by the same number.
  */
 export const MAX_POSTS_PER_RUN = 5
 
 /**
- * Evaluate one settled mutation window. Returns how many posts were created.
- * Idempotent: re-running over the same window creates nothing new (dedupe).
+ * How soon after a mutation the announce-only pass looks at the window, so the
+ * pending-share notification arrives well before the share.
+ */
+export const ANNOUNCE_DELAY_SECONDS = 30
+
+type WalkMode = { kind: 'evaluate' } | { kind: 'announce'; nextEvaluationAt: Date }
+
+interface WalkResult {
+  created: number
+  announced: number
+}
+
+/** The rule, of those eligible for the group, whose predicate the group matches. */
+const matchGroup = async <Member extends AutoshareCandidate>(
+  user: string,
+  group: Member[],
+  anchor: Member,
+  ingestEligible: AutoshareRuleRecord[],
+  cutoffs: Map<AutoshareRuleRecord, number>,
+  deps: AutoshareDeps<Member>,
+): Promise<AutoshareRuleRecord | undefined> => {
+  const window = await deps.resolveWindow(user, anchor)
+  if (window.end_time == null) return undefined
+  const windowEnd = window.end_time
+
+  // New-arrivals-only, gate 2, and the max age: the activity itself ended
+  // after the enable — a first sync/backfill ingests months of history as
+  // FRESH rows, which passes gate 1; this keeps that history off the feed —
+  // and within the rule's max age, so a history update that makes old
+  // activities newly match never publishes them. A delayed sync of a workout
+  // done after enabling still shares while it is within the max age.
+  const eligibleRules = ingestEligible.filter((rule) => {
+    const cutoff = cutoffs.get(rule)
+    return cutoff != null && windowEnd.getTime() >= cutoff
+  })
+  if (eligibleRules.length === 0) return undefined
+
+  const durationSeconds = Math.round((windowEnd.getTime() - window.start_time.getTime()) / 1000)
+  const distance = needsDistance(eligibleRules)
+    ? await deps.distanceMeters(user, window.start_time, windowEnd)
+    : undefined
+
+  const subject: AutoshareSubject = {
+    activityType: anchor.activity_type,
+    data: groupData(group),
+    distanceMeters: distance,
+    durationSeconds,
+    source: anchor.source,
+  }
+  return eligibleRules.find((candidateRule) => activityMatchesRule(candidateRule, subject))
+}
+
+const swallow = async (what: string, user: string, run: () => Promise<void>): Promise<void> => {
+  try {
+    await run()
+  } catch (error) {
+    console.error(`⚠️ auto-share ${what} failed for ${user}:`, error)
+  }
+}
+
+/**
+ * The guard ladder shared by the evaluation and the announce-only pass. Only
+ * `evaluate` ever creates a post or re-queues; `announce` only announces.
  */
 // eslint-disable-next-line complexity -- the guard ladder IS the feature; each step is one safety property
-export const evaluateAutoshareWindow = async <Member extends AutoshareCandidate>(
+const walkAutoshareWindow = async <Member extends AutoshareCandidate>(
   user: string,
   start: Date,
   end: Date,
   deps: AutoshareDeps<Member>,
-  now: Date = new Date(),
-): Promise<number> => {
+  now: Date,
+  mode: WalkMode,
+): Promise<WalkResult> => {
+  const result: WalkResult = { announced: 0, created: 0 }
   const rules = await deps.getEnabledRules(user)
   const cutoffs = new Map(
     rules.flatMap((rule) => {
@@ -209,14 +311,18 @@ export const evaluateAutoshareWindow = async <Member extends AutoshareCandidate>
       return cutoff == null ? [] : [[rule, cutoff.getTime()] as const]
     }),
   )
-  if (cutoffs.size === 0) return 0
+  if (cutoffs.size === 0) return result
 
   const candidates = await deps.listCandidates(user, start, end, new Date(Math.min(...cutoffs.values())))
-  if (candidates.length === 0) return 0
+  if (candidates.length === 0) return result
 
+  const evaluating = mode.kind === 'evaluate'
+  const canAnnounce = (): boolean => deps.announce != null && result.announced < MAX_POSTS_PER_RUN
   const processedAnchors = new Set<string>()
-  let created = 0
   let requeueAt: Date | null = null
+  const deferUntil = (at: Date): void => {
+    if (requeueAt == null || at < requeueAt) requeueAt = at
+  }
   for (const candidate of candidates) {
     // An empty group means the candidate vanished since listing (deleted) — skip.
     const group = await deps.getGroup(user, candidate)
@@ -242,56 +348,82 @@ export const evaluateAutoshareWindow = async <Member extends AutoshareCandidate>
     ])
     if (existing.length > 0 || suppressed.length > 0) continue
 
-    const notBefore = groupNotBefore(group, anchor, now)
-    if (notBefore != null) {
-      if (requeueAt == null || notBefore < requeueAt) requeueAt = notBefore
+    // An unsettled group is never shared; it is only resolved further to be announced.
+    const settling = groupSettling(group, anchor, now)
+    if (settling != null) {
+      if (evaluating) deferUntil(settling.notBefore)
+      if (!canAnnounce()) {
+        if (evaluating) continue
+        break
+      }
+    }
+
+    const rule = await matchGroup(user, group, anchor, ingestEligible, cutoffs, deps)
+    if (!rule) continue
+
+    const readyAt = ruleReadyAt(group, rule)
+    const rulePending = readyAt.getTime() > now.getTime()
+    if (settling == null && !rulePending && evaluating) {
+      const post = await deps.createPost(user, anchor, rule)
+      deps.onCreated(user, post, anchor)
+      await swallow('shared hook', user, async () => deps.shared?.(user, post, group))
+      result.created++
+      if (result.created >= MAX_POSTS_PER_RUN) {
+        console.warn(
+          `⚠️ auto-share cap: created ${result.created} posts for ${user} in one run; skipping the rest of the window`,
+        )
+        break
+      }
       continue
     }
 
-    const window = await deps.resolveWindow(user, anchor)
-    if (window.end_time == null) continue
-    const windowEnd = window.end_time
-
-    // New-arrivals-only, gate 2, and the max age: the activity itself ended
-    // after the enable — a first sync/backfill ingests months of history as
-    // FRESH rows, which passes gate 1; this keeps that history off the feed —
-    // and within the rule's max age, so a history update that makes old
-    // activities newly match never publishes them. A delayed sync of a workout
-    // done after enabling still shares while it is within the max age.
-    const eligibleRules = ingestEligible.filter((rule) => {
-      const cutoff = cutoffs.get(rule)
-      return cutoff != null && windowEnd.getTime() >= cutoff
-    })
-    if (eligibleRules.length === 0) continue
-
-    const durationSeconds = Math.round((windowEnd.getTime() - window.start_time.getTime()) / 1000)
-    const distance = needsDistance(eligibleRules)
-      ? await deps.distanceMeters(user, window.start_time, windowEnd)
-      : undefined
-
-    const subject: AutoshareSubject = {
-      activityType: anchor.activity_type,
-      data: groupData(group),
-      distanceMeters: distance,
-      durationSeconds,
-      source: anchor.source,
-    }
-    const rule = eligibleRules.find((candidateRule) => activityMatchesRule(candidateRule, subject))
-    if (!rule) continue
-
-    const post = await deps.createPost(user, anchor, rule)
-    deps.onCreated(user, post, anchor)
-    created++
-    if (created >= MAX_POSTS_PER_RUN) {
-      console.warn(
-        `⚠️ auto-share cap: created ${created} posts for ${user} in one run; skipping the rest of the window`,
-      )
+    if (rulePending && settling == null && evaluating) deferUntil(readyAt)
+    if (!canAnnounce()) {
+      if (evaluating) continue
       break
     }
+    const pendingAt = Math.max(settling?.notBefore.getTime() ?? 0, rulePending ? readyAt.getTime() : 0)
+    const info: AutoshareAnnounceInfo =
+      mode.kind === 'announce' && settling == null && !rulePending
+        ? { detail_pending: false, share_at: mode.nextEvaluationAt }
+        : { detail_pending: settling?.detailPending === true && !rulePending, share_at: new Date(pendingAt) }
+    await swallow('announce', user, async () => {
+      if ((await deps.announce?.(user, anchor, rule, info)) === true) result.announced++
+    })
   }
-  if (requeueAt != null) await deps.requeue?.(user, start, end, requeueAt)
-  return created
+  if (evaluating && requeueAt != null) await deps.requeue?.(user, start, end, requeueAt)
+  return result
 }
+
+/**
+ * Evaluate one settled mutation window. Returns how many posts were created.
+ * Idempotent: re-running over the same window creates nothing new (dedupe).
+ * A matching group still waiting (to settle, or for its rule's `delay_minutes`)
+ * is announced and the window re-queued for it.
+ */
+export const evaluateAutoshareWindow = async <Member extends AutoshareCandidate>(
+  user: string,
+  start: Date,
+  end: Date,
+  deps: AutoshareDeps<Member>,
+  now: Date = new Date(),
+): Promise<number> => (await walkAutoshareWindow(user, start, end, deps, now, { kind: 'evaluate' })).created
+
+/**
+ * The early announce-only pass: announces every group in the window that
+ * matches a rule and is not yet posted or suppressed. Never creates a post and
+ * never re-queues; a group that would share right now is announced for
+ * `nextEvaluationAt`. Returns how many it announced.
+ */
+export const announceAutoshareWindow = async <Member extends AutoshareCandidate>(
+  user: string,
+  start: Date,
+  end: Date,
+  deps: AutoshareDeps<Member>,
+  nextEvaluationAt: Date,
+  now: Date = new Date(),
+): Promise<number> =>
+  (await walkAutoshareWindow(user, start, end, deps, now, { kind: 'announce', nextEvaluationAt })).announced
 
 export const PREVIEW_SAMPLE_DAYS = 30
 

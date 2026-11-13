@@ -16,6 +16,7 @@ const rule = (over: Partial<AutoshareRule> = {}): AutoshareRule => ({
   activity_types: ['running'],
   created_at: '2026-08-01T00:00:00Z',
   data_filters: [],
+  delay_minutes: 30,
   enabled: true,
   enabled_at: '2026-08-01T00:00:00Z',
   id: 'r1',
@@ -73,6 +74,7 @@ describe('ruleToFormState', () => {
     expect(state).toEqual({
       activityType: 'running',
       conditions: [{ field: 'style', operator: 'eq', value: 'yin' }],
+      delayMinutes: '30',
       includeExercises: true,
       includeMap: true,
       maxAgeHours: '48',
@@ -128,6 +130,7 @@ describe('formStateToUpdateBody', () => {
     expect(formStateToUpdateBody(ruleToFormState(original), original)).toEqual({
       activity_types: ['running'],
       data_filters: [{ field: 'style', operator: 'exists' }],
+      delay_minutes: 30,
       include_chart: true,
       include_exercises: false,
       include_map: true,
@@ -218,6 +221,17 @@ describe('formStateToUpdateBody', () => {
   })
 })
 
+describe('delay_minutes', () => {
+  it('sends the wait on add and edit, and the default when the field is blank', () => {
+    expect(formStateToAddBody({ ...emptyRuleFormState(), delayMinutes: '45' }).delay_minutes).toBe(45)
+    expect(formStateToAddBody({ ...emptyRuleFormState(), delayMinutes: ' ' }).delay_minutes).toBe(10)
+    const original = rule()
+    expect(
+      formStateToUpdateBody({ ...ruleToFormState(original), delayMinutes: '120' }, original).delay_minutes,
+    ).toBe(120)
+  })
+})
+
 describe('formStateToAddBody', () => {
   it('builds the create body from the empty form', () => {
     expect(
@@ -225,6 +239,7 @@ describe('formStateToAddBody', () => {
     ).toEqual({
       activity_types: [],
       data_filters: [],
+      delay_minutes: 10,
       include_chart: false,
       include_exercises: false,
       include_map: false,

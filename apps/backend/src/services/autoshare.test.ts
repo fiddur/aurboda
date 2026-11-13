@@ -1,10 +1,12 @@
 import { describe, expect, test } from 'vitest'
 
 import type { AutoshareCandidate, AutoshareRuleRecord, FeedPostRecord } from '../db/index.ts'
-import type { AutoshareDeps } from './autoshare.ts'
+import type { AutoshareAnnounceInfo, AutoshareDeps } from './autoshare.ts'
 
+import { pendingAutoshareNotification } from './autoshare-notifications.ts'
 import {
   activityMatchesRule,
+  announceAutoshareWindow,
   dataFiltersMatch,
   DETAIL_WAIT_SECONDS,
   evaluateAutoshareWindow,
@@ -14,6 +16,7 @@ import {
   ruleEndedAfter,
   STABILISATION_SECONDS,
 } from './autoshare.ts'
+import { createNotifier } from './notifications.ts'
 
 const T0 = new Date('2026-08-01T00:00:00Z')
 const HOUR = 3_600_000
@@ -23,6 +26,7 @@ const rule = (over: Partial<AutoshareRuleRecord> = {}): AutoshareRuleRecord => (
   activity_types: ['running'],
   created_at: T0,
   data_filters: [],
+  delay_minutes: 10,
   enabled: true,
   enabled_at: T0,
   id: 'rule-1',
@@ -694,5 +698,245 @@ describe('previewAutoshareRule', () => {
       listCandidates: async () => [yoga('named'), yoga('unnamed'), yoga('overridden')],
     })
     expect(await previewAutoshareRule('u', yogaRule, h.deps, new Date(T0.getTime() + 3 * HOUR))).toBe(2)
+  })
+})
+
+describe('evaluateAutoshareWindow: pending-share announces', () => {
+  const MINUTE = 60_000
+  const windowEnd = new Date(T0.getTime() + 3 * HOUR)
+  const ingested = new Date(T0.getTime() + 2 * HOUR)
+
+  interface Announced {
+    anchorId: string
+    ruleId: string
+    info: AutoshareAnnounceInfo
+  }
+
+  const withHooks = (over: Partial<AutoshareDeps> = {}) => {
+    const announced: Announced[] = []
+    const requeued: Date[] = []
+    const sharedGroups: { postId: string; ids: string[] }[] = []
+    const h = harness({
+      announce: async (_user, anchor, matched, info) => {
+        announced.push({ anchorId: anchor.id, info, ruleId: matched.id })
+        return true
+      },
+      listCandidates: async () => [candidate('a1', { created_at: ingested })],
+      requeue: async (_user, _start, _end, notBefore) => {
+        requeued.push(notBefore)
+      },
+      shared: async (_user, post, group) => {
+        sharedGroups.push({ ids: group.map((m) => m.id), postId: post.id })
+      },
+      ...over,
+    })
+    return { ...h, announced, requeued, sharedGroups }
+  }
+
+  test('an unsettled matching group is announced, re-queued and not shared', async () => {
+    const h = withHooks()
+    const now = new Date(ingested.getTime() + MINUTE)
+    expect(await evaluateAutoshareWindow('u', T0, windowEnd, h.deps, now)).toBe(0)
+    const settled = new Date(ingested.getTime() + STABILISATION_SECONDS * 1000)
+    expect(h.announced).toEqual([
+      { anchorId: 'a1', info: { detail_pending: false, share_at: settled }, ruleId: 'rule-1' },
+    ])
+    expect(h.requeued).toEqual([settled])
+    expect(h.createdPosts).toEqual([])
+    expect(h.sharedGroups).toEqual([])
+  })
+
+  test('an unsettled group that matches no rule is re-queued and not announced', async () => {
+    const h = withHooks({
+      listCandidates: async () => [candidate('a1', { activity_type: 'yoga', created_at: ingested })],
+    })
+    const now = new Date(ingested.getTime() + MINUTE)
+    expect(await evaluateAutoshareWindow('u', T0, windowEnd, h.deps, now)).toBe(0)
+    expect(h.announced).toEqual([])
+    expect(h.requeued).toHaveLength(1)
+  })
+
+  test("the rule's wait holds a settled group back and announces it for when the wait ends", async () => {
+    const h = withHooks({ getEnabledRules: async () => [rule({ delay_minutes: 30 })] })
+    const now = new Date(ingested.getTime() + 15 * MINUTE)
+    const readyAt = new Date(ingested.getTime() + 30 * MINUTE)
+    expect(await evaluateAutoshareWindow('u', T0, windowEnd, h.deps, now)).toBe(0)
+    expect(h.announced).toEqual([
+      { anchorId: 'a1', info: { detail_pending: false, share_at: readyAt }, ruleId: 'rule-1' },
+    ])
+    expect(h.requeued).toEqual([readyAt])
+    expect(h.createdPosts).toEqual([])
+
+    expect(await evaluateAutoshareWindow('u', T0, windowEnd, h.deps, readyAt)).toBe(1)
+  })
+
+  test('an unsettled group under a longer rule wait is announced for the later of the two', async () => {
+    const h = withHooks({ getEnabledRules: async () => [rule({ delay_minutes: 60 })] })
+    const now = new Date(ingested.getTime() + MINUTE)
+    expect(await evaluateAutoshareWindow('u', T0, windowEnd, h.deps, now)).toBe(0)
+    expect(h.announced[0]?.info.share_at).toEqual(new Date(ingested.getTime() + 60 * MINUTE))
+  })
+
+  test('waiting only on the Garmin detail is announced as detail_pending', async () => {
+    const h = withHooks({
+      listCandidates: async () => [candidate('a1', { created_at: ingested, detail_pending: true })],
+    })
+    const now = new Date(ingested.getTime() + 30 * MINUTE)
+    expect(await evaluateAutoshareWindow('u', T0, windowEnd, h.deps, now)).toBe(0)
+    expect(h.announced[0]?.info.detail_pending).toBe(true)
+  })
+
+  test('a group past both waits is shared and `shared` gets the group', async () => {
+    const h = withHooks({
+      getGroup: async () => [
+        candidate('anchor', { created_at: ingested }),
+        candidate('a1', { created_at: ingested }),
+      ],
+    })
+    const now = new Date(ingested.getTime() + HOUR)
+    expect(await evaluateAutoshareWindow('u', T0, windowEnd, h.deps, now)).toBe(1)
+    expect(h.sharedGroups).toEqual([{ ids: ['anchor', 'a1'], postId: 'post-anchor' }])
+    expect(h.announced).toEqual([])
+  })
+
+  test('caps announces per run', async () => {
+    const many = Array.from({ length: MAX_POSTS_PER_RUN + 3 }, (_, i) =>
+      candidate(`a${i}`, { created_at: ingested, start_time: new Date(T0.getTime() + HOUR + i * MINUTE) }),
+    )
+    const h = withHooks({ listCandidates: async () => many })
+    await evaluateAutoshareWindow('u', T0, windowEnd, h.deps, new Date(ingested.getTime() + MINUTE))
+    expect(h.announced).toHaveLength(MAX_POSTS_PER_RUN)
+    expect(h.requeued).toHaveLength(1)
+  })
+
+  test('a throwing announce or shared hook never stops the run', async () => {
+    const h = withHooks({
+      announce: async () => {
+        throw new Error('notifier down')
+      },
+      listCandidates: async () => [
+        candidate('young', { created_at: ingested, start_time: new Date(T0.getTime() + HOUR / 2) }),
+        candidate('old', { created_at: new Date(ingested.getTime() - HOUR) }),
+      ],
+      shared: async () => {
+        throw new Error('notifier down')
+      },
+    })
+    const now = new Date(ingested.getTime() + MINUTE)
+    expect(await evaluateAutoshareWindow('u', T0, windowEnd, h.deps, now)).toBe(1)
+    expect(h.createdPosts).toEqual([{ anchorId: 'old', ruleId: 'rule-1' }])
+    expect(h.requeued).toHaveLength(1)
+  })
+
+  test('a production-style announce whose raise fails keeps the run going', async () => {
+    const notifier = createNotifier({
+      getPreference: async () => {
+        throw new Error('database "u" does not exist')
+      },
+      insert: async () => null,
+      prune: async () => 0,
+      revise: async () => null,
+    })
+    const h = withHooks({
+      announce: async (user, anchor, matched, info) =>
+        (await notifier.raise(
+          user,
+          pendingAutoshareNotification({ anchor, rule: matched, ...info, now: NOW }),
+        )) != null,
+    })
+    const now = new Date(ingested.getTime() + MINUTE)
+    expect(await evaluateAutoshareWindow('u', T0, windowEnd, h.deps, now)).toBe(0)
+    expect(h.requeued).toHaveLength(1)
+  })
+})
+
+describe('announceAutoshareWindow', () => {
+  const MINUTE = 60_000
+  const windowEnd = new Date(T0.getTime() + 3 * HOUR)
+  const ingested = new Date(T0.getTime() + 2 * HOUR)
+  const nextEvaluationAt = new Date(ingested.getTime() + 10 * MINUTE)
+
+  const withAnnounce = (over: Partial<AutoshareDeps> = {}) => {
+    const announced: { anchorId: string; info: AutoshareAnnounceInfo }[] = []
+    let requeues = 0
+    let shared = 0
+    let delivered = 0
+    const h = harness({
+      announce: async (_user, anchor, _rule, info) => {
+        announced.push({ anchorId: anchor.id, info })
+        return true
+      },
+      onCreated: () => {
+        delivered++
+      },
+      requeue: async () => {
+        requeues++
+      },
+      shared: async () => {
+        shared++
+      },
+      ...over,
+    })
+    return { ...h, announced, counts: () => ({ delivered, requeues, shared }) }
+  }
+
+  test('announces unsettled and settled matches, and creates nothing, never re-queues', async () => {
+    const h = withAnnounce({
+      listCandidates: async () => [
+        candidate('fresh', { created_at: ingested, start_time: new Date(T0.getTime() + HOUR / 2) }),
+        candidate('edited', { created_at: new Date(ingested.getTime() - HOUR) }),
+      ],
+    })
+    const now = new Date(ingested.getTime() + MINUTE / 2)
+    expect(await announceAutoshareWindow('u', T0, windowEnd, h.deps, nextEvaluationAt, now)).toBe(2)
+    expect(h.announced).toEqual([
+      {
+        anchorId: 'fresh',
+        info: {
+          detail_pending: false,
+          share_at: new Date(ingested.getTime() + STABILISATION_SECONDS * 1000),
+        },
+      },
+      { anchorId: 'edited', info: { detail_pending: false, share_at: nextEvaluationAt } },
+    ])
+    expect(h.createdPosts).toEqual([])
+    expect(h.counts()).toEqual({ delivered: 0, requeues: 0, shared: 0 })
+  })
+
+  test('skips groups already posted or suppressed, and ones matching no rule', async () => {
+    const posted = withAnnounce({ postIdsForActivities: async () => ['p'] })
+    expect(await announceAutoshareWindow('u', T0, windowEnd, posted.deps, nextEvaluationAt, NOW)).toBe(0)
+    const suppressed = withAnnounce({ suppressedActivityIds: async () => ['a1'] })
+    expect(await announceAutoshareWindow('u', T0, windowEnd, suppressed.deps, nextEvaluationAt, NOW)).toBe(0)
+    const yogaOnly = withAnnounce({ listCandidates: async () => [yoga('y1', { created_at: ingested })] })
+    expect(await announceAutoshareWindow('u', T0, windowEnd, yogaOnly.deps, nextEvaluationAt, NOW)).toBe(0)
+  })
+
+  test('stops at the announce cap', async () => {
+    const many = Array.from({ length: MAX_POSTS_PER_RUN + 3 }, (_, i) =>
+      candidate(`a${i}`, { created_at: ingested, start_time: new Date(T0.getTime() + HOUR + i * MINUTE) }),
+    )
+    const h = withAnnounce({ listCandidates: async () => many })
+    const now = new Date(ingested.getTime() + MINUTE / 2)
+    expect(await announceAutoshareWindow('u', T0, windowEnd, h.deps, nextEvaluationAt, now)).toBe(
+      MAX_POSTS_PER_RUN,
+    )
+  })
+
+  test('a group announced earlier does not count toward the cap', async () => {
+    const many = Array.from({ length: MAX_POSTS_PER_RUN + 3 }, (_, i) =>
+      candidate(`a${i}`, { created_at: ingested, start_time: new Date(T0.getTime() + HOUR + i * MINUTE) }),
+    )
+    const attempted: string[] = []
+    const h = withAnnounce({
+      announce: async (_user, anchor) => {
+        attempted.push(anchor.id)
+        return attempted.length > MAX_POSTS_PER_RUN
+      },
+      listCandidates: async () => many,
+    })
+    const now = new Date(ingested.getTime() + MINUTE / 2)
+    expect(await announceAutoshareWindow('u', T0, windowEnd, h.deps, nextEvaluationAt, now)).toBe(3)
+    expect(attempted).toHaveLength(MAX_POSTS_PER_RUN + 3)
   })
 })

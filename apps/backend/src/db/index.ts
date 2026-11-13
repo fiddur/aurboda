@@ -506,6 +506,7 @@ export {
   getAutoshareRules,
   getEnabledAutoshareRules,
   insertAutoshareRule,
+  insertAutoshareSuppressions,
   listAutoshareCandidates,
   listAutoshareSuppressedIds,
   updateAutoshareRule,
@@ -783,6 +784,7 @@ export type { NotificationPageRow, NotificationPreferenceRecord, NotificationRec
 
 export {
   countUnreadNotifications,
+  getNotificationById,
   getNotificationPreference,
   insertNotification,
   listNotificationPreferences,
@@ -793,6 +795,9 @@ export {
   type NotificationCursor,
   type NotificationInsert,
   type NotificationPreferencePatch,
+  type NotificationRevisionPatch,
+  type NotificationTarget,
   pruneNotifications,
+  reviseNotification,
   upsertNotificationPreference,
 } from './notifications.ts'
