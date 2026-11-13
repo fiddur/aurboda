@@ -41,7 +41,18 @@ export type SyncStatusResponse = z.infer<typeof syncStatusResponseSchema>
 export const syncStatusQuerySchema = z
   .object({
     provider: z
-      .enum(['oura', 'garmin', 'strava', 'rescuetime', 'calendar', 'lastfm', 'activitywatch', 'gravl', 'all'])
+      .enum([
+        'oura',
+        'garmin',
+        'strava',
+        'rescuetime',
+        'calendar',
+        'lastfm',
+        'activitywatch',
+        'gravl',
+        'home_assistant',
+        'all',
+      ])
       .optional()
       .meta({
         description: 'Provider to check (defaults to all)',
@@ -52,7 +63,18 @@ export const syncStatusQuerySchema = z
 export type SyncStatusQuery = z.infer<typeof syncStatusQuerySchema>
 
 export const syncProviderSchema = z
-  .enum(['oura', 'garmin', 'strava', 'rescuetime', 'calendar', 'lastfm', 'activitywatch', 'gravl', 'all'])
+  .enum([
+    'oura',
+    'garmin',
+    'strava',
+    'rescuetime',
+    'calendar',
+    'lastfm',
+    'activitywatch',
+    'gravl',
+    'home_assistant',
+    'all',
+  ])
   .meta({
     description: 'Which provider to check',
   })
@@ -94,6 +116,15 @@ export const syncGravlBodySchema = z
   .meta({ id: 'SyncGravlBody' })
 
 export type SyncGravlBody = z.infer<typeof syncGravlBodySchema>
+
+export const syncHomeAssistantBodySchema = z
+  .object({
+    full_resync: fullResyncSchema,
+    start_date: startDateSyncSchema,
+  })
+  .meta({ id: 'SyncHomeAssistantBody' })
+
+export type SyncHomeAssistantBody = z.infer<typeof syncHomeAssistantBodySchema>
 
 export const syncCalendarsBodySchema = z
   .object({
@@ -368,6 +399,39 @@ export const gravlSyncStatusResponseSchema = baseResponseSchema
   .meta({ id: 'GravlSyncStatusResponse' })
 
 export type GravlSyncStatusResponse = z.infer<typeof gravlSyncStatusResponseSchema>
+
+export const homeAssistantSyncResultSchema = z
+  .object({
+    error: z.string().optional().meta({ description: 'Error message if status is error' }),
+    locations_fetched: z
+      .number()
+      .int()
+      .meta({ description: 'States with coordinates that Home Assistant returned for the sync window' }),
+    locations_inserted: z.number().int().meta({ description: 'Location rows that were new' }),
+    locations_superseded: z.number().int().meta({
+      description: 'Location rows soft-deleted because an activity GPS track covers their time',
+    }),
+    status: z.enum(['success', 'error']).meta({ description: 'Sync status' }),
+  })
+  .meta({ id: 'HomeAssistantSyncResult' })
+
+export type HomeAssistantSyncResult = z.infer<typeof homeAssistantSyncResultSchema>
+
+export const homeAssistantSyncResponseSchema = baseResponseSchema
+  .extend({
+    result: homeAssistantSyncResultSchema.optional().meta({ description: 'Sync result' }),
+  })
+  .meta({ id: 'HomeAssistantSyncResponse' })
+
+export type HomeAssistantSyncResponse = z.infer<typeof homeAssistantSyncResponseSchema>
+
+export const homeAssistantSyncStatusResponseSchema = baseResponseSchema
+  .extend({
+    states: z.array(providerSyncStatusSchema).optional().meta({ description: 'Home Assistant sync states' }),
+  })
+  .meta({ id: 'HomeAssistantSyncStatusResponse' })
+
+export type HomeAssistantSyncStatusResponse = z.infer<typeof homeAssistantSyncStatusResponseSchema>
 
 export const ouraSyncResponseSchema = baseResponseSchema
   .extend({

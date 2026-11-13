@@ -1,3 +1,5 @@
+import type { PlaceSource } from '@aurboda/api-spec'
+
 import {
   deleteNamedLocation,
   getNamedLocationById,
@@ -273,7 +275,7 @@ export interface PlaceVisit {
   start_time: Date
   end_time: Date
   duration_minutes: number
-  source: 'named' | 'detected' | 'owntracks' | 'unknown'
+  source: PlaceSource
   address?: string
   detected_location_id?: string
   /** Set when source='named' — the id of the matched named_location. */
@@ -336,7 +338,7 @@ export const getRawLocationPoints = async (
 
 interface FixClassification {
   placeName: string
-  source: 'named' | 'detected' | 'owntracks' | 'unknown'
+  source: PlaceSource
   address?: string
   detectedLocationId?: string
   namedLocationId?: string
@@ -344,12 +346,14 @@ interface FixClassification {
 
 /**
  * Classify a single fix to a place: a named location wins, then a detected
- * location, then an OwnTracks region, else "Somewhere" (unknown).
+ * location, then a region (OwnTracks region or Home Assistant zone, by the
+ * fix's source), else "Somewhere" (unknown).
  */
 const classifyFix = (
   lat: number,
   lon: number,
   regions: string[],
+  fixSource: string | undefined,
   namedLocations: NamedLocation[],
   detectedLocations: StoredDetectedLocation[],
 ): FixClassification => {
@@ -366,7 +370,9 @@ const classifyFix = (
     }
   }
 
-  if (regions.length > 0) return { placeName: regions[0], source: 'owntracks' }
+  if (regions.length > 0) {
+    return { placeName: regions[0], source: fixSource === 'home_assistant' ? 'home_assistant' : 'owntracks' }
+  }
   return { placeName: 'Somewhere', source: 'unknown' }
 }
 
@@ -382,7 +388,7 @@ interface VisitAccumulator {
   lon: number
   start_time: Date
   end_time: Date
-  source: 'named' | 'detected' | 'owntracks' | 'unknown'
+  source: PlaceSource
   address?: string
   detected_location_id?: string
   named_location_id?: string
@@ -436,6 +442,7 @@ const finalizeVisit = (v: VisitAccumulator): PlaceVisit => ({
 
 export interface PlaceFix extends LocationPoint {
   regions: string[]
+  source?: string
 }
 
 export const groupFixesIntoVisits = (
@@ -449,7 +456,7 @@ export const groupFixesIntoVisits = (
   let currentVisit: VisitAccumulator | null = null
 
   for (const loc of fixes) {
-    const cls = classifyFix(loc.lat, loc.lon, loc.regions, namedLocations, detectedLocations)
+    const cls = classifyFix(loc.lat, loc.lon, loc.regions, loc.source, namedLocations, detectedLocations)
 
     if (currentVisit && continuesVisit(currentVisit, cls, loc)) {
       extendVisit(currentVisit, loc)
@@ -514,6 +521,7 @@ interface FixRow {
   lon: number
   time: Date | string
   regions: string[] | null
+  source: string | null
 }
 
 const fixesFromRows = (rows: FixRow[]) =>
@@ -522,11 +530,12 @@ const fixesFromRows = (rows: FixRow[]) =>
       lat: row.lat,
       lon: row.lon,
       regions: row.regions || [],
+      source: row.source ?? undefined,
       time: new Date(row.time),
     }),
   )
 
-const FIX_COLUMNS = 'ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, time, regions'
+const FIX_COLUMNS = 'ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, time, regions, source'
 
 const getLastFixBefore = async (
   user: string,

@@ -18,6 +18,7 @@ import {
   syncMediaBodySchema,
   syncGarminBodySchema,
   syncGravlBodySchema,
+  syncHomeAssistantBodySchema,
   syncLastFmBodySchema,
   syncOuraBodySchema,
   syncRescueTimeBodySchema,
@@ -37,6 +38,9 @@ import {
   type GravlSyncResponse,
   type GravlSyncResult,
   type GravlSyncStatusResponse,
+  type HomeAssistantSyncResponse,
+  type HomeAssistantSyncResult,
+  type HomeAssistantSyncStatusResponse,
   type HealthConnectDeletionsBody,
   type HealthConnectRecord,
   type HealthConnectSyncBody,
@@ -63,6 +67,7 @@ import {
   type SyncCalendarsBody,
   type SyncGarminBody,
   type SyncGravlBody,
+  type SyncHomeAssistantBody,
   type SyncLastFmBody,
   type SyncMediaBody,
   type SyncOuraBody,
@@ -180,6 +185,13 @@ export interface SyncRouterDeps {
   syncGravl?: (user: string, options: { fullResync?: boolean; startDate?: Date }) => Promise<GravlSyncResult>
   getGravlSyncStates?: (user: string) => Promise<ProviderSyncStatus[]>
   resetGravlSyncState?: (user: string) => Promise<void>
+  /** Absent when the Home Assistant integration is not wired (tests). */
+  syncHomeAssistant?: (
+    user: string,
+    options: { fullResync?: boolean; startDate?: Date },
+  ) => Promise<HomeAssistantSyncResult>
+  getHomeAssistantSyncStates?: (user: string) => Promise<ProviderSyncStatus[]>
+  resetHomeAssistantSyncState?: (user: string) => Promise<void>
   getActivityWatchSyncStates: (user: string) => Promise<ProviderSyncStatus[]>
   getPendingOutboundSync: (user: string, limit?: number) => Promise<PendingOutboundSyncResult>
   ackOutboundSync: (user: string, id: string, hcRecordId?: string) => Promise<boolean>
@@ -706,6 +718,60 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
       res.status(500).json({ error: message, success: false })
     }
   })
+
+  router.post<Record<string, never>, HomeAssistantSyncResponse, SyncHomeAssistantBody>(
+    '/home-assistant',
+    authMiddleware,
+    validateBody(syncHomeAssistantBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      const { full_resync, start_date } = req.body
+      if (!deps.syncHomeAssistant) {
+        return res.status(400).json({ error: 'Home Assistant integration is not available', success: false })
+      }
+
+      try {
+        const result = await deps.syncHomeAssistant(user, {
+          fullResync: full_resync,
+          startDate: start_date ? new Date(start_date) : undefined,
+        })
+        res.json({ result, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: message, success: false })
+      }
+    },
+  )
+
+  router.get<Record<string, never>, HomeAssistantSyncStatusResponse>(
+    '/home-assistant/status',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+      try {
+        const states = deps.getHomeAssistantSyncStates ? await deps.getHomeAssistantSyncStates(user) : []
+        res.json({ states, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: message, success: false })
+      }
+    },
+  )
+
+  router.delete<Record<string, never>, SyncResponse>(
+    '/home-assistant/state',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+      try {
+        await deps.resetHomeAssistantSyncState?.(user)
+        res.json({ success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: message, success: false })
+      }
+    },
+  )
 
   // Get pending outbound sync entries for the Android app to write to Health Connect
   router.get<ParamsDictionary, OutboundSyncResponse>('/outbound', authMiddleware, async (req, res) => {
