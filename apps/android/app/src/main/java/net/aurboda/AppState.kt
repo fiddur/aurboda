@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import io.ktor.client.HttpClient
 
 enum class AppScreen {
     Login,
@@ -81,6 +82,10 @@ class AppState(
     var loginNotice by mutableStateOf<String?>(null)
         private set
 
+    /** Unread in-app notifications, shown as a badge on More and on its Notifications row. */
+    var unreadNotifications by mutableIntStateOf(0)
+        private set
+
     val credentials: CredentialsManager.Credentials?
         get() = CredentialsManager.getCredentials(context)
 
@@ -128,6 +133,16 @@ class AppState(
 
     fun closeMoreDestination() {
         moreDestination = null
+    }
+
+    /** A null [count] (the server could not say) leaves the badge as it is. */
+    fun setUnreadNotificationCount(count: Int?) {
+        if (count != null) unreadNotifications = count
+    }
+
+    suspend fun refreshUnreadNotifications(httpClient: HttpClient) {
+        val creds = credentials ?: return
+        setUnreadNotificationCount(fetchUnreadNotificationCount(httpClient, creds.apiUrl, creds.authToken))
     }
 }
 

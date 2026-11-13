@@ -27,9 +27,11 @@ A per-user set of rules, each combining a **predicate** and a **share template**
   member's ingest). The waits before sharing — the rule's own wait, the Garmin detail
   wait — do not count against it, so a long wait never eats the max age. A history
   update that makes old activities newly match — an enrich rule run over history that
-  adds `session_name`, a re-sync, an import — therefore never publishes them. The flip
-  side: an activity whose phone sync is delayed past the max age is not shared either.
-  Rules created before the field existed have 24.
+  adds `session_name`, a re-sync, an import — therefore does not publish them. For an
+  activity that arrived earlier and only now starts matching, the limit is the max age
+  plus the time a rule may wait (its own wait and the two-hour detail wait), counted
+  back from the evaluation. The flip side: an activity whose phone sync is delayed past
+  the max age is not shared either. Rules created before the field existed have 24.
 - **Wait** (`delay_minutes`, default 10, 10 to 1440): how long after the activity
   arrived (its youngest merge-group member's ingest) the rule waits before sharing it.
   The default equals the stabilisation delay, so it changes nothing; a longer wait gives
