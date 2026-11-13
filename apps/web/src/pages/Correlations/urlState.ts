@@ -1,11 +1,19 @@
-import type { ActivityImpactType, CorrelationSelector } from '@aurboda/api-spec'
+import type { ActivityImpactType, CorrelationSelector, ImpactFilter } from '@aurboda/api-spec'
 
 import {
   activityImpactTypeSchema,
   cumulativeMetrics,
+  DEFAULT_IMPACT_DURATION_BUCKETS,
+  DEFAULT_IMPACT_TIME_BUCKETS,
   DEFAULT_IMPACT_WINDOW_MINUTES,
+  formatImpactFilters,
   IMPACT_WINDOW_OPTIONS,
+  impactDurationBucketsError,
+  impactTimeBucketsError,
+  isImpactDimension,
   MAX_IMPACT_EXTRA_METRICS,
+  parseImpactBucketLimits,
+  parseImpactFilters,
   selectorSchema,
 } from '@aurboda/api-spec'
 
@@ -46,6 +54,13 @@ export interface AnalyzeState {
   extras: string[]
   item: SelectedItem | null
   explore: ExploreState
+  /** '' for none, else an impact dimension such as `duration` or `field:session_name`. */
+  breakdown: string
+  lengths: number[]
+  hours: number[]
+  filters: ImpactFilter[]
+  /** '' picks the chart's metric automatically. */
+  breakdownMetric: string
 }
 
 export const PERIOD_DAY_OPTIONS = [14, 30, 60, 90] as const
@@ -71,10 +86,15 @@ export const DEFAULT_EXPLORE_STATE: ExploreState = {
 }
 
 export const DEFAULT_ANALYZE_STATE: AnalyzeState = {
+  breakdown: '',
+  breakdownMetric: '',
   days: 30,
   explore: DEFAULT_EXPLORE_STATE,
   extras: [],
+  filters: [],
+  hours: [...DEFAULT_IMPACT_TIME_BUCKETS],
   item: null,
+  lengths: [...DEFAULT_IMPACT_DURATION_BUCKETS],
   metrics: [...IMPACT_METRICS],
   tab: 'context',
   window: DEFAULT_IMPACT_WINDOW_MINUTES,
@@ -164,6 +184,26 @@ const parseItem = (name: string | null, type: string | null): SelectedItem | nul
   return parsed.success ? { name, type: parsed.data } : null
 }
 
+const parseLimits = (raw: string | null, error: (limits: number[]) => string | null, fallback: number[]) => {
+  const limits = parseImpactBucketLimits(raw ?? undefined)
+  return limits !== null && error(limits) === null ? limits : [...fallback]
+}
+
+const parseSlicing = (
+  params: URLSearchParams,
+): Pick<AnalyzeState, 'breakdown' | 'breakdownMetric' | 'filters' | 'hours' | 'lengths'> => {
+  const breakdown = params.get('breakdown') ?? ''
+  const breakdownMetric = params.get('breakdown_metric') ?? ''
+  return {
+    breakdown: isImpactDimension(breakdown) ? breakdown : '',
+    breakdownMetric:
+      EXTRA_METRIC_NAME.test(breakdownMetric) && breakdownMetric.length <= 50 ? breakdownMetric : '',
+    filters: parseImpactFilters(params.get('filter') ?? undefined) ?? [],
+    hours: parseLimits(params.get('hours'), impactTimeBucketsError, DEFAULT_IMPACT_TIME_BUCKETS),
+    lengths: parseLimits(params.get('lengths'), impactDurationBucketsError, DEFAULT_IMPACT_DURATION_BUCKETS),
+  }
+}
+
 const parseExplore = (params: URLSearchParams): ExploreState => {
   const d = DEFAULT_EXPLORE_STATE
   const outcomeSource = parseOneOf(params.get('outcome_source'), ['metric', 'tag'] as const, d.outcomeSource)
@@ -199,6 +239,7 @@ export const parseAnalyzeState = (search: string): AnalyzeState => {
     ...parseMetrics(params.get('metrics')),
     tab: parseOneOf(params.get('tab'), ['context', 'explore'] as const, d.tab),
     window: parseOneOf(params.get('window'), IMPACT_WINDOW_OPTIONS, d.window),
+    ...parseSlicing(params),
   }
 }
 
@@ -214,6 +255,11 @@ const paramValues = (state: AnalyzeState): [string, string, string][] => {
     ['metrics', [...state.metrics, ...state.extras].join(','), [...d.metrics, ...d.extras].join(',')],
     ['item', state.item?.name ?? '', ''],
     ['item_type', state.item?.type ?? '', ''],
+    ['breakdown', state.breakdown, d.breakdown],
+    ['lengths', state.lengths.join(','), d.lengths.join(',')],
+    ['hours', state.hours.join(','), d.hours.join(',')],
+    ['filter', formatImpactFilters(state.filters), ''],
+    ['breakdown_metric', state.breakdownMetric, d.breakdownMetric],
     ['mode', e.mode, de.mode],
     ['trigger', encodeSelector(e.trigger), encodeSelector(de.trigger)],
     ['outcome', encodeSelector(e.outcome), encodeSelector(de.outcome)],
@@ -237,8 +283,9 @@ export const withAnalyzeState = (href: string, state: AnalyzeState): string => {
     url.searchParams.delete(param)
     if (value !== fallback) url.searchParams.set(param, value)
   }
-  // Commas and colons are legal in a query; leaving them unescaped keeps a shared link readable.
-  const search = url.search.replaceAll('%2C', ',').replaceAll('%3A', ':')
+  // Commas, colons and semicolons are legal in a query; leaving them unescaped keeps a shared link
+  // readable. A literal '%' is itself escaped as %25, so a filter key's own escapes are left alone.
+  const search = url.search.replaceAll('%2C', ',').replaceAll('%3A', ':').replaceAll('%3B', ';')
   return `${url.pathname}${search}${url.hash}`
 }
 

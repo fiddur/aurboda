@@ -3,10 +3,13 @@ import { z } from 'zod'
 import {
   createDataResponseSchema,
   cumulativeMetrics,
+  dataFieldPathSchema,
   isValidMetric,
   iso8601DateTimeSchema,
   metricUnits,
+  queryBooleanSchema,
 } from './common.ts'
+import { ianaTimezoneSchema } from './timezone.ts'
 
 export const hrvStatsSchema = z
   .object({
@@ -91,6 +94,127 @@ export const impactExtraMetricsError = (metrics: string[]): string | null => {
     return `${cumulative} is a running total and cannot be analysed around a session.`
   }
   return null
+}
+
+export const IMPACT_FIXED_DIMENSIONS = ['duration', 'time_of_day', 'sleep'] as const
+export const IMPACT_FIELD_DIMENSION_PREFIX = 'field:'
+export const DEFAULT_IMPACT_DURATION_BUCKETS = [15, 30, 60]
+export const DEFAULT_IMPACT_TIME_BUCKETS = [0, 6, 12, 18]
+export const MAX_IMPACT_BUCKET_LIMITS = 6
+export const MAX_IMPACT_GROUPS = 12
+export const MAX_IMPACT_DIMENSION_GROUPS = 50
+export const MAX_IMPACT_FILTERS = 8
+export const IMPACT_NO_VALUE_KEY = '(none)'
+
+const MAX_IMPACT_FILTER_KEYS = 50
+const MAX_IMPACT_FILTER_KEY_LENGTH = 200
+
+export const impactFieldPath = (dimension: string): string | null =>
+  dimension.startsWith(IMPACT_FIELD_DIMENSION_PREFIX)
+    ? dimension.slice(IMPACT_FIELD_DIMENSION_PREFIX.length)
+    : null
+
+export const isImpactDimension = (raw: string): boolean => {
+  if ((IMPACT_FIXED_DIMENSIONS as readonly string[]).includes(raw)) return true
+  const path = impactFieldPath(raw)
+  return path !== null && dataFieldPathSchema.safeParse(path).success
+}
+
+export const parseImpactBucketLimits = (raw?: string): number[] | null => {
+  if (raw === undefined || raw.trim() === '') return null
+  const limits = raw.split(',').map((token) => (token.trim() === '' ? Number.NaN : Number(token.trim())))
+  return limits.every((limit) => Number.isFinite(limit)) ? limits : [Number.NaN]
+}
+
+const bucketLimitsError = (limits: number[], min: number, max: number, what: string): string | null => {
+  if (limits.length < 1 || limits.length > MAX_IMPACT_BUCKET_LIMITS) {
+    return `Give 1 to ${MAX_IMPACT_BUCKET_LIMITS} ${what} bucket limits.`
+  }
+  if (!limits.every((limit) => Number.isInteger(limit) && limit >= min && limit <= max)) {
+    return `${what} bucket limits must be whole numbers from ${min} to ${max}.`
+  }
+  if (!limits.every((limit, i) => i === 0 || limit > limits[i - 1])) {
+    return `${what} bucket limits must be strictly ascending.`
+  }
+  return null
+}
+
+export const impactDurationBucketsError = (limits: number[]): string | null =>
+  bucketLimitsError(limits, 1, 1440, 'Duration')
+
+export const impactTimeBucketsError = (limits: number[]): string | null =>
+  bucketLimitsError(limits, 0, 23, 'Time-of-day')
+
+export const impactDimensionSchema = z
+  .string()
+  .refine(isImpactDimension, {
+    message: 'dimension must be duration, time_of_day, sleep or field:<path> (e.g. field:session_name)',
+  })
+  .meta({
+    description:
+      'What to break down or filter an activity by: duration (session length in minutes), time_of_day (local start hour), sleep (sleep in the window before/after), or field:<path> for a data field of the activity type, a scalar (field:session_name) or a list item (field:sets.exercise)',
+    example: 'field:session_name',
+  })
+
+export const impactFilterSchema = z
+  .object({
+    dimension: impactDimensionSchema,
+    keys: z
+      .array(z.string().min(1).max(MAX_IMPACT_FILTER_KEY_LENGTH))
+      .min(1)
+      .max(MAX_IMPACT_FILTER_KEYS)
+      .meta({
+        description: `Group keys to keep, as listed in dimensions[].groups[].key (e.g. 15-30, none, Morning flow, ${IMPACT_NO_VALUE_KEY})`,
+        example: ['15-30', '30-60'],
+      }),
+  })
+  .meta({
+    description: 'Keep the sessions that have any of these group keys in this dimension',
+    id: 'ImpactFilter',
+  })
+
+export type ImpactFilter = z.infer<typeof impactFilterSchema>
+
+export const formatImpactFilters = (filters: ImpactFilter[]): string =>
+  filters.map(({ dimension, keys }) => `${dimension}:${keys.map(encodeURIComponent).join(',')}`).join(';')
+
+const decodeKey = (raw: string): string | null => {
+  try {
+    return decodeURIComponent(raw)
+  } catch {
+    return null
+  }
+}
+
+const parseImpactFilterPart = (part: string): ImpactFilter | null => {
+  const colon = part.startsWith(IMPACT_FIELD_DIMENSION_PREFIX)
+    ? part.indexOf(':', IMPACT_FIELD_DIMENSION_PREFIX.length)
+    : part.indexOf(':')
+  if (colon === -1) return null
+  const dimension = part.slice(0, colon)
+  if (!isImpactDimension(dimension)) return null
+  const keys = part
+    .slice(colon + 1)
+    .split(',')
+    .map(decodeKey)
+  if (keys.some((key) => key === null || key === '')) return null
+  return { dimension, keys: keys as string[] }
+}
+
+export const parseImpactFilters = (raw?: string): ImpactFilter[] | null => {
+  if (raw === undefined || raw.trim() === '') return []
+  const merged = new Map<string, Set<string>>()
+  for (const part of raw.split(';')) {
+    if (part.trim() === '') continue
+    const filter = parseImpactFilterPart(part)
+    if (filter === null) return null
+    const keys = merged.get(filter.dimension) ?? new Set<string>()
+    for (const key of filter.keys) keys.add(key)
+    merged.set(filter.dimension, keys)
+  }
+  if (merged.size > MAX_IMPACT_FILTERS) return null
+  const filters = [...merged].map(([dimension, keys]) => ({ dimension, keys: [...keys] }))
+  return filters.every((filter) => impactFilterSchema.safeParse(filter).success) ? filters : null
 }
 
 export const extraMetricStatsSchema = z
@@ -337,10 +461,32 @@ export type ActivityImpactMatch = z.infer<typeof activityImpactMatchSchema>
 export const activityImpactQuerySchema = z
   .object({
     activity_type: activityImpactTypeSchema,
+    breakdown: impactDimensionSchema.optional().meta({
+      description:
+        'Also analyse the sessions per group of this dimension: duration, time_of_day, sleep or field:<path> (e.g. field:session_name)',
+      example: 'duration',
+    }),
+    duration_buckets: z
+      .string()
+      .optional()
+      .meta({
+        description: `Comma-separated ascending limits in minutes for the duration dimension (1-1440, at most ${MAX_IMPACT_BUCKET_LIMITS}); n limits give n + 1 buckets. Default ${DEFAULT_IMPACT_DURATION_BUCKETS.join(',')}`,
+        example: '15,30,60',
+      }),
     end: z.string().optional().meta({
       description:
         'End of a fixed period to analyse (ISO 8601 datetime, exclusive); with start, replaces period_days',
       example: '2026-03-01T00:00:00Z',
+    }),
+    filters: z.string().optional().meta({
+      description:
+        'Keep only the sessions in these groups. Filters are separated by ";", each "<dimension>:<key>,<key>" with every key URL-encoded; a session passes a filter when it has any of its keys, and must pass every filter. Sessions and their windows are formed before filtering.',
+      example: 'duration:15-30,30-60;sleep:none',
+    }),
+    include_dimensions: queryBooleanSchema.optional().meta({
+      description:
+        'List the dimensions available for breakdown and filters, with their group keys and session counts before filters',
+      example: 'true',
     }),
     match: activityImpactMatchSchema.optional(),
     metrics: impactMetricsParamSchema,
@@ -349,6 +495,17 @@ export const activityImpactQuerySchema = z
       description:
         'Start of a fixed period to analyse (ISO 8601 datetime, inclusive); with end, replaces period_days',
       example: '2026-01-01T00:00:00Z',
+    }),
+    time_buckets: z
+      .string()
+      .optional()
+      .meta({
+        description: `Comma-separated ascending local hours (0-23, at most ${MAX_IMPACT_BUCKET_LIMITS}) splitting the day for the time_of_day dimension; the last bucket wraps to the first. Default ${DEFAULT_IMPACT_TIME_BUCKETS.join(',')}`,
+        example: '0,6,12,18',
+      }),
+    tz: ianaTimezoneSchema.optional().meta({
+      description: "Timezone for time_of_day; defaults to the user's device timezone",
+      example: 'Europe/Stockholm',
     }),
     window_minutes: z
       .string()
@@ -421,6 +578,70 @@ export const impactBucketSchema = z
 
 export type ImpactBucket = z.infer<typeof impactBucketSchema>
 
+export const impactGroupSchema = z
+  .object({
+    avg_duration_min: z.number().meta({ description: "Average length of this group's sessions in minutes" }),
+    hr_effect: windowEffectSchema.meta({ description: 'Paired before -> after change of heart rate' }),
+    hrv_effect: windowEffectSchema.meta({ description: 'Paired before -> after change of HRV' }),
+    key: z.string().meta({ description: 'Group key, usable in filters', example: '15-30' }),
+    label: z.string().meta({ description: 'Human-readable group name', example: '15–30 min' }),
+    metric_effects: z.record(z.string(), windowEffectSchema).optional().meta({
+      description:
+        'Paired change of each requested extra metric, by name; present when extras were requested',
+    }),
+    occurrences: z.number().int().meta({ description: 'Sessions in this group that the filters keep' }),
+    stress_effect: windowEffectSchema.meta({ description: 'Paired before -> after change of stress level' }),
+    timeline: z
+      .array(impactBucketSchema)
+      .meta({ description: "The group's sessions around the activity, in time order" }),
+  })
+  .meta({
+    description:
+      'One group of a breakdown: its sessions analysed exactly like the whole, windows clipped by every session',
+    id: 'ImpactGroup',
+  })
+
+export type ImpactGroup = z.infer<typeof impactGroupSchema>
+
+export const impactBreakdownSchema = z
+  .object({
+    dimension: z.string().meta({ description: 'The dimension broken down by', example: 'duration' }),
+    groups: z.array(impactGroupSchema).meta({
+      description: `Non-empty groups in group order, at most ${MAX_IMPACT_GROUPS}; a session with several values (a merged session, a list field) is in each of their groups`,
+    }),
+    label: z.string().meta({ description: 'Human-readable dimension name', example: 'Length' }),
+    omitted_groups: z.number().int().meta({ description: 'Groups beyond the cap that were not analysed' }),
+  })
+  .meta({ description: 'The analysis repeated per group of one dimension', id: 'ImpactBreakdown' })
+
+export type ImpactBreakdown = z.infer<typeof impactBreakdownSchema>
+
+export const impactDimensionGroupSchema = z
+  .object({
+    key: z.string().meta({ description: 'Group key, usable in filters and breakdowns', example: '15-30' }),
+    label: z.string().meta({ description: 'Human-readable group name', example: '15–30 min' }),
+    occurrences: z.number().int().meta({ description: 'Sessions in this group before filters' }),
+  })
+  .meta({ description: 'One group of a dimension with its session count', id: 'ImpactDimensionGroup' })
+
+export type ImpactDimensionGroup = z.infer<typeof impactDimensionGroupSchema>
+
+export const impactDimensionOptionSchema = z
+  .object({
+    dimension: z.string().meta({
+      description: 'The dimension, as breakdown and filters take it',
+      example: 'field:session_name',
+    }),
+    groups: z.array(impactDimensionGroupSchema).meta({
+      description: `Groups in group order, at most ${MAX_IMPACT_DIMENSION_GROUPS}: every bucket for duration and time_of_day, the non-empty ones otherwise`,
+    }),
+    label: z.string().meta({ description: 'Human-readable dimension name', example: 'Session name' }),
+    omitted_groups: z.number().int().meta({ description: 'Groups beyond the cap that were not listed' }),
+  })
+  .meta({ description: 'A dimension available for breakdown and filters', id: 'ImpactDimensionOption' })
+
+export type ImpactDimensionOption = z.infer<typeof impactDimensionOptionSchema>
+
 export const activityImpactDataSchema = z
   .object({
     activity: z.string().meta({ description: 'Activity name/pattern searched' }),
@@ -434,15 +655,26 @@ export const activityImpactDataSchema = z
       description:
         'Paired before -> after change of each requested extra metric, by name; present when extras were requested',
     }),
+    breakdown: impactBreakdownSchema.optional().meta({
+      description:
+        'The analysis per group of the requested breakdown dimension; present when one was requested',
+    }),
+    dimensions: z.array(impactDimensionOptionSchema).optional().meta({
+      description:
+        'Dimensions available for breakdown and filters, with group keys and counts before filters; present with include_dimensions',
+    }),
     occurrences: z.number().int().meta({
       description:
-        'Number of sessions: matching entries that overlap or are at most 10 minutes apart count as one',
+        'Number of sessions the filters keep: matching entries that overlap or are at most 10 minutes apart count as one',
     }),
     stress_effect: windowEffectSchema.meta({ description: 'Paired before -> after change of stress level' }),
     stress_timeline: impactTimelineSchema,
     timeline: z.array(impactBucketSchema).meta({
       description:
         'All three metrics around the sessions, in time order: the before buckets oldest first, then during, then the after buckets. Each side of the window has 2 buckets when window_minutes is under 60 and 4 otherwise, each window_minutes divided by that count long.',
+    }),
+    total_occurrences: z.number().int().optional().meta({
+      description: 'Sessions before filters; occurrences counts the ones the filters keep',
     }),
     window_minutes: z.number().int().meta({ description: 'Minutes before and after each session analyzed' }),
   })
@@ -868,9 +1100,29 @@ export const activityImpactInputSchema = z
       .string()
       .meta({ description: 'The activity or tag name to analyze (e.g., "gym", "coffee", "meditation")' }),
     activity_type: activityImpactTypeSchema.meta({ description: 'Type of activity to search for' }),
+    breakdown: impactDimensionSchema.optional(),
+    duration_buckets: z
+      .array(z.number().int())
+      .optional()
+      .meta({
+        description: `Ascending limits in minutes for the duration dimension (1-1440, at most ${MAX_IMPACT_BUCKET_LIMITS}); n limits give n + 1 buckets. Defaults to [${DEFAULT_IMPACT_DURATION_BUCKETS.join(', ')}].`,
+        example: [15, 30, 60],
+      }),
     end: iso8601DateTimeSchema.optional().meta({
       description:
         'End of a fixed period to analyse (ISO 8601, exclusive). Give with start; replaces period_days.',
+    }),
+    filters: z
+      .array(impactFilterSchema)
+      .max(MAX_IMPACT_FILTERS)
+      .optional()
+      .meta({
+        description:
+          'Keep only the sessions passing every filter; a session passes a filter when it has any of its keys. Sessions and their windows are formed before filtering.',
+        example: [{ dimension: 'duration', keys: ['15-30', '30-60'] }],
+      }),
+    include_dimensions: z.boolean().optional().meta({
+      description: 'List the dimensions available for breakdown and filters, with group keys and counts',
     }),
     match: activityImpactMatchSchema.optional(),
     metrics: impactExtraMetricsInputSchema,
@@ -883,6 +1135,13 @@ export const activityImpactInputSchema = z
       description:
         'Start of a fixed period to analyse (ISO 8601, inclusive). Give with end; replaces period_days.',
     }),
+    time_buckets: z
+      .array(z.number().int())
+      .optional()
+      .meta({
+        description: `Ascending local hours (0-23, at most ${MAX_IMPACT_BUCKET_LIMITS}) splitting the day for the time_of_day dimension; the last bucket wraps to the first. Defaults to [${DEFAULT_IMPACT_TIME_BUCKETS.join(', ')}].`,
+        example: [6, 22],
+      }),
     window_minutes: z
       .number()
       .int()

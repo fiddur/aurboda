@@ -3,8 +3,8 @@ import type { ActivityNeighbor, ActivityNeighbors } from '@aurboda/api-spec'
 import type { Activity } from '../../db/types.ts'
 
 import { findAdjacentActivity, getActivityById, getOverlappingActivities } from '../../db/index.ts'
+import { fieldValue } from '../activity-measures.ts'
 import { parseActivityId } from './activity-detail.ts'
-import { fieldValue } from './activity-sessions.ts'
 
 /** The activity's cross-source merge group, earliest first; just the activity when it stands alone. */
 const mergeGroup = async (user: string, activity: Activity): Promise<Activity[]> => {
