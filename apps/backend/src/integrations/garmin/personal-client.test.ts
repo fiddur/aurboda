@@ -46,15 +46,27 @@ const setup = ({
     }),
     fetch: fetch as unknown as typeof globalThis.fetch,
     getOAuthToken: vi.fn(async () => row),
-    markOAuthTokenRefused: vi.fn(async () => {
-      if (row) row = { ...row, refused_at: NOW }
+    markOAuthTokenRefused: vi.fn(async (_user: string, _provider: string, refreshToken?: string) => {
+      if (row && (refreshToken === undefined || row.refresh_token === refreshToken)) {
+        row = { ...row, refused_at: NOW }
+      }
     }),
     now,
+    updateOAuthAccessToken: vi.fn(
+      async (_user: string, _provider: string, refreshToken: string, accessToken: string) => {
+        if (row?.refresh_token !== refreshToken) return false
+        row = { ...row, access_token: accessToken }
+        return true
+      },
+    ),
     upsertOAuthToken: vi.fn(async (_user: string, token: OAuthToken) => {
       row = { ...token, refused_at: undefined }
     }),
   }
-  return { client: garminPersonalClient(deps), deps, fetch, row: () => row }
+  const replaceRow = (next: OAuthToken | null) => {
+    row = next
+  }
+  return { client: garminPersonalClient(deps), deps, fetch, replaceRow, row: () => row }
 }
 
 const headerOf = (init: RequestInit | undefined, name: string): string | undefined =>
@@ -141,12 +153,8 @@ describe('token handling', () => {
 
     expect(fetch.mock.calls[0]![0]).toBe(TOKEN_URL)
     expect(headerOf(fetch.mock.calls[1]![1], 'Authorization')).toBe(`Bearer ${fresh}`)
-    expect(deps.upsertOAuthToken).toHaveBeenCalledWith('alice', {
-      access_token: fresh,
-      expires_at: keyExpiry,
-      provider: 'garmin_personal',
-      refresh_token: KEY,
-    })
+    expect(deps.updateOAuthAccessToken).toHaveBeenCalledWith('alice', 'garmin_personal', KEY, fresh)
+    expect(deps.upsertOAuthToken).not.toHaveBeenCalled()
   })
 
   test('a data call answering 401 forces one re-exchange and one retry', async () => {
@@ -171,13 +179,45 @@ describe('token handling', () => {
     await expect(client.getHeartRate('alice', new Date('2026-11-12'))).rejects.toBeInstanceOf(
       GarminKeyRefusedError,
     )
-    expect(deps.markOAuthTokenRefused).toHaveBeenCalledWith('alice', 'garmin_personal')
+    expect(deps.markOAuthTokenRefused).toHaveBeenCalledWith('alice', 'garmin_personal', KEY)
     expect(deps.auditError).toHaveBeenCalledWith('alice', 'auth', 'Garmin refused the Personal API key', {
       status: 401,
     })
 
     await expect(client.getHrv('alice', new Date('2026-11-12'))).rejects.toBeInstanceOf(GarminKeyRefusedError)
     expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  test('a key replaced during the exchange keeps its JWT and its refusal state', async () => {
+    const NEW_KEY = 'fake-api-key-replacement'
+    const replacement: OAuthToken = {
+      access_token: 'jwt-for-new-key',
+      provider: 'garmin_personal',
+      refresh_token: NEW_KEY,
+    }
+    const exchanged = (status: number, body = '') => {
+      let release: (res: Response) => void = () => {}
+      const pending = new Promise<Response>((resolve) => {
+        release = resolve
+      })
+      return { pending, release: () => release(reply(status, body)) }
+    }
+
+    for (const status of [200, 401]) {
+      const { client, deps, fetch, replaceRow, row } = setup()
+      const exchange = exchanged(status, status === 200 ? fakeJwt(hoursFromNow(24), 'old-key') : '')
+      fetch.mockImplementationOnce(() => exchange.pending)
+      fetch.mockResolvedValueOnce(json({ calendarDate: '2026-11-12' }))
+
+      const call = client.getHeartRate('alice', new Date('2026-11-12T00:00:00Z')).catch((e: unknown) => e)
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1))
+      replaceRow(replacement)
+      exchange.release()
+      await call
+
+      expect(row()).toEqual(replacement)
+      expect(deps.upsertOAuthToken).not.toHaveBeenCalled()
+    }
   })
 
   test('a 429 surfaces as an error naming 429', async () => {

@@ -8,7 +8,13 @@ import type {
   GarminSpo2Data,
 } from './client.ts'
 
-import { deleteOAuthToken, getOAuthToken, markOAuthTokenRefused, upsertOAuthToken } from '../../db/index.ts'
+import {
+  deleteOAuthToken,
+  getOAuthToken,
+  markOAuthTokenRefused,
+  updateOAuthAccessToken,
+  upsertOAuthToken,
+} from '../../db/index.ts'
 import { auditError } from '../../services/audit-log.ts'
 import { redactSecret } from './client.ts'
 import { parseGarminGmt } from './sleep-stages.ts'
@@ -43,7 +49,13 @@ export interface GarminPersonalClientDeps {
   getOAuthToken: (user: string, provider: string) => Promise<OAuthToken | null>
   upsertOAuthToken: (user: string, token: OAuthToken) => Promise<void>
   deleteOAuthToken: (user: string, provider: string) => Promise<boolean>
-  markOAuthTokenRefused: (user: string, provider: string) => Promise<void>
+  markOAuthTokenRefused: (user: string, provider: string, refreshToken?: string) => Promise<void>
+  updateOAuthAccessToken: (
+    user: string,
+    provider: string,
+    refreshToken: string,
+    accessToken: string,
+  ) => Promise<boolean>
   auditError: typeof auditError
   now: () => Date
 }
@@ -55,6 +67,7 @@ const defaultDeps = (): GarminPersonalClientDeps => ({
   getOAuthToken,
   markOAuthTokenRefused,
   now: () => new Date(),
+  updateOAuthAccessToken,
   upsertOAuthToken,
 })
 
@@ -140,18 +153,13 @@ export const garminPersonalClient = (overrides: Partial<GarminPersonalClientDeps
     const result = await exchange(apiKey)
     if ('status' in result) {
       if (isRefusal(result.status)) {
-        await deps.markOAuthTokenRefused(user, GARMIN_PERSONAL_PROVIDER)
+        await deps.markOAuthTokenRefused(user, GARMIN_PERSONAL_PROVIDER, apiKey)
         deps.auditError(user, 'auth', 'Garmin refused the Personal API key', { status: result.status })
         throw new GarminKeyRefusedError()
       }
       throw new GarminPersonalApiError(result.status, TOKEN_PATH)
     }
-    await deps.upsertOAuthToken(user, {
-      access_token: result.jwt,
-      expires_at: stored.expires_at,
-      provider: GARMIN_PERSONAL_PROVIDER,
-      refresh_token: apiKey,
-    })
+    await deps.updateOAuthAccessToken(user, GARMIN_PERSONAL_PROVIDER, apiKey, result.jwt)
     return result.jwt
   }
 

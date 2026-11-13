@@ -15,7 +15,7 @@ type OuraClient = ReturnType<typeof ouraClient>
 import type { CentralDb } from '../services/central-db.ts'
 import type { AnyMiddleware } from '../typed-router.ts'
 
-import { resetSyncState, upsertOAuthToken } from '../db/index.ts'
+import { markNotificationsReadByType, resetSyncState, upsertOAuthToken } from '../db/index.ts'
 import { auditError, auditInfo } from '../services/audit-log.ts'
 import { validateBody } from '../validation.ts'
 
@@ -28,6 +28,7 @@ interface OAuthRoutesDeps {
   gravl: GravlClient
   oura: OuraClient
   strava: StravaClient
+  markNotificationsReadByType?: (user: string, type: string) => Promise<number>
 }
 
 export const registerOAuthRoutes = ({
@@ -39,7 +40,16 @@ export const registerOAuthRoutes = ({
   gravl,
   oura,
   strava,
+  markNotificationsReadByType: markReadByType = (user, type) => markNotificationsReadByType(user, type),
 }: OAuthRoutesDeps): void => {
+  const clearGarminKeyReminders = async (user: string): Promise<void> => {
+    try {
+      await markReadByType(user, 'garmin_key_expiring')
+    } catch (error) {
+      auditError(user, 'auth', 'Could not mark Garmin key reminders read', { error: String(error) })
+    }
+  }
+
   httpd.get('/auth/oura/connect', authMiddleware, oura.getAuthorizeUrl)
   httpd.get('/auth/ouracb', oura.authCb)
 
@@ -135,6 +145,7 @@ export const registerOAuthRoutes = ({
       try {
         await garminPersonal.connect(user, api_key, new Date(`${expires_at}T00:00:00Z`))
         auditInfo(user, 'auth', 'Garmin Personal API key connected', { expires_at })
+        await clearGarminKeyReminders(user)
         res.json({ success: true })
       } catch (error) {
         if (error instanceof GarminKeyRefusedError) {
@@ -153,6 +164,7 @@ export const registerOAuthRoutes = ({
     const user = req.user!
     try {
       await garminPersonal.disconnect(user)
+      await clearGarminKeyReminders(user)
       res.json({ success: true })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Disconnect failed'
