@@ -206,6 +206,7 @@ export {
   insertLocations,
   insertNamedLocation,
   insertPlace,
+  softDeleteLocationsInTrackedActivities,
   softDeleteSupersededLocations,
   updateDetectedLocation,
   updateNamedLocation,
@@ -506,6 +507,7 @@ export {
   getAutoshareRules,
   getEnabledAutoshareRules,
   insertAutoshareRule,
+  insertAutoshareSuppressions,
   listAutoshareCandidates,
   listAutoshareSuppressedIds,
   updateAutoshareRule,
@@ -607,7 +609,7 @@ export {
   updateReport,
 } from './reports.ts'
 
-export { deleteOAuthToken, getOAuthToken, upsertOAuthToken } from './oauth.ts'
+export { deleteOAuthToken, getOAuthToken, markOAuthTokenRefused, upsertOAuthToken } from './oauth.ts'
 
 export { getAllSyncStates, getSyncState, resetSyncState, upsertSyncState } from './sync-state.ts'
 
@@ -778,6 +780,28 @@ export {
   repointItemValueAliases,
   upsertItemValueAlias,
 } from './item-value-aliases.ts'
+
+export type { NotificationPageRow, NotificationPreferenceRecord, NotificationRecord } from './types.ts'
+
+export {
+  countUnreadNotifications,
+  getNotificationById,
+  getNotificationPreference,
+  insertNotification,
+  listNotificationPreferences,
+  listNotifications,
+  type ListNotificationsOptions,
+  markAllNotificationsRead,
+  markNotificationRead,
+  type NotificationCursor,
+  type NotificationInsert,
+  type NotificationPreferencePatch,
+  type NotificationRevisionPatch,
+  type NotificationTarget,
+  pruneNotifications,
+  reviseNotification,
+  upsertNotificationPreference,
+} from './notifications.ts'
 
 export {
   deleteItemValueIdentity,

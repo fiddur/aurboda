@@ -1,17 +1,19 @@
 import { addDays, addMinutes, isFuture, subDays } from 'date-fns'
 
 import type { SyncState } from '../../db/types.ts'
-import type { GarminClient } from './client.ts'
+import type { GarminClient } from './source.ts'
 
 import {
   getActivitiesNeedingDetail,
-  getOAuthToken,
   getSyncState,
   markActivityDetailSynced,
   upsertSyncState,
 } from '../../db/index.ts'
 import { auditError, auditInfo } from '../../services/audit-log.ts'
 import { type GarminDataType, garminDataTypes, processActivityDetail, processGarminData } from './process.ts'
+import { hasGarminConnection } from './source.ts'
+
+export { hasGarminConnection } from './source.ts'
 
 const DEFAULT_SYNC_HISTORY_DAYS = 90
 
@@ -49,12 +51,6 @@ export const isRateLimited = (syncState: SyncState | null): boolean => {
   return isFuture(syncState.retry_after)
 }
 
-/** Disconnecting keeps the oauth_tokens row with an empty token, so the row alone does not mean connected. */
-export const hasGarminSession = async (user: string): Promise<boolean> => {
-  const stored = await getOAuthToken(user, 'garmin')
-  return stored !== null && stored.access_token !== ''
-}
-
 const syncDateRange = async (
   user: string,
   garmin: GarminClient,
@@ -79,13 +75,13 @@ const syncDateRange = async (
   return { totalRecords, dayErrors }
 }
 
-export const syncGarminDataType = async (
+/** No connection at all is an error; a type no connection serves is skipped, leaving sync_state alone. */
+const unsourcedResult = async (
   user: string,
   garmin: GarminClient,
   dataType: GarminDataType,
-  options?: { fullResync?: boolean; startDate?: Date },
-): Promise<SyncResult> => {
-  if (!(await hasGarminSession(user))) {
+): Promise<SyncResult | null> => {
+  if (!(await hasGarminConnection(user))) {
     return {
       data_type: dataType,
       error: 'User has no Garmin session. Please connect Garmin first.',
@@ -93,6 +89,20 @@ export const syncGarminDataType = async (
       status: 'error',
     }
   }
+  if ((await garmin.sourceFor(user, dataType)) === null) {
+    return { data_type: dataType, records_processed: 0, status: 'skipped' }
+  }
+  return null
+}
+
+export const syncGarminDataType = async (
+  user: string,
+  garmin: GarminClient,
+  dataType: GarminDataType,
+  options?: { fullResync?: boolean; startDate?: Date },
+): Promise<SyncResult> => {
+  const unsourced = await unsourcedResult(user, garmin, dataType)
+  if (unsourced) return unsourced
 
   const syncState = await getSyncState(user, 'garmin', dataType)
   if (isRateLimited(syncState)) {
@@ -233,6 +243,7 @@ export const syncActivityDetails = async (
     onTrackWritten?: TrackWrittenCallback
   } = {},
 ): Promise<void> => {
+  if ((await garmin.sourceFor(user, 'activityDetail')) === null) return
   const activities = await getActivitiesNeedingDetail(user, { forceAll: fullResync })
   if (activities.length === 0) return
 

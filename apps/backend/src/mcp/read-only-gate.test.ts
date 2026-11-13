@@ -11,12 +11,21 @@ describe('isToolAllowedWhenReadOnly', () => {
     'get_my_plan',
     'get_my_email',
     'set_my_email',
+    'list_notifications',
+    'mark_notification_read',
+    'mark_all_notifications_read',
   ])('allows %s', (name) => expect(isToolAllowedWhenReadOnly(name)).toBe(true))
 
-  test.each(['add_metric', 'update_activity', 'delete_note', 'sync_oura', 'set_tag_mapping'])(
-    'refuses %s',
-    (name) => expect(isToolAllowedWhenReadOnly(name)).toBe(false),
-  )
+  test.each([
+    'add_metric',
+    'update_activity',
+    'delete_note',
+    'sync_oura',
+    'set_tag_mapping',
+    'set_notification_preference',
+    'run_notification_action',
+    'skip_autoshare',
+  ])('refuses %s', (name) => expect(isToolAllowedWhenReadOnly(name)).toBe(false))
 })
 
 describe('readOnlyToolMessage', () => {

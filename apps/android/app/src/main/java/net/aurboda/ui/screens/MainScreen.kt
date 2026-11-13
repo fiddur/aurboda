@@ -7,6 +7,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -16,6 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import net.aurboda.MainTab
+import net.aurboda.badgeText
 
 data class BottomNavItem(
     val tab: MainTab,
@@ -31,7 +34,8 @@ fun MainScreen(
     addContent: @Composable (Modifier) -> Unit,
     feedContent: @Composable (Modifier) -> Unit,
     syncContent: @Composable (Modifier) -> Unit,
-    moreContent: @Composable (Modifier) -> Unit
+    moreContent: @Composable (Modifier) -> Unit,
+    unreadNotifications: Int = 0
 ) {
     val navItems = listOf(
         BottomNavItem(MainTab.Home, "Home", Icons.Default.Home),
@@ -48,7 +52,15 @@ fun MainScreen(
                     NavigationBarItem(
                         selected = currentTab == item.tab,
                         onClick = { onTabSelected(item.tab) },
-                        icon = { Icon(item.icon, contentDescription = item.label) },
+                        icon = {
+                            if (item.tab == MainTab.More && unreadNotifications > 0) {
+                                BadgedBox(badge = { Badge { Text(badgeText(unreadNotifications)) } }) {
+                                    Icon(item.icon, contentDescription = item.label)
+                                }
+                            } else {
+                                Icon(item.icon, contentDescription = item.label)
+                            }
+                        },
                         label = { Text(item.label) }
                     )
                 }

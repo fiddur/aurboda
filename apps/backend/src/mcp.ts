@@ -5,14 +5,17 @@
  *
  * Tool registrations are split into focused modules under mcp/.
  */
+import type { HomeAssistantSyncResult } from '@aurboda/api-spec'
+
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import { type ErrorRequestHandler, json, type Request, type Response, Router } from 'express'
 
 import type { Auth } from './auth.ts'
-import type { GarminClient } from './integrations/garmin/client.ts'
+import type { GarminClient } from './integrations/garmin/source.ts'
 import type { DetailSyncedCallback, TrackWrittenCallback } from './integrations/garmin/sync.ts'
 import type { GravlClient } from './integrations/gravl/client.ts'
+import type { HomeAssistantClient } from './integrations/home-assistant/client.ts'
 import type { ouraClient } from './integrations/oura/client.ts'
 import type { AutosharePreviewDeps } from './mcp/autoshare-rule-tools.ts'
 import type { FeedDeliver } from './routes/feed-router.ts'
@@ -21,6 +24,7 @@ import type { AccountPlans } from './services/account-plan.ts'
 import type { PostUpdateResender } from './services/activitypub/post-update-resend.ts'
 import type { AdminUsers } from './services/admin-users.ts'
 import type { ArticlePreviewer } from './services/article-preview.ts'
+import type { SkipAutoshare } from './services/autoshare-skip.ts'
 import type { CentralDb } from './services/central-db.ts'
 import type { DiscoverChallenges } from './services/challenge-discovery.ts'
 import type { DeductionEngineDeps } from './services/deduction-engine.ts'
@@ -30,6 +34,7 @@ import type { ReactionActions } from './services/feed-reactions.ts'
 import type { FollowerActions } from './services/followers.ts'
 import type { FollowActions } from './services/following.ts'
 import type { NamedLocationsChanged } from './services/locations.ts'
+import type { RunNotificationAction } from './services/notification-actions.ts'
 import type { PublicTagActions } from './services/public-tags.ts'
 import type { SyncProvider } from './services/queries/index.ts'
 import type { RelayActions } from './services/relays.ts'
@@ -61,6 +66,7 @@ import { registerLocationTools } from './mcp/location-tools.ts'
 import { registerMealTools } from './mcp/meal-tools.ts'
 import { registerMetricTools } from './mcp/metric-tools.ts'
 import { registerNoteTools } from './mcp/note-tools.ts'
+import { registerNotificationTools } from './mcp/notification-tools.ts'
 import { registerNutrientRecommendationTools } from './mcp/nutrient-recommendation-tools.ts'
 import { registerQueryTools } from './mcp/query-tools.ts'
 import { refuseMutatingTools } from './mcp/read-only-gate.ts'
@@ -125,6 +131,10 @@ interface McpDeps {
   adminUsers?: AdminUsers
   apiBaseUrl?: string
   autosharePreviewDeps?: AutosharePreviewDeps
+  /** `skip_autoshare`, and the handler behind the pending-share notification's action. */
+  skipAutoshare?: SkipAutoshare
+  /** `run_notification_action`. */
+  runNotificationAction?: RunNotificationAction
   centralDb?: CentralDb
   deductionQueue?: DeductionQueue
   /** Open challenges from followed peers (`discover_challenges`). */
@@ -135,6 +145,8 @@ interface McpDeps {
   followerActions?: FollowerActions
   garmin?: GarminClient
   gravl?: GravlClient
+  /** Home Assistant client behind `list_home_assistant_entities`. */
+  homeAssistant?: HomeAssistantClient
   /** Deleted accounts, whose stateless tokens still decode. */
   isDeletedUser?: (user: string) => boolean
   onActivityMutated?: ActivityNotifier
@@ -157,6 +169,11 @@ interface McpDeps {
   requestDumpLink?: DumpLinkIssuer
   stravaQueue?: StravaQueue
   sync?: SyncProvider
+  /** The Home Assistant location pull, bound to its deps (`sync_home_assistant`). */
+  syncHomeAssistant?: (
+    user: string,
+    options?: { fullResync?: boolean; startDate?: Date },
+  ) => Promise<HomeAssistantSyncResult>
   webHost?: string
 }
 
@@ -176,7 +193,9 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   registerActivityTools(server, user, deps.onActivityMutated)
   registerActivityTypeTools(server, user)
   registerDeductionRuleTools(server, user, engineDeps, deps.deductionQueue)
-  if (deps.autosharePreviewDeps) registerAutoshareRuleTools(server, user, deps.autosharePreviewDeps)
+  if (deps.autosharePreviewDeps) {
+    registerAutoshareRuleTools(server, user, deps.autosharePreviewDeps, deps.skipAutoshare)
+  }
   registerSyncTools(
     server,
     user,
@@ -187,6 +206,8 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     deps.gravl,
     deps.onActivityDetailSynced,
     deps.onTrackWritten,
+    deps.syncHomeAssistant,
+    deps.homeAssistant,
   )
   registerSettingsTools(server, user, deps.onHrSettingsChanged, deps.onProfileChanged)
   registerLocationTools(server, user, deps.onNamedLocationsChanged)
@@ -195,6 +216,12 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   registerTrendTools(server, user)
   registerChartTools(server, user)
   registerNoteTools(server, user)
+  registerNotificationTools(
+    server,
+    user,
+    deps.centralDb?.isAdmin ?? (async () => false),
+    deps.runNotificationAction,
+  )
   registerMealTools(server, user)
   registerNutrientRecommendationTools(server, user)
   if (deps.centralDb) {

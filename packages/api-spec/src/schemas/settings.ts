@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import { defaultFeedTags, maxPostTags } from '../hashtags.ts'
-import { baseResponseSchema, hrZoneSourceSchema, iso8601DateTimeSchema } from './common.ts'
+import { baseResponseSchema, dateOnlySchema, hrZoneSourceSchema, iso8601DateTimeSchema } from './common.ts'
 import { dashboardConfigSchema } from './dashboard.ts'
 import { hashtagInputSchema } from './feed.ts'
 import { goalsSchema } from './goals.ts'
@@ -47,10 +47,48 @@ export const gravlApiTokenSchema = z.string().min(1, 'Gravl API token cannot be 
   description: 'Gravl personal access token (gat_…), used when no OAuth grant exists',
 })
 
+export const homeAssistantUrlSchema = z
+  .string()
+  .url()
+  .refine(
+    (value) => {
+      try {
+        const url = new URL(value)
+        return (
+          (url.protocol === 'http:' || url.protocol === 'https:') &&
+          url.username === '' &&
+          url.password === '' &&
+          url.search === '' &&
+          url.hash === ''
+        )
+      } catch {
+        return false
+      }
+    },
+    { message: 'Home Assistant URL must be an http(s) URL without credentials, query or fragment' },
+  )
+  .meta({
+    description: 'Base URL of the Home Assistant server, as reachable from the Aurboda server',
+    example: 'https://ha.example.org',
+  })
+
+export const homeAssistantTokenSchema = z.string().min(1, 'Home Assistant token cannot be empty').meta({
+  description: 'Home Assistant long-lived access token',
+})
+
+export const homeAssistantEntityIdSchema = z
+  .string()
+  .regex(/^(device_tracker|person)\.[a-z0-9_]+$/, 'Must be a device_tracker.* or person.* entity id')
+  .meta({
+    description: 'Home Assistant entity that carries the phone position (device_tracker.* or person.*)',
+    example: 'device_tracker.pixel_8',
+  })
+
 export const syncIntervalsSchema = z
   .record(
     z.string().meta({
-      description: 'Provider name (gravl, garmin, oura, rescuetime, lastfm, calendar) or "default"',
+      description:
+        'Provider name (gravl, garmin, oura, rescuetime, lastfm, calendar, home_assistant) or "default"',
     }),
     z.number().int().min(5).max(1440).meta({ description: 'Poll interval in minutes (5–1440)' }),
   )
@@ -238,10 +276,36 @@ export const updateSettingsInputSchema = z
       description:
         'Background sync poll intervals in minutes per provider (set to null to reset to server defaults)',
     }),
+    home_assistant_url: homeAssistantUrlSchema.nullable().optional().meta({
+      description: 'Home Assistant base URL, as reachable from the Aurboda server (set to null to clear)',
+    }),
+    home_assistant_token: homeAssistantTokenSchema.nullable().optional().meta({
+      description:
+        'Home Assistant long-lived access token (set to null to clear). Write-only: never returned by the settings API. Cleared when home_assistant_url moves to another origin without a new token in the same update.',
+    }),
+    home_assistant_entity_id: homeAssistantEntityIdSchema.nullable().optional().meta({
+      description:
+        'Home Assistant device_tracker.* or person.* entity to pull locations from (set to null to clear)',
+    }),
   })
   .meta({ id: 'UpdateSettingsInput' })
 
 export type UpdateSettingsInput = z.infer<typeof updateSettingsInputSchema>
+
+export const garminPersonalKeyStatusSchema = z
+  .object({
+    available: z.boolean().meta({
+      description: 'Whether this server lets users connect a Garmin Personal API key (admin setting)',
+    }),
+    connected: z.boolean().meta({ description: 'Whether a Garmin Personal API key is stored' }),
+    expires_at: dateOnlySchema.nullable().meta({
+      description: 'The expiry date entered with the key, or null when no key is stored',
+    }),
+    refused: z.boolean().meta({ description: 'Whether Garmin refused the stored key (it needs replacing)' }),
+  })
+  .meta({ description: 'Status of the Garmin Personal API key connection', id: 'GarminPersonalKeyStatus' })
+
+export type GarminPersonalKeyStatus = z.infer<typeof garminPersonalKeyStatusSchema>
 
 export const userSettingsResponseSchema = baseResponseSchema
   .extend({
@@ -269,7 +333,17 @@ export const userSettingsResponseSchema = baseResponseSchema
     garmin_connected: z
       .boolean()
       .default(false)
-      .meta({ description: 'Whether Garmin Connect is connected via stored session' }),
+      .meta({ description: 'Whether Garmin is connected, by login session or Personal API key' }),
+    garmin_session_connected: z
+      .boolean()
+      .default(false)
+      .meta({ description: 'Whether Garmin is connected by a Garmin Connect login session' }),
+    garmin_personal_key: garminPersonalKeyStatusSchema.default({
+      available: true,
+      connected: false,
+      expires_at: null,
+      refused: false,
+    }),
     garmin_disabled_data_types: z
       .array(garminDataTypeSchema)
       .default([])
@@ -315,6 +389,16 @@ export const userSettingsResponseSchema = baseResponseSchema
     }),
     gravl_connection: z.enum(['oauth', 'token']).nullable().default(null).meta({
       description: 'How Gravl is connected: an OAuth grant, a personal token, or null when not connected',
+    }),
+    home_assistant_url: z.string().nullable().default(null).meta({ description: 'Home Assistant base URL' }),
+    home_assistant_entity_id: z
+      .string()
+      .nullable()
+      .default(null)
+      .meta({ description: 'Home Assistant entity locations are pulled from' }),
+    home_assistant_token_set: z.boolean().default(false).meta({
+      description:
+        'Whether a Home Assistant access token is stored (the settings API never returns the token itself)',
     }),
     rescue_time_key: z.string().nullable().default(null).meta({ description: 'RescueTime API key' }),
     strava_connected: z

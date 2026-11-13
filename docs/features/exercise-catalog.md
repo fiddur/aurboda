@@ -1,6 +1,6 @@
 # Exercise catalogue
 
-Aurboda ships a built-in, versioned catalogue of strength exercises: names, aliases, the equipment
+Aurboda ships a built-in, versioned catalogue of strength, stretching and plyometric exercises: names, aliases, the equipment
 each uses and the muscles it works. It is data in the repository, the same on every server, and read
 only. Each exercise has a stable **key** such as `dumbbell_bench_press`.
 

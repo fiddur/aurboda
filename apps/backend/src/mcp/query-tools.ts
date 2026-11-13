@@ -459,7 +459,7 @@ Each play has url, title, artist, album, player, device, started_at/ended_at, pl
 
   server.tool(
     'query_locations',
-    'Query location/place visits for a time range. Returns places visited with names, coordinates, duration, and source (named, detected, or owntracks). With last_known_hours, a range that starts before its first GPS fix gets the place of the last earlier fix, marked inferred_from.',
+    'Query location/place visits for a time range. Returns places visited with names, coordinates, duration, and source (named, detected, owntracks or home_assistant region, or unknown). With last_known_hours, a range that starts before its first GPS fix gets the place of the last earlier fix, marked inferred_from.',
     { ...locationsQuerySchema.shape, tz: tzSchema },
     async ({ end, last_known_hours, start, tz }) => {
       const places = await queryLocations(user, new Date(start), new Date(end), {

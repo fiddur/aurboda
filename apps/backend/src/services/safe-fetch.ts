@@ -7,10 +7,12 @@ import axios, { type AxiosRequestConfig, type AxiosResponse, isAxiosError } from
  * resolve the host and refuse private/loopback/link-local/reserved targets, and
  * we disable redirect-following so a 3xx can't bounce the request to an internal
  * address. This does not defend against DNS rebinding (TOCTOU) — acceptable for
- * v1; signed instance-to-instance requests are the longer-term hardening.
+ * v1; signed instance-to-instance requests are the longer-term hardening. A
+ * caller that needs that defence gives its agent `createPublicOnlyLookup`.
  */
+import dnsCallback from 'node:dns'
 import dns from 'node:dns/promises'
-import net from 'node:net'
+import net, { type LookupFunction } from 'node:net'
 
 const DEFAULT_TIMEOUT_MS = 8000
 
@@ -96,6 +98,30 @@ export const assertPublicUrl = async (rawUrl: string): Promise<void> => {
     }
   }
 }
+
+/**
+ * A `lookup` for an http(s) agent that refuses a host resolving to a blocked
+ * address. `assertPublicUrl` checks one resolution and the request then makes
+ * its own, so a name that alternates between a public and an internal address
+ * passes the check and connects inside; with this lookup the address that was
+ * checked is the one connected to. A literal IP never reaches a lookup, which
+ * leaves it to `assertPublicUrl`.
+ */
+export const createPublicOnlyLookup =
+  (lookup: LookupFunction = dnsCallback.lookup): LookupFunction =>
+  (hostname, options, callback) =>
+    lookup(hostname, options, (error, address, family) => {
+      if (error) return callback(error, address, family)
+      const addresses = typeof address === 'string' ? [address] : address.map((a) => a.address)
+      if (addresses.length === 0 || addresses.some(isBlockedAddress)) {
+        return callback(
+          new SafeFetchError('Refusing to connect to a private/loopback/reserved address', 'private_address'),
+          address,
+          family,
+        )
+      }
+      return callback(null, address, family)
+    })
 
 const MAX_RESPONSE_BYTES = 1_000_000 // federation payloads are small; cap to avoid memory exhaustion
 

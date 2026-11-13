@@ -134,13 +134,13 @@ Location tracking with geospatial support.
 ```sql
 CREATE TABLE locations (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    source          VARCHAR(50) NOT NULL DEFAULT 'owntracks',
+    source          VARCHAR(50) NOT NULL DEFAULT 'owntracks', -- owntracks, home_assistant, garmin, strava
     time            TIMESTAMPTZ NOT NULL,
     location        GEOGRAPHY(POINT, 4326) NOT NULL,
     accuracy        DOUBLE PRECISION,      -- Horizontal accuracy in meters
     altitude        DOUBLE PRECISION,      -- Meters above sea level
-    velocity        DOUBLE PRECISION,      -- Speed in m/s
-    regions         VARCHAR[] DEFAULT '{}', -- Named regions device is in
+    velocity        DOUBLE PRECISION,      -- Speed in km/h (OwnTracks' vel unit)
+    regions         VARCHAR[] DEFAULT '{}', -- Named regions / Home Assistant zone the device is in
     deleted_at      TIMESTAMPTZ,           -- Soft delete (superseded by an activity's GPS track)
 
     CONSTRAINT unique_location UNIQUE (source, time)
@@ -544,6 +544,12 @@ Record types mapped to normalized tables:
 | ------------ | ------------ |
 | location     | locations    |
 | waypoint     | places       |
+
+### Home Assistant
+
+| Data                                      | Target Table                                               |
+| ----------------------------------------- | ---------------------------------------------------------- |
+| `device_tracker` / `person` state history | locations (`source = 'home_assistant'`, zone in `regions`) |
 
 ## Future Extensions
 

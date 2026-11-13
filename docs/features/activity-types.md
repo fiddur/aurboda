@@ -244,7 +244,9 @@ The MCP twins are `merge_item_values`, `list_item_value_aliases` and `delete_ite
 An item field whose data schema names a `catalog` (the built-in `strength_training` sets
 `catalog: 'exercises'` on `sets.exercise`) gives every logged name an **identity**: an entry of the
 [exercise catalogue](./exercise-catalog.md), or an explicit unmapped state. The identity sits on
-the **name**, per user and per item path, and is resolved on read; no activity is rewritten.
+the **name**, per user and per item path, and is resolved on read; no activity is rewritten. Like
+item value aliases, it is not per activity type: two types that both have `sets.exercise` share
+the identities of its names.
 
 | State       | Meaning                                                               | `catalog_key` |
 | ----------- | --------------------------------------------------------------------- | ------------- |

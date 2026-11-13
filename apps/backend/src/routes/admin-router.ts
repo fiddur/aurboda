@@ -32,6 +32,7 @@ import type { OuraWebhookManager } from '../services/oura-webhook-manager.ts'
 import type { PublicTagActions } from '../services/public-tags.ts'
 import type { RelayActions } from '../services/relays.ts'
 
+import { readGarminPersonalKeyEnabled } from '../integrations/garmin/source.ts'
 import { accountDeletionStatus } from '../services/account-deletion.ts'
 import { readBillingSettings } from '../services/account-plan.ts'
 import {
@@ -91,6 +92,7 @@ export const createAdminRouter = (
       publicTagRetentionDays,
       publicTagFollows,
       contacts,
+      garminPersonalKeyEnabled,
     ] = await Promise.all([
       centralDb.getSignupMode(),
       centralDb.getAdminCount(),
@@ -112,6 +114,7 @@ export const createAdminRouter = (
       readPublicTagRetentionDays(centralDb),
       readPublicTagFollows(centralDb),
       readSupportContacts(centralDb),
+      readGarminPersonalKeyEnabled(centralDb),
     ])
     return {
       admin_count: adminCount,
@@ -119,6 +122,7 @@ export const createAdminRouter = (
       billing_enabled: billing.enabled,
       contact_fediverse: contacts.contact_fediverse,
       contact_reddit: contacts.contact_reddit,
+      garmin_personal_key_enabled: garminPersonalKeyEnabled,
       grace_days: billing.grace_days,
       gravl_client_id_set: !!gravlClientId,
       gravl_client_secret_set: !!gravlClientSecret,
@@ -168,6 +172,7 @@ export const createAdminRouter = (
         blog_username,
         contact_fediverse,
         contact_reddit,
+        garmin_personal_key_enabled,
         grace_days,
         gravl_client_id,
         gravl_client_secret,
@@ -257,6 +262,9 @@ export const createAdminRouter = (
       }
       if (contact_reddit !== undefined) {
         await centralDb.setServerSetting('contact_reddit', contact_reddit)
+      }
+      if (garmin_personal_key_enabled !== undefined) {
+        await centralDb.setServerSetting('garmin_personal_key_enabled', garmin_personal_key_enabled)
       }
       if (public_tag_retention_days !== undefined) {
         await centralDb.setServerSetting('public_tag_retention_days', public_tag_retention_days)

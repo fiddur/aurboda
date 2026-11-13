@@ -30,6 +30,8 @@ import {
 } from '../../db/index.ts'
 import {
   combineMeasures,
+  fieldValue,
+  type FieldValue,
   groupItemsByKey,
   type ItemGroup,
   listFieldOf,
@@ -42,8 +44,6 @@ import {
 } from '../activity-measures.ts'
 import { getEffectiveHrZones } from '../settings.ts'
 import { mergeHistograms, summarizeHistogram, type ValueDistributionRow } from './value-histogram.ts'
-
-type FieldValue = string | number | boolean
 
 export interface ItemPath {
   field: string
@@ -88,14 +88,6 @@ const median = (values: number[]): number | undefined => {
 const numberFromData = (data: Record<string, unknown> | undefined, key: string): number | undefined => {
   const v = data?.[key]
   return typeof v === 'number' && Number.isFinite(v) ? v : undefined
-}
-
-/** A usable field value: a non-empty (trimmed) string, a finite number or a boolean. */
-export const fieldValue = (v: unknown): FieldValue | undefined => {
-  if (typeof v === 'string') return v.trim() === '' ? undefined : v.trim()
-  if (typeof v === 'number') return Number.isFinite(v) ? v : undefined
-  if (typeof v === 'boolean') return v
-  return undefined
 }
 
 export const toValueDistribution = (row: ValueDistributionRow): ValueDistribution => ({

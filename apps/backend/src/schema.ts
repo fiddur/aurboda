@@ -13,6 +13,7 @@ import { activityFeaturesTables } from './schema/activity-features.ts'
 import { locationsTables } from './schema/locations.ts'
 import { mealsTables } from './schema/meals.ts'
 import { metricsTables } from './schema/metrics.ts'
+import { notificationsTables } from './schema/notifications.ts'
 import { productivityTables } from './schema/productivity.ts'
 import { reportsTables } from './schema/reports.ts'
 import { socialTables } from './schema/social.ts'
@@ -54,6 +55,7 @@ export const createTableStatements: Record<string, string> = {
   ...locationsTables,
   ...mealsTables,
   ...metricsTables,
+  ...notificationsTables,
   ...productivityTables,
   ...reportsTables,
   ...socialTables,
@@ -141,6 +143,7 @@ export const tableCreationOrder = [
   'report_entries',
   'report_entries_indexes',
   'oauth_tokens',
+  'oauth_tokens_refused_at',
   'sync_state',
   'uploaded_icons',
   'custom_metrics',
@@ -189,6 +192,7 @@ export const tableCreationOrder = [
   'autoshare_rules_max_age_hours',
   'autoshare_rules_include_exercises',
   'autoshare_rules_tags',
+  'autoshare_rules_delay_minutes',
   'autoshare_suppressions',
   'feed_posts_indexes',
   'feed_posts_keyset_index',
@@ -234,6 +238,10 @@ export const tableCreationOrder = [
   'deduction_rule_runs_indexes',
   'webauthn_credentials',
   'webauthn_credentials_indexes',
+  'notifications',
+  'notifications_actions',
+  'notifications_indexes',
+  'notification_preferences',
 ]
 
 // Health Connect mappings are in schema-health-connect.ts — re-export for convenience

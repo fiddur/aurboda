@@ -11,6 +11,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material3.Badge
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -21,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import net.aurboda.CredentialsManager
 import net.aurboda.MoreDestination
+import net.aurboda.badgeText
 
 data class MoreItem(val label: String, val destination: MoreDestination)
 
@@ -32,11 +34,16 @@ data class MoreItem(val label: String, val destination: MoreDestination)
 fun embeddedPageUrl(serverUrl: String, path: String): String {
     val absolute = path.startsWith("http://") || path.startsWith("https://")
     val page = if (absolute) path else "${serverUrl.trimEnd('/')}$path"
-    val separator = if (page.contains('?')) '&' else '?'
-    return "$page${separator}embed=1"
+    val hashAt = page.indexOf('#')
+    val base = if (hashAt >= 0) page.substring(0, hashAt) else page
+    val fragment = if (hashAt >= 0) page.substring(hashAt) else ""
+    val separator = if (base.contains('?')) '&' else '?'
+    return "$base${separator}embed=1$fragment"
 }
 
 data class MoreGroup(val header: String, val items: List<MoreItem>)
+
+private val NOTIFICATIONS_DESTINATION = MoreDestination.Web("/notifications")
 
 /**
  * The "More" hub contents: everything not on the bottom bar. Most entries open
@@ -44,6 +51,7 @@ data class MoreGroup(val header: String, val items: List<MoreItem>)
  * sync with the web navigation (see apps/web/src/components/nav-links.ts).
  */
 val moreGroups: List<MoreGroup> = listOf(
+    MoreGroup("Inbox", listOf(MoreItem("Notifications", NOTIFICATIONS_DESTINATION))),
     MoreGroup(
         "Explore",
         listOf(
@@ -109,9 +117,11 @@ fun MoreScreen(
     onServerUrlChange: (String) -> Unit,
     onLogout: () -> Unit,
     modifier: Modifier = Modifier,
+    onOpenWebPage: (String) -> Unit = {},
+    unreadNotifications: Int = 0,
 ) {
     when (val dest = destination) {
-        null -> MoreHub(onSelect = onSelect, modifier = modifier)
+        null -> MoreHub(onSelect = onSelect, unreadNotifications = unreadNotifications, modifier = modifier)
         else -> {
             BackHandler { onBack() }
             when (dest) {
@@ -132,6 +142,7 @@ fun MoreScreen(
                         serverUrl = credentials.serverUrl,
                         onServerUrlChange = onServerUrlChange,
                         onLogout = onLogout,
+                        onChooseNotificationKinds = { onOpenWebPage("/settings#notifications") },
                         modifier = modifier,
                     )
             }
@@ -140,7 +151,11 @@ fun MoreScreen(
 }
 
 @Composable
-private fun MoreHub(onSelect: (MoreDestination) -> Unit, modifier: Modifier = Modifier) {
+private fun MoreHub(
+    onSelect: (MoreDestination) -> Unit,
+    unreadNotifications: Int,
+    modifier: Modifier = Modifier,
+) {
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -166,6 +181,9 @@ private fun MoreHub(onSelect: (MoreDestination) -> Unit, modifier: Modifier = Mo
                         style = MaterialTheme.typography.bodyLarge,
                         modifier = Modifier.weight(1f),
                     )
+                    if (item.destination == NOTIFICATIONS_DESTINATION && unreadNotifications > 0) {
+                        Badge(modifier = Modifier.padding(end = 8.dp)) { Text(badgeText(unreadNotifications)) }
+                    }
                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
                 }
                 HorizontalDivider()

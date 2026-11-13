@@ -196,6 +196,11 @@
             </intent-filter>
         </receiver>
 
+        <!-- Action buttons on server notifications -->
+        <receiver
+            android:name=".NotificationActionReceiver"
+            android:exported="false" />
+
         <!-- FileProvider for APK installation -->
         <provider
             android:name="androidx.core.content.FileProvider"

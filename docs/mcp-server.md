@@ -15,7 +15,7 @@ Key areas covered by MCP tools:
 - **Activity types** -- manage custom activity type definitions
 - **Deduction rules** -- create rules that auto-generate activities from data conditions
 - **Screentime** -- manage category rules and recategorize
-- **Sync** -- trigger data syncs from Garmin, Oura, Strava, Gravl, Last.fm, RescueTime, calendars
+- **Sync** -- trigger data syncs from Garmin, Oura, Strava, Gravl, Home Assistant, Last.fm, RescueTime, calendars
 - **Settings** -- user preferences, HR zones, training load configuration
 - **Export** -- `export_data_dump` links a download of your whole database as SQL ([data export](data-export.md))
 - **Account** -- `delete_my_account` deletes your account for good; admins can `delete_user` ([deleting accounts](admin.md#deleting-accounts))
@@ -25,7 +25,10 @@ Key areas covered by MCP tools:
 The `tools/list` answer is abbreviated to keep it small: each tool shows the first sentence of its description and its top-level parameters only, each with its type, enum, format and a one-line description. Nested objects and arrays appear as `object` or `array` (with the item type), without their inner fields. `describe_tools` returns the full description and the complete JSON input schema -- nested objects, enums, formats, examples -- for up to 20 tool names, and lists any names it does not know under `unknown`. The server's `initialize` instructions tell the assistant to call it before using a tool whose parameters are objects or arrays. It is the one MCP tool without a REST twin: it is protocol plumbing, and REST's equivalent is the OpenAPI document.
 
 ```json
-{ "name": "describe_tools", "arguments": { "names": ["add_deduction_rule", "query_chart_data"] } }
+{
+  "name": "describe_tools",
+  "arguments": { "names": ["add_deduction_rule", "query_chart_data"] }
+}
 ```
 
 ### Sleep tools
@@ -127,6 +130,28 @@ model.
 | `query_notes` | Every comment anchored in a `from`/`to` time range -- threads nested, replies never listed separately                                                                                                                                                    |
 | `update_note` | Change a comment's content; `start_time`/`end_time` only on a `time` comment, and moving one moves its whole thread                                                                                                                                      |
 | `delete_note` | Delete a comment; deleting a thread root deletes its replies too                                                                                                                                                                                         |
+
+### Notification tools
+
+The bell's notifications and per-type switches. See [Notifications](features/notifications.md).
+
+| Tool                          | What it does                                                                                                                          |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_notifications`          | Newest first with `unread_count` and `next_cursor`; `unread_only`, `after` and `push_only` filter, like `GET /notifications`          |
+| `mark_notification_read`      | Mark one notification read by `id`                                                                                                    |
+| `mark_all_notifications_read` | Mark every unread notification read                                                                                                   |
+| `list_notification_types`     | The types this user can receive with their in-app and push switches                                                                   |
+| `set_notification_preference` | Turn a `type` on or off in-app and/or as a push                                                                                       |
+| `run_notification_action`     | Run one of a notification's `actions` by `id` and `key` (the keys come from `list_notifications`), e.g. `skip` on `autoshare_pending` |
+
+### Auto-share tools
+
+The rules that publish new activities to the feed. See [Auto-share rules](features/auto-share-rules.md).
+
+| Tool                                                                                                                     | What it does                                                                                            |
+| ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `list_autoshare_rules`, `add_autoshare_rule`, `update_autoshare_rule`, `delete_autoshare_rule`, `preview_autoshare_rule` | Manage the rules, like `/autoshare-rules`                                                               |
+| `skip_autoshare`                                                                                                         | Keep one activity (`activity_id`) and its merge group from being auto-shared; fails when already shared |
 
 ## Endpoint
 

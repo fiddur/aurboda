@@ -1,6 +1,6 @@
 import type { DataItemFieldDefinition } from '@aurboda/api-spec'
 
-import { useRef, useState } from 'preact/hooks'
+import { useEffect, useState } from 'preact/hooks'
 
 import { KnownValuesInput } from './KnownValuesInput'
 import {
@@ -137,10 +137,13 @@ export const ListFieldEditor = ({
   activityType?: string
 }) => {
   const [expanded, setExpanded] = useState(false)
-  const sticky = useRef<ReadonlySet<string>>(new Set())
+  const [sticky, setSticky] = useState<ReadonlySet<string>>(new Set())
   const items = field.item_fields
-  const visible = withStickyItemFields(items, sticky.current, visibleItemFields(items, rows, expanded))
-  sticky.current = new Set(visible.map((item) => item.name))
+  const visible = withStickyItemFields(items, sticky, visibleItemFields(items, rows, expanded))
+  const visibleNames = visible.map((item) => item.name).join('\n')
+  useEffect(() => {
+    setSticky(new Set(visibleNames.split('\n')))
+  }, [visibleNames])
   const hiddenCount = items.length - visible.length
   const collapsible = expanded && visibleItemFields(items, rows, false).length < items.length
   return (
@@ -225,7 +228,7 @@ export const ListFieldEditor = ({
             class="list-field-editor-more"
             aria-expanded={expanded}
             onClick={() => {
-              if (expanded) sticky.current = new Set()
+              if (expanded) setSticky(new Set())
               setExpanded(!expanded)
             }}
           >

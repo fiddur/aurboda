@@ -8,6 +8,13 @@ export interface BaselineDeltas {
   stress_delta_from_baseline: number | null
 }
 
+export const humanizeName = (name: string): string =>
+  name
+    .split('_')
+    .filter((w) => w.length > 0)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ')
+
 export const mean = (values: number[]): number | null => {
   if (values.length === 0) return null
   return values.reduce((a, b) => a + b, 0) / values.length
