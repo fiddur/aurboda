@@ -21,9 +21,10 @@
  *   mass-publishing that history. A delayed sync of a workout done after
  *   enabling still shares — the case that matters.
  * - **Recent activities only**: a rule shares an activity only when it ended
- *   at most the rule's `max_age_hours` before the evaluation, so a history
- *   update that makes old activities newly match (an enrich run, a re-sync, an
- *   import) can never publish them.
+ *   at most the rule's `max_age_hours` before it arrived, so a history update
+ *   that makes old activities newly match (an enrich run, a re-sync, an
+ *   import) can never publish them. The waits before sharing do not count
+ *   against it (see {@link ruleEndedAfter}).
  * - **Bounded blast radius**: at most {@link MAX_POSTS_PER_RUN} posts per
  *   evaluation run — federated deliveries can't be recalled, so even a bug or
  *   an unexpectedly wide window can only leak a handful of posts, visibly
@@ -209,14 +210,29 @@ export const groupNotBefore = (
 export const ruleReadyAt = (group: AutoshareCandidate[], rule: AutoshareRuleRecord): Date =>
   new Date(youngestIngest(group) + rule.delay_minutes * 60_000)
 
+/** The longest a group sits between arriving and being shared: the rule's wait, or the Garmin detail wait and its last re-check. */
+const ruleWaitBudgetMs = (rule: AutoshareRuleRecord): number =>
+  (rule.delay_minutes * 60 + DETAIL_WAIT_SECONDS + STABILISATION_SECONDS) * 1000
+
 /**
  * The earliest end time a rule shares: after its enable (no retroactive
  * sharing) and within its max age (no history updates). Null for a rule that
  * was never enabled.
+ *
+ * The max age is measured from when the group arrived (`arrivedAt`, its
+ * youngest member's ingest), not from the evaluation: the evaluation runs a
+ * rule's `delay_minutes` later, and measuring from it would let a long wait
+ * eat the max age, so that an announced activity is never shared. An arrival
+ * further back than any wait can explain is a group that only now started
+ * matching (an edit, an enrich run over history), and that is measured from
+ * the evaluation less the wait budget. Without `arrivedAt` the result is that
+ * lower bound, the loosest cutoff any group can get.
  */
-export const ruleEndedAfter = (rule: AutoshareRuleRecord, now: Date): Date | null => {
+export const ruleEndedAfter = (rule: AutoshareRuleRecord, now: Date, arrivedAt?: Date): Date | null => {
   if (rule.enabled_at == null) return null
-  return new Date(Math.max(rule.enabled_at.getTime(), now.getTime() - rule.max_age_hours * 3_600_000))
+  const earliest = now.getTime() - ruleWaitBudgetMs(rule)
+  const measuredFrom = Math.max(earliest, Math.min(arrivedAt?.getTime() ?? earliest, now.getTime()))
+  return new Date(Math.max(rule.enabled_at.getTime(), measuredFrom - rule.max_age_hours * 3_600_000))
 }
 
 /**
@@ -248,7 +264,7 @@ const matchGroup = async <Member extends AutoshareCandidate>(
   group: Member[],
   anchor: Member,
   ingestEligible: AutoshareRuleRecord[],
-  cutoffs: Map<AutoshareRuleRecord, number>,
+  now: Date,
   deps: AutoshareDeps<Member>,
 ): Promise<AutoshareRuleRecord | undefined> => {
   const window = await deps.resolveWindow(user, anchor)
@@ -260,10 +276,11 @@ const matchGroup = async <Member extends AutoshareCandidate>(
   // FRESH rows, which passes gate 1; this keeps that history off the feed —
   // and within the rule's max age, so a history update that makes old
   // activities newly match never publishes them. A delayed sync of a workout
-  // done after enabling still shares while it is within the max age.
+  // done after enabling still shares while it arrived within the max age.
+  const arrivedAt = new Date(youngestIngest(group))
   const eligibleRules = ingestEligible.filter((rule) => {
-    const cutoff = cutoffs.get(rule)
-    return cutoff != null && windowEnd.getTime() >= cutoff
+    const cutoff = ruleEndedAfter(rule, now, arrivedAt)
+    return cutoff != null && windowEnd.getTime() >= cutoff.getTime()
   })
   if (eligibleRules.length === 0) return undefined
 
@@ -305,15 +322,13 @@ const walkAutoshareWindow = async <Member extends AutoshareCandidate>(
 ): Promise<WalkResult> => {
   const result: WalkResult = { announced: 0, created: 0 }
   const rules = await deps.getEnabledRules(user)
-  const cutoffs = new Map(
-    rules.flatMap((rule) => {
-      const cutoff = ruleEndedAfter(rule, now)
-      return cutoff == null ? [] : [[rule, cutoff.getTime()] as const]
-    }),
-  )
-  if (cutoffs.size === 0) return result
+  const loosestCutoffs = rules.flatMap((rule) => {
+    const cutoff = ruleEndedAfter(rule, now)
+    return cutoff == null ? [] : [cutoff.getTime()]
+  })
+  if (loosestCutoffs.length === 0) return result
 
-  const candidates = await deps.listCandidates(user, start, end, new Date(Math.min(...cutoffs.values())))
+  const candidates = await deps.listCandidates(user, start, end, new Date(Math.min(...loosestCutoffs)))
   if (candidates.length === 0) return result
 
   const evaluating = mode.kind === 'evaluate'
@@ -358,12 +373,14 @@ const walkAutoshareWindow = async <Member extends AutoshareCandidate>(
       }
     }
 
-    const rule = await matchGroup(user, group, anchor, ingestEligible, cutoffs, deps)
+    const rule = await matchGroup(user, group, anchor, ingestEligible, now, deps)
     if (!rule) continue
 
     const readyAt = ruleReadyAt(group, rule)
     const rulePending = readyAt.getTime() > now.getTime()
     if (settling == null && !rulePending && evaluating) {
+      // "Don't share" may have landed while the group was being matched.
+      if ((await deps.suppressedActivityIds(user, groupIds)).length > 0) continue
       const post = await deps.createPost(user, anchor, rule)
       deps.onCreated(user, post, anchor)
       await swallow('shared hook', user, async () => deps.shared?.(user, post, group))

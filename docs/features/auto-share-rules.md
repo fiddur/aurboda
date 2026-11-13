@@ -23,11 +23,13 @@ A per-user set of rules, each combining a **predicate** and a **share template**
   member replaced by another member — the synced row behind an edit's override — is
   left out, so a value you corrected or cleared never comes back from the original.
 - **Max age** (`max_age_hours`, default 24, 1 to 8760): a rule shares an activity only
-  when it _ended_ at most this many hours before the rule looks at it. A history update
-  that makes old activities newly match — an enrich rule run over history that adds
-  `session_name`, a re-sync, an import — therefore never publishes them. The flip side:
-  an activity whose phone sync is delayed past the max age is not shared either. Rules
-  created before the field existed have 24.
+  when it _ended_ at most this many hours before it _arrived_ (its youngest merge-group
+  member's ingest). The waits before sharing — the rule's own wait, the Garmin detail
+  wait — do not count against it, so a long wait never eats the max age. A history
+  update that makes old activities newly match — an enrich rule run over history that
+  adds `session_name`, a re-sync, an import — therefore never publishes them. The flip
+  side: an activity whose phone sync is delayed past the max age is not shared either.
+  Rules created before the field existed have 24.
 - **Wait** (`delay_minutes`, default 10, 10 to 1440): how long after the activity
   arrived (its youngest merge-group member's ingest) the rule waits before sharing it.
   The default equals the stabilisation delay, so it changes nothing; a longer wait gives
@@ -94,10 +96,14 @@ A per-user set of rules, each combining a **predicate** and a **share template**
   A delayed sync of a workout done _after_ enabling still shares, as long as it is
   within the rule's max age.
 - **Recent activities only**: on top of the two gates, the activity must have ended
-  within the rule's `max_age_hours` of the evaluation. A rule's cutoff is the later of
-  its `enabled_at` and _now − max age_; the candidate query already leaves out
-  activities that ended before the earliest cutoff over the enabled rules, so a first
-  sync's wide window costs one query rather than several per old activity.
+  within the rule's `max_age_hours` of its arrival. A rule's cutoff for a group is the
+  later of its `enabled_at` and _arrival − max age_, the same in the announce pass and
+  in the evaluation, so what was announced is also shared. An arrival further back than
+  the waits can explain — the rule's wait plus the two-hour detail wait and its last
+  re-check — is a group that only now started matching (an edit, an enrich run), and
+  that is measured from _now − that wait budget_ instead. The candidate query already
+  leaves out activities that ended before the loosest cutoff over the enabled rules, so
+  a first sync's wide window costs one query rather than several per old activity.
 - **Bounded blast radius**: at most 5 posts per evaluation run (logged when hit) —
   federated deliveries can't be recalled, so even an unexpected window can only leak a
   handful of posts, never a firehose.

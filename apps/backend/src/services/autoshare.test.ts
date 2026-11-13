@@ -6,6 +6,7 @@ import type { AutoshareAnnounceInfo, AutoshareDeps } from './autoshare.ts'
 import { pendingAutoshareNotification } from './autoshare-notifications.ts'
 import {
   activityMatchesRule,
+  ANNOUNCE_DELAY_SECONDS,
   announceAutoshareWindow,
   dataFiltersMatch,
   DETAIL_WAIT_SECONDS,
@@ -397,10 +398,37 @@ describe('ruleEndedAfter', () => {
     expect(ruleEndedAfter(rule(), new Date(T0.getTime() + 10 * HOUR))).toEqual(T0)
   })
 
-  test('is now minus the max age once the enable is older than that', () => {
+  const WAIT_BUDGET = (10 * 60 + DETAIL_WAIT_SECONDS + STABILISATION_SECONDS) * 1000
+
+  test('is the arrival minus the max age once the enable is older than that', () => {
     const now = new Date(T0.getTime() + 100 * HOUR)
-    expect(ruleEndedAfter(rule(), now)).toEqual(new Date(now.getTime() - 24 * HOUR))
-    expect(ruleEndedAfter(rule({ max_age_hours: 48 }), now)).toEqual(new Date(now.getTime() - 48 * HOUR))
+    const arrived = new Date(now.getTime() - 20 * 60_000)
+    expect(ruleEndedAfter(rule(), now, arrived)).toEqual(new Date(arrived.getTime() - 24 * HOUR))
+    expect(ruleEndedAfter(rule({ max_age_hours: 48 }), now, arrived)).toEqual(
+      new Date(arrived.getTime() - 48 * HOUR),
+    )
+  })
+
+  test('an arrival further back than the waits can explain is measured from now less the wait budget', () => {
+    const now = new Date(T0.getTime() + 100 * HOUR)
+    const loosest = new Date(now.getTime() - WAIT_BUDGET - 24 * HOUR)
+    expect(ruleEndedAfter(rule(), now, new Date(now.getTime() - 50 * HOUR))).toEqual(loosest)
+    expect(ruleEndedAfter(rule(), now)).toEqual(loosest)
+  })
+
+  test("the wait budget grows with the rule's own wait", () => {
+    const now = new Date(T0.getTime() + 100 * HOUR)
+    const arrived = new Date(now.getTime() - 20 * HOUR)
+    expect(ruleEndedAfter(rule({ delay_minutes: 1440 }), now, arrived)).toEqual(
+      new Date(arrived.getTime() - 24 * HOUR),
+    )
+  })
+
+  test('an arrival in the future is measured from now', () => {
+    const now = new Date(T0.getTime() + 100 * HOUR)
+    expect(ruleEndedAfter(rule(), now, new Date(now.getTime() + HOUR))).toEqual(
+      new Date(now.getTime() - 24 * HOUR),
+    )
   })
 
   test('is null for a rule that was never enabled', () => {
@@ -420,13 +448,72 @@ describe('evaluateAutoshareWindow: max age', () => {
   const now = new Date(T0.getTime() + 200 * HOUR)
   const windowStart = new Date(now.getTime() - 48 * HOUR)
 
-  test('with the default 24 h, an activity that ended 23 h ago shares and one that ended 25 h ago does not', async () => {
-    const recent = harness({ listCandidates: async () => [ended(23, now)] })
+  test('with the default 24 h, an activity that arrived 23 h after it ended shares and one that arrived 25 h after does not', async () => {
+    const recent = harness({ listCandidates: async () => [ended(24, now)] })
     expect(await evaluateAutoshareWindow('u', windowStart, now, recent.deps, now)).toBe(1)
 
-    const old = harness({ listCandidates: async () => [ended(25, now)] })
+    const old = harness({ listCandidates: async () => [ended(26, now)] })
     expect(await evaluateAutoshareWindow('u', windowStart, now, old.deps, now)).toBe(0)
     expect(old.createdPosts).toEqual([])
+  })
+
+  test("a rule's wait does not count against its max age", async () => {
+    const MINUTE = 60_000
+    const patient = rule({ delay_minutes: 90, max_age_hours: 1 })
+    const arrived = new Date(now.getTime() - 90 * MINUTE)
+    const activity = candidate('a1', {
+      created_at: arrived,
+      end_time: new Date(arrived.getTime() - 30 * MINUTE),
+      start_time: new Date(arrived.getTime() - 90 * MINUTE),
+    })
+    const announced: string[] = []
+    const h = harness({
+      announce: async (_user, anchor) => {
+        announced.push(anchor.id)
+        return true
+      },
+      getEnabledRules: async () => [patient],
+      listCandidates: async () => [activity],
+    })
+    const announceAt = new Date(arrived.getTime() + ANNOUNCE_DELAY_SECONDS * 1000)
+    expect(await announceAutoshareWindow('u', windowStart, now, h.deps, now, announceAt)).toBe(1)
+    expect(announced).toEqual(['a1'])
+    expect(await evaluateAutoshareWindow('u', windowStart, now, h.deps, now)).toBe(1)
+    expect(h.createdPosts).toEqual([{ anchorId: 'a1', ruleId: 'rule-1' }])
+  })
+
+  test('a day-long wait still shares an activity that synced late', async () => {
+    const lazy = rule({ delay_minutes: 1440 })
+    const arrived = new Date(now.getTime() - 24 * HOUR)
+    const activity = candidate('a1', {
+      created_at: arrived,
+      end_time: new Date(arrived.getTime() - 20 * HOUR),
+      start_time: new Date(arrived.getTime() - 21 * HOUR),
+    })
+    const h = harness({ getEnabledRules: async () => [lazy], listCandidates: async () => [activity] })
+    expect(await evaluateAutoshareWindow('u', windowStart, now, h.deps, now)).toBe(1)
+  })
+
+  test('an old activity that only now starts matching is still too old', async () => {
+    const arrived = new Date(now.getTime() - 100 * HOUR)
+    const activity = candidate('a1', {
+      created_at: arrived,
+      end_time: new Date(arrived.getTime() - HOUR),
+      start_time: new Date(arrived.getTime() - 2 * HOUR),
+    })
+    const h = harness({ listCandidates: async () => [activity] })
+    expect(await evaluateAutoshareWindow('u', windowStart, now, h.deps, now)).toBe(0)
+    expect(await announceAutoshareWindow('u', windowStart, now, h.deps, now, now)).toBe(0)
+  })
+
+  test('a skip that lands while the group is being matched stops the post', async () => {
+    let reads = 0
+    const h = harness({
+      listCandidates: async () => [ended(2, now)],
+      suppressedActivityIds: async () => (++reads > 1 ? ['a1'] : []),
+    })
+    expect(await evaluateAutoshareWindow('u', windowStart, now, h.deps, now)).toBe(0)
+    expect(h.createdPosts).toEqual([])
   })
 
   test('each rule applies its own max age', async () => {
@@ -473,7 +560,8 @@ describe('evaluateAutoshareWindow: max age', () => {
       },
     })
     await evaluateAutoshareWindow('u', windowStart, now, h.deps, now)
-    expect(listed).toEqual([new Date(now.getTime() - 168 * HOUR)])
+    const waitBudget = (10 * 60 + DETAIL_WAIT_SECONDS + STABILISATION_SECONDS) * 1000
+    expect(listed).toEqual([new Date(now.getTime() - waitBudget - 168 * HOUR)])
   })
 
   test('an unsettled group that is still recent re-queues as before', async () => {

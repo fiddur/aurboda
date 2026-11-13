@@ -35,7 +35,7 @@ const tagsDescription =
   'Hashtags for auto-created posts instead of your default tags (the activity-type tag still follows your settings, and `#tags` typed in the message are added); absent (or null on an update) uses your default tags'
 
 const maxAgeHoursDescription =
-  'Share only activities that ended at most this many hours before the rule looks at them; protects against history updates and imports publishing old activities'
+  'Share only activities that ended at most this many hours before they arrived (the wait before sharing does not count); protects against history updates and imports publishing old activities'
 
 const delayMinutesDescription =
   'Minutes to wait after the activity arrived before sharing it (10 to 1440). The pending-share notification is raised during the wait.'
