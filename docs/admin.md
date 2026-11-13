@@ -22,6 +22,13 @@ error, so a missing row still gets its trial from the backfill. The optional **d
 given at signup is not on this row but a user setting (`display_name`), since it is part of the
 public profile.
 
+### Signup notification
+
+Every admin gets an `admin_signup` [notification](features/notifications.md) when an account is
+created, by password or passkey: "New signup: alice", linking to the account on the Users page.
+The very first account, which becomes the admin, notifies nobody. An admin can turn it off under the
+bell or as a push in Settings → **Notifications**.
+
 ## Usage counters
 
 So an admin can see who uses the server and how, the backend counts, per user and per UTC day:

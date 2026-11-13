@@ -3,6 +3,7 @@ import type { ComponentChildren } from 'preact'
 import './SettingsSection.css'
 
 interface SettingsSectionProps {
+  id?: string
   title: string
   description?: string
   class?: string
@@ -16,7 +17,7 @@ interface SettingsSectionProps {
 
 export function SettingsSection(props: SettingsSectionProps) {
   return (
-    <section class={`settings-section ${props.class ?? ''}`}>
+    <section id={props.id} class={`settings-section ${props.class ?? ''}`}>
       <div class="section-header">
         <h2>{props.title}</h2>
         {props.headerExtra}
