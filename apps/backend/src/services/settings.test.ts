@@ -13,7 +13,9 @@ import {
   hrZonesFromSettings,
   type HrZoneThresholds,
   lowHrCeiling,
+  normalizeHomeAssistantUrl,
   setTagMapping,
+  shouldClearHomeAssistantToken,
   validateAndUpdateSettings,
 } from './settings.ts'
 
@@ -974,5 +976,116 @@ describe('computeHrZoneSecs', () => {
 
     expect(result[0]).toBe(2) // First sample below zone 1
     expect(result[1]).toBe(4) // Two samples in zone 1
+  })
+})
+
+describe('Home Assistant settings', () => {
+  const TOKEN = 'ha-long-lived-token-xyz'
+  const stored = {
+    home_assistant_entity_id: 'device_tracker.pixel_8',
+    home_assistant_token: TOKEN,
+    home_assistant_url: 'https://ha.example.org',
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+    vi.mocked(db.upsertUserSettings).mockResolvedValue({})
+  })
+
+  test('the response never carries the token, only whether one is set', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue(stored)
+    const result = await getSettingsResponse('testuser')
+    expect(JSON.stringify(result)).not.toContain(TOKEN)
+    expect(result).toMatchObject({
+      home_assistant_entity_id: 'device_tracker.pixel_8',
+      home_assistant_token_set: true,
+      home_assistant_url: 'https://ha.example.org',
+    })
+    expect(result).not.toHaveProperty('home_assistant_token')
+  })
+
+  test('home_assistant_token_set is false without a token', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue(null)
+    const result = await getSettingsResponse('testuser')
+    expect(result.home_assistant_token_set).toBe(false)
+    expect(result.home_assistant_url).toBeNull()
+  })
+
+  test('normalizeHomeAssistantUrl drops trailing slashes', () => {
+    expect(normalizeHomeAssistantUrl('https://ha.example.org/')).toBe('https://ha.example.org')
+    expect(normalizeHomeAssistantUrl('https://ha.example.org:8123/ha//')).toBe(
+      'https://ha.example.org:8123/ha',
+    )
+  })
+
+  test.each([
+    ['another origin', { home_assistant_url: 'https://evil.example.com' }, true],
+    ['another port', { home_assistant_url: 'https://ha.example.org:8443' }, true],
+    ['a cleared URL', { home_assistant_url: null }, true],
+    ['only the path', { home_assistant_url: 'https://ha.example.org/ha' }, false],
+    ['a trailing slash', { home_assistant_url: 'https://ha.example.org/' }, false],
+    [
+      'a new token with the move',
+      { home_assistant_token: 'new', home_assistant_url: 'https://evil.example.com' },
+      false,
+    ],
+    ['an untouched URL', { home_assistant_entity_id: 'person.me' }, false],
+  ])('shouldClearHomeAssistantToken: %s → %s', (_label, data, expected) => {
+    expect(shouldClearHomeAssistantToken(stored, data)).toBe(expected)
+  })
+
+  test('shouldClearHomeAssistantToken: nothing to clear without a stored token', () => {
+    expect(shouldClearHomeAssistantToken({}, { home_assistant_url: 'https://ha.example.org' })).toBe(false)
+  })
+
+  test('moving the URL to another origin clears the stored token', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue(stored)
+    await validateAndUpdateSettings('testuser', { home_assistant_url: 'https://evil.example.com/' })
+    expect(db.upsertUserSettings).toHaveBeenCalledWith(
+      'testuser',
+      { home_assistant_url: 'https://evil.example.com' },
+      ['home_assistant_token'],
+    )
+  })
+
+  test('changing only the path keeps the token and normalises the trailing slash', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue(stored)
+    await validateAndUpdateSettings('testuser', { home_assistant_url: 'https://ha.example.org/ha/' })
+    expect(db.upsertUserSettings).toHaveBeenCalledWith(
+      'testuser',
+      { home_assistant_url: 'https://ha.example.org/ha' },
+      [],
+    )
+  })
+
+  test('a new token in the same update is kept', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue(stored)
+    await validateAndUpdateSettings('testuser', {
+      home_assistant_token: 'fresh',
+      home_assistant_url: 'https://other.example.org',
+    })
+    expect(db.upsertUserSettings).toHaveBeenCalledWith(
+      'testuser',
+      { home_assistant_token: 'fresh', home_assistant_url: 'https://other.example.org' },
+      [],
+    )
+  })
+
+  test('clearing the URL clears the token with it', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue(stored)
+    await validateAndUpdateSettings('testuser', { home_assistant_url: null })
+    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', {}, [
+      'home_assistant_url',
+      'home_assistant_token',
+    ])
+  })
+
+  test('rejects a URL with credentials, query or another scheme', async () => {
+    for (const url of ['https://u:p@ha.example.org', 'https://ha.example.org/?x=1', 'ftp://ha.example.org']) {
+      const result = await validateAndUpdateSettings('testuser', { home_assistant_url: url })
+      expect(result.success).toBe(false)
+    }
+    expect(db.upsertUserSettings).not.toHaveBeenCalled()
   })
 })

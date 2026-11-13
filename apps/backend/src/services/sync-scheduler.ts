@@ -46,6 +46,7 @@ export const runScheduledSyncs = async (deps: SyncSchedulerDeps): Promise<number
         await deps.sync.syncGarminIfNeeded(user, dataType)
       }
       await deps.sync.syncGravlIfNeeded(user)
+      await deps.sync.syncHomeAssistantIfNeeded(user)
       await deps.sync.syncRescueTimeIfNeeded(user)
       await deps.sync.syncLastFmIfNeeded(user)
       await deps.sync.syncCalendarsIfNeeded(user)

@@ -47,10 +47,48 @@ export const gravlApiTokenSchema = z.string().min(1, 'Gravl API token cannot be 
   description: 'Gravl personal access token (gat_…), used when no OAuth grant exists',
 })
 
+export const homeAssistantUrlSchema = z
+  .string()
+  .url()
+  .refine(
+    (value) => {
+      try {
+        const url = new URL(value)
+        return (
+          (url.protocol === 'http:' || url.protocol === 'https:') &&
+          url.username === '' &&
+          url.password === '' &&
+          url.search === '' &&
+          url.hash === ''
+        )
+      } catch {
+        return false
+      }
+    },
+    { message: 'Home Assistant URL must be an http(s) URL without credentials, query or fragment' },
+  )
+  .meta({
+    description: 'Base URL of the Home Assistant server, as reachable from the Aurboda server',
+    example: 'https://ha.example.org',
+  })
+
+export const homeAssistantTokenSchema = z.string().min(1, 'Home Assistant token cannot be empty').meta({
+  description: 'Home Assistant long-lived access token',
+})
+
+export const homeAssistantEntityIdSchema = z
+  .string()
+  .regex(/^(device_tracker|person)\.[a-z0-9_]+$/, 'Must be a device_tracker.* or person.* entity id')
+  .meta({
+    description: 'Home Assistant entity that carries the phone position (device_tracker.* or person.*)',
+    example: 'device_tracker.pixel_8',
+  })
+
 export const syncIntervalsSchema = z
   .record(
     z.string().meta({
-      description: 'Provider name (gravl, garmin, oura, rescuetime, lastfm, calendar) or "default"',
+      description:
+        'Provider name (gravl, garmin, oura, rescuetime, lastfm, calendar, home_assistant) or "default"',
     }),
     z.number().int().min(5).max(1440).meta({ description: 'Poll interval in minutes (5–1440)' }),
   )
@@ -238,6 +276,17 @@ export const updateSettingsInputSchema = z
       description:
         'Background sync poll intervals in minutes per provider (set to null to reset to server defaults)',
     }),
+    home_assistant_url: homeAssistantUrlSchema.nullable().optional().meta({
+      description: 'Home Assistant base URL, as reachable from the Aurboda server (set to null to clear)',
+    }),
+    home_assistant_token: homeAssistantTokenSchema.nullable().optional().meta({
+      description:
+        'Home Assistant long-lived access token (set to null to clear). Write-only: never returned. Cleared when home_assistant_url moves to another origin without a new token in the same update.',
+    }),
+    home_assistant_entity_id: homeAssistantEntityIdSchema.nullable().optional().meta({
+      description:
+        'Home Assistant device_tracker.* or person.* entity to pull locations from (set to null to clear)',
+    }),
   })
   .meta({ id: 'UpdateSettingsInput' })
 
@@ -315,6 +364,15 @@ export const userSettingsResponseSchema = baseResponseSchema
     }),
     gravl_connection: z.enum(['oauth', 'token']).nullable().default(null).meta({
       description: 'How Gravl is connected: an OAuth grant, a personal token, or null when not connected',
+    }),
+    home_assistant_url: z.string().nullable().default(null).meta({ description: 'Home Assistant base URL' }),
+    home_assistant_entity_id: z
+      .string()
+      .nullable()
+      .default(null)
+      .meta({ description: 'Home Assistant entity locations are pulled from' }),
+    home_assistant_token_set: z.boolean().default(false).meta({
+      description: 'Whether a Home Assistant access token is stored (the token itself is never returned)',
     }),
     rescue_time_key: z.string().nullable().default(null).meta({ description: 'RescueTime API key' }),
     strava_connected: z

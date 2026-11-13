@@ -42,6 +42,7 @@ import {
   goalHistoryResponseSchema,
   goalsProgressResponseSchema,
 } from './schemas/goals.ts'
+import { homeAssistantEntitiesResponseSchema } from './schemas/home-assistant.ts'
 import {
   addNamedLocationBodySchema,
   addNamedLocationResponseSchema,
@@ -102,8 +103,11 @@ import {
   healthConnectSyncBodySchema,
   syncOuraBodySchema,
   syncGravlBodySchema,
+  syncHomeAssistantBodySchema,
   gravlSyncResponseSchema,
   gravlSyncStatusResponseSchema,
+  homeAssistantSyncResponseSchema,
+  homeAssistantSyncStatusResponseSchema,
   mediaSyncResponseSchema,
   syncMediaBodySchema,
   syncRescueTimeBodySchema,
@@ -1322,6 +1326,66 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'Get Gravl sync status',
+        tags: ['Sync'],
+      },
+    },
+
+    '/sync/home-assistant': {
+      post: {
+        description:
+          "Pull the phone's positions from Home Assistant's history API (the configured device_tracker.* or person.* entity) and store them as locations with source home_assistant; the zone the state names becomes the location's region. A first sync or full_resync covers the last 10 days (or from start_date); later syncs continue from the last sync with a 5-minute overlap. Points inside an activity that has its own GPS track are soft-deleted. Requires home_assistant_url, home_assistant_token and home_assistant_entity_id in user settings.",
+        requestBody: {
+          content: { 'application/json': { schema: syncHomeAssistantBodySchema } },
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: homeAssistantSyncResponseSchema } },
+            description: 'Sync result',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Home Assistant integration unavailable',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Sync Home Assistant locations',
+        tags: ['Sync'],
+      },
+    },
+    '/sync/home-assistant/status': {
+      get: {
+        description: 'Current Home Assistant sync state: last sync time, status and error.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: homeAssistantSyncStatusResponseSchema } },
+            description: 'Successful response',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get Home Assistant sync status',
+        tags: ['Sync'],
+      },
+    },
+    '/home-assistant/entities': {
+      get: {
+        description:
+          'List the person.* and device_tracker.* entities of the configured Home Assistant server that currently carry coordinates, to pick the one to pull locations from. Needs home_assistant_url and home_assistant_token in user settings; doubles as a connection test.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: homeAssistantEntitiesResponseSchema } },
+            description: 'Trackable entities, person.* first',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Home Assistant URL or token not set',
+          },
+          502: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Home Assistant could not be reached or rejected the request',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List Home Assistant tracker entities',
         tags: ['Sync'],
       },
     },

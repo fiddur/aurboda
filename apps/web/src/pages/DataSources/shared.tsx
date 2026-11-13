@@ -163,25 +163,31 @@ export type SyncIntervalProvider =
   | 'default'
   | 'garmin'
   | 'gravl'
+  | 'home_assistant'
   | 'lastfm'
   | 'oura'
   | 'rescuetime'
 
 /**
  * Background poll interval for one pull-based provider (#1042). Empty means
- * "use the default": the user's `default` entry, else the server's 30 minutes.
+ * "use the default": the user's `default` entry, else the server's default for
+ * the provider (`defaultMinutes`, 30 unless the provider has its own).
  * Saves on blur; the same setting drives both the scheduler and the
  * before-query auto-sync.
  */
-export function SyncIntervalField({ provider }: { provider: SyncIntervalProvider }) {
+export function SyncIntervalField({
+  provider,
+  defaultMinutes = DEFAULT_SYNC_INTERVAL_MINUTES,
+}: {
+  provider: SyncIntervalProvider
+  defaultMinutes?: number
+}) {
   const queryClient = useQueryClient()
   const { data: userSettings } = useQuery({ queryFn: fetchUserSettings, queryKey: ['userSettings'] })
   const intervals: SyncIntervals = userSettings?.sync_intervals ?? {}
   const configured = intervals[provider]
   const fallback =
-    provider === 'default'
-      ? DEFAULT_SYNC_INTERVAL_MINUTES
-      : (intervals.default ?? DEFAULT_SYNC_INTERVAL_MINUTES)
+    provider === 'default' ? DEFAULT_SYNC_INTERVAL_MINUTES : (intervals.default ?? defaultMinutes)
 
   const [value, setValue] = useState(configured === undefined ? '' : String(configured))
   const [saveStatus, setSaveStatus] = useState<SaveStatus>({ status: 'idle' })

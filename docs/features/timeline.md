@@ -41,7 +41,7 @@ Meals you log appear in the Activity track as icons at the meal's time: the icon
 
 Shows named place visits as colored blocks. Each place gets a consistent color from a rotating palette. Unnamed gaps appear as gray "Travel" or "Unknown" blocks. Hovering shows the place name, time range, and duration. Clicking a place opens the Places page for that date and location.
 
-**Data source:** OwnTracks.
+**Data source:** OwnTracks or Home Assistant.
 
 ### Tags and Events (vertical mode)
 
@@ -226,7 +226,7 @@ The Timeline is most useful when multiple data sources are connected. At minimum
 | --------------- | -------------------------------------- |
 | Sleep & HRV     | Oura, Garmin, or Health Connect        |
 | Exercise & HR   | Oura, Garmin, Strava or Health Connect |
-| Location        | OwnTracks                              |
+| Location        | OwnTracks or Home Assistant            |
 | Screen time     | RescueTime or ActivityWatch            |
 | Music           | Last.fm                                |
 | Calendar events | Any ICS calendar URL                   |
@@ -238,4 +238,4 @@ The Timeline is most useful when multiple data sources are connected. At minimum
 - **Music notation** in horizontal mode uses a fixed melody pattern for all sessions (purely decorative; the notes don't represent the actual music).
 - **Screen time** in vertical mode can be visually dense with many apps. The category system helps, but highly fragmented usage still creates many small blocks.
 - **Training load** requires approximately 6 weeks of exercise data before the fitness curve becomes reliable (shown as dashed during the bootstrapping period).
-- **Location track** requires OwnTracks with continuous GPS logging. Gaps in logging appear as gaps in the track.
+- **Location track** requires OwnTracks or Home Assistant with continuous GPS logging. Gaps in logging appear as gaps in the track.

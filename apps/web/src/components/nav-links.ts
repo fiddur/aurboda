@@ -45,6 +45,7 @@ export const DATA_SOURCE_LINKS = [
   { label: 'RescueTime', path: '/data-sources/rescue-time' },
   { label: 'Last.fm', path: '/data-sources/lastfm' },
   { label: 'OwnTracks', path: '/data-sources/owntracks' },
+  { label: 'Home Assistant', path: '/data-sources/home-assistant' },
   { label: 'Calendars', path: '/data-sources/calendars' },
 ]
 

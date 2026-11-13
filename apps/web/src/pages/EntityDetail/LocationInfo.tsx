@@ -13,6 +13,7 @@ const LAST_KNOWN_HOURS = 6
 
 const SOURCE_COLORS: Record<string, string> = {
   detected: '#f97316',
+  home_assistant: '#a855f7',
   named: '#22c55e',
   owntracks: '#3b82f6',
   unknown: '#9ca3af',

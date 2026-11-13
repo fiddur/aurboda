@@ -128,7 +128,7 @@ Correlation analysis requires **HRV and heart rate data** as the baseline metric
 | For correlating with... | You need...                                                         |
 | ----------------------- | ------------------------------------------------------------------- |
 | Activities              | Exercise/sleep/meditation data from Oura, Garmin, or Health Connect |
-| Locations               | Place visits from OwnTracks                                         |
+| Locations               | Place visits from OwnTracks or Home Assistant                       |
 | Productivity            | Screen time data from RescueTime or ActivityWatch                   |
 
 Minimum data requirements vary by category: activities need at least 1 occurrence, locations need 30+ minutes of overlap, and productivity categories need 10+ minutes.
