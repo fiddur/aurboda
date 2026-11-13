@@ -9,7 +9,9 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { httpError, isHttpError } from '../http-error.ts'
 
 vi.mock('../db/index.ts', () => ({
+  getNotificationPreference: vi.fn(async () => null),
   initializeSchema: vi.fn(async () => {}),
+  insertNotification: vi.fn(async () => null),
   isInvalidPasswordError: vi.fn(),
   loginToUserDb: vi.fn(async () => {}),
   makeNewUserDb: vi.fn(async () => {}),
@@ -51,6 +53,7 @@ const buildApp = ({
     centralDb: {
       ensureUserAccount,
       getAdminCount: vi.fn(async () => 1),
+      getAdmins: vi.fn(async () => ['fiddur']),
       getAuditLogRetentionDays: vi.fn(async () => 30),
       getServerSetting: vi.fn(async (key: string) =>
         key === 'blog_username' ? blogUsername : (settings[key] ?? null),
@@ -263,6 +266,24 @@ describe('POST /signup', () => {
     ]
     expect(options).toMatchObject({ plan: 'trial', preExisting: false })
     expect(options.trialEndsAt.getTime() - options.createdAt.getTime()).toBe(30 * 86_400_000)
+  })
+
+  test('notifies every admin of the new account', async () => {
+    vi.mocked(db.query).mockResolvedValue({ rowCount: 0, rows: [] } as never)
+
+    const response = await supertest(buildApp({ signupMode: 'open' }))
+      .post('/signup')
+      .send({ password: 'secret', username: 'alice' })
+
+    expect(response.status).toBe(200)
+    expect(db.insertNotification).toHaveBeenCalledWith(
+      'fiddur',
+      expect.objectContaining({
+        dedupe_key: 'admin_signup:alice',
+        link: '/admin/users/alice',
+        type: 'admin_signup',
+      }),
+    )
   })
 
   test('refuses a name whose role still exists, as during an account deletion before the name is reserved', async () => {

@@ -1,0 +1,211 @@
+import { describe, expect, test } from 'vitest'
+
+import type { NotificationInsert, NotificationRecord } from '../db/index.ts'
+
+import {
+  canConfigureNotificationType,
+  createNotifier,
+  listNotificationTypeSettings,
+  type NotifierDeps,
+  notifyAdminsOfSignup,
+  type RaiseNotificationInput,
+  serializeNotification,
+} from './notifications.ts'
+
+const NOW = new Date('2026-11-13T12:00:00Z')
+const DAY = 24 * 60 * 60 * 1000
+
+const record = (input: NotificationInsert): NotificationRecord => ({
+  body: input.body ?? null,
+  created_at: NOW,
+  data: input.data ?? null,
+  dedupe_key: input.dedupe_key ?? null,
+  id: '11111111-1111-4111-8111-111111111111',
+  in_app: input.in_app,
+  link: input.link ?? null,
+  push: input.push,
+  read_at: null,
+  title: input.title,
+  type: input.type,
+})
+
+const fakeDeps = (overrides: Partial<NotifierDeps> = {}) => {
+  const inserts: NotificationInsert[] = []
+  const prunes: [Date, Date][] = []
+  const errors: unknown[] = []
+  const deps: NotifierDeps = {
+    getPreference: async () => null,
+    insert: async (_user, input) => {
+      inserts.push(input)
+      return record(input)
+    },
+    logError: (_message, error) => errors.push(error),
+    now: () => NOW,
+    prune: async (_user, readBefore, anyBefore) => {
+      prunes.push([readBefore, anyBefore])
+      return 0
+    },
+    ...overrides,
+  }
+  return { deps, errors, inserts, prunes }
+}
+
+const input: RaiseNotificationInput = { title: 'Hello', type: 'admin_signup' }
+
+describe('createNotifier().raise', () => {
+  test('stores with both switches on when the user has no preference', async () => {
+    const { deps, inserts } = fakeDeps()
+    const row = await createNotifier(deps).raise('alice', { ...input, body: 'b', link: '/x' })
+
+    expect(row?.title).toBe('Hello')
+    expect(inserts).toEqual([
+      {
+        body: 'b',
+        data: null,
+        dedupe_key: null,
+        in_app: true,
+        link: '/x',
+        push: true,
+        title: 'Hello',
+        type: 'admin_signup',
+      },
+    ])
+  })
+
+  test('copies the stored switches onto the row', async () => {
+    const { deps, inserts } = fakeDeps({ getPreference: async () => ({ in_app: true, push: false }) })
+    await createNotifier(deps).raise('alice', input)
+    expect(inserts[0]).toMatchObject({ in_app: true, push: false })
+  })
+
+  test('stores nothing when the type is fully off', async () => {
+    const { deps, inserts, prunes } = fakeDeps({
+      getPreference: async () => ({ in_app: false, push: false }),
+    })
+    expect(await createNotifier(deps).raise('alice', input)).toBeNull()
+    expect(inserts).toEqual([])
+    expect(prunes).toEqual([])
+  })
+
+  test('prunes after an insert with the retention windows', async () => {
+    const { deps, prunes } = fakeDeps()
+    await createNotifier(deps).raise('alice', input)
+    expect(prunes).toEqual([[new Date(NOW.getTime() - 90 * DAY), new Date(NOW.getTime() - 365 * DAY)]])
+  })
+
+  test('does not prune when the dedupe key was already used', async () => {
+    const { deps, prunes } = fakeDeps({ insert: async () => null })
+    expect(await createNotifier(deps).raise('alice', { ...input, dedupe_key: 'k' })).toBeNull()
+    expect(prunes).toEqual([])
+  })
+
+  test('rejects an empty title and a link that is not an in-app path', async () => {
+    const { deps, inserts } = fakeDeps()
+    const notifier = createNotifier(deps)
+    await expect(notifier.raise('alice', { ...input, title: '  ' })).rejects.toThrow()
+    await expect(notifier.raise('alice', { ...input, link: 'https://evil.example' })).rejects.toThrow()
+    expect(inserts).toEqual([])
+  })
+
+  test('propagates a database error', async () => {
+    const { deps } = fakeDeps({
+      insert: async () => {
+        throw new Error('db down')
+      },
+    })
+    await expect(createNotifier(deps).raise('alice', input)).rejects.toThrow('db down')
+  })
+})
+
+describe('createNotifier().raiseBestEffort', () => {
+  test('logs and swallows every error', async () => {
+    const { deps, errors } = fakeDeps({
+      getPreference: async () => {
+        throw new Error('database "alice" does not exist')
+      },
+    })
+    await expect(createNotifier(deps).raiseBestEffort('alice', input)).resolves.toBeUndefined()
+    expect(errors).toHaveLength(1)
+  })
+})
+
+describe('serializeNotification', () => {
+  test('renders dates as ISO strings', () => {
+    const row = { ...record({ in_app: true, push: true, title: 't', type: 'admin_signup' }), read_at: NOW }
+    expect(serializeNotification(row)).toMatchObject({
+      created_at: '2026-11-13T12:00:00.000Z',
+      read_at: '2026-11-13T12:00:00.000Z',
+    })
+    expect(serializeNotification({ ...row, read_at: null }).read_at).toBeNull()
+  })
+})
+
+describe('listNotificationTypeSettings', () => {
+  test('hides admin-only types from non-admins', () => {
+    expect(listNotificationTypeSettings(false, [])).toEqual([])
+  })
+
+  test('joins stored switches and defaults the rest to on', () => {
+    expect(listNotificationTypeSettings(true, [])).toEqual([
+      expect.objectContaining({ admin_only: true, in_app: true, push: true, type: 'admin_signup' }),
+    ])
+    expect(listNotificationTypeSettings(true, [{ in_app: false, push: true, type: 'admin_signup' }])).toEqual(
+      [expect.objectContaining({ in_app: false, push: true, type: 'admin_signup' })],
+    )
+  })
+})
+
+describe('canConfigureNotificationType', () => {
+  test('is false for an unknown type and for an admin-only type for a non-admin', () => {
+    expect(canConfigureNotificationType('nope', true)).toBe(false)
+    expect(canConfigureNotificationType('admin_signup', false)).toBe(false)
+    expect(canConfigureNotificationType('admin_signup', true)).toBe(true)
+  })
+})
+
+describe('notifyAdminsOfSignup', () => {
+  test('raises admin_signup for every admin except the new account', async () => {
+    const raised: [string, RaiseNotificationInput][] = []
+    await notifyAdminsOfSignup({
+      getAdmins: async () => ['root_admin', 'bob', 'carol'],
+      raiseBestEffort: async (user, notification) => {
+        raised.push([user, notification])
+      },
+    })('bob')
+
+    expect(raised.map(([user]) => user)).toEqual(['root_admin', 'carol'])
+    expect(raised[0]![1]).toEqual({
+      body: 'bob created an account.',
+      data: { username: 'bob' },
+      dedupe_key: 'admin_signup:bob',
+      link: '/admin/users/bob',
+      title: 'New signup: bob',
+      type: 'admin_signup',
+    })
+  })
+
+  test('notifies nobody when the new account is the only admin', async () => {
+    const raised: string[] = []
+    await notifyAdminsOfSignup({
+      getAdmins: async () => ['first'],
+      raiseBestEffort: async (user) => {
+        raised.push(user)
+      },
+    })('first')
+    expect(raised).toEqual([])
+  })
+
+  test('never throws when the admin list cannot be read', async () => {
+    const errors: unknown[] = []
+    await expect(
+      notifyAdminsOfSignup({
+        getAdmins: async () => {
+          throw new Error('central db down')
+        },
+        logError: (_message, error) => errors.push(error),
+        raiseBestEffort: async () => {},
+      })('bob'),
+    ).resolves.toBeUndefined()
+    expect(errors).toHaveLength(1)
+  })
+})
