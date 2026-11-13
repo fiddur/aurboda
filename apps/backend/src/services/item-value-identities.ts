@@ -165,9 +165,13 @@ const applyPathKeys = (
       }
     }
     const name = rest[path.key]
-    const normalized = typeof name === 'string' ? normalizeItemValue(name) : undefined
-    if (typeof name !== 'string' || normalized === undefined) {
+    const normalized = normalizeItemValue(name)
+    if (normalized === undefined) {
       next.push({ ...rest, [path.key]: nameForKey(key, context, stored, catalog) })
+      continue
+    }
+    if (typeof name !== 'string') {
+      next.push(rest)
       continue
     }
     if (resolveItemValueIdentity(name, stored, catalog).catalog_key !== key) {
