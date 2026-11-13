@@ -24,6 +24,8 @@ import {
   parseFieldPath,
   recordsFor,
 } from '../activity-measures.ts'
+import { loadExerciseEntryResolver } from '../item-value-identities.ts'
+import { muscleGroupSplit } from '../muscle-group-measures.ts'
 import { decayedBestAt } from '../trends.ts'
 import { parseActivityId, resolveActivityWindow } from './activity-detail.ts'
 
@@ -106,7 +108,8 @@ const toGroup = (group: ItemGroup, earlier: EarlierSession[], day: string): Acti
 /**
  * One activity's list items grouped by an item value (`sets.exercise`): per value its items and
  * measures, the records it set against every earlier session with the value, the latest such
- * session, and the decaying-best trend before and after it. Null when the activity doesn't exist.
+ * session, and the decaying-best trend before and after it. With a catalogue-backed item field, also
+ * the session's split per muscle group. Null when the activity doesn't exist.
  */
 export const queryActivityItemHistory = async (
   user: string,
@@ -121,9 +124,12 @@ export const queryActivityItemHistory = async (
   const { data } = await resolveActivityWindow(user, activity, isMerged)
   const items = listItems(data, field)
   const groups = key === undefined ? [] : groupItemsByKey(items, key)
+  const resolveEntry =
+    key === undefined ? undefined : await loadExerciseEntryResolver(user, activity.activity_type, path)
   const base = {
     activity_id: rawId,
     field: path,
+    ...(key !== undefined && resolveEntry && { muscle_groups: muscleGroupSplit(items, key, resolveEntry) }),
     totals: measureItems(items),
     trend_half_life_days: measureTrendHalfLifeDays,
   }

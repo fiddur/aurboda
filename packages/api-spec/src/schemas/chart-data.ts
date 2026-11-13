@@ -7,7 +7,7 @@
 
 import { z } from 'zod'
 
-import { activityMeasureSchema } from './activity-measures.ts'
+import { activityMeasureSchema, isSummedActivityMeasure } from './activity-measures.ts'
 import { baseResponseSchema, dataFieldPathSchema } from './common.ts'
 import { ianaTimezoneSchema } from './timezone.ts'
 
@@ -71,6 +71,49 @@ export const itemBreakdownWithoutMeasure = (
   measure: unknown,
 ): boolean => !measure && (breakdownFields ?? []).some((field) => field.includes('.'))
 
+export const MUSCLE_GROUP_SUFFIX = '.muscle_group'
+
+/** The item path (`sets.exercise`) when `field` is a muscle-group breakdown, `<list>.<item>.muscle_group`. */
+export const muscleGroupBreakdownPath = (field: string): string | undefined => {
+  if (!field.endsWith(MUSCLE_GROUP_SUFFIX)) return undefined
+  const segments = field.split('.')
+  return segments.length === 3 && segments.every(Boolean) ? segments.slice(0, 2).join('.') : undefined
+}
+
+export const MUSCLE_GROUP_BREAKDOWN_NEEDS_SUMMED_MEASURE =
+  'a muscle-group breakdown needs measure set_count, volume or total_reps'
+
+export const muscleGroupBreakdownWithoutSummedMeasure = (
+  breakdownFields: string[] | undefined,
+  measure: unknown,
+): boolean =>
+  (breakdownFields ?? []).some((field) => muscleGroupBreakdownPath(field) !== undefined) &&
+  !isSummedActivityMeasure(measure)
+
+export const MUSCLE_GROUP_BREAKDOWN_WITH_ITEM_PATH =
+  'a muscle-group breakdown cannot be combined with another item path'
+
+export const muscleGroupBreakdownWithItemPath = (breakdownFields: string[] | undefined): boolean => {
+  const fields = breakdownFields ?? []
+  return (
+    fields.some((field) => muscleGroupBreakdownPath(field) !== undefined) &&
+    fields.filter((field) => field.includes('.')).length > 1
+  )
+}
+
+/** The first rule a chart query's breakdown breaks, as its message. */
+export const chartBreakdownError = (
+  breakdownFields: string[] | undefined,
+  measure: unknown,
+): string | undefined => {
+  if (itemBreakdownWithoutMeasure(breakdownFields, measure)) return ITEM_BREAKDOWN_NEEDS_MEASURE
+  if (muscleGroupBreakdownWithoutSummedMeasure(breakdownFields, measure)) {
+    return MUSCLE_GROUP_BREAKDOWN_NEEDS_SUMMED_MEASURE
+  }
+  if (muscleGroupBreakdownWithItemPath(breakdownFields)) return MUSCLE_GROUP_BREAKDOWN_WITH_ITEM_PATH
+  return undefined
+}
+
 /**
  * Query schema for chart data endpoint (typed, for service layer).
  */
@@ -97,13 +140,21 @@ export const chartDataQuerySchema = z
       .meta({ description: 'Deprecated: use activity_type_id instead' }),
     breakdown_fields: z.array(z.string()).optional().meta({
       description:
-        'Data fields to break down by (for activity_type source). Multiple fields produce compound series keys. With a measure, an item path such as sets.exercise gives one series per exercise.',
+        'Data fields to break down by (for activity_type source). Multiple fields produce compound series keys. With a measure, an item path such as sets.exercise gives one series per exercise. With measure set_count, volume or total_reps, sets.exercise.muscle_group gives one series per muscle group, each set counted by the exercise\'s recruitment weight (bench press: 1 set for the chest, 0.5 for the shoulders); exercises not in the catalogue fall under "Not in the catalogue". It combines with scalar fields, not with another item path.',
     }),
     ...chartMeasureShape,
     tz: chartDataTzSchema,
   })
   .refine((query) => !itemBreakdownWithoutMeasure(query.breakdown_fields, query.measure), {
     message: ITEM_BREAKDOWN_NEEDS_MEASURE,
+    path: ['breakdown_fields'],
+  })
+  .refine((query) => !muscleGroupBreakdownWithoutSummedMeasure(query.breakdown_fields, query.measure), {
+    message: MUSCLE_GROUP_BREAKDOWN_NEEDS_SUMMED_MEASURE,
+    path: ['breakdown_fields'],
+  })
+  .refine((query) => !muscleGroupBreakdownWithItemPath(query.breakdown_fields), {
+    message: MUSCLE_GROUP_BREAKDOWN_WITH_ITEM_PATH,
     path: ['breakdown_fields'],
   })
   .meta({ id: 'ChartDataQuery', description: 'Query parameters for bucketed chart data' })
@@ -116,10 +167,10 @@ export type ChartDataQuery = z.infer<typeof chartDataQuerySchema>
 export const chartDataHttpQuerySchema = z
   .object({
     aggregation: chartDataAggregationSchema.optional(),
-    breakdown_fields: z
-      .string()
-      .optional()
-      .meta({ description: 'Comma-separated data fields (or item paths) to break down by' }),
+    breakdown_fields: z.string().optional().meta({
+      description:
+        'Comma-separated data fields (or item paths) to break down by. With measure set_count, volume or total_reps, sets.exercise.muscle_group gives one series per muscle group, each set counted by the exercise\'s recruitment weight; exercises not in the catalogue fall under "Not in the catalogue".',
+    }),
     ...chartMeasureShape,
     bucket_size: z.enum(['1m', '5m', '15m', '1h', '1d', '1w', '1M']).optional(),
     end: z.string().meta({ description: 'End of time range (ISO 8601 string)' }),

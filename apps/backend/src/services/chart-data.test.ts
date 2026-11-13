@@ -14,11 +14,13 @@ import * as settings from './settings.ts'
 vi.mock('../db', async () => ({
   expandActivityTypes: vi.fn().mockImplementation((_user: string, types: string[]) => Promise.resolve(types)),
   getActivities: vi.fn(),
+  getActivityTypeDefinition: vi.fn(),
   getActivityTypeDefinitions: vi.fn(),
   getBucketStarts: vi.fn(),
   getHrZoneSecs: vi.fn(),
   getSourceFilter: (await vi.importActual<typeof TimeSeriesModule>('../db/time-series.ts')).getSourceFilter,
   getUserSettings: vi.fn().mockResolvedValue(null),
+  listItemValueIdentities: vi.fn(),
   query: vi.fn(),
 }))
 
@@ -678,6 +680,103 @@ describe('getChartData', () => {
         },
         { bucket_start: w2.toISOString(), series: { 'Gym / Plank': 1, 'Gym / Squat': 1 } },
       ])
+    })
+
+    describe('by muscle group', () => {
+      const catalogDef: ActivityTypeDefinition = {
+        ...strengthDef,
+        data_schema: {
+          fields: [
+            { name: 'location', type: 'string' },
+            {
+              item_fields: [{ catalog: 'exercises', is_categorical: true, name: 'exercise', type: 'string' }],
+              name: 'sets',
+              type: 'list',
+            },
+          ],
+        },
+      }
+
+      beforeEach(() => {
+        vi.mocked(db.getActivityTypeDefinition).mockResolvedValue(catalogDef)
+        vi.mocked(db.listItemValueIdentities).mockResolvedValue([
+          {
+            catalog_key: 'barbell_bench_press',
+            created_at: new Date(0),
+            field: 'sets.exercise',
+            id: 'i1',
+            updated_at: new Date(0),
+            value: 'Bench Press',
+          },
+        ])
+      })
+
+      test('one series per muscle group, sets weighted by recruitment, unresolved ones not in the catalogue', async () => {
+        const result = await getChartData('u', {
+          ...base,
+          aggregation: 'sum',
+          breakdown_fields: ['sets.exercise.muscle_group'],
+          measure: 'set_count',
+        })
+
+        expect(db.getActivityTypeDefinition).toHaveBeenCalledTimes(1)
+        expect(db.listItemValueIdentities).toHaveBeenCalledWith('u', 'sets.exercise')
+        expect(result.breakdown_series).toEqual([
+          'Abdominals',
+          'Chest',
+          'Forearms',
+          'Not in the catalogue',
+          'Shoulders',
+          'Triceps',
+        ])
+        expect(result.buckets).toEqual([
+          {
+            bucket_start: w1.toISOString(),
+            series: { Chest: 2, Forearms: 0.5, 'Not in the catalogue': 1, Shoulders: 2, Triceps: 2 },
+          },
+          { bucket_start: w2.toISOString(), series: { Abdominals: 1, 'Not in the catalogue': 1 } },
+        ])
+      })
+
+      test('an exercise filter restricts the sets, and a scalar field combines', async () => {
+        const result = await getChartData('u', {
+          ...base,
+          aggregation: 'sum',
+          breakdown_fields: ['location', 'sets.exercise.muscle_group'],
+          filter_field: 'sets.exercise',
+          filter_value: 'Bench Press',
+          measure: 'volume',
+        })
+
+        expect(result.buckets).toEqual([
+          {
+            bucket_start: w1.toISOString(),
+            series: {
+              'Gym / Chest': 400,
+              'Gym / Forearms': 100,
+              'Gym / Shoulders': 400,
+              'Gym / Triceps': 400,
+              'Home / Chest': 90,
+              'Home / Forearms': 22.5,
+              'Home / Shoulders': 90,
+              'Home / Triceps': 90,
+            },
+          },
+        ])
+      })
+
+      test('a field that is not catalogue-backed puts everything under not in the catalogue', async () => {
+        vi.mocked(db.getActivityTypeDefinition).mockResolvedValue(strengthDef)
+        const result = await getChartData('u', {
+          ...base,
+          aggregation: 'sum',
+          breakdown_fields: ['sets.exercise.muscle_group'],
+          measure: 'set_count',
+        })
+
+        expect(db.listItemValueIdentities).not.toHaveBeenCalled()
+        expect(result.breakdown_series).toEqual(['Not in the catalogue'])
+      })
     })
 
     test('a scalar breakdown uses the session’s measure', async () => {

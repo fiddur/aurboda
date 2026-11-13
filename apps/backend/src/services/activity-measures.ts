@@ -8,6 +8,7 @@ import {
   type ActivityMeasure,
   type ActivityMeasures,
   type ActivityTypeDefinition,
+  isSummedActivityMeasure,
   recordMeasures,
 } from '@aurboda/api-spec'
 
@@ -94,15 +95,13 @@ export const measureItems = (items: Item[]): ActivityMeasures => {
   })
 }
 
-const summed: readonly ActivityMeasure[] = ['volume', 'set_count', 'total_reps']
-
 export const combineMeasures = (list: ActivityMeasures[]): ActivityMeasures => {
   const combined: ActivityMeasures = {}
   for (const measures of list) {
     for (const [name, value] of Object.entries(measures) as [ActivityMeasure, number][]) {
       const prev = combined[name]
       combined[name] =
-        prev === undefined ? value : summed.includes(name) ? prev + value : Math.max(prev, value)
+        prev === undefined ? value : isSummedActivityMeasure(name) ? prev + value : Math.max(prev, value)
     }
   }
   return combined

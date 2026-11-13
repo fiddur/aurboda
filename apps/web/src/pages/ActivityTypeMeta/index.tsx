@@ -24,6 +24,7 @@ import { CHART_PRIMARY } from '../../theme'
 import { toDisplayName } from '../../utils/displayName'
 import { suggestEmoji } from '../../utils/emojiLookup'
 import { ItemGroupsSection } from './ItemGroupsSection'
+import { MuscleGroupSection } from './MuscleGroupSection'
 import {
   addItemField,
   removeItemField,
@@ -796,7 +797,10 @@ export function ActivityTypeMeta() {
         <Fragment key={itemPath(list, item)}>
           <ItemGroupsSection name={name} path={itemPath(list, item)} list={list} item={item} />
           {item.catalog === 'exercises' && (
-            <UnmappedItemValuesSection name={name} path={itemPath(list, item)} />
+            <>
+              <MuscleGroupSection name={name} path={itemPath(list, item)} />
+              <UnmappedItemValuesSection name={name} path={itemPath(list, item)} />
+            </>
           )}
         </Fragment>
       ))}
