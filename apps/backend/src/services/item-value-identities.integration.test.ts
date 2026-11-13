@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { getActivityById, insertActivity } from '../db/activities/index.ts'
+import { upsertItemValueAlias } from '../db/item-value-aliases.ts'
 import { listItemValueIdentities, upsertItemValueIdentity } from '../db/item-value-identities.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { mergeItemValues } from './item-value-aliases.ts'
@@ -196,6 +197,37 @@ describe('item value identities (integration)', () => {
       expect(await stored()).toEqual([['Cable Pulldown', 'lat_pulldown']])
       const activity = await getActivityById(getTestUser(), result.id ?? '', true)
       expect(activity?.data).toEqual({ sets: [{ exercise: 'Cable Pulldown', reps: 8 }] })
+    })
+
+    test('a key next to an aliased name maps the name that is stored', async () => {
+      const user = getTestUser()
+      await upsertItemValueAlias(user, field, 'Pulls', 'Cable Pulldown')
+
+      const result = await write([{ exercise: 'Pulls', exercise_key: 'lat_pulldown', reps: 8 }])
+      expect(result.success).toBe(true)
+      expect(await stored()).toEqual([['Cable Pulldown', 'lat_pulldown']])
+      const activity = await getActivityById(user, result.id ?? '', true)
+      expect(activity?.data).toEqual({ sets: [{ exercise: 'Cable Pulldown', reps: 8 }] })
+    })
+
+    test('a key alone whose catalogue name is aliased is stored under the alias target', async () => {
+      const user = getTestUser()
+      await upsertItemValueAlias(user, field, 'Lat Pulldown', 'Cable Pulldown')
+
+      const result = await write([{ exercise_key: 'lat_pulldown', reps: 8 }])
+      const activity = await getActivityById(user, result.id ?? '', true)
+      expect(activity?.data).toEqual({ sets: [{ exercise: 'Cable Pulldown', reps: 8 }] })
+    })
+
+    test('a write rejected after validation stores no mapping', async () => {
+      const result = await addActivity(getTestUser(), {
+        activity_type: type,
+        data: { sets: [{ exercise: 'Cable Pulldown', exercise_key: 'lat_pulldown', reps: 8 }] },
+        end_time: new Date(Date.UTC(2026, 6, 1, 6)),
+        start_time: new Date(Date.UTC(2026, 6, 1, 7)),
+      })
+      expect(result).toEqual({ error: 'end_time must not be before start_time', success: false })
+      expect(await stored()).toEqual([])
     })
 
     test('an unknown key is rejected', async () => {

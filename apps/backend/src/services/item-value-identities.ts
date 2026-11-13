@@ -161,15 +161,15 @@ const applyPathKeys = (
         success: false,
       }
     }
-    const name = typeof rest[path.key] === 'string' ? (rest[path.key] as string).trim() : ''
-    if (name === '') {
+    const name = rest[path.key]
+    const normalized = typeof name === 'string' ? normalizeItemValue(name) : undefined
+    if (typeof name !== 'string' || normalized === undefined) {
       next.push({ ...rest, [path.key]: nameForKey(key, context, stored, catalog) })
       continue
     }
     if (resolveItemValueIdentity(name, stored, catalog).catalog_key !== key) {
-      const normalized = name.toLowerCase()
       stored.set(normalized, key)
-      mappings.set(`${field}\u0000${normalized}`, { field, key, value: name })
+      mappings.set(`${field}\u0000${normalized}`, { field, key, value: name.trim() })
     }
     next.push(rest)
   }
