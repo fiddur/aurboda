@@ -11,6 +11,7 @@ import java.time.Instant
 private const val POST_NOTIF_PREFS = "AurbodaAppPrefs"
 private const val POST_NOTIF_ENABLED_KEY = "postNotificationsEnabled"
 private const val POST_NOTIF_HIGH_WATER_KEY = "postNotificationsHighWater"
+private const val CENTRAL_NOTIF_HIGH_WATER_KEY = "centralNotificationsHighWater"
 
 private fun postNotifPrefs(context: Context) =
     context.getSharedPreferences(POST_NOTIF_PREFS, Context.MODE_PRIVATE)
@@ -38,4 +39,14 @@ fun getNotifyHighWater(context: Context): Instant? {
 
 fun setNotifyHighWater(context: Context, highWater: Instant) {
     postNotifPrefs(context).edit().putString(POST_NOTIF_HIGH_WATER_KEY, highWater.toString()).apply()
+}
+
+/** Newest central notification already seen by the push poll, or null before its first run. */
+fun getCentralNotifyHighWater(context: Context): Instant? {
+    val raw = postNotifPrefs(context).getString(CENTRAL_NOTIF_HIGH_WATER_KEY, null) ?: return null
+    return runCatching { Instant.parse(raw) }.getOrNull()
+}
+
+fun setCentralNotifyHighWater(context: Context, highWater: Instant) {
+    postNotifPrefs(context).edit().putString(CENTRAL_NOTIF_HIGH_WATER_KEY, highWater.toString()).apply()
 }

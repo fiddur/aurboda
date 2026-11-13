@@ -12,18 +12,21 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import io.ktor.client.HttpClient
 import java.util.concurrent.TimeUnit
 
 /**
- * Periodic background poll that notifies the user when accounts they follow post
- * to their home timeline. Runs only while the user has enabled post
- * notifications; per-account muting is honoured server-side via each follow's
- * `notify_on_post` flag. The which-posts-to-notify decision is the pure
- * [decideNotifications]; this worker is just the I/O + notification plumbing.
+ * Periodic background poll that shows the server's push notifications
+ * (`GET /notifications?push_only=true`): the server decides which kinds are pushed,
+ * this worker only fetches, picks the new ones ([decideCentralNotifications]) and
+ * posts them. Against a server without `/notifications` it falls back to the
+ * timeline-based post notifier ([legacyPoll], deciding with [decideNotifications]).
  */
 class NotificationWorker(
     context: Context,
@@ -38,25 +41,83 @@ class NotificationWorker(
 
         val httpClient = syncHttpClient()
         try {
-            val following = fetchFollowingList(httpClient, credentials.apiUrl, credentials.authToken)
-                ?: return Result.retry()
-            val timeline = fetchTimelinePage(httpClient, credentials.apiUrl, credentials.authToken)
-                ?: return Result.retry()
-
-            val notifyActors = following.following.filter { it.notifyOnPost }.map { it.actorUri }.toSet()
-            val decision = decideNotifications(timeline.entries, notifyActors, getNotifyHighWater(ctx))
-
-            if (decision.toNotify.isNotEmpty()) {
-                ensureChannel(ctx)
-                decision.toNotify.takeLast(MAX_PER_RUN).forEach { postNotification(ctx, it) }
+            val highWater = initialCentralHighWater(getCentralNotifyHighWater(ctx), getNotifyHighWater(ctx))
+            return when (val fetch = fetchPushNotifications(httpClient, credentials.apiUrl, credentials.authToken, highWater)) {
+                PushFetch.Unsupported -> legacyPoll(ctx, httpClient, credentials.apiUrl, credentials.authToken)
+                PushFetch.Failed -> Result.retry()
+                is PushFetch.Ok -> {
+                    val decision = decideCentralNotifications(fetch.page.notifications, highWater)
+                    if (decision.toNotify.isNotEmpty()) {
+                        val types = fetchNotificationTypes(httpClient, credentials.apiUrl, credentials.authToken)
+                            ?.types ?: emptyList()
+                        decision.toNotify.takeLast(MAX_PER_RUN).forEach { postServerNotification(ctx, it, types) }
+                    }
+                    decision.newHighWater?.let { setCentralNotifyHighWater(ctx, it) }
+                    Result.success()
+                }
             }
-            decision.newHighWater?.let { setNotifyHighWater(ctx, it) }
-            return Result.success()
         } catch (e: Exception) {
             Log.w(TAG, "Notification poll failed: ${e.message}")
             return Result.retry()
         } finally {
             httpClient.close()
+        }
+    }
+
+    private suspend fun legacyPoll(ctx: Context, httpClient: HttpClient, apiUrl: String, authToken: String): Result {
+        val following = fetchFollowingList(httpClient, apiUrl, authToken)
+            ?: return Result.retry()
+        val timeline = fetchTimelinePage(httpClient, apiUrl, authToken)
+            ?: return Result.retry()
+
+        val notifyActors = following.following.filter { it.notifyOnPost }.map { it.actorUri }.toSet()
+        val decision = decideNotifications(timeline.entries, notifyActors, getNotifyHighWater(ctx))
+
+        if (decision.toNotify.isNotEmpty()) {
+            ensureChannel(ctx)
+            decision.toNotify.takeLast(MAX_PER_RUN).forEach { postNotification(ctx, it) }
+        }
+        decision.newHighWater?.let { setNotifyHighWater(ctx, it) }
+        return Result.success()
+    }
+
+    private fun postServerNotification(ctx: Context, notification: ServerNotification, types: List<NotificationTypeLite>) {
+        val manager = NotificationManagerCompat.from(ctx)
+        if (!manager.areNotificationsEnabled()) return
+
+        val channel = notificationChannelFor(notification.type, types)
+        ensureCentralChannel(ctx, channel)
+        val notifyId = androidNotificationId(notification.id)
+
+        val builder = NotificationCompat.Builder(ctx, channel.id)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle(notification.title)
+            .setAutoCancel(true)
+            .setContentIntent(tapIntent(ctx, notifyId, notification.link, notification.id))
+        notification.body?.let { body ->
+            builder.setContentText(body).setStyle(NotificationCompat.BigTextStyle().bigText(body))
+        }
+        notification.actions.forEach { action ->
+            val actionIntent = Intent(ctx, NotificationActionReceiver::class.java).apply {
+                putExtra(NotificationActionReceiver.EXTRA_SERVER_ID, notification.id)
+                putExtra(NotificationActionReceiver.EXTRA_ACTION_KEY, action.key)
+                putExtra(NotificationActionReceiver.EXTRA_ANDROID_ID, notifyId)
+                putExtra(NotificationActionReceiver.EXTRA_CHANNEL_ID, channel.id)
+                putExtra(NotificationActionReceiver.EXTRA_TITLE, notification.title)
+            }
+            val pendingAction = PendingIntent.getBroadcast(
+                ctx,
+                "${notification.id}:${action.key}".hashCode(),
+                actionIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+            builder.addAction(0, action.label, pendingAction)
+        }
+
+        try {
+            manager.notify(notifyId, builder.build())
+        } catch (e: SecurityException) {
+            Log.w(TAG, "notify() denied: ${e.message}")
         }
     }
 
@@ -97,6 +158,7 @@ class NotificationWorker(
     companion object {
         private const val TAG = "NotificationWorker"
         private const val WORK_NAME = "post_notifications_poll"
+        private const val CHECK_SOON_WORK_NAME = "notifications_check_soon"
         private const val CHANNEL_ID = "post_notifications"
         private const val GROUP_KEY = "net.aurboda.POSTS"
         private const val MAX_PER_RUN = 8
@@ -111,6 +173,32 @@ class NotificationWorker(
             context.getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
 
+        fun ensureCentralChannel(context: Context, spec: ChannelSpec) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+            val channel = NotificationChannel(spec.id, spec.name, NotificationManager.IMPORTANCE_DEFAULT)
+            context.getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        }
+
+        /**
+         * Opens [link] (see [notificationTapTarget]); with [serverId] the tap also marks that
+         * notification read.
+         */
+        fun tapIntent(context: Context, requestCode: Int, link: String?, serverId: String?): PendingIntent {
+            val target = notificationTapTarget(link)
+            val openIntent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+                putExtra(MainActivity.EXTRA_OPEN_TAB, target.tab)
+                target.morePath?.let { putExtra(MainActivity.EXTRA_MORE_PATH, it) }
+                serverId?.let { putExtra(MainActivity.EXTRA_NOTIFICATION_ID, it) }
+            }
+            return PendingIntent.getActivity(
+                context,
+                requestCode,
+                openIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+        }
+
         fun schedule(context: Context) {
             ensureChannel(context)
             val constraints = Constraints.Builder()
@@ -122,6 +210,20 @@ class NotificationWorker(
             WorkManager.getInstance(context)
                 .enqueueUniquePeriodicWork(WORK_NAME, ExistingPeriodicWorkPolicy.UPDATE, request)
             Log.d(TAG, "Post-notification poll scheduled")
+        }
+
+        /** One extra poll shortly, e.g. after a sync that may have raised an auto-share notification. */
+        fun checkSoon(context: Context, delaySeconds: Long = 60) {
+            if (!isPostNotificationsEnabled(context)) return
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
+            val request = OneTimeWorkRequestBuilder<NotificationWorker>()
+                .setConstraints(constraints)
+                .setInitialDelay(delaySeconds, TimeUnit.SECONDS)
+                .build()
+            WorkManager.getInstance(context)
+                .enqueueUniqueWork(CHECK_SOON_WORK_NAME, ExistingWorkPolicy.REPLACE, request)
         }
 
         fun cancel(context: Context) {
