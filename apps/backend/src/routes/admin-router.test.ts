@@ -395,6 +395,34 @@ describe('support contact settings', () => {
   })
 })
 
+describe('Garmin Personal API key switch', () => {
+  test('GET reports it on when unset', async () => {
+    const res = await supertest(buildApp()).get('/admin/settings')
+    expect(res.body.garmin_personal_key_enabled).toBe(true)
+  })
+
+  test('GET reports it off once stored off', async () => {
+    vi.mocked(centralDb.getServerSetting).mockImplementation(async (key) =>
+      key === 'garmin_personal_key_enabled' ? false : null,
+    )
+    try {
+      const res = await supertest(buildApp()).get('/admin/settings')
+      expect(res.body.garmin_personal_key_enabled).toBe(false)
+    } finally {
+      vi.mocked(centralDb.getServerSetting).mockReset().mockResolvedValue(null)
+    }
+  })
+
+  test('PATCH stores it', async () => {
+    vi.mocked(centralDb.setServerSetting).mockClear()
+    const res = await supertest(buildApp())
+      .patch('/admin/settings')
+      .send({ garmin_personal_key_enabled: false })
+    expect(res.status).toBe(200)
+    expect(vi.mocked(centralDb.setServerSetting).mock.calls).toEqual([['garmin_personal_key_enabled', false]])
+  })
+})
+
 describe('admin billing settings', () => {
   test('GET reports billing off with the default trial and grace days', async () => {
     const res = await supertest(buildApp()).get('/admin/settings')

@@ -99,6 +99,22 @@ export const syncGarminBodySchema = z
 
 export type SyncGarminBody = z.infer<typeof syncGarminBodySchema>
 
+export const connectGarminPersonalKeyBodySchema = z
+  .object({
+    api_key: z.string().trim().min(1).max(4096).meta({
+      description: 'Garmin Personal API key, created in Garmin Connect (Settings → Personal API token)',
+    }),
+    expires_at: dateOnlySchema.meta({
+      description: 'The date the key expires, as chosen when it was created in Garmin Connect',
+    }),
+  })
+  .meta({
+    description: "Connect Garmin with a Personal API key from Garmin's official Personal API",
+    id: 'ConnectGarminPersonalKeyBody',
+  })
+
+export type ConnectGarminPersonalKeyBody = z.infer<typeof connectGarminPersonalKeyBodySchema>
+
 export const syncRescueTimeBodySchema = z
   .object({
     full_resync: fullResyncSchema,

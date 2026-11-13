@@ -245,6 +245,54 @@ describe('getSettingsResponse derived fields', () => {
     expect(result.lastfm_configured).toBe(false)
   })
 
+  test('reports a Garmin key alone as connected, with its expiry and no session', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue(null)
+    vi.mocked(db.getOAuthToken).mockImplementation(async (_user, provider) =>
+      provider === 'garmin_personal'
+        ? ({
+            access_token: '',
+            expires_at: new Date('2027-03-01T00:00:00Z'),
+            provider,
+            refresh_token: 'fake-key',
+          } as never)
+        : null,
+    )
+
+    const result = await getSettingsResponse('testuser')
+
+    expect(result).toMatchObject({
+      garmin_connected: true,
+      garmin_personal_key: { available: true, connected: true, expires_at: '2027-03-01', refused: false },
+      garmin_session_connected: false,
+    })
+  })
+
+  test('reports a refused key, a session, and the admin switch turned off', async () => {
+    central.getServerSetting.mockImplementation(async (key: string) =>
+      key === 'garmin_personal_key_enabled' ? (false as never) : null,
+    )
+    vi.mocked(db.getUserSettings).mockResolvedValue(null)
+    vi.mocked(db.getOAuthToken).mockImplementation(async (_user, provider) =>
+      provider === 'garmin_personal'
+        ? ({
+            access_token: '',
+            expires_at: new Date('2027-03-01T00:00:00Z'),
+            provider,
+            refresh_token: 'fake-key',
+            refused_at: new Date(),
+          } as never)
+        : ({ access_token: 'session', provider } as never),
+    )
+
+    const result = await getSettingsResponse('testuser')
+
+    expect(result).toMatchObject({
+      garmin_connected: true,
+      garmin_personal_key: { available: false, connected: true, expires_at: '2027-03-01', refused: true },
+      garmin_session_connected: true,
+    })
+  })
+
   test('reports no Gravl connection without a grant or a pasted token', async () => {
     vi.mocked(db.getUserSettings).mockResolvedValue(null)
     vi.mocked(db.getOAuthToken).mockResolvedValue(null)

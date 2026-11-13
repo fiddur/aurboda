@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import * as db from '../../db/index.ts'
 import { auditError } from '../../services/audit-log.ts'
 import { processActivityDetail } from './process.ts'
+import { garminRoutedClient } from './source.ts'
 import {
   calculateRetryAfter,
   garminDataTypes,
@@ -64,6 +65,7 @@ const createMockGarmin = () => ({
   getStress: vi.fn().mockResolvedValue({}),
   getTrainingReadiness: vi.fn().mockResolvedValue({}),
   login: vi.fn(),
+  sourceFor: vi.fn().mockResolvedValue('session'),
 })
 
 describe('calculateRetryAfter', () => {
@@ -182,6 +184,63 @@ describe('syncGarminDataType', () => {
     expect(mockGarmin.getDailySummary).not.toHaveBeenCalled()
     expect(db.upsertSyncState).not.toHaveBeenCalled()
     expect(auditError).not.toHaveBeenCalled()
+  })
+
+  test('a type no connection serves is skipped without a fetch or a sync_state write', async () => {
+    vi.mocked(db.getOAuthToken).mockImplementation(async (_user, provider) =>
+      provider === 'garmin_personal'
+        ? { access_token: '', provider, refresh_token: 'fake-key' }
+        : { access_token: '', provider },
+    )
+    const session = createMockGarmin()
+    const personal = createMockGarmin()
+    const garmin = garminRoutedClient({ personal: personal as never, session: session as never })
+
+    try {
+      const result = await syncGarminDataType(user, garmin, 'stress')
+
+      expect(result).toEqual({ data_type: 'stress', records_processed: 0, status: 'skipped' })
+      expect(session.getStress).not.toHaveBeenCalled()
+      expect(db.getSyncState).not.toHaveBeenCalled()
+      expect(db.upsertSyncState).not.toHaveBeenCalled()
+    } finally {
+      vi.mocked(db.getOAuthToken).mockReset().mockResolvedValue({
+        access_token: '{"oauth1":{},"oauth2":{}}',
+        provider: 'garmin',
+      })
+    }
+  })
+
+  test('with both a session and a key, sleep comes from the session and heart rate from the key', async () => {
+    vi.mocked(db.getOAuthToken).mockImplementation(async (_user, provider) =>
+      provider === 'garmin_personal'
+        ? { access_token: '', provider, refresh_token: 'fake-key' }
+        : { access_token: '{"oauth1":{},"oauth2":{}}', provider },
+    )
+    vi.mocked(db.getSyncState).mockResolvedValue({
+      data_type: 'sleep',
+      last_sync_time: new Date(),
+      provider: 'garmin',
+      status: 'idle',
+    })
+    const session = createMockGarmin()
+    const personal = createMockGarmin()
+    const garmin = garminRoutedClient({ personal: personal as never, session: session as never })
+
+    try {
+      expect((await syncGarminDataType(user, garmin, 'sleep')).status).toBe('success')
+      expect((await syncGarminDataType(user, garmin, 'heartRate')).status).toBe('success')
+
+      expect(session.getSleep).toHaveBeenCalled()
+      expect(personal.getSleep).not.toHaveBeenCalled()
+      expect(personal.getHeartRate).toHaveBeenCalled()
+      expect(session.getHeartRate).not.toHaveBeenCalled()
+    } finally {
+      vi.mocked(db.getOAuthToken).mockReset().mockResolvedValue({
+        access_token: '{"oauth1":{},"oauth2":{}}',
+        provider: 'garmin',
+      })
+    }
   })
 
   test('skips sync when rate limited', async () => {
@@ -346,6 +405,17 @@ describe('syncActivityDetails', () => {
       activityStart: start,
       onTrackWritten,
     })
+  })
+
+  test('does nothing without a source for the detail (a key and no session)', async () => {
+    const mockGarmin = createMockGarmin()
+    mockGarmin.sourceFor.mockResolvedValue(null)
+
+    await syncActivityDetails(user, mockGarmin as never)
+
+    expect(mockGarmin.sourceFor).toHaveBeenCalledWith(user, 'activityDetail')
+    expect(db.getActivitiesNeedingDetail).not.toHaveBeenCalled()
+    expect(mockGarmin.getActivityDetail).not.toHaveBeenCalled()
   })
 
   test('passes forceAll when fullResync is true', async () => {

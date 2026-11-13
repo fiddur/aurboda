@@ -289,17 +289,18 @@ const processHeartRate = async (user: string, data: unknown, deps: GarminProcess
 }
 
 const processHrv = async (user: string, data: GarminHrvData, deps: GarminProcessDeps): Promise<number> => {
-  if (!data?.calendarDate) return 0
+  const summary = data?.hrvSummary ?? data
+  if (!summary?.calendarDate) return 0
 
-  const time = dateAt(data.calendarDate)
-  await deps.insertRawRecord(user, makeRaw('garmin_hrv', `garmin-hrv-${data.calendarDate}`, time, data))
+  const time = dateAt(summary.calendarDate)
+  await deps.insertRawRecord(user, makeRaw('garmin_hrv', `garmin-hrv-${summary.calendarDate}`, time, data))
 
-  const points: TimeSeriesPoint[] = []
-  if (data.lastNightAvg > 0) {
-    points.push({ metric: 'hrv_rmssd', source: 'garmin', time, unit: 'ms', value: data.lastNightAvg })
+  const lastNightAvg = summary.lastNightAvg ?? 0
+  if (lastNightAvg > 0) {
+    await deps.insertTimeSeries(user, [
+      { metric: 'hrv_rmssd', source: 'garmin', time, unit: 'ms', value: lastNightAvg },
+    ])
   }
-
-  if (points.length > 0) await deps.insertTimeSeries(user, points)
   return 1
 }
 

@@ -1,14 +1,14 @@
 import { getAllSyncStates, type SyncState } from '../db/index.ts'
-import { hasGarminSession } from '../integrations/garmin/sync.ts'
+import { hasGarminConnection } from '../integrations/garmin/sync.ts'
 import { hasOuraToken } from '../integrations/oura/sync.ts'
 
 export interface SyncStateDeps {
   getAllSyncStates: (user: string, provider: string) => Promise<SyncState[]>
-  hasGarminSession: (user: string) => Promise<boolean>
+  hasGarminConnection: (user: string) => Promise<boolean>
   hasOuraToken: (user: string) => Promise<boolean>
 }
 
-const defaultDeps: SyncStateDeps = { getAllSyncStates, hasGarminSession, hasOuraToken }
+const defaultDeps: SyncStateDeps = { getAllSyncStates, hasGarminConnection, hasOuraToken }
 
 /**
  * None while the user is not connected to the provider: older releases synced
@@ -20,7 +20,7 @@ export const getVisibleSyncStates = async (
   provider: string,
   deps: SyncStateDeps = defaultDeps,
 ): Promise<SyncState[]> => {
-  if (provider === 'garmin' && !(await deps.hasGarminSession(user))) return []
+  if (provider === 'garmin' && !(await deps.hasGarminConnection(user))) return []
   if (provider === 'oura' && !(await deps.hasOuraToken(user))) return []
   return deps.getAllSyncStates(user, provider)
 }
