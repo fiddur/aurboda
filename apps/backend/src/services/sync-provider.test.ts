@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import * as dbIndex from '../db/index.ts'
 
@@ -382,6 +382,99 @@ describe('createSyncProvider › syncGravlIfNeeded', () => {
     const provider = createSyncProvider({})
     await provider.syncGravlIfNeeded('alice')
     expect(syncGravlWorkouts).not.toHaveBeenCalled()
+  })
+})
+
+describe('createSyncProvider › syncHomeAssistantIfNeeded', () => {
+  const configured = {
+    home_assistant_entity_id: 'device_tracker.pixel_8',
+    home_assistant_token: 'token',
+    home_assistant_url: 'https://ha.example.org',
+  }
+  const result = {
+    locations_fetched: 0,
+    locations_inserted: 0,
+    locations_superseded: 0,
+    status: 'success' as const,
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-01T00:20:00Z'))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  test('does nothing for a user without all three settings', async () => {
+    vi.mocked(getSettings).mockResolvedValue({ ...configured, home_assistant_token: undefined } as never)
+    const syncHomeAssistant = vi.fn().mockResolvedValue(result)
+    await createSyncProvider({ syncHomeAssistant }).syncHomeAssistantIfNeeded('alice')
+    expect(syncHomeAssistant).not.toHaveBeenCalled()
+  })
+
+  test('does nothing within the 10-minute default interval', async () => {
+    vi.mocked(getSettings).mockResolvedValue(configured as never)
+    vi.mocked(dbIndex.getSyncState).mockResolvedValue({
+      last_sync_time: new Date('2026-06-01T00:15:00Z'),
+    } as never)
+    const syncHomeAssistant = vi.fn().mockResolvedValue(result)
+    await createSyncProvider({ syncHomeAssistant, syncThresholdMinutes: 1 }).syncHomeAssistantIfNeeded(
+      'alice',
+    )
+    expect(syncHomeAssistant).not.toHaveBeenCalled()
+  })
+
+  test('syncs when the last sync is older than the interval, or never happened', async () => {
+    vi.mocked(getSettings).mockResolvedValue(configured as never)
+    vi.mocked(dbIndex.getSyncState).mockResolvedValue({
+      last_sync_time: new Date('2026-06-01T00:05:00Z'),
+    } as never)
+    const syncHomeAssistant = vi.fn().mockResolvedValue(result)
+    const provider = createSyncProvider({ recheckMs: 0, syncHomeAssistant })
+    await provider.syncHomeAssistantIfNeeded('alice')
+    expect(syncHomeAssistant).toHaveBeenCalledWith('alice')
+
+    vi.mocked(dbIndex.getSyncState).mockResolvedValue(null)
+    await provider.syncHomeAssistantIfNeeded('alice')
+    expect(syncHomeAssistant).toHaveBeenCalledTimes(2)
+  })
+
+  test('leaves a failing server alone until its retry_after has passed', async () => {
+    vi.mocked(getSettings).mockResolvedValue(configured as never)
+    vi.mocked(dbIndex.getSyncState).mockResolvedValue({
+      retry_after: new Date('2026-06-01T00:25:00Z'),
+      status: 'error',
+    } as never)
+    const syncHomeAssistant = vi.fn().mockResolvedValue(result)
+    const provider = createSyncProvider({ recheckMs: 0, syncHomeAssistant })
+    await provider.syncHomeAssistantIfNeeded('alice')
+    expect(syncHomeAssistant).not.toHaveBeenCalled()
+
+    vi.setSystemTime(new Date('2026-06-01T00:26:00Z'))
+    await provider.syncHomeAssistantIfNeeded('alice')
+    expect(syncHomeAssistant).toHaveBeenCalledTimes(1)
+  })
+
+  test('honours the user’s own home_assistant interval', async () => {
+    vi.mocked(getSettings).mockResolvedValue({
+      ...configured,
+      sync_intervals: { home_assistant: 30 },
+    } as never)
+    vi.mocked(dbIndex.getSyncState).mockResolvedValue({
+      last_sync_time: new Date('2026-06-01T00:05:00Z'),
+    } as never)
+    const syncHomeAssistant = vi.fn().mockResolvedValue(result)
+    await createSyncProvider({ syncHomeAssistant }).syncHomeAssistantIfNeeded('alice')
+    expect(syncHomeAssistant).not.toHaveBeenCalled()
+  })
+
+  test('skips when the integration is not wired', async () => {
+    vi.mocked(getSettings).mockResolvedValue(configured as never)
+    await expect(createSyncProvider({}).syncHomeAssistantIfNeeded('alice')).resolves.toBeUndefined()
+    expect(getSettings).not.toHaveBeenCalled()
   })
 })
 

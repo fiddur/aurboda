@@ -6,7 +6,7 @@ export function Privacy() {
     <div class="static-page">
       <h1>Privacy Policy</h1>
       <p>
-        <em>Last updated: 2026-03-24</em>
+        <em>Last updated: 2026-11-13</em>
       </p>
 
       <section>
@@ -22,7 +22,11 @@ export function Privacy() {
         <p>Aurboda stores the health and activity data you choose to connect:</p>
         <ul>
           <li>Health metrics (heart rate, HRV, sleep, exercise, steps, weight, SpO2, etc.)</li>
-          <li>Location data (GPS positions, place visits) if OwnTracks is connected</li>
+          <li>Location data (GPS positions, place visits) if OwnTracks or Home Assistant is connected</li>
+          <li>
+            If you connect Home Assistant: its URL and the access token you give, stored on the server so it
+            can fetch your phone's position history from Home Assistant
+          </li>
           <li>Screen time and app usage if RescueTime or ActivityWatch is connected</li>
           <li>Music listening history if Last.fm is connected</li>
           <li>Calendar events if calendar feeds are connected</li>
@@ -54,7 +58,8 @@ export function Privacy() {
         <p>
           <strong>We do not share your data with any third parties.</strong> Your data remains on the Aurboda
           server instance. The only external communication is with the data source APIs you have explicitly
-          configured (Oura, Garmin, RescueTime, Last.fm, etc.) to fetch your own data.
+          configured (Oura, Garmin, RescueTime, Last.fm, a Home Assistant server you connect, etc.) to fetch
+          your own data.
         </p>
       </section>
 

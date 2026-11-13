@@ -191,6 +191,8 @@ const settingsWithDefaultsSchema = userSettingsResponseSchema.pick({
   feed_type_tag: true,
   food_sensitivity_map: true,
   garmin_disabled_data_types: true,
+  home_assistant_entity_id: true,
+  home_assistant_url: true,
   item_icons: true,
   lastfm_username: true,
   maf_hr: true,
@@ -271,6 +273,7 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
     goals,
     gravl_configured: !!gravlClientId && !!gravlClientSecret,
     gravl_connection: gravlConnection,
+    home_assistant_token_set: !!settings.home_assistant_token,
     hr_zone_start: zones,
     hr_zone_start_source: source,
     lastfm_configured: !!lastFmApiKey,
@@ -296,6 +299,7 @@ const buildErrorSettingsResponse = async (errorMessage: string): Promise<Setting
     goals: defaultGoals,
     gravl_configured: false,
     gravl_connection: null,
+    home_assistant_token_set: false,
     hr_zone_start: calculateDefaultHrZones(null),
     hr_zone_start_source: 'default' as const,
     lastfm_configured: !!lastFmApiKey,
@@ -359,8 +363,36 @@ const storedUpdates = (
     else if (value !== undefined) (updates as Record<string, unknown>)[field] = value
   }
   if (updates.feed_default_tags) updates.feed_default_tags = normalizeTags(updates.feed_default_tags)
+  const haUrl = updates.home_assistant_url
+  if (haUrl) updates.home_assistant_url = normalizeHomeAssistantUrl(haUrl)
   return { clear, updates }
 }
+
+/** Origin plus path without trailing slashes: `https://ha.example.org/` is stored as `https://ha.example.org`. */
+export const normalizeHomeAssistantUrl = (raw: string): string => {
+  const url = new URL(raw)
+  return `${url.origin}${url.pathname.replace(/\/+$/, '')}`
+}
+
+const originOf = (raw: string | null | undefined): string | null => {
+  if (!raw) return null
+  try {
+    return new URL(raw).origin
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Whether an update must drop the stored Home Assistant token: it moves the URL to
+ * another origin (or clears it) without bringing a new token. The token is write-only,
+ * so this keeps a hijacked session from pointing the stored token at a host it controls.
+ */
+export const shouldClearHomeAssistantToken = (before: UserSettings, data: UpdateSettingsInput): boolean =>
+  data.home_assistant_url !== undefined &&
+  typeof data.home_assistant_token !== 'string' &&
+  !!before.home_assistant_token &&
+  originOf(data.home_assistant_url) !== originOf(before.home_assistant_url)
 
 interface SettingsHooks {
   onHrSettingsChanged?: HrSettingsChanged
@@ -411,7 +443,17 @@ export const validateAndUpdateSettings = async (
   }
 
   const hooks = touchedHooks(parsed.data, { onHrSettingsChanged, onProfileChanged })
-  const before = hooks.onHrSettingsChanged || hooks.onProfileChanged ? await getSettings(user) : undefined
+  const needsBefore =
+    hooks.onHrSettingsChanged || hooks.onProfileChanged || parsed.data.home_assistant_url !== undefined
+  const before = needsBefore ? await getSettings(user) : undefined
+
+  if (
+    before &&
+    shouldClearHomeAssistantToken(before, parsed.data) &&
+    !clear.includes('home_assistant_token')
+  ) {
+    clear.push('home_assistant_token')
+  }
 
   await updateSettingsInternal(user, updates, clear)
 

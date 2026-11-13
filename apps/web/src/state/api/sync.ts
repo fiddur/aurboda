@@ -8,6 +8,9 @@ import type {
   StravaSyncStatusResponse,
   GravlSyncResponse,
   GravlSyncStatusResponse,
+  HomeAssistantEntitiesResponse,
+  HomeAssistantSyncResponse,
+  HomeAssistantSyncStatusResponse,
 } from '@aurboda/api-spec'
 
 import axios from 'axios'
@@ -203,6 +206,32 @@ export const syncGravl = async (fullResync?: boolean): Promise<GravlSyncResponse
 export const fetchGravlSyncStatus = async (): Promise<GravlSyncStatusResponse> => {
   const { token } = auth.value
   const response = await axios.get<GravlSyncStatusResponse>(`${API_URL}/sync/gravl/status`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return response.data
+}
+
+export const syncHomeAssistant = async (fullResync?: boolean): Promise<HomeAssistantSyncResponse> => {
+  const { token } = auth.value
+  const response = await axios.post<HomeAssistantSyncResponse>(
+    `${API_URL}/sync/home-assistant`,
+    { full_resync: fullResync },
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  return response.data
+}
+
+export const fetchHomeAssistantSyncStatus = async (): Promise<HomeAssistantSyncStatusResponse> => {
+  const { token } = auth.value
+  const response = await axios.get<HomeAssistantSyncStatusResponse>(`${API_URL}/sync/home-assistant/status`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return response.data
+}
+
+export const fetchHomeAssistantEntities = async (): Promise<HomeAssistantEntitiesResponse> => {
+  const { token } = auth.value
+  const response = await axios.get<HomeAssistantEntitiesResponse>(`${API_URL}/home-assistant/entities`, {
     headers: { Authorization: `Bearer ${token}` },
   })
   return response.data

@@ -92,6 +92,15 @@ export const dataSources: DataSourceInfo[] = [
     userSetup: 'OwnTracks app config',
   },
   {
+    name: 'Home Assistant',
+    homepage: 'https://www.home-assistant.io/',
+    doc: 'home-assistant.md',
+    provides: 'GPS locations and zones from the Home Assistant companion app, place visits',
+    how: 'Pull (API)',
+    adminSetup: 'None',
+    userSetup: 'Home Assistant URL, long-lived token, tracker entity',
+  },
+  {
     name: 'RescueTime',
     homepage: 'https://www.rescuetime.com/',
     doc: 'rescuetime.md',

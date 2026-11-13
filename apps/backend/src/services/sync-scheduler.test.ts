@@ -11,6 +11,7 @@ const makeSync = (overrides: Partial<SyncProvider> = {}): SyncProvider => ({
   syncCalendarsIfNeeded: vi.fn().mockResolvedValue(undefined),
   syncGarminIfNeeded: vi.fn().mockResolvedValue(undefined),
   syncGravlIfNeeded: vi.fn().mockResolvedValue(undefined),
+  syncHomeAssistantIfNeeded: vi.fn().mockResolvedValue(undefined),
   syncLastFmIfNeeded: vi.fn().mockResolvedValue(undefined),
   syncOuraIfNeeded: vi.fn().mockResolvedValue(undefined),
   syncRescueTimeIfNeeded: vi.fn().mockResolvedValue(undefined),
@@ -33,6 +34,8 @@ describe('runScheduledSyncs', () => {
     expect(sync.syncGarminIfNeeded).toHaveBeenCalledWith('bob', 'activities')
     expect(sync.syncGarminIfNeeded).toHaveBeenCalledTimes(4)
     expect(sync.syncGravlIfNeeded).toHaveBeenCalledTimes(2)
+    expect(sync.syncHomeAssistantIfNeeded).toHaveBeenCalledWith('alice')
+    expect(sync.syncHomeAssistantIfNeeded).toHaveBeenCalledTimes(2)
     expect(sync.syncRescueTimeIfNeeded).toHaveBeenCalledTimes(2)
     expect(sync.syncLastFmIfNeeded).toHaveBeenCalledTimes(2)
     expect(sync.syncCalendarsIfNeeded).toHaveBeenCalledTimes(2)

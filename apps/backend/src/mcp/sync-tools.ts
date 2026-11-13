@@ -3,6 +3,8 @@ import {
   syncCalendarsBodySchema,
   syncGarminBodySchema,
   syncGravlBodySchema,
+  syncHomeAssistantBodySchema,
+  type HomeAssistantSyncResult,
   syncLastFmBodySchema,
   syncOuraBodySchema,
   syncProviderSchema,
@@ -15,6 +17,7 @@ import { z } from 'zod'
 
 import type { GarminClient } from '../integrations/garmin/source.ts'
 import type { GravlClient } from '../integrations/gravl/client.ts'
+import type { HomeAssistantClient } from '../integrations/home-assistant/client.ts'
 import type { ouraClient } from '../integrations/oura/client.ts'
 import type { ActivityNotifier } from '../services/deduction-queue.ts'
 import type { StravaQueue } from '../services/strava-queue.ts'
@@ -41,6 +44,7 @@ import { syncAllOuraData } from '../integrations/oura/sync.ts'
 import { syncRescueTimeData } from '../integrations/rescuetime/sync.ts'
 import { syncStrava } from '../integrations/strava/sync.ts'
 import { getCentralDb } from '../services/central-db.ts'
+import { listHomeAssistantEntities } from '../services/home-assistant.ts'
 import { getSettings } from '../services/settings.ts'
 import { getVisibleSyncStates } from '../services/sync-states.ts'
 import { errorResponse, jsonResponse, type McpServer, tzJsonResponse } from './helpers.ts'
@@ -58,6 +62,11 @@ export const registerSyncTools = (
   gravl?: GravlClient,
   onDetailSynced?: DetailSyncedCallback,
   onTrackWritten?: TrackWrittenCallback,
+  syncHomeAssistant?: (
+    user: string,
+    options?: { fullResync?: boolean; startDate?: Date },
+  ) => Promise<HomeAssistantSyncResult>,
+  homeAssistant?: HomeAssistantClient,
 ) => {
   server.tool(
     'sync_oura',
@@ -282,6 +291,37 @@ export const registerSyncTools = (
     },
   )
 
+  server.tool(
+    'sync_home_assistant',
+    "Pull the phone's positions from Home Assistant's history API (the configured device_tracker.* or person.* entity) into locations with source home_assistant; the zone a state names becomes the location's region and a place visit. The first sync or a full_resync covers the last 10 days (or from start_date), later syncs continue from the last one. Points inside an activity with its own GPS track are soft-deleted. Needs home_assistant_url, home_assistant_token and home_assistant_entity_id in user settings.",
+    { ...syncHomeAssistantBodySchema.shape },
+    async ({ full_resync, start_date }) => {
+      if (!syncHomeAssistant) {
+        return errorResponse('Home Assistant integration is not available on this server.')
+      }
+      const result = await syncHomeAssistant(user, {
+        fullResync: full_resync,
+        startDate: start_date ? new Date(start_date) : undefined,
+      })
+      return jsonResponse({ result, success: result.status === 'success' })
+    },
+  )
+
+  server.tool(
+    'list_home_assistant_entities',
+    'List the person.* and device_tracker.* entities with coordinates on the configured Home Assistant server, person.* first, to choose home_assistant_entity_id. Needs home_assistant_url and home_assistant_token in user settings; doubles as a connection test.',
+    {},
+    async () => {
+      if (!homeAssistant) {
+        return errorResponse('Home Assistant integration is not available on this server.')
+      }
+      const result = await listHomeAssistantEntities(user, { client: homeAssistant, getSettings })
+      return result.ok
+        ? jsonResponse({ data: result.entities, success: true })
+        : jsonResponse({ error: result.error, success: false })
+    },
+  )
+
   const syncProviders = [
     'oura',
     'garmin',
@@ -291,11 +331,12 @@ export const registerSyncTools = (
     'lastfm',
     'activitywatch',
     'gravl',
+    'home_assistant',
   ] as const
 
   server.tool(
     'get_sync_status',
-    'Get the current sync status for Oura, Garmin, Strava, RescueTime, Calendar, Last.fm, ActivityWatch and Gravl data sources. Shows last sync time, status, and any errors. For Strava, also includes queue counts (pending and active jobs).',
+    'Get the current sync status for Oura, Garmin, Strava, RescueTime, Calendar, Last.fm, ActivityWatch, Gravl and Home Assistant data sources. Shows last sync time, status, and any errors. For Strava, also includes queue counts (pending and active jobs).',
     {
       provider: syncProviderSchema.optional().describe('Which provider to check. Defaults to "all".'),
       tz: tzSchema,
@@ -322,7 +363,15 @@ export const registerSyncTools = (
     },
   )
 
-  const resettableProviders = ['oura', 'garmin', 'strava', 'rescuetime', 'calendar', 'lastfm'] as const
+  const resettableProviders = [
+    'oura',
+    'garmin',
+    'strava',
+    'rescuetime',
+    'calendar',
+    'lastfm',
+    'home_assistant',
+  ] as const
 
   server.tool(
     'reset_sync_state',

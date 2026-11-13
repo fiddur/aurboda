@@ -338,6 +338,8 @@ export const Places = () => {
         return '#f97316'
       case 'owntracks':
         return '#3b82f6'
+      case 'home_assistant':
+        return '#a855f7'
       default:
         return '#9ca3af'
     }
@@ -422,6 +424,7 @@ export const Places = () => {
             <span style={{ color: '#22c55e' }}>Named</span> |{' '}
             <span style={{ color: '#f97316' }}>Detected</span> |{' '}
             <span style={{ color: '#3b82f6' }}>OwnTracks</span> |{' '}
+            <span style={{ color: '#a855f7' }}>Home Assistant</span> |{' '}
             <span style={{ color: '#9ca3af' }}>Unknown</span>
           </div>
         </div>
