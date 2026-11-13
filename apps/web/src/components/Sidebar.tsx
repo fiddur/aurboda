@@ -10,6 +10,7 @@ import {
   NAV_LINKS_SECONDARY,
   SHARING_LINKS,
 } from './nav-links'
+import { NotificationBellDropdown } from './NotificationBell'
 import './Sidebar.css'
 
 const COLLAPSED_KEY = 'sidebar-collapsed'
@@ -52,6 +53,7 @@ export function Sidebar() {
         <a href="/" class="sidebar-brand">
           Aurboda
         </a>
+        {isLoggedIn && <NotificationBellDropdown />}
         <button
           class="sidebar-toggle"
           onClick={toggleCollapsed}
