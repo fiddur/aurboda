@@ -1,4 +1,12 @@
-import { DEFAULT_IMPACT_WINDOW_MINUTES, formatImpactWindow, IMPACT_WINDOW_OPTIONS } from '@aurboda/api-spec'
+import {
+  DEFAULT_IMPACT_DURATION_BUCKETS,
+  DEFAULT_IMPACT_TIME_BUCKETS,
+  DEFAULT_IMPACT_WINDOW_MINUTES,
+  formatImpactWindow,
+  IMPACT_FIELD_DIMENSION_PREFIX,
+  IMPACT_WINDOW_OPTIONS,
+  type ImpactFilter,
+} from '@aurboda/api-spec'
 import { batch, signal, useSignalEffect } from '@preact/signals'
 import { useQuery } from '@tanstack/react-query'
 import { useLocation } from 'preact-iso'
@@ -16,9 +24,12 @@ import {
   fetchHrvActivitiesCorrelation,
   fetchImpactMetrics,
 } from '../../state/api'
+import { browserTz } from '../../state/api/client'
 import { toDisplayName } from '../../utils/displayName'
 import { ContextTable } from './ContextTable'
 import { applyExploreState, exploreState, ExploreTab } from './Explore'
+import { ImpactBreakdown } from './ImpactBreakdown'
+import { ImpactSlicer } from './ImpactSlicer'
 import {
   describeMetrics,
   describeProductivityR,
@@ -28,6 +39,7 @@ import {
   toggleMetric,
 } from './metrics'
 import { describeImpactMeta, describeOccurrences } from './occurrences'
+import { withoutDimension } from './slicing'
 import {
   type AnalyzeState,
   type AnalyzeTab,
@@ -51,6 +63,16 @@ const activeTab = signal<AnalyzeTab>('context')
 
 const selectedActivity = signal<SelectedItem | null>(null)
 
+const breakdownDimension = signal('')
+
+const durationLimits = signal<number[]>([...DEFAULT_IMPACT_DURATION_BUCKETS])
+
+const hourLimits = signal<number[]>([...DEFAULT_IMPACT_TIME_BUCKETS])
+
+const impactFilters = signal<ImpactFilter[]>([])
+
+const breakdownMetric = signal('')
+
 const applyAnalyzeState = (state: AnalyzeState) => {
   batch(() => {
     activeTab.value = state.tab
@@ -59,15 +81,25 @@ const applyAnalyzeState = (state: AnalyzeState) => {
     shownMetrics.value = state.metrics
     shownExtras.value = state.extras
     selectedActivity.value = state.item
+    breakdownDimension.value = state.breakdown
+    durationLimits.value = state.lengths
+    hourLimits.value = state.hours
+    impactFilters.value = state.filters
+    breakdownMetric.value = state.breakdownMetric
     applyExploreState(state.explore)
   })
 }
 
 const currentAnalyzeState = (): AnalyzeState => ({
+  breakdown: breakdownDimension.value,
+  breakdownMetric: breakdownMetric.value,
   days: periodDays.value,
   explore: exploreState(),
   extras: shownExtras.value,
+  filters: impactFilters.value,
+  hours: hourLimits.value,
   item: selectedActivity.value,
+  lengths: durationLimits.value,
   metrics: shownMetrics.value,
   tab: activeTab.value,
   window: windowMinutes.value,
@@ -98,6 +130,32 @@ const withUnit = (value: string, unit: string | null): string =>
 
 const isActivitySelected = (selected: SelectedItem | null, name: string, type: ActivityImpactType): boolean =>
   selected?.name === name && selected?.type === type
+
+/** Another row's sessions have other groups: its filters and field breakdown would not apply. */
+const selectActivity = (item: SelectedItem | null) => {
+  batch(() => {
+    selectedActivity.value = item
+    impactFilters.value = []
+    if (breakdownDimension.value.startsWith(IMPACT_FIELD_DIMENSION_PREFIX)) breakdownDimension.value = ''
+  })
+}
+
+const setDurationLimits = (limits: number[]) => {
+  batch(() => {
+    durationLimits.value = limits
+    impactFilters.value = withoutDimension(impactFilters.value, 'duration')
+  })
+}
+
+const setHourLimits = (limits: number[]) => {
+  batch(() => {
+    hourLimits.value = limits
+    impactFilters.value = withoutDimension(impactFilters.value, 'time_of_day')
+  })
+}
+
+const IMPACT_ACTIVITY_KEY_INDEX = 1
+const IMPACT_TYPE_KEY_INDEX = 2
 
 // eslint-disable-next-line complexity -- large render switching between the context and explore tabs
 export function Correlations() {
@@ -152,8 +210,22 @@ export function Correlations() {
             windowMinutes.value,
             'exact',
             shownExtras.value,
+            {
+              breakdown: breakdownDimension.value,
+              filters: impactFilters.value,
+              hours: hourLimits.value,
+              includeDimensions: true,
+              lengths: durationLimits.value,
+              tz: browserTz,
+            },
           )
         : Promise.reject(),
+    // Keep the last result on screen while the same row refetches, so the slicing controls stay put.
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[IMPACT_ACTIVITY_KEY_INDEX] === selectedActivity.value?.name &&
+      previousQuery?.queryKey[IMPACT_TYPE_KEY_INDEX] === selectedActivity.value?.type
+        ? previous
+        : undefined,
     queryKey: [
       'activityImpact',
       selectedActivity.value?.name,
@@ -161,6 +233,10 @@ export function Correlations() {
       periodDays.value,
       windowMinutes.value,
       shownExtras.value,
+      breakdownDimension.value,
+      durationLimits.value,
+      hourLimits.value,
+      impactFilters.value,
     ],
     staleTime: 5 * 60 * 1000,
   })
@@ -184,13 +260,9 @@ export function Correlations() {
     periodDays.value = parseInt((e.target as HTMLSelectElement).value, 10)
   }
 
-  const handleSelectActivity = (name: string, type: ActivityImpactType) => {
-    if (isActivitySelected(selectedActivity.value, name, type)) {
-      selectedActivity.value = null
-    } else {
-      selectedActivity.value = { name, type }
-    }
-  }
+  const handleSelectActivity = (name: string, type: ActivityImpactType) =>
+    selectActivity(isActivitySelected(selectedActivity.value, name, type) ? null : { name, type })
+  const filtered = impactFilters.value.length > 0
 
   return (
     <div class="correlations-page">
@@ -290,6 +362,8 @@ export function Correlations() {
             <p class="window-note">
               A window of {formatImpactWindow(windowMinutes.value)} also picks up your daily rhythm: a few
               hours after an evening session is mostly sleep. So Change is not the activity's effect alone.
+              {selectedActivity.value &&
+                ' Use Filter sessions → Sleep in the window to leave those sessions out.'}
             </p>
           )}
 
@@ -333,7 +407,7 @@ export function Correlations() {
           )}
 
           {activityImpact && (
-            <section class="impact-section">
+            <section class={`impact-section${activityImpactQuery.isPlaceholderData ? ' loading' : ''}`}>
               <h2>
                 Impact of{' '}
                 {activityImpact.activity_type === 'activity_type' ? (
@@ -346,9 +420,32 @@ export function Correlations() {
                 on {describeMetrics(metrics, 'short', extraLabels)}
                 <span class="impact-meta">
                   {describeImpactMeta(activityImpact.occurrences, activityImpact.avg_duration_min)}
+                  {filtered &&
+                    activityImpact.total_occurrences !== undefined &&
+                    ` · filtered from ${activityImpact.total_occurrences}`}
                 </span>
               </h2>
+              <ImpactSlicer
+                dimensions={activityImpact.dimensions}
+                breakdown={breakdownDimension.value}
+                filters={impactFilters.value}
+                occurrences={activityImpact.occurrences}
+                totalOccurrences={activityImpact.total_occurrences ?? activityImpact.occurrences}
+                lengths={durationLimits.value}
+                hours={hourLimits.value}
+                onBreakdownChange={(dimension) => (breakdownDimension.value = dimension)}
+                onFiltersChange={(filters) => (impactFilters.value = filters)}
+                onLengthsChange={setDurationLimits}
+                onHoursChange={setHourLimits}
+              />
               <ImpactFigure data={activityImpact} baseline={baseline} metrics={metrics} extras={extras} />
+              <ImpactBreakdown
+                data={activityImpact}
+                metrics={metrics}
+                extras={extras}
+                breakdownMetric={breakdownMetric.value}
+                onBreakdownMetricChange={(metric) => (breakdownMetric.value = metric)}
+              />
             </section>
           )}
 
@@ -447,6 +544,12 @@ export function Correlations() {
                 minutes for half of the day on most days), so there is data before and after a session.
                 Metrics recorded only during workouts or sleep (often respiration rate) and daily values
                 (resting HR, sleep scores, most manual logs) do not qualify.
+              </li>
+              <li>
+                <strong>Break down by</strong> splits the selected row's sessions by length, time of day, a
+                data field of the activity type, or whether sleep falls in the window before or after.{' '}
+                <strong>Filter sessions</strong> keeps only the groups you pick. Before/after windows are
+                still cut at every neighbouring session, including ones a filter leaves out.
               </li>
               <li>
                 <strong>Correlation coefficient (r):</strong> for each productivity category, how the

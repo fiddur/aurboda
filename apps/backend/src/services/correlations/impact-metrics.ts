@@ -9,6 +9,7 @@ import {
 
 import { getDailySampleCounts } from '../../db/index.ts'
 import { getCustomMetrics } from '../custom-metrics.ts'
+import { humanizeName } from './utils.ts'
 
 export const MIN_IMPACT_METRIC_DAYS = 3
 /**
@@ -31,14 +32,7 @@ const median = (values: number[]): number => {
   return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
 }
 
-const words = (name: string): string =>
-  name
-    .split('_')
-    .filter((w) => w.length > 0)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ')
-
-export const impactMetricLabel = (metric: string): string => metricLabels[metric] ?? words(metric)
+export const impactMetricLabel = (metric: string): string => metricLabels[metric] ?? humanizeName(metric)
 
 export const selectImpactMetrics = (
   counts: DailySampleCount[],

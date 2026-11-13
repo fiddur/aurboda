@@ -301,6 +301,83 @@ stress }`: the before buckets oldest first, then `during`, then the after
 - `GET /correlations/impact-metrics?period_days=30` and MCP
   `get_impact_metrics`: the metrics dense enough to pass as `metrics`.
 
+### Breaking down and filtering an activity's impact
+
+`GET /correlations/activity-impact/:activity` and MCP `get_activity_impact` can
+split the sessions into groups along one **dimension** (`breakdown`), keep only
+some of them (`filters`), and list what can be split by (`include_dimensions`).
+Everything is opt-in: without these parameters the response is what it was,
+plus `total_occurrences`.
+
+Sessions and their windows are formed first, over every matching occurrence,
+exactly as above. Groups and filters then only **select among those sessions**:
+a session left out by a filter, or in another group, still clips its
+neighbours' before and after windows. A selection is analysed exactly like the
+whole (effects, timeline, legacy `*_timeline`).
+
+Dimensions:
+
+- **`duration`**: the merged session's length in minutes, in buckets cut at the
+  `duration_buckets` limits (default `15,30,60`; 1–6 ascending whole minutes,
+  1–1440). Keys `0-15`, `15-30`, `30-60`, `60-`; a bucket holds
+  `min ≤ minutes < max`.
+- **`time_of_day`**: the local clock time the session starts at, in `tz` (REST
+  parameter, MCP tool timezone; default the user's device timezone), daylight
+  saving included. `time_buckets` (default `0,6,12,18`; 1–6 ascending whole
+  hours, 0–23) cut the 24-hour circle, the last bucket wrapping to the first:
+  `6,22` gives `6-22` and `22-6`. One limit is one bucket covering the day.
+- **`sleep`**: whether an activity of type `sleep` or `nap` (or a subtype)
+  overlaps the full window before (`[start − W, start]`) or after
+  (`[end, end + W]`) by at least 5 minutes. Keys `none`, `before`, `after`,
+  `both`. The analysed occurrences never count as sleep. Sleep is looked for
+  from a day and a window before the period to a window after it.
+- **`field:<path>`**: a data field of the activity type, a scalar
+  (`field:session_name`) or an item of a list field (`field:sets.exercise`,
+  grouped by normalized value as the sessions view groups them). The key is the
+  value; a session without one is `(none)`. A merged session with several
+  distinct values is counted under each of them, so group counts can add up to
+  more than `occurrences`. Fields are read only for `activity_type=activity_type`;
+  for other kinds every session is `(none)`.
+
+`filters` (REST) is one string: filters separated by `;`, each
+`<dimension>:<key>,<key>` with every key URL-encoded (a field dimension's own
+colon belongs to the dimension), then the whole parameter URL-encoded again as
+usual. A session passes a filter when it has any of its keys and must pass every
+filter; the same dimension twice merges its keys. Over MCP `filters` is an array
+of `{ dimension, keys }`. Bad bucket limits or a malformed filter string are a
+400 (an error from the MCP tool). For example, yoga sessions under 30 minutes
+without sleep around them, broken down by session name:
+
+```
+GET /correlations/activity-impact/yoga?activity_type=activity_type&match=exact
+    &breakdown=field:session_name
+    &filters=duration%3A0-15%2C15-30%3Bsleep%3Anone
+```
+
+The response adds:
+
+- `total_occurrences`: sessions before filters; `occurrences`,
+  `avg_duration_min`, the effects and timelines describe the ones kept.
+- `breakdown` (with `breakdown`): `{ dimension, label, groups, omitted_groups }`,
+  each group `{ key, label, occurrences, avg_duration_min, hr_effect,
+hrv_effect, stress_effect, metric_effects?, timeline }` over the kept
+  sessions in that group. Only non-empty groups are listed, at most 12 (for a
+  field, `(none)` is kept and counts toward the 12); the rest are counted in
+  `omitted_groups`.
+- `dimensions` (with `include_dimensions=true`): `duration`, `time_of_day`,
+  `sleep`, then, for `activity_type=activity_type` when a type named `activity` has a data schema, each categorical
+  scalar field and categorical list-item field. Each lists its groups with
+  `occurrences` counted **before** filters, so the counts stay put while filters
+  change: every bucket for duration and time of day, the non-empty groups
+  otherwise, at most 50 (`omitted_groups` for the rest).
+
+Group order: duration and time buckets in limit order; sleep as none, before,
+after, both; field values by session count, then name, `(none)` last.
+
+Caution: the more groups, the fewer sessions each holds, and among many small
+groups a few will show a "clear" change (p < 0.05) by chance alone. Treat a
+lone striking group as a hint to check over a longer period, not a finding.
+
 ## Statistics notes
 
 - Chi-squared p-values are exact for 1 degree of freedom (`erfc(√(χ²/2))`). A
