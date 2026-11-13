@@ -64,6 +64,7 @@ This mounts your source code and watches for changes.
 | `ANDROID_APP_PACKAGE`                    | Android app package name in `assetlinks.json`                                                                                                                       | `net.aurboda`                          |
 | `ANDROID_APP_FINGERPRINTS`               | Comma-separated SHA-256 cert fingerprints (colon-separated hex) for the Android APKs you trust                                                                      | (empty — `assetlinks.json` returns []) |
 | `HOME_ASSISTANT_ALLOW_PRIVATE_ADDRESSES` | `true` lets users' [Home Assistant](./home-assistant.md) URLs point at private/loopback addresses and plain `http` (for a server on the same LAN as Home Assistant) | `false` (public https only)            |
+| `CALENDAR_ALLOW_PRIVATE_ADDRESSES`       | `true` lets users' [calendar ICS](./calendars.md) URLs point at private/loopback addresses (for a server on the same LAN as the calendar server)                    | `false` (public addresses only)        |
 
 ### Generating a Session Secret
 
