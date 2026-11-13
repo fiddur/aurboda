@@ -1,7 +1,10 @@
 import {
   addActivityTypeDefinitionBodySchema,
   itemValueAliasesQuerySchema,
+  itemValueIdentityQuerySchema,
   mergeItemValuesBodySchema,
+  setItemValueIdentityBodySchema,
+  unmappedItemValuesQuerySchema,
   updateActivityTypeDefinitionBodySchema,
 } from '@aurboda/api-spec'
 import { z } from 'zod'
@@ -15,6 +18,12 @@ import {
   updateActivityTypeDefinition,
 } from '../services/activity-type-definitions.ts'
 import { deleteAlias, listAliases, mergeItemValues } from '../services/item-value-aliases.ts'
+import {
+  clearItemValueIdentity,
+  getItemValueIdentity,
+  listUnmappedItemValues,
+  setItemValueIdentity,
+} from '../services/item-value-identities.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
 export const registerActivityTypeTools = (server: McpServer, user: string) => {
@@ -131,6 +140,62 @@ export const registerActivityTypeTools = (server: McpServer, user: string) => {
       const result = await deleteAlias(user, id)
       if (!result.success) return errorResponse(result.error ?? 'Failed to delete alias')
       return jsonResponse({ deleted: true, id })
+    },
+  )
+
+  server.tool(
+    'get_item_value_identity',
+    'Look up which entry of the built-in exercise catalogue a logged name of a catalogue-backed item path (e.g. "sets.exercise") stands for. state is `user` (the user mapped it), `catalog` (it equals a catalogue name or alias), `dismissed` (the user said it is not in the catalogue) or `unmapped`. Also lists the other logged names that resolve to the same entry. The name need not be logged yet.',
+    {
+      activity_type: z.string().describe('Activity type the item path belongs to, e.g. strength_training'),
+      ...itemValueIdentityQuerySchema.shape,
+    },
+    async ({ activity_type, field, value }) => {
+      const result = await getItemValueIdentity(user, activity_type, field, value)
+      if (!result.success) return errorResponse(result.error)
+      return jsonResponse(result.data)
+    },
+  )
+
+  server.tool(
+    'set_item_value_identity',
+    'Map a logged exercise name to an entry of the built-in exercise catalogue (a key from search_exercise_catalog), or dismiss it as not in the catalogue with key null. Replaces the earlier decision for the name; no activity is rewritten, the identity sits on the name. Returns the name as it now resolves.',
+    {
+      activity_type: z.string().describe('Activity type the item path belongs to, e.g. strength_training'),
+      ...setItemValueIdentityBodySchema.shape,
+    },
+    async ({ activity_type, ...body }) => {
+      const result = await setItemValueIdentity(user, activity_type, body)
+      if (!result.success) return errorResponse(result.error)
+      return jsonResponse(result.data)
+    },
+  )
+
+  server.tool(
+    'clear_item_value_identity',
+    "Remove the user's mapping or dismissal of a logged exercise name, so it resolves against the catalogue automatically again.",
+    {
+      activity_type: z.string().describe('Activity type the item path belongs to, e.g. strength_training'),
+      ...itemValueIdentityQuerySchema.shape,
+    },
+    async ({ activity_type, field, value }) => {
+      const result = await clearItemValueIdentity(user, activity_type, field, value)
+      if (!result.success) return errorResponse(result.error ?? 'Failed to clear identity')
+      return jsonResponse({ cleared: true, field, value })
+    },
+  )
+
+  server.tool(
+    'list_unmapped_item_values',
+    'List the logged exercise names that match no entry of the built-in catalogue, with suggested entries. Leaves out names the user mapped or dismissed; most used first, each with up to three suggestions to pass to set_item_value_identity.',
+    {
+      activity_type: z.string().describe('Activity type the item path belongs to, e.g. strength_training'),
+      ...unmappedItemValuesQuerySchema.shape,
+    },
+    async ({ activity_type, field }) => {
+      const result = await listUnmappedItemValues(user, activity_type, field)
+      if (!result.success) return errorResponse(result.error)
+      return jsonResponse(result.data)
     },
   )
 }

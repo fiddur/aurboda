@@ -273,7 +273,7 @@ category filters to runs carrying that run category (low_hr, intervals, long, te
 
   server.tool(
     'list_activity_field_values',
-    'The values a data field (e.g. session_name) has taken across an activity type and its subtypes, most recently used first, with how often each was used. For reusing an existing value when filling the field instead of spelling a new variant. field may be an item path such as sets.exercise: the values of that key across the list items, compared trimmed and case-insensitively, spelled as most recently used, counted per session.',
+    'The values a data field (e.g. session_name) has taken across an activity type and its subtypes, most recently used first, with how often each was used. For reusing an existing value when filling the field instead of spelling a new variant. field may be an item path such as sets.exercise: the values of that key across the list items, compared trimmed and case-insensitively, spelled as most recently used, counted per session. For a catalogue-backed item path (sets.exercise) each value also carries catalog_key and state (user, catalog, dismissed or unmapped), and the result carries catalog and catalog_version.',
     { activity_type: activityTypeSchema, ...activityFieldValuesQuerySchema.shape, tz: tzSchema },
     async ({ activity_type, field, tz }) => {
       const values = await queryActivityFieldValues(user, activity_type, field)
