@@ -25,6 +25,7 @@ coverage
 # Documentation (not needed in container)
 *.md
 !README.md
+!apps/backend/src/catalog/exercises/NOTICE.md
 docs
 
 # Environment files (should be passed via env vars)
