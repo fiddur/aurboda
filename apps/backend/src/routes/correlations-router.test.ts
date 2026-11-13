@@ -45,6 +45,7 @@ describe('GET /correlations/activity-impact/:activity', () => {
       undefined,
       undefined,
       [],
+      { filters: [] },
     )
   })
 
@@ -64,6 +65,7 @@ describe('GET /correlations/activity-impact/:activity', () => {
       new Date('2026-01-01T00:00:00Z'),
       'exact',
       [],
+      { filters: [] },
     )
   })
 
@@ -75,6 +77,42 @@ describe('GET /correlations/activity-impact/:activity', () => {
     expect(onlyStart.body).toEqual({ error: 'Give both start and end, or neither.', success: false })
     const reversed = await supertest(app).get(`${base}&start=2026-03-01T00:00:00Z&end=2026-01-01T00:00:00Z`)
     expect(reversed.status).toBe(400)
+    expect(getActivityImpact).not.toHaveBeenCalled()
+  })
+
+  test('breakdown, buckets, filters and dimensions reach the service, parsed', async () => {
+    const res = await supertest(buildApp()).get(
+      '/correlations/activity-impact/yoga?activity_type=activity_type&breakdown=field:session_name&duration_buckets=20,%2045&time_buckets=6,22&filters=duration:0-20;field:session_name:Morning%2520flow,(none)&include_dimensions=true&tz=Europe/Stockholm',
+    )
+    expect(res.status).toBe(200)
+    expect(vi.mocked(getActivityImpact).mock.calls[0][10]).toEqual({
+      breakdown: 'field:session_name',
+      durationBuckets: [20, 45],
+      filters: [
+        { dimension: 'duration', keys: ['0-20'] },
+        { dimension: 'field:session_name', keys: ['Morning flow', '(none)'] },
+      ],
+      includeDimensions: true,
+      timeBuckets: [6, 22],
+      tz: 'Europe/Stockholm',
+    })
+  })
+
+  test('400 for bad bucket limits, malformed filters or an unknown breakdown', async () => {
+    const app = buildApp()
+    const base = '/correlations/activity-impact/yoga?activity_type=activity_type'
+    const descending = await supertest(app).get(`${base}&duration_buckets=30,15`)
+    expect(descending.status).toBe(400)
+    expect(descending.body.error).toMatch(/strictly ascending/)
+    const hour = await supertest(app).get(`${base}&time_buckets=6,24`)
+    expect(hour.status).toBe(400)
+    const notANumber = await supertest(app).get(`${base}&duration_buckets=15,abc`)
+    expect(notANumber.status).toBe(400)
+    const filters = await supertest(app).get(`${base}&filters=colour:red`)
+    expect(filters.status).toBe(400)
+    expect(filters.body).toEqual({ error: 'Malformed filters', success: false })
+    const breakdown = await supertest(app).get(`${base}&breakdown=weather`)
+    expect(breakdown.status).toBe(400)
     expect(getActivityImpact).not.toHaveBeenCalled()
   })
 })
