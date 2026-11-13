@@ -101,6 +101,15 @@ see [run features and categories](features/routes-and-segments.md#phase-3-run-fe
 | `merge_routes` | Move every run of `source_route_id` onto the route `id` and delete the source                                                             |
 | `match_routes` | Match every tracked activity without a route (attach to a covering route, or pair two unrouted tracks into a new one); returns the counts |
 
+### Exercise catalogue tools
+
+See [Exercise catalogue](features/exercise-catalog.md). Logged exercise names on sets stay free text.
+
+| Tool                         | What it does                                                                                                                                                                                          |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `search_exercise_catalog`    | Search the built-in catalogue by `q` (word prefixes, best matches first), exact `name` or alias, `equipment`, `muscle` (a muscle or a group, weight ≥ 0.5), `category`; paged by `limit` and `offset` |
+| `get_exercise_catalog_entry` | One catalogue exercise by its stable `key`: name, aliases, category, equipment, muscles with recruitment weights, and the same exercise in other datasets                                             |
+
 ### Comment tools
 
 Comments (stored as "notes") hang off anything, or off a bare point in time, and

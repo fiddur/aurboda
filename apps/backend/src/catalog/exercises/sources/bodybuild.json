@@ -1,0 +1,2261 @@
+{
+  "entries": [
+    {
+      "equipment": [
+        "barbell"
+      ],
+      "id": "standing barbell good morning",
+      "muscles": {
+        "spinal_erectors": 1,
+        "hamstrings": 1,
+        "glute_max": 1,
+        "abs": 0.25,
+        "obliques": 0.25,
+        "wrist_extensors": 0.25,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "dumbbell"
+      ],
+      "id": "standing dumbbell good morning",
+      "muscles": {
+        "spinal_erectors": 1,
+        "hamstrings": 1,
+        "glute_max": 1,
+        "abs": 0.25,
+        "obliques": 0.25,
+        "wrist_extensors": 0.25,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "barbell"
+      ],
+      "id": "seated barbell good morning",
+      "muscles": {
+        "spinal_erectors": 1,
+        "hamstrings": 1,
+        "glute_max": 1,
+        "abs": 0.25,
+        "obliques": 0.25,
+        "wrist_extensors": 0.25,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "dumbbell"
+      ],
+      "id": "seated dumbbell good morning",
+      "muscles": {
+        "spinal_erectors": 1,
+        "hamstrings": 1,
+        "glute_max": 1,
+        "abs": 0.25,
+        "obliques": 0.25,
+        "wrist_extensors": 0.25,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "barbell"
+      ],
+      "id": "deadlift (powerlift)",
+      "muscles": {
+        "spinal_erectors": 1,
+        "hamstrings": 0.75,
+        "glute_max": 1,
+        "abs": 0.25,
+        "obliques": 0.25,
+        "wrist_extensors": 0.3,
+        "wrist_flexors": 0.3,
+        "upper_traps": 1,
+        "lats": 0.25,
+        "quads_vasti": 0.5,
+        "soleus": 0.5
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "barbell"
+      ],
+      "id": "deadlift",
+      "muscles": {
+        "spinal_erectors": 1,
+        "hamstrings": 0.75,
+        "glute_max": 1,
+        "abs": 0.25,
+        "obliques": 0.25,
+        "wrist_extensors": 0.3,
+        "wrist_flexors": 0.3,
+        "upper_traps": 1,
+        "lats": 0.25,
+        "quads_vasti": 0.5,
+        "soleus": 0.5
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "dumbbell"
+      ],
+      "id": "dumbbell deadlift",
+      "muscles": {
+        "spinal_erectors": 1,
+        "hamstrings": 0.75,
+        "glute_max": 1,
+        "abs": 0.25,
+        "obliques": 0.25,
+        "wrist_extensors": 0.3,
+        "wrist_flexors": 0.3,
+        "upper_traps": 1,
+        "lats": 0.25,
+        "quads_vasti": 0.5,
+        "soleus": 0.5
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "dumbbell"
+      ],
+      "id": "cable deadlift",
+      "muscles": {
+        "spinal_erectors": 1,
+        "hamstrings": 0.75,
+        "glute_max": 1,
+        "abs": 0.25,
+        "obliques": 0.25,
+        "wrist_extensors": 0.3,
+        "wrist_flexors": 0.3,
+        "upper_traps": 1,
+        "lats": 0.25,
+        "quads_vasti": 0.5,
+        "soleus": 0.5
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "barbell"
+      ],
+      "id": "romanian deadlift",
+      "muscles": {
+        "spinal_erectors": 1,
+        "hamstrings": 1,
+        "glute_max": 1,
+        "abs": 0.25,
+        "obliques": 0.25,
+        "wrist_extensors": 0.3,
+        "wrist_flexors": 0.3,
+        "upper_traps": 1,
+        "lats": 0.25
+      },
+      "search_aliases": [
+        "RDL"
+      ]
+    },
+    {
+      "equipment": [
+        "dumbbell"
+      ],
+      "id": "dumbbell romanian deadlift",
+      "muscles": {
+        "spinal_erectors": 1,
+        "hamstrings": 1,
+        "glute_max": 1,
+        "abs": 0.25,
+        "obliques": 0.25,
+        "wrist_extensors": 0.3,
+        "wrist_flexors": 0.3,
+        "upper_traps": 1,
+        "lats": 0.25
+      },
+      "search_aliases": [
+        "RDL"
+      ]
+    },
+    {
+      "equipment": [
+        "cable"
+      ],
+      "id": "cable romanian deadlift",
+      "muscles": {
+        "spinal_erectors": 1,
+        "hamstrings": 1,
+        "glute_max": 1,
+        "abs": 0.25,
+        "obliques": 0.25,
+        "wrist_extensors": 0.3,
+        "wrist_flexors": 0.3,
+        "upper_traps": 1,
+        "lats": 0.25
+      },
+      "search_aliases": [
+        "RDL"
+      ]
+    },
+    {
+      "equipment": [
+        "barbell"
+      ],
+      "id": "rack pull",
+      "muscles": {
+        "spinal_erectors": 1,
+        "hamstrings": 1,
+        "glute_max": 1,
+        "abs": 0.25,
+        "obliques": 0.25,
+        "wrist_extensors": 0.3,
+        "wrist_flexors": 0.3,
+        "upper_traps": 1,
+        "lats": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "hyper_45"
+      ],
+      "id": "45° back extension",
+      "muscles": {
+        "spinal_erectors": 1,
+        "hamstrings": 1,
+        "glute_max": 1,
+        "wrist_extensors": 0.25,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "hyper_45"
+      ],
+      "id": "45° hip extension",
+      "muscles": {
+        "spinal_erectors": 0.25,
+        "hamstrings": 1,
+        "glute_max": 1,
+        "wrist_extensors": 0.25,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "hyper_90"
+      ],
+      "id": "90° hip extension",
+      "muscles": {
+        "spinal_erectors": 0.25,
+        "hamstrings": 1,
+        "glute_max": 1,
+        "wrist_extensors": 0.25,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "hyper_reverse"
+      ],
+      "id": "reverse hyperextension",
+      "muscles": {
+        "spinal_erectors": 0.25,
+        "hamstrings": 1,
+        "glute_max": 1,
+        "wrist_extensors": 0.25,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "cable"
+      ],
+      "id": "cable pull-through",
+      "muscles": {
+        "spinal_erectors": 0.25,
+        "hamstrings": 1,
+        "glute_max": 1,
+        "wrist_extensors": 0.3,
+        "wrist_flexors": 0.3
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "glute_ham_raise"
+      ],
+      "id": "glute-ham raise",
+      "muscles": {
+        "spinal_erectors": 0.25,
+        "glute_max": 1,
+        "hamstrings_short_head": 1,
+        "hamstrings": 1
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "ham_curl_machine_seated"
+      ],
+      "id": "seated leg curl machine",
+      "muscles": {
+        "hamstrings_short_head": 1,
+        "hamstrings": 1
+      },
+      "search_aliases": [
+        "hamstring curl"
+      ]
+    },
+    {
+      "equipment": [
+        "ham_curl_machine_standing"
+      ],
+      "id": "standing unilateral leg curl machine",
+      "muscles": {
+        "hamstrings_short_head": 1,
+        "hamstrings": 1
+      },
+      "search_aliases": [
+        "hamstring curl"
+      ]
+    },
+    {
+      "equipment": [
+        "ham_curl_machine_lying"
+      ],
+      "id": "lying leg curl machine",
+      "muscles": {
+        "hamstrings_short_head": 1,
+        "hamstrings": 1
+      },
+      "search_aliases": [
+        "prone hamstring curl"
+      ]
+    },
+    {
+      "equipment": [
+        "trx"
+      ],
+      "id": "bodyweight leg curl with trx",
+      "muscles": {
+        "hamstrings_short_head": 1,
+        "hamstrings": 1
+      },
+      "search_aliases": [
+        "hamstring curl"
+      ]
+    },
+    {
+      "equipment": [
+        "gymnastic_rings"
+      ],
+      "id": "bodyweight leg curl with rings",
+      "muscles": {
+        "hamstrings_short_head": 1,
+        "hamstrings": 1
+      },
+      "search_aliases": [
+        "hamstring curl"
+      ]
+    },
+    {
+      "equipment": [],
+      "id": "nordic curl",
+      "muscles": {
+        "hamstrings_short_head": 1,
+        "hamstrings": 1
+      },
+      "search_aliases": [
+        "hamstring curl"
+      ]
+    },
+    {
+      "equipment": [
+        "squat_rack"
+      ],
+      "id": "barbell squat",
+      "muscles": {
+        "spinal_erectors": 1,
+        "quads_vasti": 1,
+        "glute_max": 1,
+        "hamstrings": 0.3,
+        "abs": 0.25,
+        "obliques": 0.25,
+        "wrist_extensors": 0.3,
+        "wrist_flexors": 0.3
+      },
+      "search_aliases": [
+        "BSQ"
+      ]
+    },
+    {
+      "equipment": [
+        "squat_rack"
+      ],
+      "id": "barbell squat (powerlift)",
+      "muscles": {
+        "spinal_erectors": 1,
+        "quads_vasti": 1,
+        "glute_max": 1,
+        "hamstrings": 0.3,
+        "abs": 0.25,
+        "obliques": 0.25,
+        "wrist_extensors": 0.3,
+        "wrist_flexors": 0.3
+      },
+      "search_aliases": [
+        "BSQ"
+      ]
+    },
+    {
+      "equipment": [],
+      "id": "goblet squat",
+      "muscles": {
+        "spinal_erectors": 1,
+        "quads_vasti": 1,
+        "glute_max": 1,
+        "hamstrings": 0.3,
+        "abs": 0.25,
+        "obliques": 0.25,
+        "wrist_extensors": 0.3,
+        "wrist_flexors": 0.3
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "hack_squat_machine"
+      ],
+      "id": "machine hack squat",
+      "muscles": {
+        "spinal_erectors": 0.25,
+        "quads_vasti": 1,
+        "glute_max": 1,
+        "hamstrings": 0.3
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "smith_machine_vertical"
+      ],
+      "id": "smith machine hack squat",
+      "muscles": {
+        "spinal_erectors": 0.25,
+        "quads_vasti": 1,
+        "glute_max": 1,
+        "hamstrings": 0.3
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "belt_squat_machine"
+      ],
+      "id": "belt squat",
+      "muscles": {
+        "spinal_erectors": 0.25,
+        "quads_vasti": 1,
+        "glute_max": 1,
+        "hamstrings": 0.3
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [],
+      "id": "bulgarian split squat",
+      "muscles": {
+        "spinal_erectors": 0.5,
+        "quads_vasti": 1,
+        "glute_max": 1,
+        "glute_med": 0.5,
+        "hamstrings": 0.3,
+        "abs": 0.25,
+        "obliques": 0.25,
+        "wrist_extensors": 0.3,
+        "wrist_flexors": 0.3
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "leg_press_machine"
+      ],
+      "id": "machine leg press",
+      "muscles": {
+        "spinal_erectors": 0.25,
+        "quads_vasti": 1,
+        "glute_max": 1,
+        "hamstrings": 0.3
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [],
+      "id": "forward lunge",
+      "muscles": {
+        "spinal_erectors": 0.5,
+        "quads_vasti": 1,
+        "glute_max": 1,
+        "glute_med": 0.5,
+        "hamstrings": 0.3,
+        "abs": 0.25,
+        "obliques": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [],
+      "id": "backward lunge",
+      "muscles": {
+        "spinal_erectors": 0.5,
+        "quads_vasti": 1,
+        "glute_max": 1,
+        "glute_med": 0.5,
+        "hamstrings": 0.3,
+        "abs": 0.25,
+        "obliques": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [],
+      "id": "walking lunge",
+      "muscles": {
+        "spinal_erectors": 0.5,
+        "quads_vasti": 1,
+        "glute_max": 1,
+        "glute_med": 0.5,
+        "hamstrings": 0.3,
+        "abs": 0.25,
+        "obliques": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "dumbbell"
+      ],
+      "id": "dumbbell forward lunge",
+      "muscles": {
+        "spinal_erectors": 0.5,
+        "quads_vasti": 1,
+        "glute_max": 1,
+        "glute_med": 0.5,
+        "hamstrings": 0.3,
+        "abs": 0.25,
+        "obliques": 0.25,
+        "wrist_extensors": 0.3,
+        "wrist_flexors": 0.3
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "dumbbell"
+      ],
+      "id": "dumbbell backward lunge",
+      "muscles": {
+        "spinal_erectors": 0.5,
+        "quads_vasti": 1,
+        "glute_max": 1,
+        "glute_med": 0.5,
+        "hamstrings": 0.3,
+        "abs": 0.25,
+        "obliques": 0.25,
+        "wrist_extensors": 0.3,
+        "wrist_flexors": 0.3
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "dumbbell"
+      ],
+      "id": "dumbbell walking lunge",
+      "muscles": {
+        "spinal_erectors": 0.5,
+        "quads_vasti": 1,
+        "glute_max": 1,
+        "glute_med": 0.5,
+        "hamstrings": 0.3,
+        "abs": 0.25,
+        "obliques": 0.25,
+        "wrist_extensors": 0.3,
+        "wrist_flexors": 0.3
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [],
+      "id": "step up",
+      "muscles": {
+        "spinal_erectors": 0.5,
+        "quads_vasti": 1,
+        "glute_max": 1,
+        "glute_med": 0.5,
+        "hamstrings": 0.3,
+        "abs": 0.25,
+        "obliques": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [],
+      "id": "pistol squat",
+      "muscles": {
+        "spinal_erectors": 0.5,
+        "quads_vasti": 1,
+        "glute_max": 1,
+        "glute_med": 0.5,
+        "hamstrings": 0.3,
+        "abs": 0.25,
+        "obliques": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [],
+      "id": "sissy squat",
+      "muscles": {
+        "quads_vasti": 1,
+        "quads_rectus_femoris": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [],
+      "id": "quad blaster squat",
+      "muscles": {
+        "spinal_erectors": 0.5,
+        "quads_vasti": 1,
+        "glute_max": 1,
+        "glute_med": 0.5,
+        "hamstrings": 0.3,
+        "abs": 0.25,
+        "obliques": 0.25,
+        "quads_rectus_femoris": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [],
+      "id": "assisted sissy squat",
+      "muscles": {
+        "spinal_erectors": 0.5,
+        "quads_vasti": 1,
+        "glute_max": 1,
+        "glute_med": 0.5,
+        "hamstrings": 0.3,
+        "abs": 0.25,
+        "obliques": 0.25,
+        "quads_rectus_femoris": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "bands"
+      ],
+      "id": "spanish squat",
+      "muscles": {
+        "spinal_erectors": 0.5,
+        "quads_vasti": 1,
+        "glute_max": 1,
+        "glute_med": 0.5,
+        "hamstrings": 0.3,
+        "abs": 0.25,
+        "obliques": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "leg_extension_machine"
+      ],
+      "id": "seated leg extension machine",
+      "muscles": {
+        "quads_vasti": 1,
+        "quads_rectus_femoris": 0.25
+      },
+      "search_aliases": [
+        "quad extension"
+      ]
+    },
+    {
+      "equipment": [],
+      "id": "reverse nordic ham curl",
+      "muscles": {
+        "quads_vasti": 1,
+        "quads_rectus_femoris": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "barbell"
+      ],
+      "id": "barbell hip thrust",
+      "muscles": {
+        "glute_max": 1,
+        "wrist_extensors": 0.3,
+        "wrist_flexors": 0.3,
+        "quads_vasti": 0.15
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "smith_machine_vertical"
+      ],
+      "id": "smith machine hip thrust",
+      "muscles": {
+        "glute_max": 1,
+        "quads_vasti": 0.15
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "hip_thrust_machine"
+      ],
+      "id": "machine hip thrust",
+      "muscles": {
+        "glute_max": 1,
+        "quads_vasti": 0.15
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "glute_kickback_machine"
+      ],
+      "id": "glute kickback machine",
+      "muscles": {
+        "glute_max": 1,
+        "quads_vasti": 0.15
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "pendulum_glute_kickback"
+      ],
+      "id": "pendulum glute kickback",
+      "muscles": {
+        "glute_max": 1,
+        "quads_vasti": 0.15
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "hip_adduction_abduction_machine"
+      ],
+      "id": "hip adduction machine",
+      "muscles": {},
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "hip_adduction_abduction_machine"
+      ],
+      "id": "hip abduction machine",
+      "muscles": {
+        "glute_max": 1,
+        "glute_med": 0.5
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "cable"
+      ],
+      "id": "standing cable hip abduction",
+      "muscles": {
+        "glute_max": 0.25,
+        "glute_med": 1
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "cable"
+      ],
+      "id": "lying cable hip abduction",
+      "muscles": {
+        "glute_max": 0.25,
+        "glute_med": 1
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "calf_raise_machine_standing"
+      ],
+      "id": "standing calf raise machine",
+      "muscles": {
+        "gastrocnemius": 1,
+        "soleus": 1
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "barbell"
+      ],
+      "id": "barbell standing calf raise",
+      "muscles": {
+        "gastrocnemius": 1,
+        "soleus": 1,
+        "wrist_extensors": 0.25,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "dumbbell"
+      ],
+      "id": "dumbbell standing calf raise",
+      "muscles": {
+        "gastrocnemius": 1,
+        "soleus": 1,
+        "wrist_extensors": 0.5,
+        "wrist_flexors": 0.5
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "smith_machine_vertical"
+      ],
+      "id": "smith machine standing calf raise",
+      "muscles": {
+        "gastrocnemius": 1,
+        "soleus": 1
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "leg_press_machine"
+      ],
+      "id": "leg press straight leg calf raise",
+      "muscles": {
+        "gastrocnemius": 1,
+        "soleus": 1
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "calf_raise_machine_seated"
+      ],
+      "id": "seated calf raise machine",
+      "muscles": {
+        "gastrocnemius": 0.25,
+        "soleus": 1
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "barbell",
+        "squat_rack"
+      ],
+      "id": "barbell donkey calf raise",
+      "muscles": {
+        "gastrocnemius": 1,
+        "soleus": 1
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "donkey_calf_raise_machine"
+      ],
+      "id": "donkey calf raise machine",
+      "muscles": {
+        "gastrocnemius": 1,
+        "soleus": 1
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [],
+      "id": "donkey calf raise",
+      "muscles": {
+        "gastrocnemius": 1,
+        "soleus": 1
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [],
+      "id": "bodyweight calf jumps",
+      "muscles": {
+        "gastrocnemius": 1,
+        "soleus": 1
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "dumbbell"
+      ],
+      "id": "dumbbell calf jumps",
+      "muscles": {
+        "gastrocnemius": 1,
+        "soleus": 1,
+        "wrist_extensors": 0.5,
+        "wrist_flexors": 0.5
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "leg_press_machine"
+      ],
+      "id": "leg press calf jumps",
+      "muscles": {
+        "gastrocnemius": 1,
+        "soleus": 1
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "gymnastic_rings"
+      ],
+      "id": "gymnastic rings pull-up",
+      "muscles": {
+        "lower_pecs": 0.25,
+        "rear_delts": 1,
+        "lower_traps": 1,
+        "middle_traps": 0.75,
+        "lats": 1,
+        "biceps": 1,
+        "wrist_extensors": 0.5,
+        "wrist_flexors": 0.5
+      },
+      "search_aliases": [
+        "pullup"
+      ]
+    },
+    {
+      "equipment": [
+        "lat_pulldown_machine"
+      ],
+      "id": "pull-up",
+      "muscles": {
+        "lower_pecs": 0.25,
+        "rear_delts": 1,
+        "lower_traps": 1,
+        "middle_traps": 0.75,
+        "lats": 1,
+        "biceps": 1,
+        "wrist_extensors": 0.5,
+        "wrist_flexors": 0.5
+      },
+      "search_aliases": [
+        "pullup",
+        "chinup"
+      ]
+    },
+    {
+      "equipment": [
+        "lat_pulldown_machine"
+      ],
+      "id": "lat pulldown",
+      "muscles": {
+        "lower_pecs": 0.25,
+        "rear_delts": 1,
+        "lower_traps": 1,
+        "middle_traps": 0.75,
+        "lats": 1,
+        "biceps": 1,
+        "wrist_extensors": 0.5,
+        "wrist_flexors": 0.5
+      },
+      "search_aliases": [
+        "pull-down"
+      ]
+    },
+    {
+      "equipment": [
+        "cable"
+      ],
+      "id": "kneeling diagonal cable row",
+      "muscles": {
+        "lower_pecs": 0.25,
+        "rear_delts": 1,
+        "lower_traps": 1,
+        "middle_traps": 0.75,
+        "lats": 1,
+        "biceps": 1,
+        "wrist_extensors": 0.5,
+        "wrist_flexors": 0.5
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "cable_row_machine"
+      ],
+      "id": "seated cable row",
+      "muscles": {
+        "rear_delts": 1,
+        "lower_traps": 1,
+        "middle_traps": 1,
+        "biceps": 0.5,
+        "triceps_long_head": 0.25,
+        "wrist_extensors": 0.5,
+        "wrist_flexors": 0.5,
+        "lats": 1,
+        "spinal_erectors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "barbell"
+      ],
+      "id": "standing bent over barbell row",
+      "muscles": {
+        "rear_delts": 1,
+        "lower_traps": 1,
+        "middle_traps": 1,
+        "biceps": 0.5,
+        "triceps_long_head": 0.25,
+        "wrist_extensors": 0.5,
+        "wrist_flexors": 0.5,
+        "lats": 1,
+        "spinal_erectors": 0.5,
+        "hamstrings": 0.25,
+        "glute_max": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "dumbbell"
+      ],
+      "id": "standing bent over dumbbell row",
+      "muscles": {
+        "rear_delts": 1,
+        "lower_traps": 1,
+        "middle_traps": 1,
+        "biceps": 0.5,
+        "triceps_long_head": 0.25,
+        "wrist_extensors": 0.5,
+        "wrist_flexors": 0.5,
+        "lats": 1,
+        "spinal_erectors": 0.5,
+        "hamstrings": 0.25,
+        "glute_max": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "barbell"
+      ],
+      "id": "pendlay row",
+      "muscles": {
+        "rear_delts": 1,
+        "lower_traps": 1,
+        "middle_traps": 1,
+        "biceps": 0.5,
+        "triceps_long_head": 0.25,
+        "wrist_extensors": 0.5,
+        "wrist_flexors": 0.5,
+        "lats": 1,
+        "spinal_erectors": 0.5,
+        "hamstrings": 0.25,
+        "glute_max": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "dumbbell"
+      ],
+      "id": "standing bench supported single arm dumbbell rows",
+      "muscles": {
+        "rear_delts": 1,
+        "lower_traps": 1,
+        "middle_traps": 1,
+        "biceps": 0.5,
+        "triceps_long_head": 0.25,
+        "wrist_extensors": 0.5,
+        "wrist_flexors": 0.5,
+        "lats": 1
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "dumbbell"
+      ],
+      "id": "helms row",
+      "muscles": {
+        "rear_delts": 1,
+        "lower_traps": 1,
+        "middle_traps": 1,
+        "biceps": 0.5,
+        "triceps_long_head": 0.25,
+        "wrist_extensors": 0.5,
+        "wrist_flexors": 0.5,
+        "lats": 1
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "row_machine"
+      ],
+      "id": "chest supported incline bench row",
+      "muscles": {
+        "rear_delts": 1,
+        "lower_traps": 1,
+        "middle_traps": 1,
+        "biceps": 0.5,
+        "triceps_long_head": 0.25,
+        "wrist_extensors": 0.5,
+        "wrist_flexors": 0.5,
+        "lats": 1
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "row_machine"
+      ],
+      "id": "chest supported machine row",
+      "muscles": {
+        "rear_delts": 1,
+        "lower_traps": 1,
+        "middle_traps": 1,
+        "biceps": 0.5,
+        "triceps_long_head": 0.25,
+        "wrist_extensors": 0.5,
+        "wrist_flexors": 0.5,
+        "lats": 1
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "cable"
+      ],
+      "id": "pull over",
+      "muscles": {
+        "lower_pecs": 0.5,
+        "rear_delts": 1,
+        "lats": 1,
+        "triceps_long_head": 1,
+        "wrist_extensors": 0.3,
+        "wrist_flexors": 0.3
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "cable"
+      ],
+      "id": "lat prayer",
+      "muscles": {
+        "lower_pecs": 0.5,
+        "rear_delts": 1,
+        "lats": 1,
+        "triceps_long_head": 1,
+        "wrist_extensors": 0.3,
+        "wrist_flexors": 0.3
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "cable_row_machine"
+      ],
+      "id": "seated cable high row",
+      "muscles": {
+        "rear_delts": 1,
+        "lower_traps": 1,
+        "middle_traps": 1,
+        "wrist_extensors": 0.3,
+        "wrist_flexors": 0.3
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "rear_delt_fly_machine"
+      ],
+      "id": "rear delt fly machine",
+      "muscles": {
+        "rear_delts": 1,
+        "lower_traps": 1,
+        "middle_traps": 1,
+        "wrist_extensors": 0.3,
+        "wrist_flexors": 0.3
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "cable"
+      ],
+      "id": "standing unilateral cable rear delt fly",
+      "muscles": {
+        "rear_delts": 1,
+        "lower_traps": 1,
+        "middle_traps": 1,
+        "wrist_extensors": 0.3,
+        "wrist_flexors": 0.3
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "dumbbell"
+      ],
+      "id": "rear delt dumbbell raise",
+      "muscles": {
+        "rear_delts": 1,
+        "lower_traps": 1,
+        "middle_traps": 1,
+        "wrist_extensors": 0.3,
+        "wrist_flexors": 0.3
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "dumbbell"
+      ],
+      "id": "side lying rear delt dumbbell raise",
+      "muscles": {
+        "rear_delts": 1,
+        "lower_traps": 1,
+        "middle_traps": 1,
+        "wrist_extensors": 0.3,
+        "wrist_flexors": 0.3
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "cable"
+      ],
+      "id": "standing cable shoulder pull",
+      "muscles": {
+        "rear_delts": 1,
+        "lower_traps": 1,
+        "middle_traps": 1,
+        "wrist_extensors": 0.3,
+        "wrist_flexors": 0.3
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "cable_row_machine"
+      ],
+      "id": "seated cable shoulder pull",
+      "muscles": {
+        "rear_delts": 1,
+        "lower_traps": 1,
+        "middle_traps": 1,
+        "wrist_extensors": 0.3,
+        "wrist_flexors": 0.3
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "cable"
+      ],
+      "id": "standing cable face pull",
+      "muscles": {
+        "rear_delts": 1,
+        "lower_traps": 1,
+        "middle_traps": 1,
+        "wrist_extensors": 0.3,
+        "wrist_flexors": 0.3
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "cable_row_machine"
+      ],
+      "id": "seated cable face pull",
+      "muscles": {
+        "rear_delts": 1,
+        "lower_traps": 1,
+        "middle_traps": 1,
+        "wrist_extensors": 0.3,
+        "wrist_flexors": 0.3
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "trx"
+      ],
+      "id": "TRX face pull",
+      "muscles": {
+        "rear_delts": 1,
+        "lower_traps": 1,
+        "middle_traps": 1,
+        "wrist_extensors": 0.3,
+        "wrist_flexors": 0.3
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "barbell"
+      ],
+      "id": "flat barbell bench press (powerlift)",
+      "muscles": {
+        "lower_pecs": 1,
+        "upper_pecs": 1,
+        "front_delts": 1,
+        "triceps_medial_lateral": 1,
+        "triceps_long_head": 0.25,
+        "wrist_extensors": 0.25,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "barbell"
+      ],
+      "id": "barbell bench press",
+      "muscles": {
+        "lower_pecs": 1,
+        "upper_pecs": 1,
+        "front_delts": 1,
+        "triceps_medial_lateral": 1,
+        "triceps_long_head": 0.25,
+        "wrist_extensors": 0.25,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "dumbbell"
+      ],
+      "id": "dumbbell bench press",
+      "muscles": {
+        "lower_pecs": 1,
+        "upper_pecs": 1,
+        "front_delts": 1,
+        "triceps_medial_lateral": 0.5,
+        "wrist_extensors": 0.25,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "smith_machine_angled"
+      ],
+      "id": "smith machine bench press",
+      "muscles": {
+        "lower_pecs": 1,
+        "upper_pecs": 1,
+        "front_delts": 1,
+        "triceps_medial_lateral": 1,
+        "triceps_long_head": 0.25,
+        "wrist_extensors": 0.25,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "chest_press_machine"
+      ],
+      "id": "chest press machine",
+      "muscles": {
+        "lower_pecs": 1,
+        "upper_pecs": 1,
+        "front_delts": 1,
+        "triceps_medial_lateral": 1,
+        "triceps_long_head": 0.25,
+        "wrist_extensors": 0.25,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "hammer_strength_chest_press"
+      ],
+      "id": "hammer strength chest press machine",
+      "muscles": {
+        "lower_pecs": 1,
+        "upper_pecs": 1,
+        "front_delts": 1,
+        "triceps_medial_lateral": 1,
+        "triceps_long_head": 0.25,
+        "wrist_extensors": 0.25,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [],
+      "id": "push-up",
+      "muscles": {
+        "lower_pecs": 1,
+        "upper_pecs": 1,
+        "front_delts": 1,
+        "triceps_medial_lateral": 1,
+        "triceps_long_head": 0.25,
+        "abs": 1,
+        "obliques": 0.25
+      },
+      "search_aliases": [
+        "press-up",
+        "pressup",
+        "pushup"
+      ]
+    },
+    {
+      "equipment": [
+        "dual_cable"
+      ],
+      "id": "cable chest press",
+      "muscles": {
+        "lower_pecs": 1,
+        "upper_pecs": 1,
+        "front_delts": 1,
+        "triceps_medial_lateral": 0.5,
+        "wrist_extensors": 0.25,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [],
+      "id": "dip",
+      "muscles": {
+        "lower_pecs": 1,
+        "upper_pecs": 1,
+        "front_delts": 1,
+        "triceps_medial_lateral": 1,
+        "triceps_long_head": 0.25,
+        "wrist_extensors": 0.25,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "gymnastic_rings"
+      ],
+      "id": "ring dip",
+      "muscles": {
+        "lower_pecs": 1,
+        "upper_pecs": 1,
+        "front_delts": 1,
+        "triceps_medial_lateral": 1,
+        "triceps_long_head": 0.25,
+        "wrist_extensors": 0.5,
+        "wrist_flexors": 0.5
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "assisted_dip_machine"
+      ],
+      "id": "assisted dip machine",
+      "muscles": {
+        "lower_pecs": 1,
+        "upper_pecs": 1,
+        "front_delts": 1,
+        "triceps_medial_lateral": 1,
+        "triceps_long_head": 0.25,
+        "wrist_extensors": 0.25,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "dumbbell"
+      ],
+      "id": "dumbbell fly",
+      "muscles": {
+        "wrist_flexors": 0.5,
+        "lower_pecs": 1,
+        "upper_pecs": 1,
+        "front_delts": 0.5
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "chest_fly_machine"
+      ],
+      "id": "chest fly machine",
+      "muscles": {
+        "wrist_flexors": 0.5,
+        "lower_pecs": 1,
+        "upper_pecs": 1,
+        "front_delts": 0.5
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "cable"
+      ],
+      "id": "bayesian fly",
+      "muscles": {
+        "wrist_flexors": 0.5,
+        "lower_pecs": 1,
+        "upper_pecs": 1,
+        "front_delts": 0.5
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "pec_deck_machine"
+      ],
+      "id": "pec deck (elbow pad)",
+      "muscles": {
+        "lower_pecs": 1,
+        "upper_pecs": 1,
+        "front_delts": 1
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "chest_fly_machine"
+      ],
+      "id": "chest machine fly (pec deck with hand grip)",
+      "muscles": {
+        "wrist_flexors": 0.5,
+        "lower_pecs": 1,
+        "upper_pecs": 1,
+        "front_delts": 0.5
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "cable"
+      ],
+      "id": "cable crossover",
+      "muscles": {
+        "wrist_flexors": 0.5,
+        "lower_pecs": 1,
+        "upper_pecs": 1,
+        "front_delts": 0.5
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "dumbbell"
+      ],
+      "id": "single arm dumbbell overhead press",
+      "muscles": {
+        "upper_pecs": 0.25,
+        "front_delts": 1,
+        "side_delts": 1,
+        "lower_traps": 0.25,
+        "middle_traps": 0.25,
+        "upper_traps": 0.25,
+        "triceps_medial_lateral": 0.5,
+        "abs": 0.25,
+        "obliques": 0.25,
+        "wrist_extensors": 0.25,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "dumbbell"
+      ],
+      "id": "dumbbell overhead press",
+      "muscles": {
+        "upper_pecs": 0.25,
+        "front_delts": 1,
+        "side_delts": 1,
+        "lower_traps": 0.25,
+        "middle_traps": 0.25,
+        "upper_traps": 0.25,
+        "triceps_medial_lateral": 0.5,
+        "abs": 0.25,
+        "obliques": 0.25,
+        "wrist_extensors": 0.25,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "barbell"
+      ],
+      "id": "barbell overhead press",
+      "muscles": {
+        "upper_pecs": 0.25,
+        "front_delts": 0.8,
+        "side_delts": 1,
+        "lower_traps": 0.25,
+        "middle_traps": 0.25,
+        "upper_traps": 0.25,
+        "triceps_medial_lateral": 0.75,
+        "triceps_long_head": 0.25,
+        "abs": 0.25,
+        "obliques": 0.25,
+        "wrist_extensors": 0.25,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": [
+        "shoulder press",
+        "deltoid press"
+      ]
+    },
+    {
+      "equipment": [
+        "barbell"
+      ],
+      "id": "seated behind the neck barbell press",
+      "muscles": {
+        "upper_pecs": 0.2,
+        "front_delts": 0.5,
+        "side_delts": 1,
+        "rear_delts": 0.25,
+        "lower_traps": 0.25,
+        "middle_traps": 0.25,
+        "upper_traps": 0.25,
+        "triceps_medial_lateral": 0.75,
+        "triceps_long_head": 0.25,
+        "abs": 0.25,
+        "obliques": 0.25,
+        "wrist_extensors": 0.25,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "barbell"
+      ],
+      "id": "standing behind the neck barbell press",
+      "muscles": {
+        "upper_pecs": 0.2,
+        "front_delts": 0.5,
+        "side_delts": 1,
+        "rear_delts": 0.25,
+        "lower_traps": 0.25,
+        "middle_traps": 0.25,
+        "upper_traps": 0.25,
+        "triceps_medial_lateral": 0.75,
+        "triceps_long_head": 0.25,
+        "abs": 0.25,
+        "obliques": 0.25,
+        "wrist_extensors": 0.25,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "shoulder_press_machine"
+      ],
+      "id": "shoulder press machine",
+      "muscles": {
+        "upper_pecs": 0.25,
+        "front_delts": 0.8,
+        "side_delts": 1,
+        "lower_traps": 0.25,
+        "middle_traps": 0.25,
+        "upper_traps": 0.25,
+        "triceps_medial_lateral": 0.75,
+        "triceps_long_head": 0.25,
+        "abs": 0.25,
+        "obliques": 0.25,
+        "wrist_extensors": 0.25,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": [
+        "deltoid press"
+      ]
+    },
+    {
+      "equipment": [
+        "dumbbell"
+      ],
+      "id": "standing arnold press",
+      "muscles": {
+        "upper_pecs": 0.25,
+        "front_delts": 1,
+        "side_delts": 1,
+        "lower_traps": 0.25,
+        "middle_traps": 0.25,
+        "upper_traps": 0.25,
+        "triceps_medial_lateral": 0.5,
+        "abs": 0.25,
+        "obliques": 0.25,
+        "wrist_extensors": 0.25,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "dumbbell"
+      ],
+      "id": "seated arnold press",
+      "muscles": {
+        "upper_pecs": 0.25,
+        "front_delts": 1,
+        "side_delts": 1,
+        "lower_traps": 0.25,
+        "middle_traps": 0.25,
+        "upper_traps": 0.25,
+        "triceps_medial_lateral": 0.5,
+        "abs": 0.25,
+        "obliques": 0.25,
+        "wrist_extensors": 0.25,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "barbell"
+      ],
+      "id": "barbell push press",
+      "muscles": {
+        "upper_pecs": 0.25,
+        "front_delts": 0.8,
+        "side_delts": 1,
+        "lower_traps": 0.25,
+        "middle_traps": 0.25,
+        "upper_traps": 0.25,
+        "triceps_medial_lateral": 0.75,
+        "triceps_long_head": 0.25,
+        "abs": 0.25,
+        "obliques": 0.25,
+        "wrist_extensors": 0.25,
+        "wrist_flexors": 0.25,
+        "quads_vasti": 0.2
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "dumbbell"
+      ],
+      "id": "dumbbell push press",
+      "muscles": {
+        "upper_pecs": 0.25,
+        "front_delts": 1,
+        "side_delts": 1,
+        "lower_traps": 0.25,
+        "middle_traps": 0.25,
+        "upper_traps": 0.25,
+        "triceps_medial_lateral": 0.5,
+        "abs": 0.25,
+        "obliques": 0.25,
+        "wrist_extensors": 0.25,
+        "wrist_flexors": 0.25,
+        "quads_vasti": 0.2
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "dumbbell"
+      ],
+      "id": "standing dumbbell lateral raise",
+      "muscles": {
+        "upper_pecs": 0.25,
+        "side_delts": 1,
+        "lower_traps": 0.25,
+        "middle_traps": 0.25,
+        "upper_traps": 0.25,
+        "wrist_extensors": 0.3,
+        "front_delts": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "cable"
+      ],
+      "id": "standing cable lateral raise",
+      "muscles": {
+        "upper_pecs": 0.25,
+        "side_delts": 1,
+        "lower_traps": 0.25,
+        "middle_traps": 0.25,
+        "upper_traps": 0.25,
+        "wrist_extensors": 0.3,
+        "front_delts": 0.5,
+        "rear_delts": 1
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "lateral_raise_machine"
+      ],
+      "id": "lateral raise machine",
+      "muscles": {
+        "upper_pecs": 0.25,
+        "side_delts": 1,
+        "lower_traps": 0.25,
+        "middle_traps": 0.25,
+        "upper_traps": 0.25,
+        "wrist_extensors": 0.3,
+        "front_delts": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [],
+      "id": "front raise",
+      "muscles": {
+        "upper_pecs": 1,
+        "biceps": 0.2,
+        "front_delts": 1,
+        "side_delts": 0.5,
+        "wrist_extensors": 0.3
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "barbell"
+      ],
+      "id": "barbell shrug",
+      "muscles": {
+        "upper_traps": 1,
+        "wrist_extensors": 0.5,
+        "wrist_flexors": 0.5
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "barbell"
+      ],
+      "id": "wide grip barbell shrug",
+      "muscles": {
+        "upper_traps": 1,
+        "wrist_extensors": 0.5,
+        "wrist_flexors": 0.5
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "dumbbell"
+      ],
+      "id": "dumbbell shrug",
+      "muscles": {
+        "upper_traps": 1,
+        "wrist_extensors": 0.5,
+        "wrist_flexors": 0.5
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "shrug_machine"
+      ],
+      "id": "machine shrug",
+      "muscles": {
+        "upper_traps": 1,
+        "wrist_extensors": 0.5,
+        "wrist_flexors": 0.5
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [],
+      "id": "tricep extension",
+      "muscles": {
+        "triceps_medial_lateral": 1,
+        "triceps_long_head": 1,
+        "wrist_extensors": 0.25,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": [
+        "skull-crusher",
+        "skull-over",
+        "french press"
+      ]
+    },
+    {
+      "equipment": [
+        "smith_machine_vertical"
+      ],
+      "id": "smitch machine inverted skull crusher",
+      "muscles": {
+        "triceps_medial_lateral": 1,
+        "triceps_long_head": 1,
+        "wrist_extensors": 0.25,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "dumbbell"
+      ],
+      "id": "tricep kickback",
+      "muscles": {
+        "triceps_medial_lateral": 1,
+        "triceps_long_head": 1,
+        "wrist_extensors": 0.25,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "cable"
+      ],
+      "id": "tricep cable pushdown",
+      "muscles": {
+        "triceps_medial_lateral": 1,
+        "triceps_long_head": 1,
+        "wrist_extensors": 0.25,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": [
+        "push down"
+      ]
+    },
+    {
+      "equipment": [
+        "barbell"
+      ],
+      "id": "standing barbell bicep curl",
+      "muscles": {
+        "biceps": 1,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "ez_bar"
+      ],
+      "id": "standing ez bar bicep curl",
+      "muscles": {
+        "biceps": 1,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "cable"
+      ],
+      "id": "standing cable bicep curl",
+      "muscles": {
+        "biceps": 1,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "dumbbell"
+      ],
+      "id": "standing dumbbell bicep curl",
+      "muscles": {
+        "biceps": 1,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "dumbbell"
+      ],
+      "id": "seated dumbbell bicep curl",
+      "muscles": {
+        "biceps": 1,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "dumbbell"
+      ],
+      "id": "lying dumbbell bicep curl",
+      "muscles": {
+        "biceps": 1,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "kettlebell"
+      ],
+      "id": "standing kettlebell bicep curl",
+      "muscles": {
+        "biceps": 1,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "preacher_curl_machine"
+      ],
+      "id": "preacher bicep curl machine",
+      "muscles": {
+        "biceps": 1,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "preacher_curl_bench",
+        "barbell"
+      ],
+      "id": "barbell preacher bicep curl bench",
+      "muscles": {
+        "biceps": 1,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "preacher_curl_bench",
+        "ez_bar"
+      ],
+      "id": "ez-bar preacher bicep curl bench",
+      "muscles": {
+        "biceps": 1,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "preacher_curl_bench",
+        "dumbbell"
+      ],
+      "id": "dumbbell preacher bicep curl bench",
+      "muscles": {
+        "biceps": 1,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "bicep_curl_machine"
+      ],
+      "id": "bicep curl machine",
+      "muscles": {
+        "biceps": 1,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "dumbbell"
+      ],
+      "id": "concentration curl",
+      "muscles": {
+        "biceps": 1,
+        "wrist_flexors": 0.25
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "ab_crunch_machine"
+      ],
+      "id": "ab crunch machine",
+      "muscles": {
+        "abs": 1
+      },
+      "search_aliases": [
+        "abs"
+      ]
+    },
+    {
+      "equipment": [
+        "cable"
+      ],
+      "id": "cable ab crunch",
+      "muscles": {
+        "abs": 1
+      },
+      "search_aliases": [
+        "abs"
+      ]
+    },
+    {
+      "equipment": [],
+      "id": "lying ab crunch",
+      "muscles": {
+        "abs": 1
+      },
+      "search_aliases": [
+        "abs"
+      ]
+    },
+    {
+      "equipment": [],
+      "id": "ab-wheel rollout",
+      "muscles": {
+        "abs": 1
+      },
+      "search_aliases": [
+        "abs"
+      ]
+    },
+    {
+      "equipment": [],
+      "id": "plank",
+      "muscles": {
+        "abs": 1
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [],
+      "id": "hanging leg raise",
+      "muscles": {
+        "abs": 1
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "captains_chair"
+      ],
+      "id": "captains chair leg raise",
+      "muscles": {
+        "abs": 1
+      },
+      "search_aliases": [
+        "arm/elbow supported leg raise"
+      ]
+    },
+    {
+      "equipment": [],
+      "id": "lying leg lift",
+      "muscles": {
+        "abs": 1
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [],
+      "id": "dragon flag",
+      "muscles": {
+        "abs": 1
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "cable"
+      ],
+      "id": "cable pallof press",
+      "muscles": {
+        "wrist_extensors": 0.3,
+        "wrist_flexors": 0.3,
+        "obliques": 1
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "bands"
+      ],
+      "id": "elastic pallof press",
+      "muscles": {
+        "wrist_extensors": 0.3,
+        "wrist_flexors": 0.3,
+        "obliques": 1
+      },
+      "search_aliases": []
+    },
+    {
+      "equipment": [
+        "cable"
+      ],
+      "id": "cable core rotation",
+      "muscles": {
+        "obliques": 1
+      },
+      "search_aliases": [
+        "twist",
+        "wood chopper"
+      ]
+    },
+    {
+      "equipment": [
+        "dumbbell"
+      ],
+      "id": "dumbbell wrist flexion",
+      "muscles": {
+        "wrist_flexors": 1
+      },
+      "search_aliases": [
+        "wrist curl"
+      ]
+    },
+    {
+      "equipment": [
+        "dumbbell"
+      ],
+      "id": "dumbbell wrist extension",
+      "muscles": {
+        "wrist_extensors": 1
+      },
+      "search_aliases": [
+        "reverse wrist curl"
+      ]
+    }
+  ],
+  "source": {
+    "commit": "4d8bbcc5ccea4d6802ee373a0be1aa5f5dcc8dd6",
+    "license": "AGPL-3.0",
+    "url": "https://github.com/Dieterbe/body.build"
+  }
+}

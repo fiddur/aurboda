@@ -51,6 +51,7 @@ import { registerChartTools } from './mcp/chart-tools.ts'
 import { registerCorrelationTools } from './mcp/correlation-tools.ts'
 import { registerDebugTools } from './mcp/debug-tools.ts'
 import { registerDeductionRuleTools } from './mcp/deduction-rule-tools.ts'
+import { registerExerciseCatalogTools } from './mcp/exercise-catalog-tools.ts'
 import { registerExportTools } from './mcp/export-tools.ts'
 import { registerFeedImageTools } from './mcp/feed-image-tools.ts'
 import { registerFeedTools } from './mcp/feed-tools.ts'
@@ -213,6 +214,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   registerRouteTools(server, user)
   registerSharedDashboardTools(server, user)
   registerSharedExerciseTools(server, user, deps.webHost)
+  registerExerciseCatalogTools(server)
   registerFeedTools(server, user, {
     apiBaseUrl: deps.apiBaseUrl,
     deliver: deps.feedDeliver,

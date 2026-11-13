@@ -93,6 +93,9 @@ field>`, e.g. `sets.exercise`. Strength sets are the running example below, but 
 specific to the `strength_training` type: any type whose list items use these field names gets
 the same measures.
 
+Aurboda also ships a built-in [exercise catalogue](exercise-catalog.md) of strength exercises with
+their equipment and muscles; logged exercise names are not yet resolved to it.
+
 Measures are computed by convention on the item field names, over the **working** items only: an
 item whose `set_type` is `warmup` (any case) is shown but never counted. `weight`, `reps` and
 `time` count when they are numbers above zero.

@@ -28,6 +28,11 @@ import {
 } from './schemas/challenges.ts'
 import { iso8601DateTimeSchema, metricTypeSchema } from './schemas/common.ts'
 import { dailySummaryQuerySchema, dailySummaryResponseSchema } from './schemas/daily-summary.ts'
+import {
+  exerciseCatalogEntryResponseSchema,
+  exerciseCatalogQuerySchema,
+  exerciseCatalogSearchResponseSchema,
+} from './schemas/exercise-catalog.ts'
 import { exportDumpLinkResponseSchema, exportDumpQuerySchema } from './schemas/export.ts'
 import {
   FEED_IMAGE_MAX_EDGE,
@@ -457,6 +462,50 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'Get activity track',
+        tags: ['Activities'],
+      },
+    },
+    '/exercise-catalog': {
+      get: {
+        description:
+          'Search the built-in catalogue of strength exercises by name (word prefixes of names, aliases and search terms, best matches first), equipment, muscle or category. `name` is an exact name-or-alias lookup (case and punctuation ignored) that returns that exercise or none and ignores `q`.',
+        requestParams: { query: exerciseCatalogQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: exerciseCatalogSearchResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid query, e.g. an unknown equipment, muscle or category',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Search exercise catalogue',
+        tags: ['Activities'],
+      },
+    },
+    '/exercise-catalog/{key}': {
+      get: {
+        description:
+          'One exercise of the built-in catalogue by its stable key: name, aliases, category, equipment, muscles with recruitment weights, and the same exercise in other datasets.',
+        requestParams: {
+          path: z.object({
+            key: z.string().meta({ description: 'Catalogue key, e.g. dumbbell_bench_press' }),
+          }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: exerciseCatalogEntryResponseSchema } },
+            description: 'Successful response',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Exercise not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get exercise catalogue entry',
         tags: ['Activities'],
       },
     },
