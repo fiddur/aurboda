@@ -89,7 +89,10 @@ export const inboundFollowNotification = ({
   }
 }
 
-/** Null when the follow was pending under five minutes: an instant auto-accept is not news. */
+/**
+ * Null when the follow was pending under five minutes: an instant auto-accept is not news.
+ * The key carries the request time, so a refollow accepted later is news again.
+ */
 export const followAcceptedNotification = (
   actor: ActorLabel,
   requestedAt: Date,
@@ -98,7 +101,7 @@ export const followAcceptedNotification = (
   if (now.getTime() - requestedAt.getTime() < FOLLOW_ACCEPTED_MIN_WAIT_MS) return null
   return {
     data: { actor_uri: actor.actor_uri },
-    dedupe_key: `feed_follow_accepted:${actor.actor_uri}`,
+    dedupe_key: `feed_follow_accepted:${actor.actor_uri}:${requestedAt.toISOString()}`,
     link: '/feed',
     title: `${actorLabel(actor)} accepted your follow request`,
     type: 'feed_follow_accepted',

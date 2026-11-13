@@ -9,6 +9,7 @@ import type {
   GarminDataType,
   GeocodeStatus,
   MetricType,
+  NotificationAction,
   OnboardingStepId,
   ReportFlag,
   SyncStatus,
@@ -494,6 +495,7 @@ export interface NotificationRecord {
   body: string | null
   link: string | null
   data: Record<string, unknown> | null
+  actions: NotificationAction[]
   dedupe_key: string | null
   in_app: boolean
   push: boolean

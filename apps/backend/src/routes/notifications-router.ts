@@ -11,6 +11,8 @@ import {
   UUID_RE,
 } from '@aurboda/api-spec'
 
+import type { RunNotificationAction } from '../services/notification-actions.ts'
+
 import {
   getNotificationTypeSettings,
   listNotificationsPage,
@@ -24,12 +26,13 @@ import { validateBody, validateQuery } from '../validation.ts'
 
 export interface NotificationsRouterDeps {
   isAdmin: (user: string) => Promise<boolean>
+  runAction: RunNotificationAction
   store?: NotificationStore
 }
 
 export const createNotificationsRouter = (
   authMiddleware: AnyMiddleware,
-  { isAdmin, store = notificationStore }: NotificationsRouterDeps,
+  { isAdmin, runAction, store = notificationStore }: NotificationsRouterDeps,
 ): TypedRouter => {
   const router = typedRouter()
 
@@ -88,6 +91,22 @@ export const createNotificationsRouter = (
     }
     res.json({ notification: serializeNotification(record), success: true })
   })
+
+  router.post<{ id: string; key: string }, NotificationResponse>(
+    '/:id/actions/:key',
+    authMiddleware,
+    async (req, res) => {
+      const outcome = await runAction(req.user!, req.params.id, req.params.key)
+      switch (outcome.status) {
+        case 'not_found':
+          return res.status(404).json({ error: 'Notification action not found', success: false })
+        case 'conflict':
+          return res.status(409).json({ error: outcome.message, success: false })
+        case 'ok':
+          return res.json({ notification: serializeNotification(outcome.notification), success: true })
+      }
+    },
+  )
 
   return router
 }
