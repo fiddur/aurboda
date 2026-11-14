@@ -68,7 +68,7 @@ const isBlockedIPv6 = (raw: string): boolean => {
   return false
 }
 
-const isBlockedAddress = (ip: string): boolean => {
+export const isBlockedAddress = (ip: string): boolean => {
   if (net.isIPv4(ip)) return isBlockedIPv4(ip)
   if (net.isIPv6(ip)) return isBlockedIPv6(ip)
   return true // unknown form → block

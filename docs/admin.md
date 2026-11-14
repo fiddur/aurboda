@@ -29,6 +29,38 @@ created, by password or passkey: "New signup: alice", linking to the account on 
 The very first account, which becomes the admin, notifies nobody. An admin can turn it off under the
 bell or as a push in Settings → **Notifications**.
 
+## Rate limits
+
+The backend limits the request rate of the endpoints anyone can reach without an account, and of
+uploads, in memory (the state starts empty after a restart). A limited request is answered `429`
+with a `Retry-After` header in seconds and the usual error body,
+`{ "error": "Too many requests. Try again in N seconds.", "success": false }`. The limits are
+constants in `apps/backend/src/services/rate-limit.ts`, set well above what a person or the Android
+app does; there is no admin setting for them.
+
+| What                                                                                                                                                                     | Keyed by  | Limit                            |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- | -------------------------------- |
+| `POST /login`, the passkey sign-in and passkey signup options (`/webauthn/auth/*`, `/webauthn/signup/options`), OAuth `/authorize`, `/token`, `/register`                | client IP | 30 at once, then one every 2 s   |
+| `POST /signup`, `POST /webauthn/signup/verify` (new accounts)                                                                                                            | client IP | 5 at once, then one every 10 min |
+| Everything under `/public`, `/u` and `/oembed`: public posts, articles and their images, OG images, avatars, banners, dashboards, tag pages, the structured feed payload | client IP | 300 at once, then three a second |
+| Avatar, challenge banner and feed picture uploads, REST and MCP's `add_feed_image` together                                                                              | account   | 30 at once, then one every 6 s   |
+
+**Failed password logins** (`POST /login` and the OAuth sign-in form) are counted per username and
+per client IP. After 5 failures for a username (20 from an IP) each further attempt waits 1 s,
+doubling with every failure up to one minute; the counts are forgotten 15 minutes after the last
+failure, and a correct password clears the username's. The wait never grows past a minute, so
+nobody can lock someone else out, and while it lasts even the right password is answered `429`
+(the web sign-in page shows the wait). Passkey sign-in is not slowed by failed passwords.
+
+Authenticated API traffic other than uploads (the Android app's sync and notification polling,
+MCP) is not limited, and neither are the federation inboxes, which signatures already gate.
+
+The per-IP limits need the client's real address. Behind the image's own nginx alone that works
+out of the box; behind another reverse proxy set `TRUST_PROXY` (see
+[Behind your own proxy](docker.md#behind-your-own-proxy)). Until then the backend cannot tell
+visitors apart, so it leaves the per-IP limits off rather than put everyone in one bucket, and logs
+a warning saying so once; the per-username and per-account limits still apply.
+
 ## Usage counters
 
 So an admin can see who uses the server and how, the backend counts, per user and per UTC day:

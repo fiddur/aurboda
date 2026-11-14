@@ -5,6 +5,7 @@
  */
 import express, { Router, type Request, type Response } from 'express'
 
+import type { FailedLogins } from '../api/rate-limit-middleware.ts'
 import type { CentralDb } from '../services/central-db.ts'
 
 import { isInvalidPasswordError } from '../db/index.ts'
@@ -14,9 +15,11 @@ import {
   refreshAccessToken,
   registerClient,
 } from '../services/oauth.ts'
+import { tooManyFailedLoginsMessage } from '../services/rate-limit.ts'
 
 export interface OAuthRouterDeps {
   centralDb: CentralDb
+  failedLogins: FailedLogins
   loginToUserDb: (username: string, password: string) => Promise<unknown>
   webHost: string
 }
@@ -73,7 +76,7 @@ const escapeHtml = (str: string): string =>
   str.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;')
 
 export const createOAuthRouter = (deps: OAuthRouterDeps): Router => {
-  const { centralDb, loginToUserDb, webHost } = deps
+  const { centralDb, failedLogins, loginToUserDb, webHost } = deps
   const router = Router()
   const oauthDeps = { centralDb }
 
@@ -122,6 +125,18 @@ export const createOAuthRouter = (deps: OAuthRouterDeps): Router => {
       return
     }
 
+    const form = { client_id, redirect_uri, state: state ?? '', code_challenge, code_challenge_method }
+    const attempt = failedLogins.begin(req, username)
+    if (!attempt.allowed) {
+      const wait = attempt.retry_after_seconds
+      res
+        .status(429)
+        .set('Retry-After', String(wait))
+        .type('html')
+        .send(loginFormHtml({ ...form, error: tooManyFailedLoginsMessage(wait) }))
+      return
+    }
+
     // A database we cannot reach is not a bad password: report it as one and
     // the user goes off changing a credential that was fine.
     try {
@@ -129,15 +144,12 @@ export const createOAuthRouter = (deps: OAuthRouterDeps): Router => {
     } catch (err) {
       const badCredentials = isInvalidPasswordError(err)
       if (!badCredentials) {
+        attempt.inconclusive()
         console.error(`OAuth login for ${username} failed to reach the database:`, err)
       }
       res.type('html').send(
         loginFormHtml({
-          client_id,
-          redirect_uri,
-          state: state ?? '',
-          code_challenge,
-          code_challenge_method,
+          ...form,
           error: badCredentials
             ? 'Invalid username or password'
             : 'Could not reach the database — this is a server problem, not your password. Try again shortly.',
@@ -145,6 +157,7 @@ export const createOAuthRouter = (deps: OAuthRouterDeps): Router => {
       )
       return
     }
+    attempt.succeeded()
 
     try {
       const code = await createAuthorizationCode(oauthDeps, {
