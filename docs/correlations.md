@@ -426,6 +426,40 @@ with too few pairs to test (fewer than 3) get no p-value and do not count. The
 continuous analysis (Pearson, Spearman, Welch, Mann–Whitney) tests one hypothesis
 several ways and is not adjusted.
 
+## Flagged windows (`exclude_from_baseline`)
+
+Some stretches diverge from everyday life in every way at once: a festival, a retreat, a family
+gathering. Food, sleep timing, social load, alcohol and exercise all change together, and treated as
+ordinary days they pollute every baseline and correlation. An activity whose `data` holds
+`exclude_from_baseline: true` (whatever its type; a `gathering` type with that field in its
+`data_schema` is one way to set it) flags its span `[start_time, end_time)` as such a window. An
+activity without an end flags nothing.
+
+The analyses leave the flagged windows out by default. One shared helper reads the flagged activities
+overlapping the analysed range once per query (`services/flagged-windows.ts`), and each analysis drops
+its own inputs:
+
+| Analysis               | REST / MCP                                                           | What is left out                                                                                                                                                                           |
+| ---------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Baseline               | `GET /correlations/baseline`, `get_baseline`                         | HRV, resting HR and stress samples inside a window                                                                                                                                         |
+| HRV context            | `GET /correlations/hrv-activities`, `get_hrv_activities_correlation` | samples inside a window, and the activities, place visits and app spans starting in one                                                                                                    |
+| Activity impact        | `GET /correlations/activity-impact/:activity`, `get_activity_impact` | the 5-minute bins and the occurrences starting in a window                                                                                                                                 |
+| Generic correlation    | `POST /correlations/generic`, `get_generic_correlation`              | activities, app spans and metric samples in a window, and the days a window overlaps (from the baseline days and the compound-trigger days; for an `event` outcome from the analysed days) |
+| Continuous correlation | `POST /correlations/continuous`, `get_metric_correlation`            | the UTC days a window overlaps, on either side of a pair                                                                                                                                   |
+| Metric trend           | `GET /trends`, `get_trend` (`source_type: metric`)                   | samples inside a window; a day left without samples is skipped rather than counted as zero                                                                                                 |
+
+Each takes `include_flagged` (default false) to keep the windows, for studying them themselves. When a
+window overlaps the analysed range, the response carries `flagged_exclusion`: the `windows` (activity
+id and type, start and end), and `excluded_points` (samples, bins, activities, visits and app spans
+left out) or `excluded_days` (days left out of a per-day analysis), or both. Stored samples are counted
+from every source.
+
+Raw views keep the windows. `GET /metrics/bucketed` and `query_metrics_bucketed` take the opt-in
+`exclude_flagged` instead, and the daily summary shows the flagged activity and everything during it as
+usual: it describes the day rather than analysing it. Activity-type, screentime and measure trends,
+event probability, goals, and the shared dashboards, articles and feed posts that compute an analysis
+on the server keep the windows too.
+
 ## Statistics notes
 
 - Chi-squared p-values are exact for 1 degree of freedom (`erfc(√(χ²/2))`). A
@@ -441,6 +475,11 @@ several ways and is not adjusted.
 - `pearson_p` is the two-sided significance of the Pearson r via the t-transform
   `t = r·√((n−2)/(1−r²))` on `n−2` df; null with fewer than 3 pairs, 0 for a
   perfect correlation.
+- A `metric` outcome of `get_generic_correlation` (`POST /correlations/generic`)
+  pools the samples after each trigger and on the baseline days. For a
+  time-weighted metric they are averaged per 5-minute bin first, so the mean and
+  `stddev` are over bins (`bin_count`), while `sample_count` stays the raw
+  sample count (see [Time-weighted averages](data-storage.md#time-weighted-averages)).
 
 ## Performance
 

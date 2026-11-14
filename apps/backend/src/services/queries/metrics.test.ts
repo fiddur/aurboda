@@ -238,6 +238,7 @@ describe('queryMetricsBucketed', () => {
       expect.any(Date),
       '5 minutes',
       'UTC',
+      [],
     )
   })
 
@@ -272,6 +273,7 @@ describe('queryMetricsBucketed', () => {
       expect.any(Date),
       '1 hours',
       'UTC',
+      [],
     )
   })
 
@@ -306,6 +308,7 @@ describe('queryMetricsBucketed', () => {
       expect.any(Date),
       '1 days',
       'UTC',
+      [],
     )
   })
 
@@ -542,6 +545,7 @@ describe('queryMetricsBucketed', () => {
       expect.any(Date),
       '5 minutes',
       'UTC',
+      [],
     )
     expect(result.buckets).toHaveLength(1)
     expect(result.buckets[0].metrics.heart_rate).toBeDefined()

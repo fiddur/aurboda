@@ -306,6 +306,73 @@ describe('getGenericCorrelation', () => {
     })
   })
 
+  describe('time-weighted metric outcome', () => {
+    const at = (iso: string, offsetSec = 0) => new Date(Date.parse(iso) + offsetSec * 1000)
+    const oneHz = (iso: string, seconds: number, value: number): [Date, number][] =>
+      Array.from({ length: seconds }, (_, i) => [at(iso, i), value])
+    const everyFiveMinutes = (iso: string, count: number, value: number): [Date, number][] =>
+      Array.from({ length: count }, (_, i) => [at(iso, i * 300), value])
+    const samples: [Date, number][] = [
+      ...oneHz('2024-01-03T12:00:00Z', 3600, 100),
+      ...everyFiveMinutes('2024-01-03T14:00:00Z', 12, 60),
+      ...oneHz('2024-01-06T08:00:00Z', 300, 100),
+      [at('2024-01-06T09:00:00Z'), 60],
+    ]
+
+    const run = (metric: string) => {
+      vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
+        {
+          activity_type: 'run',
+          id: 'r1',
+          source: 'manual' as const,
+          start_time: at('2024-01-03T10:00:00Z'),
+        },
+      ])
+      vi.mocked(db.getProductivity).mockResolvedValue([])
+      vi.mocked(db.getTimeSeries).mockResolvedValue(samples)
+      return getGenericCorrelation(
+        'testuser',
+        [{ pattern: 'run', type: 'activity' }],
+        { metric, type: 'metric' },
+        ['24h'],
+        90,
+        undefined,
+        {
+          periodEnd: '2024-01-10',
+          periodStart: '2024-01-01',
+        },
+      )
+    }
+
+    test('averages heart rate per 5-minute bin, so a 1 Hz recording does not dominate', async () => {
+      const result = await run('heart_rate')
+
+      expect(result.post_trigger['24h']).toEqual({
+        bin_count: 24,
+        delta_from_baseline: 0,
+        mean: 80,
+        sample_count: 3612,
+        stddev: expect.any(Number),
+      })
+      expect(result.baseline).toEqual({
+        bin_count: 2,
+        mean: 80,
+        sample_count: 301,
+        stddev: expect.any(Number),
+      })
+    })
+
+    test('pools the samples of a metric that is not time-weighted', async () => {
+      const result = await run('weight')
+
+      const lag = result.post_trigger['24h'] as { mean: number; sample_count: number }
+      expect(lag).not.toHaveProperty('bin_count')
+      expect(lag.sample_count).toBe(3612)
+      expect(lag.mean).toBeCloseTo(99.87, 2)
+      expect(result.baseline).not.toHaveProperty('bin_count')
+    })
+  })
+
   describe('regime scoping (averaging path)', () => {
     test('honors period_start/period_end for a tag outcome', async () => {
       vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([])

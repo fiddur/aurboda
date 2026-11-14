@@ -43,9 +43,10 @@ export const activitySessionSchema = z
     distance: z.number().optional().meta({ description: 'Distance (m)' }),
     duration: z.number().optional().meta({ description: 'Duration in minutes' }),
     end_time: iso8601DateTimeSchema.optional(),
-    fields: z
-      .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
-      .meta({ description: "Values of the activity type's data_schema fields present on this session" }),
+    fields: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).meta({
+      description:
+        "Values of the activity type's data_schema fields present on this session. With group_by=place, place holds the session's named place instead (absent when it has none)",
+    }),
     hr: valueDistributionSchema.optional().meta({ description: 'Distribution of heart rate samples (bpm)' }),
     hr_zone_secs: hrZoneSecsSchema.optional().meta({ description: 'Time spent in each HR zone' }),
     id: z.string().meta({
@@ -103,7 +104,7 @@ export const activitySessionGroupSchema = z
     session_ids: z.array(z.string()).meta({ description: 'IDs of the sessions in the group, newest first' }),
     value: z.union([z.string(), z.number(), z.boolean()]).nullable().meta({
       description:
-        'The group-by field value; null groups the sessions without one. For an item path, the most recent spelling of a value compared trimmed and case-insensitively',
+        'The group-by field value (with group_by=place, the named place); null groups the sessions without one. For an item path, the most recent spelling of a value compared trimmed and case-insensitively',
     }),
   })
   .meta({
@@ -128,7 +129,7 @@ export const activitySessionsQuerySchema = z
     }),
     group_by: dataFieldPathSchema.optional().meta({
       description:
-        'Data field to group sessions by, typically one marked is_categorical; an item path (sets.exercise) gives one group per item value, a session in every group it has an item for',
+        'Data field to group sessions by, typically one marked is_categorical; an item path (sets.exercise) gives one group per item value, a session in every group it has an item for. The reserved value place groups by where the session happened instead: the named location (or a region named like one) it overlaps longest, or with no GPS fix in the session the place of the last fix up to 6 hours before it; a data field literally named place cannot be grouped by',
       example: 'session_name',
     }),
     start: iso8601DateTimeSchema.optional().meta({ description: 'Start date/time (defaults to all time)' }),

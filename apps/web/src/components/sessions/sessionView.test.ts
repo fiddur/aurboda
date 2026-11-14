@@ -18,7 +18,9 @@ import {
   itemPageHref,
   itemPath,
   listFields,
+  PLACE_FIELD,
   scalarFields,
+  sessionGroupings,
   sessionLabel,
   sortGroups,
   sortSessions,
@@ -196,5 +198,14 @@ describe('isSameSession', () => {
     expect(isSameSession(s, new Date('2026-09-03T07:00:00Z'))).toBe(true)
     expect(isSameSession(s, new Date('2026-09-03T07:00:05Z'))).toBe(true)
     expect(isSameSession(s, new Date('2026-09-03T08:00:00Z'))).toBe(false)
+  })
+})
+
+describe('sessionGroupings', () => {
+  test('Place follows the categorical fields and replaces a data field named place', () => {
+    const yoga = { is_categorical: true, name: 'session_name', type: 'string' } as const
+    const place = { is_categorical: true, name: 'place', type: 'string' } as const
+    expect(sessionGroupings([yoga, place])).toEqual([yoga, PLACE_FIELD])
+    expect(sessionGroupings([])).toEqual([PLACE_FIELD])
   })
 })

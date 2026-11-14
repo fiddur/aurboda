@@ -2,6 +2,7 @@ import type {
   ActivityComputedMetrics,
   DataSource,
   EntityType,
+  FlaggedExclusion,
   PlaceSource,
   SleepDebtDay,
 } from '@aurboda/api-spec'
@@ -122,6 +123,7 @@ export interface QueryMetricsBucketedResult {
   end: string
   bucket: BucketSize
   buckets: MetricBucket[]
+  flagged_exclusion?: FlaggedExclusion
 }
 
 export interface HeartRateStats {

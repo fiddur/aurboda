@@ -21,6 +21,10 @@ HRV baseline uses sleep-context HRV (measurements taken during sleep), which is 
 
 The stress average is time-weighted: the samples are averaged per 5-minute bin, then across bins. Garmin records stress once a second during a recorded activity and every few minutes otherwise, so a plain average of the samples would let the recorded hours dominate. The same 5-minute bins are what the Context tab below works on, so the stress card and the tables' "vs avg" agree. See [Time-weighted averages](../data-storage.md#time-weighted-averages).
 
+A festival, retreat or other stretch where everything differs from everyday life can be flagged by setting
+`exclude_from_baseline` on its activity: the baseline, the Context tab and the Explore analyses then leave
+that window out, and say how much they left out. See [Flagged windows](../correlations.md#flagged-windows-exclude_from_baseline).
+
 ## The Context tab
 
 The first tab of the Analyze page shows three tables over a configurable analysis period (14, 30, 60, or 90 days). Checkboxes for **HRV**, **Heart rate** and **Stress** (all on by default) choose which metrics the baseline cards, the tables and the impact chart show. After them comes a checkbox for every other metric you record around the clock (at least every 15 minutes for half of the day on most days), so there is data before and after a session: Garmin body battery, say, or a continuous custom metric. Metrics recorded only during workouts or sleep (often respiration rate) do not qualify. These are off by default, and up to 4 can be on. A ticked one gets its own columns in the tables, its own line (on its own scale), summary line and legend entry in the impact chart, its own baseline card (its average over the period), and an r for productivity categories. Its changes are coloured green or red only where the good direction is known (higher body battery, SpO2 and HRV; lower resting heart rate); otherwise a statistically clear change is shown plainly. Daily values such as resting heart rate or sleep scores never appear: they cannot show a change around a 30-minute session. At least one checkbox stays on.

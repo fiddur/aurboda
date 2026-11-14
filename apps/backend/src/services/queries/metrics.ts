@@ -22,6 +22,13 @@ import {
   metricUnits,
 } from '../../schema.ts'
 import { pushAll } from '../../utils.ts'
+import {
+  countFlaggedSamples,
+  type FlaggedWindow,
+  flaggedExclusion,
+  loadFlaggedWindows,
+  withoutFlagged,
+} from '../flagged-windows.ts'
 import { classifyHrvByContext, getHrvContextWindows, type HrvContext } from '../hrv-context.ts'
 import { maxOf, minOf } from '../numeric-extremes.ts'
 
@@ -152,6 +159,7 @@ async function computeContextualHrvData(
   end: Date,
   bucketMs: number,
   tz: string = 'UTC',
+  flagged: FlaggedWindow[] = [],
 ): Promise<
   {
     bucket_start: Date
@@ -165,10 +173,11 @@ async function computeContextualHrvData(
     last_time: Date
   }[]
 > {
-  const [hrvData, { sleepWindows, activityWindows }] = await Promise.all([
+  const [allHrvData, { sleepWindows, activityWindows }] = await Promise.all([
     getTimeSeries(user, 'hrv_rmssd', start, end),
     getHrvContextWindows(user, start, end),
   ])
+  const hrvData = withoutFlagged(allHrvData, ([time]) => time.getTime(), flagged).kept
 
   if (hrvData.length === 0) return []
 
@@ -250,7 +259,12 @@ export async function queryMetricsBucketed(
   start: Date,
   end: Date,
   bucket: BucketSize,
-  options: { customMetrics?: CustomMetricDefinition[]; exclude?: string[]; tz?: string } = {},
+  options: {
+    customMetrics?: CustomMetricDefinition[]
+    exclude?: string[]
+    excludeFlagged?: boolean
+    tz?: string
+  } = {},
 ): Promise<QueryMetricsBucketedResult> {
   const { interval, ms: bucketMs } = parseBucketSize(bucket)
   const excludeSet = new Set(options.exclude ?? [])
@@ -272,11 +286,16 @@ export async function queryMetricsBucketed(
 
   const tz = options.tz ?? 'UTC'
   const needsContextualHrv = contextualHrvMetricsRequested.length > 0
-  const [regularData, contextualHrvDataResult] = await Promise.all([
-    regularMetrics.length > 0 ? getTimeSeriesBucketed(user, regularMetrics, start, end, interval, tz) : [],
-    needsContextualHrv
-      ? computeContextualHrvData(user, contextualHrvMetricsRequested, start, end, bucketMs, tz)
+  const flagged = await loadFlaggedWindows(user, start, end, options.excludeFlagged)
+  const countedMetrics = needsContextualHrv ? [...regularMetrics, 'hrv_rmssd'] : regularMetrics
+  const [regularData, contextualHrvDataResult, excludedPoints] = await Promise.all([
+    regularMetrics.length > 0
+      ? getTimeSeriesBucketed(user, regularMetrics, start, end, interval, tz, flagged)
       : [],
+    needsContextualHrv
+      ? computeContextualHrvData(user, contextualHrvMetricsRequested, start, end, bucketMs, tz, flagged)
+      : [],
+    countFlaggedSamples(user, countedMetrics, flagged, start, end),
   ])
 
   const allData = [...regularData, ...contextualHrvDataResult]
@@ -315,6 +334,7 @@ export async function queryMetricsBucketed(
     bucket,
     buckets,
     end: end.toISOString(),
+    ...flaggedExclusion(flagged, { excluded_points: excludedPoints }),
     start: start.toISOString(),
   }
 }

@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { activityMeasureSchema } from './activity-measures.ts'
 import { baseResponseSchema, dataFieldPathSchema, timeWeightedAveragesNote } from './common.ts'
+import { flaggedExclusionSchema, includeFlaggedBodySchema, includeFlaggedSchema } from './flagged-windows.ts'
 import { ianaTimezoneSchema } from './timezone.ts'
 
 export const trendSourceTypeSchema = z
@@ -82,6 +83,9 @@ export const trendMeasureShape = {
   }),
 }
 
+const TREND_INCLUDE_FLAGGED =
+  'Metric trends: keep the samples inside activities flagged exclude_from_baseline, which are left out by default (a day left without samples is then skipped, not counted as zero)'
+
 export const getTrendQuerySchema = z
   .object({
     aggregation: z
@@ -121,6 +125,7 @@ export const getTrendQuerySchema = z
       description:
         'Data fields to break down by (for activity_type source). Produces per-series EMA histories.',
     }),
+    include_flagged: includeFlaggedBodySchema.meta({ description: TREND_INCLUDE_FLAGGED }),
     missing_days: trendMissingDaysSchema.optional(),
     tz: trendTzSchema,
     ...trendMeasureShape,
@@ -147,6 +152,7 @@ export const trendResultSchema = z
     current_value: z.number().meta({ description: 'Current trend value' }),
     display_period: trendDisplayPeriodSchema.meta({ description: 'Period the value is normalized to' }),
     display_unit: z.string().meta({ description: 'Human-readable unit (e.g., "per month")' }),
+    flagged_exclusion: flaggedExclusionSchema.optional(),
     half_life_days: z.number().meta({ description: 'Half-life used for calculation' }),
     history: z.array(trendHistoryPointSchema).meta({ description: 'Historical trend values' }),
     breakdown_series: z
@@ -209,6 +215,7 @@ export const trendQuerySchema = z
       .string()
       .optional()
       .meta({ description: 'Comma-separated data fields to break down by' }),
+    include_flagged: includeFlaggedSchema.meta({ description: TREND_INCLUDE_FLAGGED }),
     missing_days: trendMissingDaysSchema.optional(),
     tz: trendTzSchema,
     ...trendMeasureShape,

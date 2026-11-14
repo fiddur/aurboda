@@ -26,6 +26,12 @@ import {
   getEffectiveActivitiesInRange,
   getProductivity,
 } from '../../db/index.ts'
+import {
+  flaggedExclusion,
+  loadFlaggedWindows,
+  seriesWithoutFlagged,
+  withoutFlagged,
+} from '../flagged-windows.ts'
 import { getPlaceVisits } from '../locations.ts'
 import { getUserTimezone } from '../settings.ts'
 import { triggerCorrelationSyncs } from './background-sync.ts'
@@ -311,6 +317,7 @@ export async function getActivityImpact(
   match: ActivityImpactMatch = 'contains',
   requestedExtras: string[] = [],
   slicing: ImpactSlicing = {},
+  options: { excludeFlagged?: boolean } = {},
 ): Promise<ActivityImpactResult> {
   const { end, start } = until ? explicitRange(until, periodDays, since) : rangeEndingToday(periodDays)
   const window = clampWindowMinutes(windowMinutes)
@@ -322,30 +329,33 @@ export async function getActivityImpact(
 
   const { seriesEnd, seriesStart } = extendByWindow(start, end, window)
   const binned = (metric: string) => getBinnedTimeSeries(user, metric, seriesStart, seriesEnd, BIN_MINUTES)
-  const [hrv, hr, stress, extraData, sources] = await Promise.all([
+  const [hrv, hr, stress, extraData, sources, flagged] = await Promise.all([
     binned('hrv_rmssd'),
     binned('heart_rate'),
     binned('stress_level'),
     Promise.all(extraMetrics.map(binned)),
     loadSliceSources(user, activity, activityType, match, { end, start }, window, slicing),
+    loadFlaggedWindows(user, seriesStart, seriesEnd, options.excludeFlagged),
   ])
 
-  const occurrences = await findOccurrences(
-    user,
-    activity,
-    activityType,
-    match,
-    start,
-    end,
-    sources.activities,
+  const found = withoutFlagged(
+    await findOccurrences(user, activity, activityType, match, start, end, sources.activities),
+    (o) => o.start,
+    flagged,
   )
+  const occurrences = found.kept
   const sessions = mergeIntoSessions(occurrences)
-  const series: MetricSeries = {
-    ...Object.fromEntries(extraMetrics.map((metric, i) => [metric, extraData[i]])),
-    hr,
-    hrv,
-    stress,
-  }
+  const binnedSeries = seriesWithoutFlagged<MetricSeries>(
+    {
+      ...Object.fromEntries(extraMetrics.map((metric, i) => [metric, extraData[i]])),
+      hr,
+      hrv,
+      stress,
+    },
+    flagged,
+  )
+  const series = binnedSeries.kept
+  const excludedPoints = found.excluded + binnedSeries.excluded
   const analyseGroup = ({ indices, key, label }: GroupSelection): ImpactGroup => {
     const analysis = analyse(sessions, series, window, extraMetrics, indices)
     return {
@@ -395,6 +405,7 @@ export async function getActivityImpact(
     ...(breakdown ? { breakdown: { ...breakdown, groups: breakdown.groups.map(adjustEffectsOf) } } : {}),
     comparisons,
     ...(dimensions ? { dimensions } : {}),
+    ...flaggedExclusion(flagged, { excluded_points: excludedPoints }),
     ...adjustEffectsOf({
       hr_effect: effects.hr,
       hrv_effect: effects.hrv,

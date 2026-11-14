@@ -8,6 +8,7 @@ describe('pageTitleForPath', () => {
     expect(pageTitleForPath('/')).toBe('Home')
     expect(pageTitleForPath('/timeline')).toBe('Timeline')
     expect(pageTitleForPath('/correlations')).toBe('Analyze')
+    expect(pageTitleForPath('/training-load')).toBe('Training load')
     expect(pageTitleForPath('/dashboards')).toBe('Dashboards')
     expect(pageTitleForPath('/shared-dashboards')).toBe('Dashboards')
     expect(pageTitleForPath('/data-sources/oura')).toBe('Oura Ring')
