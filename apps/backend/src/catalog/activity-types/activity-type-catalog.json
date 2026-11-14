@@ -1,0 +1,1584 @@
+{
+  "version": "2026.11.1",
+  "groups": [
+    {
+      "key": "intake",
+      "name": "Intake"
+    },
+    {
+      "key": "meals",
+      "name": "Meals and diet"
+    },
+    {
+      "key": "health",
+      "name": "Health"
+    },
+    {
+      "key": "symptoms",
+      "name": "Symptoms"
+    },
+    {
+      "key": "recovery",
+      "name": "Recovery and practice"
+    },
+    {
+      "key": "life_context",
+      "name": "Context"
+    }
+  ],
+  "entries": [
+    {
+      "name": "alcohol",
+      "display_name": "Alcohol",
+      "display_category": "intake",
+      "group": "intake",
+      "color": "#d97706",
+      "icon": "🍷",
+      "aliases": [],
+      "data_schema": {
+        "fields": [
+          {
+            "name": "kind",
+            "type": "string",
+            "enum_values": ["beer", "wine", "cider", "spirits", "cocktail", "other"],
+            "is_categorical": true,
+            "show_in_summary": true
+          },
+          {
+            "name": "drinks",
+            "type": "number",
+            "min": 0
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKQuantityTypeIdentifierNumberOfAlcoholicBeverages"],
+        "oura": ["Alcohol", "Beer", "Wine"],
+        "garmin": ["Alcohol"]
+      }
+    },
+    {
+      "name": "caffeine",
+      "display_name": "Caffeine",
+      "display_category": "intake",
+      "group": "intake",
+      "color": "#d97706",
+      "icon": "☕",
+      "aliases": [],
+      "data_schema": {
+        "fields": [
+          {
+            "name": "kind",
+            "type": "string",
+            "enum_values": ["coffee", "tea", "energy_drink", "other"],
+            "is_categorical": true,
+            "show_in_summary": true
+          },
+          {
+            "name": "amount",
+            "type": "number",
+            "unit": "mg",
+            "min": 0
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKQuantityTypeIdentifierDietaryCaffeine"],
+        "oura": ["Coffee", "Tea"],
+        "garmin": ["Caffeine", "Morning Caffeine", "Late Caffeine"]
+      }
+    },
+    {
+      "name": "nicotine",
+      "display_name": "Nicotine",
+      "display_category": "intake",
+      "group": "intake",
+      "color": "#d97706",
+      "icon": "🚬",
+      "aliases": [],
+      "data_schema": {
+        "fields": [
+          {
+            "name": "kind",
+            "type": "string",
+            "enum_values": ["cigarette", "snus", "vape", "gum_or_patch", "other"],
+            "is_categorical": true,
+            "show_in_summary": true
+          },
+          {
+            "name": "amount",
+            "type": "number",
+            "min": 0
+          }
+        ]
+      },
+      "same_as": {
+        "oura": ["Nicotine"]
+      }
+    },
+    {
+      "name": "medication",
+      "display_name": "Medication",
+      "display_category": "intake",
+      "group": "intake",
+      "color": "#d97706",
+      "icon": "💊",
+      "aliases": ["medicine"],
+      "data_schema": {
+        "fields": [
+          {
+            "name": "substance",
+            "type": "string",
+            "is_categorical": true,
+            "show_in_summary": true
+          },
+          {
+            "name": "dose",
+            "type": "number",
+            "min": 0
+          },
+          {
+            "name": "dose_unit",
+            "type": "string",
+            "is_categorical": true,
+            "show_in_summary": true,
+            "label": "Unit"
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKMedicationDoseEvent"],
+        "oura": ["Medication", "Pain killer"]
+      }
+    },
+    {
+      "name": "supplement",
+      "display_name": "Supplement",
+      "display_category": "intake",
+      "group": "intake",
+      "color": "#d97706",
+      "icon": "🧴",
+      "aliases": ["supplements"],
+      "data_schema": {
+        "fields": [
+          {
+            "name": "substance",
+            "type": "string",
+            "is_categorical": true,
+            "show_in_summary": true
+          },
+          {
+            "name": "dose",
+            "type": "number",
+            "min": 0
+          },
+          {
+            "name": "dose_unit",
+            "type": "string",
+            "is_categorical": true,
+            "show_in_summary": true,
+            "label": "Unit"
+          }
+        ]
+      },
+      "same_as": {
+        "oura": ["Magnesium", "Melatonin"]
+      }
+    },
+    {
+      "name": "late_meal",
+      "display_name": "Late meal",
+      "display_category": "intake",
+      "group": "meals",
+      "color": "#ca8a04",
+      "icon": "🌙",
+      "aliases": [],
+      "same_as": {
+        "oura": ["Late meal"]
+      }
+    },
+    {
+      "name": "heavy_meal",
+      "display_name": "Heavy meal",
+      "display_category": "intake",
+      "group": "meals",
+      "color": "#ca8a04",
+      "icon": "🍽️",
+      "aliases": [],
+      "same_as": {
+        "garmin": ["Heavy Meal"]
+      }
+    },
+    {
+      "name": "fasting",
+      "display_name": "Fasting",
+      "display_category": "intake",
+      "group": "meals",
+      "color": "#ca8a04",
+      "icon": "⏳",
+      "aliases": [],
+      "data_schema": {
+        "fields": [
+          {
+            "name": "kind",
+            "type": "string",
+            "enum_values": ["intermittent", "extended"],
+            "is_categorical": true,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "oura": ["Fasting"],
+        "garmin": ["Intermittent Fasting"]
+      }
+    },
+    {
+      "name": "diet",
+      "display_name": "Diet",
+      "display_category": "intake",
+      "group": "meals",
+      "color": "#ca8a04",
+      "icon": "🥗",
+      "aliases": [],
+      "data_schema": {
+        "fields": [
+          {
+            "name": "kind",
+            "type": "string",
+            "enum_values": ["keto", "low_carb", "vegetarian", "vegan", "calorie_deficit", "other"],
+            "is_categorical": true,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "oura": ["Keto diet"]
+      }
+    },
+    {
+      "name": "illness",
+      "display_name": "Illness",
+      "display_category": "health",
+      "group": "health",
+      "color": "#dc2626",
+      "icon": "🤒",
+      "aliases": ["sick", "sickness"],
+      "data_schema": {
+        "fields": [
+          {
+            "name": "kind",
+            "type": "string",
+            "enum_values": ["cold", "flu", "stomach_bug", "covid", "other"],
+            "is_categorical": true,
+            "show_in_summary": true
+          },
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "oura": ["Cold", "Sick"]
+      }
+    },
+    {
+      "name": "symptom",
+      "display_name": "Symptom",
+      "display_category": "health",
+      "group": "health",
+      "color": "#f87171",
+      "icon": "🩺",
+      "aliases": [],
+      "data_schema": {
+        "fields": [
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {}
+    },
+    {
+      "name": "pain",
+      "display_name": "Pain",
+      "display_category": "health",
+      "group": "health",
+      "color": "#dc2626",
+      "icon": "⚡",
+      "aliases": [],
+      "data_schema": {
+        "fields": [
+          {
+            "name": "location",
+            "type": "string",
+            "enum_values": [
+              "head",
+              "neck",
+              "shoulder",
+              "back",
+              "lower_back",
+              "chest",
+              "abdomen",
+              "pelvis",
+              "breast",
+              "hip",
+              "knee",
+              "joint",
+              "other"
+            ],
+            "is_categorical": true,
+            "show_in_summary": true
+          },
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": [
+          "HKCategoryTypeIdentifierLowerBackPain",
+          "HKCategoryTypeIdentifierPelvicPain",
+          "HKCategoryTypeIdentifierBreastPain"
+        ],
+        "oura": ["Back pain", "Joint pain"]
+      }
+    },
+    {
+      "name": "injury",
+      "display_name": "Injury",
+      "display_category": "health",
+      "group": "health",
+      "color": "#dc2626",
+      "icon": "🩹",
+      "aliases": [],
+      "data_schema": {
+        "fields": [
+          {
+            "name": "body_part",
+            "type": "string",
+            "is_categorical": true,
+            "show_in_summary": true
+          },
+          {
+            "name": "kind",
+            "type": "string",
+            "enum_values": ["strain", "sprain", "fracture", "wound", "other"],
+            "is_categorical": true,
+            "show_in_summary": true
+          },
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {}
+    },
+    {
+      "name": "menstruation",
+      "display_name": "Menstruation",
+      "display_category": "health",
+      "group": "health",
+      "color": "#dc2626",
+      "icon": "🩸",
+      "aliases": [],
+      "data_schema": {
+        "fields": [
+          {
+            "name": "flow",
+            "type": "string",
+            "enum_values": ["light", "medium", "heavy"],
+            "is_categorical": true,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKCategoryTypeIdentifierMenstrualFlow"],
+        "health_connect": ["MenstruationFlowRecord", "MenstruationPeriodRecord"]
+      }
+    },
+    {
+      "name": "sexual_activity",
+      "display_name": "Sexual activity",
+      "display_category": "health",
+      "group": "health",
+      "color": "#dc2626",
+      "icon": "❤️",
+      "aliases": ["sex"],
+      "data_schema": {
+        "fields": [
+          {
+            "name": "protection_used",
+            "type": "boolean"
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKCategoryTypeIdentifierSexualActivity"],
+        "health_connect": ["SexualActivityRecord"],
+        "oura": ["Sex"]
+      }
+    },
+    {
+      "name": "sauna",
+      "display_name": "Sauna",
+      "display_category": "wellness",
+      "group": "recovery",
+      "color": "#14b8a6",
+      "icon": "🧖",
+      "aliases": [],
+      "data_schema": {
+        "fields": [
+          {
+            "name": "temperature",
+            "type": "number",
+            "unit": "°C"
+          },
+          {
+            "name": "rounds",
+            "type": "number",
+            "min": 0
+          }
+        ]
+      },
+      "same_as": {
+        "oura": ["Sauna"],
+        "garmin": ["Sauna"]
+      }
+    },
+    {
+      "name": "cold_exposure",
+      "display_name": "Cold exposure",
+      "display_category": "wellness",
+      "group": "recovery",
+      "color": "#14b8a6",
+      "icon": "🧊",
+      "aliases": [],
+      "data_schema": {
+        "fields": [
+          {
+            "name": "kind",
+            "type": "string",
+            "enum_values": ["cold_plunge", "cold_shower", "ice_bath", "winter_swim"],
+            "is_categorical": true,
+            "show_in_summary": true
+          },
+          {
+            "name": "temperature",
+            "type": "number",
+            "unit": "°C"
+          }
+        ]
+      },
+      "same_as": {
+        "oura": ["Cold exposure"],
+        "garmin": ["Cold Plunge"]
+      }
+    },
+    {
+      "name": "hot_bath",
+      "display_name": "Hot bath",
+      "display_category": "wellness",
+      "group": "recovery",
+      "color": "#14b8a6",
+      "icon": "🛁",
+      "aliases": [],
+      "data_schema": {
+        "fields": [
+          {
+            "name": "temperature",
+            "type": "number",
+            "unit": "°C"
+          }
+        ]
+      },
+      "same_as": {
+        "oura": ["Hot bath"]
+      }
+    },
+    {
+      "name": "massage",
+      "display_name": "Massage",
+      "display_category": "wellness",
+      "group": "recovery",
+      "color": "#14b8a6",
+      "icon": "💆",
+      "aliases": [],
+      "data_schema": {
+        "fields": [
+          {
+            "name": "kind",
+            "type": "string",
+            "enum_values": ["manual", "massage_gun", "foam_roller"],
+            "is_categorical": true,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "oura": ["Massage", "Theragun"]
+      }
+    },
+    {
+      "name": "meditation",
+      "display_name": "Meditation",
+      "display_category": "meditation",
+      "group": "recovery",
+      "color": "#a855f7",
+      "icon": "🧘",
+      "aliases": [],
+      "data_schema": {
+        "fields": [
+          {
+            "name": "technique",
+            "type": "string",
+            "is_categorical": true,
+            "show_in_summary": true
+          },
+          {
+            "name": "guided",
+            "type": "boolean"
+          },
+          {
+            "name": "session_name",
+            "type": "string",
+            "is_categorical": true,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKCategoryTypeIdentifierMindfulSession"],
+        "health_connect": ["MindfulnessSessionRecord"],
+        "oura": ["Meditation"]
+      }
+    },
+    {
+      "name": "guided_breathing",
+      "display_name": "Breathwork",
+      "display_category": "exercise",
+      "group": "recovery",
+      "color": "#22c55e",
+      "icon": "🌬️",
+      "aliases": ["breathwork"],
+      "parent_type": "exercise",
+      "data_schema": {
+        "fields": [
+          {
+            "name": "technique",
+            "type": "string",
+            "is_categorical": true,
+            "show_in_summary": true
+          },
+          {
+            "name": "rounds",
+            "type": "number",
+            "min": 0
+          }
+        ]
+      },
+      "same_as": {
+        "health_connect": ["ExerciseSessionRecord/GUIDED_BREATHING", "MindfulnessSessionRecord"],
+        "oura": ["Breathwork"]
+      }
+    },
+    {
+      "name": "sun_exposure",
+      "display_name": "Sun exposure",
+      "display_category": "wellness",
+      "group": "recovery",
+      "color": "#14b8a6",
+      "icon": "☀️",
+      "aliases": [],
+      "same_as": {
+        "apple_healthkit": ["HKQuantityTypeIdentifierTimeInDaylight"],
+        "oura": ["Sun"]
+      }
+    },
+    {
+      "name": "travel",
+      "display_name": "Travel",
+      "display_category": "travel",
+      "group": "life_context",
+      "color": "#0284c7",
+      "icon": "🧳",
+      "aliases": [],
+      "data_schema": {
+        "fields": [
+          {
+            "name": "mode",
+            "type": "string",
+            "enum_values": ["plane", "car", "train", "bus", "boat"],
+            "is_categorical": true,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "oura": ["Travel", "Airplane", "Car"]
+      }
+    },
+    {
+      "name": "social_gathering",
+      "display_name": "Social gathering",
+      "display_category": "other",
+      "group": "life_context",
+      "color": "#db2777",
+      "icon": "🎉",
+      "aliases": [],
+      "same_as": {
+        "oura": ["Social gathering"]
+      }
+    },
+    {
+      "name": "abdominal_cramps",
+      "display_name": "Abdominal cramps",
+      "display_category": "health",
+      "group": "symptoms",
+      "color": "#f87171",
+      "icon": "🩺",
+      "aliases": [],
+      "parent_type": "symptom",
+      "data_schema": {
+        "fields": [
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKCategoryTypeIdentifierAbdominalCramps"]
+      }
+    },
+    {
+      "name": "bloating",
+      "display_name": "Bloating",
+      "display_category": "health",
+      "group": "symptoms",
+      "color": "#f87171",
+      "icon": "🩺",
+      "aliases": [],
+      "parent_type": "symptom",
+      "data_schema": {
+        "fields": [
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKCategoryTypeIdentifierBloating"]
+      }
+    },
+    {
+      "name": "constipation",
+      "display_name": "Constipation",
+      "display_category": "health",
+      "group": "symptoms",
+      "color": "#f87171",
+      "icon": "🩺",
+      "aliases": [],
+      "parent_type": "symptom",
+      "data_schema": {
+        "fields": [
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKCategoryTypeIdentifierConstipation"]
+      }
+    },
+    {
+      "name": "diarrhea",
+      "display_name": "Diarrhea",
+      "display_category": "health",
+      "group": "symptoms",
+      "color": "#f87171",
+      "icon": "🩺",
+      "aliases": [],
+      "parent_type": "symptom",
+      "data_schema": {
+        "fields": [
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKCategoryTypeIdentifierDiarrhea"],
+        "oura": ["Diarrhea"]
+      }
+    },
+    {
+      "name": "heartburn",
+      "display_name": "Heartburn",
+      "display_category": "health",
+      "group": "symptoms",
+      "color": "#f87171",
+      "icon": "🩺",
+      "aliases": [],
+      "parent_type": "symptom",
+      "data_schema": {
+        "fields": [
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKCategoryTypeIdentifierHeartburn"]
+      }
+    },
+    {
+      "name": "nausea",
+      "display_name": "Nausea",
+      "display_category": "health",
+      "group": "symptoms",
+      "color": "#f87171",
+      "icon": "🩺",
+      "aliases": [],
+      "parent_type": "symptom",
+      "data_schema": {
+        "fields": [
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKCategoryTypeIdentifierNausea"]
+      }
+    },
+    {
+      "name": "vomiting",
+      "display_name": "Vomiting",
+      "display_category": "health",
+      "group": "symptoms",
+      "color": "#f87171",
+      "icon": "🩺",
+      "aliases": [],
+      "parent_type": "symptom",
+      "data_schema": {
+        "fields": [
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKCategoryTypeIdentifierVomiting"]
+      }
+    },
+    {
+      "name": "appetite_changes",
+      "display_name": "Appetite changes",
+      "display_category": "health",
+      "group": "symptoms",
+      "color": "#f87171",
+      "icon": "🩺",
+      "aliases": [],
+      "parent_type": "symptom",
+      "data_schema": {
+        "fields": [
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKCategoryTypeIdentifierAppetiteChanges"]
+      }
+    },
+    {
+      "name": "chills",
+      "display_name": "Chills",
+      "display_category": "health",
+      "group": "symptoms",
+      "color": "#f87171",
+      "icon": "🩺",
+      "aliases": [],
+      "parent_type": "symptom",
+      "data_schema": {
+        "fields": [
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKCategoryTypeIdentifierChills"]
+      }
+    },
+    {
+      "name": "dizziness",
+      "display_name": "Dizziness",
+      "display_category": "health",
+      "group": "symptoms",
+      "color": "#f87171",
+      "icon": "🩺",
+      "aliases": [],
+      "parent_type": "symptom",
+      "data_schema": {
+        "fields": [
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKCategoryTypeIdentifierDizziness"]
+      }
+    },
+    {
+      "name": "fainting",
+      "display_name": "Fainting",
+      "display_category": "health",
+      "group": "symptoms",
+      "color": "#f87171",
+      "icon": "🩺",
+      "aliases": [],
+      "parent_type": "symptom",
+      "data_schema": {
+        "fields": [
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKCategoryTypeIdentifierFainting"]
+      }
+    },
+    {
+      "name": "fatigue",
+      "display_name": "Fatigue",
+      "display_category": "health",
+      "group": "symptoms",
+      "color": "#f87171",
+      "icon": "🩺",
+      "aliases": [],
+      "parent_type": "symptom",
+      "data_schema": {
+        "fields": [
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKCategoryTypeIdentifierFatigue"]
+      }
+    },
+    {
+      "name": "fever",
+      "display_name": "Fever",
+      "display_category": "health",
+      "group": "symptoms",
+      "color": "#f87171",
+      "icon": "🩺",
+      "aliases": [],
+      "parent_type": "symptom",
+      "data_schema": {
+        "fields": [
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKCategoryTypeIdentifierFever"],
+        "oura": ["Fever"]
+      }
+    },
+    {
+      "name": "generalized_body_ache",
+      "display_name": "Generalized body ache",
+      "display_category": "health",
+      "group": "symptoms",
+      "color": "#f87171",
+      "icon": "🩺",
+      "aliases": [],
+      "parent_type": "symptom",
+      "data_schema": {
+        "fields": [
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKCategoryTypeIdentifierGeneralizedBodyAche"]
+      }
+    },
+    {
+      "name": "hot_flashes",
+      "display_name": "Hot flashes",
+      "display_category": "health",
+      "group": "symptoms",
+      "color": "#f87171",
+      "icon": "🩺",
+      "aliases": [],
+      "parent_type": "symptom",
+      "data_schema": {
+        "fields": [
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKCategoryTypeIdentifierHotFlashes"]
+      }
+    },
+    {
+      "name": "chest_tightness_or_pain",
+      "display_name": "Chest tightness or pain",
+      "display_category": "health",
+      "group": "symptoms",
+      "color": "#f87171",
+      "icon": "🩺",
+      "aliases": [],
+      "parent_type": "symptom",
+      "data_schema": {
+        "fields": [
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKCategoryTypeIdentifierChestTightnessOrPain"]
+      }
+    },
+    {
+      "name": "coughing",
+      "display_name": "Coughing",
+      "display_category": "health",
+      "group": "symptoms",
+      "color": "#f87171",
+      "icon": "🩺",
+      "aliases": [],
+      "parent_type": "symptom",
+      "data_schema": {
+        "fields": [
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKCategoryTypeIdentifierCoughing"]
+      }
+    },
+    {
+      "name": "rapid_pounding_or_fluttering_heartbeat",
+      "display_name": "Rapid, pounding or fluttering heartbeat",
+      "display_category": "health",
+      "group": "symptoms",
+      "color": "#f87171",
+      "icon": "🩺",
+      "aliases": [],
+      "parent_type": "symptom",
+      "data_schema": {
+        "fields": [
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKCategoryTypeIdentifierRapidPoundingOrFlutteringHeartbeat"]
+      }
+    },
+    {
+      "name": "shortness_of_breath",
+      "display_name": "Shortness of breath",
+      "display_category": "health",
+      "group": "symptoms",
+      "color": "#f87171",
+      "icon": "🩺",
+      "aliases": [],
+      "parent_type": "symptom",
+      "data_schema": {
+        "fields": [
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKCategoryTypeIdentifierShortnessOfBreath"]
+      }
+    },
+    {
+      "name": "skipped_heartbeat",
+      "display_name": "Skipped heartbeat",
+      "display_category": "health",
+      "group": "symptoms",
+      "color": "#f87171",
+      "icon": "🩺",
+      "aliases": [],
+      "parent_type": "symptom",
+      "data_schema": {
+        "fields": [
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKCategoryTypeIdentifierSkippedHeartbeat"]
+      }
+    },
+    {
+      "name": "wheezing",
+      "display_name": "Wheezing",
+      "display_category": "health",
+      "group": "symptoms",
+      "color": "#f87171",
+      "icon": "🩺",
+      "aliases": [],
+      "parent_type": "symptom",
+      "data_schema": {
+        "fields": [
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKCategoryTypeIdentifierWheezing"]
+      }
+    },
+    {
+      "name": "headache",
+      "display_name": "Headache",
+      "display_category": "health",
+      "group": "symptoms",
+      "color": "#f87171",
+      "icon": "🩺",
+      "aliases": [],
+      "parent_type": "symptom",
+      "data_schema": {
+        "fields": [
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKCategoryTypeIdentifierHeadache"],
+        "oura": ["Headache"]
+      }
+    },
+    {
+      "name": "memory_lapse",
+      "display_name": "Memory lapse",
+      "display_category": "health",
+      "group": "symptoms",
+      "color": "#f87171",
+      "icon": "🩺",
+      "aliases": [],
+      "parent_type": "symptom",
+      "data_schema": {
+        "fields": [
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKCategoryTypeIdentifierMemoryLapse"]
+      }
+    },
+    {
+      "name": "mood_changes",
+      "display_name": "Mood changes",
+      "display_category": "health",
+      "group": "symptoms",
+      "color": "#f87171",
+      "icon": "🩺",
+      "aliases": [],
+      "parent_type": "symptom",
+      "data_schema": {
+        "fields": [
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKCategoryTypeIdentifierMoodChanges"]
+      }
+    },
+    {
+      "name": "loss_of_smell",
+      "display_name": "Loss of smell",
+      "display_category": "health",
+      "group": "symptoms",
+      "color": "#f87171",
+      "icon": "🩺",
+      "aliases": [],
+      "parent_type": "symptom",
+      "data_schema": {
+        "fields": [
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKCategoryTypeIdentifierLossOfSmell"]
+      }
+    },
+    {
+      "name": "loss_of_taste",
+      "display_name": "Loss of taste",
+      "display_category": "health",
+      "group": "symptoms",
+      "color": "#f87171",
+      "icon": "🩺",
+      "aliases": [],
+      "parent_type": "symptom",
+      "data_schema": {
+        "fields": [
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKCategoryTypeIdentifierLossOfTaste"]
+      }
+    },
+    {
+      "name": "runny_nose",
+      "display_name": "Runny nose",
+      "display_category": "health",
+      "group": "symptoms",
+      "color": "#f87171",
+      "icon": "🩺",
+      "aliases": [],
+      "parent_type": "symptom",
+      "data_schema": {
+        "fields": [
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKCategoryTypeIdentifierRunnyNose"]
+      }
+    },
+    {
+      "name": "sore_throat",
+      "display_name": "Sore throat",
+      "display_category": "health",
+      "group": "symptoms",
+      "color": "#f87171",
+      "icon": "🩺",
+      "aliases": [],
+      "parent_type": "symptom",
+      "data_schema": {
+        "fields": [
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKCategoryTypeIdentifierSoreThroat"],
+        "oura": ["Sore throat"]
+      }
+    },
+    {
+      "name": "sinus_congestion",
+      "display_name": "Sinus congestion",
+      "display_category": "health",
+      "group": "symptoms",
+      "color": "#f87171",
+      "icon": "🩺",
+      "aliases": [],
+      "parent_type": "symptom",
+      "data_schema": {
+        "fields": [
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKCategoryTypeIdentifierSinusCongestion"]
+      }
+    },
+    {
+      "name": "vaginal_dryness",
+      "display_name": "Vaginal dryness",
+      "display_category": "health",
+      "group": "symptoms",
+      "color": "#f87171",
+      "icon": "🩺",
+      "aliases": [],
+      "parent_type": "symptom",
+      "data_schema": {
+        "fields": [
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKCategoryTypeIdentifierVaginalDryness"]
+      }
+    },
+    {
+      "name": "acne",
+      "display_name": "Acne",
+      "display_category": "health",
+      "group": "symptoms",
+      "color": "#f87171",
+      "icon": "🩺",
+      "aliases": [],
+      "parent_type": "symptom",
+      "data_schema": {
+        "fields": [
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKCategoryTypeIdentifierAcne"]
+      }
+    },
+    {
+      "name": "dry_skin",
+      "display_name": "Dry skin",
+      "display_category": "health",
+      "group": "symptoms",
+      "color": "#f87171",
+      "icon": "🩺",
+      "aliases": [],
+      "parent_type": "symptom",
+      "data_schema": {
+        "fields": [
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKCategoryTypeIdentifierDrySkin"]
+      }
+    },
+    {
+      "name": "hair_loss",
+      "display_name": "Hair loss",
+      "display_category": "health",
+      "group": "symptoms",
+      "color": "#f87171",
+      "icon": "🩺",
+      "aliases": [],
+      "parent_type": "symptom",
+      "data_schema": {
+        "fields": [
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKCategoryTypeIdentifierHairLoss"]
+      }
+    },
+    {
+      "name": "night_sweats",
+      "display_name": "Night sweats",
+      "display_category": "health",
+      "group": "symptoms",
+      "color": "#f87171",
+      "icon": "🩺",
+      "aliases": [],
+      "parent_type": "symptom",
+      "data_schema": {
+        "fields": [
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKCategoryTypeIdentifierNightSweats"]
+      }
+    },
+    {
+      "name": "sleep_changes",
+      "display_name": "Sleep changes",
+      "display_category": "health",
+      "group": "symptoms",
+      "color": "#f87171",
+      "icon": "🩺",
+      "aliases": [],
+      "parent_type": "symptom",
+      "data_schema": {
+        "fields": [
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKCategoryTypeIdentifierSleepChanges"]
+      }
+    },
+    {
+      "name": "bladder_incontinence",
+      "display_name": "Bladder incontinence",
+      "display_category": "health",
+      "group": "symptoms",
+      "color": "#f87171",
+      "icon": "🩺",
+      "aliases": [],
+      "parent_type": "symptom",
+      "data_schema": {
+        "fields": [
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "apple_healthkit": ["HKCategoryTypeIdentifierBladderIncontinence"]
+      }
+    },
+    {
+      "name": "migraine",
+      "display_name": "Migraine",
+      "display_category": "health",
+      "group": "symptoms",
+      "color": "#f87171",
+      "icon": "🩺",
+      "aliases": [],
+      "parent_type": "symptom",
+      "data_schema": {
+        "fields": [
+          {
+            "name": "severity",
+            "type": "number",
+            "label": "Severity (0-10)",
+            "min": 0,
+            "max": 10,
+            "show_in_summary": true
+          }
+        ]
+      },
+      "same_as": {
+        "oura": ["Migraine"]
+      }
+    }
+  ]
+}

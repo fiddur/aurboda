@@ -1,6 +1,6 @@
 /**
  * Only validates declared fields: checks required presence, type correctness,
- * and enum membership. Extra fields not in the schema, and extra keys on list
+ * enum membership and number bounds. Extra fields not in the schema, and extra keys on list
  * items, are silently accepted.
  */
 import type { DataFieldDefinition, DataItemFieldDefinition, DataSchemaDefinition } from '@aurboda/api-spec'
@@ -21,13 +21,19 @@ const isPresent = (value: unknown): boolean => value !== undefined && value !== 
 const validateScalar = (
   path: string,
   value: unknown,
-  field: Pick<DataFieldDefinition, 'enum_values' | 'type'>,
+  field: Pick<DataFieldDefinition, 'enum_values' | 'max' | 'min' | 'type'>,
 ): string[] => {
   if (typeof value !== field.type) {
     return [`Field "${path}" expected type "${field.type}", got "${typeof value}"`]
   }
   if (field.type === 'string' && field.enum_values && !field.enum_values.includes(value as string)) {
     return [`Field "${path}" value "${value}" is not one of: ${field.enum_values.join(', ')}`]
+  }
+  if (typeof value === 'number' && field.max !== undefined && value > field.max) {
+    return [`Field "${path}" value ${value} is above the maximum ${field.max}`]
+  }
+  if (typeof value === 'number' && field.min !== undefined && value < field.min) {
+    return [`Field "${path}" value ${value} is below the minimum ${field.min}`]
   }
   return []
 }

@@ -21,6 +21,7 @@ import {
   type FetchTrendParams,
 } from '../../state/api'
 import { CHART_PRIMARY } from '../../theme'
+import { displayCategoryOptions } from '../../utils/displayCategories'
 import { toDisplayName } from '../../utils/displayName'
 import { suggestEmoji } from '../../utils/emojiLookup'
 import { ItemGroupsSection } from './ItemGroupsSection'
@@ -43,16 +44,6 @@ const LOOKBACK_OPTIONS = [
   { label: '1 year', value: 365 },
   { label: '2 years', value: 730 },
   { label: 'All time', value: 3650 },
-]
-
-const CATEGORY_OPTIONS: Array<{ label: string; value: string }> = [
-  { label: 'Sleep & Rest', value: 'sleep_rest' },
-  { label: 'Exercise', value: 'exercise' },
-  { label: 'Meditation', value: 'meditation' },
-  { label: 'Wellness', value: 'wellness' },
-  { label: 'Productivity', value: 'productivity' },
-  { label: 'Travel', value: 'travel' },
-  { label: 'Other', value: 'other' },
 ]
 
 const DURATION_CATEGORIES = new Set(['exercise', 'sleep_rest'])
@@ -202,7 +193,7 @@ function SettingsSection({
             value={categoryValue ?? currentCategory}
             onChange={(e) => setCategoryValue((e.target as HTMLSelectElement).value)}
           >
-            {CATEGORY_OPTIONS.map((opt) => (
+            {displayCategoryOptions.map((opt) => (
               <option key={opt.value} value={opt.value}>
                 {opt.label}
               </option>

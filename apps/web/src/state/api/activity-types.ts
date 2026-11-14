@@ -18,8 +18,8 @@ export const fetchActivityTypeDefinitions = async (): Promise<ActivityTypeDefini
 
 export const addActivityTypeDefinition = async (body: {
   name: string
-  display_name: string
-  display_category: string
+  display_name?: string
+  display_category?: string
   color?: string
   icon?: string
   show_on_timeline?: boolean

@@ -61,8 +61,14 @@ export const addActivityTypeDefinitionBodySchema = z
     data_schema: dataSchemaDefinitionSchema
       .optional()
       .meta({ description: 'Schema defining expected data fields' }),
-    display_category: displayCategorySchema.meta({ description: 'Display category for timeline grouping' }),
-    display_name: z.string().meta({ description: 'Human-readable display name' }),
+    display_category: displayCategorySchema.optional().meta({
+      description:
+        'Display category for timeline grouping. Required unless `name` is a built-in catalogue type (`GET /activity-type-catalog`), whose definition then fills in everything left out',
+    }),
+    display_name: z.string().optional().meta({
+      description:
+        'Human-readable display name. Required unless `name` is a built-in catalogue type (`GET /activity-type-catalog`), whose definition then fills in everything left out',
+    }),
     icon: z.string().optional().meta({ description: 'Emoji or icon identifier' }),
     name: z
       .string()

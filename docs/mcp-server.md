@@ -117,6 +117,14 @@ See [Exercise catalogue](features/exercise-catalog.md). Logged exercise names on
 | `search_exercise_catalog`    | Search the built-in catalogue by `q` (word prefixes, best matches first), exact `name` or alias, `equipment`, `muscle` (a muscle or a group, weight ≥ 0.5), `category`; paged by `limit` and `offset` |
 | `get_exercise_catalog_entry` | One catalogue exercise by its stable `key`: name, aliases, category, equipment, muscles with recruitment weights, and the same exercise in other datasets                                             |
 
+### Activity type catalogue tools
+
+See [Activity type catalogue](features/activity-type-catalog.md). A catalogue type is added to the user's types the first time `add_activity` uses its name, or with `add_activity_type` given only the name.
+
+| Tool                         | What it does                                                                                                                                                              |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_activity_type_catalog` | The built-in activity types for things logged by hand, each with its fields and `in_use` (whether the user already has a type of that name); `q` filters by word prefixes |
+
 ### Comment tools
 
 Comments (stored as "notes") hang off anything, or off a bare point in time, and

@@ -6,6 +6,7 @@ import type { Activity } from '../db/types.ts'
 // — keeps these unit tests off the network without expanding the deps interface.
 vi.mock('../db', () => ({
   activityTypeExists: vi.fn().mockResolvedValue(true),
+  ensureActivityType: vi.fn().mockResolvedValue(true),
   enqueueOutboundSync: vi.fn().mockResolvedValue(undefined),
   reanchorNotes: vi.fn().mockResolvedValue(undefined),
   replaceUserNotes: vi.fn().mockResolvedValue(undefined),

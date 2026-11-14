@@ -117,7 +117,9 @@ export { getMediaPlayById, getMediaPlays, storeMediaPlays } from './media-plays.
 
 export {
   activityTypeExists,
+  adoptCatalogActivityType,
   deleteActivityTypeDefinition,
+  ensureActivityType,
   expandActivityTypes,
   expandAncestorTypes,
   getActivityTypeDefinition,

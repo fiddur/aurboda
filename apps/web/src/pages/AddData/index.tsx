@@ -5,19 +5,22 @@ import { format } from 'date-fns'
 import { useLocation } from 'preact-iso'
 import { useCallback, useState } from 'preact/hooks'
 
+import { definitionOrCatalogEntry } from '../../components/activityTypeCatalog'
 import { ActivityTypePicker } from '../../components/ActivityTypePicker'
 import { ListFieldEditor } from '../../components/ListFieldEditor'
 import { MetricPicker } from '../../components/MetricPicker'
-import { fieldLabel, listFields, scalarFields } from '../../components/sessions/sessionView'
+import { enumValueLabel, fieldLabel, listFields, scalarFields } from '../../components/sessions/sessionView'
 import {
   addActivity,
+  addActivityTypeDefinition,
   addEntityComment,
   addMetric,
+  fetchActivityTypeCatalog,
   fetchActivityTypeDefinitions,
   uploadFitFile,
   type ActivityType,
 } from '../../state/api'
-import { buildActivityData } from './activityData'
+import { buildActivityData, newTypeToCreate } from './activityData'
 import './style.css'
 
 type Tab = 'activity' | 'metric'
@@ -137,7 +140,7 @@ const SchemaFieldInput = ({
           <option value="">-- Select --</option>
           {field.enum_values.map((v) => (
             <option key={v} value={v}>
-              {v}
+              {enumValueLabel(v)}
             </option>
           ))}
         </select>
@@ -151,6 +154,8 @@ const SchemaFieldInput = ({
       <input
         type={field.type === 'number' ? 'number' : 'text'}
         step={field.type === 'number' ? 'any' : undefined}
+        min={field.type === 'number' ? field.min : undefined}
+        max={field.type === 'number' ? field.max : undefined}
         value={value}
         onInput={(e) => onChange((e.target as HTMLInputElement).value)}
         placeholder={`Optional ${label.toLowerCase()}`}
@@ -173,13 +178,19 @@ const AddActivityForm = ({ onCreated, initialTime }: FormProps) => {
   const [success, setSuccess] = useState('')
   const [error, setError] = useState('')
 
-  const { data: typeDefs } = useQuery({
+  const { data: typeDefs = [] } = useQuery({
     queryFn: fetchActivityTypeDefinitions,
     queryKey: ['activityTypeDefinitions'],
     staleTime: 30 * 60 * 1000,
   })
+  const { data: catalogEntries = [] } = useQuery({
+    queryFn: fetchActivityTypeCatalog,
+    queryKey: ['activityTypeCatalog'],
+    select: (catalog) => catalog.entries,
+    staleTime: 30 * 60 * 1000,
+  })
 
-  const selectedTypeDef = typeDefs?.find((t) => t.name === activityType)
+  const selectedTypeDef = definitionOrCatalogEntry(activityType, typeDefs, catalogEntries)
   const dataSchema = selectedTypeDef?.data_schema
   const dataFields = scalarFields(dataSchema)
   const dataLists = listFields(dataSchema)
@@ -189,6 +200,8 @@ const AddActivityForm = ({ onCreated, initialTime }: FormProps) => {
     mutationFn: async () => {
       if (!activityType) throw new Error('Please select an activity type')
       const data = buildActivityData(dataSchema?.fields ?? [], structuredData, listData)
+      const newType = newTypeToCreate(activityType, typeDefs, catalogEntries)
+      if (newType) await addActivityTypeDefinition(newType)
       const result = await addActivity({
         activity_type: activityType,
         ...(data ? { data } : {}),
@@ -212,6 +225,8 @@ const AddActivityForm = ({ onCreated, initialTime }: FormProps) => {
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['dayview-activities'] })
+      queryClient.invalidateQueries({ queryKey: ['activityTypeDefinitions'] })
+      queryClient.invalidateQueries({ queryKey: ['activityTypeCatalog'] })
       if (onCreated('activity', result.data?.id)) return
       setSuccess('Activity added')
       setError('')
@@ -234,6 +249,7 @@ const AddActivityForm = ({ onCreated, initialTime }: FormProps) => {
       <div class="form-field">
         <label>Activity Type</label>
         <ActivityTypePicker
+          includeCatalog
           value={activityType}
           onChange={(type) => {
             setActivityType(type)

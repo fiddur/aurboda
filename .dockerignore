@@ -26,6 +26,7 @@ coverage
 *.md
 !README.md
 !apps/backend/src/catalog/exercises/NOTICE.md
+!apps/backend/src/catalog/activity-types/NOTICE.md
 docs
 
 # Environment files (should be passed via env vars)

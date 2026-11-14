@@ -13,7 +13,7 @@ import {
   visibleItemFields,
   withStickyItemFields,
 } from './listFieldRows'
-import { fieldLabel, type ListFieldDefinition } from './sessions/sessionView'
+import { enumValueLabel, fieldLabel, type ListFieldDefinition } from './sessions/sessionView'
 import './ListFieldEditor.css'
 
 const columnHeader = (item: DataItemFieldDefinition) =>
@@ -60,7 +60,7 @@ const CellInput = ({
         <option value="">--</option>
         {item.enum_values.map((v) => (
           <option key={v} value={v}>
-            {v}
+            {enumValueLabel(v)}
           </option>
         ))}
       </select>
@@ -73,6 +73,8 @@ const CellInput = ({
         id={id}
         type="number"
         step="any"
+        min={item.min}
+        max={item.max}
         inputMode="decimal"
         class="list-field-editor-input list-field-editor-number"
         aria-label={label}

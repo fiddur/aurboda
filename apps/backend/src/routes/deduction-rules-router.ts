@@ -18,12 +18,14 @@ import {
   activityTypeExists,
   deleteDeductionRule,
   deleteRuleActivities,
+  ensureActivityType,
   getDeductionRule,
   getDeductionRules,
   getEnabledDeductionRules,
   insertDeductionRule,
   updateDeductionRule,
 } from '../db/index.ts'
+import { getCatalogActivityType, loadActivityTypeCatalog } from '../services/activity-type-catalog.ts'
 import { removeCategoriesOfNonCategorisingRule } from '../services/deduction-category.ts'
 import { evaluateAllRules } from '../services/deduction-engine.ts'
 import { mergeRuleUpdate, validateRuleShape } from '../services/media-plays.ts'
@@ -64,7 +66,7 @@ export const createDeductionRulesRouter = (
         output_title_field,
       } = req.body
 
-      if (!(await activityTypeExists(user, output_activity_type))) {
+      if (!(await ensureActivityType(user, output_activity_type))) {
         return res
           .status(400)
           .json({ error: `Unknown activity type: "${output_activity_type}"`, success: false })
@@ -105,7 +107,10 @@ export const createDeductionRulesRouter = (
       const user = req.user!
       const { output_activity_type } = req.body
 
-      if (!(await activityTypeExists(user, output_activity_type))) {
+      if (
+        !(await activityTypeExists(user, output_activity_type)) &&
+        !getCatalogActivityType(loadActivityTypeCatalog(), output_activity_type)
+      ) {
         return res.status(400).json({
           error: `Unknown activity type: "${output_activity_type}"`,
           sample_days: 0,
@@ -152,7 +157,7 @@ export const createDeductionRulesRouter = (
       const { id } = req.params
       const user = req.user!
 
-      if (req.body.output_activity_type && !(await activityTypeExists(user, req.body.output_activity_type))) {
+      if (req.body.output_activity_type && !(await ensureActivityType(user, req.body.output_activity_type))) {
         return res
           .status(400)
           .json({ error: `Unknown activity type: "${req.body.output_activity_type}"`, success: false })

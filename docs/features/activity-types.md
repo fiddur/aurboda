@@ -2,25 +2,31 @@
 
 Your watch and ring record sleep and workouts, but not the coffee at four, the painkiller, the
 headache or the sauna. In Aurboda you log those yourself, as activities of types you make up: add a
-type once (**Types** in the sidebar, then **+ Add Type**), then log it from **+ Add** in the sidebar
+type once (**Types** in the sidebar, then **+ Add Type**, where matching
+built-in types are offered too), then log it from **+ Add** in the sidebar
 or by right-clicking (or long-pressing) a moment on the [timeline](./timeline.md). What you log is
 private unless you share it, shows on the timeline next to everything else, and can be compared
 with your sleep, heart rate and training on the [Analyze page](./correlations.md).
 
-Aurboda comes with five built-in activity types: **sleep**, **exercise**, **meditation**, **nap**, and **rest**. You can define additional custom types to represent any activity you track -- sauna, driving, yoga, coding, vocal training, etc.
+Aurboda comes with built-in activity types: the core types **sleep**, **exercise**, **meditation**, **nap** and **rest**, and every Health Connect exercise type. On top of those, a [catalogue of types](activity-type-catalog.md) for things logged by hand (caffeine, medication, symptoms, sauna, ...) is added to your types, with their fields, the first time you use one. You can define additional custom types to represent any activity you track -- driving, coding, vocal training, etc.
 
 ## Creating Custom Types
 
 Custom activity types can be created on the **Activity Types** page (`/activity-types`, **+ Add Type**), via the REST API, MCP tools, or deduction rules. Each type has:
 
-| Field              | Description                                                                                                              |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| `name`             | Snake_case identifier (e.g., `sauna`, `hot_bath`, `yin_yoga`)                                                            |
-| `display_name`     | Human-readable name shown on the timeline                                                                                |
-| `display_category` | Groups types for timeline toggles: `sleep_rest`, `exercise`, `meditation`, `wellness`, `productivity`, `travel`, `other` |
-| `color`            | Hex color for timeline rendering (e.g., `#ef4444`)                                                                       |
-| `icon`             | Optional emoji or icon identifier                                                                                        |
-| `show_on_timeline` | Whether activities of this type appear on the timeline (default: true)                                                   |
+| Field              | Description                                                                                                                                  |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`             | Snake_case identifier (e.g., `sauna`, `hot_bath`, `yin_yoga`)                                                                                |
+| `display_name`     | Human-readable name shown on the timeline                                                                                                    |
+| `display_category` | Groups types for timeline toggles: `sleep_rest`, `exercise`, `meditation`, `wellness`, `health`, `intake`, `productivity`, `travel`, `other` |
+| `color`            | Hex color for timeline rendering (e.g., `#ef4444`)                                                                                           |
+| `icon`             | Optional emoji or icon identifier                                                                                                            |
+| `show_on_timeline` | Whether activities of this type appear on the timeline (default: true)                                                                       |
+
+`display_name` and `display_category` are required, except for a name from the
+[activity type catalogue](activity-type-catalog.md): `POST /activity-types` (or
+`add_activity_type`) with only that name creates the type from its catalogue definition, and any
+field you give overrides the catalogue's.
 
 Built-in types cannot be deleted but their display metadata (color, icon, display_name, show_on_timeline) can be updated.
 
@@ -53,6 +59,8 @@ Display categories control how activity types are grouped in the timeline:
 - **exercise** -- Workouts, running, weightlifting, etc.
 - **meditation** -- Meditation, breathwork
 - **wellness** -- Sauna, hot bath, massage, etc.
+- **health** -- Illness, symptoms, pain, injury, etc.
+- **intake** -- Caffeine, alcohol, medication, supplements, meals, etc.
 - **productivity** -- Coding, standup computer, meetings, etc.
 - **travel** -- Driving, commuting, etc.
 - **other** -- Anything else
@@ -69,7 +77,9 @@ A field's `type` is `string`, `number`, `boolean` or `list`. A **list** field ho
 objects -- a strength session's sets, a rehab session's exercises -- each shaped by the field's
 `item_fields`. Item fields are scalar only (`string`, `number`, `boolean`), so nesting stops at
 one level, and `required`, `enum_values`, `unit` and `label` apply to them as to top-level
-fields. Writes are validated against the schema: a list value must be an array of objects, and an
+fields. A `number` field (top-level or item) may carry `min` and `max`, the lowest and highest
+allowed value: a write outside them is refused (`Field "severity" value 11 is above the maximum 10`).
+They are allowed on number fields only, and `min` must not be above `max`. Writes are validated against the schema: a list value must be an array of objects, and an
 error names the item, e.g. `Required field "sets[1].exercise" is missing`. Keys a schema does not
 declare are accepted, at the top level and on list items alike. A list field cannot be
 categorical (an item field can, see [Exercises and measures](#exercises-and-measures)), and is not offered as a deduction-rule condition, an auto-share condition or a chart
@@ -127,7 +137,9 @@ still exactly an earlier built-in version (before `exercise` was marked categori
 schema counts as edited and is kept: the built-in schema can be extended (e.g. with a `tempo` item
 field) on the type's page or with `update_activity_type`. Clearing it entirely does not stick, though: a
 `strength_training` type without a schema gets `sets` back on the next deploy, so to drop a field
-edit the schema rather than remove it. The Android Add tab is native and skips list fields; sets are
+edit the schema rather than remove it. The built-in `meditation` and `guided_breathing` types get
+their fields from the [activity type catalogue](activity-type-catalog.md) the same way: filled in
+when the type has no schema, so clearing it entirely does not stick either. The Android Add tab is native and skips list fields; sets are
 entered on the web pages. To log a session, live in the gym or afterwards, use the
 [strength session pages](strength-logging.md) at `/strength`, which the Android Add tab links to.
 
@@ -403,7 +415,10 @@ types in the `exercise` display category.
 ## API
 
 - `GET /activity-types` -- List all definitions
-- `POST /activity-types` -- Create a custom type
+- `POST /activity-types` -- Create a custom type; with only the name of a catalogue type, from its
+  catalogue definition
+- `GET /activity-type-catalog?q=` -- The built-in [activity type catalogue](activity-type-catalog.md),
+  each entry with `in_use`
 - `PATCH /activity-types/:name` -- Update display metadata
 - `DELETE /activity-types/:name` -- Delete a custom type (built-ins protected)
 - `GET /activity-types/:name/sessions` -- Sessions with HR summaries and list-item measures;
@@ -435,7 +450,7 @@ types in the `exercise` display category.
 - `GET /activity-types/:name/item-values/unmapped?field=<item path>` -- Logged names matching no
   catalogue entry, with suggestions
 
-MCP tools: `list_activity_types`, `add_activity_type`, `update_activity_type`, `delete_activity_type`, `query_activity_sessions`, `get_activity_records`, `get_activity_type_summary`, `list_activity_field_values`, `get_activity_neighbors`, `get_activity_item_history`, `merge_item_values`, `list_item_value_aliases`, `delete_item_value_alias`, `get_item_value_identity`, `set_item_value_identity`, `clear_item_value_identity`, `list_unmapped_item_values`.
+MCP tools: `list_activity_types`, `list_activity_type_catalog`, `add_activity_type`, `update_activity_type`, `delete_activity_type`, `query_activity_sessions`, `get_activity_records`, `get_activity_type_summary`, `list_activity_field_values`, `get_activity_neighbors`, `get_activity_item_history`, `merge_item_values`, `list_item_value_aliases`, `delete_item_value_alias`, `get_item_value_identity`, `set_item_value_identity`, `clear_item_value_identity`, `list_unmapped_item_values`.
 
 ## Garmin Meditation Recognition
 

@@ -8,6 +8,10 @@ import { createDocument } from 'zod-openapi'
 import { isAllowedWhenReadOnly } from './read-only.ts'
 import { activitiesResponseSchema } from './schemas/activities.ts'
 import {
+  activityTypeCatalogQuerySchema,
+  activityTypeCatalogResponseSchema,
+} from './schemas/activity-type-catalog.ts'
+import {
   addRelayBodySchema,
   deleteAccountBodySchema,
   loginBodySchema,
@@ -511,6 +515,26 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'Get activity track',
+        tags: ['Activities'],
+      },
+    },
+    '/activity-type-catalog': {
+      get: {
+        description:
+          "List Aurboda's built-in catalogue of activity types for things logged by hand (intake, meals and diet, health, symptoms, recovery, context), each with its fields. `in_use` says whether the user already has a type of that name. A type not in use becomes one of the user's types the first time an activity uses its name, or when `POST /activity-types` is given only its name. `q` matches word prefixes of the name, display name and aliases.",
+        requestParams: { query: activityTypeCatalogQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: activityTypeCatalogResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid query',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List built-in activity type catalogue',
         tags: ['Activities'],
       },
     },

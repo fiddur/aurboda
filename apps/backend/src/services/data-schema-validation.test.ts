@@ -239,3 +239,45 @@ describe('validateActivityData with the built-in strength_training schema', () =
     expect(result.errors).toEqual(['Field "sets[0].rpe" expected type "number", got "string"'])
   })
 })
+
+describe('validateActivityData with number bounds', () => {
+  const boundedSchema: DataSchemaDefinition = {
+    fields: [
+      { max: 10, min: 0, name: 'severity', type: 'number' },
+      { name: 'count', type: 'number' },
+      { item_fields: [{ min: 1, name: 'reps', type: 'number' }], name: 'sets', type: 'list' },
+    ],
+  }
+
+  it('accepts values in range and at both bounds', () => {
+    expect(validateActivityData({ severity: 5 }, boundedSchema)).toEqual({ valid: true })
+    expect(validateActivityData({ severity: 0 }, boundedSchema)).toEqual({ valid: true })
+    expect(validateActivityData({ severity: 10 }, boundedSchema)).toEqual({ valid: true })
+  })
+
+  it('rejects a value above the maximum', () => {
+    expect(validateActivityData({ severity: 11 }, boundedSchema)).toEqual({
+      errors: ['Field "severity" value 11 is above the maximum 10'],
+      valid: false,
+    })
+  })
+
+  it('rejects a value below the minimum', () => {
+    expect(validateActivityData({ severity: -1 }, boundedSchema)).toEqual({
+      errors: ['Field "severity" value -1 is below the minimum 0'],
+      valid: false,
+    })
+  })
+
+  it('checks the bounds of a list item field', () => {
+    expect(validateActivityData({ sets: [{ reps: 1 }, { reps: 0 }] }, boundedSchema)).toEqual({
+      errors: ['Field "sets[1].reps" value 0 is below the minimum 1'],
+      valid: false,
+    })
+  })
+
+  it('leaves a field without bounds unchanged', () => {
+    expect(validateActivityData({ count: -1000 }, boundedSchema)).toEqual({ valid: true })
+    expect(validateActivityData({ count: 1e9 }, boundedSchema)).toEqual({ valid: true })
+  })
+})

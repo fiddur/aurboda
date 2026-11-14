@@ -4,6 +4,7 @@ import {
   dataFieldDefinitionSchema,
   dataItemFieldDefinitionSchema,
   muscleGroupBreakdownPath,
+  storedActivityTypeCatalogEntrySchema,
 } from '@aurboda/api-spec'
 import { describe, expect, test } from 'vitest'
 
@@ -67,6 +68,66 @@ describe('dataFieldDefinitionSchema', () => {
     expect(dataFieldDefinitionSchema.safeParse({ name: 'weight', type: 'number', unit: 'kg' }).success).toBe(
       true,
     )
+  })
+})
+
+describe('min and max on a data field', () => {
+  test('are accepted on a number field, top level and in a list item', () => {
+    expect(
+      dataFieldDefinitionSchema.safeParse({ max: 10, min: 0, name: 'severity', type: 'number' }).success,
+    ).toBe(true)
+    expect(dataItemFieldDefinitionSchema.safeParse({ min: 0, name: 'reps', type: 'number' }).success).toBe(
+      true,
+    )
+  })
+
+  test('are rejected on a string field', () => {
+    const result = dataFieldDefinitionSchema.safeParse({ max: 3, name: 'kind', type: 'string' })
+    expect(result.success).toBe(false)
+    expect(result.error?.issues[0]?.message).toBe('min and max are only allowed on a number field')
+    expect(result.error?.issues[0]?.path).toEqual(['min'])
+    expect(dataItemFieldDefinitionSchema.safeParse({ min: 0, name: 'kind', type: 'string' }).success).toBe(
+      false,
+    )
+  })
+
+  test('are rejected on a list field', () => {
+    expect(
+      dataFieldDefinitionSchema.safeParse({
+        item_fields: [{ name: 'reps', type: 'number' }],
+        min: 0,
+        name: 'sets',
+        type: 'list',
+      }).success,
+    ).toBe(false)
+  })
+
+  test('min above max is rejected', () => {
+    const result = dataFieldDefinitionSchema.safeParse({ max: 1, min: 2, name: 'severity', type: 'number' })
+    expect(result.success).toBe(false)
+    expect(result.error?.issues[0]?.message).toBe('min must not be above max')
+    expect(
+      dataItemFieldDefinitionSchema.safeParse({ max: 1, min: 2, name: 'reps', type: 'number' }).success,
+    ).toBe(false)
+  })
+})
+
+describe('storedActivityTypeCatalogEntrySchema', () => {
+  test('parses a catalogue entry', () => {
+    expect(
+      storedActivityTypeCatalogEntrySchema.safeParse({
+        aliases: [],
+        color: '#dc2626',
+        data_schema: { fields: [{ max: 10, min: 0, name: 'severity', type: 'number' }] },
+        display_category: 'health',
+        display_name: 'Headache',
+        group: 'symptoms',
+        icon: '🤕',
+        name: 'headache',
+        parent_type: 'symptom',
+        same_as: { apple_healthkit: ['HKCategoryTypeIdentifierHeadache'] },
+      }).success,
+    ).toBe(true)
   })
 })
 

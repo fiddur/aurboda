@@ -136,6 +136,8 @@ export const displayCategories = [
   'exercise',
   'meditation',
   'wellness',
+  'health',
+  'intake',
   'productivity',
   'travel',
   'other',

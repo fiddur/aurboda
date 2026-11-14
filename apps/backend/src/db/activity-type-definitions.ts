@@ -1,7 +1,17 @@
-import type { ActivityTypeDefinition, DataSchemaDefinition, DisplayCategory } from '@aurboda/api-spec'
+import type {
+  ActivityTypeDefinition,
+  DataSchemaDefinition,
+  DisplayCategory,
+  StoredActivityTypeCatalog,
+} from '@aurboda/api-spec'
 
 import type { Queryable } from './pool.ts'
 
+import {
+  catalogAdoptionChain,
+  findCatalogActivityType,
+  loadActivityTypeCatalog,
+} from '../services/activity-type-catalog.ts'
 import { query, withUserTransaction } from './connection.ts'
 
 const mapRow = (row: Record<string, unknown>): ActivityTypeDefinition => ({
@@ -271,11 +281,63 @@ export const resolveActivityTypeByAlias = async (user: string, alias: string): P
   return result.rows[0].name as string
 }
 
-/** Used during sync to ensure all incoming types get a definition. */
+/**
+ * The user's type of that name: the existing one untouched, else created from the catalogue with its
+ * catalogue ancestors. Null when neither exists.
+ */
+export const adoptCatalogActivityType = async (
+  user: string,
+  name: string,
+  catalog: StoredActivityTypeCatalog = loadActivityTypeCatalog(),
+): Promise<ActivityTypeDefinition | null> => {
+  const existing = await getActivityTypeDefinition(user, name)
+  if (existing) return existing
+  const chain = catalogAdoptionChain(catalog, name)
+  if (chain.length === 0) return null
+  // ON CONFLICT DO NOTHING makes concurrent first uses safe without a transaction, and keeps a type
+  // the user already has, ancestors included, exactly as it is.
+  for (const entry of chain) {
+    const parent =
+      entry.parent_type !== undefined && (await activityTypeExists(user, entry.parent_type))
+        ? entry.parent_type
+        : null
+    await query(
+      user,
+      `INSERT INTO activity_type_definitions (name, display_name, display_category, color, icon, aliases, data_schema, parent_type)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       ON CONFLICT (name) DO NOTHING`,
+      [
+        entry.name,
+        entry.display_name,
+        entry.display_category,
+        entry.color,
+        entry.icon,
+        normalizeAliases(entry.name, entry.aliases),
+        entry.data_schema ? JSON.stringify(entry.data_schema) : null,
+        parent,
+      ],
+    )
+  }
+  return getActivityTypeDefinition(user, name)
+}
+
+/** True when the user has the type, adopting it from the built-in catalogue when it is a catalogue type not used yet. */
+export const ensureActivityType = async (
+  user: string,
+  name: string,
+  catalog: StoredActivityTypeCatalog = loadActivityTypeCatalog(),
+): Promise<boolean> =>
+  (await activityTypeExists(user, name)) || (await adoptCatalogActivityType(user, name, catalog)) !== null
+
+/**
+ * Used during sync to ensure all incoming types get a definition. A tag (category `other`) whose name
+ * matches a catalogue type lands on that type; other imports (Strava's exercises) are never redirected.
+ */
 export const resolveOrCreateActivityType = async (
   user: string,
   displayName: string,
   displayCategory = 'other',
+  catalog: StoredActivityTypeCatalog = loadActivityTypeCatalog(),
 ): Promise<string> => {
   const snakeName =
     displayName
@@ -294,6 +356,11 @@ export const resolveOrCreateActivityType = async (
 
   const aliasMatch = await resolveActivityTypeByAlias(user, displayName)
   if (aliasMatch) return aliasMatch
+
+  if (displayCategory === 'other') {
+    const entry = findCatalogActivityType(catalog, displayName)
+    if (entry && (await adoptCatalogActivityType(user, entry.name, catalog))) return entry.name
+  }
 
   const created = await insertActivityTypeDefinition(user, {
     aliases: [displayName.toLowerCase()],
