@@ -11,7 +11,7 @@ import {
 import { buildBucketExpr } from '../db/bucket-expr.ts'
 import { expandActivityTypes, getBucketStarts, getHrZoneSecs, getSourceFilter, query } from '../db/index.ts'
 import { parseFieldPath } from './activity-measures.ts'
-import { loadExerciseResolver } from './item-value-identities.ts'
+import { loadExerciseEntryResolver } from './item-value-identities.ts'
 import { type ExerciseEntryResolver, muscleGroupName } from './muscle-group-measures.ts'
 import {
   type MeasuredActivity,
@@ -343,20 +343,15 @@ const seriesValues = (
   fields: string[],
   measure: ActivityMeasure,
   filter: MeasureFilter | undefined,
-  resolvers: Map<string, ExerciseEntryResolver>,
+  resolverFor: (path: string) => ExerciseEntryResolver,
 ): SeriesValue[] => {
   const partsPerField = fields.map((field): SeriesPart[] => {
     const musclePath = muscleGroupBreakdownPath(field)
     if (musclePath !== undefined) {
-      return measuresByMuscleGroupOf(
-        m.activity,
-        musclePath,
-        resolvers.get(musclePath) ?? (() => undefined),
-        filter,
-      ).map((g) => ({
-        key: `muscle:${g.muscle_group ?? 'unmapped'}`,
+      return measuresByMuscleGroupOf(m.activity, musclePath, resolverFor(musclePath), filter).map((g) => ({
+        key: `muscle:${g.muscle_group ?? (g.in_catalogue ? 'none' : 'unmapped')}`,
         measures: g.measures,
-        name: muscleGroupName(g.muscle_group),
+        name: muscleGroupName(g),
       }))
     }
     if (parseFieldPath(field).key === undefined) {
@@ -383,6 +378,32 @@ const seriesValues = (
 }
 
 /**
+ * Per activity type and muscle-group item path, the exercise resolver of that type's own definition,
+ * else of the charted pattern's: a chart over a parent type (or several types) resolves each
+ * session's sets by the catalogue field of the type it was logged as.
+ */
+const loadMuscleGroupResolvers = async (
+  user: string,
+  pattern: string,
+  activityTypes: string[],
+  paths: string[],
+): Promise<(activityType: string, path: string) => ExerciseEntryResolver> => {
+  const keyOf = (activityType: string, path: string) => `${activityType}\u0000${path}`
+  const loaded = new Map(
+    await Promise.all(
+      [...new Set([pattern, ...activityTypes])].flatMap((activityType) =>
+        paths.map(
+          async (path) =>
+            [keyOf(activityType, path), await loadExerciseEntryResolver(user, activityType, path)] as const,
+        ),
+      ),
+    ),
+  )
+  return (activityType, path) =>
+    loaded.get(keyOf(activityType, path)) ?? loaded.get(keyOf(pattern, path)) ?? (() => undefined)
+}
+
+/**
  * Charts a list-item measure of an activity type's sessions: each session's measure (over the
  * filtered items when filtered) aggregated per bucket, buckets bucketed by the same SQL as the other
  * sources. With breakdown fields, an item path gives one series per item value (spelled as in the
@@ -405,10 +426,11 @@ const queryMeasureChart = async (
     filter,
   )
   const musclePaths = [...new Set((fields ?? []).flatMap((f) => muscleGroupBreakdownPath(f) ?? []))]
-  const resolvers = new Map(
-    await Promise.all(
-      musclePaths.map(async (path) => [path, await loadExerciseResolver(user, input.pattern, path)] as const),
-    ),
+  const resolverOf = await loadMuscleGroupResolvers(
+    user,
+    input.pattern,
+    measured.map((m) => m.activity.activity_type),
+    musclePaths,
   )
   const bucketStarts = await getBucketStarts(
     user,
@@ -423,7 +445,7 @@ const queryMeasureChart = async (
     const bucketStart = m.activity.id === undefined ? undefined : bucketStarts.get(m.activity.id)
     if (!bucketStart) continue
     const contributions = fields
-      ? seriesValues(m, fields, measure, filter, resolvers)
+      ? seriesValues(m, fields, measure, filter, (path) => resolverOf(m.activity.activity_type, path))
       : m.measures[measure] === undefined
         ? []
         : [{ key: '', name: '', value: m.measures[measure] }]

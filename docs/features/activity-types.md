@@ -340,9 +340,10 @@ merge keeps it under the new spelling.
   catalogue key or `null` to dismiss; answers like the GET
 - `DELETE /activity-types/:name/item-values/identity?field=&value=` -- remove the decision, back to
   automatic resolution; 404 when none is stored
-- `GET /activity-types/:name/item-values/unmapped?field=sets.exercise` -- the logged names in state
-  `unmapped`, most used first, each with up to three suggested entries (word overlap with the
-  entry's name or aliases)
+- `GET /activity-types/:name/item-values/unmapped?field=sets.exercise&limit=50&offset=0` -- the
+  logged names in state `unmapped`, most used first, each with up to three suggested entries (word
+  overlap with the entry's name or aliases). One page of `limit` names (default 50, at most 200)
+  from `offset`; `total` counts them all. Suggestions are built for the page only
 
 A field without a catalogue is a 400. The MCP twins are `get_item_value_identity`,
 `set_item_value_identity`, `clear_item_value_identity` and `list_unmapped_item_values`.
@@ -361,20 +362,24 @@ every muscle group the exercise trains, by the catalogue entry's recruitment wei
 set is 1 set for the chest and 0.5 for the shoulders. Within one group the highest weight of the
 entry's muscles in it counts, so the two heads of the triceps do not count a set twice. The same
 weights apply to `volume` and `total_reps`. Warmup sets do not count. A name that resolves to no
-entry (unmapped or dismissed), or to an entry without muscle weights, counts fully under **Not in
-the catalogue** (`muscle_group: null`), so nothing drops out of the total. Values are rounded to two
-decimals.
+entry (unmapped or dismissed) counts fully under **Not in the catalogue**, and one that resolves to
+an entry without muscle weights (a mobility or warm-up movement from Garmin's list, say) under **No
+muscle group**, so nothing drops out of the total. Both have `muscle_group: null`. Values are rounded
+to two decimals.
 
 - `GET /chart-data` with `measure` `set_count`, `volume` or `total_reps` takes the breakdown field
   `sets.exercise.muscle_group` (`<list>.<item>.muscle_group`, a catalogue-backed item path): one
   series per muscle group, named as in the catalogue. It combines with scalar breakdown fields and
   with an exercise filter, but not with another item path; any other measure, or none, is a 400.
+  On a parent type, whose sessions include its sub-types', each session's sets resolve through the
+  catalogue-backed field of the type it was logged as, or the charted type's when its own has none.
   Weekly sets per muscle group:
   `source_type=activity_type&pattern=strength_training&measure=set_count&aggregation=sum&bucket_size=1w&breakdown_fields=sets.exercise.muscle_group`.
   `query_chart_data` and the dashboard's bar chart take the same field.
 - `GET /activities/:id/item-history?field=sets.exercise` carries `muscle_groups` for a
-  catalogue-backed field: per group its `muscle_group` (null for not in the catalogue), `name` and
-  weighted `measures`, most sets first and not in the catalogue last.
+  catalogue-backed field: per group its `muscle_group`, `name` and weighted `measures`, most sets
+  first and the two `null` groups last; on those, `in_catalogue` is `true` for No muscle group and
+  `false` for Not in the catalogue.
 
 On the web, the type page shows a weekly **Sets per muscle group** bar chart for each
 catalogue-backed item field (90 days or a year, with Chart Explorer and dashboard entries in its ⋮
@@ -468,8 +473,8 @@ types in the `exercise` display category.
   logged name
 - `PUT /activity-types/:name/item-values/identity` -- Map a name to a catalogue key, or dismiss it
 - `DELETE /activity-types/:name/item-values/identity?field=&value=` -- Clear the decision for a name
-- `GET /activity-types/:name/item-values/unmapped?field=<item path>` -- Logged names matching no
-  catalogue entry, with suggestions
+- `GET /activity-types/:name/item-values/unmapped?field=<item path>&limit=&offset=` -- Logged names
+  matching no catalogue entry, with suggestions, a page at a time with the `total`
 
 MCP tools: `list_activity_types`, `list_activity_type_catalog`, `add_activity_type`, `add_activity_type_catalog_fields`, `update_activity_type`, `delete_activity_type`, `merge_activity_type`, `query_activity_sessions`, `get_activity_records`, `get_activity_type_summary`, `list_activity_field_values`, `get_activity_neighbors`, `get_activity_item_history`, `merge_item_values`, `list_item_value_aliases`, `delete_item_value_alias`, `get_item_value_identity`, `set_item_value_identity`, `clear_item_value_identity`, `list_unmapped_item_values`.
 

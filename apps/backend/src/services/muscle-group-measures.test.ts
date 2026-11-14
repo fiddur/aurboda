@@ -72,10 +72,25 @@ describe('measuresByMuscleGroup', () => {
       { reps: 5, weight: 20 },
     ]
     const result = measuresByMuscleGroup(items, 'exercise', resolve)
-    expect(result.map((g) => g.muscle_group)).toEqual(['chest', 'shoulders', 'triceps', null])
+    expect(result.map((g) => [g.muscle_group, g.in_catalogue])).toEqual([
+      ['chest', undefined],
+      ['shoulders', undefined],
+      ['triceps', undefined],
+      [null, true],
+      [null, false],
+    ])
     expect(result[0].measures).toEqual({ set_count: 1.75, total_reps: 11, volume: 460 })
     expect(result[2].measures).toEqual({ set_count: 1.5, total_reps: 10.5, volume: 280 })
-    expect(result[3].measures).toEqual({ set_count: 2, total_reps: 5, volume: 500 })
+    expect(result[3].measures).toEqual({ set_count: 1 })
+    expect(result[4].measures).toEqual({ set_count: 1, total_reps: 5, volume: 500 })
+  })
+
+  test('an entry without muscle data is apart from a name without an entry', () => {
+    const items = [set('Plank', 0, 1), set('Plank', 0, 1), set('Squat', 100, 5)]
+    expect(measuresByMuscleGroup(items, 'exercise', resolve)).toEqual([
+      { in_catalogue: true, measures: { set_count: 2, total_reps: 2 }, muscle_group: null },
+      { in_catalogue: false, measures: { set_count: 1, total_reps: 5, volume: 500 }, muscle_group: null },
+    ])
   })
 
   test('rounds to two decimals', () => {
@@ -92,12 +107,19 @@ describe('measuresByMuscleGroup', () => {
 })
 
 describe('muscleGroupSplit', () => {
-  test('names the groups, most sets first and not in the catalogue last', () => {
-    const items = [set('Squat', 100, 5), set('Squat', 100, 5), set('Squat', 100, 5), set('Dip', 10, 8)]
+  test('names the groups, most sets first and the groups without muscles last', () => {
+    const items = [
+      set('Squat', 100, 5),
+      set('Squat', 100, 5),
+      set('Squat', 100, 5),
+      set('Dip', 10, 8),
+      set('Plank', 0, 1),
+    ]
     expect(muscleGroupSplit(items, 'exercise', resolve).map((g) => [g.name, g.measures.set_count])).toEqual([
       ['Triceps', 1],
       ['Chest', 0.75],
       ['Not in the catalogue', 3],
+      ['No muscle group', 1],
     ])
   })
 })

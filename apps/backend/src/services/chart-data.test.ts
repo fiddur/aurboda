@@ -741,6 +741,23 @@ describe('getChartData', () => {
         ])
       })
 
+      test('a catalogue exercise without muscle data is apart from one not in the catalogue', async () => {
+        vi.mocked(db.getActivities).mockResolvedValue([
+          lift('a5', '2026-01-05T17:00:00Z', 'Gym', [set('Battle Rope', 0, 30), set('Squat Hold', 100, 5)]),
+        ])
+        vi.mocked(db.getBucketStarts).mockResolvedValue(new Map([['a5', w1]]))
+        const result = await getChartData('u', {
+          ...base,
+          aggregation: 'sum',
+          breakdown_fields: ['sets.exercise.muscle_group'],
+          measure: 'set_count',
+        })
+
+        expect(result.buckets).toEqual([
+          { bucket_start: w1.toISOString(), series: { 'No muscle group': 1, 'Not in the catalogue': 1 } },
+        ])
+      })
+
       test('an exercise filter restricts the sets, and a scalar field combines', async () => {
         const result = await getChartData('u', {
           ...base,
@@ -766,6 +783,65 @@ describe('getChartData', () => {
             },
           },
         ])
+      })
+
+      describe('over several activity types', () => {
+        const childDef = { ...catalogDef, name: 'push_day', parent_type: 'strength_training' }
+        const plainDef = { ...strengthDef, name: 'circuit' }
+        const as = (activity: MergedActivity, activity_type: string): MergedActivity => ({
+          ...activity,
+          activity_type,
+        })
+        const definitions = [strengthDef, childDef, plainDef]
+
+        beforeEach(() => {
+          vi.mocked(db.getActivityTypeDefinitions).mockResolvedValue(definitions)
+          vi.mocked(db.getActivityTypeDefinition).mockImplementation((_user, name) =>
+            Promise.resolve(definitions.find((d) => d.name === name) ?? null),
+          )
+          vi.mocked(db.getBucketStarts).mockResolvedValue(
+            new Map([
+              ['a1', w1],
+              ['a2', w1],
+            ]),
+          )
+        })
+
+        test('a parent type without a catalogue field resolves its child’s sets by the child’s', async () => {
+          vi.mocked(db.getActivities).mockResolvedValue([as(a2, 'push_day')])
+          const result = await getChartData('u', {
+            ...base,
+            aggregation: 'sum',
+            breakdown_fields: ['sets.exercise.muscle_group'],
+            measure: 'set_count',
+          })
+
+          expect(result.buckets).toEqual([
+            {
+              bucket_start: w1.toISOString(),
+              series: { Chest: 1, Forearms: 0.25, Shoulders: 1, Triceps: 1 },
+            },
+          ])
+        })
+
+        test('a pattern over types whose item fields differ resolves each by its own', async () => {
+          vi.mocked(db.expandActivityTypes).mockResolvedValueOnce(['circuit', 'push_day'])
+          vi.mocked(db.getActivities).mockResolvedValue([as(a1, 'circuit'), as(a2, 'push_day')])
+          const result = await getChartData('u', {
+            ...base,
+            aggregation: 'sum',
+            breakdown_fields: ['sets.exercise.muscle_group'],
+            measure: 'set_count',
+            pattern: 'workouts',
+          })
+
+          expect(result.buckets).toEqual([
+            {
+              bucket_start: w1.toISOString(),
+              series: { Chest: 1, Forearms: 0.25, 'Not in the catalogue': 2, Shoulders: 1, Triceps: 1 },
+            },
+          ])
+        })
       })
 
       test('a field that is not catalogue-backed puts everything under not in the catalogue', async () => {

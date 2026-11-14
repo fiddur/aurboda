@@ -230,13 +230,13 @@ export const registerActivityTypeTools = (server: McpServer, user: string) => {
 
   server.tool(
     'list_unmapped_item_values',
-    'List the logged exercise names that match no entry of the built-in catalogue, with suggested entries. Leaves out names the user mapped or dismissed; most used first, each with up to three suggestions to pass to set_item_value_identity.',
+    'List the logged exercise names that match no entry of the built-in catalogue, with suggested entries. Leaves out names the user mapped or dismissed; most used first, each with up to three suggestions to pass to set_item_value_identity. Paged by limit (default 50, max 200) and offset; total counts every unmapped name.',
     {
       activity_type: z.string().describe('Activity type the item path belongs to, e.g. strength_training'),
       ...unmappedItemValuesQuerySchema.shape,
     },
-    async ({ activity_type, field }) => {
-      const result = await listUnmappedItemValues(user, activity_type, field)
+    async ({ activity_type, field, limit, offset }) => {
+      const result = await listUnmappedItemValues(user, activity_type, field, { limit, offset })
       if (!result.success) return errorResponse(result.error)
       return jsonResponse(result.data)
     },

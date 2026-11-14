@@ -595,6 +595,7 @@ describe('item value identity routes', () => {
       catalog: 'exercises' as const,
       catalog_version: '2026.11.0',
       field: 'sets.exercise',
+      total: 0,
       values: [],
     }
     vi.mocked(identities.listUnmappedItemValues).mockResolvedValue({ data, success: true })
@@ -605,6 +606,28 @@ describe('item value identity routes', () => {
       'tester',
       'strength_training',
       'sets.exercise',
+      { limit: 50, offset: 0 },
     )
+  })
+
+  test('GET unmapped takes a page, at most 200 names', async () => {
+    vi.mocked(identities.listUnmappedItemValues).mockResolvedValue({
+      data: { catalog: 'exercises', catalog_version: 'v', field: 'sets.exercise', total: 0, values: [] },
+      success: true,
+    })
+    const page = await supertest(buildApp())
+      .get(`${url}/unmapped`)
+      .query({ field: 'sets.exercise', limit: '20', offset: '40' })
+    expect(page.status).toBe(200)
+    expect(identities.listUnmappedItemValues).toHaveBeenLastCalledWith(
+      'tester',
+      'strength_training',
+      'sets.exercise',
+      { limit: 20, offset: 40 },
+    )
+    const tooMany = await supertest(buildApp())
+      .get(`${url}/unmapped`)
+      .query({ field: 'sets.exercise', limit: 201 })
+    expect(tooMany.status).toBe(400)
   })
 })

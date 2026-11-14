@@ -1,6 +1,6 @@
-import type { UnmappedItemValue } from '@aurboda/api-spec'
+import type { UnmappedItemValue, UnmappedItemValues } from '@aurboda/api-spec'
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { type InfiniteData, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useState } from 'preact/hooks'
 
@@ -13,7 +13,7 @@ import {
   ITEM_VALUE_IDENTITY_INVALIDATED_KEYS,
   setItemValueIdentityApi,
 } from '../../state/api'
-import { UNMAPPED_PAGE_SIZE, unmappedSummary, visibleUnmapped } from './unmappedItemValues'
+import { loadedUnmapped, nextUnmappedOffset, UNMAPPED_PAGE_SIZE, unmappedSummary } from './unmappedItemValues'
 
 const UnmappedRow = ({ name, path, item }: { name: string; path: string; item: UnmappedItemValue }) => {
   const queryClient = useQueryClient()
@@ -83,23 +83,29 @@ const UnmappedRow = ({ name, path, item }: { name: string; path: string; item: U
   )
 }
 
+type UnmappedPage = Pick<UnmappedItemValues, 'total' | 'values'>
+
 /** The logged names of a catalogue-backed item field that match no catalogue entry, to map or dismiss. */
 export function UnmappedItemValuesSection({ name, path }: { name: string; path: string }) {
   const [expanded, setExpanded] = useState(false)
-  const [shown, setShown] = useState(UNMAPPED_PAGE_SIZE)
-  const query = useQuery({
-    queryFn: () => fetchUnmappedItemValues(name, path),
+  const query = useInfiniteQuery<UnmappedPage, Error, InfiniteData<UnmappedPage>, string[], number>({
+    getNextPageParam: (_last, pages) => nextUnmappedOffset(pages),
+    initialPageParam: 0,
+    queryFn: async ({ pageParam }) =>
+      (await fetchUnmappedItemValues(name, path, { limit: UNMAPPED_PAGE_SIZE, offset: pageParam })) ?? {
+        total: 0,
+        values: [],
+      },
     queryKey: ['unmapped-item-values', name, path],
     staleTime: 5 * 60 * 1000,
   })
-  const values = query.data?.values ?? []
-  if (values.length === 0) return null
-  const { rows, remaining } = visibleUnmapped(values, shown)
+  const { rows, remaining, total } = loadedUnmapped(query.data?.pages ?? [])
+  if (rows.length === 0) return null
 
   return (
     <section class="activity-type-meta-section activity-type-meta-unmapped">
       <h2>Not in the catalogue</h2>
-      <p class="activity-type-meta-unmapped-summary">{unmappedSummary(values.length)}</p>
+      <p class="activity-type-meta-unmapped-summary">{unmappedSummary(total)}</p>
       {!expanded ? (
         <button type="button" class="btn-secondary" onClick={() => setExpanded(true)}>
           Review
@@ -119,7 +125,8 @@ export function UnmappedItemValuesSection({ name, path }: { name: string; path: 
             <button
               type="button"
               class="btn-secondary activity-type-meta-unmapped-more"
-              onClick={() => setShown((n) => n + UNMAPPED_PAGE_SIZE)}
+              disabled={query.isFetchingNextPage}
+              onClick={() => void query.fetchNextPage()}
             >
               Show more ({remaining})
             </button>

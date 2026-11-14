@@ -27,13 +27,15 @@ built-in `strength_training` schema sets it on `sets.exercise` (see
   as candidates for the page's merge.
 - **Type page**: under each catalogue-backed item field, "Not in the catalogue" summarises the
   logged names that match no entry and that you have neither mapped nor dismissed
-  (`GET /activity-types/:name/item-values/unmapped`). "Review" lists them, most used first, 20 at a
-  time, each with up to three suggested entries to map it to with one click, a catalogue search, and
+  (`GET /activity-types/:name/item-values/unmapped`, paged with `limit` and `offset`). "Review"
+  lists them, most used first, 20 at a time ("Show more" fetches the next 20), each with up to three suggested entries to map it to with one click, a catalogue search, and
   "Not in the catalogue" to dismiss it. Nothing here is required: an unmapped name keeps working
   everywhere.
 
 The muscles of a matched entry also count its sets per muscle group, on the type page's weekly chart
-and on an activity's page; see [Muscle groups](activity-types.md#muscle-groups).
+and on an activity's page; see [Muscle groups](activity-types.md#muscle-groups). Sets that train no
+group fall into one of two buckets there: **Not in the catalogue** for names that match no entry,
+and **No muscle group** for entries without muscle data (91 of the Garmin-only entries).
 
 ## Entries
 
@@ -93,10 +95,13 @@ Search parameters:
 
 - `q` -- words; each must be the start of a word of the name, an alias or a search term (search
   terms are extra, non-unique words such as `hamstring curl` or `DB`). Ranked: an exact name or alias
-  first, then the entries whose name contains every word, then the rest. Among the name matches the
-  entries that come from body.build (hand-picked gym exercises) go first, then those from
-  free-exercise-db, then the Garmin-only entries, then names starting with `q`; ties go to the
-  shorter name.
+  first, together with the names or aliases that are `q` plus only the words of the entry's own free
+  weight (`Barbell Squat` for `squat`, `Dumbbell Bench Press` for `bench press`); then the entries
+  whose name contains every word; then the rest. Within each of those the entries that come from
+  body.build (hand-picked gym exercises) go first, then those from free-exercise-db, then the
+  Garmin-only entries; then the exact match before the free-weight names, and names starting with
+  `q` before the other name matches; ties go to the shorter name. So `squat` leads with Barbell
+  Squat, ahead of Garmin's generic Squat and of Belt Squat.
 - `name` -- an exact name-or-alias match after normalisation: zero or one entry. `q` is ignored.
 - `fit` -- an exact Garmin FIT exercise, `<category>/<name>` in any letter case (e.g.
   `bench_press/barbell_bench_press`): zero or one entry. `q` is ignored. With `name` as well, the

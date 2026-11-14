@@ -452,9 +452,14 @@ export const muscleGroupMeasuresSchema = z
       description:
         "set_count, volume and total_reps of the working sets, each set weighted by the exercise's recruitment of the group",
     }),
-    muscle_group: exerciseMuscleGroupSchema
-      .nullable()
-      .meta({ description: 'The muscle group; null for exercises not in the catalogue' }),
+    in_catalogue: z.boolean().optional().meta({
+      description:
+        'Only with muscle_group null: true for exercises in the catalogue without muscle data ("No muscle group"), false for exercises not in the catalogue ("Not in the catalogue")',
+    }),
+    muscle_group: exerciseMuscleGroupSchema.nullable().meta({
+      description:
+        'The muscle group; null for exercises that train none in the catalogue, told apart by in_catalogue',
+    }),
     name: z.string().meta({ description: 'Display name of the muscle group' }),
   })
   .meta({

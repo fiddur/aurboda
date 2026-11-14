@@ -142,11 +142,35 @@ describe('searchExercises', () => {
       keys(searchExercises({ ...catalog, entries: [...catalog.entries, curated] }, { q: 'bench press' })),
     ).toEqual([
       'bench_press',
-      'smith_machine_bench_press',
       'barbell_bench_press',
       'dumbbell_bench_press',
+      'smith_machine_bench_press',
       'incline_barbell_press',
     ])
+  })
+
+  test('the query plus only its own free weight ranks with an exact match, curated first', () => {
+    const extra = [
+      entry({ key: 'squat', name: 'Squat', same_as: { fit: ['squat/squat'] } }),
+      entry({ key: 'belt_squat', name: 'Belt Squat', same_as: { bodybuild: 'belt squat' } }),
+      entry({
+        aliases: ['Barbell Back Squat'],
+        equipment: ['barbell', 'squat_rack'],
+        key: 'barbell_squat',
+        name: 'Barbell Squat',
+        same_as: { bodybuild: 'barbell squat' },
+      }),
+      entry({
+        equipment: ['belt_squat_machine'],
+        key: 'machine_belt_squat',
+        name: 'Machine Belt Squat',
+        same_as: { bodybuild: 'machine belt squat' },
+      }),
+      entry({ key: 'dumbbell_squat', name: 'Dumbbell Squat', same_as: { bodybuild: 'dumbbell squat' } }),
+    ]
+    expect(
+      keys(searchExercises({ ...catalog, entries: [...catalog.entries, ...extra] }, { q: 'squat' })),
+    ).toEqual(['barbell_squat', 'squat', 'belt_squat', 'dumbbell_squat', 'machine_belt_squat'])
   })
 
   test('within a tier, free-exercise-db entries go before Garmin-only ones', () => {
@@ -306,6 +330,14 @@ describe('the built-in catalogue', () => {
     const builtIn = loadExerciseCatalog()
     expect(findExerciseByName(builtIn, 'Barbell Bench Press - Medium Grip')?.same_as.wikidata).toBe('Q14093')
     expect(searchExercises(builtIn, { limit: 5, q: 'deadlift' }).entries[0]?.key).toBe('deadlift')
+  })
+
+  test('a common lift leads with its canonical free-weight entry', () => {
+    const builtIn = loadExerciseCatalog()
+    const names = (q: string) => searchExercises(builtIn, { limit: 3, q }).entries.map((e) => e.name)
+    expect(names('squat')).toEqual(['Barbell Squat', 'Dumbbell Squat', 'Squat'])
+    expect(names('bench press')).toEqual(['Barbell Bench Press', 'Dumbbell Bench Press', 'Bench Press'])
+    expect(names('deadlift')).toEqual(['Deadlift', 'Dumbbell Deadlift', 'Kettlebell Deadlift'])
   })
 
   test('finds entries by Garmin FIT key', () => {

@@ -91,7 +91,14 @@ const matchesFilters = (entry: StoredExerciseCatalogEntry, query: ExerciseSearch
 const byName = (a: StoredExerciseCatalogEntry, b: StoredExerciseCatalogEntry): number =>
   a.name.length - b.name.length || a.name.localeCompare(b.name, 'en')
 
-const tier = (rank: number): number => (rank === 0 ? 0 : rank <= 2 ? 1 : 2)
+const tier = (rank: number): number => (rank <= 1 ? 0 : rank <= 3 ? 1 : 2)
+
+const implementWords = (entry: StoredExerciseCatalogEntry): Set<string> =>
+  new Set(
+    entry.equipment
+      .filter((key) => exerciseEquipmentInfo[key].category === 'free_weights')
+      .flatMap((key) => words(exerciseEquipmentInfo[key].name)),
+  )
 
 /** Within a tier: body.build's hand-picked gym exercises, then free-exercise-db, then Garmin-only entries. */
 const curatedFirst = ({ same_as }: StoredExerciseCatalogEntry): number =>
@@ -102,13 +109,27 @@ const rankSearch = (catalog: StoredExerciseCatalog, q: string, candidates: Store
   const normalized = normalizeExerciseName(q)
   const queryWords = words(q)
   const isPrefixOfAny = (pool: string[]) => (word: string) => pool.some((w) => w.startsWith(word))
+  /** "Barbell Squat" for "squat": the query plus only the words of the entry's own free weight, so the canonical lift ranks with an exact match. */
+  const isImplementVariant = (entry: StoredExerciseCatalogEntry) => {
+    const implement = implementWords(entry)
+    return (label: string[]) => {
+      const extra = label.filter((word) => !queryWords.includes(word))
+      return (
+        extra.length > 0 &&
+        extra.length < label.length &&
+        queryWords.every((word) => label.includes(word)) &&
+        extra.every((word) => implement.has(word))
+      )
+    }
+  }
   const rank = (entry: StoredExerciseCatalogEntry): number => {
     const entryWords = index.words.get(entry) ?? { all: [], labels: [], name: [], terms: [] }
     if (!queryWords.every(isPrefixOfAny(entryWords.all))) return -1
     if (index.byName.get(normalized) === entry) return 0
-    if (normalizeExerciseName(entry.name).startsWith(normalized)) return 1
-    if (queryWords.every(isPrefixOfAny(entryWords.name))) return 2
-    return 3
+    if (entryWords.labels.some(isImplementVariant(entry))) return 1
+    if (normalizeExerciseName(entry.name).startsWith(normalized)) return 2
+    if (queryWords.every(isPrefixOfAny(entryWords.name))) return 3
+    return 4
   }
   return candidates
     .map((entry) => ({ entry, rank: rank(entry) }))
