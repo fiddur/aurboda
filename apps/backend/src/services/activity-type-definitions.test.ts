@@ -1,4 +1,4 @@
-import type { StoredActivityTypeCatalog } from '@aurboda/api-spec'
+import type { ActivityTypeDefinition, StoredActivityTypeCatalog } from '@aurboda/api-spec'
 
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
@@ -513,7 +513,7 @@ describe('mergeActivityType', () => {
     version: 'test',
   }
 
-  const givenTypes = (...defs: (typeof targetDef | typeof sourceDef)[]) => {
+  const givenTypes = (...defs: ActivityTypeDefinition[]) => {
     vi.mocked(db.getActivityTypeDefinition).mockImplementation(
       async (_user, name) => defs.find((d) => d.name === name) ?? null,
     )
@@ -643,6 +643,76 @@ describe('mergeActivityType', () => {
       success: false,
     })
     expect(db.mergeActivityTypeDefinition).not.toHaveBeenCalled()
+  })
+
+  describe('a target of a catalogue name that lacks the field set_data names', () => {
+    const ownAlcohol = {
+      ...sourceDef,
+      aliases: ['alcohol'],
+      data_schema: { fields: [{ name: 'drinks', type: 'number' as const }] },
+      name: 'alcohol',
+    }
+    const merged = {
+      activities_data_set: 2,
+      activities_reassigned: 2,
+      deduction_rules_updated: 0,
+      target: ownAlcohol,
+    }
+
+    test('gets that catalogue field appended, then the merge runs', async () => {
+      givenTypes(sourceDef, ownAlcohol)
+      vi.mocked(db.updateActivityTypeDefinition).mockResolvedValue(ownAlcohol)
+      vi.mocked(db.mergeActivityTypeDefinition).mockResolvedValue(merged)
+
+      const result = await mergeActivityType(user, 'old_sauna', 'alcohol', { kind: 'beer' }, alcoholCatalog)
+
+      expect(result.success).toBe(true)
+      expect(db.updateActivityTypeDefinition).toHaveBeenCalledWith(user, 'alcohol', {
+        data_schema: {
+          fields: [
+            { name: 'drinks', type: 'number' },
+            { enum_values: ['beer', 'wine'], name: 'kind', type: 'string' },
+          ],
+        },
+      })
+      expect(db.mergeActivityTypeDefinition).toHaveBeenCalledWith(user, 'old_sauna', 'alcohol', {
+        kind: 'beer',
+      })
+    })
+
+    test('is still refused for a value the catalogue field does not allow, changing nothing', async () => {
+      givenTypes(sourceDef, ownAlcohol)
+
+      const result = await mergeActivityType(user, 'old_sauna', 'alcohol', { kind: 'mead' }, alcoholCatalog)
+
+      expect(result.error).toBe(
+        'set_data is not valid for "alcohol": Field "kind" value "mead" is not one of: beer, wine',
+      )
+      expect(db.updateActivityTypeDefinition).not.toHaveBeenCalled()
+      expect(db.mergeActivityTypeDefinition).not.toHaveBeenCalled()
+    })
+
+    test('is still refused for a field the catalogue does not have either', async () => {
+      givenTypes(sourceDef, ownAlcohol)
+
+      const result = await mergeActivityType(user, 'old_sauna', 'alcohol', { colour: 'red' }, alcoholCatalog)
+
+      expect(result.error).toBe(
+        'set_data is not valid for "alcohol": Field "colour" is not a field of this type',
+      )
+      expect(db.updateActivityTypeDefinition).not.toHaveBeenCalled()
+    })
+
+    test('leaves the schema alone when the target has the field or no set_data is given', async () => {
+      givenTypes(sourceDef, ownAlcohol)
+      vi.mocked(db.mergeActivityTypeDefinition).mockResolvedValue(merged)
+
+      await mergeActivityType(user, 'old_sauna', 'alcohol', { drinks: 2 }, alcoholCatalog)
+      await mergeActivityType(user, 'old_sauna', 'alcohol', undefined, alcoholCatalog)
+
+      expect(db.updateActivityTypeDefinition).not.toHaveBeenCalled()
+      expect(db.mergeActivityTypeDefinition).toHaveBeenCalledTimes(2)
+    })
   })
 
   test('refuses set_data for a target without a schema', async () => {

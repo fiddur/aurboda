@@ -169,7 +169,7 @@ export const mergeActivityTypeBodySchema = z
   .object({
     set_data: z.record(z.string(), z.unknown()).optional().meta({
       description:
-        'Field values given to every moved activity that has no value for that field yet, e.g. `{ "kind": "beer" }` when merging `beer` into `alcohol`. Only scalar fields of the target\'s data schema',
+        'Field values given to every moved activity that has no value for that field yet, e.g. `{ "kind": "beer" }` when merging `beer` into `alcohol`. Only scalar fields of the target\'s data schema; a target of a built-in catalogue name that lacks such a field gets it from the catalogue',
     }),
     source: activityTypeNameSchema.meta({ description: 'Custom activity type to merge away' }),
     target: activityTypeNameSchema.meta({ description: 'Target activity type to merge into' }),

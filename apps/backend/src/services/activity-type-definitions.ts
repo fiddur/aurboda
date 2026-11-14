@@ -236,9 +236,30 @@ const setDataErrorFor = (
 }
 
 /**
+ * The schema `setData` is checked against: the target's own, with the catalogue fields `setData` names that
+ * the target lacks appended (the same object as the target's when there are none), or the catalogue entry's
+ * for a target not adopted yet.
+ */
+const mergeTargetSchema = (
+  targetDef: ActivityTypeDefinition | null,
+  targetEntry: StoredActivityTypeCatalogEntry | undefined,
+  setData: Record<string, unknown> | undefined,
+): DataSchemaDefinition | null | undefined => {
+  if (!targetDef) return targetEntry?.data_schema
+  const borrowed =
+    targetEntry && setData
+      ? missingCatalogFields(targetEntry, targetDef.data_schema).filter((field) => field.name in setData)
+      : []
+  return borrowed.length === 0
+    ? targetDef.data_schema
+    : { fields: [...(targetDef.data_schema?.fields ?? []), ...borrowed] }
+}
+
+/**
  * All activities are reassigned, aliases merged, deduction rules updated, source deleted. A target that is a
- * catalogue type not used yet is adopted first. `setData` fills those fields on the moved activities that
- * have no value for them.
+ * catalogue type not used yet is adopted first, and a target of a catalogue name gets the catalogue fields
+ * `setData` names that it lacks. `setData` fills those fields on the moved activities that have no value
+ * for them.
  */
 export const mergeActivityType = async (
   user: string,
@@ -258,13 +279,21 @@ export const mergeActivityType = async (
   const notFound = { error: `Activity type "${source}" or "${target}" not found.`, success: false }
   if (!(await dbGet(user, source))) return notFound
   const targetDef = await dbGet(user, target)
-  const targetEntry = targetDef ? undefined : getCatalogActivityType(catalog, target)
+  const targetEntry = getCatalogActivityType(catalog, target)
   if (!targetDef && !targetEntry) return notFound
 
   const data = setData && Object.keys(setData).length > 0 ? setData : undefined
-  const setDataError = setDataErrorFor(data, target, (targetDef ?? targetEntry)?.data_schema)
+  const schema = mergeTargetSchema(targetDef, targetEntry, data)
+  const setDataError = setDataErrorFor(data, target, schema)
   if (setDataError) return { error: setDataError, success: false }
   if (!(await ensureActivityType(user, target, catalog))) return notFound
+  if (
+    targetDef &&
+    schema !== targetDef.data_schema &&
+    !(await dbUpdate(user, target, { data_schema: schema }))
+  ) {
+    return notFound
+  }
 
   const result = await dbMerge(user, source, target, data)
   if (!result) return notFound

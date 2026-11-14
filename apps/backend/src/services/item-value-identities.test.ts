@@ -265,4 +265,18 @@ describe('applyItemValueKeysForWrite', () => {
       2000,
     )
   })
+
+  test('uses a schema it is given for a type that is not stored yet', async () => {
+    vi.mocked(db.getActivityTypeDefinition).mockResolvedValue(null)
+    vi.mocked(db.expandActivityTypes).mockResolvedValue(['not_stored_yet'])
+    vi.mocked(db.listItemValueIdentities).mockResolvedValue([])
+    vi.mocked(db.getActivityFieldValues).mockResolvedValue([])
+    const keyed = { sets: [{ exercise: 'Squats', exercise_key: 'barbell_squat' }] }
+
+    expect(await applyItemValueKeysForWrite('tester', 'not_stored_yet', keyed, schema)).toMatchObject({
+      success: true,
+    })
+    expect(db.getActivityTypeDefinition).not.toHaveBeenCalled()
+    expect(db.listItemValueIdentities).toHaveBeenCalledWith('tester', 'sets.exercise')
+  })
 })
