@@ -30,11 +30,23 @@ export type BlockImageKind = 'blockfig' | 'blockpng' | 'blocksvg'
 const HOUR_MS = 3_600_000
 
 /**
- * The render-cache key of one article block image. It includes the post's
- * `updated_at` (an edit re-renders) and a time bucket, hourly unless given (a
- * window that later gains data re-renders within the hour; a challenge block's
- * standings use a finer one); the index is the normalised number, so
- * equivalent spellings in the URL share one entry.
+ * The render-cache key of one article block image: the post's `updated_at` (an
+ * edit re-renders) and the index as the normalised number, so equivalent
+ * spellings in the URL share one entry. No time term: the render cache expires
+ * entries instead, so a window that later gains data re-renders within the TTL.
+ */
+export const articleBlockRenderKey = (
+  kind: BlockImageKind,
+  username: string,
+  postId: string,
+  index: number,
+  updatedAt: Date,
+): string => `${kind}:${username}:${postId}:${index}:${updatedAt.getTime()}`
+
+/**
+ * The miss-cache key of one article block image: its render key plus a time
+ * bucket, hourly unless given (a challenge block's standings use a finer one),
+ * so a remembered miss lasts only that bucket.
  */
 export const articleBlockCacheKey = (
   kind: BlockImageKind,
@@ -44,7 +56,7 @@ export const articleBlockCacheKey = (
   updatedAt: Date,
   bucketMs: number = HOUR_MS,
 ): string =>
-  `${kind}:${username}:${postId}:${index}:${updatedAt.getTime()}:${Math.floor(Date.now() / bucketMs)}`
+  `${articleBlockRenderKey(kind, username, postId, index, updatedAt)}:${Math.floor(Date.now() / bucketMs)}`
 
 /** Forget every remembered miss of one block, in every image kind. */
 export const forgetArticleBlockMisses = (

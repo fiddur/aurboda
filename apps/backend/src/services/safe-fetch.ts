@@ -123,7 +123,7 @@ export const createPublicOnlyLookup =
       return callback(null, address, family)
     })
 
-const MAX_RESPONSE_BYTES = 1_000_000 // federation payloads are small; cap to avoid memory exhaustion
+export const MAX_RESPONSE_BYTES = 1_000_000 // federation payloads are small; cap to avoid memory exhaustion
 
 const guardedConfig = (config?: AxiosRequestConfig): AxiosRequestConfig => ({
   timeout: DEFAULT_TIMEOUT_MS,

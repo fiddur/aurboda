@@ -14,8 +14,9 @@ import { createChallenge, upsertChallengeMember } from '../db/challenges.ts'
 import { createArticlePost, createChallengePost, createFeedPost } from '../db/feed.ts'
 import { insertTimeSeries } from '../db/time-series.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
+import { MAX_SERIES_SAMPLES } from './feed-series.ts'
 import { configureStructuredChallenge } from './feed-structured-challenge.ts'
-import { resolveStructuredPost } from './feed-structured.ts'
+import { ARTICLE_PAYLOAD_BYTES, resolveStructuredPost } from './feed-structured.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 const START = new Date('2026-07-01T08:00:00Z')
@@ -250,6 +251,70 @@ describe('resolveStructuredPost — article posts', () => {
     if (chart.type !== 'chart') throw new Error('expected a chart block')
     // `1s` is floored to the 5s public-series minimum (not queried at 1s).
     expect(chart.bucket).toBe('5s')
+  })
+
+  describe('sample budget (#972)', () => {
+    const YEAR_START = new Date('2025-07-01T00:00:00Z')
+    const YEAR_END = new Date('2026-07-01T00:00:00Z')
+    const yearChart = (bucket: string) => ({
+      bucket,
+      end: YEAR_END.toISOString(),
+      metric: 'heart_rate' as const,
+      start: YEAR_START.toISOString(),
+      type: 'chart' as const,
+    })
+    const seedHourlyYear = (user: string) =>
+      insertTimeSeries(
+        user,
+        Array.from({ length: 365 * 24 }, (_, i) => ({
+          metric: 'heart_rate' as const,
+          source: 'garmin' as const,
+          time: new Date(YEAR_START.getTime() + i * 3_600_000),
+          value: 60 + (i % 7),
+        })),
+      )
+
+    test('coarsens a fine bucket over a wide window to fit the per-block cap', async () => {
+      const user = getTestUser()
+      await seedHourlyYear(user)
+      const post = await createArticlePost(user, {
+        article: { blocks: [yearChart('5s')], title: 'A year' },
+        visibility: 'public',
+      })
+      const structured = await resolveStructuredPost(user, post.id)
+      if (structured?.kind !== 'article') throw new Error('expected an article payload')
+      const chart = structured.blocks[0]
+      if (chart.type !== 'chart') throw new Error('expected a chart block')
+      expect(chart.bucket).toBe('6h')
+      expect(chart.samples.length).toBeGreaterThan(1000)
+      expect(chart.samples.length).toBeLessThanOrEqual(MAX_SERIES_SAMPLES)
+    })
+
+    test('shares the payload budget between many chart blocks', async () => {
+      const user = getTestUser()
+      await seedHourlyYear(user)
+      const post = await createArticlePost(user, {
+        article: {
+          blocks: [
+            { markdown: 'Ten views of one year.', type: 'prose' },
+            ...Array.from({ length: 10 }, () => yearChart('1h')),
+          ],
+          title: 'Ten years',
+        },
+        visibility: 'public',
+      })
+      const structured = await resolveStructuredPost(user, post.id)
+      if (structured?.kind !== 'article') throw new Error('expected an article payload')
+      expect(structured.blocks).toHaveLength(11)
+      for (const block of structured.blocks.slice(1)) {
+        if (block.type !== 'chart') throw new Error('expected a chart block')
+        expect(block.bucket).toBe('1d')
+        expect(block.samples.length).toBeGreaterThan(300)
+      }
+      expect(Buffer.byteLength(JSON.stringify({ structured, success: true }))).toBeLessThanOrEqual(
+        ARTICLE_PAYLOAD_BYTES,
+      )
+    })
   })
 
   test('resolves a correlation block (present unconditionally, even with no overlapping data)', async () => {

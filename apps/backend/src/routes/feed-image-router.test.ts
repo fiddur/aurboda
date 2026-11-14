@@ -528,6 +528,77 @@ describe('article block image misses', () => {
   })
 })
 
+describe('article block image render cache', () => {
+  const post = articlePost(
+    article([{ end: WINDOW.end, metric: 'heart_rate', start: WINDOW.start, type: 'chart' }]),
+  )
+  const points: [Date, number][] = [
+    [new Date('2026-07-01T06:00:00Z'), 60],
+    [new Date('2026-07-01T07:00:00Z'), 62],
+  ]
+  const appWith = (now: () => number, editEachRequest: boolean) => {
+    let version = 0
+    const getPost = async (_user: string, id: string) =>
+      id !== POST_ID
+        ? makePost({ id })
+        : editEachRequest
+          ? { ...post, updated_at: new Date(post.updated_at.getTime() + version++) }
+          : post
+    const renderChart = vi.fn(async () => Buffer.from('chart-png'))
+    const renderRoute = vi.fn(async () => Buffer.from('route-png'))
+    const app = express()
+    app.use(
+      createFeedImageRouter({
+        getActivity: async () => activity,
+        getArticleChartSeries: async () => points,
+        getArticleImpact: async () => impactData(),
+        getChallengeRaceByUrl: async () => null,
+        getCorrelationScatter: async () => null,
+        getExerciseTrend: async () => null,
+        getPost,
+        getRoute: async () => [[59.3, 18.0]],
+        getSeries: async () => [],
+        getStandingsChart: async () => null,
+        now,
+        rasterizeSvg: async () => Buffer.from('figure-png'),
+        renderChart,
+        renderChartSvg: () => '<svg>chart</svg>',
+        renderImpact: async () => Buffer.from('impact-png'),
+        renderImpactSvg: () => '<svg>impact</svg>',
+        renderRaceChart: async () => Buffer.from(''),
+        renderRaceChartSvg: () => '',
+        renderRoute,
+        renderScatter: async () => Buffer.from(''),
+        renderScatterSvg: () => '',
+      }),
+    )
+    return { app, renderChart, renderRoute }
+  }
+  const path = `/public/fiddur/feed/${POST_ID}/blocks/0/image.png`
+
+  test('renders a block once per hour, not once per clock hour', async () => {
+    let at = Date.parse('2026-07-02T10:59:00Z')
+    const { app, renderChart } = appWith(() => at, false)
+    expect((await supertest(app).get(path)).status).toBe(200)
+    at = Date.parse('2026-07-02T11:01:00Z')
+    expect((await supertest(app).get(path)).status).toBe(200)
+    expect(renderChart).toHaveBeenCalledTimes(1)
+    at = Date.parse('2026-07-02T11:59:00Z')
+    expect((await supertest(app).get(path)).status).toBe(200)
+    expect(renderChart).toHaveBeenCalledTimes(2)
+  })
+
+  test('block renders do not push activity images out of their cache', async () => {
+    const { app, renderChart, renderRoute } = appWith(() => 0, true)
+    const routeId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+    await supertest(app).get(`/public/fiddur/feed/${routeId}/route.png`)
+    for (let i = 0; i < 250; i++) await supertest(app).get(path)
+    expect(renderChart).toHaveBeenCalledTimes(250)
+    await supertest(app).get(`/public/fiddur/feed/${routeId}/route.png`)
+    expect(renderRoute).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('article challenge block images', () => {
   const post = articlePost(article([{ challenge_url: 'https://qs.example/u/olle/nov', type: 'challenge' }]))
   const race: RaceChartSvgData = {

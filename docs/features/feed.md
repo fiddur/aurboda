@@ -962,7 +962,11 @@ id-convention path — reliable even when a typed consumer drops the in-band ext
    attachment images a timeline already loads from that peer; what it rules out is a stray `<img>`
    from a peer that behaves honestly. An Aurboda receiver reads only each declared picture's
    `url` and takes the alt text from the markdown; a chart block's bucketed samples over its
-   locked window, bucketed the same way as its block image; a correlation block's computed
+   locked window, bucketed the same way as its block image except that the bucket is floored to
+   5s and coarsened to a round size until the window fits the block's sample budget — at most
+   2,000 samples, and an even share of what the rest of the article leaves under 90% of a
+   peer's 1 MB response limit, so a long article still renders natively rather than dropping
+   to its `Note` HTML (the payload's `bucket` says which was used) (#972); a correlation block's computed
    Pearson/Spearman/n, the present-vs-absent group comparison, and the aligned scatter points —
    the same `getContinuousCorrelation` call the block image uses; an impact block's `activity`,
    `activity_type`, `window_minutes`, window, `occurrences`, `avg_duration_min`, `timeline`
@@ -1166,10 +1170,12 @@ Android app) so a `1d` bucket splits on the author's calendar days like the web 
 for an author whose device timezone is unknown it falls back to UTC (the web render uses
 the live browser timezone, so the two can differ by a day only in that case). Because an
 article (unlike a shared activity) is editable **and** its locked window can later gain
-backfilled data, the render cache keys on the post's `updated_at` **and** a coarse hourly
-bucket, so an edit or new data serves a fresh image within ≤ 1h; a `null` (no-data) render
-is remembered under the same key so a sparse public block can't re-run the render engine
-on every hit. The markdown export clears that remembered miss for every block it finds
+backfilled data, block images have their own render cache, keyed on the post's `updated_at`
+with entries that expire after an hour (five minutes for a challenge block) and bounded by
+the bytes it holds, so an edit or new data serves a fresh image within ≤ 1h and the
+activity images' cache is never crowded out by them (#969); a `null` (no-data) render is
+remembered for the hour so a sparse public block can't re-run the render engine on every
+hit. The markdown export clears that remembered miss for every block it finds
 drawable, so the image link it emits works at once rather than 404ing until the hour rolls
 over. `figure.png` shares the eligibility, the negative cache and that clearing, under its
 own render-cache entry. The AS2 `Image` attachment URL (`figure.png`) also carries
@@ -1246,7 +1252,8 @@ resolves only when **all** of these hold:
 
 When it resolves, the effective range is **clamped** to the activity's window (the
 caller's bounds can never widen it), the bucket granularity is **floored** server-side
-(minimum 5s) to bound payloads, and only the requested metric's aggregated buckets are
+(minimum 5s) and coarsened to a round size until the range fits 2,000 samples, to bound
+payloads (#972), and only the requested metric's aggregated buckets are
 returned — per-measurement timestamps are dropped. Anything else — an unshared metric,
 a `followers`-only share, a window outside any shared activity — returns **404**.
 
@@ -1270,8 +1277,9 @@ resolving.
   what they shared. The listing is **keyset-paginated** (20 per page, "Load more" — the same
   cursor style as the home timeline), so the inline payload weight stays bounded per request
   however many posts exist (#1012). The **public profile** (`/u/:username`) attaches the same
-  full structured payload per activity **and article** post (through the per-post LRU the
-  structured endpoint shares), and pages the same way — 20 per page with a "Load more" driven
+  full structured payload per activity **and article** post (through the per-post cache the
+  structured endpoint shares, keyed on the post's `updated_at`, expiring after an hour and
+  bounded by the payloads' total size), and pages the same way — 20 per page with a "Load more" driven
   by `next_cursor` (#1055) — so visitors see the identical native card and can reach every
   public post. An article renders from that server-resolved payload for a visitor (the same
   `TimelineArticle` a follower's timeline uses), since its live chart/correlation blocks fetch
