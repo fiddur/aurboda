@@ -11,6 +11,7 @@ import {
   buildMetricRows,
   formatListCell,
   garminConnectActivityUrl,
+  isSleepType,
   sourceDataEntries,
   typicalAvgHr,
 } from './activityStats'
@@ -385,5 +386,14 @@ describe('sourceDataEntries', () => {
       { key: 'sets_source', label: 'Sets source', value: 'garmin' },
       { key: 'stages', label: 'Stages', value: '40 items' },
     ])
+  })
+})
+
+describe('isSleepType', () => {
+  test('a night and a nap are sleep, anything else is not', () => {
+    expect(isSleepType('sleep')).toBe(true)
+    expect(isSleepType('nap')).toBe(true)
+    expect(isSleepType('running')).toBe(false)
+    expect(isSleepType('rest')).toBe(false)
   })
 })

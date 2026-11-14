@@ -50,7 +50,9 @@ A colored chart showing your progression through sleep stages over the night:
 - **Light** (light blue)
 - **Deep** (indigo, bottom)
 
-Heart rate (red) and HRV (teal) lines can be overlaid on the hypnogram. Hovering shows exact values at any point in time.
+Heart rate (red), HRV (teal), stress and Body Battery can be overlaid on the hypnogram. Each stage is also drawn as a faint band of its colour across the chart's full height, so every metric can be read against the stage it happened in. Hovering shows exact values at any point in time.
+
+A sleep or a nap has no HR Zones section: a night is almost all rest, which says nothing.
 
 ### Sleep Metrics
 

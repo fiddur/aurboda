@@ -151,14 +151,14 @@ a.entity-type-badge:hover {
 .activity-stats-table th {
   text-align: left;
   font-weight: 500;
-  color: #6b7280;
+  color: var(--color-text-muted);
   padding: 0.25rem 1rem 0.25rem 0;
   vertical-align: top;
   white-space: nowrap;
 }
 
 .activity-stats-table td {
-  color: #374151;
+  color: var(--color-text);
   padding: 0.25rem 0;
   vertical-align: top;
   white-space: pre-wrap;
@@ -950,13 +950,8 @@ a.btn-secondary {
     color: #d1d5db;
   }
 
-  .activity-stats-table th,
   .source-data summary {
     color: #9ca3af;
-  }
-
-  .activity-stats-table td {
-    color: #d1d5db;
   }
 
   .list-field-table thead th,

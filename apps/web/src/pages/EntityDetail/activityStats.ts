@@ -256,3 +256,7 @@ export const sourceDataEntries = (
     .filter(([key, value]) => !declared.has(key) && !SHOWN_DATA_KEYS.has(key) && !isBlank(value))
     .map(([key, value]) => ({ key, label: keyLabel(key), value: formatSourceValue(value) }))
 }
+
+/** A night's or a nap's HR zones are almost all rest, which says nothing. */
+export const isSleepType = (activityType: string): boolean =>
+  activityType === 'sleep' || activityType === 'nap'

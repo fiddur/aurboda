@@ -53,6 +53,7 @@ import {
   buildMetricRows,
   buildTimeRows,
   garminConnectActivityUrl,
+  isSleepType,
   sourceDataEntries,
   typicalAvgHr,
 } from './activityStats'
@@ -338,7 +339,8 @@ const ActivityDetailContent = ({
   const stages = useMemo(() => parseSleepStages(activityData), [activityData])
   const hasSleepStages = stages.length > 0
   const hrZoneSecs = activity.hr_zone_secs as Record<number, number> | undefined
-  const hasHrZones = hrZoneSecs && Object.values(hrZoneSecs).some((v) => v > 0)
+  const hasHrZones =
+    !isSleepType(activity.activity_type) && hrZoneSecs && Object.values(hrZoneSecs).some((v) => v > 0)
   const sleepMinutes =
     activity.total_sleep ?? (hasSleepStages ? computeSleepMinutesFromStages(stages) : undefined)
   const hasEndTime = Boolean(realEnd)
