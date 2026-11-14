@@ -56,6 +56,17 @@ const isEntry = (value: unknown): value is Entry =>
 const sameLocalDay = (a: number, b: number): boolean =>
   new Date(a).toDateString() === new Date(b).toDateString()
 
+/**
+ * How long a period answer fetched at `fetchedAt` stays fresh: a finished period's for good, the latest
+ * one's until the next local midnight, when another period may have finished.
+ */
+export const periodStaleTime = (period: string | null, fetchedAt: number): number => {
+  if (period !== null) return Infinity
+  const midnight = new Date(fetchedAt)
+  midnight.setHours(24, 0, 0, 0)
+  return midnight.getTime() - fetchedAt
+}
+
 const readIndex = (store: CacheStorage): string[] => {
   const parsed: unknown = JSON.parse(store.getItem(INDEX_KEY) ?? '[]')
   return Array.isArray(parsed) ? parsed.filter((key): key is string => typeof key === 'string') : []

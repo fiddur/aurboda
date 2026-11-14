@@ -10,6 +10,7 @@ import {
   MAX_ENTRY_CHARS,
   type PeriodDataSlot,
   periodDataKey,
+  periodStaleTime,
   readPeriodData,
   writePeriodData,
 } from './periodDataCache'
@@ -172,5 +173,16 @@ describe('period data cache', () => {
     const copy = structuredClone(defaultDashboardConfig)
     expect(configVersion(copy)).toBe(configVersion(defaultDashboardConfig))
     expect(configVersion({ ...copy, description: 'changed' })).not.toBe(configVersion(defaultDashboardConfig))
+  })
+})
+
+describe('periodStaleTime', () => {
+  it('keeps a finished period fresh for good', () => {
+    expect(periodStaleTime('2026-11-13', new Date(2026, 10, 14, 23, 30).getTime())).toBe(Infinity)
+  })
+
+  it('keeps the latest answer fresh until the next local midnight', () => {
+    expect(periodStaleTime(null, new Date(2026, 10, 14, 23, 30).getTime())).toBe(30 * 60_000)
+    expect(periodStaleTime(null, new Date(2026, 10, 14, 0, 0).getTime())).toBe(24 * 3_600_000)
   })
 })
