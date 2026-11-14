@@ -149,6 +149,9 @@ describe('addActivityTypeDefinition with the built-in catalogue', () => {
         icon: '🧖',
         name: 'sauna',
         same_as: {},
+        variants: [
+          { aliases: [], data: { kind: 'infrared' }, display_name: 'Infrared sauna', name: 'infrared_sauna' },
+        ],
       },
       {
         aliases: [],
@@ -259,6 +262,34 @@ describe('addActivityTypeDefinition with the built-in catalogue', () => {
       success: false,
     })
     expect(db.insertActivityTypeDefinition).not.toHaveBeenCalled()
+  })
+
+  test("a variant's name is refused with a pointer to its type", async () => {
+    const result = await addActivityTypeDefinition(
+      user,
+      { display_category: 'wellness', display_name: 'Infrared', name: 'infrared_sauna' },
+      catalog,
+    )
+    expect(result).toEqual({
+      error:
+        '"infrared_sauna" is the built-in type "sauna" with kind "infrared": use activity_type "sauna" with data {"kind":"infrared"} Pass separate_type: true to create a separate type anyway.',
+      success: false,
+    })
+    expect(db.insertActivityTypeDefinition).not.toHaveBeenCalled()
+  })
+
+  test("a variant's name is created with separate_type, which is not stored", async () => {
+    const result = await addActivityTypeDefinition(
+      user,
+      { display_category: 'wellness', display_name: 'Infrared', name: 'infrared_sauna', separate_type: true },
+      catalog,
+    )
+    expect(result.success).toBe(true)
+    expect(db.insertActivityTypeDefinition).toHaveBeenCalledWith(user, {
+      display_category: 'wellness',
+      display_name: 'Infrared',
+      name: 'infrared_sauna',
+    })
   })
 
   describe('listActivityTypeCatalog', () => {

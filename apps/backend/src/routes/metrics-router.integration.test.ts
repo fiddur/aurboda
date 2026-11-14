@@ -51,6 +51,37 @@ describe('PATCH /metrics/custom/:name', () => {
   })
 })
 
+describe('POST /metrics/custom', () => {
+  beforeAll(async () => {
+    await startTestDb()
+  }, CONTAINER_TIMEOUT)
+
+  afterAll(async () => {
+    await stopTestDb()
+  })
+
+  beforeEach(async () => {
+    await cleanTestDb()
+  })
+
+  test('refuses an alias of a catalogue metric unless separate_metric is given', async () => {
+    const user = getTestUser()
+    const request = supertest(buildApp(user))
+
+    const refused = await request.post('/metrics/custom').send({ name: 'ldl', unit: 'mg/dL' })
+    expect(refused.status).toBe(400)
+    expect(refused.body.error).toContain('"ldl" is the built-in metric "ldl_cholesterol"')
+    expect(await getCustomMetricByName(user, 'ldl')).toBeNull()
+
+    const created = await request
+      .post('/metrics/custom')
+      .send({ name: 'ldl', separate_metric: true, unit: 'mg/dL' })
+    expect(created.status).toBe(200)
+    expect(created.body.data).toEqual({ name: 'ldl', unit: 'mg/dL' })
+    expect(await getCustomMetricByName(user, 'ldl')).toMatchObject({ name: 'ldl', unit: 'mg/dL' })
+  })
+})
+
 describe('GET /daily-summary', () => {
   beforeAll(async () => {
     await startTestDb()

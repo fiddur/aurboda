@@ -9,6 +9,7 @@ import {
   type CachedPeriodData,
   configVersion,
   type PeriodDataSlot,
+  periodStaleTime,
   readPeriodData,
   writePeriodData,
 } from '../state/periodDataCache'
@@ -71,8 +72,7 @@ const useLatestPeriod = (
     ...sessionCached(slot, () => fetchData()),
     queryKey: ['dashboardData', boardId, granularity, null],
     refetchOnReconnect: false,
-    refetchOnWindowFocus: false,
-    staleTime: Infinity,
+    staleTime: (q) => periodStaleTime(null, q.state.dataUpdatedAt),
   })
   const answered = query.data?.period ?? null
   return answered !== null && granularity !== null && periodGranularityOf(answered) === granularity
@@ -85,9 +85,10 @@ const useLatestPeriod = (
  * one). Inactive (null) for a rolling dashboard, whose widgets fetch their own data.
  *
  * A finished period's figures only change with the config, whose saves invalidate this query, so it
- * never goes stale by itself and does not refetch on focus or reconnect: the resolve takes seconds and
- * would blank the board. The last answers are kept in sessionStorage so a discarded, reloaded tab
- * renders at once.
+ * never goes stale by itself and is not refetched on focus or reconnect: the resolve takes seconds. The
+ * latest finished period goes stale at the next local midnight, when another may have finished, and is
+ * refetched when the tab is next focused. The last answers are kept in sessionStorage so a discarded,
+ * reloaded tab renders at once.
  */
 export const usePeriodDashboard = (
   boardId: string,
@@ -119,8 +120,7 @@ export const usePeriodDashboard = (
     placeholderData: keepPreviousData,
     queryKey: ['dashboardData', boardId, granularity, current],
     refetchOnReconnect: false,
-    refetchOnWindowFocus: false,
-    staleTime: Infinity,
+    staleTime: (q) => periodStaleTime(current, q.state.dataUpdatedAt),
   })
 
   const answered = query.data?.period ?? null

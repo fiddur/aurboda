@@ -13,7 +13,6 @@ import type {
 } from '@aurboda/api-spec'
 
 import {
-  adoptCatalogMetric,
   deleteNotesForEntityIn,
   deleteReport as dbDeleteReport,
   getLatestMetricValue as dbGetLatestMetricValue,
@@ -31,6 +30,7 @@ import {
   type Report,
   type ReportEntry,
 } from '../db/index.ts'
+import { writeWithCatalogAdoption } from './custom-metrics.ts'
 import { catalogMetricDefinition, loadMetricCatalog } from './metric-catalog.ts'
 import { resolveMetricForWrite, valueForWrite } from './metric-resolution.ts'
 
@@ -233,11 +233,10 @@ const prepareForUser = async (
   user: string,
   entries: AddReportEntryInput[],
   catalog: StoredMetricCatalog,
-): Promise<{ error: string } | { entries: PreparedReportEntry[] }> => {
+): Promise<{ error: string } | { adopt: CustomMetricDefinition[]; entries: PreparedReportEntry[] }> => {
   const prepared = prepareReportEntries(entries, await getCustomMetricDefinitions(user), catalog)
   if ('errors' in prepared) return { error: prepared.errors.join('\n') }
-  for (const definition of prepared.adopt) await adoptCatalogMetric(user, definition)
-  return { entries: withFlags(prepared.entries) }
+  return { adopt: prepared.adopt, entries: withFlags(prepared.entries) }
 }
 
 const cleanupTimeSeries = async (
@@ -289,24 +288,23 @@ export async function addReport(
 
   const prepared = await prepareForUser(user, input.entries, catalog)
   if ('error' in prepared) return { error: prepared.error, success: false }
-  const { entries } = prepared
+  const { adopt, entries } = prepared
 
-  // Write values to time_series FIRST (single source of truth for metric values).
-  // Must happen before insertReport because the DB layer joins with time_series on read.
-  const timeSeriesPoints = toTimeSeriesPoints(entries, reportDate)
-  if (timeSeriesPoints.length > 0) {
-    await insertTimeSeries(user, timeSeriesPoints)
-  }
-
-  const report = await dbInsertReport(user, {
-    entries: toDbEntries(entries),
-    location: input.location,
-    notes: input.notes,
-    report_date: reportDate,
-    report_type: input.report_type,
+  const written = await writeWithCatalogAdoption(user, adopt, async (tx) => {
+    // Write values to time_series FIRST (single source of truth for metric values).
+    // Must happen before insertReport because the DB layer joins with time_series on read.
+    await insertTimeSeries(tx, toTimeSeriesPoints(entries, reportDate))
+    return dbInsertReport(tx, {
+      entries: toDbEntries(entries),
+      location: input.location,
+      notes: input.notes,
+      report_date: reportDate,
+      report_type: input.report_type,
+    })
   })
+  if ('error' in written) return { error: written.error, success: false }
 
-  return { data: formatReport(report), success: true }
+  return { data: formatReport(written.result), success: true }
 }
 
 export async function getReport(user: string, id: string): Promise<ReportResult> {
@@ -358,16 +356,15 @@ export async function updateReport(
   }
 
   let processedEntries: PreparedReportEntry[] | undefined
+  let adopt: CustomMetricDefinition[] = []
   if (input.entries) {
     const prepared = await prepareForUser(user, input.entries, catalog)
     if ('error' in prepared) return { error: prepared.error, success: false }
     processedEntries = prepared.entries
+    adopt = prepared.adopt
   }
 
   const oldEntryMetrics = await getReportEntryMetrics(user, id)
-
-  // Must happen BEFORE dbUpdateReport because it joins with time_series on read.
-  await cleanupTimeSeries(user, oldEntryMetrics)
 
   const newDate = input.date ? new Date(input.date) : existing.report_date
   const seriesEntries =
@@ -377,12 +374,16 @@ export async function updateReport(
       series_unit: e.stored_unit ?? e.unit,
       series_value: e.stored_value ?? e.value,
     }))
-  const timeSeriesPoints = toTimeSeriesPoints(seriesEntries, newDate)
-  if (timeSeriesPoints.length > 0) {
-    await insertTimeSeries(user, timeSeriesPoints)
-  }
 
-  const updated = await dbUpdateReport(user, id, reportUpdates(input, processedEntries))
+  const written = await writeWithCatalogAdoption(user, adopt, async (tx) => {
+    // Must happen BEFORE dbUpdateReport because it joins with time_series on read.
+    await cleanupTimeSeries(tx, oldEntryMetrics)
+    await insertTimeSeries(tx, toTimeSeriesPoints(seriesEntries, newDate))
+    return dbUpdateReport(tx, id, reportUpdates(input, processedEntries))
+  })
+  if ('error' in written) return { error: written.error, success: false }
+
+  const updated = written.result
   if (!updated) {
     return { error: REPORT_NOT_FOUND, success: false }
   }

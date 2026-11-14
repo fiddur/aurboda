@@ -1,12 +1,13 @@
 import type { CustomMetricDefinition, StoredMetricCatalog, StoredMetricCatalogEntry } from '@aurboda/api-spec'
 
+import { sameUnit } from '@aurboda/api-spec'
+
 import { isValidMetric, metricUnits } from '../schema.ts'
 import {
   catalogUnitSpellings,
   convertCatalogValue,
   findCatalogMetric,
   getCatalogMetric,
-  sameUnit,
 } from './metric-catalog.ts'
 
 export interface ResolvedMetric {

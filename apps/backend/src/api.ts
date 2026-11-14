@@ -763,8 +763,6 @@ const main = async () => {
   }
   const onDeliverError = (op: string, user: string, postId: string) => (err: unknown) =>
     console.error(`⚠️ feed ${op} delivery failed for ${user}/${postId}:`, err)
-  // Every edit path ends in one of the `updated*` hooks, so this is where a post narrowed to
-  // followers-only loses its quote stamps (FEP-044f).
   const revokeUnsharedStamps = (user: string, post: FeedPostRecord): void => {
     void revokeQuoteStamps(feedDeps, user, post).catch(onDeliverError('quote stamp revoke', user, post.id))
   }

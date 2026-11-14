@@ -67,12 +67,14 @@ describe('custom metric definitions', () => {
       name: 'ldl_cholesterol',
       unit: 'mmol/L',
     }
-    await adoptCatalogMetric(user, ldl)
-    await adoptCatalogMetric(user, ldl)
+    expect(await adoptCatalogMetric(user, ldl)).toBe('mmol/L')
+    expect(await adoptCatalogMetric(user, ldl)).toBe('mmol/L')
     expect(await getCustomMetricDefinitions(user)).toEqual([{ ...ldl, include_in_daily_summary: false }])
 
     await insertCustomMetricDefinition(user, { name: 'ferritin', unit: 'ng/mL' })
-    await adoptCatalogMetric(user, { description: 'Ferritin', name: 'ferritin', unit: 'µg/L' })
+    expect(await adoptCatalogMetric(user, { description: 'Ferritin', name: 'ferritin', unit: 'µg/L' })).toBe(
+      'ng/mL',
+    )
     expect(await getCustomMetricByName(user, 'ferritin')).toMatchObject({ unit: 'ng/mL' })
     expect(await getCustomMetricByName(user, 'ferritin')).not.toHaveProperty('description')
   })

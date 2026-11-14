@@ -33,6 +33,7 @@ const DAY_MS = 86_400_000
 const HOUR_MS = 3_600_000
 const BRIDGE_MS = 36 * HOUR_MS
 const AT_REST_MS = 18 * HOUR_MS
+const ARRIVAL_MS = 3 * HOUR_MS
 const PROBE_TIME = new Temporal.PlainTime(3, 0)
 const TOP_PLACES = 5
 
@@ -85,6 +86,7 @@ const placeAt = (visits: CanonicalVisit[], probeMs: number): NightPlace => {
   const prevEnd = prev.end_time.getTime()
   if (prevEnd >= probeMs) return placeOf(prev)
   if (next && next.key === prev.key && next.start_time.getTime() - prevEnd <= BRIDGE_MS) return placeOf(prev)
+  if (next && next.start_time.getTime() - probeMs <= ARRIVAL_MS) return placeOf(next)
   if (probeMs - prevEnd <= AT_REST_MS) return placeOf(prev)
   return { kind: 'no_data' }
 }
@@ -92,7 +94,8 @@ const placeAt = (visits: CanonicalVisit[], probeMs: number): NightPlace => {
 /**
  * The place of each night whose evening date (in tz) falls in `[start, end]`: where the user was at
  * 03:00 the next morning. A phone at rest reports nothing, so a gap between two visits to the same
- * place, or a short while after the last visit, still counts as being there.
+ * place, or a short while after the last visit, still counts as being there. A visit to another place
+ * starting within 3 hours after 03:00 is overnight travel, and that place takes the night.
  */
 export const attributeNights = (
   visits: CanonicalVisit[],

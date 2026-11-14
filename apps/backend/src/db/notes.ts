@@ -310,6 +310,55 @@ export const reanchorNotes = async (
  * An empty/null content deletes the synced note (the comment was removed upstream) and its
  * replies. Otherwise the note's times move with the upstream ones, and its replies with it.
  */
+export const upsertSyncedNoteIn = async (
+  tx: Queryable,
+  entityType: EntityType,
+  entityId: string,
+  source: DataSource,
+  content: string | undefined,
+  startTime?: Date,
+  endTime?: Date,
+): Promise<void> => {
+  if (!content) {
+    const deleted = await query<{ id: string }>(
+      tx,
+      `DELETE FROM notes WHERE entity_type = $1 AND entity_id = $2 AND source = $3 RETURNING id`,
+      [entityType, entityId, source],
+    )
+    await deleteRepliesIn(
+      tx,
+      deleted.rows.map((r) => r.id),
+    )
+    return
+  }
+
+  const updated = await query<{ id: string }>(
+    tx,
+    `UPDATE notes SET content = $1, start_time = $5, end_time = $6, updated_at = NOW()
+     WHERE entity_type = $2 AND entity_id = $3 AND source = $4
+     RETURNING id`,
+    [content, entityType, entityId, source, startTime ?? null, endTime ?? null],
+  )
+
+  if (updated.rows.length === 0) {
+    await query(
+      tx,
+      `INSERT INTO notes (entity_type, entity_id, content, source, start_time, end_time)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [entityType, entityId, content, source, startTime ?? null, endTime ?? null],
+    )
+    return
+  }
+
+  await query(
+    tx,
+    `UPDATE notes SET start_time = $1, end_time = $2, updated_at = NOW()
+     WHERE entity_type = 'note' AND entity_id = ANY($3)
+       AND (start_time IS DISTINCT FROM $1 OR end_time IS DISTINCT FROM $2)`,
+    [startTime ?? null, endTime ?? null, updated.rows.map((r) => r.id)],
+  )
+}
+
 export const upsertSyncedNote = async (
   user: string,
   entityType: EntityType,
@@ -319,43 +368,6 @@ export const upsertSyncedNote = async (
   startTime?: Date,
   endTime?: Date,
 ): Promise<void> =>
-  withUserTransaction(user, async (tx) => {
-    if (!content) {
-      const deleted = await query<{ id: string }>(
-        tx,
-        `DELETE FROM notes WHERE entity_type = $1 AND entity_id = $2 AND source = $3 RETURNING id`,
-        [entityType, entityId, source],
-      )
-      await deleteRepliesIn(
-        tx,
-        deleted.rows.map((r) => r.id),
-      )
-      return
-    }
-
-    const updated = await query<{ id: string }>(
-      tx,
-      `UPDATE notes SET content = $1, start_time = $5, end_time = $6, updated_at = NOW()
-       WHERE entity_type = $2 AND entity_id = $3 AND source = $4
-       RETURNING id`,
-      [content, entityType, entityId, source, startTime ?? null, endTime ?? null],
-    )
-
-    if (updated.rows.length === 0) {
-      await query(
-        tx,
-        `INSERT INTO notes (entity_type, entity_id, content, source, start_time, end_time)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [entityType, entityId, content, source, startTime ?? null, endTime ?? null],
-      )
-      return
-    }
-
-    await query(
-      tx,
-      `UPDATE notes SET start_time = $1, end_time = $2, updated_at = NOW()
-       WHERE entity_type = 'note' AND entity_id = ANY($3)
-         AND (start_time IS DISTINCT FROM $1 OR end_time IS DISTINCT FROM $2)`,
-      [startTime ?? null, endTime ?? null, updated.rows.map((r) => r.id)],
-    )
-  })
+  withUserTransaction(user, (tx) =>
+    upsertSyncedNoteIn(tx, entityType, entityId, source, content, startTime, endTime),
+  )

@@ -45,13 +45,16 @@ these:
   use yet under "More built-in metrics".
 
 The value is stored under the catalogue name: `ldl` is written as `ldl_cholesterol`. A write that is
-refused (see below) adds nothing.
+refused (see below) adds nothing, and the metric is added in the same transaction as the write, so a
+write that fails adds no metric either. When a custom metric of that name is created in another unit
+while the write is converting its value, the write is refused and asks to be tried again.
 
 **Your own metric wins.** If you already have a custom metric with the catalogue name, it is used as
 it is, in its own unit, and nothing about it changes. A custom metric of yours named like an alias
-(`ldl`) is yours too: a write to `ldl` goes to it, not to the catalogue. MCP `add_custom_metric`
-refuses to create such an alias-named metric with a pointer to the built-in one, unless given
-`separate_metric: true`.
+(`ldl`) is yours too: a write to `ldl` goes to it, not to the catalogue. `POST /metrics/custom` and
+MCP `add_custom_metric` refuse to create such an alias-named metric with a pointer to the built-in
+one, unless given `separate_metric: true`. The custom metrics settings form sends it and creates the
+metric as asked.
 
 ## Units and conversion
 
@@ -71,6 +74,9 @@ rounded to 6 significant digits. Left out, the value is taken to be in the metri
 - LDL cholesterol 100 mg/dL is stored as 2.586 mmol/L (factor 0.02586).
 - HbA1c 6.5 % is stored as 47.5 mmol/mol (the IFCC/NGSP master equation: factor 10.929, offset −2.15).
 - A waist of 34 in is stored as 86.36 cm.
+
+The Add data form offers the accepted units of a catalogue metric to pick from; for a metric of
+yours in a unit the catalogue does not accept, it shows only that unit.
 
 Units are compared after a few spelling rules: case and spaces do not matter, `µ` (micro sign),
 `μ` (Greek mu), `mcg` and a `u` before `g`, `mol`, `IU`, `kat` or `L` are the same (`ug/L`,
@@ -117,7 +123,8 @@ the value in the series. Reference ranges and the derived flag stay in the print
 - `POST /metrics`, `POST /metrics/bulk` -- `metric` may be a catalogue name or alias; `unit` is
   optional.
 - MCP `list_metric_catalog` (`q`) -- the same as `GET /metric-catalog`. `add_metric` and
-  `add_metrics_bulk` take `unit`; `add_custom_metric` takes `separate_metric`.
+  `add_metrics_bulk` take `unit`; `add_custom_metric` takes `separate_metric`, as does
+  `POST /metrics/custom`.
 
 Adoption itself has no endpoint or tool of its own; it happens through the writes above.
 

@@ -14,7 +14,7 @@ import {
   updateFeedPostReactionPresentation,
   upsertFeedPostReaction,
 } from './feed-reactions.ts'
-import { createFeedPost, deleteFeedPost } from './feed.ts'
+import { createFeedPost, deleteFeedPostWithQuotes } from './feed.ts'
 import {
   deleteBoostEntry,
   deleteTimelineEntriesByActor,
@@ -351,7 +351,7 @@ describe('Feed reaction stores integration', () => {
       const user = getTestUser()
       const created = await post(user)
       await upsertFeedPostReaction(user, { actor_uri: ALICE, kind: 'like', post_id: created.id })
-      expect(await deleteFeedPost(user, created.id)).toBe(true)
+      expect(await deleteFeedPostWithQuotes(user, created.id)).not.toBeNull()
       expect(await listFeedPostReactions(user, created.id, 100)).toHaveLength(0)
     })
   })

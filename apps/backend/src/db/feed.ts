@@ -622,9 +622,6 @@ export const deleteFeedPostWithQuotes = async (
   )
 }
 
-export const deleteFeedPost = async (user: string, id: string): Promise<boolean> =>
-  (await deleteFeedPostWithQuotes(user, id)) != null
-
 /**
  * The tombstone for a deleted public/unlisted post, or null if the id was never
  * publicly shared (or is still live). Backs the `410 Gone` object dereference.

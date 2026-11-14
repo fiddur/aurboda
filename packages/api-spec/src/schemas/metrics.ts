@@ -141,7 +141,14 @@ export const bulkMetricsResponseSchema = baseResponseSchema
 
 export type BulkMetricsResponse = z.infer<typeof bulkMetricsResponseSchema>
 
-export const addCustomMetricBodySchema = customMetricDefinitionSchema.meta({ id: 'AddCustomMetricBody' })
+export const addCustomMetricBodySchema = customMetricDefinitionSchema
+  .extend({
+    separate_metric: z.boolean().optional().meta({
+      description:
+        'Create the metric even when its name is an alias of a built-in catalogue metric (e.g. `ldl`, which is `ldl_cholesterol`); without it such a name is refused with a pointer to the built-in metric',
+    }),
+  })
+  .meta({ id: 'AddCustomMetricBody' })
 
 export type AddCustomMetricBody = z.infer<typeof addCustomMetricBodySchema>
 

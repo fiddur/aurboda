@@ -83,7 +83,7 @@ import { pushAll } from '../utils.ts'
 import { adoptLegacyActivity, insertActivities, insertActivity } from './activities/index.ts'
 import { query, withUserTransaction } from './connection.ts'
 import { insertMeal } from './meals.ts'
-import { deleteNotesForEntitiesIn, upsertSyncedNote } from './notes.ts'
+import { deleteNotesForEntitiesIn, upsertSyncedNote, upsertSyncedNoteIn } from './notes.ts'
 import { insertRawRecord, insertRawRecords } from './raw-records.ts'
 import { insertTimeSeries } from './time-series.ts'
 
@@ -305,21 +305,23 @@ export const processHealthConnectBatch = async (
         if (row.external_id) idByExternalId.set(row.external_id, row.id)
         idByTypeStart.set(`${row.activity_type}|${row.start_time.toISOString()}`, row.id)
       }
-      for (const note of activityNotes) {
-        const id =
-          (note.externalId && idByExternalId.get(note.externalId)) ??
-          idByTypeStart.get(`${note.activityType}|${note.startTime.toISOString()}`)
-        if (!id) continue
-        await upsertSyncedNote(
-          user,
-          'activity',
-          id,
-          'health_connect',
-          note.content,
-          note.startTime,
-          note.endTime,
-        )
-      }
+      await withUserTransaction(user, async (tx) => {
+        for (const note of activityNotes) {
+          const id =
+            (note.externalId && idByExternalId.get(note.externalId)) ??
+            idByTypeStart.get(`${note.activityType}|${note.startTime.toISOString()}`)
+          if (!id) continue
+          await upsertSyncedNoteIn(
+            tx,
+            'activity',
+            id,
+            'health_connect',
+            note.content,
+            note.startTime,
+            note.endTime,
+          )
+        }
+      })
     }
   }
 

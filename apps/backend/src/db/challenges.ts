@@ -610,7 +610,7 @@ export const getParticipationByUrl = async (
  * Leave a challenge: the participation row is hard-deleted and the challenge
  * URL kept as a tombstone in `challenge_left`, so discovery never suggests
  * again what the user deliberately walked away from (#1093). Written inside the
- * delete statement, the way `deleteFeedPost` records an auto-share suppression.
+ * delete statement, the way `deleteFeedPostWithQuotes` records an auto-share suppression.
  *
  * Pass `tombstone: false` for a delete that is *not* a leave — the rollback of
  * a join the host rejected — which must leave the challenge discoverable.

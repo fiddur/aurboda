@@ -82,6 +82,10 @@ export const addActivityTypeDefinitionBodySchema = z
       .regex(/^[a-z][a-z0-9_]*$/)
       .optional()
       .meta({ description: 'Optional parent activity type name (must already exist)' }),
+    separate_type: z.boolean().optional().meta({
+      description:
+        'Create the type even when its name is a variant of a built-in type (e.g. `beer`, which is `alcohol` with kind beer); without it such a name is refused with a pointer to the built-in type and data to use',
+    }),
     show_on_timeline: z
       .boolean()
       .optional()

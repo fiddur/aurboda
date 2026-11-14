@@ -164,6 +164,26 @@ describe('attributeNights', () => {
     ).toEqual({ kind: 'named', name: 'Hökås' })
   })
 
+  test('overnight travel: a visit elsewhere starting within 3 hours after 03:00 takes the night', () => {
+    const leftHome = at('Home', '2026-10-12T16:00:00Z', '2026-10-12T21:00:00Z')
+    expect(place([leftHome, at('Hotel', '2026-10-13T03:00:00Z', '2026-10-13T07:00:00Z')])).toEqual({
+      kind: 'named',
+      name: 'Hotel',
+    })
+    expect(place([leftHome, at(null, '2026-10-13T04:00:00Z', '2026-10-13T07:00:00Z', '~Inn')])).toEqual({
+      kind: 'elsewhere',
+    })
+  })
+
+  test('a visit elsewhere starting later than 3 hours after 03:00 leaves the night at rest', () => {
+    expect(
+      place([
+        at('Home', '2026-10-12T16:00:00Z', '2026-10-12T21:00:00Z'),
+        at('Hotel', '2026-10-13T04:01:00Z', '2026-10-13T07:00:00Z'),
+      ]),
+    ).toEqual({ kind: 'named', name: 'Home' })
+  })
+
   test('no data when the last visit ended longer ago and the next is elsewhere', () => {
     expect(
       place([

@@ -5,6 +5,7 @@ import type {
   StoredMetricCatalogEntry,
 } from '@aurboda/api-spec'
 
+import { normalizeUnit } from '@aurboda/api-spec'
 import { readFileSync } from 'node:fs'
 
 import { normalizeCatalogText } from './activity-type-catalog.ts'
@@ -61,23 +62,6 @@ export const findCatalogMetric = (
   catalog: StoredMetricCatalog,
   text: string,
 ): StoredMetricCatalogEntry | undefined => indexOf(catalog).byLabel.get(normalizeCatalogText(text))
-
-/**
- * For comparing units only; a stored unit keeps its own spelling. NFKC is not used: it turns the micro sign
- * into Greek mu and `10⁹` into `109`.
- */
-export const normalizeUnit = (unit: string): string =>
-  unit
-    .trim()
-    .replaceAll('μ', 'µ')
-    .toLowerCase()
-    .replaceAll(/\s+/g, '')
-    .replaceAll('mcg', 'µg')
-    .replaceAll(/(^|[^a-z])u(?=g|mol|iu|kat|l)/g, '$1µ')
-    .replaceAll('percent', '%')
-    .replaceAll('celsius', '°c')
-
-export const sameUnit = (a: string, b: string): boolean => normalizeUnit(a) === normalizeUnit(b)
 
 interface UnitConversion {
   factor: number

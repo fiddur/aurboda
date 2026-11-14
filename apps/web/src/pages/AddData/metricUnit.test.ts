@@ -33,6 +33,10 @@ describe('catalogUnitOptions', () => {
     ])
     expect(catalogUnitOptions({ ...ferritin, in_use: true, in_use_unit: 'ng/mL' })).toEqual(['µg/L', 'ng/mL'])
   })
+
+  test('only the user’s own unit when the catalogue does not accept it', () => {
+    expect(catalogUnitOptions({ ...ferritin, in_use: true, in_use_unit: 'mmol/L' })).toEqual(['mmol/L'])
+  })
 })
 
 describe('defaultCatalogUnit', () => {

@@ -15,7 +15,6 @@ import type { ActivityNotifier } from './deduction-queue.ts'
 import { mergeOverlappingActivities } from '../db/activities/merge.ts'
 import {
   activityTypeExists,
-  adoptCatalogMetric,
   checkActivityConflict,
   deleteActivity as dbDeleteActivity,
   fetchCategoryMap,
@@ -51,7 +50,7 @@ import {
   loadActivityTypeCatalog,
 } from './activity-type-catalog.ts'
 import { auditError } from './audit-log.ts'
-import { getCustomMetrics } from './custom-metrics.ts'
+import { getCustomMetrics, writeWithCatalogAdoption } from './custom-metrics.ts'
 import { validateActivityData } from './data-schema-validation.ts'
 import { aliasActivityData } from './item-value-aliases.ts'
 import { applyItemValueKeysForWrite, storeItemValueMappings } from './item-value-identities.ts'
@@ -195,11 +194,11 @@ export async function addMetric(
   const rangeError = validateCustomMetricRange(customMetrics, metric, value)
   if (rangeError) return refuse(rangeError, metric, unit)
 
-  if (resolved.adopt && resolved.entry) {
-    await adoptCatalogMetric(user, catalogMetricDefinition(resolved.entry))
-  }
-
-  await insertTimeSeries(user, [{ metric, source: 'aurboda', time: input.time, unit, value }])
+  const adopt = resolved.adopt && resolved.entry ? [catalogMetricDefinition(resolved.entry)] : []
+  const written = await writeWithCatalogAdoption(user, adopt, (tx) =>
+    insertTimeSeries(tx, [{ metric, source: 'aurboda', time: input.time, unit, value }]),
+  )
+  if ('error' in written) return refuse(written.error, metric, unit)
 
   // Enqueue outbound sync to Health Connect if applicable (best-effort, never fails the mutation)
   try {
@@ -270,7 +269,7 @@ export async function bulkAddMetrics(
   const customMetrics = [...(await getCustomMetrics(user))]
 
   const errors: BulkMetricError[] = []
-  const validPoints: TimeSeriesPoint[] = []
+  const validPoints: Array<{ index: number; point: TimeSeriesPoint }> = []
   const toAdopt: CustomMetricDefinition[] = []
   const resolvedDefaultSource: DataSource = (defaultSource as DataSource) ?? 'aurboda'
 
@@ -285,13 +284,24 @@ export async function bulkAddMetrics(
       toAdopt.push(definition)
       customMetrics.push(definition)
     }
-    validPoints.push(prepared.point)
+    validPoints.push({ index, point: prepared.point })
   }
 
-  for (const definition of toAdopt) await adoptCatalogMetric(user, definition)
+  if (validPoints.length === 0) return { errors, inserted: 0, success: true }
 
-  if (validPoints.length > 0) {
-    await insertTimeSeries(user, validPoints)
+  const written = await writeWithCatalogAdoption(user, toAdopt, (tx) =>
+    insertTimeSeries(
+      tx,
+      validPoints.map(({ point }) => point),
+    ),
+  )
+  if ('error' in written) {
+    const refused = validPoints.map(({ index }) => ({ error: written.error, index }))
+    return {
+      errors: [...errors, ...refused].sort((a, b) => a.index - b.index),
+      inserted: 0,
+      success: true,
+    }
   }
 
   return {

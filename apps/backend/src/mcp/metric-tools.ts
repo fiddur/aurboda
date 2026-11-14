@@ -13,7 +13,6 @@ import { z } from 'zod'
 import { auditError, auditInfo } from '../services/audit-log.ts'
 import { computeAndStoreCalories, computeAndStoreCaloriesAll } from '../services/calorie-computation.ts'
 import { listMetricCatalog, mergeCustomMetricService } from '../services/custom-metrics.ts'
-import { findCatalogMetric, getCatalogMetric, loadMetricCatalog } from '../services/metric-catalog.ts'
 import {
   addCustomMetric,
   addMetric,
@@ -32,15 +31,6 @@ import {
   parseOptionalDate,
   tzJsonResponse,
 } from './helpers.ts'
-
-const catalogAliasHint = (name: string): string | undefined => {
-  const catalog = loadMetricCatalog()
-  if (getCatalogMetric(catalog, name)) return undefined
-  const entry = findCatalogMetric(catalog, name)
-  return entry
-    ? `"${name}" is the built-in metric "${entry.name}" (stored in ${entry.unit}): use that name with add_metric, which adds it on first use.`
-    : undefined
-}
 
 export const registerMetricTools = (server: McpServer, user: string) => {
   server.tool(
@@ -96,15 +86,7 @@ export const registerMetricTools = (server: McpServer, user: string) => {
   server.tool(
     'add_custom_metric',
     "Register a new custom metric type. Custom metrics allow tracking data not covered by built-in metrics. Set include_in_daily_summary=true to surface entries and the latest value in get_daily_summary. Set aggregation='sum' for amounts (a dose, steps) so trends count days without samples as 0; the default 'avg' is for levels (weight, HR).",
-    {
-      ...addCustomMetricBodySchema.shape,
-      separate_metric: z
-        .boolean()
-        .optional()
-        .describe(
-          'Create the metric even when its name is an alias of a built-in catalogue metric (e.g. `ldl`, which is `ldl_cholesterol`)',
-        ),
-    },
+    { ...addCustomMetricBodySchema.shape },
     async ({
       aggregation,
       description,
@@ -115,11 +97,6 @@ export const registerMetricTools = (server: McpServer, user: string) => {
       separate_metric,
       unit,
     }) => {
-      const hint = catalogAliasHint(name)
-      if (hint && separate_metric !== true) {
-        return errorResponse(`${hint} Pass separate_metric: true to create a separate custom metric anyway.`)
-      }
-
       const definition = {
         ...(aggregation !== undefined ? { aggregation } : {}),
         ...(description !== undefined ? { description } : {}),
@@ -135,7 +112,7 @@ export const registerMetricTools = (server: McpServer, user: string) => {
         return errorResponse(`Invalid custom metric: ${parsed.error.issues.map((i) => i.message).join(', ')}`)
       }
 
-      const result = await addCustomMetric(user, parsed.data)
+      const result = await addCustomMetric(user, { ...parsed.data, separate_metric })
       if (!result.success) {
         return errorResponse(result.error ?? 'Failed to add custom metric')
       }

@@ -9,7 +9,7 @@
  * Safety properties, in order of importance:
  * - **Hard dedupe**: at most one post per activity/merge-group EVER. The whole
  *   group's ids are checked against existing feed posts (manual or auto) AND
- *   against the deletion suppressions (`deleteFeedPost` records the activity id
+ *   against the deletion suppressions (`deleteFeedPostWithQuotes` records the activity id
  *   before hard-deleting the post row), so a re-sync, merge, or edit can never
  *   double-post, a manually-shared activity is never auto-shared, and a share
  *   the user deleted never comes back.

@@ -14,6 +14,7 @@ import {
   bucketedCacheKey,
   imageCacheKey,
   postCardChart,
+  articleBlockBucketMs,
   postChartBucketMs,
   type PostChartDeps,
   STANDINGS_BUCKET_MS,
@@ -282,6 +283,13 @@ describe('loadPublicPostChartWith', () => {
       ),
     )
     expect(results).toEqual([{ series, type: 'line' }, null, null, null])
+  })
+})
+
+describe('articleBlockBucketMs', () => {
+  test('a challenge block like a challenge post, any other block hourly', () => {
+    expect(articleBlockBucketMs({ type: 'challenge' })).toBe(STANDINGS_BUCKET_MS)
+    expect(articleBlockBucketMs({ type: 'chart' })).toBe(3_600_000)
   })
 })
 

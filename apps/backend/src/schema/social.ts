@@ -295,7 +295,7 @@ export const socialTables: Record<string, string> = {
   // Activities whose feed post the user DELETED (#903): auto-share must never
   // republish them. feed_posts rows are hard-deleted, so the "at most one post
   // per activity/merge-group EVER" dedupe needs this record to survive the
-  // delete. Populated inside deleteFeedPost's delete statement for any
+  // delete. Populated inside deleteFeedPostWithQuotes's delete statement for any
   // activity-anchored post (manual or auto — a deliberately removed share
   // should not come back by rule either).
   autoshare_suppressions: `

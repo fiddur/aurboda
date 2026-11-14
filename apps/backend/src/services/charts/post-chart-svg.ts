@@ -40,7 +40,6 @@ export const postChartSvg = (chart: PostChart, opts: PostChartSvgOptions): strin
   }
 }
 
-/** What the chart shows, in words: the title its feed image draws, or for a race just "Standings". */
 export const postChartCaption = (chart: PostChart): string => {
   switch (chart.type) {
     case 'line':

@@ -82,8 +82,10 @@ its first visit starts at the queried range rather than at a fix. Detail pages a
   days and a stay running past its end still counts its nights inside it. A night goes to the place the
   user was at 03:00 the next morning: the visit covering that moment; else, when the last visit before
   it and the next one after it are to the same place at most 36 hours apart, that place; else the place
-  of the last visit when it ended at most 18 hours before (a phone at rest reports nothing); otherwise
-  the night has no data. The range is widened by two days each side so the nights at its edges have
+  of the next visit when it starts at most 3 hours after 03:00 (overnight travel: leaving Home at
+  23:00 and next seen at a hotel at 05:00 is a night at the hotel); else the place of the last visit
+  when it ended at most 18 hours before (a phone at rest reports nothing); otherwise the night has no
+  data. The range is widened by two days each side so the nights at its edges have
   visits around them.
 - **Figures.** `nights_by_place` (every named place with a night, most nights first),
   `nights_elsewhere`, `nights_no_data`, `nights_home` (the nights at `home_location`, default `Home`,
