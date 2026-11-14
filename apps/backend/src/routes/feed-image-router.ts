@@ -36,6 +36,7 @@ import { isCapabilityAuthorized } from '../services/feed-capability.ts'
 import {
   activityHeartRateChart,
   articleBlockAt,
+  articleBlockBucketMs,
   articleBlockChart,
   bucketedCacheKey,
   exerciseTrendChart,
@@ -313,10 +314,6 @@ export const resolveExercisePost = (
   token?: string,
 ): Promise<FeedPostRecord | null> => resolveChartPost(deps, 'exercise', username, postId, token)
 
-/** A challenge block's standings move like a challenge post's (`standings.png`); a windowed block's data, hourly. */
-const blockBucketMs = (block: ResolvedArticleBlock): number | undefined =>
-  block.type === 'challenge' ? STANDINGS_BUCKET_MS : undefined
-
 export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
   const router = Router()
   const cached = createRenderCache()
@@ -442,7 +439,14 @@ export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
     const idx = Number(index)
     const block = await resolveArticleBlock(deps, username, postId, idx, token)
     if (!block) return notFound(res)
-    const key = articleBlockCacheKey('blockpng', username, postId, idx, block.updatedAt, blockBucketMs(block))
+    const key = articleBlockCacheKey(
+      'blockpng',
+      username,
+      postId,
+      idx,
+      block.updatedAt,
+      articleBlockBucketMs(block),
+    )
     if (negativeBlocks.has(key)) return notFound(res)
     const png = await cached(key, () => renderArticleBlockImage(deps, username, block, 'png'))
     if (!png) {
@@ -459,7 +463,14 @@ export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
     const resolved = await resolveArticleBlockOf(deps, username, postId, idx, token)
     if (!resolved) return notFound(res)
     const { article, block } = resolved
-    const key = articleBlockCacheKey('blockfig', username, postId, idx, block.updatedAt, blockBucketMs(block))
+    const key = articleBlockCacheKey(
+      'blockfig',
+      username,
+      postId,
+      idx,
+      block.updatedAt,
+      articleBlockBucketMs(block),
+    )
     if (negativeBlocks.has(key)) return notFound(res)
     const png = await cached(key, () => renderArticleBlockFigure(deps, username, article, idx, block))
     if (!png) {
@@ -475,7 +486,14 @@ export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
     const idx = Number(index)
     const block = await resolveArticleBlock(deps, username, postId, idx, token)
     if (!block) return notFound(res)
-    const key = articleBlockCacheKey('blocksvg', username, postId, idx, block.updatedAt, blockBucketMs(block))
+    const key = articleBlockCacheKey(
+      'blocksvg',
+      username,
+      postId,
+      idx,
+      block.updatedAt,
+      articleBlockBucketMs(block),
+    )
     if (negativeBlocks.has(key)) return notFound(res)
     const svg = await cached(key, () => renderArticleBlockImage(deps, username, block, 'svg'))
     if (!svg) {

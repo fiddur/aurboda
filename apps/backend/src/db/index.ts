@@ -477,7 +477,6 @@ export {
   createFeedPostUnlessSuppressed,
   createReplyPost,
   type DashboardPostInput,
-  deleteFeedPost,
   deleteFeedPostWithQuotes,
   type ExercisePostInput,
   type FeedPostCursor,

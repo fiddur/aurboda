@@ -13,7 +13,7 @@ import {
   createFeedPost,
   createFeedPostUnlessSuppressed,
   createReplyPost,
-  deleteFeedPost,
+  deleteFeedPostWithQuotes,
   type FeedPostInput,
   findCoveringSharedSeriesWindow,
   getFeedPostById,
@@ -249,10 +249,10 @@ describe('Feed posts integration', () => {
   test('deletes a post', async () => {
     const user = getTestUser()
     const created = await createFeedPost(user, postInput())
-    expect(await deleteFeedPost(user, created.id)).toBe(true)
-    expect(await deleteFeedPost(user, created.id)).toBe(false)
+    expect(await deleteFeedPostWithQuotes(user, created.id)).not.toBeNull()
+    expect(await deleteFeedPostWithQuotes(user, created.id)).toBeNull()
     expect(await getFeedPostById(user, created.id)).toBeNull()
-    expect(await deleteFeedPost(user, 'null')).toBe(false)
+    expect(await deleteFeedPostWithQuotes(user, 'null')).toBeNull()
   })
 
   describe('tombstones on delete', () => {
@@ -261,7 +261,7 @@ describe('Feed posts integration', () => {
       const created = await createFeedPost(user, postInput({ visibility: 'public' }))
       expect(await getFeedTombstone(user, created.id)).toBeNull()
 
-      await deleteFeedPost(user, created.id)
+      await deleteFeedPostWithQuotes(user, created.id)
       const tomb = await getFeedTombstone(user, created.id)
       expect(tomb).not.toBeNull()
       expect(tomb?.deleted_at).toBeInstanceOf(Date)
@@ -270,14 +270,14 @@ describe('Feed posts integration', () => {
     test('records a tombstone for a deleted unlisted post', async () => {
       const user = getTestUser()
       const created = await createFeedPost(user, postInput({ visibility: 'unlisted' }))
-      await deleteFeedPost(user, created.id)
+      await deleteFeedPostWithQuotes(user, created.id)
       expect(await getFeedTombstone(user, created.id)).not.toBeNull()
     })
 
     test('does NOT tombstone a deleted followers-only post (its id never resolved publicly)', async () => {
       const user = getTestUser()
       const created = await createFeedPost(user, postInput({ visibility: 'followers' }))
-      await deleteFeedPost(user, created.id)
+      await deleteFeedPostWithQuotes(user, created.id)
       expect(await getFeedTombstone(user, created.id)).toBeNull()
     })
 

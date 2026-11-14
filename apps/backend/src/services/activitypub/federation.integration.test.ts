@@ -32,7 +32,7 @@ import {
   createArticlePost,
   createFeedPost,
   createReplyPost,
-  deleteFeedPost,
+  deleteFeedPostWithQuotes,
   type FeedPostInput,
   getFeedTombstone,
   listPublicFeedPostsPage,
@@ -774,7 +774,7 @@ describe('Feed federation actor + WebFinger', () => {
   test('a browser opening a deleted post id is redirected; a machine client still gets the 410 (#1418)', async () => {
     const user = getTestUser()
     const post = await sharePost(user, await insertExercise(user))
-    await deleteFeedPost(user, post.id)
+    await deleteFeedPostWithQuotes(user, post.id)
     const app = buildActorApp([user])
     const html = await supertest(app).get(`/users/${user}/feed/${post.id}`).set('Accept', 'text/html')
     expect(html.status).toBe(302)
@@ -809,7 +809,7 @@ describe('Feed federation actor + WebFinger', () => {
     expect(live.status).toBe(200)
 
     // Unshare, then the same id returns 410 Gone with a Tombstone at the same id.
-    await deleteFeedPost(user, post.id)
+    await deleteFeedPostWithQuotes(user, post.id)
     const gone = await getObject(app, `/users/${user}/feed/${post.id}`)
     expect(gone.status).toBe(410)
     expect(gone.type).toBe('application/activity+json')
@@ -833,7 +833,7 @@ describe('Feed federation actor + WebFinger', () => {
     expect(live.body.type).toBe('Note')
 
     // Unshare, then the same id returns 410 Gone with a Tombstone.
-    await deleteFeedPost(user, post.id)
+    await deleteFeedPostWithQuotes(user, post.id)
     const gone = await getObject(app, notePath)
     expect(gone.status).toBe(410)
     expect(gone.body.type).toBe('Tombstone')
@@ -846,7 +846,7 @@ describe('Feed federation actor + WebFinger', () => {
     const post = await sharePost(user, activityId, { visibility: 'followers' })
     const app = buildFederatedApp()
 
-    await deleteFeedPost(user, post.id)
+    await deleteFeedPostWithQuotes(user, post.id)
     expect(await getFeedTombstone(user, post.id)).toBeNull()
     const res = await getObject(app, `/users/${user}/feed/${post.id}`)
     expect(res.status).toBe(404)

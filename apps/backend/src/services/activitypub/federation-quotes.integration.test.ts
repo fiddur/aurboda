@@ -11,7 +11,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vit
 
 import { insertActivity } from '../../db/activities/index.ts'
 import { listFeedQuoteAuthorizations } from '../../db/feed-quotes.ts'
-import { createFeedPost, deleteFeedPost, updateFeedPost } from '../../db/feed.ts'
+import { createFeedPost, deleteFeedPostWithQuotes, updateFeedPost } from '../../db/feed.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../../test/db-test-helper.ts'
 import { actorDocument, inboxContext } from '../../test/inbox-context.ts'
 import { buildFeedCreate, type FeedDeliveryDeps, revokeQuoteStamps } from './deliver.ts'
@@ -404,7 +404,7 @@ describe('Quote posts (FEP-044f)', () => {
       const user = getTestUser()
       const post = await ownPost(user)
       const stamp = await approve(user, post.id)
-      await deleteFeedPost(user, post.id)
+      await deleteFeedPostWithQuotes(user, post.id)
       expect((await fetchAs2(stamp)).status).toBe(404)
     })
   })

@@ -644,7 +644,6 @@ const answerQuoteRequest = async (
     quote_uri: quoteUri.href,
     request_uri: request.id?.href ?? null,
   })
-  // The quote is already approved for its first requester: another actor gets no stamp of theirs.
   if (row.actor_uri !== requester.href) return reject()
   return new Accept({
     actor: actorUri,

@@ -25,9 +25,11 @@ import {
   challengeParticipationsResponseSchema,
   challengePreviewQuerySchema,
   challengePreviewResponseSchema,
+  challengeResponseSchema,
   challengesResponseSchema,
   discoverChallengesResponseSchema,
   challengeStandingsResponseSchema,
+  updateChallengeBodySchema,
   wellKnownAurbodaSchema,
   wellKnownQuantpubSchema,
 } from './schemas/challenges.ts'
@@ -221,6 +223,31 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'List my challenges',
+        tags: ['Challenges'],
+      },
+    },
+    '/challenges/{id}': {
+      put: {
+        description:
+          'Update a challenge the authenticated user hosts; fields left out stay as they are. Once someone from another instance has joined, the scoring, dates and timezone are locked; the name and visibility can still change.',
+        requestBody: { content: { 'application/json': { schema: updateChallengeBodySchema } } },
+        requestParams: { path: z.object({ id: z.string().meta({ description: 'Challenge ID' }) }) },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: challengeResponseSchema } },
+            description: 'The updated challenge',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Challenge not found',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The scoring, dates or timezone are locked',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Update a hosted challenge',
         tags: ['Challenges'],
       },
     },
