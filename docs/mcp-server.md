@@ -121,9 +121,14 @@ See [Exercise catalogue](features/exercise-catalog.md). Logged exercise names on
 
 See [Activity type catalogue](features/activity-type-catalog.md). A catalogue type is added to the user's types the first time `add_activity` uses its name, or with `add_activity_type` given only the name.
 
-| Tool                         | What it does                                                                                                                                                              |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `list_activity_type_catalog` | The built-in activity types for things logged by hand, each with its fields and `in_use` (whether the user already has a type of that name); `q` filters by word prefixes |
+| Tool                               | What it does                                                                                                                                                                                                                                                                                                                                           |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `list_activity_type_catalog`       | The built-in activity types for things logged by hand, each with its fields, `in_use` (whether the user already has a type of that name), `missing_fields` (the catalogue fields that type lacks) and `variants` (names that are the type with a field value set, `beer` is `alcohol` with kind beer); `q` filters by word prefixes, variants included |
+| `add_activity_type_catalog_fields` | Add the catalogue fields a type of a catalogue name lacks (`name`); fields the type has are never changed                                                                                                                                                                                                                                              |
+| `merge_activity_type`              | Merge a custom type into another (`source`, `target`); the target may be a catalogue type not used yet, and `set_data` (e.g. `{ "kind": "beer" }`) gives each moved activity the values it has none for                                                                                                                                                |
+| `add_activity_type`                | With a variant's name (`beer`) it creates nothing and answers with the built-in type and data to use instead; `separate_type: true` creates the type anyway                                                                                                                                                                                            |
+
+`add_activity` and `update_activity` refuse a type name the user does not have and the catalogue does not know; when the name is a variant, the error names the built-in type and the `data` to log instead.
 
 ### Comment tools
 

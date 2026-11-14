@@ -366,6 +366,10 @@
   gap: 0.5rem;
 }
 
+.activity-type-meta-builtin-confirm {
+  flex-wrap: wrap;
+}
+
 .activity-type-meta-schema-table {
   width: 100%;
   border-collapse: collapse;

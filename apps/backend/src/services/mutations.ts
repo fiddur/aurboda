@@ -1,4 +1,9 @@
-import type { ActivityType, CustomMetricDefinition, DataSource } from '@aurboda/api-spec'
+import type {
+  ActivityType,
+  CustomMetricDefinition,
+  DataSchemaDefinition,
+  DataSource,
+} from '@aurboda/api-spec'
 
 import { randomUUID } from 'node:crypto'
 
@@ -7,6 +12,7 @@ import type { ActivityNotifier } from './deduction-queue.ts'
 
 import { mergeOverlappingActivities } from '../db/activities/merge.ts'
 import {
+  activityTypeExists,
   checkActivityConflict,
   deleteActivity as dbDeleteActivity,
   fetchCategoryMap,
@@ -38,6 +44,11 @@ import {
   isValidMetricOrCustom,
   metricToHealthConnectType,
 } from '../schema.ts'
+import {
+  catalogVariantHint,
+  getCatalogActivityType,
+  loadActivityTypeCatalog,
+} from './activity-type-catalog.ts'
 import { auditError } from './audit-log.ts'
 import { getCustomMetrics } from './custom-metrics.ts'
 import { validateActivityData } from './data-schema-validation.ts'
@@ -286,17 +297,45 @@ export async function bulkAddMetrics(
   }
 }
 
+const dataErrorFor = (
+  schema: DataSchemaDefinition | undefined,
+  data: Record<string, unknown> | undefined,
+): string | undefined => {
+  if (!schema) return undefined
+  const validation = validateActivityData(data, schema)
+  if (!validation.valid) return `Data validation failed: ${validation.errors?.join(', ')}`
+  return undefined
+}
+
 const validateDataForType = async (
   user: string,
   activityType: string,
   data: Record<string, unknown> | undefined,
-): Promise<string | undefined> => {
-  const typeDef = await getActivityTypeDefinition(user, activityType)
-  if (!typeDef?.data_schema) return undefined
-  const validation = validateActivityData(data, typeDef.data_schema)
-  if (!validation.valid) return `Data validation failed: ${validation.errors?.join(', ')}`
-  return undefined
+): Promise<string | undefined> =>
+  dataErrorFor((await getActivityTypeDefinition(user, activityType))?.data_schema, data)
+
+const unknownActivityTypeError = (activityType: string): string => {
+  const hint = catalogVariantHint(loadActivityTypeCatalog(), activityType)
+  return `Unknown activity type: "${activityType}"${hint ? `. ${hint}` : ''}`
 }
+
+interface WriteTarget {
+  /** A catalogue type the user does not have yet, adopted once the write passed validation. */
+  adopt: boolean
+  schema: DataSchemaDefinition | undefined
+}
+
+/** The schema a write of `activityType` is validated against: the user's type's, else the catalogue entry's. */
+const resolveWriteTarget = async (user: string, activityType: string): Promise<WriteTarget | undefined> => {
+  if (await activityTypeExists(user, activityType)) {
+    return { adopt: false, schema: (await getActivityTypeDefinition(user, activityType))?.data_schema }
+  }
+  const entry = getCatalogActivityType(loadActivityTypeCatalog(), activityType)
+  return entry && { adopt: true, schema: entry.data_schema }
+}
+
+const adoptWriteTarget = async (user: string, activityType: string, target: WriteTarget): Promise<boolean> =>
+  !target.adopt || ensureActivityType(user, activityType)
 
 /**
  * Aliases go first, so a catalogue key next to an aliased name maps the name that is stored; the
@@ -322,18 +361,17 @@ export async function addActivity(
   input: AddActivityInput,
   onMutated?: ActivityNotifier,
 ): Promise<AddActivityResult> {
-  if (!(await ensureActivityType(user, input.activity_type))) {
-    return {
-      error: `Unknown activity type: "${input.activity_type}"`,
-      success: false,
-    }
-  }
+  const writeTarget = await resolveWriteTarget(user, input.activity_type)
+  if (!writeTarget) return { error: unknownActivityTypeError(input.activity_type), success: false }
 
   const keyed = await resolveItemValues(user, input.activity_type, input.data)
   if (!keyed.success) return { error: `Data validation failed: ${keyed.error}`, success: false }
   const { data, mappings } = keyed.data
-  const dataError = await validateDataForType(user, input.activity_type, data)
+  const dataError = dataErrorFor(writeTarget.schema, data)
   if (dataError) return { error: dataError, success: false }
+  if (!(await adoptWriteTarget(user, input.activity_type, writeTarget))) {
+    return { error: unknownActivityTypeError(input.activity_type), success: false }
+  }
 
   // Equal times are valid — point-in-time activities have no duration.
   if (input.end_time && input.end_time < input.start_time) {
@@ -595,12 +633,9 @@ export async function updateActivity(
 
   const finalType = input.activity_type ?? before.activity_type
   const isTypeChanging = input.activity_type !== undefined && input.activity_type !== before.activity_type
-  if (isTypeChanging && !(await ensureActivityType(user, input.activity_type!))) {
-    return {
-      error: `Unknown activity type: "${input.activity_type}"`,
-      id,
-      success: false,
-    }
+  const writeTarget = isTypeChanging ? await resolveWriteTarget(user, input.activity_type!) : undefined
+  if (isTypeChanging && !writeTarget) {
+    return { error: unknownActivityTypeError(input.activity_type!), id, success: false }
   }
   if (isTypeChanging) {
     // Conflict check is against the row we'll actually write — aurboda for
@@ -629,8 +664,13 @@ export async function updateActivity(
   const mergedData = inputData ? { ...before.data, ...inputData } : before.data
 
   if (mergedData) {
-    const dataError = await validateDataForType(user, finalType, mergedData)
+    const dataError = writeTarget
+      ? dataErrorFor(writeTarget.schema, mergedData)
+      : await validateDataForType(user, finalType, mergedData)
     if (dataError) return { error: dataError, id, success: false }
+  }
+  if (writeTarget && !(await adoptWriteTarget(user, finalType, writeTarget))) {
+    return { error: unknownActivityTypeError(finalType), id, success: false }
   }
 
   let updated: Activity | null

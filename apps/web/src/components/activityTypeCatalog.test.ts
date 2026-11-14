@@ -7,9 +7,13 @@ import type { ActivityTypeDefinition } from '../state/api/types'
 import {
   catalogEntryAsDefinition,
   catalogFieldSummary,
+  catalogRelation,
+  catalogSuggestionRows,
   catalogSuggestions,
+  catalogVariantSuggestions,
   definitionOrCatalogEntry,
   groupCatalogEntries,
+  variantDataSummary,
   withCatalogTypes,
 } from './activityTypeCatalog'
 
@@ -21,6 +25,7 @@ const entry = (over: Partial<ActivityTypeCatalogEntry> & { name: string }): Acti
   group: 'intake',
   icon: '*',
   in_use: false,
+  missing_fields: [],
   same_as: {},
   ...over,
 })
@@ -48,6 +53,34 @@ const coffee = entry({ display_name: 'Coffee', name: 'coffee' })
 const energyDrink = entry({ display_name: 'Energy drink', name: 'energy_drink' })
 const headache = entry({ display_name: 'Headache', group: 'symptoms', name: 'headache' })
 const alcohol = entry({ display_name: 'Alcohol', in_use: true, name: 'alcohol' })
+
+const beer = { aliases: [], data: { kind: 'beer' }, display_name: 'Beer', name: 'beer' }
+const lowCarb = {
+  aliases: ['low carb'],
+  data: { kind: 'low_carb' },
+  display_name: 'Low-carb diet',
+  name: 'low_carb_diet',
+}
+const iceBath = { aliases: [], data: { kind: 'ice_bath' }, display_name: 'Ice bath', name: 'ice_bath' }
+const kindField = { enum_values: ['beer', 'low_carb', 'ice_bath'], name: 'kind', type: 'string' as const }
+const drinks = entry({
+  data_schema: { fields: [kindField, { name: 'drinks', type: 'number' }] },
+  display_name: 'Alcohol',
+  name: 'alcohol',
+  variants: [beer],
+})
+const diet = entry({
+  data_schema: { fields: [{ ...kindField, label: 'Diet_Kind' }] },
+  display_name: 'Diet',
+  name: 'diet',
+  variants: [lowCarb],
+})
+const cold = entry({
+  data_schema: { fields: [kindField] },
+  display_name: 'Cold exposure',
+  name: 'cold_exposure',
+  variants: [iceBath],
+})
 
 const userDef: ActivityTypeDefinition = {
   color: '#000000',
@@ -84,6 +117,108 @@ describe('catalogSuggestions', () => {
     expect(catalogSuggestions([coffeeShop, coffee], 'coffee')).toEqual([coffee, coffeeShop])
     expect(catalogSuggestions([coffeeShop, coffee], 'coff')).toEqual([coffeeShop, coffee])
     expect(catalogSuggestions(entries, 'e', 2)).toEqual([breath, coffee])
+  })
+})
+
+describe('catalogSuggestions through variants', () => {
+  test('finds an entry through a variant, after the entries that match themselves', () => {
+    const beerGarden = entry({ display_name: 'Beer garden', name: 'beer_garden' })
+    expect(catalogSuggestions([drinks, beerGarden], 'beer')).toEqual([beerGarden, drinks])
+    expect(catalogSuggestions([drinks, diet], 'low carb')).toEqual([diet])
+  })
+
+  test('still leaves out entries in use', () => {
+    expect(catalogSuggestions([{ ...drinks, in_use: true }], 'beer')).toEqual([])
+  })
+})
+
+describe('catalogVariantSuggestions', () => {
+  test('matches variant name, display name and alias, in use or not', () => {
+    const inUse = { ...drinks, in_use: true }
+    expect(catalogVariantSuggestions([inUse, diet, cold], 'BEER')).toEqual([{ entry: inUse, variant: beer }])
+    expect(catalogVariantSuggestions([inUse, diet, cold], 'low carb')).toEqual([
+      { entry: diet, variant: lowCarb },
+    ])
+    expect(catalogVariantSuggestions([inUse, diet, cold], 'ice_b')).toEqual([
+      { entry: cold, variant: iceBath },
+    ])
+  })
+
+  test('exact matches first, the limit, and nothing for an empty query', () => {
+    const bath = { aliases: [], data: { kind: 'ice_bath' }, display_name: 'Ice', name: 'ice' }
+    const both = { ...cold, variants: [iceBath, bath] }
+    expect(catalogVariantSuggestions([both], 'ice').map((m) => m.variant)).toEqual([bath, iceBath])
+    expect(catalogVariantSuggestions([both], 'ice', 1)).toHaveLength(1)
+    expect(catalogVariantSuggestions([both], ' ')).toEqual([])
+  })
+})
+
+describe('catalogSuggestionRows', () => {
+  test('marks the variant a suggestion was reached through', () => {
+    expect(catalogSuggestionRows([drinks], 'beer')).toEqual([{ entry: drinks, variant: beer }])
+    expect(catalogSuggestionRows([drinks], 'alco')).toEqual([{ entry: drinks, variant: undefined }])
+  })
+
+  test('adds an entry in use reached through a variant, once', () => {
+    const inUse = { ...drinks, in_use: true }
+    expect(catalogSuggestionRows([inUse, sauna], 'beer')).toEqual([{ entry: inUse, variant: beer }])
+    expect(catalogSuggestionRows([inUse], 'alco')).toEqual([])
+  })
+})
+
+describe('catalogRelation', () => {
+  const def = (name: string, display_name = name, is_builtin = false) => ({ display_name, is_builtin, name })
+
+  test('fields: an entry of the same name with missing fields', () => {
+    const withMissing = { ...sauna, in_use: true, missing_fields: ['rounds'] }
+    expect(catalogRelation(def('sauna'), [withMissing])).toEqual({
+      entry: withMissing,
+      kind: 'fields',
+      missing: [{ name: 'rounds', type: 'number' }],
+    })
+  })
+
+  test('nothing for an entry of the same name with every field, even if a variant matches too', () => {
+    const named = { ...drinks, name: 'beer' }
+    expect(catalogRelation(def('beer'), [named, drinks])).toBeUndefined()
+  })
+
+  test('variant: by name, display name or alias, normalised', () => {
+    expect(catalogRelation(def('beer'), [drinks])).toEqual({ entry: drinks, kind: 'variant', variant: beer })
+    expect(catalogRelation(def('my_drink', 'Beer'), [drinks])).toMatchObject({
+      kind: 'variant',
+      variant: beer,
+    })
+    expect(catalogRelation(def('lowcarb', 'Low carb'), [diet])).toMatchObject({ variant: lowCarb })
+    expect(catalogRelation(def('ice_bath'), [cold])).toMatchObject({ variant: iceBath })
+    expect(catalogRelation(def('isbad', 'Ice Bath'), [cold])).toMatchObject({ variant: iceBath })
+  })
+
+  test('alias: an entry whose display name or alias matches', () => {
+    expect(catalogRelation(def('breathwork'), [breath])).toEqual({ entry: breath, kind: 'alias' })
+    expect(catalogRelation(def('bastu', 'SAUNA'), [sauna])).toEqual({ entry: sauna, kind: 'alias' })
+  })
+
+  test('a built-in is never offered a merge', () => {
+    expect(catalogRelation(def('ice_bath', 'Ice bath', true), [cold])).toBeUndefined()
+    expect(catalogRelation(def('breathwork', 'Breathwork', true), [breath])).toBeUndefined()
+  })
+
+  test('nothing for an unrelated type', () => {
+    expect(catalogRelation(def('driving'), [drinks, sauna, breath])).toBeUndefined()
+  })
+})
+
+describe('variantDataSummary', () => {
+  test('the field label or name, then the value as words', () => {
+    expect(variantDataSummary(drinks, beer)).toBe('kind beer')
+    expect(variantDataSummary(diet, lowCarb)).toBe('diet kind low carb')
+    expect(variantDataSummary(cold, iceBath)).toBe('kind ice bath')
+  })
+
+  test('several values joined', () => {
+    const v = { aliases: [], data: { kind: 'beer', size_class: 'pint' }, display_name: 'Pint', name: 'pint' }
+    expect(variantDataSummary(drinks, v)).toBe('kind beer, size class pint')
   })
 })
 

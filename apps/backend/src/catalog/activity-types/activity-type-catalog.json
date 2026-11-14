@@ -1,5 +1,5 @@
 {
-  "version": "2026.11.1",
+  "version": "2026.11.2",
   "groups": [
     {
       "key": "intake",
@@ -51,6 +51,48 @@
           }
         ]
       },
+      "variants": [
+        {
+          "name": "beer",
+          "display_name": "Beer",
+          "aliases": [],
+          "data": {
+            "kind": "beer"
+          }
+        },
+        {
+          "name": "wine",
+          "display_name": "Wine",
+          "aliases": [],
+          "data": {
+            "kind": "wine"
+          }
+        },
+        {
+          "name": "cider",
+          "display_name": "Cider",
+          "aliases": [],
+          "data": {
+            "kind": "cider"
+          }
+        },
+        {
+          "name": "spirits",
+          "display_name": "Spirits",
+          "aliases": ["liquor"],
+          "data": {
+            "kind": "spirits"
+          }
+        },
+        {
+          "name": "cocktail",
+          "display_name": "Cocktail",
+          "aliases": ["cocktails"],
+          "data": {
+            "kind": "cocktail"
+          }
+        }
+      ],
       "same_as": {
         "apple_healthkit": ["HKQuantityTypeIdentifierNumberOfAlcoholicBeverages"],
         "oura": ["Alcohol", "Beer", "Wine"],
@@ -82,6 +124,32 @@
           }
         ]
       },
+      "variants": [
+        {
+          "name": "coffee",
+          "display_name": "Coffee",
+          "aliases": [],
+          "data": {
+            "kind": "coffee"
+          }
+        },
+        {
+          "name": "tea",
+          "display_name": "Tea",
+          "aliases": [],
+          "data": {
+            "kind": "tea"
+          }
+        },
+        {
+          "name": "energy_drink",
+          "display_name": "Energy drink",
+          "aliases": [],
+          "data": {
+            "kind": "energy_drink"
+          }
+        }
+      ],
       "same_as": {
         "apple_healthkit": ["HKQuantityTypeIdentifierDietaryCaffeine"],
         "oura": ["Coffee", "Tea"],
@@ -112,6 +180,32 @@
           }
         ]
       },
+      "variants": [
+        {
+          "name": "cigarette",
+          "display_name": "Cigarette",
+          "aliases": ["cigarettes", "smoking"],
+          "data": {
+            "kind": "cigarette"
+          }
+        },
+        {
+          "name": "snus",
+          "display_name": "Snus",
+          "aliases": [],
+          "data": {
+            "kind": "snus"
+          }
+        },
+        {
+          "name": "vape",
+          "display_name": "Vape",
+          "aliases": ["vaping"],
+          "data": {
+            "kind": "vape"
+          }
+        }
+      ],
       "same_as": {
         "oura": ["Nicotine"]
       }
@@ -228,6 +322,16 @@
           }
         ]
       },
+      "variants": [
+        {
+          "name": "intermittent_fasting",
+          "display_name": "Intermittent fasting",
+          "aliases": [],
+          "data": {
+            "kind": "intermittent"
+          }
+        }
+      ],
       "same_as": {
         "oura": ["Fasting"],
         "garmin": ["Intermittent Fasting"]
@@ -252,6 +356,48 @@
           }
         ]
       },
+      "variants": [
+        {
+          "name": "keto_diet",
+          "display_name": "Keto diet",
+          "aliases": ["keto"],
+          "data": {
+            "kind": "keto"
+          }
+        },
+        {
+          "name": "low_carb_diet",
+          "display_name": "Low-carb diet",
+          "aliases": ["low carb"],
+          "data": {
+            "kind": "low_carb"
+          }
+        },
+        {
+          "name": "vegetarian_diet",
+          "display_name": "Vegetarian diet",
+          "aliases": [],
+          "data": {
+            "kind": "vegetarian"
+          }
+        },
+        {
+          "name": "vegan_diet",
+          "display_name": "Vegan diet",
+          "aliases": [],
+          "data": {
+            "kind": "vegan"
+          }
+        },
+        {
+          "name": "calorie_deficit",
+          "display_name": "Calorie deficit",
+          "aliases": [],
+          "data": {
+            "kind": "calorie_deficit"
+          }
+        }
+      ],
       "same_as": {
         "oura": ["Keto diet"]
       }
@@ -283,6 +429,40 @@
           }
         ]
       },
+      "variants": [
+        {
+          "name": "common_cold",
+          "display_name": "Common cold",
+          "aliases": [],
+          "data": {
+            "kind": "cold"
+          }
+        },
+        {
+          "name": "flu",
+          "display_name": "Flu",
+          "aliases": ["influenza"],
+          "data": {
+            "kind": "flu"
+          }
+        },
+        {
+          "name": "stomach_bug",
+          "display_name": "Stomach bug",
+          "aliases": ["stomach flu"],
+          "data": {
+            "kind": "stomach_bug"
+          }
+        },
+        {
+          "name": "covid",
+          "display_name": "COVID",
+          "aliases": ["covid 19"],
+          "data": {
+            "kind": "covid"
+          }
+        }
+      ],
       "same_as": {
         "oura": ["Cold", "Sick"]
       }
@@ -350,6 +530,80 @@
           }
         ]
       },
+      "variants": [
+        {
+          "name": "neck_pain",
+          "display_name": "Neck pain",
+          "aliases": [],
+          "data": {
+            "location": "neck"
+          }
+        },
+        {
+          "name": "shoulder_pain",
+          "display_name": "Shoulder pain",
+          "aliases": [],
+          "data": {
+            "location": "shoulder"
+          }
+        },
+        {
+          "name": "back_pain",
+          "display_name": "Back pain",
+          "aliases": [],
+          "data": {
+            "location": "back"
+          }
+        },
+        {
+          "name": "lower_back_pain",
+          "display_name": "Lower back pain",
+          "aliases": [],
+          "data": {
+            "location": "lower_back"
+          }
+        },
+        {
+          "name": "pelvic_pain",
+          "display_name": "Pelvic pain",
+          "aliases": [],
+          "data": {
+            "location": "pelvis"
+          }
+        },
+        {
+          "name": "breast_pain",
+          "display_name": "Breast pain",
+          "aliases": [],
+          "data": {
+            "location": "breast"
+          }
+        },
+        {
+          "name": "hip_pain",
+          "display_name": "Hip pain",
+          "aliases": [],
+          "data": {
+            "location": "hip"
+          }
+        },
+        {
+          "name": "knee_pain",
+          "display_name": "Knee pain",
+          "aliases": [],
+          "data": {
+            "location": "knee"
+          }
+        },
+        {
+          "name": "joint_pain",
+          "display_name": "Joint pain",
+          "aliases": [],
+          "data": {
+            "location": "joint"
+          }
+        }
+      ],
       "same_as": {
         "apple_healthkit": [
           "HKCategoryTypeIdentifierLowerBackPain",
@@ -491,6 +745,40 @@
           }
         ]
       },
+      "variants": [
+        {
+          "name": "cold_plunge",
+          "display_name": "Cold plunge",
+          "aliases": [],
+          "data": {
+            "kind": "cold_plunge"
+          }
+        },
+        {
+          "name": "cold_shower",
+          "display_name": "Cold shower",
+          "aliases": [],
+          "data": {
+            "kind": "cold_shower"
+          }
+        },
+        {
+          "name": "ice_bath",
+          "display_name": "Ice bath",
+          "aliases": [],
+          "data": {
+            "kind": "ice_bath"
+          }
+        },
+        {
+          "name": "winter_swim",
+          "display_name": "Winter swim",
+          "aliases": ["winter swimming", "cold swim"],
+          "data": {
+            "kind": "winter_swim"
+          }
+        }
+      ],
       "same_as": {
         "oura": ["Cold exposure"],
         "garmin": ["Cold Plunge"]
@@ -536,6 +824,24 @@
           }
         ]
       },
+      "variants": [
+        {
+          "name": "massage_gun",
+          "display_name": "Massage gun",
+          "aliases": ["theragun"],
+          "data": {
+            "kind": "massage_gun"
+          }
+        },
+        {
+          "name": "foam_roller",
+          "display_name": "Foam roller",
+          "aliases": ["foam rolling"],
+          "data": {
+            "kind": "foam_roller"
+          }
+        }
+      ],
       "same_as": {
         "oura": ["Massage", "Theragun"]
       }
@@ -635,6 +941,16 @@
           }
         ]
       },
+      "variants": [
+        {
+          "name": "flight",
+          "display_name": "Flight",
+          "aliases": ["airplane", "plane", "flying"],
+          "data": {
+            "mode": "plane"
+          }
+        }
+      ],
       "same_as": {
         "oura": ["Travel", "Airplane", "Car"]
       }

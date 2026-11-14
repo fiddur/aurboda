@@ -80,12 +80,34 @@ export const renameActivityType = async (
 export const mergeActivityTypeApi = async (
   source: string,
   target: string,
-): Promise<{ success: boolean; activities_reassigned?: number; deduction_rules_updated?: number }> => {
+  setData?: Record<string, unknown>,
+): Promise<{
+  success: boolean
+  activities_data_set?: number
+  activities_reassigned?: number
+  deduction_rules_updated?: number
+}> => {
   const { token } = auth.value
   const response = await axios.post<{
     success: boolean
+    activities_data_set?: number
     activities_reassigned?: number
     deduction_rules_updated?: number
-  }>(`${API_URL}/activity-types/merge`, { source, target }, { headers: { Authorization: `Bearer ${token}` } })
+  }>(
+    `${API_URL}/activity-types/merge`,
+    { source, target, ...(setData ? { set_data: setData } : {}) },
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
   return response.data
+}
+
+/** Appends the built-in catalogue fields the type lacks; answers with the updated definition. */
+export const addCatalogFieldsToActivityType = async (name: string): Promise<ActivityTypeDefinition> => {
+  const { token } = auth.value
+  const response = await axios.post<{ data: ActivityTypeDefinition; success: boolean }>(
+    `${API_URL}/activity-types/${encodeURIComponent(name)}/catalog-fields`,
+    {},
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  return response.data.data
 }

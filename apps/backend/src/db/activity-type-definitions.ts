@@ -397,18 +397,25 @@ export const resolveActivityTypeFromHcExerciseType = async (
   return result.rows[0].name as string
 }
 
-/** Merges aliases, reassigns all activities, updates deduction rules, then deletes the source. */
+export interface MergeActivityTypeDefinitionResult {
+  activities_data_set: number
+  activities_reassigned: number
+  deduction_rules_updated: number
+  target: ActivityTypeDefinition
+}
+
+/**
+ * Merges aliases, reassigns all activities, updates deduction rules, then deletes the source. `setData` fills
+ * each of its keys on the moved activities where that key is absent or null.
+ */
 export const mergeActivityTypeDefinition = async (
   user: string,
   sourceName: string,
   targetName: string,
-): Promise<{
-  activities_reassigned: number
-  deduction_rules_updated: number
-  target: ActivityTypeDefinition
-} | null> => {
+  setData?: Record<string, unknown>,
+): Promise<MergeActivityTypeDefinitionResult | null> => {
   if (sourceName === targetName) return null
-  return withUserTransaction(user, (tx) => mergeInTransaction(tx, sourceName, targetName))
+  return withUserTransaction(user, (tx) => mergeInTransaction(tx, sourceName, targetName, setData))
 }
 
 /**
@@ -419,11 +426,8 @@ const mergeInTransaction = async (
   tx: Queryable,
   sourceName: string,
   targetName: string,
-): Promise<{
-  activities_reassigned: number
-  deduction_rules_updated: number
-  target: ActivityTypeDefinition
-} | null> => {
+  setData: Record<string, unknown> | undefined,
+): Promise<MergeActivityTypeDefinitionResult | null> => {
   const sourceResult = await query(
     tx,
     `SELECT ${SELECT_COLS} FROM activity_type_definitions WHERE name = $1`,
@@ -465,6 +469,7 @@ const mergeInTransaction = async (
         )`,
     [targetName, sourceName],
   )
+  const activities_data_set = await fillMissingData(tx, sourceName, setData)
   const activitiesResult = await query(
     tx,
     `UPDATE activities SET activity_type = $1 WHERE activity_type = $2 RETURNING deleted_at IS NULL AS live`,
@@ -525,7 +530,35 @@ const mergeInTransaction = async (
   ])
   if (updated.rows.length === 0) return null
 
-  return { activities_reassigned, deduction_rules_updated, target: mapRow(updated.rows[0]) }
+  return {
+    activities_data_set,
+    activities_reassigned,
+    deduction_rules_updated,
+    target: mapRow(updated.rows[0]),
+  }
+}
+
+/** Gives the type's activities, soft-deleted ones included, each key of `setData` they have no value for. Counts live rows. */
+const fillMissingData = async (
+  tx: Queryable,
+  activityType: string,
+  setData: Record<string, unknown> | undefined,
+): Promise<number> => {
+  if (setData === undefined || Object.keys(setData).length === 0) return 0
+  const result = await query(
+    tx,
+    `UPDATE activities a
+        SET data = COALESCE(a.data, '{}'::jsonb) || fill.patch
+       FROM (SELECT s.id, jsonb_object_agg(kv.key, kv.value) AS patch
+               FROM activities s, jsonb_each($2::jsonb) kv
+              WHERE s.activity_type = $1
+                AND (s.data IS NULL OR s.data -> kv.key IS NULL OR s.data -> kv.key = 'null'::jsonb)
+              GROUP BY s.id) fill
+      WHERE a.id = fill.id
+      RETURNING a.deleted_at IS NULL AS live`,
+    [activityType, JSON.stringify(setData)],
+  )
+  return result.rows.filter((r) => r.live === true).length
 }
 
 /** Only allowed for custom (non-built-in) types. New name must not already exist. */

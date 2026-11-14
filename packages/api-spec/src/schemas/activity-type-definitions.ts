@@ -167,6 +167,10 @@ export type RenameActivityTypeResponse = z.infer<typeof renameActivityTypeRespon
 /** All activities are reassigned; aliases are merged; the source definition is deleted. */
 export const mergeActivityTypeBodySchema = z
   .object({
+    set_data: z.record(z.string(), z.unknown()).optional().meta({
+      description:
+        'Field values given to every moved activity that has no value for that field yet, e.g. `{ "kind": "beer" }` when merging `beer` into `alcohol`. Only scalar fields of the target\'s data schema',
+    }),
     source: activityTypeNameSchema.meta({ description: 'Custom activity type to merge away' }),
     target: activityTypeNameSchema.meta({ description: 'Target activity type to merge into' }),
   })
@@ -176,6 +180,11 @@ export type MergeActivityTypeBody = z.infer<typeof mergeActivityTypeBodySchema>
 
 export const mergeActivityTypeResponseSchema = baseResponseSchema
   .extend({
+    activities_data_set: z
+      .number()
+      .int()
+      .optional()
+      .meta({ description: 'Number of moved activities that got a value from `set_data`' }),
     activities_reassigned: z
       .number()
       .int()

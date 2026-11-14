@@ -24,6 +24,7 @@ import { CHART_PRIMARY } from '../../theme'
 import { displayCategoryOptions } from '../../utils/displayCategories'
 import { toDisplayName } from '../../utils/displayName'
 import { suggestEmoji } from '../../utils/emojiLookup'
+import { BuiltInMatchSection } from './BuiltInMatchSection'
 import { ItemGroupsSection } from './ItemGroupsSection'
 import { MuscleGroupSection } from './MuscleGroupSection'
 import {
@@ -809,6 +810,8 @@ export function ActivityTypeMeta() {
         currentCategory={category}
         showOnTimeline={showOnTimeline}
       />
+
+      {typeDef && <BuiltInMatchSection typeDef={typeDef} />}
 
       <DataSchemaSection name={name} dataSchema={typeDef?.data_schema} />
 

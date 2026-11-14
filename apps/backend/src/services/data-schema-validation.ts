@@ -67,3 +67,22 @@ export const validateActivityData = (
   if (errors.length > 0) return { errors, valid: false }
   return { valid: true }
 }
+
+/**
+ * For a partial object such as a merge's set_data: every key must be a declared scalar field, and each value
+ * must pass its type, enum and bounds. Required fields are not demanded.
+ */
+export const validatePartialActivityData = (
+  data: Record<string, unknown>,
+  schema: DataSchemaDefinition | null | undefined,
+): DataValidationResult => {
+  const errors = Object.entries(data).flatMap(([key, value]) => {
+    const field = schema?.fields.find((f) => f.name === key)
+    if (!field) return [`Field "${key}" is not a field of this type`]
+    if (field.type === 'list') return [`Field "${key}" is a list and cannot be set this way`]
+    if (!isPresent(value)) return [`Field "${key}" has no value`]
+    return validateScalar(key, value, field)
+  })
+  if (errors.length > 0) return { errors, valid: false }
+  return { valid: true }
+}

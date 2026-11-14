@@ -3,6 +3,7 @@ import {
   addActivityTypeDefinitionBodySchema,
   itemValueAliasesQuerySchema,
   itemValueIdentityQuerySchema,
+  mergeActivityTypeBodySchema,
   mergeItemValuesBodySchema,
   setItemValueIdentityBodySchema,
   unmappedItemValuesQuerySchema,
@@ -11,7 +12,13 @@ import {
 import { z } from 'zod'
 
 import {
+  catalogVariantHint,
+  getCatalogActivityType,
+  loadActivityTypeCatalog,
+} from '../services/activity-type-catalog.ts'
+import {
   addActivityTypeDefinition,
+  addCatalogFieldsToActivityType,
   deleteActivityTypeDefinition,
   listActivityTypeCatalog,
   listActivityTypeDefinitions,
@@ -41,7 +48,7 @@ export const registerActivityTypeTools = (server: McpServer, user: string) => {
 
   server.tool(
     'list_activity_type_catalog',
-    "List Aurboda's built-in activity types for things logged by hand (intake, meals and diet, health, symptoms, recovery, context), each with its fields. `in_use` says whether the user already has a type of that name. A type not in use is added automatically the first time add_activity uses its name, or with add_activity_type given only the name. Check here before creating a custom type.",
+    "List Aurboda's built-in activity types for things logged by hand (intake, meals and diet, health, symptoms, recovery, context), each with its fields. `in_use` says whether the user already has a type of that name, and `missing_fields` which catalogue fields that type of the user's lacks (add_activity_type_catalog_fields adds them). `variants` are names that are the type with a field value set, e.g. `beer` is `alcohol` with kind beer: log those as the type with that data rather than as a type of their own. A type not in use is added automatically the first time add_activity uses its name, or with add_activity_type given only the name. Check here before creating a custom type.",
     { ...activityTypeCatalogQuerySchema.shape },
     async ({ q }) => jsonResponse(await listActivityTypeCatalog(user, q)),
   )
@@ -49,10 +56,36 @@ export const registerActivityTypeTools = (server: McpServer, user: string) => {
   server.tool(
     'add_activity_type',
     'Create a custom activity type definition. The name must be snake_case (e.g. "sauna", "driving", "hot_bath"). Many types are built in (list_activity_types), and with a name from list_activity_type_catalog only `name` is needed: the catalogue fills in display name, category, icon and fields. A data_schema field of type `list` carries `item_fields` and holds an array of objects, e.g. the `sets` of a strength session (`exercise`, `weight`, `reps`, `time`).',
-    { ...addActivityTypeDefinitionBodySchema.shape },
-    async (params) => {
-      const result = await addActivityTypeDefinition(user, params)
+    {
+      ...addActivityTypeDefinitionBodySchema.shape,
+      separate_type: z
+        .boolean()
+        .optional()
+        .describe(
+          'Create the type even when its name is a variant of a built-in type (e.g. `beer`, which is `alcohol` with kind beer)',
+        ),
+    },
+    async ({ separate_type, ...params }) => {
+      const catalog = loadActivityTypeCatalog()
+      const hint = getCatalogActivityType(catalog, params.name)
+        ? undefined
+        : catalogVariantHint(catalog, params.name)
+      if (hint && separate_type !== true) {
+        return errorResponse(`${hint} Pass separate_type: true to create a separate type anyway.`)
+      }
+      const result = await addActivityTypeDefinition(user, params, catalog)
       if (!result.success) return errorResponse(result.error ?? 'Failed to create activity type')
+      return jsonResponse(result.data)
+    },
+  )
+
+  server.tool(
+    'add_activity_type_catalog_fields',
+    'Add the built-in catalogue fields an existing activity type of a catalogue name does not have yet (`missing_fields` in list_activity_type_catalog). Fields the type already has are never changed.',
+    { name: z.string().describe('Name of the activity type, a name from list_activity_type_catalog') },
+    async ({ name }) => {
+      const result = await addCatalogFieldsToActivityType(user, name)
+      if (!result.success) return errorResponse(result.error ?? 'Failed to add catalogue fields')
       return jsonResponse(result.data)
     },
   )
@@ -101,13 +134,14 @@ export const registerActivityTypeTools = (server: McpServer, user: string) => {
 
   server.tool(
     'merge_activity_type',
-    'Merge a custom activity type into another activity type (built-in or custom). All activities are reassigned, aliases are merged, deduction rules are updated, and the source custom type definition is deleted. Built-in types cannot be used as the source.',
+    "Merge a custom activity type into another activity type (built-in or custom). All activities are reassigned, aliases are merged, deduction rules are updated, and the source custom type definition is deleted. Built-in types cannot be used as the source. `set_data` gives every moved activity a field value it lacks, e.g. merging `beer` into `alcohol` with `{ kind: 'beer' }`; the target may be a built-in catalogue type not used yet.",
     {
+      set_data: mergeActivityTypeBodySchema.shape.set_data,
       source: z.string().describe('Name of the custom activity type to merge away'),
       target: z.string().describe('Name of the target activity type to merge into'),
     },
-    async ({ source, target }) => {
-      const result = await mergeActivityType(user, source, target)
+    async ({ set_data, source, target }) => {
+      const result = await mergeActivityType(user, source, target, set_data)
       if (!result.success) return errorResponse(result.error ?? 'Failed to merge activity type')
       return jsonResponse(result)
     },

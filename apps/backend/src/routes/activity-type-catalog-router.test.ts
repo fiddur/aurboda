@@ -7,7 +7,16 @@ import { describe, expect, test, vi } from 'vitest'
 import { createActivityTypeCatalogRouter } from './activity-type-catalog-router.ts'
 
 vi.mock('../db/index.ts', () => ({
-  getActivityTypeNames: vi.fn().mockResolvedValue(['sauna']),
+  getActivityTypeDefinitions: vi.fn().mockResolvedValue([
+    {
+      color: '#f97316',
+      display_category: 'wellness',
+      display_name: 'Sauna',
+      is_builtin: false,
+      name: 'sauna',
+      show_on_timeline: true,
+    },
+  ]),
 }))
 
 const catalog: StoredActivityTypeCatalog = {
@@ -56,14 +65,14 @@ const buildApp = () => {
 }
 
 describe('GET /activity-type-catalog', () => {
-  test('lists every entry with in_use, the groups and the version', async () => {
+  test('lists every entry with in_use, missing_fields, the groups and the version', async () => {
     const res = await supertest(buildApp()).get('/activity-type-catalog')
     expect(res.status).toBe(200)
     expect(res.body).toEqual({
       data: {
         entries: [
-          { ...catalog.entries[0], in_use: true },
-          { ...catalog.entries[1], in_use: false },
+          { ...catalog.entries[0], in_use: true, missing_fields: [] },
+          { ...catalog.entries[1], in_use: false, missing_fields: [] },
         ],
         groups: catalog.groups,
         version: '2026.11.1',

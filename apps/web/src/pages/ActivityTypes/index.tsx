@@ -7,8 +7,10 @@ import type { ActivityTypeDefinition } from '../../state/api'
 
 import {
   catalogFieldSummary,
-  catalogSuggestions,
+  catalogSuggestionRows,
+  type CatalogSuggestionRow,
   groupCatalogEntries,
+  variantDataSummary,
 } from '../../components/activityTypeCatalog'
 import { IconPreview } from '../../components/IconPreview'
 import {
@@ -38,12 +40,14 @@ function CatalogEntryRow({
   entry,
   meta,
   buttonLabel,
+  hideButton,
   onAdded,
   onError,
 }: {
   entry: ActivityTypeCatalogEntry
   meta: string
   buttonLabel: string
+  hideButton?: boolean
   onAdded?: () => void
   onError?: (message: string) => void
 }) {
@@ -76,21 +80,31 @@ function CatalogEntryRow({
         {fields && <span class="at-catalog-fields">Fields: {fields}</span>}
         {error && <span class="at-add-error">{error}</span>}
       </div>
-      <div class="at-actions">
-        <button
-          type="button"
-          class="at-add-save"
-          disabled={addMutation.isPending}
-          onClick={() => {
-            setError('')
-            addMutation.mutate()
-          }}
-        >
-          {addMutation.isPending ? 'Adding...' : buttonLabel}
-        </button>
-      </div>
+      {!hideButton && (
+        <div class="at-actions">
+          <button
+            type="button"
+            class="at-add-save"
+            disabled={addMutation.isPending}
+            onClick={() => {
+              setError('')
+              addMutation.mutate()
+            }}
+          >
+            {addMutation.isPending ? 'Adding...' : buttonLabel}
+          </button>
+        </div>
+      )}
     </div>
   )
+}
+
+const suggestionMeta = ({ entry, variant }: CatalogSuggestionRow): string => {
+  if (variant && entry.in_use) {
+    return `you have this type; ${variant.display_name} is logged as ${variantDataSummary(entry, variant)}`
+  }
+  if (variant) return `covers ${variant.display_name}`
+  return DISPLAY_CATEGORY_LABELS[entry.display_category] ?? entry.display_category
 }
 
 const toSnakeName = (s: string) =>
@@ -108,7 +122,7 @@ function AddActivityTypeForm({ onDone }: { onDone: () => void }) {
   const [category, setCategory] = useState('other')
   const [error, setError] = useState('')
   const { data: catalog } = useQuery(catalogQuery)
-  const suggestions = catalogSuggestions(catalog?.entries ?? [], displayName)
+  const suggestions = catalogSuggestionRows(catalog?.entries ?? [], displayName)
 
   const addMutation = useMutation({
     mutationFn: () =>
@@ -179,11 +193,12 @@ function AddActivityTypeForm({ onDone }: { onDone: () => void }) {
       {suggestions.length > 0 && (
         <div class="at-suggestions">
           <h3 class="at-suggestions-heading">Built-in types that match</h3>
-          {suggestions.map((entry) => (
+          {suggestions.map((row) => (
             <CatalogEntryRow
-              key={entry.name}
-              entry={entry}
-              meta={DISPLAY_CATEGORY_LABELS[entry.display_category] ?? entry.display_category}
+              key={row.entry.name}
+              entry={row.entry}
+              meta={suggestionMeta(row)}
+              hideButton={row.entry.in_use}
               buttonLabel="Add built-in"
               onAdded={onDone}
               onError={setError}

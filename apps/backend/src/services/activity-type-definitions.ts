@@ -12,9 +12,9 @@ import { builtinActivityTypes } from '@aurboda/api-spec'
 import {
   adoptCatalogActivityType,
   deleteActivityTypeDefinition as dbDelete,
+  ensureActivityType,
   getActivityTypeDefinition as dbGet,
   getActivityTypeDefinitions as dbList,
-  getActivityTypeNames,
   insertActivityTypeDefinition as dbInsert,
   mergeActivityTypeDefinition as dbMerge,
   renameActivityTypeDefinition as dbRename,
@@ -23,9 +23,11 @@ import {
 import {
   getCatalogActivityType,
   loadActivityTypeCatalog,
+  missingCatalogFields,
   searchActivityTypeCatalog,
   toActivityTypeCatalogEntry,
 } from './activity-type-catalog.ts'
+import { validatePartialActivityData } from './data-schema-validation.ts'
 
 export interface ActivityTypeDefinitionResult {
   success: boolean
@@ -89,17 +91,22 @@ const insertFromCatalog = async (
   })
 }
 
-/** The catalogue entries matching `q`, each marked with whether the user already has a type of that name. */
+/**
+ * The catalogue entries matching `q`, each marked with whether the user already has a type of that name and
+ * which catalogue fields that type lacks.
+ */
 export const listActivityTypeCatalog = async (
   user: string,
   q?: string,
   catalog: StoredActivityTypeCatalog = loadActivityTypeCatalog(),
 ): Promise<ActivityTypeCatalogResult> => {
-  const names = new Set(await getActivityTypeNames(user))
+  const definitions = new Map((await dbList(user)).map((def) => [def.name, def]))
   return {
-    entries: searchActivityTypeCatalog(catalog, q).map((entry) =>
-      toActivityTypeCatalogEntry(entry, names.has(entry.name)),
-    ),
+    entries: searchActivityTypeCatalog(catalog, q).map((entry) => {
+      const def = definitions.get(entry.name)
+      const missing = def ? missingCatalogFields(entry, def.data_schema).map((field) => field.name) : []
+      return toActivityTypeCatalogEntry(entry, def !== undefined, missing)
+    }),
     groups: catalog.groups,
     version: catalog.version,
   }
@@ -128,6 +135,28 @@ export const updateActivityTypeDefinition = async (
     return { error: 'Failed to update activity type definition', success: false }
   }
 
+  return { data: updated, success: true }
+}
+
+/** Appends the catalogue fields the user's type of a catalogue name lacks; fields it has are never changed. */
+export const addCatalogFieldsToActivityType = async (
+  user: string,
+  name: string,
+  catalog: StoredActivityTypeCatalog = loadActivityTypeCatalog(),
+): Promise<ActivityTypeDefinitionResult> => {
+  const existing = await dbGet(user, name)
+  if (!existing) return { error: `Activity type "${name}" not found`, success: false }
+
+  const entry = getCatalogActivityType(catalog, name)
+  if (!entry) return { error: `"${name}" is not a built-in catalogue type`, success: false }
+
+  const missing = missingCatalogFields(entry, existing.data_schema)
+  if (missing.length === 0) return { data: existing, success: true }
+
+  const updated = await dbUpdate(user, name, {
+    data_schema: { fields: [...(existing.data_schema?.fields ?? []), ...missing] },
+  })
+  if (!updated) return { error: 'Failed to update activity type definition', success: false }
   return { data: updated, success: true }
 }
 
@@ -188,18 +217,35 @@ export const renameActivityTypeDefinition = async (
 export interface MergeActivityTypeResult {
   success: boolean
   error?: string
+  activities_data_set?: number
   activities_reassigned?: number
   deduction_rules_updated?: number
   target?: ActivityTypeDefinition
 }
 
+const setDataErrorFor = (
+  setData: Record<string, unknown> | undefined,
+  target: string,
+  schema: DataSchemaDefinition | null | undefined,
+): string | undefined => {
+  if (!setData) return undefined
+  const validation = validatePartialActivityData(setData, schema)
+  return validation.valid
+    ? undefined
+    : `set_data is not valid for "${target}": ${(validation.errors ?? []).join('; ')}`
+}
+
 /**
- * All activities are reassigned, aliases merged, deduction rules updated, source deleted.
+ * All activities are reassigned, aliases merged, deduction rules updated, source deleted. A target that is a
+ * catalogue type not used yet is adopted first. `setData` fills those fields on the moved activities that
+ * have no value for them.
  */
 export const mergeActivityType = async (
   user: string,
   source: string,
   target: string,
+  setData?: Record<string, unknown>,
+  catalog: StoredActivityTypeCatalog = loadActivityTypeCatalog(),
 ): Promise<MergeActivityTypeResult> => {
   if (source === target) {
     return { error: 'Source and target cannot be the same activity type.', success: false }
@@ -209,12 +255,22 @@ export const mergeActivityType = async (
     return { error: `Cannot merge built-in activity type "${source}".`, success: false }
   }
 
-  const result = await dbMerge(user, source, target)
-  if (!result) {
-    return { error: `Activity type "${source}" or "${target}" not found.`, success: false }
-  }
+  const notFound = { error: `Activity type "${source}" or "${target}" not found.`, success: false }
+  if (!(await dbGet(user, source))) return notFound
+  const targetDef = await dbGet(user, target)
+  const targetEntry = targetDef ? undefined : getCatalogActivityType(catalog, target)
+  if (!targetDef && !targetEntry) return notFound
+
+  const data = setData && Object.keys(setData).length > 0 ? setData : undefined
+  const setDataError = setDataErrorFor(data, target, (targetDef ?? targetEntry)?.data_schema)
+  if (setDataError) return { error: setDataError, success: false }
+  if (!(await ensureActivityType(user, target, catalog))) return notFound
+
+  const result = await dbMerge(user, source, target, data)
+  if (!result) return notFound
 
   return {
+    activities_data_set: result.activities_data_set,
     activities_reassigned: result.activities_reassigned,
     deduction_rules_updated: result.deduction_rules_updated,
     success: true,

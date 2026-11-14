@@ -78,13 +78,42 @@ Severity is a number from 0 to 10, enforced on write through the field's `min` a
 [Data Schema and Categorical Fields](activity-types.md#data-schema-and-categorical-fields)). As a
 guide: 1 to 3 is mild, 4 to 6 moderate, 7 to 10 severe.
 
+## Variants
+
+Some names are a catalogue type with a field value set: a beer is `alcohol` with kind `beer`, a
+back pain is `pain` with location `back`. The catalogue lists these as **variants** of their type,
+each with a name, display name, aliases and the `data` that makes it. A variant is not a type of its
+own: log a beer as `alcohol` with `{ "kind": "beer" }`.
+
+| Type            | Variants (field value)                                                                                       |
+| --------------- | ------------------------------------------------------------------------------------------------------------ |
+| `alcohol`       | beer, wine, cider, spirits (alias liquor), cocktail (cocktails) -- `kind`                                    |
+| `caffeine`      | coffee, tea, energy drink -- `kind`                                                                          |
+| `nicotine`      | cigarette (cigarettes, smoking), snus, vape (vaping) -- `kind`                                               |
+| `fasting`       | intermittent fasting -- kind `intermittent`                                                                  |
+| `diet`          | keto diet (keto), low-carb diet (low carb), vegetarian diet, vegan diet, calorie deficit -- `kind`           |
+| `illness`       | common cold (kind `cold`), flu (influenza), stomach bug (stomach flu), COVID (covid 19) -- `kind`            |
+| `pain`          | neck, shoulder, back, lower back, pelvic (location `pelvis`), breast, hip, knee and joint pain -- `location` |
+| `cold_exposure` | cold plunge, cold shower, ice bath, winter swim (winter swimming, cold swim) -- `kind`                       |
+| `massage`       | massage gun (theragun), foam roller (foam rolling) -- `kind`                                                 |
+| `travel`        | flight (airplane, plane, flying) -- mode `plane`                                                             |
+
+Where no value is named, it is the variant's name (`energy_drink`, `lower_back`). A variant's name,
+display name and aliases are never those of a catalogue type or of another variant.
+
+Variants are only names that point at their type. Nothing is merged or renamed by itself: a `beer`
+type you already have stays yours until you merge it (see below). Through the API, `add_activity`,
+`update_activity` and the MCP `add_activity_type` answer a variant name they cannot use with the
+type and data to use instead.
+
 ## Adoption on first use
 
 A catalogue type becomes one of your types the first time it is used, through any of these:
 
 - **Adding an activity** of it (`POST /activities`, `add_activity`), or changing an activity's type
-  to it (`PATCH /activities/:id`, `update_activity`). The activity's `data` is then validated
-  against the adopted fields, so a headache of severity 11 is refused.
+  to it (`PATCH /activities/:id`, `update_activity`). The activity's `data` is validated
+  against the catalogue's fields before the type is added, so a headache of severity 11 is refused
+  and adds no type.
 - **Adding the type** with only its name (`POST /activity-types` with `{ "name": "sauna" }`,
   `add_activity_type`). Every field you leave out is taken from the catalogue; a field you give is
   used as given, and your aliases are joined with the catalogue's.
@@ -104,12 +133,43 @@ before the catalogue is looked at.
 Adopted types are custom types (`is_builtin` false). Two first uses at the same moment add the
 type once.
 
+## Types you already have
+
+A type of yours that existed before the catalogue, or was made by hand, is never changed by it.
+Two explicit steps bring it in line:
+
+- **Taking the built-in fields.** When your type has a catalogue name but lacks some of the
+  catalogue's fields (your `sauna` without `temperature` and `rounds`), the catalogue lists them as
+  `missing_fields`. `POST /activity-types/:name/catalog-fields` (`add_activity_type_catalog_fields`)
+  appends them after your own fields. A field you already have, matched by name, is kept exactly as
+  it is, even when it differs from the catalogue's.
+- **Merging a variant-named or alias-named type.** A `beer` type of yours folds into `alcohol` with
+  the [type merge](activity-types.md#merging-types) and `set_data`: `POST /activity-types/merge`
+  with `{ "source": "beer", "target": "alcohol", "set_data": { "kind": "beer" } }`
+  (`merge_activity_type`). Every beer becomes an `alcohol` activity with kind `beer`, unless it
+  already had a kind. A type named like a catalogue type's display name or alias (`breathwork`)
+  merges the same way, without `set_data`. The target is adopted first if you do not have it yet.
+
 ## In the web app
 
 - **Types** page, **+ Add Type**: while you type a display name, built-in types that match it (by
   name, display name or alias) are listed under "Built-in types that match", each with its icon,
   category and fields, and an **Add built-in** button that adds it with everything filled in. The
   ordinary **Add** still adds a custom type with the name and category you typed.
+  A built-in type reached through one of its variants ("beer" finds Alcohol) says `covers Beer`
+  instead of its category. One you already have is listed without a button, as
+  `you have this type; Beer is logged as kind beer`.
+- **A type's page**, a section above **Data Schema** when the type matches the catalogue:
+  - **Built-in fields**, for your type of a catalogue name that lacks some of its fields: it names
+    the built-in type and the missing fields, and **Add built-in fields** appends them.
+  - **Built-in type**, for a custom type named like a variant ("Aurboda has this built in as
+    **Alcohol** with kind beer"): **Merge into Alcohol...**, confirmed, moves the activities to
+    `alcohol`, sets kind beer on each one that has no kind, removes the type and opens Alcohol's page.
+  - **Built-in type**, for a custom type named like a catalogue type's display name or alias
+    (`breathwork`): the same merge, without setting a field.
+
+  A seeded built-in type is never offered a merge. Nothing happens until you press the button.
+
 - **Types** page, **Built-in types**: below your own types, every catalogue type not in use yet,
   in the catalogue's groups (Symptoms starts collapsed), each with its fields and an **Add**
   button. The page's search box filters this list too.
@@ -129,21 +189,28 @@ Each entry records under `same_as` the names the same thing has elsewhere: `appl
 
 - `GET /activity-type-catalog?q=` -- The catalogue's version, its groups and its entries in file
   order, each with `in_use` (whether you already have a type of that name; a type in use is yours
-  and may differ from the catalogue). `q` keeps the entries where every word is the start of a
-  word of the name, display name or an alias.
-- MCP `list_activity_type_catalog` (`q`) -- the same.
+  and may differ from the catalogue), `missing_fields` (the catalogue fields your type of that
+  name lacks; empty when not in use) and `variants`. `q` keeps the entries where every word is the
+  start of a word of the name, display name or an alias, of the entry or of one of its variants
+  (`q=beer` finds `alcohol`).
+- `POST /activity-types/:name/catalog-fields` -- Add the missing catalogue fields to your type;
+  answers with the updated type. 404 for a type you do not have, 400 for a name outside the
+  catalogue.
+- `POST /activity-types/merge` with `set_data` -- see [Types you already have](#types-you-already-have).
+- MCP `list_activity_type_catalog` (`q`), `add_activity_type_catalog_fields` (`name`) and
+  `merge_activity_type` (`source`, `target`, `set_data`) -- the same. MCP `add_activity_type`
+  refuses a variant's name with a pointer to its type unless given `separate_type: true`; the REST
+  route and the web form create such a type as asked.
 
 Adoption itself has no endpoint or tool of its own; it happens through the writes above.
 
 ## Versioning
 
-The catalogue has a `version` (`2026.11.1`). A new version only affects types adopted after it: a
+The catalogue has a `version` (`2026.11.2`). A new version only affects types adopted after it: a
 type you already have is yours, and a later catalogue change never rewrites it.
 
 ## Not there yet
 
-- Offering the catalogue's fields to a type you already have, and merging a type into another
-  while setting a field (beer as `alcohol` with kind `beer`): #1701.
 - Matching Oura's own tag codes rather than tag names: #1702.
 - Importing Health Connect records into catalogue types: #1703.
 - The catalogue in the Android Add tab: #1704.
