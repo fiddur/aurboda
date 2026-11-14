@@ -212,6 +212,54 @@ describe('getHrvActivitiesCorrelation', () => {
     vi.mocked(locations.getPlaceVisits).mockResolvedValue([])
   }
 
+  test('adjusts every tested change in the response over the response', async () => {
+    const base = alignedBase()
+    noContext()
+    const session = (type: string, i: number) => ({
+      activity_type: type,
+      end_time: at(base, i * 180 + 20),
+      source: 'manual' as const,
+      start_time: at(base, i * 180),
+    })
+    const meditationDiffs = [-20, -18, -21, -19]
+    const readingDiffs = [1, -2, 2, -1]
+    vi.mocked(db.getTimeSeries).mockImplementation(async (_u: string, metric: string) =>
+      metric === 'stress_level'
+        ? ([
+            ...meditationDiffs.flatMap((diff, i) => [
+              [at(base, i * 180 - 20), 50],
+              [at(base, i * 180 + 40), 50 + diff],
+            ]),
+            ...readingDiffs.flatMap((diff, i) => [
+              [at(base, 90 + i * 180 - 20), 40],
+              [at(base, 90 + i * 180 + 40), 40 + diff],
+            ]),
+          ] as [Date, number][])
+        : [],
+    )
+    vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
+      ...meditationDiffs.map((_, i) => session('meditation', i)),
+      ...readingDiffs.map((_, i) => ({
+        ...session('reading', i),
+        end_time: at(base, 90 + i * 180 + 20),
+        start_time: at(base, 90 + i * 180),
+      })),
+    ])
+
+    const result = await getHrvActivitiesCorrelation('testuser', 7)
+    const effect = (type: string) =>
+      result.correlations.activities.find((row) => row.activity_type === type)!.stress_effect
+    const meditation = effect('meditation')
+    const reading = effect('reading')
+
+    expect(result.comparisons).toBe(2)
+    expect(meditation.p_value).toBeLessThan(0.001)
+    expect(reading.p_value).toBeGreaterThan(0.5)
+    expect(reading.p_value_adjusted).toBe(reading.p_value)
+    expect(meditation.p_value_adjusted).toBeCloseTo(2 * meditation.p_value!, 6)
+    expect(result.correlations.activities[0].hrv_effect.p_value_adjusted).toBeNull()
+  })
+
   test('echoes the clamped window and returns effects on rows', async () => {
     const base = alignedBase()
     noContext()

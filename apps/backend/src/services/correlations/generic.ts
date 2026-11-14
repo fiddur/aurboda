@@ -476,6 +476,7 @@ async function getGenericEventOutcome(
     baseline: { description: 'Event-outcome mode — see event_outcome block', probability: 0 },
     event_outcome: {
       collapse_gap_days: eventOutcome.collapse_gap_days,
+      comparisons: eventOutcome.comparisons,
       denominator: eventOutcome.denominator,
       known_days: eventOutcome.known_days,
       onsets: eventOutcome.onsets,

@@ -45,7 +45,11 @@ export const windowEffectSchema = z
       .meta({ description: 'Standard deviation of the per-occurrence changes' }),
     p_value: z.number().nullable().meta({
       description:
-        'Two-sided paired t-test p-value for the change; null with fewer than 3 paired occurrences or no variation',
+        'Raw two-sided paired t-test p-value for this one change, not corrected for the other comparisons in the response; null with fewer than 3 paired occurrences or no variation',
+    }),
+    p_value_adjusted: z.number().nullable().optional().meta({
+      description:
+        'Benjamini–Hochberg adjusted p-value over every change with a p-value in the same response (see comparisons): compare this, not p_value, with 0.05 to call a change notable. Null when p_value is null; absent where no family was adjusted.',
     }),
     paired_occurrences: z.number().int().meta({ description: 'Occurrences with data both before and after' }),
   })
@@ -430,6 +434,10 @@ export type ActivityCorrelation = z.infer<typeof activityCorrelationSchema>
 export const hrvActivitiesDataSchema = z
   .object({
     baseline: hrvStatsSchema,
+    comparisons: z.number().int().meta({
+      description:
+        'How many changes in this response have a p-value: the family p_value_adjusted is adjusted over. At p < 0.05, about one in twenty of them would pass by chance.',
+    }),
     context_metric: hrvContextMetricSchema.meta({
       description:
         'The metric the legacy productivity correlation_coefficient was computed against; correlation_coefficients holds all three',
@@ -672,6 +680,10 @@ export const activityImpactDataSchema = z
     activity: z.string().meta({ description: 'Activity name/pattern searched' }),
     activity_type: activityImpactTypeSchema,
     avg_duration_min: z.number().meta({ description: 'Average session duration in minutes' }),
+    comparisons: z.number().int().meta({
+      description:
+        'How many changes in this response, the whole and every breakdown group, have a p-value: the family p_value_adjusted is adjusted over. At p < 0.05, about one in twenty of them would pass by chance.',
+    }),
     hr_effect: windowEffectSchema.meta({ description: 'Paired before -> after change of heart rate' }),
     hr_timeline: impactTimelineSchema,
     hrv_effect: windowEffectSchema.meta({ description: 'Paired before -> after change of HRV' }),
@@ -1049,7 +1061,13 @@ export const lagExposureResultSchema = z
     lag_days: z.number().int().meta({ description: 'Lag window length in days' }),
     onsets: z.number().int().meta({ description: 'Onset count after collapsing' }),
     onsets_exposed: z.number().int().meta({ description: 'Onsets that were exposed to a recent trigger' }),
-    p_value: z.number().meta({ description: 'Two-sided p-value' }),
+    p_value: z
+      .number()
+      .meta({ description: 'Raw two-sided p-value for this lag, not corrected for the other lags' }),
+    p_value_adjusted: z.number().meta({
+      description:
+        'Benjamini–Hochberg adjusted p-value over the lags of this analysis (see comparisons): compare this, not p_value, with 0.05',
+    }),
     relative_risk: z.number().nullable().meta({ description: 'Onset rate exposed vs unexposed' }),
     reverse_conditional: z.number().meta({ description: 'P(recent trigger | onset) — the headline' }),
     risk_difference: z.number().meta({ description: 'Onset rate difference (exposed minus unexposed)' }),
@@ -1064,6 +1082,10 @@ export type LagExposureResultData = z.infer<typeof lagExposureResultSchema>
 export const eventOutcomeDataSchema = z
   .object({
     collapse_gap_days: z.number().int(),
+    comparisons: z
+      .number()
+      .int()
+      .meta({ description: 'How many lags were tested: the family p_value_adjusted is adjusted over' }),
     denominator: denominatorSchema,
     known_days: z.number().int().meta({ description: 'Known-day denominator size' }),
     onsets: z.number().int().meta({ description: 'Onset count after collapsing' }),

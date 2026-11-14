@@ -72,13 +72,17 @@ Above the chart, two controls slice the selected row's sessions. They apply to t
 - **Sleep in the window**: whether a sleep or nap overlaps the window before or after the session (no sleep, sleep before, sleep after, both).
 - **A data field** of the activity type, for its categorical fields, such as a yoga session's name. A session with several values counts under each.
 
-With a breakdown on, a chart draws one metric (pick it with **Chart**; stress by default) with a thick line for all sessions and one line per group, and a table lists During and Change for every shown metric, one row for all sessions and one per group. Only groups with at least 3 sessions are drawn, at most 8; the rest are in the table, greyed out. With several groups one can look clear by chance, so read small groups as hints.
+With a breakdown on, a chart draws one metric (pick it with **Chart**; stress by default) with a thick line for all sessions and one line per group, and a table lists During and Change for every shown metric, one row for all sessions and one per group. Only groups with at least 3 sessions are drawn, at most 8; the rest are in the table, greyed out. With several groups one can look clear by chance; the line under the table says how many comparisons it holds (see [How many comparisons](#how-many-comparisons)). Read small groups as hints.
 
 **Filter sessions** opens a panel with one row of chips per dimension, each with its session count before filters. Pick chips to keep only those sessions: within a dimension any picked chip passes, and every dimension with a picked chip must pass. The heading shows how many sessions remain, e.g. "70 of 151 sessions". Changing the Length or Time of day limits clears that dimension's filter, since its buckets change. Selecting another row clears the filters and a data-field breakdown.
 
 Sessions and their before/after windows are formed before filtering, so a window is still cut at every neighbouring session, including ones a filter leaves out.
 
 With a long window, the after window of an evening session is mostly sleep. Filter **Sleep in the window** to **No sleep in the window** to leave those sessions out.
+
+### How many comparisons
+
+Every table here is many tests at once, one per row and metric, and at p < 0.05 about one comparison in twenty looks like a finding by chance. So a Change is coloured only when its p-value **adjusted for the number of comparisons** (Benjamini–Hochberg, over everything the tables or the impact analysis computed at once) is below 0.05, and a line under the tables says how many comparisons they hold, e.g. "24 comparisons: about one of these would pass p < 0.05 by chance". Hovering a Change shows both the raw and the adjusted p. A change needs at least 3 sessions with data on both sides to be tested at all. The Explore tab's event mode does the same over its lag windows. The REST API and MCP tools return both values (`p_value`, `p_value_adjusted`) and the count (`comparisons`); see [Multiple comparisons](../correlations.md#multiple-comparisons).
 
 ### Sharing a view
 
@@ -174,6 +178,8 @@ Different categories sample HRV from different time windows:
 | **Delta from baseline**     | All categories                         | Simple difference between the activity's mean HRV/HR and your overall baseline.              |
 | **Relative risk**           | Event probability, generic correlation | Ratio of P(outcome given trigger) to P(outcome without trigger).                             |
 | **Chi-squared test**        | Event probability, generic correlation | Tests whether the trigger-outcome association is statistically significant.                  |
+| **Paired t-test**           | Before -> after change around sessions | Tests whether the change from the window before to the window after differs from zero.       |
+| **Benjamini–Hochberg**      | Every table of several tests           | Adjusts each p-value for the number of comparisons in the same response.                     |
 
 ## Known Limitations
 
