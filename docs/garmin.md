@@ -97,6 +97,10 @@ The key is stored in the user's own database (`oauth_tokens`, provider `garmin_p
 
 The page shows when the key expires, as a warning from 14 days before and as an error once past or refused; **Replace key** stores a new one. Settings report the state as `garmin_personal_key` (`available`, `connected`, `expires_at`, `refused`), next to `garmin_session_connected`; `garmin_connected` is true for either.
 
+#### Expiry reminders
+
+Garmin does not report a key's expiry, so the reminders go by the date entered with it. Through the [central notifications](./features/notifications.md) (type `garmin_key_expiring`, **Garmin key renewal** under **Data sources** in the notification settings, where its in-app and push switches turn it off) the owner is told when 14 days are left, again at 3 days, once the date has passed, and once if Garmin refuses the key before then. Each opens the Garmin page. The five-minute background sync tick checks every user's key (`apps/backend/src/integrations/garmin/key-reminder.ts`); each reminder is stored once per expiry date, so a new key with a new date gets its own. Connecting a new key or disconnecting the key marks the earlier reminders read. No reminder carries the key.
+
 ## Sync
 
 Manually trigger a sync to fetch the latest data:
@@ -138,6 +142,6 @@ The two connections are disconnected separately:
 
 - **No webhook/push support:** Garmin's push API is part of its partner program. Both ways are pull-based only.
 - **Session expiry:** Garmin Connect sessions may expire, requiring the user to re-authenticate by entering credentials again.
-- **Key expiry:** a Personal API key lasts at most a year and must then be replaced by hand.
+- **Key expiry:** a Personal API key lasts at most a year and must then be replaced by hand; [reminders](#expiry-reminders) come before the entered date.
 - **MFA timeout:** The MFA verification code must be entered within 5 minutes of submitting credentials. If the session expires, start the login flow again.
 - **Rate limiting:** neither the web API nor the Personal API publishes its rate limits. The day-by-day iteration with delays helps, but full resyncs of 90+ days may encounter limits.

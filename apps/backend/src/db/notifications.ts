@@ -166,6 +166,15 @@ export const markAllNotificationsRead = async (user: string): Promise<number> =>
   return result.rowCount ?? 0
 }
 
+export const markNotificationsReadByType = async (user: string, type: string): Promise<number> => {
+  const result = await query(
+    user,
+    'UPDATE notifications SET read_at = NOW() WHERE type = $1 AND read_at IS NULL',
+    [type],
+  )
+  return result.rowCount ?? 0
+}
+
 /** Deletes read rows created before `readBefore` and every row created before `anyBefore`. */
 export const pruneNotifications = async (
   user: string,

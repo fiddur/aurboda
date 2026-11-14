@@ -11,6 +11,7 @@ import {
   listNotifications,
   markAllNotificationsRead,
   markNotificationRead,
+  markNotificationsReadByType,
   type NotificationInsert,
   pruneNotifications,
   reviseNotification,
@@ -189,6 +190,20 @@ describe('Notifications Integration Tests', () => {
 
       expect(await markAllNotificationsRead(user)).toBe(2)
       expect(await countUnreadNotifications(user)).toBe(0)
+    })
+
+    test('markNotificationsReadByType marks the unread rows of that type only and returns the count', async () => {
+      const user = getTestUser()
+      const garmin = { ...base, type: 'garmin_key_expiring' }
+      await insertNotification(user, garmin)
+      await insertNotification(user, garmin)
+      const already = await insertNotification(user, garmin)
+      await markNotificationRead(user, already!.id)
+      await insertNotification(user, base)
+
+      expect(await markNotificationsReadByType(user, 'garmin_key_expiring')).toBe(2)
+      expect(await countUnreadNotifications(user)).toBe(1)
+      expect(await markNotificationsReadByType(user, 'garmin_key_expiring')).toBe(0)
     })
   })
 

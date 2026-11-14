@@ -40,10 +40,38 @@ export const getOAuthToken = async (user: string, provider: string): Promise<OAu
   }
 }
 
-export const markOAuthTokenRefused = async (user: string, provider: string): Promise<void> => {
-  await query(user, `UPDATE oauth_tokens SET refused_at = NOW(), updated_at = NOW() WHERE provider = $1`, [
-    provider,
-  ])
+/** With `refreshToken`, only a row still holding that token is marked, so a key replaced meanwhile stays unflagged. */
+export const markOAuthTokenRefused = async (
+  user: string,
+  provider: string,
+  refreshToken?: string,
+): Promise<void> => {
+  if (refreshToken === undefined) {
+    await query(user, `UPDATE oauth_tokens SET refused_at = NOW(), updated_at = NOW() WHERE provider = $1`, [
+      provider,
+    ])
+    return
+  }
+  await query(
+    user,
+    `UPDATE oauth_tokens SET refused_at = NOW(), updated_at = NOW() WHERE provider = $1 AND refresh_token = $2`,
+    [provider, refreshToken],
+  )
+}
+
+/** Stores a fresh access token only while the row still holds `refreshToken`; a replaced key is left as it is. */
+export const updateOAuthAccessToken = async (
+  user: string,
+  provider: string,
+  refreshToken: string,
+  accessToken: string,
+): Promise<boolean> => {
+  const result = await query(
+    user,
+    `UPDATE oauth_tokens SET access_token = $3, updated_at = NOW() WHERE provider = $1 AND refresh_token = $2`,
+    [provider, refreshToken, accessToken],
+  )
+  return (result.rowCount ?? 0) > 0
 }
 
 export const deleteOAuthToken = async (user: string, provider: string): Promise<boolean> => {

@@ -59,6 +59,7 @@ import {
 } from './db/index.ts'
 import { errorResponseBody, httpError, isHttpError } from './http-error.ts'
 import { garminClient } from './integrations/garmin/client.ts'
+import { defaultGarminKeyReminderDeps, remindGarminKey } from './integrations/garmin/key-reminder.ts'
 import { garminPersonalClient } from './integrations/garmin/personal-client.ts'
 import { garminDataTypes } from './integrations/garmin/process.ts'
 import {
@@ -951,6 +952,7 @@ const main = async () => {
       await createSyncScheduler(boss, {
         garminDataTypes,
         listUsers: () => listUserNames(userDb),
+        remindGarminKey: remindGarminKey(defaultGarminKeyReminderDeps(notifier.raiseBestEffort)),
         sync: syncProvider,
       })
     } catch (error) {
