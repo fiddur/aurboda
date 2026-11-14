@@ -23,6 +23,7 @@ import {
   toInputValue,
   toIso,
 } from './article-editor-body'
+import { uploadPlaceholder } from './MarkdownEditor/image-upload'
 
 const state = (overrides: Partial<ArticleEditorState> = {}): ArticleEditorState => ({
   blocks: [],
@@ -609,7 +610,7 @@ describe('blocksStillUploading', () => {
     expect(
       blocksStillUploading([
         { markdown: 'Morning coffee', type: 'prose' },
-        { markdown: 'Yoga\n![Uploading mat.jpg…]()\n', type: 'prose' },
+        { markdown: `Yoga\n${uploadPlaceholder('mat.jpg')}\n`, type: 'prose' },
       ]),
     ).toBe(true)
   })

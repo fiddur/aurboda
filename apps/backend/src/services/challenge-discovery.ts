@@ -19,6 +19,7 @@
  * instance cannot plant a link to somewhere else in the user's list.
  */
 import {
+  canonicalChallengeUrl,
   type DiscoveredChallenge,
   type PublicChallengeListItem,
   type PublicProfileResponse,
@@ -39,12 +40,7 @@ import {
   listPublicChallenges,
 } from '../db/index.ts'
 import { isMissingDatabase } from '../db/pg-errors.ts'
-import {
-  canonicalChallengeUrl,
-  type ChallengeHost,
-  discoverInstance,
-  specFromChallengeDocument,
-} from './challenge-federation.ts'
+import { type ChallengeHost, discoverInstance, specFromChallengeDocument } from './challenge-federation.ts'
 import { specToApi } from './challenge-spec.ts'
 import { isTransientFetchError, safeFetchGet } from './safe-fetch.ts'
 import { buildProfileUrl, buildShareUrl } from './share-urls.ts'

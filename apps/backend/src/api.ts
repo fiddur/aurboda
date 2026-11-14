@@ -205,6 +205,7 @@ import {
   createRelayInboxHooks,
   ensureDefaultRelays,
   relayRecipients,
+  retryErroredRelays,
 } from './services/relays.ts'
 import { safeFetchGet } from './services/safe-fetch.ts'
 import { initSentry, Sentry } from './services/sentry.ts'
@@ -694,6 +695,7 @@ const main = async () => {
     }),
   )
   postListenCallbacks.push(async () => {
+    await retryErroredRelays({ federation: feedFederation, origin: webHost, store: centralDb })
     if ((await ensureDefaultRelays({ add: relayActions.add, centralDb, origin: webHost })) === 'seeded') {
       console.info('🛰️ Subscribed to the tags.pub relay by default')
     }

@@ -157,7 +157,8 @@ const sendFollow = async (deps: RelayDeps, record: RelayRecord): Promise<RelayRe
       relayRecipient(record),
       relayFollow(ctx.getActorUri(INSTANCE_ACTOR_ID), deps.origin, record),
     )
-    return record
+    if (record.last_error == null) return record
+    return (await deps.store.setRelayError(record.id, null)) ?? record
   } catch (error) {
     console.error(`⚠️ Relay Follow delivery failed → ${record.inbox_uri}:`, error)
     return (await deps.store.setRelayError(record.id, errorMessage(error))) ?? record
@@ -166,7 +167,7 @@ const sendFollow = async (deps: RelayDeps, record: RelayRecord): Promise<RelayRe
 
 /**
  * Validate, store as pending, and send the Follow. A delivery failure keeps the
- * row pending with `last_error`; removing and adding it again retries.
+ * row pending with `last_error`, which the next startup retries (`retryErroredRelays`).
  */
 export const addRelay = async (
   deps: RelayDeps,
@@ -294,6 +295,34 @@ export const isPublicHttpsOrigin = (origin: string): boolean => {
   if (url.protocol !== 'https:') return false
   const host = url.hostname.toLowerCase()
   return !LOOPBACK_HOSTS.has(host) && !host.endsWith('.localhost')
+}
+
+/**
+ * Re-send the Follow, once each, to every relay still pending with a delivery error, whether it
+ * was seeded or added by hand. Each attempt is bounded by the seeding's timeout; a failure stores
+ * the new error. Returns how many relays were retried. Never throws.
+ */
+export const retryErroredRelays = async (
+  deps: RelayDeps & { timeoutMs?: number; log?: (message: string) => void },
+): Promise<number> => {
+  const log = deps.log ?? ((message: string) => console.warn(message))
+  try {
+    const errored = (await deps.store.listRelays()).filter(
+      (relay) => relay.state === 'pending' && relay.last_error != null,
+    )
+    for (const relay of errored) {
+      await withTimeout(sendFollow(deps, relay), deps.timeoutMs ?? DEFAULT_RELAYS_TIMEOUT_MS).catch(
+        async (error: unknown) => {
+          log(`⚠️ Relay Follow retry → ${relay.inbox_uri} did not finish: ${errorMessage(error)}`)
+          await deps.store.setRelayError(relay.id, errorMessage(error))
+        },
+      )
+    }
+    return errored.length
+  } catch (error) {
+    log(`⚠️ Relay Follow retries not run: ${errorMessage(error)}`)
+    return 0
+  }
 }
 
 export type DefaultRelaysOutcome = 'already' | 'failed' | 'seeded' | 'skipped'

@@ -17,7 +17,7 @@
  * post) means a later edit to the underlying activities stays reflected, per the
  * repo's "reference by id, resolve at query time" principle.
  */
-import type { FeedPost } from '@aurboda/api-spec'
+import { activityHeadline, type FeedPost } from '@aurboda/api-spec'
 
 import type {
   Activity,
@@ -38,7 +38,7 @@ import { renderDashboardShareHtml } from './activitypub/dashboard-object.ts'
 import { renderExerciseShareHtml } from './activitypub/exercise-object.ts'
 import { resolveActivityScalars } from './activitypub/feed-activity.ts'
 import { type HashtagLinks, hashtagLinks, linkifyHashtags } from './activitypub/hashtag-html.ts'
-import { activityHeadline, feedPostContent, formatActivityWindow } from './activitypub/object.ts'
+import { feedPostContent, formatActivityWindow } from './activitypub/object.ts'
 import {
   formatExerciseLine,
   resolvePostExercises,

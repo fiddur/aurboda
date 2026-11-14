@@ -18,6 +18,7 @@ import {
   relayRecipients,
   type RelayStore,
   removeRelay,
+  retryErroredRelays,
   serializeRelay,
   TAGS_PUB_RELAY,
 } from './relays.ts'
@@ -461,5 +462,72 @@ describe('ensureDefaultRelays', () => {
     expect(await run(centralDb, add, origin).outcome).toBe('skipped')
     expect(add).not.toHaveBeenCalled()
     expect(centralDb.values.default_relays_seeded).toBeUndefined()
+  })
+})
+
+describe('retryErroredRelays', () => {
+  const seed = async (store: ReturnType<typeof memoryStore>, id: string, lastError: string | null) => {
+    const url = `https://relay-${id}.example/inbox`
+    await store.insertRelay({
+      actor_uri: null,
+      follow_activity_id: `${ORIGIN}/actor/follows/${id}`,
+      id,
+      inbox_uri: url,
+      style: 'mastodon',
+      url,
+    })
+    if (lastError != null) await store.setRelayError(id, lastError)
+  }
+
+  test('re-sends the Follow to every pending relay with an error, and clears the error once it goes out', async () => {
+    const { deps, sendActivity, store } = fakeDeps()
+    await seed(store, 'errored', 'getaddrinfo ENOTFOUND')
+    await seed(store, 'waiting', null)
+    await seed(store, 'accepted', 'connection reset')
+    await store.setRelayState('accepted', 'accepted')
+    await seed(store, 'rejected', 'refused')
+    await store.setRelayState('rejected', 'rejected')
+
+    expect(await retryErroredRelays({ ...deps, log: vi.fn() })).toBe(1)
+    expect(sendActivity).toHaveBeenCalledOnce()
+    const [, recipient, follow] = sendActivity.mock.calls[0]
+    expect(recipient.inboxId.href).toBe('https://relay-errored.example/inbox')
+    expect(follow).toBeInstanceOf(Follow)
+    expect(follow.id?.href).toBe(`${ORIGIN}/actor/follows/errored`)
+    expect(store.rows.get('errored')).toMatchObject({ last_error: null, state: 'pending' })
+    expect(store.rows.get('accepted')?.last_error).toBe('connection reset')
+  })
+
+  test('a Follow that fails again stores the new error', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { deps, store } = fakeDeps({ sendActivity: vi.fn().mockRejectedValue(new Error('still down')) })
+    await seed(store, 'errored', 'getaddrinfo ENOTFOUND')
+    await retryErroredRelays({ ...deps, log: vi.fn() })
+    expect(store.rows.get('errored')).toMatchObject({ last_error: 'still down', state: 'pending' })
+    error.mockRestore()
+  })
+
+  test('a hung Follow times out, stores the timeout and moves on to the next relay', async () => {
+    const sendActivity = vi
+      .fn()
+      .mockImplementationOnce(() => new Promise(() => {}))
+      .mockResolvedValue(undefined)
+    const { deps, store } = fakeDeps({ sendActivity })
+    await seed(store, 'hung', 'old')
+    await seed(store, 'next', 'old')
+    const log = vi.fn()
+    expect(await retryErroredRelays({ ...deps, log, timeoutMs: 5 })).toBe(2)
+    expect(sendActivity).toHaveBeenCalledTimes(2)
+    expect(store.rows.get('hung')?.last_error).toBe('timeout')
+    expect(store.rows.get('next')?.last_error).toBeNull()
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('https://relay-hung.example/inbox'))
+  })
+
+  test('a failing listing does not throw', async () => {
+    const { deps } = fakeDeps()
+    const log = vi.fn()
+    const store = { ...deps.store, listRelays: async () => Promise.reject(new Error('no db')) }
+    expect(await retryErroredRelays({ ...deps, log, store })).toBe(0)
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('no db'))
   })
 })

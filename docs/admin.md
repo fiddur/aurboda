@@ -294,8 +294,10 @@ pair in the central `instance_actor` table. Two styles:
   for an added relay's actor.
 
 A relay starts **Pending** and becomes **Accepted** (or **Rejected**) when it answers. A Follow that
-could not be delivered keeps the relay pending with the error shown on its badge; remove it and
-add it again to retry. Removing a relay sends it an `Undo` of the Follow. Only https URLs that
+could not be delivered keeps the relay pending with the error shown on its badge. Every startup
+sends the Follow again, once, to each relay that is pending with an error, whether it was added by
+default or by hand (bounded by a 30 s timeout per relay): a delivery clears the error, a failure
+stores the new one. Removing it and adding it again retries at once. Removing a relay sends it an `Undo` of the Follow. Only https URLs that
 resolve to public addresses are taken (`400`); an already added relay is `409`; a LitePub actor
 that cannot be resolved is `422`.
 
@@ -310,7 +312,7 @@ Every server subscribes to it **by default**, once: on the first startup on a pu
 (`WEB_HOST` not http, `localhost`, `*.localhost` or a loopback address), upgrades included, the
 server adds it as if an admin had, and records that in the internal `default_relays_seeded` server
 setting. A server that already has it counts as done; a failed add is tried again on the next
-startup. To opt out, remove it under Relays: a removed relay stays removed.
+startup, and a Follow that was added but not delivered is retried as above. To opt out, remove it under Relays: a removed relay stays removed.
 When a post stops being public, or is deleted, the relays get a `Delete` of it; deleting an
 account sends its actor `Delete` to the relays as well as to its followers. A one-way relay like
 tags.pub is cheap; a full (two-way) relay forwards its whole firehose to `/inbox`, where each

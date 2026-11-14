@@ -10,9 +10,14 @@
  * are fetched (QuantPub hosts only) and omitted on any failure: the card then
  * still shows the invitation.
  */
-import type { FeedStructuredChallenge, QuantChallengeDocument, QuantStandings } from '@aurboda/api-spec'
+import type {
+  FeedStructuredChallenge,
+  ParsedChallengeUrl,
+  QuantChallengeDocument,
+  QuantStandings,
+} from '@aurboda/api-spec'
 
-import { quantStandingsSchema } from '@aurboda/api-spec'
+import { parseChallengeUrl, quantStandingsSchema } from '@aurboda/api-spec'
 
 import type { ChallengeParticipationRecord, FeedPostRecord } from '../db/index.ts'
 
@@ -23,13 +28,7 @@ import {
   isMissingDatabase,
   listChallengeMembers,
 } from '../db/index.ts'
-import {
-  type ChallengeHost,
-  discoverInstance,
-  fetchChallengeDocument,
-  type ParsedChallengeUrl,
-  parseChallengeUrl,
-} from './challenge-federation.ts'
+import { type ChallengeHost, discoverInstance, fetchChallengeDocument } from './challenge-federation.ts'
 import {
   buildChallengeListItem,
   buildStandingsDocument,

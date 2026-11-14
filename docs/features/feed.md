@@ -265,7 +265,8 @@ or an unsaved editor state, `{ article, visibility?, include_images? }` in the
 `ArticleDraftContent` shape — would federate as, and creates nothing. Only its **complete**
 blocks are previewed (a chart with a metric, a correlation with trigger and outcome, a
 challenge with a challenge URL, an impact block with an activity, and for a windowed block a
-bounded, increasing window); a blank title previews as `Untitled`. The answer
+bounded, increasing window — `isCompleteArticleBlock` in `@aurboda/api-spec`, which the web
+editor's own preview card uses too); a blank title previews as `Untitled`. The answer
 (`ArticlePreviewResponse`) has the Note `content` and `name` exactly as `renderArticleNote`
 and the hashtag linking build them, the `tags`, the numbered figure `attachments` (alt text,
 `block_index` back into the draft's blocks, `shown_in_mastodon`), `publish_error` — what
@@ -308,7 +309,9 @@ bytes sharp detects, not the claimed type (PNG, JPEG, WebP or GIF; never SVG); t
 orientation is applied and the picture turned upright; its longest edge is shrunk to at most
 1600 px (a smaller picture is not enlarged); an animated GIF keeps its first frame; and it is
 stored as WebP (quality 82) with **no metadata** — no camera, no GPS position. An upload is at
-most 10 MB.
+most 10 MB and at most 16383×16383 pixels (about 268 megapixels, sharp's own default, so a
+200-megapixel phone photo is taken), and a small file declaring more is refused before it is
+decoded (the same limit holds for avatars and challenge banners).
 
 Pictures live in the writer's own database, in `feed_image` (`id`, `content_type`, `data`
 BYTEA, `width`, `height`, `byte_size`, `created_at`), so the [data export](../data-export.md)
@@ -505,7 +508,9 @@ The title headline is the shared activity's title; when that row has since been 
 (`superseded_by`, e.g. a synced Garmin row an aurboda override now stands in for), it is the
 replacing row's title, so renaming the activity — by hand or by a
 [deduction rule](deduction-rules.md#copying-a-data-field-into-the-title-output_title_field) —
-renames the post.
+renames the post. An untitled activity is headlined by its type (`Coffee activity`), and the
+web feed card, a peer's native card and the link-preview card all use the same rule
+(`activityHeadline` in `@aurboda/api-spec`), so a post reads the same everywhere.
 
 **QuantPub extension (#896).** An activity share's `Note` is dual-typed
 `["Note", "quant:Exercise"]` and carries the typed [QuantPub](../fep/quantpub.md)
@@ -951,8 +956,12 @@ id-convention path — reliable even when a typed consumer drops the in-band ext
    `FeedStructuredArticle` (the title and every block, resolved in the same order as the
    article: a prose block's raw markdown verbatim, with `images` declaring the http(s)
    pictures its markdown embeds (alt text and URL, in document order) — a receiver draws an
-   inline picture only when its URL is declared there, so an undeclared one (a tracking pixel,
-   raw `<img>` HTML) is dropped; a chart block's bucketed samples over its
+   inline picture only when its URL is declared there, so raw `<img>` HTML or a picture missing
+   from the list is dropped. The list comes from the same peer as the markdown, so a hostile peer
+   can still declare a tracking pixel of its own, which exposes the reader no more than the
+   attachment images a timeline already loads from that peer; what it rules out is a stray `<img>`
+   from a peer that behaves honestly. An Aurboda receiver reads only each declared picture's
+   `url` and takes the alt text from the markdown; a chart block's bucketed samples over its
    locked window, bucketed the same way as its block image; a correlation block's computed
    Pearson/Spearman/n, the present-vs-absent group comparison, and the aligned scatter points —
    the same `getContinuousCorrelation` call the block image uses; an impact block's `activity`,

@@ -1,7 +1,9 @@
 import { MAX_FEED_IMAGES_PER_ACCOUNT } from '@aurboda/api-spec'
 import { useRef, useState } from 'preact/hooks'
 
-const PLACEHOLDER_PREFIX = '![Uploading '
+// The word joiner (U+2060) is invisible and cannot be typed, so text a person writes by hand
+// never reads as a picture still on its way.
+const PLACEHOLDER_PREFIX = '![Uploading\u2060 '
 
 export const uploadPlaceholder = (name: string): string => `${PLACEHOLDER_PREFIX}${name}…]()`
 

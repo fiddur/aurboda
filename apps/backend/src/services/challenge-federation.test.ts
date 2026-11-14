@@ -3,6 +3,7 @@
  * every URL comparison keys off) and parsed, and — with the network and the
  * database mocked — how a host is discovered, joined and left.
  */
+import { canonicalChallengeUrl, parseChallengeUrl } from '@aurboda/api-spec'
 import { AxiosError, AxiosHeaders } from 'axios'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
@@ -38,12 +39,10 @@ vi.mock('../db/index.ts', async (importOriginal) => ({
 const safeFetch = await import('./safe-fetch.ts')
 const db = await import('../db/index.ts')
 const {
-  canonicalChallengeUrl,
   discoverInstance,
   JoinChallengeError,
   joinChallenge,
   leaveChallenge,
-  parseChallengeUrl,
   parsePublicChallenge,
   previewChallenge,
   specFromChallengeDocument,

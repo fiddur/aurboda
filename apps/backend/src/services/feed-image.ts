@@ -1,10 +1,9 @@
 import { FEED_IMAGE_MAX_EDGE, type FeedImage, MAX_FEED_IMAGES_PER_ACCOUNT } from '@aurboda/api-spec'
-import sharp from 'sharp'
 
 import type { FeedImageRecord, NewFeedImage } from '../db/index.ts'
 
 import { countFeedImages, insertFeedImage } from '../db/index.ts'
-import { assertAllowedFormat } from './avatar.ts'
+import { assertAllowedFormat, uploadedImage } from './avatar.ts'
 
 export const UNSUPPORTED_PICTURE_MESSAGE =
   'That is not a picture Aurboda can use. PNG, JPEG, WebP or GIF works.'
@@ -19,7 +18,7 @@ export const PICTURE_NOT_FOUND_MESSAGE = 'Picture not found'
  */
 export const processFeedImage = async (buffer: Buffer): Promise<NewFeedImage> => {
   await assertAllowedFormat(buffer)
-  const { data, info } = await sharp(buffer)
+  const { data, info } = await uploadedImage(buffer)
     .rotate()
     .resize({
       fit: 'inside',

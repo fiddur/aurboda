@@ -12,8 +12,7 @@
  * rendered for posts from Aurboda instances (which carry `structured`);
  * Mastodon posts have none.
  */
-import type { FeedStructuredActivity, FeedStructuredPost } from '@aurboda/api-spec'
-
+import { activityHeadline, type FeedStructuredActivity, type FeedStructuredPost } from '@aurboda/api-spec'
 import { useMemo, useState } from 'preact/hooks'
 
 import { CombinedMetricChart } from '../../components/charts/CombinedMetricChart'
@@ -45,7 +44,7 @@ function ActivityStructured({ structured }: { structured: FeedStructuredActivity
   return (
     <div class="timeline-structured">
       <p class="feed-post-title">
-        <strong>{structured.name ?? 'Shared activity'}</strong>
+        <strong>{activityHeadline(structured.name, structured.activityType)}</strong>
       </p>
       {structured.message && <p class="feed-post-message">{structured.message}</p>}
       <p class="feed-post-window">{formatEntryWindow(structured.startTime, structured.endTime)}</p>
