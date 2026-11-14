@@ -123,8 +123,8 @@ export const createLocationsRouter = (
     authMiddleware,
     validateQuery(rawLocationsQuerySchema),
     async (req, res) => {
-      const { start, end } = req.query
-      const points = await getRawLocationPoints(req.user!, new Date(start), new Date(end))
+      const { end, limit, source, start } = req.query
+      const points = await getRawLocationPoints(req.user!, new Date(start), new Date(end), { limit, source })
       res.json({
         data: points.map((p) => ({ lat: p.lat, lon: p.lon, time: p.time.toISOString() })),
         success: true,

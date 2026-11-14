@@ -222,7 +222,7 @@ function GravlSyncSection({
   const handleFullResync = useCallback(() => handleSync(true), [handleSync])
 
   return (
-    <>
+    <section class="settings-section">
       <SyncStatusBar states={syncStates} isLoading={syncStatusLoading} onSyncNow={handleSyncNow} />
       <div class="garmin-button-row">
         <button
@@ -235,7 +235,7 @@ function GravlSyncSection({
         </button>
       </div>
       {syncMessage && <p class={`garmin-sync-message ${syncStatus}`}>{syncMessage}</p>}
-    </>
+    </section>
   )
 }
 

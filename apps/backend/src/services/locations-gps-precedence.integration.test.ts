@@ -170,5 +170,25 @@ describe('GPS precedence (integration)', () => {
 
       expect(await getRawLocationPoints(user, activityStart, activityEnd)).toEqual([])
     })
+
+    test('keeps only the asked source', async () => {
+      const user = getTestUser()
+      await insertLocations(user, [...phonePoints, ...garminPoints])
+
+      const owntracks = await getRawLocationPoints(user, activityStart, activityEnd, { source: 'owntracks' })
+      expect(owntracks.map((p) => p.lat)).toEqual([57.61, 57.62])
+
+      expect(
+        await getRawLocationPoints(user, activityStart, activityEnd, { source: 'home_assistant' }),
+      ).toEqual([])
+    })
+
+    test('returns at most limit points, earliest first', async () => {
+      const user = getTestUser()
+      await insertLocations(user, [...phonePoints, ...garminPoints])
+
+      const points = await getRawLocationPoints(user, activityStart, activityEnd, { limit: 1 })
+      expect(points.map((p) => p.lat)).toEqual([57.61])
+    })
   })
 })

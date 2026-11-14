@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { endOfDay, formatISO, startOfDay, subDays } from 'date-fns'
 
-import { fetchPlaces } from '../../state/api'
+import { hasLocationsFromSource } from '../../state/api'
 import { auth } from '../../state/auth'
 import './style.css'
 
@@ -13,14 +13,14 @@ export function OwnTracksSource() {
   const end = endOfDay(new Date())
   const start7days = startOfDay(subDays(new Date(), 7))
 
-  const locationsQuery = useQuery({
+  const ownTracksQuery = useQuery({
     enabled: !!isLoggedIn,
-    queryFn: () => fetchPlaces(start7days, end),
-    queryKey: ['locations7days', formatISO(start7days, { representation: 'date' })],
+    queryFn: () => hasLocationsFromSource('owntracks', start7days, end),
+    queryKey: ['ownTracksLocations7days', formatISO(start7days, { representation: 'date' })],
     staleTime: 5 * 60 * 1000,
   })
 
-  const hasLocations = (locationsQuery.data?.length ?? 0) > 0
+  const hasLocations = ownTracksQuery.data ?? false
 
   if (!isLoggedIn) {
     return (
@@ -59,7 +59,9 @@ export function OwnTracksSource() {
 
         <div class={`status-banner ${hasLocations ? 'connected' : 'not-connected'}`}>
           <span class={`status-dot ${hasLocations ? 'connected' : 'not-connected'}`} />
-          {hasLocations ? 'Location data detected in the last 7 days' : 'No location data in the last 7 days'}
+          {hasLocations
+            ? 'OwnTracks data received in the last 7 days'
+            : 'No OwnTracks data in the last 7 days'}
         </div>
 
         <div class="links-row">

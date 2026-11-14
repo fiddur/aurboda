@@ -4,13 +4,8 @@ import * as d3 from 'd3'
 import { endOfDay, formatISO, startOfDay, subDays } from 'date-fns'
 import { useEffect, useRef } from 'preact/hooks'
 
-import {
-  fetchActivities,
-  fetchPeriodSummary,
-  fetchSleepScores,
-  periodStatsValue,
-  type Activity,
-} from '../../state/api'
+import { fetchActivities, fetchPeriodSummary, fetchSleepScores, type Activity } from '../../state/api'
+import { sleepCardValues } from './cardValues'
 import { getSleepScoreEmptyState } from './emptyState'
 import './style.css'
 
@@ -101,23 +96,25 @@ function SleepScoreChart({
       .attr('stroke', 'white')
       .attr('stroke-width', 1)
 
-    const avgScore = d3.mean(data, (d) => d[1]) ?? 0
-    g.append('line')
-      .attr('x1', 0)
-      .attr('y1', y(avgScore))
-      .attr('x2', innerWidth)
-      .attr('y2', y(avgScore))
-      .attr('stroke', '#94a3b8')
-      .attr('stroke-width', 1)
-      .attr('stroke-dasharray', '4,4')
+    const avgScore = d3.mean(data, (d) => d[1])
+    if (avgScore !== undefined) {
+      g.append('line')
+        .attr('x1', 0)
+        .attr('y1', y(avgScore))
+        .attr('x2', innerWidth)
+        .attr('y2', y(avgScore))
+        .attr('stroke', '#94a3b8')
+        .attr('stroke-width', 1)
+        .attr('stroke-dasharray', '4,4')
 
-    g.append('text')
-      .attr('x', innerWidth - 5)
-      .attr('y', y(avgScore) - 5)
-      .attr('text-anchor', 'end')
-      .attr('fill', '#64748b')
-      .attr('font-size', '11px')
-      .text(`Avg: ${avgScore.toFixed(0)}`)
+      g.append('text')
+        .attr('x', innerWidth - 5)
+        .attr('y', y(avgScore) - 5)
+        .attr('text-anchor', 'end')
+        .attr('fill', '#64748b')
+        .attr('font-size', '11px')
+        .text(`Avg: ${avgScore.toFixed(0)}`)
+    }
 
     g.append('g')
       .attr('transform', `translate(0,${innerHeight})`)
@@ -224,23 +221,25 @@ function SleepDurationChart({ sleepSessions, height = 180 }: { sleepSessions: Ac
       .attr('fill', (d) => (d.hours >= 7 && d.hours <= 9 ? '#22c55e' : d.hours < 6 ? '#ef4444' : '#f59e0b'))
       .attr('rx', 2)
 
-    const avgDuration = d3.mean(durationData, (d) => d.hours) ?? 0
-    g.append('line')
-      .attr('x1', 0)
-      .attr('y1', y(avgDuration))
-      .attr('x2', innerWidth)
-      .attr('y2', y(avgDuration))
-      .attr('stroke', '#64748b')
-      .attr('stroke-width', 1)
-      .attr('stroke-dasharray', '4,4')
+    const avgDuration = d3.mean(durationData, (d) => d.hours)
+    if (avgDuration !== undefined) {
+      g.append('line')
+        .attr('x1', 0)
+        .attr('y1', y(avgDuration))
+        .attr('x2', innerWidth)
+        .attr('y2', y(avgDuration))
+        .attr('stroke', '#64748b')
+        .attr('stroke-width', 1)
+        .attr('stroke-dasharray', '4,4')
 
-    g.append('text')
-      .attr('x', innerWidth - 5)
-      .attr('y', y(avgDuration) - 5)
-      .attr('text-anchor', 'end')
-      .attr('fill', '#64748b')
-      .attr('font-size', '11px')
-      .text(`Avg: ${avgDuration.toFixed(1)}h`)
+      g.append('text')
+        .attr('x', innerWidth - 5)
+        .attr('y', y(avgDuration) - 5)
+        .attr('text-anchor', 'end')
+        .attr('fill', '#64748b')
+        .attr('font-size', '11px')
+        .text(`Avg: ${avgDuration.toFixed(1)}h`)
+    }
 
     const tickValues = durationData
       .filter((_, i) => i % Math.ceil(durationData.length / 8) === 0)
@@ -360,15 +359,7 @@ export function Sleep() {
 
   const sleepScores = sleepScoresQuery.data ?? []
   const sleepSessions = activitiesQuery.data ?? []
-  const metricsArray = periodSummaryQuery.data?.metrics ?? []
-  const metrics: Record<string, { avg: number | null; change_from_previous_period_percent: number | null }> =
-    {}
-  for (const m of metricsArray) {
-    metrics[m.metric] = {
-      avg: periodStatsValue(m, 'avg'),
-      change_from_previous_period_percent: m.change_from_previous_period_percent,
-    }
-  }
+  const metrics = sleepCardValues(periodSummaryQuery.data?.metrics ?? [])
 
   const isLoading = sleepScoresQuery.isLoading || periodSummaryQuery.isLoading || activitiesQuery.isLoading
 
@@ -408,7 +399,7 @@ export function Sleep() {
           <StatCard
             label="Sleep Score"
             value={metrics.sleep_score?.avg ?? null}
-            trend={metrics.sleep_score?.change_from_previous_period_percent}
+            trend={metrics.sleep_score?.trend}
             description="Overall sleep quality"
           />
           <StatCard label="Duration" value={avgSleepDuration} unit="h" description="Average per night" />
@@ -416,14 +407,14 @@ export function Sleep() {
             label="Efficiency"
             value={metrics.sleep_efficiency?.avg ?? null}
             unit="%"
-            trend={metrics.sleep_efficiency?.change_from_previous_period_percent}
+            trend={metrics.sleep_efficiency?.trend}
             description="Time asleep vs. in bed"
           />
           <StatCard
             label="Latency"
             value={metrics.sleep_latency?.avg ?? null}
             unit="min"
-            trend={metrics.sleep_latency?.change_from_previous_period_percent}
+            trend={metrics.sleep_latency?.trend}
             description="Time to fall asleep"
           />
         </div>
@@ -456,31 +447,31 @@ export function Sleep() {
           <StatCard
             label="Total Score"
             value={metrics.sleep_total_score?.avg ?? null}
-            trend={metrics.sleep_total_score?.change_from_previous_period_percent}
+            trend={metrics.sleep_total_score?.trend}
             description="Sleep duration component"
           />
           <StatCard
             label="Deep Sleep"
             value={metrics.sleep_deep_score?.avg ?? null}
-            trend={metrics.sleep_deep_score?.change_from_previous_period_percent}
+            trend={metrics.sleep_deep_score?.trend}
             description="Restorative sleep quality"
           />
           <StatCard
             label="REM Sleep"
             value={metrics.sleep_rem_score?.avg ?? null}
-            trend={metrics.sleep_rem_score?.change_from_previous_period_percent}
+            trend={metrics.sleep_rem_score?.trend}
             description="Dream sleep quality"
           />
           <StatCard
             label="Restfulness"
             value={metrics.sleep_restfulness?.avg ?? null}
-            trend={metrics.sleep_restfulness?.change_from_previous_period_percent}
+            trend={metrics.sleep_restfulness?.trend}
             description="Movement during sleep"
           />
           <StatCard
             label="Timing"
             value={metrics.sleep_timing?.avg ?? null}
-            trend={metrics.sleep_timing?.change_from_previous_period_percent}
+            trend={metrics.sleep_timing?.trend}
             description="Consistency of bedtime"
           />
         </div>
