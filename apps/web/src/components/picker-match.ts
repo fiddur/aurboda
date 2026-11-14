@@ -35,12 +35,16 @@ export const matchActivityTypes = <T extends NamedType>(
   return { filtered, isNewType, snakeInput }
 }
 
-export const matchMetricEntries = <T extends { label: string; value: string }>(
+export const matchMetricEntries = <T extends { keywords?: string[]; label: string; value: string }>(
   entries: T[],
   input: string,
 ): T[] => {
   const query = input.trim().toLowerCase()
   return entries.filter(
-    (entry) => entry.label.toLowerCase().includes(query) || entry.value.toLowerCase().includes(query),
+    (entry) =>
+      entry.label.toLowerCase().includes(query) ||
+      entry.value.toLowerCase().includes(query) ||
+      entry.value.toLowerCase().replaceAll('_', ' ').includes(query) ||
+      (entry.keywords ?? []).some((keyword) => keyword.toLowerCase().includes(query)),
   )
 }

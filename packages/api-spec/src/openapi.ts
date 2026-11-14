@@ -79,6 +79,7 @@ import {
   topMediaQuerySchema,
   topMediaResponseSchema,
 } from './schemas/media.ts'
+import { metricCatalogQuerySchema, metricCatalogResponseSchema } from './schemas/metric-catalog.ts'
 import {
   addMetricBodySchema,
   addMetricResponseSchema,
@@ -1126,9 +1127,30 @@ const openApiDocument = createDocument({
         tags: ['Auth'],
       },
     },
+    '/metric-catalog': {
+      get: {
+        description:
+          "List Aurboda's built-in metrics for lab values, circumferences and body composition, each with the unit it is stored in and the other units it accepts with their conversion. `in_use` says whether the user already has a metric of that name and `in_use_unit` the unit of that metric, which wins over the catalogue's. A metric not in use becomes one of the user's custom metrics the first time `POST /metrics`, `POST /metrics/bulk` or a report entry uses its name or an alias. `q` matches word prefixes of the name, display name and aliases.",
+        requestParams: { query: metricCatalogQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: metricCatalogResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid query',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List built-in metric catalogue',
+        tags: ['Metrics'],
+      },
+    },
     '/metrics': {
       post: {
-        description: 'Add a manual health metric measurement.',
+        description:
+          'Add a manual health metric measurement. `metric` may be a name or alias from the built-in metric catalogue (`GET /metric-catalog`), which is added on first use; `unit` converts the value to the unit the metric is stored in, and a unit that cannot be converted is refused.',
         requestBody: {
           content: { 'application/json': { schema: addMetricBodySchema } },
         },

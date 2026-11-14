@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import {
+  adoptCatalogMetric,
   bulkInsertCustomMetricDefinitions,
   getCustomMetricByName,
   getCustomMetricDefinitions,
@@ -56,5 +57,23 @@ describe('custom metric definitions', () => {
       ['caffeine_mg', 'sum'],
       ['waist', 'avg'],
     ])
+  })
+
+  test('adopting a catalogue metric inserts it once and never changes an existing one', async () => {
+    const user = getTestUser()
+    const ldl = {
+      aggregation: 'avg' as const,
+      description: 'LDL cholesterol',
+      name: 'ldl_cholesterol',
+      unit: 'mmol/L',
+    }
+    await adoptCatalogMetric(user, ldl)
+    await adoptCatalogMetric(user, ldl)
+    expect(await getCustomMetricDefinitions(user)).toEqual([{ ...ldl, include_in_daily_summary: false }])
+
+    await insertCustomMetricDefinition(user, { name: 'ferritin', unit: 'ng/mL' })
+    await adoptCatalogMetric(user, { description: 'Ferritin', name: 'ferritin', unit: 'µg/L' })
+    expect(await getCustomMetricByName(user, 'ferritin')).toMatchObject({ unit: 'ng/mL' })
+    expect(await getCustomMetricByName(user, 'ferritin')).not.toHaveProperty('description')
   })
 })

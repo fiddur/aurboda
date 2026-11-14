@@ -686,6 +686,7 @@ export { claimSettingsFlag, claimSettingsFlagIn, getUserSettings, upsertUserSett
 export { deleteGoal, getGoals, insertGoal, replaceGoals } from './goals.ts'
 
 export {
+  adoptCatalogMetric,
   bulkInsertCustomMetricDefinitions,
   type CustomMetricDefinitionUpdates,
   deleteCustomMetricDefinition,

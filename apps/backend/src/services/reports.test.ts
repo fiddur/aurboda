@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import * as db from '../db/index.ts'
+import { loadMetricCatalog } from './metric-catalog.ts'
 import {
   addReport,
   deleteReportById,
   getLatestMetric,
   getReport,
+  prepareReportEntries,
   queryReports,
   updateReport,
 } from './reports.ts'
@@ -13,7 +15,9 @@ import {
 const TX = vi.hoisted(() => ({ tx: true }))
 
 vi.mock('../db', () => ({
+  adoptCatalogMetric: vi.fn(),
   deleteNotesForEntityIn: vi.fn(),
+  getCustomMetricDefinitions: vi.fn().mockResolvedValue([]),
   deleteReport: vi.fn(),
   getLatestMetricValue: vi.fn(),
   getReportById: vi.fn(),
@@ -423,5 +427,213 @@ describe('updateReport', () => {
 
     const updateCall = mockUpdateReport.mock.calls[0][2]
     expect(updateCall.entries![0].flag).toBe('low') // 15 is below 20
+  })
+})
+
+describe('prepareReportEntries', () => {
+  const catalog = loadMetricCatalog()
+
+  test('resolves an alias, converts to the stored unit and adopts the metric', () => {
+    expect(prepareReportEntries([{ metric: 'ldl', unit: 'mg/dL', value: 100 }], [], catalog)).toEqual({
+      adopt: [
+        {
+          aggregation: 'avg',
+          description: 'LDL cholesterol',
+          include_in_daily_summary: false,
+          name: 'ldl_cholesterol',
+          unit: 'mmol/L',
+        },
+      ],
+      entries: [
+        { metric: 'ldl_cholesterol', series_unit: 'mmol/L', series_value: 2.586, unit: 'mg/dL', value: 100 },
+      ],
+    })
+  })
+
+  test('converts to the unit of the user’s own metric and adopts nothing', () => {
+    expect(
+      prepareReportEntries(
+        [{ metric: 'ferritin', unit: 'µg/L', value: 80 }],
+        [{ name: 'ferritin', unit: 'ng/mL' }],
+        catalog,
+      ),
+    ).toEqual({
+      adopt: [],
+      entries: [{ metric: 'ferritin', series_unit: 'ng/mL', series_value: 80, unit: 'µg/L', value: 80 }],
+    })
+  })
+
+  test('keeps an unknown metric and a built-in metric with another unit as given', () => {
+    expect(
+      prepareReportEntries(
+        [
+          { metric: 'hair_mercury', unit: 'ppm', value: 0.2 },
+          { metric: 'weight', unit: 'lb', value: 180 },
+        ],
+        [],
+        catalog,
+      ),
+    ).toEqual({
+      adopt: [],
+      entries: [
+        { metric: 'hair_mercury', series_unit: 'ppm', series_value: 0.2, unit: 'ppm', value: 0.2 },
+        { metric: 'weight', series_unit: 'lb', series_value: 180, unit: 'lb', value: 180 },
+      ],
+    })
+  })
+
+  test('refuses a unit a catalogue metric does not accept, one line per entry', () => {
+    expect(
+      prepareReportEntries(
+        [
+          { metric: 'serum ferritin', unit: 'mmol/L', value: 1 },
+          { metric: 'ldl', unit: 'g', value: 1 },
+          { metric: 'weight', unit: 'kg', value: 80 },
+        ],
+        [],
+        catalog,
+      ),
+    ).toEqual({
+      errors: [
+        'Entry "serum ferritin": Unit "mmol/L" is not accepted for "ferritin", which is stored in µg/L. Accepted units: µg/L, ng/mL.',
+        'Entry "ldl": Unit "g" is not accepted for "ldl_cholesterol", which is stored in mmol/L. Accepted units: mmol/L, mg/dL.',
+      ],
+    })
+  })
+
+  test('refuses two entries of the same catalogue metric', () => {
+    expect(
+      prepareReportEntries(
+        [
+          { metric: 'ldl', unit: 'mg/dL', value: 100 },
+          { metric: 'ldl_cholesterol', unit: 'mmol/L', value: 2.6 },
+        ],
+        [],
+        catalog,
+      ),
+    ).toEqual({ errors: ['"ldl" and "ldl_cholesterol" are the same metric'] })
+  })
+})
+
+describe('reports with catalogue metrics', () => {
+  test('addReport writes nothing when an entry is refused', async () => {
+    const result = await addReport('testuser', {
+      date: '2025-05-08T09:00:00Z',
+      entries: [{ metric: 'ferritin', unit: 'mmol/L', value: 1 }],
+      report_type: 'blood_panel',
+    })
+
+    expect(result).toEqual({
+      error:
+        'Entry "ferritin": Unit "mmol/L" is not accepted for "ferritin", which is stored in µg/L. Accepted units: µg/L, ng/mL.',
+      success: false,
+    })
+    expect(db.adoptCatalogMetric).not.toHaveBeenCalled()
+    expect(mockInsertTimeSeries).not.toHaveBeenCalled()
+    expect(mockInsertReport).not.toHaveBeenCalled()
+  })
+
+  test('addReport writes the converted value to the series and the printed one to the entry', async () => {
+    mockInsertReport.mockResolvedValue({
+      created_at: new Date('2025-05-08T10:00:00Z'),
+      entries: [],
+      id: 'r1',
+      report_date: new Date('2025-05-08T09:00:00Z'),
+      report_type: 'blood_panel',
+    })
+
+    await addReport('testuser', {
+      date: '2025-05-08T09:00:00Z',
+      entries: [{ metric: 'ldl', reference_high: 130, reference_low: 0, unit: 'mg/dL', value: 100 }],
+      report_type: 'blood_panel',
+    })
+
+    expect(db.adoptCatalogMetric).toHaveBeenCalledWith(
+      'testuser',
+      expect.objectContaining({ name: 'ldl_cholesterol' }),
+    )
+    expect(mockInsertTimeSeries).toHaveBeenCalledWith('testuser', [
+      {
+        metric: 'ldl_cholesterol',
+        source: 'lab_report',
+        time: new Date('2025-05-08T09:00:00Z'),
+        unit: 'mmol/L',
+        value: 2.586,
+      },
+    ])
+    expect(mockInsertReport).toHaveBeenCalledWith(
+      'testuser',
+      expect.objectContaining({
+        entries: [
+          expect.objectContaining({
+            flag: 'normal',
+            metric: 'ldl_cholesterol',
+            reported_unit: 'mg/dL',
+            reported_value: 100,
+          }),
+        ],
+      }),
+    )
+  })
+
+  test('updateReport refuses before touching anything', async () => {
+    mockGetReportById.mockResolvedValue({
+      created_at: new Date('2025-05-08T10:00:00Z'),
+      entries: [],
+      id: 'r1',
+      report_date: new Date('2025-05-08T09:00:00Z'),
+      report_type: 'blood_panel',
+    })
+
+    const result = await updateReport('testuser', 'r1', { entries: [{ metric: 'ldl', unit: 'g', value: 1 }] })
+
+    expect(result.success).toBe(false)
+    expect(mockQuery).not.toHaveBeenCalled()
+    expect(mockInsertTimeSeries).not.toHaveBeenCalled()
+    expect(mockUpdateReport).not.toHaveBeenCalled()
+  })
+
+  test('a date-only update re-inserts the series value, not the printed one', async () => {
+    const existing = {
+      created_at: new Date('2025-05-08T10:00:00Z'),
+      entries: [
+        {
+          id: 'e1',
+          metric: 'ldl_cholesterol',
+          report_id: 'r1',
+          stored_unit: 'mmol/L',
+          stored_value: 2.586,
+          unit: 'mg/dL',
+          value: 100,
+        },
+      ],
+      id: 'r1',
+      report_date: new Date('2025-05-08T09:00:00Z'),
+      report_type: 'blood_panel',
+    }
+    mockGetReportById.mockResolvedValue(existing)
+    mockGetReportEntryMetrics.mockResolvedValue([
+      { metric: 'ldl_cholesterol', report_date: new Date('2025-05-08T09:00:00Z') },
+    ])
+    mockUpdateReport.mockResolvedValue({ ...existing, report_date: new Date('2025-05-09T09:00:00Z') })
+    mockQuery.mockResolvedValue({ command: 'DELETE', fields: [], oid: 0, rowCount: 1, rows: [] })
+
+    const result = await updateReport('testuser', 'r1', { date: '2025-05-09T09:00:00Z' })
+
+    expect(mockInsertTimeSeries).toHaveBeenCalledWith('testuser', [
+      {
+        metric: 'ldl_cholesterol',
+        source: 'lab_report',
+        time: new Date('2025-05-09T09:00:00Z'),
+        unit: 'mmol/L',
+        value: 2.586,
+      },
+    ])
+    expect(result.data?.entries[0]).toMatchObject({
+      stored_unit: 'mmol/L',
+      stored_value: 2.586,
+      unit: 'mg/dL',
+      value: 100,
+    })
   })
 })

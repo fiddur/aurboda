@@ -24,6 +24,7 @@ import { reanalyseActivities, reanalyseOverrideTargets } from './track-analyse.t
 
 vi.mock('../db', async () => ({
   activityTypeExists: vi.fn().mockResolvedValue(true),
+  adoptCatalogMetric: vi.fn().mockResolvedValue(undefined),
   ensureActivityType: vi.fn().mockResolvedValue(true),
   checkActivityConflict: vi.fn().mockResolvedValue(false),
   getActivityTypeDefinition: vi.fn().mockResolvedValue(null),
@@ -620,6 +621,133 @@ describe('addMetric with custom metrics', () => {
 
     expect(result.success).toBe(false)
     expect(result.error).toContain('below minimum')
+    expect(db.insertTimeSeries).not.toHaveBeenCalled()
+  })
+})
+
+describe('addMetric with the metric catalogue', () => {
+  const time = new Date('2024-01-15T08:00:00Z')
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(db.insertTimeSeries).mockResolvedValue(undefined)
+    vi.mocked(db.getCustomMetricDefinitions).mockResolvedValue([])
+  })
+
+  test('an alias adopts the catalogue metric and writes under its name', async () => {
+    const result = await addMetric('testuser', { metric: 'LDL', time, value: 3.1 })
+
+    expect(result).toMatchObject({ metric: 'ldl_cholesterol', success: true, unit: 'mmol/L', value: 3.1 })
+    expect(result.entity_id).toBe('2024-01-15T08:00:00.000Z|ldl_cholesterol|aurboda')
+    expect(db.adoptCatalogMetric).toHaveBeenCalledWith('testuser', {
+      aggregation: 'avg',
+      description: 'LDL cholesterol',
+      include_in_daily_summary: false,
+      name: 'ldl_cholesterol',
+      unit: 'mmol/L',
+    })
+    expect(db.insertTimeSeries).toHaveBeenCalledWith('testuser', [
+      { metric: 'ldl_cholesterol', source: 'aurboda', time, unit: 'mmol/L', value: 3.1 },
+    ])
+  })
+
+  test('a given unit converts to the stored unit', async () => {
+    const result = await addMetric('testuser', { metric: 'ldl', time, unit: 'mg/dL', value: 100 })
+
+    expect(result).toMatchObject({ metric: 'ldl_cholesterol', success: true, unit: 'mmol/L', value: 2.586 })
+    expect(db.insertTimeSeries).toHaveBeenCalledWith('testuser', [
+      expect.objectContaining({ unit: 'mmol/L', value: 2.586 }),
+    ])
+  })
+
+  test('the user’s own metric of the same name keeps its unit and gets the value converted to it', async () => {
+    vi.mocked(db.getCustomMetricDefinitions).mockResolvedValue([{ name: 'ldl_cholesterol', unit: 'mg/dL' }])
+
+    const result = await addMetric('testuser', {
+      metric: 'ldl_cholesterol',
+      time,
+      unit: 'mmol/L',
+      value: 2.586,
+    })
+
+    expect(result).toMatchObject({ metric: 'ldl_cholesterol', success: true, unit: 'mg/dL', value: 100 })
+    expect(db.adoptCatalogMetric).not.toHaveBeenCalled()
+  })
+
+  test('a unit that cannot be converted is refused and nothing is adopted or inserted', async () => {
+    const result = await addMetric('testuser', { metric: 'ferritin', time, unit: 'mmol/L', value: 50 })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toBe(
+      'Unit "mmol/L" is not accepted for "ferritin", which is stored in µg/L. Accepted units: µg/L, ng/mL.',
+    )
+    expect(db.adoptCatalogMetric).not.toHaveBeenCalled()
+    expect(db.insertTimeSeries).not.toHaveBeenCalled()
+  })
+
+  test('no unit behaves as before', async () => {
+    const result = await addMetric('testuser', { metric: 'weight', time, value: 80 })
+
+    expect(result).toMatchObject({ metric: 'weight', success: true, unit: 'kg', value: 80 })
+    expect(db.adoptCatalogMetric).not.toHaveBeenCalled()
+  })
+
+  test('a built-in metric accepts a matching unit spelling and refuses another unit', async () => {
+    expect(await addMetric('testuser', { metric: 'body_fat', time, unit: '%', value: 20 })).toMatchObject({
+      success: true,
+      unit: 'percent',
+      value: 20,
+    })
+
+    const refused = await addMetric('testuser', { metric: 'weight', time, unit: 'lb', value: 176 })
+    expect(refused.success).toBe(false)
+    expect(refused.error).toBe('Unit "lb" does not match "weight", which is stored in kg.')
+  })
+
+  test('an unknown metric is still refused with the same message', async () => {
+    const result = await addMetric('testuser', { metric: 'no_such_metric', time, unit: 'mg', value: 1 })
+
+    expect(result.error).toBe('Invalid metric "no_such_metric". Not a built-in or registered custom metric.')
+    expect(db.adoptCatalogMetric).not.toHaveBeenCalled()
+  })
+})
+
+describe('bulkAddMetrics with the metric catalogue', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(db.insertTimeSeries).mockResolvedValue(undefined)
+    vi.mocked(db.getCustomMetricDefinitions).mockResolvedValue([])
+  })
+
+  test('adopts a catalogue metric once and converts each item', async () => {
+    const result = await bulkAddMetrics('testuser', [
+      { metric: 'waist', time: new Date('2024-01-15T08:00:00Z'), unit: 'in', value: 34 },
+      { metric: 'waist_circumference', time: new Date('2024-01-16T08:00:00Z'), value: 86 },
+      { metric: 'waist', time: new Date('2024-01-17T08:00:00Z'), unit: 'kg', value: 1 },
+    ])
+
+    expect(result.inserted).toBe(2)
+    expect(result.errors).toEqual([
+      {
+        error:
+          'Unit "kg" is not accepted for "waist_circumference", which is stored in cm. Accepted units: cm, in, mm, m.',
+        index: 2,
+      },
+    ])
+    expect(db.adoptCatalogMetric).toHaveBeenCalledTimes(1)
+    expect(db.insertTimeSeries).toHaveBeenCalledWith('testuser', [
+      expect.objectContaining({ metric: 'waist_circumference', unit: 'cm', value: 86.36 }),
+      expect.objectContaining({ metric: 'waist_circumference', unit: 'cm', value: 86 }),
+    ])
+  })
+
+  test('adopts nothing when every item of the metric is refused', async () => {
+    const result = await bulkAddMetrics('testuser', [
+      { metric: 'ferritin', time: new Date('2024-01-15T08:00:00Z'), unit: 'mmol/L', value: 1 },
+    ])
+
+    expect(result.inserted).toBe(0)
+    expect(db.adoptCatalogMetric).not.toHaveBeenCalled()
     expect(db.insertTimeSeries).not.toHaveBeenCalled()
   })
 })

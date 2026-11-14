@@ -13,7 +13,14 @@ import {
   type UpdateReportResponse,
 } from '@aurboda/api-spec'
 
-import { addReport, deleteReportById, getReport, queryReports, updateReport } from '../services/reports.ts'
+import {
+  addReport,
+  deleteReportById,
+  getReport,
+  queryReports,
+  REPORT_NOT_FOUND,
+  updateReport,
+} from '../services/reports.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
@@ -86,7 +93,9 @@ export const createReportsRouter = (authMiddleware: RequestHandler): TypedRouter
       })
 
       if (!result.success) {
-        return res.status(404).json({ error: result.error, success: false })
+        return res
+          .status(result.error === REPORT_NOT_FOUND ? 404 : 400)
+          .json({ error: result.error, success: false })
       }
 
       res.json({ data: result.data, success: true })

@@ -141,6 +141,7 @@ export const tableCreationOrder = [
   'reports',
   'reports_indexes',
   'report_entries',
+  'report_entries_reported_value',
   'report_entries_indexes',
   'oauth_tokens',
   'oauth_tokens_refused_at',

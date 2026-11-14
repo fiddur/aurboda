@@ -38,15 +38,31 @@ export const reportEntrySchema = z
     method: z.string().max(50).optional().meta({
       description: 'Measurement method (e.g., "bia_segmental", "blood_draw", "dexa")',
     }),
-    metric: z
-      .string()
-      .min(1)
-      .max(100)
-      .meta({ description: 'Metric name (e.g., "skeletal_muscle_mass", "ferritin")' }),
-    reference_high: z.number().optional().meta({ description: 'Upper bound of normal range' }),
-    reference_low: z.number().optional().meta({ description: 'Lower bound of normal range' }),
-    unit: z.string().min(1).max(30).meta({ description: 'Unit of measurement (e.g., "kg", "%", "ng/mL")' }),
-    value: z.number().meta({ description: 'Measured value' }),
+    metric: z.string().min(1).max(100).meta({
+      description:
+        'Metric name (e.g., "skeletal_muscle_mass", "ferritin"). A name, display name or alias from the built-in metric catalogue (GET /metric-catalog) resolves to the catalogue name, and the metric is added on first use',
+    }),
+    reference_high: z
+      .number()
+      .optional()
+      .meta({ description: 'Upper bound of normal range, in the unit of the entry as given' }),
+    reference_low: z
+      .number()
+      .optional()
+      .meta({ description: 'Lower bound of normal range, in the unit of the entry as given' }),
+    stored_unit: z.string().optional().meta({
+      description:
+        'The unit the value is stored in for the metric series; present when the value was converted for the metric series',
+    }),
+    stored_value: z.number().optional().meta({
+      description:
+        'The value as stored in the metric series; present when the value was converted for the metric series',
+    }),
+    unit: z.string().min(1).max(30).meta({
+      description:
+        'Unit of measurement as printed (e.g., "kg", "%", "ng/mL"). For a catalogue metric it is converted to the unit the metric is stored in, and refused when it cannot be converted',
+    }),
+    value: z.number().meta({ description: 'Measured value, as printed' }),
   })
   .meta({ description: 'A single measured or derived value within a lab report', id: 'ReportEntry' })
 
@@ -83,7 +99,7 @@ export const addReportBodySchema = z
   .object({
     date: iso8601DateTimeSchema.meta({ description: 'Date/time of the report' }),
     entries: z
-      .array(reportEntrySchema.omit({ id: true }))
+      .array(reportEntrySchema.omit({ id: true, stored_unit: true, stored_value: true }))
       .min(1)
       .meta({
         description: 'Measured values (at least one entry required)',
@@ -108,7 +124,7 @@ export const updateReportBodySchema = z
   .object({
     date: iso8601DateTimeSchema.optional().meta({ description: 'New date/time of the report' }),
     entries: z
-      .array(reportEntrySchema.omit({ id: true }))
+      .array(reportEntrySchema.omit({ id: true, stored_unit: true, stored_value: true }))
       .min(1)
       .optional()
       .meta({

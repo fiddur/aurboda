@@ -1,4 +1,4 @@
-import type { DataFieldDefinition } from '@aurboda/api-spec'
+import type { CustomMetricDefinition, DataFieldDefinition, MetricCatalogEntry } from '@aurboda/api-spec'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
@@ -17,10 +17,13 @@ import {
   addMetric,
   fetchActivityTypeCatalog,
   fetchActivityTypeDefinitions,
+  fetchCustomMetrics,
+  fetchMetricCatalog,
   uploadFitFile,
   type ActivityType,
 } from '../../state/api'
 import { buildActivityData, newTypeToCreate } from './activityData'
+import { catalogUnitOptions, chosenCatalogUnit, metricLabel, plainMetricUnit } from './metricUnit'
 import './style.css'
 
 type Tab = 'activity' | 'metric'
@@ -366,13 +369,57 @@ const AddActivityForm = ({ onCreated, initialTime }: FormProps) => {
   )
 }
 
+interface MetricUnitProps {
+  catalogEntry: MetricCatalogEntry | undefined
+  customMetrics: CustomMetricDefinition[]
+  metric: string
+  onChange: (unit: string) => void
+  unit: string | undefined
+}
+
+const MetricUnit = ({ catalogEntry, customMetrics, metric, onChange, unit }: MetricUnitProps) => {
+  if (catalogEntry) {
+    return (
+      <select
+        aria-label="Unit"
+        value={unit}
+        onChange={(e) => onChange((e.target as HTMLSelectElement).value)}
+      >
+        {catalogUnitOptions(catalogEntry).map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    )
+  }
+  const plainUnit = metric ? plainMetricUnit(metric, customMetrics) : undefined
+  return plainUnit ? <span class="value-unit">{plainUnit}</span> : null
+}
+
 const AddMetricForm = ({ onCreated, initialTime }: FormProps) => {
+  const queryClient = useQueryClient()
   const [metric, setMetric] = useState('')
   const [value, setValue] = useState('')
+  const [unitChoice, setUnitChoice] = useState<{ metric: string; unit: string }>()
   const [time, setTime] = useState(seedTime(initialTime))
   const [comment, setComment] = useState('')
   const [success, setSuccess] = useState('')
   const [error, setError] = useState('')
+
+  const { data: customMetrics } = useQuery({
+    queryFn: fetchCustomMetrics,
+    queryKey: ['customMetrics'],
+    staleTime: 5 * 60 * 1000,
+  })
+  const { data: metricCatalog } = useQuery({
+    queryFn: fetchMetricCatalog,
+    queryKey: ['metricCatalog'],
+    staleTime: 30 * 60 * 1000,
+  })
+  const catalogEntries = metricCatalog?.entries ?? []
+  const catalogEntry = catalogEntries.find((entry) => entry.name === metric)
+  const unit = chosenCatalogUnit(metric, catalogEntry, unitChoice)
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -380,9 +427,11 @@ const AddMetricForm = ({ onCreated, initialTime }: FormProps) => {
       const result = await addMetric({
         metric,
         time: metricTimeISO,
+        ...(unit ? { unit } : {}),
         value: parseFloat(value),
       })
-      if (comment.trim() && result.success && result.entity_id) {
+      if (!result.success) throw new Error(result.error ?? 'Failed to add metric')
+      if (comment.trim() && result.entity_id) {
         try {
           await addEntityComment('metric', result.entity_id, comment.trim())
         } catch {
@@ -396,8 +445,13 @@ const AddMetricForm = ({ onCreated, initialTime }: FormProps) => {
       setSuccess('')
     },
     onSuccess: (result) => {
+      if (catalogEntry) {
+        void queryClient.invalidateQueries({ queryKey: ['customMetrics'] })
+        void queryClient.invalidateQueries({ queryKey: ['metricCatalog'] })
+      }
       if (onCreated('metric', result.entity_id)) return
-      setSuccess(`Metric "${metric}" recorded`)
+      const label = metricLabel(result.metric ?? metric, customMetrics ?? [], catalogEntries)
+      setSuccess(`Metric "${label}" recorded: ${result.value} ${result.unit ?? ''}`.trimEnd())
       setError('')
       setValue('')
       setComment('')
@@ -412,19 +466,28 @@ const AddMetricForm = ({ onCreated, initialTime }: FormProps) => {
 
       <div class="form-field">
         <label>Metric</label>
-        <MetricPicker value={metric} onChange={setMetric} placeholder="Select a metric..." />
+        <MetricPicker value={metric} onChange={setMetric} placeholder="Select a metric..." includeCatalog />
       </div>
 
       <div class="form-row">
         <div class="form-field">
           <label>Value</label>
-          <input
-            type="number"
-            step="any"
-            value={value}
-            onInput={(e) => setValue((e.target as HTMLInputElement).value)}
-            placeholder="e.g. 72.5"
-          />
+          <div class="value-with-unit">
+            <input
+              type="number"
+              step="any"
+              value={value}
+              onInput={(e) => setValue((e.target as HTMLInputElement).value)}
+              placeholder="e.g. 72.5"
+            />
+            <MetricUnit
+              catalogEntry={catalogEntry}
+              customMetrics={customMetrics ?? []}
+              metric={metric}
+              onChange={(chosen) => setUnitChoice({ metric, unit: chosen })}
+              unit={unit}
+            />
+          </div>
         </div>
         <div class="form-field">
           <label>Time</label>
