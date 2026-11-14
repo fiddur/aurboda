@@ -99,17 +99,15 @@ describe('update_challenge', () => {
   beforeEach(() => {
     remoteMember = false
     db.getChallengeById.mockReset().mockResolvedValue(challenge)
-    db.updateChallenge
-      .mockReset()
-      .mockImplementation(async (_user, _id, patch, options) =>
-        options?.unlessRemoteMember && remoteMember
-          ? null
-          : {
-              ...challenge,
-              spec: patch.spec ?? challenge.spec,
-              timezone: patch.timezone ?? challenge.timezone,
-            },
-      )
+    db.updateChallenge.mockReset().mockImplementation(async (_user, _id, patch, options) =>
+      options?.unlessRemoteMember && remoteMember
+        ? null
+        : {
+            ...challenge,
+            spec: patch.spec ?? challenge.spec,
+            timezone: patch.timezone ?? challenge.timezone,
+          },
+    )
   })
 
   test('refuses a spec change once a remote member has joined', async () => {
