@@ -106,13 +106,14 @@ export const isContextualHrvMetric = (metric: MetricType): boolean =>
   (contextualHrvMetrics as readonly string[]).includes(metric)
 
 /**
- * Built-in activity types (always available, cannot be deleted).
+ * The five core activity types. They are a few of the built-in types: the seed also adds every Health Connect
+ * exercise type and some internal ones, all marked by `is_builtin` on their definition.
  */
-export const builtinActivityTypes = ['sleep', 'exercise', 'meditation', 'nap', 'rest'] as const
-export type BuiltinActivityType = (typeof builtinActivityTypes)[number]
+export const coreActivityTypes = ['sleep', 'exercise', 'meditation', 'nap', 'rest'] as const
+export type CoreActivityType = (typeof coreActivityTypes)[number]
 
-/** @deprecated Use builtinActivityTypes. Kept for backward compatibility. */
-export const activityTypes = builtinActivityTypes
+/** @deprecated Use coreActivityTypes. Kept for backward compatibility. */
+export const activityTypes = coreActivityTypes
 
 export const dataFieldNameSchema = z.string().regex(/^[a-z][a-z0-9_]*$/)
 

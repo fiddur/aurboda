@@ -38,7 +38,7 @@ import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 export const registerActivityTypeTools = (server: McpServer, user: string) => {
   server.tool(
     'list_activity_types',
-    'List all activity type definitions (built-in and custom). Returns display metadata including name, display_name, display_category, color, and icon.',
+    'List all activity type definitions, built-in and custom. Returns display metadata including name, display_name, display_category, color, icon and data_schema. `is_builtin` marks the types Aurboda seeds (the core sleep, exercise, meditation, nap and rest, every Health Connect exercise type under `exercise` such as `running`, `yoga` and `strength_training`, and the internal `calendar_event`, `music_scrobble`, `screentime` and `location_visit`): those cannot be deleted, renamed or merged away.',
     {},
     async () => {
       const definitions = await listActivityTypeDefinitions(user)
@@ -106,7 +106,7 @@ export const registerActivityTypeTools = (server: McpServer, user: string) => {
 
   server.tool(
     'delete_activity_type',
-    'Delete a custom activity type definition. Built-in types (sleep, exercise, meditation, nap, rest) cannot be deleted.',
+    'Delete a custom activity type definition. Built-in types (`is_builtin` in list_activity_types, e.g. `sleep`, `running` or `yoga`) cannot be deleted.',
     { name: z.string().describe('Name of the activity type to delete') },
     async ({ name }) => {
       const result = await deleteActivityTypeDefinition(user, name)
@@ -117,7 +117,7 @@ export const registerActivityTypeTools = (server: McpServer, user: string) => {
 
   server.tool(
     'rename_activity_type',
-    "Rename a custom activity type's snake_case identifier. Updates all activities and deduction rules that reference the old name. Built-in types cannot be renamed.",
+    "Rename a custom activity type's snake_case identifier. Updates all activities and deduction rules that reference the old name. Built-in types (`is_builtin` in list_activity_types) cannot be renamed, and no type can be renamed to a built-in type's name.",
     {
       name: z.string().describe('Current name of the activity type to rename'),
       new_name: z
@@ -134,7 +134,7 @@ export const registerActivityTypeTools = (server: McpServer, user: string) => {
 
   server.tool(
     'merge_activity_type',
-    "Merge a custom activity type into another activity type (built-in or custom). All activities are reassigned, aliases are merged, deduction rules are updated, and the source custom type definition is deleted. Built-in types cannot be used as the source. `set_data` gives every moved activity a field value it lacks, e.g. merging `beer` into `alcohol` with `{ kind: 'beer' }`; the target may be a built-in catalogue type not used yet, and a target of a catalogue name that lacks the field gets it from the catalogue.",
+    "Merge a custom activity type into another activity type (built-in or custom). All activities are reassigned, aliases are merged, deduction rules are updated, and the source custom type definition is deleted. Built-in types (`is_builtin` in list_activity_types) cannot be used as the source. `set_data` gives every moved activity a field value it lacks, e.g. merging `beer` into `alcohol` with `{ kind: 'beer' }`; the target may be a built-in catalogue type not used yet, and a target of a catalogue name that lacks the field gets it from the catalogue.",
     {
       set_data: mergeActivityTypeBodySchema.shape.set_data,
       source: z.string().describe('Name of the custom activity type to merge away'),

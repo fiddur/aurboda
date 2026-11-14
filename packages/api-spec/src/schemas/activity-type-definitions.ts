@@ -19,7 +19,10 @@ export const activityTypeDefinitionSchema = z
     display_category: displayCategorySchema,
     display_name: z.string().meta({ description: 'Human-readable display name' }),
     icon: z.string().optional().meta({ description: 'Emoji or icon identifier' }),
-    is_builtin: z.boolean().meta({ description: 'Whether this is a built-in type' }),
+    is_builtin: z.boolean().meta({
+      description:
+        'Whether Aurboda seeds this type: the core types, every Health Connect exercise type and the internal ones (calendar_event, music_scrobble, screentime, location_visit). A built-in type cannot be deleted, renamed or merged away',
+    }),
     name: z
       .string()
       .regex(/^[a-z][a-z0-9_]*$/)

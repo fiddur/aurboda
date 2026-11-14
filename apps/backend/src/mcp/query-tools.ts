@@ -190,14 +190,14 @@ Use cases:
 
   server.tool(
     'query_activities',
-    "Query activities (sleep, exercise, meditation, nap, rest) for a time range. Returns activity sessions with duration, HR zones for exercise, and other metadata. category filters to runs carrying that run category (low_hr, intervals, long, tempo, hard, or any rule's output_category).",
+    "Query activities of any type (sleep, exercise and its subtypes such as running, meditation, custom types; list_activity_types lists them) for a time range. Returns activity sessions with duration, HR zones for exercise, and other metadata. category filters to runs carrying that run category (low_hr, intervals, long, tempo, hard, or any rule's output_category).",
     {
       ...timeRangeQuerySchema.shape,
       types: z
         .array(activityTypeSchema)
         .optional()
         .describe(
-          'Activity types to include. Defaults to all types (sleep, exercise, meditation, nap, rest).',
+          "Activity types to include (names from list_activity_types). Defaults to all of the user's types.",
         ),
       data_filter: z
         .string()
