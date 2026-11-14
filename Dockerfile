@@ -68,8 +68,10 @@ COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 ARG BUILD_SHA=unknown
+ARG APP_VERSION=
 ENV NODE_ENV=production
 ENV BUILD_SHA=${BUILD_SHA}
+ENV APP_VERSION=${APP_VERSION}
 # Lets the backend serve /u/* share pages with crawler-visible <head> meta by
 # injecting into the same index.html nginx serves.
 ENV WEB_INDEX_PATH=/usr/share/nginx/html/index.html

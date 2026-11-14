@@ -2,17 +2,18 @@ name: Build Android APK
 
 # develop → pre-release on the fixed tag `beta` (beta channel; not `develop`,
 #           a tag named like a branch shadows it in git ref resolution)
-# main    → release v1.0.<versionCode>, marked latest (stable channel)
+# main    → release v1.0.<versionCode>, marked latest (stable channel), called
+#           from release.yml on every release; its notes are the release PR's changes
 # The APK built on each branch follows its own channel, see
 # VERSION_JSON_URL in apps/android/app/build.gradle.kts.
 on:
   push:
     branches:
       - develop
-      - main
     paths:
       - 'apps/android/**'
       - '.github/workflows/android.yml'
+  workflow_call:
   workflow_dispatch:
 
 jobs:
@@ -29,12 +30,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Calculate version code
+      - name: Calculate version
         id: version
-        run: |
-          VERSION_CODE=$(git rev-list --count HEAD)
-          echo "VERSION_CODE=$VERSION_CODE" >> $GITHUB_OUTPUT
-          echo "Calculated version code: $VERSION_CODE"
+        working-directory: .
+        run: scripts/release-version.sh | tee -a "$GITHUB_OUTPUT"
 
       - name: Pick release channel
         id: channel
@@ -42,7 +41,7 @@ jobs:
           REPO_URL="https://github.com/${{ github.repository }}"
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
             echo "name=stable" >> $GITHUB_OUTPUT
-            echo "tag=v1.0.${{ steps.version.outputs.VERSION_CODE }}" >> $GITHUB_OUTPUT
+            echo "tag=${{ steps.version.outputs.tag }}" >> $GITHUB_OUTPUT
             echo "version_json_url=$REPO_URL/releases/latest/download/version.json" >> $GITHUB_OUTPUT
             echo "download_url=$REPO_URL/releases/latest/download/aurboda.apk" >> $GITHUB_OUTPUT
           else
@@ -99,7 +98,7 @@ jobs:
 
       - name: Build release APK
         env:
-          VERSION_CODE: ${{ steps.version.outputs.VERSION_CODE }}
+          VERSION_CODE: ${{ steps.version.outputs.code }}
           VERSION_JSON_URL: ${{ steps.channel.outputs.version_json_url }}
         run: ./gradlew assembleRelease
 
@@ -130,8 +129,8 @@ jobs:
         run: |
           cat > app/build/outputs/apk/release/version.json << EOF
           {
-            "versionCode": ${{ steps.version.outputs.VERSION_CODE }},
-            "versionName": "1.0.${{ steps.version.outputs.VERSION_CODE }}",
+            "versionCode": ${{ steps.version.outputs.code }},
+            "versionName": "${{ steps.version.outputs.name }}",
             "downloadUrl": "${{ steps.channel.outputs.download_url }}",
             "releaseNotes": "Built from commit ${{ github.sha }} (${{ steps.channel.outputs.name }})"
           }
@@ -159,7 +158,7 @@ jobs:
           **Download:** [aurboda.apk](${{ steps.channel.outputs.download_url }})
 
           Built from commit: ${{ github.sha }}
-          Version code: ${{ steps.version.outputs.VERSION_CODE }}" \
+          Version code: ${{ steps.version.outputs.code }}" \
             apps/android/app/build/outputs/apk/release/aurboda.apk \
             apps/android/app/build/outputs/apk/release/version.json
 
@@ -169,6 +168,19 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd ${{ github.workspace }}
+          notes=$(mktemp)
+          # Missing notes must not hold back the release.
+          scripts/release-notes.sh "${{ github.sha }}" > "$notes" || true
+          cat >> "$notes" << EOF
+
+          ## Install
+
+          - **Android:** [aurboda.apk](${{ steps.channel.outputs.download_url }}). Installs from this APK follow releases/latest.
+          - **Server:** \`fiddur/aurboda:${{ steps.channel.outputs.tag }}\` (also \`:latest\` until the next release); see [docs/docker.md](https://github.com/${{ github.repository }}/blob/main/docs/docker.md#versions-and-rollback).
+
+          Built from commit: ${{ github.sha }}
+          Version code: ${{ steps.version.outputs.code }}
+          EOF
           # Re-running a failed job must not trip over a half-made release.
           gh release delete "${{ steps.channel.outputs.tag }}" --yes --cleanup-tag || true
           # --target: the default branch is develop, so without it the v1.0.N tag
@@ -176,13 +188,8 @@ jobs:
           gh release create "${{ steps.channel.outputs.tag }}" \
             --target "${{ github.sha }}" \
             --latest \
-            --title "Aurboda 1.0.${{ steps.version.outputs.VERSION_CODE }}" \
-            --notes "Stable release from main. Installs from this APK follow releases/latest.
-
-          **Download:** [aurboda.apk](${{ steps.channel.outputs.download_url }})
-
-          Built from commit: ${{ github.sha }}
-          Version code: ${{ steps.version.outputs.VERSION_CODE }}" \
+            --title "Aurboda ${{ steps.version.outputs.name }}" \
+            --notes-file "$notes" \
             apps/android/app/build/outputs/apk/release/aurboda.apk \
             apps/android/app/build/outputs/apk/release/version.json
           # Before stable/beta channels existed, the develop build lived on a

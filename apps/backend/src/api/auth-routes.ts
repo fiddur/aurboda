@@ -24,6 +24,7 @@ import type { FailedLogins } from './rate-limit-middleware.ts'
 import { isInvalidPasswordError, loginToUserDb, makeNewUserDb, query } from '../db/index.ts'
 import { httpError } from '../http-error.ts'
 import { readBillingSettings, recordNewAccount } from '../services/account-plan.ts'
+import { appVersion } from '../services/app-version.ts'
 import { pruneAuditLog } from '../services/audit-log.ts'
 import { notifier, notifyAdminsOfSignup } from '../services/notifications.ts'
 import { readOfficialFeedSetting } from '../services/official-feed.ts'
@@ -112,7 +113,7 @@ export const registerAuthRoutes = ({
       signup_allowed: signupMode === 'open',
       signup_mode: signupMode,
       success: true,
-      version: process.env.BUILD_SHA ?? 'dev',
+      version: appVersion(),
       ...(billing.enabled && { price_text: billing.price_text || null, trial_days: billing.trial_days }),
     })
   })

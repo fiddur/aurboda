@@ -344,4 +344,6 @@ The app checks `BuildConfig.VERSION_JSON_URL` for a newer build (`checkForUpdate
 A stable install therefore only ever updates to the next main release; a beta install
 (APK from the `beta` pre-release) follows develop. Local builds default to the beta
 channel. The tag is `beta`, not `develop`: a tag named like a branch shadows the branch in
-git ref resolution (`git fetch origin develop` would fetch the tag). `versionCode` is `git rev-list --count HEAD`, monotonic within each channel.
+git ref resolution (`git fetch origin develop` would fetch the tag). `versionCode` is `git rev-list --count HEAD` (`scripts/release-version.sh`), monotonic within each channel. On `main`
+every release builds the APK, whether or not it touches `apps/android`, because `v1.0.<versionCode>` is also the
+release's Docker image tag (`.github/workflows/release.yml`); its release notes are the release PR's change list.

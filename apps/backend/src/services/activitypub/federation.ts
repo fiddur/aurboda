@@ -1083,7 +1083,7 @@ export const createFeedFederation = (
    * sent becomes accepted, to backfill the followee's recent public posts.
    */
   onFollowAccepted?: (user: string, actorUri: string) => void,
-  /** Deployed software version (BUILD_SHA), reported in NodeInfo. */
+  /** Deployed software version (`appVersion()`), reported in NodeInfo. */
   version = 'dev',
   /** Whether anyone can sign up (`signup_mode = 'open'`), reported as NodeInfo `openRegistrations` (#1050). */
   isSignupOpen: () => Promise<boolean> = async () => false,

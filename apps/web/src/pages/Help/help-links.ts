@@ -16,6 +16,17 @@ export const DISCUSSION_LINKS: HelpLink[] = [
 
 export const BUG_REPORT_LINK: HelpLink = { href: `${GITHUB}/issues/new`, label: 'Report a bug' }
 
+/** Links a server version to what it was built from: a release's notes, or a commit. */
+export const versionLink = (version: string): HelpLink | undefined => {
+  if (/^\d+\.\d+\.\d+$/.test(version)) {
+    return { href: `${GITHUB}/releases/tag/v${version}`, label: version }
+  }
+  if (/^[0-9a-f]{7,40}$/.test(version)) {
+    return { href: `${GITHUB}/commit/${version}`, label: version.slice(0, 7) }
+  }
+  return undefined
+}
+
 export const DOCS_LINKS: HelpLink[] = [
   {
     href: docsUrl('data-sources.md'),
