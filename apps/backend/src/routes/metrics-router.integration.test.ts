@@ -49,6 +49,20 @@ describe('PATCH /metrics/custom/:name', () => {
     expect(metric?.min_value).toBeUndefined()
     expect(metric?.max_value).toBe(10)
   })
+
+  test('sets better, and rejects a value outside higher, lower and neutral', async () => {
+    const user = getTestUser()
+    await insertCustomMetricDefinition(user, { name: 'pain', unit: 'score' })
+    const request = supertest(buildApp(user))
+
+    const set = await request.patch('/metrics/custom/pain').send({ better: 'lower' })
+    expect(set.status).toBe(200)
+    expect(set.body.data).toMatchObject({ better: 'lower', name: 'pain' })
+
+    const invalid = await request.patch('/metrics/custom/pain').send({ better: 'down' })
+    expect(invalid.status).toBe(400)
+    expect((await getCustomMetricByName(user, 'pain'))?.better).toBe('lower')
+  })
 })
 
 describe('POST /metrics/custom', () => {

@@ -29,7 +29,7 @@ New users see four sections out of the box:
 
 ### Your Baseline
 
-A card grid showing your current HRV and resting heart rate averages over 7-day and 30-day windows. Each card displays the current value, unit, and a trend arrow showing the direction of change. Resting HR uses inverse coloring (green when decreasing, since lower is generally better).
+A card grid showing your current HRV and resting heart rate averages over 7-day and 30-day windows. Each card displays the current value, unit, and a trend arrow showing the direction of change, coloured by whether the change is better or worse (see [Trend direction](#trend-direction)).
 
 ### 30-Day Summary
 
@@ -47,7 +47,7 @@ A grid of quick-link tiles for navigating to Timeline, Sleep, HR Zones, Correlat
 
 ### Metric Card
 
-Displays a single metric value with an optional unit, trend indicator, and subtitle. The trend arrow is green for improvement, red for decline, and gray for no change. Supports an `inverse` mode where lower values are considered better (e.g., resting heart rate).
+Displays a single metric value with an optional unit, trend indicator, and subtitle. The trend arrow is coloured by the metric's [trend direction](#trend-direction); the card's `trend_inverse: true` overrides it with "lower is better".
 
 Values are sourced from either the HRV/HR baseline endpoint (for 7-day and 30-day averages) or the period summary (for everything else). The period summary compares the current 30-day window against the previous 30 days to calculate the trend percentage. Averages of heart rate, stress, body battery, respiration and SpO2 are [time-weighted](../data-storage.md#time-weighted-averages), so the hours of a recorded activity, sampled once a second, weigh no more than any other hour.
 
@@ -222,6 +222,26 @@ Shows how a specific activity, tag, or location affects your HRV. Displays three
 A clickable navigation tile with a colored icon and label. Links to any page in Aurboda. Available icons cover Timeline, Sleep, HR Zones, Correlations, Goals, Places, Trends, and Settings.
 
 **Configuration:** Target URL, label text, optional icon.
+
+## Trend direction
+
+Every trend indicator -- on metric, sparkline, activity, top list and places cards, the **Last night**
+card and the [Sleep page](sleep.md) -- colours a change by whether it is an improvement, not by
+whether it went up: green for better, red for worse, grey for a change that is neither. The word goes
+with the colour as the indicator's label ("12.0% lower, better"), so the colour is not the only cue.
+
+The direction belongs to the metric (`metricBetterDirections` in `@aurboda/api-spec`):
+
+- **Higher is better:** HRV, sleep score and the sleep contributor scores (efficiency, latency,
+  restfulness, timing, deep, REM, total), readiness and steps.
+- **Lower is better:** resting heart rate, stress and body fat.
+- **Neutral:** every other built-in metric (weight, for one), and counts of activities, places and
+  top-list entries.
+
+A custom metric has the same setting, `better: 'higher' | 'lower' | 'neutral'` (default neutral), in
+its form under Settings → Custom Metrics and on its metric page, in `POST`/`PATCH /metrics/custom`
+and in the `add_custom_metric` / `update_custom_metric` MCP tools. A visitor of a shared dashboard
+sees built-in metrics with their direction and custom metrics as neutral.
 
 ## Sections
 

@@ -4,6 +4,7 @@
  * persistence (home dashboard vs. a shared dashboard) and the edit toggle.
  */
 import type {
+  CustomMetricDefinition,
   DashboardConfig,
   DashboardSection,
   DashboardWidget,
@@ -17,6 +18,7 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 
 import { DashboardEditor } from '../DashboardEditor'
 import { PublicWidgetRenderer, WidgetRenderer } from '../widgets'
+import { useCustomMetricDefinitions } from '../widgets/useMetricBetter'
 import { dropWidget, type DropTarget, moveSection, moveWidget } from './moveWidget'
 
 const generateSectionId = () => `section-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
@@ -175,6 +177,7 @@ function DashboardSectionComponent({
   widgetData,
   widgetDataLoading,
   periodLabel,
+  customMetrics,
   onRemoveWidget,
   onMoveWidget,
   onAddWidgetClick,
@@ -190,6 +193,7 @@ function DashboardSectionComponent({
   widgetData?: WidgetDataMap
   widgetDataLoading?: boolean
   periodLabel?: string
+  customMetrics?: CustomMetricDefinition[]
   onRemoveWidget?: (widgetId: string) => void
   onMoveWidget?: (widgetId: string, direction: 'up' | 'down') => void
   onAddWidgetClick?: () => void
@@ -374,6 +378,7 @@ function DashboardSectionComponent({
                   widget={widget}
                   data={widgetData[widget.id]}
                   periodLabel={periodLabel}
+                  customMetrics={customMetrics}
                 />
               ) : (
                 <WidgetRenderer widget={widget} boardId={boardId} sectionId={section.id} />
@@ -499,6 +504,7 @@ export function EditableDashboard({
   periodLabel,
 }: EditableDashboardProps) {
   const [showWidgetPicker, setShowWidgetPicker] = useState<string | null>(null) // section id or null
+  const customMetrics = useCustomMetricDefinitions(widgetData !== undefined)
   const [showAddSection, setShowAddSection] = useState(false)
   const [descDraft, setDescDraft] = useState(config.description ?? '')
   // Re-sync when config changes under a still-mounted editor (home "Reset to
@@ -663,6 +669,7 @@ export function EditableDashboard({
           widgetData={widgetData}
           widgetDataLoading={widgetDataLoading}
           periodLabel={periodLabel}
+          customMetrics={customMetrics}
           onRemoveWidget={(widgetId) => handleRemoveWidget(section.id, widgetId)}
           onMoveWidget={(widgetId, direction) => handleMoveWidget(section.id, widgetId, direction)}
           onAddWidgetClick={() => setShowWidgetPicker(section.id)}

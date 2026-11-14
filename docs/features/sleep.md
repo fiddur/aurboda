@@ -8,12 +8,12 @@ The page at `/sleep` shows your sleep quality and sleep debt over a selectable p
 
 ### Overview Stats
 
-Four cards at the top show key metrics with trend arrows comparing to the previous period:
+Four cards at the top show key metrics with trend arrows comparing to the previous period, coloured green when the change is better and red when it is worse (see [Trend direction](dashboard.md#trend-direction)):
 
 - **Sleep Score** -- Overall quality (from Oura), averaged over the period.
 - **Duration** -- Average hours of actual sleep per night (excluding awake time).
 - **Efficiency** -- Time asleep vs. time in bed (percentage).
-- **Latency** -- Time to fall asleep.
+- **Latency** -- Oura's latency score: how quickly you fell asleep (a score, higher is better).
 
 ### Sleep Score Trend
 

@@ -2,6 +2,7 @@ import {
   metricUnits as builtinMetricUnits,
   getMetricAggregation,
   type MetricAggregation,
+  type MetricBetter,
   validMetrics,
 } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -21,7 +22,13 @@ import {
   type MetricDataPointWithSource,
 } from '../../state/api'
 import { buildChartUrl } from '../../utils/chart-url'
-import { METRIC_KIND_OPTIONS, metricKindLabel } from '../../utils/metric-kind'
+import {
+  METRIC_BETTER_OPTIONS,
+  METRIC_KIND_OPTIONS,
+  metricBetterLabel,
+  metricBetterOf,
+  metricKindLabel,
+} from '../../utils/metric-kind'
 import { formatDateTime } from '../EntityDetail/format-utils'
 import './style.css'
 
@@ -187,11 +194,13 @@ function CustomMetricEditor({
   const [minValue, setMinValue] = useState(metric.min_value?.toString() ?? '')
   const [maxValue, setMaxValue] = useState(metric.max_value?.toString() ?? '')
   const [aggregation, setAggregation] = useState<MetricAggregation>(metric.aggregation ?? 'avg')
+  const [better, setBetter] = useState<MetricBetter>(metricBetterOf(metric))
 
   const updateMutation = useMutation({
     mutationFn: () =>
       updateCustomMetric(metric.name, {
         aggregation,
+        better,
         description: description || undefined,
         max_value: maxValue ? parseFloat(maxValue) : null,
         min_value: minValue ? parseFloat(minValue) : null,
@@ -220,6 +229,10 @@ function CustomMetricEditor({
           <div class="metric-meta-field-row">
             <span class="metric-meta-field-label">Kind</span>
             <span>{metricKindLabel(metric.aggregation)}</span>
+          </div>
+          <div class="metric-meta-field-row">
+            <span class="metric-meta-field-label">Trend</span>
+            <span>{metricBetterLabel(metric.better)}</span>
           </div>
           {(metric.min_value !== undefined || metric.max_value !== undefined) && (
             <div class="metric-meta-field-row">
@@ -285,6 +298,19 @@ function CustomMetricEditor({
             onChange={(e) => setAggregation((e.target as HTMLSelectElement).value as MetricAggregation)}
           >
             {METRIC_KIND_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span class="metric-meta-field-label">Trend</span>
+          <select
+            value={better}
+            onChange={(e) => setBetter((e.target as HTMLSelectElement).value as MetricBetter)}
+          >
+            {METRIC_BETTER_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>
                 {opt.label}
               </option>

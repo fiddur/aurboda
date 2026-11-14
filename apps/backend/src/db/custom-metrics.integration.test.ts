@@ -45,6 +45,21 @@ describe('custom metric definitions', () => {
     expect(untouched).toMatchObject({ aggregation: 'avg', unit: 'g' })
   })
 
+  test('better defaults to neutral and round-trips on insert and update', async () => {
+    const user = getTestUser()
+    await insertCustomMetricDefinition(user, { name: 'mood', unit: 'score' })
+    await insertCustomMetricDefinition(user, { better: 'lower', name: 'pain', unit: 'score' })
+
+    expect((await getCustomMetricByName(user, 'mood'))?.better).toBe('neutral')
+    expect((await getCustomMetricByName(user, 'pain'))?.better).toBe('lower')
+
+    expect((await updateCustomMetricDefinition(user, 'mood', { better: 'higher' }))?.better).toBe('higher')
+    expect(await updateCustomMetricDefinition(user, 'mood', { unit: 'points' })).toMatchObject({
+      better: 'higher',
+      unit: 'points',
+    })
+  })
+
   test('bulk insert writes aggregation', async () => {
     const user = getTestUser()
     await bulkInsertCustomMetricDefinitions(user, [
@@ -69,7 +84,9 @@ describe('custom metric definitions', () => {
     }
     expect(await adoptCatalogMetric(user, ldl)).toBe('mmol/L')
     expect(await adoptCatalogMetric(user, ldl)).toBe('mmol/L')
-    expect(await getCustomMetricDefinitions(user)).toEqual([{ ...ldl, include_in_daily_summary: false }])
+    expect(await getCustomMetricDefinitions(user)).toEqual([
+      { ...ldl, better: 'neutral', include_in_daily_summary: false },
+    ])
 
     await insertCustomMetricDefinition(user, { name: 'ferritin', unit: 'ng/mL' })
     expect(await adoptCatalogMetric(user, { description: 'Ferritin', name: 'ferritin', unit: 'µg/L' })).toBe(
