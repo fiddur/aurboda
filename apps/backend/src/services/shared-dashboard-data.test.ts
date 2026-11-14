@@ -21,6 +21,7 @@ vi.mock('./correlations/activity-impact.ts', () => ({ getActivityImpact: vi.fn()
 vi.mock('./correlations/baseline.ts', () => ({ getBaseline: vi.fn() }))
 vi.mock('./goals.ts', () => ({ getGoalsProgress: vi.fn() }))
 vi.mock('./latest-sleep.ts', () => ({ getLatestSleep: vi.fn() }))
+vi.mock('./sleep-debt.ts', () => ({ getCurrentSleepDebt: vi.fn() }))
 vi.mock('./queries/index.ts', () => ({
   getActivityTypeSummary: vi.fn(),
   getPeriodSummary: vi.fn(),
@@ -37,6 +38,7 @@ const { getActivityTypeSummary, getPeriodSummary, getPlacesSummary, getTopApps, 
   await import('./queries/index.ts')
 const { getBaseline } = await import('./correlations/baseline.ts')
 const { getLatestSleep } = await import('./latest-sleep.ts')
+const { getCurrentSleepDebt } = await import('./sleep-debt.ts')
 const { resolveDashboardData, resolvePeriodDashboard, sinceLookbackDays, sinceRange } =
   await import('./shared-dashboard-data.ts')
 
@@ -369,6 +371,7 @@ describe('resolveDashboardData in a window', () => {
     vi.mocked(getActivityTypeSummary).mockReset()
     vi.mocked(getBaseline).mockReset()
     vi.mocked(getLatestSleep).mockReset()
+    vi.mocked(getCurrentSleepDebt).mockReset()
   })
 
   test('a metric card reports the window and its change from the previous window', async () => {
@@ -589,6 +592,7 @@ describe('resolveDashboardData in a window', () => {
           widgets: [
             { config: {}, id: 'sleep', type: 'last_sleep' },
             { config: {}, id: 'goals', type: 'goal_progress' },
+            { config: {}, id: 'debt', type: 'sleep_debt' },
           ],
         },
       ],
@@ -598,10 +602,21 @@ describe('resolveDashboardData in a window', () => {
     const data = await resolveDashboardData('alice', config, { window: october })
 
     expect(data).toEqual({
+      debt: { data: null, type: 'sleep_debt' },
       goals: { data: null, type: 'goal_progress' },
       sleep: { data: null, type: 'last_sleep' },
     })
     expect(getLatestSleep).not.toHaveBeenCalled()
+    expect(getCurrentSleepDebt).not.toHaveBeenCalled()
+  })
+
+  test('a sleep debt card on a live board carries the current debt', async () => {
+    const debt = { days: [], debt_minutes: 75, severity: 'mild' as const, sleep_need_minutes: 480 }
+    vi.mocked(getCurrentSleepDebt).mockResolvedValue(debt)
+
+    const data = await resolveDashboardData('alice', board({ config: {}, id: 'debt', type: 'sleep_debt' }))
+
+    expect(data['debt']).toEqual({ data: debt, type: 'sleep_debt' })
   })
 })
 

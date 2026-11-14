@@ -36,6 +36,7 @@ The `tools/list` answer is abbreviated to keep it small: each tool shows the fir
 | Tool               | What it does                                                                                                                                                                                               |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `get_latest_sleep` | "How did I sleep last night?" -- the most recent sleep ending within 36 hours: timing, score, stage timeline and minutes, resting HR and HRV against 30-day baselines, Body Battery at bedtime and wake-up |
+| `get_sleep_debt`   | "How much sleep do I owe?" -- sleep debt per night against the `sleep_need_minutes` setting, with the debt and severity after the last date; defaults to the two weeks up to today                         |
 
 ### Chart data tools
 

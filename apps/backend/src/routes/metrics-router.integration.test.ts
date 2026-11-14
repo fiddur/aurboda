@@ -3,7 +3,7 @@ import supertest from 'supertest'
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { getCustomMetricByName, insertCustomMetricDefinition } from '../db/custom-metrics.ts'
-import { upsertUserSettings } from '../db/index.ts'
+import { insertActivity, upsertUserSettings } from '../db/index.ts'
 import { insertTimeSeries } from '../db/time-series.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { createMetricsRouter } from './metrics-router.ts'
@@ -133,6 +133,49 @@ describe('GET /daily-summary', () => {
     const user = getTestUser()
 
     const res = await supertest(buildApp(user)).get('/daily-summary?date=2026-11-03&tz=Not/AZone')
+    expect(res.status).toBe(400)
+  })
+})
+
+describe('GET /sleep-debt', () => {
+  beforeAll(async () => {
+    await startTestDb()
+  }, CONTAINER_TIMEOUT)
+
+  afterAll(async () => {
+    await stopTestDb()
+  })
+
+  beforeEach(async () => {
+    await cleanTestDb()
+  })
+
+  test('returns the debt per date for the range', async () => {
+    const user = getTestUser()
+    await insertActivity(user, {
+      activity_type: 'sleep',
+      end_time: new Date('2026-11-03T06:00:00Z'),
+      external_id: 'oura-sleep-2026-11-03',
+      source: 'oura',
+      start_time: new Date('2026-11-03T00:00:00Z'),
+    })
+
+    const res = await supertest(buildApp(user)).get('/sleep-debt?start=2026-11-02&end=2026-11-03&tz=UTC')
+
+    expect(res.status).toBe(200)
+    expect(res.body.data).toEqual({
+      days: [
+        { date: '2026-11-02', debt_minutes: 0, severity: 'none', slept_minutes: null },
+        { date: '2026-11-03', debt_minutes: 120, severity: 'mild', slept_minutes: 360 },
+      ],
+      debt_minutes: 120,
+      severity: 'mild',
+      sleep_need_minutes: 480,
+    })
+  })
+
+  test('rejects a start after the end with 400', async () => {
+    const res = await supertest(buildApp(getTestUser())).get('/sleep-debt?start=2026-11-04&end=2026-11-03')
     expect(res.status).toBe(400)
   })
 })

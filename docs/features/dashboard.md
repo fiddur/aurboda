@@ -67,6 +67,12 @@ A summary of the most recent sleep that ended within the last 36 hours, for a qu
 
 **Configuration:** Optional title (default "Last night").
 
+### Sleep Debt
+
+The sleep you owe against the sleep need you set in Settings: the debt after the last night, its severity (none, mild, moderate, severe) and a sparkline of the last two weeks. See [Sleep debt](./sleep.md#sleep-debt) for how it is computed. Data comes from `GET /api/sleep-debt` (MCP: `get_sleep_debt`); with no night recorded in the last six weeks it says so.
+
+**Configuration:** Optional title (default "Sleep debt").
+
 ### Activity Summary
 
 Shows workout, sleep, and meditation statistics for a configurable recent period. Each category displays as a colored sub-card with an icon, a primary value (count or average), and a secondary detail line (total minutes or nights tracked). Individual categories can be toggled off. Each category is the roll-up of the `exercise`, `meditation` or `sleep` activity type with its subtypes (so naps count as sleep), the same figures an [activity card](#activity-card) of that type shows for the same window; a hidden category is not queried.
@@ -274,7 +280,7 @@ widget renders against that one window, ignoring the lookbacks in its configurat
   period is restored with it. Logging out clears them.
 - **Baselines.** The 7- and 30-day HRV and resting HR baseline cards become the period average of
   `hrv_rmssd` and `resting_heart_rate`.
-- **Widgets that do not apply.** **Last night** and **Goal progress** have no meaning for a past
+- **Widgets that do not apply.** **Last night**, **Sleep debt** and **Goal progress** have no meaning for a past
   period: the widget palette hides them, and existing ones show "Not available for a period".
 - **API.** `GET /dashboard/data?period=2026-10` (the home dashboard) and
   `GET /shared-dashboards/:id/data?period=2026-10` (a shared one) return `period`, `window`
@@ -349,6 +355,7 @@ The dashboard works with whatever data sources you have connected. Widgets grace
 | HRV and resting HR baselines | Oura, Garmin, or Health Connect                 |
 | Sleep score                  | Oura                                            |
 | Last night                   | Any sleep source; Body Battery from Garmin      |
+| Sleep debt                   | Any sleep source                                |
 | Readiness score              | Oura                                            |
 | Steps                        | Garmin or Health Connect                        |
 | Zone 2 minutes               | Any source providing HR during exercise         |

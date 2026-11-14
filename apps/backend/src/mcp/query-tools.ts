@@ -15,6 +15,7 @@ import {
   type MetricType,
   overnightStaysQuerySchema,
   placesSummaryQuerySchema,
+  sleepDebtQuerySchema,
   timeRangeQuerySchema,
   timeWeightedAveragesNote,
   topAppsQuerySchema,
@@ -62,6 +63,7 @@ import {
   queryTags,
   resolveActivityWindow,
 } from '../services/queries/index.ts'
+import { getSleepDebt } from '../services/sleep-debt.ts'
 import { serializeActivityTrack } from '../services/tracks.ts'
 import {
   errorResponse,
@@ -163,6 +165,17 @@ Use cases:
     async ({ tz }) => {
       const data = await getLatestSleep(user)
       return tzJsonResponse({ data, success: true }, tz)
+    },
+  )
+
+  server.tool(
+    'get_sleep_debt',
+    'How much sleep do I owe? Sleep debt per night against the sleep need set in user settings (sleep_need_minutes, default 480). Each night debt = max(0, debt × 0.85 + need − slept): slept is the total sleep of the nights ending on that date plus half of each nap over 20 minutes; a date with no night recorded only decays the debt. Returns the debt and severity (none, mild, moderate, severe by the ratio of debt to need) after the last date, and one entry per date. Defaults to the two weeks up to today.',
+    { ...sleepDebtQuerySchema.shape },
+    async (params) => {
+      const result = await getSleepDebt(user, params)
+      if ('error' in result) return errorResponse(result.error)
+      return jsonResponse({ data: result, success: true })
     },
   )
 

@@ -59,6 +59,7 @@ import {
   queryMetrics,
 } from './queries/index.ts'
 import { getEffectiveHrZones, getUserTimezone } from './settings.ts'
+import { getCurrentSleepDebt } from './sleep-debt.ts'
 import { getTrend } from './trends.ts'
 
 /** Widget metric names that map to a different stored metric name. */
@@ -668,6 +669,8 @@ const resolveWidget = async (
       return options.window ? { data: null, type: 'goal_progress' } : resolveGoalProgress(user)
     case 'last_sleep':
       return { data: options.window ? null : await getLatestSleep(user), type: 'last_sleep' }
+    case 'sleep_debt':
+      return { data: options.window ? null : await getCurrentSleepDebt(user), type: 'sleep_debt' }
     case 'combined_chart':
       return resolveCombinedChart(user, widget.config, tz, options)
     case 'record_card':
@@ -704,6 +707,8 @@ const nullData = (type: DashboardWidget['type']): WidgetData => {
     case 'goal_progress':
       return { data: null, type }
     case 'last_sleep':
+      return { data: null, type }
+    case 'sleep_debt':
       return { data: null, type }
     case 'combined_chart':
       return { data: null, type }

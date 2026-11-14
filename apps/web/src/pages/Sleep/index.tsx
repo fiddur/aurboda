@@ -1,10 +1,20 @@
+import type { SleepDebt, SleepDebtDay } from '@aurboda/api-spec'
+
 import { signal } from '@preact/signals'
 import { useQuery } from '@tanstack/react-query'
 import * as d3 from 'd3'
 import { endOfDay, formatISO, startOfDay, subDays } from 'date-fns'
 import { useEffect, useRef } from 'preact/hooks'
 
-import { fetchActivities, fetchPeriodSummary, fetchSleepScores, type Activity } from '../../state/api'
+import { formatMinutesAsHM } from '../../components/charts/sleep-utils'
+import { formatDebt, hasNights, SEVERITY_COLORS, SEVERITY_LABELS } from '../../components/widgets/sleepDebt'
+import {
+  fetchActivities,
+  fetchPeriodSummary,
+  fetchSleepDebt,
+  fetchSleepScores,
+  type Activity,
+} from '../../state/api'
 import { sleepCardValues } from './cardValues'
 import { getSleepScoreEmptyState } from './emptyState'
 import './style.css'
@@ -279,6 +289,161 @@ function SleepDurationChart({ sleepSessions, height = 180 }: { sleepSessions: Ac
   )
 }
 
+function SleepDebtChart({
+  days,
+  needMinutes,
+  height = 180,
+}: {
+  days: SleepDebtDay[]
+  needMinutes: number
+  height?: number
+}) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const svgRef = useRef<SVGSVGElement>(null)
+
+  useEffect(() => {
+    if (!svgRef.current || !containerRef.current || days.length < 2) return
+
+    const containerWidth = containerRef.current.clientWidth
+    const svg = d3.select(svgRef.current)
+    svg.selectAll('*').remove()
+
+    const margin = { bottom: 40, left: 45, right: 20, top: 20 }
+    const width = containerWidth
+    const innerWidth = width - margin.left - margin.right
+    const innerHeight = height - margin.top - margin.bottom
+
+    const x = d3
+      .scaleBand()
+      .domain(days.map((d) => d.date))
+      .range([0, innerWidth])
+      .padding(0.2)
+
+    const hours = (minutes: number) => minutes / 60
+    const yMax = Math.max(hours(needMinutes), d3.max(days, (d) => hours(d.debt_minutes)) ?? 0)
+    const y = d3.scaleLinear().domain([0, yMax]).nice().range([innerHeight, 0])
+
+    const g = svg
+      .attr('width', width)
+      .attr('height', height)
+      .append('g')
+      .attr('transform', `translate(${margin.left},${margin.top})`)
+
+    g.selectAll('.bar')
+      .data(days)
+      .enter()
+      .append('rect')
+      .attr('class', 'bar')
+      .attr('x', (d) => x(d.date)!)
+      .attr('y', (d) => y(hours(d.debt_minutes)))
+      .attr('width', x.bandwidth())
+      .attr('height', (d) => innerHeight - y(hours(d.debt_minutes)))
+      .attr('fill', (d) => SEVERITY_COLORS[d.severity])
+      .attr('fill-opacity', (d) => (d.slept_minutes === null ? 0.4 : 1))
+      .attr('rx', 2)
+      .append('title')
+      .text(
+        (d) =>
+          `${d.date}: ${formatDebt(d.debt_minutes)} debt, ${d.slept_minutes === null ? 'no night recorded' : `slept ${formatMinutesAsHM(d.slept_minutes)}`}`,
+      )
+
+    g.append('line')
+      .attr('x1', 0)
+      .attr('y1', y(hours(needMinutes)))
+      .attr('x2', innerWidth)
+      .attr('y2', y(hours(needMinutes)))
+      .attr('stroke', '#64748b')
+      .attr('stroke-width', 1)
+      .attr('stroke-dasharray', '4,4')
+
+    g.append('text')
+      .attr('x', innerWidth - 5)
+      .attr('y', y(hours(needMinutes)) - 5)
+      .attr('text-anchor', 'end')
+      .attr('fill', '#64748b')
+      .attr('font-size', '11px')
+      .text('One night')
+
+    const tickValues = days.filter((_, i) => i % Math.ceil(days.length / 8) === 0).map((d) => d.date)
+
+    g.append('g')
+      .attr('transform', `translate(0,${innerHeight})`)
+      .call(
+        d3
+          .axisBottom(x)
+          .tickValues(tickValues)
+          .tickFormat((d) => d3.timeFormat('%b %d')(new Date(`${d}T12:00:00`))),
+      )
+      .selectAll('text')
+      .attr('fill', 'currentColor')
+
+    g.append('g').call(d3.axisLeft(y).ticks(5)).selectAll('text').attr('fill', 'currentColor')
+
+    g.append('text')
+      .attr('transform', 'rotate(-90)')
+      .attr('y', -35)
+      .attr('x', -innerHeight / 2)
+      .attr('text-anchor', 'middle')
+      .attr('fill', 'currentColor')
+      .attr('font-size', '12px')
+      .text('Debt (hours)')
+  }, [days, needMinutes, height])
+
+  if (days.length < 2) {
+    return <div class="chart-placeholder">Not enough sleep data to display chart</div>
+  }
+
+  return (
+    <div ref={containerRef} class="chart-container">
+      <svg ref={svgRef} />
+    </div>
+  )
+}
+
+function SleepDebtSection({ debt }: { debt: SleepDebt | undefined }) {
+  if (!debt) return null
+  if (!hasNights(debt)) {
+    return (
+      <section class="chart-section">
+        <h2>Sleep Debt</h2>
+        <div class="chart-placeholder">No nights recorded in this period.</div>
+      </section>
+    )
+  }
+  return (
+    <section class="chart-section">
+      <h2>Sleep Debt</h2>
+      <div class="stats-grid">
+        <StatCard
+          label="Current debt"
+          value={formatDebt(debt.debt_minutes)}
+          description="After the last night"
+        />
+        <div class="stat-card">
+          <div class="stat-label">Severity</div>
+          <div class="stat-value">
+            <span class="sleep-debt-severity" style={{ background: SEVERITY_COLORS[debt.severity] }}>
+              {SEVERITY_LABELS[debt.severity]}
+            </span>
+          </div>
+          <div class="stat-description">Debt against one night's need</div>
+        </div>
+        <StatCard
+          label="Sleep need"
+          value={formatMinutesAsHM(debt.sleep_need_minutes)}
+          description="Per night"
+        />
+      </div>
+      <p class="sleep-debt-explainer">
+        Each night the debt grows by what you slept less than your need and shrinks by what you slept more,
+        and 15 % of it fades every day. Naps over 20 minutes count at half. A night without data only fades
+        the debt. Change your sleep need in <a href="/settings">Settings</a>.
+      </p>
+      <SleepDebtChart days={debt.days} needMinutes={debt.sleep_need_minutes} />
+    </section>
+  )
+}
+
 function StatCard({
   label,
   value,
@@ -357,6 +522,16 @@ export function Sleep() {
     staleTime: 5 * 60 * 1000,
   })
 
+  const sleepDebtQuery = useQuery({
+    queryFn: () =>
+      fetchSleepDebt({
+        end: formatISO(end, { representation: 'date' }),
+        start: formatISO(start, { representation: 'date' }),
+      }),
+    queryKey: ['sleepDebt', formatISO(start, { representation: 'date' }), daysBack.value],
+    staleTime: 5 * 60 * 1000,
+  })
+
   const sleepScores = sleepScoresQuery.data ?? []
   const sleepSessions = activitiesQuery.data ?? []
   const metrics = sleepCardValues(periodSummaryQuery.data?.metrics ?? [])
@@ -419,6 +594,8 @@ export function Sleep() {
           />
         </div>
       </section>
+
+      <SleepDebtSection debt={sleepDebtQuery.data} />
 
       <section class="chart-section">
         <h2>Sleep Score Trend</h2>

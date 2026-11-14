@@ -19,6 +19,7 @@ import { MetricCardView } from './MetricCardWidget'
 import { PlacesCardView } from './PlacesCardWidget'
 import { QuickLinkView } from './QuickLinkWidget'
 import { RecordCardView } from './RecordCardWidget'
+import { SleepDebtView } from './SleepDebtWidget'
 import { SparklineCardView } from './SparklineCardWidget'
 import { TopListCardView } from './TopListCardWidget'
 import { TrendChartView } from './TrendChartWidget'
@@ -74,6 +75,9 @@ export function PublicWidgetRenderer({ widget, data, periodLabel }: PublicWidget
     case 'last_sleep':
       if (periodLabel && !data?.data) return <NotForAPeriod />
       return <LastSleepView config={widget.config} data={data?.type === 'last_sleep' ? data.data : null} />
+    case 'sleep_debt':
+      if (periodLabel && !data?.data) return <NotForAPeriod />
+      return <SleepDebtView config={widget.config} data={data?.type === 'sleep_debt' ? data.data : null} />
     case 'combined_chart':
       return (
         <CombinedChartView config={widget.config} data={data?.type === 'combined_chart' ? data.data : null} />

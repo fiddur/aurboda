@@ -125,7 +125,7 @@ import {
   updateRouteBodySchema,
 } from './schemas/routes.ts'
 import { updateSettingsInputSchema, userSettingsResponseSchema } from './schemas/settings.ts'
-import { latestSleepResponseSchema } from './schemas/sleep.ts'
+import { latestSleepResponseSchema, sleepDebtQuerySchema, sleepDebtResponseSchema } from './schemas/sleep.ts'
 import {
   dailyAggregatesBodySchema,
   healthConnectDeletionsBodySchema,
@@ -926,6 +926,27 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: "Get last night's sleep",
+        tags: ['Summary'],
+      },
+    },
+
+    '/sleep-debt': {
+      get: {
+        description:
+          'Get sleep debt per night over a date range, against the sleep need you set (sleep_need_minutes, default 480). Each night debt = max(0, debt × 0.85 + need − slept), where slept is the total sleep of the nights ending on that date plus half of each nap over 20 minutes; a date with no night recorded only decays the debt. Severity is none, mild, moderate or severe by the ratio of debt to need.',
+        requestParams: { query: sleepDebtQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: sleepDebtResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Bad request',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get sleep debt',
         tags: ['Summary'],
       },
     },

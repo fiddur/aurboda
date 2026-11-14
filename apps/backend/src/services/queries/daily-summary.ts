@@ -43,6 +43,7 @@ import {
   isCategoryExcluded,
 } from '../screentime-activities.ts'
 import { computeHrZoneSecs, getEffectiveHrZones } from '../settings.ts'
+import { getSleepDebtForDate } from '../sleep-debt.ts'
 import { computeSleepMinutes } from '../sleep-duration.ts'
 import { sampleMean } from '../time-weighted-mean.ts'
 import { buildCategoryMap, getCommentsMap } from './types.ts'
@@ -344,6 +345,7 @@ export async function getDailySummary(
     stressData,
     metricsToday,
     metricsLatest,
+    sleepDebt,
   ] = await Promise.all([
     getTimeSeries(user, 'heart_rate', start, end),
     getTimeSeries(user, 'steps', start, end),
@@ -365,6 +367,7 @@ export async function getDailySummary(
     getTimeSeries(user, 'stress_level', start, end),
     buildMetricsToday(user, dailySummaryMetrics, start, end),
     buildMetricsLatest(user, dailySummaryMetrics),
+    getSleepDebtForDate(user, date.toISOString().slice(0, 10), tz),
   ])
 
   const heartRates = heartRateData.map(([, value]) => value)
@@ -622,6 +625,7 @@ export async function getDailySummary(
         start_time: p.start_time.toISOString(),
       })),
     productivity: productivitySummary,
+    sleep_debt: sleepDebt,
     sleep_sessions: sleepSessionSummaries,
     steps: { total: totalSteps },
     stress_zones: stressZones,

@@ -1,6 +1,10 @@
 import type { DashboardWidget } from '@aurboda/api-spec'
 
-const periodlessWidgetTypes: ReadonlySet<DashboardWidget['type']> = new Set(['goal_progress', 'last_sleep'])
+const periodlessWidgetTypes: ReadonlySet<DashboardWidget['type']> = new Set([
+  'goal_progress',
+  'last_sleep',
+  'sleep_debt',
+])
 
 /** Whether a widget type means anything for a past calendar period. */
 export const appliesToPeriod = (type: DashboardWidget['type']): boolean => !periodlessWidgetTypes.has(type)
