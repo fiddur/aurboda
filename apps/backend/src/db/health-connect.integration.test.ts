@@ -570,6 +570,35 @@ describe('Health Connect Integration Tests', () => {
     })
   })
 
+  describe('exercise session types', () => {
+    const session = (exerciseType: number) => ({
+      endTime: '2026-09-03T10:30:00Z',
+      exerciseType,
+      metadata: { dataOrigin: 'com.example.app', id: `hc-session-${exerciseType}` },
+      startTime: '2026-09-03T10:00:00Z',
+    })
+
+    const storedTypes = async (user: string) =>
+      (await query(user, `SELECT activity_type FROM activities WHERE deleted_at IS NULL`)).rows.map(
+        (r) => r.activity_type,
+      )
+
+    test.each([
+      ['single', (user: string) => processHealthConnectData(user, 'ExerciseSessionRecord', session(2))],
+      ['batch', (user: string) => processHealthConnectBatch(user, 'ExerciseSessionRecord', [session(2)])],
+    ])('stores a badminton session as badminton (%s path)', async (_, store) => {
+      const user = getTestUser()
+      await store(user)
+      expect(await storedTypes(user)).toEqual(['badminton'])
+    })
+
+    test('keeps an other-workout session as generic exercise', async () => {
+      const user = getTestUser()
+      await processHealthConnectBatch(user, 'ExerciseSessionRecord', [session(0)])
+      expect(await storedTypes(user)).toEqual(['exercise'])
+    })
+  })
+
   describe('MindfulnessSessionRecord (#1341)', () => {
     const mindfulnessSession = (overrides: Record<string, unknown> = {}) => ({
       endTime: '2026-09-03T10:21:00Z',
