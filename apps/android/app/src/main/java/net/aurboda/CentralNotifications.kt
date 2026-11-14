@@ -21,6 +21,7 @@ data class ServerNotification(
     val link: String? = null,
     @SerialName("created_at") val createdAt: String,
     val actions: List<ServerNotificationAction> = emptyList(),
+    @SerialName("read_at") val readAt: String? = null,
 )
 
 /** A page of `GET /notifications` (subset of `NotificationsResponse`). */
@@ -68,6 +69,49 @@ fun decideCentralNotifications(notifications: List<ServerNotification>, highWate
         .sortedBy { it.second }
         .map { it.first }
     return CentralDecision(toNotify = toNotify, newHighWater = listOfNotNull(highWater, maxSeen).maxOrNull())
+}
+
+/** What the shade shows of a server notification, read back from its extras. */
+data class ShownNotification(
+    val serverId: String,
+    val androidId: Int,
+    val channelId: String,
+    val contentKey: String,
+)
+
+/** Everything of a notification that the shade shows, so a revision on the server changes it. */
+fun notificationContentKey(n: ServerNotification): String =
+    listOf(
+        n.title,
+        n.body.orEmpty(),
+        n.link.orEmpty(),
+        n.actions.joinToString("\u0001") { "${it.key}\u0002${it.label}" },
+    ).joinToString("\u0000")
+
+data class Repost(val notification: ServerNotification, val androidId: Int, val channelId: String)
+
+data class ReconcileDecision(val cancel: List<Int>, val repost: List<Repost>)
+
+/**
+ * Compares what the shade shows with the server's current state of those notifications
+ * (`GET /notifications?ids=…`): one read or no longer there is withdrawn, one whose content
+ * changed is reposted. Null when the answer holds a notification that was not asked for, which
+ * is a server that ignores `ids`: then nothing it left out can be taken as deleted.
+ */
+fun reconcileShownNotifications(shown: List<ShownNotification>, current: List<ServerNotification>): ReconcileDecision? {
+    val asked = shown.map { it.serverId }.toSet()
+    if (current.any { it.id !in asked }) return null
+    val byId = current.associateBy { it.id }
+    val cancel = mutableListOf<Int>()
+    val repost = mutableListOf<Repost>()
+    for (s in shown) {
+        val now = byId[s.serverId]
+        when {
+            now == null || now.readAt != null -> cancel += s.androidId
+            notificationContentKey(now) != s.contentKey -> repost += Repost(now, s.androidId, s.channelId)
+        }
+    }
+    return ReconcileDecision(cancel, repost)
 }
 
 /** The legacy post high-water seeds the first central poll, so posts since the last legacy run are not swallowed. */

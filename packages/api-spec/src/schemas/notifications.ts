@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { baseResponseSchema, iso8601DateTimeSchema, queryBooleanSchema } from './common.ts'
+import { baseResponseSchema, iso8601DateTimeSchema, queryBooleanSchema, UUID_RE } from './common.ts'
 
 /**
  * Every kind of notification the server raises. Adding one is a registry entry
@@ -175,6 +175,18 @@ export const notificationsQuerySchema = z
       description: 'Only notifications created strictly after this time (a poller’s high-water mark)',
     }),
     cursor: z.string().optional().meta({ description: "Opaque cursor from a previous page's `next_cursor`" }),
+    ids: z
+      .string()
+      .refine(
+        (ids) => ids.split(',').every((id) => UUID_RE.test(id)),
+        'Must be comma-separated notification IDs',
+      )
+      .refine((ids) => ids.split(',').length <= 100, 'At most 100 IDs')
+      .optional()
+      .meta({
+        description:
+          'Only these notifications (comma-separated IDs, at most 100), read or not unless `unread_only` is set: a device re-reads the ones it is showing to update or withdraw them. An ID missing from the answer was deleted.',
+      }),
     limit: z.coerce
       .number()
       .int()

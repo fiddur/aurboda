@@ -60,6 +60,17 @@ suspend fun fetchPushNotifications(
     }
 }
 
+/** The current state of the given push notifications, read or not; null when the call failed. */
+suspend fun fetchPushNotificationsByIds(
+    httpClient: HttpClient,
+    apiUrl: String,
+    authToken: String,
+    ids: List<String>,
+): ServerNotificationsPage? {
+    val idsParam = URLEncoder.encode(ids.joinToString(","), "UTF-8")
+    return getJson(httpClient, "$apiUrl/notifications?push_only=true&limit=${ids.size}&ids=$idsParam", authToken)
+}
+
 suspend fun fetchUnreadNotificationCount(httpClient: HttpClient, apiUrl: String, authToken: String): Int? =
     getJson<ServerNotificationsPage>(httpClient, "$apiUrl/notifications?limit=1", authToken)?.unreadCount
 

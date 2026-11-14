@@ -161,7 +161,7 @@ The bell's notifications and per-type switches. See [Notifications](features/not
 
 | Tool                          | What it does                                                                                                                          |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `list_notifications`          | Newest first with `unread_count` and `next_cursor`; `unread_only`, `after` and `push_only` filter, like `GET /notifications`          |
+| `list_notifications`          | Newest first with `unread_count` and `next_cursor`; `unread_only`, `after`, `push_only` and `ids` filter, like `GET /notifications`   |
 | `mark_notification_read`      | Mark one notification read by `id`                                                                                                    |
 | `mark_all_notifications_read` | Mark every unread notification read                                                                                                   |
 | `list_notification_types`     | The types this user can receive with their in-app and push switches                                                                   |

@@ -163,6 +163,16 @@ class CentralNotificationsTest {
         val n = page.notifications.single()
         assertEquals("something_new", n.type)
         assertTrue(n.actions.isEmpty())
+        assertNull(n.readAt)
+    }
+
+    @Test
+    fun `decodes read_at`() {
+        val page = appJson.decodeFromString<ServerNotificationsPage>(
+            """{"notifications":[{"id":"n1","type":"feed_like","title":"Hi","created_at":"2026-11-13T10:00:00Z",
+               "read_at":"2026-11-13T10:05:00.000Z"}],"unread_count":0}""",
+        )
+        assertEquals("2026-11-13T10:05:00.000Z", page.notifications.single().readAt)
     }
 
     @Test
@@ -180,5 +190,64 @@ class CentralNotificationsTest {
         )
         assertNull(withoutGroup.types.single().group)
         assertNull(withoutGroup.types.single().groupLabel)
+    }
+
+    private fun shown(n: ServerNotification) = ShownNotification(
+        serverId = n.id,
+        androidId = androidNotificationId(n.id),
+        channelId = "notifications_feed",
+        contentKey = notificationContentKey(n),
+    )
+
+    private val pending = ServerNotification(
+        id = "11111111-1111-4111-8111-111111111111",
+        type = "autoshare_pending",
+        title = "Your run will be shared in about 10 minutes",
+        body = "Unless you stop it",
+        createdAt = "2026-11-13T10:00:00Z",
+        actions = listOf(ServerNotificationAction(key = "skip", label = "Don't share")),
+    )
+
+    @Test
+    fun `the content key changes with the title, body, link or actions`() {
+        val key = notificationContentKey(pending)
+        assertEquals(key, notificationContentKey(pending.copy(createdAt = "2026-11-14T10:00:00Z")))
+        assertFalse(key == notificationContentKey(pending.copy(title = "Your run was shared")))
+        assertFalse(key == notificationContentKey(pending.copy(body = null)))
+        assertFalse(key == notificationContentKey(pending.copy(link = "/feed")))
+        assertFalse(key == notificationContentKey(pending.copy(actions = emptyList())))
+    }
+
+    @Test
+    fun `an unchanged unread notification is left alone`() {
+        val decision = reconcileShownNotifications(listOf(shown(pending)), listOf(pending))!!
+        assertTrue(decision.cancel.isEmpty())
+        assertTrue(decision.repost.isEmpty())
+    }
+
+    @Test
+    fun `a revised notification is reposted under its Android id and channel`() {
+        val revised = pending.copy(title = "Your run was shared", actions = emptyList())
+        val decision = reconcileShownNotifications(listOf(shown(pending)), listOf(revised))!!
+        assertTrue(decision.cancel.isEmpty())
+        assertEquals(listOf(revised), decision.repost.map { it.notification })
+        assertEquals("notifications_feed", decision.repost.single().channelId)
+    }
+
+    @Test
+    fun `a notification read elsewhere or deleted is withdrawn`() {
+        val other = pending.copy(id = "22222222-2222-4222-8222-222222222222")
+        val decision = reconcileShownNotifications(
+            listOf(shown(pending), shown(other)),
+            listOf(pending.copy(readAt = "2026-11-13T10:05:00Z", title = "Your run was shared")),
+        )!!
+        assertEquals(listOf(androidNotificationId(pending.id), androidNotificationId(other.id)), decision.cancel)
+        assertTrue(decision.repost.isEmpty())
+    }
+
+    @Test
+    fun `an answer with notifications that were not asked for means the server ignored ids`() {
+        val stranger = pending.copy(id = "33333333-3333-4333-8333-333333333333")
+        assertNull(reconcileShownNotifications(listOf(shown(pending)), listOf(stranger)))
     }
 }

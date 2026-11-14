@@ -6,6 +6,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.Bundle
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -20,20 +21,26 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import io.ktor.client.HttpClient
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Periodic background poll that shows the server's push notifications
  * (`GET /notifications?push_only=true`): the server decides which kinds are pushed,
  * this worker only fetches, picks the new ones ([decideCentralNotifications]) and
- * posts them. Against a server without `/notifications` it falls back to the
- * timeline-based post notifier ([legacyPoll], deciding with [decideNotifications]).
+ * posts them. Each run also re-reads the ones still in the shade and withdraws or
+ * updates them when they were read elsewhere or revised ([reconcileShownNotifications]).
+ * Against a server without `/notifications` it falls back to the timeline-based post
+ * notifier ([legacyPoll], deciding with [decideNotifications]).
  */
 class NotificationWorker(
     context: Context,
     params: WorkerParameters,
 ) : CoroutineWorker(context, params) {
 
-    override suspend fun doWork(): Result {
+    override suspend fun doWork(): Result = pollLock.withLock { poll() }
+
+    private suspend fun poll(): Result {
         val ctx = applicationContext
         if (!isPostNotificationsEnabled(ctx)) return Result.success()
 
@@ -46,11 +53,16 @@ class NotificationWorker(
                 PushFetch.Unsupported -> legacyPoll(ctx, httpClient, credentials.apiUrl, credentials.authToken)
                 PushFetch.Failed -> Result.retry()
                 is PushFetch.Ok -> {
+                    reconcileShown(ctx, httpClient, credentials.apiUrl, credentials.authToken)
                     val decision = decideCentralNotifications(fetch.page.notifications, highWater)
                     if (decision.toNotify.isNotEmpty()) {
                         val types = fetchNotificationTypes(httpClient, credentials.apiUrl, credentials.authToken)
                             ?.types ?: emptyList()
-                        decision.toNotify.takeLast(MAX_PER_RUN).forEach { postServerNotification(ctx, it, types) }
+                        decision.toNotify.takeLast(MAX_PER_RUN).forEach { notification ->
+                            val channel = notificationChannelFor(notification.type, types)
+                            ensureCentralChannel(ctx, channel)
+                            postServerNotification(ctx, notification, channel.id, androidNotificationId(notification.id))
+                        }
                     }
                     decision.newHighWater?.let { setCentralNotifyHighWater(ctx, it) }
                     Result.success()
@@ -81,18 +93,50 @@ class NotificationWorker(
         return Result.success()
     }
 
-    private fun postServerNotification(ctx: Context, notification: ServerNotification, types: List<NotificationTypeLite>) {
+    /** Withdraws the server notifications in the shade that were read elsewhere or deleted, and updates the revised ones. */
+    private suspend fun reconcileShown(ctx: Context, httpClient: HttpClient, apiUrl: String, authToken: String) {
+        val shown = ctx.getSystemService(NotificationManager::class.java).activeNotifications
+            .mapNotNull { sbn ->
+                val extras = sbn.notification.extras
+                val serverId = extras.getString(EXTRA_SERVER_ID) ?: return@mapNotNull null
+                val contentKey = extras.getString(EXTRA_CONTENT_KEY) ?: return@mapNotNull null
+                val channelId = sbn.notification.channelId ?: return@mapNotNull null
+                if (!isValidNotificationId(serverId)) return@mapNotNull null
+                ShownNotification(serverId, sbn.id, channelId, contentKey)
+            }
+            .distinctBy { it.serverId }
+            .take(MAX_RECONCILED)
+        if (shown.isEmpty()) return
+        val page = fetchPushNotificationsByIds(httpClient, apiUrl, authToken, shown.map { it.serverId }) ?: return
+        val decision = reconcileShownNotifications(shown, page.notifications) ?: return
+        val manager = NotificationManagerCompat.from(ctx)
+        decision.cancel.forEach { manager.cancel(it) }
+        decision.repost.forEach {
+            postServerNotification(ctx, it.notification, it.channelId, it.androidId, alertOnce = true)
+        }
+    }
+
+    private fun postServerNotification(
+        ctx: Context,
+        notification: ServerNotification,
+        channelId: String,
+        notifyId: Int,
+        alertOnce: Boolean = false,
+    ) {
         val manager = NotificationManagerCompat.from(ctx)
         if (!manager.areNotificationsEnabled()) return
 
-        val channel = notificationChannelFor(notification.type, types)
-        ensureCentralChannel(ctx, channel)
-        val notifyId = androidNotificationId(notification.id)
-
-        val builder = NotificationCompat.Builder(ctx, channel.id)
+        val builder = NotificationCompat.Builder(ctx, channelId)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(notification.title)
             .setAutoCancel(true)
+            .setOnlyAlertOnce(alertOnce)
+            .addExtras(
+                Bundle().apply {
+                    putString(EXTRA_SERVER_ID, notification.id)
+                    putString(EXTRA_CONTENT_KEY, notificationContentKey(notification))
+                },
+            )
             .setContentIntent(tapIntent(ctx, notifyId, notification.link, notification.id))
         notification.body?.let { body ->
             builder.setContentText(body).setStyle(NotificationCompat.BigTextStyle().bigText(body))
@@ -102,7 +146,7 @@ class NotificationWorker(
                 putExtra(NotificationActionReceiver.EXTRA_SERVER_ID, notification.id)
                 putExtra(NotificationActionReceiver.EXTRA_ACTION_KEY, action.key)
                 putExtra(NotificationActionReceiver.EXTRA_ANDROID_ID, notifyId)
-                putExtra(NotificationActionReceiver.EXTRA_CHANNEL_ID, channel.id)
+                putExtra(NotificationActionReceiver.EXTRA_CHANNEL_ID, channelId)
                 putExtra(NotificationActionReceiver.EXTRA_TITLE, notification.title)
             }
             val pendingAction = PendingIntent.getBroadcast(
@@ -162,6 +206,12 @@ class NotificationWorker(
         private const val CHANNEL_ID = "post_notifications"
         private const val GROUP_KEY = "net.aurboda.POSTS"
         private const val MAX_PER_RUN = 8
+        private const val MAX_RECONCILED = 100
+        private const val EXTRA_SERVER_ID = "net.aurboda.server_notification_id"
+        private const val EXTRA_CONTENT_KEY = "net.aurboda.server_notification_content"
+
+        /** The periodic poll and [checkSoon] are separate unique works; one lock keeps them from posting the same notification twice. */
+        private val pollLock = Mutex()
 
         fun ensureChannel(context: Context) {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
