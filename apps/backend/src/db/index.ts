@@ -315,7 +315,6 @@ export {
   getParticipationById,
   getParticipationByToken,
   getParticipationByUrl,
-  hasRemoteChallengeMember,
   listChallengeMembers,
   listChallengeParticipations,
   listChallenges,

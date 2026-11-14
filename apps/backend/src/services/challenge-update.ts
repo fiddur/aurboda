@@ -1,33 +1,52 @@
 import type { ChallengePatch, ChallengeRecord } from '../db/index.ts'
 
-import { getChallengeById, hasRemoteChallengeMember, updateChallenge } from '../db/index.ts'
+import { getChallengeById, updateChallenge } from '../db/index.ts'
 import { sameSpec } from './challenge-spec.ts'
 
-export const SPEC_LOCKED_MESSAGE =
-  "The scoring can't change once someone from another instance has joined; name, dates and visibility can."
+export const LOCKED_MESSAGES = {
+  spec_locked:
+    "The scoring can't change once someone from another instance has joined; the name and visibility can.",
+  window_locked:
+    "The dates and timezone can't change once someone from another instance has joined; the name and visibility can.",
+} as const
 
 export type UpdateHostedChallengeResult =
   | { status: 'updated'; record: ChallengeRecord }
   | { status: 'not_found' }
-  | { status: 'spec_locked' }
+  | { status: keyof typeof LOCKED_MESSAGES }
+
+const moved = (next: Date | undefined, current: Date): boolean =>
+  next !== undefined && next.getTime() !== current.getTime()
+
+/** Which frozen part of the challenge the patch changes; values sent back unchanged change nothing. */
+export const frozenChange = (existing: ChallengeRecord, patch: ChallengePatch): 'spec' | 'window' | null => {
+  if (patch.spec !== undefined && !sameSpec(existing.spec, patch.spec)) return 'spec'
+  if (
+    moved(patch.start_ts, existing.start_ts) ||
+    moved(patch.end_ts, existing.end_ts) ||
+    (patch.timezone !== undefined && patch.timezone !== existing.timezone)
+  ) {
+    return 'window'
+  }
+  return null
+}
 
 /**
- * Update a hosted challenge, refusing a spec change once a remote member has joined: their
- * participation scores the spec it joined with, so a new one would rank them on something else.
- * An unchanged spec in the patch passes, so a client may send the whole challenge back.
+ * Update a hosted challenge, refusing a change to its spec, dates or timezone once a remote member
+ * has joined: their participation scores the spec and window it joined with, so a new one would
+ * rank them on something else. The refusal is part of the UPDATE itself, so a member joining
+ * between the read and the write cannot slip past it.
  */
 export const updateHostedChallenge = async (
   user: string,
   id: string,
   patch: ChallengePatch,
 ): Promise<UpdateHostedChallengeResult> => {
-  if (patch.spec !== undefined) {
-    const existing = await getChallengeById(user, id)
-    if (!existing) return { status: 'not_found' }
-    if (!sameSpec(existing.spec, patch.spec) && (await hasRemoteChallengeMember(user, id))) {
-      return { status: 'spec_locked' }
-    }
-  }
-  const record = await updateChallenge(user, id, patch)
-  return record ? { record, status: 'updated' } : { status: 'not_found' }
+  const existing = await getChallengeById(user, id)
+  if (!existing) return { status: 'not_found' }
+  const frozen = frozenChange(existing, patch)
+  const record = await updateChallenge(user, id, patch, { unlessRemoteMember: frozen !== null })
+  if (record) return { record, status: 'updated' }
+  if (frozen === null || !(await getChallengeById(user, id))) return { status: 'not_found' }
+  return { status: frozen === 'spec' ? 'spec_locked' : 'window_locked' }
 }
