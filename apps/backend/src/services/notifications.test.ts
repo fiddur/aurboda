@@ -40,6 +40,7 @@ const fakeDeps = (overrides: Partial<NotifierDeps> = {}) => {
   const prunes: [Date, Date][] = []
   const errors: unknown[] = []
   const revisions: [NotificationTarget, NotificationRevisionPatch][] = []
+  const openRevisions: [string[], NotificationRevisionPatch][] = []
   const deps: NotifierDeps = {
     getPreference: async () => null,
     insert: async (_user, input) => {
@@ -56,9 +57,13 @@ const fakeDeps = (overrides: Partial<NotifierDeps> = {}) => {
       revisions.push([target, patch])
       return { ...record({ in_app: true, push: true, title: 'x', type: 'admin_signup' }), ...patch }
     },
+    reviseOpen: async (_user, dedupeKeys, patch) => {
+      openRevisions.push([dedupeKeys, patch])
+      return []
+    },
     ...overrides,
   }
-  return { deps, errors, inserts, prunes, revisions }
+  return { deps, errors, inserts, openRevisions, prunes, revisions }
 }
 
 const input: RaiseNotificationInput = { title: 'Hello', type: 'admin_signup' }
@@ -170,6 +175,20 @@ describe('createNotifier().revise', () => {
     await expect(notifier.revise('alice', 'k', { title: ' ' })).rejects.toThrow()
     await expect(notifier.revise('alice', 'k', { link: null })).resolves.not.toBeNull()
     expect(revisions).toHaveLength(1)
+  })
+})
+
+describe('createNotifier().reviseOpen', () => {
+  test('passes the keys and the patch through', async () => {
+    const { deps, openRevisions } = fakeDeps()
+    await createNotifier(deps).reviseOpen('alice', ['k1', 'k2'], { actions: [], title: 'Closed' })
+    expect(openRevisions).toEqual([[['k1', 'k2'], { actions: [], title: 'Closed' }]])
+  })
+
+  test('rejects a link that is not an in-app path', async () => {
+    const { deps, openRevisions } = fakeDeps()
+    await expect(createNotifier(deps).reviseOpen('alice', ['k'], { link: 'https://x' })).rejects.toThrow()
+    expect(openRevisions).toEqual([])
   })
 })
 

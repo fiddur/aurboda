@@ -63,17 +63,11 @@ export interface NotificationRevisionPatch {
   data?: Record<string, unknown> | null
   actions?: NotificationAction[]
   mark_read?: boolean
+  /** Frees the dedupe key, so that raising it again stores a new notification. */
+  release_dedupe_key?: boolean
 }
 
-/**
- * Updates only the fields given. `created_at` stays, so a poller's high-water mark does not
- * deliver the revised row again. Null when nothing matched.
- */
-export const reviseNotification = async (
-  user: string,
-  target: NotificationTarget,
-  patch: NotificationRevisionPatch,
-): Promise<NotificationRecord | null> => {
+const revisionSets = (patch: NotificationRevisionPatch): { sets: string[]; params: unknown[] } => {
   const sets: string[] = []
   const params: unknown[] = []
   const set = (column: string, value: unknown): void => {
@@ -86,6 +80,20 @@ export const reviseNotification = async (
   if (patch.data !== undefined) set('data', patch.data === null ? null : JSON.stringify(patch.data))
   if (patch.actions !== undefined) set('actions', JSON.stringify(patch.actions))
   if (patch.mark_read === true) sets.push('read_at = COALESCE(read_at, NOW())')
+  if (patch.release_dedupe_key === true) sets.push('dedupe_key = NULL')
+  return { params, sets }
+}
+
+/**
+ * Updates only the fields given. `created_at` stays, so a poller's high-water mark does not
+ * deliver the revised row again. Null when nothing matched.
+ */
+export const reviseNotification = async (
+  user: string,
+  target: NotificationTarget,
+  patch: NotificationRevisionPatch,
+): Promise<NotificationRecord | null> => {
+  const { params, sets } = revisionSets(patch)
   params.push('id' in target ? target.id : target.dedupe_key)
   const where = `${'id' in target ? 'id' : 'dedupe_key'} = $${params.length}`
   const sql =
@@ -94,6 +102,44 @@ export const reviseNotification = async (
       : `UPDATE notifications SET ${sets.join(', ')} WHERE ${where} RETURNING ${NOTIFICATION_COLUMNS}`
   const result = await query<NotificationRecord>(user, sql, params)
   return result.rows[0] ?? null
+}
+
+/**
+ * `reviseNotification` for the notifications with any of these dedupe keys that still offer
+ * actions, in one statement. A patch that clears the actions closes them, so a second call
+ * finds nothing to revise.
+ */
+export const reviseOpenNotifications = async (
+  user: string,
+  dedupeKeys: string[],
+  patch: NotificationRevisionPatch,
+): Promise<NotificationRecord[]> => {
+  if (dedupeKeys.length === 0) return []
+  const { params, sets } = revisionSets(patch)
+  params.push(dedupeKeys)
+  const where = `dedupe_key = ANY($${params.length}) AND actions <> '[]'::jsonb`
+  const sql =
+    sets.length === 0
+      ? `SELECT ${NOTIFICATION_COLUMNS} FROM notifications WHERE ${where}`
+      : `UPDATE notifications SET ${sets.join(', ')} WHERE ${where} RETURNING ${NOTIFICATION_COLUMNS}`
+  const result = await query<NotificationRecord>(user, sql, params)
+  return result.rows
+}
+
+/** The notifications of a type that still offer actions and whose `data` contains `data`. */
+export const listOpenNotifications = async (
+  user: string,
+  type: string,
+  data: Record<string, unknown>,
+): Promise<NotificationRecord[]> => {
+  const result = await query<NotificationRecord>(
+    user,
+    `SELECT ${NOTIFICATION_COLUMNS} FROM notifications
+     WHERE type = $1 AND actions <> '[]'::jsonb AND data @> $2::jsonb
+     ORDER BY created_at, id`,
+    [type, JSON.stringify(data)],
+  )
+  return result.rows
 }
 
 export interface NotificationCursor {

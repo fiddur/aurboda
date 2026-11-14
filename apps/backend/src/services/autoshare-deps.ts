@@ -3,7 +3,7 @@
  * (#903): merge-group resolution via the same `getOverlappingActivities` +
  * `expandFeedActivityWindow` a manual share of a merged activity uses, the
  * shared-scalar distance source, and post creation through the ordinary
- * `createFeedPost` (stamped with the rule id — the "via rule" marker and the
+ * `createFeedPostUnlessSuppressed` (stamped with the rule id — the "via rule" marker and the
  * dedupe record). Delivery is injected from `api.ts` (the same `FeedDeliver.
  * created` fan-out a manual share fires).
  */
@@ -13,7 +13,7 @@ import type { AutoshareDeps } from './autoshare.ts'
 import type { Notifier } from './notifications.ts'
 
 import {
-  createFeedPost,
+  createFeedPostUnlessSuppressed,
   getActivityById,
   getActivityIngestTimes,
   getEnabledAutoshareRules,
@@ -27,8 +27,11 @@ import {
   activityLabel,
   autosharePendingDedupeKey,
   pendingAutoshareNotification,
+  pendingAutoshareRevision,
   sharedAutoshareRevision,
+  skippedAutoshareRevision,
 } from './autoshare-notifications.ts'
+import { getAutoshareGroupIds } from './autoshare-pending.ts'
 import { expandFeedActivityWindow } from './feed.ts'
 import { activityKindTag, autoPostTags, computePostTags, type FeedTagSettings } from './post-tags.ts'
 import { queryMetricsBucketed } from './queries/index.ts'
@@ -72,15 +75,6 @@ export const getAutoshareGroup = async (
   return members.map((member) => toMember(member, candidate, ingestTimes))
 }
 
-/** The ids of the activity's whole merge group (as `getAutoshareGroup` resolves it); empty when it does not exist. */
-export const getAutoshareGroupIds = async (user: string, activityId: string): Promise<string[]> => {
-  const activity = await getActivityById(user, activityId)
-  if (activity == null) return []
-  const group = await getOverlappingActivities(user, activity)
-  const members = group.length > 0 ? group : [activity]
-  return members.map((member) => member.id).filter((id): id is string => id != null)
-}
-
 export const autoshareSkipDeps: SkipAutoshareDeps = {
   getGroupIds: (user, activityId) => getAutoshareGroupIds(user, activityId),
   insertSuppressions: (user, ids) => insertAutoshareSuppressions(user, ids),
@@ -114,7 +108,7 @@ export const autoshareTags = (
     texts: [rule.message],
   })
 
-export type AutoshareNotifier = Pick<Notifier, 'raise' | 'reviseBestEffort'>
+export type AutoshareNotifier = Pick<Notifier, 'raise' | 'reviseBestEffort' | 'reviseOpen'>
 
 /**
  * Build the production `AutoshareDeps`; `deliverCreated` is `FeedDeliver.created` from `api.ts`,
@@ -125,22 +119,34 @@ export const createAutoshareDeps = (
   deliverCreated: (user: string, post: FeedPostRecord, activity: Activity) => void,
   notifier: AutoshareNotifier,
 ): AutoshareDeps<AutoshareGroupMember> => ({
-  announce: async (user, anchor, rule, info) =>
-    (await notifier.raise(user, pendingAutoshareNotification({ anchor, rule, ...info, now: new Date() }))) !=
-    null,
-  createPost: async (user, anchor, rule) =>
-    createFeedPost(user, {
-      activity_id: anchor.id,
-      autoshare_rule_id: rule.id,
-      include_chart: rule.include_chart,
-      include_exercises: rule.include_exercises,
-      include_map: rule.include_map,
-      included_metrics: rule.included_metrics,
-      message: rule.message,
-      series_metrics: rule.series_metrics,
-      tags: autoshareTags(await getSettings(user).catch(() => null), anchor.activity_type, rule),
-      visibility: rule.visibility,
-    }),
+  announce: async (user, anchor, rule, info, group) => {
+    const input = { anchor, rule, ...info, now: new Date() }
+    // A group whose anchor changed (an earlier-starting member arrived) keeps the announcement
+    // raised under the former anchor's key, brought up to date, instead of getting a second one.
+    const formerKeys = group
+      .filter((member) => member.id !== anchor.id)
+      .map((m) => autosharePendingDedupeKey(m.id))
+    const revised = await notifier.reviseOpen(user, formerKeys, pendingAutoshareRevision(input))
+    if (revised.length > 0) return false
+    return (await notifier.raise(user, pendingAutoshareNotification(input))) != null
+  },
+  createPost: async (user, anchor, rule, groupIds) =>
+    createFeedPostUnlessSuppressed(
+      user,
+      {
+        activity_id: anchor.id,
+        autoshare_rule_id: rule.id,
+        include_chart: rule.include_chart,
+        include_exercises: rule.include_exercises,
+        include_map: rule.include_map,
+        included_metrics: rule.included_metrics,
+        message: rule.message,
+        series_metrics: rule.series_metrics,
+        tags: autoshareTags(await getSettings(user).catch(() => null), anchor.activity_type, rule),
+        visibility: rule.visibility,
+      },
+      groupIds,
+    ),
   distanceMeters: windowDistanceMeters,
   getEnabledRules: getEnabledAutoshareRules,
   getGroup: getAutoshareGroup,
@@ -161,6 +167,19 @@ export const createAutoshareDeps = (
       group.map((member) =>
         notifier.reviseBestEffort(user, autosharePendingDedupeKey(member.id), { ...revision, actions: [] }),
       ),
+    )
+  },
+  withdrawn: async (user, group) => {
+    const anchor = group[0]
+    if (anchor == null) return
+    await notifier.reviseOpen(
+      user,
+      group.map((member) => autosharePendingDedupeKey(member.id)),
+      {
+        ...skippedAutoshareRevision(activityLabel(anchor.activity_type)),
+        actions: [],
+        release_dedupe_key: true,
+      },
     )
   },
 })
