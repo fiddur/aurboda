@@ -10,6 +10,7 @@ import {
   impactMetricsInputSchema,
   impactTimeBucketsError,
   isKnownTimezone,
+  timeWeightedAveragesNote,
   tzSchema,
 } from '@aurboda/api-spec'
 
@@ -156,6 +157,7 @@ export const registerCorrelationTools = (server: McpServer, user: string, sync?:
 - Multiple trigger conditions with AND logic (e.g., "exercise 3x AND fatcoffee 5x in a week")
 - Different outcome types: activity types, metrics (weight, body_fat, etc.), or productivity time
 - Rolling windows for trigger counting
+For a metric outcome, sample_count counts the raw samples; ${timeWeightedAveragesNote} Their mean and stddev are taken over the bins, counted in bin_count.
 For an event outcome, event_outcome.per_lag[] has p_value (raw, for that lag alone) and p_value_adjusted (Benjamini–Hochberg over the event_outcome.comparisons lags); call a lag notable only from p_value_adjusted < 0.05.
 Examples:
 - "Does meditation correlate with more productive time?" -> trigger: activity type "meditation", outcome: productivity

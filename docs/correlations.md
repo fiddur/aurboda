@@ -441,6 +441,11 @@ several ways and is not adjusted.
 - `pearson_p` is the two-sided significance of the Pearson r via the t-transform
   `t = r·√((n−2)/(1−r²))` on `n−2` df; null with fewer than 3 pairs, 0 for a
   perfect correlation.
+- A `metric` outcome of `get_generic_correlation` (`POST /correlations/generic`)
+  pools the samples after each trigger and on the baseline days. For a
+  time-weighted metric they are averaged per 5-minute bin first, so the mean and
+  `stddev` are over bins (`bin_count`), while `sample_count` stays the raw
+  sample count (see [Time-weighted averages](data-storage.md#time-weighted-averages)).
 
 ## Performance
 

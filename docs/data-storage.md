@@ -466,8 +466,12 @@ plainly.
 This covers the baseline cards (`get_baseline`), the period summary behind the
 dashboard metric and sparkline cards (`query_period_summary`), the daily
 summary's heart rate and `metrics_today`, metric trends (`get_trend`), the chart
-buckets (`query_chart_data`, `query_metrics_bucketed`) and the daily values of
-a correlation `metric` selector. Averages inside a single activity (a run's
+buckets (`query_chart_data`, `query_metrics_bucketed`), the daily values of
+a correlation `metric` selector and the metric outcome of
+`get_generic_correlation`. There the samples of each lag window and of the
+baseline days are binned, the mean and standard deviation are taken across the
+bins, `sample_count` stays the number of raw samples and `bin_count` (only
+present for a time-weighted metric) counts the bins. Averages inside a single activity (a run's
 average heart rate, a session's HR summary) are not reweighted: within an
 activity the samples come at one rate.
 

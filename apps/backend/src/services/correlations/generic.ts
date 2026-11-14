@@ -1,4 +1,4 @@
-import type { MetricType } from '@aurboda/api-spec'
+import { isTimeWeightedMetric, type MetricType } from '@aurboda/api-spec'
 
 import type { SyncProvider } from '../queries/index.ts'
 import type {
@@ -13,6 +13,7 @@ import type {
 
 import { getEffectiveActivitiesInRange, getProductivity, getTimeSeries } from '../../db/index.ts'
 import { pushAll } from '../../utils.ts'
+import { meanValues } from '../time-weighted-mean.ts'
 import { triggerCorrelationSyncs } from './background-sync.ts'
 import { getCompoundEventOutcome } from './explore.ts'
 import { chiSquaredTest, mean, stddev } from './utils.ts'
@@ -233,6 +234,14 @@ export async function getGenericCorrelation(
 
   const postTrigger: Record<string, LagResult> = {}
 
+  const outcomeMetric = outcome.type === 'metric' ? outcome.metric : ''
+  const binCount = (values: number[]) =>
+    isTimeWeightedMetric(outcomeMetric) ? { bin_count: values.length } : {}
+  const unmatchedDaySet = new Set(unmatchedDays)
+  const baselineSamples = metricData.filter(([time]) => unmatchedDaySet.has(getDayString(time)))
+  const baselineValues = meanValues(outcomeMetric, baselineSamples)
+  const baselineMean = mean(baselineValues)
+
   const outcomeTagEvents =
     outcome.type === 'tag'
       ? activities.filter((a) => matchesPattern(a.activity_type, outcome.pattern)).map((a) => a.start_time)
@@ -268,36 +277,27 @@ export async function getGenericCorrelation(
       }
     } else if (outcome.type === 'metric') {
       const valuesAfterTrigger: number[] = []
+      let samplesAfterTrigger = 0
 
       for (const windowEnd of matchedWindowEnds) {
         const lagEnd = new Date(windowEnd.getTime() + lagMs)
-
-        const valuesInWindow = metricData
-          .filter(([time]) => time > windowEnd && time <= lagEnd)
-          .map(([, value]) => value)
-
-        pushAll(valuesAfterTrigger, valuesInWindow)
+        const samplesInWindow = metricData.filter(([time]) => time > windowEnd && time <= lagEnd)
+        samplesAfterTrigger += samplesInWindow.length
+        pushAll(valuesAfterTrigger, meanValues(outcomeMetric, samplesInWindow))
       }
 
       const meanAfter = mean(valuesAfterTrigger)
       const stddevAfter = stddev(valuesAfterTrigger)
-
-      // Calculate baseline (values on days without triggers)
-      const unmatchedDaysSet = new Set(unmatchedDays)
-      const baselineValues = metricData
-        .filter(([time]) => unmatchedDaysSet.has(getDayString(time)))
-        .map(([, value]) => value)
-
-      const baselineMean = mean(baselineValues)
       const delta =
         meanAfter !== null && baselineMean !== null
           ? Math.round((meanAfter - baselineMean) * 100) / 100
           : null
 
       postTrigger[lag] = {
+        ...binCount(valuesAfterTrigger),
         delta_from_baseline: delta,
         mean: meanAfter !== null ? Math.round(meanAfter * 100) / 100 : null,
-        sample_count: valuesAfterTrigger.length,
+        sample_count: samplesAfterTrigger,
         stddev: stddevAfter !== null ? Math.round(stddevAfter * 100) / 100 : null,
       }
     } else if (outcome.type === 'productivity') {
@@ -367,15 +367,12 @@ export async function getGenericCorrelation(
       probability: Math.round(probability * 100) / 100,
     }
   } else if (outcome.type === 'metric') {
-    const unmatchedDaysSet = new Set(unmatchedDays)
-    const baselineValues = metricData
-      .filter(([time]) => unmatchedDaysSet.has(getDayString(time)))
-      .map(([, value]) => value)
-
+    const baselineStddev = stddev(baselineValues)
     baseline = {
-      mean: mean(baselineValues) !== null ? Math.round(mean(baselineValues)! * 100) / 100 : null,
-      sample_count: baselineValues.length,
-      stddev: stddev(baselineValues) !== null ? Math.round(stddev(baselineValues)! * 100) / 100 : null,
+      ...binCount(baselineValues),
+      mean: baselineMean !== null ? Math.round(baselineMean * 100) / 100 : null,
+      sample_count: baselineSamples.length,
+      stddev: baselineStddev !== null ? Math.round(baselineStddev * 100) / 100 : null,
     }
   } else {
     // productivity

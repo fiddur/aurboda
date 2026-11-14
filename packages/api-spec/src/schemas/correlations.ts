@@ -8,6 +8,7 @@ import {
   iso8601DateTimeSchema,
   metricUnits,
   queryBooleanSchema,
+  timeWeightedAveragesNote,
 } from './common.ts'
 import { ianaTimezoneSchema } from './timezone.ts'
 
@@ -986,11 +987,22 @@ export const tagLagResultSchema = z
   })
   .meta({ id: 'GenericTagLagResult' })
 
+const genericBinCountSchema = z.number().int().optional().meta({
+  description:
+    'Number of 5-minute bins the mean and stddev are taken over; present only for a time-weighted outcome metric',
+})
+
+const genericSampleCountSchema = z.number().int().meta({ description: 'Number of raw samples pooled' })
+
 export const metricLagResultSchema = z
   .object({
+    bin_count: genericBinCountSchema,
     delta_from_baseline: z.number().nullable().meta({ description: 'Difference from baseline mean' }),
-    mean: z.number().nullable().meta({ description: 'Mean value in the lag window' }),
-    sample_count: z.number().int(),
+    mean: z
+      .number()
+      .nullable()
+      .meta({ description: `Mean value in the lag window. ${timeWeightedAveragesNote}` }),
+    sample_count: genericSampleCountSchema,
     stddev: z.number().nullable().meta({ description: 'Standard deviation' }),
   })
   .meta({ id: 'MetricLagResult' })
@@ -1020,8 +1032,9 @@ export const tagBaselineSchema = z
 
 export const metricBaselineSchema = z
   .object({
+    bin_count: genericBinCountSchema,
     mean: z.number().nullable(),
-    sample_count: z.number().int(),
+    sample_count: genericSampleCountSchema,
     stddev: z.number().nullable(),
   })
   .meta({ id: 'MetricBaseline' })

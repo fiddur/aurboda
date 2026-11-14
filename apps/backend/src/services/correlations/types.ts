@@ -167,6 +167,7 @@ export interface MetricLagResult {
   mean: number | null
   stddev: number | null
   sample_count: number
+  bin_count?: number
   delta_from_baseline: number | null
 }
 
@@ -182,6 +183,7 @@ export interface MetricBaseline {
   mean: number | null
   stddev: number | null
   sample_count: number
+  bin_count?: number
 }
 
 export interface ProductivityBaseline {
