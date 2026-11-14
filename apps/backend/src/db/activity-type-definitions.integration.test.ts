@@ -11,6 +11,7 @@ import {
   ensureActivityType,
   expandActivityTypes,
   expandAncestorTypes,
+  findActivityTypeForName,
   getActivityTypeDefinition,
   getDescendantTypes,
   insertActivityTypeDefinition,
@@ -670,6 +671,37 @@ describe('Hierarchical activity types', () => {
       test('is false for an unknown name', async () => {
         expect(await ensureActivityType(getTestUser(), 'not_a_catalogue_type')).toBe(false)
         expect(await countRows('not_a_catalogue_type')).toBe(0)
+      })
+    })
+
+    describe('findActivityTypeForName', () => {
+      test("finds the user's type by its snake-cased name", async () => {
+        const user = getTestUser()
+        await insertActivityTypeDefinition(user, {
+          display_category: 'other',
+          display_name: 'Morning walk',
+          name: 'morning_walk',
+        })
+        expect(await findActivityTypeForName(user, 'Morning Walk')).toBe('morning_walk')
+      })
+
+      test('finds a type by alias', async () => {
+        const user = getTestUser()
+        await insertActivityTypeDefinition(user, {
+          aliases: ['evening stroll'],
+          display_category: 'other',
+          display_name: 'Walk',
+          name: 'walk_outdoors',
+        })
+        expect(await findActivityTypeForName(user, 'Evening Stroll')).toBe('walk_outdoors')
+      })
+
+      test('is null for a name the user has no type for, and creates nothing', async () => {
+        const user = getTestUser()
+        expect(await findActivityTypeForName(user, 'tag_generic_beer')).toBeNull()
+        expect(await findActivityTypeForName(user, 'Sauna')).toBeNull()
+        expect(await countRows('tag_generic_beer')).toBe(0)
+        expect(await countRows('sauna')).toBe(0)
       })
     })
 

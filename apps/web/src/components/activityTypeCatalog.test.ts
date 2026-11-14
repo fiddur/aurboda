@@ -207,6 +207,40 @@ describe('catalogRelation', () => {
   test('nothing for an unrelated type', () => {
     expect(catalogRelation(def('driving'), [drinks, sauna, breath])).toBeUndefined()
   })
+
+  describe('by Oura tag code', () => {
+    const coded = {
+      ...drinks,
+      oura_codes: ['tag_sleep_alcohol'],
+      variants: [{ ...beer, oura_codes: ['tag_generic_beer'] }],
+    }
+    const codedBeer = coded.variants[0]!
+
+    test('a type named after a variant code is that variant', () => {
+      expect(catalogRelation(def('tag_generic_beer'), [sauna, coded])).toEqual({
+        entry: coded,
+        kind: 'variant',
+        oura_code: 'tag_generic_beer',
+        variant: codedBeer,
+      })
+    })
+
+    test('a type named after an entry code is that entry', () => {
+      expect(catalogRelation(def('tag_sleep_alcohol'), [sauna, coded])).toEqual({
+        entry: coded,
+        kind: 'alias',
+        oura_code: 'tag_sleep_alcohol',
+      })
+    })
+
+    test('a built-in type is never matched by code', () => {
+      expect(catalogRelation(def('tag_generic_beer', 'tag_generic_beer', true), [coded])).toBeUndefined()
+    })
+
+    test('a match by label carries no code', () => {
+      expect(catalogRelation(def('beer'), [coded])).not.toHaveProperty('oura_code')
+    })
+  })
 })
 
 describe('variantDataSummary', () => {

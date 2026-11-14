@@ -42,7 +42,8 @@ is the type's **name**; nothing else is stored.
 | `social_gathering` | 🎉 Social gathering | life_context | —                                                                                                                                  |
 
 Aliases: `medicine` for `medication`, `supplements` for `supplement`, `sick` and `sickness` for
-`illness`, `sex` for `sexual_activity`, `breathwork` for `guided_breathing`. An alias is only
+`illness`, `sex` for `sexual_activity`, `breathwork` for `guided_breathing`, `sun` for
+`sun_exposure`. An alias is only
 another name of the type itself.
 
 `meditation` and `guided_breathing` are also seeded built-in types (`guided_breathing` is a
@@ -90,13 +91,15 @@ own: log a beer as `alcohol` with `{ "kind": "beer" }`.
 | `alcohol`       | beer, wine, cider, spirits (alias liquor), cocktail (cocktails) -- `kind`                                    |
 | `caffeine`      | coffee, tea, energy drink -- `kind`                                                                          |
 | `nicotine`      | cigarette (cigarettes, smoking), snus, vape (vaping) -- `kind`                                               |
+| `medication`    | painkiller (pain killer, painkillers) -- `substance`                                                         |
+| `supplement`    | magnesium, melatonin -- `substance`                                                                          |
 | `fasting`       | intermittent fasting -- kind `intermittent`                                                                  |
 | `diet`          | keto diet (keto), low-carb diet (low carb), vegetarian diet, vegan diet, calorie deficit -- `kind`           |
-| `illness`       | common cold (kind `cold`), flu (influenza), stomach bug (stomach flu), COVID (covid 19) -- `kind`            |
+| `illness`       | common cold (cold; kind `cold`), flu (influenza), stomach bug (stomach flu), COVID (covid 19) -- `kind`      |
 | `pain`          | neck, shoulder, back, lower back, pelvic (location `pelvis`), breast, hip, knee and joint pain -- `location` |
 | `cold_exposure` | cold plunge, cold shower, ice bath, winter swim (winter swimming, cold swim) -- `kind`                       |
 | `massage`       | massage gun (theragun), foam roller (foam rolling) -- `kind`                                                 |
-| `travel`        | flight (airplane, plane, flying) -- mode `plane`                                                             |
+| `travel`        | flight (airplane, plane, flying), car (driving) -- `mode`, `plane` for a flight                              |
 
 Where no value is named, it is the variant's name (`energy_drink`, `lower_back`). A variant's name,
 display name and aliases are never those of a catalogue type or of another variant.
@@ -120,8 +123,9 @@ A catalogue type becomes one of your types the first time it is used, through an
 - **A deduction rule** that outputs it, when the rule is created or updated. Previewing a rule
   accepts a catalogue type without adding it.
 - **An Oura tag** whose name matches a catalogue type's name, display name or alias, ignoring case
-  and punctuation ("Sauna", "Cold Exposure", "Breathwork"). Other imports, such as Strava's
-  exercises, are never redirected to the catalogue.
+  and punctuation ("Sauna", "Cold Exposure", "Breathwork"), or whose Oura tag code is listed in the
+  catalogue (see [Oura tag codes](#oura-tag-codes)). Other imports, such as Strava's exercises, are
+  never redirected to the catalogue.
 
 A sub-type brings its catalogue parent along: the first headache adds `symptom` too, unless you
 already have a `symptom` type, in which case the headache goes under yours.
@@ -185,6 +189,19 @@ Each entry records under `same_as` the names the same thing has elsewhere: `appl
 (HealthKit type identifiers), `health_connect` (record types), `oura` (tag names) and `garmin`
 (Lifestyle Logging behaviours). They are reference data for imports; nothing reads them yet.
 
+### Oura tag codes
+
+An entry or a variant may list `oura_codes`: the Oura tag codes (`tag_type_code`, such as
+`tag_sleep_sauna`) that are exactly that type, or that type with the variant's `data`
+(`tag_generic_beer` is `alcohol` with kind `beer`). Each code appears once in the catalogue. Oura
+publishes no list of its codes, so only codes that have been seen are listed. An Oura tag with a
+listed code and no name of your own lands on that type with that value; the
+[Oura doc](../oura.md#tags) has the rules and the full table.
+
+A custom type named after a code (`tag_generic_back_pain`, made by an Oura sync before the code was
+listed) is offered the merge into its built-in type on its page, like a variant-named type, with a
+note that new Oura tags of that kind keep landing on it until it is merged.
+
 ## API and MCP
 
 - `GET /activity-type-catalog?q=` -- The catalogue's version, its groups and its entries in file
@@ -206,12 +223,11 @@ Adoption itself has no endpoint or tool of its own; it happens through the write
 
 ## Versioning
 
-The catalogue has a `version` (`2026.11.2`). A new version only affects types adopted after it: a
+The catalogue has a `version` (`2026.11.3`). A new version only affects types adopted after it: a
 type you already have is yours, and a later catalogue change never rewrites it.
 
 ## Not there yet
 
-- Matching Oura's own tag codes rather than tag names: #1702.
 - Importing Health Connect records into catalogue types: #1703.
 - The catalogue in the Android Add tab: #1704.
 

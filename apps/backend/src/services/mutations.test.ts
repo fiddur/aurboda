@@ -2138,8 +2138,11 @@ describe('a type the user does not have', () => {
   })
 
   test('a name that is neither a type nor a variant gets no hint', async () => {
-    const result = await addActivity('testuser', { activity_type: 'driving', start_time: new Date() })
-    expect(result.error).toBe('Unknown activity type: "driving"')
+    const result = await addActivity('testuser', {
+      activity_type: 'stamp_collecting',
+      start_time: new Date(),
+    })
+    expect(result.error).toBe('Unknown activity type: "stamp_collecting"')
   })
 
   test('a catalogue type is validated against the catalogue fields before it is adopted', async () => {

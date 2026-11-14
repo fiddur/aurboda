@@ -273,9 +273,29 @@ describe('the shipped catalogue', () => {
     }
   })
 
-  test('has version 2026.11.2 and 37 variants', () => {
-    expect(shipped.version).toBe('2026.11.2')
-    expect(shipped.entries.flatMap((e) => e.variants ?? [])).toHaveLength(37)
+  test('has version 2026.11.3 and 41 variants', () => {
+    expect(shipped.version).toBe('2026.11.3')
+    expect(shipped.entries.flatMap((e) => e.variants ?? [])).toHaveLength(41)
+  })
+
+  test('every Oura code appears once in the file and looks like an Oura tag code', () => {
+    const codes = shipped.entries.flatMap((e) => [
+      ...(e.oura_codes ?? []),
+      ...(e.variants ?? []).flatMap((variant) => variant.oura_codes ?? []),
+    ])
+    expect(codes.length).toBeGreaterThan(0)
+    expect(new Set(codes).size).toBe(codes.length)
+    for (const code of codes) expect(code).toMatch(/^tag_[a-z0-9_]+$/)
+  })
+
+  test("every Oura name in same_as resolves to its entry or to one of the entry's variants", () => {
+    for (const e of shipped.entries) {
+      for (const name of e.same_as.oura ?? []) {
+        const owner =
+          findCatalogActivityType(shipped, name)?.name ?? findCatalogVariant(shipped, name)?.entry.name
+        expect(owner, `${name} of ${e.name}`).toBe(e.name)
+      }
+    }
   })
 
   test("every variant's data is valid for its entry's schema", () => {

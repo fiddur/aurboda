@@ -113,8 +113,19 @@ const normalize = (text: string): string =>
 
 export type CatalogRelation =
   | { kind: 'fields'; entry: ActivityTypeCatalogEntry; missing: DataFieldDefinition[] }
-  | { kind: 'variant'; entry: ActivityTypeCatalogEntry; variant: ActivityTypeCatalogVariant }
-  | { kind: 'alias'; entry: ActivityTypeCatalogEntry }
+  | {
+      kind: 'variant'
+      entry: ActivityTypeCatalogEntry
+      variant: ActivityTypeCatalogVariant
+      /** Set when the type is named after one of the variant's Oura tag codes. */
+      oura_code?: string
+    }
+  | {
+      kind: 'alias'
+      entry: ActivityTypeCatalogEntry
+      /** Set when the type is named after one of the entry's Oura tag codes. */
+      oura_code?: string
+    }
 
 /** How a type the user has relates to the catalogue, if it does. */
 export const catalogRelation = (
@@ -137,8 +148,15 @@ export const catalogRelation = (
     )
     if (variant) return { entry, kind: 'variant', variant }
   }
-  const entry = entries.find((e) => named([e.display_name, ...e.aliases]))
-  return entry ? { entry, kind: 'alias' } : undefined
+  const aliased = entries.find((e) => named([e.display_name, ...e.aliases]))
+  if (aliased) return { entry: aliased, kind: 'alias' }
+
+  for (const entry of entries) {
+    const variant = variantsOf(entry).find((v) => v.oura_codes?.includes(def.name))
+    if (variant) return { entry, kind: 'variant', oura_code: def.name, variant }
+    if (entry.oura_codes?.includes(def.name)) return { entry, kind: 'alias', oura_code: def.name }
+  }
+  return undefined
 }
 
 /** "kind beer" for a variant's data: each field's label or name, then its value as words, joined by ", ". */
