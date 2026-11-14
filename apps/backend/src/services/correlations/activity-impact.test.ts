@@ -462,31 +462,53 @@ describe('getActivityImpact slicing', () => {
     ])
   })
 
-  test('a sleep filter drops a session followed by a nap, over an extended fetch', async () => {
+  const inRange = (activities: MergedActivity[]) =>
+    vi
+      .mocked(db.getEffectiveActivitiesInRange)
+      .mockImplementation(async (_u, start, end) =>
+        activities.filter((a) => a.start_time >= start && a.start_time <= end),
+      )
+
+  test('a sleep filter drops a session followed by a nap, sleeps read over an extended range', async () => {
     const nap: MergedActivity = {
       activity_type: 'nap',
       end_time: mins(day(15), 90),
       source: 'manual' as const,
       start_time: mins(day(15), 40),
     }
-    vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
-      yoga(mins(since, -120), 30),
-      yoga(day(15), 30),
-      nap,
-      yoga(day(16), 30),
-    ])
+    inRange([yoga(mins(since, -120), 30), yoga(day(15), 30), nap, yoga(day(16), 30)])
 
     const result = await impact({ filters: [{ dimension: 'sleep', keys: ['none'] }] })
 
     expect(result.total_occurrences).toBe(2)
     expect(result.occurrences).toBe(1)
-    expect(db.getEffectiveActivitiesInRange).toHaveBeenCalledTimes(1)
+    expect(db.getEffectiveActivitiesInRange).toHaveBeenCalledTimes(2)
+    expect(db.getEffectiveActivitiesInRange).toHaveBeenCalledWith(
+      'testuser',
+      since,
+      new Date(until.getTime() - 1),
+    )
     expect(db.getEffectiveActivitiesInRange).toHaveBeenCalledWith(
       'testuser',
       new Date(since.getTime() - 30 * 60_000 - 86_400_000),
       new Date(until.getTime() - 1 + 30 * 60_000),
     )
     expect(db.expandActivityTypes).toHaveBeenCalledWith('testuser', ['sleep', 'nap'])
+  })
+
+  test('a merge group straddling the start of the period counts the same with or without sleep', async () => {
+    const inside = yoga(mins(since, 5), 30)
+    const straddling = { ...yoga(mins(since, -10), 45), source: 'garmin' as const }
+    vi.mocked(db.getEffectiveActivitiesInRange).mockImplementation(async (_u, start) =>
+      start < since ? [straddling, yoga(day(16), 30)] : [inside, yoga(day(16), 30)],
+    )
+
+    const plain = await impact({})
+    const withSleep = await impact({ breakdown: 'sleep' })
+
+    expect(plain.total_occurrences).toBe(2)
+    expect(withSleep.total_occurrences).toBe(plain.total_occurrences)
+    expect(withSleep.breakdown?.groups.reduce((sum, g) => sum + g.occurrences, 0)).toBe(2)
   })
 
   test('include_dimensions lists every dimension with counts before filters', async () => {

@@ -95,8 +95,8 @@ export const localHourOfDay = (ms: number, tz: string): number => {
         timeZone: tz,
       }),
   )
-  const part = (type: string) =>
-    Number(format.formatToParts(new Date(ms)).find((p) => p.type === type)?.value ?? 0)
+  const parts = format.formatToParts(new Date(ms))
+  const part = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0)
   return part('hour') + part('minute') / 60 + part('second') / 3600
 }
 

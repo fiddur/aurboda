@@ -153,7 +153,11 @@ interface SliceSources {
   tz: string
 }
 
-/** Activities over the period, or, when sleep is needed, a day and a window further back and a window further on. */
+/**
+ * Activities over the period and, when sleep is needed, sleeps from a day and a window further back
+ * to a window further on. The two are separate reads so that a cross-source merge group straddling
+ * the period's start folds the same way whether or not sleep is asked for.
+ */
 const loadSliceSources = async (
   user: string,
   activity: string,
@@ -165,29 +169,26 @@ const loadSliceSources = async (
 ): Promise<SliceSources> => {
   const sleep = wantsDimension(slicing, 'sleep')
   const windowMs = windowMinutes * MINUTE_MS
-  const fetchActivities = sleep
-    ? getEffectiveActivitiesInRange(
-        user,
-        new Date(range.start.getTime() - windowMs - DAY_MS),
-        new Date(range.end.getTime() + windowMs),
-      )
-    : isActivityKind(activityType)
+  const [activities, around, sleepTypes, tz, definitions] = await Promise.all([
+    isActivityKind(activityType)
       ? getEffectiveActivitiesInRange(user, range.start, range.end)
-      : Promise.resolve(undefined)
-  const [activities, sleepTypes, tz, definitions] = await Promise.all([
-    fetchActivities,
+      : Promise.resolve(undefined),
+    sleep
+      ? getEffectiveActivitiesInRange(
+          user,
+          new Date(range.start.getTime() - windowMs - DAY_MS),
+          new Date(range.end.getTime() + windowMs),
+        )
+      : Promise.resolve([]),
     sleep ? expandActivityTypes(user, ['sleep', 'nap']) : Promise.resolve([]),
     wantsDimension(slicing, 'time_of_day') ? (slicing.tz ?? getUserTimezone(user)) : 'UTC',
     needsDefinitions(slicing, activityType) ? getActivityTypeDefinitions(user) : Promise.resolve([]),
   ])
   const analysed = isActivityKind(activityType) ? activityMatcher(activity, match) : () => false
-  const sleeps = (activities ?? [])
+  const sleeps = around
     .filter((act) => sleepTypes.includes(act.activity_type) && !analysed(act))
     .map(activityInterval)
-  const inRange = sleep
-    ? activities?.filter((act) => act.start_time >= range.start && act.start_time <= range.end)
-    : activities
-  return { activities: inRange, definition: definitions.find((d) => d.name === activity), sleeps, tz }
+  return { activities, definition: definitions.find((d) => d.name === activity), sleeps, tz }
 }
 
 interface Analysis {
