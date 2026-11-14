@@ -55,7 +55,7 @@ Everything above feeds a common data model, so every feature works across every 
 
 - **Explore** -- [timeline](docs/features/timeline.md), [dashboards](docs/features/dashboard.md), [maps of where you've been](docs/features/places.md), and full-resolution [activity tracks, routes and segments](docs/features/routes-and-segments.md)
 - **Analyze** -- [trends with EMA smoothing](docs/features/trends.md), [correlations](docs/features/correlations.md) (Pearson, chi-squared, relative risk), and [goals](docs/features/goals.md)
-- **Track health** -- [sleep](docs/features/sleep.md), [HR zones](docs/features/hr-zones.md), [training load](docs/features/training-load.md), [lab results](docs/features/lab-reports.md), and [active-calorie computation](docs/features/calories.md)
+- **Track health** -- [sleep](docs/features/sleep.md), [HR zones](docs/features/hr-zones.md), [training load](docs/features/training-load.md), [lab results](docs/features/lab-reports.md) (with a [metric catalogue](docs/features/metric-catalog.md) of lab values and body measurements, converting units), and [active-calorie computation](docs/features/calories.md)
 - **Organize life** -- [activities](docs/features/activity-types.md) (with [strength session logging](docs/features/strength-logging.md)), [meals & nutrition](docs/features/meals.md), places, and [screen time](docs/features/screentime-categories.md)
 - **Automate** -- [deduction rules](docs/features/deduction-rules.md) that create activities from your data, plus custom activity types
 - **Share** -- read-only [public dashboards and federated challenges](docs/features/sharing.md) across Aurboda instances, plus a [federated activity feed](docs/features/feed.md) followable from Mastodon

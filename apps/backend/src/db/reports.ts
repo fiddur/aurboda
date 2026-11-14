@@ -13,27 +13,36 @@ import { mapReportEntryRow, mapReportRow } from './row-mappers.ts'
 
 const REPORT_COLUMNS = 'id, report_type, report_date, location, notes, created_at'
 
-/** Columns for reading entries — joins with time_series to get value/unit. */
+/**
+ * Columns for reading entries — joins with time_series to get value/unit. `value`/`unit` are the entry as
+ * printed; `series_value`/`series_unit` what time_series holds, which differs when the value was converted.
+ */
 const ENTRY_SELECT = `re.id, re.report_id, re.metric, re.method, re.confidence,
        re.reference_low, re.reference_high, re.flag,
-       ts.value, ts.unit`
+       COALESCE(re.reported_value, ts.value) AS value, COALESCE(re.reported_unit, ts.unit) AS unit,
+       ts.value AS series_value, ts.unit AS series_unit`
 
-/** Columns for inserting entries — metadata only, no value/unit. */
-const ENTRY_INSERT_COLUMNS = 'report_id, metric, method, confidence, reference_low, reference_high, flag'
+/** Columns for inserting entries — metadata, and the printed value/unit only when the series one differs. */
+const ENTRY_INSERT_COLUMNS =
+  'report_id, metric, method, confidence, reference_low, reference_high, flag, reported_value, reported_unit'
+
+interface EntryMetadata {
+  metric: string
+  method?: string
+  confidence?: string
+  reference_low?: number
+  reference_high?: number
+  flag?: string
+  reported_value?: number
+  reported_unit?: string
+}
 
 interface InsertReportInput {
   report_type: string
   report_date: Date
   location?: string
   notes?: string
-  entries: Array<{
-    metric: string
-    method?: string
-    confidence?: string
-    reference_low?: number
-    reference_high?: number
-    flag?: string
-  }>
+  entries: EntryMetadata[]
 }
 
 /** Fetch entries for a single report, joining with time_series for value/unit. */
@@ -71,6 +80,8 @@ const insertEntryMetadata = async (
     e.reference_low ?? null,
     e.reference_high ?? null,
     e.flag ?? null,
+    e.reported_value ?? null,
+    e.reported_unit ?? null,
   ])
 
   await query(
@@ -236,14 +247,7 @@ interface UpdateReportInput {
   report_date?: Date
   location?: string | null
   notes?: string | null
-  entries?: Array<{
-    metric: string
-    method?: string
-    confidence?: string
-    reference_low?: number
-    reference_high?: number
-    flag?: string
-  }>
+  entries?: EntryMetadata[]
 }
 
 /** Note: caller is responsible for updating corresponding time_series data. */

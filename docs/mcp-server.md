@@ -130,6 +130,17 @@ See [Activity type catalogue](features/activity-type-catalog.md). A catalogue ty
 
 `add_activity` and `update_activity` refuse a type name the user does not have and the catalogue does not know; when the name is a variant, the error names the built-in type and the `data` to log instead.
 
+### Metric catalogue tools
+
+See [Metric catalogue](features/metric-catalog.md). A catalogue metric is added to the user's custom metrics the first time `add_metric`, `add_metrics_bulk` or a report entry uses its name, display name or an alias.
+
+| Tool                  | What it does                                                                                                                                                                                                                     |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_metric_catalog` | The built-in metrics for lab values, circumferences and body composition, each with the unit it is stored in, the units it accepts with their conversion, `in_use` and, when in use, `in_use_unit`; `q` filters by word prefixes |
+| `add_metric`          | `unit` (optional) is the unit the value is given in: an accepted unit of a catalogue metric is converted to the metric's unit, any other unit that differs is refused                                                            |
+| `add_metrics_bulk`    | The same `unit`, per item                                                                                                                                                                                                        |
+| `add_custom_metric`   | With an alias of a catalogue metric (`ldl`) it creates nothing and answers with the built-in metric to use instead; `separate_metric: true` creates the metric anyway                                                            |
+
 ### Comment tools
 
 Comments (stored as "notes") hang off anything, or off a bare point in time, and

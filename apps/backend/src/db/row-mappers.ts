@@ -228,6 +228,9 @@ export const mapReportEntryRow = (row: QueryResultRow): ReportEntry => ({
   report_id: row.report_id,
   unit: row.unit,
   value: row.value,
+  ...(row.series_value != null && (row.series_value !== row.value || row.series_unit !== row.unit)
+    ? { stored_unit: row.series_unit, stored_value: row.series_value }
+    : {}),
 })
 
 export const mapReportRow = (row: QueryResultRow, entries: ReportEntry[]): Report => ({

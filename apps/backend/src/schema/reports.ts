@@ -41,6 +41,11 @@ export const reportsTables: Record<string, string> = {
       flag            VARCHAR(20)
     )
   `,
+  // The entry as printed, kept only when the value stored in time_series was converted from it.
+  report_entries_reported_value: `
+    ALTER TABLE report_entries ADD COLUMN IF NOT EXISTS reported_value DOUBLE PRECISION;
+    ALTER TABLE report_entries ADD COLUMN IF NOT EXISTS reported_unit VARCHAR(30)
+  `,
   report_entries_indexes: `
     CREATE INDEX IF NOT EXISTS idx_report_entries_report ON report_entries (report_id);
     CREATE INDEX IF NOT EXISTS idx_report_entries_metric ON report_entries (metric)

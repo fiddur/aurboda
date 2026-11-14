@@ -304,6 +304,9 @@ export interface ReportEntry {
   reference_low?: number
   reference_high?: number
   flag?: ReportFlag
+  /** The value and unit in time_series, present only when they differ from the printed `value`/`unit`. */
+  stored_value?: number
+  stored_unit?: string
 }
 
 export interface Report {
