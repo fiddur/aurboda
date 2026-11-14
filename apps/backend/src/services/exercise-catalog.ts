@@ -27,6 +27,7 @@ export const loadExerciseCatalog = (): StoredExerciseCatalog => {
 }
 
 interface CatalogIndex {
+  byFit: Map<string, StoredExerciseCatalogEntry>
   byKey: Map<string, StoredExerciseCatalogEntry>
   byName: Map<string, StoredExerciseCatalogEntry>
   words: Map<
@@ -42,9 +43,10 @@ const words = (text: string): string[] => normalizeExerciseName(text).split(' ')
 const indexOf = (catalog: StoredExerciseCatalog): CatalogIndex => {
   const cached = indexes.get(catalog)
   if (cached) return cached
-  const index: CatalogIndex = { byKey: new Map(), byName: new Map(), words: new Map() }
+  const index: CatalogIndex = { byFit: new Map(), byKey: new Map(), byName: new Map(), words: new Map() }
   for (const entry of catalog.entries) {
     index.byKey.set(entry.key, entry)
+    for (const fit of entry.same_as.fit ?? []) index.byFit.set(fit, entry)
     for (const label of [entry.name, ...entry.aliases]) index.byName.set(normalizeExerciseName(label), entry)
     index.words.set(entry, {
       all: [...new Set([entry.name, ...entry.aliases, ...entry.search_terms].flatMap(words))],
@@ -67,6 +69,11 @@ export const findExerciseByName = (
   name: string,
 ): StoredExerciseCatalogEntry | undefined => indexOf(catalog).byName.get(normalizeExerciseName(name))
 
+export const findExerciseByFit = (
+  catalog: StoredExerciseCatalog,
+  fit: string,
+): StoredExerciseCatalogEntry | undefined => indexOf(catalog).byFit.get(fit.trim().toLowerCase())
+
 const worksMuscle = (entry: StoredExerciseCatalogEntry, muscle: ExerciseMuscle): boolean =>
   (Object.entries(entry.muscles) as [ExerciseMuscle, number][]).some(
     ([key, weight]) => weight >= 0.5 && (key === muscle || exerciseMuscleInfo[key].group === muscle),
@@ -86,9 +93,9 @@ const byName = (a: StoredExerciseCatalogEntry, b: StoredExerciseCatalogEntry): n
 
 const tier = (rank: number): number => (rank === 0 ? 0 : rank <= 2 ? 1 : 2)
 
-/** body.build's hand-picked gym exercises go before the long tail of free-exercise-db within a tier. */
-const curatedFirst = (entry: StoredExerciseCatalogEntry): number =>
-  entry.same_as.bodybuild === undefined ? 1 : 0
+/** Within a tier: body.build's hand-picked gym exercises, then free-exercise-db, then Garmin-only entries. */
+const curatedFirst = ({ same_as }: StoredExerciseCatalogEntry): number =>
+  same_as.bodybuild !== undefined ? 0 : same_as.free_exercise_db !== undefined ? 1 : 2
 
 const rankSearch = (catalog: StoredExerciseCatalog, q: string, candidates: StoredExerciseCatalogEntry[]) => {
   const index = indexOf(catalog)
@@ -134,10 +141,18 @@ export const searchExercises = (
 ): ExerciseCatalogSearchResult => {
   const limit = Math.min(Math.max(query.limit ?? 20, 1), 100)
   const offset = Math.max(query.offset ?? 0, 0)
-  const exact = query.name === undefined ? undefined : findExerciseByName(catalog, query.name)
-  const pool = query.name === undefined ? catalog.entries : exact ? [exact] : []
+  const exact = [
+    ...(query.name === undefined ? [] : [findExerciseByName(catalog, query.name)]),
+    ...(query.fit === undefined ? [] : [findExerciseByFit(catalog, query.fit)]),
+  ]
+  const isExact = exact.length > 0
+  const pool = !isExact
+    ? catalog.entries
+    : exact.every((entry) => entry !== undefined && entry === exact[0])
+      ? [exact[0] as StoredExerciseCatalogEntry]
+      : []
   const filtered = pool.filter((entry) => matchesFilters(entry, query))
-  const q = query.name === undefined ? query.q?.trim() : undefined
+  const q = isExact ? undefined : query.q?.trim()
   const ordered = q
     ? rankSearch(catalog, q, filtered)
     : [...filtered].sort((a, b) => a.name.localeCompare(b.name, 'en'))

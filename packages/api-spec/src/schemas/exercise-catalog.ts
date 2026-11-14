@@ -263,7 +263,10 @@ export const exerciseCatalogKeySchema = z
 export const exerciseCatalogSameAsSchema = z
   .object({
     bodybuild: z.string().optional().meta({ description: 'The body.build exercise id' }),
-    fit: z.string().optional().meta({ description: 'The Garmin FIT exercise, `<category>/<name>`' }),
+    fit: z.array(z.string()).min(1).optional().meta({
+      description:
+        'The Garmin FIT exercises this entry stands for, each `<category>/<name>` in lower case, sorted. A FIT exercise is on one entry only',
+    }),
     free_exercise_db: z.string().optional().meta({ description: 'The free-exercise-db exercise id' }),
     wikidata: z.string().optional().meta({ description: 'The Wikidata item id (Q…)' }),
   })
@@ -284,9 +287,11 @@ export const storedExerciseCatalogEntrySchema = z
     same_as: exerciseCatalogSameAsSchema,
     search_terms: z.array(z.string()),
   })
-  .refine((entry) => entry.same_as.bodybuild !== undefined || entry.same_as.free_exercise_db !== undefined, {
-    message: 'An entry comes from body.build, free-exercise-db or both',
-  })
+  .refine(
+    ({ same_as }) =>
+      same_as.bodybuild !== undefined || same_as.free_exercise_db !== undefined || same_as.fit !== undefined,
+    { message: 'An entry comes from body.build, free-exercise-db or Garmin Connect' },
+  )
   .meta({
     description: 'An exercise as stored in the built catalogue file',
     id: 'StoredExerciseCatalogEntry',
@@ -299,7 +304,11 @@ const catalogSourceSchema = z.object({ commit: z.string(), license: z.string(), 
 export const storedExerciseCatalogSchema = z
   .object({
     entries: z.array(storedExerciseCatalogEntrySchema),
-    sources: z.object({ bodybuild: catalogSourceSchema, free_exercise_db: catalogSourceSchema }),
+    sources: z.object({
+      bodybuild: catalogSourceSchema,
+      free_exercise_db: catalogSourceSchema,
+      garmin_connect: z.object({ fetched: z.string(), names_url: z.string(), url: z.string() }),
+    }),
     version: z.string(),
   })
   .meta({ description: 'The built exercise catalogue file', id: 'StoredExerciseCatalog' })
@@ -354,6 +363,10 @@ export const exerciseCatalogQuerySchema = z
     equipment: exerciseEquipmentSchema
       .optional()
       .meta({ description: 'Only exercises using this equipment' }),
+    fit: z.string().optional().meta({
+      description:
+        'Exact Garmin FIT exercise, `<category>/<name>` in any letter case: returns that exercise or none, and ignores q. With name too, the exercise has to match both',
+    }),
     limit: z.coerce
       .number()
       .int()
