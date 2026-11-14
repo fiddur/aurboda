@@ -329,16 +329,7 @@ export const ensureActivityType = async (
 ): Promise<boolean> =>
   (await activityTypeExists(user, name)) || (await adoptCatalogActivityType(user, name, catalog)) !== null
 
-/**
- * Used during sync to ensure all incoming types get a definition. A tag (category `other`) whose name
- * matches a catalogue type lands on that type; other imports (Strava's exercises) are never redirected.
- */
-export const resolveOrCreateActivityType = async (
-  user: string,
-  displayName: string,
-  displayCategory = 'other',
-  catalog: StoredActivityTypeCatalog = loadActivityTypeCatalog(),
-): Promise<string> => {
+const activityTypeSafeName = (displayName: string): string => {
   const snakeName =
     displayName
       .replaceAll(/[[\]()]/g, '')
@@ -349,13 +340,28 @@ export const resolveOrCreateActivityType = async (
       .replaceAll(/_+/g, '_') || 'unknown'
 
   // Ensure name starts with a letter (activity_type schema requires ^[a-z])
-  const safeName = /^[a-z]/.test(snakeName) ? snakeName : `t_${snakeName}`
+  return /^[a-z]/.test(snakeName) ? snakeName : `t_${snakeName}`
+}
 
-  const existing = await getActivityTypeDefinition(user, safeName)
+/** The user's type a name resolves to, by its snake-cased name or an alias, without creating one. */
+export const findActivityTypeForName = async (user: string, displayName: string): Promise<string | null> => {
+  const existing = await getActivityTypeDefinition(user, activityTypeSafeName(displayName))
   if (existing) return existing.name
+  return resolveActivityTypeByAlias(user, displayName)
+}
 
-  const aliasMatch = await resolveActivityTypeByAlias(user, displayName)
-  if (aliasMatch) return aliasMatch
+/**
+ * Used during sync to ensure all incoming types get a definition. A tag (category `other`) whose name
+ * matches a catalogue type lands on that type; other imports (Strava's exercises) are never redirected.
+ */
+export const resolveOrCreateActivityType = async (
+  user: string,
+  displayName: string,
+  displayCategory = 'other',
+  catalog: StoredActivityTypeCatalog = loadActivityTypeCatalog(),
+): Promise<string> => {
+  const found = await findActivityTypeForName(user, displayName)
+  if (found) return found
 
   if (displayCategory === 'other') {
     const entry = findCatalogActivityType(catalog, displayName)
@@ -366,7 +372,7 @@ export const resolveOrCreateActivityType = async (
     aliases: [displayName.toLowerCase()],
     display_category: displayCategory,
     display_name: displayName,
-    name: safeName,
+    name: activityTypeSafeName(displayName),
   })
   return created.name
 }

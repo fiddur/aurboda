@@ -73,7 +73,7 @@ export const addActivityTypeDefinitionBodySchema = z
     name: z
       .string()
       .regex(/^[a-z][a-z0-9_]*$/)
-      .meta({ description: 'Snake_case identifier (e.g. "sauna", "driving")' }),
+      .meta({ description: 'Snake_case identifier (e.g. "sauna", "woodworking")' }),
     parent_type: z
       .string()
       .regex(/^[a-z][a-z0-9_]*$/)

@@ -1,5 +1,5 @@
 {
-  "version": "2026.11.2",
+  "version": "2026.11.3",
   "groups": [
     {
       "key": "intake",
@@ -58,7 +58,8 @@
           "aliases": [],
           "data": {
             "kind": "beer"
-          }
+          },
+          "oura_codes": ["tag_generic_beer"]
         },
         {
           "name": "wine",
@@ -66,7 +67,8 @@
           "aliases": [],
           "data": {
             "kind": "wine"
-          }
+          },
+          "oura_codes": ["tag_generic_wine"]
         },
         {
           "name": "cider",
@@ -97,7 +99,8 @@
         "apple_healthkit": ["HKQuantityTypeIdentifierNumberOfAlcoholicBeverages"],
         "oura": ["Alcohol", "Beer", "Wine"],
         "garmin": ["Alcohol"]
-      }
+      },
+      "oura_codes": ["tag_sleep_alcohol"]
     },
     {
       "name": "caffeine",
@@ -131,7 +134,8 @@
           "aliases": [],
           "data": {
             "kind": "coffee"
-          }
+          },
+          "oura_codes": ["tag_generic_coffee"]
         },
         {
           "name": "tea",
@@ -139,7 +143,8 @@
           "aliases": [],
           "data": {
             "kind": "tea"
-          }
+          },
+          "oura_codes": ["tag_generic_tea"]
         },
         {
           "name": "energy_drink",
@@ -208,7 +213,8 @@
       ],
       "same_as": {
         "oura": ["Nicotine"]
-      }
+      },
+      "oura_codes": ["tag_generic_nicotine"]
     },
     {
       "name": "medication",
@@ -240,10 +246,22 @@
           }
         ]
       },
+      "variants": [
+        {
+          "name": "painkiller",
+          "display_name": "Painkiller",
+          "aliases": ["pain killer", "painkillers"],
+          "data": {
+            "substance": "painkiller"
+          },
+          "oura_codes": ["tag_generic_pain_killer"]
+        }
+      ],
       "same_as": {
         "apple_healthkit": ["HKMedicationDoseEvent"],
         "oura": ["Medication", "Pain killer"]
-      }
+      },
+      "oura_codes": ["tag_generic_medication"]
     },
     {
       "name": "supplement",
@@ -275,6 +293,25 @@
           }
         ]
       },
+      "variants": [
+        {
+          "name": "magnesium",
+          "display_name": "Magnesium",
+          "aliases": [],
+          "data": {
+            "substance": "magnesium"
+          },
+          "oura_codes": ["tag_generic_magnesium"]
+        },
+        {
+          "name": "melatonin",
+          "display_name": "Melatonin",
+          "aliases": [],
+          "data": {
+            "substance": "melatonin"
+          }
+        }
+      ],
       "same_as": {
         "oura": ["Magnesium", "Melatonin"]
       }
@@ -289,7 +326,8 @@
       "aliases": [],
       "same_as": {
         "oura": ["Late meal"]
-      }
+      },
+      "oura_codes": ["tag_sleep_latemeal"]
     },
     {
       "name": "heavy_meal",
@@ -335,7 +373,8 @@
       "same_as": {
         "oura": ["Fasting"],
         "garmin": ["Intermittent Fasting"]
-      }
+      },
+      "oura_codes": ["tag_generic_fasting"]
     },
     {
       "name": "diet",
@@ -363,7 +402,8 @@
           "aliases": ["keto"],
           "data": {
             "kind": "keto"
-          }
+          },
+          "oura_codes": ["tag_generic_ketodiet"]
         },
         {
           "name": "low_carb_diet",
@@ -433,10 +473,11 @@
         {
           "name": "common_cold",
           "display_name": "Common cold",
-          "aliases": [],
+          "aliases": ["cold"],
           "data": {
             "kind": "cold"
-          }
+          },
+          "oura_codes": ["tag_generic_cold"]
         },
         {
           "name": "flu",
@@ -553,7 +594,8 @@
           "aliases": [],
           "data": {
             "location": "back"
-          }
+          },
+          "oura_codes": ["tag_generic_back_pain"]
         },
         {
           "name": "lower_back_pain",
@@ -601,7 +643,8 @@
           "aliases": [],
           "data": {
             "location": "joint"
-          }
+          },
+          "oura_codes": ["tag_generic_joint_pain"]
         }
       ],
       "same_as": {
@@ -692,7 +735,8 @@
         "apple_healthkit": ["HKCategoryTypeIdentifierSexualActivity"],
         "health_connect": ["SexualActivityRecord"],
         "oura": ["Sex"]
-      }
+      },
+      "oura_codes": ["tag_generic_sex"]
     },
     {
       "name": "sauna",
@@ -719,7 +763,8 @@
       "same_as": {
         "oura": ["Sauna"],
         "garmin": ["Sauna"]
-      }
+      },
+      "oura_codes": ["tag_sleep_sauna"]
     },
     {
       "name": "cold_exposure",
@@ -782,7 +827,8 @@
       "same_as": {
         "oura": ["Cold exposure"],
         "garmin": ["Cold Plunge"]
-      }
+      },
+      "oura_codes": ["tag_generic_cold_exposure"]
     },
     {
       "name": "hot_bath",
@@ -803,7 +849,8 @@
       },
       "same_as": {
         "oura": ["Hot bath"]
-      }
+      },
+      "oura_codes": ["tag_sleep_late_hotbath"]
     },
     {
       "name": "massage",
@@ -831,7 +878,8 @@
           "aliases": ["theragun"],
           "data": {
             "kind": "massage_gun"
-          }
+          },
+          "oura_codes": ["tag_generic_theragun"]
         },
         {
           "name": "foam_roller",
@@ -844,7 +892,8 @@
       ],
       "same_as": {
         "oura": ["Massage", "Theragun"]
-      }
+      },
+      "oura_codes": ["tag_generic_massage"]
     },
     {
       "name": "meditation",
@@ -878,7 +927,8 @@
         "apple_healthkit": ["HKCategoryTypeIdentifierMindfulSession"],
         "health_connect": ["MindfulnessSessionRecord"],
         "oura": ["Meditation"]
-      }
+      },
+      "oura_codes": ["tag_generic_meditation"]
     },
     {
       "name": "guided_breathing",
@@ -907,7 +957,8 @@
       "same_as": {
         "health_connect": ["ExerciseSessionRecord/GUIDED_BREATHING", "MindfulnessSessionRecord"],
         "oura": ["Breathwork"]
-      }
+      },
+      "oura_codes": ["tag_generic_breathwork"]
     },
     {
       "name": "sun_exposure",
@@ -916,11 +967,12 @@
       "group": "recovery",
       "color": "#14b8a6",
       "icon": "☀️",
-      "aliases": [],
+      "aliases": ["sun"],
       "same_as": {
         "apple_healthkit": ["HKQuantityTypeIdentifierTimeInDaylight"],
         "oura": ["Sun"]
-      }
+      },
+      "oura_codes": ["tag_generic_sun"]
     },
     {
       "name": "travel",
@@ -948,12 +1000,23 @@
           "aliases": ["airplane", "plane", "flying"],
           "data": {
             "mode": "plane"
-          }
+          },
+          "oura_codes": ["tag_generic_airplane"]
+        },
+        {
+          "name": "car",
+          "display_name": "Car",
+          "aliases": ["driving"],
+          "data": {
+            "mode": "car"
+          },
+          "oura_codes": ["tag_generic_car"]
         }
       ],
       "same_as": {
         "oura": ["Travel", "Airplane", "Car"]
-      }
+      },
+      "oura_codes": ["tag_generic_travel"]
     },
     {
       "name": "social_gathering",
@@ -965,7 +1028,8 @@
       "aliases": [],
       "same_as": {
         "oura": ["Social gathering"]
-      }
+      },
+      "oura_codes": ["tag_generic_socialgathering"]
     },
     {
       "name": "abdominal_cramps",
@@ -1066,7 +1130,8 @@
       "same_as": {
         "apple_healthkit": ["HKCategoryTypeIdentifierDiarrhea"],
         "oura": ["Diarrhea"]
-      }
+      },
+      "oura_codes": ["tag_generic_diarrhea"]
     },
     {
       "name": "heartburn",
@@ -1292,7 +1357,8 @@
       "same_as": {
         "apple_healthkit": ["HKCategoryTypeIdentifierFever"],
         "oura": ["Fever"]
-      }
+      },
+      "oura_codes": ["tag_generic_fever"]
     },
     {
       "name": "generalized_body_ache",
@@ -1518,7 +1584,8 @@
       "same_as": {
         "apple_healthkit": ["HKCategoryTypeIdentifierHeadache"],
         "oura": ["Headache"]
-      }
+      },
+      "oura_codes": ["tag_generic_headache"]
     },
     {
       "name": "memory_lapse",
@@ -1669,7 +1736,8 @@
       "same_as": {
         "apple_healthkit": ["HKCategoryTypeIdentifierSoreThroat"],
         "oura": ["Sore throat"]
-      }
+      },
+      "oura_codes": ["tag_generic_sore_throat"]
     },
     {
       "name": "sinus_congestion",
@@ -1894,7 +1962,8 @@
       },
       "same_as": {
         "oura": ["Migraine"]
-      }
+      },
+      "oura_codes": ["tag_generic_migraine"]
     }
   ]
 }

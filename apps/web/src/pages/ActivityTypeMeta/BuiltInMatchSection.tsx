@@ -96,6 +96,9 @@ function CatalogMergeBlock({
               .map((k) => k.replaceAll('_', ' '))
               .join(' or ')}, and removes this type.`
           : "Merging moves this type's activities there and removes this type."}
+        {relation.oura_code
+          ? ' New Oura tags of this kind keep landing on this type until you merge it.'
+          : ''}
       </p>
       {confirming ? (
         <div class="activity-type-meta-merge-actions activity-type-meta-builtin-confirm">

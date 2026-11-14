@@ -55,7 +55,7 @@ export const registerActivityTypeTools = (server: McpServer, user: string) => {
 
   server.tool(
     'add_activity_type',
-    'Create a custom activity type definition. The name must be snake_case (e.g. "sauna", "driving", "hot_bath"). Many types are built in (list_activity_types), and with a name from list_activity_type_catalog only `name` is needed: the catalogue fills in display name, category, icon and fields. A data_schema field of type `list` carries `item_fields` and holds an array of objects, e.g. the `sets` of a strength session (`exercise`, `weight`, `reps`, `time`).',
+    'Create a custom activity type definition. The name must be snake_case (e.g. "sauna", "woodworking", "hot_bath"). Many types are built in (list_activity_types), and with a name from list_activity_type_catalog only `name` is needed: the catalogue fills in display name, category, icon and fields. A data_schema field of type `list` carries `item_fields` and holds an array of objects, e.g. the `sets` of a strength session (`exercise`, `weight`, `reps`, `time`).',
     {
       ...addActivityTypeDefinitionBodySchema.shape,
       separate_type: z

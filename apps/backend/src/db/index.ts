@@ -122,6 +122,7 @@ export {
   ensureActivityType,
   expandActivityTypes,
   expandAncestorTypes,
+  findActivityTypeForName,
   getActivityTypeDefinition,
   getActivityTypeDefinitions,
   getActivityTypeNames,

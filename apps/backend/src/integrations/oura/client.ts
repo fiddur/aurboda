@@ -18,6 +18,8 @@ export interface OuraTagWithComment {
   external_id: string
   tag: string
   tag_key?: string
+  /** The name is the bare `tag_key`: no mapping of the user's own and no custom name. */
+  tag_from_code?: boolean
   start_time: Date
   end_time?: Date
   comment?: string
@@ -260,20 +262,22 @@ export const ouraClient = (
     ): Promise<OuraTagWithComment[]> {
       const data: OuraTag[] = await getGeneric('enhanced_tag', start, end, token)
       const tags = data
-        .map(
-          (tag): OuraTagWithComment => ({
+        .map((tag): OuraTagWithComment => {
+          const code = tag.tag_type_code || undefined
+          const mapped =
+            code !== undefined && tagMappings && code in tagMappings ? tagMappings[code] : undefined
+          const fromCode = mapped === undefined && !tag.custom_name && code !== undefined
+          return {
             comment: tag.comment ?? undefined,
             end_time: tag.end_time ? new Date(tag.end_time) : undefined,
             external_id: tag.id,
             source: 'oura',
             start_time: new Date(tag.start_time),
-            tag:
-              tag.tag_type_code && tagMappings && tag.tag_type_code in tagMappings
-                ? tagMappings[tag.tag_type_code]
-                : tag.custom_name || tag.tag_type_code || 'unknown',
+            tag: mapped ?? (tag.custom_name || code || 'unknown'),
             tag_key: tag.tag_type_code ?? undefined,
-          }),
-        )
+            ...(fromCode ? { tag_from_code: true } : {}),
+          }
+        })
         .filter(
           ({ start_time, end_time }) => isBefore(start_time, end) && (!end_time || isAfter(end_time, start)),
         )

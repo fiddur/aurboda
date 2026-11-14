@@ -12,6 +12,8 @@ import {
 } from './sync.ts'
 
 vi.mock('../../db/index.ts', () => ({
+  ensureActivityType: vi.fn().mockResolvedValue(true),
+  findActivityTypeForName: vi.fn().mockResolvedValue(null),
   getOAuthToken: vi.fn(),
   getSyncState: vi.fn(),
   getUserSettings: vi.fn(),
@@ -875,6 +877,33 @@ describe('processOuraData', () => {
         'Felt great after this',
         new Date('2025-01-01T08:00:00Z'),
         new Date('2025-01-01T08:05:00Z'),
+      )
+    })
+
+    test('lands a bare known Oura code on its built-in type with the field value', async () => {
+      const data = [
+        {
+          end_time: undefined,
+          external_id: 'tag-6',
+          source: 'oura' as const,
+          start_time: new Date('2025-01-01T20:00:00Z'),
+          tag: 'tag_generic_beer',
+          tag_from_code: true,
+          tag_key: 'tag_generic_beer',
+        },
+      ]
+
+      await processOuraData(user, 'tags', data)
+
+      expect(db.ensureActivityType).toHaveBeenCalledWith(user, 'alcohol', expect.anything())
+      expect(db.resolveOrCreateActivityType).not.toHaveBeenCalled()
+      expect(db.insertActivity).toHaveBeenCalledWith(
+        user,
+        expect.objectContaining({
+          activity_type: 'alcohol',
+          data: { kind: 'beer', tag_key: 'tag_generic_beer' },
+          external_id: 'tag-6',
+        }),
       )
     })
 

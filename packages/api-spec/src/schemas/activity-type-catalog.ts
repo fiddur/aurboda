@@ -45,6 +45,10 @@ export const activityTypeCatalogVariantSchema = z
       .meta({ description: 'The field values that make the variant, e.g. `{ "kind": "beer" }`' }),
     display_name: z.string().min(1).meta({ description: 'Human-readable display name' }),
     name: activityTypeCatalogNameSchema.meta({ description: 'Snake_case name of the variant' }),
+    oura_codes: z
+      .array(z.string())
+      .optional()
+      .meta({ description: 'Oura tag codes (`tag_type_code`) that are exactly this variant' }),
   })
   .meta({
     description: 'A name that is this type with field values set, e.g. `beer` is `alcohol` with kind beer',
@@ -67,6 +71,10 @@ const activityTypeCatalogEntryShape = {
   name: activityTypeCatalogNameSchema.meta({
     description: 'Snake_case identifier, the activity type name the type gets when it is used',
   }),
+  oura_codes: z
+    .array(z.string())
+    .optional()
+    .meta({ description: 'Oura tag codes (`tag_type_code`) that are exactly this type' }),
   parent_type: activityTypeCatalogNameSchema.optional().meta({ description: 'Parent activity type name' }),
   same_as: activityTypeCatalogSameAsSchema,
   variants: z.array(activityTypeCatalogVariantSchema).optional().meta({
