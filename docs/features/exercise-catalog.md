@@ -32,8 +32,8 @@ built-in `strength_training` schema sets it on `sets.exercise` (see
   "Not in the catalogue" to dismiss it. Nothing here is required: an unmapped name keeps working
   everywhere.
 
-The muscles of a matched entry also count its sets per muscle group, on the type page's weekly chart
-and on an activity's page; see [Muscle groups](activity-types.md#muscle-groups). Sets that train no
+The muscles of a matched entry also count its sets per muscle group, on the type page's muscle group
+summary and weekly chart and on an activity's page; see [Muscle groups](activity-types.md#muscle-groups). Sets that train no
 group fall into one of two buckets there: **Not in the catalogue** for names that match no entry,
 and **No muscle group** for entries without muscle data (91 of the Garmin-only entries).
 

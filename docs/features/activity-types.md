@@ -396,9 +396,14 @@ to two decimals.
   first and the two `null` groups last; on those, `in_catalogue` is `true` for No muscle group and
   `false` for Not in the catalogue.
 
-On the web, the type page shows a weekly **Sets per muscle group** bar chart for each
-catalogue-backed item field (90 days or a year, with Chart Explorer and dashboard entries in its ⋮
-menu), an activity's exercises section lists the session's sets per muscle group under the
+On the web, the type page shows a **Sets per muscle group** section for each catalogue-backed item
+field (90 days or a year, with Chart Explorer and dashboard entries in its ⋮ menu). It lists every
+muscle group of the catalogue with its sets this week, its average sets per week over the period
+(the period's sets divided by its days over seven) and a bar for that average, most sets first; the
+groups without sets follow, muted, so a neglected group shows as a zero rather than not at all, and
+No muscle group and Not in the catalogue come last, the latter linking to the page's review list of
+unmatched names. The weekly bar chart, one bar per group per week, opens under the list on
+**Show weekly chart**. An activity's exercises section lists the session's sets per muscle group under the
 exercises, and the Chart Explorer offers a **Muscle group** breakdown when a summed measure is
 chosen.
 

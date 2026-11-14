@@ -83,6 +83,8 @@ const UnmappedRow = ({ name, path, item }: { name: string; path: string; item: U
   )
 }
 
+export const unmappedSectionId = (path: string): string => `unmapped-${path}`
+
 type UnmappedPage = Pick<UnmappedItemValues, 'total' | 'values'>
 
 /** The logged names of a catalogue-backed item field that match no catalogue entry, to map or dismiss. */
@@ -103,7 +105,7 @@ export function UnmappedItemValuesSection({ name, path }: { name: string; path: 
   if (rows.length === 0) return null
 
   return (
-    <section class="activity-type-meta-section activity-type-meta-unmapped">
+    <section id={unmappedSectionId(path)} class="activity-type-meta-section activity-type-meta-unmapped">
       <h2>Not in the catalogue</h2>
       <p class="activity-type-meta-unmapped-summary">{unmappedSummary(total)}</p>
       {!expanded ? (

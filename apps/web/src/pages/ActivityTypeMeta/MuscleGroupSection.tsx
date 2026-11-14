@@ -10,6 +10,8 @@ import { ChartMenu } from '../../components/charts/ChartMenu'
 import { fetchChartData } from '../../state/api'
 import { buildChartUrl } from '../../utils/chart-url'
 import { newWidgetId } from '../../utils/widget-id'
+import { muscleGroupSummary, type MuscleGroupSummaryRow } from './muscleGroupSummary'
+import { unmappedSectionId } from './UnmappedItemValuesSection'
 import '../../components/sessions/sessions.css'
 
 const LOOKBACK_OPTIONS = [
@@ -19,9 +21,30 @@ const LOOKBACK_OPTIONS = [
 
 const NO_BUCKETS: { bucket_start: string; value: number }[] = []
 
-/** Weekly working sets of a catalogue-backed item field per muscle group, each set weighted by recruitment. */
+const sets = (value: number): string => String(Math.round(value * 10) / 10)
+
+const SummaryRow = ({ path, row }: { path: string; row: MuscleGroupSummaryRow }) => (
+  <li
+    class={`activity-type-meta-muscle-summary-row${row.trained ? '' : ' activity-type-meta-muscle-summary-untrained'}`}
+  >
+    <span class="activity-type-meta-muscle-summary-name">
+      {row.kind === 'not_in_catalogue' ? <a href={`#${unmappedSectionId(path)}`}>{row.name}</a> : row.name}
+    </span>
+    <span class="activity-type-meta-muscle-summary-bar" aria-hidden="true">
+      <span style={{ width: `${row.bar * 100}%` }} />
+    </span>
+    <span class="activity-type-meta-muscle-summary-value">{sets(row.this_week)}</span>
+    <span class="activity-type-meta-muscle-summary-value">{sets(row.per_week)}</span>
+  </li>
+)
+
+/**
+ * Working sets of a catalogue-backed item field per muscle group, each set weighted by recruitment:
+ * a list of this week's and the average week's sets per group, and the weekly chart on request.
+ */
 export function MuscleGroupSection({ name, path }: { name: string; path: string }) {
   const [lookback, setLookback] = useState(90)
+  const [showChart, setShowChart] = useState(false)
   const range = useMemo(() => {
     const now = new Date()
     return {
@@ -48,6 +71,10 @@ export function MuscleGroupSection({ name, path }: { name: string; path: string 
   const series = query.data?.breakdown_series
   const buckets = query.data?.breakdown_buckets
   const multiSeries = useMemo(() => breakdownBarSeries(series, buckets), [series, buckets])
+  const summary = useMemo(
+    () => (buckets ? muscleGroupSummary({ buckets, now: new Date(), period_days: lookback }) : []),
+    [buckets, lookback],
+  )
 
   return (
     <section class="activity-type-meta-section">
@@ -81,15 +108,38 @@ export function MuscleGroupSection({ name, path }: { name: string; path: string 
       {query.data &&
         (series && multiSeries ? (
           <>
-            <BreakdownLegend series={series} />
-            <BarChart
-              data={NO_BUCKETS}
-              height={220}
-              bucketSize="1w"
-              rangeStart={range.start}
-              rangeEnd={range.axisEnd}
-              multiSeries={multiSeries}
-            />
+            <ul class="activity-type-meta-muscle-summary" aria-label="Sets per muscle group">
+              <li class="activity-type-meta-muscle-summary-row activity-type-meta-muscle-summary-head">
+                <span class="activity-type-meta-muscle-summary-name">Muscle group</span>
+                <span />
+                <span class="activity-type-meta-muscle-summary-value">This week</span>
+                <span class="activity-type-meta-muscle-summary-value">Avg / week</span>
+              </li>
+              {summary.map((row) => (
+                <SummaryRow key={row.name} path={path} row={row} />
+              ))}
+            </ul>
+            <button
+              type="button"
+              class="btn-secondary activity-type-meta-muscle-summary-toggle"
+              aria-expanded={showChart}
+              onClick={() => setShowChart((open) => !open)}
+            >
+              {showChart ? 'Hide weekly chart' : 'Show weekly chart'}
+            </button>
+            {showChart && (
+              <>
+                <BreakdownLegend series={series} />
+                <BarChart
+                  data={NO_BUCKETS}
+                  height={220}
+                  bucketSize="1w"
+                  rangeStart={range.start}
+                  rangeEnd={range.axisEnd}
+                  multiSeries={multiSeries}
+                />
+              </>
+            )}
           </>
         ) : (
           <p class="activity-type-meta-empty">No sets in this period.</p>
