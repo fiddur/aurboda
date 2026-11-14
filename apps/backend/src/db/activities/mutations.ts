@@ -604,6 +604,26 @@ export const markActivityDetailSynced = async (user: string, id: string): Promis
   ])
 }
 
+/**
+ * Store the exercise sets read from Garmin. An earlier import's `sets` and `sets_source` go first,
+ * so a re-read that finds none clears them.
+ */
+export const setGarminActivitySets = async (
+  user: string,
+  id: string,
+  sets: Record<string, unknown>[],
+): Promise<void> => {
+  const patch =
+    sets.length > 0 ? { garmin_sets_synced: true, sets, sets_source: 'garmin' } : { garmin_sets_synced: true }
+  await query(
+    user,
+    `UPDATE activities
+     SET data = (COALESCE(data, '{}'::jsonb) - 'sets' - 'sets_source') || $2::jsonb
+     WHERE id = $1`,
+    [id, JSON.stringify(patch)],
+  )
+}
+
 export const hardDeleteActivitiesBySource = async (user: string, source: string): Promise<number> => {
   const result = await query(user, `DELETE FROM activities WHERE source = $1`, [source])
   return result.rowCount ?? 0

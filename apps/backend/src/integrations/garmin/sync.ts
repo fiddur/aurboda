@@ -5,11 +5,13 @@ import type { GarminClient } from './source.ts'
 
 import {
   getActivitiesNeedingDetail,
+  getGarminActivitiesNeedingSets,
   getSyncState,
   markActivityDetailSynced,
   upsertSyncState,
 } from '../../db/index.ts'
 import { auditError, auditInfo } from '../../services/audit-log.ts'
+import { importActivityExerciseSets } from './exercise-sets.ts'
 import { type GarminDataType, garminDataTypes, processActivityDetail, processGarminData } from './process.ts'
 import { hasGarminConnection } from './source.ts'
 
@@ -244,8 +246,8 @@ export const syncActivityDetails = async (
   } = {},
 ): Promise<void> => {
   if ((await garmin.sourceFor(user, 'activityDetail')) === null) return
+  await syncActivitySets(user, garmin, { fullResync })
   const activities = await getActivitiesNeedingDetail(user, { forceAll: fullResync })
-  if (activities.length === 0) return
 
   for (const activity of activities) {
     const garminActivityId = activity.data?.garmin_activity_id as number | undefined
@@ -277,6 +279,38 @@ export const syncActivityDetails = async (
         error: message,
       })
       // Don't mark as synced on error — retry next time
+    }
+
+    await delay(REQUEST_DELAY_MS)
+  }
+}
+
+/**
+ * Read the exercise sets of Garmin strength activities, before their detail so a share composed
+ * when the detail lands already carries them. A failed activity stays unmarked for the next run.
+ */
+export const syncActivitySets = async (
+  user: string,
+  garmin: GarminClient,
+  { fullResync = false }: { fullResync?: boolean } = {},
+): Promise<void> => {
+  const activities = await getGarminActivitiesNeedingSets(user, { forceAll: fullResync })
+
+  for (const activity of activities) {
+    const garminActivityId = activity.data?.garmin_activity_id as number | undefined
+    if (!garminActivityId || !activity.id) continue
+
+    try {
+      const response = await garmin.getActivityExerciseSets(user, garminActivityId)
+      const count = await importActivityExerciseSets(user, activity, response)
+      if (count !== null) {
+        auditInfo(user, 'sync', `🏋️ Synced ${count} sets for Garmin activity ${garminActivityId}`)
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      auditError(user, 'sync', `Failed to sync sets for Garmin activity ${garminActivityId}`, {
+        error: message,
+      })
     }
 
     await delay(REQUEST_DELAY_MS)

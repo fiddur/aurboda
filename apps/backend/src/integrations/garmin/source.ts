@@ -119,6 +119,7 @@ export const garminRoutedClient = ({
         ? personal.getActivities(user, start, limit)
         : session.getActivities(user, start, limit),
     getActivityDetail: session.getActivityDetail,
+    getActivityExerciseSets: session.getActivityExerciseSets,
     getBodyBattery: async (user: string, startDate: Date, endDate: Date) =>
       (await usesKey(user, 'bodyBattery'))
         ? personal.getBodyBattery(user, startDate, endDate)

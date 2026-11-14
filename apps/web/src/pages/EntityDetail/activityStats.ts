@@ -223,6 +223,7 @@ const SHOWN_DATA_KEYS = new Set([
   'distance',
   'elevation_gain',
   'endTime',
+  'garmin_sets_synced',
   'max_hr',
   'rule_name',
   'run_categories',

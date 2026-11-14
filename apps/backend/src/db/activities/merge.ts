@@ -112,6 +112,28 @@ export const pickOverrideWinner = (members: Activity[]): Activity | undefined =>
   return overrides.reduce((acc, o) => (o.start_time < acc.start_time ? o : acc))
 }
 
+type ActivityData = NonNullable<Activity['data']>
+
+const hasSets = (d: ActivityData | undefined): boolean => Array.isArray(d?.sets) && d.sets.length > 0
+
+const garminSets = (d: ActivityData | undefined): boolean => hasSets(d) && d?.sets_source === 'garmin'
+
+/**
+ * `over` laid on `under`, except that `sets` and `sets_source` travel as a pair and sets imported
+ * from Garmin never replace sets logged elsewhere: a Garmin row and a Gravl row of one session start
+ * in either order, and the user's log must win both ways.
+ */
+export const blendData = (under: ActivityData | undefined, over: ActivityData): ActivityData => {
+  const from =
+    hasSets(under) && garminSets(over) && !garminSets(under) ? under : 'sets' in over ? over : under
+  const { sets: _sets, sets_source: _setsSource, ...rest } = { ...under, ...over }
+  return {
+    ...rest,
+    ...(from && 'sets' in from ? { sets: from.sets } : {}),
+    ...(from && 'sets_source' in from ? { sets_source: from.sets_source } : {}),
+  }
+}
+
 // eslint-disable-next-line complexity -- single-pass winner selection + field blending; splitting hurts readability
 export const mergeGroupByPriority = (members: Activity[]): MergedActivity => {
   // An aurboda override row referencing any group member must win regardless
@@ -147,7 +169,7 @@ export const mergeGroupByPriority = (members: Activity[]): MergedActivity => {
       winner.end_time = member.end_time
     }
     if (member !== sorted[0] && member.data) {
-      winner.data = { ...member.data, ...winner.data }
+      winner.data = blendData(member.data, winner.data ?? {})
     }
     if (!winner.title && member.title) winner.title = member.title
   }
@@ -339,7 +361,7 @@ export const mergeOverlappingActivities = (
         }
 
         if (next.data) {
-          current.data = { ...current.data, ...next.data }
+          current.data = blendData(current.data, next.data)
         }
 
         currentSourceIds.push(...memberIds(next))

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import * as db from '../../db/index.ts'
 import { auditError } from '../../services/audit-log.ts'
+import { importActivityExerciseSets } from './exercise-sets.ts'
 import { processActivityDetail } from './process.ts'
 import { garminRoutedClient } from './source.ts'
 import {
@@ -10,6 +11,7 @@ import {
   garminDataTypes,
   isRateLimited,
   syncActivityDetails,
+  syncActivitySets,
   syncAllGarminData,
   syncGarminDataType,
 } from './sync.ts'
@@ -20,6 +22,7 @@ vi.mock('../../db/index.ts', () => ({
   adoptLegacyActivity: vi.fn().mockResolvedValue(null),
   deleteGarminActivityWithWrongType: vi.fn().mockResolvedValue(null),
   getActivitiesNeedingDetail: vi.fn().mockResolvedValue([]),
+  getGarminActivitiesNeedingSets: vi.fn().mockResolvedValue([]),
   getOAuthToken: vi.fn().mockResolvedValue({ access_token: '{"oauth1":{},"oauth2":{}}', provider: 'garmin' }),
   getSyncState: vi.fn(),
   insertActivity: vi.fn(),
@@ -42,6 +45,8 @@ vi.mock('./process', async (importOriginal) => {
   }
 })
 
+vi.mock('./exercise-sets', () => ({ importActivityExerciseSets: vi.fn().mockResolvedValue(2) }))
+
 vi.mock('../../services/audit-log', () => ({
   auditError: vi.fn(),
   auditInfo: vi.fn(),
@@ -54,6 +59,7 @@ const createMockGarmin = () => ({
   getActivityDetail: vi
     .fn()
     .mockResolvedValue({ activityDetailMetrics: [], activityId: 0, metricDescriptors: [] }),
+  getActivityExerciseSets: vi.fn().mockResolvedValue({ exerciseSets: [] }),
   getBodyBattery: vi.fn().mockResolvedValue([]),
   getDailySummary: vi.fn().mockResolvedValue({}),
   getHeartRate: vi.fn().mockResolvedValue({}),
@@ -488,6 +494,109 @@ describe('syncActivityDetails', () => {
     await syncActivityDetails(user, mockGarmin as never)
 
     expect(mockGarmin.getActivityDetail).not.toHaveBeenCalled()
+  })
+})
+
+describe('syncActivitySets', () => {
+  const user = 'testuser'
+
+  const strength = (id: string, garminActivityId: number) => ({
+    activity_type: 'strength_training' as const,
+    data: { garmin_activity_id: garminActivityId },
+    end_time: new Date(),
+    id,
+    source: 'garmin' as const,
+    start_time: new Date(),
+  })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('fetches and imports the sets of each activity needing them', async () => {
+    const activity = strength('s1', 11)
+    vi.mocked(db.getGarminActivitiesNeedingSets).mockResolvedValue([activity])
+    const response = { exerciseSets: [{ repetitionCount: 5 }] }
+    const mockGarmin = createMockGarmin()
+    mockGarmin.getActivityExerciseSets.mockResolvedValue(response)
+
+    await syncActivitySets(user, mockGarmin as never)
+
+    expect(db.getGarminActivitiesNeedingSets).toHaveBeenCalledWith(user, { forceAll: false })
+    expect(mockGarmin.getActivityExerciseSets).toHaveBeenCalledWith(user, 11)
+    expect(importActivityExerciseSets).toHaveBeenCalledWith(user, activity, response)
+  })
+
+  test('an error on one activity is audited and does not stop the next', async () => {
+    vi.mocked(db.getGarminActivitiesNeedingSets).mockResolvedValue([strength('s1', 11), strength('s2', 12)])
+    const mockGarmin = createMockGarmin()
+    mockGarmin.getActivityExerciseSets.mockRejectedValueOnce(new Error('500'))
+
+    await syncActivitySets(user, mockGarmin as never)
+
+    expect(auditError).toHaveBeenCalledWith(user, 'sync', 'Failed to sync sets for Garmin activity 11', {
+      error: '500',
+    })
+    expect(importActivityExerciseSets).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(importActivityExerciseSets).mock.calls[0][1].id).toBe('s2')
+  })
+
+  test('passes forceAll when fullResync is true', async () => {
+    vi.mocked(db.getGarminActivitiesNeedingSets).mockResolvedValue([])
+
+    await syncActivitySets(user, createMockGarmin() as never, { fullResync: true })
+
+    expect(db.getGarminActivitiesNeedingSets).toHaveBeenCalledWith(user, { forceAll: true })
+  })
+})
+
+describe('syncActivityDetails reads sets first', () => {
+  const user = 'testuser'
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('sets are fetched before details, even when no detail is due', async () => {
+    const order: string[] = []
+    vi.mocked(db.getGarminActivitiesNeedingSets).mockResolvedValue([
+      {
+        activity_type: 'strength_training' as const,
+        data: { garmin_activity_id: 11 },
+        id: 's1',
+        source: 'garmin' as const,
+        start_time: new Date(),
+      },
+    ])
+    vi.mocked(db.getActivitiesNeedingDetail).mockImplementation(async () => {
+      order.push('detail')
+      return []
+    })
+    const mockGarmin = createMockGarmin()
+    mockGarmin.getActivityExerciseSets.mockImplementation(async () => {
+      order.push('sets')
+      return { exerciseSets: [] }
+    })
+
+    await syncActivityDetails(user, mockGarmin as never)
+
+    expect(order).toEqual(['sets', 'detail'])
+  })
+
+  test('nothing is fetched without a session', async () => {
+    const mockGarmin = createMockGarmin()
+    mockGarmin.sourceFor.mockResolvedValue(null)
+
+    await syncActivityDetails(user, mockGarmin as never)
+
+    expect(db.getGarminActivitiesNeedingSets).not.toHaveBeenCalled()
+    expect(mockGarmin.getActivityExerciseSets).not.toHaveBeenCalled()
+  })
+
+  test('fullResync passes forceAll to the sets as well', async () => {
+    await syncActivityDetails(user, createMockGarmin() as never, { fullResync: true })
+
+    expect(db.getGarminActivitiesNeedingSets).toHaveBeenCalledWith(user, { forceAll: true })
   })
 })
 

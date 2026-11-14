@@ -363,12 +363,14 @@ describe('sourceDataEntries', () => {
         detail_synced: true,
         endTime: '2026-10-07T10:25:31.094Z',
         garmin_activity_id: 24637616891,
+        garmin_sets_synced: true,
         max_hr: 97,
         metadata: { device: { type: 1 } },
         note: '',
         run_categories: [{ category: 'low_hr', reasons: [] }],
         run_categories_excluded: ['tempo'],
         session_name: 'Flow',
+        sets_source: 'garmin',
         stages: Array.from({ length: 40 }, (_, i) => i),
         startTime: '2026-10-07T10:05:01Z',
         steps: 0,
@@ -380,6 +382,7 @@ describe('sourceDataEntries', () => {
     expect(entries).toEqual([
       { key: 'garmin_activity_id', label: 'Garmin activity id', value: '24637616891' },
       { key: 'metadata', label: 'Metadata', value: '{\n  "device": {\n    "type": 1\n  }\n}' },
+      { key: 'sets_source', label: 'Sets source', value: 'garmin' },
       { key: 'stages', label: 'Stages', value: '40 items' },
     ])
   })

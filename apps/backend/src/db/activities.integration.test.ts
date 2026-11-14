@@ -17,6 +17,7 @@ import {
   getActivityById,
   getActivitiesNeedingDetail,
   getAllActivityTypeNames,
+  getGarminActivitiesNeedingSets,
   getEffectiveActivitiesInRange,
   getNonSleepActivitiesMerged,
   getOverlappingActivities,
@@ -29,6 +30,7 @@ import {
   restoreActivity,
   restoreEmptyImportTombstone,
   restoreSetlessTombstone,
+  setGarminActivitySets,
   softDeleteActivityByExternalId,
   updateActivity,
   upsertActivity,
@@ -1863,6 +1865,113 @@ describe('Activities Integration Tests', () => {
 
       expect(await findDeletedActivityByExternalId(user, 'garmin', 'gravl-workout-deleted-lookup')).toBeNull()
       expect(await findDeletedActivityByExternalId(user, 'gravl', 'gravl-workout-never-seen')).toBeNull()
+    })
+  })
+
+  describe('getGarminActivitiesNeedingSets', () => {
+    const garminStrength = (n: number, overrides: Partial<Activity> = {}): Activity => ({
+      activity_type: 'strength_training',
+      data: { garmin_activity_id: 1000 + n },
+      external_id: `garmin-sets-${n}`,
+      source: 'garmin',
+      start_time: new Date(`2026-10-${String(n).padStart(2, '0')}T07:00:00Z`),
+      title: `Strength ${n}`,
+      ...overrides,
+    })
+
+    test('picks only Garmin strength rows with a Garmin activity id, newest first', async () => {
+      const user = getTestUser()
+      const older = await insertActivity(user, garminStrength(1))
+      const newer = await insertActivity(user, garminStrength(2))
+      await insertActivity(user, garminStrength(3, { activity_type: 'exercise' }))
+      await insertActivity(user, garminStrength(4, { source: 'gravl' }))
+      await insertActivity(user, garminStrength(5, { data: { calories: 100 } }))
+
+      const ids = (await getGarminActivitiesNeedingSets(user)).map((a) => a.id)
+
+      expect(ids).toEqual([newer, older])
+    })
+
+    test('skips flagged rows unless forceAll, and skips deleted rows', async () => {
+      const user = getTestUser()
+      const flagged = await insertActivity(user, garminStrength(1))
+      await setGarminActivitySets(user, flagged, [])
+      const open = await insertActivity(user, garminStrength(2))
+      const deleted = await insertActivity(user, garminStrength(3))
+      await deleteActivity(user, deleted)
+
+      expect((await getGarminActivitiesNeedingSets(user)).map((a) => a.id)).toEqual([open])
+      expect((await getGarminActivitiesNeedingSets(user, { forceAll: true })).map((a) => a.id)).toEqual([
+        open,
+        flagged,
+      ])
+    })
+
+    test('honours the limit', async () => {
+      const user = getTestUser()
+      for (const n of [1, 2, 3]) await insertActivity(user, garminStrength(n))
+
+      const picked = await getGarminActivitiesNeedingSets(user, { limit: 2 })
+
+      expect(picked.map((a) => a.title)).toEqual(['Strength 3', 'Strength 2'])
+    })
+  })
+
+  describe('setGarminActivitySets', () => {
+    const summary: Activity = {
+      activity_type: 'strength_training',
+      data: { average_hr: 110, garmin_activity_id: 77 },
+      external_id: 'garmin-77',
+      source: 'garmin',
+      start_time: new Date('2026-10-10T07:00:00Z'),
+      title: 'Strength',
+    }
+    const sets = [{ exercise: 'Bench Press', reps: 8, weight: 60 }]
+
+    test('writes the sets, their source and the flag, keeping the other keys', async () => {
+      const user = getTestUser()
+      const id = await insertActivity(user, summary)
+
+      await setGarminActivitySets(user, id, sets)
+
+      expect((await getActivityById(user, id))?.data).toEqual({
+        average_hr: 110,
+        garmin_activity_id: 77,
+        garmin_sets_synced: true,
+        sets,
+        sets_source: 'garmin',
+      })
+    })
+
+    test('with no sets, removes an earlier import and still sets the flag', async () => {
+      const user = getTestUser()
+      const id = await insertActivity(user, summary)
+      await setGarminActivitySets(user, id, sets)
+
+      await setGarminActivitySets(user, id, [])
+
+      expect((await getActivityById(user, id))?.data).toEqual({
+        average_hr: 110,
+        garmin_activity_id: 77,
+        garmin_sets_synced: true,
+      })
+    })
+
+    test('a later upsert of the summary keeps the sets', async () => {
+      const user = getTestUser()
+      const id = await insertActivity(user, summary)
+      await setGarminActivitySets(user, id, sets)
+
+      await upsertActivity(user, { ...summary, data: { average_hr: 115, garmin_activity_id: 77 } })
+      await insertActivity(user, { ...summary, data: { average_hr: 116, garmin_activity_id: 77 } })
+
+      expect((await getActivityById(user, id))?.data).toEqual({
+        average_hr: 116,
+        garmin_activity_id: 77,
+        garmin_sets_synced: true,
+        sets,
+        sets_source: 'garmin',
+      })
     })
   })
 })
