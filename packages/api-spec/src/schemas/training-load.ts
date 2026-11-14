@@ -201,12 +201,9 @@ export const trainingImpulseBasisSchema = z
         'estimated_trimp / trimp (0-1): how much of the workout TRIMP is estimated from duration; null without workout TRIMP',
     }),
     estimated_trimp: z.number().meta({ description: 'Summed TRIMP of the workouts estimated from duration' }),
-    estimated_workouts: z
-      .number()
-      .int()
-      .meta({
-        description: 'Workouts whose TRIMP is estimated from duration (trimp_basis duration_estimate)',
-      }),
+    estimated_workouts: z.number().int().meta({
+      description: 'Workouts whose TRIMP is estimated from duration (trimp_basis duration_estimate)',
+    }),
     trimp: z.number().meta({ description: 'Summed TRIMP of all workouts in the range' }),
     workouts: z.number().int().meta({ description: 'Workouts in the range' }),
   })
