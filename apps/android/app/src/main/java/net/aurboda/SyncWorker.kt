@@ -225,20 +225,14 @@ class SyncWorker(
         sentRecords = 0,
       )
     }
+    val activityTypes = getCachedActivityTypes(applicationContext)
     var sent = 0
     var failed = 0
 
     for (entry in entries) {
       val result = when (val data = entry.data) {
         is PendingPayload.Activity -> {
-          val body = AddActivityBody(
-            activityType = data.payload.activity_type,
-            startTime = data.payload.start_time,
-            endTime = data.payload.end_time,
-            title = data.payload.title,
-            notes = data.payload.notes,
-            data = data.payload.data,
-          )
+          val body = data.payload.toAddActivityBody(activityTypes)
           postActivity(httpClient, serverUrl, authToken, body)
         }
         is PendingPayload.Metric -> {
