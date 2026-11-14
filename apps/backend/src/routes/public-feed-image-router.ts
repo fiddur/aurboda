@@ -1,8 +1,4 @@
-/**
- * `GET /public/:username/images/:id.webp` serves a picture added to something the
- * writer wrote. Mounted before the public-shares router, whose
- * `/public/:username/:slug` resolver would otherwise take `images`.
- */
+/** `GET /public/:username/images/:id.webp` serves a picture added to something the writer wrote. */
 import { Router } from 'express'
 
 import { isValidUsername } from '../api/auth-routes.ts'

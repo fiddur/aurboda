@@ -14,7 +14,11 @@
  */
 import type { ArticleBlock, ArticleContent, FeedVisibility, MetricType } from '@aurboda/api-spec'
 
-import { DEFAULT_IMPACT_WINDOW_MINUTES, defaultArticleChartBucket } from '@aurboda/api-spec'
+import {
+  articleBlockWindow,
+  DEFAULT_IMPACT_WINDOW_MINUTES,
+  defaultArticleChartBucket,
+} from '@aurboda/api-spec'
 
 import type { CorrelationBlockParams, ImpactBlockParams } from './article-block-data.ts'
 import type { NegativeCache } from './article-block-misses.ts'
@@ -28,7 +32,7 @@ import {
   getArticleImpact,
 } from './article-block-data.ts'
 import { articleBlockMisses, forgetArticleBlockMisses } from './article-block-misses.ts'
-import { articleBlockImageUrl, articleBlockLabel, blockWindow, isZeroDurationBucket } from './article.ts'
+import { articleBlockImageUrl, articleBlockLabel, isZeroDurationBucket } from './article.ts'
 import { isDrawableImpact } from './charts/post-chart-svg.ts'
 import { resolveChallengeRaceByUrl } from './feed-structured-challenge.ts'
 
@@ -101,7 +105,7 @@ const blockImageRenders = async (
     const race = await deps.challengeRace(user, block.challenge_url)
     return race != null && race.lines.length > 0
   }
-  const { end, start } = blockWindow(block, article)
+  const { end, start } = articleBlockWindow(block, article)
   if (start == null || end == null) return false
   const startDate = new Date(start)
   const endDate = new Date(end)

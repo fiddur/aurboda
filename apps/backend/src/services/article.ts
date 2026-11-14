@@ -13,12 +13,18 @@
  */
 import type { ArticleBlock, ArticleContent, FeedVisibility } from '@aurboda/api-spec'
 
-import { articleImpactLabel, describeSelectorAxis, getMetricDisplayName } from '@aurboda/api-spec'
+import {
+  articleBlockWindow,
+  articleImpactLabel,
+  canonicalChallengeUrl,
+  describeSelectorAxis,
+  getMetricDisplayName,
+  parseChallengeUrl,
+} from '@aurboda/api-spec'
 
 import { isValidUsername } from '../api/auth-routes.ts'
 import { isMissingDatabase } from '../db/index.ts'
 import { isPubliclyVisible } from './activitypub/object.ts'
-import { canonicalChallengeUrl, parseChallengeUrl } from './challenge-federation.ts'
 import { configuredStructuredChallengeDeps } from './feed-structured-challenge.ts'
 
 export type BuildArticleResult = { ok: true; article: ArticleContent } | { ok: false; error: string }
@@ -98,15 +104,6 @@ export const articleBlockFigureUrl = (
   index: number,
 ): string => articleBlockUrl(apiBaseUrl, user, postId, visibility, imageToken, updatedAt, index, 'figure.png')
 
-/** A windowed block's effective window: its own override, else the article default. */
-export const blockWindow = (
-  block: { start?: string; end?: string },
-  content: { default_start?: string; default_end?: string },
-): { start?: string; end?: string } => ({
-  end: block.end ?? content.default_end,
-  start: block.start ?? content.default_start,
-})
-
 /** A human label for a windowed block in a validation error (1-based, with the block's subject). */
 const blockLabel = (
   block: Extract<ArticleBlock, { type: 'chart' | 'correlation' | 'impact' }>,
@@ -151,7 +148,7 @@ export const buildArticleContent = (content: ArticleContent): BuildArticleResult
       continue
     }
     if (block.type === 'prose') continue
-    const { end, start } = blockWindow(block, content)
+    const { end, start } = articleBlockWindow(block, content)
     const label = blockLabel(block, i)
     if (start == null || end == null) {
       return {

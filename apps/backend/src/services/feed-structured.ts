@@ -32,7 +32,11 @@ import type {
   FeedStructuredPost,
 } from '@aurboda/api-spec'
 
-import { DEFAULT_IMPACT_WINDOW_MINUTES, defaultArticleChartBucket } from '@aurboda/api-spec'
+import {
+  articleBlockWindow,
+  DEFAULT_IMPACT_WINDOW_MINUTES,
+  defaultArticleChartBucket,
+} from '@aurboda/api-spec'
 
 import type { FeedPostRecord } from '../db/index.ts'
 
@@ -41,7 +45,7 @@ import { metricUnits } from '../schema.ts'
 import { resolveActivityScalars } from './activitypub/feed-activity.ts'
 import { declaredProseImages } from './activitypub/note-prose.ts'
 import { getArticleImpact } from './article-block-data.ts'
-import { blockWindow, isZeroDurationBucket } from './article.ts'
+import { isZeroDurationBucket } from './article.ts'
 import { getContinuousCorrelation } from './correlations/explore.ts'
 import { isCapabilityAuthorized } from './feed-capability.ts'
 import { resolvePostExercises, toStructuredExercise } from './feed-exercises.ts'
@@ -75,7 +79,7 @@ const resolveStructuredChartBlock = async (
   content: ArticleContent,
   tz: string | undefined,
 ): Promise<FeedStructuredArticleChartBlock | null> => {
-  const { end, start } = blockWindow(block, content)
+  const { end, start } = articleBlockWindow(block, content)
   if (start == null || end == null) return null
   const startDate = new Date(start)
   const endDate = new Date(end)
@@ -120,7 +124,7 @@ const resolveStructuredCorrelationBlock = async (
   block: Extract<ArticleBlock, { type: 'correlation' }>,
   content: ArticleContent,
 ): Promise<FeedStructuredArticleCorrelationBlock | null> => {
-  const { end, start } = blockWindow(block, content)
+  const { end, start } = articleBlockWindow(block, content)
   if (start == null || end == null) return null
   if (new Date(start).getTime() >= new Date(end).getTime()) return null
 
@@ -162,7 +166,7 @@ export const resolveStructuredImpactBlock = async (
   content: ArticleContent,
   getImpact: typeof getArticleImpact = getArticleImpact,
 ): Promise<FeedStructuredArticleImpactBlock | null> => {
-  const { end, start } = blockWindow(block, content)
+  const { end, start } = articleBlockWindow(block, content)
   if (start == null || end == null) return null
   const startDate = new Date(start)
   const endDate = new Date(end)

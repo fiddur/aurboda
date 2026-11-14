@@ -1,3 +1,4 @@
+import { crc32, deflateSync } from 'node:zlib'
 import sharp from 'sharp'
 import { describe, expect, test } from 'vitest'
 
@@ -7,9 +8,11 @@ import {
   BANNER_WIDTH,
   generateIdenticon,
   isAllowedImageType,
+  MAX_UPLOAD_PIXELS,
   processAvatar,
   processBanner,
 } from './avatar.ts'
+import { processFeedImage } from './feed-image.ts'
 
 const solidPng = (w: number, h: number) =>
   sharp({ create: { background: { b: 90, g: 150, r: 20 }, channels: 3, height: h, width: w } })
@@ -81,5 +84,36 @@ describe('generateIdenticon', () => {
     const a = await generateIdenticon('alice')
     const b = await generateIdenticon('bob')
     expect(a.data.equals(b.data)).toBe(false)
+  })
+})
+
+describe('the upload pixel limit', () => {
+  const pngChunk = (type: string, data: Buffer) => {
+    const body = Buffer.concat([Buffer.from(type, 'ascii'), data])
+    const length = Buffer.alloc(4)
+    length.writeUInt32BE(data.length)
+    const crc = Buffer.alloc(4)
+    crc.writeUInt32BE(crc32(body))
+    return Buffer.concat([length, body, crc])
+  }
+  // A few hundred bytes that declare 12000×10000 pixels: under sharp's own default, over ours.
+  const hugeDimensionsPng = () => {
+    const header = Buffer.alloc(13)
+    header.writeUInt32BE(12_000, 0)
+    header.writeUInt32BE(10_000, 4)
+    header[8] = 8
+    return Buffer.concat([
+      Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+      pngChunk('IHDR', header),
+      pngChunk('IDAT', deflateSync(Buffer.alloc(12_001))),
+      pngChunk('IEND', Buffer.alloc(0)),
+    ])
+  }
+
+  test('a small file with huge dimensions is refused before it is decoded', async () => {
+    expect(12_000 * 10_000).toBeGreaterThan(MAX_UPLOAD_PIXELS)
+    await expect(processAvatar(hugeDimensionsPng())).rejects.toThrow(/pixel limit/)
+    await expect(processBanner(hugeDimensionsPng())).rejects.toThrow(/pixel limit/)
+    await expect(processFeedImage(hugeDimensionsPng())).rejects.toThrow(/pixel limit/)
   })
 })

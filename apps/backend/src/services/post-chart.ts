@@ -7,6 +7,7 @@ import type { ActivityImpactType, ArticleContent, CorrelationSelector, MetricTyp
 
 import {
   activityMeasureLabels,
+  articleBlockWindow,
   DEFAULT_IMPACT_WINDOW_MINUTES,
   defaultArticleChartBucket,
   getMetricDisplayName,
@@ -19,7 +20,7 @@ import type { RaceChartSvgData } from './charts/race-chart-svg.ts'
 import type { ScatterSvgData } from './charts/scatter-svg.ts'
 import type { ExerciseTrendSeries } from './feed-structured-exercise.ts'
 
-import { blockWindow, isZeroDurationBucket } from './article.ts'
+import { isZeroDurationBucket } from './article.ts'
 import {
   type ChartRenderOpts,
   isDrawableImpact,
@@ -89,7 +90,7 @@ export const articleBlockAt = (
   const block = article.blocks[index]
   if (block == null || block.type === 'prose') return null
   if (block.type === 'challenge') return { type: 'challenge', updatedAt, url: block.challenge_url }
-  const { end, start } = blockWindow(block, article)
+  const { end, start } = articleBlockWindow(block, article)
   if (start == null || end == null) return null
   const startDate = new Date(start)
   const endDate = new Date(end)

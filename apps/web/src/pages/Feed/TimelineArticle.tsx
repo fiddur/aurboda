@@ -9,9 +9,10 @@
  * credentials to fetch more.
  *
  * Prose is the remote author's raw markdown, rendered through `renderRemoteMarkdown`
- * (the #910 XSS boundary, plus no `<img>` but the block's declared `images`) — a
- * remote peer's markdown is untrusted, so it can't smuggle a tracking pixel into
- * the reader's timeline through a picture its payload does not declare.
+ * (the #910 XSS boundary, plus no `<img>` but the block's declared `images`). The
+ * declared list comes from the same peer, so it does not stop a hostile peer's own
+ * tracking pixel (no more exposure than the attachment images it already sends); it
+ * keeps a raw or undeclared `<img>` from an honest peer out of the reader's timeline.
  */
 import type { FeedStructuredArticle, FeedStructuredArticleBlock } from '@aurboda/api-spec'
 
