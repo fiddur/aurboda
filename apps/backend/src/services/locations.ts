@@ -319,14 +319,17 @@ export const getRawLocationPoints = async (
   user: string,
   start: Date,
   end: Date,
+  { limit, source }: { limit?: number; source?: string } = {},
 ): Promise<{ lat: number; lon: number; time: Date }[]> => {
   const result = await query(
     user,
     `SELECT ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, time
      FROM locations
      WHERE time >= $1 AND time <= $2 AND deleted_at IS NULL
-     ORDER BY time`,
-    [start, end],
+       AND ($3::text IS NULL OR source = $3)
+     ORDER BY time
+     LIMIT $4`,
+    [start, end, source ?? null, limit ?? null],
   )
 
   return result.rows.map((row) => ({

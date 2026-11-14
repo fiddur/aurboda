@@ -70,9 +70,11 @@ export const fetchPlaceVisits = async (
 export const fetchRawLocations = async (
   start: Date,
   end: Date,
+  filter: Pick<RawLocationsQuery, 'limit' | 'source'> = {},
 ): Promise<{ lat: number; lon: number; time: Date }[]> => {
   const { token } = auth.value
   const params: RawLocationsQuery = {
+    ...filter,
     end: end.toISOString(),
     start: start.toISOString(),
   }
@@ -86,6 +88,9 @@ export const fetchRawLocations = async (
     time: new Date(point.time),
   }))
 }
+
+export const hasLocationsFromSource = async (source: string, start: Date, end: Date): Promise<boolean> =>
+  (await fetchRawLocations(start, end, { limit: 1, source })).length > 0
 
 export const fetchStoredDetectedLocations = async (): Promise<StoredDetectedLocation[]> => {
   const { token } = auth.value

@@ -102,7 +102,18 @@ export const locationsQuerySchema = timeRangeQuerySchema
 
 export type LocationsQuery = z.infer<typeof locationsQuerySchema>
 
-export const rawLocationsQuerySchema = timeRangeQuerySchema.meta({ id: 'RawLocationsQuery' })
+export const rawLocationsQuerySchema = timeRangeQuerySchema
+  .extend({
+    limit: z.coerce.number().int().min(1).optional().meta({
+      description: 'Return at most this many points, earliest first. All points in the range by default.',
+    }),
+    source: z.string().max(50).optional().meta({
+      description:
+        'Only points from this source, e.g. `owntracks`, `home_assistant` or `garmin`. Every source by default.',
+      example: 'owntracks',
+    }),
+  })
+  .meta({ id: 'RawLocationsQuery' })
 
 export type RawLocationsQuery = z.infer<typeof rawLocationsQuerySchema>
 
