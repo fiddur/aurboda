@@ -49,6 +49,7 @@ import {
   pruneSyncedOutboundSync,
   rematerializeSupersededOnce,
   resolveOrCreateActivityType,
+  retireSingleLiftTypes,
   markTimelineEntryReplyChecked,
   setTimelineEntryReplyInfo,
   setTimelineEntryStructured,
@@ -573,6 +574,19 @@ const main = async () => {
         if (!alreadyDone) console.info(`🔁 Re-materialized supersession for ${user} over ${days} day(s)`)
       } catch (error) {
         console.error(`⚠️ Supersession re-materialization failed for ${user}:`, error)
+      }
+    }
+    for (const user of users) {
+      try {
+        const { converted, deleted, kept } = await retireSingleLiftTypes(user)
+        if (converted > 0 || deleted.length > 0 || kept.length > 0) {
+          console.info(
+            `🏋️ Retired single-lift types for ${user}: ${converted} activit(ies) converted, ` +
+              `deleted [${deleted.join(', ')}], kept as custom [${kept.join(', ')}]`,
+          )
+        }
+      } catch (error) {
+        console.error(`⚠️ Single-lift type retirement failed for ${user}:`, error)
       }
     }
   })

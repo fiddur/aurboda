@@ -177,6 +177,7 @@ export {
   setGarminActivitySets,
   materializeSuperseded,
   rematerializeSupersededOnce,
+  retireSingleLiftTypes,
   mergeOverlappingActivities,
   pickOverrideWinner,
   restoreActivity,

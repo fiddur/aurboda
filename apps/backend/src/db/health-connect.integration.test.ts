@@ -526,6 +526,50 @@ describe('Health Connect Integration Tests', () => {
     })
   })
 
+  describe('single-lift session types (#1651)', () => {
+    const session = (exerciseType: number) => ({
+      endTime: '2026-09-03T10:30:00Z',
+      exerciseType,
+      metadata: { dataOrigin: 'com.example.old', id: `hc-lift-${exerciseType}` },
+      startTime: '2026-09-03T10:00:00Z',
+    })
+
+    const stored = async (user: string) =>
+      (await query(user, `SELECT activity_type, data FROM activities WHERE deleted_at IS NULL`)).rows
+
+    test.each([
+      ['single', (user: string) => processHealthConnectData(user, 'ExerciseSessionRecord', session(6))],
+      ['batch', (user: string) => processHealthConnectBatch(user, 'ExerciseSessionRecord', [session(6)])],
+    ])('stores a bench press session as a strength session with one set (%s path)', async (_, store) => {
+      const user = getTestUser()
+      await store(user)
+
+      const rows = await stored(user)
+      expect(rows).toHaveLength(1)
+      expect(rows[0].activity_type).toBe('strength_training')
+      expect(rows[0].data.sets).toEqual([{ exercise: 'Bench Press' }])
+      expect(rows[0].data).not.toHaveProperty('exerciseType')
+    })
+
+    test('leaves a strength training session as it is', async () => {
+      const user = getTestUser()
+      await processHealthConnectBatch(user, 'ExerciseSessionRecord', [session(70)])
+
+      const rows = await stored(user)
+      expect(rows[0].activity_type).toBe('strength_training')
+      expect(rows[0].data).not.toHaveProperty('sets')
+      expect(rows[0].data).not.toHaveProperty('exerciseType')
+    })
+
+    test('deletes a single-lift session by its record id', async () => {
+      const user = getTestUser()
+      await processHealthConnectData(user, 'ExerciseSessionRecord', session(6))
+
+      expect(await deleteHealthConnectRecords(user, ['hc-lift-6'])).toBe(1)
+      expect(await stored(user)).toHaveLength(0)
+    })
+  })
+
   describe('MindfulnessSessionRecord (#1341)', () => {
     const mindfulnessSession = (overrides: Record<string, unknown> = {}) => ({
       endTime: '2026-09-03T10:21:00Z',
