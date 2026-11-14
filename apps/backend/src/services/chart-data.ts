@@ -354,9 +354,9 @@ const seriesValues = (
         resolvers.get(musclePath) ?? (() => undefined),
         filter,
       ).map((g) => ({
-        key: `muscle:${g.muscle_group ?? 'unmapped'}`,
+        key: `muscle:${g.muscle_group ?? (g.in_catalogue ? 'none' : 'unmapped')}`,
         measures: g.measures,
-        name: muscleGroupName(g.muscle_group),
+        name: muscleGroupName(g),
       }))
     }
     if (parseFieldPath(field).key === undefined) {

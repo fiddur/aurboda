@@ -741,6 +741,23 @@ describe('getChartData', () => {
         ])
       })
 
+      test('a catalogue exercise without muscle data is apart from one not in the catalogue', async () => {
+        vi.mocked(db.getActivities).mockResolvedValue([
+          lift('a5', '2026-01-05T17:00:00Z', 'Gym', [set('Battle Rope', 0, 30), set('Squat Hold', 100, 5)]),
+        ])
+        vi.mocked(db.getBucketStarts).mockResolvedValue(new Map([['a5', w1]]))
+        const result = await getChartData('u', {
+          ...base,
+          aggregation: 'sum',
+          breakdown_fields: ['sets.exercise.muscle_group'],
+          measure: 'set_count',
+        })
+
+        expect(result.buckets).toEqual([
+          { bucket_start: w1.toISOString(), series: { 'No muscle group': 1, 'Not in the catalogue': 1 } },
+        ])
+      })
+
       test('an exercise filter restricts the sets, and a scalar field combines', async () => {
         const result = await getChartData('u', {
           ...base,

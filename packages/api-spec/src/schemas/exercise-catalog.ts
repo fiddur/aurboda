@@ -32,6 +32,9 @@ export type ExerciseMuscleGroup = z.infer<typeof exerciseMuscleGroupSchema>
 /** The display name of the muscle group of exercises that resolve to no catalogue entry. */
 export const UNMAPPED_MUSCLE_GROUP_NAME = 'Not in the catalogue'
 
+/** The display name of the muscle group of exercises whose catalogue entry has no muscle data. */
+export const NO_MUSCLE_GROUP_NAME = 'No muscle group'
+
 export const exerciseMuscles = [
   ...exerciseMuscleGroups,
   'wrist_flexors',

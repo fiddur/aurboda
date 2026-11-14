@@ -140,7 +140,7 @@ export const chartDataQuerySchema = z
       .meta({ description: 'Deprecated: use activity_type_id instead' }),
     breakdown_fields: z.array(z.string()).optional().meta({
       description:
-        'Data fields to break down by (for activity_type source). Multiple fields produce compound series keys. With a measure, an item path such as sets.exercise gives one series per exercise. With measure set_count, volume or total_reps, sets.exercise.muscle_group gives one series per muscle group, each set counted by the exercise\'s recruitment weight (bench press: 1 set for the chest, 0.5 for the shoulders); exercises not in the catalogue fall under "Not in the catalogue". It combines with scalar fields, not with another item path.',
+        'Data fields to break down by (for activity_type source). Multiple fields produce compound series keys. With a measure, an item path such as sets.exercise gives one series per exercise. With measure set_count, volume or total_reps, sets.exercise.muscle_group gives one series per muscle group, each set counted by the exercise\'s recruitment weight (bench press: 1 set for the chest, 0.5 for the shoulders); exercises not in the catalogue fall under "Not in the catalogue", and those in it without muscle data under "No muscle group". It combines with scalar fields, not with another item path.',
     }),
     ...chartMeasureShape,
     tz: chartDataTzSchema,
@@ -169,7 +169,7 @@ export const chartDataHttpQuerySchema = z
     aggregation: chartDataAggregationSchema.optional(),
     breakdown_fields: z.string().optional().meta({
       description:
-        'Comma-separated data fields (or item paths) to break down by. With measure set_count, volume or total_reps, sets.exercise.muscle_group gives one series per muscle group, each set counted by the exercise\'s recruitment weight; exercises not in the catalogue fall under "Not in the catalogue".',
+        'Comma-separated data fields (or item paths) to break down by. With measure set_count, volume or total_reps, sets.exercise.muscle_group gives one series per muscle group, each set counted by the exercise\'s recruitment weight; exercises not in the catalogue fall under "Not in the catalogue", and those in it without muscle data under "No muscle group".',
     }),
     ...chartMeasureShape,
     bucket_size: z.enum(['1m', '5m', '15m', '1h', '1d', '1w', '1M']).optional(),

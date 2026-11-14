@@ -5,6 +5,7 @@ import {
   exerciseMuscleGroups,
   exerciseMuscleInfo,
   type MuscleGroupMeasures,
+  NO_MUSCLE_GROUP_NAME,
   type StoredExerciseCatalogEntry,
   summedActivityMeasures,
   UNMAPPED_MUSCLE_GROUP_NAME,
@@ -33,50 +34,72 @@ export const muscleGroupWeights = (
   return weights
 }
 
-export const muscleGroupName = (group: ExerciseMuscleGroup | null): string =>
-  group === null ? UNMAPPED_MUSCLE_GROUP_NAME : exerciseMuscleInfo[group].name
+/** A muscle group's measures; `muscle_group` null, with `in_catalogue`, for exercises that train none. */
+export interface MuscleGroupBucket {
+  in_catalogue?: boolean
+  measures: ActivityMeasures
+  muscle_group: ExerciseMuscleGroup | null
+}
+
+export const muscleGroupName = ({
+  in_catalogue,
+  muscle_group,
+}: Omit<MuscleGroupBucket, 'measures'>): string =>
+  muscle_group !== null
+    ? exerciseMuscleInfo[muscle_group].name
+    : in_catalogue
+      ? NO_MUSCLE_GROUP_NAME
+      : UNMAPPED_MUSCLE_GROUP_NAME
 
 const round2 = (v: number): number => Math.round(v * 100) / 100
 
-const groupOrder = (group: ExerciseMuscleGroup | null): number =>
-  group === null ? exerciseMuscleGroups.length : exerciseMuscleGroups.indexOf(group)
+type BucketKey = ExerciseMuscleGroup | 'no_muscle_group' | 'not_in_catalogue'
+
+const bucketOrder: BucketKey[] = [...exerciseMuscleGroups, 'no_muscle_group', 'not_in_catalogue']
+
+const bucketOf = (key: BucketKey): Omit<MuscleGroupBucket, 'measures'> =>
+  key === 'no_muscle_group' || key === 'not_in_catalogue'
+    ? { in_catalogue: key === 'no_muscle_group', muscle_group: null }
+    : { muscle_group: key }
 
 /**
  * The summed measures of a session's items per muscle group: each exercise's measures multiplied by
- * its recruitment weight of every group it trains. An exercise without a catalogue entry or without
- * muscle weights counts fully under `null`, so the groups add up to at least the session's total.
+ * its recruitment weight of every group it trains. An exercise without muscle weights counts fully
+ * under `null`, in one bucket when its entry has no muscle data and in another when it has no entry,
+ * so the groups add up to at least the session's total.
  */
 export const measuresByMuscleGroup = (
   items: Item[],
   key: string,
   resolveEntry: ExerciseEntryResolver,
-): { muscle_group: ExerciseMuscleGroup | null; measures: ActivityMeasures }[] => {
-  const totals = new Map<ExerciseMuscleGroup | null, ActivityMeasures>()
+): MuscleGroupBucket[] => {
+  const totals = new Map<BucketKey, ActivityMeasures>()
   for (const group of groupItemsByKey(items, key)) {
     const measures = measureItems(group.items)
     const entry = resolveEntry(group.value)
     const weights = Object.entries(entry ? muscleGroupWeights(entry) : {}) as [ExerciseMuscleGroup, number][]
-    const targets: [ExerciseMuscleGroup | null, number][] = weights.length > 0 ? weights : [[null, 1]]
-    for (const [muscleGroup, weight] of targets) {
+    const targets: [BucketKey, number][] =
+      weights.length > 0 ? weights : [[entry ? 'no_muscle_group' : 'not_in_catalogue', 1]]
+    for (const [bucket, weight] of targets) {
       for (const measure of summedActivityMeasures) {
         const value = measures[measure]
         if (value === undefined) continue
-        const sums = totals.getOrInsertComputed(muscleGroup, () => ({}))
+        const sums = totals.getOrInsertComputed(bucket, () => ({}))
         sums[measure] = (sums[measure] ?? 0) + value * weight
       }
     }
   }
   return [...totals]
-    .toSorted(([a], [b]) => groupOrder(a) - groupOrder(b))
-    .map(([muscle_group, measures]) => ({
+    .toSorted(([a], [b]) => bucketOrder.indexOf(a) - bucketOrder.indexOf(b))
+    .map(([bucket, measures]) => ({
+      ...bucketOf(bucket),
       measures: Object.fromEntries(
         Object.entries(measures).map(([measure, value]) => [measure, round2(value)]),
       ) as ActivityMeasures,
-      muscle_group,
     }))
 }
 
-/** `measuresByMuscleGroup` with display names, most sets first and `null` last. */
+/** `measuresByMuscleGroup` with display names, most sets first and the `null` groups last. */
 export const muscleGroupSplit = (
   items: Item[],
   key: string,
@@ -88,4 +111,4 @@ export const muscleGroupSplit = (
         Number(a.muscle_group === null) - Number(b.muscle_group === null) ||
         (b.measures.set_count ?? 0) - (a.measures.set_count ?? 0),
     )
-    .map((g) => ({ ...g, name: muscleGroupName(g.muscle_group) }))
+    .map((g) => ({ ...g, name: muscleGroupName(g) }))

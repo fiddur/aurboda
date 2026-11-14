@@ -361,9 +361,10 @@ every muscle group the exercise trains, by the catalogue entry's recruitment wei
 set is 1 set for the chest and 0.5 for the shoulders. Within one group the highest weight of the
 entry's muscles in it counts, so the two heads of the triceps do not count a set twice. The same
 weights apply to `volume` and `total_reps`. Warmup sets do not count. A name that resolves to no
-entry (unmapped or dismissed), or to an entry without muscle weights, counts fully under **Not in
-the catalogue** (`muscle_group: null`), so nothing drops out of the total. Values are rounded to two
-decimals.
+entry (unmapped or dismissed) counts fully under **Not in the catalogue**, and one that resolves to
+an entry without muscle weights (a mobility or warm-up movement from Garmin's list, say) under **No
+muscle group**, so nothing drops out of the total. Both have `muscle_group: null`. Values are rounded
+to two decimals.
 
 - `GET /chart-data` with `measure` `set_count`, `volume` or `total_reps` takes the breakdown field
   `sets.exercise.muscle_group` (`<list>.<item>.muscle_group`, a catalogue-backed item path): one
@@ -373,8 +374,9 @@ decimals.
   `source_type=activity_type&pattern=strength_training&measure=set_count&aggregation=sum&bucket_size=1w&breakdown_fields=sets.exercise.muscle_group`.
   `query_chart_data` and the dashboard's bar chart take the same field.
 - `GET /activities/:id/item-history?field=sets.exercise` carries `muscle_groups` for a
-  catalogue-backed field: per group its `muscle_group` (null for not in the catalogue), `name` and
-  weighted `measures`, most sets first and not in the catalogue last.
+  catalogue-backed field: per group its `muscle_group`, `name` and weighted `measures`, most sets
+  first and the two `null` groups last; on those, `in_catalogue` is `true` for No muscle group and
+  `false` for Not in the catalogue.
 
 On the web, the type page shows a weekly **Sets per muscle group** bar chart for each
 catalogue-backed item field (90 days or a year, with Chart Explorer and dashboard entries in its ⋮
