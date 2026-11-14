@@ -1,7 +1,9 @@
 import { describe, expect, test, vi } from 'vitest'
 
+import type { NotificationInsert } from '../../db/index.ts'
 import type { OAuthToken } from '../../db/types.ts'
 
+import { createNotifier, READ_RETENTION_DAYS } from '../../services/notifications.ts'
 import { type GarminKeyState, garminKeyReminder, remindGarminKey } from './key-reminder.ts'
 
 const NOW = new Date('2026-11-13T18:30:00Z')
@@ -135,5 +137,60 @@ describe('remindGarminKey', () => {
 
     expect(logError).toHaveBeenCalledOnce()
     expect(raiseBestEffort).not.toHaveBeenCalled()
+  })
+})
+
+describe('a dead key left connected', () => {
+  test('is reminded again once the read reminder is pruned, about every 90 days', async () => {
+    let now = NOW
+    const rows: { dedupe_key: string | null; created_at: Date; read_at: Date | null }[] = []
+    const notifier = createNotifier({
+      getPreference: async () => null,
+      insert: async (_user: string, input: NotificationInsert) => {
+        if (input.dedupe_key && rows.some((r) => r.dedupe_key === input.dedupe_key)) return null
+        const row = { created_at: now, dedupe_key: input.dedupe_key ?? null, read_at: null }
+        rows.push(row)
+        return row as never
+      },
+      now: () => now,
+      prune: async (_user: string, readBefore: Date, anyBefore: Date) => {
+        const kept = rows.filter(
+          (r) => !((r.read_at && r.created_at < readBefore) || r.created_at < anyBefore),
+        )
+        const pruned = rows.length - kept.length
+        rows.splice(0, rows.length, ...kept)
+        return pruned
+      },
+      revise: async () => null,
+    })
+    const remind = remindGarminKey({
+      getOAuthToken: async () => ({
+        access_token: '',
+        expires_at: expiry(-1),
+        provider: 'garmin_personal',
+        refresh_token: 'fake-api-key-for-tests',
+      }),
+      now: () => now,
+      raiseBestEffort: notifier.raiseBestEffort,
+    })
+    const expiredReminders = () => rows.filter((r) => r.dedupe_key?.includes(':expired:'))
+    const daysLater = (days: number) => new Date(NOW.getTime() + days * 24 * 60 * 60 * 1000)
+
+    await remind('alice')
+    await remind('alice')
+    expect(expiredReminders()).toHaveLength(1)
+    expiredReminders()[0]!.read_at = NOW
+
+    now = daysLater(READ_RETENTION_DAYS - 1)
+    await notifier.raise('alice', { title: 'Something else', type: 'garmin_key_expiring' })
+    await remind('alice')
+    expect(expiredReminders()).toHaveLength(1)
+
+    now = daysLater(READ_RETENTION_DAYS + 1)
+    await notifier.raise('alice', { title: 'Something else', type: 'garmin_key_expiring' })
+    expect(expiredReminders()).toHaveLength(0)
+    await remind('alice')
+    expect(expiredReminders()).toHaveLength(1)
+    expect(expiredReminders()[0]!.created_at).toEqual(now)
   })
 })

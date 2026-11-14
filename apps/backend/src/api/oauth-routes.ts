@@ -1,6 +1,11 @@
 import type { Express } from 'express'
 
-import { connectGarminPersonalKeyBodySchema } from '@aurboda/api-spec'
+import {
+  type AuthActionResponse,
+  type ConnectGarminPersonalKeyBody,
+  connectGarminPersonalKeyBodySchema,
+  type GarminLoginResponse,
+} from '@aurboda/api-spec'
 
 import type { GarminClient } from '../integrations/garmin/source.ts'
 import type { GravlClient } from '../integrations/gravl/client.ts'
@@ -53,77 +58,95 @@ export const registerOAuthRoutes = ({
   httpd.get('/auth/oura/connect', authMiddleware, oura.getAuthorizeUrl)
   httpd.get('/auth/ouracb', oura.authCb)
 
-  httpd.post('/auth/oura/disconnect', authMiddleware, async (req, res) => {
-    const user = req.user!
-    try {
-      await oura.disconnect(user)
-      await resetSyncState(user, 'oura')
-      await centralDb.deleteOuraUserMappingsByUsername(user)
-      res.json({ success: true })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Disconnect failed'
-      res.status(500).json({ error: message, success: false })
-    }
-  })
+  httpd.post<Record<string, never>, AuthActionResponse>(
+    '/auth/oura/disconnect',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+      try {
+        await oura.disconnect(user)
+        await resetSyncState(user, 'oura')
+        await centralDb.deleteOuraUserMappingsByUsername(user)
+        res.json({ success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Disconnect failed'
+        res.status(500).json({ error: message, success: false })
+      }
+    },
+  )
 
   // Garmin Connect (login with credentials, tokens-only stored)
-  httpd.post('/auth/garmin/login', authMiddleware, async (req, res) => {
-    const user = req.user!
-    const { email: rawEmail, password } = req.body ?? {}
-    const email = typeof rawEmail === 'string' ? rawEmail.trim() : rawEmail
+  httpd.post<Record<string, never>, GarminLoginResponse>(
+    '/auth/garmin/login',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+      const { email: rawEmail, password } = req.body ?? {}
+      const email = typeof rawEmail === 'string' ? rawEmail.trim() : rawEmail
 
-    if (!email || !password) {
-      res.status(400).json({ error: 'Email and password are required', success: false })
-      return
-    }
-
-    try {
-      const result = await garmin.login(user, email, password)
-      if ('mfa_required' in result) {
-        res.json({ mfa_required: true, success: false })
-      } else {
-        res.json({ success: true })
+      if (!email || !password) {
+        res.status(400).json({ error: 'Email and password are required', success: false })
+        return
       }
-    } catch (error) {
-      const secret = typeof password === 'string' ? password : ''
-      auditError(user, 'auth', 'Garmin login endpoint error', { error: redactSecret(String(error), secret) })
-      const message = error instanceof Error ? redactSecret(error.message, secret) : 'Login failed'
-      res.status(401).json({ error: message, success: false })
-    }
-  })
 
-  httpd.post('/auth/garmin/mfa', authMiddleware, async (req, res) => {
-    const user = req.user!
-    const { mfa_code: rawMfaCode } = req.body ?? {}
-    const mfa_code = typeof rawMfaCode === 'string' ? rawMfaCode.trim() : rawMfaCode
+      try {
+        const result = await garmin.login(user, email, password)
+        if ('mfa_required' in result) {
+          res.json({ mfa_required: true, success: false })
+        } else {
+          res.json({ success: true })
+        }
+      } catch (error) {
+        const secret = typeof password === 'string' ? password : ''
+        auditError(user, 'auth', 'Garmin login endpoint error', {
+          error: redactSecret(String(error), secret),
+        })
+        const message = error instanceof Error ? redactSecret(error.message, secret) : 'Login failed'
+        res.status(401).json({ error: message, success: false })
+      }
+    },
+  )
 
-    if (!mfa_code) {
-      res.status(400).json({ error: 'MFA code is required', success: false })
-      return
-    }
+  httpd.post<Record<string, never>, AuthActionResponse>(
+    '/auth/garmin/mfa',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+      const { mfa_code: rawMfaCode } = req.body ?? {}
+      const mfa_code = typeof rawMfaCode === 'string' ? rawMfaCode.trim() : rawMfaCode
 
-    try {
-      await garmin.verifyMfa(user, mfa_code)
-      res.json({ success: true })
-    } catch (error) {
-      auditError(user, 'auth', 'Garmin MFA endpoint error', { error: String(error) })
-      const message = error instanceof Error ? error.message : 'MFA verification failed'
-      res.status(401).json({ error: message, success: false })
-    }
-  })
+      if (!mfa_code) {
+        res.status(400).json({ error: 'MFA code is required', success: false })
+        return
+      }
 
-  httpd.post('/auth/garmin/disconnect', authMiddleware, async (req, res) => {
-    const user = req.user!
-    try {
-      await garmin.disconnect(user)
-      res.json({ success: true })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Disconnect failed'
-      res.status(500).json({ error: message, success: false })
-    }
-  })
+      try {
+        await garmin.verifyMfa(user, mfa_code)
+        res.json({ success: true })
+      } catch (error) {
+        auditError(user, 'auth', 'Garmin MFA endpoint error', { error: String(error) })
+        const message = error instanceof Error ? error.message : 'MFA verification failed'
+        res.status(401).json({ error: message, success: false })
+      }
+    },
+  )
 
-  httpd.post(
+  httpd.post<Record<string, never>, AuthActionResponse>(
+    '/auth/garmin/disconnect',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+      try {
+        await garmin.disconnect(user)
+        res.json({ success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Disconnect failed'
+        res.status(500).json({ error: message, success: false })
+      }
+    },
+  )
+
+  httpd.post<Record<string, never>, AuthActionResponse, ConnectGarminPersonalKeyBody>(
     '/auth/garmin/personal-key',
     authMiddleware,
     validateBody(connectGarminPersonalKeyBodySchema),
@@ -160,47 +183,59 @@ export const registerOAuthRoutes = ({
     },
   )
 
-  httpd.post('/auth/garmin/personal-key/disconnect', authMiddleware, async (req, res) => {
-    const user = req.user!
-    try {
-      await garminPersonal.disconnect(user)
-      await clearGarminKeyReminders(user)
-      res.json({ success: true })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Disconnect failed'
-      res.status(500).json({ error: message, success: false })
-    }
-  })
+  httpd.post<Record<string, never>, AuthActionResponse>(
+    '/auth/garmin/personal-key/disconnect',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+      try {
+        await garminPersonal.disconnect(user)
+        await clearGarminKeyReminders(user)
+        res.json({ success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Disconnect failed'
+        res.status(500).json({ error: message, success: false })
+      }
+    },
+  )
 
   // Strava (always registered — credentials checked dynamically)
   httpd.get('/auth/strava/connect', authMiddleware, strava.getAuthorizeUrl)
   httpd.get('/auth/stravacb', strava.authCb)
 
-  httpd.post('/auth/strava/disconnect', authMiddleware, async (req, res) => {
-    const user = req.user!
-    try {
-      await upsertOAuthToken(user, { access_token: '', provider: 'strava' })
-      await centralDb.deleteStravaAthleteMappingByUsername(user)
-      res.json({ success: true })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Disconnect failed'
-      res.status(500).json({ error: message, success: false })
-    }
-  })
+  httpd.post<Record<string, never>, AuthActionResponse>(
+    '/auth/strava/disconnect',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+      try {
+        await upsertOAuthToken(user, { access_token: '', provider: 'strava' })
+        await centralDb.deleteStravaAthleteMappingByUsername(user)
+        res.json({ success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Disconnect failed'
+        res.status(500).json({ error: message, success: false })
+      }
+    },
+  )
 
   // Gravl (OAuth + PKCE; always registered — credentials checked dynamically).
   // A personal token needs no route: it is a plain user setting.
   httpd.get('/auth/gravl/connect', authMiddleware, gravl.getAuthorizeUrl)
   httpd.get('/auth/gravlcb', gravl.authCb)
 
-  httpd.post('/auth/gravl/disconnect', authMiddleware, async (req, res) => {
-    const user = req.user!
-    try {
-      await gravl.disconnect(user)
-      res.json({ success: true })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Disconnect failed'
-      res.status(500).json({ error: message, success: false })
-    }
-  })
+  httpd.post<Record<string, never>, AuthActionResponse>(
+    '/auth/gravl/disconnect',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+      try {
+        await gravl.disconnect(user)
+        res.json({ success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Disconnect failed'
+        res.status(500).json({ error: message, success: false })
+      }
+    },
+  )
 }

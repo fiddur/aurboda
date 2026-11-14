@@ -1,5 +1,7 @@
 import type {
+  AuthActionResponse,
   ConnectGarminPersonalKeyBody,
+  GarminLoginResponse,
   GarminSyncResponse,
   GarminSyncStatusResponse,
   OuraSyncResponse,
@@ -37,9 +39,9 @@ export const getOuraConnectUrl = async (): Promise<string> => {
   return response.data.url
 }
 
-export const disconnectOura = async (): Promise<{ success: boolean }> => {
+export const disconnectOura = async (): Promise<AuthActionResponse> => {
   const { token } = auth.value
-  const response = await axios.post(
+  const response = await axios.post<AuthActionResponse>(
     `${API_URL}/auth/oura/disconnect`,
     {},
     { headers: { Authorization: `Bearer ${token}` } },
@@ -65,12 +67,9 @@ export const fetchOuraSyncStatus = async (): Promise<OuraSyncStatusResponse> => 
   return response.data
 }
 
-export const connectGarmin = async (
-  email: string,
-  password: string,
-): Promise<{ success: boolean; mfa_required?: boolean; error?: string }> => {
+export const connectGarmin = async (email: string, password: string): Promise<GarminLoginResponse> => {
   const { token } = auth.value
-  const response = await axios.post(
+  const response = await axios.post<GarminLoginResponse>(
     `${API_URL}/auth/garmin/login`,
     { email, password },
     { headers: { Authorization: `Bearer ${token}` } },
@@ -78,9 +77,9 @@ export const connectGarmin = async (
   return response.data
 }
 
-export const verifyGarminMfa = async (mfaCode: string): Promise<{ success: boolean; error?: string }> => {
+export const verifyGarminMfa = async (mfaCode: string): Promise<AuthActionResponse> => {
   const { token } = auth.value
-  const response = await axios.post(
+  const response = await axios.post<AuthActionResponse>(
     `${API_URL}/auth/garmin/mfa`,
     { mfa_code: mfaCode },
     { headers: { Authorization: `Bearer ${token}` } },
@@ -88,9 +87,9 @@ export const verifyGarminMfa = async (mfaCode: string): Promise<{ success: boole
   return response.data
 }
 
-export const disconnectGarmin = async (): Promise<{ success: boolean }> => {
+export const disconnectGarmin = async (): Promise<AuthActionResponse> => {
   const { token } = auth.value
-  const response = await axios.post(
+  const response = await axios.post<AuthActionResponse>(
     `${API_URL}/auth/garmin/disconnect`,
     {},
     { headers: { Authorization: `Bearer ${token}` } },
@@ -101,19 +100,19 @@ export const disconnectGarmin = async (): Promise<{ success: boolean }> => {
 export const connectGarminPersonalKey = async (
   apiKey: string,
   expiresAt: string,
-): Promise<{ success: boolean; error?: string }> => {
+): Promise<AuthActionResponse> => {
   const { token } = auth.value
   const body: ConnectGarminPersonalKeyBody = { api_key: apiKey, expires_at: expiresAt }
-  const response = await axios.post(`${API_URL}/auth/garmin/personal-key`, body, {
+  const response = await axios.post<AuthActionResponse>(`${API_URL}/auth/garmin/personal-key`, body, {
     headers: { Authorization: `Bearer ${token}` },
     validateStatus: () => true,
   })
   return response.data
 }
 
-export const disconnectGarminPersonalKey = async (): Promise<{ success: boolean }> => {
+export const disconnectGarminPersonalKey = async (): Promise<AuthActionResponse> => {
   const { token } = auth.value
-  const response = await axios.post(
+  const response = await axios.post<AuthActionResponse>(
     `${API_URL}/auth/garmin/personal-key/disconnect`,
     {},
     { headers: { Authorization: `Bearer ${token}` } },
@@ -147,9 +146,9 @@ export const getStravaConnectUrl = async (): Promise<string> => {
   return response.data.url
 }
 
-export const disconnectStrava = async (): Promise<{ success: boolean }> => {
+export const disconnectStrava = async (): Promise<AuthActionResponse> => {
   const { token } = auth.value
-  const response = await axios.post(
+  const response = await axios.post<AuthActionResponse>(
     `${API_URL}/auth/strava/disconnect`,
     {},
     { headers: { Authorization: `Bearer ${token}` } },
@@ -183,9 +182,9 @@ export const getGravlConnectUrl = async (): Promise<string> => {
   return response.data.url
 }
 
-export const disconnectGravl = async (): Promise<{ success: boolean }> => {
+export const disconnectGravl = async (): Promise<AuthActionResponse> => {
   const { token } = auth.value
-  const response = await axios.post(
+  const response = await axios.post<AuthActionResponse>(
     `${API_URL}/auth/gravl/disconnect`,
     {},
     { headers: { Authorization: `Bearer ${token}` } },

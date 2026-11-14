@@ -27,9 +27,9 @@ Each data type is fetched through one connection:
 | Stress             | Login      | Skipped                 | Login                             |
 | Training readiness | Login      | Skipped                 | Login                             |
 
-With a key and no login, stress and training readiness are skipped (no sync state is written for them), sleep comes without the stage timeline (a Health Connect timeline already on the night is kept), and activities come without the per-second detail, GPS track and [strength sets](#strength-sets). A key Garmin refused stops being used until it is replaced; the session, if any, then serves every type again.
+With a key and no login, stress and training readiness are skipped (no sync state is written for them), sleep comes without the stage timeline (a Health Connect timeline already on the night is kept), and activities come without the per-second detail, GPS track and [strength sets](#strength-sets). A key that is refused or past its expiry date is not used, and the session, if any, serves every type instead: a refused key is tried again once a day (see below), and a key is used through its expiry date and not from the next day (UTC), without a request to Garmin. When the key serves a type and the Personal API answers a `5xx` (or fails on the network), the sync records an error for that type and day rather than asking the login; the next run tries the key again.
 
-Respiration and intensity minutes come from the key's daily summary (`avgWakingRespirationValue`, `moderateIntensityMinutes`, `vigorousIntensityMinutes`, `intensityMinutesGoal`), which is fetched once per day for all three types.
+Respiration and intensity minutes come from the key's daily summary (`avgWakingRespirationValue`, `moderateIntensityMinutes`, `vigorousIntensityMinutes`, `intensityMinutesGoal`), which is fetched once per day for all three types and kept for 60 seconds; connecting or disconnecting a key drops the user's copy, so a replaced key answers at once.
 
 ## Data Synced
 
@@ -105,13 +105,15 @@ No server-side configuration is needed: both ways use per-user credentials. Admi
 
 REST: `POST /api/auth/garmin/personal-key` with `{ "api_key": "...", "expires_at": "YYYY-MM-DD" }` answers `200`, `400` (a missing key or a past date), `401` ("Garmin refused the key"), `403` (turned off by the admin) or `502` (another Garmin failure). There is no MCP tool for it, as for the other credential flows.
 
-The key is stored in the user's own database (`oauth_tokens`, provider `garmin_personal`: the key in `refresh_token`, the expiry date entered in `expires_at`). It never appears in an API response, an audit entry or a log line. Each sync exchanges the key for a JWT that lasts 24 hours; the JWT is cached and replaced when less than an hour of it is left, or when Garmin answers `401`. When Garmin refuses the key itself (`401`/`403` on the exchange) the key is marked refused (`oauth_tokens.refused_at`), nothing more is sent to Garmin with it, and the Garmin page asks for a new one.
+The key is stored in the user's own database (`oauth_tokens`, provider `garmin_personal`: the key in `refresh_token`, the expiry date entered in `expires_at`). It never appears in an API response, an audit entry or a log line. Each sync exchanges the key for a JWT that lasts 24 hours; the JWT is cached and replaced when less than an hour of it is left, or when Garmin answers `401`. When Garmin refuses the key itself (`401`/`403` on the exchange) the key is marked refused (`oauth_tokens.refused_at`, the time of the first refusal) and the Garmin page asks for a new one. A refusal can be passing (a WAF or geo block at Garmin's edge), so a refused key is exchanged again once a day (`updated_at` holds the last try): an accepted exchange clears `refused_at` and the key serves again, a refused one waits another day and keeps `refused_at`, and with it the refusal reminder, unchanged. A key replaced or removed while its exchange was in flight is left as the user set it, and the JWT that exchange got is not used: that fetch fails and the next one reads the new key.
 
 The page shows when the key expires, as a warning from 14 days before and as an error once past or refused; **Replace key** stores a new one. Settings report the state as `garmin_personal_key` (`available`, `connected`, `expires_at`, `refused`), next to `garmin_session_connected`; `garmin_connected` is true for either.
 
 #### Expiry reminders
 
 Garmin does not report a key's expiry, so the reminders go by the date entered with it. Through the [central notifications](./features/notifications.md) (type `garmin_key_expiring`, **Garmin key renewal** under **Data sources** in the notification settings, where its in-app and push switches turn it off) the owner is told when 14 days are left, again at 3 days, once the date has passed, and once if Garmin refuses the key before then. Each opens the Garmin page. The five-minute background sync tick checks every user's key (`apps/backend/src/integrations/garmin/key-reminder.ts`); each reminder is stored once per expiry date, so a new key with a new date gets its own. Connecting a new key or disconnecting the key marks the earlier reminders read. No reminder carries the key.
+
+"Once" holds while the reminder is kept: like every read notification, a read reminder is pruned 90 days after it was raised (`READ_RETENTION_DAYS`, when the next notification for the user is stored), which frees its dedupe key. A user who leaves an expired or refused key connected is therefore reminded again about every 90 days, until the key is replaced or disconnected.
 
 ## Sync
 

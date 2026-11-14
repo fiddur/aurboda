@@ -18,7 +18,7 @@ import {
 import { auditError } from '../../services/audit-log.ts'
 import { redactSecret } from './client.ts'
 import { parseGarminGmt } from './sleep-stages.ts'
-import { GARMIN_PERSONAL_PROVIDER } from './source.ts'
+import { GARMIN_PERSONAL_PROVIDER, refusedKeyRetryDue } from './source.ts'
 
 const PERSONAL_API = 'https://personal.connectapi.garmin.com'
 const TOKEN_PATH = '/personalapitoken-service/personal-api/personal-api-key/token'
@@ -30,6 +30,14 @@ export class GarminKeyRefusedError extends Error {
   constructor() {
     super('Garmin refused the Personal API key')
     this.name = 'GarminKeyRefusedError'
+  }
+}
+
+/** The key was replaced or removed while it was being exchanged; its JWT is not used. */
+export class GarminKeyReplacedError extends Error {
+  constructor() {
+    super('The Garmin Personal API key was replaced or removed during the sync')
+    this.name = 'GarminKeyReplacedError'
   }
 }
 
@@ -159,7 +167,9 @@ export const garminPersonalClient = (overrides: Partial<GarminPersonalClientDeps
       }
       throw new GarminPersonalApiError(result.status, TOKEN_PATH)
     }
-    await deps.updateOAuthAccessToken(user, GARMIN_PERSONAL_PROVIDER, apiKey, result.jwt)
+    if (!(await deps.updateOAuthAccessToken(user, GARMIN_PERSONAL_PROVIDER, apiKey, result.jwt))) {
+      throw new GarminKeyReplacedError()
+    }
     return result.jwt
   }
 
@@ -174,12 +184,14 @@ export const garminPersonalClient = (overrides: Partial<GarminPersonalClientDeps
   const storedKey = async (user: string): Promise<OAuthToken> => {
     const stored = await deps.getOAuthToken(user, GARMIN_PERSONAL_PROVIDER)
     if (!stored?.refresh_token) throw new Error('No Garmin Personal API key is connected.')
-    if (stored.refused_at) throw new GarminKeyRefusedError()
+    if (stored.refused_at && !refusedKeyRetryDue(stored.updated_at ?? stored.refused_at, deps.now())) {
+      throw new GarminKeyRefusedError()
+    }
     return stored
   }
 
   const freshJwt = (stored: OAuthToken): string | null => {
-    if (!stored.access_token) return null
+    if (!stored.access_token || stored.refused_at) return null
     const exp = jwtExpiryMs(stored.access_token)
     return exp !== null && exp - deps.now().getTime() > JWT_MIN_REMAINING_MS ? stored.access_token : null
   }
@@ -209,6 +221,10 @@ export const garminPersonalClient = (overrides: Partial<GarminPersonalClientDeps
     return text.trim() ? (JSON.parse(text) as T) : null
   }
 
+  const forgetSummaries = (user: string) => {
+    for (const key of summaries.keys()) if (key.startsWith(`${user}|`)) summaries.delete(key)
+  }
+
   const dailySummary = (user: string, date: Date): Promise<GarminPersonalDailySummary | null> => {
     const key = `${user}|${fmt(date)}`
     const now = deps.now().getTime()
@@ -236,10 +252,12 @@ export const garminPersonalClient = (overrides: Partial<GarminPersonalClientDeps
         provider: GARMIN_PERSONAL_PROVIDER,
         refresh_token: apiKey,
       })
+      forgetSummaries(user)
     },
 
     async disconnect(user: string): Promise<void> {
       await deps.deleteOAuthToken(user, GARMIN_PERSONAL_PROVIDER)
+      forgetSummaries(user)
     },
 
     getActivities: async (user: string, start: number, limit: number): Promise<unknown[]> =>
