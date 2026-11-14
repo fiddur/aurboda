@@ -74,6 +74,7 @@ export {
   deleteTimeSeriesBySource,
   deleteTimeSeriesMetric,
   deleteTimeSeriesPoint,
+  getBinnedTimeSeries,
   getDailyAggregates,
   getDailySampleCounts,
   getDistinctMetrics,

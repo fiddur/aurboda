@@ -21,9 +21,9 @@ import type { ActivityImpactResult } from './types.ts'
 import {
   expandActivityTypes,
   getActivityTypeDefinitions,
+  getBinnedTimeSeries,
   getEffectiveActivitiesInRange,
   getProductivity,
-  getTimeSeries,
 } from '../../db/index.ts'
 import { getPlaceVisits } from '../locations.ts'
 import { getUserTimezone } from '../settings.ts'
@@ -43,8 +43,7 @@ import {
 } from './impact-dimensions.ts'
 import {
   activityInterval,
-  binExtraSeries,
-  binMetricSeries,
+  BIN_MINUTES,
   clampWindowMinutes,
   extendByWindow,
   extraMetricKeys,
@@ -310,11 +309,12 @@ export async function getActivityImpact(
   triggerCorrelationSyncs(sync, user)
 
   const { seriesEnd, seriesStart } = extendByWindow(start, end, window)
-  const [hrvData, hrData, stressData, extraData, sources] = await Promise.all([
-    getTimeSeries(user, 'hrv_rmssd', seriesStart, seriesEnd),
-    getTimeSeries(user, 'heart_rate', seriesStart, seriesEnd),
-    getTimeSeries(user, 'stress_level', seriesStart, seriesEnd),
-    Promise.all(extraMetrics.map((metric) => getTimeSeries(user, metric, seriesStart, seriesEnd))),
+  const binned = (metric: string) => getBinnedTimeSeries(user, metric, seriesStart, seriesEnd, BIN_MINUTES)
+  const [hrv, hr, stress, extraData, sources] = await Promise.all([
+    binned('hrv_rmssd'),
+    binned('heart_rate'),
+    binned('stress_level'),
+    Promise.all(extraMetrics.map(binned)),
     loadSliceSources(user, activity, activityType, match, { end, start }, window, slicing),
   ])
 
@@ -329,8 +329,10 @@ export async function getActivityImpact(
   )
   const sessions = mergeIntoSessions(occurrences)
   const series: MetricSeries = {
-    ...binExtraSeries(Object.fromEntries(extraMetrics.map((metric, i) => [metric, extraData[i]]))),
-    ...binMetricSeries(hrvData, hrData, stressData),
+    ...Object.fromEntries(extraMetrics.map((metric, i) => [metric, extraData[i]])),
+    hr,
+    hrv,
+    stress,
   }
   const analyseGroup = ({ indices, key, label }: GroupSelection): ImpactGroup => {
     const analysis = analyse(sessions, series, window, extraMetrics, indices)

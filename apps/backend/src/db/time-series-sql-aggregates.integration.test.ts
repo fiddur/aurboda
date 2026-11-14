@@ -4,10 +4,13 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import type { TimeSeriesPoint } from './types.ts'
 
+import { BIN_MINUTES, binSeries } from '../services/correlations/impact.ts'
 import { computeHrZoneSecs } from '../services/settings.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
+import { query } from './connection.ts'
 import {
   deleteTimeSeriesPoint,
+  getBinnedTimeSeries,
   getHrZoneSecs,
   getHrZoneSecsForWindows,
   getLatestTimeSeriesValue,
@@ -459,6 +462,68 @@ describe('Time series SQL aggregates', () => {
       expect(await getTimeSeriesBucketedAvgForWindows(getTestUser(), 'heart_rate', [], '5 minutes')).toEqual(
         [],
       )
+    })
+  })
+
+  describe('getBinnedTimeSeries', () => {
+    const start = new Date('2024-01-15T09:58:00Z')
+    const end = new Date('2024-01-15T16:00:00Z')
+
+    const expectSameBins = (
+      actual: { times: number[]; values: number[] },
+      expected: { times: number[]; values: number[] },
+    ) => {
+      expect(actual.times).toEqual(expected.times)
+      actual.values.forEach((value, i) => expect(value).toBeCloseTo(expected.values[i]!, 9))
+    }
+
+    test('equals binSeries over getTimeSeries', async () => {
+      const user = getTestUser()
+      await insertTimeSeries(user, [
+        ...irregularSeries('2024-01-15T09:50:00Z', 300),
+        hr('2024-01-15T10:10:00Z', 100, 'health_connect'),
+        hr('2024-01-15T10:04:59.999Z', 90),
+        hr('2024-01-15T10:05:00.000Z', 91),
+        hr(end.toISOString(), 92),
+      ])
+      await query(
+        user,
+        `INSERT INTO time_series (time, metric, value, unit, source) VALUES
+           ('2024-01-15T10:14:59.9996Z', 'heart_rate', 140, 'bpm', 'oura'),
+           ('2024-01-15T10:20:00.0004Z', 'heart_rate', 141, 'bpm', 'oura')`,
+      )
+      await deleteTimeSeriesPoint(user, 'heart_rate', new Date('2024-01-15T10:05:00.000Z'), 'garmin')
+
+      for (const binMinutes of [BIN_MINUTES, 1, 15]) {
+        const actual = await getBinnedTimeSeries(user, 'heart_rate', start, end, binMinutes)
+        expect(actual.times.length).toBeGreaterThan(10)
+        expectSameBins(actual, binSeries(await getTimeSeries(user, 'heart_rate', start, end), binMinutes))
+      }
+    })
+
+    test('applies the cumulative source filter like getTimeSeries', async () => {
+      const user = getTestUser()
+      await insertTimeSeries(user, [
+        { metric: 'steps', source: 'aurboda', time: new Date('2024-01-15T10:01:00Z'), value: 10 },
+        { metric: 'steps', source: 'aurboda', time: new Date('2024-01-15T10:03:00Z'), value: 30 },
+        { metric: 'steps', source: 'aurboda', time: new Date('2024-01-15T10:07:00Z'), value: 20 },
+        { metric: 'steps', source: 'garmin', time: new Date('2024-01-15T10:03:00Z'), value: 999 },
+      ])
+
+      const actual = await getBinnedTimeSeries(user, 'steps', start, end, BIN_MINUTES)
+
+      expectSameBins(actual, binSeries(await getTimeSeries(user, 'steps', start, end)))
+      expect(actual).toEqual({
+        times: [Date.parse('2024-01-15T10:00:00Z'), Date.parse('2024-01-15T10:05:00Z')],
+        values: [20, 20],
+      })
+    })
+
+    test('no points → empty series', async () => {
+      expect(await getBinnedTimeSeries(getTestUser(), 'heart_rate', start, end, BIN_MINUTES)).toEqual({
+        times: [],
+        values: [],
+      })
     })
   })
 

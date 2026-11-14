@@ -93,6 +93,38 @@ export const getTimeSeries = async (
   return result.rows.map((row) => [new Date(row.time), row.value])
 }
 
+/**
+ * `getTimeSeries`'s points averaged per `binMinutes` bin, the SQL counterpart of `binSeries`: bins
+ * aligned to the epoch, keyed by their start in epoch milliseconds, ascending. A whole-millisecond
+ * bin puts a microsecond timestamp where `binSeries` puts the millisecond the driver truncates it to.
+ * `date_bin` rather than `floor(extract(epoch …))`: numeric arithmetic per row is several times slower.
+ */
+export const getBinnedTimeSeries = async (
+  user: string,
+  metric: string,
+  start: Date,
+  end: Date,
+  binMinutes: number,
+): Promise<{ times: number[]; values: number[] }> => {
+  const sources = getSourceFilter(metric)
+  const result = await query<{ bin: number; value: number }>(
+    user,
+    `SELECT (extract(epoch FROM bin) * 1000)::float8 AS bin, value
+       FROM (
+         SELECT date_bin($4::interval, time, 'epoch'::timestamptz) AS bin, avg(value) AS value
+           FROM time_series
+          WHERE metric = $1 AND time >= $2 AND time <= $3 AND deleted_at IS NULL
+            ${sources ? 'AND source = ANY($5)' : ''}
+          GROUP BY 1
+       ) bins
+      ORDER BY 1`,
+    sources
+      ? [metric, start, end, `${binMinutes} minutes`, sources]
+      : [metric, start, end, `${binMinutes} minutes`],
+  )
+  return { times: result.rows.map((row) => row.bin), values: result.rows.map((row) => row.value) }
+}
+
 /** Whether `getTimeSeries` would return any point for the metric in the window. */
 export const hasTimeSeries = async (
   user: string,

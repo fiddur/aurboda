@@ -230,6 +230,10 @@ How the numbers are made:
   samples. Everything downstream reads bins, so a densely recorded stretch (1 Hz
   heart rate during a workout) weighs the same per minute as a sparse one. The
   period average (`baseline`) is the mean over the bins inside the period.
+  Activity impact bins in the database (`getBinnedTimeSeries`), so a request
+  reads about 26 000 bins per metric for 90 days rather than every raw point;
+  the overview bins in Node (`binSeries`), since its productivity correlation
+  needs the raw points. Both bin by the same rule, which a test pins.
 - **Series reach past the period.** The three series are fetched from
   `start − W` to `end + W`, so the first and last sessions of the period get
   full windows. Activities, visits and productivity are still taken from the
