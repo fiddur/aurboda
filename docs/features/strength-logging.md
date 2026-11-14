@@ -50,7 +50,8 @@ While a session is open:
 - [Auto-share](auto-share-rules.md) ignores it (it has no `end_time`), so it is never shared half
   done.
 - No [Health Connect](../health-connect.md) write is queued while the stored data has
-  `in_progress: true`; the finishing update queues the normal one.
+  `in_progress: true`; the finishing update queues the normal one. A type change still deletes the
+  old type's record, for an activity that was synced before it was set back in progress.
 
 Each block shows last time's sets and the best e1RM for the exercise, its muscles when the name
 resolves to a catalogue entry, and, after each save, the records the session set (from the
@@ -76,8 +77,9 @@ The live page's state is the source of truth and is mirrored to the device after
 change saves the whole list. One save runs at a time and a change during a save queues one more
 with the newest state. A failed save is retried when the device comes back online, when the page
 becomes visible again, and every 15 seconds, and the header says `saved`, `saving…` or `not saved
-yet, will retry`. Creating is not idempotent on the server, so after a create of unknown outcome
-the page first looks for an open strength session with the same start time and adopts it. Opening
+yet, will retry`. A repeated create lands on the same row (the server upserts on type and start
+time), but after a create of unknown outcome the page first looks for an open strength session with
+the same start time and adopts it, so the retry is an update. Opening
 a session in progress on a device that holds unsaved changes to it keeps those changes and saves
 them; otherwise the server copy wins.
 

@@ -115,8 +115,9 @@ const liveData = (draft: SessionDraft): Record<string, unknown> => ({
 })
 
 /**
- * Create is not idempotent on the server, so once a create has been sent the next attempt first looks
- * for the open session it may have made. `markAttempt` must persist that before the create is sent.
+ * A repeated create would land on the same row (the server upserts on type and start time), but once a
+ * create has been sent the next attempt first looks for the open session it may have made, so a retry
+ * is an update and `in_progress` is not sent again. `markAttempt` must persist before the create is sent.
  */
 const existingId = async (draft: SessionDraft, api: LiveApi): Promise<string | undefined> =>
   draft.id ?? (draft.create_attempted ? await api.findOpen(draft.start_time) : undefined)

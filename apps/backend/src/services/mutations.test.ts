@@ -1687,6 +1687,36 @@ describe('updateActivity', () => {
     expect(db.enqueueOutboundSync).not.toHaveBeenCalled()
   })
 
+  test('deletes the old-type HC record of a synced activity set back in progress', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      activity_type: 'exercise',
+      data: { in_progress: true },
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+    vi.mocked(db.checkActivityConflict).mockResolvedValue(false)
+    vi.mocked(db.findHcRecordId).mockResolvedValue('hc-record-456')
+    vi.mocked(db.updateActivity).mockResolvedValue({
+      activity_type: 'nap',
+      data: { in_progress: true },
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+
+    await updateActivity('testuser', 'activity-123', { activity_type: 'nap' })
+
+    expect(db.enqueueOutboundSync).toHaveBeenCalledTimes(1)
+    expect(db.enqueueOutboundSync).toHaveBeenCalledWith('testuser', {
+      entity_id: 'activity-123',
+      entity_type: 'activity',
+      hc_record_type: 'ExerciseSessionRecord',
+      operation: 'delete',
+      payload: { hc_record_id: 'hc-record-456' },
+    })
+  })
+
   test('calls onMutated callback after successful update', async () => {
     vi.mocked(db.getActivityById).mockResolvedValue({
       activity_type: 'exercise',
