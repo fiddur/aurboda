@@ -384,4 +384,18 @@ export const activitiesTables: Record<string, string> = {
   item_value_aliases_indexes: `
     CREATE UNIQUE INDEX IF NOT EXISTS idx_item_value_aliases_field_alias ON item_value_aliases (field, lower(btrim(alias)))
   `,
+
+  item_value_identities: `
+    CREATE TABLE IF NOT EXISTS item_value_identities (
+      id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      field       VARCHAR(200) NOT NULL,
+      value       TEXT NOT NULL,
+      catalog_key TEXT,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
+  item_value_identities_indexes: `
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_item_value_identities_field_value ON item_value_identities (field, lower(btrim(value)))
+  `,
 }

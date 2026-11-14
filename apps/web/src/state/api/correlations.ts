@@ -16,9 +16,16 @@ import type {
   GenericCorrelationResponse,
   HrvActivitiesData,
   HrvActivitiesResponse,
-  HrvContextMetric,
+  ImpactFilter,
+  ImpactMetricOption,
+  ImpactMetricsResponse,
 } from '@aurboda/api-spec'
 
+import {
+  DEFAULT_IMPACT_DURATION_BUCKETS,
+  DEFAULT_IMPACT_TIME_BUCKETS,
+  formatImpactFilters,
+} from '@aurboda/api-spec'
 import axios from 'axios'
 
 import { API_URL } from '../../config'
@@ -38,20 +45,45 @@ export const fetchBaseline = async (referenceDate?: string): Promise<BaselineDat
 
 export const fetchHrvActivitiesCorrelation = async (
   periodDays?: number,
-  contextMetric?: HrvContextMetric,
   windowMinutes?: number,
+  extraMetrics?: string[],
 ): Promise<HrvActivitiesData> => {
   const { token } = auth.value
   const params: Record<string, string> = {}
   if (periodDays) params.period_days = String(periodDays)
-  if (contextMetric) params.context_metric = contextMetric
   if (windowMinutes) params.window_minutes = String(windowMinutes)
+  if (extraMetrics?.length) params.metrics = extraMetrics.join(',')
   const response = await axios.get<HrvActivitiesResponse>(`${API_URL}/correlations/hrv-activities`, {
     headers: { Authorization: `Bearer ${token}` },
     params,
   })
 
   return response.data.data!
+}
+
+export interface ImpactSlicingParams {
+  breakdown?: string
+  lengths?: number[]
+  hours?: number[]
+  filters?: ImpactFilter[]
+  includeDimensions?: boolean
+  tz?: string
+}
+
+const customLimits = (limits: number[] | undefined, defaults: number[]): string | undefined =>
+  limits && limits.join(',') !== defaults.join(',') ? limits.join(',') : undefined
+
+const slicingQuery = (slicing: ImpactSlicingParams): Partial<ActivityImpactQuery> => {
+  const durationBuckets = customLimits(slicing.lengths, DEFAULT_IMPACT_DURATION_BUCKETS)
+  const timeBuckets = customLimits(slicing.hours, DEFAULT_IMPACT_TIME_BUCKETS)
+  return {
+    ...(slicing.breakdown && { breakdown: slicing.breakdown }),
+    ...(durationBuckets && { duration_buckets: durationBuckets }),
+    ...(timeBuckets && { time_buckets: timeBuckets }),
+    ...(slicing.filters?.length && { filters: formatImpactFilters(slicing.filters) }),
+    ...(slicing.includeDimensions && { include_dimensions: true }),
+    ...(slicing.tz && { tz: slicing.tz }),
+  }
 }
 
 // Fetch activity impact timeline (HRV/HR before/during/after an activity)
@@ -61,13 +93,17 @@ export const fetchActivityImpact = async (
   periodDays?: number,
   windowMinutes?: number,
   match?: ActivityImpactMatch,
+  extraMetrics?: string[],
+  slicing: ImpactSlicingParams = {},
 ): Promise<ActivityImpactData> => {
   const { token } = auth.value
   const params: ActivityImpactQuery = {
     activity_type: activityType,
     ...(match && { match }),
+    ...(extraMetrics?.length && { metrics: extraMetrics.join(',') }),
     ...(periodDays && { period_days: String(periodDays) }),
     ...(windowMinutes && { window_minutes: String(windowMinutes) }),
+    ...slicingQuery(slicing),
   }
   const response = await axios.get<ActivityImpactResponse>(
     `${API_URL}/correlations/activity-impact/${encodeURIComponent(activity)}`,
@@ -78,6 +114,16 @@ export const fetchActivityImpact = async (
   )
 
   return response.data.data!
+}
+
+/** The metrics recorded densely enough to analyse around a session, beyond HRV, heart rate and stress. */
+export const fetchImpactMetrics = async (periodDays: number): Promise<ImpactMetricOption[]> => {
+  const { token } = auth.value
+  const response = await axios.get<ImpactMetricsResponse>(`${API_URL}/correlations/impact-metrics`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params: { period_days: String(periodDays) },
+  })
+  return response.data.data?.metrics ?? []
 }
 
 /** The impact of one exact activity over a fixed period (`start` inclusive, `end` exclusive), as an article block draws it. */

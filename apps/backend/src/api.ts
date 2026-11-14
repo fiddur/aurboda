@@ -39,7 +39,6 @@ import {
   listPublicFeedPosts,
   listReplyUncheckedEntries,
   listUnenrichedAurbodaEntries,
-  getOAuthToken,
   listUserNames,
   loginToUserDb,
   markChallengeResultPublished,
@@ -60,10 +59,22 @@ import {
 } from './db/index.ts'
 import { errorResponseBody, httpError, isHttpError } from './http-error.ts'
 import { garminClient } from './integrations/garmin/client.ts'
+import { defaultGarminKeyReminderDeps, remindGarminKey } from './integrations/garmin/key-reminder.ts'
+import { garminPersonalClient } from './integrations/garmin/personal-client.ts'
 import { garminDataTypes } from './integrations/garmin/process.ts'
+import {
+  garminRoutedClient,
+  getGarminConnections,
+  hasGarminConnection,
+} from './integrations/garmin/source.ts'
 import { syncActivityDetails, syncGarminDataType } from './integrations/garmin/sync.ts'
 import { gravlClient } from './integrations/gravl/client.ts'
 import { enrichGravlWorkout } from './integrations/gravl/sync.ts'
+import { homeAssistantClient, homeAssistantReachability } from './integrations/home-assistant/client.ts'
+import {
+  defaultHomeAssistantSyncDeps,
+  syncHomeAssistantLocations,
+} from './integrations/home-assistant/sync.ts'
 import { ouraClient } from './integrations/oura/client.ts'
 import { createOwnTracksRouter } from './integrations/owntracks/router.ts'
 import { stravaClient } from './integrations/strava/client.ts'
@@ -110,9 +121,10 @@ import { createAdminUsers } from './services/admin-users.ts'
 import { createArticlePreviewer } from './services/article-preview.ts'
 import { createAuditLogPruneQueue } from './services/audit-log-prune-queue.ts'
 import { auditError, auditInfo, pruneAuditLog } from './services/audit-log.ts'
-import { createAutoshareDeps } from './services/autoshare-deps.ts'
+import { autoshareSkipDeps, createAutoshareDeps } from './services/autoshare-deps.ts'
 import { type AutoshareQueue, createAutoshareQueue } from './services/autoshare-queue.ts'
-import { evaluateAutoshareWindow } from './services/autoshare.ts'
+import { autosharePendingSkipHandler, skipAutoshare } from './services/autoshare-skip.ts'
+import { announceAutoshareWindow, evaluateAutoshareWindow } from './services/autoshare.ts'
 import { backfillMealFoodItemNames } from './services/backfill-meal-food-item-names.ts'
 import { triggerCalorieComputation } from './services/calorie-computation.ts'
 import { createCalorieQueue, type CalorieQueue } from './services/calorie-queue.ts'
@@ -159,6 +171,8 @@ import {
 import { createGeocodeQueue } from './services/geocode-queue.ts'
 import { createInvitationAuth } from './services/invitation.ts'
 import { getPlaceVisits, type NamedLocationsChanged } from './services/locations.ts'
+import { runNotificationAction } from './services/notification-actions.ts'
+import { notificationStore, notifier } from './services/notifications.ts'
 import {
   ensureDefaultOfficialFeed,
   officialRemoteHandles,
@@ -345,8 +359,9 @@ const main = async () => {
     onUserAuthenticated: (ouraUserId, username) => centralDb.upsertOuraUserMapping(ouraUserId, username),
   })
 
-  // No server-side credentials: the client uses per-user session tokens.
-  const garmin = garminClient()
+  // No server-side credentials: per-user session tokens and Personal API keys.
+  const garminPersonal = garminPersonalClient()
+  const garmin = garminRoutedClient({ personal: garminPersonal, session: garminClient() })
 
   // Credentials are read from the DB on each request, not captured at startup.
   const getStravaCredentials = async () => {
@@ -388,6 +403,20 @@ const main = async () => {
     // stabilisation delay (the queue's startAfter). Fire-and-forget.
     void autoshareQueue?.enqueueEvaluation(user, start, end)
   }
+  // Home Assistant location pull (#1626). The detection trigger is built much
+  // further down (it needs the geocode queue, which needs pg-boss), so the
+  // post-sync hook reads it through this holder once it exists.
+  let triggerDetectionForUser: ((user: string) => void) | null = null
+  const homeAssistant = homeAssistantClient(
+    homeAssistantReachability(process.env.HOME_ASSISTANT_ALLOW_PRIVATE_ADDRESSES === 'true'),
+  )
+  const homeAssistantSyncDeps = defaultHomeAssistantSyncDeps(homeAssistant, (user, start, end) => {
+    triggerDetectionForUser?.(user)
+    activityNotifier(user, '*', start, end)
+  })
+  const syncHomeAssistant = (user: string, options?: { fullResync?: boolean; startDate?: Date }) =>
+    syncHomeAssistantLocations(user, homeAssistantSyncDeps, options)
+
   const NAMED_LOCATION_LOOKBACK_MS = 90 * 86_400_000
   const onNamedLocationsChanged: NamedLocationsChanged = (user) =>
     activityNotifier(user, '*', new Date(Date.now() - NAMED_LOCATION_LOOKBACK_MS), new Date())
@@ -423,6 +452,7 @@ const main = async () => {
     onActivityDetailSynced,
     onActivitySynced: activityNotifier,
     onTrackWritten,
+    syncHomeAssistant: (user) => syncHomeAssistant(user),
   })
   const syncProvider = gateSyncProvider(ungatedSyncProvider, isReadOnly)
 
@@ -823,11 +853,19 @@ const main = async () => {
   // after a stabilisation delay, publishing matches through the SAME
   // feedDeliver.created fan-out a manual share fires. The deps double as the
   // preview deps for the REST router and MCP tools.
-  const autoshareDeps = createAutoshareDeps(feedDeliver.created)
+  const autoshareDeps = createAutoshareDeps(feedDeliver.created, notifier)
+  const skipAutoshareActivity = skipAutoshare(autoshareSkipDeps)
+  const notificationActionRunner = runNotificationAction({
+    get: notificationStore.get,
+    handlers: { autoshare_pending: { skip: autosharePendingSkipHandler(skipAutoshareActivity) } },
+    revise: notificationStore.revise,
+  })
   const feedRefreshWindowDeps = createFeedRefreshWindowDeps(feedDeliver.updated)
   if (boss) {
     try {
       autoshareQueue = await createAutoshareQueue(boss, {
+        announceWindow: (user, start, end, nextEvaluationAt) =>
+          announceAutoshareWindow(user, start, end, autoshareDeps, nextEvaluationAt),
         evaluateWindow: (user, start, end, requeue) =>
           evaluateAutoshareWindow(user, start, end, { ...autoshareDeps, requeue }),
         refreshWindow: (user, start, end, requeue) =>
@@ -876,6 +914,7 @@ const main = async () => {
       sourceEnrichQueue = await createSourceEnrichQueue(boss, {
         enrichGravl: (user, workoutId) => enrichGravlWorkout(user, gravl, workoutId),
         garminDetailPending: async (user, garminActivityId) => {
+          if (!(await getGarminConnections(user)).session) return false
           const row = await findActivityByExternalId(
             user,
             'garmin',
@@ -883,10 +922,7 @@ const main = async () => {
           )
           return row != null && row.data?.detail_synced !== true
         },
-        isGarminConnected: async (user) => {
-          const token = await getOAuthToken(user, 'garmin')
-          return token !== null && token.access_token !== ''
-        },
+        isGarminConnected: (user) => hasGarminConnection(user),
         isGravlConnected: async (user) => (await gravl.connectionKind(user)) !== null,
         onEnriched: (user) => activityNotifier(user, '*', new Date(Date.now() - 86_400_000), new Date()),
         syncGarmin: async (user, dataType) => {
@@ -916,6 +952,7 @@ const main = async () => {
       await createSyncScheduler(boss, {
         garminDataTypes,
         listUsers: () => listUserNames(userDb),
+        remindGarminKey: remindGarminKey(defaultGarminKeyReminderDeps(notifier.raiseBestEffort)),
         sync: syncProvider,
       })
     } catch (error) {
@@ -1026,6 +1063,8 @@ const main = async () => {
       adminUsers,
       apiBaseUrl,
       autosharePreviewDeps: autoshareDeps,
+      runNotificationAction: notificationActionRunner,
+      skipAutoshare: skipAutoshareActivity,
       relayActions,
       postUpdateResender,
       centralDb,
@@ -1040,6 +1079,7 @@ const main = async () => {
       followerActions,
       garmin,
       gravl,
+      homeAssistant,
       isDeletedUser,
       onActivityDetailSynced,
       onActivityMutated: activityNotifier,
@@ -1052,6 +1092,7 @@ const main = async () => {
       retroEnrichTimeline,
       stravaQueue: stravaQueue ?? undefined,
       sync: syncProvider,
+      syncHomeAssistant,
       webHost,
     }),
   )
@@ -1114,6 +1155,7 @@ const main = async () => {
     oura,
     garmin,
     gravl,
+    syncHomeAssistant,
     stravaQueue,
     calorieQueue,
     sourceEnrichQueue,
@@ -1127,6 +1169,7 @@ const main = async () => {
     authMiddleware,
     centralDb,
     garmin,
+    garminPersonal,
     gravl,
     oura,
     strava,
@@ -1177,6 +1220,7 @@ const main = async () => {
     insertActivities,
     runDetectionForUser,
   })
+  triggerDetectionForUser = (user) => detectionTrigger.triggerDetectionForUser(user)
 
   httpd.use(
     '/ownTracks',
@@ -1197,6 +1241,8 @@ const main = async () => {
     accountPlans,
     activityNotifier,
     autosharePreviewDeps: autoshareDeps,
+    runNotificationAction: notificationActionRunner,
+    skipAutoshare: skipAutoshareActivity,
     adminMiddleware,
     dataExport,
     adminUsers,
@@ -1211,6 +1257,7 @@ const main = async () => {
     followActions,
     followerActions,
     garmin,
+    homeAssistant,
     httpd,
     postUpdateResender,
     previewArticle,

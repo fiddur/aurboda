@@ -35,7 +35,10 @@ const tagsDescription =
   'Hashtags for auto-created posts instead of your default tags (the activity-type tag still follows your settings, and `#tags` typed in the message are added); absent (or null on an update) uses your default tags'
 
 const maxAgeHoursDescription =
-  'Share only activities that ended at most this many hours before the rule looks at them; protects against history updates and imports publishing old activities'
+  'Share only activities that ended at most this many hours before they arrived (the wait before sharing does not count); protects against history updates and imports publishing old activities'
+
+const delayMinutesDescription =
+  'Minutes to wait after the activity arrived before sharing it (10 to 1440). The pending-share notification is raised during the wait.'
 
 /** The predicate + share-template fields shared by the rule, its add body, and its preview body. */
 const autoshareRuleFields = {
@@ -47,6 +50,13 @@ const autoshareRuleFields = {
     .max(16)
     .default([])
     .meta({ description: dataFiltersDescription }),
+  delay_minutes: z
+    .number()
+    .int()
+    .min(10)
+    .max(1440)
+    .default(10)
+    .meta({ description: delayMinutesDescription }),
   include_chart: z
     .boolean()
     .default(false)
@@ -103,6 +113,7 @@ export const autoshareRuleSchema = z
     ...autoshareRuleFields,
     created_at: iso8601DateTimeSchema.meta({ description: 'Creation timestamp (ISO 8601)' }),
     data_filters: z.array(autoshareDataFilterSchema).meta({ description: dataFiltersDescription }),
+    delay_minutes: z.number().int().meta({ description: delayMinutesDescription }),
     max_age_hours: z.number().int().meta({ description: maxAgeHoursDescription }),
     // On read, stored keys are plain strings (like FeedPost.series_metrics) —
     // the WRITE bodies validate them against the metric-type enum.
@@ -139,6 +150,7 @@ export const updateAutoshareRuleBodySchema = z
       .max(16)
       .optional()
       .meta({ description: `${dataFiltersDescription} Replaces the whole list.` }),
+    delay_minutes: autoshareRuleFields.delay_minutes.removeDefault().optional(),
     enabled: z.boolean().optional().meta({ description: 'Enable/disable the rule' }),
     include_chart: z.boolean().optional(),
     include_exercises: z.boolean().optional(),
@@ -194,3 +206,21 @@ export const previewAutoshareRuleResponseSchema = baseResponseSchema
   .meta({ id: 'PreviewAutoshareRuleResponse' })
 
 export type PreviewAutoshareRuleResponse = z.infer<typeof previewAutoshareRuleResponseSchema>
+
+export const skipAutoshareBodySchema = z
+  .object({
+    activity_id: z.string().uuid().meta({ description: 'The activity not to auto-share' }),
+  })
+  .meta({ id: 'SkipAutoshareBody' })
+
+export type SkipAutoshareBody = z.infer<typeof skipAutoshareBodySchema>
+
+export const skipAutoshareResponseSchema = baseResponseSchema
+  .extend({
+    activity_ids: z.array(z.string().uuid()).optional().meta({
+      description: 'The activity and the rest of its merge group, none of which will be auto-shared',
+    }),
+  })
+  .meta({ id: 'SkipAutoshareResponse' })
+
+export type SkipAutoshareResponse = z.infer<typeof skipAutoshareResponseSchema>

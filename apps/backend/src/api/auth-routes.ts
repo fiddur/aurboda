@@ -24,6 +24,7 @@ import { isInvalidPasswordError, loginToUserDb, makeNewUserDb, query } from '../
 import { httpError } from '../http-error.ts'
 import { readBillingSettings, recordNewAccount } from '../services/account-plan.ts'
 import { pruneAuditLog } from '../services/audit-log.ts'
+import { notifier, notifyAdminsOfSignup } from '../services/notifications.ts'
 import { readOfficialFeedSetting } from '../services/official-feed.ts'
 import { readPublicTagPages } from '../services/public-tags.ts'
 import { defaultSignupProfileDeps, saveSignupProfile } from '../services/signup-profile.ts'
@@ -178,6 +179,10 @@ export const registerAuthRoutes = ({
           isAdmin = true
           console.info(`First user ${user} automatically made admin`)
         }
+        void notifyAdminsOfSignup({
+          getAdmins: centralDb.getAdmins,
+          raiseBestEffort: notifier.raiseBestEffort,
+        })(user)
 
         res.json({ is_admin: isAdmin, success: true, token })
       } catch (err) {

@@ -10,3 +10,13 @@ export const describeOccurrences = (
   const avg = formatAvgDuration(avgDurationMin)
   return avg ? `${occurrences}× (${avg})` : `${occurrences}×`
 }
+
+/** "1 occurrence, avg 29 min" / "3 occurrences" for the impact chart's heading. */
+export const describeImpactMeta = (
+  occurrences: number,
+  avgDurationMin: number | null | undefined,
+): string => {
+  const count = `${occurrences} ${occurrences === 1 ? 'occurrence' : 'occurrences'}`
+  const avg = formatAvgDuration(avgDurationMin)
+  return avg ? `${count}, ${avg}` : count
+}

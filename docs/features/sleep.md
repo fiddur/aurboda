@@ -78,7 +78,7 @@ Sleep dates use the **wake-up convention**: a session starting at 11pm on March 
 | Sleep stages (hypnogram)    | Health Connect (via Oura/Garmin or watch)        |
 | Sleep scores and components | Oura (primary source), Garmin (sleep score only) |
 | HR/HRV during sleep         | Oura, Garmin, or Health Connect                  |
-| Sleep location              | OwnTracks                                        |
+| Sleep location              | OwnTracks or Home Assistant                      |
 
 The Sleep page works with any sleep source, but Oura provides the richest data (scores, sub-components, stages).
 

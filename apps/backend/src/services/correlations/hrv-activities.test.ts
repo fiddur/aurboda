@@ -90,7 +90,7 @@ describe('getHrvActivitiesCorrelation', () => {
     expect(hr.context_metric).toBe('heart_rate')
   })
 
-  test('derives the productivity correlation from the chosen context series', async () => {
+  const mockDevCategory = () => {
     const t = (minsAgo: number) => new Date(Date.now() - minsAgo * 60_000)
     // Two windows in the same category with different productivity scores, so the
     // correlation is computable and its sign depends on which series is used.
@@ -139,11 +139,17 @@ describe('getHrvActivitiesCorrelation', () => {
               ] // hrv_rmssd
       return pts
     })
+  }
 
-    const hrv = await getHrvActivitiesCorrelation('testuser', 7, undefined, 'hrv_rmssd')
-    const hr = await getHrvActivitiesCorrelation('testuser', 7, undefined, 'heart_rate')
-    const hrvDev = hrv.correlations.productivity.find((p) => p.category === 'Dev')
-    const hrDev = hr.correlations.productivity.find((p) => p.category === 'Dev')
+  const devRow = async (contextMetric: 'hrv_rmssd' | 'heart_rate') => {
+    const result = await getHrvActivitiesCorrelation('testuser', 7, undefined, contextMetric)
+    return result.correlations.productivity.find((p) => p.category === 'Dev')
+  }
+
+  test('derives the productivity correlation from the chosen context series', async () => {
+    mockDevCategory()
+    const hrvDev = await devRow('hrv_rmssd')
+    const hrDev = await devRow('heart_rate')
 
     // The coefficient flips sign with the context metric, proving it uses the
     // selected series. Means stay populated for all three either way.
@@ -151,6 +157,22 @@ describe('getHrvActivitiesCorrelation', () => {
     expect(hrDev?.correlation_coefficient).toBeLessThan(-0.9)
     expect(hrvDev?.mean_hr).toBe(61)
     expect(hrvDev?.mean_hrv).toBe(51)
+  })
+
+  test('returns the productivity r against every metric, whatever the context metric', async () => {
+    mockDevCategory()
+    const hrvDev = await devRow('hrv_rmssd')
+    const hrDev = await devRow('heart_rate')
+    const coefficients = hrvDev?.correlation_coefficients
+
+    expect(hrDev?.correlation_coefficients).toEqual(coefficients)
+    expect(Object.keys(coefficients ?? {}).toSorted()).toEqual(['heart_rate', 'hrv_rmssd', 'stress_level'])
+    expect(coefficients?.hrv_rmssd).toBeGreaterThan(0.9)
+    expect(coefficients?.heart_rate).toBeLessThan(-0.9)
+    // Constant stress has no variation, so no r.
+    expect(coefficients?.stress_level).toBeNull()
+    expect(hrvDev?.correlation_coefficient).toBe(coefficients?.hrv_rmssd)
+    expect(hrDev?.correlation_coefficient).toBe(coefficients?.heart_rate)
   })
 
   test('calls sync provider when provided', async () => {
@@ -165,6 +187,7 @@ describe('getHrvActivitiesCorrelation', () => {
       syncGarminIfNeeded: vi.fn().mockResolvedValue(undefined),
       syncLastFmIfNeeded: vi.fn().mockResolvedValue(undefined),
       syncGravlIfNeeded: vi.fn().mockResolvedValue(undefined),
+      syncHomeAssistantIfNeeded: vi.fn().mockResolvedValue(undefined),
       syncOuraIfNeeded: vi.fn().mockResolvedValue(undefined),
       syncRescueTimeIfNeeded: vi.fn().mockResolvedValue(undefined),
     }
@@ -343,5 +366,62 @@ describe('getHrvActivitiesCorrelation', () => {
       before_mean: 80,
       paired_occurrences: 1,
     })
+  })
+
+  test('an extra metric gets stats, an effect and a baseline; without extras nothing new appears', async () => {
+    const base = alignedBase()
+    noContext()
+    vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
+      { activity_type: 'meditation', end_time: at(base, 20), source: 'manual' as const, start_time: base },
+    ])
+    vi.mocked(db.getTimeSeries).mockImplementation(async (_u: string, metric: string) =>
+      metric === 'body_battery'
+        ? ([
+            [at(base, -20), 50],
+            [at(base, 5), 55],
+            [at(base, 40), 60],
+          ] as [Date, number][])
+        : [],
+    )
+
+    const result = await getHrvActivitiesCorrelation('testuser', 7, undefined, 'hrv_rmssd', 30, [
+      'body_battery',
+    ])
+
+    expect(db.getTimeSeries).toHaveBeenCalledWith(
+      'testuser',
+      'body_battery',
+      expect.any(Date),
+      expect.any(Date),
+    )
+    expect(result.metric_baselines).toEqual({ body_battery: 55 })
+    expect(result.correlations.activities[0].metrics).toEqual({
+      body_battery: {
+        delta_from_baseline: 0,
+        effect: expect.objectContaining({
+          after_mean: 60,
+          before_mean: 50,
+          change: 10,
+          paired_occurrences: 1,
+        }),
+        mean: 55,
+        stddev: null,
+      },
+    })
+
+    const plain = await getHrvActivitiesCorrelation('testuser', 7)
+    expect(plain).not.toHaveProperty('metric_baselines')
+    expect(plain.correlations.activities[0]).not.toHaveProperty('metrics')
+  })
+
+  test('productivity rows get the r of an extra metric', async () => {
+    mockDevCategory()
+    const result = await getHrvActivitiesCorrelation('testuser', 7, undefined, 'hrv_rmssd', 30, [
+      'body_battery',
+    ])
+    const dev = result.correlations.productivity.find((p) => p.category === 'Dev')
+
+    expect(dev?.metrics?.body_battery.correlation_coefficient).toBeGreaterThan(0.9)
+    expect(dev?.metrics?.body_battery.correlation_coefficient).toBe(dev?.correlation_coefficients.hrv_rmssd)
   })
 })

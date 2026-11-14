@@ -7,6 +7,7 @@ import {
   deleteTimeSeriesMetric,
   deleteTimeSeriesPoint,
   getDailyAggregates,
+  getDailySampleCounts,
   getDistinctMetrics,
   getLatestMetricValuesMulti,
   getMetricMeansForWindows,
@@ -962,6 +963,36 @@ describe('Time Series Integration Tests', () => {
       )
 
       expect(metrics).toEqual([])
+    })
+  })
+
+  describe('getDailySampleCounts', () => {
+    test('counts live points and covered quarter hours per metric and UTC day across sources', async () => {
+      const user = getTestUser()
+
+      await insertTimeSeries(user, [
+        { metric: 'body_battery', source: 'garmin', time: new Date('2024-01-15T06:00:00Z'), value: 50 },
+        { metric: 'body_battery', source: 'garmin', time: new Date('2024-01-15T06:03:00Z'), value: 51 },
+        { metric: 'body_battery', source: 'oura', time: new Date('2024-01-15T06:03:00Z'), value: 52 },
+        { metric: 'body_battery', source: 'garmin', time: new Date('2024-01-15T06:15:00Z'), value: 53 },
+        { metric: 'body_battery', source: 'garmin', time: new Date('2024-01-16T23:59:00Z'), value: 40 },
+        { metric: 'stress_level', source: 'garmin', time: new Date('2024-01-16T10:00:00Z'), value: 30 },
+        { metric: 'stress_level', source: 'garmin', time: new Date('2024-01-16T10:03:00Z'), value: 31 },
+        { metric: 'stress_level', source: 'garmin', time: new Date('2024-01-20T10:00:00Z'), value: 31 },
+      ])
+      await deleteTimeSeriesPoint(user, 'stress_level', new Date('2024-01-16T10:03:00Z'), 'garmin')
+
+      const counts = await getDailySampleCounts(
+        user,
+        new Date('2024-01-15T00:00:00Z'),
+        new Date('2024-01-17T00:00:00Z'),
+      )
+
+      expect(counts.toSorted((a, b) => `${a.metric}${a.day}`.localeCompare(`${b.metric}${b.day}`))).toEqual([
+        { count: 4, day: '2024-01-15', metric: 'body_battery', quarter_hours: 2 },
+        { count: 1, day: '2024-01-16', metric: 'body_battery', quarter_hours: 1 },
+        { count: 1, day: '2024-01-16', metric: 'stress_level', quarter_hours: 1 },
+      ])
     })
   })
 

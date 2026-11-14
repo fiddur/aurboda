@@ -11,6 +11,9 @@ import {
   iso8601DateTimeSchema,
 } from './common.ts'
 import { sleepStageSummarySchema } from './daily-summary.ts'
+import { dataFieldCatalogSchema } from './data-schema.ts'
+import { exerciseMuscleGroupSchema } from './exercise-catalog.ts'
+import { itemValueIdentityStateSchema } from './item-value-identities.ts'
 import { sharedExerciseSetSchema } from './shared-exercises.ts'
 
 const listItemSchema = z.record(z.string(), z.unknown())
@@ -339,8 +342,15 @@ export type ActivityFieldValuesQuery = z.infer<typeof activityFieldValuesQuerySc
 
 export const activityFieldValueSchema = z
   .object({
+    catalog_key: z.string().nullable().optional().meta({
+      description:
+        'For a catalogue-backed field: the catalogue entry the value stands for, null when dismissed or unmapped',
+    }),
     count: z.number().int().meta({ description: 'Number of activities with this value' }),
     last_used: iso8601DateTimeSchema.meta({ description: 'Start time of the latest activity with it' }),
+    state: itemValueIdentityStateSchema
+      .optional()
+      .meta({ description: 'For a catalogue-backed field: how the value resolves to the catalogue' }),
     value: z.string(),
   })
   .meta({ id: 'ActivityFieldValue' })
@@ -350,6 +360,13 @@ export type ActivityFieldValue = z.infer<typeof activityFieldValueSchema>
 export const activityFieldValuesSchema = z
   .object({
     activity_type: z.string(),
+    catalog: dataFieldCatalogSchema
+      .optional()
+      .meta({ description: 'The catalogue the field is matched against, when it is catalogue-backed' }),
+    catalog_version: z
+      .string()
+      .optional()
+      .meta({ description: 'Version of the catalogue the values were resolved against' }),
     field: z.string(),
     values: z.array(activityFieldValueSchema).meta({ description: 'Most recently used first' }),
   })
@@ -429,6 +446,24 @@ export const activityItemGroupSchema = z
 
 export type ActivityItemGroup = z.infer<typeof activityItemGroupSchema>
 
+export const muscleGroupMeasuresSchema = z
+  .object({
+    measures: activityMeasuresSchema.meta({
+      description:
+        "set_count, volume and total_reps of the working sets, each set weighted by the exercise's recruitment of the group",
+    }),
+    muscle_group: exerciseMuscleGroupSchema
+      .nullable()
+      .meta({ description: 'The muscle group; null for exercises not in the catalogue' }),
+    name: z.string().meta({ description: 'Display name of the muscle group' }),
+  })
+  .meta({
+    description: 'Summed measures of working sets attributed to one muscle group by recruitment weight',
+    id: 'MuscleGroupMeasures',
+  })
+
+export type MuscleGroupMeasures = z.infer<typeof muscleGroupMeasuresSchema>
+
 export const activityItemHistorySchema = z
   .object({
     activity_id: z.string(),
@@ -436,6 +471,10 @@ export const activityItemHistorySchema = z
     groups: z
       .array(activityItemGroupSchema)
       .meta({ description: 'In order of first appearance in the list' }),
+    muscle_groups: z.array(muscleGroupMeasuresSchema).optional().meta({
+      description:
+        "With a catalogue-backed item field: the session's working sets per muscle group, most sets first",
+    }),
     totals: activityMeasuresSchema.meta({ description: "Measures over all the session's items" }),
     trend_half_life_days: z
       .number()

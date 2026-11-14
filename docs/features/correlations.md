@@ -5,7 +5,7 @@ Aurboda goes beyond simple charts by computing statistical correlations between 
 In the web app it is the **Analyze** page (`/correlations`), with two tabs:
 
 - **Explore** answers "does X make a difference to Y?": pick anything you log or measure (a drink, a late coffee, an evening run, carbs) and an outcome (sleep score, HRV, a headache). It compares the days with and without it, says how big the difference is, and whether it is more than chance. How it works is described in [Correlations & exploratory analysis](../correlations.md).
-- **Context** (HRV, heart rate or stress) shows how your body looks during and around each activity, place and screen-time category, compared with your baseline. It is described below.
+- **Context** shows how your HRV, heart rate and stress look during and around each activity, place and screen-time category, compared with your baseline. It is described below.
 
 Everything is also available over the REST API and as MCP tools, so an AI assistant such as Claude can run the same analyses when you ask it in plain language.
 
@@ -21,7 +21,7 @@ HRV baseline uses sleep-context HRV (measurements taken during sleep), which is 
 
 ## The Context tab
 
-The first tab of the Analyze page shows three tables over a configurable analysis period (14, 30, 60, or 90 days). A **Context** dropdown picks the metric they are measured against: HRV (the default), heart rate or stress.
+The first tab of the Analyze page shows three tables over a configurable analysis period (14, 30, 60, or 90 days). Checkboxes for **HRV**, **Heart rate** and **Stress** (all on by default) choose which metrics the baseline cards, the tables and the impact chart show. After them comes a checkbox for every other metric you record around the clock (at least every 15 minutes for half of the day on most days), so there is data before and after a session: Garmin body battery, say, or a continuous custom metric. Metrics recorded only during workouts or sleep (often respiration rate) do not qualify. These are off by default, and up to 4 can be on. A ticked one gets its own columns in the tables, its own line (on its own scale), summary line and legend entry in the impact chart, its own baseline card (its average over the period), and an r for productivity categories. Its changes are coloured green or red only where the good direction is known (higher body battery, SpO2 and HRV; lower resting heart rate); otherwise a statistically clear change is shown plainly. Daily values such as resting heart rate or sleep scores never appear: they cannot show a change around a 30-minute session. At least one checkbox stays on.
 
 ### Correlation Tables
 
@@ -31,7 +31,7 @@ Each table covers a different category of data:
 
 **Locations** -- Named places you've visited. Shows visit count.
 
-**Productivity Categories** -- Screen time categories (e.g., "Software Development", "Social Media"). Shows the Pearson correlation coefficient (r) between the productivity score and your HRV.
+**Productivity Categories** -- Screen time categories (e.g., "Software Development", "Social Media"). Shows the Pearson correlation coefficient (r) between the productivity score and each shown metric.
 
 Every row displays:
 
@@ -55,7 +55,51 @@ Click any row to see a **before/during/after timeline** chart. This shows how yo
 
 The chart plots HRV (green line, left axis) and heart rate (red line, right axis) with your 30-day HRV baseline shown as a dashed reference line. This lets you see, for example, whether meditation raises your HRV during the session and whether the effect persists afterward.
 
-The impact analysis always uses a 90-day lookback for statistical reliability, regardless of the period selector on the main page.
+The impact analysis uses the page's period (the same period selector as the tables).
+
+The chart's heading names the activity type by its display name and links to its page.
+
+#### Breaking down and filtering
+
+Above the chart, two controls slice the selected row's sessions. They apply to that row only; the tables stay unfiltered.
+
+**Break down by** repeats the analysis per group of one dimension:
+
+- **Length**: the session's length in minutes, in buckets cut at editable limits (default `15, 30, 60`: under 15 min, 15–30, 30–60, 60 min or more).
+- **Time of day**: the session's local start time, in buckets cut at editable whole hours (default `0, 6, 12, 18`); the last bucket wraps round to the first, so `6, 22` gives 06–22 and 22–06.
+- **Sleep in the window**: whether a sleep or nap overlaps the window before or after the session (no sleep, sleep before, sleep after, both).
+- **A data field** of the activity type, for its categorical fields, such as a yoga session's name. A session with several values counts under each.
+
+With a breakdown on, a chart draws one metric (pick it with **Chart**; stress by default) with a thick line for all sessions and one line per group, and a table lists During and Change for every shown metric, one row for all sessions and one per group. Only groups with at least 3 sessions are drawn, at most 8; the rest are in the table, greyed out. With several groups one can look clear by chance, so read small groups as hints.
+
+**Filter sessions** opens a panel with one row of chips per dimension, each with its session count before filters. Pick chips to keep only those sessions: within a dimension any picked chip passes, and every dimension with a picked chip must pass. The heading shows how many sessions remain, e.g. "70 of 151 sessions". Changing the Length or Time of day limits clears that dimension's filter, since its buckets change. Selecting another row clears the filters and a data-field breakdown.
+
+Sessions and their before/after windows are formed before filtering, so a window is still cut at every neighbouring session, including ones a filter leaves out.
+
+With a long window, the after window of an evening session is mostly sleep. Filter **Sleep in the window** to **No sleep in the window** to leave those sessions out.
+
+### Sharing a view
+
+The page keeps its tab and every selection in the URL, so a view can be bookmarked or shared; whoever opens the link sees the same settings over their own data. A parameter is left out while it holds its default, so plain `/correlations` is the default view, and other parameters (such as the Android app's `embed=1`) are kept.
+
+| Parameter                         | Meaning                                                                                             |
+| --------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `tab`                             | `context` (default) or `explore`                                                                    |
+| `days`, `window`                  | Context period (14, 30, 60, 90; default 30) and before/after window in minutes (default 30)         |
+| `metrics`                         | Shown metrics: `hrv`, `hr`, `stress` and up to 4 other metric names, e.g. `hr,stress,body_battery`  |
+| `item`, `item_type`               | The selected row: its name and kind (`activity_type`, `location`, `productivity_category`, ...)     |
+| `breakdown`                       | Break down by: `duration`, `time_of_day`, `sleep` or `field:<path>`, e.g. `field:session_name`      |
+| `lengths`, `hours`                | Length limits in minutes (default `15,30,60`) and time-of-day limits in hours (default `0,6,12,18`) |
+| `filter`                          | Session filters, e.g. `duration:15-30,30-60;sleep:none`; each key URL-encoded                       |
+| `breakdown_metric`                | The metric the breakdown chart draws (`hrv`, `hr`, `stress` or a metric name); default stress       |
+| `mode`                            | Explore mode: `event` (default) or `continuous`                                                     |
+| `trigger`, `outcome`              | Explore selectors as `kind:value`, e.g. `activity:alcohol`, `nutrition:carbs`, `metric:sleep_score` |
+| `outcome_source`, `outcome_value` | Event-mode outcome: `metric` or `tag`, and its name or pattern                                      |
+| `lags`, `gap`, `denominator`      | Event-mode lag windows (default `24h,48h,7d`), collapse gap in days (default 3), `known` or `all`   |
+| `lag_days`, `nutrition`           | Continuous-mode outcome lag in days (default 0) and `all` or `complete_only` nutrition days         |
+| `start`, `end`, `explore_days`    | Explore regime: dates (YYYY-MM-DD), or the last N days (default 365)                                |
+
+An Explore link whose trigger and outcome are filled in runs the analysis once when it opens; changing the form afterwards only updates the URL until **Run analysis** is pressed.
 
 ## Event Probability (API / MCP only)
 
@@ -107,7 +151,7 @@ Correlation analysis requires **HRV and heart rate data** as the baseline metric
 | For correlating with... | You need...                                                         |
 | ----------------------- | ------------------------------------------------------------------- |
 | Activities              | Exercise/sleep/meditation data from Oura, Garmin, or Health Connect |
-| Locations               | Place visits from OwnTracks                                         |
+| Locations               | Place visits from OwnTracks or Home Assistant                       |
 | Productivity            | Screen time data from RescueTime or ActivityWatch                   |
 
 Minimum data requirements vary by category: activities need at least 1 occurrence, locations need 30+ minutes of overlap, and productivity categories need 10+ minutes.
@@ -122,12 +166,12 @@ Different categories sample HRV from different time windows:
 
 ## Statistical Methods
 
-| Method                      | Used for                               | Description                                                                     |
-| --------------------------- | -------------------------------------- | ------------------------------------------------------------------------------- |
-| **Pearson correlation (r)** | Productivity categories                | Measures linear correlation between productivity score and HRV. Range: -1 to 1. |
-| **Delta from baseline**     | All categories                         | Simple difference between the activity's mean HRV/HR and your overall baseline. |
-| **Relative risk**           | Event probability, generic correlation | Ratio of P(outcome given trigger) to P(outcome without trigger).                |
-| **Chi-squared test**        | Event probability, generic correlation | Tests whether the trigger-outcome association is statistically significant.     |
+| Method                      | Used for                               | Description                                                                                  |
+| --------------------------- | -------------------------------------- | -------------------------------------------------------------------------------------------- |
+| **Pearson correlation (r)** | Productivity categories                | Linear correlation between productivity score and HRV, heart rate or stress. Range: -1 to 1. |
+| **Delta from baseline**     | All categories                         | Simple difference between the activity's mean HRV/HR and your overall baseline.              |
+| **Relative risk**           | Event probability, generic correlation | Ratio of P(outcome given trigger) to P(outcome without trigger).                             |
+| **Chi-squared test**        | Event probability, generic correlation | Tests whether the trigger-outcome association is statistically significant.                  |
 
 ## Known Limitations
 

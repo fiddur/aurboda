@@ -15,7 +15,7 @@ Key areas covered by MCP tools:
 - **Activity types** -- manage custom activity type definitions
 - **Deduction rules** -- create rules that auto-generate activities from data conditions
 - **Screentime** -- manage category rules and recategorize
-- **Sync** -- trigger data syncs from Garmin, Oura, Strava, Gravl, Last.fm, RescueTime, calendars
+- **Sync** -- trigger data syncs from Garmin, Oura, Strava, Gravl, Home Assistant, Last.fm, RescueTime, calendars
 - **Settings** -- user preferences, HR zones, training load configuration
 - **Export** -- `export_data_dump` links a download of your whole database as SQL ([data export](data-export.md))
 - **Account** -- `delete_my_account` deletes your account for good; admins can `delete_user` ([deleting accounts](admin.md#deleting-accounts))
@@ -25,7 +25,10 @@ Key areas covered by MCP tools:
 The `tools/list` answer is abbreviated to keep it small: each tool shows the first sentence of its description and its top-level parameters only, each with its type, enum, format and a one-line description. Nested objects and arrays appear as `object` or `array` (with the item type), without their inner fields. `describe_tools` returns the full description and the complete JSON input schema -- nested objects, enums, formats, examples -- for up to 20 tool names, and lists any names it does not know under `unknown`. The server's `initialize` instructions tell the assistant to call it before using a tool whose parameters are objects or arrays. It is the one MCP tool without a REST twin: it is protocol plumbing, and REST's equivalent is the OpenAPI document.
 
 ```json
-{ "name": "describe_tools", "arguments": { "names": ["add_deduction_rule", "query_chart_data"] } }
+{
+  "name": "describe_tools",
+  "arguments": { "names": ["add_deduction_rule", "query_chart_data"] }
+}
 ```
 
 ### Sleep tools
@@ -36,9 +39,9 @@ The `tools/list` answer is abbreviated to keep it small: each tool shows the fir
 
 ### Chart data tools
 
-| Tool               | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `query_chart_data` | Bucketed counts, sums, means or maxima of an activity type, metric (including computed `hr_zone_<n>_sec`) or screentime category, the same as `GET /chart-data`. For an activity type with list items, `measure` (`e1rm`, `volume`, …) charts that measure per session, `filter_field`/`filter_value` (`sets.exercise` = `Bench Press`) narrows it to one exercise, and a `sets.exercise` breakdown gives a series per exercise. `tz` (IANA, e.g. `Europe/Stockholm`) makes daily, weekly and monthly buckets start at local midnight, local Monday and the local 1st, and hourly ones at the local hour; omitted, buckets are UTC. The web app sends the browser's zone |
+| Tool               | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `query_chart_data` | Bucketed counts, sums, means or maxima of an activity type, metric (including computed `hr_zone_<n>_sec`) or screentime category, the same as `GET /chart-data`. For an activity type with list items, `measure` (`e1rm`, `volume`, …) charts that measure per session, `filter_field`/`filter_value` (`sets.exercise` = `Bench Press`) narrows it to one exercise, a `sets.exercise` breakdown gives a series per exercise, and with `set_count`, `volume` or `total_reps` a `sets.exercise.muscle_group` breakdown gives a series per muscle group (see [Muscle groups](features/activity-types.md#muscle-groups)). `tz` (IANA, e.g. `Europe/Stockholm`) makes daily, weekly and monthly buckets start at local midnight, local Monday and the local 1st, and hourly ones at the local hour; omitted, buckets are UTC. The web app sends the browser's zone |
 
 ### Dashboard tools
 
@@ -69,10 +72,14 @@ See [Activity types -- sessions overview](features/activity-types.md#sessions-ov
 | `get_activity_type_summary`  | Roll-up of one type (descendants included) over `start`..`end`: session count, total duration, total distance, best pace and average speed where sessions carry distance, and for sleep the average and best night and average minutes per stage; `filter_field` + `filter_value` narrow it (also an item path) |
 | `get_activity_neighbors`     | The previous and next activity of the same type, optionally only those sharing a data field value (`same_field`, e.g. `session_name`)                                                                                                                                                                           |
 | `list_activity_field_values` | The values a data field (e.g. `session_name`) has taken across a type and its subtypes, most recently used first, with counts -- for reusing a value instead of spelling a new variant                                                                                                                          |
-| `get_activity_item_history`  | One activity's list items grouped by an item value (`field=sets.exercise`): per value the items, their measures (volume, e1RM, max weight, set count, longest hold), the records set and the previous session with it, plus totals                                                                              |
+| `get_activity_item_history`  | One activity's list items grouped by an item value (`field=sets.exercise`): per value the items, their measures (volume, e1RM, max weight, set count, longest hold), the records set and the previous session with it, plus totals and, for a catalogue-backed field, `muscle_groups`                           |
 | `merge_item_values`          | Merge one value of a categorical item path (`field=sets.exercise`) into another across a type and its subtypes; the source becomes an alias, so later writes carrying it are stored as the target                                                                                                               |
 | `list_item_value_aliases`    | The aliases kept for an item path (`field=sets.exercise`)                                                                                                                                                                                                                                                       |
 | `delete_item_value_alias`    | Delete an alias; the data the merge rewrote stays rewritten                                                                                                                                                                                                                                                     |
+| `get_item_value_identity`    | Which exercise catalogue entry a logged name of a catalogue-backed item path (`field=sets.exercise`) stands for, and why (`user`, `catalog`, `dismissed`, `unmapped`), with the other names resolving to it                                                                                                     |
+| `set_item_value_identity`    | Map a logged name to a catalogue key, or dismiss it with key `null`; no activity is rewritten                                                                                                                                                                                                                   |
+| `clear_item_value_identity`  | Remove the mapping or dismissal of a name, back to automatic resolution                                                                                                                                                                                                                                         |
+| `list_unmapped_item_values`  | The logged names matching no catalogue entry, most used first, each with up to three suggested entries                                                                                                                                                                                                          |
 
 ### Activity track tools
 
@@ -101,6 +108,15 @@ see [run features and categories](features/routes-and-segments.md#phase-3-run-fe
 | `merge_routes` | Move every run of `source_route_id` onto the route `id` and delete the source                                                             |
 | `match_routes` | Match every tracked activity without a route (attach to a covering route, or pair two unrouted tracks into a new one); returns the counts |
 
+### Exercise catalogue tools
+
+See [Exercise catalogue](features/exercise-catalog.md). Logged exercise names on sets stay free text.
+
+| Tool                         | What it does                                                                                                                                                                                          |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `search_exercise_catalog`    | Search the built-in catalogue by `q` (word prefixes, best matches first), exact `name` or alias, `equipment`, `muscle` (a muscle or a group, weight ≥ 0.5), `category`; paged by `limit` and `offset` |
+| `get_exercise_catalog_entry` | One catalogue exercise by its stable `key`: name, aliases, category, equipment, muscles with recruitment weights, and the same exercise in other datasets                                             |
+
 ### Comment tools
 
 Comments (stored as "notes") hang off anything, or off a bare point in time, and
@@ -114,6 +130,28 @@ model.
 | `query_notes` | Every comment anchored in a `from`/`to` time range -- threads nested, replies never listed separately                                                                                                                                                    |
 | `update_note` | Change a comment's content; `start_time`/`end_time` only on a `time` comment, and moving one moves its whole thread                                                                                                                                      |
 | `delete_note` | Delete a comment; deleting a thread root deletes its replies too                                                                                                                                                                                         |
+
+### Notification tools
+
+The bell's notifications and per-type switches. See [Notifications](features/notifications.md).
+
+| Tool                          | What it does                                                                                                                          |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_notifications`          | Newest first with `unread_count` and `next_cursor`; `unread_only`, `after` and `push_only` filter, like `GET /notifications`          |
+| `mark_notification_read`      | Mark one notification read by `id`                                                                                                    |
+| `mark_all_notifications_read` | Mark every unread notification read                                                                                                   |
+| `list_notification_types`     | The types this user can receive with their in-app and push switches                                                                   |
+| `set_notification_preference` | Turn a `type` on or off in-app and/or as a push                                                                                       |
+| `run_notification_action`     | Run one of a notification's `actions` by `id` and `key` (the keys come from `list_notifications`), e.g. `skip` on `autoshare_pending` |
+
+### Auto-share tools
+
+The rules that publish new activities to the feed. See [Auto-share rules](features/auto-share-rules.md).
+
+| Tool                                                                                                                     | What it does                                                                                            |
+| ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `list_autoshare_rules`, `add_autoshare_rule`, `update_autoshare_rule`, `delete_autoshare_rule`, `preview_autoshare_rule` | Manage the rules, like `/autoshare-rules`                                                               |
+| `skip_autoshare`                                                                                                         | Keep one activity (`activity_id`) and its merge group from being auto-shared; fails when already shared |
 
 ## Endpoint
 

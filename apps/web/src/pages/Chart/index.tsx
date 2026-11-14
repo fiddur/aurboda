@@ -60,11 +60,13 @@ import {
   MEASURE_HALF_LIFE_DEFAULT,
   type MeasureChoice,
   measureParams,
+  itemBreakdownOptions,
   measurePatch,
   parseAggregation,
   parseChartMode,
   parseMeasureQuery,
   sourceDefaultAggregation,
+  toggleBreakdownField,
 } from './chartMeasures'
 import { mapLegacyCategorySource } from './legacySource'
 import {
@@ -253,7 +255,7 @@ function MeasureControls({
   )
 }
 
-/** Scalar categorical fields, plus the measure's item field (one series per exercise) when charting a measure. */
+/** Scalar categorical fields, plus the measure's item breakdowns (per exercise, per muscle group) when charting a measure. */
 const breakdownOptions = (
   typeDef: ActivityTypeDefinition | undefined,
   measure: MeasureChoice,
@@ -262,8 +264,7 @@ const breakdownOptions = (
     label: f.label ?? f.name,
     name: f.name,
   }))
-  const filter = measure ? measureFilter(typeDef) : undefined
-  return filter ? [...scalar, { label: filter.label, name: filter.path }] : scalar
+  return [...scalar, ...itemBreakdownOptions(typeDef?.data_schema, measure)]
 }
 
 /** Source picker shared between both chart modes. */
@@ -346,12 +347,9 @@ function SourcePicker({
               <input
                 type="checkbox"
                 checked={state.breakdown_fields.includes(field.name)}
-                onChange={() => {
-                  const next = state.breakdown_fields.includes(field.name)
-                    ? state.breakdown_fields.filter((f) => f !== field.name)
-                    : [...state.breakdown_fields, field.name]
-                  onUpdate({ breakdown_fields: next })
-                }}
+                onChange={() =>
+                  onUpdate({ breakdown_fields: toggleBreakdownField(state.breakdown_fields, field.name) })
+                }
               />
               {field.label}
             </label>

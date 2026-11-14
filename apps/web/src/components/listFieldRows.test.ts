@@ -1,11 +1,32 @@
 import { describe, expect, test } from 'vitest'
 
-import { addRowLabel, dropBlankListRows, moveRow, newRow, removeRow, setCell } from './listFieldRows'
+import {
+  addRowLabel,
+  dropBlankListRows,
+  MAIN_ITEM_FIELDS,
+  mainItemFields,
+  moveRow,
+  newRow,
+  removeRow,
+  setCell,
+  visibleItemFields,
+  withStickyItemFields,
+} from './listFieldRows'
 
 const itemFields = [
   { name: 'exercise', type: 'string' as const },
   { name: 'weight', type: 'number' as const },
   { name: 'reps', type: 'number' as const },
+]
+
+const setFields = [
+  { name: 'exercise', required: true, type: 'string' as const },
+  { name: 'weight', type: 'number' as const },
+  { name: 'reps', type: 'number' as const },
+  { name: 'time', type: 'number' as const },
+  { enum_values: ['normal', 'warmup'], name: 'set_type', type: 'string' as const },
+  { name: 'rpe', type: 'number' as const },
+  { name: 'note', type: 'string' as const },
 ]
 
 describe('newRow', () => {
@@ -16,6 +37,81 @@ describe('newRow', () => {
   test('copies the declared values of the previous row, not its undeclared keys or blanks', () => {
     const previous = { exercise: 'Bench press', exercise_id: 'x1', order: 3, reps: null, weight: 80 }
     expect(newRow(previous, itemFields)).toEqual({ exercise: 'Bench press', weight: 80 })
+  })
+
+  test('copies only the main item fields, not a secondary one', () => {
+    const previous = { exercise: 'Squat', note: 'slow', reps: 5, set_type: 'warmup', time: 30, weight: 60 }
+    expect(newRow(previous, setFields)).toEqual({ exercise: 'Squat', reps: 5, time: 30, weight: 60 })
+  })
+})
+
+describe('mainItemFields', () => {
+  test('is every item field when there are no more than the main count', () => {
+    expect(MAIN_ITEM_FIELDS).toBe(4)
+    expect(mainItemFields(itemFields)).toEqual(itemFields)
+  })
+
+  test('is the first four plus any required one, in declared order', () => {
+    const fields = [...setFields.slice(0, 5), { name: 'side', required: true, type: 'string' as const }]
+    expect(mainItemFields(fields).map((f) => f.name)).toEqual(['exercise', 'weight', 'reps', 'time', 'side'])
+  })
+})
+
+describe('visibleItemFields', () => {
+  const names = (fields: { name: string }[]) => fields.map((f) => f.name)
+
+  test('hides nothing in a list of four or fewer item fields', () => {
+    expect(visibleItemFields(itemFields, [], false)).toEqual(itemFields)
+  })
+
+  test('hides the secondary fields until a row has a value for one', () => {
+    expect(
+      names(visibleItemFields(setFields, [{ exercise: 'Squat', note: '  ', set_type: null }], false)),
+    ).toEqual(['exercise', 'weight', 'reps', 'time'])
+    expect(names(visibleItemFields(setFields, [{ exercise: 'Squat' }, { note: 'slow' }], false))).toEqual([
+      'exercise',
+      'weight',
+      'reps',
+      'time',
+      'note',
+    ])
+  })
+
+  test('shows every item field when expanded', () => {
+    expect(visibleItemFields(setFields, [], true)).toEqual(setFields)
+  })
+})
+
+describe('withStickyItemFields', () => {
+  const names = (fields: { name: string }[]) => fields.map((f) => f.name)
+
+  test('keeps a field shown once it was visible, after its last value is cleared', () => {
+    const visible = visibleItemFields(setFields, [{ exercise: 'Squat', note: '' }], false)
+    expect(names(withStickyItemFields(setFields, new Set(['note']), visible))).toEqual([
+      'exercise',
+      'weight',
+      'reps',
+      'time',
+      'note',
+    ])
+  })
+
+  test('shows the union in declared order', () => {
+    const visible = visibleItemFields(setFields, [{ rpe: 8 }], false)
+    expect(names(withStickyItemFields(setFields, new Set(['note', 'set_type']), visible))).toEqual([
+      'exercise',
+      'weight',
+      'reps',
+      'time',
+      'set_type',
+      'rpe',
+      'note',
+    ])
+  })
+
+  test('adds nothing with an empty sticky set', () => {
+    const visible = visibleItemFields(setFields, [], false)
+    expect(withStickyItemFields(setFields, new Set(), visible)).toEqual(visible)
   })
 })
 

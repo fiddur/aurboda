@@ -49,20 +49,22 @@ This mounts your source code and watches for changes.
 
 ### Environment Variables
 
-| Variable                   | Description                                                                                    | Default                                |
-| -------------------------- | ---------------------------------------------------------------------------------------------- | -------------------------------------- |
-| `PGHOST`                   | PostgreSQL host                                                                                | `postgres`                             |
-| `PGPORT`                   | PostgreSQL port                                                                                | `5432`                                 |
-| `PGUSER`                   | PostgreSQL user                                                                                | `aurboda_service`                      |
-| `PGPASSWORD`               | PostgreSQL password                                                                            | (required)                             |
-| `SESSION_SECRET`           | 32-byte secret for session encryption                                                          | (required)                             |
-| `WEB_HOST`                 | Public URL of the web UI (for OAuth redirects)                                                 | `http://localhost:8080`                |
-| `ALLOW_SIGNUP`             | Enable user registration                                                                       | `true`                                 |
-| `WEBAUTHN_RP_ID`           | Passkey Relying Party ID (must be the public hostname the browser sees)                        | derived from `WEB_HOST`                |
-| `WEBAUTHN_RP_NAME`         | Display name shown by the user's authenticator                                                 | `Aurboda`                              |
-| `WEBAUTHN_ORIGINS`         | Comma-separated list of allowed origins for assertions                                         | `WEB_HOST`                             |
-| `ANDROID_APP_PACKAGE`      | Android app package name in `assetlinks.json`                                                  | `net.aurboda`                          |
-| `ANDROID_APP_FINGERPRINTS` | Comma-separated SHA-256 cert fingerprints (colon-separated hex) for the Android APKs you trust | (empty — `assetlinks.json` returns []) |
+| Variable                                 | Description                                                                                                                                                         | Default                                |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| `PGHOST`                                 | PostgreSQL host                                                                                                                                                     | `postgres`                             |
+| `PGPORT`                                 | PostgreSQL port                                                                                                                                                     | `5432`                                 |
+| `PGUSER`                                 | PostgreSQL user                                                                                                                                                     | `aurboda_service`                      |
+| `PGPASSWORD`                             | PostgreSQL password                                                                                                                                                 | (required)                             |
+| `SESSION_SECRET`                         | 32-byte secret for session encryption                                                                                                                               | (required)                             |
+| `WEB_HOST`                               | Public URL of the web UI (for OAuth redirects)                                                                                                                      | `http://localhost:8080`                |
+| `ALLOW_SIGNUP`                           | Enable user registration                                                                                                                                            | `true`                                 |
+| `WEBAUTHN_RP_ID`                         | Passkey Relying Party ID (must be the public hostname the browser sees)                                                                                             | derived from `WEB_HOST`                |
+| `WEBAUTHN_RP_NAME`                       | Display name shown by the user's authenticator                                                                                                                      | `Aurboda`                              |
+| `WEBAUTHN_ORIGINS`                       | Comma-separated list of allowed origins for assertions                                                                                                              | `WEB_HOST`                             |
+| `ANDROID_APP_PACKAGE`                    | Android app package name in `assetlinks.json`                                                                                                                       | `net.aurboda`                          |
+| `ANDROID_APP_FINGERPRINTS`               | Comma-separated SHA-256 cert fingerprints (colon-separated hex) for the Android APKs you trust                                                                      | (empty — `assetlinks.json` returns []) |
+| `HOME_ASSISTANT_ALLOW_PRIVATE_ADDRESSES` | `true` lets users' [Home Assistant](./home-assistant.md) URLs point at private/loopback addresses and plain `http` (for a server on the same LAN as Home Assistant) | `false` (public https only)            |
+| `CALENDAR_ALLOW_PRIVATE_ADDRESSES`       | `true` lets users' [calendar ICS](./calendars.md) URLs point at private/loopback addresses (for a server on the same LAN as the calendar server)                    | `false` (public addresses only)        |
 
 ### Generating a Session Secret
 

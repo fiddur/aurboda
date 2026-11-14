@@ -585,3 +585,48 @@
   display: inline-block;
   text-decoration: none;
 }
+
+.notification-group + .notification-group {
+  margin-top: 1.25rem;
+}
+
+.notification-group-header,
+.notification-setting {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 3.5rem 3.5rem;
+  align-items: center;
+  column-gap: 0.5rem;
+}
+
+.notification-group-title {
+  margin: 0;
+}
+
+.notification-group-column {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.notification-setting {
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.notification-setting-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.notification-setting-description {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.notification-setting-switch {
+  justify-self: center;
+  width: 1.1rem;
+  height: 1.1rem;
+}

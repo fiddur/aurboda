@@ -123,6 +123,7 @@ const SOURCE_CHIPS = [
   'Last.fm',
   'Calendars',
   'OwnTracks',
+  'Home Assistant',
   'RescueTime',
 ]
 

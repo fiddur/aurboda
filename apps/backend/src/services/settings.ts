@@ -22,6 +22,7 @@ import {
   upsertUserSettings,
 } from '../db/index.ts'
 import { MAX_GAP_SECONDS, SINGLE_SAMPLE_SECONDS } from '../hr-zone-constants.ts'
+import { getGarminConnections, readGarminPersonalKeyEnabled } from '../integrations/garmin/source.ts'
 import { getCentralDb } from './central-db.ts'
 
 export type { HrZoneSecs, HrZoneSource, HrZoneThresholds }
@@ -190,6 +191,8 @@ const settingsWithDefaultsSchema = userSettingsResponseSchema.pick({
   feed_type_tag: true,
   food_sensitivity_map: true,
   garmin_disabled_data_types: true,
+  home_assistant_entity_id: true,
+  home_assistant_url: true,
   item_icons: true,
   lastfm_username: true,
   maf_hr: true,
@@ -220,7 +223,7 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
   const [
     settings,
     ouraToken,
-    garminToken,
+    garmin,
     stravaToken,
     gravlToken,
     lastFmApiKey,
@@ -230,11 +233,12 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
     stravaClientSecret,
     gravlClientId,
     gravlClientSecret,
+    garminPersonalKeyEnabled,
     goals,
   ] = await Promise.all([
     getSettings(user),
     getOAuthToken(user, 'oura'),
-    getOAuthToken(user, 'garmin'),
+    getGarminConnections(user),
     getOAuthToken(user, 'strava'),
     getOAuthToken(user, 'gravl'),
     centralDb.getLastFmApiKey(),
@@ -244,6 +248,7 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
     centralDb.getServerSetting('strava_client_secret'),
     centralDb.getServerSetting('gravl_client_id'),
     centralDb.getServerSetting('gravl_client_secret'),
+    readGarminPersonalKeyEnabled(centralDb),
     getEffectiveGoals(user),
   ])
   const { zones, source } = hrZonesFromSettings(settings)
@@ -257,10 +262,18 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
 
   return {
     ...withDefaults(settings),
-    garmin_connected: garminToken !== null && garminToken.access_token !== '',
+    garmin_connected: garmin.session || garmin.personal_key.connected,
+    garmin_personal_key: {
+      available: garminPersonalKeyEnabled,
+      connected: garmin.personal_key.connected,
+      expires_at: garmin.personal_key.expires_at?.toISOString().slice(0, 10) ?? null,
+      refused: garmin.personal_key.refused,
+    },
+    garmin_session_connected: garmin.session,
     goals,
     gravl_configured: !!gravlClientId && !!gravlClientSecret,
     gravl_connection: gravlConnection,
+    home_assistant_token_set: !!settings.home_assistant_token,
     hr_zone_start: zones,
     hr_zone_start_source: source,
     lastfm_configured: !!lastFmApiKey,
@@ -274,10 +287,11 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
 
 const buildErrorSettingsResponse = async (errorMessage: string): Promise<SettingsResponse> => {
   const centralDb = getCentralDb()
-  const [lastFmApiKey, ouraClientId, ouraClientSecret] = await Promise.all([
+  const [lastFmApiKey, ouraClientId, ouraClientSecret, garminPersonalKeyEnabled] = await Promise.all([
     centralDb.getLastFmApiKey(),
     centralDb.getServerSetting('oura_client_id'),
     centralDb.getServerSetting('oura_client_secret'),
+    readGarminPersonalKeyEnabled(centralDb),
   ])
   return {
     ...settingsWithDefaultsSchema.parse({}),
@@ -285,11 +299,19 @@ const buildErrorSettingsResponse = async (errorMessage: string): Promise<Setting
     goals: defaultGoals,
     gravl_configured: false,
     gravl_connection: null,
+    home_assistant_token_set: false,
     hr_zone_start: calculateDefaultHrZones(null),
     hr_zone_start_source: 'default' as const,
     lastfm_configured: !!lastFmApiKey,
     oura_configured: !!ouraClientId && !!ouraClientSecret,
     garmin_connected: false,
+    garmin_personal_key: {
+      available: garminPersonalKeyEnabled,
+      connected: false,
+      expires_at: null,
+      refused: false,
+    },
+    garmin_session_connected: false,
     oura_connected: false,
     strava_configured: false,
     strava_connected: false,
@@ -341,8 +363,36 @@ const storedUpdates = (
     else if (value !== undefined) (updates as Record<string, unknown>)[field] = value
   }
   if (updates.feed_default_tags) updates.feed_default_tags = normalizeTags(updates.feed_default_tags)
+  const haUrl = updates.home_assistant_url
+  if (haUrl) updates.home_assistant_url = normalizeHomeAssistantUrl(haUrl)
   return { clear, updates }
 }
+
+/** Origin plus path without trailing slashes: `https://ha.example.org/` is stored as `https://ha.example.org`. */
+export const normalizeHomeAssistantUrl = (raw: string): string => {
+  const url = new URL(raw)
+  return `${url.origin}${url.pathname.replace(/\/+$/, '')}`
+}
+
+const originOf = (raw: string | null | undefined): string | null => {
+  if (!raw) return null
+  try {
+    return new URL(raw).origin
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Whether an update must drop the stored Home Assistant token: it moves the URL to
+ * another origin (or clears it) without bringing a new token. The token is write-only,
+ * so this keeps a hijacked session from pointing the stored token at a host it controls.
+ */
+export const shouldClearHomeAssistantToken = (before: UserSettings, data: UpdateSettingsInput): boolean =>
+  data.home_assistant_url !== undefined &&
+  typeof data.home_assistant_token !== 'string' &&
+  !!before.home_assistant_token &&
+  originOf(data.home_assistant_url) !== originOf(before.home_assistant_url)
 
 interface SettingsHooks {
   onHrSettingsChanged?: HrSettingsChanged
@@ -393,7 +443,17 @@ export const validateAndUpdateSettings = async (
   }
 
   const hooks = touchedHooks(parsed.data, { onHrSettingsChanged, onProfileChanged })
-  const before = hooks.onHrSettingsChanged || hooks.onProfileChanged ? await getSettings(user) : undefined
+  const needsBefore =
+    hooks.onHrSettingsChanged || hooks.onProfileChanged || parsed.data.home_assistant_url !== undefined
+  const before = needsBefore ? await getSettings(user) : undefined
+
+  if (
+    before &&
+    shouldClearHomeAssistantToken(before, parsed.data) &&
+    !clear.includes('home_assistant_token')
+  ) {
+    clear.push('home_assistant_token')
+  }
 
   await updateSettingsInternal(user, updates, clear)
 

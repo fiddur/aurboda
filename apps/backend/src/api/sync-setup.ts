@@ -4,9 +4,10 @@
  * settings. Each transform here normalizes the per-provider sync result
  * (Date → ISO string, undefined → null) for the cross-provider response shape.
  */
+import type { HomeAssistantSyncResult } from '@aurboda/api-spec'
 import type { Express } from 'express'
 
-import type { GarminClient } from '../integrations/garmin/client.ts'
+import type { GarminClient } from '../integrations/garmin/source.ts'
 import type { GravlClient } from '../integrations/gravl/client.ts'
 import type { ouraClient } from '../integrations/oura/client.ts'
 import type { CalorieQueue } from '../services/calorie-queue.ts'
@@ -37,6 +38,10 @@ import {
   type TrackWrittenCallback,
 } from '../integrations/garmin/sync.ts'
 import { getGravlSyncStates, resetGravlSyncState, syncGravlWorkouts } from '../integrations/gravl/sync.ts'
+import {
+  getHomeAssistantSyncStates,
+  resetHomeAssistantSyncState,
+} from '../integrations/home-assistant/sync.ts'
 import { syncAllCalendars } from '../integrations/ical/sync.ts'
 import { syncLastFmData } from '../integrations/lastfm/sync.ts'
 import { syncAllOuraData } from '../integrations/oura/sync.ts'
@@ -56,6 +61,10 @@ interface SyncSetupDeps {
   oura: OuraClient
   garmin: GarminClient
   gravl: GravlClient
+  syncHomeAssistant: (
+    user: string,
+    options?: { fullResync?: boolean; startDate?: Date },
+  ) => Promise<HomeAssistantSyncResult>
   stravaQueue: StravaQueue | null
   calorieQueue: CalorieQueue | null
   sourceEnrichQueue: SourceEnrichQueue | null
@@ -71,6 +80,7 @@ export const mountSyncRouter = ({
   oura,
   garmin,
   gravl,
+  syncHomeAssistant,
   stravaQueue,
   calorieQueue,
   sourceEnrichQueue,
@@ -174,6 +184,9 @@ export const mountSyncRouter = ({
         syncGravl: (user, options) => syncGravlWorkouts(user, gravl, options),
         getGravlSyncStates,
         resetGravlSyncState,
+        syncHomeAssistant,
+        getHomeAssistantSyncStates,
+        resetHomeAssistantSyncState,
         onSourceArrivals: sourceEnrichQueue
           ? (user, arrivals) => void sourceEnrichQueue.enqueue(user, arrivals)
           : undefined,

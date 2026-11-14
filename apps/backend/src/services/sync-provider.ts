@@ -1,7 +1,9 @@
+import type { HomeAssistantSyncResult } from '@aurboda/api-spec'
+
 import { isBefore, subDays, subMinutes } from 'date-fns'
 
 import type { SyncIntervals, SyncState } from '../db/types.ts'
-import type { GarminClient } from '../integrations/garmin/client.ts'
+import type { GarminClient } from '../integrations/garmin/source.ts'
 import type { GravlClient } from '../integrations/gravl/client.ts'
 import type { ouraClient } from '../integrations/oura/client.ts'
 import type { ActivityNotifier } from './deduction-queue.ts'
@@ -12,7 +14,7 @@ import {
   type DetailSyncedCallback,
   type TrackWrittenCallback,
   type GarminDataType,
-  hasGarminSession,
+  hasGarminConnection,
   isRateLimited as isGarminRateLimited,
   syncActivityDetails,
   syncGarminDataType,
@@ -22,6 +24,12 @@ import {
   isRateLimited as isGravlRateLimited,
   syncGravlWorkouts,
 } from '../integrations/gravl/sync.ts'
+import {
+  HOME_ASSISTANT_DATA_TYPE,
+  HOME_ASSISTANT_DEFAULT_INTERVAL_MINUTES,
+  HOME_ASSISTANT_PROVIDER,
+  homeAssistantConnection,
+} from '../integrations/home-assistant/sync.ts'
 import { syncAllCalendars } from '../integrations/ical/sync.ts'
 import { DEFAULT_SYNC_HISTORY_DAYS, syncLastFmData } from '../integrations/lastfm/sync.ts'
 import {
@@ -48,7 +56,14 @@ export const DEFAULT_SYNC_THRESHOLD_MINUTES = 30
 export const SYNC_RECHECK_MS = 2 * 60_000
 
 /** Providers a user can set a poll interval for (`user_settings.sync_intervals`). */
-export type SchedulableProvider = 'calendar' | 'garmin' | 'gravl' | 'lastfm' | 'oura' | 'rescuetime'
+export type SchedulableProvider =
+  | 'calendar'
+  | 'garmin'
+  | 'gravl'
+  | 'home_assistant'
+  | 'lastfm'
+  | 'oura'
+  | 'rescuetime'
 
 /**
  * Poll interval for a provider: the user's per-provider setting, else their
@@ -85,6 +100,11 @@ export interface SyncProviderConfig {
   oura?: OuraClientType
   /** Gravl API client (optional - if not provided, Gravl sync is disabled) */
   gravl?: GravlClient
+  /**
+   * Home Assistant location pull (optional - if not provided, it is disabled). Its
+   * own `onLocationsSynced` fires detection and deduction, so nothing is chained here.
+   */
+  syncHomeAssistant?: (user: string) => Promise<HomeAssistantSyncResult>
   /**
    * Fired after a successful auto-sync that ingested new data, so deduction
    * rules run over the freshly-synced window. Wired to the same
@@ -178,7 +198,8 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
         if (!config.garmin) return
 
         try {
-          if (!(await hasGarminSession(user))) return
+          if (!(await hasGarminConnection(user))) return
+          if ((await config.garmin.sourceFor(user, dataType as GarminDataType)) === null) return
 
           const settings = await getSettings(user)
           if (settings.garmin_disabled_data_types?.includes(dataType as GarminDataType)) return
@@ -244,6 +265,33 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
         }
       } catch (error) {
         auditError(user, 'sync', 'Failed to auto-sync Gravl', { error: String(error) })
+      }
+    }),
+
+    syncHomeAssistantIfNeeded: debounced('syncHomeAssistantIfNeeded', async (user: string): Promise<void> => {
+      if (!config.syncHomeAssistant) return
+
+      try {
+        const settings = await getSettings(user)
+        if (!homeAssistantConnection(settings)) return
+
+        const syncState = await getSyncState(user, HOME_ASSISTANT_PROVIDER, HOME_ASSISTANT_DATA_TYPE)
+        const interval = resolveSyncInterval(
+          settings.sync_intervals,
+          'home_assistant',
+          HOME_ASSISTANT_DEFAULT_INTERVAL_MINUTES,
+        )
+        const now = new Date()
+        if (syncState?.last_sync_time && isBefore(subMinutes(now, interval), syncState.last_sync_time)) {
+          return
+        }
+        if (syncState?.status === 'error' && syncState.retry_after && isBefore(now, syncState.retry_after)) {
+          return
+        }
+
+        await config.syncHomeAssistant(user)
+      } catch (error) {
+        auditError(user, 'sync', 'Failed to auto-sync Home Assistant', { error: String(error) })
       }
     }),
 

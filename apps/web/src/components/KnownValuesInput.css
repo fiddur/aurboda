@@ -45,6 +45,22 @@
   color: #374151;
 }
 
+.known-values-list-floating {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1000;
+}
+
+.known-values-hint {
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #6b7280;
+  font-size: 0.8rem;
+}
+
 .known-values-count {
   flex-shrink: 0;
   color: #6b7280;
@@ -56,6 +72,10 @@
   .known-values-list {
     width: 100%;
     max-width: 100%;
+  }
+
+  .known-values-list-floating {
+    width: max-content;
   }
 }
 
@@ -74,7 +94,8 @@
     color: #d1d5db;
   }
 
-  .known-values-count {
+  .known-values-count,
+  .known-values-hint {
     color: #9ca3af;
   }
 }

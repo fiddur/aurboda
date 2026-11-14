@@ -4,26 +4,32 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import type * as dbIndex from '../db/index.ts'
 
-vi.mock('../services/audit-log.ts', () => ({ auditError: vi.fn() }))
+vi.mock('../services/audit-log.ts', () => ({ auditError: vi.fn(), auditInfo: vi.fn(), auditWarn: vi.fn() }))
 vi.mock('../db/index.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof dbIndex>()),
   resetSyncState: vi.fn(),
 }))
 
-const { auditError } = await import('../services/audit-log.ts')
+const { auditError, auditInfo } = await import('../services/audit-log.ts')
+const { GarminKeyRefusedError, GarminPersonalApiError } =
+  await import('../integrations/garmin/personal-client.ts')
 const { resetSyncState } = await import('../db/index.ts')
 const { registerOAuthRoutes } = await import('./oauth-routes.ts')
 
 const password = 'hunter2 "x"'
 
 const buildApp = ({
-  centralDb = {},
+  centralDb = { getServerSetting: vi.fn().mockResolvedValue(null) },
+  garminPersonal = {},
   login = vi.fn(),
+  markNotificationsReadByType = vi.fn().mockResolvedValue(0),
   oura = {},
   verifyMfa = vi.fn(),
 }: {
   centralDb?: Record<string, unknown>
+  garminPersonal?: Record<string, unknown>
   login?: (...args: string[]) => Promise<unknown>
+  markNotificationsReadByType?: (user: string, type: string) => Promise<number>
   oura?: Record<string, unknown>
   verifyMfa?: (...args: string[]) => Promise<unknown>
 } = {}) => {
@@ -38,8 +44,10 @@ const buildApp = ({
       next()) as never,
     centralDb: centralDb as never,
     garmin: { login, verifyMfa } as never,
+    garminPersonal: garminPersonal as never,
     gravl: { authCb: vi.fn(), getAuthorizeUrl: vi.fn() } as never,
     httpd,
+    markNotificationsReadByType,
     oura: { authCb: vi.fn(), getAuthorizeUrl: vi.fn(), ...oura } as never,
     strava: { authCb: vi.fn(), getAuthorizeUrl: vi.fn() } as never,
   })
@@ -120,5 +128,173 @@ describe('POST /auth/oura/disconnect', () => {
     expect(res.body).toEqual({ error: 'db down', success: false })
     expect(resetSyncState).not.toHaveBeenCalled()
     expect(deleteOuraUserMappingsByUsername).not.toHaveBeenCalled()
+  })
+})
+
+describe('POST /auth/garmin/personal-key', () => {
+  const apiKey = 'fake-personal-key "x"'
+  const future = '2099-01-01'
+
+  test('connects with the key and the expiry, auditing the date only', async () => {
+    const connect = vi.fn().mockResolvedValue(undefined)
+    const app = buildApp({ garminPersonal: { connect } })
+
+    const res = await supertest(app)
+      .post('/auth/garmin/personal-key')
+      .send({ api_key: ` ${apiKey} `, expires_at: future })
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ success: true })
+    expect(connect).toHaveBeenCalledWith('alice', apiKey, new Date('2099-01-01T00:00:00Z'))
+    expect(auditInfo).toHaveBeenCalledWith('alice', 'auth', 'Garmin Personal API key connected', {
+      expires_at: future,
+    })
+    expect(JSON.stringify(vi.mocked(auditInfo).mock.calls)).not.toContain('fake-personal-key')
+  })
+
+  test("marks the earlier key's reminders read after connecting", async () => {
+    const markNotificationsReadByType = vi.fn().mockResolvedValue(2)
+    const app = buildApp({
+      garminPersonal: { connect: vi.fn().mockResolvedValue(undefined) },
+      markNotificationsReadByType,
+    })
+
+    const res = await supertest(app)
+      .post('/auth/garmin/personal-key')
+      .send({ api_key: apiKey, expires_at: future })
+
+    expect(res.status).toBe(200)
+    expect(markNotificationsReadByType).toHaveBeenCalledWith('alice', 'garmin_key_expiring')
+  })
+
+  test('still answers 200 when marking the reminders read fails, and audits it', async () => {
+    const app = buildApp({
+      garminPersonal: { connect: vi.fn().mockResolvedValue(undefined) },
+      markNotificationsReadByType: vi.fn().mockRejectedValue(new Error('db down')),
+    })
+
+    const res = await supertest(app)
+      .post('/auth/garmin/personal-key')
+      .send({ api_key: apiKey, expires_at: future })
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ success: true })
+    expect(auditError).toHaveBeenCalledWith('alice', 'auth', 'Could not mark Garmin key reminders read', {
+      error: 'Error: db down',
+    })
+    expect(JSON.stringify(vi.mocked(auditError).mock.calls)).not.toContain('fake-personal-key')
+  })
+
+  test('answers 401 when Garmin refuses the key, leaving the reminders unread', async () => {
+    const connect = vi.fn().mockRejectedValue(new GarminKeyRefusedError())
+    const markNotificationsReadByType = vi.fn()
+    const app = buildApp({ garminPersonal: { connect }, markNotificationsReadByType })
+
+    const res = await supertest(app)
+      .post('/auth/garmin/personal-key')
+      .send({ api_key: apiKey, expires_at: future })
+
+    expect(res.status).toBe(401)
+    expect(res.body).toEqual({ error: 'Garmin refused the key', success: false })
+    expect(markNotificationsReadByType).not.toHaveBeenCalled()
+  })
+
+  test('answers 502 on another Garmin failure, without the key in body or audit log', async () => {
+    const connect = vi.fn().mockRejectedValue(new Error(`upstream echoed ${apiKey}`))
+    const app = buildApp({ garminPersonal: { connect } })
+
+    const res = await supertest(app)
+      .post('/auth/garmin/personal-key')
+      .send({ api_key: apiKey, expires_at: future })
+
+    expect(res.status).toBe(502)
+    expect(res.body.error).not.toContain(apiKey)
+    expect(JSON.stringify(vi.mocked(auditError).mock.calls)).not.toContain('fake-personal-key')
+  })
+
+  test('answers 502 with the status for a Garmin API error', async () => {
+    const connect = vi.fn().mockRejectedValue(new GarminPersonalApiError(500, '/token'))
+    const app = buildApp({ garminPersonal: { connect } })
+
+    const res = await supertest(app)
+      .post('/auth/garmin/personal-key')
+      .send({ api_key: apiKey, expires_at: future })
+
+    expect(res.status).toBe(502)
+    expect(res.body.error).toBe('Garmin Personal API 500 for /token')
+  })
+
+  test('answers 403 and does not call Garmin when the admin switch is off', async () => {
+    const connect = vi.fn()
+    const app = buildApp({
+      centralDb: { getServerSetting: vi.fn().mockResolvedValue(false) },
+      garminPersonal: { connect },
+    })
+
+    const res = await supertest(app)
+      .post('/auth/garmin/personal-key')
+      .send({ api_key: apiKey, expires_at: future })
+
+    expect(res.status).toBe(403)
+    expect(res.body.success).toBe(false)
+    expect(connect).not.toHaveBeenCalled()
+  })
+
+  test('answers 400 for an expiry in the past, and for a missing key', async () => {
+    const connect = vi.fn()
+    const app = buildApp({ garminPersonal: { connect } })
+
+    const past = await supertest(app)
+      .post('/auth/garmin/personal-key')
+      .send({ api_key: apiKey, expires_at: '2020-01-01' })
+    const missing = await supertest(app)
+      .post('/auth/garmin/personal-key')
+      .send({ api_key: ' ', expires_at: future })
+
+    expect(past.status).toBe(400)
+    expect(missing.status).toBe(400)
+    expect(connect).not.toHaveBeenCalled()
+  })
+})
+
+describe('POST /auth/garmin/personal-key/disconnect', () => {
+  test('removes the key and marks its reminders read', async () => {
+    const disconnect = vi.fn().mockResolvedValue(undefined)
+    const markNotificationsReadByType = vi.fn().mockResolvedValue(1)
+    const app = buildApp({ garminPersonal: { disconnect }, markNotificationsReadByType })
+
+    const res = await supertest(app).post('/auth/garmin/personal-key/disconnect')
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ success: true })
+    expect(disconnect).toHaveBeenCalledWith('alice')
+    expect(markNotificationsReadByType).toHaveBeenCalledWith('alice', 'garmin_key_expiring')
+  })
+
+  test('still answers 200 when marking the reminders read fails', async () => {
+    const app = buildApp({
+      garminPersonal: { disconnect: vi.fn().mockResolvedValue(undefined) },
+      markNotificationsReadByType: vi.fn().mockRejectedValue(new Error('db down')),
+    })
+
+    const res = await supertest(app).post('/auth/garmin/personal-key/disconnect')
+
+    expect(res.status).toBe(200)
+    expect(auditError).toHaveBeenCalledWith('alice', 'auth', 'Could not mark Garmin key reminders read', {
+      error: 'Error: db down',
+    })
+  })
+
+  test('answers 500 and leaves the reminders when the disconnect fails', async () => {
+    const markNotificationsReadByType = vi.fn()
+    const app = buildApp({
+      garminPersonal: { disconnect: vi.fn().mockRejectedValue(new Error('db down')) },
+      markNotificationsReadByType,
+    })
+
+    const res = await supertest(app).post('/auth/garmin/personal-key/disconnect')
+
+    expect(res.status).toBe(500)
+    expect(markNotificationsReadByType).not.toHaveBeenCalled()
   })
 })

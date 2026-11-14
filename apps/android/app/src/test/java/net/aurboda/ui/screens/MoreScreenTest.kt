@@ -35,4 +35,9 @@ class MoreScreenTest {
         assertEquals(1, allItems.count { it.destination == MoreDestination.Live })
         assertEquals(1, allItems.count { it.destination == MoreDestination.Account })
     }
+
+    @Test
+    fun `notifications open first`() {
+        assertEquals("/notifications", (moreGroups.first().items.first().destination as MoreDestination.Web).path)
+    }
 }

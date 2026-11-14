@@ -3,6 +3,7 @@ import type { CalendarSyncResult } from '@aurboda/api-spec'
 import ical from 'node-ical'
 
 import { insertActivity, insertRawRecord, upsertSyncState } from '../../db/index.ts'
+import { calendarAllowsPrivateAddresses, createFetchIcs } from './fetch.ts'
 
 export interface CalendarEvent {
   uid: string
@@ -22,13 +23,8 @@ export interface SyncCalendarOptions {
   fetchIcs?: (url: string) => Promise<string>
 }
 
-const defaultFetchIcs = async (url: string): Promise<string> => {
-  const response = await fetch(url)
-  if (!response.ok) {
-    throw new Error(`Failed to fetch ICS: ${response.status} ${response.statusText}`)
-  }
-  return response.text()
-}
+const defaultFetchIcs = (url: string): Promise<string> =>
+  createFetchIcs({ allowPrivate: calendarAllowsPrivateAddresses() })(url)
 
 export const parseICalEvents = (icsText: string): CalendarEvent[] => {
   const parsed = ical.sync.parseICS(icsText)

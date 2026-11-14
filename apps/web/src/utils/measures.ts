@@ -8,6 +8,7 @@ import {
   measureGoalTitle,
   type MeasureGoal,
   type MeasureGoalAggregation,
+  type MuscleGroupMeasures,
 } from '@aurboda/api-spec'
 
 import { categoricalItemFields, fieldLabel, itemPath, listFields } from '../components/sessions/sessionView'
@@ -203,3 +204,12 @@ export const measureFilter = (
 
 export const measureFilterPath = (definition: WithSchema | undefined): string | undefined =>
   measureFilter(definition)?.path
+
+/** A set count that can be fractional, a muscle group's share of sets: one decimal, `.0` dropped. */
+export const formatSetCount = (value: number): string => String(Number(value.toFixed(1)))
+
+/** `Chest 4`, `Triceps 2.5`: each muscle group with its set count, groups without one left out. */
+export const muscleGroupParts = (muscleGroups: MuscleGroupMeasures[]): string[] =>
+  muscleGroups.flatMap(({ measures, name }) =>
+    measures.set_count === undefined ? [] : [`${name} ${formatSetCount(measures.set_count)}`],
+  )

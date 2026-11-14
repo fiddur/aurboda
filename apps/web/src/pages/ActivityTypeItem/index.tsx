@@ -19,6 +19,8 @@ import { toDisplayName } from '../../utils/displayName'
 import { MEASURE_HALF_LIFE_DEFAULT } from '../../utils/half-life'
 import { defaultAggregation } from '../../utils/measures'
 import { newWidgetId } from '../../utils/widget-id'
+import { itemFieldCatalog } from './catalogEntryView'
+import { ExerciseIdentity } from './ExerciseIdentity'
 import { DoneCard } from './ItemCards'
 import {
   availableMeasures,
@@ -281,7 +283,8 @@ export function ActivityTypeItem() {
     queryKey: ['activityTypeDefinitions'],
     staleTime: 5 * 60 * 1000,
   })
-  const typeName = definitions?.find((d) => d.name === name)?.display_name ?? toDisplayName(name)
+  const definition = definitions?.find((d) => d.name === name)
+  const typeName = definition?.display_name ?? toDisplayName(name)
 
   const query = useQuery({
     queryFn: () => fetchActivitySessions(name, { filter_field: field, filter_value: value }),
@@ -312,6 +315,14 @@ export function ActivityTypeItem() {
           </>
         )}
       </header>
+
+      <ExerciseIdentity
+        catalog={itemFieldCatalog(definition?.data_schema ?? undefined, field)}
+        name={name}
+        field={field}
+        value={value}
+        showsMerge={sessions.length > 0}
+      />
 
       {query.isLoading && <p class="loading">Loading...</p>}
       {query.isError && <p class="error">Failed to load sessions</p>}

@@ -8,14 +8,16 @@ import type { Express } from 'express'
 import type { Client } from 'pg'
 
 import type { Auth } from '../auth.ts'
-import type { GarminClient } from '../integrations/garmin/client.ts'
+import type { GarminClient } from '../integrations/garmin/source.ts'
 import type { DetailSyncedCallback, TrackWrittenCallback } from '../integrations/garmin/sync.ts'
+import type { HomeAssistantClient } from '../integrations/home-assistant/client.ts'
 import type { AutosharePreviewDeps } from '../mcp/autoshare-rule-tools.ts'
 import type { AccountDeleter } from '../services/account-deletion.ts'
 import type { AccountPlans } from '../services/account-plan.ts'
 import type { PostUpdateResender } from '../services/activitypub/post-update-resend.ts'
 import type { AdminUsers } from '../services/admin-users.ts'
 import type { ArticlePreviewer } from '../services/article-preview.ts'
+import type { SkipAutoshare } from '../services/autoshare-skip.ts'
 import type { CentralDb } from '../services/central-db.ts'
 import type { DiscoverChallenges } from '../services/challenge-discovery.ts'
 import type { DeductionEngineDeps } from '../services/deduction-engine.ts'
@@ -27,6 +29,7 @@ import type { FollowerActions } from '../services/followers.ts'
 import type { FollowActions } from '../services/following.ts'
 import type { InvitationAuth } from '../services/invitation.ts'
 import type { NamedLocationsChanged } from '../services/locations.ts'
+import type { RunNotificationAction } from '../services/notification-actions.ts'
 import type { OuraWebhookManager } from '../services/oura-webhook-manager.ts'
 import type { PublicTagActions } from '../services/public-tags.ts'
 import type { SyncProvider } from '../services/queries/index.ts'
@@ -61,6 +64,7 @@ import { createChartDataRouter } from '../routes/chart-data-router.ts'
 import { createCorrelationsRouter } from '../routes/correlations-router.ts'
 import { createDashboardRouter } from '../routes/dashboard-router.ts'
 import { createDeductionRulesRouter } from '../routes/deduction-rules-router.ts'
+import { createExerciseCatalogRouter } from '../routes/exercise-catalog-router.ts'
 import { createExportRouter } from '../routes/export-router.ts'
 import { createFeedFollowedTagsRouter } from '../routes/feed-followed-tags-router.ts'
 import { createFeedFollowersRouter } from '../routes/feed-followers-router.ts'
@@ -70,6 +74,7 @@ import { createFeedImagesRouter } from '../routes/feed-images-router.ts'
 import { createFeedPublicRouter } from '../routes/feed-public-router.ts'
 import { createFeedRouter, type FeedDeliver } from '../routes/feed-router.ts'
 import { createFoodItemsRouter } from '../routes/food-items-router.ts'
+import { createHomeAssistantRouter } from '../routes/home-assistant-router.ts'
 import { createIconsRouter } from '../routes/icons-router.ts'
 import { createImportsRouter } from '../routes/imports-router.ts'
 import { createLocationsRouter } from '../routes/locations-router.ts'
@@ -77,6 +82,7 @@ import { createMealsRouter } from '../routes/meals-router.ts'
 import { createMediaRouter } from '../routes/media-router.ts'
 import { createMetricsRouter } from '../routes/metrics-router.ts'
 import { createNotesRouter } from '../routes/notes-router.ts'
+import { createNotificationsRouter } from '../routes/notifications-router.ts'
 import { createNutrientRecommendationsRouter } from '../routes/nutrient-recommendations-router.ts'
 import { createOEmbedRouter } from '../routes/oembed-router.ts'
 import { createOgImageRouter } from '../routes/og-image-router.ts'
@@ -128,7 +134,7 @@ import { resolveFeedActivity } from '../services/feed.ts'
 import { readOfficialFeedSetting } from '../services/official-feed.ts'
 import { createOgImageRenderer } from '../services/og-image.ts'
 import { loadPublicPostChartWith, type PostChartDeps } from '../services/post-chart.ts'
-import { getUserTimezone } from '../services/settings.ts'
+import { getSettings, getUserTimezone } from '../services/settings.ts'
 import { resolveDashboardView } from '../services/shared-dashboard-data.ts'
 import { resolveSharedExerciseData } from '../services/shared-exercise-data.ts'
 import { createTemplateLoader } from '../services/web-template.ts'
@@ -148,6 +154,8 @@ interface RestRoutesDeps {
   /** Open challenges from followed peers (`GET /challenges/discover`). */
   discoverChallenges: DiscoverChallenges
   garmin: GarminClient
+  /** Home Assistant client behind `GET /home-assistant/entities`. */
+  homeAssistant: HomeAssistantClient
   /** Fire-and-forget: re-federate the shares of an activity whose detail was (re)synced. */
   onActivityDetailSynced: DetailSyncedCallback
   /** Fire-and-forget: queue post-processing for an activity whose GPS track was written. */
@@ -175,6 +183,10 @@ interface RestRoutesDeps {
   onProfileChanged: ProfileChanged
   /** Merge-group/window resolution behind the auto-share rule preview (#903). */
   autosharePreviewDeps: AutosharePreviewDeps
+  /** Keeps one activity from being auto-shared (the `skip` action and `/autoshare-rules/skips`). */
+  skipAutoshare: SkipAutoshare
+  /** Runs a notification's action server-side. */
+  runNotificationAction: RunNotificationAction
   /** Fire-and-forget: recompute activity features after HR zones, birth date or maf_hr change. */
   onHrSettingsChanged: HrSettingsChanged
   onNamedLocationsChanged: NamedLocationsChanged
@@ -213,6 +225,7 @@ export const mountRestRouters = ({
   apiBaseUrl,
   discoverChallenges,
   garmin,
+  homeAssistant,
   onActivityDetailSynced,
   onTrackWritten,
   syncProvider,
@@ -220,6 +233,8 @@ export const mountRestRouters = ({
   engineDeps,
   deductionQueue,
   autosharePreviewDeps,
+  skipAutoshare,
+  runNotificationAction,
   dataExport,
   feedDeliver,
   followActions,
@@ -244,6 +259,13 @@ export const mountRestRouters = ({
   httpd.use(createAgentsRouter(apiBaseUrl))
   httpd.use('/icons', createIconsRouter(authMiddleware))
   httpd.use('/notes', createNotesRouter(authMiddleware))
+  httpd.use(
+    '/notifications',
+    createNotificationsRouter(authMiddleware, {
+      isAdmin: centralDb.isAdmin,
+      runAction: runNotificationAction,
+    }),
+  )
   httpd.use('/media', createMediaRouter(authMiddleware))
   httpd.use('/meals', createMealsRouter(authMiddleware))
   httpd.use('/food-items', createFoodItemsRouter(authMiddleware, centralDb))
@@ -276,8 +298,15 @@ export const mountRestRouters = ({
     '/deduction-rules',
     createDeductionRulesRouter(authMiddleware, engineDeps, deductionQueue ?? undefined),
   )
-  httpd.use('/autoshare-rules', createAutoshareRulesRouter(authMiddleware, autosharePreviewDeps))
+  httpd.use(
+    '/autoshare-rules',
+    createAutoshareRulesRouter(authMiddleware, autosharePreviewDeps, skipAutoshare),
+  )
   httpd.use('/locations', createLocationsRouter(authMiddleware, onNamedLocationsChanged))
+  httpd.use(
+    '/home-assistant',
+    createHomeAssistantRouter(authMiddleware, { client: homeAssistant, getSettings }),
+  )
   httpd.use(createSettingsRouter(authMiddleware, onHrSettingsChanged, onProfileChanged))
   httpd.use(createAuditLogRouter(authMiddleware))
   httpd.use('/export', createExportRouter({ authMiddleware, ...dataExport }))
@@ -286,6 +315,7 @@ export const mountRestRouters = ({
   httpd.use('/dashboard', createDashboardRouter(authMiddleware))
   httpd.use('/shared-dashboards', createSharedDashboardsRouter(authMiddleware, webHost))
   httpd.use('/shared-exercises', createSharedExercisesRouter(authMiddleware, webHost))
+  httpd.use('/exercise-catalog', createExerciseCatalogRouter(authMiddleware))
   httpd.use('/profile', createProfileRouter(authMiddleware, webHost, onProfileChanged))
   // Mount the following, followers and images routers before `/feed` so `/feed/following/*`,
   // `/feed/followers/*` and `/feed/images/*` resolve here and never touch the

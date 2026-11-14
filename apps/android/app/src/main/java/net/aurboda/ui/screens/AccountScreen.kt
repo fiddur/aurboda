@@ -23,6 +23,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -49,7 +50,8 @@ fun AccountScreen(
     serverUrl: String,
     onServerUrlChange: (String) -> Unit,
     onLogout: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onChooseNotificationKinds: () -> Unit = {}
 ) {
     var editedServerUrl by remember(serverUrl) { mutableStateOf(serverUrl) }
     val hasChanges = editedServerUrl != serverUrl
@@ -175,16 +177,20 @@ fun AccountScreen(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Notify me about new posts",
+                    text = "Notifications on this device",
                     style = MaterialTheme.typography.bodyLarge
                 )
                 Text(
-                    text = "A notification when accounts you follow post. Mute individual accounts on the Feed page.",
+                    text = "Shows Aurboda's notifications on this phone. Which kinds are pushed is set under Settings, Notifications.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             Switch(checked = notifyEnabled, onCheckedChange = onNotifyToggle)
+        }
+
+        TextButton(onClick = onChooseNotificationKinds) {
+            Text("Choose which kinds")
         }
 
         // The worker silently skips posting while the SYSTEM permission is off

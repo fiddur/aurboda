@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import * as dbIndex from '../db/index.ts'
 
@@ -26,7 +26,7 @@ vi.mock('../integrations/lastfm/sync.ts', () => ({
 }))
 
 vi.mock('../integrations/garmin/sync.ts', () => ({
-  hasGarminSession: vi.fn().mockResolvedValue(true),
+  hasGarminConnection: vi.fn().mockResolvedValue(true),
   isRateLimited: vi.fn().mockReturnValue(false),
   syncActivityDetails: vi.fn().mockResolvedValue(undefined),
   syncGarminDataType: vi.fn(),
@@ -51,7 +51,7 @@ vi.mock('../integrations/gravl/sync.ts', () => ({
 
 import type { GravlClient } from '../integrations/gravl/client.ts'
 
-import { hasGarminSession, syncGarminDataType } from '../integrations/garmin/sync.ts'
+import { hasGarminConnection, syncGarminDataType } from '../integrations/garmin/sync.ts'
 import { syncGravlWorkouts } from '../integrations/gravl/sync.ts'
 import { syncLastFmData } from '../integrations/lastfm/sync.ts'
 import { syncOuraDataType } from '../integrations/oura/sync.ts'
@@ -125,11 +125,13 @@ describe('createSyncProvider › syncLastFmIfNeeded', () => {
 
 describe('createSyncProvider › syncGarminIfNeeded', () => {
   const lastSync = new Date('2026-06-01T00:00:00Z')
-  const garmin = {} as never // only handed to the mocked syncGarminDataType
+  const sourceFor = vi.fn()
+  const garmin = { sourceFor } as never
 
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(hasGarminSession).mockResolvedValue(true)
+    vi.mocked(hasGarminConnection).mockResolvedValue(true)
+    sourceFor.mockResolvedValue('session')
     vi.mocked(getSettings).mockResolvedValue({} as never) // no disabled data types
     vi.mocked(dbIndex.getSyncState).mockResolvedValue({ last_sync_time: lastSync } as never)
   })
@@ -140,18 +142,30 @@ describe('createSyncProvider › syncGarminIfNeeded', () => {
   }
 
   test('skips a user with no Garmin session without reading sync state, syncing or auditing', async () => {
-    vi.mocked(hasGarminSession).mockResolvedValue(false)
+    vi.mocked(hasGarminConnection).mockResolvedValue(false)
     vi.mocked(dbIndex.getSyncState).mockResolvedValue(null)
     const { onActivitySynced, provider } = build()
 
     await provider.syncGarminIfNeeded('alice', 'sleep')
 
-    expect(hasGarminSession).toHaveBeenCalledWith('alice')
+    expect(hasGarminConnection).toHaveBeenCalledWith('alice')
     expect(dbIndex.getSyncState).not.toHaveBeenCalled()
     expect(syncGarminDataType).not.toHaveBeenCalled()
     expect(auditInfo).not.toHaveBeenCalled()
     expect(auditError).not.toHaveBeenCalled()
     expect(onActivitySynced).not.toHaveBeenCalled()
+  })
+
+  test('skips a type no connection serves (stress with only a key) without auditing', async () => {
+    sourceFor.mockResolvedValue(null)
+    const { provider } = build()
+
+    await provider.syncGarminIfNeeded('alice', 'stress')
+
+    expect(sourceFor).toHaveBeenCalledWith('alice', 'stress')
+    expect(dbIndex.getSyncState).not.toHaveBeenCalled()
+    expect(syncGarminDataType).not.toHaveBeenCalled()
+    expect(auditInfo).not.toHaveBeenCalled()
   })
 
   test('triggers deduction over the synced window after a successful sync with new records', async () => {
@@ -368,6 +382,99 @@ describe('createSyncProvider › syncGravlIfNeeded', () => {
     const provider = createSyncProvider({})
     await provider.syncGravlIfNeeded('alice')
     expect(syncGravlWorkouts).not.toHaveBeenCalled()
+  })
+})
+
+describe('createSyncProvider › syncHomeAssistantIfNeeded', () => {
+  const configured = {
+    home_assistant_entity_id: 'device_tracker.pixel_8',
+    home_assistant_token: 'token',
+    home_assistant_url: 'https://ha.example.org',
+  }
+  const result = {
+    locations_fetched: 0,
+    locations_inserted: 0,
+    locations_superseded: 0,
+    status: 'success' as const,
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-01T00:20:00Z'))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  test('does nothing for a user without all three settings', async () => {
+    vi.mocked(getSettings).mockResolvedValue({ ...configured, home_assistant_token: undefined } as never)
+    const syncHomeAssistant = vi.fn().mockResolvedValue(result)
+    await createSyncProvider({ syncHomeAssistant }).syncHomeAssistantIfNeeded('alice')
+    expect(syncHomeAssistant).not.toHaveBeenCalled()
+  })
+
+  test('does nothing within the 10-minute default interval', async () => {
+    vi.mocked(getSettings).mockResolvedValue(configured as never)
+    vi.mocked(dbIndex.getSyncState).mockResolvedValue({
+      last_sync_time: new Date('2026-06-01T00:15:00Z'),
+    } as never)
+    const syncHomeAssistant = vi.fn().mockResolvedValue(result)
+    await createSyncProvider({ syncHomeAssistant, syncThresholdMinutes: 1 }).syncHomeAssistantIfNeeded(
+      'alice',
+    )
+    expect(syncHomeAssistant).not.toHaveBeenCalled()
+  })
+
+  test('syncs when the last sync is older than the interval, or never happened', async () => {
+    vi.mocked(getSettings).mockResolvedValue(configured as never)
+    vi.mocked(dbIndex.getSyncState).mockResolvedValue({
+      last_sync_time: new Date('2026-06-01T00:05:00Z'),
+    } as never)
+    const syncHomeAssistant = vi.fn().mockResolvedValue(result)
+    const provider = createSyncProvider({ recheckMs: 0, syncHomeAssistant })
+    await provider.syncHomeAssistantIfNeeded('alice')
+    expect(syncHomeAssistant).toHaveBeenCalledWith('alice')
+
+    vi.mocked(dbIndex.getSyncState).mockResolvedValue(null)
+    await provider.syncHomeAssistantIfNeeded('alice')
+    expect(syncHomeAssistant).toHaveBeenCalledTimes(2)
+  })
+
+  test('leaves a failing server alone until its retry_after has passed', async () => {
+    vi.mocked(getSettings).mockResolvedValue(configured as never)
+    vi.mocked(dbIndex.getSyncState).mockResolvedValue({
+      retry_after: new Date('2026-06-01T00:25:00Z'),
+      status: 'error',
+    } as never)
+    const syncHomeAssistant = vi.fn().mockResolvedValue(result)
+    const provider = createSyncProvider({ recheckMs: 0, syncHomeAssistant })
+    await provider.syncHomeAssistantIfNeeded('alice')
+    expect(syncHomeAssistant).not.toHaveBeenCalled()
+
+    vi.setSystemTime(new Date('2026-06-01T00:26:00Z'))
+    await provider.syncHomeAssistantIfNeeded('alice')
+    expect(syncHomeAssistant).toHaveBeenCalledTimes(1)
+  })
+
+  test('honours the user’s own home_assistant interval', async () => {
+    vi.mocked(getSettings).mockResolvedValue({
+      ...configured,
+      sync_intervals: { home_assistant: 30 },
+    } as never)
+    vi.mocked(dbIndex.getSyncState).mockResolvedValue({
+      last_sync_time: new Date('2026-06-01T00:05:00Z'),
+    } as never)
+    const syncHomeAssistant = vi.fn().mockResolvedValue(result)
+    await createSyncProvider({ syncHomeAssistant }).syncHomeAssistantIfNeeded('alice')
+    expect(syncHomeAssistant).not.toHaveBeenCalled()
+  })
+
+  test('skips when the integration is not wired', async () => {
+    vi.mocked(getSettings).mockResolvedValue(configured as never)
+    await expect(createSyncProvider({}).syncHomeAssistantIfNeeded('alice')).resolves.toBeUndefined()
+    expect(getSettings).not.toHaveBeenCalled()
   })
 })
 

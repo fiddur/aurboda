@@ -22,6 +22,17 @@ const impactTool = (): ToolHandler => {
   return tools.get('get_activity_impact')!
 }
 
+const toolNamed = (name: string): ToolHandler => {
+  const tools = new Map<string, ToolHandler>()
+  const server = {
+    tool: (toolName: string, _desc: string, _shape: unknown, handler: ToolHandler) => {
+      tools.set(toolName, handler)
+    },
+  } as unknown as McpServer
+  registerCorrelationTools(server, 'tester')
+  return tools.get(name)!
+}
+
 describe('get_activity_impact', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -45,7 +56,42 @@ describe('get_activity_impact', () => {
       new Date('2026-03-01T00:00:00Z'),
       new Date('2026-01-01T00:00:00Z'),
       undefined,
+      [],
+      {},
     )
+  })
+
+  test('breakdown, buckets, filters and dimensions pass through with the tool timezone', async () => {
+    await impactTool()({
+      activity: 'yoga',
+      activity_type: 'activity_type',
+      breakdown: 'sleep',
+      duration_buckets: [20, 45],
+      filters: [{ dimension: 'time_of_day', keys: ['6-12'] }],
+      include_dimensions: true,
+      time_buckets: [6, 12, 22],
+      tz: 'Europe/Stockholm',
+    })
+    expect(vi.mocked(getActivityImpact).mock.calls[0][10]).toEqual({
+      breakdown: 'sleep',
+      durationBuckets: [20, 45],
+      filters: [{ dimension: 'time_of_day', keys: ['6-12'] }],
+      includeDimensions: true,
+      timeBuckets: [6, 12, 22],
+      tz: 'Europe/Stockholm',
+    })
+  })
+
+  test('bad bucket limits are an error', async () => {
+    const duration = await impactTool()({
+      activity: 'yoga',
+      activity_type: 'activity_type',
+      duration_buckets: [30, 15],
+    })
+    expect(duration.content[0].text).toMatch(/strictly ascending/)
+    const time = await impactTool()({ activity: 'yoga', activity_type: 'activity_type', time_buckets: [25] })
+    expect(time.content[0].text).toMatch(/0 to 23/)
+    expect(getActivityImpact).not.toHaveBeenCalled()
   })
 
   test('one bound alone or a reversed period is an error', async () => {
@@ -63,5 +109,29 @@ describe('get_activity_impact', () => {
     })
     expect(reversed.content[0].text).toBe('start must be before end.')
     expect(getActivityImpact).not.toHaveBeenCalled()
+  })
+})
+
+describe('extra metrics', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(getActivityImpact).mockResolvedValue(impactData())
+  })
+
+  test('get_activity_impact passes metrics through', async () => {
+    await impactTool()({ activity: 'yoga', activity_type: 'activity_type', metrics: ['body_battery'] })
+    expect(vi.mocked(getActivityImpact).mock.calls[0][9]).toEqual(['body_battery'])
+  })
+
+  test('a cumulative metric is an error', async () => {
+    const res = await impactTool()({ activity: 'yoga', activity_type: 'activity_type', metrics: ['steps'] })
+    expect(res.content[0].text).toMatch(/steps is a running total/)
+    const hrv = await toolNamed('get_hrv_activities_correlation')({ metrics: ['steps'] })
+    expect(hrv.content[0].text).toMatch(/steps is a running total/)
+    expect(getActivityImpact).not.toHaveBeenCalled()
+  })
+
+  test('get_impact_metrics is registered', () => {
+    expect(toolNamed('get_impact_metrics')).toBeTypeOf('function')
   })
 })

@@ -153,14 +153,54 @@ known-vs-all days for presence-only _outcomes_).
 `get_hrv_activities_correlation` / `GET /correlations/hrv-activities` summarises
 the autonomic context (mean HRV, heart rate and stress, with baseline deltas)
 around each activity, location and productivity category, and correlates the
-productivity score against an autonomic metric.
+productivity score against HRV, heart rate and stress.
 
-That metric is selectable via `context_metric` — `hrv_rmssd` (default),
-`heart_rate` or `stress_level`. Not everyone records continuous HRV throughout
-the day, so heart rate or stress (which are denser) keep the productivity
-`correlation_coefficient` meaningful. The chosen metric is echoed back as
-`context_metric`; all three means stay in the response regardless. The web
-"HRV context" tab exposes this as a **Context** dropdown.
+Productivity categories carry `correlation_coefficients`: the Pearson r of the
+productivity score with each of `hrv_rmssd`, `heart_rate` and `stress_level`
+(null when fewer than 3 paired values or no variation). Not everyone records
+continuous HRV throughout the day, so heart rate or stress (which are denser)
+often give the meaningful one. The older single `correlation_coefficient` is
+still returned, for the metric named by `context_metric` (request parameter,
+default `hrv_rmssd`, echoed back in the response). The web Context tab does not
+send `context_metric`: it shows r for each metric whose checkbox is on (HRV,
+Heart rate, Stress, and any extra metric below).
+
+## Other metrics (extras)
+
+Besides HRV, heart rate and stress, the same before/during/after analysis runs
+on up to 4 other metrics, named in `metrics` (REST: a comma list,
+`metrics=body_battery,respiratory_rate`; MCP: an array). Each is fetched, binned
+to 5 minutes and summarised exactly like the three. The three keep their own
+fields; the extras come back in maps keyed by metric name, and only when
+`metrics` is given, so a request without it gets the same response as before:
+
+- `hrv-activities`: every row has `metrics.<name>` with `mean`, `stddev`
+  (during), `delta_from_baseline` and `effect`; productivity rows also
+  `correlation_coefficient` (r of the productivity score with that metric). The
+  top-level `metric_baselines.<name>` is the period average.
+- `activity-impact`: `metric_effects.<name>` and, on each `timeline` bucket,
+  `metrics.<name>`.
+
+More than 4 names, a name that is not a metric name (`[a-z][a-z0-9_]*`, at most
+50 characters), or a cumulative metric (`steps`, `distance`, `floors_climbed`,
+`calories_active`, `calories_total`: a 5-minute mean of a running total means
+nothing) is a 400 (an error from the MCP tools). An unknown or sparse metric is
+accepted and comes back with nulls.
+
+`GET /correlations/impact-metrics?period_days=30` (MCP `get_impact_metrics`)
+lists the candidates: every metric, built-in or custom, that is not cumulative
+and not one of the three, and that is recorded around the clock, so there is
+data before and after a session. The rule is coverage, not sample count: data on
+at least 3 days of the period, and on the days that have data a median of at
+least 48 covered quarter hours (15-minute slots, epoch-aligned, with at least
+one sample; 48 is half of the day), counted per UTC day over all sources. A
+metric recorded only during workouts or sleep (often respiration rate) can have
+thousands of samples a day yet leave every before/after window empty, so it
+does not qualify; nor do daily values (resting heart rate, sleep scores, most
+manual logs). Each is `{ metric, label, unit, coverage_hours_per_day,
+samples_per_day }` (medians over the days with data; coverage is the quarter
+hours divided by 4), sorted by coverage, then samples. A custom metric's label
+is its name in words, never its description.
 
 ## Context analysis (Analyze → context tab)
 
@@ -234,11 +274,14 @@ is no time-of-day correction.
 
 API:
 
-- `GET /correlations/hrv-activities?period_days=30&context_metric=hrv_rmssd&window_minutes=30`
+- `GET /correlations/hrv-activities?period_days=30&window_minutes=30`
   and MCP `get_hrv_activities_correlation` (`window_minutes`, 10–1440, default
-  30). The response echoes `window_minutes`.
+  30; `metrics`, see [Other metrics](#other-metrics-extras)). The response
+  echoes `window_minutes`. Productivity rows carry
+  `correlation_coefficients` (r per metric); the optional `context_metric`
+  only picks which of them fills the legacy `correlation_coefficient`.
 - `GET /correlations/activity-impact/:activity?activity_type=activity_type&period_days=30&window_minutes=30&match=exact`
-  and MCP `get_activity_impact` (`window_minutes`, `match`). `match` is
+  and MCP `get_activity_impact` (`window_minutes`, `match`, `metrics`). `match` is
   `contains` (default: every name containing `activity`, case-insensitive) or
   `exact` (the grouping key the context table uses). `timeline` is an ordered
   array of buckets, `{ phase, start_offset_minutes, end_offset_minutes, hrv, hr,
@@ -255,6 +298,85 @@ stress }`: the before buckets oldest first, then `during`, then the after
   days: `start` inclusive, `end` exclusive. One without the other, or a `start`
   not before `end`, is a 400 (an error from the MCP tool). An article's impact
   block uses this with `match=exact` and its own window.
+- `GET /correlations/impact-metrics?period_days=30` and MCP
+  `get_impact_metrics`: the metrics dense enough to pass as `metrics`.
+
+### Breaking down and filtering an activity's impact
+
+`GET /correlations/activity-impact/:activity` and MCP `get_activity_impact` can
+split the sessions into groups along one **dimension** (`breakdown`), keep only
+some of them (`filters`), and list what can be split by (`include_dimensions`).
+Everything is opt-in: without these parameters the response is what it was,
+plus `total_occurrences`.
+
+Sessions and their windows are formed first, over every matching occurrence,
+exactly as above. Groups and filters then only **select among those sessions**:
+a session left out by a filter, or in another group, still clips its
+neighbours' before and after windows. A selection is analysed exactly like the
+whole (effects, timeline, legacy `*_timeline`).
+
+Dimensions:
+
+- **`duration`**: the merged session's length in minutes, in buckets cut at the
+  `duration_buckets` limits (default `15,30,60`; 1–6 ascending whole minutes,
+  1–1440). Keys `0-15`, `15-30`, `30-60`, `60-`; a bucket holds
+  `min ≤ minutes < max`.
+- **`time_of_day`**: the local clock time the session starts at, in `tz` (REST
+  parameter, MCP tool timezone; default the user's device timezone), daylight
+  saving included. `time_buckets` (default `0,6,12,18`; 1–6 ascending whole
+  hours, 0–23) cut the 24-hour circle, the last bucket wrapping to the first:
+  `6,22` gives `6-22` and `22-6`. One limit is one bucket covering the day.
+- **`sleep`**: whether an activity of type `sleep` or `nap` (or a subtype)
+  overlaps the full window before (`[start − W, start]`) or after
+  (`[end, end + W]`) by at least 5 minutes. Keys `none`, `before`, `after`,
+  `both`. The analysed occurrences never count as sleep. Sleep is looked for
+  from a day and a window before the period to a window after it.
+- **`field:<path>`**: a data field of the activity type, a scalar
+  (`field:session_name`) or an item of a list field (`field:sets.exercise`,
+  grouped by normalized value as the sessions view groups them). The key is the
+  value; a session without one is `(none)`. A merged session with several
+  distinct values is counted under each of them, so group counts can add up to
+  more than `occurrences`. Fields are read only for `activity_type=activity_type`;
+  for other kinds every session is `(none)`.
+
+`filters` (REST) is one string: filters separated by `;`, each
+`<dimension>:<key>,<key>` with every key URL-encoded (a field dimension's own
+colon belongs to the dimension), then the whole parameter URL-encoded again as
+usual. A session passes a filter when it has any of its keys and must pass every
+filter; the same dimension twice merges its keys. Over MCP `filters` is an array
+of `{ dimension, keys }`. Bad bucket limits or a malformed filter string are a
+400 (an error from the MCP tool). For example, yoga sessions under 30 minutes
+without sleep around them, broken down by session name:
+
+```
+GET /correlations/activity-impact/yoga?activity_type=activity_type&match=exact
+    &breakdown=field:session_name
+    &filters=duration%3A0-15%2C15-30%3Bsleep%3Anone
+```
+
+The response adds:
+
+- `total_occurrences`: sessions before filters; `occurrences`,
+  `avg_duration_min`, the effects and timelines describe the ones kept.
+- `breakdown` (with `breakdown`): `{ dimension, label, groups, omitted_groups }`,
+  each group `{ key, label, occurrences, avg_duration_min, hr_effect,
+hrv_effect, stress_effect, metric_effects?, timeline }` over the kept
+  sessions in that group. Only non-empty groups are listed, at most 12 (for a
+  field, `(none)` is kept and counts toward the 12); the rest are counted in
+  `omitted_groups`.
+- `dimensions` (with `include_dimensions=true`): `duration`, `time_of_day`,
+  `sleep`, then, for `activity_type=activity_type` when a type named `activity` has a data schema, each categorical
+  scalar field and categorical list-item field. Each lists its groups with
+  `occurrences` counted **before** filters, so the counts stay put while filters
+  change: every bucket for duration and time of day, the non-empty groups
+  otherwise, at most 50 (`omitted_groups` for the rest).
+
+Group order: duration and time buckets in limit order; sleep as none, before,
+after, both; field values by session count, then name, `(none)` last.
+
+Caution: the more groups, the fewer sessions each holds, and among many small
+groups a few will show a "clear" change (p < 0.05) by chance alone. Treat a
+lone striking group as a hint to check over a longer period, not a finding.
 
 ## Statistics notes
 

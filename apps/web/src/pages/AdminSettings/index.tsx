@@ -352,6 +352,47 @@ function OuraApiSection() {
   )
 }
 
+function GarminPersonalKeySwitch() {
+  const queryClient = useQueryClient()
+  const { data: settings } = useQuery({ queryFn: fetchAdminSettings, queryKey: ['adminSettings'] })
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>({ status: 'idle' })
+
+  const handleToggle = useCallback(async () => {
+    setSaveStatus({ status: 'saving' })
+    try {
+      const result = await updateAdminSettings({
+        garmin_personal_key_enabled: !(settings?.garmin_personal_key_enabled ?? true),
+      })
+      queryClient.setQueryData(['adminSettings'], result)
+      setSaveStatus({ status: 'saved', time: new Date() })
+    } catch (err) {
+      setSaveStatus({ error: getErrorMessage(err), status: 'error' })
+    }
+  }, [settings?.garmin_personal_key_enabled, queryClient])
+
+  return (
+    <div class="form-field">
+      <div class="section-header-row">
+        <label for="garmin-personal-key-toggle">Garmin Personal API keys</label>
+        <SaveStatusIndicator state={saveStatus} />
+      </div>
+      <label class="toggle-row">
+        <input
+          id="garmin-personal-key-toggle"
+          type="checkbox"
+          checked={settings?.garmin_personal_key_enabled ?? true}
+          onChange={handleToggle}
+        />
+        <span>Let users connect Garmin with a Personal API key</span>
+      </label>
+      <p class="field-description">
+        Garmin's terms restrict a Personal API key to tools its owner operates for their own use. Keys already
+        connected keep syncing when this is off.
+      </p>
+    </div>
+  )
+}
+
 function IntegrationsSection() {
   const queryClient = useQueryClient()
   const { data: settings } = useQuery({
@@ -460,6 +501,8 @@ function IntegrationsSection() {
       <StravaApiSection />
 
       <GravlApiSection />
+
+      <GarminPersonalKeySwitch />
     </section>
   )
 }

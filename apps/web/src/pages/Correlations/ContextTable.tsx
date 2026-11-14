@@ -1,8 +1,17 @@
 import { Fragment } from 'preact'
 
+import type { ImpactMetric } from '../../components/charts/impactMetrics'
 import type { HrvStatsWithDelta, WindowEffect } from '../../state/api'
 
-import { changeClass, changeTitle, columnTitles, formatDelta, getDeltaClass, roundTo } from './effects'
+import {
+  changeClass,
+  changeTitle,
+  columnTitles,
+  formatDelta,
+  getDeltaClass,
+  type MetricDirection,
+  roundTo,
+} from './effects'
 
 export interface ContextTableRow {
   key: string
@@ -13,37 +22,42 @@ export interface ContextTableRow {
   onSelect: () => void
 }
 
-interface MetricColumns {
+/** One metric's During / vs avg / Change columns; `key` is a short key for the three, else the metric name. */
+export interface MetricColumns {
+  key: string
   label: string
   mean: (s: HrvStatsWithDelta) => number | null
   delta: (s: HrvStatsWithDelta) => number | null
   effect: (s: HrvStatsWithDelta) => WindowEffect
   decimals: number
-  inverted: boolean
+  direction: MetricDirection
 }
 
-const METRICS: MetricColumns[] = [
+const METRICS: (MetricColumns & { key: ImpactMetric })[] = [
   {
     decimals: 1,
     delta: (s) => s.hrv_delta_from_baseline,
+    direction: 'up',
     effect: (s) => s.hrv_effect,
-    inverted: false,
+    key: 'hrv',
     label: 'HRV',
     mean: (s) => s.mean_hrv,
   },
   {
     decimals: 0,
     delta: (s) => s.hr_delta_from_baseline,
+    direction: 'down',
     effect: (s) => s.hr_effect,
-    inverted: true,
+    key: 'hr',
     label: 'Heart rate',
     mean: (s) => s.mean_hr,
   },
   {
     decimals: 0,
     delta: (s) => s.stress_delta_from_baseline,
+    direction: 'down',
     effect: (s) => s.stress_effect,
-    inverted: true,
+    key: 'stress',
     label: 'Stress',
     mean: (s) => s.mean_stress,
   },
@@ -56,11 +70,11 @@ function MetricCells({ metric, stats }: { metric: MetricColumns; stats: HrvStats
   return (
     <>
       <td class="value-cell group-start">{mean?.toFixed(metric.decimals) ?? '--'}</td>
-      <td class={`delta-cell ${getDeltaClass(delta, metric.inverted)}`}>
+      <td class={`delta-cell ${getDeltaClass(delta, metric.direction)}`}>
         {formatDelta(delta, metric.decimals)}
       </td>
       <td
-        class={`delta-cell change-cell ${changeClass(effect, metric.inverted)}`}
+        class={`delta-cell change-cell ${changeClass(effect, metric.direction)}`}
         title={changeTitle(effect)}
       >
         {formatDelta(effect.change, 1)}
@@ -74,14 +88,18 @@ export function ContextTable({
   nameHeader,
   rows,
   windowMinutes,
+  metrics: shown,
+  extraColumns = [],
 }: {
   title: string
   nameHeader: string
   rows: ContextTableRow[]
   windowMinutes: number
+  metrics: readonly ImpactMetric[]
+  extraColumns?: MetricColumns[]
 }) {
   const titles = columnTitles(windowMinutes)
-  const metrics = METRICS.filter((m) =>
+  const metrics = [...METRICS.filter((m) => shown.includes(m.key)), ...extraColumns].filter((m) =>
     rows.some((row) => m.mean(row.stats) !== null || m.effect(row.stats).change !== null),
   )
   return (
@@ -93,7 +111,7 @@ export function ContextTable({
             <tr>
               <th rowSpan={2}>{nameHeader}</th>
               {metrics.map((m) => (
-                <th key={m.label} colSpan={3} class="group-header group-start">
+                <th key={m.key} colSpan={3} class="group-header group-start">
                   {m.label}
                 </th>
               ))}
@@ -101,7 +119,7 @@ export function ContextTable({
             </tr>
             <tr>
               {metrics.map((m) => (
-                <Fragment key={m.label}>
+                <Fragment key={m.key}>
                   <th class="sub-header group-start" title={titles.during}>
                     During
                   </th>
@@ -123,7 +141,7 @@ export function ContextTable({
                   {row.extra && <span class="extra">{row.extra}</span>}
                 </td>
                 {metrics.map((m) => (
-                  <MetricCells key={m.label} metric={m} stats={row.stats} />
+                  <MetricCells key={m.key} metric={m} stats={row.stats} />
                 ))}
                 <td class="samples-cell">{row.stats.sample_minutes} min</td>
               </tr>

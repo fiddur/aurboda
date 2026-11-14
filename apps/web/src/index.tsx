@@ -47,6 +47,10 @@ const AurbodaSource = lazyPage(() => import('./pages/DataSources/AurbodaSource.j
 const CalendarsSource = lazyPage(() => import('./pages/DataSources/CalendarsSource.jsx'), 'CalendarsSource')
 const GarminSource = lazyPage(() => import('./pages/DataSources/GarminSource.jsx'), 'GarminSource')
 const GravlSource = lazyPage(() => import('./pages/DataSources/GravlSource.jsx'), 'GravlSource')
+const HomeAssistantSource = lazyPage(
+  () => import('./pages/DataSources/HomeAssistantSource.jsx'),
+  'HomeAssistantSource',
+)
 const DataSources = lazyPage(() => import('./pages/DataSources/index.jsx'), 'DataSources')
 const LastFmSource = lazyPage(() => import('./pages/DataSources/LastFmSource.jsx'), 'LastFmSource')
 const OuraSource = lazyPage(() => import('./pages/DataSources/OuraSource.jsx'), 'OuraSource')
@@ -73,6 +77,7 @@ const Meals = lazyPage(() => import('./pages/Meals/index.jsx'), 'Meals')
 const MealDetail = lazyPage(() => import('./pages/Meals/MealDetail.jsx'), 'MealDetail')
 const MealTypeMeta = lazyPage(() => import('./pages/MealTypeMeta/index.jsx'), 'MealTypeMeta')
 const MetricMeta = lazyPage(() => import('./pages/MetricMeta/index.jsx'), 'MetricMeta')
+const Notifications = lazyPage(() => import('./pages/Notifications/index.jsx'), 'Notifications')
 const OfficialFeed = lazyPage(() => import('./pages/OfficialFeed/index.jsx'), 'OfficialFeed')
 const PublicTag = lazyPage(() => import('./pages/PublicTag/index.jsx'), 'PublicTag')
 const Places = lazyPage(() => import('./pages/Places/index.jsx'), 'Places')
@@ -170,6 +175,7 @@ function AppShell() {
             <Route path="/data-sources/rescue-time" component={RescueTimeSource} />
             <Route path="/data-sources/lastfm" component={LastFmSource} />
             <Route path="/data-sources/owntracks" component={OwnTracksSource} />
+            <Route path="/data-sources/home-assistant" component={HomeAssistantSource} />
             <Route path="/data-sources/calendars" component={CalendarsSource} />
             <Route path="/activity-types" component={ActivityTypes} />
             <Route path="/deduction-rules/:id" component={DeductionRuleDetail} />
@@ -177,6 +183,7 @@ function AppShell() {
             <Route path="/screentime-categories/:id" component={CategoryDetail} />
             <Route path="/screentime-categories" component={ScreentimeCategories} />
             <Route path="/settings" component={Settings} />
+            <Route path="/notifications" component={Notifications} />
             <Route path="/audit-log" component={AuditLog} />
             <Route path="/admin" component={AdminSettings} />
             <Route path="/admin/users" component={AdminUsers} />

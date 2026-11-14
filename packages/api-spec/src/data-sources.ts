@@ -60,9 +60,9 @@ export const dataSources: DataSourceInfo[] = [
     doc: 'garmin.md',
     provides:
       'Daily summary, HR, HRV, sleep, stress, body battery, activities, SpO2, respiration, training readiness',
-    how: 'Pull (session-based)',
-    adminSetup: 'None',
-    userSetup: 'Garmin credentials',
+    how: 'Pull (login session and/or Personal API key)',
+    adminSetup: 'None (Personal API keys can be turned off)',
+    userSetup: 'Garmin credentials, a Personal API key, or both',
   },
   {
     name: 'Strava',
@@ -90,6 +90,15 @@ export const dataSources: DataSourceInfo[] = [
     how: 'Push (HTTP mode)',
     adminSetup: 'None',
     userSetup: 'OwnTracks app config',
+  },
+  {
+    name: 'Home Assistant',
+    homepage: 'https://www.home-assistant.io/',
+    doc: 'home-assistant.md',
+    provides: 'GPS locations and zones from the Home Assistant companion app, place visits',
+    how: 'Pull (API)',
+    adminSetup: 'None',
+    userSetup: 'Home Assistant URL, long-lived token, tracker entity',
   },
   {
     name: 'RescueTime',

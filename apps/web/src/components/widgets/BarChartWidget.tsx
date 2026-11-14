@@ -13,7 +13,7 @@ import { CHART_PRIMARY } from '../../theme'
 import { widgetRange } from '../../utils/chart-range'
 import { buildChartUrl, type ChartOrigin } from '../../utils/chart-url'
 import { BarChart } from '../charts/BarChart'
-import { BreakdownLegend, SERIES_COLORS } from '../charts/breakdown'
+import { BreakdownLegend, breakdownBarSeries } from '../charts/breakdown'
 import { barsFetchParams } from './chartFetchParams'
 import { measureChartTitle } from './chartTitle'
 import { HEAVY_QUERY_OPTIONS } from './heavyQuery'
@@ -34,17 +34,7 @@ export function BarChartView({ config, data, href }: BarChartViewProps) {
   const breakdownSeries = data?.breakdown_series
   const breakdownBuckets = data?.breakdown_buckets
   const multiSeries = useMemo(
-    () =>
-      breakdownSeries && breakdownSeries.length > 0 && breakdownBuckets
-        ? breakdownSeries.map((name, i) => ({
-            color: SERIES_COLORS[i % SERIES_COLORS.length],
-            data: breakdownBuckets.map((b) => ({
-              bucket_start: b.bucket_start,
-              value: b.series[name] ?? 0,
-            })),
-            name,
-          }))
-        : null,
+    () => breakdownBarSeries(breakdownSeries, breakdownBuckets),
     [breakdownSeries, breakdownBuckets],
   )
 

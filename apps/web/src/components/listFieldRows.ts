@@ -4,9 +4,35 @@ export type ListRow = Record<string, unknown>
 
 const isBlank = (v: unknown) => v === undefined || v === null || (typeof v === 'string' && v.trim() === '')
 
+export const MAIN_ITEM_FIELDS = 4
+
+export const mainItemFields = (itemFields: DataItemFieldDefinition[]): DataItemFieldDefinition[] =>
+  itemFields.filter((f, i) => i < MAIN_ITEM_FIELDS || f.required === true)
+
+export const visibleItemFields = (
+  itemFields: DataItemFieldDefinition[],
+  rows: ListRow[],
+  expanded: boolean,
+): DataItemFieldDefinition[] => {
+  if (expanded) return itemFields
+  const main = new Set(mainItemFields(itemFields))
+  return itemFields.filter((f) => main.has(f) || rows.some((row) => !isBlank(row[f.name])))
+}
+
+export const withStickyItemFields = (
+  itemFields: DataItemFieldDefinition[],
+  sticky: ReadonlySet<string>,
+  visible: DataItemFieldDefinition[],
+): DataItemFieldDefinition[] => {
+  const shown = new Set(visible.map((f) => f.name))
+  return itemFields.filter((f) => shown.has(f.name) || sticky.has(f.name))
+}
+
 export const newRow = (previous: ListRow | undefined, itemFields: DataItemFieldDefinition[]): ListRow =>
   Object.fromEntries(
-    itemFields.flatMap((f) => (previous && !isBlank(previous[f.name]) ? [[f.name, previous[f.name]]] : [])),
+    mainItemFields(itemFields).flatMap((f) =>
+      previous && !isBlank(previous[f.name]) ? [[f.name, previous[f.name]]] : [],
+    ),
   )
 
 export const moveRow = (rows: ListRow[], index: number, delta: -1 | 1): ListRow[] => {

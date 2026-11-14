@@ -210,6 +210,73 @@ describe('sync router', () => {
     })
   })
 
+  describe('home assistant endpoints', () => {
+    const result = {
+      locations_fetched: 3,
+      locations_inserted: 2,
+      locations_superseded: 0,
+      status: 'success' as const,
+    }
+
+    test('returns 400 when the integration is not wired', async () => {
+      const response = await request(createTestApp()).post('/sync/home-assistant').send({})
+      expect(response.status).toBe(400)
+      expect(response.body.error).toContain('Home Assistant integration is not available')
+    })
+
+    test('POST /sync/home-assistant passes the options through and returns the result', async () => {
+      const syncHomeAssistant = vi.fn().mockResolvedValue(result)
+      const app = express()
+      app.use(express.json())
+      app.use('/sync', createSyncRouter({ ...mockDeps, syncHomeAssistant }, testAuthMiddleware))
+
+      const response = await request(app)
+        .post('/sync/home-assistant')
+        .send({ full_resync: true, start_date: '2026-11-01' })
+
+      expect(response.status).toBe(200)
+      expect(response.body).toEqual({ result, success: true })
+      expect(syncHomeAssistant).toHaveBeenCalledWith('testuser', {
+        fullResync: true,
+        startDate: new Date('2026-11-01'),
+      })
+    })
+
+    test('GET /sync/home-assistant/status and DELETE /sync/home-assistant/state', async () => {
+      const states = [
+        {
+          error_message: null,
+          last_sync_time: '2026-11-13T10:00:00Z',
+          provider: 'home_assistant',
+          retry_after: null,
+          status: 'idle' as const,
+        },
+      ]
+      const resetHomeAssistantSyncState = vi.fn().mockResolvedValue(undefined)
+      const app = express()
+      app.use(express.json())
+      app.use(
+        '/sync',
+        createSyncRouter(
+          {
+            ...mockDeps,
+            getHomeAssistantSyncStates: vi.fn().mockResolvedValue(states),
+            resetHomeAssistantSyncState,
+          },
+          testAuthMiddleware,
+        ),
+      )
+
+      const status = await request(app).get('/sync/home-assistant/status')
+      expect(status.body).toEqual({ states, success: true })
+
+      const reset = await request(app).delete('/sync/home-assistant/state')
+      expect(reset.status).toBe(200)
+      expect(resetHomeAssistantSyncState).toHaveBeenCalledWith('testuser')
+      expect(mockDeps.processHealthConnectData).not.toHaveBeenCalled()
+    })
+  })
+
   describe('deletions endpoint', () => {
     test('POST /sync/deletions calls deleteHealthConnectRecords', async () => {
       vi.mocked(mockDeps.deleteHealthConnectRecords).mockResolvedValueOnce(3)

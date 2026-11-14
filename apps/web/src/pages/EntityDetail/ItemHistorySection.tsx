@@ -9,7 +9,7 @@ import { Fragment } from 'preact'
 
 import { fieldLabel, itemPageHref } from '../../components/sessions/sessionView'
 import { fetchActivityItemHistory } from '../../state/api'
-import { formatMeasure, formatSet, recordBadge, trendParts } from '../../utils/measures'
+import { formatMeasure, formatSet, muscleGroupParts, recordBadge, trendParts } from '../../utils/measures'
 
 const Parts = ({ parts, separator = ' · ' }: { parts: string[]; separator?: string }) => (
   <>
@@ -110,6 +110,7 @@ export const ItemHistorySection = ({
     volume !== undefined && `Volume ${formatMeasure('volume', volume)}`,
     sets !== undefined && `${sets} ${sets === 1 ? 'set' : 'sets'}`,
   ].filter(Boolean)
+  const muscleParts = muscleGroupParts(data.muscle_groups ?? [])
 
   return (
     <div class="item-history">
@@ -128,6 +129,11 @@ export const ItemHistorySection = ({
           />
         ))}
       </ul>
+      {muscleParts.length > 0 && (
+        <div class="item-history-line">
+          <span class="item-history-when">Sets per muscle group</span> <Parts parts={muscleParts} />
+        </div>
+      )}
     </div>
   )
 }

@@ -118,6 +118,8 @@ export const cleanTestDb = async (): Promise<void> => {
     'reports',
     'meals',
     'notes',
+    'notifications',
+    'notification_preferences',
     'challenge_banner',
     'feed_image',
     'challenge_members',
@@ -164,6 +166,7 @@ export const cleanTestDb = async (): Promise<void> => {
     'custom_metrics',
     'goals',
     'item_value_aliases',
+    'item_value_identities',
   ]
 
   for (const table of tables) {

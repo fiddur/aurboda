@@ -45,6 +45,7 @@ export const DATA_SOURCE_LINKS = [
   { label: 'RescueTime', path: '/data-sources/rescue-time' },
   { label: 'Last.fm', path: '/data-sources/lastfm' },
   { label: 'OwnTracks', path: '/data-sources/owntracks' },
+  { label: 'Home Assistant', path: '/data-sources/home-assistant' },
   { label: 'Calendars', path: '/data-sources/calendars' },
 ]
 
@@ -54,6 +55,7 @@ const OTHER_PAGE_TITLES = [
   { href: '/shared-dashboards', label: 'Dashboards' },
   { href: '/data-sources', label: 'Data Sources' },
   { href: '/settings', label: 'Settings' },
+  { href: '/notifications', label: 'Notifications' },
   HELP_LINK,
   { href: '/admin', label: 'Admin' },
   { href: '/login', label: 'Login' },

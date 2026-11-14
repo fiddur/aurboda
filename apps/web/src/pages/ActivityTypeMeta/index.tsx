@@ -24,6 +24,7 @@ import { CHART_PRIMARY } from '../../theme'
 import { toDisplayName } from '../../utils/displayName'
 import { suggestEmoji } from '../../utils/emojiLookup'
 import { ItemGroupsSection } from './ItemGroupsSection'
+import { MuscleGroupSection } from './MuscleGroupSection'
 import {
   addItemField,
   removeItemField,
@@ -32,6 +33,7 @@ import {
   validSchemaFields,
 } from './schemaFields'
 import { SessionsSection } from './SessionsSection'
+import { UnmappedItemValuesSection } from './UnmappedItemValuesSection'
 import './style.css'
 
 const LOOKBACK_OPTIONS = [
@@ -792,13 +794,15 @@ export function ActivityTypeMeta() {
       <SessionsSection name={name} fields={categoricalFields(typeDef?.data_schema)} />
 
       {categoricalItemFields(typeDef?.data_schema).map(({ list, item }) => (
-        <ItemGroupsSection
-          key={itemPath(list, item)}
-          name={name}
-          path={itemPath(list, item)}
-          list={list}
-          item={item}
-        />
+        <Fragment key={itemPath(list, item)}>
+          <ItemGroupsSection name={name} path={itemPath(list, item)} list={list} item={item} />
+          {item.catalog === 'exercises' && (
+            <>
+              <MuscleGroupSection name={name} path={itemPath(list, item)} />
+              <UnmappedItemValuesSection name={name} path={itemPath(list, item)} />
+            </>
+          )}
+        </Fragment>
       ))}
 
       <SettingsSection

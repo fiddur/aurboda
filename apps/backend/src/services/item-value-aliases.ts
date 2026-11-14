@@ -1,4 +1,5 @@
 import type {
+  DataFieldCatalog,
   DataSchemaDefinition,
   ItemValueAlias,
   MergeItemValuesBody,
@@ -14,6 +15,7 @@ import {
   getActivityTypeDefinition,
   type ItemValueAliasRow,
   listItemValueAliases,
+  moveItemValueIdentity,
   repointItemValueAliases,
   repointSharedExercises,
   rewriteItemValue,
@@ -32,6 +34,10 @@ export interface ItemPath {
   key: string
 }
 
+export interface CatalogItemPath extends ItemPath {
+  catalog: DataFieldCatalog
+}
+
 const isObject = (v: unknown): v is Data => typeof v === 'object' && v !== null && !Array.isArray(v)
 
 /** `path` as `{ list, key }` when it names a categorical item field of a list field in `schema`. */
@@ -44,6 +50,18 @@ export const categoricalItemPath = (
   const list = schema?.fields.find((f) => f.name === field && f.type === 'list')
   const item = list?.item_fields?.find((f) => f.name === key)
   return item?.is_categorical ? { key, list: field } : undefined
+}
+
+/** `path` as `{ list, key, catalog }` when it names an item field of a list field that has a catalogue. */
+export const catalogItemPath = (
+  schema: DataSchemaDefinition | null | undefined,
+  path: string,
+): CatalogItemPath | undefined => {
+  const { field, key } = parseFieldPath(path)
+  if (key === undefined) return undefined
+  const list = schema?.fields.find((f) => f.name === field && f.type === 'list')
+  const catalog = list?.item_fields?.find((f) => f.name === key)?.catalog
+  return catalog ? { catalog, key, list: field } : undefined
 }
 
 /**
@@ -103,11 +121,26 @@ const resolveItemPath = async (
   return { data: path, success: true }
 }
 
+export const resolveCatalogItemPath = async (
+  user: string,
+  activityType: string,
+  field: string,
+): Promise<ItemValueResult<CatalogItemPath>> => {
+  const definition = await getActivityTypeDefinition(user, activityType)
+  if (!definition) return { error: `Activity type "${activityType}" not found`, success: false }
+  const path = catalogItemPath(definition.data_schema, field)
+  if (!path) {
+    return { error: `"${field}" is not a catalogue-backed item field of "${activityType}"`, success: false }
+  }
+  return { data: path, success: true }
+}
+
 /**
  * Rewrite `source` to `target` in the item path across the type and its descendants. Unless the
  * two differ only in spelling, `source` becomes an alias of `target`: aliases that pointed at
  * `source` follow it to `target`, and an alias spelled like `target` is dropped since `target`
- * is a value again. Shares of `source` move to `target` with it.
+ * is a value again. Shares of `source` move to `target` with it, and so does its catalogue
+ * identity unless `target` has its own.
  */
 export const mergeItemValues = async (
   user: string,
@@ -132,6 +165,7 @@ export const mergeItemValues = async (
   const activitiesUpdated = await rewriteItemValue(user, types, list, key, source, target)
   await repointItemValueAliases(user, body.field, source, target)
   await repointSharedExercises(user, types, body.field, source, target)
+  await moveItemValueIdentity(user, body.field, source, target)
   if (spellingOnly) return { data: { activities_updated: activitiesUpdated, alias: null }, success: true }
 
   await deleteItemValueAliasesByAlias(user, body.field, target)

@@ -21,7 +21,9 @@ A bottom navigation bar (`ui/screens/MainScreen.kt`, tabs in `AppState.kt`'s
 There are far more web pages than fit on a bottom bar, so the **More** tab is a
 hub (`MoreScreen.kt`, `moreGroups`): a grouped list where each entry opens the
 corresponding web page in an embedded WebView (Timeline, Data, Chart, Meals,
-Reports, Settings, Data sources, Help & support, …). The two native-only screens — **Live**
+Reports, Settings, Data sources, Help & support, …). Its first group, **Inbox**, holds
+**Notifications** (the web `/notifications` page, see
+[Notifications](features/notifications.md)). The two native-only screens — **Live**
 sensors (BLE) and **Account** (server URL, logout) — also live in the hub.
 Selecting an entry pushes it in place; the system back gesture returns to the
 hub (after any embedded page has exhausted its own WebView history), and so does
@@ -40,31 +42,52 @@ the tab already showing (`AppState.open`) switches tabs without reloading it.
 A tab can move from embedded to native later (e.g. if the feed becomes a heavily
 used, interaction-rich screen) without affecting the other tabs.
 
-## Post notifications
+## Notifications
 
-A native background poller (`NotificationWorker`, a periodic WorkManager job)
-notifies the user when accounts they follow post to their home timeline. Each
-run fetches `/feed/following` and `/feed/timeline`, then the pure, unit-tested
-`decideNotifications` (`PostNotifications.kt`) picks which posts to notify: those
-newer than a stored high-water mark (judged by `received_at` — when the server
-stored the post — since `published_at` arrives out of order after federation
-retries), from a followed actor whose server-side `notify_on_post` flag is on
-(toggled per-account on the web Feed page), and not a reply to someone else —
-posts the user is **involved** in (a reply to their own post, a Mention of
-them) notify whoever wrote them (#1060). The first
-run only records the high-water mark, so enabling the feature doesn't dump the
-backlog. The user opts in with the **"Notify me about new posts"** switch on the
-Account screen, which requests `POST_NOTIFICATIONS` (Android 13+) and
-schedules/cancels the worker; tapping a notification opens the Feed tab. When
-the toggle is on but Android's app-level notification permission is off (the
-worker would silently skip posting), the Account screen shows a warning with a
-button into the system notification settings, re-checked on every resume.
-On launch, `AutoEnablePostNotifications` reconciles the Feed page's
-per-account bells with the device: if any bell is on and the user never made
-an explicit on/off choice, it requests the permission and starts the poller —
-so an active bell can't silently mean nothing. An explicit "off" is never
-overridden, and a denied request records "off" so the user isn't re-prompted
-every launch.
+The phone shows the server's [notifications](features/notifications.md) that are meant for
+push. The server decides what is pushed: each notification type has its own **Push** switch,
+set on the web Settings page under Notifications. The app only delivers them.
+
+**The device switch.** "Notifications on this device" on the Account screen turns delivery on
+or off for this phone. Turning it on requests `POST_NOTIFICATIONS` (Android 13+) and schedules
+the poller; "Choose which kinds" opens the embedded `/settings#notifications` page. When the
+switch is on but Android's app-level notification permission is off (nothing would be shown),
+the Account screen shows a warning with a button into the system notification settings,
+re-checked on every resume. On launch, `AutoEnablePostNotifications` turns the switch on by
+itself, requesting the permission, when the user never made an explicit choice and the server
+pushes at least one type (`GET /notifications/types`, any `push`). An explicit "off" is never
+overridden, and a denied request records "off" so the user isn't re-prompted every launch.
+
+**The poll.** There is no FCM (the app ships on F-Droid): `NotificationWorker` is a periodic
+WorkManager job, every 15 minutes, that reads `GET /notifications?push_only=true&unread_only=true`
+after a stored high-water mark. The pure, unit-tested `decideCentralNotifications`
+(`CentralNotifications.kt`) picks the notifications created after the mark; the first run only
+records it, so turning delivery on doesn't dump the backlog (the old post poller's mark seeds
+it after an upgrade, so nothing that arrived since its last run is lost). After a background
+sync succeeds, `SyncWorker` asks for one extra poll a minute later (`NotificationWorker.checkSoon`):
+an auto-share announces itself shortly after the activity lands and shares after the rule's
+wait, 10 minutes by default, which is shorter than the poll interval.
+
+**Showing one.** Each notification shows its title and body on a channel per notification
+group (`notifications_<group>`, named after the group, e.g. "Feed"; a type the server lists
+without a group, or one unknown to it, goes to "Other"), so the user can mute a group in
+Android's settings. Tapping it opens its link — `/feed` on the Feed tab, any other site path as
+an embedded page in the More tab, `/notifications` when there is none — and marks it read
+(`EXTRA_NOTIFICATION_ID`, validated as a UUID since the activity is exported). The
+notification's action buttons (e.g. "Don't share" on a pending auto-share) run on the server
+through `NotificationActionReceiver` (`POST /notifications/{id}/actions/{key}`); on success the
+notification goes away, on failure it is replaced by one saying the action failed.
+
+**Unread badge.** The More tab's icon and its Notifications row show the number of unread in-app
+notifications (`unread_count`, "9+" above nine), refreshed when the app resumes, when More is
+selected, and when a page opened from More is closed.
+
+**Older servers.** A server without `/notifications` answers 404. Then the worker falls back to
+the old post notifier: it fetches `/feed/following` and `/feed/timeline` and `decideNotifications`
+(`PostNotifications.kt`) notifies posts newer than its own high-water mark (judged by
+`received_at`), from a followed actor whose `notify_on_post` bell is on, and not a reply to
+someone else, plus posts the user is involved in (a reply to their post, a Mention of them).
+Tapping one opens the Feed tab. Auto-enable likewise falls back to "any bell is on".
 
 ## Embedded web views
 

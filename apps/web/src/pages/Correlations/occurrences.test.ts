@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { describeOccurrences, formatAvgDuration } from './occurrences'
+import { describeImpactMeta, describeOccurrences, formatAvgDuration } from './occurrences'
 
 describe('formatAvgDuration', () => {
   test('formats a duration', () => {
@@ -21,5 +21,16 @@ describe('describeOccurrences', () => {
 
   test('keeps only the count when there is no duration', () => {
     expect(describeOccurrences(7, undefined)).toBe('7×')
+  })
+})
+
+describe('describeImpactMeta', () => {
+  test('uses the singular for one occurrence', () => {
+    expect(describeImpactMeta(1, 29)).toBe('1 occurrence, avg 29 min')
+  })
+
+  test('uses the plural otherwise', () => {
+    expect(describeImpactMeta(3, 29)).toBe('3 occurrences, avg 29 min')
+    expect(describeImpactMeta(0, undefined)).toBe('0 occurrences')
   })
 })

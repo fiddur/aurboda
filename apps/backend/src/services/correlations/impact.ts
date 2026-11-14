@@ -23,7 +23,8 @@ export interface BinnedSeries {
 }
 
 export type MetricKey = 'hrv' | 'hr' | 'stress'
-export type MetricSeries = Record<MetricKey, BinnedSeries>
+/** The three fixed series under their MetricKey, plus any extra metric under its own name. */
+export type MetricSeries = Record<MetricKey, BinnedSeries> & Record<string, BinnedSeries>
 
 export type TimelineBucket = 'before30min' | 'before15min' | 'during' | 'after15min' | 'after30min'
 export type ImpactTimeline = Record<TimelineBucket, TimeWindowStats>
@@ -35,9 +36,9 @@ export interface BucketOffsets {
 }
 
 export interface ImpactSummary {
-  timeline: Record<MetricKey, ImpactTimeline>
+  timeline: Record<MetricKey, ImpactTimeline> & Record<string, ImpactTimeline>
   buckets: ImpactBucket[]
-  effects: Record<MetricKey, WindowEffect>
+  effects: Record<MetricKey, WindowEffect> & Record<string, WindowEffect>
 }
 
 const METRIC_KEYS: MetricKey[] = ['hrv', 'hr', 'stress']
@@ -237,15 +238,30 @@ const sessionWindows = (sessions: Interval[], windowMinutes: number): SessionWin
 
 const meanOrNull = (values: number[]): number | null => (values.length > 0 ? mean(values) : null)
 
+const EMPTY_SERIES: BinnedSeries = { times: [], values: [] }
+
+/** Extra metric names, deduplicated, without the MetricKey names the fixed three occupy in a MetricSeries. */
+export const extraMetricKeys = (metrics: string[]): string[] =>
+  [...new Set(metrics)].filter((metric) => !(METRIC_KEYS as string[]).includes(metric))
+
+/**
+ * Summarizes the three fixed metrics and every key in `extraKeys`; buckets carry the extras under `metrics`.
+ * With `subset`, only those sessions are summarized, but every session still clips its neighbours' windows.
+ */
 export const summarizeImpact = (
   sessions: Interval[],
   series: MetricSeries,
   windowMinutes: number,
+  extraKeys: string[] = [],
+  subset?: readonly number[],
 ): ImpactSummary => {
-  const windows = sessionWindows(sessions, windowMinutes)
-  const between = (metric: MetricKey, { end, start }: Interval) => valuesBetween(series[metric], start, end)
+  const all = sessionWindows(sessions, windowMinutes)
+  const windows = subset ? subset.map((i) => all[i]) : all
+  const between = (metric: string, { end, start }: Interval) =>
+    valuesBetween(series[metric] ?? EMPTY_SERIES, start, end)
+  const keys: string[] = [...METRIC_KEYS, ...extraMetricKeys(extraKeys)]
 
-  const summarizeMetric = (metric: MetricKey) => ({
+  const summarizeMetric = (metric: string) => ({
     effect: pairedEffect(
       windows.map((w) => meanOrNull(between(metric, w.before))),
       windows.map((w) => meanOrNull(between(metric, w.after))),
@@ -258,22 +274,27 @@ export const summarizeImpact = (
     ) as ImpactTimeline,
   })
 
-  const summaries = Object.fromEntries(METRIC_KEYS.map((m) => [m, summarizeMetric(m)])) as Record<
-    MetricKey,
-    ReturnType<typeof summarizeMetric>
-  >
-  const bucketStats = (metric: MetricKey, bucket: BucketOffsets) =>
+  const summaries = keys.map((key) => [key, summarizeMetric(key)] as const)
+  const bucketStats = (metric: string, bucket: BucketOffsets) =>
     windowStats(windows.map((w) => between(metric, w.clip(bucket))))
+  const extras = keys.slice(METRIC_KEYS.length)
   const buckets = timelineBuckets(windowMinutes).map((bucket) => ({
     ...bucket,
     hr: bucketStats('hr', bucket),
     hrv: bucketStats('hrv', bucket),
+    ...(extras.length > 0
+      ? { metrics: Object.fromEntries(extras.map((metric) => [metric, bucketStats(metric, bucket)])) }
+      : {}),
     stress: bucketStats('stress', bucket),
   }))
   return {
     buckets,
-    effects: { hr: summaries.hr.effect, hrv: summaries.hrv.effect, stress: summaries.stress.effect },
-    timeline: { hr: summaries.hr.timeline, hrv: summaries.hrv.timeline, stress: summaries.stress.timeline },
+    effects: Object.fromEntries(
+      summaries.map(([key, summary]) => [key, summary.effect]),
+    ) as ImpactSummary['effects'],
+    timeline: Object.fromEntries(
+      summaries.map(([key, summary]) => [key, summary.timeline]),
+    ) as ImpactSummary['timeline'],
   }
 }
 
@@ -282,6 +303,10 @@ export const binMetricSeries = (
   hrData: [Date, number][],
   stressData: [Date, number][],
 ): MetricSeries => ({ hr: binSeries(hrData), hrv: binSeries(hrvData), stress: binSeries(stressData) })
+
+/** Bins each extra metric's raw points under its own name, ready to merge into a MetricSeries. */
+export const binExtraSeries = (raw: Record<string, [Date, number][]>): Record<string, BinnedSeries> =>
+  Object.fromEntries(Object.entries(raw).map(([metric, data]) => [metric, binSeries(data)]))
 
 export const activityInterval = (activity: { start_time: Date; end_time?: Date | null }): Interval => {
   const start = activity.start_time.getTime()

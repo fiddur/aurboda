@@ -5,9 +5,12 @@ import type { WindowEffect } from '../../state/api'
 export const SIGNIFICANCE_LEVEL = 0.05
 const MIN_PAIRS_FOR_TEST = 3
 
-export const getDeltaClass = (value: number | null, inverted: boolean): string => {
-  if (value === null || value === 0) return ''
-  const isGood = inverted ? value < 0 : value > 0
+/** Which way is good for a metric: up (HRV), down (stress), or neutral when it is not known. */
+export type MetricDirection = 'up' | 'down' | 'neutral'
+
+export const getDeltaClass = (value: number | null, direction: MetricDirection): string => {
+  if (value === null || value === 0 || direction === 'neutral') return ''
+  const isGood = direction === 'down' ? value < 0 : value > 0
   return isGood ? 'positive' : 'negative'
 }
 
@@ -29,10 +32,11 @@ const formatMean = (value: number | null): string => (value === null ? '--' : va
 export const isClearChange = (effect: WindowEffect): boolean =>
   effect.p_value !== null && effect.p_value < SIGNIFICANCE_LEVEL
 
-export const changeClass = (effect: WindowEffect, inverted: boolean): string => {
+export const changeClass = (effect: WindowEffect, direction: MetricDirection): string => {
   if (effect.change === null) return ''
   if (!isClearChange(effect)) return 'muted'
-  return getDeltaClass(effect.change, inverted) || 'muted'
+  if (direction === 'neutral') return ''
+  return getDeltaClass(effect.change, direction) || 'muted'
 }
 
 const formatPValue = (p: number): string => (p < 0.001 ? 'p < 0.001' : `p = ${p.toFixed(3)}`)

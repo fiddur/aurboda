@@ -273,7 +273,7 @@ category filters to runs carrying that run category (low_hr, intervals, long, te
 
   server.tool(
     'list_activity_field_values',
-    'The values a data field (e.g. session_name) has taken across an activity type and its subtypes, most recently used first, with how often each was used. For reusing an existing value when filling the field instead of spelling a new variant. field may be an item path such as sets.exercise: the values of that key across the list items, compared trimmed and case-insensitively, spelled as most recently used, counted per session.',
+    'The values a data field (e.g. session_name) has taken across an activity type and its subtypes, most recently used first, with how often each was used. For reusing an existing value when filling the field instead of spelling a new variant. field may be an item path such as sets.exercise: the values of that key across the list items, compared trimmed and case-insensitively, spelled as most recently used, counted per session. For a catalogue-backed item path (sets.exercise) each value also carries catalog_key and state (user, catalog, dismissed or unmapped), and the result carries catalog and catalog_version.',
     { activity_type: activityTypeSchema, ...activityFieldValuesQuerySchema.shape, tz: tzSchema },
     async ({ activity_type, field, tz }) => {
       const values = await queryActivityFieldValues(user, activity_type, field)
@@ -294,7 +294,7 @@ category filters to runs carrying that run category (low_hr, intervals, long, te
 
   server.tool(
     'get_activity_item_history',
-    'For one activity (plain or merged: id), its list items grouped by an item value such as the exercise of each set (field=sets.exercise): per value the items, their measures (volume, e1rm, max_weight, set_count, max_time, total_reps, max_reps), which of those are records against every earlier session with that value, the previous session with it, and per measure the decaying-best trend (as on the exercise page, trend_half_life_days) just before and after this session. Totals over the whole session.',
+    `For one activity (plain or merged: id), its list items grouped by an item value such as the exercise of each set (field=sets.exercise): per value the items, their measures (volume, e1rm, max_weight, set_count, max_time, total_reps, max_reps), which of those are records against every earlier session with that value, the previous session with it, and per measure the decaying-best trend (as on the exercise page, trend_half_life_days) just before and after this session. Totals over the whole session. When the item field is backed by the exercise catalogue, muscle_groups splits the session's working sets per muscle group (set_count, volume, total_reps, each set weighted by the exercise's recruitment: a bench press set is 1 for the chest and 0.5 for the shoulders; exercises not in the catalogue under null), most sets first.`,
     { id: z.string().describe('Activity ID'), ...activityItemHistoryQuerySchema.shape, tz: tzSchema },
     async ({ id, field, tz }) => {
       const history = await queryActivityItemHistory(user, id, field)
@@ -459,7 +459,7 @@ Each play has url, title, artist, album, player, device, started_at/ended_at, pl
 
   server.tool(
     'query_locations',
-    'Query location/place visits for a time range. Returns places visited with names, coordinates, duration, and source (named, detected, or owntracks). With last_known_hours, a range that starts before its first GPS fix gets the place of the last earlier fix, marked inferred_from.',
+    'Query location/place visits for a time range. Returns places visited with names, coordinates, duration, and source (named, detected, owntracks or home_assistant region, or unknown). With last_known_hours, a range that starts before its first GPS fix gets the place of the last earlier fix, marked inferred_from.',
     { ...locationsQuerySchema.shape, tz: tzSchema },
     async ({ end, last_known_hours, start, tz }) => {
       const places = await queryLocations(user, new Date(start), new Date(end), {

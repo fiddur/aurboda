@@ -10,8 +10,10 @@ vi.mock('../../db/index.ts', async (importOriginal) => ({
   expandActivityTypes: vi.fn().mockImplementation((_user: string, types: string[]) => Promise.resolve(types)),
   getActivities: vi.fn(),
   getActivityById: vi.fn(),
+  getActivityTypeDefinition: vi.fn(),
   getActivityTypeDefinitions: vi.fn().mockResolvedValue([]),
   getOverlappingActivities: vi.fn(),
+  listItemValueIdentities: vi.fn(),
 }))
 
 const at = (iso: string) => new Date(iso)
@@ -52,6 +54,65 @@ describe('queryActivityItemHistory', () => {
     vi.clearAllMocks()
     vi.mocked(db.getActivityById).mockResolvedValue(current as Activity)
     vi.mocked(db.getOverlappingActivities).mockResolvedValue([current as Activity])
+    vi.mocked(db.getActivityTypeDefinition).mockResolvedValue(null)
+    vi.mocked(db.listItemValueIdentities).mockResolvedValue([])
+  })
+
+  test('a catalogue-backed field splits the working sets per muscle group, most sets first', async () => {
+    vi.mocked(db.getActivities).mockResolvedValue([])
+    vi.mocked(db.getActivityTypeDefinition).mockResolvedValue({
+      aliases: [],
+      color: '#000000',
+      data_schema: {
+        fields: [
+          {
+            item_fields: [{ catalog: 'exercises', is_categorical: true, name: 'exercise', type: 'string' }],
+            name: 'sets',
+            type: 'list',
+          },
+        ],
+      },
+      display_category: 'exercise',
+      display_name: 'Strength',
+      is_builtin: true,
+      name: 'strength_training',
+      show_on_timeline: true,
+    })
+    vi.mocked(db.listItemValueIdentities).mockResolvedValue([
+      {
+        catalog_key: 'barbell_bench_press',
+        created_at: new Date(0),
+        field: 'sets.exercise',
+        id: 'i1',
+        updated_at: new Date(0),
+        value: 'Bench Press',
+      },
+    ])
+
+    const history = await queryActivityItemHistory('u', 'cur', 'sets.exercise')
+
+    expect(db.getActivityTypeDefinition).toHaveBeenCalledWith('u', 'strength_training')
+    expect(history?.muscle_groups).toEqual([
+      { measures: { set_count: 2, total_reps: 10, volume: 810 }, muscle_group: 'chest', name: 'Chest' },
+      {
+        measures: { set_count: 2, total_reps: 10, volume: 810 },
+        muscle_group: 'shoulders',
+        name: 'Shoulders',
+      },
+      { measures: { set_count: 2, total_reps: 10, volume: 810 }, muscle_group: 'triceps', name: 'Triceps' },
+      { measures: { set_count: 1 }, muscle_group: 'abdominals', name: 'Abdominals' },
+      {
+        measures: { set_count: 0.5, total_reps: 2.5, volume: 202.5 },
+        muscle_group: 'forearms',
+        name: 'Forearms',
+      },
+    ])
+  })
+
+  test('no muscle groups for a field without a catalogue', async () => {
+    vi.mocked(db.getActivities).mockResolvedValue([])
+    const history = await queryActivityItemHistory('u', 'cur', 'sets.exercise')
+    expect(history).not.toHaveProperty('muscle_groups')
   })
 
   test('null when the activity does not exist', async () => {
