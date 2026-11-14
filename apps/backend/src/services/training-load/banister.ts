@@ -13,6 +13,7 @@
 import type {
   BiologicalSex,
   RecoveryZones,
+  TrainingImpulseBasis,
   TrainingLoadPoint,
   TrainingLoadSettings,
   WorkoutTrimp,
@@ -134,17 +135,17 @@ export const processExercise = (
   if (durationMinutes <= 0) return null
 
   const avgHr = getAverageHrForSession(ex.start_time, sessionEnd, hrSamples)
+  const fromHr = avgHr !== null && avgHr > hrRest
 
-  const trimp =
-    avgHr && avgHr > hrRest
-      ? calculateTrimp({
-          avg_hr: avgHr,
-          duration_minutes: durationMinutes,
-          hr_max: hrMax,
-          hr_rest: hrRest,
-          k_factor: kFactor,
-        })
-      : durationMinutes * 0.5
+  const trimp = fromHr
+    ? calculateTrimp({
+        avg_hr: avgHr,
+        duration_minutes: durationMinutes,
+        hr_max: hrMax,
+        hr_rest: hrRest,
+        k_factor: kFactor,
+      })
+    : durationMinutes * 0.5
 
   let hourCursor = floorToHour(ex.start_time)
   while (hourCursor < sessionEnd) {
@@ -166,6 +167,22 @@ export const processExercise = (
     start_time: ex.start_time.toISOString(),
     title: ex.title ?? (ex.data?.exerciseType != null ? String(ex.data.exerciseType) : undefined),
     trimp: Math.round(trimp * 100) / 100,
+    trimp_basis: fromHr ? 'hr' : 'duration_estimate',
+  }
+}
+
+const round2 = (value: number): number => Math.round(value * 100) / 100
+
+export const summarizeImpulseBasis = (workouts: readonly WorkoutTrimp[]): TrainingImpulseBasis => {
+  const estimated = workouts.filter((w) => w.trimp_basis === 'duration_estimate')
+  const trimp = workouts.reduce((sum, w) => sum + w.trimp, 0)
+  const estimatedTrimp = estimated.reduce((sum, w) => sum + w.trimp, 0)
+  return {
+    estimated_share: trimp > 0 ? Math.round((estimatedTrimp / trimp) * 1000) / 1000 : null,
+    estimated_trimp: round2(estimatedTrimp),
+    estimated_workouts: estimated.length,
+    trimp: round2(trimp),
+    workouts: workouts.length,
   }
 }
 

@@ -28,7 +28,7 @@ Shown as a **line** that's green above zero and red below, with a dashed zero re
 
 A per-workout load score computed from heart rate intensity and duration. Harder, longer workouts produce higher TRIMP. The formula accounts for the exponential nature of training stress -- time at high heart rates contributes disproportionately more than time at low heart rates.
 
-When heart rate data isn't available for a workout, TRIMP defaults to a simple duration-based estimate.
+When a workout has no usable heart rate (none recorded during it, or an average at or below your resting HR), its TRIMP is a duration-based estimate instead: 0.5 per minute. The estimate feeds CTL, ATL and TSB like a measured value, so the API marks it: every workout has a `trimp_basis` (`hr` or `duration_estimate`), and the response's `estimated_impulse` counts the estimated workouts in the requested range and their share of the workout TRIMP (`estimated_share`, 0 to 1). A high share means fitness and fatigue are mostly guessed. The share covers the workouts in the range; CTL also carries load from the weeks before it.
 
 ### Activity Impulse
 
@@ -57,7 +57,7 @@ In horizontal mode, the training load track shows within the Metrics lane:
 - **TSB line**: Green when fresh, red when fatigued.
 - **Recovery zone bands**: Colored backgrounds (after bootstrapping).
 
-Hovering shows a tooltip with fitness (CTL), fatigue (ATL), form (TSB with Fresh/Fatigued label), impulse values, recovery zone, and details of nearby workouts (title, duration, TRIMP, average HR).
+Hovering shows a tooltip with fitness (CTL), fatigue (ATL), form (TSB with Fresh/Fatigued label), impulse values, recovery zone, and details of nearby workouts (title, duration, TRIMP, average HR, or "estimated from duration" when the TRIMP is a duration estimate).
 
 ## Bootstrapping Period
 

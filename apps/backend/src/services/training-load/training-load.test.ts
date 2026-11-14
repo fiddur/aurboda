@@ -16,6 +16,7 @@ import {
   recomputeImpulseBuckets,
   resolveHrMax,
   resolveHrRest,
+  summarizeImpulseBasis,
   type TrainingLoadDeps,
 } from './index.ts'
 
@@ -465,6 +466,43 @@ const makeActivity = (id: string, startStr: string, endStr: string, title?: stri
   title,
 })
 
+describe('summarizeImpulseBasis', () => {
+  const workout = (trimp: number, trimp_basis: 'hr' | 'duration_estimate') => ({
+    date: '2024-01-01',
+    duration_minutes: 30,
+    end_time: '2024-01-01T10:30:00.000Z',
+    start_time: '2024-01-01T10:00:00.000Z',
+    trimp,
+    trimp_basis,
+  })
+
+  test('counts the estimated workouts and their share of the workout TRIMP', () => {
+    expect(
+      summarizeImpulseBasis([
+        workout(60, 'hr'),
+        workout(15, 'duration_estimate'),
+        workout(25, 'duration_estimate'),
+      ]),
+    ).toEqual({
+      estimated_share: 0.4,
+      estimated_trimp: 40,
+      estimated_workouts: 2,
+      trimp: 100,
+      workouts: 3,
+    })
+  })
+
+  test('has no share without workout TRIMP', () => {
+    expect(summarizeImpulseBasis([])).toEqual({
+      estimated_share: null,
+      estimated_trimp: 0,
+      estimated_workouts: 0,
+      trimp: 0,
+      workouts: 0,
+    })
+  })
+})
+
 describe('computeTrainingLoad', () => {
   const makeDeps = (overrides: Partial<TrainingLoadDeps> = {}): TrainingLoadDeps => ({
     bootstrappedFrom: new Map(),
@@ -530,6 +568,7 @@ describe('computeTrainingLoad', () => {
     expect(result.workouts[0]!.avg_hr).toBeCloseTo(150)
     expect(result.workouts[0]!.title).toBe('Running')
     expect(result.workouts[0]!.duration_minutes).toBe(60)
+    expect(result.workouts[0]!.trimp_basis).toBe('hr')
 
     const postWorkout = result.points.filter((p) => p.time >= '2024-01-03T10:00:00.000Z')
     expect(postWorkout.some((p) => p.atl > 0)).toBe(true)
@@ -553,6 +592,33 @@ describe('computeTrainingLoad', () => {
     // Fallback: 30 min × 0.5 = 15
     expect(result.workouts[0].trimp).toBe(15)
     expect(result.workouts[0].avg_hr).toBeUndefined()
+    expect(result.workouts[0].trimp_basis).toBe('duration_estimate')
+    expect(result.estimated_impulse).toEqual({
+      estimated_share: 1,
+      estimated_trimp: 15,
+      estimated_workouts: 1,
+      trimp: 15,
+      workouts: 1,
+    })
+  })
+
+  test('a workout with HR only at or below resting is estimated from duration', async () => {
+    const exercises = [makeActivity('a1', '2024-01-03T10:00:00Z', '2024-01-03T10:30:00Z', 'Yoga')]
+    const deps = makeDeps({
+      getExercises: async () => exercises,
+      getHrSamplesForWindows: async (_user, windows) =>
+        windows.map(() => [[new Date('2024-01-03T10:10:00Z'), 55]] as [Date, number][]),
+    })
+
+    const result = await computeTrainingLoad(
+      deps,
+      'testuser',
+      new Date('2024-01-01T00:00:00Z'),
+      new Date('2024-01-07T00:00:00Z'),
+    )
+
+    expect(result.workouts[0].avg_hr).toBe(55)
+    expect(result.workouts[0].trimp_basis).toBe('duration_estimate')
   })
 
   test('applies effective settings from user configuration', async () => {

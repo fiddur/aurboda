@@ -23,6 +23,7 @@ import {
   resolveHrMax,
   resolveHrRest,
   type ResolvedTrainingLoadSettings,
+  summarizeImpulseBasis,
 } from './banister.ts'
 import { getOrCacheMaxObservedHr } from './hr-cache.ts'
 import { exerciseWindow, recomputeImpulseBuckets } from './recompute.ts'
@@ -216,6 +217,7 @@ export const computeTrainingLoad = async (
 
   return {
     bootstrapping,
+    estimated_impulse: summarizeImpulseBasis(workoutList),
     points,
     settings: {
       ...settings,
