@@ -1,6 +1,6 @@
 # Exercise catalogue: sources and attribution
 
-`exercise-catalog.json` is built from two open datasets by the scripts in `build/`. See
+`exercise-catalog.json` is built from two open datasets and Garmin Connect's exercise list by the scripts in `build/`. See
 [docs/features/exercise-catalog.md](../../../../../docs/features/exercise-catalog.md) for how.
 
 ## body.build
@@ -34,3 +34,19 @@
   mapped to Aurboda's vocabulary (primary muscle weight 1, secondary 0.5; `strongman`, `powerlifting`
   and `olympic weightlifting` become `strength`); keys derived from the names; entries merged with
   body.build where `links.json` links them, the free-exercise-db name then becoming an alias.
+
+## Garmin Connect exercise list
+
+- URLs: https://connect.garmin.com/web-data/exercises/Exercises.json and
+  https://connect.garmin.com/web-translations/exercise_types/exercise_types.properties
+- Fetched: 2026-11-13
+- License: none stated
+- Taken: the category and exercise identifiers (those of the FIT profile), as lower-case FIT keys
+  `<category>/<name>`, and the English display names (`sources/garmin.json`). Not taken: the primary
+  and secondary muscles, or anything else of an exercise.
+- Changed: the categories `RUN`, `RUN_INDOOR`, `BIKE_OUTDOOR`, `INDOOR_BIKE`, `ELLIPTICAL`,
+  `STAIR_STEPPER`, `FLOOR_CLIMB` and `CARDIO` left out; exercises that are the same as a body.build or
+  free-exercise-db entry merged into it, their names becoming aliases where they differ; "Weighted" variants merged into
+  the entry of the unweighted exercise; two names overridden (`crunch/flutter_kicks` to "Supine
+  Flutter Kicks", `sled/pull` to "Sled Pull"); muscles and equipment of the Garmin-only entries
+  assigned by Aurboda (`garmin-links.json`).

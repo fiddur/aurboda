@@ -1,8 +1,11 @@
 import {
+  exerciseCategories,
   type ExerciseCatalogSameAs,
+  type ExerciseCategory,
   type ExerciseEquipment,
   type ExerciseMuscle,
   exerciseEquipment,
+  exerciseMuscles,
   type StoredExerciseCatalog,
   type StoredExerciseCatalogEntry,
 } from '@aurboda/api-spec'
@@ -10,6 +13,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 
 import type { BodybuildExercise, BodybuildSourceFile } from './convert-bodybuild.ts'
 import type { FreeExercise, FreeExerciseSourceFile } from './trim-free-exercise-db.ts'
+import type { GarminSourceFile } from './trim-garmin.ts'
 
 import { normalizeExerciseName } from '../../../services/exercise-catalog.ts'
 import { formatJson } from './json.ts'
@@ -22,6 +26,18 @@ export interface CatalogLinks {
   name_overrides: Record<string, string>
   version: string
   wikidata: Record<string, string>
+}
+
+export interface GarminLinks {
+  entries: Record<
+    string,
+    { category: ExerciseCategory; equipment: string[]; muscles: Record<string, number> }
+  >
+  /** FIT key → catalogue key of the body.build or free-exercise-db entry that is the same exercise. */
+  links: Record<string, string>
+  name_overrides: Record<string, string>
+  /** FIT key → FIT key of the exercise whose entry it shares. */
+  variants: Record<string, string>
 }
 
 const UPPER_TOKENS = new Set(['bsq', 'ez', 'rdl', 'trx'])
@@ -50,6 +66,8 @@ export const bodybuildDisplayName = (id: string): string =>
 
 export const deriveKey = (name: string): string => {
   const slug = name
+    .normalize('NFD')
+    .replaceAll(/\p{M}/gu, '')
     .toLowerCase()
     .replaceAll('°', '')
     .replaceAll('&', ' and ')
@@ -189,19 +207,151 @@ const assertCuratedKeysExist = (entries: StoredExerciseCatalogEntry[], links: Ca
   }
 }
 
+const byKey = <T extends { key: string }>(a: T, b: T) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0)
+
+const isMuscle = (value: string): value is ExerciseMuscle =>
+  (exerciseMuscles as readonly string[]).includes(value)
+
+const garminLinkProblems = (
+  garmin: GarminSourceFile,
+  garminLinks: GarminLinks,
+  keys: Set<string>,
+): string[] => {
+  const sourceFits = new Set(garmin.entries.map((e) => e.fit))
+  const sections = ['links', 'variants', 'entries'] as const
+  const sectionsOf = (fit: string) => sections.filter((section) => fit in garminLinks[section])
+  const placement = garmin.entries.flatMap(({ fit }) => {
+    const found = sectionsOf(fit)
+    if (found.length === 0) return [`${fit} is in none of links, variants and entries`]
+    return found.length > 1 ? [`${fit} is in more than one of ${found.join(', ')}`] : []
+  })
+  const unknownFits = [...sections, 'name_overrides' as const].flatMap((section) =>
+    Object.keys(garminLinks[section])
+      .filter(
+        (fit) => !sourceFits.has(fit) || (section === 'name_overrides' && !(fit in garminLinks.entries)),
+      )
+      .map(
+        (fit) =>
+          `${section}.${fit} is not a ${section === 'name_overrides' ? 'Garmin-only entry' : 'source FIT key'}`,
+      ),
+  )
+  const links = Object.entries(garminLinks.links)
+    .filter(([, key]) => !keys.has(key))
+    .map(([fit, key]) => `links.${fit} names unknown entry '${key}'`)
+  const variants = Object.entries(garminLinks.variants)
+    .filter(([, base]) => !(base in garminLinks.links) && !(base in garminLinks.entries))
+    .map(([fit, base]) => `variants.${fit} has base '${base}', which is in neither links nor entries`)
+  const entries = Object.entries(garminLinks.entries).flatMap(([fit, { category, equipment, muscles }]) => [
+    ...((exerciseCategories as readonly string[]).includes(category)
+      ? []
+      : [`entries.${fit} has unknown category '${category}'`]),
+    ...equipment
+      .filter((value) => !isEquipment(value))
+      .map((value) => `entries.${fit} has unknown equipment '${value}'`),
+    ...Object.entries(muscles).flatMap(([muscle, weight]) => [
+      ...(isMuscle(muscle) ? [] : [`entries.${fit} has unknown muscle '${muscle}'`]),
+      ...(weight > 0 && weight <= 1
+        ? []
+        : [`entries.${fit} has weight ${weight} for '${muscle}', not in (0, 1]`]),
+    ]),
+  ])
+  return [...placement, ...unknownFits, ...links, ...variants, ...entries]
+}
+
+const garminEntry = (
+  fit: string,
+  name: string,
+  curated: GarminLinks['entries'][string],
+  links: CatalogLinks,
+): StoredExerciseCatalogEntry => {
+  const key = deriveKey(name)
+  return {
+    key,
+    name,
+    aliases: unique(links.aliases[key] ?? []),
+    search_terms: [],
+    category: curated.category,
+    equipment: equipmentOverride(key, links.equipment[key]) ?? curated.equipment.filter(isEquipment),
+    muscles: sortMuscles(curated.muscles as Partial<Record<ExerciseMuscle, number>>),
+    same_as: {},
+  }
+}
+
+const withGarmin = (
+  entry: StoredExerciseCatalogEntry,
+  fits: string[],
+  extraAliases: string[],
+  wikidata: string | undefined,
+): StoredExerciseCatalogEntry => {
+  const { bodybuild, free_exercise_db } = entry.same_as
+  return {
+    ...entry,
+    aliases: [...entry.aliases, ...extraAliases],
+    same_as: {
+      ...(bodybuild ? { bodybuild } : {}),
+      ...(free_exercise_db ? { free_exercise_db } : {}),
+      ...(fits.length > 0 ? { fit: fits.toSorted() } : {}),
+      ...(wikidata ? { wikidata } : {}),
+    },
+  }
+}
+
+const addGarmin = (
+  built: StoredExerciseCatalogEntry[],
+  garmin: GarminSourceFile,
+  garminLinks: GarminLinks,
+  links: CatalogLinks,
+): StoredExerciseCatalogEntry[] => {
+  const problems = garminLinkProblems(garmin, garminLinks, new Set(built.map((e) => e.key)))
+  if (problems.length > 0) throw new Error(`garmin-links.json:\n${problems.join('\n')}`)
+  const garminNames = new Map(garmin.entries.map((e) => [e.fit, e.name]))
+  const garminOnly = Object.entries(garminLinks.entries).map(([fit, curated]) => ({
+    entry: garminEntry(fit, garminLinks.name_overrides[fit] ?? garminNames.get(fit) ?? '', curated, links),
+    fit,
+  }))
+  const keyOfFit = new Map<string, string>([
+    ...Object.entries(garminLinks.links),
+    ...garminOnly.map(({ entry, fit }): [string, string] => [fit, entry.key]),
+  ])
+  const fitsOf = new Map<string, string[]>()
+  const addFit = (key: string, fit: string) => fitsOf.set(key, [...(fitsOf.get(key) ?? []), fit])
+  for (const [fit, key] of keyOfFit) addFit(key, fit)
+  for (const [fit, base] of Object.entries(garminLinks.variants)) addFit(keyOfFit.get(base) ?? '', fit)
+
+  const all = [...built, ...garminOnly.map(({ entry }) => entry)]
+  const labels = new Map(all.map((e) => [e.key, new Set([e.name, ...e.aliases].map(normalizeExerciseName))]))
+  const extraAliases = new Map<string, string[]>()
+  for (const [fit, key] of Object.entries(garminLinks.links).toSorted(([a], [b]) => (a < b ? -1 : 1))) {
+    const name = garminNames.get(fit) ?? ''
+    const known = labels.get(key) ?? new Set()
+    if (known.has(normalizeExerciseName(name))) continue
+    known.add(normalizeExerciseName(name))
+    extraAliases.set(key, [...(extraAliases.get(key) ?? []), name])
+  }
+  return all.map((entry) =>
+    withGarmin(
+      entry,
+      fitsOf.get(entry.key) ?? [],
+      extraAliases.get(entry.key) ?? [],
+      entry.same_as.wikidata ?? links.wikidata[entry.key],
+    ),
+  )
+}
+
 export const buildCatalog = (
   bodybuild: BodybuildSourceFile,
   free: FreeExerciseSourceFile,
   links: CatalogLinks,
+  garmin: GarminSourceFile,
+  garminLinks: GarminLinks,
 ): StoredExerciseCatalog => {
-  const entries = resolveDrafts(bodybuild, free, links)
-    .map((draft) => draftEntry(draft, links))
-    .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+  const built = resolveDrafts(bodybuild, free, links).map((draft) => draftEntry(draft, links))
+  const entries = addGarmin(built, garmin, garminLinks, links).sort(byKey)
   assertUnique(entries)
   assertCuratedKeysExist(entries, links)
   return {
     version: links.version,
-    sources: { bodybuild: bodybuild.source, free_exercise_db: free.source },
+    sources: { bodybuild: bodybuild.source, free_exercise_db: free.source, garmin_connect: garmin.source },
     entries,
   }
 }
@@ -214,6 +364,8 @@ export const buildCatalogFromFiles = (): string =>
       readJson<BodybuildSourceFile>('../sources/bodybuild.json'),
       readJson<FreeExerciseSourceFile>('../sources/free-exercise-db.json'),
       readJson<CatalogLinks>('../links.json'),
+      readJson<GarminSourceFile>('../sources/garmin.json'),
+      readJson<GarminLinks>('../garmin-links.json'),
     ),
   )
 

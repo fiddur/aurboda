@@ -571,9 +571,12 @@ describe('getChartData', () => {
     const set = (exercise: string, weight: number, reps: number) => ({ exercise, reps, weight })
 
     // Weeks of 2026-01-05 (w1) and 2026-01-12 (w2)
-    const a1 = lift('a1', '2026-01-05T17:00:00Z', 'Gym', [set('Bench Press', 80, 5), set('Squat', 100, 5)])
+    const a1 = lift('a1', '2026-01-05T17:00:00Z', 'Gym', [
+      set('Bench Press', 80, 5),
+      set('Squat Hold', 100, 5),
+    ])
     const a2 = lift('a2', '2026-01-07T17:00:00Z', 'Home', [set('bench press', 90, 1)])
-    const a3 = lift('a3', '2026-01-12T17:00:00Z', 'Gym', [set('Squat', 110, 3)])
+    const a3 = lift('a3', '2026-01-12T17:00:00Z', 'Gym', [set('Squat Hold', 110, 3)])
     const a4 = lift('a4', '2026-01-13T17:00:00Z', 'Gym', [{ exercise: 'Plank', time: 60 }])
     const w1 = new Date('2026-01-05T00:00:00Z')
     const w2 = new Date('2026-01-12T00:00:00Z')
@@ -652,10 +655,10 @@ describe('getChartData', () => {
       })
 
       expect(result.breakdown_fields).toEqual(['sets.exercise'])
-      expect(result.breakdown_series).toEqual(['Squat', 'bench press'])
+      expect(result.breakdown_series).toEqual(['Squat Hold', 'bench press'])
       expect(result.buckets).toEqual([
-        { bucket_start: w1.toISOString(), series: { Squat: 116.7, 'bench press': 93.3 } },
-        { bucket_start: w2.toISOString(), series: { Squat: 121 } },
+        { bucket_start: w1.toISOString(), series: { 'Squat Hold': 116.7, 'bench press': 93.3 } },
+        { bucket_start: w2.toISOString(), series: { 'Squat Hold': 121 } },
       ])
     })
 
@@ -670,15 +673,15 @@ describe('getChartData', () => {
       expect(result.breakdown_series).toEqual([
         'Gym / Bench Press',
         'Gym / Plank',
-        'Gym / Squat',
+        'Gym / Squat Hold',
         'Home / bench press',
       ])
       expect(result.buckets).toEqual([
         {
           bucket_start: w1.toISOString(),
-          series: { 'Gym / Bench Press': 1, 'Gym / Squat': 1, 'Home / bench press': 1 },
+          series: { 'Gym / Bench Press': 1, 'Gym / Squat Hold': 1, 'Home / bench press': 1 },
         },
-        { bucket_start: w2.toISOString(), series: { 'Gym / Plank': 1, 'Gym / Squat': 1 } },
+        { bucket_start: w2.toISOString(), series: { 'Gym / Plank': 1, 'Gym / Squat Hold': 1 } },
       ])
     })
 

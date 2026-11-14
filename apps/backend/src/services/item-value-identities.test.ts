@@ -43,6 +43,7 @@ const catalog: StoredExerciseCatalog = {
   sources: {
     bodybuild: { commit: 'a', license: 'AGPL-3.0', url: 'u' },
     free_exercise_db: { commit: 'b', license: 'Unlicense', url: 'u' },
+    garmin_connect: { fetched: '2026-11-13', names_url: 'n', url: 'u' },
   },
   version: '2026.11.0',
 }
