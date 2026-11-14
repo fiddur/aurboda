@@ -292,6 +292,12 @@ const AddActivityForm = ({ onCreated, initialTime }: FormProps) => {
         />
       ))}
 
+      {activityType === 'strength_training' && (
+        <p class="form-hint add-strength-link">
+          Logging a workout? <a href="/strength">Use the strength session page</a>
+        </p>
+      )}
+
       {dataLists.map((field) => (
         <div class="form-field" key={field.name}>
           <label>{fieldLabel(field)}</label>

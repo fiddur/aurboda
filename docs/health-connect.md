@@ -128,6 +128,7 @@ Each recognised session also enqueues a **source enrichment** job so the provide
 `ExerciseSessionRecord.notes` (and the same field on sleep and mindfulness records) are not kept on the activity row itself. They are persisted as rows in the `notes` table with `source = 'health_connect'`, anchored to the activity's id. This means:
 
 - The same `notes` table also holds user-typed text and synced notes from other sources (Oura, etc.). Each row's `source` column distinguishes them — user-authored rows have `source IS NULL`.
+- Outbound HC sync (aurboda activity → Health Connect) waits for an activity whose data has `in_progress: true` (a [live strength session](features/strength-logging.md#live-sessions)): nothing is queued until the update that finishes it.
 - Outbound HC sync (aurboda activity → Health Connect) only serializes user-authored notes into the HC record's `notes` field, joined with newlines. HC-sourced notes are deliberately skipped so a round-tripped record doesn't echo its own note back as "user input".
 - Re-syncing an HC record is idempotent: the same `(entity_id, source='health_connect')` row is upserted, not duplicated.
 - An empty `notes` value, or the literal string `"null"` (which Waking Up writes for a session without notes), is not stored as a note.

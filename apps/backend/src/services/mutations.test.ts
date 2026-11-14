@@ -15,6 +15,7 @@ import {
   deleteMetric,
   deleteMetricData,
   getCustomMetrics,
+  isInProgress,
   mergeActivities,
   updateActivity,
   updateCustomMetric,
@@ -43,7 +44,6 @@ vi.mock('../db', async () => ({
   getUserNotesJoined: vi.fn().mockResolvedValue(undefined),
   getUserSettings: vi.fn(),
   insertCustomMetricDefinition: vi.fn(),
-  insertActivity: vi.fn(),
   insertMergedActivity: vi.fn().mockResolvedValue('new-id'),
   insertOverride: vi.fn(),
   insertTimeSeries: vi.fn(),
@@ -57,6 +57,7 @@ vi.mock('../db', async () => ({
       Promise.resolve(tagName.toLowerCase().replaceAll(/\s+/g, '_')),
     ),
   updateActivity: vi.fn(),
+  upsertActivity: vi.fn(),
   updateCustomMetricDefinition: vi.fn(),
   upsertUserSettings: vi.fn(),
 }))
@@ -128,13 +129,62 @@ describe('addMetric', () => {
   })
 })
 
+describe('isInProgress', () => {
+  test('is true only for data with in_progress exactly true', () => {
+    expect(isInProgress({ in_progress: true })).toBe(true)
+    expect(isInProgress({ in_progress: false })).toBe(false)
+    expect(isInProgress({ in_progress: 'true' })).toBe(false)
+    expect(isInProgress({ sets: [] })).toBe(false)
+    expect(isInProgress(undefined)).toBe(false)
+    expect(isInProgress(null)).toBe(false)
+  })
+})
+
 describe('addActivity', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
+  test('enqueues no Health Connect insert for an activity in progress', async () => {
+    vi.mocked(db.upsertActivity).mockResolvedValue({ changed: true, id: 'test-id' })
+
+    const result = await addActivity('testuser', {
+      activity_type: 'exercise',
+      data: { in_progress: true },
+      start_time: new Date('2024-03-15T10:30:00Z'),
+    })
+
+    expect(result.success).toBe(true)
+    expect(db.enqueueOutboundSync).not.toHaveBeenCalled()
+  })
+
+  test('answers with the id the database stored, not the one it proposed', async () => {
+    vi.mocked(db.upsertActivity).mockResolvedValue({ changed: false, id: 'existing-id' })
+
+    const result = await addActivity('testuser', {
+      activity_type: 'exercise',
+      start_time: new Date('2024-03-15T10:30:00Z'),
+    })
+
+    expect(result).toMatchObject({ id: 'existing-id', success: true })
+  })
+
+  test('fails when nothing was stored', async () => {
+    vi.mocked(db.upsertActivity).mockResolvedValue({ changed: false, id: undefined })
+
+    const result = await addActivity('testuser', {
+      activity_type: 'exercise',
+      notes: 'kept out',
+      start_time: new Date('2024-03-15T10:30:00Z'),
+    })
+
+    expect(result.success).toBe(false)
+    expect(db.replaceUserNotes).not.toHaveBeenCalled()
+    expect(db.enqueueOutboundSync).not.toHaveBeenCalled()
+  })
+
   test('creates an exercise activity with required fields', async () => {
-    vi.mocked(db.insertActivity).mockResolvedValue('test-id')
+    vi.mocked(db.upsertActivity).mockResolvedValue({ changed: true, id: 'test-id' })
 
     const result = await addActivity('testuser', {
       activity_type: 'exercise',
@@ -148,7 +198,7 @@ describe('addActivity', () => {
     expect(result.end_time).toBe('2024-03-15T11:45:00.000Z')
     expect(result.id).toBeDefined()
 
-    expect(db.insertActivity).toHaveBeenCalledWith('testuser', {
+    expect(db.upsertActivity).toHaveBeenCalledWith('testuser', {
       activity_type: 'exercise',
       data: undefined,
       end_time: new Date('2024-03-15T11:45:00Z'),
@@ -161,7 +211,7 @@ describe('addActivity', () => {
   })
 
   test('creates an activity with all fields', async () => {
-    vi.mocked(db.insertActivity).mockResolvedValue('test-id')
+    vi.mocked(db.upsertActivity).mockResolvedValue({ changed: true, id: 'test-id' })
 
     const result = await addActivity('testuser', {
       activity_type: 'exercise',
@@ -176,7 +226,7 @@ describe('addActivity', () => {
     expect(result.title).toBe('Upper body')
     expect(result.id).toBeDefined()
 
-    expect(db.insertActivity).toHaveBeenCalledWith('testuser', {
+    expect(db.upsertActivity).toHaveBeenCalledWith('testuser', {
       activity_type: 'exercise',
       data: { exerciseType: 79 },
       end_time: new Date('2024-03-15T11:45:00Z'),
@@ -219,7 +269,7 @@ describe('addActivity', () => {
     })
 
     expect(result.success).toBe(true)
-    expect(db.insertActivity).toHaveBeenCalledWith(
+    expect(db.upsertActivity).toHaveBeenCalledWith(
       'testuser',
       expect.objectContaining({
         data: {
@@ -241,11 +291,11 @@ describe('addActivity', () => {
 
     expect(result.success).toBe(false)
     expect(result.error).toBe('end_time must not be before start_time')
-    expect(db.insertActivity).not.toHaveBeenCalled()
+    expect(db.upsertActivity).not.toHaveBeenCalled()
   })
 
   test('allows endTime equal to startTime', async () => {
-    vi.mocked(db.insertActivity).mockResolvedValue('test-id')
+    vi.mocked(db.upsertActivity).mockResolvedValue({ changed: true, id: 'test-id' })
 
     const result = await addActivity('testuser', {
       activity_type: 'exercise',
@@ -254,11 +304,11 @@ describe('addActivity', () => {
     })
 
     expect(result.success).toBe(true)
-    expect(db.insertActivity).toHaveBeenCalled()
+    expect(db.upsertActivity).toHaveBeenCalled()
   })
 
   test('creates meditation activity', async () => {
-    vi.mocked(db.insertActivity).mockResolvedValue('test-id')
+    vi.mocked(db.upsertActivity).mockResolvedValue({ changed: true, id: 'test-id' })
 
     const result = await addActivity('testuser', {
       activity_type: 'meditation',
@@ -270,7 +320,7 @@ describe('addActivity', () => {
     expect(result.success).toBe(true)
     expect(result.activity_type).toBe('meditation')
 
-    expect(db.insertActivity).toHaveBeenCalledWith('testuser', {
+    expect(db.upsertActivity).toHaveBeenCalledWith('testuser', {
       activity_type: 'meditation',
       data: undefined,
       end_time: new Date('2024-03-15T07:30:00Z'),
@@ -283,7 +333,7 @@ describe('addActivity', () => {
   })
 
   test('creates nap activity', async () => {
-    vi.mocked(db.insertActivity).mockResolvedValue('test-id')
+    vi.mocked(db.upsertActivity).mockResolvedValue({ changed: true, id: 'test-id' })
 
     const result = await addActivity('testuser', {
       activity_type: 'nap',
@@ -296,7 +346,7 @@ describe('addActivity', () => {
   })
 
   test('calls onMutated callback after successful insert', async () => {
-    vi.mocked(db.insertActivity).mockResolvedValue('test-id')
+    vi.mocked(db.upsertActivity).mockResolvedValue({ changed: true, id: 'test-id' })
     const onMutated = vi.fn()
 
     await addActivity(
@@ -1483,6 +1533,30 @@ describe('updateActivity', () => {
       operation: 'insert',
       payload: expect.objectContaining({ activity_type: 'exercise' }),
     })
+  })
+
+  test('enqueues nothing while the updated activity is in progress', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      activity_type: 'exercise',
+      data: { in_progress: true },
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+    vi.mocked(db.updateActivity).mockResolvedValue({
+      activity_type: 'exercise',
+      data: { in_progress: true, last_set_at: '2024-03-15T10:20:00Z' },
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    })
+
+    const result = await updateActivity('testuser', 'activity-123', {
+      data: { last_set_at: '2024-03-15T10:20:00Z' },
+    })
+
+    expect(result.success).toBe(true)
+    expect(db.enqueueOutboundSync).not.toHaveBeenCalled()
   })
 
   test('calls onMutated callback after successful update', async () => {

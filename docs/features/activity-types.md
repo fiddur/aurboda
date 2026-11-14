@@ -106,9 +106,9 @@ still exactly an earlier built-in version (before `exercise` was marked categori
 schema counts as edited and is kept: the built-in schema can be extended (e.g. with a `tempo` item
 field) on the type's page or with `update_activity_type`. Clearing it entirely does not stick, though: a
 `strength_training` type without a schema gets `sets` back on the next deploy, so to drop a field
-edit the schema rather than remove it. The Android Add tab is native and skips list fields until it
-has a row editor ([#1316](https://github.com/fiddur/aurboda/issues/1316)); sets are entered on the
-web pages.
+edit the schema rather than remove it. The Android Add tab is native and skips list fields; sets are
+entered on the web pages. To log a session, live in the gym or afterwards, use the
+[strength session pages](strength-logging.md) at `/strength`, which the Android Add tab links to.
 
 The web row editor shows a list's first four item fields, any required one and any that some row
 fills in; the rest wait behind **More fields**, which applies to every list field, not only `sets`.

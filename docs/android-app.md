@@ -18,6 +18,10 @@ A bottom navigation bar (`ui/screens/MainScreen.kt`, tabs in `AppState.kt`'s
 | Sync | Native   | Health Connect permissions, background sync management                          |
 | More | Hub      | Native list of everything else (`ui/screens/MoreScreen.kt`)                     |
 
+The Add tab's Activity form starts with **Log a strength session**, which opens the web
+[strength session page](features/strength-logging.md) (`/strength`) in the More tab's web view:
+sets are logged there, not natively.
+
 There are far more web pages than fit on a bottom bar, so the **More** tab is a
 hub (`MoreScreen.kt`, `moreGroups`): a grouped list where each entry opens the
 corresponding web page in an embedded WebView (Timeline, Data, Chart, Meals,

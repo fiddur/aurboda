@@ -102,6 +102,9 @@ const ScreentimeCategories = lazyPage(
 const Settings = lazyPage(() => import('./pages/Settings/index.jsx'), 'Settings')
 const Signup = lazyPage(() => import('./pages/Signup/index.jsx'), 'Signup')
 const Sleep = lazyPage(() => import('./pages/Sleep/index.jsx'), 'Sleep')
+const Strength = lazyPage(() => import('./pages/Strength/index.jsx'), 'Strength')
+const StrengthLog = lazyPage(() => import('./pages/Strength/Session.jsx'), 'StrengthLog')
+const StrengthSession = lazyPage(() => import('./pages/Strength/Session.jsx'), 'StrengthSession')
 const Terms = lazyPage(() => import('./pages/Terms/index.jsx'), 'Terms')
 const Timeline = lazyPage(() => import('./pages/Timeline/index.jsx'), 'Timeline')
 
@@ -157,6 +160,10 @@ function AppShell() {
             <Route path="/activity-type/:name/item/:field/:value" component={ActivityTypeItem} />
             <Route path="/activity-type/:name" component={ActivityTypeMeta} />
             <Route path="/metric/:metricName" component={MetricMeta} />
+            <Route path="/strength/session/:id" component={StrengthSession} />
+            <Route path="/strength/live" component={StrengthSession} />
+            <Route path="/strength/log" component={StrengthLog} />
+            <Route path="/strength" component={Strength} />
             <Route path="/sleep" component={Sleep} />
             <Route path="/correlations" component={Correlations} />
             <Route path="/chart" component={Chart} />

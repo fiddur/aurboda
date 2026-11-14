@@ -697,3 +697,11 @@
     border-color: #374151;
   }
 }
+
+.activity-type-meta-log-session {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-bottom: 1rem;
+  text-decoration: none;
+}

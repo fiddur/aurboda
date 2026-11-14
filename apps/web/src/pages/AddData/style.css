@@ -359,3 +359,8 @@
     gap: 1rem;
   }
 }
+
+.add-form .add-strength-link {
+  display: block;
+  margin: 0 0 0.75rem;
+}
