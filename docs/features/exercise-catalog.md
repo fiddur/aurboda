@@ -93,10 +93,13 @@ Search parameters:
 
 - `q` -- words; each must be the start of a word of the name, an alias or a search term (search
   terms are extra, non-unique words such as `hamstring curl` or `DB`). Ranked: an exact name or alias
-  first, then the entries whose name contains every word, then the rest. Among the name matches the
-  entries that come from body.build (hand-picked gym exercises) go first, then those from
-  free-exercise-db, then the Garmin-only entries, then names starting with `q`; ties go to the
-  shorter name.
+  first, together with the names or aliases that are `q` plus only the words of the entry's own free
+  weight (`Barbell Squat` for `squat`, `Dumbbell Bench Press` for `bench press`); then the entries
+  whose name contains every word; then the rest. Within each of those the entries that come from
+  body.build (hand-picked gym exercises) go first, then those from free-exercise-db, then the
+  Garmin-only entries; then the exact match before the free-weight names, and names starting with
+  `q` before the other name matches; ties go to the shorter name. So `squat` leads with Barbell
+  Squat, ahead of Garmin's generic Squat and of Belt Squat.
 - `name` -- an exact name-or-alias match after normalisation: zero or one entry. `q` is ignored.
 - `fit` -- an exact Garmin FIT exercise, `<category>/<name>` in any letter case (e.g.
   `bench_press/barbell_bench_press`): zero or one entry. `q` is ignored. With `name` as well, the
