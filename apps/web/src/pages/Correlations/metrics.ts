@@ -57,7 +57,6 @@ export const toggleMetric = (
     : IMPACT_METRICS.filter((m) => next.includes(m))
 }
 
-/** Orders extras as `available` lists them, then the rest alphabetically. */
 export const orderExtras = (extras: readonly string[], available: readonly string[]): string[] =>
   extras.toSorted((a, b) => {
     const ia = available.indexOf(a)

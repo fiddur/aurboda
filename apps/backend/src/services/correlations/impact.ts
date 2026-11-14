@@ -240,7 +240,6 @@ const meanOrNull = (values: number[]): number | null => (values.length > 0 ? mea
 
 const EMPTY_SERIES: BinnedSeries = { times: [], values: [] }
 
-/** Extra metric names, deduplicated, without the MetricKey names the fixed three occupy in a MetricSeries. */
 export const extraMetricKeys = (metrics: string[]): string[] =>
   [...new Set(metrics)].filter((metric) => !(METRIC_KEYS as string[]).includes(metric))
 
@@ -304,7 +303,6 @@ export const binMetricSeries = (
   stressData: [Date, number][],
 ): MetricSeries => ({ hr: binSeries(hrData), hrv: binSeries(hrvData), stress: binSeries(stressData) })
 
-/** Bins each extra metric's raw points under its own name, ready to merge into a MetricSeries. */
 export const binExtraSeries = (raw: Record<string, [Date, number][]>): Record<string, BinnedSeries> =>
   Object.fromEntries(Object.entries(raw).map(([metric, data]) => [metric, binSeries(data)]))
 

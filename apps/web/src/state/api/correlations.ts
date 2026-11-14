@@ -116,7 +116,6 @@ export const fetchActivityImpact = async (
   return response.data.data!
 }
 
-/** The metrics recorded densely enough to analyse around a session, beyond HRV, heart rate and stress. */
 export const fetchImpactMetrics = async (periodDays: number): Promise<ImpactMetricOption[]> => {
   const { token } = auth.value
   const response = await axios.get<ImpactMetricsResponse>(`${API_URL}/correlations/impact-metrics`, {

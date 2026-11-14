@@ -2,6 +2,7 @@ import {
   type CustomMetricDefinition,
   cumulativeMetrics,
   getMetricUnit,
+  IMPACT_FIXED_METRICS,
   type ImpactMetricOption,
   isValidMetricOrCustom,
   metricLabels,
@@ -17,7 +18,6 @@ export const MIN_IMPACT_METRIC_DAYS = 3
  * of samples a day yet leave every before/after window empty. 48 quarter hours is half the day.
  */
 export const MIN_IMPACT_QUARTER_HOURS_PER_DAY = 48
-export const FIXED_IMPACT_METRICS = ['hrv_rmssd', 'heart_rate', 'stress_level']
 
 export interface DailySampleCount {
   metric: string
@@ -38,7 +38,7 @@ export const selectImpactMetrics = (
   counts: DailySampleCount[],
   customMetrics: CustomMetricDefinition[],
 ): ImpactMetricOption[] => {
-  const excluded = new Set<string>([...cumulativeMetrics, ...FIXED_IMPACT_METRICS])
+  const excluded = new Set<string>([...cumulativeMetrics, ...IMPACT_FIXED_METRICS])
   const perDay = new Map<string, { counts: number[]; quarterHours: number[] }>()
   for (const { count, metric, quarter_hours } of counts) {
     if (count <= 0 || excluded.has(metric) || !isValidMetricOrCustom(metric, customMetrics)) continue

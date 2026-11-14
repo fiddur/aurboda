@@ -182,9 +182,11 @@ fields; the extras come back in maps keyed by metric name, and only when
   `metrics.<name>`.
 
 More than 4 names, a name that is not a metric name (`[a-z][a-z0-9_]*`, at most
-50 characters), or a cumulative metric (`steps`, `distance`, `floors_climbed`,
-`calories_active`, `calories_total`: a 5-minute mean of a running total means
-nothing) is a 400 (an error from the MCP tools). An unknown or sparse metric is
+50 characters), one of the three always analysed (`hrv_rmssd`, `heart_rate`,
+`stress_level`, or their result keys `hrv`, `hr`, `stress`), or a cumulative
+metric (`steps`, `distance`, `floors_climbed`, `calories_active`,
+`calories_total`: a 5-minute mean of a running total means nothing) is a 400
+(an error from the MCP tools). An unknown or sparse metric is
 accepted and comes back with nulls.
 
 `GET /correlations/impact-metrics?period_days=30` (MCP `get_impact_metrics`)
@@ -304,6 +306,10 @@ stress }`: the before buckets oldest first, then `during`, then the after
   block uses this with `match=exact` and its own window.
 - `GET /correlations/impact-metrics?period_days=30` and MCP
   `get_impact_metrics`: the metrics dense enough to pass as `metrics`.
+
+`period_days`, on these and on every other correlation route and tool
+(`event-probability`, `generic`, `continuous`), is a whole number of days from
+1 to 3650; anything else is a 400 (an error from the MCP tools).
 
 ### Breaking down and filtering an activity's impact
 
