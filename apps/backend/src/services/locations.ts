@@ -58,7 +58,7 @@ const MAX_UNKNOWN_VISIT_GAP_MINUTES = 90
 const MERGE_BRIDGE_RADIUS_METERS = DEFAULT_CLUSTER_RADIUS_METERS
 const MERGE_BRIDGE_GAP_MINUTES = 30
 
-const haversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+export const haversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
   const R = 6371000 // Earth radius in meters
   const dLat = ((lat2 - lat1) * Math.PI) / 180
   const dLon = ((lon2 - lon1) * Math.PI) / 180

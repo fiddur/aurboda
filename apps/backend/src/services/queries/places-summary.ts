@@ -1,6 +1,12 @@
 import type { PlacesSummary, PlacesSummaryNights, PlacesSummaryPlace } from '@aurboda/api-spec'
 
-import { getNamedLocations, getPlaceVisits, type NamedLocation, type PlaceVisit } from '../locations.ts'
+import {
+  getNamedLocations,
+  getPlaceVisits,
+  haversineDistance,
+  type NamedLocation,
+  type PlaceVisit,
+} from '../locations.ts'
 
 export interface PlacesSummaryDeps {
   getNamedLocations: (user: string) => Promise<Pick<NamedLocation, 'name'>[]>
@@ -18,6 +24,8 @@ export interface PlacesSummaryParams {
 export interface CanonicalVisit {
   end_time: Date
   key: string
+  lat: number
+  lon: number
   place: string | null
   start_time: Date
 }
@@ -34,6 +42,7 @@ const HOUR_MS = 3_600_000
 const BRIDGE_MS = 36 * HOUR_MS
 const AT_REST_MS = 18 * HOUR_MS
 const ARRIVAL_MS = 3 * HOUR_MS
+const TRAVEL_KMH = 20
 const PROBE_TIME = new Temporal.PlainTime(3, 0)
 const TOP_PLACES = 5
 
@@ -54,7 +63,14 @@ export const canonicalPlace = (visit: PlaceVisit, namedByKey: Map<string, string
 
 const canonicalVisit = (visit: PlaceVisit, namedByKey: Map<string, string>): CanonicalVisit => {
   const place = canonicalPlace(visit, namedByKey)
-  return { end_time: visit.end_time, key: place ?? `~${visit.name}`, place, start_time: visit.start_time }
+  return {
+    end_time: visit.end_time,
+    key: place ?? `~${visit.name}`,
+    lat: visit.lat,
+    lon: visit.lon,
+    place,
+    start_time: visit.start_time,
+  }
 }
 
 /** Joins consecutive visits to the same place at most 36 hours apart into one. */
@@ -78,6 +94,16 @@ const dateInTz = (epochMs: number, tz: string): Temporal.PlainDate =>
 const placeOf = (visit: CanonicalVisit): NightPlace =>
   visit.place === null ? { kind: 'elsewhere' } : { kind: 'named', name: visit.place }
 
+/**
+ * Whether reaching `next` from `prev` took the whole gap without fixes: an early commute and an
+ * overnight trip look alike in their times, but only the trip covers that much ground.
+ */
+const travelledOvernight = (prev: CanonicalVisit, next: CanonicalVisit): boolean => {
+  const km = haversineDistance(prev.lat, prev.lon, next.lat, next.lon) / 1000
+  const hours = (next.start_time.getTime() - prev.end_time.getTime()) / HOUR_MS
+  return km >= TRAVEL_KMH * hours
+}
+
 const placeAt = (visits: CanonicalVisit[], probeMs: number): NightPlace => {
   const nextIndex = visits.findIndex((v) => v.start_time.getTime() > probeMs)
   const prev = visits[(nextIndex === -1 ? visits.length : nextIndex) - 1]
@@ -86,7 +112,9 @@ const placeAt = (visits: CanonicalVisit[], probeMs: number): NightPlace => {
   const prevEnd = prev.end_time.getTime()
   if (prevEnd >= probeMs) return placeOf(prev)
   if (next && next.key === prev.key && next.start_time.getTime() - prevEnd <= BRIDGE_MS) return placeOf(prev)
-  if (next && next.start_time.getTime() - probeMs <= ARRIVAL_MS) return placeOf(next)
+  if (next && next.start_time.getTime() - probeMs <= ARRIVAL_MS && travelledOvernight(prev, next)) {
+    return placeOf(next)
+  }
   if (probeMs - prevEnd <= AT_REST_MS) return placeOf(prev)
   return { kind: 'no_data' }
 }
@@ -95,7 +123,9 @@ const placeAt = (visits: CanonicalVisit[], probeMs: number): NightPlace => {
  * The place of each night whose evening date (in tz) falls in `[start, end]`: where the user was at
  * 03:00 the next morning. A phone at rest reports nothing, so a gap between two visits to the same
  * place, or a short while after the last visit, still counts as being there. A visit to another place
- * starting within 3 hours after 03:00 is overnight travel, and that place takes the night.
+ * starting within 3 hours after 03:00 takes the night when it is overnight travel: far enough away
+ * that getting there averaged 20 km/h or more over the gap. A nearer one is an early commute, and
+ * the night stays at the last place.
  */
 export const attributeNights = (
   visits: CanonicalVisit[],

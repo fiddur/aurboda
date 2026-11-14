@@ -30,14 +30,21 @@ const visit = (
   }
 }
 
+const STOCKHOLM: [number, number] = [59.33, 18.07]
+const NEAR_STOCKHOLM: [number, number] = [59.34, 18.1]
+const GOTHENBURG: [number, number] = [57.71, 11.97]
+
 const at = (
   place: string | null,
   start: string,
   end: string,
   key = place ?? '~Somewhere',
+  [lat, lon]: [number, number] = STOCKHOLM,
 ): CanonicalVisit => ({
   end_time: new Date(end),
   key,
+  lat,
+  lon,
   place,
   start_time: new Date(start),
 })
@@ -164,15 +171,34 @@ describe('attributeNights', () => {
     ).toEqual({ kind: 'named', name: 'Hökås' })
   })
 
-  test('overnight travel: a visit elsewhere starting within 3 hours after 03:00 takes the night', () => {
+  test('overnight travel: a far visit starting within 3 hours after 03:00 takes the night', () => {
+    // Leave home 23:00, no fixes, a hotel 400 km away at 05:00.
     const leftHome = at('Home', '2026-10-12T16:00:00Z', '2026-10-12T21:00:00Z')
-    expect(place([leftHome, at('Hotel', '2026-10-13T03:00:00Z', '2026-10-13T07:00:00Z')])).toEqual({
-      kind: 'named',
-      name: 'Hotel',
-    })
-    expect(place([leftHome, at(null, '2026-10-13T04:00:00Z', '2026-10-13T07:00:00Z', '~Inn')])).toEqual({
-      kind: 'elsewhere',
-    })
+    expect(
+      place([leftHome, at('Hotel', '2026-10-13T03:00:00Z', '2026-10-13T07:00:00Z', 'Hotel', GOTHENBURG)]),
+    ).toEqual({ kind: 'named', name: 'Hotel' })
+    expect(
+      place([leftHome, at(null, '2026-10-13T04:00:00Z', '2026-10-13T07:00:00Z', '~Inn', GOTHENBURG)]),
+    ).toEqual({ kind: 'elsewhere' })
+  })
+
+  test('an early commute: a near visit starting within 3 hours after 03:00 leaves the night at home', () => {
+    // Home until 22:30, the gym 2 km away at 05:45.
+    expect(
+      place([
+        at('Home', '2026-10-12T16:00:00Z', '2026-10-12T20:30:00Z'),
+        at('Gym', '2026-10-13T03:45:00Z', '2026-10-13T05:00:00Z', 'Gym', NEAR_STOCKHOLM),
+      ]),
+    ).toEqual({ kind: 'named', name: 'Home' })
+  })
+
+  test('the arrival takes the night only at 20 km/h or more over the gap without fixes', () => {
+    const leftHome = at('Home', '2026-10-12T16:00:00Z', '2026-10-12T21:00:00Z')
+    const arriving = (lat: number) =>
+      at('Office', '2026-10-13T03:00:00Z', '2026-10-13T07:00:00Z', 'Office', [lat, 18.07])
+    // 6 hours without fixes: 1.08° of latitude is 120 km.
+    expect(place([leftHome, arriving(59.33 - 1.0)])).toEqual({ kind: 'named', name: 'Home' })
+    expect(place([leftHome, arriving(59.33 - 1.1)])).toEqual({ kind: 'named', name: 'Office' })
   })
 
   test('a visit elsewhere starting later than 3 hours after 03:00 leaves the night at rest', () => {
