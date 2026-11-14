@@ -81,6 +81,7 @@ import { createImportsRouter } from '../routes/imports-router.ts'
 import { createLocationsRouter } from '../routes/locations-router.ts'
 import { createMealsRouter } from '../routes/meals-router.ts'
 import { createMediaRouter } from '../routes/media-router.ts'
+import { createMetricCatalogRouter } from '../routes/metric-catalog-router.ts'
 import { createMetricsRouter } from '../routes/metrics-router.ts'
 import { createNotesRouter } from '../routes/notes-router.ts'
 import { createNotificationsRouter } from '../routes/notifications-router.ts'
@@ -318,6 +319,7 @@ export const mountRestRouters = ({
   httpd.use('/shared-exercises', createSharedExercisesRouter(authMiddleware, webHost))
   httpd.use('/activity-type-catalog', createActivityTypeCatalogRouter(authMiddleware))
   httpd.use('/exercise-catalog', createExerciseCatalogRouter(authMiddleware))
+  httpd.use('/metric-catalog', createMetricCatalogRouter(authMiddleware))
   httpd.use('/profile', createProfileRouter(authMiddleware, webHost, onProfileChanged))
   // Mount the following, followers and images routers before `/feed` so `/feed/following/*`,
   // `/feed/followers/*` and `/feed/images/*` resolve here and never touch the

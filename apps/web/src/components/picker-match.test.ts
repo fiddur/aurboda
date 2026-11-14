@@ -54,6 +54,19 @@ describe('matchActivityTypes', () => {
 })
 
 describe('matchMetricEntries', () => {
+  test('matches on keywords', () => {
+    const withAliases = [
+      { keywords: ['ldl', 'ldl-c'], label: 'LDL cholesterol', value: 'ldl_cholesterol' },
+      { label: 'Weight', value: 'weight' },
+    ]
+    expect(matchMetricEntries(withAliases, 'LDL-C')).toEqual([withAliases[0]])
+  })
+
+  test('matches a snake_case value typed with spaces', () => {
+    const own = [{ label: 'vitamin_d', value: 'vitamin_d' }]
+    expect(matchMetricEntries(own, 'vitamin d')).toEqual(own)
+  })
+
   const entries = [
     { label: 'Heart rate', value: 'heart_rate' },
     { label: 'Weight', value: 'weight' },

@@ -3,6 +3,8 @@ import type {
   CustomMetricDefinition,
   DataSchemaDefinition,
   DataSource,
+  StoredMetricCatalog,
+  StoredMetricCatalogEntry,
 } from '@aurboda/api-spec'
 
 import { randomUUID } from 'node:crypto'
@@ -13,6 +15,7 @@ import type { ActivityNotifier } from './deduction-queue.ts'
 import { mergeOverlappingActivities } from '../db/activities/merge.ts'
 import {
   activityTypeExists,
+  adoptCatalogMetric,
   checkActivityConflict,
   deleteActivity as dbDeleteActivity,
   fetchCategoryMap,
@@ -37,11 +40,9 @@ import {
 } from '../db/index.ts'
 import {
   activityTypeToHealthConnectType,
-  getMetricUnit,
   isHealthConnectSyncableActivity,
   isHealthConnectSyncableMetric,
   isValidMetric,
-  isValidMetricOrCustom,
   metricToHealthConnectType,
 } from '../schema.ts'
 import {
@@ -54,6 +55,8 @@ import { getCustomMetrics } from './custom-metrics.ts'
 import { validateActivityData } from './data-schema-validation.ts'
 import { aliasActivityData } from './item-value-aliases.ts'
 import { applyItemValueKeysForWrite, storeItemValueMappings } from './item-value-identities.ts'
+import { catalogMetricDefinition, loadMetricCatalog } from './metric-catalog.ts'
+import { resolveMetricForWrite, valueForWrite } from './metric-resolution.ts'
 import { syncNoteTimesForEntity } from './notes.ts'
 import { reanalyseActivities, reanalyseOverrideTargets } from './track-analyse.ts'
 
@@ -61,6 +64,7 @@ export interface AddMetricInput {
   metric: string
   value: number
   time: Date
+  unit?: string
 }
 
 export interface AddMetricResult {
@@ -99,6 +103,7 @@ export interface BulkMetricItem {
   value: number
   time: Date
   source?: string
+  unit?: string
 }
 
 export interface BulkMetricError {
@@ -161,60 +166,52 @@ function validateCustomMetricRange(
   return null
 }
 
-export async function addMetric(user: string, input: AddMetricInput): Promise<AddMetricResult> {
+export async function addMetric(
+  user: string,
+  input: AddMetricInput,
+  catalog: StoredMetricCatalog = loadMetricCatalog(),
+): Promise<AddMetricResult> {
   const customMetrics = await getCustomMetrics(user)
+  const time = input.time.toISOString()
+  const refuse = (error: string, metric = input.metric, unit = ''): AddMetricResult => ({
+    error,
+    metric,
+    success: false,
+    time,
+    unit,
+    value: input.value,
+  })
 
-  if (!isValidMetricOrCustom(input.metric, customMetrics)) {
-    return {
-      error: `Invalid metric "${input.metric}". Not a built-in or registered custom metric.`,
-      metric: input.metric,
-      success: false,
-      time: input.time.toISOString(),
-      unit: '',
-      value: input.value,
-    }
+  const resolved = resolveMetricForWrite(input.metric, customMetrics, catalog)
+  if (!resolved) {
+    return refuse(`Invalid metric "${input.metric}". Not a built-in or registered custom metric.`)
+  }
+  const { metric, unit } = resolved
+
+  const converted = valueForWrite(resolved, input.value, input.unit)
+  if ('error' in converted) return refuse(converted.error, metric, unit)
+  const { value } = converted
+
+  const rangeError = validateCustomMetricRange(customMetrics, metric, value)
+  if (rangeError) return refuse(rangeError, metric, unit)
+
+  if (resolved.adopt && resolved.entry) {
+    await adoptCatalogMetric(user, catalogMetricDefinition(resolved.entry))
   }
 
-  const unit = getMetricUnit(input.metric, customMetrics)
-
-  const rangeError = validateCustomMetricRange(customMetrics, input.metric, input.value)
-  if (rangeError) {
-    return {
-      error: rangeError,
-      metric: input.metric,
-      success: false,
-      time: input.time.toISOString(),
-      unit: unit ?? '',
-      value: input.value,
-    }
-  }
-
-  await insertTimeSeries(user, [
-    {
-      metric: input.metric,
-      source: 'aurboda',
-      time: input.time,
-      unit,
-      value: input.value,
-    },
-  ])
+  await insertTimeSeries(user, [{ metric, source: 'aurboda', time: input.time, unit, value }])
 
   // Enqueue outbound sync to Health Connect if applicable (best-effort, never fails the mutation)
   try {
-    if (isHealthConnectSyncableMetric(input.metric)) {
-      const hcRecordType = metricToHealthConnectType[input.metric as keyof typeof metricToHealthConnectType]
+    if (isHealthConnectSyncableMetric(metric)) {
+      const hcRecordType = metricToHealthConnectType[metric as keyof typeof metricToHealthConnectType]
       if (hcRecordType) {
         await enqueueOutboundSync(user, {
-          entity_id: `${input.metric}|${input.time.toISOString()}`,
+          entity_id: `${metric}|${time}`,
           entity_type: 'time_series',
           hc_record_type: hcRecordType,
           operation: 'insert',
-          payload: {
-            metric: input.metric,
-            time: input.time.toISOString(),
-            unit,
-            value: input.value,
-          },
+          payload: { metric, time, unit, value },
         })
       }
     }
@@ -222,14 +219,42 @@ export async function addMetric(user: string, input: AddMetricInput): Promise<Ad
     auditError(user, 'data', 'Failed to enqueue outbound sync for metric', { error: String(err) })
   }
 
-  const storedTime = input.time.toISOString()
+  return { entity_id: `${time}|${metric}|aurboda`, metric, success: true, time, unit, value }
+}
+
+type PreparedBulkItem = { error: string } | { adopt?: StoredMetricCatalogEntry; point: TimeSeriesPoint }
+
+const prepareBulkItem = (
+  item: BulkMetricItem,
+  customMetrics: CustomMetricDefinition[],
+  catalog: StoredMetricCatalog,
+  defaultSource: DataSource,
+): PreparedBulkItem => {
+  const resolved = resolveMetricForWrite(item.metric, customMetrics, catalog)
+  if (!resolved) return { error: `Invalid metric "${item.metric}"` }
+
+  const converted = valueForWrite(resolved, item.value, item.unit)
+  if ('error' in converted) return converted
+
+  const rangeError = validateCustomMetricRange(customMetrics, resolved.metric, converted.value)
+  if (rangeError) return { error: rangeError }
+
+  const source: DataSource = (item.source as DataSource) ?? defaultSource
+
+  // Cumulative/derived metrics (steps, calories, …) are only read back from a
+  // restricted set of sources. Writing one from any other source would store a
+  // row that no query path returns — reject it rather than report a phantom
+  // insert (#802).
+  const sourceFilter = getSourceFilter(resolved.metric)
+  if (sourceFilter !== null && !sourceFilter.includes(source)) {
+    return {
+      error: `Metric "${resolved.metric}" is cumulative/derived and is only queryable from source(s) [${sourceFilter.join(', ')}]; got "${source}". Omit source to use the default, or use an allowed source.`,
+    }
+  }
+
   return {
-    entity_id: `${storedTime}|${input.metric}|aurboda`,
-    metric: input.metric,
-    success: true,
-    time: storedTime,
-    unit: unit ?? '',
-    value: input.value,
+    ...(resolved.adopt && resolved.entry ? { adopt: resolved.entry } : {}),
+    point: { metric: resolved.metric, source, time: item.time, unit: resolved.unit, value: converted.value },
   }
 }
 
@@ -240,51 +265,30 @@ export async function bulkAddMetrics(
   user: string,
   items: BulkMetricItem[],
   defaultSource?: string,
+  catalog: StoredMetricCatalog = loadMetricCatalog(),
 ): Promise<BulkAddMetricsResult> {
-  const customMetrics = await getCustomMetrics(user)
+  const customMetrics = [...(await getCustomMetrics(user))]
 
   const errors: BulkMetricError[] = []
   const validPoints: TimeSeriesPoint[] = []
+  const toAdopt: CustomMetricDefinition[] = []
   const resolvedDefaultSource: DataSource = (defaultSource as DataSource) ?? 'aurboda'
 
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i]
-
-    if (!isValidMetricOrCustom(item.metric, customMetrics)) {
-      errors.push({ error: `Invalid metric "${item.metric}"`, index: i })
+  for (const [index, item] of items.entries()) {
+    const prepared = prepareBulkItem(item, customMetrics, catalog, resolvedDefaultSource)
+    if ('error' in prepared) {
+      errors.push({ error: prepared.error, index })
       continue
     }
-
-    const rangeError = validateCustomMetricRange(customMetrics, item.metric, item.value)
-    if (rangeError) {
-      errors.push({ error: rangeError, index: i })
-      continue
+    if (prepared.adopt) {
+      const definition = catalogMetricDefinition(prepared.adopt)
+      toAdopt.push(definition)
+      customMetrics.push(definition)
     }
-
-    const unit = getMetricUnit(item.metric, customMetrics)
-    const source: DataSource = (item.source as DataSource) ?? resolvedDefaultSource
-
-    // Cumulative/derived metrics (steps, calories, …) are only read back from a
-    // restricted set of sources. Writing one from any other source would store a
-    // row that no query path returns — reject it rather than report a phantom
-    // insert (#802).
-    const sourceFilter = getSourceFilter(item.metric)
-    if (sourceFilter !== null && !sourceFilter.includes(source)) {
-      errors.push({
-        error: `Metric "${item.metric}" is cumulative/derived and is only queryable from source(s) [${sourceFilter.join(', ')}]; got "${source}". Omit source to use the default, or use an allowed source.`,
-        index: i,
-      })
-      continue
-    }
-
-    validPoints.push({
-      metric: item.metric,
-      source,
-      time: item.time,
-      unit,
-      value: item.value,
-    })
+    validPoints.push(prepared.point)
   }
+
+  for (const definition of toAdopt) await adoptCatalogMetric(user, definition)
 
   if (validPoints.length > 0) {
     await insertTimeSeries(user, validPoints)

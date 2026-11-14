@@ -1,7 +1,9 @@
+import type { MetricCatalogEntry } from '@aurboda/api-spec'
+
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'preact/hooks'
 
-import { fetchCustomMetrics, type CustomMetricDefinition } from '../state/api'
+import { fetchCustomMetrics, fetchMetricCatalog, type CustomMetricDefinition } from '../state/api'
 import { builtinDashboardMetricOptions, getMetricDisplayName } from '../utils/metricLabels'
 import { matchMetricEntries } from './picker-match'
 import './MetricPicker.css'
@@ -9,10 +11,14 @@ import './MetricPicker.css'
 interface MetricEntry {
   value: string
   label: string
-  group: 'builtin' | 'custom'
+  group: 'builtin' | 'custom' | 'catalog'
+  keywords?: string[]
 }
 
-const buildEntries = (customMetrics: CustomMetricDefinition[]): MetricEntry[] => {
+const buildEntries = (
+  customMetrics: CustomMetricDefinition[],
+  catalogEntries: MetricCatalogEntry[],
+): MetricEntry[] => {
   const builtin: MetricEntry[] = builtinDashboardMetricOptions.map((m) => ({
     group: 'builtin',
     label: m.label,
@@ -25,21 +31,44 @@ const buildEntries = (customMetrics: CustomMetricDefinition[]): MetricEntry[] =>
     value: m.name,
   }))
 
-  return [...builtin, ...custom]
+  const catalog: MetricEntry[] = catalogEntries
+    .filter((entry) => !entry.in_use)
+    .map((entry) => ({
+      group: 'catalog',
+      keywords: entry.aliases,
+      label: entry.display_name,
+      value: entry.name,
+    }))
+
+  return [...builtin, ...custom, ...catalog]
 }
 
 /**
  * The label to show in the closed input for the selected value: the built-in
  * display name, else the matching custom metric's description, else the raw value.
  */
-const displayNameForValue = (value: string, customMetrics: CustomMetricDefinition[]): string => {
+const displayNameForValue = (
+  value: string,
+  customMetrics: CustomMetricDefinition[],
+  catalogEntries: MetricCatalogEntry[],
+): string => {
   const displayValue = value ? getMetricDisplayName(value) : ''
   const customDisplayValue =
     value && !displayValue.includes(value)
       ? displayValue
-      : (customMetrics.find((m) => m.name === value)?.description ?? displayValue)
+      : (customMetrics.find((m) => m.name === value)?.description ??
+        catalogEntries.find((entry) => entry.name === value)?.display_name ??
+        displayValue)
   return customDisplayValue || value
 }
+
+const groupHeadings: Record<MetricEntry['group'], string> = {
+  builtin: 'Built-in',
+  catalog: 'More built-in metrics',
+  custom: 'Custom',
+}
+
+const groupOrder: MetricEntry['group'][] = ['builtin', 'custom', 'catalog']
 
 interface MetricPickerProps {
   value: string
@@ -48,6 +77,9 @@ interface MetricPickerProps {
   /** Offer only built-in metrics (hide the user's custom metrics) — e.g. article
    *  chart blocks accept only built-in `MetricType`s. */
   builtinOnly?: boolean
+  /** Also offer the catalogue metrics the user has not used yet; only where a value is written, since
+   *  such a metric has no data. */
+  includeCatalog?: boolean
 }
 
 export function MetricPicker({
@@ -55,6 +87,7 @@ export function MetricPicker({
   onChange,
   placeholder = 'Search metrics...',
   builtinOnly = false,
+  includeCatalog = false,
 }: MetricPickerProps) {
   const [inputValue, setInputValue] = useState('')
   const [isOpen, setIsOpen] = useState(false)
@@ -68,13 +101,20 @@ export function MetricPicker({
     staleTime: 5 * 60 * 1000,
   })
 
-  const entries = buildEntries(builtinOnly ? [] : (customMetrics ?? []))
+  const { data: metricCatalog } = useQuery({
+    enabled: includeCatalog && !builtinOnly,
+    queryFn: fetchMetricCatalog,
+    queryKey: ['metricCatalog'],
+    staleTime: 30 * 60 * 1000,
+  })
+  const catalogEntries = includeCatalog && !builtinOnly ? (metricCatalog?.entries ?? []) : []
+
+  const entries = buildEntries(builtinOnly ? [] : (customMetrics ?? []), catalogEntries)
 
   const filtered = matchMetricEntries(entries, inputValue)
 
-  const builtinEntries = filtered.filter((e) => e.group === 'builtin')
-  const customEntries = filtered.filter((e) => e.group === 'custom')
-  const flatFiltered = [...builtinEntries, ...customEntries]
+  const groups = groupOrder.map((group) => ({ entries: filtered.filter((e) => e.group === group), group }))
+  const flatFiltered = groups.flatMap((g) => g.entries)
 
   useEffect(() => {
     setHighlightedIndex(0)
@@ -114,7 +154,7 @@ export function MetricPicker({
     }
   }
 
-  const shownValue = isOpen ? inputValue : displayNameForValue(value, customMetrics ?? [])
+  const shownValue = isOpen ? inputValue : displayNameForValue(value, customMetrics ?? [], catalogEntries)
 
   return (
     <div class="metric-picker" ref={containerRef}>
@@ -136,42 +176,32 @@ export function MetricPicker({
       />
       {isOpen && flatFiltered.length > 0 && (
         <ul class="metric-picker-dropdown">
-          {builtinEntries.length > 0 && <li class="metric-picker-group-header">Built-in</li>}
-          {builtinEntries.map((entry) => {
-            const idx = flatFiltered.indexOf(entry)
-            return (
-              <li
-                key={entry.value}
-                class={`metric-picker-option ${idx === highlightedIndex ? 'highlighted' : ''} ${entry.value === value ? 'selected' : ''}`}
-                onMouseDown={(e) => {
-                  e.preventDefault()
-                  selectMetric(entry.value)
-                }}
-                onMouseEnter={() => setHighlightedIndex(idx)}
-              >
-                <span class="metric-option-label">{entry.label}</span>
-                {entry.label !== entry.value && <span class="metric-option-key">{entry.value}</span>}
-              </li>
-            )
-          })}
-          {customEntries.length > 0 && <li class="metric-picker-group-header">Custom</li>}
-          {customEntries.map((entry) => {
-            const idx = flatFiltered.indexOf(entry)
-            return (
-              <li
-                key={entry.value}
-                class={`metric-picker-option ${idx === highlightedIndex ? 'highlighted' : ''} ${entry.value === value ? 'selected' : ''}`}
-                onMouseDown={(e) => {
-                  e.preventDefault()
-                  selectMetric(entry.value)
-                }}
-                onMouseEnter={() => setHighlightedIndex(idx)}
-              >
-                <span class="metric-option-label">{entry.label}</span>
-                {entry.label !== entry.value && <span class="metric-option-key">{entry.value}</span>}
-              </li>
-            )
-          })}
+          {groups.map(({ entries: groupEntries, group }) =>
+            groupEntries.length === 0
+              ? null
+              : [
+                  <li key={`heading-${group}`} class="metric-picker-group-header">
+                    {groupHeadings[group]}
+                  </li>,
+                  ...groupEntries.map((entry) => {
+                    const idx = flatFiltered.indexOf(entry)
+                    return (
+                      <li
+                        key={entry.value}
+                        class={`metric-picker-option ${idx === highlightedIndex ? 'highlighted' : ''} ${entry.value === value ? 'selected' : ''}`}
+                        onMouseDown={(e) => {
+                          e.preventDefault()
+                          selectMetric(entry.value)
+                        }}
+                        onMouseEnter={() => setHighlightedIndex(idx)}
+                      >
+                        <span class="metric-option-label">{entry.label}</span>
+                        {entry.label !== entry.value && <span class="metric-option-key">{entry.value}</span>}
+                      </li>
+                    )
+                  }),
+                ],
+          )}
         </ul>
       )}
     </div>

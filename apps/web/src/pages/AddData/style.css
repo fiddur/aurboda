@@ -140,6 +140,31 @@
 
 .add-form .form-row .form-field {
   flex: 1;
+  min-width: 0;
+}
+
+.add-form .value-with-unit {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.add-form .value-with-unit input {
+  flex: 1;
+  min-width: 0;
+}
+
+.add-form .value-with-unit select {
+  flex: none;
+  width: auto;
+  max-width: 9rem;
+}
+
+.add-form .value-unit {
+  flex: none;
+  opacity: 0.7;
+  font-size: 0.9rem;
+  white-space: nowrap;
 }
 
 .add-form-actions {

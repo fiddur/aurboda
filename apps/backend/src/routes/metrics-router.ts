@@ -212,6 +212,7 @@ export const createMetricsRouter = (
         metric: item.metric,
         source: item.source,
         time: new Date(item.time),
+        unit: item.unit,
         value: item.value,
       }))
 
@@ -285,12 +286,12 @@ export const createMetricsRouter = (
     authMiddleware,
     validateBody(addMetricBodySchema),
     async (req, res) => {
-      const { metric, value, time } = req.body
+      const { metric, value, time, unit } = req.body
       const user = req.user!
 
       const measurementTime = time ? new Date(time) : new Date()
 
-      const result = await addMetric(user, { metric, time: measurementTime, value })
+      const result = await addMetric(user, { metric, time: measurementTime, unit, value })
       res.json(result)
     },
   )

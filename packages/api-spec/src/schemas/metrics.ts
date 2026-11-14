@@ -11,9 +11,16 @@ import {
 
 const metricValueSchema = z.number().meta({ description: 'Metric value' })
 
+const givenUnitSchema = z.string().min(1).max(30).optional().meta({
+  description:
+    "The unit the value is given in. Converted to the unit the metric is stored in when the metric is a built-in catalogue metric (GET /metric-catalog) and the unit is one it accepts; refused when it cannot be converted. Left out, the value is taken to be in the metric's unit.",
+  example: 'mg/dL',
+})
+
 /** Validation against the user's custom metrics happens at the service layer. */
 const metricNameSchema = z.string().min(1).max(50).meta({
-  description: 'Metric name (built-in or custom)',
+  description:
+    'Metric name: a built-in metric, a custom metric, or a name or alias from the built-in metric catalogue (GET /metric-catalog), which is added on first use',
   example: 'heart_rate',
 })
 
@@ -59,6 +66,7 @@ export const addMetricBodySchema = z
     time: iso8601DateTimeSchema.optional().meta({
       description: 'Measurement time (defaults to current time)',
     }),
+    unit: givenUnitSchema,
     value: metricValueSchema.meta({ example: 72 }),
   })
   .meta({ id: 'AddMetricBody' })
@@ -70,6 +78,12 @@ export const addMetricResponseSchema = baseResponseSchema
     entity_id: z.string().optional().meta({
       description: 'Composite entity ID for the created metric point (format: time|metric|source)',
     }),
+    metric: z.string().optional().meta({
+      description: 'The metric the value was stored under (a catalogue alias resolves to its name)',
+    }),
+    time: iso8601DateTimeSchema.optional().meta({ description: 'Measurement time' }),
+    unit: z.string().optional().meta({ description: 'The unit the value is stored in' }),
+    value: z.number().optional().meta({ description: 'The value as stored, after any unit conversion' }),
   })
   .meta({ id: 'AddMetricResponse' })
 
@@ -80,6 +94,7 @@ export const bulkMetricItemSchema = z
     metric: metricNameSchema,
     source: z.string().min(1).max(50).optional().meta({ description: 'Data source (defaults to "aurboda")' }),
     time: iso8601DateTimeSchema.meta({ description: 'Measurement time (required for bulk inserts)' }),
+    unit: givenUnitSchema,
     value: metricValueSchema.meta({ example: 36.03 }),
   })
   .meta({ id: 'BulkMetricItem' })

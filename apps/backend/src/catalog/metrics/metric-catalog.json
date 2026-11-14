@@ -1,0 +1,1514 @@
+{
+  "version": "2026.11.1",
+  "groups": [
+    {
+      "key": "lipids",
+      "name": "Lipids"
+    },
+    {
+      "key": "glucose",
+      "name": "Glucose and insulin"
+    },
+    {
+      "key": "blood_count",
+      "name": "Iron and blood count"
+    },
+    {
+      "key": "vitamins_minerals",
+      "name": "Vitamins, minerals and electrolytes"
+    },
+    {
+      "key": "thyroid",
+      "name": "Thyroid"
+    },
+    {
+      "key": "hormones",
+      "name": "Hormones"
+    },
+    {
+      "key": "organ_function",
+      "name": "Liver, kidney and muscle"
+    },
+    {
+      "key": "inflammation",
+      "name": "Inflammation"
+    },
+    {
+      "key": "body_measurements",
+      "name": "Body measurements"
+    },
+    {
+      "key": "body_composition",
+      "name": "Body composition"
+    }
+  ],
+  "entries": [
+    {
+      "name": "total_cholesterol",
+      "display_name": "Total cholesterol",
+      "group": "lipids",
+      "unit": "mmol/L",
+      "aliases": ["cholesterol", "cholesterol total", "tc"],
+      "units": [
+        {
+          "unit": "mg/dL",
+          "factor": 0.02586
+        }
+      ]
+    },
+    {
+      "name": "ldl_cholesterol",
+      "display_name": "LDL cholesterol",
+      "group": "lipids",
+      "unit": "mmol/L",
+      "aliases": ["ldl", "ldl-c"],
+      "units": [
+        {
+          "unit": "mg/dL",
+          "factor": 0.02586
+        }
+      ]
+    },
+    {
+      "name": "hdl_cholesterol",
+      "display_name": "HDL cholesterol",
+      "group": "lipids",
+      "unit": "mmol/L",
+      "aliases": ["hdl", "hdl-c"],
+      "units": [
+        {
+          "unit": "mg/dL",
+          "factor": 0.02586
+        }
+      ]
+    },
+    {
+      "name": "non_hdl_cholesterol",
+      "display_name": "Non-HDL cholesterol",
+      "group": "lipids",
+      "unit": "mmol/L",
+      "aliases": ["non-hdl", "non-hdl-c"],
+      "units": [
+        {
+          "unit": "mg/dL",
+          "factor": 0.02586
+        }
+      ]
+    },
+    {
+      "name": "triglycerides",
+      "display_name": "Triglycerides",
+      "group": "lipids",
+      "unit": "mmol/L",
+      "aliases": ["triglyceride", "tg", "trigs"],
+      "units": [
+        {
+          "unit": "mg/dL",
+          "factor": 0.01129
+        }
+      ]
+    },
+    {
+      "name": "apolipoprotein_b",
+      "display_name": "Apolipoprotein B",
+      "group": "lipids",
+      "unit": "g/L",
+      "aliases": ["apob", "apo b"],
+      "units": [
+        {
+          "unit": "mg/dL",
+          "factor": 0.01
+        }
+      ]
+    },
+    {
+      "name": "apolipoprotein_a1",
+      "display_name": "Apolipoprotein A1",
+      "group": "lipids",
+      "unit": "g/L",
+      "aliases": ["apoa1", "apo a1", "apolipoprotein a-i", "apo a-i"],
+      "units": [
+        {
+          "unit": "mg/dL",
+          "factor": 0.01
+        }
+      ]
+    },
+    {
+      "name": "lipoprotein_a",
+      "display_name": "Lipoprotein(a)",
+      "group": "lipids",
+      "unit": "nmol/L",
+      "aliases": ["lp(a)", "lpa"],
+      "units": []
+    },
+    {
+      "name": "hba1c",
+      "display_name": "HbA1c",
+      "group": "glucose",
+      "unit": "mmol/mol",
+      "aliases": [
+        "a1c",
+        "hemoglobin a1c",
+        "haemoglobin a1c",
+        "glycated hemoglobin",
+        "glycated haemoglobin",
+        "glycohemoglobin"
+      ],
+      "units": [
+        {
+          "unit": "%",
+          "factor": 10.929,
+          "offset": -2.15
+        }
+      ]
+    },
+    {
+      "name": "fasting_glucose",
+      "display_name": "Fasting glucose",
+      "group": "glucose",
+      "unit": "mmol/L",
+      "aliases": ["fasting blood glucose", "fasting plasma glucose", "fpg", "fbg"],
+      "units": [
+        {
+          "unit": "mg/dL",
+          "factor": 0.05551
+        }
+      ]
+    },
+    {
+      "name": "fasting_insulin",
+      "display_name": "Fasting insulin",
+      "group": "glucose",
+      "unit": "mIU/L",
+      "aliases": ["insulin", "insulin fasting"],
+      "unit_aliases": ["mU/L"],
+      "units": [
+        {
+          "unit": "µIU/mL",
+          "factor": 1,
+          "aliases": ["µU/mL"]
+        }
+      ]
+    },
+    {
+      "name": "c_peptide",
+      "display_name": "C-peptide",
+      "group": "glucose",
+      "unit": "nmol/L",
+      "aliases": ["cpeptide", "connecting peptide"],
+      "units": [
+        {
+          "unit": "ng/mL",
+          "factor": 0.331,
+          "aliases": ["µg/L"]
+        },
+        {
+          "unit": "pmol/L",
+          "factor": 0.001
+        }
+      ]
+    },
+    {
+      "name": "ferritin",
+      "display_name": "Ferritin",
+      "group": "blood_count",
+      "unit": "µg/L",
+      "aliases": ["serum ferritin"],
+      "units": [
+        {
+          "unit": "ng/mL",
+          "factor": 1
+        }
+      ]
+    },
+    {
+      "name": "iron",
+      "display_name": "Iron",
+      "group": "blood_count",
+      "unit": "µmol/L",
+      "aliases": ["serum iron"],
+      "units": [
+        {
+          "unit": "µg/dL",
+          "factor": 0.1791
+        }
+      ]
+    },
+    {
+      "name": "transferrin",
+      "display_name": "Transferrin",
+      "group": "blood_count",
+      "unit": "g/L",
+      "aliases": [],
+      "units": [
+        {
+          "unit": "mg/dL",
+          "factor": 0.01
+        }
+      ]
+    },
+    {
+      "name": "transferrin_saturation",
+      "display_name": "Transferrin saturation",
+      "group": "blood_count",
+      "unit": "%",
+      "aliases": ["tsat", "iron saturation"],
+      "units": [
+        {
+          "unit": "fraction",
+          "factor": 100,
+          "aliases": ["ratio"]
+        }
+      ]
+    },
+    {
+      "name": "tibc",
+      "display_name": "Total iron-binding capacity",
+      "group": "blood_count",
+      "unit": "µmol/L",
+      "aliases": ["total iron binding capacity", "iron binding capacity"],
+      "units": [
+        {
+          "unit": "µg/dL",
+          "factor": 0.1791
+        }
+      ]
+    },
+    {
+      "name": "hemoglobin",
+      "display_name": "Hemoglobin",
+      "group": "blood_count",
+      "unit": "g/L",
+      "aliases": ["haemoglobin", "hb", "hgb"],
+      "units": [
+        {
+          "unit": "g/dL",
+          "factor": 10
+        },
+        {
+          "unit": "mmol/L",
+          "factor": 16.11
+        }
+      ]
+    },
+    {
+      "name": "hematocrit",
+      "display_name": "Hematocrit",
+      "group": "blood_count",
+      "unit": "%",
+      "aliases": ["haematocrit", "hct", "pcv", "packed cell volume", "evf"],
+      "units": [
+        {
+          "unit": "fraction",
+          "factor": 100,
+          "aliases": ["ratio", "L/L"]
+        }
+      ]
+    },
+    {
+      "name": "red_blood_cells",
+      "display_name": "Red blood cells",
+      "group": "blood_count",
+      "unit": "10^12/L",
+      "aliases": ["rbc", "erythrocytes", "red blood cell count", "red cell count"],
+      "unit_aliases": ["x10^12/L", "10*12/L", "10e12/L"],
+      "units": [
+        {
+          "unit": "10^6/µL",
+          "factor": 1,
+          "aliases": ["x10^6/µL", "10*6/µL", "M/µL", "million/µL"]
+        }
+      ]
+    },
+    {
+      "name": "white_blood_cells",
+      "display_name": "White blood cells",
+      "group": "blood_count",
+      "unit": "10^9/L",
+      "aliases": ["wbc", "leukocytes", "leucocytes", "white blood cell count", "white cell count"],
+      "unit_aliases": ["x10^9/L", "10*9/L", "10e9/L"],
+      "units": [
+        {
+          "unit": "10^3/µL",
+          "factor": 1,
+          "aliases": ["x10^3/µL", "10*3/µL", "K/µL", "thousand/µL"]
+        },
+        {
+          "unit": "/µL",
+          "factor": 0.001,
+          "aliases": ["cells/µL"]
+        }
+      ]
+    },
+    {
+      "name": "platelets",
+      "display_name": "Platelets",
+      "group": "blood_count",
+      "unit": "10^9/L",
+      "aliases": ["plt", "thrombocytes", "platelet count"],
+      "unit_aliases": ["x10^9/L", "10*9/L", "10e9/L"],
+      "units": [
+        {
+          "unit": "10^3/µL",
+          "factor": 1,
+          "aliases": ["x10^3/µL", "10*3/µL", "K/µL", "thousand/µL"]
+        },
+        {
+          "unit": "/µL",
+          "factor": 0.001,
+          "aliases": ["cells/µL"]
+        }
+      ]
+    },
+    {
+      "name": "neutrophils",
+      "display_name": "Neutrophils",
+      "group": "blood_count",
+      "unit": "10^9/L",
+      "aliases": ["neutrophil count", "absolute neutrophils", "anc"],
+      "unit_aliases": ["x10^9/L", "10*9/L", "10e9/L"],
+      "units": [
+        {
+          "unit": "10^3/µL",
+          "factor": 1,
+          "aliases": ["x10^3/µL", "10*3/µL", "K/µL", "thousand/µL"]
+        },
+        {
+          "unit": "/µL",
+          "factor": 0.001,
+          "aliases": ["cells/µL"]
+        }
+      ]
+    },
+    {
+      "name": "lymphocytes",
+      "display_name": "Lymphocytes",
+      "group": "blood_count",
+      "unit": "10^9/L",
+      "aliases": ["lymphocyte count", "absolute lymphocytes"],
+      "unit_aliases": ["x10^9/L", "10*9/L", "10e9/L"],
+      "units": [
+        {
+          "unit": "10^3/µL",
+          "factor": 1,
+          "aliases": ["x10^3/µL", "10*3/µL", "K/µL", "thousand/µL"]
+        },
+        {
+          "unit": "/µL",
+          "factor": 0.001,
+          "aliases": ["cells/µL"]
+        }
+      ]
+    },
+    {
+      "name": "monocytes",
+      "display_name": "Monocytes",
+      "group": "blood_count",
+      "unit": "10^9/L",
+      "aliases": ["monocyte count", "absolute monocytes"],
+      "unit_aliases": ["x10^9/L", "10*9/L", "10e9/L"],
+      "units": [
+        {
+          "unit": "10^3/µL",
+          "factor": 1,
+          "aliases": ["x10^3/µL", "10*3/µL", "K/µL", "thousand/µL"]
+        },
+        {
+          "unit": "/µL",
+          "factor": 0.001,
+          "aliases": ["cells/µL"]
+        }
+      ]
+    },
+    {
+      "name": "eosinophils",
+      "display_name": "Eosinophils",
+      "group": "blood_count",
+      "unit": "10^9/L",
+      "aliases": ["eosinophil count", "absolute eosinophils"],
+      "unit_aliases": ["x10^9/L", "10*9/L", "10e9/L"],
+      "units": [
+        {
+          "unit": "10^3/µL",
+          "factor": 1,
+          "aliases": ["x10^3/µL", "10*3/µL", "K/µL", "thousand/µL"]
+        },
+        {
+          "unit": "/µL",
+          "factor": 0.001,
+          "aliases": ["cells/µL"]
+        }
+      ]
+    },
+    {
+      "name": "basophils",
+      "display_name": "Basophils",
+      "group": "blood_count",
+      "unit": "10^9/L",
+      "aliases": ["basophil count", "absolute basophils"],
+      "unit_aliases": ["x10^9/L", "10*9/L", "10e9/L"],
+      "units": [
+        {
+          "unit": "10^3/µL",
+          "factor": 1,
+          "aliases": ["x10^3/µL", "10*3/µL", "K/µL", "thousand/µL"]
+        },
+        {
+          "unit": "/µL",
+          "factor": 0.001,
+          "aliases": ["cells/µL"]
+        }
+      ]
+    },
+    {
+      "name": "mcv",
+      "display_name": "MCV",
+      "group": "blood_count",
+      "unit": "fL",
+      "aliases": ["mean corpuscular volume", "mean cell volume"],
+      "units": []
+    },
+    {
+      "name": "mch",
+      "display_name": "MCH",
+      "group": "blood_count",
+      "unit": "pg",
+      "aliases": ["mean corpuscular hemoglobin", "mean cell hemoglobin"],
+      "units": []
+    },
+    {
+      "name": "mchc",
+      "display_name": "MCHC",
+      "group": "blood_count",
+      "unit": "g/L",
+      "aliases": ["mean corpuscular hemoglobin concentration", "mean cell hemoglobin concentration"],
+      "units": [
+        {
+          "unit": "g/dL",
+          "factor": 10
+        }
+      ]
+    },
+    {
+      "name": "vitamin_d",
+      "display_name": "Vitamin D (25-OH)",
+      "group": "vitamins_minerals",
+      "unit": "nmol/L",
+      "aliases": [
+        "vit d",
+        "25-oh vitamin d",
+        "25-hydroxyvitamin d",
+        "25-hydroxy vitamin d",
+        "25(oh)d",
+        "calcidiol"
+      ],
+      "units": [
+        {
+          "unit": "ng/mL",
+          "factor": 2.496,
+          "aliases": ["µg/L"]
+        }
+      ]
+    },
+    {
+      "name": "vitamin_b12",
+      "display_name": "Vitamin B12",
+      "group": "vitamins_minerals",
+      "unit": "pmol/L",
+      "aliases": ["b12", "vit b12", "cobalamin"],
+      "units": [
+        {
+          "unit": "pg/mL",
+          "factor": 0.7378,
+          "aliases": ["ng/L"]
+        }
+      ]
+    },
+    {
+      "name": "folate",
+      "display_name": "Folate",
+      "group": "vitamins_minerals",
+      "unit": "nmol/L",
+      "aliases": ["folic acid", "serum folate", "vitamin b9"],
+      "units": [
+        {
+          "unit": "ng/mL",
+          "factor": 2.266,
+          "aliases": ["µg/L"]
+        }
+      ]
+    },
+    {
+      "name": "homocysteine",
+      "display_name": "Homocysteine",
+      "group": "vitamins_minerals",
+      "unit": "µmol/L",
+      "aliases": ["hcy"],
+      "units": [
+        {
+          "unit": "mg/L",
+          "factor": 7.397
+        }
+      ]
+    },
+    {
+      "name": "magnesium",
+      "display_name": "Magnesium",
+      "group": "vitamins_minerals",
+      "unit": "mmol/L",
+      "aliases": ["serum magnesium"],
+      "units": [
+        {
+          "unit": "mg/dL",
+          "factor": 0.4114
+        },
+        {
+          "unit": "mEq/L",
+          "factor": 0.5
+        }
+      ]
+    },
+    {
+      "name": "calcium",
+      "display_name": "Calcium",
+      "group": "vitamins_minerals",
+      "unit": "mmol/L",
+      "aliases": ["serum calcium", "total calcium"],
+      "units": [
+        {
+          "unit": "mg/dL",
+          "factor": 0.2495
+        },
+        {
+          "unit": "mEq/L",
+          "factor": 0.5
+        }
+      ]
+    },
+    {
+      "name": "phosphate",
+      "display_name": "Phosphate",
+      "group": "vitamins_minerals",
+      "unit": "mmol/L",
+      "aliases": ["phosphorus", "inorganic phosphate", "serum phosphate"],
+      "units": [
+        {
+          "unit": "mg/dL",
+          "factor": 0.3229
+        }
+      ]
+    },
+    {
+      "name": "zinc",
+      "display_name": "Zinc",
+      "group": "vitamins_minerals",
+      "unit": "µmol/L",
+      "aliases": ["serum zinc"],
+      "units": [
+        {
+          "unit": "µg/dL",
+          "factor": 0.153
+        },
+        {
+          "unit": "µg/L",
+          "factor": 0.0153
+        },
+        {
+          "unit": "mg/L",
+          "factor": 15.3
+        }
+      ]
+    },
+    {
+      "name": "copper",
+      "display_name": "Copper",
+      "group": "vitamins_minerals",
+      "unit": "µmol/L",
+      "aliases": ["serum copper"],
+      "units": [
+        {
+          "unit": "µg/dL",
+          "factor": 0.1574
+        },
+        {
+          "unit": "µg/L",
+          "factor": 0.01574
+        },
+        {
+          "unit": "mg/L",
+          "factor": 15.74
+        }
+      ]
+    },
+    {
+      "name": "selenium",
+      "display_name": "Selenium",
+      "group": "vitamins_minerals",
+      "unit": "µmol/L",
+      "aliases": ["serum selenium"],
+      "units": [
+        {
+          "unit": "µg/L",
+          "factor": 0.01266
+        },
+        {
+          "unit": "µg/dL",
+          "factor": 0.1266
+        }
+      ]
+    },
+    {
+      "name": "sodium",
+      "display_name": "Sodium",
+      "group": "vitamins_minerals",
+      "unit": "mmol/L",
+      "aliases": ["serum sodium"],
+      "units": [
+        {
+          "unit": "mEq/L",
+          "factor": 1
+        }
+      ]
+    },
+    {
+      "name": "potassium",
+      "display_name": "Potassium",
+      "group": "vitamins_minerals",
+      "unit": "mmol/L",
+      "aliases": ["serum potassium"],
+      "units": [
+        {
+          "unit": "mEq/L",
+          "factor": 1
+        }
+      ]
+    },
+    {
+      "name": "chloride",
+      "display_name": "Chloride",
+      "group": "vitamins_minerals",
+      "unit": "mmol/L",
+      "aliases": ["serum chloride"],
+      "units": [
+        {
+          "unit": "mEq/L",
+          "factor": 1
+        }
+      ]
+    },
+    {
+      "name": "omega_3_index",
+      "display_name": "Omega-3 index",
+      "group": "vitamins_minerals",
+      "unit": "%",
+      "aliases": ["o3 index"],
+      "units": []
+    },
+    {
+      "name": "tsh",
+      "display_name": "TSH",
+      "group": "thyroid",
+      "unit": "mIU/L",
+      "aliases": ["thyroid stimulating hormone", "thyrotropin"],
+      "unit_aliases": ["mU/L"],
+      "units": [
+        {
+          "unit": "µIU/mL",
+          "factor": 1,
+          "aliases": ["µU/mL"]
+        }
+      ]
+    },
+    {
+      "name": "free_t4",
+      "display_name": "Free T4",
+      "group": "thyroid",
+      "unit": "pmol/L",
+      "aliases": ["ft4", "t4 free", "free thyroxine", "thyroxine free"],
+      "units": [
+        {
+          "unit": "ng/dL",
+          "factor": 12.87
+        },
+        {
+          "unit": "pg/mL",
+          "factor": 1.287
+        }
+      ]
+    },
+    {
+      "name": "free_t3",
+      "display_name": "Free T3",
+      "group": "thyroid",
+      "unit": "pmol/L",
+      "aliases": ["ft3", "t3 free", "free triiodothyronine", "triiodothyronine free"],
+      "units": [
+        {
+          "unit": "pg/mL",
+          "factor": 1.536,
+          "aliases": ["ng/L"]
+        },
+        {
+          "unit": "pg/dL",
+          "factor": 0.01536
+        },
+        {
+          "unit": "ng/dL",
+          "factor": 15.36
+        }
+      ]
+    },
+    {
+      "name": "tpo_antibodies",
+      "display_name": "TPO antibodies",
+      "group": "thyroid",
+      "unit": "kIU/L",
+      "aliases": ["anti-tpo", "tpo ab", "tpoab", "thyroid peroxidase antibodies"],
+      "unit_aliases": ["kU/L"],
+      "units": [
+        {
+          "unit": "IU/mL",
+          "factor": 1,
+          "aliases": ["U/mL"]
+        }
+      ]
+    },
+    {
+      "name": "testosterone",
+      "display_name": "Testosterone",
+      "group": "hormones",
+      "unit": "nmol/L",
+      "aliases": ["total testosterone"],
+      "units": [
+        {
+          "unit": "ng/dL",
+          "factor": 0.03467
+        },
+        {
+          "unit": "ng/mL",
+          "factor": 3.467,
+          "aliases": ["µg/L"]
+        }
+      ]
+    },
+    {
+      "name": "free_testosterone",
+      "display_name": "Free testosterone",
+      "group": "hormones",
+      "unit": "pmol/L",
+      "aliases": [],
+      "units": [
+        {
+          "unit": "pg/mL",
+          "factor": 3.467,
+          "aliases": ["ng/L"]
+        },
+        {
+          "unit": "ng/dL",
+          "factor": 34.67
+        },
+        {
+          "unit": "nmol/L",
+          "factor": 1000
+        }
+      ]
+    },
+    {
+      "name": "shbg",
+      "display_name": "SHBG",
+      "group": "hormones",
+      "unit": "nmol/L",
+      "aliases": ["sex hormone binding globulin"],
+      "units": []
+    },
+    {
+      "name": "estradiol",
+      "display_name": "Estradiol",
+      "group": "hormones",
+      "unit": "pmol/L",
+      "aliases": ["oestradiol", "e2"],
+      "units": [
+        {
+          "unit": "pg/mL",
+          "factor": 3.671,
+          "aliases": ["ng/L"]
+        }
+      ]
+    },
+    {
+      "name": "progesterone",
+      "display_name": "Progesterone",
+      "group": "hormones",
+      "unit": "nmol/L",
+      "aliases": [],
+      "units": [
+        {
+          "unit": "ng/mL",
+          "factor": 3.18,
+          "aliases": ["µg/L"]
+        }
+      ]
+    },
+    {
+      "name": "lh",
+      "display_name": "LH",
+      "group": "hormones",
+      "unit": "IU/L",
+      "aliases": ["luteinizing hormone", "luteinising hormone"],
+      "unit_aliases": ["U/L"],
+      "units": [
+        {
+          "unit": "mIU/mL",
+          "factor": 1
+        }
+      ]
+    },
+    {
+      "name": "fsh",
+      "display_name": "FSH",
+      "group": "hormones",
+      "unit": "IU/L",
+      "aliases": ["follicle stimulating hormone"],
+      "unit_aliases": ["U/L"],
+      "units": [
+        {
+          "unit": "mIU/mL",
+          "factor": 1
+        }
+      ]
+    },
+    {
+      "name": "prolactin",
+      "display_name": "Prolactin",
+      "group": "hormones",
+      "unit": "mIU/L",
+      "aliases": ["prl"],
+      "unit_aliases": ["mU/L"],
+      "units": [
+        {
+          "unit": "ng/mL",
+          "factor": 21.2,
+          "aliases": ["µg/L"]
+        }
+      ]
+    },
+    {
+      "name": "cortisol",
+      "display_name": "Cortisol",
+      "group": "hormones",
+      "unit": "nmol/L",
+      "aliases": ["serum cortisol", "morning cortisol"],
+      "units": [
+        {
+          "unit": "µg/dL",
+          "factor": 27.59
+        }
+      ]
+    },
+    {
+      "name": "dhea_s",
+      "display_name": "DHEA-S",
+      "group": "hormones",
+      "unit": "µmol/L",
+      "aliases": ["dheas", "dhea sulfate", "dhea sulphate", "dehydroepiandrosterone sulfate"],
+      "units": [
+        {
+          "unit": "µg/dL",
+          "factor": 0.02714
+        }
+      ]
+    },
+    {
+      "name": "igf_1",
+      "display_name": "IGF-1",
+      "group": "hormones",
+      "unit": "µg/L",
+      "aliases": ["igf1", "insulin-like growth factor 1", "somatomedin c"],
+      "units": [
+        {
+          "unit": "ng/mL",
+          "factor": 1
+        },
+        {
+          "unit": "nmol/L",
+          "factor": 7.649
+        }
+      ]
+    },
+    {
+      "name": "psa",
+      "display_name": "PSA",
+      "group": "hormones",
+      "unit": "µg/L",
+      "aliases": ["prostate specific antigen", "total psa"],
+      "units": [
+        {
+          "unit": "ng/mL",
+          "factor": 1
+        }
+      ]
+    },
+    {
+      "name": "pth",
+      "display_name": "PTH",
+      "group": "hormones",
+      "unit": "pmol/L",
+      "aliases": ["parathyroid hormone", "intact pth", "parathormone"],
+      "units": [
+        {
+          "unit": "pg/mL",
+          "factor": 0.1061,
+          "aliases": ["ng/L"]
+        }
+      ]
+    },
+    {
+      "name": "alt",
+      "display_name": "ALT",
+      "group": "organ_function",
+      "unit": "U/L",
+      "aliases": ["alat", "alanine aminotransferase", "alanine transaminase", "sgpt"],
+      "unit_aliases": ["IU/L"],
+      "units": [
+        {
+          "unit": "µkat/L",
+          "factor": 60
+        }
+      ]
+    },
+    {
+      "name": "ast",
+      "display_name": "AST",
+      "group": "organ_function",
+      "unit": "U/L",
+      "aliases": ["asat", "aspartate aminotransferase", "aspartate transaminase", "sgot"],
+      "unit_aliases": ["IU/L"],
+      "units": [
+        {
+          "unit": "µkat/L",
+          "factor": 60
+        }
+      ]
+    },
+    {
+      "name": "ggt",
+      "display_name": "GGT",
+      "group": "organ_function",
+      "unit": "U/L",
+      "aliases": ["gamma gt", "gamma-glutamyl transferase", "gamma-glutamyltransferase", "ggtp"],
+      "unit_aliases": ["IU/L"],
+      "units": [
+        {
+          "unit": "µkat/L",
+          "factor": 60
+        }
+      ]
+    },
+    {
+      "name": "alp",
+      "display_name": "ALP",
+      "group": "organ_function",
+      "unit": "U/L",
+      "aliases": ["alkaline phosphatase", "alk phos"],
+      "unit_aliases": ["IU/L"],
+      "units": [
+        {
+          "unit": "µkat/L",
+          "factor": 60
+        }
+      ]
+    },
+    {
+      "name": "creatine_kinase",
+      "display_name": "Creatine kinase",
+      "group": "organ_function",
+      "unit": "U/L",
+      "aliases": ["ck", "cpk", "creatine phosphokinase"],
+      "unit_aliases": ["IU/L"],
+      "units": [
+        {
+          "unit": "µkat/L",
+          "factor": 60
+        }
+      ]
+    },
+    {
+      "name": "bilirubin",
+      "display_name": "Bilirubin",
+      "group": "organ_function",
+      "unit": "µmol/L",
+      "aliases": ["total bilirubin", "bilirubin total"],
+      "units": [
+        {
+          "unit": "mg/dL",
+          "factor": 17.1
+        }
+      ]
+    },
+    {
+      "name": "albumin",
+      "display_name": "Albumin",
+      "group": "organ_function",
+      "unit": "g/L",
+      "aliases": ["serum albumin"],
+      "units": [
+        {
+          "unit": "g/dL",
+          "factor": 10
+        }
+      ]
+    },
+    {
+      "name": "creatinine",
+      "display_name": "Creatinine",
+      "group": "organ_function",
+      "unit": "µmol/L",
+      "aliases": ["serum creatinine"],
+      "units": [
+        {
+          "unit": "mg/dL",
+          "factor": 88.4
+        }
+      ]
+    },
+    {
+      "name": "egfr",
+      "display_name": "eGFR",
+      "group": "organ_function",
+      "unit": "mL/min/1.73 m²",
+      "aliases": ["estimated gfr", "estimated glomerular filtration rate", "gfr"],
+      "unit_aliases": ["mL/min/1.73m2", "mL/min/1.73m^2", "mL/min"],
+      "units": []
+    },
+    {
+      "name": "urea",
+      "display_name": "Urea",
+      "group": "organ_function",
+      "unit": "mmol/L",
+      "aliases": ["serum urea"],
+      "units": [
+        {
+          "unit": "mg/dL",
+          "factor": 0.1665
+        }
+      ]
+    },
+    {
+      "name": "blood_urea_nitrogen",
+      "display_name": "Blood urea nitrogen (BUN)",
+      "group": "organ_function",
+      "unit": "mg/dL",
+      "aliases": ["bun", "urea nitrogen"],
+      "units": [
+        {
+          "unit": "mmol/L",
+          "factor": 2.801
+        }
+      ]
+    },
+    {
+      "name": "uric_acid",
+      "display_name": "Uric acid",
+      "group": "organ_function",
+      "unit": "µmol/L",
+      "aliases": ["urate", "serum urate"],
+      "units": [
+        {
+          "unit": "mg/dL",
+          "factor": 59.48
+        },
+        {
+          "unit": "mmol/L",
+          "factor": 1000
+        }
+      ]
+    },
+    {
+      "name": "cystatin_c",
+      "display_name": "Cystatin C",
+      "group": "organ_function",
+      "unit": "mg/L",
+      "aliases": ["cystatin"],
+      "units": []
+    },
+    {
+      "name": "crp",
+      "display_name": "CRP",
+      "group": "inflammation",
+      "unit": "mg/L",
+      "aliases": ["c-reactive protein", "hs-crp", "hscrp", "high sensitivity crp"],
+      "units": [
+        {
+          "unit": "mg/dL",
+          "factor": 10
+        }
+      ]
+    },
+    {
+      "name": "esr",
+      "display_name": "ESR",
+      "group": "inflammation",
+      "unit": "mm/h",
+      "aliases": ["erythrocyte sedimentation rate", "sedimentation rate", "sed rate"],
+      "unit_aliases": ["mm/hr", "mm/hour"],
+      "units": []
+    },
+    {
+      "name": "waist_circumference",
+      "display_name": "Waist circumference",
+      "group": "body_measurements",
+      "unit": "cm",
+      "aliases": ["waist", "waist size"],
+      "units": [
+        {
+          "unit": "in",
+          "factor": 2.54,
+          "aliases": ["inch", "inches"]
+        },
+        {
+          "unit": "mm",
+          "factor": 0.1
+        },
+        {
+          "unit": "m",
+          "factor": 100
+        }
+      ]
+    },
+    {
+      "name": "hip_circumference",
+      "display_name": "Hip circumference",
+      "group": "body_measurements",
+      "unit": "cm",
+      "aliases": ["hip", "hips"],
+      "units": [
+        {
+          "unit": "in",
+          "factor": 2.54,
+          "aliases": ["inch", "inches"]
+        },
+        {
+          "unit": "mm",
+          "factor": 0.1
+        },
+        {
+          "unit": "m",
+          "factor": 100
+        }
+      ]
+    },
+    {
+      "name": "neck_circumference",
+      "display_name": "Neck circumference",
+      "group": "body_measurements",
+      "unit": "cm",
+      "aliases": ["neck"],
+      "units": [
+        {
+          "unit": "in",
+          "factor": 2.54,
+          "aliases": ["inch", "inches"]
+        },
+        {
+          "unit": "mm",
+          "factor": 0.1
+        },
+        {
+          "unit": "m",
+          "factor": 100
+        }
+      ]
+    },
+    {
+      "name": "chest_circumference",
+      "display_name": "Chest circumference",
+      "group": "body_measurements",
+      "unit": "cm",
+      "aliases": ["chest"],
+      "units": [
+        {
+          "unit": "in",
+          "factor": 2.54,
+          "aliases": ["inch", "inches"]
+        },
+        {
+          "unit": "mm",
+          "factor": 0.1
+        },
+        {
+          "unit": "m",
+          "factor": 100
+        }
+      ]
+    },
+    {
+      "name": "upper_arm_circumference",
+      "display_name": "Upper arm circumference",
+      "group": "body_measurements",
+      "unit": "cm",
+      "aliases": ["upper arm", "arm circumference", "bicep", "biceps"],
+      "units": [
+        {
+          "unit": "in",
+          "factor": 2.54,
+          "aliases": ["inch", "inches"]
+        },
+        {
+          "unit": "mm",
+          "factor": 0.1
+        },
+        {
+          "unit": "m",
+          "factor": 100
+        }
+      ]
+    },
+    {
+      "name": "upper_arm_circumference_left",
+      "display_name": "Upper arm circumference, left",
+      "group": "body_measurements",
+      "unit": "cm",
+      "aliases": ["left upper arm", "left arm circumference", "left bicep", "left biceps"],
+      "units": [
+        {
+          "unit": "in",
+          "factor": 2.54,
+          "aliases": ["inch", "inches"]
+        },
+        {
+          "unit": "mm",
+          "factor": 0.1
+        },
+        {
+          "unit": "m",
+          "factor": 100
+        }
+      ]
+    },
+    {
+      "name": "upper_arm_circumference_right",
+      "display_name": "Upper arm circumference, right",
+      "group": "body_measurements",
+      "unit": "cm",
+      "aliases": ["right upper arm", "right arm circumference", "right bicep", "right biceps"],
+      "units": [
+        {
+          "unit": "in",
+          "factor": 2.54,
+          "aliases": ["inch", "inches"]
+        },
+        {
+          "unit": "mm",
+          "factor": 0.1
+        },
+        {
+          "unit": "m",
+          "factor": 100
+        }
+      ]
+    },
+    {
+      "name": "thigh_circumference",
+      "display_name": "Thigh circumference",
+      "group": "body_measurements",
+      "unit": "cm",
+      "aliases": ["thigh"],
+      "units": [
+        {
+          "unit": "in",
+          "factor": 2.54,
+          "aliases": ["inch", "inches"]
+        },
+        {
+          "unit": "mm",
+          "factor": 0.1
+        },
+        {
+          "unit": "m",
+          "factor": 100
+        }
+      ]
+    },
+    {
+      "name": "thigh_circumference_left",
+      "display_name": "Thigh circumference, left",
+      "group": "body_measurements",
+      "unit": "cm",
+      "aliases": ["left thigh"],
+      "units": [
+        {
+          "unit": "in",
+          "factor": 2.54,
+          "aliases": ["inch", "inches"]
+        },
+        {
+          "unit": "mm",
+          "factor": 0.1
+        },
+        {
+          "unit": "m",
+          "factor": 100
+        }
+      ]
+    },
+    {
+      "name": "thigh_circumference_right",
+      "display_name": "Thigh circumference, right",
+      "group": "body_measurements",
+      "unit": "cm",
+      "aliases": ["right thigh"],
+      "units": [
+        {
+          "unit": "in",
+          "factor": 2.54,
+          "aliases": ["inch", "inches"]
+        },
+        {
+          "unit": "mm",
+          "factor": 0.1
+        },
+        {
+          "unit": "m",
+          "factor": 100
+        }
+      ]
+    },
+    {
+      "name": "calf_circumference",
+      "display_name": "Calf circumference",
+      "group": "body_measurements",
+      "unit": "cm",
+      "aliases": ["calf"],
+      "units": [
+        {
+          "unit": "in",
+          "factor": 2.54,
+          "aliases": ["inch", "inches"]
+        },
+        {
+          "unit": "mm",
+          "factor": 0.1
+        },
+        {
+          "unit": "m",
+          "factor": 100
+        }
+      ]
+    },
+    {
+      "name": "calf_circumference_left",
+      "display_name": "Calf circumference, left",
+      "group": "body_measurements",
+      "unit": "cm",
+      "aliases": ["left calf"],
+      "units": [
+        {
+          "unit": "in",
+          "factor": 2.54,
+          "aliases": ["inch", "inches"]
+        },
+        {
+          "unit": "mm",
+          "factor": 0.1
+        },
+        {
+          "unit": "m",
+          "factor": 100
+        }
+      ]
+    },
+    {
+      "name": "calf_circumference_right",
+      "display_name": "Calf circumference, right",
+      "group": "body_measurements",
+      "unit": "cm",
+      "aliases": ["right calf"],
+      "units": [
+        {
+          "unit": "in",
+          "factor": 2.54,
+          "aliases": ["inch", "inches"]
+        },
+        {
+          "unit": "mm",
+          "factor": 0.1
+        },
+        {
+          "unit": "m",
+          "factor": 100
+        }
+      ]
+    },
+    {
+      "name": "skeletal_muscle_mass",
+      "display_name": "Skeletal muscle mass",
+      "group": "body_composition",
+      "unit": "kg",
+      "aliases": ["smm", "muscle mass"],
+      "units": [
+        {
+          "unit": "lb",
+          "factor": 0.45359237,
+          "aliases": ["lbs"]
+        },
+        {
+          "unit": "g",
+          "factor": 0.001
+        }
+      ]
+    },
+    {
+      "name": "visceral_fat_level",
+      "display_name": "Visceral fat level",
+      "group": "body_composition",
+      "unit": "level",
+      "aliases": ["visceral fat", "visceral fat rating"],
+      "units": []
+    },
+    {
+      "name": "visceral_fat_area",
+      "display_name": "Visceral fat area",
+      "group": "body_composition",
+      "unit": "cm²",
+      "aliases": ["vfa"],
+      "unit_aliases": ["cm2", "cm^2"],
+      "units": []
+    },
+    {
+      "name": "bmi",
+      "display_name": "BMI",
+      "group": "body_composition",
+      "unit": "kg/m²",
+      "aliases": ["body mass index"],
+      "unit_aliases": ["kg/m2", "kg/m^2"],
+      "units": []
+    },
+    {
+      "name": "ecw_ratio",
+      "display_name": "ECW ratio",
+      "group": "body_composition",
+      "unit": "ratio",
+      "aliases": ["ecw/tbw", "extracellular water ratio"],
+      "units": []
+    },
+    {
+      "name": "phase_angle",
+      "display_name": "Phase angle",
+      "group": "body_composition",
+      "unit": "degrees",
+      "aliases": [],
+      "unit_aliases": ["°", "deg", "degree"],
+      "units": []
+    },
+    {
+      "name": "bone_mineral_density",
+      "display_name": "Bone mineral density",
+      "group": "body_composition",
+      "unit": "g/cm²",
+      "aliases": ["bmd", "bone density"],
+      "unit_aliases": ["g/cm2", "g/cm^2"],
+      "units": []
+    }
+  ]
+}

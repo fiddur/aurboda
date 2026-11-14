@@ -2029,6 +2029,74 @@ describe('MCP Server', () => {
     })
   })
 
+  describe('Tools: metric catalogue', () => {
+    const callTool = async (app: express.Express, name: string, args: Record<string, unknown>) => {
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${auth.createToken('testuser')}`)
+        .send({ id: 1, jsonrpc: '2.0', method: 'tools/call', params: { arguments: args, name } })
+      expect(response.status).toBe(200)
+      return (parseSSEResponse(response.text) as { result: { content: { text: string }[] } }).result
+        .content[0].text
+    }
+
+    beforeEach(() => vi.mocked(mutations.addCustomMetric).mockClear())
+
+    test('lists list_metric_catalog, unit on add_metric and separate_metric on add_custom_metric', async () => {
+      const response = await mcpPost(createTestApp())
+        .set('Authorization', `Bearer ${auth.createToken('testuser')}`)
+        .send({ id: 1, jsonrpc: '2.0', method: 'tools/list' })
+      const tools = (
+        parseSSEResponse(response.text) as {
+          result: { tools: { inputSchema: { properties?: Record<string, unknown> }; name: string }[] }
+        }
+      ).result.tools
+      const byName = new Map(tools.map((tool) => [tool.name, tool]))
+
+      expect(byName.has('list_metric_catalog')).toBe(true)
+      expect(byName.get('add_metric')?.inputSchema.properties).toHaveProperty('unit')
+      expect(byName.get('add_custom_metric')?.inputSchema.properties).toHaveProperty('separate_metric')
+    })
+
+    test('add_custom_metric points an alias at its built-in metric and creates nothing', async () => {
+      const text = await callTool(createTestApp(), 'add_custom_metric', { name: 'ldl', unit: 'mg/dL' })
+
+      expect(text).toBe(
+        '"ldl" is the built-in metric "ldl_cholesterol" (stored in mmol/L): use that name with add_metric, which adds it on first use. Pass separate_metric: true to create a separate custom metric anyway.',
+      )
+      expect(mutations.addCustomMetric).not.toHaveBeenCalled()
+    })
+
+    test('add_custom_metric creates an alias-named metric with separate_metric', async () => {
+      vi.mocked(mutations.addCustomMetric).mockResolvedValueOnce({
+        data: { name: 'ldl', unit: 'mg/dL' },
+        success: true,
+      })
+
+      const text = await callTool(createTestApp(), 'add_custom_metric', {
+        name: 'ldl',
+        separate_metric: true,
+        unit: 'mg/dL',
+      })
+
+      expect(JSON.parse(text)).toEqual({ data: { name: 'ldl', unit: 'mg/dL' }, success: true })
+      expect(mutations.addCustomMetric).toHaveBeenCalledWith('testuser', { name: 'ldl', unit: 'mg/dL' })
+    })
+
+    test('add_custom_metric takes a catalogue name without separate_metric', async () => {
+      vi.mocked(mutations.addCustomMetric).mockResolvedValueOnce({
+        data: { name: 'ldl_cholesterol', unit: 'mg/dL' },
+        success: true,
+      })
+
+      await callTool(createTestApp(), 'add_custom_metric', { name: 'ldl_cholesterol', unit: 'mg/dL' })
+
+      expect(mutations.addCustomMetric).toHaveBeenCalledWith('testuser', {
+        name: 'ldl_cholesterol',
+        unit: 'mg/dL',
+      })
+    })
+  })
+
   describe('Tools: notes', () => {
     async function callNoteTool(
       app: express.Express,

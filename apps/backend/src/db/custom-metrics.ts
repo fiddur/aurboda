@@ -155,26 +155,32 @@ export const mergeCustomMetric = async (
   return { rows_reassigned, rows_skipped }
 }
 
+const insertIfAbsent = async (user: string, def: CustomMetricDefinition): Promise<void> => {
+  await query(
+    user,
+    `INSERT INTO custom_metrics (name, unit, description, min_value, max_value, include_in_daily_summary, aggregation)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     ON CONFLICT (name) DO NOTHING`,
+    [
+      def.name,
+      def.unit,
+      def.description ?? null,
+      def.min_value ?? null,
+      def.max_value ?? null,
+      def.include_in_daily_summary ?? false,
+      def.aggregation ?? 'avg',
+    ],
+  )
+}
+
 /** Used during migration from settings JSONB. */
 export const bulkInsertCustomMetricDefinitions = async (
   user: string,
   definitions: CustomMetricDefinition[],
 ): Promise<void> => {
-  for (const def of definitions) {
-    await query(
-      user,
-      `INSERT INTO custom_metrics (name, unit, description, min_value, max_value, include_in_daily_summary, aggregation)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       ON CONFLICT (name) DO NOTHING`,
-      [
-        def.name,
-        def.unit,
-        def.description ?? null,
-        def.min_value ?? null,
-        def.max_value ?? null,
-        def.include_in_daily_summary ?? false,
-        def.aggregation ?? 'avg',
-      ],
-    )
-  }
+  for (const def of definitions) await insertIfAbsent(user, def)
 }
+
+/** A metric the user already has under that name is left as it is. */
+export const adoptCatalogMetric = async (user: string, definition: CustomMetricDefinition): Promise<void> =>
+  insertIfAbsent(user, definition)

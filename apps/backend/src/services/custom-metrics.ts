@@ -1,4 +1,9 @@
-import type { CustomMetricDefinition, MetricAggregation } from '@aurboda/api-spec'
+import type {
+  CustomMetricDefinition,
+  MetricAggregation,
+  MetricCatalogResult,
+  StoredMetricCatalog,
+} from '@aurboda/api-spec'
 
 import {
   type CustomMetricDefinitionUpdates,
@@ -12,6 +17,7 @@ import {
   updateCustomMetricDefinition,
 } from '../db/index.ts'
 import { isValidMetric, metricUnits, type MetricType } from '../schema.ts'
+import { loadMetricCatalog, searchMetricCatalog, toMetricCatalogEntry } from './metric-catalog.ts'
 
 export interface CustomMetricResult {
   success: boolean
@@ -155,6 +161,21 @@ export async function deleteMetricData(user: string, metric: string): Promise<De
 
 export async function getCustomMetrics(user: string): Promise<CustomMetricDefinition[]> {
   return getCustomMetricDefinitions(user)
+}
+
+export const listMetricCatalog = async (
+  user: string,
+  q?: string,
+  catalog: StoredMetricCatalog = loadMetricCatalog(),
+): Promise<MetricCatalogResult> => {
+  const metrics = new Map((await getCustomMetricDefinitions(user)).map((metric) => [metric.name, metric]))
+  return {
+    entries: searchMetricCatalog(catalog, q).map((entry) =>
+      toMetricCatalogEntry(entry, metrics.get(entry.name)),
+    ),
+    groups: catalog.groups,
+    version: catalog.version,
+  }
 }
 
 export interface MergeCustomMetricResult {
