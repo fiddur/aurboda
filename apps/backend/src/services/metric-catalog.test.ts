@@ -1,6 +1,10 @@
 import {
+  allCatalogUnitSpellings,
+  catalogAcceptsUnit,
   isValidMetric,
   metricCatalogGroups,
+  normalizeUnit,
+  sameUnit,
   type StoredMetricCatalog,
   type StoredMetricCatalogEntry,
   storedMetricCatalogSchema,
@@ -16,8 +20,6 @@ import {
   getCatalogMetric,
   isCatalogUnit,
   loadMetricCatalog,
-  normalizeUnit,
-  sameUnit,
   searchMetricCatalog,
   toMetricCatalogEntry,
 } from './metric-catalog.ts'
@@ -29,12 +31,6 @@ const entry = (name: string): StoredMetricCatalogEntry => {
   if (!found) throw new Error(`no catalogue metric ${name}`)
   return found
 }
-
-const allUnitSpellings = (e: StoredMetricCatalogEntry): string[] => [
-  e.unit,
-  ...(e.unit_aliases ?? []),
-  ...e.units.flatMap((unit) => [unit.unit, ...(unit.aliases ?? [])]),
-]
 
 describe('the shipped catalogue', () => {
   test('parses', () => {
@@ -67,13 +63,13 @@ describe('the shipped catalogue', () => {
   })
 
   test('every unit string is at most 20 characters', () => {
-    const long = catalog.entries.flatMap(allUnitSpellings).filter((unit) => unit.length > 20)
+    const long = catalog.entries.flatMap(allCatalogUnitSpellings).filter((unit) => unit.length > 20)
     expect(long).toEqual([])
   })
 
   test('within an entry no two units normalise to the same string', () => {
     const clashes = catalog.entries.flatMap((e) => {
-      const normalised = allUnitSpellings(e).map(normalizeUnit)
+      const normalised = allCatalogUnitSpellings(e).map(normalizeUnit)
       return normalised
         .filter((unit, i) => normalised.indexOf(unit) !== i)
         .map((unit) => `${e.name}: ${unit}`)
@@ -227,6 +223,16 @@ describe('normalizeUnit', () => {
 
   test('keeps superscripts', () => {
     expect(normalizeUnit('10⁹/L')).toBe('10⁹/l')
+  })
+})
+
+describe('catalogAcceptsUnit', () => {
+  test('the stored unit, the other units and their spellings, after normalising', () => {
+    const ferritin = entry('ferritin')
+    for (const unit of ['µg/L', 'ug/l', 'mcg/L', 'ng/mL', 'NG/ML']) {
+      expect(catalogAcceptsUnit(ferritin, unit)).toBe(true)
+    }
+    expect(catalogAcceptsUnit(ferritin, 'mmol/L')).toBe(false)
   })
 })
 

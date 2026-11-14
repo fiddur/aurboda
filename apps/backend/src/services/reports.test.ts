@@ -15,7 +15,7 @@ import {
 const TX = vi.hoisted(() => ({ tx: true }))
 
 vi.mock('../db', () => ({
-  adoptCatalogMetric: vi.fn(),
+  adoptCatalogMetric: vi.fn((_db: unknown, definition: { unit: string }) => Promise.resolve(definition.unit)),
   deleteNotesForEntityIn: vi.fn(),
   getCustomMetricDefinitions: vi.fn().mockResolvedValue([]),
   deleteReport: vi.fn(),
@@ -96,7 +96,7 @@ describe('addReport', () => {
     expect(result.data!.report_type).toBe('inbody')
     expect(result.data!.entries).toHaveLength(2)
 
-    expect(mockInsertTimeSeries).toHaveBeenCalledWith('testuser', [
+    expect(mockInsertTimeSeries).toHaveBeenCalledWith(TX, [
       {
         metric: 'weight',
         source: 'lab_report',
@@ -315,11 +315,11 @@ describe('updateReport', () => {
     const result = await updateReport('testuser', 'r1', { location: 'New location' })
 
     expect(result.success).toBe(true)
-    expect(mockUpdateReport).toHaveBeenCalledWith('testuser', 'r1', { location: 'New location' })
+    expect(mockUpdateReport).toHaveBeenCalledWith(TX, 'r1', { location: 'New location' })
 
     // Should clean old time_series and re-insert
     expect(mockQuery).toHaveBeenCalledWith(
-      'testuser',
+      TX,
       `DELETE FROM time_series WHERE metric = $1 AND time = $2 AND source = 'lab_report'`,
       ['weight', new Date('2025-05-08T09:23:00Z')],
     )
@@ -358,7 +358,7 @@ describe('updateReport', () => {
       expect(entry).not.toHaveProperty('unit')
     }
 
-    expect(mockInsertTimeSeries).toHaveBeenCalledWith('testuser', [
+    expect(mockInsertTimeSeries).toHaveBeenCalledWith(TX, [
       {
         metric: 'weight',
         source: 'lab_report',
@@ -549,10 +549,10 @@ describe('reports with catalogue metrics', () => {
     })
 
     expect(db.adoptCatalogMetric).toHaveBeenCalledWith(
-      'testuser',
+      TX,
       expect.objectContaining({ name: 'ldl_cholesterol' }),
     )
-    expect(mockInsertTimeSeries).toHaveBeenCalledWith('testuser', [
+    expect(mockInsertTimeSeries).toHaveBeenCalledWith(TX, [
       {
         metric: 'ldl_cholesterol',
         source: 'lab_report',
@@ -562,7 +562,7 @@ describe('reports with catalogue metrics', () => {
       },
     ])
     expect(mockInsertReport).toHaveBeenCalledWith(
-      'testuser',
+      TX,
       expect.objectContaining({
         entries: [
           expect.objectContaining({
@@ -574,6 +574,23 @@ describe('reports with catalogue metrics', () => {
         ],
       }),
     )
+  })
+
+  test('addReport writes nothing when a metric of the name was created meanwhile in another unit', async () => {
+    vi.mocked(db.adoptCatalogMetric).mockResolvedValueOnce('mg/dL')
+
+    const result = await addReport('testuser', {
+      date: '2025-05-08T09:00:00Z',
+      entries: [{ metric: 'ldl', unit: 'mg/dL', value: 100 }],
+      report_type: 'blood_panel',
+    })
+
+    expect(result).toEqual({
+      error: 'Metric "ldl_cholesterol" was just added in mg/dL, not mmol/L: nothing was written. Try again.',
+      success: false,
+    })
+    expect(mockInsertTimeSeries).not.toHaveBeenCalled()
+    expect(mockInsertReport).not.toHaveBeenCalled()
   })
 
   test('updateReport refuses before touching anything', async () => {
@@ -620,7 +637,7 @@ describe('reports with catalogue metrics', () => {
 
     const result = await updateReport('testuser', 'r1', { date: '2025-05-09T09:00:00Z' })
 
-    expect(mockInsertTimeSeries).toHaveBeenCalledWith('testuser', [
+    expect(mockInsertTimeSeries).toHaveBeenCalledWith(TX, [
       {
         metric: 'ldl_cholesterol',
         source: 'lab_report',

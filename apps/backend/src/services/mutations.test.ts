@@ -22,9 +22,11 @@ import {
 } from './mutations.ts'
 import { reanalyseActivities, reanalyseOverrideTargets } from './track-analyse.ts'
 
+const TX = vi.hoisted(() => ({ tx: true }))
+
 vi.mock('../db', async () => ({
   activityTypeExists: vi.fn().mockResolvedValue(true),
-  adoptCatalogMetric: vi.fn().mockResolvedValue(undefined),
+  adoptCatalogMetric: vi.fn((_db: unknown, definition: { unit: string }) => Promise.resolve(definition.unit)),
   ensureActivityType: vi.fn().mockResolvedValue(true),
   checkActivityConflict: vi.fn().mockResolvedValue(false),
   getActivityTypeDefinition: vi.fn().mockResolvedValue(null),
@@ -62,6 +64,7 @@ vi.mock('../db', async () => ({
   upsertActivity: vi.fn(),
   updateCustomMetricDefinition: vi.fn(),
   upsertUserSettings: vi.fn(),
+  withUserTransaction: vi.fn((_user: string, fn: (tx: unknown) => Promise<unknown>) => fn(TX)),
 }))
 
 vi.mock('./track-analyse.ts', () => ({
@@ -94,7 +97,7 @@ describe('addMetric', () => {
     expect(result.unit).toBe('kg')
     expect(result.time).toBe('2024-01-15T08:00:00.000Z')
 
-    expect(db.insertTimeSeries).toHaveBeenCalledWith('testuser', [
+    expect(db.insertTimeSeries).toHaveBeenCalledWith(TX, [
       {
         metric: 'weight',
         source: 'aurboda',
@@ -492,6 +495,36 @@ describe('addCustomMetric', () => {
       unit: 'score',
     })
   })
+
+  test('refuses an alias of a catalogue metric with a pointer to it', async () => {
+    vi.mocked(db.getCustomMetricByName).mockResolvedValue(null)
+
+    const result = await addCustomMetric('testuser', { name: 'ldl', unit: 'mg/dL' })
+
+    expect(result).toEqual({
+      error:
+        '"ldl" is the built-in metric "ldl_cholesterol" (stored in mmol/L): add values under that name, which adds it on first use. Pass separate_metric: true to create a separate custom metric anyway.',
+      success: false,
+    })
+    expect(db.insertCustomMetricDefinition).not.toHaveBeenCalled()
+  })
+
+  test('creates an alias-named metric with separate_metric, which is not stored', async () => {
+    vi.mocked(db.getCustomMetricByName).mockResolvedValue(null)
+
+    const result = await addCustomMetric('testuser', { name: 'ldl', separate_metric: true, unit: 'mg/dL' })
+
+    expect(result).toEqual({ data: { name: 'ldl', unit: 'mg/dL' }, success: true })
+    expect(db.insertCustomMetricDefinition).toHaveBeenCalledWith('testuser', { name: 'ldl', unit: 'mg/dL' })
+  })
+
+  test('takes a catalogue name without separate_metric', async () => {
+    vi.mocked(db.getCustomMetricByName).mockResolvedValue(null)
+
+    const result = await addCustomMetric('testuser', { name: 'ldl_cholesterol', unit: 'mg/dL' })
+
+    expect(result.success).toBe(true)
+  })
 })
 
 describe('deleteCustomMetric', () => {
@@ -567,7 +600,7 @@ describe('addMetric with custom metrics', () => {
     expect(result.unit).toBe('score')
     expect(result.value).toBe(8)
 
-    expect(db.insertTimeSeries).toHaveBeenCalledWith('testuser', [
+    expect(db.insertTimeSeries).toHaveBeenCalledWith(TX, [
       {
         metric: 'mood',
         source: 'aurboda',
@@ -639,23 +672,46 @@ describe('addMetric with the metric catalogue', () => {
 
     expect(result).toMatchObject({ metric: 'ldl_cholesterol', success: true, unit: 'mmol/L', value: 3.1 })
     expect(result.entity_id).toBe('2024-01-15T08:00:00.000Z|ldl_cholesterol|aurboda')
-    expect(db.adoptCatalogMetric).toHaveBeenCalledWith('testuser', {
+    expect(db.adoptCatalogMetric).toHaveBeenCalledWith(TX, {
       aggregation: 'avg',
       description: 'LDL cholesterol',
       include_in_daily_summary: false,
       name: 'ldl_cholesterol',
       unit: 'mmol/L',
     })
-    expect(db.insertTimeSeries).toHaveBeenCalledWith('testuser', [
+    expect(db.insertTimeSeries).toHaveBeenCalledWith(TX, [
       { metric: 'ldl_cholesterol', source: 'aurboda', time, unit: 'mmol/L', value: 3.1 },
     ])
+  })
+
+  test('writes nothing when a metric of the name was created meanwhile in another unit', async () => {
+    vi.mocked(db.adoptCatalogMetric).mockResolvedValueOnce('mg/dL')
+
+    const result = await addMetric('testuser', { metric: 'ldl', time, unit: 'mg/dL', value: 100 })
+
+    expect(result).toMatchObject({
+      error: 'Metric "ldl_cholesterol" was just added in mg/dL, not mmol/L: nothing was written. Try again.',
+      success: false,
+    })
+    expect(db.insertTimeSeries).not.toHaveBeenCalled()
+  })
+
+  test('a failed insert fails the transaction the adoption ran in', async () => {
+    vi.mocked(db.insertTimeSeries).mockRejectedValueOnce(new Error('insert failed'))
+
+    await expect(addMetric('testuser', { metric: 'ldl', time, value: 3.1 })).rejects.toThrow('insert failed')
+    expect(db.withUserTransaction).toHaveBeenCalledTimes(1)
+    expect(db.adoptCatalogMetric).toHaveBeenCalledWith(
+      TX,
+      expect.objectContaining({ name: 'ldl_cholesterol' }),
+    )
   })
 
   test('a given unit converts to the stored unit', async () => {
     const result = await addMetric('testuser', { metric: 'ldl', time, unit: 'mg/dL', value: 100 })
 
     expect(result).toMatchObject({ metric: 'ldl_cholesterol', success: true, unit: 'mmol/L', value: 2.586 })
-    expect(db.insertTimeSeries).toHaveBeenCalledWith('testuser', [
+    expect(db.insertTimeSeries).toHaveBeenCalledWith(TX, [
       expect.objectContaining({ unit: 'mmol/L', value: 2.586 }),
     ])
   })
@@ -735,10 +791,27 @@ describe('bulkAddMetrics with the metric catalogue', () => {
       },
     ])
     expect(db.adoptCatalogMetric).toHaveBeenCalledTimes(1)
-    expect(db.insertTimeSeries).toHaveBeenCalledWith('testuser', [
+    expect(db.insertTimeSeries).toHaveBeenCalledWith(TX, [
       expect.objectContaining({ metric: 'waist_circumference', unit: 'cm', value: 86.36 }),
       expect.objectContaining({ metric: 'waist_circumference', unit: 'cm', value: 86 }),
     ])
+  })
+
+  test('refuses every item when a catalogue metric was created meanwhile in another unit', async () => {
+    vi.mocked(db.adoptCatalogMetric).mockResolvedValueOnce('mm')
+
+    const result = await bulkAddMetrics('testuser', [
+      { metric: 'heart_rate', time: new Date('2024-01-15T08:00:00Z'), value: 60 },
+      { metric: 'waist', time: new Date('2024-01-15T08:00:00Z'), unit: 'kg', value: 1 },
+      { metric: 'waist', time: new Date('2024-01-16T08:00:00Z'), value: 86 },
+    ])
+
+    const race = 'Metric "waist_circumference" was just added in mm, not cm: nothing was written. Try again.'
+    expect(result.inserted).toBe(0)
+    expect(result.errors.map(({ index }) => index)).toEqual([0, 1, 2])
+    expect(result.errors[0]).toEqual({ error: race, index: 0 })
+    expect(result.errors[2]).toEqual({ error: race, index: 2 })
+    expect(db.insertTimeSeries).not.toHaveBeenCalled()
   })
 
   test('adopts nothing when every item of the metric is refused', async () => {
@@ -780,7 +853,7 @@ describe('bulkAddMetrics', () => {
     expect(result.errors).toHaveLength(0)
 
     expect(db.insertTimeSeries).toHaveBeenCalledTimes(1)
-    expect(db.insertTimeSeries).toHaveBeenCalledWith('testuser', [
+    expect(db.insertTimeSeries).toHaveBeenCalledWith(TX, [
       {
         metric: 'heart_rate',
         source: 'aurboda',
@@ -869,9 +942,7 @@ describe('bulkAddMetrics', () => {
       'oura',
     )
 
-    expect(db.insertTimeSeries).toHaveBeenCalledWith('testuser', [
-      expect.objectContaining({ source: 'oura' }),
-    ])
+    expect(db.insertTimeSeries).toHaveBeenCalledWith(TX, [expect.objectContaining({ source: 'oura' })])
   })
 
   test('per-item source overrides default source', async () => {
@@ -896,7 +967,7 @@ describe('bulkAddMetrics', () => {
       'oura',
     )
 
-    expect(db.insertTimeSeries).toHaveBeenCalledWith('testuser', [
+    expect(db.insertTimeSeries).toHaveBeenCalledWith(TX, [
       expect.objectContaining({ source: 'garmin' }),
       expect.objectContaining({ source: 'oura' }),
     ])
@@ -914,9 +985,7 @@ describe('bulkAddMetrics', () => {
       },
     ])
 
-    expect(db.insertTimeSeries).toHaveBeenCalledWith('testuser', [
-      expect.objectContaining({ source: 'aurboda' }),
-    ])
+    expect(db.insertTimeSeries).toHaveBeenCalledWith(TX, [expect.objectContaining({ source: 'aurboda' })])
   })
 
   test('does not call insertTimeSeries when all items are invalid', async () => {
@@ -959,7 +1028,7 @@ describe('bulkAddMetrics', () => {
     expect(result.errors[0].index).toBe(0)
     expect(result.errors[0].error).toContain('cumulative/derived')
     // Only the RHR point reaches the DB.
-    expect(db.insertTimeSeries).toHaveBeenCalledWith('testuser', [
+    expect(db.insertTimeSeries).toHaveBeenCalledWith(TX, [
       expect.objectContaining({
         metric: 'resting_heart_rate',
         source: 'tryout',

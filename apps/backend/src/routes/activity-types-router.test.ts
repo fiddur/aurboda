@@ -291,6 +291,15 @@ describe('POST /activity-types', () => {
     expect(res.status).toBe(400)
     expect(res.body).toEqual({ error, success: false })
   })
+
+  test('passes separate_type on to the service', async () => {
+    vi.mocked(service.addActivityTypeDefinition).mockResolvedValue({ error: 'x', success: false })
+    const body = { display_category: 'other', display_name: 'Beer', name: 'beer', separate_type: true }
+
+    await supertest(buildApp()).post('/activity-types').send(body)
+
+    expect(service.addActivityTypeDefinition).toHaveBeenCalledWith('tester', body)
+  })
 })
 
 describe('POST /activity-types/merge', () => {

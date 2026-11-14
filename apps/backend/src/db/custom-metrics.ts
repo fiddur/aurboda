@@ -1,5 +1,7 @@
 import type { CustomMetricDefinition } from '@aurboda/api-spec'
 
+import type { Queryable } from './pool.ts'
+
 import { query } from './connection.ts'
 
 const COLUMNS = 'name, unit, description, min_value, max_value, include_in_daily_summary, aggregation'
@@ -155,9 +157,9 @@ export const mergeCustomMetric = async (
   return { rows_reassigned, rows_skipped }
 }
 
-const insertIfAbsent = async (user: string, def: CustomMetricDefinition): Promise<void> => {
+const insertIfAbsent = async (db: Queryable | string, def: CustomMetricDefinition): Promise<void> => {
   await query(
-    user,
+    db,
     `INSERT INTO custom_metrics (name, unit, description, min_value, max_value, include_in_daily_summary, aggregation)
      VALUES ($1, $2, $3, $4, $5, $6, $7)
      ON CONFLICT (name) DO NOTHING`,
@@ -181,6 +183,18 @@ export const bulkInsertCustomMetricDefinitions = async (
   for (const def of definitions) await insertIfAbsent(user, def)
 }
 
-/** A metric the user already has under that name is left as it is. */
-export const adoptCatalogMetric = async (user: string, definition: CustomMetricDefinition): Promise<void> =>
-  insertIfAbsent(user, definition)
+/**
+ * A metric the user already has under that name is left as it is. Answers the unit of the metric now under that
+ * name, which is another than `definition.unit` when one was there first, even if it was created by a write that
+ * had not committed when the caller read the user's metrics.
+ */
+export const adoptCatalogMetric = async (
+  db: Queryable | string,
+  definition: CustomMetricDefinition,
+): Promise<string> => {
+  await insertIfAbsent(db, definition)
+  const result = await query<{ unit: string }>(db, `SELECT unit FROM custom_metrics WHERE name = $1`, [
+    definition.name,
+  ])
+  return result.rows[0]?.unit ?? definition.unit
+}

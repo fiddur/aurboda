@@ -19,6 +19,7 @@ import {
   updateActivityTypeDefinition as dbUpdate,
 } from '../db/index.ts'
 import {
+  catalogVariantHint,
   getCatalogActivityType,
   loadActivityTypeCatalog,
   missingCatalogFields,
@@ -42,7 +43,7 @@ export const listActivityTypeDefinitions = async (user: string): Promise<Activit
 /** A catalogue type takes every field the caller leaves out from its catalogue definition. */
 export const addActivityTypeDefinition = async (
   user: string,
-  input: AddActivityTypeDefinitionBody,
+  { separate_type, ...input }: AddActivityTypeDefinitionBody,
   catalog: StoredActivityTypeCatalog = loadActivityTypeCatalog(),
 ): Promise<ActivityTypeDefinitionResult> => {
   const existing = await dbGet(user, input.name)
@@ -55,6 +56,10 @@ export const addActivityTypeDefinition = async (
 
   const entry = getCatalogActivityType(catalog, input.name)
   if (!entry) {
+    const hint = separate_type === true ? undefined : catalogVariantHint(catalog, input.name)
+    if (hint) {
+      return { error: `${hint} Pass separate_type: true to create a separate type anyway.`, success: false }
+    }
     const { display_category, display_name } = input
     if (display_name === undefined || display_category === undefined) {
       return {

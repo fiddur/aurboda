@@ -130,6 +130,7 @@ function AddActivityTypeForm({ onDone }: { onDone: () => void }) {
         display_category: category,
         display_name: displayName.trim(),
         name: snakeName,
+        separate_type: true,
       }),
     onError: (err: unknown) => {
       setError(serverError(err) ?? 'Failed to add activity type')

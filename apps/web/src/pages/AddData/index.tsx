@@ -204,7 +204,7 @@ const AddActivityForm = ({ onCreated, initialTime }: FormProps) => {
       if (!activityType) throw new Error('Please select an activity type')
       const data = buildActivityData(dataSchema?.fields ?? [], structuredData, listData)
       const newType = newTypeToCreate(activityType, typeDefs, catalogEntries)
-      if (newType) await addActivityTypeDefinition(newType)
+      if (newType) await addActivityTypeDefinition({ ...newType, separate_type: true })
       const result = await addActivity({
         activity_type: activityType,
         ...(data ? { data } : {}),
@@ -378,14 +378,16 @@ interface MetricUnitProps {
 }
 
 const MetricUnit = ({ catalogEntry, customMetrics, metric, onChange, unit }: MetricUnitProps) => {
-  if (catalogEntry) {
+  const options = catalogEntry ? catalogUnitOptions(catalogEntry) : []
+  if (options.length === 1) return <span class="value-unit">{options[0]}</span>
+  if (options.length > 1) {
     return (
       <select
         aria-label="Unit"
         value={unit}
         onChange={(e) => onChange((e.target as HTMLSelectElement).value)}
       >
-        {catalogUnitOptions(catalogEntry).map((option) => (
+        {options.map((option) => (
           <option key={option} value={option}>
             {option}
           </option>

@@ -178,6 +178,7 @@ export function CustomMetricsSettings() {
         ...(newMaxValue ? { max_value: parseFloat(newMaxValue) } : {}),
         ...(newMinValue ? { min_value: parseFloat(newMinValue) } : {}),
         name: newName,
+        separate_metric: true,
         unit: newUnit,
       }),
     onSuccess: () => {

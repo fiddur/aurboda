@@ -106,8 +106,8 @@ display name and aliases are never those of a catalogue type or of another varia
 
 Variants are only names that point at their type. Nothing is merged or renamed by itself: a `beer`
 type you already have stays yours until you merge it (see below). Through the API, `add_activity`,
-`update_activity` and the MCP `add_activity_type` answer a variant name they cannot use with the
-type and data to use instead.
+`update_activity`, `POST /activity-types` and the MCP `add_activity_type` answer a variant name they
+cannot use with the type and data to use instead.
 
 ## Adoption on first use
 
@@ -217,9 +217,10 @@ note that new Oura tags of that kind keep landing on it until it is merged.
   catalogue.
 - `POST /activity-types/merge` with `set_data` -- see [Types you already have](#types-you-already-have).
 - MCP `list_activity_type_catalog` (`q`), `add_activity_type_catalog_fields` (`name`) and
-  `merge_activity_type` (`source`, `target`, `set_data`) -- the same. MCP `add_activity_type`
-  refuses a variant's name with a pointer to its type unless given `separate_type: true`; the REST
-  route and the web form create such a type as asked.
+  `merge_activity_type` (`source`, `target`, `set_data`) -- the same.
+- `POST /activity-types` and MCP `add_activity_type` refuse a variant's name with a pointer to its
+  type unless given `separate_type: true`. The web forms, which suggest the catalogue types and
+  variants as you type, send it and create such a type as asked.
 
 Adoption itself has no endpoint or tool of its own; it happens through the writes above.
 

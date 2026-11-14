@@ -26,6 +26,7 @@ export const addActivityTypeDefinition = async (body: {
   display_category?: string
   color?: string
   icon?: string
+  separate_type?: boolean
   show_on_timeline?: boolean
 }): Promise<ActivityTypeDefinition> => {
   const { token } = auth.value

@@ -12,11 +12,6 @@ import {
 import { z } from 'zod'
 
 import {
-  catalogVariantHint,
-  getCatalogActivityType,
-  loadActivityTypeCatalog,
-} from '../services/activity-type-catalog.ts'
-import {
   addActivityTypeDefinition,
   addCatalogFieldsToActivityType,
   deleteActivityTypeDefinition,
@@ -56,24 +51,9 @@ export const registerActivityTypeTools = (server: McpServer, user: string) => {
   server.tool(
     'add_activity_type',
     'Create a custom activity type definition. The name must be snake_case (e.g. "sauna", "woodworking", "hot_bath"). Many types are built in (list_activity_types), and with a name from list_activity_type_catalog only `name` is needed: the catalogue fills in display name, category, icon and fields. A data_schema field of type `list` carries `item_fields` and holds an array of objects, e.g. the `sets` of a strength session (`exercise`, `weight`, `reps`, `time`).',
-    {
-      ...addActivityTypeDefinitionBodySchema.shape,
-      separate_type: z
-        .boolean()
-        .optional()
-        .describe(
-          'Create the type even when its name is a variant of a built-in type (e.g. `beer`, which is `alcohol` with kind beer)',
-        ),
-    },
-    async ({ separate_type, ...params }) => {
-      const catalog = loadActivityTypeCatalog()
-      const hint = getCatalogActivityType(catalog, params.name)
-        ? undefined
-        : catalogVariantHint(catalog, params.name)
-      if (hint && separate_type !== true) {
-        return errorResponse(`${hint} Pass separate_type: true to create a separate type anyway.`)
-      }
-      const result = await addActivityTypeDefinition(user, params, catalog)
+    { ...addActivityTypeDefinitionBodySchema.shape },
+    async (params) => {
+      const result = await addActivityTypeDefinition(user, params)
       if (!result.success) return errorResponse(result.error ?? 'Failed to create activity type')
       return jsonResponse(result.data)
     },

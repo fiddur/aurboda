@@ -2,6 +2,7 @@ import type { HrZoneSecs, HrZoneThresholds } from '@aurboda/api-spec'
 
 import format from 'pg-format'
 
+import type { Queryable } from './pool.ts'
 import type { BucketedMetricData, DailyMetricAggregate, MetricStats, TimeSeriesPoint } from './types.ts'
 
 import { MAX_GAP_SECONDS, SINGLE_SAMPLE_SECONDS } from '../hr-zone-constants.ts'
@@ -31,7 +32,7 @@ export const getSourceFilter = (metric: string): string[] | null => {
   return null
 }
 
-export const insertTimeSeries = async (user: string, points: TimeSeriesPoint[]) => {
+export const insertTimeSeries = async (db: Queryable | string, points: TimeSeriesPoint[]) => {
   if (points.length === 0) return
 
   // Deduplicate points by (time, metric, source) to avoid PostgreSQL ON CONFLICT error
@@ -54,7 +55,7 @@ export const insertTimeSeries = async (user: string, points: TimeSeriesPoint[]) 
   // point actually changes the value, so it answers "when did this number last
   // change" rather than "when was it last written".
   await query(
-    user,
+    db,
     format(
       `INSERT INTO time_series (time, metric, value, unit, source)
        VALUES %L

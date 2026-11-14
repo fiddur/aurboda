@@ -1,13 +1,17 @@
 import type { CustomMetricDefinition, MetricCatalogEntry } from '@aurboda/api-spec'
 
-import { getMetricDisplayName, getMetricUnit } from '@aurboda/api-spec'
+import { catalogAcceptsUnit, getMetricDisplayName, getMetricUnit } from '@aurboda/api-spec'
 
-/** The units to offer for a catalogue metric: the user's own unit when it is none of them, then the stored unit and the other accepted units. */
+/**
+ * The units to offer for a catalogue metric: the stored unit and the other accepted units, after the user's own
+ * unit when it is spelled as none of them. A unit of the user's the catalogue does not accept is the only one
+ * offered, since a value in any other unit cannot be converted to it.
+ */
 export const catalogUnitOptions = (entry: MetricCatalogEntry): string[] => {
   const accepted = [entry.unit, ...entry.units.map((unit) => unit.unit)]
-  return entry.in_use_unit !== undefined && !accepted.includes(entry.in_use_unit)
-    ? [entry.in_use_unit, ...accepted]
-    : accepted
+  const own = entry.in_use_unit
+  if (own === undefined || accepted.includes(own)) return accepted
+  return catalogAcceptsUnit(entry, own) ? [own, ...accepted] : [own]
 }
 
 export const defaultCatalogUnit = (entry: MetricCatalogEntry): string => entry.in_use_unit ?? entry.unit

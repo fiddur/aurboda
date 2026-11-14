@@ -2057,13 +2057,14 @@ describe('MCP Server', () => {
       expect(byName.get('add_custom_metric')?.inputSchema.properties).toHaveProperty('separate_metric')
     })
 
-    test('add_custom_metric points an alias at its built-in metric and creates nothing', async () => {
+    test('add_custom_metric answers with the refusal of an alias', async () => {
+      const error =
+        '"ldl" is the built-in metric "ldl_cholesterol" (stored in mmol/L): add values under that name, which adds it on first use. Pass separate_metric: true to create a separate custom metric anyway.'
+      vi.mocked(mutations.addCustomMetric).mockResolvedValueOnce({ error, success: false })
+
       const text = await callTool(createTestApp(), 'add_custom_metric', { name: 'ldl', unit: 'mg/dL' })
 
-      expect(text).toBe(
-        '"ldl" is the built-in metric "ldl_cholesterol" (stored in mmol/L): use that name with add_metric, which adds it on first use. Pass separate_metric: true to create a separate custom metric anyway.',
-      )
-      expect(mutations.addCustomMetric).not.toHaveBeenCalled()
+      expect(text).toBe(error)
     })
 
     test('add_custom_metric creates an alias-named metric with separate_metric', async () => {
@@ -2079,7 +2080,11 @@ describe('MCP Server', () => {
       })
 
       expect(JSON.parse(text)).toEqual({ data: { name: 'ldl', unit: 'mg/dL' }, success: true })
-      expect(mutations.addCustomMetric).toHaveBeenCalledWith('testuser', { name: 'ldl', unit: 'mg/dL' })
+      expect(mutations.addCustomMetric).toHaveBeenCalledWith('testuser', {
+        name: 'ldl',
+        separate_metric: true,
+        unit: 'mg/dL',
+      })
     })
 
     test('add_custom_metric takes a catalogue name without separate_metric', async () => {

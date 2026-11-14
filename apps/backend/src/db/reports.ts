@@ -47,12 +47,12 @@ interface InsertReportInput {
 
 /** Fetch entries for a single report, joining with time_series for value/unit. */
 const fetchEntriesForReport = async (
-  user: string,
+  db: Queryable | string,
   reportId: string,
   reportDate: Date,
 ): Promise<ReportEntry[]> => {
   const entriesResult = await query(
-    user,
+    db,
     `SELECT ${ENTRY_SELECT}
      FROM report_entries re
      LEFT JOIN time_series ts
@@ -66,7 +66,7 @@ const fetchEntriesForReport = async (
 
 /** Bulk-insert entry metadata (no value/unit — those go to time_series). */
 const insertEntryMetadata = async (
-  user: string,
+  db: Queryable | string,
   reportId: string,
   entries: InsertReportInput['entries'],
 ): Promise<void> => {
@@ -85,7 +85,7 @@ const insertEntryMetadata = async (
   ])
 
   await query(
-    user,
+    db,
     format(
       `INSERT INTO report_entries (${ENTRY_INSERT_COLUMNS})
        VALUES %L`,
@@ -95,9 +95,9 @@ const insertEntryMetadata = async (
 }
 
 /** Note: caller is responsible for inserting corresponding time_series data. */
-export const insertReport = async (user: string, input: InsertReportInput): Promise<Report> => {
+export const insertReport = async (db: Queryable | string, input: InsertReportInput): Promise<Report> => {
   const reportResult = await query(
-    user,
+    db,
     `INSERT INTO reports (report_type, report_date, location, notes)
      VALUES ($1, $2, $3, $4)
      RETURNING ${REPORT_COLUMNS}`,
@@ -107,20 +107,20 @@ export const insertReport = async (user: string, input: InsertReportInput): Prom
   const reportRow = reportResult.rows[0]
   const reportId = reportRow.id as string
 
-  await insertEntryMetadata(user, reportId, input.entries)
+  await insertEntryMetadata(db, reportId, input.entries)
 
-  const entries = await fetchEntriesForReport(user, reportId, input.report_date)
+  const entries = await fetchEntriesForReport(db, reportId, input.report_date)
   return mapReportRow(reportRow, entries)
 }
 
-export const getReportById = async (user: string, id: string): Promise<Report | null> => {
-  const reportResult = await query(user, `SELECT ${REPORT_COLUMNS} FROM reports WHERE id = $1`, [id])
+export const getReportById = async (db: Queryable | string, id: string): Promise<Report | null> => {
+  const reportResult = await query(db, `SELECT ${REPORT_COLUMNS} FROM reports WHERE id = $1`, [id])
 
   if (reportResult.rows.length === 0) return null
 
   const reportRow = reportResult.rows[0]
   const reportDate = new Date(reportRow.report_date)
-  const entries = await fetchEntriesForReport(user, id, reportDate)
+  const entries = await fetchEntriesForReport(db, id, reportDate)
   return mapReportRow(reportRow, entries)
 }
 
@@ -252,7 +252,7 @@ interface UpdateReportInput {
 
 /** Note: caller is responsible for updating corresponding time_series data. */
 export const updateReport = async (
-  user: string,
+  db: Queryable | string,
   id: string,
   input: UpdateReportInput,
 ): Promise<Report | null> => {
@@ -279,7 +279,7 @@ export const updateReport = async (
 
   if (setClauses.length > 0) {
     const updateResult = await query(
-      user,
+      db,
       `UPDATE reports SET ${setClauses.join(', ')} WHERE id = $${paramIdx} RETURNING ${REPORT_COLUMNS}`,
       [...params, id],
     )
@@ -289,13 +289,13 @@ export const updateReport = async (
   if (input.entries !== undefined) {
     // Verify report exists if we didn't do an update above
     if (setClauses.length === 0) {
-      const exists = await query(user, `SELECT id FROM reports WHERE id = $1`, [id])
+      const exists = await query(db, `SELECT id FROM reports WHERE id = $1`, [id])
       if (exists.rows.length === 0) return null
     }
 
-    await query(user, `DELETE FROM report_entries WHERE report_id = $1`, [id])
-    await insertEntryMetadata(user, id, input.entries)
+    await query(db, `DELETE FROM report_entries WHERE report_id = $1`, [id])
+    await insertEntryMetadata(db, id, input.entries)
   }
 
-  return getReportById(user, id)
+  return getReportById(db, id)
 }

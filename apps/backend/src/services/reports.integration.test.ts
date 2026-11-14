@@ -147,6 +147,20 @@ describe('reports with catalogue metrics', () => {
     expect(await getCustomMetricDefinitions(user)).toEqual([])
   })
 
+  test('a report whose insert fails adopts no metric and writes no series', async () => {
+    const user = getTestUser()
+    await expect(
+      addReport(user, {
+        date: '2026-05-08T09:00:00.000Z',
+        entries: [{ metric: 'ldl', unit: 'mg/dL', value: 100 }],
+        report_type: 'x'.repeat(101),
+      }),
+    ).rejects.toThrow()
+
+    expect(await getCustomMetricDefinitions(user)).toEqual([])
+    expect(await seriesRows(user)).toEqual([])
+  })
+
   test('an unknown metric is written as before', async () => {
     const user = getTestUser()
     const result = await addReport(user, {
