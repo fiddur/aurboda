@@ -217,17 +217,19 @@ const loggedValues = async (
 /**
  * Resolve the catalogue keys a write carries (see `applyItemValueKeys`), reading the user's
  * identities and logged values only when some item carries one. The mappings are returned for
- * `storeItemValueMappings` once the write is valid.
+ * `storeItemValueMappings` once the write is valid. `knownSchema` is for a type that is not stored yet,
+ * a catalogue type about to be adopted; without it the stored type's schema is read.
  */
 export const applyItemValueKeysForWrite = async <T extends Data | undefined>(
   user: string,
   activityType: string,
   data: T,
+  knownSchema?: DataSchemaDefinition | null,
 ): Promise<ItemValueResult<{ data: T; mappings: ItemValueMapping[] }>> => {
   if (data === undefined || !Object.values(data).some(Array.isArray)) {
     return { data: { data, mappings: [] }, success: true }
   }
-  const schema = (await getActivityTypeDefinition(user, activityType))?.data_schema
+  const schema = knownSchema ?? (await getActivityTypeDefinition(user, activityType))?.data_schema
   const keyed = catalogItemPaths(schema).filter((path) => itemsCarryKey(data, path))
   if (keyed.length === 0) return { data: { data, mappings: [] }, success: true }
   const contexts: Record<string, ItemValueIdentityContext> = {}

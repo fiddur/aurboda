@@ -152,7 +152,9 @@ Two explicit steps bring it in line:
   with `{ "source": "beer", "target": "alcohol", "set_data": { "kind": "beer" } }`
   (`merge_activity_type`). Every beer becomes an `alcohol` activity with kind `beer`, unless it
   already had a kind. A type named like a catalogue type's display name or alias (`breathwork`)
-  merges the same way, without `set_data`. The target is adopted first if you do not have it yet.
+  merges the same way, without `set_data`. The target is adopted first if you do not have it yet;
+  a target you have that lacks the field (your own `alcohol` without `kind`) gets that catalogue
+  field as part of the merge.
 
 ## In the web app
 

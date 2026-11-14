@@ -345,9 +345,10 @@ const resolveItemValues = async <T extends Record<string, unknown> | undefined>(
   user: string,
   activityType: string,
   data: T,
+  schema?: DataSchemaDefinition,
 ): ReturnType<typeof applyItemValueKeysForWrite<T>> => {
   const aliased = await aliasActivityData(user, data)
-  const keyed = await applyItemValueKeysForWrite(user, activityType, aliased)
+  const keyed = await applyItemValueKeysForWrite(user, activityType, aliased, schema)
   if (!keyed.success || keyed.data.data === aliased) return keyed
   return { data: { ...keyed.data, data: await aliasActivityData(user, keyed.data.data) }, success: true }
 }
@@ -364,7 +365,7 @@ export async function addActivity(
   const writeTarget = await resolveWriteTarget(user, input.activity_type)
   if (!writeTarget) return { error: unknownActivityTypeError(input.activity_type), success: false }
 
-  const keyed = await resolveItemValues(user, input.activity_type, input.data)
+  const keyed = await resolveItemValues(user, input.activity_type, input.data, writeTarget.schema)
   if (!keyed.success) return { error: `Data validation failed: ${keyed.error}`, success: false }
   const { data, mappings } = keyed.data
   const dataError = dataErrorFor(writeTarget.schema, data)
@@ -658,7 +659,7 @@ export async function updateActivity(
     }
   }
 
-  const keyed = await resolveItemValues(user, finalType, input.data)
+  const keyed = await resolveItemValues(user, finalType, input.data, writeTarget?.schema)
   if (!keyed.success) return { error: `Data validation failed: ${keyed.error}`, id, success: false }
   const inputData = keyed.data.data
   const mergedData = inputData ? { ...before.data, ...inputData } : before.data

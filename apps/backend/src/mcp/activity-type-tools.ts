@@ -134,7 +134,7 @@ export const registerActivityTypeTools = (server: McpServer, user: string) => {
 
   server.tool(
     'merge_activity_type',
-    "Merge a custom activity type into another activity type (built-in or custom). All activities are reassigned, aliases are merged, deduction rules are updated, and the source custom type definition is deleted. Built-in types cannot be used as the source. `set_data` gives every moved activity a field value it lacks, e.g. merging `beer` into `alcohol` with `{ kind: 'beer' }`; the target may be a built-in catalogue type not used yet.",
+    "Merge a custom activity type into another activity type (built-in or custom). All activities are reassigned, aliases are merged, deduction rules are updated, and the source custom type definition is deleted. Built-in types cannot be used as the source. `set_data` gives every moved activity a field value it lacks, e.g. merging `beer` into `alcohol` with `{ kind: 'beer' }`; the target may be a built-in catalogue type not used yet, and a target of a catalogue name that lacks the field gets it from the catalogue.",
     {
       set_data: mergeActivityTypeBodySchema.shape.set_data,
       source: z.string().describe('Name of the custom activity type to merge away'),

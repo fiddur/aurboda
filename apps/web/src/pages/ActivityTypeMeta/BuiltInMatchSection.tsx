@@ -68,6 +68,9 @@ function CatalogMergeBlock({
   const { entry } = relation
   const variant = relation.kind === 'variant' ? relation.variant : undefined
   const summary = variant ? variantDataSummary(entry, variant) : ''
+  const borrowed = Object.keys(variant?.data ?? {})
+    .filter((key) => entry.missing_fields.includes(key))
+    .map((key) => key.replaceAll('_', ' '))
 
   const mutation = useMutation({
     mutationFn: () => mergeActivityTypeApi(name, entry.name, variant?.data),
@@ -96,6 +99,9 @@ function CatalogMergeBlock({
               .map((k) => k.replaceAll('_', ' '))
               .join(' or ')}, and removes this type.`
           : "Merging moves this type's activities there and removes this type."}
+        {borrowed.length > 0
+          ? ` Your ${entry.display_name} type has no ${borrowed.join(' or ')} field yet; the merge adds it.`
+          : ''}
         {relation.oura_code
           ? ' New Oura tags of this kind keep landing on this type until you merge it.'
           : ''}

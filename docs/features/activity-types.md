@@ -45,7 +45,9 @@ and the source is deleted. The target may be a type from the
 `alcohol` with `{ "kind": "beer" }` keeps which drinks were beer. A key is filled only where the
 activity has none or `null`; a value it already has is kept. Each key must be a scalar field of the
 target's [data schema](#data-schema-and-categorical-fields) and each value must pass that field's
-type, choices and bounds, or nothing is merged. The answer counts the activities moved
+type, choices and bounds, or nothing is merged. When the target has a catalogue name and lacks a
+field `set_data` names (an `alcohol` type made before the catalogue, with no `kind`), the merge adds
+that one catalogue field to the target first; its other fields are untouched. The answer counts the activities moved
 (`activities_reassigned`) and the ones that got a value (`activities_data_set`), live ones only.
 
 ### Single lifts are exercises, not types

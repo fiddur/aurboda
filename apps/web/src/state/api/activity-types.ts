@@ -1,4 +1,8 @@
-import type { DataSchemaDefinition } from '@aurboda/api-spec'
+import type {
+  ActivityTypeDefinitionResponse,
+  DataSchemaDefinition,
+  MergeActivityTypeResponse,
+} from '@aurboda/api-spec'
 
 import axios from 'axios'
 
@@ -81,19 +85,9 @@ export const mergeActivityTypeApi = async (
   source: string,
   target: string,
   setData?: Record<string, unknown>,
-): Promise<{
-  success: boolean
-  activities_data_set?: number
-  activities_reassigned?: number
-  deduction_rules_updated?: number
-}> => {
+): Promise<MergeActivityTypeResponse> => {
   const { token } = auth.value
-  const response = await axios.post<{
-    success: boolean
-    activities_data_set?: number
-    activities_reassigned?: number
-    deduction_rules_updated?: number
-  }>(
+  const response = await axios.post<MergeActivityTypeResponse>(
     `${API_URL}/activity-types/merge`,
     { source, target, ...(setData ? { set_data: setData } : {}) },
     { headers: { Authorization: `Bearer ${token}` } },
@@ -104,10 +98,11 @@ export const mergeActivityTypeApi = async (
 /** Appends the built-in catalogue fields the type lacks; answers with the updated definition. */
 export const addCatalogFieldsToActivityType = async (name: string): Promise<ActivityTypeDefinition> => {
   const { token } = auth.value
-  const response = await axios.post<{ data: ActivityTypeDefinition; success: boolean }>(
+  const response = await axios.post<ActivityTypeDefinitionResponse>(
     `${API_URL}/activity-types/${encodeURIComponent(name)}/catalog-fields`,
     {},
     { headers: { Authorization: `Bearer ${token}` } },
   )
+  if (!response.data.data) throw new Error('The server answered without the updated type')
   return response.data.data
 }
