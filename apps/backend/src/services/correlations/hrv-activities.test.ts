@@ -4,8 +4,10 @@ import * as db from '../../db/index.ts'
 import * as locations from '../locations.ts'
 import { getActivityImpact } from './activity-impact.ts'
 import { getHrvActivitiesCorrelation } from './hrv-activities.ts'
+import { binSeries } from './impact.ts'
 
 vi.mock('../../db', () => ({
+  getBinnedTimeSeries: vi.fn(),
   getEffectiveActivitiesInRange: vi.fn(),
   getProductivity: vi.fn(),
   getTimeSeries: vi.fn(),
@@ -18,6 +20,9 @@ vi.mock('../locations', () => ({
 describe('getHrvActivitiesCorrelation', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(db.getBinnedTimeSeries).mockImplementation(async (user, metric, start, end, binMinutes) =>
+      binSeries(await db.getTimeSeries(user, metric, start, end), binMinutes),
+    )
   })
 
   test('returns correlations for productivity, locations, activities and tags', async () => {

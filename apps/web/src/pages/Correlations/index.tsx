@@ -46,6 +46,7 @@ import {
   PERIOD_DAY_OPTIONS,
   readAnalyzeState,
   type SelectedItem,
+  urlShowsAnalyzeState,
   writeAnalyzeState,
 } from './urlState'
 import { isLongWindow } from './window'
@@ -172,6 +173,21 @@ export function Correlations() {
     lastUrl.current = url
     applyAnalyzeState(readAnalyzeState())
   }, [url])
+
+  // A link to the URL the router already holds (the sidebar's plain /correlations while on it) keeps
+  // the router's url, so after any click a URL out of step with the page is re-read too.
+  useEffect(() => {
+    const path = window.location.pathname
+    const onClick = () =>
+      setTimeout(() => {
+        const { href, pathname } = window.location
+        if (pathname === path && !urlShowsAnalyzeState(href, currentAnalyzeState())) {
+          applyAnalyzeState(readAnalyzeState())
+        }
+      })
+    addEventListener('click', onClick)
+    return () => removeEventListener('click', onClick)
+  }, [])
 
   useSignalEffect(() => writeAnalyzeState(currentAnalyzeState()))
 

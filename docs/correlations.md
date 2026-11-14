@@ -182,9 +182,11 @@ fields; the extras come back in maps keyed by metric name, and only when
   `metrics.<name>`.
 
 More than 4 names, a name that is not a metric name (`[a-z][a-z0-9_]*`, at most
-50 characters), or a cumulative metric (`steps`, `distance`, `floors_climbed`,
-`calories_active`, `calories_total`: a 5-minute mean of a running total means
-nothing) is a 400 (an error from the MCP tools). An unknown or sparse metric is
+50 characters), one of the three always analysed (`hrv_rmssd`, `heart_rate`,
+`stress_level`, or their result keys `hrv`, `hr`, `stress`), or a cumulative
+metric (`steps`, `distance`, `floors_climbed`, `calories_active`,
+`calories_total`: a 5-minute mean of a running total means nothing) is a 400
+(an error from the MCP tools). An unknown or sparse metric is
 accepted and comes back with nulls.
 
 `GET /correlations/impact-metrics?period_days=30` (MCP `get_impact_metrics`)
@@ -230,6 +232,10 @@ How the numbers are made:
   samples. Everything downstream reads bins, so a densely recorded stretch (1 Hz
   heart rate during a workout) weighs the same per minute as a sparse one. The
   period average (`baseline`) is the mean over the bins inside the period.
+  Activity impact bins in the database (`getBinnedTimeSeries`), so a request
+  reads about 26 000 bins per metric for 90 days rather than every raw point;
+  the overview bins in Node (`binSeries`), since its productivity correlation
+  needs the raw points. Both bin by the same rule, which a test pins.
 - **Series reach past the period.** The three series are fetched from
   `start − W` to `end + W`, so the first and last sessions of the period get
   full windows. Activities, visits and productivity are still taken from the
@@ -300,6 +306,10 @@ stress }`: the before buckets oldest first, then `during`, then the after
   block uses this with `match=exact` and its own window.
 - `GET /correlations/impact-metrics?period_days=30` and MCP
   `get_impact_metrics`: the metrics dense enough to pass as `metrics`.
+
+`period_days`, on these and on every other correlation route and tool
+(`event-probability`, `generic`, `continuous`), is a whole number of days from
+1 to 3650; anything else is a 400 (an error from the MCP tools).
 
 ### Breaking down and filtering an activity's impact
 

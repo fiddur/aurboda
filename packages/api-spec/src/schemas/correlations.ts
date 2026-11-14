@@ -56,7 +56,22 @@ export const windowEffectSchema = z
 
 export type WindowEffect = z.infer<typeof windowEffectSchema>
 
+export const MAX_CORRELATION_PERIOD_DAYS = 3650
+
+const periodDaysRangeMessage = `period_days must be a whole number from 1 to ${MAX_CORRELATION_PERIOD_DAYS}`
+
+const periodDaysQuerySchema = z
+  .string()
+  .regex(/^\d{1,4}$/, periodDaysRangeMessage)
+  .refine((raw) => Number(raw) >= 1 && Number(raw) <= MAX_CORRELATION_PERIOD_DAYS, periodDaysRangeMessage)
+
+const periodDaysInputSchema = z.number().int().min(1).max(MAX_CORRELATION_PERIOD_DAYS)
+
 export const MAX_IMPACT_EXTRA_METRICS = 4
+
+/** Always analysed, so never an extra metric, by their metric names or the short keys the results use. */
+export const IMPACT_FIXED_METRICS = ['hrv_rmssd', 'heart_rate', 'stress_level']
+const IMPACT_FIXED_METRIC_KEYS = ['hrv', 'hr', 'stress']
 
 const IMPACT_METRIC_NAME = /^[a-z][a-z0-9_]*$/
 const MAX_IMPACT_METRIC_NAME_LENGTH = 50
@@ -89,6 +104,10 @@ export const impactExtraMetricsError = (metrics: string[]): string | null => {
     (name) => !IMPACT_METRIC_NAME.test(name) || name.length > MAX_IMPACT_METRIC_NAME_LENGTH,
   )
   if (invalid !== undefined) return `Not a metric name: ${invalid}`
+  const fixed = metrics.find((name) => [...IMPACT_FIXED_METRICS, ...IMPACT_FIXED_METRIC_KEYS].includes(name))
+  if (fixed !== undefined) {
+    return `${fixed} is always analysed; extra metrics are the ones beyond HRV, heart rate and stress.`
+  }
   const cumulative = metrics.find((name) => (cumulativeMetrics as string[]).includes(name))
   if (cumulative !== undefined) {
     return `${cumulative} is a running total and cannot be analysed around a session.`
@@ -342,8 +361,7 @@ export const hrvActivitiesQuerySchema = z
         'Which metric fills the legacy productivity correlation_coefficient (default hrv_rmssd); correlation_coefficients always holds all three',
     }),
     metrics: impactMetricsParamSchema,
-    period_days: z
-      .string()
+    period_days: periodDaysQuerySchema
       .optional()
       .meta({ description: 'Number of days to analyze (default 30)', example: '30' }),
     window_minutes: z.string().optional().meta({
@@ -490,7 +508,9 @@ export const activityImpactQuerySchema = z
     }),
     match: activityImpactMatchSchema.optional(),
     metrics: impactMetricsParamSchema,
-    period_days: z.string().optional().meta({ description: 'Days to analyze (default 90)', example: '90' }),
+    period_days: periodDaysQuerySchema
+      .optional()
+      .meta({ description: 'Days to analyze (default 90)', example: '90' }),
     start: z.string().optional().meta({
       description:
         'Start of a fixed period to analyse (ISO 8601 datetime, inclusive); with end, replaces period_days',
@@ -705,9 +725,7 @@ export const eventProbabilityBodySchema = z
     outcome_pattern: z
       .string()
       .meta({ description: 'Regex pattern for outcome tag', example: 'painkiller|headache' }),
-    period_days: z
-      .number()
-      .int()
+    period_days: periodDaysInputSchema
       .optional()
       .meta({ description: 'Days to analyze (default 365)', example: 365 }),
     trigger_type: eventTriggerTypeSchema,
@@ -923,7 +941,7 @@ export const genericCorrelationBodySchema = z
         example: ['24h', '48h', '7d'],
       }),
     outcome: outcomeConfigSchema.meta({ description: 'Outcome to measure' }),
-    period_days: z.number().int().optional().meta({
+    period_days: periodDaysInputSchema.optional().meta({
       description: 'Days to analyze (default: 90). Ignored when period_start is given.',
       example: 90,
     }),
@@ -1126,9 +1144,7 @@ export const activityImpactInputSchema = z
     }),
     match: activityImpactMatchSchema.optional(),
     metrics: impactExtraMetricsInputSchema,
-    period_days: z
-      .number()
-      .int()
+    period_days: periodDaysInputSchema
       .optional()
       .meta({ description: 'Number of days to analyze. Defaults to 90.' }),
     start: iso8601DateTimeSchema.optional().meta({
@@ -1164,9 +1180,7 @@ export const eventProbabilityInputSchema = z
     outcome_pattern: z
       .string()
       .meta({ description: 'Regex pattern for outcome tags (e.g., "headache|migraine", "good_sleep")' }),
-    period_days: z
-      .number()
-      .int()
+    period_days: periodDaysInputSchema
       .optional()
       .meta({ description: 'Number of days to analyze. Defaults to 365.' }),
     trigger_type: eventTriggerTypeSchema.meta({ description: 'Type of trigger event' }),
@@ -1184,9 +1198,7 @@ export const hrvCorrelationInputSchema = z
       .optional()
       .meta({ description: 'Autonomic metric to correlate against (default: hrv_rmssd)' }),
     metrics: impactExtraMetricsInputSchema,
-    period_days: z
-      .number()
-      .int()
+    period_days: periodDaysInputSchema
       .optional()
       .meta({ description: 'Number of days to analyze. Defaults to 30.' }),
     window_minutes: z.number().int().min(10).max(1440).optional().meta({
@@ -1222,8 +1234,7 @@ export type ImpactMetricOption = z.infer<typeof impactMetricSchema>
 
 export const impactMetricsQuerySchema = z
   .object({
-    period_days: z
-      .string()
+    period_days: periodDaysQuerySchema
       .optional()
       .meta({ description: 'Number of days to look at (default 30)', example: '30' }),
   })
@@ -1249,9 +1260,7 @@ export type ImpactMetricsResponse = z.infer<typeof impactMetricsResponseSchema>
 
 export const impactMetricsInputSchema = z
   .object({
-    period_days: z
-      .number()
-      .int()
+    period_days: periodDaysInputSchema
       .optional()
       .meta({ description: 'Number of days to look at. Defaults to 30.' }),
   })
@@ -1368,7 +1377,7 @@ export const continuousCorrelationBodySchema = z
       .optional()
       .meta({ description: 'Filter for partial nutrition days (default: all)' }),
     outcome: selectorSchema.meta({ description: 'Outcome dimension' }),
-    period_days: z.number().int().optional().meta({ description: 'Days to analyze (default: 90)' }),
+    period_days: periodDaysInputSchema.optional().meta({ description: 'Days to analyze (default: 90)' }),
     period_end: z.string().optional().meta({ description: 'Inclusive regime end (YYYY-MM-DD)' }),
     period_start: z.string().optional().meta({ description: 'Inclusive regime start (YYYY-MM-DD)' }),
     trigger: selectorSchema.meta({ description: 'Trigger / predictor dimension' }),

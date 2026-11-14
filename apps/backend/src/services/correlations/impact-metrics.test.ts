@@ -161,4 +161,12 @@ describe('impactExtraMetricsError', () => {
     expect(impactExtraMetricsError([`a${'b'.repeat(50)}`])).toMatch(/Not a metric name/)
     expect(impactExtraMetricsError(['body_battery', 'steps'])).toMatch(/steps is a running total/)
   })
+
+  test('refuses the three always analysed, by metric name or result key', () => {
+    for (const name of ['hr', 'hrv', 'stress', 'heart_rate', 'hrv_rmssd', 'stress_level']) {
+      expect(impactExtraMetricsError(['body_battery', name])).toMatch(
+        new RegExp(`^${name} is always analysed`),
+      )
+    }
+  })
 })

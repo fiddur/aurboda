@@ -598,6 +598,11 @@
   transition: opacity 0.15s;
 }
 
+/* The counts are the previous answer's until the new filter's arrives. */
+.correlations-page .impact-section.loading :is(.chip-count, .slicer-count, .slicer-empty) {
+  visibility: hidden;
+}
+
 .correlations-page .impact-slicer {
   margin-bottom: 1rem;
   font-size: 0.9rem;
