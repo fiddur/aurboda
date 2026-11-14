@@ -344,9 +344,9 @@ this section is the difference.
   Fredrik's machine as well. When a command still prompts, add its `Bash(<cmd>:*)` rule
   there in the next PR rather than answering the prompt by hand each time.
 - **Commits are authored as `Fredrik Liljegren <fredrik@liljegren.org>`.** The clone has no
-  git identity, so set it once per session (`git config user.name "Fredrik Liljegren" && git
-  config user.email fredrik@liljegren.org`) before the first commit; never the account's
-  gmail address.
+  git identity, so set it once per session before the first commit, never to the account's
+  gmail address:
+  `git config user.name "Fredrik Liljegren" && git config user.email fredrik@liljegren.org`.
 - **The hook is checked in, so there is nothing to paste** into the environment's
   settings, whose setup script stays empty. It reads the major from `.nvmrc` and the
   pnpm version from `packageManager`, so moving either moves the hook with it. It runs
@@ -453,8 +453,8 @@ this section is the difference.
 
 For typescript:
 
-- `pnpm fix` to make code prettier and handle linting rules
-- `pnpm check` to check typescript etc
+- `pnpm fix` to apply lint fixes (`oxlint --fix`) and then format (`oxfmt`); on a clean tree it changes nothing
+- `pnpm check` to check formatting (`oxfmt --check`, also its own always-run CI job), typescript and lint
 - Nothing is merged to `develop` without passing CI checks. If you see errors after merging from `origin/develop`, dependencies need to be reinstalled and packages rebuilt — do NOT assume they are pre-existing.
 
 ## Documentation

@@ -35,6 +35,29 @@ jobs:
               - 'packages/api-spec/**'
               - '.github/workflows/ci.yml'
 
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+          cache: 'pnpm'
+
+      - name: Install root dependencies
+        run: pnpm --filter aurboda install
+
+      - name: Check formatting
+        run: pnpm format:check
+
   node:
     name: Node (test, check, build)
     needs: changes
@@ -134,12 +157,17 @@ jobs:
     name: CI Gate
     runs-on: ubuntu-latest
     if: always()
-    needs: [node, android]
+    needs: [format, node, android]
     steps:
       - name: Check job results
         run: |
+          echo "Format: ${{ needs.format.result }}"
           echo "Node: ${{ needs.node.result }}"
           echo "Android: ${{ needs.android.result }}"
+          if [[ "${{ needs.format.result }}" != "success" ]]; then
+            echo "❌ Format check did not pass"
+            exit 1
+          fi
           if [[ "${{ needs.node.result }}" == "failure" || "${{ needs.android.result }}" == "failure" ]]; then
             echo "❌ One or more jobs failed"
             exit 1

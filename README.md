@@ -290,8 +290,8 @@ patterns and markdown; see [Input conventions](docs/mcp-server.md#input-conventi
 
 ```bash
 pnpm install
-pnpm fix    # Format and lint
-pnpm check  # TypeScript checks
+pnpm fix    # Lint fixes, then format
+pnpm check  # Format check, TypeScript checks and lint
 ```
 
 The web app's colours are tokens on `:root`; see [docs/web-theme.md](docs/web-theme.md).
