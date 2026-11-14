@@ -7,6 +7,7 @@ import {
   metricAggregationSchema,
   metricTypeSchema,
   timeRangeQuerySchema,
+  timeWeightedAveragesNote,
 } from './common.ts'
 
 const metricValueSchema = z.number().meta({ description: 'Metric value' })
@@ -226,7 +227,9 @@ export type BucketSize = z.infer<typeof bucketSizeSchema>
 
 export const bucketMetricStatsSchema = z
   .object({
-    avg: z.number().meta({ description: 'Average value in bucket' }),
+    avg: z.number().meta({
+      description: `Average value in bucket. For buckets wider than 5 minutes: ${timeWeightedAveragesNote}`,
+    }),
     count: z.number().int().meta({ description: 'Number of data points' }),
     first_time: iso8601DateTimeSchema.meta({
       description: 'Time of the first measurement in the bucket',

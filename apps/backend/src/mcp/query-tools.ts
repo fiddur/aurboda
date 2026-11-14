@@ -16,6 +16,7 @@ import {
   overnightStaysQuerySchema,
   placesSummaryQuerySchema,
   timeRangeQuerySchema,
+  timeWeightedAveragesNote,
   topAppsQuerySchema,
   topMediaQuerySchema,
   tzSchema,
@@ -93,6 +94,7 @@ export const registerQueryTools = (server: McpServer, user: string, sync?: SyncP
     `Query pre-aggregated health metrics in time buckets. Returns buckets with min/max/avg/count for each metric.
 Much more efficient than query_metrics for analysis - returns ~96 buckets for a day (15m intervals) instead of 30,000+ individual samples.
 Cumulative metrics (steps, calories, etc.) also include a 'sum' field.
+For buckets wider than 5 minutes: ${timeWeightedAveragesNote}
 
 If metrics is omitted, returns ALL metrics with data in the time range.
 Use exclude to skip specific metrics when fetching all.
@@ -133,7 +135,7 @@ Use cases:
 
   server.tool(
     'get_daily_summary',
-    'Get a comprehensive daily timeline of health data. Returns a unified chronological `activities` array combining exercises, meditations, screen time categories, and all other activities — each with optional stress_zone_secs and hr_zone_secs. Screen time entries have a category_path (e.g., ["Work & Dev", "Software Dev"]).\n\nAlso includes: heart_rate stats, steps, sleep_sessions (with stages, location, date attribution), meals (with macros), productivity summary (with category breakdown), places, Oura scores, and day-level stress_zones.\n\nDesigned for AI correlation analysis — overlay activities with stress/HR data to find patterns.',
+    'Get a comprehensive daily timeline of health data. Returns a unified chronological `activities` array combining exercises, meditations, screen time categories, and all other activities — each with optional stress_zone_secs and hr_zone_secs. Screen time entries have a category_path (e.g., ["Work & Dev", "Software Dev"]).\n\nAlso includes: heart_rate stats (avg time-weighted per 5-minute bin), steps, sleep_sessions (with stages, location, date attribution), meals (with macros), productivity summary (with category breakdown), places, Oura scores, and day-level stress_zones.\n\nDesigned for AI correlation analysis — overlay activities with stress/HR data to find patterns.',
     {
       date: dateOnlySchema.describe('Date in YYYY-MM-DD format (e.g., 2024-01-15)'),
       tz: tzSchema,
@@ -166,7 +168,7 @@ Use cases:
 
   server.tool(
     'query_period_summary',
-    'Get aggregated statistics for a time period. Returns min/max/avg/stddev for each metric, trend compared to previous period, and data completeness.',
+    `Get aggregated statistics for a time period. Returns min/max/avg/stddev for each metric, trend compared to previous period, and data completeness. ${timeWeightedAveragesNote}`,
     {
       ...timeRangeQuerySchema.shape,
       metrics: z.array(z.string()).describe(`Metrics to include. Valid metrics: ${validMetrics.join(', ')}`),

@@ -31,7 +31,7 @@ import {
   wellKnownAurbodaSchema,
   wellKnownQuantpubSchema,
 } from './schemas/challenges.ts'
-import { iso8601DateTimeSchema, metricTypeSchema } from './schemas/common.ts'
+import { iso8601DateTimeSchema, metricTypeSchema, timeWeightedAveragesNote } from './schemas/common.ts'
 import { dailySummaryQuerySchema, dailySummaryResponseSchema } from './schemas/daily-summary.ts'
 import {
   exerciseCatalogEntryResponseSchema,
@@ -823,7 +823,7 @@ const openApiDocument = createDocument({
     '/daily-summary': {
       get: {
         description:
-          'Get a comprehensive summary of health data for a specific day including heart rate, steps, sleep, exercise, tags, productivity, and visited places.',
+          'Get a comprehensive summary of health data for a specific day including heart rate (avg time-weighted per 5-minute bin), steps, sleep, exercise, tags, productivity, and visited places.',
         requestParams: { query: dailySummaryQuerySchema },
         responses: {
           200: {
@@ -1209,8 +1209,7 @@ const openApiDocument = createDocument({
 
     '/period-summary': {
       get: {
-        description:
-          'Get aggregated statistics for a time period. Returns min/max/avg/stddev for each metric, trend compared to previous period, and data completeness.',
+        description: `Get aggregated statistics for a time period. Returns min/max/avg/stddev for each metric, trend compared to previous period, and data completeness. ${timeWeightedAveragesNote}`,
         requestParams: {
           query: z.object({
             end: iso8601DateTimeSchema.meta({ description: 'End date/time' }),

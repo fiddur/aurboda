@@ -8,7 +8,13 @@ import type { QueryResultRow } from 'pg'
  * when aurboda computes per-minute values, the health_connect_aggregate
  * daily totals must be excluded to avoid nonsense averages.
  */
-import { aurbodaOnlyMetrics, aurbodaOnlySources, cumulativeMetrics, type MetricType } from '@aurboda/api-spec'
+import {
+  aurbodaOnlyMetrics,
+  aurbodaOnlySources,
+  cumulativeMetrics,
+  isTimeWeightedMetric,
+  type MetricType,
+} from '@aurboda/api-spec'
 
 /**
  * Split a list of metric names into three groups:
@@ -38,6 +44,8 @@ interface SplitQueryOptions<T> {
   sqlCumulative: string
   /** SQL for non-cumulative metrics (all sources). $1 = metrics array, remaining = params */
   sqlNonCumulative: string
+  /** SQL for the time-weighted metrics among the non-cumulative ones; they go to `sqlNonCumulative` when omitted. */
+  sqlTimeWeighted?: string
   mapRow: (row: QueryResultRow) => T
   queryFn: (sql: string, params: unknown[]) => Promise<{ rows: QueryResultRow[] }>
 }
@@ -87,8 +95,16 @@ export const querySplitByCumulative = async <T>(options: SplitQueryOptions<T>): 
     appendMapped(result.rows)
   }
 
-  if (nonCumulative.length > 0) {
-    const result = await options.queryFn(options.sqlNonCumulative, [nonCumulative, ...options.params])
+  const timeWeighted = options.sqlTimeWeighted === undefined ? [] : nonCumulative.filter(isTimeWeightedMetric)
+  const plain = nonCumulative.filter((m) => !timeWeighted.includes(m))
+
+  if (timeWeighted.length > 0 && options.sqlTimeWeighted !== undefined) {
+    const result = await options.queryFn(options.sqlTimeWeighted, [timeWeighted, ...options.params])
+    appendMapped(result.rows)
+  }
+
+  if (plain.length > 0) {
+    const result = await options.queryFn(options.sqlNonCumulative, [plain, ...options.params])
     appendMapped(result.rows)
   }
 

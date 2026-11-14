@@ -44,6 +44,7 @@ import {
 } from '../screentime-activities.ts'
 import { computeHrZoneSecs, getEffectiveHrZones } from '../settings.ts'
 import { computeSleepMinutes } from '../sleep-duration.ts'
+import { sampleMean } from '../time-weighted-mean.ts'
 import { buildCategoryMap, getCommentsMap } from './types.ts'
 
 /**
@@ -218,6 +219,7 @@ export const buildMetricsToday = async (
   for (const [metric, list] of grouped) {
     const sorted = [...list].sort((a, b) => a.time.getTime() - b.time.getTime())
     const values = sorted.map((e) => e.value)
+    const series = sorted.map((e): [Date, number] => [e.time, e.value])
     const summaryEntries: DailySummaryMetricEntry[] = sorted.map((e) => {
       const note = noteFor(e)
       const entry: DailySummaryMetricEntry = {
@@ -230,7 +232,7 @@ export const buildMetricsToday = async (
     })
     const last = sorted[sorted.length - 1]
     result[metric] = {
-      avg: values.reduce((a, b) => a + b, 0) / values.length,
+      avg: sampleMean(metric, series) ?? 0,
       count: values.length,
       entries: summaryEntries,
       latest: last.value,
@@ -369,7 +371,7 @@ export async function getDailySummary(
   const heartRateStats: HeartRateStats | null =
     heartRates.length > 0
       ? {
-          avg: Math.round(heartRates.reduce((a, b) => a + b, 0) / heartRates.length),
+          avg: Math.round(sampleMean('heart_rate', heartRateData) ?? 0),
           count: heartRates.length,
           max: maxOf(heartRates) ?? 0,
           min: minOf(heartRates) ?? 0,

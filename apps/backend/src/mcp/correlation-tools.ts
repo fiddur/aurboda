@@ -32,7 +32,7 @@ import { errorResponse, type McpServer, type SyncProvider, tzJsonResponse } from
 export const registerCorrelationTools = (server: McpServer, user: string, sync?: SyncProvider) => {
   server.tool(
     'get_baseline',
-    'Get HRV baseline statistics (7-day and 30-day averages). Returns mean HRV (rmssd) and resting heart rate with trend percentage.',
+    'Get baseline statistics (7-day and 30-day averages) with trend percentage: sleep HRV (rmssd), resting heart rate and stress level. The stress average is time-weighted: samples are averaged per 5-minute bin, then across bins, so 1 Hz samples from a recorded activity weigh no more than other hours.',
     {
       reference_date: dateOnlySchema
         .optional()

@@ -49,7 +49,7 @@ A grid of quick-link tiles for navigating to Timeline, Sleep, HR Zones, Correlat
 
 Displays a single metric value with an optional unit, trend indicator, and subtitle. The trend arrow is green for improvement, red for decline, and gray for no change. Supports an `inverse` mode where lower values are considered better (e.g., resting heart rate).
 
-Values are sourced from either the HRV/HR baseline endpoint (for 7-day and 30-day averages) or the period summary (for everything else). The period summary compares the current 30-day window against the previous 30 days to calculate the trend percentage.
+Values are sourced from either the HRV/HR baseline endpoint (for 7-day and 30-day averages) or the period summary (for everything else). The period summary compares the current 30-day window against the previous 30 days to calculate the trend percentage. Averages of heart rate, stress, body battery, respiration and SpO2 are [time-weighted](../data-storage.md#time-weighted-averages), so the hours of a recorded activity, sampled once a second, weigh no more than any other hour.
 
 On a [period dashboard](#period-dashboards) the card shows the period's value and, unless the card has its own subtitle, `Previous: <value>` for the previous period (`previous_value` in the widget data); the trend arrow is the change against it.
 

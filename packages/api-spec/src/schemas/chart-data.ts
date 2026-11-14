@@ -8,7 +8,7 @@
 import { z } from 'zod'
 
 import { activityMeasureSchema, isSummedActivityMeasure } from './activity-measures.ts'
-import { baseResponseSchema, dataFieldPathSchema } from './common.ts'
+import { baseResponseSchema, dataFieldPathSchema, timeWeightedAveragesNote } from './common.ts'
 import { ianaTimezoneSchema } from './timezone.ts'
 
 export const chartDataSourceTypeSchema = z
@@ -32,7 +32,7 @@ export const chartDataBucketSizeSchema = z.enum(['1m', '5m', '15m', '1h', '1d', 
 export type ChartDataBucketSize = z.infer<typeof chartDataBucketSizeSchema>
 
 export const chartDataAggregationSchema = z.enum(['count', 'sum', 'mean', 'max']).meta({
-  description: 'Aggregation method: count, sum, mean or max',
+  description: `Aggregation method: count, sum, mean or max. For a metric with buckets wider than 5 minutes: ${timeWeightedAveragesNote}`,
   example: 'count',
   id: 'ChartDataAggregation',
 })

@@ -298,7 +298,7 @@ describe('getTrend', () => {
         source_type: 'metric',
       })
 
-      expect(metricSql()).toContain('COUNT(*)')
+      expect(metricSql()).toContain('SUM(n)')
       expect(metricSql()).toContain('COALESCE(dv2.daily_value, 0)')
       expect(vi.mocked(db.query).mock.calls[0][2]?.[3]).toBe(7)
       expect(result.aggregation).toBe('count')

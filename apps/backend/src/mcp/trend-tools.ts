@@ -1,4 +1,4 @@
-import { getTrendQuerySchema } from '@aurboda/api-spec'
+import { getTrendQuerySchema, timeWeightedAveragesNote } from '@aurboda/api-spec'
 
 import { getCustomMetrics } from '../services/mutations.ts'
 import { getUserTimezone } from '../services/settings.ts'
@@ -21,6 +21,8 @@ Measure trend (activity_type only): with measure set, the trend is the decaying 
 any session that beats it, so one weak session never pulls it down. filter_field/filter_value pick one exercise
 (filter_field: "sets.exercise", filter_value: "Squat"). A longer half-life such as 120 days suits it. display_period,
 aggregation, breakdown_fields and missing_days do not apply; the result's aggregation is 'max'.
+
+Metric means: ${timeWeightedAveragesNote}
 
 missing_days (metric only): 'zero' counts days without samples as 0, 'skip' leaves them out; defaults to the metric kind (zero for amounts like steps or a custom metric with aggregation 'sum', skip for levels like weight).
 

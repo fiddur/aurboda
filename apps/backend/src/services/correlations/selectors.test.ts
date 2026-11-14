@@ -72,6 +72,22 @@ describe('resolveSelector - metric event mode', () => {
     )
     expect(resolved.daily.get('2024-01-02')).toBe(15)
   })
+
+  test('agg avg of an instantaneous-sample metric weighs every 5-minute bin alike', async () => {
+    const dense = Array.from({ length: 300 }, (_, i): [Date, number] => [
+      new Date(Date.parse('2024-01-02T10:00:00Z') + i * 1000),
+      80,
+    ])
+    vi.mocked(db.getTimeSeries).mockResolvedValue([[new Date('2024-01-02T08:00:00Z'), 20], ...dense])
+
+    const resolved = await resolveSelector(
+      'user',
+      { kind: 'metric', metric: 'heart_rate', agg: 'avg' },
+      start,
+      end,
+    )
+    expect(resolved.daily.get('2024-01-02')).toBe(50)
+  })
 })
 
 describe('resolveSelector - nutrition', () => {

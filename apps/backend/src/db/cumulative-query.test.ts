@@ -158,4 +158,24 @@ describe('querySplitByCumulative', () => {
     expect(results).toEqual([])
     expect(queryFn).not.toHaveBeenCalled()
   })
+
+  test('sends time-weighted metrics to sqlTimeWeighted when it is given', async () => {
+    const queryFn = vi.fn().mockResolvedValue({ rows: [] })
+
+    await querySplitByCumulative({
+      mapRow: (row) => row,
+      metrics: ['heart_rate', 'weight', 'stress_level', 'steps'],
+      params: ['start'],
+      queryFn,
+      sqlCumulative: 'CUMULATIVE SQL',
+      sqlNonCumulative: 'PLAIN SQL',
+      sqlTimeWeighted: 'TIME-WEIGHTED SQL',
+    })
+
+    expect(queryFn.mock.calls.map(([sql, params]) => [sql, params[0]])).toEqual([
+      ['CUMULATIVE SQL', ['steps']],
+      ['TIME-WEIGHTED SQL', ['heart_rate', 'stress_level']],
+      ['PLAIN SQL', ['weight']],
+    ])
+  })
 })

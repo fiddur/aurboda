@@ -18,6 +18,7 @@ import {
   getProductivity,
   getTimeSeries,
 } from '../../db/index.ts'
+import { sampleMean } from '../time-weighted-mean.ts'
 
 /** Comparison used to turn a numeric value into a discrete event. */
 export interface ThresholdSpec {
@@ -172,25 +173,28 @@ const resolveMetric = async (
 ): Promise<ResolvedSeries> => {
   const entries = await getTimeSeries(user, selector.metric, start, end)
   const agg = selector.agg ?? 'avg'
-  const sums = new Map<string, number>()
-  const counts = new Map<string, number>()
+  const byDay = new Map<string, [Date, number][]>()
   // Track whether any single entry on the day passes the threshold (event mode).
   const eventDaySet = new Set<string>()
 
-  for (const [time, value] of entries) {
-    const day = toUtcDay(time)
-    sums.set(day, (sums.get(day) ?? 0) + value)
-    counts.set(day, (counts.get(day) ?? 0) + 1)
-    if (passesThreshold(value, selector.threshold)) eventDaySet.add(day)
+  for (const entry of entries) {
+    const day = toUtcDay(entry[0])
+    byDay.getOrInsert(day, []).push(entry)
+    if (passesThreshold(entry[1], selector.threshold)) eventDaySet.add(day)
   }
 
   const daily = new Map<string, number>()
-  for (const [day, sum] of sums) {
-    daily.set(day, agg === 'sum' ? sum : sum / (counts.get(day) ?? 1))
+  for (const [day, dayEntries] of byDay) {
+    daily.set(
+      day,
+      agg === 'sum'
+        ? dayEntries.reduce((sum, [, value]) => sum + value, 0)
+        : (sampleMean(selector.metric, dayEntries) ?? 0),
+    )
   }
 
   // A metric's status is known only on days it was logged (incl. explicit 0s).
-  return { eventDays: [...eventDaySet], daily, knownDays: [...sums.keys()] }
+  return { eventDays: [...eventDaySet], daily, knownDays: [...byDay.keys()] }
 }
 
 /** Daily nutrient totals; known days include meal-log-completed zero days. */

@@ -439,7 +439,39 @@ CREATE TABLE oauth_tokens (
 
 ### Querying
 
-For charting heart rate over a week:
+#### Time-weighted averages
+
+Instantaneous-sample metrics arrive at uneven rates: Garmin sends `heart_rate`
+and `stress_level` (and `body_battery` and `respiratory_rate`) once a second
+during a recorded activity and every 2–3 minutes otherwise, and a BLE strap on
+the Live screen records 1 Hz. A plain `avg(value)` would weigh a recorded hour
+100–200 times more than any other hour (on 90 days of real data: heart rate
+80.6 pooled against 72.4 time-weighted, stress 38.4 against 31.0).
+
+So every average Aurboda shows of the metrics in `timeWeightedMetrics`
+(`packages/api-spec/src/schemas/common.ts`: `heart_rate`, `stress_level`,
+`body_battery`, `respiratory_rate`, `spo2`) is taken per 5-minute bin first
+(epoch-aligned, the bins the Analyze context analysis uses) and then across
+bins. Stored samples are unchanged; the weighting happens at query time, in
+`apps/backend/src/db/time-weighted.ts` (`sampleRowsSql`, used by
+`getTimeSeriesStats`, `getDailyAggregates`, `getTimeSeriesBucketed`, the metric
+trend and the chart buckets) and, for series already in memory, in
+`sampleMean` (`apps/backend/src/services/time-weighted-mean.ts`). Where the
+standard deviation is shown with the mean, it is weighted the same way. Min,
+max, sum and count stay those of the samples. A bucket of 5 minutes or less is
+its own bin, so its mean is the plain one. Daily values such as
+`resting_heart_rate` or `sleep_score` are one sample a day and are averaged
+plainly.
+
+This covers the baseline cards (`get_baseline`), the period summary behind the
+dashboard metric and sparkline cards (`query_period_summary`), the daily
+summary's heart rate and `metrics_today`, metric trends (`get_trend`), the chart
+buckets (`query_chart_data`, `query_metrics_bucketed`) and the daily values of
+a correlation `metric` selector. Averages inside a single activity (a run's
+average heart rate, a session's HR summary) are not reweighted: within an
+activity the samples come at one rate.
+
+For charting heart rate over a week (plain, sample-weighted SQL):
 
 ```sql
 SELECT
