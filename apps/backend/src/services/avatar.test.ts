@@ -11,6 +11,7 @@ import {
   MAX_UPLOAD_PIXELS,
   processAvatar,
   processBanner,
+  uploadedImage,
 } from './avatar.ts'
 import { processFeedImage } from './feed-image.ts'
 
@@ -96,24 +97,34 @@ describe('the upload pixel limit', () => {
     crc.writeUInt32BE(crc32(body))
     return Buffer.concat([length, body, crc])
   }
-  // A few hundred bytes that declare 12000×10000 pixels: under sharp's own default, over ours.
-  const hugeDimensionsPng = () => {
+  // A few hundred bytes that only declare their dimensions, so sharp reads the header and no pixels.
+  const declaredPng = (width: number, height: number) => {
     const header = Buffer.alloc(13)
-    header.writeUInt32BE(12_000, 0)
-    header.writeUInt32BE(10_000, 4)
+    header.writeUInt32BE(width, 0)
+    header.writeUInt32BE(height, 4)
     header[8] = 8
     return Buffer.concat([
       Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
       pngChunk('IHDR', header),
-      pngChunk('IDAT', deflateSync(Buffer.alloc(12_001))),
+      pngChunk('IDAT', deflateSync(Buffer.alloc(width + 1))),
       pngChunk('IEND', Buffer.alloc(0)),
     ])
   }
 
+  test("is sharp's own default ceiling, 16383×16383", () => {
+    expect(MAX_UPLOAD_PIXELS).toBe(16_383 * 16_383)
+  })
+
+  test('a 200-megapixel phone photo passes it', async () => {
+    const meta = await uploadedImage(declaredPng(16_320, 12_240)).metadata()
+    expect({ height: meta.height, width: meta.width }).toEqual({ height: 12_240, width: 16_320 })
+  })
+
   test('a small file with huge dimensions is refused before it is decoded', async () => {
-    expect(12_000 * 10_000).toBeGreaterThan(MAX_UPLOAD_PIXELS)
-    await expect(processAvatar(hugeDimensionsPng())).rejects.toThrow(/pixel limit/)
-    await expect(processBanner(hugeDimensionsPng())).rejects.toThrow(/pixel limit/)
-    await expect(processFeedImage(hugeDimensionsPng())).rejects.toThrow(/pixel limit/)
+    const huge = () => declaredPng(20_000, 17_000)
+    expect(20_000 * 17_000).toBeGreaterThan(MAX_UPLOAD_PIXELS)
+    await expect(processAvatar(huge())).rejects.toThrow(/pixel limit/)
+    await expect(processBanner(huge())).rejects.toThrow(/pixel limit/)
+    await expect(processFeedImage(huge())).rejects.toThrow(/pixel limit/)
   })
 })

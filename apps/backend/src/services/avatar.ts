@@ -24,8 +24,11 @@ export const isAllowedImageType = (contentType: string): boolean => ALLOWED_UPLO
 export const BANNER_WIDTH = 1200
 export const BANNER_HEIGHT = 630
 
-/** Below sharp's default (about 268 megapixels): a small file of huge dimensions still costs that much memory to decode. */
-export const MAX_UPLOAD_PIXELS = 100_000_000
+/**
+ * sharp's own default ceiling (16383×16383, about 268 megapixels), stated so every upload path
+ * shares it: lower would refuse a 200-megapixel phone photo, which is worse than its decode cost.
+ */
+export const MAX_UPLOAD_PIXELS = 16_383 * 16_383
 
 export const uploadedImage = (buffer: Buffer) => sharp(buffer, { limitInputPixels: MAX_UPLOAD_PIXELS })
 

@@ -309,7 +309,8 @@ bytes sharp detects, not the claimed type (PNG, JPEG, WebP or GIF; never SVG); t
 orientation is applied and the picture turned upright; its longest edge is shrunk to at most
 1600 px (a smaller picture is not enlarged); an animated GIF keeps its first frame; and it is
 stored as WebP (quality 82) with **no metadata** — no camera, no GPS position. An upload is at
-most 10 MB and at most 100 megapixels, so a small file of huge dimensions is refused before it is
+most 10 MB and at most 16383×16383 pixels (about 268 megapixels, sharp's own default, so a
+200-megapixel phone photo is taken), and a small file declaring more is refused before it is
 decoded (the same limit holds for avatars and challenge banners).
 
 Pictures live in the writer's own database, in `feed_image` (`id`, `content_type`, `data`
