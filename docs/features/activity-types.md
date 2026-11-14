@@ -340,9 +340,10 @@ merge keeps it under the new spelling.
   catalogue key or `null` to dismiss; answers like the GET
 - `DELETE /activity-types/:name/item-values/identity?field=&value=` -- remove the decision, back to
   automatic resolution; 404 when none is stored
-- `GET /activity-types/:name/item-values/unmapped?field=sets.exercise` -- the logged names in state
-  `unmapped`, most used first, each with up to three suggested entries (word overlap with the
-  entry's name or aliases)
+- `GET /activity-types/:name/item-values/unmapped?field=sets.exercise&limit=50&offset=0` -- the
+  logged names in state `unmapped`, most used first, each with up to three suggested entries (word
+  overlap with the entry's name or aliases). One page of `limit` names (default 50, at most 200)
+  from `offset`; `total` counts them all. Suggestions are built for the page only
 
 A field without a catalogue is a 400. The MCP twins are `get_item_value_identity`,
 `set_item_value_identity`, `clear_item_value_identity` and `list_unmapped_item_values`.
@@ -472,8 +473,8 @@ types in the `exercise` display category.
   logged name
 - `PUT /activity-types/:name/item-values/identity` -- Map a name to a catalogue key, or dismiss it
 - `DELETE /activity-types/:name/item-values/identity?field=&value=` -- Clear the decision for a name
-- `GET /activity-types/:name/item-values/unmapped?field=<item path>` -- Logged names matching no
-  catalogue entry, with suggestions
+- `GET /activity-types/:name/item-values/unmapped?field=<item path>&limit=&offset=` -- Logged names
+  matching no catalogue entry, with suggestions, a page at a time with the `total`
 
 MCP tools: `list_activity_types`, `list_activity_type_catalog`, `add_activity_type`, `add_activity_type_catalog_fields`, `update_activity_type`, `delete_activity_type`, `merge_activity_type`, `query_activity_sessions`, `get_activity_records`, `get_activity_type_summary`, `list_activity_field_values`, `get_activity_neighbors`, `get_activity_item_history`, `merge_item_values`, `list_item_value_aliases`, `delete_item_value_alias`, `get_item_value_identity`, `set_item_value_identity`, `clear_item_value_identity`, `list_unmapped_item_values`.
 

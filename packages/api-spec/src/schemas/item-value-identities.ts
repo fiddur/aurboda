@@ -87,8 +87,21 @@ export const itemValueIdentityResponseSchema = createDataResponseSchema(itemValu
 export type ItemValueIdentityResponse = z.infer<typeof itemValueIdentityResponseSchema>
 
 export const unmappedItemValuesQuerySchema = z
-  .object({ field: catalogFieldPathSchema })
-  .meta({ description: 'Which item path to list the unmapped names of', id: 'UnmappedItemValuesQuery' })
+  .object({
+    field: catalogFieldPathSchema,
+    limit: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(200)
+      .default(50)
+      .meta({ description: 'Max names to return (1–200, default 50)' }),
+    offset: z.coerce.number().int().min(0).default(0).meta({ description: 'Names to skip (default 0)' }),
+  })
+  .meta({
+    description: 'Which item path to list the unmapped names of, and which page',
+    id: 'UnmappedItemValuesQuery',
+  })
 
 export type UnmappedItemValuesQuery = z.infer<typeof unmappedItemValuesQuerySchema>
 
@@ -110,6 +123,7 @@ export const unmappedItemValuesSchema = z
     catalog: dataFieldCatalogSchema,
     catalog_version: catalogVersionSchema,
     field: z.string(),
+    total: z.number().int().meta({ description: 'Unmapped names in all, before limit and offset' }),
     values: z.array(unmappedItemValueSchema).meta({ description: 'Most used first' }),
   })
   .meta({

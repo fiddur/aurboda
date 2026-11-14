@@ -7,6 +7,7 @@ import type {
   StoredExerciseCatalog,
   StoredExerciseCatalogEntry,
   UnmappedItemValues,
+  UnmappedItemValuesQuery,
 } from '@aurboda/api-spec'
 
 import type { ExerciseEntryResolver } from './muscle-group-measures.ts'
@@ -329,10 +330,12 @@ export const clearItemValueIdentity = async (
     : { error: `Identity for "${value.trim()}" not found`, success: false }
 }
 
+/** One page of the unmapped names, most used first; catalogue suggestions are built for that page only. */
 export const listUnmappedItemValues = async (
   user: string,
   activityType: string,
   field: string,
+  page: Partial<Pick<UnmappedItemValuesQuery, 'limit' | 'offset'>> = {},
 ): Promise<ItemValueResult<UnmappedItemValues>> => {
   const resolved = await resolveCatalogItemPath(user, activityType, field)
   if (!resolved.success) return resolved
@@ -342,17 +345,28 @@ export const listUnmappedItemValues = async (
     loggedValues(user, activityType, field),
   ])
   const storedMap = storedIdentityMap(stored)
-  const values = logged
+  const unmapped = logged
     .filter((v) => resolveItemValueIdentity(v.value, storedMap, catalog).state === 'unmapped')
-    .sort((a, b) => b.count - a.count || b.last_used.getTime() - a.last_used.getTime())
-    .map((v) => ({
-      count: v.count,
-      last_used: v.last_used.toISOString(),
-      suggestions: suggestExercises(catalog, v.value).map(toExerciseCatalogEntry),
-      value: v.value,
-    }))
+    .sort(
+      (a, b) =>
+        b.count - a.count || b.last_used.getTime() - a.last_used.getTime() || a.value.localeCompare(b.value),
+    )
+  const limit = Math.min(Math.max(page.limit ?? 50, 1), 200)
+  const offset = Math.max(page.offset ?? 0, 0)
+  const values = unmapped.slice(offset, offset + limit).map((v) => ({
+    count: v.count,
+    last_used: v.last_used.toISOString(),
+    suggestions: suggestExercises(catalog, v.value).map(toExerciseCatalogEntry),
+    value: v.value,
+  }))
   return {
-    data: { catalog: resolved.data.catalog, catalog_version: catalog.version, field, values },
+    data: {
+      catalog: resolved.data.catalog,
+      catalog_version: catalog.version,
+      field,
+      total: unmapped.length,
+      values,
+    },
     success: true,
   }
 }
