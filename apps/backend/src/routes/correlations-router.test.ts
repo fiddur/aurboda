@@ -47,6 +47,7 @@ describe('GET /correlations/activity-impact/:activity', () => {
       undefined,
       [],
       { filters: [] },
+      { excludeFlagged: true },
     )
   })
 
@@ -67,6 +68,7 @@ describe('GET /correlations/activity-impact/:activity', () => {
       'exact',
       [],
       { filters: [] },
+      { excludeFlagged: true },
     )
   })
 
@@ -135,9 +137,15 @@ describe('extra metrics', () => {
 
     const context = await supertest(app).get('/correlations/hrv-activities?metrics=body_battery')
     expect(context.status).toBe(200)
-    expect(getHrvActivitiesCorrelation).toHaveBeenCalledWith('tester', 30, undefined, undefined, 30, [
-      'body_battery',
-    ])
+    expect(getHrvActivitiesCorrelation).toHaveBeenCalledWith(
+      'tester',
+      30,
+      undefined,
+      undefined,
+      30,
+      ['body_battery'],
+      { excludeFlagged: true },
+    )
   })
 
   test('400 for a cumulative metric or too many', async () => {

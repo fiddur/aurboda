@@ -1,14 +1,12 @@
-import type { RequestHandler } from 'express'
-
 import { type TrendQuery, trendQuerySchema, type TrendResponse } from '@aurboda/api-spec'
 
 import { getCustomMetrics } from '../services/mutations.ts'
 import { getUserTimezone } from '../services/settings.ts'
 import { getTrend } from '../services/trends.ts'
-import { type TypedRouter, typedRouter } from '../typed-router.ts'
+import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateQuery } from '../validation.ts'
 
-export const createTrendsRouter = (authMiddleware: RequestHandler): TypedRouter => {
+export const createTrendsRouter = (authMiddleware: AnyMiddleware): TypedRouter => {
   const router = typedRouter()
 
   router.get<Record<string, never>, TrendResponse, unknown, TrendQuery>(
@@ -23,6 +21,7 @@ export const createTrendsRouter = (authMiddleware: RequestHandler): TypedRouter 
         filter_field,
         filter_value,
         half_life_days,
+        include_flagged,
         lookback_days,
         measure,
         missing_days,
@@ -55,6 +54,7 @@ export const createTrendsRouter = (authMiddleware: RequestHandler): TypedRouter 
         breakdown_fields,
         custom_metrics: customMetrics,
         display_period,
+        exclude_flagged: !include_flagged,
         filter_field,
         filter_value,
         half_life_days: halfLifeDays,

@@ -100,6 +100,14 @@ export {
 } from './time-series.ts'
 
 export {
+  countTimeSeriesInWindows,
+  type FlaggedWindow,
+  getFlaggedWindows,
+  inWindowsSql,
+  windowParams,
+} from './flagged-windows.ts'
+
+export {
   deleteDeductionRule,
   deleteRuleActivities,
   deleteStaleRuleActivities,

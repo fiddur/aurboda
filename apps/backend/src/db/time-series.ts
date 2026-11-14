@@ -17,6 +17,7 @@ import {
 import { dayKey } from '../services/day-keys.ts'
 import { query, withUserTransaction } from './connection.ts'
 import { querySplitByCumulative } from './cumulative-query.ts'
+import { inWindowsSql, type TimeWindow, windowParams } from './flagged-windows.ts'
 import { parseMetricType } from './row-mappers.ts'
 import { sampleAggregates, sampleRowsSql } from './time-weighted.ts'
 
@@ -327,13 +328,17 @@ export const getTimeSeriesMultiMetric = async (
   return data
 }
 
+/** With `outside`, the samples inside those windows are left out. */
 export const getTimeSeriesStats = async (
   user: string,
   metrics: string[],
   start: Date,
   end: Date,
+  outside: TimeWindow[] = [],
 ): Promise<MetricStats[]> => {
   if (metrics.length === 0) return []
+  const params: unknown[] = outside.length > 0 ? [start, end, ...windowParams(outside)] : [start, end]
+  const outsideSql = outside.length > 0 ? ` AND NOT ${inWindowsSql('$4', '$5')}` : ''
 
   const statsSql = (sourceFilter: string, timeWeighted = false) => {
     const agg = sampleAggregates(timeWeighted)
@@ -348,7 +353,7 @@ export const getTimeSeriesStats = async (
        FROM ${sampleRowsSql({
          keys: [{ as: 'metric', expr: 'metric' }],
          timeWeighted,
-         where: `metric = ANY($1) AND time >= $2 AND time <= $3 AND deleted_at IS NULL${sourceFilter}`,
+         where: `metric = ANY($1) AND time >= $2 AND time <= $3 AND deleted_at IS NULL${outsideSql}${sourceFilter}`,
        })} s
        GROUP BY metric
        ORDER BY metric`
@@ -368,9 +373,9 @@ export const getTimeSeriesStats = async (
     cumulativeExtraParams: [cumulativeSources],
     mapRow,
     metrics,
-    params: [start, end],
-    queryFn: (sql, params) => query(user, sql, params),
-    sqlCumulative: statsSql(`\n         AND source = ANY($4)`),
+    params,
+    queryFn: (sql, queryParams) => query(user, sql, queryParams),
+    sqlCumulative: statsSql(`\n         AND source = ANY($${params.length + 2})`),
     sqlNonCumulative: statsSql(''),
     sqlTimeWeighted: statsSql('', true),
   })
@@ -503,8 +508,12 @@ export const getTimeSeriesBucketed = async (
   end: Date,
   interval: string,
   tz: string = 'UTC',
+  outside: TimeWindow[] = [],
 ): Promise<BucketedMetricData[]> => {
   if (metrics.length === 0) return []
+  const params: unknown[] =
+    outside.length > 0 ? [start, end, interval, tz, ...windowParams(outside)] : [start, end, interval, tz]
+  const outsideSql = outside.length > 0 ? ` AND NOT ${inWindowsSql('$6', '$7')}` : ''
 
   // For timezone-aware bucketing, convert timestamps to local time before binning,
   // then convert back. This ensures daily buckets align to local midnight (and
@@ -533,7 +542,7 @@ export const getTimeSeriesBucketed = async (
          { as: 'metric', expr: 'metric' },
        ],
        timeWeighted,
-       where: `metric = ANY($1) AND time >= $2 AND time < $3 AND deleted_at IS NULL${sourceFilter}`,
+       where: `metric = ANY($1) AND time >= $2 AND time < $3 AND deleted_at IS NULL${outsideSql}${sourceFilter}`,
      })} s
      GROUP BY bucket_local, metric
      ORDER BY bucket_local, metric`
@@ -555,9 +564,9 @@ export const getTimeSeriesBucketed = async (
     cumulativeExtraParams: [cumulativeSources],
     mapRow,
     metrics,
-    params: [start, end, interval, tz],
-    queryFn: (sql, params) => query(user, sql, params),
-    sqlCumulative: bucketedSql(`\n     AND source = ANY($6)`),
+    params,
+    queryFn: (sql, queryParams) => query(user, sql, queryParams),
+    sqlCumulative: bucketedSql(`\n     AND source = ANY($${params.length + 2})`),
     sqlNonCumulative: bucketedSql(''),
     sqlTimeWeighted: bucketedSql('', true),
   })

@@ -1,5 +1,3 @@
-import type { RequestHandler } from 'express'
-
 import {
   type AddCustomMetricBody,
   addCustomMetricBodySchema,
@@ -66,11 +64,11 @@ import {
 import { getLatestMetric } from '../services/reports.ts'
 import { getUserTimezone } from '../services/settings.ts'
 import { getSleepDebt } from '../services/sleep-debt.ts'
-import { type TypedRouter, typedRouter } from '../typed-router.ts'
+import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
 export const createMetricsRouter = (
-  authMiddleware: RequestHandler,
+  authMiddleware: AnyMiddleware,
   syncProvider?: SyncProvider,
 ): TypedRouter => {
   const router = typedRouter()
@@ -81,7 +79,15 @@ export const createMetricsRouter = (
     authMiddleware,
     validateQuery(queryMetricsBucketedQuerySchema),
     async (req, res) => {
-      const { start, end, bucket, metrics: metricsParam, exclude: excludeParam, tz } = req.query
+      const {
+        start,
+        end,
+        bucket,
+        metrics: metricsParam,
+        exclude: excludeParam,
+        exclude_flagged,
+        tz,
+      } = req.query
       const user = req.user!
 
       const customMetrics = await getCustomMetrics(user)
@@ -95,7 +101,7 @@ export const createMetricsRouter = (
         new Date(start),
         new Date(end),
         bucket,
-        { customMetrics, exclude, tz },
+        { customMetrics, exclude, excludeFlagged: exclude_flagged, tz },
       )
       res.json({ ...result, success: true })
     },

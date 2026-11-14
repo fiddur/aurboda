@@ -9,6 +9,7 @@ import {
   activityTypeSummaryQuerySchema,
   bucketSizeSchema,
   dateOnlySchema,
+  excludeFlaggedSchema,
   locationsQuerySchema,
   locationSummaryQuerySchema,
   mediaPlaysQuerySchema,
@@ -114,13 +115,14 @@ Use cases:
       ...timeRangeQuerySchema.shape,
       bucket: bucketSizeSchema,
       exclude: z.array(z.string()).optional().describe('Metrics to exclude (useful when fetching all)'),
+      exclude_flagged: excludeFlaggedSchema,
       metrics: z
         .array(z.string())
         .optional()
         .describe(`Metrics to include (omit for all). Valid built-in metrics: ${validMetrics.join(', ')}`),
       tz: tzSchema,
     },
-    async ({ bucket, end, exclude, metrics, start, tz }) => {
+    async ({ bucket, end, exclude, exclude_flagged, metrics, start, tz }) => {
       const customMetrics = await getCustomMetrics(user)
 
       const result = await queryMetricsBucketed(
@@ -129,7 +131,7 @@ Use cases:
         new Date(start),
         new Date(end),
         bucket,
-        { customMetrics, exclude, tz },
+        { customMetrics, exclude, excludeFlagged: exclude_flagged, tz },
       )
       return tzJsonResponse(result, tz)
     },

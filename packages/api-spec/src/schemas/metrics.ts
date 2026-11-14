@@ -10,6 +10,7 @@ import {
   timeRangeQuerySchema,
   timeWeightedAveragesNote,
 } from './common.ts'
+import { excludeFlaggedSchema, flaggedExclusionSchema } from './flagged-windows.ts'
 
 const metricValueSchema = z.number().meta({ description: 'Metric value' })
 
@@ -279,6 +280,7 @@ export const queryMetricsBucketedQuerySchema = timeRangeQuerySchema
       description: 'Comma-separated list of metrics to exclude (useful when fetching all)',
       example: 'training_impulse,activity_impulse',
     }),
+    exclude_flagged: excludeFlaggedSchema,
     metrics: z.string().optional().meta({
       description: 'Comma-separated list of metrics (omit to fetch all metrics with data in the range)',
       example: 'heart_rate,hrv_rmssd',
@@ -302,6 +304,7 @@ export const queryMetricsBucketedResponseSchema = baseResponseSchema
     bucket: bucketSizeSchema.optional(),
     buckets: z.array(metricBucketSchema).optional(),
     end: iso8601DateTimeSchema.optional(),
+    flagged_exclusion: flaggedExclusionSchema.optional(),
     start: iso8601DateTimeSchema.optional(),
   })
   .meta({ id: 'QueryMetricsBucketedResponse' })

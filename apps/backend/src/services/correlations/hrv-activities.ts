@@ -14,6 +14,12 @@ import type {
 
 import { getEffectiveActivitiesInRange, getProductivity, getTimeSeries } from '../../db/index.ts'
 import { pushAll } from '../../utils.ts'
+import {
+  type FlaggedWindow,
+  flaggedExclusion,
+  loadFlaggedWindows,
+  withoutFlagged,
+} from '../flagged-windows.ts'
 import { getPlaceVisits } from '../locations.ts'
 import { triggerCorrelationSyncs } from './background-sync.ts'
 import {
@@ -256,6 +262,43 @@ const withAdjustedEffects = <Row extends HrvStatsWithDelta>(
   stress_effect: adjust(row.stress_effect),
 })
 
+type Series = Awaited<ReturnType<typeof getTimeSeries>>
+
+/** The inputs without the samples, app spans, visits and activities starting in a flagged window. */
+const withoutFlaggedInputs = (
+  [hrv, hr, stress, productivity, locations, activities, extras]: [
+    Series,
+    Series,
+    Series,
+    ProductivityRecord[],
+    PlaceVisit[],
+    Activity[],
+    Series[],
+  ],
+  flagged: FlaggedWindow[],
+) => {
+  const atTime = ([time]: Series[number]) => time.getTime()
+  const parts = {
+    activities: withoutFlagged(activities, (a) => a.start_time.getTime(), flagged),
+    hrData: withoutFlagged(hr, atTime, flagged),
+    hrvData: withoutFlagged(hrv, atTime, flagged),
+    locations: withoutFlagged(locations, (v) => v.start_time.getTime(), flagged),
+    productivity: withoutFlagged(productivity, (p) => p.start_time.getTime(), flagged),
+    stressData: withoutFlagged(stress, atTime, flagged),
+  }
+  const extraParts = extras.map((series) => withoutFlagged(series, atTime, flagged))
+  return {
+    activities: parts.activities.kept,
+    excludedPoints: [...Object.values(parts), ...extraParts].reduce((n, p) => n + p.excluded, 0),
+    extraData: extraParts.map((p) => p.kept),
+    hrData: parts.hrData.kept,
+    hrvData: parts.hrvData.kept,
+    locations: parts.locations.kept,
+    productivity: parts.productivity.kept,
+    stressData: parts.stressData.kept,
+  }
+}
+
 export async function getHrvActivitiesCorrelation(
   user: string,
   periodDays: number = 30,
@@ -263,6 +306,7 @@ export async function getHrvActivitiesCorrelation(
   contextMetric: HrvContextMetric = 'hrv_rmssd',
   windowMinutes: number = 30,
   requestedExtras: string[] = [],
+  options: { excludeFlagged?: boolean } = {},
 ): Promise<HrvActivitiesResult> {
   const window = clampWindowMinutes(windowMinutes)
   const extraMetrics = extraMetricKeys(requestedExtras)
@@ -278,7 +322,8 @@ export async function getHrvActivitiesCorrelation(
   triggerCorrelationSyncs(sync, user)
 
   const { seriesEnd, seriesStart } = extendByWindow(start, end, window)
-  const [hrvData, hrData, stressData, productivity, locations, activities, extraData] = await Promise.all([
+  const [flagged, ...data] = await Promise.all([
+    loadFlaggedWindows(user, seriesStart, seriesEnd, options.excludeFlagged),
     getTimeSeries(user, 'hrv_rmssd', seriesStart, seriesEnd),
     getTimeSeries(user, 'heart_rate', seriesStart, seriesEnd),
     getTimeSeries(user, 'stress_level', seriesStart, seriesEnd),
@@ -287,6 +332,8 @@ export async function getHrvActivitiesCorrelation(
     getEffectiveActivitiesInRange(user, start, end),
     Promise.all(extraMetrics.map((metric) => getTimeSeries(user, metric, seriesStart, seriesEnd))),
   ])
+  const { excludedPoints, hrvData, hrData, stressData, productivity, locations, activities, extraData } =
+    withoutFlaggedInputs(data, flagged)
 
   const extraRaw = Object.fromEntries(extraMetrics.map((metric, i) => [metric, extraData[i]]))
   const series: MetricSeries = {
@@ -323,6 +370,7 @@ export async function getHrvActivitiesCorrelation(
       locations: tables.locations.map(adjustRow),
       productivity: tables.productivity.map(adjustRow),
     },
+    ...flaggedExclusion(flagged, { excluded_points: excludedPoints }),
     ...(extraMetrics.length > 0 ? { metric_baselines: metricBaselines } : {}),
     period: {
       days: periodDays,
