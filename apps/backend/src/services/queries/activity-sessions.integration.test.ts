@@ -10,6 +10,7 @@ import {
   insertActivityTypeDefinition,
   insertTimeSeries,
 } from '../../db/index.ts'
+import { insertLocations, insertNamedLocation } from '../../db/locations.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../../test/db-test-helper.ts'
 import { getEffectiveHrZones } from '../settings.ts'
 import { queryActivityItemHistory } from './activity-item-history.ts'
@@ -138,6 +139,44 @@ describe('activity sessions, neighbors and item history against the database', (
 
     const recent = await queryActivitySessions(user, TYPE, { start: at('2026-09-04T00:00:00Z') })
     expect(recent.sessions.map((s) => s.id)).toEqual([ids.last, ids.unnamed])
+  })
+
+  test('group_by=place groups by the named place overlapped longest, else the last known one', async () => {
+    const user = getTestUser()
+    const home = { lat: 59.3, lon: 18.0 }
+    const studio = { lat: 59.4, lon: 18.2 }
+    const away = { lat: 59.6, lon: 18.5 }
+    await insertNamedLocation(user, { ...home, name: 'Home', radius: 100 })
+    await insertNamedLocation(user, { ...studio, name: 'Studio', radius: 100 })
+    const fix = (where: { lat: number; lon: number }, iso: string) => ({ ...where, time: at(iso) })
+    await insertLocations(user, [
+      fix(studio, '2026-09-01T07:05:00Z'),
+      fix(studio, '2026-09-01T07:15:00Z'),
+      // The merged session has no fix of its own: the phone lay at home since 05:00
+      fix(home, '2026-09-03T04:30:00Z'),
+      fix(home, '2026-09-03T05:00:00Z'),
+      // Away from 12:00, so the unnamed session the next morning has no place within 6 hours
+      fix(away, '2026-09-03T12:00:00Z'),
+      fix(away, '2026-09-03T12:30:00Z'),
+      fix(home, '2026-09-05T06:50:00Z'),
+      fix(home, '2026-09-05T07:05:00Z'),
+      fix(studio, '2026-09-05T07:10:00Z'),
+      fix(studio, '2026-09-05T07:40:00Z'),
+    ])
+
+    const result = await queryActivitySessions(user, TYPE, { groupBy: 'place' })
+
+    expect(result.sessions.map((s) => [s.id, s.fields.place, s.fields.session_name])).toEqual([
+      [ids.last, 'Studio', 'Yin'],
+      [ids.unnamed, undefined, undefined],
+      [`merged:${ids.mergedGarmin}`, 'Home', 'Mobility Flow'],
+      [ids.first, 'Studio', 'Mobility Flow'],
+    ])
+    expect(result.groups?.map((g) => [g.value, g.session_ids, g.hr?.sample_count])).toEqual([
+      ['Studio', [ids.last, ids.first], 360],
+      ['Home', [`merged:${ids.mergedGarmin}`], 156],
+      [null, [ids.unnamed], undefined],
+    ])
   })
 
   test('neighbors step over merged sources and can keep to the same session_name', async () => {

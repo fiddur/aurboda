@@ -247,6 +247,8 @@ Use cases:
 
 Pass group_by (a data field, typically one marked is_categorical, e.g. session_name) to also get one group per value — count, last done, duration range, median avg HR, max HR, summed zone seconds and the pooled HR distribution — for comparing or choosing sessions by length and exertion. filter_field + filter_value narrow to one value ("(none)" for sessions without one). Omit start for all time.
 
+group_by=place (a reserved value, which wins over a data field named place) groups by where each session happened instead, e.g. yoga at home versus at the studio: the named location it overlaps longest (an OwnTracks region or Home Assistant zone named like a named location counts as it), or, when no place visit falls in the session, the place of the last one ending up to 6 hours before it; sessions with neither form the null group. Each session then carries its place in fields.place.
+
 group_by and filter_field also take an item path into a list field, such as sets.exercise: group_by then gives one group per item value (a session in each group it has an item for) with the members' measures for that value combined (volume, e1rm, max_weight, set_count, max_time, total_reps, max_reps), and filter_field keeps the sessions with an item of that value, each carrying those items, their measures and the records it set against every earlier session with the value.
 
 category filters to runs carrying that run category (low_hr, intervals, long, tempo, hard, or any rule's output_category).`,

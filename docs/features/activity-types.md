@@ -420,6 +420,17 @@ so rows compare at a glance.
   Sort by recency, count, length, average HR, zone 3+ time or name to pick the next session by
   length and effort. Expanding a row lists its sessions. Sessions without a value form the last
   row.
+- **By place**: the same rows, one per place the sessions happened at, e.g. yoga at home versus
+  at the studio (`GET /activity-types/:name/sessions?group_by=place`; `group_by=place` in
+  `query_activity_sessions`). A session's place is the named location it overlaps longest, an
+  OwnTracks region or Home Assistant zone named like a named location counting as that location
+  (as in the [places summary](places.md#places-summary)). A session no place visit falls in (a
+  phone at rest reports nothing) takes the place of the last visit ending up to 6 hours before it,
+  as the detail pages' [last known place](places.md#last-known-place) does. Sessions with neither,
+  or only at unnamed places, form the last row. Places are resolved per query from one pass of
+  place visits over the sessions' range, so renaming or merging a place needs no backfill. Each
+  session carries its place in `fields.place`; `place` is reserved, so a data field of that name
+  cannot be grouped by.
 - **All sessions**: one sortable table.
 
 The period defaults to 90 days. Zone seconds and heart-rate histograms are computed in SQL,
