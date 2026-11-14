@@ -2,6 +2,7 @@ import type {
   AddCustomMetricBody,
   CustomMetricDefinition,
   MetricAggregation,
+  MetricBetter,
   MetricCatalogResult,
   StoredMetricCatalog,
 } from '@aurboda/api-spec'
@@ -45,6 +46,7 @@ export interface DeleteCustomMetricResult {
 
 export interface UpdateCustomMetricInput {
   aggregation?: MetricAggregation
+  better?: MetricBetter
   unit?: string
   description?: string
   minValue?: number | null
@@ -180,6 +182,7 @@ export async function updateCustomMetric(
     dbUpdates.include_in_daily_summary = updates.include_in_daily_summary
   }
   if (updates.aggregation !== undefined) dbUpdates.aggregation = updates.aggregation
+  if (updates.better !== undefined) dbUpdates.better = updates.better
 
   const updated = await updateCustomMetricDefinition(user, name, dbUpdates)
   if (!updated) {

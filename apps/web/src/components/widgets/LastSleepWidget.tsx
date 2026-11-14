@@ -1,6 +1,7 @@
-import type { LastSleepConfig, LatestSleep } from '@aurboda/api-spec'
+import type { LastSleepConfig, LatestSleep, MetricBetter } from '@aurboda/api-spec'
 import type { ComponentChildren } from 'preact'
 
+import { getMetricBetter } from '@aurboda/api-spec'
 import { useQuery } from '@tanstack/react-query'
 
 import { fetchLatestSleep } from '../../state/api'
@@ -13,6 +14,7 @@ import {
   stageBreakdown,
   stageStripSegments,
 } from './lastSleep'
+import { trendLabel, trendTone, trendToneClass } from './trend'
 
 interface LastSleepViewProps {
   config: LastSleepConfig
@@ -22,30 +24,30 @@ interface LastSleepViewProps {
   linkToDetail?: boolean
 }
 
-const deltaClass = (d: Delta, lowerIsBetter: boolean): string => {
-  if (d.amount === 0) return 'trend-neutral'
-  return (d.arrow === '↓') === lowerIsBetter ? 'trend-positive' : 'trend-negative'
-}
+const signedAmount = (d: Delta): number => (d.arrow === '↓' ? -d.amount : d.amount)
 
 function Vital({
   children,
   d,
   label,
-  lowerIsBetter = false,
+  better = 'neutral',
 }: {
   children: ComponentChildren
   d?: Delta
   label: string
-  lowerIsBetter?: boolean
+  better?: MetricBetter
 }) {
+  const tone = d && trendTone(signedAmount(d), better)
   return (
     <div class="last-sleep-vital">
       <span class="last-sleep-vital-label">{label}</span>
       <span class="last-sleep-vital-value">
         {children}
-        {d && (
+        {d && tone && (
           <span
-            class={`trend-indicator ${deltaClass(d, lowerIsBetter)}`}
+            class={`trend-indicator ${trendToneClass[tone]}`}
+            role="img"
+            aria-label={`Compared with 30-day average: ${trendLabel(signedAmount(d), tone, String(d.amount))}`}
             title="Compared with 30-day average"
           >
             {formatDelta(d)}
@@ -105,12 +107,16 @@ function SleepBody({ data }: { data: LatestSleep }) {
 
       <div class="last-sleep-vitals">
         {data.resting_hr !== undefined && (
-          <Vital label="Resting HR" d={delta(data.resting_hr, data.resting_hr_baseline)} lowerIsBetter>
+          <Vital
+            label="Resting HR"
+            d={delta(data.resting_hr, data.resting_hr_baseline)}
+            better={getMetricBetter('resting_heart_rate')}
+          >
             {Math.round(data.resting_hr)} <span class="unit">bpm</span>
           </Vital>
         )}
         {data.hrv !== undefined && (
-          <Vital label="HRV" d={delta(data.hrv, data.hrv_baseline)}>
+          <Vital label="HRV" d={delta(data.hrv, data.hrv_baseline)} better={getMetricBetter('hrv_rmssd')}>
             {Math.round(data.hrv)} <span class="unit">ms</span>
           </Vital>
         )}

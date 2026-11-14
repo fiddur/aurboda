@@ -2,7 +2,7 @@
  * Split into a presentational `SparklineCardView` and a fetching container.
  */
 
-import type { SparklineCardConfig, SparklineCardData } from '@aurboda/api-spec'
+import type { MetricBetter, SparklineCardConfig, SparklineCardData } from '@aurboda/api-spec'
 
 import { useQuery } from '@tanstack/react-query'
 import { endOfDay, formatISO, startOfDay, subDays } from 'date-fns'
@@ -22,7 +22,9 @@ import {
 } from '../../state/api'
 import { SparklineChart } from '../SparklineChart'
 import { HEAVY_QUERY_OPTIONS } from './heavyQuery'
+import { widgetMetricBetter } from './trend'
 import { TrendIndicator } from './TrendIndicator'
+import { useMetricBetter } from './useMetricBetter'
 
 const metricTitles: Record<string, string> = {
   hrv_rmssd: 'HRV',
@@ -55,10 +57,12 @@ interface SparklineCardViewProps {
   config: SparklineCardConfig
   data: SparklineCardData | null
   loading?: boolean
+  /** Defaults to the built-in metric's direction, which is all a public board knows. */
+  better?: MetricBetter
 }
 
 // eslint-disable-next-line complexity -- TODO: refactor
-export function SparklineCardView({ config, data, loading = false }: SparklineCardViewProps) {
+export function SparklineCardView({ config, data, loading = false, better }: SparklineCardViewProps) {
   const { metric, title: configTitle, color = '#3b82f6' } = config
   const title = configTitle ?? metricTitles[metric] ?? metric
 
@@ -80,7 +84,7 @@ export function SparklineCardView({ config, data, loading = false }: SparklineCa
     <div class="metric-card">
       <div class="metric-header">
         <span class="metric-title">{title}</span>
-        {trend !== null && <TrendIndicator value={trend} />}
+        {trend !== null && <TrendIndicator value={trend} better={better ?? widgetMetricBetter(metric)} />}
       </div>
       <div class="metric-value">
         {loading ? (
@@ -109,6 +113,7 @@ interface SparklineCardWidgetProps {
 
 export function SparklineCardWidget({ config }: SparklineCardWidgetProps) {
   const { metric, lookback_days = 30 } = config
+  const better = useMetricBetter(metric)
 
   const end = endOfDay(new Date())
   const start = startOfDay(subDays(new Date(), lookback_days))
@@ -148,5 +153,5 @@ export function SparklineCardWidget({ config }: SparklineCardWidgetProps) {
 
   const loading = timeSeriesQuery.isLoading || periodSummaryQuery.isLoading
 
-  return <SparklineCardView config={config} data={data} loading={loading} />
+  return <SparklineCardView config={config} data={data} loading={loading} better={better} />
 }

@@ -5,12 +5,16 @@ import {
   dashboardDataQuerySchema,
   type DashboardDataResponse,
   type DashboardResponse,
+  type DataPresenceQuery,
+  dataPresenceQuerySchema,
+  type DataPresenceResponse,
   defaultDashboardConfig,
   type UpdateDashboardInput,
   updateDashboardInputSchema,
 } from '@aurboda/api-spec'
 
 import { upsertUserSettings } from '../db/index.ts'
+import { queryDataPresence } from '../services/data-presence.ts'
 import { PeriodError } from '../services/periods.ts'
 import { getSettings } from '../services/settings.ts'
 import { resolveDashboardView } from '../services/shared-dashboard-data.ts'
@@ -45,6 +49,15 @@ export const createDashboardRouter = (authMiddleware: RequestHandler): TypedRout
         }
         throw error
       }
+    },
+  )
+
+  router.get<Record<string, never>, DataPresenceResponse, unknown, DataPresenceQuery>(
+    '/data-presence',
+    authMiddleware,
+    validateQuery(dataPresenceQuerySchema),
+    async (req, res) => {
+      res.json({ ...(await queryDataPresence(req.user!, req.query)), success: true })
     },
   )
 

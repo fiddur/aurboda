@@ -273,8 +273,41 @@ export const metricAggregationSchema = z.enum(['avg', 'sum']).meta({
 
 export type MetricAggregation = z.infer<typeof metricAggregationSchema>
 
+export const metricBetterSchema = z.enum(['higher', 'lower', 'neutral']).meta({
+  description:
+    "Which change of a metric is an improvement: 'higher', 'lower', or 'neutral' (neither, so a trend is shown without better or worse).",
+  id: 'MetricBetter',
+})
+
+export type MetricBetter = z.infer<typeof metricBetterSchema>
+
+/** Built-in metrics whose change has a better direction; every other built-in metric is neutral. */
+export const metricBetterDirections: Partial<Record<MetricType, Exclude<MetricBetter, 'neutral'>>> = {
+  body_fat: 'lower',
+  hrv_activity: 'higher',
+  hrv_awake: 'higher',
+  hrv_rmssd: 'higher',
+  hrv_sleep: 'higher',
+  readiness_score: 'higher',
+  resting_heart_rate: 'lower',
+  sleep_deep_score: 'higher',
+  sleep_efficiency: 'higher',
+  sleep_latency: 'higher',
+  sleep_rem_score: 'higher',
+  sleep_restfulness: 'higher',
+  sleep_score: 'higher',
+  sleep_timing: 'higher',
+  sleep_total_score: 'higher',
+  steps: 'higher',
+  stress_level: 'lower',
+}
+
 export const customMetricDefinitionSchema = z
   .object({
+    better: metricBetterSchema.optional().meta({
+      description:
+        "Which change is an improvement, for trend indicators: 'higher', 'lower' or 'neutral' (default).",
+    }),
     aggregation: metricAggregationSchema.optional().meta({
       description:
         "'sum' for amounts (a dose, steps): a day without samples counts as 0 in trends and bar charts total the day. 'avg' (default) for levels (weight, HR): missing days are skipped.",
@@ -332,6 +365,11 @@ export const getMetricUnit = (
   if (isValidMetric(metric)) return metricUnits[metric]
   return customMetrics.find((m) => m.name === metric)?.unit
 }
+
+export const getMetricBetter = (metric: string, customMetrics: CustomMetricDefinition[] = []): MetricBetter =>
+  isValidMetric(metric)
+    ? (metricBetterDirections[metric] ?? 'neutral')
+    : (customMetrics.find((m) => m.name === metric)?.better ?? 'neutral')
 
 /**
  * Friendly display names for built-in metrics. Shared single source used by the

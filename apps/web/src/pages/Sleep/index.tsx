@@ -1,5 +1,6 @@
-import type { SleepDebt, SleepDebtDay } from '@aurboda/api-spec'
+import type { MetricType, SleepDebt, SleepDebtDay } from '@aurboda/api-spec'
 
+import { getMetricBetter } from '@aurboda/api-spec'
 import { signal } from '@preact/signals'
 import { useQuery } from '@tanstack/react-query'
 import * as d3 from 'd3'
@@ -8,6 +9,7 @@ import { useEffect, useRef } from 'preact/hooks'
 
 import { formatMinutesAsHM } from '../../components/charts/sleep-utils'
 import { formatDebt, hasNights, SEVERITY_COLORS, SEVERITY_LABELS } from '../../components/widgets/sleepDebt'
+import { TrendIndicator } from '../../components/widgets/TrendIndicator'
 import {
   fetchActivities,
   fetchPeriodSummary,
@@ -449,23 +451,16 @@ function StatCard({
   value,
   unit,
   trend,
+  metric,
   description,
 }: {
   label: string
   value: number | string | null
   unit?: string
   trend?: number | null
+  metric?: MetricType
   description?: string
 }) {
-  const trendClass =
-    trend !== null && trend !== undefined
-      ? trend > 0
-        ? 'trend-positive'
-        : trend < 0
-          ? 'trend-negative'
-          : 'trend-neutral'
-      : ''
-
   return (
     <div class="stat-card">
       <div class="stat-label">{label}</div>
@@ -480,8 +475,8 @@ function StatCard({
         )}
       </div>
       {trend !== null && trend !== undefined && (
-        <div class={`stat-trend ${trendClass}`}>
-          {trend > 0 ? '\u2191' : trend < 0 ? '\u2193' : '\u2192'} {Math.abs(trend).toFixed(1)}%
+        <div class="stat-trend">
+          <TrendIndicator value={trend} better={metric && getMetricBetter(metric)} />
         </div>
       )}
       {description && <div class="stat-description">{description}</div>}
@@ -575,6 +570,7 @@ export function Sleep() {
             label="Sleep Score"
             value={metrics.sleep_score?.avg ?? null}
             trend={metrics.sleep_score?.trend}
+            metric="sleep_score"
             description="Overall sleep quality"
           />
           <StatCard label="Duration" value={avgSleepDuration} unit="h" description="Average per night" />
@@ -583,14 +579,15 @@ export function Sleep() {
             value={metrics.sleep_efficiency?.avg ?? null}
             unit="%"
             trend={metrics.sleep_efficiency?.trend}
+            metric="sleep_efficiency"
             description="Time asleep vs. in bed"
           />
           <StatCard
             label="Latency"
             value={metrics.sleep_latency?.avg ?? null}
-            unit="min"
             trend={metrics.sleep_latency?.trend}
-            description="Time to fall asleep"
+            metric="sleep_latency"
+            description="Falling asleep quickly (score)"
           />
         </div>
       </section>
@@ -625,30 +622,35 @@ export function Sleep() {
             label="Total Score"
             value={metrics.sleep_total_score?.avg ?? null}
             trend={metrics.sleep_total_score?.trend}
+            metric="sleep_total_score"
             description="Sleep duration component"
           />
           <StatCard
             label="Deep Sleep"
             value={metrics.sleep_deep_score?.avg ?? null}
             trend={metrics.sleep_deep_score?.trend}
+            metric="sleep_deep_score"
             description="Restorative sleep quality"
           />
           <StatCard
             label="REM Sleep"
             value={metrics.sleep_rem_score?.avg ?? null}
             trend={metrics.sleep_rem_score?.trend}
+            metric="sleep_rem_score"
             description="Dream sleep quality"
           />
           <StatCard
             label="Restfulness"
             value={metrics.sleep_restfulness?.avg ?? null}
             trend={metrics.sleep_restfulness?.trend}
+            metric="sleep_restfulness"
             description="Movement during sleep"
           />
           <StatCard
             label="Timing"
             value={metrics.sleep_timing?.avg ?? null}
             trend={metrics.sleep_timing?.trend}
+            metric="sleep_timing"
             description="Consistency of bedtime"
           />
         </div>

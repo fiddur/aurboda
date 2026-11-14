@@ -4,7 +4,12 @@
  * payload. The public shared-dashboard renderer reuses `MetricCardView`.
  */
 
-import { metricCardLookbackDays, type MetricCardConfig, type MetricCardData } from '@aurboda/api-spec'
+import {
+  metricCardLookbackDays,
+  type MetricBetter,
+  type MetricCardConfig,
+  type MetricCardData,
+} from '@aurboda/api-spec'
 import { useQuery } from '@tanstack/react-query'
 import { endOfDay, startOfDay, subDays } from 'date-fns'
 
@@ -16,7 +21,9 @@ import {
   type PeriodMetricStats,
 } from '../../state/api'
 import { HEAVY_QUERY_OPTIONS } from './heavyQuery'
+import { widgetMetricBetter } from './trend'
 import { TrendIndicator } from './TrendIndicator'
+import { useMetricBetter } from './useMetricBetter'
 
 // Baseline metrics that come from the baseline API
 const baselineMetrics = ['hrv_7day', 'hrv_30day', 'rhr_7day', 'rhr_30day'] as const
@@ -94,9 +101,11 @@ interface MetricCardViewProps {
   config: MetricCardConfig
   data: MetricCardData | null
   loading?: boolean
+  /** Defaults to the built-in metric's direction, which is all a public board knows. */
+  better?: MetricBetter
 }
 
-export function MetricCardView({ config, data, loading = false }: MetricCardViewProps) {
+export function MetricCardView({ config, data, loading = false, better }: MetricCardViewProps) {
   const { metric, title, unit, subtitle: configSubtitle, trend_inverse } = config
   const trend = data?.trend_percent ?? null
   const { display, dynamicSubtitle } = computeDisplay(metric, data)
@@ -106,7 +115,9 @@ export function MetricCardView({ config, data, loading = false }: MetricCardView
     <div class="metric-card">
       <div class="metric-header">
         <span class="metric-title">{title}</span>
-        {trend !== null && <TrendIndicator value={trend} inverse={trend_inverse} />}
+        {trend !== null && (
+          <TrendIndicator value={trend} better={better ?? widgetMetricBetter(metric, [], trend_inverse)} />
+        )}
       </div>
       <div class="metric-value">
         {loading ? (
@@ -130,8 +141,9 @@ interface MetricCardWidgetProps {
 }
 
 export function MetricCardWidget({ config }: MetricCardWidgetProps) {
-  const { metric } = config
+  const { metric, trend_inverse } = config
   const isBaseline = isBaselineMetric(metric)
+  const better = useMetricBetter(metric, trend_inverse)
 
   const baselineQuery = useQuery({
     enabled: isBaseline,
@@ -163,5 +175,5 @@ export function MetricCardWidget({ config }: MetricCardWidgetProps) {
 
   const loading = isBaseline ? baselineQuery.isLoading : periodSummaryQuery.isLoading
 
-  return <MetricCardView config={config} data={data} loading={loading} />
+  return <MetricCardView config={config} data={data} loading={loading} better={better} />
 }

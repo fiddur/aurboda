@@ -5,6 +5,7 @@ import {
   customMetricDefinitionSchema,
   iso8601DateTimeSchema,
   metricAggregationSchema,
+  metricBetterSchema,
   metricTypeSchema,
   timeRangeQuerySchema,
   timeWeightedAveragesNote,
@@ -157,6 +158,9 @@ export const updateCustomMetricBodySchema = z
   .object({
     aggregation: metricAggregationSchema.optional().meta({
       description: "Metric kind: 'sum' for amounts (missing days count as 0), 'avg' for levels",
+    }),
+    better: metricBetterSchema.optional().meta({
+      description: "Which change is an improvement: 'higher', 'lower' or 'neutral'",
     }),
     description: z.string().optional().meta({ description: 'Human-readable description' }),
     include_in_daily_summary: z.boolean().optional().meta({

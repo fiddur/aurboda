@@ -8,12 +8,12 @@ The page at `/sleep` shows your sleep quality and sleep debt over a selectable p
 
 ### Overview Stats
 
-Four cards at the top show key metrics with trend arrows comparing to the previous period:
+Four cards at the top show key metrics with trend arrows comparing to the previous period, coloured green when the change is better and red when it is worse (see [Trend direction](dashboard.md#trend-direction)):
 
 - **Sleep Score** -- Overall quality (from Oura), averaged over the period.
 - **Duration** -- Average hours of actual sleep per night (excluding awake time).
 - **Efficiency** -- Time asleep vs. time in bed (percentage).
-- **Latency** -- Time to fall asleep.
+- **Latency** -- Oura's latency score: how quickly you fell asleep (a score, higher is better).
 
 ### Sleep Score Trend
 
@@ -50,7 +50,9 @@ A colored chart showing your progression through sleep stages over the night:
 - **Light** (light blue)
 - **Deep** (indigo, bottom)
 
-Heart rate (red) and HRV (teal) lines can be overlaid on the hypnogram. Hovering shows exact values at any point in time.
+Heart rate (red), HRV (teal), stress and Body Battery can be overlaid on the hypnogram. Each stage is also drawn as a faint band of its colour across the chart's full height, so every metric can be read against the stage it happened in. Hovering shows exact values at any point in time.
+
+A sleep or a nap has no HR Zones section: a night is almost all rest, which says nothing.
 
 ### Sleep Metrics
 

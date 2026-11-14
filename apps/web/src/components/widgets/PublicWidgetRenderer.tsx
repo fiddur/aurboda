@@ -5,7 +5,7 @@
  * payload straight into each presentational `*View` component.
  */
 
-import type { DashboardWidget, WidgetData } from '@aurboda/api-spec'
+import type { CustomMetricDefinition, DashboardWidget, WidgetData } from '@aurboda/api-spec'
 
 import { ActivitySummaryView } from './ActivitySummaryWidget'
 import { ActivityTypeCardView } from './ActivityTypeCardWidget'
@@ -22,6 +22,7 @@ import { RecordCardView } from './RecordCardWidget'
 import { SleepDebtView } from './SleepDebtWidget'
 import { SparklineCardView } from './SparklineCardWidget'
 import { TopListCardView } from './TopListCardWidget'
+import { widgetMetricBetter } from './trend'
 import { TrendChartView } from './TrendChartWidget'
 
 interface PublicWidgetRendererProps {
@@ -30,18 +31,35 @@ interface PublicWidgetRendererProps {
   data?: WidgetData
   /** On a period dashboard: the shown period, for headers and the not-applicable note. */
   periodLabel?: string
+  /** The owner's custom metric definitions, for the trend direction of a custom metric; a visitor has none. */
+  customMetrics?: CustomMetricDefinition[]
 }
 
 const NotForAPeriod = () => <div class="widget-note">Not available for a period</div>
 
 // eslint-disable-next-line complexity -- one arm per widget type
-export function PublicWidgetRenderer({ widget, data, periodLabel }: PublicWidgetRendererProps) {
+export function PublicWidgetRenderer({
+  widget,
+  data,
+  periodLabel,
+  customMetrics,
+}: PublicWidgetRendererProps) {
   switch (widget.type) {
     case 'metric_card':
-      return <MetricCardView config={widget.config} data={data?.type === 'metric_card' ? data.data : null} />
+      return (
+        <MetricCardView
+          config={widget.config}
+          data={data?.type === 'metric_card' ? data.data : null}
+          better={widgetMetricBetter(widget.config.metric, customMetrics, widget.config.trend_inverse)}
+        />
+      )
     case 'sparkline_card':
       return (
-        <SparklineCardView config={widget.config} data={data?.type === 'sparkline_card' ? data.data : null} />
+        <SparklineCardView
+          config={widget.config}
+          data={data?.type === 'sparkline_card' ? data.data : null}
+          better={widgetMetricBetter(widget.config.metric, customMetrics)}
+        />
       )
     case 'trend_chart':
       return <TrendChartView config={widget.config} data={data?.type === 'trend_chart' ? data.data : null} />

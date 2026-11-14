@@ -1220,6 +1220,10 @@ export const migrateSchema = async (user: string, opts?: { force?: boolean }): P
       db,
       `ALTER TABLE custom_metrics ADD COLUMN IF NOT EXISTS aggregation VARCHAR(10) NOT NULL DEFAULT 'avg'`,
     )
+    await query(
+      db,
+      `ALTER TABLE custom_metrics ADD COLUMN IF NOT EXISTS better VARCHAR(10) NOT NULL DEFAULT 'neutral'`,
+    )
   }
   if (existingTableNames.has('productivity')) {
     await query(db, `ALTER TABLE productivity ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`)

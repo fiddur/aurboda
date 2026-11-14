@@ -85,10 +85,11 @@ export const registerMetricTools = (server: McpServer, user: string) => {
 
   server.tool(
     'add_custom_metric',
-    "Register a new custom metric type. Custom metrics allow tracking data not covered by built-in metrics. Set include_in_daily_summary=true to surface entries and the latest value in get_daily_summary. Set aggregation='sum' for amounts (a dose, steps) so trends count days without samples as 0; the default 'avg' is for levels (weight, HR).",
+    "Register a new custom metric type. Custom metrics allow tracking data not covered by built-in metrics. Set include_in_daily_summary=true to surface entries and the latest value in get_daily_summary. Set aggregation='sum' for amounts (a dose, steps) so trends count days without samples as 0; the default 'avg' is for levels (weight, HR). Set better='higher' or 'lower' so its trends show as better or worse; the default 'neutral' shows them as neither.",
     { ...addCustomMetricBodySchema.shape },
     async ({
       aggregation,
+      better,
       description,
       include_in_daily_summary,
       max_value,
@@ -99,6 +100,7 @@ export const registerMetricTools = (server: McpServer, user: string) => {
     }) => {
       const definition = {
         ...(aggregation !== undefined ? { aggregation } : {}),
+        ...(better !== undefined ? { better } : {}),
         ...(description !== undefined ? { description } : {}),
         ...(include_in_daily_summary !== undefined ? { include_in_daily_summary } : {}),
         ...(max_value !== undefined ? { max_value } : {}),
@@ -151,14 +153,24 @@ export const registerMetricTools = (server: McpServer, user: string) => {
 
   server.tool(
     'update_custom_metric',
-    'Update an existing custom metric definition. Only provided fields are changed. Set min_value/max_value to null to clear them. Toggle include_in_daily_summary to surface or hide this metric in get_daily_summary. aggregation sets the metric kind (sum: amount, avg: level).',
+    'Update an existing custom metric definition. Only provided fields are changed. Set min_value/max_value to null to clear them. Toggle include_in_daily_summary to surface or hide this metric in get_daily_summary. aggregation sets the metric kind (sum: amount, avg: level). better sets which change is an improvement (higher, lower or neutral).',
     {
       name: z.string().describe('The name of the custom metric to update'),
       ...updateCustomMetricBodySchema.shape,
     },
-    async ({ aggregation, description, include_in_daily_summary, max_value, min_value, name, unit }) => {
+    async ({
+      aggregation,
+      better,
+      description,
+      include_in_daily_summary,
+      max_value,
+      min_value,
+      name,
+      unit,
+    }) => {
       const updates = {
         ...(aggregation !== undefined ? { aggregation } : {}),
+        ...(better !== undefined ? { better } : {}),
         ...(description !== undefined ? { description } : {}),
         ...(include_in_daily_summary !== undefined ? { include_in_daily_summary } : {}),
         ...(max_value !== undefined ? { maxValue: max_value } : {}),

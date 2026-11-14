@@ -927,6 +927,17 @@
   grid-column: 1 / -1;
 }
 
+.dashboard .dashboard-waiting {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+}
+
+.dashboard .dashboard-waiting a {
+  color: var(--color-accent);
+}
+
 @media (prefers-color-scheme: dark) {
   .dashboard .dashboard-intro,
   .dashboard .section-intro,
