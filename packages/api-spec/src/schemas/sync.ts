@@ -115,6 +115,29 @@ export const connectGarminPersonalKeyBodySchema = z
 
 export type ConnectGarminPersonalKeyBody = z.infer<typeof connectGarminPersonalKeyBodySchema>
 
+export const authActionResponseSchema = z
+  .object({
+    error: z.string().optional().meta({ description: 'Why the action failed, when it did' }),
+    success: z.boolean(),
+  })
+  .meta({
+    description: "The answer to connecting or disconnecting a data source's credentials",
+    id: 'AuthActionResponse',
+  })
+
+export type AuthActionResponse = z.infer<typeof authActionResponseSchema>
+
+export const garminLoginResponseSchema = authActionResponseSchema
+  .extend({
+    mfa_required: z
+      .boolean()
+      .optional()
+      .meta({ description: 'Garmin asks for an MFA code, to be sent to /auth/garmin/mfa' }),
+  })
+  .meta({ description: 'The answer to a Garmin Connect login', id: 'GarminLoginResponse' })
+
+export type GarminLoginResponse = z.infer<typeof garminLoginResponseSchema>
+
 export const syncRescueTimeBodySchema = z
   .object({
     full_resync: fullResyncSchema,

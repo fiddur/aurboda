@@ -71,6 +71,7 @@ describe('OAuth token Integration Tests', () => {
         refresh_token: 'fake-key',
         refused_at: undefined,
         scopes: null,
+        updated_at: expect.any(Date),
       })
     })
   })
@@ -117,6 +118,24 @@ describe('OAuth token Integration Tests', () => {
       expect(stored?.refresh_token).toBe('fake-key-2')
     })
 
+    test('a repeated refusal keeps the first refused_at and moves updated_at', async () => {
+      const user = getTestUser()
+      await upsertOAuthToken(user, {
+        access_token: '',
+        provider: 'garmin_personal',
+        refresh_token: 'fake-key',
+      })
+      await markOAuthTokenRefused(user, 'garmin_personal', 'fake-key')
+      const first = await getOAuthToken(user, 'garmin_personal')
+      await new Promise((resolve) => setTimeout(resolve, 20))
+
+      await markOAuthTokenRefused(user, 'garmin_personal', 'fake-key')
+
+      const again = await getOAuthToken(user, 'garmin_personal')
+      expect(again?.refused_at).toEqual(first?.refused_at)
+      expect(again!.updated_at!.getTime()).toBeGreaterThan(first!.updated_at!.getTime())
+    })
+
     test('with a refresh token, marks the row only while it still holds that token', async () => {
       const user = getTestUser()
       await upsertOAuthToken(user, {
@@ -136,7 +155,7 @@ describe('OAuth token Integration Tests', () => {
   describe('updateOAuthAccessToken', () => {
     const expiresAt = new Date('2027-06-30T00:00:00Z')
 
-    test('stores the access token and keeps the key, its expiry and its refusal state', async () => {
+    test('stores the access token and keeps the key and its expiry', async () => {
       const user = getTestUser()
       await upsertOAuthToken(user, {
         access_token: 'old-jwt',
@@ -153,6 +172,20 @@ describe('OAuth token Integration Tests', () => {
         refresh_token: 'fake-key',
         refused_at: undefined,
       })
+    })
+
+    test('a successful exchange clears an earlier refusal', async () => {
+      const user = getTestUser()
+      await upsertOAuthToken(user, {
+        access_token: '',
+        provider: 'garmin_personal',
+        refresh_token: 'fake-key',
+      })
+      await markOAuthTokenRefused(user, 'garmin_personal', 'fake-key')
+
+      expect(await updateOAuthAccessToken(user, 'garmin_personal', 'fake-key', 'new-jwt')).toBe(true)
+
+      expect((await getOAuthToken(user, 'garmin_personal'))?.refused_at).toBeUndefined()
     })
 
     test('a stale key changes nothing', async () => {

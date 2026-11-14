@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import * as db from '../../db/index.ts'
 import { auditError } from '../../services/audit-log.ts'
 import { importActivityExerciseSets } from './exercise-sets.ts'
-import { processActivityDetail } from './process.ts'
+import { processActivityDetail, processGarminData } from './process.ts'
 import { garminRoutedClient } from './source.ts'
 import {
   calculateRetryAfter,
@@ -288,6 +288,24 @@ describe('syncGarminDataType', () => {
         last_sync_time: expect.any(Date),
         status: 'idle',
       }),
+    )
+  })
+
+  test('hands each payload to the processor with the day it was requested for', async () => {
+    vi.mocked(db.getSyncState).mockResolvedValue(null)
+    const mockGarmin = createMockGarmin()
+    const answer = [{ score: 70 }]
+    mockGarmin.getTrainingReadiness.mockResolvedValue(answer)
+    const startDate = subDays(new Date(), 1)
+
+    await syncGarminDataType(user, mockGarmin as never, 'trainingReadiness', { fullResync: true, startDate })
+
+    expect(processGarminData).toHaveBeenCalledWith(
+      user,
+      'trainingReadiness',
+      answer,
+      undefined,
+      startDate.toISOString().slice(0, 10),
     )
   })
 

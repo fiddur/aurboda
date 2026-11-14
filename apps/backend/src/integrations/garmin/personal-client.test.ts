@@ -5,6 +5,7 @@ import type { OAuthToken } from '../../db/types.ts'
 import {
   adaptPersonalSleep,
   GarminKeyRefusedError,
+  GarminKeyReplacedError,
   garminPersonalClient,
   jwtExpiryMs,
 } from './personal-client.ts'
@@ -48,14 +49,14 @@ const setup = ({
     getOAuthToken: vi.fn(async () => row),
     markOAuthTokenRefused: vi.fn(async (_user: string, _provider: string, refreshToken?: string) => {
       if (row && (refreshToken === undefined || row.refresh_token === refreshToken)) {
-        row = { ...row, refused_at: NOW }
+        row = { ...row, refused_at: row.refused_at ?? now(), updated_at: now() }
       }
     }),
     now,
     updateOAuthAccessToken: vi.fn(
       async (_user: string, _provider: string, refreshToken: string, accessToken: string) => {
         if (row?.refresh_token !== refreshToken) return false
-        row = { ...row, access_token: accessToken }
+        row = { ...row, access_token: accessToken, refused_at: undefined, updated_at: now() }
         return true
       },
     ),
@@ -120,6 +121,43 @@ describe('disconnect', () => {
     const { client, deps } = setup()
     await client.disconnect('alice')
     expect(deps.deleteOAuthToken).toHaveBeenCalledWith('alice', 'garmin_personal')
+  })
+})
+
+describe('daily summary cache and the key changing', () => {
+  const day = new Date('2026-11-12T00:00:00Z')
+  const cached = { access_token: fakeJwt(hoursFromNow(5)), provider: 'garmin_personal', refresh_token: KEY }
+
+  test('connecting a key drops the cached summary, so the new key answers at once', async () => {
+    const jwt = fakeJwt(hoursFromNow(24), 'new')
+    const { client, fetch } = setup({
+      responses: [
+        json({ calendarDate: '2026-11-12', totalSteps: 1 }),
+        reply(200, jwt),
+        json({ calendarDate: '2026-11-12', totalSteps: 2 }),
+      ],
+      stored: cached,
+    })
+
+    await client.getDailySummary('alice', day)
+    await client.connect('alice', 'fake-api-key-replacement', new Date('2027-11-01T00:00:00Z'))
+
+    expect(await client.getDailySummary('alice', day)).toEqual({ calendarDate: '2026-11-12', totalSteps: 2 })
+    expect(fetch).toHaveBeenCalledTimes(3)
+  })
+
+  test("disconnecting drops the user's cached summary only", async () => {
+    const { client, fetch } = setup({
+      responses: [json({ calendarDate: '2026-11-12' }), json({ calendarDate: '2026-11-12' })],
+      stored: cached,
+    })
+
+    await client.getDailySummary('bob', day)
+    await client.getDailySummary('alice', day)
+    await client.disconnect('alice')
+    await client.getDailySummary('bob', day)
+
+    expect(fetch).toHaveBeenCalledTimes(2)
   })
 })
 
@@ -188,7 +226,56 @@ describe('token handling', () => {
     expect(fetch).toHaveBeenCalledTimes(1)
   })
 
-  test('a key replaced during the exchange keeps its JWT and its refusal state', async () => {
+  describe('a refused key', () => {
+    const refusedRow = (checkedHoursAgo: number): OAuthToken => ({
+      access_token: fakeJwt(hoursFromNow(5), 'cached'),
+      provider: 'garmin_personal',
+      refresh_token: KEY,
+      refused_at: hoursFromNow(-72),
+      updated_at: hoursFromNow(-checkedHoursAgo),
+    })
+
+    test('is not tried again within a day of the last refusal', async () => {
+      const { client, fetch } = setup({ stored: refusedRow(23) })
+
+      await expect(client.getHeartRate('alice', new Date('2026-11-12'))).rejects.toBeInstanceOf(
+        GarminKeyRefusedError,
+      )
+      expect(fetch).not.toHaveBeenCalled()
+    })
+
+    test('is exchanged again a day later, skipping its cached JWT, and an accepted key is refused no more', async () => {
+      const fresh = fakeJwt(hoursFromNow(24), 'fresh')
+      const { client, fetch, row } = setup({
+        responses: [reply(200, fresh), json({ calendarDate: '2026-11-12' })],
+        stored: refusedRow(24),
+      })
+
+      expect(await client.getHeartRate('alice', new Date('2026-11-12T00:00:00Z'))).toEqual({
+        calendarDate: '2026-11-12',
+      })
+      expect(fetch.mock.calls[0]![0]).toBe(TOKEN_URL)
+      expect(headerOf(fetch.mock.calls[1]![1], 'Authorization')).toBe(`Bearer ${fresh}`)
+      expect(row()?.refused_at).toBeUndefined()
+    })
+
+    test('refused again, it keeps its first refusal time and waits another day', async () => {
+      const { client, deps, fetch, row } = setup({ responses: [reply(403)], stored: refusedRow(25) })
+
+      await expect(client.getHeartRate('alice', new Date('2026-11-12'))).rejects.toBeInstanceOf(
+        GarminKeyRefusedError,
+      )
+      expect(deps.markOAuthTokenRefused).toHaveBeenCalledWith('alice', 'garmin_personal', KEY)
+      expect(row()).toMatchObject({ refused_at: hoursFromNow(-72), updated_at: NOW })
+
+      await expect(client.getHrv('alice', new Date('2026-11-12'))).rejects.toBeInstanceOf(
+        GarminKeyRefusedError,
+      )
+      expect(fetch).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  test('a key replaced during the exchange keeps its JWT and its refusal state, and the old JWT is not used', async () => {
     const NEW_KEY = 'fake-api-key-replacement'
     const replacement: OAuthToken = {
       access_token: 'jwt-for-new-key',
@@ -213,10 +300,12 @@ describe('token handling', () => {
       await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1))
       replaceRow(replacement)
       exchange.release()
-      await call
+      const result = await call
 
       expect(row()).toEqual(replacement)
       expect(deps.upsertOAuthToken).not.toHaveBeenCalled()
+      expect(result).toBeInstanceOf(status === 200 ? GarminKeyReplacedError : GarminKeyRefusedError)
+      expect(fetch).toHaveBeenCalledTimes(1)
     }
   })
 

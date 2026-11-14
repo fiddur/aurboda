@@ -417,6 +417,8 @@ export interface OAuthToken {
   expires_at?: Date
   scopes?: string[]
   refused_at?: Date
+  /** Read only; for a refused key, when Garmin last refused it. */
+  updated_at?: Date
 }
 
 export type { SyncStatus }

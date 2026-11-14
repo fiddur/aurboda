@@ -326,7 +326,9 @@ const fetchAndProcess = async (
   try {
     const data = await fetchDataType(garmin, user, dataType, date)
     if (data == null) return { records: 0 }
-    return { records: await processGarminData(user, dataType, data) }
+    return {
+      records: await processGarminData(user, dataType, data, undefined, date.toISOString().slice(0, 10)),
+    }
   } catch (error) {
     // If a single day fails, log and continue (don't abort the whole sync)
     const message = error instanceof Error ? error.message : String(error)

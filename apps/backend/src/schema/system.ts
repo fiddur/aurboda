@@ -69,7 +69,7 @@ export const systemTables: Record<string, string> = {
     )
   `,
 
-  // Set when the provider refused the stored credential (a Garmin Personal API key), cleared on the next upsert.
+  // The first refusal of the stored credential; updated_at moves with each daily retry.
   oauth_tokens_refused_at: `
     ALTER TABLE oauth_tokens ADD COLUMN IF NOT EXISTS refused_at TIMESTAMPTZ
   `,
