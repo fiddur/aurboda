@@ -324,11 +324,16 @@ export const baselineDataSchema = z
       avg30day: z.number().nullable(),
       trend_percent: z.number().nullable(),
     }),
-    stress: z.object({
-      avg7day: z.number().nullable(),
-      avg30day: z.number().nullable(),
-      trend_percent: z.number().nullable().meta({ description: 'Change from previous 30-day period' }),
-    }),
+    stress: z
+      .object({
+        avg7day: z.number().nullable(),
+        avg30day: z.number().nullable(),
+        trend_percent: z.number().nullable().meta({ description: 'Change from previous 30-day period' }),
+      })
+      .meta({
+        description:
+          'Stress level averages, time-weighted: the samples are averaged per 5-minute bin, then across bins, so recorded activities (1 Hz) weigh no more than other hours',
+      }),
   })
   .meta({ id: 'BaselineData' })
 

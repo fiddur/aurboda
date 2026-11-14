@@ -11,6 +11,7 @@ import {
   displayPeriodMultipliers,
   getMetricAggregation,
   getMetricUnit,
+  isTimeWeightedMetric,
   type MetricType,
   type TrendDisplayPeriod,
   type TrendHistoryPoint,
@@ -20,6 +21,7 @@ import {
 } from '@aurboda/api-spec'
 
 import { getSourceFilter, query } from '../db/index.ts'
+import { sampleRowsSql } from '../db/time-weighted.ts'
 import { dayEndInTz, dayKey, dayKeysEndingAt, dayStartInTz } from './day-keys.ts'
 import {
   type MeasureFilter,
@@ -67,9 +69,9 @@ const anchorDaySql = (params: unknown[], tzParam: number, anchorDay: string | un
   anchorDay === undefined ? todaySql(tzParam) : `$${params.push(anchorDay)}::date`
 
 const metricDailyValueSql: Record<'count' | 'mean' | 'sum', string> = {
-  count: 'COUNT(*)',
+  count: 'SUM(n)',
   mean: 'AVG(value)',
-  sum: 'SUM(value)',
+  sum: 'SUM(sum_value)',
 }
 
 /**
@@ -175,14 +177,15 @@ const calculateMetricTrend = async (
         t.daily_value
       FROM date_range d
       LEFT JOIN (
-        SELECT
-          date_trunc('day', time AT TIME ZONE $7::text)::date as day,
-          ${metricDailyValueSql[aggregation]} as daily_value
-        FROM time_series
-        WHERE metric = $1
+        SELECT day, ${metricDailyValueSql[aggregation]} as daily_value
+        FROM ${sampleRowsSql({
+          keys: [{ as: 'day', expr: "date_trunc('day', time AT TIME ZONE $7::text)::date" }],
+          timeWeighted: aggregation === 'mean' && isTimeWeightedMetric(metric),
+          where: `metric = $1
           AND time > ${today} - INTERVAL '1 day' * ($6::integer + 1)
-          AND deleted_at IS NULL${sourceFilterSql}
-        GROUP BY 1
+          AND deleted_at IS NULL${sourceFilterSql}`,
+        })} s
+        GROUP BY day
       ) t ON d.day = t.day
     ),
     ema_calc AS (

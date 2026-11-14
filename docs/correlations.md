@@ -19,9 +19,13 @@ series, and the set of days where its status is _known_:
 | kind                                         | resolves from                                          | known days                                       |
 | -------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------ |
 | `tag` / `activity`                           | activities matched by `activity_type` (regex)          | every day in range (absence = no event)          |
-| `metric`                                     | `time_series` entries (avg/sum per day)                | days with ≥1 entry (incl. explicit 0s)           |
+| `metric`                                     | `time_series` entries (avg/sum per day)¹               | days with ≥1 entry (incl. explicit 0s)           |
 | `nutrition`                                  | per-day meal totals (calories/protein/carbs/fat/fiber) | days with a meal **or** marked meal-log-complete |
 | `productivity_category` / `productivity_app` | productivity minutes matched by category/app           | every day in range                               |
+
+¹ The daily average of an instantaneous-sample metric (heart rate, stress, body
+battery, respiration, SpO2) is time-weighted: per 5-minute bin, then across the
+day's bins (see [Time-weighted averages](data-storage.md#time-weighted-averages)).
 
 `GET /correlations/selectors` (MCP: `list_correlation_selectors`) lists the
 available metrics, tags, activity types, nutrients and productivity categories.

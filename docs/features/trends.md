@@ -93,6 +93,8 @@ When adding or editing a trend, you can configure:
 | **Aggregation**  | Metrics: Average, Sum, Count. Activity types: Sum (hours), Count | Whether to average, total or count daily values.                                           |
 | **Missing days** | Auto (by metric kind), Count as zero, Skip (metric trends only)  | Whether a day without samples counts as 0 or is left out. See [Metric kind](#metric-kind). |
 
+A day's average of heart rate, stress, body battery, respiration or SpO2 is [time-weighted](../data-storage.md#time-weighted-averages): the samples are averaged per 5-minute bin, then across the day's bins, so the 1 Hz samples of a recorded activity weigh no more than any other hour.
+
 ## The Trends Page
 
 The `/trends` page shows a grid of your saved trend cards. Each card displays:

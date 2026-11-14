@@ -1,4 +1,4 @@
-import { chartBreakdownError, chartDataQuerySchema } from '@aurboda/api-spec'
+import { chartBreakdownError, chartDataQuerySchema, timeWeightedAveragesNote } from '@aurboda/api-spec'
 
 import { getChartData } from '../services/chart-data.ts'
 import { jsonResponse, type McpServer } from './helpers.ts'
@@ -11,6 +11,7 @@ Returns time-bucketed aggregated values suitable for bar charts.
 
 Bucket sizes: 1d (daily), 1w (weekly), 1M (monthly)
 Aggregation: count (number of occurrences), sum (total value), mean (average value), max (highest value)
+Means of metrics in buckets wider than 5 minutes: ${timeWeightedAveragesNote}
 Measures: for activity types with list items (strength sets), measure (volume, e1rm, max_weight, set_count, max_time, total_reps, max_reps) charts that measure of each session instead of duration or count; filter_field/filter_value (e.g. sets.exercise = Bench Press) takes it over one exercise's items, and breakdown_fields=["sets.exercise"] gives one series per exercise. With a summed measure (set_count, volume, total_reps), breakdown_fields=["sets.exercise.muscle_group"] gives one series per muscle group, each set counted by the exercise's recruitment weight (bench press: 1 set for the chest, 0.5 for the shoulders); exercises not in the catalogue fall under "Not in the catalogue", and those in it without muscle data under "No muscle group". It combines with scalar fields, not with another item path.
 Time zone: pass tz (IANA, e.g. "Europe/Stockholm") so days, weeks and months start at the user's local midnight; omitted means UTC.
 

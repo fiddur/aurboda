@@ -17,6 +17,7 @@ import { dayKey } from '../services/day-keys.ts'
 import { query, withUserTransaction } from './connection.ts'
 import { querySplitByCumulative } from './cumulative-query.ts'
 import { parseMetricType } from './row-mappers.ts'
+import { sampleAggregates, sampleRowsSql } from './time-weighted.ts'
 
 /**
  * Get the source filter for a single metric: aurboda-only, cumulative sources,
@@ -333,18 +334,24 @@ export const getTimeSeriesStats = async (
 ): Promise<MetricStats[]> => {
   if (metrics.length === 0) return []
 
-  const statsSql = (sourceFilter: string) => `SELECT
+  const statsSql = (sourceFilter: string, timeWeighted = false) => {
+    const agg = sampleAggregates(timeWeighted)
+    return `SELECT
          metric,
-         COUNT(*)::integer as count,
-         MIN(value) as min,
-         MAX(value) as max,
-         AVG(value) as avg,
-         STDDEV_POP(value) as stddev,
-         MAX(unit) as unit
-       FROM time_series
-       WHERE metric = ANY($1) AND time >= $2 AND time <= $3 AND deleted_at IS NULL${sourceFilter}
+         ${agg.count} as count,
+         ${agg.min} as min,
+         ${agg.max} as max,
+         ${agg.avg} as avg,
+         ${agg.stddev} as stddev,
+         ${agg.unit} as unit
+       FROM ${sampleRowsSql({
+         keys: [{ as: 'metric', expr: 'metric' }],
+         timeWeighted,
+         where: `metric = ANY($1) AND time >= $2 AND time <= $3 AND deleted_at IS NULL${sourceFilter}`,
+       })} s
        GROUP BY metric
        ORDER BY metric`
+  }
 
   const mapRow = (row: { [key: string]: unknown }): MetricStats => ({
     avg: row.avg !== null ? Number(row.avg) : 0,
@@ -364,6 +371,7 @@ export const getTimeSeriesStats = async (
     queryFn: (sql, params) => query(user, sql, params),
     sqlCumulative: statsSql(`\n         AND source = ANY($4)`),
     sqlNonCumulative: statsSql(''),
+    sqlTimeWeighted: statsSql('', true),
   })
 
   return results.sort((a, b) => a.metric.localeCompare(b.metric))
@@ -378,15 +386,23 @@ export const getDailyAggregates = async (
 ): Promise<DailyMetricAggregate[]> => {
   if (metrics.length === 0) return []
 
-  const dailySql = (sourceFilter: string) => `SELECT
-         to_char(date_trunc('day', time, $4::text) AT TIME ZONE $4::text, 'YYYY-MM-DD') as date,
-         metric,
-         AVG(value) as avg,
-         SUM(value) as sum
-       FROM time_series
-       WHERE metric = ANY($1) AND time >= $2 AND time <= $3 AND deleted_at IS NULL${sourceFilter}
-       GROUP BY 1, metric
-       ORDER BY metric, 1`
+  const dailySql = (sourceFilter: string, timeWeighted = false) => {
+    const agg = sampleAggregates(timeWeighted)
+    return `SELECT date, metric, ${agg.avg} as avg, ${agg.sum} as sum
+       FROM ${sampleRowsSql({
+         keys: [
+           {
+             as: 'date',
+             expr: "to_char(date_trunc('day', time, $4::text) AT TIME ZONE $4::text, 'YYYY-MM-DD')",
+           },
+           { as: 'metric', expr: 'metric' },
+         ],
+         timeWeighted,
+         where: `metric = ANY($1) AND time >= $2 AND time <= $3 AND deleted_at IS NULL${sourceFilter}`,
+       })} s
+       GROUP BY date, metric
+       ORDER BY metric, date`
+  }
 
   const mapRow = (row: { [key: string]: unknown }): DailyMetricAggregate => ({
     avg: Number(row.avg),
@@ -403,6 +419,7 @@ export const getDailyAggregates = async (
     queryFn: (sql, params) => query(user, sql, params),
     sqlCumulative: dailySql(`\n         AND source = ANY($5)`),
     sqlNonCumulative: dailySql(''),
+    sqlTimeWeighted: dailySql('', true),
   })
 
   return results.sort((a, b) => {
@@ -491,20 +508,35 @@ export const getTimeSeriesBucketed = async (
   // For timezone-aware bucketing, convert timestamps to local time before binning,
   // then convert back. This ensures daily buckets align to local midnight (and
   // handles DST correctly — spring-forward days are 23h, fall-back days are 25h).
-  const bucketedSql = (sourceFilter: string) => `SELECT
-       date_bin($4::interval, time AT TIME ZONE $5, ($2 AT TIME ZONE $5)::timestamp) AT TIME ZONE $5 as bucket_start,
+  // Time-weighting bins share the buckets' origin so they nest inside them, and a bucket of
+  // 5 minutes or less is its own single bin, which leaves its mean the plain one.
+  const bucketedSql = (sourceFilter: string, timeWeighted = false) => {
+    const agg = sampleAggregates(timeWeighted)
+    return `SELECT
+       bucket_local AT TIME ZONE $5 as bucket_start,
        metric,
-       AVG(value) as avg,
-       MIN(value) as min,
-       MAX(value) as max,
-       SUM(value) as sum,
-       COUNT(*)::integer as count,
-       MIN(time) as first_time,
-       MAX(time) as last_time
-     FROM time_series
-     WHERE metric = ANY($1) AND time >= $2 AND time < $3 AND deleted_at IS NULL${sourceFilter}
-     GROUP BY bucket_start, metric
-     ORDER BY bucket_start, metric`
+       ${agg.avg} as avg,
+       ${agg.min} as min,
+       ${agg.max} as max,
+       ${agg.sum} as sum,
+       ${agg.count} as count,
+       ${agg.first_time} as first_time,
+       ${agg.last_time} as last_time
+     FROM ${sampleRowsSql({
+       bin: "date_bin(LEAST($4::interval, '5 minutes'), time AT TIME ZONE $5, ($2 AT TIME ZONE $5)::timestamp)",
+       keys: [
+         {
+           as: 'bucket_local',
+           expr: 'date_bin($4::interval, time AT TIME ZONE $5, ($2 AT TIME ZONE $5)::timestamp)',
+         },
+         { as: 'metric', expr: 'metric' },
+       ],
+       timeWeighted,
+       where: `metric = ANY($1) AND time >= $2 AND time < $3 AND deleted_at IS NULL${sourceFilter}`,
+     })} s
+     GROUP BY bucket_local, metric
+     ORDER BY bucket_local, metric`
+  }
 
   const mapRow = (row: { [key: string]: unknown }): BucketedMetricData => ({
     avg: row.avg !== null ? Number(row.avg) : 0,
@@ -526,6 +558,7 @@ export const getTimeSeriesBucketed = async (
     queryFn: (sql, params) => query(user, sql, params),
     sqlCumulative: bucketedSql(`\n     AND source = ANY($6)`),
     sqlNonCumulative: bucketedSql(''),
+    sqlTimeWeighted: bucketedSql('', true),
   })
 
   return results.sort((a, b) => a.bucket_start.getTime() - b.bucket_start.getTime())

@@ -11,13 +11,15 @@ Everything is also available over the REST API and as MCP tools, so an AI assist
 
 ## Your Baseline
 
-The foundation of correlation analysis is your personal baseline -- rolling averages of HRV (Heart Rate Variability) and resting heart rate:
+The foundation of correlation analysis is your personal baseline -- rolling averages of HRV (Heart Rate Variability), resting heart rate and stress:
 
 - **7-day average**: Your recent state. Sensitive to short-term changes.
 - **30-day average**: Your longer-term norm. More stable.
 - **Trend**: Percentage change comparing the current 30-day period to the previous 30 days.
 
 HRV baseline uses sleep-context HRV (measurements taken during sleep), which is the most consistent and comparable across days. All correlation deltas are measured against this baseline.
+
+The stress average is time-weighted: the samples are averaged per 5-minute bin, then across bins. Garmin records stress once a second during a recorded activity and every few minutes otherwise, so a plain average of the samples would let the recorded hours dominate. The same 5-minute bins are what the Context tab below works on, so the stress card and the tables' "vs avg" agree. See [Time-weighted averages](../data-storage.md#time-weighted-averages).
 
 ## The Context tab
 

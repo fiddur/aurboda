@@ -8,7 +8,7 @@
 import { z } from 'zod'
 
 import { activityMeasureSchema } from './activity-measures.ts'
-import { baseResponseSchema, dataFieldPathSchema } from './common.ts'
+import { baseResponseSchema, dataFieldPathSchema, timeWeightedAveragesNote } from './common.ts'
 import { ianaTimezoneSchema } from './timezone.ts'
 
 export const trendSourceTypeSchema = z
@@ -84,10 +84,12 @@ export const trendMeasureShape = {
 
 export const getTrendQuerySchema = z
   .object({
-    aggregation: z.enum(['count', 'sum', 'mean']).optional().meta({
-      description:
-        'Aggregation method. count: occurrences / samples per period; sum: total (hours for activity types); mean: average (metrics). Defaults to count for activity types, mean for metrics.',
-    }),
+    aggregation: z
+      .enum(['count', 'sum', 'mean'])
+      .optional()
+      .meta({
+        description: `Aggregation method. count: occurrences / samples per period; sum: total (hours for activity types); mean: average (metrics). Defaults to count for activity types, mean for metrics. ${timeWeightedAveragesNote}`,
+      }),
     display_period: trendDisplayPeriodSchema
       .default('monthly')
       .meta({ description: 'Period to normalize the rate to (daily, weekly, monthly)' }),
@@ -178,10 +180,12 @@ export type TrendResponse = z.infer<typeof trendResponseSchema>
 /** Numeric fields are strings here (as Express passes them) and parsed in the handler. */
 export const trendQuerySchema = z
   .object({
-    aggregation: z.enum(['count', 'sum', 'mean']).optional().meta({
-      description:
-        'count: occurrences / samples per period; sum: total; mean: average. Defaults to count for activity types, mean for metrics.',
-    }),
+    aggregation: z
+      .enum(['count', 'sum', 'mean'])
+      .optional()
+      .meta({
+        description: `count: occurrences / samples per period; sum: total; mean: average. Defaults to count for activity types, mean for metrics. ${timeWeightedAveragesNote}`,
+      }),
     display_period: trendDisplayPeriodSchema.optional(),
     half_life_days: z.string().optional().meta({ description: 'EMA half-life in days', example: '15' }),
     lookback_days: z.string().optional().meta({ description: 'Days of historical data', example: '90' }),

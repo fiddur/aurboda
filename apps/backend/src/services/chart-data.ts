@@ -5,11 +5,13 @@ import {
   type ChartDataBreakdownBucket,
   type ChartDataBucket,
   type ChartDataSourceType,
+  isTimeWeightedMetric,
   muscleGroupBreakdownPath,
 } from '@aurboda/api-spec'
 
 import { buildBucketExpr } from '../db/bucket-expr.ts'
 import { expandActivityTypes, getBucketStarts, getHrZoneSecs, getSourceFilter, query } from '../db/index.ts'
+import { sampleRowsSql } from '../db/time-weighted.ts'
 import { parseFieldPath } from './activity-measures.ts'
 import { loadExerciseEntryResolver } from './item-value-identities.ts'
 import { type ExerciseEntryResolver, muscleGroupName } from './muscle-group-measures.ts'
@@ -104,11 +106,13 @@ const queryActivitiesByTypePattern = async (
 }
 
 const metricAggFns: Record<ChartDataAggregation, string> = {
-  count: 'COUNT(*)',
-  max: 'MAX(value)',
+  count: 'SUM(n)',
+  max: 'MAX(max_value)',
   mean: 'AVG(value)',
-  sum: 'SUM(value)',
+  sum: 'SUM(sum_value)',
 }
+
+const subBinBucketSizes = new Set(['1m', '5m'])
 
 const hoursExpr =
   "EXTRACT(EPOCH FROM (COALESCE(end_time, start_time + interval '1 hour') - start_time)) / 3600.0"
@@ -147,14 +151,18 @@ const queryMetricBuckets = async (
     sourceClause = ` AND source = ANY($${params.length})`
   }
 
+  const timeWeighted =
+    aggregation === 'mean' && isTimeWeightedMetric(metric) && !subBinBucketSizes.has(bucketSize)
   const result = await query(
     user,
-    `SELECT ${bucket.expr} AS bucket_start,
-            ${aggFn} AS value
-       FROM time_series
-      WHERE metric = $${p + 1}
+    `SELECT bucket_start, ${aggFn} AS value
+       FROM ${sampleRowsSql({
+         keys: [{ as: 'bucket_start', expr: bucket.expr }],
+         timeWeighted,
+         where: `metric = $${p + 1}
         AND time BETWEEN $${p + 2} AND $${p + 3}
-        AND deleted_at IS NULL${sourceClause}
+        AND deleted_at IS NULL${sourceClause}`,
+       })} s
       GROUP BY 1
       ORDER BY 1`,
     params,

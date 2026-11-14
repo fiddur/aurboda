@@ -1,6 +1,11 @@
 import { z } from 'zod'
 
-import { baseResponseSchema, iso8601DateTimeSchema, timeRangeQuerySchema } from './common.ts'
+import {
+  baseResponseSchema,
+  iso8601DateTimeSchema,
+  timeRangeQuerySchema,
+  timeWeightedAveragesNote,
+} from './common.ts'
 
 export const outlierSchema = z
   .object({
@@ -13,7 +18,7 @@ export type Outlier = z.infer<typeof outlierSchema>
 
 export const periodMetricStatsSchema = z
   .object({
-    avg: z.number().meta({ description: 'Average value' }),
+    avg: z.number().meta({ description: `Average value. ${timeWeightedAveragesNote}` }),
     change_from_previous_period_percent: z.number().nullable().meta({
       description: 'Percent change from previous period',
     }),
@@ -27,9 +32,11 @@ export const periodMetricStatsSchema = z
     outliers: z.array(outlierSchema).optional().meta({
       description: 'Values more than 2 stddev from mean',
     }),
-    stddev: z.number().meta({ description: 'Standard deviation' }),
+    stddev: z.number().meta({
+      description: 'Population standard deviation, weighted the same way as avg',
+    }),
     trend_per_day: z.number().nullable().meta({
-      description: 'Daily trend (slope of linear regression)',
+      description: 'Daily trend (slope of linear regression over the daily averages)',
     }),
     unit: z.string().meta({ description: 'Unit of measurement' }),
   })

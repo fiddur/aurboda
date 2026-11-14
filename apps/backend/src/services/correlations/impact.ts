@@ -1,9 +1,10 @@
 import type { ImpactBucket, ImpactBucketPhase, TimeWindowStats, WindowEffect } from '@aurboda/api-spec'
 
+import { TIME_WEIGHT_BIN_MINUTES } from '../../db/time-weighted.ts'
 import { studentTTwoSidedP } from './stats.ts'
 import { mean, stddev } from './utils.ts'
 
-export const BIN_MINUTES = 5
+export const BIN_MINUTES = TIME_WEIGHT_BIN_MINUTES
 export const SESSION_GAP_MINUTES = 10
 export const POINT_ACTIVITY_MINUTES = 5
 export const DEFAULT_WINDOW_MINUTES = 30

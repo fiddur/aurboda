@@ -454,6 +454,26 @@ export const aurbodaOnlyMetrics: MetricType[] = ['calories_active', 'calories_to
  */
 export const aurbodaOnlySources: DataSource[] = ['aurboda', 'aurboda_gap_fill']
 
+/**
+ * Instantaneous-sample metrics recorded at uneven rates: once a second during a recorded activity
+ * (Garmin activity detail, a BLE strap) and every few minutes otherwise. Their averages are
+ * time-weighted: samples are averaged per 5-minute bin first and then across bins, so a recorded
+ * hour weighs the same as any other hour.
+ */
+export const timeWeightedMetrics: MetricType[] = [
+  'heart_rate',
+  'stress_level',
+  'body_battery',
+  'respiratory_rate',
+  'spo2',
+]
+
+export const isTimeWeightedMetric = (metric: string): boolean =>
+  (timeWeightedMetrics as string[]).includes(metric)
+
+/** One sentence for tool and endpoint descriptions whose averages follow `timeWeightedMetrics`. */
+export const timeWeightedAveragesNote = `Averages of ${timeWeightedMetrics.join(', ')} are time-weighted: the samples are averaged per 5-minute bin, then across bins, so an hour recorded at 1 Hz weighs the same as any other hour.`
+
 export const placeSourceSchema = z
   .enum(['named', 'detected', 'owntracks', 'home_assistant', 'unknown'])
   .meta({

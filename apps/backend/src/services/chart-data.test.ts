@@ -140,7 +140,7 @@ describe('getChartData', () => {
     expect((result.buckets[0] as { value: number }).value).toBe(8500)
 
     const call = vi.mocked(db.query).mock.calls[0]
-    expect(call[1]).toContain('SUM(value)')
+    expect(call[1]).toContain('SUM(sum_value)')
     // Cumulative metric (steps) must be restricted to trusted sources so it isn't
     // multiply-counted (raw + daily-aggregate + …). Regression guard for the
     // chart/challenge over-count.
@@ -165,6 +165,27 @@ describe('getChartData', () => {
 
     const call = vi.mocked(db.query).mock.calls[0]
     expect(call[1]).not.toContain('source = ANY')
+  })
+
+  test.each([
+    ['heart_rate', '1d', true],
+    ['stress_level', '15m', true],
+    ['heart_rate', '5m', false],
+    ['weight', '1d', false],
+  ] as const)('the mean of %s per %s bucket is time-weighted: %s', async (pattern, bucket_size, binned) => {
+    vi.mocked(db.query).mockResolvedValue({ rows: [] } as never)
+
+    await getChartData('testuser', {
+      aggregation: 'mean',
+      bucket_size,
+      end: '2026-01-31T23:59:59Z',
+      pattern,
+      source_type: 'metric',
+      start: '2026-01-01T00:00:00Z',
+    })
+
+    const sql = vi.mocked(db.query).mock.calls[0][1] as string
+    expect(sql.includes("GROUP BY 1, date_bin('5 minutes'")).toBe(binned)
   })
 
   test('charts hr_zone metrics by computing zone seconds per bucket', async () => {
@@ -294,7 +315,8 @@ describe('getChartData', () => {
     expect((result.buckets[0] as { value: number }).value).toBe(24)
 
     const call = vi.mocked(db.query).mock.calls[0]
-    expect(call[1]).toContain('COUNT(*)')
+    expect(call[1]).toContain('SUM(n)')
+    expect(call[1]).not.toContain('GROUP BY 1, date_bin')
   })
 
   test('returns bucketed productivity category hours', async () => {
@@ -504,7 +526,7 @@ describe('getChartData', () => {
     expect(db.query).not.toHaveBeenCalled()
   })
 
-  test('max aggregation takes MAX(value) for metrics', async () => {
+  test('max aggregation takes the largest sample for metrics', async () => {
     vi.mocked(db.query).mockResolvedValue({
       rows: [{ bucket_start: new Date('2026-01-01T00:00:00Z'), value: 82.5 }],
     } as never)
@@ -518,7 +540,7 @@ describe('getChartData', () => {
       start: '2026-01-01T00:00:00Z',
     })
 
-    expect(vi.mocked(db.query).mock.calls[0][1]).toContain('MAX(value) AS value')
+    expect(vi.mocked(db.query).mock.calls[0][1]).toContain('MAX(max_value) AS value')
   })
 
   test('max aggregation takes the longest activity of each bucket', async () => {
