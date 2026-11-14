@@ -110,6 +110,7 @@ describe('central relays', () => {
     expect(errored?.state).toBe('accepted')
     expect(errored?.actor_uri).toBe('https://relay.example/actor')
     expect(errored?.updated_at.getTime() ?? 0).toBeGreaterThanOrEqual(relay.updated_at.getTime())
+    expect((await a.setRelayError(relay.id, null))?.last_error).toBeNull()
     expect(await a.setRelayError(randomUUID(), 'nope')).toBeNull()
   })
 
