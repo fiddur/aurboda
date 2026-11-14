@@ -368,7 +368,11 @@ When adding a Metric Card or Sparkline Card, the metric picker shows a searchabl
 
 ## What Data It Needs
 
-The dashboard works with whatever data sources you have connected. Widgets gracefully handle missing data -- a metric card with no data simply shows no value. The more sources you connect, the more useful the dashboard becomes:
+The dashboard works with whatever data sources you have connected. The more sources you connect, the more useful the dashboard becomes.
+
+**Cards waiting for data.** Outside edit mode, the home dashboard and your own period dashboards leave out every card whose source has never delivered anything, so a new account does not open on a wall of `No data`. One line under the last section says how many cards are waiting, with a link to **Data sources**; a card appears by itself once its source sends something. Edit mode shows every card, as before. "Never delivered" is per card: no sample of the metric at all for a metric card, sparkline, HR zones (heart rate) or a metric chart; no activity of the type or one of its subtypes for an activity card, record card, the activity summary (its shown categories), **Last night** (`sleep`) or an activity-type chart. The baseline cards read `hrv_rmssd` and `resting_heart_rate`, and Zone 2 reads `heart_rate`. A card is hidden only when none of its sources has ever delivered: one with data, just none in the current window, still shows `No data`. Tag charts, top lists, places, correlations, goals and quick links are always shown. A section left with no card goes too. Shared and public dashboards, and your own rolling dashboards other than home, show every card.
+
+The dashboard asks this in one request for all its metrics and activity types: `GET /dashboard/data-presence?metrics=hrv_rmssd,steps&activity_types=exercise,sleep` answers `{ metrics: { hrv_rmssd: true, steps: false }, activity_types: { … } }`, and MCP has the same as `get_data_presence`.
 
 | Widget content               | Data sources                                    |
 | ---------------------------- | ----------------------------------------------- |

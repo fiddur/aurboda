@@ -1,4 +1,10 @@
-import type { DashboardConfig, DashboardDataResponse, DashboardResponse } from '@aurboda/api-spec'
+import type {
+  DashboardConfig,
+  DashboardDataResponse,
+  DashboardResponse,
+  DataPresence,
+  DataPresenceResponse,
+} from '@aurboda/api-spec'
 
 import axios from 'axios'
 
@@ -55,4 +61,16 @@ export const fetchSharedDashboardData = async (
   )
 
   return response.data
+}
+
+export const fetchDataPresence = async (
+  metrics: string[],
+  activityTypes: string[],
+): Promise<DataPresence> => {
+  const { token } = auth.value
+  const response = await axios.get<DataPresenceResponse>(`${API_URL}/dashboard/data-presence`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params: { activity_types: activityTypes.join(','), metrics: metrics.join(',') },
+  })
+  return { activity_types: response.data.activity_types, metrics: response.data.metrics }
 }

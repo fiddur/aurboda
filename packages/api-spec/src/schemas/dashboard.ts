@@ -607,6 +607,46 @@ export const dashboardDataQuerySchema = z
 
 export type DashboardDataQuery = z.infer<typeof dashboardDataQuerySchema>
 
+const nameListSchema = z.string().max(4000).optional()
+
+export const dataPresenceQuerySchema = z
+  .object({
+    activity_types: nameListSchema.meta({
+      description: 'Comma-separated activity types; a type counts its subtypes',
+      example: 'exercise,sleep',
+    }),
+    metrics: nameListSchema.meta({
+      description: 'Comma-separated metric names (built-in or custom), as stored',
+      example: 'hrv_rmssd,steps',
+    }),
+  })
+  .meta({ id: 'DataPresenceQuery' })
+
+export type DataPresenceQuery = z.infer<typeof dataPresenceQuerySchema>
+
+export const dataPresenceSchema = z
+  .object({
+    activity_types: z.record(z.string(), z.boolean()).meta({
+      description: 'Per asked activity type: whether any activity of it or a subtype was ever recorded',
+    }),
+    metrics: z.record(z.string(), z.boolean()).meta({
+      description: 'Per asked metric: whether any sample of it was ever recorded',
+    }),
+  })
+  .meta({
+    description:
+      'Whether each source has ever delivered anything, at any time. The dashboard hides a widget whose sources never have.',
+    id: 'DataPresence',
+  })
+
+export type DataPresence = z.infer<typeof dataPresenceSchema>
+
+export const dataPresenceResponseSchema = baseResponseSchema
+  .extend(dataPresenceSchema.shape)
+  .meta({ id: 'DataPresenceResponse' })
+
+export type DataPresenceResponse = z.infer<typeof dataPresenceResponseSchema>
+
 export const updateDashboardInputSchema = dashboardConfigSchema.meta({ id: 'UpdateDashboardInput' })
 
 export type UpdateDashboardInput = z.infer<typeof updateDashboardInputSchema>

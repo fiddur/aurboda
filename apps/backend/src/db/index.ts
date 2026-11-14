@@ -697,6 +697,8 @@ export {
   updateCustomMetricDefinition,
 } from './custom-metrics.ts'
 
+export { getDataPresence } from './data-presence.ts'
+
 export {
   deleteExpiredMcpSessions,
   deleteMcpSession,

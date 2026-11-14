@@ -166,6 +166,7 @@ function OwnerSharedDashboardBody({
         widgetData={period?.widgetData}
         widgetDataLoading={period ? period.isFetching || isSaving : undefined}
         periodLabel={period?.periodLabel}
+        hideWaiting={Boolean(config.period)}
       />
     </>
   )

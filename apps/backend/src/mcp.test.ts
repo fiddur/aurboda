@@ -12,6 +12,7 @@ import { createAuth } from './auth.ts'
 import * as db from './db/index.ts'
 import { createMcpRouter, trimToolCallArguments } from './mcp.ts'
 import * as activityRecords from './services/activity-records.ts'
+import * as dataPresence from './services/data-presence.ts'
 import * as latestSleep from './services/latest-sleep.ts'
 import * as mutations from './services/mutations.ts'
 import { PeriodError } from './services/periods.ts'
@@ -141,6 +142,10 @@ vi.mock('./services/latest-sleep', () => ({
 
 vi.mock('./services/shared-dashboard-data', () => ({
   resolveDashboardView: vi.fn(),
+}))
+
+vi.mock('./services/data-presence', () => ({
+  queryDataPresence: vi.fn(),
 }))
 
 vi.mock('./oura-sync', () => ({
@@ -1110,6 +1115,22 @@ describe('MCP Server', () => {
       })
 
       expect(response.text).toBe('Period has not finished yet')
+    })
+
+    test('get_data_presence answers whether each asked source ever delivered', async () => {
+      const presence = { activity_types: { sleep: true }, metrics: { hrv_rmssd: false } }
+      vi.mocked(dataPresence.queryDataPresence).mockResolvedValueOnce(presence)
+
+      const response = await callTool(createTestApp(), auth.createToken('testuser'), 'get_data_presence', {
+        activity_types: 'sleep',
+        metrics: 'hrv_rmssd',
+      })
+
+      expect(JSON.parse(response.text)).toEqual(presence)
+      expect(dataPresence.queryDataPresence).toHaveBeenCalledWith('testuser', {
+        activity_types: 'sleep',
+        metrics: 'hrv_rmssd',
+      })
     })
 
     test('get_activity_records rejects a filter field without a value', async () => {

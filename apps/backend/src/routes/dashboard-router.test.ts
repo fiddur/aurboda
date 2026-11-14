@@ -9,9 +9,11 @@ import type * as Periods from '../services/periods.ts'
 vi.mock('../db/index.ts', () => ({ upsertUserSettings: vi.fn() }))
 vi.mock('../services/settings.ts', () => ({ getSettings: vi.fn() }))
 vi.mock('../services/shared-dashboard-data.ts', () => ({ resolveDashboardView: vi.fn() }))
+vi.mock('../services/data-presence.ts', () => ({ queryDataPresence: vi.fn() }))
 
 const { getSettings } = await import('../services/settings.ts')
 const { resolveDashboardView } = await import('../services/shared-dashboard-data.ts')
+const { queryDataPresence } = await import('../services/data-presence.ts')
 const { PeriodError } = await vi.importActual<typeof Periods>('../services/periods.ts')
 const { createDashboardRouter } = await import('./dashboard-router.ts')
 
@@ -65,5 +67,20 @@ describe('GET /dashboard/data', () => {
 
     expect(res.status).toBe(400)
     expect(res.body).toEqual({ error: 'Period has not finished yet', success: false })
+  })
+})
+
+describe('GET /dashboard/data-presence', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  test('answers whether each asked source ever delivered, for the signed-in user', async () => {
+    const presence = { activity_types: { exercise: false }, metrics: { steps: true } }
+    vi.mocked(queryDataPresence).mockResolvedValue(presence)
+
+    const res = await app().get('/dashboard/data-presence?metrics=steps&activity_types=exercise')
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ ...presence, success: true })
+    expect(queryDataPresence).toHaveBeenCalledWith('alice', { activity_types: 'exercise', metrics: 'steps' })
   })
 })

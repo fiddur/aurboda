@@ -132,6 +132,7 @@ export function Dashboard() {
           widgetData={period?.widgetData}
           widgetDataLoading={period ? period.isFetching || draft.config !== null : undefined}
           periodLabel={period?.periodLabel}
+          hideWaiting
         />
       )}
     </div>
