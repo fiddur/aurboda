@@ -155,6 +155,7 @@ export interface ListNotificationsOptions {
   /** Rows meant for push (`push = true`) instead of the in-app ones. */
   push_only?: boolean
   after?: Date
+  ids?: string[]
 }
 
 /**
@@ -173,6 +174,7 @@ export const listNotifications = async (
        AND (NOT $3::boolean OR read_at IS NULL)
        AND ($4::timestamptz IS NULL OR date_trunc('milliseconds', created_at) > $4::timestamptz)
        AND ($5::timestamptz IS NULL OR (created_at, id) < ($5::timestamptz, $6::uuid))
+       AND ($7::uuid[] IS NULL OR id = ANY($7::uuid[]))
      ORDER BY created_at DESC, id DESC
      LIMIT $1`,
     [
@@ -182,6 +184,7 @@ export const listNotifications = async (
       options.after ?? null,
       options.before?.created_at ?? null,
       options.before?.id ?? null,
+      options.ids ?? null,
     ],
   )
   return result.rows

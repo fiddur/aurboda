@@ -157,6 +157,22 @@ describe('Notifications Integration Tests', () => {
       const rows = await listNotifications(user, { after: new Date('2026-01-02T10:00:00.123Z'), limit: 10 })
       expect(rows.map((r) => r.title)).toEqual(['next'])
     })
+
+    test('ids lists only those rows, read or not, with the other filters still applying', async () => {
+      const user = getTestUser()
+      const readId = await insertAt(user, '2026-01-01T10:00:00Z', { title: 'read' })
+      const unreadId = await insertAt(user, '2026-01-02T10:00:00Z', { title: 'unread' })
+      const inAppId = await insertAt(user, '2026-01-03T10:00:00Z', { push: false, title: 'in-app only' })
+      await insertAt(user, '2026-01-04T10:00:00Z', { title: 'not asked' })
+      await markNotificationRead(user, readId)
+
+      const rows = await listNotifications(user, {
+        ids: [readId, unreadId, inAppId, '00000000-0000-4000-8000-000000000000'],
+        limit: 10,
+        push_only: true,
+      })
+      expect(rows.map((r) => r.title)).toEqual(['unread', 'read'])
+    })
   })
 
   describe('read state', () => {

@@ -22,7 +22,7 @@ export const registerNotificationTools = (
 ) => {
   server.tool(
     'list_notifications',
-    "List the user's notifications (the bell), newest first. `unread_count` counts every unread in-app notification whatever the filters. Page with `cursor` from `next_cursor`. `push_only` lists those meant for push delivery instead of the in-app ones.",
+    "List the user's notifications (the bell), newest first. `unread_count` counts every unread in-app notification whatever the filters. Page with `cursor` from `next_cursor`. `push_only` lists those meant for push delivery instead of the in-app ones. `ids` (comma-separated) re-reads given notifications, read or not, to see whether they were revised, read or deleted.",
     { ...notificationsQuerySchema.shape },
     async (params) => jsonResponse({ ...(await listNotificationsPage(store, user, params)), success: true }),
   )

@@ -73,7 +73,20 @@ records it, so turning delivery on doesn't dump the backlog (the old post poller
 it after an upgrade, so nothing that arrived since its last run is lost). After a background
 sync succeeds, `SyncWorker` asks for one extra poll a minute later (`NotificationWorker.checkSoon`):
 an auto-share announces itself shortly after the activity lands and shares after the rule's
-wait, 10 minutes by default, which is shorter than the poll interval.
+wait, 10 minutes by default, which is shorter than the poll interval. The periodic poll and
+`checkSoon` are two unique works, so they share one lock and never post the same notification
+at once.
+
+**Keeping the shade current.** Every poll also re-reads the server notifications still in the
+shade: their server id and a key of what they show (title, body, link and actions,
+`notificationContentKey`) ride in the notification's extras, and
+`GET /notifications?push_only=true&ids=…` answers their current state. The pure
+`reconcileShownNotifications` withdraws the ones read elsewhere (the web bell, **Mark all read**)
+or no longer on the server, and reposts the revised ones under the same Android id without
+alerting again (`setOnlyAlertOnce`): a pending auto-share turns into "was shared" or "will not be
+shared" and loses its "Don't share" button. A server that predates `ids` ignores it and answers
+notifications that were not asked for; the app then leaves the shade alone. Notifications posted
+before this version carry no extras and are left as they are.
 
 **Showing one.** Each notification shows its title and body on a channel per notification
 group (`notifications_<group>`, named after the group, e.g. "Feed"; a type the server lists

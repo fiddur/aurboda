@@ -305,13 +305,16 @@ export type NotificationsPage = Required<
 export const listNotificationsPage = async (
   store: NotificationStore,
   user: string,
-  params: Pick<NotificationsQuery, 'after' | 'cursor' | 'push_only' | 'unread_only'> & { limit: number },
+  params: Pick<NotificationsQuery, 'after' | 'cursor' | 'ids' | 'push_only' | 'unread_only'> & {
+    limit: number
+  },
 ): Promise<NotificationsPage> => {
   const cursor = decodeKeysetCursor(params.cursor)
   const [rows, unreadCount] = await Promise.all([
     store.list(user, {
       after: params.after === undefined ? undefined : new Date(params.after),
       before: cursor && { created_at: cursor.ts, id: cursor.id },
+      ids: params.ids?.split(','),
       limit: params.limit + 1,
       push_only: params.push_only,
       unread_only: params.unread_only,
