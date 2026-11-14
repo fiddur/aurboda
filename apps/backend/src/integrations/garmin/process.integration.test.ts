@@ -146,3 +146,35 @@ describe('Garmin activity type resolution (integration)', () => {
     expect(audit.rows[0].details.error).toContain('too long')
   })
 })
+
+describe('Garmin training readiness (integration)', () => {
+  beforeAll(async () => {
+    await startTestDb()
+  }, CONTAINER_TIMEOUT)
+
+  afterAll(async () => {
+    await stopTestDb()
+  })
+
+  beforeEach(async () => {
+    await cleanTestDb()
+  })
+
+  test('an array answer lands in raw_records as JSON and its score as a metric', async () => {
+    const user = getTestUser()
+    const data = [
+      { calendarDate: '2025-01-15', level: 'HIGH', score: 70, timestamp: '2025-01-15T05:40:00.0' },
+    ]
+
+    expect(await processGarminData(user, 'trainingReadiness', data, realDeps, '2025-01-15')).toBe(1)
+
+    const raw = await query(
+      user,
+      `SELECT data FROM raw_records WHERE source = 'garmin' AND record_type = 'garmin_training_readiness'`,
+      [],
+    )
+    expect(raw.rows).toEqual([{ data: { entries: data } }])
+    const points = await query(user, `SELECT value FROM time_series WHERE metric = 'training_readiness'`, [])
+    expect(points.rows.map((row) => Number(row.value))).toEqual([70])
+  })
+})

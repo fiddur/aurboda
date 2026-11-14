@@ -46,10 +46,10 @@ Respiration and intensity minutes come from the key's daily summary (`avgWakingR
 | Exercise Sets      | activity data          | `data.sets` of Garmin strength activities: exercise, reps, weight (kg), time (s) — see [Strength sets](#strength-sets)   |
 | SpO2               | time_series            | `spo2` (average daily blood oxygen)                                                                                      |
 | Respiration        | time_series            | `respiratory_rate` (average waking respiration)                                                                          |
-| Training Readiness | time_series            | `training_readiness` (overall score)                                                                                     |
-| Intensity Minutes  | time_series            | `intensity_minutes` (moderate + vigorous×2)                                                                              |
+| Training Readiness | time_series            | `training_readiness` (the latest entry's `score`)                                                                        |
+| Intensity Minutes  | time_series            | `intensity_minutes` (`moderateMinutes` + `vigorousMinutes`×2)                                                            |
 
-All data is also preserved as raw JSON in the `raw_records` table.
+All data is also preserved as raw JSON in the `raw_records` table. HRV is read from the answer's `hrvSummary` (the 5-minute `hrvReadings` are not ingested). Training readiness has not been seen from Garmin yet: its raw record (`garmin_training_readiness`, an array answer kept as `{ "entries": [...] }`) is written before anything is read, and both an array of entries with `score` and a single object with `overallScore` are read. When the HRV, training readiness or intensity minutes processor cannot place a payload, it keeps the raw record under the requested day and writes a `warn` audit entry naming the data type and the payload's keys, so a changed shape shows up instead of being dropped; a day with no data (an empty answer or one of nulls) is skipped without a warning.
 
 > **Note on `calories_active` and `calories_total`:** these metrics are stored from Garmin's daily summary (source `garmin`) but **excluded from queries** — aurboda recomputes them per-minute from HR data using the zone-METs model and is the authoritative source for both metrics. See [`docs/features/calories.md`](./features/calories.md) for the model and the source-filter rationale.
 
