@@ -18,6 +18,7 @@ export const notificationTypes = [
   'feed_boost',
   'feed_post',
   'autoshare_pending',
+  'garmin_key_expiring',
 ] as const
 
 export type NotificationType = (typeof notificationTypes)[number]
@@ -110,6 +111,12 @@ export const notificationTypeInfo: Record<NotificationType, NotificationTypeInfo
       'An auto-share rule is about to share a new activity; the notification lets you stop that one',
     group: 'feed',
     label: 'Pending auto-shares',
+  },
+  garmin_key_expiring: {
+    admin_only: false,
+    description: 'Your Garmin Personal API key is about to expire, has expired, or was refused by Garmin',
+    group: 'data_sources',
+    label: 'Garmin key renewal',
   },
 }
 

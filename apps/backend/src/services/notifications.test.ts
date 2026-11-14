@@ -229,7 +229,7 @@ describe('listNotificationTypeSettings', () => {
     ).toBe(true)
   })
 
-  test('lists the feed group before the admin group, each in registry order', () => {
+  test('lists the groups in order (feed, data sources, admin), each in registry order', () => {
     expect(listNotificationTypeSettings(true, []).map((setting) => setting.type)).toEqual([
       'feed_follow_request',
       'feed_new_follower',
@@ -240,6 +240,7 @@ describe('listNotificationTypeSettings', () => {
       'feed_boost',
       'feed_post',
       'autoshare_pending',
+      'garmin_key_expiring',
       'admin_signup',
     ])
   })
@@ -253,6 +254,11 @@ describe('listNotificationTypeSettings', () => {
     expect(settings.find((setting) => setting.type === 'feed_post')).toMatchObject({
       group: 'feed',
       group_label: 'Feed',
+    })
+    expect(settings.find((setting) => setting.type === 'garmin_key_expiring')).toMatchObject({
+      admin_only: false,
+      group: 'data_sources',
+      group_label: 'Data sources',
     })
   })
 })

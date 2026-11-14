@@ -103,10 +103,12 @@ describe('groupNotificationSettings', () => {
       setting('admin_signup', 'admin', 'Admin'),
       setting('feed_reply', 'feed', 'Feed'),
       setting('feed_like', 'feed', 'Feed'),
+      setting('garmin_key_expiring', 'data_sources', 'Data sources'),
     ])
     expect(groups.map((g) => [g.label, g.types.map((t) => t.type)])).toEqual([
       ['Admin', ['admin_signup']],
       ['Feed', ['feed_reply', 'feed_like']],
+      ['Data sources', ['garmin_key_expiring']],
     ])
   })
 
