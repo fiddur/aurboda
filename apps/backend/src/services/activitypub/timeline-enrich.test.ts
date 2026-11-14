@@ -8,6 +8,7 @@ import {
   type AurbodaEnrichDeps,
   capabilityTokenFrom,
   enrichFromAurboda,
+  inboundStructuredUrl,
   isDefinitiveEnrichError,
   parseAurbodaFeedUrl,
 } from './timeline-enrich.ts'
@@ -273,5 +274,54 @@ describe('capabilityTokenFrom', () => {
 
   test('skips a malformed URL and finds the token on a later image', () => {
     expect(capabilityTokenFrom([image('not a url'), image('https://h.example/x.png?token=abc')])).toBe('abc')
+  })
+
+  test('falls back to the structured URL when no image carries a token', () => {
+    const structuredUrl = `https://aurboda.net/api/public/bob/feed/${UUID}?token=s7r`
+    expect(capabilityTokenFrom([], structuredUrl)).toBe('s7r')
+    expect(capabilityTokenFrom([image('https://h.example/x.png')], structuredUrl)).toBe('s7r')
+    expect(capabilityTokenFrom([], `https://aurboda.net/api/public/bob/feed/${UUID}`)).toBeUndefined()
+    expect(capabilityTokenFrom([], 'not a url')).toBeUndefined()
+  })
+
+  test('prefers an image token over the structured URL', () => {
+    expect(
+      capabilityTokenFrom([image('https://h.example/x.png?token=img')], 'https://h.example/s?token=str'),
+    ).toBe('img')
+  })
+})
+
+describe('inboundStructuredUrl', () => {
+  const noteId = `https://aurboda.net/users/bob/feed/${UUID}`
+  const structuredUrl = `https://aurboda.net/api/public/bob/feed/${UUID}?token=t0k`
+
+  test("reads the embedded Note's prefixed quant:structuredUrl", () => {
+    const raw = {
+      object: { id: noteId, 'quant:structuredUrl': structuredUrl, type: ['Note', 'quant:Exercise'] },
+    }
+    expect(inboundStructuredUrl(raw, noteId)).toBe(structuredUrl)
+  })
+
+  test('reads the full-IRI key a re-compacted signed delivery carries', () => {
+    const raw = { object: [{ id: noteId, 'https://w3id.org/quantpub#structuredUrl': structuredUrl }] }
+    expect(inboundStructuredUrl(raw, noteId)).toBe(structuredUrl)
+  })
+
+  test('reads a JSON-LD value object', () => {
+    const raw = { object: { '@id': noteId, 'quant:structuredUrl': { '@value': structuredUrl } } }
+    expect(inboundStructuredUrl(raw, noteId)).toBe(structuredUrl)
+  })
+
+  test('ignores another object, another host, a bare-URI object, and non-objects', () => {
+    const other = {
+      object: { id: 'https://aurboda.net/users/bob/feed/other', 'quant:structuredUrl': structuredUrl },
+    }
+    expect(inboundStructuredUrl(other, noteId)).toBeUndefined()
+    expect(inboundStructuredUrl({ object: noteId }, noteId)).toBeUndefined()
+    expect(inboundStructuredUrl({ object: { id: noteId } }, noteId)).toBeUndefined()
+    const elsewhere = { object: { id: noteId, 'quant:structuredUrl': 'https://evil.example/s?token=t0k' } }
+    expect(inboundStructuredUrl(elsewhere, noteId)).toBeUndefined()
+    expect(inboundStructuredUrl(null, noteId)).toBeUndefined()
+    expect(inboundStructuredUrl('x', noteId)).toBeUndefined()
   })
 })

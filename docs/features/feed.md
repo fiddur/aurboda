@@ -1006,8 +1006,10 @@ id-convention path — reliable even when a typed consumer drops the in-band ext
    `0.1` payload to `0.2` before storing it — the same path for an activity share or an article, since both federate
    as a `Note` and the object id doesn't distinguish them. For a `followers`-only post it lifts
    the capability token from the delivered image URL (the `?token=` embedded only in the
-   follower's `Note`) and forwards it, so an accepted follower fetches the native payload while a
-   public guess still 404s. A post whose origin is **this instance itself** (a local-to-local
+   follower's `Note`), falling back to the Note's same-host `quant:structuredUrl` for a post with
+   no images — read off the received JSON-LD in the inbox listener, since Fedify's typed `Note`
+   drops the extension property (#1223) — and forwards it, so an accepted follower fetches the
+   native payload while a public guess still 404s. A post whose origin is **this instance itself** (a local-to-local
    follow) skips discovery and HTTP entirely and resolves **in-process** through the same
    `resolveStructuredPost` the endpoint serves — fetching our own public origin would hairpin
    through the reverse proxy and, from inside the container, typically resolve to a private

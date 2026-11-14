@@ -132,7 +132,7 @@ import {
 } from './public-tag-ingest.ts'
 import { fetchActorPresentation, resolveAnnouncedNote, validateAnnounce } from './remote-lookup.ts'
 import { temporalInstantToDate } from './temporal-interop.ts'
-import { capabilityTokenFrom, createAurbodaEnricher } from './timeline-enrich.ts'
+import { capabilityTokenFrom, createAurbodaEnricher, inboundStructuredUrl } from './timeline-enrich.ts'
 import {
   extractNoteImages,
   noteHashtags,
@@ -247,6 +247,8 @@ export interface IngestNoteOptions {
    * accepted followee the delivery is owed to (the booster for a boost card), null for a stranger.
    */
   notify?: { source: Pick<FeedFollowingRecord, 'notify_on_post' | 'tag'> | null }
+  /** The Note's `quant:structuredUrl`, read off the received document (see `inboundStructuredUrl`). */
+  structuredUrl?: string
 }
 
 /**
@@ -268,7 +270,7 @@ export const ingestNoteForRecipient = async (
   enrich: (objectUri: string, token?: string) => Promise<FeedStructuredPost | null>,
   /** Web origin — the recipient's own actor URI (Mention detection) and post prefix. */
   origin: string,
-  { boost, notify, onNewEntry }: IngestNoteOptions = {},
+  { boost, notify, onNewEntry, structuredUrl }: IngestNoteOptions = {},
 ): Promise<boolean> => {
   const input = noteToTimelineInput(note, author, Date.now(), boost)
   if (input == null) return false
@@ -279,11 +281,14 @@ export const ingestNoteForRecipient = async (
   // reply setting says (Mastodon-style involvement).
   const mentionsMe = await noteMentionsActor(note, ownActorUri(origin, user))
   // Best-effort: fetch the native structured payload if this is an Aurboda post
-  // (null otherwise). A followers-only post authorizes the fetch with the same
-  // capability token embedded in its delivered image URL. Stored on the entry so
+  // (null otherwise). A followers-only post authorizes the fetch with its
+  // capability token (`capabilityTokenFrom`). Stored on the entry so
   // the web can render a native chart in place of the image. Keyed on the NOTE's
   // id — on a boost card `object_uri` is the Announce id, which no peer serves.
-  const structured = await enrich(input.boost_of_uri ?? input.object_uri, capabilityTokenFrom(images))
+  const structured = await enrich(
+    input.boost_of_uri ?? input.object_uri,
+    capabilityTokenFrom(images, structuredUrl),
+  )
   const declaredTags = await noteHashtags(note)
   const tags = boost?.tag == null ? declaredTags : normalizeTags([boost.tag, ...declaredTags])
   const { id, inserted } = await upsertTimelineEntry(user, {
@@ -756,6 +761,7 @@ const ingestStrangerInvolvement = async (
   origin: string,
   enrich: (objectUri: string, token?: string) => Promise<FeedStructuredPost | null>,
   onNewEntry?: (user: string) => void,
+  structuredUrl?: string,
 ): Promise<boolean> => {
   if (activity.actorId == null) return false
   const target = object.replyTargetIds[0]?.href
@@ -784,7 +790,7 @@ const ingestStrangerInvolvement = async (
     { ...presentation, actor_uri: activity.actorId.href },
     enrich,
     origin,
-    { notify: { source: null }, onNewEntry },
+    { notify: { source: null }, onNewEntry, structuredUrl },
   )
 }
 
@@ -805,16 +811,31 @@ const ingestFeedActivity = async (
   if (me == null || !isValidUsername(me) || activity.actorId == null) return
   try {
     const follow = await getFeedFollowingByActor(me, activity.actorId.href)
+    // Read before `getObject`: dereferencing a bare-URI object replaces the received document.
+    const received = await activity.toJsonLd()
     const object = await activity.getObject({ suppressError: true })
     if (!(object instanceof Note)) return
+    const structuredUrl = object.id == null ? undefined : inboundStructuredUrl(received, object.id.href)
     if (follow != null && follow.accepted) {
       await ingestNoteForRecipient(me, object, follow, enrich, origin, {
         notify: { source: follow },
         onNewEntry,
+        structuredUrl,
       })
     } else {
-      const admitted = await ingestStrangerInvolvement(ctx, activity, object, me, origin, enrich, onNewEntry)
-      if (!admitted && activity instanceof Update) await applyEditToBoostCards(me, activity, object, enrich)
+      const admitted = await ingestStrangerInvolvement(
+        ctx,
+        activity,
+        object,
+        me,
+        origin,
+        enrich,
+        onNewEntry,
+        structuredUrl,
+      )
+      if (!admitted && activity instanceof Update) {
+        await applyEditToBoostCards(me, activity, object, enrich, structuredUrl)
+      }
     }
   } catch (error) {
     // A missing DB is not an error worth a 500: that would invite redelivery retries.
@@ -838,6 +859,7 @@ const applyEditToBoostCards = async (
   update: Update,
   note: Note,
   enrich: (objectUri: string, token?: string) => Promise<FeedStructuredPost | null>,
+  structuredUrl?: string,
 ): Promise<void> => {
   if (note.id == null || update.actorId == null) return
   const author = await getBoostCardAuthor(me, note.id.href, update.actorId.href)
@@ -845,7 +867,7 @@ const applyEditToBoostCards = async (
   const input = noteToTimelineInput(note, author)
   if (input == null) return
   const images = await extractNoteImages(note)
-  const structured = await enrich(note.id.href, capabilityTokenFrom(images))
+  const structured = await enrich(note.id.href, capabilityTokenFrom(images, structuredUrl))
   await updateBoostCardsOf(me, note.id.href, author.actor_uri, {
     content: input.content,
     images,
