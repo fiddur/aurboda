@@ -7,8 +7,6 @@ import type {
   StoredActivityTypeCatalogEntry,
 } from '@aurboda/api-spec'
 
-import { builtinActivityTypes } from '@aurboda/api-spec'
-
 import {
   adoptCatalogActivityType,
   deleteActivityTypeDefinition as dbDelete,
@@ -35,6 +33,9 @@ export interface ActivityTypeDefinitionResult {
   error?: string
 }
 
+const isBuiltin = async (user: string, name: string): Promise<boolean> =>
+  (await dbGet(user, name))?.is_builtin === true
+
 export const listActivityTypeDefinitions = async (user: string): Promise<ActivityTypeDefinition[]> =>
   dbList(user)
 
@@ -44,12 +45,10 @@ export const addActivityTypeDefinition = async (
   input: AddActivityTypeDefinitionBody,
   catalog: StoredActivityTypeCatalog = loadActivityTypeCatalog(),
 ): Promise<ActivityTypeDefinitionResult> => {
-  // Block names that conflict with built-in types
-  if ((builtinActivityTypes as readonly string[]).includes(input.name)) {
+  const existing = await dbGet(user, input.name)
+  if (existing?.is_builtin) {
     return { error: `"${input.name}" is a built-in activity type and cannot be recreated`, success: false }
   }
-
-  const existing = await dbGet(user, input.name)
   if (existing) {
     return { error: `Activity type "${input.name}" already exists`, success: false }
   }
@@ -164,7 +163,7 @@ export const deleteActivityTypeDefinition = async (
   user: string,
   name: string,
 ): Promise<{ success: boolean; error?: string }> => {
-  if ((builtinActivityTypes as readonly string[]).includes(name)) {
+  if (await isBuiltin(user, name)) {
     return { error: `Cannot delete built-in activity type "${name}"`, success: false }
   }
 
@@ -193,11 +192,11 @@ export const renameActivityTypeDefinition = async (
     return { error: 'New name is the same as the current name.', success: false }
   }
 
-  if ((builtinActivityTypes as readonly string[]).includes(oldName)) {
+  if (await isBuiltin(user, oldName)) {
     return { error: `Cannot rename built-in activity type "${oldName}".`, success: false }
   }
 
-  if ((builtinActivityTypes as readonly string[]).includes(newName)) {
+  if (await isBuiltin(user, newName)) {
     return { error: `Cannot rename to built-in activity type name "${newName}".`, success: false }
   }
 
@@ -272,12 +271,12 @@ export const mergeActivityType = async (
     return { error: 'Source and target cannot be the same activity type.', success: false }
   }
 
-  if ((builtinActivityTypes as readonly string[]).includes(source)) {
+  const notFound = { error: `Activity type "${source}" or "${target}" not found.`, success: false }
+  const sourceDef = await dbGet(user, source)
+  if (!sourceDef) return notFound
+  if (sourceDef.is_builtin) {
     return { error: `Cannot merge built-in activity type "${source}".`, success: false }
   }
-
-  const notFound = { error: `Activity type "${source}" or "${target}" not found.`, success: false }
-  if (!(await dbGet(user, source))) return notFound
   const targetDef = await dbGet(user, target)
   const targetEntry = getCatalogActivityType(catalog, target)
   if (!targetDef && !targetEntry) return notFound

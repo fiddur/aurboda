@@ -467,7 +467,8 @@ const openApiDocument = createDocument({
     },
     '/activities': {
       get: {
-        description: 'Get activities (sleep, exercise, meditation, nap) for a time range.',
+        description:
+          'Get activities of any type (sleep, exercise and its subtypes, meditation, custom types, ...) for a time range.',
         requestParams: {
           query: z.object({
             end: iso8601DateTimeSchema.meta({ description: 'End date/time' }),

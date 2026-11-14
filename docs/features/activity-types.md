@@ -8,7 +8,7 @@ or by right-clicking (or long-pressing) a moment on the [timeline](./timeline.md
 private unless you share it, shows on the timeline next to everything else, and can be compared
 with your sleep, heart rate and training on the [Analyze page](./correlations.md).
 
-Aurboda comes with built-in activity types: the core types **sleep**, **exercise**, **meditation**, **nap** and **rest**, and every Health Connect exercise type. On top of those, a [catalogue of types](activity-type-catalog.md) for things logged by hand (caffeine, medication, symptoms, sauna, ...) is added to your types, with their fields, the first time you use one. You can define additional custom types to represent any activity you track -- driving, coding, vocal training, etc.
+Aurboda comes with [built-in activity types](#built-in-types): the core types **sleep**, **exercise**, **meditation**, **nap** and **rest**, every Health Connect exercise type, and a few internal ones. On top of those, a [catalogue of types](activity-type-catalog.md) for things logged by hand (caffeine, medication, symptoms, sauna, ...) is added to your types, with their fields, the first time you use one. You can define additional custom types to represent any activity you track -- driving, coding, vocal training, etc.
 
 ## Creating Custom Types
 
@@ -28,10 +28,25 @@ Custom activity types can be created on the **Activity Types** page (`/activity-
 `add_activity_type`) with only that name creates the type from its catalogue definition, and any
 field you give overrides the catalogue's.
 
-Built-in types cannot be deleted but their display metadata (color, icon, display_name, show_on_timeline) can be updated.
+### Built-in types
 
-Besides those, every Health Connect exercise session type (`running`, `yoga`,
-`strength_training`, ...) is a built-in type of the `exercise` category.
+Every user starts with a seeded set of types, marked `is_builtin` in `GET /activity-types`
+(`list_activity_types`):
+
+| Group                         | Types                                                                                                                                                                                                                 | With a data schema                               |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| Core                          | `sleep`, `exercise`, `meditation`, `nap`, `rest` (`nap` and `rest` are children of `sleep`)                                                                                                                           | `meditation`                                     |
+| Health Connect exercise types | every Health Connect exercise session type (`running`, `yoga`, `strength_training`, `guided_breathing` shown as Breathwork, ...), each a child of `exercise`                                                          | `strength_training` (`sets`), `guided_breathing` |
+| Internal                      | `calendar_event` (calendar sync), `music_scrobble` (Last.fm), `screentime` (categorised screen time) and `location_visit` (visits to opted-in named locations); the last three are drawn on their own timeline tracks | `music_scrobble`, `screentime`, `location_visit` |
+
+A built-in type cannot be deleted, renamed or merged into another type, and no type can be created
+or renamed with a built-in type's name; the error says it is a built-in type. Its display metadata
+(color, icon, display_name, show_on_timeline) and its data schema can be updated. The check is on
+the definition's `is_builtin`; `coreActivityTypes` in `@aurboda/api-spec` names only the five core
+types.
+
+The [activity type catalogue](activity-type-catalog.md) is something else: types for things logged
+by hand that become yours, as ordinary custom types, the first time you use one.
 
 ### Merging types
 

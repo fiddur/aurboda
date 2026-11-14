@@ -59,7 +59,7 @@ Garmin and Oura report no states while the source is not connected (neither a Ga
 All sources feed into a common data model:
 
 - **`time_series`** -- Timestamped metric values (HR, weight, steps, etc.)
-- **`activities`** -- Duration-based or point-in-time events: sleep, exercise, meditation, nap, and anything of a custom type, including what you log yourself, Oura tags, Last.fm rule tags and calendar events (these were once a separate `tags` table, which is now migrated into activities)
+- **`activities`** -- Duration-based or point-in-time events: sleep, exercise (and its Health Connect subtypes such as running or yoga), meditation, nap, and anything of a custom type, including what you log yourself, Oura tags, Last.fm rule tags and calendar events (these were once a separate `tags` table, which is now migrated into activities)
 - **`productivity`** -- App/website usage records (from RescueTime and ActivityWatch)
 - **`locations`** -- GPS coordinates (from OwnTracks and Home Assistant, plus activity tracks from Garmin and Strava)
 - **`raw_records`** -- Original data preserved in full JSON form

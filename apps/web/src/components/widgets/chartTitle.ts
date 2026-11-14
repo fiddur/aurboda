@@ -16,8 +16,9 @@ export const measureChartTitle = ({
   pattern,
   source_type,
 }: ChartSource): string | undefined => {
-  if (source_type !== 'activity_type' || (measure === undefined && filter_value === undefined))
-    {return undefined}
+  if (source_type !== 'activity_type' || (measure === undefined && filter_value === undefined)) {
+    return undefined
+  }
   const typeName = pattern ? toDisplayName(pattern) : undefined
   return measure ? measureGoalTitle(measure, filter_value, typeName) : (filter_value ?? typeName)
 }

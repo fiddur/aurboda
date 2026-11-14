@@ -28,6 +28,20 @@ vi.mock('../db', () => ({
 
 const user = 'testuser'
 
+const builtinDef = (name: string, display_category: ActivityTypeDefinition['display_category']) => ({
+  color: '#22c55e',
+  display_category,
+  display_name: name,
+  is_builtin: true,
+  name,
+  show_on_timeline: true,
+})
+
+const givenDefinitions = (...defs: ActivityTypeDefinition[]) =>
+  vi
+    .mocked(db.getActivityTypeDefinition)
+    .mockImplementation(async (_user, name) => defs.find((d) => d.name === name) ?? null)
+
 describe('listActivityTypeDefinitions', () => {
   beforeEach(() => vi.clearAllMocks())
 
@@ -84,11 +98,16 @@ describe('addActivityTypeDefinition', () => {
     expect(result.data).toEqual(created)
   })
 
-  test('rejects built-in type names', async () => {
+  test.each([
+    ['sleep', 'sleep_rest'],
+    ['yoga', 'exercise'],
+  ] as const)('rejects the built-in type name %s', async (name, category) => {
+    givenDefinitions(builtinDef(name, category))
+
     const result = await addActivityTypeDefinition(user, {
-      display_category: 'sleep_rest',
-      display_name: 'Sleep',
-      name: 'sleep',
+      display_category: category,
+      display_name: name,
+      name,
     })
 
     expect(result.success).toBe(false)
@@ -385,21 +404,25 @@ describe('deleteActivityTypeDefinition', () => {
   beforeEach(() => vi.clearAllMocks())
 
   test('deletes a custom type', async () => {
+    givenDefinitions({ ...builtinDef('sauna', 'wellness'), is_builtin: false })
     vi.mocked(db.deleteActivityTypeDefinition).mockResolvedValue(true)
 
     const result = await deleteActivityTypeDefinition(user, 'sauna')
     expect(result.success).toBe(true)
   })
 
-  test('rejects deleting built-in types', async () => {
-    const result = await deleteActivityTypeDefinition(user, 'exercise')
+  test.each(['exercise', 'yoga', 'calendar_event'])('rejects deleting the built-in type %s', async (name) => {
+    givenDefinitions(builtinDef(name, 'exercise'))
+
+    const result = await deleteActivityTypeDefinition(user, name)
 
     expect(result.success).toBe(false)
-    expect(result.error).toContain('Cannot delete built-in')
+    expect(result.error).toBe(`Cannot delete built-in activity type "${name}"`)
     expect(db.deleteActivityTypeDefinition).not.toHaveBeenCalled()
   })
 
   test('returns error when type not found', async () => {
+    givenDefinitions()
     vi.mocked(db.deleteActivityTypeDefinition).mockResolvedValue(false)
 
     const result = await deleteActivityTypeDefinition(user, 'nonexistent')
@@ -418,19 +441,29 @@ describe('renameActivityTypeDefinition', () => {
     expect(result.error).toContain('same as the current name')
   })
 
-  test('returns error when renaming a built-in type', async () => {
-    const result = await renameActivityTypeDefinition(user, 'sleep', 'slumber')
+  test.each(['sleep', 'yoga'])('returns error when renaming the built-in type %s', async (name) => {
+    givenDefinitions(builtinDef(name, 'exercise'))
+
+    const result = await renameActivityTypeDefinition(user, name, 'slumber')
     expect(result.success).toBe(false)
-    expect(result.error).toContain('Cannot rename built-in')
+    expect(result.error).toBe(`Cannot rename built-in activity type "${name}".`)
+    expect(db.renameActivityTypeDefinition).not.toHaveBeenCalled()
   })
 
-  test('returns error when renaming to a built-in type name', async () => {
-    const result = await renameActivityTypeDefinition(user, 'sauna', 'exercise')
-    expect(result.success).toBe(false)
-    expect(result.error).toContain('Cannot rename to built-in')
-  })
+  test.each(['exercise', 'yoga'])(
+    'returns error when renaming to the built-in type name %s',
+    async (name) => {
+      givenDefinitions(builtinDef(name, 'exercise'))
+
+      const result = await renameActivityTypeDefinition(user, 'sauna', name)
+      expect(result.success).toBe(false)
+      expect(result.error).toBe(`Cannot rename to built-in activity type name "${name}".`)
+      expect(db.renameActivityTypeDefinition).not.toHaveBeenCalled()
+    },
+  )
 
   test('returns error when db rename fails', async () => {
+    givenDefinitions()
     vi.mocked(db.renameActivityTypeDefinition).mockResolvedValue(null)
 
     const result = await renameActivityTypeDefinition(user, 'sauna', 'hot_sauna')
@@ -447,6 +480,7 @@ describe('renameActivityTypeDefinition', () => {
       name: 'hot_sauna',
       show_on_timeline: true,
     }
+    givenDefinitions()
     vi.mocked(db.renameActivityTypeDefinition).mockResolvedValue({
       activities_updated: 3,
       deduction_rules_updated: 1,
@@ -472,10 +506,13 @@ describe('mergeActivityType', () => {
     expect(result.error).toContain('same activity type')
   })
 
-  test('returns error when source is built-in', async () => {
-    const result = await mergeActivityType(user, 'exercise', 'sauna')
+  test.each(['exercise', 'yoga'])('returns error when the source is the built-in type %s', async (name) => {
+    givenDefinitions(builtinDef(name, 'exercise'), { ...builtinDef('sauna', 'wellness'), is_builtin: false })
+
+    const result = await mergeActivityType(user, name, 'sauna')
     expect(result.success).toBe(false)
-    expect(result.error).toContain('Cannot merge built-in')
+    expect(result.error).toBe(`Cannot merge built-in activity type "${name}".`)
+    expect(db.mergeActivityTypeDefinition).not.toHaveBeenCalled()
   })
 
   const targetDef = {
