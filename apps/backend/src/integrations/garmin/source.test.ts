@@ -13,16 +13,28 @@ import {
   readGarminPersonalKeyEnabled,
 } from './source.ts'
 
+const NOW = new Date('2026-11-14T12:00:00Z')
+const hoursBefore = (hours: number): Date => new Date(NOW.getTime() - hours * 3_600_000)
+
 const connections = ({
   session = false,
   key = false,
   refused = false,
+  refusalCheckedAt = NOW,
+  expiresAt = null,
 }: {
   session?: boolean
   key?: boolean
   refused?: boolean
+  refusalCheckedAt?: Date
+  expiresAt?: Date | null
 }): GarminConnections => ({
-  personal_key: { connected: key, expires_at: null, refused: key && refused },
+  personal_key: {
+    connected: key,
+    expires_at: key ? expiresAt : null,
+    refusal_checked_at: key && refused ? refusalCheckedAt : null,
+    refused: key && refused,
+  },
   session,
 })
 
@@ -57,12 +69,32 @@ describe('chooseGarminSource', () => {
   test.each([...keyTypes, 'sleep' as const])(
     '%s falls back to the session when the key was refused',
     (type) => {
-      expect(chooseGarminSource(type, connections({ key: true, refused: true, session: true }))).toBe(
+      expect(chooseGarminSource(type, connections({ key: true, refused: true, session: true }), NOW)).toBe(
         'session',
       )
-      expect(chooseGarminSource(type, connections({ key: true, refused: true }))).toBeNull()
+      expect(chooseGarminSource(type, connections({ key: true, refused: true }), NOW)).toBeNull()
     },
   )
+
+  test('a refused key is tried again once a day after the last refusal', () => {
+    const refusedAgo = (hours: number) =>
+      connections({ key: true, refusalCheckedAt: hoursBefore(hours), refused: true, session: true })
+
+    expect(chooseGarminSource('hrv', refusedAgo(23), NOW)).toBe('session')
+    expect(chooseGarminSource('hrv', refusedAgo(24), NOW)).toBe('personal_key')
+    expect(chooseGarminSource('trainingReadiness', refusedAgo(24), NOW)).toBe('session')
+  })
+
+  test('a key past its expiry date is not used, and is still used on the date itself', () => {
+    const expiringOn = (date: string) =>
+      connections({ expiresAt: new Date(`${date}T00:00:00Z`), key: true, session: true })
+
+    expect(chooseGarminSource('hrv', expiringOn('2026-11-14'), NOW)).toBe('personal_key')
+    expect(chooseGarminSource('hrv', expiringOn('2026-11-13'), NOW)).toBe('session')
+    expect(
+      chooseGarminSource('hrv', connections({ expiresAt: new Date('2026-11-13T00:00:00Z'), key: true }), NOW),
+    ).toBeNull()
+  })
 
   test.each([...keyTypes, 'sleep' as const, ...sessionOnly])('%s uses the session alone', (target) => {
     expect(chooseGarminSource(target, connections({ session: true }))).toBe('session')
@@ -94,7 +126,7 @@ describe('getGarminConnections', () => {
     })
 
     expect(await getGarminConnections('alice', deps)).toEqual({
-      personal_key: { connected: true, expires_at: expiresAt, refused: false },
+      personal_key: { connected: true, expires_at: expiresAt, refusal_checked_at: null, refused: false },
       session: true,
     })
     expect(deps.getOAuthToken).toHaveBeenCalledWith('alice', 'garmin')
@@ -105,23 +137,29 @@ describe('getGarminConnections', () => {
     const deps = tokenDeps({ garmin: { access_token: '', provider: 'garmin' } })
 
     expect(await getGarminConnections('alice', deps)).toEqual({
-      personal_key: { connected: false, expires_at: null, refused: false },
+      personal_key: { connected: false, expires_at: null, refusal_checked_at: null, refused: false },
       session: false,
     })
     expect(await hasGarminConnection('alice', deps)).toBe(false)
   })
 
-  test('a refused key is reported, and still counts as a connection', async () => {
+  test('a refused key is reported with when it was last checked, and still counts as a connection', async () => {
+    const refusedAt = hoursBefore(72)
+    const lastChecked = hoursBefore(2)
     const deps = tokenDeps({
       garmin_personal: {
         access_token: '',
         provider: 'garmin_personal',
         refresh_token: 'k',
-        refused_at: new Date(),
+        refused_at: refusedAt,
+        updated_at: lastChecked,
       },
     })
 
-    expect((await getGarminConnections('alice', deps)).personal_key.refused).toBe(true)
+    expect((await getGarminConnections('alice', deps)).personal_key).toMatchObject({
+      refusal_checked_at: lastChecked,
+      refused: true,
+    })
     expect(await hasGarminConnection('alice', deps)).toBe(true)
   })
 })
@@ -141,6 +179,7 @@ describe('garminRoutedClient', () => {
   const fakeClient = (label: string) => ({
     getActivities: vi.fn(async () => [label]),
     getActivityDetail: vi.fn(async () => label),
+    getActivityExerciseSets: vi.fn(async () => label),
     getHrv: vi.fn(async () => label),
     getSleep: vi.fn(async () => label),
     getStress: vi.fn(async () => label),
@@ -161,6 +200,7 @@ describe('garminRoutedClient', () => {
     expect(await garmin.getActivities('alice', 0, 20)).toEqual(['personal'])
     expect(await garmin.getStress('alice', day)).toBe('session')
     expect(await garmin.getActivityDetail('alice', 1)).toBe('session')
+    expect(await garmin.getActivityExerciseSets('alice', 1)).toBe('session')
     expect(await garmin.sourceFor('alice', 'stress')).toBe('session')
   })
 

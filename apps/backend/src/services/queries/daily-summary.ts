@@ -43,7 +43,9 @@ import {
   isCategoryExcluded,
 } from '../screentime-activities.ts'
 import { computeHrZoneSecs, getEffectiveHrZones } from '../settings.ts'
+import { getSleepDebtForDate } from '../sleep-debt.ts'
 import { computeSleepMinutes } from '../sleep-duration.ts'
+import { sampleMean } from '../time-weighted-mean.ts'
 import { buildCategoryMap, getCommentsMap } from './types.ts'
 
 /**
@@ -218,6 +220,7 @@ export const buildMetricsToday = async (
   for (const [metric, list] of grouped) {
     const sorted = [...list].sort((a, b) => a.time.getTime() - b.time.getTime())
     const values = sorted.map((e) => e.value)
+    const series = sorted.map((e): [Date, number] => [e.time, e.value])
     const summaryEntries: DailySummaryMetricEntry[] = sorted.map((e) => {
       const note = noteFor(e)
       const entry: DailySummaryMetricEntry = {
@@ -230,7 +233,7 @@ export const buildMetricsToday = async (
     })
     const last = sorted[sorted.length - 1]
     result[metric] = {
-      avg: values.reduce((a, b) => a + b, 0) / values.length,
+      avg: sampleMean(metric, series) ?? 0,
       count: values.length,
       entries: summaryEntries,
       latest: last.value,
@@ -342,6 +345,7 @@ export async function getDailySummary(
     stressData,
     metricsToday,
     metricsLatest,
+    sleepDebt,
   ] = await Promise.all([
     getTimeSeries(user, 'heart_rate', start, end),
     getTimeSeries(user, 'steps', start, end),
@@ -363,13 +367,14 @@ export async function getDailySummary(
     getTimeSeries(user, 'stress_level', start, end),
     buildMetricsToday(user, dailySummaryMetrics, start, end),
     buildMetricsLatest(user, dailySummaryMetrics),
+    getSleepDebtForDate(user, date.toISOString().slice(0, 10), tz),
   ])
 
   const heartRates = heartRateData.map(([, value]) => value)
   const heartRateStats: HeartRateStats | null =
     heartRates.length > 0
       ? {
-          avg: Math.round(heartRates.reduce((a, b) => a + b, 0) / heartRates.length),
+          avg: Math.round(sampleMean('heart_rate', heartRateData) ?? 0),
           count: heartRates.length,
           max: maxOf(heartRates) ?? 0,
           min: minOf(heartRates) ?? 0,
@@ -620,6 +625,7 @@ export async function getDailySummary(
         start_time: p.start_time.toISOString(),
       })),
     productivity: productivitySummary,
+    sleep_debt: sleepDebt,
     sleep_sessions: sleepSessionSummaries,
     steps: { total: totalSteps },
     stress_zones: stressZones,

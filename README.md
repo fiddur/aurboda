@@ -28,10 +28,10 @@ Aurboda's reach is the point, so here's what it ingests today:
 
 | Source                                               | What it provides                                                                                                                | How                                          |
 | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
-| [**Android Health Connect**](docs/health-connect.md) | Heart rate, HRV, sleep, exercise (80+ types), mindfulness/meditation sessions, steps, weight, SpO2, VO2 max, calories, and more | Push from Android app                        |
+| [**Android Health Connect**](docs/health-connect.md) | Heart rate, HRV, sleep, exercise (60+ types), mindfulness/meditation sessions, steps, weight, SpO2, VO2 max, calories, and more | Push from Android app                        |
 | **BLE Sensors**                                      | Real-time heart rate, HRV (Polar H10, etc.) and steps (Zwift RunPod, etc.)                                                      | Live via Android app                         |
 | [**Oura Ring**](docs/oura.md)                        | Sleep stages/scores, readiness, resilience, cardiovascular age, HRV, heart rate, meditation, tags                               | Pull (API) + Push (webhooks)                 |
-| [**Garmin Connect**](docs/garmin.md)                 | Daily summary, HR, HRV, sleep, stress, body battery, activities, SpO2, respiration, training readiness                          | Pull (login session and/or Personal API key) |
+| [**Garmin Connect**](docs/garmin.md)                 | Daily summary, HR, HRV, sleep, stress, body battery, activities, strength sets, SpO2, respiration, training readiness           | Pull (login session and/or Personal API key) |
 | [**Strava**](docs/strava.md)                         | Activities with per-second heart rate, GPS routes, cadence, and power                                                           | Pull (API) + Push (webhooks)                 |
 | [**Gravl**](docs/gravl.md)                           | Strength workouts with per-set exercise, weight, reps, RPE and set type                                                         | Pull (API) + on Health Connect arrival       |
 | [**OwnTracks**](docs/owntracks.md)                   | GPS locations, geofences, place visits                                                                                          | Push (HTTP mode)                             |
@@ -55,8 +55,8 @@ Everything above feeds a common data model, so every feature works across every 
 
 - **Explore** -- [timeline](docs/features/timeline.md), [dashboards](docs/features/dashboard.md), [maps of where you've been](docs/features/places.md), and full-resolution [activity tracks, routes and segments](docs/features/routes-and-segments.md)
 - **Analyze** -- [trends with EMA smoothing](docs/features/trends.md), [correlations](docs/features/correlations.md) (Pearson, chi-squared, relative risk), and [goals](docs/features/goals.md)
-- **Track health** -- [sleep](docs/features/sleep.md), [HR zones](docs/features/hr-zones.md), [training load](docs/features/training-load.md), [lab results](docs/features/lab-reports.md), and [active-calorie computation](docs/features/calories.md)
-- **Organize life** -- [activities](docs/features/activity-types.md), [meals & nutrition](docs/features/meals.md), places, and [screen time](docs/features/screentime-categories.md)
+- **Track health** -- [sleep](docs/features/sleep.md), [HR zones](docs/features/hr-zones.md), [training load](docs/features/training-load.md), [lab results](docs/features/lab-reports.md) (with a [metric catalogue](docs/features/metric-catalog.md) of lab values and body measurements, converting units), and [active-calorie computation](docs/features/calories.md)
+- **Organize life** -- [activities](docs/features/activity-types.md) (with [strength session logging](docs/features/strength-logging.md)), [meals & nutrition](docs/features/meals.md), places, and [screen time](docs/features/screentime-categories.md)
 - **Automate** -- [deduction rules](docs/features/deduction-rules.md) that create activities from your data, plus custom activity types
 - **Share** -- read-only [public dashboards and federated challenges](docs/features/sharing.md) across Aurboda instances, plus a [federated activity feed](docs/features/feed.md) followable from Mastodon
 - **Stay informed** -- [notifications](docs/features/notifications.md) under a 🛎 bell, with per-type in-app and push switches
@@ -216,7 +216,9 @@ The companion Android app syncs data from Health Connect (40+ record types inclu
   <img src="apps/web/public/screenshots/widget.jpg" alt="Android home screen widget" width="250" />
 </p>
 
-More in the [Health Connect docs](docs/health-connect.md).
+Download the APK from the [latest release](https://github.com/fiddur/aurboda/releases/latest); the
+app then offers its own updates. More in the [Android app](docs/android-app.md) and
+[Health Connect](docs/health-connect.md) docs.
 
 ---
 
@@ -268,7 +270,11 @@ To change default port, modify `"8080:80"` to `"YOUR_PORT:80"` in docker-compose
 docker compose pull && docker compose up -d
 ```
 
-For automatic updates and the details, see [Updating](docs/docker.md#updating) in the Docker guide.
+Each release is also tagged `:v1.0.<n>`, the same number as the Android app of that release, and
+listed with its changes and APK on the [releases page](https://github.com/fiddur/aurboda/releases).
+Name that tag instead of `:latest` to pin a release, and the previous one to roll back. For
+automatic updates, pinning and rolling back, see [Updating](docs/docker.md#updating) and
+[Versions and rollback](docs/docker.md#versions-and-rollback) in the Docker guide.
 
 ### Development Builds
 
@@ -290,8 +296,8 @@ patterns and markdown; see [Input conventions](docs/mcp-server.md#input-conventi
 
 ```bash
 pnpm install
-pnpm fix    # Format and lint
-pnpm check  # TypeScript checks
+pnpm fix    # Lint fixes, then format
+pnpm check  # Format check, TypeScript checks and lint
 ```
 
 The web app's colours are tokens on `:root`; see [docs/web-theme.md](docs/web-theme.md).

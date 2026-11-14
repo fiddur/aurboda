@@ -1,7 +1,17 @@
-import type { ActivityTypeDefinition, DataSchemaDefinition, DisplayCategory } from '@aurboda/api-spec'
+import type {
+  ActivityTypeDefinition,
+  DataSchemaDefinition,
+  DisplayCategory,
+  StoredActivityTypeCatalog,
+} from '@aurboda/api-spec'
 
 import type { Queryable } from './pool.ts'
 
+import {
+  catalogAdoptionChain,
+  findCatalogActivityType,
+  loadActivityTypeCatalog,
+} from '../services/activity-type-catalog.ts'
 import { query, withUserTransaction } from './connection.ts'
 
 const mapRow = (row: Record<string, unknown>): ActivityTypeDefinition => ({
@@ -271,12 +281,55 @@ export const resolveActivityTypeByAlias = async (user: string, alias: string): P
   return result.rows[0].name as string
 }
 
-/** Used during sync to ensure all incoming types get a definition. */
-export const resolveOrCreateActivityType = async (
+/**
+ * The user's type of that name: the existing one untouched, else created from the catalogue with its
+ * catalogue ancestors. Null when neither exists.
+ */
+export const adoptCatalogActivityType = async (
   user: string,
-  displayName: string,
-  displayCategory = 'other',
-): Promise<string> => {
+  name: string,
+  catalog: StoredActivityTypeCatalog = loadActivityTypeCatalog(),
+): Promise<ActivityTypeDefinition | null> => {
+  const existing = await getActivityTypeDefinition(user, name)
+  if (existing) return existing
+  const chain = catalogAdoptionChain(catalog, name)
+  if (chain.length === 0) return null
+  // ON CONFLICT DO NOTHING makes concurrent first uses safe without a transaction, and keeps a type
+  // the user already has, ancestors included, exactly as it is.
+  for (const entry of chain) {
+    const parent =
+      entry.parent_type !== undefined && (await activityTypeExists(user, entry.parent_type))
+        ? entry.parent_type
+        : null
+    await query(
+      user,
+      `INSERT INTO activity_type_definitions (name, display_name, display_category, color, icon, aliases, data_schema, parent_type)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       ON CONFLICT (name) DO NOTHING`,
+      [
+        entry.name,
+        entry.display_name,
+        entry.display_category,
+        entry.color,
+        entry.icon,
+        normalizeAliases(entry.name, entry.aliases),
+        entry.data_schema ? JSON.stringify(entry.data_schema) : null,
+        parent,
+      ],
+    )
+  }
+  return getActivityTypeDefinition(user, name)
+}
+
+/** True when the user has the type, adopting it from the built-in catalogue when it is a catalogue type not used yet. */
+export const ensureActivityType = async (
+  user: string,
+  name: string,
+  catalog: StoredActivityTypeCatalog = loadActivityTypeCatalog(),
+): Promise<boolean> =>
+  (await activityTypeExists(user, name)) || (await adoptCatalogActivityType(user, name, catalog)) !== null
+
+const activityTypeSafeName = (displayName: string): string => {
   const snakeName =
     displayName
       .replaceAll(/[[\]()]/g, '')
@@ -287,19 +340,39 @@ export const resolveOrCreateActivityType = async (
       .replaceAll(/_+/g, '_') || 'unknown'
 
   // Ensure name starts with a letter (activity_type schema requires ^[a-z])
-  const safeName = /^[a-z]/.test(snakeName) ? snakeName : `t_${snakeName}`
+  return /^[a-z]/.test(snakeName) ? snakeName : `t_${snakeName}`
+}
 
-  const existing = await getActivityTypeDefinition(user, safeName)
+/** The user's type a name resolves to, by its snake-cased name or an alias, without creating one. */
+export const findActivityTypeForName = async (user: string, displayName: string): Promise<string | null> => {
+  const existing = await getActivityTypeDefinition(user, activityTypeSafeName(displayName))
   if (existing) return existing.name
+  return resolveActivityTypeByAlias(user, displayName)
+}
 
-  const aliasMatch = await resolveActivityTypeByAlias(user, displayName)
-  if (aliasMatch) return aliasMatch
+/**
+ * Used during sync to ensure all incoming types get a definition. A tag (category `other`) whose name
+ * matches a catalogue type lands on that type; other imports (Strava's exercises) are never redirected.
+ */
+export const resolveOrCreateActivityType = async (
+  user: string,
+  displayName: string,
+  displayCategory = 'other',
+  catalog: StoredActivityTypeCatalog = loadActivityTypeCatalog(),
+): Promise<string> => {
+  const found = await findActivityTypeForName(user, displayName)
+  if (found) return found
+
+  if (displayCategory === 'other') {
+    const entry = findCatalogActivityType(catalog, displayName)
+    if (entry && (await adoptCatalogActivityType(user, entry.name, catalog))) return entry.name
+  }
 
   const created = await insertActivityTypeDefinition(user, {
     aliases: [displayName.toLowerCase()],
     display_category: displayCategory,
     display_name: displayName,
-    name: safeName,
+    name: activityTypeSafeName(displayName),
   })
   return created.name
 }
@@ -330,18 +403,25 @@ export const resolveActivityTypeFromHcExerciseType = async (
   return result.rows[0].name as string
 }
 
-/** Merges aliases, reassigns all activities, updates deduction rules, then deletes the source. */
+export interface MergeActivityTypeDefinitionResult {
+  activities_data_set: number
+  activities_reassigned: number
+  deduction_rules_updated: number
+  target: ActivityTypeDefinition
+}
+
+/**
+ * Merges aliases, reassigns all activities, updates deduction rules, then deletes the source. `setData` fills
+ * each of its keys on the moved activities where that key is absent or null.
+ */
 export const mergeActivityTypeDefinition = async (
   user: string,
   sourceName: string,
   targetName: string,
-): Promise<{
-  activities_reassigned: number
-  deduction_rules_updated: number
-  target: ActivityTypeDefinition
-} | null> => {
+  setData?: Record<string, unknown>,
+): Promise<MergeActivityTypeDefinitionResult | null> => {
   if (sourceName === targetName) return null
-  return withUserTransaction(user, (tx) => mergeInTransaction(tx, sourceName, targetName))
+  return withUserTransaction(user, (tx) => mergeInTransaction(tx, sourceName, targetName, setData))
 }
 
 /**
@@ -352,11 +432,8 @@ const mergeInTransaction = async (
   tx: Queryable,
   sourceName: string,
   targetName: string,
-): Promise<{
-  activities_reassigned: number
-  deduction_rules_updated: number
-  target: ActivityTypeDefinition
-} | null> => {
+  setData: Record<string, unknown> | undefined,
+): Promise<MergeActivityTypeDefinitionResult | null> => {
   const sourceResult = await query(
     tx,
     `SELECT ${SELECT_COLS} FROM activity_type_definitions WHERE name = $1`,
@@ -398,6 +475,7 @@ const mergeInTransaction = async (
         )`,
     [targetName, sourceName],
   )
+  const activities_data_set = await fillMissingData(tx, sourceName, setData)
   const activitiesResult = await query(
     tx,
     `UPDATE activities SET activity_type = $1 WHERE activity_type = $2 RETURNING deleted_at IS NULL AS live`,
@@ -458,7 +536,35 @@ const mergeInTransaction = async (
   ])
   if (updated.rows.length === 0) return null
 
-  return { activities_reassigned, deduction_rules_updated, target: mapRow(updated.rows[0]) }
+  return {
+    activities_data_set,
+    activities_reassigned,
+    deduction_rules_updated,
+    target: mapRow(updated.rows[0]),
+  }
+}
+
+/** Gives the type's activities, soft-deleted ones included, each key of `setData` they have no value for. Counts live rows. */
+const fillMissingData = async (
+  tx: Queryable,
+  activityType: string,
+  setData: Record<string, unknown> | undefined,
+): Promise<number> => {
+  if (setData === undefined || Object.keys(setData).length === 0) return 0
+  const result = await query(
+    tx,
+    `UPDATE activities a
+        SET data = COALESCE(a.data, '{}'::jsonb) || fill.patch
+       FROM (SELECT s.id, jsonb_object_agg(kv.key, kv.value) AS patch
+               FROM activities s, jsonb_each($2::jsonb) kv
+              WHERE s.activity_type = $1
+                AND (s.data IS NULL OR s.data -> kv.key IS NULL OR s.data -> kv.key = 'null'::jsonb)
+              GROUP BY s.id) fill
+      WHERE a.id = fill.id
+      RETURNING a.deleted_at IS NULL AS live`,
+    [activityType, JSON.stringify(setData)],
+  )
+  return result.rows.filter((r) => r.live === true).length
 }
 
 /** Only allowed for custom (non-built-in) types. New name must not already exist. */

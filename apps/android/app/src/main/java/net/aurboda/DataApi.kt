@@ -13,6 +13,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerialName
+import kotlinx.serialization.json.JsonObject
 import net.aurboda.api.models.AddMetricBody
 import net.aurboda.api.models.AddMetricResponse
 import net.aurboda.api.models.UserSettingsResponse
@@ -114,7 +115,7 @@ data class AddActivityBody(
     @SerialName("end_time") val endTime: String? = null,
     val title: String? = null,
     val notes: String? = null,
-    val data: Map<String, String>? = null,
+    val data: JsonObject? = null,
 )
 
 @Serializable

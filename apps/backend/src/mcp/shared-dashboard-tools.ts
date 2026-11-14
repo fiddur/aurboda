@@ -8,6 +8,7 @@
 import {
   createSharedDashboardBodySchema,
   dashboardDataQuerySchema,
+  dataPresenceQuerySchema,
   defaultDashboardConfig,
   tzSchema,
   updateSharedDashboardBodySchema,
@@ -24,6 +25,7 @@ import {
   updateSharedDashboard,
 } from '../db/index.ts'
 import { resolvePresetConfig } from '../services/dashboard-presets.ts'
+import { queryDataPresence } from '../services/data-presence.ts'
 import {
   defaultPeriodLock,
   requestedPeriodLock,
@@ -133,6 +135,13 @@ export const registerSharedDashboardTools = (server: McpServer, user: string) =>
         throw error
       }
     },
+  )
+
+  server.tool(
+    'get_data_presence',
+    'Whether each named metric and activity type has ever recorded anything for the user, at any time: `metrics` and `activity_types` are comma-separated names, and an activity type counts its subtypes. The same as `GET /dashboard/data-presence`; the dashboard hides a widget whose sources never have.',
+    { ...dataPresenceQuerySchema.shape },
+    async (params) => jsonResponse(await queryDataPresence(user, params)),
   )
 
   server.tool(

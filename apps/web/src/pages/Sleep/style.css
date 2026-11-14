@@ -92,16 +92,30 @@
   margin-top: 0.25rem;
 }
 
-.sleep-page .stat-trend.trend-positive {
+.sleep-page .stat-trend .trend-positive {
   color: #059669;
 }
 
-.sleep-page .stat-trend.trend-negative {
+.sleep-page .stat-trend .trend-negative {
   color: #dc2626;
 }
 
-.sleep-page .stat-trend.trend-neutral {
+.sleep-page .stat-trend .trend-neutral {
   color: #6b7280;
+}
+
+.sleep-page .sleep-debt-severity {
+  font-size: 1rem;
+  font-weight: 500;
+  padding: 0.125rem 0.5rem;
+  border-radius: 4px;
+  color: white;
+}
+
+.sleep-page .sleep-debt-explainer {
+  font-size: 0.85rem;
+  color: #6b7280;
+  margin: 0.75rem 0;
 }
 
 .sleep-page .stat-description {
@@ -208,12 +222,16 @@
     color: #f9fafb;
   }
 
-  .sleep-page .stat-trend.trend-positive {
+  .sleep-page .stat-trend .trend-positive {
     color: #34d399;
   }
 
-  .sleep-page .stat-trend.trend-negative {
+  .sleep-page .stat-trend .trend-negative {
     color: #f87171;
+  }
+
+  .sleep-page .stat-trend .trend-neutral {
+    color: #9ca3af;
   }
 
   .sleep-page .legend-item {

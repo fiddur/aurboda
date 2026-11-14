@@ -1,5 +1,3 @@
-import type { RequestHandler } from 'express'
-
 import {
   type AddCustomMetricBody,
   addCustomMetricBodySchema,
@@ -33,6 +31,9 @@ import {
   type QueryMetricsResponse,
   type RecalculateCaloriesBody,
   type RecalculateCaloriesResponse,
+  type SleepDebtQuery,
+  sleepDebtQuerySchema,
+  type SleepDebtResponse,
   type UpdateCustomMetricBody,
   updateCustomMetricBodySchema,
 } from '@aurboda/api-spec'
@@ -62,11 +63,12 @@ import {
 } from '../services/queries/index.ts'
 import { getLatestMetric } from '../services/reports.ts'
 import { getUserTimezone } from '../services/settings.ts'
-import { type TypedRouter, typedRouter } from '../typed-router.ts'
+import { getSleepDebt } from '../services/sleep-debt.ts'
+import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
 export const createMetricsRouter = (
-  authMiddleware: RequestHandler,
+  authMiddleware: AnyMiddleware,
   syncProvider?: SyncProvider,
 ): TypedRouter => {
   const router = typedRouter()
@@ -77,7 +79,15 @@ export const createMetricsRouter = (
     authMiddleware,
     validateQuery(queryMetricsBucketedQuerySchema),
     async (req, res) => {
-      const { start, end, bucket, metrics: metricsParam, exclude: excludeParam, tz } = req.query
+      const {
+        start,
+        end,
+        bucket,
+        metrics: metricsParam,
+        exclude: excludeParam,
+        exclude_flagged,
+        tz,
+      } = req.query
       const user = req.user!
 
       const customMetrics = await getCustomMetrics(user)
@@ -91,7 +101,7 @@ export const createMetricsRouter = (
         new Date(start),
         new Date(end),
         bucket,
-        { customMetrics, exclude, tz },
+        { customMetrics, exclude, excludeFlagged: exclude_flagged, tz },
       )
       res.json({ ...result, success: true })
     },
@@ -212,6 +222,7 @@ export const createMetricsRouter = (
         metric: item.metric,
         source: item.source,
         time: new Date(item.time),
+        unit: item.unit,
         value: item.value,
       }))
 
@@ -285,12 +296,12 @@ export const createMetricsRouter = (
     authMiddleware,
     validateBody(addMetricBodySchema),
     async (req, res) => {
-      const { metric, value, time } = req.body
+      const { metric, value, time, unit } = req.body
       const user = req.user!
 
       const measurementTime = time ? new Date(time) : new Date()
 
-      const result = await addMetric(user, { metric, time: measurementTime, value })
+      const result = await addMetric(user, { metric, time: measurementTime, unit, value })
       res.json(result)
     },
   )
@@ -315,6 +326,17 @@ export const createMetricsRouter = (
     async (req, res) => {
       const data = await getLatestSleep(req.user!)
       res.json({ data, success: true })
+    },
+  )
+
+  router.get<Record<string, never>, SleepDebtResponse, unknown, SleepDebtQuery>(
+    '/sleep-debt',
+    authMiddleware,
+    validateQuery(sleepDebtQuerySchema),
+    async (req, res) => {
+      const result = await getSleepDebt(req.user!, req.query)
+      if ('error' in result) return res.status(400).json({ error: result.error, success: false })
+      res.json({ data: result, success: true })
     },
   )
 

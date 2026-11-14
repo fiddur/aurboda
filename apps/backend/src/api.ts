@@ -10,6 +10,13 @@ import { registerAuthRoutes } from './api/auth-routes.ts'
 import { gateFederation } from './api/federation-gate.ts'
 import { createAdminMiddleware, createAuditLogMiddleware, createAuthMiddleware } from './api/middleware.ts'
 import { registerOAuthRoutes } from './api/oauth-routes.ts'
+import {
+  bearerAccount,
+  createClientIp,
+  createRateLimits,
+  mountRateLimits,
+  trustProxySetting,
+} from './api/rate-limit-middleware.ts'
 import { mountRestRouters, postChartDeps } from './api/rest-routes.ts'
 import { mountSyncRouter } from './api/sync-setup.ts'
 import { createUsageMiddleware } from './api/usage-middleware.ts'
@@ -49,6 +56,7 @@ import {
   pruneSyncedOutboundSync,
   rematerializeSupersededOnce,
   resolveOrCreateActivityType,
+  retireSingleLiftTypes,
   markTimelineEntryReplyChecked,
   setTimelineEntryReplyInfo,
   setTimelineEntryStructured,
@@ -118,6 +126,7 @@ import { createPostUpdateResender, deliverPostUpdate } from './services/activity
 import { createTimelineBackfiller } from './services/activitypub/timeline-backfill.ts'
 import { createAurbodaEnrichAttempt } from './services/activitypub/timeline-enrich.ts'
 import { createAdminUsers } from './services/admin-users.ts'
+import { appVersion } from './services/app-version.ts'
 import { createArticlePreviewer } from './services/article-preview.ts'
 import { createAuditLogPruneQueue } from './services/audit-log-prune-queue.ts'
 import { auditError, auditInfo, pruneAuditLog } from './services/audit-log.ts'
@@ -191,11 +200,13 @@ import {
   readPublicTagPages,
   readPublicTagRetentionDays,
 } from './services/public-tags.ts'
+import { accountUploadLimiter } from './services/rate-limit.ts'
 import {
   createRelayActions,
   createRelayInboxHooks,
   ensureDefaultRelays,
   relayRecipients,
+  retryErroredRelays,
 } from './services/relays.ts'
 import { safeFetchGet } from './services/safe-fetch.ts'
 import { initSentry, Sentry } from './services/sentry.ts'
@@ -323,7 +334,7 @@ const main = async () => {
     androidFingerprints,
     androidPackageName,
     apiBaseUrl,
-    version: process.env.BUILD_SHA ?? 'dev',
+    version: appVersion(),
   }
 
   const envOuraClientId = process.env.OURA_CLIENT
@@ -403,7 +414,7 @@ const main = async () => {
     // stabilisation delay (the queue's startAfter). Fire-and-forget.
     void autoshareQueue?.enqueueEvaluation(user, start, end)
   }
-  // Home Assistant location pull (#1626). The detection trigger is built much
+  // Home Assistant location pull. The detection trigger is built much
   // further down (it needs the geocode queue, which needs pg-boss), so the
   // post-sync hook reads it through this holder once it exists.
   let triggerDetectionForUser: ((user: string) => void) | null = null
@@ -575,6 +586,19 @@ const main = async () => {
         console.error(`⚠️ Supersession re-materialization failed for ${user}:`, error)
       }
     }
+    for (const user of users) {
+      try {
+        const { converted, deleted, kept } = await retireSingleLiftTypes(user)
+        if (converted > 0 || deleted.length > 0 || kept.length > 0) {
+          console.info(
+            `🏋️ Retired single-lift types for ${user}: ${converted} activit(ies) converted, ` +
+              `deleted [${deleted.join(', ')}], kept as custom [${kept.join(', ')}]`,
+          )
+        }
+      } catch (error) {
+        console.error(`⚠️ Single-lift type retirement failed for ${user}:`, error)
+      }
+    }
   })
 
   // Accounts from before signup dates were tracked get a row without one.
@@ -590,8 +614,16 @@ const main = async () => {
   // CORS must come first for preflight requests
   httpd.use(cors({ origin: true }))
 
+  const rateLimits = createRateLimits({
+    accountOf: bearerAccount(auth),
+    clientIp: createClientIp((message) => console.warn(message)),
+    now: Date.now,
+    uploadLimiter: accountUploadLimiter,
+  })
+  mountRateLimits(httpd, rateLimits)
+
   // Mount OAuth endpoints BEFORE body-parser (uses its own parsers)
-  httpd.use(createOAuthRouter({ centralDb, loginToUserDb, webHost }))
+  httpd.use(createOAuthRouter({ centralDb, failedLogins: rateLimits.failedLogins, loginToUserDb, webHost }))
 
   // Live home-timeline updates: one in-process hub fans Postgres NOTIFY pings out
   // to a user's open SSE streams. Injected into the feed router (SSE endpoint) and
@@ -664,6 +696,7 @@ const main = async () => {
     }),
   )
   postListenCallbacks.push(async () => {
+    await retryErroredRelays({ federation: feedFederation, origin: webHost, store: centralDb })
     if ((await ensureDefaultRelays({ add: relayActions.add, centralDb, origin: webHost })) === 'seeded') {
       console.info('🛰️ Subscribed to the tags.pub relay by default')
     }
@@ -731,8 +764,6 @@ const main = async () => {
   }
   const onDeliverError = (op: string, user: string, postId: string) => (err: unknown) =>
     console.error(`⚠️ feed ${op} delivery failed for ${user}/${postId}:`, err)
-  // Every edit path ends in one of the `updated*` hooks, so this is where a post narrowed to
-  // followers-only loses its quote stamps (FEP-044f).
   const revokeUnsharedStamps = (user: string, post: FeedPostRecord): void => {
     void revokeQuoteStamps(feedDeps, user, post).catch(onDeliverError('quote stamp revoke', user, post.id))
   }
@@ -1103,12 +1134,12 @@ const main = async () => {
   // wraps EVERY non-GET body with `Readable.toWeb(req)` and next()s without
   // consuming it, hanging `express.json()` on any large non-federation POST
   // (e.g. a Health Connect batch > ~64 KB). `trust proxy` lets Fedify
-  // reconstruct the external https URL from nginx's X-Forwarded-* headers.
-  // Scope it to `loopback`: nginx proxies to the backend over loopback
-  // (proxy_pass http://127.0.0.1:3000), so Express trusts X-Forwarded-* only when
-  // the immediate peer is loopback — a direct remote client isn't, so it can't
-  // spoof them.
-  httpd.set('trust proxy', 'loopback')
+  // reconstruct the external https URL from nginx's X-Forwarded-* headers, and
+  // gives the rate limits the client's address. The default, `loopback`, trusts
+  // the bundled nginx alone (proxy_pass http://127.0.0.1:3000): a direct remote
+  // client isn't loopback, so it can't spoof them. `TRUST_PROXY` adds a proxy in
+  // front of nginx (docs/docker.md).
+  httpd.set('trust proxy', trustProxySetting(process.env.TRUST_PROXY))
   // Any representation will do for a wildcard or absent Accept on an actor URL,
   // and the default is the actor document: hand Fedify the type it serves.
   httpd.use(createActorAcceptNormalizer())
@@ -1142,6 +1173,7 @@ const main = async () => {
     auth,
     authMiddleware,
     centralDb,
+    failedLogins: rateLimits.failedLogins,
     invitationAuth,
     userDb,
     unauthorized,

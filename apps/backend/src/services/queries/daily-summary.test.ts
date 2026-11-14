@@ -42,6 +42,11 @@ vi.mock('../locations', () => ({
   getPlaceVisits: vi.fn(),
 }))
 
+import * as sleepDebt from '../sleep-debt.ts'
+vi.mock('../sleep-debt', () => ({
+  getSleepDebtForDate: vi.fn().mockResolvedValue(null),
+}))
+
 describe('getDailySummary', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -174,6 +179,23 @@ describe('getDailySummary', () => {
     expect(result.places[0].source).toBe('named')
 
     expect(result.stress_zones).toBeNull()
+    expect(result.sleep_debt).toBeNull()
+  })
+
+  test("carries the sleep debt after the date's night", async () => {
+    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    vi.mocked(db.getSleepSessions).mockResolvedValue([])
+    vi.mocked(db.getProductivity).mockResolvedValue([])
+    vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
+    vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
+    vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({} as Record<MetricType, [Date, number][]>)
+    const debt = { date: '2024-01-15', debt_minutes: 95, severity: 'mild' as const, slept_minutes: 420 }
+    vi.mocked(sleepDebt.getSleepDebtForDate).mockResolvedValueOnce(debt)
+
+    const result = await getDailySummary('testuser', new Date('2024-01-15'), undefined, 'Europe/Stockholm')
+
+    expect(sleepDebt.getSleepDebtForDate).toHaveBeenCalledWith('testuser', '2024-01-15', 'Europe/Stockholm')
+    expect(result.sleep_debt).toEqual(debt)
   })
 
   test('returns null for heartRate when no data', async () => {

@@ -1,4 +1,4 @@
-import type { MetricType } from '@aurboda/api-spec'
+import { isTimeWeightedMetric, type MetricType } from '@aurboda/api-spec'
 
 import type { SyncProvider } from '../queries/index.ts'
 import type {
@@ -13,6 +13,8 @@ import type {
 
 import { getEffectiveActivitiesInRange, getProductivity, getTimeSeries } from '../../db/index.ts'
 import { pushAll } from '../../utils.ts'
+import { flaggedDays, flaggedExclusion, loadFlaggedWindows, withoutFlagged } from '../flagged-windows.ts'
+import { meanValues } from '../time-weighted-mean.ts'
 import { triggerCorrelationSyncs } from './background-sync.ts'
 import { getCompoundEventOutcome } from './explore.ts'
 import { chiSquaredTest, mean, stddev } from './utils.ts'
@@ -109,13 +111,22 @@ export async function getGenericCorrelation(
     outcome.type === 'productivity'
   const needsMetrics = outcome.type === 'metric'
 
-  const [activities, productivity, metricData] = await Promise.all([
+  const [allActivities, allProductivity, allMetricData, flagged] = await Promise.all([
     needsActivities ? getEffectiveActivitiesInRange(user, start, end) : Promise.resolve([]),
     needsProductivity ? getProductivity(user, start, end) : Promise.resolve([]),
     needsMetrics && outcome.type === 'metric'
       ? getTimeSeries(user, outcome.metric as MetricType, start, end)
       : Promise.resolve([] as [Date, number][]),
+    loadFlaggedWindows(user, start, end, options.excludeFlagged),
   ])
+  const keptActivities = withoutFlagged(allActivities, (a) => a.start_time.getTime(), flagged)
+  const keptProductivity = withoutFlagged(allProductivity, (p) => p.start_time.getTime(), flagged)
+  const keptMetricData = withoutFlagged(allMetricData, ([time]) => time.getTime(), flagged)
+  const activities = keptActivities.kept
+  const productivity = keptProductivity.kept
+  const metricData = keptMetricData.kept
+  const skippedDays = flaggedDays(flagged)
+  const inRange = (day: string) => day >= getDayString(start) && day <= getDayString(end)
 
   const triggerEvents: EventWithTime[] = []
 
@@ -191,7 +202,7 @@ export async function getGenericCorrelation(
       const day = new Date(start)
       day.setDate(day.getDate() + dayOffset)
       const dayStr = getDayString(day)
-      if (!daysWithTriggers.has(dayStr)) {
+      if (!daysWithTriggers.has(dayStr) && !skippedDays.has(dayStr)) {
         unmatchedDays.push(dayStr)
       }
     }
@@ -200,6 +211,7 @@ export async function getGenericCorrelation(
       const windowEnd = new Date(start)
       windowEnd.setDate(windowEnd.getDate() + dayOffset)
       windowEnd.setHours(23, 59, 59, 999)
+      if (skippedDays.has(getDayString(windowEnd))) continue
 
       let allConditionsMet = true
 
@@ -232,6 +244,14 @@ export async function getGenericCorrelation(
   }
 
   const postTrigger: Record<string, LagResult> = {}
+
+  const outcomeMetric = outcome.type === 'metric' ? outcome.metric : ''
+  const binCount = (values: number[]) =>
+    isTimeWeightedMetric(outcomeMetric) ? { bin_count: values.length } : {}
+  const unmatchedDaySet = new Set(unmatchedDays)
+  const baselineSamples = metricData.filter(([time]) => unmatchedDaySet.has(getDayString(time)))
+  const baselineValues = meanValues(outcomeMetric, baselineSamples)
+  const baselineMean = mean(baselineValues)
 
   const outcomeTagEvents =
     outcome.type === 'tag'
@@ -268,36 +288,27 @@ export async function getGenericCorrelation(
       }
     } else if (outcome.type === 'metric') {
       const valuesAfterTrigger: number[] = []
+      let samplesAfterTrigger = 0
 
       for (const windowEnd of matchedWindowEnds) {
         const lagEnd = new Date(windowEnd.getTime() + lagMs)
-
-        const valuesInWindow = metricData
-          .filter(([time]) => time > windowEnd && time <= lagEnd)
-          .map(([, value]) => value)
-
-        pushAll(valuesAfterTrigger, valuesInWindow)
+        const samplesInWindow = metricData.filter(([time]) => time > windowEnd && time <= lagEnd)
+        samplesAfterTrigger += samplesInWindow.length
+        pushAll(valuesAfterTrigger, meanValues(outcomeMetric, samplesInWindow))
       }
 
       const meanAfter = mean(valuesAfterTrigger)
       const stddevAfter = stddev(valuesAfterTrigger)
-
-      // Calculate baseline (values on days without triggers)
-      const unmatchedDaysSet = new Set(unmatchedDays)
-      const baselineValues = metricData
-        .filter(([time]) => unmatchedDaysSet.has(getDayString(time)))
-        .map(([, value]) => value)
-
-      const baselineMean = mean(baselineValues)
       const delta =
         meanAfter !== null && baselineMean !== null
           ? Math.round((meanAfter - baselineMean) * 100) / 100
           : null
 
       postTrigger[lag] = {
+        ...binCount(valuesAfterTrigger),
         delta_from_baseline: delta,
         mean: meanAfter !== null ? Math.round(meanAfter * 100) / 100 : null,
-        sample_count: valuesAfterTrigger.length,
+        sample_count: samplesAfterTrigger,
         stddev: stddevAfter !== null ? Math.round(stddevAfter * 100) / 100 : null,
       }
     } else if (outcome.type === 'productivity') {
@@ -367,15 +378,12 @@ export async function getGenericCorrelation(
       probability: Math.round(probability * 100) / 100,
     }
   } else if (outcome.type === 'metric') {
-    const unmatchedDaysSet = new Set(unmatchedDays)
-    const baselineValues = metricData
-      .filter(([time]) => unmatchedDaysSet.has(getDayString(time)))
-      .map(([, value]) => value)
-
+    const baselineStddev = stddev(baselineValues)
     baseline = {
-      mean: mean(baselineValues) !== null ? Math.round(mean(baselineValues)! * 100) / 100 : null,
-      sample_count: baselineValues.length,
-      stddev: stddev(baselineValues) !== null ? Math.round(stddev(baselineValues)! * 100) / 100 : null,
+      ...binCount(baselineValues),
+      mean: baselineMean !== null ? Math.round(baselineMean * 100) / 100 : null,
+      sample_count: baselineSamples.length,
+      stddev: baselineStddev !== null ? Math.round(baselineStddev * 100) / 100 : null,
     }
   } else {
     // productivity
@@ -425,6 +433,10 @@ export async function getGenericCorrelation(
 
   return {
     baseline,
+    ...flaggedExclusion(flagged, {
+      excluded_days: [...skippedDays].filter(inRange).length,
+      excluded_points: keptActivities.excluded + keptProductivity.excluded + keptMetricData.excluded,
+    }),
     outcome,
     period: {
       days: analysisDays,
@@ -463,12 +475,19 @@ async function getGenericEventOutcome(
   // Fire-and-forget: never block the analysis on live external syncs.
   triggerCorrelationSyncs(sync, user)
 
-  const eventOutcome = await getCompoundEventOutcome(user, triggers, outcome, lagWindows, {
-    denominator: options.denominator,
-    periodDays,
-    periodEnd: options.periodEnd,
-    periodStart: options.periodStart,
-  })
+  const { flagged_exclusion: flaggedExclusionBlock, ...eventOutcome } = await getCompoundEventOutcome(
+    user,
+    triggers,
+    outcome,
+    lagWindows,
+    {
+      denominator: options.denominator,
+      excludeFlagged: options.excludeFlagged,
+      periodDays,
+      periodEnd: options.periodEnd,
+      periodStart: options.periodStart,
+    },
+  )
 
   const primaryLag = eventOutcome.per_lag[0]
 
@@ -476,6 +495,7 @@ async function getGenericEventOutcome(
     baseline: { description: 'Event-outcome mode — see event_outcome block', probability: 0 },
     event_outcome: {
       collapse_gap_days: eventOutcome.collapse_gap_days,
+      comparisons: eventOutcome.comparisons,
       denominator: eventOutcome.denominator,
       known_days: eventOutcome.known_days,
       onsets: eventOutcome.onsets,
@@ -483,6 +503,7 @@ async function getGenericEventOutcome(
       per_lag: eventOutcome.per_lag,
       trigger_days: eventOutcome.trigger_days,
     },
+    ...(flaggedExclusionBlock ? { flagged_exclusion: flaggedExclusionBlock } : {}),
     outcome,
     period: eventOutcome.period,
     post_trigger: {},

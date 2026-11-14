@@ -32,7 +32,7 @@ export const dataSources: DataSourceInfo[] = [
     name: 'Android Health Connect',
     doc: 'health-connect.md',
     provides:
-      'Heart rate, HRV, sleep, exercise (80+ types), mindfulness/meditation sessions, steps, weight, SpO2, VO2 max, calories, and more',
+      'Heart rate, HRV, sleep, exercise (60+ types), mindfulness/meditation sessions, steps, weight, SpO2, VO2 max, calories, and more',
     how: 'Push from Android app',
     adminSetup: 'None',
     userSetup: 'Install Android app',
@@ -59,7 +59,7 @@ export const dataSources: DataSourceInfo[] = [
     homepage: 'https://connect.garmin.com/',
     doc: 'garmin.md',
     provides:
-      'Daily summary, HR, HRV, sleep, stress, body battery, activities, SpO2, respiration, training readiness',
+      'Daily summary, HR, HRV, sleep, stress, body battery, activities, strength sets, SpO2, respiration, training readiness',
     how: 'Pull (login session and/or Personal API key)',
     adminSetup: 'None (Personal API keys can be turned off)',
     userSetup: 'Garmin credentials, a Personal API key, or both',

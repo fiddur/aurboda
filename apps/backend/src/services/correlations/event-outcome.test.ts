@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 
 import { collapseOnsets, computeEventOutcome, parseLagDays } from './event-outcome.ts'
+import { benjaminiHochberg } from './stats.ts'
 
 /** Build an inclusive range of YYYY-MM-DD day strings. */
 const dayRange = (start: string, count: number): string[] => {
@@ -97,6 +98,26 @@ describe('computeEventOutcome', () => {
     expect(lag.relative_risk).not.toBeNull()
     expect(lag.relative_risk!).toBeGreaterThan(2)
     expect(lag.p_value).toBeLessThan(0.05)
+  })
+
+  test('adjusts each lag p-value over the lags of the analysis', () => {
+    const known = dayRange('2024-01-01', 100)
+    const onsetDays = [10, 20, 30, 40, 50, 60, 70, 80, 90, 95].map((d) => known[d])
+    const triggerDays = [9, 19, 29, 39, 49, 59, 69, 79].map((d) => known[d])
+
+    const result = computeEventOutcome({
+      triggerDays,
+      outcomeDays: onsetDays,
+      knownDays: known,
+      lagWindows: ['24h', '48h', '7d', 'bogus'],
+      collapseGapDays: 3,
+    })
+
+    expect(result.per_lag).toHaveLength(3)
+    expect(result.per_lag.map((lag) => lag.p_value_adjusted)).toEqual(
+      benjaminiHochberg(result.per_lag.map((lag) => lag.p_value)),
+    )
+    expect(result.per_lag.every((lag) => lag.p_value_adjusted >= lag.p_value)).toBe(true)
   })
 
   test('no real effect -> relative risk near 1, not significant', () => {

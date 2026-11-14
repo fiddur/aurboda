@@ -5,9 +5,9 @@ import {
   fetchActivities,
   fetchActivityWatchStatus,
   fetchHeartRate,
-  fetchPlaces,
   fetchProductivity,
   fetchUserSettings,
+  hasLocationsFromSource,
 } from '../../state/api'
 import { auth } from '../../state/auth'
 import { SyncIntervalField } from './shared'
@@ -78,10 +78,10 @@ export function DataSources() {
     staleTime: 5 * 60 * 1000,
   })
 
-  const locationsQuery = useQuery({
+  const ownTracksQuery = useQuery({
     enabled: !!isLoggedIn,
-    queryFn: () => fetchPlaces(start7days, end),
-    queryKey: ['locations7days', formatISO(start7days, { representation: 'date' })],
+    queryFn: () => hasLocationsFromSource('owntracks', start7days, end),
+    queryKey: ['ownTracksLocations7days', formatISO(start7days, { representation: 'date' })],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -97,7 +97,7 @@ export function DataSources() {
     sleepQuery.isLoading ||
     exerciseQuery.isLoading ||
     productivityQuery.isLoading ||
-    locationsQuery.isLoading ||
+    ownTracksQuery.isLoading ||
     settingsQuery.isLoading ||
     awStatusQuery.isLoading
 
@@ -105,7 +105,7 @@ export function DataSources() {
   const hasSleep = (sleepQuery.data?.length ?? 0) > 0
   const hasExercise = (exerciseQuery.data?.length ?? 0) > 0
   const hasProductivity = (productivityQuery.data?.records?.length ?? 0) > 0
-  const hasLocations = (locationsQuery.data?.length ?? 0) > 0
+  const hasOwnTracks = ownTracksQuery.data ?? false
   const isOuraConnected = settingsQuery.data?.oura_connected ?? false
   const isGarminConnected = settingsQuery.data?.garmin_connected ?? false
   const isStravaConnected = settingsQuery.data?.strava_connected ?? false
@@ -214,10 +214,10 @@ export function DataSources() {
     },
     {
       dataTypes: 'GPS location, visited places',
-      isConnected: hasLocations,
+      isConnected: hasOwnTracks,
       name: 'OwnTracks',
       path: '/data-sources/owntracks',
-      statusText: hasLocations ? 'Location data detected' : 'Not set up',
+      statusText: hasOwnTracks ? 'Data received in the last 7 days' : 'No data in the last 7 days',
     },
     {
       dataTypes: 'GPS location and zones from the companion app, visited places',

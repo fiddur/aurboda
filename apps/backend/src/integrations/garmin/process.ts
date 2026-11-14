@@ -13,6 +13,7 @@ import type {
   GarminSpo2Data,
   GarminStressData,
   GarminTrainingReadiness,
+  GarminTrainingReadinessEntry,
 } from './client.ts'
 
 import {
@@ -179,11 +180,13 @@ const resolveActivityType = async (
   return resolved
 }
 
+/** `requestedDate` (YYYY-MM-DD) keys the raw record of a payload that carries no date of its own. */
 export const processGarminData = async (
   user: string,
   dataType: GarminDataType,
   data: unknown,
   deps: GarminProcessDeps = defaultDeps,
+  requestedDate?: string,
 ): Promise<number> => {
   if (data == null) return 0
 
@@ -193,7 +196,7 @@ export const processGarminData = async (
     case 'heartRate':
       return processHeartRate(user, data, deps)
     case 'hrv':
-      return processHrv(user, data as GarminHrvData, deps)
+      return processHrv(user, data as GarminHrvData, deps, requestedDate)
     case 'sleep':
       return processSleep(user, data as SleepData, deps)
     case 'stress':
@@ -207,9 +210,9 @@ export const processGarminData = async (
     case 'respiration':
       return processRespiration(user, data as GarminRespirationData, deps)
     case 'trainingReadiness':
-      return processTrainingReadiness(user, data as GarminTrainingReadiness, deps)
+      return processTrainingReadiness(user, data as GarminTrainingReadiness, deps, requestedDate)
     case 'intensityMinutes':
-      return processIntensityMinutes(user, data as GarminIntensityMinutes, deps)
+      return processIntensityMinutes(user, data as GarminIntensityMinutes, deps, requestedDate)
   }
 }
 
@@ -219,13 +222,65 @@ const dateAt = (calendarDate: string, hour = 12): Date => {
   return new Date(Date.UTC(y, m - 1, d, hour, 0, 0))
 }
 
-const makeRaw = (recordType: string, externalId: string, recordedAt: Date, data: unknown): RawRecord => ({
+export const makeRaw = (
+  recordType: string,
+  externalId: string,
+  recordedAt: Date,
+  data: unknown,
+): RawRecord => ({
   data: data as Record<string, unknown>,
   external_id: externalId,
   record_type: recordType,
   recorded_at: recordedAt,
   source: 'garmin',
 })
+
+const isBlank = (value: unknown): boolean => value == null || (Array.isArray(value) && value.length === 0)
+
+/** No data for the day: nothing, an empty list, or an object of nulls and empty lists. */
+const isEmptyPayload = (data: unknown): boolean =>
+  isBlank(data) || (typeof data === 'object' && !Array.isArray(data) && Object.values(data!).every(isBlank))
+
+/** JSONB takes an object; node-postgres would send a bare array as a Postgres array literal. */
+const rawData = (data: unknown): unknown => (Array.isArray(data) ? { entries: data } : data)
+
+const payloadKeys = (data: unknown): string[] =>
+  data !== null && typeof data === 'object' ? Object.keys(Array.isArray(data) ? (data[0] ?? {}) : data) : []
+
+const warnUnplaced = (
+  user: string,
+  dataType: GarminDataType,
+  data: unknown,
+  date: string | undefined,
+  deps: GarminProcessDeps,
+) =>
+  deps.auditWarn(user, 'sync', `⚠️ Garmin ${dataType} payload not recognised`, {
+    data_type: dataType,
+    date,
+    is_array: Array.isArray(data),
+    keys: payloadKeys(data),
+  })
+
+/** Keeps a payload the processor cannot read under the requested date, so its real shape can be looked up. */
+const recordUnplaced = async (
+  user: string,
+  dataType: GarminDataType,
+  recordType: string,
+  idPrefix: string,
+  data: unknown,
+  requestedDate: string | undefined,
+  deps: GarminProcessDeps,
+): Promise<number> => {
+  if (isEmptyPayload(data)) return 0
+  if (requestedDate) {
+    await deps.insertRawRecord(
+      user,
+      makeRaw(recordType, `${idPrefix}-${requestedDate}`, dateAt(requestedDate), rawData(data)),
+    )
+  }
+  warnUnplaced(user, dataType, data, requestedDate, deps)
+  return 0
+}
 
 const processDailySummary = async (
   user: string,
@@ -288,9 +343,16 @@ const processHeartRate = async (user: string, data: unknown, deps: GarminProcess
   return points.length > 0 ? 1 : 0
 }
 
-const processHrv = async (user: string, data: GarminHrvData, deps: GarminProcessDeps): Promise<number> => {
+const processHrv = async (
+  user: string,
+  data: GarminHrvData,
+  deps: GarminProcessDeps,
+  requestedDate?: string,
+): Promise<number> => {
   const summary = data?.hrvSummary ?? data
-  if (!summary?.calendarDate) return 0
+  if (!summary?.calendarDate) {
+    return recordUnplaced(user, 'hrv', 'garmin_hrv', 'garmin-hrv', data, requestedDate, deps)
+  }
 
   const time = dateAt(summary.calendarDate)
   await deps.insertRawRecord(user, makeRaw('garmin_hrv', `garmin-hrv-${summary.calendarDate}`, time, data))
@@ -638,40 +700,74 @@ const processRespiration = async (
   return 1
 }
 
+/** The entry Garmin computed last, by its `timestamp`; the first one when none carries it. */
+const latestReadiness = (entries: GarminTrainingReadinessEntry[]): GarminTrainingReadinessEntry | undefined =>
+  entries.reduce<GarminTrainingReadinessEntry | undefined>(
+    (latest, entry) => (!latest || (entry.timestamp ?? '') > (latest.timestamp ?? '') ? entry : latest),
+    undefined,
+  )
+
+/** The raw record is written before anything is read: no real answer of this endpoint has been seen yet. */
 const processTrainingReadiness = async (
   user: string,
   data: GarminTrainingReadiness,
   deps: GarminProcessDeps,
+  requestedDate?: string,
 ): Promise<number> => {
-  if (!data?.calendarDate) return 0
-
-  const time = dateAt(data.calendarDate)
-  await deps.insertRawRecord(
-    user,
-    makeRaw('garmin_training_readiness', `garmin-tr-${data.calendarDate}`, time, data),
+  const entries = (Array.isArray(data) ? data : [data]).filter(
+    (entry): entry is GarminTrainingReadinessEntry => entry !== null && typeof entry === 'object',
   )
-
-  const points: TimeSeriesPoint[] = []
-  if (data.overallScore != null && data.overallScore > 0) {
-    points.push({
-      metric: 'training_readiness',
-      source: 'garmin',
-      time,
-      unit: 'score',
-      value: data.overallScore,
-    })
+  const entry = latestReadiness(entries)
+  const date = entry?.calendarDate ?? requestedDate
+  if (!date) {
+    if (!isEmptyPayload(data)) warnUnplaced(user, 'trainingReadiness', data, undefined, deps)
+    return 0
   }
 
-  if (points.length > 0) await deps.insertTimeSeries(user, points)
+  const time = dateAt(date)
+  await deps.insertRawRecord(
+    user,
+    makeRaw('garmin_training_readiness', `garmin-tr-${date}`, time, rawData(data)),
+  )
+
+  if (!entry || !('score' in entry || 'overallScore' in entry)) {
+    if (!isEmptyPayload(data)) warnUnplaced(user, 'trainingReadiness', data, date, deps)
+    return 1
+  }
+
+  const score = entry.score ?? entry.overallScore
+  if (score != null && score > 0) {
+    await deps.insertTimeSeries(user, [
+      { metric: 'training_readiness', source: 'garmin', time, unit: 'score', value: score },
+    ])
+  }
   return 1
 }
+
+const intensityMinuteKeys = [
+  'moderateMinutes',
+  'vigorousMinutes',
+  'moderateIntensityMinutes',
+  'vigorousIntensityMinutes',
+] as const
 
 const processIntensityMinutes = async (
   user: string,
   data: GarminIntensityMinutes,
   deps: GarminProcessDeps,
+  requestedDate?: string,
 ): Promise<number> => {
-  if (!data?.calendarDate) return 0
+  if (!data?.calendarDate) {
+    return recordUnplaced(
+      user,
+      'intensityMinutes',
+      'garmin_intensity_minutes',
+      'garmin-im',
+      data,
+      requestedDate,
+      deps,
+    )
+  }
 
   const time = dateAt(data.calendarDate)
   await deps.insertRawRecord(
@@ -679,13 +775,19 @@ const processIntensityMinutes = async (
     makeRaw('garmin_intensity_minutes', `garmin-im-${data.calendarDate}`, time, data),
   )
 
-  const totalMinutes = (data.moderateIntensityMinutes ?? 0) + (data.vigorousIntensityMinutes ?? 0) * 2
-  const points: TimeSeriesPoint[] = []
-  if (totalMinutes > 0) {
-    points.push({ metric: 'intensity_minutes', source: 'garmin', time, unit: 'min', value: totalMinutes })
+  if (!intensityMinuteKeys.some((key) => key in data)) {
+    warnUnplaced(user, 'intensityMinutes', data, data.calendarDate, deps)
+    return 1
   }
 
-  if (points.length > 0) await deps.insertTimeSeries(user, points)
+  const moderate = data.moderateMinutes ?? data.moderateIntensityMinutes ?? 0
+  const vigorous = data.vigorousMinutes ?? data.vigorousIntensityMinutes ?? 0
+  const totalMinutes = moderate + vigorous * 2
+  if (totalMinutes > 0) {
+    await deps.insertTimeSeries(user, [
+      { metric: 'intensity_minutes', source: 'garmin', time, unit: 'min', value: totalMinutes },
+    ])
+  }
   return 1
 }
 

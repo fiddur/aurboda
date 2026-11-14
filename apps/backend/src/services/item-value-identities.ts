@@ -7,6 +7,7 @@ import type {
   StoredExerciseCatalog,
   StoredExerciseCatalogEntry,
   UnmappedItemValues,
+  UnmappedItemValuesQuery,
 } from '@aurboda/api-spec'
 
 import type { ExerciseEntryResolver } from './muscle-group-measures.ts'
@@ -217,17 +218,19 @@ const loggedValues = async (
 /**
  * Resolve the catalogue keys a write carries (see `applyItemValueKeys`), reading the user's
  * identities and logged values only when some item carries one. The mappings are returned for
- * `storeItemValueMappings` once the write is valid.
+ * `storeItemValueMappings` once the write is valid. `knownSchema` is for a type that is not stored yet,
+ * a catalogue type about to be adopted; without it the stored type's schema is read.
  */
 export const applyItemValueKeysForWrite = async <T extends Data | undefined>(
   user: string,
   activityType: string,
   data: T,
+  knownSchema?: DataSchemaDefinition | null,
 ): Promise<ItemValueResult<{ data: T; mappings: ItemValueMapping[] }>> => {
   if (data === undefined || !Object.values(data).some(Array.isArray)) {
     return { data: { data, mappings: [] }, success: true }
   }
-  const schema = (await getActivityTypeDefinition(user, activityType))?.data_schema
+  const schema = knownSchema ?? (await getActivityTypeDefinition(user, activityType))?.data_schema
   const keyed = catalogItemPaths(schema).filter((path) => itemsCarryKey(data, path))
   if (keyed.length === 0) return { data: { data, mappings: [] }, success: true }
   const contexts: Record<string, ItemValueIdentityContext> = {}
@@ -327,10 +330,12 @@ export const clearItemValueIdentity = async (
     : { error: `Identity for "${value.trim()}" not found`, success: false }
 }
 
+/** One page of the unmapped names, most used first; catalogue suggestions are built for that page only. */
 export const listUnmappedItemValues = async (
   user: string,
   activityType: string,
   field: string,
+  page: Partial<Pick<UnmappedItemValuesQuery, 'limit' | 'offset'>> = {},
 ): Promise<ItemValueResult<UnmappedItemValues>> => {
   const resolved = await resolveCatalogItemPath(user, activityType, field)
   if (!resolved.success) return resolved
@@ -340,17 +345,28 @@ export const listUnmappedItemValues = async (
     loggedValues(user, activityType, field),
   ])
   const storedMap = storedIdentityMap(stored)
-  const values = logged
+  const unmapped = logged
     .filter((v) => resolveItemValueIdentity(v.value, storedMap, catalog).state === 'unmapped')
-    .sort((a, b) => b.count - a.count || b.last_used.getTime() - a.last_used.getTime())
-    .map((v) => ({
-      count: v.count,
-      last_used: v.last_used.toISOString(),
-      suggestions: suggestExercises(catalog, v.value).map(toExerciseCatalogEntry),
-      value: v.value,
-    }))
+    .sort(
+      (a, b) =>
+        b.count - a.count || b.last_used.getTime() - a.last_used.getTime() || a.value.localeCompare(b.value),
+    )
+  const limit = Math.min(Math.max(page.limit ?? 50, 1), 200)
+  const offset = Math.max(page.offset ?? 0, 0)
+  const values = unmapped.slice(offset, offset + limit).map((v) => ({
+    count: v.count,
+    last_used: v.last_used.toISOString(),
+    suggestions: suggestExercises(catalog, v.value).map(toExerciseCatalogEntry),
+    value: v.value,
+  }))
   return {
-    data: { catalog: resolved.data.catalog, catalog_version: catalog.version, field, values },
+    data: {
+      catalog: resolved.data.catalog,
+      catalog_version: catalog.version,
+      field,
+      total: unmapped.length,
+      values,
+    },
     success: true,
   }
 }
@@ -401,11 +417,3 @@ export const loadExerciseEntryResolver = async (
     })
   }
 }
-
-/** `loadExerciseEntryResolver`, resolving every name to nothing when `field` is not catalogue-backed. */
-export const loadExerciseResolver = async (
-  user: string,
-  activityType: string,
-  field: string,
-): Promise<ExerciseEntryResolver> =>
-  (await loadExerciseEntryResolver(user, activityType, field)) ?? (() => undefined)

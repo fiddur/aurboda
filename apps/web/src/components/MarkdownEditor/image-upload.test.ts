@@ -14,9 +14,13 @@ import {
 
 describe('uploadPlaceholder and stillUploading', () => {
   test('a placeholder names the picture and marks the text as still uploading', () => {
-    expect(uploadPlaceholder('coffee.jpg')).toBe('![Uploading coffee.jpg…]()')
+    expect(uploadPlaceholder('coffee.jpg')).toBe('![Uploading\u2060 coffee.jpg…]()')
     expect(stillUploading(`Morning\n${uploadPlaceholder('coffee.jpg')}\n`)).toBe(true)
     expect(stillUploading('Morning\n![](https://aurboda.test/api/public/alice/images/x.webp)')).toBe(false)
+  })
+
+  test('the placeholder text typed by hand is not a picture on its way', () => {
+    expect(stillUploading('![Uploading coffee.jpg…]()')).toBe(false)
   })
 })
 

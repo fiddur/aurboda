@@ -6,6 +6,8 @@ import { defaultHrZoneThresholds } from './hrZones'
 import {
   computeSettingsUpdateParams,
   parseZoneValue,
+  sleepNeedHours,
+  sleepNeedMinutesFromHours,
   updateZoneThreshold,
   validateHrZoneThresholds,
 } from './settings'
@@ -229,5 +231,22 @@ describe('validateHrZoneThresholds', () => {
     const result = validateHrZoneThresholds(zones)
 
     expect(result).toEqual({ valid: true })
+  })
+})
+
+describe('sleep need in hours', () => {
+  test('shows minutes as hours', () => {
+    expect(sleepNeedHours(480)).toBe('8')
+    expect(sleepNeedHours(450)).toBe('7.5')
+    expect(sleepNeedHours(465)).toBe('7.75')
+  })
+
+  test('reads hours as minutes, an empty field as the default and refuses a need outside 3–12 hours', () => {
+    expect(sleepNeedMinutesFromHours('7.5')).toBe(450)
+    expect(sleepNeedMinutesFromHours('7,5')).toBe(450)
+    expect(sleepNeedMinutesFromHours(' ')).toBeNull()
+    expect(sleepNeedMinutesFromHours('2')).toBeUndefined()
+    expect(sleepNeedMinutesFromHours('13')).toBeUndefined()
+    expect(sleepNeedMinutesFromHours('abc')).toBeUndefined()
   })
 })

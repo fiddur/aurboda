@@ -19,7 +19,10 @@ export const activityTypeDefinitionSchema = z
     display_category: displayCategorySchema,
     display_name: z.string().meta({ description: 'Human-readable display name' }),
     icon: z.string().optional().meta({ description: 'Emoji or icon identifier' }),
-    is_builtin: z.boolean().meta({ description: 'Whether this is a built-in type' }),
+    is_builtin: z.boolean().meta({
+      description:
+        'Whether Aurboda seeds this type: the core types, every Health Connect exercise type and the internal ones (calendar_event, music_scrobble, screentime, location_visit). A built-in type cannot be deleted, renamed or merged away',
+    }),
     name: z
       .string()
       .regex(/^[a-z][a-z0-9_]*$/)
@@ -61,18 +64,28 @@ export const addActivityTypeDefinitionBodySchema = z
     data_schema: dataSchemaDefinitionSchema
       .optional()
       .meta({ description: 'Schema defining expected data fields' }),
-    display_category: displayCategorySchema.meta({ description: 'Display category for timeline grouping' }),
-    display_name: z.string().meta({ description: 'Human-readable display name' }),
+    display_category: displayCategorySchema.optional().meta({
+      description:
+        'Display category for timeline grouping. Required unless `name` is a built-in catalogue type (`GET /activity-type-catalog`), whose definition then fills in everything left out',
+    }),
+    display_name: z.string().optional().meta({
+      description:
+        'Human-readable display name. Required unless `name` is a built-in catalogue type (`GET /activity-type-catalog`), whose definition then fills in everything left out',
+    }),
     icon: z.string().optional().meta({ description: 'Emoji or icon identifier' }),
     name: z
       .string()
       .regex(/^[a-z][a-z0-9_]*$/)
-      .meta({ description: 'Snake_case identifier (e.g. "sauna", "driving")' }),
+      .meta({ description: 'Snake_case identifier (e.g. "sauna", "woodworking")' }),
     parent_type: z
       .string()
       .regex(/^[a-z][a-z0-9_]*$/)
       .optional()
       .meta({ description: 'Optional parent activity type name (must already exist)' }),
+    separate_type: z.boolean().optional().meta({
+      description:
+        'Create the type even when its name is a variant of a built-in type (e.g. `beer`, which is `alcohol` with kind beer); without it such a name is refused with a pointer to the built-in type and data to use',
+    }),
     show_on_timeline: z
       .boolean()
       .optional()
@@ -161,6 +174,10 @@ export type RenameActivityTypeResponse = z.infer<typeof renameActivityTypeRespon
 /** All activities are reassigned; aliases are merged; the source definition is deleted. */
 export const mergeActivityTypeBodySchema = z
   .object({
+    set_data: z.record(z.string(), z.unknown()).optional().meta({
+      description:
+        'Field values given to every moved activity that has no value for that field yet, e.g. `{ "kind": "beer" }` when merging `beer` into `alcohol`. Only scalar fields of the target\'s data schema; a target of a built-in catalogue name that lacks such a field gets it from the catalogue',
+    }),
     source: activityTypeNameSchema.meta({ description: 'Custom activity type to merge away' }),
     target: activityTypeNameSchema.meta({ description: 'Target activity type to merge into' }),
   })
@@ -170,6 +187,11 @@ export type MergeActivityTypeBody = z.infer<typeof mergeActivityTypeBodySchema>
 
 export const mergeActivityTypeResponseSchema = baseResponseSchema
   .extend({
+    activities_data_set: z
+      .number()
+      .int()
+      .optional()
+      .meta({ description: 'Number of moved activities that got a value from `set_data`' }),
     activities_reassigned: z
       .number()
       .int()

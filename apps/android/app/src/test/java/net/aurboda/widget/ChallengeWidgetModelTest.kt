@@ -6,7 +6,7 @@ import net.aurboda.api.models.ChallengeEffectiveBucketSize
 import net.aurboda.api.models.ChallengeBucketSize
 import net.aurboda.api.models.ChallengeParticipation
 import net.aurboda.api.models.ChallengeSourceType
-import net.aurboda.api.models.ChallengeSpec
+import net.aurboda.api.models.ChallengeSpecOutput
 import net.aurboda.api.models.ChallengeStanding
 import net.aurboda.api.models.ChartDataBucket
 import net.aurboda.api.models.DiscoveredChallenge
@@ -21,7 +21,7 @@ import java.util.Locale
 
 class ChallengeWidgetModelTest {
     private val spec =
-        ChallengeSpec(
+        ChallengeSpecOutput(
             aggregation = ChallengeAggregation.sum,
             bucketSize = ChallengeBucketSize.auto,
             pattern = "steps",

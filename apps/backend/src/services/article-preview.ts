@@ -4,16 +4,15 @@
  * `POST /feed/articles/preview` and the MCP `preview_article` tool (parity).
  */
 import type {
-  ArticleBlock,
   ArticleContent,
-  ArticleDraftBlock,
   ArticleDraftContent,
   ArticlePreviewAttachment,
   ArticlePreviewResponse,
-  CorrelationSelector,
   FeedVisibility,
   PreviewArticleBody,
 } from '@aurboda/api-spec'
+
+import { isCompleteArticleBlock } from '@aurboda/api-spec'
 
 import type { ArticleFigure } from './activitypub/article-object.ts'
 import type { ArticleChartDeps } from './article-figure.ts'
@@ -28,8 +27,7 @@ import { hashtagLinks, linkifyHashtags } from './activitypub/hashtag-html.ts'
 import { linkedHashtags, mastodonSanitize, splitTrailingHashtags } from './activitypub/mastodon-sanitize.ts'
 import { checkDraftChallenges, checkedPublishable, draftPostTags } from './article-drafts.ts'
 import { articleBlockFigureSvg } from './article-figure.ts'
-import { blockWindow, withCanonicalChallengeUrls } from './article.ts'
-import { canonicalChallengeUrl, parseChallengeUrl } from './challenge-federation.ts'
+import { withCanonicalChallengeUrls } from './article.ts'
 import { articleBlockAt, timeBucket } from './post-chart.ts'
 import { createRenderCache } from './render-cache.ts'
 
@@ -61,49 +59,12 @@ export type ArticlePreviewer = (user: string, body: PreviewArticleBody) => Promi
 
 const FIGURE_BUCKET_MS = 3_600_000
 
-const hasBoundedWindow = (
-  block: { start?: string; end?: string },
-  content: Pick<ArticleDraftContent, 'default_end' | 'default_start'>,
-): boolean => {
-  const { end, start } = blockWindow(block, content)
-  return start != null && end != null && new Date(start).getTime() < new Date(end).getTime()
-}
-
-/** A selector with something chosen: the editor leaves an empty metric or pattern in an unpicked one. */
-const isChosen = (selector: CorrelationSelector | undefined): boolean => {
-  if (selector === undefined) return false
-  if (selector.kind === 'metric') return selector.metric.trim() !== ''
-  return selector.kind === 'nutrition' || selector.pattern.trim() !== ''
-}
-
-const isChallengeUrl = (url: string | undefined): boolean =>
-  url !== undefined && canonicalChallengeUrl(url) != null && parseChallengeUrl(url) != null
-
-/** Whether a draft block is complete enough to render as it would publish. */
-export const isCompleteBlock = (
-  block: ArticleDraftBlock,
-  content: ArticleDraftContent,
-): block is ArticleBlock => {
-  switch (block.type) {
-    case 'prose':
-      return true
-    case 'challenge':
-      return isChallengeUrl(block.challenge_url)
-    case 'chart':
-      return block.metric !== undefined && hasBoundedWindow(block, content)
-    case 'correlation':
-      return isChosen(block.trigger) && isChosen(block.outcome) && hasBoundedWindow(block, content)
-    case 'impact':
-      return Boolean(block.activity) && hasBoundedWindow(block, content)
-  }
-}
-
 /** The draft's complete blocks as an article, and each kept block's index in the draft. */
 export const previewableArticle = (
   content: ArticleDraftContent,
 ): { article: ArticleContent; indices: number[] } => {
   const kept = content.blocks.flatMap((block, index) =>
-    isCompleteBlock(block, content) ? [{ block, index }] : [],
+    isCompleteArticleBlock(block, content) ? [{ block, index }] : [],
   )
   return {
     article: {

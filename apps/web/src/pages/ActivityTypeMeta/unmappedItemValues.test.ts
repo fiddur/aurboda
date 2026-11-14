@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { UNMAPPED_PAGE_SIZE, unmappedSummary, visibleUnmapped } from './unmappedItemValues'
+import { loadedUnmapped, nextUnmappedOffset, unmappedSummary } from './unmappedItemValues'
 
 describe('unmappedSummary', () => {
   test('counts the names', () => {
@@ -12,24 +12,32 @@ describe('unmappedSummary', () => {
   })
 })
 
-describe('visibleUnmapped', () => {
-  const values = Array.from({ length: 45 }, (_, i) => i)
-
-  test('shows the first page and how many remain', () => {
-    const { rows, remaining } = visibleUnmapped(values, UNMAPPED_PAGE_SIZE)
-    expect(rows).toEqual(values.slice(0, 20))
-    expect(remaining).toBe(25)
+describe('the fetched pages', () => {
+  const page = (from: number, to: number, total = 45) => ({
+    total,
+    values: Array.from({ length: to - from }, (_, i) => from + i),
   })
 
-  test('shows everything once the limit passes the end', () => {
-    const { rows, remaining } = visibleUnmapped(values, 60)
-    expect(rows).toHaveLength(45)
-    expect(remaining).toBe(0)
+  test('one page: its rows, how many remain and where the next starts', () => {
+    expect(loadedUnmapped([page(0, 20)])).toEqual({ remaining: 25, rows: page(0, 20).values, total: 45 })
+    expect(nextUnmappedOffset([page(0, 20)])).toBe(20)
   })
 
-  test('keeps the limit when rows leave the list', () => {
-    const { rows, remaining } = visibleUnmapped(values.slice(1), 40)
-    expect(rows).toHaveLength(40)
-    expect(remaining).toBe(4)
+  test('every page fetched: nothing remains and there is no next page', () => {
+    const pages = [page(0, 20), page(20, 40), page(40, 45)]
+    expect(loadedUnmapped(pages)).toMatchObject({ remaining: 0, total: 45 })
+    expect(loadedUnmapped(pages).rows).toHaveLength(45)
+    expect(nextUnmappedOffset(pages)).toBeUndefined()
+  })
+
+  test('the latest page’s total counts, after names left the list', () => {
+    const pages = [page(0, 20, 44), page(20, 40, 44)]
+    expect(loadedUnmapped(pages)).toMatchObject({ remaining: 4, total: 44 })
+    expect(nextUnmappedOffset(pages)).toBe(40)
+  })
+
+  test('no pages', () => {
+    expect(loadedUnmapped([])).toEqual({ remaining: 0, rows: [], total: 0 })
+    expect(nextUnmappedOffset([])).toBeUndefined()
   })
 })

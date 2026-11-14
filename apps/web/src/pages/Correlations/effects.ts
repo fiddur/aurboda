@@ -29,8 +29,13 @@ export const formatDelta = (value: number | null, decimals: number): string => {
 
 const formatMean = (value: number | null): string => (value === null ? '--' : value.toFixed(1))
 
-export const isClearChange = (effect: WindowEffect): boolean =>
-  effect.p_value !== null && effect.p_value < SIGNIFICANCE_LEVEL
+const decidingP = (effect: WindowEffect): number | null =>
+  effect.p_value_adjusted === undefined ? effect.p_value : effect.p_value_adjusted
+
+export const isClearChange = (effect: WindowEffect): boolean => {
+  const p = decidingP(effect)
+  return p !== null && p < SIGNIFICANCE_LEVEL
+}
 
 export const changeClass = (effect: WindowEffect, direction: MetricDirection): string => {
   if (effect.change === null) return ''
@@ -41,6 +46,25 @@ export const changeClass = (effect: WindowEffect, direction: MetricDirection): s
 
 const formatPValue = (p: number): string => (p < 0.001 ? 'p < 0.001' : `p = ${p.toFixed(3)}`)
 
+const formatPValues = (effect: WindowEffect): string | null => {
+  if (effect.p_value === null) return null
+  const raw = formatPValue(effect.p_value)
+  return effect.p_value_adjusted === undefined || effect.p_value_adjusted === null
+    ? raw
+    : `${raw}, adjusted for the comparisons ${formatPValue(effect.p_value_adjusted)}`
+}
+
+/** The line under a table of tested changes: how many there are and what that means. */
+export const comparisonsNote = (comparisons: number): string | null => {
+  if (comparisons < 2) return null
+  const expected = Math.round(comparisons * SIGNIFICANCE_LEVEL)
+  const chance =
+    expected === 0
+      ? `fewer than one of these would be expected to pass p < ${SIGNIFICANCE_LEVEL} by chance`
+      : `about ${expected === 1 ? 'one' : expected} of these would pass p < ${SIGNIFICANCE_LEVEL} by chance`
+  return `${comparisons} comparisons: ${chance}. Results are marked from the p-value adjusted for them (Benjamini–Hochberg).`
+}
+
 export const changeTitle = (effect: WindowEffect): string => {
   if (effect.change === null || effect.paired_occurrences === 0) {
     return 'No occurrences with data both before and after'
@@ -50,7 +74,8 @@ export const changeTitle = (effect: WindowEffect): string => {
     n === 1 ? 'occurrence' : 'occurrences'
   }`
   if (n < MIN_PAIRS_FOR_TEST) return `${base} (too few occurrences to tell)`
-  return effect.p_value === null ? base : `${base} (${formatPValue(effect.p_value)})`
+  const p = formatPValues(effect)
+  return p === null ? base : `${base} (${p})`
 }
 
 export const columnTitles = (windowMinutes: number) => ({

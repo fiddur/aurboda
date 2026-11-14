@@ -127,23 +127,52 @@ export interface GarminActivityDetailResponse {
   } | null
 }
 
-/** Training readiness from /metrics-service/metrics/trainingreadiness/{date} */
-export interface GarminTrainingReadiness {
-  calendarDate: string
-  overallScore: number | null
-  sleepScore: number | null
-  recoveryScore: number | null
-  trainingLoadScore: number | null
-  hrvScore: number | null
-  level: string // e.g. "PRIME", "HIGH", "MODERATE", "LOW"
+/**
+ * Exercise sets from /activity-service/activity/{id}/exerciseSets. The shape comes from
+ * community clients and is unverified here, so every field is optional.
+ */
+export interface GarminExerciseSet {
+  exercises?: Array<{ category?: string | null; name?: string | null; probability?: number | null }> | null
+  duration?: number | null
+  repetitionCount?: number | null
+  weight?: number | null
+  setType?: string | null
+  startTime?: string | null
 }
 
-/** Daily intensity minutes from /wellness-service/wellness/daily/im/{date} */
+export interface GarminExerciseSetsResponse {
+  activityId?: number
+  exerciseSets?: GarminExerciseSet[] | null
+}
+
+/**
+ * One training readiness entry from /metrics-service/metrics/trainingreadiness/{date}.
+ * No real answer has been seen yet: other clients describe an array of these with
+ * `score`, older code assumed one object with `overallScore`, so both are read.
+ */
+export interface GarminTrainingReadinessEntry {
+  calendarDate?: string | null
+  timestamp?: string | null
+  score?: number | null
+  overallScore?: number | null
+  level?: string | null
+}
+
+export type GarminTrainingReadiness = GarminTrainingReadinessEntry | GarminTrainingReadinessEntry[]
+
+/**
+ * Daily intensity minutes from /wellness-service/wellness/daily/im/{date}, which sends
+ * `moderateMinutes`/`vigorousMinutes`/`weekGoal`; the `*IntensityMinutes` names are the
+ * daily summary's, which the Personal API path maps from.
+ */
 export interface GarminIntensityMinutes {
   calendarDate: string
-  weeklyGoal: number
-  moderateIntensityMinutes: number
-  vigorousIntensityMinutes: number
+  moderateMinutes?: number | null
+  vigorousMinutes?: number | null
+  weekGoal?: number | null
+  moderateIntensityMinutes?: number | null
+  vigorousIntensityMinutes?: number | null
+  weeklyGoal?: number | null
 }
 
 /** Daily user summary from /usersummary-service/usersummary/daily/{displayName} */
@@ -201,6 +230,17 @@ const GC_API = 'https://connectapi.garmin.com'
 
 /** Requires no server-side credentials, unlike Oura which needs a client id/secret. */
 export const garminClient = (deps: GarminClientDeps = defaultDeps) => {
+  const displayNames = new Map<string, string>()
+
+  const displayName = async (user: string, gc: InstanceType<typeof GarminConnect>): Promise<string> => {
+    const cached = displayNames.get(user)
+    if (cached) return cached
+    const profile = await gc.getUserProfile()
+    if (!profile?.displayName) throw new Error('Could not retrieve Garmin user profile')
+    displayNames.set(user, profile.displayName)
+    return profile.displayName
+  }
+
   /**
    * Restore a GarminConnect instance from stored tokens for a user.
    * Throws if no tokens are stored.
@@ -230,6 +270,7 @@ export const garminClient = (deps: GarminClientDeps = defaultDeps) => {
 
   return {
     async disconnect(user: string): Promise<void> {
+      displayNames.delete(user)
       // We just remove the OAuth token; there's no server-side session to revoke
       // since we're scraping rather than using an official OAuth flow.
       await deps.upsertOAuthToken(user, {
@@ -241,6 +282,15 @@ export const garminClient = (deps: GarminClientDeps = defaultDeps) => {
       const gc = await restoreSession(user)
       const result = await gc.get<GarminActivityDetailResponse>(
         `${GC_API}/activity-service/activity/${activityId}/details?maxChartSize=10000&maxPolylineSize=4000`,
+      )
+      await saveSession(user, gc)
+      return result
+    },
+
+    async getActivityExerciseSets(user: string, activityId: number): Promise<GarminExerciseSetsResponse> {
+      const gc = await restoreSession(user)
+      const result = await gc.get<GarminExerciseSetsResponse>(
+        `${GC_API}/activity-service/activity/${activityId}/exerciseSets`,
       )
       await saveSession(user, gc)
       return result
@@ -264,10 +314,8 @@ export const garminClient = (deps: GarminClientDeps = defaultDeps) => {
 
     async getDailySummary(user: string, date: Date): Promise<GarminDailySummary> {
       const gc = await restoreSession(user)
-      const profile = await gc.getUserProfile()
-      if (!profile?.displayName) throw new Error('Could not retrieve Garmin user profile')
       const result = await gc.get<GarminDailySummary>(
-        `${GC_API}/usersummary-service/usersummary/daily/${profile.displayName}?calendarDate=${fmt(date)}`,
+        `${GC_API}/usersummary-service/usersummary/daily/${await displayName(user, gc)}?calendarDate=${fmt(date)}`,
       )
       await saveSession(user, gc)
       return result
@@ -352,6 +400,7 @@ export const garminClient = (deps: GarminClientDeps = defaultDeps) => {
      */
     async login(user: string, email: string, password: string): Promise<LoginResult> {
       pendingMfaSessions.delete(user)
+      displayNames.delete(user)
 
       auditInfo(user, 'auth', 'Garmin login attempt', { email })
       const gc = new GarminConnect({ password, username: email })

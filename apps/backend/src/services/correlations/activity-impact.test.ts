@@ -7,13 +7,17 @@ import type { MergedActivity } from '../../db/types.ts'
 import * as db from '../../db/index.ts'
 import * as settings from '../settings.ts'
 import { getActivityImpact, type ImpactSlicing } from './activity-impact.ts'
+import { BIN_MINUTES, binSeries } from './impact.ts'
+import { benjaminiHochberg } from './stats.ts'
+
+const rawPoints = vi.fn<(user: string, metric: string) => Promise<[Date, number][]>>()
 
 vi.mock('../../db', () => ({
   expandActivityTypes: vi.fn(),
   getActivityTypeDefinitions: vi.fn(),
+  getBinnedTimeSeries: vi.fn(),
   getEffectiveActivitiesInRange: vi.fn(),
   getProductivity: vi.fn(),
-  getTimeSeries: vi.fn(),
 }))
 
 vi.mock('../locations', () => ({
@@ -27,12 +31,15 @@ vi.mock('../settings', () => ({
 describe('getActivityImpact', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(db.getBinnedTimeSeries).mockImplementation(async (user, metric, _start, _end, binMinutes) =>
+      binSeries(await rawPoints(user, metric), binMinutes),
+    )
   })
 
   test('returns HRV timeline for tag activity', async () => {
     const baseTime = new Date('2024-01-15T12:00:00Z')
 
-    vi.mocked(db.getTimeSeries).mockResolvedValue([
+    rawPoints.mockResolvedValue([
       [new Date(baseTime.getTime() - 25 * 60 * 1000), 45], // before30
       [new Date(baseTime.getTime() - 10 * 60 * 1000), 48], // before15
       [new Date(baseTime.getTime() + 5 * 60 * 1000), 42], // during
@@ -66,7 +73,7 @@ describe('getActivityImpact', () => {
   })
 
   test('returns zero occurrences when no matching tags', async () => {
-    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    rawPoints.mockResolvedValue([])
     vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([])
 
     const result = await getActivityImpact('testuser', 'nonexistent', 'tag', 30, 90)
@@ -76,18 +83,19 @@ describe('getActivityImpact', () => {
   })
 
   test('an explicit since starts the range exactly there', async () => {
-    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    rawPoints.mockResolvedValue([])
     vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([])
     const since = new Date('2026-03-01T00:00:00+01:00')
     const until = new Date('2026-04-01T00:00:00+02:00')
 
     await getActivityImpact('testuser', 'coffee', 'tag', 30, 31, undefined, until, since)
 
-    expect(db.getTimeSeries).toHaveBeenCalledWith(
+    expect(db.getBinnedTimeSeries).toHaveBeenCalledWith(
       'testuser',
       'hrv_rmssd',
       new Date(since.getTime() - 30 * 60_000),
       new Date(until.getTime() - 1 + 30 * 60_000),
+      BIN_MINUTES,
     )
     expect(db.getEffectiveActivitiesInRange).toHaveBeenCalledWith(
       'testuser',
@@ -97,24 +105,25 @@ describe('getActivityImpact', () => {
   })
 
   test('without since, the range reaches periodDays back from until', async () => {
-    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    rawPoints.mockResolvedValue([])
     vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([])
     const until = new Date('2026-04-01T00:00:00Z')
 
     await getActivityImpact('testuser', 'coffee', 'tag', 30, 31, undefined, until)
 
-    expect(db.getTimeSeries).toHaveBeenCalledWith(
+    expect(db.getBinnedTimeSeries).toHaveBeenCalledWith(
       'testuser',
       'hrv_rmssd',
       new Date('2026-02-28T23:30:00Z'),
       new Date(until.getTime() - 1 + 30 * 60_000),
+      BIN_MINUTES,
     )
   })
 
   test('handles productivity category activity type', async () => {
     const baseTime = new Date('2024-01-15T12:00:00Z')
 
-    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    rawPoints.mockResolvedValue([])
     vi.mocked(db.getProductivity).mockResolvedValue([
       {
         activity: 'vscode',
@@ -136,7 +145,7 @@ describe('getActivityImpact', () => {
 
   test("match 'exact' excludes longer names that the default contains", async () => {
     const base = new Date('2024-01-15T12:00:00Z')
-    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    rawPoints.mockResolvedValue([])
     vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
       { activity_type: 'running', end_time: at(base, 30), source: 'manual' as const, start_time: base },
       {
@@ -166,7 +175,7 @@ describe('getActivityImpact', () => {
 
   test('the same session from two sources is one occurrence', async () => {
     const base = new Date('2024-01-15T12:00:00Z')
-    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    rawPoints.mockResolvedValue([])
     vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
       { activity_type: 'yoga', end_time: at(base, 60), source: 'garmin' as const, start_time: base },
       {
@@ -185,7 +194,7 @@ describe('getActivityImpact', () => {
 
   test('returns the paired effects and the clamped window', async () => {
     const base = new Date('2024-01-15T12:00:00Z')
-    vi.mocked(db.getTimeSeries).mockImplementation(async (_u: string, metric: string) =>
+    rawPoints.mockImplementation(async (_u: string, metric: string) =>
       metric === 'stress_level'
         ? ([
             [at(base, -20), 50],
@@ -214,7 +223,7 @@ describe('getActivityImpact', () => {
   })
 
   test('the series reaches one window past each end of the period', async () => {
-    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    rawPoints.mockResolvedValue([])
     vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([])
     const since = new Date('2026-03-01T00:00:00Z')
     const until = new Date('2026-04-01T00:00:00Z')
@@ -222,18 +231,19 @@ describe('getActivityImpact', () => {
     await getActivityImpact('testuser', 'yoga', 'activity_type', 240, 31, undefined, until, since)
 
     for (const metric of ['hrv_rmssd', 'heart_rate', 'stress_level']) {
-      expect(db.getTimeSeries).toHaveBeenCalledWith(
+      expect(db.getBinnedTimeSeries).toHaveBeenCalledWith(
         'testuser',
         metric,
         new Date('2026-02-28T20:00:00Z'),
         new Date(until.getTime() - 1 + 240 * 60_000),
+        BIN_MINUTES,
       )
     }
   })
 
   test('the timeline lists the buckets in time order for the chosen window', async () => {
     const base = new Date('2024-01-15T12:00:00Z')
-    vi.mocked(db.getTimeSeries).mockImplementation(async (_u: string, metric: string) =>
+    rawPoints.mockImplementation(async (_u: string, metric: string) =>
       metric === 'stress_level'
         ? ([
             [at(base, -150), 40],
@@ -276,7 +286,7 @@ describe('getActivityImpact', () => {
 
   test('extra metrics get an effect and bucket stats; without them nothing new appears', async () => {
     const base = new Date('2024-01-15T12:00:00Z')
-    vi.mocked(db.getTimeSeries).mockImplementation(async (_u: string, metric: string) =>
+    rawPoints.mockImplementation(async (_u: string, metric: string) =>
       metric === 'respiratory_rate'
         ? ([
             [at(base, -20), 16],
@@ -347,7 +357,7 @@ describe('getActivityImpact slicing', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    rawPoints.mockResolvedValue([])
     vi.mocked(db.expandActivityTypes).mockResolvedValue(['sleep', 'nap'])
     vi.mocked(db.getActivityTypeDefinitions).mockResolvedValue([])
     vi.mocked(settings.getUserTimezone).mockResolvedValue('UTC')
@@ -373,7 +383,7 @@ describe('getActivityImpact slicing', () => {
   })
 
   test('a duration breakdown analyses each group; the whole stays as it was', async () => {
-    vi.mocked(db.getTimeSeries).mockImplementation(async (_u: string, metric: string) =>
+    rawPoints.mockImplementation(async (_u: string, metric: string) =>
       metric === 'stress_level'
         ? ([
             [mins(day(15), -20), 50],
@@ -413,8 +423,40 @@ describe('getActivityImpact slicing', () => {
     expect(whole).toEqual(plain)
   })
 
+  test('adjusts the whole and every group over one family', async () => {
+    const short = [-20, -18, -21, -19]
+    const long = [1, -2, 2, -1]
+    rawPoints.mockImplementation(async (_u: string, metric: string) =>
+      metric === 'stress_level'
+        ? ([
+            ...short.flatMap((diff, i) => [
+              [mins(day(2 + i), -20), 50],
+              [mins(day(2 + i), 20), 50 + diff],
+            ]),
+            ...long.flatMap((diff, i) => [
+              [mins(day(10 + i), -20), 50],
+              [mins(day(10 + i), 70), 50 + diff],
+            ]),
+          ] as [Date, number][])
+        : [],
+    )
+    vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
+      ...short.map((_, i) => yoga(day(2 + i), 10)),
+      ...long.map((_, i) => yoga(day(10 + i), 60)),
+    ])
+
+    const result = await impact({ breakdown: 'duration' })
+    const effects = [result.stress_effect, ...result.breakdown!.groups.map((g) => g.stress_effect)]
+
+    expect(result.comparisons).toBe(3)
+    expect(effects.map((e) => e.p_value_adjusted)).toEqual(
+      benjaminiHochberg(effects.map((e) => e.p_value!)).map((p) => Math.round(p * 10_000) / 10_000),
+    )
+    expect(result.hrv_effect.p_value_adjusted).toBeNull()
+  })
+
   test('a duration filter keeps the short session, still clipped by the long one it drops', async () => {
-    vi.mocked(db.getTimeSeries).mockImplementation(async (_u: string, metric: string) =>
+    rawPoints.mockImplementation(async (_u: string, metric: string) =>
       metric === 'stress_level'
         ? ([
             [mins(day(15), -20), 50],
@@ -453,31 +495,53 @@ describe('getActivityImpact slicing', () => {
     ])
   })
 
-  test('a sleep filter drops a session followed by a nap, over an extended fetch', async () => {
+  const inRange = (activities: MergedActivity[]) =>
+    vi
+      .mocked(db.getEffectiveActivitiesInRange)
+      .mockImplementation(async (_u, start, end) =>
+        activities.filter((a) => a.start_time >= start && a.start_time <= end),
+      )
+
+  test('a sleep filter drops a session followed by a nap, sleeps read over an extended range', async () => {
     const nap: MergedActivity = {
       activity_type: 'nap',
       end_time: mins(day(15), 90),
       source: 'manual' as const,
       start_time: mins(day(15), 40),
     }
-    vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
-      yoga(mins(since, -120), 30),
-      yoga(day(15), 30),
-      nap,
-      yoga(day(16), 30),
-    ])
+    inRange([yoga(mins(since, -120), 30), yoga(day(15), 30), nap, yoga(day(16), 30)])
 
     const result = await impact({ filters: [{ dimension: 'sleep', keys: ['none'] }] })
 
     expect(result.total_occurrences).toBe(2)
     expect(result.occurrences).toBe(1)
-    expect(db.getEffectiveActivitiesInRange).toHaveBeenCalledTimes(1)
+    expect(db.getEffectiveActivitiesInRange).toHaveBeenCalledTimes(2)
+    expect(db.getEffectiveActivitiesInRange).toHaveBeenCalledWith(
+      'testuser',
+      since,
+      new Date(until.getTime() - 1),
+    )
     expect(db.getEffectiveActivitiesInRange).toHaveBeenCalledWith(
       'testuser',
       new Date(since.getTime() - 30 * 60_000 - 86_400_000),
       new Date(until.getTime() - 1 + 30 * 60_000),
     )
     expect(db.expandActivityTypes).toHaveBeenCalledWith('testuser', ['sleep', 'nap'])
+  })
+
+  test('a merge group straddling the start of the period counts the same with or without sleep', async () => {
+    const inside = yoga(mins(since, 5), 30)
+    const straddling = { ...yoga(mins(since, -10), 45), source: 'garmin' as const }
+    vi.mocked(db.getEffectiveActivitiesInRange).mockImplementation(async (_u, start) =>
+      start < since ? [straddling, yoga(day(16), 30)] : [inside, yoga(day(16), 30)],
+    )
+
+    const plain = await impact({})
+    const withSleep = await impact({ breakdown: 'sleep' })
+
+    expect(plain.total_occurrences).toBe(2)
+    expect(withSleep.total_occurrences).toBe(plain.total_occurrences)
+    expect(withSleep.breakdown?.groups.reduce((sum, g) => sum + g.occurrences, 0)).toBe(2)
   })
 
   test('include_dimensions lists every dimension with counts before filters', async () => {

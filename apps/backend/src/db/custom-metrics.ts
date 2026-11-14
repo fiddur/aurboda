@@ -1,14 +1,17 @@
 import type { CustomMetricDefinition } from '@aurboda/api-spec'
 
+import type { Queryable } from './pool.ts'
+
 import { query } from './connection.ts'
 
-const COLUMNS = 'name, unit, description, min_value, max_value, include_in_daily_summary, aggregation'
+const COLUMNS = 'name, unit, description, min_value, max_value, include_in_daily_summary, aggregation, better'
 
 const mapRow = (row: Record<string, unknown>): CustomMetricDefinition => ({
   name: row.name as string,
   unit: row.unit as string,
   include_in_daily_summary: (row.include_in_daily_summary as boolean | null) ?? false,
   aggregation: row.aggregation === 'sum' ? 'sum' : 'avg',
+  better: row.better === 'higher' || row.better === 'lower' ? row.better : 'neutral',
   ...(row.description != null ? { description: row.description as string } : {}),
   ...(row.min_value != null ? { min_value: row.min_value as number } : {}),
   ...(row.max_value != null ? { max_value: row.max_value as number } : {}),
@@ -34,8 +37,8 @@ export const insertCustomMetricDefinition = async (
 ): Promise<void> => {
   await query(
     user,
-    `INSERT INTO custom_metrics (name, unit, description, min_value, max_value, include_in_daily_summary, aggregation)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    `INSERT INTO custom_metrics (name, unit, description, min_value, max_value, include_in_daily_summary, aggregation, better)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
     [
       definition.name,
       definition.unit,
@@ -44,12 +47,13 @@ export const insertCustomMetricDefinition = async (
       definition.max_value ?? null,
       definition.include_in_daily_summary ?? false,
       definition.aggregation ?? 'avg',
+      definition.better ?? 'neutral',
     ],
   )
 }
 
 export type CustomMetricDefinitionUpdates = Partial<
-  Pick<CustomMetricDefinition, 'unit' | 'description' | 'include_in_daily_summary' | 'aggregation'>
+  Pick<CustomMetricDefinition, 'unit' | 'description' | 'include_in_daily_summary' | 'aggregation' | 'better'>
 > & { max_value?: number | null; min_value?: number | null }
 
 /** `undefined` leaves a field as it is; `null` clears min_value/max_value. */
@@ -85,6 +89,10 @@ export const updateCustomMetricDefinition = async (
   if (updates.aggregation !== undefined) {
     setClauses.push(`aggregation = $${paramIndex++}`)
     values.push(updates.aggregation)
+  }
+  if (updates.better !== undefined) {
+    setClauses.push(`better = $${paramIndex++}`)
+    values.push(updates.better)
   }
 
   if (setClauses.length === 0) return getCustomMetricByName(user, name)
@@ -155,26 +163,45 @@ export const mergeCustomMetric = async (
   return { rows_reassigned, rows_skipped }
 }
 
+const insertIfAbsent = async (db: Queryable | string, def: CustomMetricDefinition): Promise<void> => {
+  await query(
+    db,
+    `INSERT INTO custom_metrics (name, unit, description, min_value, max_value, include_in_daily_summary, aggregation, better)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     ON CONFLICT (name) DO NOTHING`,
+    [
+      def.name,
+      def.unit,
+      def.description ?? null,
+      def.min_value ?? null,
+      def.max_value ?? null,
+      def.include_in_daily_summary ?? false,
+      def.aggregation ?? 'avg',
+      def.better ?? 'neutral',
+    ],
+  )
+}
+
 /** Used during migration from settings JSONB. */
 export const bulkInsertCustomMetricDefinitions = async (
   user: string,
   definitions: CustomMetricDefinition[],
 ): Promise<void> => {
-  for (const def of definitions) {
-    await query(
-      user,
-      `INSERT INTO custom_metrics (name, unit, description, min_value, max_value, include_in_daily_summary, aggregation)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       ON CONFLICT (name) DO NOTHING`,
-      [
-        def.name,
-        def.unit,
-        def.description ?? null,
-        def.min_value ?? null,
-        def.max_value ?? null,
-        def.include_in_daily_summary ?? false,
-        def.aggregation ?? 'avg',
-      ],
-    )
-  }
+  for (const def of definitions) await insertIfAbsent(user, def)
+}
+
+/**
+ * A metric the user already has under that name is left as it is. Answers the unit of the metric now under that
+ * name, which is another than `definition.unit` when one was there first, even if it was created by a write that
+ * had not committed when the caller read the user's metrics.
+ */
+export const adoptCatalogMetric = async (
+  db: Queryable | string,
+  definition: CustomMetricDefinition,
+): Promise<string> => {
+  await insertIfAbsent(db, definition)
+  const result = await query<{ unit: string }>(db, `SELECT unit FROM custom_metrics WHERE name = $1`, [
+    definition.name,
+  ])
+  return result.rows[0]?.unit ?? definition.unit
 }

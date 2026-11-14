@@ -116,6 +116,31 @@ describe('GET /notifications', () => {
     })
   })
 
+  test('passes ids split on commas', async () => {
+    const { store, listCalls } = fakeStore()
+    const other = '00000000-0000-4000-8000-000000000002'
+
+    const res = await supertest(app(store))
+      .get('/notifications')
+      .query({ ids: `${ID},${other}`, push_only: 'true' })
+
+    expect(res.status).toBe(200)
+    expect(listCalls[0]).toMatchObject({ ids: [ID, other], push_only: true })
+  })
+
+  test('rejects ids that are not UUIDs', async () => {
+    const res = await supertest(app(fakeStore().store))
+      .get('/notifications')
+      .query({ ids: `${ID},nope` })
+    expect(res.status).toBe(400)
+  })
+
+  test('rejects more than 100 ids', async () => {
+    const ids = Array.from({ length: 101 }, () => ID).join(',')
+    const res = await supertest(app(fakeStore().store)).get('/notifications').query({ ids })
+    expect(res.status).toBe(400)
+  })
+
   test('rejects a limit out of range', async () => {
     const res = await supertest(app(fakeStore().store)).get('/notifications').query({ limit: 500 })
     expect(res.status).toBe(400)

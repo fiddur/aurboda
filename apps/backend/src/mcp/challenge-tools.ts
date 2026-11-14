@@ -22,7 +22,7 @@ import { bannerUrlFor } from '../services/challenge-banner.ts'
 import { joinChallenge, previewChallenge } from '../services/challenge-federation.ts'
 import { announcementPending } from '../services/challenge-results.ts'
 import { specToApi, toSpecFields } from '../services/challenge-spec.ts'
-import { SPEC_LOCKED_MESSAGE, updateHostedChallenge } from '../services/challenge-update.ts'
+import { LOCKED_MESSAGES, updateHostedChallenge } from '../services/challenge-update.ts'
 import { buildProfileUrl, buildShareUrl } from '../services/share-urls.ts'
 import { isPublicToVisibility, visibilityToIsPublic } from '../services/visibility.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
@@ -87,7 +87,7 @@ export const registerChallengeTools = (
 
   server.tool(
     'update_challenge',
-    'Update a hosted challenge (name, spec, date range, visibility, announce_winner). Only provided fields change. The spec is frozen once someone from another instance has joined: a different spec is refused then, an unchanged one passes.',
+    'Update a hosted challenge (name, spec, date range, visibility, announce_winner). Only provided fields change. The spec, dates and timezone are frozen once someone from another instance has joined: a different value is refused then, an unchanged one passes.',
     { id: z.string().uuid().describe('Challenge ID'), ...updateChallengeBodySchema.shape },
     async ({ id, ...body }) => {
       const result = await updateHostedChallenge(user, id, {
@@ -100,7 +100,7 @@ export const registerChallengeTools = (
         timezone: body.timezone,
       })
       if (result.status === 'not_found') return errorResponse('Challenge not found')
-      if (result.status === 'spec_locked') return errorResponse(SPEC_LOCKED_MESSAGE)
+      if (result.status !== 'updated') return errorResponse(LOCKED_MESSAGES[result.status])
       return jsonResponse(serialize(result.record, deps.webHost, user))
     },
   )

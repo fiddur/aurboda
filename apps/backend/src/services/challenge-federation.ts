@@ -9,9 +9,12 @@
  */
 import {
   activityMeasures,
+  canonicalChallengeUrl,
   type ChallengeDataResponse,
   challengeDataResponseSchema,
   type ChallengePreview,
+  type ParsedChallengeUrl,
+  parseChallengeUrl,
   type PublicChallenge,
   publicChallengeResponseSchema,
   type QuantChallengeDocument,
@@ -62,50 +65,6 @@ export class JoinChallengeError extends Error {
 
 const trimSlashes = (s: string): string => s.replace(/\/+$/, '')
 const joinUrl = (base: string, path: string): string => `${trimSlashes(base)}/${path.replace(/^\/+/, '')}`
-
-/**
- * The one spelling of a public challenge link we store and compare by: no query
- * string or fragment (a pasted `?embed=1` link is the same challenge), no
- * trailing slashes, scheme and host lowercased, default port dropped. Null for
- * anything that isn't an http(s) URL.
- *
- * Everything that keys off a challenge URL — the joined-participation row, the
- * left-tombstone, discovery's "already mine" set — runs through this, so the
- * same challenge pasted two ways is still one challenge. Rows written before
- * this existed are not migrated; readers canonicalise what they load.
- */
-export const canonicalChallengeUrl = (url: string): string | null => {
-  let parsed: URL
-  try {
-    parsed = new URL(url)
-  } catch {
-    return null
-  }
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null
-  parsed.search = ''
-  parsed.hash = ''
-  return trimSlashes(parsed.toString())
-}
-
-export interface ParsedChallengeUrl {
-  base: string
-  username: string
-  slug: string
-}
-
-/** Parse a public challenge URL `<base>/u/<username>/<slug>` (base may have a sub-path). */
-export const parseChallengeUrl = (url: string): ParsedChallengeUrl | null => {
-  const marker = '/u/'
-  const i = url.indexOf(marker)
-  if (i < 0) return null
-  const base = trimSlashes(url.slice(0, i))
-  const [username, slug] = url
-    .slice(i + marker.length)
-    .split('/')
-    .filter(Boolean)
-  if (!base || !username || !slug) return null
-  return { base, slug, username }
-}
 
 /**
  * How a host speaks challenges: the QuantPub Challenges shape, or Aurboda's
@@ -578,7 +537,7 @@ const fetchRemotePreview = async (
     end_ts: challenge.end_ts,
     host_identity: challenge.host_identity,
     name: challenge.name,
-    spec: challenge.spec,
+    spec: specToApi(toSpecFields(challenge.spec)),
     start_ts: challenge.start_ts,
     timezone: challenge.timezone,
   }

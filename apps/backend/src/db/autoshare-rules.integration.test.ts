@@ -19,7 +19,7 @@ import {
 import { query, withUserTransaction } from './connection.ts'
 import {
   createFeedPost,
-  deleteFeedPost,
+  deleteFeedPostWithQuotes,
   listActivityPostVersions,
   listFeedPostIdsByActivityIds,
   listSharedActivities,
@@ -284,7 +284,7 @@ describe('Auto-share rules integration', () => {
     })
     expect(await listAutoshareSuppressedIds(user, [activityId])).toEqual([])
 
-    expect(await deleteFeedPost(user, post.id)).toBe(true)
+    expect(await deleteFeedPostWithQuotes(user, post.id)).not.toBeNull()
     // The post row is gone, but the suppression keeps the dedupe intact (#903).
     expect(await listFeedPostIdsByActivityIds(user, [activityId])).toEqual([])
     expect(await listAutoshareSuppressedIds(user, [activityId])).toEqual([activityId])

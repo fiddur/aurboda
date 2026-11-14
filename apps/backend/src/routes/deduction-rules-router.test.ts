@@ -12,12 +12,17 @@ vi.mock('../db/index.ts', () => ({
   activityTypeExists: vi.fn().mockResolvedValue(true),
   deleteDeductionRule: vi.fn(),
   deleteRuleActivities: vi.fn(),
+  ensureActivityType: vi.fn().mockResolvedValue(true),
   getDeductionRule: vi.fn(),
   getDeductionRules: vi.fn(),
   getEnabledDeductionRules: vi.fn(),
   insertDeductionRule: vi.fn(),
   removeRuleCategoryEntries: vi.fn().mockResolvedValue(0),
   updateDeductionRule: vi.fn(),
+}))
+
+vi.mock('../services/deduction-engine.ts', () => ({
+  evaluateAllRules: vi.fn().mockResolvedValue({ activities_created: 3 }),
 }))
 
 const db = await import('../db/index.ts')
@@ -60,6 +65,7 @@ describe('POST /deduction-rules output_title_field', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(db.activityTypeExists).mockResolvedValue(true)
+    vi.mocked(db.ensureActivityType).mockResolvedValue(true)
     vi.mocked(db.insertDeductionRule).mockImplementation(async (_user, input) => rule(input))
   })
 
@@ -96,6 +102,7 @@ describe('PATCH /deduction-rules/:id output_title_field', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(db.activityTypeExists).mockResolvedValue(true)
+    vi.mocked(db.ensureActivityType).mockResolvedValue(true)
   })
 
   test('null clears it', async () => {
@@ -141,6 +148,7 @@ describe('deduction-rules output_category', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(db.activityTypeExists).mockResolvedValue(true)
+    vi.mocked(db.ensureActivityType).mockResolvedValue(true)
     vi.mocked(db.insertDeductionRule).mockImplementation(async (_user, input) => rule(input))
   })
 
@@ -190,6 +198,7 @@ describe('PATCH /deduction-rules/:id run-category cleanup', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(db.activityTypeExists).mockResolvedValue(true)
+    vi.mocked(db.ensureActivityType).mockResolvedValue(true)
   })
 
   test('clearing the category removes the rule entries', async () => {
@@ -204,5 +213,57 @@ describe('PATCH /deduction-rules/:id run-category cleanup', () => {
     vi.mocked(db.updateDeductionRule).mockResolvedValue(rule({ name: 'x', output_category: 'low_hr' }))
     await supertest(buildApp()).patch(`/${RULE_ID}`).send({ name: 'x' })
     expect(db.removeRuleCategoryEntries).not.toHaveBeenCalled()
+  })
+})
+
+describe('deduction-rules output_activity_type from the built-in catalogue', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(db.activityTypeExists).mockResolvedValue(false)
+    vi.mocked(db.ensureActivityType).mockResolvedValue(true)
+    vi.mocked(db.insertDeductionRule).mockImplementation(async (_user, input) => rule(input))
+  })
+
+  test('creating a rule adopts the output type', async () => {
+    const res = await supertest(buildApp())
+      .post('/')
+      .send(body({ output_activity_type: 'sauna' }))
+    expect(res.status).toBe(201)
+    expect(db.ensureActivityType).toHaveBeenCalledWith('tester', 'sauna')
+  })
+
+  test('creating a rule with a type that is neither the user’s nor in the catalogue fails', async () => {
+    vi.mocked(db.ensureActivityType).mockResolvedValue(false)
+    const res = await supertest(buildApp())
+      .post('/')
+      .send(body({ output_activity_type: 'not_a_type' }))
+    expect(res.status).toBe(400)
+    expect(res.body.error).toBe('Unknown activity type: "not_a_type"')
+    expect(db.insertDeductionRule).not.toHaveBeenCalled()
+  })
+
+  test('updating a rule adopts the output type', async () => {
+    vi.mocked(db.getDeductionRule).mockResolvedValue(rule())
+    vi.mocked(db.updateDeductionRule).mockResolvedValue(rule({ output_activity_type: 'sauna' }))
+    const res = await supertest(buildApp()).patch(`/${RULE_ID}`).send({ output_activity_type: 'sauna' })
+    expect(res.status).toBe(200)
+    expect(db.ensureActivityType).toHaveBeenCalledWith('tester', 'sauna')
+  })
+
+  test('a preview accepts a catalogue type without adopting it', async () => {
+    const res = await supertest(buildApp())
+      .post('/preview')
+      .send(body({ output_activity_type: 'sauna' }))
+    expect(res.status).toBe(200)
+    expect(res.body.would_affect).toBe(3)
+    expect(db.ensureActivityType).not.toHaveBeenCalled()
+  })
+
+  test('a preview refuses a type outside the catalogue', async () => {
+    const res = await supertest(buildApp())
+      .post('/preview')
+      .send(body({ output_activity_type: 'not_a_type' }))
+    expect(res.status).toBe(400)
+    expect(res.body.error).toBe('Unknown activity type: "not_a_type"')
   })
 })

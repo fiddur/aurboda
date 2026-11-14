@@ -128,14 +128,14 @@ one's instructions, so the two triggers stay simple.
 
 ### Trigger
 
-| Field      | Value                                                                                                              |
-| ---------- | ------------------------------------------------------------------------------------------------------------------ |
-| Source     | GitHub                                                                                                             |
-| Repository | `fiddur/aurboda`                                                                                                   |
+| Field      | Value                                                                                                                          |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Source     | GitHub                                                                                                                         |
+| Repository | `fiddur/aurboda`                                                                                                               |
 | Event      | `pull_request`, action **labeled** (or "All PR events" if the form offers no per-action choice — the instructions re-check it) |
-| Filter     | Base branch **equals** `main`                                                                                      |
-| Filter     | Label **equals** `release-tryout` (where the form has it; otherwise the instructions check)                       |
-| Connectors | **GitHub only.** Never the Aurboda connector (`https://aurboda.net/mcp` is production)                             |
+| Filter     | Base branch **equals** `main`                                                                                                  |
+| Filter     | Label **equals** `release-tryout` (where the form has it; otherwise the instructions check)                                    |
+| Connectors | **GitHub only.** Never the Aurboda connector (`https://aurboda.net/mcp` is production)                                         |
 
 The routine exists: https://claude.ai/code/routines/trig_01MiwiS3ui9VnNaHhaesjsvw (environment
 "Aurboda", repository source, the instructions below, no connectors). It was created over the

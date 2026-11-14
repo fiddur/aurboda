@@ -8,6 +8,9 @@
   "ignorePatterns": [
     "apps/backend/src/catalog/exercises/exercise-catalog.json",
     "apps/backend/src/catalog/exercises/sources/*.json",
+    // Mirrors of the FEP drafts on codeberg.org/fediverse/fep, kept in that repository's style.
+    "docs/fep/quantpub.md",
+    "docs/fep/quantpub-challenges.md",
   ],
   "sortImports": {
     "groups": [

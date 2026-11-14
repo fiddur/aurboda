@@ -8,6 +8,7 @@ import {
   encodeSelector,
   isExploreRunnable,
   parseAnalyzeState,
+  urlShowsAnalyzeState,
   withAnalyzeState,
 } from './urlState'
 
@@ -206,6 +207,17 @@ describe('withAnalyzeState', () => {
     expect(withAnalyzeState(`${BASE}?embed=1&item=Office&item_type=location`, DEFAULT_ANALYZE_STATE)).toBe(
       '/correlations?embed=1',
     )
+  })
+})
+
+describe('urlShowsAnalyzeState', () => {
+  test('true for the URL the state writes, false once a link drops or changes it', () => {
+    const written = `https://aurboda.example${withAnalyzeState(BASE, FULL)}`
+    expect(urlShowsAnalyzeState(written, FULL)).toBe(true)
+    expect(urlShowsAnalyzeState(BASE, FULL)).toBe(false)
+    expect(urlShowsAnalyzeState(BASE, DEFAULT_ANALYZE_STATE)).toBe(true)
+    expect(urlShowsAnalyzeState(`${BASE}?embed=1`, DEFAULT_ANALYZE_STATE)).toBe(true)
+    expect(urlShowsAnalyzeState(`${BASE}?days=90`, DEFAULT_ANALYZE_STATE)).toBe(false)
   })
 })
 

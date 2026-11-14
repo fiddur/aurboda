@@ -208,11 +208,16 @@ describe('homeAssistantReachability', () => {
     const { calls, http } = recordingHttp([])
     await homeAssistantClient({ assertReachable: allow, http, httpsAgent }).getStates(conn)
     expect(calls[0].config.httpsAgent).toBe(httpsAgent)
+    expect(calls[0].config.proxy).toBe(false)
     await expect(assertReachable('https://127.0.0.1/api/states')).rejects.toBeInstanceOf(SafeFetchError)
   })
 
-  test('leaves the connection alone when private addresses are allowed', () => {
-    expect(homeAssistantReachability(true).httpsAgent).toBeUndefined()
+  test('leaves the connection alone when private addresses are allowed', async () => {
+    const { httpsAgent } = homeAssistantReachability(true)
+    expect(httpsAgent).toBeUndefined()
+    const { calls, http } = recordingHttp([])
+    await homeAssistantClient({ assertReachable: allow, http, httpsAgent }).getStates(conn)
+    expect(calls[0].config).not.toHaveProperty('proxy')
   })
 })
 

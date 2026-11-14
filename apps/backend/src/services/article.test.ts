@@ -1,13 +1,12 @@
 import type { ArticleContent } from '@aurboda/api-spec'
 
-import { articleBlockSchema, articleDraftBlockSchema } from '@aurboda/api-spec'
+import { articleBlockSchema, articleBlockWindow, articleDraftBlockSchema } from '@aurboda/api-spec'
 import { describe, expect, test, vi } from 'vitest'
 
 import {
   articleBlockFigureUrl,
   articleBlockImageUrl,
   articleBlockLabel,
-  blockWindow,
   buildArticleContent,
   checkArticleChallenges,
   isZeroDurationBucket,
@@ -35,9 +34,9 @@ const content = (overrides: Partial<ArticleContent> = {}): ArticleContent => ({
   ...overrides,
 })
 
-describe('blockWindow', () => {
+describe('articleBlockWindow', () => {
   test('uses the block override when present', () => {
-    const win = blockWindow(
+    const win = articleBlockWindow(
       { end: '2026-07-03T00:00:00.000Z', start: '2026-07-02T00:00:00.000Z' },
       { default_end: WEEK_END, default_start: WEEK_START },
     )
@@ -46,7 +45,7 @@ describe('blockWindow', () => {
 
   test('falls back to the article default per-edge', () => {
     // Only `start` is overridden; `end` inherits the article default.
-    const win = blockWindow(
+    const win = articleBlockWindow(
       { start: '2026-07-02T00:00:00.000Z' },
       { default_end: WEEK_END, default_start: WEEK_START },
     )

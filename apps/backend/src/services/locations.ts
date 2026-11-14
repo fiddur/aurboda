@@ -58,7 +58,7 @@ const MAX_UNKNOWN_VISIT_GAP_MINUTES = 90
 const MERGE_BRIDGE_RADIUS_METERS = DEFAULT_CLUSTER_RADIUS_METERS
 const MERGE_BRIDGE_GAP_MINUTES = 30
 
-const haversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+export const haversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
   const R = 6371000 // Earth radius in meters
   const dLat = ((lat2 - lat1) * Math.PI) / 180
   const dLon = ((lon2 - lon1) * Math.PI) / 180
@@ -319,14 +319,17 @@ export const getRawLocationPoints = async (
   user: string,
   start: Date,
   end: Date,
+  { limit, source }: { limit?: number; source?: string } = {},
 ): Promise<{ lat: number; lon: number; time: Date }[]> => {
   const result = await query(
     user,
     `SELECT ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, time
      FROM locations
      WHERE time >= $1 AND time <= $2 AND deleted_at IS NULL
-     ORDER BY time`,
-    [start, end],
+       AND ($3::text IS NULL OR source = $3)
+     ORDER BY time
+     LIMIT $4`,
+    [start, end, source ?? null, limit ?? null],
   )
 
   return result.rows.map((row) => ({

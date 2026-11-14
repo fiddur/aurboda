@@ -1,5 +1,14 @@
 import type { DataSchemaDefinition } from '@aurboda/api-spec'
 
+import { getCatalogActivityType, loadActivityTypeCatalog } from '../services/activity-type-catalog.ts'
+
+/** The data schema the built-in activity type catalogue gives a type, for seeding the built-ins it shares. */
+export const catalogSchemaFor = (name: string): DataSchemaDefinition => {
+  const schema = getCatalogActivityType(loadActivityTypeCatalog(), name)?.data_schema
+  if (!schema) throw new Error(`The activity type catalogue has no data schema for "${name}"`)
+  return schema
+}
+
 export const strengthTrainingDataSchema: DataSchemaDefinition = {
   fields: [
     {

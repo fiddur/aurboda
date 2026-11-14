@@ -3,7 +3,7 @@ import type { DataSchemaDefinition } from '@aurboda/api-spec'
 import { describe, expect, it } from 'vitest'
 
 import { strengthTrainingDataSchema } from '../schema/builtin-data-schemas.ts'
-import { validateActivityData } from './data-schema-validation.ts'
+import { validateActivityData, validatePartialActivityData } from './data-schema-validation.ts'
 
 const schema: DataSchemaDefinition = {
   fields: [
@@ -237,5 +237,116 @@ describe('validateActivityData with the built-in strength_training schema', () =
     )
     expect(result.valid).toBe(false)
     expect(result.errors).toEqual(['Field "sets[0].rpe" expected type "number", got "string"'])
+  })
+})
+
+describe('validateActivityData with number bounds', () => {
+  const boundedSchema: DataSchemaDefinition = {
+    fields: [
+      { max: 10, min: 0, name: 'severity', type: 'number' },
+      { name: 'count', type: 'number' },
+      { item_fields: [{ min: 1, name: 'reps', type: 'number' }], name: 'sets', type: 'list' },
+    ],
+  }
+
+  it('accepts values in range and at both bounds', () => {
+    expect(validateActivityData({ severity: 5 }, boundedSchema)).toEqual({ valid: true })
+    expect(validateActivityData({ severity: 0 }, boundedSchema)).toEqual({ valid: true })
+    expect(validateActivityData({ severity: 10 }, boundedSchema)).toEqual({ valid: true })
+  })
+
+  it('rejects a value above the maximum', () => {
+    expect(validateActivityData({ severity: 11 }, boundedSchema)).toEqual({
+      errors: ['Field "severity" value 11 is above the maximum 10'],
+      valid: false,
+    })
+  })
+
+  it('rejects a value below the minimum', () => {
+    expect(validateActivityData({ severity: -1 }, boundedSchema)).toEqual({
+      errors: ['Field "severity" value -1 is below the minimum 0'],
+      valid: false,
+    })
+  })
+
+  it('checks the bounds of a list item field', () => {
+    expect(validateActivityData({ sets: [{ reps: 1 }, { reps: 0 }] }, boundedSchema)).toEqual({
+      errors: ['Field "sets[1].reps" value 0 is below the minimum 1'],
+      valid: false,
+    })
+  })
+
+  it('leaves a field without bounds unchanged', () => {
+    expect(validateActivityData({ count: -1000 }, boundedSchema)).toEqual({ valid: true })
+    expect(validateActivityData({ count: 1e9 }, boundedSchema)).toEqual({ valid: true })
+  })
+})
+
+describe('validatePartialActivityData', () => {
+  const partialSchema: DataSchemaDefinition = {
+    fields: [
+      { enum_values: ['beer', 'wine'], name: 'kind', type: 'string' },
+      { min: 0, name: 'drinks', required: true, type: 'number' },
+      { max: 10, name: 'severity', type: 'number' },
+      { name: 'guided', type: 'boolean' },
+      { item_fields: [{ name: 'reps', type: 'number' }], name: 'sets', type: 'list' },
+    ],
+  }
+
+  it('accepts declared scalar fields without demanding required ones', () => {
+    expect(validatePartialActivityData({ kind: 'beer' }, partialSchema)).toEqual({ valid: true })
+    expect(validatePartialActivityData({ guided: true, severity: 3 }, partialSchema)).toEqual({ valid: true })
+  })
+
+  it('accepts an empty object', () => {
+    expect(validatePartialActivityData({}, partialSchema)).toEqual({ valid: true })
+  })
+
+  it('rejects a key the schema does not declare', () => {
+    expect(validatePartialActivityData({ colour: 'red' }, partialSchema)).toEqual({
+      errors: ['Field "colour" is not a field of this type'],
+      valid: false,
+    })
+  })
+
+  it('rejects every key when there is no schema', () => {
+    expect(validatePartialActivityData({ kind: 'beer' }, undefined).errors).toEqual([
+      'Field "kind" is not a field of this type',
+    ])
+    expect(validatePartialActivityData({ kind: 'beer' }, null).valid).toBe(false)
+  })
+
+  it('rejects a list field', () => {
+    expect(validatePartialActivityData({ sets: [] }, partialSchema).errors).toEqual([
+      'Field "sets" is a list and cannot be set this way',
+    ])
+  })
+
+  it('rejects a null or undefined value', () => {
+    expect(validatePartialActivityData({ kind: null }, partialSchema).errors).toEqual([
+      'Field "kind" has no value',
+    ])
+    expect(validatePartialActivityData({ kind: undefined }, partialSchema).errors).toEqual([
+      'Field "kind" has no value',
+    ])
+  })
+
+  it('checks type, enum and bounds', () => {
+    expect(validatePartialActivityData({ kind: 'mead' }, partialSchema).errors).toEqual([
+      'Field "kind" value "mead" is not one of: beer, wine',
+    ])
+    expect(validatePartialActivityData({ drinks: '2' }, partialSchema).errors).toEqual([
+      'Field "drinks" expected type "number", got "string"',
+    ])
+    expect(validatePartialActivityData({ severity: 11 }, partialSchema).errors).toEqual([
+      'Field "severity" value 11 is above the maximum 10',
+    ])
+    expect(validatePartialActivityData({ drinks: -1 }, partialSchema).errors).toEqual([
+      'Field "drinks" value -1 is below the minimum 0',
+    ])
+  })
+
+  it('reports every bad key', () => {
+    expect(validatePartialActivityData({ kind: 'mead', other: 1 }, partialSchema).errors).toHaveLength(2)
   })
 })

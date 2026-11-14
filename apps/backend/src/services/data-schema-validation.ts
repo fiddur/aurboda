@@ -1,6 +1,6 @@
 /**
  * Only validates declared fields: checks required presence, type correctness,
- * and enum membership. Extra fields not in the schema, and extra keys on list
+ * enum membership and number bounds. Extra fields not in the schema, and extra keys on list
  * items, are silently accepted.
  */
 import type { DataFieldDefinition, DataItemFieldDefinition, DataSchemaDefinition } from '@aurboda/api-spec'
@@ -21,13 +21,19 @@ const isPresent = (value: unknown): boolean => value !== undefined && value !== 
 const validateScalar = (
   path: string,
   value: unknown,
-  field: Pick<DataFieldDefinition, 'enum_values' | 'type'>,
+  field: Pick<DataFieldDefinition, 'enum_values' | 'max' | 'min' | 'type'>,
 ): string[] => {
   if (typeof value !== field.type) {
     return [`Field "${path}" expected type "${field.type}", got "${typeof value}"`]
   }
   if (field.type === 'string' && field.enum_values && !field.enum_values.includes(value as string)) {
     return [`Field "${path}" value "${value}" is not one of: ${field.enum_values.join(', ')}`]
+  }
+  if (typeof value === 'number' && field.max !== undefined && value > field.max) {
+    return [`Field "${path}" value ${value} is above the maximum ${field.max}`]
+  }
+  if (typeof value === 'number' && field.min !== undefined && value < field.min) {
+    return [`Field "${path}" value ${value} is below the minimum ${field.min}`]
   }
   return []
 }
@@ -58,6 +64,25 @@ export const validateActivityData = (
   schema: DataSchemaDefinition,
 ): DataValidationResult => {
   const errors = validateFields(data, schema.fields, '')
+  if (errors.length > 0) return { errors, valid: false }
+  return { valid: true }
+}
+
+/**
+ * For a partial object such as a merge's set_data: every key must be a declared scalar field, and each value
+ * must pass its type, enum and bounds. Required fields are not demanded.
+ */
+export const validatePartialActivityData = (
+  data: Record<string, unknown>,
+  schema: DataSchemaDefinition | null | undefined,
+): DataValidationResult => {
+  const errors = Object.entries(data).flatMap(([key, value]) => {
+    const field = schema?.fields.find((f) => f.name === key)
+    if (!field) return [`Field "${key}" is not a field of this type`]
+    if (field.type === 'list') return [`Field "${key}" is a list and cannot be set this way`]
+    if (!isPresent(value)) return [`Field "${key}" has no value`]
+    return validateScalar(key, value, field)
+  })
   if (errors.length > 0) return { errors, valid: false }
   return { valid: true }
 }

@@ -151,14 +151,14 @@ a.entity-type-badge:hover {
 .activity-stats-table th {
   text-align: left;
   font-weight: 500;
-  color: #6b7280;
+  color: var(--color-text-muted);
   padding: 0.25rem 1rem 0.25rem 0;
   vertical-align: top;
   white-space: nowrap;
 }
 
 .activity-stats-table td {
-  color: #374151;
+  color: var(--color-text);
   padding: 0.25rem 0;
   vertical-align: top;
   white-space: pre-wrap;
@@ -950,13 +950,8 @@ a.btn-secondary {
     color: #d1d5db;
   }
 
-  .activity-stats-table th,
   .source-data summary {
     color: #9ca3af;
-  }
-
-  .activity-stats-table td {
-    color: #d1d5db;
   }
 
   .list-field-table thead th,
@@ -1341,4 +1336,24 @@ a.btn-secondary {
   .run-features summary {
     color: #9ca3af;
   }
+}
+
+.strength-in-progress-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  border-radius: 8px;
+  background: var(--color-accent-soft);
+  border: 1px solid var(--color-accent-border);
+}
+
+.strength-in-progress-banner .btn-primary,
+.entity-actions a.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
 }

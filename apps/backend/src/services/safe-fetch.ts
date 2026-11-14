@@ -68,7 +68,7 @@ const isBlockedIPv6 = (raw: string): boolean => {
   return false
 }
 
-const isBlockedAddress = (ip: string): boolean => {
+export const isBlockedAddress = (ip: string): boolean => {
   if (net.isIPv4(ip)) return isBlockedIPv4(ip)
   if (net.isIPv6(ip)) return isBlockedIPv6(ip)
   return true // unknown form → block
@@ -123,7 +123,7 @@ export const createPublicOnlyLookup =
       return callback(null, address, family)
     })
 
-const MAX_RESPONSE_BYTES = 1_000_000 // federation payloads are small; cap to avoid memory exhaustion
+export const MAX_RESPONSE_BYTES = 1_000_000 // federation payloads are small; cap to avoid memory exhaustion
 
 const guardedConfig = (config?: AxiosRequestConfig): AxiosRequestConfig => ({
   timeout: DEFAULT_TIMEOUT_MS,

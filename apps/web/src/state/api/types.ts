@@ -14,7 +14,6 @@ import type {
 } from '@aurboda/api-spec'
 
 // Frontend types with Date objects (converted from API string types)
-export type BuiltinActivityType = 'sleep' | 'exercise' | 'meditation' | 'nap' | 'rest'
 export type ActivityType = string
 
 export interface ActivityTypeDefinition {

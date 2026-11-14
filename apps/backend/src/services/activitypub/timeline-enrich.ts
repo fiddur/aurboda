@@ -39,6 +39,7 @@ import { isValidUsername } from '../../api/auth-routes.ts'
 import { resolveStructuredPost } from '../feed-structured.ts'
 import { safeFetchGet } from '../safe-fetch.ts'
 import { withTimeout } from '../with-timeout.ts'
+import { QUANT_NS } from './quant-extension.ts'
 import { normalizeStructuredActivity, normalizeWellKnownQuantpub } from './quant-wire.ts'
 
 /** Aurboda's object-dispatcher path: `/users/{identifier}/feed/{postId}` (postId is a UUID). */
@@ -85,23 +86,67 @@ export interface AurbodaEnrichDeps {
 
 const trimSlashes = (s: string): string => s.replace(/\/+$/, '')
 
-/**
- * The capability token embedded in a `followers`-only post's delivered image URL
- * (`…/chart.png?token=…`), reused to authorize the structured fetch for the same
- * post — or undefined for a public post (no token) or a post with no images. It's
- * the same `image_token` the origin instance checks, so an accepted follower's
- * instance can fetch the native chart it was already allowed to see the image of.
- */
-export const capabilityTokenFrom = (images: TimelineImage[]): string | undefined => {
-  for (const img of images) {
-    try {
-      const token = new URL(img.url).searchParams.get('token')
-      if (token) return token
-    } catch {
-      // A malformed image URL carries no usable token — skip it.
-    }
+const tokenOf = (raw: string): string | undefined => {
+  try {
+    return new URL(raw).searchParams.get('token') || undefined
+  } catch {
+    return undefined
   }
-  return undefined
+}
+
+/**
+ * The capability token authorizing the structured fetch of a `followers`-only
+ * post: the same `image_token` the origin instance checks, so an accepted
+ * follower's instance can fetch the native chart it was already allowed to see.
+ * Read from a delivered image URL (`…/chart.png?token=…`) first, then from the
+ * Note's `quant:structuredUrl` — the only carrier on a post with no image
+ * attachments. Undefined for a public post (no token).
+ */
+export const capabilityTokenFrom = (images: TimelineImage[], structuredUrl?: string): string | undefined => {
+  for (const img of images) {
+    const token = tokenOf(img.url)
+    if (token != null) return token
+  }
+  return structuredUrl == null ? undefined : tokenOf(structuredUrl)
+}
+
+type JsonRecord = Record<string, unknown>
+
+const isRecord = (v: unknown): v is JsonRecord => typeof v === 'object' && v !== null && !Array.isArray(v)
+
+const single = (v: unknown): unknown => (Array.isArray(v) && v.length === 1 ? v[0] : v)
+
+/** A JSON-LD string value, whether compacted (`"…"`) or a value/node object. */
+const stringValue = (v: unknown): string | undefined => {
+  const value = single(v)
+  if (typeof value === 'string') return value
+  if (!isRecord(value)) return undefined
+  const inner = value['@value'] ?? value['@id']
+  return typeof inner === 'string' ? inner : undefined
+}
+
+const sameHost = (a: string, b: string): boolean => {
+  try {
+    return new URL(a).host === new URL(b).host
+  } catch {
+    return false
+  }
+}
+
+/**
+ * The `quant:structuredUrl` of the Note `noteId` embedded in an inbound
+ * activity's raw JSON-LD, when it is on the Note's own host (FEP §9). Fedify's
+ * typed `Note` drops the extension property, so the inbox listener reads it off
+ * the received document instead. The key is the prefixed term as Aurboda sends
+ * it, or the full IRI once Fedify has re-compacted a Linked-Data-signed delivery
+ * against its own context.
+ */
+export const inboundStructuredUrl = (raw: unknown, noteId: string): string | undefined => {
+  if (!isRecord(raw)) return undefined
+  const object = single(raw.object)
+  if (!isRecord(object) || (object.id ?? object['@id']) !== noteId) return undefined
+  const url = stringValue(object['quant:structuredUrl'] ?? object[`${QUANT_NS}structuredUrl`])
+  return url != null && sameHost(url, noteId) ? url : undefined
 }
 
 /**
@@ -111,7 +156,7 @@ export const capabilityTokenFrom = (images: TimelineImage[]): string | undefined
  * `followers`-only post without a valid token). THROWS on everything else —
  * failed discovery, unreachable host, malformed body — so the caller can log
  * the reason; the plain `enrichFromAurboda` never swallows.
- * `token` (lifted from the delivered image URL) authorizes a `followers`-only
+ * `token` (see `capabilityTokenFrom`) authorizes a `followers`-only
  * post; a public post needs none.
  */
 export const enrichFromAurboda = async (

@@ -1,0 +1,26 @@
+name: Release
+
+# Every push to main is a release (a merged develop → main release PR) and gets
+# one number, v1.0.<n> from scripts/release-version.sh, shared by both builds:
+#   docker.yml  → fiddur/aurboda:latest + :v1.0.<n> + :<sha>
+#   android.yml → GitHub release v1.0.<n> with the APK and the release PR's change list
+# Both run on every release, whatever paths it touches, so the number always
+# names an image and an APK. develop builds stay in docker.yml and android.yml.
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  docker:
+    uses: ./.github/workflows/docker.yml
+    secrets: inherit
+    permissions:
+      contents: read
+
+  android:
+    uses: ./.github/workflows/android.yml
+    secrets: inherit
+    permissions:
+      contents: write
+      pull-requests: read

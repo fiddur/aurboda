@@ -53,6 +53,8 @@ A per-user set of rules, each combining a **predicate** and a **share template**
 
 ## Evaluation & timing
 
+- **An open activity is not shared**: one without an `end_time` is no candidate. A
+  [live strength session](strength-logging.md#live-sessions) stays open until it is finished.
 - Activity mutations (sync, insert, update, merge) already fire a window-based
   notification; auto-share enqueues an evaluation job for that window on the shared
   pg-boss instance (`startAfter`, 10 minutes). Evaluation reads current state at run
@@ -136,14 +138,24 @@ button.
   has no post or suppression. The evaluation announces too whenever it holds a matching
   group back (still settling, or within the rule's wait). The notification is stored
   once per activity (its `dedupe_key` is `autoshare_pending:<activity id>`), and
-  announces are capped at 5 per run like posts.
+  announces are capped at 5 per run like posts. When an earlier-starting member joins
+  the group later and becomes its anchor, the notification already raised for the
+  group is brought up to date instead of a second one being raised.
 - **Don't share** (`skip`) records the activity and the rest of its merge group in
   `autoshare_suppressions`, so no rule ever shares it; the notification then reads
-  "will not be shared". If the share won the race, the answer is "This activity was
+  "will not be shared". The post insert itself checks the suppressions, so a skip stored
+  before the insert always wins. If the share won the race, the answer is "This activity was
   already shared" and the notification links to the post. The same is available as
   `POST /autoshare-rules/skips` / `skip_autoshare` with an `activity_id`.
 - **Shared**: once the post is created, the notification is revised in place to "Your
-  … was shared", linking to the post, and its button is removed.
+  … was shared", linking to the post, and its button is removed. A share by hand of any
+  member of the group (`POST /feed/activities/:id/share`, `share_activity`) does the same.
+- **No longer shared**: when the evaluation finds the settled group matching no rule any
+  more (edited out of the rule's type, duration or data conditions, or past its max age),
+  or its rule is disabled or deleted, the notification reads "Your … will not be shared"
+  and loses its button. Its `dedupe_key` is freed then, so a later match announces the
+  activity afresh. A deleted activity's notification is left as it is (its "Don't
+  share" still works and answers as skipped).
 - A skipped activity **can still be shared by hand**: the manual share does not consult
   the suppressions.
 

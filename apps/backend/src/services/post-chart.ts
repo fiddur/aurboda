@@ -7,6 +7,7 @@ import type { ActivityImpactType, ArticleContent, CorrelationSelector, MetricTyp
 
 import {
   activityMeasureLabels,
+  articleBlockWindow,
   DEFAULT_IMPACT_WINDOW_MINUTES,
   defaultArticleChartBucket,
   getMetricDisplayName,
@@ -19,7 +20,7 @@ import type { RaceChartSvgData } from './charts/race-chart-svg.ts'
 import type { ScatterSvgData } from './charts/scatter-svg.ts'
 import type { ExerciseTrendSeries } from './feed-structured-exercise.ts'
 
-import { blockWindow, isZeroDurationBucket } from './article.ts'
+import { isZeroDurationBucket } from './article.ts'
 import {
   type ChartRenderOpts,
   isDrawableImpact,
@@ -89,7 +90,7 @@ export const articleBlockAt = (
   const block = article.blocks[index]
   if (block == null || block.type === 'prose') return null
   if (block.type === 'challenge') return { type: 'challenge', updatedAt, url: block.challenge_url }
-  const { end, start } = blockWindow(block, article)
+  const { end, start } = articleBlockWindow(block, article)
   if (start == null || end == null) return null
   const startDate = new Date(start)
   const endDate = new Date(end)
@@ -279,6 +280,14 @@ const ARTICLE_BUCKET_MS = 3_600_000
 export const timeBucket = (now: number, bucketMs: number): number => Math.floor(now / bucketMs)
 
 /**
+ * How long an article block's image stands before it is drawn afresh: a challenge block's standings move
+ * like a challenge post's, a windowed block's data hourly. The feed's block images and the post's card
+ * both key on it, so they redraw together.
+ */
+export const articleBlockBucketMs = (block: { type: string }): number =>
+  block.type === 'challenge' ? STANDINGS_BUCKET_MS : ARTICLE_BUCKET_MS
+
+/**
  * Keyed on the post's stored version, not the URL's `v`: a detail sync or an
  * edit bumps `updated_at` and re-renders, while a guessed `v` cannot bust the cache.
  */
@@ -317,7 +326,7 @@ export const postChartBucketMs = (
     case 'article': {
       const blocks = post.article == null ? [] : articleCardBlocks(post.article, post.updated_at)
       if (blocks.length === 0) return undefined
-      return blocks.some((block) => block.type === 'challenge') ? STANDINGS_BUCKET_MS : ARTICLE_BUCKET_MS
+      return Math.min(...blocks.map(articleBlockBucketMs))
     }
     default:
       return undefined

@@ -8,12 +8,14 @@ import {
   activityTypeExists,
   deleteDeductionRule,
   deleteRuleActivities,
+  ensureActivityType,
   getDeductionRule,
   getDeductionRules,
   getEnabledDeductionRules,
   insertDeductionRule,
   updateDeductionRule,
 } from '../db/index.ts'
+import { getCatalogActivityType, loadActivityTypeCatalog } from '../services/activity-type-catalog.ts'
 import { removeCategoriesOfNonCategorisingRule } from '../services/deduction-category.ts'
 import { evaluateAllRules } from '../services/deduction-engine.ts'
 import { mergeRuleUpdate, validateRuleShape } from '../services/media-plays.ts'
@@ -62,7 +64,7 @@ In enrich mode, output_category (snake_case, e.g. "low_hr") adds { category, rea
 Multiple conditions use AND logic — all must overlap in time. The rule is applied retroactively to all historical data.`,
     { ...addDeductionRuleBodySchema.shape },
     async (params) => {
-      if (!(await activityTypeExists(user, params.output_activity_type))) {
+      if (!(await ensureActivityType(user, params.output_activity_type))) {
         return errorResponse(
           `Unknown activity type: "${params.output_activity_type}". Create it first with add_activity_type.`,
         )
@@ -92,7 +94,7 @@ Multiple conditions use AND logic — all must overlap in time. The rule is appl
       ...updateDeductionRuleBodySchema.shape,
     },
     async ({ id, ...updates }) => {
-      if (updates.output_activity_type && !(await activityTypeExists(user, updates.output_activity_type))) {
+      if (updates.output_activity_type && !(await ensureActivityType(user, updates.output_activity_type))) {
         return errorResponse(`Unknown activity type: "${updates.output_activity_type}"`)
       }
 
@@ -160,7 +162,10 @@ Multiple conditions use AND logic — all must overlap in time. The rule is appl
     'Dry-run a rule definition to see how many activities would be affected without creating or modifying anything. Samples the last 90 days.',
     { ...addDeductionRuleBodySchema.shape },
     async (params) => {
-      if (!(await activityTypeExists(user, params.output_activity_type))) {
+      if (
+        !(await activityTypeExists(user, params.output_activity_type)) &&
+        !getCatalogActivityType(loadActivityTypeCatalog(), params.output_activity_type)
+      ) {
         return errorResponse(`Unknown activity type: "${params.output_activity_type}"`)
       }
 

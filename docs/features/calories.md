@@ -78,13 +78,17 @@ Calorie computation runs in three places:
 | Oura sync (sleep / session HR samples)                     | Sample range                | Whole local day(s)                  |
 | Manual recompute (`recalculate_calories` MCP tool or REST) | User-provided, or full      | Whole local day(s)                  |
 
-Each call is authoritative for the day(s) it touches: it deletes any prior aurboda rows in the expanded range and re-writes from scratch. There is no incremental "skip already-computed minutes" optimisation any more — the operation is fast enough at one day at a time and avoids the partial-day inconsistency the prior incremental path could create.
+Each call is authoritative for the day(s) it touches: it deletes any prior aurboda rows in the expanded range, and any `aurboda_gap_fill` rows, and re-writes from scratch. There is no incremental "skip already-computed minutes" optimisation any more — the operation is fast enough at one day at a time and avoids the partial-day inconsistency the prior incremental path could create.
 
 ## Outbound Sync to Health Connect
 
 Per-minute `calories_active` rows (HR-derived only — minutes that fell back to the BMR floor have no active row) are queued for outbound sync to Health Connect as `ActiveCaloriesBurnedRecord`, so other phone apps see the same active-calorie estimate Aurboda uses. `calories_total` is not synced back — Health Connect derives its own total from `Active + Basal`.
 
 A recompute offers every minute it touched, but a minute whose latest queue row (pending or synced) already carries the same payload is not queued again — only new and changed minutes get a row ([#1241](https://github.com/fiddur/aurboda/issues/1241)). The daily prune job (`services/audit-log-prune-queue.ts`) deletes `synced` queue rows older than 14 days (pending and failed rows stay, as does each activity's newest row with a Health Connect record id, which a later delete or update of that activity needs), so the sync history only reaches back two weeks.
+
+### Legacy `aurboda_gap_fill` rows
+
+Earlier versions wrote a baseline for minutes without HR under its own source, `aurboda_gap_fill`, so that a gap-fill run before the day's HR arrived (common with out-of-order syncs) could not block the HR-based computation for those minutes. The full-day BMR floor above replaced it; `aurboda_gap_fill` is still one of `aurbodaOnlySources`, so old rows are read until a recompute of their day deletes them.
 
 ## Migration
 

@@ -8,6 +8,7 @@ import { createTableStatements, tableCreationOrder } from '../schema.ts'
 declare module 'vitest' {
   interface ProvidedContext {
     pgAdminUri?: string
+    pgContainerId?: string
     pgTemplateDb?: string
   }
 }
@@ -50,6 +51,7 @@ export default async (project: TestProject) => {
   })
 
   project.provide('pgAdminUri', adminUri.toString())
+  project.provide('pgContainerId', container.getId())
   project.provide('pgTemplateDb', TEMPLATE_DB)
 
   return async () => {

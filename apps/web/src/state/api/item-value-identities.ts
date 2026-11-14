@@ -64,10 +64,11 @@ export const clearItemValueIdentityApi = async (
 export const fetchUnmappedItemValues = async (
   activityType: string,
   field: string,
+  page: { limit: number; offset: number },
 ): Promise<UnmappedItemValues | null> => {
   const response = await axios.get<UnmappedItemValuesResponse>(`${itemValuesUrl(activityType)}/unmapped`, {
     headers: authHeaders(),
-    params: { field },
+    params: { field, ...page },
   })
   return response.data.data ?? null
 }

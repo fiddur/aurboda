@@ -2,27 +2,86 @@
 
 Your watch and ring record sleep and workouts, but not the coffee at four, the painkiller, the
 headache or the sauna. In Aurboda you log those yourself, as activities of types you make up: add a
-type once (**Types** in the sidebar, then **+ Add Type**), then log it from **+ Add** in the sidebar
+type once (**Types** in the sidebar, then **+ Add Type**, where matching
+built-in types are offered too), then log it from **+ Add** in the sidebar
 or by right-clicking (or long-pressing) a moment on the [timeline](./timeline.md). What you log is
 private unless you share it, shows on the timeline next to everything else, and can be compared
 with your sleep, heart rate and training on the [Analyze page](./correlations.md).
 
-Aurboda comes with five built-in activity types: **sleep**, **exercise**, **meditation**, **nap**, and **rest**. You can define additional custom types to represent any activity you track -- sauna, driving, yoga, coding, vocal training, etc.
+Aurboda comes with [built-in activity types](#built-in-types): the core types **sleep**, **exercise**, **meditation**, **nap** and **rest**, every Health Connect exercise type, and a few internal ones. On top of those, a [catalogue of types](activity-type-catalog.md) for things logged by hand (caffeine, medication, symptoms, sauna, ...) is added to your types, with their fields, the first time you use one. You can define additional custom types to represent any activity you track -- driving, coding, vocal training, etc.
 
 ## Creating Custom Types
 
 Custom activity types can be created on the **Activity Types** page (`/activity-types`, **+ Add Type**), via the REST API, MCP tools, or deduction rules. Each type has:
 
-| Field              | Description                                                                                                              |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| `name`             | Snake_case identifier (e.g., `sauna`, `hot_bath`, `yin_yoga`)                                                            |
-| `display_name`     | Human-readable name shown on the timeline                                                                                |
-| `display_category` | Groups types for timeline toggles: `sleep_rest`, `exercise`, `meditation`, `wellness`, `productivity`, `travel`, `other` |
-| `color`            | Hex color for timeline rendering (e.g., `#ef4444`)                                                                       |
-| `icon`             | Optional emoji or icon identifier                                                                                        |
-| `show_on_timeline` | Whether activities of this type appear on the timeline (default: true)                                                   |
+| Field              | Description                                                                                                                                  |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`             | Snake_case identifier (e.g., `sauna`, `hot_bath`, `yin_yoga`)                                                                                |
+| `display_name`     | Human-readable name shown on the timeline                                                                                                    |
+| `display_category` | Groups types for timeline toggles: `sleep_rest`, `exercise`, `meditation`, `wellness`, `health`, `intake`, `productivity`, `travel`, `other` |
+| `color`            | Hex color for timeline rendering (e.g., `#ef4444`)                                                                                           |
+| `icon`             | Optional emoji or icon identifier                                                                                                            |
+| `show_on_timeline` | Whether activities of this type appear on the timeline (default: true)                                                                       |
 
-Built-in types cannot be deleted but their display metadata (color, icon, display_name, show_on_timeline) can be updated.
+`display_name` and `display_category` are required, except for a name from the
+[activity type catalogue](activity-type-catalog.md): `POST /activity-types` (or
+`add_activity_type`) with only that name creates the type from its catalogue definition, and any
+field you give overrides the catalogue's.
+
+### Built-in types
+
+Every user starts with a seeded set of types, marked `is_builtin` in `GET /activity-types`
+(`list_activity_types`):
+
+| Group                         | Types                                                                                                                                                                                                                 | With a data schema                               |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| Core                          | `sleep`, `exercise`, `meditation`, `nap`, `rest` (`nap` and `rest` are children of `sleep`)                                                                                                                           | `meditation`                                     |
+| Health Connect exercise types | every Health Connect exercise session type (`running`, `yoga`, `strength_training`, `guided_breathing` shown as Breathwork, ...), each a child of `exercise`                                                          | `strength_training` (`sets`), `guided_breathing` |
+| Internal                      | `calendar_event` (calendar sync), `music_scrobble` (Last.fm), `screentime` (categorised screen time) and `location_visit` (visits to opted-in named locations); the last three are drawn on their own timeline tracks | `music_scrobble`, `screentime`, `location_visit` |
+
+A built-in type cannot be deleted, renamed or merged into another type, and no type can be created
+or renamed with a built-in type's name; the error says it is a built-in type. Its display metadata
+(color, icon, display_name, show_on_timeline) and its data schema can be updated. The check is on
+the definition's `is_builtin`; `coreActivityTypes` in `@aurboda/api-spec` names only the five core
+types.
+
+The [activity type catalogue](activity-type-catalog.md) is something else: types for things logged
+by hand that become yours, as ordinary custom types, the first time you use one.
+
+### Merging types
+
+A custom type can be merged into another type (`POST /activity-types/merge` with
+`{ source, target }`, `merge_activity_type`): every activity of the source moves to the target,
+soft-deleted ones included, the aliases are joined, deduction rules, child types and routes follow,
+and the source is deleted. The target may be a type from the
+[activity type catalogue](activity-type-catalog.md) not used yet; the merge adds it first.
+
+`set_data` gives every moved activity a field value it has no value for yet, so merging `beer` into
+`alcohol` with `{ "kind": "beer" }` keeps which drinks were beer. A key is filled only where the
+activity has none or `null`; a value it already has is kept. Each key must be a scalar field of the
+target's [data schema](#data-schema-and-categorical-fields) and each value must pass that field's
+type, choices and bounds, or nothing is merged. When the target has a catalogue name and lacks a
+field `set_data` names (an `alcohol` type made before the catalogue, with no `kind`), the merge adds
+that one catalogue field to the target first; its other fields are untouched. The answer counts the activities moved
+(`activities_reassigned`) and the ones that got a value (`activities_data_set`), live ones only.
+
+### Single lifts are exercises, not types
+
+Early Health Connect versions had 21 session types that are single lifts rather than kinds of
+session (`bench_press`, `squat`, `deadlift`, `plank`, `crunch`, `lunge`, `lat_pull_down`, the
+dumbbell curls, raises and triceps extensions, `back_extension`, `barbell_shoulder_press`,
+`bench_sit_up`, `burpee`, `forward_twist`, `jumping_jack`, `upper_twist`). They are not activity
+types: a lift is the `exercise` of a set inside a `strength_training` session, named through the
+[exercise catalogue](exercise-catalog.md) where an entry fits (`crunch` becomes `Lying Ab Crunch`)
+and by its old display name where none does (`Jumping Jack`).
+
+A database from before this change is upgraded once, after the server starts: every activity of one
+of those types (deleted ones too) becomes a `strength_training` session with the lift as its one
+set, unless it already has sets, which it keeps. The type itself is then removed, or, while something
+still refers to it (an activity that could not be moved because a strength session from the same
+source starts at the same moment, a child type, a deduction rule, a goal, a challenge, an autoshare
+rule, a route, a shared exercise, a screen-time category, a dashboard or a setting), kept as an
+ordinary custom type that can be merged into another or deleted.
 
 ## Display Categories
 
@@ -32,6 +91,8 @@ Display categories control how activity types are grouped in the timeline:
 - **exercise** -- Workouts, running, weightlifting, etc.
 - **meditation** -- Meditation, breathwork
 - **wellness** -- Sauna, hot bath, massage, etc.
+- **health** -- Illness, symptoms, pain, injury, etc.
+- **intake** -- Caffeine, alcohol, medication, supplements, meals, etc.
 - **productivity** -- Coding, standup computer, meetings, etc.
 - **travel** -- Driving, commuting, etc.
 - **other** -- Anything else
@@ -48,7 +109,9 @@ A field's `type` is `string`, `number`, `boolean` or `list`. A **list** field ho
 objects -- a strength session's sets, a rehab session's exercises -- each shaped by the field's
 `item_fields`. Item fields are scalar only (`string`, `number`, `boolean`), so nesting stops at
 one level, and `required`, `enum_values`, `unit` and `label` apply to them as to top-level
-fields. Writes are validated against the schema: a list value must be an array of objects, and an
+fields. A `number` field (top-level or item) may carry `min` and `max`, the lowest and highest
+allowed value: a write outside them is refused (`Field "severity" value 11 is above the maximum 10`).
+They are allowed on number fields only, and `min` must not be above `max`. Writes are validated against the schema: a list value must be an array of objects, and an
 error names the item, e.g. `Required field "sets[1].exercise" is missing`. Keys a schema does not
 declare are accepted, at the top level and on list items alike. A list field cannot be
 categorical (an item field can, see [Exercises and measures](#exercises-and-measures)), and is not offered as a deduction-rule condition, an auto-share condition or a chart
@@ -106,9 +169,11 @@ still exactly an earlier built-in version (before `exercise` was marked categori
 schema counts as edited and is kept: the built-in schema can be extended (e.g. with a `tempo` item
 field) on the type's page or with `update_activity_type`. Clearing it entirely does not stick, though: a
 `strength_training` type without a schema gets `sets` back on the next deploy, so to drop a field
-edit the schema rather than remove it. The Android Add tab is native and skips list fields until it
-has a row editor ([#1316](https://github.com/fiddur/aurboda/issues/1316)); sets are entered on the
-web pages.
+edit the schema rather than remove it. The built-in `meditation` and `guided_breathing` types get
+their fields from the [activity type catalogue](activity-type-catalog.md) the same way: filled in
+when the type has no schema, so clearing it entirely does not stick either. The Android Add tab is native and skips list fields; sets are
+entered on the web pages. To log a session, live in the gym or afterwards, use the
+[strength session pages](strength-logging.md) at `/strength`, which the Android Add tab links to.
 
 The web row editor shows a list's first four item fields, any required one and any that some row
 fills in; the rest wait behind **More fields**, which applies to every list field, not only `sets`.
@@ -290,9 +355,10 @@ merge keeps it under the new spelling.
   catalogue key or `null` to dismiss; answers like the GET
 - `DELETE /activity-types/:name/item-values/identity?field=&value=` -- remove the decision, back to
   automatic resolution; 404 when none is stored
-- `GET /activity-types/:name/item-values/unmapped?field=sets.exercise` -- the logged names in state
-  `unmapped`, most used first, each with up to three suggested entries (word overlap with the
-  entry's name or aliases)
+- `GET /activity-types/:name/item-values/unmapped?field=sets.exercise&limit=50&offset=0` -- the
+  logged names in state `unmapped`, most used first, each with up to three suggested entries (word
+  overlap with the entry's name or aliases). One page of `limit` names (default 50, at most 200)
+  from `offset`; `total` counts them all. Suggestions are built for the page only
 
 A field without a catalogue is a 400. The MCP twins are `get_item_value_identity`,
 `set_item_value_identity`, `clear_item_value_identity` and `list_unmapped_item_values`.
@@ -311,24 +377,33 @@ every muscle group the exercise trains, by the catalogue entry's recruitment wei
 set is 1 set for the chest and 0.5 for the shoulders. Within one group the highest weight of the
 entry's muscles in it counts, so the two heads of the triceps do not count a set twice. The same
 weights apply to `volume` and `total_reps`. Warmup sets do not count. A name that resolves to no
-entry (unmapped or dismissed), or to an entry without muscle weights, counts fully under **Not in
-the catalogue** (`muscle_group: null`), so nothing drops out of the total. Values are rounded to two
-decimals.
+entry (unmapped or dismissed) counts fully under **Not in the catalogue**, and one that resolves to
+an entry without muscle weights (a mobility or warm-up movement from Garmin's list, say) under **No
+muscle group**, so nothing drops out of the total. Both have `muscle_group: null`. Values are rounded
+to two decimals.
 
 - `GET /chart-data` with `measure` `set_count`, `volume` or `total_reps` takes the breakdown field
   `sets.exercise.muscle_group` (`<list>.<item>.muscle_group`, a catalogue-backed item path): one
   series per muscle group, named as in the catalogue. It combines with scalar breakdown fields and
   with an exercise filter, but not with another item path; any other measure, or none, is a 400.
+  On a parent type, whose sessions include its sub-types', each session's sets resolve through the
+  catalogue-backed field of the type it was logged as, or the charted type's when its own has none.
   Weekly sets per muscle group:
   `source_type=activity_type&pattern=strength_training&measure=set_count&aggregation=sum&bucket_size=1w&breakdown_fields=sets.exercise.muscle_group`.
   `query_chart_data` and the dashboard's bar chart take the same field.
 - `GET /activities/:id/item-history?field=sets.exercise` carries `muscle_groups` for a
-  catalogue-backed field: per group its `muscle_group` (null for not in the catalogue), `name` and
-  weighted `measures`, most sets first and not in the catalogue last.
+  catalogue-backed field: per group its `muscle_group`, `name` and weighted `measures`, most sets
+  first and the two `null` groups last; on those, `in_catalogue` is `true` for No muscle group and
+  `false` for Not in the catalogue.
 
-On the web, the type page shows a weekly **Sets per muscle group** bar chart for each
-catalogue-backed item field (90 days or a year, with Chart Explorer and dashboard entries in its ⋮
-menu), an activity's exercises section lists the session's sets per muscle group under the
+On the web, the type page shows a **Sets per muscle group** section for each catalogue-backed item
+field (90 days or a year, with Chart Explorer and dashboard entries in its ⋮ menu). It lists every
+muscle group of the catalogue with its sets this week, its average sets per week over the period
+(the period's sets divided by its days over seven) and a bar for that average, most sets first; the
+groups without sets follow, muted, so a neglected group shows as a zero rather than not at all, and
+No muscle group and Not in the catalogue come last, the latter linking to the page's review list of
+unmatched names. The weekly bar chart, one bar per group per week, opens under the list on
+**Show weekly chart**. An activity's exercises section lists the session's sets per muscle group under the
 exercises, and the Chart Explorer offers a **Muscle group** breakdown when a summed measure is
 chosen.
 
@@ -345,6 +420,17 @@ so rows compare at a glance.
   Sort by recency, count, length, average HR, zone 3+ time or name to pick the next session by
   length and effort. Expanding a row lists its sessions. Sessions without a value form the last
   row.
+- **By place**: the same rows, one per place the sessions happened at, e.g. yoga at home versus
+  at the studio (`GET /activity-types/:name/sessions?group_by=place`; `group_by=place` in
+  `query_activity_sessions`). A session's place is the named location it overlaps longest, an
+  OwnTracks region or Home Assistant zone named like a named location counting as that location
+  (as in the [places summary](places.md#places-summary)). A session no place visit falls in (a
+  phone at rest reports nothing) takes the place of the last visit ending up to 6 hours before it,
+  as the detail pages' [last known place](places.md#last-known-place) does. Sessions with neither,
+  or only at unnamed places, form the last row. Places are resolved per query from one pass of
+  place visits over the sessions' range, so renaming or merging a place needs no backfill. Each
+  session carries its place in `fields.place`; `place` is reserved, so a data field of that name
+  cannot be grouped by.
 - **All sessions**: one sortable table.
 
 The period defaults to 90 days. Zone seconds and heart-rate histograms are computed in SQL,
@@ -382,8 +468,15 @@ types in the `exercise` display category.
 ## API
 
 - `GET /activity-types` -- List all definitions
-- `POST /activity-types` -- Create a custom type
+- `POST /activity-types` -- Create a custom type; with only the name of a catalogue type, from its
+  catalogue definition
+- `GET /activity-type-catalog?q=` -- The built-in [activity type catalogue](activity-type-catalog.md),
+  each entry with `in_use`
 - `PATCH /activity-types/:name` -- Update display metadata
+- `POST /activity-types/:name/catalog-fields` -- Add the catalogue fields a type of a catalogue
+  name lacks (see [Types you already have](activity-type-catalog.md#types-you-already-have))
+- `POST /activity-types/merge` -- Merge a custom type into another, with optional `set_data`
+  (see [Merging types](#merging-types))
 - `DELETE /activity-types/:name` -- Delete a custom type (built-ins protected)
 - `GET /activity-types/:name/sessions` -- Sessions with HR summaries and list-item measures;
   `start`/`end` (default all time), `group_by=<field>` for groups, `filter_field` +
@@ -411,10 +504,10 @@ types in the `exercise` display category.
   logged name
 - `PUT /activity-types/:name/item-values/identity` -- Map a name to a catalogue key, or dismiss it
 - `DELETE /activity-types/:name/item-values/identity?field=&value=` -- Clear the decision for a name
-- `GET /activity-types/:name/item-values/unmapped?field=<item path>` -- Logged names matching no
-  catalogue entry, with suggestions
+- `GET /activity-types/:name/item-values/unmapped?field=<item path>&limit=&offset=` -- Logged names
+  matching no catalogue entry, with suggestions, a page at a time with the `total`
 
-MCP tools: `list_activity_types`, `add_activity_type`, `update_activity_type`, `delete_activity_type`, `query_activity_sessions`, `get_activity_records`, `get_activity_type_summary`, `list_activity_field_values`, `get_activity_neighbors`, `get_activity_item_history`, `merge_item_values`, `list_item_value_aliases`, `delete_item_value_alias`, `get_item_value_identity`, `set_item_value_identity`, `clear_item_value_identity`, `list_unmapped_item_values`.
+MCP tools: `list_activity_types`, `list_activity_type_catalog`, `add_activity_type`, `add_activity_type_catalog_fields`, `update_activity_type`, `delete_activity_type`, `merge_activity_type`, `query_activity_sessions`, `get_activity_records`, `get_activity_type_summary`, `list_activity_field_values`, `get_activity_neighbors`, `get_activity_item_history`, `merge_item_values`, `list_item_value_aliases`, `delete_item_value_alias`, `get_item_value_identity`, `set_item_value_identity`, `clear_item_value_identity`, `list_unmapped_item_values`.
 
 ## Garmin Meditation Recognition
 

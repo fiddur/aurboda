@@ -13,7 +13,7 @@ import {
   upsertFeedQuoteAuthorization,
 } from './feed-quotes.ts'
 import { upsertFeedPostReaction } from './feed-reactions.ts'
-import { createFeedPost, deleteFeedPost, deleteFeedPostWithQuotes } from './feed.ts'
+import { createFeedPost, deleteFeedPostWithQuotes } from './feed.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 const ALICE = 'https://mastodon.example/users/alice'
@@ -124,7 +124,7 @@ describe('Feed quote authorization store integration', () => {
       quote_uri: QUOTE,
       request_uri: null,
     })
-    expect(await deleteFeedPost(user, created.id)).toBe(true)
+    expect(await deleteFeedPostWithQuotes(user, created.id)).not.toBeNull()
     expect(await listFeedQuoteAuthorizations(user, created.id)).toHaveLength(0)
     expect(await getFeedQuoteAuthorization(user, row.id)).toBeNull()
   })

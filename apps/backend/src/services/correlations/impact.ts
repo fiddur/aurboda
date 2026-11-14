@@ -1,9 +1,10 @@
 import type { ImpactBucket, ImpactBucketPhase, TimeWindowStats, WindowEffect } from '@aurboda/api-spec'
 
-import { studentTTwoSidedP } from './stats.ts'
+import { TIME_WEIGHT_BIN_MINUTES } from '../../db/time-weighted.ts'
+import { benjaminiHochberg, studentTTwoSidedP } from './stats.ts'
 import { mean, stddev } from './utils.ts'
 
-export const BIN_MINUTES = 5
+export const BIN_MINUTES = TIME_WEIGHT_BIN_MINUTES
 export const SESSION_GAP_MINUTES = 10
 export const POINT_ACTIVITY_MINUTES = 5
 export const DEFAULT_WINDOW_MINUTES = 30
@@ -151,6 +152,24 @@ export const pairedEffect = (before: (number | null)[], after: (number | null)[]
   }
 }
 
+export interface EffectAdjustment {
+  /** Effects in the family that have a p-value. */
+  comparisons: number
+  /** The effect with p_value_adjusted set from the family; null when it has no p-value or is not in it. */
+  adjust: (effect: WindowEffect) => WindowEffect
+}
+
+/** Benjamini–Hochberg over every tested effect in one response; an object listed twice counts once. */
+export const adjustEffects = (effects: readonly WindowEffect[]): EffectAdjustment => {
+  const tested = [...new Set(effects)].filter((effect) => effect.p_value !== null)
+  const adjusted = benjaminiHochberg(tested.map((effect) => effect.p_value!))
+  const byEffect = new Map(tested.map((effect, i) => [effect, adjusted[i]]))
+  return {
+    adjust: (effect) => ({ ...effect, p_value_adjusted: round(byEffect.get(effect) ?? null, 4) }),
+    comparisons: tested.length,
+  }
+}
+
 interface SessionWindows {
   before: Interval
   after: Interval
@@ -240,7 +259,6 @@ const meanOrNull = (values: number[]): number | null => (values.length > 0 ? mea
 
 const EMPTY_SERIES: BinnedSeries = { times: [], values: [] }
 
-/** Extra metric names, deduplicated, without the MetricKey names the fixed three occupy in a MetricSeries. */
 export const extraMetricKeys = (metrics: string[]): string[] =>
   [...new Set(metrics)].filter((metric) => !(METRIC_KEYS as string[]).includes(metric))
 
@@ -304,7 +322,6 @@ export const binMetricSeries = (
   stressData: [Date, number][],
 ): MetricSeries => ({ hr: binSeries(hrData), hrv: binSeries(hrvData), stress: binSeries(stressData) })
 
-/** Bins each extra metric's raw points under its own name, ready to merge into a MetricSeries. */
 export const binExtraSeries = (raw: Record<string, [Date, number][]>): Record<string, BinnedSeries> =>
   Object.fromEntries(Object.entries(raw).map(([metric, data]) => [metric, binSeries(data)]))
 

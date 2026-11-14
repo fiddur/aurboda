@@ -84,6 +84,7 @@ import { registerTrendTools } from './mcp/trend-tools.ts'
 import { type AccountGate, safeRefusal } from './services/account-gate.ts'
 import { createDefaultEngineDeps } from './services/deduction-deps.ts'
 import { isOAuthAccessToken, validateAccessToken } from './services/oauth.ts'
+import { accountUploadLimiter } from './services/rate-limit.ts'
 import { isMutatingMcpTool, mcpToolCallNames } from './services/usage-channel.ts'
 import { recordUsage } from './services/usage-recorder.ts'
 import { trimStrings } from './trim-input.ts'
@@ -253,7 +254,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     retroEnrichTimeline: deps.retroEnrichTimeline,
     webHost: deps.webHost,
   })
-  registerFeedImageTools(server, user, { apiBaseUrl: deps.apiBaseUrl })
+  registerFeedImageTools(server, user, { apiBaseUrl: deps.apiBaseUrl, uploadLimiter: accountUploadLimiter })
   registerChallengeTools(server, user, {
     apiBaseUrl: deps.apiBaseUrl,
     discoverChallenges: deps.discoverChallenges,

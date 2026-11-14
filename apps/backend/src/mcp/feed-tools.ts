@@ -65,6 +65,7 @@ import {
 } from '../services/article-drafts.ts'
 import { buildArticleMarkdown, renderableArticleBlocks } from '../services/article-export.ts'
 import { mergeArticleContent, validateArticleContent } from '../services/article.ts'
+import { autoshareSharedByHand } from '../services/autoshare-pending.ts'
 import { resolveChallengeShare } from '../services/challenge-share.ts'
 import {
   dashboardShareTags,
@@ -176,6 +177,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
       })
       // Fan out to followers (best-effort), same as the REST share route.
       deliver?.created(user, record, activity)
+      await autoshareSharedByHand(user, record, activity.activity_type)
       return jsonResponse(await serializeFeedPost(user, record, { webHost }))
     },
   )

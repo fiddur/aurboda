@@ -4,11 +4,14 @@
  * routes and MCP tools call.
  */
 
+import type { FlaggedExclusion } from '@aurboda/api-spec'
+
 import type { SyncProvider } from '../queries/index.ts'
 import type { ContinuousResult } from './continuous.ts'
 import type { Selector } from './selectors.ts'
 import type { EventOutcomeConfig, EventOutcomeBlock, TriggerCondition } from './types.ts'
 
+import { type FlaggedWindow, flaggedDays, flaggedExclusion, loadFlaggedWindows } from '../flagged-windows.ts'
 import { triggerCorrelationSyncs } from './background-sync.ts'
 import { computeContinuous } from './continuous.ts'
 import { compoundTriggerDays, computeEventOutcome } from './event-outcome.ts'
@@ -46,9 +49,12 @@ export interface ContinuousParams {
    * which otherwise read as noisy zeros. n_complete is reported either way.
    */
   nutritionCompleteness?: 'all' | 'complete_only'
+  /** Leave out the days that overlap an activity flagged exclude_from_baseline. */
+  excludeFlagged?: boolean
 }
 
 export interface ContinuousCorrelation extends ContinuousResult {
+  flagged_exclusion?: FlaggedExclusion
   trigger: Selector
   outcome: Selector
   period: { start: string; end: string; days: number }
@@ -69,16 +75,18 @@ export const getContinuousCorrelation = async (
   const { start, end } = resolveWindow(params)
   const lagDays = params.lagDays ?? 0
 
-  const [triggerSeries, outcomeSeries] = await Promise.all([
+  const [triggerSeries, outcomeSeries, flagged] = await Promise.all([
     resolveSelector(user, params.trigger, start, end),
     resolveSelector(user, params.outcome, start, end),
+    loadFlaggedWindows(user, start, end, params.excludeFlagged),
   ])
+  const skip = flaggedSkip(flagged, start, end)
 
   const result = computeContinuous({
     triggerDaily: triggerSeries.daily,
     outcomeDaily: outcomeSeries.daily,
-    triggerKnown: triggerSeries.knownDays,
-    outcomeKnown: outcomeSeries.knownDays,
+    triggerKnown: skip.days(triggerSeries.knownDays),
+    outcomeKnown: skip.days(outcomeSeries.knownDays),
     lagDays,
     triggerCompleteDays: triggerSeries.completeDays,
     outcomeCompleteDays: outcomeSeries.completeDays,
@@ -88,6 +96,7 @@ export const getContinuousCorrelation = async (
   const days = Math.round((end.getTime() - start.getTime()) / 86_400_000)
   return {
     ...result,
+    ...skip.exclusion,
     trigger: params.trigger,
     outcome: params.outcome,
     period: { start: start.toISOString(), end: end.toISOString(), days },
@@ -117,6 +126,7 @@ const eventOutcomeToSelector = (outcome: EventOutcomeConfig): Selector =>
     : { kind: 'tag', pattern: outcome.pattern ?? '' }
 
 export interface CompoundEventOutcomeResult extends EventOutcomeBlock {
+  flagged_exclusion?: FlaggedExclusion
   period: { start: string; end: string; days: number }
 }
 
@@ -131,17 +141,25 @@ export const getCompoundEventOutcome = async (
   triggers: TriggerCondition[],
   outcome: EventOutcomeConfig,
   lagWindows: string[],
-  options: { periodStart?: string; periodEnd?: string; periodDays?: number; denominator?: 'known' | 'all' },
+  options: {
+    periodStart?: string
+    periodEnd?: string
+    periodDays?: number
+    denominator?: 'known' | 'all'
+    excludeFlagged?: boolean
+  },
 ): Promise<CompoundEventOutcomeResult> => {
   const { start, end } = resolveWindow(options)
   const collapseGapDays = outcome.collapse_gap_days ?? 3
   const denominator = options.denominator ?? 'known'
-  const candidateDays = enumerateDays(start, end)
 
-  const [conditionSeries, outcomeSeries] = await Promise.all([
+  const [conditionSeries, outcomeSeries, flagged] = await Promise.all([
     Promise.all(triggers.map((t) => resolveSelector(user, triggerConditionToSelector(t), start, end))),
     resolveSelector(user, eventOutcomeToSelector(outcome), start, end),
+    loadFlaggedWindows(user, start, end, options.excludeFlagged),
   ])
+  const skip = flaggedSkip(flagged, start, end)
+  const candidateDays = skip.days(enumerateDays(start, end))
 
   const triggerDays = compoundTriggerDays(
     triggers.map((t, i) => ({
@@ -152,7 +170,7 @@ export const getCompoundEventOutcome = async (
     candidateDays,
   )
 
-  const knownDays = denominator === 'all' ? candidateDays : outcomeSeries.knownDays
+  const knownDays = denominator === 'all' ? candidateDays : skip.days(outcomeSeries.knownDays)
 
   const result = computeEventOutcome({
     triggerDays,
@@ -164,8 +182,10 @@ export const getCompoundEventOutcome = async (
 
   const days = Math.round((end.getTime() - start.getTime()) / 86_400_000)
   return {
+    ...skip.exclusion,
     denominator,
     collapse_gap_days: collapseGapDays,
+    comparisons: result.per_lag.length,
     trigger_days: result.trigger_days,
     outcome_days: result.outcome_days,
     onsets: result.onsets,
@@ -176,6 +196,17 @@ export const getCompoundEventOutcome = async (
 }
 
 const MS_PER_DAY = 86_400_000
+
+/** The UTC days the engines drop for overlapping a flagged window, and the response's account of them. */
+const flaggedSkip = (flagged: FlaggedWindow[], start: Date, end: Date) => {
+  const skipped = flaggedDays(flagged)
+  return {
+    days: (days: string[]) => (skipped.size === 0 ? days : days.filter((d) => !skipped.has(d))),
+    exclusion: flaggedExclusion(flagged, {
+      excluded_days: enumerateDays(start, end).filter((d) => skipped.has(d)).length,
+    }),
+  }
+}
 
 /** All UTC days in the inclusive [start, end] range. */
 const enumerateDays = (start: Date, end: Date): string[] => {

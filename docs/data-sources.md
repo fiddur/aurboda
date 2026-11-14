@@ -10,10 +10,10 @@ You connect sources from **Data Sources** in the web app's sidebar, one page per
 
 | Source                                            | Data Types                                                                                                                      | Sync Method                                  | Admin Setup                                | User Setup                                               |
 | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- | ------------------------------------------ | -------------------------------------------------------- |
-| [**Android Health Connect**](./health-connect.md) | Heart rate, HRV, sleep, exercise (80+ types), mindfulness/meditation sessions, steps, weight, SpO2, VO2 max, calories, and more | Push from Android app                        | None                                       | Install Android app                                      |
+| [**Android Health Connect**](./health-connect.md) | Heart rate, HRV, sleep, exercise (60+ types), mindfulness/meditation sessions, steps, weight, SpO2, VO2 max, calories, and more | Push from Android app                        | None                                       | Install Android app                                      |
 | **BLE Sensors**                                   | Real-time heart rate, HRV (Polar H10, etc.) and steps (Zwift RunPod, etc.)                                                      | Live via Android app                         | None                                       | Pair sensor in Android app                               |
 | [**Oura Ring**](./oura.md)                        | Sleep stages/scores, readiness, resilience, cardiovascular age, HRV, heart rate, meditation, tags                               | Pull (API) + Push (webhooks)                 | OAuth credentials (env vars)               | OAuth connect                                            |
-| [**Garmin Connect**](./garmin.md)                 | Daily summary, HR, HRV, sleep, stress, body battery, activities, SpO2, respiration, training readiness                          | Pull (login session and/or Personal API key) | None (Personal API keys can be turned off) | Garmin credentials, a Personal API key, or both          |
+| [**Garmin Connect**](./garmin.md)                 | Daily summary, HR, HRV, sleep, stress, body battery, activities, strength sets, SpO2, respiration, training readiness           | Pull (login session and/or Personal API key) | None (Personal API keys can be turned off) | Garmin credentials, a Personal API key, or both          |
 | [**Strava**](./strava.md)                         | Activities with per-second heart rate, GPS routes, cadence, and power                                                           | Pull (API) + Push (webhooks)                 | OAuth credentials (admin)                  | OAuth connect                                            |
 | [**Gravl**](./gravl.md)                           | Strength workouts with per-set exercise, weight, reps, RPE and set type                                                         | Pull (API) + on Health Connect arrival       | Optional OAuth app (admin setting)         | Personal token, or OAuth connect when configured         |
 | [**OwnTracks**](./owntracks.md)                   | GPS locations, geofences, place visits                                                                                          | Push (HTTP mode)                             | None                                       | OwnTracks app config                                     |
@@ -54,12 +54,14 @@ Check sync status:
 
 Garmin and Oura report no states while the source is not connected (neither a Garmin login nor a Personal API key, no Oura token), which also hides rows that releases before [#1293](https://github.com/fiddur/aurboda/issues/1293) left on users who never connected ([#1299](https://github.com/fiddur/aurboda/issues/1299)).
 
+A `syncing` status that has not changed for 15 minutes reads as `idle`: a pull that a server restart cut short never writes its result, and the next run would otherwise be the first to clear it. Strava and Garmin are the exceptions: Strava's queued sync and a Garmin full resync can run for longer than that, and Garmin's `syncing` row is what keeps a second sync from starting.
+
 ## Data Storage
 
 All sources feed into a common data model:
 
 - **`time_series`** -- Timestamped metric values (HR, weight, steps, etc.)
-- **`activities`** -- Duration-based or point-in-time events: sleep, exercise, meditation, nap, and anything of a custom type, including what you log yourself, Oura tags, Last.fm rule tags and calendar events (these were once a separate `tags` table, which is now migrated into activities)
+- **`activities`** -- Duration-based or point-in-time events: sleep, exercise (and its Health Connect subtypes such as running or yoga), meditation, nap, and anything of a custom type, including what you log yourself, Oura tags, Last.fm rule tags and calendar events (these were once a separate `tags` table, which is now migrated into activities)
 - **`productivity`** -- App/website usage records (from RescueTime and ActivityWatch)
 - **`locations`** -- GPS coordinates (from OwnTracks and Home Assistant, plus activity tracks from Garmin and Strava)
 - **`raw_records`** -- Original data preserved in full JSON form

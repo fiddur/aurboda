@@ -24,6 +24,14 @@ export const isAllowedImageType = (contentType: string): boolean => ALLOWED_UPLO
 export const BANNER_WIDTH = 1200
 export const BANNER_HEIGHT = 630
 
+/**
+ * sharp's own default ceiling (16383×16383, about 268 megapixels), stated so every upload path
+ * shares it: lower would refuse a 200-megapixel phone photo, which is worse than its decode cost.
+ */
+export const MAX_UPLOAD_PIXELS = 16_383 * 16_383
+
+export const uploadedImage = (buffer: Buffer) => sharp(buffer, { limitInputPixels: MAX_UPLOAD_PIXELS })
+
 export interface StoredImage {
   content_type: string
   data: Buffer
@@ -36,7 +44,7 @@ export interface StoredImage {
  * client-claimed mimetype, so SVG can't slip through by Content-Type spoofing.
  */
 export const assertAllowedFormat = async (buffer: Buffer): Promise<void> => {
-  const { format } = await sharp(buffer).metadata()
+  const { format } = await uploadedImage(buffer).metadata()
   if (!format || !ALLOWED_DETECTED_FORMATS.has(format)) {
     throw new Error(`Unsupported image format: ${format ?? 'unknown'}`)
   }
@@ -44,7 +52,7 @@ export const assertAllowedFormat = async (buffer: Buffer): Promise<void> => {
 
 export const processAvatar = async (buffer: Buffer): Promise<StoredImage> => {
   await assertAllowedFormat(buffer)
-  const data = await sharp(buffer)
+  const data = await uploadedImage(buffer)
     .resize(AVATAR_SIZE, AVATAR_SIZE, { fit: 'cover', position: 'attention' })
     .webp({ quality: 82 })
     .toBuffer()
@@ -53,7 +61,7 @@ export const processAvatar = async (buffer: Buffer): Promise<StoredImage> => {
 
 export const processBanner = async (buffer: Buffer): Promise<StoredImage> => {
   await assertAllowedFormat(buffer)
-  const data = await sharp(buffer)
+  const data = await uploadedImage(buffer)
     .resize(BANNER_WIDTH, BANNER_HEIGHT, { fit: 'cover' })
     .webp({ quality: 82 })
     .toBuffer()

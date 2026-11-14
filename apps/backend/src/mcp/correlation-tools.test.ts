@@ -58,6 +58,7 @@ describe('get_activity_impact', () => {
       undefined,
       [],
       {},
+      { excludeFlagged: true },
     )
   })
 

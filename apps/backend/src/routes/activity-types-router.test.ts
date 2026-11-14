@@ -6,6 +6,7 @@ import { createActivityTypesRouter } from './activity-types-router.ts'
 
 vi.mock('../services/activity-type-definitions.ts', () => ({
   addActivityTypeDefinition: vi.fn(),
+  addCatalogFieldsToActivityType: vi.fn(),
   deleteActivityTypeDefinition: vi.fn(),
   listActivityTypeDefinitions: vi.fn(),
   mergeActivityType: vi.fn(),
@@ -234,8 +235,8 @@ describe('POST /activity-types', () => {
       data: {
         aliases: [input.name],
         color: '#6b7280',
-        display_category: input.display_category,
-        display_name: input.display_name,
+        display_category: input.display_category ?? 'other',
+        display_name: input.display_name ?? input.name,
         is_builtin: false,
         name: input.name,
         parent_type: input.parent_type,
@@ -256,6 +257,146 @@ describe('POST /activity-types', () => {
     expect(res.status).toBe(201)
     expect(service.addActivityTypeDefinition).toHaveBeenCalledWith('tester', body)
     expect(res.body.data).toMatchObject({ parent_type: 'yoga', show_on_timeline: false })
+  })
+
+  test('accepts a catalogue name alone (#1700)', async () => {
+    vi.mocked(service.addActivityTypeDefinition).mockResolvedValue({
+      data: {
+        aliases: ['sauna'],
+        color: '#f97316',
+        display_category: 'wellness',
+        display_name: 'Sauna',
+        icon: '🧖',
+        is_builtin: false,
+        name: 'sauna',
+        show_on_timeline: true,
+      },
+      success: true,
+    })
+
+    const res = await supertest(buildApp()).post('/activity-types').send({ name: 'sauna' })
+
+    expect(res.status).toBe(201)
+    expect(service.addActivityTypeDefinition).toHaveBeenCalledWith('tester', { name: 'sauna' })
+    expect(res.body.data).toMatchObject({ display_category: 'wellness', display_name: 'Sauna' })
+  })
+
+  test('answers 400 for a name alone outside the catalogue (#1700)', async () => {
+    const error =
+      'display_name and display_category are required for a type that is not in the built-in catalogue'
+    vi.mocked(service.addActivityTypeDefinition).mockResolvedValue({ error, success: false })
+
+    const res = await supertest(buildApp()).post('/activity-types').send({ name: 'driving' })
+
+    expect(res.status).toBe(400)
+    expect(res.body).toEqual({ error, success: false })
+  })
+
+  test('passes separate_type on to the service', async () => {
+    vi.mocked(service.addActivityTypeDefinition).mockResolvedValue({ error: 'x', success: false })
+    const body = { display_category: 'other', display_name: 'Beer', name: 'beer', separate_type: true }
+
+    await supertest(buildApp()).post('/activity-types').send(body)
+
+    expect(service.addActivityTypeDefinition).toHaveBeenCalledWith('tester', body)
+  })
+})
+
+describe('POST /activity-types/merge', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  test('passes set_data on and answers with activities_data_set', async () => {
+    vi.mocked(service.mergeActivityType).mockResolvedValue({
+      activities_data_set: 3,
+      activities_reassigned: 4,
+      deduction_rules_updated: 0,
+      success: true,
+    })
+
+    const res = await supertest(buildApp())
+      .post('/activity-types/merge')
+      .send({ set_data: { kind: 'beer' }, source: 'beer', target: 'alcohol' })
+
+    expect(res.status).toBe(200)
+    expect(res.body).toMatchObject({ activities_data_set: 3, activities_reassigned: 4, success: true })
+    expect(service.mergeActivityType).toHaveBeenCalledWith('tester', 'beer', 'alcohol', { kind: 'beer' })
+  })
+
+  test('passes no set_data when none is given', async () => {
+    vi.mocked(service.mergeActivityType).mockResolvedValue({ activities_reassigned: 1, success: true })
+
+    await supertest(buildApp()).post('/activity-types/merge').send({ source: 'beer', target: 'alcohol' })
+
+    expect(service.mergeActivityType).toHaveBeenCalledWith('tester', 'beer', 'alcohol', undefined)
+  })
+
+  test('answers 400 for set_data the target does not allow', async () => {
+    const error = 'set_data is not valid for "alcohol": Field "colour" is not a field of this type'
+    vi.mocked(service.mergeActivityType).mockResolvedValue({ error, success: false })
+
+    const res = await supertest(buildApp())
+      .post('/activity-types/merge')
+      .send({ set_data: { colour: 'red' }, source: 'beer', target: 'alcohol' })
+
+    expect(res.status).toBe(400)
+    expect(res.body).toEqual({ error, success: false })
+  })
+
+  test('answers 404 for an unknown type', async () => {
+    vi.mocked(service.mergeActivityType).mockResolvedValue({
+      error: 'Activity type "beer" or "alcohol" not found.',
+      success: false,
+    })
+
+    const res = await supertest(buildApp())
+      .post('/activity-types/merge')
+      .send({ source: 'beer', target: 'alcohol' })
+
+    expect(res.status).toBe(404)
+  })
+})
+
+describe('POST /activity-types/:name/catalog-fields', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  test('answers with the updated definition', async () => {
+    const data = {
+      color: '#f97316',
+      data_schema: { fields: [{ name: 'temperature', type: 'number' as const }] },
+      display_category: 'wellness' as const,
+      display_name: 'Sauna',
+      is_builtin: false,
+      name: 'sauna',
+      show_on_timeline: true,
+    }
+    vi.mocked(service.addCatalogFieldsToActivityType).mockResolvedValue({ data, success: true })
+
+    const res = await supertest(buildApp()).post('/activity-types/sauna/catalog-fields')
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ data, success: true })
+    expect(service.addCatalogFieldsToActivityType).toHaveBeenCalledWith('tester', 'sauna')
+  })
+
+  test('answers 404 for a type the user does not have', async () => {
+    vi.mocked(service.addCatalogFieldsToActivityType).mockResolvedValue({
+      error: 'Activity type "sauna" not found',
+      success: false,
+    })
+
+    const res = await supertest(buildApp()).post('/activity-types/sauna/catalog-fields')
+
+    expect(res.status).toBe(404)
+  })
+
+  test('answers 400 for a type that is not a catalogue type', async () => {
+    const error = '"driving" is not a built-in catalogue type'
+    vi.mocked(service.addCatalogFieldsToActivityType).mockResolvedValue({ error, success: false })
+
+    const res = await supertest(buildApp()).post('/activity-types/driving/catalog-fields')
+
+    expect(res.status).toBe(400)
+    expect(res.body).toEqual({ error, success: false })
   })
 })
 
@@ -463,6 +604,7 @@ describe('item value identity routes', () => {
       catalog: 'exercises' as const,
       catalog_version: '2026.11.0',
       field: 'sets.exercise',
+      total: 0,
       values: [],
     }
     vi.mocked(identities.listUnmappedItemValues).mockResolvedValue({ data, success: true })
@@ -473,6 +615,28 @@ describe('item value identity routes', () => {
       'tester',
       'strength_training',
       'sets.exercise',
+      { limit: 50, offset: 0 },
     )
+  })
+
+  test('GET unmapped takes a page, at most 200 names', async () => {
+    vi.mocked(identities.listUnmappedItemValues).mockResolvedValue({
+      data: { catalog: 'exercises', catalog_version: 'v', field: 'sets.exercise', total: 0, values: [] },
+      success: true,
+    })
+    const page = await supertest(buildApp())
+      .get(`${url}/unmapped`)
+      .query({ field: 'sets.exercise', limit: '20', offset: '40' })
+    expect(page.status).toBe(200)
+    expect(identities.listUnmappedItemValues).toHaveBeenLastCalledWith(
+      'tester',
+      'strength_training',
+      'sets.exercise',
+      { limit: 20, offset: 40 },
+    )
+    const tooMany = await supertest(buildApp())
+      .get(`${url}/unmapped`)
+      .query({ field: 'sets.exercise', limit: 201 })
+    expect(tooMany.status).toBe(400)
   })
 })

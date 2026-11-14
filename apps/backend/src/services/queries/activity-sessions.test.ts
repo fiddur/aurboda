@@ -12,6 +12,7 @@ import {
   groupSessions,
   queryActivitySessions,
   sessionsOptionsFromQuery,
+  withPlace,
 } from './activity-sessions.ts'
 
 vi.mock('../../db', () => ({
@@ -177,6 +178,16 @@ describe('buildSessions', () => {
     )
     expect(session).toMatchObject({ duration: undefined, hr: undefined, id: 'a' })
     expect(session).toHaveProperty('title', undefined)
+  })
+})
+
+describe('withPlace', () => {
+  test('the resolved place replaces a data field named place, and no place drops it', () => {
+    expect(withPlace({ place: 'mat', session_name: 'Yin' }, 'Studio')).toEqual({
+      place: 'Studio',
+      session_name: 'Yin',
+    })
+    expect(withPlace({ place: 'mat', session_name: 'Yin' }, null)).toEqual({ session_name: 'Yin' })
   })
 })
 

@@ -25,7 +25,7 @@ export const registerActivityTools = (
 ) => {
   server.tool(
     'add_activity',
-    'Add an activity session (exercise type like yoga/running/weightlifting, meditation, nap, rest, …). Pass the specific activity_type directly; structured fields go in `data`.',
+    'Add an activity session (exercise type like yoga/running/weightlifting, meditation, nap, rest, …). Pass the specific activity_type directly; structured fields go in `data`. activity_type may also be a built-in catalogue type not used yet (list_activity_type_catalog), which is added on first use.',
     {
       ...addActivityBodySchema.shape,
       tz: tzSchema,

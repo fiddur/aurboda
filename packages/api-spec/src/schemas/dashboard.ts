@@ -411,6 +411,14 @@ export const lastSleepConfigSchema = z
 
 export type LastSleepConfig = z.infer<typeof lastSleepConfigSchema>
 
+export const sleepDebtConfigSchema = z
+  .object({
+    title: z.string().optional().meta({ description: 'Widget title (default: "Sleep debt")' }),
+  })
+  .meta({ id: 'SleepDebtConfig' })
+
+export type SleepDebtConfig = z.infer<typeof sleepDebtConfigSchema>
+
 export const widgetTypeSchema = z.enum([
   'metric_card',
   'sparkline_card',
@@ -422,6 +430,7 @@ export const widgetTypeSchema = z.enum([
   'hr_zones',
   'goal_progress',
   'last_sleep',
+  'sleep_debt',
   'combined_chart',
   'record_card',
   'activity_type_card',
@@ -481,6 +490,11 @@ export const dashboardWidgetSchema = z.discriminatedUnion('type', [
     config: lastSleepConfigSchema,
     id: z.string().min(1).meta({ description: 'Unique widget ID' }),
     type: z.literal('last_sleep'),
+  }),
+  z.object({
+    config: sleepDebtConfigSchema,
+    id: z.string().min(1).meta({ description: 'Unique widget ID' }),
+    type: z.literal('sleep_debt'),
   }),
   z.object({
     config: combinedChartConfigSchema,
@@ -592,6 +606,46 @@ export const dashboardDataQuerySchema = z
   .meta({ id: 'DashboardDataQuery' })
 
 export type DashboardDataQuery = z.infer<typeof dashboardDataQuerySchema>
+
+const nameListSchema = z.string().max(4000).optional()
+
+export const dataPresenceQuerySchema = z
+  .object({
+    activity_types: nameListSchema.meta({
+      description: 'Comma-separated activity types; a type counts its subtypes',
+      example: 'exercise,sleep',
+    }),
+    metrics: nameListSchema.meta({
+      description: 'Comma-separated metric names (built-in or custom), as stored',
+      example: 'hrv_rmssd,steps',
+    }),
+  })
+  .meta({ id: 'DataPresenceQuery' })
+
+export type DataPresenceQuery = z.infer<typeof dataPresenceQuerySchema>
+
+export const dataPresenceSchema = z
+  .object({
+    activity_types: z.record(z.string(), z.boolean()).meta({
+      description: 'Per asked activity type: whether any activity of it or a subtype was ever recorded',
+    }),
+    metrics: z.record(z.string(), z.boolean()).meta({
+      description: 'Per asked metric: whether any sample of it was ever recorded',
+    }),
+  })
+  .meta({
+    description:
+      'Whether each source has ever delivered anything, at any time. The dashboard hides a widget whose sources never have.',
+    id: 'DataPresence',
+  })
+
+export type DataPresence = z.infer<typeof dataPresenceSchema>
+
+export const dataPresenceResponseSchema = baseResponseSchema
+  .extend(dataPresenceSchema.shape)
+  .meta({ id: 'DataPresenceResponse' })
+
+export type DataPresenceResponse = z.infer<typeof dataPresenceResponseSchema>
 
 export const updateDashboardInputSchema = dashboardConfigSchema.meta({ id: 'UpdateDashboardInput' })
 

@@ -29,7 +29,7 @@ New users see four sections out of the box:
 
 ### Your Baseline
 
-A card grid showing your current HRV and resting heart rate averages over 7-day and 30-day windows. Each card displays the current value, unit, and a trend arrow showing the direction of change. Resting HR uses inverse coloring (green when decreasing, since lower is generally better).
+A card grid showing your current HRV and resting heart rate averages over 7-day and 30-day windows. Each card displays the current value, unit, and a trend arrow showing the direction of change, coloured by whether the change is better or worse (see [Trend direction](#trend-direction)).
 
 ### 30-Day Summary
 
@@ -47,9 +47,9 @@ A grid of quick-link tiles for navigating to Timeline, Sleep, HR Zones, Correlat
 
 ### Metric Card
 
-Displays a single metric value with an optional unit, trend indicator, and subtitle. The trend arrow is green for improvement, red for decline, and gray for no change. Supports an `inverse` mode where lower values are considered better (e.g., resting heart rate).
+Displays a single metric value with an optional unit, trend indicator, and subtitle. The trend arrow is coloured by the metric's [trend direction](#trend-direction); the card's `trend_inverse: true` overrides it with "lower is better".
 
-Values are sourced from either the HRV/HR baseline endpoint (for 7-day and 30-day averages) or the period summary (for everything else). The period summary compares the current 30-day window against the previous 30 days to calculate the trend percentage.
+Values are sourced from either the HRV/HR baseline endpoint (for 7-day and 30-day averages) or the period summary (for everything else). The period summary compares the current 30-day window against the previous 30 days to calculate the trend percentage. Averages of heart rate, stress, body battery, respiration and SpO2 are [time-weighted](../data-storage.md#time-weighted-averages), so the hours of a recorded activity, sampled once a second, weigh no more than any other hour.
 
 On a [period dashboard](#period-dashboards) the card shows the period's value and, unless the card has its own subtitle, `Previous: <value>` for the previous period (`previous_value` in the widget data); the trend arrow is the change against it.
 
@@ -66,6 +66,12 @@ Like a metric card, but with a small area chart underneath showing the metric's 
 A summary of the most recent sleep that ended within the last 36 hours, for a quick morning check-in. Shows bedtime and wake-up, the sleep score and total sleep, a stage strip (one coloured segment per stage along the night), minutes of deep, light, REM and awake, resting heart rate and overnight HRV with an arrow against their 30-day averages, and Body Battery from bedtime to wake-up with the change. The card links to the sleep's detail page. Data comes from `GET /api/latest-sleep` (MCP: `get_latest_sleep`); when no sleep was recorded it says so.
 
 **Configuration:** Optional title (default "Last night").
+
+### Sleep Debt
+
+The sleep you owe against the sleep need you set in Settings: the debt after the last night, its severity (none, mild, moderate, severe) and a sparkline of the last two weeks. See [Sleep debt](./sleep.md#sleep-debt) for how it is computed. Data comes from `GET /api/sleep-debt` (MCP: `get_sleep_debt`); with no night recorded in the last six weeks it says so.
+
+**Configuration:** Optional title (default "Sleep debt").
 
 ### Activity Summary
 
@@ -217,6 +223,26 @@ A clickable navigation tile with a colored icon and label. Links to any page in 
 
 **Configuration:** Target URL, label text, optional icon.
 
+## Trend direction
+
+Every trend indicator -- on metric, sparkline, activity, top list and places cards, the **Last night**
+card and the [Sleep page](sleep.md) -- colours a change by whether it is an improvement, not by
+whether it went up: green for better, red for worse, grey for a change that is neither. The word goes
+with the colour as the indicator's label ("12.0% lower, better"), so the colour is not the only cue.
+
+The direction belongs to the metric (`metricBetterDirections` in `@aurboda/api-spec`):
+
+- **Higher is better:** HRV, sleep score and the sleep contributor scores (efficiency, latency,
+  restfulness, timing, deep, REM, total), readiness and steps.
+- **Lower is better:** resting heart rate, stress and body fat.
+- **Neutral:** every other built-in metric (weight, for one), and counts of activities, places and
+  top-list entries.
+
+A custom metric has the same setting, `better: 'higher' | 'lower' | 'neutral'` (default neutral), in
+its form under Settings → Custom Metrics and on its metric page, in `POST`/`PATCH /metrics/custom`
+and in the `add_custom_metric` / `update_custom_metric` MCP tools. A visitor of a shared dashboard
+sees built-in metrics with their direction and custom metrics as neutral.
+
 ## Sections
 
 Widgets are organized into sections, each with a title and a layout type:
@@ -274,7 +300,7 @@ widget renders against that one window, ignoring the lookbacks in its configurat
   period is restored with it. Logging out clears them.
 - **Baselines.** The 7- and 30-day HRV and resting HR baseline cards become the period average of
   `hrv_rmssd` and `resting_heart_rate`.
-- **Widgets that do not apply.** **Last night** and **Goal progress** have no meaning for a past
+- **Widgets that do not apply.** **Last night**, **Sleep debt** and **Goal progress** have no meaning for a past
   period: the widget palette hides them, and existing ones show "Not available for a period".
 - **API.** `GET /dashboard/data?period=2026-10` (the home dashboard) and
   `GET /shared-dashboards/:id/data?period=2026-10` (a shared one) return `period`, `window`
@@ -342,13 +368,18 @@ When adding a Metric Card or Sparkline Card, the metric picker shows a searchabl
 
 ## What Data It Needs
 
-The dashboard works with whatever data sources you have connected. Widgets gracefully handle missing data -- a metric card with no data simply shows no value. The more sources you connect, the more useful the dashboard becomes:
+The dashboard works with whatever data sources you have connected. The more sources you connect, the more useful the dashboard becomes.
+
+**Cards waiting for data.** Outside edit mode, the home dashboard and your own period dashboards leave out every card whose source has never delivered anything, so a new account does not open on a wall of `No data`. One line under the last section says how many cards are waiting, with a link to **Data sources**; a card appears by itself once its source sends something. Edit mode shows every card, as before. "Never delivered" is per card: no sample of the metric at all for a metric card, sparkline, HR zones (heart rate) or a metric chart; no activity of the type or one of its subtypes for an activity card, record card, the activity summary (its shown categories), **Last night** (`sleep`) or an activity-type chart. The baseline cards read `hrv_rmssd` and `resting_heart_rate`, and Zone 2 reads `heart_rate`. A card is hidden only when none of its sources has ever delivered: one with data, just none in the current window, still shows `No data`. Tag charts, top lists, places, correlations, goals and quick links are always shown. A section left with no card goes too. Shared and public dashboards, and your own rolling dashboards other than home, show every card.
+
+The dashboard asks this in one request for all its metrics and activity types: `GET /dashboard/data-presence?metrics=hrv_rmssd,steps&activity_types=exercise,sleep` answers `{ metrics: { hrv_rmssd: true, steps: false }, activity_types: { … } }`, and MCP has the same as `get_data_presence`.
 
 | Widget content               | Data sources                                    |
 | ---------------------------- | ----------------------------------------------- |
 | HRV and resting HR baselines | Oura, Garmin, or Health Connect                 |
 | Sleep score                  | Oura                                            |
 | Last night                   | Any sleep source; Body Battery from Garmin      |
+| Sleep debt                   | Any sleep source                                |
 | Readiness score              | Oura                                            |
 | Steps                        | Garmin or Health Connect                        |
 | Zone 2 minutes               | Any source providing HR during exercise         |

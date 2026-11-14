@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
-import { createDataResponseSchema, iso8601DateTimeSchema } from './common.ts'
+import { createDataResponseSchema, dateOnlySchema, iso8601DateTimeSchema } from './common.ts'
+import { ianaTimezoneSchema } from './timezone.ts'
 
 export const sleepStageSegmentSchema = z
   .object({
@@ -76,3 +77,74 @@ export const latestSleepResponseSchema = createDataResponseSchema(latestSleepSch
 })
 
 export type LatestSleepResponse = z.infer<typeof latestSleepResponseSchema>
+
+export const defaultSleepNeedMinutes = 480
+
+export const sleepNeedMinutesSchema = z.number().int().min(180).max(720).meta({
+  description: 'How much sleep you need per night, in minutes (180–720)',
+  example: 480,
+})
+
+export const sleepDebtSeverities = ['none', 'mild', 'moderate', 'severe'] as const
+
+export const sleepDebtSeveritySchema = z.enum(sleepDebtSeverities).meta({
+  description:
+    'Sleep debt as a share of the sleep need: none under 10 %, mild under 50 %, moderate under 100 %, severe from one full night',
+  id: 'SleepDebtSeverity',
+})
+
+export type SleepDebtSeverity = z.infer<typeof sleepDebtSeveritySchema>
+
+export const sleepDebtDaySchema = z
+  .object({
+    date: dateOnlySchema.meta({ description: 'The date of the wake-up (YYYY-MM-DD, local time)' }),
+    debt_minutes: z.number().int().meta({ description: 'Sleep debt after this night, in minutes' }),
+    severity: sleepDebtSeveritySchema,
+    slept_minutes: z.number().int().nullable().meta({
+      description:
+        'Sleep credited for this date: the nights ending on it in full, naps over 20 minutes at half their length; null when no night was recorded, which leaves the debt decayed but not grown',
+    }),
+  })
+  .meta({ description: 'Sleep debt after one night', id: 'SleepDebtDay' })
+
+export type SleepDebtDay = z.infer<typeof sleepDebtDaySchema>
+
+export const sleepDebtSchema = z
+  .object({
+    days: z.array(sleepDebtDaySchema).meta({ description: 'One entry per date in the range, oldest first' }),
+    debt_minutes: z.number().int().meta({ description: 'Sleep debt after the last date of the range' }),
+    severity: sleepDebtSeveritySchema,
+    sleep_need_minutes: sleepNeedMinutesSchema.meta({
+      description: 'The sleep need the debt is judged against (the sleep_need_minutes setting)',
+    }),
+  })
+  .meta({
+    description:
+      'Sleep debt per night against your sleep need: each night debt = max(0, debt × 0.85 + need − slept). Computed from the stored sleep sessions on request, from four weeks before the range so the decay has settled.',
+    id: 'SleepDebt',
+  })
+
+export type SleepDebt = z.infer<typeof sleepDebtSchema>
+
+export const sleepDebtQuerySchema = z
+  .object({
+    end: dateOnlySchema.optional().meta({ description: 'Last date (YYYY-MM-DD); defaults to today' }),
+    start: dateOnlySchema
+      .optional()
+      .meta({ description: 'First date (YYYY-MM-DD); defaults to 13 days before end (two weeks)' }),
+    tz: ianaTimezoneSchema.optional().meta({
+      description:
+        "IANA timezone whose local dates the nights are counted in. Defaults to the user's stored device timezone, else UTC.",
+      example: 'Europe/Stockholm',
+    }),
+  })
+  .meta({ id: 'SleepDebtQuery' })
+
+export type SleepDebtQuery = z.infer<typeof sleepDebtQuerySchema>
+
+export const sleepDebtResponseSchema = createDataResponseSchema(sleepDebtSchema).meta({
+  description: 'Sleep debt over a date range against the sleep need you set',
+  id: 'SleepDebtResponse',
+})
+
+export type SleepDebtResponse = z.infer<typeof sleepDebtResponseSchema>

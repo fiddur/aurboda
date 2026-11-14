@@ -24,36 +24,21 @@ import { activityRouteSummarySchema } from './routes.ts'
  * @see https://developer.android.com/reference/kotlin/androidx/health/connect/client/records/ExerciseSessionRecord
  */
 export const exerciseTypes = {
-  back_extension: 1,
   badminton: 2,
-  barbell_shoulder_press: 3,
   baseball: 4,
   basketball: 5,
-  bench_press: 6,
-  bench_sit_up: 7,
   biking: 8,
   biking_stationary: 9,
   boot_camp: 10,
   boxing: 11,
-  burpee: 12,
   calisthenics: 13,
   cricket: 14,
-  crunch: 15,
   dancing: 16,
-  deadlift: 17,
-  dumbbell_curl_left_arm: 18,
-  dumbbell_curl_right_arm: 19,
-  dumbbell_front_raise: 20,
-  dumbbell_lateral_raise: 21,
-  dumbbell_triceps_extension_left_arm: 22,
-  dumbbell_triceps_extension_right_arm: 23,
-  dumbbell_triceps_extension_two_arm: 24,
   elliptical: 25,
   exercise_class: 26,
   fencing: 27,
   football_american: 28,
   football_australian: 29,
-  forward_twist: 30,
   frisbee_disc: 31,
   golf: 32,
   guided_breathing: 33,
@@ -64,15 +49,11 @@ export const exerciseTypes = {
   ice_hockey: 38,
   ice_skating: 39,
   jump_rope: 41,
-  jumping_jack: 40,
-  lat_pull_down: 42,
-  lunge: 43,
   martial_arts: 44,
   other_workout: 0,
   paddling: 46,
   paragliding: 47,
   pilates: 48,
-  plank: 49,
   racquetball: 50,
   rock_climbing: 51,
   roller_hockey: 52,
@@ -90,7 +71,6 @@ export const exerciseTypes = {
   soccer: 64,
   softball: 65,
   squash: 66,
-  squat: 67,
   stair_climbing: 68,
   stair_climbing_machine: 69,
   strength_training: 70,
@@ -100,7 +80,6 @@ export const exerciseTypes = {
   swimming_pool: 74,
   table_tennis: 75,
   tennis: 76,
-  upper_twist: 77,
   volleyball: 78,
   walking: 79,
   water_polo: 80,
@@ -303,10 +282,13 @@ export type ActivitiesResponse = z.infer<typeof activitiesResponseSchema>
 
 export const addActivityBodySchema = z
   .object({
-    activity_type: activityTypeSchema.meta({ description: 'Type of activity' }),
+    activity_type: activityTypeSchema.meta({
+      description:
+        "Type of activity: one of the user's types, or a built-in catalogue type not used yet (`GET /activity-type-catalog`), which is then added to the user's types with its fields",
+    }),
     data: z.record(z.string(), z.unknown()).optional().meta({
       description:
-        "Structured data for this activity: the fields the type's data_schema declares (a `list` field is an array of objects, e.g. strength_training's `sets`), plus any extra keys. A set may carry `exercise_key`, a key from search_exercise_catalog, instead of or next to `exercise`: alone it names the set, next to a new name it maps that name to the catalogue entry; it is not stored on the set",
+        "Structured data for this activity: the fields the type's data_schema declares (a `list` field is an array of objects, e.g. strength_training's `sets`), plus any extra keys. A set may carry `exercise_key`, a key from search_exercise_catalog, instead of or next to `exercise`: alone it names the set, next to a new name it maps that name to the catalogue entry; it is not stored on the set. `in_progress: true` marks a session still being logged (no end_time yet): it is not synced to Health Connect until a later update clears it",
     }),
     end_time: iso8601DateTimeSchema.optional().meta({
       description: 'End time (omit for point-in-time activities)',
@@ -359,10 +341,13 @@ export type DeleteActivityResponse = z.infer<typeof deleteActivityResponseSchema
 
 export const updateActivityBodySchema = z
   .object({
-    activity_type: activityTypeSchema.optional().meta({ description: 'New activity type' }),
+    activity_type: activityTypeSchema.optional().meta({
+      description:
+        "New activity type: one of the user's types, or a built-in catalogue type not used yet (`GET /activity-type-catalog`), which is then added to the user's types with its fields",
+    }),
     data: z.record(z.string(), z.unknown()).optional().meta({
       description:
-        'Updated structured data fields (merged with existing data). A set may carry `exercise_key`, a key from search_exercise_catalog, instead of or next to `exercise`: alone it names the set, next to a new name it maps that name to the catalogue entry; it is not stored on the set',
+        'Updated structured data fields (merged with existing data). A set may carry `exercise_key`, a key from search_exercise_catalog, instead of or next to `exercise`: alone it names the set, next to a new name it maps that name to the catalogue entry; it is not stored on the set. Set `in_progress: false` (with end_time) to finish a session logged live; while the stored data has `in_progress: true` the activity is not synced to Health Connect',
     }),
     end_time: iso8601DateTimeSchema
       .nullable()

@@ -25,6 +25,8 @@ Home Assistant zones themselves are not imported as named locations, and no othe
 
 None by default. Aurboda only talks to a Home Assistant that is reachable over **https** at a **public** address: the URL a user enters is checked before every request, private, loopback and link-local targets are refused, and redirects are not followed. This keeps a user from pointing the server at its own internal network.
 
+Each request also connects to the address that check approved, so a host name that later resolves to an internal address is refused too. For that reason Home Assistant requests bypass an egress proxy set in `HTTPS_PROXY` / `https_proxy`: a server that can reach the internet only through such a proxy cannot reach Home Assistant unless it sets `HOME_ASSISTANT_ALLOW_PRIVATE_ADDRESSES`, which drops the address pinning and so goes through the proxy again.
+
 A self-hosted Aurboda that sits on the same LAN as Home Assistant can lift both restrictions:
 
 | Environment variable                     | Effect                                                                                                                                                           |
@@ -86,7 +88,7 @@ Home Assistant positions are passive phone positions, like OwnTracks: where an a
 
 ## Troubleshooting
 
-The last error is shown in the sync status bar on the Home Assistant page and returned by the status endpoint.
+The last error is shown in the sync status bar on the Home Assistant page and returned by the status endpoint. A sync that a server restart interrupts leaves no result behind; its status reads as idle again once it is 15 minutes old.
 
 | Message                                                   | What to do                                                                                                                              |
 | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |

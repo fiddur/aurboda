@@ -5,15 +5,25 @@ import {
   customMetricDefinitionSchema,
   iso8601DateTimeSchema,
   metricAggregationSchema,
+  metricBetterSchema,
   metricTypeSchema,
   timeRangeQuerySchema,
+  timeWeightedAveragesNote,
 } from './common.ts'
+import { excludeFlaggedSchema, flaggedExclusionSchema } from './flagged-windows.ts'
 
 const metricValueSchema = z.number().meta({ description: 'Metric value' })
 
+const givenUnitSchema = z.string().min(1).max(30).optional().meta({
+  description:
+    "The unit the value is given in. Converted to the unit the metric is stored in when the metric is a built-in catalogue metric (GET /metric-catalog) and the unit is one it accepts; refused when it cannot be converted. Left out, the value is taken to be in the metric's unit.",
+  example: 'mg/dL',
+})
+
 /** Validation against the user's custom metrics happens at the service layer. */
 const metricNameSchema = z.string().min(1).max(50).meta({
-  description: 'Metric name (built-in or custom)',
+  description:
+    'Metric name: a built-in metric, a custom metric, or a name or alias from the built-in metric catalogue (GET /metric-catalog), which is added on first use',
   example: 'heart_rate',
 })
 
@@ -59,6 +69,7 @@ export const addMetricBodySchema = z
     time: iso8601DateTimeSchema.optional().meta({
       description: 'Measurement time (defaults to current time)',
     }),
+    unit: givenUnitSchema,
     value: metricValueSchema.meta({ example: 72 }),
   })
   .meta({ id: 'AddMetricBody' })
@@ -70,6 +81,12 @@ export const addMetricResponseSchema = baseResponseSchema
     entity_id: z.string().optional().meta({
       description: 'Composite entity ID for the created metric point (format: time|metric|source)',
     }),
+    metric: z.string().optional().meta({
+      description: 'The metric the value was stored under (a catalogue alias resolves to its name)',
+    }),
+    time: iso8601DateTimeSchema.optional().meta({ description: 'Measurement time' }),
+    unit: z.string().optional().meta({ description: 'The unit the value is stored in' }),
+    value: z.number().optional().meta({ description: 'The value as stored, after any unit conversion' }),
   })
   .meta({ id: 'AddMetricResponse' })
 
@@ -80,6 +97,7 @@ export const bulkMetricItemSchema = z
     metric: metricNameSchema,
     source: z.string().min(1).max(50).optional().meta({ description: 'Data source (defaults to "aurboda")' }),
     time: iso8601DateTimeSchema.meta({ description: 'Measurement time (required for bulk inserts)' }),
+    unit: givenUnitSchema,
     value: metricValueSchema.meta({ example: 36.03 }),
   })
   .meta({ id: 'BulkMetricItem' })
@@ -125,7 +143,14 @@ export const bulkMetricsResponseSchema = baseResponseSchema
 
 export type BulkMetricsResponse = z.infer<typeof bulkMetricsResponseSchema>
 
-export const addCustomMetricBodySchema = customMetricDefinitionSchema.meta({ id: 'AddCustomMetricBody' })
+export const addCustomMetricBodySchema = customMetricDefinitionSchema
+  .extend({
+    separate_metric: z.boolean().optional().meta({
+      description:
+        'Create the metric even when its name is an alias of a built-in catalogue metric (e.g. `ldl`, which is `ldl_cholesterol`); without it such a name is refused with a pointer to the built-in metric',
+    }),
+  })
+  .meta({ id: 'AddCustomMetricBody' })
 
 export type AddCustomMetricBody = z.infer<typeof addCustomMetricBodySchema>
 
@@ -134,6 +159,9 @@ export const updateCustomMetricBodySchema = z
   .object({
     aggregation: metricAggregationSchema.optional().meta({
       description: "Metric kind: 'sum' for amounts (missing days count as 0), 'avg' for levels",
+    }),
+    better: metricBetterSchema.optional().meta({
+      description: "Which change is an improvement: 'higher', 'lower' or 'neutral'",
     }),
     description: z.string().optional().meta({ description: 'Human-readable description' }),
     include_in_daily_summary: z.boolean().optional().meta({
@@ -211,7 +239,9 @@ export type BucketSize = z.infer<typeof bucketSizeSchema>
 
 export const bucketMetricStatsSchema = z
   .object({
-    avg: z.number().meta({ description: 'Average value in bucket' }),
+    avg: z.number().meta({
+      description: `Average value in bucket. For buckets wider than 5 minutes: ${timeWeightedAveragesNote}`,
+    }),
     count: z.number().int().meta({ description: 'Number of data points' }),
     first_time: iso8601DateTimeSchema.meta({
       description: 'Time of the first measurement in the bucket',
@@ -250,6 +280,7 @@ export const queryMetricsBucketedQuerySchema = timeRangeQuerySchema
       description: 'Comma-separated list of metrics to exclude (useful when fetching all)',
       example: 'training_impulse,activity_impulse',
     }),
+    exclude_flagged: excludeFlaggedSchema,
     metrics: z.string().optional().meta({
       description: 'Comma-separated list of metrics (omit to fetch all metrics with data in the range)',
       example: 'heart_rate,hrv_rmssd',
@@ -273,6 +304,7 @@ export const queryMetricsBucketedResponseSchema = baseResponseSchema
     bucket: bucketSizeSchema.optional(),
     buckets: z.array(metricBucketSchema).optional(),
     end: iso8601DateTimeSchema.optional(),
+    flagged_exclusion: flaggedExclusionSchema.optional(),
     start: iso8601DateTimeSchema.optional(),
   })
   .meta({ id: 'QueryMetricsBucketedResponse' })

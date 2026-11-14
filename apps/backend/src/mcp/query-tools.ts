@@ -9,13 +9,16 @@ import {
   activityTypeSummaryQuerySchema,
   bucketSizeSchema,
   dateOnlySchema,
+  excludeFlaggedSchema,
   locationsQuerySchema,
   locationSummaryQuerySchema,
   mediaPlaysQuerySchema,
   type MetricType,
   overnightStaysQuerySchema,
   placesSummaryQuerySchema,
+  sleepDebtQuerySchema,
   timeRangeQuerySchema,
+  timeWeightedAveragesNote,
   topAppsQuerySchema,
   topMediaQuerySchema,
   tzSchema,
@@ -61,6 +64,7 @@ import {
   queryTags,
   resolveActivityWindow,
 } from '../services/queries/index.ts'
+import { getSleepDebt } from '../services/sleep-debt.ts'
 import { serializeActivityTrack } from '../services/tracks.ts'
 import {
   errorResponse,
@@ -93,6 +97,7 @@ export const registerQueryTools = (server: McpServer, user: string, sync?: SyncP
     `Query pre-aggregated health metrics in time buckets. Returns buckets with min/max/avg/count for each metric.
 Much more efficient than query_metrics for analysis - returns ~96 buckets for a day (15m intervals) instead of 30,000+ individual samples.
 Cumulative metrics (steps, calories, etc.) also include a 'sum' field.
+For buckets wider than 5 minutes: ${timeWeightedAveragesNote}
 
 If metrics is omitted, returns ALL metrics with data in the time range.
 Use exclude to skip specific metrics when fetching all.
@@ -110,13 +115,14 @@ Use cases:
       ...timeRangeQuerySchema.shape,
       bucket: bucketSizeSchema,
       exclude: z.array(z.string()).optional().describe('Metrics to exclude (useful when fetching all)'),
+      exclude_flagged: excludeFlaggedSchema,
       metrics: z
         .array(z.string())
         .optional()
         .describe(`Metrics to include (omit for all). Valid built-in metrics: ${validMetrics.join(', ')}`),
       tz: tzSchema,
     },
-    async ({ bucket, end, exclude, metrics, start, tz }) => {
+    async ({ bucket, end, exclude, exclude_flagged, metrics, start, tz }) => {
       const customMetrics = await getCustomMetrics(user)
 
       const result = await queryMetricsBucketed(
@@ -125,7 +131,7 @@ Use cases:
         new Date(start),
         new Date(end),
         bucket,
-        { customMetrics, exclude, tz },
+        { customMetrics, exclude, excludeFlagged: exclude_flagged, tz },
       )
       return tzJsonResponse(result, tz)
     },
@@ -133,7 +139,7 @@ Use cases:
 
   server.tool(
     'get_daily_summary',
-    'Get a comprehensive daily timeline of health data. Returns a unified chronological `activities` array combining exercises, meditations, screen time categories, and all other activities — each with optional stress_zone_secs and hr_zone_secs. Screen time entries have a category_path (e.g., ["Work & Dev", "Software Dev"]).\n\nAlso includes: heart_rate stats, steps, sleep_sessions (with stages, location, date attribution), meals (with macros), productivity summary (with category breakdown), places, Oura scores, and day-level stress_zones.\n\nDesigned for AI correlation analysis — overlay activities with stress/HR data to find patterns.',
+    'Get a comprehensive daily timeline of health data. Returns a unified chronological `activities` array combining exercises, meditations, screen time categories, and all other activities — each with optional stress_zone_secs and hr_zone_secs. Screen time entries have a category_path (e.g., ["Work & Dev", "Software Dev"]).\n\nAlso includes: heart_rate stats (avg time-weighted per 5-minute bin), steps, sleep_sessions (with stages, location, date attribution), meals (with macros), productivity summary (with category breakdown), places, Oura scores, and day-level stress_zones.\n\nDesigned for AI correlation analysis — overlay activities with stress/HR data to find patterns.',
     {
       date: dateOnlySchema.describe('Date in YYYY-MM-DD format (e.g., 2024-01-15)'),
       tz: tzSchema,
@@ -165,8 +171,19 @@ Use cases:
   )
 
   server.tool(
+    'get_sleep_debt',
+    'How much sleep do I owe? Sleep debt per night against the sleep need set in user settings (sleep_need_minutes, default 480). Each night debt = max(0, debt × 0.85 + need − slept): slept is the total sleep of the nights ending on that date plus half of each nap over 20 minutes; a date with no night recorded only decays the debt. Returns the debt and severity (none, mild, moderate, severe by the ratio of debt to need) after the last date, and one entry per date. Defaults to the two weeks up to today.',
+    { ...sleepDebtQuerySchema.shape },
+    async (params) => {
+      const result = await getSleepDebt(user, params)
+      if ('error' in result) return errorResponse(result.error)
+      return jsonResponse({ data: result, success: true })
+    },
+  )
+
+  server.tool(
     'query_period_summary',
-    'Get aggregated statistics for a time period. Returns min/max/avg/stddev for each metric, trend compared to previous period, and data completeness.',
+    `Get aggregated statistics for a time period. Returns min/max/avg/stddev for each metric, trend compared to previous period, and data completeness. ${timeWeightedAveragesNote}`,
     {
       ...timeRangeQuerySchema.shape,
       metrics: z.array(z.string()).describe(`Metrics to include. Valid metrics: ${validMetrics.join(', ')}`),
@@ -190,14 +207,14 @@ Use cases:
 
   server.tool(
     'query_activities',
-    "Query activities (sleep, exercise, meditation, nap, rest) for a time range. Returns activity sessions with duration, HR zones for exercise, and other metadata. category filters to runs carrying that run category (low_hr, intervals, long, tempo, hard, or any rule's output_category).",
+    "Query activities of any type (sleep, exercise and its subtypes such as running, meditation, custom types; list_activity_types lists them) for a time range. Returns activity sessions with duration, HR zones for exercise, and other metadata. category filters to runs carrying that run category (low_hr, intervals, long, tempo, hard, or any rule's output_category).",
     {
       ...timeRangeQuerySchema.shape,
       types: z
         .array(activityTypeSchema)
         .optional()
         .describe(
-          'Activity types to include. Defaults to all types (sleep, exercise, meditation, nap, rest).',
+          "Activity types to include (names from list_activity_types). Defaults to all of the user's types.",
         ),
       data_filter: z
         .string()
@@ -231,6 +248,8 @@ Use cases:
     `Sessions of one activity type (descendant types included), newest first, each with duration, avg/max HR, HR-zone seconds and the five-number summary of its HR samples, plus the values of the type's data_schema fields.
 
 Pass group_by (a data field, typically one marked is_categorical, e.g. session_name) to also get one group per value — count, last done, duration range, median avg HR, max HR, summed zone seconds and the pooled HR distribution — for comparing or choosing sessions by length and exertion. filter_field + filter_value narrow to one value ("(none)" for sessions without one). Omit start for all time.
+
+group_by=place (a reserved value, which wins over a data field named place) groups by where each session happened instead, e.g. yoga at home versus at the studio: the named location it overlaps longest (an OwnTracks region or Home Assistant zone named like a named location counts as it), or, when no place visit falls in the session, the place of the last one ending up to 6 hours before it; sessions with neither form the null group. Each session then carries its place in fields.place.
 
 group_by and filter_field also take an item path into a list field, such as sets.exercise: group_by then gives one group per item value (a session in each group it has an item for) with the members' measures for that value combined (volume, e1rm, max_weight, set_count, max_time, total_reps, max_reps), and filter_field keeps the sessions with an item of that value, each carrying those items, their measures and the records it set against every earlier session with the value.
 
@@ -294,7 +313,7 @@ category filters to runs carrying that run category (low_hr, intervals, long, te
 
   server.tool(
     'get_activity_item_history',
-    `For one activity (plain or merged: id), its list items grouped by an item value such as the exercise of each set (field=sets.exercise): per value the items, their measures (volume, e1rm, max_weight, set_count, max_time, total_reps, max_reps), which of those are records against every earlier session with that value, the previous session with it, and per measure the decaying-best trend (as on the exercise page, trend_half_life_days) just before and after this session. Totals over the whole session. When the item field is backed by the exercise catalogue, muscle_groups splits the session's working sets per muscle group (set_count, volume, total_reps, each set weighted by the exercise's recruitment: a bench press set is 1 for the chest and 0.5 for the shoulders; exercises not in the catalogue under null), most sets first.`,
+    `For one activity (plain or merged: id), its list items grouped by an item value such as the exercise of each set (field=sets.exercise): per value the items, their measures (volume, e1rm, max_weight, set_count, max_time, total_reps, max_reps), which of those are records against every earlier session with that value, the previous session with it, and per measure the decaying-best trend (as on the exercise page, trend_half_life_days) just before and after this session. Totals over the whole session. When the item field is backed by the exercise catalogue, muscle_groups splits the session's working sets per muscle group (set_count, volume, total_reps, each set weighted by the exercise's recruitment: a bench press set is 1 for the chest and 0.5 for the shoulders; exercises without muscle groups under null: in_catalogue false when not in the catalogue, true when their entry has no muscle data), most sets first.`,
     { id: z.string().describe('Activity ID'), ...activityItemHistoryQuerySchema.shape, tz: tzSchema },
     async ({ id, field, tz }) => {
       const history = await queryActivityItemHistory(user, id, field)

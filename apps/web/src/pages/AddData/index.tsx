@@ -1,23 +1,29 @@
-import type { DataFieldDefinition } from '@aurboda/api-spec'
+import type { CustomMetricDefinition, DataFieldDefinition, MetricCatalogEntry } from '@aurboda/api-spec'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useLocation } from 'preact-iso'
 import { useCallback, useState } from 'preact/hooks'
 
+import { definitionOrCatalogEntry } from '../../components/activityTypeCatalog'
 import { ActivityTypePicker } from '../../components/ActivityTypePicker'
 import { ListFieldEditor } from '../../components/ListFieldEditor'
 import { MetricPicker } from '../../components/MetricPicker'
-import { fieldLabel, listFields, scalarFields } from '../../components/sessions/sessionView'
+import { enumValueLabel, fieldLabel, listFields, scalarFields } from '../../components/sessions/sessionView'
 import {
   addActivity,
+  addActivityTypeDefinition,
   addEntityComment,
   addMetric,
+  fetchActivityTypeCatalog,
   fetchActivityTypeDefinitions,
+  fetchCustomMetrics,
+  fetchMetricCatalog,
   uploadFitFile,
   type ActivityType,
 } from '../../state/api'
-import { buildActivityData } from './activityData'
+import { buildActivityData, newTypeToCreate } from './activityData'
+import { catalogUnitOptions, chosenCatalogUnit, metricLabel, plainMetricUnit } from './metricUnit'
 import './style.css'
 
 type Tab = 'activity' | 'metric'
@@ -137,7 +143,7 @@ const SchemaFieldInput = ({
           <option value="">-- Select --</option>
           {field.enum_values.map((v) => (
             <option key={v} value={v}>
-              {v}
+              {enumValueLabel(v)}
             </option>
           ))}
         </select>
@@ -151,6 +157,8 @@ const SchemaFieldInput = ({
       <input
         type={field.type === 'number' ? 'number' : 'text'}
         step={field.type === 'number' ? 'any' : undefined}
+        min={field.type === 'number' ? field.min : undefined}
+        max={field.type === 'number' ? field.max : undefined}
         value={value}
         onInput={(e) => onChange((e.target as HTMLInputElement).value)}
         placeholder={`Optional ${label.toLowerCase()}`}
@@ -173,13 +181,19 @@ const AddActivityForm = ({ onCreated, initialTime }: FormProps) => {
   const [success, setSuccess] = useState('')
   const [error, setError] = useState('')
 
-  const { data: typeDefs } = useQuery({
+  const { data: typeDefs = [] } = useQuery({
     queryFn: fetchActivityTypeDefinitions,
     queryKey: ['activityTypeDefinitions'],
     staleTime: 30 * 60 * 1000,
   })
+  const { data: catalogEntries = [] } = useQuery({
+    queryFn: fetchActivityTypeCatalog,
+    queryKey: ['activityTypeCatalog'],
+    select: (catalog) => catalog.entries,
+    staleTime: 30 * 60 * 1000,
+  })
 
-  const selectedTypeDef = typeDefs?.find((t) => t.name === activityType)
+  const selectedTypeDef = definitionOrCatalogEntry(activityType, typeDefs, catalogEntries)
   const dataSchema = selectedTypeDef?.data_schema
   const dataFields = scalarFields(dataSchema)
   const dataLists = listFields(dataSchema)
@@ -189,6 +203,8 @@ const AddActivityForm = ({ onCreated, initialTime }: FormProps) => {
     mutationFn: async () => {
       if (!activityType) throw new Error('Please select an activity type')
       const data = buildActivityData(dataSchema?.fields ?? [], structuredData, listData)
+      const newType = newTypeToCreate(activityType, typeDefs, catalogEntries)
+      if (newType) await addActivityTypeDefinition({ ...newType, separate_type: true })
       const result = await addActivity({
         activity_type: activityType,
         ...(data ? { data } : {}),
@@ -212,6 +228,8 @@ const AddActivityForm = ({ onCreated, initialTime }: FormProps) => {
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['dayview-activities'] })
+      queryClient.invalidateQueries({ queryKey: ['activityTypeDefinitions'] })
+      queryClient.invalidateQueries({ queryKey: ['activityTypeCatalog'] })
       if (onCreated('activity', result.data?.id)) return
       setSuccess('Activity added')
       setError('')
@@ -234,6 +252,7 @@ const AddActivityForm = ({ onCreated, initialTime }: FormProps) => {
       <div class="form-field">
         <label>Activity Type</label>
         <ActivityTypePicker
+          includeCatalog
           value={activityType}
           onChange={(type) => {
             setActivityType(type)
@@ -292,6 +311,12 @@ const AddActivityForm = ({ onCreated, initialTime }: FormProps) => {
         />
       ))}
 
+      {activityType === 'strength_training' && (
+        <p class="form-hint add-strength-link">
+          Logging a workout? <a href="/strength">Use the strength session page</a>
+        </p>
+      )}
+
       {dataLists.map((field) => (
         <div class="form-field" key={field.name}>
           <label>{fieldLabel(field)}</label>
@@ -344,13 +369,59 @@ const AddActivityForm = ({ onCreated, initialTime }: FormProps) => {
   )
 }
 
+interface MetricUnitProps {
+  catalogEntry: MetricCatalogEntry | undefined
+  customMetrics: CustomMetricDefinition[]
+  metric: string
+  onChange: (unit: string) => void
+  unit: string | undefined
+}
+
+const MetricUnit = ({ catalogEntry, customMetrics, metric, onChange, unit }: MetricUnitProps) => {
+  const options = catalogEntry ? catalogUnitOptions(catalogEntry) : []
+  if (options.length === 1) return <span class="value-unit">{options[0]}</span>
+  if (options.length > 1) {
+    return (
+      <select
+        aria-label="Unit"
+        value={unit}
+        onChange={(e) => onChange((e.target as HTMLSelectElement).value)}
+      >
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    )
+  }
+  const plainUnit = metric ? plainMetricUnit(metric, customMetrics) : undefined
+  return plainUnit ? <span class="value-unit">{plainUnit}</span> : null
+}
+
 const AddMetricForm = ({ onCreated, initialTime }: FormProps) => {
+  const queryClient = useQueryClient()
   const [metric, setMetric] = useState('')
   const [value, setValue] = useState('')
+  const [unitChoice, setUnitChoice] = useState<{ metric: string; unit: string }>()
   const [time, setTime] = useState(seedTime(initialTime))
   const [comment, setComment] = useState('')
   const [success, setSuccess] = useState('')
   const [error, setError] = useState('')
+
+  const { data: customMetrics } = useQuery({
+    queryFn: fetchCustomMetrics,
+    queryKey: ['customMetrics'],
+    staleTime: 5 * 60 * 1000,
+  })
+  const { data: metricCatalog } = useQuery({
+    queryFn: fetchMetricCatalog,
+    queryKey: ['metricCatalog'],
+    staleTime: 30 * 60 * 1000,
+  })
+  const catalogEntries = metricCatalog?.entries ?? []
+  const catalogEntry = catalogEntries.find((entry) => entry.name === metric)
+  const unit = chosenCatalogUnit(metric, catalogEntry, unitChoice)
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -358,9 +429,11 @@ const AddMetricForm = ({ onCreated, initialTime }: FormProps) => {
       const result = await addMetric({
         metric,
         time: metricTimeISO,
+        ...(unit ? { unit } : {}),
         value: parseFloat(value),
       })
-      if (comment.trim() && result.success && result.entity_id) {
+      if (!result.success) throw new Error(result.error ?? 'Failed to add metric')
+      if (comment.trim() && result.entity_id) {
         try {
           await addEntityComment('metric', result.entity_id, comment.trim())
         } catch {
@@ -374,8 +447,13 @@ const AddMetricForm = ({ onCreated, initialTime }: FormProps) => {
       setSuccess('')
     },
     onSuccess: (result) => {
+      if (catalogEntry) {
+        void queryClient.invalidateQueries({ queryKey: ['customMetrics'] })
+        void queryClient.invalidateQueries({ queryKey: ['metricCatalog'] })
+      }
       if (onCreated('metric', result.entity_id)) return
-      setSuccess(`Metric "${metric}" recorded`)
+      const label = metricLabel(result.metric ?? metric, customMetrics ?? [], catalogEntries)
+      setSuccess(`Metric "${label}" recorded: ${result.value} ${result.unit ?? ''}`.trimEnd())
       setError('')
       setValue('')
       setComment('')
@@ -390,19 +468,28 @@ const AddMetricForm = ({ onCreated, initialTime }: FormProps) => {
 
       <div class="form-field">
         <label>Metric</label>
-        <MetricPicker value={metric} onChange={setMetric} placeholder="Select a metric..." />
+        <MetricPicker value={metric} onChange={setMetric} placeholder="Select a metric..." includeCatalog />
       </div>
 
       <div class="form-row">
         <div class="form-field">
           <label>Value</label>
-          <input
-            type="number"
-            step="any"
-            value={value}
-            onInput={(e) => setValue((e.target as HTMLInputElement).value)}
-            placeholder="e.g. 72.5"
-          />
+          <div class="value-with-unit">
+            <input
+              type="number"
+              step="any"
+              value={value}
+              onInput={(e) => setValue((e.target as HTMLInputElement).value)}
+              placeholder="e.g. 72.5"
+            />
+            <MetricUnit
+              catalogEntry={catalogEntry}
+              customMetrics={customMetrics ?? []}
+              metric={metric}
+              onChange={(chosen) => setUnitChoice({ metric, unit: chosen })}
+              unit={unit}
+            />
+          </div>
         </div>
         <div class="form-field">
           <label>Time</label>

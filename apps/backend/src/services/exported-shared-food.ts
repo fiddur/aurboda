@@ -227,12 +227,18 @@ const repoint = async (tx: Queryable, from: string, to: string, target: 'central
     params,
   )
   await tx.query(
+    'DELETE FROM food_item_ingredients WHERE ingredient_food_item_id = $1 AND parent_food_item_id = $2',
+    params,
+  )
+  await tx.query(
     `UPDATE food_item_ingredients SET ingredient_food_item_id = $2, updated_at = NOW()
       WHERE ingredient_food_item_id = $1`,
     params,
   )
   await tx.query(
-    'UPDATE food_items SET reference_food_item_id = $2, updated_at = NOW() WHERE reference_food_item_id = $1',
+    `UPDATE food_items
+        SET reference_food_item_id = CASE WHEN id = $2 THEN NULL ELSE $2::uuid END, updated_at = NOW()
+      WHERE reference_food_item_id = $1`,
     params,
   )
   await tx.query(

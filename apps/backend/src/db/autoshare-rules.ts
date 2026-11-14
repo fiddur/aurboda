@@ -280,7 +280,7 @@ export const getActivitiesChangedAt = async (user: string, ids: string[]): Promi
 
 /**
  * Which of the given activities are SUPPRESSED for auto-sharing: their feed
- * post was deleted by the user (#903). Recorded by `deleteFeedPost`, so the
+ * post was deleted by the user (#903). Recorded by `deleteFeedPostWithQuotes`, so the
  * dedupe survives the post row's hard delete.
  */
 export const listAutoshareSuppressedIds = async (user: string, ids: string[]): Promise<string[]> => {

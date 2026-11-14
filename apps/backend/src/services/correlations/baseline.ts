@@ -1,10 +1,23 @@
 import type { BaselineResult } from './types.ts'
 
 import { getTimeSeriesStats } from '../../db/index.ts'
+import {
+  countFlaggedSamples,
+  flaggedExclusion,
+  loadFlaggedWindows,
+  withoutFlagged,
+} from '../flagged-windows.ts'
 import { queryMetrics } from '../queries/index.ts'
 
+const BASELINE_METRICS = ['hrv_rmssd', 'resting_heart_rate', 'stress_level']
+
+/** With `excludeFlagged`, the samples inside activities flagged exclude_from_baseline are left out. */
 // eslint-disable-next-line complexity -- TODO: refactor
-export async function getBaseline(user: string, referenceDate?: Date): Promise<BaselineResult> {
+export async function getBaseline(
+  user: string,
+  referenceDate?: Date,
+  options: { excludeFlagged?: boolean } = {},
+): Promise<BaselineResult> {
   const now = referenceDate ?? new Date()
 
   const end7day = new Date(now)
@@ -25,6 +38,10 @@ export async function getBaseline(user: string, referenceDate?: Date): Promise<B
   const prevEnd30day = new Date(start30day)
   prevEnd30day.setMilliseconds(-1)
 
+  const flagged = await loadFlaggedWindows(user, prevStart30day, end30day, options.excludeFlagged)
+  const statsOf = (metrics: string[], start: Date, end: Date) =>
+    getTimeSeriesStats(user, metrics, start, end, flagged)
+
   // Prefer the contextual sleep HRV signal; fall back to raw hrv_rmssd when no
   // samples overlap the user's tracked sleep windows so the widget mirrors what
   // /api/metrics/latest/hrv_rmssd surfaces (see #747).
@@ -32,8 +49,13 @@ export async function getBaseline(user: string, referenceDate?: Date): Promise<B
   // hrv_sleep is fetched once over the union of the three windows. A sample is
   // sleep iff it lies in a sleep session, and widening the range only adds
   // sessions, so each window's subset is what a per-window fetch would return.
-  const sleepHrvPromise = queryMetrics(user, 'hrv_sleep', prevStart30day, end30day).then((result) =>
-    result.data.map((d) => ({ time: new Date(d.time).getTime(), value: d.value })),
+  const sleepHrvPromise = queryMetrics(user, 'hrv_sleep', prevStart30day, end30day).then(
+    (result) =>
+      withoutFlagged(
+        result.data.map((d) => ({ time: new Date(d.time).getTime(), value: d.value })),
+        (d) => d.time,
+        flagged,
+      ).kept,
   )
 
   const getHrvAvg = async (start: Date, end: Date): Promise<number | null> => {
@@ -42,7 +64,7 @@ export async function getBaseline(user: string, referenceDate?: Date): Promise<B
       const sum = sleep.reduce((acc, d) => acc + d.value, 0)
       return sum / sleep.length
     }
-    const rawStats = await getTimeSeriesStats(user, ['hrv_rmssd'], start, end)
+    const rawStats = await statsOf(['hrv_rmssd'], start, end)
     const raw = rawStats[0]
     return raw && raw.count > 0 && raw.avg ? raw.avg : null
   }
@@ -57,16 +79,18 @@ export async function getBaseline(user: string, referenceDate?: Date): Promise<B
     stressStats7day,
     stressStats30day,
     stressStatsPrev30day,
+    excludedPoints,
   ] = await Promise.all([
     getHrvAvg(start7day, end7day),
     getHrvAvg(start30day, end30day),
     getHrvAvg(prevStart30day, prevEnd30day),
-    getTimeSeriesStats(user, ['resting_heart_rate'], start7day, end7day),
-    getTimeSeriesStats(user, ['resting_heart_rate'], start30day, end30day),
-    getTimeSeriesStats(user, ['resting_heart_rate'], prevStart30day, prevEnd30day),
-    getTimeSeriesStats(user, ['stress_level'], start7day, end7day),
-    getTimeSeriesStats(user, ['stress_level'], start30day, end30day),
-    getTimeSeriesStats(user, ['stress_level'], prevStart30day, prevEnd30day),
+    statsOf(['resting_heart_rate'], start7day, end7day),
+    statsOf(['resting_heart_rate'], start30day, end30day),
+    statsOf(['resting_heart_rate'], prevStart30day, prevEnd30day),
+    statsOf(['stress_level'], start7day, end7day),
+    statsOf(['stress_level'], start30day, end30day),
+    statsOf(['stress_level'], prevStart30day, prevEnd30day),
+    countFlaggedSamples(user, BASELINE_METRICS, flagged, prevStart30day, end30day),
   ])
 
   const hrvTrend =
@@ -85,6 +109,7 @@ export async function getBaseline(user: string, referenceDate?: Date): Promise<B
       : null
 
   return {
+    ...flaggedExclusion(flagged, { excluded_points: excludedPoints }),
     hrv: {
       avg7day: hrvAvg7day !== null ? Math.round(hrvAvg7day * 10) / 10 : null,
       avg30day: hrvAvg30day !== null ? Math.round(hrvAvg30day * 10) / 10 : null,

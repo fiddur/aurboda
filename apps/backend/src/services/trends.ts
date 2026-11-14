@@ -11,6 +11,7 @@ import {
   displayPeriodMultipliers,
   getMetricAggregation,
   getMetricUnit,
+  isTimeWeightedMetric,
   type MetricType,
   type TrendDisplayPeriod,
   type TrendHistoryPoint,
@@ -19,8 +20,16 @@ import {
   type TrendSourceType,
 } from '@aurboda/api-spec'
 
-import { getSourceFilter, query } from '../db/index.ts'
+import { getSourceFilter, inWindowsSql, query, windowParams } from '../db/index.ts'
+import { sampleRowsSql } from '../db/time-weighted.ts'
 import { dayEndInTz, dayKey, dayKeysEndingAt, dayStartInTz } from './day-keys.ts'
+import {
+  countFlaggedSamples,
+  type FlaggedWindow,
+  flaggedDays,
+  flaggedExclusion,
+  loadFlaggedWindows,
+} from './flagged-windows.ts'
 import {
   type MeasureFilter,
   measureFilter,
@@ -54,6 +63,8 @@ export interface GetTrendInput {
   tz?: string
   /** The trend ends on the calendar day holding this instant; now when unset. */
   end?: Date
+  /** Metric trends: leave out the samples inside activities flagged exclude_from_baseline. */
+  exclude_flagged?: boolean
 }
 
 /** Today's date in the timezone bound to parameter `$n`. */
@@ -67,9 +78,9 @@ const anchorDaySql = (params: unknown[], tzParam: number, anchorDay: string | un
   anchorDay === undefined ? todaySql(tzParam) : `$${params.push(anchorDay)}::date`
 
 const metricDailyValueSql: Record<'count' | 'mean' | 'sum', string> = {
-  count: 'COUNT(*)',
+  count: 'SUM(n)',
   mean: 'AVG(value)',
-  sum: 'SUM(value)',
+  sum: 'SUM(sum_value)',
 }
 
 /**
@@ -119,8 +130,21 @@ const seriesDateRangeSql = (today: string, firstSampleSql: string | undefined): 
     )`
 
 /**
+ * The SQL leaving the samples in `flagged` out, and, since a day emptied by that is missing rather
+ * than a real zero, the days it empties out of the EMA. Nothing without windows.
+ */
+const flaggedTrendSql = (params: unknown[], flagged: FlaggedWindow[], tz: string) => {
+  if (flagged.length === 0) return { days: '', samples: '' }
+  const [starts, ends] = windowParams(flagged)
+  const samples = `\n          AND NOT ${inWindowsSql(`$${params.push(starts)}`, `$${params.push(ends)}`)}`
+  const days = `\n          AND NOT (daily_value IS NULL AND day = ANY($${params.push([...flaggedDays(flagged, tz)])}::date[]))`
+  return { days, samples }
+}
+
+/**
  * With 'zero', a day without samples enters the EMA as 0 and keeps its weight in the denominator;
  * with 'skip', it is left out of both, so the EMA is the weighted mean over sampled days only.
+ * Samples in `flagged` windows are left out, and a day left without any is skipped in either mode.
  */
 const calculateMetricTrend = async (
   user: string,
@@ -132,6 +156,7 @@ const calculateMetricTrend = async (
   missingDays: TrendMissingDays,
   tz: string,
   anchorDay?: string,
+  flagged: FlaggedWindow[] = [],
 ): Promise<{ currentValue: number; history: TrendHistoryPoint[] }> => {
   const multiplier = aggregation === 'mean' ? 1 : displayPeriodMultipliers[displayPeriod]
   const warmupDays = lookbackDays + warmupLength(halfLifeDays, multiplier)
@@ -156,6 +181,7 @@ const calculateMetricTrend = async (
         NULLIF(SUM(CASE WHEN dv2.daily_value IS NOT NULL THEN ${weight} ELSE 0 END), 0)`
   const emaValueSql = missingDays === 'zero' ? 'COALESCE(ema_value, 0) AS ema_value' : 'ema_value'
   const sourceFilterSql = sources ? '\n          AND source = ANY($8)' : ''
+  const flaggedSql = flaggedTrendSql(params, flagged, tz)
 
   const result = await query(
     user,
@@ -175,14 +201,15 @@ const calculateMetricTrend = async (
         t.daily_value
       FROM date_range d
       LEFT JOIN (
-        SELECT
-          date_trunc('day', time AT TIME ZONE $7::text)::date as day,
-          ${metricDailyValueSql[aggregation]} as daily_value
-        FROM time_series
-        WHERE metric = $1
+        SELECT day, ${metricDailyValueSql[aggregation]} as daily_value
+        FROM ${sampleRowsSql({
+          keys: [{ as: 'day', expr: "date_trunc('day', time AT TIME ZONE $7::text)::date" }],
+          timeWeighted: aggregation === 'mean' && isTimeWeightedMetric(metric),
+          where: `metric = $1
           AND time > ${today} - INTERVAL '1 day' * ($6::integer + 1)
-          AND deleted_at IS NULL${sourceFilterSql}
-        GROUP BY 1
+          AND deleted_at IS NULL${sourceFilterSql}${flaggedSql.samples}`,
+        })} s
+        GROUP BY day
       ) t ON d.day = t.day
     ),
     ema_calc AS (
@@ -193,7 +220,7 @@ const calculateMetricTrend = async (
       CROSS JOIN LATERAL (
         SELECT day, daily_value
         FROM daily_values
-        WHERE day <= dv.day AND day > dv.day - INTERVAL '1 day' * 90
+        WHERE day <= dv.day AND day > dv.day - INTERVAL '1 day' * 90${flaggedSql.days}
       ) dv2
       GROUP BY dv.day
     )
@@ -793,23 +820,34 @@ const getMetricTrend = async (
       ? 'zero'
       : (input.missing_days ?? (getMetricAggregation(pattern, customMetrics) === 'sum' ? 'zero' : 'skip'))
 
-  const { currentValue, history } = await calculateMetricTrend(
-    user,
-    pattern as MetricType,
-    halfLifeDays,
-    lookbackDays,
-    displayPeriod,
-    metricAggregation,
-    missingDays,
-    tz,
-    anchorDayOf(input.end, tz),
-  )
+  const anchorDay = anchorDayOf(input.end, tz)
+  const multiplier = metricAggregation === 'mean' ? 1 : displayPeriodMultipliers[displayPeriod]
+  const end = anchorDay === undefined ? new Date() : dayEndInTz(anchorDay, tz)
+  const readDays = lookbackDays + warmupLength(halfLifeDays, multiplier) + 2
+  const start = new Date(end.getTime() - readDays * DAY_MS)
+  const flagged = await loadFlaggedWindows(user, start, end, input.exclude_flagged)
+  const [{ currentValue, history }, excludedPoints] = await Promise.all([
+    calculateMetricTrend(
+      user,
+      pattern as MetricType,
+      halfLifeDays,
+      lookbackDays,
+      displayPeriod,
+      metricAggregation,
+      missingDays,
+      tz,
+      anchorDay,
+      flagged,
+    ),
+    countFlaggedSamples(user, [pattern], flagged, start, end),
+  ])
 
   return {
     aggregation: metricAggregation,
     current_value: currentValue,
     display_period: displayPeriod,
     display_unit: metricDisplayUnit(metricAggregation, getMetricUnit(pattern, customMetrics), displayPeriod),
+    ...flaggedExclusion(flagged, { excluded_points: excludedPoints }),
     half_life_days: halfLifeDays,
     history,
     lookback_days: lookbackDays,

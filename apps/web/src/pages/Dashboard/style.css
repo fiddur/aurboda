@@ -927,6 +927,17 @@
   grid-column: 1 / -1;
 }
 
+.dashboard .dashboard-waiting {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+}
+
+.dashboard .dashboard-waiting a {
+  color: var(--color-accent);
+}
+
 @media (prefers-color-scheme: dark) {
   .dashboard .dashboard-intro,
   .dashboard .section-intro,
@@ -1033,6 +1044,14 @@
   .dashboard .section-title-input {
     color: #e5e7eb;
   }
+}
+
+.dashboard .sleep-debt-severity {
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.125rem 0.375rem;
+  border-radius: 4px;
+  color: white;
 }
 
 .dashboard .metrics-grid > .last-sleep,

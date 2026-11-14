@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestDbClient, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { deleteActivity, insertActivity } from './activities/index.ts'
+import { insertAutoshareSuppressions } from './autoshare-rules.ts'
 import {
   type ArticlePostInput,
   countPublicFeedPosts,
@@ -10,8 +11,9 @@ import {
   createDashboardPost,
   createExercisePost,
   createFeedPost,
+  createFeedPostUnlessSuppressed,
   createReplyPost,
-  deleteFeedPost,
+  deleteFeedPostWithQuotes,
   type FeedPostInput,
   findCoveringSharedSeriesWindow,
   getFeedPostById,
@@ -110,6 +112,20 @@ describe('Feed posts integration', () => {
     expect(await getFeedPostById(user, '00000000-0000-0000-0000-000000000000')).toBeNull()
     expect(await getFeedPostById(user, 'null')).toBeNull()
     expect(await updateFeedPost(user, 'null', { message: 'x' })).toBeNull()
+  })
+
+  test('creates an auto-share post only while no group member is suppressed', async () => {
+    const user = getTestUser()
+    const anchor = await insertExercise(user)
+    const other = await insertExercise(user)
+    const input = postInput({ activity_id: anchor, tags: ['aurboda'] })
+
+    const created = await createFeedPostUnlessSuppressed(user, input, [anchor, other])
+    expect(created).toMatchObject({ activity_id: anchor, tags: ['aurboda'], visibility: 'public' })
+
+    await insertAutoshareSuppressions(user, [other])
+    expect(await createFeedPostUnlessSuppressed(user, input, [anchor, other])).toBeNull()
+    expect((await listFeedPosts(user, 10)).map((post) => post.id)).toEqual([created!.id])
   })
 
   test('stores, patches and keeps hashtags', async () => {
@@ -233,10 +249,10 @@ describe('Feed posts integration', () => {
   test('deletes a post', async () => {
     const user = getTestUser()
     const created = await createFeedPost(user, postInput())
-    expect(await deleteFeedPost(user, created.id)).toBe(true)
-    expect(await deleteFeedPost(user, created.id)).toBe(false)
+    expect(await deleteFeedPostWithQuotes(user, created.id)).not.toBeNull()
+    expect(await deleteFeedPostWithQuotes(user, created.id)).toBeNull()
     expect(await getFeedPostById(user, created.id)).toBeNull()
-    expect(await deleteFeedPost(user, 'null')).toBe(false)
+    expect(await deleteFeedPostWithQuotes(user, 'null')).toBeNull()
   })
 
   describe('tombstones on delete', () => {
@@ -245,7 +261,7 @@ describe('Feed posts integration', () => {
       const created = await createFeedPost(user, postInput({ visibility: 'public' }))
       expect(await getFeedTombstone(user, created.id)).toBeNull()
 
-      await deleteFeedPost(user, created.id)
+      await deleteFeedPostWithQuotes(user, created.id)
       const tomb = await getFeedTombstone(user, created.id)
       expect(tomb).not.toBeNull()
       expect(tomb?.deleted_at).toBeInstanceOf(Date)
@@ -254,14 +270,14 @@ describe('Feed posts integration', () => {
     test('records a tombstone for a deleted unlisted post', async () => {
       const user = getTestUser()
       const created = await createFeedPost(user, postInput({ visibility: 'unlisted' }))
-      await deleteFeedPost(user, created.id)
+      await deleteFeedPostWithQuotes(user, created.id)
       expect(await getFeedTombstone(user, created.id)).not.toBeNull()
     })
 
     test('does NOT tombstone a deleted followers-only post (its id never resolved publicly)', async () => {
       const user = getTestUser()
       const created = await createFeedPost(user, postInput({ visibility: 'followers' }))
-      await deleteFeedPost(user, created.id)
+      await deleteFeedPostWithQuotes(user, created.id)
       expect(await getFeedTombstone(user, created.id)).toBeNull()
     })
 

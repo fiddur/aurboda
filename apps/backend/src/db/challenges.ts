@@ -321,10 +321,21 @@ export const createChallenge = async (user: string, input: ChallengeInput): Prom
   throw new Error(`Failed to generate a unique challenge slug after ${maxAttempts} attempts`)
 }
 
+const NO_ACTIVE_REMOTE_MEMBER = `NOT EXISTS (
+  SELECT 1 FROM challenge_members m
+   WHERE m.challenge_id = challenges.id AND m.kind = 'remote' AND m.status = 'active'
+)`
+
+/**
+ * Patch a hosted challenge. With `unlessRemoteMember` the write only happens while no active
+ * member from another instance has joined, checked in the same statement; null then means either
+ * no such challenge or a remote member.
+ */
 export const updateChallenge = async (
   user: string,
   id: string,
   patch: ChallengePatch,
+  { unlessRemoteMember = false }: { unlessRemoteMember?: boolean } = {},
 ): Promise<ChallengeRecord | null> => {
   const sets: string[] = []
   const params: unknown[] = []
@@ -358,7 +369,9 @@ export const updateChallenge = async (
   params.push(id)
   const result = await query(
     user,
-    `UPDATE challenges SET ${sets.join(', ')} WHERE id = $${idx} RETURNING id`,
+    `UPDATE challenges SET ${sets.join(', ')}
+      WHERE id = $${idx}${unlessRemoteMember ? ` AND ${NO_ACTIVE_REMOTE_MEMBER}` : ''}
+      RETURNING id`,
     params,
   )
   return result.rows.length ? getChallengeById(user, id) : null
@@ -430,23 +443,6 @@ export const getChallengeMemberByIdentity = async (
     [challengeId, identityBaseUrl],
   )
   return result.rows.length ? mapMember(result.rows[0]) : null
-}
-
-/**
- * Whether an active member registered back from another instance. Their participation keeps a
- * copy of the spec they joined with, which is why the host may not change it under them;
- * local members are scored by the host from the current spec.
- */
-export const hasRemoteChallengeMember = async (user: string, challengeId: string): Promise<boolean> => {
-  const result = await query<{ exists: boolean }>(
-    user,
-    `SELECT EXISTS (
-       SELECT 1 FROM challenge_members
-        WHERE challenge_id = $1 AND kind = 'remote' AND status = 'active'
-     ) AS exists`,
-    [challengeId],
-  )
-  return result.rows[0]?.exists ?? false
 }
 
 /** Insert or update a member by (challenge, identity). */
@@ -614,7 +610,7 @@ export const getParticipationByUrl = async (
  * Leave a challenge: the participation row is hard-deleted and the challenge
  * URL kept as a tombstone in `challenge_left`, so discovery never suggests
  * again what the user deliberately walked away from (#1093). Written inside the
- * delete statement, the way `deleteFeedPost` records an auto-share suppression.
+ * delete statement, the way `deleteFeedPostWithQuotes` records an auto-share suppression.
  *
  * Pass `tombstone: false` for a delete that is *not* a leave — the rollback of
  * a join the host rejected — which must leave the challenge discoverable.

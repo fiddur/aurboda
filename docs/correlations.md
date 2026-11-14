@@ -19,9 +19,13 @@ series, and the set of days where its status is _known_:
 | kind                                         | resolves from                                          | known days                                       |
 | -------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------ |
 | `tag` / `activity`                           | activities matched by `activity_type` (regex)          | every day in range (absence = no event)          |
-| `metric`                                     | `time_series` entries (avg/sum per day)                | days with ≥1 entry (incl. explicit 0s)           |
+| `metric`                                     | `time_series` entries (avg/sum per day)¹               | days with ≥1 entry (incl. explicit 0s)           |
 | `nutrition`                                  | per-day meal totals (calories/protein/carbs/fat/fiber) | days with a meal **or** marked meal-log-complete |
 | `productivity_category` / `productivity_app` | productivity minutes matched by category/app           | every day in range                               |
+
+¹ The daily average of an instantaneous-sample metric (heart rate, stress, body
+battery, respiration, SpO2) is time-weighted: per 5-minute bin, then across the
+day's bins (see [Time-weighted averages](data-storage.md#time-weighted-averages)).
 
 `GET /correlations/selectors` (MCP: `list_correlation_selectors`) lists the
 available metrics, tags, activity types, nutrients and productivity categories.
@@ -68,6 +72,10 @@ How it works:
   - **`base_rate`** — P(a known day is exposed), for comparison.
   - **`relative_risk`** with a 95% CI, **`risk_difference`**, and a **p-value**
     from Pearson's chi-squared (or Fisher's exact test when any expected cell < 5).
+  - **`p_value_adjusted`** — the p-value adjusted over the lags of the analysis
+    (Benjamini–Hochberg, see [Multiple comparisons](#multiple-comparisons));
+    `event_outcome.comparisons` is how many lags were tested. The web marks a lag
+    from the adjusted value.
 
 ### Denominator: `known` vs `all`
 
@@ -182,9 +190,11 @@ fields; the extras come back in maps keyed by metric name, and only when
   `metrics.<name>`.
 
 More than 4 names, a name that is not a metric name (`[a-z][a-z0-9_]*`, at most
-50 characters), or a cumulative metric (`steps`, `distance`, `floors_climbed`,
-`calories_active`, `calories_total`: a 5-minute mean of a running total means
-nothing) is a 400 (an error from the MCP tools). An unknown or sparse metric is
+50 characters), one of the three always analysed (`hrv_rmssd`, `heart_rate`,
+`stress_level`, or their result keys `hrv`, `hr`, `stress`), or a cumulative
+metric (`steps`, `distance`, `floors_climbed`, `calories_active`,
+`calories_total`: a 5-minute mean of a running total means nothing) is a 400
+(an error from the MCP tools). An unknown or sparse metric is
 accepted and comes back with nulls.
 
 `GET /correlations/impact-metrics?period_days=30` (MCP `get_impact_metrics`)
@@ -230,6 +240,10 @@ How the numbers are made:
   samples. Everything downstream reads bins, so a densely recorded stretch (1 Hz
   heart rate during a workout) weighs the same per minute as a sparse one. The
   period average (`baseline`) is the mean over the bins inside the period.
+  Activity impact bins in the database (`getBinnedTimeSeries`), so a request
+  reads about 26 000 bins per metric for 90 days rather than every raw point;
+  the overview bins in Node (`binSeries`), since its productivity correlation
+  needs the raw points. Both bin by the same rule, which a test pins.
 - **Series reach past the period.** The three series are fetched from
   `start − W` to `end + W`, so the first and last sessions of the period get
   full windows. Activities, visits and productivity are still taken from the
@@ -262,8 +276,10 @@ How the numbers are made:
   (= `after_mean − before_mean`, the mean of per-session differences),
   `change_stddev`, and `p_value` from a paired t-test
   (`t = mean_d / (sd_d / √n)` on `n − 1` df). `p_value` is null with fewer than
-  3 pairs or when every difference is the same. The web page colours a change
-  only when `p_value < 0.05`.
+  3 pairs or when every difference is the same. `p_value_adjusted` is that
+  p-value adjusted over every change in the same response (see
+  [Multiple comparisons](#multiple-comparisons)), and the web page colours a
+  change only when `p_value_adjusted < 0.05`.
 
 Caveats: occurrences close in time are not independent, so the p-value is
 optimistic; and a window that crosses a time of day picks up the daily rhythm
@@ -300,6 +316,10 @@ stress }`: the before buckets oldest first, then `during`, then the after
   block uses this with `match=exact` and its own window.
 - `GET /correlations/impact-metrics?period_days=30` and MCP
   `get_impact_metrics`: the metrics dense enough to pass as `metrics`.
+
+`period_days`, on these and on every other correlation route and tool
+(`event-probability`, `generic`, `continuous`), is a whole number of days from
+1 to 3650; anything else is a 400 (an error from the MCP tools).
 
 ### Breaking down and filtering an activity's impact
 
@@ -375,8 +395,70 @@ Group order: duration and time buckets in limit order; sleep as none, before,
 after, both; field values by session count, then name, `(none)` last.
 
 Caution: the more groups, the fewer sessions each holds, and among many small
-groups a few will show a "clear" change (p < 0.05) by chance alone. Treat a
-lone striking group as a hint to check over a longer period, not a finding.
+groups a few will show a "clear" change (p < 0.05) by chance alone. The adjusted
+p-value (see [Multiple comparisons](#multiple-comparisons)) takes the number of
+groups into account, but a lone striking group is still a hint to check over a
+longer period, not a finding.
+
+## Multiple comparisons
+
+A table of results is many tests at once: at p < 0.05, about one in twenty
+comparisons passes by chance even when nothing is going on. Wherever one response
+carries several tests, each p-value comes with a **Benjamini–Hochberg** adjusted
+one, computed over the tests of that response, and the response says how many
+there are:
+
+| Response                                              | Family                                                                         | Count                       |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------ | --------------------------- |
+| Context tables (`/correlations/hrv-activities`)       | every paired change with a p-value: all rows of all three tables, every metric | `comparisons`               |
+| Activity impact (`/correlations/activity-impact/...`) | the paired changes of the whole and of every breakdown group, every metric     | `comparisons`               |
+| Generic correlation with an event outcome             | the lag windows                                                                | `event_outcome.comparisons` |
+
+`p_value` stays the raw p of the one test; `p_value_adjusted` is the one to compare
+with 0.05. Benjamini–Hochberg controls the false-discovery rate: among the results
+called notable at adjusted p < 0.05, about 5 % or fewer are expected to be chance.
+It was chosen over Bonferroni, which controls the chance of even one false finding
+and would hide nearly every real effect in a table of dozens of rows; it is also
+robust to the positive correlation between rows built from the same days.
+The family is the response, so the same activity's change can be notable in its own
+impact chart (a few comparisons) and not in the context table (many). Comparisons
+with too few pairs to test (fewer than 3) get no p-value and do not count. The
+continuous analysis (Pearson, Spearman, Welch, Mann–Whitney) tests one hypothesis
+several ways and is not adjusted.
+
+## Flagged windows (`exclude_from_baseline`)
+
+Some stretches diverge from everyday life in every way at once: a festival, a retreat, a family
+gathering. Food, sleep timing, social load, alcohol and exercise all change together, and treated as
+ordinary days they pollute every baseline and correlation. An activity whose `data` holds
+`exclude_from_baseline: true` (whatever its type; a `gathering` type with that field in its
+`data_schema` is one way to set it) flags its span `[start_time, end_time)` as such a window. An
+activity without an end flags nothing.
+
+The analyses leave the flagged windows out by default. One shared helper reads the flagged activities
+overlapping the analysed range once per query (`services/flagged-windows.ts`), and each analysis drops
+its own inputs:
+
+| Analysis               | REST / MCP                                                           | What is left out                                                                                                                                                                           |
+| ---------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Baseline               | `GET /correlations/baseline`, `get_baseline`                         | HRV, resting HR and stress samples inside a window                                                                                                                                         |
+| HRV context            | `GET /correlations/hrv-activities`, `get_hrv_activities_correlation` | samples inside a window, and the activities, place visits and app spans starting in one                                                                                                    |
+| Activity impact        | `GET /correlations/activity-impact/:activity`, `get_activity_impact` | the 5-minute bins and the occurrences starting in a window                                                                                                                                 |
+| Generic correlation    | `POST /correlations/generic`, `get_generic_correlation`              | activities, app spans and metric samples in a window, and the days a window overlaps (from the baseline days and the compound-trigger days; for an `event` outcome from the analysed days) |
+| Continuous correlation | `POST /correlations/continuous`, `get_metric_correlation`            | the UTC days a window overlaps, on either side of a pair                                                                                                                                   |
+| Metric trend           | `GET /trends`, `get_trend` (`source_type: metric`)                   | samples inside a window; a day left without samples is skipped rather than counted as zero                                                                                                 |
+
+Each takes `include_flagged` (default false) to keep the windows, for studying them themselves. When a
+window overlaps the analysed range, the response carries `flagged_exclusion`: the `windows` (activity
+id and type, start and end), and `excluded_points` (samples, bins, activities, visits and app spans
+left out) or `excluded_days` (days left out of a per-day analysis), or both. Stored samples are counted
+from every source.
+
+Raw views keep the windows. `GET /metrics/bucketed` and `query_metrics_bucketed` take the opt-in
+`exclude_flagged` instead, and the daily summary shows the flagged activity and everything during it as
+usual: it describes the day rather than analysing it. Activity-type, screentime and measure trends,
+event probability, goals, and the shared dashboards, articles and feed posts that compute an analysis
+on the server keep the windows too.
 
 ## Statistics notes
 
@@ -393,6 +475,11 @@ lone striking group as a hint to check over a longer period, not a finding.
 - `pearson_p` is the two-sided significance of the Pearson r via the t-transform
   `t = r·√((n−2)/(1−r²))` on `n−2` df; null with fewer than 3 pairs, 0 for a
   perfect correlation.
+- A `metric` outcome of `get_generic_correlation` (`POST /correlations/generic`)
+  pools the samples after each trigger and on the baseline days. For a
+  time-weighted metric they are averaged per 5-minute bin first, so the mean and
+  `stddev` are over bins (`bin_count`), while `sample_count` stays the raw
+  sample count (see [Time-weighted averages](data-storage.md#time-weighted-averages)).
 
 ## Performance
 

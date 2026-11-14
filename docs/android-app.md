@@ -18,13 +18,20 @@ A bottom navigation bar (`ui/screens/MainScreen.kt`, tabs in `AppState.kt`'s
 | Sync | Native   | Health Connect permissions, background sync management                          |
 | More | Hub      | Native list of everything else (`ui/screens/MoreScreen.kt`)                     |
 
+The Add tab's Activity form starts with **Log a strength session**, which opens the web
+[strength session page](features/strength-logging.md) (`/strength`) in the More tab's web view:
+sets are logged there, not natively. The form's data fields are sent as the type's `data_schema`
+declares them (numbers as JSON numbers, a decimal comma accepted, booleans as booleans); a number
+field that does not parse is marked on the field and nothing is sent. A queued entry whose values
+are strings (the older queue format) is converted with the cached activity types when it is sent.
+
 There are far more web pages than fit on a bottom bar, so the **More** tab is a
 hub (`MoreScreen.kt`, `moreGroups`): a grouped list where each entry opens the
-corresponding web page in an embedded WebView (Timeline, Data, Chart, Meals,
+corresponding web page in an embedded WebView (Timeline, Data, Chart, Training load, Meals,
 Reports, Settings, Data sources, Help & support, …). Its first group, **Inbox**, holds
 **Notifications** (the web `/notifications` page, see
 [Notifications](features/notifications.md)). The two native-only screens — **Live**
-sensors (BLE) and **Account** (server URL, logout) — also live in the hub.
+sensors ([BLE](#live-sensors)) and **Account** (server URL, logout) — also live in the hub.
 Selecting an entry pushes it in place; the system back gesture returns to the
 hub (after any embedded page has exhausted its own WebView history), and so does
 tapping **More** on the bottom bar again. The pushed sub-page lives in
@@ -66,7 +73,20 @@ records it, so turning delivery on doesn't dump the backlog (the old post poller
 it after an upgrade, so nothing that arrived since its last run is lost). After a background
 sync succeeds, `SyncWorker` asks for one extra poll a minute later (`NotificationWorker.checkSoon`):
 an auto-share announces itself shortly after the activity lands and shares after the rule's
-wait, 10 minutes by default, which is shorter than the poll interval.
+wait, 10 minutes by default, which is shorter than the poll interval. The periodic poll and
+`checkSoon` are two unique works, so they share one lock and never post the same notification
+at once.
+
+**Keeping the shade current.** Every poll also re-reads the server notifications still in the
+shade: their server id and a key of what they show (title, body, link and actions,
+`notificationContentKey`) ride in the notification's extras, and
+`GET /notifications?push_only=true&ids=…` answers their current state. The pure
+`reconcileShownNotifications` withdraws the ones read elsewhere (the web bell, **Mark all read**)
+or no longer on the server, and reposts the revised ones under the same Android id without
+alerting again (`setOnlyAlertOnce`): a pending auto-share turns into "was shared" or "will not be
+shared" and loses its "Don't share" button. A server that predates `ids` ignores it and answers
+notifications that were not asked for; the app then leaves the shade alone. Notifications posted
+before this version carry no extras and are left as they are.
 
 **Showing one.** Each notification shows its title and body on a channel per notification
 group (`notifications_<group>`, named after the group, e.g. "Feed"; a type the server lists
@@ -215,12 +235,34 @@ external.
   schedule. `classifyHttpStatus` (`HttpOutcome.kt`) is where the status codes get
   their meaning.
 
+## Live sensors
+
+The native **Live** screen (`ui/screens/LiveScreen.kt`) connects to Bluetooth LE sensors that
+speak the standard profiles: heart-rate monitors (Heart Rate service `0x180D`, e.g. a Polar H10)
+and running speed and cadence pods (RSC service `0x1814`, e.g. a Zwift Runpod). It scans for them
+and lists what it finds; each connected sensor gets a card with its live heart rate, or cadence
+and steps, the sync state (with **Enable HC** while Health Connect writes are not permitted), an
+**Auto-reconnect** switch and **Disconnect**. A heart-rate card also shows HRV (RMSSD over the
+RR intervals, with a five-minute chart) once enough intervals are in. The **Phone Step Counter**
+card counts steps from the phone's own step sensor instead.
+
+The connections run in a foreground service (`ble/SensorService.kt`), so they go on with the
+screen closed; **Stop All Sensors**, or the notification's stop action, ends it. Every five
+seconds the service sends the new samples to the backend as Health Connect records
+(`POST /sync/HeartRateRecord`, `/sync/StepsRecord`, and `/sync/HeartRateVariabilityRmssdRecord`
+when the RR window is reliable) and writes them to Health Connect where permitted. A sensor with
+auto-reconnect on is reconnected with backoff after a drop, and after a reboot or when Bluetooth
+comes back on (`ble/BleAutoConnectReceiver.kt`).
+
 ## Home-screen widgets
 
 Two `AppWidgetProvider`s live in `widget/`:
 
 - **HR Zones** (`HrZoneWidgetProvider` + `GoalsWidgetService`): the goal
-  progress bars, see `docs/GOAL_WIDGET.md`. Tapping it opens the Goals page.
+  progress bars from `GET /goals/progress/widget`, one row per goal in the web
+  order, with the same colours and overflow bar as the web Goals page (see
+  [Goals: Android Widget](features/goals.md#android-widget)). It is resizable and
+  its rows scroll. Tapping it opens the Goals page.
 - **Challenge** (`ChallengeWidgetProvider`, min 2×2, resizable): the race chart
   and leaderboard of **one** challenge, hosted or joined. When the widget is
   placed the launcher opens `ChallengeWidgetConfigActivity` (a Compose list of
@@ -302,4 +344,6 @@ The app checks `BuildConfig.VERSION_JSON_URL` for a newer build (`checkForUpdate
 A stable install therefore only ever updates to the next main release; a beta install
 (APK from the `beta` pre-release) follows develop. Local builds default to the beta
 channel. The tag is `beta`, not `develop`: a tag named like a branch shadows the branch in
-git ref resolution (`git fetch origin develop` would fetch the tag). `versionCode` is `git rev-list --count HEAD`, monotonic within each channel.
+git ref resolution (`git fetch origin develop` would fetch the tag). `versionCode` is `git rev-list --count HEAD` (`scripts/release-version.sh`), monotonic within each channel. On `main`
+every release builds the APK, whether or not it touches `apps/android`, because `v1.0.<versionCode>` is also the
+release's Docker image tag (`.github/workflows/release.yml`); its release notes are the release PR's change list.

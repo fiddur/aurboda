@@ -27,6 +27,7 @@ import {
 } from '../../db/index.ts'
 import { auditError, auditInfo } from '../../services/audit-log.ts'
 import { getSettings } from '../../services/settings.ts'
+import { withStaleSyncingAsIdle } from '../../services/stale-syncing.ts'
 import { activityTrackSources } from '../gps-precedence.ts'
 import { historySlices, stateToLocation } from './process.ts'
 
@@ -206,7 +207,7 @@ export const syncHomeAssistantLocations = async (
 }
 
 export const getHomeAssistantSyncStates = async (user: string) => {
-  const states = await getAllSyncStates(user, HOME_ASSISTANT_PROVIDER)
+  const states = withStaleSyncingAsIdle(await getAllSyncStates(user, HOME_ASSISTANT_PROVIDER), new Date())
   return states.map((s) => ({
     error_message: s.error_message ?? null,
     last_sync_time: s.last_sync_time?.toISOString() ?? null,

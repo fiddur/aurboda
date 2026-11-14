@@ -40,7 +40,10 @@ These metrics use Health Connect's built-in deduplication to avoid double-counti
 | ActiveCaloriesBurnedRecord | `calories_active` |
 | TotalCaloriesBurnedRecord  | `calories_total`  |
 
-These are sent as daily aggregates (one value per day) rather than raw records.
+These are sent as daily aggregates (one value per day) rather than raw records. Each aggregate
+carries the phone's IANA timezone, and the backend stores it at that zone's local midnight, so a
+day's total lands on the phone's local day rather than the UTC one (UTC midnight when the timezone
+is missing or invalid).
 
 ### Activities
 
@@ -49,6 +52,15 @@ These are sent as daily aggregates (one value per day) rather than raw records.
 | ExerciseSessionRecord    | `exercise` (with exercise type, title, notes, GPS route)                                                      |
 | MindfulnessSessionRecord | `meditation` (with title, session type and notes; merged with an overlapping Garmin meditation at query time) |
 | SleepSessionRecord       | `sleep` (with sleep stage breakdowns)                                                                         |
+
+An exercise session is stored under the activity type of its Health Connect exercise type
+(`running`, `strength_training`, `yoga`, ...); the other-workout type stays the generic
+`exercise`. Current Health Connect has single lifts (bench press, squat, plank, ...) only as
+exercise **segment** types inside a session. Early versions also had them as session types; a
+session that still arrives with one of those numbers is stored as a `strength_training` session with
+the lift as its one set (see [Single lifts are exercises, not
+types](features/activity-types.md#single-lifts-are-exercises-not-types)). Segments are kept in the
+session's data but not read as sets yet.
 
 Mindfulness sessions (written by apps such as Waking Up) are read only when Health Connect reports
 `FEATURE_MINDFULNESS_SESSION` available; older Health Connect versions do not have the record type, so the
@@ -128,6 +140,7 @@ Each recognised session also enqueues a **source enrichment** job so the provide
 `ExerciseSessionRecord.notes` (and the same field on sleep and mindfulness records) are not kept on the activity row itself. They are persisted as rows in the `notes` table with `source = 'health_connect'`, anchored to the activity's id. This means:
 
 - The same `notes` table also holds user-typed text and synced notes from other sources (Oura, etc.). Each row's `source` column distinguishes them — user-authored rows have `source IS NULL`.
+- Outbound HC sync (aurboda activity → Health Connect) waits for an activity whose data has `in_progress: true` (a [live strength session](features/strength-logging.md#live-sessions)): nothing is queued until the update that finishes it, except the delete of the old type's record when a type change hits an activity that was synced before it was set back in progress.
 - Outbound HC sync (aurboda activity → Health Connect) only serializes user-authored notes into the HC record's `notes` field, joined with newlines. HC-sourced notes are deliberately skipped so a round-tripped record doesn't echo its own note back as "user input".
 - Re-syncing an HC record is idempotent: the same `(entity_id, source='health_connect')` row is upserted, not duplicated.
 - An empty `notes` value, or the literal string `"null"` (which Waking Up writes for a session without notes), is not stored as a note.

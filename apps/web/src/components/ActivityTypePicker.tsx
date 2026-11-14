@@ -1,12 +1,13 @@
 import type { JSX } from 'preact'
 
 import { useQuery } from '@tanstack/react-query'
-import { useEffect, useRef, useState } from 'preact/hooks'
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 
 import type { ActivityTypeDefinition } from '../state/api'
 
-import { fetchActivityTypeDefinitions } from '../state/api'
+import { fetchActivityTypeCatalog, fetchActivityTypeDefinitions } from '../state/api'
 import { toDisplayName } from '../utils/displayName'
+import { withCatalogTypes } from './activityTypeCatalog'
 import { IconPreview } from './IconPreview'
 import { matchActivityTypes } from './picker-match'
 import './MetricPicker.css'
@@ -15,10 +16,12 @@ interface ActivityTypePickerProps {
   value: string
   onChange: (activityType: string) => void
   placeholder?: string
+  includeCatalog?: boolean
 }
 
 function DropdownItems({
   flatList,
+  catalogNames,
   isNewType,
   snakeInput,
   highlightedIndex,
@@ -29,6 +32,7 @@ function DropdownItems({
   onHighlight,
 }: {
   flatList: ActivityTypeDefinition[]
+  catalogNames: Set<string>
   isNewType: boolean
   snakeInput: string
   highlightedIndex: number
@@ -60,7 +64,11 @@ function DropdownItems({
             {def.icon && <IconPreview icon={def.icon} size={20} />}
             {def.display_name || toDisplayName(def.name)}
           </span>
-          {def.display_category !== 'other' && <span class="metric-option-key">{def.display_category}</span>}
+          {catalogNames.has(def.name) ? (
+            <span class="metric-option-key">built-in</span>
+          ) : (
+            def.display_category !== 'other' && <span class="metric-option-key">{def.display_category}</span>
+          )}
         </li>
       ))}
       {isNewType && (
@@ -89,6 +97,7 @@ export function ActivityTypePicker({
   value,
   onChange,
   placeholder = 'Search or type new...',
+  includeCatalog = false,
 }: ActivityTypePickerProps) {
   const [inputValue, setInputValue] = useState('')
   const [isOpen, setIsOpen] = useState(false)
@@ -102,8 +111,27 @@ export function ActivityTypePicker({
     staleTime: 30 * 60 * 1000,
   })
 
-  const allDefs = typeDefs ?? []
-  const { filtered, isNewType, snakeInput } = matchActivityTypes(allDefs, inputValue, isLoading)
+  const { data: catalog, isLoading: catalogLoading } = useQuery({
+    enabled: includeCatalog,
+    queryFn: fetchActivityTypeCatalog,
+    queryKey: ['activityTypeCatalog'],
+    staleTime: 30 * 60 * 1000,
+  })
+
+  const merged = useMemo(
+    () => withCatalogTypes(typeDefs ?? [], includeCatalog ? (catalog?.entries ?? []) : []),
+    [typeDefs, catalog, includeCatalog],
+  )
+  const allDefs = useMemo(() => merged.map((m) => m.def), [merged])
+  const catalogNames = useMemo(
+    () => new Set(merged.filter((m) => m.fromCatalog).map((m) => m.def.name)),
+    [merged],
+  )
+  const { filtered, isNewType, snakeInput } = matchActivityTypes(
+    allDefs,
+    inputValue,
+    isLoading || (includeCatalog && catalogLoading),
+  )
 
   const totalItems = filtered.length + (isNewType ? 1 : 0)
 
@@ -182,6 +210,7 @@ export function ActivityTypePicker({
       {isOpen && (
         <DropdownItems
           flatList={filtered}
+          catalogNames={catalogNames}
           isNewType={isNewType}
           snakeInput={snakeInput}
           highlightedIndex={highlightedIndex}

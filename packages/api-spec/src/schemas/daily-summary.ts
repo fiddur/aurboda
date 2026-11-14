@@ -11,13 +11,18 @@ import {
   latSchema,
   lonSchema,
   placeSourceSchema,
+  timeWeightedAveragesNote,
 } from './common.ts'
 import { commentSchema, noteSchema } from './notes.ts'
+import { sleepDebtDaySchema } from './sleep.ts'
 import { ianaTimezoneSchema } from './timezone.ts'
 
 export const heartRateStatsSchema = z
   .object({
-    avg: z.number().meta({ description: 'Average heart rate', example: 72 }),
+    avg: z.number().meta({
+      description: 'Average heart rate, time-weighted: averaged per 5-minute bin, then across bins',
+      example: 72,
+    }),
     count: z.number().int().meta({ description: 'Number of samples', example: 1440 }),
     max: z.number().meta({ description: 'Maximum heart rate', example: 165 }),
     min: z.number().meta({ description: 'Minimum heart rate', example: 52 }),
@@ -224,7 +229,7 @@ export type DailySummaryMetricEntry = z.infer<typeof dailySummaryMetricEntrySche
 
 export const dailySummaryMetricStatsSchema = z
   .object({
-    avg: z.number().meta({ description: 'Mean of values logged on this day' }),
+    avg: z.number().meta({ description: `Mean of values logged on this day. ${timeWeightedAveragesNote}` }),
     count: z.number().int().meta({ description: 'Number of entries logged on this day' }),
     entries: z.array(dailySummaryMetricEntrySchema).meta({
       description: 'All entries verbatim, in chronological order. Notes carry context lost in aggregates.',
@@ -282,6 +287,10 @@ export const dailySummaryResultSchema = z
     }),
     places: z.array(placeSummarySchema),
     productivity: productivitySummarySchema.nullable(),
+    sleep_debt: sleepDebtDaySchema.nullable().meta({
+      description:
+        'Sleep debt after the night ending on this date, against the sleep_need_minutes setting; null when no night was recorded in the four weeks up to it',
+    }),
     sleep_sessions: z.array(sleepSessionSummarySchema).meta({
       description:
         'All sleep sessions overlapping this date, with sleep stages, location, and date attribution.',

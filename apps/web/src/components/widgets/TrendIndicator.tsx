@@ -1,18 +1,21 @@
+import type { MetricBetter } from '@aurboda/api-spec'
+
+import { trendArrow, trendLabel, trendTone, trendToneClass } from './trend'
+
 interface TrendIndicatorProps {
   value: number | null
-  inverse?: boolean
+  better?: MetricBetter
 }
 
-export function TrendIndicator({ value, inverse = false }: TrendIndicatorProps) {
+export function TrendIndicator({ value, better = 'neutral' }: TrendIndicatorProps) {
   if (value === null) return null
 
-  const isPositive = inverse ? value < 0 : value > 0
-  const arrow = value > 0 ? '↑' : value < 0 ? '↓' : '→'
-  const className = isPositive ? 'trend-positive' : value === 0 ? 'trend-neutral' : 'trend-negative'
+  const tone = trendTone(value, better)
+  const label = trendLabel(value, tone)
 
   return (
-    <span class={`trend-indicator ${className}`}>
-      {arrow} {Math.abs(value).toFixed(1)}%
+    <span class={`trend-indicator ${trendToneClass[tone]}`} role="img" aria-label={label} title={label}>
+      {trendArrow(value)} {Math.abs(value).toFixed(1)}%
     </span>
   )
 }

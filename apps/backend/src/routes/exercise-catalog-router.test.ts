@@ -25,13 +25,14 @@ const catalog: StoredExerciseCatalog = {
       key: 'chest_stretch',
       muscles: { chest: 0.5 },
       name: 'Chest Stretch',
-      same_as: { free_exercise_db: 'Chest_Stretch' },
+      same_as: { fit: ['flexibility/chest_stretch'], free_exercise_db: 'Chest_Stretch' },
       search_terms: [],
     },
   ],
   sources: {
     bodybuild: { commit: 'a', license: 'AGPL-3.0', url: 'u' },
     free_exercise_db: { commit: 'b', license: 'Unlicense', url: 'u' },
+    garmin_connect: { fetched: '2026-11-13', names_url: 'n', url: 'u' },
   },
   version: '2026.11.0',
 }
@@ -91,6 +92,21 @@ describe('GET /exercise-catalog', () => {
   test('name is an exact name-or-alias lookup', async () => {
     const res = await supertest(buildApp()).get('/exercise-catalog').query({ name: 'flat db press' })
     expect(res.body.data.entries.map((e: { key: string }) => e.key)).toEqual(['dumbbell_bench_press'])
+  })
+
+  test.each(['flexibility/chest_stretch', 'FLEXIBILITY/CHEST_STRETCH'])(
+    'fit is an exact Garmin FIT lookup in any letter case: %s',
+    async (fit) => {
+      const res = await supertest(buildApp()).get('/exercise-catalog').query({ fit, q: 'db' })
+      expect(res.status).toBe(200)
+      expect(res.body.data.entries.map((e: { key: string }) => e.key)).toEqual(['chest_stretch'])
+    },
+  )
+
+  test('an unknown fit returns nothing', async () => {
+    const res = await supertest(buildApp()).get('/exercise-catalog').query({ fit: 'flexibility/nope' })
+    expect(res.status).toBe(200)
+    expect(res.body.data).toMatchObject({ entries: [], total: 0 })
   })
 
   test.each([{ equipment: 'spaceship' }, { muscle: 'heart' }, { category: 'cardio' }, { limit: '101' }])(

@@ -75,8 +75,8 @@ export interface RelaysApi {
     state: RelayState,
     fields?: { actor_uri?: string | null; last_error?: string | null },
   ) => Promise<RelayRecord | null>
-  /** Records a delivery error without touching the state, which an Accept may have moved meanwhile. */
-  setRelayError: (id: string, lastError: string) => Promise<RelayRecord | null>
+  /** Records (or, with null, clears) a delivery error without touching the state, which an Accept may have moved meanwhile. */
+  setRelayError: (id: string, lastError: string | null) => Promise<RelayRecord | null>
   deleteRelay: (id: string) => Promise<boolean>
 }
 

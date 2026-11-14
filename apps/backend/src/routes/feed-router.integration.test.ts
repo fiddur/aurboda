@@ -17,6 +17,7 @@ import type { ArticlePreviewer } from '../services/article-preview.ts'
  */
 import { insertActivity } from '../db/activities/index.ts'
 import { createChallenge, createChallengeParticipation, deleteChallenge } from '../db/challenges.ts'
+import { query } from '../db/connection.ts'
 import { listFeedQuoteAuthorizations, upsertFeedQuoteAuthorization } from '../db/feed-quotes.ts'
 import { upsertFeedPostReaction } from '../db/feed-reactions.ts'
 import { createFeedPost } from '../db/feed.ts'
@@ -944,6 +945,12 @@ describe('Feed post reactions (integration)', () => {
       kind: 'like',
       post_id: created.id,
     })
+    // Newest first is by timestamp, and the two rows can be written within the same millisecond.
+    await query(
+      user,
+      `UPDATE feed_post_reaction SET created_at = created_at - interval '1 minute' WHERE post_id = $1`,
+      [created.id],
+    )
     await upsertFeedQuoteAuthorization(user, {
       actor_uri: 'https://mastodon.example/users/alice',
       post_id: created.id,

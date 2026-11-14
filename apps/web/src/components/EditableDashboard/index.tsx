@@ -4,6 +4,7 @@
  * persistence (home dashboard vs. a shared dashboard) and the edit toggle.
  */
 import type {
+  CustomMetricDefinition,
   DashboardConfig,
   DashboardSection,
   DashboardWidget,
@@ -17,7 +18,9 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 
 import { DashboardEditor } from '../DashboardEditor'
 import { PublicWidgetRenderer, WidgetRenderer } from '../widgets'
+import { useCustomMetricDefinitions } from '../widgets/useMetricBetter'
 import { dropWidget, type DropTarget, moveSection, moveWidget } from './moveWidget'
+import { useVisibleSections } from './useWaitingWidgets'
 
 const generateSectionId = () => `section-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
 
@@ -175,6 +178,7 @@ function DashboardSectionComponent({
   widgetData,
   widgetDataLoading,
   periodLabel,
+  customMetrics,
   onRemoveWidget,
   onMoveWidget,
   onAddWidgetClick,
@@ -190,6 +194,7 @@ function DashboardSectionComponent({
   widgetData?: WidgetDataMap
   widgetDataLoading?: boolean
   periodLabel?: string
+  customMetrics?: CustomMetricDefinition[]
   onRemoveWidget?: (widgetId: string) => void
   onMoveWidget?: (widgetId: string, direction: 'up' | 'down') => void
   onAddWidgetClick?: () => void
@@ -374,6 +379,7 @@ function DashboardSectionComponent({
                   widget={widget}
                   data={widgetData[widget.id]}
                   periodLabel={periodLabel}
+                  customMetrics={customMetrics}
                 />
               ) : (
                 <WidgetRenderer widget={widget} boardId={boardId} sectionId={section.id} />
@@ -487,6 +493,18 @@ interface EditableDashboardProps {
   widgetDataLoading?: boolean
   /** The shown period's label, for widgets that name their window. */
   periodLabel?: string
+  /** Outside edit mode, leave out the widgets whose sources have never delivered anything. */
+  hideWaiting?: boolean
+}
+
+function WaitingNote({ count }: { count: number }) {
+  if (count === 0) return null
+  return (
+    <p class="dashboard-waiting">
+      {count === 1 ? '1 card is' : `${count} cards are`} waiting for data.{' '}
+      <a href="/data-sources">Connect a data source</a>
+    </p>
+  )
 }
 
 export function EditableDashboard({
@@ -497,8 +515,11 @@ export function EditableDashboard({
   widgetData,
   widgetDataLoading,
   periodLabel,
+  hideWaiting,
 }: EditableDashboardProps) {
   const [showWidgetPicker, setShowWidgetPicker] = useState<string | null>(null) // section id or null
+  const customMetrics = useCustomMetricDefinitions(widgetData !== undefined)
+  const { sections, waitingCount } = useVisibleSections(config, !isEditing && hideWaiting === true)
   const [showAddSection, setShowAddSection] = useState(false)
   const [descDraft, setDescDraft] = useState(config.description ?? '')
   // Re-sync when config changes under a still-mounted editor (home "Reset to
@@ -654,7 +675,7 @@ export function EditableDashboard({
         <p class="dashboard-intro">{config.description}</p>
       ) : null}
 
-      {config.sections.map((section, index) => (
+      {sections.map((section, index) => (
         <DashboardSectionComponent
           key={section.id}
           section={section}
@@ -663,6 +684,7 @@ export function EditableDashboard({
           widgetData={widgetData}
           widgetDataLoading={widgetDataLoading}
           periodLabel={periodLabel}
+          customMetrics={customMetrics}
           onRemoveWidget={(widgetId) => handleRemoveWidget(section.id, widgetId)}
           onMoveWidget={(widgetId, direction) => handleMoveWidget(section.id, widgetId, direction)}
           onAddWidgetClick={() => setShowWidgetPicker(section.id)}
@@ -679,6 +701,8 @@ export function EditableDashboard({
           drag={isEditing ? drag : undefined}
         />
       ))}
+
+      <WaitingNote count={waitingCount} />
 
       {isEditing &&
         (showAddSection ? (

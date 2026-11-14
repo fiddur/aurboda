@@ -166,3 +166,52 @@ describe('GET /locations/places-summary', () => {
     expect(queries.getPlacesSummary).not.toHaveBeenCalled()
   })
 })
+
+describe('GET /locations/raw', () => {
+  const range = { end: '2026-11-14T23:59:59.999Z', start: '2026-11-07T00:00:00.000Z' }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(service.getRawLocationPoints).mockResolvedValue([
+      { lat: 59.33, lon: 18.07, time: new Date('2026-11-08T10:00:00.000Z') },
+    ])
+  })
+
+  test('passes source and limit to the service', async () => {
+    const res = await supertest(buildApp())
+      .get('/locations/raw')
+      .query({ ...range, limit: '1', source: 'owntracks' })
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({
+      data: [{ lat: 59.33, lon: 18.07, time: '2026-11-08T10:00:00.000Z' }],
+      success: true,
+    })
+    expect(service.getRawLocationPoints).toHaveBeenCalledWith(
+      'tester',
+      new Date(range.start),
+      new Date(range.end),
+      { limit: 1, source: 'owntracks' },
+    )
+  })
+
+  test('reads every source without a limit by default', async () => {
+    await supertest(buildApp()).get('/locations/raw').query(range)
+
+    expect(service.getRawLocationPoints).toHaveBeenCalledWith(
+      'tester',
+      new Date(range.start),
+      new Date(range.end),
+      { limit: undefined, source: undefined },
+    )
+  })
+
+  test('400s on a limit below 1', async () => {
+    const res = await supertest(buildApp())
+      .get('/locations/raw')
+      .query({ ...range, limit: '0' })
+
+    expect(res.status).toBe(400)
+    expect(service.getRawLocationPoints).not.toHaveBeenCalled()
+  })
+})

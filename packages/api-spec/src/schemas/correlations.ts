@@ -8,7 +8,9 @@ import {
   iso8601DateTimeSchema,
   metricUnits,
   queryBooleanSchema,
+  timeWeightedAveragesNote,
 } from './common.ts'
+import { flaggedExclusionSchema, includeFlaggedBodySchema, includeFlaggedSchema } from './flagged-windows.ts'
 import { ianaTimezoneSchema } from './timezone.ts'
 
 export const hrvStatsSchema = z
@@ -45,7 +47,11 @@ export const windowEffectSchema = z
       .meta({ description: 'Standard deviation of the per-occurrence changes' }),
     p_value: z.number().nullable().meta({
       description:
-        'Two-sided paired t-test p-value for the change; null with fewer than 3 paired occurrences or no variation',
+        'Raw two-sided paired t-test p-value for this one change, not corrected for the other comparisons in the response; null with fewer than 3 paired occurrences or no variation',
+    }),
+    p_value_adjusted: z.number().nullable().optional().meta({
+      description:
+        'Benjamini–Hochberg adjusted p-value over every change with a p-value in the same response (see comparisons): compare this, not p_value, with 0.05 to call a change notable. Null when p_value is null; absent where no family was adjusted.',
     }),
     paired_occurrences: z.number().int().meta({ description: 'Occurrences with data both before and after' }),
   })
@@ -56,7 +62,22 @@ export const windowEffectSchema = z
 
 export type WindowEffect = z.infer<typeof windowEffectSchema>
 
+export const MAX_CORRELATION_PERIOD_DAYS = 3650
+
+const periodDaysRangeMessage = `period_days must be a whole number from 1 to ${MAX_CORRELATION_PERIOD_DAYS}`
+
+const periodDaysQuerySchema = z
+  .string()
+  .regex(/^\d{1,4}$/, periodDaysRangeMessage)
+  .refine((raw) => Number(raw) >= 1 && Number(raw) <= MAX_CORRELATION_PERIOD_DAYS, periodDaysRangeMessage)
+
+const periodDaysInputSchema = z.number().int().min(1).max(MAX_CORRELATION_PERIOD_DAYS)
+
 export const MAX_IMPACT_EXTRA_METRICS = 4
+
+/** Always analysed, so never an extra metric, by their metric names or the short keys the results use. */
+export const IMPACT_FIXED_METRICS = ['hrv_rmssd', 'heart_rate', 'stress_level']
+const IMPACT_FIXED_METRIC_KEYS = ['hrv', 'hr', 'stress']
 
 const IMPACT_METRIC_NAME = /^[a-z][a-z0-9_]*$/
 const MAX_IMPACT_METRIC_NAME_LENGTH = 50
@@ -89,6 +110,10 @@ export const impactExtraMetricsError = (metrics: string[]): string | null => {
     (name) => !IMPACT_METRIC_NAME.test(name) || name.length > MAX_IMPACT_METRIC_NAME_LENGTH,
   )
   if (invalid !== undefined) return `Not a metric name: ${invalid}`
+  const fixed = metrics.find((name) => [...IMPACT_FIXED_METRICS, ...IMPACT_FIXED_METRIC_KEYS].includes(name))
+  if (fixed !== undefined) {
+    return `${fixed} is always analysed; extra metrics are the ones beyond HRV, heart rate and stress.`
+  }
   const cumulative = metrics.find((name) => (cumulativeMetrics as string[]).includes(name))
   if (cumulative !== undefined) {
     return `${cumulative} is a running total and cannot be analysed around a session.`
@@ -280,6 +305,7 @@ export type HrvStatsWithDelta = z.infer<typeof hrvStatsWithDeltaSchema>
 
 export const baselineQuerySchema = z
   .object({
+    include_flagged: includeFlaggedSchema,
     reference_date: z.string().optional().meta({
       description: 'Reference date for baseline calculation (defaults to today)',
       example: '2024-01-15',
@@ -291,6 +317,7 @@ export type BaselineQuery = z.infer<typeof baselineQuerySchema>
 
 export const baselineDataSchema = z
   .object({
+    flagged_exclusion: flaggedExclusionSchema.optional(),
     hrv: z.object({
       avg7day: z.number().nullable(),
       avg30day: z.number().nullable(),
@@ -305,11 +332,16 @@ export const baselineDataSchema = z
       avg30day: z.number().nullable(),
       trend_percent: z.number().nullable(),
     }),
-    stress: z.object({
-      avg7day: z.number().nullable(),
-      avg30day: z.number().nullable(),
-      trend_percent: z.number().nullable().meta({ description: 'Change from previous 30-day period' }),
-    }),
+    stress: z
+      .object({
+        avg7day: z.number().nullable(),
+        avg30day: z.number().nullable(),
+        trend_percent: z.number().nullable().meta({ description: 'Change from previous 30-day period' }),
+      })
+      .meta({
+        description:
+          'Stress level averages, time-weighted: the samples are averaged per 5-minute bin, then across bins, so recorded activities (1 Hz) weigh no more than other hours',
+      }),
   })
   .meta({ id: 'BaselineData' })
 
@@ -341,9 +373,9 @@ export const hrvActivitiesQuerySchema = z
       description:
         'Which metric fills the legacy productivity correlation_coefficient (default hrv_rmssd); correlation_coefficients always holds all three',
     }),
+    include_flagged: includeFlaggedSchema,
     metrics: impactMetricsParamSchema,
-    period_days: z
-      .string()
+    period_days: periodDaysQuerySchema
       .optional()
       .meta({ description: 'Number of days to analyze (default 30)', example: '30' }),
     window_minutes: z.string().optional().meta({
@@ -407,6 +439,10 @@ export type ActivityCorrelation = z.infer<typeof activityCorrelationSchema>
 export const hrvActivitiesDataSchema = z
   .object({
     baseline: hrvStatsSchema,
+    comparisons: z.number().int().meta({
+      description:
+        'How many changes in this response have a p-value: the family p_value_adjusted is adjusted over. At p < 0.05, about one in twenty of them would pass by chance.',
+    }),
     context_metric: hrvContextMetricSchema.meta({
       description:
         'The metric the legacy productivity correlation_coefficient was computed against; correlation_coefficients holds all three',
@@ -416,6 +452,7 @@ export const hrvActivitiesDataSchema = z
       locations: z.array(locationCorrelationSchema),
       productivity: z.array(productivityCorrelationSchema),
     }),
+    flagged_exclusion: flaggedExclusionSchema.optional(),
     metric_baselines: z.record(z.string(), z.number().nullable()).optional().meta({
       description:
         'Each requested extra metric averaged over the period (5-minute bins, like baseline); present when extras were requested',
@@ -488,9 +525,12 @@ export const activityImpactQuerySchema = z
         'List the dimensions available for breakdown and filters, with their group keys and session counts before filters',
       example: 'true',
     }),
+    include_flagged: includeFlaggedSchema,
     match: activityImpactMatchSchema.optional(),
     metrics: impactMetricsParamSchema,
-    period_days: z.string().optional().meta({ description: 'Days to analyze (default 90)', example: '90' }),
+    period_days: periodDaysQuerySchema
+      .optional()
+      .meta({ description: 'Days to analyze (default 90)', example: '90' }),
     start: z.string().optional().meta({
       description:
         'Start of a fixed period to analyse (ISO 8601 datetime, inclusive); with end, replaces period_days',
@@ -647,6 +687,10 @@ export const activityImpactDataSchema = z
     activity: z.string().meta({ description: 'Activity name/pattern searched' }),
     activity_type: activityImpactTypeSchema,
     avg_duration_min: z.number().meta({ description: 'Average session duration in minutes' }),
+    comparisons: z.number().int().meta({
+      description:
+        'How many changes in this response, the whole and every breakdown group, have a p-value: the family p_value_adjusted is adjusted over. At p < 0.05, about one in twenty of them would pass by chance.',
+    }),
     hr_effect: windowEffectSchema.meta({ description: 'Paired before -> after change of heart rate' }),
     hr_timeline: impactTimelineSchema,
     hrv_effect: windowEffectSchema.meta({ description: 'Paired before -> after change of HRV' }),
@@ -663,6 +707,7 @@ export const activityImpactDataSchema = z
       description:
         'Dimensions available for breakdown and filters, with group keys and counts before filters; present with include_dimensions',
     }),
+    flagged_exclusion: flaggedExclusionSchema.optional(),
     occurrences: z.number().int().meta({
       description:
         'Number of sessions the filters keep: matching entries that overlap or are at most 10 minutes apart count as one',
@@ -705,9 +750,7 @@ export const eventProbabilityBodySchema = z
     outcome_pattern: z
       .string()
       .meta({ description: 'Regex pattern for outcome tag', example: 'painkiller|headache' }),
-    period_days: z
-      .number()
-      .int()
+    period_days: periodDaysInputSchema
       .optional()
       .meta({ description: 'Days to analyze (default 365)', example: 365 }),
     trigger_type: eventTriggerTypeSchema,
@@ -922,8 +965,9 @@ export const genericCorrelationBodySchema = z
         description: 'Time windows to analyze (e.g., ["12h", "24h", "7d"])',
         example: ['24h', '48h', '7d'],
       }),
+    include_flagged: includeFlaggedBodySchema,
     outcome: outcomeConfigSchema.meta({ description: 'Outcome to measure' }),
-    period_days: z.number().int().optional().meta({
+    period_days: periodDaysInputSchema.optional().meta({
       description: 'Days to analyze (default: 90). Ignored when period_start is given.',
       example: 90,
     }),
@@ -951,11 +995,22 @@ export const tagLagResultSchema = z
   })
   .meta({ id: 'GenericTagLagResult' })
 
+const genericBinCountSchema = z.number().int().optional().meta({
+  description:
+    'Number of 5-minute bins the mean and stddev are taken over; present only for a time-weighted outcome metric',
+})
+
+const genericSampleCountSchema = z.number().int().meta({ description: 'Number of raw samples pooled' })
+
 export const metricLagResultSchema = z
   .object({
+    bin_count: genericBinCountSchema,
     delta_from_baseline: z.number().nullable().meta({ description: 'Difference from baseline mean' }),
-    mean: z.number().nullable().meta({ description: 'Mean value in the lag window' }),
-    sample_count: z.number().int(),
+    mean: z
+      .number()
+      .nullable()
+      .meta({ description: `Mean value in the lag window. ${timeWeightedAveragesNote}` }),
+    sample_count: genericSampleCountSchema,
     stddev: z.number().nullable().meta({ description: 'Standard deviation' }),
   })
   .meta({ id: 'MetricLagResult' })
@@ -985,8 +1040,9 @@ export const tagBaselineSchema = z
 
 export const metricBaselineSchema = z
   .object({
+    bin_count: genericBinCountSchema,
     mean: z.number().nullable(),
-    sample_count: z.number().int(),
+    sample_count: genericSampleCountSchema,
     stddev: z.number().nullable(),
   })
   .meta({ id: 'MetricBaseline' })
@@ -1026,7 +1082,13 @@ export const lagExposureResultSchema = z
     lag_days: z.number().int().meta({ description: 'Lag window length in days' }),
     onsets: z.number().int().meta({ description: 'Onset count after collapsing' }),
     onsets_exposed: z.number().int().meta({ description: 'Onsets that were exposed to a recent trigger' }),
-    p_value: z.number().meta({ description: 'Two-sided p-value' }),
+    p_value: z
+      .number()
+      .meta({ description: 'Raw two-sided p-value for this lag, not corrected for the other lags' }),
+    p_value_adjusted: z.number().meta({
+      description:
+        'Benjamini–Hochberg adjusted p-value over the lags of this analysis (see comparisons): compare this, not p_value, with 0.05',
+    }),
     relative_risk: z.number().nullable().meta({ description: 'Onset rate exposed vs unexposed' }),
     reverse_conditional: z.number().meta({ description: 'P(recent trigger | onset) — the headline' }),
     risk_difference: z.number().meta({ description: 'Onset rate difference (exposed minus unexposed)' }),
@@ -1041,6 +1103,10 @@ export type LagExposureResultData = z.infer<typeof lagExposureResultSchema>
 export const eventOutcomeDataSchema = z
   .object({
     collapse_gap_days: z.number().int(),
+    comparisons: z
+      .number()
+      .int()
+      .meta({ description: 'How many lags were tested: the family p_value_adjusted is adjusted over' }),
     denominator: denominatorSchema,
     known_days: z.number().int().meta({ description: 'Known-day denominator size' }),
     onsets: z.number().int().meta({ description: 'Onset count after collapsing' }),
@@ -1058,6 +1124,7 @@ export const genericCorrelationDataSchema = z
     event_outcome: eventOutcomeDataSchema
       .optional()
       .meta({ description: 'Exposure-corrected analysis (present when outcome.type === "event")' }),
+    flagged_exclusion: flaggedExclusionSchema.optional(),
     outcome: outcomeConfigSchema.meta({ description: 'Outcome configuration' }),
     period: z.object({
       days: z.number().int(),
@@ -1124,11 +1191,10 @@ export const activityImpactInputSchema = z
     include_dimensions: z.boolean().optional().meta({
       description: 'List the dimensions available for breakdown and filters, with group keys and counts',
     }),
+    include_flagged: includeFlaggedBodySchema,
     match: activityImpactMatchSchema.optional(),
     metrics: impactExtraMetricsInputSchema,
-    period_days: z
-      .number()
-      .int()
+    period_days: periodDaysInputSchema
       .optional()
       .meta({ description: 'Number of days to analyze. Defaults to 90.' }),
     start: iso8601DateTimeSchema.optional().meta({
@@ -1164,9 +1230,7 @@ export const eventProbabilityInputSchema = z
     outcome_pattern: z
       .string()
       .meta({ description: 'Regex pattern for outcome tags (e.g., "headache|migraine", "good_sleep")' }),
-    period_days: z
-      .number()
-      .int()
+    period_days: periodDaysInputSchema
       .optional()
       .meta({ description: 'Number of days to analyze. Defaults to 365.' }),
     trigger_type: eventTriggerTypeSchema.meta({ description: 'Type of trigger event' }),
@@ -1183,10 +1247,9 @@ export const hrvCorrelationInputSchema = z
     context_metric: hrvContextMetricSchema
       .optional()
       .meta({ description: 'Autonomic metric to correlate against (default: hrv_rmssd)' }),
+    include_flagged: includeFlaggedBodySchema,
     metrics: impactExtraMetricsInputSchema,
-    period_days: z
-      .number()
-      .int()
+    period_days: periodDaysInputSchema
       .optional()
       .meta({ description: 'Number of days to analyze. Defaults to 30.' }),
     window_minutes: z.number().int().min(10).max(1440).optional().meta({
@@ -1222,8 +1285,7 @@ export type ImpactMetricOption = z.infer<typeof impactMetricSchema>
 
 export const impactMetricsQuerySchema = z
   .object({
-    period_days: z
-      .string()
+    period_days: periodDaysQuerySchema
       .optional()
       .meta({ description: 'Number of days to look at (default 30)', example: '30' }),
   })
@@ -1249,9 +1311,7 @@ export type ImpactMetricsResponse = z.infer<typeof impactMetricsResponseSchema>
 
 export const impactMetricsInputSchema = z
   .object({
-    period_days: z
-      .number()
-      .int()
+    period_days: periodDaysInputSchema
       .optional()
       .meta({ description: 'Number of days to look at. Defaults to 30.' }),
   })
@@ -1360,6 +1420,7 @@ export type NutritionCompleteness = z.infer<typeof nutritionCompletenessSchema>
 
 export const continuousCorrelationBodySchema = z
   .object({
+    include_flagged: includeFlaggedBodySchema,
     lag_days: z.number().int().optional().meta({
       description: 'Days the outcome lags the trigger (default: 0)',
       example: 1,
@@ -1368,7 +1429,7 @@ export const continuousCorrelationBodySchema = z
       .optional()
       .meta({ description: 'Filter for partial nutrition days (default: all)' }),
     outcome: selectorSchema.meta({ description: 'Outcome dimension' }),
-    period_days: z.number().int().optional().meta({ description: 'Days to analyze (default: 90)' }),
+    period_days: periodDaysInputSchema.optional().meta({ description: 'Days to analyze (default: 90)' }),
     period_end: z.string().optional().meta({ description: 'Inclusive regime end (YYYY-MM-DD)' }),
     period_start: z.string().optional().meta({ description: 'Inclusive regime start (YYYY-MM-DD)' }),
     trigger: selectorSchema.meta({ description: 'Trigger / predictor dimension' }),
@@ -1431,6 +1492,7 @@ export const continuousCorrelationDataSchema = z
     group_comparison: groupComparisonSchema
       .nullable()
       .meta({ description: 'Present-vs-absent group comparison; null when there is no split to compare' }),
+    flagged_exclusion: flaggedExclusionSchema.optional(),
     lag_days: z.number().int(),
     n: z.number().int().meta({ description: 'Number of aligned day pairs' }),
     n_complete: z.number().int().nullable().meta({

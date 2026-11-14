@@ -28,6 +28,8 @@ import { isMissingDatabase } from '../db/index.ts'
 import { renderArticleNote } from '../services/activitypub/article-object.ts'
 import {
   articleBlockCacheKey,
+  articleBlockRenderKey,
+  type BlockImageKind,
   createNegativeCache,
   type NegativeCache,
 } from '../services/article-block-misses.ts'
@@ -36,6 +38,7 @@ import { isCapabilityAuthorized } from '../services/feed-capability.ts'
 import {
   activityHeartRateChart,
   articleBlockAt,
+  articleBlockBucketMs,
   articleBlockChart,
   bucketedCacheKey,
   exerciseTrendChart,
@@ -46,7 +49,7 @@ import {
   standingsChart,
   TREND_BUCKET_MS,
 } from '../services/post-chart.ts'
-import { createRenderCache } from '../services/render-cache.ts'
+import { createRenderCache, createTtlCache } from '../services/render-cache.ts'
 import { UUID_RE } from '../utils.ts'
 
 export type { ChartRenderOpts, CorrelationBlockParams, ResolvedArticleBlock }
@@ -84,7 +87,12 @@ export interface FeedImageDeps extends PostChartDeps {
   rasterizeSvg: (svg: string) => Promise<Buffer>
   /** Remembered block-image misses, shared with the markdown export (a fresh one when omitted). */
   articleBlockMisses?: NegativeCache
+  /** The clock the block-image render cache expires entries by. */
+  now?: () => number
 }
+
+/** What the article block-image render cache may hold, in image bytes. */
+export const BLOCK_RENDER_CACHE_BYTES = 32 * 1024 * 1024
 
 /**
  * Resolve the activity window an image may render over, or `null` if the request
@@ -313,10 +321,6 @@ export const resolveExercisePost = (
   token?: string,
 ): Promise<FeedPostRecord | null> => resolveChartPost(deps, 'exercise', username, postId, token)
 
-/** A challenge block's standings move like a challenge post's (`standings.png`); a windowed block's data, hourly. */
-const blockBucketMs = (block: ResolvedArticleBlock): number | undefined =>
-  block.type === 'challenge' ? STANDINGS_BUCKET_MS : undefined
-
 export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
   const router = Router()
   const cached = createRenderCache()
@@ -430,11 +434,36 @@ export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
 
   // Article chart/correlation block images. Gated by post visibility + capability
   // token only (no `include_chart` flag — a block can embed any metric, so
-  // visibility is the whole boundary, #943). See `articleBlockCacheKey` for why
-  // the key carries `updated_at` and an hourly bucket: the block re-resolves its
-  // data live (#934), and articles, unlike shared activities, are mutable and
-  // their windows can gain data after publish.
+  // visibility is the whole boundary, #943). The block re-resolves its data live
+  // (#934), and articles, unlike shared activities, are mutable and their windows
+  // can gain data after publish, so renders go to their own cache whose entries
+  // expire (hourly, or with the standings for a challenge block) rather than to
+  // the activity images' cache under a rotating key, which would push the
+  // activity images out (#969).
   const negativeBlocks = deps.articleBlockMisses ?? createNegativeCache()
+  const blockRenders = createTtlCache<Buffer>({
+    maxBytes: BLOCK_RENDER_CACHE_BYTES,
+    now: deps.now,
+    sizeOf: (buffer) => buffer.byteLength,
+    ttlMs: 3_600_000,
+  })
+
+  const blockImage = async (
+    kind: BlockImageKind,
+    username: string,
+    postId: string,
+    idx: number,
+    block: ResolvedArticleBlock,
+    render: () => Promise<Buffer | null>,
+  ): Promise<Buffer | null> => {
+    const bucketMs = articleBlockBucketMs(block)
+    const missKey = articleBlockCacheKey(kind, username, postId, idx, block.updatedAt, bucketMs)
+    if (negativeBlocks.has(missKey)) return null
+    const key = articleBlockRenderKey(kind, username, postId, idx, block.updatedAt)
+    const image = await blockRenders(key, render, bucketMs)
+    if (!image) negativeBlocks.add(missKey)
+    return image
+  }
 
   router.get('/public/:username/feed/:postId/blocks/:index/image.png', async (req, res) => {
     const { index, postId, username } = req.params
@@ -442,13 +471,10 @@ export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
     const idx = Number(index)
     const block = await resolveArticleBlock(deps, username, postId, idx, token)
     if (!block) return notFound(res)
-    const key = articleBlockCacheKey('blockpng', username, postId, idx, block.updatedAt, blockBucketMs(block))
-    if (negativeBlocks.has(key)) return notFound(res)
-    const png = await cached(key, () => renderArticleBlockImage(deps, username, block, 'png'))
-    if (!png) {
-      negativeBlocks.add(key)
-      return notFound(res)
-    }
+    const png = await blockImage('blockpng', username, postId, idx, block, () =>
+      renderArticleBlockImage(deps, username, block, 'png'),
+    )
+    if (!png) return notFound(res)
     sendPng(res, png)
   })
 
@@ -459,13 +485,10 @@ export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
     const resolved = await resolveArticleBlockOf(deps, username, postId, idx, token)
     if (!resolved) return notFound(res)
     const { article, block } = resolved
-    const key = articleBlockCacheKey('blockfig', username, postId, idx, block.updatedAt, blockBucketMs(block))
-    if (negativeBlocks.has(key)) return notFound(res)
-    const png = await cached(key, () => renderArticleBlockFigure(deps, username, article, idx, block))
-    if (!png) {
-      negativeBlocks.add(key)
-      return notFound(res)
-    }
+    const png = await blockImage('blockfig', username, postId, idx, block, () =>
+      renderArticleBlockFigure(deps, username, article, idx, block),
+    )
+    if (!png) return notFound(res)
     sendPng(res, png)
   })
 
@@ -475,13 +498,10 @@ export const createFeedImageRouter = (deps: FeedImageDeps): Router => {
     const idx = Number(index)
     const block = await resolveArticleBlock(deps, username, postId, idx, token)
     if (!block) return notFound(res)
-    const key = articleBlockCacheKey('blocksvg', username, postId, idx, block.updatedAt, blockBucketMs(block))
-    if (negativeBlocks.has(key)) return notFound(res)
-    const svg = await cached(key, () => renderArticleBlockImage(deps, username, block, 'svg'))
-    if (!svg) {
-      negativeBlocks.add(key)
-      return notFound(res)
-    }
+    const svg = await blockImage('blocksvg', username, postId, idx, block, () =>
+      renderArticleBlockImage(deps, username, block, 'svg'),
+    )
+    if (!svg) return notFound(res)
     sendSvg(res, svg)
   })
 

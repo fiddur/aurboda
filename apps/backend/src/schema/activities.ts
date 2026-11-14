@@ -1,4 +1,8 @@
-import { previousStrengthTrainingDataSchemas, strengthTrainingDataSchema } from './builtin-data-schemas.ts'
+import {
+  catalogSchemaFor,
+  previousStrengthTrainingDataSchemas,
+  strengthTrainingDataSchema,
+} from './builtin-data-schemas.ts'
 
 export const activitiesTables: Record<string, string> = {
   // Unified activities table (covers all time-ranged events: sleep, exercise, tags, calendar, etc.)
@@ -146,55 +150,36 @@ export const activitiesTables: Record<string, string> = {
       ('nap', 'Nap', 'sleep_rest', '#60a5fa', true, 'SleepSessionRecord', NULL),
       ('rest', 'Rest', 'sleep_rest', '#86efac', true, NULL, NULL),
       ('calendar_event', 'Calendar Event', 'other', '#f59e0b', true, NULL, NULL),
-      ('back_extension', 'Back Extension', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 1),
       ('badminton', 'Badminton', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 2),
-      ('barbell_shoulder_press', 'Barbell Shoulder Press', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 3),
       ('baseball', 'Baseball', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 4),
       ('basketball', 'Basketball', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 5),
-      ('bench_press', 'Bench Press', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 6),
-      ('bench_sit_up', 'Bench Sit Up', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 7),
       ('biking', 'Biking', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 8),
       ('biking_stationary', 'Biking Stationary', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 9),
       ('boot_camp', 'Boot Camp', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 10),
       ('boxing', 'Boxing', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 11),
-      ('burpee', 'Burpee', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 12),
       ('calisthenics', 'Calisthenics', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 13),
       ('cricket', 'Cricket', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 14),
-      ('crunch', 'Crunch', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 15),
       ('dancing', 'Dancing', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 16),
-      ('deadlift', 'Deadlift', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 17),
-      ('dumbbell_curl_left_arm', 'Dumbbell Curl Left Arm', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 18),
-      ('dumbbell_curl_right_arm', 'Dumbbell Curl Right Arm', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 19),
-      ('dumbbell_front_raise', 'Dumbbell Front Raise', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 20),
-      ('dumbbell_lateral_raise', 'Dumbbell Lateral Raise', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 21),
-      ('dumbbell_triceps_extension_left_arm', 'Dumbbell Triceps Extension Left Arm', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 22),
-      ('dumbbell_triceps_extension_right_arm', 'Dumbbell Triceps Extension Right Arm', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 23),
-      ('dumbbell_triceps_extension_two_arm', 'Dumbbell Triceps Extension Two Arm', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 24),
       ('elliptical', 'Elliptical', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 25),
       ('exercise_class', 'Exercise Class', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 26),
       ('fencing', 'Fencing', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 27),
       ('football_american', 'Football American', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 28),
       ('football_australian', 'Football Australian', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 29),
-      ('forward_twist', 'Forward Twist', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 30),
       ('frisbee_disc', 'Frisbee Disc', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 31),
       ('golf', 'Golf', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 32),
-      ('guided_breathing', 'Guided Breathing', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 33),
+      ('guided_breathing', 'Breathwork', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 33),
       ('gymnastics', 'Gymnastics', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 34),
       ('handball', 'Handball', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 35),
       ('high_intensity_interval_training', 'High Intensity Interval Training', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 36),
       ('hiking', 'Hiking', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 37),
       ('ice_hockey', 'Ice Hockey', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 38),
       ('ice_skating', 'Ice Skating', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 39),
-      ('jumping_jack', 'Jumping Jack', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 40),
       ('jump_rope', 'Jump Rope', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 41),
-      ('lat_pull_down', 'Lat Pull Down', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 42),
-      ('lunge', 'Lunge', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 43),
       ('martial_arts', 'Martial Arts', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 44),
       ('other_workout', 'Other Workout', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 0),
       ('paddling', 'Paddling', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 46),
       ('paragliding', 'Paragliding', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 47),
       ('pilates', 'Pilates', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 48),
-      ('plank', 'Plank', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 49),
       ('racquetball', 'Racquetball', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 50),
       ('rock_climbing', 'Rock Climbing', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 51),
       ('roller_hockey', 'Roller Hockey', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 52),
@@ -212,7 +197,6 @@ export const activitiesTables: Record<string, string> = {
       ('soccer', 'Soccer', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 64),
       ('softball', 'Softball', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 65),
       ('squash', 'Squash', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 66),
-      ('squat', 'Squat', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 67),
       ('stair_climbing', 'Stair Climbing', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 68),
       ('stair_climbing_machine', 'Stair Climbing Machine', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 69),
       ('strength_training', 'Strength Training', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 70),
@@ -222,7 +206,6 @@ export const activitiesTables: Record<string, string> = {
       ('swimming_pool', 'Swimming Pool', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 74),
       ('table_tennis', 'Table Tennis', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 75),
       ('tennis', 'Tennis', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 76),
-      ('upper_twist', 'Upper Twist', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 77),
       ('volleyball', 'Volleyball', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 78),
       ('walking', 'Walking', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 79),
       ('water_polo', 'Water Polo', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 80),
@@ -241,6 +224,15 @@ export const activitiesTables: Record<string, string> = {
        AND data_schema = $json$${JSON.stringify(previous)}$json$::jsonb;`,
       )
       .join('\n    ')}
+    UPDATE activity_type_definitions
+       SET data_schema = $json$${JSON.stringify(catalogSchemaFor('meditation'))}$json$::jsonb
+     WHERE name = 'meditation' AND is_builtin = true AND data_schema IS NULL;
+    UPDATE activity_type_definitions
+       SET data_schema = $json$${JSON.stringify(catalogSchemaFor('guided_breathing'))}$json$::jsonb
+     WHERE name = 'guided_breathing' AND is_builtin = true AND data_schema IS NULL;
+    UPDATE activity_type_definitions
+       SET display_name = 'Breathwork'
+     WHERE name = 'guided_breathing' AND is_builtin = true AND display_name = 'Guided Breathing';
     -- Seed the built-in hierarchy: exercise subtypes → 'exercise', nap/rest → 'sleep'.
     UPDATE activity_type_definitions
        SET parent_type = 'exercise'

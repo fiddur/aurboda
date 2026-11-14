@@ -89,6 +89,22 @@ describe('item value identities (integration)', () => {
     expect(result.data.values[0].suggestions.map((s) => s.key)).toContain('wide_grip_lat_pulldown')
   })
 
+  test('the unmapped list comes a page at a time, with the total of every page', async () => {
+    const user = getTestUser()
+    await addSession('Odd One', 'Odd Two', 'Odd Three', 'Odd Four', 'Odd Five', 'Lat Pulldown')
+    await addSession('Odd One')
+
+    const first = await listUnmappedItemValues(user, type, field, { limit: 3 })
+    const second = await listUnmappedItemValues(user, type, field, { limit: 3, offset: 3 })
+    if (!first.success || !second.success) throw new Error('listing failed')
+    expect([first.data.total, second.data.total]).toEqual([5, 5])
+    expect(first.data.values).toHaveLength(3)
+    expect(first.data.values[0].value).toBe('Odd One')
+    expect(second.data.values).toHaveLength(2)
+    const values = [...first.data.values, ...second.data.values].map((v) => v.value)
+    expect(new Set(values)).toEqual(new Set(['Odd One', 'Odd Two', 'Odd Three', 'Odd Four', 'Odd Five']))
+  })
+
   test('set, get, clear and clear again', async () => {
     const user = getTestUser()
     await addSession('Pulldown', 'Lat Pulldown', 'Lats')

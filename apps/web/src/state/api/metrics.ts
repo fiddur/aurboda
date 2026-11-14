@@ -9,6 +9,9 @@ import type {
   QueryMetricsBucketedResponse,
   QueryMetricsQuery,
   QueryMetricsResponse,
+  SleepDebt,
+  SleepDebtQuery,
+  SleepDebtResponse,
 } from '@aurboda/api-spec'
 
 import axios from 'axios'
@@ -247,4 +250,17 @@ export const fetchLatestSleep = async (): Promise<LatestSleep | null> => {
   })
 
   return response.data.data ?? null
+}
+
+/** Sleep debt per date; without a range, the two weeks up to today. */
+export const fetchSleepDebt = async (
+  range: Pick<SleepDebtQuery, 'end' | 'start'> = {},
+): Promise<SleepDebt> => {
+  const { token } = auth.value
+  const response = await axios.get<SleepDebtResponse>(`${API_URL}/sleep-debt`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params: { ...range, tz: browserTz },
+  })
+
+  return response.data.data!
 }

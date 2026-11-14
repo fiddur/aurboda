@@ -7,9 +7,15 @@ const db = vi.hoisted(() => ({
   deleteChallengeBanner: vi.fn(async () => true),
   getChallengeById: vi.fn<(user: string, id: string) => Promise<ChallengeRecord | null>>(),
   getChallengeBySlug: vi.fn<(user: string, slug: string) => Promise<ChallengeRecord | null>>(),
-  hasRemoteChallengeMember: vi.fn<(user: string, id: string) => Promise<boolean>>(),
   updateChallenge:
-    vi.fn<(user: string, id: string, patch: ChallengePatch) => Promise<ChallengeRecord | null>>(),
+    vi.fn<
+      (
+        user: string,
+        id: string,
+        patch: ChallengePatch,
+        options?: { unlessRemoteMember?: boolean },
+      ) => Promise<ChallengeRecord | null>
+    >(),
 }))
 
 vi.mock('../db/index.ts', () => db)
@@ -88,28 +94,51 @@ describe('update_challenge', () => {
     unit: 'km',
   }
 
+  let remoteMember = false
+
   beforeEach(() => {
+    remoteMember = false
     db.getChallengeById.mockReset().mockResolvedValue(challenge)
-    db.hasRemoteChallengeMember.mockReset()
-    db.updateChallenge
-      .mockReset()
-      .mockImplementation(async (_user, _id, patch) => ({ ...challenge, spec: patch.spec ?? challenge.spec }))
+    db.updateChallenge.mockReset().mockImplementation(async (_user, _id, patch, options) =>
+      options?.unlessRemoteMember && remoteMember
+        ? null
+        : {
+            ...challenge,
+            spec: patch.spec ?? challenge.spec,
+            timezone: patch.timezone ?? challenge.timezone,
+          },
+    )
   })
 
   test('refuses a spec change once a remote member has joined', async () => {
-    db.hasRemoteChallengeMember.mockResolvedValue(true)
+    remoteMember = true
     const { call } = setup()
     expect(await call('update_challenge', { id: challenge.id, spec: changedSpec })).toContain(
       "The scoring can't change once someone from another instance has joined",
     )
-    expect(db.updateChallenge).not.toHaveBeenCalled()
   })
 
-  test('changes the spec while no remote member has joined', async () => {
-    db.hasRemoteChallengeMember.mockResolvedValue(false)
+  test('refuses a date or timezone change once a remote member has joined', async () => {
+    remoteMember = true
     const { call } = setup()
-    const body = JSON.parse(await call('update_challenge', { id: challenge.id, spec: changedSpec }))
+    for (const change of [
+      { start_ts: '2026-10-02T00:00:00.000Z' },
+      { end_ts: '2026-11-15T00:00:00.000Z' },
+      { timezone: 'Europe/Stockholm' },
+    ]) {
+      expect(await call('update_challenge', { id: challenge.id, ...change })).toContain(
+        "The dates and timezone can't change once someone from another instance has joined",
+      )
+    }
+  })
+
+  test('changes the spec and timezone while no remote member has joined', async () => {
+    const { call } = setup()
+    const body = JSON.parse(
+      await call('update_challenge', { id: challenge.id, spec: changedSpec, timezone: 'Europe/Stockholm' }),
+    )
     expect(body.spec.pattern).toBe('distance')
+    expect(body.timezone).toBe('Europe/Stockholm')
   })
 })
 

@@ -16,6 +16,15 @@ export type ListFieldDefinition = DataFieldDefinition & { item_fields: DataItemF
 export const categoricalFields = (schema: DataSchemaDefinition | undefined): DataFieldDefinition[] =>
   schema?.fields.filter((f) => f.is_categorical && f.type !== 'list') ?? []
 
+/** The sessions endpoint's reserved `group_by=place`, shown as a field among the data fields. */
+export const PLACE_FIELD: DataFieldDefinition = { label: 'Place', name: 'place', type: 'string' }
+
+/** The categorical fields, then Place, which wins over a data field of the same name. */
+export const sessionGroupings = (fields: DataFieldDefinition[]): DataFieldDefinition[] => [
+  ...fields.filter((f) => f.name !== PLACE_FIELD.name),
+  PLACE_FIELD,
+]
+
 export const scalarFields = (schema: DataSchemaDefinition | undefined): DataFieldDefinition[] =>
   schema?.fields.filter((f) => f.type !== 'list') ?? []
 
@@ -40,6 +49,9 @@ export const categoricalItemFields = (
 
 export const fieldLabel = (field: Pick<DataFieldDefinition, 'label' | 'name'>): string =>
   field.label ?? field.name.charAt(0).toUpperCase() + field.name.slice(1).replaceAll('_', ' ')
+
+/** `energy_drink` reads as "energy drink". */
+export const enumValueLabel = (value: string): string => value.replaceAll('_', ' ')
 
 export const formatMinutes = (minutes: number): string => {
   const m = Math.round(minutes)

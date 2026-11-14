@@ -1,5 +1,5 @@
 {
-  "version": "2026.11.0",
+  "version": "2026.11.1",
   "links": {
     "standing barbell good morning": "Good_Morning",
     "seated barbell good morning": "Seated_Good_Mornings",
@@ -79,7 +79,11 @@
   "name_overrides": {
     "free_exercise_db:Cable_Chest_Press": "Seated Cable Chest Press"
   },
-  "aliases": {},
+  "aliases": {
+    "full_plank_passe_twist": ["Full Plank Passe Twist"],
+    "plie_slides": ["Plie Slides"],
+    "plie_squat": ["Plie Squat"]
+  },
   "equipment": {
     "pull_up": [],
     "barbell_squat": ["barbell", "squat_rack"],

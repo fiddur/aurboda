@@ -8,6 +8,10 @@ import { createDocument } from 'zod-openapi'
 import { isAllowedWhenReadOnly } from './read-only.ts'
 import { activitiesResponseSchema } from './schemas/activities.ts'
 import {
+  activityTypeCatalogQuerySchema,
+  activityTypeCatalogResponseSchema,
+} from './schemas/activity-type-catalog.ts'
+import {
   addRelayBodySchema,
   deleteAccountBodySchema,
   loginBodySchema,
@@ -21,13 +25,15 @@ import {
   challengeParticipationsResponseSchema,
   challengePreviewQuerySchema,
   challengePreviewResponseSchema,
+  challengeResponseSchema,
   challengesResponseSchema,
   discoverChallengesResponseSchema,
   challengeStandingsResponseSchema,
+  updateChallengeBodySchema,
   wellKnownAurbodaSchema,
   wellKnownQuantpubSchema,
 } from './schemas/challenges.ts'
-import { iso8601DateTimeSchema, metricTypeSchema } from './schemas/common.ts'
+import { iso8601DateTimeSchema, metricTypeSchema, timeWeightedAveragesNote } from './schemas/common.ts'
 import { dailySummaryQuerySchema, dailySummaryResponseSchema } from './schemas/daily-summary.ts'
 import {
   exerciseCatalogEntryResponseSchema,
@@ -75,6 +81,7 @@ import {
   topMediaQuerySchema,
   topMediaResponseSchema,
 } from './schemas/media.ts'
+import { metricCatalogQuerySchema, metricCatalogResponseSchema } from './schemas/metric-catalog.ts'
 import {
   addMetricBodySchema,
   addMetricResponseSchema,
@@ -118,7 +125,7 @@ import {
   updateRouteBodySchema,
 } from './schemas/routes.ts'
 import { updateSettingsInputSchema, userSettingsResponseSchema } from './schemas/settings.ts'
-import { latestSleepResponseSchema } from './schemas/sleep.ts'
+import { latestSleepResponseSchema, sleepDebtQuerySchema, sleepDebtResponseSchema } from './schemas/sleep.ts'
 import {
   dailyAggregatesBodySchema,
   healthConnectDeletionsBodySchema,
@@ -216,6 +223,31 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'List my challenges',
+        tags: ['Challenges'],
+      },
+    },
+    '/challenges/{id}': {
+      put: {
+        description:
+          'Update a challenge the authenticated user hosts; fields left out stay as they are. Once someone from another instance has joined, the scoring, dates and timezone are locked; the name and visibility can still change.',
+        requestBody: { content: { 'application/json': { schema: updateChallengeBodySchema } } },
+        requestParams: { path: z.object({ id: z.string().meta({ description: 'Challenge ID' }) }) },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: challengeResponseSchema } },
+            description: 'The updated challenge',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Challenge not found',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The scoring, dates or timezone are locked',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Update a hosted challenge',
         tags: ['Challenges'],
       },
     },
@@ -462,7 +494,8 @@ const openApiDocument = createDocument({
     },
     '/activities': {
       get: {
-        description: 'Get activities (sleep, exercise, meditation, nap) for a time range.',
+        description:
+          'Get activities of any type (sleep, exercise and its subtypes, meditation, custom types, ...) for a time range.',
         requestParams: {
           query: z.object({
             end: iso8601DateTimeSchema.meta({ description: 'End date/time' }),
@@ -511,6 +544,26 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'Get activity track',
+        tags: ['Activities'],
+      },
+    },
+    '/activity-type-catalog': {
+      get: {
+        description:
+          "List Aurboda's built-in catalogue of activity types for things logged by hand (intake, meals and diet, health, symptoms, recovery, context), each with its fields. `in_use` says whether the user already has a type of that name, `missing_fields` which catalogue fields that type lacks (`POST /activity-types/{name}/catalog-fields` adds them), and `variants` the names that are the type with a field value set (`beer` is `alcohol` with kind beer). A type not in use becomes one of the user's types the first time an activity uses its name, or when `POST /activity-types` is given only its name. `q` matches word prefixes of the name, display name and aliases.",
+        requestParams: { query: activityTypeCatalogQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: activityTypeCatalogResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid query',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List built-in activity type catalogue',
         tags: ['Activities'],
       },
     },
@@ -797,7 +850,7 @@ const openApiDocument = createDocument({
     '/daily-summary': {
       get: {
         description:
-          'Get a comprehensive summary of health data for a specific day including heart rate, steps, sleep, exercise, tags, productivity, and visited places.',
+          'Get a comprehensive summary of health data for a specific day including heart rate (avg time-weighted per 5-minute bin), steps, sleep, exercise, tags, productivity, and visited places.',
         requestParams: { query: dailySummaryQuerySchema },
         responses: {
           200: {
@@ -873,6 +926,27 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: "Get last night's sleep",
+        tags: ['Summary'],
+      },
+    },
+
+    '/sleep-debt': {
+      get: {
+        description:
+          'Get sleep debt per night over a date range, against the sleep need you set (sleep_need_minutes, default 480). Each night debt = max(0, debt × 0.85 + need − slept), where slept is the total sleep of the nights ending on that date plus half of each nap over 20 minutes; a date with no night recorded only decays the debt. Severity is none, mild, moderate or severe by the ratio of debt to need.',
+        requestParams: { query: sleepDebtQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: sleepDebtResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Bad request',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get sleep debt',
         tags: ['Summary'],
       },
     },
@@ -1102,9 +1176,30 @@ const openApiDocument = createDocument({
         tags: ['Auth'],
       },
     },
+    '/metric-catalog': {
+      get: {
+        description:
+          "List Aurboda's built-in metrics for lab values, circumferences and body composition, each with the unit it is stored in and the other units it accepts with their conversion. `in_use` says whether the user already has a metric of that name and `in_use_unit` the unit of that metric, which wins over the catalogue's. A metric not in use becomes one of the user's custom metrics the first time `POST /metrics`, `POST /metrics/bulk` or a report entry uses its name or an alias. `q` matches word prefixes of the name, display name and aliases.",
+        requestParams: { query: metricCatalogQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: metricCatalogResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid query',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List built-in metric catalogue',
+        tags: ['Metrics'],
+      },
+    },
     '/metrics': {
       post: {
-        description: 'Add a manual health metric measurement.',
+        description:
+          'Add a manual health metric measurement. `metric` may be a name or alias from the built-in metric catalogue (`GET /metric-catalog`), which is added on first use; `unit` converts the value to the unit the metric is stored in, and a unit that cannot be converted is refused.',
         requestBody: {
           content: { 'application/json': { schema: addMetricBodySchema } },
         },
@@ -1162,8 +1257,7 @@ const openApiDocument = createDocument({
 
     '/period-summary': {
       get: {
-        description:
-          'Get aggregated statistics for a time period. Returns min/max/avg/stddev for each metric, trend compared to previous period, and data completeness.',
+        description: `Get aggregated statistics for a time period. Returns min/max/avg/stddev for each metric, trend compared to previous period, and data completeness. ${timeWeightedAveragesNote}`,
         requestParams: {
           query: z.object({
             end: iso8601DateTimeSchema.meta({ description: 'End date/time' }),

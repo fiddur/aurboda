@@ -15,6 +15,7 @@ const { getImpactMetrics } = await import('../services/correlations/impact-metri
 
 const buildApp = () => {
   const app = express()
+  app.use(express.json())
   const auth = (req: express.Request, _res: express.Response, next: express.NextFunction) => {
     req.user = 'tester'
     next()
@@ -46,6 +47,7 @@ describe('GET /correlations/activity-impact/:activity', () => {
       undefined,
       [],
       { filters: [] },
+      { excludeFlagged: true },
     )
   })
 
@@ -66,6 +68,7 @@ describe('GET /correlations/activity-impact/:activity', () => {
       'exact',
       [],
       { filters: [] },
+      { excludeFlagged: true },
     )
   })
 
@@ -134,9 +137,15 @@ describe('extra metrics', () => {
 
     const context = await supertest(app).get('/correlations/hrv-activities?metrics=body_battery')
     expect(context.status).toBe(200)
-    expect(getHrvActivitiesCorrelation).toHaveBeenCalledWith('tester', 30, undefined, undefined, 30, [
-      'body_battery',
-    ])
+    expect(getHrvActivitiesCorrelation).toHaveBeenCalledWith(
+      'tester',
+      30,
+      undefined,
+      undefined,
+      30,
+      ['body_battery'],
+      { excludeFlagged: true },
+    )
   })
 
   test('400 for a cumulative metric or too many', async () => {
@@ -170,5 +179,45 @@ describe('GET /correlations/impact-metrics', () => {
     expect(res.status).toBe(200)
     expect(res.body).toEqual({ data: { metrics }, success: true })
     expect(getImpactMetrics).toHaveBeenCalledWith('tester', 14)
+  })
+})
+
+describe('period_days', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(getActivityImpact).mockResolvedValue(impactData())
+    vi.mocked(getHrvActivitiesCorrelation).mockResolvedValue({} as never)
+    vi.mocked(getImpactMetrics).mockResolvedValue([])
+  })
+
+  const queryRoutes = [
+    '/correlations/activity-impact/yoga?activity_type=activity_type&',
+    '/correlations/hrv-activities?',
+    '/correlations/impact-metrics?',
+  ]
+
+  test('400 unless a whole number of days from 1 to 3650, on every query route', async () => {
+    const app = buildApp()
+    for (const route of queryRoutes) {
+      for (const bad of ['0', '-5', '1.5', 'abc', '3651', '99999', '30d']) {
+        const res = await supertest(app).get(`${route}period_days=${bad}`)
+        expect(res.status, `${route}period_days=${bad}`).toBe(400)
+      }
+      expect((await supertest(app).get(`${route}period_days=3650`)).status).toBe(200)
+    }
+    expect(getActivityImpact).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(getActivityImpact).mock.calls[0][4]).toBe(3650)
+  })
+
+  test('400 out of range in a body', async () => {
+    const app = buildApp()
+    const body = { outcome_pattern: 'headache', trigger_type: 'activity', trigger_value: 'coffee' }
+    for (const period_days of [0, 3651, 1.5]) {
+      const res = await supertest(app)
+        .post('/correlations/event-probability')
+        .send({ ...body, period_days })
+      expect(res.status).toBe(400)
+      expect(JSON.stringify(res.body.error)).toContain('period_days')
+    }
   })
 })

@@ -27,6 +27,7 @@ import {
 import { browserTz } from '../../state/api/client'
 import { toDisplayName } from '../../utils/displayName'
 import { ContextTable } from './ContextTable'
+import { comparisonsNote } from './effects'
 import { applyExploreState, exploreState, ExploreTab } from './Explore'
 import { ImpactBreakdown } from './ImpactBreakdown'
 import { ImpactSlicer } from './ImpactSlicer'
@@ -46,6 +47,7 @@ import {
   PERIOD_DAY_OPTIONS,
   readAnalyzeState,
   type SelectedItem,
+  urlShowsAnalyzeState,
   writeAnalyzeState,
 } from './urlState'
 import { isLongWindow } from './window'
@@ -173,6 +175,21 @@ export function Correlations() {
     applyAnalyzeState(readAnalyzeState())
   }, [url])
 
+  // A link to the URL the router already holds (the sidebar's plain /correlations while on it) keeps
+  // the router's url, so after any click a URL out of step with the page is re-read too.
+  useEffect(() => {
+    const path = window.location.pathname
+    const onClick = () =>
+      setTimeout(() => {
+        const { href, pathname } = window.location
+        if (pathname === path && !urlShowsAnalyzeState(href, currentAnalyzeState())) {
+          applyAnalyzeState(readAnalyzeState())
+        }
+      })
+    addEventListener('click', onClick)
+    return () => removeEventListener('click', onClick)
+  }, [])
+
   useSignalEffect(() => writeAnalyzeState(currentAnalyzeState()))
 
   const baselineQuery = useQuery({
@@ -243,6 +260,7 @@ export function Correlations() {
 
   const baseline: BaselineData | null = baselineQuery.data ?? null
   const correlations = correlationsQuery.data
+  const contextNote = correlations ? comparisonsNote(correlations.comparisons) : null
   const activityImpact = activityImpactQuery.data
   const definitions = definitionsQuery.data
   const metrics = shownMetrics.value
@@ -511,6 +529,8 @@ export function Correlations() {
                   }))}
                 />
               )}
+
+              {contextNote && <p class="comparisons-note">{contextNote}</p>}
             </>
           )}
 

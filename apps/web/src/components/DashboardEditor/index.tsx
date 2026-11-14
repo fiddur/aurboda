@@ -74,6 +74,13 @@ const widgetTemplates: WidgetTemplate[] = [
   },
   {
     allowedSections: ['metrics'],
+    defaultConfig: () => ({}),
+    description: 'Sleep owed against your sleep need, with its severity and the last two weeks',
+    label: 'Sleep debt',
+    type: 'sleep_debt',
+  },
+  {
+    allowedSections: ['metrics'],
     defaultConfig: () => ({
       measure: 'e1rm',
       pattern: 'strength_training',
@@ -671,6 +678,19 @@ export function DashboardEditor({
                 placeholder="Last night"
               />
             </div>
+          </div>
+        )
+
+      case 'sleep_debt':
+        return (
+          <div class="config-form">
+            <OptionalTextField
+              configKey="title"
+              configValues={configValues}
+              label="Title"
+              placeholder="Sleep debt"
+              setConfigValues={setConfigValues}
+            />
           </div>
         )
 

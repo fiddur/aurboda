@@ -3,6 +3,7 @@ import {
   addMetricBodySchema,
   bulkMetricItemSchema,
   customMetricDefinitionSchema,
+  metricCatalogQuerySchema,
   recalculateCaloriesBodySchema,
   tzSchema,
   updateCustomMetricBodySchema,
@@ -11,7 +12,7 @@ import { z } from 'zod'
 
 import { auditError, auditInfo } from '../services/audit-log.ts'
 import { computeAndStoreCalories, computeAndStoreCaloriesAll } from '../services/calorie-computation.ts'
-import { mergeCustomMetricService } from '../services/custom-metrics.ts'
+import { listMetricCatalog, mergeCustomMetricService } from '../services/custom-metrics.ts'
 import {
   addCustomMetric,
   addMetric,
@@ -34,15 +35,15 @@ import {
 export const registerMetricTools = (server: McpServer, user: string) => {
   server.tool(
     'add_metric',
-    'Add a manual health metric measurement. Use this to log data not captured automatically.',
+    'Add a manual health metric measurement. Use this to log data not captured automatically. metric may also be a name or alias from list_metric_catalog (lab values, circumferences, body composition), which is added as a custom metric on first use. Pass unit when the value is not in the unit the metric is stored in: an accepted unit is converted, any other unit is refused.',
     { ...addMetricBodySchema.shape, tz: tzSchema },
-    async ({ metric, time, value, tz }) => {
+    async ({ metric, time, unit, value, tz }) => {
       const measurementTime = time ? parseOptionalDate(time) : new Date()
       if (!measurementTime) {
         return errorResponse('Invalid time format. Use ISO 8601 format.')
       }
 
-      const result = await addMetric(user, { metric, time: measurementTime, value })
+      const result = await addMetric(user, { metric, time: measurementTime, unit, value })
       if (!result.success) {
         return errorResponse(result.error ?? 'Failed to add metric')
       }
@@ -52,7 +53,7 @@ export const registerMetricTools = (server: McpServer, user: string) => {
 
   server.tool(
     'add_metrics_bulk',
-    'Bulk insert metric data points for efficient batch imports. Accepts up to 10,000 items per call. Each item requires metric, value, and time. Items with validation errors are skipped (not inserted), and their errors are returned separately.',
+    'Bulk insert metric data points for efficient batch imports. Accepts up to 10,000 items per call. Each item requires metric, value, and time. An item metric may be a name or alias from list_metric_catalog, added as a custom metric on first use; an item unit is converted to the unit the metric is stored in when it is accepted, and refused otherwise. Items with validation errors are skipped (not inserted), and their errors are returned separately.',
     {
       data: z.array(bulkMetricItemSchema).min(1).max(10_000).describe('Array of metric data points'),
       source: z
@@ -68,6 +69,7 @@ export const registerMetricTools = (server: McpServer, user: string) => {
         metric: item.metric,
         source: item.source,
         time: parseOptionalDate(item.time) ?? new Date(),
+        unit: item.unit,
         value: item.value,
       }))
 
@@ -83,11 +85,22 @@ export const registerMetricTools = (server: McpServer, user: string) => {
 
   server.tool(
     'add_custom_metric',
-    "Register a new custom metric type. Custom metrics allow tracking data not covered by built-in metrics. Set include_in_daily_summary=true to surface entries and the latest value in get_daily_summary. Set aggregation='sum' for amounts (a dose, steps) so trends count days without samples as 0; the default 'avg' is for levels (weight, HR).",
+    "Register a new custom metric type. Custom metrics allow tracking data not covered by built-in metrics. Set include_in_daily_summary=true to surface entries and the latest value in get_daily_summary. Set aggregation='sum' for amounts (a dose, steps) so trends count days without samples as 0; the default 'avg' is for levels (weight, HR). Set better='higher' or 'lower' so its trends show as better or worse; the default 'neutral' shows them as neither.",
     { ...addCustomMetricBodySchema.shape },
-    async ({ aggregation, description, include_in_daily_summary, max_value, min_value, name, unit }) => {
+    async ({
+      aggregation,
+      better,
+      description,
+      include_in_daily_summary,
+      max_value,
+      min_value,
+      name,
+      separate_metric,
+      unit,
+    }) => {
       const definition = {
         ...(aggregation !== undefined ? { aggregation } : {}),
+        ...(better !== undefined ? { better } : {}),
         ...(description !== undefined ? { description } : {}),
         ...(include_in_daily_summary !== undefined ? { include_in_daily_summary } : {}),
         ...(max_value !== undefined ? { max_value } : {}),
@@ -101,12 +114,19 @@ export const registerMetricTools = (server: McpServer, user: string) => {
         return errorResponse(`Invalid custom metric: ${parsed.error.issues.map((i) => i.message).join(', ')}`)
       }
 
-      const result = await addCustomMetric(user, parsed.data)
+      const result = await addCustomMetric(user, { ...parsed.data, separate_metric })
       if (!result.success) {
         return errorResponse(result.error ?? 'Failed to add custom metric')
       }
       return jsonResponse(result)
     },
+  )
+
+  server.tool(
+    'list_metric_catalog',
+    "List Aurboda's built-in metrics for lab values, circumferences and body composition, each with the unit it is stored in and the units it accepts (`units`, with the conversion to the stored unit). `in_use` says whether the user already has a metric of that name and `in_use_unit` its unit, which wins over the catalogue's. A metric not in use is added the first time add_metric or a report entry uses its name or an alias. Check here before creating a custom metric.",
+    { ...metricCatalogQuerySchema.shape },
+    async ({ q }) => jsonResponse(await listMetricCatalog(user, q)),
   )
 
   server.tool(
@@ -133,14 +153,24 @@ export const registerMetricTools = (server: McpServer, user: string) => {
 
   server.tool(
     'update_custom_metric',
-    'Update an existing custom metric definition. Only provided fields are changed. Set min_value/max_value to null to clear them. Toggle include_in_daily_summary to surface or hide this metric in get_daily_summary. aggregation sets the metric kind (sum: amount, avg: level).',
+    'Update an existing custom metric definition. Only provided fields are changed. Set min_value/max_value to null to clear them. Toggle include_in_daily_summary to surface or hide this metric in get_daily_summary. aggregation sets the metric kind (sum: amount, avg: level). better sets which change is an improvement (higher, lower or neutral).',
     {
       name: z.string().describe('The name of the custom metric to update'),
       ...updateCustomMetricBodySchema.shape,
     },
-    async ({ aggregation, description, include_in_daily_summary, max_value, min_value, name, unit }) => {
+    async ({
+      aggregation,
+      better,
+      description,
+      include_in_daily_summary,
+      max_value,
+      min_value,
+      name,
+      unit,
+    }) => {
       const updates = {
         ...(aggregation !== undefined ? { aggregation } : {}),
+        ...(better !== undefined ? { better } : {}),
         ...(description !== undefined ? { description } : {}),
         ...(include_in_daily_summary !== undefined ? { include_in_daily_summary } : {}),
         ...(max_value !== undefined ? { maxValue: max_value } : {}),

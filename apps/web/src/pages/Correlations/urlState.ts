@@ -301,11 +301,17 @@ export const readAnalyzeState = (): AnalyzeState => {
   }
 }
 
+export const urlShowsAnalyzeState = (href: string, state: AnalyzeState): boolean => {
+  const url = new URL(href)
+  return withAnalyzeState(href, state) === `${url.pathname}${url.search}${url.hash}`
+}
+
 export const writeAnalyzeState = (state: AnalyzeState): void => {
   try {
-    const next = withAnalyzeState(window.location.href, state)
-    const current = `${window.location.pathname}${window.location.search}${window.location.hash}`
-    if (next !== current) window.history.replaceState(window.history.state, '', next)
+    const { href } = window.location
+    if (!urlShowsAnalyzeState(href, state)) {
+      window.history.replaceState(window.history.state, '', withAnalyzeState(href, state))
+    }
   } catch {
     // Without history access the page still works; the view just is not in the URL.
   }

@@ -140,7 +140,7 @@ describe('getChartData', () => {
     expect((result.buckets[0] as { value: number }).value).toBe(8500)
 
     const call = vi.mocked(db.query).mock.calls[0]
-    expect(call[1]).toContain('SUM(value)')
+    expect(call[1]).toContain('SUM(sum_value)')
     // Cumulative metric (steps) must be restricted to trusted sources so it isn't
     // multiply-counted (raw + daily-aggregate + …). Regression guard for the
     // chart/challenge over-count.
@@ -165,6 +165,27 @@ describe('getChartData', () => {
 
     const call = vi.mocked(db.query).mock.calls[0]
     expect(call[1]).not.toContain('source = ANY')
+  })
+
+  test.each([
+    ['heart_rate', '1d', true],
+    ['stress_level', '15m', true],
+    ['heart_rate', '5m', false],
+    ['weight', '1d', false],
+  ] as const)('the mean of %s per %s bucket is time-weighted: %s', async (pattern, bucket_size, binned) => {
+    vi.mocked(db.query).mockResolvedValue({ rows: [] } as never)
+
+    await getChartData('testuser', {
+      aggregation: 'mean',
+      bucket_size,
+      end: '2026-01-31T23:59:59Z',
+      pattern,
+      source_type: 'metric',
+      start: '2026-01-01T00:00:00Z',
+    })
+
+    const sql = vi.mocked(db.query).mock.calls[0][1] as string
+    expect(sql.includes("GROUP BY 1, date_bin('5 minutes'")).toBe(binned)
   })
 
   test('charts hr_zone metrics by computing zone seconds per bucket', async () => {
@@ -294,7 +315,8 @@ describe('getChartData', () => {
     expect((result.buckets[0] as { value: number }).value).toBe(24)
 
     const call = vi.mocked(db.query).mock.calls[0]
-    expect(call[1]).toContain('COUNT(*)')
+    expect(call[1]).toContain('SUM(n)')
+    expect(call[1]).not.toContain('GROUP BY 1, date_bin')
   })
 
   test('returns bucketed productivity category hours', async () => {
@@ -504,7 +526,7 @@ describe('getChartData', () => {
     expect(db.query).not.toHaveBeenCalled()
   })
 
-  test('max aggregation takes MAX(value) for metrics', async () => {
+  test('max aggregation takes the largest sample for metrics', async () => {
     vi.mocked(db.query).mockResolvedValue({
       rows: [{ bucket_start: new Date('2026-01-01T00:00:00Z'), value: 82.5 }],
     } as never)
@@ -518,7 +540,7 @@ describe('getChartData', () => {
       start: '2026-01-01T00:00:00Z',
     })
 
-    expect(vi.mocked(db.query).mock.calls[0][1]).toContain('MAX(value) AS value')
+    expect(vi.mocked(db.query).mock.calls[0][1]).toContain('MAX(max_value) AS value')
   })
 
   test('max aggregation takes the longest activity of each bucket', async () => {
@@ -571,9 +593,12 @@ describe('getChartData', () => {
     const set = (exercise: string, weight: number, reps: number) => ({ exercise, reps, weight })
 
     // Weeks of 2026-01-05 (w1) and 2026-01-12 (w2)
-    const a1 = lift('a1', '2026-01-05T17:00:00Z', 'Gym', [set('Bench Press', 80, 5), set('Squat', 100, 5)])
+    const a1 = lift('a1', '2026-01-05T17:00:00Z', 'Gym', [
+      set('Bench Press', 80, 5),
+      set('Squat Hold', 100, 5),
+    ])
     const a2 = lift('a2', '2026-01-07T17:00:00Z', 'Home', [set('bench press', 90, 1)])
-    const a3 = lift('a3', '2026-01-12T17:00:00Z', 'Gym', [set('Squat', 110, 3)])
+    const a3 = lift('a3', '2026-01-12T17:00:00Z', 'Gym', [set('Squat Hold', 110, 3)])
     const a4 = lift('a4', '2026-01-13T17:00:00Z', 'Gym', [{ exercise: 'Plank', time: 60 }])
     const w1 = new Date('2026-01-05T00:00:00Z')
     const w2 = new Date('2026-01-12T00:00:00Z')
@@ -652,10 +677,10 @@ describe('getChartData', () => {
       })
 
       expect(result.breakdown_fields).toEqual(['sets.exercise'])
-      expect(result.breakdown_series).toEqual(['Squat', 'bench press'])
+      expect(result.breakdown_series).toEqual(['Squat Hold', 'bench press'])
       expect(result.buckets).toEqual([
-        { bucket_start: w1.toISOString(), series: { Squat: 116.7, 'bench press': 93.3 } },
-        { bucket_start: w2.toISOString(), series: { Squat: 121 } },
+        { bucket_start: w1.toISOString(), series: { 'Squat Hold': 116.7, 'bench press': 93.3 } },
+        { bucket_start: w2.toISOString(), series: { 'Squat Hold': 121 } },
       ])
     })
 
@@ -670,15 +695,15 @@ describe('getChartData', () => {
       expect(result.breakdown_series).toEqual([
         'Gym / Bench Press',
         'Gym / Plank',
-        'Gym / Squat',
+        'Gym / Squat Hold',
         'Home / bench press',
       ])
       expect(result.buckets).toEqual([
         {
           bucket_start: w1.toISOString(),
-          series: { 'Gym / Bench Press': 1, 'Gym / Squat': 1, 'Home / bench press': 1 },
+          series: { 'Gym / Bench Press': 1, 'Gym / Squat Hold': 1, 'Home / bench press': 1 },
         },
-        { bucket_start: w2.toISOString(), series: { 'Gym / Plank': 1, 'Gym / Squat': 1 } },
+        { bucket_start: w2.toISOString(), series: { 'Gym / Plank': 1, 'Gym / Squat Hold': 1 } },
       ])
     })
 
@@ -738,6 +763,23 @@ describe('getChartData', () => {
         ])
       })
 
+      test('a catalogue exercise without muscle data is apart from one not in the catalogue', async () => {
+        vi.mocked(db.getActivities).mockResolvedValue([
+          lift('a5', '2026-01-05T17:00:00Z', 'Gym', [set('Battle Rope', 0, 30), set('Squat Hold', 100, 5)]),
+        ])
+        vi.mocked(db.getBucketStarts).mockResolvedValue(new Map([['a5', w1]]))
+        const result = await getChartData('u', {
+          ...base,
+          aggregation: 'sum',
+          breakdown_fields: ['sets.exercise.muscle_group'],
+          measure: 'set_count',
+        })
+
+        expect(result.buckets).toEqual([
+          { bucket_start: w1.toISOString(), series: { 'No muscle group': 1, 'Not in the catalogue': 1 } },
+        ])
+      })
+
       test('an exercise filter restricts the sets, and a scalar field combines', async () => {
         const result = await getChartData('u', {
           ...base,
@@ -763,6 +805,65 @@ describe('getChartData', () => {
             },
           },
         ])
+      })
+
+      describe('over several activity types', () => {
+        const childDef = { ...catalogDef, name: 'push_day', parent_type: 'strength_training' }
+        const plainDef = { ...strengthDef, name: 'circuit' }
+        const as = (activity: MergedActivity, activity_type: string): MergedActivity => ({
+          ...activity,
+          activity_type,
+        })
+        const definitions = [strengthDef, childDef, plainDef]
+
+        beforeEach(() => {
+          vi.mocked(db.getActivityTypeDefinitions).mockResolvedValue(definitions)
+          vi.mocked(db.getActivityTypeDefinition).mockImplementation((_user, name) =>
+            Promise.resolve(definitions.find((d) => d.name === name) ?? null),
+          )
+          vi.mocked(db.getBucketStarts).mockResolvedValue(
+            new Map([
+              ['a1', w1],
+              ['a2', w1],
+            ]),
+          )
+        })
+
+        test('a parent type without a catalogue field resolves its child’s sets by the child’s', async () => {
+          vi.mocked(db.getActivities).mockResolvedValue([as(a2, 'push_day')])
+          const result = await getChartData('u', {
+            ...base,
+            aggregation: 'sum',
+            breakdown_fields: ['sets.exercise.muscle_group'],
+            measure: 'set_count',
+          })
+
+          expect(result.buckets).toEqual([
+            {
+              bucket_start: w1.toISOString(),
+              series: { Chest: 1, Forearms: 0.25, Shoulders: 1, Triceps: 1 },
+            },
+          ])
+        })
+
+        test('a pattern over types whose item fields differ resolves each by its own', async () => {
+          vi.mocked(db.expandActivityTypes).mockResolvedValueOnce(['circuit', 'push_day'])
+          vi.mocked(db.getActivities).mockResolvedValue([as(a1, 'circuit'), as(a2, 'push_day')])
+          const result = await getChartData('u', {
+            ...base,
+            aggregation: 'sum',
+            breakdown_fields: ['sets.exercise.muscle_group'],
+            measure: 'set_count',
+            pattern: 'workouts',
+          })
+
+          expect(result.buckets).toEqual([
+            {
+              bucket_start: w1.toISOString(),
+              series: { Chest: 1, Forearms: 0.25, 'Not in the catalogue': 2, Shoulders: 1, Triceps: 1 },
+            },
+          ])
+        })
       })
 
       test('a field that is not catalogue-backed puts everything under not in the catalogue', async () => {

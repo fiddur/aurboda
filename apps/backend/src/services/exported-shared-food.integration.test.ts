@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { createWriteStream } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -10,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, inject, test } from 'vitest'
 
 import { _setDbForUser, initializeSchema, userDbName } from '../db/index.ts'
 import { createRolePool, type UserDb } from '../db/pool.ts'
+import { restoreDumpAsDocumented } from '../test/restore-dump.ts'
 import { backfillMealFoodItemNames } from './backfill-meal-food-item-names.ts'
 import {
   createSharedFoodItemsApi,
@@ -110,11 +110,7 @@ const restoreInto = async (target: string, dumpPath: string): Promise<UserDb> =>
     await db.query('CREATE EXTENSION pg_trgm')
     await db.query('CREATE EXTENSION unaccent')
   })
-  const restore = `(echo 'SET ROLE "${target}";'; gunzip -c "$DUMP" | grep -v -e '^COMMENT ON EXTENSION' -e '^SET transaction_timeout') | psql -v ON_ERROR_STOP=1 --quiet "$TARGET_URI"`
-  execFileSync('bash', ['-c', restore], {
-    env: { ...process.env, DUMP: dumpPath, TARGET_URI: databaseUri(database) },
-    stdio: ['ignore', 'ignore', 'pipe'],
-  })
+  restoreDumpAsDocumented(dumpPath, target, database)
   const restored = createRolePool({ connectionString: databaseUri(database), max: 2 }, target)
   pools.push(restored)
   _setDbForUser(target, restored)
@@ -340,6 +336,52 @@ describe('shared food items through export and restore', () => {
     expect((await db.query('SELECT count(*)::int AS n FROM food_items')).rows[0].n).toBe(2)
     const display = await resolveFoodItemDisplay(target, otherCentral, [renamed.id])
     expect(display.get(renamed.id)).toEqual({ icon: '🥛', name: 'Hushållsost' })
+  }, 120_000)
+
+  test('re-pointed to the user’s own item that references the exported one, the own item does not end up referencing itself', async () => {
+    const target = `sfood_self_${suffix}`
+    const db = await restoreInto(target, dumpPath)
+    const emptyCentral = await createCentral('self')
+    const own = (
+      await db.query(
+        `INSERT INTO food_items (name, name_lower, source, source_id, reference_food_item_id)
+         VALUES ('Hushållsost', 'hushållsost', 'livsmedelsverket', '10', $1) RETURNING id`,
+        [sharedId],
+      )
+    ).rows[0].id
+    await db.query(
+      `INSERT INTO food_item_ingredients (parent_food_item_id, ingredient_food_item_id, quantity, unit)
+       VALUES ($1, $2, 5, 'g')`,
+      [own, sharedId],
+    )
+
+    expect(await reconcileExportedSharedFoodItems(target, { central: emptyCentral })).toEqual({
+      copied: 0,
+      kept: 0,
+      matched: 1,
+    })
+
+    expect(await tableExists(db)).toBe(false)
+    expect(
+      (
+        await db.query(
+          `SELECT name, reference_food_item_id AS reference FROM food_items
+            WHERE reference_food_item_id IS NOT NULL OR id = $1 ORDER BY name`,
+          [own],
+        )
+      ).rows,
+    ).toEqual([
+      { name: 'Farm cheese', reference: own },
+      { name: 'Hushållsost', reference: null },
+    ])
+    expect(
+      (
+        await db.query(
+          `SELECT parent.name AS parent, ingredient_food_item_id AS ingredient
+             FROM food_item_ingredients JOIN food_items parent ON parent.id = parent_food_item_id`,
+        )
+      ).rows,
+    ).toEqual([{ ingredient: own, parent: 'Sandwich' }])
   }, 120_000)
 
   test('restored on a server whose library has the same id, nothing changes', async () => {

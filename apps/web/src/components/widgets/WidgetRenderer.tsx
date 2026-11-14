@@ -12,6 +12,7 @@ import { MetricCardWidget } from './MetricCardWidget'
 import { PlacesCardWidget } from './PlacesCardWidget'
 import { QuickLinkWidget } from './QuickLinkWidget'
 import { RecordCardWidget } from './RecordCardWidget'
+import { SleepDebtWidget } from './SleepDebtWidget'
 import { SparklineCardWidget } from './SparklineCardWidget'
 import { TopListCardWidget } from './TopListCardWidget'
 import { TrendChartWidget } from './TrendChartWidget'
@@ -52,6 +53,8 @@ export function WidgetRenderer({ widget, isEditing, onRemove, boardId, sectionId
         return <GoalProgressWidget config={widget.config} />
       case 'last_sleep':
         return <LastSleepWidget config={widget.config} />
+      case 'sleep_debt':
+        return <SleepDebtWidget config={widget.config} />
       case 'combined_chart':
         return <CombinedChartWidget config={widget.config} />
       case 'record_card':

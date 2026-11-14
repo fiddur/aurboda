@@ -12,6 +12,7 @@ import { createAuth } from './auth.ts'
 import * as db from './db/index.ts'
 import { createMcpRouter, trimToolCallArguments } from './mcp.ts'
 import * as activityRecords from './services/activity-records.ts'
+import * as dataPresence from './services/data-presence.ts'
 import * as latestSleep from './services/latest-sleep.ts'
 import * as mutations from './services/mutations.ts'
 import { PeriodError } from './services/periods.ts'
@@ -65,6 +66,7 @@ vi.mock('./services/mutations', () => ({
 
 vi.mock('./db', () => ({
   activityTypeExists: vi.fn().mockResolvedValue(true),
+  ensureActivityType: vi.fn().mockResolvedValue(true),
   deleteActivityTypeDefinition: vi.fn().mockResolvedValue(false),
   deleteDeductionRule: vi.fn().mockResolvedValue(false),
   deleteGarminActivityWithWrongType: vi.fn().mockResolvedValue(null),
@@ -140,6 +142,10 @@ vi.mock('./services/latest-sleep', () => ({
 
 vi.mock('./services/shared-dashboard-data', () => ({
   resolveDashboardView: vi.fn(),
+}))
+
+vi.mock('./services/data-presence', () => ({
+  queryDataPresence: vi.fn(),
 }))
 
 vi.mock('./oura-sync', () => ({
@@ -1111,6 +1117,22 @@ describe('MCP Server', () => {
       expect(response.text).toBe('Period has not finished yet')
     })
 
+    test('get_data_presence answers whether each asked source ever delivered', async () => {
+      const presence = { activity_types: { sleep: true }, metrics: { hrv_rmssd: false } }
+      vi.mocked(dataPresence.queryDataPresence).mockResolvedValueOnce(presence)
+
+      const response = await callTool(createTestApp(), auth.createToken('testuser'), 'get_data_presence', {
+        activity_types: 'sleep',
+        metrics: 'hrv_rmssd',
+      })
+
+      expect(JSON.parse(response.text)).toEqual(presence)
+      expect(dataPresence.queryDataPresence).toHaveBeenCalledWith('testuser', {
+        activity_types: 'sleep',
+        metrics: 'hrv_rmssd',
+      })
+    })
+
     test('get_activity_records rejects a filter field without a value', async () => {
       vi.mocked(activityRecords.getActivityRecords).mockClear()
       const response = await callTool(createTestApp(), auth.createToken('testuser'), 'get_activity_records', {
@@ -1960,6 +1982,147 @@ describe('MCP Server', () => {
       expect(resetSpy).not.toHaveBeenCalled()
     })
   })
+  describe('Tools: activity type catalogue', () => {
+    const callTool = async (app: express.Express, name: string, args: Record<string, unknown>) => {
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${auth.createToken('testuser')}`)
+        .send({ id: 1, jsonrpc: '2.0', method: 'tools/call', params: { arguments: args, name } })
+      expect(response.status).toBe(200)
+      return (parseSSEResponse(response.text) as { result: { content: { text: string }[] } }).result
+        .content[0].text
+    }
+
+    beforeEach(() => vi.mocked(db.insertActivityTypeDefinition).mockClear())
+
+    test('lists add_activity_type_catalog_fields, and set_data on merge_activity_type', async () => {
+      const response = await mcpPost(createTestApp())
+        .set('Authorization', `Bearer ${auth.createToken('testuser')}`)
+        .send({ id: 1, jsonrpc: '2.0', method: 'tools/list' })
+      const tools = (
+        parseSSEResponse(response.text) as {
+          result: { tools: { inputSchema: { properties?: Record<string, unknown> }; name: string }[] }
+        }
+      ).result.tools
+      const byName = new Map(tools.map((tool) => [tool.name, tool]))
+
+      expect(byName.has('add_activity_type_catalog_fields')).toBe(true)
+      expect(byName.get('merge_activity_type')?.inputSchema.properties).toHaveProperty('set_data')
+      expect(byName.get('add_activity_type')?.inputSchema.properties).toHaveProperty('separate_type')
+    })
+
+    test('add_activity_type points a variant name at its built-in type and creates nothing', async () => {
+      const text = await callTool(createTestApp(), 'add_activity_type', {
+        display_category: 'other',
+        display_name: 'Beer',
+        name: 'beer',
+      })
+
+      expect(text).toBe(
+        '"beer" is the built-in type "alcohol" with kind "beer": use activity_type "alcohol" with data {"kind":"beer"} Pass separate_type: true to create a separate type anyway.',
+      )
+      expect(db.insertActivityTypeDefinition).not.toHaveBeenCalled()
+    })
+
+    test('add_activity_type creates a variant-named type with separate_type', async () => {
+      const created = {
+        color: '#6b7280',
+        display_category: 'other' as const,
+        display_name: 'Beer',
+        is_builtin: false,
+        name: 'beer',
+        show_on_timeline: true,
+      }
+      vi.mocked(db.insertActivityTypeDefinition).mockResolvedValueOnce(created)
+
+      const text = await callTool(createTestApp(), 'add_activity_type', {
+        display_category: 'other',
+        display_name: 'Beer',
+        name: 'beer',
+        separate_type: true,
+      })
+
+      expect(JSON.parse(text)).toEqual(created)
+      expect(db.insertActivityTypeDefinition).toHaveBeenCalledWith('testuser', {
+        display_category: 'other',
+        display_name: 'Beer',
+        name: 'beer',
+      })
+    })
+  })
+
+  describe('Tools: metric catalogue', () => {
+    const callTool = async (app: express.Express, name: string, args: Record<string, unknown>) => {
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${auth.createToken('testuser')}`)
+        .send({ id: 1, jsonrpc: '2.0', method: 'tools/call', params: { arguments: args, name } })
+      expect(response.status).toBe(200)
+      return (parseSSEResponse(response.text) as { result: { content: { text: string }[] } }).result
+        .content[0].text
+    }
+
+    beforeEach(() => vi.mocked(mutations.addCustomMetric).mockClear())
+
+    test('lists list_metric_catalog, unit on add_metric and separate_metric on add_custom_metric', async () => {
+      const response = await mcpPost(createTestApp())
+        .set('Authorization', `Bearer ${auth.createToken('testuser')}`)
+        .send({ id: 1, jsonrpc: '2.0', method: 'tools/list' })
+      const tools = (
+        parseSSEResponse(response.text) as {
+          result: { tools: { inputSchema: { properties?: Record<string, unknown> }; name: string }[] }
+        }
+      ).result.tools
+      const byName = new Map(tools.map((tool) => [tool.name, tool]))
+
+      expect(byName.has('list_metric_catalog')).toBe(true)
+      expect(byName.get('add_metric')?.inputSchema.properties).toHaveProperty('unit')
+      expect(byName.get('add_custom_metric')?.inputSchema.properties).toHaveProperty('separate_metric')
+    })
+
+    test('add_custom_metric answers with the refusal of an alias', async () => {
+      const error =
+        '"ldl" is the built-in metric "ldl_cholesterol" (stored in mmol/L): add values under that name, which adds it on first use. Pass separate_metric: true to create a separate custom metric anyway.'
+      vi.mocked(mutations.addCustomMetric).mockResolvedValueOnce({ error, success: false })
+
+      const text = await callTool(createTestApp(), 'add_custom_metric', { name: 'ldl', unit: 'mg/dL' })
+
+      expect(text).toBe(error)
+    })
+
+    test('add_custom_metric creates an alias-named metric with separate_metric', async () => {
+      vi.mocked(mutations.addCustomMetric).mockResolvedValueOnce({
+        data: { name: 'ldl', unit: 'mg/dL' },
+        success: true,
+      })
+
+      const text = await callTool(createTestApp(), 'add_custom_metric', {
+        name: 'ldl',
+        separate_metric: true,
+        unit: 'mg/dL',
+      })
+
+      expect(JSON.parse(text)).toEqual({ data: { name: 'ldl', unit: 'mg/dL' }, success: true })
+      expect(mutations.addCustomMetric).toHaveBeenCalledWith('testuser', {
+        name: 'ldl',
+        separate_metric: true,
+        unit: 'mg/dL',
+      })
+    })
+
+    test('add_custom_metric takes a catalogue name without separate_metric', async () => {
+      vi.mocked(mutations.addCustomMetric).mockResolvedValueOnce({
+        data: { name: 'ldl_cholesterol', unit: 'mg/dL' },
+        success: true,
+      })
+
+      await callTool(createTestApp(), 'add_custom_metric', { name: 'ldl_cholesterol', unit: 'mg/dL' })
+
+      expect(mutations.addCustomMetric).toHaveBeenCalledWith('testuser', {
+        name: 'ldl_cholesterol',
+        unit: 'mg/dL',
+      })
+    })
+  })
+
   describe('Tools: notes', () => {
     async function callNoteTool(
       app: express.Express,

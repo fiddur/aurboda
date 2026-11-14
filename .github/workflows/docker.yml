@@ -1,12 +1,11 @@
 name: Build and Push Docker Image
 
-# develop → fiddur/aurboda:<sha> + :develop   (beta / development instances)
-# main    → fiddur/aurboda:<sha> + :latest    (production, see docs/docker.md)
+# develop → fiddur/aurboda:<sha> + :develop             (beta / development instances)
+# main    → fiddur/aurboda:<sha> + :latest + :v1.0.<n>  (releases, called from release.yml)
 on:
   push:
     branches:
       - develop
-      - main
     paths:
       - 'apps/backend/**'
       - 'apps/web/**'
@@ -16,11 +15,14 @@ on:
       - 'nginx.conf'
       - 'entrypoint.sh'
       - '.github/workflows/docker.yml'
+  workflow_call:
   workflow_dispatch:
 
+# A release is never cancelled, so every v1.0.<n> gets its image; :latest still
+# ends on the newest release since main's runs queue instead of overlapping.
 concurrency:
   group: docker-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   build:
@@ -30,6 +32,13 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Release version
+        id: version
+        if: github.ref == 'refs/heads/main'
+        run: scripts/release-version.sh >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -49,6 +58,7 @@ jobs:
             type=sha,prefix=
             type=raw,value=develop,enable=${{ github.ref == 'refs/heads/develop' }}
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=${{ steps.version.outputs.tag || 'unreleased' }},enable=${{ github.ref == 'refs/heads/main' }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -58,6 +68,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: BUILD_SHA=${{ github.sha }}
+          build-args: |
+            BUILD_SHA=${{ github.sha }}
+            APP_VERSION=${{ steps.version.outputs.name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

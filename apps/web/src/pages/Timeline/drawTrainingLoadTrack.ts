@@ -5,6 +5,8 @@ import { format } from 'date-fns'
 
 import type { BarLayoutResult } from './barLayout'
 
+import { RECOVERY_ZONE_LABELS, recoveryZone } from '../../utils/trainingLoad'
+
 export const CTL_COLOR = '#3b82f6' // blue (fitness)
 export const ATL_COLOR = '#f97316' // orange (fatigue)
 export const TSB_FRESH_COLOR = '#22c55e' // green (TSB > 0)
@@ -481,18 +483,18 @@ export const buildTrainingLoadTooltipHtml = (
   }
 
   if (zones) {
-    let zoneName: string
-    if (point.atl < zones.balanced_min) zoneName = 'Undertrained'
-    else if (point.atl <= zones.balanced_max) zoneName = 'Balanced'
-    else if (point.atl <= zones.strained_max) zoneName = 'Strained'
-    else zoneName = 'Very Strained'
-    html += `<div class="tooltip-detail" style="opacity:0.7">Zone: ${zoneName}</div>`
+    html += `<div class="tooltip-detail" style="opacity:0.7">Zone: ${RECOVERY_ZONE_LABELS[recoveryZone(point.atl, zones)]}</div>`
   }
 
   for (const w of workoutsNearby) {
     const title = w.title ?? 'Workout'
-    const hrStr = w.avg_hr ? ` (${Math.round(w.avg_hr)} bpm avg)` : ''
-    html += `<div class="tooltip-detail" style="opacity:0.7">${title}: ${w.duration_minutes.toFixed(0)}min, TRIMP ${w.trimp.toFixed(0)}${hrStr}</div>`
+    const basisStr =
+      w.trimp_basis === 'duration_estimate'
+        ? ' (estimated from duration)'
+        : w.avg_hr
+          ? ` (${Math.round(w.avg_hr)} bpm avg)`
+          : ''
+    html += `<div class="tooltip-detail" style="opacity:0.7">${title}: ${w.duration_minutes.toFixed(0)}min, TRIMP ${w.trimp.toFixed(0)}${basisStr}</div>`
   }
 
   return html

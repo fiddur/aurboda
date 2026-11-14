@@ -1,4 +1,4 @@
-import { getTrendQuerySchema } from '@aurboda/api-spec'
+import { flaggedWindowsNote, getTrendQuerySchema, timeWeightedAveragesNote } from '@aurboda/api-spec'
 
 import { getCustomMetrics } from '../services/mutations.ts'
 import { getUserTimezone } from '../services/settings.ts'
@@ -22,6 +22,10 @@ any session that beats it, so one weak session never pulls it down. filter_field
 (filter_field: "sets.exercise", filter_value: "Squat"). A longer half-life such as 120 days suits it. display_period,
 aggregation, breakdown_fields and missing_days do not apply; the result's aggregation is 'max'.
 
+Metric means: ${timeWeightedAveragesNote}
+
+Metric trends: ${flaggedWindowsNote} A day left without samples is then skipped, not counted as zero.
+
 missing_days (metric only): 'zero' counts days without samples as 0, 'skip' leaves them out; defaults to the metric kind (zero for amounts like steps or a custom metric with aggregation 'sum', skip for levels like weight).
 
 Common half-life values:
@@ -36,6 +40,7 @@ Common half-life values:
       filter_field,
       filter_value,
       half_life_days,
+      include_flagged,
       lookback_days,
       measure,
       missing_days,
@@ -52,6 +57,7 @@ Common half-life values:
           breakdown_fields,
           custom_metrics: customMetrics,
           display_period,
+          exclude_flagged: !include_flagged,
           filter_field,
           filter_value,
           half_life_days,

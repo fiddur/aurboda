@@ -67,3 +67,14 @@ export const validateHrZoneThresholds = (zones: HrZoneThresholds): { valid: bool
 
   return { valid: true }
 }
+
+/** The sleep need shown in hours, e.g. 450 → "7.5". */
+export const sleepNeedHours = (minutes: number): string => String(Math.round((minutes / 60) * 100) / 100)
+
+/** Minutes for a sleep need typed in hours: null for an empty field (the default), undefined outside 3–12 hours. */
+export const sleepNeedMinutesFromHours = (value: string): number | null | undefined => {
+  const trimmed = value.trim().replace(',', '.')
+  if (trimmed === '') return null
+  const minutes = Math.round(Number(trimmed) * 60)
+  return Number.isFinite(minutes) && minutes >= 180 && minutes <= 720 ? minutes : undefined
+}

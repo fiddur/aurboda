@@ -83,6 +83,28 @@ const formatMetricLabel = (metric: string): string =>
 
 const getMetricUnit = (metric: string): string => (builtinMetricUnits as Record<string, string>)[metric] ?? ''
 
+/** Full-height stage bands, so every overlaid metric can be read against the stage it happened in. */
+const drawStageBackdrop = (
+  g: GSelection,
+  xScale: d3.ScaleTime<number, number>,
+  innerHeight: number,
+  stages: SleepStage[],
+) => {
+  for (const stage of stages) {
+    const sx = xScale(new Date(stage.startTime))
+    const ex = xScale(new Date(stage.endTime))
+    g.append('rect')
+      .attr('class', 'stage-backdrop')
+      .attr('x', sx)
+      .attr('y', 0)
+      .attr('width', Math.max(ex - sx, 1))
+      .attr('height', innerHeight)
+      .attr('fill', STAGE_COLORS[stage.stage] ?? '#9ca3af')
+      .attr('opacity', 0.14)
+      .attr('pointer-events', 'none')
+  }
+}
+
 const drawHypnogram = (
   g: GSelection,
   xScale: d3.ScaleTime<number, number>,
@@ -402,6 +424,7 @@ const renderChart = ({
     .attr('fill', 'currentColor')
 
   if (hasHypnogram && stages) {
+    drawStageBackdrop(g, xScale, innerHeight, stages)
     drawHypnogram(g, xScale, innerWidth, innerHeight, stages)
   }
 

@@ -506,14 +506,24 @@ describe('evaluateAutoshareWindow: max age', () => {
     expect(await announceAutoshareWindow('u', windowStart, now, h.deps, now, now)).toBe(0)
   })
 
-  test('a skip that lands while the group is being matched stops the post', async () => {
-    let reads = 0
+  test('a post the insert refuses (a skip landed meanwhile) is neither delivered nor counted', async () => {
+    const asked: string[][] = []
+    let shared = 0
     const h = harness({
+      createPost: async (_user, _anchor, _rule, groupIds) => {
+        asked.push(groupIds)
+        return null
+      },
+      getGroup: async () => [ended(2, now), candidate('a2', { created_at: ended(2, now).created_at })],
       listCandidates: async () => [ended(2, now)],
-      suppressedActivityIds: async () => (++reads > 1 ? ['a1'] : []),
+      shared: async () => {
+        shared++
+      },
     })
     expect(await evaluateAutoshareWindow('u', windowStart, now, h.deps, now)).toBe(0)
-    expect(h.createdPosts).toEqual([])
+    expect(asked).toEqual([['a1', 'a2']])
+    expect(h.delivered).toEqual([])
+    expect(shared).toBe(0)
   })
 
   test('each rule applies its own max age', async () => {
@@ -916,6 +926,88 @@ describe('evaluateAutoshareWindow: pending-share announces', () => {
     expect(h.requeued).toHaveLength(1)
   })
 
+  test('announce gets the whole group, so an announcement under a former anchor can be reused', async () => {
+    const groups: string[][] = []
+    const h = withHooks({
+      announce: async (_user, _anchor, _rule, _info, group) => {
+        groups.push(group.map((member) => member.id))
+        return false
+      },
+      getGroup: async () => [
+        candidate('earlier', { created_at: ingested }),
+        candidate('a1', { created_at: ingested }),
+      ],
+    })
+    await evaluateAutoshareWindow('u', T0, windowEnd, h.deps, new Date(ingested.getTime() + MINUTE))
+    expect(groups).toEqual([['earlier', 'a1']])
+  })
+
+  describe('a settled group that no longer matches', () => {
+    const withWithdraw = (over: Partial<AutoshareDeps> = {}) => {
+      const withdrawn: string[][] = []
+      const h = withHooks({
+        withdrawn: async (_user, group) => {
+          withdrawn.push(group.map((member) => member.id))
+        },
+        ...over,
+      })
+      return { ...h, withdrawn }
+    }
+    const settledAt = new Date(ingested.getTime() + HOUR)
+
+    test('is withdrawn with its whole group', async () => {
+      const h = withWithdraw({
+        getGroup: async () => [
+          candidate('a1', { activity_type: 'yoga', created_at: ingested }),
+          candidate('a2', { activity_type: 'yoga', created_at: ingested }),
+        ],
+      })
+      expect(await evaluateAutoshareWindow('u', T0, windowEnd, h.deps, settledAt)).toBe(0)
+      expect(h.withdrawn).toEqual([['a1', 'a2']])
+      expect(h.announced).toEqual([])
+    })
+
+    test('past its max age is withdrawn too', async () => {
+      const h = withWithdraw({ getEnabledRules: async () => [rule({ max_age_hours: 1 })] })
+      const late = new Date(ingested.getTime() + 30 * HOUR)
+      expect(await evaluateAutoshareWindow('u', T0, windowEnd, h.deps, late)).toBe(0)
+      expect(h.withdrawn).toEqual([['a1']])
+    })
+
+    test('is not withdrawn while unsettled, by the announce pass, or once posted or suppressed', async () => {
+      const yogaGroup = async () => [candidate('a1', { activity_type: 'yoga', created_at: ingested })]
+      const unsettled = withWithdraw({ getGroup: yogaGroup })
+      await evaluateAutoshareWindow('u', T0, windowEnd, unsettled.deps, new Date(ingested.getTime() + MINUTE))
+      expect(unsettled.withdrawn).toEqual([])
+
+      const announcing = withWithdraw({ getGroup: yogaGroup })
+      await announceAutoshareWindow('u', T0, windowEnd, announcing.deps, settledAt, settledAt)
+      expect(announcing.withdrawn).toEqual([])
+
+      const posted = withWithdraw({ getGroup: yogaGroup, postIdsForActivities: async () => ['p'] })
+      await evaluateAutoshareWindow('u', T0, windowEnd, posted.deps, settledAt)
+      expect(posted.withdrawn).toEqual([])
+
+      const suppressed = withWithdraw({ getGroup: yogaGroup, suppressedActivityIds: async () => ['a1'] })
+      await evaluateAutoshareWindow('u', T0, windowEnd, suppressed.deps, settledAt)
+      expect(suppressed.withdrawn).toEqual([])
+    })
+
+    test('a matching group is shared, not withdrawn, and a throwing withdraw never stops the run', async () => {
+      const h = withWithdraw({
+        listCandidates: async () => [
+          candidate('y1', { activity_type: 'yoga', created_at: ingested, start_time: T0 }),
+          candidate('a1', { created_at: ingested }),
+        ],
+        withdrawn: async () => {
+          throw new Error('notifier down')
+        },
+      })
+      expect(await evaluateAutoshareWindow('u', T0, windowEnd, h.deps, settledAt)).toBe(1)
+      expect(h.createdPosts).toEqual([{ anchorId: 'a1', ruleId: 'rule-1' }])
+    })
+  })
+
   test('a production-style announce whose raise fails keeps the run going', async () => {
     const notifier = createNotifier({
       getPreference: async () => {
@@ -924,6 +1016,7 @@ describe('evaluateAutoshareWindow: pending-share announces', () => {
       insert: async () => null,
       prune: async () => 0,
       revise: async () => null,
+      reviseOpen: async () => [],
     })
     const h = withHooks({
       announce: async (user, anchor, matched, info) =>

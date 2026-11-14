@@ -36,6 +36,7 @@ The `tools/list` answer is abbreviated to keep it small: each tool shows the fir
 | Tool               | What it does                                                                                                                                                                                               |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `get_latest_sleep` | "How did I sleep last night?" -- the most recent sleep ending within 36 hours: timing, score, stage timeline and minutes, resting HR and HRV against 30-day baselines, Body Battery at bedtime and wake-up |
+| `get_sleep_debt`   | "How much sleep do I owe?" -- sleep debt per night against the `sleep_need_minutes` setting, with the debt and severity after the last date; defaults to the two weeks up to today                         |
 
 ### Chart data tools
 
@@ -50,6 +51,7 @@ See [Dashboard](features/dashboard.md#period-dashboards).
 | Tool                 | What it does                                                                                                                                                                                                                                                                                                                                              |
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `get_dashboard_data` | The data each widget renders, keyed by widget id, for the home dashboard or a shared one (`dashboard_id`), the same as `GET /dashboard/data` and `GET /shared-dashboards/:id/data`. A period dashboard answers its latest finished period unless `period` (`2026-10`, `2026-W44`, `2026`) is given, with each figure compared against the previous period |
+| `get_data_presence`  | Whether each named metric and activity type (subtypes included) has ever recorded anything, the same as `GET /dashboard/data-presence`; the dashboard leaves out the cards whose sources never have                                                                                                                                                       |
 
 ### Top list and places tools
 
@@ -67,7 +69,7 @@ See [Activity types -- sessions overview](features/activity-types.md#sessions-ov
 
 | Tool                         | What it does                                                                                                                                                                                                                                                                                                    |
 | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `query_activity_sessions`    | Sessions of one type, each with length, avg/max HR, HR-zone seconds and a box-plot summary of its HR samples; with `group_by` (a categorical data field) also one group per value, to compare repeats or pick a session by length and effort                                                                    |
+| `query_activity_sessions`    | Sessions of one type, each with length, avg/max HR, HR-zone seconds and a box-plot summary of its HR samples; with `group_by` (a categorical data field, or `place`) also one group per value, to compare repeats or pick a session by length and effort                                                        |
 | `get_activity_records`       | The best value of each record measure (e1RM, max weight, longest hold, most reps) of a type, optionally one item value (`sets.exercise` = `Bench Press`), with the date, session and set that first reached it; `start` and `end` limit it to a range                                                           |
 | `get_activity_type_summary`  | Roll-up of one type (descendants included) over `start`..`end`: session count, total duration, total distance, best pace and average speed where sessions carry distance, and for sleep the average and best night and average minutes per stage; `filter_field` + `filter_value` narrow it (also an item path) |
 | `get_activity_neighbors`     | The previous and next activity of the same type, optionally only those sharing a data field value (`same_field`, e.g. `session_name`)                                                                                                                                                                           |
@@ -79,7 +81,7 @@ See [Activity types -- sessions overview](features/activity-types.md#sessions-ov
 | `get_item_value_identity`    | Which exercise catalogue entry a logged name of a catalogue-backed item path (`field=sets.exercise`) stands for, and why (`user`, `catalog`, `dismissed`, `unmapped`), with the other names resolving to it                                                                                                     |
 | `set_item_value_identity`    | Map a logged name to a catalogue key, or dismiss it with key `null`; no activity is rewritten                                                                                                                                                                                                                   |
 | `clear_item_value_identity`  | Remove the mapping or dismissal of a name, back to automatic resolution                                                                                                                                                                                                                                         |
-| `list_unmapped_item_values`  | The logged names matching no catalogue entry, most used first, each with up to three suggested entries                                                                                                                                                                                                          |
+| `list_unmapped_item_values`  | The logged names matching no catalogue entry, most used first, each with up to three suggested entries; paged by `limit` (default 50, max 200) and `offset`, with the `total`                                                                                                                                   |
 
 ### Activity track tools
 
@@ -117,6 +119,30 @@ See [Exercise catalogue](features/exercise-catalog.md). Logged exercise names on
 | `search_exercise_catalog`    | Search the built-in catalogue by `q` (word prefixes, best matches first), exact `name` or alias, `equipment`, `muscle` (a muscle or a group, weight ≥ 0.5), `category`; paged by `limit` and `offset` |
 | `get_exercise_catalog_entry` | One catalogue exercise by its stable `key`: name, aliases, category, equipment, muscles with recruitment weights, and the same exercise in other datasets                                             |
 
+### Activity type catalogue tools
+
+See [Activity type catalogue](features/activity-type-catalog.md). A catalogue type is added to the user's types the first time `add_activity` uses its name, or with `add_activity_type` given only the name.
+
+| Tool                               | What it does                                                                                                                                                                                                                                                                                                                                           |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `list_activity_type_catalog`       | The built-in activity types for things logged by hand, each with its fields, `in_use` (whether the user already has a type of that name), `missing_fields` (the catalogue fields that type lacks) and `variants` (names that are the type with a field value set, `beer` is `alcohol` with kind beer); `q` filters by word prefixes, variants included |
+| `add_activity_type_catalog_fields` | Add the catalogue fields a type of a catalogue name lacks (`name`); fields the type has are never changed                                                                                                                                                                                                                                              |
+| `merge_activity_type`              | Merge a custom type into another (`source`, `target`); the target may be a catalogue type not used yet, and `set_data` (e.g. `{ "kind": "beer" }`) gives each moved activity the values it has none for, adding the catalogue field to a target that lacks it                                                                                          |
+| `add_activity_type`                | With a variant's name (`beer`) it creates nothing and answers with the built-in type and data to use instead; `separate_type: true` creates the type anyway                                                                                                                                                                                            |
+
+`add_activity` and `update_activity` refuse a type name the user does not have and the catalogue does not know; when the name is a variant, the error names the built-in type and the `data` to log instead.
+
+### Metric catalogue tools
+
+See [Metric catalogue](features/metric-catalog.md). A catalogue metric is added to the user's custom metrics the first time `add_metric`, `add_metrics_bulk` or a report entry uses its name, display name or an alias.
+
+| Tool                  | What it does                                                                                                                                                                                                                     |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_metric_catalog` | The built-in metrics for lab values, circumferences and body composition, each with the unit it is stored in, the units it accepts with their conversion, `in_use` and, when in use, `in_use_unit`; `q` filters by word prefixes |
+| `add_metric`          | `unit` (optional) is the unit the value is given in: an accepted unit of a catalogue metric is converted to the metric's unit, any other unit that differs is refused                                                            |
+| `add_metrics_bulk`    | The same `unit`, per item                                                                                                                                                                                                        |
+| `add_custom_metric`   | With an alias of a catalogue metric (`ldl`) it creates nothing and answers with the built-in metric to use instead; `separate_metric: true` creates the metric anyway                                                            |
+
 ### Comment tools
 
 Comments (stored as "notes") hang off anything, or off a bare point in time, and
@@ -137,7 +163,7 @@ The bell's notifications and per-type switches. See [Notifications](features/not
 
 | Tool                          | What it does                                                                                                                          |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `list_notifications`          | Newest first with `unread_count` and `next_cursor`; `unread_only`, `after` and `push_only` filter, like `GET /notifications`          |
+| `list_notifications`          | Newest first with `unread_count` and `next_cursor`; `unread_only`, `after`, `push_only` and `ids` filter, like `GET /notifications`   |
 | `mark_notification_read`      | Mark one notification read by `id`                                                                                                    |
 | `mark_all_notifications_read` | Mark every unread notification read                                                                                                   |
 | `list_notification_types`     | The types this user can receive with their in-app and push switches                                                                   |

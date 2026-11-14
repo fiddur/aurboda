@@ -53,6 +53,8 @@ Built-in amount metrics are steps, distance, floors climbed, calories (active, b
 
 The **Missing days** option overrides the kind for one trend: **Auto (by metric kind)**, **Count as zero** or **Skip** (`missing_days: 'zero' | 'skip'` in the API, the `get_trend` MCP tool, chart URLs and dashboard trend widgets). The trend result echoes the value it used as `missing_days`.
 
+A metric trend leaves out the samples inside activities flagged `exclude_from_baseline` (a festival, a retreat), and a day left without samples by that is skipped rather than counted as zero; `include_flagged: true` keeps them. See [Flagged windows](../correlations.md#flagged-windows-exclude_from_baseline).
+
 Before Count was real for metrics, a metric trend saved with **Count** rendered as **Average** (and the Chart page saved Count by default). Existing metric trend goals and dashboard trend widgets saved as Count were therefore rewritten to Average by a one-off migration, so they keep showing what they showed before.
 
 ### Screentime Categories
@@ -92,6 +94,8 @@ When adding or editing a trend, you can configure:
 | **Display as**   | Per day, Per week, Per month                                     | Rate normalization. Same data, different scale.                                            |
 | **Aggregation**  | Metrics: Average, Sum, Count. Activity types: Sum (hours), Count | Whether to average, total or count daily values.                                           |
 | **Missing days** | Auto (by metric kind), Count as zero, Skip (metric trends only)  | Whether a day without samples counts as 0 or is left out. See [Metric kind](#metric-kind). |
+
+A day's average of heart rate, stress, body battery, respiration or SpO2 is [time-weighted](../data-storage.md#time-weighted-averages): the samples are averaged per 5-minute bin, then across the day's bins, so the 1 Hz samples of a recorded activity weigh no more than any other hour.
 
 ## The Trends Page
 

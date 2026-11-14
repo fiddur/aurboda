@@ -32,7 +32,11 @@ import type {
   FeedStructuredPost,
 } from '@aurboda/api-spec'
 
-import { DEFAULT_IMPACT_WINDOW_MINUTES, defaultArticleChartBucket } from '@aurboda/api-spec'
+import {
+  articleBlockWindow,
+  DEFAULT_IMPACT_WINDOW_MINUTES,
+  defaultArticleChartBucket,
+} from '@aurboda/api-spec'
 
 import type { FeedPostRecord } from '../db/index.ts'
 
@@ -41,11 +45,16 @@ import { metricUnits } from '../schema.ts'
 import { resolveActivityScalars } from './activitypub/feed-activity.ts'
 import { declaredProseImages } from './activitypub/note-prose.ts'
 import { getArticleImpact } from './article-block-data.ts'
-import { blockWindow, isZeroDurationBucket } from './article.ts'
+import { isZeroDurationBucket } from './article.ts'
 import { getContinuousCorrelation } from './correlations/explore.ts'
 import { isCapabilityAuthorized } from './feed-capability.ts'
 import { resolvePostExercises, toStructuredExercise } from './feed-exercises.ts'
-import { floorSeriesBucket, samplesFromBucketedResult } from './feed-series.ts'
+import {
+  coarsenBucketToFit,
+  floorSeriesBucket,
+  samplesFromBucketedResult,
+  sharedSampleBudget,
+} from './feed-series.ts'
 import {
   assembleStructuredActivity,
   resolveStructuredRoute,
@@ -61,33 +70,41 @@ import { resolveStructuredDashboard } from './feed-structured-dashboard.ts'
 import { resolveStructuredExercise } from './feed-structured-exercise.ts'
 import { resolveFeedActivity } from './feed.ts'
 import { queryMetricsBucketed } from './queries/index.ts'
+import { MAX_RESPONSE_BYTES } from './safe-fetch.ts'
+
+/**
+ * What an article's payload may come to: under a peer's response ceiling, with
+ * room for the response envelope and for the sample-size estimate being loose.
+ */
+export const ARTICLE_PAYLOAD_BYTES = Math.floor(MAX_RESPONSE_BYTES * 0.9)
+
+type ChartBlock = Extract<ArticleBlock, { type: 'chart' }>
 
 /**
  * Resolve one article `chart` block to its structured samples over its
  * effective window (own override, else the article default), or `null` when
  * the block has no bounded window or a zero-duration bucket. Mirrors
  * `renderArticleBlockImage`'s chart path, minus the raster step — the samples
- * are the payload here, not a rendered image.
+ * are the payload here, not a rendered image. The bucket is floored to the
+ * public-series minimum and coarsened until the window fits `maxSamples`, so
+ * neither a fine bucket nor a wide window can grow the series without bound
+ * on this unauthenticated endpoint.
  */
 const resolveStructuredChartBlock = async (
   user: string,
-  block: Extract<ArticleBlock, { type: 'chart' }>,
+  block: ChartBlock,
   content: ArticleContent,
   tz: string | undefined,
+  maxSamples: number,
 ): Promise<FeedStructuredArticleChartBlock | null> => {
-  const { end, start } = blockWindow(block, content)
+  const { end, start } = articleBlockWindow(block, content)
   if (start == null || end == null) return null
   const startDate = new Date(start)
   const endDate = new Date(end)
   if (startDate.getTime() >= endDate.getTime()) return null
-  // Floor sub-5s buckets to the public-series minimum, like `resolvePublicSeries`
-  // — an author-stored `1s` bucket over a wide window would otherwise yield
-  // ~600k buckets on this unauthenticated endpoint. `floorSeriesBucket` now
-  // understands `d`, so the common `1d`/`1h` buckets pass through unchanged. A
-  // fuller sample cap + cache is tracked in #972 (with the block image's #969).
   const authored = block.bucket ?? defaultArticleChartBucket(startDate, endDate)
   if (isZeroDurationBucket(authored)) return null
-  const bucket = floorSeriesBucket(authored)
+  const bucket = coarsenBucketToFit(floorSeriesBucket(authored), startDate, endDate, maxSamples)
 
   const result = await queryMetricsBucketed(user, [block.metric], startDate, endDate, bucket, { tz })
   const samples = samplesFromBucketedResult(result, block.metric)
@@ -120,7 +137,7 @@ const resolveStructuredCorrelationBlock = async (
   block: Extract<ArticleBlock, { type: 'correlation' }>,
   content: ArticleContent,
 ): Promise<FeedStructuredArticleCorrelationBlock | null> => {
-  const { end, start } = blockWindow(block, content)
+  const { end, start } = articleBlockWindow(block, content)
   if (start == null || end == null) return null
   if (new Date(start).getTime() >= new Date(end).getTime()) return null
 
@@ -162,7 +179,7 @@ export const resolveStructuredImpactBlock = async (
   content: ArticleContent,
   getImpact: typeof getArticleImpact = getArticleImpact,
 ): Promise<FeedStructuredArticleImpactBlock | null> => {
-  const { end, start } = blockWindow(block, content)
+  const { end, start } = articleBlockWindow(block, content)
   if (start == null || end == null) return null
   const startDate = new Date(start)
   const endDate = new Date(end)
@@ -220,6 +237,29 @@ export const resolveStructuredChallengeBlock = async (
   return resolved
 }
 
+const resolveStructuredOtherBlock = async (
+  user: string,
+  block: Exclude<ArticleBlock, ChartBlock>,
+  article: ArticleContent,
+): Promise<FeedStructuredArticleBlock | null> => {
+  switch (block.type) {
+    case 'prose': {
+      const images = declaredProseImages(block.markdown)
+      return images.length > 0
+        ? { images, markdown: block.markdown, type: 'prose' }
+        : { markdown: block.markdown, type: 'prose' }
+    }
+    case 'challenge':
+      return resolveStructuredChallengeBlock(user, block, configuredStructuredChallengeDeps())
+    case 'impact':
+      return resolveStructuredImpactBlock(user, block, article)
+    case 'correlation':
+      return resolveStructuredCorrelationBlock(user, block, article)
+  }
+}
+
+const jsonBytes = (value: unknown): number => Buffer.byteLength(JSON.stringify(value))
+
 /**
  * Build the structured payload for an article post: its title and every block,
  * resolved in order. A prose block passes its raw markdown through unchanged
@@ -229,6 +269,10 @@ export const resolveStructuredChallengeBlock = async (
  * when that window itself is invalid (unbounded or non-increasing) — the same
  * condition `resolveArticleBlock` treats as ineligible for an image. A challenge
  * block always appears, with its challenge and standings when they resolve.
+ *
+ * The chart blocks resolve last, sharing what `ARTICLE_PAYLOAD_BYTES` leaves
+ * after everything else, so a large article still fits a peer's response
+ * ceiling and renders natively there rather than dropping to the fallback HTML.
  *
  * Chart buckets in the author's own device timezone (`device_timezone`),
  * matching the block-image renderer, so a `1d` bucket splits on the author's
@@ -241,34 +285,29 @@ const resolveStructuredArticle = async (
   const settings = await getUserSettings(user)
   const tz = settings?.device_timezone ?? undefined
 
-  const blocks: FeedStructuredArticleBlock[] = []
-  for (const block of article.blocks) {
-    if (block.type === 'prose') {
-      const images = declaredProseImages(block.markdown)
-      blocks.push(
-        images.length > 0
-          ? { images, markdown: block.markdown, type: 'prose' }
-          : { markdown: block.markdown, type: 'prose' },
-      )
-      continue
-    }
+  const resolved: (FeedStructuredArticleBlock | null)[] = []
+  const charts: { block: ChartBlock; index: number }[] = []
+  for (const [index, block] of article.blocks.entries()) {
     if (block.type === 'chart') {
-      const resolved = await resolveStructuredChartBlock(user, block, article, tz)
-      if (resolved) blocks.push(resolved)
-      continue
+      charts.push({ block, index })
+      resolved.push(null)
+    } else {
+      resolved.push(await resolveStructuredOtherBlock(user, block, article))
     }
-    if (block.type === 'challenge') {
-      blocks.push(await resolveStructuredChallengeBlock(user, block, configuredStructuredChallengeDeps()))
-      continue
-    }
-    const resolved =
-      block.type === 'impact'
-        ? await resolveStructuredImpactBlock(user, block, article)
-        : await resolveStructuredCorrelationBlock(user, block, article)
-    if (resolved) blocks.push(resolved)
   }
 
-  return { blocks, kind: 'article', title: article.title }
+  const fixedBytes = jsonBytes({ blocks: resolved, kind: 'article', title: article.title })
+  const chartEnvelopeBytes = charts.reduce((sum, { block }) => sum + jsonBytes(block), 0)
+  const maxSamples = sharedSampleBudget(ARTICLE_PAYLOAD_BYTES, fixedBytes + chartEnvelopeBytes, charts.length)
+  for (const { block, index } of charts) {
+    resolved[index] = await resolveStructuredChartBlock(user, block, article, tz, maxSamples)
+  }
+
+  return {
+    blocks: resolved.filter((block): block is FeedStructuredArticleBlock => block != null),
+    kind: 'article',
+    title: article.title,
+  }
 }
 
 /**

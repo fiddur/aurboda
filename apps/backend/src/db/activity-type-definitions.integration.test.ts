@@ -1,16 +1,22 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
-import { strengthTrainingDataSchema } from '../schema/builtin-data-schemas.ts'
+import { activitiesTables } from '../schema/activities.ts'
+import { catalogSchemaFor, strengthTrainingDataSchema } from '../schema/builtin-data-schemas.ts'
+import { getCatalogActivityType, loadActivityTypeCatalog } from '../services/activity-type-catalog.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { deleteActivity, getActivityById, insertActivity } from './activities/index.ts'
 import {
+  adoptCatalogActivityType,
   deleteActivityTypeDefinition,
+  ensureActivityType,
   expandActivityTypes,
   expandAncestorTypes,
+  findActivityTypeForName,
   getActivityTypeDefinition,
   getDescendantTypes,
   insertActivityTypeDefinition,
   mergeActivityTypeDefinition,
+  resolveOrCreateActivityType,
   updateActivityTypeDefinition,
 } from './activity-type-definitions.ts'
 import { query } from './connection.ts'
@@ -467,6 +473,94 @@ describe('Hierarchical activity types', () => {
     })
   })
 
+  describe('mergeActivityTypeDefinition with setData', () => {
+    beforeEach(async () => {
+      await query(getTestUser(), `DELETE FROM activity_type_definitions WHERE name IN ('beer', 'drink')`)
+    })
+
+    const seedBeer = async (user: string) => {
+      await insertActivityTypeDefinition(user, {
+        display_category: 'other',
+        display_name: 'Beer',
+        name: 'beer',
+      })
+      await insertActivityTypeDefinition(user, {
+        display_category: 'other',
+        display_name: 'Drink',
+        name: 'drink',
+      })
+      const at = (day: number) => ({
+        activity_type: 'beer',
+        source: 'aurboda' as const,
+        start_time: new Date(`2025-04-${String(day).padStart(2, '0')}T18:00:00Z`),
+      })
+      return {
+        absent: await insertActivity(user, { ...at(1), data: { drinks: 2 } }),
+        both: await insertActivity(user, { ...at(2), data: { kind: 'lager' } }),
+        noData: await insertActivity(user, at(3)),
+        nullKind: await insertActivity(user, { ...at(4), data: { drinks: 1, kind: null } }),
+      }
+    }
+
+    test('sets each key where it is absent or null and keeps existing values', async () => {
+      const user = getTestUser()
+      const ids = await seedBeer(user)
+
+      const result = await mergeActivityTypeDefinition(user, 'beer', 'drink', { kind: 'beer', size: 'pint' })
+
+      expect(result?.activities_reassigned).toBe(4)
+      expect(result?.activities_data_set).toBe(4)
+      expect((await getActivityById(user, ids.absent))?.data).toEqual({
+        drinks: 2,
+        kind: 'beer',
+        size: 'pint',
+      })
+      expect((await getActivityById(user, ids.both))?.data).toEqual({ kind: 'lager', size: 'pint' })
+      expect((await getActivityById(user, ids.noData))?.data).toEqual({ kind: 'beer', size: 'pint' })
+      expect((await getActivityById(user, ids.nullKind))?.data).toEqual({
+        drinks: 1,
+        kind: 'beer',
+        size: 'pint',
+      })
+    })
+
+    test('does not count a row that already has every key', async () => {
+      const user = getTestUser()
+      const ids = await seedBeer(user)
+
+      const result = await mergeActivityTypeDefinition(user, 'beer', 'drink', { kind: 'beer' })
+
+      expect(result?.activities_reassigned).toBe(4)
+      expect(result?.activities_data_set).toBe(3)
+      expect((await getActivityById(user, ids.both))?.data).toEqual({ kind: 'lager' })
+    })
+
+    test('gives a soft-deleted row the value too without counting it', async () => {
+      const user = getTestUser()
+      const ids = await seedBeer(user)
+      await deleteActivity(user, ids.absent)
+
+      const result = await mergeActivityTypeDefinition(user, 'beer', 'drink', { kind: 'beer' })
+
+      expect(result?.activities_reassigned).toBe(3)
+      expect(result?.activities_data_set).toBe(2)
+      const deleted = await getActivityById(user, ids.absent, true)
+      expect(deleted?.activity_type).toBe('drink')
+      expect(deleted?.data).toEqual({ drinks: 2, kind: 'beer' })
+    })
+
+    test('leaves data untouched without setData', async () => {
+      const user = getTestUser()
+      const ids = await seedBeer(user)
+
+      const result = await mergeActivityTypeDefinition(user, 'beer', 'drink')
+
+      expect(result?.activities_data_set).toBe(0)
+      expect((await getActivityById(user, ids.absent))?.data).toEqual({ drinks: 2 })
+      expect((await getActivityById(user, ids.nullKind))?.data).toEqual({ drinks: 1, kind: null })
+    })
+  })
+
   describe('rename with FK cascade', () => {
     test('renaming a parent updates children parent_type via CASCADE', async () => {
       const user = getTestUser()
@@ -484,6 +578,196 @@ describe('Hierarchical activity types', () => {
       await query(user, `UPDATE activity_type_definitions SET name = 'new_parent' WHERE name = 'old_parent'`)
       const child = await getActivityTypeDefinition(user, 'a_child')
       expect(child?.parent_type).toBe('new_parent')
+    })
+  })
+
+  describe('the built-in activity type catalogue', () => {
+    const catalog = loadActivityTypeCatalog()
+    const countRows = async (name: string): Promise<number> =>
+      (await query(getTestUser(), `SELECT 1 FROM activity_type_definitions WHERE name = $1`, [name])).rows
+        .length
+
+    beforeEach(async () => {
+      await query(getTestUser(), `DELETE FROM activity_type_definitions WHERE is_builtin = false`)
+    })
+
+    describe('adoptCatalogActivityType', () => {
+      test('creates a catalogue type with its definition', async () => {
+        const sauna = getCatalogActivityType(catalog, 'sauna')!
+        const adopted = await adoptCatalogActivityType(getTestUser(), 'sauna')
+        expect(adopted).toMatchObject({
+          color: sauna.color,
+          data_schema: sauna.data_schema,
+          display_category: sauna.display_category,
+          display_name: sauna.display_name,
+          icon: sauna.icon,
+          is_builtin: false,
+          name: 'sauna',
+        })
+        expect(adopted?.aliases).toContain('sauna')
+        expect(adopted?.parent_type).toBeUndefined()
+      })
+
+      test('creates the catalogue parent of a sub-type first', async () => {
+        const user = getTestUser()
+        const headache = await adoptCatalogActivityType(user, 'headache')
+        expect(headache?.parent_type).toBe('symptom')
+        expect((await getActivityTypeDefinition(user, 'symptom'))?.display_name).toBe('Symptom')
+      })
+
+      test('returns an existing type unchanged', async () => {
+        const user = getTestUser()
+        const own = await insertActivityTypeDefinition(user, {
+          display_category: 'other',
+          display_name: 'My sauna',
+          name: 'sauna',
+        })
+        expect(await adoptCatalogActivityType(user, 'sauna')).toEqual(own)
+        expect(await getActivityTypeDefinition(user, 'sauna')).toEqual(own)
+      })
+
+      test("puts a sub-type under the user's own parent and leaves that parent alone", async () => {
+        const user = getTestUser()
+        const own = await insertActivityTypeDefinition(user, {
+          display_category: 'other',
+          display_name: 'My symptoms',
+          name: 'symptom',
+        })
+        expect((await adoptCatalogActivityType(user, 'headache'))?.parent_type).toBe('symptom')
+        expect(await getActivityTypeDefinition(user, 'symptom')).toEqual(own)
+      })
+
+      test('is null for a name outside the catalogue', async () => {
+        expect(await adoptCatalogActivityType(getTestUser(), 'not_a_catalogue_type')).toBeNull()
+        expect(await countRows('not_a_catalogue_type')).toBe(0)
+      })
+
+      test('is safe to repeat and to run in parallel', async () => {
+        const user = getTestUser()
+        await adoptCatalogActivityType(user, 'headache')
+        await adoptCatalogActivityType(user, 'headache')
+        const parallel = await Promise.all([
+          adoptCatalogActivityType(user, 'nausea'),
+          adoptCatalogActivityType(user, 'nausea'),
+          adoptCatalogActivityType(user, 'nausea'),
+        ])
+        expect(parallel.map((d) => d?.name)).toEqual(['nausea', 'nausea', 'nausea'])
+        expect(await countRows('headache')).toBe(1)
+        expect(await countRows('nausea')).toBe(1)
+        expect(await countRows('symptom')).toBe(1)
+      })
+    })
+
+    describe('ensureActivityType', () => {
+      test('is true for an existing type', async () => {
+        expect(await ensureActivityType(getTestUser(), 'running')).toBe(true)
+      })
+
+      test('is true for a catalogue type and adopts it', async () => {
+        expect(await ensureActivityType(getTestUser(), 'caffeine')).toBe(true)
+        expect(await countRows('caffeine')).toBe(1)
+      })
+
+      test('is false for an unknown name', async () => {
+        expect(await ensureActivityType(getTestUser(), 'not_a_catalogue_type')).toBe(false)
+        expect(await countRows('not_a_catalogue_type')).toBe(0)
+      })
+    })
+
+    describe('findActivityTypeForName', () => {
+      test("finds the user's type by its snake-cased name", async () => {
+        const user = getTestUser()
+        await insertActivityTypeDefinition(user, {
+          display_category: 'other',
+          display_name: 'Morning walk',
+          name: 'morning_walk',
+        })
+        expect(await findActivityTypeForName(user, 'Morning Walk')).toBe('morning_walk')
+      })
+
+      test('finds a type by alias', async () => {
+        const user = getTestUser()
+        await insertActivityTypeDefinition(user, {
+          aliases: ['evening stroll'],
+          display_category: 'other',
+          display_name: 'Walk',
+          name: 'walk_outdoors',
+        })
+        expect(await findActivityTypeForName(user, 'Evening Stroll')).toBe('walk_outdoors')
+      })
+
+      test('is null for a name the user has no type for, and creates nothing', async () => {
+        const user = getTestUser()
+        expect(await findActivityTypeForName(user, 'tag_generic_beer')).toBeNull()
+        expect(await findActivityTypeForName(user, 'Sauna')).toBeNull()
+        expect(await countRows('tag_generic_beer')).toBe(0)
+        expect(await countRows('sauna')).toBe(0)
+      })
+    })
+
+    describe('resolveOrCreateActivityType', () => {
+      test('a tag named like a catalogue type adopts it', async () => {
+        const user = getTestUser()
+        expect(await resolveOrCreateActivityType(user, 'Sauna')).toBe('sauna')
+        const sauna = await getActivityTypeDefinition(user, 'sauna')
+        expect(sauna?.display_category).toBe('wellness')
+        expect(sauna?.data_schema).toEqual(getCatalogActivityType(catalog, 'sauna')?.data_schema)
+      })
+
+      test('a tag named like a catalogue alias lands on the seeded type', async () => {
+        expect(await resolveOrCreateActivityType(getTestUser(), 'Breathwork')).toBe('guided_breathing')
+        expect(await countRows('breathwork')).toBe(0)
+      })
+
+      test("a user's own type of that name wins", async () => {
+        const user = getTestUser()
+        await insertActivityTypeDefinition(user, {
+          display_category: 'other',
+          display_name: 'Breathwork',
+          name: 'breathwork',
+        })
+        expect(await resolveOrCreateActivityType(user, 'Breathwork')).toBe('breathwork')
+      })
+
+      test('an exercise import is never redirected to the catalogue', async () => {
+        const user = getTestUser()
+        expect(await resolveOrCreateActivityType(user, 'Sauna', 'exercise')).toBe('sauna')
+        const sauna = await getActivityTypeDefinition(user, 'sauna')
+        expect(sauna?.display_category).toBe('exercise')
+        expect(sauna?.data_schema).toBeUndefined()
+      })
+    })
+
+    describe('seeded built-ins shared with the catalogue', () => {
+      const seed = activitiesTables.activity_type_definitions_seed
+
+      test('meditation and guided_breathing carry the catalogue fields, and guided_breathing shows as Breathwork', async () => {
+        const user = getTestUser()
+        const meditation = await getActivityTypeDefinition(user, 'meditation')
+        const breathing = await getActivityTypeDefinition(user, 'guided_breathing')
+        expect(meditation?.data_schema).toEqual(catalogSchemaFor('meditation'))
+        expect(breathing?.data_schema).toEqual(catalogSchemaFor('guided_breathing'))
+        expect(breathing?.display_name).toBe('Breathwork')
+        expect(breathing?.parent_type).toBe('exercise')
+        expect(breathing?.display_category).toBe('exercise')
+      })
+
+      test('a schema the user set is kept when the seed runs again', async () => {
+        const user = getTestUser()
+        const edited = { fields: [{ name: 'mantra', type: 'string' as const }] }
+        await updateActivityTypeDefinition(user, 'meditation', { data_schema: edited })
+        await updateActivityTypeDefinition(user, 'guided_breathing', { display_name: 'Pranayama' })
+        try {
+          await query(user, seed)
+          expect((await getActivityTypeDefinition(user, 'meditation'))?.data_schema).toEqual(edited)
+          expect((await getActivityTypeDefinition(user, 'guided_breathing'))?.display_name).toBe('Pranayama')
+        } finally {
+          await updateActivityTypeDefinition(user, 'meditation', {
+            data_schema: catalogSchemaFor('meditation'),
+          })
+          await updateActivityTypeDefinition(user, 'guided_breathing', { display_name: 'Breathwork' })
+        }
+      })
     })
   })
 })

@@ -265,7 +265,8 @@ or an unsaved editor state, `{ article, visibility?, include_images? }` in the
 `ArticleDraftContent` shape — would federate as, and creates nothing. Only its **complete**
 blocks are previewed (a chart with a metric, a correlation with trigger and outcome, a
 challenge with a challenge URL, an impact block with an activity, and for a windowed block a
-bounded, increasing window); a blank title previews as `Untitled`. The answer
+bounded, increasing window — `isCompleteArticleBlock` in `@aurboda/api-spec`, which the web
+editor's own preview card uses too); a blank title previews as `Untitled`. The answer
 (`ArticlePreviewResponse`) has the Note `content` and `name` exactly as `renderArticleNote`
 and the hashtag linking build them, the `tags`, the numbered figure `attachments` (alt text,
 `block_index` back into the draft's blocks, `shown_in_mastodon`), `publish_error` — what
@@ -308,7 +309,9 @@ bytes sharp detects, not the claimed type (PNG, JPEG, WebP or GIF; never SVG); t
 orientation is applied and the picture turned upright; its longest edge is shrunk to at most
 1600 px (a smaller picture is not enlarged); an animated GIF keeps its first frame; and it is
 stored as WebP (quality 82) with **no metadata** — no camera, no GPS position. An upload is at
-most 10 MB.
+most 10 MB and at most 16383×16383 pixels (about 268 megapixels, sharp's own default, so a
+200-megapixel phone photo is taken), and a small file declaring more is refused before it is
+decoded (the same limit holds for avatars and challenge banners).
 
 Pictures live in the writer's own database, in `feed_image` (`id`, `content_type`, `data`
 BYTEA, `width`, `height`, `byte_size`, `created_at`), so the [data export](../data-export.md)
@@ -505,7 +508,9 @@ The title headline is the shared activity's title; when that row has since been 
 (`superseded_by`, e.g. a synced Garmin row an aurboda override now stands in for), it is the
 replacing row's title, so renaming the activity — by hand or by a
 [deduction rule](deduction-rules.md#copying-a-data-field-into-the-title-output_title_field) —
-renames the post.
+renames the post. An untitled activity is headlined by its type (`Coffee activity`), and the
+web feed card, a peer's native card and the link-preview card all use the same rule
+(`activityHeadline` in `@aurboda/api-spec`), so a post reads the same everywhere.
 
 **QuantPub extension (#896).** An activity share's `Note` is dual-typed
 `["Note", "quant:Exercise"]` and carries the typed [QuantPub](../fep/quantpub.md)
@@ -951,9 +956,17 @@ id-convention path — reliable even when a typed consumer drops the in-band ext
    `FeedStructuredArticle` (the title and every block, resolved in the same order as the
    article: a prose block's raw markdown verbatim, with `images` declaring the http(s)
    pictures its markdown embeds (alt text and URL, in document order) — a receiver draws an
-   inline picture only when its URL is declared there, so an undeclared one (a tracking pixel,
-   raw `<img>` HTML) is dropped; a chart block's bucketed samples over its
-   locked window, bucketed the same way as its block image; a correlation block's computed
+   inline picture only when its URL is declared there, so raw `<img>` HTML or a picture missing
+   from the list is dropped. The list comes from the same peer as the markdown, so a hostile peer
+   can still declare a tracking pixel of its own, which exposes the reader no more than the
+   attachment images a timeline already loads from that peer; what it rules out is a stray `<img>`
+   from a peer that behaves honestly. An Aurboda receiver reads only each declared picture's
+   `url` and takes the alt text from the markdown; a chart block's bucketed samples over its
+   locked window, bucketed the same way as its block image except that the bucket is floored to
+   5s and coarsened to a round size until the window fits the block's sample budget — at most
+   2,000 samples, and an even share of what the rest of the article leaves under 90% of a
+   peer's 1 MB response limit, so a long article still renders natively rather than dropping
+   to its `Note` HTML (the payload's `bucket` says which was used) (#972); a correlation block's computed
    Pearson/Spearman/n, the present-vs-absent group comparison, and the aligned scatter points —
    the same `getContinuousCorrelation` call the block image uses; an impact block's `activity`,
    `activity_type`, `window_minutes`, window, `occurrences`, `avg_duration_min`, `timeline`
@@ -997,8 +1010,10 @@ id-convention path — reliable even when a typed consumer drops the in-band ext
    `0.1` payload to `0.2` before storing it — the same path for an activity share or an article, since both federate
    as a `Note` and the object id doesn't distinguish them. For a `followers`-only post it lifts
    the capability token from the delivered image URL (the `?token=` embedded only in the
-   follower's `Note`) and forwards it, so an accepted follower fetches the native payload while a
-   public guess still 404s. A post whose origin is **this instance itself** (a local-to-local
+   follower's `Note`), falling back to the Note's same-host `quant:structuredUrl` for a post with
+   no images — read off the received JSON-LD in the inbox listener, since Fedify's typed `Note`
+   drops the extension property (#1223) — and forwards it, so an accepted follower fetches the
+   native payload while a public guess still 404s. A post whose origin is **this instance itself** (a local-to-local
    follow) skips discovery and HTTP entirely and resolves **in-process** through the same
    `resolveStructuredPost` the endpoint serves — fetching our own public origin would hairpin
    through the reverse proxy and, from inside the container, typically resolve to a private
@@ -1155,10 +1170,12 @@ Android app) so a `1d` bucket splits on the author's calendar days like the web 
 for an author whose device timezone is unknown it falls back to UTC (the web render uses
 the live browser timezone, so the two can differ by a day only in that case). Because an
 article (unlike a shared activity) is editable **and** its locked window can later gain
-backfilled data, the render cache keys on the post's `updated_at` **and** a coarse hourly
-bucket, so an edit or new data serves a fresh image within ≤ 1h; a `null` (no-data) render
-is remembered under the same key so a sparse public block can't re-run the render engine
-on every hit. The markdown export clears that remembered miss for every block it finds
+backfilled data, block images have their own render cache, keyed on the post's `updated_at`
+with entries that expire after an hour (five minutes for a challenge block) and bounded by
+the bytes it holds, so an edit or new data serves a fresh image within ≤ 1h and the
+activity images' cache is never crowded out by them (#969); a `null` (no-data) render is
+remembered for the hour so a sparse public block can't re-run the render engine on every
+hit. The markdown export clears that remembered miss for every block it finds
 drawable, so the image link it emits works at once rather than 404ing until the hour rolls
 over. `figure.png` shares the eligibility, the negative cache and that clearing, under its
 own render-cache entry. The AS2 `Image` attachment URL (`figure.png`) also carries
@@ -1235,7 +1252,8 @@ resolves only when **all** of these hold:
 
 When it resolves, the effective range is **clamped** to the activity's window (the
 caller's bounds can never widen it), the bucket granularity is **floored** server-side
-(minimum 5s) to bound payloads, and only the requested metric's aggregated buckets are
+(minimum 5s) and coarsened to a round size until the range fits 2,000 samples, to bound
+payloads (#972), and only the requested metric's aggregated buckets are
 returned — per-measurement timestamps are dropped. Anything else — an unshared metric,
 a `followers`-only share, a window outside any shared activity — returns **404**.
 
@@ -1259,8 +1277,9 @@ resolving.
   what they shared. The listing is **keyset-paginated** (20 per page, "Load more" — the same
   cursor style as the home timeline), so the inline payload weight stays bounded per request
   however many posts exist (#1012). The **public profile** (`/u/:username`) attaches the same
-  full structured payload per activity **and article** post (through the per-post LRU the
-  structured endpoint shares), and pages the same way — 20 per page with a "Load more" driven
+  full structured payload per activity **and article** post (through the per-post cache the
+  structured endpoint shares, keyed on the post's `updated_at`, expiring after an hour and
+  bounded by the payloads' total size), and pages the same way — 20 per page with a "Load more" driven
   by `next_cursor` (#1055) — so visitors see the identical native card and can reach every
   public post. An article renders from that server-resolved payload for a visitor (the same
   `TimelineArticle` a follower's timeline uses), since its live chart/correlation blocks fetch

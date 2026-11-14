@@ -1,4 +1,8 @@
-import type { DataSchemaDefinition } from '@aurboda/api-spec'
+import type {
+  ActivityTypeDefinitionResponse,
+  DataSchemaDefinition,
+  MergeActivityTypeResponse,
+} from '@aurboda/api-spec'
 
 import axios from 'axios'
 
@@ -18,10 +22,11 @@ export const fetchActivityTypeDefinitions = async (): Promise<ActivityTypeDefini
 
 export const addActivityTypeDefinition = async (body: {
   name: string
-  display_name: string
-  display_category: string
+  display_name?: string
+  display_category?: string
   color?: string
   icon?: string
+  separate_type?: boolean
   show_on_timeline?: boolean
 }): Promise<ActivityTypeDefinition> => {
   const { token } = auth.value
@@ -80,12 +85,25 @@ export const renameActivityType = async (
 export const mergeActivityTypeApi = async (
   source: string,
   target: string,
-): Promise<{ success: boolean; activities_reassigned?: number; deduction_rules_updated?: number }> => {
+  setData?: Record<string, unknown>,
+): Promise<MergeActivityTypeResponse> => {
   const { token } = auth.value
-  const response = await axios.post<{
-    success: boolean
-    activities_reassigned?: number
-    deduction_rules_updated?: number
-  }>(`${API_URL}/activity-types/merge`, { source, target }, { headers: { Authorization: `Bearer ${token}` } })
+  const response = await axios.post<MergeActivityTypeResponse>(
+    `${API_URL}/activity-types/merge`,
+    { source, target, ...(setData ? { set_data: setData } : {}) },
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
   return response.data
+}
+
+/** Appends the built-in catalogue fields the type lacks; answers with the updated definition. */
+export const addCatalogFieldsToActivityType = async (name: string): Promise<ActivityTypeDefinition> => {
+  const { token } = auth.value
+  const response = await axios.post<ActivityTypeDefinitionResponse>(
+    `${API_URL}/activity-types/${encodeURIComponent(name)}/catalog-fields`,
+    {},
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  if (!response.data.data) throw new Error('The server answered without the updated type')
+  return response.data.data
 }

@@ -3,6 +3,7 @@
  * every URL comparison keys off) and parsed, and — with the network and the
  * database mocked — how a host is discovered, joined and left.
  */
+import { canonicalChallengeUrl, parseChallengeUrl } from '@aurboda/api-spec'
 import { AxiosError, AxiosHeaders } from 'axios'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
@@ -38,12 +39,10 @@ vi.mock('../db/index.ts', async (importOriginal) => ({
 const safeFetch = await import('./safe-fetch.ts')
 const db = await import('../db/index.ts')
 const {
-  canonicalChallengeUrl,
   discoverInstance,
   JoinChallengeError,
   joinChallenge,
   leaveChallenge,
-  parseChallengeUrl,
   parsePublicChallenge,
   previewChallenge,
   specFromChallengeDocument,
@@ -569,6 +568,44 @@ describe('previewChallenge', () => {
     await expect(
       previewChallenge({ challengeUrl: 'https://qs.example/u/freja/nov', webHost }),
     ).rejects.toMatchObject({ kind: 'federation', message: 'This instance cannot score tracker:pushups' })
+  })
+
+  test('refuses an Aurboda-protocol challenge whose measure this instance cannot score', async () => {
+    routeGets({
+      '/.well-known/aurboda': aurbodaWellKnown,
+      '/public/freja/nov': {
+        challenge: {
+          end_ts: '2026-11-30T23:00:00.000Z',
+          host_identity: 'https://qs.example/u/freja',
+          join_token: 'jt',
+          members: [],
+          name: 'November distance',
+          profile_url: 'https://qs.example/u/freja',
+          share_url: 'https://qs.example/u/freja/nov',
+          spec: {
+            aggregation: 'max',
+            bucket_size: 'auto',
+            measure: 'max_distance',
+            pattern: 'running',
+            source_type: 'activity_type',
+            unit: 'km',
+          },
+          start_ts: '2026-10-31T23:00:00.000Z',
+          timezone: 'Europe/Stockholm',
+          visibility: 'public',
+        },
+        success: true,
+        type: 'challenge',
+      },
+    })
+    await expect(
+      previewChallenge({ challengeUrl: 'https://qs.example/u/freja/nov', webHost }),
+    ).rejects.toMatchObject({
+      kind: 'federation',
+      message:
+        "Your instance does not support this challenge's measure (max_distance); update Aurboda to join",
+    })
+    expect(db.createChallengeParticipation).not.toHaveBeenCalled()
   })
 
   test('refuses a host whose window is not a date', async () => {

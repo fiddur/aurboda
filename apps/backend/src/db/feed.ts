@@ -175,28 +175,53 @@ interface FeedPostRow {
 
 const mapFeedPost = (row: FeedPostRow): FeedPostRecord => ({ ...row })
 
+const ACTIVITY_POST_COLUMNS =
+  'activity_id, included_metrics, series_metrics, visibility, include_map, include_chart, include_exercises, message, autoshare_rule_id, tags'
+
+const activityPostParams = (input: FeedPostInput): unknown[] => [
+  input.activity_id,
+  input.included_metrics,
+  input.series_metrics,
+  input.visibility,
+  input.include_map,
+  input.include_chart,
+  input.include_exercises ?? false,
+  input.message ?? null,
+  input.autoshare_rule_id ?? null,
+  input.tags ?? [],
+]
+
 export const createFeedPost = async (user: string, input: FeedPostInput): Promise<FeedPostRecord> => {
   const result = await query<FeedPostRow>(
     user,
-    `INSERT INTO feed_posts
-       (activity_id, included_metrics, series_metrics, visibility, include_map, include_chart, include_exercises,
-        message, autoshare_rule_id, tags)
+    `INSERT INTO feed_posts (${ACTIVITY_POST_COLUMNS})
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      RETURNING ${FEED_POST_COLUMNS}`,
-    [
-      input.activity_id,
-      input.included_metrics,
-      input.series_metrics,
-      input.visibility,
-      input.include_map,
-      input.include_chart,
-      input.include_exercises ?? false,
-      input.message ?? null,
-      input.autoshare_rule_id ?? null,
-      input.tags ?? [],
-    ],
+    activityPostParams(input),
   )
   return mapFeedPost(result.rows[0])
+}
+
+/**
+ * `createFeedPost` unless any of `suppressedIds` is in `autoshare_suppressions`, checked in the
+ * insert itself so that a "Don't share" stored before the statement runs always wins. Null when
+ * one was.
+ */
+export const createFeedPostUnlessSuppressed = async (
+  user: string,
+  input: FeedPostInput,
+  suppressedIds: string[],
+): Promise<FeedPostRecord | null> => {
+  const result = await query<FeedPostRow>(
+    user,
+    `INSERT INTO feed_posts (${ACTIVITY_POST_COLUMNS})
+     SELECT $1::uuid, $2::text[], $3::text[], $4::varchar, $5::boolean, $6::boolean, $7::boolean, $8::text,
+            $9::uuid, $10::text[]
+     WHERE NOT EXISTS (SELECT 1 FROM autoshare_suppressions WHERE activity_id = ANY($11::uuid[]))
+     RETURNING ${FEED_POST_COLUMNS}`,
+    [...activityPostParams(input), suppressedIds],
+  )
+  return result.rows[0] ? mapFeedPost(result.rows[0]) : null
 }
 
 /**
@@ -596,9 +621,6 @@ export const deleteFeedPostWithQuotes = async (
         ],
   )
 }
-
-export const deleteFeedPost = async (user: string, id: string): Promise<boolean> =>
-  (await deleteFeedPostWithQuotes(user, id)) != null
 
 /**
  * The tombstone for a deleted public/unlisted post, or null if the id was never

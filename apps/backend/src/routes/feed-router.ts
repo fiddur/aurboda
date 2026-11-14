@@ -83,6 +83,7 @@ import {
 } from '../services/article-drafts.ts'
 import { buildArticleMarkdown, renderableArticleBlocks } from '../services/article-export.ts'
 import { mergeArticleContent, validateArticleContent } from '../services/article.ts'
+import { autoshareSharedByHand } from '../services/autoshare-pending.ts'
 import { resolveChallengeShare } from '../services/challenge-share.ts'
 import {
   dashboardShareTags,
@@ -494,6 +495,7 @@ export const createFeedRouter = (
       })
       // Fan the post out to followers (best-effort; never blocks the response).
       deliver?.created(user, record, activity)
+      await autoshareSharedByHand(user, record, activity.activity_type)
       res.json({
         post: await serializeFeedPost(user, record, { includeStructured: true, webHost }),
         success: true,

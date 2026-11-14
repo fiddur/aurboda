@@ -11,13 +11,14 @@ import {
   metricUnits,
 } from '../schema.ts'
 import { dayKey, dayStartInTz, shiftDayKey } from '../services/day-keys.ts'
+import { singleLiftExerciseName, singleLiftTypeForHealthConnect } from '../services/single-lift-types.ts'
 
-/** Exercise type codes that remain as generic 'exercise' (UNKNOWN=0, OTHER_WORKOUT=2). */
-const GENERIC_EXERCISE_CODES = new Set([0, 2])
+const EXERCISE_TYPE_OTHER_WORKOUT = 0
 
 const resolveExerciseActivityType = (data: Record<string, unknown>): string => {
   const exerciseType = data.exerciseType as number | undefined
-  if (exerciseType === undefined || GENERIC_EXERCISE_CODES.has(exerciseType)) return 'exercise'
+  if (exerciseType === undefined || exerciseType === EXERCISE_TYPE_OTHER_WORKOUT) return 'exercise'
+  if (singleLiftTypeForHealthConnect(exerciseType)) return 'strength_training'
   return getExerciseTypeName(exerciseType) ?? 'exercise'
 }
 
@@ -31,6 +32,13 @@ const stripExerciseTypeFromData = (data: Record<string, unknown>): Record<string
   if (!('exerciseType' in data) && !('exerciseTypeName' in data)) return data
   const { exerciseType: _et, exerciseTypeName: _etn, ...rest } = data
   return rest
+}
+
+/** A session of an early-alpha single-lift type (#1651) becomes one set of a strength session. */
+const singleLiftSets = (data: Record<string, unknown>): { sets?: { exercise: string }[] } => {
+  const typeName = singleLiftTypeForHealthConnect(data.exerciseType)
+  const exercise = typeName && singleLiftExerciseName(typeName)
+  return exercise ? { sets: [{ exercise }] } : {}
 }
 
 /** Waking Up writes the text "null" as the notes of a session that has none (#1349). */
@@ -75,7 +83,7 @@ import { pushAll } from '../utils.ts'
 import { adoptLegacyActivity, insertActivities, insertActivity } from './activities/index.ts'
 import { query, withUserTransaction } from './connection.ts'
 import { insertMeal } from './meals.ts'
-import { deleteNotesForEntitiesIn, upsertSyncedNote } from './notes.ts'
+import { deleteNotesForEntitiesIn, upsertSyncedNote, upsertSyncedNoteIn } from './notes.ts'
 import { insertRawRecord, insertRawRecords } from './raw-records.ts'
 import { insertTimeSeries } from './time-series.ts'
 
@@ -100,7 +108,7 @@ const storeHealthConnectActivity = async (
   if (identity) await adoptForIdentity(user, identity, activityType, startTime)
   const activityId = await insertActivity(user, {
     activity_type: activityType,
-    data: { ...stripExerciseTypeFromData(data), ...identity?.data },
+    data: { ...stripExerciseTypeFromData(data), ...singleLiftSets(data), ...identity?.data },
     end_time: endTime,
     external_id: identity?.external_id,
     source: identity?.source ?? 'health_connect',
@@ -247,7 +255,7 @@ export const processHealthConnectBatch = async (
       if (identity) identified.push({ activityType: resolvedType, identity, startTime })
       activities.push({
         activity_type: resolvedType,
-        data: { ...stripExerciseTypeFromData(data), ...identity?.data },
+        data: { ...stripExerciseTypeFromData(data), ...singleLiftSets(data), ...identity?.data },
         end_time: endTime,
         external_id: identity?.external_id,
         source: identity?.source ?? 'health_connect',
@@ -297,21 +305,23 @@ export const processHealthConnectBatch = async (
         if (row.external_id) idByExternalId.set(row.external_id, row.id)
         idByTypeStart.set(`${row.activity_type}|${row.start_time.toISOString()}`, row.id)
       }
-      for (const note of activityNotes) {
-        const id =
-          (note.externalId && idByExternalId.get(note.externalId)) ??
-          idByTypeStart.get(`${note.activityType}|${note.startTime.toISOString()}`)
-        if (!id) continue
-        await upsertSyncedNote(
-          user,
-          'activity',
-          id,
-          'health_connect',
-          note.content,
-          note.startTime,
-          note.endTime,
-        )
-      }
+      await withUserTransaction(user, async (tx) => {
+        for (const note of activityNotes) {
+          const id =
+            (note.externalId && idByExternalId.get(note.externalId)) ??
+            idByTypeStart.get(`${note.activityType}|${note.startTime.toISOString()}`)
+          if (!id) continue
+          await upsertSyncedNoteIn(
+            tx,
+            'activity',
+            id,
+            'health_connect',
+            note.content,
+            note.startTime,
+            note.endTime,
+          )
+        }
+      })
     }
   }
 

@@ -2,7 +2,7 @@
 
 Training Load uses the Banister impulse-response model to track your fitness, fatigue, and form over time. It turns individual workouts into a continuous picture of your training state -- are you building fitness, accumulating too much fatigue, or in a balanced recovery zone?
 
-The training load track appears on the Timeline in horizontal mode. It's also available via the API and MCP tools for AI-driven analysis.
+It has its own page, **Training load** (`/training-load`, in the navigation and in the Android app's More hub), and also appears as a track on the Timeline in horizontal mode. It's available via the API (`GET /training-load`) and the `get_training_load` MCP tool for AI-driven analysis.
 
 ## Key Concepts
 
@@ -28,7 +28,7 @@ Shown as a **line** that's green above zero and red below, with a dashed zero re
 
 A per-workout load score computed from heart rate intensity and duration. Harder, longer workouts produce higher TRIMP. The formula accounts for the exponential nature of training stress -- time at high heart rates contributes disproportionately more than time at low heart rates.
 
-When heart rate data isn't available for a workout, TRIMP defaults to a simple duration-based estimate.
+When a workout has no usable heart rate (none recorded during it, or an average at or below your resting HR), its TRIMP is a duration-based estimate instead: 0.5 per minute. The estimate feeds CTL, ATL and TSB like a measured value, so the API marks it: every workout has a `trimp_basis` (`hr` or `duration_estimate`), and the response's `estimated_impulse` counts the estimated workouts in the requested range and their share of the workout TRIMP (`estimated_share`, 0 to 1). A high share means fitness and fatigue are mostly guessed. The share covers the workouts in the range; CTL also carries load from the weeks before it.
 
 ### Activity Impulse
 
@@ -47,6 +47,19 @@ Once you have about 6 weeks of training data, recovery zones appear as colored h
 
 Zone boundaries are based on your average CTL: balanced is 0.8x to 1.3x, strained is 1.3x to 1.7x, very strained is above 1.7x.
 
+## The Training Load Page
+
+`/training-load` shows the last 30, 90 (default), 180 or 365 days in daily buckets:
+
+- **Current form**: Fresh or Fatigued from the latest TSB, with how far fitness and fatigue are apart, the current recovery zone and what it means, and the latest fitness (CTL), fatigue (ATL) and form (TSB).
+- **Notes**: a bootstrapping note during the first ~6 weeks, and, when some workouts had no usable heart rate, how many were estimated from duration and their share of the TRIMP (`estimated_impulse`).
+- **Fitness, fatigue and form chart**: CTL as a blue area (dashed while bootstrapping), ATL as an orange line and TSB as a line that is green above zero and red below. Hovering (or dragging on a phone) shows the values of a day below the chart; otherwise it shows the latest day.
+- **Recovery zones**: a strip of the zone each day was in (from its ATL against the zone thresholds), with the first and last date. Before the zones exist it says why.
+- **Workouts**: newest first, with date, title (linked to the activity), duration, average HR and TRIMP with a bar relative to the range's largest TRIMP. A TRIMP estimated from duration is marked `*`. The newest 20 show until **Show all** is pressed.
+- **Time constants**: the ATL and CTL time constants in use, linking to the Training load section of Settings.
+
+The Android app opens the same page embedded from its More hub.
+
 ## The Timeline Track
 
 In horizontal mode, the training load track shows within the Metrics lane:
@@ -57,7 +70,7 @@ In horizontal mode, the training load track shows within the Metrics lane:
 - **TSB line**: Green when fresh, red when fatigued.
 - **Recovery zone bands**: Colored backgrounds (after bootstrapping).
 
-Hovering shows a tooltip with fitness (CTL), fatigue (ATL), form (TSB with Fresh/Fatigued label), impulse values, recovery zone, and details of nearby workouts (title, duration, TRIMP, average HR).
+Hovering shows a tooltip with fitness (CTL), fatigue (ATL), form (TSB with Fresh/Fatigued label), impulse values, recovery zone, and details of nearby workouts (title, duration, TRIMP, average HR, or "estimated from duration" when the TRIMP is a duration estimate).
 
 ## Bootstrapping Period
 
@@ -71,7 +84,7 @@ This is because the 42-day CTL time constant needs approximately 42 days of data
 
 ## Configuration
 
-Training load settings can be adjusted in user settings:
+The ATL and CTL time constants can be set in **Settings → Training load** (`/settings#training-load`; leave a field empty for the default). All of these settings can be set through the API (`PATCH /user/settings`, `training_load`, which replaces the whole object) and the `update_user_settings` MCP tool:
 
 | Setting                    | Default       | Description                                                                                                                                     |
 | -------------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -98,7 +111,6 @@ Training load works with just exercise sessions (using duration fallback), but i
 
 ## Known Limitations
 
-- There is **no dedicated Training Load page** -- it only appears as a track on the Timeline in horizontal mode. (See issue #381 for a planned dedicated page.)
 - Recovery zones require ~6 weeks of exercise data and a meaningful average CTL. Users who train infrequently may never see zones.
 - The TRIMP formula assumes a specific relationship between heart rate and metabolic load. Individual variations (e.g., cardiac drift, heat, altitude) are not accounted for.
 - Activity impulse from calories is a rough proxy for training stress. It doesn't distinguish between easy and hard non-workout activity.

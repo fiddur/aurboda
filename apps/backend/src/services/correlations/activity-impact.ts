@@ -12,6 +12,7 @@ import {
   IMPACT_FIXED_DIMENSIONS,
   MAX_IMPACT_DIMENSION_GROUPS,
   MAX_IMPACT_GROUPS,
+  type WindowEffect,
 } from '@aurboda/api-spec'
 
 import type { MergedActivity } from '../../db/types.ts'
@@ -21,10 +22,16 @@ import type { ActivityImpactResult } from './types.ts'
 import {
   expandActivityTypes,
   getActivityTypeDefinitions,
+  getBinnedTimeSeries,
   getEffectiveActivitiesInRange,
   getProductivity,
-  getTimeSeries,
 } from '../../db/index.ts'
+import {
+  flaggedExclusion,
+  loadFlaggedWindows,
+  seriesWithoutFlagged,
+  withoutFlagged,
+} from '../flagged-windows.ts'
 import { getPlaceVisits } from '../locations.ts'
 import { getUserTimezone } from '../settings.ts'
 import { triggerCorrelationSyncs } from './background-sync.ts'
@@ -43,8 +50,8 @@ import {
 } from './impact-dimensions.ts'
 import {
   activityInterval,
-  binExtraSeries,
-  binMetricSeries,
+  adjustEffects,
+  BIN_MINUTES,
   clampWindowMinutes,
   extendByWindow,
   extraMetricKeys,
@@ -154,7 +161,11 @@ interface SliceSources {
   tz: string
 }
 
-/** Activities over the period, or, when sleep is needed, a day and a window further back and a window further on. */
+/**
+ * Activities over the period and, when sleep is needed, sleeps from a day and a window further back
+ * to a window further on. The two are separate reads so that a cross-source merge group straddling
+ * the period's start folds the same way whether or not sleep is asked for.
+ */
 const loadSliceSources = async (
   user: string,
   activity: string,
@@ -166,29 +177,26 @@ const loadSliceSources = async (
 ): Promise<SliceSources> => {
   const sleep = wantsDimension(slicing, 'sleep')
   const windowMs = windowMinutes * MINUTE_MS
-  const fetchActivities = sleep
-    ? getEffectiveActivitiesInRange(
-        user,
-        new Date(range.start.getTime() - windowMs - DAY_MS),
-        new Date(range.end.getTime() + windowMs),
-      )
-    : isActivityKind(activityType)
+  const [activities, around, sleepTypes, tz, definitions] = await Promise.all([
+    isActivityKind(activityType)
       ? getEffectiveActivitiesInRange(user, range.start, range.end)
-      : Promise.resolve(undefined)
-  const [activities, sleepTypes, tz, definitions] = await Promise.all([
-    fetchActivities,
+      : Promise.resolve(undefined),
+    sleep
+      ? getEffectiveActivitiesInRange(
+          user,
+          new Date(range.start.getTime() - windowMs - DAY_MS),
+          new Date(range.end.getTime() + windowMs),
+        )
+      : Promise.resolve([]),
     sleep ? expandActivityTypes(user, ['sleep', 'nap']) : Promise.resolve([]),
     wantsDimension(slicing, 'time_of_day') ? (slicing.tz ?? getUserTimezone(user)) : 'UTC',
     needsDefinitions(slicing, activityType) ? getActivityTypeDefinitions(user) : Promise.resolve([]),
   ])
   const analysed = isActivityKind(activityType) ? activityMatcher(activity, match) : () => false
-  const sleeps = (activities ?? [])
+  const sleeps = around
     .filter((act) => sleepTypes.includes(act.activity_type) && !analysed(act))
     .map(activityInterval)
-  const inRange = sleep
-    ? activities?.filter((act) => act.start_time >= range.start && act.start_time <= range.end)
-    : activities
-  return { activities: inRange, definition: definitions.find((d) => d.name === activity), sleeps, tz }
+  return { activities, definition: definitions.find((d) => d.name === activity), sleeps, tz }
 }
 
 interface Analysis {
@@ -221,6 +229,15 @@ const metricEffects = (analysis: Analysis, extraMetrics: string[]) =>
         ),
       }
     : {}
+
+type EffectsOf = Pick<ImpactGroup, 'hr_effect' | 'hrv_effect' | 'metric_effects' | 'stress_effect'>
+
+const groupEffects = (slice: EffectsOf): WindowEffect[] => [
+  slice.hrv_effect,
+  slice.hr_effect,
+  slice.stress_effect,
+  ...Object.values(slice.metric_effects ?? {}),
+]
 
 interface Slices {
   selected?: number[]
@@ -300,6 +317,7 @@ export async function getActivityImpact(
   match: ActivityImpactMatch = 'contains',
   requestedExtras: string[] = [],
   slicing: ImpactSlicing = {},
+  options: { excludeFlagged?: boolean } = {},
 ): Promise<ActivityImpactResult> {
   const { end, start } = until ? explicitRange(until, periodDays, since) : rangeEndingToday(periodDays)
   const window = clampWindowMinutes(windowMinutes)
@@ -310,28 +328,34 @@ export async function getActivityImpact(
   triggerCorrelationSyncs(sync, user)
 
   const { seriesEnd, seriesStart } = extendByWindow(start, end, window)
-  const [hrvData, hrData, stressData, extraData, sources] = await Promise.all([
-    getTimeSeries(user, 'hrv_rmssd', seriesStart, seriesEnd),
-    getTimeSeries(user, 'heart_rate', seriesStart, seriesEnd),
-    getTimeSeries(user, 'stress_level', seriesStart, seriesEnd),
-    Promise.all(extraMetrics.map((metric) => getTimeSeries(user, metric, seriesStart, seriesEnd))),
+  const binned = (metric: string) => getBinnedTimeSeries(user, metric, seriesStart, seriesEnd, BIN_MINUTES)
+  const [hrv, hr, stress, extraData, sources, flagged] = await Promise.all([
+    binned('hrv_rmssd'),
+    binned('heart_rate'),
+    binned('stress_level'),
+    Promise.all(extraMetrics.map(binned)),
     loadSliceSources(user, activity, activityType, match, { end, start }, window, slicing),
+    loadFlaggedWindows(user, seriesStart, seriesEnd, options.excludeFlagged),
   ])
 
-  const occurrences = await findOccurrences(
-    user,
-    activity,
-    activityType,
-    match,
-    start,
-    end,
-    sources.activities,
+  const found = withoutFlagged(
+    await findOccurrences(user, activity, activityType, match, start, end, sources.activities),
+    (o) => o.start,
+    flagged,
   )
+  const occurrences = found.kept
   const sessions = mergeIntoSessions(occurrences)
-  const series: MetricSeries = {
-    ...binExtraSeries(Object.fromEntries(extraMetrics.map((metric, i) => [metric, extraData[i]]))),
-    ...binMetricSeries(hrvData, hrData, stressData),
-  }
+  const binnedSeries = seriesWithoutFlagged<MetricSeries>(
+    {
+      ...Object.fromEntries(extraMetrics.map((metric, i) => [metric, extraData[i]])),
+      hr,
+      hrv,
+      stress,
+    },
+    flagged,
+  )
+  const series = binnedSeries.kept
+  const excludedPoints = found.excluded + binnedSeries.excluded
   const analyseGroup = ({ indices, key, label }: GroupSelection): ImpactGroup => {
     const analysis = analyse(sessions, series, window, extraMetrics, indices)
     return {
@@ -356,20 +380,41 @@ export async function getActivityImpact(
   )
   const overall = analyse(sessions, series, window, extraMetrics, selected)
   const { buckets, effects, timeline } = overall.summary
+  const { adjust, comparisons } = adjustEffects([
+    ...Object.values(effects),
+    ...(breakdown?.groups ?? []).flatMap(groupEffects),
+  ])
+  const adjustEffectsOf = <Slice extends EffectsOf>(slice: Slice): Slice => ({
+    ...slice,
+    hr_effect: adjust(slice.hr_effect),
+    hrv_effect: adjust(slice.hrv_effect),
+    ...(slice.metric_effects
+      ? {
+          metric_effects: Object.fromEntries(
+            Object.entries(slice.metric_effects).map(([metric, effect]) => [metric, adjust(effect)]),
+          ),
+        }
+      : {}),
+    stress_effect: adjust(slice.stress_effect),
+  })
 
   return {
     activity,
     activity_type: activityType,
     avg_duration_min: overall.avg_duration_min,
-    ...(breakdown ? { breakdown } : {}),
+    ...(breakdown ? { breakdown: { ...breakdown, groups: breakdown.groups.map(adjustEffectsOf) } } : {}),
+    comparisons,
     ...(dimensions ? { dimensions } : {}),
-    hr_effect: effects.hr,
+    ...flaggedExclusion(flagged, { excluded_points: excludedPoints }),
+    ...adjustEffectsOf({
+      hr_effect: effects.hr,
+      hrv_effect: effects.hrv,
+      ...metricEffects(overall, extraMetrics),
+      stress_effect: effects.stress,
+    }),
     hr_timeline: timeline.hr,
-    hrv_effect: effects.hrv,
     hrv_timeline: timeline.hrv,
-    ...metricEffects(overall, extraMetrics),
     occurrences: overall.occurrences,
-    stress_effect: effects.stress,
     stress_timeline: timeline.stress,
     timeline: buckets,
     total_occurrences: sessions.length,

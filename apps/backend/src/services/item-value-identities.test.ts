@@ -43,6 +43,7 @@ const catalog: StoredExerciseCatalog = {
   sources: {
     bodybuild: { commit: 'a', license: 'AGPL-3.0', url: 'u' },
     free_exercise_db: { commit: 'b', license: 'Unlicense', url: 'u' },
+    garmin_connect: { fetched: '2026-11-13', names_url: 'n', url: 'u' },
   },
   version: '2026.11.0',
 }
@@ -263,5 +264,19 @@ describe('applyItemValueKeysForWrite', () => {
       'sets.exercise',
       2000,
     )
+  })
+
+  test('uses a schema it is given for a type that is not stored yet', async () => {
+    vi.mocked(db.getActivityTypeDefinition).mockResolvedValue(null)
+    vi.mocked(db.expandActivityTypes).mockResolvedValue(['not_stored_yet'])
+    vi.mocked(db.listItemValueIdentities).mockResolvedValue([])
+    vi.mocked(db.getActivityFieldValues).mockResolvedValue([])
+    const keyed = { sets: [{ exercise: 'Squats', exercise_key: 'barbell_squat' }] }
+
+    expect(await applyItemValueKeysForWrite('tester', 'not_stored_yet', keyed, schema)).toMatchObject({
+      success: true,
+    })
+    expect(db.getActivityTypeDefinition).not.toHaveBeenCalled()
+    expect(db.listItemValueIdentities).toHaveBeenCalledWith('tester', 'sets.exercise')
   })
 })

@@ -32,7 +32,7 @@ import {
   createArticlePost,
   createFeedPost,
   createReplyPost,
-  deleteFeedPost,
+  deleteFeedPostWithQuotes,
   type FeedPostInput,
   getFeedTombstone,
   listPublicFeedPostsPage,
@@ -56,6 +56,7 @@ import {
   ingestNoteForRecipient,
 } from './federation.ts'
 import { dateToTemporalInstant } from './temporal-interop.ts'
+import { createAurbodaEnricher } from './timeline-enrich.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 const ORIGIN = 'https://aurboda.example'
@@ -406,6 +407,54 @@ describe('Feed federation actor + WebFinger', () => {
     )
     // The public /series endpoint would 404 a followers-only post, so no links.
     expect(doc.object?.['quant:series']).toBeUndefined()
+  })
+
+  test('a followers-only post without images gets its native chart on the receiving instance (#1223)', async () => {
+    const user = getTestUser()
+    const actorUri = `${ORIGIN}/users/${user}`
+    await upsertFeedFollowing(user, { actor_uri: actorUri, inbox_uri: `${actorUri}/inbox` })
+    await markFeedFollowingAccepted(user, actorUri)
+    const post = await sharePost(user, await insertExercise(user), { visibility: 'followers' })
+    const ctx = await fed.createContext(new URL(ORIGIN))
+    const built = await buildFeedCreate(
+      ctx,
+      user,
+      post,
+      {
+        activity_type: 'exercise',
+        end_time: new Date('2026-07-01T07:11:00Z'),
+        start_time: new Date('2026-07-01T06:30:00Z'),
+        title: 'Morning run',
+      },
+      `${ORIGIN}/api`,
+    )
+    const wire = (await built.toJsonLd({ format: 'compact' })) as { object: Record<string, unknown> }
+    expect(wire.object.attachment).toBeUndefined()
+
+    const tokens: (string | undefined)[] = []
+    const realEnrich = createAurbodaEnricher(ORIGIN)
+    const enrich = (objectUri: string, token?: string) => {
+      tokens.push(token)
+      return realEnrich(objectUri, token)
+    }
+    const deliver = async (doc: unknown) => {
+      // Parsed from the received JSON like Fedify's inbox does, so the typed Note lacks the quant terms.
+      const create = await Create.fromJsonLd(doc, {
+        contextLoader: ctx.contextLoader,
+        documentLoader: ctx.documentLoader,
+      })
+      await handleInboundCreate(inboxContext(fed, ORIGIN, user), create, ORIGIN, undefined, enrich)
+      const [entry] = await listTimelineEntries(user, 10)
+      return entry
+    }
+
+    const withoutToken = { ...wire, object: { ...wire.object, 'quant:structuredUrl': undefined } }
+    expect((await deliver(JSON.parse(JSON.stringify(withoutToken)))).structured).toBeNull()
+    expect(tokens).toEqual([undefined])
+
+    const entry = await deliver(wire)
+    expect(tokens).toEqual([undefined, post.image_token])
+    expect(entry.structured).toMatchObject({ activityType: 'exercise', kind: 'activity' })
   })
 
   test("an activity Note carries the post's Hashtags and links them in its content", async () => {
@@ -774,7 +823,7 @@ describe('Feed federation actor + WebFinger', () => {
   test('a browser opening a deleted post id is redirected; a machine client still gets the 410 (#1418)', async () => {
     const user = getTestUser()
     const post = await sharePost(user, await insertExercise(user))
-    await deleteFeedPost(user, post.id)
+    await deleteFeedPostWithQuotes(user, post.id)
     const app = buildActorApp([user])
     const html = await supertest(app).get(`/users/${user}/feed/${post.id}`).set('Accept', 'text/html')
     expect(html.status).toBe(302)
@@ -809,7 +858,7 @@ describe('Feed federation actor + WebFinger', () => {
     expect(live.status).toBe(200)
 
     // Unshare, then the same id returns 410 Gone with a Tombstone at the same id.
-    await deleteFeedPost(user, post.id)
+    await deleteFeedPostWithQuotes(user, post.id)
     const gone = await getObject(app, `/users/${user}/feed/${post.id}`)
     expect(gone.status).toBe(410)
     expect(gone.type).toBe('application/activity+json')
@@ -833,7 +882,7 @@ describe('Feed federation actor + WebFinger', () => {
     expect(live.body.type).toBe('Note')
 
     // Unshare, then the same id returns 410 Gone with a Tombstone.
-    await deleteFeedPost(user, post.id)
+    await deleteFeedPostWithQuotes(user, post.id)
     const gone = await getObject(app, notePath)
     expect(gone.status).toBe(410)
     expect(gone.body.type).toBe('Tombstone')
@@ -846,7 +895,7 @@ describe('Feed federation actor + WebFinger', () => {
     const post = await sharePost(user, activityId, { visibility: 'followers' })
     const app = buildFederatedApp()
 
-    await deleteFeedPost(user, post.id)
+    await deleteFeedPostWithQuotes(user, post.id)
     expect(await getFeedTombstone(user, post.id)).toBeNull()
     const res = await getObject(app, `/users/${user}/feed/${post.id}`)
     expect(res.status).toBe(404)

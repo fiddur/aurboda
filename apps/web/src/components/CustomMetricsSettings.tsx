@@ -1,4 +1,4 @@
-import type { MetricAggregation } from '@aurboda/api-spec'
+import type { MetricAggregation, MetricBetter } from '@aurboda/api-spec'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
@@ -10,7 +10,13 @@ import {
   updateCustomMetric,
   type CustomMetricDefinition,
 } from '../state/api'
-import { METRIC_KIND_OPTIONS, metricKindLabel } from '../utils/metric-kind'
+import {
+  METRIC_BETTER_OPTIONS,
+  METRIC_KIND_OPTIONS,
+  metricBetterLabel,
+  metricBetterOf,
+  metricKindLabel,
+} from '../utils/metric-kind'
 import { ConfirmButton } from './ConfirmButton'
 import { SettingsSection } from './SettingsSection'
 
@@ -29,11 +35,13 @@ const CustomMetricRow = ({
   const [minValue, setMinValue] = useState(metric.min_value?.toString() ?? '')
   const [maxValue, setMaxValue] = useState(metric.max_value?.toString() ?? '')
   const [aggregation, setAggregation] = useState<MetricAggregation>(metric.aggregation ?? 'avg')
+  const [better, setBetter] = useState<MetricBetter>(metricBetterOf(metric))
 
   const updateMutation = useMutation({
     mutationFn: () =>
       updateCustomMetric(metric.name, {
         aggregation,
+        better,
         description: description || undefined,
         max_value: maxValue ? parseFloat(maxValue) : null,
         min_value: minValue ? parseFloat(minValue) : null,
@@ -102,6 +110,18 @@ const CustomMetricRow = ({
                 </option>
               ))}
             </select>
+            <select
+              value={better}
+              onChange={(e) => setBetter((e.target as HTMLSelectElement).value as MetricBetter)}
+              class="custom-metric-input wide"
+              aria-label="Better"
+            >
+              {METRIC_BETTER_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
         <div class="custom-metric-actions">
@@ -127,6 +147,7 @@ const CustomMetricRow = ({
         <span class="custom-metric-name">{metric.name}</span>
         <span class="custom-metric-unit">{metric.unit}</span>
         <span class="custom-metric-kind">{metricKindLabel(metric.aggregation)}</span>
+        <span class="custom-metric-kind">{metricBetterLabel(metric.better)}</span>
         {metric.description && <span class="custom-metric-desc">{metric.description}</span>}
         {(metric.min_value !== undefined || metric.max_value !== undefined) && (
           <span class="custom-metric-range">
@@ -159,6 +180,7 @@ export function CustomMetricsSettings() {
   const [newMinValue, setNewMinValue] = useState('')
   const [newMaxValue, setNewMaxValue] = useState('')
   const [newAggregation, setNewAggregation] = useState<MetricAggregation>('avg')
+  const [newBetter, setNewBetter] = useState<MetricBetter>('neutral')
 
   const { data: metrics } = useQuery({
     queryFn: fetchCustomMetrics,
@@ -174,10 +196,12 @@ export function CustomMetricsSettings() {
     mutationFn: () =>
       addCustomMetric({
         aggregation: newAggregation,
+        better: newBetter,
         ...(newDescription ? { description: newDescription } : {}),
         ...(newMaxValue ? { max_value: parseFloat(newMaxValue) } : {}),
         ...(newMinValue ? { min_value: parseFloat(newMinValue) } : {}),
         name: newName,
+        separate_metric: true,
         unit: newUnit,
       }),
     onSuccess: () => {
@@ -187,6 +211,7 @@ export function CustomMetricsSettings() {
       setNewMinValue('')
       setNewMaxValue('')
       setNewAggregation('avg')
+      setNewBetter('neutral')
       invalidate()
     },
   })
@@ -257,6 +282,18 @@ export function CustomMetricsSettings() {
             aria-label="Kind"
           >
             {METRIC_KIND_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+          <select
+            value={newBetter}
+            onChange={(e) => setNewBetter((e.target as HTMLSelectElement).value as MetricBetter)}
+            class="custom-metric-input wide"
+            aria-label="Better"
+          >
+            {METRIC_BETTER_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>
                 {opt.label}
               </option>

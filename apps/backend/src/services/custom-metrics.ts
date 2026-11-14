@@ -1,6 +1,16 @@
-import type { CustomMetricDefinition, MetricAggregation } from '@aurboda/api-spec'
+import type {
+  AddCustomMetricBody,
+  CustomMetricDefinition,
+  MetricAggregation,
+  MetricBetter,
+  MetricCatalogResult,
+  StoredMetricCatalog,
+} from '@aurboda/api-spec'
+
+import { sameUnit } from '@aurboda/api-spec'
 
 import {
+  adoptCatalogMetric,
   type CustomMetricDefinitionUpdates,
   deleteCustomMetricDefinition,
   deleteTimeSeriesMetric,
@@ -9,9 +19,18 @@ import {
   getCustomMetricDefinitions,
   insertCustomMetricDefinition,
   mergeCustomMetric,
+  type Queryable,
   updateCustomMetricDefinition,
+  withUserTransaction,
 } from '../db/index.ts'
 import { isValidMetric, metricUnits, type MetricType } from '../schema.ts'
+import {
+  findCatalogMetric,
+  getCatalogMetric,
+  loadMetricCatalog,
+  searchMetricCatalog,
+  toMetricCatalogEntry,
+} from './metric-catalog.ts'
 
 export interface CustomMetricResult {
   success: boolean
@@ -27,6 +46,7 @@ export interface DeleteCustomMetricResult {
 
 export interface UpdateCustomMetricInput {
   aggregation?: MetricAggregation
+  better?: MetricBetter
   unit?: string
   description?: string
   minValue?: number | null
@@ -53,9 +73,51 @@ export interface DeleteMetricDataResult {
   deletedCount: number
 }
 
+const adoptionRace = (message: string): Error => Object.assign(new Error(message), { adoption_race: true })
+
+const isAdoptionRace = (err: unknown): err is Error => err instanceof Error && 'adoption_race' in err
+
+/**
+ * Runs `write` in one transaction with the adoption of the catalogue metrics it writes to, so a write that fails
+ * adopts nothing. The values were converted to each definition's unit: when a metric of that name was created
+ * in another unit after the caller read the user's metrics, nothing is written and the error says so.
+ */
+export const writeWithCatalogAdoption = async <T>(
+  user: string,
+  definitions: CustomMetricDefinition[],
+  write: (tx: Queryable) => Promise<T>,
+): Promise<{ error: string } | { result: T }> => {
+  try {
+    const result = await withUserTransaction(user, async (tx) => {
+      for (const definition of definitions) {
+        const unit = await adoptCatalogMetric(tx, definition)
+        if (!sameUnit(unit, definition.unit)) {
+          throw adoptionRace(
+            `Metric "${definition.name}" was just added in ${unit}, not ${definition.unit}: nothing was written. Try again.`,
+          )
+        }
+      }
+      return write(tx)
+    })
+    return { result }
+  } catch (err) {
+    if (isAdoptionRace(err)) return { error: err.message }
+    throw err
+  }
+}
+
+const catalogAliasHint = (catalog: StoredMetricCatalog, name: string): string | undefined => {
+  if (getCatalogMetric(catalog, name)) return undefined
+  const entry = findCatalogMetric(catalog, name)
+  return entry
+    ? `"${name}" is the built-in metric "${entry.name}" (stored in ${entry.unit}): add values under that name, which adds it on first use.`
+    : undefined
+}
+
 export async function addCustomMetric(
   user: string,
-  definition: CustomMetricDefinition,
+  { separate_metric, ...definition }: AddCustomMetricBody,
+  catalog: StoredMetricCatalog = loadMetricCatalog(),
 ): Promise<CustomMetricResult> {
   if (isValidMetric(definition.name)) {
     return {
@@ -68,6 +130,14 @@ export async function addCustomMetric(
   if (existing) {
     return {
       error: `Custom metric "${definition.name}" already exists.`,
+      success: false,
+    }
+  }
+
+  const hint = separate_metric === true ? undefined : catalogAliasHint(catalog, definition.name)
+  if (hint) {
+    return {
+      error: `${hint} Pass separate_metric: true to create a separate custom metric anyway.`,
       success: false,
     }
   }
@@ -112,6 +182,7 @@ export async function updateCustomMetric(
     dbUpdates.include_in_daily_summary = updates.include_in_daily_summary
   }
   if (updates.aggregation !== undefined) dbUpdates.aggregation = updates.aggregation
+  if (updates.better !== undefined) dbUpdates.better = updates.better
 
   const updated = await updateCustomMetricDefinition(user, name, dbUpdates)
   if (!updated) {
@@ -155,6 +226,21 @@ export async function deleteMetricData(user: string, metric: string): Promise<De
 
 export async function getCustomMetrics(user: string): Promise<CustomMetricDefinition[]> {
   return getCustomMetricDefinitions(user)
+}
+
+export const listMetricCatalog = async (
+  user: string,
+  q?: string,
+  catalog: StoredMetricCatalog = loadMetricCatalog(),
+): Promise<MetricCatalogResult> => {
+  const metrics = new Map((await getCustomMetricDefinitions(user)).map((metric) => [metric.name, metric]))
+  return {
+    entries: searchMetricCatalog(catalog, q).map((entry) =>
+      toMetricCatalogEntry(entry, metrics.get(entry.name)),
+    ),
+    groups: catalog.groups,
+    version: catalog.version,
+  }
 }
 
 export interface MergeCustomMetricResult {

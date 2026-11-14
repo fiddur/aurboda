@@ -74,6 +74,7 @@ export {
   deleteTimeSeriesBySource,
   deleteTimeSeriesMetric,
   deleteTimeSeriesPoint,
+  getBinnedTimeSeries,
   getDailyAggregates,
   getDailySampleCounts,
   getDistinctMetrics,
@@ -99,6 +100,14 @@ export {
 } from './time-series.ts'
 
 export {
+  countTimeSeriesInWindows,
+  type FlaggedWindow,
+  getFlaggedWindows,
+  inWindowsSql,
+  windowParams,
+} from './flagged-windows.ts'
+
+export {
   deleteDeductionRule,
   deleteRuleActivities,
   deleteStaleRuleActivities,
@@ -117,9 +126,12 @@ export { getMediaPlayById, getMediaPlays, storeMediaPlays } from './media-plays.
 
 export {
   activityTypeExists,
+  adoptCatalogActivityType,
   deleteActivityTypeDefinition,
+  ensureActivityType,
   expandActivityTypes,
   expandAncestorTypes,
+  findActivityTypeForName,
   getActivityTypeDefinition,
   getActivityTypeDefinitions,
   getActivityTypeNames,
@@ -152,6 +164,7 @@ export {
   getActivitiesByCategory,
   getActivitiesExcludingCategories,
   getActivitiesNeedingDetail,
+  getGarminActivitiesNeedingSets,
   getEffectiveActivitiesInRange,
   getScreentimeActivities,
   migrateExerciseTypes,
@@ -173,8 +186,10 @@ export {
   insertMergedActivity,
   insertOverride,
   markActivityDetailSynced,
+  setGarminActivitySets,
   materializeSuperseded,
   rematerializeSupersededOnce,
+  retireSingleLiftTypes,
   mergeOverlappingActivities,
   pickOverrideWinner,
   restoreActivity,
@@ -309,7 +324,6 @@ export {
   getParticipationById,
   getParticipationByToken,
   getParticipationByUrl,
-  hasRemoteChallengeMember,
   listChallengeMembers,
   listChallengeParticipations,
   listChallenges,
@@ -468,9 +482,9 @@ export {
   createDashboardPost,
   createExercisePost,
   createFeedPost,
+  createFeedPostUnlessSuppressed,
   createReplyPost,
   type DashboardPostInput,
-  deleteFeedPost,
   deleteFeedPostWithQuotes,
   type ExercisePostInput,
   type FeedPostCursor,
@@ -680,6 +694,7 @@ export { claimSettingsFlag, claimSettingsFlagIn, getUserSettings, upsertUserSett
 export { deleteGoal, getGoals, insertGoal, replaceGoals } from './goals.ts'
 
 export {
+  adoptCatalogMetric,
   bulkInsertCustomMetricDefinitions,
   type CustomMetricDefinitionUpdates,
   deleteCustomMetricDefinition,
@@ -689,6 +704,8 @@ export {
   mergeCustomMetric,
   updateCustomMetricDefinition,
 } from './custom-metrics.ts'
+
+export { getDataPresence } from './data-presence.ts'
 
 export {
   deleteExpiredMcpSessions,
@@ -797,6 +814,7 @@ export {
   listNotificationPreferences,
   listNotifications,
   type ListNotificationsOptions,
+  listOpenNotifications,
   markAllNotificationsRead,
   markNotificationRead,
   markNotificationsReadByType,
@@ -807,6 +825,7 @@ export {
   type NotificationTarget,
   pruneNotifications,
   reviseNotification,
+  reviseOpenNotifications,
   upsertNotificationPreference,
 } from './notifications.ts'
 

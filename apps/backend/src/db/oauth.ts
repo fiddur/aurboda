@@ -21,7 +21,7 @@ export const upsertOAuthToken = async (user: string, token: OAuthToken) => {
 export const getOAuthToken = async (user: string, provider: string): Promise<OAuthToken | null> => {
   const result = await query(
     user,
-    `SELECT provider, access_token, refresh_token, expires_at, scopes, refused_at
+    `SELECT provider, access_token, refresh_token, expires_at, scopes, refused_at, updated_at
      FROM oauth_tokens
      WHERE provider = $1`,
     [provider],
@@ -37,29 +37,39 @@ export const getOAuthToken = async (user: string, provider: string): Promise<OAu
     refresh_token: row.refresh_token,
     refused_at: row.refused_at ? new Date(row.refused_at) : undefined,
     scopes: row.scopes,
+    updated_at: new Date(row.updated_at),
   }
 }
 
-/** With `refreshToken`, only a row still holding that token is marked, so a key replaced meanwhile stays unflagged. */
+/**
+ * With `refreshToken`, only a row still holding that token is marked, so a key replaced meanwhile stays unflagged.
+ * A repeated refusal keeps the first `refused_at` and moves only `updated_at`, the time of the last check.
+ */
 export const markOAuthTokenRefused = async (
   user: string,
   provider: string,
   refreshToken?: string,
 ): Promise<void> => {
   if (refreshToken === undefined) {
-    await query(user, `UPDATE oauth_tokens SET refused_at = NOW(), updated_at = NOW() WHERE provider = $1`, [
-      provider,
-    ])
+    await query(
+      user,
+      `UPDATE oauth_tokens SET refused_at = COALESCE(refused_at, NOW()), updated_at = NOW() WHERE provider = $1`,
+      [provider],
+    )
     return
   }
   await query(
     user,
-    `UPDATE oauth_tokens SET refused_at = NOW(), updated_at = NOW() WHERE provider = $1 AND refresh_token = $2`,
+    `UPDATE oauth_tokens SET refused_at = COALESCE(refused_at, NOW()), updated_at = NOW()
+     WHERE provider = $1 AND refresh_token = $2`,
     [provider, refreshToken],
   )
 }
 
-/** Stores a fresh access token only while the row still holds `refreshToken`; a replaced key is left as it is. */
+/**
+ * Stores a fresh access token only while the row still holds `refreshToken`; a replaced key is left as it is.
+ * The exchange worked, so a refusal recorded earlier is cleared.
+ */
 export const updateOAuthAccessToken = async (
   user: string,
   provider: string,
@@ -68,7 +78,8 @@ export const updateOAuthAccessToken = async (
 ): Promise<boolean> => {
   const result = await query(
     user,
-    `UPDATE oauth_tokens SET access_token = $3, updated_at = NOW() WHERE provider = $1 AND refresh_token = $2`,
+    `UPDATE oauth_tokens SET access_token = $3, refused_at = NULL, updated_at = NOW()
+     WHERE provider = $1 AND refresh_token = $2`,
     [provider, refreshToken, accessToken],
   )
   return (result.rowCount ?? 0) > 0

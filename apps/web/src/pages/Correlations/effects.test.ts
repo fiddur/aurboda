@@ -3,7 +3,15 @@ import { describe, expect, test } from 'vitest'
 
 import type { WindowEffect } from '../../state/api'
 
-import { changeClass, changeTitle, columnTitles, formatDelta, getDeltaClass, roundTo } from './effects'
+import {
+  changeClass,
+  changeTitle,
+  columnTitles,
+  comparisonsNote,
+  formatDelta,
+  getDeltaClass,
+  roundTo,
+} from './effects'
 
 const effect = (overrides: Partial<WindowEffect> = {}): WindowEffect => ({
   after_mean: 35.4,
@@ -28,6 +36,12 @@ describe('changeClass', () => {
     expect(changeClass(effect({ p_value: 0.2 }), 'neutral')).toBe('muted')
   })
 
+  test('judges from the adjusted p-value when there is one', () => {
+    expect(changeClass(effect({ p_value: 0.01, p_value_adjusted: 0.2 }), 'down')).toBe('muted')
+    expect(changeClass(effect({ p_value: 0.01, p_value_adjusted: 0.04 }), 'down')).toBe('positive')
+    expect(changeClass(effect({ p_value: null, p_value_adjusted: null }), 'down')).toBe('muted')
+  })
+
   test('shows a clear change plainly when the good direction is unknown', () => {
     expect(changeClass(effect(), 'neutral')).toBe('')
   })
@@ -41,6 +55,12 @@ describe('changeTitle', () => {
   test('shows before, after, count and p', () => {
     expect(changeTitle(effect())).toBe('47.0 → 35.4 across 41 occurrences (p = 0.003)')
     expect(changeTitle(effect({ p_value: 0.0001 }))).toBe('47.0 → 35.4 across 41 occurrences (p < 0.001)')
+  })
+
+  test('shows the adjusted p beside the raw one', () => {
+    expect(changeTitle(effect({ p_value: 0.012, p_value_adjusted: 0.18 }))).toBe(
+      '47.0 → 35.4 across 41 occurrences (p = 0.012, adjusted for the comparisons p = 0.180)',
+    )
   })
 
   test('says when there are too few occurrences', () => {
@@ -57,6 +77,21 @@ describe('changeTitle', () => {
     expect(changeTitle(effect({ change: null, paired_occurrences: 0 }))).toBe(
       'No occurrences with data both before and after',
     )
+  })
+})
+
+describe('comparisonsNote', () => {
+  test('says how many would pass by chance', () => {
+    expect(comparisonsNote(24)).toBe(
+      '24 comparisons: about one of these would pass p < 0.05 by chance. Results are marked from the p-value adjusted for them (Benjamini–Hochberg).',
+    )
+    expect(comparisonsNote(60)).toContain('60 comparisons: about 3 of these would pass')
+    expect(comparisonsNote(6)).toContain('6 comparisons: fewer than one of these would be expected to pass')
+  })
+
+  test('is null with fewer than two comparisons', () => {
+    expect(comparisonsNote(1)).toBeNull()
+    expect(comparisonsNote(0)).toBeNull()
   })
 })
 

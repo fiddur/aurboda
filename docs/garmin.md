@@ -23,12 +23,13 @@ Each data type is fetched through one connection:
 | Intensity minutes  | Login      | Key (from the summary)  | Key                               |
 | Activities         | Login      | Key                     | Key                               |
 | Activity details   | Login      | Skipped                 | Login                             |
+| Exercise sets      | Login      | Skipped                 | Login                             |
 | Stress             | Login      | Skipped                 | Login                             |
 | Training readiness | Login      | Skipped                 | Login                             |
 
-With a key and no login, stress and training readiness are skipped (no sync state is written for them), sleep comes without the stage timeline (a Health Connect timeline already on the night is kept), and activities come without the per-second detail and GPS track. A key Garmin refused stops being used until it is replaced; the session, if any, then serves every type again.
+With a key and no login, stress and training readiness are skipped (no sync state is written for them), sleep comes without the stage timeline (a Health Connect timeline already on the night is kept), and activities come without the per-second detail, GPS track and [strength sets](#strength-sets). A key that is refused or past its expiry date is not used, and the session, if any, serves every type instead: a refused key is tried again once a day (see below), and a key is used through its expiry date and not from the next day (UTC), without a request to Garmin. When the key serves a type and the Personal API answers a `5xx` (or fails on the network), the sync records an error for that type and day rather than asking the login; the next run tries the key again.
 
-Respiration and intensity minutes come from the key's daily summary (`avgWakingRespirationValue`, `moderateIntensityMinutes`, `vigorousIntensityMinutes`, `intensityMinutesGoal`), which is fetched once per day for all three types.
+Respiration and intensity minutes come from the key's daily summary (`avgWakingRespirationValue`, `moderateIntensityMinutes`, `vigorousIntensityMinutes`, `intensityMinutesGoal`), which is fetched once per day for all three types and kept for 60 seconds; connecting or disconnecting a key drops the user's copy, so a replaced key answers at once.
 
 ## Data Synced
 
@@ -42,12 +43,13 @@ Respiration and intensity minutes come from the key's daily summary (`avgWakingR
 | Body Battery       | time_series            | `body_battery` (from values array or daily charged amount)                                                               |
 | Activities         | activity + time_series | Exercise activities with type, distance, calories, HR, VO2 max; `vo2_max`                                                |
 | Activity Details   | time_series            | Per-second `stress_level`, `heart_rate`, `respiratory_rate`, `body_battery` from activity detail API                     |
+| Exercise Sets      | activity data          | `data.sets` of Garmin strength activities: exercise, reps, weight (kg), time (s) — see [Strength sets](#strength-sets)   |
 | SpO2               | time_series            | `spo2` (average daily blood oxygen)                                                                                      |
 | Respiration        | time_series            | `respiratory_rate` (average waking respiration)                                                                          |
-| Training Readiness | time_series            | `training_readiness` (overall score)                                                                                     |
-| Intensity Minutes  | time_series            | `intensity_minutes` (moderate + vigorous×2)                                                                              |
+| Training Readiness | time_series            | `training_readiness` (the latest entry's `score`)                                                                        |
+| Intensity Minutes  | time_series            | `intensity_minutes` (`moderateMinutes` + `vigorousMinutes`×2)                                                            |
 
-All data is also preserved as raw JSON in the `raw_records` table.
+All data is also preserved as raw JSON in the `raw_records` table. HRV is read from the answer's `hrvSummary` (the 5-minute `hrvReadings` are not ingested). Training readiness has not been seen from Garmin yet: its raw record (`garmin_training_readiness`, an array answer kept as `{ "entries": [...] }`) is written before anything is read, and both an array of entries with `score` and a single object with `overallScore` are read. When the HRV, training readiness or intensity minutes processor cannot place a payload, it keeps the raw record under the requested day and writes a `warn` audit entry naming the data type and the payload's keys, so a changed shape shows up instead of being dropped; a day with no data (an empty answer or one of nulls) is skipped without a warning.
 
 > **Note on `calories_active` and `calories_total`:** these metrics are stored from Garmin's daily summary (source `garmin`) but **excluded from queries** — aurboda recomputes them per-minute from HR data using the zone-METs model and is the authoritative source for both metrics. See [`docs/features/calories.md`](./features/calories.md) for the model and the source-filter rationale.
 
@@ -68,6 +70,16 @@ A degraded type is recorded in the audit log as a warning (once per distinct key
 Activity GPS comes from the activity detail API, every sample kept (`geoPolylineDTO` is the fallback when the per-second metrics carry no coordinates). It supersedes coarser tracking from other sources (e.g. OwnTracks phone positions) for the activity's whole span -- see [GPS Precedence](./data-sources.md#gps-precedence).
 
 The same samples, with `directElevation` as altitude, are also written as the activity's track in `activity_tracks` -- see [Routes and segments](./features/routes-and-segments.md). Activities synced before tracks existed get theirs from the stored detail by the track backfill.
+
+## Strength sets
+
+Garmin strength activities (`strength_training` rows from Garmin with a `garmin_activity_id`) get the sets the watch recorded, read from `GET /activity-service/activity/{activityId}/exerciseSets` through the login. A connection with only a Personal API key gets no sets, as it gets no detail.
+
+- **Naming.** Each set's exercise is the one Garmin rates most probable. Its FIT key (`<category>/<name>`) is looked up in the [exercise catalogue](./features/exercise-catalog.md) (`same_as.fit`); a known key names the set by the catalogue entry, and your own name for that entry wins over the catalogue's, as for any set written by catalogue key. A key the catalogue does not know is stored under Garmin's name in title case (`45_DEGREE_PLANK` becomes `45 Degree Plank`) and is listed as unmapped, to map like any other name. A set with only a category uses the category's generic entry where there is one (`squat/squat`), else the category's name; no category, or `UNKNOWN`, gives `Unknown exercise`. Your aliases are applied as well.
+- **Values.** Reps; weight in kg (Garmin sends grams); and for a set without reps, its duration in seconds as `time`. Rest sets, and sets with neither reps nor time, are skipped.
+- **Storage.** The sets go to `data.sets` with `data.sets_source: 'garmin'`, and `data.garmin_sets_synced` marks the activity read, also when it had no sets. The raw response is kept as a `garmin_exercise_sets` raw record. A failed read leaves the activity for the next sync.
+- **Pace.** Each sync reads the sets of up to 10 activities, newest first, before their detail, so older strength activities fill in gradually over the following syncs. `full_resync` re-reads the newest 10.
+- **Sets logged elsewhere win.** When Gravl or a manual log carries sets for the same session, those are the sets shown: sets imported from Garmin never replace sets from another row in a [merge](./gravl.md#enrich-dont-duplicate), whichever row starts first. Garmin's sets show only when no other row of the session has any.
 
 ## Admin Setup
 
@@ -93,13 +105,15 @@ No server-side configuration is needed: both ways use per-user credentials. Admi
 
 REST: `POST /api/auth/garmin/personal-key` with `{ "api_key": "...", "expires_at": "YYYY-MM-DD" }` answers `200`, `400` (a missing key or a past date), `401` ("Garmin refused the key"), `403` (turned off by the admin) or `502` (another Garmin failure). There is no MCP tool for it, as for the other credential flows.
 
-The key is stored in the user's own database (`oauth_tokens`, provider `garmin_personal`: the key in `refresh_token`, the expiry date entered in `expires_at`). It never appears in an API response, an audit entry or a log line. Each sync exchanges the key for a JWT that lasts 24 hours; the JWT is cached and replaced when less than an hour of it is left, or when Garmin answers `401`. When Garmin refuses the key itself (`401`/`403` on the exchange) the key is marked refused (`oauth_tokens.refused_at`), nothing more is sent to Garmin with it, and the Garmin page asks for a new one.
+The key is stored in the user's own database (`oauth_tokens`, provider `garmin_personal`: the key in `refresh_token`, the expiry date entered in `expires_at`). It never appears in an API response, an audit entry or a log line. Each sync exchanges the key for a JWT that lasts 24 hours; the JWT is cached and replaced when less than an hour of it is left, or when Garmin answers `401`. When Garmin refuses the key itself (`401`/`403` on the exchange) the key is marked refused (`oauth_tokens.refused_at`, the time of the first refusal) and the Garmin page asks for a new one. A refusal can be passing (a WAF or geo block at Garmin's edge), so a refused key is exchanged again once a day (`updated_at` holds the last try): an accepted exchange clears `refused_at` and the key serves again, a refused one waits another day and keeps `refused_at`, and with it the refusal reminder, unchanged. A key replaced or removed while its exchange was in flight is left as the user set it, and the JWT that exchange got is not used: that fetch fails and the next one reads the new key.
 
 The page shows when the key expires, as a warning from 14 days before and as an error once past or refused; **Replace key** stores a new one. Settings report the state as `garmin_personal_key` (`available`, `connected`, `expires_at`, `refused`), next to `garmin_session_connected`; `garmin_connected` is true for either.
 
 #### Expiry reminders
 
 Garmin does not report a key's expiry, so the reminders go by the date entered with it. Through the [central notifications](./features/notifications.md) (type `garmin_key_expiring`, **Garmin key renewal** under **Data sources** in the notification settings, where its in-app and push switches turn it off) the owner is told when 14 days are left, again at 3 days, once the date has passed, and once if Garmin refuses the key before then. Each opens the Garmin page. The five-minute background sync tick checks every user's key (`apps/backend/src/integrations/garmin/key-reminder.ts`); each reminder is stored once per expiry date, so a new key with a new date gets its own. Connecting a new key or disconnecting the key marks the earlier reminders read. No reminder carries the key.
+
+"Once" holds while the reminder is kept: like every read notification, a read reminder is pruned 90 days after it was raised (`READ_RETENTION_DAYS`, when the next notification for the user is stored), which frees its dedupe key. A user who leaves an expired or refused key connected is therefore reminded again about every 90 days, until the key is replaced or disconnected.
 
 ## Sync
 

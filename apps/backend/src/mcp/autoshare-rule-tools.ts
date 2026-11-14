@@ -30,6 +30,7 @@ import {
   autoshareRulePatchFromBody,
   serializeAutoshareRule,
 } from '../routes/autoshare-rules-router.ts'
+import { withdrawRuleAutoshares } from '../services/autoshare-pending.ts'
 import { PREVIEW_SAMPLE_DAYS, previewAutoshareRule } from '../services/autoshare.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
@@ -68,6 +69,7 @@ export const registerAutoshareRuleTools = (
     async ({ id, ...body }) => {
       const record = await updateAutoshareRule(user, id, autoshareRulePatchFromBody(body))
       if (!record) return errorResponse('Rule not found')
+      if (!record.enabled) await withdrawRuleAutoshares(user, record.id)
       return jsonResponse(serializeAutoshareRule(record))
     },
   )
@@ -93,6 +95,7 @@ export const registerAutoshareRuleTools = (
     async ({ id }) => {
       const deleted = await deleteAutoshareRule(user, id)
       if (!deleted) return errorResponse('Rule not found')
+      await withdrawRuleAutoshares(user, id)
       return jsonResponse({ deleted: true })
     },
   )

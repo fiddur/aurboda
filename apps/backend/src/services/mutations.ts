@@ -1,4 +1,11 @@
-import type { ActivityType, CustomMetricDefinition, DataSource } from '@aurboda/api-spec'
+import type {
+  ActivityType,
+  CustomMetricDefinition,
+  DataSchemaDefinition,
+  DataSource,
+  StoredMetricCatalog,
+  StoredMetricCatalogEntry,
+} from '@aurboda/api-spec'
 
 import { randomUUID } from 'node:crypto'
 
@@ -17,13 +24,14 @@ import {
   getActivityTypeDefinition,
   getOverrideForActivity,
   getUserNotesJoined,
-  insertActivity as dbInsertActivity,
   insertMergedActivity as dbInsertMergedActivity,
   insertOverride as dbInsertOverride,
   materializeSuperseded,
   replaceUserNotes,
   updateActivity as dbUpdateActivity,
+  upsertActivity as dbUpsertActivity,
   enqueueOutboundSync,
+  ensureActivityType,
   findHcRecordId,
   getSourceFilter,
   insertTimeSeries,
@@ -31,18 +39,23 @@ import {
 } from '../db/index.ts'
 import {
   activityTypeToHealthConnectType,
-  getMetricUnit,
   isHealthConnectSyncableActivity,
   isHealthConnectSyncableMetric,
   isValidMetric,
-  isValidMetricOrCustom,
   metricToHealthConnectType,
 } from '../schema.ts'
+import {
+  catalogVariantHint,
+  getCatalogActivityType,
+  loadActivityTypeCatalog,
+} from './activity-type-catalog.ts'
 import { auditError } from './audit-log.ts'
-import { getCustomMetrics } from './custom-metrics.ts'
+import { getCustomMetrics, writeWithCatalogAdoption } from './custom-metrics.ts'
 import { validateActivityData } from './data-schema-validation.ts'
 import { aliasActivityData } from './item-value-aliases.ts'
 import { applyItemValueKeysForWrite, storeItemValueMappings } from './item-value-identities.ts'
+import { catalogMetricDefinition, loadMetricCatalog } from './metric-catalog.ts'
+import { resolveMetricForWrite, valueForWrite } from './metric-resolution.ts'
 import { syncNoteTimesForEntity } from './notes.ts'
 import { reanalyseActivities, reanalyseOverrideTargets } from './track-analyse.ts'
 
@@ -50,6 +63,7 @@ export interface AddMetricInput {
   metric: string
   value: number
   time: Date
+  unit?: string
 }
 
 export interface AddMetricResult {
@@ -88,6 +102,7 @@ export interface BulkMetricItem {
   value: number
   time: Date
   source?: string
+  unit?: string
 }
 
 export interface BulkMetricError {
@@ -150,60 +165,52 @@ function validateCustomMetricRange(
   return null
 }
 
-export async function addMetric(user: string, input: AddMetricInput): Promise<AddMetricResult> {
+export async function addMetric(
+  user: string,
+  input: AddMetricInput,
+  catalog: StoredMetricCatalog = loadMetricCatalog(),
+): Promise<AddMetricResult> {
   const customMetrics = await getCustomMetrics(user)
+  const time = input.time.toISOString()
+  const refuse = (error: string, metric = input.metric, unit = ''): AddMetricResult => ({
+    error,
+    metric,
+    success: false,
+    time,
+    unit,
+    value: input.value,
+  })
 
-  if (!isValidMetricOrCustom(input.metric, customMetrics)) {
-    return {
-      error: `Invalid metric "${input.metric}". Not a built-in or registered custom metric.`,
-      metric: input.metric,
-      success: false,
-      time: input.time.toISOString(),
-      unit: '',
-      value: input.value,
-    }
+  const resolved = resolveMetricForWrite(input.metric, customMetrics, catalog)
+  if (!resolved) {
+    return refuse(`Invalid metric "${input.metric}". Not a built-in or registered custom metric.`)
   }
+  const { metric, unit } = resolved
 
-  const unit = getMetricUnit(input.metric, customMetrics)
+  const converted = valueForWrite(resolved, input.value, input.unit)
+  if ('error' in converted) return refuse(converted.error, metric, unit)
+  const { value } = converted
 
-  const rangeError = validateCustomMetricRange(customMetrics, input.metric, input.value)
-  if (rangeError) {
-    return {
-      error: rangeError,
-      metric: input.metric,
-      success: false,
-      time: input.time.toISOString(),
-      unit: unit ?? '',
-      value: input.value,
-    }
-  }
+  const rangeError = validateCustomMetricRange(customMetrics, metric, value)
+  if (rangeError) return refuse(rangeError, metric, unit)
 
-  await insertTimeSeries(user, [
-    {
-      metric: input.metric,
-      source: 'aurboda',
-      time: input.time,
-      unit,
-      value: input.value,
-    },
-  ])
+  const adopt = resolved.adopt && resolved.entry ? [catalogMetricDefinition(resolved.entry)] : []
+  const written = await writeWithCatalogAdoption(user, adopt, (tx) =>
+    insertTimeSeries(tx, [{ metric, source: 'aurboda', time: input.time, unit, value }]),
+  )
+  if ('error' in written) return refuse(written.error, metric, unit)
 
   // Enqueue outbound sync to Health Connect if applicable (best-effort, never fails the mutation)
   try {
-    if (isHealthConnectSyncableMetric(input.metric)) {
-      const hcRecordType = metricToHealthConnectType[input.metric as keyof typeof metricToHealthConnectType]
+    if (isHealthConnectSyncableMetric(metric)) {
+      const hcRecordType = metricToHealthConnectType[metric as keyof typeof metricToHealthConnectType]
       if (hcRecordType) {
         await enqueueOutboundSync(user, {
-          entity_id: `${input.metric}|${input.time.toISOString()}`,
+          entity_id: `${metric}|${time}`,
           entity_type: 'time_series',
           hc_record_type: hcRecordType,
           operation: 'insert',
-          payload: {
-            metric: input.metric,
-            time: input.time.toISOString(),
-            unit,
-            value: input.value,
-          },
+          payload: { metric, time, unit, value },
         })
       }
     }
@@ -211,14 +218,42 @@ export async function addMetric(user: string, input: AddMetricInput): Promise<Ad
     auditError(user, 'data', 'Failed to enqueue outbound sync for metric', { error: String(err) })
   }
 
-  const storedTime = input.time.toISOString()
+  return { entity_id: `${time}|${metric}|aurboda`, metric, success: true, time, unit, value }
+}
+
+type PreparedBulkItem = { error: string } | { adopt?: StoredMetricCatalogEntry; point: TimeSeriesPoint }
+
+const prepareBulkItem = (
+  item: BulkMetricItem,
+  customMetrics: CustomMetricDefinition[],
+  catalog: StoredMetricCatalog,
+  defaultSource: DataSource,
+): PreparedBulkItem => {
+  const resolved = resolveMetricForWrite(item.metric, customMetrics, catalog)
+  if (!resolved) return { error: `Invalid metric "${item.metric}"` }
+
+  const converted = valueForWrite(resolved, item.value, item.unit)
+  if ('error' in converted) return converted
+
+  const rangeError = validateCustomMetricRange(customMetrics, resolved.metric, converted.value)
+  if (rangeError) return { error: rangeError }
+
+  const source: DataSource = (item.source as DataSource) ?? defaultSource
+
+  // Cumulative/derived metrics (steps, calories, …) are only read back from a
+  // restricted set of sources. Writing one from any other source would store a
+  // row that no query path returns — reject it rather than report a phantom
+  // insert (#802).
+  const sourceFilter = getSourceFilter(resolved.metric)
+  if (sourceFilter !== null && !sourceFilter.includes(source)) {
+    return {
+      error: `Metric "${resolved.metric}" is cumulative/derived and is only queryable from source(s) [${sourceFilter.join(', ')}]; got "${source}". Omit source to use the default, or use an allowed source.`,
+    }
+  }
+
   return {
-    entity_id: `${storedTime}|${input.metric}|aurboda`,
-    metric: input.metric,
-    success: true,
-    time: storedTime,
-    unit: unit ?? '',
-    value: input.value,
+    ...(resolved.adopt && resolved.entry ? { adopt: resolved.entry } : {}),
+    point: { metric: resolved.metric, source, time: item.time, unit: resolved.unit, value: converted.value },
   }
 }
 
@@ -229,54 +264,44 @@ export async function bulkAddMetrics(
   user: string,
   items: BulkMetricItem[],
   defaultSource?: string,
+  catalog: StoredMetricCatalog = loadMetricCatalog(),
 ): Promise<BulkAddMetricsResult> {
-  const customMetrics = await getCustomMetrics(user)
+  const customMetrics = [...(await getCustomMetrics(user))]
 
   const errors: BulkMetricError[] = []
-  const validPoints: TimeSeriesPoint[] = []
+  const validPoints: Array<{ index: number; point: TimeSeriesPoint }> = []
+  const toAdopt: CustomMetricDefinition[] = []
   const resolvedDefaultSource: DataSource = (defaultSource as DataSource) ?? 'aurboda'
 
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i]
-
-    if (!isValidMetricOrCustom(item.metric, customMetrics)) {
-      errors.push({ error: `Invalid metric "${item.metric}"`, index: i })
+  for (const [index, item] of items.entries()) {
+    const prepared = prepareBulkItem(item, customMetrics, catalog, resolvedDefaultSource)
+    if ('error' in prepared) {
+      errors.push({ error: prepared.error, index })
       continue
     }
-
-    const rangeError = validateCustomMetricRange(customMetrics, item.metric, item.value)
-    if (rangeError) {
-      errors.push({ error: rangeError, index: i })
-      continue
+    if (prepared.adopt) {
+      const definition = catalogMetricDefinition(prepared.adopt)
+      toAdopt.push(definition)
+      customMetrics.push(definition)
     }
-
-    const unit = getMetricUnit(item.metric, customMetrics)
-    const source: DataSource = (item.source as DataSource) ?? resolvedDefaultSource
-
-    // Cumulative/derived metrics (steps, calories, …) are only read back from a
-    // restricted set of sources. Writing one from any other source would store a
-    // row that no query path returns — reject it rather than report a phantom
-    // insert (#802).
-    const sourceFilter = getSourceFilter(item.metric)
-    if (sourceFilter !== null && !sourceFilter.includes(source)) {
-      errors.push({
-        error: `Metric "${item.metric}" is cumulative/derived and is only queryable from source(s) [${sourceFilter.join(', ')}]; got "${source}". Omit source to use the default, or use an allowed source.`,
-        index: i,
-      })
-      continue
-    }
-
-    validPoints.push({
-      metric: item.metric,
-      source,
-      time: item.time,
-      unit,
-      value: item.value,
-    })
+    validPoints.push({ index, point: prepared.point })
   }
 
-  if (validPoints.length > 0) {
-    await insertTimeSeries(user, validPoints)
+  if (validPoints.length === 0) return { errors, inserted: 0, success: true }
+
+  const written = await writeWithCatalogAdoption(user, toAdopt, (tx) =>
+    insertTimeSeries(
+      tx,
+      validPoints.map(({ point }) => point),
+    ),
+  )
+  if ('error' in written) {
+    const refused = validPoints.map(({ index }) => ({ error: written.error, index }))
+    return {
+      errors: [...errors, ...refused].sort((a, b) => a.index - b.index),
+      inserted: 0,
+      success: true,
+    }
   }
 
   return {
@@ -286,17 +311,45 @@ export async function bulkAddMetrics(
   }
 }
 
+const dataErrorFor = (
+  schema: DataSchemaDefinition | undefined,
+  data: Record<string, unknown> | undefined,
+): string | undefined => {
+  if (!schema) return undefined
+  const validation = validateActivityData(data, schema)
+  if (!validation.valid) return `Data validation failed: ${validation.errors?.join(', ')}`
+  return undefined
+}
+
 const validateDataForType = async (
   user: string,
   activityType: string,
   data: Record<string, unknown> | undefined,
-): Promise<string | undefined> => {
-  const typeDef = await getActivityTypeDefinition(user, activityType)
-  if (!typeDef?.data_schema) return undefined
-  const validation = validateActivityData(data, typeDef.data_schema)
-  if (!validation.valid) return `Data validation failed: ${validation.errors?.join(', ')}`
-  return undefined
+): Promise<string | undefined> =>
+  dataErrorFor((await getActivityTypeDefinition(user, activityType))?.data_schema, data)
+
+const unknownActivityTypeError = (activityType: string): string => {
+  const hint = catalogVariantHint(loadActivityTypeCatalog(), activityType)
+  return `Unknown activity type: "${activityType}"${hint ? `. ${hint}` : ''}`
 }
+
+interface WriteTarget {
+  /** A catalogue type the user does not have yet, adopted once the write passed validation. */
+  adopt: boolean
+  schema: DataSchemaDefinition | undefined
+}
+
+/** The schema a write of `activityType` is validated against: the user's type's, else the catalogue entry's. */
+const resolveWriteTarget = async (user: string, activityType: string): Promise<WriteTarget | undefined> => {
+  if (await activityTypeExists(user, activityType)) {
+    return { adopt: false, schema: (await getActivityTypeDefinition(user, activityType))?.data_schema }
+  }
+  const entry = getCatalogActivityType(loadActivityTypeCatalog(), activityType)
+  return entry && { adopt: true, schema: entry.data_schema }
+}
+
+const adoptWriteTarget = async (user: string, activityType: string, target: WriteTarget): Promise<boolean> =>
+  !target.adopt || ensureActivityType(user, activityType)
 
 /**
  * Aliases go first, so a catalogue key next to an aliased name maps the name that is stored; the
@@ -306,12 +359,16 @@ const resolveItemValues = async <T extends Record<string, unknown> | undefined>(
   user: string,
   activityType: string,
   data: T,
+  schema?: DataSchemaDefinition,
 ): ReturnType<typeof applyItemValueKeysForWrite<T>> => {
   const aliased = await aliasActivityData(user, data)
-  const keyed = await applyItemValueKeysForWrite(user, activityType, aliased)
+  const keyed = await applyItemValueKeysForWrite(user, activityType, aliased, schema)
   if (!keyed.success || keyed.data.data === aliased) return keyed
   return { data: { ...keyed.data, data: await aliasActivityData(user, keyed.data.data) }, success: true }
 }
+
+export const isInProgress = (data: Record<string, unknown> | null | undefined): boolean =>
+  data?.in_progress === true
 
 // eslint-disable-next-line complexity -- notification callbacks add branches
 export async function addActivity(
@@ -319,18 +376,17 @@ export async function addActivity(
   input: AddActivityInput,
   onMutated?: ActivityNotifier,
 ): Promise<AddActivityResult> {
-  if (!(await activityTypeExists(user, input.activity_type))) {
-    return {
-      error: `Unknown activity type: "${input.activity_type}"`,
-      success: false,
-    }
-  }
+  const writeTarget = await resolveWriteTarget(user, input.activity_type)
+  if (!writeTarget) return { error: unknownActivityTypeError(input.activity_type), success: false }
 
-  const keyed = await resolveItemValues(user, input.activity_type, input.data)
+  const keyed = await resolveItemValues(user, input.activity_type, input.data, writeTarget.schema)
   if (!keyed.success) return { error: `Data validation failed: ${keyed.error}`, success: false }
   const { data, mappings } = keyed.data
-  const dataError = await validateDataForType(user, input.activity_type, data)
+  const dataError = dataErrorFor(writeTarget.schema, data)
   if (dataError) return { error: dataError, success: false }
+  if (!(await adoptWriteTarget(user, input.activity_type, writeTarget))) {
+    return { error: unknownActivityTypeError(input.activity_type), success: false }
+  }
 
   // Equal times are valid — point-in-time activities have no duration.
   if (input.end_time && input.end_time < input.start_time) {
@@ -367,17 +423,22 @@ export async function addActivity(
     }
   }
 
-  const id = randomUUID()
-
-  await dbInsertActivity(user, {
+  const { id } = await dbUpsertActivity(user, {
     activity_type: input.activity_type,
     data,
     end_time: input.end_time,
-    id,
+    id: randomUUID(),
     source: 'aurboda',
     start_time: input.start_time,
     title: input.title,
   })
+  if (!id) {
+    return {
+      error:
+        'A deleted activity of this type has the same start time. Restore it or choose another start time.',
+      success: false,
+    }
+  }
   await storeItemValueMappings(user, mappings)
 
   // Persist user-typed notes as a row in the notes table. Source is left
@@ -391,7 +452,7 @@ export async function addActivity(
 
   // Enqueue outbound sync to Health Connect if applicable (best-effort, never fails the mutation)
   try {
-    if (isHealthConnectSyncableActivity(input.activity_type)) {
+    if (isHealthConnectSyncableActivity(input.activity_type) && !isInProgress(data)) {
       const hcRecordType =
         activityTypeToHealthConnectType[input.activity_type as keyof typeof activityTypeToHealthConnectType]
       if (hcRecordType) {
@@ -587,12 +648,9 @@ export async function updateActivity(
 
   const finalType = input.activity_type ?? before.activity_type
   const isTypeChanging = input.activity_type !== undefined && input.activity_type !== before.activity_type
-  if (isTypeChanging && !(await activityTypeExists(user, input.activity_type!))) {
-    return {
-      error: `Unknown activity type: "${input.activity_type}"`,
-      id,
-      success: false,
-    }
+  const writeTarget = isTypeChanging ? await resolveWriteTarget(user, input.activity_type!) : undefined
+  if (isTypeChanging && !writeTarget) {
+    return { error: unknownActivityTypeError(input.activity_type!), id, success: false }
   }
   if (isTypeChanging) {
     // Conflict check is against the row we'll actually write — aurboda for
@@ -615,14 +673,19 @@ export async function updateActivity(
     }
   }
 
-  const keyed = await resolveItemValues(user, finalType, input.data)
+  const keyed = await resolveItemValues(user, finalType, input.data, writeTarget?.schema)
   if (!keyed.success) return { error: `Data validation failed: ${keyed.error}`, id, success: false }
   const inputData = keyed.data.data
   const mergedData = inputData ? { ...before.data, ...inputData } : before.data
 
   if (mergedData) {
-    const dataError = await validateDataForType(user, finalType, mergedData)
+    const dataError = writeTarget
+      ? dataErrorFor(writeTarget.schema, mergedData)
+      : await validateDataForType(user, finalType, mergedData)
     if (dataError) return { error: dataError, id, success: false }
+  }
+  if (writeTarget && !(await adoptWriteTarget(user, finalType, writeTarget))) {
+    return { error: unknownActivityTypeError(finalType), id, success: false }
   }
 
   let updated: Activity | null
@@ -729,7 +792,8 @@ export async function updateActivity(
   // Enqueue outbound HC sync only for aurboda activities that the user owns —
   // override rows (override_target_ids set) represent data that already
   // exists on the synced source, so pushing them to HC would create
-  // duplicates.
+  // duplicates. An activity in progress still has its old-type record
+  // deleted: it may have been synced before it was set back in progress.
   try {
     if (updated.source === 'aurboda' && !updated.override_target_ids?.length) {
       const oldWasSyncable = isHealthConnectSyncableActivity(before.activity_type)
@@ -752,7 +816,7 @@ export async function updateActivity(
         }
       }
 
-      if (newIsSyncable) {
+      if (newIsSyncable && !isInProgress(updated.data)) {
         const hcRecordType =
           activityTypeToHealthConnectType[
             updated.activity_type as keyof typeof activityTypeToHealthConnectType

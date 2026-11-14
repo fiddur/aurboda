@@ -9,7 +9,7 @@
  * Safety properties, in order of importance:
  * - **Hard dedupe**: at most one post per activity/merge-group EVER. The whole
  *   group's ids are checked against existing feed posts (manual or auto) AND
- *   against the deletion suppressions (`deleteFeedPost` records the activity id
+ *   against the deletion suppressions (`deleteFeedPostWithQuotes` records the activity id
  *   before hard-deleting the post row), so a re-sync, merge, or edit can never
  *   double-post, a manually-shared activity is never auto-shared, and a share
  *   the user deleted never comes back.
@@ -130,25 +130,37 @@ export interface AutoshareDeps<Member extends AutoshareCandidate = AutoshareCand
   suppressedActivityIds: (user: string, activityIds: string[]) => Promise<string[]>
   /** Total distance (meters) over a window, or undefined when none recorded. */
   distanceMeters: (user: string, start: Date, end: Date) => Promise<number | undefined>
-  /** Create the feed post from the rule's template (the shared manual-share path). */
-  createPost: (user: string, anchor: Member, rule: AutoshareRuleRecord) => Promise<FeedPostRecord>
+  /**
+   * Create the feed post from the rule's template, unless one of `groupIds` was suppressed by
+   * then ("Don't share" landing during the evaluation): null then.
+   */
+  createPost: (
+    user: string,
+    anchor: Member,
+    rule: AutoshareRuleRecord,
+    groupIds: string[],
+  ) => Promise<FeedPostRecord | null>
   /** Fan the created post out to followers (fire-and-forget, like a manual share). */
   onCreated: (user: string, post: FeedPostRecord, anchor: Member) => void
   /** Evaluate the window again no sooner than `notBefore` (some group in it was not settled yet). */
   requeue?: (user: string, start: Date, end: Date, notBefore: Date) => Promise<void>
   /**
    * Tell the user a matching group is about to be shared (the pending-share notification).
-   * Resolves to whether it was news: false for a group already announced, which then does
-   * not count toward the per-run cap.
+   * Resolves to whether it was news: false for a group already announced (under any of its
+   * members, the anchor of the day or an earlier one), which then does not count toward the
+   * per-run cap.
    */
   announce?: (
     user: string,
     anchor: Member,
     rule: AutoshareRuleRecord,
     info: AutoshareAnnounceInfo,
+    group: Member[],
   ) => Promise<boolean>
   /** The group was shared (revises the pending-share notification). */
   shared?: (user: string, post: FeedPostRecord, group: Member[]) => Promise<void>
+  /** The settled group matches no rule any more (closes a pending-share notification it still has open). */
+  withdrawn?: (user: string, group: Member[]) => Promise<void>
 }
 
 export interface AutoshareAnnounceInfo {
@@ -374,14 +386,18 @@ const walkAutoshareWindow = async <Member extends AutoshareCandidate>(
     }
 
     const rule = await matchGroup(user, group, anchor, ingestEligible, now, deps)
-    if (!rule) continue
+    if (!rule) {
+      if (evaluating && settling == null) {
+        await swallow('withdraw', user, async () => deps.withdrawn?.(user, group))
+      }
+      continue
+    }
 
     const readyAt = ruleReadyAt(group, rule)
     const rulePending = readyAt.getTime() > now.getTime()
     if (settling == null && !rulePending && evaluating) {
-      // "Don't share" may have landed while the group was being matched.
-      if ((await deps.suppressedActivityIds(user, groupIds)).length > 0) continue
-      const post = await deps.createPost(user, anchor, rule)
+      const post = await deps.createPost(user, anchor, rule, groupIds)
+      if (post == null) continue
       deps.onCreated(user, post, anchor)
       await swallow('shared hook', user, async () => deps.shared?.(user, post, group))
       result.created++
@@ -405,7 +421,7 @@ const walkAutoshareWindow = async <Member extends AutoshareCandidate>(
         ? { detail_pending: false, share_at: mode.nextEvaluationAt }
         : { detail_pending: settling?.detailPending === true && !rulePending, share_at: new Date(pendingAt) }
     await swallow('announce', user, async () => {
-      if ((await deps.announce?.(user, anchor, rule, info)) === true) result.announced++
+      if ((await deps.announce?.(user, anchor, rule, info, group)) === true) result.announced++
     })
   }
   if (evaluating && requeueAt != null) await deps.requeue?.(user, start, end, requeueAt)

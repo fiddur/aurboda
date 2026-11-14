@@ -304,6 +304,9 @@ export interface ReportEntry {
   reference_low?: number
   reference_high?: number
   flag?: ReportFlag
+  /** The value and unit in time_series, present only when they differ from the printed `value`/`unit`. */
+  stored_value?: number
+  stored_unit?: string
 }
 
 export interface Report {
@@ -414,6 +417,8 @@ export interface OAuthToken {
   expires_at?: Date
   scopes?: string[]
   refused_at?: Date
+  /** Read only; for a refused key, when Garmin last refused it. */
+  updated_at?: Date
 }
 
 export type { SyncStatus }
@@ -459,6 +464,7 @@ export interface UserSettings {
   rescue_time_key?: string // RescueTime API key (personal token)
   run_category_rules_seeded?: boolean // Internal: the default run-category deduction rules were created once
   sex?: BiologicalSex // Biological sex for calorie calculation
+  sleep_need_minutes?: number // Sleep need per night in minutes; sleep debt is judged against it (default 480)
   timeline_show_replies?: boolean // Show followed actors' replies to posts outside your timeline as own cards
   item_icons?: Record<string, string> // Unified icon mappings for all timeline items (tags, activities, exercise types)
   tag_icons?: Record<string, string> // Deprecated: tag-only icons (migrated to item_icons)

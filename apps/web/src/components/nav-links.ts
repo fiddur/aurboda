@@ -27,6 +27,7 @@ export const isSharingActive = (url: string): boolean =>
 
 export const NAV_LINKS_SECONDARY = [
   { href: '/correlations', label: 'Analyze', icon: '🔬' },
+  { href: '/training-load', label: 'Training load', icon: '💪' },
   { href: '/places', label: 'Places', icon: '📍' },
   { href: '/routes', label: 'Routes', icon: '🗺' },
   { href: '/activity-types', label: 'Types', icon: '🏷' },
@@ -40,6 +41,7 @@ export const DATA_SOURCE_LINKS = [
   { label: 'Oura Ring', path: '/data-sources/oura' },
   { label: 'Garmin Connect', path: '/data-sources/garmin' },
   { label: 'Strava', path: '/data-sources/strava' },
+  { label: 'Gravl', path: '/data-sources/gravl' },
   { label: 'ActivityWatch (Desktop)', path: '/data-sources/activitywatch-desktop' },
   { label: 'ActivityWatch (Android)', path: '/data-sources/activitywatch-android' },
   { label: 'RescueTime', path: '/data-sources/rescue-time' },
@@ -56,6 +58,7 @@ const OTHER_PAGE_TITLES = [
   { href: '/data-sources', label: 'Data Sources' },
   { href: '/settings', label: 'Settings' },
   { href: '/notifications', label: 'Notifications' },
+  { href: '/strength', label: 'Strength session' },
   HELP_LINK,
   { href: '/admin', label: 'Admin' },
   { href: '/login', label: 'Login' },

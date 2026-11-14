@@ -19,6 +19,7 @@ export const registerExerciseCatalogTools = (
       'Search the built-in catalogue of strength, stretching and plyometric exercises by name, equipment or muscle.',
       'Each entry has a stable `key` (its identifier, never renamed or reused), a display name, aliases, a category (strength, stretching, plyometrics), the equipment it uses and the muscles it works with a recruitment weight in (0, 1].',
       '`q` matches word prefixes of names, aliases and search terms, best matches first; `name` is an exact name-or-alias lookup that returns that exercise or none.',
+      '`fit` is an exact lookup by Garmin FIT exercise, `<category>/<name>` in any letter case (e.g. bench_press/barbell_bench_press), that returns that exercise or none.',
       '`muscle` takes a muscle or a muscle group and keeps exercises working it at weight 0.5 or more.',
       'Exercise names on logged strength sets stay free text: they are not resolved to catalogue keys.',
     ].join(' '),

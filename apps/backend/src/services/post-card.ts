@@ -34,7 +34,6 @@ export type ResolvedPost =
       created_at: string
       /** Busts the rendered card's memo on an edit. */
       updated_at: string
-      /** How long the card's chart may stand before it is drawn afresh (`postChartBucketMs`); absent, until an edit. */
       chart_bucket_ms?: number
     }
 

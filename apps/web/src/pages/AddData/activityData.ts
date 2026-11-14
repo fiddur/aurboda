@@ -1,4 +1,10 @@
-import type { DataFieldDefinition, DataItemFieldDefinition } from '@aurboda/api-spec'
+import type {
+  ActivityTypeCatalogEntry,
+  DataFieldDefinition,
+  DataItemFieldDefinition,
+} from '@aurboda/api-spec'
+
+import { toDisplayName } from '../../utils/displayName'
 
 type ListRow = Record<string, unknown>
 
@@ -56,4 +62,14 @@ export const buildActivityData = (
     return value === undefined ? [] : [[field.name, value] as const]
   })
   return entries.length > 0 ? Object.fromEntries(entries) : undefined
+}
+
+export const newTypeToCreate = (
+  activityType: string,
+  defs: { name: string }[],
+  catalogEntries: Pick<ActivityTypeCatalogEntry, 'name'>[],
+): { name: string; display_name: string; display_category: string } | undefined => {
+  const known = (t: { name: string }) => t.name === activityType
+  if (defs.some(known) || catalogEntries.some(known)) return undefined
+  return { display_category: 'other', display_name: toDisplayName(activityType), name: activityType }
 }

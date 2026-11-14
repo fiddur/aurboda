@@ -68,6 +68,18 @@ The page at `/goals` shows a progress bar for each configured goal. Each display
 
 The page auto-refreshes every 60 seconds.
 
+### Reading the bar
+
+The bar is scaled to the maximum when the goal has one, else to the minimum:
+
+- **Min only** (Steps ≥ 70,000): the bar is full at the minimum.
+- **Max only**: the bar is full at the maximum.
+- **Min and max** (Zone 5, 5-10 min): the bar is full at the maximum, with a marker at the minimum.
+
+A value past 100 % starts a second bar under the first that shows the overflow (85,000 of a 70,000
+minimum fills the first bar and 21 % of the second), in red when the maximum is exceeded. The web
+page and the Android widget draw the same bars.
+
 ## History
 
 Click (or tap, or focus and press Enter) a goal on the Goals page to open its history under it; click it again to close. The open goal and range live in the URL (`/goals?history=<id>&range=90d`), so the view can be linked and survives a reload.
@@ -131,9 +143,25 @@ Goals can be **drag-reordered** -- the order determines how they appear on the G
 The Android home screen widget shows the same goal progress as the web page. Each goal appears as a row with the metric label, current value, progress bar, and "losing tomorrow" amount. The widget:
 
 - Updates after each background sync (every 15 minutes)
-- Uses the same color coding (gray/green/red)
+- Uses the same color coding (gray/green/red) and overflow bar
 - Respects the drag order from the web settings
-- Tapping opens the app
+- Is resizable; it lists the goals in a scrolling list, so a taller widget shows more of them at once
+- Tapping it opens the Goals page in the app
+
+It reads `GET /goals/progress/widget`; see [Android app: Home-screen widgets](../android-app.md#home-screen-widgets).
+
+## API and MCP
+
+Goals are part of the user settings: `GET /user/settings` returns them as `goals`, and
+`PATCH /user/settings` with `goals` replaces the list (`null` resets to the defaults, `[]` clears
+all goals). The MCP twins are `get_user_settings` and `update_user_settings`.
+
+- `GET /goals/progress` (`get_goal_progress`): every goal with its current value and the "losing
+  tomorrow" amount.
+- `GET /goals/{id}/history` (`get_goal_history`): see [History](#history).
+
+Time-based metrics such as the HR zone minutes are stored and sent in seconds; the web page and
+the widget show them in minutes.
 
 ## What Data It Needs
 

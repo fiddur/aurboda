@@ -3,6 +3,7 @@ import type { StoredExerciseCatalog, StoredExerciseCatalogEntry } from '@aurboda
 import { describe, expect, test } from 'vitest'
 
 import {
+  findExerciseByFit,
   findExerciseByName,
   getExerciseByKey,
   loadExerciseCatalog,
@@ -40,7 +41,16 @@ const catalog: StoredExerciseCatalog = {
       name: 'Dumbbell Bench Press',
       search_terms: ['DB'],
     }),
-    entry({ equipment: ['barbell'], key: 'bench_press', muscles: { chest: 1 }, name: 'Bench Press' }),
+    entry({
+      equipment: ['barbell'],
+      key: 'bench_press',
+      muscles: { chest: 1 },
+      name: 'Bench Press',
+      same_as: {
+        fit: ['bench_press/barbell_bench_press', 'bench_press/weighted_bench_press'],
+        free_exercise_db: 'b',
+      },
+    }),
     entry({
       equipment: ['barbell'],
       key: 'incline_barbell_press',
@@ -60,6 +70,7 @@ const catalog: StoredExerciseCatalog = {
   sources: {
     bodybuild: { commit: 'a', license: 'AGPL-3.0', url: 'u' },
     free_exercise_db: { commit: 'b', license: 'Unlicense', url: 'u' },
+    garmin_connect: { fetched: '2026-11-13', names_url: 'n', url: 'u' },
   },
   version: '2026.11.0',
 }
@@ -84,6 +95,12 @@ describe('lookups', () => {
   test('by name and by alias, ignoring case and punctuation', () => {
     expect(findExerciseByName(catalog, 'dumbbell bench-press')?.key).toBe('dumbbell_bench_press')
     expect(findExerciseByName(catalog, 'BARBELL BENCH PRESS (medium grip)')?.key).toBe('barbell_bench_press')
+  })
+
+  test('by FIT key, in any letter case', () => {
+    expect(findExerciseByFit(catalog, 'bench_press/weighted_bench_press')?.key).toBe('bench_press')
+    expect(findExerciseByFit(catalog, ' BENCH_PRESS/Barbell_Bench_Press ')?.key).toBe('bench_press')
+    expect(findExerciseByFit(catalog, 'bench_press/dumbbell_bench_press')).toBeUndefined()
   })
 
   test('search terms are not exact names', () => {
@@ -125,9 +142,49 @@ describe('searchExercises', () => {
       keys(searchExercises({ ...catalog, entries: [...catalog.entries, curated] }, { q: 'bench press' })),
     ).toEqual([
       'bench_press',
-      'smith_machine_bench_press',
       'barbell_bench_press',
       'dumbbell_bench_press',
+      'smith_machine_bench_press',
+      'incline_barbell_press',
+    ])
+  })
+
+  test('the query plus only its own free weight ranks with an exact match, curated first', () => {
+    const extra = [
+      entry({ key: 'squat', name: 'Squat', same_as: { fit: ['squat/squat'] } }),
+      entry({ key: 'belt_squat', name: 'Belt Squat', same_as: { bodybuild: 'belt squat' } }),
+      entry({
+        aliases: ['Barbell Back Squat'],
+        equipment: ['barbell', 'squat_rack'],
+        key: 'barbell_squat',
+        name: 'Barbell Squat',
+        same_as: { bodybuild: 'barbell squat' },
+      }),
+      entry({
+        equipment: ['belt_squat_machine'],
+        key: 'machine_belt_squat',
+        name: 'Machine Belt Squat',
+        same_as: { bodybuild: 'machine belt squat' },
+      }),
+      entry({ key: 'dumbbell_squat', name: 'Dumbbell Squat', same_as: { bodybuild: 'dumbbell squat' } }),
+    ]
+    expect(
+      keys(searchExercises({ ...catalog, entries: [...catalog.entries, ...extra] }, { q: 'squat' })),
+    ).toEqual(['barbell_squat', 'squat', 'belt_squat', 'dumbbell_squat', 'machine_belt_squat'])
+  })
+
+  test('within a tier, free-exercise-db entries go before Garmin-only ones', () => {
+    const garminOnly = entry({
+      key: 'bench_press_hold',
+      name: 'Bench Press Hold',
+      same_as: { fit: ['bench_press/hold'] },
+    })
+    const result = searchExercises({ ...catalog, entries: [garminOnly, ...catalog.entries] }, { q: 'bench' })
+    expect(keys(result)).toEqual([
+      'bench_press',
+      'barbell_bench_press',
+      'dumbbell_bench_press',
+      'bench_press_hold',
       'incline_barbell_press',
     ])
   })
@@ -179,6 +236,19 @@ describe('searchExercises', () => {
       'barbell_bench_press',
     ])
     expect(search({ name: 'bench' }).total).toBe(0)
+  })
+
+  test('fit is an exact lookup in any letter case that ignores q', () => {
+    expect(keys(search({ fit: 'BENCH_PRESS/WEIGHTED_BENCH_PRESS', q: 'dumbbell' }))).toEqual(['bench_press'])
+    expect(search({ fit: 'bench_press/unknown' }).total).toBe(0)
+  })
+
+  test('with both name and fit the entry must match both', () => {
+    expect(keys(search({ fit: 'bench_press/barbell_bench_press', name: 'Bench Press' }))).toEqual([
+      'bench_press',
+    ])
+    expect(search({ fit: 'bench_press/barbell_bench_press', name: 'Barbell Bench Press' }).total).toBe(0)
+    expect(search({ fit: 'bench_press/unknown', name: 'Bench Press' }).total).toBe(0)
   })
 })
 
@@ -260,5 +330,20 @@ describe('the built-in catalogue', () => {
     const builtIn = loadExerciseCatalog()
     expect(findExerciseByName(builtIn, 'Barbell Bench Press - Medium Grip')?.same_as.wikidata).toBe('Q14093')
     expect(searchExercises(builtIn, { limit: 5, q: 'deadlift' }).entries[0]?.key).toBe('deadlift')
+  })
+
+  test('a common lift leads with its canonical free-weight entry', () => {
+    const builtIn = loadExerciseCatalog()
+    const names = (q: string) => searchExercises(builtIn, { limit: 3, q }).entries.map((e) => e.name)
+    expect(names('squat')).toEqual(['Barbell Squat', 'Dumbbell Squat', 'Squat'])
+    expect(names('bench press')).toEqual(['Barbell Bench Press', 'Dumbbell Bench Press', 'Bench Press'])
+    expect(names('deadlift')).toEqual(['Deadlift', 'Dumbbell Deadlift', 'Kettlebell Deadlift'])
+  })
+
+  test('finds entries by Garmin FIT key', () => {
+    const builtIn = loadExerciseCatalog()
+    expect(findExerciseByFit(builtIn, 'deadlift/barbell_deadlift')?.key).toBe('deadlift')
+    expect(findExerciseByFit(builtIn, 'push_up/weighted_push_up')?.key).toBe('push_up')
+    expect(findExerciseByFit(builtIn, 'sled/pull')?.name).toBe('Sled Pull')
   })
 })

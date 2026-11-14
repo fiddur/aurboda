@@ -1,5 +1,6 @@
 import type {
   ActivityImpactData,
+  FlaggedExclusion,
   HrvActivitiesData,
   HrvStats as ApiHrvStats,
   HrvStatsWithDelta as ApiHrvStatsWithDelta,
@@ -14,6 +15,7 @@ export type HrvStats = ApiHrvStats
 export type HrvStatsWithDelta = ApiHrvStatsWithDelta
 
 export interface BaselineResult {
+  flagged_exclusion?: FlaggedExclusion
   hrv: {
     avg7day: number | null
     avg30day: number | null
@@ -167,6 +169,7 @@ export interface MetricLagResult {
   mean: number | null
   stddev: number | null
   sample_count: number
+  bin_count?: number
   delta_from_baseline: number | null
 }
 
@@ -182,6 +185,7 @@ export interface MetricBaseline {
   mean: number | null
   stddev: number | null
   sample_count: number
+  bin_count?: number
 }
 
 export interface ProductivityBaseline {
@@ -204,12 +208,16 @@ export interface GenericCorrelationOptions {
   periodEnd?: string
   /** Denominator universe for event outcomes (default: 'known'). */
   denominator?: 'known' | 'all'
+  /** Leave out the data and days inside activities flagged exclude_from_baseline. */
+  excludeFlagged?: boolean
 }
 
 /** Event-outcome analysis attached to a generic correlation result. */
 export interface EventOutcomeBlock {
   denominator: 'known' | 'all'
   collapse_gap_days: number
+  /** Lags tested: the family per_lag[].p_value_adjusted is adjusted over. */
+  comparisons: number
   trigger_days: number
   outcome_days: number
   onsets: number
@@ -233,6 +241,7 @@ export interface GenericCorrelationResult {
   post_trigger: Record<string, LagResult>
   /** Exposure-corrected analysis (present when outcome.type === 'event'). */
   event_outcome?: EventOutcomeBlock
+  flagged_exclusion?: FlaggedExclusion
   statistical_significance: {
     chi_squared: number | null
     p_value: number | null

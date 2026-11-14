@@ -16,8 +16,29 @@ export type GarminSourceTarget = GarminDataType | 'activityDetail'
 
 export interface GarminConnections {
   session: boolean
-  personal_key: { connected: boolean; refused: boolean; expires_at: Date | null }
+  personal_key: {
+    connected: boolean
+    refused: boolean
+    /** When Garmin last refused the key: the first refusal, or the last daily retry. */
+    refusal_checked_at: Date | null
+    expires_at: Date | null
+  }
 }
+
+const DAY_MS = 24 * 60 * 60 * 1000
+
+/** A refused key is exchanged again once a day, so a passing refusal (a WAF or geo block) does not lock it out. */
+export const refusedKeyRetryDue = (checkedAt: Date, now: Date): boolean =>
+  now.getTime() - checkedAt.getTime() >= DAY_MS
+
+/** The key is good through its expiry date, counted in UTC days as the reminders count them. */
+export const garminKeyExpired = (expiresAt: Date | null, now: Date): boolean =>
+  expiresAt !== null && Math.floor(expiresAt.getTime() / DAY_MS) < Math.floor(now.getTime() / DAY_MS)
+
+const keyUsable = ({ personal_key: key }: GarminConnections, now: Date): boolean =>
+  key.connected &&
+  !garminKeyExpired(key.expires_at, now) &&
+  (!key.refused || (key.refusal_checked_at !== null && refusedKeyRetryDue(key.refusal_checked_at, now)))
 
 /** The data types Garmin's Personal API serves. */
 export const personalKeyDataTypes: ReadonlySet<GarminDataType> = new Set<GarminDataType>([
@@ -40,9 +61,9 @@ export const personalKeyDataTypes: ReadonlySet<GarminDataType> = new Set<GarminD
 export const chooseGarminSource = (
   target: GarminSourceTarget,
   connections: GarminConnections,
+  now: Date = new Date(),
 ): GarminSource | null => {
-  const keyUsable = connections.personal_key.connected && !connections.personal_key.refused
-  if (target !== 'activityDetail' && keyUsable && personalKeyDataTypes.has(target)) {
+  if (target !== 'activityDetail' && keyUsable(connections, now) && personalKeyDataTypes.has(target)) {
     return target === 'sleep' && connections.session ? 'session' : 'personal_key'
   }
   return connections.session ? 'session' : null
@@ -52,7 +73,6 @@ export interface GarminConnectionDeps {
   getOAuthToken: (user: string, provider: string) => Promise<OAuthToken | null>
 }
 
-// Read at call time: settings.ts imports this module, and tests that mock db/index without getOAuthToken would fail at load.
 const defaultConnectionDeps: GarminConnectionDeps = {
   getOAuthToken: (user, provider) => getOAuthToken(user, provider),
 }
@@ -71,6 +91,8 @@ export const getGarminConnections = async (
     personal_key: {
       connected: keyStored,
       expires_at: keyStored ? (personal.expires_at ?? null) : null,
+      refusal_checked_at:
+        keyStored && personal.refused_at ? (personal.updated_at ?? personal.refused_at) : null,
       refused: keyStored && personal.refused_at != null,
     },
     session: session !== null && session.access_token !== '',
@@ -119,6 +141,7 @@ export const garminRoutedClient = ({
         ? personal.getActivities(user, start, limit)
         : session.getActivities(user, start, limit),
     getActivityDetail: session.getActivityDetail,
+    getActivityExerciseSets: session.getActivityExerciseSets,
     getBodyBattery: async (user: string, startDate: Date, endDate: Date) =>
       (await usesKey(user, 'bodyBattery'))
         ? personal.getBodyBattery(user, startDate, endDate)

@@ -19,10 +19,10 @@ export type SkipAutoshare = (user: string, activityId: string) => Promise<SkipAu
 /**
  * Keeps the activity's merge group from ever being auto-shared. The suppressions go in
  * before the post lookup, so an evaluation that already created the post is seen here as
- * `already_shared` and one that starts after sees the suppressions. Best effort against
- * an evaluation running at the same moment: it reads the suppressions once more right
- * before creating the post, and a skip landing after that read still answers `skipped`
- * while the post goes out (the notification then says "was shared").
+ * `already_shared`, and the post insert checks the suppressions in the same statement, so
+ * one that inserts later is refused. Left open is only a skip committing while that insert
+ * statement is itself running: it answers `skipped` while the post goes out (the
+ * notification then says "was shared").
  */
 export const skipAutoshare =
   (deps: SkipAutoshareDeps): SkipAutoshare =>

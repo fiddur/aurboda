@@ -2,6 +2,8 @@ import type { MetricType } from '../../schema.ts'
 import type { OuraSleepPeriodRaw, OuraTagWithComment } from './client.ts'
 
 import {
+  ensureActivityType,
+  findActivityTypeForName,
   insertActivity,
   insertRawRecord,
   insertTimeSeries,
@@ -9,6 +11,8 @@ import {
   type TimeSeriesPoint,
   upsertSyncedNote,
 } from '../../db/index.ts'
+import { loadActivityTypeCatalog } from '../../services/activity-type-catalog.ts'
+import { resolveOuraTagLanding } from './tag-targets.ts'
 
 export type OuraDataType =
   | 'dailyCardiovascularAge'
@@ -448,11 +452,17 @@ const processTags = async (user: string, data: OuraTagWithComment[]) => {
       source: 'oura',
     })
 
-    const activityType = await resolveOrCreateActivityType(user, record.tag)
+    const landing = await resolveOuraTagLanding(
+      { ensureActivityType, findActivityTypeForName, resolveOrCreateActivityType },
+      user,
+      record,
+      loadActivityTypeCatalog(),
+    )
+    const activityData = { ...landing.data, ...(record.tag_key ? { tag_key: record.tag_key } : {}) }
 
     const activityId = await insertActivity(user, {
-      activity_type: activityType,
-      data: record.tag_key ? { tag_key: record.tag_key } : undefined,
+      activity_type: landing.activity_type,
+      data: Object.keys(activityData).length > 0 ? activityData : undefined,
       end_time: record.end_time,
       external_id: record.external_id,
       source: 'oura',

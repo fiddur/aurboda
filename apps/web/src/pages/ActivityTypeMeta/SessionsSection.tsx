@@ -19,6 +19,7 @@ import {
   groupHardMinutes,
   type GroupSortKey,
   hrDomain,
+  sessionGroupings,
   sortGroups,
 } from '../../components/sessions/sessionView'
 import { fetchActivitySessions } from '../../state/api'
@@ -204,19 +205,17 @@ const SessionsControls = ({
   onLookback: (days: number) => void
 }) => (
   <div class="sessions-controls">
-    {fields.length > 0 && (
-      <label class="sessions-control">
-        View
-        <select value={view} onChange={(e) => onView((e.target as HTMLSelectElement).value)}>
-          {fields.map((f) => (
-            <option key={f.name} value={f.name}>
-              By {fieldLabel(f).toLowerCase()}
-            </option>
-          ))}
-          <option value={LIST_VIEW}>All sessions</option>
-        </select>
-      </label>
-    )}
+    <label class="sessions-control">
+      View
+      <select value={view} onChange={(e) => onView((e.target as HTMLSelectElement).value)}>
+        {fields.map((f) => (
+          <option key={f.name} value={f.name}>
+            By {fieldLabel(f).toLowerCase()}
+          </option>
+        ))}
+        <option value={LIST_VIEW}>All sessions</option>
+      </select>
+    </label>
     <select
       aria-label="Period"
       value={lookback}
@@ -233,13 +232,14 @@ const SessionsControls = ({
 
 /**
  * The type's sessions with their length and heart rate: grouped by a categorical data field (a
- * catalog to pick the next session from), or as one list.
+ * catalog to pick the next session from) or by place, or as one list.
  */
 export function SessionsSection({ name, fields }: { name: string; fields: DataFieldDefinition[] }) {
   const [view, setView] = useState<string | undefined>(undefined)
   const [lookback, setLookback] = useState(90)
   const groupByName = view ?? fields[0]?.name ?? LIST_VIEW
-  const groupField = fields.find((f) => f.name === groupByName)
+  const groupings = sessionGroupings(fields)
+  const groupField = groupings.find((f) => f.name === groupByName)
 
   const query = useQuery({
     queryFn: () =>
@@ -256,7 +256,7 @@ export function SessionsSection({ name, fields }: { name: string; fields: DataFi
       <div class="activity-type-meta-section-header sessions-header">
         <h2>Sessions</h2>
         <SessionsControls
-          fields={fields}
+          fields={groupings}
           view={groupByName}
           onView={setView}
           lookback={lookback}
@@ -270,7 +270,7 @@ export function SessionsSection({ name, fields }: { name: string; fields: DataFi
       {fields.length === 0 && (
         <p class="sessions-hint">
           Mark a data field as categorical in the data schema below (e.g. a session name or a run kind) to
-          group sessions by it.
+          group sessions by it, or view them by place.
         </p>
       )}
     </section>

@@ -1,16 +1,23 @@
+import type { MetricType, SleepDebt, SleepDebtDay } from '@aurboda/api-spec'
+
+import { getMetricBetter } from '@aurboda/api-spec'
 import { signal } from '@preact/signals'
 import { useQuery } from '@tanstack/react-query'
 import * as d3 from 'd3'
 import { endOfDay, formatISO, startOfDay, subDays } from 'date-fns'
 import { useEffect, useRef } from 'preact/hooks'
 
+import { formatMinutesAsHM } from '../../components/charts/sleep-utils'
+import { formatDebt, hasNights, SEVERITY_COLORS, SEVERITY_LABELS } from '../../components/widgets/sleepDebt'
+import { TrendIndicator } from '../../components/widgets/TrendIndicator'
 import {
   fetchActivities,
   fetchPeriodSummary,
+  fetchSleepDebt,
   fetchSleepScores,
-  periodStatsValue,
   type Activity,
 } from '../../state/api'
+import { sleepCardValues } from './cardValues'
 import { getSleepScoreEmptyState } from './emptyState'
 import './style.css'
 
@@ -101,23 +108,25 @@ function SleepScoreChart({
       .attr('stroke', 'white')
       .attr('stroke-width', 1)
 
-    const avgScore = d3.mean(data, (d) => d[1]) ?? 0
-    g.append('line')
-      .attr('x1', 0)
-      .attr('y1', y(avgScore))
-      .attr('x2', innerWidth)
-      .attr('y2', y(avgScore))
-      .attr('stroke', '#94a3b8')
-      .attr('stroke-width', 1)
-      .attr('stroke-dasharray', '4,4')
+    const avgScore = d3.mean(data, (d) => d[1])
+    if (avgScore !== undefined) {
+      g.append('line')
+        .attr('x1', 0)
+        .attr('y1', y(avgScore))
+        .attr('x2', innerWidth)
+        .attr('y2', y(avgScore))
+        .attr('stroke', '#94a3b8')
+        .attr('stroke-width', 1)
+        .attr('stroke-dasharray', '4,4')
 
-    g.append('text')
-      .attr('x', innerWidth - 5)
-      .attr('y', y(avgScore) - 5)
-      .attr('text-anchor', 'end')
-      .attr('fill', '#64748b')
-      .attr('font-size', '11px')
-      .text(`Avg: ${avgScore.toFixed(0)}`)
+      g.append('text')
+        .attr('x', innerWidth - 5)
+        .attr('y', y(avgScore) - 5)
+        .attr('text-anchor', 'end')
+        .attr('fill', '#64748b')
+        .attr('font-size', '11px')
+        .text(`Avg: ${avgScore.toFixed(0)}`)
+    }
 
     g.append('g')
       .attr('transform', `translate(0,${innerHeight})`)
@@ -224,23 +233,25 @@ function SleepDurationChart({ sleepSessions, height = 180 }: { sleepSessions: Ac
       .attr('fill', (d) => (d.hours >= 7 && d.hours <= 9 ? '#22c55e' : d.hours < 6 ? '#ef4444' : '#f59e0b'))
       .attr('rx', 2)
 
-    const avgDuration = d3.mean(durationData, (d) => d.hours) ?? 0
-    g.append('line')
-      .attr('x1', 0)
-      .attr('y1', y(avgDuration))
-      .attr('x2', innerWidth)
-      .attr('y2', y(avgDuration))
-      .attr('stroke', '#64748b')
-      .attr('stroke-width', 1)
-      .attr('stroke-dasharray', '4,4')
+    const avgDuration = d3.mean(durationData, (d) => d.hours)
+    if (avgDuration !== undefined) {
+      g.append('line')
+        .attr('x1', 0)
+        .attr('y1', y(avgDuration))
+        .attr('x2', innerWidth)
+        .attr('y2', y(avgDuration))
+        .attr('stroke', '#64748b')
+        .attr('stroke-width', 1)
+        .attr('stroke-dasharray', '4,4')
 
-    g.append('text')
-      .attr('x', innerWidth - 5)
-      .attr('y', y(avgDuration) - 5)
-      .attr('text-anchor', 'end')
-      .attr('fill', '#64748b')
-      .attr('font-size', '11px')
-      .text(`Avg: ${avgDuration.toFixed(1)}h`)
+      g.append('text')
+        .attr('x', innerWidth - 5)
+        .attr('y', y(avgDuration) - 5)
+        .attr('text-anchor', 'end')
+        .attr('fill', '#64748b')
+        .attr('font-size', '11px')
+        .text(`Avg: ${avgDuration.toFixed(1)}h`)
+    }
 
     const tickValues = durationData
       .filter((_, i) => i % Math.ceil(durationData.length / 8) === 0)
@@ -280,28 +291,176 @@ function SleepDurationChart({ sleepSessions, height = 180 }: { sleepSessions: Ac
   )
 }
 
+function SleepDebtChart({
+  days,
+  needMinutes,
+  height = 180,
+}: {
+  days: SleepDebtDay[]
+  needMinutes: number
+  height?: number
+}) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const svgRef = useRef<SVGSVGElement>(null)
+
+  useEffect(() => {
+    if (!svgRef.current || !containerRef.current || days.length < 2) return
+
+    const containerWidth = containerRef.current.clientWidth
+    const svg = d3.select(svgRef.current)
+    svg.selectAll('*').remove()
+
+    const margin = { bottom: 40, left: 45, right: 20, top: 20 }
+    const width = containerWidth
+    const innerWidth = width - margin.left - margin.right
+    const innerHeight = height - margin.top - margin.bottom
+
+    const x = d3
+      .scaleBand()
+      .domain(days.map((d) => d.date))
+      .range([0, innerWidth])
+      .padding(0.2)
+
+    const hours = (minutes: number) => minutes / 60
+    const yMax = Math.max(hours(needMinutes), d3.max(days, (d) => hours(d.debt_minutes)) ?? 0)
+    const y = d3.scaleLinear().domain([0, yMax]).nice().range([innerHeight, 0])
+
+    const g = svg
+      .attr('width', width)
+      .attr('height', height)
+      .append('g')
+      .attr('transform', `translate(${margin.left},${margin.top})`)
+
+    g.selectAll('.bar')
+      .data(days)
+      .enter()
+      .append('rect')
+      .attr('class', 'bar')
+      .attr('x', (d) => x(d.date)!)
+      .attr('y', (d) => y(hours(d.debt_minutes)))
+      .attr('width', x.bandwidth())
+      .attr('height', (d) => innerHeight - y(hours(d.debt_minutes)))
+      .attr('fill', (d) => SEVERITY_COLORS[d.severity])
+      .attr('fill-opacity', (d) => (d.slept_minutes === null ? 0.4 : 1))
+      .attr('rx', 2)
+      .append('title')
+      .text(
+        (d) =>
+          `${d.date}: ${formatDebt(d.debt_minutes)} debt, ${d.slept_minutes === null ? 'no night recorded' : `slept ${formatMinutesAsHM(d.slept_minutes)}`}`,
+      )
+
+    g.append('line')
+      .attr('x1', 0)
+      .attr('y1', y(hours(needMinutes)))
+      .attr('x2', innerWidth)
+      .attr('y2', y(hours(needMinutes)))
+      .attr('stroke', '#64748b')
+      .attr('stroke-width', 1)
+      .attr('stroke-dasharray', '4,4')
+
+    g.append('text')
+      .attr('x', innerWidth - 5)
+      .attr('y', y(hours(needMinutes)) - 5)
+      .attr('text-anchor', 'end')
+      .attr('fill', '#64748b')
+      .attr('font-size', '11px')
+      .text('One night')
+
+    const tickValues = days.filter((_, i) => i % Math.ceil(days.length / 8) === 0).map((d) => d.date)
+
+    g.append('g')
+      .attr('transform', `translate(0,${innerHeight})`)
+      .call(
+        d3
+          .axisBottom(x)
+          .tickValues(tickValues)
+          .tickFormat((d) => d3.timeFormat('%b %d')(new Date(`${d}T12:00:00`))),
+      )
+      .selectAll('text')
+      .attr('fill', 'currentColor')
+
+    g.append('g').call(d3.axisLeft(y).ticks(5)).selectAll('text').attr('fill', 'currentColor')
+
+    g.append('text')
+      .attr('transform', 'rotate(-90)')
+      .attr('y', -35)
+      .attr('x', -innerHeight / 2)
+      .attr('text-anchor', 'middle')
+      .attr('fill', 'currentColor')
+      .attr('font-size', '12px')
+      .text('Debt (hours)')
+  }, [days, needMinutes, height])
+
+  if (days.length < 2) {
+    return <div class="chart-placeholder">Not enough sleep data to display chart</div>
+  }
+
+  return (
+    <div ref={containerRef} class="chart-container">
+      <svg ref={svgRef} />
+    </div>
+  )
+}
+
+function SleepDebtSection({ debt }: { debt: SleepDebt | undefined }) {
+  if (!debt) return null
+  if (!hasNights(debt)) {
+    return (
+      <section class="chart-section">
+        <h2>Sleep Debt</h2>
+        <div class="chart-placeholder">No nights recorded in this period.</div>
+      </section>
+    )
+  }
+  return (
+    <section class="chart-section">
+      <h2>Sleep Debt</h2>
+      <div class="stats-grid">
+        <StatCard
+          label="Current debt"
+          value={formatDebt(debt.debt_minutes)}
+          description="After the last night"
+        />
+        <div class="stat-card">
+          <div class="stat-label">Severity</div>
+          <div class="stat-value">
+            <span class="sleep-debt-severity" style={{ background: SEVERITY_COLORS[debt.severity] }}>
+              {SEVERITY_LABELS[debt.severity]}
+            </span>
+          </div>
+          <div class="stat-description">Debt against one night's need</div>
+        </div>
+        <StatCard
+          label="Sleep need"
+          value={formatMinutesAsHM(debt.sleep_need_minutes)}
+          description="Per night"
+        />
+      </div>
+      <p class="sleep-debt-explainer">
+        Each night the debt grows by what you slept less than your need and shrinks by what you slept more,
+        and 15 % of it fades every day. Naps over 20 minutes count at half. A night without data only fades
+        the debt. Change your sleep need in <a href="/settings">Settings</a>.
+      </p>
+      <SleepDebtChart days={debt.days} needMinutes={debt.sleep_need_minutes} />
+    </section>
+  )
+}
+
 function StatCard({
   label,
   value,
   unit,
   trend,
+  metric,
   description,
 }: {
   label: string
   value: number | string | null
   unit?: string
   trend?: number | null
+  metric?: MetricType
   description?: string
 }) {
-  const trendClass =
-    trend !== null && trend !== undefined
-      ? trend > 0
-        ? 'trend-positive'
-        : trend < 0
-          ? 'trend-negative'
-          : 'trend-neutral'
-      : ''
-
   return (
     <div class="stat-card">
       <div class="stat-label">{label}</div>
@@ -316,8 +475,8 @@ function StatCard({
         )}
       </div>
       {trend !== null && trend !== undefined && (
-        <div class={`stat-trend ${trendClass}`}>
-          {trend > 0 ? '\u2191' : trend < 0 ? '\u2193' : '\u2192'} {Math.abs(trend).toFixed(1)}%
+        <div class="stat-trend">
+          <TrendIndicator value={trend} better={metric && getMetricBetter(metric)} />
         </div>
       )}
       {description && <div class="stat-description">{description}</div>}
@@ -358,17 +517,19 @@ export function Sleep() {
     staleTime: 5 * 60 * 1000,
   })
 
+  const sleepDebtQuery = useQuery({
+    queryFn: () =>
+      fetchSleepDebt({
+        end: formatISO(end, { representation: 'date' }),
+        start: formatISO(start, { representation: 'date' }),
+      }),
+    queryKey: ['sleepDebt', formatISO(start, { representation: 'date' }), daysBack.value],
+    staleTime: 5 * 60 * 1000,
+  })
+
   const sleepScores = sleepScoresQuery.data ?? []
   const sleepSessions = activitiesQuery.data ?? []
-  const metricsArray = periodSummaryQuery.data?.metrics ?? []
-  const metrics: Record<string, { avg: number | null; change_from_previous_period_percent: number | null }> =
-    {}
-  for (const m of metricsArray) {
-    metrics[m.metric] = {
-      avg: periodStatsValue(m, 'avg'),
-      change_from_previous_period_percent: m.change_from_previous_period_percent,
-    }
-  }
+  const metrics = sleepCardValues(periodSummaryQuery.data?.metrics ?? [])
 
   const isLoading = sleepScoresQuery.isLoading || periodSummaryQuery.isLoading || activitiesQuery.isLoading
 
@@ -408,7 +569,8 @@ export function Sleep() {
           <StatCard
             label="Sleep Score"
             value={metrics.sleep_score?.avg ?? null}
-            trend={metrics.sleep_score?.change_from_previous_period_percent}
+            trend={metrics.sleep_score?.trend}
+            metric="sleep_score"
             description="Overall sleep quality"
           />
           <StatCard label="Duration" value={avgSleepDuration} unit="h" description="Average per night" />
@@ -416,18 +578,21 @@ export function Sleep() {
             label="Efficiency"
             value={metrics.sleep_efficiency?.avg ?? null}
             unit="%"
-            trend={metrics.sleep_efficiency?.change_from_previous_period_percent}
+            trend={metrics.sleep_efficiency?.trend}
+            metric="sleep_efficiency"
             description="Time asleep vs. in bed"
           />
           <StatCard
             label="Latency"
             value={metrics.sleep_latency?.avg ?? null}
-            unit="min"
-            trend={metrics.sleep_latency?.change_from_previous_period_percent}
-            description="Time to fall asleep"
+            trend={metrics.sleep_latency?.trend}
+            metric="sleep_latency"
+            description="Falling asleep quickly (score)"
           />
         </div>
       </section>
+
+      <SleepDebtSection debt={sleepDebtQuery.data} />
 
       <section class="chart-section">
         <h2>Sleep Score Trend</h2>
@@ -456,31 +621,36 @@ export function Sleep() {
           <StatCard
             label="Total Score"
             value={metrics.sleep_total_score?.avg ?? null}
-            trend={metrics.sleep_total_score?.change_from_previous_period_percent}
+            trend={metrics.sleep_total_score?.trend}
+            metric="sleep_total_score"
             description="Sleep duration component"
           />
           <StatCard
             label="Deep Sleep"
             value={metrics.sleep_deep_score?.avg ?? null}
-            trend={metrics.sleep_deep_score?.change_from_previous_period_percent}
+            trend={metrics.sleep_deep_score?.trend}
+            metric="sleep_deep_score"
             description="Restorative sleep quality"
           />
           <StatCard
             label="REM Sleep"
             value={metrics.sleep_rem_score?.avg ?? null}
-            trend={metrics.sleep_rem_score?.change_from_previous_period_percent}
+            trend={metrics.sleep_rem_score?.trend}
+            metric="sleep_rem_score"
             description="Dream sleep quality"
           />
           <StatCard
             label="Restfulness"
             value={metrics.sleep_restfulness?.avg ?? null}
-            trend={metrics.sleep_restfulness?.change_from_previous_period_percent}
+            trend={metrics.sleep_restfulness?.trend}
+            metric="sleep_restfulness"
             description="Movement during sleep"
           />
           <StatCard
             label="Timing"
             value={metrics.sleep_timing?.avg ?? null}
-            trend={metrics.sleep_timing?.change_from_previous_period_percent}
+            trend={metrics.sleep_timing?.trend}
+            metric="sleep_timing"
             description="Consistency of bedtime"
           />
         </div>

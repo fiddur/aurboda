@@ -4,7 +4,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vit
 import type { FeedDeliveryDeps } from './deliver.ts'
 
 import { insertActivity } from '../../db/activities/index.ts'
-import { createArticlePost, createFeedPost, deleteFeedPost, listPublicFeedPosts } from '../../db/feed.ts'
+import {
+  createArticlePost,
+  createFeedPost,
+  deleteFeedPostWithQuotes,
+  listPublicFeedPosts,
+} from '../../db/feed.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../../test/db-test-helper.ts'
 import { createFeedFederation } from './federation.ts'
 import { createPostUpdateResender, deliverPostUpdate } from './post-update-resend.ts'
@@ -61,7 +66,7 @@ describe('re-sending post Updates', () => {
     const unlisted = await activityPost(user, 'unlisted')
     await activityPost(user, 'followers')
     const deleted = await activityPost(user, 'public')
-    await deleteFeedPost(user, deleted.id)
+    await deleteFeedPostWithQuotes(user, deleted.id)
     const article = await createArticlePost(user, {
       article: { blocks: [{ markdown: 'Hello', type: 'prose' }], title: 'Hi' },
       visibility: 'public',

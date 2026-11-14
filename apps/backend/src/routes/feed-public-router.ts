@@ -71,7 +71,7 @@ import {
 } from '../services/official-feed.ts'
 import { serializePublicTagPost } from '../services/public-tags.ts'
 import { queryMetricsBucketed } from '../services/queries/index.ts'
-import { createRenderCache } from '../services/render-cache.ts'
+import { createRenderCache, createTtlCache } from '../services/render-cache.ts'
 import { getSettings, type UserSettings } from '../services/settings.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { UUID_RE } from '../utils.ts'
@@ -100,14 +100,20 @@ export interface FeedPublicRouterDeps {
   publicTags?: Pick<PublicTagActions, 'latest' | 'page'>
 }
 
+/** What the structured-payload cache may hold, in the payloads' JSON bytes. */
+export const STRUCTURED_CACHE_BYTES = 32 * 1024 * 1024
+
+const structuredKey = (username: string, postId: string, updatedAt: Date): string =>
+  `structured:${username}:${postId}:${updatedAt.getTime()}`
+
 const localUsernames = (rows: readonly ({ origin: 'local'; username: string } | { origin: 'remote' })[]) =>
   rows.flatMap((entry) => (entry.origin === 'local' ? [entry.username] : []))
 
 /**
  * The Atom memo's key: every listed entry's id and `updated_at`, so an edit, a
  * new article or one dropping out (deleted, or flipped away from `public`)
- * misses it, plus the hourly bucket the structured cache uses, since a chart
- * block's data can arrive without touching the post.
+ * misses it, plus an hourly bucket, matching the structured cache's TTL, since a
+ * chart block's data can arrive without touching the post.
  */
 const atomMemoKey = (scope: string, rows: { id: string; updated_at: Date }[], now: number): string =>
   `atom:${scope}:${Math.floor(now / 3_600_000)}:${rows.map((r) => `${r.id}@${r.updated_at.getTime()}`).join(',')}`
@@ -126,14 +132,17 @@ export const createFeedPublicRouter = ({
   // either warms the other. Both routes authorize the post BEFORE consulting it,
   // so the capability token is NOT part of the key: a `followers`-only payload
   // never reaches the cache via a public request, and an anonymous `?token=…`
-  // walk can't inflate the key space. Keyed on `updated_at` AND a coarse hourly
-  // bucket (the block-image cache's two-part key): `updated_at` busts on any
-  // edit, and the hourly term bounds staleness from backfilled measurements
-  // inside an already-locked window (which don't touch `updated_at`) to ≤1h
-  // (#934 locks the window, not the data). Cap sized for the listing writing up
-  // to PROFILE_FEED_LIMIT entries per profile without a handful of concurrently
-  // browsed profiles thrashing it. Producing `null` (no content) isn't cached.
-  const structuredCache = createRenderCache<FeedStructuredPost>(200)
+  // walk can't inflate the key space. Keyed on `updated_at`, which busts on any
+  // edit, with entries expiring after an hour, which bounds staleness from
+  // backfilled measurements inside an already-locked window (which don't touch
+  // `updated_at`) to ≤1h (#934 locks the window, not the data). Bounded by the
+  // payloads' size rather than their count, since one article can carry far more
+  // than another (#972). Producing `null` (no content) isn't cached.
+  const structuredCache = createTtlCache<FeedStructuredPost>({
+    maxBytes: STRUCTURED_CACHE_BYTES,
+    sizeOf: (payload) => Buffer.byteLength(JSON.stringify(payload)),
+    ttlMs: 3_600_000,
+  })
   const atomCache = createRenderCache<string>(100)
 
   const serializePublicPost = async (
@@ -149,7 +158,7 @@ export const createFeedPublicRouter = ({
       record.kind === 'exercise' ||
       record.kind === 'dashboard'
     ) {
-      const key = `structured:${username}:${record.id}:${record.updated_at.getTime()}:${Math.floor(Date.now() / 3_600_000)}`
+      const key = structuredKey(username, record.id, record.updated_at)
       post.structured =
         (await structuredCache(key, () => resolveStructuredContent(username, record))) ?? undefined
     }
@@ -370,7 +379,7 @@ export const createFeedPublicRouter = ({
   // instead. Structured resolution is
   // expensive (bucketed series queries + a GPS-track load per opted-in post, a
   // bucketed query per article chart block, a correlation per correlation block),
-  // so it goes through the shared LRU above — same key shape as the sibling
+  // so it goes through the shared cache above — same key shape as the sibling
   // endpoint — while the per-request visibility filter keeps un-sharing
   // immediate despite the cache.
   // `no-store` like the sibling `/series` and `/feed/:postId` endpoints: sharing
@@ -525,7 +534,7 @@ export const createFeedPublicRouter = ({
         if (!post) {
           return res.status(404).json({ error: 'Not found', success: false })
         }
-        const key = `structured:${username}:${postId}:${post.updated_at.getTime()}:${Math.floor(Date.now() / 3_600_000)}`
+        const key = structuredKey(username, postId, post.updated_at)
         const structured = await structuredCache(key, () => resolveStructuredContent(username, post))
         if (!structured) {
           return res.status(404).json({ error: 'Not found', success: false })
