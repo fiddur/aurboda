@@ -413,7 +413,7 @@ const main = async () => {
     // stabilisation delay (the queue's startAfter). Fire-and-forget.
     void autoshareQueue?.enqueueEvaluation(user, start, end)
   }
-  // Home Assistant location pull (#1626). The detection trigger is built much
+  // Home Assistant location pull. The detection trigger is built much
   // further down (it needs the geocode queue, which needs pg-boss), so the
   // post-sync hook reads it through this holder once it exists.
   let triggerDetectionForUser: ((user: string) => void) | null = null

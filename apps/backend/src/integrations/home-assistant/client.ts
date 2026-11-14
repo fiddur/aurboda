@@ -64,7 +64,9 @@ export const createAssertReachable =
  * `allowPrivate` the agent pins every connection to an address the guard
  * accepts: the URL is the user's and is polled for as long as it is stored, so
  * a hostname that flips to an internal address after the check would otherwise
- * turn the error messages into a probe of that network.
+ * turn the error messages into a probe of that network. A pinned request also
+ * bypasses an egress proxy from `HTTPS_PROXY`: through a proxy the agent's
+ * lookup would resolve the proxy's name, not Home Assistant's.
  */
 export const homeAssistantReachability = (
   allowPrivate: boolean,
@@ -169,6 +171,7 @@ export const homeAssistantClient = (deps: {
         maxBodyLength: MAX_RESPONSE_BYTES,
         maxContentLength: MAX_RESPONSE_BYTES,
         maxRedirects: 0,
+        ...(deps.httpsAgent ? { proxy: false as const } : {}),
         timeout: REQUEST_TIMEOUT_MS,
       })
       return response.data

@@ -54,6 +54,8 @@ Check sync status:
 
 Garmin and Oura report no states while the source is not connected (neither a Garmin login nor a Personal API key, no Oura token), which also hides rows that releases before [#1293](https://github.com/fiddur/aurboda/issues/1293) left on users who never connected ([#1299](https://github.com/fiddur/aurboda/issues/1299)).
 
+A `syncing` status that has not changed for 15 minutes reads as `idle`: a pull that a server restart cut short never writes its result, and the next run would otherwise be the first to clear it. Strava is the exception, since its queued sync can run for hours and settles its own status.
+
 ## Data Storage
 
 All sources feed into a common data model:
