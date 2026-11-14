@@ -14,32 +14,32 @@ is the type's **name**; nothing else is stored.
 
 ## The types
 
-| Type               | Display name        | Group    | Fields                                                                                                                             |
-| ------------------ | ------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `alcohol`          | 🍷 Alcohol          | intake   | kind (beer, wine, cider, spirits, cocktail, other); drinks (number ≥ 0)                                                            |
-| `caffeine`         | ☕ Caffeine         | intake   | kind (coffee, tea, energy_drink, other); amount (number, mg ≥ 0)                                                                   |
-| `nicotine`         | 🚬 Nicotine         | intake   | kind (cigarette, snus, vape, gum_or_patch, other); amount (number ≥ 0)                                                             |
-| `medication`       | 💊 Medication       | intake   | substance (string); dose (number ≥ 0); dose_unit (string)                                                                          |
-| `supplement`       | 🧴 Supplement       | intake   | substance (string); dose (number ≥ 0); dose_unit (string)                                                                          |
-| `late_meal`        | 🌙 Late meal        | meals    | —                                                                                                                                  |
-| `heavy_meal`       | 🍽️ Heavy meal       | meals    | —                                                                                                                                  |
-| `fasting`          | ⏳ Fasting          | meals    | kind (intermittent, extended)                                                                                                      |
-| `diet`             | 🥗 Diet             | meals    | kind (keto, low_carb, vegetarian, vegan, calorie_deficit, other)                                                                   |
-| `illness`          | 🤒 Illness          | health   | kind (cold, flu, stomach_bug, covid, other); severity (number 0–10)                                                                |
-| `symptom`          | 🩺 Symptom          | health   | severity (number 0–10); the parent of the symptoms below                                                                           |
-| `pain`             | ⚡ Pain             | health   | location (head, neck, shoulder, back, lower_back, chest, abdomen, pelvis, breast, hip, knee, joint, other); severity (number 0–10) |
-| `injury`           | 🩹 Injury           | health   | body_part (string); kind (strain, sprain, fracture, wound, other); severity (number 0–10)                                          |
-| `menstruation`     | 🩸 Menstruation     | health   | flow (light, medium, heavy)                                                                                                        |
-| `sexual_activity`  | ❤️ Sexual activity  | health   | protection_used (boolean)                                                                                                          |
-| `sauna`            | 🧖 Sauna            | recovery | temperature (number, °C); rounds (number ≥ 0)                                                                                      |
-| `cold_exposure`    | 🧊 Cold exposure    | recovery | kind (cold_plunge, cold_shower, ice_bath, winter_swim); temperature (number, °C)                                                   |
-| `hot_bath`         | 🛁 Hot bath         | recovery | temperature (number, °C)                                                                                                           |
-| `massage`          | 💆 Massage          | recovery | kind (manual, massage_gun, foam_roller)                                                                                            |
-| `meditation`       | 🧘 Meditation       | recovery | technique (string); guided (boolean); session_name (string)                                                                        |
-| `guided_breathing` | 🌬️ Breathwork       | recovery | technique (string); rounds (number ≥ 0)                                                                                            |
-| `sun_exposure`     | ☀️ Sun exposure     | recovery | —                                                                                                                                  |
-| `travel`           | 🧳 Travel           | context  | mode (plane, car, train, bus, boat)                                                                                                |
-| `social_gathering` | 🎉 Social gathering | context  | —                                                                                                                                  |
+| Type               | Display name        | Group        | Fields                                                                                                                             |
+| ------------------ | ------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `alcohol`          | 🍷 Alcohol          | intake       | kind (beer, wine, cider, spirits, cocktail, other); drinks (number ≥ 0)                                                            |
+| `caffeine`         | ☕ Caffeine         | intake       | kind (coffee, tea, energy_drink, other); amount (number, mg ≥ 0)                                                                   |
+| `nicotine`         | 🚬 Nicotine         | intake       | kind (cigarette, snus, vape, gum_or_patch, other); amount (number ≥ 0)                                                             |
+| `medication`       | 💊 Medication       | intake       | substance (string); dose (number ≥ 0); dose_unit (string)                                                                          |
+| `supplement`       | 🧴 Supplement       | intake       | substance (string); dose (number ≥ 0); dose_unit (string)                                                                          |
+| `late_meal`        | 🌙 Late meal        | meals        | —                                                                                                                                  |
+| `heavy_meal`       | 🍽️ Heavy meal       | meals        | —                                                                                                                                  |
+| `fasting`          | ⏳ Fasting          | meals        | kind (intermittent, extended)                                                                                                      |
+| `diet`             | 🥗 Diet             | meals        | kind (keto, low_carb, vegetarian, vegan, calorie_deficit, other)                                                                   |
+| `illness`          | 🤒 Illness          | health       | kind (cold, flu, stomach_bug, covid, other); severity (number 0–10)                                                                |
+| `symptom`          | 🩺 Symptom          | health       | severity (number 0–10); the parent of the symptoms below                                                                           |
+| `pain`             | ⚡ Pain             | health       | location (head, neck, shoulder, back, lower_back, chest, abdomen, pelvis, breast, hip, knee, joint, other); severity (number 0–10) |
+| `injury`           | 🩹 Injury           | health       | body_part (string); kind (strain, sprain, fracture, wound, other); severity (number 0–10)                                          |
+| `menstruation`     | 🩸 Menstruation     | health       | flow (light, medium, heavy)                                                                                                        |
+| `sexual_activity`  | ❤️ Sexual activity  | health       | protection_used (boolean)                                                                                                          |
+| `sauna`            | 🧖 Sauna            | recovery     | temperature (number, °C); rounds (number ≥ 0)                                                                                      |
+| `cold_exposure`    | 🧊 Cold exposure    | recovery     | kind (cold_plunge, cold_shower, ice_bath, winter_swim); temperature (number, °C)                                                   |
+| `hot_bath`         | 🛁 Hot bath         | recovery     | temperature (number, °C)                                                                                                           |
+| `massage`          | 💆 Massage          | recovery     | kind (manual, massage_gun, foam_roller)                                                                                            |
+| `meditation`       | 🧘 Meditation       | recovery     | technique (string); guided (boolean); session_name (string)                                                                        |
+| `guided_breathing` | 🌬️ Breathwork       | recovery     | technique (string); rounds (number ≥ 0)                                                                                            |
+| `sun_exposure`     | ☀️ Sun exposure     | recovery     | —                                                                                                                                  |
+| `travel`           | 🧳 Travel           | life_context | mode (plane, car, train, bus, boat)                                                                                                |
+| `social_gathering` | 🎉 Social gathering | life_context | —                                                                                                                                  |
 
 Aliases: `medicine` for `medication`, `supplements` for `supplement`, `sick` and `sickness` for
 `illness`, `sex` for `sexual_activity`, `breathwork` for `guided_breathing`. An alias is only

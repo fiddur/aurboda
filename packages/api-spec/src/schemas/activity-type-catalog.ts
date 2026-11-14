@@ -3,13 +3,15 @@ import { z } from 'zod'
 import { createDataResponseSchema, displayCategorySchema } from './common.ts'
 import { dataSchemaDefinitionSchema } from './data-schema.ts'
 
+// No group is named `context`: the generated Kotlin enum entry `context("context")` parses as a
+// context-parameter list and does not compile.
 export const activityTypeCatalogGroups = [
   'intake',
   'meals',
   'health',
   'symptoms',
   'recovery',
-  'context',
+  'life_context',
 ] as const
 
 export const activityTypeCatalogGroupSchema = z.enum(activityTypeCatalogGroups).meta({

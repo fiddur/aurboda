@@ -22,7 +22,7 @@
       "name": "Recovery and practice"
     },
     {
-      "key": "context",
+      "key": "life_context",
       "name": "Context"
     }
   ],
@@ -620,7 +620,7 @@
       "name": "travel",
       "display_name": "Travel",
       "display_category": "travel",
-      "group": "context",
+      "group": "life_context",
       "color": "#0284c7",
       "icon": "🧳",
       "aliases": [],
@@ -643,7 +643,7 @@
       "name": "social_gathering",
       "display_name": "Social gathering",
       "display_category": "other",
-      "group": "context",
+      "group": "life_context",
       "color": "#db2777",
       "icon": "🎉",
       "aliases": [],
