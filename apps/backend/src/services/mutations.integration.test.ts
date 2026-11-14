@@ -152,6 +152,39 @@ describe('updateActivity on a merged view (integration)', () => {
     expect(stored?.data).toMatchObject({ in_progress: false, last_set_at: '2026-11-10T17:08:00Z', sets })
   })
 
+  test('a live session overlapped by a synced one is still listed as its own open row', async () => {
+    const user = getTestUser()
+    const start = new Date('2026-11-10T17:02:00Z')
+    await insertActivity(user, {
+      activity_type: 'strength_training',
+      data: { average_hr: 110 },
+      end_time: new Date('2026-11-10T17:40:00Z'),
+      source: 'garmin',
+      start_time: new Date('2026-11-10T17:00:00Z'),
+    })
+    const added = await addActivity(user, {
+      activity_type: 'strength_training',
+      data: { in_progress: true, sets },
+      start_time: start,
+    })
+    expect(added.success).toBe(true)
+
+    const rows = await getActivities(
+      user,
+      ['strength_training'],
+      new Date('2026-11-10T00:00:00Z'),
+      new Date('2026-11-11T00:00:00Z'),
+      undefined,
+      undefined,
+      await fetchCategoryMap(user),
+    )
+
+    const open = rows.find((row) => row.data?.in_progress === true)
+    expect(open?.id).toBe(added.id)
+    expect(open?.start_time).toEqual(start)
+    expect((await getActivityById(user, added.id!))?.superseded_by).toBeUndefined()
+  })
+
   test('adding at the start time of an existing manual activity answers with the stored id', async () => {
     const user = getTestUser()
     const session = {

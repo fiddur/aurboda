@@ -439,3 +439,43 @@ describe('mergeOverlappingActivities — a Garmin strength session with sets nex
     expect(merged.data).toMatchObject({ average_hr: 110 })
   })
 })
+
+describe('mergeOverlappingActivities — a live session overlapped by a synced one (#1690)', () => {
+  const strengthMap = new Map<string, string>([['strength_training', 'exercise']])
+  const live: Activity = {
+    activity_type: 'strength_training',
+    data: { in_progress: true, sets: [{ exercise: 'Bench Press', reps: 8, weight: 60 }] },
+    id: 'live-strength',
+    source: 'aurboda',
+    start_time: new Date('2026-11-10T17:02:00Z'),
+  }
+  const watch: Activity = {
+    activity_type: 'strength_training',
+    data: { average_hr: 110 },
+    end_time: new Date('2026-11-10T17:40:00Z'),
+    id: 'watch-strength',
+    source: 'garmin',
+    start_time: new Date('2026-11-10T17:00:00Z'),
+  }
+
+  test('the open session stays its own row with its id, start time and in_progress', () => {
+    const merged = mergeOverlappingActivities([watch, live], strengthMap)
+
+    expect(merged.map((a) => a.id)).toEqual(['watch-strength', 'live-strength'])
+    expect(merged[1]).toMatchObject({ data: live.data, start_time: live.start_time })
+    expect(merged[1].source_ids).toBeUndefined()
+  })
+
+  test('once finished, it merges with the synced session', () => {
+    const finished = {
+      ...live,
+      data: { ...live.data, in_progress: false },
+      end_time: new Date('2026-11-10T17:45:00Z'),
+    }
+
+    const merged = mergeOverlappingActivities([watch, finished], strengthMap)
+
+    expect(merged).toHaveLength(1)
+    expect(merged[0].source_ids).toEqual(['watch-strength', 'live-strength'])
+  })
+})

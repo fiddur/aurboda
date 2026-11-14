@@ -49,6 +49,9 @@ While a session is open:
 
 - [Auto-share](auto-share-rules.md) ignores it (it has no `end_time`), so it is never shared half
   done.
+- It is kept out of merging: an overlapping session another source delivers (a watch, Health
+  Connect) is listed next to it rather than merged with it, so another device still finds the open
+  session by its id and start time and offers it for **Continue**. The finishing update merges them.
 - No [Health Connect](../health-connect.md) write is queued while the stored data has
   `in_progress: true`; the finishing update queues the normal one. A type change still deletes the
   old type's record, for an activity that was synced before it was set back in progress.

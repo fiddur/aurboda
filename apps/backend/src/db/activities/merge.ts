@@ -316,7 +316,7 @@ const bridgesTouch = (a: Activity, b: Activity): boolean =>
  *   enables cross-source merge for near-simultaneous activities from different sources.
  */
 // eslint-disable-next-line complexity -- TODO: refactor
-export const mergeOverlappingActivities = (
+const mergeSettledActivities = (
   activities: Activity[],
   categoryMap?: Map<string, string>,
 ): MergedActivity[] => {
@@ -387,6 +387,27 @@ export const mergeOverlappingActivities = (
   // Second pass: absorb generic exercises (other_workout, unknown, no subtype)
   // into overlapping specific activities of a different type.
   return absorbGenericExercises(result)
+}
+
+/**
+ * A session still being logged live (#1657) stays its own row, with its own id, start time and
+ * `in_progress`, so the page that continues it finds it; it merges once it is finished (#1690).
+ */
+const isOpenSession = (a: Activity): boolean => a.data?.in_progress === true && !a.override_target_ids?.length
+
+export const mergeOverlappingActivities = (
+  activities: Activity[],
+  categoryMap?: Map<string, string>,
+): MergedActivity[] => {
+  const open = activities.filter(isOpenSession)
+  if (open.length === 0) return mergeSettledActivities(activities, categoryMap)
+  const settled = mergeSettledActivities(
+    activities.filter((a) => !isOpenSession(a)),
+    categoryMap,
+  )
+  return [...settled, ...open.map((a) => ({ ...a }))].sort(
+    (a, b) => a.start_time.getTime() - b.start_time.getTime(),
+  )
 }
 
 const isGenericExercise = (a: MergedActivity): boolean => a.activity_type === 'exercise'
