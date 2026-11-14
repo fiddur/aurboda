@@ -131,6 +131,7 @@ describe('getSettingsResponse', () => {
     expect(result.oura_connected).toBe(false)
     expect(result.rescue_time_key).toBeNull()
     expect(result.maf_hr).toBeNull()
+    expect(result.sleep_need_minutes).toBe(480)
   })
 
   test('passes a stored maf_hr through', async () => {
@@ -550,6 +551,26 @@ describe('validateAndUpdateSettings', () => {
     await validateAndUpdateSettings('testuser', input, undefined, onProfileChanged)
 
     expect(onProfileChanged).not.toHaveBeenCalled()
+  })
+
+  test('stores sleep_need_minutes and resets it to the default with null', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue({})
+    vi.mocked(db.upsertUserSettings).mockResolvedValue({})
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+
+    await validateAndUpdateSettings('testuser', { sleep_need_minutes: 450 })
+    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', { sleep_need_minutes: 450 }, [])
+
+    await validateAndUpdateSettings('testuser', { sleep_need_minutes: null })
+    expect(db.upsertUserSettings).toHaveBeenLastCalledWith('testuser', {}, ['sleep_need_minutes'])
+  })
+
+  test.each([120, 800, 450.5])('rejects a sleep_need_minutes of %s', async (value) => {
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+
+    const result = await validateAndUpdateSettings('testuser', { sleep_need_minutes: value })
+
+    expect(result.success).toBe(false)
   })
 
   test('rejects a maf_hr out of range', async () => {

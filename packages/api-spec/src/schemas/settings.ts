@@ -6,6 +6,7 @@ import { dashboardConfigSchema } from './dashboard.ts'
 import { hashtagInputSchema } from './feed.ts'
 import { goalsSchema } from './goals.ts'
 import { displayNameInputSchema } from './profile.ts'
+import { defaultSleepNeedMinutes, sleepNeedMinutesSchema } from './sleep.ts'
 import { garminDataTypeSchema } from './sync.ts'
 import { trainingLoadSettingsSchema } from './training-load.ts'
 
@@ -252,6 +253,10 @@ export const updateSettingsInputSchema = z
     sex: biologicalSexSchema.nullable().optional().meta({
       description: 'Biological sex for calorie calculation (set to null to clear)',
     }),
+    sleep_need_minutes: sleepNeedMinutesSchema.nullable().optional().meta({
+      description:
+        'How much sleep you need per night, in minutes (180–720); sleep debt is judged against it (set to null to reset to the default, 480)',
+    }),
     tag_icons: tagIconsSchema.nullable().optional().meta({
       description: 'Tag icon mappings (deprecated, use item_icons instead; set to null to clear all)',
     }),
@@ -419,6 +424,9 @@ export const userSettingsResponseSchema = baseResponseSchema
       .nullable()
       .default(null)
       .meta({ description: 'Biological sex for calorie calculation' }),
+    sleep_need_minutes: sleepNeedMinutesSchema.default(defaultSleepNeedMinutes).meta({
+      description: 'How much sleep you need per night, in minutes; sleep debt is judged against it',
+    }),
     tag_icons: tagIconsSchema.default({}).meta({
       description: 'Tag icon mappings (deprecated, use item_icons)',
     }),

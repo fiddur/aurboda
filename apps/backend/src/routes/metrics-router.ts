@@ -33,6 +33,9 @@ import {
   type QueryMetricsResponse,
   type RecalculateCaloriesBody,
   type RecalculateCaloriesResponse,
+  type SleepDebtQuery,
+  sleepDebtQuerySchema,
+  type SleepDebtResponse,
   type UpdateCustomMetricBody,
   updateCustomMetricBodySchema,
 } from '@aurboda/api-spec'
@@ -62,6 +65,7 @@ import {
 } from '../services/queries/index.ts'
 import { getLatestMetric } from '../services/reports.ts'
 import { getUserTimezone } from '../services/settings.ts'
+import { getSleepDebt } from '../services/sleep-debt.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
@@ -316,6 +320,17 @@ export const createMetricsRouter = (
     async (req, res) => {
       const data = await getLatestSleep(req.user!)
       res.json({ data, success: true })
+    },
+  )
+
+  router.get<Record<string, never>, SleepDebtResponse, unknown, SleepDebtQuery>(
+    '/sleep-debt',
+    authMiddleware,
+    validateQuery(sleepDebtQuerySchema),
+    async (req, res) => {
+      const result = await getSleepDebt(req.user!, req.query)
+      if ('error' in result) return res.status(400).json({ error: result.error, success: false })
+      res.json({ data: result, success: true })
     },
   )
 

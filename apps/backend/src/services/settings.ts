@@ -203,6 +203,7 @@ const settingsWithDefaultsSchema = userSettingsResponseSchema.pick({
   rescue_time_key: true,
   sensitivity_areas: true,
   sex: true,
+  sleep_need_minutes: true,
   sync_intervals: true,
   tag_icons: true,
   tag_mappings: true,

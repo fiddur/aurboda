@@ -104,6 +104,20 @@
   color: #6b7280;
 }
 
+.sleep-page .sleep-debt-severity {
+  font-size: 1rem;
+  font-weight: 500;
+  padding: 0.125rem 0.5rem;
+  border-radius: 4px;
+  color: white;
+}
+
+.sleep-page .sleep-debt-explainer {
+  font-size: 0.85rem;
+  color: #6b7280;
+  margin: 0.75rem 0;
+}
+
 .sleep-page .stat-description {
   font-size: 0.75rem;
   color: #9ca3af;

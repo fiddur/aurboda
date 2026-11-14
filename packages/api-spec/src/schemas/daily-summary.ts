@@ -14,6 +14,7 @@ import {
   timeWeightedAveragesNote,
 } from './common.ts'
 import { commentSchema, noteSchema } from './notes.ts'
+import { sleepDebtDaySchema } from './sleep.ts'
 import { ianaTimezoneSchema } from './timezone.ts'
 
 export const heartRateStatsSchema = z
@@ -286,6 +287,10 @@ export const dailySummaryResultSchema = z
     }),
     places: z.array(placeSummarySchema),
     productivity: productivitySummarySchema.nullable(),
+    sleep_debt: sleepDebtDaySchema.nullable().meta({
+      description:
+        'Sleep debt after the night ending on this date, against the sleep_need_minutes setting; null when no night was recorded in the four weeks up to it',
+    }),
     sleep_sessions: z.array(sleepSessionSummarySchema).meta({
       description:
         'All sleep sessions overlapping this date, with sleep stages, location, and date attribution.',

@@ -23,7 +23,7 @@ import { dashboardConfigSchema, dashboardPresetSchema, periodKeySchema } from '.
 import { goalProgressSchema } from './goals.ts'
 import { placesSummaryNightsSchema, placesSummarySchema } from './locations.ts'
 import { publicExerciseListItemSchema } from './shared-exercises.ts'
-import { latestSleepSchema } from './sleep.ts'
+import { latestSleepSchema, sleepDebtSchema } from './sleep.ts'
 import { trendHistoryPointSchema } from './trends.ts'
 
 export const dashboardVisibilitySchema = z.enum(['private', 'unlisted', 'public']).meta({
@@ -370,6 +370,7 @@ export const widgetDataSchema = z
     z.object({ data: hrZonesDataSchema.nullable(), type: z.literal('hr_zones') }),
     z.object({ data: goalProgressDataSchema.nullable(), type: z.literal('goal_progress') }),
     z.object({ data: latestSleepSchema.nullable(), type: z.literal('last_sleep') }),
+    z.object({ data: sleepDebtSchema.nullable(), type: z.literal('sleep_debt') }),
     z.object({ data: combinedChartDataSchema.nullable(), type: z.literal('combined_chart') }),
     z.object({ data: recordCardDataSchema.nullable(), type: z.literal('record_card') }),
     z.object({ data: activityTypeCardDataSchema.nullable(), type: z.literal('activity_type_card') }),

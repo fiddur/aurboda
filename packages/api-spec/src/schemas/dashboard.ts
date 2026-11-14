@@ -411,6 +411,14 @@ export const lastSleepConfigSchema = z
 
 export type LastSleepConfig = z.infer<typeof lastSleepConfigSchema>
 
+export const sleepDebtConfigSchema = z
+  .object({
+    title: z.string().optional().meta({ description: 'Widget title (default: "Sleep debt")' }),
+  })
+  .meta({ id: 'SleepDebtConfig' })
+
+export type SleepDebtConfig = z.infer<typeof sleepDebtConfigSchema>
+
 export const widgetTypeSchema = z.enum([
   'metric_card',
   'sparkline_card',
@@ -422,6 +430,7 @@ export const widgetTypeSchema = z.enum([
   'hr_zones',
   'goal_progress',
   'last_sleep',
+  'sleep_debt',
   'combined_chart',
   'record_card',
   'activity_type_card',
@@ -481,6 +490,11 @@ export const dashboardWidgetSchema = z.discriminatedUnion('type', [
     config: lastSleepConfigSchema,
     id: z.string().min(1).meta({ description: 'Unique widget ID' }),
     type: z.literal('last_sleep'),
+  }),
+  z.object({
+    config: sleepDebtConfigSchema,
+    id: z.string().min(1).meta({ description: 'Unique widget ID' }),
+    type: z.literal('sleep_debt'),
   }),
   z.object({
     config: combinedChartConfigSchema,
