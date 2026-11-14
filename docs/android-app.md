@@ -20,7 +20,10 @@ A bottom navigation bar (`ui/screens/MainScreen.kt`, tabs in `AppState.kt`'s
 
 The Add tab's Activity form starts with **Log a strength session**, which opens the web
 [strength session page](features/strength-logging.md) (`/strength`) in the More tab's web view:
-sets are logged there, not natively.
+sets are logged there, not natively. The form's data fields are sent as the type's `data_schema`
+declares them (numbers as JSON numbers, a decimal comma accepted, booleans as booleans); a number
+field that does not parse is marked on the field and nothing is sent. A queued entry whose values
+are strings (the older queue format) is converted with the cached activity types when it is sent.
 
 There are far more web pages than fit on a bottom bar, so the **More** tab is a
 hub (`MoreScreen.kt`, `moreGroups`): a grouped list where each entry opens the

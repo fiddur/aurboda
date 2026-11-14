@@ -52,6 +52,7 @@ import io.ktor.client.engine.android.Android
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.launch
+import net.aurboda.ActivityDataInput
 import net.aurboda.ActivityTypeDefinition
 import net.aurboda.AddActivityBody
 import net.aurboda.CustomMetricDefinition
@@ -64,6 +65,7 @@ import net.aurboda.PendingPayload
 import net.aurboda.addPendingEntry
 import net.aurboda.api.models.AddMetricBody
 import net.aurboda.appJson
+import net.aurboda.buildActivityData
 import net.aurboda.cacheActivityTypes
 import net.aurboda.cacheCustomMetrics
 import net.aurboda.fetchActivityTypes
@@ -76,6 +78,7 @@ import net.aurboda.pendingEntryCount
 import net.aurboda.postActivity
 import net.aurboda.postMetric
 import net.aurboda.removePendingEntry
+import net.aurboda.toAddActivityBody
 import net.aurboda.updatePendingEntry
 import java.time.Instant
 import java.time.LocalDate
@@ -462,6 +465,7 @@ private fun MetricPicker(
 private fun SchemaDataFields(
     fields: List<DataFieldDefinition>,
     data: Map<String, String>,
+    errors: Map<String, String>,
     onDataChange: (Map<String, String>) -> Unit,
 ) {
     fields.forEach { field ->
@@ -521,11 +525,18 @@ private fun SchemaDataFields(
             }
 
             field.type == "number" -> {
+                val error = errors[field.name]
                 OutlinedTextField(
                     value = data[field.name] ?: "",
                     onValueChange = { onDataChange(data + (field.name to it)) },
                     label = { Text("$fieldLabel$unitSuffix") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    isError = error != null,
+                    supportingText = if (error != null) {
+                        { Text(error) }
+                    } else {
+                        null
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                 )
@@ -620,14 +631,7 @@ private fun PendingEntriesSection(
                     scope.launch {
                         val result = when (val data = entry.data) {
                             is PendingPayload.Activity -> {
-                                val body = AddActivityBody(
-                                    activityType = data.payload.activity_type,
-                                    startTime = data.payload.start_time,
-                                    endTime = data.payload.end_time,
-                                    title = data.payload.title,
-                                    notes = data.payload.notes,
-                                    data = data.payload.data,
-                                )
+                                val body = data.payload.toAddActivityBody(getCachedActivityTypes(context))
                                 postActivity(httpClient, apiUrl, authToken, body)
                             }
                             is PendingPayload.Metric -> {
@@ -750,6 +754,7 @@ private fun AddActivityTab(
     // A list field (a strength session's sets) has no native row editor: sets are logged on the
     // strength session web page, and a text box here would send a string the backend rejects.
     val dataFields = selectedTypeDef?.dataSchema?.fields?.filter { it.type != "list" } ?: emptyList()
+    val dataInput = buildActivityData(dataFields, structuredData)
 
     Column(
         modifier = Modifier
@@ -785,6 +790,7 @@ private fun AddActivityTab(
             SchemaDataFields(
                 fields = dataFields,
                 data = structuredData,
+                errors = (dataInput as? ActivityDataInput.Invalid)?.fieldErrors ?: emptyMap(),
                 onDataChange = { structuredData = it },
             )
         }
@@ -853,15 +859,19 @@ private fun AddActivityTab(
                     isError = true
                     return@Button
                 }
+                val activityData = when (dataInput) {
+                    is ActivityDataInput.Valid -> dataInput.data
+                    is ActivityDataInput.Invalid -> {
+                        message = "Please fix the highlighted fields"
+                        isError = true
+                        return@Button
+                    }
+                }
                 submitting = true
                 message = ""
 
                 val startIso = epochMillisToIso(startTimeMillis)
                 val endIso = if (hasEndTime) epochMillisToIso(endTimeMillis) else null
-                val dataMap = structuredData
-                    .mapValues { it.value.trim() }
-                    .filterValues { it.isNotEmpty() }
-                    .ifEmpty { null }
 
                 val body = AddActivityBody(
                     activityType = selectedType,
@@ -869,7 +879,7 @@ private fun AddActivityTab(
                     endTime = endIso,
                     title = title.trim().ifBlank { null },
                     notes = notes.trim().ifBlank { null },
-                    data = dataMap,
+                    data = activityData,
                 )
 
                 val pendingEntry = PendingEntry(

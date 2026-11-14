@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.JsonObject
 import java.util.UUID
 
 private const val TAG = "PendingDataStore"
@@ -17,7 +18,7 @@ data class PendingActivityPayload(
     val end_time: String? = null,
     val title: String? = null,
     val notes: String? = null,
-    val data: Map<String, String>? = null,
+    val data: JsonObject? = null,
 )
 
 @Serializable
