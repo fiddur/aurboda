@@ -162,6 +162,7 @@ describe('a dead key left connected', () => {
         return pruned
       },
       revise: async () => null,
+      reviseOpen: async () => [],
     })
     const remind = remindGarminKey({
       getOAuthToken: async () => ({

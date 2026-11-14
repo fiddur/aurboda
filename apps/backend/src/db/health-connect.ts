@@ -13,12 +13,11 @@ import {
 import { dayKey, dayStartInTz, shiftDayKey } from '../services/day-keys.ts'
 import { singleLiftExerciseName, singleLiftTypeForHealthConnect } from '../services/single-lift-types.ts'
 
-/** Exercise type codes that remain as generic 'exercise' (UNKNOWN=0, OTHER_WORKOUT=2). */
-const GENERIC_EXERCISE_CODES = new Set([0, 2])
+const EXERCISE_TYPE_OTHER_WORKOUT = 0
 
 const resolveExerciseActivityType = (data: Record<string, unknown>): string => {
   const exerciseType = data.exerciseType as number | undefined
-  if (exerciseType === undefined || GENERIC_EXERCISE_CODES.has(exerciseType)) return 'exercise'
+  if (exerciseType === undefined || exerciseType === EXERCISE_TYPE_OTHER_WORKOUT) return 'exercise'
   if (singleLiftTypeForHealthConnect(exerciseType)) return 'strength_training'
   return getExerciseTypeName(exerciseType) ?? 'exercise'
 }

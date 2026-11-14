@@ -31,6 +31,7 @@ import {
   type NotificationTarget,
   pruneNotifications,
   reviseNotification,
+  reviseOpenNotifications,
   upsertNotificationPreference,
 } from '../db/index.ts'
 import { decodeKeysetCursor, encodeKeysetCursor } from './keyset-cursor.ts'
@@ -61,6 +62,11 @@ export interface NotifierDeps {
     target: NotificationTarget,
     patch: NotificationRevisionPatch,
   ) => Promise<NotificationRecord | null>
+  reviseOpen: (
+    user: string,
+    dedupeKeys: string[],
+    patch: NotificationRevisionPatch,
+  ) => Promise<NotificationRecord[]>
   now?: () => Date
   logError?: (message: string, error: unknown) => void
 }
@@ -78,6 +84,12 @@ export interface Notifier {
   ) => Promise<NotificationRecord | null>
   /** `revise` that logs and swallows every error. */
   reviseBestEffort: (user: string, dedupeKey: string, patch: NotificationRevisionPatch) => Promise<void>
+  /** Updates the notifications with any of these dedupe keys that still offer actions. Resolves to the revised rows. */
+  reviseOpen: (
+    user: string,
+    dedupeKeys: string[],
+    patch: NotificationRevisionPatch,
+  ) => Promise<NotificationRecord[]>
 }
 
 const validateLink = (link: string | null | undefined): void => {
@@ -158,7 +170,16 @@ export const createNotifier = (deps: NotifierDeps): Notifier => {
     }
   }
 
-  return { raise, raiseBestEffort, revise, reviseBestEffort }
+  const reviseOpen = async (
+    user: string,
+    dedupeKeys: string[],
+    patch: NotificationRevisionPatch,
+  ): Promise<NotificationRecord[]> => {
+    validateRevision(patch)
+    return deps.reviseOpen(user, dedupeKeys, patch)
+  }
+
+  return { raise, raiseBestEffort, revise, reviseBestEffort, reviseOpen }
 }
 
 export const notifier: Notifier = createNotifier({
@@ -166,6 +187,7 @@ export const notifier: Notifier = createNotifier({
   insert: (user, input) => insertNotification(user, input),
   prune: (user, readBefore, anyBefore) => pruneNotifications(user, readBefore, anyBefore),
   revise: (user, target, patch) => reviseNotification(user, target, patch),
+  reviseOpen: (user, dedupeKeys, patch) => reviseOpenNotifications(user, dedupeKeys, patch),
 })
 
 export const serializeNotification = (record: NotificationRecord): Notification => ({

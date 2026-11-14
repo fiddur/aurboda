@@ -16,6 +16,7 @@ vi.mock('../db/index.ts', () => ({
   deleteAutoshareRule: vi.fn(),
   getAutoshareRules: vi.fn(),
   insertAutoshareRule: vi.fn(),
+  listOpenNotifications: vi.fn(async () => []),
   updateAutoshareRule: vi.fn(),
 }))
 
@@ -301,5 +302,28 @@ describe('POST /autoshare-rules/skips', () => {
 
   test('400s without a uuid activity_id', async () => {
     expect((await supertest(buildApp()).post('/skips').send({ activity_id: 'x' })).status).toBe(400)
+  })
+})
+
+describe('pending shares of a rule that stops', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('disabling or deleting the rule withdraws its pending-share notifications', async () => {
+    vi.mocked(db.updateAutoshareRule).mockResolvedValueOnce(record({ enabled: false }))
+    await supertest(buildApp()).patch(`/${RULE_ID}`).send({ enabled: false })
+    vi.mocked(db.deleteAutoshareRule).mockResolvedValueOnce(true)
+    await supertest(buildApp()).delete(`/${RULE_ID}`)
+    expect(vi.mocked(db.listOpenNotifications).mock.calls).toEqual([
+      ['tester', 'autoshare_pending', { rule_id: RULE_ID }],
+      ['tester', 'autoshare_pending', { rule_id: RULE_ID }],
+    ])
+  })
+
+  test('an enabled rule keeps them', async () => {
+    vi.mocked(db.updateAutoshareRule).mockResolvedValueOnce(record({ enabled: true, enabled_at: T0 }))
+    await supertest(buildApp()).patch(`/${RULE_ID}`).send({ name: 'Renamed' })
+    expect(db.listOpenNotifications).not.toHaveBeenCalled()
   })
 })

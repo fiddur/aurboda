@@ -1,6 +1,6 @@
 import type { FeedVisibility, NotificationAction } from '@aurboda/api-spec'
 
-import type { AutoshareCandidate, AutoshareRuleRecord } from '../db/index.ts'
+import type { AutoshareCandidate, AutoshareRuleRecord, NotificationRevisionPatch } from '../db/index.ts'
 import type { RaiseNotificationInput } from './notifications.ts'
 
 const MINUTE_MS = 60_000
@@ -64,6 +64,12 @@ export const pendingAutoshareNotification = ({
     title,
     type: 'autoshare_pending',
   }
+}
+
+/** The pending-share notification as a revision of one raised earlier under another group member's key. */
+export const pendingAutoshareRevision = (input: PendingAutoshareInput): NotificationRevisionPatch => {
+  const { actions, body, data, link, title } = pendingAutoshareNotification(input)
+  return { actions, body, data, link, title }
 }
 
 export interface AutoshareRevision {

@@ -38,6 +38,7 @@ import {
 } from '../../db/index.ts'
 import { auditError, auditInfo } from '../../services/audit-log.ts'
 import { gravlWorkoutExternalId } from '../../services/source-identity.ts'
+import { withStaleSyncingAsIdle } from '../../services/stale-syncing.ts'
 import { isGravlAuthFailure, isGravlRateLimit } from './client.ts'
 import {
   isExternalWorkout,
@@ -273,7 +274,7 @@ export const enrichGravlWorkout = async (
 }
 
 export const getGravlSyncStates = async (user: string) => {
-  const states = await getAllSyncStates(user, GRAVL_PROVIDER)
+  const states = withStaleSyncingAsIdle(await getAllSyncStates(user, GRAVL_PROVIDER), new Date())
   return states.map((s) => ({
     error_message: s.error_message ?? null,
     last_sync_time: s.last_sync_time?.toISOString() ?? null,

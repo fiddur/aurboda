@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestDbClient, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { deleteActivity, insertActivity } from './activities/index.ts'
+import { insertAutoshareSuppressions } from './autoshare-rules.ts'
 import {
   type ArticlePostInput,
   countPublicFeedPosts,
@@ -10,6 +11,7 @@ import {
   createDashboardPost,
   createExercisePost,
   createFeedPost,
+  createFeedPostUnlessSuppressed,
   createReplyPost,
   deleteFeedPost,
   type FeedPostInput,
@@ -110,6 +112,20 @@ describe('Feed posts integration', () => {
     expect(await getFeedPostById(user, '00000000-0000-0000-0000-000000000000')).toBeNull()
     expect(await getFeedPostById(user, 'null')).toBeNull()
     expect(await updateFeedPost(user, 'null', { message: 'x' })).toBeNull()
+  })
+
+  test('creates an auto-share post only while no group member is suppressed', async () => {
+    const user = getTestUser()
+    const anchor = await insertExercise(user)
+    const other = await insertExercise(user)
+    const input = postInput({ activity_id: anchor, tags: ['aurboda'] })
+
+    const created = await createFeedPostUnlessSuppressed(user, input, [anchor, other])
+    expect(created).toMatchObject({ activity_id: anchor, tags: ['aurboda'], visibility: 'public' })
+
+    await insertAutoshareSuppressions(user, [other])
+    expect(await createFeedPostUnlessSuppressed(user, input, [anchor, other])).toBeNull()
+    expect((await listFeedPosts(user, 10)).map((post) => post.id)).toEqual([created!.id])
   })
 
   test('stores, patches and keeps hashtags', async () => {

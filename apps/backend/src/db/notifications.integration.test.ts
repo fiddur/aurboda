@@ -9,12 +9,14 @@ import {
   insertNotification,
   listNotificationPreferences,
   listNotifications,
+  listOpenNotifications,
   markAllNotificationsRead,
   markNotificationRead,
   markNotificationsReadByType,
   type NotificationInsert,
   pruneNotifications,
   reviseNotification,
+  reviseOpenNotifications,
   upsertNotificationPreference,
 } from './notifications.ts'
 
@@ -276,6 +278,60 @@ describe('Notifications Integration Tests', () => {
       expect(
         await reviseNotification(user, { id: '00000000-0000-0000-0000-000000000000' }, { title: 'x' }),
       ).toBeNull()
+    })
+  })
+
+  describe('reviseOpenNotifications', () => {
+    const skip = [{ key: 'skip', label: 'Skip' }]
+
+    test('revises only the rows with the keys that still offer actions, in one go', async () => {
+      const user = getTestUser()
+      await insertNotification(user, { ...base, actions: skip, dedupe_key: 'open-1' })
+      await insertNotification(user, { ...base, actions: skip, dedupe_key: 'open-2' })
+      await insertNotification(user, { ...base, dedupe_key: 'closed' })
+      await insertNotification(user, { ...base, actions: skip, dedupe_key: 'other' })
+
+      const revised = await reviseOpenNotifications(user, ['open-1', 'open-2', 'closed', 'missing'], {
+        actions: [],
+        title: 'Closed',
+      })
+      expect(revised.map((row) => row.dedupe_key).sort()).toEqual(['open-1', 'open-2'])
+      expect(revised.every((row) => row.title === 'Closed' && row.actions.length === 0)).toBe(true)
+
+      expect(await reviseOpenNotifications(user, ['open-1'], { actions: [], title: 'Again' })).toEqual([])
+      expect(await reviseNotification(user, { dedupe_key: 'other' }, {})).toMatchObject({ actions: skip })
+      expect(await reviseNotification(user, { dedupe_key: 'closed' }, {})).toMatchObject({ title: 'Hello' })
+    })
+
+    test('releasing the dedupe key lets the key be raised again', async () => {
+      const user = getTestUser()
+      const first = await insertNotification(user, { ...base, actions: skip, dedupe_key: 'k' })
+      const [closed] = await reviseOpenNotifications(user, ['k'], { actions: [], release_dedupe_key: true })
+      expect(closed).toMatchObject({ dedupe_key: null, id: first!.id })
+
+      const second = await insertNotification(user, { ...base, actions: skip, dedupe_key: 'k' })
+      expect(second).not.toBeNull()
+      expect(second!.id).not.toBe(first!.id)
+    })
+
+    test('no keys revise nothing', async () => {
+      const user = getTestUser()
+      expect(await reviseOpenNotifications(user, [], { title: 'x' })).toEqual([])
+    })
+  })
+
+  describe('listOpenNotifications', () => {
+    test('lists the open rows of the type whose data contains the given fields', async () => {
+      const user = getTestUser()
+      const skip = [{ key: 'skip', label: 'Skip' }]
+      const pending = { ...base, actions: skip, type: 'autoshare_pending' }
+      const match = await insertNotification(user, { ...pending, data: { activity_id: 'a1', rule_id: 'r1' } })
+      await insertNotification(user, { ...pending, data: { activity_id: 'a2', rule_id: 'r2' } })
+      await insertNotification(user, { ...pending, actions: [], data: { activity_id: 'a3', rule_id: 'r1' } })
+      await insertNotification(user, { ...base, actions: skip, data: { rule_id: 'r1' } })
+
+      const rows = await listOpenNotifications(user, 'autoshare_pending', { rule_id: 'r1' })
+      expect(rows.map((row) => row.id)).toEqual([match!.id])
     })
   })
 

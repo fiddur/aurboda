@@ -33,6 +33,7 @@ import {
   insertAutoshareRule,
   updateAutoshareRule,
 } from '../db/index.ts'
+import { withdrawRuleAutoshares } from '../services/autoshare-pending.ts'
 import { PREVIEW_SAMPLE_DAYS, previewAutoshareRule } from '../services/autoshare.ts'
 import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
 import { UUID_RE } from '../utils.ts'
@@ -169,6 +170,7 @@ export const createAutoshareRulesRouter = (
       }
       const record = await updateAutoshareRule(user, req.params.id, autoshareRulePatchFromBody(req.body))
       if (!record) return res.status(404).json({ error: 'Rule not found', success: false })
+      if (!record.enabled) await withdrawRuleAutoshares(user, record.id)
       res.json({ rule: serializeAutoshareRule(record), success: true })
     },
   )
@@ -180,6 +182,7 @@ export const createAutoshareRulesRouter = (
     }
     const deleted = await deleteAutoshareRule(user, req.params.id)
     if (!deleted) return res.status(404).json({ error: 'Rule not found', success: false })
+    await withdrawRuleAutoshares(user, req.params.id)
     res.json({ success: true })
   })
 

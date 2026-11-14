@@ -474,6 +474,7 @@ export {
   createDashboardPost,
   createExercisePost,
   createFeedPost,
+  createFeedPostUnlessSuppressed,
   createReplyPost,
   type DashboardPostInput,
   deleteFeedPost,
@@ -804,6 +805,7 @@ export {
   listNotificationPreferences,
   listNotifications,
   type ListNotificationsOptions,
+  listOpenNotifications,
   markAllNotificationsRead,
   markNotificationRead,
   markNotificationsReadByType,
@@ -814,6 +816,7 @@ export {
   type NotificationTarget,
   pruneNotifications,
   reviseNotification,
+  reviseOpenNotifications,
   upsertNotificationPreference,
 } from './notifications.ts'
 
