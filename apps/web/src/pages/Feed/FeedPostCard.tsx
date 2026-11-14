@@ -22,6 +22,7 @@ import { ArticleContent } from './ArticleContent'
 import { ChallengeShareContent } from './ChallengeShareContent'
 import { DashboardShareContent, DashboardShareFallback } from './DashboardShareContent'
 import { ExerciseShareContent, ExerciseShareFallback } from './ExerciseShareContent'
+import { postHeadline } from './post-headline'
 import { postPermalinkPath } from './post-permalink'
 import { postTagLine } from './post-tag-line'
 import {
@@ -104,7 +105,7 @@ const mediaUrls = (
 const ActivityPostBody = ({ post }: { post: FeedPost }) => (
   <div class="feed-post-content">
     <p class="feed-post-title">
-      <strong>{post.activity_title ?? 'Shared activity'}</strong>
+      <strong>{postHeadline(post)}</strong>
     </p>
     {post.message && <p class="feed-post-message">{post.message}</p>}
     {post.activity_start_time && (
@@ -202,7 +203,7 @@ const FeedPostBody = ({ post, visitor }: { post: FeedPost; visitor: boolean }) =
   ) : post.content ? (
     <div class="feed-post-content" dangerouslySetInnerHTML={{ __html: post.content }} />
   ) : (
-    <div class="feed-post-content">{post.activity_title ?? 'Shared activity'}</div>
+    <div class="feed-post-content">{postHeadline(post)}</div>
   )
 }
 

@@ -1,4 +1,4 @@
-import { prettifyKey } from './activitypub/object.ts'
+import { prettifyKey } from '@aurboda/api-spec'
 
 export interface TitledActivity {
   data?: Record<string, unknown> | null

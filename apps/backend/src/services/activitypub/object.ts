@@ -9,7 +9,7 @@
  * and is spliced into the delivered/served JSON-LD there (#896).
  */
 
-import type { FeedVisibility } from '@aurboda/api-spec'
+import { activityHeadline, type FeedVisibility, prettifyKey } from '@aurboda/api-spec'
 
 /** The AS2 magic collection every public object is addressed to. */
 export const AS_PUBLIC = 'https://www.w3.org/ns/activitystreams#Public'
@@ -27,12 +27,6 @@ export interface ScalarMetric {
 
 const escapeHtml = (s: string): string =>
   s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;')
-
-/** Prettify a snake_case metric key into a label (`hr_zone_minutes` → `Hr zone minutes`). */
-export const prettifyKey = (key: string): string => {
-  const spaced = key.replaceAll('_', ' ')
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1)
-}
 
 /** Render a seconds count as a compact human duration: 642 → `10m 42s`, 3720 → `1h 2m`. */
 const formatDuration = (totalSeconds: number): string => {
@@ -114,10 +108,6 @@ export interface FeedPostContentExtras {
   /** Pre-formatted activity-date line (see `formatActivityWindow`). */
   windowLabel?: string
 }
-
-/** A shared activity's headline: its title, else its prettified type (`Running activity`). */
-export const activityHeadline = (title: string | undefined, activityType: string): string =>
-  title ?? `${prettifyKey(activityType)} activity`
 
 /**
  * The human-readable status a plain fediverse client (Mastodon) renders: a bold
