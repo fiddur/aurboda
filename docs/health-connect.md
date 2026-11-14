@@ -50,6 +50,15 @@ These are sent as daily aggregates (one value per day) rather than raw records.
 | MindfulnessSessionRecord | `meditation` (with title, session type and notes; merged with an overlapping Garmin meditation at query time) |
 | SleepSessionRecord       | `sleep` (with sleep stage breakdowns)                                                                         |
 
+An exercise session is stored under the activity type of its Health Connect exercise type
+(`running`, `strength_training`, `yoga`, ...); the other-workout type stays the generic
+`exercise`. Current Health Connect has single lifts (bench press, squat, plank, ...) only as
+exercise **segment** types inside a session. Early versions also had them as session types; a
+session that still arrives with one of those numbers is stored as a `strength_training` session with
+the lift as its one set (see [Single lifts are exercises, not
+types](features/activity-types.md#single-lifts-are-exercises-not-types)). Segments are kept in the
+session's data but not read as sets yet.
+
 Mindfulness sessions (written by apps such as Waking Up) are read only when Health Connect reports
 `FEATURE_MINDFULNESS_SESSION` available; older Health Connect versions do not have the record type, so the
 app neither requests the permission nor reads it there. Every mindfulness session type becomes a `meditation`

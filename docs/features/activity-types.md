@@ -24,6 +24,27 @@ Custom activity types can be created on the **Activity Types** page (`/activity-
 
 Built-in types cannot be deleted but their display metadata (color, icon, display_name, show_on_timeline) can be updated.
 
+Besides those, every Health Connect exercise session type (`running`, `yoga`,
+`strength_training`, ...) is a built-in type of the `exercise` category.
+
+### Single lifts are exercises, not types
+
+Early Health Connect versions had 21 session types that are single lifts rather than kinds of
+session (`bench_press`, `squat`, `deadlift`, `plank`, `crunch`, `lunge`, `lat_pull_down`, the
+dumbbell curls, raises and triceps extensions, `back_extension`, `barbell_shoulder_press`,
+`bench_sit_up`, `burpee`, `forward_twist`, `jumping_jack`, `upper_twist`). They are not activity
+types: a lift is the `exercise` of a set inside a `strength_training` session, named through the
+[exercise catalogue](exercise-catalog.md) where an entry fits (`crunch` becomes `Lying Ab Crunch`)
+and by its old display name where none does (`Jumping Jack`).
+
+A database from before this change is upgraded once, after the server starts: every activity of one
+of those types (deleted ones too) becomes a `strength_training` session with the lift as its one
+set, unless it already has sets, which it keeps. The type itself is then removed, or, while something
+still refers to it (an activity that could not be moved because a strength session from the same
+source starts at the same moment, a child type, a deduction rule, a goal, a challenge, an autoshare
+rule, a route, a shared exercise, a screen-time category, a dashboard or a setting), kept as an
+ordinary custom type that can be merged into another or deleted.
+
 ## Display Categories
 
 Display categories control how activity types are grouped in the timeline:
