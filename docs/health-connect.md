@@ -40,7 +40,10 @@ These metrics use Health Connect's built-in deduplication to avoid double-counti
 | ActiveCaloriesBurnedRecord | `calories_active` |
 | TotalCaloriesBurnedRecord  | `calories_total`  |
 
-These are sent as daily aggregates (one value per day) rather than raw records.
+These are sent as daily aggregates (one value per day) rather than raw records. Each aggregate
+carries the phone's IANA timezone, and the backend stores it at that zone's local midnight, so a
+day's total lands on the phone's local day rather than the UTC one (UTC midnight when the timezone
+is missing or invalid).
 
 ### Activities
 

@@ -31,7 +31,7 @@ corresponding web page in an embedded WebView (Timeline, Data, Chart, Meals,
 Reports, Settings, Data sources, Help & support, …). Its first group, **Inbox**, holds
 **Notifications** (the web `/notifications` page, see
 [Notifications](features/notifications.md)). The two native-only screens — **Live**
-sensors (BLE) and **Account** (server URL, logout) — also live in the hub.
+sensors ([BLE](#live-sensors)) and **Account** (server URL, logout) — also live in the hub.
 Selecting an entry pushes it in place; the system back gesture returns to the
 hub (after any embedded page has exhausted its own WebView history), and so does
 tapping **More** on the bottom bar again. The pushed sub-page lives in
@@ -222,12 +222,34 @@ external.
   schedule. `classifyHttpStatus` (`HttpOutcome.kt`) is where the status codes get
   their meaning.
 
+## Live sensors
+
+The native **Live** screen (`ui/screens/LiveScreen.kt`) connects to Bluetooth LE sensors that
+speak the standard profiles: heart-rate monitors (Heart Rate service `0x180D`, e.g. a Polar H10)
+and running speed and cadence pods (RSC service `0x1814`, e.g. a Zwift Runpod). It scans for them
+and lists what it finds; each connected sensor gets a card with its live heart rate, or cadence
+and steps, the sync state (with **Enable HC** while Health Connect writes are not permitted), an
+**Auto-reconnect** switch and **Disconnect**. A heart-rate card also shows HRV (RMSSD over the
+RR intervals, with a five-minute chart) once enough intervals are in. The **Phone Step Counter**
+card counts steps from the phone's own step sensor instead.
+
+The connections run in a foreground service (`ble/SensorService.kt`), so they go on with the
+screen closed; **Stop All Sensors**, or the notification's stop action, ends it. Every five
+seconds the service sends the new samples to the backend as Health Connect records
+(`POST /sync/HeartRateRecord`, `/sync/StepsRecord`, and `/sync/HeartRateVariabilityRmssdRecord`
+when the RR window is reliable) and writes them to Health Connect where permitted. A sensor with
+auto-reconnect on is reconnected with backoff after a drop, and after a reboot or when Bluetooth
+comes back on (`ble/BleAutoConnectReceiver.kt`).
+
 ## Home-screen widgets
 
 Two `AppWidgetProvider`s live in `widget/`:
 
 - **HR Zones** (`HrZoneWidgetProvider` + `GoalsWidgetService`): the goal
-  progress bars, see `docs/GOAL_WIDGET.md`. Tapping it opens the Goals page.
+  progress bars from `GET /goals/progress/widget`, one row per goal in the web
+  order, with the same colours and overflow bar as the web Goals page (see
+  [Goals: Android Widget](features/goals.md#android-widget)). It is resizable and
+  its rows scroll. Tapping it opens the Goals page.
 - **Challenge** (`ChallengeWidgetProvider`, min 2×2, resizable): the race chart
   and leaderboard of **one** challenge, hosted or joined. When the widget is
   placed the launcher opens `ChallengeWidgetConfigActivity` (a Compose list of
