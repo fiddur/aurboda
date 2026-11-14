@@ -18,6 +18,12 @@ const defaultDeps: SyncStateDeps = {
 }
 
 /**
+ * Syncs that can run for longer than the stale-syncing threshold: Strava's queued backfill, and a
+ * Garmin full resync, whose `syncing` row is also the guard against starting a second one.
+ */
+const LONG_RUNNING_PROVIDERS = new Set(['garmin', 'strava'])
+
+/**
  * None while the user is not connected to the provider: older releases synced
  * Garmin and Oura for unconnected users and left failed rows that would otherwise
  * read as a broken sync.
@@ -30,5 +36,5 @@ export const getVisibleSyncStates = async (
   if (provider === 'garmin' && !(await deps.hasGarminConnection(user))) return []
   if (provider === 'oura' && !(await deps.hasOuraToken(user))) return []
   const states = await deps.getAllSyncStates(user, provider)
-  return provider === 'strava' ? states : withStaleSyncingAsIdle(states, deps.now())
+  return LONG_RUNNING_PROVIDERS.has(provider) ? states : withStaleSyncingAsIdle(states, deps.now())
 }

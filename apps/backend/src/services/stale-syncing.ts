@@ -5,8 +5,8 @@ const STALE_SYNCING_MS = 15 * 60_000
 /**
  * A pull that a process restart cut short never writes its `idle` or `error`,
  * so a `syncing` row that has not been touched for longer than any pull takes
- * reads as `idle`. Strava's rows are not passed through it: its sync runs on a
- * queue for hours and settles its own status, dead letters included.
+ * reads as `idle`. Strava's and Garmin's rows are not passed through it: their
+ * syncs can run longer than that (see `getVisibleSyncStates`).
  */
 export const withStaleSyncingAsIdle = (states: SyncState[], now: Date): SyncState[] =>
   states.map((s) =>

@@ -90,6 +90,11 @@ describe('a syncing row a restart left behind', () => {
     expect(states.map((s) => s.status)).toEqual(['syncing'])
   })
 
+  test("stays syncing for garmin however old, so the sync router's already_syncing guard still holds", async () => {
+    const states = await getVisibleSyncStates('alice', 'garmin', depsWith([syncing('garmin', 24 * 60)]))
+    expect(states.map((s) => s.status)).toEqual(['syncing'])
+  })
+
   test('leaves other statuses alone', () => {
     const errored: SyncState = { ...syncing('oura', 60), status: 'error' }
     expect(withStaleSyncingAsIdle([errored], now)).toEqual([errored])
