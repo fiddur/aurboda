@@ -17,12 +17,12 @@ import {
   getActivityTypeDefinition,
   getOverrideForActivity,
   getUserNotesJoined,
-  insertActivity as dbInsertActivity,
   insertMergedActivity as dbInsertMergedActivity,
   insertOverride as dbInsertOverride,
   materializeSuperseded,
   replaceUserNotes,
   updateActivity as dbUpdateActivity,
+  upsertActivity as dbUpsertActivity,
   enqueueOutboundSync,
   findHcRecordId,
   getSourceFilter,
@@ -313,6 +313,9 @@ const resolveItemValues = async <T extends Record<string, unknown> | undefined>(
   return { data: { ...keyed.data, data: await aliasActivityData(user, keyed.data.data) }, success: true }
 }
 
+export const isInProgress = (data: Record<string, unknown> | null | undefined): boolean =>
+  data?.in_progress === true
+
 // eslint-disable-next-line complexity -- notification callbacks add branches
 export async function addActivity(
   user: string,
@@ -367,17 +370,22 @@ export async function addActivity(
     }
   }
 
-  const id = randomUUID()
-
-  await dbInsertActivity(user, {
+  const { id } = await dbUpsertActivity(user, {
     activity_type: input.activity_type,
     data,
     end_time: input.end_time,
-    id,
+    id: randomUUID(),
     source: 'aurboda',
     start_time: input.start_time,
     title: input.title,
   })
+  if (!id) {
+    return {
+      error:
+        'A deleted activity of this type has the same start time. Restore it or choose another start time.',
+      success: false,
+    }
+  }
   await storeItemValueMappings(user, mappings)
 
   // Persist user-typed notes as a row in the notes table. Source is left
@@ -391,7 +399,7 @@ export async function addActivity(
 
   // Enqueue outbound sync to Health Connect if applicable (best-effort, never fails the mutation)
   try {
-    if (isHealthConnectSyncableActivity(input.activity_type)) {
+    if (isHealthConnectSyncableActivity(input.activity_type) && !isInProgress(data)) {
       const hcRecordType =
         activityTypeToHealthConnectType[input.activity_type as keyof typeof activityTypeToHealthConnectType]
       if (hcRecordType) {
@@ -731,7 +739,7 @@ export async function updateActivity(
   // exists on the synced source, so pushing them to HC would create
   // duplicates.
   try {
-    if (updated.source === 'aurboda' && !updated.override_target_ids?.length) {
+    if (updated.source === 'aurboda' && !updated.override_target_ids?.length && !isInProgress(updated.data)) {
       const oldWasSyncable = isHealthConnectSyncableActivity(before.activity_type)
       const newIsSyncable = isHealthConnectSyncableActivity(updated.activity_type)
 

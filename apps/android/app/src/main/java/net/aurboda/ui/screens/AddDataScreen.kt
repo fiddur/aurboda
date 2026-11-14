@@ -116,6 +116,7 @@ fun AddDataScreen(
     apiUrl: String,
     authToken: String,
     modifier: Modifier = Modifier,
+    onOpenWebPage: (String) -> Unit = {},
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
     val tabs = listOf("Activity", "Metric")
@@ -132,7 +133,7 @@ fun AddDataScreen(
         }
 
         when (selectedTab) {
-            0 -> AddActivityTab(apiUrl = apiUrl, authToken = authToken)
+            0 -> AddActivityTab(apiUrl = apiUrl, authToken = authToken, onOpenWebPage = onOpenWebPage)
             1 -> AddMetricTab(apiUrl = apiUrl, authToken = authToken)
         }
     }
@@ -710,6 +711,7 @@ private fun PendingEntriesSection(
 private fun AddActivityTab(
     apiUrl: String,
     authToken: String,
+    onOpenWebPage: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -745,8 +747,8 @@ private fun AddActivityTab(
     }
 
     val selectedTypeDef = activityTypes.find { it.name == selectedType }
-    // A list field (a strength session's sets) has no native row editor yet (#1316); the web
-    // pages edit it, and a text box here would send a string the backend rejects.
+    // A list field (a strength session's sets) has no native row editor: sets are logged on the
+    // strength session web page, and a text box here would send a string the backend rejects.
     val dataFields = selectedTypeDef?.dataSchema?.fields?.filter { it.type != "list" } ?: emptyList()
 
     Column(
@@ -757,6 +759,10 @@ private fun AddActivityTab(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text("Add Activity", style = MaterialTheme.typography.titleLarge)
+
+        TextButton(onClick = { onOpenWebPage("/strength") }) {
+            Text("Log a strength session")
+        }
 
         if (message.isNotEmpty()) {
             Text(

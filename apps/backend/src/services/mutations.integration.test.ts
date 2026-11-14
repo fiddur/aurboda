@@ -7,8 +7,9 @@ import {
   getOverrideForActivity,
   insertActivity,
 } from '../db/activities/index.ts'
+import { getPendingOutboundSync } from '../db/outbound-sync.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
-import { updateActivity } from './mutations.ts'
+import { addActivity, deleteActivity, updateActivity } from './mutations.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 
@@ -118,5 +119,67 @@ describe('updateActivity on a merged view (integration)', () => {
     expect(after).toHaveLength(1)
     expect(after[0].title).toBe('Styrka')
     expect(after[0].data?.sets).toEqual(sets)
+  })
+
+  test('a live session enqueues nothing for Health Connect until it is finished, then one update', async () => {
+    const user = getTestUser()
+    const start = new Date('2026-11-10T17:02:00Z')
+    const added = await addActivity(user, {
+      activity_type: 'strength_training',
+      data: { in_progress: true, last_set_at: '2026-11-10T17:05:00Z', sets: sets.slice(0, 1) },
+      start_time: start,
+    })
+    expect(added.success).toBe(true)
+    expect((await getPendingOutboundSync(user)).entries).toEqual([])
+
+    const changed = await updateActivity(user, added.id!, {
+      data: { last_set_at: '2026-11-10T17:08:00Z', sets },
+    })
+    expect(changed.success).toBe(true)
+    expect((await getPendingOutboundSync(user)).entries).toEqual([])
+
+    const finished = await updateActivity(user, added.id!, {
+      data: { in_progress: false },
+      end_time: new Date('2026-11-10T18:00:00Z'),
+    })
+    expect(finished.success).toBe(true)
+    const { entries } = await getPendingOutboundSync(user)
+    expect(entries).toHaveLength(1)
+    expect(entries[0]).toMatchObject({ entity_id: added.id, operation: 'update' })
+    const stored = await getActivityById(user, added.id!)
+    expect(stored?.data).toMatchObject({ in_progress: false, last_set_at: '2026-11-10T17:08:00Z', sets })
+  })
+
+  test('adding at the start time of an existing manual activity answers with the stored id', async () => {
+    const user = getTestUser()
+    const session = {
+      activity_type: 'strength_training',
+      end_time: new Date('2026-11-11T18:00:00Z'),
+      start_time: new Date('2026-11-11T17:00:00Z'),
+    }
+    const first = await addActivity(user, { ...session, data: { sets: sets.slice(0, 1) } })
+
+    const second = await addActivity(user, { ...session, data: { sets } })
+
+    expect(second).toMatchObject({ id: first.id, success: true })
+    expect((await getActivityById(user, first.id!))?.data?.sets).toEqual(sets)
+  })
+
+  test('adding at the start time of a deleted manual activity fails instead of answering with an id', async () => {
+    const user = getTestUser()
+    const session = {
+      activity_type: 'strength_training',
+      data: { sets },
+      end_time: new Date('2026-11-11T18:00:00Z'),
+      start_time: new Date('2026-11-11T17:00:00Z'),
+    }
+    const first = await addActivity(user, session)
+    await deleteActivity(user, first.id!)
+
+    const second = await addActivity(user, session)
+
+    expect(second.success).toBe(false)
+    expect(second.error).toContain('deleted activity')
+    expect(second.id).toBeUndefined()
   })
 })

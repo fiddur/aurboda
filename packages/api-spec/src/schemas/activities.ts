@@ -306,7 +306,7 @@ export const addActivityBodySchema = z
     activity_type: activityTypeSchema.meta({ description: 'Type of activity' }),
     data: z.record(z.string(), z.unknown()).optional().meta({
       description:
-        "Structured data for this activity: the fields the type's data_schema declares (a `list` field is an array of objects, e.g. strength_training's `sets`), plus any extra keys. A set may carry `exercise_key`, a key from search_exercise_catalog, instead of or next to `exercise`: alone it names the set, next to a new name it maps that name to the catalogue entry; it is not stored on the set",
+        "Structured data for this activity: the fields the type's data_schema declares (a `list` field is an array of objects, e.g. strength_training's `sets`), plus any extra keys. A set may carry `exercise_key`, a key from search_exercise_catalog, instead of or next to `exercise`: alone it names the set, next to a new name it maps that name to the catalogue entry; it is not stored on the set. `in_progress: true` marks a session still being logged (no end_time yet): it is not synced to Health Connect until a later update clears it",
     }),
     end_time: iso8601DateTimeSchema.optional().meta({
       description: 'End time (omit for point-in-time activities)',
@@ -362,7 +362,7 @@ export const updateActivityBodySchema = z
     activity_type: activityTypeSchema.optional().meta({ description: 'New activity type' }),
     data: z.record(z.string(), z.unknown()).optional().meta({
       description:
-        'Updated structured data fields (merged with existing data). A set may carry `exercise_key`, a key from search_exercise_catalog, instead of or next to `exercise`: alone it names the set, next to a new name it maps that name to the catalogue entry; it is not stored on the set',
+        'Updated structured data fields (merged with existing data). A set may carry `exercise_key`, a key from search_exercise_catalog, instead of or next to `exercise`: alone it names the set, next to a new name it maps that name to the catalogue entry; it is not stored on the set. Set `in_progress: false` (with end_time) to finish a session logged live; while the stored data has `in_progress: true` the activity is not synced to Health Connect',
     }),
     end_time: iso8601DateTimeSchema
       .nullable()

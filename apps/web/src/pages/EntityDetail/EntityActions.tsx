@@ -1,3 +1,5 @@
+import type { ComponentChildren } from 'preact'
+
 import { useMutation } from '@tanstack/react-query'
 
 import {
@@ -25,6 +27,7 @@ export interface EntityActionsProps {
   isSaving: boolean
   saveDisabled?: boolean
   onStartMerging?: () => void
+  extraActions?: ComponentChildren
 }
 
 const deleteEntity = (entityType: EntityType, entityId: string): Promise<void> => {
@@ -66,6 +69,7 @@ export const EntityActions = ({
   isSaving,
   saveDisabled,
   onStartMerging,
+  extraActions,
 }: EntityActionsProps) => {
   const deleteMutation = useMutation({
     mutationFn: () => deleteEntity(entityType, entityId),
@@ -109,6 +113,7 @@ export const EntityActions = ({
           <PencilIcon />
         </button>
       )}
+      {!isEditing && extraActions}
       {isEditing && (
         <>
           <button class="btn-primary" onClick={onSave} disabled={isSaving || saveDisabled} type="button">

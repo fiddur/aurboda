@@ -420,6 +420,10 @@ fun AurbodaApp(
               apiUrl = credentials.apiUrl,
               authToken = credentials.authToken,
               modifier = modifier,
+              onOpenWebPage = { path ->
+                appState.selectTab(MainTab.More)
+                appState.openMoreDestination(MoreDestination.Web(path))
+              },
             )
           },
           feedContent = { modifier ->

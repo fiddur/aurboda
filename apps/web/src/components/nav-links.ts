@@ -56,6 +56,7 @@ const OTHER_PAGE_TITLES = [
   { href: '/data-sources', label: 'Data Sources' },
   { href: '/settings', label: 'Settings' },
   { href: '/notifications', label: 'Notifications' },
+  { href: '/strength', label: 'Strength session' },
   HELP_LINK,
   { href: '/admin', label: 'Admin' },
   { href: '/login', label: 'Login' },

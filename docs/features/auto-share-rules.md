@@ -53,6 +53,8 @@ A per-user set of rules, each combining a **predicate** and a **share template**
 
 ## Evaluation & timing
 
+- **An open activity is not shared**: one without an `end_time` is no candidate. A
+  [live strength session](strength-logging.md#live-sessions) stays open until it is finished.
 - Activity mutations (sync, insert, update, merge) already fire a window-based
   notification; auto-share enqueues an evaluation job for that window on the shared
   pg-boss instance (`startAfter`, 10 minutes). Evaluation reads current state at run

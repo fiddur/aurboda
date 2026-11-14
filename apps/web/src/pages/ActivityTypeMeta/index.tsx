@@ -774,6 +774,12 @@ export function ActivityTypeMeta() {
         category={category}
       />
 
+      {name === 'strength_training' && (
+        <a href="/strength" class="btn-primary activity-type-meta-log-session">
+          Log a session
+        </a>
+      )}
+
       <section class="activity-type-meta-section">
         <div class="activity-type-meta-section-header">
           <h2>Trend</h2>
