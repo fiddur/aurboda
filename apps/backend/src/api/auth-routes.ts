@@ -19,6 +19,7 @@ import type { Auth } from '../auth.ts'
 import type { CentralDb } from '../services/central-db.ts'
 import type { InvitationAuth } from '../services/invitation.ts'
 import type { AnyMiddleware } from '../typed-router.ts'
+import type { FailedLogins } from './rate-limit-middleware.ts'
 
 import { isInvalidPasswordError, loginToUserDb, makeNewUserDb, query } from '../db/index.ts'
 import { httpError } from '../http-error.ts'
@@ -27,15 +28,18 @@ import { pruneAuditLog } from '../services/audit-log.ts'
 import { notifier, notifyAdminsOfSignup } from '../services/notifications.ts'
 import { readOfficialFeedSetting } from '../services/official-feed.ts'
 import { readPublicTagPages } from '../services/public-tags.ts'
+import { tooManyFailedLoginsMessage } from '../services/rate-limit.ts'
 import { defaultSignupProfileDeps, saveSignupProfile } from '../services/signup-profile.ts'
 import { readSupportContacts } from '../services/support-contacts.ts'
 import { validateBody } from '../validation.ts'
+import { sendTooManyRequests } from './rate-limit-middleware.ts'
 
 interface AuthRoutesDeps {
   httpd: Express
   auth: Auth
   authMiddleware: AnyMiddleware
   centralDb: CentralDb
+  failedLogins: FailedLogins
   invitationAuth: InvitationAuth
   userDb: Client
   unauthorized: Error
@@ -73,6 +77,7 @@ export const registerAuthRoutes = ({
   auth,
   authMiddleware,
   centralDb,
+  failedLogins,
   invitationAuth,
   userDb,
   unauthorized,
@@ -206,8 +211,15 @@ export const registerAuthRoutes = ({
       return next(unauthorized)
     }
 
+    const wait = failedLogins.retryAfterSeconds(req, user)
+    if (wait > 0) return sendTooManyRequests(res, wait, tooManyFailedLoginsMessage(wait))
+    const rejected = () => {
+      failedLogins.recordFailure(req, user)
+      next(unauthorized)
+    }
+
     const userRows = await query(userDb, 'SELECT usename FROM pg_user WHERE usename=$1', [user])
-    if (userRows.rowCount !== 1) return next(unauthorized)
+    if (userRows.rowCount !== 1) return rejected()
 
     // Only a password Postgres itself rejects is a failed login; anything else
     // is a server fault. Those are logged here and answered 503, because the
@@ -216,7 +228,7 @@ export const registerAuthRoutes = ({
     try {
       await loginToUserDb(user, password)
     } catch (err) {
-      if (isInvalidPasswordError(err)) return next(unauthorized)
+      if (isInvalidPasswordError(err)) return rejected()
       console.error(`Login for ${user} failed to reach the database (not a bad password):`, err)
       return next(httpError(503, 'Service unavailable'))
     }
@@ -224,6 +236,7 @@ export const registerAuthRoutes = ({
     // No schema work here. Login only authenticates: the deploy-time sweep and
     // the auth middleware migrate, and `query()` repairs drift lazily when a
     // statement hits a schema error (#1125).
+    failedLogins.recordSuccess(user)
     const token = auth.createToken(user)
     const isAdmin = await centralDb.isAdmin(user)
 

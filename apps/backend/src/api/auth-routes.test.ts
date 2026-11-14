@@ -7,6 +7,8 @@ import supertest from 'supertest'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { httpError, isHttpError } from '../http-error.ts'
+import { createTokenBucketLimiter, RATE_LIMITS } from '../services/rate-limit.ts'
+import { createRateLimits } from './rate-limit-middleware.ts'
 
 vi.mock('../db/index.ts', () => ({
   getNotificationPreference: vi.fn(async () => null),
@@ -32,13 +34,23 @@ const ensureUserAccount = vi.fn(async () => true)
 const isUsernameDeleted = vi.fn(async (_username: string) => false)
 const setUserEmail = vi.fn(async (): Promise<object | null> => ({}))
 
+const createFailedLogins = (now: () => number = Date.now) =>
+  createRateLimits({
+    accountOf: () => undefined,
+    clientIp: () => '203.0.113.7',
+    now,
+    uploadLimiter: createTokenBucketLimiter(RATE_LIMITS.uploads, now),
+  }).failedLogins
+
 const buildApp = ({
   blogUsername = null,
+  failedLogins = createFailedLogins(),
   signupMode = 'closed',
   settings = {},
   users = ['fiddur'],
 }: {
   blogUsername?: string | null
+  failedLogins?: ReturnType<typeof createFailedLogins>
   signupMode?: string
   settings?: Record<string, unknown>
   users?: string[]
@@ -63,6 +75,7 @@ const buildApp = ({
       isUsernameDeleted,
       setUserEmail,
     } as never,
+    failedLogins,
     httpd,
     invitationAuth: {} as never,
     unauthorized: httpError(401, 'Unauthorized'),
@@ -137,6 +150,34 @@ describe('GET /status', () => {
 })
 
 describe('POST /login', () => {
+  test('slows down a username after repeated wrong passwords, and a later success clears it', async () => {
+    let now = 0
+    const http = supertest(buildApp({ failedLogins: createFailedLogins(() => now) }))
+    const attempt = (password: string) => http.post('/login').send({ password, username: 'alice' })
+    vi.mocked(db.loginToUserDb).mockImplementation(async (_user, password) => {
+      if (password !== 'secret') throw new Error('bad password')
+    })
+    vi.mocked(db.isInvalidPasswordError).mockReturnValue(true)
+
+    for (let i = 0; i <= RATE_LIMITS.failed_logins_by_username.free_failures; i++) {
+      expect((await attempt('wrong')).status).toBe(401)
+    }
+
+    const slowed = await attempt('secret')
+    expect(slowed.status).toBe(429)
+    expect(slowed.headers['retry-after']).toBe('1')
+    expect(slowed.body).toEqual({
+      error: 'Too many failed sign-in attempts. Try again in 1 second.',
+      success: false,
+    })
+    expect(db.loginToUserDb).toHaveBeenCalledTimes(RATE_LIMITS.failed_logins_by_username.free_failures + 1)
+
+    now += 1000
+    expect((await attempt('secret')).status).toBe(200)
+    expect((await attempt('wrong')).status).toBe(401)
+    expect((await attempt('wrong')).status).toBe(401)
+  })
+
   test('issues a token for a correct password', async () => {
     const response = await login({ password: 'secret', username: 'alice' })
 

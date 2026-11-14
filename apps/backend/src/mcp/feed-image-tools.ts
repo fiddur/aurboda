@@ -14,6 +14,7 @@ import {
   PICTURE_TOO_LARGE_MESSAGE,
   serializeFeedImage,
 } from '../services/feed-image.ts'
+import { type TokenBucketLimiter, tooManyRequestsMessage } from '../services/rate-limit.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
 export interface FeedImageToolsDeps {
@@ -21,6 +22,8 @@ export interface FeedImageToolsDeps {
   addFeedImage?: (user: string, buffer: Buffer) => Promise<AddFeedImageResult>
   listFeedImages?: (user: string) => Promise<FeedImageRecord[]>
   deleteFeedImage?: (user: string, id: string) => Promise<boolean>
+  /** The per-account upload budget the REST upload routes draw on too. */
+  uploadLimiter?: TokenBucketLimiter
 }
 
 export const registerFeedImageTools = (server: McpServer, user: string, deps: FeedImageToolsDeps = {}) => {
@@ -37,6 +40,8 @@ export const registerFeedImageTools = (server: McpServer, user: string, deps: Fe
       if (!deps.apiBaseUrl) return errorResponse('Pictures are not available')
       const buffer = Buffer.from(data_base64, 'base64')
       if (buffer.length > MAX_FEED_IMAGE_BYTES) return errorResponse(PICTURE_TOO_LARGE_MESSAGE)
+      const budget = deps.uploadLimiter?.take(user)
+      if (budget && !budget.allowed) return errorResponse(tooManyRequestsMessage(budget.retry_after_seconds))
       const result = await add(user, buffer)
       if (!result.ok) return errorResponse(addFeedImageFailureMessage(result.reason))
       return jsonResponse(serializeFeedImage(deps.apiBaseUrl, user, result.image))

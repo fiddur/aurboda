@@ -65,6 +65,7 @@ This mounts your source code and watches for changes.
 | `ANDROID_APP_FINGERPRINTS`               | Comma-separated SHA-256 cert fingerprints (colon-separated hex) for the Android APKs you trust                                                                      | (empty — `assetlinks.json` returns []) |
 | `HOME_ASSISTANT_ALLOW_PRIVATE_ADDRESSES` | `true` lets users' [Home Assistant](./home-assistant.md) URLs point at private/loopback addresses and plain `http` (for a server on the same LAN as Home Assistant) | `false` (public https only)            |
 | `CALENDAR_ALLOW_PRIVATE_ADDRESSES`       | `true` lets users' [calendar ICS](./calendars.md) URLs point at private/loopback addresses (for a server on the same LAN as the calendar server)                    | `false` (public addresses only)        |
+| `TRUST_PROXY`                            | Proxies whose `X-Forwarded-For` the backend trusts, in Express `trust proxy` form ([Behind your own proxy](#behind-your-own-proxy))                                 | `loopback` (the bundled nginx)         |
 
 ### Generating a Session Secret
 
@@ -158,6 +159,7 @@ services:
       - PGPASSWORD=${PGPASSWORD}
       - SESSION_SECRET=${SESSION_SECRET}
       - WEB_HOST=https://health.example.com
+      - TRUST_PROXY=loopback,uniquelocal # see "Behind your own proxy"
     networks:
       - traefik
       - default
@@ -166,6 +168,37 @@ networks:
   traefik:
     external: true
 ```
+
+### Behind your own proxy
+
+The backend takes the client's address, which the [rate limits](admin.md#rate-limits) key on, from
+`X-Forwarded-For`, but only for the hops it trusts. By default it trusts the bundled nginx alone
+(`TRUST_PROXY=loopback`), which is right when clients connect to the container directly: a forged
+header from a client cannot move the limit onto someone else's address.
+
+With a reverse proxy in front of the container (Traefik, Caddy, another nginx, a tunnel), every
+request reaches nginx from the proxy, so the backend sees the proxy's address for every visitor.
+It then leaves the per-IP limits off and logs a warning once. To fix it:
+
+1. Make the proxy send `X-Forwarded-For` with the client's address and drop whatever a client
+   sent in that header itself. Traefik and Caddy do both by default for clients they do not
+   trust; for nginx use `proxy_set_header X-Forwarded-For $remote_addr;` (not
+   `$proxy_add_x_forwarded_for`, which keeps the client's own value).
+2. Tell the backend to trust the proxy's address too, with `TRUST_PROXY`. It takes Express's
+   [`trust proxy`](https://expressjs.com/en/guide/behind-proxies.html) forms; keep `loopback` in
+   the list for the bundled nginx:
+
+   ```yaml
+   environment:
+     # The proxy reaches the container over a Docker network (private addresses):
+     - TRUST_PROXY=loopback,uniquelocal
+     # or name the proxy's address or subnet exactly:
+     # - TRUST_PROXY=loopback,172.18.0.0/16
+   ```
+
+   Trust only addresses that are your proxy. `uniquelocal` trusts every private address
+   (10/8, 172.16/12, 192.168/16, fc00::/7), so a client on the same LAN could then pick its own
+   address for the limits. Avoid a hop count: a number trusts that many hops whoever sent them.
 
 ### Health check
 

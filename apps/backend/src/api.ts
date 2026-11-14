@@ -10,6 +10,13 @@ import { registerAuthRoutes } from './api/auth-routes.ts'
 import { gateFederation } from './api/federation-gate.ts'
 import { createAdminMiddleware, createAuditLogMiddleware, createAuthMiddleware } from './api/middleware.ts'
 import { registerOAuthRoutes } from './api/oauth-routes.ts'
+import {
+  bearerAccount,
+  createClientIp,
+  createRateLimits,
+  mountRateLimits,
+  trustProxySetting,
+} from './api/rate-limit-middleware.ts'
 import { mountRestRouters, postChartDeps } from './api/rest-routes.ts'
 import { mountSyncRouter } from './api/sync-setup.ts'
 import { createUsageMiddleware } from './api/usage-middleware.ts'
@@ -192,6 +199,7 @@ import {
   readPublicTagPages,
   readPublicTagRetentionDays,
 } from './services/public-tags.ts'
+import { accountUploadLimiter } from './services/rate-limit.ts'
 import {
   createRelayActions,
   createRelayInboxHooks,
@@ -604,8 +612,16 @@ const main = async () => {
   // CORS must come first for preflight requests
   httpd.use(cors({ origin: true }))
 
+  const rateLimits = createRateLimits({
+    accountOf: bearerAccount(auth),
+    clientIp: createClientIp((message) => console.warn(message)),
+    now: Date.now,
+    uploadLimiter: accountUploadLimiter,
+  })
+  mountRateLimits(httpd, rateLimits)
+
   // Mount OAuth endpoints BEFORE body-parser (uses its own parsers)
-  httpd.use(createOAuthRouter({ centralDb, loginToUserDb, webHost }))
+  httpd.use(createOAuthRouter({ centralDb, failedLogins: rateLimits.failedLogins, loginToUserDb, webHost }))
 
   // Live home-timeline updates: one in-process hub fans Postgres NOTIFY pings out
   // to a user's open SSE streams. Injected into the feed router (SSE endpoint) and
@@ -1117,12 +1133,12 @@ const main = async () => {
   // wraps EVERY non-GET body with `Readable.toWeb(req)` and next()s without
   // consuming it, hanging `express.json()` on any large non-federation POST
   // (e.g. a Health Connect batch > ~64 KB). `trust proxy` lets Fedify
-  // reconstruct the external https URL from nginx's X-Forwarded-* headers.
-  // Scope it to `loopback`: nginx proxies to the backend over loopback
-  // (proxy_pass http://127.0.0.1:3000), so Express trusts X-Forwarded-* only when
-  // the immediate peer is loopback — a direct remote client isn't, so it can't
-  // spoof them.
-  httpd.set('trust proxy', 'loopback')
+  // reconstruct the external https URL from nginx's X-Forwarded-* headers, and
+  // gives the rate limits the client's address. The default, `loopback`, trusts
+  // the bundled nginx alone (proxy_pass http://127.0.0.1:3000): a direct remote
+  // client isn't loopback, so it can't spoof them. `TRUST_PROXY` adds a proxy in
+  // front of nginx (docs/docker.md).
+  httpd.set('trust proxy', trustProxySetting(process.env.TRUST_PROXY))
   // Any representation will do for a wildcard or absent Accept on an actor URL,
   // and the default is the actor document: hand Fedify the type it serves.
   httpd.use(createActorAcceptNormalizer())
@@ -1156,6 +1172,7 @@ const main = async () => {
     auth,
     authMiddleware,
     centralDb,
+    failedLogins: rateLimits.failedLogins,
     invitationAuth,
     userDb,
     unauthorized,

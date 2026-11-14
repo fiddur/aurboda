@@ -4,6 +4,7 @@ import { describe, expect, test, vi } from 'vitest'
 import type { FeedImageRecord } from '../db/index.ts'
 import type { McpServer } from './helpers.ts'
 
+import { createTokenBucketLimiter } from '../services/rate-limit.ts'
 import { type FeedImageToolsDeps, registerFeedImageTools } from './feed-image-tools.ts'
 
 type ToolHandler = (params: Record<string, unknown>) => Promise<{ content: { text: string }[] }>
@@ -78,6 +79,16 @@ describe('add_feed_image', () => {
     expect(await full.call('add_feed_image', { data_base64: 'cG5n' })).toBe(
       `You have stored as many pictures as one account may hold (${MAX_FEED_IMAGES_PER_ACCOUNT}). Delete some first.`,
     )
+  })
+
+  test('draws on the account upload budget the REST upload routes share', async () => {
+    const uploadLimiter = createTokenBucketLimiter({ capacity: 1, refill_per_second: 0.1 }, () => 0)
+    const { call, deps } = setup({ uploadLimiter })
+    await call('add_feed_image', { data_base64: 'cG5n' })
+    expect(await call('add_feed_image', { data_base64: 'cG5n' })).toBe(
+      'Too many requests. Try again in 10 seconds.',
+    )
+    expect(deps.addFeedImage).toHaveBeenCalledTimes(1)
   })
 })
 
