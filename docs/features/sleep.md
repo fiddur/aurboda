@@ -86,7 +86,7 @@ debt = max(0, debt × 0.85 + need − slept)
 
 - **slept** is the total sleep of the `sleep` sessions that end on that date, counted as the Sleep page counts them (asleep time from the stages or Oura's total when known, else time in bed), from whatever source delivered the session; overlapping sessions from several sources count once.
 - **Naps** (the `nap` activity type and its subtypes) longer than 20 minutes add half their length to the date they end on. A nap on a date without a night does not count.
-- **A date with no night recorded** only decays the debt (× 0.85); it is not counted as a night without sleep. So a morning before the night has synced shows the debt slightly lower until it arrives.
+- **A date with no night recorded** only decays the debt (× 0.85); it is not counted as a night without sleep. **Today** without a night yet keeps yesterday's debt unchanged, without the decay, since its night may simply not have synced; this holds for the Sleep page, the API, the daily summary and the widget.
 - 15 % of the debt fades every day, and the debt never goes below zero: sleep cannot be banked.
 
 **Severity** is the debt as a share of one night's need: **none** under 10 %, **mild** under 50 %, **moderate** under 100 %, **severe** from one full night.

@@ -51,18 +51,21 @@ export const creditByDate = (sleeps: CountedSleep[]): Map<string, number> => {
 
 /**
  * One entry per date, starting from no debt: debt = max(0, debt × 0.85 + need − slept). A date
- * without a night only decays the debt, so a night the tracker missed is not read as no sleep.
+ * without a night only decays the debt, so a night the tracker missed is not read as no sleep;
+ * `today` without a night carries the debt unchanged, since its night may not have synced yet.
  */
 export const sleepDebtSeries = (
   dates: string[],
   sleeps: CountedSleep[],
   needMinutes: number,
+  today?: string,
 ): SleepDebtDay[] => {
   const credit = creditByDate(sleeps)
   let debt = 0
   return dates.map((date) => {
     const slept = credit.get(date)
-    debt = slept === undefined ? debt * DEBT_DECAY : Math.max(0, debt * DEBT_DECAY + needMinutes - slept)
+    if (slept !== undefined) debt = Math.max(0, debt * DEBT_DECAY + needMinutes - slept)
+    else if (date !== today) debt *= DEBT_DECAY
     return {
       date,
       debt_minutes: Math.round(debt),
@@ -168,6 +171,7 @@ const computeSleepDebt = async (
     datesBetween(first, range.end),
     toCountedSleeps(sessions, new Set(napTypes), tz),
     need,
+    localDate(deps.now(), tz),
   )
   const days = all.filter((d) => d.date >= range.start)
   const last = days.at(-1)

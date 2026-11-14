@@ -66,6 +66,21 @@ describe('sleepDebtSeries', () => {
     expect(days[2].debt_minutes).toBe(87)
   })
 
+  test('today without a night yet carries the debt unchanged, a past date without one decays it', () => {
+    const dates = datesBetween('2026-03-01', '2026-03-03')
+    const sleeps = nights('2026-03-01', [360])
+
+    expect(sleepDebtSeries(dates, sleeps, NEED, '2026-03-03').map((d) => d.debt_minutes)).toEqual([
+      120, 102, 102,
+    ])
+    expect(sleepDebtSeries(dates, sleeps, NEED, '2026-03-02').map((d) => d.debt_minutes)).toEqual([
+      120, 120, 102,
+    ])
+    expect(
+      sleepDebtSeries(dates, [...sleeps, ...nights('2026-03-03', [480])], NEED, '2026-03-03')[2],
+    ).toMatchObject({ debt_minutes: 87, slept_minutes: 480 })
+  })
+
   test('a nap over 20 minutes counts at half its length, a shorter one not at all', () => {
     const dates = ['2026-03-01', '2026-03-02']
     const sleeps: CountedSleep[] = [
@@ -222,6 +237,21 @@ describe('getSleepDebt', () => {
       severity: 'mild',
       sleep_need_minutes: NEED,
     })
+  })
+
+  test("today's night not yet synced keeps yesterday's debt in the range, the daily summary and the widget", async () => {
+    const morning = deps({ now: () => new Date('2026-03-12T07:00:00Z') })
+
+    const result = await getSleepDebt('u', { end: '2026-03-12', start: '2026-03-11' }, morning)
+    expect(result).toMatchObject({
+      days: [
+        { date: '2026-03-11', debt_minutes: 222 },
+        { date: '2026-03-12', debt_minutes: 222, severity: 'mild', slept_minutes: null },
+      ],
+      debt_minutes: 222,
+    })
+    expect(await getSleepDebtForDate('u', '2026-03-12', 'UTC', morning)).toMatchObject({ debt_minutes: 222 })
+    expect((await getCurrentSleepDebt('u', morning))?.debt_minutes).toBe(222)
   })
 
   test('judges against the sleep need setting', async () => {
