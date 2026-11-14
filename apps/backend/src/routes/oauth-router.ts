@@ -126,8 +126,9 @@ export const createOAuthRouter = (deps: OAuthRouterDeps): Router => {
     }
 
     const form = { client_id, redirect_uri, state: state ?? '', code_challenge, code_challenge_method }
-    const wait = failedLogins.retryAfterSeconds(req, username)
-    if (wait > 0) {
+    const attempt = failedLogins.begin(req, username)
+    if (!attempt.allowed) {
+      const wait = attempt.retry_after_seconds
       res
         .status(429)
         .set('Retry-After', String(wait))
@@ -142,8 +143,10 @@ export const createOAuthRouter = (deps: OAuthRouterDeps): Router => {
       await loginToUserDb(username, password)
     } catch (err) {
       const badCredentials = isInvalidPasswordError(err)
-      if (badCredentials) failedLogins.recordFailure(req, username)
-      else console.error(`OAuth login for ${username} failed to reach the database:`, err)
+      if (!badCredentials) {
+        attempt.inconclusive()
+        console.error(`OAuth login for ${username} failed to reach the database:`, err)
+      }
       res.type('html').send(
         loginFormHtml({
           ...form,
@@ -154,7 +157,7 @@ export const createOAuthRouter = (deps: OAuthRouterDeps): Router => {
       )
       return
     }
-    failedLogins.recordSuccess(username)
+    attempt.succeeded()
 
     try {
       const code = await createAuthorizationCode(oauthDeps, {

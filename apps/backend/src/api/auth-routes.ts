@@ -211,15 +211,19 @@ export const registerAuthRoutes = ({
       return next(unauthorized)
     }
 
-    const wait = failedLogins.retryAfterSeconds(req, user)
-    if (wait > 0) return sendTooManyRequests(res, wait, tooManyFailedLoginsMessage(wait))
-    const rejected = () => {
-      failedLogins.recordFailure(req, user)
-      next(unauthorized)
+    const attempt = failedLogins.begin(req, user)
+    if (!attempt.allowed) {
+      const wait = attempt.retry_after_seconds
+      return sendTooManyRequests(res, wait, tooManyFailedLoginsMessage(wait))
     }
 
-    const userRows = await query(userDb, 'SELECT usename FROM pg_user WHERE usename=$1', [user])
-    if (userRows.rowCount !== 1) return rejected()
+    const userRows = await query(userDb, 'SELECT usename FROM pg_user WHERE usename=$1', [user]).catch(
+      (err: unknown) => {
+        attempt.inconclusive()
+        throw err
+      },
+    )
+    if (userRows.rowCount !== 1) return next(unauthorized)
 
     // Only a password Postgres itself rejects is a failed login; anything else
     // is a server fault. Those are logged here and answered 503, because the
@@ -228,7 +232,8 @@ export const registerAuthRoutes = ({
     try {
       await loginToUserDb(user, password)
     } catch (err) {
-      if (isInvalidPasswordError(err)) return rejected()
+      if (isInvalidPasswordError(err)) return next(unauthorized)
+      attempt.inconclusive()
       console.error(`Login for ${user} failed to reach the database (not a bad password):`, err)
       return next(httpError(503, 'Service unavailable'))
     }
@@ -236,7 +241,7 @@ export const registerAuthRoutes = ({
     // No schema work here. Login only authenticates: the deploy-time sweep and
     // the auth middleware migrate, and `query()` repairs drift lazily when a
     // statement hits a schema error (#1125).
-    failedLogins.recordSuccess(user)
+    attempt.succeeded()
     const token = auth.createToken(user)
     const isAdmin = await centralDb.isAdmin(user)
 

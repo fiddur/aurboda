@@ -1,4 +1,4 @@
-import express from 'express'
+import express, { type Request } from 'express'
 import supertest from 'supertest'
 import { describe, expect, test } from 'vitest'
 
@@ -144,5 +144,64 @@ describe('mountRateLimits', () => {
     await repeat(RATE_LIMITS.uploads.capacity + 10, () =>
       http.post('/metrics').set('Authorization', 'Bearer alice').set('X-Client-IP', CLIENT),
     )
+  })
+})
+
+describe('failedLogins.begin', () => {
+  const setup = (ip: string | undefined = CLIENT) => {
+    let now = 0
+    const { failedLogins } = createRateLimits({
+      accountOf: () => undefined,
+      clientIp: () => ip,
+      now: () => now,
+      uploadLimiter: createTokenBucketLimiter(RATE_LIMITS.uploads, () => now),
+    })
+    const begin = (username = 'alice') => failedLogins.begin({} as Request, username)
+    const fail = (times: number, username = 'alice') => {
+      for (let i = 0; i < times; i++) expect(begin(username).allowed).toBe(true)
+    }
+    return { advance: (ms: number) => void (now += ms), begin, fail }
+  }
+  const free = RATE_LIMITS.failed_logins_by_username.free_failures
+
+  test('books the attempt at once, so a guess sent alongside an unfinished one past the free failures waits', () => {
+    const { begin, fail } = setup()
+    fail(free)
+    const first = begin()
+    expect(first.allowed).toBe(true)
+    expect(begin()).toEqual({ allowed: false, retry_after_seconds: 1 })
+  })
+
+  test('an inconclusive attempt is taken back', () => {
+    const { begin, fail } = setup()
+    fail(free)
+    const attempt = begin()
+    if (!attempt.allowed) throw new Error('expected an allowed attempt')
+    attempt.inconclusive()
+    expect(begin().allowed).toBe(true)
+  })
+
+  test('a success clears the username and takes back its own booking from the IP', () => {
+    const { begin, fail } = setup()
+    fail(free)
+    const attempt = begin()
+    if (!attempt.allowed) throw new Error('expected an allowed attempt')
+    attempt.succeeded()
+    fail(free)
+    expect(begin('bob').allowed).toBe(true)
+  })
+
+  test('the username is matched without case or surrounding spaces', () => {
+    const { begin, fail } = setup(undefined)
+    fail(free + 1, 'alice')
+    expect(begin(' Alice ').allowed).toBe(false)
+  })
+
+  test('failures from one IP slow every username it tries, once past its own free failures', () => {
+    const { begin } = setup()
+    for (let i = 0; i <= RATE_LIMITS.failed_logins_by_ip.free_failures; i++) {
+      expect(begin(`user${i}`).allowed).toBe(true)
+    }
+    expect(begin('someone_else').allowed).toBe(false)
   })
 })

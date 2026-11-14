@@ -31,6 +31,8 @@ export interface FailureBackoff {
   /** Seconds the key must wait before its next attempt, 0 when it may try now. */
   retryAfterSeconds: (key: string) => number
   recordFailure: (key: string) => void
+  /** Takes back one `recordFailure`, for an attempt booked as a failure before its outcome was known. */
+  undoFailure: (key: string) => void
   reset: (key: string) => void
 }
 
@@ -146,6 +148,12 @@ export const createFailureBackoff = (
       return Math.max(0, Math.ceil((entry.last_at + delayMs(entry.count) - at) / 1000))
     },
     size: state.size,
+    undoFailure: (key) => {
+      const entry = current(key, now())
+      if (!entry) return
+      if (entry.count <= 1) state.delete(key)
+      else state.set(key, { ...entry, count: entry.count - 1 })
+    },
   }
 }
 
@@ -174,7 +182,6 @@ export const RATE_LIMITS = {
     free_failures: 20,
     max_delay_ms: MINUTE_MS,
   },
-  /** Per username, failed password logins: capped at a minute, so nobody can lock another person out. */
   failed_logins_by_username: {
     base_delay_ms: 1000,
     forget_after_ms: 15 * MINUTE_MS,

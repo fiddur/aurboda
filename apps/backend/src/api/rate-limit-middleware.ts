@@ -67,11 +67,25 @@ export const limitBy =
     )
   }
 
-/** Failed password logins, counted per client IP and per username; the longer wait of the two applies. */
+export type LoginAttempt =
+  | { allowed: false; retry_after_seconds: number }
+  | {
+      allowed: true
+      /** The password was right: clears the username's failures and takes back this attempt's. */
+      succeeded: () => void
+      /** No verdict on the password (the database was unreachable): takes back this attempt's failure. */
+      inconclusive: () => void
+    }
+
+/**
+ * Failed password logins, counted per client IP and per username; the longer
+ * wait of the two applies. `begin` books the attempt as a failure before the
+ * password is checked, synchronously, so guesses sent together cannot all read
+ * "no wait" while the first is still awaiting Postgres; an attempt that turns
+ * out not to be a failure is taken back. A rejected password needs no call.
+ */
 export interface FailedLogins {
-  retryAfterSeconds: (req: Request, username: string) => number
-  recordFailure: (req: Request, username: string) => void
-  recordSuccess: (username: string) => void
+  begin: (req: Request, username: string) => LoginAttempt
 }
 
 export interface RateLimits {
@@ -98,18 +112,27 @@ export const createRateLimits = ({ now, clientIp, accountOf, uploadLimiter }: Ra
   return {
     authRequests: limitBy(createTokenBucketLimiter(RATE_LIMITS.auth_requests, now), clientIp),
     failedLogins: {
-      recordFailure: (req, username) => {
+      begin: (req, username) => {
         const ip = clientIp(req)
-        if (ip) failuresByIp.recordFailure(ip)
-        failuresByUsername.recordFailure(usernameKey(username))
-      },
-      recordSuccess: (username) => failuresByUsername.reset(usernameKey(username)),
-      retryAfterSeconds: (req, username) => {
-        const ip = clientIp(req)
-        return Math.max(
+        const user = usernameKey(username)
+        const wait = Math.max(
           ip ? failuresByIp.retryAfterSeconds(ip) : 0,
-          failuresByUsername.retryAfterSeconds(usernameKey(username)),
+          failuresByUsername.retryAfterSeconds(user),
         )
+        if (wait > 0) return { allowed: false, retry_after_seconds: wait }
+        if (ip) failuresByIp.recordFailure(ip)
+        failuresByUsername.recordFailure(user)
+        return {
+          allowed: true,
+          inconclusive: () => {
+            if (ip) failuresByIp.undoFailure(ip)
+            failuresByUsername.undoFailure(user)
+          },
+          succeeded: () => {
+            if (ip) failuresByIp.undoFailure(ip)
+            failuresByUsername.reset(user)
+          },
+        }
       },
     },
     publicReads: limitBy(createTokenBucketLimiter(RATE_LIMITS.public_reads, now), clientIp),

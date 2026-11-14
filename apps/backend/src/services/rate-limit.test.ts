@@ -87,6 +87,23 @@ describe('createFailureBackoff', () => {
   })
 })
 
+describe('createFailureBackoff undoFailure', () => {
+  const policy = { base_delay_ms: 1000, forget_after_ms: 15 * 60_000, free_failures: 1, max_delay_ms: 8000 }
+
+  test('takes back one failure, and forgets a key with none left', () => {
+    const backoff = createFailureBackoff(policy, clock().now)
+    backoff.recordFailure('alice')
+    backoff.recordFailure('alice')
+    expect(backoff.retryAfterSeconds('alice')).toBe(1)
+    backoff.undoFailure('alice')
+    expect(backoff.retryAfterSeconds('alice')).toBe(0)
+    backoff.undoFailure('alice')
+    expect(backoff.size()).toBe(0)
+    backoff.undoFailure('alice')
+    expect(backoff.size()).toBe(0)
+  })
+})
+
 test('tooManyRequestsMessage says how long to wait', () => {
   expect(tooManyRequestsMessage(1)).toBe('Too many requests. Try again in 1 second.')
   expect(tooManyRequestsMessage(30)).toBe('Too many requests. Try again in 30 seconds.')
