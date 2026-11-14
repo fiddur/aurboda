@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { createWriteStream } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -10,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, inject, test } from 'vitest'
 
 import { _setDbForUser, initializeSchema, migrateSchemaIfNeeded, userDbName } from '../db/index.ts'
 import { createRolePool, type UserDb } from '../db/pool.ts'
+import { restoreDumpAsDocumented } from '../test/restore-dump.ts'
 import { createDumpExporter, type PgConnection, streamUserDump } from './export-dump.ts'
 
 const adminUri = () => {
@@ -139,11 +139,7 @@ describe('database export', () => {
       await db.query('CREATE EXTENSION unaccent')
     })
 
-    const restore = `(echo 'SET ROLE "${target}";'; gunzip -c "$DUMP" | grep -v -e '^COMMENT ON EXTENSION' -e '^SET transaction_timeout') | psql -v ON_ERROR_STOP=1 --quiet "$TARGET_URI"`
-    execFileSync('bash', ['-c', restore], {
-      env: { ...process.env, DUMP: dumpPath, TARGET_URI: databaseUri(database) },
-      stdio: ['ignore', 'ignore', 'pipe'],
-    })
+    restoreDumpAsDocumented(dumpPath, target, database)
 
     const restored = createRolePool({ connectionString: databaseUri(database), max: 2 }, target)
     pools.push(restored)
