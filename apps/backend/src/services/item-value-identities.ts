@@ -403,11 +403,3 @@ export const loadExerciseEntryResolver = async (
     })
   }
 }
-
-/** `loadExerciseEntryResolver`, resolving every name to nothing when `field` is not catalogue-backed. */
-export const loadExerciseResolver = async (
-  user: string,
-  activityType: string,
-  field: string,
-): Promise<ExerciseEntryResolver> =>
-  (await loadExerciseEntryResolver(user, activityType, field)) ?? (() => undefined)

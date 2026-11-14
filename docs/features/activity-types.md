@@ -370,6 +370,8 @@ to two decimals.
   `sets.exercise.muscle_group` (`<list>.<item>.muscle_group`, a catalogue-backed item path): one
   series per muscle group, named as in the catalogue. It combines with scalar breakdown fields and
   with an exercise filter, but not with another item path; any other measure, or none, is a 400.
+  On a parent type, whose sessions include its sub-types', each session's sets resolve through the
+  catalogue-backed field of the type it was logged as, or the charted type's when its own has none.
   Weekly sets per muscle group:
   `source_type=activity_type&pattern=strength_training&measure=set_count&aggregation=sum&bucket_size=1w&breakdown_fields=sets.exercise.muscle_group`.
   `query_chart_data` and the dashboard's bar chart take the same field.
