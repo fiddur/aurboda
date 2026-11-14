@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 
 import { docsUrl } from '../../utils/docs-url'
-import { BUG_REPORT_LINK, DISCUSSION_LINKS, DOCS_LINKS } from './help-links'
+import { BUG_REPORT_LINK, DISCUSSION_LINKS, DOCS_LINKS, versionLink } from './help-links'
 
 describe('help links', () => {
   test('every external link is https', () => {
@@ -22,5 +22,24 @@ describe('help links', () => {
       expect(href.startsWith(base)).toBe(true)
       expect(href.length).toBeGreaterThan(base.length)
     }
+  })
+
+  test('a release version links to its release notes', () => {
+    expect(versionLink('1.0.3600')).toEqual({
+      href: 'https://github.com/fiddur/aurboda/releases/tag/v1.0.3600',
+      label: '1.0.3600',
+    })
+  })
+
+  test('a commit version links to the commit, labelled short', () => {
+    const sha = '09a681f2c5e1b7d3a4f6e8c0b2d4f6a8c0e2a4b6'
+    expect(versionLink(sha)).toEqual({
+      href: `https://github.com/fiddur/aurboda/commit/${sha}`,
+      label: '09a681f',
+    })
+  })
+
+  test('a local build has nothing to link to', () => {
+    expect(versionLink('dev')).toBeUndefined()
   })
 })

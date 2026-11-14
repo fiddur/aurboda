@@ -216,7 +216,9 @@ The companion Android app syncs data from Health Connect (40+ record types inclu
   <img src="apps/web/public/screenshots/widget.jpg" alt="Android home screen widget" width="250" />
 </p>
 
-More in the [Health Connect docs](docs/health-connect.md).
+Download the APK from the [latest release](https://github.com/fiddur/aurboda/releases/latest); the
+app then offers its own updates. More in the [Android app](docs/android-app.md) and
+[Health Connect](docs/health-connect.md) docs.
 
 ---
 
@@ -268,7 +270,11 @@ To change default port, modify `"8080:80"` to `"YOUR_PORT:80"` in docker-compose
 docker compose pull && docker compose up -d
 ```
 
-For automatic updates and the details, see [Updating](docs/docker.md#updating) in the Docker guide.
+Each release is also tagged `:v1.0.<n>`, the same number as the Android app of that release, and
+listed with its changes and APK on the [releases page](https://github.com/fiddur/aurboda/releases).
+Name that tag instead of `:latest` to pin a release, and the previous one to roll back. For
+automatic updates, pinning and rolling back, see [Updating](docs/docker.md#updating) and
+[Versions and rollback](docs/docker.md#versions-and-rollback) in the Docker guide.
 
 ### Development Builds
 

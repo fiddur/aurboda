@@ -36,6 +36,8 @@ export const publicTagPages = signal<string[]>([])
 export const contactFediverse = signal<string | null>(null)
 /** The server admin's Reddit username, or null when not set. */
 export const contactReddit = signal<string | null>(null)
+/** What the server reports as its version: `1.0.<n>` for a release, else a commit sha or `dev`. */
+export const serverVersion = signal<string | null>(null)
 /** The last /status request failed: the signup mode is unknown, so say nothing about signing up. */
 export const statusFailed = signal(false)
 
@@ -58,6 +60,7 @@ export const fetchStatus = async () => {
         signup_allowed,
         signup_mode,
         trial_days,
+        version,
       } = response.data
       signupAllowed.value = signup_allowed
       signupMode.value = signup_mode
@@ -66,6 +69,7 @@ export const fetchStatus = async () => {
       contactFediverse.value = contact_fediverse || null
       contactReddit.value = contact_reddit || null
       serverBilling.value = { billing_enabled, price_text, trial_days }
+      serverVersion.value = version || null
       statusFailed.value = false
     } catch (error) {
       console.error('Status fetch error:', error)

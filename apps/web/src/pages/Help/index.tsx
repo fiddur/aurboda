@@ -5,8 +5,8 @@ import { AdminContact, useAdminContactLinks } from '../../components/AdminContac
 import '../../components/StaticPage.css'
 import { ViewportReadout } from '../../components/ViewportReadout'
 import { isEmbedded } from '../../embed'
-import { auth, ensureStatusLoaded, signupMode } from '../../state/auth'
-import { BUG_REPORT_LINK, DISCUSSION_LINKS, DOCS_LINKS, type HelpLink } from './help-links'
+import { auth, ensureStatusLoaded, serverVersion, signupMode } from '../../state/auth'
+import { BUG_REPORT_LINK, DISCUSSION_LINKS, DOCS_LINKS, type HelpLink, versionLink } from './help-links'
 
 const ExternalLink = ({ link }: { link: HelpLink }) => (
   <a href={link.href} target="_blank" rel="noopener noreferrer">
@@ -22,6 +22,8 @@ export function Help() {
   const isLoggedIn = Boolean(auth.value.token)
   const canSignup = signupMode.value === 'open'
   const hasContact = hasAdminContact(useAdminContactLinks())
+  const version = serverVersion.value
+  const versionHref = version ? versionLink(version) : undefined
 
   return (
     <div class="static-page">
@@ -110,6 +112,12 @@ export function Help() {
           <li>what you did, what you expected, and what happened instead</li>
           <li>which page or app screen it was (web or the Android app), and roughly when</li>
           <li>a screenshot, if you can take one</li>
+          {version && (
+            <li>
+              the server's version: this one runs Aurboda{' '}
+              {versionHref ? <ExternalLink link={versionHref} /> : version}
+            </li>
+          )}
         </ul>
         <p>
           If a sync has stopped working, the <a href="/audit-log">audit log</a> (also reachable from Settings)

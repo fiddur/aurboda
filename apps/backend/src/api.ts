@@ -126,6 +126,7 @@ import { createPostUpdateResender, deliverPostUpdate } from './services/activity
 import { createTimelineBackfiller } from './services/activitypub/timeline-backfill.ts'
 import { createAurbodaEnrichAttempt } from './services/activitypub/timeline-enrich.ts'
 import { createAdminUsers } from './services/admin-users.ts'
+import { appVersion } from './services/app-version.ts'
 import { createArticlePreviewer } from './services/article-preview.ts'
 import { createAuditLogPruneQueue } from './services/audit-log-prune-queue.ts'
 import { auditError, auditInfo, pruneAuditLog } from './services/audit-log.ts'
@@ -333,7 +334,7 @@ const main = async () => {
     androidFingerprints,
     androidPackageName,
     apiBaseUrl,
-    version: process.env.BUILD_SHA ?? 'dev',
+    version: appVersion(),
   }
 
   const envOuraClientId = process.env.OURA_CLIENT

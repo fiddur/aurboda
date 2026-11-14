@@ -83,7 +83,9 @@ SESSION_SECRET=your_generated_salt_here
 ## Using Pre-built Images
 
 Docker images are built and pushed to Docker Hub by GitHub Actions: `fiddur/aurboda:latest`
-from `main` (releases) and `fiddur/aurboda:develop` from `develop` (every merged PR).
+from `main` (releases) and `fiddur/aurboda:develop` from `develop` (every merged PR). Each
+release is also tagged with its own version, `fiddur/aurboda:v1.0.<n>`, the same number as the
+Android app of that release; see [Versions and rollback](#versions-and-rollback).
 
 ### Pull the latest image:
 
@@ -113,6 +115,36 @@ docker compose up -d
 original `containrrr/watchtower` speaks Docker API 1.25, which current Docker daemons reject. For
 automatic updates, run the maintained fork, [`nickfedor/watchtower`](https://github.com/nicholas-fedor/watchtower),
 which polls for a new `:latest` and restarts `aurboda` on it.
+
+### Versions and rollback
+
+Every release gets one number, `1.0.<n>`, shared by the server image and the Android app. The
+[releases page](https://github.com/fiddur/aurboda/releases) lists them; each release's notes hold
+the changes it brought and its APK. The number is a release counter (the commit count of the
+release on `main`), not semantic versioning: a higher number is a later release, nothing more.
+
+The running server says which version it is on its Help page (`/help`), in `GET /api/status`
+(`version`) and in NodeInfo (`/.well-known/nodeinfo`). A `:develop` image reports its commit sha
+instead.
+
+To pin a release, name its tag instead of `latest` in `docker-compose.yml`:
+
+```yaml
+services:
+  aurboda:
+    image: fiddur/aurboda:v1.0.3600
+```
+
+and upgrade by changing the tag to a newer release and running
+`docker compose pull && docker compose up -d`. A pinned tag never moves, so Watchtower leaves it
+alone.
+
+To roll back, set the tag to the previous release and run the same command. Schema changes are
+expand-only (see [Overlapping deploys](#overlapping-deploys-expand-only-schema-changes)), so the
+previous release runs against a database the newer one has migrated: every column it uses is
+still there. Migrations are not undone, though, and the older release ignores whatever the newer
+one stored only in its new columns, so back up before upgrading (see
+[PostgreSQL Data](#postgresql-data)) if you may want to return to exactly where you were.
 
 ### Using existing PostgreSQL
 
@@ -384,11 +416,13 @@ The container monitors both nginx and the backend. If either process crashes, th
 
 Docker images are built automatically by GitHub Actions:
 
-- **Trigger**: Push to `develop` or `main` (`.github/workflows/docker.yml`)
+- **Trigger**: Push to `develop` (`.github/workflows/docker.yml`) or to `main`, where
+  `.github/workflows/release.yml` calls it on every release
 - **Registry**: Docker Hub
 - **Image**: `fiddur/aurboda`
 - **Tags**:
   - `latest` - from `main`: released state, what production runs
+  - `v1.0.<n>` - from `main`: one release, never moved (the same number as its Android release)
   - `develop` - from `develop`: every merged PR, for beta instances
   - `<sha>` - specific commit (both branches)
 
@@ -403,9 +437,12 @@ scripts/release-pr.sh        # opens or refreshes the PR, body = merged PRs sinc
 (Also available as the "Release PR" workflow in the Actions tab.) The script labels the PR
 `release-tryout`, which makes the release tryout routine (`tryouts/routine.md`) boot the head
 image fresh and as an upgrade of the previous release's image, and post a gate review. Merging
-it pushes `fiddur/aurboda:latest` (when the release touches backend, web, packages or the Docker
-files) and publishes the stable Android release `v1.0.<versionCode>` (when it touches
-`apps/android`); `develop` keeps feeding the `develop` image and the `beta` Android pre-release.
+it runs `.github/workflows/release.yml`, which gives the release its number, `v1.0.<n>`
+(`scripts/release-version.sh`: the commit count of the merge commit on `main`), and on every
+release, whatever it touches, pushes `fiddur/aurboda:latest` and `fiddur/aurboda:v1.0.<n>` and
+publishes the stable Android release `v1.0.<n>`, whose notes are the release PR's change list
+(`scripts/release-notes.sh`). `develop` keeps feeding the `develop` image and the `beta` Android
+pre-release.
 The previous release is `main`'s tip before the release PR merges, and the upgrade leg starts
 from the image that release shipped: the last image-relevant commit on the `develop` tip it
 released, which `develop`'s own build already tagged `fiddur/aurboda:<sha7>`. The tryout derives

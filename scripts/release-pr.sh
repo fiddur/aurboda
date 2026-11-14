@@ -8,7 +8,9 @@
 # The `release-tryout` label asks the release tryout routine (tryouts/routine.md)
 # to gate the PR; it is re-added on every refresh so a moved head is re-tried.
 # Merging the PR (merge commit, never squash) builds fiddur/aurboda:latest and
-# the stable APK from main. Merge only on an instruction naming the PR.
+# the stable APK from main as release v1.0.<n> (.github/workflows/release.yml),
+# whose GitHub release notes are this body's "## Changes" section
+# (scripts/release-notes.sh). Merge only on an instruction naming the PR.
 set -euo pipefail
 
 git fetch -q origin main develop
@@ -29,11 +31,13 @@ last_release=$(git log -1 --format='%cs (%h)' origin/main)
 head_sha=$(git rev-parse --short=7 origin/develop)
 changes=$(git log --first-parent --format='- %s' "$range" -- | grep -v -i '^- backmerge' || true)
 count=$(printf '%s\n' "$changes" | grep -c . || true)
+# The merge commit's count: both parents' history plus itself (scripts/release-version.sh).
+next_tag="v1.0.$(($(git rev-list --count origin/main origin/develop) + 1))"
 title="Release $(date +%F)"
 body=$(cat <<BODY
 Release of \`develop\` to \`main\`. Previous release: ${last_release}.
 
-Merging this (as a **merge commit**) publishes \`fiddur/aurboda:latest\` and the stable Android release from main.
+Merging this (as a **merge commit**) publishes release \`${next_tag}\`: \`fiddur/aurboda:latest\`, \`fiddur/aurboda:${next_tag}\` and the stable Android release, whose notes are the changes below. (The number holds if nothing else reaches \`main\` or \`develop\` first; a refresh recomputes it.)
 
 ## Changes (${count})
 
