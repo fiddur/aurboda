@@ -107,6 +107,7 @@ const StrengthLog = lazyPage(() => import('./pages/Strength/Session.jsx'), 'Stre
 const StrengthSession = lazyPage(() => import('./pages/Strength/Session.jsx'), 'StrengthSession')
 const Terms = lazyPage(() => import('./pages/Terms/index.jsx'), 'Terms')
 const Timeline = lazyPage(() => import('./pages/Timeline/index.jsx'), 'Timeline')
+const TrainingLoad = lazyPage(() => import('./pages/TrainingLoad/index.jsx'), 'TrainingLoad')
 
 function AppShell() {
   const { path } = useLocation()
@@ -165,6 +166,7 @@ function AppShell() {
             <Route path="/strength/log" component={StrengthLog} />
             <Route path="/strength" component={Strength} />
             <Route path="/sleep" component={Sleep} />
+            <Route path="/training-load" component={TrainingLoad} />
             <Route path="/correlations" component={Correlations} />
             <Route path="/chart" component={Chart} />
             <Route path="/places" component={Places} />
