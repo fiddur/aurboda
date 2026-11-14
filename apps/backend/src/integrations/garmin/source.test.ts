@@ -141,6 +141,7 @@ describe('garminRoutedClient', () => {
   const fakeClient = (label: string) => ({
     getActivities: vi.fn(async () => [label]),
     getActivityDetail: vi.fn(async () => label),
+    getActivityExerciseSets: vi.fn(async () => label),
     getHrv: vi.fn(async () => label),
     getSleep: vi.fn(async () => label),
     getStress: vi.fn(async () => label),
@@ -161,6 +162,7 @@ describe('garminRoutedClient', () => {
     expect(await garmin.getActivities('alice', 0, 20)).toEqual(['personal'])
     expect(await garmin.getStress('alice', day)).toBe('session')
     expect(await garmin.getActivityDetail('alice', 1)).toBe('session')
+    expect(await garmin.getActivityExerciseSets('alice', 1)).toBe('session')
     expect(await garmin.sourceFor('alice', 'stress')).toBe('session')
   })
 

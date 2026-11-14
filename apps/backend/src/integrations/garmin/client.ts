@@ -127,6 +127,24 @@ export interface GarminActivityDetailResponse {
   } | null
 }
 
+/**
+ * Exercise sets from /activity-service/activity/{id}/exerciseSets. The shape comes from
+ * community clients and is unverified here, so every field is optional.
+ */
+export interface GarminExerciseSet {
+  exercises?: Array<{ category?: string | null; name?: string | null; probability?: number | null }> | null
+  duration?: number | null
+  repetitionCount?: number | null
+  weight?: number | null
+  setType?: string | null
+  startTime?: string | null
+}
+
+export interface GarminExerciseSetsResponse {
+  activityId?: number
+  exerciseSets?: GarminExerciseSet[] | null
+}
+
 /** Training readiness from /metrics-service/metrics/trainingreadiness/{date} */
 export interface GarminTrainingReadiness {
   calendarDate: string
@@ -241,6 +259,15 @@ export const garminClient = (deps: GarminClientDeps = defaultDeps) => {
       const gc = await restoreSession(user)
       const result = await gc.get<GarminActivityDetailResponse>(
         `${GC_API}/activity-service/activity/${activityId}/details?maxChartSize=10000&maxPolylineSize=4000`,
+      )
+      await saveSession(user, gc)
+      return result
+    },
+
+    async getActivityExerciseSets(user: string, activityId: number): Promise<GarminExerciseSetsResponse> {
+      const gc = await restoreSession(user)
+      const result = await gc.get<GarminExerciseSetsResponse>(
+        `${GC_API}/activity-service/activity/${activityId}/exerciseSets`,
       )
       await saveSession(user, gc)
       return result

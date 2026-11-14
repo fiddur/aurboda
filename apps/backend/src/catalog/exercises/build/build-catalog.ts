@@ -259,7 +259,6 @@ const garminLinkProblems = (
 }
 
 const garminEntry = (
-  fit: string,
   name: string,
   curated: GarminLinks['entries'][string],
   links: CatalogLinks,
@@ -306,7 +305,7 @@ const addGarmin = (
   if (problems.length > 0) throw new Error(`garmin-links.json:\n${problems.join('\n')}`)
   const garminNames = new Map(garmin.entries.map((e) => [e.fit, e.name]))
   const garminOnly = Object.entries(garminLinks.entries).map(([fit, curated]) => ({
-    entry: garminEntry(fit, garminLinks.name_overrides[fit] ?? garminNames.get(fit) ?? '', curated, links),
+    entry: garminEntry(garminLinks.name_overrides[fit] ?? garminNames.get(fit) ?? '', curated, links),
     fit,
   }))
   const keyOfFit = new Map<string, string>([

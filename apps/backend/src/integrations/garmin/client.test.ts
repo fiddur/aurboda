@@ -235,6 +235,26 @@ describe('garminClient', () => {
     })
   })
 
+  describe('getActivityExerciseSets', () => {
+    it('restores session, fetches the exercise sets of the activity, and saves session', async () => {
+      const setsData = { activityId: 42, exerciseSets: [{ repetitionCount: 8, setType: 'ACTIVE' }] }
+      mockGarminConnect.get.mockResolvedValueOnce(setsData)
+
+      const client = garminClient(deps)
+      const result = await client.getActivityExerciseSets(testUser, 42)
+
+      expect(mockGarminConnect.loadToken).toHaveBeenCalledWith('stored-token1', 'stored-token2')
+      expect(mockGarminConnect.get).toHaveBeenCalledWith(
+        'https://connectapi.garmin.com/activity-service/activity/42/exerciseSets',
+      )
+      expect(result).toEqual(setsData)
+      expect(deps.upsertOAuthToken).toHaveBeenCalledWith(testUser, {
+        access_token: JSON.stringify({ oauth1: 'token1', oauth2: 'token2' }),
+        provider: 'garmin',
+      })
+    })
+  })
+
   describe('getHeartRate', () => {
     it('restores session, calls getHeartRate, and saves session', async () => {
       const hrData = { heartRateValues: [[1000, 72]] }

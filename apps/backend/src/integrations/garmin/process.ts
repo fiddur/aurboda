@@ -219,7 +219,12 @@ const dateAt = (calendarDate: string, hour = 12): Date => {
   return new Date(Date.UTC(y, m - 1, d, hour, 0, 0))
 }
 
-const makeRaw = (recordType: string, externalId: string, recordedAt: Date, data: unknown): RawRecord => ({
+export const makeRaw = (
+  recordType: string,
+  externalId: string,
+  recordedAt: Date,
+  data: unknown,
+): RawRecord => ({
   data: data as Record<string, unknown>,
   external_id: externalId,
   record_type: recordType,

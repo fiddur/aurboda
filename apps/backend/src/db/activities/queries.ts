@@ -365,6 +365,29 @@ export const getActivitiesNeedingDetail = async (
   return result.rows.map(mapActivityRow)
 }
 
+/** Garmin strength activities whose exercise sets have not been read yet, newest first. */
+export const getGarminActivitiesNeedingSets = async (
+  user: string,
+  { forceAll = false, limit = 10 }: { forceAll?: boolean; limit?: number } = {},
+): Promise<Activity[]> => {
+  const setsFilter = forceAll ? '' : "AND (a.data->>'garmin_sets_synced') IS DISTINCT FROM 'true'"
+  const result = await query(
+    user,
+    `SELECT ${ACTIVITY_COLUMNS_ALIAS}
+     FROM activities a
+     WHERE a.source = 'garmin'
+       AND a.activity_type = 'strength_training'
+       AND a.data->>'garmin_activity_id' IS NOT NULL
+       ${setsFilter}
+       AND a.deleted_at IS NULL
+     ORDER BY a.start_time DESC
+     LIMIT $1`,
+    [limit],
+  )
+
+  return result.rows.map(mapActivityRow)
+}
+
 /** Find nearby same-type activities for merge suggestions. */
 export const getNearbyActivities = async (
   user: string,

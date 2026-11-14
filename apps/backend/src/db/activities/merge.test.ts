@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest'
 
 import type { Activity } from '../types.ts'
 
-import { mergeGroupByPriority, mergeOverlappingActivities, pickOverrideWinner } from './merge.ts'
+import { blendData, mergeGroupByPriority, mergeOverlappingActivities, pickOverrideWinner } from './merge.ts'
 
 const garmin = (overrides: Partial<Activity> = {}): Activity => ({
   activity_type: 'meditation',
@@ -325,5 +325,117 @@ describe('mergeOverlappingActivities — same-type rows that only touch (#981, #
   test('two point-in-time rows at the same instant still merge', () => {
     const point = yoga({ end_time: undefined })
     expect(mergeOverlappingActivities([point, { ...point, id: 'again' }])).toHaveLength(1)
+  })
+})
+
+describe('blendData — sets imported from Garmin never hide logged sets', () => {
+  const logged = [{ exercise: 'Bench Press', reps: 8 }]
+  const fromGarmin = [{ exercise: 'Barbell Bench Press', reps: 7 }]
+  const otherLogged = [{ exercise: 'Squat', reps: 5 }]
+
+  test('garmin sets over logged sets keep the logged sets, without a sets_source', () => {
+    expect(blendData({ a: 1, sets: logged }, { b: 2, sets: fromGarmin, sets_source: 'garmin' })).toEqual({
+      a: 1,
+      b: 2,
+      sets: logged,
+    })
+  })
+
+  test('logged sets over garmin sets win, and the garmin sets_source goes with its sets', () => {
+    expect(blendData({ sets: fromGarmin, sets_source: 'garmin' }, { sets: logged })).toEqual({ sets: logged })
+  })
+
+  test('garmin over garmin: the later wins as today', () => {
+    const later = [{ exercise: 'Later', reps: 1 }]
+    expect(
+      blendData({ sets: fromGarmin, sets_source: 'garmin' }, { sets: later, sets_source: 'garmin' }),
+    ).toEqual({ sets: later, sets_source: 'garmin' })
+  })
+
+  test('logged over logged: the later wins as today', () => {
+    expect(blendData({ sets: logged }, { sets: otherLogged })).toEqual({ sets: otherLogged })
+  })
+
+  test('garmin sets over an empty sets list take over', () => {
+    expect(blendData({ sets: [] }, { sets: fromGarmin, sets_source: 'garmin' })).toEqual({
+      sets: fromGarmin,
+      sets_source: 'garmin',
+    })
+  })
+
+  test('an over without a sets key keeps the pair from under', () => {
+    expect(blendData({ sets: fromGarmin, sets_source: 'garmin' }, { average_hr: 120 })).toEqual({
+      average_hr: 120,
+      sets: fromGarmin,
+      sets_source: 'garmin',
+    })
+    expect(blendData(undefined, { average_hr: 120 })).toEqual({ average_hr: 120 })
+  })
+
+  test("no stray sets_source is left next to the other side's sets", () => {
+    expect(blendData({ sets: logged }, { sets: [], sets_source: 'garmin' })).toEqual({
+      sets: [],
+      sets_source: 'garmin',
+    })
+    expect(blendData({ sets_source: 'garmin' }, { sets: logged })).toEqual({ sets: logged })
+  })
+})
+
+describe('mergeOverlappingActivities — a Garmin strength session with sets next to a Gravl log (#1652)', () => {
+  const strengthMap = new Map<string, string>([['strength_training', 'exercise']])
+  const gravlSets = [{ exercise: 'Bench Press', reps: 8, weight: 60 }]
+  const garminSetList = [{ exercise: 'Barbell Bench Press', reps: 7, weight: 60 }]
+
+  const garminRow = (start: string): Activity => ({
+    activity_type: 'strength_training',
+    data: { average_hr: 110, garmin_activity_id: 99, sets: garminSetList, sets_source: 'garmin' },
+    end_time: new Date('2026-11-10T08:00:00Z'),
+    id: 'garmin-strength',
+    source: 'garmin',
+    start_time: new Date(start),
+    title: 'Strength',
+  })
+
+  const gravlRow = (start: string): Activity => ({
+    activity_type: 'strength_training',
+    data: { gravl_workout_id: 'w1', sets: gravlSets },
+    end_time: new Date('2026-11-10T07:55:00Z'),
+    id: 'gravl-strength',
+    source: 'gravl',
+    start_time: new Date(start),
+    title: 'Push day',
+  })
+
+  test.each([
+    ['Garmin first', '2026-11-10T07:00:00Z', '2026-11-10T07:02:00Z'],
+    ['Gravl first', '2026-11-10T07:02:00Z', '2026-11-10T07:00:00Z'],
+  ])(
+    '%s: the merged session shows the Gravl sets and keeps the Garmin keys',
+    (_, garminStart, gravlStart) => {
+      const merged = mergeOverlappingActivities([garminRow(garminStart), gravlRow(gravlStart)], strengthMap)
+
+      expect(merged).toHaveLength(1)
+      expect(merged[0].data?.sets).toEqual(gravlSets)
+      expect(merged[0].data).not.toHaveProperty('sets_source')
+      expect(merged[0].data).toMatchObject({ average_hr: 110, garmin_activity_id: 99 })
+    },
+  )
+
+  test('a Garmin row alone keeps its sets and their source', () => {
+    const [merged] = mergeOverlappingActivities([garminRow('2026-11-10T07:00:00Z')], strengthMap)
+
+    expect(merged.data).toMatchObject({ sets: garminSetList, sets_source: 'garmin' })
+  })
+
+  test("a cross-source group won by a Garmin row with sets keeps the member's logged sets", () => {
+    const winner = { ...garminRow('2026-11-10T07:00:00Z'), activity_type: 'hiit' }
+    const member = { ...gravlRow('2026-11-10T07:01:00Z'), source: 'health_connect' as const }
+
+    const merged = mergeGroupByPriority([winner, member])
+
+    expect(merged.id).toBe('garmin-strength')
+    expect(merged.data?.sets).toEqual(gravlSets)
+    expect(merged.data).not.toHaveProperty('sets_source')
+    expect(merged.data).toMatchObject({ average_hr: 110 })
   })
 })
