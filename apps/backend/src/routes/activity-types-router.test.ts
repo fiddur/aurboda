@@ -234,8 +234,8 @@ describe('POST /activity-types', () => {
       data: {
         aliases: [input.name],
         color: '#6b7280',
-        display_category: input.display_category,
-        display_name: input.display_name,
+        display_category: input.display_category ?? 'other',
+        display_name: input.display_name ?? input.name,
         is_builtin: false,
         name: input.name,
         parent_type: input.parent_type,
@@ -256,6 +256,39 @@ describe('POST /activity-types', () => {
     expect(res.status).toBe(201)
     expect(service.addActivityTypeDefinition).toHaveBeenCalledWith('tester', body)
     expect(res.body.data).toMatchObject({ parent_type: 'yoga', show_on_timeline: false })
+  })
+
+  test('accepts a catalogue name alone (#1700)', async () => {
+    vi.mocked(service.addActivityTypeDefinition).mockResolvedValue({
+      data: {
+        aliases: ['sauna'],
+        color: '#f97316',
+        display_category: 'wellness',
+        display_name: 'Sauna',
+        icon: '🧖',
+        is_builtin: false,
+        name: 'sauna',
+        show_on_timeline: true,
+      },
+      success: true,
+    })
+
+    const res = await supertest(buildApp()).post('/activity-types').send({ name: 'sauna' })
+
+    expect(res.status).toBe(201)
+    expect(service.addActivityTypeDefinition).toHaveBeenCalledWith('tester', { name: 'sauna' })
+    expect(res.body.data).toMatchObject({ display_category: 'wellness', display_name: 'Sauna' })
+  })
+
+  test('answers 400 for a name alone outside the catalogue (#1700)', async () => {
+    const error =
+      'display_name and display_category are required for a type that is not in the built-in catalogue'
+    vi.mocked(service.addActivityTypeDefinition).mockResolvedValue({ error, success: false })
+
+    const res = await supertest(buildApp()).post('/activity-types').send({ name: 'driving' })
+
+    expect(res.status).toBe(400)
+    expect(res.body).toEqual({ error, success: false })
   })
 })
 

@@ -14,6 +14,10 @@
 | Sessions (meditation)    | activity + time_series | Activities with type `meditation`; HR and HRV interval data extracted as time series                                                                                                                            |
 | Enhanced Tags            | tags                   | User tags from Oura, with optional custom names via tag mappings                                                                                                                                                |
 
+A tag becomes an activity of the type its name resolves to: one of your types by name or alias,
+else a [built-in catalogue type](features/activity-type-catalog.md) whose name, display name or
+alias matches (a "Sauna" tag lands on `sauna`, with its fields), else a new custom type.
+
 All data is also preserved as raw JSON in the `raw_records` table.
 
 ## Admin Setup

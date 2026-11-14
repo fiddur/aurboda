@@ -1,6 +1,7 @@
 export * from './account-email'
 export * from './activities'
 export * from './activity-sessions'
+export * from './activity-type-catalog'
 export * from './activity-types'
 export * from './admin'
 export * from './audit'

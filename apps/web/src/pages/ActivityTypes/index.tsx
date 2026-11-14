@@ -1,27 +1,97 @@
+import type { ActivityTypeCatalogEntry, ActivityTypeCatalogResult } from '@aurboda/api-spec'
+
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'preact/hooks'
 
 import type { ActivityTypeDefinition } from '../../state/api'
 
 import {
+  catalogFieldSummary,
+  catalogSuggestions,
+  groupCatalogEntries,
+} from '../../components/activityTypeCatalog'
+import { IconPreview } from '../../components/IconPreview'
+import {
   addActivityTypeDefinition,
+  fetchActivityTypeCatalog,
   fetchActivityTypeDefinitions,
   updateActivityTypeDefinition,
 } from '../../state/api'
 import { auth } from '../../state/auth'
+import {
+  DISPLAY_CATEGORY_LABELS,
+  DISPLAY_CATEGORY_ORDER,
+  displayCategoryOptions,
+} from '../../utils/displayCategories'
 import './style.css'
 
-const CATEGORY_LABELS: Record<string, string> = {
-  exercise: 'Exercise',
-  meditation: 'Meditation',
-  other: 'Other',
-  productivity: 'Productivity',
-  sleep_rest: 'Sleep & Rest',
-  travel: 'Travel',
-  wellness: 'Wellness',
+const catalogQuery = {
+  queryFn: fetchActivityTypeCatalog,
+  queryKey: ['activityTypeCatalog'],
+  staleTime: 30 * 60 * 1000,
 }
 
-const CATEGORY_ORDER = ['sleep_rest', 'exercise', 'meditation', 'wellness', 'productivity', 'travel', 'other']
+const serverError = (err: unknown): string | undefined =>
+  (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+
+function CatalogEntryRow({
+  entry,
+  meta,
+  buttonLabel,
+  onAdded,
+  onError,
+}: {
+  entry: ActivityTypeCatalogEntry
+  meta: string
+  buttonLabel: string
+  onAdded?: () => void
+  onError?: (message: string) => void
+}) {
+  const queryClient = useQueryClient()
+  const [error, setError] = useState('')
+  const fields = catalogFieldSummary(entry)
+
+  const addMutation = useMutation({
+    mutationFn: () => addActivityTypeDefinition({ name: entry.name }),
+    onError: (err: unknown) => {
+      const message = serverError(err) ?? 'Failed to add activity type'
+      if (onError) onError(message)
+      else setError(message)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['activityTypeDefinitions'] })
+      queryClient.invalidateQueries({ queryKey: ['activityTypeCatalog'] })
+      onAdded?.()
+    },
+  })
+
+  return (
+    <div class="at-row at-catalog-row">
+      <div class="at-catalog-info">
+        <span class="at-catalog-title">
+          <IconPreview icon={entry.icon} size={20} />
+          <span class="at-display-name">{entry.display_name}</span>
+          <span class="at-name-muted">{meta}</span>
+        </span>
+        {fields && <span class="at-catalog-fields">Fields: {fields}</span>}
+        {error && <span class="at-add-error">{error}</span>}
+      </div>
+      <div class="at-actions">
+        <button
+          type="button"
+          class="at-add-save"
+          disabled={addMutation.isPending}
+          onClick={() => {
+            setError('')
+            addMutation.mutate()
+          }}
+        >
+          {addMutation.isPending ? 'Adding...' : buttonLabel}
+        </button>
+      </div>
+    </div>
+  )
+}
 
 const toSnakeName = (s: string) =>
   s
@@ -37,6 +107,8 @@ function AddActivityTypeForm({ onDone }: { onDone: () => void }) {
   const [snakeEdited, setSnakeEdited] = useState(false)
   const [category, setCategory] = useState('other')
   const [error, setError] = useState('')
+  const { data: catalog } = useQuery(catalogQuery)
+  const suggestions = catalogSuggestions(catalog?.entries ?? [], displayName)
 
   const addMutation = useMutation({
     mutationFn: () =>
@@ -46,11 +118,11 @@ function AddActivityTypeForm({ onDone }: { onDone: () => void }) {
         name: snakeName,
       }),
     onError: (err: unknown) => {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-      setError(msg ?? 'Failed to add activity type')
+      setError(serverError(err) ?? 'Failed to add activity type')
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['activityTypeDefinitions'] })
+      queryClient.invalidateQueries({ queryKey: ['activityTypeCatalog'] })
       onDone()
     },
   })
@@ -96,14 +168,29 @@ function AddActivityTypeForm({ onDone }: { onDone: () => void }) {
             onChange={(e) => setCategory((e.target as HTMLSelectElement).value)}
             class="at-add-input"
           >
-            {CATEGORY_ORDER.map((cat) => (
-              <option key={cat} value={cat}>
-                {CATEGORY_LABELS[cat]}
+            {displayCategoryOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
               </option>
             ))}
           </select>
         </label>
       </div>
+      {suggestions.length > 0 && (
+        <div class="at-suggestions">
+          <h3 class="at-suggestions-heading">Built-in types that match</h3>
+          {suggestions.map((entry) => (
+            <CatalogEntryRow
+              key={entry.name}
+              entry={entry}
+              meta={DISPLAY_CATEGORY_LABELS[entry.display_category] ?? entry.display_category}
+              buttonLabel="Add built-in"
+              onAdded={onDone}
+              onError={setError}
+            />
+          ))}
+        </div>
+      )}
       {error && <p class="at-add-error">{error}</p>}
       <div class="at-add-actions">
         <button
@@ -175,7 +262,7 @@ function TypeRow({ def }: { def: ActivityTypeDefinition }) {
 
 function CategoryGroup({ category, types }: { category: string; types: ActivityTypeDefinition[] }) {
   const [collapsed, setCollapsed] = useState(false)
-  const label = CATEGORY_LABELS[category] ?? category
+  const label = DISPLAY_CATEGORY_LABELS[category] ?? category
 
   return (
     <div class="at-group">
@@ -195,6 +282,62 @@ function CategoryGroup({ category, types }: { category: string; types: ActivityT
   )
 }
 
+function CatalogGroup({
+  name,
+  entries,
+  startCollapsed,
+}: {
+  name: string
+  entries: ActivityTypeCatalogEntry[]
+  startCollapsed: boolean
+}) {
+  const [collapsed, setCollapsed] = useState(startCollapsed)
+
+  return (
+    <div class="at-group">
+      <button type="button" class="at-group-header" onClick={() => setCollapsed(!collapsed)}>
+        <span class={`at-group-chevron ${collapsed ? 'collapsed' : ''}`}>&#9660;</span>
+        <span class="at-group-label">{name}</span>
+        <span class="at-group-count">{entries.length}</span>
+      </button>
+      {!collapsed && (
+        <div class="at-group-list">
+          {entries.map((entry) => (
+            <CatalogEntryRow key={entry.name} entry={entry} meta={entry.name} buttonLabel="Add" />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function CatalogSection({ catalog, search }: { catalog: ActivityTypeCatalogResult; search: string }) {
+  const groups = useMemo(
+    () => groupCatalogEntries({ ...catalog, entries: catalog.entries.filter((e) => !e.in_use) }, search),
+    [catalog, search],
+  )
+  if (groups.length === 0) return null
+
+  return (
+    <section class="at-catalog">
+      <h2 class="at-catalog-heading">Built-in types</h2>
+      <p class="at-catalog-intro">
+        Types Aurboda knows, with fields ready. One is added to your types the first time you use it, or here.
+      </p>
+      <div class="at-container">
+        {groups.map((group) => (
+          <CatalogGroup
+            key={group.key}
+            name={group.name}
+            entries={group.entries}
+            startCollapsed={group.key === 'symptoms'}
+          />
+        ))}
+      </div>
+    </section>
+  )
+}
+
 export function ActivityTypes() {
   const isLoggedIn = auth.value.token
   const [search, setSearch] = useState('')
@@ -204,6 +347,7 @@ export function ActivityTypes() {
     queryFn: fetchActivityTypeDefinitions,
     queryKey: ['activityTypeDefinitions'],
   })
+  const { data: catalog } = useQuery(catalogQuery)
 
   const filtered = useMemo(() => {
     if (!search) return definitions
@@ -221,7 +365,7 @@ export function ActivityTypes() {
       list.push(def)
       groups.set(cat, list)
     }
-    return CATEGORY_ORDER.filter((cat) => groups.has(cat)).map((cat) => ({
+    return DISPLAY_CATEGORY_ORDER.filter((cat) => groups.has(cat)).map((cat) => ({
       category: cat,
       types: groups.get(cat)!,
     }))
@@ -272,6 +416,8 @@ export function ActivityTypes() {
           ))}
         </div>
       )}
+
+      {catalog && <CatalogSection catalog={catalog} search={search} />}
     </div>
   )
 }

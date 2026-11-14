@@ -1,4 +1,8 @@
-import { previousStrengthTrainingDataSchemas, strengthTrainingDataSchema } from './builtin-data-schemas.ts'
+import {
+  catalogSchemaFor,
+  previousStrengthTrainingDataSchemas,
+  strengthTrainingDataSchema,
+} from './builtin-data-schemas.ts'
 
 export const activitiesTables: Record<string, string> = {
   // Unified activities table (covers all time-ranged events: sleep, exercise, tags, calendar, etc.)
@@ -163,7 +167,7 @@ export const activitiesTables: Record<string, string> = {
       ('football_australian', 'Football Australian', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 29),
       ('frisbee_disc', 'Frisbee Disc', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 31),
       ('golf', 'Golf', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 32),
-      ('guided_breathing', 'Guided Breathing', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 33),
+      ('guided_breathing', 'Breathwork', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 33),
       ('gymnastics', 'Gymnastics', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 34),
       ('handball', 'Handball', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 35),
       ('high_intensity_interval_training', 'High Intensity Interval Training', 'exercise', '#22c55e', true, 'ExerciseSessionRecord', 36),
@@ -220,6 +224,15 @@ export const activitiesTables: Record<string, string> = {
        AND data_schema = $json$${JSON.stringify(previous)}$json$::jsonb;`,
       )
       .join('\n    ')}
+    UPDATE activity_type_definitions
+       SET data_schema = $json$${JSON.stringify(catalogSchemaFor('meditation'))}$json$::jsonb
+     WHERE name = 'meditation' AND is_builtin = true AND data_schema IS NULL;
+    UPDATE activity_type_definitions
+       SET data_schema = $json$${JSON.stringify(catalogSchemaFor('guided_breathing'))}$json$::jsonb
+     WHERE name = 'guided_breathing' AND is_builtin = true AND data_schema IS NULL;
+    UPDATE activity_type_definitions
+       SET display_name = 'Breathwork'
+     WHERE name = 'guided_breathing' AND is_builtin = true AND display_name = 'Guided Breathing';
     -- Seed the built-in hierarchy: exercise subtypes → 'exercise', nap/rest → 'sleep'.
     UPDATE activity_type_definitions
        SET parent_type = 'exercise'

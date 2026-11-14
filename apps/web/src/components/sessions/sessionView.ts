@@ -41,6 +41,9 @@ export const categoricalItemFields = (
 export const fieldLabel = (field: Pick<DataFieldDefinition, 'label' | 'name'>): string =>
   field.label ?? field.name.charAt(0).toUpperCase() + field.name.slice(1).replaceAll('_', ' ')
 
+/** `energy_drink` reads as "energy drink". */
+export const enumValueLabel = (value: string): string => value.replaceAll('_', ' ')
+
 export const formatMinutes = (minutes: number): string => {
   const m = Math.round(minutes)
   if (m < 60) return `${m} min`

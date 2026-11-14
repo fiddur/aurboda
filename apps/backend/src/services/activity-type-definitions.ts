@@ -1,20 +1,31 @@
 import type {
+  ActivityTypeCatalogResult,
   ActivityTypeDefinition,
   AddActivityTypeDefinitionBody,
   DataSchemaDefinition,
+  StoredActivityTypeCatalog,
+  StoredActivityTypeCatalogEntry,
 } from '@aurboda/api-spec'
 
 import { builtinActivityTypes } from '@aurboda/api-spec'
 
 import {
+  adoptCatalogActivityType,
   deleteActivityTypeDefinition as dbDelete,
   getActivityTypeDefinition as dbGet,
   getActivityTypeDefinitions as dbList,
+  getActivityTypeNames,
   insertActivityTypeDefinition as dbInsert,
   mergeActivityTypeDefinition as dbMerge,
   renameActivityTypeDefinition as dbRename,
   updateActivityTypeDefinition as dbUpdate,
 } from '../db/index.ts'
+import {
+  getCatalogActivityType,
+  loadActivityTypeCatalog,
+  searchActivityTypeCatalog,
+  toActivityTypeCatalogEntry,
+} from './activity-type-catalog.ts'
 
 export interface ActivityTypeDefinitionResult {
   success: boolean
@@ -25,9 +36,11 @@ export interface ActivityTypeDefinitionResult {
 export const listActivityTypeDefinitions = async (user: string): Promise<ActivityTypeDefinition[]> =>
   dbList(user)
 
+/** A catalogue type takes every field the caller leaves out from its catalogue definition. */
 export const addActivityTypeDefinition = async (
   user: string,
   input: AddActivityTypeDefinitionBody,
+  catalog: StoredActivityTypeCatalog = loadActivityTypeCatalog(),
 ): Promise<ActivityTypeDefinitionResult> => {
   // Block names that conflict with built-in types
   if ((builtinActivityTypes as readonly string[]).includes(input.name)) {
@@ -39,8 +52,57 @@ export const addActivityTypeDefinition = async (
     return { error: `Activity type "${input.name}" already exists`, success: false }
   }
 
-  const def = await dbInsert(user, input)
-  return { data: def, success: true }
+  const entry = getCatalogActivityType(catalog, input.name)
+  if (!entry) {
+    const { display_category, display_name } = input
+    if (display_name === undefined || display_category === undefined) {
+      return {
+        error:
+          'display_name and display_category are required for a type that is not in the built-in catalogue',
+        success: false,
+      }
+    }
+    return { data: await dbInsert(user, { ...input, display_category, display_name }), success: true }
+  }
+
+  return { data: await insertFromCatalog(user, input, entry, catalog), success: true }
+}
+
+const insertFromCatalog = async (
+  user: string,
+  input: AddActivityTypeDefinitionBody,
+  entry: StoredActivityTypeCatalogEntry,
+  catalog: StoredActivityTypeCatalog,
+): Promise<ActivityTypeDefinition> => {
+  if (input.parent_type === undefined && entry.parent_type !== undefined) {
+    await adoptCatalogActivityType(user, entry.parent_type, catalog)
+  }
+  return dbInsert(user, {
+    ...input,
+    aliases: [...new Set([...(input.aliases ?? []), ...entry.aliases])],
+    color: input.color ?? entry.color,
+    data_schema: input.data_schema ?? entry.data_schema,
+    display_category: input.display_category ?? entry.display_category,
+    display_name: input.display_name ?? entry.display_name,
+    icon: input.icon ?? entry.icon,
+    parent_type: input.parent_type ?? entry.parent_type,
+  })
+}
+
+/** The catalogue entries matching `q`, each marked with whether the user already has a type of that name. */
+export const listActivityTypeCatalog = async (
+  user: string,
+  q?: string,
+  catalog: StoredActivityTypeCatalog = loadActivityTypeCatalog(),
+): Promise<ActivityTypeCatalogResult> => {
+  const names = new Set(await getActivityTypeNames(user))
+  return {
+    entries: searchActivityTypeCatalog(catalog, q).map((entry) =>
+      toActivityTypeCatalogEntry(entry, names.has(entry.name)),
+    ),
+    groups: catalog.groups,
+    version: catalog.version,
+  }
 }
 
 export const updateActivityTypeDefinition = async (

@@ -24,6 +24,7 @@ import { reanalyseActivities, reanalyseOverrideTargets } from './track-analyse.t
 
 vi.mock('../db', async () => ({
   activityTypeExists: vi.fn().mockResolvedValue(true),
+  ensureActivityType: vi.fn().mockResolvedValue(true),
   checkActivityConflict: vi.fn().mockResolvedValue(false),
   getActivityTypeDefinition: vi.fn().mockResolvedValue(null),
   deleteActivity: vi.fn(),
@@ -395,7 +396,7 @@ describe('addActivity', () => {
   })
 
   test('does not call onMutated on validation failure', async () => {
-    vi.mocked(db.activityTypeExists).mockResolvedValue(false)
+    vi.mocked(db.ensureActivityType).mockResolvedValue(false)
     const onMutated = vi.fn()
 
     await addActivity(
@@ -408,7 +409,7 @@ describe('addActivity', () => {
     )
 
     expect(onMutated).not.toHaveBeenCalled()
-    vi.mocked(db.activityTypeExists).mockResolvedValue(true)
+    vi.mocked(db.ensureActivityType).mockResolvedValue(true)
   })
 })
 

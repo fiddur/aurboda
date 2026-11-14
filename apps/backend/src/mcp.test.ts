@@ -65,6 +65,7 @@ vi.mock('./services/mutations', () => ({
 
 vi.mock('./db', () => ({
   activityTypeExists: vi.fn().mockResolvedValue(true),
+  ensureActivityType: vi.fn().mockResolvedValue(true),
   deleteActivityTypeDefinition: vi.fn().mockResolvedValue(false),
   deleteDeductionRule: vi.fn().mockResolvedValue(false),
   deleteGarminActivityWithWrongType: vi.fn().mockResolvedValue(null),

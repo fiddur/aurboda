@@ -6,6 +6,7 @@ import {
   categoricalFields,
   categoricalItemFields,
   categoricalValues,
+  enumValueLabel,
   fieldLabel,
   formatMinutes,
   groupDurationLabel,
@@ -99,6 +100,13 @@ describe('schema helpers', () => {
     expect(itemPageHref('strength_training', 'sets.exercise', 'Bench Press / 50%')).toBe(
       '/activity-type/strength_training/item/sets.exercise/Bench%20Press%20%2F%2050%25',
     )
+  })
+})
+
+describe('enumValueLabel', () => {
+  test('underscores read as spaces', () => {
+    expect(enumValueLabel('energy_drink')).toBe('energy drink')
+    expect(enumValueLabel('wine')).toBe('wine')
   })
 })
 

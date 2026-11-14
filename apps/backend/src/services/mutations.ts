@@ -7,7 +7,6 @@ import type { ActivityNotifier } from './deduction-queue.ts'
 
 import { mergeOverlappingActivities } from '../db/activities/merge.ts'
 import {
-  activityTypeExists,
   checkActivityConflict,
   deleteActivity as dbDeleteActivity,
   fetchCategoryMap,
@@ -24,6 +23,7 @@ import {
   updateActivity as dbUpdateActivity,
   upsertActivity as dbUpsertActivity,
   enqueueOutboundSync,
+  ensureActivityType,
   findHcRecordId,
   getSourceFilter,
   insertTimeSeries,
@@ -322,7 +322,7 @@ export async function addActivity(
   input: AddActivityInput,
   onMutated?: ActivityNotifier,
 ): Promise<AddActivityResult> {
-  if (!(await activityTypeExists(user, input.activity_type))) {
+  if (!(await ensureActivityType(user, input.activity_type))) {
     return {
       error: `Unknown activity type: "${input.activity_type}"`,
       success: false,
@@ -595,7 +595,7 @@ export async function updateActivity(
 
   const finalType = input.activity_type ?? before.activity_type
   const isTypeChanging = input.activity_type !== undefined && input.activity_type !== before.activity_type
-  if (isTypeChanging && !(await activityTypeExists(user, input.activity_type!))) {
+  if (isTypeChanging && !(await ensureActivityType(user, input.activity_type!))) {
     return {
       error: `Unknown activity type: "${input.activity_type}"`,
       id,

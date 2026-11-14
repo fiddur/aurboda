@@ -250,6 +250,62 @@
   padding: 1rem 0;
 }
 
+.at-suggestions {
+  margin-bottom: 0.75rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.at-suggestions-heading {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #6b7280;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.at-catalog {
+  margin-top: 2rem;
+}
+
+.at-catalog-heading {
+  margin: 0 0 0.25rem;
+  font-size: 1.1rem;
+}
+
+.at-catalog-intro {
+  margin: 0 0 1rem;
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.at-catalog-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.at-catalog-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.at-catalog-fields {
+  font-size: 0.8rem;
+  color: #9ca3af;
+  overflow-wrap: anywhere;
+}
+
+.at-catalog-row .at-add-error {
+  margin: 0;
+}
+
 @media (prefers-color-scheme: dark) {
   .at-add-form {
     background: var(--color-surface);
@@ -316,6 +372,20 @@
   .at-toggle {
     color: #9ca3af;
   }
+
+  .at-suggestions {
+    background: var(--color-surface);
+    border-color: #333;
+  }
+
+  .at-suggestions-heading {
+    color: #9ca3af;
+    border-bottom-color: #333;
+  }
+
+  .at-catalog-intro {
+    color: #9ca3af;
+  }
 }
 
 @media (max-width: 639px) {
@@ -328,5 +398,9 @@
   .at-actions {
     width: 100%;
     justify-content: flex-end;
+  }
+
+  .at-catalog-info {
+    width: 100%;
   }
 }

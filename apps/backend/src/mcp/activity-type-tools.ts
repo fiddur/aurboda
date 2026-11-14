@@ -1,4 +1,5 @@
 import {
+  activityTypeCatalogQuerySchema,
   addActivityTypeDefinitionBodySchema,
   itemValueAliasesQuerySchema,
   itemValueIdentityQuerySchema,
@@ -12,6 +13,7 @@ import { z } from 'zod'
 import {
   addActivityTypeDefinition,
   deleteActivityTypeDefinition,
+  listActivityTypeCatalog,
   listActivityTypeDefinitions,
   mergeActivityType,
   renameActivityTypeDefinition,
@@ -38,8 +40,15 @@ export const registerActivityTypeTools = (server: McpServer, user: string) => {
   )
 
   server.tool(
+    'list_activity_type_catalog',
+    "List Aurboda's built-in activity types for things logged by hand (intake, meals and diet, health, symptoms, recovery, context), each with its fields. `in_use` says whether the user already has a type of that name. A type not in use is added automatically the first time add_activity uses its name, or with add_activity_type given only the name. Check here before creating a custom type.",
+    { ...activityTypeCatalogQuerySchema.shape },
+    async ({ q }) => jsonResponse(await listActivityTypeCatalog(user, q)),
+  )
+
+  server.tool(
     'add_activity_type',
-    'Create a custom activity type definition. The name must be snake_case (e.g. "sauna", "driving", "hot_bath"). Built-in types (sleep, exercise, meditation, nap, rest) cannot be recreated. A data_schema field of type `list` carries `item_fields` and holds an array of objects, e.g. the `sets` of a strength session (`exercise`, `weight`, `reps`, `time`).',
+    'Create a custom activity type definition. The name must be snake_case (e.g. "sauna", "driving", "hot_bath"). Many types are built in (list_activity_types), and with a name from list_activity_type_catalog only `name` is needed: the catalogue fills in display name, category, icon and fields. A data_schema field of type `list` carries `item_fields` and holds an array of objects, e.g. the `sets` of a strength session (`exercise`, `weight`, `reps`, `time`).',
     { ...addActivityTypeDefinitionBodySchema.shape },
     async (params) => {
       const result = await addActivityTypeDefinition(user, params)

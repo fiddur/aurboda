@@ -52,6 +52,7 @@ import { processActivityDetail } from '../integrations/garmin/process.ts'
 import { gravlRedirectUri } from '../integrations/gravl/client.ts'
 import { createAccountRouter } from '../routes/account-router.ts'
 import { createActivitiesRouter } from '../routes/activities-router.ts'
+import { createActivityTypeCatalogRouter } from '../routes/activity-type-catalog-router.ts'
 import { createActivityTypesRouter } from '../routes/activity-types-router.ts'
 import { createAdminRouter } from '../routes/admin-router.ts'
 import { createAgentsRouter } from '../routes/agents-router.ts'
@@ -315,6 +316,7 @@ export const mountRestRouters = ({
   httpd.use('/dashboard', createDashboardRouter(authMiddleware))
   httpd.use('/shared-dashboards', createSharedDashboardsRouter(authMiddleware, webHost))
   httpd.use('/shared-exercises', createSharedExercisesRouter(authMiddleware, webHost))
+  httpd.use('/activity-type-catalog', createActivityTypeCatalogRouter(authMiddleware))
   httpd.use('/exercise-catalog', createExerciseCatalogRouter(authMiddleware))
   httpd.use('/profile', createProfileRouter(authMiddleware, webHost, onProfileChanged))
   // Mount the following, followers and images routers before `/feed` so `/feed/following/*`,

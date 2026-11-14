@@ -2,7 +2,7 @@ import type { DataFieldDefinition } from '@aurboda/api-spec'
 
 import { describe, expect, test } from 'vitest'
 
-import { buildActivityData } from './activityData'
+import { buildActivityData, newTypeToCreate } from './activityData'
 
 const fields: DataFieldDefinition[] = [
   { name: 'session_name', type: 'string' },
@@ -66,5 +66,26 @@ describe('buildActivityData', () => {
 
   test('ignores values for fields the schema does not declare', () => {
     expect(buildActivityData(fields, { other: 'x' }, { laps: [{ a: 1 }] })).toBeUndefined()
+  })
+})
+
+describe('newTypeToCreate', () => {
+  const defs = [{ name: 'running' }]
+  const catalog = [{ name: 'sauna' }]
+
+  test('an existing type needs nothing', () => {
+    expect(newTypeToCreate('running', defs, catalog)).toBeUndefined()
+  })
+
+  test('a catalogue type is adopted by the backend', () => {
+    expect(newTypeToCreate('sauna', defs, catalog)).toBeUndefined()
+  })
+
+  test('a new name is created as an other type', () => {
+    expect(newTypeToCreate('cold_plunge', defs, catalog)).toEqual({
+      display_category: 'other',
+      display_name: 'Cold Plunge',
+      name: 'cold_plunge',
+    })
   })
 })

@@ -7,6 +7,8 @@ import {
   getOverrideForActivity,
   insertActivity,
 } from '../db/activities/index.ts'
+import { getActivityTypeDefinition } from '../db/activity-type-definitions.ts'
+import { query } from '../db/connection.ts'
 import { getPendingOutboundSync } from '../db/outbound-sync.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { addActivity, deleteActivity, updateActivity } from './mutations.ts'
@@ -181,5 +183,63 @@ describe('updateActivity on a merged view (integration)', () => {
     expect(second.success).toBe(false)
     expect(second.error).toContain('deleted activity')
     expect(second.id).toBeUndefined()
+  })
+
+  describe('a built-in catalogue type not used yet', () => {
+    beforeEach(async () => {
+      await query(getTestUser(), `DELETE FROM activity_type_definitions WHERE is_builtin = false`)
+    })
+
+    test('adding an activity of it adopts the type', async () => {
+      const user = getTestUser()
+      const added = await addActivity(user, {
+        activity_type: 'headache',
+        data: { severity: 4 },
+        start_time: new Date('2026-11-12T08:00:00Z'),
+      })
+      expect(added.success).toBe(true)
+      expect((await getActivityTypeDefinition(user, 'headache'))?.parent_type).toBe('symptom')
+      expect((await getActivityById(user, added.id!))?.data).toMatchObject({ severity: 4 })
+    })
+
+    test('its data is validated against the adopted fields', async () => {
+      const added = await addActivity(getTestUser(), {
+        activity_type: 'headache',
+        data: { severity: 11 },
+        start_time: new Date('2026-11-12T09:00:00Z'),
+      })
+      expect(added.success).toBe(false)
+      expect(added.error).toContain('Field "severity" value 11 is above the maximum 10')
+    })
+
+    test("changing an activity's type to it adopts the type", async () => {
+      const user = getTestUser()
+      const added = await addActivity(user, {
+        activity_type: 'meditation',
+        start_time: new Date('2026-11-12T10:00:00Z'),
+      })
+      const changed = await updateActivity(user, added.id!, { activity_type: 'sauna' })
+      expect(changed.success).toBe(true)
+      expect((await getActivityTypeDefinition(user, 'sauna'))?.display_category).toBe('wellness')
+      expect((await getActivityById(user, added.id!))?.activity_type).toBe('sauna')
+    })
+
+    test('a name outside the catalogue is still refused', async () => {
+      const user = getTestUser()
+      const added = await addActivity(user, {
+        activity_type: 'not_a_catalogue_type',
+        start_time: new Date('2026-11-12T11:00:00Z'),
+      })
+      expect(added).toMatchObject({ error: 'Unknown activity type: "not_a_catalogue_type"', success: false })
+      const base = await addActivity(user, {
+        activity_type: 'meditation',
+        start_time: new Date('2026-11-12T12:00:00Z'),
+      })
+      const changed = await updateActivity(user, base.id!, { activity_type: 'not_a_catalogue_type' })
+      expect(changed).toMatchObject({
+        error: 'Unknown activity type: "not_a_catalogue_type"',
+        success: false,
+      })
+    })
   })
 })
