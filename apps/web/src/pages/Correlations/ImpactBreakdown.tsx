@@ -3,6 +3,7 @@ import { type ActivityImpactData, IMPACT_FIELD_DIMENSION_PREFIX } from '@aurboda
 import type { ImpactExtra, ImpactMetric } from '../../components/charts/impactMetrics'
 
 import { BreakdownTable } from './BreakdownTable'
+import { comparisonsNote } from './effects'
 import { GroupImpactChart } from './GroupImpactChart'
 import {
   breakdownMetricOptions,
@@ -38,6 +39,7 @@ export function ImpactBreakdown({
   const options = breakdownMetricOptions(metrics, extras)
   const metricKey = resolveBreakdownMetric(breakdownMetric, options)
   const metricLabel = options.find((o) => o.key === metricKey)?.label ?? metricKey
+  const note = comparisonsNote(data.comparisons)
   const withEnough = breakdown.groups.filter((g) => g.occurrences >= MIN_CHART_OCCURRENCES)
   const drawn = chartableGroups(breakdown.groups)
   return (
@@ -85,9 +87,8 @@ export function ImpactBreakdown({
           sessions {breakdown.omitted_groups === 1 ? 'is' : 'are'} left out.
         </p>
       )}
-      <p class="breakdown-note">
-        With several groups, one can look clear by chance. Read small groups as hints.
-      </p>
+      {note && <p class="breakdown-note">{note}</p>}
+      <p class="breakdown-note">Read small groups as hints.</p>
       {breakdown.dimension.startsWith(IMPACT_FIELD_DIMENSION_PREFIX) && (
         <p class="breakdown-note">A session with several values counts under each.</p>
       )}

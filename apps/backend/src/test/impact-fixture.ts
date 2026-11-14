@@ -44,6 +44,7 @@ export const impactData = (overrides: Partial<ActivityImpactData> = {}): Activit
   activity: 'yoga',
   activity_type: 'activity_type',
   avg_duration_min: 45,
+  comparisons: 3,
   hr_effect: effect,
   hr_timeline: legacyTimeline,
   hrv_effect: effect,

@@ -3,7 +3,7 @@
  *
  * Storage:
  *   Two metrics in time_series:
- *   - `training_impulse` — TRIMP from exercise sessions (HR-based or duration fallback)
+ *   - `training_impulse` — TRIMP from exercise sessions (HR-based or duration estimate; see TrimpBasis)
  *   - `activity_impulse` — Scaled active calories from general movement
  *   Each row = one completed hour (timestamp = start of hour, value = total impulse).
  *
@@ -127,6 +127,14 @@ export const getTrainingLoadInputSchema = z
 
 export type GetTrainingLoadInput = z.infer<typeof getTrainingLoadInputSchema>
 
+export const trimpBasisSchema = z.enum(['hr', 'duration_estimate']).meta({
+  description:
+    'What a workout TRIMP is computed from: hr (average heart rate during the workout) or duration_estimate (no usable heart rate, so duration × 0.5)',
+  id: 'TrimpBasis',
+})
+
+export type TrimpBasis = z.infer<typeof trimpBasisSchema>
+
 export const workoutTrimpSchema = z
   .object({
     activity_id: z
@@ -140,6 +148,7 @@ export const workoutTrimpSchema = z
     start_time: z.string().meta({ description: 'Workout start time (ISO 8601)' }),
     title: z.string().optional().meta({ description: 'Workout title / exercise type' }),
     trimp: z.number().meta({ description: 'Training Impulse score for this workout' }),
+    trimp_basis: trimpBasisSchema,
   })
   .meta({ description: 'TRIMP score for a single workout session', id: 'WorkoutTrimp' })
 
@@ -185,11 +194,33 @@ export const recoveryZonesSchema = z
 
 export type RecoveryZones = z.infer<typeof recoveryZonesSchema>
 
+export const trainingImpulseBasisSchema = z
+  .object({
+    estimated_share: z.number().nullable().meta({
+      description:
+        'estimated_trimp / trimp (0-1): how much of the workout TRIMP is estimated from duration; null without workout TRIMP',
+    }),
+    estimated_trimp: z.number().meta({ description: 'Summed TRIMP of the workouts estimated from duration' }),
+    estimated_workouts: z.number().int().meta({
+      description: 'Workouts whose TRIMP is estimated from duration (trimp_basis duration_estimate)',
+    }),
+    trimp: z.number().meta({ description: 'Summed TRIMP of all workouts in the range' }),
+    workouts: z.number().int().meta({ description: 'Workouts in the range' }),
+  })
+  .meta({
+    description:
+      'How much of the workout TRIMP in the requested range is estimated from duration rather than computed from heart rate',
+    id: 'TrainingImpulseBasis',
+  })
+
+export type TrainingImpulseBasis = z.infer<typeof trainingImpulseBasisSchema>
+
 export const trainingLoadResultSchema = z
   .object({
     bootstrapping: z
       .boolean()
       .meta({ description: 'True if < 6 weeks of data, meaning CTL may not yet be meaningful' }),
+    estimated_impulse: trainingImpulseBasisSchema,
     points: z
       .array(trainingLoadPointSchema)
       .meta({ description: 'Training load time series (granularity depends on bucket_size parameter)' }),

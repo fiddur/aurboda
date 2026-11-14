@@ -210,6 +210,8 @@ export interface GenericCorrelationOptions {
 export interface EventOutcomeBlock {
   denominator: 'known' | 'all'
   collapse_gap_days: number
+  /** Lags tested: the family per_lag[].p_value_adjusted is adjusted over. */
+  comparisons: number
   trigger_days: number
   outcome_days: number
   onsets: number

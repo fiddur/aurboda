@@ -491,8 +491,13 @@ export const buildTrainingLoadTooltipHtml = (
 
   for (const w of workoutsNearby) {
     const title = w.title ?? 'Workout'
-    const hrStr = w.avg_hr ? ` (${Math.round(w.avg_hr)} bpm avg)` : ''
-    html += `<div class="tooltip-detail" style="opacity:0.7">${title}: ${w.duration_minutes.toFixed(0)}min, TRIMP ${w.trimp.toFixed(0)}${hrStr}</div>`
+    const basisStr =
+      w.trimp_basis === 'duration_estimate'
+        ? ' (estimated from duration)'
+        : w.avg_hr
+          ? ` (${Math.round(w.avg_hr)} bpm avg)`
+          : ''
+    html += `<div class="tooltip-detail" style="opacity:0.7">${title}: ${w.duration_minutes.toFixed(0)}min, TRIMP ${w.trimp.toFixed(0)}${basisStr}</div>`
   }
 
   return html

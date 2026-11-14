@@ -15,7 +15,7 @@
  *    user's actual question — reported beside the base rate.
  */
 
-import { type ContingencyTable, riskRatio, significance2x2 } from './stats.ts'
+import { benjaminiHochberg, type ContingencyTable, riskRatio, significance2x2 } from './stats.ts'
 
 export interface LagExposureResult {
   /** Lag window label as supplied (e.g. "48h", "7d"). */
@@ -50,6 +50,8 @@ export interface LagExposureResult {
   chi_squared: number | null
   /** Two-sided p-value. */
   p_value: number
+  /** Benjamini–Hochberg adjusted over the lags of one analysis. */
+  p_value_adjusted: number
   test: 'chi_squared' | 'fisher'
 }
 
@@ -200,7 +202,7 @@ export const computeEventOutcome = (input: EventOutcomeInput): EventOutcomeResul
   const onsetSet = new Set(onsetNums)
   const knownNums = [...knownSet]
 
-  const perLag: LagExposureResult[] = []
+  const perLag: Omit<LagExposureResult, 'p_value_adjusted'>[] = []
   for (const lag of input.lagWindows) {
     const lagDays = parseLagDays(lag)
     if (lagDays === null) continue
@@ -248,11 +250,12 @@ export const computeEventOutcome = (input: EventOutcomeInput): EventOutcomeResul
     })
   }
 
+  const adjusted = benjaminiHochberg(perLag.map((lag) => lag.p_value))
   return {
     onsets: onsetNums.length,
     outcome_days: new Set(outcomeNums).size,
     trigger_days: sortedTriggers.length,
     known_days: knownNums.length,
-    per_lag: perLag,
+    per_lag: perLag.map((lag, i) => ({ ...lag, p_value_adjusted: adjusted[i] })),
   }
 }

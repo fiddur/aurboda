@@ -747,7 +747,8 @@
 }
 
 .correlations-page .slicer-omitted,
-.correlations-page .breakdown-note {
+.correlations-page .breakdown-note,
+.correlations-page .comparisons-note {
   color: #6b7280;
   font-size: 0.8rem;
 }
@@ -821,7 +822,8 @@
   .correlations-page .limits-input .limits-label,
   .correlations-page .slicer-count,
   .correlations-page .slicer-omitted,
-  .correlations-page .breakdown-note {
+  .correlations-page .breakdown-note,
+  .correlations-page .comparisons-note {
     color: #9ca3af;
   }
 

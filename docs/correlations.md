@@ -72,6 +72,10 @@ How it works:
   - **`base_rate`** — P(a known day is exposed), for comparison.
   - **`relative_risk`** with a 95% CI, **`risk_difference`**, and a **p-value**
     from Pearson's chi-squared (or Fisher's exact test when any expected cell < 5).
+  - **`p_value_adjusted`** — the p-value adjusted over the lags of the analysis
+    (Benjamini–Hochberg, see [Multiple comparisons](#multiple-comparisons));
+    `event_outcome.comparisons` is how many lags were tested. The web marks a lag
+    from the adjusted value.
 
 ### Denominator: `known` vs `all`
 
@@ -272,8 +276,10 @@ How the numbers are made:
   (= `after_mean − before_mean`, the mean of per-session differences),
   `change_stddev`, and `p_value` from a paired t-test
   (`t = mean_d / (sd_d / √n)` on `n − 1` df). `p_value` is null with fewer than
-  3 pairs or when every difference is the same. The web page colours a change
-  only when `p_value < 0.05`.
+  3 pairs or when every difference is the same. `p_value_adjusted` is that
+  p-value adjusted over every change in the same response (see
+  [Multiple comparisons](#multiple-comparisons)), and the web page colours a
+  change only when `p_value_adjusted < 0.05`.
 
 Caveats: occurrences close in time are not independent, so the p-value is
 optimistic; and a window that crosses a time of day picks up the daily rhythm
@@ -389,8 +395,36 @@ Group order: duration and time buckets in limit order; sleep as none, before,
 after, both; field values by session count, then name, `(none)` last.
 
 Caution: the more groups, the fewer sessions each holds, and among many small
-groups a few will show a "clear" change (p < 0.05) by chance alone. Treat a
-lone striking group as a hint to check over a longer period, not a finding.
+groups a few will show a "clear" change (p < 0.05) by chance alone. The adjusted
+p-value (see [Multiple comparisons](#multiple-comparisons)) takes the number of
+groups into account, but a lone striking group is still a hint to check over a
+longer period, not a finding.
+
+## Multiple comparisons
+
+A table of results is many tests at once: at p < 0.05, about one in twenty
+comparisons passes by chance even when nothing is going on. Wherever one response
+carries several tests, each p-value comes with a **Benjamini–Hochberg** adjusted
+one, computed over the tests of that response, and the response says how many
+there are:
+
+| Response                                              | Family                                                                         | Count                       |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------ | --------------------------- |
+| Context tables (`/correlations/hrv-activities`)       | every paired change with a p-value: all rows of all three tables, every metric | `comparisons`               |
+| Activity impact (`/correlations/activity-impact/...`) | the paired changes of the whole and of every breakdown group, every metric     | `comparisons`               |
+| Generic correlation with an event outcome             | the lag windows                                                                | `event_outcome.comparisons` |
+
+`p_value` stays the raw p of the one test; `p_value_adjusted` is the one to compare
+with 0.05. Benjamini–Hochberg controls the false-discovery rate: among the results
+called notable at adjusted p < 0.05, about 5 % or fewer are expected to be chance.
+It was chosen over Bonferroni, which controls the chance of even one false finding
+and would hide nearly every real effect in a table of dozens of rows; it is also
+robust to the positive correlation between rows built from the same days.
+The family is the response, so the same activity's change can be notable in its own
+impact chart (a few comparisons) and not in the context table (many). Comparisons
+with too few pairs to test (fewer than 3) get no p-value and do not count. The
+continuous analysis (Pearson, Spearman, Welch, Mann–Whitney) tests one hypothesis
+several ways and is not adjusted.
 
 ## Statistics notes
 

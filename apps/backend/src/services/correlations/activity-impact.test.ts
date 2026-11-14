@@ -8,6 +8,7 @@ import * as db from '../../db/index.ts'
 import * as settings from '../settings.ts'
 import { getActivityImpact, type ImpactSlicing } from './activity-impact.ts'
 import { BIN_MINUTES, binSeries } from './impact.ts'
+import { benjaminiHochberg } from './stats.ts'
 
 const rawPoints = vi.fn<(user: string, metric: string) => Promise<[Date, number][]>>()
 
@@ -420,6 +421,38 @@ describe('getActivityImpact slicing', () => {
     expect(result.breakdown?.groups[1].stress_effect).toMatchObject({ change: -20, paired_occurrences: 1 })
     const { breakdown: _, ...whole } = result
     expect(whole).toEqual(plain)
+  })
+
+  test('adjusts the whole and every group over one family', async () => {
+    const short = [-20, -18, -21, -19]
+    const long = [1, -2, 2, -1]
+    rawPoints.mockImplementation(async (_u: string, metric: string) =>
+      metric === 'stress_level'
+        ? ([
+            ...short.flatMap((diff, i) => [
+              [mins(day(2 + i), -20), 50],
+              [mins(day(2 + i), 20), 50 + diff],
+            ]),
+            ...long.flatMap((diff, i) => [
+              [mins(day(10 + i), -20), 50],
+              [mins(day(10 + i), 70), 50 + diff],
+            ]),
+          ] as [Date, number][])
+        : [],
+    )
+    vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
+      ...short.map((_, i) => yoga(day(2 + i), 10)),
+      ...long.map((_, i) => yoga(day(10 + i), 60)),
+    ])
+
+    const result = await impact({ breakdown: 'duration' })
+    const effects = [result.stress_effect, ...result.breakdown!.groups.map((g) => g.stress_effect)]
+
+    expect(result.comparisons).toBe(3)
+    expect(effects.map((e) => e.p_value_adjusted)).toEqual(
+      benjaminiHochberg(effects.map((e) => e.p_value!)).map((p) => Math.round(p * 10_000) / 10_000),
+    )
+    expect(result.hrv_effect.p_value_adjusted).toBeNull()
   })
 
   test('a duration filter keeps the short session, still clipped by the long one it drops', async () => {

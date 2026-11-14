@@ -433,3 +433,21 @@ export const twoGroupComparison = (withValues: number[], withoutValues: number[]
     mann_whitney: mannWhitneyU(withValues, withoutValues),
   }
 }
+
+/**
+ * Benjamini–Hochberg adjusted p-values, in input order: each test's smallest
+ * false-discovery rate at which it would be declared, so comparing an adjusted
+ * value with 0.05 keeps the expected share of false findings among the
+ * declared ones at 5 %.
+ */
+export const benjaminiHochberg = (pValues: readonly number[]): number[] => {
+  const m = pValues.length
+  const order = pValues.map((p, i) => ({ i, p })).toSorted((a, b) => b.p - a.p)
+  const adjusted = new Array<number>(m)
+  let running = 1
+  order.forEach(({ i, p }, k) => {
+    running = Math.min(running, (p * m) / (m - k))
+    adjusted[i] = running
+  })
+  return adjusted
+}

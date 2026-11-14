@@ -12,6 +12,7 @@ export {
   getWorkoutTrimpForHour,
   resolveHrMax,
   resolveHrRest,
+  summarizeImpulseBasis,
   type HourlyImpulses,
   type HourlyLoadParams,
   type ResolvedTrainingLoadSettings,

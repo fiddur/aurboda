@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 
 import {
   activityInterval,
+  adjustEffects,
   type BinnedSeries,
   binSeries,
   bucketsPerSide,
@@ -174,6 +175,25 @@ describe('pairedEffect', () => {
       p_value: null,
       paired_occurrences: 0,
     })
+  })
+})
+
+describe('adjustEffects', () => {
+  const effect = (p_value: number | null) => ({ ...pairedEffect([null], [null]), p_value })
+
+  test('adjusts every tested effect over the family and counts only the tested ones', () => {
+    const effects = [effect(0.01), effect(null), effect(0.04), effect(0.03)]
+    const { adjust, comparisons } = adjustEffects(effects)
+    expect(comparisons).toBe(3)
+    expect(effects.map((e) => adjust(e).p_value_adjusted)).toEqual([0.03, null, 0.04, 0.04])
+    expect(adjust(effects[0]).p_value).toBe(0.01)
+  })
+
+  test('an effect listed twice is one comparison', () => {
+    const shared = effect(0.02)
+    const { adjust, comparisons } = adjustEffects([shared, shared, effect(0.5)])
+    expect(comparisons).toBe(2)
+    expect(adjust(shared).p_value_adjusted).toBe(0.04)
   })
 })
 

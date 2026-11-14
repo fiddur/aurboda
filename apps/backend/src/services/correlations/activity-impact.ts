@@ -12,6 +12,7 @@ import {
   IMPACT_FIXED_DIMENSIONS,
   MAX_IMPACT_DIMENSION_GROUPS,
   MAX_IMPACT_GROUPS,
+  type WindowEffect,
 } from '@aurboda/api-spec'
 
 import type { MergedActivity } from '../../db/types.ts'
@@ -43,6 +44,7 @@ import {
 } from './impact-dimensions.ts'
 import {
   activityInterval,
+  adjustEffects,
   BIN_MINUTES,
   clampWindowMinutes,
   extendByWindow,
@@ -222,6 +224,15 @@ const metricEffects = (analysis: Analysis, extraMetrics: string[]) =>
       }
     : {}
 
+type EffectsOf = Pick<ImpactGroup, 'hr_effect' | 'hrv_effect' | 'metric_effects' | 'stress_effect'>
+
+const groupEffects = (slice: EffectsOf): WindowEffect[] => [
+  slice.hrv_effect,
+  slice.hr_effect,
+  slice.stress_effect,
+  ...Object.values(slice.metric_effects ?? {}),
+]
+
 interface Slices {
   selected?: number[]
   breakdown?: ImpactBreakdown
@@ -359,20 +370,40 @@ export async function getActivityImpact(
   )
   const overall = analyse(sessions, series, window, extraMetrics, selected)
   const { buckets, effects, timeline } = overall.summary
+  const { adjust, comparisons } = adjustEffects([
+    ...Object.values(effects),
+    ...(breakdown?.groups ?? []).flatMap(groupEffects),
+  ])
+  const adjustEffectsOf = <Slice extends EffectsOf>(slice: Slice): Slice => ({
+    ...slice,
+    hr_effect: adjust(slice.hr_effect),
+    hrv_effect: adjust(slice.hrv_effect),
+    ...(slice.metric_effects
+      ? {
+          metric_effects: Object.fromEntries(
+            Object.entries(slice.metric_effects).map(([metric, effect]) => [metric, adjust(effect)]),
+          ),
+        }
+      : {}),
+    stress_effect: adjust(slice.stress_effect),
+  })
 
   return {
     activity,
     activity_type: activityType,
     avg_duration_min: overall.avg_duration_min,
-    ...(breakdown ? { breakdown } : {}),
+    ...(breakdown ? { breakdown: { ...breakdown, groups: breakdown.groups.map(adjustEffectsOf) } } : {}),
+    comparisons,
     ...(dimensions ? { dimensions } : {}),
-    hr_effect: effects.hr,
+    ...adjustEffectsOf({
+      hr_effect: effects.hr,
+      hrv_effect: effects.hrv,
+      ...metricEffects(overall, extraMetrics),
+      stress_effect: effects.stress,
+    }),
     hr_timeline: timeline.hr,
-    hrv_effect: effects.hrv,
     hrv_timeline: timeline.hrv,
-    ...metricEffects(overall, extraMetrics),
     occurrences: overall.occurrences,
-    stress_effect: effects.stress,
     stress_timeline: timeline.stress,
     timeline: buckets,
     total_occurrences: sessions.length,

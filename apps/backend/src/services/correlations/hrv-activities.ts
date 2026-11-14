@@ -1,4 +1,4 @@
-import type { ExtraMetricStats, HrvContextMetric } from '@aurboda/api-spec'
+import type { ExtraMetricStats, HrvContextMetric, WindowEffect } from '@aurboda/api-spec'
 
 import type { Activity, ProductivityRecord } from '../../db/types.ts'
 import type { PlaceVisit } from '../locations.ts'
@@ -18,6 +18,7 @@ import { getPlaceVisits } from '../locations.ts'
 import { triggerCorrelationSyncs } from './background-sync.ts'
 import {
   activityInterval,
+  adjustEffects,
   binExtraSeries,
   binMetricSeries,
   clampWindowMinutes,
@@ -228,6 +229,33 @@ const activityCorrelations = (activities: Activity[], ctx: GroupContext): Activi
   return correlations.toSorted((a, b) => b.occurrences - a.occurrences)
 }
 
+const rowEffects = (row: HrvStatsWithDelta): WindowEffect[] => [
+  row.hrv_effect,
+  row.hr_effect,
+  row.stress_effect,
+  ...Object.values(row.metrics ?? {}).map((extra) => extra.effect),
+]
+
+const withAdjustedEffects = <Row extends HrvStatsWithDelta>(
+  row: Row,
+  adjust: (effect: WindowEffect) => WindowEffect,
+): Row => ({
+  ...row,
+  hr_effect: adjust(row.hr_effect),
+  hrv_effect: adjust(row.hrv_effect),
+  ...(row.metrics
+    ? {
+        metrics: Object.fromEntries(
+          Object.entries(row.metrics).map(([metric, extra]) => [
+            metric,
+            { ...extra, effect: adjust(extra.effect) },
+          ]),
+        ),
+      }
+    : {}),
+  stress_effect: adjust(row.stress_effect),
+})
+
 export async function getHrvActivitiesCorrelation(
   user: string,
   periodDays: number = 30,
@@ -270,20 +298,30 @@ export async function getHrvActivitiesCorrelation(
   const baseline = calculateHrvStats(inPeriod('hrv'), inPeriod('hr'), totalMinutes, inPeriod('stress'))
   const metricBaselines = Object.fromEntries(extraMetrics.map((metric) => [metric, mean(inPeriod(metric))]))
   const ctx: GroupContext = { baseline, extraMetrics, metricBaselines, series, windowMinutes: window }
+  const tables = {
+    activities: activityCorrelations(activities, ctx),
+    locations: locationCorrelations(locations, ctx),
+    productivity: productivityCorrelations(
+      productivity,
+      { heart_rate: hrData, hrv_rmssd: hrvData, stress_level: stressData },
+      extraRaw,
+      contextMetric,
+      ctx,
+    ),
+  }
+  const { adjust, comparisons } = adjustEffects(
+    [...tables.activities, ...tables.locations, ...tables.productivity].flatMap(rowEffects),
+  )
+  const adjustRow = <Row extends HrvStatsWithDelta>(row: Row): Row => withAdjustedEffects(row, adjust)
 
   return {
     baseline,
+    comparisons,
     context_metric: contextMetric,
     correlations: {
-      activities: activityCorrelations(activities, ctx),
-      locations: locationCorrelations(locations, ctx),
-      productivity: productivityCorrelations(
-        productivity,
-        { heart_rate: hrData, hrv_rmssd: hrvData, stress_level: stressData },
-        extraRaw,
-        contextMetric,
-        ctx,
-      ),
+      activities: tables.activities.map(adjustRow),
+      locations: tables.locations.map(adjustRow),
+      productivity: tables.productivity.map(adjustRow),
     },
     ...(extraMetrics.length > 0 ? { metric_baselines: metricBaselines } : {}),
     period: {

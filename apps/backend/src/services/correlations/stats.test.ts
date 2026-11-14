@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 
 import {
+  benjaminiHochberg,
   chiSquared2x2,
   chiSquaredPValue1df,
   cohensD,
@@ -219,5 +220,26 @@ describe('twoGroupComparison', () => {
     expect(result.difference).toBeNull()
     expect(result.welch).toBeNull()
     expect(result.mann_whitney).toBeNull()
+  })
+})
+
+describe('benjaminiHochberg', () => {
+  test('matches the step-up adjustment, in input order', () => {
+    const adjusted = benjaminiHochberg([0.04, 0.01, 0.03, 0.2])
+    expect(adjusted[0]).toBeCloseTo(0.04 * (4 / 3), 10)
+    expect(adjusted[1]).toBeCloseTo(0.04, 10)
+    expect(adjusted[2]).toBeCloseTo(0.04 * (4 / 3), 10)
+    expect(adjusted[3]).toBeCloseTo(0.2, 10)
+  })
+
+  test('is monotone in the raw order and capped at 1', () => {
+    expect(benjaminiHochberg([0.9, 0.8, 0.7])).toEqual([0.9, 0.9, 0.9])
+    expect(benjaminiHochberg([0.6, 0.6])).toEqual([0.6, 0.6])
+    expect(benjaminiHochberg([0.5, 1]).every((p) => p <= 1)).toBe(true)
+  })
+
+  test('leaves a single test as it is and handles none', () => {
+    expect(benjaminiHochberg([0.03])).toEqual([0.03])
+    expect(benjaminiHochberg([])).toEqual([])
   })
 })

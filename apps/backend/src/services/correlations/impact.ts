@@ -1,7 +1,7 @@
 import type { ImpactBucket, ImpactBucketPhase, TimeWindowStats, WindowEffect } from '@aurboda/api-spec'
 
 import { TIME_WEIGHT_BIN_MINUTES } from '../../db/time-weighted.ts'
-import { studentTTwoSidedP } from './stats.ts'
+import { benjaminiHochberg, studentTTwoSidedP } from './stats.ts'
 import { mean, stddev } from './utils.ts'
 
 export const BIN_MINUTES = TIME_WEIGHT_BIN_MINUTES
@@ -149,6 +149,24 @@ export const pairedEffect = (before: (number | null)[], after: (number | null)[]
     change_stddev: round(sdDiff, 1),
     p_value: round(pValue, 4),
     paired_occurrences: n,
+  }
+}
+
+export interface EffectAdjustment {
+  /** Effects in the family that have a p-value. */
+  comparisons: number
+  /** The effect with p_value_adjusted set from the family; null when it has no p-value or is not in it. */
+  adjust: (effect: WindowEffect) => WindowEffect
+}
+
+/** Benjamini–Hochberg over every tested effect in one response; an object listed twice counts once. */
+export const adjustEffects = (effects: readonly WindowEffect[]): EffectAdjustment => {
+  const tested = [...new Set(effects)].filter((effect) => effect.p_value !== null)
+  const adjusted = benjaminiHochberg(tested.map((effect) => effect.p_value!))
+  const byEffect = new Map(tested.map((effect, i) => [effect, adjusted[i]]))
+  return {
+    adjust: (effect) => ({ ...effect, p_value_adjusted: round(byEffect.get(effect) ?? null, 4) }),
+    comparisons: tested.length,
   }
 }
 

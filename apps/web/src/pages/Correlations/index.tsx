@@ -27,6 +27,7 @@ import {
 import { browserTz } from '../../state/api/client'
 import { toDisplayName } from '../../utils/displayName'
 import { ContextTable } from './ContextTable'
+import { comparisonsNote } from './effects'
 import { applyExploreState, exploreState, ExploreTab } from './Explore'
 import { ImpactBreakdown } from './ImpactBreakdown'
 import { ImpactSlicer } from './ImpactSlicer'
@@ -259,6 +260,7 @@ export function Correlations() {
 
   const baseline: BaselineData | null = baselineQuery.data ?? null
   const correlations = correlationsQuery.data
+  const contextNote = correlations ? comparisonsNote(correlations.comparisons) : null
   const activityImpact = activityImpactQuery.data
   const definitions = definitionsQuery.data
   const metrics = shownMetrics.value
@@ -527,6 +529,8 @@ export function Correlations() {
                   }))}
                 />
               )}
+
+              {contextNote && <p class="comparisons-note">{contextNote}</p>}
             </>
           )}
 

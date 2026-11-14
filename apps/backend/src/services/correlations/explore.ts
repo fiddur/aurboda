@@ -166,6 +166,7 @@ export const getCompoundEventOutcome = async (
   return {
     denominator,
     collapse_gap_days: collapseGapDays,
+    comparisons: result.per_lag.length,
     trigger_days: result.trigger_days,
     outcome_days: result.outcome_days,
     onsets: result.onsets,

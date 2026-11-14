@@ -18,6 +18,10 @@ Two impulse sources per hour:
 - training_impulse: TRIMP from exercise sessions (HR-based Banister formula or duration fallback)
 - activity_impulse: active calories × scale factor (general movement load)
 
+Each workout has trimp_basis: "hr" (from its average heart rate) or "duration_estimate" (no usable heart rate,
+so duration × 0.5, a guess). estimated_impulse sums the workouts in the range: how many are estimated and what
+share of their TRIMP (estimated_share) is estimated. When that share is high, say CTL/ATL/TSB are mostly guessed.
+
 Recovery zones (based on historical CTL):
 - Undertrained: ATL < balanced_min
 - Balanced: balanced_min ≤ ATL ≤ balanced_max

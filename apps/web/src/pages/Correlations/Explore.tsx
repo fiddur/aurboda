@@ -18,6 +18,7 @@ import {
   fetchGenericCorrelation,
 } from '../../state/api'
 import { CHART_PRIMARY } from '../../theme'
+import { comparisonsNote, SIGNIFICANCE_LEVEL } from './effects'
 import { describeSelectorAxis, fiveNumberSummary, linearRegression } from './exploreCharts'
 import {
   describeCorrelationStrength,
@@ -229,7 +230,7 @@ function RrBars({ perLag }: { perLag: LagExposureResultData[] }) {
       </text>
       {items.map((l, i) => {
         const cx = pad.left + band * (i + 0.5)
-        const sig = l.p_value < 0.05
+        const sig = l.p_value_adjusted < SIGNIFICANCE_LEVEL
         return (
           <g>
             {l.ci_low !== null && l.ci_high !== null && (
@@ -250,7 +251,8 @@ function EventOutcomeResults({ data }: { data: GenericCorrelationData }) {
   const eo = data.event_outcome
   if (!eo) return <p class="explore-empty">No event-outcome result.</p>
 
-  const significant = (lag: LagExposureResultData) => lag.p_value < 0.05
+  const significant = (lag: LagExposureResultData) => lag.p_value_adjusted < SIGNIFICANCE_LEVEL
+  const note = comparisonsNote(eo.comparisons)
 
   return (
     <div class="explore-results">
@@ -267,6 +269,7 @@ function EventOutcomeResults({ data }: { data: GenericCorrelationData }) {
               <th>Base rate</th>
               <th>Rel. risk (95% CI)</th>
               <th>p</th>
+              <th title="Adjusted for the lags compared (Benjamini–Hochberg)">Adj. p</th>
               <th>Onsets exposed</th>
             </tr>
           </thead>
@@ -291,6 +294,7 @@ function EventOutcomeResults({ data }: { data: GenericCorrelationData }) {
                   {fmt(lag.p_value, 3)}
                   <span class="test-tag"> {lag.test === 'fisher' ? 'F' : 'χ²'}</span>
                 </td>
+                <td>{fmt(lag.p_value_adjusted, 3)}</td>
                 <td>
                   {lag.onsets_exposed}/{lag.onsets}
                 </td>
@@ -299,6 +303,7 @@ function EventOutcomeResults({ data }: { data: GenericCorrelationData }) {
           </tbody>
         </table>
       </div>
+      {note && <p class="comparisons-note">{note}</p>}
       <RrBars perLag={eo.per_lag} />
     </div>
   )
